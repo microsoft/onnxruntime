@@ -37,6 +37,9 @@ protected:
 
     static void SetUpTestSuite() {
       init_apartment();
+#ifdef BUILD_INBOX
+      winrt_activation_handler = WINRT_RoGetActivationFactory;
+#endif
     }
 
     void LoadModel(const std::wstring& model_path) {

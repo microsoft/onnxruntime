@@ -13,6 +13,8 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Runs a BERT batch size test.")
     parser.add_argument("--binary_dir", required=True, help="Path to the ORT binary directory.")
     parser.add_argument("--model_root", required=True, help="Path to the model root directory.")
+    parser.add_argument("--gpu_sku", choices=['V100_16G', 'MI100_32G'], default='V100_16G', required=False, 
+            help="GPU model (e.g. V100_16G, MI100_32G).")
     return parser.parse_args()
 
 
@@ -24,7 +26,9 @@ def main():
                                                "max_batch_size", 
                                                "max_predictions_per_seq", 
                                                "additional_options"])
-    configs = [
+
+    configs = {}
+    configs['V100_16G'] = [
         Config(True, 128, 76, 20, ""),
         Config(True, 512, 11, 80, ""),
         Config(False, 128, 39, 20, ""),
@@ -41,8 +45,15 @@ def main():
         Config(True, 512, 50, 80, "--transformer_layer_recompute"),
     ]
 
+    configs['MI100_32G'] = [
+        Config(True, 128, 200, 20, ""),
+        Config(True, 512, 30, 80, ""),
+        Config(False, 128, 108, 20, ""),
+        Config(False, 512, 16, 80, ""),
+    ]
+ 
     # run BERT training
-    for config in configs:
+    for config in configs[args.gpu_sku]:
         print("##### testing name - {}-{} #####".format("fp16" if config.enable_mixed_precision else "fp32",
                                                         config.sequence_length))
         cmds = [

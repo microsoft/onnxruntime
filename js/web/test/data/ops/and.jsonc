@@ -1,0 +1,119 @@
+[
+  {
+    "name": "And with no attributes",
+    "operator": "And",
+    "attributes": [],
+    "cases": [
+      {
+        "name": "T[0] T[2,4]",
+        "inputs": [
+          {
+            "data": [true],
+            "dims": [1],
+            "type": "bool"
+          },
+          {
+            "data": [true, false, true, false, true, false, true, false],
+            "dims": [2, 4],
+            "type": "bool"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [true, false, true, false, true, false, true, false],
+            "dims": [2, 4],
+            "type": "bool"
+          }
+        ]
+      },
+      {
+        "name": "T[1] T[2,4]",
+        "inputs": [
+          {
+            "data": [true, false, false, true],
+            "dims": [4],
+            "type": "bool"
+          },
+          {
+            "data": [true, false, true, false, true, false, true, false],
+            "dims": [2, 4],
+            "type": "bool"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [true, false, false, false, true, false, false, false],
+            "dims": [2, 4],
+            "type": "bool"
+          }
+        ]
+      },
+      {
+        "name": "Scalar T[2,2]",
+        "inputs": [
+          {
+            "data": [true],
+            "dims": [],
+            "type": "bool"
+          },
+          {
+            "data": [false, false, false, false],
+            "dims": [2, 2],
+            "type": "bool"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [false, false, false, false],
+            "dims": [2, 2],
+            "type": "bool"
+          }
+        ]
+      },
+      {
+        "name": "T[2,2] Scalar",
+        "inputs": [
+          {
+            "data": [true, true, true, true],
+            "dims": [2, 2],
+            "type": "bool"
+          },
+          {
+            "data": [false],
+            "dims": [],
+            "type": "bool"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [false, false, false, false],
+            "dims": [2, 2],
+            "type": "bool"
+          }
+        ]
+      },
+      {
+        "name": "Scalar Scalar",
+        "inputs": [
+          {
+            "data": [true],
+            "dims": [],
+            "type": "bool"
+          },
+          {
+            "data": [true],
+            "dims": [],
+            "type": "bool"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [true],
+            "dims": [],
+            "type": "bool"
+          }
+        ]
+      }
+    ]
+  }
+]

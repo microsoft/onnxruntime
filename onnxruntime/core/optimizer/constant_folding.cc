@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <limits>
+
 #include "core/optimizer/constant_folding.h"
 #include "core/optimizer/utils.h"
 #include "core/graph/graph_utils.h"
@@ -13,9 +15,11 @@ using namespace onnxruntime::common;
 namespace onnxruntime {
 
 ConstantFolding::ConstantFolding(const IExecutionProvider& execution_provider,
+                                 bool skip_dequantize_linear,
                                  const std::unordered_set<std::string>& compatible_execution_providers,
                                  const std::unordered_set<std::string>& excluded_initializers) noexcept
     : GraphTransformer("ConstantFolding", compatible_execution_providers),
+      skip_dequantize_linear_(skip_dequantize_linear),
       excluded_initializers_(excluded_initializers),
       execution_provider_(execution_provider) {
 }
@@ -23,6 +27,20 @@ ConstantFolding::ConstantFolding(const IExecutionProvider& execution_provider,
 // We need to handle a Shape node separately as the input doesn't need to be a constant initializer for
 // Shape to be able to be constant folded.
 static bool ConstantFoldShapeNode(Graph& graph, Node& node) {
+  // Opset-15 Shape supports slicing using a 'start' and 'end' attribute
+  const auto& shape_attributes = node.GetAttributes();
+
+  int64_t start = 0;
+  int64_t end = std::numeric_limits<int64_t>::max();
+
+  for (const auto& attr : shape_attributes) {
+    if (attr.first == "start") {
+      start = attr.second.i();
+    } else if (attr.first == "end") {
+      end = attr.second.i();
+    }
+  }
+
   auto shape = node.MutableInputDefs()[0]->Shape();
   bool is_concrete_shape = true;
   std::vector<int64_t> dim_values;
@@ -40,14 +58,30 @@ static bool ConstantFoldShapeNode(Graph& graph, Node& node) {
   }
 
   if (is_concrete_shape) {
+    int64_t rank = static_cast<int64_t>(dim_values.size());
+
+    // We ascertain the "true" starts/ends (if they were provided)
+    // Opset-15 Shape op supports slicing shape values
+
+    // Deal with negatives and clamp
+    start = start < 0 ? start + rank : start;
+    start = start < 0 ? 0 : ((start > rank) ? rank : start);
+
+    end = end < 0 ? end + rank : end;
+    end = end < 0 ? 0 : ((end > rank) ? rank : end);
+
+    int64_t slice_length = end - start;
+    size_t clamped_slice_length = slice_length < 0 ? 0 : static_cast<size_t>(slice_length);
+
     ONNX_NAMESPACE::TensorProto shape_constant;
     auto* constant_arg_out = node.MutableOutputDefs()[0];
     shape_constant.set_name(constant_arg_out->Name());
     shape_constant.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
-    shape_constant.add_dims(dim_values.size());
-    shape_constant.set_raw_data(dim_values.data(), dim_values.size() * sizeof(int64_t));
+    shape_constant.add_dims(clamped_slice_length);
+    shape_constant.set_raw_data(dim_values.data() + start,
+                                clamped_slice_length * sizeof(int64_t));
     ONNX_NAMESPACE::TensorShapeProto result_shape;
-    result_shape.add_dim()->set_dim_value(dim_values.size());
+    result_shape.add_dim()->set_dim_value(clamped_slice_length);
     constant_arg_out->SetShape(result_shape);
     graph.AddInitializedTensor(shape_constant);
   }
@@ -60,9 +94,20 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
   GraphViewer graph_viewer(graph);
   auto& order = graph_viewer.GetNodesInTopologicalOrder();
 
+#if !defined(DISABLE_SPARSE_TENSORS)
+  std::function<bool(const std::string&)> is_sparse_initializer_check = [&graph](const std::string& name) -> bool {
+    return graph.IsSparseInitializer(name);
+  };
+#endif
+
   for (NodeIndex i : order) {
     auto* node = graph.GetNode(i);
     if (!node) {
+      continue;
+    }
+
+    // avoid to constant fold DequantizeLinear for QDQ format
+    if (skip_dequantize_linear_ && node->OpType().compare("DequantizeLinear") == 0) {
       continue;
     }
 
@@ -103,8 +148,15 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
         continue;
       }
 
+#if !defined(DISABLE_SPARSE_TENSORS)
       // Create execution frame for executing constant nodes.
-      OptimizerExecutionFrame::Info info({node}, constant_inputs, graph.ModelPath(), execution_provider_);
+      OptimizerExecutionFrame::Info info({node}, constant_inputs, graph.ModelPath(), execution_provider_,
+                                         is_sparse_initializer_check);
+#else
+      // Create execution frame for executing constant nodes.
+      OptimizerExecutionFrame::Info info({node}, constant_inputs, graph.ModelPath(), execution_provider_,
+                                         [](std::string const&) { return false; });
+#endif
 
       std::vector<int> fetch_mlvalue_idxs;
       for (const auto* node_out : node->OutputDefs()) {
@@ -145,7 +197,7 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
       converted_to_constant = true;
       for (size_t fetch_idx = 0; fetch_idx < fetches.size(); ++fetch_idx) {
         OrtValue& ort_value = fetches[fetch_idx];
-
+        // XXX: Add support for SparseTensors outputs when we have sparse outputs
         if (!ort_value.IsTensor()) {
           LOGS(logger, WARNING) << "Unsupported output type of " << ort_value.Type()
                                 << ". Can't constant fold " << node->OpType() << " node '" << node->Name() << "'";
@@ -174,6 +226,17 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     }
 
     if (converted_to_constant) {
+      // Remove single-output node chain for inputs of the node
+      auto p_ip_node = node->InputNodesBegin();
+      const auto p_ip_node_end = node->InputNodesEnd();
+      while (p_ip_node != p_ip_node_end) {
+        const auto& input_node = *p_ip_node;
+        // Update the node iterator before removing the corresponding node because removing
+        // the node will invalidate the node iterator
+        ++p_ip_node;
+        graph_utils::RemoveNodesWithOneOutputBottomUp(graph, input_node);
+      }
+
       // Remove the output edges of the constant node and then remove the node itself.
       graph_utils::RemoveNodeOutputEdges(graph, *node);
       graph.RemoveNode(node->Index());

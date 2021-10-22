@@ -31,10 +31,11 @@ public:
             {"avg", DML_REDUCE_FUNCTION_AVERAGE},
         };
         const std::string mode = kernelCreationContext.GetOptionalAttribute<std::string>(AttrName::Mode, "avg");
-        const auto reductionFunction = MapStringToIndex<DML_REDUCE_FUNCTION>(mode, mapping);
+        const auto optionalReductionFunction = TryMapStringToIndex<DML_REDUCE_FUNCTION>(mode, mapping);
         const float spatialScale = kernelCreationContext.GetOptionalAttribute<float>(AttrName::SpatialScale, 1.0f);
         const int32_t samplesPerOutput = kernelCreationContext.GetOptionalAttribute<int32_t>(AttrName::SamplingRatio, 0u);
         ML_CHECK_VALID_ARGUMENT(samplesPerOutput >= 0, "sampling_ratio must be 0 or positive.");
+        ML_CHECK_VALID_ARGUMENT(!!optionalReductionFunction, "Unsupported RoiAlign mode.");
 
         DML_ROI_ALIGN_OPERATOR_DESC operatorDesc = {};
         operatorDesc.InputTensor = &inputDescs[0];
@@ -46,7 +47,7 @@ public:
         operatorDesc.OutOfBoundsInputValue = 0.0f; // ONNX does not specify a value for input elements outside bounds.
         operatorDesc.MinimumSamplesPerOutput = (samplesPerOutput == 0) ? 1          : samplesPerOutput;
         operatorDesc.MaximumSamplesPerOutput = (samplesPerOutput == 0) ? UINT32_MAX : samplesPerOutput;
-        operatorDesc.ReductionFunction = reductionFunction;
+        operatorDesc.ReductionFunction = *optionalReductionFunction;
         operatorDesc.InterpolationMode = DML_INTERPOLATION_MODE_LINEAR;
         DML_OPERATOR_DESC opDesc = { DML_OPERATOR_ROI_ALIGN, &operatorDesc };
 

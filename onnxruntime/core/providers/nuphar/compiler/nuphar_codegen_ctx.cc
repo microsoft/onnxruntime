@@ -26,7 +26,7 @@ NupharCodeGenCtx::NupharCodeGenCtx(
       initializers_(initializers),
       global_generated_initializers_(global_generated_initializers) {
   // construct graph_stats
-  graph_stats_ = onnxruntime::make_unique<CodeGenUnitStats>(nuphar_handle_->shape_inference);
+  graph_stats_ = std::make_unique<CodeGenUnitStats>(nuphar_handle_->shape_inference);
 }
 
 NupharCodeGenCtx::NupharCodeGenCtx(
@@ -37,7 +37,7 @@ NupharCodeGenCtx::NupharCodeGenCtx(
       nuphar_handle_(handle),
       initializers_(subgraph.initializers),
       global_generated_initializers_(global_generated_initializers) {
-  graph_stats_ = onnxruntime::make_unique<CodeGenUnitStats>(nuphar_handle_->shape_inference);
+  graph_stats_ = std::make_unique<CodeGenUnitStats>(nuphar_handle_->shape_inference);
   Promote<CodeGenUnitStats>(graph_stats_)->Evaluate(subgraph);
 }
 
@@ -98,7 +98,7 @@ static const Tensor* Marshalling(
 
   std::unique_ptr<Tensor> out_ptr;
   void* p_data = allocator->Alloc(SafeInt<size_t>(marshalled_size) * byte_size);
-  out_ptr = onnxruntime::make_unique<Tensor>(
+  out_ptr = std::make_unique<Tensor>(
       original_initializer->DataType(),
       TensorShape(marshalled_shape),
       p_data,
@@ -222,7 +222,7 @@ const WeightLayoutCodegenInfo* NupharCodeGenCtx::GetWeightLayoutInfo(const std::
 
 void NupharCodeGenCtx::CreateWeightLayoutInfo(const std::string& name, const tvm::Tensor& tensor) {
   ORT_ENFORCE(initializer_layouts_.count(name) == 0);
-  initializer_layouts_.emplace(name, std::move(onnxruntime::make_unique<WeightLayoutCodegenInfo>(tensor)));
+  initializer_layouts_.emplace(name, std::move(std::make_unique<WeightLayoutCodegenInfo>(tensor)));
 }
 
 const std::map<std::string, std::unique_ptr<WeightLayoutCodegenInfo>>& NupharCodeGenCtx::GetWeightLayoutMap() const {

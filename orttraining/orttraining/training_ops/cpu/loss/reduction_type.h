@@ -3,8 +3,10 @@
 
 #pragma once
 
+#ifndef SHARED_PROVIDER
 #include "core/common/common.h"
 #include "core/common/exceptions.h"
+#endif
 
 namespace onnxruntime {
 

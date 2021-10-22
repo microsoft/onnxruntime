@@ -35,19 +35,25 @@ JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OnnxTensor_createTensor
     uint8_t* tensorData;
     checkOrtStatus(jniEnv, api, api->GetTensorMutableData(ortValue, (void**) &tensorData));
 
-    // Extract the tensor shape information
-    OrtTensorTypeAndShapeInfo* info;
-    checkOrtStatus(jniEnv,api,api->GetTensorTypeAndShape(ortValue, &info));
-    size_t dimensions;
-    checkOrtStatus(jniEnv,api,api->GetDimensionsCount(info,&dimensions));
-    size_t arrSize;
-    checkOrtStatus(jniEnv,api,api->GetTensorShapeElementCount(info,&arrSize));
-    ONNXTensorElementDataType onnxTypeEnum;
-    checkOrtStatus(jniEnv,api,api->GetTensorElementType(info,&onnxTypeEnum));
-    api->ReleaseTensorTypeAndShapeInfo(info);
+    // Check if we're copying a scalar or not
+    if (shapeLen == 0) {
+        // Scalars are passed in as a single element array
+        copyJavaToPrimitiveArray(jniEnv, onnxType, tensorData, dataObj);
+    } else {
+        // Extract the tensor shape information
+        OrtTensorTypeAndShapeInfo* info;
+        checkOrtStatus(jniEnv,api,api->GetTensorTypeAndShape(ortValue, &info));
+        size_t dimensions;
+        checkOrtStatus(jniEnv,api,api->GetDimensionsCount(info,&dimensions));
+        size_t arrSize;
+        checkOrtStatus(jniEnv,api,api->GetTensorShapeElementCount(info,&arrSize));
+        ONNXTensorElementDataType onnxTypeEnum;
+        checkOrtStatus(jniEnv,api,api->GetTensorElementType(info,&onnxTypeEnum));
+        api->ReleaseTensorTypeAndShapeInfo(info);
 
-    // Copy the java array into the tensor
-    copyJavaToTensor(jniEnv, onnxType, tensorData, arrSize, dimensions, dataObj);
+        // Copy the java array into the tensor
+        copyJavaToTensor(jniEnv, onnxType, tensorData, arrSize, dimensions, dataObj);
+    }
 
     // Return the pointer to the OrtValue
     return (jlong) ortValue;
@@ -106,7 +112,7 @@ JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OnnxTensor_createString
 
     // Create the OrtValue
     OrtValue* ortValue;
-    checkOrtStatus(jniEnv, api, api->CreateTensorAsOrtValue(allocator,shapeArr,1,ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING,&ortValue));
+    checkOrtStatus(jniEnv, api, api->CreateTensorAsOrtValue(allocator,shapeArr,0,ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING,&ortValue));
 
     // Release the shape
     checkOrtStatus(jniEnv, api, api->AllocatorFree(allocator,shapeArr));
@@ -154,7 +160,7 @@ JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OnnxTensor_createStringTensor
     checkOrtStatus(jniEnv, api, api->AllocatorAlloc(allocator,sizeof(jobject)*length,(void**)&javaStrings));
 
     // Copy the java strings into the buffers
-    for (int i = 0; i < length; i++) {
+    for (jsize i = 0; i < length; i++) {
         javaStrings[i] = (*jniEnv)->GetObjectArrayElement(jniEnv,stringArr,i);
         strings[i] = (*jniEnv)->GetStringUTFChars(jniEnv,javaStrings[i],NULL);
     }
@@ -168,7 +174,7 @@ JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OnnxTensor_createStringTensor
     }
 
     // Release the buffers
-    checkOrtStatus(jniEnv, api, api->AllocatorFree(allocator, strings));
+    checkOrtStatus(jniEnv, api, api->AllocatorFree(allocator, (void*)strings));
     checkOrtStatus(jniEnv, api, api->AllocatorFree(allocator, javaStrings));
 
     return (jlong) ortValue;

@@ -16,5 +16,5 @@
 #include <wrl/implements.h>
 
 #include "fileHelpers.h"
-
+#include "dllload.h"
 #include <thread>

@@ -8,4 +8,4 @@ namespace cuda {
 template <typename T>
 KernelCreateInfo BuildKernelCreateInfo();
 }
-}
+}  // namespace onnxruntime

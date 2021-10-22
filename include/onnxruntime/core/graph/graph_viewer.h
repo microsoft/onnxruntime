@@ -42,6 +42,9 @@ class GraphViewer {
   /** Gets the Graph description. */
   const std::string& Description() const noexcept;
 
+  /** Gets the path of the owning model if any **/
+  const Path& ModelPath() const noexcept { return graph_->ModelPath(); }
+
   /**
   Gets a tensor created from an initializer.
   @param tensor_name The tensor name
@@ -80,7 +83,7 @@ class GraphViewer {
   /** Gets all ValueInfo NodeArg instances in the Graph.
   @remarks NOT filtered using filter_info_.
   */
-  const std::vector<const NodeArg*>& GetValueInfo() const noexcept;
+  const std::unordered_set<const NodeArg*>& GetValueInfo() const noexcept;
 
   /**
   Gets the Node instance at the specified index.
@@ -95,7 +98,7 @@ class GraphViewer {
   */
   const ConstGraphNodes& Nodes() const noexcept;
 
-  /** Gets the number of valid nodes in the Graph. 
+  /** Gets the number of valid nodes in the Graph.
   @remarks Returns the number of nodes in filter_info_ if set.
   */
   int NumberOfNodes() const noexcept;
@@ -103,7 +106,7 @@ class GraphViewer {
   /** Gets the maximum NodeIndex value used by Nodes in the Graph. */
   int MaxNodeIndex() const noexcept;
 
-  /** Gets the NodeIndex values for the Graph nodes, sorted into topological order.  
+  /** Gets the NodeIndex values for the Graph nodes, sorted into topological order.
   @remarks Filtered using filter_info_ if set.
   */
   const std::vector<NodeIndex>& GetNodesInTopologicalOrder(ExecutionOrder order = ExecutionOrder::DEFAULT) const;
@@ -138,7 +141,7 @@ class GraphViewer {
 
   /**
   returns true if 'name' is an initializer, and is constant and cannot be overridden at runtime.
-  @param check_outer_scope If true and the 'graph_' is a subgraph, check parent graph/s for 'name' 
+  @param check_outer_scope If true and the 'graph_' is a subgraph, check parent graph/s for 'name'
                            if the name is not found in 'graph_'.
   */
   bool IsConstantInitializer(const std::string& name, bool check_outer_scope) const;
@@ -188,5 +191,6 @@ class GraphViewer {
   std::vector<const NodeArg*> filtered_node_inputs_;
   std::vector<const NodeArg*> filtered_node_inputs_including_initializers_;
   std::vector<const NodeArg*> filtered_node_outputs_;
+  InitializedTensorSet filtered_initializers_;
 };
 }  // namespace onnxruntime

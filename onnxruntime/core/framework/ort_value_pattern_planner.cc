@@ -6,27 +6,31 @@
 #include "core/framework/execution_plan_base.h"
 
 namespace onnxruntime {
-OrtValuePatternPlanner::OrtValuePatternPlanner(const ExecutionPlanBase& execution_plan)
+OrtValuePatternPlanner::OrtValuePatternPlanner(const ExecutionPlanBase& execution_plan, bool trace_using_counters)
     : execution_planner_(execution_plan) {
   for (auto& location : execution_plan.GetAllLocations()) {
-    planner_map_.emplace(location, onnxruntime::make_unique<MemPatternPlanner>());
+    planner_map_.emplace(location, std::make_unique<MemPatternPlanner>(trace_using_counters));
   }
 }
 
-common::Status OrtValuePatternPlanner::TraceAllocation(int ort_value_idx, const std::vector<size_t>& program_counter_start, const std::vector<size_t>& program_counter_end, size_t size) {
+#ifdef ENABLE_TRAINING
+common::Status OrtValuePatternPlanner::TraceAllocation(int ort_value_idx,
+                                                       const AllocPlanPerValue::ProgramCounter& counter,
+                                                       size_t size) {
   // TODO(codemzs): refactor code.
-  auto location = execution_planner_.GetLocation(ort_value_idx);
+  const auto& location = execution_planner_.GetLocation(ort_value_idx);
   auto it = planner_map_.find(location);
   if (it == planner_map_.end()) {
     return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT);
   }
 
-  it->second->TraceAllocation(ort_value_idx, program_counter_start, program_counter_end, size);
+  it->second->TraceAllocation(ort_value_idx, counter, size);
   return common::Status::OK();
 }
+#endif
 
 common::Status OrtValuePatternPlanner::TraceAllocation(int ort_value_idx, size_t size) {
-  auto location = execution_planner_.GetLocation(ort_value_idx);
+  const auto& location = execution_planner_.GetLocation(ort_value_idx);
   auto it = planner_map_.find(location);
   if (it == planner_map_.end()) {
     return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT);
@@ -37,7 +41,7 @@ common::Status OrtValuePatternPlanner::TraceAllocation(int ort_value_idx, size_t
 }
 
 common::Status OrtValuePatternPlanner::TraceFree(int ort_value_index) {
-  auto location = execution_planner_.GetLocation(ort_value_index);
+  const auto& location = execution_planner_.GetLocation(ort_value_index);
   auto it = planner_map_.find(location);
   if (it == planner_map_.end()) {
     return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT);

@@ -13,17 +13,9 @@ steps:
       inputs:
         scriptPath: 'tools/ci_build/github/linux/java_copy_strip_binary.sh'
         args: '-r $(Build.BinariesDirectory) -c ${{parameters.buildConfig}} -a ${{parameters.artifactName}} -l ${{parameters.libraryName}} -n ${{parameters.nativeLibraryName}} -v ${{parameters.version}} -h ${{parameters.arch}}'
-        workingDirectory: '$(Build.BinariesDirectory)/${{parameters.buildConfig}}'
-
-    - task: ArchiveFiles@2
-      inputs:
-        rootFolderOrFile: '$(Build.BinariesDirectory)/${{parameters.artifactName}}'
-        includeRootFolder: true
-        archiveType: 'zip' # Options: zip, 7z, tar, wim
-        archiveFile: '$(Build.ArtifactStagingDirectory)/${{parameters.artifactName}}.zip'
-        replaceExistingArchive: true
+        workingDirectory: '$(Build.BinariesDirectory)/${{parameters.buildConfig}}'    
 
     - task: PublishBuildArtifacts@1
       inputs:
-        pathtoPublish: '$(Build.ArtifactStagingDirectory)/${{parameters.artifactName}}.zip'
+        pathtoPublish: '$(Build.BinariesDirectory)/${{parameters.artifactName}}'
         artifactName: 'drop-${{parameters.artifactName}}'

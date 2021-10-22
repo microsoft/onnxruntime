@@ -129,6 +129,36 @@ TEST(SequenceOpsTest, SequenceInsertPositiveDefault) {
   test.Run();
 }
 
+TEST(SequenceOpsTest, SequenceInsertEmptyLast) {
+  OpTester test("SequenceInsert", 11);
+  SeqTensors<int64_t> input;
+  test.AddSeqInput("S", input);
+  test.AddInput<int64_t>("T", {3, 2}, {10, 20, 30, 40, 50, 60});
+  test.AddInput<int64_t>("I", {1}, {0});
+
+  SeqTensors<int64_t> output;
+  output.AddTensor({3, 2}, {10, 20, 30, 40, 50, 60});
+  test.AddSeqOutput("S2", output);
+  test.Run();
+}
+
+TEST(SequenceOpsTest, SequenceInsertLast) {
+  OpTester test("SequenceInsert", 11);
+  SeqTensors<int64_t> input;
+  input.AddTensor({3, 2}, {1, 2, 3, 4, 5, 6});
+  input.AddTensor({3, 3}, {1, 2, 3, 4, 5, 6, 7, 8, 9});
+  test.AddSeqInput("S", input);
+  test.AddInput<int64_t>("T", {3, 2}, {10, 20, 30, 40, 50, 60});
+  test.AddInput<int64_t>("I", {1}, {2});
+
+  SeqTensors<int64_t> output;
+  output.AddTensor({3, 2}, {1, 2, 3, 4, 5, 6});
+  output.AddTensor({3, 3}, {1, 2, 3, 4, 5, 6, 7, 8, 9});
+  output.AddTensor({3, 2}, {10, 20, 30, 40, 50, 60});
+  test.AddSeqOutput("S2", output);
+  test.Run();
+}
+
 TEST(SequenceOpsTest, SequenceInsertValidPositiveIdx) {
   OpTester test("SequenceInsert", 11);
   SeqTensors<int64_t> input;

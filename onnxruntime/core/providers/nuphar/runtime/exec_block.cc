@@ -18,10 +18,10 @@ void CreateExecBlock(std::vector<std::unique_ptr<ExecBlock>>& exec_blocks,
                      bool /*enable_tiling*/) {
   if (subgraph.IsSingleNode() && subgraph.nodes.front()->OpType() == "Scan") {
     exec_blocks.push_back(
-        std::move(onnxruntime::make_unique<LoopExecBlock>(func_info, "nuphar_exec_" + subgraph.UniqueId())));
+        std::move(std::make_unique<LoopExecBlock>(func_info, "nuphar_exec_" + subgraph.UniqueId())));
   } else {
     exec_blocks.push_back(
-        std::move(onnxruntime::make_unique<BasicExecBlock>(func_info, "nuphar_exec_" + subgraph.UniqueId())));
+        std::move(std::make_unique<BasicExecBlock>(func_info, "nuphar_exec_" + subgraph.UniqueId())));
   }
 }
 

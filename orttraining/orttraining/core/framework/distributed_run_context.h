@@ -10,22 +10,40 @@
 namespace onnxruntime {
 namespace training {
 enum WorkerGroupType {
-  DataParallel = 0,
-  HorizontalParallel = 1,
-  ModelParallel = 2,
-  WorkerGroupTypeCount = 3,
+  // The global view of all parallel workers.
+  GlobalParallel = 0,
+  // The view of all data parallel workers.
+  DataParallel = 1,
+  // The view of data parallel worker groups within a node.
+  NodeLocalDataParallel = 2,
+  // The view of data parallel worker groups aross nodes.
+  CrossNodeDataParallel = 3,
+  // The view of Megatron-style model parallel workers.
+  HorizontalParallel = 4,
+  // The view of pipeline model parallel workers
+  PipelineParallel = 5,
+  WorkerGroupTypeCount = 6,
 };
 
 struct WorkerGroup {
   std::vector<int32_t> ranks;  // array of global world rank
-  int32_t group_id;
+  int32_t group_id{-1};
   WorkerGroupType group_type;
   int32_t rank_in_group{-1};  // current worker' relative rank within this group, ranging from 0 to size-1
 
   std::string ToString() const {
-    return "group_type: " + std::to_string(group_type) + ", group_id: " + std::to_string(group_id) +
-           ", rank in group:" + std::to_string(rank_in_group) + ", world-rank:" +
-           std::to_string(ranks[rank_in_group]);
+    std::stringstream msg;
+    msg << "group_type: " << group_type << ", group_id: " << group_id << ", rank in group:" << rank_in_group << ", world-rank:" << ranks.at(rank_in_group);
+    msg << ", ranks: [";
+    for (size_t i = 0; i < ranks.size(); ++i) {
+      msg << ranks.at(i);
+      if (i != ranks.size() - 1) {
+        msg << ", ";
+      }
+    }
+    msg << "]";
+
+    return msg.str();
   }
 };
 
@@ -62,14 +80,37 @@ class DistributedRunContext {
                                                       config.pipeline_stage_size);
   }
 
+#ifndef SHARED_PROVIDER
   static DistributedRunContext& GetInstance() {
     return DistributedRunContext::GetOrCreateInstance();
   }
-
+#else
+  static DistributedRunContext& GetInstance() { return Provider_GetHost()->GetDistributedRunContextInstance(); }
+#endif
   /* SHORTCUT FUNCTIONS START */
 
   static DistributedRunConfig& RunConfig() {
     return DistributedRunContext::GetInstance().GetRunConfig();
+  }
+
+  // Utility function to return string representation of each WorkerGroupType
+  static std::string GetWorkerGroupName(WorkerGroupType group) {
+    switch (group) {
+      case WorkerGroupType::GlobalParallel:
+        return "GlobalParallel";
+      case WorkerGroupType::DataParallel:
+        return "DataParallel";
+      case WorkerGroupType::NodeLocalDataParallel:
+        return "NodeLocalDataParallel";
+      case WorkerGroupType::CrossNodeDataParallel:
+        return "CrossNodeDataParallel";
+      case WorkerGroupType::HorizontalParallel:
+        return "HorizontalParallel";
+      case WorkerGroupType::PipelineParallel:
+        return "PipelineParallel";
+      default:
+        ORT_THROW("Unsupported distributed worker group type.");
+    }
   }
 
   // Get current worker' rank within the specified group,
@@ -82,7 +123,7 @@ class DistributedRunContext {
     return DistributedRunContext::GetInstance().GetWorkerGroup(group_type).group_id;
   }
 
-  static std::vector<int32_t> GetRanks(WorkerGroupType group_type){
+  static std::vector<int32_t> GetRanks(WorkerGroupType group_type) {
     return DistributedRunContext::GetInstance().GetWorkerGroup(group_type).ranks;
   }
 

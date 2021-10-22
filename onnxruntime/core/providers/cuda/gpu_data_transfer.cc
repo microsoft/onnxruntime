@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/shared_library/provider_api.h"
 #include "core/providers/cuda/gpu_data_transfer.h"
 #include "cuda_common.h"
 
@@ -9,12 +10,13 @@
 // so we leave it as optional, in case user need the previous behavior
 // a full fix to BFC arena is being looked at, and once it's in, we can revert this change
 namespace onnxruntime {
-GPUDataTransfer::GPUDataTransfer(bool do_copy_in_default_stream) {
+GPUDataTransfer::GPUDataTransfer(cudaStream_t stream, bool do_copy_in_default_stream) {
   // create streams, default is nullptr
-  streams_[kCudaStreamDefault] = nullptr;
+  do_copy_in_default_stream_ = do_copy_in_default_stream;
+  streams_[kCudaStreamDefault] = stream;
   if (do_copy_in_default_stream) {
-    streams_[kCudaStreamCopyIn] = nullptr;
-    streams_[kCudaStreamCopyOut] = nullptr;
+    streams_[kCudaStreamCopyIn] = stream;
+    streams_[kCudaStreamCopyOut] = stream;
   } else {
     CUDA_CALL_THROW(cudaStreamCreateWithFlags(&streams_[kCudaStreamCopyIn], cudaStreamNonBlocking));
     CUDA_CALL_THROW(cudaStreamCreateWithFlags(&streams_[kCudaStreamCopyOut], cudaStreamNonBlocking));
@@ -22,10 +24,10 @@ GPUDataTransfer::GPUDataTransfer(bool do_copy_in_default_stream) {
 }
 
 GPUDataTransfer::~GPUDataTransfer() {
-  if (streams_[kCudaStreamCopyIn] != nullptr) {
+  if (!do_copy_in_default_stream_ && streams_[kCudaStreamCopyIn] != nullptr) {
     CUDA_CALL(cudaStreamDestroy(streams_[kCudaStreamCopyIn]));
   }
-  if (streams_[kCudaStreamCopyOut] != nullptr) {
+  if (!do_copy_in_default_stream_ && streams_[kCudaStreamCopyOut] != nullptr) {
     CUDA_CALL(cudaStreamDestroy(streams_[kCudaStreamCopyOut]));
   }
 }
@@ -46,24 +48,26 @@ common::Status GPUDataTransfer::CopyTensor(const Tensor& src, Tensor& dst, int e
   if (dst_device.Type() == OrtDevice::GPU) {
     if (src_device.Type() == OrtDevice::CPU && src_device.MemType() == OrtDevice::MemType::CUDA_PINNED) {
       // copy from pinned memory to GPU, this is non-blocking
-      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(dst_data, src_data, bytes, cudaMemcpyHostToDevice, streams_[exec_queue_id]));
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(dst_data, src_data, bytes, cudaMemcpyHostToDevice, GetStream(exec_queue_id)));
     } else if (src_device.Type() == OrtDevice::GPU) {
       // copying between GPU, this is non-blocking
       // Copy only if the two addresses are different.
       if (dst_data != src_data) {
-        CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(dst_data, src_data, bytes, cudaMemcpyDeviceToDevice, streams_[kCudaStreamDefault]));
+        CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(dst_data, src_data, bytes, cudaMemcpyDeviceToDevice, GetStream(kCudaStreamDefault)));
       }
     } else {
       // copy from other CPU memory to GPU, this is blocking
-      CUDA_RETURN_IF_ERROR(cudaMemcpy(dst_data, src_data, bytes, cudaMemcpyHostToDevice));
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(dst_data, src_data, bytes, cudaMemcpyHostToDevice, GetStream(kCudaStreamDefault)));
+      CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(GetStream(kCudaStreamDefault)));
     }
   } else if (src_device.Type() == OrtDevice::GPU) {
     if (dst_device.Type() == OrtDevice::CPU && dst_device.MemType() == OrtDevice::MemType::CUDA_PINNED) {
       // copying from GPU to pinned memory, this is non-blocking
-      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(dst_data, src_data, bytes, cudaMemcpyDeviceToHost, streams_[exec_queue_id]));
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(dst_data, src_data, bytes, cudaMemcpyDeviceToHost, GetStream(exec_queue_id)));
     } else {
       // copying from GPU to CPU memory, this is blocking
-      CUDA_RETURN_IF_ERROR(cudaMemcpy(dst_data, src_data, bytes, cudaMemcpyDeviceToHost));
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(dst_data, src_data, bytes, cudaMemcpyDeviceToHost, GetStream(kCudaStreamDefault)));
+      CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(GetStream(kCudaStreamDefault)));
     }
   } else {
     // copying between cpu memory

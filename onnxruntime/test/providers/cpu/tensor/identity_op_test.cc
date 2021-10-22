@@ -23,5 +23,15 @@ TEST(Identity, StringType) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});//TensorRT: unsupported data type
 }
 
+TEST(Identity, SequenceType) {
+  OpTester test("Identity", 14, kOnnxDomain);
+  SeqTensors<int64_t> input;
+  input.AddTensor({3, 2}, {1, 2, 3, 4, 5, 6});
+  input.AddTensor({3, 3}, {1, 2, 3, 4, 5, 6, 7, 8, 9});
+  test.AddSeqInput("X", input);
+  test.AddSeqOutput("Y", input);
+  test.Run();
+}
+
 }  // namespace test
 }  // namespace onnxruntime

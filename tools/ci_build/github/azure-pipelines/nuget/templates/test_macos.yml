@@ -1,27 +1,23 @@
 parameters:
   IsMacOS : 'true'
-
+  ArtifactSuffix: ''
 jobs:
 - job: NuGet_Test_MacOS
   workspace:
     clean: all
   pool:
-    vmImage: 'macOS-10.14'
+    vmImage: 'macOS-10.15'
   dependsOn:
-  - NuGet_Packaging
+  - NuGet_Packaging_${{ parameters.ArtifactSuffix }}
   condition: succeeded()
   variables:
-  - group: ORT_TEST_DATA_SAS
   - name: OnnxRuntimeBuildDirectory
     value: '$(Build.BinariesDirectory)'
   steps:
-  - template: set-test-data-variables-step.yml
-  - template: mac-set-variables-and-download.yml
-
   - task: DownloadPipelineArtifact@0
     displayName: 'Download Pipeline Artifact - Signed NuGet'
     inputs:
-      artifactName: 'drop-signed-nuget'
+      artifactName: drop-signed-nuget-${{ parameters.ArtifactSuffix }}
       targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
 
   - task: DownloadPipelineArtifact@0
@@ -35,11 +31,8 @@ jobs:
       packageFolder: '$(Build.BinariesDirectory)/nuget-artifact'
 
   - script: |
-     brew install libomp
      $(Build.SourcesDirectory)/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/runtest.sh \
                $(Build.BinariesDirectory)/nuget-artifact \
-               $(Build.SourcesDirectory) \
-               $(Build.BinariesDirectory) \
                $(NuGetPackageVersionNumber) \
                ${{ parameters.IsMacOS }}
 

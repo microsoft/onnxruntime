@@ -22,13 +22,19 @@ class OrtBackendTest(onnx.backend.test.BackendTest):
 
     @classmethod
     def assert_similar_outputs(cls, ref_outputs, outputs, rtol, atol):
+        def assert_similar_array(ref_output, output):
+            np.testing.assert_equal(ref_output.dtype, output.dtype)
+            if ref_output.dtype == np.object:
+                np.testing.assert_array_equal(ref_output, output)
+            else:
+                np.testing.assert_allclose(ref_output, output, rtol=1e-3, atol=1e-5)            
         np.testing.assert_equal(len(ref_outputs), len(outputs))
         for i in range(len(outputs)):
-            np.testing.assert_equal(ref_outputs[i].dtype, outputs[i].dtype)
-            if ref_outputs[i].dtype == np.object:
-                np.testing.assert_array_equal(ref_outputs[i], outputs[i])
+            if isinstance(outputs[i], list):
+                for j in range(len(outputs[i])):
+                    assert_similar_array(ref_outputs[i][j], outputs[i][j])
             else:
-                np.testing.assert_allclose(ref_outputs[i], outputs[i], rtol=1e-3, atol=1e-5)
+                assert_similar_array(ref_outputs[i], outputs[i])
 
 
 def create_backend_test(testname=None):
@@ -53,9 +59,6 @@ def create_backend_test(testname=None):
         if platform.architecture()[0] == '32bit':
             current_failing_tests += filters['current_failing_tests_x86']
 
-        if c2.supports_device('NGRAPH'):
-            current_failing_tests += filters['current_failing_tests_NGRAPH']
-
         if c2.supports_device('DNNL'):
             current_failing_tests += filters['current_failing_tests_DNNL']
 
@@ -74,9 +77,7 @@ def create_backend_test(testname=None):
 
         if c2.supports_device('MIGRAPHX'):
             current_failing_tests += [
-                '^test_constant_pad_cpu', '^test_softmax_axis_1_cpu', '^test_softmax_axis_0_cpu',
-                '^test_softmax_default_axis_cpu', '^test_round_cpu', '^test_lrn_default_cpu', '^test_lrn_cpu',
-                '^test_logsoftmax_axis_0_cpu', '^test_logsoftmax_axis_1_cpu', '^test_logsoftmax_default_axis_cpu',
+                '^test_constant_pad_cpu', '^test_round_cpu', '^test_lrn_default_cpu', '^test_lrn_cpu',
                 '^test_dynamicquantizelinear_expanded_cpu', '^test_dynamicquantizelinear_max_adjusted_cpu',
                 '^test_dynamicquantizelinear_max_adjusted_expanded_cpu', '^test_dynamicquantizelinear_min_adjusted_cpu',
                 '^test_dynamicquantizelinear_min_adjusted_expanded_cpu',
@@ -85,7 +86,11 @@ def create_backend_test(testname=None):
                 '^test_operator_symbolic_override_nested_cpu',
                 '^test_negative_log_likelihood_loss',
                 '^test_softmax_cross_entropy',
-                '^test_greater_equal', '^test_less_equal'
+                '^test_greater_equal', 
+                '^test_if_seq_cpu',
+                '^test_loop13_seq_cpu',
+                '^test_sequence_insert_at_back_cpu',
+                '^test_sequence_insert_at_front_cpu'
             ]
 
         # Skip these tests for a "pure" DML onnxruntime python wheel. We keep these tests enabled for instances where both DML and CUDA

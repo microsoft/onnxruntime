@@ -15,6 +15,9 @@ namespace optimizer_utils {
 // Check if TensorProto contains a floating point type.
 bool IsFloatingPointDataType(const ONNX_NAMESPACE::TensorProto& tensor_proto);
 
+// Check if NodeArg takes in a scalar tensor.
+bool IsScalar(const NodeArg& input_arg);
+
 /** Check whether a input is initializer with specified float value.
 @param expected_value is the expected value of the initializer.
 @param is_constant means whether the initializer is required to be constant.
@@ -79,8 +82,16 @@ int32_t IndexOfNodeOutput(const Node& node, const NodeArg& node_arg);
 /** Check whether node's input data types are in supported data type list.
 @param supported_data_types specify the supported data types.
 */
-bool IsSupportedDataType(const Node& node, const std::vector<std::string>& supported_data_types);
-
+template <typename T>
+bool IsSupportedDataType(const Node& node, const T& supported_data_types) {
+  for (const auto& input_arg : node.InputDefs()) {
+    if (std::find(std::begin(supported_data_types), std::end(supported_data_types),
+                  *(input_arg->Type())) == std::end(supported_data_types)) {
+      return false;
+    }
+  }
+  return true;
+}
 /** Check whether node's output edges count is expected.
 @remarks graph output is not included in output edges, and this node shall not have graph output.
         A node with graph output cannot be fused unless the graph output also exists in outputs of fused node.

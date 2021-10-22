@@ -1,5 +1,5 @@
-// Copyright (c) Microsoft Corporation. All rights reserved. 
-// Licensed under the MIT License. 
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
 
 #include "roialign.h"
 #include "roialign_impl.h"
@@ -14,8 +14,8 @@ namespace cuda {
       10,                                                                \
       T,                                                                 \
       kCudaExecutionProvider,                                            \
-      KernelDefBuilder()                                                 \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()) \
+      (*KernelDefBuilder::Create())                                      \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())         \
           .TypeConstraint("T2", DataTypeImpl::GetTensorType<int64_t>()), \
       RoiAlign<T>);
 
@@ -45,6 +45,7 @@ Status RoiAlign<T>::ComputeInternal(OpKernelContext* context) const {
 
   if (output_size > 0) {
     RoiAlignImpl(
+        Stream(),
         output_size,  // num threads
         reinterpret_cast<const typename ToCudaType<T>::MappedType*>(X_ptr->template Data<T>()),
         ToCudaType<T>::FromFloat(this->spatial_scale_),
@@ -58,8 +59,7 @@ Status RoiAlign<T>::ComputeInternal(OpKernelContext* context) const {
         num_roi_cols,
         reinterpret_cast<typename ToCudaType<T>::MappedType*>(Y.template MutableData<T>()),
         this->mode_ == RoiAlignMode::avg,
-        batch_indices_ptr->template Data<int64_t>()
-    );
+        batch_indices_ptr->template Data<int64_t>());
   }
 
   return Status::OK();

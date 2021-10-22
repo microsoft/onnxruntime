@@ -68,15 +68,15 @@ DataLoader::DataLoader(const MapStringToString& input_name_map,
     data_files_ = std::move(partial_training_files);
   }
 
-  data_loader_thread_pool_ = onnxruntime::make_unique<onnxruntime::concurrency::ThreadPool>(
+  data_loader_thread_pool_ = std::make_unique<onnxruntime::concurrency::ThreadPool>(
       &onnxruntime::Env::Default(), onnxruntime::ThreadOptions(), ORT_TSTR("DataLoaderPool"), thread_pool_size_, true);
 }
 
 Status DataLoader::InitializeDataSetIndex(size_t initial_data_set_index) {
   if (initial_data_set_index == active_file_index_) return Status::OK();
 
-  ORT_RETURN_IF_NOT(!is_preloaded_);
-  ORT_RETURN_IF_NOT(initial_data_set_index < NumShards());
+  ORT_RETURN_IF(is_preloaded_, "is_preloaded_ was true");
+  ORT_RETURN_IF_NOT(initial_data_set_index < NumShards(), "initial_data_set_index >= NumShards()");
 
   active_file_index_ = initial_data_set_index;
 
@@ -99,7 +99,7 @@ std::shared_ptr<DataSet> DataLoader::MoveToNextDataSet() {
 }
 
 Status DataLoader::InitialPreLoadAsync() {
-  ORT_RETURN_IF_NOT(!is_preloaded_);
+  ORT_RETURN_IF(is_preloaded_, "is_preloaded_ was true");
 
   for (size_t i = 0; i < std::min(max_num_files_preload_, NumShards()); ++i) {
     const auto data_set_index = (active_file_index_ + i) % NumShards();

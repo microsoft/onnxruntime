@@ -1,7 +1,6 @@
 #include "thread_utils.h"
 #include <algorithm>
 
-#include <core/common/make_unique.h>
 #ifdef _WIN32
 #include <Windows.h>
 #endif
@@ -29,7 +28,7 @@ CreateThreadPoolHelper(Env* env, OrtThreadPoolParams options) {
   }
   to.set_denormal_as_zero = options.set_denormal_as_zero;
 
-  return onnxruntime::make_unique<ThreadPool>(env, to, options.name, options.thread_pool_size,
+  return std::make_unique<ThreadPool>(env, to, options.name, options.thread_pool_size,
                                               options.allow_spinning);
 }
 

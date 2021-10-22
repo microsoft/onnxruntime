@@ -31,6 +31,7 @@ __global__ void _InstanceNormKernel(
 
 template <typename T>
 void InstanceNormImpl(
+    cudaStream_t stream,
     const T* input_data,
     const T* scale,
     const T* bias,
@@ -43,12 +44,12 @@ void InstanceNormImpl(
     T* output_data,
     size_t N) {
   int blocksPerGrid = (int)(ceil(static_cast<float>(N) / GridDim::maxThreadsPerBlock));
-  _InstanceNormKernel<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+  _InstanceNormKernel<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
       input_data, scale, bias, mean, variance, variance_correction, epsilon, fdm_HW, fdm_C, output_data, (CUDA_LONG)N);
 }
 
 #define SPECIALIZED_IMPL(T) \
-  template void InstanceNormImpl<T>(const T* input_data, const T* scale, const T* bias, const T* mean, const T* stddev, const double variance_correction, const double epsilon, const fast_divmod& fdm_HW, const fast_divmod& fdm_C, T* output_data, size_t count);
+  template void InstanceNormImpl<T>(cudaStream_t stream, const T* input_data, const T* scale, const T* bias, const T* mean, const T* stddev, const double variance_correction, const double epsilon, const fast_divmod& fdm_HW, const fast_divmod& fdm_C, T* output_data, size_t count);
 
 SPECIALIZED_IMPL(float)
 SPECIALIZED_IMPL(double)

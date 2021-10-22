@@ -5,7 +5,8 @@
 //
 // These are the inline implementations of the C++ header APIs. They are in this separate file as to not clutter
 // the main C++ file with implementation details.
-namespace Ort::Experimental {
+namespace Ort {
+namespace Experimental {
 
 inline std::vector<Ort::Value> Session::Run(const std::vector<std::string>& input_names, const std::vector<Ort::Value>& input_values,
                                             const std::vector<std::string>& output_names, const RunOptions& run_options) {
@@ -106,4 +107,5 @@ inline Ort::Value Value::CreateTensor(const std::vector<int64_t>& shape, ONNXTen
   return Ort::Value::CreateTensor(allocator, shape.data(), shape.size(), type);
 }
 
-}  // namespace Ort::Experimental
+}
+}

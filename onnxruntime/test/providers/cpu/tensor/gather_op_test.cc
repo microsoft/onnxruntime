@@ -79,10 +79,10 @@ TEST(GatherOpTest, Gather_invalid_index_cpu) {
 
   // On Cuda it is impossible to dereference indecies memory on CPU so the check can not run
   test.Run(OpTester::ExpectResult::kExpectFailure, "indices element out of data bounds, idx=1000 must be within the inclusive range [-3,2]",
-           {kCudaExecutionProvider, kOpenVINOExecutionProvider,kNGraphExecutionProvider, kDnnlExecutionProvider, kNupharExecutionProvider, kTensorrtExecutionProvider});
+           {kCudaExecutionProvider, kOpenVINOExecutionProvider, kDnnlExecutionProvider, kNupharExecutionProvider, kTensorrtExecutionProvider});
 }
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_ROCM)
 TEST(GatherOpTest, Gather_invalid_index_gpu) {
   OpTester test("Gather");
   // Invalid index 3. data[3] does not exist.
@@ -224,11 +224,7 @@ TEST(GatherOpTest, Gather_axis1_indices2d_int16) {
                            11, 10, 12, 11,
                            21, 20, 22, 21});
 
-  #if defined(OPENVINO_CONFIG_MYRIAD)
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
-  #else
-    test.Run();
-  #endif    
 }
 
 TEST(GatherOpTest, Gather_axis1_indices2d_uint16) {

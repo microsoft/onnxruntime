@@ -637,7 +637,7 @@ onnx::AttributeProto_AttributeType ToProto(MLOperatorAttributeType type);
 
 bool TryGetStaticInputShapes(const onnxruntime::Node& node, EdgeShapes& inputShapes);
 bool TryGetStaticOutputShapes(const onnxruntime::Node& node, EdgeShapes& outputShapes);
-bool ContainsEmptyDimensions(const EdgeShapes& shapes);
+bool ContainsEmptyDimensions(const EdgeShapes& shapes, gsl::span<const uint32_t> ignoredShapeIndices = gsl::span<const uint32_t>());
 
 std::tuple<std::unique_ptr<std::byte[]>, size_t> UnpackTensor(const onnx::TensorProto& initializer);
 }    // namespace Windows::AI::MachineLearning::Adapter

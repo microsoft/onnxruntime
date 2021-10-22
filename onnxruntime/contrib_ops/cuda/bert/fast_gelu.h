@@ -3,8 +3,7 @@
 
 #pragma once
 #include "core/common/common.h"
-#include "core/framework/op_kernel.h"
-#include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/cuda_kernel.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -17,6 +16,9 @@ class FastGelu final : public CudaKernel {
  public:
   FastGelu(const OpKernelInfo& op_kernel_info);
   Status ComputeInternal(OpKernelContext* ctx) const override;
+  
+ private:
+  bool use_half2_;
 };
 
 }  // namespace cuda

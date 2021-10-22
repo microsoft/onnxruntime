@@ -86,7 +86,7 @@ TEST(RknpuExecutionProviderTest, FunctionTest) {
   run_options.run_tag = so.session_logid;
 
   InferenceSession session_object{so, GetEnvironment()};
-  status = session_object.RegisterExecutionProvider(onnxruntime::make_unique<::onnxruntime::RknpuExecutionProvider>());
+  status = session_object.RegisterExecutionProvider(std::make_unique<::onnxruntime::RknpuExecutionProvider>());
   ASSERT_TRUE(status.IsOK());
   status = session_object.Load(model_file_name);
   ASSERT_TRUE(status.IsOK());

@@ -16,7 +16,10 @@ import os
 
 from onnxruntime.capi.ort_trainer import IODescription, ModelDescription, ORTTrainer
 from mpi4py import MPI
-from onnxruntime.capi._pybind_state import set_cuda_device_id
+try:
+    from onnxruntime.capi._pybind_state import set_cuda_device_id
+except ImportError:
+    pass
 
 class NeuralNet(nn.Module):
     def __init__(self, input_size, hidden_size, num_classes):
@@ -116,13 +119,13 @@ def main():
     args.local_rank = int(os.environ['OMPI_COMM_WORLD_LOCAL_RANK']) if ('OMPI_COMM_WORLD_LOCAL_RANK' in os.environ) else 0
     args.world_rank = int(os.environ['OMPI_COMM_WORLD_RANK']) if ('OMPI_COMM_WORLD_RANK' in os.environ) else 0
     args.world_size=comm.Get_size()
-    torch.cuda.set_device(args.local_rank)
     if use_cuda:
+        torch.cuda.set_device(args.local_rank)
         device = torch.device("cuda", args.local_rank)
+        args.n_gpu = 1
+        set_cuda_device_id(args.local_rank)
     else:
         device = torch.device("cpu")
-    args.n_gpu = 1
-    set_cuda_device_id(args.local_rank)
 
     input_size = 784
     hidden_size = 500

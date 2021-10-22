@@ -87,14 +87,14 @@ static void RunGruTest(const std::vector<float>& X_data,
     std::vector<int64_t> Y_dims = {seq_length, num_directions, batch_size, hidden_size};
     test.AddOutput<float>("Y", Y_dims, Y_data);
   } else {
-    test.AddMissingOptionalOutput<float>();
+    test.AddOptionalOutputEdge<float>();
   }
 
   if (!Y_h_data.empty()) {
     std::vector<int64_t> Y_h_dims{num_directions, batch_size, hidden_size};
     test.AddOutput<float>("Y_h", Y_h_dims, Y_h_data);
   } else {
-    test.AddMissingOptionalOutput<float>();
+    test.AddOptionalOutputEdge<float>();
   }
 
   // TensorRT failed on GRU tests

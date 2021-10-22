@@ -10,7 +10,7 @@
 #include "core/common/common.h"
 #include "core/common/path_string.h"
 #include "core/framework/framework_common.h"
-#include "core/framework/ml_value.h"
+#include "core/framework/ort_value.h"
 #include "core/platform/path_lib.h"
 #include "core/platform/threadpool.h"
 #include "orttraining/models/runner/training_util.h"
@@ -162,7 +162,7 @@ class SingleDataLoader : public IDataLoader {
       : data_set_(single_data_set), input_tensor_names_(input_tensor_names) {}
 
   Status InitializeDataSetIndex(size_t initial_data_set_index) override {
-    ORT_RETURN_IF_NOT(initial_data_set_index == 0);
+    ORT_RETURN_IF_NOT(initial_data_set_index == 0, "initial_data_set_index != 0");
     return Status::OK();
   }
 

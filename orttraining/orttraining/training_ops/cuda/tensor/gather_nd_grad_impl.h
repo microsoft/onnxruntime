@@ -9,6 +9,7 @@ namespace cuda {
 
 template <typename T>
 void GatherNDGradImpl(
+    cudaStream_t stream,
     const size_t num_slices,
     const void* update_data,
     void* output_data,

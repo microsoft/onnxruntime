@@ -29,7 +29,6 @@ void TestConvOp(const ConvOpAndTestAttributes& attributes,
                 const std::string& err_str = "",
                 int opset = 7) {
   OpTester test("Conv", opset);
-  test.AddAttribute("auto_pad", attributes.auto_pad);
   test.AddAttribute("group", attributes.group);
   test.AddAttribute("kernel_shape", attributes.kernel_shape);
 
@@ -37,8 +36,11 @@ void TestConvOp(const ConvOpAndTestAttributes& attributes,
     test.AddAttribute("dilations", attributes.dilations);
   }
 
+  // Only one of pads / auto_pad can be present
   if (!attributes.pads.empty()) {
     test.AddAttribute("pads", attributes.pads);
+  } else {
+    test.AddAttribute("auto_pad", attributes.auto_pad);
   }
 
   if (!attributes.strides.empty()) {
@@ -85,6 +87,9 @@ TEST(ConvTest, Conv1D_1) {
                         -0.012766072526574135f, 0.07113571465015411f, 0.061429332941770554f};
 
   TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
+
+  // CoreML EP requires weight to be an initializer
+  TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape, true);
 }
 
 TEST(ConvTest, Conv1D_1_DefaultStridesAndDilations) {
@@ -108,6 +113,9 @@ TEST(ConvTest, Conv1D_1_DefaultStridesAndDilations) {
                         -0.012766072526574135f, 0.07113571465015411f, 0.061429332941770554f};
 
   TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
+  
+  // CoreML EP requires weight to be an initializer
+  TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape, true);
 }
 
 // Conv3
@@ -142,6 +150,9 @@ TEST(ConvTest, Conv1D_2) {
                         -0.18779152631759644f, -0.11083387583494186f};
 
   TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
+  
+  // CoreML EP requires weight to be an initializer
+  TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape, true);
 }
 
 // Conv1
@@ -174,6 +185,9 @@ TEST(ConvTest, Conv1D_Bias) {
   auto expected_vals = {0.37892162799835205f, 0.4625728130340576f, 0.4934738576412201f, 0.44801419973373413f,
                         0.37892162799835205f, 0.2499445676803589f, 0.31682088971138f, 0.32773756980895996f};
   TestConvOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape);
+
+  // CoreML EP requires weight to be an initializer
+  TestConvOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape, true);
 }
 
 // Conv47
@@ -202,7 +216,7 @@ TEST(ConvTest, Conv2D_1) {
 
   TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
 
-  // NNAPI EP requires weight to be an initializer
+  // NNAPI/CoreML EP requires weight to be an initializer
   TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape, true);
 }
 
@@ -295,7 +309,7 @@ TEST(ConvTest, Conv2D_2) {
                         -0.18779225647449493f};
   TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
 
-  // NNAPI EP requires weight to be an initializer
+  // NNAPI/CoreML EP requires weight to be an initializer
   TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape, true);
 }
 
@@ -321,7 +335,7 @@ TEST(ConvTest, Conv2D_Bias_1) {
 
   TestConvOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape);
 
-  // NNAPI EP requires weight to be an initializer
+  // NNAPI/CoreML EP requires weight to be an initializer
   TestConvOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape, true);
 }
 
@@ -402,7 +416,7 @@ TEST(ConvTest, Conv2D_AutoPad1) {
                         12.0f, 15.0f, 15.0f, 15.0f, 8.0f};
   TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
 
-  // NNAPI EP requires weight to be an initializer
+  // NNAPI/CoreML EP requires weight to be an initializer
   TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape, true);
 }
 
@@ -436,7 +450,7 @@ TEST(ConvTest, Conv2D_AutoPad2) {
                         5.0f, 10.0f, 5.0f, 10.0f, 5.0f};
   TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
 
-  // NNAPI EP requires weight to be an initializer
+  // NNAPI/CoreML EP requires weight to be an initializer
   TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape, true);
 }
 
@@ -624,7 +638,7 @@ TEST(ConvTest, Conv2D_group) {
 
   TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
 
-  // NNAPI EP requires weight to be an initializer
+  // NNAPI/CoreML EP requires weight to be an initializer
   TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape, true);
 }
 
@@ -645,8 +659,7 @@ TEST(ConvTest, ConvDimWithZero) {
   vector<int64_t> W_shape = {2, 2, 1, 1};
   vector<int64_t> out_shape = {0, 2, 4, 4};
 
-  // not handled by NGraph and ACL
-  attrs.excluded_providers.insert(kNGraphExecutionProvider);
+  // not handled by ACL
   attrs.excluded_providers.insert(kAclExecutionProvider);
 
   TestConvOp(attrs, {X, W}, {X_shape, W_shape}, {}, out_shape, false, OpTester::ExpectResult::kExpectSuccess, "", 10);
@@ -675,6 +688,41 @@ TEST(ConvTest, Conv1D_asymmetric_padding) {
   TestConvOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape);
 
   TestConvOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape, true);
+}
+
+TEST(ConvTest, Conv_AutoPad_with_non_default_strides) {
+  ConvOpAndTestAttributes attrs = {
+      "SAME_LOWER",           // auto_pad
+      vector<int64_t>{1, 1},  // dilations
+      1,                      // group
+      vector<int64_t>{3, 3},  // kernel_shape
+      vector<int64_t>{},      // pads
+      vector<int64_t>{2, 2},  // strides
+      {}                      // excluded EPs
+  };
+
+  vector<float> X = {0.0f, 1.0f, 2.0f, 3.0f, 4.0f,
+                     5.0f, 6.0f, 7.0f, 8.0f, 9.0f,
+                     10.0f, 11.0f, 12.0f, 13.0f, 14.0f,
+                     15.0f, 16.0f, 17.0f, 18.0f,
+                     19.0f, 20.0f, 21.0, 22.0f, 23.0f, 24.0f};
+  vector<int64_t> X_shape = {1, 1, 5, 5};
+
+  vector<float> W = {1.0f, 1.0f, 1.0f,
+                     1.0f, 1.0f, 1.0f,
+                     1.0f, 1.0f, 1.0f};
+  vector<int64_t> W_shape = {1, 1, 3, 3};
+
+  auto expected_vals = {12.0f, 27.0f, 24.0f,
+                        63.0f, 108.0f, 81.0f,
+                        72.0f, 117.0f, 84.0f};
+  vector<int64_t> Y_shape = {1, 1, 3, 3};
+
+  // Test with weight as initializer
+  TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
+
+  // Test with weight as initializer
+  TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape, true);
 }
 
 }  // namespace test

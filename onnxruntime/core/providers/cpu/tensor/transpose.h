@@ -3,12 +3,26 @@
 
 #pragma once
 
-#include "gsl/gsl"
+#ifndef SHARED_PROVIDER
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
+#endif
+
+#include "gsl/gsl"
 #include <sstream>
 
 namespace onnxruntime {
+
+/** Tells if the transpose is equivalent to a reshape:
+ empty dimensions can change place, not empty dimensions must be in
+ the same order in the permuted tenosr.
+*/
+bool IsTransposeReshape(const std::vector<size_t>& perm, const std::vector<int64_t>& input_dims);
+
+// Public function for element-wise transpose, primarily to unit test any out of bounds access
+Status DoTransposeEltWise(int64_t num_axes, const std::vector<int64_t>& target_dims, size_t num_blocks,
+                          const std::vector<size_t>& stride, const uint8_t* source, uint8_t* target,
+                          size_t element_size);
 
 class TransposeBase {
  public:

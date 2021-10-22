@@ -47,7 +47,7 @@ MLAS_INTERNAL_DATA const struct {
     88.7762626647950f,
     -88.3762626647949f,
     88.3762626647949f,
-    12582912.f,
+    MLAS_ROUNDING_BIAS_MAGIC,
     1.44269504088896341f,
     -6.93145752e-1f,
     -1.42860677e-6f,
@@ -69,7 +69,7 @@ MLAS_INTERNAL_DATA const float MlasMinimumF32Value = std::numeric_limits<float>:
 //
 
 struct MLAS_SOFTMAX_WORK_BLOCK {
-    int32_t ThreadCountN;
+    ptrdiff_t ThreadCountN;
     bool LogSoftmax;
     const float* Input;
     float* Output;
@@ -801,7 +801,7 @@ Return Value:
 void
 MlasComputeSoftmaxThreaded(
     void* Context,
-    int32_t Index
+    ptrdiff_t Index
     )
 /*++
 
@@ -971,10 +971,10 @@ Return Value:
     // another thread.
     //
 
-    int32_t ThreadCountN = MlasGetMaximumThreadCount(ThreadPool);
+    ptrdiff_t ThreadCountN = MlasGetMaximumThreadCount(ThreadPool);
 
     if (size_t(ThreadCountN) > N) {
-        ThreadCountN = int32_t(N);
+        ThreadCountN = ptrdiff_t(N);
     }
 
     constexpr size_t MinimumElementsPerThread = 16384;
@@ -982,7 +982,7 @@ Return Value:
     size_t BlockCount = ((N * D) / MinimumElementsPerThread) + 1;
 
     if (size_t(ThreadCountN) > BlockCount) {
-        ThreadCountN = int32_t(BlockCount);
+        ThreadCountN = ptrdiff_t(BlockCount);
     }
 
     WorkBlock.ThreadCountN = ThreadCountN;

@@ -1,15 +1,19 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/cpu/tensor/pad.h"
+
+#include "core/providers/cpu/tensor/utils.h"
+#include "core/providers/op_kernel_type_control.h"
+#include "core/providers/op_kernel_type_control_utils.h"
+#include "core/util/math.h"
+
 // there's no way to use a raw pointer as the copy destination with std::copy_n
 // (which gsl::copy uses with span::data() which returns a raw pointer) with the 14.11 toolset
 // without generating a 4996 warning. going through an iterator is way too much overhead so turn off the warning.
 #ifdef _MSC_VER
 #pragma warning(disable : 4996)
 #endif
-#include "core/util/math.h"
-#include "core/providers/cpu/tensor/pad.h"
-#include "core/providers/cpu/tensor/utils.h"
 
 namespace onnxruntime {
 
@@ -33,12 +37,68 @@ ONNX_OPERATOR_KERNEL_EX(Pad,
 
 #endif
 
+namespace op_kernel_type_control {
+ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES(
+    kCpuExecutionProvider, kOnnxDomain, Pad, 2, Input, 0,
+    float,
+    double);
+
+ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES(
+    kCpuExecutionProvider, kOnnxDomain, Pad, 11, Input, 0,
+    float,
+    double,
+    int32_t,
+    int64_t,
+    uint32_t,
+    uint64_t,
+    int8_t,
+    uint8_t);
+
+ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES(
+    kCpuExecutionProvider, kOnnxDomain, Pad, 13, Input, 0,
+    float,
+    double,
+    int32_t,
+    int64_t,
+    uint32_t,
+    uint64_t,
+    int8_t,
+    uint8_t,
+    bool);
+
+ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPES(
+    kCpuExecutionProvider, kOnnxDomain, Pad, 11, Input, 0, int32_t, int64_t);
+ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPES(
+    kCpuExecutionProvider, kOnnxDomain, Pad, 13, Input, 0, int32_t, int64_t);
+}  // namespace op_kernel_type_control
+
+using Pad2Types = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST(
+    kCpuExecutionProvider, kOnnxDomain, Pad, 2, Input, 0);
+using EnabledPad2Types = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(
+    kCpuExecutionProvider, kOnnxDomain, Pad, 2, Input, 0);
+using Pad11Types = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST(
+    kCpuExecutionProvider, kOnnxDomain, Pad, 11, Input, 0);
+using EnabledPad11Types = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(
+    kCpuExecutionProvider, kOnnxDomain, Pad, 11, Input, 0);
+using Pad13Types = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST(
+    kCpuExecutionProvider, kOnnxDomain, Pad, 13, Input, 0);
+using EnabledPad13Types = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(
+    kCpuExecutionProvider, kOnnxDomain, Pad, 13, Input, 0);
+
+using AllEnabledPadTypes =
+    utils::TypeSetUnion<
+        EnabledPad2Types,
+        EnabledPad11Types,
+        EnabledPad13Types>;
+
 // only float type is supported for opset-10
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Pad,
     2, 10,
-    KernelDefBuilder().TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
-                                            DataTypeImpl::GetTensorType<double>()}),
+    KernelDefBuilder().TypeConstraint(
+        "T",
+        BuildKernelDefConstraintsFromTypeList<Pad2Types>(),
+        BuildKernelDefConstraintsFromTypeList<EnabledPad2Types>()),
     Pad);
 
 // The interface for the 'Pad' op was changed in opset-11
@@ -48,27 +108,20 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Pad,
     11, 12,
-    KernelDefBuilder().TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
-                                            DataTypeImpl::GetTensorType<double>(),
-                                            DataTypeImpl::GetTensorType<int32_t>(),
-                                            DataTypeImpl::GetTensorType<int64_t>(),
-                                            DataTypeImpl::GetTensorType<uint32_t>(),
-                                            DataTypeImpl::GetTensorType<uint64_t>(),
-                                            DataTypeImpl::GetTensorType<int8_t>(),
-                                            DataTypeImpl::GetTensorType<uint8_t>()}),
+    KernelDefBuilder().TypeConstraint(
+        "T",
+        BuildKernelDefConstraintsFromTypeList<Pad11Types>(),
+        BuildKernelDefConstraintsFromTypeList<EnabledPad11Types>()),
     Pad);
 
 ONNX_CPU_OPERATOR_KERNEL(
     Pad,
     13,
-    KernelDefBuilder().TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
-                                            DataTypeImpl::GetTensorType<double>(),
-                                            DataTypeImpl::GetTensorType<int32_t>(),
-                                            DataTypeImpl::GetTensorType<int64_t>(),
-                                            DataTypeImpl::GetTensorType<uint32_t>(),
-                                            DataTypeImpl::GetTensorType<uint64_t>(),
-                                            DataTypeImpl::GetTensorType<int8_t>(),
-                                            DataTypeImpl::GetTensorType<uint8_t>()}),
+    KernelDefBuilder()
+        .TypeConstraint(
+            "T",
+            BuildKernelDefConstraintsFromTypeList<Pad13Types>(),
+            BuildKernelDefConstraintsFromTypeList<EnabledPad13Types>()),
     Pad);
 
 // This is the general padding method to n-dimensionally do edge or reflection padding (based on the inputDelta values)
@@ -97,8 +150,18 @@ static void PadInnermostAxis(T* output, T* input, ptrdiff_t input_delta, size_t 
 // For constant padding, there is no input, just a size to write the constant to
 template <typename T>
 static void PadAxisConstant(T* output, T constant, size_t size) {
-  for (size_t i = 0; i < size; i++)
-    *output++ = constant;
+  if (size == 1) {
+    *output = constant;
+  } else if (size == 2) {
+    *output = constant;
+    *(output + 1) = constant;
+  } else {
+    // This would be faster with SSE instructions.
+    // That would mean to have an implementation for each type (uint8, uint32, uint64).
+    T* end = output + size;
+    for (; output != end;)
+      *output++ = constant;
+  }
 }
 
 Status PadBase::HandleDimValueZero(const Mode& mode, const TensorShape& input_shape, TensorShape& output_shape) {
@@ -167,7 +230,7 @@ static void FlattenInnerShape(const std::vector<int64_t>& input_dims, const std:
 
   // Find all inner most dimensions that can be flattened.
   do {
-    inner_size *= input_dims[inner_axis];
+    inner_size *= static_cast<size_t>(input_dims[inner_axis]);
 
     if (inner_axis == 0)
       break;
@@ -204,6 +267,10 @@ static Status PadImpl(OpKernelContext* ctx,
                       const std::vector<int64_t>& slices,
                       const Mode& mode,
                       T value) {
+  if (!utils::HasTypeWithSameSize<AllEnabledPadTypes, T>()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Input data type not supported in this build.");
+  }
+
   const auto& input_tensor = *ctx->Input<Tensor>(0);
   const auto& orig_input_shape = input_tensor.Shape();
   std::vector<int64_t> output_dims(orig_input_shape.GetDims());
@@ -312,8 +379,15 @@ static Status PadImpl(OpKernelContext* ctx,
 
           int64_t prePad = reshaped_pad[inner_axis];
           int64_t postPad = reshaped_pad[inner_axis + new_dims_count];
-          PadAxisConstant(axisStart - prePad, *axisStart, prePad);
-          PadAxisConstant(output, *(output - 1), postPad);
+          if (inner_no_pad_size == 1) {
+            PadAxisConstant(axisStart - prePad, *axisStart, prePad);
+            PadAxisConstant(output, *(output - 1), postPad);
+          } else {
+            // When inner_most axis(es) do not need pad, above PadAxisConstant() do not fit for Edge mode.
+            // Also general loop below after handling first pad axis with non-pad axis works fine.
+            PadAxis(axisStart - prePad, axisStart, 1, -ptrdiff_t(inner_no_pad_size), inner_no_pad_size, pads[inner_axis]);
+            PadAxis(output, output - inner_no_pad_size, 1, -ptrdiff_t(inner_no_pad_size), inner_no_pad_size, pads[inner_axis + data_rank]);
+          }
           output += postPad;
           alignSkip = prePad;
         }
@@ -343,8 +417,14 @@ static Status PadImpl(OpKernelContext* ctx,
 
           int64_t prePad = reshaped_pad[inner_axis];
           int64_t postPad = reshaped_pad[inner_axis + new_dims_count];
-          PadInnermostAxis(axisStart - prePad, axisStart + prePad, -1 /* inputDelta */, prePad);
-          PadInnermostAxis(output, output - 2, -1 /* inputDelta */, postPad);
+          if (inner_no_pad_size == 1) {
+            PadInnermostAxis(axisStart - prePad, axisStart + prePad, -1 /* inputDelta */, prePad);
+            PadInnermostAxis(output, output - 2, -1 /* inputDelta */, postPad);
+          } else {
+            // When inner_most axis(es) do not need pad, Above PadInnermostAxis() do not fit for Reflect mode.
+            PadAxis(axisStart - prePad, axisStart + prePad, 1, -ptrdiff_t(inner_no_pad_size * 2), inner_no_pad_size, pads[inner_axis]);
+            PadAxis(output, output - 2 * inner_no_pad_size, 1, -ptrdiff_t(inner_no_pad_size * 2), inner_no_pad_size, pads[inner_axis + data_rank]);
+          }
           output += postPad;
           alignSkip = prePad;
         }
@@ -396,7 +476,6 @@ Status Pad::Compute(OpKernelContext* ctx) const {
   const std::vector<int64_t>* pads_to_use;
   const std::vector<int64_t>* slices_to_use;
   PadValue value;
-  Status status;
 
   // kOnnxDomain Pad opset >= 11 (Or) kMsDomain opset == 1
   if (is_dynamic_) {
@@ -460,19 +539,22 @@ Status Pad::Compute(OpKernelContext* ctx) const {
     pads_to_use = &pads_;
     slices_to_use = &slices_;
   }
+
+  Status pad_status{};
   switch (element_size) {
     case sizeof(uint32_t):
-      status = PadImpl<uint32_t>(ctx, *pads_to_use, *slices_to_use, mode_, value.u32);
+      pad_status = PadImpl<uint32_t>(ctx, *pads_to_use, *slices_to_use, mode_, value.u32);
       break;
     case sizeof(uint64_t):
-      status = PadImpl<uint64_t>(ctx, *pads_to_use, *slices_to_use, mode_, value.u64);
+      pad_status = PadImpl<uint64_t>(ctx, *pads_to_use, *slices_to_use, mode_, value.u64);
       break;
     case sizeof(uint8_t):
-      status = PadImpl<uint8_t>(ctx, *pads_to_use, *slices_to_use, mode_, value.u8);
+      pad_status = PadImpl<uint8_t>(ctx, *pads_to_use, *slices_to_use, mode_, value.u8);
       break;
     default:
-      ORT_THROW("Unsupported input data type of ", data_type);
+      pad_status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported input data type of ", data_type);
+      break;
   }
-  return status;
+  return pad_status;
 }
 };  // namespace onnxruntime

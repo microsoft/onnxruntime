@@ -3,13 +3,14 @@
 
 #pragma once
 #include "core/common/common.h"
-#include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/cuda_kernel.h"
 
 namespace onnxruntime {
 namespace cuda {
 
 template <typename T>
 void SGDOptimizerImpl(
+    cudaStream_t stream,
     const T* eta,
     const T* weights,
     const T* gradients,

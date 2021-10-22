@@ -6,11 +6,11 @@ Java Native Interface (JNI) is used to allow for seamless calls to ONNX runtime 
 ## Usage
 
 This document pertains to developing, building, running, and testing the API itself in your local environment.
-For general purpose usage of the publicly distributed API, please see the [general Java API documentation](../docs/Java_API.md).
+For general purpose usage of the publicly distributed API, please see the [general Java API documentation](https://www.onnxruntime.ai/docs/reference/api/java-api.html).
 
 ### Building
 
-Use the main project's [build instructions](../BUILD.md) with the `--build_java` option.
+Use the main project's [build instructions](https://www.onnxruntime.ai/docs/how-to/build.html) with the `--build_java` option.
 
 #### Requirements
 

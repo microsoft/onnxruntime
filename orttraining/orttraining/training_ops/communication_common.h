@@ -1,10 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#ifndef SHARED_PROVIDER
 #include "core/common/common.h"
+#endif
 #pragma once
 
-#include "orttraining/core/framework/mpi_context.h"
+#include "orttraining/core/framework/communication/mpi/mpi_context.h"
 
 namespace onnxruntime {
 
@@ -102,6 +104,8 @@ inline void ComputeShapeRelatedInfo(
   }
 }
 
+#ifdef USE_MPI
+
 inline void SendShapeInfo(
     const int dst,
     const int64_t tag,      // mpi send tag
@@ -189,5 +193,24 @@ inline void ReceiveShapeInfo(
       info_shapes.buffer, info_shapes.size, MPI_CHAR,
       info_shapes.rank, info_shapes.tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE));
 }
+#endif  // USE_MPI
 
+inline void ComputeTensorSizeAndBufferLength(OpKernelContext* context,
+                                             std::vector<int>& tensor_element_counts,
+                                             std::vector<size_t>& tensor_offsets,
+                                             std::vector<size_t>& tensor_sizes,
+                                             int64_t& total_buffer_len) {
+  size_t size_in_bytes = 0;
+  const int num_tensors = context->InputCount();
+  for (int i = 0; i < num_tensors; ++i) {
+    const Tensor* x_tensor = context->Input<Tensor>(i);
+    tensor_offsets.push_back(size_in_bytes);
+
+    size_in_bytes = x_tensor->SizeInBytes();
+    total_buffer_len += size_in_bytes;
+
+    tensor_sizes.push_back(size_in_bytes);
+    tensor_element_counts.push_back((int)x_tensor->Shape().Size());
+  }
+}
 }  // namespace onnxruntime

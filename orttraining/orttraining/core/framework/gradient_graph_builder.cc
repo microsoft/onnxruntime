@@ -3,11 +3,13 @@
 
 #include "core/common/logging/logging.h"
 #include "core/graph/op.h"
+#include "core/graph/graph_utils.h"
 #include "core/graph/schema_registry.h"
 #include "orttraining/core/framework/gradient_graph_builder.h"
 #include "orttraining/core/graph/gradient_builder_registry.h"
 #include "orttraining/core/graph/gradient_config.h"
 #include "orttraining/core/optimizer/insert_output_rewriter.h"
+#include "orttraining/core/optimizer/batchnorm_replacement.h"
 #include "core/optimizer/gelu_fusion.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
 
@@ -29,12 +31,13 @@ GradientGraphBuilder::GradientGraphBuilder(Graph* graph,
       gradient_graph_config_(gradient_graph_config),
       logger_(logger) {
   auto rule_based_graph_transformer =
-      onnxruntime::make_unique<RuleBasedGraphTransformer>("pre_training_rule_based_graph_transformer");
-  rule_based_graph_transformer->Register(make_unique<InsertMaxPoolOutput>());
-  rule_based_graph_transformer->Register(make_unique<AdjustBatchNormOutputs>());
+      std::make_unique<RuleBasedGraphTransformer>("pre_training_rule_based_graph_transformer");
+  ORT_THROW_IF_ERROR(rule_based_graph_transformer->Register(std::make_unique<InsertMaxPoolOutput>()));
 
-  graph_transformation_mgr_.Register(std::move(rule_based_graph_transformer),
-                                     TransformerLevel::Level2);
+  ORT_THROW_IF_ERROR(graph_transformation_mgr_.Register(std::move(rule_based_graph_transformer),
+                                                        TransformerLevel::Level2));
+
+  auto forward_reachable_nodes = BFSWithStopGradient(x_node_arg_names);
 
   for (const auto& name : y_node_arg_names) {
     const NodeArg* node_arg = graph->GetNodeArg(name);
@@ -51,19 +54,39 @@ GradientGraphBuilder::GradientGraphBuilder(Graph* graph,
       }
       ORT_THROW("Node arg '", name, "' is not found in the graph. Available output names = ", ss.str());
     }
-    y_node_args_.insert(node_arg);
 
     const Node* node = graph_->GetProducerNode(name);
-    if (!node) {
-      ORT_THROW(name, " couldn't find the producer node.");
+    if (node) {
+      if (forward_reachable_nodes.find(node) == forward_reachable_nodes.end()) {
+        non_differentiable_y_node_arg_names_.insert(name);
+        LOGS(logger_, INFO) << "The model weights and inputs are non-differentiable from " << name << ". "
+                            << "ORT will assume no gradient will be provided for " << name << ".";
+      } else {
+        y_node_args_.insert(node_arg);
+        y_nodes_.insert(node);
+      }
+    } else {
+      const std::vector<const NodeArg*>& graph_inputs = graph_->GetInputs();
+      bool is_graph_input = false;
+      for (const auto input : graph_inputs) {
+        if (input->Name() == name) {
+          is_graph_input = true;
+          break;
+        }
+      }
+
+      if (is_graph_input) {
+        LOGS(logger_, INFO) << "NodeArg " << name << " cannot find a producer node, "
+                                                     "but it's a graph input.";
+      } else {
+        ORT_THROW(name, ": couldn't find the producer node, and it's not a graph input.");
+      }
     }
-    y_nodes_.insert(node);
   }
 
-  reachable_nodes_ = ReverseBFS(y_nodes_);
+  reachable_nodes_ = ReverseBFSWithStopGradient(y_nodes_);
 
   std::string unreachable_nodes;
-
   // building x_nodes_
   for (const auto& name : x_node_arg_names) {
     const NodeArg* node_arg = graph->GetNodeArg(name);
@@ -94,7 +117,44 @@ GradientGraphBuilder::GradientGraphBuilder(Graph* graph,
   }
 }
 
-NodeSet GradientGraphBuilder::ReverseBFS(const NodeSet& nodes) const {
+NodeSet GradientGraphBuilder::BFSWithStopGradient(const std::unordered_set<std::string>& x_node_arg_names) const {
+  std::deque<const Node*> queue;
+  for (const auto& name : x_node_arg_names) {
+    std::vector<const Node*> nodes = graph_->GetConsumerNodes(name);
+    for (const Node* node : nodes) {
+      int input_index = graph_utils::GetNodeInputIndexFromInputName(*node, name);
+      const std::unordered_set<size_t>* edges = GetStopGradientEdges(*node);
+      if (edges != nullptr && edges->count(input_index)) {
+        continue;
+      }
+      queue.push_back(node);
+    }
+  }
+
+  NodeSet visited(queue.begin(), queue.end());
+  while (!queue.empty()) {
+    const Node* n = queue.front();
+    queue.pop_front();
+
+    for (auto edge_it = n->OutputEdgesBegin(); edge_it != n->OutputEdgesEnd(); ++edge_it) {
+      const Node& node = edge_it->GetNode();
+
+      const std::unordered_set<size_t>* edges = GetStopGradientEdges(node);  
+      if (edges != nullptr && edges->count(edge_it->GetDstArgIndex())) {
+        continue;
+      }
+
+      if (visited.find(&node) == visited.end()) {
+        queue.push_back(&node);
+        visited.insert(&node);
+      }
+    }
+  }
+
+  return visited;
+}
+
+NodeSet GradientGraphBuilder::ReverseBFSWithStopGradient(const NodeSet& nodes) const {
   NodeSet visited(nodes);
   std::deque<const Node*> queue(nodes.begin(), nodes.end());
 
@@ -103,10 +163,10 @@ NodeSet GradientGraphBuilder::ReverseBFS(const NodeSet& nodes) const {
     queue.pop_front();
 
     for (auto edge_it = n->InputEdgesBegin(); edge_it != n->InputEdgesEnd(); ++edge_it) {
-      auto it = STOP_GRADIENT_EDGES.find(n->OpType());
-      if (it != STOP_GRADIENT_EDGES.end() && it->second.count(edge_it->GetDstArgIndex())) {
-        LOGS(logger_, WARNING) << "Skip building gradient for input_" << edge_it->GetDstArgIndex()
-                               << " of node: " << n->Name();
+      const std::unordered_set<size_t>* edges = GetStopGradientEdges(*n);  
+      if (edges != nullptr && edges->count(edge_it->GetDstArgIndex())) {
+        LOGS(logger_, INFO) << "Skip building gradient for input_" << edge_it->GetDstArgIndex()
+                            << " of node: " << n->Name();
         continue;
       }
 
@@ -138,6 +198,22 @@ Status GradientGraphBuilder::CheckNodeArgsReachable() const {
     }
   }
   return Status::OK();
+}
+
+const std::unordered_set<size_t>* GradientGraphBuilder::GetStopGradientEdges(const Node& node) const {
+  std::string op_type = node.OpType();
+
+  if (op_type == "ATenOp") {
+    std::string key = GetGradientDefinitionKeyByNode(node);
+    return GradientDefinitionRegistry::Instance().GetStopGradientEdgesForNode(key);
+  } else {
+    auto it = STOP_GRADIENT_EDGES.find(op_type);
+    if (it == STOP_GRADIENT_EDGES.end()) {
+      return nullptr;
+    }
+
+    return &it->second;
+  }
 }
 
 Status GradientGraphBuilder::Build(const std::unordered_set<std::string>* p_initializer_names_to_preserve) {
@@ -173,8 +249,8 @@ Status GradientGraphBuilder::Build(const std::unordered_set<std::string>* p_init
 
       if (!IsReachable(&next_node)) continue;
 
-      auto it = STOP_GRADIENT_EDGES.find(next_node.OpType());
-      if (it != STOP_GRADIENT_EDGES.end() && it->second.count(edge_it->GetDstArgIndex())) {
+      const std::unordered_set<size_t>* edges = GetStopGradientEdges(next_node);
+      if (edges != nullptr && edges->count(edge_it->GetDstArgIndex())) {
         LOGS(logger_, WARNING) << "Skip building gradient for input_" << edge_it->GetDstArgIndex()
                                << " of node: " << next_node.Name();
         continue;
@@ -196,36 +272,52 @@ Status GradientGraphBuilder::Build(const std::unordered_set<std::string>* p_init
 
   // so far, visited are the minimum node in between
   // visited_node_args are the node_args involved
-  for (auto node : visited) {
-    //TODO: might not need two sets, the union of them might be enough
-    std::unordered_set<std::string> input_args_need_grad, output_args_need_grad;
-    for (auto arg : node->InputDefs()) {
-      if (visited_node_args.find(arg) != visited_node_args.end()) {
-        input_args_need_grad.insert(arg->Name());
+  for (int index = 0; index < 2; index += 1) {
+    for (auto node : visited) {
+      if (INVERTIBLE_OPS.find(node->OpType()) == INVERTIBLE_OPS.end()) {
+        if (index == 1) {
+          continue;
+        }
+      } else if (index == 0) {
+        continue;
       }
-    }
-    for (auto arg : node->OutputDefs()) {
-      if (visited_node_args.find(arg) != visited_node_args.end()) {
-        output_args_need_grad.insert(arg->Name());
-      }
-    }
 
-    GradientDef node_defs = GetGradientForOp(gradient_graph_config_, graph_, node, output_args_need_grad, input_args_need_grad, logger_);
-
-    // updates arg name if gradient accumulation is needed
-    for (auto& op_def : node_defs) {
-      for (auto& arg : op_def.output_args) {
-        auto found = pending_.find(arg.name);
-        if (found != pending_.end() && found->second > 1) {
-          auto idx = gradients_to_accumulate_[arg].size();
-          std::string indexed_arg_name = arg.name + "_" + to_string(idx);
-          gradients_to_accumulate_[arg].push_back(ArgDef(indexed_arg_name, arg.type_proto));
-
-          arg.name = indexed_arg_name;
+      //TODO: might not need two sets, the union of them might be enough
+      std::unordered_set<std::string> input_args_need_grad, output_args_need_grad;
+      for (auto arg : node->InputDefs()) {
+        if (visited_node_args.find(arg) != visited_node_args.end()) {
+          input_args_need_grad.insert(arg->Name());
         }
       }
+      for (auto arg : node->OutputDefs()) {
+        if (visited_node_args.find(arg) != visited_node_args.end()) {
+          output_args_need_grad.insert(arg->Name());
+        }
+      }
+
+      GradientDef node_defs = GetGradientForOp(gradient_graph_config_, graph_, node, output_args_need_grad,
+                                               input_args_need_grad, logger_, stashed_tensors_);
+
+      if (node_defs.empty()) {
+        LOGS(logger_, WARNING) << "GetGradientForOp() did not create any nodes for node "
+                               << node->Name() << " of type " << node->OpType() << ".";
+      }
+
+      // updates arg name if gradient accumulation is needed
+      for (auto& op_def : node_defs) {
+        for (auto& arg : op_def.output_args) {
+          auto found = pending_.find(arg.name);
+          if (found != pending_.end() && found->second > 1) {
+            auto idx = gradients_to_accumulate_[arg].size();
+            std::string indexed_arg_name = arg.name + "_" + to_string(idx);
+            gradients_to_accumulate_[arg].push_back(ArgDef(indexed_arg_name, arg.type_proto));
+
+            arg.name = indexed_arg_name;
+          }
+        }
+      }
+      gradient_graph_defs.AddNodeDefs(node_defs);
     }
-    gradient_graph_defs.AddNodeDefs(node_defs);
   }
 
   // Accumulate Gradients
@@ -244,7 +336,30 @@ Status GradientGraphBuilder::Build(const std::unordered_set<std::string>* p_init
     }
   }
 
-  return GraphAugmenter::AugmentGraph(*graph_, gradient_graph_defs, p_initializer_names_to_preserve);
+  ORT_RETURN_IF_ERROR(GraphAugmenter::AugmentGraph(*graph_, gradient_graph_defs, p_initializer_names_to_preserve));
+
+  // For ORTModule, the graph will be sent back to frontend for cache. Frontend will use inference session to run the
+  // cached graph. We need to save the new NodeArgs to value_info so we will not loss those shape/type information
+  // during graph to graph_proto conversion. Skip the graph outputs as they are already in the output section in
+  // graph_proto. Or maybe no need to skip as duplicate value_info and output is fine?
+  // Also skip those already in the value_info.
+  std::unordered_set<std::string> skip_names(gradient_graph_defs.GraphOutputs().begin(),
+                                             gradient_graph_defs.GraphOutputs().end());
+  for (const NodeArg* node_arg : graph_->GetValueInfo()) {
+    if (node_arg) {
+      skip_names.insert(node_arg->Name());
+    }
+  }
+
+  for (const auto& node_def : gradient_graph_defs.NodeDefs()) {
+    for (const auto& arg_def : node_def.output_args) {
+      if (arg_def.type_proto && skip_names.find(arg_def.name) == skip_names.end()) {
+        graph_->AddValueInfo(graph_->GetNodeArg(arg_def.name));
+      }
+    }
+  }
+
+  return Status::OK();
 }
 
 }  // namespace training

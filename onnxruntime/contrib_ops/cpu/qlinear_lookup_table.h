@@ -3,10 +3,12 @@
 
 #pragma once
 
-#include "core/common/common.h"
-#include "core/framework/op_kernel.h"
+#include "core/framework/tensor.h"
+#include <functional>
+#include <stdint.h>
 #include <vector>
 
+// TODO(kreeger): Move this folder to a quantization utils/toolkit folder.
 namespace onnxruntime {
 namespace contrib {
 
@@ -16,45 +18,25 @@ typedef std::function<void(const float* input, float* output, size_t length)> Lo
 // function that transform single value
 typedef std::function<float(float)> LookupTableScalarTransformer;
 
+template <typename T>
+void QlinearBuildLookupTable(uint8_t* table,
+                             const Tensor* tensor_x_scale,
+                             const Tensor* tensor_x_zero_point,
+                             const Tensor* tensor_y_scale,
+                             const Tensor* tensor_y_zero_point,
+                             const LookupTableArrayTransformer& array_values_transformer);
 
 template <typename T>
-class QLinearLookupBase : public OpKernel {
- public:
-  QLinearLookupBase(const OpKernelInfo& info)
-      : OpKernel(info), fixed_lookup_table_() {
-  }
+void QlinearBuildLookupTable(uint8_t* table,
+                             const Tensor* tensor_x_scale,
+                             const Tensor* tensor_x_zero_point,
+                             const Tensor* tensor_y_scale,
+                             const Tensor* tensor_y_zero_point,
+                             const LookupTableScalarTransformer& value_transformer);
 
-//  protected:
-  template <typename Transformer>
-  Status ComputeBase(OpKernelContext* context, Transformer fn) const;
+template <typename TOutput>
+void QLinearLookupTableTransform(const uint8_t* x, const TOutput* table, TOutput* y, size_t n);
 
-  // Should be called in derived class's constructor
-  template <typename Transformer>
-  void BuildLookupTableIfFixed(const OpKernelInfo& info, Transformer fn);
-
-  // when input quantizaton parameters are const, pre-compute table value.
-  // After construction, non-zero size means pre-computed. Save space when not pre-computed.
-  std::vector<uint8_t> fixed_lookup_table_;
-};
-
-template <typename T>
-class QLinearLeakyRelu final : public QLinearLookupBase<T> {
- public:
-  QLinearLeakyRelu(const OpKernelInfo& info);
-
-  Status Compute(OpKernelContext* context) const override;
-
- private:
-  const float alpha_;
-};
-
-template <typename T>
-class QLinearSigmoid final : public QLinearLookupBase<T> {
- public:
-  QLinearSigmoid(const OpKernelInfo& info);
-
-  Status Compute(OpKernelContext* context) const override;
-};
 
 }  // namespace contrib
 }  // namespace onnxruntime

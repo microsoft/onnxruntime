@@ -28,6 +28,8 @@ namespace Dml
 
     private:
         void PerformOperatorFusion(onnxruntime::Graph* graph, bool* modified) const;
+        void PerformQuantizedOperatorDecomposition(onnxruntime::Graph* graph, bool* modified) const;
+
         std::shared_ptr<onnxruntime::KernelRegistry> m_registry;
         uint32_t m_supportedDataTypeMask = 0;
         const ExecutionProviderImpl* m_providerImpl = nullptr;

@@ -7,14 +7,14 @@
 #include <vector>
 
 #include "core/common/path_string.h"
-#include "core/framework/ml_value.h"
+#include "core/framework/ort_value.h"
 #include "core/providers/providers.h"
 #include "orttraining/core/framework/checkpoint_registry.h"
-#include "orttraining/core/framework/mpi_context.h"
+#include "orttraining/core/framework/communication/mpi/mpi_context.h"
+#include "orttraining/core/framework/pipeline.h"
 #include "orttraining/core/graph/optimizer_config.h"
 #include "orttraining/core/session/training_session.h"
 #include "orttraining/models/runner/data_loader.h"
-#include "orttraining/models/runner/pipeline.h"
 
 namespace onnxruntime {
 namespace training {
@@ -26,7 +26,7 @@ class TrainingRunner {
     PathString model_with_loss_func_path;        // To save the model after adding loss func.
     PathString model_with_training_graph_path;   // To save the model after adding loss func and backward graph.
     PathString model_actual_running_graph_path;  // To save the model with the actual running graph after transformations.
-    PathString model_gist_encode_path;           // To save the model with gist encoding.
+    PathString model_with_gist_nodes_path;       // To save the model with gist encoding.
     PathString pipeline_partitioned_model_path;  // To save the model after pipeline partition. Note: in the pipeline case,
                                                  // different ranks may resident in the same node. This could lead to a
                                                  // potential write conflict. It is user's responsibility to make sure
@@ -94,7 +94,7 @@ class TrainingRunner {
     // Whether to partition the optimizer state across nodes for distributed training.
     ZeROConfig deepspeed_zero{};
     // Use Adasum for allreduce.
-    bool use_adasum = false;
+    bool enable_adasum = false;
     // Use Gist on CPU.
     bool use_gist = false;
     // Whether we collect execution profile trace during this run.
@@ -113,6 +113,16 @@ class TrainingRunner {
     bool allreduce_in_mixed_precision_type = false;
     bool layernorm_stash_as_fp32 = true;
 
+    // GIST configuration
+    struct GistConfiguration {
+      // The operator type to which GIST is applied. Valid Values - 1 (Softmax), 2 (Transpose), 3 (Reshape),
+      // 4 (Add), 5 (Dropout), 6 (LayerNormalization), 7 (MatMul), 8 (Relu), 9 (All the above)
+      int op_type;
+      // The compression type used for GIST. Valid values - GistBinarize, GistPack1, GistPack8, GistPack16, GistPackMsfp15
+      std::string compr_type;
+    };
+    GistConfiguration gist_config;
+
     // Tensorboard configuration.
     PathString log_dir;  // Path to write Tensorboard events to.
     std::string summary_name = "summary";
@@ -120,8 +130,8 @@ class TrainingRunner {
     VectorString histogram_names;
     VectorString norm_names;
 
-    //Default value is -1.0f. When cuda_mem_limit_in_gb < 0, ORT can use all cuda memory available.
-    float cuda_mem_limit_in_gb = -1.0f;
+    //Default value is -1.0f. When gpu_mem_limit_in_gb < 0, ORT can use all cuda memory available.
+    float gpu_mem_limit_in_gb = -1.0f;
 
     bool EnableTensorboard() const {
       return !is_perf_test && !log_dir.empty() && MPIContext::GetInstance().GetWorldRank() == 0;
@@ -134,12 +144,12 @@ class TrainingRunner {
 
     AdasumReductionType GetAdasumReductionType() const {
       // TODO support more algos when they become available.
-      if (!use_adasum) {
+      if (!enable_adasum) {
         return AdasumReductionType::None;
       } else if (!UseCuda()) {
         return AdasumReductionType::CpuReduction;
       } else {
-        return AdasumReductionType::GpuHierarchical;
+        return AdasumReductionType::GpuHierarchicalReduction;
       }
     }
 
@@ -166,6 +176,15 @@ class TrainingRunner {
     // pipeline partition information to do online-partition. If the graph is
     // pre-partitioned, no need to fill this value.
     std::vector<TrainingSession::TrainingConfiguration::CutInfo> pipeline_partition_cut_list;
+    // Alternative for partition. We map each operator's string identifier to
+    // a stage identifier. We identify operators using the name of any of
+    // their outputs. All operators in the graph must be in the domain of this
+    // map.
+    // For example, op_id_to_stage["MatMul0"] being 5 means the operator node
+    // called "MatMul0" locates on the 6th stage. Note that stage ID is 0-based
+    // index.
+    std::map<std::string, int> op_id_to_stage;
+
     // model_paths[i] is the name of the pipeline stage for i-th process.
     // The i-th file is run by the i-th MPI rank.
     // If model_paths is not empty, model partition transformation may not be internally invoked.
@@ -183,8 +202,8 @@ class TrainingRunner {
     bool transformer_layer_recompute = false;
     // Number of layers to apply recompute
     int number_recompute_layers = 0;
-    // Use invertible layernorm grad
-    bool use_invertible_layernorm_grad = false;
+    // Use memory aware gradient builder.
+    bool use_memory_efficient_gradient = false;
   };
 
   TrainingRunner(Parameters params, const Environment& env);
@@ -214,17 +233,17 @@ class TrainingRunner {
                                   LearningRateScheduler* lr_scheduler,
                                   const size_t batch_index,
                                   std::vector<std::string>& feed_names,
-                                  std::vector<MLValue>& feeds);
+                                  std::vector<OrtValue>& feeds);
   Status PrepareFetchNamesAndFetches(const SessionMode mode,
                                      std::vector<std::string>& fetch_names,
-                                     std::vector<MLValue>& fetches);
+                                     std::vector<OrtValue>& fetches);
   void RunWithUpdate(VectorString& feed_names,
                      VectorString& fetch_names,
-                     std::vector<MLValue>& feeds,
-                     std::vector<MLValue>& fetches);
+                     std::vector<OrtValue>& feeds,
+                     std::vector<OrtValue>& fetches);
   void RunWithoutUpdate(VectorString& feed_names,
                         VectorString& fetch_names,
-                        std::vector<MLValue>& feeds,
+                        std::vector<OrtValue>& feeds,
                         size_t& gradient_accumulation_step_count);
   void CheckWorkerException(const std::exception_ptr& p);
   Status TrainingLoop(IDataLoader& training_data_loader, IDataLoader* test_data_loader,

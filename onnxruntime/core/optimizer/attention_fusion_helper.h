@@ -178,7 +178,7 @@ bool MatchGemmSubgraph(Graph& graph,
 
     if (!optimizer_utils::CheckOutputEdges(graph, unsqueeze_after_gather, 1) ||
         !optimizer_utils::CheckOutputEdges(graph, gather, 1) ||
-        !optimizer_utils::CheckOutputEdges(graph, shape, 1) && !use_shared_node) {
+        (!optimizer_utils::CheckOutputEdges(graph, shape, 1) && !use_shared_node)) {
       DEBUG_LOG("Output edge count not expected for nodes in gemm gather path");
       return false;
     }
@@ -1280,7 +1280,7 @@ TODO: replace Gemm_Subgraph by MatMul + Add
 bool FuseGptAttention(Node& layer_norm, Graph& graph, int64_t hidden_size, std::map<std::string, NodeArg*>& mask_int32_map, bool use_shared_node, const logging::Logger& logger) {
   DEBUG_LOG("Start FuseGptAttention");
   const Node* parent_node = graph_utils::GetInputNode(layer_norm, 0);
-  if (nullptr == parent_node || !graph_utils::IsSupportedOptypeVersionAndDomain(*parent_node, "Add", {7, 13}, kOnnxDomain)) {
+  if (nullptr == parent_node || !graph_utils::IsSupportedOptypeVersionAndDomain(*parent_node, "Add", {7, 13, 14}, kOnnxDomain)) {
     return false;
   }
 

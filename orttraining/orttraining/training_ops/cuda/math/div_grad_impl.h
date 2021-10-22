@@ -9,6 +9,7 @@ namespace onnxruntime {
 namespace cuda {
 template <typename T>
 void ImplDivGradSimple(
+    cudaStream_t stream,
     SimpleBroadcast simpleBroadcast,
     const T* a_data,
     const T* b_data,
@@ -19,6 +20,7 @@ void ImplDivGradSimple(
 
 template <typename T>
 void ImplDivGradRhsPerChannelBatch1(
+    cudaStream_t stream,
     const T* a_data,
     const T* b_data,
     const T* dy_data,
@@ -29,6 +31,7 @@ void ImplDivGradRhsPerChannelBatch1(
 
 template <typename T>
 void ImplDivGradRhsPerChannelBatchN(
+    cudaStream_t stream,
     const T* a_data,
     const T* b_data,
     const T* dy_data,
@@ -40,6 +43,7 @@ void ImplDivGradRhsPerChannelBatchN(
 
 template <typename T>
 void ImplDivGrad(
+    cudaStream_t stream,
     int32_t output_rank,
     const TArray<int64_t>* a_padded_strides,
     const T* a_data,

@@ -7,58 +7,142 @@
 namespace onnxruntime {
 namespace test {
 
+#if defined(ENABLE_TRAINING_OPS)
+namespace {
+void TestElementwiseGradientOp(
+    const char* op,
+    const std::vector<std::pair<std::string, std::vector<float>>>& inputs,
+    std::function<float(const std::vector<float>&)> expected_func,
+    const std::unordered_map<std::string, float> attrs = {},
+    int opset_version = 7, const char* domain = kOnnxDomain) {
+  const auto first_input = inputs.begin();
+  ASSERT_NE(first_input, inputs.end());
+  for (auto input = first_input; input != inputs.end(); ++input) {
+    if (input == first_input) continue;
+    ASSERT_EQ(first_input->second.size(), input->second.size());
+  }
+
+  OpTester test(op, opset_version, domain);
+
+  for (auto attr : attrs) {
+    test.AddAttribute(attr.first, attr.second);
+  }
+
+  const auto input_size = first_input->second.size();
+  std::vector<int64_t> dims{static_cast<int64_t>(input_size)};
+
+  std::vector<float> expected_vals;
+  for (size_t i = 0; i < input_size; i++) {
+    std::vector<float> params(inputs.size());
+    std::transform(
+        inputs.begin(), inputs.end(), params.begin(),
+        [i](const std::pair<std::string, std::vector<float>>& input) {
+          return input.second[i];
+        });
+    expected_vals.push_back(expected_func(params));
+  }
+
+  for (const auto& input : inputs) {
+    test.AddInput<float>(input.first.c_str(), dims, input.second);
+  }
+  test.AddOutput<float>("dX", dims, expected_vals);
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {});
+}
+
+float ReluGrad(float dy, float x) {
+  return x > 0 ? dy : 0;
+}
+
+float SigmoidGrad(float dy, float y) {
+  return dy * y * (1 - y);
+}
+}
+#endif
+
 TEST_F(ActivationOpTest, Sigmoid) {
-  TestActivationOp("Sigmoid",
-                   input_values,
-                   [](float x) {
-                     auto y = 1.f / (1.f + std::exp(-std::abs(x)));  // safe sigmoid
-                     y = x > 0 ? y : 1 - y;
-                     return y;
-                   });
+  TestActivationOp<float>("Sigmoid",
+                          input_values,
+                          [](float x) {
+                            auto y = 1.f / (1.f + std::exp(-std::abs(x)));  // safe sigmoid
+                            y = x > 0 ? y : 1 - y;
+                            return y;
+                          });
+  TestActivationOp<double>("Sigmoid",
+                           input_values_double,
+                           [](double x) {
+                             auto y = 1. / (1. + std::exp(-std::abs(x)));  // safe sigmoid
+                             y = x > 0 ? y : 1 - y;
+                             return y;
+                           });
 }
 
 TEST_F(ActivationOpTest, HardSigmoid) {
   float alpha = 0.2f;
   float beta = 0.5f;
-  TestActivationOp("HardSigmoid",
-                   input_values,
-                   [alpha, beta](float x) {
-                     return std::max(std::min((alpha * x + beta), 1.0f), 0.0f);
-                   },
-                   {{"alpha", alpha}, {"beta", beta}});
+  TestActivationOp<float>("HardSigmoid",
+                          input_values,
+                          [alpha, beta](float x) {
+                            return std::max(std::min((alpha * x + beta), 1.0f), 0.0f);
+                          },
+                          {{"alpha", alpha}, {"beta", beta}});
 }
 
 TEST_F(ActivationOpTest, Tanh) {
-  TestActivationOp("Tanh",
-                   input_values,
-                   [](float x) { return std::tanh(x); });
+  TestActivationOp<float>("Tanh",
+                          input_values,
+                          [](float x) { return std::tanh(x); });
+  TestActivationOp<double>("Tanh",
+                           input_values_double,
+                           [](double x) { return std::tanh(x); });
 }
 
 TEST_F(ActivationOpTest, Relu) {
-  TestActivationOp("Relu",
-                   input_values,
-                   [](float x) { return std::max(x, 0.0f); });
+  TestActivationOp<float>("Relu",
+                          input_values,
+                          [](float x) { return std::max(x, 0.0f); });
+  TestActivationOp<double>("Relu",
+                           input_values_double,
+                           [](double x) { return std::max(x, 0.0); },
+                           {},
+                           /*is_tensorrt_supported=*/ false);
+  TestActivationOp<int8_t>("Relu",
+                           input_values_int8,
+                           [](int8_t x) { return std::max(x, static_cast<int8_t>(0)); },
+                           {},
+                           /*is_tensorrt_supported=*/ false,
+                           /*opset_version= */ 14);
 }
 
 TEST_F(ActivationOpTest, Elu) {
   float alpha = 0.1f;
-  TestActivationOp("Elu",
-                   input_values,
-                   [alpha](float x) { return (x >= 0) ? x : alpha * (exp(x) - 1); },
-                   {{"alpha", alpha}});
+  TestActivationOp<float>("Elu",
+                          input_values,
+                          [alpha](float x) { return (x >= 0) ? x : alpha * (exp(x) - 1); },
+                          {{"alpha", alpha}});
 }
 
+TEST_F(ActivationOpTest, Celu) {
+  float alpha = -0.5f;
+  TestActivationOp<float>(
+      "Celu",
+      input_values,
+      // TODO: Investigate why gcc 4 fails to compile without the explicit cast
+      [alpha](float x) { return std::max(0.0f, x) + std::min(0.0f, alpha * (static_cast<float>(exp(x / alpha)) - 1)); },
+      // Disable on TensorRT as it seems like it doesn't yet support Celu
+      {{"alpha", alpha}}, false, 12);
+}
 TEST_F(ActivationOpTest, LeakyRelu) {
   float alpha = 0.1f;
-  TestActivationOp("LeakyRelu",
-                   input_values,
-                   [alpha](float x) { return (x >= 0) ? x : alpha * x; },
-                   {{"alpha", alpha}});
+  TestActivationOp<float>("LeakyRelu",
+                          input_values,
+                          [alpha](float x) { return (x >= 0) ? x : alpha * x; },
+                          {{"alpha", alpha}});
 }
 
 TEST_F(ActivationOpTest, ThresholdedRelu) {
   float alpha = 0.1f;
-  TestActivationOp(
+  TestActivationOp<float>(
       "ThresholdedRelu",
       input_values,
       [alpha](float x) { return (x >= alpha) ? x : 0; },
@@ -69,20 +153,20 @@ TEST_F(ActivationOpTest, Selu) {
   static constexpr float alpha = 1.6732f;
   static constexpr float gamma = 1.0507f;
 
-  TestActivationOp("Selu",
-                   input_values,
-                   [](float x) { return x <= 0 ? gamma * (alpha * exp(x) - alpha) : gamma * x; },
-                   {{"alpha", alpha}, {"gamma", gamma}});
+  TestActivationOp<float>("Selu",
+                          input_values,
+                          [](float x) { return x <= 0 ? gamma * (alpha * exp(x) - alpha) : gamma * x; },
+                          {{"alpha", alpha}, {"gamma", gamma}});
 }
 
 TEST_F(ActivationOpTest, Selu_Attributes) {
   static constexpr float alpha = 1.8f;
   static constexpr float gamma = 0.5f;
 
-  TestActivationOp("Selu",
-                   input_values,
-                   [](float x) { return x <= 0 ? gamma * (alpha * exp(x) - alpha) : gamma * x; },
-                   {{"alpha", alpha}, {"gamma", gamma}});
+  TestActivationOp<float>("Selu",
+                          input_values,
+                          [](float x) { return x <= 0 ? gamma * (alpha * exp(x) - alpha) : gamma * x; },
+                          {{"alpha", alpha}, {"gamma", gamma}});
 }
 
 TEST_F(ActivationOpTest, PRelu) {
@@ -144,18 +228,18 @@ TEST_F(ActivationOpTest, PRelu_MultiChannel) {
 }
 
 TEST_F(ActivationOpTest, Softplus) {
-  TestActivationOp("Softplus",
-                   input_values,
-                   [](float x) {
-                     if (x > 0)
-                       return x + logf(expf(-x) + 1);
-                     else
-                       return logf(expf(x) + 1);
-                   });
+  TestActivationOp<float>("Softplus",
+                          input_values,
+                          [](float x) {
+                            if (x > 0)
+                              return x + logf(expf(-x) + 1);
+                            else
+                              return logf(expf(x) + 1);
+                          });
 }
 
 TEST_F(ActivationOpNoInfTest, Softsign) {
-  TestActivationOp(
+  TestActivationOp<float>(
       "Softsign",
       input_values,
       [](float x) {
@@ -186,6 +270,40 @@ TEST_F(ActivationOpNoInfTest, Softsign) {
       },
       {}, false);  // Disable TensorRT because result mismatches
 }
+
+#if defined(ENABLE_TRAINING_OPS)
+TEST(ReluGradInferenceTest, Basic) {
+  const std::vector<float> x_vals = {-1.0f, 0, 1.0f, 100.0f, -100.0f, 1000.0f, -1000.0f};
+  const std::vector<float> dY(7, 1.0f);
+
+  TestElementwiseGradientOp(
+      "ReluGrad",
+      {{"dY", dY}, {"X", x_vals}},
+      [](const std::vector<float>& params) {
+        ORT_ENFORCE(params.size() == 2);
+        const auto dy = params[0], x = params[1];
+
+        return ReluGrad(dy, x);
+      },
+      {}, 1, kMSDomain);
+}
+
+TEST(SigmoidGradInferenceTest, Basic) {
+  const std::vector<float> y_vals = {-1.0f, 0, 1.0f, 100.0f, -100.0f, 1000.0f, -1000.0f};
+  const std::vector<float> dY(7, 1.0f);
+
+  TestElementwiseGradientOp(
+      "SigmoidGrad",
+      {{"dY", dY}, {"Y", y_vals}},
+      [](const std::vector<float>& params) {
+        ORT_ENFORCE(params.size() == 2);
+        const auto dy = params[0], y = params[1];
+
+        return SigmoidGrad(dy, y);
+      },
+      {}, 1, kMSDomain);
+}
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime

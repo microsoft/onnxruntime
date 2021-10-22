@@ -42,7 +42,6 @@ class _ORTTrainerModelDesc(object):
         self._OutputDescriptionTyped = namedtuple('OutputDescriptionTyped',
                                                   ['name', 'shape', 'is_loss', 'dtype', 'dtype_amp'])
         for idx, output in enumerate(self._validated['outputs']):
-            # import pdb; pdb.set_trace()
             if len(output) == 2:
                 self._validated['outputs'][idx] = self._OutputDescription(*output, False)
             else:

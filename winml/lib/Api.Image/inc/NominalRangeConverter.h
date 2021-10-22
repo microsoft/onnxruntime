@@ -10,7 +10,7 @@ namespace _winml {
 class NominalRangeConverter {
  public:
   NominalRangeConverter() = delete;
-  NominalRangeConverter(ImageNominalPixelRange pixelRange);
+  NominalRangeConverter(winml::LearningModelPixelRange pixelRange);
 
   float Normalize(float val) const;
 

@@ -278,5 +278,21 @@ TEST(Scatter, SameUpdateWithoutAxis) {
   scatter_same_updates_tests("ScatterElements", 11);
 }
 
+static void scatter_with_larger_indices_on_axis_tests(const char* op_name, int op_version) {
+  OpTester test(op_name, op_version);
+  test.AddAttribute<int64_t>("axis", 1);
+
+  test.AddInput<float>("data", {1, 2}, {1.0f, 2.0f});
+  test.AddInput<int64_t>("indices", {1, 4}, {0, 0, 0, 0});
+  test.AddInput<float>("updates", {1, 4}, {3.0f, 3.0f, 3.0f, 3.0f});
+  test.AddOutput<float>("y", {1, 2}, {3.0f, 2.0f});
+  test.Run();
+}
+
+TEST(Scatter, LargerIndicesOnAxis) {
+  scatter_with_larger_indices_on_axis_tests("Scatter", 9);
+  scatter_with_larger_indices_on_axis_tests("ScatterElements", 11);
+}
+
 }  // namespace test
 }  // namespace onnxruntime

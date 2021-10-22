@@ -86,9 +86,17 @@ class MyIExecutionFrame : public IExecutionFrame {
                     const OrtValueNameIdxMap& ort_value_idx_map, const NodeIndexInfo& node_index_info)
       : IExecutionFrame(ort_value_idx_map, node_index_info, fetch_mlvalue_idxs),
         a_(a) {
-    Init(feed_mlvalue_idxs, feeds, initializers, fetches);
+    Init(
+        feed_mlvalue_idxs, feeds, initializers, [](const std::string& /*name*/) -> bool { return false; }, fetches);
   }
 
+  const DataTransferManager& GetDataTransferManager() const override {
+    abort();
+  }
+
+  Status CreateNodeOutputMLValueImpl(OrtValue& /*ort_value*/, int /*ort_value_idx*/, const TensorShape* /*shape*/) override {
+    abort();
+  }
   AllocatorPtr GetAllocatorImpl(const OrtMemoryInfo& info) const {
     return a_.GetAllocator(info.id, info.mem_type);
   }
@@ -111,7 +119,7 @@ class MyIExecutionFrame : public IExecutionFrame {
       return Status(ONNXRUNTIME, FAIL, "size overflow");
     }
     auto alloc = a_.GetAllocator(0, OrtMemTypeDefault);
-    std::unique_ptr<Tensor> p_tensor = onnxruntime::make_unique<Tensor>(DataTypeImpl::GetType<T>(), *shape, alloc);
+    std::unique_ptr<Tensor> p_tensor = std::make_unique<Tensor>(DataTypeImpl::GetType<T>(), *shape, alloc);
 
     auto ml_tensor = DataTypeImpl::GetType<Tensor>();
     ort_value.Init(p_tensor.release(), ml_tensor, ml_tensor->GetDeleteFunc());

@@ -3,15 +3,23 @@
 parameters:
 - name: RunDockerBuildArgs
   type: string
-  default: ""
 - name: DisplayName
   type: string
   default: "Call run_dockerbuild.sh"
+- name: UseImageCacheContainerRegistry
+  type: boolean
+  default: true
 
 steps:
-- template: with-build-docker-image-cache-steps.yml
-  parameters:
-    Steps:
-    - script: |
-        tools/ci_build/github/linux/run_dockerbuild.sh ${{ parameters.RunDockerBuildArgs }}
-      displayName: "${{ parameters.DisplayName }}"
+- ${{ if eq(parameters.UseImageCacheContainerRegistry, true) }}:
+  - template: with-container-registry-steps.yml
+    parameters:
+      Steps:
+      - script: |
+          tools/ci_build/github/linux/run_dockerbuild.sh -i onnxruntimebuildcache ${{ parameters.RunDockerBuildArgs }}
+        displayName: "${{ parameters.DisplayName }}"
+      ContainerRegistry: onnxruntimebuildcache
+- ${{ if eq(parameters.UseImageCacheContainerRegistry, false) }}:
+  - script: |
+      tools/ci_build/github/linux/run_dockerbuild.sh ${{ parameters.RunDockerBuildArgs }}
+    displayName: "${{ parameters.DisplayName }}"

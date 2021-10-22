@@ -12,13 +12,35 @@
  * Method:    createHandle
  * Signature: (Ljava/lang/String;)J
  */
-JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OrtEnvironment_createHandle(JNIEnv * jniEnv, jclass jobj, jlong apiHandle, jint loggingLevel, jstring name) {
+JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OrtEnvironment_createHandle__JILjava_lang_String_2
+  (JNIEnv * jniEnv, jclass jobj, jlong apiHandle, jint loggingLevel, jstring name) {
     (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
     OrtEnv* env;
     jboolean copy;
     const char* cName = (*jniEnv)->GetStringUTFChars(jniEnv, name, &copy);
     checkOrtStatus(jniEnv,api,api->CreateEnv(convertLoggingLevel(loggingLevel), cName, &env));
+    (*jniEnv)->ReleaseStringUTFChars(jniEnv,name,cName);
+    checkOrtStatus(jniEnv, api, api->SetLanguageProjection(env, ORT_PROJECTION_JAVA));
+    return (jlong) env;
+}
+
+/*
+ * Class:     ai_onnxruntime_OrtEnvironment
+ * Method:    createHandle
+ * Signature: (JILjava/lang/String;J)J
+ */
+JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OrtEnvironment_createHandle__JILjava_lang_String_2J
+  (JNIEnv * jniEnv, jclass jobj, jlong apiHandle, jint loggingLevel, jstring name, jlong threadOptionsHandle) {
+    (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
+    const OrtApi* api = (const OrtApi*) apiHandle;
+    OrtEnv* env;
+    jboolean copy;
+    const char* cName = (*jniEnv)->GetStringUTFChars(jniEnv, name, &copy);
+    checkOrtStatus(jniEnv,api,api->CreateEnvWithGlobalThreadPools(convertLoggingLevel(loggingLevel),
+                                                                  cName,
+                                                                  (OrtThreadingOptions*) threadOptionsHandle,
+                                                                  &env));
     (*jniEnv)->ReleaseStringUTFChars(jniEnv,name,cName);
     checkOrtStatus(jniEnv, api, api->SetLanguageProjection(env, ORT_PROJECTION_JAVA));
     return (jlong) env;

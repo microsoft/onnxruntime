@@ -27,7 +27,7 @@ public:
         int dimOffset = gsl::narrow_cast<int>(m_inputTensorDescs[0].GetDimensionCount() - reducedDims.size());
         for (auto& dim : m_axes)
         {
-            assert(dim < reducedDims.size()); // ReduceHelperBase already validated this.
+            assert(dim < static_cast<int32_t>(reducedDims.size())); // ReduceHelperBase already validated this.
             reducedDims[dim] = 1;
             dmlAxes.push_back(static_cast<uint32_t>(dim + dimOffset));
         }

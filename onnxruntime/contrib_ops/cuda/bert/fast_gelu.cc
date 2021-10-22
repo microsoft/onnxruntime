@@ -1,12 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/common.h"
+#include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cudnn_common.h"
-#include "core/framework/tensorprotoutils.h"
 #include "fast_gelu.h"
 #include "fast_gelu_impl.h"
 #include "contrib_ops/cpu/bert/bias_gelu_helper.h"
+#include "transformer_common.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -19,17 +19,22 @@ namespace cuda {
       1,                                                          \
       T,                                                          \
       kCudaExecutionProvider,                                     \
-      KernelDefBuilder()                                          \
+      (*KernelDefBuilder::Create())                               \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       FastGelu<T>);
 
 REGISTER_KERNEL_TYPED(float)
 REGISTER_KERNEL_TYPED(MLFloat16)
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
+REGISTER_KERNEL_TYPED(BFloat16)
+#endif
 
 using namespace ONNX_NAMESPACE;
 
 template <typename T>
 FastGelu<T>::FastGelu(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info) {
+  const TransformerOptions* options = TransformerOptions::GetInstance();
+  use_half2_ = !options->DisableHalf2();
 }
 
 template <typename T>
@@ -43,13 +48,15 @@ Status FastGelu<T>::ComputeInternal(OpKernelContext* context) const {
   int64_t input_length = input->Shape().Size();
   int64_t bias_length = (nullptr == bias) ? 0 : bias->Shape().Size();
   typedef typename ToCudaType<T>::MappedType CudaT;
+
   if (!LaunchFastGeluKernel<CudaT>(GetDeviceProp(),
-                                   nullptr,
+                                   Stream(),
                                    static_cast<int>(input_length),
                                    static_cast<int>(bias_length),
                                    reinterpret_cast<const CudaT*>(input->template Data<T>()),
                                    (nullptr != bias) ? reinterpret_cast<const CudaT*>(bias->template Data<T>()) : nullptr,
-                                   reinterpret_cast<CudaT*>(output->template MutableData<T>()))) {
+                                   reinterpret_cast<CudaT*>(output->template MutableData<T>()),
+                                   use_half2_)) {
     CUDA_CALL(cudaGetLastError());
     return Status(common::ONNXRUNTIME, common::FAIL);
   }

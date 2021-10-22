@@ -54,7 +54,7 @@ void LoopExecBlock::InitContext(KernelComputeCtx* kernel_compute_ctx) const {
   ORT_ENFORCE_DEBUG(nullptr == subgraph_compute_ctx.loop_cf_ctx);
   if (nullptr != func_info_->cf_info) {
     if (ScanExecInfo::IsType(func_info_->cf_info.get())) {
-      subgraph_compute_ctx.loop_cf_ctx = onnxruntime::make_unique<ScanExecCtx>();
+      subgraph_compute_ctx.loop_cf_ctx = std::make_unique<ScanExecCtx>();
     }
   }
 

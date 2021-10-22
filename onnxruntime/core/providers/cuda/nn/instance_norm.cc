@@ -16,7 +16,7 @@ namespace cuda {
       6,                                                          \
       T,                                                          \
       kCudaExecutionProvider,                                     \
-      KernelDefBuilder()                                          \
+      (*KernelDefBuilder::Create())                               \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       InstanceNorm<T>);
 
@@ -135,6 +135,7 @@ Status InstanceNorm<T>::ComputeInternal(OpKernelContext* p_op_kernel_context) co
     fast_divmod fdm_C(gsl::narrow_cast<int>(C));
 
     InstanceNormImpl<CudaT>(
+        Stream(),
         x_data,
         scale_data,
         bias_data,

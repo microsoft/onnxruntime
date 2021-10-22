@@ -36,7 +36,7 @@ if (onnxruntime_FUZZ_ENABLED)
 					"${SEC_FUZZ_ROOT}/src/test.cpp")
 					
 	# compile the executables
-	add_executable(onnxruntime_security_fuzz ${SEC_FUZ_SRC})
+	onnxruntime_add_executable(onnxruntime_security_fuzz ${SEC_FUZ_SRC})
 	
 	# compile with c++17
 	target_compile_features(onnxruntime_security_fuzz PUBLIC cxx_std_17)

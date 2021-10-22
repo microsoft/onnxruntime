@@ -20,34 +20,6 @@ Abstract:
 
 #include "qladd.h"
 
-bool
-MlasCalcQLinearAddParameters(
-    float ScaleRatio_AC,
-    float ScaleRatio_BC,
-    int32_t& Shift,
-    int32_t& MultiplierA,
-    int32_t& MultiplierB
-    )
-{
-    constexpr float MinScaleRatio = 6.103515625e-05f; // std::stof("0x1.0p-14f");
-    constexpr float MaxScaleRatio = 256.0f; //std::stof("0x1.0p+8f");
-    if (ScaleRatio_AC < MinScaleRatio || ScaleRatio_AC >= MaxScaleRatio ||
-            ScaleRatio_BC < MinScaleRatio || ScaleRatio_BC >= MaxScaleRatio) {
-        return false;
-    }
-
-    const float GreaterScaleRatio = std::max(ScaleRatio_AC, ScaleRatio_BC);
-    const int32_t GreaterExponent = (int32_t)(MlasBitsOfFp32(GreaterScaleRatio) >> 23) - 127;
-    Shift = 21 - GreaterExponent;
-    if (Shift > 31 || Shift < 13) return false;
-
-    const float MultiplierFloatValue = MlasFp32FromBits((uint32_t)(21 - GreaterExponent + 127) << 23);
-    MultiplierA = (int32_t) lrintf(ScaleRatio_AC * MultiplierFloatValue);
-    MultiplierB = (int32_t) lrintf(ScaleRatio_BC * MultiplierFloatValue);
-    return ((MultiplierA < 0x00400000 && MultiplierB < 0x00400000) &&
-           (MultiplierA >= 0x00200000 || MultiplierB >= 0x00200000)); // the greater one must fullfil this check
-}
-
 // Pure C++ helper, back off here in rare case.
 template<typename DataType, bool IsScalarB>
 MLAS_FORCEINLINE
@@ -87,6 +59,31 @@ MlasQLinearAddKernelRawHelper(
 }
 
 #if defined(MLAS_NEON_INTRINSICS)
+
+bool MlasCalcQLinearAddParameters(
+    float ScaleRatio_AC,
+    float ScaleRatio_BC,
+    int32_t& Shift,
+    int32_t& MultiplierA,
+    int32_t& MultiplierB) {
+  constexpr float MinScaleRatio = 6.103515625e-05f;  // std::stof("0x1.0p-14f");
+  constexpr float MaxScaleRatio = 256.0f;            //std::stof("0x1.0p+8f");
+  if (ScaleRatio_AC < MinScaleRatio || ScaleRatio_AC >= MaxScaleRatio ||
+      ScaleRatio_BC < MinScaleRatio || ScaleRatio_BC >= MaxScaleRatio) {
+    return false;
+  }
+
+  const float GreaterScaleRatio = std::max(ScaleRatio_AC, ScaleRatio_BC);
+  const int32_t GreaterExponent = (int32_t)(MlasBitsOfFp32(GreaterScaleRatio) >> 23) - 127;
+  Shift = 21 - GreaterExponent;
+  if (Shift > 31 || Shift < 13) return false;
+
+  const float MultiplierFloatValue = MlasFp32FromBits((uint32_t)(21 - GreaterExponent + 127) << 23);
+  MultiplierA = (int32_t)lrintf(ScaleRatio_AC * MultiplierFloatValue);
+  MultiplierB = (int32_t)lrintf(ScaleRatio_BC * MultiplierFloatValue);
+  return ((MultiplierA < 0x00400000 && MultiplierB < 0x00400000) &&
+          (MultiplierA >= 0x00200000 || MultiplierB >= 0x00200000));  // the greater one must fullfil this check
+}
 
 template<typename DataType, bool IsScalarB>
 static

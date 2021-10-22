@@ -45,7 +45,7 @@ Model::Model(const std::string& graph_name,
              const PathString& model_path,
              const IOnnxRuntimeOpSchemaRegistryList& local_registries,
              const std::unordered_map<std::string, int>& domain_to_version,
-             const std::vector<ONNX_NAMESPACE::FunctionProto>&,
+             const std::vector<ONNX_NAMESPACE::FunctionProto>& model_local_functions,
              const logging::Logger& logger)
     : model_path_(Path::Parse(model_path)) {
   model_proto_.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
@@ -82,10 +82,17 @@ Model::Model(const std::string& graph_name,
     opset_id_proto->set_version(domain.second);
   }
 
+  std::vector<const ONNX_NAMESPACE::FunctionProto*> model_functions;
+  for (auto& func : model_local_functions) {
+    auto func_ptr = model_proto_.add_functions();
+    func_ptr->CopyFrom(func);
+    model_functions.emplace_back(func_ptr);
+  }
+
   // need to call private ctor so can't use make_shared
   GSL_SUPPRESS(r .11)
   graph_.reset(new Graph(*this, model_proto_.mutable_graph(), *p_domain_to_version, IrVersion(), schema_registry,
-                         logger));
+                         model_functions, logger));
 }
 
 Model::Model(const ModelProto& model_proto, const PathString& model_path,
@@ -93,7 +100,8 @@ Model::Model(const ModelProto& model_proto, const PathString& model_path,
     : Model(ModelProto(model_proto), model_path, local_registries, logger) {
 }
 
-Model::Model(ModelProto&& model_proto, const PathString& model_path, const IOnnxRuntimeOpSchemaRegistryList* local_registries,
+Model::Model(ModelProto&& model_proto, const PathString& model_path,
+             const IOnnxRuntimeOpSchemaRegistryList* local_registries,
              const logging::Logger& logger)
     : model_path_(Path::Parse(model_path)) {
   if (!utils::HasGraph(model_proto)) {
@@ -106,8 +114,14 @@ Model::Model(ModelProto&& model_proto, const PathString& model_path, const IOnnx
         " specifies which version of the ONNX OperatorSet is being imported.");
   }
 
-  if (!model_proto.has_ir_version() || model_proto.ir_version() > ONNX_NAMESPACE::Version::IR_VERSION) {
-    ORT_THROW("Unknown model file format version.");
+  if (!model_proto.has_ir_version()) {
+    ORT_THROW("Missing model IR version.");
+  }
+
+  if (const auto ir_version = model_proto.ir_version();
+      ir_version > ONNX_NAMESPACE::Version::IR_VERSION) {
+    ORT_THROW("Unsupported model IR version: ", ir_version,
+              ", max supported IR version: ", ONNX_NAMESPACE::Version::IR_VERSION);
   }
 
   model_proto_ = std::move(model_proto);
@@ -169,9 +183,14 @@ Model::Model(ModelProto&& model_proto, const PathString& model_path, const IOnnx
     }
   }
 
+  std::vector<const ONNX_NAMESPACE::FunctionProto*> model_local_functions;
+  for (auto& func : model_proto_.functions()) {
+    model_local_functions.emplace_back(&func);
+  }
+
   // create instance. need to call private ctor so can't use make_unique
   GSL_SUPPRESS(r .11)
-  graph_.reset(new Graph(*this, model_proto_.mutable_graph(), domain_to_version, IrVersion(), schema_registry, logger));
+  graph_.reset(new Graph(*this, model_proto_.mutable_graph(), domain_to_version, IrVersion(), schema_registry, model_local_functions, logger));
 }
 
 Version Model::IrVersion() const {
@@ -181,24 +200,33 @@ Version Model::IrVersion() const {
   return kNoVersion;
 }
 
-const std::string& Model::ProducerName() const {
-  return model_proto_.producer_name();
+const std::string Model::ProducerName() const {
+  if (model_proto_.has_producer_name()) {
+    return model_proto_.producer_name();
+  }
+  return std::string();
 }
 
 void Model::SetProducerName(const std::string& producer_name) {
   model_proto_.set_producer_name(producer_name);
 }
 
-const std::string& Model::ProducerVersion() const {
-  return model_proto_.producer_version();
+const std::string Model::ProducerVersion() const {
+  if (model_proto_.has_producer_version()) {
+    return model_proto_.producer_version();
+  }
+  return std::string();
 }
 
 void Model::SetProducerVersion(const std::string& producer_version) {
   model_proto_.set_producer_version(producer_version);
 }
 
-const std::string& Model::Domain() const {
-  return model_proto_.domain();
+const std::string Model::Domain() const {
+  if (model_proto_.has_domain()) {
+    return model_proto_.domain();
+  }
+  return std::string();
 }
 
 void Model::SetDomain(const std::string& domain) {
@@ -216,12 +244,22 @@ void Model::SetModelVersion(onnxruntime::Version version) {
   model_proto_.set_model_version(version);
 }
 
-const std::string& Model::DocString() const {
-  return model_proto_.doc_string();
+const std::string Model::DocString() const {
+  if (model_proto_.has_doc_string()) {
+    return model_proto_.doc_string();
+  }
+  return std::string();
 }
 
 void Model::SetDocString(const std::string& doc_string) {
   model_proto_.set_doc_string(doc_string);
+}
+
+const std::string Model::GraphDocString() const {
+  if (model_proto_.has_graph() && model_proto_.graph().has_doc_string()) {
+    return model_proto_.graph().doc_string();
+  }
+  return std::string();
 }
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
@@ -248,6 +286,15 @@ ModelProto Model::ToProto() {
   ModelProto result(model_proto_);
   const auto& graph = *graph_;
   *(result.mutable_graph()) = graph.ToGraphProto();
+  return result;
+}
+
+ModelProto Model::ToGraphProtoWithExternalInitializers(const std::string& external_file_name,
+                                                       size_t initializer_size_threshold) {
+  ModelProto result(model_proto_);
+  const auto& graph = *graph_;
+  *(result.mutable_graph()) = graph.ToGraphProtoWithExternalInitializers(external_file_name,
+                                                                         initializer_size_threshold);
   return result;
 }
 
@@ -425,6 +472,32 @@ Status Model::Save(Model& model, const std::wstring& file_path) {
 }
 #endif
 
+template <typename T>
+static Status SaveModelWithExternalInitializers(Model& model,
+                                                const T& file_path,
+                                                const std::string& external_file_name,
+                                                size_t initializer_size_threshold) {
+  int fd = 0;
+  Status status = Env::Default().FileOpenWr(file_path, fd);
+  ORT_RETURN_IF_ERROR(status);
+
+  ORT_TRY {
+    status = Model::SaveWithExternalInitializers(model, fd, external_file_name,
+                                                 initializer_size_threshold);
+  }
+  ORT_CATCH(const std::exception& ex) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      status = Status(ONNXRUNTIME, FAIL, ex.what());
+    });
+  }
+  if (!status.IsOK()) {
+    GSL_SUPPRESS(es .84)
+    ORT_IGNORE_RETURN_VALUE(Env::Default().FileClose(fd));
+    return status;
+  }
+  return Env::Default().FileClose(fd);
+}
+
 Status Model::Load(const PathString& file_path,
                    ONNX_NAMESPACE::ModelProto& model_proto) {
   return LoadModel(file_path, model_proto);
@@ -440,6 +513,12 @@ Status Model::Load(const PathString& file_path, std::shared_ptr<Model>& p_model,
 
 Status Model::Save(Model& model, const std::string& file_path) {
   return SaveModel(model, file_path);
+}
+
+Status Model::SaveWithExternalInitializers(Model& model, const PathString& file_path,
+                                           const std::string& external_file_name,
+                                           size_t initializer_size_threshold) {
+  return SaveModelWithExternalInitializers(model, file_path, external_file_name, initializer_size_threshold);
 }
 
 Status Model::LoadFromBytes(int count, void* p_bytes, /*out*/ ONNX_NAMESPACE::ModelProto& model_proto) {
@@ -549,6 +628,25 @@ Status Model::Save(Model& model, int p_fd) {
   return Status(ONNXRUNTIME, INVALID_PROTOBUF, "Protobuf serialization failed.");
 }
 
+Status Model::SaveWithExternalInitializers(Model& model,
+                                           int fd,
+                                           const std::string& external_file_name,
+                                           size_t initializer_size_threshold) {
+  if (fd < 0) {
+    return Status(ONNXRUNTIME, INVALID_ARGUMENT, "<fd> is less than 0.");
+  }
+
+  ORT_RETURN_IF_ERROR(model.MainGraph().Resolve());
+
+  auto model_proto = model.ToGraphProtoWithExternalInitializers(external_file_name, initializer_size_threshold);
+  google::protobuf::io::FileOutputStream output(fd);
+  const bool result = model_proto.SerializeToZeroCopyStream(&output) && output.Flush();
+  if (result) {
+    return Status::OK();
+  }
+  return Status(ONNXRUNTIME, INVALID_PROTOBUF, "Protobuf serialization failed.");
+}
+
 common::Status Model::SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
                                       flatbuffers::Offset<fbs::Model>& fbs_model) const {
   auto producer_name = experimental::utils::SaveStringToOrtFormat(
@@ -558,6 +656,8 @@ common::Status Model::SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
   auto domain = builder.CreateSharedString(model_proto_.domain());
   auto doc_string = experimental::utils::SaveStringToOrtFormat(
       builder, model_proto_.has_doc_string(), model_proto_.doc_string());
+  auto graph_doc_string = experimental::utils::SaveStringToOrtFormat(
+      builder, model_proto_.has_graph() && model_proto_.graph().has_doc_string(), model_proto_.graph().doc_string());
 
   std::vector<flatbuffers::Offset<fbs::OperatorSetId>> op_set_ids_vec;
   op_set_ids_vec.reserve(model_proto_.opset_import().size());
@@ -570,17 +670,34 @@ common::Status Model::SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
   }
   auto op_set_ids = builder.CreateVector(op_set_ids_vec);
 
+  flatbuffers::Offset<flatbuffers::Vector<
+      flatbuffers::Offset<onnxruntime::experimental::fbs::StringStringEntry>>>
+      metadata_props{0};
+
+  // We will not serialize an empty metadata_props
+  if (!model_metadata_.empty()) {
+    std::vector<flatbuffers::Offset<onnxruntime::experimental::fbs::StringStringEntry>> metadata_props_vec;
+    metadata_props_vec.reserve(model_metadata_.size());
+    for (const auto& prop : model_metadata_) {
+      metadata_props_vec.push_back(
+          fbs::CreateStringStringEntryDirect(builder, prop.first.c_str(), prop.second.c_str()));
+    }
+    metadata_props = builder.CreateVector(metadata_props_vec);
+  }
+
   flatbuffers::Offset<fbs::Graph> fbs_graph;
   ORT_RETURN_IF_ERROR(graph_->SaveToOrtFormat(builder, fbs_graph));
 
   fbs::ModelBuilder mb(builder);
-  mb.add_ir_version(model_proto_.ir_version());
+  mb.add_ir_version(IrVersion());
   mb.add_opset_import(op_set_ids);
   mb.add_producer_name(producer_name);
   mb.add_producer_version(producer_version);
   mb.add_domain(domain);
-  mb.add_model_version(model_proto_.model_version());
+  mb.add_model_version(ModelVersion());
   mb.add_doc_string(doc_string);
+  mb.add_graph_doc_string(graph_doc_string);
+  mb.add_metadata_props(metadata_props);
   mb.add_graph(fbs_graph);
 
   // add graph
@@ -596,22 +713,55 @@ Model::Model() : model_path_{} {
 
 #if defined(ENABLE_ORT_FORMAT_LOAD)
 common::Status Model::LoadFromOrtFormat(const fbs::Model& fbs_model,
+#if !defined(ORT_MINIMAL_BUILD)
+                                        const IOnnxRuntimeOpSchemaRegistryList* local_registries,
+#endif
                                         const logging::Logger& logger,
                                         std::unique_ptr<Model>& model) {
   model.reset(new Model());
+
+  // Load the model metadata
+  if (const auto* fbs_metadata_props = fbs_model.metadata_props()) {
+    model->model_metadata_.reserve(fbs_metadata_props->size());
+    for (const auto* prop : *fbs_metadata_props) {
+      ORT_RETURN_IF(nullptr == prop, "Null entry in metadata_props. Invalid ORT format model.");
+      std::string key, value;
+      experimental::utils::LoadStringFromOrtFormat(key, prop->key());
+      experimental::utils::LoadStringFromOrtFormat(value, prop->value());
+      model->model_metadata_.insert({key, value});
+    }
+  }
 
 #if !defined(ORT_MINIMAL_BUILD)
   LOAD_STR_FROM_ORT_FORMAT(model->model_proto_, producer_name, fbs_model.producer_name());
   LOAD_STR_FROM_ORT_FORMAT(model->model_proto_, producer_version, fbs_model.producer_version());
   LOAD_STR_FROM_ORT_FORMAT(model->model_proto_, domain, fbs_model.domain());
   LOAD_STR_FROM_ORT_FORMAT(model->model_proto_, doc_string, fbs_model.doc_string());
+  if (fbs_model.graph_doc_string()) {
+    model->model_proto_.mutable_graph()->set_doc_string(fbs_model.graph_doc_string()->c_str());
+  }
   model->model_proto_.set_model_version(fbs_model.model_version());
   model->model_proto_.set_ir_version(fbs_model.ir_version());
+
+  auto schema_registry = std::make_shared<SchemaRegistryManager>();
+  if (local_registries != nullptr) {
+    for (const auto& schema_collection : *local_registries) {
+      schema_registry->RegisterRegistry(schema_collection);
+    }
+  }
+
+  // Populate the metadata to model_proto
+  for (auto& metadata : model->model_metadata_) {
+    const gsl::not_null<StringStringEntryProto*> prop{model->model_proto_.add_metadata_props()};
+    prop->set_key(metadata.first);
+    prop->set_value(metadata.second);
+  }
 #else
   experimental::utils::LoadStringFromOrtFormat(model->producer_name_, fbs_model.producer_name());
   experimental::utils::LoadStringFromOrtFormat(model->producer_version_, fbs_model.producer_version());
   experimental::utils::LoadStringFromOrtFormat(model->domain_, fbs_model.domain());
   experimental::utils::LoadStringFromOrtFormat(model->doc_string_, fbs_model.doc_string());
+  experimental::utils::LoadStringFromOrtFormat(model->graph_doc_string_, fbs_model.graph_doc_string());
   model->model_version_ = fbs_model.model_version();
   model->ir_version_ = fbs_model.ir_version();
 #endif
@@ -622,10 +772,14 @@ common::Status Model::LoadFromOrtFormat(const fbs::Model& fbs_model,
   auto fbs_graph = fbs_model.graph();
   ORT_RETURN_IF(nullptr == fbs_graph, "Graph is null. Invalid ORT format model.");
 
+#if !defined(ORT_MINIMAL_BUILD)
+  ORT_RETURN_IF_ERROR(Graph::LoadFromOrtFormat(*fbs_graph, *model, domain_to_version, schema_registry, logger,
+                                               model->graph_));
+#else
   ORT_RETURN_IF_ERROR(Graph::LoadFromOrtFormat(*fbs_graph, *model, domain_to_version, logger, model->graph_));
-
+#endif
   return Status::OK();
 }
-#endif
+#endif  // defined(ENABLE_ORT_FORMAT_LOAD)
 
 }  // namespace onnxruntime

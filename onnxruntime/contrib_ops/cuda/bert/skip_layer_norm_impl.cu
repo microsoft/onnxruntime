@@ -20,8 +20,8 @@ limitations under the License.
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "layer_norm.cuh"
-#include "skip_layer_norm_impl.h"
+#include "contrib_ops/cuda/bert/layer_norm.cuh"
+#include "contrib_ops/cuda/bert/skip_layer_norm_impl.h"
 #include <cuda_fp16.h>
 
 namespace onnxruntime {
@@ -100,6 +100,7 @@ bool ComputeSkipLayerNorm(
 }
 
 bool LaunchSkipLayerNormKernel(
+    cudaStream_t stream,
     void* output,
     const void* input,
     const void* skip,
@@ -110,9 +111,6 @@ bool LaunchSkipLayerNormKernel(
     int hidden_size,
     int element_count,
     size_t element_size) {
-  // use default stream
-  const cudaStream_t stream = nullptr;
-
   if (element_size == 2) {
     return ComputeSkipLayerNorm(
         stream,

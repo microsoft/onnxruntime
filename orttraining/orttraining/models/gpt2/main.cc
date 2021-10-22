@@ -9,22 +9,26 @@
 #include "core/session/environment.h"
 #include "core/framework/random_seed.h"
 #include "core/framework/bfc_arena.h"
-#include "core/providers/cuda/cuda_allocator.h"
-#include "orttraining/core/framework/mpi_context.h"
+#include "core/providers/providers.h"
+#ifdef USE_CUDA
+namespace onnxruntime {
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Cuda(const OrtCUDAProviderOptions* provider_options);
+std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const char* name);
+}  // namespace onnxruntime
+#endif
+#ifdef USE_ROCM
+namespace onnxruntime {
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Rocm(const OrtROCMProviderOptions* provider_options);
+std::unique_ptr<IAllocator> CreateROCMPinnedAllocator(int16_t device_id, const char* name);
+}  // namespace onnxruntime
+#endif
+#include "orttraining/core/framework/communication/mpi/mpi_context.h"
 #include "orttraining/core/framework/tensorboard/event_writer.h"
 #include "orttraining/core/session/training_session.h"
 #include "orttraining/models/runner/constant.h"
 #include "orttraining/models/runner/training_runner.h"
 #include "orttraining/models/runner/training_util.h"
 #include "orttraining/models/runner/data_loader.h"
-
-namespace onnxruntime {
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CUDA(OrtDevice::DeviceId device_id,
-                                                                               OrtCudnnConvAlgoSearch cudnn_conv_algo_search = OrtCudnnConvAlgoSearch::EXHAUSTIVE,
-                                                                               size_t cuda_mem_limit = std::numeric_limits<size_t>::max(),
-                                                                               onnxruntime::ArenaExtendStrategy arena_extend_strategy = ArenaExtendStrategy::kNextPowerOfTwo,
-                                                                               bool do_copy_in_default_stream = true);
-}
 
 using namespace onnxruntime;
 using namespace onnxruntime::common;
@@ -69,7 +73,8 @@ Status ParseArguments(int argc, char* argv[], GPT2Parameters& params, OrtParamet
         cxxopts::value<int>()->default_value("1"))
       ("seed", "Random seed.", cxxopts::value<int64_t>()->default_value("-1"))
       ("use_mixed_precision", "Whether to use a mix of fp32 and fp16 arithmetic on GPU.", cxxopts::value<bool>()->default_value("false"))
-      ("use_adasum", "Whether to use Adasum for allreduction.", cxxopts::value<bool>()->default_value("false"))
+      ("use_bfloat16", "Whether to use BFloat16 arithmetic on GPU.", cxxopts::value<bool>()->default_value("false"))
+      ("enable_adasum", "Whether to use Adasum for allreduction.", cxxopts::value<bool>()->default_value("false"))
       ("allreduce_in_fp16", "Whether to do AllReduce in fp16. If false, AllReduce will be done in fp32", cxxopts::value<bool>()->default_value("true"))
       ("loss_scale", "Loss scaling, positive power of 2 values can improve fp16 convergence. "
         "Set it 0 to uses dynamic scaling; Other none-zero value will used as static scale",
@@ -77,6 +82,9 @@ Status ParseArguments(int argc, char* argv[], GPT2Parameters& params, OrtParamet
       ("use_fp16_moments", "Whether to use fp16 version of moments.", cxxopts::value<bool>()->default_value("false"))
       ("use_fp16_initializer", "FP16 weights will be created. Otherwise, cast nodes will be inserted for converting weights from FP32 to FP16",
         cxxopts::value<bool>()->default_value("true"))
+      ("use_gist", "Whether to use GIST encoding/decoding.")
+      ("gist_op", "Opearator type(s) to which GIST is applied.", cxxopts::value<int>()->default_value("0"))
+      ("gist_compr", "Compression type used for GIST", cxxopts::value<std::string>()->default_value("GistPack8"))
       ("max_seq_length",
         "The maximum total input sequence length after WordPiece tokenization. "
         "Sequences longer than this will be truncated, and sequences shorter "
@@ -124,10 +132,12 @@ Status ParseArguments(int argc, char* argv[], GPT2Parameters& params, OrtParamet
     }
     params.lr_params.warmup_ratio = ratio;
 
-    params.use_adasum = flags["use_adasum"].as<bool>();
+    params.enable_adasum = flags["enable_adasum"].as<bool>();
 
     params.num_train_steps = flags["num_train_steps"].as<int>();
     params.batch_size = flags["train_batch_size"].as<int>();
+    params.gist_config.op_type = flags["gist_op"].as<int>();
+    params.gist_config.compr_type = flags["gist_compr"].as<std::string>();
     if (flags.count("eval_batch_size")) {
       params.eval_batch_size = flags["eval_batch_size"].as<int>();
     } else {
@@ -155,6 +165,7 @@ Status ParseArguments(int argc, char* argv[], GPT2Parameters& params, OrtParamet
     }
 
     params.use_mixed_precision = flags["use_mixed_precision"].as<bool>();
+    params.use_bfloat16 = flags["use_bfloat16"].as<bool>();
     params.allreduce_in_mixed_precision_type = flags["allreduce_in_fp16"].as<bool>() && params.use_mixed_precision;
     if (params.use_mixed_precision) {
       printf("Mixed precision training is enabled.\n");
@@ -211,6 +222,7 @@ Status ParseArguments(int argc, char* argv[], GPT2Parameters& params, OrtParamet
 
     params.deepspeed_zero = ZeROConfig(flags["deepspeed_zero_stage"].as<int>());
     params.enable_grad_norm_clip = flags["enable_grad_norm_clip"].as<bool>();
+    params.use_gist = flags.count("use_gist") > 0;
     float alpha = flags["alpha"].as<float>();
     float beta = flags["beta"].as<float>();
     float lambda = flags["lambda"].as<float>();
@@ -240,7 +252,7 @@ Status ParseArguments(int argc, char* argv[], GPT2Parameters& params, OrtParamet
 
     int64_t seed = flags["seed"].as<int64_t>();
     if (params.horizontal_parallel_size > 1 && seed <= 0) {
-      seed = 8211; // Megatron needs a random seed.
+      seed = 8211;  // Megatron needs a random seed.
     }
     if (seed > 0) {
       utils::SetRandomSeed(seed);
@@ -280,7 +292,7 @@ float GetLossValue(const Tensor& loss_tensor) {
 // mapping to define what to be stored in mapped_dimensions
 // see GetTensorDimensionsFromInputs() in training_util.h and training_runner.cc for more details
 const std::map<std::string, std::pair<std::string, size_t>> input_to_dimension_mapping = {
-  {"input_ids", {"SeqLen", 0}},   // int64[batch,seqlen]    "seqlen" -> "SeqLen", 0
+    {"input_ids", {"SeqLen", 0}},  // int64[batch,seqlen]    "seqlen" -> "SeqLen", 0
 };
 
 // generic properties for storing perf metrics
@@ -291,6 +303,7 @@ void setup_training_params(GPT2Parameters& params) {
   params.model_with_loss_func_path = ToPathString(params.model_name) + ORT_TSTR("_with_cost.onnx");
   params.model_with_training_graph_path = ToPathString(params.model_name) + ORT_TSTR("_bw.onnx");
   params.model_actual_running_graph_path = ToPathString(params.model_name) + ORT_TSTR("_bw_running.onnx");
+  params.model_with_gist_nodes_path = ToPathString(params.model_name) + ORT_TSTR("_with_gist.onnx");
 
   params.loss_func_info = LossFunctionInfo(OpDef("SparseSoftmaxCrossEntropy", kOnnxDomain),
                                            "mlm_loss",
@@ -312,8 +325,8 @@ void setup_training_params(GPT2Parameters& params) {
     params.data_parallel_size = data_group_size;
   }
 
-  params.use_adasum = params.use_adasum && (params.data_parallel_size > 1);
-  if (params.use_adasum)
+  params.enable_adasum = params.enable_adasum && (params.data_parallel_size > 1);
+  if (params.enable_adasum)
     std::cout << "Use Adsum for allreduce." << std::endl;
 #endif
 
@@ -344,9 +357,23 @@ void setup_training_params(GPT2Parameters& params) {
   params.model_type = "gpt2";
 
 #ifdef USE_CUDA
-  OrtDevice::DeviceId device_id = static_cast<OrtDevice::DeviceId>(MPIContext::GetInstance().GetLocalRank());
-  params.providers.emplace(kCudaExecutionProvider, CreateExecutionProviderFactory_CUDA(device_id));
-  params.input_allocator = std::make_shared<CUDAPinnedAllocator>(device_id, CUDA_PINNED);
+  {
+    OrtCUDAProviderOptions info;
+    info.device_id=gsl::narrow<OrtDevice::DeviceId>(MPIContext::GetInstance().GetLocalRank());
+    info.do_copy_in_default_stream=true;
+    params.providers.emplace(kCudaExecutionProvider, CreateExecutionProviderFactory_Cuda(&info));
+    params.input_allocator = CreateCUDAPinnedAllocator(info.device_id, CUDA_PINNED);
+  }
+#endif
+
+#ifdef USE_ROCM
+  {
+    OrtROCMProviderOptions info;
+    info.device_id=gsl::narrow<OrtDevice::DeviceId>(MPIContext::GetInstance().GetLocalRank());
+    info.do_copy_in_default_stream=true;
+    params.providers.emplace(kRocmExecutionProvider, CreateExecutionProviderFactory_Rocm(&info));
+    params.input_allocator = CreateROCMPinnedAllocator(info.device_id, CUDA_PINNED);
+  }
 #endif
 
   params.use_nccl = true;
@@ -405,7 +432,7 @@ static Status RunPerformanceTest(const GPT2Parameters& params, const Environment
                                                           onnx::TensorProto_DataType_INT64};
   const size_t num_of_perf_samples = params.num_train_steps * params.batch_size;
   auto random_perf_data = std::make_shared<RandomDataSet>(num_of_perf_samples, tensor_names, tensor_shapes, tensor_types);
-  auto random_perf_data_loader = onnxruntime::make_unique<SingleDataLoader>(random_perf_data, tensor_names);
+  auto random_perf_data_loader = std::make_unique<SingleDataLoader>(random_perf_data, tensor_names);
 
   TrainingRunner runner(params, env);
   ORT_RETURN_IF_ERROR(runner.Initialize());
@@ -417,22 +444,22 @@ static Status RunPerformanceTest(const GPT2Parameters& params, const Environment
 static Status RunTraining(const GPT2Parameters& params, const Environment& env) {
   const size_t max_num_files_preload = 2;
 
-  auto runner = onnxruntime::make_unique<TrainingRunner>(params, env);
+  auto runner = std::make_unique<TrainingRunner>(params, env);
   ORT_RETURN_IF_ERROR(runner->Initialize());
 
   auto rank_in_data_parallel_group = MPIContext::GetInstance().GetWorldRank() / params.horizontal_parallel_size;
-  auto training_data_loader = onnxruntime::make_unique<DataLoader>(params.input_name_map,
-                                                                   params.train_data_dir,
-                                                                   max_num_files_preload,
-                                                                   rank_in_data_parallel_group,
-                                                                   params.data_parallel_size);
+  auto training_data_loader = std::make_unique<DataLoader>(params.input_name_map,
+                                                           params.train_data_dir,
+                                                           max_num_files_preload,
+                                                           rank_in_data_parallel_group,
+                                                           params.data_parallel_size);
 
   std::unique_ptr<DataLoader> test_data_loader;
   // Evaluation is only done in device #0
   if (MPIContext::GetInstance().GetWorldRank() == 0) {
-    test_data_loader = onnxruntime::make_unique<DataLoader>(params.input_name_map,
-                                                            params.test_data_dir,
-                                                            max_num_files_preload);
+    test_data_loader = std::make_unique<DataLoader>(params.input_name_map,
+                                                    params.test_data_dir,
+                                                    max_num_files_preload);
   }
 
   if (!params.perf_output_dir.empty()) {
@@ -445,9 +472,9 @@ static Status RunTraining(const GPT2Parameters& params, const Environment& env) 
 
   // only test and save trained model on device #0
   if (MPIContext::GetInstance().GetWorldRank() == 0) {
-    test_data_loader = onnxruntime::make_unique<DataLoader>(params.input_name_map,
-                                                            params.test_data_dir,
-                                                            max_num_files_preload);
+    test_data_loader = std::make_unique<DataLoader>(params.input_name_map,
+                                                    params.test_data_dir,
+                                                    max_num_files_preload);
 
     ORT_RETURN_IF_ERROR(runner->EndTraining(test_data_loader.get()));
   }

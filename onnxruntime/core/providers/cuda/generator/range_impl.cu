@@ -22,15 +22,15 @@ __global__ void RangeKernel(const T start, const T delta, const int count, T* ou
 }
 
 template <typename T>
-bool RangeImpl(const T start, const T delta, const int count, T* output) {
+bool RangeImpl(cudaStream_t stream, const T start, const T delta, const int count, T* output) {
   constexpr int block_size = 256;
   int grid_size = (count + block_size - 1) / block_size;
-  RangeKernel<T><<<grid_size, block_size, 0>>>(start, delta, count, output);
+  RangeKernel<T><<<grid_size, block_size, 0, stream>>>(start, delta, count, output);
   return CUDA_CALL(cudaPeekAtLastError());
 }
 
 #define SPECIALIZED_IMPL(T) \
-  template bool RangeImpl<T>(const T start, const T delta, const int count, T* output);
+  template bool RangeImpl<T>(cudaStream_t stream, const T start, const T delta, const int count, T* output);
 
 SPECIALIZED_IMPL(int16_t)
 SPECIALIZED_IMPL(int32_t)

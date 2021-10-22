@@ -12,12 +12,35 @@ using System.Buffers;
 namespace Microsoft.ML.OnnxRuntime
 {
     /// <summary>
-    /// Represents an Inference Session on an ONNX Model
+    /// Represents an Inference Session on an ONNX Model.
+    /// This is a IDisposable class and it must be disposed of
+    /// using either a explicit call to Dispose() method or
+    /// a pattern of using() block. If this is a member of another
+    /// class that class must also become IDisposable and it must
+    /// dispose of InferfenceSession in its Dispose() method.
     /// </summary>
     public class InferenceSession : IDisposable
     {
-        protected IntPtr _nativeHandle;
-        protected Dictionary<string, NodeMetadata> _inputMetadata, _outputMetadata, _overridableInitializerMetadata;
+        /// <summary>
+        /// A pointer to a underlying native instance of OrtSession
+        /// </summary>
+        private IntPtr _nativeHandle;
+
+        /// <summary>
+        /// Dictionary that represents input metadata
+        /// </summary>
+        private Dictionary<string, NodeMetadata> _inputMetadata;
+
+        /// <summary>
+        /// Dictionary that represent output metadata
+        /// </summary>
+        private Dictionary<string, NodeMetadata> _outputMetadata;
+
+        /// <summary>
+        /// Dictionary that represents overridableInitializers metadata
+        /// </summary>
+        private Dictionary<string, NodeMetadata> _overridableInitializerMetadata;
+		
         private SessionOptions _builtInSessionOptions = null;
         private RunOptions _builtInRunOptions = null;
         private ModelMetadata _modelMetadata = null;
@@ -36,6 +59,21 @@ namespace Microsoft.ML.OnnxRuntime
             Init(modelPath, _builtInSessionOptions);
         }
 
+        /// <summary>
+        /// Constructs an InferenceSession from a model file and it will use 
+        /// the provided pre-packed weights container to store and share pre-packed buffers 
+        /// of shared initializers across sessions if any.
+        /// </summary>
+        /// <param name="modelPath">Model path</param>
+        /// <param name="prepackedWeightsContainer">Instance of PrepackedWeightsContainer. 
+        /// Lifetime of 'prepackedWeightsContainer' must be
+        /// managed by the user and it must outlive any sessions reliant on it</param>
+        public InferenceSession(string modelPath, PrePackedWeightsContainer prepackedWeightsContainer)
+        {
+            _builtInSessionOptions = new SessionOptions(); // need to be disposed
+            Init(modelPath, _builtInSessionOptions, prepackedWeightsContainer);
+        }
+
 
         /// <summary>
         /// Constructs an InferenceSession from a model file, with some additional session options
@@ -45,6 +83,23 @@ namespace Microsoft.ML.OnnxRuntime
         public InferenceSession(string modelPath, SessionOptions options)
         {
             Init(modelPath, options);
+        }
+
+
+        /// <summary>
+        /// Constructs an InferenceSession from a model file, with some additional session options
+        /// and it will use the provided pre-packed weights container to store and share pre-packed buffers 
+        /// of shared initializers across sessions if any.
+        /// </summary>
+        /// <param name="modelPath">Model path</param>
+        /// <param name="options">Session options</param>
+        /// <param name="prepackedWeightsContainer">Instance of PrepackedWeightsContainer. 
+        /// Lifetime of 'prepackedWeightsContainer' must be
+        /// managed by the user and it must outlive any sessions reliant on it</param>
+        public InferenceSession(string modelPath, SessionOptions options,
+            PrePackedWeightsContainer prepackedWeightsContainer)
+        {
+            Init(modelPath, options, prepackedWeightsContainer);
         }
 
         /// <summary>
@@ -58,6 +113,21 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         /// <summary>
+        /// Constructs an InferenceSession from a model data (in byte array) and it will use 
+        /// the provided pre-packed weights container to store and share pre-packed buffers 
+        /// of shared initializers across sessions if any.
+        /// </summary>
+        /// <param name="model">Model as byte array</param>
+        /// <param name="prepackedWeightsContainer">Instance of PrepackedWeightsContainer. 
+        /// Lifetime of 'prepackedWeightsContainer' must be
+        /// managed by the user and it must outlive any sessions reliant on it</param>
+        public InferenceSession(byte[] model, PrePackedWeightsContainer prepackedWeightsContainer)
+        {
+            _builtInSessionOptions = new SessionOptions(); // need to be disposed
+            Init(model, _builtInSessionOptions, prepackedWeightsContainer);
+        }
+
+        /// <summary>
         /// Constructs an InferenceSession from a model data in byte array, with some additional session options
         /// </summary>
         /// <param name="model"></param>
@@ -67,6 +137,21 @@ namespace Microsoft.ML.OnnxRuntime
             Init(model, options);
         }
 
+        /// <summary>
+        /// Constructs an InferenceSession from a model data (in byte array) with some additional
+        /// session options and it will use the provided pre-packed weights container to store
+        /// and share pre-packed buffers of shared initializers across sessions if any.
+        /// </summary>
+        /// <param name="model">Model as byte array</param>
+        /// <param name="options">Session Options</param>
+        /// <param name="prepackedWeightsContainer">Instance of PrepackedWeightsContainer. 
+        /// Lifetime of 'prepackedWeightsContainer' must be
+        /// managed by the user and it must outlive any sessions reliant on it</param>
+        public InferenceSession(byte[] model, SessionOptions options,
+                                PrePackedWeightsContainer prepackedWeightsContainer)
+        {
+            Init(model, options, prepackedWeightsContainer);
+        }
         /// <summary>
         /// Meta data regarding the input nodes, keyed by input names
         /// </summary>
@@ -272,13 +357,12 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         /// <summary>
-        ///
         /// Runs the loaded model for the given inputs and outputs.
         /// 
         /// Outputs need to be created with correct type and dimension to receive the fetched data.
         /// </summary>
         /// <param name="inputs">Specify a collection of <see cref="NamedOnnxValue"/> that indicates the input values.</param>
-        /// <param name="output">Specify a collection of <see cref="NamedOnnxValue"/> that indicates the output values.</param>
+        /// <param name="outputs">Specify a collection of <see cref="NamedOnnxValue"/> that indicates the output values.</param>
         public void Run(
             IReadOnlyCollection<NamedOnnxValue> inputs,
             IReadOnlyCollection<NamedOnnxValue> outputs)
@@ -293,14 +377,14 @@ namespace Microsoft.ML.OnnxRuntime
         /// Outputs need to be created with correct type and dimension to receive the fetched data.
         /// </summary>
         /// <param name="inputs">Specify a collection of <see cref="NamedOnnxValue"/> that indicates the input values.</param>
-        /// <param name="output">Specify a collection of <see cref="NamedOnnxValue"/> that indicates the output values.</param>
+        /// <param name="outputs">Specify a collection of <see cref="NamedOnnxValue"/> that indicates the output values.</param>
         /// <param name="options"></param>
         public void Run(
             IReadOnlyCollection<NamedOnnxValue> inputs,
             IReadOnlyCollection<NamedOnnxValue> outputs,
             RunOptions options)
         {
-            using(var cleanupList = new DisposableList<IDisposable>())
+            using (var cleanupList = new DisposableList<IDisposable>())
             {
                 var inputNamesArray = ConvertNamesToUtf8(inputs, i => i.Name, cleanupList);
                 var inputValuesArray = GetOrtValuesHandles(inputs, cleanupList);
@@ -357,7 +441,7 @@ namespace Microsoft.ML.OnnxRuntime
                 throw new ArgumentException($"Length of {nameof(outputNames)} ({outputNames.Count}) must match that of {nameof(outputValues)} ({outputValues.Count}).");
             }
 
-            using(var cleanupList = new DisposableList<IDisposable>())
+            using (var cleanupList = new DisposableList<IDisposable>())
             {
                 // prepare inputs
                 var inputNamesArray = ConvertNamesToUtf8(inputs, i => i.Name, cleanupList);
@@ -388,7 +472,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         /// <param name="inputNames">Specify a collection of string that indicates the input names. Should match <paramref name="inputValues"/>.</param>
         /// <param name="inputValues">Specify a collection of <see cref="FixedBufferOnnxValue"/> that indicates the input values.</param>
-        /// <param name="output">Specify a collection of <see cref="NamedOnnxValue"/> that indicates the output values.</param>
+        /// <param name="outputs">Specify a collection of <see cref="NamedOnnxValue"/> that indicates the output values.</param>
         public void Run(
             IReadOnlyCollection<string> inputNames,
             IReadOnlyCollection<FixedBufferOnnxValue> inputValues,
@@ -405,7 +489,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         /// <param name="inputNames">Specify a collection of string that indicates the input names. Should match <paramref name="inputValues"/>.</param>
         /// <param name="inputValues">Specify a collection of <see cref="FixedBufferOnnxValue"/> that indicates the input values.</param>
-        /// <param name="output">Specify a collection of <see cref="NamedOnnxValue"/> that indicates the output values.</param>
+        /// <param name="outputs">Specify a collection of <see cref="NamedOnnxValue"/> that indicates the output values.</param>
         /// <param name="options"></param>
         public void Run(
             IReadOnlyCollection<string> inputNames,
@@ -418,7 +502,7 @@ namespace Microsoft.ML.OnnxRuntime
                 throw new ArgumentException($"Length of {nameof(inputNames)} ({inputNames.Count}) must match that of {nameof(inputValues)} ({inputValues.Count}).");
             }
 
-            using(var cleanupList = new DisposableList<IDisposable>())
+            using (var cleanupList = new DisposableList<IDisposable>())
             {
                 // prepare inputs
                 var inputNamesArray = ConvertNamesToUtf8(inputNames, n => n, cleanupList);
@@ -445,7 +529,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// Create OrtIoBinding instance to bind pre-allocated buffers
         /// to input/output
         /// </summary>
-        /// <returns></returns>
+        /// <returns>A new instance of OrtIoBinding</returns>
         public OrtIoBinding CreateIoBinding()
         {
             return new OrtIoBinding(this);
@@ -459,8 +543,8 @@ namespace Microsoft.ML.OnnxRuntime
         /// the expense of fetching them and pairing with names.
         /// You can still fetch the outputs by calling OrtIOBinding.GetOutputValues()
         /// </summary>
-        /// <param name="runOptions"></param>
-        /// <param name="ioBinding"></param>
+        /// <param name="runOptions">runOptions</param>
+        /// <param name="ioBinding">ioBinding instance to use</param>
         public void RunWithBinding(RunOptions runOptions, OrtIoBinding ioBinding)
         {
             NativeApiStatus.VerifySuccess(NativeMethods.OrtRunWithBinding(Handle, runOptions.Handle, ioBinding.Handle));
@@ -478,6 +562,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// call to retrieve output names. They will be paired with the returned OrtValues and combined into DisposbleNamedOnnxValues.
         /// Otherwise, the method will retrieve output names from the OrtIoBinding instance.
         /// It is an error if you supply a different number of names than the returned outputs</param>
+        /// <returns>A disposable collection of DisposableNamedOnnxValue that encapsulate output OrtValues</returns>
         public IDisposableReadOnlyCollection<DisposableNamedOnnxValue> RunWithBindingAndNames(RunOptions runOptions, OrtIoBinding ioBinding, string[] names = null)
         {
             NativeApiStatus.VerifySuccess(NativeMethods.OrtRunWithBinding(Handle, runOptions.Handle, ioBinding.Handle));
@@ -504,7 +589,8 @@ namespace Microsoft.ML.OnnxRuntime
                         var ortValue = ortValues.ElementAt(i);
                         result.Add(DisposableNamedOnnxValue.CreateFromOrtValue(outputNames[i], ortValue));
                     }
-                } catch(Exception e)
+                }
+                catch (Exception e)
                 {
                     result.Dispose();
                     throw e;
@@ -514,8 +600,9 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         /// <summary>
-        /// Ends profiling for the session. Returns the profile file name.
-        /// 
+        /// Ends profiling for the session.
+        /// </summary>
+        /// <returns> Returns the profile file name.</returns>
         public string EndProfiling()
         {
             IntPtr nameHandle = IntPtr.Zero;
@@ -523,7 +610,7 @@ namespace Microsoft.ML.OnnxRuntime
             NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionEndProfiling(_nativeHandle,
                                                                    allocator.Pointer,
                                                                    out nameHandle));
-            using(var allocation = new OrtMemoryAllocation(allocator, nameHandle, 0))
+            using (var allocation = new OrtMemoryAllocation(allocator, nameHandle, 0))
             {
                 return NativeOnnxValueHelper.StringFromNativeUtf8(nameHandle);
             }
@@ -597,8 +684,8 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
 
-         private DisposableList<OrtValue> RunImpl(RunOptions options, IntPtr[] inputNames, IntPtr[] inputValues, IntPtr[] outputNames,
-            DisposableList<IDisposable> cleanupList)
+        private DisposableList<OrtValue> RunImpl(RunOptions options, IntPtr[] inputNames, IntPtr[] inputValues, IntPtr[] outputNames,
+           DisposableList<IDisposable> cleanupList)
         {
             var ortValues = new DisposableList<OrtValue>(outputNames.Length);
             cleanupList.Add(ortValues);
@@ -642,6 +729,11 @@ namespace Microsoft.ML.OnnxRuntime
             return result;
         }
 
+        /// <summary>
+        /// This property queries model metadata, constructs
+        /// an instance of ModelMetadata and caches it
+        /// </summary>
+        /// <returns>Instance of ModelMetdata</returns>
         public ModelMetadata ModelMetadata
         {
             get
@@ -663,31 +755,57 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         public ulong ProfilingStartTimeNs
         {
-           get
-           {
-               return _profilingStartTimeNs;
-           }
-        }  
+            get
+            {
+                return _profilingStartTimeNs;
+            }
+        }
 
         #endregion
 
         #region private methods
 
-        private void Init(string modelPath, SessionOptions options)
+        private void Init(string modelPath, SessionOptions options,
+                          PrePackedWeightsContainer prepackedWeightsContainer = null)
         {
             var envHandle = OrtEnv.Handle;
             var session = IntPtr.Zero;
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateSession(envHandle, NativeMethods.GetPlatformSerializedString(modelPath), options.Handle, out session));
+
+            if (prepackedWeightsContainer == null)
+            {
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateSession(envHandle, NativeMethods.GetPlatformSerializedString(modelPath),
+                    options.Handle, out session));
+            }
+
+            else
+            {
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateSessionWithPrepackedWeightsContainer(
+                    envHandle, NativeMethods.GetPlatformSerializedString(modelPath),
+                    options.Handle, prepackedWeightsContainer.Pointer, out session));
+            }
 
             InitWithSessionHandle(session, options);
         }
 
-        private void Init(byte[] modelData, SessionOptions options)
+        private void Init(byte[] modelData, SessionOptions options,
+                          PrePackedWeightsContainer prepackedWeightsContainer = null)
         {
             var envHandle = OrtEnv.Handle;
             var session = IntPtr.Zero;
 
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateSessionFromArray(envHandle, modelData, (UIntPtr)modelData.Length, options.Handle, out session));
+            if (prepackedWeightsContainer == null)
+            {
+
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateSessionFromArray(envHandle, modelData, (UIntPtr)modelData.Length, options.Handle, out session));
+            }
+
+            else
+            {
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateSessionFromArrayWithPrepackedWeightsContainer(
+                    envHandle, modelData, (UIntPtr)modelData.Length, options.Handle, prepackedWeightsContainer.Pointer,
+                    out session));
+
+            }
 
             InitWithSessionHandle(session, options);
         }
@@ -740,8 +858,8 @@ namespace Microsoft.ML.OnnxRuntime
                 // set profiling's start time
                 UIntPtr startTime = UIntPtr.Zero;
                 NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionGetProfilingStartTimeNs(_nativeHandle,
-                                                                    out startTime)); 
-                _profilingStartTimeNs = (ulong) startTime;
+                                                                    out startTime));
+                _profilingStartTimeNs = (ulong)startTime;
             }
             catch (OnnxRuntimeException e)
             {
@@ -804,7 +922,7 @@ namespace Microsoft.ML.OnnxRuntime
                                             (UIntPtr)index,
                                             allocator.Pointer,
                                             out nameHandle));
-            using(var ortAllocation = new OrtMemoryAllocation(allocator, nameHandle, 0))
+            using (var ortAllocation = new OrtMemoryAllocation(allocator, nameHandle, 0))
             {
                 str = NativeOnnxValueHelper.StringFromNativeUtf8(nameHandle);
             }
@@ -931,15 +1049,22 @@ namespace Microsoft.ML.OnnxRuntime
             Dispose(false);
         }
 
+        /// <summary>
+        /// IDisposable implementation
+        /// </summary>
         public void Dispose()
         {
             Dispose(true);
             GC.SuppressFinalize(this);
         }
 
+        /// <summary>
+        /// IDisposable implementation
+        /// </summary>
+        /// <param name="disposing">true if invoked from Dispose() method</param>
         protected virtual void Dispose(bool disposing)
         {
-            if(_disposed)
+            if (_disposed)
             {
                 return;
             }
@@ -978,51 +1103,42 @@ namespace Microsoft.ML.OnnxRuntime
     /// </summary>
     public class NodeMetadata
     {
-        private OnnxValueType _onnxValueType;
-        private int[] _dimensions;
-        private string[] _symbolicDimensions;
-        private Type _type;
-
         internal NodeMetadata(OnnxValueType onnxValueType, int[] dimensions, string[] symbolicDimensions, Type type)
         {
-            _onnxValueType = onnxValueType;
-            _dimensions = dimensions;
-            _symbolicDimensions = symbolicDimensions;
-            _type = type;
+            OnnxValueType = onnxValueType;
+            Dimensions = dimensions;
+            SymbolicDimensions = symbolicDimensions;
+            ElementType = type;
         }
 
-        public OnnxValueType OnnxValueType
-        {
-            get
-            {
-                return _onnxValueType;
-            }
-        }
+        /// <summary>
+        /// Type value of the node
+        /// </summary>
+        /// <value>A value of OnnxValueType enum</value>
+        public OnnxValueType OnnxValueType { get; }
 
-        public int[] Dimensions
-        {
-            get
-            {
-                return _dimensions;
-            }
-        }
+        /// <summary>
+        /// Shape
+        /// </summary>
+        /// <value>Array of dimensions</value>
+        public int[] Dimensions { get; }
 
-        public string[] SymbolicDimensions
-        {
-            get
-            {
-                return _symbolicDimensions;
-            }
-        }
+        /// <summary>
+        /// Symbolic dimensions
+        /// </summary>
+        /// <value>Array of symbolic dimensions if present.</value>
+        public string[] SymbolicDimensions { get; }
 
-        public System.Type ElementType
-        {
-            get
-            {
-                return _type;
-            }
-        }
+        /// <summary>
+        /// .NET type that corresponds to this Node.
+        /// </summary>
+        /// <value>System.Type</value>
+        public System.Type ElementType { get; }
 
+        /// <summary>
+        /// Whether it is a Tensor
+        /// </summary>
+        /// <value>currently always returns true</value>
         public bool IsTensor
         {
             get
@@ -1033,12 +1149,17 @@ namespace Microsoft.ML.OnnxRuntime
     }
 
 
+    /// <summary>
+    /// A class that queries and caches model metadata and exposes
+    /// it as properties
+    /// </summary>
     public class ModelMetadata
     {
         private string _producerName;
         private string _graphName;
         private string _domain;
         private string _description;
+        private string _graphDescription;
         private long _version;
         private Dictionary<string, string> _customMetadataMap = new Dictionary<string, string>();
 
@@ -1088,6 +1209,14 @@ namespace Microsoft.ML.OnnxRuntime
                     _description = NativeOnnxValueHelper.StringFromNativeUtf8(descriptionHandle);
                 }
 
+                // Process graph description
+                IntPtr graphDescriptionHandle = IntPtr.Zero;
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtModelMetadataGetGraphDescription(modelMetadataHandle, allocator.Pointer, out graphDescriptionHandle));
+                using (var ortAllocation = new OrtMemoryAllocation(allocator, graphDescriptionHandle, 0))
+                {
+                    _graphDescription = NativeOnnxValueHelper.StringFromNativeUtf8(graphDescriptionHandle);
+                }
+
                 // Process version
                 NativeApiStatus.VerifySuccess(NativeMethods.OrtModelMetadataGetVersion(modelMetadataHandle, out _version));
 
@@ -1109,7 +1238,7 @@ namespace Microsoft.ML.OnnxRuntime
                     }
 
                     // Process each key via the stored key handles
-                    foreach(var allocation in ortAllocationKeys)
+                    foreach (var allocation in ortAllocationKeys)
                     {
                         IntPtr keyHandle = allocation.Pointer;
                         IntPtr valueHandle = IntPtr.Zero;
@@ -1132,12 +1261,16 @@ namespace Microsoft.ML.OnnxRuntime
             {
 
                 // Free ModelMetadata handle
-                 NativeMethods.OrtReleaseModelMetadata(modelMetadataHandle);
+                NativeMethods.OrtReleaseModelMetadata(modelMetadataHandle);
 
-             }
+            }
 
         }
 
+        /// <summary>
+        /// Producer name string
+        /// </summary>
+        /// <value>producer name string</value>
         public string ProducerName
         {
             get
@@ -1146,6 +1279,10 @@ namespace Microsoft.ML.OnnxRuntime
             }
         }
 
+        /// <summary>
+        /// Graph name for this model
+        /// </summary>
+        /// <value>graph name string</value>
         public string GraphName
         {
             get
@@ -1154,6 +1291,10 @@ namespace Microsoft.ML.OnnxRuntime
             }
         }
 
+        /// <summary>
+        /// Domain for this model
+        /// </summary>
+        /// <value>domain name string</value>
         public string Domain
         {
             get
@@ -1162,6 +1303,10 @@ namespace Microsoft.ML.OnnxRuntime
             }
         }
 
+        /// <summary>
+        /// Unstructured model description
+        /// </summary>
+        /// <value>description string</value>
         public string Description
         {
             get
@@ -1170,6 +1315,22 @@ namespace Microsoft.ML.OnnxRuntime
             }
         }
 
+        /// <summary>
+        /// Unstructured graph description
+        /// </summary>
+        /// <value>description string</value>
+        public string GraphDescription
+        {
+            get
+            {
+                return _graphDescription;
+            }
+        }
+
+        /// <summary>
+        /// Version number
+        /// </summary>
+        /// <value>long version integer</value>
         public long Version
         {
             get
@@ -1178,6 +1339,10 @@ namespace Microsoft.ML.OnnxRuntime
             }
         }
 
+        /// <summary>
+        /// Custom metadata key/value pairs
+        /// </summary>
+        /// <value>An instance of a Dictionary<string,string></value>
         public Dictionary<string, string> CustomMetadataMap
         {
             get

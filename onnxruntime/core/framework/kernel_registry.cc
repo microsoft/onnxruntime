@@ -1,9 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/framework/kernel_registry.h"
+
+#include <algorithm>
 #include <memory>
 #include <unordered_map>
-#include "core/framework/kernel_registry.h"
+
 #include "core/framework/session_state.h"
 
 using namespace ::onnxruntime::common;
@@ -66,7 +69,7 @@ class TypeBindingResolver {
       : node_(node),
         type_binding_map_() {
     if (use_lookup_map) {
-      type_binding_map_ = onnxruntime::make_unique<TypeBindingMap>();
+      type_binding_map_ = std::make_unique<TypeBindingMap>();
       TraverseFormalParametersWithTypeProto(
           node_,
           [](const ONNX_NAMESPACE::OpSchema::FormalParameter&) -> bool { return true; },
@@ -149,7 +152,7 @@ bool KernelRegistry::VerifyKernelDef(const onnxruntime::Node& node,
   }
 
   // check if type matches
-  auto& kernel_type_constraints = kernel_def.TypeConstraints();
+  auto& kernel_type_constraints = kernel_def.EnabledTypeConstraints();
 
   // Note: The number of formal input/output parameters is N and the number of
   // type constraints is M. We select between an O(N*M) and an O(N+M) approach.
@@ -227,13 +230,6 @@ static std::string ToString(const std::vector<std::string>& error_strs) {
   return ostr.str();
 }
 
-Status KernelRegistry::TryFindKernel(const onnxruntime::Node& node,
-                                     onnxruntime::ProviderType exec_provider,
-                                     const KernelCreateInfo** out) const {
-  return TryFindKernel(node, exec_provider, uint64_t(0), out);
-}
-#endif  // !defined(ORT_MINIMAL_BUILD)
-
 // It's often this function returns a failed status, but it is totally expected.
 // It just means this registry doesn't have such a kernel, please search it elsewhere.
 // if this function is called before graph partition, then node.provider is not set.
@@ -241,59 +237,47 @@ Status KernelRegistry::TryFindKernel(const onnxruntime::Node& node,
 // otherwise, kernel_def.provider must equal to node.provider. exec_provider is ignored.
 Status KernelRegistry::TryFindKernel(const onnxruntime::Node& node,
                                      onnxruntime::ProviderType exec_provider,
-                                     uint64_t kernel_def_hash,
                                      const KernelCreateInfo** out) const {
   const auto& node_provider = node.GetExecutionProviderType();
   const auto& expected_provider = (node_provider.empty() ? exec_provider : node_provider);
 
   auto range = kernel_creator_fn_map_.equal_range(GetMapKey(node.OpType(), node.Domain(), expected_provider));
-  *out = nullptr;
+  if (out) *out = nullptr;
 
-  // if we have a hash (ORT format model) use only that.
-  if (kernel_def_hash != 0) {
-    for (auto i = range.first; i != range.second; ++i) {
-      if (i->second.kernel_def->GetHash() == kernel_def_hash) {
-        *out = &i->second;
-        return Status::OK();
-      }
+  std::vector<std::string> verify_kernel_def_error_strs;
+
+  for (auto i = range.first; i != range.second; ++i) {
+    std::string error_str;
+    if (VerifyKernelDef(node, *i->second.kernel_def, error_str)) {
+      if (out) *out = &i->second;
+      return Status::OK();
     }
+    verify_kernel_def_error_strs.push_back(error_str);
+  }
 
+  if (!verify_kernel_def_error_strs.empty()) {
     std::ostringstream oss;
     oss << "Op with name (" << node.Name() << ")"
         << " and type (" << node.OpType() << ")"
-        << " kernel not found in " << expected_provider << "."
-        << " No matching hash for " << kernel_def_hash;
+        << " kernel is not supported in " << expected_provider << "."
+        << " Encountered following errors: (" << ToString(verify_kernel_def_error_strs) << ")";
 
     return Status(ONNXRUNTIME, FAIL, oss.str());
   }
-#if !defined(ORT_MINIMAL_BUILD)
-  else {
-    std::vector<std::string> verify_kernel_def_error_strs;
-
-    for (auto i = range.first; i != range.second; ++i) {
-      std::string error_str;
-      if (VerifyKernelDef(node, *i->second.kernel_def, error_str)) {
-        *out = &i->second;
-        return Status::OK();
-      }
-      verify_kernel_def_error_strs.push_back(error_str);
-    }
-
-    if (!verify_kernel_def_error_strs.empty()) {
-      std::ostringstream oss;
-      oss << "Op with name (" << node.Name() << ")"
-          << " and type (" << node.OpType() << ")"
-          << " kernel is not supported in " << expected_provider << "."
-          << " Encountered following errors: (" << ToString(verify_kernel_def_error_strs) << ")";
-
-      return Status(ONNXRUNTIME, FAIL, oss.str());
-    }
-  }
 
   return Status(ONNXRUNTIME, FAIL, "Kernel not found");
-#else
-  ORT_THROW("Kernel hash must be provided in minimal build.");
-#endif
+}
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
+bool KernelRegistry::TryFindKernelByHash(uint64_t kernel_def_hash, const KernelCreateInfo** out) const {
+  const auto hash_lookup_it = kernel_def_hash_lookup_.find(kernel_def_hash);
+  if (hash_lookup_it == kernel_def_hash_lookup_.end()) {
+    if (out) *out = nullptr;
+    return false;
+  }
+
+  if (out) *out = &hash_lookup_it->second->second;
+  return true;
 }
 
 Status KernelRegistry::Register(KernelDefBuilder& kernel_builder,
@@ -305,9 +289,9 @@ Status KernelRegistry::Register(KernelCreateInfo&& create_info) {
   if (!create_info.kernel_def) {
     return Status(ONNXRUNTIME, FAIL, "kernel def can't be NULL");
   }
-  std::string key = GetMapKey(*create_info.kernel_def);
+  const std::string key = GetMapKey(*create_info.kernel_def);
   // Check op version conflicts.
-  auto range = kernel_creator_fn_map_.equal_range(key);
+  const auto range = kernel_creator_fn_map_.equal_range(key);
   for (auto i = range.first; i != range.second; ++i) {
     if (i->second.kernel_def &&
         i->second.kernel_def->IsConflict(*create_info.kernel_def)) {
@@ -317,10 +301,29 @@ Status KernelRegistry::Register(KernelCreateInfo&& create_info) {
     }
   }
 
+  // check for existing hash conflict
+  const auto kernel_def_hash = create_info.kernel_def->GetHash();
+  ORT_RETURN_IF(kernel_def_hash_lookup_.find(kernel_def_hash) != kernel_def_hash_lookup_.end(),
+                "Failed to add kernel for " + key + ": Conflict with existing kernel def hash.");
+
   // Register the kernel.
-  // Ownership of the KernelDef is transferred to the map.
-  kernel_creator_fn_map_.emplace(key, std::move(create_info));
+  // Ownership of the KernelDef is transferred to kernel_creator_fn_map_.
+  auto it = kernel_creator_fn_map_.emplace(key, std::move(create_info));
+  kernel_def_hash_lookup_.emplace(kernel_def_hash, it);
   return Status::OK();
+}
+
+KernelDefHashes KernelRegistry::ExportKernelDefHashes() const {
+  KernelDefHashes result{};
+  result.reserve(kernel_creator_fn_map_.size());
+  std::transform(
+      kernel_creator_fn_map_.begin(), kernel_creator_fn_map_.end(),
+      std::back_inserter(result),
+      [](const KernelCreateMap::value_type& kvp) {
+        return std::make_pair(kvp.first, kvp.second.kernel_def->GetHash());
+      });
+  std::sort(result.begin(), result.end());
+  return result;
 }
 
 }  // namespace onnxruntime

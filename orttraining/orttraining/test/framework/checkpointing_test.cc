@@ -10,7 +10,7 @@
 
 #include "core/common/common.h"
 #include "core/framework/data_transfer.h"
-#include "core/framework/ml_value.h"
+#include "core/framework/ort_value.h"
 #include "core/framework/tensor.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/platform/path_lib.h"
@@ -53,7 +53,6 @@ void CompareOrtValuesToTensorProtoValues(
 
   NameMLValMap name_to_ort_value_from_tensor_proto{};
   std::vector<std::vector<char>> tensor_buffers{};
-  std::vector<ScopedOrtCallbackInvoker> tensor_deleters{};
 
   for (const auto& name_and_tensor_proto : name_to_tensor_proto) {
     const auto& name = name_and_tensor_proto.first;
@@ -63,14 +62,11 @@ void CompareOrtValuesToTensorProtoValues(
     std::vector<char> tensor_buffer(shape.Size() * sizeof(float));
     MemBuffer m(tensor_buffer.data(), tensor_buffer.size(), cpu_alloc_info);
     OrtValue ort_value;
-    OrtCallback callback;
     ASSERT_STATUS_OK(utils::TensorProtoToMLValue(
-        Env::Default(), model_path.c_str(), tensor_proto, m, ort_value, callback));
-    ScopedOrtCallbackInvoker callback_invoker{callback};
+        Env::Default(), model_path.c_str(), tensor_proto, m, ort_value));
 
     name_to_ort_value_from_tensor_proto.emplace(name, ort_value);
     tensor_buffers.emplace_back(std::move(tensor_buffer));
-    tensor_deleters.emplace_back(std::move(callback_invoker));
   }
 
   for (const auto& name_and_ort_value : name_to_ort_value) {
@@ -116,7 +112,7 @@ TEST(CheckpointingTest, SaveAndLoad) {
       ConcatPathComponent<PathChar>(tmp_dir.Path(), ORT_TSTR("test_model.onnx"))};
 
   DataTransferManager data_transfer{};
-  data_transfer.RegisterDataTransfer(onnxruntime::make_unique<CPUDataTransfer>());
+  ASSERT_STATUS_OK(data_transfer.RegisterDataTransfer(std::make_unique<CPUDataTransfer>()));
 
   ASSERT_STATUS_OK(SaveModelCheckpoint(
       checkpoint_path, data_transfer, name_to_ort_value, properties));

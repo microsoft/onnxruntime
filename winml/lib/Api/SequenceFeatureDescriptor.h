@@ -4,11 +4,13 @@
 #pragma once
 
 #include "SequenceFeatureDescriptor.g.h"
+#include "iengine.h"
 
 namespace WINMLP {
 struct SequenceFeatureDescriptor : SequenceFeatureDescriptorT<
                                        SequenceFeatureDescriptor,
-                                       ILearningModelFeatureDescriptorNative> {
+                                       ILearningModelFeatureDescriptorNative,
+                                       _winml::IDescriptorInfoProvider> {
   SequenceFeatureDescriptor() = delete;
   SequenceFeatureDescriptor(
       const char* name,
@@ -42,6 +44,10 @@ struct SequenceFeatureDescriptor : SequenceFeatureDescriptorT<
       const wchar_t** description,
       uint32_t* cchDescription) override;
 
+  STDMETHOD(GetDescriptorInfo)
+  (
+      _winml::IEngineFactory* engine_factory,
+      _winml::IDescriptorInfo** info) override;
  private:
   winrt::hstring name_;
   winrt::hstring description_;

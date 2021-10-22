@@ -2,10 +2,9 @@
 // Licensed under the MIT License
 
 #include <memory>
-#include "core/session/onnxruntime_cxx_api.h"
+#include "core/providers/shared_library/provider_api.h"
 #include "core/providers/openvino/contexts.h"
 #include "core/providers/openvino/ibackend.h"
-#include "core/common/common.h"
 #include "basic_backend.h"
 #include "vadm_backend.h"
 

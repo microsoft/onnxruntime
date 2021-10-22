@@ -41,15 +41,13 @@ class FusionLayerNormalization(Fusion):
         if len(children) == 0 or len(children) > 2:
             return
 
-        parent = self.model.get_parent(node, 0, output_name_to_node)
-        if parent is None:
-            return
+        root_input = node.input[0]
 
-        if children[0].op_type != 'Sub' or self.model.get_parent(children[0], 0, output_name_to_node) != parent:
+        if children[0].op_type != 'Sub' or children[0].input[0] != root_input:
             return
 
         if len(children) == 2:
-            if children[1].op_type != 'Sub' or self.model.get_parent(children[1], 0, output_name_to_node) != parent:
+            if children[1].op_type != 'Sub' or children[1].input[0] != root_input:
                 return
 
         div_node = None
@@ -110,9 +108,12 @@ class FusionLayerNormalization(Fusion):
 
         normalize_node = helper.make_node('LayerNormalization',
                                           inputs=[node.input[0], weight_input, bias_input],
-                                          outputs=[last_add_node.output[0]])
+                                          outputs=[last_add_node.output[0]],
+                                          name=self.model.create_node_name("LayerNormalization",
+                                                                           name_prefix="LayerNorm"))
         normalize_node.attribute.extend([helper.make_attribute("epsilon", float(add_weight))])
         self.nodes_to_add.append(normalize_node)
+        self.node_name_to_graph_name[normalize_node.name] = self.this_graph_name
 
 
 class FusionLayerNormalizationTF(Fusion):
@@ -121,24 +122,28 @@ class FusionLayerNormalizationTF(Fusion):
 
     def fuse(self, node, input_name_to_nodes: Dict, output_name_to_node: Dict):
         """
-        Layer Norm from Keras in Tensorflow:
-         +----------------------+
-         |                      |
-         |                      v                               (B)                             (B)             (A)
-        Add --> ReduceMean -->  Sub  --> Mul --> ReduceMean --> Add --> Sqrt --> Reciprocol --> Mul --> Mul --> Sub --> Add
-         |          |                                                                            |       ^              ^
-         |          |                                                                            |       |              |
-         |          +----------------------------------------------------------------------------|-------+              |
-         |                                                                                       v                      |
-         +-------------------------------------------------------------------------------------> Mul--------------------+
+        Layer Norm from Tensorflow model(using keras2onnx or tf2onnx):
+         +------------------------------------+
+         |                                    |
+         |                                    |
+       (Cast_1)                               |
+         |                                    |
+         |                                    v                                           (B)                             (B)             (A)
+        Add --> (Cast_1) --> ReduceMean -->  Sub  --> Mul --> ReduceMean --> (Cast_3) --> Add --> Sqrt --> Reciprocol --> Mul --> Mul --> Sub --> Add
+         |                       |                                                                                         |       ^              ^
+         |                       |                                                                                         |       |              |
+         |                       +--------------------------------------------------(Cast_2)-------------------------------|-------+              |
+         |                                                                                                                 v                      |
+         +---------------------------------------------------------------------------------------------------------------> Mul--------------------+
         """
         return_indice = []
-        parent_nodes = self.model.match_parent_path(
+        _, parent_nodes, return_indice = self.model.match_parent_paths(
             node,
-            ['Sub', 'Mul', 'Mul', 'Reciprocal', 'Sqrt', 'Add', 'ReduceMean', 'Mul', 'Sub', 'ReduceMean'],
-            [   1,     1,   None,            0,      0,     0,         None,     0,    0,          None],
-            output_name_to_node,
-            return_indice=return_indice) # yapf: disable
+            [(['Sub', 'Mul', 'Mul', 'Reciprocal', 'Sqrt', 'Add', 'ReduceMean', 'Mul', 'Sub', 'ReduceMean'],
+            [   1,     1,   None,            0,      0,     0,         None,     0,    0,          None]),
+            (['Sub', 'Mul', 'Mul', 'Reciprocal', 'Sqrt', 'Add', 'Cast', 'ReduceMean', 'Mul', 'Sub', 'ReduceMean'],
+            [   1,     1,   None,            0,      0,     0,     0,      None,        0,    0,          None])],
+            output_name_to_node) # yapf: disable
 
         if parent_nodes is None:
             return
@@ -148,24 +153,38 @@ class FusionLayerNormalizationTF(Fusion):
             logger.debug("return indice is exepected in [0, 1], but got {return_indice}")
             return
 
-        sub_node_0, mul_node_0, mul_node_1, reciprocol_node, sqrt_node, add_node_0, reduce_mean_node_0, mul_node_2, sub_node_1, reduce_mean_node_1 = parent_nodes
+        sub_node_0, mul_node_0, mul_node_1, reciprocol_node, sqrt_node, add_node_0 = parent_nodes[:6]
+        reduce_mean_node_0, mul_node_2, sub_node_1, reduce_mean_node_1 = parent_nodes[-4:]
+
+        cast_node_3 = None
+        if len(parent_nodes) == 11:
+            cast_node_3 = parent_nodes[6]
+            assert (cast_node_3.op_type == 'Cast')
 
         mul_node_3 = self.model.match_parent(node, 'Mul', 0, output_name_to_node)
         if mul_node_3 is None:
             logger.debug("mul_node_3 not found")
             return
 
-        root_node = self.model.get_parent(reduce_mean_node_1, 0, output_name_to_node)
+        node_before_reduce = self.model.get_parent(reduce_mean_node_1, 0, output_name_to_node)
+        root_node = node_before_reduce if cast_node_3 is None else self.model.get_parent(
+            node_before_reduce, 0, output_name_to_node)
         if root_node is None:
             logger.debug("root node is none")
             return
 
         i, epsilon = self.model.get_constant_input(add_node_0)
-        if epsilon is None or epsilon <= 0 or epsilon > 1.0E-5:
+        if epsilon is None or epsilon <= 0 or (epsilon > 1.0E-5 and cast_node_3 is None):
             logger.debug("epsilon is not matched")
             return
 
-        if reduce_mean_node_1.input[0] not in mul_node_3.input or reduce_mean_node_1.input[0] not in sub_node_1.input:
+        if cast_node_3 is None and (reduce_mean_node_1.input[0] not in mul_node_3.input
+                                    or reduce_mean_node_1.input[0] not in sub_node_1.input):
+            logger.debug("reduce_mean_node_1 and mul_node_3 shall link from root node")
+            return
+
+        if cast_node_3 is not None and (node_before_reduce.input[0] not in mul_node_3.input
+                                        or reduce_mean_node_1.input[0] not in sub_node_1.input):
             logger.debug("reduce_mean_node_1 and mul_node_3 shall link from root node")
             return
 
@@ -177,6 +196,14 @@ class FusionLayerNormalizationTF(Fusion):
             node, sub_node_0, mul_node_0, mul_node_1, reciprocol_node, sqrt_node, add_node_0, reduce_mean_node_0,
             mul_node_2, sub_node_1, reduce_mean_node_1, mul_node_3
         ]
+
+        if cast_node_3 is not None:
+            cast_node_2 = self.model.match_parent(mul_node_0, 'Cast', 0, output_name_to_node)
+            if cast_node_2 is None:
+                logger.debug("cast_node_2 not found")
+                return
+            subgraph_nodes.extend([node_before_reduce, cast_node_2, cast_node_3])
+
         if not self.model.is_safe_to_fuse_nodes(subgraph_nodes, node.output, self.model.input_name_to_nodes(),
                                                 self.model.output_name_to_node()):
             logger.debug("not safe to fuse layer normalization")
@@ -189,7 +216,9 @@ class FusionLayerNormalizationTF(Fusion):
 
         #TODO: add epsilon attribute
         fused_node = helper.make_node('LayerNormalization',
-                                      inputs=[reduce_mean_node_1.input[0], weight_input, bias_input],
-                                      outputs=[node.output[0]])
+                                      inputs=[mul_node_3.input[0], weight_input, bias_input],
+                                      outputs=[node.output[0]],
+                                      name=self.model.create_node_name("LayerNormalization", name_prefix="LayerNorm"))
         fused_node.attribute.extend([helper.make_attribute("epsilon", float(epsilon))])
         self.nodes_to_add.append(fused_node)
+        self.node_name_to_graph_name[fused_node.name] = self.this_graph_name

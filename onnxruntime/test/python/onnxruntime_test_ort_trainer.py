@@ -161,7 +161,7 @@ def runBertTrainingTest(gradient_accumulation_steps,
 
         if batch_count == num_batches - 1:
             # test eval_step api with fetches at the end of the training.
-            # if eval_step is called during the training, it will affect the actual training loss (training session is stateful),
+            # if eval_step is called during the training, it will affect the actual training loss (training session is stateful).
             eval_loss = model.eval_step(input_ids, segment_ids, input_mask, masked_lm_labels, next_sentence_labels, fetches=['loss'])
             eval_loss = eval_loss.cpu().numpy().item(0)
 
@@ -253,16 +253,17 @@ class MNISTWrapper():
         args_test_batch_size = 1000
 
         kwargs = {'num_workers': 0, 'pin_memory': True}
+        # set shuffle to False to get deterministic data set among different torch version
         train_loader = torch.utils.data.DataLoader(
             datasets.MNIST(os.path.join(SCRIPT_DIR, 'data'), train=True, download=True,
                            transform=transforms.Compose([transforms.ToTensor(),
                                                          transforms.Normalize((0.1307,), (0.3081,))])),
-            batch_size=args_batch_size, shuffle=True, **kwargs)
+            batch_size=args_batch_size, shuffle=False, **kwargs)
         test_loader = torch.utils.data.DataLoader(
             datasets.MNIST(os.path.join(SCRIPT_DIR, 'data'), train=False, transform=transforms.Compose([
                            transforms.ToTensor(),
                            transforms.Normalize((0.1307,), (0.3081,))])),
-            batch_size=args_test_batch_size, shuffle=True, **kwargs)
+            batch_size=args_test_batch_size, shuffle=False, **kwargs)
 
         return train_loader, test_loader
 
@@ -306,13 +307,14 @@ class TestOrtTrainer(unittest.TestCase):
 
         learningRate = 0.01
         args_epochs = 2
-        expected_losses = [2.333008289337158, 1.0680292844772339, 0.6300537586212158, 0.5279903411865234,
-                        0.3710068166255951, 0.4044453501701355, 0.30482712388038635, 0.4595026969909668,
-                        0.42305776476860046, 0.4797358512878418, 0.23006735742092133, 0.48427966237068176,
-                        0.30716797709465027, 0.3238796889781952, 0.19543828070163727, 0.3561663031578064,
-                        0.3089643716812134, 0.37738722562789917, 0.24883587658405304, 0.30744990706443787]
-        expected_test_losses = [0.31038025817871095, 0.25183824462890625]
-        expected_test_accuracies = [0.9125, 0.9304]
+        expected_losses = [2.312044143676758, 0.8018650412559509, 0.5819257497787476, 0.47025489807128906,
+                        0.35800155997276306, 0.41124576330184937, 0.2731882333755493, 0.4201386570930481,
+                        0.39458805322647095, 0.38380366563796997, 0.2722422480583191, 0.24230478703975677,
+                        0.23505745828151703, 0.33442264795303345, 0.21140924096107483, 0.31545233726501465,
+                        0.18556523323059082, 0.3453553020954132, 0.29598352313041687, 0.3595045208930969]
+
+        expected_test_losses = [0.3145490005493164, 0.256188737487793]
+        expected_test_accuracies = [0.9075, 0.9265]
 
         actual_losses = []
         actual_test_losses, actual_accuracies = [], []
@@ -356,11 +358,12 @@ class TestOrtTrainer(unittest.TestCase):
         args_epochs = 2
         args_checkpoint_epoch = 1
         # should match those in test without checkpointing
-        expected_losses = [0.23006735742092133, 0.48427966237068176,
-                        0.30716797709465027, 0.3238796889781952, 0.19543828070163727, 0.3561663031578064,
-                        0.3089643716812134, 0.37738722562789917, 0.24883587658405304, 0.30744990706443787]
-        expected_test_losses = [0.25183824462890625]
-        expected_test_accuracies = [0.9304]
+        expected_losses = [0.26509523391723633, 0.24135658144950867, 0.2397943139076233, 0.3351520597934723,
+                        0.20998981595039368, 0.31488314270973206, 0.18481917679309845, 0.34727591276168823,
+                        0.2971782684326172, 0.3609251379966736]
+
+        expected_test_losses = [0.25632242965698243]
+        expected_test_accuracies = [0.9264]
 
         actual_losses = []
         actual_test_losses, actual_accuracies = [], []
@@ -652,8 +655,8 @@ class TestOrtTrainer(unittest.TestCase):
             assert np.array_equal(state_dict[key], loaded_state_dict[key])
 
     def testBertTrainingBasic(self):
-        expected_losses = [11.034271, 11.125311, 11.006095, 11.046938, 11.027476, 11.015745, 11.060884, 10.971851]
-        expected_eval_loss = [10.95898914]
+        expected_losses = [11.027887, 11.108191, 11.055356, 11.040912, 10.960277, 11.02691, 11.082471, 10.920979]
+        expected_eval_loss = [10.958977]
         actual_losses, actual_eval_loss = runBertTrainingTest(
             gradient_accumulation_steps=1, use_mixed_precision=False, allreduce_post_accumulation=False)
 
@@ -669,8 +672,8 @@ class TestOrtTrainer(unittest.TestCase):
         assert_allclose(expected_eval_loss, actual_eval_loss, rtol=rtol, err_msg="evaluation loss mismatch")
 
     def testBertTrainingGradientAccumulation(self):
-        expected_losses = [11.034271, 11.125311, 11.006093, 11.046929, 11.027471, 11.015731, 11.060894, 10.971855]
-        expected_eval_loss = [10.959011]
+        expected_losses = [11.027887, 11.108191, 11.055354, 11.040904, 10.960266, 11.026897, 11.082475, 10.920998]
+        expected_eval_loss = [10.958998]
 
         actual_losses, actual_eval_loss = runBertTrainingTest(
             gradient_accumulation_steps=4, use_mixed_precision=False, allreduce_post_accumulation=False)
@@ -698,7 +701,7 @@ class TestOrtTrainer(unittest.TestCase):
         sd['bert.encoder.layer.0.attention.output.LayerNorm.weight'] +=1
         model.load_state_dict(sd)
 
-        ckpt_dir = get_name("ort_ckpt")
+        ckpt_dir = 'testdata'
         save_checkpoint(model, ckpt_dir, 'bert_toy_save_test')
         del model
 
@@ -715,35 +718,6 @@ class TestOrtTrainer(unittest.TestCase):
 
         for k,v in loaded_sd.items():
             assert torch.all(torch.eq(v, sd[k]))
-
-    def testBertCheckpointingLoadZero(self):
-        return # disable flaky test temporarily
-        torch.manual_seed(1)
-        onnxruntime.set_seed(1)
-        model,_,device = create_ort_trainer(gradient_accumulation_steps=1,
-                        use_mixed_precision=False,
-                        allreduce_post_accumulation=True,
-                        use_simple_model_desc=True,
-                        loss_scaler=None)
-
-        ckpt_dir = get_name("ort_ckpt")
-        load_checkpoint(model, ckpt_dir, 'bert_toy_lamb')
-
-        expected_eval_loss = [10.997552871]
-
-        input_ids = torch.tensor([[26598],[21379],[19922],[ 5219],[ 5644],[20559],[23777],[25672],[22969],[16824],[16822],[  635],[27399],[20647],[18519],[15546]], device=device)
-        segment_ids = torch.tensor([[0],[1],[0],[1],[0],[0],[1],[0],[0],[1],[1],[0],[0],[1],[1],[1]], device=device)
-        input_mask = torch.tensor([[0],[0],[0],[0],[1],[1],[1],[0],[1],[1],[0],[0],[0],[1],[0],[0]], device=device)
-        masked_lm_labels = torch.tensor([[25496],[16184],[11005],[16228],[14884],[21660],[ 8678],[23083],[ 4027],[ 8397],[11921],[ 1333],[26482],[ 1666],[17925],[27978]], device=device)
-        next_sentence_labels = torch.tensor([0, 1, 0, 0, 1, 0, 1, 0, 1, 0, 0, 0, 0, 1, 1, 0], device=device)
-
-        actual_eval_loss = model.eval_step(input_ids, segment_ids, input_mask, masked_lm_labels, next_sentence_labels, fetches=['loss'])
-        actual_eval_loss = actual_eval_loss.cpu().numpy().item(0)
-        # import pdb; pdb.set_trace()
-        print(actual_eval_loss)
-
-        rtol = 1e-03
-        assert_allclose(expected_eval_loss, actual_eval_loss, err_msg="evaluation loss mismatch")
 
     def testWrapModelLossFnStateDict(self):
         torch.manual_seed(1)

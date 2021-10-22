@@ -1,8 +1,9 @@
-import onnx
+import logging
 import numpy
-from onnx import onnx_pb as onnx_proto
-from enum import Enum
+import onnx
 
+from enum import Enum
+from onnx import onnx_pb as onnx_proto
 from pathlib import Path
 
 __producer__ = "onnx.quantize"
@@ -33,30 +34,171 @@ type_to_name = {
 # QLinearOps: Use QLinearOps in quantized model. Only QLinearConv and QLinearMatMul ops are supported now.
 
 
-class QuantizationMode():
+class QuantizationMode(Enum):
     IntegerOps = 0
     QLinearOps = 1
 
+    def __str__(self):
+        return self.name
 
-quantization_modes = [
-    getattr(QuantizationMode, attr) for attr in dir(QuantizationMode)
-    if not callable(getattr(QuantizationMode, attr)) and not attr.startswith("__")
-]
+    @staticmethod
+    def from_string(mode):
+        try:
+            return QuantizationMode[mode]
+        except KeyError:
+            raise ValueError()
 
 
-class QuantizedValueType():
+class QuantizedValueType(Enum):
     Input = 0
     Initializer = 1
 
+    def __str__(self):
+        return self.name
+
+    @staticmethod
+    def from_string(v):
+        try:
+            return QuantizedValueType[v]
+        except KeyError:
+            raise ValueError()
+
 
 class QuantType(Enum):
-    QInt8 = 1
-    QUInt8 = 2
+    QInt8 = 0
+    QUInt8 = 1
 
-QUANT_TYPE_TO_NP_TYPE = {
-    QuantType.QInt8: numpy.dtype('int8'),
-    QuantType.QUInt8: numpy.dtype('uint8'),
+    def __str__(self):
+        return self.name
+
+    @staticmethod
+    def from_string(t):
+        try:
+            return QuantType[t]
+        except KeyError:
+            raise ValueError()
+
+
+class QuantFormat(Enum):
+    QOperator = 0
+    QDQ = 1
+
+    def __str__(self):
+        return self.name
+
+    @staticmethod
+    def from_string(format):
+        try:
+            return QuantFormat[format]
+        except KeyError:
+            raise ValueError()
+
+ONNX_TYPE_TO_NP_TYPE = {
+    onnx_proto.TensorProto.INT8: numpy.dtype('int8'),
+    onnx_proto.TensorProto.UINT8:  numpy.dtype('uint8')
 }
+
+def quantize_nparray(qType, arr, scale, zero_point, low=None, high=None):
+    assert qType in ONNX_TYPE_TO_NP_TYPE, \
+        "Unexpected data type {} requested. Only INT8 and UINT8 are supported.".format(qType)
+    dtype = ONNX_TYPE_TO_NP_TYPE[qType]
+    cliplow = max(0 if dtype == numpy.uint8 else -127, -127 if low is None else low)
+    cliphigh = min(255 if dtype == numpy.uint8 else 127, 255 if high is None else high)
+    arr_fp32 = numpy.asarray((arr.astype(numpy.float32) / scale).round() + zero_point)
+    numpy.clip(arr_fp32, cliplow, cliphigh, out=arr_fp32)
+    return arr_fp32.astype(dtype)
+
+
+def compute_scale_zp(rmin, rmax, qmin, qmax, symmetric=False):
+    '''
+    Calculate the scale s and zero point z for the quantization relation 
+    r = s(q-z), where r are the original values and q are the corresponding
+    quantized values. 
+
+    r and z are calculated such that every value within [rmin,rmax] has an
+    approximate representation within [qmin,qmax]. In addition, qmin <= z <=
+    qmax is enforced. If the symmetric flag is set to True, the interval
+    [rmin,rmax] is symmetrized to [-absmax, +absmax], where
+    absmax = max(abs(rmin), abs(rmax)).
+
+    :parameter rmin: minimum value of r
+    :parameter rmax: maximum value of r
+    :parameter qmin: minimum value representable by the target quantization data type
+    :parameter qmax: maximum value representable by the target quantization data type
+    :return: zero and scale [z, s]
+
+    '''
+    
+    # Adjust rmin and rmax such that 0 is included in the range. This is
+    # required to make sure zero can be represented by the quantization data
+    # type (i.e. to make sure qmin <= zero_point <= qmax)
+    rmin = min(rmin, 0)
+    rmax = max(rmax, 0)
+
+    if symmetric:
+        absmax = max(abs(rmin), abs(rmax))
+        rmin = -absmax
+        rmax = +absmax
+
+    scale = (rmax - rmin) / float(qmax-qmin) if rmax!=rmin else 1.0
+    zero_point = round(qmin - rmin/scale)
+
+    return [zero_point, scale]
+
+
+def quantize_data(data, qType, symmetric, reduce_range=False):
+    '''
+    :param data: data to quantize
+    :param qType: data type to quantize to. Supported types UINT8 and INT8
+    :param symmetric: whether symmetric quantization is used or not. This is applied to INT8.
+    :return: minimum, maximum, zero point, scale, and quantized weights
+
+    To pack weights, we compute a linear transformation
+    
+    - when data `type == uint8` mode, from `[rmin, rmax]` -> :math:`[0, 2^{b-1}]` and
+    - when data `type == int8`, from `[-m , m]` -> :math:`[-(2^{b-1}-1), 2^{b-1}-1]` where
+        `m = max(abs(rmin), abs(rmax))`
+
+    and add necessary intermediate nodes to trasnform quantized weight to full weight using the equation
+
+    :math:`r = S(q-z)`, where
+    
+    - *r*: real original value
+    - *q*: quantized value
+    - *S*: scale
+    - *z*: zero point
+    '''
+    rmin = min(data)
+    rmax = max(data)
+    qmin, qmax = get_qmin_qmax_for_qType(qType, reduce_range)
+
+    zero_point, scale = compute_scale_zp(rmin, rmax, qmin, qmax, symmetric)
+    quantized_data = quantize_nparray(qType, numpy.asarray(data), scale, zero_point)
+
+    return rmin, rmax, zero_point, scale, quantized_data
+
+def get_qmin_qmax_for_qType(qType, reduce_range=False):
+    '''
+    Return qmin and qmax, the minimum and maximum value representable by the given qType
+    :parameter qType: onnx.onnx_pb.TensorProto.UINT8 or onnx.onnx_pb.TensorProto.UINT8
+    :return: qmin, qmax
+    '''
+    if qType == onnx_proto.TensorProto.UINT8:
+        (qmin, qmax) = (0,127) if reduce_range else (0,255)
+    elif qType == onnx_proto.TensorProto.INT8:
+        (qmin, qmax) = (-64,64) if reduce_range else (-127,127)
+    else:
+        raise ValueError("Unexpected data type {} requested. Only INT8 and UINT8 are supported.".format(qType))
+    return qmin, qmax
+
+def get_qrange_for_qType(qType, reduce_range=False):
+    '''
+    Helper function to get the quantization range for a type.
+        parameter qType: quantization type.
+        return: quantization range.
+    '''
+    qmin, qmax = get_qmin_qmax_for_qType(qType, reduce_range)
+    return  qmax - qmin
 
 class QuantizedInitializer:
     '''
@@ -71,8 +213,7 @@ class QuantizedInitializer:
                  scales,
                  data=[],
                  quantized_data=[],
-                 axis=None,
-                 qType=QuantType.QUInt8):
+                 axis=None):
         self.name = name
         self.initializer = initializer  # TensorProto initializer in ONNX graph
         self.rmins = rmins  # List of minimum range for each axis
@@ -85,7 +226,6 @@ class QuantizedInitializer:
         # Scalar to specify which dimension in the initializer to weight pack.
         self.axis = axis
         # If empty, single zero point and scales computed from a single rmin and rmax
-        self.qType = qType  # type of quantized data.
 
 
 class QuantizedValue:
@@ -98,15 +238,23 @@ class QuantizedValue:
                  scale_name,
                  zero_point_name,
                  quantized_value_type,
-                 axis=None,
-                 qType=QuantType.QUInt8):
+                 axis=None):
         self.original_name = name
         self.q_name = new_quantized_name
         self.scale_name = scale_name
         self.zp_name = zero_point_name
         self.value_type = quantized_value_type
         self.axis = axis
-        self.qType = qType
+
+
+class BiasToQuantize:
+    '''
+    Represents a bias to be quantized
+    '''
+    def __init__(self, bias_name, input_name, weight_name):
+        self.bias_name = bias_name
+        self.input_name = input_name
+        self.weight_name = weight_name
 
 
 def attribute_to_kwarg(attribute):
@@ -184,3 +332,93 @@ def generate_identified_filename(filename: Path, identifier: str) -> Path:
     Helper function to generate a identifiable filepath by concatenating the given identifier as a suffix.   
     '''
     return filename.parent.joinpath(filename.stem + identifier).with_suffix(filename.suffix)
+
+def write_calibration_table(calibration_cache):
+    '''
+    Helper function to write calibration table to files.   
+    '''
+
+    import json
+    import flatbuffers
+    import onnxruntime.quantization.CalTableFlatBuffers.TrtTable as TrtTable
+    import onnxruntime.quantization.CalTableFlatBuffers.KeyValue as KeyValue
+
+    logging.info("calibration cache: {}".format(calibration_cache))
+
+    with open("calibration.json", 'w') as file:
+        file.write(json.dumps(calibration_cache))  # use `json.loads` to do the reverse
+
+    # Serialize data using FlatBuffers
+    builder = flatbuffers.Builder(1024)
+    key_value_list = []
+    for key in sorted(calibration_cache.keys()):
+        values = calibration_cache[key]
+        value = str(max(abs(values[0]), abs(values[1])))
+
+        flat_key = builder.CreateString(key)
+        flat_value = builder.CreateString(value)
+
+        KeyValue.KeyValueStart(builder)
+        KeyValue.KeyValueAddKey(builder, flat_key)
+        KeyValue.KeyValueAddValue(builder, flat_value)
+        key_value = KeyValue.KeyValueEnd(builder)
+
+        key_value_list.append(key_value)
+
+    TrtTable.TrtTableStartDictVector(builder, len(key_value_list))
+    for key_value in key_value_list:
+        builder.PrependUOffsetTRelative(key_value)
+    main_dict = builder.EndVector(len(key_value_list))
+
+    TrtTable.TrtTableStart(builder)
+    TrtTable.TrtTableAddDict(builder, main_dict)
+    cal_table = TrtTable.TrtTableEnd(builder)
+
+    builder.Finish(cal_table)
+    buf = builder.Output()
+
+    with open("calibration.flatbuffers", 'wb') as file:
+        file.write(buf)
+
+    # Deserialize data (for validation)
+    if False:
+        cal_table = TrtTable.TrtTable.GetRootAsTrtTable(buf, 0)
+        dict_len = cal_table.DictLength()
+        for i in range(dict_len):
+            key_value = cal_table.Dict(i)
+            logging.info(key_value.Key())
+            logging.info(key_value.Value())
+
+    # write plain text
+    with open("calibration.cache", 'w') as file:
+        for key in sorted(calibration_cache.keys()):
+            value = calibration_cache[key]
+            s = key + ' ' + str(max(abs(value[0]), abs(value[1])))
+            file.write(s)
+            file.write('\n')
+
+def smooth_distribution(p, eps=0.0001):
+    """Given a discrete distribution (may have not been normalized to 1),
+    smooth it by replacing zeros with eps multiplied by a scaling factor
+    and taking the corresponding amount off the non-zero values.
+    Ref: http://web.engr.illinois.edu/~hanj/cs412/bk3/KL-divergence.pdf
+         https://github.com//apache/incubator-mxnet/blob/master/python/mxnet/contrib/quantization.py
+    """
+    import numpy as np
+
+    is_zeros = (p == 0).astype(np.float32)
+    is_nonzeros = (p != 0).astype(np.float32)
+    n_zeros = is_zeros.sum()
+    n_nonzeros = p.size - n_zeros
+
+    if not n_nonzeros:
+        # raise ValueError('The discrete probability distribution is malformed. All entries are 0.')
+        return -1
+    eps1 = eps * float(n_zeros) / float(n_nonzeros)
+    assert eps1 < 1.0, 'n_zeros=%d, n_nonzeros=%d, eps1=%f' % (n_zeros, n_nonzeros, eps1)
+
+    hist = p.astype(np.float32)
+    hist += eps * is_zeros + (-eps1) * is_nonzeros
+    assert (hist <= 0).sum() == 0
+
+    return hist

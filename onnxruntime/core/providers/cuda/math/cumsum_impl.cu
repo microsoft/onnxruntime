@@ -69,20 +69,20 @@ __global__ void _CumSumKernel(
   output_data[indices_index] = sum;
 }
 
-template<typename T>
+template <typename T>
 void CumSumImpl(
+    cudaStream_t stream,
     const T* input_data,
     const fast_divmod& input_dim_along_axis,
     const fast_divmod& input_stride_along_axis,
     T* output_data,
-    const int64_t output_size,
-    const size_t element_size,
-    const bool exclusive,
-    const bool reverse) {
+    int64_t output_size,
+    bool exclusive,
+    bool reverse) {
   if (output_size > 0) {
     int blocksPerGrid = static_cast<int>((output_size + GridDim::maxThreadsPerBlock - 1) / GridDim::maxThreadsPerBlock);
 
-    _CumSumKernel<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(input_data,
+    _CumSumKernel<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(input_data,
                                                                         input_dim_along_axis,
                                                                         input_stride_along_axis,
                                                                         output_data,
@@ -93,74 +93,74 @@ void CumSumImpl(
 }
 
 template void CumSumImpl<int32_t>(
+    cudaStream_t stream,
     const int32_t* input_data,
     const fast_divmod& input_dim_along_axis,
     const fast_divmod& input_stride_along_axis,
     int32_t* output_data,
-    const int64_t output_size,
-    const size_t element_size,
-    const bool exclusive,
-    const bool reverse);
+    int64_t output_size,
+    bool exclusive,
+    bool reverse);
 
 template void CumSumImpl<int64_t>(
+    cudaStream_t stream,
     const int64_t* input_data,
     const fast_divmod& input_dim_along_axis,
     const fast_divmod& input_stride_along_axis,
     int64_t* output_data,
-    const int64_t output_size,
-    const size_t element_size,
-    const bool exclusive,
-    const bool reverse);
+    int64_t output_size,
+    bool exclusive,
+    bool reverse);
 
 template void CumSumImpl<uint32_t>(
+    cudaStream_t stream,
     const uint32_t* input_data,
     const fast_divmod& input_dim_along_axis,
     const fast_divmod& input_stride_along_axis,
     uint32_t* output_data,
-    const int64_t output_size,
-    const size_t element_size,
-    const bool exclusive,
-    const bool reverse);
+    int64_t output_size,
+    bool exclusive,
+    bool reverse);
 
 template void CumSumImpl<uint64_t>(
+    cudaStream_t stream,
     const uint64_t* input_data,
     const fast_divmod& input_dim_along_axis,
     const fast_divmod& input_stride_along_axis,
     uint64_t* output_data,
-    const int64_t output_size,
-    const size_t element_size,
-    const bool exclusive,
-    const bool reverse);
+    int64_t output_size,
+    bool exclusive,
+    bool reverse);
 
 template void CumSumImpl<float>(
+    cudaStream_t stream,
     const float* input_data,
     const fast_divmod& input_dim_along_axis,
     const fast_divmod& input_stride_along_axis,
     float* output_data,
-    const int64_t output_size,
-    const size_t element_size,
-    const bool exclusive,
-    const bool reverse);
+    int64_t output_size,
+    bool exclusive,
+    bool reverse);
 
 template void CumSumImpl<double>(
+    cudaStream_t stream,
     const double* input_data,
     const fast_divmod& input_dim_along_axis,
     const fast_divmod& input_stride_along_axis,
     double* output_data,
-    const int64_t output_size,
-    const size_t element_size,
-    const bool exclusive,
-    const bool reverse);
+    int64_t output_size,
+    bool exclusive,
+    bool reverse);
 
 template void CumSumImpl<half>(
+    cudaStream_t stream,
     const half* input_data,
     const fast_divmod& input_dim_along_axis,
     const fast_divmod& input_stride_along_axis,
     half* output_data,
-    const int64_t output_size,
-    const size_t element_size,
-    const bool exclusive,
-    const bool reverse);
+    int64_t output_size,
+    bool exclusive,
+    bool reverse);
 
 }  // namespace cuda
 }  // namespace onnxruntime

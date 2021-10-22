@@ -273,7 +273,7 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, bool export_dll, FuncMa
       for (size_t j = 0, end = nodes_to_compile.size(); j < end; j++) {
         auto* node = nodes_to_compile[j];
         const auto& cur_capability = *capabilities_to_compile[j];
-        viewers.push_back(onnxruntime::make_unique<GraphViewer>(graph, *cur_capability.sub_graph));
+        viewers.push_back(std::make_unique<GraphViewer>(graph, *cur_capability.sub_graph));
         nodes_and_viewers.push_back(IExecutionProvider::FusedNodeAndGraph{*node, *viewers.back()});
       }
 
@@ -417,6 +417,10 @@ static Status PartitionOrtFormatModelImpl(Graph& graph, FuncManager& func_mgr,
   std::vector<std::unique_ptr<ComputeCapability>> capabilities =
       current_ep.GetCapability(graph_viewer, kernel_registry_mgr.GetKernelRegistriesByProviderType(type));
 
+  if (capabilities.empty()) {
+    return Status::OK();
+  }
+
   // storage for the GraphViewer for each IndexedSubGraph
   std::vector<std::unique_ptr<GraphViewer>> viewers;
   viewers.reserve(capabilities.size());
@@ -440,46 +444,47 @@ static Status PartitionOrtFormatModelImpl(Graph& graph, FuncManager& func_mgr,
     //
     // TODO: Could avoid the topological sort in the GraphViewer ctor by constructing from an existing
     // GraphViewer instance instead of the Graph (copying the topological order instead of recalculating).
-    viewers.push_back(onnxruntime::make_unique<GraphViewer>(graph, indexed_sub_graph));
+    viewers.push_back(std::make_unique<GraphViewer>(graph, indexed_sub_graph));
     nodes_and_viewers.push_back(IExecutionProvider::FusedNodeAndGraph{fused_node, *viewers.back()});
   }
 
-  std::vector<NodeComputeInfo> node_compute_funcs;
-  node_compute_funcs.reserve(nodes_and_viewers.size());
-
-  ORT_RETURN_IF_ERROR(current_ep.Compile(nodes_and_viewers, node_compute_funcs));
-
-  if (node_compute_funcs.size() != nodes_and_viewers.size()) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, type, " did not return correct number of compiled functions");
-  }
-
-  for (size_t j = 0, end = nodes_and_viewers.size(); j < end; j++) {
+  // We will compile the fused nodes one by one, and fuse the subgraph if successful.
+  // If a compilation fails we undo the fusion and leave the original nodes available for other EPs to take
+  for (size_t j = 0, end = nodes_and_viewers.size(); j < end; ++j) {
     Node& node = nodes_and_viewers[j].fused_node;
+    std::vector<NodeComputeInfo> single_node_compute_func;
+    auto status = current_ep.Compile({nodes_and_viewers[j]}, single_node_compute_func);
+    if (!status.IsOK()) {
+      // There is compile error with the nodes_and_viewer[j], remove the fused_node and function from the graph
+      LOGS_DEFAULT(ERROR) << "EP: " << current_ep.Type() << " has Compile error: " << status.ErrorMessage();
+      graph.CancelFuseSubGraph(node);
+    } else {
+      ORT_RETURN_IF(single_node_compute_func.empty(), "single_node_compute_func should have 1 elements");
+      ORT_RETURN_IF_ERROR(func_mgr.AddFuncInfo(node.Name(), std::move(single_node_compute_func[0])));
 
-    ORT_RETURN_IF_ERROR(func_mgr.AddFuncInfo(node.Name(), std::move(node_compute_funcs[j])));
+      const auto& cur_capability = capabilities[j];
+      const IndexedSubGraph& indexed_sub_graph = *cur_capability->sub_graph;
+      const IndexedSubGraph::MetaDef& metadef = *indexed_sub_graph.GetMetaDef();
 
-    const auto& cur_capability = capabilities[j];
-    const IndexedSubGraph& indexed_sub_graph = *cur_capability->sub_graph;
-    const IndexedSubGraph::MetaDef& metadef = *indexed_sub_graph.GetMetaDef();
+      KernelDefBuilder builder;
+      BuildFusedKernelDef(builder, metadef, type);
+      auto kernel_def = builder.Build();
 
-    KernelDefBuilder builder;
-    BuildFusedKernelDef(builder, metadef, type);
-    auto kernel_def = builder.Build();
+      // save hash so SessionState can find the kernel. each kernel name should be unique
+      if (compiled_kernel_hashes.insert({metadef.name, kernel_def->GetHash()}).second == false) {
+        ORT_THROW("Existing entry in compiled kernel hashes for ", metadef.name,
+                  ". Execution Provider must generate unique names across the entire model.");
+      }
 
-    // save hash so SessionState can find the kernel. each kernel name should be unique
-    if (compiled_kernel_hashes.insert({metadef.name, kernel_def->GetHash()}).second == false) {
-      ORT_THROW("Existing entry in compiled kernel hashes for ", metadef.name,
-                ". Execution Provider must generate unique names across the entire model.");
+      ORT_RETURN_IF_ERROR(fused_kernel_registry.Register(
+          KernelCreateInfo(std::move(kernel_def), static_cast<KernelCreatePtrFn>(
+                                                      [](const OpKernelInfo& info) -> OpKernel* {
+                                                        return new FunctionKernel(info);
+                                                      }))));
+
+      // now that we're done compiling we can remove the original nodes from the Graph and wire in the new one
+      graph.FinalizeFuseSubGraph(indexed_sub_graph, node);
     }
-
-    ORT_RETURN_IF_ERROR(fused_kernel_registry.Register(
-        KernelCreateInfo(std::move(kernel_def), static_cast<KernelCreatePtrFn>(
-                                                    [](const OpKernelInfo& info) -> OpKernel* {
-                                                      return new FunctionKernel(info);
-                                                    }))));
-
-    // now that we're done compiling we can remove the original nodes from the Graph and wire in the new one
-    graph.FinalizeFuseSubGraph(indexed_sub_graph, node);
   }
 
   return Status::OK();

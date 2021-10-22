@@ -13,12 +13,17 @@ struct GlobalContext {
   InferenceEngine::Core ie_core;
   bool is_wholly_supported_graph = false;
   bool enable_vpu_fast_compile = false;
+  bool use_compiled_network = false;
   size_t num_of_threads;
   std::string device_type;
   std::string precision_str;
   std::string device_id;
+  std::string blob_dump_path;
   std::vector<bool> deviceAvailableList = {true, true, true, true, true, true, true, true};
   std::vector<std::string> deviceTags = {"0", "1", "2", "3", "4", "5", "6", "7"};
+  std::string onnx_model_name;
+  std::string onnx_model_path_name;
+  int onnx_opset_version;
 };
 
 // Holds context specific to subgraph.

@@ -24,118 +24,124 @@ namespace Onnx {
     static OnnxMlReflection() {
       byte[] descriptorData = global::System.Convert.FromBase64String(
           string.Concat(
-            "Cg5vbm54LW1sLnByb3RvMxIEb25ueCLoBAoOQXR0cmlidXRlUHJvdG8SDAoE",
+            "Cg5vbm54LW1sLnByb3RvMxIEb25ueCLMBQoOQXR0cmlidXRlUHJvdG8SDAoE",
             "bmFtZRgBIAEoCRIVCg1yZWZfYXR0cl9uYW1lGBUgASgJEhIKCmRvY19zdHJp",
             "bmcYDSABKAkSMAoEdHlwZRgUIAEoDjIiLm9ubnguQXR0cmlidXRlUHJvdG8u",
             "QXR0cmlidXRlVHlwZRIJCgFmGAIgASgCEgkKAWkYAyABKAMSCQoBcxgEIAEo",
             "DBIcCgF0GAUgASgLMhEub25ueC5UZW5zb3JQcm90bxIbCgFnGAYgASgLMhAu",
             "b25ueC5HcmFwaFByb3RvEi4KDXNwYXJzZV90ZW5zb3IYFiABKAsyFy5vbm54",
-            "LlNwYXJzZVRlbnNvclByb3RvEg4KBmZsb2F0cxgHIAMoAhIMCgRpbnRzGAgg",
-            "AygDEg8KB3N0cmluZ3MYCSADKAwSIgoHdGVuc29ycxgKIAMoCzIRLm9ubngu",
-            "VGVuc29yUHJvdG8SIAoGZ3JhcGhzGAsgAygLMhAub25ueC5HcmFwaFByb3Rv",
-            "Ei8KDnNwYXJzZV90ZW5zb3JzGBcgAygLMhcub25ueC5TcGFyc2VUZW5zb3JQ",
-            "cm90byK4AQoNQXR0cmlidXRlVHlwZRINCglVTkRFRklORUQQABIJCgVGTE9B",
-            "VBABEgcKA0lOVBACEgoKBlNUUklORxADEgoKBlRFTlNPUhAEEgkKBUdSQVBI",
-            "EAUSEQoNU1BBUlNFX1RFTlNPUhALEgoKBkZMT0FUUxAGEggKBElOVFMQBxIL",
-            "CgdTVFJJTkdTEAgSCwoHVEVOU09SUxAJEgoKBkdSQVBIUxAKEhIKDlNQQVJT",
-            "RV9URU5TT1JTEAwiUQoOVmFsdWVJbmZvUHJvdG8SDAoEbmFtZRgBIAEoCRId",
-            "CgR0eXBlGAIgASgLMg8ub25ueC5UeXBlUHJvdG8SEgoKZG9jX3N0cmluZxgD",
-            "IAEoCSKWAQoJTm9kZVByb3RvEg0KBWlucHV0GAEgAygJEg4KBm91dHB1dBgC",
-            "IAMoCRIMCgRuYW1lGAMgASgJEg8KB29wX3R5cGUYBCABKAkSDgoGZG9tYWlu",
-            "GAcgASgJEicKCWF0dHJpYnV0ZRgFIAMoCzIULm9ubnguQXR0cmlidXRlUHJv",
-            "dG8SEgoKZG9jX3N0cmluZxgGIAEoCSLWAQoRVHJhaW5pbmdJbmZvUHJvdG8S",
-            "KAoOaW5pdGlhbGl6YXRpb24YASABKAsyEC5vbm54LkdyYXBoUHJvdG8SIwoJ",
-            "YWxnb3JpdGhtGAIgASgLMhAub25ueC5HcmFwaFByb3RvEjwKFmluaXRpYWxp",
-            "emF0aW9uX2JpbmRpbmcYAyADKAsyHC5vbm54LlN0cmluZ1N0cmluZ0VudHJ5",
-            "UHJvdG8SNAoOdXBkYXRlX2JpbmRpbmcYBCADKAsyHC5vbm54LlN0cmluZ1N0",
-            "cmluZ0VudHJ5UHJvdG8i6wIKCk1vZGVsUHJvdG8SEgoKaXJfdmVyc2lvbhgB",
-            "IAEoAxIuCgxvcHNldF9pbXBvcnQYCCADKAsyGC5vbm54Lk9wZXJhdG9yU2V0",
-            "SWRQcm90bxIVCg1wcm9kdWNlcl9uYW1lGAIgASgJEhgKEHByb2R1Y2VyX3Zl",
-            "cnNpb24YAyABKAkSDgoGZG9tYWluGAQgASgJEhUKDW1vZGVsX3ZlcnNpb24Y",
-            "BSABKAMSEgoKZG9jX3N0cmluZxgGIAEoCRIfCgVncmFwaBgHIAEoCzIQLm9u",
-            "bnguR3JhcGhQcm90bxImCglmdW5jdGlvbnMYZCADKAsyEy5vbm54LkZ1bmN0",
-            "aW9uUHJvdG8SNAoObWV0YWRhdGFfcHJvcHMYDiADKAsyHC5vbm54LlN0cmlu",
-            "Z1N0cmluZ0VudHJ5UHJvdG8SLgoNdHJhaW5pbmdfaW5mbxgUIAMoCzIXLm9u",
-            "bnguVHJhaW5pbmdJbmZvUHJvdG8iNAoWU3RyaW5nU3RyaW5nRW50cnlQcm90",
-            "bxILCgNrZXkYASABKAkSDQoFdmFsdWUYAiABKAkiawoQVGVuc29yQW5ub3Rh",
-            "dGlvbhITCgt0ZW5zb3JfbmFtZRgBIAEoCRJCChxxdWFudF9wYXJhbWV0ZXJf",
-            "dGVuc29yX25hbWVzGAIgAygLMhwub25ueC5TdHJpbmdTdHJpbmdFbnRyeVBy",
-            "b3RvItgCCgpHcmFwaFByb3RvEh0KBG5vZGUYASADKAsyDy5vbm54Lk5vZGVQ",
-            "cm90bxIMCgRuYW1lGAIgASgJEiYKC2luaXRpYWxpemVyGAUgAygLMhEub25u",
-            "eC5UZW5zb3JQcm90bxIzChJzcGFyc2VfaW5pdGlhbGl6ZXIYDyADKAsyFy5v",
-            "bm54LlNwYXJzZVRlbnNvclByb3RvEhIKCmRvY19zdHJpbmcYCiABKAkSIwoF",
-            "aW5wdXQYCyADKAsyFC5vbm54LlZhbHVlSW5mb1Byb3RvEiQKBm91dHB1dBgM",
-            "IAMoCzIULm9ubnguVmFsdWVJbmZvUHJvdG8SKAoKdmFsdWVfaW5mbxgNIAMo",
-            "CzIULm9ubnguVmFsdWVJbmZvUHJvdG8SNwoXcXVhbnRpemF0aW9uX2Fubm90",
-            "YXRpb24YDiADKAsyFi5vbm54LlRlbnNvckFubm90YXRpb24iuAUKC1RlbnNv",
-            "clByb3RvEgwKBGRpbXMYASADKAMSEQoJZGF0YV90eXBlGAIgASgFEioKB3Nl",
-            "Z21lbnQYAyABKAsyGS5vbm54LlRlbnNvclByb3RvLlNlZ21lbnQSFgoKZmxv",
-            "YXRfZGF0YRgEIAMoAkICEAESFgoKaW50MzJfZGF0YRgFIAMoBUICEAESEwoL",
-            "c3RyaW5nX2RhdGEYBiADKAwSFgoKaW50NjRfZGF0YRgHIAMoA0ICEAESDAoE",
-            "bmFtZRgIIAEoCRISCgpkb2Nfc3RyaW5nGAwgASgJEhAKCHJhd19kYXRhGAkg",
-            "ASgMEjMKDWV4dGVybmFsX2RhdGEYDSADKAsyHC5vbm54LlN0cmluZ1N0cmlu",
-            "Z0VudHJ5UHJvdG8SNQoNZGF0YV9sb2NhdGlvbhgOIAEoDjIeLm9ubnguVGVu",
-            "c29yUHJvdG8uRGF0YUxvY2F0aW9uEhcKC2RvdWJsZV9kYXRhGAogAygBQgIQ",
-            "ARIXCgt1aW50NjRfZGF0YRgLIAMoBEICEAEaJQoHU2VnbWVudBINCgViZWdp",
-            "bhgBIAEoAxILCgNlbmQYAiABKAMi2gEKCERhdGFUeXBlEg0KCVVOREVGSU5F",
-            "RBAAEgkKBUZMT0FUEAESCQoFVUlOVDgQAhIICgRJTlQ4EAMSCgoGVUlOVDE2",
-            "EAQSCQoFSU5UMTYQBRIJCgVJTlQzMhAGEgkKBUlOVDY0EAcSCgoGU1RSSU5H",
-            "EAgSCAoEQk9PTBAJEgsKB0ZMT0FUMTYQChIKCgZET1VCTEUQCxIKCgZVSU5U",
-            "MzIQDBIKCgZVSU5UNjQQDRINCglDT01QTEVYNjQQDhIOCgpDT01QTEVYMTI4",
-            "EA8SDAoIQkZMT0FUMTYQECIpCgxEYXRhTG9jYXRpb24SCwoHREVGQVVMVBAA",
-            "EgwKCEVYVEVSTkFMEAEiaAoRU3BhcnNlVGVuc29yUHJvdG8SIQoGdmFsdWVz",
-            "GAEgASgLMhEub25ueC5UZW5zb3JQcm90bxIiCgdpbmRpY2VzGAIgASgLMhEu",
-            "b25ueC5UZW5zb3JQcm90bxIMCgRkaW1zGAMgAygDIpUBChBUZW5zb3JTaGFw",
-            "ZVByb3RvEi0KA2RpbRgBIAMoCzIgLm9ubnguVGVuc29yU2hhcGVQcm90by5E",
-            "aW1lbnNpb24aUgoJRGltZW5zaW9uEhMKCWRpbV92YWx1ZRgBIAEoA0gAEhMK",
-            "CWRpbV9wYXJhbRgCIAEoCUgAEhIKCmRlbm90YXRpb24YAyABKAlCBwoFdmFs",
-            "dWUiwgQKCVR5cGVQcm90bxItCgt0ZW5zb3JfdHlwZRgBIAEoCzIWLm9ubngu",
-            "VHlwZVByb3RvLlRlbnNvckgAEjEKDXNlcXVlbmNlX3R5cGUYBCABKAsyGC5v",
-            "bm54LlR5cGVQcm90by5TZXF1ZW5jZUgAEicKCG1hcF90eXBlGAUgASgLMhMu",
-            "b25ueC5UeXBlUHJvdG8uTWFwSAASOgoSc3BhcnNlX3RlbnNvcl90eXBlGAgg",
-            "ASgLMhwub25ueC5UeXBlUHJvdG8uU3BhcnNlVGVuc29ySAASLQoLb3BhcXVl",
-            "X3R5cGUYByABKAsyFi5vbm54LlR5cGVQcm90by5PcGFxdWVIABISCgpkZW5v",
-            "dGF0aW9uGAYgASgJGkIKBlRlbnNvchIRCgllbGVtX3R5cGUYASABKAUSJQoF",
-            "c2hhcGUYAiABKAsyFi5vbm54LlRlbnNvclNoYXBlUHJvdG8aLgoIU2VxdWVu",
-            "Y2USIgoJZWxlbV90eXBlGAEgASgLMg8ub25ueC5UeXBlUHJvdG8aPAoDTWFw",
-            "EhAKCGtleV90eXBlGAEgASgFEiMKCnZhbHVlX3R5cGUYAiABKAsyDy5vbm54",
-            "LlR5cGVQcm90bxpICgxTcGFyc2VUZW5zb3ISEQoJZWxlbV90eXBlGAEgASgF",
-            "EiUKBXNoYXBlGAIgASgLMhYub25ueC5UZW5zb3JTaGFwZVByb3RvGiYKBk9w",
-            "YXF1ZRIOCgZkb21haW4YASABKAkSDAoEbmFtZRgCIAEoCUIHCgV2YWx1ZSI1",
-            "ChJPcGVyYXRvclNldElkUHJvdG8SDgoGZG9tYWluGAEgASgJEg8KB3ZlcnNp",
-            "b24YAiABKAMi7wEKDUZ1bmN0aW9uUHJvdG8SDAoEbmFtZRgBIAEoCRIVCg1z",
-            "aW5jZV92ZXJzaW9uGAIgASgDEiQKBnN0YXR1cxgDIAEoDjIULm9ubnguT3Bl",
-            "cmF0b3JTdGF0dXMSDQoFaW5wdXQYBCADKAkSDgoGb3V0cHV0GAUgAygJEhEK",
-            "CWF0dHJpYnV0ZRgGIAMoCRIdCgRub2RlGAcgAygLMg8ub25ueC5Ob2RlUHJv",
-            "dG8SEgoKZG9jX3N0cmluZxgIIAEoCRIuCgxvcHNldF9pbXBvcnQYCSADKAsy",
-            "GC5vbm54Lk9wZXJhdG9yU2V0SWRQcm90byrLAQoHVmVyc2lvbhISCg5fU1RB",
-            "UlRfVkVSU0lPThAAEhkKFUlSX1ZFUlNJT05fMjAxN18xMF8xMBABEhkKFUlS",
-            "X1ZFUlNJT05fMjAxN18xMF8zMBACEhgKFElSX1ZFUlNJT05fMjAxN18xMV8z",
-            "EAMSGAoUSVJfVkVSU0lPTl8yMDE5XzFfMjIQBBIYChRJUl9WRVJTSU9OXzIw",
-            "MTlfM18xOBAFEhgKFElSX1ZFUlNJT05fMjAxOV85XzE5EAYSDgoKSVJfVkVS",
-            "U0lPThAHKi4KDk9wZXJhdG9yU3RhdHVzEhAKDEVYUEVSSU1FTlRBTBAAEgoK",
-            "BlNUQUJMRRABYgZwcm90bzM="));
+            "LlNwYXJzZVRlbnNvclByb3RvEhsKAnRwGA4gASgLMg8ub25ueC5UeXBlUHJv",
+            "dG8SDgoGZmxvYXRzGAcgAygCEgwKBGludHMYCCADKAMSDwoHc3RyaW5ncxgJ",
+            "IAMoDBIiCgd0ZW5zb3JzGAogAygLMhEub25ueC5UZW5zb3JQcm90bxIgCgZn",
+            "cmFwaHMYCyADKAsyEC5vbm54LkdyYXBoUHJvdG8SLwoOc3BhcnNlX3RlbnNv",
+            "cnMYFyADKAsyFy5vbm54LlNwYXJzZVRlbnNvclByb3RvEiQKC3R5cGVfcHJv",
+            "dG9zGA8gAygLMg8ub25ueC5UeXBlUHJvdG8i2QEKDUF0dHJpYnV0ZVR5cGUS",
+            "DQoJVU5ERUZJTkVEEAASCQoFRkxPQVQQARIHCgNJTlQQAhIKCgZTVFJJTkcQ",
+            "AxIKCgZURU5TT1IQBBIJCgVHUkFQSBAFEhEKDVNQQVJTRV9URU5TT1IQCxIO",
+            "CgpUWVBFX1BST1RPEA0SCgoGRkxPQVRTEAYSCAoESU5UUxAHEgsKB1NUUklO",
+            "R1MQCBILCgdURU5TT1JTEAkSCgoGR1JBUEhTEAoSEgoOU1BBUlNFX1RFTlNP",
+            "UlMQDBIPCgtUWVBFX1BST1RPUxAOIlEKDlZhbHVlSW5mb1Byb3RvEgwKBG5h",
+            "bWUYASABKAkSHQoEdHlwZRgCIAEoCzIPLm9ubnguVHlwZVByb3RvEhIKCmRv",
+            "Y19zdHJpbmcYAyABKAkilgEKCU5vZGVQcm90bxINCgVpbnB1dBgBIAMoCRIO",
+            "CgZvdXRwdXQYAiADKAkSDAoEbmFtZRgDIAEoCRIPCgdvcF90eXBlGAQgASgJ",
+            "Eg4KBmRvbWFpbhgHIAEoCRInCglhdHRyaWJ1dGUYBSADKAsyFC5vbm54LkF0",
+            "dHJpYnV0ZVByb3RvEhIKCmRvY19zdHJpbmcYBiABKAki1gEKEVRyYWluaW5n",
+            "SW5mb1Byb3RvEigKDmluaXRpYWxpemF0aW9uGAEgASgLMhAub25ueC5HcmFw",
+            "aFByb3RvEiMKCWFsZ29yaXRobRgCIAEoCzIQLm9ubnguR3JhcGhQcm90bxI8",
+            "ChZpbml0aWFsaXphdGlvbl9iaW5kaW5nGAMgAygLMhwub25ueC5TdHJpbmdT",
+            "dHJpbmdFbnRyeVByb3RvEjQKDnVwZGF0ZV9iaW5kaW5nGAQgAygLMhwub25u",
+            "eC5TdHJpbmdTdHJpbmdFbnRyeVByb3RvIusCCgpNb2RlbFByb3RvEhIKCmly",
+            "X3ZlcnNpb24YASABKAMSLgoMb3BzZXRfaW1wb3J0GAggAygLMhgub25ueC5P",
+            "cGVyYXRvclNldElkUHJvdG8SFQoNcHJvZHVjZXJfbmFtZRgCIAEoCRIYChBw",
+            "cm9kdWNlcl92ZXJzaW9uGAMgASgJEg4KBmRvbWFpbhgEIAEoCRIVCg1tb2Rl",
+            "bF92ZXJzaW9uGAUgASgDEhIKCmRvY19zdHJpbmcYBiABKAkSHwoFZ3JhcGgY",
+            "ByABKAsyEC5vbm54LkdyYXBoUHJvdG8SNAoObWV0YWRhdGFfcHJvcHMYDiAD",
+            "KAsyHC5vbm54LlN0cmluZ1N0cmluZ0VudHJ5UHJvdG8SLgoNdHJhaW5pbmdf",
+            "aW5mbxgUIAMoCzIXLm9ubnguVHJhaW5pbmdJbmZvUHJvdG8SJgoJZnVuY3Rp",
+            "b25zGBkgAygLMhMub25ueC5GdW5jdGlvblByb3RvIjQKFlN0cmluZ1N0cmlu",
+            "Z0VudHJ5UHJvdG8SCwoDa2V5GAEgASgJEg0KBXZhbHVlGAIgASgJImsKEFRl",
+            "bnNvckFubm90YXRpb24SEwoLdGVuc29yX25hbWUYASABKAkSQgoccXVhbnRf",
+            "cGFyYW1ldGVyX3RlbnNvcl9uYW1lcxgCIAMoCzIcLm9ubnguU3RyaW5nU3Ry",
+            "aW5nRW50cnlQcm90byLYAgoKR3JhcGhQcm90bxIdCgRub2RlGAEgAygLMg8u",
+            "b25ueC5Ob2RlUHJvdG8SDAoEbmFtZRgCIAEoCRImCgtpbml0aWFsaXplchgF",
+            "IAMoCzIRLm9ubnguVGVuc29yUHJvdG8SMwoSc3BhcnNlX2luaXRpYWxpemVy",
+            "GA8gAygLMhcub25ueC5TcGFyc2VUZW5zb3JQcm90bxISCgpkb2Nfc3RyaW5n",
+            "GAogASgJEiMKBWlucHV0GAsgAygLMhQub25ueC5WYWx1ZUluZm9Qcm90bxIk",
+            "CgZvdXRwdXQYDCADKAsyFC5vbm54LlZhbHVlSW5mb1Byb3RvEigKCnZhbHVl",
+            "X2luZm8YDSADKAsyFC5vbm54LlZhbHVlSW5mb1Byb3RvEjcKF3F1YW50aXph",
+            "dGlvbl9hbm5vdGF0aW9uGA4gAygLMhYub25ueC5UZW5zb3JBbm5vdGF0aW9u",
+            "IrgFCgtUZW5zb3JQcm90bxIMCgRkaW1zGAEgAygDEhEKCWRhdGFfdHlwZRgC",
+            "IAEoBRIqCgdzZWdtZW50GAMgASgLMhkub25ueC5UZW5zb3JQcm90by5TZWdt",
+            "ZW50EhYKCmZsb2F0X2RhdGEYBCADKAJCAhABEhYKCmludDMyX2RhdGEYBSAD",
+            "KAVCAhABEhMKC3N0cmluZ19kYXRhGAYgAygMEhYKCmludDY0X2RhdGEYByAD",
+            "KANCAhABEgwKBG5hbWUYCCABKAkSEgoKZG9jX3N0cmluZxgMIAEoCRIQCghy",
+            "YXdfZGF0YRgJIAEoDBIzCg1leHRlcm5hbF9kYXRhGA0gAygLMhwub25ueC5T",
+            "dHJpbmdTdHJpbmdFbnRyeVByb3RvEjUKDWRhdGFfbG9jYXRpb24YDiABKA4y",
+            "Hi5vbm54LlRlbnNvclByb3RvLkRhdGFMb2NhdGlvbhIXCgtkb3VibGVfZGF0",
+            "YRgKIAMoAUICEAESFwoLdWludDY0X2RhdGEYCyADKARCAhABGiUKB1NlZ21l",
+            "bnQSDQoFYmVnaW4YASABKAMSCwoDZW5kGAIgASgDItoBCghEYXRhVHlwZRIN",
+            "CglVTkRFRklORUQQABIJCgVGTE9BVBABEgkKBVVJTlQ4EAISCAoESU5UOBAD",
+            "EgoKBlVJTlQxNhAEEgkKBUlOVDE2EAUSCQoFSU5UMzIQBhIJCgVJTlQ2NBAH",
+            "EgoKBlNUUklORxAIEggKBEJPT0wQCRILCgdGTE9BVDE2EAoSCgoGRE9VQkxF",
+            "EAsSCgoGVUlOVDMyEAwSCgoGVUlOVDY0EA0SDQoJQ09NUExFWDY0EA4SDgoK",
+            "Q09NUExFWDEyOBAPEgwKCEJGTE9BVDE2EBAiKQoMRGF0YUxvY2F0aW9uEgsK",
+            "B0RFRkFVTFQQABIMCghFWFRFUk5BTBABImgKEVNwYXJzZVRlbnNvclByb3Rv",
+            "EiEKBnZhbHVlcxgBIAEoCzIRLm9ubnguVGVuc29yUHJvdG8SIgoHaW5kaWNl",
+            "cxgCIAEoCzIRLm9ubnguVGVuc29yUHJvdG8SDAoEZGltcxgDIAMoAyKVAQoQ",
+            "VGVuc29yU2hhcGVQcm90bxItCgNkaW0YASADKAsyIC5vbm54LlRlbnNvclNo",
+            "YXBlUHJvdG8uRGltZW5zaW9uGlIKCURpbWVuc2lvbhITCglkaW1fdmFsdWUY",
+            "ASABKANIABITCglkaW1fcGFyYW0YAiABKAlIABISCgpkZW5vdGF0aW9uGAMg",
+            "ASgJQgcKBXZhbHVlIqUFCglUeXBlUHJvdG8SLQoLdGVuc29yX3R5cGUYASAB",
+            "KAsyFi5vbm54LlR5cGVQcm90by5UZW5zb3JIABIxCg1zZXF1ZW5jZV90eXBl",
+            "GAQgASgLMhgub25ueC5UeXBlUHJvdG8uU2VxdWVuY2VIABInCghtYXBfdHlw",
+            "ZRgFIAEoCzITLm9ubnguVHlwZVByb3RvLk1hcEgAEjEKDW9wdGlvbmFsX3R5",
+            "cGUYCSABKAsyGC5vbm54LlR5cGVQcm90by5PcHRpb25hbEgAEjoKEnNwYXJz",
+            "ZV90ZW5zb3JfdHlwZRgIIAEoCzIcLm9ubnguVHlwZVByb3RvLlNwYXJzZVRl",
+            "bnNvckgAEi0KC29wYXF1ZV90eXBlGAcgASgLMhYub25ueC5UeXBlUHJvdG8u",
+            "T3BhcXVlSAASEgoKZGVub3RhdGlvbhgGIAEoCRpCCgZUZW5zb3ISEQoJZWxl",
+            "bV90eXBlGAEgASgFEiUKBXNoYXBlGAIgASgLMhYub25ueC5UZW5zb3JTaGFw",
+            "ZVByb3RvGi4KCFNlcXVlbmNlEiIKCWVsZW1fdHlwZRgBIAEoCzIPLm9ubngu",
+            "VHlwZVByb3RvGjwKA01hcBIQCghrZXlfdHlwZRgBIAEoBRIjCgp2YWx1ZV90",
+            "eXBlGAIgASgLMg8ub25ueC5UeXBlUHJvdG8aLgoIT3B0aW9uYWwSIgoJZWxl",
+            "bV90eXBlGAEgASgLMg8ub25ueC5UeXBlUHJvdG8aSAoMU3BhcnNlVGVuc29y",
+            "EhEKCWVsZW1fdHlwZRgBIAEoBRIlCgVzaGFwZRgCIAEoCzIWLm9ubnguVGVu",
+            "c29yU2hhcGVQcm90bxomCgZPcGFxdWUSDgoGZG9tYWluGAEgASgJEgwKBG5h",
+            "bWUYAiABKAlCBwoFdmFsdWUiNQoST3BlcmF0b3JTZXRJZFByb3RvEg4KBmRv",
+            "bWFpbhgBIAEoCRIPCgd2ZXJzaW9uGAIgASgDIuUBCg1GdW5jdGlvblByb3Rv",
+            "EgwKBG5hbWUYASABKAkSDQoFaW5wdXQYBCADKAkSDgoGb3V0cHV0GAUgAygJ",
+            "EhEKCWF0dHJpYnV0ZRgGIAMoCRIdCgRub2RlGAcgAygLMg8ub25ueC5Ob2Rl",
+            "UHJvdG8SEgoKZG9jX3N0cmluZxgIIAEoCRIuCgxvcHNldF9pbXBvcnQYCSAD",
+            "KAsyGC5vbm54Lk9wZXJhdG9yU2V0SWRQcm90bxIOCgZkb21haW4YCiABKAlK",
+            "BAgCEANKBAgDEARSDXNpbmNlX3ZlcnNpb25SBnN0YXR1cyrkAQoHVmVyc2lv",
+            "bhISCg5fU1RBUlRfVkVSU0lPThAAEhkKFUlSX1ZFUlNJT05fMjAxN18xMF8x",
+            "MBABEhkKFUlSX1ZFUlNJT05fMjAxN18xMF8zMBACEhgKFElSX1ZFUlNJT05f",
+            "MjAxN18xMV8zEAMSGAoUSVJfVkVSU0lPTl8yMDE5XzFfMjIQBBIYChRJUl9W",
+            "RVJTSU9OXzIwMTlfM18xOBAFEhgKFElSX1ZFUlNJT05fMjAxOV85XzE5EAYS",
+            "FwoTSVJfVkVSU0lPTl8yMDIwXzVfOBAHEg4KCklSX1ZFUlNJT04QCCouCg5P",
+            "cGVyYXRvclN0YXR1cxIQCgxFWFBFUklNRU5UQUwQABIKCgZTVEFCTEUQAUIC",
+            "SANiBnByb3RvMw=="));
       descriptor = pbr::FileDescriptor.FromGeneratedCode(descriptorData,
           new pbr::FileDescriptor[] { },
           new pbr::GeneratedClrTypeInfo(new[] {typeof(global::Onnx.Version), typeof(global::Onnx.OperatorStatus), }, null, new pbr::GeneratedClrTypeInfo[] {
-            new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.AttributeProto), global::Onnx.AttributeProto.Parser, new[]{ "Name", "RefAttrName", "DocString", "Type", "F", "I", "S", "T", "G", "SparseTensor", "Floats", "Ints", "Strings", "Tensors", "Graphs", "SparseTensors" }, null, new[]{ typeof(global::Onnx.AttributeProto.Types.AttributeType) }, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.AttributeProto), global::Onnx.AttributeProto.Parser, new[]{ "Name", "RefAttrName", "DocString", "Type", "F", "I", "S", "T", "G", "SparseTensor", "Tp", "Floats", "Ints", "Strings", "Tensors", "Graphs", "SparseTensors", "TypeProtos" }, null, new[]{ typeof(global::Onnx.AttributeProto.Types.AttributeType) }, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.ValueInfoProto), global::Onnx.ValueInfoProto.Parser, new[]{ "Name", "Type", "DocString" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.NodeProto), global::Onnx.NodeProto.Parser, new[]{ "Input", "Output", "Name", "OpType", "Domain", "Attribute", "DocString" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.TrainingInfoProto), global::Onnx.TrainingInfoProto.Parser, new[]{ "Initialization", "Algorithm", "InitializationBinding", "UpdateBinding" }, null, null, null, null),
-            new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.ModelProto), global::Onnx.ModelProto.Parser, new[]{ "IrVersion", "OpsetImport", "ProducerName", "ProducerVersion", "Domain", "ModelVersion", "DocString", "Graph", "Functions", "MetadataProps", "TrainingInfo" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.ModelProto), global::Onnx.ModelProto.Parser, new[]{ "IrVersion", "OpsetImport", "ProducerName", "ProducerVersion", "Domain", "ModelVersion", "DocString", "Graph", "MetadataProps", "TrainingInfo", "Functions" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.StringStringEntryProto), global::Onnx.StringStringEntryProto.Parser, new[]{ "Key", "Value" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.TensorAnnotation), global::Onnx.TensorAnnotation.Parser, new[]{ "TensorName", "QuantParameterTensorNames" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.GraphProto), global::Onnx.GraphProto.Parser, new[]{ "Node", "Name", "Initializer", "SparseInitializer", "DocString", "Input", "Output", "ValueInfo", "QuantizationAnnotation" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.TensorProto), global::Onnx.TensorProto.Parser, new[]{ "Dims", "DataType", "Segment", "FloatData", "Int32Data", "StringData", "Int64Data", "Name", "DocString", "RawData", "ExternalData", "DataLocation", "DoubleData", "Uint64Data" }, null, new[]{ typeof(global::Onnx.TensorProto.Types.DataType), typeof(global::Onnx.TensorProto.Types.DataLocation) }, null, new pbr::GeneratedClrTypeInfo[] { new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.TensorProto.Types.Segment), global::Onnx.TensorProto.Types.Segment.Parser, new[]{ "Begin", "End" }, null, null, null, null)}),
             new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.SparseTensorProto), global::Onnx.SparseTensorProto.Parser, new[]{ "Values", "Indices", "Dims" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.TensorShapeProto), global::Onnx.TensorShapeProto.Parser, new[]{ "Dim" }, null, null, null, new pbr::GeneratedClrTypeInfo[] { new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.TensorShapeProto.Types.Dimension), global::Onnx.TensorShapeProto.Types.Dimension.Parser, new[]{ "DimValue", "DimParam", "Denotation" }, new[]{ "Value" }, null, null, null)}),
-            new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.TypeProto), global::Onnx.TypeProto.Parser, new[]{ "TensorType", "SequenceType", "MapType", "SparseTensorType", "OpaqueType", "Denotation" }, new[]{ "Value" }, null, null, new pbr::GeneratedClrTypeInfo[] { new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.TypeProto.Types.Tensor), global::Onnx.TypeProto.Types.Tensor.Parser, new[]{ "ElemType", "Shape" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.TypeProto), global::Onnx.TypeProto.Parser, new[]{ "TensorType", "SequenceType", "MapType", "OptionalType", "SparseTensorType", "OpaqueType", "Denotation" }, new[]{ "Value" }, null, null, new pbr::GeneratedClrTypeInfo[] { new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.TypeProto.Types.Tensor), global::Onnx.TypeProto.Types.Tensor.Parser, new[]{ "ElemType", "Shape" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.TypeProto.Types.Sequence), global::Onnx.TypeProto.Types.Sequence.Parser, new[]{ "ElemType" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.TypeProto.Types.Map), global::Onnx.TypeProto.Types.Map.Parser, new[]{ "KeyType", "ValueType" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.TypeProto.Types.Optional), global::Onnx.TypeProto.Types.Optional.Parser, new[]{ "ElemType" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.TypeProto.Types.SparseTensor), global::Onnx.TypeProto.Types.SparseTensor.Parser, new[]{ "ElemType", "Shape" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.TypeProto.Types.Opaque), global::Onnx.TypeProto.Types.Opaque.Parser, new[]{ "Domain", "Name" }, null, null, null, null)}),
             new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.OperatorSetIdProto), global::Onnx.OperatorSetIdProto.Parser, new[]{ "Domain", "Version" }, null, null, null, null),
-            new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.FunctionProto), global::Onnx.FunctionProto.Parser, new[]{ "Name", "SinceVersion", "Status", "Input", "Output", "Attribute", "Node", "DocString", "OpsetImport" }, null, null, null, null)
+            new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.FunctionProto), global::Onnx.FunctionProto.Parser, new[]{ "Name", "Input", "Output", "Attribute", "Node", "DocString", "OpsetImport", "Domain" }, null, null, null, null)
           }));
     }
     #endregion
@@ -159,7 +165,7 @@ namespace Onnx {
     /// <summary>
     /// The version field is always serialized and we will use it to store the
     /// version that the  graph is generated from. This helps us set up version
-    /// control. 
+    /// control.
     /// For the IR, we are using simple numbers starting with 0x00000001,
     /// which was the version we published on Oct 10, 2017.
     /// </summary>
@@ -197,7 +203,7 @@ namespace Onnx {
     /// </summary>
     [pbr::OriginalName("IR_VERSION_2019_9_19")] IrVersion2019919 = 6,
     /// <summary>
-    /// IR VERSION 7 published on &lt;TBD>
+    /// IR VERSION 7 published on May 8, 2020
     /// - Add support to allow function body graph to rely on multiple external opreator sets.
     /// - Add a list to promote inference graph's initializers to global and
     ///   mutable variables. Global variables are visible in all graphs of the
@@ -205,9 +211,17 @@ namespace Onnx {
     /// - Add message TrainingInfoProto to store initialization
     ///   method and training algorithm. The execution of TrainingInfoProto
     ///   can modify the values of mutable variables.
-    /// - Make inference graph callable from TrainingInfoProto via GraphCall operator.
+    /// - Implicitly add inference graph into each TrainingInfoProto's algorithm.
     /// </summary>
-    [pbr::OriginalName("IR_VERSION")] IrVersion = 7,
+    [pbr::OriginalName("IR_VERSION_2020_5_8")] IrVersion202058 = 7,
+    /// <summary>
+    /// IR VERSION 8 published on &lt;TBD>
+    /// Introduce TypeProto.SparseTensor
+    /// Introduce TypeProto.Optional
+    /// Added a list of FunctionProtos local to the model
+    /// Deprecated since_version and operator status from FunctionProto
+    /// </summary>
+    [pbr::OriginalName("IR_VERSION")] IrVersion = 8,
   }
 
   /// <summary>
@@ -229,7 +243,11 @@ namespace Onnx {
   /// An AttributeProto MUST contain the name field, and *only one* of the
   /// following content fields, effectively enforcing a C/C++ union equivalent.
   /// </summary>
-  public sealed partial class AttributeProto : pb::IMessage<AttributeProto> {
+  public sealed partial class AttributeProto : pb::IMessage<AttributeProto>
+  #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      , pb::IBufferMessage
+  #endif
+  {
     private static readonly pb::MessageParser<AttributeProto> _parser = new pb::MessageParser<AttributeProto>(() => new AttributeProto());
     private pb::UnknownFieldSet _unknownFields;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -264,12 +282,14 @@ namespace Onnx {
       t_ = other.t_ != null ? other.t_.Clone() : null;
       g_ = other.g_ != null ? other.g_.Clone() : null;
       sparseTensor_ = other.sparseTensor_ != null ? other.sparseTensor_.Clone() : null;
+      tp_ = other.tp_ != null ? other.tp_.Clone() : null;
       floats_ = other.floats_.Clone();
       ints_ = other.ints_.Clone();
       strings_ = other.strings_.Clone();
       tensors_ = other.tensors_.Clone();
       graphs_ = other.graphs_.Clone();
       sparseTensors_ = other.sparseTensors_.Clone();
+      typeProtos_ = other.typeProtos_.Clone();
       _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
     }
 
@@ -426,6 +446,21 @@ namespace Onnx {
       }
     }
 
+    /// <summary>Field number for the "tp" field.</summary>
+    public const int TpFieldNumber = 14;
+    private global::Onnx.TypeProto tp_;
+    /// <summary>
+    /// Do not use field below, it's deprecated.
+    /// optional ValueProto v = 12;         // value - subsumes everything but graph
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    public global::Onnx.TypeProto Tp {
+      get { return tp_; }
+      set {
+        tp_ = value;
+      }
+    }
+
     /// <summary>Field number for the "floats" field.</summary>
     public const int FloatsFieldNumber = 7;
     private static readonly pb::FieldCodec<float> _repeated_floats_codec
@@ -504,6 +539,19 @@ namespace Onnx {
       get { return sparseTensors_; }
     }
 
+    /// <summary>Field number for the "type_protos" field.</summary>
+    public const int TypeProtosFieldNumber = 15;
+    private static readonly pb::FieldCodec<global::Onnx.TypeProto> _repeated_typeProtos_codec
+        = pb::FieldCodec.ForMessage(122, global::Onnx.TypeProto.Parser);
+    private readonly pbc::RepeatedField<global::Onnx.TypeProto> typeProtos_ = new pbc::RepeatedField<global::Onnx.TypeProto>();
+    /// <summary>
+    /// list of type protos
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    public pbc::RepeatedField<global::Onnx.TypeProto> TypeProtos {
+      get { return typeProtos_; }
+    }
+
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public override bool Equals(object other) {
       return Equals(other as AttributeProto);
@@ -527,12 +575,14 @@ namespace Onnx {
       if (!object.Equals(T, other.T)) return false;
       if (!object.Equals(G, other.G)) return false;
       if (!object.Equals(SparseTensor, other.SparseTensor)) return false;
+      if (!object.Equals(Tp, other.Tp)) return false;
       if(!floats_.Equals(other.floats_)) return false;
       if(!ints_.Equals(other.ints_)) return false;
       if(!strings_.Equals(other.strings_)) return false;
       if(!tensors_.Equals(other.tensors_)) return false;
       if(!graphs_.Equals(other.graphs_)) return false;
       if(!sparseTensors_.Equals(other.sparseTensors_)) return false;
+      if(!typeProtos_.Equals(other.typeProtos_)) return false;
       return Equals(_unknownFields, other._unknownFields);
     }
 
@@ -549,12 +599,14 @@ namespace Onnx {
       if (t_ != null) hash ^= T.GetHashCode();
       if (g_ != null) hash ^= G.GetHashCode();
       if (sparseTensor_ != null) hash ^= SparseTensor.GetHashCode();
+      if (tp_ != null) hash ^= Tp.GetHashCode();
       hash ^= floats_.GetHashCode();
       hash ^= ints_.GetHashCode();
       hash ^= strings_.GetHashCode();
       hash ^= tensors_.GetHashCode();
       hash ^= graphs_.GetHashCode();
       hash ^= sparseTensors_.GetHashCode();
+      hash ^= typeProtos_.GetHashCode();
       if (_unknownFields != null) {
         hash ^= _unknownFields.GetHashCode();
       }
@@ -568,6 +620,9 @@ namespace Onnx {
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public void WriteTo(pb::CodedOutputStream output) {
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      output.WriteRawMessage(this);
+    #else
       if (Name.Length != 0) {
         output.WriteRawTag(10);
         output.WriteString(Name);
@@ -601,6 +656,11 @@ namespace Onnx {
         output.WriteRawTag(106);
         output.WriteString(DocString);
       }
+      if (tp_ != null) {
+        output.WriteRawTag(114);
+        output.WriteMessage(Tp);
+      }
+      typeProtos_.WriteTo(output, _repeated_typeProtos_codec);
       if (Type != global::Onnx.AttributeProto.Types.AttributeType.Undefined) {
         output.WriteRawTag(160, 1);
         output.WriteEnum((int) Type);
@@ -617,7 +677,68 @@ namespace Onnx {
       if (_unknownFields != null) {
         _unknownFields.WriteTo(output);
       }
+    #endif
     }
+
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    void pb::IBufferMessage.InternalWriteTo(ref pb::WriteContext output) {
+      if (Name.Length != 0) {
+        output.WriteRawTag(10);
+        output.WriteString(Name);
+      }
+      if (F != 0F) {
+        output.WriteRawTag(21);
+        output.WriteFloat(F);
+      }
+      if (I != 0L) {
+        output.WriteRawTag(24);
+        output.WriteInt64(I);
+      }
+      if (S.Length != 0) {
+        output.WriteRawTag(34);
+        output.WriteBytes(S);
+      }
+      if (t_ != null) {
+        output.WriteRawTag(42);
+        output.WriteMessage(T);
+      }
+      if (g_ != null) {
+        output.WriteRawTag(50);
+        output.WriteMessage(G);
+      }
+      floats_.WriteTo(ref output, _repeated_floats_codec);
+      ints_.WriteTo(ref output, _repeated_ints_codec);
+      strings_.WriteTo(ref output, _repeated_strings_codec);
+      tensors_.WriteTo(ref output, _repeated_tensors_codec);
+      graphs_.WriteTo(ref output, _repeated_graphs_codec);
+      if (DocString.Length != 0) {
+        output.WriteRawTag(106);
+        output.WriteString(DocString);
+      }
+      if (tp_ != null) {
+        output.WriteRawTag(114);
+        output.WriteMessage(Tp);
+      }
+      typeProtos_.WriteTo(ref output, _repeated_typeProtos_codec);
+      if (Type != global::Onnx.AttributeProto.Types.AttributeType.Undefined) {
+        output.WriteRawTag(160, 1);
+        output.WriteEnum((int) Type);
+      }
+      if (RefAttrName.Length != 0) {
+        output.WriteRawTag(170, 1);
+        output.WriteString(RefAttrName);
+      }
+      if (sparseTensor_ != null) {
+        output.WriteRawTag(178, 1);
+        output.WriteMessage(SparseTensor);
+      }
+      sparseTensors_.WriteTo(ref output, _repeated_sparseTensors_codec);
+      if (_unknownFields != null) {
+        _unknownFields.WriteTo(ref output);
+      }
+    }
+    #endif
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public int CalculateSize() {
@@ -652,12 +773,16 @@ namespace Onnx {
       if (sparseTensor_ != null) {
         size += 2 + pb::CodedOutputStream.ComputeMessageSize(SparseTensor);
       }
+      if (tp_ != null) {
+        size += 1 + pb::CodedOutputStream.ComputeMessageSize(Tp);
+      }
       size += floats_.CalculateSize(_repeated_floats_codec);
       size += ints_.CalculateSize(_repeated_ints_codec);
       size += strings_.CalculateSize(_repeated_strings_codec);
       size += tensors_.CalculateSize(_repeated_tensors_codec);
       size += graphs_.CalculateSize(_repeated_graphs_codec);
       size += sparseTensors_.CalculateSize(_repeated_sparseTensors_codec);
+      size += typeProtos_.CalculateSize(_repeated_typeProtos_codec);
       if (_unknownFields != null) {
         size += _unknownFields.CalculateSize();
       }
@@ -708,17 +833,27 @@ namespace Onnx {
         }
         SparseTensor.MergeFrom(other.SparseTensor);
       }
+      if (other.tp_ != null) {
+        if (tp_ == null) {
+          Tp = new global::Onnx.TypeProto();
+        }
+        Tp.MergeFrom(other.Tp);
+      }
       floats_.Add(other.floats_);
       ints_.Add(other.ints_);
       strings_.Add(other.strings_);
       tensors_.Add(other.tensors_);
       graphs_.Add(other.graphs_);
       sparseTensors_.Add(other.sparseTensors_);
+      typeProtos_.Add(other.typeProtos_);
       _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public void MergeFrom(pb::CodedInputStream input) {
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      input.ReadRawMessage(this);
+    #else
       uint tag;
       while ((tag = input.ReadTag()) != 0) {
         switch(tag) {
@@ -781,6 +916,17 @@ namespace Onnx {
             DocString = input.ReadString();
             break;
           }
+          case 114: {
+            if (tp_ == null) {
+              Tp = new global::Onnx.TypeProto();
+            }
+            input.ReadMessage(Tp);
+            break;
+          }
+          case 122: {
+            typeProtos_.AddEntriesFrom(input, _repeated_typeProtos_codec);
+            break;
+          }
           case 160: {
             Type = (global::Onnx.AttributeProto.Types.AttributeType) input.ReadEnum();
             break;
@@ -802,7 +948,108 @@ namespace Onnx {
           }
         }
       }
+    #endif
     }
+
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    void pb::IBufferMessage.InternalMergeFrom(ref pb::ParseContext input) {
+      uint tag;
+      while ((tag = input.ReadTag()) != 0) {
+        switch(tag) {
+          default:
+            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, ref input);
+            break;
+          case 10: {
+            Name = input.ReadString();
+            break;
+          }
+          case 21: {
+            F = input.ReadFloat();
+            break;
+          }
+          case 24: {
+            I = input.ReadInt64();
+            break;
+          }
+          case 34: {
+            S = input.ReadBytes();
+            break;
+          }
+          case 42: {
+            if (t_ == null) {
+              T = new global::Onnx.TensorProto();
+            }
+            input.ReadMessage(T);
+            break;
+          }
+          case 50: {
+            if (g_ == null) {
+              G = new global::Onnx.GraphProto();
+            }
+            input.ReadMessage(G);
+            break;
+          }
+          case 58:
+          case 61: {
+            floats_.AddEntriesFrom(ref input, _repeated_floats_codec);
+            break;
+          }
+          case 66:
+          case 64: {
+            ints_.AddEntriesFrom(ref input, _repeated_ints_codec);
+            break;
+          }
+          case 74: {
+            strings_.AddEntriesFrom(ref input, _repeated_strings_codec);
+            break;
+          }
+          case 82: {
+            tensors_.AddEntriesFrom(ref input, _repeated_tensors_codec);
+            break;
+          }
+          case 90: {
+            graphs_.AddEntriesFrom(ref input, _repeated_graphs_codec);
+            break;
+          }
+          case 106: {
+            DocString = input.ReadString();
+            break;
+          }
+          case 114: {
+            if (tp_ == null) {
+              Tp = new global::Onnx.TypeProto();
+            }
+            input.ReadMessage(Tp);
+            break;
+          }
+          case 122: {
+            typeProtos_.AddEntriesFrom(ref input, _repeated_typeProtos_codec);
+            break;
+          }
+          case 160: {
+            Type = (global::Onnx.AttributeProto.Types.AttributeType) input.ReadEnum();
+            break;
+          }
+          case 170: {
+            RefAttrName = input.ReadString();
+            break;
+          }
+          case 178: {
+            if (sparseTensor_ == null) {
+              SparseTensor = new global::Onnx.SparseTensorProto();
+            }
+            input.ReadMessage(SparseTensor);
+            break;
+          }
+          case 186: {
+            sparseTensors_.AddEntriesFrom(ref input, _repeated_sparseTensors_codec);
+            break;
+          }
+        }
+      }
+    }
+    #endif
 
     #region Nested types
     /// <summary>Container for nested types declared in the AttributeProto message type.</summary>
@@ -820,12 +1067,14 @@ namespace Onnx {
         [pbr::OriginalName("TENSOR")] Tensor = 4,
         [pbr::OriginalName("GRAPH")] Graph = 5,
         [pbr::OriginalName("SPARSE_TENSOR")] SparseTensor = 11,
+        [pbr::OriginalName("TYPE_PROTO")] TypeProto = 13,
         [pbr::OriginalName("FLOATS")] Floats = 6,
         [pbr::OriginalName("INTS")] Ints = 7,
         [pbr::OriginalName("STRINGS")] Strings = 8,
         [pbr::OriginalName("TENSORS")] Tensors = 9,
         [pbr::OriginalName("GRAPHS")] Graphs = 10,
         [pbr::OriginalName("SPARSE_TENSORS")] SparseTensors = 12,
+        [pbr::OriginalName("TYPE_PROTOS")] TypeProtos = 14,
       }
 
     }
@@ -837,7 +1086,11 @@ namespace Onnx {
   /// Defines information on value, including the name, the type, and
   /// the shape of the value.
   /// </summary>
-  public sealed partial class ValueInfoProto : pb::IMessage<ValueInfoProto> {
+  public sealed partial class ValueInfoProto : pb::IMessage<ValueInfoProto>
+  #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      , pb::IBufferMessage
+  #endif
+  {
     private static readonly pb::MessageParser<ValueInfoProto> _parser = new pb::MessageParser<ValueInfoProto>(() => new ValueInfoProto());
     private pb::UnknownFieldSet _unknownFields;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -954,6 +1207,9 @@ namespace Onnx {
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public void WriteTo(pb::CodedOutputStream output) {
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      output.WriteRawMessage(this);
+    #else
       if (Name.Length != 0) {
         output.WriteRawTag(10);
         output.WriteString(Name);
@@ -969,7 +1225,29 @@ namespace Onnx {
       if (_unknownFields != null) {
         _unknownFields.WriteTo(output);
       }
+    #endif
     }
+
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    void pb::IBufferMessage.InternalWriteTo(ref pb::WriteContext output) {
+      if (Name.Length != 0) {
+        output.WriteRawTag(10);
+        output.WriteString(Name);
+      }
+      if (type_ != null) {
+        output.WriteRawTag(18);
+        output.WriteMessage(Type);
+      }
+      if (DocString.Length != 0) {
+        output.WriteRawTag(26);
+        output.WriteString(DocString);
+      }
+      if (_unknownFields != null) {
+        _unknownFields.WriteTo(ref output);
+      }
+    }
+    #endif
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public int CalculateSize() {
@@ -1011,6 +1289,9 @@ namespace Onnx {
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public void MergeFrom(pb::CodedInputStream input) {
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      input.ReadRawMessage(this);
+    #else
       uint tag;
       while ((tag = input.ReadTag()) != 0) {
         switch(tag) {
@@ -1034,7 +1315,37 @@ namespace Onnx {
           }
         }
       }
+    #endif
     }
+
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    void pb::IBufferMessage.InternalMergeFrom(ref pb::ParseContext input) {
+      uint tag;
+      while ((tag = input.ReadTag()) != 0) {
+        switch(tag) {
+          default:
+            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, ref input);
+            break;
+          case 10: {
+            Name = input.ReadString();
+            break;
+          }
+          case 18: {
+            if (type_ == null) {
+              Type = new global::Onnx.TypeProto();
+            }
+            input.ReadMessage(Type);
+            break;
+          }
+          case 26: {
+            DocString = input.ReadString();
+            break;
+          }
+        }
+      }
+    }
+    #endif
 
   }
 
@@ -1044,10 +1355,14 @@ namespace Onnx {
   /// Computation graphs are made up of a DAG of nodes, which represent what is
   /// commonly called a "layer" or "pipeline stage" in machine learning frameworks.
   ///
-  /// For example, it can be a node of type "Conv" that takes in an image, a filter 
+  /// For example, it can be a node of type "Conv" that takes in an image, a filter
   /// tensor and a bias tensor, and produces the convolved output.
   /// </summary>
-  public sealed partial class NodeProto : pb::IMessage<NodeProto> {
+  public sealed partial class NodeProto : pb::IMessage<NodeProto>
+  #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      , pb::IBufferMessage
+  #endif
+  {
     private static readonly pb::MessageParser<NodeProto> _parser = new pb::MessageParser<NodeProto>(() => new NodeProto());
     private pb::UnknownFieldSet _unknownFields;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -1229,6 +1544,9 @@ namespace Onnx {
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public void WriteTo(pb::CodedOutputStream output) {
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      output.WriteRawMessage(this);
+    #else
       input_.WriteTo(output, _repeated_input_codec);
       output_.WriteTo(output, _repeated_output_codec);
       if (Name.Length != 0) {
@@ -1251,7 +1569,36 @@ namespace Onnx {
       if (_unknownFields != null) {
         _unknownFields.WriteTo(output);
       }
+    #endif
     }
+
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    void pb::IBufferMessage.InternalWriteTo(ref pb::WriteContext output) {
+      input_.WriteTo(ref output, _repeated_input_codec);
+      output_.WriteTo(ref output, _repeated_output_codec);
+      if (Name.Length != 0) {
+        output.WriteRawTag(26);
+        output.WriteString(Name);
+      }
+      if (OpType.Length != 0) {
+        output.WriteRawTag(34);
+        output.WriteString(OpType);
+      }
+      attribute_.WriteTo(ref output, _repeated_attribute_codec);
+      if (DocString.Length != 0) {
+        output.WriteRawTag(50);
+        output.WriteString(DocString);
+      }
+      if (Domain.Length != 0) {
+        output.WriteRawTag(58);
+        output.WriteString(Domain);
+      }
+      if (_unknownFields != null) {
+        _unknownFields.WriteTo(ref output);
+      }
+    }
+    #endif
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public int CalculateSize() {
@@ -1302,6 +1649,9 @@ namespace Onnx {
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public void MergeFrom(pb::CodedInputStream input) {
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      input.ReadRawMessage(this);
+    #else
       uint tag;
       while ((tag = input.ReadTag()) != 0) {
         switch(tag) {
@@ -1338,7 +1688,50 @@ namespace Onnx {
           }
         }
       }
+    #endif
     }
+
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    void pb::IBufferMessage.InternalMergeFrom(ref pb::ParseContext input) {
+      uint tag;
+      while ((tag = input.ReadTag()) != 0) {
+        switch(tag) {
+          default:
+            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, ref input);
+            break;
+          case 10: {
+            input_.AddEntriesFrom(ref input, _repeated_input_codec);
+            break;
+          }
+          case 18: {
+            output_.AddEntriesFrom(ref input, _repeated_output_codec);
+            break;
+          }
+          case 26: {
+            Name = input.ReadString();
+            break;
+          }
+          case 34: {
+            OpType = input.ReadString();
+            break;
+          }
+          case 42: {
+            attribute_.AddEntriesFrom(ref input, _repeated_attribute_codec);
+            break;
+          }
+          case 50: {
+            DocString = input.ReadString();
+            break;
+          }
+          case 58: {
+            Domain = input.ReadString();
+            break;
+          }
+        }
+      }
+    }
+    #endif
 
   }
 
@@ -1347,7 +1740,7 @@ namespace Onnx {
   /// TrainingInfoProto stores information for training a model.
   /// In particular, this defines two functionalities: an initialization-step
   /// and a training-algorithm-step. Initialization resets the model
-  /// back to its original state as if no training has been consumed.
+  /// back to its original state as if no training has been performed.
   /// Training algorithm improves the model based on input data.
   ///
   /// The semantics of the initialization-step is that the initializers
@@ -1360,10 +1753,14 @@ namespace Onnx {
   /// training algorithm's step. After the execution of a
   /// TrainingInfoProto.algorithm, the initializers specified by "update_binding"
   /// may be immediately updated. If the targeted training algorithm contains
-  /// consecutive update stages (such as block coordinate descent methods),
-  /// the user needs to create a TrainingInfoProto for each stage.
+  /// consecutive update steps (such as block coordinate descent methods),
+  /// the user needs to create a TrainingInfoProto for each step.
   /// </summary>
-  public sealed partial class TrainingInfoProto : pb::IMessage<TrainingInfoProto> {
+  public sealed partial class TrainingInfoProto : pb::IMessage<TrainingInfoProto>
+  #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      , pb::IBufferMessage
+  #endif
+  {
     private static readonly pb::MessageParser<TrainingInfoProto> _parser = new pb::MessageParser<TrainingInfoProto>(() => new TrainingInfoProto());
     private pb::UnknownFieldSet _unknownFields;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -1416,7 +1813,7 @@ namespace Onnx {
     /// iteration to zero.
     ///
     /// By default, this field is an empty graph and its evaluation does not
-    /// produce any output.
+    /// produce any output. Thus, no initializer would be changed by default.
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public global::Onnx.GraphProto Initialization {
@@ -1432,15 +1829,33 @@ namespace Onnx {
     /// <summary>
     /// This field represents a training algorithm step. Given required inputs,
     /// it computes outputs to update initializers in its own or inference graph's
-    /// initializer lists. In general, this graph contains loss node, gradient node,
-    /// optimizer node, increment of iteration count, and some calls to the inference
-    /// graph.
+    /// initializer lists. In general, this field contains loss node, gradient node,
+    /// optimizer node, increment of iteration count.
     ///
-    /// The field algorithm.node is the only place the user can use GraphCall
-    /// operator. The only callable graph is the one stored in ModelProto.graph.
+    /// An execution of the training algorithm step is performed by executing the
+    /// graph obtained by combining the inference graph (namely "ModelProto.graph")
+    /// and the "algorithm" graph. That is, the actual the actual
+    /// input/initializer/output/node/value_info/sparse_initializer list of
+    /// the training graph is the concatenation of
+    /// "ModelProto.graph.input/initializer/output/node/value_info/sparse_initializer"
+    /// and "algorithm.input/initializer/output/node/value_info/sparse_initializer"
+    /// in that order. This combined graph must satisfy the normal ONNX conditions.
+    /// Now, let's provide a visualization of graph combination for clarity.
+    /// Let the inference graph (i.e., "ModelProto.graph") be
+    ///    tensor_a, tensor_b -> MatMul -> tensor_c -> Sigmoid -> tensor_d
+    /// and the "algorithm" graph be
+    ///    tensor_d -> Add -> tensor_e
+    /// The combination process results
+    ///    tensor_a, tensor_b -> MatMul -> tensor_c -> Sigmoid -> tensor_d -> Add -> tensor_e
+    ///
+    /// Notice that an input of a node in the "algorithm" graph may reference the
+    /// output of a node in the inference graph (but not the other way round). Also, inference
+    /// node cannot reference inputs of "algorithm". With these restrictions, inference graph
+    /// can always be run independently without training information.
     ///
     /// By default, this field is an empty graph and its evaluation does not
-    /// produce any output.
+    /// produce any output. Evaluating the default training step never
+    /// update any initializers.
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public global::Onnx.GraphProto Algorithm {
@@ -1457,7 +1872,7 @@ namespace Onnx {
     private readonly pbc::RepeatedField<global::Onnx.StringStringEntryProto> initializationBinding_ = new pbc::RepeatedField<global::Onnx.StringStringEntryProto>();
     /// <summary>
     /// This field specifies the bindings from the outputs of "initialization" to
-    /// some initializers in "ModelProto.graph.initializer" and 
+    /// some initializers in "ModelProto.graph.initializer" and
     /// the "algorithm.initializer" in the same TrainingInfoProto.
     /// See "update_binding" below for details.
     ///
@@ -1495,23 +1910,16 @@ namespace Onnx {
     /// be multiple key-value pairs in "update_binding".
     ///
     /// The initializers appears as keys in "update_binding" are considered
-    /// mutable and globally-visible variables. This implies some behaviors
+    /// mutable variables. This implies some behaviors
     /// as described below.
     ///
-    ///  1. We have only unique keys in all "update_binding"s so that two global
+    ///  1. We have only unique keys in all "update_binding"s so that two
     ///     variables may not have the same name. This ensures that one
-    ///     global variable is assigned up to once.
+    ///     variable is assigned up to once.
     ///  2. The keys must appear in names of "ModelProto.graph.initializer" or
     ///     "TrainingInfoProto.algorithm.initializer".
-    ///  3. The values must be output names of "algorithm".
-    ///  4. If an optional input of a graph is omitted when using GraphCall, the
-    ///     global variable with the same name may be used.
-    ///  5. When using GraphCall, the users always can pass values to optional 
-    ///     inputs of the called graph even if the associated initializers appears
-    ///     as keys in "update_binding"s.
-    ///  6. The graphs in TrainingInfoProto's can use global variables as
-    ///     their operator inputs.
-    ///  7. Mutable variables are initialized to the value specified by the
+    ///  3. The values must be output names of "algorithm" or "ModelProto.graph.output".
+    ///  4. Mutable variables are initialized to the value specified by the
     ///     corresponding initializer, and then potentially updated by
     ///     "initializer_binding"s and "update_binding"s in "TrainingInfoProto"s.
     ///
@@ -1568,6 +1976,9 @@ namespace Onnx {
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public void WriteTo(pb::CodedOutputStream output) {
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      output.WriteRawMessage(this);
+    #else
       if (initialization_ != null) {
         output.WriteRawTag(10);
         output.WriteMessage(Initialization);
@@ -1581,7 +1992,27 @@ namespace Onnx {
       if (_unknownFields != null) {
         _unknownFields.WriteTo(output);
       }
+    #endif
     }
+
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    void pb::IBufferMessage.InternalWriteTo(ref pb::WriteContext output) {
+      if (initialization_ != null) {
+        output.WriteRawTag(10);
+        output.WriteMessage(Initialization);
+      }
+      if (algorithm_ != null) {
+        output.WriteRawTag(18);
+        output.WriteMessage(Algorithm);
+      }
+      initializationBinding_.WriteTo(ref output, _repeated_initializationBinding_codec);
+      updateBinding_.WriteTo(ref output, _repeated_updateBinding_codec);
+      if (_unknownFields != null) {
+        _unknownFields.WriteTo(ref output);
+      }
+    }
+    #endif
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public int CalculateSize() {
@@ -1624,6 +2055,9 @@ namespace Onnx {
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public void MergeFrom(pb::CodedInputStream input) {
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      input.ReadRawMessage(this);
+    #else
       uint tag;
       while ((tag = input.ReadTag()) != 0) {
         switch(tag) {
@@ -1654,7 +2088,44 @@ namespace Onnx {
           }
         }
       }
+    #endif
     }
+
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    void pb::IBufferMessage.InternalMergeFrom(ref pb::ParseContext input) {
+      uint tag;
+      while ((tag = input.ReadTag()) != 0) {
+        switch(tag) {
+          default:
+            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, ref input);
+            break;
+          case 10: {
+            if (initialization_ == null) {
+              Initialization = new global::Onnx.GraphProto();
+            }
+            input.ReadMessage(Initialization);
+            break;
+          }
+          case 18: {
+            if (algorithm_ == null) {
+              Algorithm = new global::Onnx.GraphProto();
+            }
+            input.ReadMessage(Algorithm);
+            break;
+          }
+          case 26: {
+            initializationBinding_.AddEntriesFrom(ref input, _repeated_initializationBinding_codec);
+            break;
+          }
+          case 34: {
+            updateBinding_.AddEntriesFrom(ref input, _repeated_updateBinding_codec);
+            break;
+          }
+        }
+      }
+    }
+    #endif
 
   }
 
@@ -1666,7 +2137,11 @@ namespace Onnx {
   ///
   /// The semantics of the model are described by the associated GraphProto's.
   /// </summary>
-  public sealed partial class ModelProto : pb::IMessage<ModelProto> {
+  public sealed partial class ModelProto : pb::IMessage<ModelProto>
+  #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      , pb::IBufferMessage
+  #endif
+  {
     private static readonly pb::MessageParser<ModelProto> _parser = new pb::MessageParser<ModelProto>(() => new ModelProto());
     private pb::UnknownFieldSet _unknownFields;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -1699,9 +2174,9 @@ namespace Onnx {
       modelVersion_ = other.modelVersion_;
       docString_ = other.docString_;
       graph_ = other.graph_ != null ? other.graph_.Clone() : null;
-      functions_ = other.functions_.Clone();
       metadataProps_ = other.metadataProps_.Clone();
       trainingInfo_ = other.trainingInfo_.Clone();
+      functions_ = other.functions_.Clone();
       _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
     }
 
@@ -1838,19 +2313,6 @@ namespace Onnx {
       }
     }
 
-    /// <summary>Field number for the "functions" field.</summary>
-    public const int FunctionsFieldNumber = 100;
-    private static readonly pb::FieldCodec<global::Onnx.FunctionProto> _repeated_functions_codec
-        = pb::FieldCodec.ForMessage(802, global::Onnx.FunctionProto.Parser);
-    private readonly pbc::RepeatedField<global::Onnx.FunctionProto> functions_ = new pbc::RepeatedField<global::Onnx.FunctionProto>();
-    /// <summary>
-    /// kezhan: This field is not in ONNX, and will be pushed into ONNX with good use cases in microsoft.
-    /// </summary>
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    public pbc::RepeatedField<global::Onnx.FunctionProto> Functions {
-      get { return functions_; }
-    }
-
     /// <summary>Field number for the "metadata_props" field.</summary>
     public const int MetadataPropsFieldNumber = 14;
     private static readonly pb::FieldCodec<global::Onnx.StringStringEntryProto> _repeated_metadataProps_codec
@@ -1885,6 +2347,34 @@ namespace Onnx {
       get { return trainingInfo_; }
     }
 
+    /// <summary>Field number for the "functions" field.</summary>
+    public const int FunctionsFieldNumber = 25;
+    private static readonly pb::FieldCodec<global::Onnx.FunctionProto> _repeated_functions_codec
+        = pb::FieldCodec.ForMessage(202, global::Onnx.FunctionProto.Parser);
+    private readonly pbc::RepeatedField<global::Onnx.FunctionProto> functions_ = new pbc::RepeatedField<global::Onnx.FunctionProto>();
+    /// <summary>
+    /// A list of function protos local to the model.
+    ///
+    /// Name of the function "FunctionProto.name" should be unique within the domain "FunctionProto.domain".
+    /// In case of any conflicts the behavior (whether the model local functions are given higher priority,
+    /// or standard opserator sets are given higher priotity or this is treated as error) is defined by 
+    /// the runtimes.
+    /// 
+    /// The operator sets imported by FunctionProto should be compatible with the ones
+    /// imported by ModelProto and other model local FunctionProtos. 
+    /// Example, if same operator set say 'A' is imported by a FunctionProto and ModelProto 
+    /// or by 2 FunctionProtos then versions for the operator set may be different but, 
+    /// the operator schema returned for op_type, domain, version combination
+    /// for both the versions should be same for every node in the function body.
+    ///
+    /// One FunctionProto can reference other FunctionProto in the model, however, recursive reference
+    /// is not allowed.
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    public pbc::RepeatedField<global::Onnx.FunctionProto> Functions {
+      get { return functions_; }
+    }
+
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public override bool Equals(object other) {
       return Equals(other as ModelProto);
@@ -1906,9 +2396,9 @@ namespace Onnx {
       if (ModelVersion != other.ModelVersion) return false;
       if (DocString != other.DocString) return false;
       if (!object.Equals(Graph, other.Graph)) return false;
-      if(!functions_.Equals(other.functions_)) return false;
       if(!metadataProps_.Equals(other.metadataProps_)) return false;
       if(!trainingInfo_.Equals(other.trainingInfo_)) return false;
+      if(!functions_.Equals(other.functions_)) return false;
       return Equals(_unknownFields, other._unknownFields);
     }
 
@@ -1923,9 +2413,9 @@ namespace Onnx {
       if (ModelVersion != 0L) hash ^= ModelVersion.GetHashCode();
       if (DocString.Length != 0) hash ^= DocString.GetHashCode();
       if (graph_ != null) hash ^= Graph.GetHashCode();
-      hash ^= functions_.GetHashCode();
       hash ^= metadataProps_.GetHashCode();
       hash ^= trainingInfo_.GetHashCode();
+      hash ^= functions_.GetHashCode();
       if (_unknownFields != null) {
         hash ^= _unknownFields.GetHashCode();
       }
@@ -1939,6 +2429,9 @@ namespace Onnx {
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public void WriteTo(pb::CodedOutputStream output) {
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      output.WriteRawMessage(this);
+    #else
       if (IrVersion != 0L) {
         output.WriteRawTag(8);
         output.WriteInt64(IrVersion);
@@ -1974,7 +2467,49 @@ namespace Onnx {
       if (_unknownFields != null) {
         _unknownFields.WriteTo(output);
       }
+    #endif
     }
+
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    void pb::IBufferMessage.InternalWriteTo(ref pb::WriteContext output) {
+      if (IrVersion != 0L) {
+        output.WriteRawTag(8);
+        output.WriteInt64(IrVersion);
+      }
+      if (ProducerName.Length != 0) {
+        output.WriteRawTag(18);
+        output.WriteString(ProducerName);
+      }
+      if (ProducerVersion.Length != 0) {
+        output.WriteRawTag(26);
+        output.WriteString(ProducerVersion);
+      }
+      if (Domain.Length != 0) {
+        output.WriteRawTag(34);
+        output.WriteString(Domain);
+      }
+      if (ModelVersion != 0L) {
+        output.WriteRawTag(40);
+        output.WriteInt64(ModelVersion);
+      }
+      if (DocString.Length != 0) {
+        output.WriteRawTag(50);
+        output.WriteString(DocString);
+      }
+      if (graph_ != null) {
+        output.WriteRawTag(58);
+        output.WriteMessage(Graph);
+      }
+      opsetImport_.WriteTo(ref output, _repeated_opsetImport_codec);
+      metadataProps_.WriteTo(ref output, _repeated_metadataProps_codec);
+      trainingInfo_.WriteTo(ref output, _repeated_trainingInfo_codec);
+      functions_.WriteTo(ref output, _repeated_functions_codec);
+      if (_unknownFields != null) {
+        _unknownFields.WriteTo(ref output);
+      }
+    }
+    #endif
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public int CalculateSize() {
@@ -2001,9 +2536,9 @@ namespace Onnx {
       if (graph_ != null) {
         size += 1 + pb::CodedOutputStream.ComputeMessageSize(Graph);
       }
-      size += functions_.CalculateSize(_repeated_functions_codec);
       size += metadataProps_.CalculateSize(_repeated_metadataProps_codec);
       size += trainingInfo_.CalculateSize(_repeated_trainingInfo_codec);
+      size += functions_.CalculateSize(_repeated_functions_codec);
       if (_unknownFields != null) {
         size += _unknownFields.CalculateSize();
       }
@@ -2040,14 +2575,17 @@ namespace Onnx {
         }
         Graph.MergeFrom(other.Graph);
       }
-      functions_.Add(other.functions_);
       metadataProps_.Add(other.metadataProps_);
       trainingInfo_.Add(other.trainingInfo_);
+      functions_.Add(other.functions_);
       _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public void MergeFrom(pb::CodedInputStream input) {
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      input.ReadRawMessage(this);
+    #else
       uint tag;
       while ((tag = input.ReadTag()) != 0) {
         switch(tag) {
@@ -2097,13 +2635,75 @@ namespace Onnx {
             trainingInfo_.AddEntriesFrom(input, _repeated_trainingInfo_codec);
             break;
           }
-          case 802: {
+          case 202: {
             functions_.AddEntriesFrom(input, _repeated_functions_codec);
             break;
           }
         }
       }
+    #endif
     }
+
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    void pb::IBufferMessage.InternalMergeFrom(ref pb::ParseContext input) {
+      uint tag;
+      while ((tag = input.ReadTag()) != 0) {
+        switch(tag) {
+          default:
+            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, ref input);
+            break;
+          case 8: {
+            IrVersion = input.ReadInt64();
+            break;
+          }
+          case 18: {
+            ProducerName = input.ReadString();
+            break;
+          }
+          case 26: {
+            ProducerVersion = input.ReadString();
+            break;
+          }
+          case 34: {
+            Domain = input.ReadString();
+            break;
+          }
+          case 40: {
+            ModelVersion = input.ReadInt64();
+            break;
+          }
+          case 50: {
+            DocString = input.ReadString();
+            break;
+          }
+          case 58: {
+            if (graph_ == null) {
+              Graph = new global::Onnx.GraphProto();
+            }
+            input.ReadMessage(Graph);
+            break;
+          }
+          case 66: {
+            opsetImport_.AddEntriesFrom(ref input, _repeated_opsetImport_codec);
+            break;
+          }
+          case 114: {
+            metadataProps_.AddEntriesFrom(ref input, _repeated_metadataProps_codec);
+            break;
+          }
+          case 162: {
+            trainingInfo_.AddEntriesFrom(ref input, _repeated_trainingInfo_codec);
+            break;
+          }
+          case 202: {
+            functions_.AddEntriesFrom(ref input, _repeated_functions_codec);
+            break;
+          }
+        }
+      }
+    }
+    #endif
 
   }
 
@@ -2111,7 +2711,11 @@ namespace Onnx {
   /// StringStringEntryProto follows the pattern for cross-proto-version maps.
   /// See https://developers.google.com/protocol-buffers/docs/proto3#maps
   /// </summary>
-  public sealed partial class StringStringEntryProto : pb::IMessage<StringStringEntryProto> {
+  public sealed partial class StringStringEntryProto : pb::IMessage<StringStringEntryProto>
+  #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      , pb::IBufferMessage
+  #endif
+  {
     private static readonly pb::MessageParser<StringStringEntryProto> _parser = new pb::MessageParser<StringStringEntryProto>(() => new StringStringEntryProto());
     private pb::UnknownFieldSet _unknownFields;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -2204,6 +2808,9 @@ namespace Onnx {
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public void WriteTo(pb::CodedOutputStream output) {
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      output.WriteRawMessage(this);
+    #else
       if (Key.Length != 0) {
         output.WriteRawTag(10);
         output.WriteString(Key);
@@ -2215,7 +2822,25 @@ namespace Onnx {
       if (_unknownFields != null) {
         _unknownFields.WriteTo(output);
       }
+    #endif
     }
+
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    void pb::IBufferMessage.InternalWriteTo(ref pb::WriteContext output) {
+      if (Key.Length != 0) {
+        output.WriteRawTag(10);
+        output.WriteString(Key);
+      }
+      if (Value.Length != 0) {
+        output.WriteRawTag(18);
+        output.WriteString(Value);
+      }
+      if (_unknownFields != null) {
+        _unknownFields.WriteTo(ref output);
+      }
+    }
+    #endif
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public int CalculateSize() {
@@ -2248,6 +2873,9 @@ namespace Onnx {
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public void MergeFrom(pb::CodedInputStream input) {
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      input.ReadRawMessage(this);
+    #else
       uint tag;
       while ((tag = input.ReadTag()) != 0) {
         switch(tag) {
@@ -2264,11 +2892,38 @@ namespace Onnx {
           }
         }
       }
+    #endif
     }
+
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    void pb::IBufferMessage.InternalMergeFrom(ref pb::ParseContext input) {
+      uint tag;
+      while ((tag = input.ReadTag()) != 0) {
+        switch(tag) {
+          default:
+            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, ref input);
+            break;
+          case 10: {
+            Key = input.ReadString();
+            break;
+          }
+          case 18: {
+            Value = input.ReadString();
+            break;
+          }
+        }
+      }
+    }
+    #endif
 
   }
 
-  public sealed partial class TensorAnnotation : pb::IMessage<TensorAnnotation> {
+  public sealed partial class TensorAnnotation : pb::IMessage<TensorAnnotation>
+  #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      , pb::IBufferMessage
+  #endif
+  {
     private static readonly pb::MessageParser<TensorAnnotation> _parser = new pb::MessageParser<TensorAnnotation>(() => new TensorAnnotation());
     private pb::UnknownFieldSet _unknownFields;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -2366,6 +3021,9 @@ namespace Onnx {
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public void WriteTo(pb::CodedOutputStream output) {
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      output.WriteRawMessage(this);
+    #else
       if (TensorName.Length != 0) {
         output.WriteRawTag(10);
         output.WriteString(TensorName);
@@ -2374,7 +3032,22 @@ namespace Onnx {
       if (_unknownFields != null) {
         _unknownFields.WriteTo(output);
       }
+    #endif
     }
+
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    void pb::IBufferMessage.InternalWriteTo(ref pb::WriteContext output) {
+      if (TensorName.Length != 0) {
+        output.WriteRawTag(10);
+        output.WriteString(TensorName);
+      }
+      quantParameterTensorNames_.WriteTo(ref output, _repeated_quantParameterTensorNames_codec);
+      if (_unknownFields != null) {
+        _unknownFields.WriteTo(ref output);
+      }
+    }
+    #endif
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public int CalculateSize() {
@@ -2403,6 +3076,9 @@ namespace Onnx {
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public void MergeFrom(pb::CodedInputStream input) {
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      input.ReadRawMessage(this);
+    #else
       uint tag;
       while ((tag = input.ReadTag()) != 0) {
         switch(tag) {
@@ -2419,19 +3095,46 @@ namespace Onnx {
           }
         }
       }
+    #endif
     }
+
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    void pb::IBufferMessage.InternalMergeFrom(ref pb::ParseContext input) {
+      uint tag;
+      while ((tag = input.ReadTag()) != 0) {
+        switch(tag) {
+          default:
+            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, ref input);
+            break;
+          case 10: {
+            TensorName = input.ReadString();
+            break;
+          }
+          case 18: {
+            quantParameterTensorNames_.AddEntriesFrom(ref input, _repeated_quantParameterTensorNames_codec);
+            break;
+          }
+        }
+      }
+    }
+    #endif
 
   }
 
   /// <summary>
   /// Graphs
   ///
-  /// A graph defines the computational logic of a model and is comprised of a parameterized 
+  /// A graph defines the computational logic of a model and is comprised of a parameterized
   /// list of nodes that form a directed acyclic graph based on their inputs and outputs.
   /// This is the equivalent of the "network" or "graph" in many deep learning
   /// frameworks.
   /// </summary>
-  public sealed partial class GraphProto : pb::IMessage<GraphProto> {
+  public sealed partial class GraphProto : pb::IMessage<GraphProto>
+  #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      , pb::IBufferMessage
+  #endif
+  {
     private static readonly pb::MessageParser<GraphProto> _parser = new pb::MessageParser<GraphProto>(() => new GraphProto());
     private pb::UnknownFieldSet _unknownFields;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -2507,8 +3210,9 @@ namespace Onnx {
     private readonly pbc::RepeatedField<global::Onnx.TensorProto> initializer_ = new pbc::RepeatedField<global::Onnx.TensorProto>();
     /// <summary>
     /// A list of named tensor values, used to specify constant inputs of the graph.
-    /// Each TensorProto entry must have a distinct name (within the list) that
-    /// MAY also appear in the input list.
+    /// Each initializer (both TensorProto as well SparseTensorProto) MUST have a name.
+    /// The name MUST be unique across both initializer and sparse_initializer,
+    /// but the name MAY also appear in the input list.
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public pbc::RepeatedField<global::Onnx.TensorProto> Initializer {
@@ -2645,6 +3349,9 @@ namespace Onnx {
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public void WriteTo(pb::CodedOutputStream output) {
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      output.WriteRawMessage(this);
+    #else
       node_.WriteTo(output, _repeated_node_codec);
       if (Name.Length != 0) {
         output.WriteRawTag(18);
@@ -2663,7 +3370,32 @@ namespace Onnx {
       if (_unknownFields != null) {
         _unknownFields.WriteTo(output);
       }
+    #endif
     }
+
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    void pb::IBufferMessage.InternalWriteTo(ref pb::WriteContext output) {
+      node_.WriteTo(ref output, _repeated_node_codec);
+      if (Name.Length != 0) {
+        output.WriteRawTag(18);
+        output.WriteString(Name);
+      }
+      initializer_.WriteTo(ref output, _repeated_initializer_codec);
+      if (DocString.Length != 0) {
+        output.WriteRawTag(82);
+        output.WriteString(DocString);
+      }
+      input_.WriteTo(ref output, _repeated_input_codec);
+      output_.WriteTo(ref output, _repeated_output_codec);
+      valueInfo_.WriteTo(ref output, _repeated_valueInfo_codec);
+      quantizationAnnotation_.WriteTo(ref output, _repeated_quantizationAnnotation_codec);
+      sparseInitializer_.WriteTo(ref output, _repeated_sparseInitializer_codec);
+      if (_unknownFields != null) {
+        _unknownFields.WriteTo(ref output);
+      }
+    }
+    #endif
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public int CalculateSize() {
@@ -2710,6 +3442,9 @@ namespace Onnx {
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public void MergeFrom(pb::CodedInputStream input) {
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      input.ReadRawMessage(this);
+    #else
       uint tag;
       while ((tag = input.ReadTag()) != 0) {
         switch(tag) {
@@ -2754,7 +3489,58 @@ namespace Onnx {
           }
         }
       }
+    #endif
     }
+
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    void pb::IBufferMessage.InternalMergeFrom(ref pb::ParseContext input) {
+      uint tag;
+      while ((tag = input.ReadTag()) != 0) {
+        switch(tag) {
+          default:
+            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, ref input);
+            break;
+          case 10: {
+            node_.AddEntriesFrom(ref input, _repeated_node_codec);
+            break;
+          }
+          case 18: {
+            Name = input.ReadString();
+            break;
+          }
+          case 42: {
+            initializer_.AddEntriesFrom(ref input, _repeated_initializer_codec);
+            break;
+          }
+          case 82: {
+            DocString = input.ReadString();
+            break;
+          }
+          case 90: {
+            input_.AddEntriesFrom(ref input, _repeated_input_codec);
+            break;
+          }
+          case 98: {
+            output_.AddEntriesFrom(ref input, _repeated_output_codec);
+            break;
+          }
+          case 106: {
+            valueInfo_.AddEntriesFrom(ref input, _repeated_valueInfo_codec);
+            break;
+          }
+          case 114: {
+            quantizationAnnotation_.AddEntriesFrom(ref input, _repeated_quantizationAnnotation_codec);
+            break;
+          }
+          case 122: {
+            sparseInitializer_.AddEntriesFrom(ref input, _repeated_sparseInitializer_codec);
+            break;
+          }
+        }
+      }
+    }
+    #endif
 
   }
 
@@ -2763,7 +3549,11 @@ namespace Onnx {
   ///
   /// A serialized tensor value.
   /// </summary>
-  public sealed partial class TensorProto : pb::IMessage<TensorProto> {
+  public sealed partial class TensorProto : pb::IMessage<TensorProto>
+  #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      , pb::IBufferMessage
+  #endif
+  {
     private static readonly pb::MessageParser<TensorProto> _parser = new pb::MessageParser<TensorProto>(() => new TensorProto());
     private pb::UnknownFieldSet _unknownFields;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -3101,6 +3891,9 @@ namespace Onnx {
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public void WriteTo(pb::CodedOutputStream output) {
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      output.WriteRawMessage(this);
+    #else
       dims_.WriteTo(output, _repeated_dims_codec);
       if (DataType != 0) {
         output.WriteRawTag(16);
@@ -3136,7 +3929,49 @@ namespace Onnx {
       if (_unknownFields != null) {
         _unknownFields.WriteTo(output);
       }
+    #endif
     }
+
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    void pb::IBufferMessage.InternalWriteTo(ref pb::WriteContext output) {
+      dims_.WriteTo(ref output, _repeated_dims_codec);
+      if (DataType != 0) {
+        output.WriteRawTag(16);
+        output.WriteInt32(DataType);
+      }
+      if (segment_ != null) {
+        output.WriteRawTag(26);
+        output.WriteMessage(Segment);
+      }
+      floatData_.WriteTo(ref output, _repeated_floatData_codec);
+      int32Data_.WriteTo(ref output, _repeated_int32Data_codec);
+      stringData_.WriteTo(ref output, _repeated_stringData_codec);
+      int64Data_.WriteTo(ref output, _repeated_int64Data_codec);
+      if (Name.Length != 0) {
+        output.WriteRawTag(66);
+        output.WriteString(Name);
+      }
+      if (RawData.Length != 0) {
+        output.WriteRawTag(74);
+        output.WriteBytes(RawData);
+      }
+      doubleData_.WriteTo(ref output, _repeated_doubleData_codec);
+      uint64Data_.WriteTo(ref output, _repeated_uint64Data_codec);
+      if (DocString.Length != 0) {
+        output.WriteRawTag(98);
+        output.WriteString(DocString);
+      }
+      externalData_.WriteTo(ref output, _repeated_externalData_codec);
+      if (DataLocation != global::Onnx.TensorProto.Types.DataLocation.Default) {
+        output.WriteRawTag(112);
+        output.WriteEnum((int) DataLocation);
+      }
+      if (_unknownFields != null) {
+        _unknownFields.WriteTo(ref output);
+      }
+    }
+    #endif
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public int CalculateSize() {
@@ -3212,6 +4047,9 @@ namespace Onnx {
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public void MergeFrom(pb::CodedInputStream input) {
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      input.ReadRawMessage(this);
+    #else
       uint tag;
       while ((tag = input.ReadTag()) != 0) {
         switch(tag) {
@@ -3285,7 +4123,87 @@ namespace Onnx {
           }
         }
       }
+    #endif
     }
+
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    void pb::IBufferMessage.InternalMergeFrom(ref pb::ParseContext input) {
+      uint tag;
+      while ((tag = input.ReadTag()) != 0) {
+        switch(tag) {
+          default:
+            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, ref input);
+            break;
+          case 10:
+          case 8: {
+            dims_.AddEntriesFrom(ref input, _repeated_dims_codec);
+            break;
+          }
+          case 16: {
+            DataType = input.ReadInt32();
+            break;
+          }
+          case 26: {
+            if (segment_ == null) {
+              Segment = new global::Onnx.TensorProto.Types.Segment();
+            }
+            input.ReadMessage(Segment);
+            break;
+          }
+          case 34:
+          case 37: {
+            floatData_.AddEntriesFrom(ref input, _repeated_floatData_codec);
+            break;
+          }
+          case 42:
+          case 40: {
+            int32Data_.AddEntriesFrom(ref input, _repeated_int32Data_codec);
+            break;
+          }
+          case 50: {
+            stringData_.AddEntriesFrom(ref input, _repeated_stringData_codec);
+            break;
+          }
+          case 58:
+          case 56: {
+            int64Data_.AddEntriesFrom(ref input, _repeated_int64Data_codec);
+            break;
+          }
+          case 66: {
+            Name = input.ReadString();
+            break;
+          }
+          case 74: {
+            RawData = input.ReadBytes();
+            break;
+          }
+          case 82:
+          case 81: {
+            doubleData_.AddEntriesFrom(ref input, _repeated_doubleData_codec);
+            break;
+          }
+          case 90:
+          case 88: {
+            uint64Data_.AddEntriesFrom(ref input, _repeated_uint64Data_codec);
+            break;
+          }
+          case 98: {
+            DocString = input.ReadString();
+            break;
+          }
+          case 106: {
+            externalData_.AddEntriesFrom(ref input, _repeated_externalData_codec);
+            break;
+          }
+          case 112: {
+            DataLocation = (global::Onnx.TensorProto.Types.DataLocation) input.ReadEnum();
+            break;
+          }
+        }
+      }
+    }
+    #endif
 
     #region Nested types
     /// <summary>Container for nested types declared in the TensorProto message type.</summary>
@@ -3368,7 +4286,11 @@ namespace Onnx {
       /// case the following fields will specify the segment that is stored in
       /// the current TensorProto.
       /// </summary>
-      public sealed partial class Segment : pb::IMessage<Segment> {
+      public sealed partial class Segment : pb::IMessage<Segment>
+      #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+          , pb::IBufferMessage
+      #endif
+      {
         private static readonly pb::MessageParser<Segment> _parser = new pb::MessageParser<Segment>(() => new Segment());
         private pb::UnknownFieldSet _unknownFields;
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -3461,6 +4383,9 @@ namespace Onnx {
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
         public void WriteTo(pb::CodedOutputStream output) {
+        #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+          output.WriteRawMessage(this);
+        #else
           if (Begin != 0L) {
             output.WriteRawTag(8);
             output.WriteInt64(Begin);
@@ -3472,7 +4397,25 @@ namespace Onnx {
           if (_unknownFields != null) {
             _unknownFields.WriteTo(output);
           }
+        #endif
         }
+
+        #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        void pb::IBufferMessage.InternalWriteTo(ref pb::WriteContext output) {
+          if (Begin != 0L) {
+            output.WriteRawTag(8);
+            output.WriteInt64(Begin);
+          }
+          if (End != 0L) {
+            output.WriteRawTag(16);
+            output.WriteInt64(End);
+          }
+          if (_unknownFields != null) {
+            _unknownFields.WriteTo(ref output);
+          }
+        }
+        #endif
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
         public int CalculateSize() {
@@ -3505,6 +4448,9 @@ namespace Onnx {
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
         public void MergeFrom(pb::CodedInputStream input) {
+        #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+          input.ReadRawMessage(this);
+        #else
           uint tag;
           while ((tag = input.ReadTag()) != 0) {
             switch(tag) {
@@ -3521,7 +4467,30 @@ namespace Onnx {
               }
             }
           }
+        #endif
         }
+
+        #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        void pb::IBufferMessage.InternalMergeFrom(ref pb::ParseContext input) {
+          uint tag;
+          while ((tag = input.ReadTag()) != 0) {
+            switch(tag) {
+              default:
+                _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, ref input);
+                break;
+              case 8: {
+                Begin = input.ReadInt64();
+                break;
+              }
+              case 16: {
+                End = input.ReadInt64();
+                break;
+              }
+            }
+          }
+        }
+        #endif
 
       }
 
@@ -3533,7 +4502,11 @@ namespace Onnx {
   /// <summary>
   /// A serialized sparse-tensor value
   /// </summary>
-  public sealed partial class SparseTensorProto : pb::IMessage<SparseTensorProto> {
+  public sealed partial class SparseTensorProto : pb::IMessage<SparseTensorProto>
+  #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      , pb::IBufferMessage
+  #endif
+  {
     private static readonly pb::MessageParser<SparseTensorProto> _parser = new pb::MessageParser<SparseTensorProto>(() => new SparseTensorProto());
     private pb::UnknownFieldSet _unknownFields;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -3575,6 +4548,8 @@ namespace Onnx {
     /// <summary>
     /// The sequence of non-default values are encoded as a tensor of shape [NNZ].
     /// The default-value is zero for numeric tensors, and empty-string for string tensors.
+    /// values must have a non-empty name present which serves as a name for SparseTensorProto
+    /// when used in sparse_initializer list.
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public global::Onnx.TensorProto Values {
@@ -3658,6 +4633,9 @@ namespace Onnx {
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public void WriteTo(pb::CodedOutputStream output) {
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      output.WriteRawMessage(this);
+    #else
       if (values_ != null) {
         output.WriteRawTag(10);
         output.WriteMessage(Values);
@@ -3670,7 +4648,26 @@ namespace Onnx {
       if (_unknownFields != null) {
         _unknownFields.WriteTo(output);
       }
+    #endif
     }
+
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    void pb::IBufferMessage.InternalWriteTo(ref pb::WriteContext output) {
+      if (values_ != null) {
+        output.WriteRawTag(10);
+        output.WriteMessage(Values);
+      }
+      if (indices_ != null) {
+        output.WriteRawTag(18);
+        output.WriteMessage(Indices);
+      }
+      dims_.WriteTo(ref output, _repeated_dims_codec);
+      if (_unknownFields != null) {
+        _unknownFields.WriteTo(ref output);
+      }
+    }
+    #endif
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public int CalculateSize() {
@@ -3711,6 +4708,9 @@ namespace Onnx {
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public void MergeFrom(pb::CodedInputStream input) {
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      input.ReadRawMessage(this);
+    #else
       uint tag;
       while ((tag = input.ReadTag()) != 0) {
         switch(tag) {
@@ -3738,7 +4738,41 @@ namespace Onnx {
           }
         }
       }
+    #endif
     }
+
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    void pb::IBufferMessage.InternalMergeFrom(ref pb::ParseContext input) {
+      uint tag;
+      while ((tag = input.ReadTag()) != 0) {
+        switch(tag) {
+          default:
+            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, ref input);
+            break;
+          case 10: {
+            if (values_ == null) {
+              Values = new global::Onnx.TensorProto();
+            }
+            input.ReadMessage(Values);
+            break;
+          }
+          case 18: {
+            if (indices_ == null) {
+              Indices = new global::Onnx.TensorProto();
+            }
+            input.ReadMessage(Indices);
+            break;
+          }
+          case 26:
+          case 24: {
+            dims_.AddEntriesFrom(ref input, _repeated_dims_codec);
+            break;
+          }
+        }
+      }
+    }
+    #endif
 
   }
 
@@ -3747,7 +4781,11 @@ namespace Onnx {
   /// or a symbolic variable. A symbolic variable represents an unknown
   /// dimension.
   /// </summary>
-  public sealed partial class TensorShapeProto : pb::IMessage<TensorShapeProto> {
+  public sealed partial class TensorShapeProto : pb::IMessage<TensorShapeProto>
+  #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      , pb::IBufferMessage
+  #endif
+  {
     private static readonly pb::MessageParser<TensorShapeProto> _parser = new pb::MessageParser<TensorShapeProto>(() => new TensorShapeProto());
     private pb::UnknownFieldSet _unknownFields;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -3825,11 +4863,25 @@ namespace Onnx {
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public void WriteTo(pb::CodedOutputStream output) {
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      output.WriteRawMessage(this);
+    #else
       dim_.WriteTo(output, _repeated_dim_codec);
       if (_unknownFields != null) {
         _unknownFields.WriteTo(output);
       }
+    #endif
     }
+
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    void pb::IBufferMessage.InternalWriteTo(ref pb::WriteContext output) {
+      dim_.WriteTo(ref output, _repeated_dim_codec);
+      if (_unknownFields != null) {
+        _unknownFields.WriteTo(ref output);
+      }
+    }
+    #endif
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public int CalculateSize() {
@@ -3852,6 +4904,9 @@ namespace Onnx {
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public void MergeFrom(pb::CodedInputStream input) {
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      input.ReadRawMessage(this);
+    #else
       uint tag;
       while ((tag = input.ReadTag()) != 0) {
         switch(tag) {
@@ -3864,13 +4919,36 @@ namespace Onnx {
           }
         }
       }
+    #endif
     }
+
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    void pb::IBufferMessage.InternalMergeFrom(ref pb::ParseContext input) {
+      uint tag;
+      while ((tag = input.ReadTag()) != 0) {
+        switch(tag) {
+          default:
+            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, ref input);
+            break;
+          case 10: {
+            dim_.AddEntriesFrom(ref input, _repeated_dim_codec);
+            break;
+          }
+        }
+      }
+    }
+    #endif
 
     #region Nested types
     /// <summary>Container for nested types declared in the TensorShapeProto message type.</summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public static partial class Types {
-      public sealed partial class Dimension : pb::IMessage<Dimension> {
+      public sealed partial class Dimension : pb::IMessage<Dimension>
+      #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+          , pb::IBufferMessage
+      #endif
+      {
         private static readonly pb::MessageParser<Dimension> _parser = new pb::MessageParser<Dimension>(() => new Dimension());
         private pb::UnknownFieldSet _unknownFields;
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -4015,6 +5093,9 @@ namespace Onnx {
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
         public void WriteTo(pb::CodedOutputStream output) {
+        #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+          output.WriteRawMessage(this);
+        #else
           if (valueCase_ == ValueOneofCase.DimValue) {
             output.WriteRawTag(8);
             output.WriteInt64(DimValue);
@@ -4030,7 +5111,29 @@ namespace Onnx {
           if (_unknownFields != null) {
             _unknownFields.WriteTo(output);
           }
+        #endif
         }
+
+        #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        void pb::IBufferMessage.InternalWriteTo(ref pb::WriteContext output) {
+          if (valueCase_ == ValueOneofCase.DimValue) {
+            output.WriteRawTag(8);
+            output.WriteInt64(DimValue);
+          }
+          if (valueCase_ == ValueOneofCase.DimParam) {
+            output.WriteRawTag(18);
+            output.WriteString(DimParam);
+          }
+          if (Denotation.Length != 0) {
+            output.WriteRawTag(26);
+            output.WriteString(Denotation);
+          }
+          if (_unknownFields != null) {
+            _unknownFields.WriteTo(ref output);
+          }
+        }
+        #endif
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
         public int CalculateSize() {
@@ -4072,6 +5175,9 @@ namespace Onnx {
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
         public void MergeFrom(pb::CodedInputStream input) {
+        #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+          input.ReadRawMessage(this);
+        #else
           uint tag;
           while ((tag = input.ReadTag()) != 0) {
             switch(tag) {
@@ -4092,7 +5198,34 @@ namespace Onnx {
               }
             }
           }
+        #endif
         }
+
+        #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        void pb::IBufferMessage.InternalMergeFrom(ref pb::ParseContext input) {
+          uint tag;
+          while ((tag = input.ReadTag()) != 0) {
+            switch(tag) {
+              default:
+                _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, ref input);
+                break;
+              case 8: {
+                DimValue = input.ReadInt64();
+                break;
+              }
+              case 18: {
+                DimParam = input.ReadString();
+                break;
+              }
+              case 26: {
+                Denotation = input.ReadString();
+                break;
+              }
+            }
+          }
+        }
+        #endif
 
       }
 
@@ -4106,7 +5239,11 @@ namespace Onnx {
   ///
   /// The standard ONNX data types.
   /// </summary>
-  public sealed partial class TypeProto : pb::IMessage<TypeProto> {
+  public sealed partial class TypeProto : pb::IMessage<TypeProto>
+  #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      , pb::IBufferMessage
+  #endif
+  {
     private static readonly pb::MessageParser<TypeProto> _parser = new pb::MessageParser<TypeProto>(() => new TypeProto());
     private pb::UnknownFieldSet _unknownFields;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -4141,6 +5278,9 @@ namespace Onnx {
           break;
         case ValueOneofCase.MapType:
           MapType = other.MapType.Clone();
+          break;
+        case ValueOneofCase.OptionalType:
+          OptionalType = other.OptionalType.Clone();
           break;
         case ValueOneofCase.SparseTensorType:
           SparseTensorType = other.SparseTensorType.Clone();
@@ -4200,8 +5340,25 @@ namespace Onnx {
       }
     }
 
+    /// <summary>Field number for the "optional_type" field.</summary>
+    public const int OptionalTypeFieldNumber = 9;
+    /// <summary>
+    /// The type of an optional.
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    public global::Onnx.TypeProto.Types.Optional OptionalType {
+      get { return valueCase_ == ValueOneofCase.OptionalType ? (global::Onnx.TypeProto.Types.Optional) value_ : null; }
+      set {
+        value_ = value;
+        valueCase_ = value == null ? ValueOneofCase.None : ValueOneofCase.OptionalType;
+      }
+    }
+
     /// <summary>Field number for the "sparse_tensor_type" field.</summary>
     public const int SparseTensorTypeFieldNumber = 8;
+    /// <summary>
+    /// Type of the sparse tensor
+    /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public global::Onnx.TypeProto.Types.SparseTensor SparseTensorType {
       get { return valueCase_ == ValueOneofCase.SparseTensorType ? (global::Onnx.TypeProto.Types.SparseTensor) value_ : null; }
@@ -4226,8 +5383,8 @@ namespace Onnx {
     public const int DenotationFieldNumber = 6;
     private string denotation_ = "";
     /// <summary>
-    /// An optional denotation can be used to denote the whole 
-    /// type with a standard semantic description as to what is 
+    /// An optional denotation can be used to denote the whole
+    /// type with a standard semantic description as to what is
     /// stored inside. Refer to https://github.com/onnx/onnx/blob/master/docs/TypeDenotation.md#type-denotation-definition
     /// for pre-defined type denotations.
     /// </summary>
@@ -4246,6 +5403,7 @@ namespace Onnx {
       TensorType = 1,
       SequenceType = 4,
       MapType = 5,
+      OptionalType = 9,
       SparseTensorType = 8,
       OpaqueType = 7,
     }
@@ -4277,6 +5435,7 @@ namespace Onnx {
       if (!object.Equals(TensorType, other.TensorType)) return false;
       if (!object.Equals(SequenceType, other.SequenceType)) return false;
       if (!object.Equals(MapType, other.MapType)) return false;
+      if (!object.Equals(OptionalType, other.OptionalType)) return false;
       if (!object.Equals(SparseTensorType, other.SparseTensorType)) return false;
       if (!object.Equals(OpaqueType, other.OpaqueType)) return false;
       if (Denotation != other.Denotation) return false;
@@ -4290,6 +5449,7 @@ namespace Onnx {
       if (valueCase_ == ValueOneofCase.TensorType) hash ^= TensorType.GetHashCode();
       if (valueCase_ == ValueOneofCase.SequenceType) hash ^= SequenceType.GetHashCode();
       if (valueCase_ == ValueOneofCase.MapType) hash ^= MapType.GetHashCode();
+      if (valueCase_ == ValueOneofCase.OptionalType) hash ^= OptionalType.GetHashCode();
       if (valueCase_ == ValueOneofCase.SparseTensorType) hash ^= SparseTensorType.GetHashCode();
       if (valueCase_ == ValueOneofCase.OpaqueType) hash ^= OpaqueType.GetHashCode();
       if (Denotation.Length != 0) hash ^= Denotation.GetHashCode();
@@ -4307,6 +5467,9 @@ namespace Onnx {
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public void WriteTo(pb::CodedOutputStream output) {
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      output.WriteRawMessage(this);
+    #else
       if (valueCase_ == ValueOneofCase.TensorType) {
         output.WriteRawTag(10);
         output.WriteMessage(TensorType);
@@ -4331,10 +5494,52 @@ namespace Onnx {
         output.WriteRawTag(66);
         output.WriteMessage(SparseTensorType);
       }
+      if (valueCase_ == ValueOneofCase.OptionalType) {
+        output.WriteRawTag(74);
+        output.WriteMessage(OptionalType);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(output);
       }
+    #endif
     }
+
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    void pb::IBufferMessage.InternalWriteTo(ref pb::WriteContext output) {
+      if (valueCase_ == ValueOneofCase.TensorType) {
+        output.WriteRawTag(10);
+        output.WriteMessage(TensorType);
+      }
+      if (valueCase_ == ValueOneofCase.SequenceType) {
+        output.WriteRawTag(34);
+        output.WriteMessage(SequenceType);
+      }
+      if (valueCase_ == ValueOneofCase.MapType) {
+        output.WriteRawTag(42);
+        output.WriteMessage(MapType);
+      }
+      if (Denotation.Length != 0) {
+        output.WriteRawTag(50);
+        output.WriteString(Denotation);
+      }
+      if (valueCase_ == ValueOneofCase.OpaqueType) {
+        output.WriteRawTag(58);
+        output.WriteMessage(OpaqueType);
+      }
+      if (valueCase_ == ValueOneofCase.SparseTensorType) {
+        output.WriteRawTag(66);
+        output.WriteMessage(SparseTensorType);
+      }
+      if (valueCase_ == ValueOneofCase.OptionalType) {
+        output.WriteRawTag(74);
+        output.WriteMessage(OptionalType);
+      }
+      if (_unknownFields != null) {
+        _unknownFields.WriteTo(ref output);
+      }
+    }
+    #endif
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public int CalculateSize() {
@@ -4347,6 +5552,9 @@ namespace Onnx {
       }
       if (valueCase_ == ValueOneofCase.MapType) {
         size += 1 + pb::CodedOutputStream.ComputeMessageSize(MapType);
+      }
+      if (valueCase_ == ValueOneofCase.OptionalType) {
+        size += 1 + pb::CodedOutputStream.ComputeMessageSize(OptionalType);
       }
       if (valueCase_ == ValueOneofCase.SparseTensorType) {
         size += 1 + pb::CodedOutputStream.ComputeMessageSize(SparseTensorType);
@@ -4390,6 +5598,12 @@ namespace Onnx {
           }
           MapType.MergeFrom(other.MapType);
           break;
+        case ValueOneofCase.OptionalType:
+          if (OptionalType == null) {
+            OptionalType = new global::Onnx.TypeProto.Types.Optional();
+          }
+          OptionalType.MergeFrom(other.OptionalType);
+          break;
         case ValueOneofCase.SparseTensorType:
           if (SparseTensorType == null) {
             SparseTensorType = new global::Onnx.TypeProto.Types.SparseTensor();
@@ -4409,6 +5623,9 @@ namespace Onnx {
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public void MergeFrom(pb::CodedInputStream input) {
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      input.ReadRawMessage(this);
+    #else
       uint tag;
       while ((tag = input.ReadTag()) != 0) {
         switch(tag) {
@@ -4464,15 +5681,101 @@ namespace Onnx {
             SparseTensorType = subBuilder;
             break;
           }
+          case 74: {
+            global::Onnx.TypeProto.Types.Optional subBuilder = new global::Onnx.TypeProto.Types.Optional();
+            if (valueCase_ == ValueOneofCase.OptionalType) {
+              subBuilder.MergeFrom(OptionalType);
+            }
+            input.ReadMessage(subBuilder);
+            OptionalType = subBuilder;
+            break;
+          }
+        }
+      }
+    #endif
+    }
+
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    void pb::IBufferMessage.InternalMergeFrom(ref pb::ParseContext input) {
+      uint tag;
+      while ((tag = input.ReadTag()) != 0) {
+        switch(tag) {
+          default:
+            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, ref input);
+            break;
+          case 10: {
+            global::Onnx.TypeProto.Types.Tensor subBuilder = new global::Onnx.TypeProto.Types.Tensor();
+            if (valueCase_ == ValueOneofCase.TensorType) {
+              subBuilder.MergeFrom(TensorType);
+            }
+            input.ReadMessage(subBuilder);
+            TensorType = subBuilder;
+            break;
+          }
+          case 34: {
+            global::Onnx.TypeProto.Types.Sequence subBuilder = new global::Onnx.TypeProto.Types.Sequence();
+            if (valueCase_ == ValueOneofCase.SequenceType) {
+              subBuilder.MergeFrom(SequenceType);
+            }
+            input.ReadMessage(subBuilder);
+            SequenceType = subBuilder;
+            break;
+          }
+          case 42: {
+            global::Onnx.TypeProto.Types.Map subBuilder = new global::Onnx.TypeProto.Types.Map();
+            if (valueCase_ == ValueOneofCase.MapType) {
+              subBuilder.MergeFrom(MapType);
+            }
+            input.ReadMessage(subBuilder);
+            MapType = subBuilder;
+            break;
+          }
+          case 50: {
+            Denotation = input.ReadString();
+            break;
+          }
+          case 58: {
+            global::Onnx.TypeProto.Types.Opaque subBuilder = new global::Onnx.TypeProto.Types.Opaque();
+            if (valueCase_ == ValueOneofCase.OpaqueType) {
+              subBuilder.MergeFrom(OpaqueType);
+            }
+            input.ReadMessage(subBuilder);
+            OpaqueType = subBuilder;
+            break;
+          }
+          case 66: {
+            global::Onnx.TypeProto.Types.SparseTensor subBuilder = new global::Onnx.TypeProto.Types.SparseTensor();
+            if (valueCase_ == ValueOneofCase.SparseTensorType) {
+              subBuilder.MergeFrom(SparseTensorType);
+            }
+            input.ReadMessage(subBuilder);
+            SparseTensorType = subBuilder;
+            break;
+          }
+          case 74: {
+            global::Onnx.TypeProto.Types.Optional subBuilder = new global::Onnx.TypeProto.Types.Optional();
+            if (valueCase_ == ValueOneofCase.OptionalType) {
+              subBuilder.MergeFrom(OptionalType);
+            }
+            input.ReadMessage(subBuilder);
+            OptionalType = subBuilder;
+            break;
+          }
         }
       }
     }
+    #endif
 
     #region Nested types
     /// <summary>Container for nested types declared in the TypeProto message type.</summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public static partial class Types {
-      public sealed partial class Tensor : pb::IMessage<Tensor> {
+      public sealed partial class Tensor : pb::IMessage<Tensor>
+      #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+          , pb::IBufferMessage
+      #endif
+      {
         private static readonly pb::MessageParser<Tensor> _parser = new pb::MessageParser<Tensor>(() => new Tensor());
         private pb::UnknownFieldSet _unknownFields;
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -4570,6 +5873,9 @@ namespace Onnx {
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
         public void WriteTo(pb::CodedOutputStream output) {
+        #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+          output.WriteRawMessage(this);
+        #else
           if (ElemType != 0) {
             output.WriteRawTag(8);
             output.WriteInt32(ElemType);
@@ -4581,7 +5887,25 @@ namespace Onnx {
           if (_unknownFields != null) {
             _unknownFields.WriteTo(output);
           }
+        #endif
         }
+
+        #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        void pb::IBufferMessage.InternalWriteTo(ref pb::WriteContext output) {
+          if (ElemType != 0) {
+            output.WriteRawTag(8);
+            output.WriteInt32(ElemType);
+          }
+          if (shape_ != null) {
+            output.WriteRawTag(18);
+            output.WriteMessage(Shape);
+          }
+          if (_unknownFields != null) {
+            _unknownFields.WriteTo(ref output);
+          }
+        }
+        #endif
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
         public int CalculateSize() {
@@ -4617,6 +5941,9 @@ namespace Onnx {
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
         public void MergeFrom(pb::CodedInputStream input) {
+        #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+          input.ReadRawMessage(this);
+        #else
           uint tag;
           while ((tag = input.ReadTag()) != 0) {
             switch(tag) {
@@ -4636,14 +5963,44 @@ namespace Onnx {
               }
             }
           }
+        #endif
         }
+
+        #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        void pb::IBufferMessage.InternalMergeFrom(ref pb::ParseContext input) {
+          uint tag;
+          while ((tag = input.ReadTag()) != 0) {
+            switch(tag) {
+              default:
+                _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, ref input);
+                break;
+              case 8: {
+                ElemType = input.ReadInt32();
+                break;
+              }
+              case 18: {
+                if (shape_ == null) {
+                  Shape = new global::Onnx.TensorShapeProto();
+                }
+                input.ReadMessage(Shape);
+                break;
+              }
+            }
+          }
+        }
+        #endif
 
       }
 
       /// <summary>
       /// repeated T
       /// </summary>
-      public sealed partial class Sequence : pb::IMessage<Sequence> {
+      public sealed partial class Sequence : pb::IMessage<Sequence>
+      #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+          , pb::IBufferMessage
+      #endif
+      {
         private static readonly pb::MessageParser<Sequence> _parser = new pb::MessageParser<Sequence>(() => new Sequence());
         private pb::UnknownFieldSet _unknownFields;
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -4726,6 +6083,9 @@ namespace Onnx {
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
         public void WriteTo(pb::CodedOutputStream output) {
+        #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+          output.WriteRawMessage(this);
+        #else
           if (elemType_ != null) {
             output.WriteRawTag(10);
             output.WriteMessage(ElemType);
@@ -4733,7 +6093,21 @@ namespace Onnx {
           if (_unknownFields != null) {
             _unknownFields.WriteTo(output);
           }
+        #endif
         }
+
+        #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        void pb::IBufferMessage.InternalWriteTo(ref pb::WriteContext output) {
+          if (elemType_ != null) {
+            output.WriteRawTag(10);
+            output.WriteMessage(ElemType);
+          }
+          if (_unknownFields != null) {
+            _unknownFields.WriteTo(ref output);
+          }
+        }
+        #endif
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
         public int CalculateSize() {
@@ -4763,6 +6137,9 @@ namespace Onnx {
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
         public void MergeFrom(pb::CodedInputStream input) {
+        #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+          input.ReadRawMessage(this);
+        #else
           uint tag;
           while ((tag = input.ReadTag()) != 0) {
             switch(tag) {
@@ -4778,14 +6155,40 @@ namespace Onnx {
               }
             }
           }
+        #endif
         }
+
+        #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        void pb::IBufferMessage.InternalMergeFrom(ref pb::ParseContext input) {
+          uint tag;
+          while ((tag = input.ReadTag()) != 0) {
+            switch(tag) {
+              default:
+                _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, ref input);
+                break;
+              case 10: {
+                if (elemType_ == null) {
+                  ElemType = new global::Onnx.TypeProto();
+                }
+                input.ReadMessage(ElemType);
+                break;
+              }
+            }
+          }
+        }
+        #endif
 
       }
 
       /// <summary>
       /// map&lt;K,V>
       /// </summary>
-      public sealed partial class Map : pb::IMessage<Map> {
+      public sealed partial class Map : pb::IMessage<Map>
+      #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+          , pb::IBufferMessage
+      #endif
+      {
         private static readonly pb::MessageParser<Map> _parser = new pb::MessageParser<Map>(() => new Map());
         private pb::UnknownFieldSet _unknownFields;
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -4886,6 +6289,9 @@ namespace Onnx {
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
         public void WriteTo(pb::CodedOutputStream output) {
+        #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+          output.WriteRawMessage(this);
+        #else
           if (KeyType != 0) {
             output.WriteRawTag(8);
             output.WriteInt32(KeyType);
@@ -4897,7 +6303,25 @@ namespace Onnx {
           if (_unknownFields != null) {
             _unknownFields.WriteTo(output);
           }
+        #endif
         }
+
+        #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        void pb::IBufferMessage.InternalWriteTo(ref pb::WriteContext output) {
+          if (KeyType != 0) {
+            output.WriteRawTag(8);
+            output.WriteInt32(KeyType);
+          }
+          if (valueType_ != null) {
+            output.WriteRawTag(18);
+            output.WriteMessage(ValueType);
+          }
+          if (_unknownFields != null) {
+            _unknownFields.WriteTo(ref output);
+          }
+        }
+        #endif
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
         public int CalculateSize() {
@@ -4933,6 +6357,9 @@ namespace Onnx {
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
         public void MergeFrom(pb::CodedInputStream input) {
+        #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+          input.ReadRawMessage(this);
+        #else
           uint tag;
           while ((tag = input.ReadTag()) != 0) {
             switch(tag) {
@@ -4952,11 +6379,230 @@ namespace Onnx {
               }
             }
           }
+        #endif
         }
+
+        #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        void pb::IBufferMessage.InternalMergeFrom(ref pb::ParseContext input) {
+          uint tag;
+          while ((tag = input.ReadTag()) != 0) {
+            switch(tag) {
+              default:
+                _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, ref input);
+                break;
+              case 8: {
+                KeyType = input.ReadInt32();
+                break;
+              }
+              case 18: {
+                if (valueType_ == null) {
+                  ValueType = new global::Onnx.TypeProto();
+                }
+                input.ReadMessage(ValueType);
+                break;
+              }
+            }
+          }
+        }
+        #endif
 
       }
 
-      public sealed partial class SparseTensor : pb::IMessage<SparseTensor> {
+      /// <summary>
+      /// wrapper for Tensor, Sequence, or Map
+      /// </summary>
+      public sealed partial class Optional : pb::IMessage<Optional>
+      #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+          , pb::IBufferMessage
+      #endif
+      {
+        private static readonly pb::MessageParser<Optional> _parser = new pb::MessageParser<Optional>(() => new Optional());
+        private pb::UnknownFieldSet _unknownFields;
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        public static pb::MessageParser<Optional> Parser { get { return _parser; } }
+
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        public static pbr::MessageDescriptor Descriptor {
+          get { return global::Onnx.TypeProto.Descriptor.NestedTypes[3]; }
+        }
+
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        pbr::MessageDescriptor pb::IMessage.Descriptor {
+          get { return Descriptor; }
+        }
+
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        public Optional() {
+          OnConstruction();
+        }
+
+        partial void OnConstruction();
+
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        public Optional(Optional other) : this() {
+          elemType_ = other.elemType_ != null ? other.elemType_.Clone() : null;
+          _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
+        }
+
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        public Optional Clone() {
+          return new Optional(this);
+        }
+
+        /// <summary>Field number for the "elem_type" field.</summary>
+        public const int ElemTypeFieldNumber = 1;
+        private global::Onnx.TypeProto elemType_;
+        /// <summary>
+        /// The type and optional shape of the element wrapped.
+        /// This field MUST be present for this version of the IR.
+        /// Possible values correspond to OptionalProto.DataType enum
+        /// </summary>
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        public global::Onnx.TypeProto ElemType {
+          get { return elemType_; }
+          set {
+            elemType_ = value;
+          }
+        }
+
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        public override bool Equals(object other) {
+          return Equals(other as Optional);
+        }
+
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        public bool Equals(Optional other) {
+          if (ReferenceEquals(other, null)) {
+            return false;
+          }
+          if (ReferenceEquals(other, this)) {
+            return true;
+          }
+          if (!object.Equals(ElemType, other.ElemType)) return false;
+          return Equals(_unknownFields, other._unknownFields);
+        }
+
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        public override int GetHashCode() {
+          int hash = 1;
+          if (elemType_ != null) hash ^= ElemType.GetHashCode();
+          if (_unknownFields != null) {
+            hash ^= _unknownFields.GetHashCode();
+          }
+          return hash;
+        }
+
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        public override string ToString() {
+          return pb::JsonFormatter.ToDiagnosticString(this);
+        }
+
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        public void WriteTo(pb::CodedOutputStream output) {
+        #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+          output.WriteRawMessage(this);
+        #else
+          if (elemType_ != null) {
+            output.WriteRawTag(10);
+            output.WriteMessage(ElemType);
+          }
+          if (_unknownFields != null) {
+            _unknownFields.WriteTo(output);
+          }
+        #endif
+        }
+
+        #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        void pb::IBufferMessage.InternalWriteTo(ref pb::WriteContext output) {
+          if (elemType_ != null) {
+            output.WriteRawTag(10);
+            output.WriteMessage(ElemType);
+          }
+          if (_unknownFields != null) {
+            _unknownFields.WriteTo(ref output);
+          }
+        }
+        #endif
+
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        public int CalculateSize() {
+          int size = 0;
+          if (elemType_ != null) {
+            size += 1 + pb::CodedOutputStream.ComputeMessageSize(ElemType);
+          }
+          if (_unknownFields != null) {
+            size += _unknownFields.CalculateSize();
+          }
+          return size;
+        }
+
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        public void MergeFrom(Optional other) {
+          if (other == null) {
+            return;
+          }
+          if (other.elemType_ != null) {
+            if (elemType_ == null) {
+              ElemType = new global::Onnx.TypeProto();
+            }
+            ElemType.MergeFrom(other.ElemType);
+          }
+          _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
+        }
+
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        public void MergeFrom(pb::CodedInputStream input) {
+        #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+          input.ReadRawMessage(this);
+        #else
+          uint tag;
+          while ((tag = input.ReadTag()) != 0) {
+            switch(tag) {
+              default:
+                _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, input);
+                break;
+              case 10: {
+                if (elemType_ == null) {
+                  ElemType = new global::Onnx.TypeProto();
+                }
+                input.ReadMessage(ElemType);
+                break;
+              }
+            }
+          }
+        #endif
+        }
+
+        #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        void pb::IBufferMessage.InternalMergeFrom(ref pb::ParseContext input) {
+          uint tag;
+          while ((tag = input.ReadTag()) != 0) {
+            switch(tag) {
+              default:
+                _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, ref input);
+                break;
+              case 10: {
+                if (elemType_ == null) {
+                  ElemType = new global::Onnx.TypeProto();
+                }
+                input.ReadMessage(ElemType);
+                break;
+              }
+            }
+          }
+        }
+        #endif
+
+      }
+
+      public sealed partial class SparseTensor : pb::IMessage<SparseTensor>
+      #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+          , pb::IBufferMessage
+      #endif
+      {
         private static readonly pb::MessageParser<SparseTensor> _parser = new pb::MessageParser<SparseTensor>(() => new SparseTensor());
         private pb::UnknownFieldSet _unknownFields;
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -4964,7 +6610,7 @@ namespace Onnx {
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
         public static pbr::MessageDescriptor Descriptor {
-          get { return global::Onnx.TypeProto.Descriptor.NestedTypes[3]; }
+          get { return global::Onnx.TypeProto.Descriptor.NestedTypes[4]; }
         }
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -4995,9 +6641,9 @@ namespace Onnx {
         public const int ElemTypeFieldNumber = 1;
         private int elemType_;
         /// <summary>
-        /// This field MUST NOT have the value of UNDEFINED 
+        /// This field MUST NOT have the value of UNDEFINED
         /// This field MUST have a valid TensorProto.DataType value
-        /// This field MUST be present for this version of the IR. 
+        /// This field MUST be present for this version of the IR.
         /// </summary>
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
         public int ElemType {
@@ -5054,6 +6700,9 @@ namespace Onnx {
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
         public void WriteTo(pb::CodedOutputStream output) {
+        #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+          output.WriteRawMessage(this);
+        #else
           if (ElemType != 0) {
             output.WriteRawTag(8);
             output.WriteInt32(ElemType);
@@ -5065,7 +6714,25 @@ namespace Onnx {
           if (_unknownFields != null) {
             _unknownFields.WriteTo(output);
           }
+        #endif
         }
+
+        #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        void pb::IBufferMessage.InternalWriteTo(ref pb::WriteContext output) {
+          if (ElemType != 0) {
+            output.WriteRawTag(8);
+            output.WriteInt32(ElemType);
+          }
+          if (shape_ != null) {
+            output.WriteRawTag(18);
+            output.WriteMessage(Shape);
+          }
+          if (_unknownFields != null) {
+            _unknownFields.WriteTo(ref output);
+          }
+        }
+        #endif
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
         public int CalculateSize() {
@@ -5101,6 +6768,9 @@ namespace Onnx {
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
         public void MergeFrom(pb::CodedInputStream input) {
+        #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+          input.ReadRawMessage(this);
+        #else
           uint tag;
           while ((tag = input.ReadTag()) != 0) {
             switch(tag) {
@@ -5120,11 +6790,41 @@ namespace Onnx {
               }
             }
           }
+        #endif
         }
+
+        #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        void pb::IBufferMessage.InternalMergeFrom(ref pb::ParseContext input) {
+          uint tag;
+          while ((tag = input.ReadTag()) != 0) {
+            switch(tag) {
+              default:
+                _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, ref input);
+                break;
+              case 8: {
+                ElemType = input.ReadInt32();
+                break;
+              }
+              case 18: {
+                if (shape_ == null) {
+                  Shape = new global::Onnx.TensorShapeProto();
+                }
+                input.ReadMessage(Shape);
+                break;
+              }
+            }
+          }
+        }
+        #endif
 
       }
 
-      public sealed partial class Opaque : pb::IMessage<Opaque> {
+      public sealed partial class Opaque : pb::IMessage<Opaque>
+      #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+          , pb::IBufferMessage
+      #endif
+      {
         private static readonly pb::MessageParser<Opaque> _parser = new pb::MessageParser<Opaque>(() => new Opaque());
         private pb::UnknownFieldSet _unknownFields;
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -5132,7 +6832,7 @@ namespace Onnx {
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
         public static pbr::MessageDescriptor Descriptor {
-          get { return global::Onnx.TypeProto.Descriptor.NestedTypes[4]; }
+          get { return global::Onnx.TypeProto.Descriptor.NestedTypes[5]; }
         }
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -5223,6 +6923,9 @@ namespace Onnx {
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
         public void WriteTo(pb::CodedOutputStream output) {
+        #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+          output.WriteRawMessage(this);
+        #else
           if (Domain.Length != 0) {
             output.WriteRawTag(10);
             output.WriteString(Domain);
@@ -5234,7 +6937,25 @@ namespace Onnx {
           if (_unknownFields != null) {
             _unknownFields.WriteTo(output);
           }
+        #endif
         }
+
+        #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        void pb::IBufferMessage.InternalWriteTo(ref pb::WriteContext output) {
+          if (Domain.Length != 0) {
+            output.WriteRawTag(10);
+            output.WriteString(Domain);
+          }
+          if (Name.Length != 0) {
+            output.WriteRawTag(18);
+            output.WriteString(Name);
+          }
+          if (_unknownFields != null) {
+            _unknownFields.WriteTo(ref output);
+          }
+        }
+        #endif
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
         public int CalculateSize() {
@@ -5267,6 +6988,9 @@ namespace Onnx {
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
         public void MergeFrom(pb::CodedInputStream input) {
+        #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+          input.ReadRawMessage(this);
+        #else
           uint tag;
           while ((tag = input.ReadTag()) != 0) {
             switch(tag) {
@@ -5283,7 +7007,30 @@ namespace Onnx {
               }
             }
           }
+        #endif
         }
+
+        #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        void pb::IBufferMessage.InternalMergeFrom(ref pb::ParseContext input) {
+          uint tag;
+          while ((tag = input.ReadTag()) != 0) {
+            switch(tag) {
+              default:
+                _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, ref input);
+                break;
+              case 10: {
+                Domain = input.ReadString();
+                break;
+              }
+              case 18: {
+                Name = input.ReadString();
+                break;
+              }
+            }
+          }
+        }
+        #endif
 
       }
 
@@ -5297,7 +7044,11 @@ namespace Onnx {
   ///
   /// OperatorSets are uniquely identified by a (domain, opset_version) pair.
   /// </summary>
-  public sealed partial class OperatorSetIdProto : pb::IMessage<OperatorSetIdProto> {
+  public sealed partial class OperatorSetIdProto : pb::IMessage<OperatorSetIdProto>
+  #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      , pb::IBufferMessage
+  #endif
+  {
     private static readonly pb::MessageParser<OperatorSetIdProto> _parser = new pb::MessageParser<OperatorSetIdProto>(() => new OperatorSetIdProto());
     private pb::UnknownFieldSet _unknownFields;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -5400,6 +7151,9 @@ namespace Onnx {
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public void WriteTo(pb::CodedOutputStream output) {
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      output.WriteRawMessage(this);
+    #else
       if (Domain.Length != 0) {
         output.WriteRawTag(10);
         output.WriteString(Domain);
@@ -5411,7 +7165,25 @@ namespace Onnx {
       if (_unknownFields != null) {
         _unknownFields.WriteTo(output);
       }
+    #endif
     }
+
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    void pb::IBufferMessage.InternalWriteTo(ref pb::WriteContext output) {
+      if (Domain.Length != 0) {
+        output.WriteRawTag(10);
+        output.WriteString(Domain);
+      }
+      if (Version != 0L) {
+        output.WriteRawTag(16);
+        output.WriteInt64(Version);
+      }
+      if (_unknownFields != null) {
+        _unknownFields.WriteTo(ref output);
+      }
+    }
+    #endif
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public int CalculateSize() {
@@ -5444,6 +7216,9 @@ namespace Onnx {
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public void MergeFrom(pb::CodedInputStream input) {
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      input.ReadRawMessage(this);
+    #else
       uint tag;
       while ((tag = input.ReadTag()) != 0) {
         switch(tag) {
@@ -5460,11 +7235,38 @@ namespace Onnx {
           }
         }
       }
+    #endif
     }
+
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    void pb::IBufferMessage.InternalMergeFrom(ref pb::ParseContext input) {
+      uint tag;
+      while ((tag = input.ReadTag()) != 0) {
+        switch(tag) {
+          default:
+            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, ref input);
+            break;
+          case 10: {
+            Domain = input.ReadString();
+            break;
+          }
+          case 16: {
+            Version = input.ReadInt64();
+            break;
+          }
+        }
+      }
+    }
+    #endif
 
   }
 
-  public sealed partial class FunctionProto : pb::IMessage<FunctionProto> {
+  public sealed partial class FunctionProto : pb::IMessage<FunctionProto>
+  #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      , pb::IBufferMessage
+  #endif
+  {
     private static readonly pb::MessageParser<FunctionProto> _parser = new pb::MessageParser<FunctionProto>(() => new FunctionProto());
     private pb::UnknownFieldSet _unknownFields;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -5490,14 +7292,13 @@ namespace Onnx {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public FunctionProto(FunctionProto other) : this() {
       name_ = other.name_;
-      sinceVersion_ = other.sinceVersion_;
-      status_ = other.status_;
       input_ = other.input_.Clone();
       output_ = other.output_.Clone();
       attribute_ = other.attribute_.Clone();
       node_ = other.node_.Clone();
       docString_ = other.docString_;
       opsetImport_ = other.opsetImport_.Clone();
+      domain_ = other.domain_;
       _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
     }
 
@@ -5511,50 +7312,14 @@ namespace Onnx {
     private string name_ = "";
     /// <summary>
     /// The name of the function, similar usage of op_type in OperatorProto.
+    /// Combined with FunctionProto.domain, this forms the unique identity of
+    /// the FunctionProto.
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public string Name {
       get { return name_; }
       set {
         name_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
-      }
-    }
-
-    /// <summary>Field number for the "since_version" field.</summary>
-    public const int SinceVersionFieldNumber = 2;
-    private long sinceVersion_;
-    /// <summary>
-    /// The first version of a function set which contains this function.
-    /// When there's any breaking change for this function, the function set
-    /// contains the function needs to bump its version, and since_version of
-    /// the updated function will be changed to the updated function set version.  
-    /// </summary>
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    public long SinceVersion {
-      get { return sinceVersion_; }
-      set {
-        sinceVersion_ = value;
-      }
-    }
-
-    /// <summary>Field number for the "status" field.</summary>
-    public const int StatusFieldNumber = 3;
-    private global::Onnx.OperatorStatus status_ = global::Onnx.OperatorStatus.Experimental;
-    /// <summary>
-    /// This field indicates whether the syntax, semantics, or presence
-    /// of this function is in an experimental or stable stage. Once an
-    /// function is published as STABLE, its syntax and semantics MUST NOT
-    /// change in subsequent versions of the operator set.
-    /// When a function is published as EXPERIMENTAL, the syntax and semantics
-    /// of the function MAY change across operator set versions.
-    /// Functions "become" stable by deprecating the experimental version and
-    /// introducing a new stable function with the same name.
-    /// </summary>
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    public global::Onnx.OperatorStatus Status {
-      get { return status_; }
-      set {
-        status_ = value;
       }
     }
 
@@ -5626,20 +7391,24 @@ namespace Onnx {
     private static readonly pb::FieldCodec<global::Onnx.OperatorSetIdProto> _repeated_opsetImport_codec
         = pb::FieldCodec.ForMessage(74, global::Onnx.OperatorSetIdProto.Parser);
     private readonly pbc::RepeatedField<global::Onnx.OperatorSetIdProto> opsetImport_ = new pbc::RepeatedField<global::Onnx.OperatorSetIdProto>();
-    /// <summary>
-    /// The OperatorSets this function body (graph) relies on.
-    /// A FunctionProto body (graph) may implicitly rely on the OperatorSet that
-    /// this function belongs to. It can also explicitly rely on more OperatorSets
-    /// with this field specified.
-    ///
-    /// All nodes in the function body (graph) will bind against the operator
-    /// with the same-domain/same-op_type operator with the HIGHEST version
-    /// in the referenced operator sets. This means at most one version can be relied
-    /// for one domain.
-    /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public pbc::RepeatedField<global::Onnx.OperatorSetIdProto> OpsetImport {
       get { return opsetImport_; }
+    }
+
+    /// <summary>Field number for the "domain" field.</summary>
+    public const int DomainFieldNumber = 10;
+    private string domain_ = "";
+    /// <summary>
+    /// The domain which this function belongs to. Combined with FunctionProto.name, this forms the unique identity of
+    /// the FunctionProto.
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    public string Domain {
+      get { return domain_; }
+      set {
+        domain_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
+      }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -5656,14 +7425,13 @@ namespace Onnx {
         return true;
       }
       if (Name != other.Name) return false;
-      if (SinceVersion != other.SinceVersion) return false;
-      if (Status != other.Status) return false;
       if(!input_.Equals(other.input_)) return false;
       if(!output_.Equals(other.output_)) return false;
       if(!attribute_.Equals(other.attribute_)) return false;
       if(!node_.Equals(other.node_)) return false;
       if (DocString != other.DocString) return false;
       if(!opsetImport_.Equals(other.opsetImport_)) return false;
+      if (Domain != other.Domain) return false;
       return Equals(_unknownFields, other._unknownFields);
     }
 
@@ -5671,14 +7439,13 @@ namespace Onnx {
     public override int GetHashCode() {
       int hash = 1;
       if (Name.Length != 0) hash ^= Name.GetHashCode();
-      if (SinceVersion != 0L) hash ^= SinceVersion.GetHashCode();
-      if (Status != global::Onnx.OperatorStatus.Experimental) hash ^= Status.GetHashCode();
       hash ^= input_.GetHashCode();
       hash ^= output_.GetHashCode();
       hash ^= attribute_.GetHashCode();
       hash ^= node_.GetHashCode();
       if (DocString.Length != 0) hash ^= DocString.GetHashCode();
       hash ^= opsetImport_.GetHashCode();
+      if (Domain.Length != 0) hash ^= Domain.GetHashCode();
       if (_unknownFields != null) {
         hash ^= _unknownFields.GetHashCode();
       }
@@ -5692,17 +7459,12 @@ namespace Onnx {
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public void WriteTo(pb::CodedOutputStream output) {
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      output.WriteRawMessage(this);
+    #else
       if (Name.Length != 0) {
         output.WriteRawTag(10);
         output.WriteString(Name);
-      }
-      if (SinceVersion != 0L) {
-        output.WriteRawTag(16);
-        output.WriteInt64(SinceVersion);
-      }
-      if (Status != global::Onnx.OperatorStatus.Experimental) {
-        output.WriteRawTag(24);
-        output.WriteEnum((int) Status);
       }
       input_.WriteTo(output, _repeated_input_codec);
       output_.WriteTo(output, _repeated_output_codec);
@@ -5713,22 +7475,47 @@ namespace Onnx {
         output.WriteString(DocString);
       }
       opsetImport_.WriteTo(output, _repeated_opsetImport_codec);
+      if (Domain.Length != 0) {
+        output.WriteRawTag(82);
+        output.WriteString(Domain);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(output);
       }
+    #endif
     }
+
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    void pb::IBufferMessage.InternalWriteTo(ref pb::WriteContext output) {
+      if (Name.Length != 0) {
+        output.WriteRawTag(10);
+        output.WriteString(Name);
+      }
+      input_.WriteTo(ref output, _repeated_input_codec);
+      output_.WriteTo(ref output, _repeated_output_codec);
+      attribute_.WriteTo(ref output, _repeated_attribute_codec);
+      node_.WriteTo(ref output, _repeated_node_codec);
+      if (DocString.Length != 0) {
+        output.WriteRawTag(66);
+        output.WriteString(DocString);
+      }
+      opsetImport_.WriteTo(ref output, _repeated_opsetImport_codec);
+      if (Domain.Length != 0) {
+        output.WriteRawTag(82);
+        output.WriteString(Domain);
+      }
+      if (_unknownFields != null) {
+        _unknownFields.WriteTo(ref output);
+      }
+    }
+    #endif
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public int CalculateSize() {
       int size = 0;
       if (Name.Length != 0) {
         size += 1 + pb::CodedOutputStream.ComputeStringSize(Name);
-      }
-      if (SinceVersion != 0L) {
-        size += 1 + pb::CodedOutputStream.ComputeInt64Size(SinceVersion);
-      }
-      if (Status != global::Onnx.OperatorStatus.Experimental) {
-        size += 1 + pb::CodedOutputStream.ComputeEnumSize((int) Status);
       }
       size += input_.CalculateSize(_repeated_input_codec);
       size += output_.CalculateSize(_repeated_output_codec);
@@ -5738,6 +7525,9 @@ namespace Onnx {
         size += 1 + pb::CodedOutputStream.ComputeStringSize(DocString);
       }
       size += opsetImport_.CalculateSize(_repeated_opsetImport_codec);
+      if (Domain.Length != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeStringSize(Domain);
+      }
       if (_unknownFields != null) {
         size += _unknownFields.CalculateSize();
       }
@@ -5752,12 +7542,6 @@ namespace Onnx {
       if (other.Name.Length != 0) {
         Name = other.Name;
       }
-      if (other.SinceVersion != 0L) {
-        SinceVersion = other.SinceVersion;
-      }
-      if (other.Status != global::Onnx.OperatorStatus.Experimental) {
-        Status = other.Status;
-      }
       input_.Add(other.input_);
       output_.Add(other.output_);
       attribute_.Add(other.attribute_);
@@ -5766,11 +7550,17 @@ namespace Onnx {
         DocString = other.DocString;
       }
       opsetImport_.Add(other.opsetImport_);
+      if (other.Domain.Length != 0) {
+        Domain = other.Domain;
+      }
       _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public void MergeFrom(pb::CodedInputStream input) {
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      input.ReadRawMessage(this);
+    #else
       uint tag;
       while ((tag = input.ReadTag()) != 0) {
         switch(tag) {
@@ -5779,14 +7569,6 @@ namespace Onnx {
             break;
           case 10: {
             Name = input.ReadString();
-            break;
-          }
-          case 16: {
-            SinceVersion = input.ReadInt64();
-            break;
-          }
-          case 24: {
-            Status = (global::Onnx.OperatorStatus) input.ReadEnum();
             break;
           }
           case 34: {
@@ -5813,9 +7595,60 @@ namespace Onnx {
             opsetImport_.AddEntriesFrom(input, _repeated_opsetImport_codec);
             break;
           }
+          case 82: {
+            Domain = input.ReadString();
+            break;
+          }
+        }
+      }
+    #endif
+    }
+
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    void pb::IBufferMessage.InternalMergeFrom(ref pb::ParseContext input) {
+      uint tag;
+      while ((tag = input.ReadTag()) != 0) {
+        switch(tag) {
+          default:
+            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, ref input);
+            break;
+          case 10: {
+            Name = input.ReadString();
+            break;
+          }
+          case 34: {
+            input_.AddEntriesFrom(ref input, _repeated_input_codec);
+            break;
+          }
+          case 42: {
+            output_.AddEntriesFrom(ref input, _repeated_output_codec);
+            break;
+          }
+          case 50: {
+            attribute_.AddEntriesFrom(ref input, _repeated_attribute_codec);
+            break;
+          }
+          case 58: {
+            node_.AddEntriesFrom(ref input, _repeated_node_codec);
+            break;
+          }
+          case 66: {
+            DocString = input.ReadString();
+            break;
+          }
+          case 74: {
+            opsetImport_.AddEntriesFrom(ref input, _repeated_opsetImport_codec);
+            break;
+          }
+          case 82: {
+            Domain = input.ReadString();
+            break;
+          }
         }
       }
     }
+    #endif
 
   }
 

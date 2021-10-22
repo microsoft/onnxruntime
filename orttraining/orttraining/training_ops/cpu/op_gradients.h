@@ -34,6 +34,18 @@ class ReluGrad final : public OpKernel {
 };
 
 template <typename T>
+class SigmoidGrad final : public OpKernel {
+ public:
+  explicit SigmoidGrad(const OpKernelInfo& info) : OpKernel(info) {
+  }
+
+  Status Compute(OpKernelContext* context) const override;
+
+ private:
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SigmoidGrad);
+};
+
+template <typename T>
 class SoftmaxGrad final : public OpKernel {
  public:
   explicit SoftmaxGrad(const OpKernelInfo& info) : OpKernel(info) {

@@ -6,6 +6,9 @@
 #include "onnxruntime_cxx_api.h"
 #include "StringHelpers.h"
 #include "skip_model_tests.h"
+#include "compare_feature_value.h"
+#include <regex>
+#include "CommonDeviceHelpers.h"
 
 #ifndef BUILD_GOOGLE_TEST
 #error Must use googletest for value-parameterized tests
@@ -14,6 +17,7 @@
 using namespace onnxruntime::test;
 using namespace winml;
 using namespace onnxruntime;
+using namespace winrt::Windows::Foundation::Collections;
 
 namespace WinML {
 // Global needed to keep the actual ITestCase alive while the tests are going on. Only ITestCase* are used as test parameters.
@@ -22,6 +26,9 @@ std::vector<std::unique_ptr<ITestCase>> ownedTests;
 class ModelTest : public testing::TestWithParam<std::tuple<ITestCase*, winml::LearningModelDeviceKind>> {
  protected:
   void SetUp() override {
+#ifdef BUILD_INBOX
+    winrt_activation_handler = WINRT_RoGetActivationFactory;
+#endif
     std::tie(m_testCase, m_deviceKind) = GetParam();
     WINML_EXPECT_NO_THROW(m_testCase->GetPerSampleTolerance(&m_perSampleTolerance));
     WINML_EXPECT_NO_THROW(m_testCase->GetRelativePerSampleTolerance(&m_relativePerSampleTolerance));
@@ -31,6 +38,10 @@ class ModelTest : public testing::TestWithParam<std::tuple<ITestCase*, winml::Le
 #ifdef USE_DML
     if (m_deviceKind == winml::LearningModelDeviceKind::DirectX) {
       m_relativePerSampleTolerance = 0.009;  // tolerate up to 0.9% difference of expected result.
+      auto gpuSampleTolerancePerTestsItr = gpuSampleTolerancePerTests.find(m_testCase->GetTestCaseName());
+      if (gpuSampleTolerancePerTestsItr != gpuSampleTolerancePerTests.end()) {
+        m_perSampleTolerance = gpuSampleTolerancePerTestsItr->second;
+      }
     }
 #endif
   }
@@ -53,33 +64,43 @@ class ModelTest : public testing::TestWithParam<std::tuple<ITestCase*, winml::Le
   }
 
   void CompareEvaluationResults(LearningModelEvaluationResult& results,
-                                std::unordered_map<std::string, Ort::Value>& expectedOutputFeeds) {
+                                std::unordered_map<std::string,
+                                Ort::Value>& expectedOutputFeeds,
+                                const IVectorView<ILearningModelFeatureDescriptor>& outputFeatureDescriptors) {
     for (const auto& [name, value] : expectedOutputFeeds) {
       // Extract the output buffer from the evaluation output
       std::wstring outputName = _winml::Strings::WStringFromString(name);
-      auto actualOutputTensorValue = results.Outputs().Lookup(outputName).as<ITensorNative>();
-      BYTE* actualData;
-      uint32_t actualSizeInBytes;
-      WINML_EXPECT_HRESULT_SUCCEEDED(actualOutputTensorValue->GetBuffer(&actualData, &actualSizeInBytes));
+      
+      // find the output descriptor
+      ILearningModelFeatureDescriptor outputDescriptor = nullptr;
+      for (const auto& descriptor : outputFeatureDescriptors) {
+        if (descriptor.Name() == outputName) {
+          outputDescriptor = descriptor;
+          break;
+        }
+      }
+      if (outputDescriptor == nullptr) {
+        throw std::invalid_argument("Expected protobuf output name doesn't match the output names in the model.");
+      }
 
-      // Create a copy of Ort::Value from evaluation output
-      auto expectedShapeAndTensorType = Ort::TensorTypeAndShapeInfo{nullptr};
-      auto memoryInfo = Ort::MemoryInfo{nullptr};
-      WINML_EXPECT_NO_THROW(expectedShapeAndTensorType = value.GetTensorTypeAndShapeInfo());
-      WINML_EXPECT_NO_THROW(memoryInfo = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault));
-      Ort::Value actualOutput = Ort::Value{nullptr};
-      WINML_EXPECT_NO_THROW(
-          actualOutput = Ort::Value::CreateTensor(
-              memoryInfo,
-              actualData,
-              actualSizeInBytes,
-              expectedShapeAndTensorType.GetShape().data(),
-              expectedShapeAndTensorType.GetShape().size(),
-              expectedShapeAndTensorType.GetElementType()));
-
-      // Use the expected and actual OrtValues to compare
-      std::pair<COMPARE_RESULT, std::string> ret = CompareOrtValue(*actualOutput, *value, m_perSampleTolerance, m_relativePerSampleTolerance, m_postProcessing);
-      WINML_EXPECT_EQUAL(COMPARE_RESULT::SUCCESS, ret.first) << ret.second;
+      if (outputDescriptor.Kind() == LearningModelFeatureKind::Tensor) {
+        auto actualOutputTensorValue = results.Outputs().Lookup(outputName).as<ITensor>();
+        Ort::Value actualOutput = OrtValueHelpers::CreateOrtValueFromITensor(actualOutputTensorValue);
+        // Use the expected and actual OrtValues to compare
+        std::pair<COMPARE_RESULT, std::string> ret = CompareOrtValue(*actualOutput, *value, m_perSampleTolerance, m_relativePerSampleTolerance, m_postProcessing);
+        WINML_EXPECT_EQUAL(COMPARE_RESULT::SUCCESS, ret.first) << ret.second;
+      } else if (outputDescriptor.Kind() == LearningModelFeatureKind::Sequence) {
+        auto sequenceOfMapsStringToFloat = results.Outputs().Lookup(outputName).try_as<IVectorView<IMap<winrt::hstring, float>>>();
+        if (sequenceOfMapsStringToFloat != nullptr) {
+          WINML_EXPECT_TRUE(CompareFeatureValuesHelper::CompareSequenceOfMapsStringToFloat(
+              sequenceOfMapsStringToFloat,
+              value,
+              m_perSampleTolerance,
+              m_relativePerSampleTolerance));
+        } else {
+          throw winrt::hresult_not_implemented(L"This particular type of sequence output hasn't been handled yet.");
+        }
+      }
     }
   }
 };
@@ -110,7 +131,7 @@ TEST_P(ModelTest, Run) {
     WINML_EXPECT_NO_THROW(m_testCase->LoadTestData(i, outputHolder, outputFeeds, false));
 
     // compare results
-    CompareEvaluationResults(results, outputFeeds);
+    CompareEvaluationResults(results, outputFeeds, model.OutputFeatures());
   }
 }
 
@@ -126,6 +147,10 @@ std::string GetTestDataPath() {
     auto hardcodedModelPath = parentPath.string() + "\\models";
     if (std::filesystem::exists(hardcodedModelPath) && hardcodedModelPath.length() <= MAX_PATH) {
       return hardcodedModelPath;
+    } else {
+      std::string errorStr = "WINML_TEST_DATA_PATH environment variable path not found and \"models\" folder not found in same directory as test exe.\n";
+      std::cerr << errorStr;
+      throw std::exception(errorStr.c_str());
     }
   }
   const std::string testDataPathFolderName = "\\testData\\";
@@ -149,13 +174,13 @@ static std::vector<ITestCase*> GetAllTestCases() {
   std::vector<std::basic_string<PATH_CHAR_TYPE>> dataDirs;
   auto testDataPath = GetTestDataPath();
   if (testDataPath == "") return tests;
-  
+
   for (auto& p : std::filesystem::directory_iterator(testDataPath.c_str())) {
     if (p.is_directory()) {
       dataDirs.push_back(std::move(p.path()));
     }
   }
-  
+
   #if !defined(__amd64__) && !defined(_M_AMD64)
   // Should match "x86_disabled_tests" in onnxruntime/test/providers/cpu/model_tests.cc
   // However there are more tests skipped. TODO: bugs must be filed for difference in models.
@@ -210,6 +235,90 @@ static std::vector<ITestCase*> GetAllTestCases() {
   return tests;
 }
 
+bool ShouldSkipTestOnGpuAdapterDxgi(std::string& testName) {
+  winrt::com_ptr<IDXGIFactory1> spFactory;
+  winrt::com_ptr<IDXGIAdapter1> spAdapter;
+  UINT i = 0;
+  WINML_EXPECT_HRESULT_SUCCEEDED(CreateDXGIFactory1(IID_PPV_ARGS(spFactory.put())));
+  while (spFactory->EnumAdapters1(i, spAdapter.put()) != DXGI_ERROR_NOT_FOUND) {
+    DXGI_ADAPTER_DESC1 pDesc;
+    WINML_EXPECT_HRESULT_SUCCEEDED(spAdapter->GetDesc1(&pDesc));
+    
+    // Check if WARP adapter
+    // see here for documentation on filtering WARP adapter:
+    // https://docs.microsoft.com/en-us/windows/desktop/direct3ddxgi/d3d10-graphics-programming-guide-dxgi#new-info-about-enumerating-adapters-for-windows-8
+    auto isBasicRenderDriverVendorId = pDesc.VendorId == 0x1414;
+    auto isBasicRenderDriverDeviceId = pDesc.DeviceId == 0x8c;
+    auto isSoftwareAdapter = pDesc.Flags == DXGI_ADAPTER_FLAG_SOFTWARE;
+    bool isWarpAdapter = isSoftwareAdapter || (isBasicRenderDriverVendorId && isBasicRenderDriverDeviceId);
+
+    if (!isWarpAdapter) {
+      // Found an adapter that is not WARP. This is the adapter that will be used by WinML.
+      std::string regex = disabledGpuAdapterTests[testName].first;
+      std::wstring adapterDescription = pDesc.Description;
+      return std::regex_search(
+          _winml::Strings::UTF8FromUnicode(adapterDescription.c_str(), adapterDescription.length()),
+          std::regex(regex, std::regex_constants::icase | std::regex_constants::nosubs));
+    }
+    spAdapter = nullptr;
+    i++;
+  }
+  // If no adapters can be enumerated or none of them are hardware, might as well skip this test
+  return true;
+}
+#ifdef ENABLE_DXCORE
+bool ShouldSkipTestOnGpuAdapterDxcore(std::string& testName) {
+  winrt::com_ptr<IDXCoreAdapterFactory> spFactory;
+  WINML_EXPECT_HRESULT_SUCCEEDED(DXCoreCreateAdapterFactory(IID_PPV_ARGS(spFactory.put())));
+
+  winrt::com_ptr<IDXCoreAdapterList> spAdapterList;
+  const GUID gpuFilter[] = {DXCORE_ADAPTER_ATTRIBUTE_D3D12_GRAPHICS};
+  WINML_EXPECT_HRESULT_SUCCEEDED(spFactory->CreateAdapterList(1, gpuFilter, IID_PPV_ARGS(spAdapterList.put())));
+
+  winrt::com_ptr<IDXCoreAdapter> firstHardwareAdapter;
+  
+  // select first hardware adapter
+  for (uint32_t i = 0; i < spAdapterList->GetAdapterCount(); i++) {
+    winrt::com_ptr<IDXCoreAdapter> spCurrAdapter;
+    WINML_EXPECT_HRESULT_SUCCEEDED(spAdapterList->GetAdapter(i, IID_PPV_ARGS(spCurrAdapter.put())));
+
+    bool isHardware = false;
+    WINML_EXPECT_HRESULT_SUCCEEDED(spCurrAdapter->GetProperty(DXCoreAdapterProperty::IsHardware, &isHardware));
+
+    if (isHardware) {
+      // Found an adapter that is not WARP. This is the adapter that will be used by WinML.
+      std::string regex = disabledGpuAdapterTests[testName].first;
+      std::string adapterDescription;
+      WINML_EXPECT_HRESULT_SUCCEEDED(spCurrAdapter->GetProperty(DXCoreAdapterProperty::DriverDescription, &adapterDescription));
+      return std::regex_search(
+          adapterDescription,
+          std::regex(regex, std::regex_constants::icase | std::regex_constants::nosubs));
+    }
+  }
+  // If no adapters can be enumerated or none of them are hardware, might as well skip this test
+  return true;
+}
+#endif
+
+bool ShouldSkipTestOnGpuAdapter(std::string& testName) {
+  CommonDeviceHelpers::AdapterEnumerationSupport support;
+  if (FAILED(CommonDeviceHelpers::GetAdapterEnumerationSupport(&support))) {
+    WINML_LOG_ERROR("Unable to load DXGI or DXCore");
+    // If cannot load DXGI or DXCore, then don't run the GPU test
+    return true;
+  }
+  if (support.has_dxgi) {
+    return ShouldSkipTestOnGpuAdapterDxgi(testName);
+  }
+#ifdef ENABLE_DXCORE
+  if (support.has_dxcore) {
+    return ShouldSkipTestOnGpuAdapterDxcore(testName);
+  }
+#endif
+  // don't skip by default (shouldn't really hit this case)
+  return false;
+}
+
 // determine if test should be disabled
 void DetermineIfDisableTest(std::string& testName, winml::LearningModelDeviceKind deviceKind) {
   bool shouldSkip = false;
@@ -223,6 +332,9 @@ void DetermineIfDisableTest(std::string& testName, winml::LearningModelDeviceKin
       shouldSkip = true;
     } else if (disabledGpuTests.find(testName) != disabledGpuTests.end()) {
       reason = disabledGpuTests.at(testName);
+      shouldSkip = true;
+    } else if (disabledGpuAdapterTests.find(testName) != disabledGpuAdapterTests.end() && ShouldSkipTestOnGpuAdapter(testName)) {
+      reason = disabledGpuAdapterTests[testName].second;
       shouldSkip = true;
     }
   }

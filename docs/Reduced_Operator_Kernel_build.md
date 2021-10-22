@@ -1,77 +1,81 @@
 # ONNX Runtime Reduced Operator Kernel build
 
-In order to reduce the compiled binary size of ONNX Runtime (ORT), the operator kernels included in the build can be reduced to just the kernels required for your scenario. 
+In order to reduce the compiled binary size of ONNX Runtime (ORT), the operator kernels included in the build can be reduced to just the kernels required by your model/s.
 
-The kernels to include must first be identified, and secondly the ORT kernel registration source files must be updated to exclude the unused kernels. 
+A configuration file must be created with details of the kernels that are required.
 
-Finally ORT must be manually built.
+Following that, ORT must be manually built, providing the configuration file in the `--include_ops_by_config` parameter. The build process will update the ORT kernel registration source files to exclude the unused kernels.
 
-When building ORT with a reduced set of kernel registrations, `--skip_tests` *MUST* be specified as the kernel reduction will render many of the unit tests invalid. 
+See the [build instructions](https://www.onnxruntime.ai/docs/how-to/build.html#build-instructions) for more details on building ORT.
 
-## Selecting Required Kernels
+When building ORT with a reduced set of kernel registrations, `--skip_tests` **MUST** be specified as the kernel reduction will render many of the unit tests invalid.
 
-Two options are available for selecting the required operator kernels. These options can be combined.
+NOTE: The operator exclusion logic when building with an operator reduction configuration file will only disable kernel registrations each time it runs. It will NOT re-enable previously disabled kernels. If you wish to change the list of kernels included, it is best to revert the repository to a clean state (e.g. via `git reset --hard`) before building ORT again.
 
-### Selection via ONNX models
+## Creating a configuration file with the required kernels
 
-Put the ONNX model/s you wish to be able to execute with a reduced version of ORT in a directory. The selection script will recursively look for all '.onnx' models in this directory, and aggregate information on the kernels required. 
+The script in `<ORT Root>/tools/python/create_reduced_build_config.py` should be used to create the configuration file. This file can be manually edited as needed. The configuration can be created from either ONNX or ORT format models.
 
-### Selection via configuration file
+```
+create_reduced_build_config.py --help
+usage: Script to create a reduced build config file from ONNX or ORT format model/s. [-h] [-f {ONNX,ORT}] [-t] model_path_or_dir config_path
 
-A configuration file can also be used to specify the required kernels. 
-The format is `<operator domain>;<opset for domain>;<op>[,op]...`
+positional arguments:
+  model_path_or_dir     Path to a single model, or a directory that will be recursively searched for models to process.
+  config_path           Path to write configuration file to.
 
-The opset should match the opset import for each model. It does not need to match the initial ONNX opset that the operator was available in. 
-e.g. if a  model imports opset 12 of ONNX, all ONNX operators in that model should be listed under opset 12 for the 'ai.onnx' domain.
+optional arguments:
+  -h, --help            show this help message and exit
+  -f {ONNX,ORT}, --format {ONNX,ORT}
+                        Format of model/s to process. (default: ONNX)
+  -t, --enable_type_reduction
+                        Enable tracking of the specific types that individual operators require. Operator implementations MAY support limiting the type support included
+                        in the build to these types. Only possible with ORT format models. (default: False)
+```
 
-Example config that could be used for a scenario with 2 simplistic models. One targeting ONNX opset 10 with an Add and Concat node, the other targeting ONNX opset 12 with an Add and Split node.
+### Type reduction
 
+If the configuration file is created using ORT format models, the input/output types that individual operators require can be tracked if `--enable_type_reduction` is specified. This can be used to further reduce the build size if `--enable_reduced_operator_type_support` is specified when building ORT.
+
+ONNX format models are not guaranteed to include the required per-node type information, so cannot be used with this option.
+
+## Configuration file format
+
+The basic format of the operator reduction configuration file is `<operator domain>;<opset for domain>;<op1>[,op2]...`
+
+e.g.
 ```
 #domain;opset;op1,op2...
-ai.onnx;10;Add,Concat
-ai.onnx;12;Add,Split
+ai.onnx;12;Add,Cast,Concat,Squeeze
 ```
 
-## Reducing Build to Required Kernels
+The opset can match either the opset import for each model, or the initial ONNX opset that the operator version was first available in. If manually editing the configuration file, using the opset import value from the model is simplest.
 
-There are two ways to reduce the kernels included in the build to the required ones.
-  - via build script arguments when building ORT
-    - the exclusion script will be run as part of the build process
-  - via directly running the exclusion script prior to building ORT
+e.g. if a model imports opset 12 of ONNX, all ONNX operators in that model can be listed under opset 12 for the 'ai.onnx' domain.
 
-NOTE: The exclusion script will only disable kernel registrations each time it runs. It will NOT re-enable previously disabled kernels. If you wish to change the list of kernels to include it is best to revert the repository to a clean state (`git reset --hard`) before running either the ORT build script or the exclusion script each time.
+[Netron](https://netron.app/) can be used to view an ONNX model properties to discover the opset imports.
+Additionally, the ONNX operator specs for [DNN](https://github.com/onnx/onnx/blob/master/docs/Operators.md) and [traditional ML](https://github.com/onnx/onnx/blob/master/docs/Operators-ml.md) operators list the individual operator versions.
 
-### Build time reduction
+### Type reduction format
 
-When running the ORT build script there are two arguments that can be used. These may be combined. 
+If the types an operator implementation supports can be limited to a specific set of types, this is specified in a JSON string immediately after the operator name in the configuration file.
 
-  - `--include_ops_by_model=<path to directory containing ONNX model/s\>`
-  - `--include_ops_by_config=<path to configuration file\>`
+**It is highly recommended that you first generate the configuration file using ORT format models with type reduction enabled in order to see which operators support type reduction, and how the entry is defined for the individual operators.**
 
-`--skip_tests` MUST also be specified.
+The required types are generally listed per input and/or output of the operator. The type information is in a map, with 'inputs' and 'outputs' keys. The value for 'inputs' or 'outputs' is a map between the index number of the input/output and the required list of types.
 
-See the ORT [build instructions](https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#build-instructions) for more details.
+For example, both the input and output types are relevant to ai.onnx:Cast. Type information for input 0 and output 0 could look like this:
+  `{"inputs": {"0": ["float", "int32_t"]}, "outputs": {"0": ["float", "int64_t"]}}`
 
-Most likely the `--config` value should be Release or MinSizeRel.
+which is added directly after the operator name in the configuration file.
+e.g.
+  `ai.onnx;12;Add,Cast{"inputs": {"0": ["float", "int32_t"]}, "outputs": {"0": ["float", "int64_t"]}},Concat,Squeeze`
 
-### Pre-build reduction
+If, for example, the types of inputs 0 and 1 were important, the entry may look like this (e.g. ai.onnx:Gather):
+  `{"inputs": {"0": ["float", "int32_t"], "1": ["int32_t"]}}`
 
-The script to reduce the kernel registrations can be found in `<ORT repository root>/tools/ci_build/exclude_unused_ops.py`.
+Finally some operators do non-standard things and store their type information under a 'custom' key.
+ai.onnx.OneHot is an example of this, where the three input types are combined into a triple.
+  `{"custom": [["float", "int64_t", "int64_t"], ["int64_t", "std::string", "int64_t"]]}`
 
-It can be run in a similar fashion. 
-`--model_path` is a path to a directory containing one or more ONNX models. Directory is recursively searched.
-`--file_path` is a path to a configuration file for the required operators
-`--ort_root` is the path to the ORT repository root that the kernel registration exclusions should be done in. If not provided it will default to be the repository containing the exclude_unused_ops.py script.
-
-```
-python exclude_unused_ops.py --model_path d:\ReduceSize\models --config_path d:\ReduceSize\ops_config.txt --ort_root d:\onnxruntime
-```
-
-After running the script build ORT as per the build instructions. Remember to specify `--skip-tests`.
-
-#### Generating configuration file
-
-Note: It is also possible to generate a configuration file for future usage by providing the `--write_combined_config_to` argument to `exclude_unused_ops.py`.
-If run this way it will process the information provided by `--model_path` and/or `--config_path`, and output a configuration file with the combined list of required operators to the provided path. 
-No kernel registration changes will be made when run this way. 
-
+For these reasons, it is best to generate the configuration file first, and manually edit any entries if needed.

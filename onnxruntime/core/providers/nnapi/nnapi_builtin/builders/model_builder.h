@@ -22,9 +22,12 @@ class ModelBuilder {
 
   enum class TargetDeviceOption : int8_t {
     ALL_DEVICES,  // use all avaliable target devices
-    /* TODO support this option
-    SINGLE_DEVICE,  // use a single target device, must be given
+
+    /* TODO support these options
+    PREFERRED_DEVICES,  // Use one or more preferred devices (must be given)
+    EXCLUDED_DEVICES,   // Exclude one or more devices (must be given)
      */
+
     CPU_DISABLED,  // use all avaliable target devices except CPU
     CPU_ONLY,      // use CPU only
   };
@@ -34,7 +37,7 @@ class ModelBuilder {
 
   Status Compile(std::unique_ptr<Model>& model) ORT_MUST_USE_RESULT;
 
-  int32_t GetAndroidSdkVer() const;
+  int32_t GetNNAPIFeatureLevel() const;
 
   // Add an NNAPI operation (operator)
   Status AddOperation(int op, const std::vector<uint32_t>& input_indices,
@@ -73,6 +76,8 @@ class ModelBuilder {
   // Relax fp32 computation to fp16
   // It is off by default
   void SetUseFp16(bool use_fp16) { use_fp16_ = use_fp16; }
+
+  void SetTargetDeviceOption(TargetDeviceOption option) { target_device_option_ = option; }
 
   // Set NNAPI execution preference
   // Default preference is PREFER_SUSTAINED_SPEED
@@ -144,11 +149,18 @@ class ModelBuilder {
   std::vector<uint32_t> input_index_vec_;
   std::vector<uint32_t> output_index_vec_;
 
+  // Contains all quantized operators' input and the node(s) using the input
+  // In the form of {input_name, [node(s) using the input]}
+  std::unordered_map<std::string, std::vector<const Node*>> all_quantized_op_inputs_;
+
   std::unordered_set<std::string> unique_names_;
 
   TargetDeviceOption target_device_option_{TargetDeviceOption::ALL_DEVICES};
   std::vector<ANeuralNetworksDevice*> nnapi_target_devices_;
+  std::string nnapi_target_devices_detail_;  // Debug info for target devices
 
+  // The number of nnapi operations in this model
+  size_t num_nnapi_ops_ = 0;
   uint32_t next_index_ = 0;
 
   // Convert the onnx model to ANeuralNetworksModel
@@ -177,8 +189,7 @@ class ModelBuilder {
                        bool is_nhwc,
                        uint32_t& index) ORT_MUST_USE_RESULT;
 
-  IOpBuilder* GetOpBuilder(const Node& node);
-  IOpSupportChecker* GetOPSupportChecker(const Node& node);
+  static const IOpBuilder* GetOpBuilder(const Node& node);
 };
 
 }  // namespace nnapi

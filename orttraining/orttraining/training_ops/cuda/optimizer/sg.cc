@@ -14,7 +14,7 @@ ONNX_OPERATOR_KERNEL_EX(
     kMSDomain,
     1,
     kCudaExecutionProvider,
-    KernelDefBuilder()
+    (*KernelDefBuilder::Create())
         .Alias(1, 0)  // Update weights in-place
         .Alias(2, 1)  // Update gradients in-place
         .TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
@@ -30,6 +30,7 @@ Status SGDOptimizer::ComputeInternal(OpKernelContext* ctx) const {
   ORT_ENFORCE(W.Shape() == G.Shape());
 
   SGDOptimizerImpl(
+      Stream(),
       ETA.template Data<float>(),
       W.template Data<float>(),
       G.template Data<float>(),

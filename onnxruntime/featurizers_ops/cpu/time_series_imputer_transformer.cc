@@ -265,10 +265,10 @@ struct TimeSeriesImputerTransformerImpl {
 
       const auto elem_type = variadic_input_tensor->GetElementType();
 
-      utils::MLTypeCallDispatcher<GenerateImputedColumnsImpl,
-                                  int8_t, uint8_t, int16_t, uint16_t, int32_t, uint32_t, int64_t, uint64_t,
-                                  float, double, bool, std::string> t_disp(elem_type);
-      t_disp.Invoke(variadic_input_tensor, output_after_impute_tensor, is_row_imputed, input_row_size);
+      utils::MLTypeCallDispatcher<int8_t, uint8_t, int16_t, uint16_t, int32_t, uint32_t, int64_t, uint64_t,
+                                  float, double, bool, std::string>
+          t_disp(elem_type);
+      t_disp.Invoke<GenerateImputedColumnsImpl>(variadic_input_tensor, output_after_impute_tensor, is_row_imputed, input_row_size);
   }
 
   }

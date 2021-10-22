@@ -2,13 +2,14 @@
 // Licensed under the MIT License.
 
 #include "gtest/gtest.h"
-#include "orttraining/models/runner/pipeline.h"
+#include "orttraining/core/framework/pipeline.h"
+#include "orttraining/core/framework/distributed_run_context.h"
 
 namespace onnxruntime {
 namespace test {
 
 void TestPipelineScheduler(const int num_batches, const int num_stages, std::vector<std::vector<int>> baseline_events) {
-  onnxruntime::training::pipeline::PipelineScheduler schedule(num_batches, num_stages);
+  onnxruntime::training::pipeline::PipelineScheduler schedule(num_batches, num_stages, {0, 1, 2});
   for (int s = 0; s < num_stages; ++s) {
     for (int b = 0; b < num_batches; ++b) {
       const auto forward_recv_wait = schedule.GetForwardRecvWaitedEvent(b, s);
@@ -27,19 +28,19 @@ void TestPipelineScheduler(const int num_batches, const int num_stages, std::vec
 
       const auto batch_stride = 6;
       const auto stage_stride = 2;
-      EXPECT_EQ(forward_recv_wait, baseline_events[stage_stride * s + 0][batch_stride * b + 0]) << " batch " << b << " stage " << s;
-      EXPECT_EQ(forward_recv_record, baseline_events[stage_stride * s + 0][batch_stride * b + 1]) << " batch " << b << " stage " << s;
-      EXPECT_EQ(forward_compute_wait, baseline_events[stage_stride * s + 0][batch_stride * b + 2]) << " batch " << b << " stage " << s;
-      EXPECT_EQ(forward_compute_record, baseline_events[stage_stride * s + 0][batch_stride * b + 3]) << " batch " << b << " stage " << s;
-      EXPECT_EQ(forward_send_wait, baseline_events[stage_stride * s + 0][batch_stride * b + 4]) << " batch " << b << " stage " << s;
-      EXPECT_EQ(forward_send_record, baseline_events[stage_stride * s + 0][batch_stride * b + 5]) << " batch " << b << " stage " << s;
+      EXPECT_EQ(forward_recv_wait, baseline_events.at(stage_stride * s + 0).at(batch_stride * b + 0)) << " batch " << b << " stage " << s;
+      EXPECT_EQ(forward_recv_record, baseline_events.at(stage_stride * s + 0).at(batch_stride * b + 1)) << " batch " << b << " stage " << s;
+      EXPECT_EQ(forward_compute_wait, baseline_events.at(stage_stride * s + 0).at(batch_stride * b + 2)) << " batch " << b << " stage " << s;
+      EXPECT_EQ(forward_compute_record, baseline_events.at(stage_stride * s + 0).at(batch_stride * b + 3)) << " batch " << b << " stage " << s;
+      EXPECT_EQ(forward_send_wait, baseline_events.at(stage_stride * s + 0).at(batch_stride * b + 4)) << " batch " << b << " stage " << s;
+      EXPECT_EQ(forward_send_record, baseline_events.at(stage_stride * s + 0).at(batch_stride * b + 5)) << " batch " << b << " stage " << s;
 
-      EXPECT_EQ(backward_recv_wait, baseline_events[stage_stride * s + 1][batch_stride * b + 0]) << " batch " << b << " stage " << s;
-      EXPECT_EQ(backward_recv_record, baseline_events[stage_stride * s + 1][batch_stride * b + 1]) << " batch " << b << " stage " << s;
-      EXPECT_EQ(backward_compute_wait, baseline_events[stage_stride * s + 1][batch_stride * b + 2]) << " batch " << b << " stage " << s;
-      EXPECT_EQ(backward_compute_record, baseline_events[stage_stride * s + 1][batch_stride * b + 3]) << " batch " << b << " stage " << s;
-      EXPECT_EQ(backward_send_wait, baseline_events[stage_stride * s + 1][batch_stride * b + 4]) << " batch " << b << " stage " << s;
-      EXPECT_EQ(backward_send_record, baseline_events[stage_stride * s + 1][batch_stride * b + 5]) << " batch " << b << " stage " << s;
+      EXPECT_EQ(backward_recv_wait, baseline_events.at(stage_stride * s + 1).at(batch_stride * b + 0)) << " batch " << b << " stage " << s;
+      EXPECT_EQ(backward_recv_record, baseline_events.at(stage_stride * s + 1).at(batch_stride * b + 1)) << " batch " << b << " stage " << s;
+      EXPECT_EQ(backward_compute_wait, baseline_events.at(stage_stride * s + 1).at(batch_stride * b + 2)) << " batch " << b << " stage " << s;
+      EXPECT_EQ(backward_compute_record, baseline_events.at(stage_stride * s + 1).at(batch_stride * b + 3)) << " batch " << b << " stage " << s;
+      EXPECT_EQ(backward_send_wait, baseline_events.at(stage_stride * s + 1).at(batch_stride * b + 4)) << " batch " << b << " stage " << s;
+      EXPECT_EQ(backward_send_record, baseline_events.at(stage_stride * s + 1).at(batch_stride * b + 5)) << " batch " << b << " stage " << s;
     }
   }
 }

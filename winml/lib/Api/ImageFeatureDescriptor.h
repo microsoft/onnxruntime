@@ -4,15 +4,10 @@
 #pragma once
 
 #include "ImageFeatureDescriptor.g.h"
+#include "iengine.h"
 
 namespace WINMLP {
 
-enum class ImageNominalPixelRange {
-  ImageNominalPixelRange_NominalRange_0_255,
-  ImageNominalPixelRange_Normalized_0_1,
-  ImageNominalPixelRange_Normalized_1_1,
-  ImageNominalPixelRange_NominalRange_16_235,
-};
 enum class ImageColorSpaceGamma {
   ImageColorSpaceGamma_Linear,
   ImageColorSpaceGamma_SRGB,
@@ -20,7 +15,8 @@ enum class ImageColorSpaceGamma {
 
 struct ImageFeatureDescriptor : ImageFeatureDescriptorT<
                                     ImageFeatureDescriptor,
-                                    ILearningModelFeatureDescriptorNative> {
+                                    ILearningModelFeatureDescriptorNative,
+                                    _winml::IDescriptorInfoProvider> {
   ImageFeatureDescriptor() = delete;
   ImageFeatureDescriptor(
       const char* name,
@@ -32,7 +28,7 @@ struct ImageFeatureDescriptor : ImageFeatureDescriptorT<
       wgi::BitmapAlphaMode alphamode,
       uint32_t width,
       uint32_t height,
-      ImageNominalPixelRange nominalPixelRange,
+      winml::LearningModelPixelRange pixelRange,
       ImageColorSpaceGamma colorSpaceGamma);
 
   wgi::BitmapPixelFormat
@@ -65,8 +61,8 @@ struct ImageFeatureDescriptor : ImageFeatureDescriptorT<
   wfc::IVectorView<int64_t>
   Shape();
 
-  ImageNominalPixelRange
-  GetNominalPixelRange();
+  winml::LearningModelPixelRange
+  PixelRange();
 
   ImageColorSpaceGamma
   GetColorSpaceGamma();
@@ -81,6 +77,11 @@ struct ImageFeatureDescriptor : ImageFeatureDescriptorT<
       const wchar_t** description,
       uint32_t* cchDescription) override;
 
+  STDMETHOD(GetDescriptorInfo)
+  (
+      _winml::IEngineFactory* engine_factory,
+      _winml::IDescriptorInfo** info) override;
+
  private:
   winrt::hstring name_;
   winrt::hstring description_;
@@ -91,7 +92,7 @@ struct ImageFeatureDescriptor : ImageFeatureDescriptorT<
   wgi::BitmapAlphaMode alpha_mode_;
   uint32_t width_;
   uint32_t height_;
-  ImageNominalPixelRange nominal_pixel_range_;
+  winml::LearningModelPixelRange pixel_range_;
   ImageColorSpaceGamma color_space_gamma_;
 };
 

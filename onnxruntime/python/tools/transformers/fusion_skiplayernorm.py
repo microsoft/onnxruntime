@@ -4,9 +4,10 @@
 #--------------------------------------------------------------------------
 
 from logging import getLogger
-from onnx import helper, numpy_helper
+from onnx import helper
 from onnx_model import OnnxModel
 from fusion_base import Fusion
+from fusion_utils import NumpyHelper
 
 logger = getLogger(__name__)
 
@@ -18,12 +19,17 @@ class FusionSkipLayerNormalization(Fusion):
     """
     def __init__(self, model: OnnxModel):
         super().__init__(model, "SkipLayerNormalization", "LayerNormalization")
+        # Update shape inference is needed since other fusions might add new edge which does not have shape info yet.
+        self.shape_infer_helper = self.model.infer_runtime_shape({"batch_size": 4, "seq_len": 7}, update=True)
 
     def fuse(self, node, input_name_to_nodes, output_name_to_node):
         add = self.model.get_parent(node, 0, output_name_to_node)
 
         # In some models there is input_ids->gather->add->LayerNorm and one of input of the
         # add node is initializer with fixed shape which should not be fused into SkipLayerNorm
+        if add is None:
+            return
+
         for add_input in add.input:
             if self.model.get_initializer(add_input) != None:
                 return
@@ -31,6 +37,23 @@ class FusionSkipLayerNormalization(Fusion):
         # The number of input node of add should be 2
         if len(self.model.get_parents(add)) != 2:
             return
+
+        if self.shape_infer_helper is not None:
+            if not self.shape_infer_helper.compare_shape(add.input[0], add.input[1]):
+                logger.debug(
+                    f"skip skiplayernorm fusion since shape of inputs ({add.input[0]}, {add.input[1]}) are not same")
+                return
+        else:
+            # shape_infer_helper can not handle subgraphs. Current work around is to disable skiplayernorm fusion
+            # longterm todo: support subgraph in symbolic_shape_infer or support add broadcasting in skiplayernorm op
+            logger.warning(
+                "symbolic shape infer failed. it's safe to ignore this message if there is no issue with optimized model"
+            )
+
+        gather_path = self.model.match_parent_path(add, ['Gather'], [None])
+        if gather_path is not None and self.model.find_graph_input(gather_path[0].input[1]) is None:
+            if self.model.match_parent_path(gather_path[0], ['ConstantOfShape'], [1]) is None:
+                return
 
         if add is not None and add.op_type == 'Add' and self.model.is_safe_to_fuse_nodes(
             [add, node], node.output, input_name_to_nodes, output_name_to_node):
@@ -54,6 +77,7 @@ class FusionSkipLayerNormalization(Fusion):
                 normalize_node.attribute.extend([helper.make_attribute("epsilon", 1.0E-12)])
 
             self.nodes_to_add.append(normalize_node)
+            self.node_name_to_graph_name[normalize_node.name] = self.this_graph_name
 
 
 class FusionBiasSkipLayerNormalization(Fusion):
@@ -82,7 +106,7 @@ class FusionBiasSkipLayerNormalization(Fusion):
             if initializer is None:
                 continue
             bias_index = i
-            bias_weight = numpy_helper.to_array(initializer)
+            bias_weight = NumpyHelper.to_array(initializer)
             break
         if bias_weight is None:
             logger.debug(f"Bias weight not found")
@@ -118,3 +142,4 @@ class FusionBiasSkipLayerNormalization(Fusion):
             new_node.attribute.extend([helper.make_attribute("epsilon", 1.0E-12)])
 
         self.nodes_to_add.append(new_node)
+        self.node_name_to_graph_name[new_node.name] = self.this_graph_name

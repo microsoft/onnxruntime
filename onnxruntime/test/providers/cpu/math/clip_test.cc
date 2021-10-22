@@ -43,10 +43,9 @@ TEST(MathOpTest, Clip_Default) {
                          -5.4f, 9.3f, 82.4f});
 
 #if defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_VAD_M)
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider, kNGraphExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
 #else
-  // nGraph does not support Clip opset 12 yet.
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNGraphExecutionProvider});
+  test.Run();
 #endif
 }
 
@@ -63,8 +62,8 @@ TEST(MathOpTest, Clip_Default_int8) {
                           -1, 3, 64,
                           -5, 9, 82});
 
-  // TensorRT, nGraph does not support Clip opset 12 yet.
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kNGraphExecutionProvider});
+  // TensorRT does not support Clip opset 12 yet.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(MathOpTest, Clip_Default_uint8) {
@@ -80,8 +79,8 @@ TEST(MathOpTest, Clip_Default_uint8) {
                            1, 3, 64,
                            5, 9, 82});
 
-  // TensorRT, nGraph does not support Clip opset 12 yet.
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kNGraphExecutionProvider});
+  // TensorRT does not support Clip opset 12 yet.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(MathOpTest, Clip_Default_int64) {
@@ -97,8 +96,8 @@ TEST(MathOpTest, Clip_Default_int64) {
                            -1, 3, 64,
                            -5, 9, 82});
 
-  // TensorRT, nGraph does not support Clip opset 12 yet.
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kNGraphExecutionProvider});
+  // TensorRT does not support Clip opset 12 yet.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(MathOpTest, Clip_Default_uint64) {
@@ -114,8 +113,8 @@ TEST(MathOpTest, Clip_Default_uint64) {
                             1, 3, 64,
                             5, 9, 82});
 
-  // TensorRT, nGraph does not support Clip opset 12 yet.
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kNGraphExecutionProvider});
+  // TensorRT does not support Clip opset 12 yet.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(MathOpTest, Clip) {
@@ -135,8 +134,8 @@ TEST(MathOpTest, Clip) {
                            -5.0f, 0.0f, 5.0f,
                            -5.0f, 2.0f, 5.0f});
 
-    // TensorRT, nGraph and Tensorrt does not support Clip opset 11 yet.
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNGraphExecutionProvider, kTensorrtExecutionProvider});
+    // TensorRT does not support Clip opset 11 yet.
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
   };
 
   run_test(false);
@@ -161,8 +160,8 @@ TEST(MathOpTest, Clip_Relu6) {
                            0.0f, 3.5f, 6.0f,
                            0.0f, 2.0f, 6.0f});
 
-    // TensorRT, nGraph and Tensorrt does not support Clip opset 11 yet.
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNGraphExecutionProvider, kTensorrtExecutionProvider});
+    // TensorRT does not support Clip opset 11 yet.
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
   };
 
   run_test(false);
@@ -187,8 +186,8 @@ TEST(MathOpTest, Clip_Relu1) {
                            -1.0f, 1.0f, 1.0f,
                            -1.0f, 1.0f, 1.0f});
 
-    // TensorRT, nGraph and Tensorrt does not support Clip opset 11 yet.
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNGraphExecutionProvider, kTensorrtExecutionProvider});
+    // TensorRT and Tensorrt does not support Clip opset 11 yet.
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
   };
 
   run_test(false);
@@ -204,8 +203,9 @@ TEST(MathOpTest, ClipDimWithZero) {
   test.AddInput<float>("max", {}, {5});
   test.AddOutput<float>("Y", dims, {});
 
-  // nGraph and Tensorrt does not support Clip opset 11 yet.
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNGraphExecutionProvider, kTensorrtExecutionProvider});
+  // Tensorrt does not support Clip opset 11 yet.
+  // CoreML EP does not support empty inputs
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kCoreMLExecutionProvider});
 
   OpTester test1("Clip");  //
   test1.AddInput<float>("X", dims, {});
@@ -213,7 +213,8 @@ TEST(MathOpTest, ClipDimWithZero) {
   test1.AddAttribute("max", 10.0f);
   test1.AddOutput<float>("Y", dims, {});
   // TRT doesn't handle this
-  test1.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  // CoreML EP does not support empty inputs
+  test1.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kCoreMLExecutionProvider});
 }
 
 }  // namespace test

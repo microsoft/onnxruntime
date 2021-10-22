@@ -76,7 +76,7 @@ def input_get_device_index(input):
 
 def get_all_gradients_finite_arg_name(session):
     all_fp16_or_fp32_gradients_finite_node_args = [x for x in session._outputs_meta if 'all_gradients_finite' in x.name]
-    if len(all_fp16_or_fp32_gradients_finite_node_args) != 1:
+    if len(all_fp16_or_fp32_gradients_finite_node_args) < 1:
         raise RuntimeError("Failed to find a group NodeArg with name that matches 'all_gradients_finite'\
              from the training session.")
 
@@ -355,8 +355,8 @@ def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device, inputs, op
     sample_inputs_copy = copy.deepcopy(sample_inputs)
 
     # Enable contrib ops export from PyTorch
-    from onnxruntime.training import register_custom_ops_pytorch_exporter
-    register_custom_ops_pytorch_exporter.register_custom_op()
+    from onnxruntime.tools import pytorch_export_contrib_ops
+    pytorch_export_contrib_ops.register()
 
     torch.onnx._export(model, tuple(sample_inputs_copy), f,
                        input_names=input_names,
@@ -392,7 +392,9 @@ def create_ort_training_session_with_optimizer(model, device, training_optimizer
                                                enable_grad_norm_clip=True,
                                                frozen_weights=[], opset_version=DEFAULT_OPSET_VERSION,
                                                use_deterministic_compute=False,
-                                               use_invertible_layernorm_grad=False):
+                                               use_memory_efficient_gradient=False,
+                                               enable_adasum=False,
+                                               optimized_model_filepath=""):
     output_name = model.graph.output[0].name
     ort_parameters = ort.TrainingParameters()
     ort_parameters.loss_output_name = output_name
@@ -404,8 +406,8 @@ def create_ort_training_session_with_optimizer(model, device, training_optimizer
     ort_parameters.deepspeed_zero_stage = deepspeed_zero_stage
     ort_parameters.enable_grad_norm_clip = enable_grad_norm_clip
     ort_parameters.set_gradients_as_graph_outputs = False
-    ort_parameters.use_invertible_layernorm_grad = use_invertible_layernorm_grad
-
+    ort_parameters.use_memory_efficient_gradient = use_memory_efficient_gradient
+    ort_parameters.enable_adasum = enable_adasum
     output_types = {}
     for output in model.graph.output:
         output_types[output.name] = output.type.tensor_type
@@ -458,6 +460,8 @@ def create_ort_training_session_with_optimizer(model, device, training_optimizer
 
     sessionOptions = ort.SessionOptions()
     sessionOptions.use_deterministic_compute = use_deterministic_compute
+    if len(optimized_model_filepath) > 0:
+        sessionOptions.optimized_model_filepath = optimized_model_filepath
     session = ort.TrainingSession(model.SerializeToString(), ort_parameters, sessionOptions)
     train_io_binding = session.io_binding()
     eval_io_binding = session.io_binding()
@@ -547,7 +551,8 @@ class ORTTrainer():
                  global_step=0, get_lr_this_step=None, loss_scaler=None, deepspeed_zero_stage=0,
                  enable_grad_norm_clip=True, frozen_weights=[], _opset_version=DEFAULT_OPSET_VERSION,
                  _enable_internal_postprocess=True, _extra_postprocess=None, _use_deterministic_compute=False,
-                 use_invertible_layernorm_grad=False, run_symbolic_shape_infer=False):
+                 use_memory_efficient_gradient=False, run_symbolic_shape_infer=False, enable_adasum=False,
+                 optimized_model_filepath=""):
         super(ORTTrainer, self).__init__()
         """
         Initialize ORTTrainer.
@@ -613,10 +618,12 @@ class ORTTrainer():
                Defaults to True
             _extra_postprocess: a callable to postprocess the ONNX model that is converted from PyTorch.
                Defaults to None
-            use_invertible_layernorm_grad: use invertible layernorm grad
+            use_memory_efficient_gradient: use memory aware gradient builder.
                Defaults to False
             run_symbolic_shape_infer: run symbolic shape inference
                Defaults to False
+            optimized_model_filepath: path to output the optimized training graph.
+               Defaults to "" (no output).
         """
         warnings.warn('DISCLAIMER: This is an early version of an experimental training API and it is subject to change. DO NOT create production applications with it')
         self.is_train = True
@@ -654,7 +661,6 @@ class ORTTrainer():
         self.session = None
         self.device_ = device
         self.gradient_accumulation_steps = gradient_accumulation_steps
-
         # we use self.current_step to count calls to train_step. It is used for gradient accumulation.
         # gradients are being accumulated when self.current_step is not divisible by gradient_accumulation_steps.
         # gradients are updated when self.current_step is divisible by gradient_accumulation_steps.
@@ -678,8 +684,10 @@ class ORTTrainer():
         self.opset_version_ = _opset_version
         self.state_dict_ = None
         self._use_deterministic_compute = _use_deterministic_compute
-        self.use_invertible_layernorm_grad = use_invertible_layernorm_grad
+        self.use_memory_efficient_gradient = use_memory_efficient_gradient
         self.run_symbolic_shape_infer = run_symbolic_shape_infer
+        self.enable_adasum = enable_adasum
+        self.optimized_model_filepath = optimized_model_filepath
 
         # use this special string to workaround a corner case that external loss_scale is passed into train_step as kwargs.
         # see prepare_input_and_fetches for more details.
@@ -710,7 +718,9 @@ class ORTTrainer():
                 enable_grad_norm_clip=self.enable_grad_norm_clip_,
                 frozen_weights=self.frozen_weights_, opset_version=self.opset_version_,
                 use_deterministic_compute=self._use_deterministic_compute,
-                use_invertible_layernorm_grad=self.use_invertible_layernorm_grad)
+                use_memory_efficient_gradient=self.use_memory_efficient_gradient,
+                enable_adasum=self.enable_adasum,
+                optimized_model_filepath=self.optimized_model_filepath)
 
         self.loss_scale_input_name = self.session.loss_scale_input_name
 
@@ -953,7 +963,6 @@ class ORTTrainer():
             # Otherwise next run with only_execute_path_to_fetches will lead to gradient all reduce
             # because all_fp32_gradients_finite is still in the feed.
             self.train_io_binding.clear_binding_outputs()
-
             all_finite = session_run_results[self.output_desc_with_all_fp_16_or_fp32_gradients_finite[-1].name_]
             if self.loss_scaler_ is not None:
                 self.loss_scaler_.update_loss_scale(all_finite)
@@ -971,7 +980,6 @@ class ORTTrainer():
             results = [session_run_results[output_desc.name_] for output_desc in self.output_desc_with_all_fp_16_or_fp32_gradients_finite]
         else:
             results = [session_run_results[output_desc.name_] for output_desc in self.model_desc_.outputs_]
-
         return results[0] if len(results) == 1 else results
 
     def __call__(self, *args, **kwargs):

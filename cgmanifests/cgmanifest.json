@@ -49,15 +49,6 @@
          "component": {
             "type": "git",
             "git": {
-               "commitHash": "e02b83cc5e3c4d30f93dba945162e3aa58d962d6",
-               "repositoryUrl": "https://github.com/jemalloc/jemalloc.git"
-            }
-         }
-      },
-      {
-         "component": {
-            "type": "git",
-            "git": {
                "commitHash": "7de7e5d02bf687f971e7668963649728356e0c20",
                "repositoryUrl": "https://github.com/intel/mkl-dnn.git"
             }
@@ -176,20 +167,11 @@
       },
       {
          "component": {
-            "type": "git",
-            "git": {
-               "commitHash": "950fbf183274ab7d2092f99bab6c809ae87c7054",
-               "repositoryUrl": "https://github.com/NervanaSystems/ngraph.git"
-            }
-         }
-      },
-      {
-         "component": {
             "Type": "other",
             "Other": {
                "Name": "Boost",
                "Version": "1.69.0",
-               "DownloadUrl": "http://dl.bintray.com/boostorg/release/1.69.0/source/boost_1_69_0.tar.bz2"
+               "DownloadUrl": "https://boostorg.jfrog.io/artifactory/main/release/1.69.0/source/boost_1_69_0.tar.bz2"
             }
          }
       },
@@ -352,7 +334,7 @@
          "component": {
             "type": "git",
             "git": {
-               "commitHash": "f97fd8664fa824e5d081d776cf4a811dbf09bca4",
+               "commitHash": "56195b3a67d988fa9c6eafdc459d92f0909f4782",
                "repositoryUrl": "https://github.com/pypa/manylinux"
             },
             "comments": "For building our CI build docker image"
@@ -372,20 +354,20 @@
          "component": {
             "type": "git",
             "git": {
-               "commitHash": "439c93d51f45c50541fc755b597725168ecd939a",
+               "commitHash": "1e5d33e9b9b8631b36f061103a30208b206fd03a",
                "repositoryUrl": "https://github.com/python/cpython"
             },
-            "comments": "Python 3.9.0rc1"
+            "comments": "Python 3.9.1"
          }
       },
       {
          "component": {
             "type": "git",
             "git": {
-               "commitHash": "580fbb018fd0844806119614d752b41fc69660f9",
+               "commitHash": "6503f05dd59e26a9986bdea097b3da9b3546f45b",
                "repositoryUrl": "https://github.com/python/cpython"
             },
-            "comments": "Python 3.8.5"
+            "comments": "Python 3.8.7"
          }
       },
       {
@@ -412,10 +394,10 @@
          "component": {
             "type": "git",
             "git": {
-               "commitHash": "e5f6aba872e66bfd86eb592214696a519cded197",
+               "commitHash": "426b022776672fdf3d71ddd98d89af341c88080f",
                "repositoryUrl": "https://github.com/python/cpython"
             },
-            "comments": "Python 3.5.9"
+            "comments": "Python 3.5.10"
          }
       },
       {
@@ -476,6 +458,26 @@
                "repositoryUrl": "https://github.com/mestevens/gtest-ios-framework"
             },
             "comments": "gtest-ios-framework"
+         }
+      },
+      {
+         "component": {
+            "type": "git",
+            "git": {
+               "commitHash": "277508879878e0a5b5b43599b1bea11f66eb3c6c",
+               "repositoryUrl": "https://github.com/dmlc/dlpack.git"
+            },
+            "comments": "dlpack"
+         }
+      },
+      {
+         "component": {
+            "Type": "other",
+            "Other": {
+               "Name": "SQLite3",
+               "Version": "3.22.0",
+               "DownloadUrl": "http://security.ubuntu.com/ubuntu/pool/main/s/sqlite3/libsqlite3-dev_3.22.0-1ubuntu0.4_amd64.deb"
+            }
          }
       }
    ],

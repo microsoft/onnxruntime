@@ -1,73 +1,79 @@
-#-------------------------------------------------------------------------
+# ------------------------------------------------------------------------
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
-#--------------------------------------------------------------------------
+# ------------------------------------------------------------------------
 
-from setuptools import setup, find_packages, Extension
+from setuptools import setup, Extension
 from distutils import log as logger
 from distutils.command.build_ext import build_ext as _build_ext
-from glob import glob
-from os import path, getcwd, environ, remove, walk, makedirs, listdir
+from glob import glob, iglob
+from os import path, getcwd, environ, remove, listdir
 from shutil import copyfile, copytree, rmtree
 import platform
 import subprocess
 import sys
 import datetime
 
+from pathlib import Path
 nightly_build = False
 featurizers_build = False
 package_name = 'onnxruntime'
 wheel_name_suffix = None
 
-# Any combination of the following arguments can be applied
-if '--use_featurizers' in sys.argv:
-    featurizers_build = True
-    sys.argv.remove('--use_featurizers')
 
-if '--nightly_build' in sys.argv:
+def parse_arg_remove_boolean(argv, arg_name):
+    arg_value = False
+    if arg_name in sys.argv:
+        arg_value = True
+        argv.remove(arg_name)
+
+    return arg_value
+
+
+def parse_arg_remove_string(argv, arg_name_equal):
+    arg_value = None
+    for arg in sys.argv[1:]:
+        if arg.startswith(arg_name_equal):
+            arg_value = arg[len(arg_name_equal):]
+            sys.argv.remove(arg)
+            break
+
+    return arg_value
+
+
+# Any combination of the following arguments can be applied
+featurizers_build = parse_arg_remove_boolean(sys.argv, '--use_featurizers')
+
+if parse_arg_remove_boolean(sys.argv, '--nightly_build'):
     package_name = 'ort-nightly'
     nightly_build = True
-    sys.argv.remove('--nightly_build')
 
-for arg in sys.argv[1:]:
-    if arg.startswith("--wheel_name_suffix="):
-        wheel_name_suffix = arg[len("--wheel_name_suffix="):]
+wheel_name_suffix = parse_arg_remove_string(sys.argv, '--wheel_name_suffix=')
 
-        sys.argv.remove(arg)
-
-        break
-
+cuda_version = None
+rocm_version = None
 # The following arguments are mutually exclusive
-if '--use_tensorrt' in sys.argv:
+if parse_arg_remove_boolean(sys.argv, '--use_tensorrt'):
     package_name = 'onnxruntime-gpu-tensorrt' if not nightly_build else 'ort-trt-nightly'
-    sys.argv.remove('--use_tensorrt')
-elif '--use_cuda' in sys.argv:
-    package_name = 'onnxruntime-gpu' if not nightly_build else 'ort-gpu-nightly'
-    sys.argv.remove('--use_cuda')
-elif '--use_ngraph' in sys.argv:
-    package_name = 'onnxruntime-ngraph'
-    sys.argv.remove('--use_ngraph')
-elif '--use_openvino' in sys.argv:
+elif wheel_name_suffix == 'gpu':
+    # TODO: how to support multiple CUDA versions?
+    cuda_version = parse_arg_remove_string(sys.argv, '--cuda_version=')
+elif parse_arg_remove_boolean(sys.argv, '--use_rocm'):
+    package_name = 'onnxruntime-rocm' if not nightly_build else 'ort-rocm-nightly'
+    rocm_version = parse_arg_remove_string(sys.argv, '--rocm_version=')
+elif parse_arg_remove_boolean(sys.argv, '--use_openvino'):
     package_name = 'onnxruntime-openvino'
-    sys.argv.remove('--use_openvino')
-elif '--use_dnnl' in sys.argv:
+elif parse_arg_remove_boolean(sys.argv, '--use_dnnl'):
     package_name = 'onnxruntime-dnnl'
-    sys.argv.remove('--use_dnnl')
-elif '--use_nuphar' in sys.argv:
+elif parse_arg_remove_boolean(sys.argv, '--use_nuphar'):
     package_name = 'onnxruntime-nuphar'
-    sys.argv.remove('--use_nuphar')
-elif '--use_vitisai' in sys.argv:
+elif parse_arg_remove_boolean(sys.argv, '--use_vitisai'):
     package_name = 'onnxruntime-vitisai'
-    sys.argv.remove('--use_vitisai')
-elif '--use_acl' in sys.argv:
+elif parse_arg_remove_boolean(sys.argv, '--use_acl'):
     package_name = 'onnxruntime-acl'
-    sys.argv.remove('--use_acl')
-elif '--use_armnn' in sys.argv:
+elif parse_arg_remove_boolean(sys.argv, '--use_armnn'):
     package_name = 'onnxruntime-armnn'
-    sys.argv.remove('--use_armnn')
-elif '--use_dml' in sys.argv:
-    package_name = 'onnxruntime-dml'
-    sys.argv.remove('--use_dml')
+
 
 # PEP 513 defined manylinux1_x86_64 and manylinux1_i686
 # PEP 571 defined manylinux2010_x86_64 and manylinux2010_i686
@@ -104,6 +110,7 @@ class build_ext(_build_ext):
 
 try:
     from wheel.bdist_wheel import bdist_wheel as _bdist_wheel
+
     class bdist_wheel(_bdist_wheel):
         def finalize_options(self):
             _bdist_wheel.finalize_options(self)
@@ -111,18 +118,22 @@ try:
                 self.root_is_pure = False
 
         def _rewrite_ld_preload(self, to_preload):
-            with open('onnxruntime/capi/_ld_preload.py', 'rt') as f:
-                ld_preload = f.read().splitlines()
-            with open('onnxruntime/capi/_ld_preload.py', 'wt') as f:
-                for line in ld_preload:
-                    f.write(line)
-                    f.write('\n')
-                    if 'LD_PRELOAD_BEGIN_MARK' in line:
-                        break
+            with open('onnxruntime/capi/_ld_preload.py', 'a') as f:
                 if len(to_preload) > 0:
                     f.write('from ctypes import CDLL, RTLD_GLOBAL\n')
                     for library in to_preload:
                         f.write('_{} = CDLL("{}", mode=RTLD_GLOBAL)\n'.format(library.split('.')[0], library))
+
+        def _rewrite_ld_preload_cuda(self, to_preload):
+            with open('onnxruntime/capi/_ld_preload.py', 'a') as f:
+                if len(to_preload) > 0:
+                    f.write('from ctypes import CDLL, RTLD_GLOBAL\n')
+                    f.write('try:\n')
+                    for library in to_preload:
+                        f.write('    _{} = CDLL("{}", mode=RTLD_GLOBAL)\n'.format(library.split('.')[0], library))
+                    f.write('except OSError:\n')
+                    f.write('    import os\n')
+                    f.write('    os.environ["ORT_CUDA_UNAVAILABLE"] = "1"\n')
 
         def run(self):
             if is_manylinux:
@@ -130,25 +141,48 @@ try:
                 dest = 'onnxruntime/capi/onnxruntime_pybind11_state_manylinux1.so'
                 logger.info('copying %s -> %s', source, dest)
                 copyfile(source, dest)
-                result = subprocess.run(['patchelf', '--print-needed', dest], check=True, stdout=subprocess.PIPE, universal_newlines=True)
-                cuda_dependencies = ['libcublas.so', 'libcudnn.so', 'libcudart.so', 'libcurand.so', 'libcufft.so', 'libnvToolsExt.so']
+                result = subprocess.run(['patchelf', '--print-needed', dest],
+                                        check=True, stdout=subprocess.PIPE, universal_newlines=True)
+                dependencies = ['librccl.so', 'libamdhip64.so', 'librocblas.so', 'libMIOpen.so',
+                                'libhsa-runtime64.so', 'libhsakmt.so']
                 to_preload = []
+                to_preload_cuda = []
                 args = ['patchelf', '--debug']
                 for line in result.stdout.split('\n'):
-                    for dependency in cuda_dependencies:
+                    for dependency in dependencies:
                         if dependency in line:
                             to_preload.append(line)
                             args.extend(['--remove-needed', line])
                 args.append(dest)
-                if len(to_preload) > 0:
+                if len(args) > 3:
                     subprocess.run(args, check=True, stdout=subprocess.PIPE)
+
+                dest = 'onnxruntime/capi/libonnxruntime_providers_cuda.so'
+                if path.isfile(dest):
+                    result = subprocess.run(['patchelf', '--print-needed', dest],
+                                            check=True, stdout=subprocess.PIPE, universal_newlines=True)
+                    cuda_dependencies = ['libcublas.so', 'libcublasLt.so', 'libcudnn.so', 'libcudart.so',
+                                         'libcurand.so', 'libcufft.so', 'libnvToolsExt.so']
+                    args = ['patchelf', '--debug']
+                    for line in result.stdout.split('\n'):
+                        for dependency in cuda_dependencies:
+                            if dependency in line:
+                                if dependency not in to_preload:
+                                    to_preload_cuda.append(line)
+                                args.extend(['--remove-needed', line])
+                    args.append(dest)
+                    if len(args) > 3:
+                        subprocess.run(args, check=True, stdout=subprocess.PIPE)
+
                 self._rewrite_ld_preload(to_preload)
+                self._rewrite_ld_preload_cuda(to_preload_cuda)
             _bdist_wheel.run(self)
-            if is_manylinux:
+            if is_manylinux and not disable_auditwheel_repair:
                 file = glob(path.join(self.dist_dir, '*linux*.whl'))[0]
                 logger.info('repairing %s for manylinux1', file)
                 try:
-                    subprocess.run(['auditwheel', 'repair', '-w', self.dist_dir, file], check=True, stdout=subprocess.PIPE)
+                    subprocess.run(['auditwheel', 'repair', '-w', self.dist_dir, file],
+                                   check=True, stdout=subprocess.PIPE)
                 finally:
                     logger.info('removing %s', file)
                     remove(file)
@@ -160,46 +194,46 @@ except ImportError as error:
 
 # Additional binaries
 if platform.system() == 'Linux':
-  libs = ['onnxruntime_pybind11_state.so', 'libdnnl.so.1', 'libmklml_intel.so', 'libmklml_gnu.so', 'libiomp5.so', 'mimalloc.so']
-  # DNNL & TensorRT EPs are built as shared libs
-  libs.extend(['libonnxruntime_providers_shared.so'])
-  libs.extend(['libonnxruntime_providers_dnnl.so'])
-  libs.extend(['libonnxruntime_providers_tensorrt.so'])
-  # nGraph Libs
-  libs.extend(['libngraph.so', 'libcodegen.so', 'libcpu_backend.so', 'libmkldnn.so', 'libtbb_debug.so', 'libtbb_debug.so.2', 'libtbb.so', 'libtbb.so.2'])
-  # OpenVINO Libs
-  if package_name == 'onnxruntime-openvino':
-    if platform.system() == 'Linux':
-      libs.extend(['libovep_ngraph.so'])
-  # Nuphar Libs
-  libs.extend(['libtvm.so.0.5.1'])
-  if nightly_build:
-    libs.extend(['libonnxruntime_pywrapper.so'])
+    libs = ['onnxruntime_pybind11_state.so', 'libdnnl.so.2', 'libmklml_intel.so', 'libmklml_gnu.so', 'libiomp5.so',
+            'mimalloc.so']
+    dl_libs = ['libonnxruntime_providers_shared.so', 'libonnxruntime_providers_cuda.so']
+    # DNNL, TensorRT & OpenVINO EPs are built as shared libs
+    libs.extend(['libonnxruntime_providers_shared.so'])
+    libs.extend(['libonnxruntime_providers_dnnl.so'])
+    libs.extend(['libonnxruntime_providers_tensorrt.so'])
+    libs.extend(['libonnxruntime_providers_openvino.so'])
+    libs.extend(['libonnxruntime_providers_cuda.so'])
+    # Nuphar Libs
+    libs.extend(['libtvm.so.0.5.1'])
+    if nightly_build:
+        libs.extend(['libonnxruntime_pywrapper.so'])
 elif platform.system() == "Darwin":
-  libs = ['onnxruntime_pybind11_state.so', 'libdnnl.1.dylib', 'mimalloc.so'] # TODO add libmklml and libiomp5 later.
-  # DNNL & TensorRT EPs are built as shared libs
-  libs.extend(['libonnxruntime_providers_shared.dylib'])
-  libs.extend(['libonnxruntime_providers_dnnl.dylib'])
-  libs.extend(['libonnxruntime_providers_tensorrt.dylib'])
-  if nightly_build:
-    libs.extend(['libonnxruntime_pywrapper.dylib'])
+    libs = ['onnxruntime_pybind11_state.so', 'libdnnl.2.dylib', 'mimalloc.so']  # TODO add libmklml and libiomp5 later.
+    # DNNL & TensorRT EPs are built as shared libs
+    libs.extend(['libonnxruntime_providers_shared.dylib'])
+    libs.extend(['libonnxruntime_providers_dnnl.dylib'])
+    libs.extend(['libonnxruntime_providers_tensorrt.dylib'])
+    libs.extend(['libonnxruntime_providers_cuda.dylib'])
+    if nightly_build:
+        libs.extend(['libonnxruntime_pywrapper.dylib'])
 else:
-  libs = ['onnxruntime_pybind11_state.pyd', 'dnnl.dll', 'mklml.dll', 'libiomp5md.dll']
-  # DNNL & TensorRT EPs are built as shared libs
-  libs.extend(['onnxruntime_providers_shared.dll'])
-  libs.extend(['onnxruntime_providers_dnnl.dll'])
-  libs.extend(['onnxruntime_providers_tensorrt.dll'])
-  # nGraph Libs
-  libs.extend(['ngraph.dll', 'cpu_backend.dll', 'tbb.dll', 'mimalloc-override.dll', 'mimalloc-redirect.dll', 'mimalloc-redirect32.dll'])
-  # DirectML Libs
-  libs.extend(['directml.dll'])
-  # Nuphar Libs
-  libs.extend(['tvm.dll'])
-  if nightly_build:
-    libs.extend(['onnxruntime_pywrapper.dll'])
+    libs = ['onnxruntime_pybind11_state.pyd', 'dnnl.dll', 'mklml.dll', 'libiomp5md.dll']
+    # DNNL, TensorRT & OpenVINO EPs are built as shared libs
+    libs.extend(['onnxruntime_providers_shared.dll'])
+    libs.extend(['onnxruntime_providers_dnnl.dll'])
+    libs.extend(['onnxruntime_providers_tensorrt.dll'])
+    libs.extend(['onnxruntime_providers_openvino.dll'])
+    libs.extend(['onnxruntime_providers_cuda.dll'])
+    # DirectML Libs
+    libs.extend(['DirectML.dll'])
+    # Nuphar Libs
+    libs.extend(['tvm.dll'])
+    if nightly_build:
+        libs.extend(['onnxruntime_pywrapper.dll'])
 
 if is_manylinux:
     data = ['capi/libonnxruntime_pywrapper.so'] if nightly_build else []
+    data += [path.join('capi', x) for x in dl_libs if path.isfile(path.join('onnxruntime', 'capi', x))]
     ext_modules = [
         Extension(
             'onnxruntime.capi.onnxruntime_pybind11_state',
@@ -227,6 +261,15 @@ if not path.exists(README):
 with open(README) as f:
     long_description = f.read()
 
+# Include files in onnxruntime/external if --enable_external_custom_op_schemas build.sh command
+# line option is specified.
+# If the options is not specified this following condition fails as onnxruntime/external folder is not created in the
+# build flow under the build binary directory.
+if (path.isdir(path.join("onnxruntime", "external"))):
+    # Gather all files under onnxruntime/external directory.
+    extra.extend(list(str(Path(*Path(x).parts[1:])) for x in list(iglob(
+        path.join(path.join("onnxruntime", "external"), '**/*.*'), recursive=True))))
+
 packages = [
     'onnxruntime',
     'onnxruntime.backend',
@@ -234,19 +277,89 @@ packages = [
     'onnxruntime.capi.training',
     'onnxruntime.datasets',
     'onnxruntime.tools',
+    'onnxruntime.tools.ort_format_model',
+    'onnxruntime.tools.ort_format_model.ort_flatbuffers_py',
+    'onnxruntime.tools.ort_format_model.ort_flatbuffers_py.experimental',
+    'onnxruntime.tools.ort_format_model.ort_flatbuffers_py.experimental.fbs',
     'onnxruntime.quantization',
     'onnxruntime.quantization.operators',
+    'onnxruntime.quantization.CalTableFlatBuffers',
     'onnxruntime.transformers',
+    'onnxruntime.transformers.longformer',
 ]
 
-if '--enable_training' in sys.argv:
-    packages.extend(['onnxruntime.training',
-                     'onnxruntime.training.amp',
-                     'onnxruntime.training.optim'])
-    sys.argv.remove('--enable_training')
+requirements_file = "requirements.txt"
+
+local_version = None
+enable_training = parse_arg_remove_boolean(sys.argv, '--enable_training')
+disable_auditwheel_repair = parse_arg_remove_boolean(sys.argv, '--disable_auditwheel_repair')
+default_training_package_device = parse_arg_remove_boolean(sys.argv, '--default_training_package_device')
 
 package_data = {}
 data_files = []
+
+classifiers = [
+    'Development Status :: 5 - Production/Stable',
+    'Intended Audience :: Developers',
+    'License :: OSI Approved :: MIT License',
+    'Operating System :: POSIX :: Linux',
+    'Topic :: Scientific/Engineering',
+    'Topic :: Scientific/Engineering :: Mathematics',
+    'Topic :: Scientific/Engineering :: Artificial Intelligence',
+    'Topic :: Software Development',
+    'Topic :: Software Development :: Libraries',
+    'Topic :: Software Development :: Libraries :: Python Modules',
+    'Programming Language :: Python',
+    'Programming Language :: Python :: 3 :: Only',
+    'Programming Language :: Python :: 3.6',
+    'Programming Language :: Python :: 3.7',
+    'Programming Language :: Python :: 3.8',
+    'Programming Language :: Python :: 3.9']
+
+if not enable_training:
+    classifiers.extend([
+        'Operating System :: Microsoft :: Windows',
+        'Operating System :: MacOS'])
+
+if enable_training:
+    packages.extend(['onnxruntime.training',
+                     'onnxruntime.training.amp',
+                     'onnxruntime.training.optim',
+                     'onnxruntime.training.ortmodule',
+                     'onnxruntime.training.ortmodule.experimental',
+                     'onnxruntime.training.ortmodule.experimental.json_config',
+                     'onnxruntime.training.ortmodule.experimental.hierarchical_ortmodule',
+                     'onnxruntime.training.ortmodule.torch_cpp_extensions',
+                     'onnxruntime.training.ortmodule.torch_cpp_extensions.cpu.aten_op_executor',
+                     'onnxruntime.training.ortmodule.torch_cpp_extensions.cpu.torch_interop_utils',
+                     'onnxruntime.training.ortmodule.torch_cpp_extensions.cuda.torch_gpu_allocator',
+                     'onnxruntime.training.ortmodule.torch_cpp_extensions.cuda.adam_optimizer'])
+    package_data['onnxruntime.training.ortmodule.torch_cpp_extensions.cpu.aten_op_executor'] = ['*.cc']
+    package_data['onnxruntime.training.ortmodule.torch_cpp_extensions.cpu.torch_interop_utils'] = ['*.cc']
+    package_data['onnxruntime.training.ortmodule.torch_cpp_extensions.cuda.torch_gpu_allocator'] = ['*.cc']
+    package_data['onnxruntime.training.ortmodule.torch_cpp_extensions.cuda.adam_optimizer'] = \
+        ['*.cpp', '*.cu', '*.cuh', '*.h']
+    requirements_file = "requirements-training.txt"
+    # with training, we want to follow this naming convention:
+    # stable:
+    # onnxruntime-training-1.7.0+cu111-cp36-cp36m-linux_x86_64.whl
+    # nightly:
+    # onnxruntime-training-1.7.0.dev20210408+cu111-cp36-cp36m-linux_x86_64.whl
+    # this is needed immediately by pytorch/ort so that the user is able to
+    # install an onnxruntime training package with matching torch cuda version.
+    package_name = 'onnxruntime-training'
+
+    # we want put default training packages to pypi. pypi does not accept package with a local version.
+    if not default_training_package_device or nightly_build:
+        if cuda_version:
+            # removing '.' to make Cuda version number in the same form as Pytorch.
+            local_version = '+cu' + cuda_version.replace('.', '')
+        elif rocm_version:
+            # removing '.' to make Rocm version number in the same form as Pytorch.
+            local_version = '+rocm' + rocm_version.replace('.', '')
+        else:
+            # cpu version for documentation
+            local_version = '+cpu'
 
 if package_name == 'onnxruntime-nuphar':
     packages += ["onnxruntime.nuphar"]
@@ -299,64 +412,144 @@ version_number = ''
 with open('VERSION_NUMBER') as f:
     version_number = f.readline().strip()
 if nightly_build:
-    #https://docs.microsoft.com/en-us/azure/devops/pipelines/build/variables
+    # https://docs.microsoft.com/en-us/azure/devops/pipelines/build/variables
     build_suffix = environ.get('BUILD_BUILDNUMBER')
     if build_suffix is None:
-      #The following line is only for local testing
-      build_suffix = str(datetime.datetime.now().date().strftime("%Y%m%d"))
+        # The following line is only for local testing
+        build_suffix = str(datetime.datetime.now().date().strftime("%Y%m%d"))
     else:
-      build_suffix = build_suffix.replace('.','')
+        build_suffix = build_suffix.replace('.', '')
+
+    if len(build_suffix) > 8 and len(build_suffix) < 12:
+        # we want to format the build_suffix to avoid (the 12th run on 20210630 vs the first run on 20210701):
+        # 2021063012 > 202107011
+        # in above 2021063012 is treated as the latest which is incorrect.
+        # we want to convert the format to:
+        # 20210630012 < 20210701001
+        # where the first 8 digits are date. the last 3 digits are run count.
+        # as long as there are less than 1000 runs per day, we will not have the problem.
+        # to test this code locally, run:
+        # NIGHTLY_BUILD=1 BUILD_BUILDNUMBER=202107011 python tools/ci_build/build.py --config RelWithDebInfo \
+        #   --enable_training --use_cuda --cuda_home /usr/local/cuda --cudnn_home /usr/lib/x86_64-linux-gnu/ \
+        #   --nccl_home /usr/lib/x86_64-linux-gnu/ --build_dir build/Linux --build --build_wheel --skip_tests \
+        #   --cuda_version 11.1
+        def check_date_format(date_str):
+            try:
+                datetime.datetime.strptime(date_str, '%Y%m%d')
+                return True
+            except: # noqa
+                return False
+
+        def reformat_run_count(count_str):
+            try:
+                count = int(count_str)
+                if count >= 0 and count < 1000:
+                    return "{:03}".format(count)
+                elif count >= 1000:
+                    raise RuntimeError(f'Too many builds for the same day: {count}')
+                return ""
+            except: # noqa
+                return ""
+
+        build_suffix_is_date_format = check_date_format(build_suffix[:8])
+        build_suffix_run_count = reformat_run_count(build_suffix[8:])
+        if build_suffix_is_date_format and build_suffix_run_count:
+            build_suffix = build_suffix[:8] + build_suffix_run_count
+    elif len(build_suffix) >= 12:
+        raise RuntimeError(f'Incorrect build suffix: "{build_suffix}"')
+
+    if enable_training:
+        from packaging import version
+        from packaging.version import Version
+        # with training package, we need to bump up version minor number so that
+        # nightly releases take precedence over the latest release when --pre is used during pip install.
+        # eventually this shall be the behavior of all onnxruntime releases.
+        # alternatively we may bump up version number right after every release.
+        ort_version = version.parse(version_number)
+        if isinstance(ort_version, Version):
+            # TODO: this is the last time we have to do this!!!
+            # We shall bump up release number right after release cut.
+            if ort_version.major == 1 and ort_version.minor == 8 and ort_version.micro == 0:
+                version_number = '{major}.{minor}.{macro}'.format(
+                    major=ort_version.major,
+                    minor=ort_version.minor + 1,
+                    macro=ort_version.micro)
 
     version_number = version_number + ".dev" + build_suffix
 
+if local_version:
+    version_number = version_number + local_version
+
 if wheel_name_suffix:
-    package_name = "{}_{}".format(package_name, wheel_name_suffix)
+    if not (enable_training and wheel_name_suffix == 'gpu'):
+        # for training packages, local version is used to indicate device types
+        package_name = "{}-{}".format(package_name, wheel_name_suffix)
 
 cmd_classes = {}
-if bdist_wheel is not None :
+if bdist_wheel is not None:
     cmd_classes['bdist_wheel'] = bdist_wheel
 cmd_classes['build_ext'] = build_ext
 
-requirements_path = path.join(getcwd(), "requirements.txt")
+requirements_path = path.join(getcwd(), requirements_file)
 if not path.exists(requirements_path):
     this = path.dirname(__file__)
-    requirements_path = path.join(this, "requirements.txt")
+    requirements_path = path.join(this, requirements_file)
 if not path.exists(requirements_path):
-    raise FileNotFoundError("Unable to find 'requirements.txt'")
+    raise FileNotFoundError("Unable to find " + requirements_file)
 with open(requirements_path) as f:
     install_requires = f.read().splitlines()
+
+
+if enable_training:
+    def save_build_and_package_info(package_name, version_number, cuda_version, rocm_version):
+        sys.path.append(path.join(path.dirname(__file__), 'onnxruntime', 'python'))
+        from onnxruntime_collect_build_info import find_cudart_versions
+
+        version_path = path.join('onnxruntime', 'capi', 'build_and_package_info.py')
+        with open(version_path, 'w') as f:
+            f.write("package_name = '{}'\n".format(package_name))
+            f.write("__version__ = '{}'\n".format(version_number))
+
+            if cuda_version:
+                f.write("cuda_version = '{}'\n".format(cuda_version))
+
+                # cudart_versions are integers
+                cudart_versions = find_cudart_versions(build_env=True)
+                if cudart_versions and len(cudart_versions) == 1:
+                    f.write("cudart_version = {}\n".format(cudart_versions[0]))
+                else:
+                    print(
+                        "Error getting cudart version. ",
+                        "did not find any cudart library"
+                        if not cudart_versions or len(cudart_versions) == 0
+                        else "found multiple cudart libraries")
+            elif rocm_version:
+                f.write("rocm_version = '{}'\n".format(rocm_version))
+
+    save_build_and_package_info(package_name, version_number, cuda_version, rocm_version)
 
 # Setup
 setup(
     name=package_name,
     version=version_number,
-    description='ONNX Runtime Python bindings',
+    description='ONNX Runtime is a runtime accelerator for Machine Learning models',
     long_description=long_description,
     author='Microsoft Corporation',
-    author_email='onnx@microsoft.com',
+    author_email='onnxruntime@microsoft.com',
     cmdclass=cmd_classes,
     license="MIT License",
     packages=packages,
     ext_modules=ext_modules,
     package_data=package_data,
+    url="https://onnxruntime.ai",
+    download_url='https://github.com/microsoft/onnxruntime/tags',
     data_files=data_files,
     install_requires=install_requires,
-    entry_points= {
+    keywords='onnx machine learning',
+    entry_points={
         'console_scripts': [
             'onnxruntime_test = onnxruntime.tools.onnxruntime_test:main',
         ]
     },
-    classifiers=[
-        'Development Status :: 5 - Production/Stable',
-        'Environment :: Console',
-        'Intended Audience :: Developers',
-        'License :: OSI Approved :: MIT License',
-        'Operating System :: POSIX :: Linux',
-        'Operating System :: Microsoft :: Windows',
-        'Operating System :: MacOS',
-        'Programming Language :: Python',
-        'Programming Language :: Python :: 3 :: Only',
-        'Programming Language :: Python :: 3.5',
-        'Programming Language :: Python :: 3.6',
-        'Programming Language :: Python :: 3.7'],
+    classifiers=classifiers,
     )

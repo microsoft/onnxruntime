@@ -1,6 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#ifdef __GNUC__
+#include "onnxruntime_config.h"
+#pragma GCC diagnostic ignored "-Wswitch"
+#endif
 #include <stdint.h>
 #include "core/providers/cuda/shared_inc/cuda_utils.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
@@ -119,7 +123,7 @@ __global__ void _TenaryElementWiseSimple(
                              Y_INDEX_TYPE,                                      \
                              GridDim::maxThreadsPerBlock,                       \
                              GridDim::maxElementsPerThread>                     \
-        <<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(cond_data,          \
+        <<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(cond_data,  \
                                                             x_data,             \
                                                             y_data,             \
                                                             output_data,        \
@@ -150,7 +154,7 @@ __global__ void _TenaryElementWiseSimple(
                        Y_INDEX_TYPE,                                                         \
                        GridDim::maxThreadsPerBlock,                                          \
                        GridDim::maxElementsPerThread>                                        \
-        <<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(output_rank_or_simple_broadcast, \
+        <<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(output_rank_or_simple_broadcast, \
                                                             cond_padded_strides,             \
                                                             cond_data,                       \
                                                             x_padded_strides,                \
@@ -182,6 +186,7 @@ __global__ void _TenaryElementWiseSimple(
 
 template <typename T>
 void WhereImpl(
+    cudaStream_t stream,
     size_t output_rank_or_simple_broadcast,
     BroadcastIndexType cond_index_type,
     const TArray<int64_t>& cond_padded_strides,
@@ -212,7 +217,8 @@ void WhereImpl(
 }
 
 #define SPECIALIZED_IMPL(T)                                                 \
-  template void WhereImpl<T>(size_t output_rank_or_simple_broadcast,        \
+  template void WhereImpl<T>(cudaStream_t stream,                           \
+                             size_t output_rank_or_simple_broadcast,        \
                              BroadcastIndexType cond_index_type,            \
                              const TArray<int64_t>& cond_padded_strides,    \
                              const bool* cond_data,                         \
@@ -230,6 +236,7 @@ SPECIALIZED_IMPL(uint8_t)
 SPECIALIZED_IMPL(int32_t)
 SPECIALIZED_IMPL(int64_t)
 SPECIALIZED_IMPL(float)
+SPECIALIZED_IMPL(double_t)
 SPECIALIZED_IMPL(half)
 
 }  // namespace cuda

@@ -14,7 +14,7 @@ using ::ONNX_NAMESPACE::StringStringEntryProto;
 namespace onnxruntime {
 Status ExternalDataInfo::Create(const RepeatedPtrField<StringStringEntryProto>& input,
                                 std::unique_ptr<ExternalDataInfo>& out) {
-  out = onnxruntime::make_unique<ExternalDataInfo>();
+  out = std::make_unique<ExternalDataInfo>();
   const int input_size = input.size();
   for (int i = 0; i != input_size; ++i) {
     StringStringEntryProto stringmap = input[i];

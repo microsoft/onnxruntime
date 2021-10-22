@@ -15,10 +15,22 @@ class TensorShapeProto;
 }
 namespace onnxruntime {
 
+namespace NestedSubgraphInfoDetails {
+
+// Used to compose a unique key to identify a nested subgraph
+// relative to a current graph level (which in turn is identified using a "base")
+std::string ComposeNestedSubgraphInfoKeyHelper(const std::string& base, size_t graph_depth,
+                                               NodeIndex node_index, const std::string& attr_name);
+
+}  // namespace NestedSubgraphInfoDetails
+
 class ExecutionProviders;
 struct KernelCreateInfo;
 class KernelRegistryManager;
 class OrtValueNameIdxMap;
+
+using KernelCreateInfoMap = std::unordered_map<onnxruntime::NodeIndex, gsl::not_null<const KernelCreateInfo*>>;
+using SubgraphsKernelCreateInfoMaps = std::unordered_map<std::string, KernelCreateInfoMap>;
 
 // ISequentialPlannerContext abstracts how the planner accesses information (such as inferred shape)
 // to do the planning.
@@ -30,13 +42,16 @@ class ISequentialPlannerContext {
   virtual bool IsParallelExecutionEnabled() const { return false; }
 
   virtual ExecutionOrder GetExecutionOrder() const { return ExecutionOrder::DEFAULT; }
+
+  virtual bool GetEnableMemoryReuse() const { return true; }
 };
 
 class SequentialPlannerContext : public ISequentialPlannerContext {
  public:
-  SequentialPlannerContext(ExecutionMode execution_mode, ExecutionOrder execution_order)
+  SequentialPlannerContext(ExecutionMode execution_mode, ExecutionOrder execution_order, bool enable_memory_reuse)
       : execution_mode_(execution_mode),
-        exection_order_(execution_order) {
+        exection_order_(execution_order),
+        enable_memory_reuse_(enable_memory_reuse) {
   }
 
   const ONNX_NAMESPACE::TensorShapeProto* GetShape(const onnxruntime::NodeArg& arg) const override {
@@ -47,9 +62,12 @@ class SequentialPlannerContext : public ISequentialPlannerContext {
 
   ExecutionOrder GetExecutionOrder() const override { return exection_order_; }
 
+  bool GetEnableMemoryReuse() const override { return enable_memory_reuse_; }
+
  private:
   ExecutionMode execution_mode_ = ExecutionMode::ORT_SEQUENTIAL;
   ExecutionOrder exection_order_ = ExecutionOrder::DEFAULT;
+  bool enable_memory_reuse_ = true;
 };
 
 class SequentialPlanner {
@@ -59,7 +77,9 @@ class SequentialPlanner {
       const Node* parent_node, const onnxruntime::GraphViewer& graph,
       const std::vector<const NodeArg*>& outer_scope_node_args,
       const ExecutionProviders& providers,
-      const std::unordered_map<NodeIndex, gsl::not_null<const KernelCreateInfo*>>& kernel_create_info_map,
+      const KernelCreateInfoMap& kernel_create_info_map,
+      const SubgraphsKernelCreateInfoMaps& subgraphs_kernel_create_info_maps,
+      const std::unordered_map<OrtValueName, OrtMemoryInfo>& outer_scope_arg_to_location_map,
       const OrtValueNameIdxMap& ort_value_name_idx_map,
       const ISequentialPlannerContext& context,
       std::unique_ptr<SequentialExecutionPlan>& plan);

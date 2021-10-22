@@ -3,9 +3,11 @@
 
 #pragma once
 
+#include "core/framework/op_kernel.h"
+
 namespace onnxruntime {
 namespace rocm {
 template <typename T>
 KernelCreateInfo BuildKernelCreateInfo();
 }
-}
+}  // namespace onnxruntime

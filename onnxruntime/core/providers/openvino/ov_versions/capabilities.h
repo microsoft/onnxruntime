@@ -1,23 +1,22 @@
-#pragma once
+// Copyright(C) 2019 Intel Corporation
+// Licensed under the MIT License
 
-#include "core/framework/compute_capability.h"
+#pragma once
+#include<vector>
+#include "data_ops.h"
 
 namespace onnxruntime {
 namespace openvino_ep {
 
-#if (defined OPENVINO_2020_2) || (defined OPENVINO_2020_3)
-std::vector<std::unique_ptr<ComputeCapability>>
-GetCapability_2020_2(const onnxruntime::GraphViewer& graph_viewer, const std::string device_type);
+class GetCapability {
+    private:
+        const GraphViewer& graph_viewer_;
+        std::string device_type_;
+        DataOps* data_ops_;
+    public:
+        GetCapability (const GraphViewer& graph_viewer_param, std::string device_type_param, const std::string version_param);   
+        virtual std::vector<std::unique_ptr<ComputeCapability>> Execute();
+};
 
-#elif defined OPENVINO_2020_4
-std::vector<std::unique_ptr<ComputeCapability>>
-GetCapability_2020_4(const onnxruntime::GraphViewer& graph_viewer, const std::string device_type);
-
-#elif defined OPENVINO_2021_1
-std::vector<std::unique_ptr<ComputeCapability>>
-GetCapability_2021_1(const onnxruntime::GraphViewer& graph_viewer, const std::string device_id);
-
-#endif
-
-} //namespace openvino_ep
-} //namespace onnxruntime
+}  //namespace openvino_ep
+}  //namespace onnxruntime

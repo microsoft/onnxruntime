@@ -12,8 +12,8 @@ namespace Microsoft.ML.OnnxRuntime
     /// </summary>
     public enum OrtAllocatorType
     {
-        DeviceAllocator = 0,
-        ArenaAllocator = 1
+        DeviceAllocator = 0, // Device specific allocator
+        ArenaAllocator = 1   // Memory arena
     }
 
     /// <summary>
@@ -25,6 +25,63 @@ namespace Microsoft.ML.OnnxRuntime
         CpuOutput = -1,                     // CPU accessible memory outputted by non-CPU execution provider, i.e. CUDA_PINNED
         Cpu = CpuOutput,                    // temporary CPU accessible memory allocated by non-CPU execution provider, i.e. CUDA_PINNED
         Default = 0,                        // the default allocator for execution provider
+    }
+
+    /// <summary>
+    /// This class encapsulates arena configuration information that will be used to define the behavior
+    /// of an arena based allocator
+    /// See docs/C_API.md for more details
+    /// </summary>
+    public class OrtArenaCfg : SafeHandle
+    {
+        /// <summary>
+        /// Create an instance of arena configuration which will be used to create an arena based allocator
+        /// See docs/C_API.md for details on what the following parameters mean and how to choose these values
+        /// </summary>
+        /// <param name="maxMemory">Maximum amount of memory the arena allocates</param>
+        /// <param name="arenaExtendStrategy">Strategy for arena expansion</param>
+        /// <param name="initialChunkSizeBytes">Size of the region that the arena allocates first</param>
+        /// <param name="maxDeadBytesPerChunk">Maximum amount of fragmentation allowed per chunk</param>
+        public OrtArenaCfg(uint maxMemory, int arenaExtendStrategy, int initialChunkSizeBytes, int maxDeadBytesPerChunk)
+            : base(IntPtr.Zero, true)
+        {
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateArenaCfg((UIntPtr)maxMemory,
+                                                                           arenaExtendStrategy,
+                                                                           initialChunkSizeBytes,
+                                                                           maxDeadBytesPerChunk,
+                                                                           out handle));
+        }
+
+        internal IntPtr Pointer
+        {
+            get
+            {
+                return handle;
+            }
+        }
+
+        #region SafeHandle
+        
+        /// <summary>
+        /// Overrides SafeHandle.IsInvalid
+        /// </summary>
+        /// <value>returns true if handle is equal to Zero</value>
+        public override bool IsInvalid { get { return handle == IntPtr.Zero; } }
+
+        /// <summary>
+        /// Overrides SafeHandle.ReleaseHandle() to properly dispose of
+        /// the native instance of OrtEnv
+        /// </summary>
+        /// <returns>always returns true</returns>
+        protected override bool ReleaseHandle()
+        {
+            NativeMethods.OrtReleaseArenaCfg(handle);
+            handle = IntPtr.Zero;
+            return true;
+        }
+
+        #endregion
+
     }
 
     /// <summary>
@@ -53,6 +110,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <summary>
         /// Default CPU based instance
         /// </summary>
+        /// <value>Singleton instance of a CpuMemoryInfo</value>
         public static OrtMemoryInfo DefaultInstance
         {
             get
@@ -69,6 +127,10 @@ namespace Microsoft.ML.OnnxRuntime
             }
         }
 
+        /// <summary>
+        /// Overrides SafeHandle.IsInvalid
+        /// </summary>
+        /// <value>returns true if handle is equal to Zero</value>
         public override bool IsInvalid { get { return handle == IntPtr.Zero; } }
 
         /// <summary>
@@ -84,10 +146,20 @@ namespace Microsoft.ML.OnnxRuntime
             _owned = owned;
         }
 
-        // Predefined utf8 encoded allocator names. Use them to construct an instance of
-        // OrtMemoryInfo to avoid UTF-16 to UTF-8 conversion
+        /// <summary>
+        /// Predefined utf8 encoded allocator names. Use them to construct an instance of
+        /// OrtMemoryInfo to avoid UTF-16 to UTF-8 conversion costs.
+        /// </summary>
         public static readonly byte[] allocatorCPU = Encoding.UTF8.GetBytes("Cpu" + Char.MinValue);
+        /// <summary>
+        /// Predefined utf8 encoded allocator names. Use them to construct an instance of
+        /// OrtMemoryInfo to avoid UTF-16 to UTF-8 conversion costs.
+        /// </summary>
         public static readonly byte[] allocatorCUDA = Encoding.UTF8.GetBytes("Cuda" + Char.MinValue);
+        /// <summary>
+        /// Predefined utf8 encoded allocator names. Use them to construct an instance of
+        /// OrtMemoryInfo to avoid UTF-16 to UTF-8 conversion costs.
+        /// </summary>
         public static readonly byte[] allocatorCUDA_PINNED = Encoding.UTF8.GetBytes("CudaPinned" + Char.MinValue);
         /// <summary>
         /// Create an instance of OrtMemoryInfo according to the specification
@@ -142,6 +214,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <summary>
         /// Returns device ID
         /// </summary>
+        /// <value>returns integer Id value</value>
         public int Id
         {
             get
@@ -157,7 +230,7 @@ namespace Microsoft.ML.OnnxRuntime
         ///  as names would conflict with the returned type. Also, there are native
         ///  calls behind them so exposing them as Get() would be appropriate.
         /// </summary>
-        /// <returns></returns>
+        /// <returns>OrtMemoryType for the instance</returns>
         public OrtMemType GetMemoryType()
         {
             OrtMemType memoryType = OrtMemType.Default;
@@ -166,9 +239,9 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         /// <summary>
-        /// Returns alloctor type
+        /// Fetches allocator type from the underlying OrtAllocator
         /// </summary>
-        /// <returns></returns>
+        /// <returns>Returns allocator type</returns>
         public OrtAllocatorType GetAllocatorType()
         {
             OrtAllocatorType allocatorType = OrtAllocatorType.ArenaAllocator;
@@ -176,6 +249,11 @@ namespace Microsoft.ML.OnnxRuntime
             return allocatorType;
         }
 
+        /// <summary>
+        /// Overrides System.Object.Equals(object)
+        /// </summary>
+        /// <param name="obj">object to compare to</param>
+        /// <returns>true if obj is an instance of OrtMemoryInfo and is equal to this</returns>
         public override bool Equals(object obj)
         {
             var other = obj as OrtMemoryInfo;
@@ -186,6 +264,11 @@ namespace Microsoft.ML.OnnxRuntime
             return Equals(other);
         }
 
+        /// <summary>
+        /// Compares this instance with another
+        /// </summary>
+        /// <param name="other">OrtMemoryInfo to compare to</param>
+        /// <returns>true if instances are equal according to OrtCompareMemoryInfo.</returns>
         public bool Equals(OrtMemoryInfo other)
         {
             if(this == other)
@@ -197,12 +280,21 @@ namespace Microsoft.ML.OnnxRuntime
             return (result == 0);
         }
 
+        /// <summary>
+        /// Overrides System.Object.GetHashCode()
+        /// </summary>
+        /// <returns>integer hash value</returns>
         public override int GetHashCode()
         {
             return Pointer.ToInt32();
         }
 
         #region SafeHandle
+        /// <summary>
+        /// Overrides SafeHandle.ReleaseHandle() to properly dispose of
+        /// the native instance of OrtMmeoryInfo
+        /// </summary>
+        /// <returns>always returns true</returns>
         protected override bool ReleaseHandle()
         {
             // If this instance exposes OrtMemoryInfo that belongs
@@ -255,13 +347,22 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         internal IntPtr Pointer { get { return handle; } }
 
+        /// <summary>
+        /// Overrides SafeHandle.IsInvalid
+        /// </summary>
+        /// <value>returns true if handle is equal to Zero</value>
         public override bool IsInvalid { get { return handle == IntPtr.Zero; } }
 
         /// <summary>
-        /// Returns the size of the allocation
+        /// Size of the allocation
         /// </summary>
+        /// <value>uint size of the allocation in bytes</value>
         public uint Size { get; private set; }
 
+        /// <summary>
+        /// Memory Information about this allocation
+        /// </summary>
+        /// <value>Returns OrtMemoryInfo from the allocator</value>
         public OrtMemoryInfo Info
         {
             get
@@ -270,6 +371,11 @@ namespace Microsoft.ML.OnnxRuntime
             }
         }
         #region SafeHandle
+        /// <summary>
+        /// Overrides SafeHandle.ReleaseHandle() to deallocate
+        /// a chunk of memory using the specified allocator.
+        /// </summary>
+        /// <returns>always returns true</returns>
         protected override bool ReleaseHandle()
         {
             _allocator.FreeMemory(handle);
@@ -318,6 +424,10 @@ namespace Microsoft.ML.OnnxRuntime
             }
         }
 
+        /// <summary>
+        /// Overrides SafeHandle.IsInvalid
+        /// </summary>
+        /// <value>returns true if handle is equal to Zero</value>
         public override bool IsInvalid { get { return handle == IntPtr.Zero; } }
 
         /// <summary>
@@ -349,6 +459,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <summary>
         /// OrtMemoryInfo instance owned by the allocator
         /// </summary>
+        /// <value>Instance of OrtMemoryInfo describing this allocator</value>
         public OrtMemoryInfo Info
         {
             get
@@ -363,8 +474,8 @@ namespace Microsoft.ML.OnnxRuntime
         /// <summary>
         /// Allocate native memory. Returns a disposable instance of OrtMemoryAllocation
         /// </summary>
-        /// <param name="size"></param>
-        /// <returns></returns>
+        /// <param name="size">number of bytes to allocate</param>
+        /// <returns>Instance of OrtMemoryAllocation</returns>
         public OrtMemoryAllocation Allocate(uint size)
         {
             IntPtr allocation = IntPtr.Zero;
@@ -373,15 +484,20 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         /// <summary>
-        /// This internal interface is used for freeing memory
+        /// This internal interface is used for freeing memory.
         /// </summary>
-        /// <param name="allocation"></param>
+        /// <param name="allocation">pointer to a native memory chunk allocated by this allocator instance</param>
         internal void FreeMemory(IntPtr allocation)
         {
             NativeApiStatus.VerifySuccess(NativeMethods.OrtAllocatorFree(handle, allocation));
         }
 
         #region SafeHandle
+        /// <summary>
+        /// Overrides SafeHandle.ReleaseHandle() to properly dispose of
+        /// the native instance of OrtAllocator
+        /// </summary>
+        /// <returns>always returns true</returns>
         protected override bool ReleaseHandle()
         {
             // Singleton default allocator is not owned

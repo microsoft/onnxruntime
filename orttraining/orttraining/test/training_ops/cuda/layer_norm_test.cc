@@ -25,7 +25,8 @@ static Status SplitDims(
     const std::vector<int64_t>& dims, int64_t axis,
     std::vector<int64_t>& n_dims, std::vector<int64_t>& m_dims) {
   if (axis < 0) axis += dims.size();
-  ORT_RETURN_IF_NOT(0 <= axis && static_cast<decltype(dims.size())>(axis) <= dims.size());
+  ORT_RETURN_IF_NOT(0 <= axis && static_cast<decltype(dims.size())>(axis) <= dims.size(),
+                    "0 <= axis && axis <= dims.size() was false");
   const auto boundary = dims.begin() + axis;
   n_dims.assign(dims.begin(), boundary);
   m_dims.assign(boundary, dims.end());
@@ -106,7 +107,7 @@ TEST(CudaKernelTest, LayerNormGrad_SmallSizeTensor_IntermediateAxis) {
 
 TEST(CudaKernelTest, LayerNormGrad_MidSizeTensor) {
   const std::vector<int64_t> X_dims{8, 80, 768};
-  TestLayerNormGrad(X_dims, LAYER_NORM_GRAD_OP);
+  TestLayerNormGrad(X_dims, LAYER_NORM_GRAD_OP, 1, 5e-3);
 }
 
 TEST(CudaKernelTest, LayerNormGrad_LargeSizeTensor) {
@@ -139,7 +140,7 @@ static void TestInvertibleLayerNormGrad(
     const std::vector<int64_t>& x_dims,
     int64_t axis = -1,
     double error_tolerance = 1e-4,
-    bool test_fp16=false) {
+    bool test_fp16 = false) {
   const std::vector<int64_t>& n_x_m_dims = x_dims;
   std::vector<int64_t> n_dims, m_dims;
   ASSERT_TRUE(SplitDims(n_x_m_dims, axis, n_dims, m_dims).IsOK());
@@ -244,7 +245,7 @@ TEST(CudaKernelTest, InvertibleLayerNormGrad_SmallSizeTensor_IntermediateAxis) {
 
 TEST(CudaKernelTest, InvertibleLayerNormGrad_MidSizeTensor) {
   const std::vector<int64_t> X_dims{8, 80, 768};
-  TestInvertibleLayerNormGrad(X_dims);
+  TestInvertibleLayerNormGrad(X_dims, 1, 5e-3);
 }
 
 TEST(CudaKernelTest, InvertibleLayerNormGrad_LargeSizeTensor) {

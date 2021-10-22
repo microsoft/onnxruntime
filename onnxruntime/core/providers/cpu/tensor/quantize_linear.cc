@@ -4,6 +4,7 @@
 #include "core/providers/cpu/tensor/quantize_linear.h"
 #include "core/providers/common.h"
 #include "core/mlas/inc/mlas.h"
+#include "core/util/qmath.h"
 
 namespace onnxruntime {
 
@@ -59,11 +60,13 @@ static void PrepareForQDQ(const TensorShape& input_shape,
 
 REGISTER_DEQUANTIZELINEAR(int8_t)
 REGISTER_DEQUANTIZELINEAR(uint8_t)
+REGISTER_DEQUANTIZELINEAR(int32_t)
 REGISTER_DEQUANTIZELINEAR_VERSIONED(int8_t)
 REGISTER_DEQUANTIZELINEAR_VERSIONED(uint8_t)
+REGISTER_DEQUANTIZELINEAR_VERSIONED(int32_t)
 
-template <typename T>
 // formula is Y = (X - ZeroPoint) * Scale
+template <typename T>
 Status DequantizeLinear<T>::Compute(OpKernelContext* ctx) const {
   auto& x = *ctx->Input<Tensor>(0);
   auto& x_scale = *ctx->Input<Tensor>(1);
@@ -78,10 +81,18 @@ Status DequantizeLinear<T>::Compute(OpKernelContext* ctx) const {
 
   PrepareForQDQ(x.Shape(), x_scale, x_zero_point, axis_, N, broadcast_dim, block_size);
 
-  const T* zero_point = x_zero_point ? x_zero_point->template Data<T>() : nullptr;
   const float* scale = x_scale.template Data<float>();
   const T* input = x.template Data<T>();
   float* output = y.template MutableData<float>();
+
+  const T* zero_point = x_zero_point ? x_zero_point->template Data<T>() : nullptr;
+  if (std::is_same<T, int32_t>::value) {
+    ORT_ENFORCE(zero_point == nullptr ||
+                    std::all_of(zero_point,
+                                zero_point + x_zero_point->Shape().Size(),
+                                [](int32_t zp) { return zp == 0; }),
+                "DequantizeLinear with type int32 should have no zero point or all zero points should be 0");
+  }
 
   for (size_t n = 0; n < static_cast<size_t>(N); n++) {
     for (size_t bd = 0; bd < static_cast<size_t>(broadcast_dim); bd++) {
@@ -123,8 +134,8 @@ REGISTER_QUANTIZELINEAR(uint8_t)
 REGISTER_QUANTIZELINEAR_VERSIONED(int8_t)
 REGISTER_QUANTIZELINEAR_VERSIONED(uint8_t)
 
-template <typename T>
 // formula is Y = X / Scale + ZeroPoint
+template <typename T>
 Status QuantizeLinear<T>::Compute(OpKernelContext* ctx) const {
   auto& x = *ctx->Input<Tensor>(0);
   auto& y_scale = *ctx->Input<Tensor>(1);
@@ -145,7 +156,7 @@ Status QuantizeLinear<T>::Compute(OpKernelContext* ctx) const {
   for (size_t n = 0; n < static_cast<size_t>(N); n++) {
     for (size_t bd = 0; bd < static_cast<size_t>(broadcast_dim); bd++) {
       T zp = zero_point != nullptr ? zero_point[bd] : 0;
-      MlasQuantizeLinear(input, output, static_cast<size_t>(block_size), scale[bd], zp);
+      ParQuantizeLinear(input, output, static_cast<size_t>(block_size), scale[bd], zp, ctx->GetOperatorThreadPool());
       input += block_size;
       output += block_size;
     }

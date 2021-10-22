@@ -49,6 +49,10 @@ class DeepCpuGruOp final : public OpKernel {
     activation_funcs_ = rnn::detail::ActivationFuncs(activation_func_names,
                                                      activation_func_alphas,
                                                      activation_func_betas);
+
+    layout_ = info.GetAttrOrDefault("layout", static_cast<int64_t>(0));
+    ORT_ENFORCE(layout_ == 0, 
+        "Batchwise recurrent operations (layout == 1) are not supported. If you need support create a github issue with justification.");
   }
 
   Status Compute(OpKernelContext* context) const override;
@@ -62,6 +66,7 @@ class DeepCpuGruOp final : public OpKernel {
   int hidden_size_ {};
   float clip_;
   int linear_before_reset_ {};
+  int64_t layout_;
 
   rnn::detail::ActivationFuncs activation_funcs_;
 

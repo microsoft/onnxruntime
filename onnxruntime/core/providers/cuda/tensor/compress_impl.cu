@@ -1,20 +1,44 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <cub/cub.cuh>
+
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/cuda_common.h"
-#include "compress_impl.h"
 
-#include <thrust/scan.h>
-#include <thrust/execution_policy.h>
+//TODO:fix the warnings
+#ifdef _MSC_VER
+#pragma warning(disable : 4244)
+#endif
+
+#include "core/providers/cuda/tensor/compress_impl.h"
+
+#include <thrust/functional.h>
+#include <thrust/iterator/transform_iterator.h>
 
 namespace onnxruntime {
 namespace cuda {
 
-void PrefixSumImpl(const int8_t* condition_data,
-                   int32_t* condition_cumulative_sum,
-                   const size_t length) {
-  thrust::inclusive_scan(thrust::device, condition_data, condition_data + length, condition_cumulative_sum);
+// This cast is for transform iterator. This type affects the accumulator type width
+// in InclusiveSum(). By default, the accumulator type matches the input, but for int8_t
+// the sum overflows quickly, so we want the source type to match the output (int32_t).
+// see https://github.com/NVIDIA/cub/issues/384
+struct CastToInt32 : public thrust::unary_function<int8_t, int32_t> {
+  __host__ __device__ int32_t operator()(int8_t v) const {
+    return static_cast<int32_t>(v);
+  }
+};
+
+cudaError_t CompressCalcPrefixSumTempStorageBytes(cudaStream_t stream, const int8_t* condition_data, int32_t* condition_cumulative_sum, int length, size_t& temp_storage_bytes) {
+   auto input_iter = thrust::make_transform_iterator(condition_data, CastToInt32());
+   return cub::DeviceScan::InclusiveSum(
+      nullptr, temp_storage_bytes, input_iter, condition_cumulative_sum, length, stream);
+}
+
+cudaError_t CompressInclusivePrefixSum(cudaStream_t stream, void* d_temp_storage, size_t temp_storage_bytes, const int8_t* condition_data, int32_t* condition_cumulative_sum, int length) {
+  auto input_iter = thrust::make_transform_iterator(condition_data, CastToInt32());
+  return cub::DeviceScan::InclusiveSum(
+      d_temp_storage, temp_storage_bytes, input_iter, condition_cumulative_sum, length, stream);
 }
 
 template <typename T>
@@ -41,7 +65,8 @@ __global__ void _CompressKernel(const int32_t valid_condition_length,
   }
 }
 
-Status CompressImpl(const size_t element_bytes,
+Status CompressImpl(cudaStream_t stream,
+                    const size_t element_bytes,
                     const int32_t valid_condition_length,
                     const int32_t axis_right_stride,
                     const int32_t input_axis_dim_length,
@@ -59,7 +84,7 @@ Status CompressImpl(const size_t element_bytes,
 
   switch (element_bytes) {
     case sizeof(int8_t):
-      _CompressKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+      _CompressKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
           valid_condition_length,
           axis_right_stride_div,
           input_axis_included_stride_div,
@@ -71,7 +96,7 @@ Status CompressImpl(const size_t element_bytes,
           (CUDA_LONG)N);
       break;
     case sizeof(int16_t):
-      _CompressKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+      _CompressKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
           valid_condition_length,
           axis_right_stride_div,
           input_axis_included_stride_div,
@@ -83,7 +108,7 @@ Status CompressImpl(const size_t element_bytes,
           (CUDA_LONG)N);
       break;
     case sizeof(int32_t):
-      _CompressKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+      _CompressKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
           valid_condition_length,
           axis_right_stride_div,
           input_axis_included_stride_div,
@@ -95,7 +120,7 @@ Status CompressImpl(const size_t element_bytes,
           (CUDA_LONG)N);
       break;
     case sizeof(int64_t):
-      _CompressKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+      _CompressKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
           valid_condition_length,
           axis_right_stride_div,
           input_axis_included_stride_div,

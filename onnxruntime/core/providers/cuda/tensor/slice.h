@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/common/common.h"
-#include "core/providers/cuda/cuda_common.h"
+#include "core/providers/shared_library/provider_api.h"
+#include "core/providers/cuda/cuda_kernel.h"
 #include "core/providers/cpu/tensor/slice.h"
 #include "core/providers/cpu/tensor/utils.h"
 
@@ -11,7 +11,8 @@ namespace cuda {
 
 namespace SliceCuda {
 
-Status Impl(const void* input_data,
+Status Impl(cudaStream_t stream,
+            const void* input_data,
             const TensorShape& input_shape,
             void* output_data,
             SliceOp::PrepareForComputeMetadata& prepare_metadata,
@@ -28,9 +29,9 @@ class Slice : public CudaKernel, public SliceBase {
 
  private:
   virtual const Tensor* GetSlicedOrUnslicedTensor(OpKernelContext* ctx) const;
-  virtual void FillInputVectors(OpKernelContext* ctx, std::vector<int64_t>& input_starts,
-                                std::vector<int64_t>& input_ends, std::vector<int64_t>& input_axes,
-                                std::vector<int64_t>& input_steps) const;
+  virtual Status FillInputVectors(OpKernelContext* ctx, std::vector<int64_t>& input_starts,
+                                  std::vector<int64_t>& input_ends, std::vector<int64_t>& input_axes,
+                                  std::vector<int64_t>& input_steps) const;
 
   virtual Status CallSliceImp(size_t element_size, size_t dimension_count, const TArray<int64_t>& starts_buffer,
                               const TArray<int64_t>& steps_buffer, const TArray<int64_t>& input_strides,

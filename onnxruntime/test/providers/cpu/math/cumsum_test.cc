@@ -3,6 +3,8 @@
 
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/util/include/default_providers.h"
+#include "core/util/math.h"
 
 namespace onnxruntime {
 namespace test {
@@ -13,6 +15,15 @@ TEST(CumSumTest, _1DTest) {
   test.AddInput<int32_t>("axis", {1}, {0});
   test.AddOutput<float>("y", {5}, {1., 3., 6., 10., 15.});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+TEST(CumSumTest, _1DTestFloat16) {
+  if (DefaultCudaExecutionProvider().get() != nullptr) {
+    OpTester test("CumSum", 14, onnxruntime::kOnnxDomain);
+    test.AddInput<MLFloat16>("x", {3}, {MLFloat16(math::floatToHalf(1.0f)), MLFloat16(math::floatToHalf(2.0f)), MLFloat16(math::floatToHalf(3.0f))});
+    test.AddInput<int32_t>("axis", {1}, {0});
+    test.AddOutput<MLFloat16>("y", {3}, {MLFloat16(math::floatToHalf(1.0f)), MLFloat16(math::floatToHalf(3.0f)), MLFloat16(math::floatToHalf(6.0f))});
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kCpuExecutionProvider});
+  }
 }
 TEST(CumSumTest, _1DTestInvalidAxis) {
   OpTester test("CumSum", 11, onnxruntime::kOnnxDomain);

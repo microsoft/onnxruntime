@@ -17,7 +17,7 @@ Status UnsqueezeElimination::Apply(Graph& graph, Node& node, RewriteRuleEffect& 
 
   auto new_name = graph.GenerateNodeArgName("UnsqueezeElimination_" + input_def.Name());
   if (!graph_utils::CanReplaceNodeWithInitializer(graph, node, new_name, logger)) {
-      LOGS(logger, WARNING) << "UnsqueezeElimination cannot remove node " << node.Name();
+    LOGS(logger, WARNING) << "UnsqueezeElimination cannot remove node " << node.Name();
     return Status::OK();
   }
 
@@ -40,7 +40,7 @@ Status UnsqueezeElimination::Apply(Graph& graph, Node& node, RewriteRuleEffect& 
   // Generate new dims.
   std::vector<int64_t> new_dims(output_rank, 0);
   for (int64_t axis : axes) {
-    new_dims[axis] = 1;
+    new_dims[static_cast<size_t>(axis)] = 1;
   }
 
   auto begin = tensor_proto.dims().cbegin();

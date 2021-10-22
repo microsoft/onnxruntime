@@ -242,14 +242,26 @@ Status OptimizerGraphBuilder::BuildOptimizerNode(
     const std::vector<OptimizerNodeConfig>& opt_configs,
     GraphAugmenter::GraphDefs& graph_defs,
     std::vector<TensorProto>& new_initializers,
+    std::unordered_map<std::string, std::unordered_map<std::string, std::string>>& weight_to_opt_mapping,
     std::vector<ArgDef>& output_weight_argdefs,
     std::vector<ArgDef>& output_gradient_argdefs) {
+  OptimizerBuilderConfig config;
+  config.weight_argdefs = weight_argdefs;
+  config.gradient_argdefs = gradient_argdefs;
+  if (global_gradient_norm_argdef != nullptr) {
+    config.gradient_norm_argdef = *global_gradient_norm_argdef;
+  }
+  if (global_gradient_norm_finite_argdef != nullptr) {
+    config.gradient_norm_finite_argdef = *global_gradient_norm_finite_argdef;
+  }
+  config.opt_configs = opt_configs;
+  config.enable_grad_clipping = opt_graph_config_.enable_grad_norm_clip;
+  config.shared_optimizer_states = opt_graph_config_.shared_optimizer_states;
   ORT_RETURN_IF_ERROR(opt_builder->Build(
-      weight_argdefs, gradient_argdefs,
-      global_gradient_norm_argdef, global_gradient_norm_finite_argdef,
-      opt_configs, graph_defs,
+      config, graph_defs,
       new_initializers,
-      output_weight_argdefs, output_gradient_argdefs, opt_graph_config_.enable_grad_norm_clip));
+      weight_to_opt_mapping,
+      output_weight_argdefs, output_gradient_argdefs));
 
   return Status::OK();
 }
@@ -262,11 +274,11 @@ Status OptimizerGraphBuilder::AddDirectWeightUpdate(
     const ArgDef* global_gradient_norm_finite_argdef,
     const std::vector<OptimizerNodeConfig>& opt_configs,
     GraphAugmenter::GraphDefs& graph_defs,
-    std::unordered_set<std::string>& optimizer_state_initializer_names) {
-  ORT_RETURN_IF_NOT(weight_argdefs.size() == gradient_argdefs.size());
-  ORT_RETURN_IF_NOT(weight_argdefs.size() == opt_configs.size());
+    std::unordered_map<std::string, std::unordered_map<std::string, std::string>>& weight_to_opt_mapping) {
+  ORT_RETURN_IF_NOT(weight_argdefs.size() == gradient_argdefs.size(),
+                    "weight_argdefs.size() != gradient_argdefs.size()");
+  ORT_RETURN_IF_NOT(weight_argdefs.size() == opt_configs.size(), "weight_argdefs.size() != opt_configs.size()");
 
-  std::vector<TensorProto> new_initializers;
   std::vector<ArgDef> output_weight_argdefs;
   std::vector<ArgDef> output_gradient_argdefs;
 
@@ -281,25 +293,20 @@ Status OptimizerGraphBuilder::AddDirectWeightUpdate(
   ORT_RETURN_IF_NOT(
       opt_builder, "Failed to get Optimizer builder for ", opt_configs[0].name);
 
+  std::vector<TensorProto> new_initializers;
   ORT_RETURN_IF_ERROR(BuildOptimizerNode(
       opt_builder,
       weight_argdefs, gradient_argdefs,
       global_gradient_norm_argdef, global_gradient_norm_finite_argdef,
       opt_configs, graph_defs,
       new_initializers,
+      weight_to_opt_mapping,
       output_weight_argdefs, output_gradient_argdefs));
 
   graph_defs.AddInitializers(new_initializers);
 
   weight_argdefs = std::move(output_weight_argdefs);
   gradient_argdefs = std::move(output_gradient_argdefs);
-
-  std::unordered_set<std::string> all_new_initializer_names{};
-  std::transform(
-      new_initializers.begin(), new_initializers.end(),
-      std::inserter(all_new_initializer_names, all_new_initializer_names.end()),
-      [](const TensorProto& initializer) { return initializer.name(); });
-  optimizer_state_initializer_names = std::move(all_new_initializer_names);
 
   return Status::OK();
 }
@@ -348,7 +355,7 @@ Status OptimizerGraphBuilder::AddFiniteGradientCheck(
     ArgDef& grad_norm_finite_argdef,
     const std::string& node_name) {
   const TypeProto* const grad_norm_finite_type =
-      graph_defs.CreateTypeProto({1}, ONNX_NAMESPACE::TensorProto_DataType_BOOL);
+      graph_defs.CreateTypeProto({}, ONNX_NAMESPACE::TensorProto_DataType_BOOL);
   grad_norm_finite_argdef =
       ArgDef{nodearg_name_generator(node_name), grad_norm_finite_type};
 
@@ -366,9 +373,13 @@ Status OptimizerGraphBuilder::AddFiniteGradientCheck(
 OptimizerGraphBuilder::OptimizerGraphBuilder(
     const OptimizerBuilderRegistry& opt_builder_registry,
     const OptimizerGraphConfig& opt_graph_config,
-    const std::unordered_map<std::string, OptimizerNodeConfig>& weight_names_to_opt_configs)
+    const std::unordered_map<std::string, OptimizerNodeConfig>& weight_names_to_opt_configs,
+    std::unordered_map<std::string, std::string>& updated_weight_names_map,
+    std::unordered_map<std::string, TrainingSession::PartitionInfo>& weight_partition_info)
     : opt_builder_registry_(opt_builder_registry),
-      opt_graph_config_(opt_graph_config) {
+      opt_graph_config_(opt_graph_config),
+      updated_weight_names_map_(updated_weight_names_map),
+      weight_partition_info_(weight_partition_info) {
   // add weight names
   weight_names_.reserve(weight_names_to_opt_configs.size());
   std::transform(
@@ -400,7 +411,7 @@ OptimizerGraphBuilder::OptimizerGraphBuilder(
 
 Status OptimizerGraphBuilder::Build(
     Graph& graph,
-    std::unordered_set<std::string>& optimizer_state_initializer_names,
+    std::unordered_map<std::string, std::unordered_map<std::string, std::string>>& weight_to_opt_mapping,
     OptimizerOutputKeyMap<std::string>& optimizer_graph_outputs) {
   if (weight_names_.empty()) {
     // nothing to do
@@ -441,7 +452,7 @@ Status OptimizerGraphBuilder::Build(
   // add configuration-specific graph changes
   ORT_RETURN_IF_ERROR(BuildInternal(
       should_add_gradient_norm, should_add_gradient_finite_check,
-      graph, graph_defs, weight_argdefs, gradient_argdefs, optimizer_state_initializer_names, optimizer_graph_outputs));
+      graph, graph_defs, weight_argdefs, gradient_argdefs, weight_to_opt_mapping, optimizer_graph_outputs));
 
   // add zero gradient
   if (is_gradient_accumulation_enabled) {
@@ -459,7 +470,7 @@ Status OptimizerGraphBuilder::BuildInternal(
     GraphAugmenter::GraphDefs& graph_defs,
     std::vector<ArgDef>& weight_argdefs,
     std::vector<ArgDef>& gradient_argdefs,
-    std::unordered_set<std::string>& optimizer_state_initializer_names,
+    std::unordered_map<std::string, std::unordered_map<std::string, std::string>>& weight_to_opt_mapping,
     OptimizerOutputKeyMap<std::string>& optimizer_graph_outputs) {
   auto nodearg_name_generator = [&graph](const std::string& base_name) {
     return graph.GenerateNodeArgName(base_name);
@@ -480,10 +491,10 @@ Status OptimizerGraphBuilder::BuildInternal(
   ArgDef global_grad_norm_finite_argdef;
 
   if (should_add_gradient_norm) {
-      ORT_RETURN_IF_ERROR(AddGradientNorm(
-          nodearg_name_generator, gradient_argdefs, graph_defs, global_grad_norm_argdef));
-      optimizer_graph_outputs[OptimizerOutputKey::GlobalGradientNorm] = global_grad_norm_argdef.name;
-    }
+    ORT_RETURN_IF_ERROR(AddGradientNorm(
+        nodearg_name_generator, gradient_argdefs, graph_defs, global_grad_norm_argdef));
+    optimizer_graph_outputs[OptimizerOutputKey::GlobalGradientNorm] = global_grad_norm_argdef.name;
+  }
 
   if (should_add_gradient_finite_check) {
     ORT_RETURN_IF_ERROR(AddFiniteGradientCheck(
@@ -501,7 +512,7 @@ Status OptimizerGraphBuilder::BuildInternal(
       &global_grad_norm_argdef,
       &global_grad_norm_finite_argdef,
       opt_configs_, graph_defs,
-      optimizer_state_initializer_names));
+      weight_to_opt_mapping));
 
   return Status::OK();
 }

@@ -6,7 +6,7 @@
 #include <math.h>
 #include "constant.h"
 #include "core/framework/callback.h"
-#include "core/framework/ml_value.h"
+#include "core/framework/ort_value.h"
 #include "core/framework/framework_common.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 
@@ -117,13 +117,13 @@ class TrainingUtil {
   template <typename T>
   static void CreateCpuMLValue(const std::vector<int64_t>& dims,
                                const std::vector<T>& value,
-                               MLValue* p_mlvalue,
+                               OrtValue* p_mlvalue,
                                AllocatorPtr alloc = nullptr) {
     TensorShape shape(dims);
     assert(shape.Size() == static_cast<int64_t>(value.size()));
     auto element_type = DataTypeImpl::GetType<T>();
     auto allocator = alloc ? alloc : GetCpuAllocator();
-    auto p_tensor = onnxruntime::make_unique<Tensor>(element_type, shape, allocator);
+    auto p_tensor = std::make_unique<Tensor>(element_type, shape, allocator);
 
     if (value.size() > 0) {
       memcpy(p_tensor->MutableDataRaw(), value.data(), p_tensor->SizeInBytes());
@@ -136,13 +136,13 @@ class TrainingUtil {
 
   template <typename T>
   static void CreateCpuMLScalar(const T value,
-                                MLValue* p_mlvalue,
+                                OrtValue* p_mlvalue,
                                 AllocatorPtr alloc = nullptr) {
     // Scalar has empty shape.
     TensorShape shape;
     auto element_type = DataTypeImpl::GetType<T>();
     auto allocator = alloc ? alloc : GetCpuAllocator();
-    auto p_tensor = onnxruntime::make_unique<Tensor>(element_type, shape, allocator);
+    auto p_tensor = std::make_unique<Tensor>(element_type, shape, allocator);
 
     // Copy one element, the scalar, to a tensor object.
     memcpy(p_tensor->MutableDataRaw(), &value, p_tensor->SizeInBytes());

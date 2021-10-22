@@ -3,6 +3,7 @@
 #include <benchmark/benchmark.h>
 #include "core/mlas/lib/mlasi.h"
 #include "core/util/math_cpuonly.h"
+#include "core/util/qmath.h"
 
 // vanilla implementation of FindMinMax
 static void BM_FindMinMaxPlainLoop(benchmark::State& state) {
@@ -114,3 +115,4 @@ BENCHMARK(BM_FindMinMaxMlasAvx)
     ->Arg(80000)
     ->Arg(98304)
     ->Arg(160000);
+

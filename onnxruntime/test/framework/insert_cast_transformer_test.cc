@@ -8,6 +8,8 @@
 #include "gtest/gtest.h"
 #include "test_utils.h"
 #include "test/test_environment.h"
+#include "test/util/include/inference_session_wrapper.h"
+#include "test/util/include/asserts.h"
 
 using namespace ONNX_NAMESPACE;
 namespace onnxruntime {
@@ -185,7 +187,7 @@ TEST(TransformerTest, InsertCastNodeTwice) {
 
   Graph& graph = model->MainGraph();
   InsertCastTransformer transformer("Test");
-  
+
   // First insert
   bool modified = false;
   status = transformer.Apply(graph, modified, DefaultLoggingManager().DefaultLogger());
@@ -200,9 +202,108 @@ TEST(TransformerTest, InsertCastNodeTwice) {
   ASSERT_TRUE(status.IsOK()) << status;
   op_to_count = CountOpsInGraph(graph);
   // Same graph without modification; The number of Cast node remains
-  EXPECT_TRUE(!modified) << "Transformer should not modify the modfied graph again";
+  EXPECT_TRUE(!modified) << "Transformer should not modify the modified graph again";
   EXPECT_TRUE(op_to_count["Cast"] == 4) << "Remain the same number of Cast node";
+}
 
+// Test that a node processing fp16 input with a subgraph does not get forced to fp32,
+// and that the subgraph is processed to insert casts
+TEST(TransformerTest, Fp16NodeWithSubgraph) {
+  auto model_uri = MODEL_FOLDER ORT_TSTR("fp16model_loop.onnx");
+
+  SessionOptions so;
+  so.session_logid = "Fp16NodeWithSubgraph";
+  InferenceSessionWrapper session{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session.Load(model_uri));
+
+  const Graph& graph = session.GetGraph();
+  const auto& nodes = graph.Nodes();
+
+  auto node_with_subgraph_iter = std::find_if(nodes.cbegin(), nodes.cend(),
+                                              [](const Node& node) {
+                                                return node.ContainsSubgraph();
+                                              });
+
+  ASSERT_NE(node_with_subgraph_iter, nodes.cend());
+
+  const Graph& subgraph = *node_with_subgraph_iter->GetSubgraphs().front();
+
+  const bool recurse_into_subgraphs = false;
+  std::map<std::string, int> orig_graph_ops = CountOpsInGraph(graph, recurse_into_subgraphs);
+  std::map<std::string, int> orig_subgraph_ops = CountOpsInGraph(subgraph, recurse_into_subgraphs);
+
+  EXPECT_EQ(orig_graph_ops.find("Cast"), orig_graph_ops.cend());
+  EXPECT_EQ(orig_subgraph_ops.find("Cast"), orig_subgraph_ops.cend());
+
+  ASSERT_STATUS_OK(session.Initialize());
+
+  std::map<std::string, int> new_graph_ops = CountOpsInGraph(graph, recurse_into_subgraphs);
+  std::map<std::string, int> new_subgraph_ops = CountOpsInGraph(subgraph, recurse_into_subgraphs);
+
+  EXPECT_EQ(new_graph_ops.find("Cast"), new_graph_ops.cend()) << "Main graph should not have been altered.";
+  EXPECT_EQ(new_subgraph_ops.find("Cast")->second, 3) << "'Add' node in subgraph should have had Casts added";
+}
+
+TEST(TransformerTest, IsIsolatedFp16NodeOnCpuTest) {
+  auto model = std::make_shared<onnxruntime::Model>("test", false, DefaultLoggingManager().DefaultLogger());
+  onnxruntime::Graph& graph = model->MainGraph();
+
+  TypeProto tensor_float_16;
+  tensor_float_16.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT16);
+
+  onnxruntime::NodeArg i1_def("I1", &tensor_float_16),
+      o1_def("O1", &tensor_float_16),
+      o2_def("O2", &tensor_float_16),
+      o3_def("O3", &tensor_float_16),
+      o4_def("O4", &tensor_float_16),
+      o5_def("O5", &tensor_float_16);
+
+  // for the sake of this example, pretend Clip has no fp16 kernel but Abs does
+  // -> Clip -> Abs -> Clip -> Abs -> Clip ->
+  //                            |       |
+  //                            - O4     - O5
+  auto& node1 = graph.AddNode("node1", "Clip", "no fp16", {&i1_def}, {&o1_def});
+  auto& node2 = graph.AddNode("node2", "Abs", "fp16", {&o1_def}, {&o2_def});
+  auto& node3 = graph.AddNode("node3", "Clip", "no fp16", {&o2_def}, {&o3_def});
+  auto& node4 = graph.AddNode("node4", "Abs", "fp16 producing graph output", {&o3_def}, {&o4_def});
+  auto& node5 = graph.AddNode("node5", "Clip", "no fp16", {&o4_def}, {&o5_def});
+
+  // manually set outputs as we want O4 and well as O5 to be graph outputs.
+  // AddNode creates a NodeArg instance in Graph so need to get address from the node
+  graph.SetOutputs({node4.OutputDefs()[0], node5.OutputDefs()[0]});
+
+  // node2 and node4 have a kernel
+  node2.SetExecutionProviderType(onnxruntime::kCpuExecutionProvider);
+  node4.SetExecutionProviderType(onnxruntime::kCpuExecutionProvider);
+
+  auto status = graph.Resolve();
+  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+
+  InsertCastTransformer transformer("Test");
+
+  bool modified = true;
+  EXPECT_TRUE(transformer.Apply(graph, modified, DefaultLoggingManager().DefaultLogger()).IsOK());
+
+  auto is_type = [](const NodeArg& node_arg, const MLDataType type) {
+    return node_arg.Type() != nullptr &&
+           DataTypeImpl::TypeFromProto(*node_arg.TypeAsProto()) == type;
+  };
+
+  // we expect:
+  //   node2 Abs to get forced to fp32 as it's isolated between node1 and node3 which need Casts
+  //   node4 Abs should not get forced to fp32 as it produces a graph output
+  //
+  // -> CastFp32 -> Clip -> Abs -> Clip -> CastFp16 -> Abs -> CastFp32 -> Clip -> CastFp16
+  //                                                    |                            |
+  //                                                     - O4                         - O5
+  EXPECT_TRUE(is_type(*node1.InputDefs()[0], DataTypeImpl::GetTensorType<float>()));
+  EXPECT_TRUE(is_type(*node2.InputDefs()[0], DataTypeImpl::GetTensorType<float>()));
+  EXPECT_TRUE(is_type(*node3.InputDefs()[0], DataTypeImpl::GetTensorType<float>()));
+  EXPECT_TRUE(is_type(*node4.InputDefs()[0], DataTypeImpl::GetTensorType<MLFloat16>()));
+  EXPECT_TRUE(is_type(*node5.InputDefs()[0], DataTypeImpl::GetTensorType<float>()));
+
+  auto ops = CountOpsInGraph(graph);
+  EXPECT_EQ(ops["Cast"], 4);
 }
 
 }  // namespace test

@@ -23,16 +23,18 @@ import torch
 import numpy
 import json
 from pathlib import Path
+from packaging import version
 from transformers import AutoConfig
-from gpt2_helper import Gpt2Helper, MODEL_CLASSES, DEFAULT_TOLERANCE, PRETRAINED_GPT2_MODELS
-from gpt2_tester import Gpt2Tester
+from gpt2_helper import DEFAULT_TOLERANCE, PRETRAINED_GPT2_MODELS
+from gpt2_beamsearch_helper import Gpt2HelperFactory, MODEL_CLASSES
+from gpt2_beamsearch_tester import Gpt2TesterFactory
 from quantize_helper import QuantizeHelper
 from benchmark_helper import create_onnxruntime_session, setup_logger, prepare_environment, Precision
 
 logger = logging.getLogger('')
 
 
-def parse_arguments():
+def parse_arguments(argv=None):
     parser = argparse.ArgumentParser()
 
     parser.add_argument('-m',
@@ -90,22 +92,126 @@ def parse_arguments():
         type=Precision,
         default=Precision.FLOAT32,
         choices=list(Precision),
-        help="Precision of model to run. fp32 for full precision, fp16 for half precision, and int8 for quantization")
+        help=
+        "Precision of model to run. fp32 for full precision, fp16 for half or mixed precision, and int8 for quantization"
+    )
+
+    parser.add_argument("-t",
+                        "--test_cases",
+                        required=False,
+                        type=int,
+                        default=1000,
+                        help="Number of test cases per run for parity")
+    parser.add_argument("-r",
+                        "--test_runs",
+                        required=False,
+                        type=int,
+                        default=10,
+                        help="Number of runs for parity. It is used for significance test.")
 
     parser.add_argument('--verbose', required=False, action='store_true')
     parser.set_defaults(verbose=False)
 
     parser.add_argument('-e', '--use_external_data_format', required=False, action='store_true')
     parser.set_defaults(use_external_data_format=False)
+    parser.add_argument('--beam_size', type=int, default=4, help='Beam size if greedy/top-p/top-k sampling is needed')
 
-    args = parser.parse_args()
+    search_option_group = parser.add_argument_group("configurable one step search options")
+
+    search_option_group.add_argument('--ignore_eos',
+                                     type=bool,
+                                     default=False,
+                                     help='If ignore end of sentence token in model inference.')
+    search_option_group.add_argument('--repetition_penalty',
+                                     type=float,
+                                     default=1,
+                                     help='Positive. >1 to penalize and <1 to encorage.')
+    search_option_group.add_argument('--temperature',
+                                     type=float,
+                                     default=1,
+                                     help='Softmax temperature for output logits.')
+    search_option_group.add_argument('--excluded_token_ids',
+                                     required=False,
+                                     nargs='+',
+                                     type=float,
+                                     help='A list of token ids to be excluded in inference.')
+    search_option_group.add_argument('--length_penalty',
+                                     type=float,
+                                     default=1,
+                                     help='Positive. >1 to penalize and <1 to encorage short sentence.')
+
+    sampling_option_group = parser.add_argument_group("one step sampling options")
+    sampling_option_group.add_argument('--do_sample',
+                                       action='store_true',
+                                       help='If to do sampling instead of beam search or greedy.')
+    sampling_option_group.add_argument('--do_sample_top_p',
+                                       type=float,
+                                       default=0.95,
+                                       help='Nuclear/top-p sampling accumulation probability.')
+    sampling_option_group.add_argument('--do_sample_top_k', type=int, default=0, help='Use top-k if non-zero.')
+
+    fp16_option_group = parser.add_argument_group(
+        "float to float16 conversion parameters that works when \"--precision fp16\" is specified")
+
+    fp16_option_group.add_argument('--keep_io_types',
+                                   required=False,
+                                   action='store_true',
+                                   help='Use float32 for past inputs, present and logits outputs.')
+    fp16_option_group.set_defaults(keep_io_types=False)
+
+    fp16_option_group.add_argument('--io_block_list',
+                                   nargs='+',
+                                   default=[],
+                                   help='List of inputs or outputs in float32 instead of float16')
+
+    fp16_option_group.add_argument(
+        '--op_block_list',
+        nargs='+',
+        default=[],
+        help=
+        'List of operators (like Attention Gather Add LayerNormalization FastGelu MatMul) to compute in float32 instead of float16.'
+    )
+
+    fp16_option_group.add_argument('--node_block_list',
+                                   nargs='+',
+                                   default=[],
+                                   help='List of node names to compute in float32 instead of float16.')
+
+    fp16_option_group.add_argument('--force_fp16_initializers',
+                                   required=False,
+                                   action='store_true',
+                                   help='Convert all float initializers to float16.')
+    fp16_option_group.set_defaults(force_fp16_initializers=False)
+
+    args = parser.parse_args(argv)
 
     return args
 
 
-def main():
-    args = parse_arguments()
+def get_onnx_model_size(onnx_path: str, use_external_data_format: bool):
+    if not use_external_data_format:
+        return os.path.getsize(onnx_path)
+    else:
+        return sum([f.stat().st_size for f in Path(onnx_path).parent.rglob('*')])
+
+
+def get_latency_name():
+    return "average_latency(batch_size=8,sequence_length=1,past_sequence_length=32)"
+
+
+def main(argv=None, experiment_name="", run_id=0, csv_filename="gpt2_parity_results.csv"):
+    result = {}
+    from transformers import __version__ as transformers_version
+    if version.parse(transformers_version) < version.parse(
+            "3.1.0"):  # past_key_values name does not exist in 3.0.2 or older
+        raise RuntimeError("This tool requires transformers 3.1.0 or later.")
+
+    args = parse_arguments(argv)
     setup_logger(args.verbose)
+
+    if not experiment_name:
+        import sys
+        experiment_name = " ".join(argv if argv else sys.argv[1:])
 
     if args.tolerance == 0:
         args.tolerance = DEFAULT_TOLERANCE[args.precision]
@@ -129,8 +235,40 @@ def main():
         assert not args.output.endswith('.onnx'), "output shall be a directory for --use_external_data_format"
 
     model_class = MODEL_CLASSES[args.model_class][0]
+    use_padding = MODEL_CLASSES[args.model_class][2]
+
+    if args.model_class == "GPT2LMHeadModel_BeamSearchStep":
+        model_type = "beam_search_step"
+    elif args.model_class == "GPT2LMHeadModel_ConfigurableOneStepSearch":
+        model_type = "configurable_one_step_search"
+    else:
+        model_type = "default"
+
+    gpt2helper = Gpt2HelperFactory.create_helper(model_type)
+    gpt2tester = Gpt2TesterFactory.create_tester(model_type)
     config = AutoConfig.from_pretrained(args.model_name_or_path, cache_dir=cache_dir)
-    model = model_class.from_pretrained(args.model_name_or_path, config=config, cache_dir=cache_dir)
+    if model_type == 'beam_search_step':
+        model = model_class.from_pretrained(args.model_name_or_path,
+                                            config=config,
+                                            batch_size=1,
+                                            beam_size=args.beam_size,
+                                            cache_dir=cache_dir)
+    elif model_type == 'configurable_one_step_search':
+        model = model_class.from_pretrained(args.model_name_or_path,
+                                            config=config,
+                                            batch_size=1,
+                                            beam_size=args.beam_size,
+                                            ignore_eos=args.ignore_eos,
+                                            temperature=args.temperature,
+                                            repetition_penalty=args.repetition_penalty,
+                                            excluded_token_ids=args.excluded_token_ids,
+                                            length_penalty=args.length_penalty,
+                                            do_sample=args.do_sample,
+                                            do_sample_top_p=args.do_sample_top_p,
+                                            do_sample_top_k=args.do_sample_top_k,
+                                            cache_dir=cache_dir)
+    else:
+        model = model_class.from_pretrained(args.model_name_or_path, config=config, cache_dir=cache_dir)
 
     device = torch.device("cuda:0" if args.use_gpu else "cpu")
     model.eval().to(device)
@@ -138,30 +276,46 @@ def main():
     if (not args.use_external_data_format) and (config.n_layer > 24):
         logger.info(f"Try --use_external_data_format when model size > 2GB")
 
-    onnx_model_paths = Gpt2Helper.get_onnx_paths(output_dir,
-                                                 args.model_name_or_path,
-                                                 args.model_class,
-                                                 new_folder=args.use_external_data_format)
+    onnx_model_paths = gpt2helper.get_onnx_paths(
+        output_dir,
+        args.model_name_or_path,
+        args.model_class,
+        new_folder=args.use_external_data_format,
+        remove_existing=["fp32", "fp16", "int8"])  # Do not remove raw model to save time in parity test
 
     raw_onnx_model = onnx_model_paths["raw"]
 
-    logger.info(f"Exporting ONNX model to {raw_onnx_model}")
-    use_padding = MODEL_CLASSES[args.model_class][2]
-    Gpt2Helper.export_onnx(model,
-                           device,
-                           raw_onnx_model,
-                           args.verbose,
-                           args.use_external_data_format,
-                           has_position_ids=use_padding,
-                           has_attention_mask=use_padding)
+    if os.path.exists(raw_onnx_model):
+        logger.warning(f"Skip exporting ONNX model since it existed: {raw_onnx_model}")
+    else:
+        logger.info(f"Exporting ONNX model to {raw_onnx_model}")
+        gpt2helper.export_onnx(model,
+                               device,
+                               raw_onnx_model,
+                               args.verbose,
+                               args.use_external_data_format,
+                               has_position_ids=use_padding,
+                               has_attention_mask=use_padding)
+
+    fp16_params = {"keep_io_types": args.keep_io_types}
+    if args.io_block_list:
+        fp16_params["keep_io_types"] = args.io_block_list
+    if args.node_block_list:
+        fp16_params["node_block_list"] = args.node_block_list
+    if args.op_block_list:
+        fp16_params["op_block_list"] = args.op_block_list
+    if args.force_fp16_initializers:
+        fp16_params["force_fp16_initializers"] = args.force_fp16_initializers
+
+    is_io_float16 = (args.precision == Precision.FLOAT16 and not args.keep_io_types)
 
     if args.optimize_onnx or args.precision != Precision.FLOAT32:
         output_path = onnx_model_paths[str(args.precision) if args.precision != Precision.INT8 else 'fp32']
 
         logger.info(f"Optimizing model to {output_path}")
-        Gpt2Helper.optimize_onnx(raw_onnx_model, output_path, args.precision == Precision.FLOAT16,
+        gpt2helper.optimize_onnx(raw_onnx_model, output_path, args.precision == Precision.FLOAT16,
                                  model.config.num_attention_heads, model.config.hidden_size,
-                                 args.use_external_data_format)
+                                 args.use_external_data_format, **fp16_params)
     else:
         output_path = raw_onnx_model
 
@@ -178,18 +332,87 @@ def main():
         output_path = args.output
 
     logger.info(f"Output path: {output_path}")
+    model_size_in_MB = int(get_onnx_model_size(output_path, args.use_external_data_format) / 1024 / 1024)
 
     session = create_onnxruntime_session(output_path, args.use_gpu, enable_all_optimization=True, verbose=args.verbose)
-    if session is not None:
-        Gpt2Helper.test_parity(session,
-                               model,
-                               device,
-                               args.precision == Precision.FLOAT16,
-                               rtol=args.tolerance,
-                               atol=args.tolerance,
-                               model_class=args.model_class,
-                               has_position_ids=use_padding,
-                               has_attention_mask=use_padding)
+    if args.model_class == "GPT2LMHeadModel" and session is not None:
+        parity_result = gpt2helper.test_parity(session,
+                                               model,
+                                               device,
+                                               is_io_float16,
+                                               rtol=args.tolerance,
+                                               atol=args.tolerance,
+                                               model_class=args.model_class,
+                                               has_position_ids=use_padding,
+                                               has_attention_mask=use_padding,
+                                               test_cases_per_run=args.test_cases,
+                                               total_runs=args.test_runs,
+                                               verbose=args.verbose)
+
+        latency = gpt2helper.test_performance(session,
+                                              model,
+                                              device,
+                                              is_io_float16,
+                                              total_runs=100,
+                                              use_io_binding=True,
+                                              model_class=args.model_class,
+                                              has_position_ids=use_padding,
+                                              has_attention_mask=use_padding,
+                                              batch_size=8,
+                                              sequence_length=1,
+                                              past_sequence_length=32)
+
+        if args.precision == Precision.FLOAT16:
+            logger.info(f"fp16 conversion parameters:{fp16_params}")
+
+        # Write results to file
+        import csv
+        from onnxruntime import __version__ as ort_version
+        latency_name = get_latency_name()
+        csv_file_existed = os.path.exists(csv_filename)
+        with open(csv_filename, mode="a", newline='') as csv_file:
+            column_names = [
+                "experiment", "run_id", "model_name", "model_class", "gpu", "precision", "optimizer", "test_cases",
+                "runs", "keep_io_types", "io_block_list", "op_block_list", "node_block_list", "force_fp16_initializers",
+                "ORT_TRANSFORMER_OPTIONS", "ORT_CUDA_GEMM_OPTIONS", "onnxruntime", latency_name, "top1_match_rate",
+                "onnx_size_in_MB", "diff_50_percentile", "diff_90_percentile", "diff_95_percentile",
+                "diff_99_percentile", "diff_pass_rate", "nan_rate", "top1_match_rate_per_run"
+            ]
+            csv_writer = csv.DictWriter(csv_file, fieldnames=column_names)
+            if not csv_file_existed:
+                csv_writer.writeheader()
+            row = {
+                "experiment": experiment_name,
+                "run_id": run_id,
+                "model_name": args.model_name_or_path,
+                "model_class": args.model_class,
+                "gpu": args.use_gpu,
+                "precision": args.precision,
+                "optimizer": args.optimize_onnx,
+                "test_cases": args.test_cases,
+                "runs": args.test_runs,
+                "keep_io_types": args.keep_io_types,
+                "io_block_list": args.io_block_list,
+                "op_block_list": args.op_block_list,
+                "node_block_list": args.node_block_list,
+                "force_fp16_initializers": args.force_fp16_initializers,
+                "ORT_TRANSFORMER_OPTIONS": os.getenv('ORT_TRANSFORMER_OPTIONS'),
+                "ORT_CUDA_GEMM_OPTIONS": os.getenv('ORT_CUDA_GEMM_OPTIONS'),
+                "onnxruntime": ort_version,
+                latency_name: f"{latency:.2f}",
+                "diff_50_percentile": parity_result["max_diff_percentile_50"],
+                "diff_90_percentile": parity_result["max_diff_percentile_90"],
+                "diff_95_percentile": parity_result["max_diff_percentile_95"],
+                "diff_99_percentile": parity_result["max_diff_percentile_99"],
+                "diff_pass_rate": parity_result["diff_pass_rate"],
+                "nan_rate": parity_result["nan_rate"],
+                "top1_match_rate": parity_result["top1_match_rate"],
+                "top1_match_rate_per_run": parity_result["top1_match_rate_per_run"],
+                "onnx_size_in_MB": "{}".format(model_size_in_MB),
+            }
+            logger.info(f"result: {row}")
+            result.update(row)
+            csv_writer.writerow(row)
 
     if args.input_test_file:
         test_inputs = []
@@ -203,14 +426,12 @@ def main():
 
                 if use_padding:
                     if "attention_mask" in data:
-                        numpy_float = numpy.float16 if args.precision == Precision.FLOAT16 else numpy.float32
+                        numpy_float = numpy.float16 if is_io_float16 else numpy.float32
                         attention_mask = torch.from_numpy(numpy.asarray(data["attention_mask"],
                                                                         dtype=numpy_float)).to(device)
                     else:
                         padding = -1
-                        attention_mask = (
-                            input_ids !=
-                            padding).type(torch.float16 if args.precision == Precision.FLOAT16 else torch.float32)
+                        attention_mask = (input_ids != padding).type(torch.float16 if is_io_float16 else torch.float32)
                         input_ids.masked_fill_(input_ids == padding, 0)
 
                     if "position_ids" in data:
@@ -224,9 +445,20 @@ def main():
                 else:
                     inputs = {"input_ids": input_ids}
 
+                if model_type == "beam_search_step" or model_type == "configurable_one_step_search":
+                    beam_select_idx = torch.zeros([1, input_ids.shape[0]]).long()
+
+                    input_log_probs = torch.zeros([input_ids.shape[0], 1])
+                    input_unfinished_sents = torch.ones([input_ids.shape[0], 1], dtype=torch.bool)
+                    inputs.update({
+                        "beam_select_idx": beam_select_idx,
+                        "input_log_probs": input_log_probs,
+                        "input_unfinished_sents": input_unfinished_sents,
+                    })
+
                 test_inputs.append(inputs)
 
-        Gpt2Tester.test_generation(session,
+        gpt2tester.test_generation(session,
                                    model,
                                    device,
                                    test_inputs,
@@ -241,6 +473,7 @@ def main():
                                    save_test_data_dir=Path(output_path).parent)
 
     logger.info(f"Done. Output model: {output_path}")
+    return result
 
 
 if __name__ == '__main__':

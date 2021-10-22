@@ -27,12 +27,12 @@ class ShapeInferenceTest : public ::testing::Test {
   ShapeInferenceTest() : model_("Test", false, DefaultLoggingManager().DefaultLogger()), node_count_(0) {}
 
   void Input(const std::string& name, const Type& type) {
-    name_to_arg_[name] = onnxruntime::make_unique<onnxruntime::NodeArg>(name, &type.value);
+    name_to_arg_[name] = std::make_unique<onnxruntime::NodeArg>(name, &type.value);
   }
 
   onnxruntime::NodeArg* Arg(const std::string& name) {
     if (name_to_arg_.count(name) == 0)
-      name_to_arg_[name] = onnxruntime::make_unique<onnxruntime::NodeArg>(name, nullptr);
+      name_to_arg_[name] = std::make_unique<onnxruntime::NodeArg>(name, nullptr);
     return name_to_arg_[name].get();
   }
 

@@ -6,8 +6,10 @@ import numpy as np
 import onnx
 from onnx import helper, numpy_helper
 import onnxruntime as onnxrt
+from helper import get_name
 import os
 from onnxruntime.nuphar.rnn_benchmark import perf_test, generate_model
+from onnxruntime.nuphar.model_tools import validate_with_ort, run_shape_inference
 import shutil
 import sys
 import subprocess
@@ -23,13 +25,13 @@ def reference_gemm(a, b, c, alpha, beta, transA, transB):
 
 def set_gemm_node_attrs(attrs, config):
     if config['alpha'] != 1.0:
-      attrs['alpha'] = config['alpha']
+        attrs['alpha'] = config['alpha']
     if config['beta'] != 1.0:
-      attrs['beta'] = config['beta']
+        attrs['beta'] = config['beta']
     if config['transA']:
-      attrs['transA'] = 1
+        attrs['transA'] = 1
     if config['transB']:
-      attrs['transB'] = 1
+        attrs['transB'] = 1
 
 def generate_gemm_inputs_initializers(graph, config, added_inputs_initializers={}, extend=False):
     M = config['M']
@@ -99,7 +101,7 @@ def generate_gemm_inputs_initializers(graph, config, added_inputs_initializers={
 
 def generate_gemm_model(model_name, config):
     model = onnx.ModelProto()
-    model.ir_version = onnx.IR_VERSION
+    model.ir_version = 7 # use stable onnx ir version
     opset = model.opset_import.add()
     opset.version = 11
 
@@ -177,7 +179,7 @@ def generate_gemm_node_subgraph(scan_body, scan_node_inputs, postfix, config, ad
 
 def generate_gemm_scan_model(model_name, config1, config2):
     model = onnx.ModelProto()
-    model.ir_version = onnx.IR_VERSION
+    model.ir_version = 7 # use stable onnx ir version
     opset = model.opset_import.add()
     opset.version = 11
 
@@ -321,23 +323,30 @@ def set_gemm_model_inputs(config, test_inputs, a, b, c):
     if config['withC'] and not config['initC']:
         test_inputs[config['C']] = c
 
+
+def make_providers(nuphar_settings):
+    return [
+        ('NupharExecutionProvider', {
+            'nuphar_settings': nuphar_settings
+        }),
+        'CPUExecutionProvider',
+    ]
+
+
 class TestNuphar(unittest.TestCase):
 
     def test_bidaf(self):
-        # download BiDAF model
         cwd = os.getcwd()
-        bidaf_url = 'https://onnxzoo.blob.core.windows.net/models/opset_9/bidaf/bidaf.tar.gz'
-        cache_dir = os.path.join(os.path.expanduser("~"), '.cache', 'onnxruntime')
-        os.makedirs(cache_dir, exist_ok=True)
-        bidaf_local = os.path.join(cache_dir, 'bidaf.tar.gz')
-        if not os.path.exists(bidaf_local):
-            urllib.request.urlretrieve(bidaf_url, bidaf_local)
-        with tarfile.open(bidaf_local, 'r') as f:
-            f.extractall(cwd)
 
-        # verify accuracy of quantized model
+        bidaf_dir_src = '../models/opset9/test_bidaf'
+
         bidaf_dir = os.path.join(cwd, 'bidaf')
-        bidaf_model = os.path.join(bidaf_dir, 'bidaf.onnx')
+        if not os.path.exists(bidaf_dir):
+            shutil.copytree(bidaf_dir_src, bidaf_dir)
+
+        bidaf_dir = os.path.join(cwd, 'bidaf')
+        bidaf_model = os.path.join(bidaf_dir, 'model.onnx')
+        run_shape_inference(bidaf_model, bidaf_model)
         bidaf_scan_model = os.path.join(bidaf_dir, 'bidaf_scan.onnx')
         bidaf_opt_scan_model = os.path.join(bidaf_dir, 'bidaf_opt_scan.onnx')
         bidaf_int8_scan_only_model = os.path.join(bidaf_dir, 'bidaf_int8_scan_only.onnx')
@@ -383,8 +392,9 @@ class TestNuphar(unittest.TestCase):
         for model in [bidaf_opt_scan_model, bidaf_int8_scan_only_model]:
             nuphar_settings = 'nuphar_cache_path:{}'.format(cache_dir)
             for isa in ['avx', 'avx2', 'avx512']:
-                onnxrt.capi._pybind_state.set_nuphar_settings(nuphar_settings + ', nuphar_codegen_target:' + isa)
-                sess = onnxrt.InferenceSession(model)  # JIT cache happens when initializing session
+                # JIT cache happens when initializing session
+                sess = onnxrt.InferenceSession(
+                    model, providers=make_providers(nuphar_settings + ', nuphar_codegen_target:' + isa))
 
             cache_dir_content = os.listdir(cache_dir)
             assert len(cache_dir_content) == 1
@@ -398,32 +408,25 @@ class TestNuphar(unittest.TestCase):
 
             nuphar_settings = 'nuphar_cache_path:{}, nuphar_cache_so_name:{}, nuphar_cache_force_no_jit:{}'.format(
                 cache_dir, so_name, 'on')
-            onnxrt.capi._pybind_state.set_nuphar_settings(nuphar_settings)
-            sess = onnxrt.InferenceSession(model)
+            sess = onnxrt.InferenceSession(model, providers=make_providers(nuphar_settings))
             sess.run([], feed)
 
             # test avx
             nuphar_settings = 'nuphar_cache_path:{}, nuphar_cache_so_name:{}, nuphar_cache_force_no_jit:{}, nuphar_codegen_target:{}'.format(
                 cache_dir, so_name, 'on', 'avx')
-            onnxrt.capi._pybind_state.set_nuphar_settings(nuphar_settings)
-            sess = onnxrt.InferenceSession(model)
+            sess = onnxrt.InferenceSession(model, providers=make_providers(nuphar_settings))
             sess.run([], feed)
 
     def test_bert_squad(self):
-        # download BERT_squad model
         cwd = os.getcwd()
-        bert_squad_url = 'https://onnxzoo.blob.core.windows.net/models/opset_10/bert_squad/download_sample_10.tar.gz'
-        cache_dir = os.path.join(os.path.expanduser("~"), '.cache', 'onnxruntime')
-        os.makedirs(cache_dir, exist_ok=True)
-        bert_squad_local = os.path.join(cache_dir, 'bert_squad.tar.gz')
-        if not os.path.exists(bert_squad_local):
-            urllib.request.urlretrieve(bert_squad_url, bert_squad_local)
-        with tarfile.open(bert_squad_local, 'r') as f:
-            f.extractall(cwd)
 
         # run symbolic shape inference on this model
         # set int_max to 1,000,000 to simplify symbol computes for things like min(1000000, seq_len) -> seq_len
-        bert_squad_dir = os.path.join(cwd, 'download_sample_10')
+        bert_squad_dir_src = '../models/opset10/BERT_Squad'
+        bert_squad_dir = os.path.join(cwd, 'BERT_Squad')
+        if not os.path.exists(bert_squad_dir):
+            shutil.copytree(bert_squad_dir_src, bert_squad_dir)
+
         bert_squad_model = os.path.join(bert_squad_dir, 'bertsquad10.onnx')
         subprocess.run([
             sys.executable, '-m', 'onnxruntime.tools.symbolic_shape_infer', '--input', bert_squad_model, '--output',
@@ -434,7 +437,7 @@ class TestNuphar(unittest.TestCase):
 
         # run onnx_test_runner to verify results
         onnx_test_runner = os.path.join(cwd, 'onnx_test_runner')
-        subprocess.run([onnx_test_runner, '-e', 'nuphar', '-n', 'download_sample_10', cwd], check=True, cwd=cwd)
+        subprocess.run([onnx_test_runner, '-e', 'nuphar', '-n', 'BERT_Squad', cwd], check=True, cwd=cwd)
 
         # run onnxruntime_perf_test, note that nuphar currently is not integrated with ORT thread pool, so set -x 1 to avoid thread confliction with OpenMP
         onnxruntime_perf_test = os.path.join(cwd, 'onnxruntime_perf_test')
@@ -479,57 +482,59 @@ class TestNuphar(unittest.TestCase):
         bidirectional = False
         layers = 3
 
-        lstm_model_name = 'test_batch_rnn_lstm.onnx'
-        # create an LSTM model for generating baseline data
-        generate_model('lstm',
-                       input_dim,
-                       hidden_dim,
-                       bidirectional,
-                       layers,
-                       lstm_model_name,
-                       batch_one=False,
-                       has_seq_len=True)
+        for onnx_opset_ver in [7,13]:
+            lstm_model_name = 'test_batch_rnn_lstm.onnx'
+            # create an LSTM model for generating baseline data
+            generate_model('lstm',
+                        input_dim,
+                        hidden_dim,
+                        bidirectional,
+                        layers,
+                        lstm_model_name,
+                        batch_one=False,
+                        has_seq_len=True,
+                        onnx_opset_ver=onnx_opset_ver)
 
-        seq_len = 8
-        batch_size = 2
-        # prepare input
-        data_input = (np.random.rand(seq_len, batch_size, input_dim) * 2 - 1).astype(np.float32)
-        data_seq_len = np.random.randint(1, seq_len, size=(batch_size,), dtype=np.int32)
+            seq_len = 8
+            batch_size = 2
+            # prepare input
+            data_input = (np.random.rand(seq_len, batch_size, input_dim) * 2 - 1).astype(np.float32)
+            data_seq_len = np.random.randint(1, seq_len, size=(batch_size,), dtype=np.int32)
 
-        # run lstm as baseline
-        sess = onnxrt.InferenceSession(lstm_model_name)
-        first_lstm_data_output = sess.run([], {'input': data_input[:, 0:1, :], 'seq_len': data_seq_len[0:1]})
+            # run lstm as baseline
+            sess = onnxrt.InferenceSession(lstm_model_name)
+            first_lstm_data_output = sess.run([], {'input': data_input[:, 0:1, :], 'seq_len': data_seq_len[0:1]})
 
-        lstm_data_output = []
-        lstm_data_output = first_lstm_data_output
+            lstm_data_output = []
+            lstm_data_output = first_lstm_data_output
 
-        for b in range(1, batch_size):
-            lstm_data_output = lstm_data_output + sess.run([], {
-                'input': data_input[:, b:(b + 1), :],
-                'seq_len': data_seq_len[b:(b + 1)]
-            })
-        lstm_data_output = np.concatenate(lstm_data_output, axis=1)
+            for b in range(1, batch_size):
+                lstm_data_output = lstm_data_output + sess.run([], {
+                    'input': data_input[:, b:(b + 1), :],
+                    'seq_len': data_seq_len[b:(b + 1)]
+                })
+            lstm_data_output = np.concatenate(lstm_data_output, axis=1)
 
-        # generate a batch scan model
-        scan_model_name = 'test_batch_rnn_scan.onnx'
-        subprocess.run([
-            sys.executable, '-m', 'onnxruntime.nuphar.model_editor', '--input', lstm_model_name, '--output',
-            scan_model_name, '--mode', 'to_scan'
-        ],
-                       check=True)
+            # generate a batch scan model
+            scan_model_name = 'test_batch_rnn_scan.onnx'
+            subprocess.run([
+                sys.executable, '-m', 'onnxruntime.nuphar.model_editor', '--input', lstm_model_name, '--output',
+                scan_model_name, '--mode', 'to_scan'
+            ],
+                        check=True)
 
-        # run scan_batch with batch size 1
-        sess = onnxrt.InferenceSession(scan_model_name)
-        scan_batch_data_output = sess.run([], {'input': data_input[:, 0:1, :], 'seq_len': data_seq_len[0:1]})
-        assert np.allclose(first_lstm_data_output, scan_batch_data_output)
+            # run scan_batch with batch size 1
+            sess = onnxrt.InferenceSession(scan_model_name)
+            scan_batch_data_output = sess.run([], {'input': data_input[:, 0:1, :], 'seq_len': data_seq_len[0:1]})
+            assert np.allclose(first_lstm_data_output, scan_batch_data_output)
 
-        # run scan_batch with batch size 2
-        scan_batch_data_output = sess.run([], {'input': data_input, 'seq_len': data_seq_len})
-        assert np.allclose(lstm_data_output, scan_batch_data_output)
+            # run scan_batch with batch size 2
+            scan_batch_data_output = sess.run([], {'input': data_input, 'seq_len': data_seq_len})
+            assert np.allclose(lstm_data_output, scan_batch_data_output)
 
-        # run scan_batch with batch size 1 again
-        scan_batch_data_output = sess.run([], {'input': data_input[:, 0:1, :], 'seq_len': data_seq_len[0:1]})
-        assert np.allclose(first_lstm_data_output, scan_batch_data_output)
+            # run scan_batch with batch size 1 again
+            scan_batch_data_output = sess.run([], {'input': data_input[:, 0:1, :], 'seq_len': data_seq_len[0:1]})
+            assert np.allclose(first_lstm_data_output, scan_batch_data_output)
 
     def test_gemm_to_matmul(self):
         gemm_model_name_prefix = "gemm_model"
@@ -668,6 +673,49 @@ class TestNuphar(unittest.TestCase):
             assert np.allclose(expected_y, actual_y, atol=1e-7)
             print("finished " + matmul_model_name)
 
+    def test_loop_to_scan(self):
+        loop_model_filename = get_name("nuphar_tiny_model_with_loop_shape_infered.onnx")
+        scan_model_filename = "nuphar_tiny_model_with_loop_shape_infered_converted_to_scan.onnx"
+        subprocess.run([
+            sys.executable, '-m', 'onnxruntime.nuphar.model_editor',
+            '--input', loop_model_filename,
+            '--output', scan_model_filename, '--mode', 'loop_to_scan'
+        ], check=True)
+
+        validate_with_ort(loop_model_filename, scan_model_filename)
+
+    def test_loop_to_scan_with_inconvertible_loop(self):
+        # nuphar_onnx_test_loop11_inconvertible_loop.onnx contains a Loop op with dynamic loop count.
+        # This Loop op cannot be converted to a Scan op.
+        # Set --keep_unconvertible_loop_ops option so conversion will not fail due to unconvertible loop ops.
+        loop_model_filename = get_name("nuphar_onnx_test_loop11_inconvertible_loop.onnx")
+        scan_model_filename = "nuphar_onnx_test_loop11_inconvertible_loop_unchanged.onnx"
+        subprocess.run([
+            sys.executable, '-m', 'onnxruntime.nuphar.model_editor',
+            '--input', loop_model_filename,
+            '--output', scan_model_filename, '--mode', 'loop_to_scan',
+            '--keep_unconvertible_loop_ops'
+        ], check=True)
+
+        # onnxruntime is failing with:
+        # onnxruntime.capi.onnxruntime_pybind11_state.Fail: [ONNXRuntimeError] : 1 :
+        # FAIL : Non-zero status code returned while running Loop node. Name:''
+        # Status Message: Inconsistent shape in loop output for output.  Expected:{1} Got:{0}
+        # skip validate_with_ort for now
+        # validate_with_ort(loop_model_filename, scan_model_filename)
+
+    def test_loop_to_scan_tool(self):
+        loop_model_filename = get_name("nuphar_tiny_model_with_loop_shape_infered.onnx")
+        scan_model_filename = "nuphar_tiny_model_with_loop_shape_infered_converted_to_scan.onnx"
+        subprocess.run([
+            sys.executable, '-m', 'onnxruntime.nuphar.model_tools',
+            '--input', loop_model_filename,
+            '--output', scan_model_filename,
+            '--tool', 'convert_loop_to_scan_and_validate',
+            '--symbolic_dims', 'sequence=30'
+        ], check=True)
+
+        validate_with_ort(loop_model_filename, scan_model_filename)
 
 if __name__ == '__main__':
     unittest.main()

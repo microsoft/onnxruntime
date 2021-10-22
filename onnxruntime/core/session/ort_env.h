@@ -18,7 +18,7 @@ class LoggingWrapper : public onnxruntime::logging::ISink {
  public:
   LoggingWrapper(OrtLoggingFunction logging_function, void* logger_param);
 
-  void SendImpl(const onnxruntime::logging::Timestamp& /*timestamp*/ /*timestamp*/, const std::string& logger_id,
+  void SendImpl(const onnxruntime::logging::Timestamp& /*timestamp*/, const std::string& logger_id,
                 const onnxruntime::logging::Capture& message) override;
 
  private:
@@ -60,7 +60,19 @@ struct OrtEnv {
    * Registers an allocator for sharing between multiple sessions.
    * Returns an error if an allocator with the same OrtMemoryInfo is already registered.
   */
-  onnxruntime::Status RegisterAllocator(onnxruntime::AllocatorPtr allocator);
+  onnxruntime::common::Status RegisterAllocator(onnxruntime::AllocatorPtr allocator);
+
+  /**
+   * Creates and registers an allocator for sharing between multiple sessions.
+   * Return an error if an allocator with the same OrtMemoryInfo is already registered.
+  */
+  onnxruntime::common::Status CreateAndRegisterAllocator(const OrtMemoryInfo& mem_info,
+                                                         const OrtArenaCfg* arena_cfg = nullptr);
+
+  /**
+   * Removes registered allocator that was previously registered for sharing between multiple sessions.
+  */
+  onnxruntime::common::Status UnregisterAllocator(const OrtMemoryInfo& mem_info);
 
  private:
   static OrtEnv* p_instance_;

@@ -3,18 +3,19 @@ jobs:
   timeoutInMinutes: 180
   workspace:
     clean: all
-  pool: Linux-CPU
+  pool: Linux-CPU-2019
   steps:
   - checkout: self
     clean: true
     submodules: recursive
 
-  - task: Docker@2
-    displayName: login
-    inputs:
-      containerRegistry: onnxruntimeregistry
-      command: login
-      addPipelineData: false
+  - template: templates/get-docker-image-steps.yml
+    parameters:
+      Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cpu
+      Context: tools/ci_build/github/linux/docker
+      DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
+      Repository: onnxruntimecpubuild
+
   - task: CmdLine@2
     inputs:
       script: |
@@ -27,7 +28,7 @@ jobs:
           --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
           -e NIGHTLY_BUILD \
           -e BUILD_BUILDNUMBER \
-          onnxruntimeregistry.azurecr.io/internal/azureml/onnxruntimecpubuild:chan \
+          onnxruntimecpubuild \
             /opt/python/cp37-cp37m/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
               --build_dir /build \
               --config Debug Release \
@@ -37,15 +38,10 @@ jobs:
               --enable_pybind \
               --use_openmp \
               --enable_onnx_tests \
-              --use_dnnl \
-              --cmake_extra_defines PYTHON_INCLUDE_DIR=/opt/python/cp37-cp37m/include/python3.7m PYTHON_LIBRARY=/usr/lib64/librt.so
+              --build_java \
+              --use_dnnl
       workingDirectory: $(Build.SourcesDirectory)
-  - task: Docker@2
-    displayName: logout
-    inputs:
-      containerRegistry: onnxruntimeregistry
-      command: logout
-      addPipelineData: false
+
   - task: PublishTestResults@2
     displayName: 'Publish unit test results'
     inputs:

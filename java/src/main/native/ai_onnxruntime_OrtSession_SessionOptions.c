@@ -15,16 +15,16 @@
 
 // Providers
 #include "onnxruntime/core/providers/cpu/cpu_provider_factory.h"
-#include "onnxruntime/core/providers/cuda/cuda_provider_factory.h"
 #include "onnxruntime/core/providers/dnnl/dnnl_provider_factory.h"
-#include "onnxruntime/core/providers/ngraph/ngraph_provider_factory.h"
 #include "onnxruntime/core/providers/nnapi/nnapi_provider_factory.h"
 #include "onnxruntime/core/providers/nuphar/nuphar_provider_factory.h"
 #include "onnxruntime/core/providers/openvino/openvino_provider_factory.h"
 #include "onnxruntime/core/providers/tensorrt/tensorrt_provider_factory.h"
 #include "onnxruntime/core/providers/migraphx/migraphx_provider_factory.h"
 #include "onnxruntime/core/providers/acl/acl_provider_factory.h"
-#ifdef USE_DIRECTML
+#include "onnxruntime/core/providers/armnn/armnn_provider_factory.h"
+#include "onnxruntime/core/providers/coreml/coreml_provider_factory.h"
+#ifdef USE_DML
 #include "onnxruntime/core/providers/dml/dml_provider_factory.h"
 #endif
 
@@ -90,6 +90,10 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_setOpt
     const jchar* path = (*jniEnv)->GetStringChars(jniEnv, pathString, NULL);
     size_t stringLength = (*jniEnv)->GetStringLength(jniEnv, pathString);
     wchar_t* newString = (wchar_t*)calloc(stringLength+1,sizeof(jchar));
+    if (newString == NULL) {
+        throwOrtException(jniEnv, 1, "Not enough memory");
+        return;
+    }
     wcsncpy_s(newString, stringLength+1, (const wchar_t*) path, stringLength);
     checkOrtStatus(jniEnv,(const OrtApi*)apiHandle,api->SetOptimizedModelFilePath((OrtSessionOptions*) handle, (const wchar_t*) newString));
     free(newString);
@@ -160,6 +164,10 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_enable
   const jchar* path = (*jniEnv)->GetStringChars(jniEnv, pathString, NULL);
   size_t stringLength = (*jniEnv)->GetStringLength(jniEnv, pathString);
   wchar_t* newString = (wchar_t*)calloc(stringLength+1,sizeof(jchar));
+  if (newString == NULL) {
+      throwOrtException(jniEnv, 1, "Not enough memory");
+      return;
+  }
   wcsncpy_s(newString, stringLength+1, (const wchar_t*) path, stringLength);
   checkOrtStatus(jniEnv,(const OrtApi*)apiHandle,api->EnableProfiling(options, (const wchar_t*) newString));
   free(newString);
@@ -297,6 +305,39 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_closeC
 
 /*
  * Class:     ai_onnxruntime_OrtSession_SessionOptions
+ * Method:    addFreeDimensionOverrideByName
+ * Signature: (JJLjava/lang/String;J)V
+ */
+JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addFreeDimensionOverrideByName
+    (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong optionsHandle, jstring dimensionName, jlong dimensionValue) {
+  (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
+  const OrtApi* api = (const OrtApi*)apiHandle;
+  OrtSessionOptions* options = (OrtSessionOptions*) optionsHandle;
+
+  // Extract the string chars
+  const char* cName = (*jniEnv)->GetStringUTFChars(jniEnv, dimensionName, NULL);
+
+  checkOrtStatus(jniEnv,api,api->AddFreeDimensionOverrideByName(options,cName,dimensionValue));
+
+  // Release the string chars
+  (*jniEnv)->ReleaseStringUTFChars(jniEnv,dimensionName,cName);
+}
+
+/*
+ * Class:     ai_onnxruntime_OrtSession_SessionOptions
+ * Method:    disablePerSessionThreads
+ * Signature: (JJ)V
+ */
+JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_disablePerSessionThreads
+    (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong optionsHandle) {
+  (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
+  const OrtApi* api = (const OrtApi*)apiHandle;
+  OrtSessionOptions* options = (OrtSessionOptions*) optionsHandle;
+  checkOrtStatus(jniEnv,api,api->DisablePerSessionThreads(options));
+}
+
+/*
+ * Class:     ai_onnxruntime_OrtSession_SessionOptions
  * Method:    addConfigEntry
  * Signature: (JJLjava/lang/String;Ljava/lang/String;)V
  */
@@ -357,24 +398,6 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addDnn
 
 /*
  * Class:     ai_onnxruntime_OrtSession_SessionOptions
- * Method:    addNGraph
- * Signature: (JJLjava/lang/String;)V
- */
-JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addNGraph
-  (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jstring backendString) {
-    (void)jobj;
-  #ifdef USE_NGRAPH
-    const char* backendType = (*jniEnv)->GetStringUTFChars(jniEnv, backendString, NULL);
-    checkOrtStatus(jniEnv,(const OrtApi*)apiHandle,OrtSessionOptionsAppendExecutionProvider_NGraph((OrtSessionOptions*) handle, backendType));
-    (*jniEnv)->ReleaseStringUTFChars(jniEnv,backendString,backendType);
-  #else
-    (void)apiHandle;(void)handle;(void)backendString; // Parameters used when NGraph is defined.
-    throwOrtException(jniEnv,convertErrorCode(ORT_INVALID_ARGUMENT),"This binary was not compiled with NGraph support.");
-  #endif
-}
-
-/*
- * Class:     ai_onnxruntime_OrtSession_SessionOptions
  * Method:    addOpenVINO
  * Signature: (JJLjava/lang/String;)V
  */
@@ -410,13 +433,13 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addTen
 /*
  * Class:     ai_onnxruntime_OrtSession_SessionOptions
  * Method:    addNnapi
- * Signature: (JJJ)V
+ * Signature: (JJI)V
  */
 JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addNnapi
-  (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jlong nnapiFlags) {
+  (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jint nnapiFlags) {
     (void)jobj;
   #ifdef USE_NNAPI
-    checkOrtStatus(jniEnv,(const OrtApi*)apiHandle,OrtSessionOptionsAppendExecutionProvider_Nnapi((OrtSessionOptions*) handle, (unsigned long) nnapiFlags));
+    checkOrtStatus(jniEnv,(const OrtApi*)apiHandle,OrtSessionOptionsAppendExecutionProvider_Nnapi((OrtSessionOptions*) handle, (uint32_t) nnapiFlags));
   #else
     (void)apiHandle;(void)handle;(void)nnapiFlags; // Parameters used when NNAPI is defined.
     throwOrtException(jniEnv,convertErrorCode(ORT_INVALID_ARGUMENT),"This binary was not compiled with NNAPI support.");
@@ -488,3 +511,52 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addACL
     throwOrtException(jniEnv,convertErrorCode(ORT_INVALID_ARGUMENT),"This binary was not compiled with ACL support.");
   #endif
 }
+
+/*
+ * Class:     ai_onnxruntime_OrtSession_SessionOptions
+ * Method:    addArmNN
+ * Signature: (JJI)V
+ */
+JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addArmNN
+  (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jint useArena) {
+  (void)jobj;
+  #ifdef USE_ARMNN
+    checkOrtStatus(jniEnv,(const OrtApi*)apiHandle,OrtSessionOptionsAppendExecutionProvider_ArmNN((OrtSessionOptions*) handle,useArena));
+  #else
+    (void)apiHandle;(void)handle;(void)useArena; // Parameters used when ARMNN is defined.
+    throwOrtException(jniEnv,convertErrorCode(ORT_INVALID_ARGUMENT),"This binary was not compiled with ArmNN support.");
+  #endif
+}
+
+/*
+ * Class:     ai_onnxruntime_OrtSession_SessionOptions
+ * Method:    addCoreML
+ * Signature: (JJI)V
+ */
+JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addCoreML
+  (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jint coreMLFlags) {
+    (void)jobj;
+  #ifdef USE_CORE_ML
+    checkOrtStatus(jniEnv,(const OrtApi*)apiHandle,OrtSessionOptionsAppendExecutionProvider_CoreML((OrtSessionOptions*) handle, (uint32_t) coreMLFlags));
+  #else
+    (void)apiHandle;(void)handle;(void)coreMLFlags; // Parameters used when CoreML is defined.
+    throwOrtException(jniEnv,convertErrorCode(ORT_INVALID_ARGUMENT),"This binary was not compiled with CoreML support.");
+  #endif
+}
+
+/*
+ * Class:     ai_onnxruntime_OrtSession_SessionOptions
+ * Method:    addROCM
+ * Signature: (JJI)V
+ */
+JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addROCM
+  (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jint deviceID) {
+    (void)jobj;
+  #ifdef USE_ROCM
+    checkOrtStatus(jniEnv,(const OrtApi*)apiHandle,OrtSessionOptionsAppendExecutionProvider_ROCM((OrtSessionOptions*) handle, deviceID));
+  #else
+    (void)apiHandle;(void)handle;(void)deviceID; // Parameters used when ROCM is defined.
+    throwOrtException(jniEnv,convertErrorCode(ORT_INVALID_ARGUMENT),"This binary was not compiled with ROCM support.");
+  #endif
+}
+

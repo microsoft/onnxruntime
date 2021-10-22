@@ -31,7 +31,7 @@ common::Status IOBinding::BindInput(const std::string& name, const OrtValue& ml_
     }
   };
 
-  if (ml_value.IsTensor()) {
+  if (ml_value.IsTensor() || ml_value.IsSparseTensor()) {
     OrtValue new_mlvalue;
     ORT_RETURN_IF_ERROR(utils::CopyOneInputAcrossDevices(session_state_, name, ml_value, new_mlvalue));
     add_or_replace(rc.first, rc.second, new_mlvalue);
@@ -108,6 +108,8 @@ void IOBinding::ClearOutputs() {
 }
 
 const std::vector<std::string>& IOBinding::GetOutputNames() const { return output_names_; }
+
+const std::vector<OrtValue>& IOBinding::GetOutputs() const { return outputs_; }
 
 std::vector<OrtValue>& IOBinding::GetOutputs() { return outputs_; }
 

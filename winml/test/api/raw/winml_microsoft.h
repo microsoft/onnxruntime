@@ -173,6 +173,10 @@ inline HRESULT GetActivationFactory(
 {
     // Fallback to OS binary if the redistributable is not present!
     auto library = LoadLibraryExW(MachineLearningDll, nullptr, 0);
+    if (library == nullptr)
+    {
+      return HRESULT_FROM_WIN32(GetLastError());
+    }
 
     using DllGetActivationFactory = HRESULT __stdcall(HSTRING, void** factory);
     auto call = reinterpret_cast<DllGetActivationFactory*>(GetProcAddress(library, "DllGetActivationFactory"));
@@ -262,7 +266,12 @@ private:
 
     int32_t Initialize(const char* bytes, size_t size)
     {
-        RoInitialize(RO_INIT_TYPE::RO_INIT_SINGLETHREADED);
+      auto hr = RoInitialize(RO_INIT_TYPE::RO_INIT_SINGLETHREADED);
+      // https://docs.microsoft.com/en-us/windows/win32/api/roapi/nf-roapi-roinitialize#return-value
+      // RPC_E_CHANGED_MODE indicates already initialized as multithreaded
+      if (hr < 0 && hr != RPC_E_CHANGED_MODE) {
+        return static_cast<int32_t>(hr);  
+      }
 
         // Create in memory stream
         Microsoft::WRL::ComPtr<IInspectable> in_memory_random_access_stream_insp;

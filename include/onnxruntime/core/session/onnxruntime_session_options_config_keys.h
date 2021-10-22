@@ -40,3 +40,42 @@ static const char* const kOrtSessionOptionsConfigSaveModelFormat = "session.save
 // Note that an alternative way not using this option at runtime is to train and export a model without denormals
 // and that's recommended because turning this option on may hurt model accuracy.
 static const char* const kOrtSessionOptionsConfigSetDenormalAsZero = "session.set_denormal_as_zero";
+
+// It controls to run quantization model in QDQ (QuantizelinearDeQuantizelinear) format or not.
+// "0": enable. ORT does fusion logic for QDQ format.
+// "1": disable. ORT doesn't do fusion logic for QDQ format.
+// Its default value is "0"
+static const char* const kOrtSessionOptionsDisableQuantQDQ = "session.disable_quant_qdq";
+
+// Enable or disable gelu approximation in graph optimization. "0": disable; "1": enable. The default is "0".
+// GeluApproximation has side effects which may change the inference results. It is disabled by default due to this.
+static const char* const kOrtSessionOptionsEnableGeluApproximation = "optimization.enable_gelu_approximation";
+
+// Enable or disable using device allocator for allocating initialized tensor memory. "1": enable; "0": disable. The default is "0".
+// Using device allocators means the memory allocation is made using malloc/new.
+static const char* const kOrtSessionOptionsUseDeviceAllocatorForInitializers = "session.use_device_allocator_for_initializers";
+
+// Configure whether to allow the inter_op/intra_op threads spinning a number of times before blocking
+// "0": thread will block if found no job to run
+// "1": default, thread will spin a number of times before blocking
+static const char* const kOrtSessionOptionsConfigAllowInterOpSpinning = "session.inter_op.allow_spinning";
+static const char* const kOrtSessionOptionsConfigAllowIntraOpSpinning = "session.intra_op.allow_spinning";
+
+// Key for using model bytes directly for ORT format
+// If a session is created using an input byte array contains the ORT format model data,
+// By default we will copy the model bytes at the time of session creation to ensure the model bytes
+// buffer is valid.
+// Setting this option to "1" will disable copy the model bytes, and use the model bytes directly. The caller
+// has to guarantee that the model bytes are valid until the ORT session using the model bytes is destroyed.
+static const char* const kOrtSessionOptionsConfigUseORTModelBytesDirectly = "session.use_ort_model_bytes_directly";
+
+// NNAPI EP keys begin
+// Note: These options should be specified prior to appending the NNAPI EP to the session options object in order for
+// them to take effect.
+
+// Specifies a list of stop op types. Nodes of a type in the stop op types and nodes downstream from them will not be
+// run by the NNAPI EP.
+// The value should be a ","-delimited list of op types. For example, "Add,Sub".
+// If not specified, the default set of stop ops is used. To specify an empty stop ops types list and disable stop op
+// exclusion, set the value to "".
+static const char* const kOrtSessionOptionsConfigNnapiEpPartitioningStopOps = "ep.nnapi.partitioning_stop_ops";

@@ -4,10 +4,12 @@
 #include "core/graph/model.h"
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/initializer.h"
+#include "test/providers/provider_test_utils.h"
 #include "horizontal_parallel_test_utils.h"
 
 using namespace std;
 using namespace ONNX_NAMESPACE;
+using namespace onnxruntime::test;
 
 namespace onnxruntime {
 namespace horizontal_parallel_test_utils {
@@ -125,9 +127,24 @@ void VerifyOutputs(const Tensor& expected_tensor, const Tensor& actual_tensor, b
                    float atol, float rtol, float threshold) {
   ASSERT_EQ(expected_tensor.Shape(), actual_tensor.Shape());
   auto size = expected_tensor.Shape().Size();
-  const std::vector<float> expected(expected_tensor.template Data<float>(), expected_tensor.template Data<float>() + size);
-  const std::vector<float> actual(actual_tensor.template Data<float>(), actual_tensor.template Data<float>() + size);
-  VerifyOutputs(expected, actual, use_threshold_compare, atol, rtol, threshold);
+  if (expected_tensor.GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+    const std::vector<float> expected(expected_tensor.template Data<float>(), expected_tensor.template Data<float>() + size);
+    const std::vector<float> actual(actual_tensor.template Data<float>(), actual_tensor.template Data<float>() + size);
+    VerifyOutputs(expected, actual, use_threshold_compare, atol, rtol, threshold);
+  }
+#ifdef USE_CUDA
+  else if (expected_tensor.GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
+    auto* expected = expected_tensor.template Data<MLFloat16>();
+    auto* actual = actual_tensor.template Data<MLFloat16>();
+  
+    std::vector<float> f_expected(size);
+    std::vector<float> f_actual(size);
+    ConvertMLFloat16ToFloat(expected, f_expected.data(), static_cast<int>(size));
+    ConvertMLFloat16ToFloat(actual, f_actual.data(), static_cast<int>(size));
+    VerifyOutputs(f_expected, f_actual, use_threshold_compare, math::halfToFloat(math::floatToHalf(atol)),
+                  math::halfToFloat(math::floatToHalf(rtol)), math::halfToFloat(math::floatToHalf(threshold)));
+  }
+#endif
 }
 
 void VerifyOutputs(const std::vector<float>& expected, const std::vector<float>& actual,
@@ -143,7 +160,8 @@ void VerifyOutputs(const std::vector<float>& expected, const std::vector<float>&
     } else {
       double diff = fabs(expected_value - actual_value);
       if (use_threshold_compare) {
-        ASSERT_TRUE(diff <= threshold);
+        ASSERT_TRUE(diff <= threshold) << "value mismatch at index "
+                                       << i << "; diff: " << diff << ", threshold: " << threshold;
       } else {
         ASSERT_TRUE(diff <= (atol + rtol * fabs(expected_value))) << "value mismatch at index "
                                                                   << i << "; expected: " << expected_value << ", actual: " << actual_value;
@@ -166,7 +184,7 @@ Status GetDataAndShapeFromTensorProto(const Graph& graph, const NodeArg* input_a
 
   const ONNX_NAMESPACE::TensorProto* tensor_proto = nullptr;
   graph.GetInitializedTensor(input_arg->Name(), tensor_proto);
-  auto init_const = onnxruntime::make_unique<Initializer>(*tensor_proto, graph.ModelPath());
+  auto init_const = std::make_unique<Initializer>(*tensor_proto, graph.ModelPath());
   const float* data_float = init_const->data<float>();
   data.insert(data.end(), data_float, data_float + element_count);
 

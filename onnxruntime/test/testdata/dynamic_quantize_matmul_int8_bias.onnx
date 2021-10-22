@@ -1,4 +1,4 @@
-:‹
+:Œ
 M
 Aa_quantizeda_scalea_zpDynamicQuantizeLinear"DynamicQuantizeLinear
 I
@@ -29,11 +29,10 @@ mul_bottom"Mul
 
 
 K
-NZ
-b_scale
-
-
-Z
+NZ
+b_scale
+	
+CZ
 bias
 	
 Nb
@@ -41,4 +40,4 @@ mul_bottom"Mul
 
 
 M
-NB
+NB

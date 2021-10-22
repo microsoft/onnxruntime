@@ -24,7 +24,13 @@ class MatMul<float> final : public OpKernel {
     info.GetAttrOrDefault<float>("alpha", &alpha_attr_, 1.0);
   }
 
-  Status PrePack(const Tensor& tensor, int input_idx, bool& is_packed) override;
+  Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
+                 /*out*/ bool& is_packed,
+                 /*out*/ PrePackedWeights* prepacked_weights) override;
+
+  Status UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
+                                   int input_idx,
+                                   /*out*/ bool& used_shared_buffers) override;
 
   Status Compute(OpKernelContext* context) const override;
 
@@ -32,7 +38,7 @@ class MatMul<float> final : public OpKernel {
   TensorShape b_shape_;
   BufferUniquePtr packed_b_;
 
-  // For FusedMatMul and TransposeMatMul contrib ops
+  // For FusedMatMul contrib ops
   float alpha_attr_;
   int64_t trans_a_attr_;
   int64_t trans_b_attr_;

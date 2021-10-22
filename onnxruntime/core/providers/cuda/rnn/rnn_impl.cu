@@ -22,7 +22,8 @@ __global__ void _ReverseBySequenceKernel(const int32_t seq_length,
 }
 
 template <typename T>
-void ReverseBySequence(const int32_t seq_length,
+void ReverseBySequence(cudaStream_t stream,
+                       const int32_t seq_length,
                        const int32_t batch_size,
                        const int32_t input_or_hidden_size,
                        const T* data,
@@ -32,7 +33,7 @@ void ReverseBySequence(const int32_t seq_length,
   int32_t block_size = batch_size * input_or_hidden_size;
   fast_divmod div_batch_block(block_size);
   int blocksPerGrid = (int)(ceil(static_cast<float>(N) / GridDim::maxThreadsPerBlock));
-  _ReverseBySequenceKernel<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+  _ReverseBySequenceKernel<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
       seq_length, block_size, div_batch_block, data, reversed_data, (CUDA_LONG)N);
 }
 
@@ -61,7 +62,8 @@ __global__ void _BidirectionalDataKernel(const int32_t seq_length,
 }
 
 template <typename T>
-void ReorderBidirectionalDataInSequence(const int32_t seq_length,
+void ReorderBidirectionalDataInSequence(cudaStream_t stream,
+                                        const int32_t seq_length,
                                         const int32_t batch_size,
                                         const int32_t hidden_size,
                                         const T* data,
@@ -74,7 +76,7 @@ void ReorderBidirectionalDataInSequence(const int32_t seq_length,
   fast_divmod div_output_block(hidden_size);
   int blocksPerGrid = (int)(ceil(static_cast<float>(N) / GridDim::maxThreadsPerBlock));
 
-  _BidirectionalDataKernel<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+  _BidirectionalDataKernel<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
       seq_length, batch_size, hidden_size, seq_block_size,
       div_seq_block, div_output_block,
       data, reordered_data, (CUDA_LONG)N);
@@ -116,7 +118,8 @@ __global__ void _RnnMaskKernel(const int32_t seq_length,
 }
 
 template <typename T>
-void RnnMaskImpl(const int32_t num_directions,
+void RnnMaskImpl(cudaStream_t stream,
+                 const int32_t num_directions,
                  const int32_t seq_length,
                  const int32_t batch_size,
                  const int32_t hidden_size,
@@ -128,7 +131,7 @@ void RnnMaskImpl(const int32_t num_directions,
   fast_divmod div_dir_block(batch_size * hidden_size);
   fast_divmod div_batch_block(hidden_size);
   int blocksPerGrid = (int)(ceil(static_cast<float>(N) / GridDim::maxThreadsPerBlock));
-  _RnnMaskKernel<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+  _RnnMaskKernel<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
       seq_length, batch_size, hidden_size, sequence_lens, div_seq_block,
       div_dir_block, div_batch_block, y_output_data, y_h_output_data, (CUDA_LONG)N);
 }
@@ -164,19 +167,21 @@ __global__ void _MaskZeroSequences(const int32_t hidden_size,
 }
 
 template <typename T> 
-void MaskZeroSequences(const int32_t hidden_size,
+void MaskZeroSequences(cudaStream_t stream,
+                       const int32_t hidden_size,
                        T* y_output_data,
                        T* y_h_output_data,
                        T* y_c_output_data,
                        const int32_t* zeor_seq_index_cache,
                        const size_t N) {
   int blocksPerGrid = (int)(ceil(static_cast<float>(N) / GridDim::maxThreadsPerBlock));
-  _MaskZeroSequences<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+  _MaskZeroSequences<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
       hidden_size, y_output_data, y_h_output_data, y_c_output_data, zeor_seq_index_cache, (CUDA_LONG)N);
 }
 
 #define SPECIALIZED_RNN_IMPL(T)                                                 \
-  template void RnnMaskImpl<T>(const int32_t num_directions,                    \
+  template void RnnMaskImpl<T>(cudaStream_t stream,                       \
+                               const int32_t num_directions,                    \
                                const int32_t seq_length,                        \
                                const int32_t batch_size,                        \
                                const int32_t hidden_size,                       \
@@ -184,19 +189,22 @@ void MaskZeroSequences(const int32_t hidden_size,
                                T* y_output_data,                                \
                                T* y_h_output_data,                              \
                                const size_t N);                                 \
-  template void ReverseBySequence<T>(const int32_t seq_length,                  \
+  template void ReverseBySequence<T>(cudaStream_t stream,                 \
+                                     const int32_t seq_length,                  \
                                      const int32_t batch_size,                  \
                                      const int32_t hidden_size,                 \
                                      const T* data,                             \
                                      T* reversed_data,                          \
                                      const size_t N);                           \
-  template void ReorderBidirectionalDataInSequence<T>(const int32_t seq_length, \
+  template void ReorderBidirectionalDataInSequence<T>(cudaStream_t stream,\
+                                                      const int32_t seq_length, \
                                                       const int32_t batch_size, \
                                                       const int32_t hidden_size,\
                                                       const T* data,            \
                                                       T* reordered_data,        \
                                                      const size_t N);           \
-template void MaskZeroSequences<T>(const int32_t hidden_size,                   \
+template void MaskZeroSequences<T>(cudaStream_t stream,                   \
+                                   const int32_t hidden_size,                   \
                                    T* y_output_data,                            \
                                    T* y_h_output_data,                          \
                                    T* y_c_output_data,                          \

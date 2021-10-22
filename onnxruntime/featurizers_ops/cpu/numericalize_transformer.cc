@@ -48,9 +48,10 @@ class NumericalizeTransformer final : public OpKernel {
   }
 
   Status Compute(OpKernelContext* ctx) const override {
-    utils::MLTypeCallDispatcher<NumericalizeTransformerImpl, int8_t, uint8_t, int16_t, uint16_t, int32_t, uint32_t,
-        int64_t, uint64_t, float, double, std::string> t_disp(ctx->Input<Tensor>(1)->GetElementType());
-    t_disp.Invoke(ctx);
+    utils::MLTypeCallDispatcher<int8_t, uint8_t, int16_t, uint16_t, int32_t, uint32_t,
+                                int64_t, uint64_t, float, double, std::string>
+        t_disp(ctx->Input<Tensor>(1)->GetElementType());
+    t_disp.Invoke<NumericalizeTransformerImpl>(ctx);
     return Status::OK();
   }
 };

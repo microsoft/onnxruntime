@@ -1,6 +1,5 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-
 #include "test_utils.h"
 #include "core/graph/graph.h"
 
@@ -11,32 +10,6 @@ IExecutionProvider* TestCPUExecutionProvider() {
   static CPUExecutionProvider cpu_provider(info);
   return &cpu_provider;
 }
-
-#ifdef USE_CUDA
-IExecutionProvider* TestCudaExecutionProvider() {
-  static CUDAExecutionProviderInfo info;
-  static CUDAExecutionProvider cuda_provider(info);
-  return &cuda_provider;
-}
-#endif
-
-#ifdef USE_TENSORRT
-#if 0
-IExecutionProvider* TestTensorrtExecutionProvider() {
-  static TensorrtExecutionProviderInfo info;
-  static TensorrtExecutionProvider trt_provider(info);
-  return &trt_provider;
-}
-#endif
-#endif
-
-#ifdef USE_OPENVINO
-IExecutionProvider* TestOpenVINOExecutionProvider() {
-  static OpenVINOExecutionProviderInfo info;
-  static OpenVINOExecutionProvider openvino_provider(info);
-  return &openvino_provider;
-}
-#endif
 
 #ifdef USE_NNAPI
 IExecutionProvider* TestNnapiExecutionProvider() {
@@ -49,6 +22,13 @@ IExecutionProvider* TestNnapiExecutionProvider() {
 IExecutionProvider* TestRknpuExecutionProvider() {
   static RknpuExecutionProvider rknpu_provider;
   return &rknpu_provider;
+}
+#endif
+
+#ifdef USE_COREML
+IExecutionProvider* TestCoreMLExecutionProvider(uint32_t coreml_flags) {
+  static CoreMLExecutionProvider coreml_provider(coreml_flags);
+  return &coreml_provider;
 }
 #endif
 

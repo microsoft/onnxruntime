@@ -7,7 +7,7 @@
 #include <mpi.h>
 
 #include "orttraining/training_ops/communication_common.h"
-#include "orttraining/core/framework/mpi_context.h"
+#include "orttraining/core/framework/communication/mpi/mpi_context.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -51,9 +51,9 @@ ONNX_OPERATOR_KERNEL_EX(
     1,
     kCpuExecutionProvider,
     KernelDefBuilder()
-        .InputMemoryType<OrtMemTypeDefault>(0)  /* CPU variable */
-        .InputMemoryType<OrtMemTypeDefault>(1)  /* CPU variable */
-        .OutputMemoryType<OrtMemTypeDefault>(0) /* CPU variable */
+        .InputMemoryType(OrtMemTypeDefault, 0)  /* CPU variable */
+        .InputMemoryType(OrtMemTypeDefault, 1)  /* CPU variable */
+        .OutputMemoryType(OrtMemTypeDefault, 0) /* CPU variable */
         .TypeConstraint("TBool", DataTypeImpl::GetTensorType<bool>())
         .TypeConstraint("TInt64", DataTypeImpl::GetTensorType<int64_t>())
         .TypeConstraint("V", DataTypeImpl::AllFixedSizeTensorTypes()),
@@ -130,6 +130,7 @@ Status Recv::Compute(OpKernelContext* ctx) const {
         aggregated_tensor_shapes,
         tensor_offsets_in_bytes);
   } else {
+#ifdef USE_MPI
     ReceiveShapeInfo(
         src,
         tag_,
@@ -137,7 +138,9 @@ Status Recv::Compute(OpKernelContext* ctx) const {
         aggregated_aligned_tensor_bytes,
         prefix_tensor_shape_sizes,
         aggregated_tensor_shapes);
-
+#else
+    ORT_THROW("ORT must be built with MPI to send shape info.");
+#endif
     // Create output tensors. Unlike the case where we can infer output shapes before communication,
     // we need to create outputs after receiving shapes.
     size_t begin = 0;

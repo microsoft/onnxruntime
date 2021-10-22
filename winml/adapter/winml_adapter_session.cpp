@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include "pch.h"
+#include "adapter/pch.h"
 
 #include "winml_adapter_c_api.h"
 #include "core/session/ort_apis.h"
@@ -79,7 +79,7 @@ ORT_API_STATUS_IMPL(winmla::CreateSessionWithoutModel, _In_ OrtEnv* env, _In_ co
   // register the providers
   for (auto& provider : provider_list) {
     if (provider) {
-      inference_session->RegisterExecutionProvider(std::move(provider));
+      ORT_API_RETURN_IF_STATUS_NOT_OK(inference_session->RegisterExecutionProvider(std::move(provider)));
     }
   }
 
@@ -195,6 +195,8 @@ ORT_API_STATUS_IMPL(winmla::CreateCustomRegistry, _Out_ IMLOperatorRegistry** re
 #ifdef USE_DML
   auto impl = wil::MakeOrThrow<winmla::AbiCustomRegistryImpl>();
   *registry = impl.Detach();
+#else
+  *registry = nullptr;
 #endif  // USE_DML
   return nullptr;
   API_IMPL_END
@@ -207,21 +209,25 @@ static OrtDevice GetSessionGetInputDevice(_In_ OrtSession* session, _In_ const c
   const onnxruntime::SessionState& session_state = session_protected_load_accessor->GetSessionState();
 
   std::vector<onnxruntime::SessionState::NodeInfo> node_info_vec;
-  session_state.GetInputNodeInfo(input_name, node_info_vec);
+  ORT_THROW_IF_ERROR(session_state.GetInputNodeInfo(input_name, node_info_vec));
   const auto& node_info = node_info_vec.front();  // all consumers of a feed have the same device so first entry is fine
   return *node_info.device;
 }
 
 ORT_API_STATUS_IMPL(winmla::SessionGetInputRequiredDeviceId, _In_ OrtSession* session, _In_ const char* const input_name, _Out_ int16_t* device_id) {
+  API_IMPL_BEGIN
   auto device = GetSessionGetInputDevice(session, input_name);
   *device_id = device.Id();
   return nullptr;
+  API_IMPL_END
 }
 
 ORT_API_STATUS_IMPL(winmla::ValueGetDeviceId, _In_ OrtValue* ort_value, _Out_ int16_t* device_id) {
+  API_IMPL_BEGIN
   auto device = ort_value->Get<onnxruntime::Tensor>().Location().device;
   *device_id = device.Id();
   return nullptr;
+  API_IMPL_END
 }
 
 ORT_API_STATUS_IMPL(winmla::SessionCopyOneInputAcrossDevices, _In_ OrtSession* session, _In_ const char* const input_name,
@@ -249,6 +255,31 @@ ORT_API_STATUS_IMPL(winmla::SessionGetNumberOfIntraOpThreads, _In_ OrtSession* s
   auto inference_session = reinterpret_cast<::onnxruntime::InferenceSession*>(session);
   auto session_options = inference_session->GetSessionOptions();
   *num_threads = session_options.intra_op_param.thread_pool_size;
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(winmla::SessionGetIntraOpThreadSpinning, _In_ OrtSession* session, _Out_ bool* allow_spinning) {
+  API_IMPL_BEGIN
+  auto inference_session = reinterpret_cast<::onnxruntime::InferenceSession*>(session);
+  auto session_options = inference_session->GetSessionOptions();
+  auto iter = session_options.config_options.configurations.find("session.intra_op.allow_spinning");
+  *allow_spinning = iter == session_options.config_options.configurations.cend() || iter->second != "0";
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(winmla::SessionGetNamedDimensionsOverrides, _In_ OrtSession* session, _Out_ winrt::Windows::Foundation::Collections::IMapView<winrt::hstring, uint32_t>& named_dimension_overrides) {
+  API_IMPL_BEGIN
+  auto inference_session = reinterpret_cast<::onnxruntime::InferenceSession*>(session);
+  auto session_options = inference_session->GetSessionOptions();
+  winrt::Windows::Foundation::Collections::IMap<winrt::hstring, uint32_t> override_map = winrt::single_threaded_map<winrt::hstring, uint32_t>();
+  for (auto freeDimOverride : session_options.free_dimension_overrides) {
+    if (freeDimOverride.dim_identifer_type == onnxruntime::FreeDimensionOverrideType::Name) {
+      override_map.Insert(winrt::to_hstring(freeDimOverride.dim_identifier), static_cast<uint32_t>(freeDimOverride.dim_value));
+    }
+  }
+  named_dimension_overrides = override_map.GetView();
   return nullptr;
   API_IMPL_END
 }

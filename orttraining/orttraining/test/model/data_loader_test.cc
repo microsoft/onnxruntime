@@ -25,7 +25,7 @@ Status WriteInputDataFile(
     const std::vector<std::string>& sample_tensor_names,
     const uint32_t tensor_data_value) {
   const uint32_t num_features = static_cast<uint32_t>(sample_tensor_names.size());
-  ORT_RETURN_IF_NOT(num_samples > 0 && num_features > 0);
+  ORT_RETURN_IF_NOT(num_samples > 0 && num_features > 0, "num_samples > 0 && num_features > 0 was false");
 
   // feature tensors have dimension of {1} and data value of tensor_data_value
   std::vector<std::vector<ONNX_NAMESPACE::TensorProto>> samples;

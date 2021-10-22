@@ -43,7 +43,7 @@ function(onnxruntime_protobuf_generate)
     set(PROTOC_DEPS protobuf::protoc)
   endif()
   set(_options APPEND_PATH NO_SRC_INCLUDES)
-  set(_singleargs LANGUAGE OUT_VAR EXPORT_MACRO GEN_SRC_PREFIX)
+  set(_singleargs LANGUAGE OUT_VAR EXPORT_MACRO GEN_SRC_PREFIX GEN_SRC_SUB_DIR)
   if(COMMAND target_sources)
     list(APPEND _singleargs TARGET)
   endif()
@@ -127,13 +127,22 @@ function(onnxruntime_protobuf_generate)
     set(_src_prefix "")
   endif()
 
+  if (onnxruntime_protobuf_generate_GEN_SRC_SUB_DIR)
+    set(_src_sub_dir "${onnxruntime_protobuf_generate_GEN_SRC_SUB_DIR}")
+    if (NOT EXISTS ${_dll_export_decl}${CMAKE_CURRENT_BINARY_DIR}/${_src_sub_dir})
+      file(MAKE_DIRECTORY ${_dll_export_decl}${CMAKE_CURRENT_BINARY_DIR}/${_src_sub_dir})
+    endif()
+  else()
+    set(_src_sub_dir "")
+  endif()
+
   foreach(_proto ${onnxruntime_protobuf_generate_PROTOS})
     get_filename_component(_abs_file ${_proto} ABSOLUTE)
     get_filename_component(_basename ${_proto} NAME_WE)
 
     set(_generated_srcs)
     foreach(_ext ${onnxruntime_protobuf_generate_EXTENSIONS})
-      list(APPEND _generated_srcs "${CMAKE_CURRENT_BINARY_DIR}/${_src_prefix}${_basename}${_ext}")
+      list(APPEND _generated_srcs "${CMAKE_CURRENT_BINARY_DIR}/${_src_sub_dir}${_src_prefix}${_basename}${_ext}")
     endforeach()
     list(APPEND _generated_srcs_all ${_generated_srcs})
 
@@ -141,7 +150,7 @@ function(onnxruntime_protobuf_generate)
       add_custom_command(
         OUTPUT ${_generated_srcs}
         COMMAND  ${PROTOC_EXECUTABLE}
-        ARGS --${onnxruntime_protobuf_generate_LANGUAGE}_out ${_dll_export_decl}${CMAKE_CURRENT_BINARY_DIR} ${_protobuf_include_path} ${_abs_file}
+        ARGS --${onnxruntime_protobuf_generate_LANGUAGE}_out ${_dll_export_decl}${CMAKE_CURRENT_BINARY_DIR}/${_src_sub_dir} ${_protobuf_include_path} ${_abs_file}
         DEPENDS ${_abs_file} ${PROTOC_DEPS}
         COMMENT "Running ${onnxruntime_protobuf_generate_LANGUAGE} protocol buffer (full) compiler on ${_proto}"
         VERBATIM )
@@ -149,7 +158,7 @@ function(onnxruntime_protobuf_generate)
       add_custom_command(
         OUTPUT ${_generated_srcs}
         COMMAND  ${PROTOC_EXECUTABLE}
-        ARGS --${onnxruntime_protobuf_generate_LANGUAGE}_out lite:${_dll_export_decl}${CMAKE_CURRENT_BINARY_DIR} ${_protobuf_include_path} ${_abs_file}
+        ARGS --${onnxruntime_protobuf_generate_LANGUAGE}_out lite:${_dll_export_decl}${CMAKE_CURRENT_BINARY_DIR}/${_src_sub_dir} ${_protobuf_include_path} ${_abs_file}
         DEPENDS ${_abs_file} ${PROTOC_DEPS}
         COMMENT "Running ${onnxruntime_protobuf_generate_LANGUAGE} protocol buffer compiler (lite) on ${_proto}"
         VERBATIM )

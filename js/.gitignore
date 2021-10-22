@@ -1,0 +1,8 @@
+node_modules/
+types/
+
+tsconfig.tsbuildinfo
+
+*.d.ts
+
+*.tgz

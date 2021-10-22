@@ -3,12 +3,12 @@
 
 #include "common.h"
 
-void* g_host{};
+onnxruntime::ProviderHost* g_host{};
 
-void* Provider_GetHost() {
+onnxruntime::ProviderHost* Provider_GetHost() {
   return g_host;
 }
 
-void Provider_SetHost(void* p) {
+void Provider_SetHost(onnxruntime::ProviderHost* p) {
   g_host = p;
 }

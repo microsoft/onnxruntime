@@ -31,10 +31,10 @@ Status GENERIC_OP_IR_CREATOR_CLASS(Clip)::Evaluate(
     min_value = tvm::make_const(tvm::Float(32), std::numeric_limits<float>::lowest());
     max_value = tvm::make_const(tvm::Float(32), std::numeric_limits<float>::max());
     auto num_inputs = inputs.size();
-    if (num_inputs >= 2) {
+    if (num_inputs >= 2 && inputs[1].defined()) {
       min_value = inputs[1]();
     }
-    if (num_inputs == 3) {
+    if (num_inputs == 3 && inputs[2].defined()) {
       max_value = inputs[2]();
     }
   }

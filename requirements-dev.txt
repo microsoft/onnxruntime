@@ -1,5 +1,6 @@
 cerberus
 codecov
+flatbuffers
 jinja2
 numpy
 onnx
@@ -13,3 +14,4 @@ scikit-learn
 scipy
 sympy
 wheel
+setuptools>=41.4.0

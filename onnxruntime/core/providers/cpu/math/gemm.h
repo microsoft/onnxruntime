@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include "gemm_base.h"
+
 #include "core/framework/op_kernel.h"
 #include "core/common/common.h"
 #include "core/util/math.h"
@@ -11,23 +13,20 @@
 namespace onnxruntime {
 
 template <typename T>
-class Gemm : public OpKernel {
+class Gemm : protected GemmBase, public OpKernel {
  public:
-  Gemm(const OpKernelInfo& info) : OpKernel(info) {
-    int64_t temp;
-    ORT_ENFORCE(info.GetAttr<int64_t>("transA", &temp).IsOK());
-    trans_A_ = temp == 0 ? CblasNoTrans : CblasTrans;
-
-    ORT_ENFORCE(info.GetAttr<int64_t>("transB", &temp).IsOK());
-    trans_B_ = temp == 0 ? CblasNoTrans : CblasTrans;
-
-    ORT_ENFORCE(info.GetAttr<float>("alpha", &alpha_).IsOK());
-    ORT_ENFORCE(info.GetAttr<float>("beta", &beta_).IsOK());
+  Gemm(const OpKernelInfo& info) : GemmBase(info), OpKernel(info) {
   }
 
   Status Compute(OpKernelContext* context) const override;
 
-  Status PrePack(const Tensor& tensor, int input_idx, bool& is_packed) override;
+  Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
+                 /*out*/ bool& is_packed,
+                 /*out*/ PrePackedWeights* prepacked_weights) override;
+
+  Status UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
+                                   int input_idx,
+                                   /*out*/ bool& used_shared_buffers) override;
 
   static void ComputeGemm(CBLAS_TRANSPOSE trans_a, CBLAS_TRANSPOSE trans_b,
                           int64_t M, int64_t N, int64_t K,
@@ -37,12 +36,6 @@ class Gemm : public OpKernel {
                           const T* c_data, const TensorShape* c_shape,
                           T* y_data,
                           concurrency::ThreadPool* thread_pool);
-
- private:
-  CBLAS_TRANSPOSE trans_A_;
-  CBLAS_TRANSPOSE trans_B_;
-  float alpha_;
-  float beta_;
 
  protected:
   TensorShape b_shape_;

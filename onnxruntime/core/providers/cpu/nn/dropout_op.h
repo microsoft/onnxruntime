@@ -11,13 +11,13 @@
 
 namespace onnxruntime {
 
-template <typename T1, typename T2, bool trainable_dropout>
+template <typename T1, typename T2>
 class Dropout final: public OpKernel {
  public:
   Dropout(const OpKernelInfo& info) : OpKernel{info} {
     int64_t seed = 0;
     if (info.GetAttr<int64_t>("seed", &seed).IsOK()) {
-      generator_ = onnxruntime::make_unique<RandomGenerator>(seed);
+      generator_ = std::make_unique<RandomGenerator>(seed);
     }
   }
 
@@ -45,8 +45,8 @@ float GetRatioOrDefault(const Tensor* ratio_tensor) {
 }
 }  // namespace
 
-template <typename T1, typename T2, bool trainable_dropout>
-Status Dropout<T1, T2, trainable_dropout>::Compute(OpKernelContext* context) const {
+template <typename T1, typename T2>
+Status Dropout<T1, T2>::Compute(OpKernelContext* context) const {
   const Tensor* X = context->Input<Tensor>(0);
   auto X_span = X->DataAsSpan<T1>();
   const Tensor* ratio = context->Input<Tensor>(1);  // optional
@@ -58,15 +58,14 @@ Status Dropout<T1, T2, trainable_dropout>::Compute(OpKernelContext* context) con
   std::unique_ptr<bool[]> temp_mask_buffer{};  // temporary buffer to use if mask input is not provided
   auto mask_span = [&X_shape, mask, &temp_mask_buffer]() {
     if (mask) return mask->MutableDataAsSpan<bool>();
-    temp_mask_buffer = onnxruntime::make_unique<bool[]>(X_shape.Size());
+    temp_mask_buffer = std::make_unique<bool[]>(X_shape.Size());
     return gsl::make_span(temp_mask_buffer.get(), X_shape.Size());
   }();
 
   ORT_ENFORCE(!mask || mask->Shape() == X_shape, "X and mask should have the same shape");
 
   const Tensor* training_mode = context->Input<Tensor>(2);
-  if ((0 == ratio_value /*Backward compat with TrainableDropout*/) ||
-      !trainable_dropout && (training_mode == nullptr || *(training_mode->Data<bool>()) == false)) {
+  if ((0 == ratio_value) || (training_mode == nullptr || *(training_mode->Data<bool>()) == false)) {
     // drop none
     if (X_span.data() != Y_span.data()) {
       std::copy(X_span.begin(), X_span.end(), Y_span.begin());

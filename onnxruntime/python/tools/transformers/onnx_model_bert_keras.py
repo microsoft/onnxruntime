@@ -11,11 +11,12 @@ import numpy as np
 from collections import deque
 from onnx import ModelProto, TensorProto, numpy_helper
 from onnx_model_bert_tf import BertOnnxModelTF
+
 logger = logging.getLogger(__name__)
 
 
 class BertOnnxModelKeras(BertOnnxModelTF):
-    def __init(self, model, num_heads, hidden_size):
+    def __init__(self, model, num_heads, hidden_size):
         super().__init__(model, num_heads, hidden_size)
 
     def match_mask_path(self, add_or_sub_before_softmax):
@@ -138,8 +139,9 @@ class BertOnnxModelKeras(BertOnnxModelTF):
                 mask_index = self.attention_mask.process_mask(mask_nodes[-1].input[0])
                 logger.debug("Create an Attention node.")
                 attention_node = self.attention_fusion.create_attention_node(mask_index, matmul_q, matmul_k, matmul_v,
-                                                                             add_q, add_k, add_v, parent.output[0],
-                                                                             reshape_qkv.output[0])
+                                                                             add_q, add_k, add_v, self.num_heads,
+                                                                             self.hidden_size, parent.output[0],
+                                                                             reshape_qkv.output[0], None)
                 if attention_node is None:
                     continue
 
@@ -287,7 +289,7 @@ class BertOnnxModelKeras(BertOnnxModelTF):
 
                 mask_input_name = self.attention_mask.get_first_mask()
                 if unsqueeze_node.input[0] != mask_input_name:
-                    print("Cast input {} is not mask input{}".format(unsqueeze_node.input[0], mask_input_name))
+                    print("Cast input {} is not mask input {}".format(unsqueeze_node.input[0], mask_input_name))
                     continue
 
                 unsqueeze_added_1 = onnx.helper.make_node('Unsqueeze',

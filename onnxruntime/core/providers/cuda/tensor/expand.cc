@@ -22,8 +22,7 @@ static void CalcEffectiveDims(vector<int64_t>& x_dims, vector<int64_t>& y_dims) 
     if (xdim == ydim || xdim == 1) {
       x_reverse.push_back(xdim);
       y_reverse.push_back(ydim);
-    }
-    else { // xdim < ydim && xdim > 1, split
+    } else {  // xdim < ydim && xdim > 1, split
       ydim /= xdim;
       x_reverse.push_back(xdim);
       y_reverse.push_back(xdim);
@@ -44,18 +43,15 @@ static void CalcEffectiveDims(vector<int64_t>& x_dims, vector<int64_t>& y_dims) 
       }
       if (x_dims.back() == 1) {
         y_dims.back() *= y_reverse[i];
-      }
-      else {
+      } else {
         x_dims.push_back(1);
         y_dims.push_back(y_reverse[i]);
       }
-    }
-    else { // x_reverse[i] == y_reverse[i]
+    } else {  // x_reverse[i] == y_reverse[i]
       if (x_dims.back() == y_dims.back()) {
         x_dims.back() *= x_reverse[i];
         y_dims.back() *= y_reverse[i];
-      }
-      else {
+      } else {
         x_dims.push_back(x_reverse[i]);
         y_dims.push_back(y_reverse[i]);
       }
@@ -98,6 +94,7 @@ Status Expand::ComputeInternal(OpKernelContext* ctx) const {
   }
 
   return ExpandImpl(
+      Stream(),
       input_data_tensor.DataType()->Size(),
       gsl::narrow_cast<int>(output_shape.Size()),
       gsl::narrow_cast<int>(input_data_tensor.Shape().Size()),
@@ -107,15 +104,14 @@ Status Expand::ComputeInternal(OpKernelContext* ctx) const {
       input_strides);
 }
 
-
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     Expand,
     kOnnxDomain,
     8, 12,
     kCudaExecutionProvider,
-    KernelDefBuilder()
+    (*KernelDefBuilder::Create())
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
-        .InputMemoryType<OrtMemTypeCPUInput>(1),
+        .InputMemoryType(OrtMemTypeCPUInput, 1),
     Expand);
 
 ONNX_OPERATOR_KERNEL_EX(
@@ -123,9 +119,9 @@ ONNX_OPERATOR_KERNEL_EX(
     kOnnxDomain,
     13,
     kCudaExecutionProvider,
-    KernelDefBuilder()
+    (*KernelDefBuilder::Create())
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
-        .InputMemoryType<OrtMemTypeCPUInput>(1),
+        .InputMemoryType(OrtMemTypeCPUInput, 1),
     Expand);
 
 }  // namespace cuda

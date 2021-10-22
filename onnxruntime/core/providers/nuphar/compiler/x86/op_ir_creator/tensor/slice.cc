@@ -40,7 +40,7 @@ Status NUPHAR_TVM_X86_OP_IR_CREATOR_CLASS(Slice)::Evaluate(
     std::vector<int64_t> starts, ends, axes, steps;
     ORT_RETURN_IF_ERROR(info.GetAttrs<int64_t>("starts", starts));
     ORT_RETURN_IF_ERROR(info.GetAttrs<int64_t>("ends", ends));
-    ORT_RETURN_IF_NOT(starts.size() == ends.size());
+    ORT_RETURN_IF_NOT(starts.size() == ends.size(), "starts.size() != ends.size()");
     axes = info.GetAttrsOrDefault<int64_t>("axes");
     slice_params.push_back(starts);
     slice_params.push_back(ends);

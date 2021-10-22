@@ -4,12 +4,14 @@
 #pragma once
 
 #include "gsl/gsl"
+
+#include "core/providers/cuda/cuda_kernel.h"
 #include "core/providers/cuda/cudnn_common.h"
 
 namespace onnxruntime {
 namespace cuda {
 
-template <typename T>
+template <typename T, typename T1, typename T2>
 class BatchNormalizationGrad final : public CudaKernel {
  public:
   BatchNormalizationGrad(const OpKernelInfo& info)

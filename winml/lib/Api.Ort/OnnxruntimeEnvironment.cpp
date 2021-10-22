@@ -1,13 +1,14 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "pch.h"
+#include "lib/Api.Ort/pch.h"
 #include "OnnxruntimeEnvironment.h"
 #include "OnnxruntimeErrors.h"
 #include "core/platform/windows/TraceLoggingConfig.h"
 #include <evntrace.h>
-
 #include <windows.h>
+#include <winrt/Windows.ApplicationModel.h>
+#include <winrt/Windows.ApplicationModel.Core.h>
 
 using namespace _winml;
 
@@ -15,31 +16,30 @@ static bool debug_output_ = false;
 
 EXTERN_C IMAGE_DOS_HEADER __ImageBase;
 
-static bool IsCurrentModuleInSystem32() {
-  std::string current_module_path;
-  current_module_path.reserve(MAX_PATH);
-  auto size_module_path = GetModuleFileNameA((HINSTANCE)&__ImageBase, current_module_path.data(), MAX_PATH);
-  FAIL_FAST_IF(size_module_path == 0);
+static std::wstring CurrentModulePath() {
+  WCHAR path[MAX_PATH];
+  FAIL_FAST_IF(0 == GetModuleFileNameW((HINSTANCE)&__ImageBase, path, _countof(path)));
 
-  std::string system32_path;
-  system32_path.reserve(MAX_PATH);
-  auto size_system32_path = GetSystemDirectoryA(system32_path.data(), MAX_PATH);
-  FAIL_FAST_IF(size_system32_path == 0);
+  WCHAR absolute_path[MAX_PATH];
+  WCHAR* name;
+  FAIL_FAST_IF(0 == GetFullPathNameW(path, _countof(path), absolute_path, &name));
 
-  return _strnicmp(system32_path.c_str(), current_module_path.c_str(), size_system32_path) == 0;
+  auto idx = std::distance(absolute_path, name);
+  auto out_path = std::wstring(absolute_path);
+  out_path.resize(idx);
+
+  return out_path;
 }
 
 static HRESULT GetOnnxruntimeLibrary(HMODULE& module) {
 #if WINAPI_FAMILY == WINAPI_FAMILY_PC_APP
+  // Store + Redist (note that this is never built into the inbox dll)
   auto out_module = LoadPackagedLibrary(L"onnxruntime.dll", 0);
 #else
-  DWORD flags = 0;
-#ifdef BUILD_INBOX
-  flags |= IsCurrentModuleInSystem32() ? LOAD_LIBRARY_SEARCH_SYSTEM32 : 0;
+  auto onnxruntime_dll = CurrentModulePath() + L"\\onnxruntime.dll"; 
+  auto out_module = LoadLibraryExW(onnxruntime_dll.c_str(), nullptr, 0);
 #endif
 
-  auto out_module = LoadLibraryExA("onnxruntime.dll", nullptr, flags);
-#endif
   if (out_module == nullptr) {
     return HRESULT_FROM_WIN32(GetLastError());
   }
@@ -190,6 +190,18 @@ static void __stdcall WinmlOrtProfileEventCallback(const OrtProfilerEventRecord*
   }
 }
 
+static void OnSuspending(winrt::Windows::Foundation::IInspectable const& sender, winrt::Windows::ApplicationModel::SuspendingEventArgs const& args) {
+  telemetry_helper.LogWinMLSuspended();
+}
+
+void OnnxruntimeEnvironment::RegisterSuspendHandler() {
+  try {
+    auto suspend_event_handler = winrt::Windows::Foundation::EventHandler<winrt::Windows::ApplicationModel::SuspendingEventArgs>(&OnSuspending);
+    suspend_token_ = winrt::Windows::ApplicationModel::Core::CoreApplication::Suspending(suspend_event_handler);
+  } catch (...) {
+  }  //Catch in case CoreApplication cannot be found for non-UWP executions
+}
+
 OnnxruntimeEnvironment::OnnxruntimeEnvironment(const OrtApi* ort_api) : ort_env_(nullptr, nullptr) {
   OrtEnv* ort_env = nullptr;
   THROW_IF_NOT_OK_MSG(ort_api->CreateEnv(OrtLoggingLevel::ORT_LOGGING_LEVEL_VERBOSE, "Default", &ort_env),
@@ -204,6 +216,15 @@ OnnxruntimeEnvironment::OnnxruntimeEnvironment(const OrtApi* ort_api) : ort_env_
                       ort_api);
 
   THROW_IF_NOT_OK_MSG(winml_adapter_api->OverrideSchema(), ort_api);
+
+  // Register suspend handler for UWP applications
+  RegisterSuspendHandler();
+}
+
+OnnxruntimeEnvironment::~OnnxruntimeEnvironment() {
+  if (suspend_token_) {
+    winrt::Windows::ApplicationModel::Core::CoreApplication::Suspending(suspend_token_);
+  }
 }
 
 HRESULT OnnxruntimeEnvironment::GetOrtEnvironment(_Out_ OrtEnv** ort_env) {

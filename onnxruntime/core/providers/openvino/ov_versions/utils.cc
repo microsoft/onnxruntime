@@ -1,8 +1,7 @@
-#include "core/framework/compute_capability.h"
-#include "core/framework/tensorprotoutils.h"
-#include "core/graph/graph_viewer.h"
-#include "core/graph/model.h"
-#include "core/graph/graph_utils.h"
+// Copyright(C) 2019 Intel Corporation
+// Licensed under the MIT License
+
+#include "core/providers/shared_library/provider_api.h"
 
 #if defined(_MSC_VER)
 #pragma warning(disable : 4244 4245 5208)
@@ -35,48 +34,50 @@ int GetInputCount(const Node* node, const InitializedTensorSet& initializer_set)
 }
 
 //Ops which are supported only in models(as intermediate nodes) and not in unit tests
-bool IsOpSupportedOnlyInModel(std::string name){
-
+bool IsOpSupportedOnlyInModel(std::string name) {
   std::set<std::string> ops_supported_only_in_model = {
-    "Cast",
-    "Concat",
-    "ConstantOfShape",
-    "Dropout",
-    "EyeLike",
-    "Exp",
-    "Identity",
-    "NonMaxSuppression",
-    "NonZero",
-    "Not",
-    "OneHot",
-    "Pad",
-    "ReduceMin",
-    "Resize",
-    "Shape",
-    "Split",
-    "TopK"
-  };
+      "Cast",
+      "Concat",
+      "ConstantOfShape",
+      "Dropout",
+      "Expand",
+      "EyeLike",
+      "Exp",
+      "GatherND",
+      "Identity",
+      "NonMaxSuppression",
+      "NonZero",
+      "Not",
+      "OneHot",
+      "Pad",
+      "Range",
+      "ReduceMin",
+      "Resize",
+      "Round",
+      "Shape",
+      "Split",
+      "TopK"};
   return ops_supported_only_in_model.find(name) != ops_supported_only_in_model.end();
 }
 
 void AppendClusterToSubGraph(const std::vector<NodeIndex>& nodes,
-                                    const std::vector<std::string>& inputs,
-                                    const std::vector<std::string>& outputs,
-                                    std::vector<std::unique_ptr<ComputeCapability>>& result) {
+                             const std::vector<std::string>& inputs,
+                             const std::vector<std::string>& outputs,
+                             std::vector<std::unique_ptr<ComputeCapability>>& result) {
   static size_t op_counter = 0;
 
-  auto meta_def = onnxruntime::make_unique<IndexedSubGraph::MetaDef>();
-  meta_def->name = "OpenVINO-EP-subgraph_" + std::to_string(++op_counter);
-  meta_def->domain = kNGraphDomain;
-  meta_def->since_version = 1;
-  meta_def->status = ONNX_NAMESPACE::EXPERIMENTAL;
-  meta_def->inputs = inputs;
-  meta_def->outputs = outputs;
+  auto meta_def = IndexedSubGraph_MetaDef::Create();
+  meta_def->name() = "OpenVINO-EP-subgraph_" + std::to_string(++op_counter);
+  meta_def->domain() = kNGraphDomain;
+  meta_def->since_version() = 1;
+  meta_def->status() = ONNX_NAMESPACE::EXPERIMENTAL;
+  meta_def->inputs() = inputs;
+  meta_def->outputs() = outputs;
 
-  std::unique_ptr<IndexedSubGraph> sub_graph = onnxruntime::make_unique<IndexedSubGraph>();
-  sub_graph->nodes = nodes;
+  auto sub_graph = IndexedSubGraph::Create();
+  sub_graph->Nodes() = nodes;
   sub_graph->SetMetaDef(std::move(meta_def));
-  result.push_back(onnxruntime::make_unique<ComputeCapability>(std::move(sub_graph)));
+  result.push_back(ComputeCapability::Create(std::move(sub_graph)));
 }
 
 int GetOnnxOpSet(const GraphViewer& graph_viewer) {
@@ -158,12 +159,12 @@ GetConnectedClusters(const GraphViewer& graph_viewer, const std::vector<std::vec
 }
 
 void GetInputsOutputsOfCluster(const GraphViewer& graph_viewer,
-                                      const std::vector<NodeIndex>& cluster,
-                                      const std::unordered_set<std::string>& ng_required_initializers,
-                                      /*out*/ std::vector<std::string>& cluster_graph_inputs,
-                                      /*out*/ std::vector<std::string>& cluster_inputs,
-                                      /*out*/ std::vector<std::string>& constant_inputs,
-                                      /*out*/ std::vector<std::string>& cluster_outputs) {
+                               const std::vector<NodeIndex>& cluster,
+                               const std::unordered_set<std::string>& ng_required_initializers,
+                               /*out*/ std::vector<std::string>& cluster_graph_inputs,
+                               /*out*/ std::vector<std::string>& cluster_inputs,
+                               /*out*/ std::vector<std::string>& constant_inputs,
+                               /*out*/ std::vector<std::string>& cluster_outputs) {
   std::unordered_set<std::string> input_args;
   std::vector<std::string> ordered_input_args;
   std::unordered_set<std::string> output_args;
@@ -174,13 +175,15 @@ void GetInputsOutputsOfCluster(const GraphViewer& graph_viewer,
     // Collect all inputs and outputs
     node->ForEachDef(
         [&input_args, &ordered_input_args, &output_args](const NodeArg& node_arg, bool is_input) {
-          if (is_input) {
-            if (!input_args.count(node_arg.Name())) {
-              ordered_input_args.push_back(node_arg.Name());
+          if (node_arg.Name() != "") {
+            if (is_input) {
+              if (!input_args.count(node_arg.Name())) {
+                ordered_input_args.push_back(node_arg.Name());
+              }
+              input_args.insert(node_arg.Name());
+            } else {
+              output_args.insert(node_arg.Name());
             }
-            input_args.insert(node_arg.Name());
-          } else {
-            output_args.insert(node_arg.Name());
           }
         },
         true);
@@ -193,7 +196,7 @@ void GetInputsOutputsOfCluster(const GraphViewer& graph_viewer,
         // Node is external to this_cluster. Search through its inputs to find the output that is generated by this_cluster.
         std::set<std::string> ext_node_inputs;
         ext_node->ForEachDef(
-            [&ext_node_inputs](const onnxruntime::NodeArg& arg, bool is_input) {
+            [&ext_node_inputs](const NodeArg& arg, bool is_input) {
               if (is_input) {
                 ext_node_inputs.insert(arg.Name());
               }
@@ -230,7 +233,7 @@ void GetInputsOutputsOfCluster(const GraphViewer& graph_viewer,
       cluster_inputs.push_back(in_arg);
     }
   }
-  for(const auto& input : cluster_inputs){
+  for (const auto& input : cluster_inputs) {
     cluster_graph_inputs.push_back(input);
   }
 
@@ -247,5 +250,5 @@ void GetInputsOutputsOfCluster(const GraphViewer& graph_viewer,
   }
 }
 
-}
-}
+}  // namespace openvino_ep
+}  // namespace onnxruntime

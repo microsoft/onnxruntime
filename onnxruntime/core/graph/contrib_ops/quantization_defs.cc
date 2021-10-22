@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/framework/tensorprotoutils.h"
+#include "core/graph/contrib_ops/quantization_defs.h"
 #include "core/graph/constants.h"
 #include "core/graph/contrib_ops/contrib_defs.h"
 
@@ -28,7 +28,7 @@ using ONNX_NAMESPACE::InferenceContext;
 using ONNX_NAMESPACE::OpSchema;
 using ONNX_NAMESPACE::OPTIONAL_VALUE;
 
-void ValidateTypeAndShapeForScaleAndZP(ONNX_NAMESPACE::InferenceContext& ctx, int index, ::google::protobuf::int32 expectedType, bool isScalar, int expectedTensorSize = 0) {
+void ValidateTypeAndShapeForScaleAndZP(ONNX_NAMESPACE::InferenceContext& ctx, int index, ::google::protobuf::int32 expectedType, bool isScalar, int expectedTensorSize) {
   if (ctx.getNumInputs() > static_cast<size_t>(index)) {
     auto data_type = ctx.getInputType(index);
     if (nullptr == data_type) {
@@ -546,151 +546,6 @@ This helps to improve accuracy as after ReduceMean operation the range of the ou
         }
       });
 
-  const char* QLinearAveragePoolDoc_ver1 = R"DOC(
- QLinearAveragePool consumes an input tensor X and applies average pooling across
- the tensor according to kernel sizes, stride sizes, and pad lengths.
- average pooling consisting of computing the average on all values of a
- subset of the input tensor according to the kernel size and downsampling the
- data into the output tensor Y for further processing. The output spatial shape will be following:
- ```
- output_spatial_shape[i] = floor((input_spatial_shape[i] + pad_shape[i] - kernel_spatial_shape[i]) / strides_spatial_shape[i] + 1)
- ```
- or
- ```
- output_spatial_shape[i] = ceil((input_spatial_shape[i] + pad_shape[i] - kernel_spatial_shape[i]) / strides_spatial_shape[i] + 1)
- ```
- if ceil_mode is enabled
-
- ```
- * pad_shape[i] is sum of pads along axis i
- ```
-
- `auto_pad` is a DEPRECATED attribute. If you are using them currently, the output spatial shape will be following:
- ```
- VALID: output_spatial_shape[i] = ceil((input_spatial_shape[i] - kernel_spatial_shape[i] + 1) / strides_spatial_shape[i])
- SAME_UPPER or SAME_LOWER: output_spatial_shape[i] = ceil(input_spatial_shape[i] / strides_spatial_shape[i])
- ```
- And pad shape will be following if `SAME_UPPER` or `SAME_LOWER`:
- ```
- pad_shape[i] = (output_spatial_shape[i] - 1) * strides_spatial_shape[i] + kernel_spatial_shape[i] - input_spatial_shape[i]
- ```
-
-The output of each pooling window is divided by the number of elements (exclude pad when attribute count_include_pad is zero).
-
-Input and output scales and zero points are used to convert the output to a new quantization range.
-Output = Dequantize(Input) -> AveragePool on fp32 data -> Quantize(output)
-)DOC";
-
-  static const char* contrib_ops_pads_doc =
-      "Padding for the beginning and ending along each spatial axis, it can take any value greater "
-      "than or equal to 0. The value represent the number of pixels added to the beginning "
-      "and end part of the corresponding axis. `pads` format should be as follow "
-      "[x1_begin, x2_begin...x1_end, x2_end,...], where xi_begin the number of pixels "
-      "added at the beginning of axis `i` and xi_end, the number of pixels added at "
-      "the end of axis `i`. This attribute cannot be used simultaneously with "
-      "auto_pad attribute. If not present, the padding defaults to 0 along start and end of each spatial axis.";
-  static const char* contrib_ops_auto_pad_doc =
-      "auto_pad must be either NOTSET, SAME_UPPER, SAME_LOWER or VALID. Where "
-      "default value is NOTSET, which means explicit padding is used. "
-      "SAME_UPPER or SAME_LOWER mean pad the input so that the output spatial size match the input."
-      "In case of odd number add the extra padding at the end for SAME_UPPER and at the "
-      "beginning for SAME_LOWER. VALID mean no padding.";
-
-  ONNX_CONTRIB_OPERATOR_SCHEMA(QLinearAveragePool)
-      .SetDomain(kMSDomain)
-      .SinceVersion(1)
-      .SetDoc(QLinearAveragePoolDoc_ver1)
-      .Attr(
-          "count_include_pad",
-          "Whether include pad pixels when calculating values for the edges. Default is 0, doesn't count include pad.",
-          AttributeProto::INT,
-          static_cast<int64_t>(0))
-      .Attr(
-          "kernel_shape",
-          "The size of the kernel along each axis.",
-          AttributeProto::INTS)
-      .Attr(
-          "strides",
-          "Stride along each spatial axis. If not present, the stride defaults to 1 along each spatial axis.",
-          AttributeProto::INTS,
-          OPTIONAL_VALUE)
-      .Attr(
-          "auto_pad",
-          contrib_ops_auto_pad_doc,
-          AttributeProto::STRING,
-          std::string("NOTSET"))
-      .Attr("pads", contrib_ops_pads_doc, AttributeProto::INTS, OPTIONAL_VALUE)
-      .Attr(
-          "ceil_mode",
-          "Whether to use ceil or floor (default) to compute the output shape.",
-          AttributeProto::INT,
-          static_cast<int64_t>(0))
-      .Input(
-          0,
-          "X",
-          "Input data tensor from the previous operator; "
-          "dimensions for image case are (N x C x H x W), "
-          "where N is the batch size, C is the number of "
-          "channels, and H and W are the height and the "
-          "width of the data. For non image case, the "
-          "dimensions are in the form of "
-          "(N x C x D1 x D2 ... Dn), where N is the batch "
-          "size. Optionally, if dimension denotation is "
-          "in effect, the operation expects the input "
-          "data tensor to arrive with the dimension denotation "
-          "of [DATA_BATCH, DATA_CHANNEL, DATA_FEATURE, DATA_FEATURE ...].",
-          "T")
-      .Input(
-          1,
-          "x_scale",
-          "Input scale. It's a scalar, which means a per-tensor/layer quantization.",
-          "tensor(float)")
-      .Input(
-          2,
-          "x_zero_point",
-          "Input zero point. Default value is 0 if it's not specified. It's a scalar, which means a per-tensor/layer quantization.",
-          "T",
-          OpSchema::Optional)
-      .Input(
-          3,
-          "y_scale",
-          "Output scale. It's a scalar, which means a per-tensor/layer quantization.",
-          "tensor(float)")
-      .Input(
-          4,
-          "y_zero_point",
-          "Output zero point. Default value is 0 if it's not specified. It's a scalar, which means a per-tensor/layer quantization.",
-          "T",
-          OpSchema::Optional)
-      .Output(
-          0,
-          "Y",
-          "Output data tensor from average or max pooling across "
-          "the input tensor. Dimensions will vary based "
-          "on various kernel, stride, and pad sizes. Floor value of "
-          "the dimension is used",
-          "T")
-      .TypeConstraint(
-          "T",
-          {"tensor(uint8)", "tensor(int8)"},
-          "Constrain input and output types to 8 bit tensors.")
-      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
-
-        auto data_type = ctx.getInputType(0);
-        if (nullptr == data_type || data_type->value_case() != ONNX_NAMESPACE::TypeProto::kTensorType) {
-          fail_type_inference("inputs are expected to have tensor type.");
-        }
-
-        // validate scale and zero points
-        ValidateTypeAndShapeForScaleAndZP(ctx, 1, ONNX_NAMESPACE::TensorProto::FLOAT, true);
-        ValidateTypeAndShapeForScaleAndZP(ctx, 2, data_type->tensor_type().elem_type(), true);
-        ValidateTypeAndShapeForScaleAndZP(ctx, 3, ONNX_NAMESPACE::TensorProto::FLOAT, true);
-        ValidateTypeAndShapeForScaleAndZP(ctx, 4, data_type->tensor_type().elem_type(), true);
-
-        ONNX_NAMESPACE::convPoolShapeInference(ctx, false, true, 0, 5);
-      });
-
   const char* QLinearLeakyReluDoc_ver1 = R"DOC(
 QLinearLeakyRelu takes quantized input data (Tensor), an argument alpha, and quantize parameter for output,
 and produces one output data (Tensor<T>) where the function `f(x) = quantize(alpha * dequantize(x)) for dequantize(x) < 0`,
@@ -927,6 +782,210 @@ Wwhere the function `Sigmoid(x) = 1 / (1 + exp(-x))` )DOC";
           {"tensor(uint8)", "tensor(int8)"},
           "Constrain weights types to 8 bit tensors.")
       .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::RNNShapeInference);
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(QLinearConcat)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Attr("axis", "Which axis to concat on", AttributeProto::INT)
+      .SetDoc(
+          "Concatenate a list of tensors into a single tensor."
+          "All input tensors must have the same shape, except "
+          "for the dimension size of the axis to concatenate on.")
+      .Input(0, "Y_scale", "Y's scale.", "TF")
+      .Input(1, "Y_zero_point", "Y's zero point.", "T8")
+      .Input(2, "inputs", "List of tensors/scale/zero_point for concatenation", "TV", OpSchema::Variadic, false)
+      .Output(0, "Y", "Concatenated tensor", "T8")
+      .TypeConstraint(
+          "T8",
+          {"tensor(uint8)", "tensor(int8)"},
+          "Constrain input and output types to 8 bit signed and unsigned tensors.")
+      .TypeConstraint(
+          "TF",
+          {"tensor(float)"},
+          "Constrain scale types to any float tensor type.")
+      .TypeConstraint(
+          "TV",
+          {"tensor(uint8)", "tensor(int8)", "tensor(float)"},
+          "Sequence of (Tensor, Scale, ZeroPoint) tuples. The type is sequence of (T8, TF, T8).")
+      .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+        auto numInputs = ctx.getNumInputs();
+        if (numInputs < 8 || (numInputs - 2) % 3 != 0 ||
+            !hasNInputShapes(ctx, static_cast<int>(numInputs))) {
+          return;
+        }
+        auto rank = ctx.getInputType(2)->tensor_type().shape().dim_size();
+
+        auto axisAttr = ctx.getAttribute("axis");
+        if (!axisAttr) {
+          fail_shape_inference("Required attribute axis is missing");
+        }
+        int axis = static_cast<int>(axisAttr->i());
+        if (rank <= axis || axis < -rank) {
+          fail_shape_inference("axis must be in [-rank, rank)");
+        }
+        if (axis < 0) {
+          axis += rank;
+        }
+
+        bool all_lengths_known = true;
+        int total_length = 0;
+
+        auto* output_shape =
+            ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape();
+
+        for (int64_t i = 0; i < rank; ++i) {
+          output_shape->add_dim();
+        }
+
+        for (size_t i = 2; i < numInputs; i += 3) {
+          const auto& shape = ctx.getInputType(i)->tensor_type().shape();
+          if (shape.dim_size() != rank) {
+            fail_shape_inference("All inputs to Concat must have same rank");
+          }
+          for (int j = 0; j < rank; j++) {
+            if (j == axis) {
+              if (shape.dim(j).has_dim_value()) {
+                total_length += static_cast<int>(shape.dim(j).dim_value());
+              } else {
+                all_lengths_known = false;
+              }
+            } else {
+              auto& output_dim = *output_shape->mutable_dim(j);
+              const auto& input_dim = shape.dim(j);
+              mergeInDimensionInfo(input_dim, output_dim, j);
+            }
+          }
+        }
+
+        if (all_lengths_known) {
+          output_shape->mutable_dim(axis)->set_dim_value(total_length);
+        }
+      });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(QGemm)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc("Quantized Gemm")
+      .Input(0,
+             "A",
+             "Input tensor A. "
+             "The shape of A should be (M, K) if transA is 0, "
+             "or (K, M) if transA is non-zero.",
+             "TA")
+      .Input(1,
+             "a_scale",
+             "Scale of quantized input 'A'. "
+             "It is a scalar,which means a per-tensor quantization.",
+             "T")
+      .Input(2,
+             "a_zero_point",
+             "Zero point tensor for input 'A'. It is a scalar.",
+             "TA")
+      .Input(3,
+             "B",
+             "Input tensor B. "
+             "The shape of B should be (K, N) if transB is 0, "
+             "or (N, K) if transB is non-zero.",
+             "TB")
+      .Input(4,
+             "b_scale",
+             "Scale of quantized input 'B'. It could be a scalar or a 1-D tensor, "
+             "which means a per-tensor or per-column quantization. If it's a 1-D tensor, its number "
+             "of elements should be equal to the number of columns of input 'B'.",
+             "T")
+      .Input(5,
+             "b_zero_point",
+             "Zero point tensor for input 'B'. It's optional and default value is 0.  It could be a scalar or a 1-D tensor, "
+             "which means a per-tensor or per-column quantization. If it's a 1-D tensor, its number "
+             "of elements should be equal to the number of columns of input 'B'.",
+             "TB")
+      .Input(6,
+             "C",
+             "Optional input tensor C. "
+             "If not specified, the computation is done as if C is a scalar 0. "
+             "The shape of C should be unidirectional broadcastable to (M, N). "
+             "Its type is int32_t and must be quantized with zero_point = 0 and "
+             "scale = alpha / beta * a_scale * b_scale.",
+             "TC",
+             OpSchema::Optional)
+      .Input(7,
+             "y_scale",
+             "Scale of output 'Y'. It is a scalar, which means a per-tensor quantization. "
+             "It is optional. The output is full precision(float32) if it is not provided. "
+             "Or the output is quantized.",
+             "T",
+             OpSchema::Optional)
+      .Input(8,
+             "y_zero_point",
+             "Zero point tensor for output 'Y'. It is a scalar, which means a per-tensor quantization. "
+             "It is optional. The output is full precision(float32) if it is not provided. "
+             "Or the output is quantized.",
+             "TYZ",
+             OpSchema::Optional)
+      .Output(0,
+              "Y",
+              "Output tensor of shape (M, N).",
+              "TY")
+      .Attr("transA",
+            "Whether A should be transposed",
+            AttributeProto::INT,
+            static_cast<int64_t>(0))
+      .Attr("transB",
+            "Whether B should be transposed",
+            AttributeProto::INT,
+            static_cast<int64_t>(0))
+      .Attr("alpha",
+            "Scalar multiplier for the product of input tensors A * B.",
+            AttributeProto::FLOAT,
+            1.0f)
+      .TypeConstraint("T",
+                      {"tensor(float)"},
+                      "Constrain scale types to float tensors.")
+      .TypeConstraint("TA",
+                      {"tensor(uint8)", "tensor(int8)"},
+                      "Constrain input A and its zero point types to 8 bit tensors.")
+      .TypeConstraint("TB",
+                      {"tensor(uint8)", "tensor(int8)"},
+                      "Constrain input B and its zero point types to 8 bit tensors.")
+      .TypeConstraint("TC",
+                      {"tensor(int32)"},
+                      "Constrain input C to 32 bit integer tensors.")
+      .TypeConstraint("TYZ",
+                      {"tensor(uint8)", "tensor(int8)"},
+                      "Constrain output zero point types to 8 bit tensors.")
+      .TypeConstraint("TY",
+                      {"tensor(float)", "tensor(uint8)", "tensor(int8)"},
+                      "Constrain output type to float32 or 8 bit tensors.")
+      .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
+        if (ctx.getNumInputs() == 9 && nullptr != ctx.getInputType(8)) {
+          propagateElemTypeFromInputToOutput(ctx, 8, 0);
+        } else {
+          updateOutputElemType(ctx, 0, ONNX_NAMESPACE::TensorProto::FLOAT);
+        }
+
+        if (hasInputShape(ctx, 0) && hasInputShape(ctx, 3)) {
+          auto transAAttr = ctx.getAttribute("transA");
+          bool transA =
+              transAAttr ? static_cast<int>(transAAttr->i()) != 0 : false;
+          auto transBAttr = ctx.getAttribute("transB");
+          bool transB =
+              transBAttr ? static_cast<int>(transBAttr->i()) != 0 : false;
+          auto& first_input_shape = getInputShape(ctx, 0);
+          auto& second_input_shape = getInputShape(ctx, 3);
+          if (first_input_shape.dim_size() != 2) {
+            fail_shape_inference("First input does not have rank 2");
+          }
+          if (second_input_shape.dim_size() != 2) {
+            fail_shape_inference("Second input does not have rank 2");
+          }
+          updateOutputShape(
+              ctx,
+              0,
+              {first_input_shape.dim(transA ? 1 : 0),
+               second_input_shape.dim(transB ? 0 : 1)});
+        }
+      });
 }
 
 }  // namespace contrib

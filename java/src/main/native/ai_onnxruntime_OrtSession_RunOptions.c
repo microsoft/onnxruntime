@@ -43,9 +43,9 @@ JNIEXPORT jint JNICALL Java_ai_onnxruntime_OrtSession_00024RunOptions_getLogLeve
     (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong nativeHandle) {
   (void) jobj; // Required JNI parameters not needed by functions which don't need to access their host object.
   const OrtApi* api = (const OrtApi*) apiHandle;
-  jint logLevel;
+  int logLevel;
   checkOrtStatus(jniEnv,api,api->RunOptionsGetRunLogSeverityLevel((OrtRunOptions*) nativeHandle,&logLevel));
-  return logLevel;
+  return (jint)logLevel;
 }
 
 /*
@@ -69,9 +69,9 @@ JNIEXPORT jint JNICALL Java_ai_onnxruntime_OrtSession_00024RunOptions_getLogVerb
     (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong nativeHandle) {
   (void) jobj; // Required JNI parameters not needed by functions which don't need to access their host object.
   const OrtApi* api = (const OrtApi*) apiHandle;
-  jint logLevel;
+  int logLevel;
   checkOrtStatus(jniEnv,api,api->RunOptionsGetRunLogVerbosityLevel((OrtRunOptions*) nativeHandle,&logLevel));
-  return logLevel;
+  return (jint)logLevel;
 }
 
 /*

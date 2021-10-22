@@ -182,6 +182,47 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr SetGlobalInterOpNumThreads;
         public IntPtr SetGlobalSpinControl;
         public IntPtr AddInitializer;
+        public IntPtr CreateEnvWithCustomLoggerAndGlobalThreadPools;
+        public IntPtr SessionOptionsAppendExecutionProvider_CUDA;
+        public IntPtr SessionOptionsAppendExecutionProvider_ROCM;
+        public IntPtr SessionOptionsAppendExecutionProvider_OpenVINO;
+        public IntPtr SetGlobalDenormalAsZero;
+        public IntPtr CreateArenaCfg;
+        public IntPtr ReleaseArenaCfg;
+        public IntPtr ModelMetadataGetGraphDescription;
+        public IntPtr SessionOptionsAppendExecutionProvider_TensorRT;
+        public IntPtr SetCurrentGpuDeviceId;
+        public IntPtr GetCurrentGpuDeviceId;
+        public IntPtr KernelInfoGetAttributeArray_float;
+        public IntPtr KernelInfoGetAttributeArray_int64;
+        public IntPtr CreateArenaCfgV2;
+        public IntPtr AddRunConfigEntry;
+        public IntPtr CreatePrepackedWeightsContainer;
+        public IntPtr ReleasePrepackedWeightsContainer;
+        public IntPtr CreateSessionWithPrepackedWeightsContainer;
+        public IntPtr CreateSessionFromArrayWithPrepackedWeightsContainer;
+        public IntPtr SessionOptionsAppendExecutionProvider_TensorRT_V2;
+        public IntPtr CreateTensorRTProviderOptions;
+        public IntPtr UpdateTensorRTProviderOptions;
+        public IntPtr GetTensorRTProviderOptionsAsString;
+        public IntPtr ReleaseTensorRTProviderOptions;
+        public IntPtr EnableOrtCustomOps;
+        public IntPtr RegisterAllocator;
+        public IntPtr UnregisterAllocator;
+        public IntPtr IsSparseTensor;
+        public IntPtr CreateSparseTensorAsOrtValue;
+        public IntPtr FillSparseTensorCoo;
+        public IntPtr FillSparseTensorCsr;
+        public IntPtr FillSparseTensorBlockSparse;
+        public IntPtr CreateSparseTensorWithValuesAsOrtValue;
+        public IntPtr UseCooIndices;
+        public IntPtr UseCsrIndices;
+        public IntPtr UseBlockSparseIndices;
+        public IntPtr GetSparseTensorFormat;
+        public IntPtr GetSparseTensorValuesTypeAndShape;
+        public IntPtr GetSparseTensorValues;
+        public IntPtr GetSparseTensorIndicesTypeShape;
+        public IntPtr GetSparseTensorIndices;
     }
 
     internal static class NativeMethods
@@ -210,7 +251,11 @@ namespace Microsoft.ML.OnnxRuntime
             OrtReleaseStatus = (DOrtReleaseStatus)Marshal.GetDelegateForFunctionPointer(api_.ReleaseStatus, typeof(DOrtReleaseStatus));
 
             OrtCreateSession = (DOrtCreateSession)Marshal.GetDelegateForFunctionPointer(api_.CreateSession, typeof(DOrtCreateSession));
+            OrtCreateSessionWithPrepackedWeightsContainer =
+                (DOrtCreateSessionWithPrepackedWeightsContainer)Marshal.GetDelegateForFunctionPointer(api_.CreateSessionWithPrepackedWeightsContainer, typeof(DOrtCreateSessionWithPrepackedWeightsContainer));
             OrtCreateSessionFromArray = (DOrtCreateSessionFromArray)Marshal.GetDelegateForFunctionPointer(api_.CreateSessionFromArray, typeof(DOrtCreateSessionFromArray));
+            OrtCreateSessionFromArrayWithPrepackedWeightsContainer =
+                (DOrtCreateSessionFromArrayWithPrepackedWeightsContainer)Marshal.GetDelegateForFunctionPointer(api_.CreateSessionFromArrayWithPrepackedWeightsContainer, typeof(DOrtCreateSessionFromArrayWithPrepackedWeightsContainer));
             OrtRun = (DOrtRun)Marshal.GetDelegateForFunctionPointer(api_.Run, typeof(DOrtRun));
             OrtRunWithBinding = (DOrtRunWithBinding)Marshal.GetDelegateForFunctionPointer(api_.RunWithBinding, typeof(DOrtRunWithBinding));
             OrtSessionGetInputCount = (DOrtSessionGetInputCount)Marshal.GetDelegateForFunctionPointer(api_.SessionGetInputCount, typeof(DOrtSessionGetInputCount));
@@ -248,6 +293,8 @@ namespace Microsoft.ML.OnnxRuntime
             OrtRegisterCustomOpsLibrary = (DOrtRegisterCustomOpsLibrary)Marshal.GetDelegateForFunctionPointer(api_.RegisterCustomOpsLibrary, typeof(DOrtRegisterCustomOpsLibrary));
             OrtAddSessionConfigEntry = (DOrtAddSessionConfigEntry)Marshal.GetDelegateForFunctionPointer(api_.AddSessionConfigEntry, typeof(DOrtAddSessionConfigEntry));
             OrtAddInitializer = (DOrtAddInitializer)Marshal.GetDelegateForFunctionPointer(api_.AddInitializer, typeof(DOrtAddInitializer));
+            SessionOptionsAppendExecutionProvider_TensorRT = (DSessionOptionsAppendExecutionProvider_TensorRT)Marshal.GetDelegateForFunctionPointer(
+                                                             api_.SessionOptionsAppendExecutionProvider_TensorRT, typeof(DSessionOptionsAppendExecutionProvider_TensorRT));
 
             OrtCreateRunOptions = (DOrtCreateRunOptions)Marshal.GetDelegateForFunctionPointer(api_.CreateRunOptions, typeof(DOrtCreateRunOptions));
             OrtReleaseRunOptions = (DOrtReleaseRunOptions)Marshal.GetDelegateForFunctionPointer(api_.ReleaseRunOptions, typeof(DOrtReleaseRunOptions));
@@ -260,6 +307,9 @@ namespace Microsoft.ML.OnnxRuntime
             OrtRunOptionsSetTerminate = (DOrtRunOptionsSetTerminate)Marshal.GetDelegateForFunctionPointer(api_.RunOptionsSetTerminate, typeof(DOrtRunOptionsSetTerminate));
             OrtRunOptionsUnsetTerminate = (DOrtRunOptionsUnsetTerminate)Marshal.GetDelegateForFunctionPointer(api_.RunOptionsUnsetTerminate, typeof(DOrtRunOptionsUnsetTerminate));
 
+            OrtCreateArenaCfg = (DOrtCreateArenaCfg)Marshal.GetDelegateForFunctionPointer(api_.CreateArenaCfg, typeof(DOrtCreateArenaCfg));
+            OrtReleaseArenaCfg = (DOrtReleaseArenaCfg)Marshal.GetDelegateForFunctionPointer(api_.ReleaseArenaCfg, typeof(DOrtReleaseArenaCfg));
+            OrtReleaseAllocator = (DOrtReleaseAllocator)Marshal.GetDelegateForFunctionPointer(api_.ReleaseAllocator, typeof(DOrtReleaseAllocator));
             OrtCreateMemoryInfo = (DOrtCreateMemoryInfo)Marshal.GetDelegateForFunctionPointer(api_.CreateMemoryInfo, typeof(DOrtCreateMemoryInfo));
             OrtCreateCpuMemoryInfo = (DOrtCreateCpuMemoryInfo)Marshal.GetDelegateForFunctionPointer(api_.CreateCpuMemoryInfo, typeof(DOrtCreateCpuMemoryInfo));
             OrtReleaseMemoryInfo = (DOrtReleaseMemoryInfo)Marshal.GetDelegateForFunctionPointer(api_.ReleaseMemoryInfo, typeof(DOrtReleaseMemoryInfo));
@@ -311,12 +361,12 @@ namespace Microsoft.ML.OnnxRuntime
             OrtGetTensorShapeElementCount = (DOrtGetTensorShapeElementCount)Marshal.GetDelegateForFunctionPointer(api_.GetTensorShapeElementCount, typeof(DOrtGetTensorShapeElementCount));
             OrtReleaseValue = (DOrtReleaseValue)Marshal.GetDelegateForFunctionPointer(api_.ReleaseValue, typeof(DOrtReleaseValue));
 
-
             OrtSessionGetModelMetadata = (DOrtSessionGetModelMetadata)Marshal.GetDelegateForFunctionPointer(api_.SessionGetModelMetadata, typeof(DOrtSessionGetModelMetadata));
             OrtModelMetadataGetProducerName = (DOrtModelMetadataGetProducerName)Marshal.GetDelegateForFunctionPointer(api_.ModelMetadataGetProducerName, typeof(DOrtModelMetadataGetProducerName));
             OrtModelMetadataGetGraphName = (DOrtModelMetadataGetGraphName)Marshal.GetDelegateForFunctionPointer(api_.ModelMetadataGetGraphName, typeof(DOrtModelMetadataGetGraphName));
             OrtModelMetadataGetDomain = (DOrtModelMetadataGetDomain)Marshal.GetDelegateForFunctionPointer(api_.ModelMetadataGetDomain, typeof(DOrtModelMetadataGetDomain));
             OrtModelMetadataGetDescription = (DOrtModelMetadataGetDescription)Marshal.GetDelegateForFunctionPointer(api_.ModelMetadataGetDescription, typeof(DOrtModelMetadataGetDescription));
+            OrtModelMetadataGetGraphDescription = (DOrtModelMetadataGetGraphDescription)Marshal.GetDelegateForFunctionPointer(api_.ModelMetadataGetGraphDescription, typeof(DOrtModelMetadataGetGraphDescription));
             OrtModelMetadataGetVersion = (DOrtModelMetadataGetVersion)Marshal.GetDelegateForFunctionPointer(api_.ModelMetadataGetVersion, typeof(DOrtModelMetadataGetVersion));
             OrtModelMetadataGetCustomMetadataMapKeys = (DOrtModelMetadataGetCustomMetadataMapKeys)Marshal.GetDelegateForFunctionPointer(api_.ModelMetadataGetCustomMetadataMapKeys, typeof(DOrtModelMetadataGetCustomMetadataMapKeys));
             OrtModelMetadataLookupCustomMetadataMap = (DOrtModelMetadataLookupCustomMetadataMap)Marshal.GetDelegateForFunctionPointer(api_.ModelMetadataLookupCustomMetadataMap, typeof(DOrtModelMetadataLookupCustomMetadataMap));
@@ -324,6 +374,16 @@ namespace Microsoft.ML.OnnxRuntime
 
             OrtGetAvailableProviders = (DOrtGetAvailableProviders)Marshal.GetDelegateForFunctionPointer(api_.GetAvailableProviders, typeof(DOrtGetAvailableProviders));
             OrtReleaseAvailableProviders = (DOrtReleaseAvailableProviders)Marshal.GetDelegateForFunctionPointer(api_.ReleaseAvailableProviders, typeof(DOrtReleaseAvailableProviders));
+
+            OrtCreatePrepackedWeightsContainer = (DOrtCreatePrepackedWeightsContainer)Marshal.GetDelegateForFunctionPointer(api_.CreatePrepackedWeightsContainer, typeof(DOrtCreatePrepackedWeightsContainer));
+            OrtReleasePrepackedWeightsContainer = (DOrtReleasePrepackedWeightsContainer)Marshal.GetDelegateForFunctionPointer(api_.ReleasePrepackedWeightsContainer, typeof(DOrtReleasePrepackedWeightsContainer));
+
+            SessionOptionsAppendExecutionProvider_TensorRT_V2 = (DSessionOptionsAppendExecutionProvider_TensorRT_V2)Marshal.GetDelegateForFunctionPointer(
+                                                             api_.SessionOptionsAppendExecutionProvider_TensorRT_V2, typeof(DSessionOptionsAppendExecutionProvider_TensorRT_V2));
+            OrtCreateTensorRTProviderOptions = (DOrtCreateTensorRTProviderOptions)Marshal.GetDelegateForFunctionPointer(api_.CreateTensorRTProviderOptions, typeof(DOrtCreateTensorRTProviderOptions));
+            OrtUpdateTensorRTProviderOptions = (DOrtUpdateTensorRTProviderOptions)Marshal.GetDelegateForFunctionPointer(api_.UpdateTensorRTProviderOptions, typeof(DOrtUpdateTensorRTProviderOptions));
+            OrtGetTensorRTProviderOptionsAsString = (DOrtGetTensorRTProviderOptionsAsString)Marshal.GetDelegateForFunctionPointer(api_.GetTensorRTProviderOptionsAsString, typeof(DOrtGetTensorRTProviderOptionsAsString));
+            OrtReleaseTensorRTProviderOptions = (DOrtReleaseTensorRTProviderOptions)Marshal.GetDelegateForFunctionPointer(api_.ReleaseTensorRTProviderOptions, typeof(DOrtReleaseTensorRTProviderOptions));
         }
 
         [DllImport(nativeLib, CharSet = charSet)]
@@ -346,6 +406,50 @@ namespace Microsoft.ML.OnnxRuntime
 
         #endregion Runtime/Environment API
 
+        #region Provider Options API
+
+        /// <summary>
+        /// Creates native OrtTensorRTProviderOptions instance
+        /// </summary>
+        /// <param name="trtProviderOptionsInstance">(output) native instance of OrtTensorRTProviderOptions</param>
+        public delegate IntPtr /* OrtStatus* */DOrtCreateTensorRTProviderOptions(
+            out IntPtr /*(OrtTensorRTProviderOptions**)*/ trtProviderOptionsInstance);
+        public static DOrtCreateTensorRTProviderOptions OrtCreateTensorRTProviderOptions;
+
+        /// <summary>
+        /// Updates native OrtTensorRTProviderOptions instance using given key/value pairs
+        /// </summary>
+        /// <param name="trtProviderOptionsInstance">native instance of OrtTensorRTProviderOptions</param>
+        /// <param name="providerOptionsKeys">configuration keys of OrtTensorRTProviderOptions</param>
+        /// <param name="providerOptionsValues">configuration values of OrtTensorRTProviderOptions</param>
+        /// <param name="numKeys">number of configuration keys</param>
+        public delegate IntPtr /* OrtStatus* */DOrtUpdateTensorRTProviderOptions(
+            IntPtr /*(OrtTensorRTProviderOptions*)*/ trtProviderOptionsInstance,
+            IntPtr[] /*(const char* const *)*/ providerOptionsKeys,
+            IntPtr[] /*(const char* const *)*/ providerOptionsValues,
+            UIntPtr /*(size_t)*/ numKeys);
+        public static DOrtUpdateTensorRTProviderOptions OrtUpdateTensorRTProviderOptions;
+
+        /// <summary>
+        /// Get native OrtTensorRTProviderOptionsV2 in serialized string
+        /// </summary>
+        /// <param name="allocator">instance of OrtAllocator</param>
+        /// <param name="ptr">is a UTF-8 null terminated string allocated using 'allocator'</param>
+        public delegate IntPtr /* OrtStatus* */DOrtGetTensorRTProviderOptionsAsString(
+            IntPtr /*(OrtTensorRTProviderOptionsV2**)*/ trtProviderOptionsInstance,
+            IntPtr /*(OrtAllocator*)*/ allocator,
+            out IntPtr /*(char**)*/ptr);
+        public static DOrtGetTensorRTProviderOptionsAsString OrtGetTensorRTProviderOptionsAsString;
+
+        /// <summary>
+        /// Releases native OrtTensorRTProviderOptions instance
+        /// </summary>
+        /// <param name="trtProviderOptionsInstance">native instance of OrtTensorRTProviderOptions to be released</param>
+        public delegate void DOrtReleaseTensorRTProviderOptions(IntPtr /*(OrtTensorRTProviderOptions*)*/ trtProviderOptionsInstance);
+        public static DOrtReleaseTensorRTProviderOptions OrtReleaseTensorRTProviderOptions;
+
+        #endregion
+
         #region Status API
         public delegate ErrorCode DOrtGetErrorCode(IntPtr /*(OrtStatus*)*/status);
         public static DOrtGetErrorCode OrtGetErrorCode;
@@ -366,17 +470,51 @@ namespace Microsoft.ML.OnnxRuntime
                                                 IntPtr /* (OrtEnv*) */ environment,
                                                 //[MarshalAs(UnmanagedType.LPStr)]string modelPath
                                                 byte[] modelPath,
-                                                IntPtr /* (OrtSessionOptions*) */sessopnOptions,
+                                                IntPtr /* (OrtSessionOptions*) */sessionOptions,
                                                 out IntPtr /**/ session);
         public static DOrtCreateSession OrtCreateSession;
+
+        /// <summary>
+        /// Creates an instance of OrtSession with provided parameters
+        /// </summary>
+        /// <param name="environment">Native OrtEnv instance</param>
+        /// <param name="modelPath">UTF-8 bytes corresponding to model string path</param>
+        /// <param name="sessionOptions">Native SessionOptions instance</param>         
+        /// <param name="prepackedWeightsContainer">Native OrtPrepackedWeightsContainer instance</param>
+        /// <param name="session">(Output) Created native OrtSession instance</param>
+        public delegate IntPtr /* OrtStatus* */DOrtCreateSessionWithPrepackedWeightsContainer(
+                                        IntPtr /* (OrtEnv*) */ environment,
+                                        byte[] modelPath,
+                                        IntPtr /* (OrtSessionOptions*) */sessionOptions,
+                                        IntPtr /* (OrtPrepackedWeightsContainer*) */prepackedWeightsContainer,
+                                        out IntPtr /* (OrtSession**) */ session);
+        public static DOrtCreateSessionWithPrepackedWeightsContainer OrtCreateSessionWithPrepackedWeightsContainer;
 
         public delegate IntPtr /* OrtStatus* */DOrtCreateSessionFromArray(
                                                 IntPtr /* (OrtEnv*) */ environment,
                                                 byte[] modelData,
                                                 UIntPtr modelSize,
-                                                IntPtr /* (OrtSessionOptions*) */sessionOptions,
+                                                IntPtr /* (OrtSessionOptions*) */ sessionOptions,
                                                 out IntPtr /**/ session);
         public static DOrtCreateSessionFromArray OrtCreateSessionFromArray;
+
+        /// <summary>
+        /// Creates an instance of OrtSession with provided parameters
+        /// </summary>
+        /// <param name="environment">Native OrtEnv instance</param>
+        /// <param name="modelData">Byte array correspoonding to the model</param>
+        /// <param name="modelSize">Size of the model in bytes</param>
+        /// <param name="sessionOptions">Native SessionOptions instance</param>         
+        /// <param name="prepackedWeightsContainer">Native OrtPrepackedWeightsContainer instance</param>
+        /// <param name="session">(Output) Created native OrtSession instance</param>
+        public delegate IntPtr /* OrtStatus* */DOrtCreateSessionFromArrayWithPrepackedWeightsContainer(
+                                        IntPtr /* (OrtEnv*) */ environment,
+                                        byte[] /* (void*) */ modelData,
+                                        UIntPtr /* (size_t) */ modelSize,
+                                        IntPtr /* (OrtSessionOptions*) */ sessionOptions,
+                                        IntPtr /* (OrtPrepackedWeightsContainer*) */prepackedWeightsContainer,
+                                        out IntPtr /* (OrtSession**) */ session);
+        public static DOrtCreateSessionFromArrayWithPrepackedWeightsContainer OrtCreateSessionFromArrayWithPrepackedWeightsContainer;
 
         public delegate IntPtr /*(ONNStatus*)*/ DOrtRun(
                                                 IntPtr /*(OrtSession*)*/ session,
@@ -507,7 +645,7 @@ namespace Microsoft.ML.OnnxRuntime
         public delegate IntPtr /*(OrtStatus*)*/ DOrtDisableCpuMemArena(IntPtr /* OrtSessionOptions* */ options);
         public static DOrtDisableCpuMemArena OrtDisableCpuMemArena;
 
-        public delegate IntPtr /*(OrtStatus*)*/ DOrtSetSessionLogId(IntPtr /* OrtSessionOptions* */ options, string logId);
+        public delegate IntPtr /*(OrtStatus*)*/ DOrtSetSessionLogId(IntPtr /* OrtSessionOptions* */ options, IntPtr /* const char* */logId);
         public static DOrtSetSessionLogId OrtSetSessionLogId;
 
         public delegate IntPtr /*(OrtStatus*)*/ DOrtSetSessionLogVerbosityLevel(IntPtr /* OrtSessionOptions* */ options, int sessionLogVerbosityLevel);
@@ -531,8 +669,8 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="options">Native SessionOptions instance</param>
         /// <param name="configKey">Config key</param>
         /// <param name="configValue">Config value</param>
-        public delegate IntPtr /*(OrtStatus*)*/ DOrtAddSessionConfigEntry(IntPtr /* OrtSessionOptions* */ options, 
-                                                                          IntPtr /* const char* */configKey, 
+        public delegate IntPtr /*(OrtStatus*)*/ DOrtAddSessionConfigEntry(IntPtr /* OrtSessionOptions* */ options,
+                                                                          IntPtr /* const char* */configKey,
                                                                           IntPtr /* const char* */ configValue);
         public static DOrtAddSessionConfigEntry OrtAddSessionConfigEntry;
 
@@ -551,14 +689,14 @@ namespace Microsoft.ML.OnnxRuntime
         public static extern IntPtr /*(OrtStatus*)*/ OrtSessionOptionsAppendExecutionProvider_CUDA(IntPtr /*(OrtSessionOptions*) */ options, int device_id);
 
         [DllImport(nativeLib, CharSet = charSet)]
+        public static extern IntPtr /*(OrtStatus*)*/ OrtSessionOptionsAppendExecutionProvider_ROCM(IntPtr /*(OrtSessionOptions*) */ options, int device_id);
+
+        [DllImport(nativeLib, CharSet = charSet)]
         public static extern IntPtr /*(OrtStatus*)*/ OrtSessionOptionsAppendExecutionProvider_DML(IntPtr /*(OrtSessionOptions*) */ options, int device_id);
 
         [DllImport(nativeLib, CharSet = charSet)]
-        public static extern IntPtr /*(OrtStatus*)*/ OrtSessionOptionsAppendExecutionProvider_NGraph(IntPtr /*(OrtSessionOptions*) */ options, string /*(const char*)*/ ng_backend_type);
-
-        [DllImport(nativeLib, CharSet = charSet)]
         public static extern IntPtr /*(OrtStatus*)*/ OrtSessionOptionsAppendExecutionProvider_OpenVINO(
-                                                    IntPtr /*(OrtSessionOptions*)*/ options, string /*(const char*)*/ device_id);
+            IntPtr /*(OrtSessionOptions*)*/ options, IntPtr /*(const char*)*/ device_id);
 
         [DllImport(nativeLib, CharSet = charSet)]
         public static extern IntPtr /*(OrtStatus*)*/ OrtSessionOptionsAppendExecutionProvider_Tensorrt(IntPtr /*(OrtSessionOptions*)*/ options, int device_id);
@@ -567,13 +705,35 @@ namespace Microsoft.ML.OnnxRuntime
         public static extern IntPtr /*(OrtStatus*)*/ OrtSessionOptionsAppendExecutionProvider_MIGraphX(IntPtr /*(OrtSessionOptions*)*/ options, int device_id);
 
         [DllImport(nativeLib, CharSet = charSet)]
-        public static extern IntPtr /*(OrtStatus*)*/ OrtSessionOptionsAppendExecutionProvider_Nnapi(IntPtr /*(OrtSessionOptions*)*/ options, ulong nnapi_flags);
+        public static extern IntPtr /*(OrtStatus*)*/ OrtSessionOptionsAppendExecutionProvider_Nnapi(IntPtr /*(OrtSessionOptions*)*/ options, uint nnapi_flags);
 
         [DllImport(nativeLib, CharSet = charSet)]
-        public static extern IntPtr /*(OrtStatus*)*/ OrtSessionOptionsAppendExecutionProvider_Nuphar(IntPtr /*(OrtSessionOptions*) */ options, int allow_unaligned_buffers, string settings);
+        public static extern IntPtr /*(OrtStatus*)*/ OrtSessionOptionsAppendExecutionProvider_Nuphar(IntPtr /*(OrtSessionOptions*) */ options,
+                                                                                                     int allow_unaligned_buffers,
+                                                                                                     IntPtr /*(char char*)*/ settings);
 
         //[DllImport(nativeLib, CharSet = charSet)]
         //public static extern void OrtAddCustomOp(IntPtr /*(OrtSessionOptions*)*/ options, string custom_op_path);
+        //
+        /// <summary>
+        /// Append a TensorRT EP instance (configured based on given provider options) to the native OrtSessionOptions instance
+        /// </summary>
+        /// <param name="options">Native OrtSessionOptions instance</param>
+        /// <param name="trtProviderOptions">Native OrtTensorRTProviderOptions instance</param>
+        public delegate IntPtr /*(OrtStatus*)*/DSessionOptionsAppendExecutionProvider_TensorRT(
+                                               IntPtr /*(OrtSessionOptions*)*/ options,
+                                               IntPtr /*(const OrtTensorRTProviderOptions*)*/ trtProviderOptions);
+        public static DSessionOptionsAppendExecutionProvider_TensorRT SessionOptionsAppendExecutionProvider_TensorRT;
+
+        /// <summary>
+        /// Append a TensorRT EP instance (configured based on given provider options) to the native OrtSessionOptions instance
+        /// </summary>
+        /// <param name="options">Native OrtSessionOptions instance</param>
+        /// <param name="trtProviderOptions">Native OrtTensorRTProviderOptionsV2 instance</param>
+        public delegate IntPtr /*(OrtStatus*)*/DSessionOptionsAppendExecutionProvider_TensorRT_V2(
+                                               IntPtr /*(OrtSessionOptions*)*/ options,
+                                               IntPtr /*(const OrtTensorRTProviderOptionsV2*)*/ trtProviderOptions);
+        public static DSessionOptionsAppendExecutionProvider_TensorRT_V2 SessionOptionsAppendExecutionProvider_TensorRT_V2;
 
         /// <summary>
         /// Free Dimension override (by denotation)
@@ -581,8 +741,8 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="options">Native SessionOptions instance</param>
         /// <param name="dimDenotation">Dimension denotation</param>
         /// <param name="dimValue">Dimension value</param>
-        public delegate IntPtr /*(OrtStatus*)*/DOrtAddFreeDimensionOverride(IntPtr /*(OrtSessionOptions*)*/ options, 
-                                                                            IntPtr /*(const char*)*/ dimDenotation, 
+        public delegate IntPtr /*(OrtStatus*)*/DOrtAddFreeDimensionOverride(IntPtr /*(OrtSessionOptions*)*/ options,
+                                                                            IntPtr /*(const char*)*/ dimDenotation,
                                                                             long dimValue);
         public static DOrtAddFreeDimensionOverride OrtAddFreeDimensionOverride;
 
@@ -592,8 +752,8 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="options">Native SessionOptions instance</param>
         /// <param name="dimName">Dimension name</param>
         /// <param name="dimValue">Dimension value</param>
-        public delegate IntPtr /*(OrtStatus*)*/DOrtAddFreeDimensionOverrideByName(IntPtr /*(OrtSessionOptions*)*/ options, 
-                                                                                  IntPtr /*(const char*)*/ dimName, 
+        public delegate IntPtr /*(OrtStatus*)*/DOrtAddFreeDimensionOverrideByName(IntPtr /*(OrtSessionOptions*)*/ options,
+                                                                                  IntPtr /*(const char*)*/ dimName,
                                                                                   long dimValue);
         public static DOrtAddFreeDimensionOverrideByName OrtAddFreeDimensionOverrideByName;
 
@@ -604,8 +764,8 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="options">Native SessionOptions instance</param>
         /// <param name="libraryPath">Library path</param>
         /// <param name="libraryHandle">(out) Native library handle</param>
-        public delegate IntPtr /*(OrtStatus*)*/DOrtRegisterCustomOpsLibrary(IntPtr /*(OrtSessionOptions*) */ options, 
-                                                                            IntPtr /*(const char*)*/ libraryPath, 
+        public delegate IntPtr /*(OrtStatus*)*/DOrtRegisterCustomOpsLibrary(IntPtr /*(OrtSessionOptions*) */ options,
+                                                                            IntPtr /*(const char*)*/ libraryPath,
                                                                             out IntPtr /*(void**)*/ libraryHandle);
         public static DOrtRegisterCustomOpsLibrary OrtRegisterCustomOpsLibrary;
 
@@ -615,11 +775,10 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="options">Native SessionOptions instance</param>
         /// <param name="name">Name of the initializer</param>
         /// <param name="ortValue">Native OrtValue instnce</param>
-        public delegate IntPtr /*(OrtStatus*)*/DOrtAddInitializer(IntPtr /*(OrtSessionOptions*)*/ options, 
-                                                                  IntPtr /*(const char*)*/ name, 
+        public delegate IntPtr /*(OrtStatus*)*/DOrtAddInitializer(IntPtr /*(OrtSessionOptions*)*/ options,
+                                                                  IntPtr /*(const char*)*/ name,
                                                                   IntPtr /*(OrtValue*)*/ ortValue);
         public static DOrtAddInitializer OrtAddInitializer;
-
         #endregion
 
         #region RunOptions API
@@ -635,7 +794,7 @@ namespace Microsoft.ML.OnnxRuntime
         public delegate IntPtr /*(OrtStatus*)*/ DOrtRunOptionsSetRunLogSeverityLevel(IntPtr /* OrtRunOptions* */ options, OrtLoggingLevel value);
         public static DOrtRunOptionsSetRunLogSeverityLevel OrtRunOptionsSetRunLogSeverityLevel;
 
-        public delegate IntPtr /*(OrtStatus*)*/ DOrtRunOptionsSetRunTag(IntPtr /* OrtRunOptions* */ options, string /* const char* */ runTag);
+        public delegate IntPtr /*(OrtStatus*)*/ DOrtRunOptionsSetRunTag(IntPtr /* OrtRunOptions* */ options, IntPtr /* const char* */ runTag);
         public static DOrtRunOptionsSetRunTag OrtRunOptionsSetRunTag;
 
         public delegate IntPtr /*(OrtStatus*)*/ DOrtRunOptionsGetRunLogVerbosityLevel(IntPtr /* OrtRunOptions* */ options, out int verbosityLevel);
@@ -710,6 +869,27 @@ namespace Microsoft.ML.OnnxRuntime
 
         public delegate IntPtr /*(OrtStatus*)*/DOrtAllocatorGetInfo(IntPtr /*(const OrtAllocator*)*/ ptr, out IntPtr /*(const struct OrtMemoryInfo**)*/info);
         public static DOrtAllocatorGetInfo OrtAllocatorGetInfo;
+
+        /// <summary>
+        /// Create an instance of arena configuration which will be used to create an arena based allocator
+        /// See docs/C_API.md for details on what the following parameters mean and how to choose these values
+        /// </summary>
+        /// <param name="maxMemory">Maximum amount of memory the arena allocates</param>
+        /// <param name="arenaExtendStrategy">Strategy for arena expansion</param>
+        /// <param name="initialChunkSizeBytes">Size of the region that the arena allocates first</param>
+        /// <param name="maxDeadBytesPerChunk">Maximum amount of fragmentation allowed per chunk</param>
+        /// <returns>Pointer to a native OrtStatus instance indicating success/failure of config creation</returns>
+        public delegate IntPtr /*(OrtStatus*)*/ DOrtCreateArenaCfg(UIntPtr /*(size_t)*/ maxMemory, int /*(int)*/ arenaExtendStrategy,
+                                                                  int /*(int)*/ initialChunkSizeBytes, int /*(int)*/ maxDeadBytesPerChunk,
+                                                                  out IntPtr /*(OrtArenaCfg**)*/ arenaCfg);
+        public static DOrtCreateArenaCfg OrtCreateArenaCfg;
+
+        /// <summary>
+        /// Destroy an instance of an arena configuration instance
+        /// </summary>
+        /// <param name="arenaCfg">arena configuration instance to be destroyed</param>
+        public delegate void DOrtReleaseArenaCfg(IntPtr /*(OrtArenaCfg*)*/ arenaCfg);
+        public static DOrtReleaseArenaCfg OrtReleaseArenaCfg;
 
         /// <summary>
         /// Create an instance of allocator according to mem_info
@@ -864,13 +1044,16 @@ namespace Microsoft.ML.OnnxRuntime
 
         /// <summary>
         /// Creates an allocator instance and registers it with the env to enable
-        ///sharing between multiple sessions that use the same env instance.
-        ///Lifetime of the created allocator will be valid for the duration of the environment.
-        ///Returns an error if an allocator with the same OrtMemoryInfo is already registered.
-        /// </summary>
-        /// <param name="mem_info">must be non-null</param>
-        /// <param name="arena_cfg">if nullptr defaults will be used</param>
-        public delegate void DOrtCreateAndRegisterAllocator(IntPtr /*(OrtIoBinding)*/ io_binding);
+        /// sharing between multiple sessions that use the same env instance.
+        /// Lifetime of the created allocator will be valid for the duration of the environment.
+        /// Returns an error if an allocator with the same OrtMemoryInfo is already registered.
+        /// <param name="env">Native OrtEnv instance</param>
+        /// <param name="memInfo">Native OrtMemoryInfo instance</param>
+        /// <param name="arenaCfg">Native OrtArenaCfg instance</param>
+        /// <retruns>A pointer to native ortStatus indicating success/failure</retruns>
+        public delegate IntPtr /*(OrtStatus*)*/ DOrtCreateAndRegisterAllocator(IntPtr /*(OrtEnv*)*/ env,
+                                                                               IntPtr /*(const OrtMemoryInfo*)*/ memInfo,
+                                                                               IntPtr/*(const OrtArenaCfg*)*/ arenaCfg);
         public static DOrtCreateAndRegisterAllocator OrtCreateAndRegisterAllocator;
 
         /// <summary>
@@ -931,6 +1114,16 @@ namespace Microsoft.ML.OnnxRuntime
         public delegate IntPtr /* (OrtStatus*) */ DOrtModelMetadataGetDescription(IntPtr /* (const OrtModelMetadata*) */ modelMetadata,
                                                                               IntPtr /* (OrtAllocator*) */ allocator, out IntPtr /* (char**) */ value);
         public static DOrtModelMetadataGetDescription OrtModelMetadataGetDescription;
+
+        /// <summary>
+        /// Gets the description associated with a ModelMetadata instance
+        /// </summary>
+        /// <param name="modelMetadata">instance of OrtModelMetadata</param>
+        /// <param name="allocator">instance of OrtAllocator</param>
+        /// <param name="value">(output) graph description from the ModelMetadata instance</param>
+        public delegate IntPtr /* (OrtStatus*) */ DOrtModelMetadataGetGraphDescription(IntPtr /* (const OrtModelMetadata*) */ modelMetadata,
+                                                                              IntPtr /* (OrtAllocator*) */ allocator, out IntPtr /* (char**) */ value);
+        public static DOrtModelMetadataGetGraphDescription OrtModelMetadataGetGraphDescription;
 
         /// <summary>
         /// Gets the version associated with a ModelMetadata instance
@@ -1114,6 +1307,20 @@ namespace Microsoft.ML.OnnxRuntime
 
         public delegate IntPtr /* (OrtStatus*) */ DOrtReleaseAvailableProviders(IntPtr /* (char**) */ providers, int /* (int) */ numProviders);
         public static DOrtReleaseAvailableProviders OrtReleaseAvailableProviders;
+
+        /// <summary>
+        /// Create an instance of PrepackedWeightsContainer
+        /// </summary>
+        /// <param name="prepackedWeightsContainer">(output) Created native OrtPrepackedWeightsContainer instance</param>
+        public delegate IntPtr /*(OrtStatus*)*/ DOrtCreatePrepackedWeightsContainer(out IntPtr /*(OrtPrepackedWeightsContainer**)*/ prepackedWeightsContainer);
+        public static DOrtCreatePrepackedWeightsContainer OrtCreatePrepackedWeightsContainer;
+
+        /// <summary>
+        /// Destroy an instance of PrepackedWeightsContainer
+        /// </summary>
+        /// <param name="prepackedWeightsContainer">Native OrtPrepackedWeightsContainer instance to be destroyed</param>
+        public delegate void DOrtReleasePrepackedWeightsContainer(IntPtr /*(OrtPrepackedWeightsContainer*)*/ prepackedWeightsContainer);
+        public static DOrtReleasePrepackedWeightsContainer OrtReleasePrepackedWeightsContainer;
         #endregion
 
         public static byte[] GetPlatformSerializedString(string str)

@@ -26,7 +26,7 @@ static void CreateSession(const SessionOptions& so, std::unique_ptr<InferenceSes
                           const ORTCHAR_T* model_path = ORT_TSTR("testdata/mnist.onnx"),  // arbitrary test model
                           bool enable_custom_ep = true,
                           const std::unordered_set<std::string>* override_supported_ops = nullptr) {
-  session = onnxruntime::make_unique<InferenceSessionWrapper>(so, GetEnvironment());
+  session = std::make_unique<InferenceSessionWrapper>(so, GetEnvironment());
 
   // set supported ops to ops that are ideally found consecutively in the model.
   // we can say the EP potentially handles them all, but can also test removing handling of one or more ops
@@ -38,7 +38,7 @@ static void CreateSession(const SessionOptions& so, std::unique_ptr<InferenceSes
 
   if (enable_custom_ep) {
     ASSERT_STATUS_OK(session->RegisterExecutionProvider(
-        onnxruntime::make_unique<InternalTestingExecutionProvider>(*supported_ops)));
+        std::make_unique<InternalTestingExecutionProvider>(*supported_ops)));
   }
 
   ASSERT_STATUS_OK(session->Load(model_path));
@@ -81,9 +81,10 @@ static void ExecuteMnist(InferenceSessionWrapper& session, bool custom_ep_enable
   }
 }
 
+#if !defined(DISABLE_SPARSE_TENSORS)
 #if !defined(ORT_MINIMAL_BUILD)
 TEST(InternalTestingEP, TestSaveAndLoadOrtModel) {
-  const ORTCHAR_T* ort_model_path = ORT_TSTR("testdata/mnist.test_output.ort");
+  const ORTCHAR_T* ort_model_path = ORT_TSTR("testdata/mnist.internal_testing_ep.test_output.ort");
 
   //
   // First load the onnx format model and save as an ORT model.
@@ -127,17 +128,17 @@ TEST(InternalTestingEP, TestSaveAndLoadOrtModel) {
 }
 
 TEST(InternalTestingEP, PreventSaveOfModelWithCompiledOps) {
-  const ORTCHAR_T* ort_model_path = ORT_TSTR("testdata/mnist.ort");
+  const ORTCHAR_T* ort_model_path = ORT_TSTR("testdata/mnist.internal_testing_ep.ort");
 
   // make sure we can't save a model with compiled ops. input/output model format doesn't matter
   SessionOptions so;
   so.optimized_model_filepath = ORT_TSTR("invalid_model.ort");
 
-  auto session = onnxruntime::make_unique<InferenceSessionWrapper>(so, GetEnvironment());
+  auto session = std::make_unique<InferenceSessionWrapper>(so, GetEnvironment());
 
   const std::unordered_set<std::string> supported_ops{"Conv", "Add", "Relu", "MaxPool"};
   ASSERT_STATUS_OK(session->RegisterExecutionProvider(
-      onnxruntime::make_unique<InternalTestingExecutionProvider>(supported_ops)));
+      std::make_unique<InternalTestingExecutionProvider>(supported_ops)));
 
   ASSERT_STATUS_OK(session->Load(ort_model_path));
   auto status = session->Initialize();
@@ -145,10 +146,11 @@ TEST(InternalTestingEP, PreventSaveOfModelWithCompiledOps) {
   ASSERT_THAT(status.ErrorMessage(), ::testing::HasSubstr("Unable to serialize model as it contains compiled nodes"));
 }
 #endif  // !defined(ORT_MINIMAL_BUILD)
+#endif  // !defined(DISABLE_SPARSE_TENSORS)
 
 // test to validate a minimal build
 TEST(InternalTestingEP, TestLoadOrtModel) {
-  const ORTCHAR_T* ort_model_path = ORT_TSTR("testdata/mnist.ort");
+  const ORTCHAR_T* ort_model_path = ORT_TSTR("testdata/mnist.internal_testing_ep.ort");
 
   std::unique_ptr<InferenceSessionWrapper> session;
   bool enable_custom_ep = true;
@@ -160,7 +162,7 @@ TEST(InternalTestingEP, TestLoadOrtModel) {
 // test that is the custom EP cannot take all nodes due to device limitations
 // that we fallback to the CPU implementations and can execute the model
 TEST(InternalTestingEP, TestLoadOrtModelWithReducedOpCoverage) {
-  const ORTCHAR_T* ort_model_path = ORT_TSTR("testdata/mnist.ort");
+  const ORTCHAR_T* ort_model_path = ORT_TSTR("testdata/mnist.internal_testing_ep.ort");
   const std::unordered_set<std::string> supported_ops{"Conv", "Add", "Relu" /*, "MaxPool"*/};
 
   std::unique_ptr<InferenceSessionWrapper> session;
@@ -175,23 +177,21 @@ TEST(InternalTestingEP, TestLoadOrtModelWithReducedOpCoverage) {
   const auto& func_mgr = session->GetSessionState().GetFuncMgr();
   NodeComputeInfo* compute_func = nullptr;
 
+  // the generated op type should have a hash for the model based on the model path
+  const std::string expected_op_type_prefix = "InternalTestingEP_9611636968429821767_";
+  int compiled_node_num = 0;
+
   for (const auto& node : graph.Nodes()) {
     EXPECT_EQ(supported_ops.count(node.OpType()), size_t(0))
         << "Nodes with supported op types should have been replaced. Node with type " << node.OpType() << " was not.";
     if (node.GetExecutionProviderType() == utils::kInternalTestingExecutionProvider) {
       EXPECT_STATUS_OK(func_mgr.GetFuncs(node.Name(), compute_func));
       EXPECT_NE(compute_func, nullptr);
+      EXPECT_EQ(node.OpType(), expected_op_type_prefix + std::to_string(compiled_node_num++));
     }
   }
 
   ExecuteMnist(*session, enable_custom_ep);
-}
-
-TEST(InternalTestingEP, TestMinimalRegistrationOfEPwithGetCapability) {
-  // TODO: In a full build we want to be able to call GetCapability for the NNAPI EP and produce an ORT format model
-  // with nodes correctly preserved. That requires being able to do a minimal registration of that EP where
-  // GetCapability is fully implemented, but Compile is a stub that just throws NOT_IMPLEMENTED if someone attempts
-  // to execute a model in that InferenceSession.
 }
 
 // count nodes assigned to the test EP and make sure they all have valid compute funcs
@@ -252,9 +252,105 @@ TEST(InternalTestingEP, TestModelWithSubgraph) {
   // compare outputs from CPU EP vs custom EP
   RunAndVerifyOutputsWithEP(ort_model_path,
                             "InternalTestingEP.TestModelWithSubgraph",
-                            onnxruntime::make_unique<InternalTestingExecutionProvider>(supported_ops),
+                            std::make_unique<InternalTestingExecutionProvider>(supported_ops),
                             feeds);
 }
 
+// A custom InternalTestingEP extension
+// This is to testing execution fall back to CPU EP if Compile fails, for ORT format
+// This EP will take an additional compile_failure_ops
+// If in Compile() any nodes in the partition is also in compile_failure_ops
+// The Compile will fail
+class CompileFailureTestExecutionProvider : public InternalTestingExecutionProvider {
+ public:
+  CompileFailureTestExecutionProvider(const std::unordered_set<std::string>& supported_ops,
+                                      const std::unordered_set<std::string>& compile_failure_ops);
+  virtual ~CompileFailureTestExecutionProvider() = default;
+
+  Status Compile(const std::vector<FusedNodeAndGraph>& fused_nodes,
+                 std::vector<NodeComputeInfo>& node_compute_funcs) override;
+
+ private:
+  std::unordered_set<std::string> compile_failure_ops_;
+};
+
+CompileFailureTestExecutionProvider::CompileFailureTestExecutionProvider(
+    const std::unordered_set<std::string>& supported_ops,
+    const std::unordered_set<std::string>& compile_failure_ops)
+    : InternalTestingExecutionProvider(supported_ops),
+      compile_failure_ops_(compile_failure_ops) {}
+
+Status CompileFailureTestExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused_nodes,
+                                                    std::vector<NodeComputeInfo>& node_compute_funcs) {
+  for (const auto& fused_node_and_graph : fused_nodes) {
+    // If any nodes in this partition is also in compile_failure_ops_, the Compile will fail
+    const onnxruntime::GraphViewer& graph_viewer(fused_node_and_graph.filtered_graph);
+    for (const auto& node : graph_viewer.Nodes()) {
+      if (compile_failure_ops_.find(node.OpType()) != compile_failure_ops_.end()) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                               "CompileFailureTestExecutionProvider::Compile failed for node: ", node.Name());
+      }
+    }
+  }
+
+  return InternalTestingExecutionProvider::Compile(fused_nodes, node_compute_funcs);
+}
+
+TEST(InternalTestingEP, TestOrtModelWithCompileFailure) {
+  // In the test file, there are 2 Conv and 1 Gemm nodes, all disconnected
+  // So we should have 3 partitions be taken by InternalTestingExecutionProvider/CompileFailureTestExecutionProvider
+  // But CompileFailureTestExecutionProvider will fail the Compile for partition contains "Gemm" node
+  // This is to test the model initialization won't fail and Gemm node will not be replaced by the fused_node
+  const ORTCHAR_T* ort_model_path = ORT_TSTR("testdata/mnist.internal_testing_ep.ort");
+
+  const std::unordered_set<std::string>& supported_ops{"Conv", "Gemm"};
+  const std::unordered_set<std::string>& compile_failure_ops{"Gemm"};
+
+  // Use InternalTestingExecutionProvider
+  // We should have 3 partitions taken by the EP
+  // 2 Conv and 1 Gemm
+  {
+    InferenceSessionWrapper session(SessionOptions(), GetEnvironment());
+    ASSERT_STATUS_OK(session.RegisterExecutionProvider(
+        std::make_unique<InternalTestingExecutionProvider>(supported_ops)));
+    ASSERT_STATUS_OK(session.Load(ort_model_path));
+    ASSERT_STATUS_OK(session.Initialize());
+
+    int num_replaced_nodes = CountAndValidateAssignedNodes(
+        session.GetGraph(), supported_ops, session.GetSessionState().GetFuncMgr());
+
+    ASSERT_EQ(num_replaced_nodes, 3);
+  }
+
+  // Use CompileFailureTestExecutionProvider which will fail Compile on "Gemm"
+  // We should have 2 partitions taken by the EP
+  // 2 Conv
+  {
+    InferenceSessionWrapper session(SessionOptions(), GetEnvironment());
+    ASSERT_STATUS_OK(session.RegisterExecutionProvider(
+        std::make_unique<CompileFailureTestExecutionProvider>(supported_ops, compile_failure_ops)));
+    ASSERT_STATUS_OK(session.Load(ort_model_path));
+    ASSERT_STATUS_OK(session.Initialize());
+
+    // 2 Conv nodes shoule be replaced with fused nodes
+    const auto& graph = session.GetGraph();
+    int num_replaced_nodes = CountAndValidateAssignedNodes(
+        session.GetGraph(), {"Conv"}, session.GetSessionState().GetFuncMgr());
+
+    ASSERT_EQ(num_replaced_nodes, 2);
+
+    // The Gemm node should still not have been replaced
+    int count_compile_failure_nodes = 0;
+    for (const auto& node : graph.Nodes()) {
+      if (compile_failure_ops.find(node.OpType()) != compile_failure_ops.end())
+        count_compile_failure_nodes++;
+    }
+    ASSERT_EQ(count_compile_failure_nodes, 1);
+
+    // Execute the session, since the last node is Gemm, and its input 0 is all 0s
+    // So the result should be the bias initializer of the Gemm node
+    ExecuteMnist(session, true /* enable_custom_ep */);
+  }
+}
 }  // namespace test
 }  // namespace onnxruntime

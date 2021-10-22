@@ -44,8 +44,8 @@ namespace Dml
     }
 
     static void CreateDmlKernelRegistry(
-        _Outptr_ std::shared_ptr<onnxruntime::KernelRegistry>* registry,
-        _Outptr_ std::shared_ptr<const InternalRegistrationInfoMap>* internalRegInfoMap)
+        _Out_ std::shared_ptr<onnxruntime::KernelRegistry>* registry,
+        _Out_ std::shared_ptr<const InternalRegistrationInfoMap>* internalRegInfoMap)
     {
         ComPtr<AbiCustomRegistry> abiRegistry = wil::MakeOrThrow<AbiCustomRegistry>();
         Dml::RegisterDmlOperators(abiRegistry.Get());
@@ -187,12 +187,16 @@ namespace Dml
 
     HRESULT __stdcall ExecutionProviderImpl::GetD3DDevice(_COM_Outptr_ ID3D12Device** d3dDevice) const noexcept
     {
-        return m_d3d12Device.CopyTo(d3dDevice);
+        m_d3d12Device.CopyTo(d3dDevice);
+        _Analysis_assume_(*d3dDevice != nullptr);
+        return S_OK;
     }
 
     HRESULT __stdcall ExecutionProviderImpl::GetDmlDevice(_COM_Outptr_ IDMLDevice** dmlDevice) const noexcept
     {
-        return m_dmlDevice.CopyTo(dmlDevice);
+        m_dmlDevice.CopyTo(dmlDevice);
+        _Analysis_assume_(*dmlDevice != nullptr);
+        return S_OK;
     }
 
     HRESULT __stdcall ExecutionProviderImpl::ExecuteCommandList(
@@ -444,9 +448,13 @@ namespace Dml
         gsl::span<const std::byte> value // Data type agnostic value, treated as raw bits
         ) const noexcept try
     {
-        const AllocationInfo* dstAllocInfo = m_allocator->DecodeDataHandle(MLOperatorTensor(dst).GetDataInterface().Get());
-        ID3D12Resource* dstData = dstAllocInfo->GetResource();
-        m_context->FillBufferWithPattern(dstData, value);
+        auto mlTensor = MLOperatorTensor(dst).GetDataInterface();
+        if (mlTensor != nullptr)
+        {
+            const AllocationInfo* dstAllocInfo = m_allocator->DecodeDataHandle(mlTensor.Get());
+            ID3D12Resource* dstData = dstAllocInfo->GetResource();
+            m_context->FillBufferWithPattern(dstData, value);
+        }
 
         return S_OK;
     }

@@ -21,11 +21,10 @@ PThreadPool TestEnv::GetDefaultThreadPool(onnxruntime::Env& env) {
     int core_num = env.GetNumCpuCores();
 
     onnxruntime::ThreadOptions t_opts;
-    default_pool = onnxruntime::make_unique<ThreadPool>(&env, t_opts, ORT_TSTR("onnx_runer_tp"), core_num, false);
+    default_pool = std::make_unique<ThreadPool>(&env, t_opts, ORT_TSTR("onnx_runner_tp"), core_num, false);
   });
   return default_pool.get();
 }
-
 
 TestEnv::TestEnv(Ort::Env& env, Ort::SessionOptions& so, PThreadPool tp,
                  std::vector<ITestCase*>&& tests, TestResultStat& stat)
@@ -41,7 +40,6 @@ TestEnv::~TestEnv() {
 }
 
 Status TestEnv::Run(size_t parallel_models, int concurrent_runs, size_t repeat_count) {
-
   std::vector<std::shared_ptr<TestCaseResult>> results;
   if (parallel_models > 1U && tests_.size() > 1U) {
     results = onnxruntime::test::TestCaseDriver::RunParallel(*this, parallel_models, concurrent_runs);
@@ -54,8 +52,7 @@ Status TestEnv::Run(size_t parallel_models, int concurrent_runs, size_t repeat_c
   return Status::OK();
 }
 
-static
-inline void AddFailedName(const TestCaseResult& r, TestResultStat& stat) {
+static inline void AddFailedName(const TestCaseResult& r, TestResultStat& stat) {
   const auto& name = r.GetName();
   if (!name.empty()) {
     stat.AddFailedKernels(name);
@@ -120,8 +117,7 @@ void TestEnv::CalculateStats(const std::vector<std::shared_ptr<TestCaseResult>>&
         default: {
           auto s = onnxruntime::MakeString(r.GetName().c_str(), " Unknown result enum: ", res);
           stat_.AddFailedKernels(s);
-          }
-          break;
+        } break;
       }
     }
   }

@@ -11,6 +11,7 @@ namespace cuda {
 
 template <typename T, typename Tin>
 Status ScatterElementsImpl(
+    cudaStream_t stream,
     const int rank,
     const T* input_data,
     const int64_t input_size,

@@ -93,9 +93,8 @@ class LagLeadOperatorTransformer final : public OpKernel {
   }
 
   Status Compute(OpKernelContext* ctx) const override {
-    utils::MLTypeCallDispatcher<LagLeadOperatorTransformerImpl, float, double>
-        t_disp(ctx->Input<Tensor>(2)->GetElementType());
-    t_disp.Invoke(ctx);
+    utils::MLTypeCallDispatcher<float, double> t_disp(ctx->Input<Tensor>(2)->GetElementType());
+    t_disp.Invoke<LagLeadOperatorTransformerImpl>(ctx);
     return Status::OK();
   }
 };

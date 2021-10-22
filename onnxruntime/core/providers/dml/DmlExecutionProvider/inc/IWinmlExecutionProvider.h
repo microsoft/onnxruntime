@@ -99,12 +99,6 @@ namespace Windows::AI::MachineLearning::Adapter
     {
         GraphNodeFactory factory;
         std::optional<uint32_t> requiredInputCount;
-
-        // The operator inputs/outputs must be a floating point data type. When true,
-        // if the node's tensor data type is not-floating point, the node is partioned
-        // separately (unless the input/output is a CPU constant input, which is okay,
-        // as those can be read directly by the DML operator in the DML_OPERATOR_DESC).
-        bool requiresFloatFormatsExceptConstInputs = false;
     };
 
     using KernelSupportQuery = std::function<bool(const onnxruntime::Node& node)>;

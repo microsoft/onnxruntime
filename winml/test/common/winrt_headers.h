@@ -24,13 +24,19 @@
 #define STRINGIFY(x) #x
 #define XSTRINGIFY(x) STRINGIFY(x)
 #define CPPWINRT_HEADER(root_ns) comp_generated/winrt/##root_ns##.AI.MachineLearning.h
+#define CPPWINRT_EXPERIMENTAL_HEADER(root_ns) comp_generated/winrt/##root_ns##.AI.MachineLearning.Experimental.h
 #define NATIVE_HEADER(root_ns) root_ns##.AI.MachineLearning.native.h
 #define NATIVE_INTERNAL_HEADER(root_ns) root_ns##.AI.MachineLearning.native.internal.h
 #define CREATE_CPPWINRT_COMPONENT_HEADER() XSTRINGIFY(CPPWINRT_HEADER(WINML_ROOT_NS))
+#define CREATE_CPPWINRT_EXPERIMENTAL_COMPONENT_HEADER() XSTRINGIFY(CPPWINRT_EXPERIMENTAL_HEADER(WINML_ROOT_NS))
 #define CREATE_NATIVE_HEADER() XSTRINGIFY(NATIVE_HEADER(WINML_ROOT_NS))
 #define CREATE_NATIVE_INTERNAL_HEADER() XSTRINGIFY(NATIVE_INTERNAL_HEADER(WINML_ROOT_NS))
 
 #include CREATE_CPPWINRT_COMPONENT_HEADER()
+
+#ifndef BUILD_INBOX
+#include CREATE_CPPWINRT_EXPERIMENTAL_COMPONENT_HEADER()
+#endif
 
 // WinML Native Headers
 #include CREATE_NATIVE_HEADER()

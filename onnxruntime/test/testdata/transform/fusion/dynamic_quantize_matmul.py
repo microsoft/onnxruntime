@@ -20,15 +20,7 @@ def GenerateModel(model_name, b_has_zp = True, has_bias = False, bias_ND = False
     if has_bias:
         nodes.extend([helper.make_node("Add", [mul_output, "bias"], ["output"], "bias_add")])
 
-    initializers = [  # initializers
-        helper.make_tensor('b_quantized', TensorProto.UINT8, [2,3], [2, 4, 5, 6, 7, 8]),
-        helper.make_tensor('b_scale', TensorProto.FLOAT, [], [1.8]),
-    ]
-
-    if b_has_zp:
-        initializers.extend([  # initializers
-            helper.make_tensor('b_zp', TensorProto.UINT8, [], [128]),
-        ])
+    initializers = []
 
     if has_bias:
         if bias_ND:
@@ -40,12 +32,19 @@ def GenerateModel(model_name, b_has_zp = True, has_bias = False, bias_ND = False
                 helper.make_tensor('bias', TensorProto.FLOAT, [3], [3.0, 4.0, 5.0]),
             ])
 
+    inputs = [  # inputs
+            helper.make_tensor_value_info('input', TensorProto.FLOAT, [3, 2]),
+            helper.make_tensor_value_info('b_quantized', TensorProto.UINT8, [2,3]),
+            helper.make_tensor_value_info('b_scale', TensorProto.FLOAT, [1]),
+            ]
+
+    if b_has_zp:
+        inputs.extend([helper.make_tensor_value_info('b_zp', TensorProto.UINT8, [1])])
+
     graph = helper.make_graph(
         nodes,
         "DynamicQuantizeLinear_fusion",  #name
-        [  # inputs
-            helper.make_tensor_value_info('input', TensorProto.FLOAT, [3, 2]),
-        ],
+        inputs,
         [  # outputs
             helper.make_tensor_value_info('output', TensorProto.FLOAT, [3, 3]),
         ],

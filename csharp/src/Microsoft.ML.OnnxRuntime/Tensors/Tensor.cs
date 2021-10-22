@@ -64,6 +64,9 @@ namespace Microsoft.ML.OnnxRuntime.Tensors
     /// </summary>
     public struct Float16
     {
+        /// <summary>
+        /// float16 representation bits
+        /// </summary>
         public ushort value;
         /// <summary>
         /// Ctor
@@ -77,6 +80,7 @@ namespace Microsoft.ML.OnnxRuntime.Tensors
         /// Converts to ushort
         /// </summary>
         /// <param name="f">instance of Float16</param>
+        /// <returns>value member</returns>
         public static implicit operator ushort (Float16 f) { return f.value; }
         /// <summary>
         /// Converts a 16-bit unsigned integer to a Float16.
@@ -143,6 +147,9 @@ namespace Microsoft.ML.OnnxRuntime.Tensors
     /// </summary>
     public struct BFloat16
     {
+        /// <summary>
+        /// bfloat16 representation bits
+        /// </summary>
         public ushort value;
         /// <summary>
         /// Ctor
@@ -156,6 +163,7 @@ namespace Microsoft.ML.OnnxRuntime.Tensors
         /// Converts to ushort
         /// </summary>
         /// <param name="bf">instance of BFloat16</param>
+        /// <returns>value member</returns>
         public static implicit operator ushort(BFloat16 bf) { return bf.value; }
         /// <summary>
         /// Converts a 16-bit unsigned integer to a BFloat16.
@@ -219,9 +227,26 @@ namespace Microsoft.ML.OnnxRuntime.Tensors
     /// </summary>
     public class TensorTypeInfo
     {
+        /// <summary>
+        /// TensorElementType enum
+        /// </summary>
+        /// <value>type enum value</value>
         public TensorElementType ElementType { get; private set; }
+        /// <summary>
+        /// Size of the stored primitive type in bytes
+        /// </summary>
+        /// <value>size in bytes</value>
         public int TypeSize { get; private set; }
+        /// <summary>
+        /// Is the type is a string
+        /// </summary>
+        /// <value>true if Tensor element type is a string</value>
         public bool IsString { get { return ElementType == TensorElementType.String; } }
+        /// <summary>
+        /// Ctor
+        /// </summary>
+        /// <param name="elementType">TensorElementType value</param>
+        /// <param name="typeSize">size fo the type in bytes</param>
         public TensorTypeInfo(TensorElementType elementType, int typeSize)
         {
             ElementType = elementType;
@@ -234,9 +259,26 @@ namespace Microsoft.ML.OnnxRuntime.Tensors
     /// </summary>
     public class TensorElementTypeInfo
     {
+        /// <summary>
+        /// Tensor element type
+        /// </summary>
+        /// <value>System.Type</value>
         public Type TensorType { get; private set; }
+        /// <summary>
+        /// Size of the stored primitive type in bytes
+        /// </summary>
+        /// <value>size in bytes</value>
         public int TypeSize { get; private set; }
+        /// <summary>
+        /// Is the type is a string
+        /// </summary>
+        /// <value>true if Tensor element type is a string</value>
         public bool IsString { get; private set; }
+        /// <summary>
+        /// Ctor
+        /// </summary>
+        /// <param name="type">Tensor element type</param>
+        /// <param name="typeSize">typesize</param>
         public TensorElementTypeInfo(Type type, int typeSize)
         {
             TensorType = type;
@@ -281,6 +323,10 @@ namespace Microsoft.ML.OnnxRuntime.Tensors
          }
 
         private readonly Type _primitiveType;
+        /// <summary>
+        /// Constructs TensorBae
+        /// </summary>
+        /// <param name="primitiveType">primitive type the deriving class is using</param>
         protected TensorBase(Type primitiveType)
         {
             // Should hold as we rely on this to pass arrays of these
@@ -876,6 +922,12 @@ namespace Microsoft.ML.OnnxRuntime.Tensors
             return GetTriangle(offset, upper: true);
         }
 
+        /// <summary>
+        /// Implementation method for GetTriangle, GetLowerTriangle, GetUpperTriangle
+        /// </summary>
+        /// <param name="offset">Offset of diagonal to set in returned tensor.</param>
+        /// <param name="upper">true for upper triangular and false otherwise</param>
+        /// <returns></returns>
         public Tensor<T> GetTriangle(int offset, bool upper)
         {
             if (Rank < 2)
@@ -1112,8 +1164,16 @@ namespace Microsoft.ML.OnnxRuntime.Tensors
             }
         }
 
+        /// <summary>
+        /// Always fixed size Tensor
+        /// </summary>
+        /// <value>always true</value>
         public bool IsFixedSize => true;
 
+        /// <summary>
+        /// Tensor is not readonly
+        /// </summary>
+        /// <value>always false</value>
         public bool IsReadOnly => false;
 
         int IList.Add(object value)
@@ -1520,6 +1580,11 @@ namespace Microsoft.ML.OnnxRuntime.Tensors
 
         #endregion
 
+        /// <summary>
+        /// Get a string representation of Tensor
+        /// </summary>
+        /// <param name="includeWhitespace"></param>
+        /// <returns></returns>
         public string GetArrayString(bool includeWhitespace = true)
         {
             var builder = new StringBuilder();

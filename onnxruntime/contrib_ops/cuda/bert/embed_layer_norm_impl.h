@@ -6,7 +6,8 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-bool LaunchEmbedLayerNormKernel(void* output,                     // output tensor
+bool LaunchEmbedLayerNormKernel(cudaStream_t stream,
+                                void* output,                     // output tensor
                                 void* mask_index,                 // output mask index
                                 const int* input_ids,             // input word IDs
                                 const int* segment_ids,           // input segment IDs

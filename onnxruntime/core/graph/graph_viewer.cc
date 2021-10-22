@@ -18,15 +18,19 @@ bool NodeCompare::operator()(const Node* n1, const Node* n2) const {
 #if !defined(ORT_MINIMAL_BUILD)
 struct PriorityNodeCompare {
   inline bool IsHighPri(const Node* n) const {
-    static const std::unordered_set<std::string> high_pri_ops = {"Shape", "Size"};
-    return high_pri_ops.find(n->OpType()) != high_pri_ops.end();
+    // local statics so we can compare std::strings in the checks
+    static const std::string shape_op("Shape");
+    static const std::string size_op("Size");
+
+    const auto& op_type = n->OpType();
+    return op_type == shape_op || op_type == size_op;
   }
 
   // Used for std::priority_queue
   // If return false, n1 will be output first
   // If return true, n2 will be output first
   bool operator()(const Node* n1, const Node* n2) const {
-    // nodes in global high priorty list will be output first
+    // nodes in global high priority list will be output first
     if (IsHighPri(n1) != IsHighPri(n2)) {
       return IsHighPri(n2);
     }
@@ -121,6 +125,26 @@ GraphViewer::GraphViewer(const Graph& graph, const IndexedSubGraph* filter_info)
     std::copy_if(orig_order.cbegin(), orig_order.cend(), std::back_inserter(nodes_in_topological_order_),
                  [this](NodeIndex idx) { return filtered_node_indices_.count(idx) != 0; });
 
+    // Filter the initializers also
+    // Get the names of all the inputs and implicit inputs of all the nodes in this subgraph
+    for (const auto node_idx : filtered_node_indices_) {
+      const auto* node = GetNode(node_idx);
+      ORT_ENFORCE(node, "Mismatch between Graph and IndexedSubGraph. Node not found: ", node_idx);
+      const ONNX_NAMESPACE::TensorProto* tensor = nullptr;
+      for (const auto* node_input : node->InputDefs()) {
+        if (graph.GetInitializedTensor(node_input->Name(), tensor)) {
+          filtered_initializers_.insert({node_input->Name(), tensor});
+        }
+      }
+
+      // The implicit inputs for subgraphs (if any)
+      for (const auto* node_input : node->ImplicitInputDefs()) {
+        if (graph.GetInitializedTensor(node_input->Name(), tensor)) {
+          filtered_initializers_.insert({node_input->Name(), tensor});
+        }
+      }
+    }
+
 #if !defined(ORT_MINIMAL_BUILD)
     auto orig_priority_order = std::move(nodes_in_topological_order_with_priority_);
     nodes_in_topological_order_with_priority_.reserve(filter_info->nodes.size());
@@ -146,6 +170,10 @@ const std::string& GraphViewer::Description() const noexcept {
 
 bool GraphViewer::GetInitializedTensor(const std::string& tensor_name,
                                        const ONNX_NAMESPACE::TensorProto*& value) const {
+  // if we are using filtered subgraph, the initializer has to be part of the subgraph
+  if (filter_info_ != nullptr && filtered_initializers_.find(tensor_name) == filtered_initializers_.cend())
+    return false;
+
   return graph_->GetInitializedTensor(tensor_name, value);
 }
 
@@ -172,7 +200,7 @@ const std::vector<const NodeArg*>& GraphViewer::GetOutputs() const noexcept {
 }
 
 // Get graph value infos.
-const std::vector<const NodeArg*>& GraphViewer::GetValueInfo() const noexcept {
+const std::unordered_set<const NodeArg*>& GraphViewer::GetValueInfo() const noexcept {
   return graph_->GetValueInfo();
 }
 
@@ -220,7 +248,9 @@ const std::vector<NodeIndex>& GraphViewer::GetRootNodes() const {
 }
 
 const InitializedTensorSet& GraphViewer::GetAllInitializedTensors() const noexcept {
-  return graph_->GetAllInitializedTensors();
+  return (filter_info_ == nullptr)
+             ? graph_->GetAllInitializedTensors()
+             : filtered_initializers_;
 }
 
 const NodeArg* GraphViewer::GetNodeArg(const std::string& name) const {

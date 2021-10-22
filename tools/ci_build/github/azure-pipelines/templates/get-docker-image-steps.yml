@@ -1,0 +1,38 @@
+# calls tools/ci_build/get_docker_image.py
+
+parameters:
+- name: Dockerfile
+  type: string
+- name: Context
+  type: string
+- name: DockerBuildArgs
+  type: string
+  default: ""
+- name: Repository
+  type: string
+- name: UseImageCacheContainerRegistry
+  type: boolean
+  default: true
+
+steps:
+- ${{ if eq(parameters.UseImageCacheContainerRegistry, true) }}:
+  - template: with-container-registry-steps.yml
+    parameters:
+      Steps:
+      - script: |
+          tools/ci_build/get_docker_image.py \
+            --dockerfile "${{ parameters.Dockerfile }}" \
+            --context "${{ parameters.Context }}" \
+            --docker-build-args "${{ parameters.DockerBuildArgs }}" \
+            --container-registry onnxruntimebuildcache \
+            --repository "${{ parameters.Repository }}"
+        displayName: "Get ${{ parameters.Repository }} image for ${{ parameters.Dockerfile }}"
+      ContainerRegistry: onnxruntimebuildcache
+- ${{ if eq(parameters.UseImageCacheContainerRegistry, false) }}:
+  - script: |
+      tools/ci_build/get_docker_image.py \
+        --dockerfile "${{ parameters.Dockerfile }}" \
+        --context "${{ parameters.Context }}" \
+        --docker-build-args "${{ parameters.DockerBuildArgs }}" \
+        --repository "${{ parameters.Repository }}"
+    displayName: "Get ${{ parameters.Repository }} image for ${{ parameters.Dockerfile }}"

@@ -98,7 +98,6 @@ inline std::vector<OrtValue> GradientChecker<X_T, Y_T, JAC_T>::EvaluateFunctionA
     std::string name = "output" + std::to_string(data_index);
     op_session.AddOutput<Y_T>(name.c_str(), y_infos[data_index].shape.GetDims(), (*y_datas)[data_index]);
   }
-
   op_session.Run();
   return op_session.GetFetches();
 }
@@ -112,14 +111,15 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeTheoreticalJacobianTransp
     std::vector<std::vector<Y_T>>* y_datas,
     std::vector<std::vector<JAC_T>>* jacobian_ts,
     const std::vector<AttributeProto>& attributes,
-    bool add_shape) {
+    bool add_shape,
+    std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers /* nullptr*/) {
   size_t y_num = y_infos.size();
   size_t x_num = x_infos.size();
 
   // build the graph once and reuse it later in the looping logic
   GradientOpTester op_session(op_def.type.c_str(), x_infos, y_infos, op_def.opset_version, op_def.domain.c_str(), false);
   op_session.AddShapeToTensorData(add_shape);
-  InitOpTesterWithGradGraph(op_session, x_infos, y_infos, x_datas, y_datas, attributes);
+  ORT_RETURN_IF_ERROR(InitOpTesterWithGradGraph(op_session, x_infos, y_infos, x_datas, y_datas, attributes));
 
   // currently only supported scalar valued fns - and complex types are not supported
   for (int y_idx = 0; y_idx < static_cast<int>(y_num); y_idx++) {  // for each dy input
@@ -169,7 +169,8 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeTheoreticalJacobianTransp
       // inputs is treated as a vector of vectors. The parameters of the function call below, y_idx and c
       // corresponding to which input (dy1, dy2..etc) and which value of the input (dy_flattened_vector[c]]
       // to pertrub to 1.
-      op_session.Run(y_idx, static_cast<int>(c));
+
+      op_session.Run(y_idx, static_cast<int>(c), OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, execution_providers);
       auto gradients = op_session.GetFetches();
 
       for (int x_idx = 0, grad_idx = 0; x_idx < static_cast<int>(x_num); x_idx++) {
@@ -297,7 +298,8 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::InitOpTesterWithGradGraph(
     std::vector<std::vector<Y_T>>* y_datas,
     const std::vector<AttributeProto>& attributes) {
   std::unordered_map<std::string, int> extra_domain_to_version{{kMSDomain, 1}, {kOnnxDomain, 9}};
-  InitOpTesterWithGraph(op_session, x_infos, y_infos, x_datas, y_datas, attributes, extra_domain_to_version);
+  ORT_RETURN_IF_ERROR(InitOpTesterWithGraph(op_session, x_infos, y_infos, x_datas, y_datas, attributes,
+                                            extra_domain_to_version));
   // build grad graph
   auto p_model = op_session.GetModelCache();
   auto& graph = p_model->MainGraph();
@@ -348,7 +350,7 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeNumericJacobianTranspose(
   // build the graph once and reuse it later in the looping logic
   OpTester op_session(op_def.type.c_str(), op_def.opset_version, op_def.domain.c_str(), false);
   op_session.AddShapeToTensorData(add_shape);
-  InitOpTesterWithGraph(op_session, x_infos, y_infos, x_datas, y_datas, attributes);
+  ORT_RETURN_IF_ERROR(InitOpTesterWithGraph(op_session, x_infos, y_infos, x_datas, y_datas, attributes));
 
   for (int x_idx = 0; x_idx < static_cast<int>(x_num); x_idx++) {
     if (!x_infos[x_idx].has_gradient) {
@@ -447,10 +449,11 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeGradientErrorInternal(
     JAC_T* max_error,
     const std::vector<AttributeProto>& attributes,
     bool check_not_have_gradient,
-    bool check_not_have_shape_inferencing) {
+    bool check_not_have_shape_inferencing,
+    std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers /* nullptr */) {
   // Initialize numeric Jacobian to zeros.
   std::vector<std::vector<JAC_T>> jacobian_ns;
-  InitJacobians(x_infos, y_infos, &jacobian_ns);
+  ORT_RETURN_IF_ERROR(InitJacobians(x_infos, y_infos, &jacobian_ns));
   // Compute numeric Jacobian.
   ORT_RETURN_IF_ERROR(ComputeNumericJacobianTranspose(
       op_def, x_infos, y_infos, JAC_T{1e-3f}, x_datas, y_datas, &jacobian_ns, attributes));
@@ -468,7 +471,7 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeGradientErrorInternal(
     for (size_t x_gradient_variation = 0; x_gradient_variation < total_gradient_variations; x_gradient_variation++) {
       // Initialize theoretical Jacobians to zeros.
       std::vector<std::vector<JAC_T>> jacobian_ts;
-      InitJacobians(x_infos, y_infos, &jacobian_ts);
+      ORT_RETURN_IF_ERROR(InitJacobians(x_infos, y_infos, &jacobian_ts));
 
       std::vector<TensorInfo> x_infos_gradient_variation = x_infos;
 
@@ -481,7 +484,7 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeGradientErrorInternal(
         continue;
       // Compute theoretical Jacobian.
       ORT_RETURN_IF_ERROR(ComputeTheoreticalJacobianTranspose(
-          op_def, x_infos_gradient_variation, y_infos, x_datas, y_datas, &jacobian_ts, attributes, add_shape));
+          op_def, x_infos_gradient_variation, y_infos, x_datas, y_datas, &jacobian_ts, attributes, add_shape, execution_providers));
       // We have numeric jacobians regardless of has_gradient (computed once).
       // We only have theoretical jacobians for those has_gradient.
       // Theoretical jacobians are 0 for those not has_gradient.
@@ -528,7 +531,9 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeGradientError(
     JAC_T* max_error,
     const std::vector<AttributeProto>& attributes,
     bool check_not_have_gradient, /* = true*/
-    bool check_not_have_shape_inferencing /* = false*/) {
+    bool check_not_have_shape_inferencing /* = false*/,
+    std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers /* = nullptr */) {
+
   // TODO: Consider varying mean and variance
   float scale = 5.f;
   float mean = 0.f;
@@ -558,7 +563,7 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeGradientError(
 
   // Compute gradient error.
   return ComputeGradientErrorInternal(op_def, x_infos, y_infos, &x_datas, &y_datas, max_error,
-                                      attributes, check_not_have_gradient, check_not_have_shape_inferencing);
+                                      attributes, check_not_have_gradient, check_not_have_shape_inferencing, execution_providers);
 }
 
 template <typename X_T, typename Y_T, typename JAC_T>
@@ -570,7 +575,9 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeGradientError(
     std::vector<std::vector<X_T>> x_datas,
     const std::vector<ONNX_NAMESPACE::AttributeProto>& attributes,
     bool check_not_have_gradient, /* = true*/
-    bool check_not_have_shape_inferencing /* = false*/) {
+    bool check_not_have_shape_inferencing /* = false*/,
+    std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers /* = nullptr */) {
+
   // Generate dummy placeholders with zero for y_datas
   std::vector<std::vector<Y_T>> y_datas(y_infos.size());
   for (size_t i = 0; i < y_infos.size(); i++) {
@@ -579,7 +586,7 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeGradientError(
 
   // Compute gradient error.
   return ComputeGradientErrorInternal(op_def, x_infos, y_infos, &x_datas, &y_datas, max_error,
-                                      attributes, check_not_have_gradient, check_not_have_shape_inferencing);
+                                      attributes, check_not_have_gradient, check_not_have_shape_inferencing, execution_providers);
 }
 
 #define INSTANTIATE_GRAD_ERR_TYPE(X_T, Y_T, JAC_T) \

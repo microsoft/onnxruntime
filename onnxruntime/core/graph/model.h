@@ -50,7 +50,7 @@ class Model {
                  const PathString& model_path,
                  const IOnnxRuntimeOpSchemaRegistryList& local_registries,
                  const std::unordered_map<std::string, int>& domain_to_version,
-                 const std::vector<ONNX_NAMESPACE::FunctionProto>& model_specific_functions,
+                 const std::vector<ONNX_NAMESPACE::FunctionProto>& model_local_functions,
                  const logging::Logger& logger);
 
   // NOTE: after calling this constructor, <*this> model will
@@ -89,20 +89,20 @@ class Model {
   Version IrVersion() const;
 
   // Get model's producer name.
-  // Return null pointer if not specified.
-  const std::string& ProducerName() const;
+  // Returns empty string if not specified.
+  const std::string ProducerName() const;
   // Set model's producer name.
   void SetProducerName(const std::string& producer_name);
 
   // Get model's producer version.
-  // Return null pointer if not specified.
-  const std::string& ProducerVersion() const;
+  // Returns empty string if not specified.
+  const std::string ProducerVersion() const;
   // Set model's producer version.
   void SetProducerVersion(const std::string& producer_version);
 
   // Get model's domain.
-  // Return null pointer if not specified.
-  const std::string& Domain() const;
+  // Returns empty string if not specified.
+  const std::string Domain() const;
   // Set models' domain.
   void SetDomain(const std::string& domain);
 
@@ -113,34 +113,43 @@ class Model {
   void SetModelVersion(onnxruntime::Version model_version);
 
   // Get model's doc string.
-  // Return null pointer if not specified.
-  const std::string& DocString() const;
+  // Returns empty string if not specified.
+  const std::string DocString() const;
   // Set models' doc string.
   void SetDocString(const std::string& doc_string);
+
+  // Get graph's doc string.
+  // Returns empty string if not specified.
+  const std::string GraphDocString() const;
+
 #else
   // Get model's IR version.
   // Return <kNoVersion> if not specified.
   Version IrVersion() const { return ir_version_; }
 
   // Get model's producer name.
-  // Return null pointer if not specified.
-  const std::string& ProducerName() const { return producer_name_; }
+  // Returns empty string if not specified.
+  const std::string ProducerName() const { return producer_name_; }
 
   // Get model's producer version.
-  // Return null pointer if not specified.
-  const std::string& ProducerVersion() const { return producer_version_; }
+  // Returns empty string if not specified.
+  const std::string ProducerVersion() const { return producer_version_; }
 
   // Get model's domain.
-  const std::string& Domain() const { return domain_; }
+  // Returns empty string if not specified.
+  const std::string Domain() const { return domain_; }
 
   // Get model's version.
   // Return null pointer if not specified.
   Version ModelVersion() const { return model_version_; }
 
   // Get model's doc string.
-  // Return null pointer if not specified.
-  const std::string& DocString() const { return doc_string_; }
+  // Returns empty string if not specified.
+  const std::string DocString() const { return doc_string_; }
 
+  // Get graph's doc string.
+  // Returns empty string if not specified.
+  const std::string GraphDocString() const { return graph_doc_string_; }
 #endif
 
   const ModelMetaData& MetaData() const noexcept;
@@ -156,12 +165,38 @@ class Model {
   // Get model's serialization proto data.
   ONNX_NAMESPACE::ModelProto ToProto();
 
+  // Get model's serialization proto data.
+  // Save initializer larger than the given threshold (in bytes) into an external binary file
+  // with the given name. This function is useful to avoid hitting the size limit of protobuf files.
+  ONNX_NAMESPACE::ModelProto ToGraphProtoWithExternalInitializers(const std::string& external_file_name,
+                                                                  size_t initializer_size_threshold);
+
 #ifdef _WIN32
   static common::Status Save(Model& model, const std::wstring& file_path);
 #endif
   static common::Status Save(Model& model, const std::string& file_path);
 
   static common::Status Save(Model& model, int fd);
+
+  // Save the model to file using an external file for initializers larger than the given threshold (in bytes).
+  // Notice that when on Windows the external_file_name is a plain string.
+  // This is because the string is saved inside the output protobuf as a plain string, where wchar is not supported.
+#ifdef _WIN32
+  static common::Status SaveWithExternalInitializers(Model& model,
+                                                     const std::wstring& file_path,
+                                                     const std::string& external_file_name,
+                                                     size_t initializer_size_threshold);
+#else
+  static common::Status SaveWithExternalInitializers(Model& model,
+                                                     const std::string& file_path,
+                                                     const std::string& external_file_name,
+                                                     size_t initializer_size_threshold);
+#endif
+
+  static common::Status SaveWithExternalInitializers(Model& model,
+                                                     int fd,
+                                                     const std::string& external_file_name,
+                                                     size_t initializer_size_threshold);
 
   static common::Status Load(std::istream& model_istream, ONNX_NAMESPACE::ModelProto* p_model_proto);
 
@@ -230,6 +265,9 @@ class Model {
 
 #if defined(ENABLE_ORT_FORMAT_LOAD)
   static common::Status LoadFromOrtFormat(const onnxruntime::experimental::fbs::Model& fbs_model,
+#if !defined(ORT_MINIMAL_BUILD)
+                                          const IOnnxRuntimeOpSchemaRegistryList* local_registries,
+#endif
                                           const logging::Logger& logger,
                                           std::unique_ptr<Model>& model);
 #endif
@@ -248,6 +286,7 @@ class Model {
   int64_t ir_version_ = kNoVersion;
   std::string domain_;
   std::string doc_string_;
+  std::string graph_doc_string_;
 #endif
 
   // This is a duplication of <model_proto_.metadata_props()>.

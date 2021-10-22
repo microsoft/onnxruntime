@@ -9,7 +9,7 @@
 #include "core/common/common.h"
 #include "core/framework/allocator.h"
 #include "core/framework/feeds_fetches_manager.h"
-#include "core/framework/ml_value.h"
+#include "core/framework/ort_value.h"
 #include "core/framework/ort_value_tensor_slicer.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/providers/cpu/controlflow/scan.h"
@@ -25,28 +25,6 @@ namespace detail {
 
 enum class ScanDirection { kForward = 0,
                            kReverse = 1 };
-
-/**
-Helper struct for keeping static information about the Scan node and its subgraph.
-Used to create the FeedsFetchesManager needed for efficient subgraph execution.
-*/
-struct Info {
-  Info(const Node& node, const GraphViewer& subgraph_in, int num_scan_inputs_in, bool is_v8);
-
-  const GraphViewer& subgraph;
-
-  int num_inputs;
-  int num_variadic_inputs;
-  int num_outputs;
-  int num_loop_state_variables;
-  int num_scan_inputs;
-  int num_scan_outputs;
-
-  int num_implicit_inputs;
-
-  std::vector<std::string> subgraph_input_names;
-  std::vector<std::string> subgraph_output_names;
-};
 
 /**
 Class to provide input/output OrtValue instances for a loop state variable.
@@ -184,7 +162,7 @@ class OutputIterator {
 };
 
 void ReadDirections(const OpKernelInfo& info, const std::string& attr_name,
-                    std::vector<int64_t>& directions, int64_t num_entries);
+                    std::vector<int64_t>& directions, size_t num_entries);
 
 Status AllocateOutput(OpKernelContextInternal& context, const GraphViewer& subgraph,
                       int output_index, bool is_loop_state_var, int64_t batch_size, int64_t sequence_len,

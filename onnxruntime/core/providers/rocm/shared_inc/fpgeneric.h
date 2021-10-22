@@ -206,19 +206,19 @@ inline rocblas_status rocblasGemmStridedBatchedHelper(rocblas_handle handle,
 }
 
 // transpose using geam
-inline rocblas_status rocblasTransposeHelper(rocblas_handle handle, rocblas_operation  transa, rocblas_operation  transb, int m, int n, const float* alpha, const float* A, int lda, const float* beta, const float* B, int ldb, float* C, int ldc) {
+inline rocblas_status rocblasTransposeHelper(hipStream_t /*stream*/, rocblas_handle handle, rocblas_operation  transa, rocblas_operation  transb, int m, int n, const float* alpha, const float* A, int lda, const float* beta, const float* B, int ldb, float* C, int ldc) {
   return rocblas_sgeam(handle, transa, transb, m, n, alpha, A, lda, beta, B, ldb, C, ldc);
 }
-inline rocblas_status rocblasTransposeHelper(rocblas_handle handle, rocblas_operation  transa, rocblas_operation  transb, int m, int n, const double* alpha, const double* A, int lda, const double* beta, const double* B, int ldb, double* C, int ldc) {
+inline rocblas_status rocblasTransposeHelper(hipStream_t /*stream*/, rocblas_handle handle, rocblas_operation  transa, rocblas_operation  transb, int m, int n, const double* alpha, const double* A, int lda, const double* beta, const double* B, int ldb, double* C, int ldc) {
   return rocblas_dgeam(handle, transa, transb, m, n, alpha, A, lda, beta, B, ldb, C, ldc);
 }
-rocblas_status rocblasTransposeHelper(rocblas_handle, rocblas_operation , rocblas_operation , int m, int n, const half*, const half* A, int, const half*, const half*, int, half* C, int);
+rocblas_status rocblasTransposeHelper(hipStream_t stream, rocblas_handle, rocblas_operation , rocblas_operation , int m, int n, const half*, const half* A, int, const half*, const half*, int, half* C, int);
 
 // copy
-inline rocblas_status rocblasCopyHelper(rocblas_handle handle, int n, const float* x, int incx, float* y, int incy) {
+inline rocblas_status rocblasCopyHelper(hipStream_t /*stream*/, rocblas_handle handle, int n, const float* x, int incx, float* y, int incy) {
   return rocblas_scopy(handle, n, x, incx, y, incy);
 }
-inline rocblas_status rocblasCopyHelper(rocblas_handle handle, int n, const double* x, int incx, double* y, int incy) {
+inline rocblas_status rocblasCopyHelper(hipStream_t /*stream*/, rocblas_handle handle, int n, const double* x, int incx, double* y, int incy) {
   return rocblas_dcopy(handle, n, x, incx, y, incy);
 }
-rocblas_status rocblasCopyHelper(rocblas_handle handle, int n, const half* x, int incx, half* y, int incy);
+rocblas_status rocblasCopyHelper(hipStream_t stream, rocblas_handle handle, int n, const half* x, int incx, half* y, int incy);

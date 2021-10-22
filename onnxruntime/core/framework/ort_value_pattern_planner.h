@@ -18,8 +18,12 @@ class ExecutionPlanBase;
 // SessionOptions.enable_mem_pattern
 class OrtValuePatternPlanner {
  public:
-  explicit OrtValuePatternPlanner(const ExecutionPlanBase& execution_plan);
-  common::Status TraceAllocation(int ort_value_idx, const std::vector<size_t>& program_counter_start, const std::vector<size_t>& program_counter_end, size_t size);
+  // trace_using_counters should be true if the TraceAllocation with ProgramCounter is used. Only one
+  // variant of the TraceAllocation calls may be used.
+  explicit OrtValuePatternPlanner(const ExecutionPlanBase& execution_plan, bool trace_using_counters = false);
+#ifdef ENABLE_TRAINING
+  common::Status TraceAllocation(int ort_value_idx, const AllocPlanPerValue::ProgramCounter& counter, size_t size);
+#endif
   common::Status TraceAllocation(int ort_value_idx, size_t size);
   common::Status TraceFree(int ort_value_index);
   common::Status GeneratePatterns(MemoryPatternGroup* out);

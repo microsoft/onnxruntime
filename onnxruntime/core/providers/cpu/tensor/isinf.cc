@@ -1,18 +1,32 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/framework/op_kernel.h"
-#include "core/common/common.h"
-#include "core/framework/tensor.h"
-#include "core/util/math_cpuonly.h"
-
 #include <cmath>
+
+#include "core/common/common.h"
+#include "core/framework/data_types_internal.h"
+#include "core/framework/op_kernel.h"
+#include "core/framework/tensor.h"
+#include "core/providers/op_kernel_type_control.h"
+#include "core/util/math_cpuonly.h"
 
 namespace onnxruntime {
 // https://github.com/onnx/onnx/blob/master/docs/Operators.md#IsInf
 
+namespace op_kernel_type_control {
+ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES_ALL_OPSETS(
+    kCpuExecutionProvider, kOnnxDomain, IsInf, Input, 0,
+    float, double);
+}  // namespace op_kernel_type_control
+
 class IsInf final : public OpKernel {
  public:
+  using DataTypes = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(kCpuExecutionProvider, kOnnxDomain,
+                                                                   IsInf, Input, 0);
+
+  using EnabledDataTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(kCpuExecutionProvider, kOnnxDomain,
+                                                                          IsInf, Input, 0);
+
   explicit IsInf(const OpKernelInfo& info);
   Status Compute(OpKernelContext* context) const override;
 
@@ -25,8 +39,9 @@ ONNX_CPU_OPERATOR_KERNEL(
     IsInf,
     10,
     KernelDefBuilder()
-        .TypeConstraint("T1", {DataTypeImpl::GetTensorType<float>(),
-                               DataTypeImpl::GetTensorType<double>()})
+        .TypeConstraint("T1",
+                        BuildKernelDefConstraintsFromTypeList<IsInf::DataTypes>(),
+                        BuildKernelDefConstraintsFromTypeList<IsInf::EnabledDataTypes>())
         .TypeConstraint("T2", DataTypeImpl::GetTensorType<bool>()),
     IsInf);
 
@@ -39,32 +54,34 @@ IsInf::IsInf(const OpKernelInfo& info) : OpKernel(info) {
 
 namespace isinf_internal {
 template <class T>
-void ComputeImpl(const Tensor& X, Tensor& Y, bool detect_positive, bool detect_negative) {
-  const auto total_items = X.Shape().Size();
-  auto output_data = Y.template MutableData<bool>();
+struct ComputeDispatchTarget {
+  void operator()(const Tensor& X, Tensor& Y, bool detect_positive, bool detect_negative) const {
+    const auto total_items = X.Shape().Size();
+    auto output_data = Y.template MutableData<bool>();
 
-  if (detect_positive && detect_negative) {
-    EigenMap<bool>(Y) = EigenMap<T>(X).array().isInf();
-  } else if (detect_positive) {
-    auto input_data = X.template Data<T>();
-    auto end_data = input_data + total_items;
-    std::transform(
-        input_data, end_data, output_data, [](T v) {
-          return (v == std::numeric_limits<T>::infinity());
-        });
+    if (detect_positive && detect_negative) {
+      EigenMap<bool>(Y) = EigenMap<T>(X).array().isInf();
+    } else if (detect_positive) {
+      auto input_data = X.template Data<T>();
+      auto end_data = input_data + total_items;
+      std::transform(
+          input_data, end_data, output_data, [](T v) {
+            return (v == std::numeric_limits<T>::infinity());
+          });
 
-  } else if (detect_negative) {
-    auto input_data = X.template Data<T>();
-    auto end_data = input_data + total_items;
-    std::transform(
-        input_data, end_data, output_data, [](T v) {
-          return (v == -std::numeric_limits<T>::infinity());
-        });
-  } else {
-    // all false
-    memset(output_data, false, total_items);
+    } else if (detect_negative) {
+      auto input_data = X.template Data<T>();
+      auto end_data = input_data + total_items;
+      std::transform(
+          input_data, end_data, output_data, [](T v) {
+            return (v == -std::numeric_limits<T>::infinity());
+          });
+    } else {
+      // all false
+      memset(output_data, false, total_items);
+    }
   }
-}
+};
 }  // namespace isinf_internal
 
 Status IsInf::Compute(OpKernelContext* context) const {
@@ -75,14 +92,8 @@ Status IsInf::Compute(OpKernelContext* context) const {
 
   using namespace isinf_internal;
 
-  if (X.IsDataType<float>()) {
-    ComputeImpl<float>(X, Y, detect_positive_ != 0, detect_negative_ != 0);
-  } else if (X.IsDataType<double>()) {
-    ComputeImpl<double>(X, Y, detect_positive_ != 0, detect_negative_ != 0);
-  } else {
-    // should not reach this as no kernel is registered for this condition to be triggered - just an additional safety check
-    ORT_THROW("Data type X must be float or double, but instead got ", X.DataType());
-  }
+  utils::MLTypeCallDispatcherFromTypeList<EnabledDataTypes> dispatcher{X.GetElementType()};
+  dispatcher.Invoke<ComputeDispatchTarget>(X, Y, detect_positive_ != 0, detect_negative_ != 0);
 
   return Status::OK();
 }

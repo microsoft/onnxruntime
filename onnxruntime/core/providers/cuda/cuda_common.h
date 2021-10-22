@@ -2,18 +2,14 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include "cuda_pch.h"
+
+#include "core/providers/shared_library/provider_api.h"
 #include "core/common/status.h"
-#include "core/framework/arena.h"
-#include "core/framework/bfc_arena.h"
-#include "core/framework/data_transfer_manager.h"
-#include "core/framework/op_kernel.h"
-#include "core/graph/graph_viewer.h"
-#include "shared_inc/cuda_call.h"
-#include "cuda_execution_provider.h"
-#include "shared_inc/fast_divmod.h"
-#include "core/util/math.h"
-#include "cuda_fwd.h"
+#include "core/framework/float16.h"
+#include "core/providers/cuda/cuda_pch.h"
+#include "core/providers/cuda/shared_inc/cuda_call.h"
+#include "core/providers/cuda/shared_inc/fast_divmod.h"
+#include "gsl/gsl"
 
 namespace onnxruntime {
 namespace cuda {
@@ -53,140 +49,6 @@ namespace cuda {
                           ? common::Status::OK() \
                           : ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "CUFFT error executing ", #expr))
 
-// -----------------------------------------------------------------------
-// Base class for CUDA kernels
-// -----------------------------------------------------------------------
-class CudaKernel : public OpKernel {
- public:
-  explicit CudaKernel(const OpKernelInfo& info)
-      : OpKernel(info),
-        // Is this OK to have a non-const execution provider?
-        provider_(const_cast<CUDAExecutionProvider*>(static_cast<const CUDAExecutionProvider*>(info.GetExecutionProvider()))) {
-  }
-
-  Status Compute(OpKernelContext* p_op_kernel_context) const override {
-    auto s = ComputeInternal(p_op_kernel_context);
-    // use this to precisely locate the node where CUDA failure comes from
-    //  if (cudaSuccess != cudaDeviceSynchronize())
-    //    __debugbreak();
-
-    if (s.IsOK()) {
-      auto err = cudaGetLastError();
-      if (err != cudaSuccess) {
-        s = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "CUDA error ", cudaGetErrorName(err), ":", cudaGetErrorString(err));
-      }
-    }
-
-    return s;
-  }
-
-  virtual Status ComputeInternal(OpKernelContext* p_op_kernel_context) const = 0;
-
-  template <typename T>
-  inline IAllocatorUniquePtr<T> AllocateBufferOnCPUPinned(size_t count_or_bytes) const {
-    AllocatorPtr allocator = provider_->GetAllocator(CPU_ALLOCATOR_DEVICE_ID, OrtMemTypeCPU);
-    if (!allocator)
-      return nullptr;
-    return IAllocator::MakeUniquePtr<T>(allocator, count_or_bytes);
-  }
-
-  template <typename T>
-  inline IAllocatorUniquePtr<T> GetScratchBuffer(size_t count_or_bytes) const {
-    return provider_->GetScratchBuffer<T>(count_or_bytes);
-  }
-
-  inline void AddDeferredReleaseCPUPtr(void* p) const {
-    provider_->AddDeferredReleaseCPUPtr(p);
-  }
-
-  const cudaDeviceProp& GetDeviceProp() const { return provider_->GetDeviceProp(); };
-
-  // To support cudaMemcpyAsync, the cpu memory should be allocated in pinned memory
-  // and it can only be released after the copy has finished
-  template <typename T>
-  class CudaAsyncBuffer {
-   public:
-    CudaAsyncBuffer(const CudaKernel* op_kernel) : gpu_copy_(nullptr), count_(0), op_kernel_(op_kernel) {}
-
-    CudaAsyncBuffer(const CudaKernel* op_kernel, size_t count) : CudaAsyncBuffer(op_kernel) {
-      AllocCpuPtr(count);
-    }
-
-    CudaAsyncBuffer(const CudaKernel* op_kernel, const T& value, size_t count)
-        : CudaAsyncBuffer(op_kernel, count) {
-      T* p = CpuPtr();
-      for (size_t i = 0; i != count; ++i) {
-        *p++ = value;
-      }
-    }
-
-    CudaAsyncBuffer(const CudaKernel* op_kernel, const std::vector<T>& vec) : CudaAsyncBuffer(op_kernel, vec.size()) {
-      memcpy(CpuPtr(), vec.data(), vec.size() * sizeof(T));
-    }
-
-    void AllocCpuPtr(size_t count) {
-      cpu_pinned_copy_ = op_kernel_->AllocateBufferOnCPUPinned<T>(count);
-      if (cpu_pinned_copy_ == nullptr)
-        throw std::runtime_error("alloc failed");
-      count_ = count;
-    }
-
-    Status CopyToGpu() {
-      if (cpu_pinned_copy_) {
-        gpu_copy_ = op_kernel_->GetScratchBuffer<T>(count_);
-        CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(gpu_copy_.get(), cpu_pinned_copy_.get(), count_ * sizeof(T), cudaMemcpyHostToDevice));
-        op_kernel_->AddDeferredReleaseCPUPtr(cpu_pinned_copy_.release());
-      }
-      return Status::OK();
-    }
-
-    T* CpuPtr() const {
-      return cpu_pinned_copy_.get();
-    }
-
-    gsl::span<T> CpuSpan() const {
-      return gsl::span<T>(CpuPtr(), count_);
-    }
-
-    T* GpuPtr() const {
-      return gpu_copy_.get();
-    }
-
-    size_t count() const {
-      return count_;
-    }
-
-   protected:
-    IAllocatorUniquePtr<T> gpu_copy_;
-    IAllocatorUniquePtr<T> cpu_pinned_copy_;
-    size_t count_;
-    const CudaKernel* op_kernel_;
-  };
-
-  inline cublasHandle_t CublasHandle() const {
-    return provider_->PerThreadCublasHandle();
-  }
-
-  inline cudnnHandle_t CudnnHandle() const {
-    return provider_->PerThreadCudnnHandle();
-  }
-
- protected:
-  template <typename T>
-  inline const T* GetConstOnes(size_t count) const {
-    return provider_->template GetConstOnes<T>(count);
-  }
-
-  inline Status CopyTensor(const Tensor& src, Tensor& dst) const {
-    return Info().GetDataTransferManager().CopyTensor(src, dst);
-  }
-
-  inline int GetDeviceId() const { return provider_->GetDeviceId(); }
-
- private:
-  CUDAExecutionProvider* provider_;
-};
-
 // Type mapping for MLFloat16 to half
 template <typename T>
 class ToCudaType {
@@ -207,6 +69,18 @@ class ToCudaType<MLFloat16> {
   }
 };
 
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
+template <>
+class ToCudaType<BFloat16> {
+ public:
+  typedef nv_bfloat16 MappedType;
+  static MappedType FromFloat(float f) {
+    uint16_t h = BFloat16(f).val;
+    return *reinterpret_cast<MappedType*>(&h);
+  }
+};
+#endif
+
 inline bool CalculateFdmStrides(gsl::span<fast_divmod> p, const std::vector<int64_t>& dims) {
   int stride = 1;
   if (dims.empty() || p.size() < dims.size())
@@ -223,28 +97,96 @@ inline bool CalculateFdmStrides(gsl::span<fast_divmod> p, const std::vector<int6
 
 class CublasMathModeSetter {
  public:
-  CublasMathModeSetter(const cudaDeviceProp& prop, cublasHandle_t handle, cublasMath_t mode) : prop_(prop), handle_(handle) {
-    cublasGetMathMode(handle, &mode_);
+  CublasMathModeSetter(const cudaDeviceProp& prop, cublasHandle_t handle, cublasMath_t mode) : handle_(handle) {
 #if defined(CUDA_VERSION) && CUDA_VERSION < 11000
-    if (prop.major >= 7 && mode == CUBLAS_TENSOR_OP_MATH) {
-      cublasSetMathMode(handle, mode);
-    }
+    enable_ = (mode == CUBLAS_TENSOR_OP_MATH ? prop.major >= 7 : true);
+#else
+    enable_ = (mode == CUBLAS_TF32_TENSOR_OP_MATH ? prop.major >= 8 : true);
 #endif
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
-    if (prop.major >= 8 && mode == CUBLAS_TF32_TENSOR_OP_MATH) {
-      cublasSetMathMode(handle, mode);
+
+    if (enable_) {
+      cublasGetMathMode(handle, &mode_);
+      enable_ = (mode_ != mode);
+      if (enable_) {
+        cublasSetMathMode(handle, mode);
+      }
     }
-#endif
   }
 
   ~CublasMathModeSetter() {
-    cublasSetMathMode(handle_, mode_);
+    if (enable_) {
+      cublasSetMathMode(handle_, mode_);
+    }
   }
 
  private:
-  const cudaDeviceProp& prop_;
   cublasHandle_t handle_;
   cublasMath_t mode_;
+  bool enable_;
+};
+
+// Cublas Gemm options for half data type
+class HalfGemmOptions {
+ public:
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
+  cublasMath_t GetMathMode() const {
+    if (pedantic_) {
+      return CUBLAS_PEDANTIC_MATH;
+    }
+    return disallow_reduced_precision_reduction_ && !compute_16f_ ? CUBLAS_MATH_DISALLOW_REDUCED_PRECISION_REDUCTION : CUBLAS_DEFAULT_MATH;
+  }
+
+  cublasComputeType_t GetComputeType() const {
+    if (compute_16f_) {
+      return pedantic_ ? CUBLAS_COMPUTE_16F_PEDANTIC : CUBLAS_COMPUTE_16F;
+    } else {
+      return pedantic_ ? CUBLAS_COMPUTE_32F_PEDANTIC : CUBLAS_COMPUTE_32F;
+    }
+  }
+#else
+  cublasMath_t GetMathMode() const {
+    // CublasMathModeSetter will check whether device has tensor cores later.
+    return CUBLAS_TENSOR_OP_MATH;
+  }
+
+  cudaDataType GetComputeType() const {
+    return compute_16f_ ? CUDA_R_16F : CUDA_R_32F;
+  }
+#endif
+
+  static const HalfGemmOptions* GetInstance();
+
+  bool IsCompute16F() const { return compute_16f_; }
+
+  void Initialize(int value) {
+    compute_16f_ = (value & 0x01) > 0;
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
+    disallow_reduced_precision_reduction_ = (value & 0x02) > 0;
+    pedantic_ = (value & 0x04) > 0;
+    LOGS_DEFAULT(INFO) << "ORT_CUDA_GEMM_OPTIONS: compute_16f=" << instance.compute_16f_
+                       << " disallow_reduced_precision_reduction=" << instance.disallow_reduced_precision_reduction_
+                       << " pedantic=" << instance.pedantic_;
+#else
+    LOGS_DEFAULT(INFO) << "ORT_CUDA_GEMM_OPTIONS: compute_16f=" << instance.compute_16f_;
+#endif
+    initialized_ = true;
+  }
+
+ private:
+  // Default is FP32. Aggregate in FP16 might be faster but the cost is loss in precision.
+  bool compute_16f_{false};
+
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
+  // Avoid intermediate overflows in accumulation. When compute type is FP32, it will not use FP16 in reduction.
+  bool disallow_reduced_precision_reduction_{false};
+
+  // For numerical robustness studies only. It is much slower.
+  bool pedantic_{false};
+#endif
+
+  bool initialized_{false};
+
+  static HalfGemmOptions instance;
 };
 
 }  // namespace cuda

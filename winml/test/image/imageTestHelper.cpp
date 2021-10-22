@@ -41,7 +41,6 @@ namespace ImageTestHelper {
         wf::IMemoryBufferReference reference = spBitmapBuffer.CreateReference();
         auto spByteAccess = reference.as<::Windows::Foundation::IMemoryBufferByteAccess>();
         spByteAccess->GetBuffer(&pData, &size);
-
         uint32_t height = softwareBitmap.PixelHeight();
         uint32_t width = softwareBitmap.PixelWidth();
 
@@ -53,14 +52,15 @@ namespace ImageTestHelper {
         com_ptr<ITensorNative> itn = tf.as<ITensorNative>();
         itn->GetBuffer(reinterpret_cast<BYTE**>(&pCPUTensor), &uCapacity);
         if (BitmapPixelFormat::Bgra8 == GetPixelFormat(modelPixelFormat)) {
-            for (UINT32 i = 0; i < size; i += 4) {
+            // loop condition is i < size - 2 to avoid potential for extending past the memory buffer
+            for (UINT32 i = 0; i < size - 2; i += 4) {
                 UINT32 pixelInd = i / 4;
                 pCPUTensor[pixelInd] = (float)pData[i];
                 pCPUTensor[(height * width) + pixelInd] = (float)pData[i + 1];
                 pCPUTensor[(height * width * 2) + pixelInd] = (float)pData[i + 2];
             }
         } else if (BitmapPixelFormat::Rgba8 == GetPixelFormat(modelPixelFormat)) {
-            for (UINT32 i = 0; i < size; i += 4) {
+            for (UINT32 i = 0; i < size - 2; i += 4) {
                 UINT32 pixelInd = i / 4;
                 pCPUTensor[pixelInd] = (float)pData[i + 2];
                 pCPUTensor[(height * width) + pixelInd] = (float)pData[i + 1];
@@ -70,7 +70,7 @@ namespace ImageTestHelper {
         // else if()
         // TODO: for Gray8
         else {
-            std::cerr << "Unsupportted pixelFormat";
+            std::cerr << "Unsupported pixelFormat";
         }
         return tf;
     }
@@ -91,7 +91,7 @@ namespace ImageTestHelper {
         float* pCPUTensor;
         uint32_t uCapacity;
 
-        // CPU tensorization
+        // CPU tensor initialization
         TensorFloat tf = TensorFloat::Create(shape);
         com_ptr<ITensorNative> itn = tf.as<ITensorNative>();
         itn->GetBuffer(reinterpret_cast<BYTE**>(&pCPUTensor), &uCapacity);
@@ -99,14 +99,15 @@ namespace ImageTestHelper {
         uint32_t height = softwareBitmap.PixelHeight();
         uint32_t width = softwareBitmap.PixelWidth();
         if (BitmapPixelFormat::Bgra8 == GetPixelFormat(modelPixelFormat)) {
-            for (UINT32 i = 0; i < size; i += 4) {
+            // loop condition is i < size - 2 to avoid potential for extending past the memory buffer
+            for (UINT32 i = 0; i < size - 2; i += 4) {
                 UINT32 pixelInd = i / 4;
                 pCPUTensor[pixelInd] = (float)pData[i];
                 pCPUTensor[(height * width) + pixelInd] = (float)pData[i + 1];
                 pCPUTensor[(height * width * 2) + pixelInd] = (float)pData[i + 2];
             }
         } else if (BitmapPixelFormat::Rgba8 == GetPixelFormat(modelPixelFormat)) {
-            for (UINT32 i = 0; i < size; i += 4) {
+            for (UINT32 i = 0; i < size - 2; i += 4) {
                 UINT32 pixelInd = i / 4;
                 pCPUTensor[pixelInd] = (float)pData[i + 2];
                 pCPUTensor[(height * width) + pixelInd] = (float)pData[i + 1];
@@ -274,6 +275,8 @@ namespace ImageTestHelper {
         // So we use error rate.
         UINT errors = 0;
         for (uint32_t i = 0; i < size; i++, pActualByte++, pExpectedByte++) {
+            // Only the check the first three channels, which are (B, G, R)
+            if((i + 1) % 4 == 0) continue;
             auto diff = (*pActualByte - *pExpectedByte);
             if (diff > epsilon) {
                 errors++;

@@ -61,7 +61,8 @@ __global__ void _SliceKernel(const TArray<int64_t> starts,
   }
 }
 
-Status SliceImpl(const size_t element_size,
+Status SliceImpl(cudaStream_t stream,
+                 const size_t element_size,
                  const int32_t dimension_count,
                  const TArray<int64_t>& starts,
                  const TArray<int64_t>& steps,
@@ -70,11 +71,12 @@ Status SliceImpl(const size_t element_size,
                  const void* input_data,
                  void* output_data,
                  const size_t N) {
-  return SliceImplEx<false>(element_size, dimension_count, starts, steps, input_strides, output_strides, input_data,
+  return SliceImplEx<false>(stream, element_size, dimension_count, starts, steps, input_strides, output_strides, input_data,
                             output_data, N);
 }
 
-Status SliceImplGrad(const size_t element_size,
+Status SliceImplGrad(cudaStream_t stream,
+                     const size_t element_size,
                      const int32_t dimension_count,
                      const TArray<int64_t>& starts,
                      const TArray<int64_t>& steps,
@@ -83,14 +85,14 @@ Status SliceImplGrad(const size_t element_size,
                      const void* input_data,
                      void* output_data,
                      const size_t N) {
-  return SliceImplEx<true>(element_size, dimension_count, starts, steps, input_strides, output_strides, input_data,
+  return SliceImplEx<true>(stream, element_size, dimension_count, starts, steps, input_strides, output_strides, input_data,
                            output_data, N);
 }
 
 #define HANDLE_DIMS(ELEMENT_TYPE, DIMS)                                                     \
   case DIMS: {                                                                              \
     _SliceKernel<is_grad, DIMS, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread> \
-        <<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(                                \
+        <<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(                                \
             starts, steps, input_strides, output_strides,                                   \
             reinterpret_cast<const ToCudaType<ELEMENT_TYPE>::MappedType*>(input_data),      \
             reinterpret_cast<ToCudaType<ELEMENT_TYPE>::MappedType*>(output_data),           \
@@ -112,7 +114,8 @@ Status SliceImplGrad(const size_t element_size,
   } break
 
 template <bool is_grad>
-Status SliceImplEx(const size_t element_size,
+Status SliceImplEx(cudaStream_t stream,
+                   const size_t element_size,
                    const int32_t dimension_count,
                    const TArray<int64_t>& starts,
                    const TArray<int64_t>& steps,

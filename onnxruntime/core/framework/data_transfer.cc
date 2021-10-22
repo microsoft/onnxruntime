@@ -2,6 +2,12 @@
 // Licensed under the MIT License.
 
 #include "core/framework/data_transfer.h"
+#ifndef SHARED_PROVIDER
+#include "core/framework/tensor.h"
+#include "core/framework/sparse_tensor.h"
+#endif
+
+#include "core/framework/ortdevice.h"
 
 namespace onnxruntime {
 
@@ -16,6 +22,15 @@ common::Status IDataTransfer::CopyTensors(const std::vector<IDataTransfer::SrcDs
 
   return Status::OK();
 }
+
+#if !defined(DISABLE_SPARSE_TENSORS)
+common::Status IDataTransfer::CopySparseTensors(const std::vector<SparseSrcDstPair>& src_dst_pairs) const {
+  for (const auto& pair : src_dst_pairs) {
+    ORT_RETURN_IF_ERROR(pair.src.get().Copy(*this, pair.dst, pair.exec_queue_id));
+  }
+  return Status::OK();
+}
+#endif
 
 bool CPUDataTransfer::CanCopy(const OrtDevice& src_device, const OrtDevice& dst_device) const {
   return src_device.Type() == OrtDevice::CPU && dst_device.Type() == OrtDevice::CPU;

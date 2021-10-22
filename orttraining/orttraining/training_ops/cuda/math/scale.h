@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/cuda_kernel.h"
 
 namespace onnxruntime {
 namespace cuda {
@@ -18,6 +18,7 @@ struct GetScaleValueImpl {
 
 template <typename T>
 void Impl_Scale(
+    cudaStream_t stream,
     const T* input_data,
     const float scale_value,
     T* output_data,

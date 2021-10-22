@@ -23,14 +23,14 @@ class IOpBuilder {
 // Get the lookup table with IOpBuilder delegates for different onnx operators
 // Note, the lookup table should have same number of entries as the result of CreateOpSupportCheckers()
 // in op_support_checker.h
-const std::unordered_map<std::string, std::shared_ptr<IOpBuilder>>& GetOpBuilders();
+const std::unordered_map<std::string, const IOpBuilder*>& GetOpBuilders();
 
 // Transpose the NHWC input to NCHW output
 Status TransposeNHWCToNCHW(ModelBuilder& model_builder, const std::string& input, const std::string& output)
     ORT_MUST_USE_RESULT;
 
 // Get the quantized input's scale and zero point for the given input
-Status GetQuantizedInputScaleAndZeroPoint(const ModelBuilder& model_builder,
+Status GetQuantizedInputScaleAndZeroPoint(const InitializedTensorSet& initializers,
                                           const Node& node, const std::string& input_name,
                                           float& scale, int32_t& zero_point) ORT_MUST_USE_RESULT;
 

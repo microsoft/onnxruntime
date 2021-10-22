@@ -13,9 +13,9 @@
 
 namespace WINMLP {
 
-struct LearningModelSession : LearningModelSessionT<LearningModelSession, ILearningModelSessionNative> {
+struct LearningModelSession : LearningModelSessionT<LearningModelSession, ILearningModelSessionNative, ILearningModelSessionNative1> {
   /* LearningModelSession constructors (MachineLearningContract 1). */
-  LearningModelSession() = delete;
+  LearningModelSession(_winml::IEngine* engine);
 
   LearningModelSession(
       winml::LearningModel const& model);
@@ -68,6 +68,9 @@ struct LearningModelSession : LearningModelSessionT<LearningModelSession, ILearn
   STDMETHOD(GetIntraOpNumThreads)
   (uint32_t* numThreads);
 
+  STDMETHOD(GetIntraOpThreadSpinning)
+  (boolean* allowSpinning);
+
  public:
   /* Non-ABI methods */
 
@@ -83,6 +86,9 @@ struct LearningModelSession : LearningModelSessionT<LearningModelSession, ILearn
   {
     return &dml_ep_lock_;
   }
+
+  static winml::LearningModelSession CreateInertSession(_winml::IEngine* engine);
+
  private:
   void
   Initialize();

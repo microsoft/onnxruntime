@@ -97,13 +97,14 @@ void RunGatherGradTestWithRandomData(
 }
 }  // namespace
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_ROCM)
 //TODO: Currently this cannot pass CI, due to GPU architecture problem
 TEST(GatherOpTest, Gather_axis0_indices2d_half) {
+#ifdef USE_CUDA
   if (NeedSkipIfCudaArchLowerThan(700)) {
     return;
   }
-
+#endif
   OpTester test("Gather");
   test.AddAttribute<int64_t>("axis", 0LL);
   test.AddInput<MLFloat16>("data", {3, 3},
@@ -156,6 +157,22 @@ TEST(GatherGradOpTest, GatherGrad_axis0_indices2d_float) {
   test.Run();
 }
 
+TEST(GatherGradOpTest, GatherGrad_negative_indices) {
+  OpTester test("GatherGrad", 1, kMSDomain);
+  test.AddAttribute<int64_t>("axis", 0LL);
+  test.AddInput<int64_t>("shape", {2},
+                         {3, 3});
+  test.AddInput<int64_t>("indices", {2LL, 2LL},
+                         {0LL, -1LL,
+                          0LL, -2LL});
+
+  test.AddInput<float>("grad", {2, 2, 3},
+                       {0, 1, 2, 3, 4, 5, 0, 1, 2, 3, 4, 5});
+  test.AddOutput<float>("output", {3, 3},
+                        {0, 2, 4, 3, 4, 5, 3, 4, 5});
+  test.Run();
+}
+
 TEST(GatherGradOpTest, Gather_axis1_float_impl2) {
   RunGatherGradTestWithRandomData<float>(1, {3, 4}, {6, 128});
 }
@@ -170,7 +187,7 @@ TEST(GatherGradOpTest, GatherFewDistinctIndices) {
   RunGatherGradTestWithRandomData<float>(0, {2, 32}, {6, 128}, absolute_error);
 }
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_ROCM)
 namespace {
 void RunGatherGradConsistentOutputTest(
     int64_t axis,

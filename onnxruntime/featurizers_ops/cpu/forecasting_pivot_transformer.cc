@@ -155,10 +155,10 @@ struct ForecastingPivotTransformerImpl {
 
       const auto elem_type = input_tensor->GetElementType();
 
-      utils::MLTypeCallDispatcher<CopyImputedColumnsImpl,
-                                  int8_t, uint8_t, int16_t, uint16_t, int32_t, uint32_t, int64_t, uint64_t,
-                                  float, double, bool, std::string> t_disp(elem_type);
-      t_disp.Invoke(input_tensor, output_tensor_imputed, row_idx_record, input_matrix_size, num_output_rows);
+      utils::MLTypeCallDispatcher<int8_t, uint8_t, int16_t, uint16_t, int32_t, uint32_t, int64_t, uint64_t,
+                                  float, double, bool, std::string>
+          t_disp(elem_type);
+      t_disp.Invoke<CopyImputedColumnsImpl>(input_tensor, output_tensor_imputed, row_idx_record, input_matrix_size, num_output_rows);
     }
 
     // Prepare the horizon Output(uint32)
@@ -177,9 +177,8 @@ class ForecastingPivotTransformer final : public OpKernel {
   }
 
   Status Compute(OpKernelContext* ctx) const override {
-    utils::MLTypeCallDispatcher<ForecastingPivotTransformerImpl, float, double>
-        t_disp(ctx->Input<Tensor>(1)->GetElementType());
-    t_disp.Invoke(ctx, _num_pivot_columns);
+    utils::MLTypeCallDispatcher<float, double> t_disp(ctx->Input<Tensor>(1)->GetElementType());
+    t_disp.Invoke<ForecastingPivotTransformerImpl>(ctx, _num_pivot_columns);
 
     return Status::OK();
   }

@@ -3,9 +3,8 @@
 
 #pragma once
 
-#include "core/common/common.h"
-#include "core/framework/op_kernel.h"
-#include "core/providers/cuda/cuda_common.h"
+#include "core/providers/shared_library/provider_api.h"
+#include "core/providers/cuda/cuda_kernel.h"
 
 namespace onnxruntime {
 namespace cuda {
@@ -24,6 +23,7 @@ class GatherNDBase : public CudaKernel {
  protected:
   template <typename TIndex>
   Status PrepareCompute(
+      cudaStream_t stream,
       const int64_t batch_dims,
       const TensorShape& input_shape,
       const TensorShape& indices_shape,

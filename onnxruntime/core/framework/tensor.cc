@@ -7,6 +7,8 @@
 #include "core/common/safeint.h"
 #include "core/framework/allocatormgr.h"
 #include "core/framework/data_types.h"
+#include "core/framework/ort_value.h"
+#include "core/framework/utils.h"
 
 namespace onnxruntime {
 
@@ -36,6 +38,27 @@ Tensor::Tensor(MLDataType p_type, const TensorShape& shape, std::shared_ptr<IAll
   Init(p_type, shape, p_data, allocator);
 }
 
+Tensor::Tensor(MLDataType p_type, const TensorShape& shape, void* p_data, std::shared_ptr<IAllocator> deleter,
+               ptrdiff_t offset)
+    : alloc_info_(deleter->Info()) {
+  ORT_ENFORCE(p_type != nullptr);
+  Init(p_type, shape, p_data, deleter, offset);
+}
+
+void Tensor::InitOrtValue(MLDataType elt_type, const TensorShape& shape,
+                          std::shared_ptr<IAllocator> allocator, OrtValue& ort_value) {
+  auto p_tensor = std::make_unique<Tensor>(elt_type, shape, std::move(allocator));
+  auto ml_tensor = DataTypeImpl::GetType<Tensor>();
+  ort_value.Init(p_tensor.release(), ml_tensor, ml_tensor->GetDeleteFunc());
+}
+
+void Tensor::InitOrtValue(MLDataType p_type, const TensorShape& shape, void* p_data,
+                          const OrtMemoryInfo& location, OrtValue& ort_value) {
+  auto ml_tensor = DataTypeImpl::GetType<Tensor>();
+  auto p_tensor = std::make_unique<Tensor>(p_type, shape, p_data, location);
+  ort_value.Init(p_tensor.release(), ml_tensor, ml_tensor->GetDeleteFunc());
+}
+
 size_t Tensor::SizeInBytes() const {
   size_t ret;
   if (!IAllocator::CalcMemSizeForArray(SafeInt<size_t>(shape_.Size()), dtype_->Size(), &ret)) {
@@ -58,10 +81,7 @@ void Tensor::Init(MLDataType p_type, const TensorShape& shape, void* p_raw_data,
   // for string tensors, if this tensor own the buffer (caller passed in the deleter)
   // do the placement new for strings on pre-allocated buffer.
   if (buffer_deleter_ && IsDataTypeString()) {
-    auto* ptr = static_cast<std::string*>(p_data_);
-    for (int64_t i = 0, n = shape_size; i < n; ++i) {
-      new (ptr + i) std::string();
-    }
+    utils::ConstructStrings(p_data_, shape_size);
   }
   byte_offset_ = offset;
 }
@@ -106,15 +126,8 @@ Tensor::~Tensor() {
 
 void Tensor::ReleaseBuffer() {
   if (buffer_deleter_) {
-    // if current tensor is responsible for deleting the buffer
-    // and it is a string tensor, need to explicitly call string(s)
-    // __dtor(s).
     if (IsDataTypeString()) {
-      using string = std::string;
-      auto* ptr = static_cast<std::string*>(p_data_);
-      int64_t len = shape_.Size();
-      for (int64_t i = 0; i < len; i++)
-        ptr[i].~string();
+      utils::DestroyStrings(p_data_, shape_.Size());
     }
     buffer_deleter_->Free(p_data_);
   }

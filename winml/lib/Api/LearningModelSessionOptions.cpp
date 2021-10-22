@@ -1,7 +1,7 @@
 ﻿// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "pch.h"
+#include "lib/Api/pch/pch.h"
 #include "LearningModelSessionOptions.h"
 
 namespace WINMLP {
@@ -40,6 +40,16 @@ uint32_t LearningModelSessionOptions::GetIntraOpNumThreads() {
 STDMETHODIMP LearningModelSessionOptions::SetIntraOpNumThreadsOverride(uint32_t intraOpNumThreads) noexcept {
   intra_op_num_threads_override_ = intraOpNumThreads;
   telemetry_helper.SetIntraOpNumThreadsOverride(intraOpNumThreads);
+  return S_OK;
+}
+
+bool LearningModelSessionOptions::GetIntraOpThreadSpinning() {
+  return allow_thread_spinning_;
+}
+
+STDMETHODIMP LearningModelSessionOptions::SetIntraOpThreadSpinning(boolean allowSpinning) noexcept {
+  allow_thread_spinning_ = allowSpinning;
+  telemetry_helper.SetIntraOpThreadSpinning(allowSpinning);
   return S_OK;
 }
 }  // namespace WINMLP

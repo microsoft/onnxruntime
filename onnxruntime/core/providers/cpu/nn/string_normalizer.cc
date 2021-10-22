@@ -136,7 +136,7 @@ class Utf8Converter {
     // Temporary buffer assumes 1 byte to 1 wchar_t
     // to make sure it is enough.
     const size_t buffer_len = iconv_in_bytes * sizeof(wchar_t);
-    auto buffer = onnxruntime::make_unique<char[]>(buffer_len);
+    auto buffer = std::make_unique<char[]>(buffer_len);
     char* iconv_out = buffer.get();
     size_t iconv_out_bytes = buffer_len;
     auto ret = iconv(icvt, &iconv_in, &iconv_in_bytes, &iconv_out, &iconv_out_bytes);
@@ -170,7 +170,7 @@ class Utf8Converter {
     // Temp buffer, assume every code point converts into 3 bytes, this should be enough
     // We do not convert terminating zeros
     const size_t buffer_len = wstr.length() * 3;
-    auto buffer = onnxruntime::make_unique<char[]>(buffer_len);
+    auto buffer = std::make_unique<char[]>(buffer_len);
 
     char* iconv_out = buffer.get();
     size_t iconv_out_bytes = buffer_len;
@@ -224,8 +224,10 @@ Status CopyCaseAction(ForwardIter first, ForwardIter end, OpKernelContext* ctx,
     if (caseaction == StringNormalizer::LOWER || caseaction == StringNormalizer::UPPER) {
       std::wstring wstr = converter.from_bytes(s);
       if (wstr == wconv_error) {
+        // Please do not include the input text in the error message as it could
+        // be deemed as a compliance violation by teams using this operator
         return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                      "Input contains invalid utf8 chars at: " + static_cast<const std::string&>(s));
+                      "Input contains invalid utf8 chars");
       }
       // In place transform
       loc.ChangeCase(caseaction, wstr);
@@ -357,8 +359,10 @@ Status StringNormalizer::Compute(OpKernelContext* ctx) const {
         const std::string& s = *first;
         std::wstring wstr = converter.from_bytes(s);
         if (wstr == wconv_error) {
+          // Please do not include the input text in the error message as it could
+          // be deemed as a compliance violation by teams using this operator
           return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                        "Input contains invalid utf8 chars at: " + s);
+                        "Input contains invalid utf8 chars");
         }
         locale.ChangeCase(compare_caseaction_, wstr);
         if (0 == wstopwords_.count(wstr)) {

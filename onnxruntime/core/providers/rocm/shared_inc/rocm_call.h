@@ -29,7 +29,7 @@ bool RocmCall(ERRTYPE retCode, const char* exprString, const char* libName, ERRT
 #define MIOPEN_CALL_THROW2(expr, m) (RocmCall<miopenStatus_t, true>((expr), #expr, "MIOPEN", miopenStatusSuccess, m))
 #define HIPFFT_CALL_THROW(expr) (RocmCall<hipfftResult, true>((expr), #expr, "HIPFFT", HIPFFT_SUCCESS))
 
-#ifdef USE_NCCL
+#ifdef ORT_USE_NCCL
 #define NCCL_CALL(expr) (RocmCall<ncclResult_t, false>((expr), #expr, "NCCL", ncclSuccess))
 #define NCCL_CALL_THROW(expr) (RocmCall<ncclResult_t, true>((expr), #expr, "NCCL", ncclSuccess))
 #endif

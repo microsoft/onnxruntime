@@ -5,44 +5,31 @@
 #include "orttraining/core/graph/optimizer/lamb_optimizer_builder.h"
 #include "orttraining/core/graph/optimizer_builder.h"
 #include "orttraining/core/graph/graph_augmenter.h"
+#include "core/framework/ort_value.h"
+#include "core/framework/tensorprotoutils.h"
 #include "core/util/math.h"
 #include "onnx/defs/attr_proto_util.h"
+#include "orttraining/core/session/training_session.h"
 
 namespace onnxruntime {
 namespace training {
 Status LambOptimizerBuilder::Build(
-    const std::vector<ArgDef>& weight_argdefs,
-    const std::vector<ArgDef>& gradient_argdefs,
-    const ArgDef* gradient_norm_argdef,
-    const ArgDef* gradient_norm_finite_argdef,
-    const std::vector<OptimizerNodeConfig>& opt_configs,
+    const OptimizerBuilderConfig& config,
     GraphAugmenter::GraphDefs& graph_defs,
     std::vector<ONNX_NAMESPACE::TensorProto>& new_external_initializers,
+    std::unordered_map<std::string, std::unordered_map<std::string, std::string>>& weight_to_opt_mapping,
     std::vector<ArgDef>& output_weight_argdefs,
     std::vector<ArgDef>& output_gradient_argdefs) const {
-  return Build(weight_argdefs, gradient_argdefs,
-        gradient_norm_argdef, gradient_norm_finite_argdef,
-        opt_configs, graph_defs,
-        new_external_initializers, output_weight_argdefs,
-        output_gradient_argdefs,
-        // gradient clipping is enabled by default for Lamb.
-        true /*enable_grad_clipping*/);
-}
+  const auto& weight_argdefs = config.weight_argdefs;
+  const auto& gradient_argdefs = config.gradient_argdefs;
+  const auto& opt_configs = config.opt_configs;
 
-Status LambOptimizerBuilder::Build(
-    const std::vector<ArgDef>& weight_argdefs,
-    const std::vector<ArgDef>& gradient_argdefs,
-    const ArgDef* gradient_norm_argdef,
-    const ArgDef* gradient_norm_finite_argdef,
-    const std::vector<OptimizerNodeConfig>& opt_configs,
-    GraphAugmenter::GraphDefs& graph_defs,
-    std::vector<TensorProto>& new_external_initializers,
-    std::vector<ArgDef>& output_weight_argdefs,
-    std::vector<ArgDef>& output_gradient_argdefs,
-    bool enable_grad_clipping) const {
+  // gradient clipping is enabled by default for Lamb
+  bool enable_grad_clipping = config.enable_grad_clipping.has_value() ? *config.enable_grad_clipping : true;
+
   ORT_ENFORCE(weight_argdefs.size() <= size_t(1024),
-    "The current LambOptimizer can only update up to 1024 weight tensors, but",
-    "the actual number of weight tensors is ", weight_argdefs.size());
+              "The current LambOptimizer can only update up to 1024 weight tensors, but",
+              "the actual number of weight tensors is ", weight_argdefs.size());
   // We add optimizer's states such as momentums as initializers.
 
   // Lamb optimizer node's inputs and outputs.
@@ -50,8 +37,8 @@ Status LambOptimizerBuilder::Build(
   std::vector<ArgDef> output_argdefs;
 
   // Indicator of finite gradient norm ArgDef.
-  if (gradient_norm_finite_argdef) {
-    input_argdefs.push_back(*gradient_norm_finite_argdef);
+  if (config.gradient_norm_finite_argdef) {
+    input_argdefs.push_back(*config.gradient_norm_finite_argdef);
   } else {
     input_argdefs.emplace_back(ArgDef());
   }
@@ -64,9 +51,9 @@ Status LambOptimizerBuilder::Build(
   }
 
   // Gradient norm
-  if (gradient_norm_argdef && enable_grad_clipping) {
-    input_argdefs.push_back(*gradient_norm_argdef);
-  } else if (gradient_norm_argdef == nullptr && enable_grad_clipping) {
+  if (config.gradient_norm_argdef && enable_grad_clipping) {
+    input_argdefs.push_back(*config.gradient_norm_argdef);
+  } else if (!config.gradient_norm_argdef && enable_grad_clipping) {
     ORT_THROW("Gradient clipping is enabled but gradient norm is not given.");
   } else {
     input_argdefs.push_back(ArgDef());
@@ -78,20 +65,31 @@ Status LambOptimizerBuilder::Build(
 
   // Update count, which should be 1 at the first training iteration.
   // At the end of each Lamb call, the update count may be increased by one.
-  const std::string step_tensor_name = "Step";  // per weight optimizer requires a per weight update count
   // Add step as an initializer.
-  new_external_initializers.emplace_back(CreateTensorProto<int64_t>(step_tensor_name, 1));
-  input_argdefs.emplace_back(ArgDef(step_tensor_name));
+  TensorProto step_tensor_proto;
+  const auto& shared_optim_state = config.shared_optimizer_states;
+  const auto step_state_it = shared_optim_state.find(LAMB_STEP_TENSOR_NAME);
+  if (step_state_it != shared_optim_state.end()) {
+    const auto& init_tensor = step_state_it->second.Get<Tensor>();
+    ORT_THROW_IF_ERROR(IsMatchingTypeAndShape(init_tensor, ONNX_NAMESPACE::TensorProto_DataType_INT64, {1}));
+    step_tensor_proto = utils::TensorToTensorProto(init_tensor, LAMB_STEP_TENSOR_NAME);
+  } else {
+    step_tensor_proto = CreateTensorProto<int64_t>(LAMB_STEP_TENSOR_NAME, 1);
+  }
+  new_external_initializers.emplace_back(step_tensor_proto);
+  weight_to_opt_mapping[onnxruntime::training::SHARED_OPTIMIZER_STATES_KEY][LAMB_STEP_TENSOR_NAME] = LAMB_STEP_TENSOR_NAME;
+  input_argdefs.emplace_back(ArgDef(LAMB_STEP_TENSOR_NAME));
 
   // Add the first output, which is the updated step.
   TypeProto* step_type_proto = graph_defs.CreateTypeProto({}, ONNX_NAMESPACE::TensorProto_DataType_INT64);
-  output_argdefs.emplace_back(ArgDef(step_tensor_name + "_Out", step_type_proto));
+  output_argdefs.emplace_back(ArgDef(LAMB_STEP_TENSOR_NAME + "_Out", step_type_proto));
 
   // Lamb optimizer's attributes.
   std::vector<float> alpha;
   std::vector<float> beta;
   std::vector<float> lambda;
   std::vector<float> epsilon;
+  std::vector<float> max_norm_clip;
   float ratio_min = -std::numeric_limits<float>::infinity();
   float ratio_max = std::numeric_limits<float>::infinity();
   int64_t do_bias_correction = 0;
@@ -160,6 +158,12 @@ Status LambOptimizerBuilder::Build(
       else
         epsilon.emplace_back(1e-6f);
 
+      auto max_norm_clip_iter = attrs.find("max_norm_clip");
+      if (max_norm_clip_iter != attrs.end())
+        max_norm_clip.emplace_back(max_norm_clip_iter->second);
+      else
+        max_norm_clip.emplace_back(1.0f);
+
       auto ratio_min_iter = attrs.find("ratio_min");
       if (ratio_min_iter != attrs.end()) {
         // All weight tensors should have the same min ratio.
@@ -182,10 +186,10 @@ Status LambOptimizerBuilder::Build(
       const TypeProto* const weight_type_proto = weight_argdefs[i].type_proto;
       const TypeProto* const gradient_type_proto = gradient_argdefs[i].type_proto;
       std::vector<int64_t> weight_dims;
-      ORT_RETURN_IF_NOT(
-          weight_argdefs[i].type_proto &&
-          weight_argdefs[i].type_proto->has_tensor_type() &&
-          weight_argdefs[i].type_proto->tensor_type().has_shape());
+      ORT_RETURN_IF_NOT(weight_argdefs[i].type_proto &&
+                            weight_argdefs[i].type_proto->has_tensor_type() &&
+                            weight_argdefs[i].type_proto->tensor_type().has_shape(),
+                        "weight_argsdefs[", i, "] did not have tensor with shape");
       for (const auto& dim : weight_argdefs[i].type_proto->tensor_type().shape().dim()) {
         weight_dims.push_back(dim.dim_value());
       }
@@ -198,30 +202,45 @@ Status LambOptimizerBuilder::Build(
       if (opt_configs[i].update_weight) {
         output_weight_argdef = ArgDef(weight_new_name, weight_type_proto);
         output_argdefs.push_back(output_weight_argdef);  // w_new
-        output_argdefs.push_back(ArgDef());  // g_new
+        output_argdefs.push_back(ArgDef());              // g_new
       } else {
         output_gradient_argdef = ArgDef(gradient_new_name, gradient_type_proto);
-        output_argdefs.push_back(ArgDef());  // w_new
+        output_argdefs.push_back(ArgDef());                // w_new
         output_argdefs.push_back(output_gradient_argdef);  // g_new
       }
 
+      const auto element_type = opt_configs[i].use_mixed_precision_moments ? ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16 : ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT;
+
+      weight_to_opt_mapping[weight_name] = {};
       // m1 & m2 & m1_new & m2_new
-      const std::vector<std::string> moments_prefixes({"Moment_1_", "Moment_2_"});
-      for (const auto& moment_prefix : moments_prefixes) {
-        const std::string gradient_moment_name = moment_prefix + weight_name;
+      for (const auto& moment_prefix : MOMENTS_PREFIXES) {
+        const std::string gradient_moment_name = moment_prefix + "_" + weight_name;
 
         // Construct type of momentum tensor.
         TensorProto moment_tensor_proto;
         TypeProto* moment_type_proto = graph_defs.CopyTypeProto(weight_argdefs[i]);
-        if (opt_configs[i].use_mixed_precision_moments) {
+
+        // Update moment initializer with init value
+        const auto& initial_states = opt_configs[i].initial_states;
+        const auto moment_state_it = initial_states.find(moment_prefix);
+        if (moment_state_it != initial_states.end()) {
+          //update moment_tensor_proto
+          const auto& init_tensor = moment_state_it->second.Get<Tensor>();
+
+          //TODO: need to support float -> float16 and float16-> float conversion
+          ORT_THROW_IF_ERROR(IsMatchingTypeAndShape(init_tensor, element_type, weight_dims));
+          moment_tensor_proto = utils::TensorToTensorProto(init_tensor, gradient_moment_name);
+        } else if (opt_configs[i].use_mixed_precision_moments) {
           moment_tensor_proto = CreateTensorProto<MLFloat16>(gradient_moment_name, MLFloat16(math::floatToHalf(0.f)), weight_dims);
-          moment_type_proto->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16);
         } else {
           moment_tensor_proto = CreateTensorProto<float>(gradient_moment_name, 0.f, weight_dims);
         }
 
+        moment_type_proto->mutable_tensor_type()->set_elem_type(element_type);
+
         // Store momentum tensor to initializer list.
         new_external_initializers.emplace_back(std::move(moment_tensor_proto));
+        weight_to_opt_mapping[weight_name][moment_prefix] = gradient_moment_name;
 
         // Add momentums to the input and output list of the Lamb node.
         input_argdefs.emplace_back(ArgDef(gradient_moment_name, moment_type_proto));
@@ -231,11 +250,11 @@ Status LambOptimizerBuilder::Build(
       // w_mixed_precision & w_mixed_precision_new
       if (opt_configs[i].update_weight && opt_configs[i].mixed_precision_weight_arg != nullptr) {
         input_argdefs.emplace_back(ArgDef(
-          opt_configs[i].mixed_precision_weight_arg->Name(),
-          opt_configs[i].mixed_precision_weight_arg->TypeAsProto()));
+            opt_configs[i].mixed_precision_weight_arg->Name(),
+            opt_configs[i].mixed_precision_weight_arg->TypeAsProto()));
         output_weight_argdef = ArgDef(
-          opt_configs[i].mixed_precision_weight_arg->Name() + "_Lamb_out",
-          opt_configs[i].mixed_precision_weight_arg->TypeAsProto());
+            opt_configs[i].mixed_precision_weight_arg->Name() + "_Lamb_out",
+            opt_configs[i].mixed_precision_weight_arg->TypeAsProto());
         output_argdefs.push_back(output_weight_argdef);
       } else {
         input_argdefs.emplace_back(ArgDef());
@@ -252,6 +271,7 @@ Status LambOptimizerBuilder::Build(
   attribute_protos.emplace_back(ONNX_NAMESPACE::MakeAttribute("beta", beta));
   attribute_protos.emplace_back(ONNX_NAMESPACE::MakeAttribute("lambda", lambda));
   attribute_protos.emplace_back(ONNX_NAMESPACE::MakeAttribute("epsilon", epsilon));
+  attribute_protos.emplace_back(ONNX_NAMESPACE::MakeAttribute("max_norm_clip", max_norm_clip));
   attribute_protos.emplace_back(ONNX_NAMESPACE::MakeAttribute("ratio_min", ratio_min));
   attribute_protos.emplace_back(ONNX_NAMESPACE::MakeAttribute("ratio_max", ratio_max));
   attribute_protos.emplace_back(ONNX_NAMESPACE::MakeAttribute("do_bias_correction", do_bias_correction));

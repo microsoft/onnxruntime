@@ -1,7 +1,7 @@
 ﻿// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "pch.h"
+#include "lib/Api/pch/pch.h"
 
 #include "LearningModel.h"
 
@@ -20,6 +20,18 @@ TensorFeatureDescriptor::TensorFeatureDescriptor(
                                            shape_(shape),
                                            is_required_(is_required),
                                            has_unsupported_image_metadata_(has_unsupported_image_metadata) {
+}
+
+TensorFeatureDescriptor::TensorFeatureDescriptor(
+    hstring const& name,
+    hstring const& description,
+    winml::TensorKind const& kind,
+    array_view<int64_t const> shape) : name_(name),
+                                       description_(description),
+                                       tensor_kind_(kind),
+                                       shape_(shape.begin(), shape.end()),
+                                       is_required_(true),
+                                       has_unsupported_image_metadata_(false) {
 }
 
 winml::TensorKind
@@ -83,4 +95,12 @@ TensorFeatureDescriptor::GetDescription(
   *cchDescription = static_cast<uint32_t>(description_.size());
   return S_OK;
 }
+
+HRESULT TensorFeatureDescriptor::GetDescriptorInfo(
+    _winml::IEngineFactory* engine_factory, 
+    _winml::IDescriptorInfo** info){
+  engine_factory->CreateTensorDescriptorInfo(tensor_kind_, shape_.data(), shape_.size(), info);
+  return S_OK;
+};
+
 }  // namespace WINMLP

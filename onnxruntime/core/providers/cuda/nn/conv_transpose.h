@@ -3,9 +3,11 @@
 
 #pragma once
 
+#include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/cuda_kernel.h"
 #include "core/providers/cuda/cudnn_common.h"
+#include "core/providers/cuda/nn/conv.h"
 #include "core/providers/cpu/nn/conv_transpose_attributes.h"
-#include "conv.h"
 
 namespace onnxruntime {
 namespace cuda {

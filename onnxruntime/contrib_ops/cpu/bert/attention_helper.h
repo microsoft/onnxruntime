@@ -7,6 +7,7 @@
 #include "core/util/math_cpuonly.h"
 #include "core/common/safeint.h"
 #include "core/platform/threadpool.h"
+#include "core/providers/common.h"
 #include "core/mlas/inc/mlas.h"
 
 using onnxruntime::concurrency::ThreadPool;
@@ -72,12 +73,36 @@ void PrepareMask(const int32_t* mask_index,
   // mask_data has been filled with 0, and its shape is BxSxS*
   T* p_mask = mask_data;
 
+  // 4D mask in Megatron GPT2 is currently not support in CPU kernel
+  if (nullptr != mask_index_dims && mask_index_dims->size() == 4) {
+    ORT_NOT_IMPLEMENTED("4D mask in attention cpu kernel is not supported");
+  }
+
+  // For 3D mask, convert values 0 to -10000.0, and 1 to 0.0, then apply unidirectional mask if any.
+  if (nullptr != mask_index_dims && mask_index_dims->size() == 3) {
+    for (int i = 0; i < batch_size * sequence_length * all_sequence_length; i++) {
+      p_mask[i] = (mask_index[i] > 0) ? static_cast<T>(0.0f) : static_cast<T>(-10000.0f);
+    }
+
+    if (is_unidirectional) {
+      for (int b_i = 0; b_i < batch_size; b_i++) {
+        for (int s_i = 0; s_i < sequence_length - 1; s_i++) {
+          for (int m_i = past_sequence_length + s_i + 1; m_i < all_sequence_length; m_i++) {
+            p_mask[s_i * all_sequence_length + m_i] += static_cast<T>(-10000.0f);
+          }
+        }
+        p_mask += sequence_length * all_sequence_length;
+      }
+    }
+
+    return;
+  }
+
   bool is_raw_attention_mask = (nullptr != mask_index_dims && mask_index_dims->size() == 2);
   bool has_mask_start_position = (nullptr != mask_index_dims && mask_index_dims->size() == 1 && static_cast<int>(mask_index_dims->at(0)) == 2 * batch_size);
 
   for (int b_i = 0; b_i < batch_size; b_i++) {
     // TODO: mask_index can be used in softmax to save some calculation.
-
     if (nullptr != mask_index) {
       if (is_raw_attention_mask) {
         // Raw attention mask has value 0 or 1. Here we convert 0 to -10000.0, and 1 to 0.0.
@@ -120,7 +145,6 @@ void PrepareMask(const int32_t* mask_index,
 
     p_mask += sequence_length * all_sequence_length;
   }
-
 }
 
 // Concatenate a past state chunk S'xH with input state chunk SxH into present state chunk S*xH

@@ -38,7 +38,7 @@ namespace CudaDeviceHelpers {
 Status Transpose(const std::vector<size_t>& permutation, const Tensor& input,
                  Tensor& output, const TensorShape* input_shape_override, void* einsum_cuda_assets);
 
-Status DataCopy(const Tensor& input, Tensor& output);
+Status DataCopy(const Tensor& input, Tensor& output, void* einsum_cuda_assets);
 
 template <typename T>
 Status MatMul(const T* input_1_data, const T* input_2_data, T* output_data,
@@ -47,12 +47,12 @@ Status MatMul(const T* input_1_data, const T* input_2_data, T* output_data,
               void* einsum_cuda_assets);
 
 template <typename T>
-Tensor ReduceSum(const Tensor& input, const std::vector<int64_t>& reduce_axes,
-                 bool keep_dims, AllocatorPtr allocator,
-                 const TensorShape* input_shape_override,
-                 concurrency::ThreadPool* /*tp*/, void* einsum_cuda_assets);
+std::unique_ptr<Tensor> ReduceSum(const Tensor& input, const std::vector<int64_t>& reduce_axes,
+                                  bool keep_dims, AllocatorPtr allocator,
+                                  const TensorShape* input_shape_override,
+                                  concurrency::ThreadPool* /*tp*/, void* einsum_cuda_assets);
 
-std::unique_ptr<Tensor> Diagonal(const Tensor& input, int64_t dim_1, int64_t dim_2, AllocatorPtr allocator);
+std::unique_ptr<Tensor> Diagonal(const Tensor& input, int64_t dim_1, int64_t dim_2, AllocatorPtr allocator, void* einsum_cuda_assets);
 
 }  // namespace CudaDeviceHelpers
 

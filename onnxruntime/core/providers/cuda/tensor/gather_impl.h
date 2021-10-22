@@ -9,6 +9,7 @@ namespace onnxruntime {
 namespace cuda {
 
 void GatherImpl(
+    cudaStream_t stream,
     const int64_t input_block_size,
     const int64_t indices_max,
     const fast_divmod& output_block_size,

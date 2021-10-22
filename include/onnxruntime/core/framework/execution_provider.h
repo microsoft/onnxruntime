@@ -3,26 +3,39 @@
 
 #pragma once
 
+#ifndef SHARED_PROVIDER
 #include <unordered_map>
-#include "gsl/gsl"
-
+#include <unordered_set>
+#include <memory>
 #include "core/common/status.h"
 #include "core/common/logging/logging.h"
 #include "core/framework/tensor.h"
-#include "core/framework/func_api.h"
 #include "core/framework/data_transfer.h"
 
 namespace onnxruntime {
+
 class GraphViewer;
 class Node;
 struct ComputeCapability;
 class KernelRegistry;
 class KernelRegistryManager;
 
+}  // namespace onnxruntime
+#else
+#include <memory>
+#endif
+
+#include "core/framework/provider_options.h"
+#include "core/framework/func_api.h"
+#include "core/framework/allocatormgr.h"
+#include "core/common/profiler_common.h"
+
+namespace onnxruntime {
+
 /**
    Logical device representation.
 */
-using AllocatorMap = std::map<int, AllocatorPtr>;
+using AllocatorMap = std::unordered_map<int, AllocatorPtr>;
 using MemoryInfoSet = std::set<OrtMemoryInfo>;
 
 // if we are export the fused function to dll, the function will still in the same binary as onnxruntime
@@ -30,13 +43,6 @@ using MemoryInfoSet = std::set<OrtMemoryInfo>;
 using CreateFunctionStateFunc = std::function<int(ComputeContext*, FunctionState*)>;
 using ComputeFunc = std::function<Status(FunctionState, const OrtApi*, OrtKernelContext*)>;
 using DestroyFunctionStateFunc = std::function<void(FunctionState)>;
-
-//unordered maps
-using UnorderedMapStringToString = std::unordered_map<std::string, std::string>;
-
-//data types for execution provider options
-using ProviderOptionsVector = std::vector<UnorderedMapStringToString>;
-using ProviderOptionsMap = std::unordered_map<std::string, UnorderedMapStringToString>;
 
 struct NodeComputeInfo {
   CreateFunctionStateFunc create_state_func;
@@ -46,7 +52,12 @@ struct NodeComputeInfo {
 
 class IExecutionProvider {
  protected:
-  IExecutionProvider(const std::string& type) : type_{type} {}
+  IExecutionProvider(const std::string& type, bool use_metadef_id_creator = false)
+      : type_{type} {
+    if (use_metadef_id_creator) {
+      metadef_id_generator_ = std::make_unique<ModelMetadefIdGenerator>();
+    }
+  }
 
  public:
   virtual ~IExecutionProvider() = default;
@@ -99,7 +110,7 @@ class IExecutionProvider {
      3. onnxruntime (framework/session) does not depend on any specific
      execution provider lib.
   */
-  virtual std::shared_ptr<KernelRegistry> GetKernelRegistry() const;
+  virtual std::shared_ptr<KernelRegistry> GetKernelRegistry() const { return nullptr; }
 
   /**
      Get the device id of current execution provider
@@ -107,16 +118,9 @@ class IExecutionProvider {
   virtual int GetDeviceId() const { return -1; };
 
   /**
-     Get execution provider's configurations. 
+     Get execution provider's configuration options.
    */
-  const UnorderedMapStringToString& GetProviderOptions() const { return provider_options_; }
-
-  /**
-     Store execution provider's configurations. 
-   */
-  void SetProviderOptions(UnorderedMapStringToString& options) {
-    provider_options_ = options;
-  }
+  virtual ProviderOptions GetProviderOptions() const { return {}; }
 
   /**
      Returns an opaque handle whose exact type varies based on the provider
@@ -140,7 +144,7 @@ class IExecutionProvider {
      Currently this is primarily used by the IOBinding object to ensure that all
      inputs have been copied to the device before execution begins.
   */
-  virtual common::Status Sync() const;
+  virtual common::Status Sync() const { return Status::OK(); }
 
   /**
      Called when InferenceSession::Run started
@@ -148,7 +152,7 @@ class IExecutionProvider {
      Run may not be finished on device This function should be regarded as the
      point after which a new Run would start to submit commands from CPU
   */
-  virtual common::Status OnRunStart();
+  virtual common::Status OnRunStart() { return Status::OK(); }
 
   /**
      Called when InferenceSession::Run ended
@@ -156,17 +160,22 @@ class IExecutionProvider {
      may not be finished on device This function should be regarded as the point
      that all commands of current Run has been submmited by CPU
   */
-  virtual common::Status OnRunEnd();
+  virtual common::Status OnRunEnd() { return Status::OK(); }
 
   /**
      Called when session creation is complete
      This provides an opportunity for execution providers to optionally synchronize and
      clean up its temporary resources to reduce memory and ensure the first run is fast.
   */
-  virtual common::Status OnSessionInitializationEnd();
+  virtual common::Status OnSessionInitializationEnd() { return Status::OK(); }
+
+  virtual common::Status SetComputeStream(void*) { return Status::OK(); }
+  virtual void* GetComputeStream() const { return nullptr; }
 
   void InsertAllocator(AllocatorPtr allocator);
   void ReplaceAllocator(AllocatorPtr allocator);
+  // TODO: temparary sulotion, need to unify the interface in EP and AllocatorManager
+  void TryInsertAllocator(AllocatorPtr allocator);
 
   // creation of a fused node is not supported in a minimal build, so any EP enabled in that scenario must support
   // compilation via GraphViewer instances.
@@ -239,6 +248,30 @@ class IExecutionProvider {
     return logger_;
   }
 
+  /** Generate a unique id that can be used in a MetaDef name. Values are unique for a model instance. 
+   The model hash is also returned if you wish to include that in the MetaDef name to ensure uniqueness across models.
+   @param graph_viewer[in] Graph viewer that GetCapability was called with. Can be for the main graph or nested graph.
+   @param model_hash[out] Returns the hash for the main (i.e. top level) graph in the model. 
+                          This is created using the model path if available, 
+                          or the model input names and the output names from all nodes in the main graph.
+   @remarks e.g. the TensorRT Execution Provider is used in multiple sessions and the underlying infrastructure caches
+            compiled kernels, so the name must be unique and deterministic across models and sessions.
+            NOTE: Ideally this would be a protected method, but to work across the EP bridge it has to be public and 
+                  virtual, and ModelMetadefIdGenerator but be defined in the header as well.
+   */
+  virtual int GenerateMetaDefId(const onnxruntime::GraphViewer& graph_viewer, uint64_t& model_hash) const;
+
+  /**
+     Register allocators used for EP
+     TODO: Used for CUDA & TRT only for now, will have one more PR to apply this for all EPs.
+     EPs will have a shared pointer to allocator_manager, allocator_managerall will be the only place for allocators
+  */
+  virtual void RegisterAllocator(std::shared_ptr<AllocatorManager> allocator_manager);
+
+  virtual std::unique_ptr<profiling::EpProfiler> GetProfiler() {
+    return {};
+  }
+
  private:
   const std::string type_;
   AllocatorMap allocators_;
@@ -248,7 +281,18 @@ class IExecutionProvider {
   // convenience list of the allocators so GetAllocatorList doesn't have to build a new vector each time
   // contains the same instances as allocators_
   std::vector<AllocatorPtr> allocator_list_;
-  // It will be set when constructor is being called
-  UnorderedMapStringToString provider_options_;
+
+  // helper to generate ids that are unique to model and deterministic, even if the execution provider is shared across
+  // multiple sessions.
+  class ModelMetadefIdGenerator {
+   public:
+    int GenerateId(const onnxruntime::GraphViewer& graph_viewer, uint64_t& model_hash);
+
+   private:
+    std::unordered_map<uint64_t, int64_t> main_graph_hash_;  // map graph instance hash to model contents hash
+    std::unordered_map<int64_t, int> model_metadef_id_;      // current unique id for model
+  };
+
+  std::unique_ptr<ModelMetadefIdGenerator> metadef_id_generator_;
 };
 }  // namespace onnxruntime

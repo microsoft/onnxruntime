@@ -6,6 +6,7 @@
 namespace onnxruntime {
 namespace contrib {
 
+// TransposedMatMul is kept for backward compatibility
 ONNX_OPERATOR_KERNEL_EX(
     TransposeMatMul,
     kMSDomain,

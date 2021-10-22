@@ -6,15 +6,11 @@
 #include <type_traits>
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
-//#include "test/providers/cpu/reduction/reduction_test_cases.h"
-#ifdef USE_CUDA
-#include "core/providers/cuda/reduction/reduction_functions.h"
-#endif
 
 namespace onnxruntime {
 namespace test {
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_ROCM)
 
 void test_all_1d_true(size_t size) {
   std::unique_ptr<bool[]> p_data(new bool[size]);
@@ -84,10 +80,11 @@ TEST(AllOpTest, All_1d_large) {
     }
   }
 }
+#endif
 
 class ReductionOpTest : public ::testing::TestWithParam<bool> {
-  protected:
-    bool use_determinism;
+ protected:
+  bool use_determinism;
 };
 
 TEST_P(ReductionOpTest, ReduceAllL2) {
@@ -102,6 +99,7 @@ TEST_P(ReductionOpTest, ReduceAllL2) {
   test.Run();
 }
 
+#if defined(USE_CUDA) || defined(USE_ROCM)
 TEST_P(ReductionOpTest, ReduceAllL2HalfHalf) {
   OpTester test("ReduceAllL2", 1, onnxruntime::kMSDomain, true);
   test.SetDeterminism(GetParam());
@@ -163,6 +161,7 @@ TEST_P(ReductionOpTest, ReduceAllL2HalfFloat) {
   test.AddOutput<float>("reduced", {}, result);
   test.Run();
 }
+#endif
 
 void TestMultiTensorReduce(
     const int tensor_count,
@@ -226,8 +225,6 @@ TEST_P(ReductionOpTest, ReduceAllL2Many) {
 // invoke with and without use_determinism flag for session
 INSTANTIATE_TEST_SUITE_P(ReductionOpTestWrapper, ReductionOpTest, ::testing::Bool());
 
-#endif
-
 TEST(ReductionOpTest, ReduceSumTraining_int32) {
   OpTester test("ReduceSumTraining", 1, onnxruntime::kMSDomain);
   test.AddAttribute("keepdims", (int64_t)1);
@@ -242,6 +239,23 @@ TEST(ReductionOpTest, ReduceSumTraining_int32) {
                           11, 12});
   test.AddInput<int64_t>("axes", {2}, {0, 2}, true /*is_initializer*/);
   test.AddOutput<int32_t>("reduced", {1, 2, 1}, {33, 45});
+  test.Run();
+}
+
+TEST(ReductionOpTest, ReduceSumTraining_fast_matrix_reduction) {
+  OpTester test("ReduceSumTraining", 1, onnxruntime::kMSDomain);
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<float>("data", {3, 4},
+                       {1.0f, 2.0f,
+                        3.0f, 4.0f,
+
+                        5.0f, 6.0f,
+                        7.0f, 8.0f,
+
+                        9.0f, 10.0f,
+                        11.0f, 12.0f});
+  test.AddInput<int64_t>("axes", {2}, {0, 1}, true /*is_initializer*/);
+  test.AddOutput<float>("reduced", {1, 1}, {78.0f});
   test.Run();
 }
 
@@ -327,7 +341,7 @@ TEST(ReductionOpTest, ReduceSumTraining_neg_axis) {
   test.Run();
 }
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_ROCM)
 TEST(ReductionOpTest, ReduceSumTrainingHalfHalf) {
   OpTester test("ReduceSumTraining", 1, onnxruntime::kMSDomain);
   test.AddAttribute("keepdims", (int64_t)0);

@@ -117,7 +117,7 @@ cudnnDataType_t CudnnTensor::GetDataType() {
   ORT_THROW("cuDNN engine currently supports only single/double/half/int8/uint8 precision data types. Got:",
     typeid(ElemType).name());
   // Not reachable but GCC complains
-  return 0;
+  return CUDNN_DATA_FLOAT;
 }
 
 template<>
@@ -160,6 +160,11 @@ const double Consts<double>::Zero = 0;
 const float Consts<half>::Zero = 0;
 
 const float Consts<half>::One = 1;
+
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
+const float Consts<nv_bfloat16>::Zero = 0;
+const float Consts<nv_bfloat16>::One = 1;
+#endif
 
 template <>
 const int8_t Consts<int8_t>::Zero = 0;

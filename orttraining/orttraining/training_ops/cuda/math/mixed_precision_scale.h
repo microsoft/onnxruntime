@@ -3,14 +3,14 @@
 
 #pragma once
 #include "core/common/common.h"
-#include "core/framework/op_kernel.h"
-#include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/cuda_kernel.h"
 
 namespace onnxruntime {
 namespace cuda {
 
 template <typename SrcT, typename DstT>
 void Impl_MixedPrecisionScale(
+    cudaStream_t stream,
     const SrcT* input_data,
     const float* scale_data,
     DstT* output_data,

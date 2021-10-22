@@ -19,7 +19,7 @@ void RunTest(std::initializer_list<T> input,
   test.AddInput<int64_t>("repeats", repeat_dims, repeat);
   test.AddOutput<T>("output", output_dims, output);
   if (std::is_same<T, int8_t>::value)
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}); //TensorRT reports error: Assertion Error in makePaddedScale: 0 (regionRanges != nullptr)
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT reports error: Assertion Error in makePaddedScale: 0 (regionRanges != nullptr)
   else
     test.Run();
 }
@@ -43,6 +43,26 @@ void RunTestWrapper() {
 
   // Tile3D
   RunTest<T>({111, 112, 113, 122, 123, 124}, {2, 1, 3}, {1, 2, 1}, {3}, {111, 112, 113, 111, 112, 113, 122, 123, 124, 122, 123, 124}, {2, 2, 3});
+
+  // Tile1DWithOneRepeats
+  RunTest<T>({111, 112, 113, 122, 123, 124}, {2, 1, 3}, {1, 1, 1}, {3}, {111, 112, 113, 122, 123, 124}, {2, 1, 3});
+
+  // TileWhichIsBasicallyCopiesOfInputBuffer - 1
+  // This will trigger the MemCpy optimization path
+  RunTest<T>({111, 112, 113}, {1, 1, 3}, {2, 2, 1}, {3}, {111, 112, 113, 111, 112, 113, 111, 112, 113, 111, 112, 113}, {2, 2, 3});
+
+  // TileWhichIsBasicallyCopiesOfInputBuffer - 2
+  // This will trigger the MemCpy optimization path
+  RunTest<T>({111, 112, 113}, {1, 1, 3}, {3, 1, 1}, {3}, {111, 112, 113, 111, 112, 113, 111, 112, 113}, {3, 1, 3});
+
+  // TileWhichIsBasicallyCopiesOfInputBuffer - 3 (batch > 1 and batch_repeat == 1)
+  // This will trigger the (Batched) MemCpy optimization path
+  RunTest<T>({111, 112, 113, 11, 12, 13}, {2, 1, 3}, {1, 2, 1}, {3}, {111, 112, 113, 111, 112, 113, 11, 12, 13, 11, 12, 13}, {2, 2, 3});
+
+  // TileWhichIsBasicallyCopiesOfInputBuffer - 3 (batch > 1 and batch_repeat > 1)
+  // This will trigger the (Batched) MemCpy optimization path
+  RunTest<T>({111, 112, 113, 11, 12, 13}, {2, 1, 3}, {2, 2, 1}, {3},
+             {111, 112, 113, 111, 112, 113, 11, 12, 13, 11, 12, 13, 111, 112, 113, 111, 112, 113, 11, 12, 13, 11, 12, 13}, {4, 2, 3});
 }
 
 template <>
@@ -64,6 +84,28 @@ void RunTestWrapper<bool>() {
 
   // Tile3D
   RunTest<bool>({true, false, true, false, true, false}, {2, 1, 3}, {1, 2, 1}, {3}, {true, false, true, true, false, true, false, true, false, false, true, false}, {2, 2, 3});
+
+  // Tile1DWithOneRepeats
+  RunTest<bool>({true, false, true, false, true, true}, {2, 1, 3}, {1, 1, 1}, {3}, {true, false, true, false, true, true}, {2, 1, 3});
+
+  // TileWhichIsBasicallyCopiesOfInputBuffer - 1
+  // This will trigger the MemCpy optimization path
+  RunTest<bool>({true, false, true}, {1, 1, 3}, {2, 2, 1}, {3}, {true, false, true, true, false, true, true, false, true, true, false, true}, {2, 2, 3});
+
+  // TileWhichIsBasicallyCopiesOfInputBuffer - 2
+  // This will trigger the MemCpy optimization path
+  RunTest<bool>({true, false, true}, {1, 1, 3}, {3, 1, 1}, {3}, {true, false, true, true, false, true, true, false, true}, {3, 1, 3});
+
+  // TileWhichIsBasicallyCopiesOfInputBuffer - 3 (batch > 1 and batch_repeat == 1)
+  // This will trigger the (Batched) MemCpy optimization path
+  RunTest<bool>({true, false, true, true, false, true}, {2, 1, 3}, {1, 2, 1}, {3},
+                {true, false, true, true, false, true, true, false, true, true, false, true}, {2, 2, 3});
+
+  // TileWhichIsBasicallyCopiesOfInputBuffer - 3 (batch > 1 and batch_repeat > 1)
+  // This will trigger the (Batched) MemCpy optimization path
+  RunTest<bool>({true, false, true, true, false, true}, {2, 1, 3}, {2, 2, 1}, {3},
+                {true, false, true, true, false, true, true, false, true, true, false, true, true, false, true, true, false, true, true, false, true, true, false, true},
+                {4, 2, 3});
 }
 
 TEST(TensorOpTest, TileFloatType) {

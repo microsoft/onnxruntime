@@ -3,7 +3,7 @@
 
 #pragma once
 #include <stdint.h>
-#include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/cuda_kernel.h"
 #include "core/providers/cuda/shared_inc/cuda_utils.h"
 
 namespace onnxruntime {
@@ -28,6 +28,7 @@ using GatheredIndexIndex_t = int32_t;
 
 template <typename T, typename TIndex>
 void GatherGradImpl(
+    cudaStream_t stream,
     const CudaScratchBufferAllocator& allocator,
     const T* dY_data,
     const TIndex* dX_indices,
