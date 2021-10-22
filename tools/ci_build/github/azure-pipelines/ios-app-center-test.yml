@@ -4,22 +4,38 @@ jobs:
     vmImage: 'macOS-10.15'
   timeoutInMinutes: 60
   steps:
-  - script: |
-      set -e -x
-      cd $(Build.SourcesDirectory)/java/src/test/android
-      $(Build.SourcesDirectory)/java/gradlew --no-daemon clean assembleDebug assembleDebugAndroidTest
-    workingDirectory: $(Build.BinariesDirectory)
-    displayName: Build test binaries
 
-  - script: |
-      cd $(Build.SourcesDirectory)/java/src/test/android
-      appcenter test run espresso \
-        --app "gwang-05tf/AppCenter-Espresso-E2E-Example" \
-        --devices 581708da \
-        --app-path ./app/build/outputs/apk/debug/app-debug.apk \
-        --test-series "master" \
-        --locale "en_US" \
-        --build-dir ./app/build/outputs/apk/androidTest/debug \
-        --token $(AppCenterAPIToken)
-    workingDirectory: $(Build.BinariesDirectory)
-    displayName: Run E2E tests on App Center
+- task: InstallAppleCertificate@2
+  inputs:
+    certSecureFile: '$(certName)'
+    certPwd: '$(certPwd)'
+    keychain: 'temp'
+    deleteCert: true
+
+- task: CocoaPods@0
+  inputs:
+    forceRepoUpdate: false
+    workingDirectory: $(Build.SourcesDirectory)/onnxruntime/test/platform/ios/ios_package_test/
+
+- task: Xcode@5
+  inputs:
+    actions: 'build-for-testing'
+    configuration: 'Debug'
+    workspace: './ios_package_test.xcworkspace'
+    sdk: 'iphoneos'
+    scheme: 'ios_package_test'
+    signingIdentity: 'Apple Development: Guoyu Wang (69VJ8CLFPM)'
+    args: '-derivedDataPath $(build.BinariesDirectory)/DerivedData'
+
+  # - script: |
+  #     cd $(Build.SourcesDirectory)/java/src/test/android
+  #     appcenter test run espresso \
+  #       --app "gwang-05tf/AppCenter-Espresso-E2E-Example" \
+  #       --devices 581708da \
+  #       --app-path ./app/build/outputs/apk/debug/app-debug.apk \
+  #       --test-series "master" \
+  #       --locale "en_US" \
+  #       --build-dir ./app/build/outputs/apk/androidTest/debug \
+  #       --token $(AppCenterAPIToken)
+  #   workingDirectory: $(Build.BinariesDirectory)
+  #   displayName: Run E2E tests on App Center
