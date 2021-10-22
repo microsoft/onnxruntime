@@ -655,7 +655,7 @@ TEST(QDQTransformerTests, Resize) {
                                                     std::numeric_limits<uint8_t>::max());
       auto* roi = builder.MakeInitializer<float>({0}, {});
       auto* scales = builder.MakeInitializer<float>({0}, {});
-      auto* sizes = builder.MakeInitializer<int64_t>(sizes_shape, 1, 512);
+      auto* sizes = builder.MakeInitializer<int64_t>(sizes_shape, 1, 16);
       auto* output_arg = builder.MakeOutput();
 
       // add DQ
