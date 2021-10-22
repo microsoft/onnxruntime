@@ -15,12 +15,13 @@ using namespace onnx_layout_transformation;
 
 namespace onnxruntime {
 
-class ApiValueInfo final : public api::ValueInfo {
+class ApiValueInfo : public api::ValueInfo {
  private:
-  NodeArg& node_arg_;
+  onnxruntime::Graph& graph_;
+  std::string name_;
 
  public:
-  explicit ApiValueInfo(NodeArg& node_arg) : node_arg_(node_arg){};
+  explicit ApiValueInfo(onnxruntime::Graph& graph, std::string name) : graph_(graph), name_(std::move(name)){};
   const std::string_view Name() const override;
   std::optional<std::vector<int64_t>> Shape() const override;
   api::DataType DType() const override;
@@ -33,7 +34,7 @@ class ApiValueInfo final : public api::ValueInfo {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ApiValueInfo);
 };
 
-class ApiTensor final : public api::Tensor {
+class ApiTensor : public api::Tensor {
  private:
   const onnx::TensorProto& tensor_proto_;
   const Graph& graph_;
@@ -59,7 +60,7 @@ class ApiTensor final : public api::Tensor {
 
 class ApiGraph;
 
-class ApiNode final : public api::Node {
+class ApiNode : public api::Node {
  private:
   onnxruntime::Node& node_;
   Graph& graph_;
@@ -71,12 +72,8 @@ class ApiNode final : public api::Node {
     return node_;
   }
 
-  const std::string_view OpType() const override {
-    return node_.OpType();
-  }
-  const std::string_view Domain() const override {
-    return node_.Domain();
-  }
+  const std::string_view OpType() const override;
+  const std::string_view Domain() const override;
   std::vector<std::string_view> Inputs() const override;
   std::vector<std::string_view> Outputs() const override;
   std::optional<int64_t> GetAttributeInt(const std::string_view name) const override;
@@ -92,7 +89,7 @@ class ApiNode final : public api::Node {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ApiNode);
 };
 
-class ApiGraph final : public api::Graph {
+class ApiGraph : public api::Graph {
  private:
   onnxruntime::Graph& graph_;
   AllocatorPtr cpu_allocator_;
@@ -134,7 +131,7 @@ class ApiGraph final : public api::Graph {
 
 // <ApiValueInfo>
 const std::string_view ApiValueInfo::Name() const {
-  return node_arg_.Name();
+  return name_;
 }
 
 const onnx::TensorShapeProto* GetNodeArgShape(const NodeArg* node_arg) {
@@ -151,7 +148,8 @@ const onnx::TensorShapeProto* GetNodeArgShape(const NodeArg* node_arg) {
 }
 
 std::optional<std::vector<int64_t>> ApiValueInfo::Shape() const {
-  const auto* shape_proto = GetNodeArgShape(&node_arg_);
+  const auto* node_arg = graph_.GetNodeArg(name_);
+  const auto* shape_proto = GetNodeArgShape(node_arg);
   if (shape_proto == nullptr) {
     return std::nullopt;
   }
@@ -161,7 +159,13 @@ std::optional<std::vector<int64_t>> ApiValueInfo::Shape() const {
 }
 
 api::DataType ApiValueInfo::DType() const {
-  const auto* type = node_arg_.TypeAsProto();
+  const auto* node_arg = graph_.GetNodeArg(name_);
+
+  if (node_arg == nullptr) {
+    return api::DataType::UNDEFINED;
+  }
+
+  const auto* type = node_arg->TypeAsProto();
   if (!utils::HasTensorType(*type)) {
     return api::DataType::UNDEFINED;
   }
@@ -174,8 +178,9 @@ api::DataType ApiValueInfo::DType() const {
 }
 
 void ApiValueInfo::SetShape(const std::vector<int64_t>* shape) {
+  auto& node_arg = graph_.GetOrCreateNodeArg(name_, nullptr);
   if (shape == nullptr) {
-    node_arg_.ClearShape();
+    node_arg.ClearShape();
     return;
   }
 
@@ -187,7 +192,7 @@ void ApiValueInfo::SetShape(const std::vector<int64_t>* shape) {
     }
   }
 
-  node_arg_.SetShape(new_shape);
+  node_arg.SetShape(new_shape);
 }
 
 void CopyTensorShapeDim(const onnx::TensorShapeProto_Dimension& src, onnx::TensorShapeProto_Dimension& dst) {
@@ -201,7 +206,8 @@ void CopyTensorShapeDim(const onnx::TensorShapeProto_Dimension& src, onnx::Tenso
 }
 
 void ApiValueInfo::PermuteDims(const std::vector<int64_t>& perm) {
-  const auto* shape_proto = GetNodeArgShape(&node_arg_);
+  auto* node_arg = graph_.GetNodeArg(name_);
+  const auto* shape_proto = GetNodeArgShape(node_arg);
   if (shape_proto == nullptr) {
     return;
   }
@@ -218,11 +224,12 @@ void ApiValueInfo::PermuteDims(const std::vector<int64_t>& perm) {
     CopyTensorShapeDim(src_dim, dim);
   }
 
-  node_arg_.SetShape(new_shape);
+  node_arg->SetShape(new_shape);
 }
 
 void ApiValueInfo::UnsqueezeDims(const std::vector<int64_t>& axes) {
-  const auto* shape_proto = GetNodeArgShape(&node_arg_);
+  auto* node_arg = graph_.GetNodeArg(name_);
+  const auto* shape_proto = GetNodeArgShape(node_arg);
   if (shape_proto == nullptr) {
     return;
   }
@@ -245,7 +252,7 @@ void ApiValueInfo::UnsqueezeDims(const std::vector<int64_t>& axes) {
     ++i;
   }
 
-  node_arg_.SetShape(new_shape);
+  node_arg->SetShape(new_shape);
 }
 // </ApiValueInfo>
 
@@ -297,6 +304,14 @@ std::vector<int32_t> ApiTensor::DataInt32() const {
 // </ApiTensor>
 
 // <ApiNode>
+const std::string_view ApiNode::OpType() const {
+  return node_.OpType();
+}
+
+const std::string_view ApiNode::Domain() const {
+  return node_.Domain();
+}
+
 std::vector<std::string_view> NodeArgsToStrings(ConstPointerContainer<std::vector<NodeArg*>> node_args) {
   std::vector<std::string_view> result;
   for (const auto* arg : node_args) {
@@ -452,9 +467,7 @@ std::unique_ptr<api::Tensor> ApiGraph::GetConstant(const std::string_view name) 
 }
 
 std::unique_ptr<api::ValueInfo> ApiGraph::GetValueInfo(const std::string_view name) const {
-  NodeArg* node_arg_ = graph_.GetNodeArg(std::string(name));
-  ORT_ENFORCE(node_arg_ != nullptr, "No NodeArg found for name ", name);
-  return std::unique_ptr<api::ValueInfo>(new ApiValueInfo(*node_arg_));
+  return std::unique_ptr<api::ValueInfo>(new ApiValueInfo(graph_, std::string(name)));
 }
 
 std::unique_ptr<api::ValueConsumers> ApiGraph::GetValueConsumers(const std::string_view name) const {
