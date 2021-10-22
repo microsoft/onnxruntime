@@ -313,7 +313,7 @@ class DnnlSqueezeNodeCapability : public DnnlDefaultNodeCapability {
   bool Supported(const Node* node, const GraphViewer& graph_viewer) const override;
 
  private:
-  bool IsDimensionSupported(const Node* node) const;
+  bool IsDimensionSupported(const Node* node, const GraphViewer& graph_viewer) const;
 };
 
 }  // namespace onnxruntime
