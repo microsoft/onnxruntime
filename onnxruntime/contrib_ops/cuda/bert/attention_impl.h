@@ -64,6 +64,30 @@ bool LaunchTransQkv2(cudaStream_t stream,
                      const int sequence_length, const int batch_size, const int head_size, const int num_heads,
                      const int matrix_num, const half* input, half* output);
 
+bool LaunchConcatTensorToTensor(cudaStream_t stream,
+                                const int all_sequence_length,
+                                const int sequence_length,
+                                const int batch_size,
+                                const int head_size,
+                                const int num_heads,
+                                const int max_threads_per_block,
+                                const int matrix_num,
+                                const float* tensor_in,
+                                const float* tensor_add,
+                                float* tensor_out);
+
+bool LaunchConcatTensorToTensor(cudaStream_t stream,
+                                const int all_sequence_length,
+                                const int sequence_length,
+                                const int batch_size,
+                                const int head_size,
+                                const int num_heads,
+                                const int max_threads_per_block,
+                                const int matrix_num,
+                                const half* tensor_in,
+                                const half* tensor_add,
+                                half* tensor_out);
+
 bool LaunchConcatPastToPresent(cudaStream_t stream,
                                const int all_sequence_length,
                                const int sequence_length,
