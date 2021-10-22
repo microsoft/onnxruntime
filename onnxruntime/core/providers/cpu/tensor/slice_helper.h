@@ -88,11 +88,15 @@ inline Status PrepareForComputeHelper(const std::vector<int64_t>& raw_starts,
 
     // process step
     auto step = axis_index < raw_steps.size() ? raw_steps[axis_index] : 1;
-    // clamp step to avoid overflow if there's a stupidly large value (which will be multiplied in SliceImpl)
-    // as long as the clamped value is >= the size of the dimension a single step will push us past the end
-    step = std::clamp(step, -dim_value, dim_value);
     if (step == 0)
       return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "'step' value cannot be 0");
+
+    // clamp step to avoid overflow if there's a stupidly large value (which will be multiplied in SliceImpl)
+    // as long as the clamped value is >= the size of the dimension a single step will push us past the end
+    if (dim_value != 0) {
+      step = std::clamp(step, -dim_value, dim_value);
+    }
+  
     compute_metadata.steps_[axis] = step;
 
     // process start

@@ -630,5 +630,15 @@ TEST(SliceTest, Slice5D_LargeStep) {
                       {kNupharExecutionProvider});
 }
 
+TEST(SliceTest, EmptyDim) {
+  RunSliceTest<float>({0, 6}, // empty dim in shape
+                      {},
+                      {0}, // starts
+                      {1}, // ends
+                      {0}, // axes
+                      {}, // steps
+                      {0, 6},
+                      {});
+}
 }  // namespace test
 }  // namespace onnxruntime
