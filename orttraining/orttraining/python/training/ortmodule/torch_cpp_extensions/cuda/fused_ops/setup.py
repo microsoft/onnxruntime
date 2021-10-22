@@ -10,7 +10,7 @@ import sys
 from setuptools import setup
 from torch.utils import cpp_extension
 
-filenames = [os.path.join(os.path.dirname(__file__), 'fused_adam_frontend.cpp'),
+filenames = [os.path.join(os.path.dirname(__file__), 'fused_ops_frontend.cpp'),
              os.path.join(os.path.dirname(__file__), 'multi_tensor_adam.cu'),
              os.path.join(os.path.dirname(__file__), 'multi_tensor_scale_kernel.cu'),
              os.path.join(os.path.dirname(__file__), 'multi_tensor_axpby_kernel.cu')]

@@ -1,5 +1,3 @@
-// Copyright (c) Microsoft Corporation. All rights reserved.
-
 #include <torch/extension.h>
 
 // This function is adapted from microsoft/DeepSpeed fused_adam_frontend.cpp
@@ -33,6 +31,23 @@ void multi_tensor_axpby_cuda(int chunk_size,
                              int arg_to_check);
 
 const int fixed_chunk_size = 2048 * 32;
+
+class MemoryBuffer {
+    public:
+        MemoryBuffer(size_t numel, at::Tensor val){
+            data_buffer_ = at::empty({numel}, val.options());
+        }
+
+        at::Tensor Get(at::Tensor param, size_t start_index) {
+            size_t end_index = start_index + param.numel();
+            return data_buffer_.slice(0, start_index, end_index).view(param.sizes());
+        }
+
+    private:
+        at::Tensor data_buffer_;
+};
+
+
 // This function is trying to move into C++ implementation from Python logic
 // https://github.com/NVIDIA/apex/blob/0c7d8e3fa9a095a1641a2290877436d0314b69c6/apex/amp/_process_optimizer.py#L161.
 // This would reduce the overhead of long loops.
@@ -49,6 +64,9 @@ void unscale_fp16_grads_into_fp32_grads(std::vector<at::Tensor>& all_fp16_params
     std::vector<at::Tensor> preexisting_fp32_grads;
 
     std::vector<at::Tensor> fp32_from_fp16_params;
+    std::vector<size_t> offsets_mapping;
+    size_t fp32_from_fp16_param_buffer_size = 0;
+
     for (size_t i = 0; i < all_fp16_params.size(); ++i) {
         auto& fp16_param_grad = all_fp16_params[i].grad();
         bool fp16_param_has_grad = fp16_param_grad.defined();
@@ -59,21 +77,24 @@ void unscale_fp16_grads_into_fp32_grads(std::vector<at::Tensor>& all_fp16_params
 
         if (fp16_param_has_grad && !fp32_from_fp16_param_has_grad) {
             fp32_from_fp16_params.emplace_back(fp32_from_fp16_param);
+            // fp32_from_fp16_param.mutable_grad() = at::empty_like(fp32_from_fp16_param);
             fp16_grads_needing_unscale.emplace_back(fp16_param_grad);
+            offsets_mapping.emplace_back(fp32_from_fp16_param_buffer_size);
+            fp32_from_fp16_param_buffer_size += fp32_from_fp16_param.numel();
+            // new_fp32_grads.emplace_back(fp32_from_fp16_param.grad());
         } else if (fp16_param_has_grad && fp32_from_fp16_param_has_grad) {
             fp16_grads_needing_unscale_with_stash.emplace_back(fp16_param_grad);
             preexisting_fp32_grads.emplace_back(fp32_from_fp16_param_grad);
         }
     }
 
+    auto mem_buffer = MemoryBuffer(fp32_from_fp16_param_buffer_size, fp32_from_fp16_params[0]);
+
     new_fp32_grads.resize(fp32_from_fp16_params.size());
-    #ifdef _OPENMP
-    #pragma omp parallel for
-    #endif
-        for (size_t i = 0; i < fp32_from_fp16_params.size(); ++i) {
-            fp32_from_fp16_params[i].mutable_grad() = at::empty_like(fp32_from_fp16_params[i]);
-            new_fp32_grads[i] = fp32_from_fp16_params[i].grad();
-        }
+    for (size_t i = 0; i < fp32_from_fp16_params.size(); ++i) {
+        fp32_from_fp16_params[i].mutable_grad() = mem_buffer.Get(fp32_from_fp16_params[i], offsets_mapping[i]);
+        new_fp32_grads[i] = fp32_from_fp16_params[i].grad();
+    }
 
     if (fp16_grads_needing_unscale.size() > 0) {
         std::vector<std::vector<at::Tensor>> tensor_lists;
@@ -89,6 +110,7 @@ void unscale_fp16_grads_into_fp32_grads(std::vector<at::Tensor>& all_fp16_params
         tensor_lists.emplace_back(preexisting_fp32_grads);
         multi_tensor_axpby_cuda(fixed_chunk_size, is_overflow_buffer, tensor_lists, inv_scale, float(1.0), 0);
     }
+
 };
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
