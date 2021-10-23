@@ -65,6 +65,7 @@ jobs:
         appSlug: 'AI-Frameworks/ORT-Mobile-iOS'
         devices: '462764b5'
         localeOption: 'en_US'
+        showDebugOutput: true
 
     # - script: |
     #     set -e -x
