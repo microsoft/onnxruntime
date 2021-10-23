@@ -39,6 +39,31 @@ bool LaunchAttentionKernel(
     void* present                                 // Present state output
 );
 
+bool LaunchDecoderAttentionKernel(
+    const cudaDeviceProp& prop,                   // Device Properties
+    cudaStream_t stream,                          // Cuda stream
+    cublasHandle_t& cublas,                       // Cublas handle
+    const size_t element_size,                    // Element size of input tensor
+    int batch_size,                               // Batch size (B)
+    int sequence_length,                          // Sequence length (S)
+    int kv_sequence_length,                       // Key/Value/Cache sequence length
+    int num_heads,                                // Number of attention heads (N)
+    int head_size,                                // Hidden layer size per head (H)
+    bool static_kv,                               // Whether cross attention or not
+    bool use_past,                                // Whether use cache or not
+    bool has_layer_state,                         // Whether output cache or not
+    const void* gemm_buffer,                      // Gemm buffer
+    const void* gemm_query_buffer,                // Query buffer
+    const void* gemm_kv_buffer,                   // Key and value buffer
+    const bool* key_padding_mask,                 // Key padding mask
+    const void* key_cache,                        // Input key cache
+    const void* value_cache,                      // Input value cache
+    void* qkv_buffer,                             // Temporary buffer
+    void* output,                                 // Output tensor
+    void* new_key_cache,                          // New_key_cache tensor
+    void* new_value_cache                         // New_value_cache tensor
+);
+
 bool LaunchTransCtx(cudaStream_t stream,
                     const int sequence_length, const int batch_size, const int head_size, const int num_heads,
                     const int max_threads_per_block, const float* input, float* output);
@@ -54,6 +79,39 @@ bool LaunchTransQkv(cudaStream_t stream,
 bool LaunchTransQkv(cudaStream_t stream,
                     const int sequence_length, const int batch_size, const int head_size, const int num_heads,
                     const int max_threads_per_block, const half* input, half* output);
+
+// LaunchTransQkv2: (S,B,X,N,H) -> (X,B,N,S,H)
+bool LaunchTransQkv2(cudaStream_t stream,
+                     const int sequence_length, const int batch_size, const int head_size, const int num_heads,
+                     const int matrix_num, const float* input, float* output);
+
+bool LaunchTransQkv2(cudaStream_t stream,
+                     const int sequence_length, const int batch_size, const int head_size, const int num_heads,
+                     const int matrix_num, const half* input, half* output);
+
+bool LaunchConcatTensorToTensor(cudaStream_t stream,
+                                const int all_sequence_length,
+                                const int sequence_length,
+                                const int batch_size,
+                                const int head_size,
+                                const int num_heads,
+                                const int max_threads_per_block,
+                                const int matrix_num,
+                                const float* tensor_in,
+                                const float* tensor_add,
+                                float* tensor_out);
+
+bool LaunchConcatTensorToTensor(cudaStream_t stream,
+                                const int all_sequence_length,
+                                const int sequence_length,
+                                const int batch_size,
+                                const int head_size,
+                                const int num_heads,
+                                const int max_threads_per_block,
+                                const int matrix_num,
+                                const half* tensor_in,
+                                const half* tensor_add,
+                                half* tensor_out);
 
 bool LaunchConcatPastToPresent(cudaStream_t stream,
                                const int all_sequence_length,
