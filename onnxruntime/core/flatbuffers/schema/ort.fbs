@@ -192,7 +192,7 @@ table NodesToOptimizeIndexes{
 }
 
 table RuntimeOptimizationRecord{
-  action_id:string;
+  selector_action_id:string;
   nodes_to_optimize_indexes:NodesToOptimizeIndexes;
   produced_node_kernel_def_hashes:[uint64];
 }

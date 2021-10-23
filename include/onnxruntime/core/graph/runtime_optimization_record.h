@@ -27,7 +27,7 @@ struct NodesToOptimizeIndexes {
 };
 
 struct RuntimeOptimizationRecord {
-  std::string action_id;
+  std::string selector_action_id;
   NodesToOptimizeIndexes nodes_to_optimize_indexes;
   std::vector<uint64_t> produced_node_kernel_def_hashes;
 };
@@ -52,7 +52,7 @@ inline bool operator!=(const NodesToOptimizeIndexes& a, const NodesToOptimizeInd
 
 inline bool operator==(const RuntimeOptimizationRecord& a, const RuntimeOptimizationRecord& b) {
   const auto tied = [](const RuntimeOptimizationRecord& v) {
-    return std::tie(v.action_id, v.nodes_to_optimize_indexes, v.produced_node_kernel_def_hashes);
+    return std::tie(v.selector_action_id, v.nodes_to_optimize_indexes, v.produced_node_kernel_def_hashes);
   };
   return tied(a) == tied(b);
 }

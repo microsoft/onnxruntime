@@ -59,7 +59,7 @@ static Status SaveRuntimeOptimizationRecordToOrtFormat(
 
   fbs_runtime_optimization_record =
       fbs::CreateRuntimeOptimizationRecordDirect(builder,
-                                                 runtime_optimization_record.action_id.c_str(),
+                                                 runtime_optimization_record.selector_action_id.c_str(),
                                                  fbs_nodes_to_optimize,
                                                  &runtime_optimization_record.produced_node_kernel_def_hashes);
 
@@ -98,8 +98,8 @@ static Status LoadRuntimeOptimizationRecordFromOrtFormat(
     RuntimeOptimizationRecord& runtime_optimization_record_out) {
   RuntimeOptimizationRecord runtime_optimization_record;
 
-  experimental::utils::LoadStringFromOrtFormat(runtime_optimization_record.action_id,
-                                               fbs_runtime_optimization_record.action_id());
+  experimental::utils::LoadStringFromOrtFormat(runtime_optimization_record.selector_action_id,
+                                               fbs_runtime_optimization_record.selector_action_id());
 
   auto& nodes_to_optimize_indexes = runtime_optimization_record.nodes_to_optimize_indexes;
   if (const auto* fbs_nodes_to_optimize_indexes = fbs_runtime_optimization_record.nodes_to_optimize_indexes()) {

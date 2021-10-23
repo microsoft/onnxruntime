@@ -25,7 +25,7 @@ class RuntimeOptimizationRecord(object):
         self._tab = flatbuffers.table.Table(buf, pos)
 
     # RuntimeOptimizationRecord
-    def ActionId(self):
+    def SelectorActionId(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(4))
         if o != 0:
             return self._tab.String(o + self._tab.Pos)
@@ -70,7 +70,7 @@ class RuntimeOptimizationRecord(object):
         return o == 0
 
 def RuntimeOptimizationRecordStart(builder): builder.StartObject(3)
-def RuntimeOptimizationRecordAddActionId(builder, actionId): builder.PrependUOffsetTRelativeSlot(0, flatbuffers.number_types.UOffsetTFlags.py_type(actionId), 0)
+def RuntimeOptimizationRecordAddSelectorActionId(builder, selectorActionId): builder.PrependUOffsetTRelativeSlot(0, flatbuffers.number_types.UOffsetTFlags.py_type(selectorActionId), 0)
 def RuntimeOptimizationRecordAddNodesToOptimizeIndexes(builder, nodesToOptimizeIndexes): builder.PrependUOffsetTRelativeSlot(1, flatbuffers.number_types.UOffsetTFlags.py_type(nodesToOptimizeIndexes), 0)
 def RuntimeOptimizationRecordAddProducedNodeKernelDefHashes(builder, producedNodeKernelDefHashes): builder.PrependUOffsetTRelativeSlot(2, flatbuffers.number_types.UOffsetTFlags.py_type(producedNodeKernelDefHashes), 0)
 def RuntimeOptimizationRecordStartProducedNodeKernelDefHashesVector(builder, numElems): return builder.StartVector(8, numElems, 8)

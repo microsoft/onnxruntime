@@ -69,7 +69,11 @@ static const char* const kOrtSessionOptionsConfigAllowIntraOpSpinning = "session
 // has to guarantee that the model bytes are valid until the ORT session using the model bytes is destroyed.
 static const char* const kOrtSessionOptionsConfigUseORTModelBytesDirectly = "session.use_ort_model_bytes_directly";
 
-// save runtime optimizations instead of applying them
+// Save information for applying graph optimizations later instead of applying them directly.
+// Runtime optimization information can saved to an ORT format model and applied later when it is loaded in a minimal
+// build.
+// This only applies to optimizations at extended optimization level or higher. Other optimizations are applied
+// directly.
 // "0": disabled, "1": enabled
 // The default is "0".
 static const char* const kOrtSessionOptionsConfigSaveRuntimeOptimizations = "optimization.save_runtime_optimizations";

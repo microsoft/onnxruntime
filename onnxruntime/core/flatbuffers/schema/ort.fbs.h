@@ -1789,12 +1789,12 @@ inline flatbuffers::Offset<NodesToOptimizeIndexes> CreateNodesToOptimizeIndexesD
 struct RuntimeOptimizationRecord FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   typedef RuntimeOptimizationRecordBuilder Builder;
   enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
-    VT_ACTION_ID = 4,
+    VT_SELECTOR_ACTION_ID = 4,
     VT_NODES_TO_OPTIMIZE_INDEXES = 6,
     VT_PRODUCED_NODE_KERNEL_DEF_HASHES = 8
   };
-  const flatbuffers::String *action_id() const {
-    return GetPointer<const flatbuffers::String *>(VT_ACTION_ID);
+  const flatbuffers::String *selector_action_id() const {
+    return GetPointer<const flatbuffers::String *>(VT_SELECTOR_ACTION_ID);
   }
   const onnxruntime::experimental::fbs::NodesToOptimizeIndexes *nodes_to_optimize_indexes() const {
     return GetPointer<const onnxruntime::experimental::fbs::NodesToOptimizeIndexes *>(VT_NODES_TO_OPTIMIZE_INDEXES);
@@ -1804,8 +1804,8 @@ struct RuntimeOptimizationRecord FLATBUFFERS_FINAL_CLASS : private flatbuffers::
   }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
-           VerifyOffset(verifier, VT_ACTION_ID) &&
-           verifier.VerifyString(action_id()) &&
+           VerifyOffset(verifier, VT_SELECTOR_ACTION_ID) &&
+           verifier.VerifyString(selector_action_id()) &&
            VerifyOffset(verifier, VT_NODES_TO_OPTIMIZE_INDEXES) &&
            verifier.VerifyTable(nodes_to_optimize_indexes()) &&
            VerifyOffset(verifier, VT_PRODUCED_NODE_KERNEL_DEF_HASHES) &&
@@ -1818,8 +1818,8 @@ struct RuntimeOptimizationRecordBuilder {
   typedef RuntimeOptimizationRecord Table;
   flatbuffers::FlatBufferBuilder &fbb_;
   flatbuffers::uoffset_t start_;
-  void add_action_id(flatbuffers::Offset<flatbuffers::String> action_id) {
-    fbb_.AddOffset(RuntimeOptimizationRecord::VT_ACTION_ID, action_id);
+  void add_selector_action_id(flatbuffers::Offset<flatbuffers::String> selector_action_id) {
+    fbb_.AddOffset(RuntimeOptimizationRecord::VT_SELECTOR_ACTION_ID, selector_action_id);
   }
   void add_nodes_to_optimize_indexes(flatbuffers::Offset<onnxruntime::experimental::fbs::NodesToOptimizeIndexes> nodes_to_optimize_indexes) {
     fbb_.AddOffset(RuntimeOptimizationRecord::VT_NODES_TO_OPTIMIZE_INDEXES, nodes_to_optimize_indexes);
@@ -1841,26 +1841,26 @@ struct RuntimeOptimizationRecordBuilder {
 
 inline flatbuffers::Offset<RuntimeOptimizationRecord> CreateRuntimeOptimizationRecord(
     flatbuffers::FlatBufferBuilder &_fbb,
-    flatbuffers::Offset<flatbuffers::String> action_id = 0,
+    flatbuffers::Offset<flatbuffers::String> selector_action_id = 0,
     flatbuffers::Offset<onnxruntime::experimental::fbs::NodesToOptimizeIndexes> nodes_to_optimize_indexes = 0,
     flatbuffers::Offset<flatbuffers::Vector<uint64_t>> produced_node_kernel_def_hashes = 0) {
   RuntimeOptimizationRecordBuilder builder_(_fbb);
   builder_.add_produced_node_kernel_def_hashes(produced_node_kernel_def_hashes);
   builder_.add_nodes_to_optimize_indexes(nodes_to_optimize_indexes);
-  builder_.add_action_id(action_id);
+  builder_.add_selector_action_id(selector_action_id);
   return builder_.Finish();
 }
 
 inline flatbuffers::Offset<RuntimeOptimizationRecord> CreateRuntimeOptimizationRecordDirect(
     flatbuffers::FlatBufferBuilder &_fbb,
-    const char *action_id = nullptr,
+    const char *selector_action_id = nullptr,
     flatbuffers::Offset<onnxruntime::experimental::fbs::NodesToOptimizeIndexes> nodes_to_optimize_indexes = 0,
     const std::vector<uint64_t> *produced_node_kernel_def_hashes = nullptr) {
-  auto action_id__ = action_id ? _fbb.CreateString(action_id) : 0;
+  auto selector_action_id__ = selector_action_id ? _fbb.CreateString(selector_action_id) : 0;
   auto produced_node_kernel_def_hashes__ = produced_node_kernel_def_hashes ? _fbb.CreateVector<uint64_t>(*produced_node_kernel_def_hashes) : 0;
   return onnxruntime::experimental::fbs::CreateRuntimeOptimizationRecord(
       _fbb,
-      action_id__,
+      selector_action_id__,
       nodes_to_optimize_indexes,
       produced_node_kernel_def_hashes__);
 }

@@ -56,6 +56,7 @@ struct MultiAction : public Action {
                     const RuntimeOptimizationSaveContext& save_context,
                     SavedState& saved_state, bool& graph_modified) const override {
     for (const auto& action : actions_) {
+      if (!action->ShouldRunForSave()) continue;
       ORT_RETURN_IF_ERROR(action->RunForSave(graph, selected_nodes, save_context, saved_state, graph_modified));
     }
 

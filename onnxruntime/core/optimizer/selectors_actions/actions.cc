@@ -100,8 +100,7 @@ Status ReplaceWithNew::RunForSave(Graph& graph, const NodesToOptimize& selected_
 
   ORT_RETURN_IF_ERROR(MoveInputOutput(graph, selected_nodes, new_node, value_moves_, true));
   new_node.SetExecutionProviderType(kCpuExecutionProvider);
-  ORT_RETURN_IF_NOT(graph.SetOpSchemaFromRegistryForNode(new_node),
-                    "Failed to set op schema for synthesized node.");
+  ORT_RETURN_IF_NOT(graph.SetOpSchemaFromRegistryForNode(new_node), "Failed to set node op schema.");
 
   const KernelCreateInfo* kernel_create_info{};
   ORT_RETURN_IF_ERROR(save_context.kernel_registry_manager.get().SearchKernelRegistry(new_node, &kernel_create_info));

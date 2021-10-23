@@ -1324,6 +1324,19 @@ common::Status InferenceSession::Initialize() {
       return false;
     }();
 
+    const bool saving_runtime_optimizations = [&]() {
+      if (session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigSaveRuntimeOptimizations,
+                                                             "0") != "1") {
+        return false;
+      }
+      if (!saving_ort_format) {
+        LOGS(*session_logger_, WARNING) << "Enabling '" << kOrtSessionOptionsConfigSaveRuntimeOptimizations << "'"
+                                        << " only makes sense when saving an ORT format model. It will not be enabled.";
+        return false;
+      }
+      return true;
+    }();
+
     const experimental::fbs::SessionState* serialized_session_state =
         loading_ort_format
             ? fbs::GetInferenceSession(ort_format_model_bytes_.data())->session_state()
@@ -1333,7 +1346,8 @@ common::Status InferenceSession::Initialize() {
     if (!loading_ort_format) {
       // add predefined transformers
       ORT_RETURN_IF_ERROR_SESSIONID_(AddPredefinedTransformers(graph_transformation_mgr_,
-                                                               session_options_.graph_optimization_level));
+                                                               session_options_.graph_optimization_level,
+                                                               saving_runtime_optimizations));
 
       // apply any transformations to the main graph and any subgraphs
       ORT_RETURN_IF_ERROR_SESSIONID_(TransformGraph(graph, graph_transformation_mgr_,
@@ -2202,9 +2216,8 @@ void InferenceSession::InitLogger(logging::LoggingManager* logging_manager) {
 
 // Registers all the predefined transformers with transformer manager
 common::Status InferenceSession::AddPredefinedTransformers(GraphTransformerManager& transformer_manager,
-                                                           TransformerLevel graph_optimization_level) {
-  const bool saving_runtime_optimizations =
-      session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigSaveRuntimeOptimizations, "0") == "1";
+                                                           TransformerLevel graph_optimization_level,
+                                                           bool saving_runtime_optimizations) const {
   const auto& cpu_ep = *execution_providers_.Get(onnxruntime::kCpuExecutionProvider);
   for (int i = static_cast<int>(TransformerLevel::Level1); i <= static_cast<int>(TransformerLevel::MaxLevel); i++) {
     TransformerLevel level = static_cast<TransformerLevel>(i);

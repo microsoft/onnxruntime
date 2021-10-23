@@ -159,7 +159,7 @@ TEST(GraphRuntimeOptimizationTest, TestTransformerSavesRuntimeOptimization) {
     const auto* fbs_runtime_optimization_record = (*fbs_runtime_optimization_records)[0];
     ASSERT_NE(fbs_runtime_optimization_record, nullptr);
 
-    check_string(fbs_runtime_optimization_record->action_id(), sat::TestTransformer::kSelectorActionId);
+    check_string(fbs_runtime_optimization_record->selector_action_id(), sat::TestTransformer::kSelectorActionId);
   }
 }
 
