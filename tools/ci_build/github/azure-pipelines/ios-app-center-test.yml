@@ -7,37 +7,21 @@ jobs:
     - task: InstallAppleCertificate@2
       displayName: 'Install ORT Mobile Test Signing Certificate'
       inputs:
-        certSecureFile: '$(certName)'
-        certPwd: '$(certPwd)'
+        certSecureFile: '$(ios_signing_certificate_name)'
+        certPwd: '$(ios_signing_certificate_password)'
         keychain: 'temp'
         deleteCert: true
 
     - task: InstallAppleProvisioningProfile@1
       displayName: 'Install ORT Mobile Test Provisioning Profile'
       inputs:
-        provProfileSecureFile: 'iOS_Team_Provisioning_Profile.mobileprovision'
+        provProfileSecureFile: '$(ios_provision_profile_name)'
 
     - task: CocoaPods@0
       displayName: 'Install Pods'
       inputs:
         forceRepoUpdate: false
         workingDirectory: $(Build.SourcesDirectory)/onnxruntime/test/platform/ios/ios_package_test/
-
-    # - script: |
-    #     cd $(Build.SourcesDirectory)/onnxruntime/test/platform/ios/ios_package_test/
-    #     xcrun xcodebuild test \
-    #       -workspace ./ios_package_test.xcworkspace \
-    #       -scheme ios_package_test \
-    #       -destination 'platform=iOS Simulator,OS=latest,name=iPhone SE (2nd generation)'
-
-    # - task: Xcode@5
-    #   inputs:
-    #     actions: 'build-for-testing'
-    #     configuration: 'Debug'
-    #     xcWorkspacePath: '$(Build.SourcesDirectory)/onnxruntime/test/platform/ios/ios_package_test/ios_package_test.xcworkspace'
-    #     sdk: 'iphonesimulator'
-    #     scheme: 'ios_package_test'
-    #     workingDirectory: $(Build.SourcesDirectory)/onnxruntime/test/platform/ios/ios_package_test/
 
     - task: Xcode@5
       displayName: 'Build iphone arm64 tests'
@@ -53,29 +37,15 @@ jobs:
         args: '-derivedDataPath $(build.BinariesDirectory)/DerivedData'
         workingDirectory: $(Build.SourcesDirectory)/onnxruntime/test/platform/ios/ios_package_test/
 
-    - task: AppCenterTest@1
+    - script: |
+        set -e -x
+        cd $(Build.SourcesDirectory)/java/src/test/android
+        appcenter test run xcuitest \
+          --app "AI-Frameworks/ORT-Mobile-iOS" \
+          --devices 462764b5 \
+          --test-series "master" \
+          --locale "en_US" \
+          --build-dir $(build.BinariesDirectory)/DerivedData/Build/Products/Debug-iphoneos \
+          --token $(app_center_api_token)
+      workingDirectory: $(Build.SourcesDirectory)/java/src/test/android
       displayName: Run E2E tests on App Center
-      inputs:
-        appFile: '$(build.BinariesDirectory)/DerivedData/Build/Products/Debug-iphoneos/ios_package_test.app'
-        artifactsDirectory: '$(Build.ArtifactStagingDirectory)/AppCenterTest'
-        frameworkOption: 'xcuitest'
-        xcUITestBuildDirectory: '$(build.BinariesDirectory)/DerivedData/Build/Products/Debug-iphoneos'
-        credentialsOption: 'serviceEndpoint'
-        serverEndpoint: 'onnxruntime App Center Connection'
-        appSlug: 'AI-Frameworks/ORT-Mobile-iOS'
-        devices: '462764b5'
-        localeOption: 'en_US'
-        showDebugOutput: true
-
-    # - script: |
-    #     set -e -x
-    #     cd $(Build.SourcesDirectory)/java/src/test/android
-    #     appcenter test run xcuitest \
-    #       --app "AI-Frameworks/ORT-Mobile-iOS" \
-    #       --devices 462764b5 \
-    #       --test-series "master" \
-    #       --locale "en_US" \
-    #       --build-dir $(build.BinariesDirectory)/DerivedData/Build/Products/Debug-iphoneos \
-    #       --token $(AppCenterAPIToken)
-    #   workingDirectory: $(Build.SourcesDirectory)/java/src/test/android
-    #   displayName: Run E2E tests on App Center
