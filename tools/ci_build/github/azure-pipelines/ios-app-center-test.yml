@@ -42,7 +42,7 @@ jobs:
         cd $(Build.SourcesDirectory)/java/src/test/android
         appcenter test run xcuitest \
           --app "AI-Frameworks/ORT-Mobile-iOS" \
-          --devices 462764b5 \
+          --devices $(app_center_test_devices) \
           --test-series "master" \
           --locale "en_US" \
           --build-dir $(build.BinariesDirectory)/DerivedData/Build/Products/Debug-iphoneos \
