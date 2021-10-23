@@ -9,7 +9,7 @@
 import types
 import warnings
 from ._modifier import FP16OptimizerModifier
-
+import nvtx
 class ApexAMPModifier(FP16OptimizerModifier):
     def __init__(self, optimizer, **kwargs) -> None:
         super().__init__(optimizer)
@@ -25,6 +25,7 @@ class ApexAMPModifier(FP16OptimizerModifier):
         warnings.warn('Apex AMP fp16_optimizer functions are overrided with faster implementation.', UserWarning)
 
         # Implementation adapted from https://github.com/NVIDIA/apex/blob/082f999a6e18a3d02306e27482cc7486dab71a50/apex/amp/_process_optimizer.py#L161
+        @nvtx.annotate(message="post_backward_with_master_weights", color="red")
         def post_backward_with_master_weights(self, scaler):
             stash = self._amp_stash
 
@@ -35,12 +36,15 @@ class ApexAMPModifier(FP16OptimizerModifier):
             # fp16_grads_needing_unscale = []
             # new_fp32_grads = []
             # fp16_grads_needing_unscale_with_stash = []
-            # preexisting_fp32_grads = []
-            # for fp16_param, fp32_param in zip(stash.all_fp16_params,
-            #                                 stash.all_fp32_from_fp16_params):
+            # preexisting_fp32_grads = [
+            #i = 0
+            #for fp16_param, fp32_param in zip(stash.all_fp16_params,
+            #                                  stash.all_fp32_from_fp16_params):
             #     if fp16_param.grad is None and fp32_param.grad is not None:
             #         continue
-            #     elif fp16_param.grad is not None and fp32_param.grad is None:
+            #     if fp16_param.grad is not None and fp32_param.grad is None:
+            #         print(i, " shape ", fp32_param.shape)
+            #         i += 1
             #         fp32_param.grad = torch.empty_like(fp32_param)
             #         fp16_grads_needing_unscale.append(fp16_param.grad)
             #         new_fp32_grads.append(fp32_param.grad)
@@ -65,8 +69,18 @@ class ApexAMPModifier(FP16OptimizerModifier):
             #### END OF THE ORIGINAL IMPLEMENTATION ####
 
             #### THIS IS THE FASTER IMPLEMENTATION ####
-            fused_ops.unscale_fp16_grads_into_fp32_grads(stash.all_fp16_params,
-                                                         stash.all_fp32_from_fp16_params,
+            tensor_vector_exist = hasattr(stash, "all_fp16_params_tensor_vector") and \
+                hasattr(stash, "all_fp32_from_fp16_params_tensor_vector")
+            tensor_vector_valid = tensor_vector_exist and \
+                len(stash.all_fp16_params_tensor_vector) == len(stash.all_fp16_params) and \
+                len(stash.all_fp32_from_fp16_params_tensor_vector) == len(stash.all_fp32_from_fp16_params)
+
+            if not tensor_vector_valid:
+                stash.all_fp16_params_tensor_vector = fused_ops.TorchTensorVector(stash.all_fp16_params)
+                stash.all_fp32_from_fp16_params_tensor_vector = fused_ops.TorchTensorVector(stash.all_fp32_from_fp16_params)
+
+            fused_ops.unscale_fp16_grads_into_fp32_grads(stash.all_fp16_params_tensor_vector,
+                                                         stash.all_fp32_from_fp16_params_tensor_vector,
                                                          scaler._overflow_buf, 
                                                          scaler._loss_scale)
             #### END OF THE FASTER IMPLEMENTATION ####
