@@ -67,8 +67,7 @@ static void ReplaceValueReferences(std::vector<std::unique_ptr<api::Node>>& node
 static std::unique_ptr<api::Node> MakeNode1Attr(api::Graph& graph, const std::string_view op_type,
                                                 const std::string_view input, const std::string_view attr_name,
                                                 const std::vector<int64_t>& attr_val) {
-  std::vector<std::string_view> inputs;
-  inputs.push_back(input);
+  std::vector<std::string_view> inputs{input};
   std::unique_ptr<api::Node> node = graph.AddNode(op_type, inputs);
   node->SetAttributeInts(attr_name, attr_val);
   return node;
@@ -88,13 +87,10 @@ static std::unique_ptr<api::Node> MakeSqueezeOrUnsqueeze(int64_t opset, api::Gra
     return MakeNode1Attr(graph, op_type, input, "axes", axes);
   }
 
-  std::vector<int64_t> axes_shape;
-  axes_shape.push_back(axes.size());
+  std::vector<int64_t> axes_shape{gsl::narrow_cast<int64_t>(axes.size())};
   const std::string_view axes_initializer = graph.AddInitializerInt64(axes_shape, axes);
 
-  std::vector<std::string_view> inputs;
-  inputs.push_back(input);
-  inputs.push_back(axes_initializer);
+  std::vector<std::string_view> inputs{input, axes_initializer};
 
   return graph.AddNode(op_type, inputs);
 }
@@ -163,6 +159,7 @@ static std::vector<int64_t> InvertPerm(const std::vector<int64_t>& perm) {
 // Computes composition of perm1 and perm2. Unsafe if perm1 or perm2 are not valid permutations.
 static std::vector<int64_t> ComposePerm(const std::vector<int64_t>& perm1, const std::vector<int64_t>& perm2) {
   std::vector<int64_t> perm;
+  perm.reserve(perm2.size());
   for (int64_t p : perm2) {
     perm.push_back(perm1[gsl::narrow_cast<size_t>(p)]);
   }
@@ -227,7 +224,8 @@ static std::vector<int64_t> UnsqueezePerm(const std::vector<int64_t>& axes, cons
   }
 
   // map old axes to new (unsqueezed) axes
-  std::vector<int64_t> axes_map;  
+  std::vector<int64_t> axes_map;
+  axes_map.reserve(axes.size());
   for (size_t i = 0; i < new_rank; ++i) {
     if (!is_added_axis[i]) {
       axes_map.push_back(i);
@@ -235,6 +233,7 @@ static std::vector<int64_t> UnsqueezePerm(const std::vector<int64_t>& axes, cons
   }
 
   std::vector<int64_t> new_perm;
+  new_perm.reserve(new_rank);
   size_t j = 0;
   for (size_t i = 0; i < new_rank; ++i) {
     if (is_added_axis[i]) {
@@ -269,6 +268,7 @@ static std::vector<int64_t> SqueezePerm(const std::vector<int64_t>& axes, const 
 
   // Add perm entries for retained axes.
   std::vector<int64_t> new_perm;
+  new_perm.reserve(perm.size());
   for (int64_t p : perm) {
     size_t p_size_t = gsl::narrow_cast<size_t>(p);
     if (!is_removed_axis[p_size_t]) {
@@ -286,6 +286,7 @@ static std::vector<int64_t> SqueezePerm(const std::vector<int64_t>& axes, const 
 static std::vector<int64_t> AxesForTransposedInput(const std::vector<int64_t>& axes,
                                                    const std::vector<int64_t>& perm) {
   std::vector<int64_t> new_axes;
+  new_axes.reserve(axes.size());
   for (int64_t a : axes) {
     new_axes.push_back(perm[gsl::narrow_cast<size_t>(a)]);
   }
@@ -494,6 +495,7 @@ static bool NormalizeInputRanks(OptimizerCtx ctx, api::Node& node, size_t target
 
   // Get and validate input ranks
   std::vector<size_t> ranks;
+  ranks.reserve(input_indices.size());
   for (size_t i : input_indices) {
     std::optional<std::vector<int64_t>> shape = ctx.graph.GetValueInfo(inputs[i])->Shape();
     if (shape == std::nullopt || shape->size() > target_rank) {
@@ -506,9 +508,9 @@ static bool NormalizeInputRanks(OptimizerCtx ctx, api::Node& node, size_t target
   for (size_t k = 0; k < ranks.size(); ++k) {
     size_t rank_diff = target_rank - ranks[k];
     if (rank_diff > 0) {
-      std::vector<int64_t> axes;
+      std::vector<int64_t> axes(rank_diff);
       for (size_t j = 0; j < rank_diff; ++j) {
-        axes.push_back(j);
+        axes[j] = j;
       }
       UnsqueezeInput(ctx, node, input_indices[k], axes);
     }
@@ -684,10 +686,10 @@ static bool HandleSimpleNode(HandlerArgs& args) {
 std::vector<size_t> AllInputs(OptimizerCtx& ctx, api::Node& node) {
   (void)ctx;
   (void)node;
-  std::vector<size_t> indices;
   size_t num_inputs = node.Inputs().size();
+  std::vector<size_t> indices(num_inputs);
   for (size_t i = 0; i < num_inputs; ++i) {
-    indices.push_back(i);
+    indices[i] = i;
   }
   return indices;
 }
@@ -827,20 +829,23 @@ static bool HandleShape(HandlerArgs& args) {
   std::vector<int64_t> perm_shape {gsl::narrow_cast<int64_t>(new_perm.size())};
   const std::string_view perm_const = args.ctx.graph.AddInitializerInt64(perm_shape, new_perm);
 
-  // Add the Gather node
-  std::vector<std::string_view> gather_inputs;
-  gather_inputs.push_back(""); // Avoid cyclic reference
-  gather_inputs.push_back(perm_const);
+  // X -> Shape -> Y,   Gather
+  std::vector<std::string_view> gather_inputs{"", perm_const};
   auto gather_ptr = args.ctx.graph.AddNode("Gather", gather_inputs);
   api::Node& gather = *gather_ptr;
   gather.SetAttributeInt("axis", 0);
+
+  // X -> Shape -> Y',   Gather -> Y
   args.ctx.graph.MoveOutput(args.node, 0, gather, 0);
   const std::string_view new_output = args.node.Outputs()[0];
-  gather.SetInput(0, new_output); // Assign Gather input
+
+  // X -> Shape -> Y',   Y' -> Gather -> Y
+  gather.SetInput(0, new_output);
 
   // Fix shapes
   args.ctx.graph.CopyValueInfo(gather.Outputs()[0], new_output);
   if (new_perm.size() != rank) {
+    // Output Y' from Shape may be larger if we removed start/end
     auto info = args.ctx.graph.GetValueInfo(new_output);
     std::vector<int64_t> new_shape{rank_int};
     info->SetShape(&new_shape);
@@ -854,6 +859,7 @@ constexpr HandlerInfo shape_handler = {&FirstInput, &HandleShape, /*transposes_o
 static std::vector<int64_t> PermutePads(const std::vector<int64_t>& pads, const std::vector<int64_t>& perm) {
   size_t rank = perm.size();
   std::vector<int64_t> new_pads;
+  new_pads.reserve(rank * 2);
   for (int64_t i : perm) {
     new_pads.push_back(pads[gsl::narrow_cast<size_t>(i)]);
   }
@@ -903,6 +909,7 @@ static bool HandlePad(HandlerArgs& args) {
 
   // Form indices using perm_inv twice
   std::vector<int64_t> gather_indices = args.perm_inv;
+  gather_indices.reserve(rank * 2);
   for (int64_t p : args.perm_inv) {
     gather_indices.push_back(p + rank);
   }
@@ -1188,7 +1195,7 @@ static std::string_view AddIntInitializerMatchingDtype(api::Graph& graph, std::v
 
   if (dtype == api::DataType::INT32) {
     std::vector<int32_t> values_int32;
-
+    values_int32.reserve(values.size());
     for (int64_t v : values) {
       values_int32.push_back((int32_t)v);
     }
@@ -1204,7 +1211,7 @@ static std::vector<int64_t> TensorIntData(api::Tensor& tensor, api::DataType dty
   if (dtype == api::DataType::INT32) {
     std::vector<int32_t> values_int32 = tensor.DataInt32();
     std::vector<int64_t> values;
-
+    values.reserve(values_int32.size());
     for (int32_t v : values_int32) {
       values.push_back(gsl::narrow_cast<int64_t>(v));
     }
@@ -1258,6 +1265,7 @@ static bool HandleSlice(HandlerArgs& args) {
     }
 
     size_t ndims = gsl::narrow_cast<size_t>((*starts_shape)[0]);
+    new_axes.reserve(ndims);
     for (size_t i = 0; i < ndims; ++i) {
       new_axes.push_back(args.perm[i]);
     }
@@ -1309,6 +1317,7 @@ static bool HandleTile(HandlerArgs& args) {
     // Case 1: Repeats is constant. Shuffle order.
     const std::vector<int64_t>& repeats = repeats_const->DataInt64();
     std::vector<int64_t> new_repeats;
+    new_repeats.reserve(rank);
     for (int64_t p : args.perm_inv) {
       new_repeats.push_back(repeats[gsl::narrow_cast<size_t>(p)]);
     }

@@ -392,7 +392,8 @@ class Graph {
 
   /// <summary>
   /// Copies shape and dtype value info from one output to another, potentially including data that cannot be encoded
-  /// in the ValueInfo class (like symbolic shape information).
+  /// in the ValueInfo class (like symbolic shape information). Destination dtype must be compatible with source dtype
+  /// if known.
   /// </summary>
   /// <param name="src_name"></param>
   /// <param name="dst_name"></param>
