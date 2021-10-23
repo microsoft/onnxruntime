@@ -3,6 +3,9 @@ jobs:
   pool:
     vmImage: 'macOS-10.15'
   timeoutInMinutes: 60
+  variables:
+  - name: derived_data_path
+    value: '$(build.BinariesDirectory)/DerivedData'
   steps:
     - task: InstallAppleCertificate@2
       displayName: 'Install ORT Mobile Test Signing Certificate'
@@ -16,6 +19,7 @@ jobs:
       displayName: 'Install ORT Mobile Test Provisioning Profile'
       inputs:
         provProfileSecureFile: '$(ios_provision_profile_name)'
+        removeProfile: true
 
     - task: CocoaPods@0
       displayName: 'Install Pods'
@@ -34,7 +38,7 @@ jobs:
         signingOption: 'manual'
         signingIdentity: '$(APPLE_CERTIFICATE_SIGNING_IDENTITY)'
         provisioningProfileName: 'iOS Team Provisioning Profile'
-        args: '-derivedDataPath $(build.BinariesDirectory)/DerivedData'
+        args: '-derivedDataPath $(derived_data_path)'
         workingDirectory: $(Build.SourcesDirectory)/onnxruntime/test/platform/ios/ios_package_test/
 
     - script: |
@@ -45,7 +49,7 @@ jobs:
           --devices $(app_center_test_devices) \
           --test-series "master" \
           --locale "en_US" \
-          --build-dir $(build.BinariesDirectory)/DerivedData/Build/Products/Debug-iphoneos \
+          --build-dir $(derived_data_path)/Build/Products/Debug-iphoneos \
           --token $(app_center_api_token)
       workingDirectory: $(Build.SourcesDirectory)/java/src/test/android
       displayName: Run E2E tests on App Center
