@@ -172,12 +172,12 @@ const MLAS_CONV_SYM_DISPATCH MlasConvSymDispatchAvx512Vnni = {
 const MLAS_CONV_SYM_DISPATCH MlasConvSymDispatchArm64 = {
     MlasConvSymKernelNeon,
     nullptr,
-    8,                                      // FilterInputChannelPackCount
-    8,                                      // FilterOutputChannelPackCount
-    8,                                      // KernelChannelCount
-    2,                                      // KernelOutputCount
-    1,                                      // KernelInputChannelAlignment
-    1,                                      // KernelOutputChannelAlignment
+    16,                                     // FilterInputChannelPackCount
+    4,                                      // FilterOutputChannelPackCount
+    4,                                      // KernelChannelCount
+    4,                                      // KernelOutputCount
+    16,                                     // KernelInputChannelAlignment
+    4,                                      // KernelOutputChannelAlignment
     64,                                     // KernelDepthwiseChannelCount
     6,                                      // KernelDepthwiseOutputCount
     true,                                   // FixupInputZeroPoint

@@ -985,10 +985,10 @@ TEST(QLinearConvTest, Conv2D_U8S8_Requantize_NoBias_Debug) {
   test.Run();
 }
 
-TEST(QLinearConvTest, Conv2D_U8S8_Requantize_NoBias_Debug_C8) {
+TEST(QLinearConvTest, Conv2D_U8S8_Requantize_NoBias_Debug_C16) {
   QLinearConvOpTester<uint8_t, int8_t> test;
-  test.GenerateRandomInput({1, 8, 4, 4}, .05f, 4);
-  test.GenerateRandomWeights({8, 8, 3, 3}, .125f, 0);
+  test.GenerateRandomInput({1, 16, 4, 4}, .05f, 4);
+  test.GenerateRandomWeights({4, 16, 3, 3}, .125f, 0);
   // test.SetPads({1, 1, 1, 1});
   test.SetOutputScaleAndZeroPoint(.55f, 56);
   test.Run();
