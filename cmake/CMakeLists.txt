@@ -735,7 +735,6 @@ list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/external)
 #2. if ONNX_CUSTOM_PROTOC_EXECUTABLE is not set, Compile everything(including protoc) from source code.
 
 if (onnxruntime_PREFER_SYSTEM_LIB)
-  set(protobuf_MODULE_COMPATIBLE ON)
   find_package(Protobuf)
 endif()
 
@@ -836,11 +835,6 @@ endif()
 set(SAFEINT_INCLUDE_DIR ${REPO_ROOT}/cmake/external/SafeInt)
 add_library(safeint_interface INTERFACE)
 target_include_directories(safeint_interface INTERFACE ${SAFEINT_INCLUDE_DIR})
-
-set(OPTIONAL_LITE_INCLUDE_DIR ${REPO_ROOT}/cmake/external/optional-lite/include)
-if (onnxruntime_DISABLE_EXCEPTIONS)
-  add_compile_definitions(optional_CONFIG_NO_EXCEPTIONS=1)
-endif()
 
 if (onnxruntime_PREFER_SYSTEM_LIB)
   find_package(boost_mp11)
@@ -1967,7 +1961,7 @@ if (onnxruntime_ENABLE_EXTERNAL_CUSTOM_OP_SCHEMAS)
   endif()
 
   if (NOT ${ONNX_CUSTOM_PROTOC_EXECUTABLE} STREQUAL "")
-    message(FATAL_ERROR "External custom operator schemas is not supported with the user specified protc executable")
+    message(FATAL_ERROR "External custom operator schemas is not supported with the user specified protoc executable")
   endif()
 
   if (NOT onnxruntime_ENABLE_TRAINING)
