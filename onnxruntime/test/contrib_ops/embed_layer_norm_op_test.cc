@@ -12,7 +12,7 @@ namespace test {
 
 static void RunTest(const embedlayernorm::OpData& data,
                     bool use_float16 = false,
-                    bool add_output = false) {
+                    bool sum_output = false) {
   int min_cuda_architecture = use_float16 ? 530 : 0;
 
   bool enable_cuda = HasCudaEnvironment(min_cuda_architecture);
@@ -28,8 +28,10 @@ static void RunTest(const embedlayernorm::OpData& data,
     //   Input 5 - gamma              : (hidden_size)
     //   Input 6 - beta               : (hidden_size)
     //   Input 7 - mask               : (batch_size, sequence_size)
+    //   Input 8 - position ids       : (batch_size, sequence_size)
     //   Output 0 - output            : (batch_size, sequence_size, hidden_size)
     //   Output 1 - mask_index        : (batch_size)
+    //   Output 2 - embedding_sum     : (batch_size, sequence_size, hidden_size)
 
     std::vector<int64_t> input_ids_dims = {data.batch_size, data.sequence_size};
     std::vector<int64_t> segment_ids_dims = {data.batch_size, data.sequence_size};
@@ -115,17 +117,19 @@ static void RunTest(const embedlayernorm::OpData& data,
       if (data.has_mask) {
         tester.AddInput<int32_t>("mask", mask_dims, data.mask_data);
       }
-
       tester.AddOutput<float>("output", output_dims, data.output_data);
     }
     tester.AddOutput<int32_t>("mask_index", mask_index_dims, data.mask_index_data);
-    if (add_output) {
-      std::vector<int64_t> add_output_dims = output_dims;
+    if (sum_output) {
+      std::vector<int64_t> embedding_sum_output_dims = output_dims;
       if (use_float16) {
-        tester.AddOutput<MLFloat16>("add_output", add_output_dims, ToFloat16(data.add_output_data));
+        tester.AddOutput<MLFloat16>("embedding_sum", embedding_sum_output_dims, ToFloat16(data.embedding_sum_data));
       } else {
-        tester.AddOutput<float>("add_output", add_output_dims, data.add_output_data);
+        tester.AddOutput<float>("embedding_sum", embedding_sum_output_dims, data.embedding_sum_data);
       }
+    }
+    if (data.position_ids_data.size() != 0) {
+      tester.AddInput<int32_t>("position_ids", input_ids_dims, data.position_ids_data);
     }
 
     if (enable_cuda) {
@@ -146,12 +150,16 @@ TEST(EmbedLayerNormTest, EmbedLayerNormBatch1_Float16) {
   RunTest(embedlayernorm::EmbedLayerNormBatch1(), /*use_float16=*/true);
 }
 
-TEST(EmbedLayerNormTest, EmbedLayerNormBatch_AddOutput) {
-  RunTest(embedlayernorm::EmbedLayerNormBatch_AddOutput(), false, true);
+TEST(EmbedLayerNormTest, EmbedLayerNormBatch_PositionIds) {
+  RunTest(embedlayernorm::EmbedLayerNormBatch_PositionIds());
 }
 
-TEST(EmbedLayerNormTest, EmbedLayerNormBatch_AddOutput_Float16) {
-  RunTest(embedlayernorm::EmbedLayerNormBatch_AddOutput(), true, true);
+TEST(EmbedLayerNormTest, EmbedLayerNormBatch_EmbeddingSum) {
+  RunTest(embedlayernorm::EmbedLayerNormBatch_EmbeddingSum(), false, true);
+}
+
+TEST(EmbedLayerNormTest, EmbedLayerNormBatch_EmbeddingSum_Float16) {
+  RunTest(embedlayernorm::EmbedLayerNormBatch_EmbeddingSum(), true, true);
 }
 TEST(EmbedLayerNormTest, EmbedLayerNormBatch2) {
   RunTest(embedlayernorm::EmbedLayerNormBatch2());

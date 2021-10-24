@@ -349,7 +349,7 @@ class FusionEmbedLayerNoMask(Fusion):
 
     def create_fused_node(self, input_ids: str, layernorm: NodeProto, word_embedding_gather: NodeProto,
                           position_embedding_gather: NodeProto, segment_embedding_gather: Union[None, NodeProto],
-                          add_output = False):
+                          position_ids: str = None, embedding_sum_output = False):
         """Create an EmbedLayerNormalization node. Note that segment embedding is optional.
 
         Args:
@@ -387,9 +387,15 @@ class FusionEmbedLayerNoMask(Fusion):
                 input_ids, '', word_embedding_gather.input[0], position_embedding_gather.input[0], '', gamma, beta
             ]
 
+        if position_ids is not None:
+            #Adding an empty input for mask before position_ids
+            embed_node_inputs.append('')
+            position_ids, _ = self.cast_to_int32(position_ids)
+            embed_node_inputs.append(position_ids)
+
         embed_node_outputs = [node_name + "_output", node_name + "_dummy_mask_index"]
-        if add_output:
-            embed_node_outputs.append(node_name + "_add_output")
+        if embedding_sum_output:
+            embed_node_outputs.append(node_name + "_embedding_sum")
 
         embed_node = helper.make_node('EmbedLayerNormalization',
                                       embed_node_inputs,
@@ -422,7 +428,7 @@ class FusionEmbedLayerNoMask(Fusion):
         # use prune graph to remove nodes that is not needed
         self.prune_graph = True
 
-    def is_add_output_needed(self, add_before_layer_norm):
+    def is_embedding_sum_needed(self, add_before_layer_norm):
         """Check that Add before layer norm has an output to add before next layernorm
 
         Args:
@@ -470,21 +476,18 @@ class FusionEmbedLayerNoMask(Fusion):
         if not self.check_embedding(word_embedding_gather, None, position_embedding_gather):
             return False
 
-        optional_add_output = False
-        if self.is_add_output_needed(add_before_layernorm):
-            optional_add_output = True
+        optional_embedding_sum_output = False
+        if self.is_embedding_sum_needed(add_before_layernorm):
+            optional_embedding_sum_output = True
 
         # make the fused node
         embed_node = self.create_fused_node(input_ids, layernorm, word_embedding_gather, position_embedding_gather,
-                                           None, optional_add_output)
+                                           None, position_ids, optional_embedding_sum_output)
 
         # direct the output to another add too
         self.model.replace_input_of_all_nodes(layernorm.output[0], embed_node.output[0])
-        if optional_add_output:
+        if optional_embedding_sum_output:
             self.model.replace_input_of_all_nodes(add_output, embed_node.output[2])
-
-        # remove input 'position_ids' from graph
-        self.model.remove_input_by_name(position_ids)
 
         return True
 

@@ -50,6 +50,7 @@ Status EmbedLayerNorm<T>::Compute(OpKernelContext* context) const {
   const Tensor* gamma = context->Input<Tensor>(5);
   const Tensor* beta = context->Input<Tensor>(6);
   const Tensor* mask = context->Input<Tensor>(7);  // optional. nullptr if not provided
+  const Tensor* position_ids = context->Input<Tensor>(8); // optional. nullptr if not provided
 
   const auto& input_dims = input_ids->Shape().GetDims();
   int64_t hidden_size = word_embedding->Shape()[1];
@@ -60,7 +61,7 @@ Status EmbedLayerNorm<T>::Compute(OpKernelContext* context) const {
   TensorShape mask_index_shape({input_dims[0]});
   Tensor* mask_index = context->Output(1, mask_index_shape);
 
-  Tensor* add_output = context->Output(2, output_shape);
+  Tensor* embedding_sum = context->Output(2, output_shape);
 
   int batch_size = static_cast<int>(input_dims[0]);
   int sequence_length = static_cast<int>(input_dims[1]);
@@ -76,8 +77,9 @@ Status EmbedLayerNorm<T>::Compute(OpKernelContext* context) const {
   const T* segment_embedding_data = (nullptr == segment_embedding) ? nullptr : segment_embedding->template Data<T>();
   const T* gamma_data = gamma->template Data<T>();
   const T* beta_data = beta->template Data<T>();
+  const int32_t* position_ids_data = (nullptr == position_ids) ? nullptr : position_ids->template Data<int32_t>();
   T* output_data = output->template MutableData<T>();
-  T* add_output_data = (add_output != nullptr) ? add_output->template MutableData<T>() : nullptr;
+  T* embedding_sum_data = (embedding_sum != nullptr) ? embedding_sum->template MutableData<T>() : nullptr;
 
   // Calculate output
   {
@@ -90,7 +92,7 @@ Status EmbedLayerNorm<T>::Compute(OpKernelContext* context) const {
         failed.store(true, std::memory_order_release);
         return;
       }
-      int position_col_index = index % sequence_length;
+      int position_col_index = (position_ids_data == nullptr) ? index % sequence_length : position_ids_data[index];
       if (position_col_index >= position_embedding_length) {
         failed.store(true, std::memory_order_release);
         return;
@@ -106,8 +108,8 @@ Status EmbedLayerNorm<T>::Compute(OpKernelContext* context) const {
 
       T* y = output_data + index * hidden_size;
       T* y1 = nullptr;
-      if (add_output_data != nullptr) {
-        y1 = add_output_data + index * hidden_size;
+      if (embedding_sum_data != nullptr) {
+        y1 = embedding_sum_data + index * hidden_size;
       }
       const T* input_word_embedding = word_embedding_data + word_col_index * hidden_size;
       const T* input_position_embedding = position_embedding_data + position_col_index * hidden_size;

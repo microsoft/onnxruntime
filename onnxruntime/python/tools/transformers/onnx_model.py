@@ -156,18 +156,6 @@ class OnnxModel:
             graph = self.get_graph_by_name(graph_name)
             graph.input.extend([input])
 
-    def remove_input_by_name(self, input_name : str, graph_name=None):
-        if graph_name is None or graph_name == self.model.graph.name:
-            inputs = self.model.graph.input
-        else:
-            graph = self.get_graph_by_name(graph_name)
-            inputs = graph.input
-
-        for input in inputs:
-            if input.name == input_name:
-                inputs.remove(input)
-                break
-
     @staticmethod
     def replace_node_input(node, old_input_name, new_input_name):
         assert isinstance(old_input_name, str) and isinstance(new_input_name, str)
