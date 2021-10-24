@@ -348,6 +348,7 @@ def main(argv=None, experiment_name="", run_id=0, csv_filename="gpt2_parity_resu
                                                test_cases_per_run=args.test_cases,
                                                total_runs=args.test_runs,
                                                verbose=args.verbose)
+
         latency = gpt2helper.test_performance(session,
                                               model,
                                               device,

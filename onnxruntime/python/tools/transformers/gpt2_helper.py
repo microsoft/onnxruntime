@@ -6,7 +6,6 @@
 # This script helps onnx conversion and validation for GPT2 model with past state.
 import os
 import logging
-import onnx
 import torch
 import shutil
 import random
