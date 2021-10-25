@@ -24,7 +24,7 @@ Abstract:
 // Stack frame layout for the symmetric convolution kernel.
 // d8-d15, x19-x30 need to be preserved if used
 //
-        .equ    .LConvSymFrame_SavedNeonRegisters, (8 * 8)
+        .equ    .LConvSymFrame_SavedNeonRegisters, (8 * 12)
         .equ    .LConvSymFrame_SavedRegisters, .LConvSymFrame_SavedNeonRegisters
         .equ    .LConvSymFrame_PostProcessParams, 0 + .LConvSymFrame_SavedRegisters
         .equ    .LConvSymFrame_KernelFlags, 8 + .LConvSymFrame_SavedRegisters
@@ -96,26 +96,39 @@ Return Value:
 
         FUNCTION_ENTRY MlasConvSymKernelNeon
 
-        stp     d8,d9,[sp,#-64]!
+        stp     d8,d9,[sp,#-96]!
         ldr     x8,[sp,#.LConvSymFrame_PostProcessParams]
         ldrb    w10,[sp,#.LConvSymFrame_KernelFlags]
         stp     d10,d11,[sp,#16]
         stp     d12,d13,[sp,#32]
         stp     d14,d15,[sp,#48]
+        stp     x19,x20,[sp,#64]
+        stp     x21,x22,[sp,#80]
 
-        lsl     x17,x3,#4
-        mov     x9,x4                 // save input channels
+        add     x16,x2,x5,lsl#1         // x16 -> C2
+        mov     x22,x0                  // store A
 
+        lsl     x20,x3,#4               // x20 = ks*16
+        mov     w14, #128
+        add     x17,x16,x5              // x17 -> C3
+
+        ldr     w13,[x8, #.LConvSymPostProcessParams_ZeroPoint]
         ldr     x11,[x8,#.LConvSymPostProcessParams_Bias]
         ldr     x12,[x8,#.LConvSymPostProcessParams_Scale]
-        ldr     w13,[x8, #.LConvSymPostProcessParams_ZeroPoint]
 
-        add     x18,x17,x3,lsl#3
+        add     x21,x20,x3,lsl#3        // x21 = ks*24
+        add     x5,x2,x5                // x5 -> C1
 
+        dup     v8.16b,w14
+        dup     v9.8h,w13
+
+ .LConvSym.OutputChannelLoop:
         ldp     s16,s17,[x11],8         // init accumulators with bias
         ldp     s18,s19,[x11],8
 
-        mov     w8, #128
+        mov     x0, x22                // reload A
+        mov     x8, x3                 // reload kernel size
+
         mov     v20.16b,v16.16b
         mov     v24.16b,v16.16b
         mov     v28.16b,v16.16b
@@ -129,15 +142,6 @@ Return Value:
         mov     v27.16b,v19.16b
         mov     v31.16b,v19.16b
 
-        dup     v8.16b,w8
-        dup     v9.8h,w13
-        mov     x8,x3
-
-// .LConvSym.OutputChannelLoop:
-//        mov     x0, x19                // reload A
-//        mov     x9, x3                 // reload kernel size
-
-
 // Nested loops, inner loop: input channel; outter loop: kernel size
 // Each inner iteration processes 8 input channels, 2 output pixels, 8 output channels.
 //
@@ -150,7 +154,7 @@ Return Value:
 // x13-> |v0.[0-7]b,v0.[8-15]b|     |v16.4s     v17.4s     v18.4s     v19.4s |
 // x14-> |v1.[0-7]b,v1.[8-15]b|     |v20.4s     v21.4s     v22.4s     v23.4s |
 // x15-> |v2.[0-7]b,v2.[8-15]b|     |v24.4s     v25.4s     v26.4s     v27.4s |
-// x16-> |v3.[0-7]b,v3.[8-15]b|     |v28.4s     v29.4s     v30.4s     v31.4s |
+// x19-> |v3.[0-7]b,v3.[8-15]b|     |v28.4s     v29.4s     v30.4s     v31.4s |
 //       --------------             ---------------------------------------------
 // When Input Channels greater than 16, unroll:
 // A registers v6 v7,
@@ -168,9 +172,9 @@ Return Value:
         cmp     x7,3                    // test OutputCount with 3
         mov     x13,x0                  // x13 -> A0
         add     x15,x0,x4,lsl#1         // x15 -> A2
-        add     x16,x14,x4,lsl#1        // x16 -> A3
+        add     x19,x14,x4,lsl#1        // x19 -> A3
         bhi     .LConvSym.Blockloop
-        mov     x16,x0
+        mov     x19,x0
         bhs     .LConvSym.Blockloop
         cmp     x7,2
         mov     x15,x0
@@ -181,14 +185,14 @@ Return Value:
         cmp     x7,2                    // test if OutputCount < 2
         mov     x14,x13                 // x14 -> A0
         mov     x15,x13                 // x15 -> A0
-        mov     x16,x13                 // x16 -> A0
+        mov     x19,x13                 // x19 -> A0
         blo     .LConvSym.SkipLoadA1
         ldr     x14,[x0,x3,lsl#3]       // x14 -> A1
         bls     .LConvSym.SkipLoadA1
-        ldr     x15,[x0,x17]       // x15 -> A2
+        ldr     x15,[x0,x20]       // x15 -> A2
         cmp     x7,4
         blo     .LConvSym.SkipLoadA1
-        ldr     x16,[x0,x18]            // x16 -> A3
+        ldr     x19,[x0,x21]            // x19 -> A3
 .LConvSym.SkipLoadA1:
         add     x0,x0,8                 // indirect A advance to next pointer, prepare for kernel size loop
 
@@ -202,7 +206,7 @@ Return Value:
         eor     v0.16b, v0.16b, v8.16b
         ld1     {v1.16b}, [x14],#16
         ld1     {v2.16b}, [x15],#16
-        ld1     {v3.16b}, [x16],#16
+        ld1     {v3.16b}, [x19],#16
         smull   v12.8h, v0.8b, v4.8b
         smull   v13.8h, v0.8b, v5.8b
         smull   v14.8h, v0.8b, v6.8b
@@ -306,20 +310,26 @@ Return Value:
         sqxtun2  v0.16b,v2.8h
 
         cmp     x7,2
-        st1     {v0.s}[0],[x2],x5              // full 4byte store to c
-        b.lo    .LConvSym.ExitKernel
-        st1     {v0.s}[1],[x2],x5              // full 4byte store to c + outputchannel
-        b.ls    .LConvSym.ExitKernel
+        st1     {v0.s}[0],[x2],4               // full 4byte store to c
+        b.lo    .LConvSym.OutputChannelLoop.Check
+        st1     {v0.s}[1],[x5],4               // full 4byte store to c + outputchannel
+        b.ls    .LConvSym.OutputChannelLoop.Check
         cmp     x7,4
-        st1     {v0.s}[2],[x2],x5              // full 4byte store to c + 2*outputchannel
-        b.lo    .LConvSym.ExitKernel
-        st1     {v0.s}[3],[x2]                  // full 4byte store to c + 3*outputchannel
+        st1     {v0.s}[2],[x16],4              // full 4byte store to c + 2*outputchannel
+        b.lo    .LConvSym.OutputChannelLoop.Check
+        st1     {v0.s}[3],[x17],4              // full 4byte store to c + 3*outputchannel
+
+.LConvSym.OutputChannelLoop.Check:
+        subs    x6,x6,4
+        b.hi    .LConvSym.OutputChannelLoop
 
 .LConvSym.ExitKernel:
+        ldp     x21,x22,[sp,#80]
+        ldp     x19,x20,[sp,#64]
         ldp     d14,d15,[sp,#48]
         ldp     d12,d13,[sp,#32]
         ldp     d10,d11,[sp,#16]
-        ldp     d8,d9,[sp],#64
+        ldp     d8,d9,[sp],#96
         ret
 
         .end

@@ -174,7 +174,7 @@ const MLAS_CONV_SYM_DISPATCH MlasConvSymDispatchArm64 = {
     nullptr,
     16,                                     // FilterInputChannelPackCount
     4,                                      // FilterOutputChannelPackCount
-    4,                                      // KernelChannelCount
+    32,                                     // KernelChannelCount
     4,                                      // KernelOutputCount
     16,                                     // KernelInputChannelAlignment
     4,                                      // KernelOutputChannelAlignment
