@@ -160,7 +160,7 @@ class IExecutionProvider {
      may not be finished on device This function should be regarded as the point
      that all commands of current Run has been submmited by CPU
   */
-  virtual common::Status OnRunEnd() { return Status::OK(); }
+  virtual common::Status OnRunEnd(bool /*sync_stream*/) { return Status::OK(); }
 
   /**
      Called when session creation is complete

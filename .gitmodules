@@ -56,9 +56,6 @@
 [submodule "cmake/external/SafeInt/safeint"]
 	path = cmake/external/SafeInt/safeint
 	url = https://github.com/dcleblanc/SafeInt.git
-[submodule "cmake/external/optional-lite"]
-	path = cmake/external/optional-lite
-	url = https://github.com/martinmoene/optional-lite.git
 [submodule "cmake/external/mp11"]
 	path = cmake/external/mp11
 	url = https://github.com/boostorg/mp11.git
