@@ -3842,6 +3842,35 @@ Node& Graph::FuseSubGraph(const IndexedSubGraph& sub_graph,
   return fused_node;
 }
 
+// expand any nodes that have an ONNX function definition but no matching ORT kernel
+Status Graph::InlineNodes(bool& modified_graph) {
+  // recurse into nested graphs first so we process from bottom up
+  for (auto& node : Nodes()) {
+    for (auto& entry : node.GetAttributeNameToMutableSubgraphMap()) {
+      Graph* subgraph = entry.second;
+      ORT_RETURN_IF_ERROR(subgraph->InlineNodes(modified_graph));
+    }
+  }
+
+  // See if the node with no provider can be inlined. If one such nodes can be
+  // successfully inlined, we re-run the partitioner on the modified graph.
+  // NOTE: Inlining the function will change the nodes in the Graph instance, so we can't do that while iterating
+  // using graph.Nodes().
+  std::vector<Node*> nodes_to_inline;
+  for (auto& node : Nodes()) {
+    if (node.GetExecutionProviderType().empty() && node.GetFunctionBody() != nullptr) {
+      nodes_to_inline.push_back(&node);
+    }
+  }
+
+  for (auto* node : nodes_to_inline) {
+    ORT_RETURN_IF_ERROR(InlineFunction(*node));
+    modified_graph = true;
+  }
+
+  return Status::OK();
+}
+
 Status Graph::InlineFunction(Node& node) {
   // Remove the function node, add the nodes in function's subgraph into the
   // main graph.

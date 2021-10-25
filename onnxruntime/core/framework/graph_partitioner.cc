@@ -333,35 +333,6 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, bool export_dll, FuncMa
   return Status::OK();
 }
 
-// expand any nodes that have an ONNX function definition but no matching ORT kernel
-static Status InlineNodes(Graph& graph, bool& modified_graph) {
-  // recurse into nested graphs first so we process from bottom up
-  for (auto& node : graph.Nodes()) {
-    for (auto& entry : node.GetAttributeNameToMutableSubgraphMap()) {
-      Graph* subgraph = entry.second;
-      ORT_RETURN_IF_ERROR(InlineNodes(*subgraph, modified_graph));
-    }
-  }
-
-  // See if the node with no provider can be inlined. If one such nodes can be
-  // successfully inlined, we re-run the partitioner on the modified graph.
-  // NOTE: Inlining the function will change the nodes in the Graph instance, so we can't do that while iterating
-  // using graph.Nodes().
-  std::vector<Node*> nodes_to_inline;
-  for (auto& node : graph.Nodes()) {
-    if (node.GetExecutionProviderType().empty() && node.GetFunctionBody() != nullptr) {
-      nodes_to_inline.push_back(&node);
-    }
-  }
-
-  for (auto* node : nodes_to_inline) {
-    ORT_RETURN_IF_ERROR(graph.InlineFunction(*node));
-    modified_graph = true;
-  }
-
-  return Status::OK();
-}
-
 Status GraphPartitioner::PartitionOnnxFormatModel(Graph& graph, bool export_dll, FuncManager& func_mgr,
                                                   KernelRegistry& fused_kernel_registry, Mode mode,
                                                   int& fused_node_unique_id) const {
@@ -376,7 +347,7 @@ Status GraphPartitioner::PartitionOnnxFormatModel(Graph& graph, bool export_dll,
 
     // expand any nodes that have an ONNX function definition but no matching ORT kernel.
     modified_graph = false;
-    ORT_RETURN_IF_ERROR(InlineNodes(graph, modified_graph));
+    ORT_RETURN_IF_ERROR(graph.InlineNodes(modified_graph));
 
     // Resolve and rerun graph partitioning and inlining if there was a change
     if (modified_graph) {

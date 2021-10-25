@@ -1018,6 +1018,13 @@ class Graph {
   Node& FuseSubGraph(const IndexedSubGraph& sub_graph, const std::string& fused_node_name);
 
   /**
+  Inline nodes in the graph that have an ONNX function definition but no matching ORT kernel
+  @param modified_graph Flag indicating whether the graph had any function nodes that were inlined
+  @returns Status indicating success or providing an error message.
+  */
+  Status InlineNodes(bool& modified_graph);
+
+  /**
   Directly insert the nodes in the function Node provided into this Graph.
   @param node Node with Node::Type of Node::Type::Fused
   @returns Status indicating success or providing an error message.

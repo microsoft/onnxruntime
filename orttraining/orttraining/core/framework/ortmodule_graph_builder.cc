@@ -78,14 +78,28 @@ Status OrtModuleGraphBuilder::Build(const std::vector<std::vector<int64_t>>* inp
     SetConcreteInputShapes(*input_shapes_ptr);
   }
 
-  // Optimize the inference graph, and if needed, build the gradient graph.
   std::unordered_set<std::string> x_node_arg_names;
-  ORT_RETURN_IF_ERROR(OptimizeInferenceGraph(x_node_arg_names));
-  if (!config_.build_gradient_graph) {
-    // This graph will be used only for inferencing, so stop right here.
-    // No need to build a gradient graph.
-    return Status::OK();
-  }
+  bool modified_graph = false;
+
+  do {
+    // Optimize the inference graph, and if needed, build the gradient graph.
+    ORT_RETURN_IF_ERROR(OptimizeInferenceGraph(x_node_arg_names));
+    if (!config_.build_gradient_graph) {
+      // This graph will be used only for inferencing, so stop right here.
+      // No need to build a gradient graph.
+      return Status::OK();
+    }
+
+    // expand any nodes that have an ONNX function definition but no matching ORT kernel.
+    modified_graph = false;
+    Graph& graph = gradient_model_->MainGraph();
+    ORT_RETURN_IF_ERROR(graph.InlineNodes(modified_graph));
+
+    // Resolve and rerun graph partitioning and inlining if there was a change
+    if (modified_graph) {
+      ORT_RETURN_IF_ERROR(graph.Resolve());
+    }
+  } while (modified_graph);
 
   ORT_RETURN_IF_ERROR(BuildGradientGraph(x_node_arg_names));
 
