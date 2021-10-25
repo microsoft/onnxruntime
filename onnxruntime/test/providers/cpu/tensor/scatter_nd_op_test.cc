@@ -28,7 +28,15 @@ TEST(ScatterNDOpTest, ScatterND_scaler_string_int64) {
   test3.AddInput<std::string>("updates", {}, {"t"});
   test3.AddOutput<std::string>("output", {3,2}, {"h","k","o","z","l","t"});
   test3.Run();
+
+  OpTester test4("ScatterND", 11);
+  test4.AddInput<int64_t>("data", {3}, {1, 2, 3});
+  test4.AddInput<int64_t>("indices", {1}, {1});
+  test4.AddInput<int64_t>("updates", {1}, {5}); 
+  test4.AddOutput<int64_t>("output", {3}, {1, 5, 3});
+  test4.Run();
 }
+
 
 TEST(ScatterNDOpTest, ScatterND_matrice_int64_int64) {
   OpTester test("ScatterND", 11);
