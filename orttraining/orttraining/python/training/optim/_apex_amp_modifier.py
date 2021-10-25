@@ -9,7 +9,7 @@
 import types
 import warnings
 from ._modifier import FP16OptimizerModifier
-import nvtx
+
 class ApexAMPModifier(FP16OptimizerModifier):
     def __init__(self, optimizer, **kwargs) -> None:
         super().__init__(optimizer)
@@ -25,7 +25,6 @@ class ApexAMPModifier(FP16OptimizerModifier):
         warnings.warn('Apex AMP fp16_optimizer functions are overrided with faster implementation.', UserWarning)
 
         # Implementation adapted from https://github.com/NVIDIA/apex/blob/082f999a6e18a3d02306e27482cc7486dab71a50/apex/amp/_process_optimizer.py#L161
-        @nvtx.annotate(message="post_backward_with_master_weights", color="red")
         def post_backward_with_master_weights(self, scaler):
             stash = self._amp_stash
 
@@ -84,7 +83,6 @@ class ApexAMPModifier(FP16OptimizerModifier):
                                                          scaler._overflow_buf, 
                                                          scaler._loss_scale)
             #### END OF THE FASTER IMPLEMENTATION ####
-
             # fp32 params can be treated as they would be in the "no_master_weights" case.
             apex_amp._process_optimizer.post_backward_models_are_masters(
                 scaler,

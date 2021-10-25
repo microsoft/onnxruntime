@@ -8,6 +8,8 @@
 
 #define MTA_CHUNK_SIZE 2048 * 32
 
+const size_t EMIT_NUM = 4;
+
 // This will avoid the copies when doing implict Python list <==> C++ std::vector<> conversion.
 PYBIND11_MAKE_OPAQUE(std::vector<at::Tensor>);
 
@@ -65,14 +67,11 @@ class CachedStates {
         }
 
         void ClearStates(){
-            memory_buffer_idx_to_offset_map.clear();
             idx_to_numel_map.clear();
-            memory_buffer_size = 0;
         }
 
-        size_t memory_buffer_size;
-        std::vector<size_t> memory_buffer_idx_to_offset_map;
-        static std::vector<std::pair<size_t, size_t>> idx_to_numel_map;
+        // Parameter index to number of element mapping for each parameter. 
+        std::vector<std::pair<size_t, size_t>> idx_to_numel_map;
 
     private:
         CachedStates(){}
@@ -90,15 +89,17 @@ void unscale_fp16_grads_into_fp32_grads(std::vector<at::Tensor>& all_fp16_params
                                         std::vector<at::Tensor>& all_fp32_from_fp16_params,
                                         at::Tensor is_overflow_buffer,
                                         float scale) {
-    if (all_fp16_params.size() == 0) {
+    if (all_fp16_params.size() == 0 || all_fp32_from_fp16_params.size() == 0) {
         return;
     }
 
     const float inv_scale = 1.0 / scale;
     TORCH_CHECK(all_fp16_params.size() == all_fp32_from_fp16_params.size(), 
                 "mismatch param size between fp16_param and fp32_from_fp16_param.");
+
+    // Use cached states only parameter count did not get changed.
     bool need_reset_states = 
-        all_fp32_from_fp16_params.size() != CachedStates::GetInstance().memory_buffer_size;
+        all_fp32_from_fp16_params.size() != CachedStates::GetInstance().idx_to_numel_map.size();
     if (need_reset_states) {
         CachedStates::GetInstance().ClearStates();
     }
@@ -107,59 +108,62 @@ void unscale_fp16_grads_into_fp32_grads(std::vector<at::Tensor>& all_fp16_params
     std::vector<at::Tensor> fp16_grads_needing_unscale_with_stash;
     std::vector<at::Tensor> preexisting_fp32_grads;
 
-    std::vector<at::Tensor> fp32_from_fp16_params;
+    // Parameter index to parameter mapping for each fp32_from_fp16 parameter.
+    std::unordered_map<size_t, at::Tensor> idx_to_fp32_from_fp16_params;
 
-
-    auto& memory_buffer_idx_to_offset_map = CachedStates::GetInstance().memory_buffer_idx_to_offset_map;
-    auto& memory_buffer_size = CachedStates::GetInstance().memory_buffer_size;
+    // "buffer index" to "offset in memory buffer" mapping for each fp32_from_fp16 parameter.
+    std::vector<size_t> memory_buffer_idx_to_offset_map;
+    size_t memory_buffer_size = 0;
     auto& idx_to_numel_map = CachedStates::GetInstance().idx_to_numel_map;
 
-    for (size_t i = 0; i < all_fp16_params.size(); ++i) {
-        auto& fp16_param_grad = all_fp16_params[i].grad();
+    for (size_t idx = 0; idx < all_fp16_params.size(); ++idx) {
+        auto& fp16_param_grad = all_fp16_params[idx].grad();
         bool fp16_param_has_grad = fp16_param_grad.defined();
 
-        auto& fp32_from_fp16_param = all_fp32_from_fp16_params[i];
+        auto& fp32_from_fp16_param = all_fp32_from_fp16_params[idx];
         auto& fp32_from_fp16_param_grad = fp32_from_fp16_param.grad();
         bool fp32_from_fp16_param_has_grad = fp32_from_fp16_param_grad.defined();
 
-        if (fp16_param_has_grad && !fp32_from_fp16_param_has_grad) {
-            fp32_from_fp16_params.emplace_back(fp32_from_fp16_param);
-            fp16_grads_needing_unscale.emplace_back(fp16_param_grad);
+        size_t num_elem = fp32_from_fp16_param.numel();
+        if (need_reset_states) {
+            idx_to_numel_map.push_back(std::make_pair(idx, num_elem));
+        }
 
-            if (need_reset_states) {
-                memory_buffer_idx_to_offset_map.emplace_back(memory_buffer_size);
-                size_t num_elem = fp32_from_fp16_param.numel();
-                memory_buffer_size += num_elem;
-                idx_to_numel_map.push_back(std::make_pair(i, num_elem));
-            }
+        if (fp16_param_has_grad && !fp32_from_fp16_param_has_grad) {
+            idx_to_fp32_from_fp16_params.emplace(std::make_pair(idx, fp32_from_fp16_param));
+            fp16_grads_needing_unscale.emplace_back(fp16_param_grad);
+            memory_buffer_idx_to_offset_map.emplace_back(memory_buffer_size);
+            memory_buffer_size += num_elem;
         } else if (fp16_param_has_grad && fp32_from_fp16_param_has_grad) {
             fp16_grads_needing_unscale_with_stash.emplace_back(fp16_param_grad);
             preexisting_fp32_grads.emplace_back(fp32_from_fp16_param_grad);
         }
     }
 
-    if (fp32_from_fp16_params.size() > 0) {
-        auto mem_buffer = MemoryBuffer(memory_buffer_size, fp32_from_fp16_params[0]);
+    if (need_reset_states) {
+        std::sort(idx_to_numel_map.begin(), idx_to_numel_map.end(), SortByElementSizeDesc);
+    }
 
-        if (need_reset_states) {
-            std::sort(idx_to_numel_map.begin(), idx_to_numel_map.end(), SortByElementSizeDesc);
-        }
-
-        const size_t emit_num = 4;
-        const size_t emit_threshhold = memory_buffer_size / emit_num;
+    if (idx_to_fp32_from_fp16_params.size() > 0) {
+        auto mem_buffer = MemoryBuffer(memory_buffer_size, idx_to_fp32_from_fp16_params.begin()->second);
+        const size_t emit_threshhold = memory_buffer_size / EMIT_NUM;
 
         size_t acc_size = 0;
         std::vector<at::Tensor> partial_new_fp32_grads;
-        std::vector<at::Tensor> partial_fp16_grads_needing_unscale; 
-        for (size_t j = 0; j < fp32_from_fp16_params.size(); ++j) {
-            acc_size += idx_to_numel_map[j].second;
-            size_t idx = idx_to_numel_map[j].first;
-            fp32_from_fp16_params[idx].mutable_grad() = 
-                mem_buffer.Get(fp32_from_fp16_params[idx], memory_buffer_idx_to_offset_map[idx]);
-            partial_new_fp32_grads.emplace_back(fp32_from_fp16_params[idx].grad());
-            partial_fp16_grads_needing_unscale.emplace_back(fp16_grads_needing_unscale[idx]);
+        std::vector<at::Tensor> partial_fp16_grads_needing_unscale;
+        for (size_t idx = 0, fp32_from_fp16_param_idx = 0; idx < idx_to_numel_map.size(); ++idx) {
+            if (idx_to_fp32_from_fp16_params.find(idx) == idx_to_fp32_from_fp16_params.end()) {
+                continue;
+            }
 
-            if (acc_size > emit_threshhold || j == fp32_from_fp16_params.size() - 1) {
+            acc_size += idx_to_numel_map[idx].second;
+            idx_to_fp32_from_fp16_params[idx].mutable_grad() = 
+                mem_buffer.Get(idx_to_fp32_from_fp16_params[idx],
+                memory_buffer_idx_to_offset_map[fp32_from_fp16_param_idx]);
+            partial_new_fp32_grads.emplace_back(idx_to_fp32_from_fp16_params[idx].grad());
+            partial_fp16_grads_needing_unscale.emplace_back(fp16_grads_needing_unscale[fp32_from_fp16_param_idx]);
+
+            if (acc_size > emit_threshhold || fp32_from_fp16_param_idx == idx_to_fp32_from_fp16_params.size() - 1) {
                 if (partial_fp16_grads_needing_unscale.size() > 0) {
                     std::vector<std::vector<at::Tensor>> tensor_lists;
                     tensor_lists.emplace_back(partial_fp16_grads_needing_unscale);
@@ -171,6 +175,7 @@ void unscale_fp16_grads_into_fp32_grads(std::vector<at::Tensor>& all_fp16_params
                     acc_size = 0;
                 }
             }
+            ++fp32_from_fp16_param_idx;
         }
     }
 
@@ -182,7 +187,6 @@ void unscale_fp16_grads_into_fp32_grads(std::vector<at::Tensor>& all_fp16_params
         // a * x + b * y
         multi_tensor_axpby_cuda(MTA_CHUNK_SIZE, is_overflow_buffer, tensor_lists, inv_scale, float(1.0), 0);
     }
-
 };
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
