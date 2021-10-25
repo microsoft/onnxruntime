@@ -101,18 +101,18 @@ Status ValidateCommonRnnInputs(const Tensor& X,
 }  // namespace detail
 
 // map of arg name and whether the alpha and/or beta arguments are required
-static std::unordered_map<std::string, std::pair<bool, bool>>
-    NameToArgUsageMap{{"affine",          {true, true}},
-                      {"relu",            {false, false}},
-                      {"leakyrelu",       {true, false}},
-                      {"thresholdedrelu", {true, false}},
-                      {"tanh",            {false, false}},
-                      {"scaledtanh",      {true, true}},
-                      {"sigmoid",         {false, false}},
-                      {"hardsigmoid",     {true, true}},
-                      {"elu",             {true, false}},
-                      {"softsign",        {false, false}},
-                      {"softplus",        {false, false}}};
+static std::unordered_map<std::string, std::pair<bool, bool>> NameToArgUsageMap{
+    {"affine", {true, true}},
+    {"relu", {false, false}},
+    {"leakyrelu", {true, false}},
+    {"thresholdedrelu", {true, false}},
+    {"tanh", {false, false}},
+    {"scaledtanh", {true, true}},
+    {"sigmoid", {false, false}},
+    {"hardsigmoid", {true, true}},
+    {"elu", {true, false}},
+    {"softsign", {false, false}},
+    {"softplus", {false, false}}};
 
 // map of alpha/beta defaults
 static std::unordered_map<std::string, std::pair<float, float>>
