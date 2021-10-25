@@ -59,6 +59,7 @@ bool LaunchDecoderAttentionKernel(
     const void* key_cache,                        // Input key cache
     const void* value_cache,                      // Input value cache
     void* qkv_buffer,                             // Temporary buffer
+    void* workspace_buffer,                       // Temporary buffer
     void* output,                                 // Output tensor
     void* new_key_cache,                          // New_key_cache tensor
     void* new_value_cache                         // New_value_cache tensor

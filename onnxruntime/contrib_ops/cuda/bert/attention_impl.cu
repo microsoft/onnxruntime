@@ -224,10 +224,72 @@ bool DecoderQkvToContext(
   const T* key_cache,
   const T* value_cache,
   T* qkv_buffer,
+  T* workspace_buffer,
   T* output,
   T* new_key_cache,
   T* new_value_cache)
 {
+  const int max_threads_per_block(prop.maxThreadsPerBlock);
+  const int BHN = batch_size * head_size * num_heads;
+  const int k_buffer_offset = sequence_length * BHN;
+  const int v_buffer_offset = (sequence_length + kv_sequence_length) * BHN;
+
+  if (!has_layer_state || !use_past) {
+    if (!static_kv) {
+      //transpose qkv and copy them to qkv_buffer
+      if (!LaunchTransQkv2(stream, sequence_length, batch_size, head_size, num_heads, 3, gemm_buffer, qkv_buffer)) {
+        return false;
+      }
+    } else {
+      //transpose q and copy them to qkv_buffer
+      if (!LaunchTransQkv2(stream, sequence_length, batch_size, head_size, num_heads, 1, gemm_query_buffer, qkv_buffer)) {
+        return false;
+      }
+      //transpose kv and copy them to qkv_buffer
+      if (!LaunchTransQkv2(stream, sequence_length, batch_size, head_size, num_heads, 2, gemm_kv_buffer, qkv_buffer + k_buffer_offset)) {
+        return false;
+      }
+    }
+  } else {
+    if (!static_kv) {
+      // transpose qkv and copy them to workspace buffer
+      if (!LaunchTransQkv2(stream, sequence_length, batch_size, head_size, num_heads, 3, gemm_buffer, workspace_buffer)) {
+        return false;
+      }
+      //copy q to qkv_buffer
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(qkv_buffer, workspace_buffer, sequence_length * BHN * sizeof(T), cudaMemcpyDeviceToDevice, Stream()));
+      // concat cache-k with k and copy to qkv_buffer
+      if (nullptr != key_cache && !LaunchConcatTensorToTensor(stream, kv_sequence_length, sequence_length, batch_size, head_size, num_heads,
+          max_threads_per_block, 1, key_cache, workspace_buffer + k_buffer_offset, qkv_buffer + k_buffer_offset)) {
+        return false;
+      }
+      // concat cache-v with v and copy to qkv_buffer
+      if (nullptr != value_cache && !LaunchConcatTensorToTensor(stream, kv_sequence_length, sequence_length, batch_size, head_size, num_heads,
+          max_threads_per_block, 1, key_cache, workspace_buffer + 2 * k_buffer_offset, qkv_buffer + v_buffer_offset)) {
+        return false;
+      }
+    } else {
+      //transpose q and copy them to qkv_buffer
+      if (!LaunchTransQkv2(stream, sequence_length, batch_size, head_size, num_heads, 1, gemm_query_buffer, qkv_buffer)) {
+        return false;
+      }
+      // bugbug: the following copies can be optimized, no need to copy them, use the cache directly
+      // copy cache-k to qkv_buffer
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(qkv_buffer + k_buffer_offset, key_cache, kv_sequence_length * BHN * sizeof(T), cudaMemcpyDeviceToDevice, Stream()));
+      // copy cache-v to qkv_buffer
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(qkv_buffer + v_buffer_offset, value_cache, kv_sequence_length * BHN * sizeof(T), cudaMemcpyDeviceToDevice, Stream()));
+    }
+  }
+
+  // copy k, v to cache if needed
+  const T* q = qkv_buffer;
+  const T* k = qkv_buffer + k_buffer_offset;
+  const T* v = qkv_buffer + v_buffer_offset;
+  if (has_layer_state) {
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(new_key_cache, k, kv_sequence_length * BHN * sizeof(T), cudaMemcpyDeviceToDevice, Stream()));
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(new_value_cache, v, kv_sequence_length * BHN * sizeof(T), cudaMemcpyDeviceToDevice, Stream()));
+  }
+
 
 
 }

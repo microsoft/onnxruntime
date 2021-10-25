@@ -170,11 +170,29 @@ Status DecoderAttention<T>::ComputeInternal(OpKernelContext* context) const {
       // gemm_buffer: (S*B, 3*h2)
       kv_sequence_length = cache_sequence_length + sequence_length;
     } else {
+      gemm_query_buffer_p = GetScratchBuffer<T>(batch_size * sequence_length * hidden_size * element_size);
+      m = sequence_length * batch_size;
+      n = hidden_size;
+      k = hidden_size;
+      // broadcast bias for query: (h2, S*B)
+      CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
+          cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, 1, &one,
+          reinterpret_cast<const CudaT*>(bias->template Data<T>()), n,
+          GetConstOnes<CudaT>(m), 1,
+          &zero, reinterpret_cast<CudaT*>(gemm_query_buffer_p.get()), n, device_prop));
+      // matmul: (h2, h1)*(h1, S*B)
+      CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
+          cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, k, &one,
+          reinterpret_cast<const CudaT*>(weights->template Data<T>()), n,
+          reinterpret_cast<const CudaT*>(query->template Data<T>()), k,
+          &one, reinterpret_cast<CudaT*>(gemm_query_buffer_p.get()), n, device_prop));
+      // gemm_query_buffer in col-base: (h2, S*B)
       kv_sequence_length = cache_sequence_length;
     }
   }
 
   IAllocatorUniquePtr<T> qkv_buffer_p = GetScratchBuffer<void>(batch_size * (sequence_length + 2 * kv_sequence_length) * hidden_size * element_size);
+  IAllocatorUniquePtr<T> workspace_p = GetScratchBuffer<void>(3 * batch_size * sequence_length * hidden_size * element_size);
 
   Tensor* output(context->Output(0, query_shape));
   TensorShape new_cache_shape({batch_size, num_heads_, kv_sequence_length, head_size});
@@ -201,6 +219,7 @@ Status DecoderAttention<T>::ComputeInternal(OpKernelContext* context) const {
           nullptr == key_cache ? nullptr : key_cache->template Data<T>(),
           nullptr == value_cache ? nullptr : value_cache->template Data<T>(),
           qkv_buffer_p.get(),
+          workspace_p.get(),
           output->template MutableData<T>(),
           nullptr == new_key_cache ? nullptr : new_key_cache->template MutableData<T>(),
           nullptr == new_value_cache ? nullptr : new_value_cache->template MutableData<T>())) {
