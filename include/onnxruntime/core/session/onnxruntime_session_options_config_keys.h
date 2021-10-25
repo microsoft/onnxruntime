@@ -69,11 +69,20 @@ static const char* const kOrtSessionOptionsConfigAllowIntraOpSpinning = "session
 // has to guarantee that the model bytes are valid until the ORT session using the model bytes is destroyed.
 static const char* const kOrtSessionOptionsConfigUseORTModelBytesDirectly = "session.use_ort_model_bytes_directly";
 
-// Save information for applying graph optimizations later instead of applying them directly.
-// Runtime optimization information can saved to an ORT format model and applied later when it is loaded in a minimal
-// build.
-// This only applies to optimizations at extended optimization level or higher. Other optimizations are applied
+// Save information for replaying graph optimizations later instead of applying them directly.
+//
+// When an ONNX model is loaded, ORT can perform various optimizations on the graph.
+// However, when an ORT format model is loaded, these optimizations are typically not available - this scenario must
+// be supported by minimal builds.
+// When loading an ONNX model, ORT can optionally save the effects of some optimizations for later replay in an ORT
+// format model. These are known as "runtime optimizations" - in an ORT format model, they happen at runtime.
+//
+// Note: This option is only applicable when loading an ONNX model and saving an ORT format model.
+//
+// Note: Runtime optimizations are only supported for certain optimizations at the extended level or higher.
+// Unsupported optimizations at those levels are not applied at all, while optimizations at other levels are applied
 // directly.
+//
 // "0": disabled, "1": enabled
 // The default is "0".
 static const char* const kOrtSessionOptionsConfigSaveRuntimeOptimizations = "optimization.save_runtime_optimizations";

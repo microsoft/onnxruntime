@@ -1324,16 +1324,6 @@ common::Status InferenceSession::Initialize() {
       return false;
     }();
 
-    bool saving_runtime_optimizations = session_options_.config_options.GetConfigOrDefault(
-                                            kOrtSessionOptionsConfigSaveRuntimeOptimizations, "0") != "1";
-
-    if (saving_runtime_optimizations && !(!loading_ort_format && saving_ort_format)) {
-      LOGS(*session_logger_, WARNING) << "The '" << kOrtSessionOptionsConfigSaveRuntimeOptimizations
-                                      << "' option is only applicable when loading an ONNX model and saving an ORT "
-                                         "format model. It will not be enabled.";
-      saving_runtime_optimizations = false;
-    }
-
     const experimental::fbs::SessionState* serialized_session_state =
         loading_ort_format
             ? fbs::GetInferenceSession(ort_format_model_bytes_.data())->session_state()
@@ -1341,6 +1331,10 @@ common::Status InferenceSession::Initialize() {
 
 #if !defined(ORT_MINIMAL_BUILD)
     if (!loading_ort_format) {
+      const bool saving_runtime_optimizations =
+          saving_ort_format &&
+          session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigSaveRuntimeOptimizations,
+                                                             "0") == "1";
       // add predefined transformers
       ORT_RETURN_IF_ERROR_SESSIONID_(AddPredefinedTransformers(graph_transformation_mgr_,
                                                                session_options_.graph_optimization_level,
