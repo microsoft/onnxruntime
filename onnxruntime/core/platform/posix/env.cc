@@ -148,8 +148,6 @@ class PosixThread : public EnvThread {
 
     if (create_thread_fn) {
       hThread = (pthread_t)create_thread_fn(ExternalThreadMain, new Param{name_prefix, index, start_address, param, thread_options});
-      //void* ret = create_thread_fn(ExternalThreadMain, new Param{name_prefix, index, start_address, param, thread_options});
-      //hThread = *(reinterpret_cast<pthread_t*>(ret));
     } else {
       pthread_attr_t attr;
       int s = pthread_attr_init(&attr);

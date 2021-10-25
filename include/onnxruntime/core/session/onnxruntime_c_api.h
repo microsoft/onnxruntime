@@ -529,20 +529,21 @@ ORT_EXPORT const OrtApiBase* ORT_API_CALL OrtGetApiBase(void) NO_EXCEPTION;
 
 /** \brief Thread work loop function
 *
-* It defines the working loop function of an external thread
-* 0 means work loop returns normally and 1 otherwise
+* This is the working loop for external threads
+* Argument is an onnxruntime built-in type which will be provided upon calling
+* 0 means work loop returns normally, and 1 otherwise
 */
 typedef unsigned (*ThreadWorkLoopFn)(void*);
 
 /** \brief Thread creation function
 *
-* The function will return a handle of thread for onnxruntime to use in intra op thread pool
+* The function returns a thread handle to onnxruntime intra thread pool
 */
 typedef void* (*CreateThreadFn)(ThreadWorkLoopFn, void*);
 
 /** \brief Thread join function
 *
-* On thread pool exit, onnxruntime will call the function to notify thread owner
+* The function will be called by onnxruntime on intra op thread pool exit
 */
 typedef void (*JoinThreadFn)(void*);
 
