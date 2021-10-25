@@ -138,6 +138,7 @@ target_link_libraries(onnxruntime_pybind11_state PRIVATE
     ${onnxruntime_libs}
     ${PROVIDERS_MIGRAPHX}
     ${PROVIDERS_NUPHAR}
+    ${PROVIDERS_OPENCL}
     ${PROVIDERS_VITISAI}
     ${PROVIDERS_NNAPI}
     ${PROVIDERS_COREML}
@@ -652,6 +653,10 @@ if (onnxruntime_USE_NUPHAR)
       ${onnxruntime_python_nuphar_python_srcs}
       $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/nuphar/
   )
+endif()
+
+if (onnxruntime_USE_OPENCL)
+  # TODO:
 endif()
 
 if (onnxruntime_USE_DML)

@@ -61,6 +61,8 @@ elif parse_arg_remove_boolean(sys.argv, '--use_rocm'):
     rocm_version = parse_arg_remove_string(sys.argv, '--rocm_version=')
 elif parse_arg_remove_boolean(sys.argv, '--use_openvino'):
     package_name = 'onnxruntime-openvino'
+elif parse_arg_remove_boolean(sys.argv, '--use_opencl'):
+    package_name = 'onnxruntime-opencl'
 elif parse_arg_remove_boolean(sys.argv, '--use_dnnl'):
     package_name = 'onnxruntime-dnnl'
 elif parse_arg_remove_boolean(sys.argv, '--use_nuphar'):

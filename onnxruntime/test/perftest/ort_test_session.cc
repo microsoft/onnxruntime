@@ -56,6 +56,12 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #else
     ORT_THROW("Nuphar is not supported in this build\n");
 #endif
+  } else if (provider_name == onnxruntime::kOpenCLExecutionProvider) {
+#ifdef USE_OPENCL
+    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_OpenCL(session_options));
+#else
+    ORT_THROW("OpenCL is not supported in this build\n");
+#endif
   } else if (provider_name == onnxruntime::kTensorrtExecutionProvider) {
 #ifdef USE_TENSORRT
     int device_id = 0;
@@ -214,7 +220,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     tensorrt_options.has_user_compute_stream = 0;
     tensorrt_options.user_compute_stream = nullptr;
     tensorrt_options.trt_max_partition_iterations = trt_max_partition_iterations;
-    tensorrt_options.trt_min_subgraph_size = trt_min_subgraph_size;	
+    tensorrt_options.trt_min_subgraph_size = trt_min_subgraph_size;
     tensorrt_options.trt_max_workspace_size = trt_max_workspace_size;
     tensorrt_options.trt_fp16_enable = trt_fp16_enable;
     tensorrt_options.trt_int8_enable = trt_int8_enable;

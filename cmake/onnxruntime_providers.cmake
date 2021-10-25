@@ -60,6 +60,9 @@ file(GLOB onnxruntime_providers_common_srcs CONFIGURE_DEPENDS
 if(onnxruntime_USE_NUPHAR)
   set(PROVIDERS_NUPHAR onnxruntime_providers_nuphar)
 endif()
+if(onnxruntime_USE_OPENCL)
+  set(PROVIDERS_OPENCL onnxruntime_providers_opencl)
+endif()
 if(onnxruntime_USE_VITISAI)
   set(PROVIDERS_VITISAI onnxruntime_providers_vitisai)
 endif()
@@ -612,6 +615,60 @@ if (onnxruntime_USE_NUPHAR)
   target_compile_options(onnxruntime_providers_nuphar PRIVATE ${DISABLED_WARNINGS_FOR_TVM})
   add_dependencies(onnxruntime_providers_nuphar ${onnxruntime_EXTERNAL_DEPENDENCIES})
   install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/nuphar  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
+endif()
+
+if (onnxruntime_USE_OPENCL)
+  add_definitions(-DUSE_OPENCL=1)
+
+  # TODO: Implement simple compiler driver to help
+  # kernel.cl ---> kernel.cl.inc -┐
+  #                op.cc ---------┴-> op.o
+  # so that op and its kernel implementation can be easily pruned, since we are
+  # targeting mobile platform. Library size is crucial.
+  #
+  # additional feature:
+  #  kernels/adreno/conv2d3x3s1.cl override kernels/conv2d3x3s1.cl
+  # will be considered later.
+  find_package(Python3 COMPONENTS Interpreter REQUIRED)
+
+  set(opencl_cl_path_prefix "${ONNXRUNTIME_ROOT}/core/providers/opencl/")
+  file(GLOB_RECURSE opencl_cl_srcs CONFIGURE_DEPENDS
+    "${opencl_cl_path_prefix}*.cl"
+  )
+
+  set(opencl_target_dir ${CMAKE_CURRENT_BINARY_DIR}/opencl_generated)
+  set(opencl_generated_cl_includes)
+  foreach(f ${opencl_cl_srcs})
+    string(REPLACE ${opencl_cl_path_prefix} "" suffix ${f})
+    set(output "${opencl_target_dir}/${suffix}.inc")
+    add_custom_command(
+      OUTPUT ${output}
+      COMMAND Python3::Interpreter ${PROJECT_SOURCE_DIR}/embed.py ${f} -o ${output}
+      DEPENDS ${PROJECT_SOURCE_DIR}/embed.py ${f}
+    )
+    list(APPEND opencl_generated_cl_includes "${output}")
+  endforeach()
+
+  set_source_files_properties(opencl_generated_cl_includes PROPERTIES GENERATED TRUE)
+  add_custom_target(gen_opencl_embed_hdrs DEPENDS ${opencl_generated_cl_includes})
+
+  find_package(OpenCL REQUIRED)
+  file(GLOB_RECURSE opencl_cc_srcs CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/core/providers/opencl/*.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/opencl/*.cc"
+  )
+
+  source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${opencl_cc_srcs})
+  onnxruntime_add_static_library(onnxruntime_providers_opencl ${opencl_cc_srcs})
+  target_link_libraries(onnxruntime_providers_opencl PUBLIC OpenCL::OpenCL)
+  target_include_directories(onnxruntime_providers_opencl PRIVATE ${ONNXRUNTIME_ROOT} INTERFACE ${opencl_target_dir})
+  set_target_properties(onnxruntime_providers_opencl PROPERTIES
+    LINKER_LANGUAGE CXX
+    FOLDER "ONNXRuntime"
+  )
+  onnxruntime_add_include_to_target(onnxruntime_providers_opencl onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers)
+  add_dependencies(onnxruntime_providers_opencl onnxruntime_providers gen_opencl_embed_hdrs)
+  install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/opencl  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
 endif()
 
 if (onnxruntime_USE_VITISAI)

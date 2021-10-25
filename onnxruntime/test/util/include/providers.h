@@ -10,6 +10,9 @@
 #ifdef USE_NUPHAR
 #include "core/providers/nuphar/nuphar_provider_factory.h"
 #endif
+#ifdef USE_OPENCL
+#include "core/providers/opencl/opencl_provider_factory.h"
+#endif
 #ifdef USE_TENSORRT
 #include "core/providers/tensorrt/tensorrt_provider_factory.h"
 #endif

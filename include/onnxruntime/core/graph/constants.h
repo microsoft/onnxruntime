@@ -25,6 +25,7 @@ constexpr const char* kCudaExecutionProvider = "CUDAExecutionProvider";
 constexpr const char* kDnnlExecutionProvider = "DnnlExecutionProvider";
 constexpr const char* kOpenVINOExecutionProvider = "OpenVINOExecutionProvider";
 constexpr const char* kNupharExecutionProvider = "NupharExecutionProvider";
+constexpr const char* kOpenCLExecutionProvider = "OpenCLExecutionProvider";
 constexpr const char* kVitisAIExecutionProvider = "VitisAIExecutionProvider";
 constexpr const char* kTensorrtExecutionProvider = "TensorrtExecutionProvider";
 constexpr const char* kNnapiExecutionProvider = "NnapiExecutionProvider";

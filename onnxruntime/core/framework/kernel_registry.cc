@@ -261,6 +261,14 @@ Status KernelRegistry::TryFindKernel(const Node& node,
         << " kernel is not supported in " << expected_provider << "."
         << " Encountered following errors: (" << ToString(verify_kernel_def_error_strs) << ")";
 
+    // FIXME: remove
+    if (exec_provider == kOpenCLExecutionProvider) {
+#define FILE_LINE_(F, L) F ":" #L
+#define FILE_LINE(F, L) FILE_LINE_(F, L)
+      std::cerr << FILE_LINE(__FILE__, __LINE__)  << ":\u001b[31m" << oss.str() << "\u001b[0m" << std::endl;
+#undef FILE_LINE
+#undef FILE_LINE_
+    }
     return Status(common::ONNXRUNTIME, common::FAIL, oss.str());
   }
 
