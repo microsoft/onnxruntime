@@ -405,11 +405,9 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     }
     if (enable_rocm) {
 #ifdef USE_ROCM
-      OrtROCMProviderOptions rocm_options{
-          0,
-          0,
-          std::numeric_limits<size_t>::max(),
-          0};
+      OrtROCMProviderOptions rocm_options;
+      rocm_options.do_copy_in_default_stream=true;
+      // TODO: Support arena configuration for users of test runner
       sf.AppendExecutionProvider_ROCM(rocm_options);
 #else
       fprintf(stderr, "ROCM is not supported in this build");

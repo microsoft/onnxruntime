@@ -431,6 +431,7 @@ void Im2col<T, StorageOrder::NHWC>::operator()(
     int64_t output_count,
     T* data_col,
     T padding_value) {
+
   int64_t mh = output_start / output_w;
   int64_t mw = output_start % output_w;
   for (int64_t mz = output_start; mz < output_start + output_count; mz++) {
@@ -585,13 +586,26 @@ void Im2col<T, StorageOrder::NHWC>::operator()(
         if (is_a_ge_zero_and_a_lt_b(ih, input_h)) {
           int64_t ihw = ih * input_w;
           int64_t iw = ow - pad_l;
-          for (int64_t kw = 0; kw < kernel_w; kw++) {
-            const T* data_ptr = data_im + (ihw + iw) * input_channels;
-            data_indirection[kw] = is_a_ge_zero_and_a_lt_b(iw, input_w) ? data_ptr : padding_ptr;
+          if (kernel_w == 3) {
+            const T* data_ptr0 = data_im + (ihw + iw) * input_channels;
+            data_indirection[0] = is_a_ge_zero_and_a_lt_b(iw, input_w) ? data_ptr0 : padding_ptr;
             iw += dilation_w;
+            const T* data_ptr1 = data_im + (ihw + iw) * input_channels;
+            data_indirection[1] = is_a_ge_zero_and_a_lt_b(iw, input_w) ? data_ptr1 : padding_ptr;
+            iw += dilation_w;
+            const T* data_ptr2 = data_im + (ihw + iw) * input_channels;
+            data_indirection[2] = is_a_ge_zero_and_a_lt_b(iw, input_w) ? data_ptr2 : padding_ptr;
+          } else {
+            for (int64_t kw = 0; kw < kernel_w; kw++) {
+              const T* data_ptr = data_im + (ihw + iw) * input_channels;
+              data_indirection[kw] = is_a_ge_zero_and_a_lt_b(iw, input_w) ? data_ptr : padding_ptr;
+              iw += dilation_w;
+            }
           }
         } else {
-          std::fill_n(data_indirection, kernel_w, padding_ptr);
+          for (int64_t kw = 0; kw < kernel_w; kw++) {
+            data_indirection[kw] = padding_ptr;
+          }
         }
         data_indirection += kernel_w;
       }

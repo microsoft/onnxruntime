@@ -12,10 +12,13 @@
 #include "dnnl_matmul.h"
 #include "dnnl_matmul_integer.h"
 #include "dnnl_pool.h"
+#include "dnnl_pow.h"
 #include "dnnl_reducemean.h"
+#include "dnnl_reshape.h"
 #include "dnnl_softmax.h"
 #include "dnnl_softmaxgrad.h"
 #include "dnnl_sum.h"
+#include "dnnl_transpose.h"
 
 #if defined(ENABLE_TRAINING)
 #include "dnnl_convgrad.h"
@@ -40,7 +43,7 @@ int Product(dnnl::memory::dims d) {
 
 void DnnlSubgraphPrimitive::AddKernels() {
   std::unordered_set<std::string> binary_ops = {"Add", "Div", "Mul", "Sub"};
-  std::unordered_set<std::string> elementwise_ops = {"Abs", "Elu", "Exp","Log", "Relu", "Round", "Sigmoid", "Softplus", "Sqrt", "Tanh"};
+  std::unordered_set<std::string> elementwise_ops = {"Abs", "Elu", "Exp", "LeakyRelu", "Log", "Relu", "Round", "Sigmoid", "Softplus", "Sqrt", "Tanh"};
   std::unordered_set<std::string> pool_ops = {"AveragePool", "GlobalAveragePool", "GlobalMaxPool", "MaxPool"};
   for (auto& node : subgraph_->GetDnnlNodes()) {
     if (node.OpType() == "BatchNormalization") {
@@ -61,12 +64,18 @@ void DnnlSubgraphPrimitive::AddKernels() {
       DnnlMatMulInteger().CreatePrimitive(*this, node);
     } else if (pool_ops.count(node.OpType())) {
       DnnlPool().CreatePrimitive(*this, node);
+    } else if (node.OpType() == "Pow") {
+      DnnlPow().CreatePrimitive(*this, node);
     } else if (node.OpType() == "ReduceMean") {
       DnnlReduceMean().CreatePrimitive(*this, node);
+    } else if (node.OpType() == "Reshape") {
+      DnnlReshape().CreatePrimitive(*this, node);
     } else if (node.OpType() == "Softmax") {
       DnnlSoftmax().CreatePrimitive(*this, node);
     } else if (node.OpType() == "Sum") {
       DnnlSum().CreatePrimitive(*this, node);
+    } else if (node.OpType() == "Transpose") {
+      DnnlTranspose().CreatePrimitive(*this, node);
 #if defined(ENABLE_TRAINING)
     } else if (node.OpType() == "AveragePoolGrad" || node.OpType() == "MaxPoolGrad") {
       DnnlPoolGrad().CreatePrimitive(*this, node);
@@ -129,6 +138,7 @@ void DnnlSubgraphPrimitive::Compile(const std::unordered_map<std::string, OnnxTe
   inputs_.clear();
   intermediates_.clear();
   outputs_.clear();
+  outputs_are_always_copied_.clear();
   inputs_md_.clear();
   outputs_md_.clear();
   net_.clear();
@@ -248,7 +258,8 @@ void DnnlSubgraphPrimitive::AddOutputs() {
     auto output_mem_dnnl = GetMemory(dnnl_tensor_name);
     auto output_md = dnnl::memory::desc(output_mem_dnnl.get_desc().dims(), dnnl_data_type, GetDnnlFormat(output_mem_dnnl.get_desc().dims().size()));
     // if output already in correct memory format, just place it to outputs instead of reorder
-    if (output_mem_dnnl.get_desc() == output_md && output_mem_dnnl.get_engine() == engine) {
+    bool copy_output = outputs_are_always_copied_.find(dnnl_tensor_name) != outputs_are_always_copied_.end();
+    if (output_mem_dnnl.get_desc() == output_md && output_mem_dnnl.get_engine() == engine && !copy_output) {
       outputs_.emplace(dnnl_tensor_name, output_mem_dnnl);
     } else {
       auto output_mem = dnnl::memory(output_md, engine, nullptr);
@@ -286,11 +297,15 @@ bool DnnlSubgraphPrimitive::HasMemory(std::string memory_name, dnnl::memory::des
   return false;
 }
 
-void DnnlSubgraphPrimitive::SetMemory(DnnlTensor tensor, dnnl::memory mem) {
+void DnnlSubgraphPrimitive::SetMemory(DnnlTensor tensor, dnnl::memory mem, bool always_copy_output) {
+  if (always_copy_output) {
+    outputs_are_always_copied_.insert(tensor.Name());
+  }
   SetMemory(tensor.Name(), mem);
 }
 
-dnnl::memory DnnlSubgraphPrimitive::GetMemory(std::string memory_name) {
+dnnl::memory DnnlSubgraphPrimitive::GetMemory(const DnnlTensor& tensor) {
+  std::string memory_name = tensor.Name();
   if (Contains(initializers_, memory_name)) {
     if (!initializers_.at(memory_name).empty()) {
       return initializers_.at(memory_name)[0];
@@ -308,7 +323,8 @@ dnnl::memory DnnlSubgraphPrimitive::GetMemory(std::string memory_name) {
   throw std::invalid_argument("cannot find memory");
 }
 
-dnnl::memory DnnlSubgraphPrimitive::GetMemory(std::string memory_name, dnnl::memory::desc mem_desc, dnnl::engine eng) {
+dnnl::memory DnnlSubgraphPrimitive::GetMemory(const DnnlTensor& tensor, dnnl::memory::desc mem_desc, dnnl::engine eng) {
+  std::string memory_name = tensor.Name();
   if (Contains(initializers_, memory_name)) {
     for (auto& mem : initializers_.at(memory_name)) {
       if (mem.get_engine() == eng && mem.get_desc() == mem_desc) {
@@ -363,10 +379,12 @@ void DnnlSubgraphPrimitive::SetInitializer(std::string memory_name, dnnl::memory
   }
 }
 
-dnnl::memory DnnlSubgraphPrimitive::GetMemoryAndReshape(ort_dnnl::DnnlTensor tensor, dnnl::memory::desc mem_desc, dnnl::engine eng, bool transpose) {
+
+
+dnnl::memory DnnlSubgraphPrimitive::GetMemoryAndReshape(const DnnlTensor& tensor, dnnl::memory::desc mem_desc, dnnl::engine eng, bool transpose) {
   // if found just return
   if (HasMemory(tensor.Name(), mem_desc, eng)) {
-    return GetMemory(tensor.Name(), mem_desc, eng);
+    return GetMemory(tensor, mem_desc, eng);
   }
 
   // is non overridable constant initializer (assume already in memory (runtime))
@@ -375,7 +393,7 @@ dnnl::memory DnnlSubgraphPrimitive::GetMemoryAndReshape(ort_dnnl::DnnlTensor ten
     LOGS_DEFAULT(INFO) << "initializer cache started";
   }
   // will get the first memory with matching name
-  auto mem_from = GetMemory(tensor.Name());
+  auto mem_from = GetMemory(tensor);
   auto mem_to = dnnl::memory(mem_desc, eng);
 
   // if it is a reshape, ensure reorder is possible by making the same dims
@@ -419,6 +437,42 @@ dnnl::memory DnnlSubgraphPrimitive::GetMemoryAndReshape(ort_dnnl::DnnlTensor ten
     SetInitializer(tensor.Name(), mem_to);
   }
   return mem_to;
+}
+
+dnnl::memory DnnlSubgraphPrimitive::GetMemoryInOrtFormat(const DnnlTensor& tensor, const dnnl::engine& eng) {
+  auto from_mem = GetMemory(tensor);
+  auto from_desc = from_mem.get_desc();
+  auto from_dims = from_desc.dims();
+  if (!IsMemoryInExpectedOrtFormat(from_desc)) {
+    dnnl::memory::desc to_md = dnnl::memory::desc(from_dims, tensor.Type(), GetDnnlFormat(from_dims.size()));
+    dnnl::memory to_mem = dnnl::memory(to_md, eng);
+    AddPrimitive(dnnl::reorder(from_mem, to_mem), {{DNNL_ARG_FROM, from_mem},
+                                                   {DNNL_ARG_TO, to_mem}});
+   return to_mem;
+  } else {
+    // If using GPU this will move the memory from the CPU to the GPU.
+    return GetMemoryAndReshape(tensor, from_desc, eng);
+  }
+}
+
+bool DnnlSubgraphPrimitive::IsMemoryInExpectedOrtFormat(const dnnl::memory::desc& desc) const {
+  if (desc.data.format_kind != dnnl_blocked) {
+    return false;
+  }
+  if (desc.data.format_desc.blocking.inner_nblks != 0) {
+    return false;
+  }
+  auto strides = desc.data.format_desc.blocking.strides;
+  // if a data format is dnnl_format::abcd... the stride will go from largest to smallest
+  // if for example we have a shape {2,3,4} we expect a stride of {12, 4, 1} if it were
+  // of dnnl_format::abc if instead the stride were {12, 1, 4} that would be dnnl_format::acb
+  // which does not match what is expected from Onnxruntime.
+  for (size_t i = 1; i < desc.dims().size(); ++i) {
+    if (strides[i - 1] < strides[i]) {
+      return false;
+    }
+  }
+  return true;
 }
 
 void DnnlSubgraphPrimitive::AddReshape(dnnl::memory src, dnnl::memory dst) {

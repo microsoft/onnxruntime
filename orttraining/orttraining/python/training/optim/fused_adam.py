@@ -11,13 +11,14 @@ This file is adapted from fused adam in NVIDIA/apex, commit a109f85
 '''
 
 import torch
-import importlib
-from .multi_tensor_apply import MultiTensorApply
-multi_tensor_applier = MultiTensorApply(2048 * 32)
+from ._multi_tensor_apply import MultiTensorApply
 
 
 class FusedAdam(torch.optim.Optimizer):
     """Implements Adam algorithm.
+
+    The algorithmic implementation is mathematically equivalent to Transformers/AdamW
+    as defined here: https://github.com/huggingface/transformers/blob/61f64262692ac7dc90e2e0bdeb7e79d9cd607a66/src/transformers/optimization.py#L349-L370
 
     Currently GPU-only.
 
@@ -56,11 +57,14 @@ class FusedAdam(torch.optim.Optimizer):
                  bias_correction=True,
                  betas=(0.9,
                         0.999),
-                 eps=1e-8,
+                 eps=1e-6,
                  adam_w_mode=True,
                  weight_decay=0.,
                  amsgrad=False,
-                 set_grad_none=True):
+                 set_grad_none=False):
+
+        # The FusedAdam implementation is mathematically equivalent to
+        # transformers AdamW. The input arguments also have the same defaults.
 
         if amsgrad:
             raise RuntimeError('FusedAdam does not support the AMSGrad variant.')
@@ -70,29 +74,25 @@ class FusedAdam(torch.optim.Optimizer):
                         eps=eps,
                         weight_decay=weight_decay)
         super(FusedAdam, self).__init__(params, defaults)
-        self.adam_w_mode = 1 if adam_w_mode else 0
-        self.set_grad_none = set_grad_none
+        self._adam_w_mode = 1 if adam_w_mode else 0
+        self._set_grad_none = set_grad_none
 
         # Skip buffer
         self._dummy_overflow_buf = torch.cuda.IntTensor([0])
 
         from onnxruntime.training.ortmodule.torch_cpp_extensions import adam_optimizer
-        self.multi_tensor_adam = adam_optimizer.multi_tensor_adam
+        self._multi_tensor_adam = adam_optimizer.multi_tensor_adam
+        self._multi_tensor_applier = MultiTensorApply(2048 * 32)
 
     def zero_grad(self):
-        if self.set_grad_none:
+        if self._set_grad_none:
             for group in self.param_groups:
                 for p in group['params']:
                     p.grad = None
         else:
             super(FusedAdam, self).zero_grad()
 
-    def step(self,
-             closure=None,
-             grads=None,
-             output_params=None,
-             scale=None,
-             grad_norms=None):
+    def step(self, closure=None):
         """Performs a single optimization step.
 
         Arguments:
@@ -101,10 +101,6 @@ class FusedAdam(torch.optim.Optimizer):
 
         The remaining arguments are deprecated, and are only retained (for the moment) for error-checking purposes.
         """
-        if any(p is not None for p in [grads, output_params, scale, grad_norms]):
-            raise RuntimeError(
-                'FusedAdam has been updated.  Simply initialize it identically to torch.optim.Adam, and call step() with no arguments.'
-            )
         loss = None
         if closure is not None:
             loss = closure()
@@ -154,34 +150,34 @@ class FusedAdam(torch.optim.Optimizer):
                     raise RuntimeError('FusedAdam only support fp16 and fp32.')
 
             if (len(g_16) > 0):
-                multi_tensor_applier(self.multi_tensor_adam,
-                                     self._dummy_overflow_buf,
-                                     [g_16,
-                                      p_16,
-                                      m_16,
-                                      v_16],
-                                     group['lr'],
-                                     beta1,
-                                     beta2,
-                                     group['eps'],
-                                     group['step'],
-                                     self.adam_w_mode,
-                                     bias_correction,
-                                     group['weight_decay'])
+                self._multi_tensor_applier(self._multi_tensor_adam,
+                                           self._dummy_overflow_buf,
+                                           [g_16,
+                                           p_16,
+                                           m_16,
+                                           v_16],
+                                           group['lr'],
+                                           beta1,
+                                           beta2,
+                                           group['eps'],
+                                           group['step'],
+                                           self._adam_w_mode,
+                                           bias_correction,
+                                           group['weight_decay'])
             if (len(g_32) > 0):
-                multi_tensor_applier(self.multi_tensor_adam,
-                                     self._dummy_overflow_buf,
-                                     [g_32,
-                                      p_32,
-                                      m_32,
-                                      v_32],
-                                     group['lr'],
-                                     beta1,
-                                     beta2,
-                                     group['eps'],
-                                     group['step'],
-                                     self.adam_w_mode,
-                                     bias_correction,
-                                     group['weight_decay'])
+                self._multi_tensor_applier(self._multi_tensor_adam,
+                                           self._dummy_overflow_buf,
+                                           [g_32,
+                                           p_32,
+                                           m_32,
+                                           v_32],
+                                           group['lr'],
+                                           beta1,
+                                           beta2,
+                                           group['eps'],
+                                           group['step'],
+                                           self._adam_w_mode,
+                                           bias_correction,
+                                           group['weight_decay'])
 
         return loss
