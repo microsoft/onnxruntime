@@ -19,7 +19,7 @@ jobs:
         uses: ruby/setup-ruby@v1
         with:
           ruby-version: 2.6
-      - name: bundler and jekyll
+      - name: Install bundler and jekyll
         run: | 
           gem install jekyll bundler
           bundle install
