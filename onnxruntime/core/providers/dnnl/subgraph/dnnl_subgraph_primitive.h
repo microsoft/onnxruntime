@@ -63,6 +63,11 @@ class DnnlSubgraphPrimitive {
   bool IsDynamic();
   OrtMutex& GetMutex() { return mutex_; }
 
+  //GetMemory in OrtFormat if the memory is not in the OrtFormat this will reorder the memory.
+  //All memory will be moved to the dnnl_engine even if it is already in OrtFormat.
+  dnnl::memory GetMemoryInOrtFormat(const DnnlTensor& tensor, const dnnl::engine& eng);
+  bool IsMemoryInExpectedOrtFormat(const dnnl::memory::desc& desc) const;
+
  private:
   std::string shape_key_;
 

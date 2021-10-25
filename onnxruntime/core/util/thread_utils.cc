@@ -85,8 +85,8 @@ ORT_API_STATUS_IMPL(SetGlobalSpinControl, _Inout_ OrtThreadingOptions* tp_option
   if (!(allow_spinning == 1 || allow_spinning == 0)) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Received invalid value for allow_spinning. Valid values are 0 or 1");
   }
-  tp_options->intra_op_thread_pool_params.allow_spinning = allow_spinning;
-  tp_options->inter_op_thread_pool_params.allow_spinning = allow_spinning;
+  tp_options->intra_op_thread_pool_params.allow_spinning = (allow_spinning != 0);
+  tp_options->inter_op_thread_pool_params.allow_spinning = (allow_spinning != 0);
   return nullptr;
 }
 
