@@ -624,6 +624,9 @@ class ORTTrainer():
                Defaults to False
             optimized_model_filepath: path to output the optimized training graph.
                Defaults to "" (no output).
+
+        .. deprecated:: 1.10
+            Use :class:`ORTModule` instead.
         """
         warnings.warn('DISCLAIMER: This is an early version of an experimental training API and it is subject to change. DO NOT create production applications with it')
         self.is_train = True

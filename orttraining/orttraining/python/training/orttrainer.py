@@ -118,7 +118,10 @@ class ORTTrainer(object):
                                                            ],
                                             alpha=0.9, beta=0.999)
             ort_trainer = ORTTrainer(model, model_desc, optim_config, loss_fn)
-    """
+
+    .. deprecated:: 1.10
+    Use :class:`ORTModule` instead.
+   """
 
     def __init__(self, model, model_desc, optim_config,
                  loss_fn=None,
