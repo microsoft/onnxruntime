@@ -180,6 +180,7 @@ Return Value:
         mov     x15,x0
         bhs     .LConvSym.Blockloop
         mov     x14,x0
+        b       .LConvSym.Blockloop
 .LConvSym.InputIndirection:
         ldr     x13,[x0]                // x13 -> A0
         cmp     x7,2                    // test if OutputCount < 2
