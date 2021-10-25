@@ -1842,7 +1842,8 @@ TEST(CApiTest, TestConfigureTensorRTProviderOptions) {
 }
 #endif
 
-namespace TestExternalThreadingHooks {
+#ifndef _OPENMP
+namespace TestExternalThreadPoolHooks {
 
 std::vector<std::thread> threads;
 int32_t external_creation_hook_called{};
@@ -1873,8 +1874,9 @@ TEST(CApiTest, TestExternalThreadPoolHooks) {
   {
     Ort::Session session(*ort_env, MODEL_URI, session_options);
   }
-  ASSERT_TRUE(external_creation_hook_called == thread_count-1);
-  ASSERT_TRUE(external_joining_hook_called == thread_count-1);
+  ASSERT_TRUE(external_creation_hook_called == thread_count - 1);
+  ASSERT_TRUE(external_joining_hook_called == thread_count - 1);
 }
 
-}  // namespace TestExternalThreadingHooks
+}  // namespace TestExternalThreadPoolHooks
+#endif
