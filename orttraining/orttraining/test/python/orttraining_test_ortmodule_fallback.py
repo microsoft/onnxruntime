@@ -658,8 +658,10 @@ def test_ortmodule_fallback_non_contiguous_tensors():
     bptt = 35
     src_mask = generate_square_subsequent_mask(bptt).to(device)
     ntokens, emsize, nhead, d_hid, nlayers, dropout = 12455, 200, 2, 200, 2, 0.2
-    model = ORTModule(
-        TransformerModel(ntokens, emsize, nhead, d_hid, nlayers, dropout)).to(device)
+    pt_model = TransformerModel(ntokens, emsize, nhead, d_hid, nlayers, dropout)
+    model = ORTModule(pt_model).to(device)
+    pt_model.train(is_training)
+    model.train(is_training)
     optimizer = torch.optim.SGD(model.parameters(), lr=5.0)
 
     n_iter = 0
