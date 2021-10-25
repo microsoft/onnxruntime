@@ -4203,7 +4203,7 @@ def test_sigmoid_grad_opset13():
     os.environ['ORTMODULE_ONNX_OPSET_VERSION'] = '13'
 
     with warnings.catch_warnings(record=True) as w:
-        ort_model = ORTModule(copy.deepcopy(pt_model), debug_options=_logger.LogLevel.INFO)
+        ort_model = ORTModule(copy.deepcopy(pt_model), debug_options=LogLevel.INFO)
 
         assert len(w) == 1
         assert issubclass(w[-1].category, UserWarning)
