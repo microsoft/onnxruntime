@@ -170,6 +170,7 @@ Status QDQReplaceWithNew::Run(Graph& graph, const NodesToOptimize& selected_node
   return ReplaceWithNew::Run(graph, selected_nodes);
 }
 
+#if !defined(ORT_MINIMAL_BUILD)
 Status QDQReplaceWithNew::RunForSave(Graph& graph, const NodesToOptimize& selected_nodes,
                                      const RuntimeOptimizationSaveContext& save_context,
                                      SavedState& saved_state, bool& graph_modified) const {
@@ -177,6 +178,7 @@ Status QDQReplaceWithNew::RunForSave(Graph& graph, const NodesToOptimize& select
   graph_modified = true;
   return ReplaceWithNew::RunForSave(graph, selected_nodes, save_context, saved_state, graph_modified);
 }
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
 UnaryReplaceWithQLinear::UnaryReplaceWithQLinear(const std::string& domain)
     : ReplaceWithQLinear(domain, UnaryMoves()) {

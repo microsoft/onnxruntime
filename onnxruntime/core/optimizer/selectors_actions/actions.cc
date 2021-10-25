@@ -84,6 +84,7 @@ Status ReplaceWithNew::Run(Graph& graph, const NodesToOptimize& selected_nodes) 
   return node_remover_.Run(graph, selected_nodes);
 }
 
+#if !defined(ORT_MINIMAL_BUILD)
 Status ReplaceWithNew::RunForSave(Graph& graph, const NodesToOptimize& selected_nodes,
                                   const RuntimeOptimizationSaveContext& save_context,
                                   SavedState& saved_state, bool& graph_modified) const {
@@ -112,5 +113,6 @@ Status ReplaceWithNew::RunForSave(Graph& graph, const NodesToOptimize& selected_
   graph_modified = true;
   return Status::OK();
 }
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
 }  // namespace onnxruntime

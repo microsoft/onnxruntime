@@ -26,6 +26,7 @@ struct Action {
 
   virtual Status Run(Graph& graph, const NodesToOptimize& selected_nodes) const = 0;
 
+#if !defined(ORT_MINIMAL_BUILD)
   // saving interface
   virtual Status RunForSave(Graph& /*graph*/, const NodesToOptimize& /*selected_nodes*/,
                             const RuntimeOptimizationSaveContext& /*save_context*/,
@@ -35,6 +36,7 @@ struct Action {
   }
 
   virtual bool ShouldRunForSave() const { return false; }
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
  protected:
   Action() = default;
@@ -52,6 +54,7 @@ struct MultiAction : public Action {
     return Status::OK();
   }
 
+#if !defined(ORT_MINIMAL_BUILD)
   Status RunForSave(Graph& graph, const NodesToOptimize& selected_nodes,
                     const RuntimeOptimizationSaveContext& save_context,
                     SavedState& saved_state, bool& graph_modified) const override {
@@ -70,6 +73,7 @@ struct MultiAction : public Action {
 
     return false;
   }
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
   // can't copy/assign actions_
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(MultiAction);
@@ -114,11 +118,13 @@ struct ReplaceWithNew : public Action {
 
   Status Run(Graph& graph, const NodesToOptimize& selected_nodes) const override;
 
+#if !defined(ORT_MINIMAL_BUILD)
   Status RunForSave(Graph& graph, const NodesToOptimize& selected_nodes,
                     const RuntimeOptimizationSaveContext& save_context,
                     SavedState& saved_state, bool& graph_modified) const override;
 
   bool ShouldRunForSave() const override { return true; }
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
  private:
   // support usage where operator name is determined at runtime from the selected nodes
