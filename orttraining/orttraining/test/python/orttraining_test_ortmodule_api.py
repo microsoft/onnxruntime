@@ -4201,9 +4201,10 @@ def test_sigmoid_grad_opset13():
     pt_model = NeuralNetSigmoid(D_in, H, D_out).to(device)
     old_opset = os.environ.get('ORTMODULE_ONNX_OPSET_VERSION', None)
     os.environ['ORTMODULE_ONNX_OPSET_VERSION'] = '13'
+    dgb_opts = DebugOptions(log_level=LogLevel.INFO)
 
     with warnings.catch_warnings(record=True) as w:
-        ort_model = ORTModule(copy.deepcopy(pt_model), debug_options=LogLevel.INFO)
+        ort_model = ORTModule(copy.deepcopy(pt_model), debug_options=dgb_opts)
 
         assert len(w) == 1
         assert issubclass(w[-1].category, UserWarning)
