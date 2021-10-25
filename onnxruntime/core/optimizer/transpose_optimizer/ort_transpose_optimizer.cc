@@ -22,7 +22,7 @@ Status TransposeOptimizer::ApplyImpl(Graph& graph, bool& modified, int graph_lev
   }
 
   GraphViewer graph_viewer(graph);
-  auto nodes = std::vector<std::unique_ptr<api::Node>>();
+  auto nodes = std::vector<std::unique_ptr<api::NodeRef>>();
   for (auto index : graph_viewer.GetNodesInTopologicalOrder()) {
     ORT_RETURN_IF_ERROR(Recurse(*graph.GetNode(index), modified, graph_level, logger));
   }

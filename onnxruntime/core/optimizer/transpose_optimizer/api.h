@@ -17,9 +17,9 @@ namespace api {
  * tool attempts to make no assumptions about how ONNX models are represented, other than named values (node outputs,
  * initializers, etc.) should have names representable as string_view objects.
  *
- * Abstract classes like api::Graph and api::Node should be thought of as interfaces for manipulating a graph/node,
- * not the graph/node itself. This allows the implementer to use their existing model representation and create
- * interface instances on the fly as they are requested by the optimizer.
+ * Abstract classes like api::GraphRef and api::NodeRef should be thought of as interfaces for manipulating a
+ * graph/node, not the graph/node itself. This allows the implementer to use their existing model representation and
+ * create interface instances on the fly as they are requested by the optimizer.
  *
  * Since abstract class instances are created on the fly at the optimizer's request (when finding a node with a
  * certain output, for example), they are returned from the implementer as unique_ptr types. Consequently, the
@@ -63,7 +63,7 @@ enum class DataType : int32_t {
 /// <summary>
 /// An interface for a constant tensor value used by initializers
 /// </summary>
-class Tensor {
+class TensorRef {
  public:
   /// <returns>The shape of the tensor. Values are nonnegative.</returns>
   virtual std::vector<int64_t> Shape() const = 0;
@@ -85,7 +85,7 @@ class Tensor {
   /// <returns>Flattened tensor data</returns>
   virtual std::vector<int32_t> DataInt32() const = 0;
 
-  virtual ~Tensor(){};
+  virtual ~TensorRef(){};
 };
 
 /// <summary>
@@ -93,7 +93,7 @@ class Tensor {
 /// graph input, graph initializer, or node output. Must be able to provide up-to-date information on the value of
 /// that name unless that value is removed from the graph (in which case behavior is undefined).
 /// </summary>
-class ValueInfo {
+class ValueInfoRef {
  public:
   /// <returns>The name of the value in the graph</returns>
   virtual const std::string_view Name() const = 0;
@@ -130,14 +130,14 @@ class ValueInfo {
   /// <param name="axes">Indices of dimensions to add. Indices are relative to final shape.</param>
   virtual void UnsqueezeDims(const std::vector<int64_t>& axes) = 0;
 
-  virtual ~ValueInfo(){};
+  virtual ~ValueInfoRef(){};
 };
 
 /// <summary>
 /// Interface for accessing/manipulating a node in a graph. Information should remain up-to-date even if node is
 /// modified, unless it is removed from the graph. Behavior is undefined for methods called on removed nodes.
 /// </summary>
-class Node {
+class NodeRef {
  public:
   /// <returns>Op computed by the node</returns>
   virtual const std::string_view OpType() const = 0;
@@ -181,7 +181,7 @@ class Node {
   /// Copies all attributes from a node to this node
   /// </summary>
   /// <param name="node">Node to copy attributes from</param>
-  virtual void CopyAttributes(const Node& node) = 0;
+  virtual void CopyAttributes(const NodeRef& node) = 0;
 
   /// <summary>
   /// Removes attribute with name if present
@@ -228,7 +228,7 @@ class Node {
     return *value;
   }
 
-  virtual ~Node(){};
+  virtual ~NodeRef(){};
 };
 
 /// <summary>
@@ -239,7 +239,7 @@ struct ValueConsumers {
   /// <summary>
   /// List of nodes in the current graph containing value as an input
   /// </summary>
-  std::vector<std::unique_ptr<Node>> nodes;
+  std::vector<std::unique_ptr<NodeRef>> nodes;
 
   /// <summary>
   /// True if all consumers of the value are present in the nodes list. False if the value is used as a graph output
@@ -265,28 +265,28 @@ struct ValueConsumers {
 /// modifying these initializers. In such cases, the initializer can logically be treated by the optimizer as if it
 /// resides within the current graph.
 /// </summary>
-class Graph {
+class GraphRef {
  public:
   /// <param name="domain">Domain. Empty string signifies an unset (default) onnx domain.</param>
   /// <returns>Opset of domain declared in model, or nullopt if domain is not present</returns>
   virtual std::optional<int64_t> Opset(const std::string_view domain = "") const = 0;
 
   /// <returns>Topologically-sorted list of nodes in the graph</returns>
-  virtual std::vector<std::unique_ptr<Node>> Nodes() const = 0;
+  virtual std::vector<std::unique_ptr<NodeRef>> Nodes() const = 0;
 
   /// <summary>
   /// Checks whether the value name refers to a constant initializer and if so, returns a Tensor corresponding to it.
   /// </summary>
   /// <param name="name">Value name. Must be nonempty.</param>
   /// <returns>Tensor corresponding to the constant initializer or nullptr</returns>
-  virtual std::unique_ptr<Tensor> GetConstant(const std::string_view name) const = 0;
+  virtual std::unique_ptr<TensorRef> GetConstant(const std::string_view name) const = 0;
 
   /// <summary>
   /// Returns a ValueInfo instance for querying info about the value with the given name. Behavior is undefined if
   /// the name does not refer to a value in the graph.
   /// <param name="name">Value name. Must be nonempty.</param>
   /// <returns>A ValueInfo instance corresponding to the value with the given name</returns>
-  virtual std::unique_ptr<ValueInfo> GetValueInfo(const std::string_view name) const = 0;
+  virtual std::unique_ptr<ValueInfoRef> GetValueInfo(const std::string_view name) const = 0;
 
   /// <summary>
   /// Returns a ValueConsumers object characterizing the current consumers of the value with the specified name. nodes
@@ -302,7 +302,7 @@ class Graph {
   /// </summary>
   /// <param name="name">The name of the value. Must be nonempty.</param>
   /// <returns>Node producing the value or nullptr (or nullptr if value is not a node output)</returns>
-  virtual std::unique_ptr<Node> GetNodeProducingOutput(const std::string_view name) const = 0;
+  virtual std::unique_ptr<NodeRef> GetNodeProducingOutput(const std::string_view name) const = 0;
 
   /// <summary>
   /// Transposes an initializer "in place". Existing ValueInfo for the initializer must subsequently return the
@@ -337,14 +337,14 @@ class Graph {
   /// </param>
   /// <param name="domain">The new node's domain. Empty string signifies an unset (default) onnx domain.</param>
   /// <returns>The new node</returns>
-  virtual std::unique_ptr<Node> AddNode(const std::string_view op_type, const std::vector<std::string_view>& inputs,
+  virtual std::unique_ptr<NodeRef> AddNode(const std::string_view op_type, const std::vector<std::string_view>& inputs,
                                         size_t num_outputs, const std::string_view domain = "") = 0;
 
   /// <summary>
   /// Deletes a node from the graph. Behavior is undefined if node has any consumers.
   /// </summary>
   /// <param name="node">Node to remove</param>
-  virtual void RemoveNode(Node& node) = 0;
+  virtual void RemoveNode(NodeRef& node) = 0;
 
   /// <summary>
   /// Removes an initializer. Behavior is undefined if initializer has any consumers, or if name does not refer to an
@@ -389,7 +389,7 @@ class Graph {
   /// <param name="src_idx">Index of the output to move and then generate a replacement for.</param>
   /// <param name="dst_node">Node to mode the output to.</param>
   /// <param name="dst_idx">Index of the output to replace and delete. Has no consumers.</param>
-  virtual void MoveOutput(Node& src_node, size_t src_idx, Node& dst_node, size_t dst_idx) = 0;
+  virtual void MoveOutput(NodeRef& src_node, size_t src_idx, NodeRef& dst_node, size_t dst_idx) = 0;
 
   /// <summary>
   /// Copies shape and dtype value info from one output to another, potentially including data that cannot be encoded
@@ -412,7 +412,7 @@ class Graph {
     return !unused;
   }
 
-  virtual ~Graph(){};
+  virtual ~GraphRef(){};
 };
 
 }  // namespace api
@@ -429,10 +429,10 @@ constexpr int64_t kMaxSupportedOpset = 15;
 /// encountered. Transpose ops with inverse permutations are canceled. Uses heuristics to attempt to minimize the
 /// total cost of Transpose ops and only push Transposes when doing so has some benefit.
 /// </summary>
-/// <param name="graph">The graph to optimize (or a portion of a graph, see api::Graph docs)</param>
+/// <param name="graph">The graph to optimize (or a portion of a graph, see api::GraphRef docs)</param>
 /// <param name="allow_extended_ops">Whether com.microsoft ops can be used for optimization</param>
 /// <returns>true if the graph was modified</returns>
-bool Optimize(api::Graph& graph, bool allow_extended_ops);
+bool Optimize(api::GraphRef& graph, bool allow_extended_ops);
 
 /* Layout Transformation Tools
  * These methods change the channel ordering of layout sensitive ops (like Conv). They work by replacing the op with
@@ -460,7 +460,7 @@ struct LayoutHandlerResult {
   std::optional<std::string_view> new_domain;
 };
 
-using LayoutHandler = LayoutHandlerResult (*)(api::Graph& graph, api::Node& node);
+using LayoutHandler = LayoutHandlerResult (*)(api::GraphRef& graph, api::NodeRef& node);
 
 /// <summary>
 /// Calls LayoutHandler functions on each node matching an op in the handler_map. Transposes inputs/outputs of affected
@@ -472,7 +472,7 @@ using LayoutHandler = LayoutHandlerResult (*)(api::Graph& graph, api::Node& node
 /// <param name="handler_map">Mapping from op types to LayoutHandler functions</param>
 /// <param name="allow_extended_ops">Whether com.microsoft ops can be used for optimization</param>
 /// <returns>true if the graph was modified</returns>
-bool ChannelFirstToChannelLast(api::Graph& graph, std::unordered_map<std::string_view, LayoutHandler>& handler_map,
+bool ChannelFirstToChannelLast(api::GraphRef& graph, std::unordered_map<std::string_view, LayoutHandler>& handler_map,
                                bool allow_extended_ops);
 
 /// <summary>
@@ -485,7 +485,7 @@ bool ChannelFirstToChannelLast(api::Graph& graph, std::unordered_map<std::string
 /// <param name="handler_map">Mapping from op types to LayoutHandler functions</param>
 /// <param name="allow_extended_ops">Whether com.microsoft ops can be used for optimization</param>
 /// <returns>true if the graph was modified</returns>
-bool ChannelLastToChannelFirst(api::Graph& graph, std::unordered_map<std::string_view, LayoutHandler>& handler_map,
+bool ChannelLastToChannelFirst(api::GraphRef& graph, std::unordered_map<std::string_view, LayoutHandler>& handler_map,
                                bool allow_extended_ops);
 
 }  // namespace onnx_layout_transformation

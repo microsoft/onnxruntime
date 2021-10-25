@@ -14,7 +14,7 @@ using namespace onnx_layout_transformation;
 
 namespace onnxruntime {
 
-LayoutHandlerResult QLinearConvHandler(api::Graph& graph, api::Node& node) {
+LayoutHandlerResult QLinearConvHandler(api::GraphRef& graph, api::NodeRef& node) {
   ORT_UNUSED_PARAMETER(graph);
 
   // Skip if domain is incorrect
