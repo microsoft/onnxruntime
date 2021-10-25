@@ -1329,13 +1329,18 @@ common::Status InferenceSession::Initialize() {
                                                              "0") != "1") {
         return false;
       }
-      if (!saving_ort_format) {
-        LOGS(*session_logger_, WARNING) << "Enabling '" << kOrtSessionOptionsConfigSaveRuntimeOptimizations << "'"
-                                        << " only makes sense when saving an ORT format model. It will not be enabled.";
+      if (loading_ort_format || !saving_ort_format) {
+        LOGS(*session_logger_, WARNING) << "The '" << kOrtSessionOptionsConfigSaveRuntimeOptimizations
+                                        << "' option is only applicable when loading an ONNX model and saving an ORT "
+                                           "format model. It will not be enabled.";
         return false;
       }
       return true;
     }();
+
+#if defined(ORT_MINIMAL_BUILD)
+    ORT_UNUSED_PARAMETER(saving_runtime_optimizations);
+#endif
 
     const experimental::fbs::SessionState* serialized_session_state =
         loading_ort_format
