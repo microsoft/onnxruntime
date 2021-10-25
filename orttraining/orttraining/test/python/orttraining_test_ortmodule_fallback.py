@@ -577,9 +577,16 @@ def test_ortmodule_fallback_warn_message(is_training, persist_fallback):
 
 
 
+@pytest.mark.parametrize("is_training,persist_fallback",
+                         list(itertools.product([True, False], repeat=1)))
 def test_ortmodule_fallback_non_contiguous_tensors():
     # is_training: True for torch.nn.Module training model, eval mode otherwise
     # Validate fix for issue: https://github.com/pytorch/ort/issues/92
+
+    policy = 'FALLBACK_UNSUPPORTED_DEVICE'
+    os.environ['ORTMODULE_FALLBACK_POLICY'] = policy
+    os.environ['ORTMODULE_FALLBACK_RETRY'] = str(not persist_fallback)
+    os.environ['ORTMODULE_SKIPCHECK_POLICY'] = 'SKIP_CHECK_DISABLED'
 
     class PositionalEncoding(torch.nn.Module):
 
@@ -655,6 +662,7 @@ def test_ortmodule_fallback_non_contiguous_tensors():
         TransformerModel(ntokens, emsize, nhead, d_hid, nlayers, dropout)).to(device)
     optimizer = torch.optim.SGD(model.parameters(), lr=5.0)
 
+    n_iter = 0
     for epoch in range(1, 2):
         model.train()  # turn on train mode
 
@@ -672,13 +680,9 @@ def test_ortmodule_fallback_non_contiguous_tensors():
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), 0.5)
             optimizer.step()
+            n_iter += 1
             break
 
-    try:
-        model_copied = copy.deepcopy(model)
-    except TypeError:
-        # pickling failed. That needs a larger PR to be fixed.
-        return
-    assert model_copied is not model_copied
-    pkl = pickle.dump(model)
-    assert pkl is not None
+    assert n_iter > 0
+
+    del os.environ['ORTMODULE_SKIPCHECK_POLICY']
