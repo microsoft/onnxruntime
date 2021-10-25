@@ -102,7 +102,7 @@ TEST(GraphRuntimeOptimizationTest, TestTransformerSavesRuntimeOptimization) {
   // run SAT to save runtime optimization
   {
     auto kernel_registry_manager = CreateKernelRegistryManager();
-    auto save_context = RuntimeOptimizationSaveContext{std::ref(*kernel_registry_manager)};
+    auto save_context = RuntimeOptimizationSaveContext{std::cref(*kernel_registry_manager)};
     sat::TestTransformer test_transformer(std::move(save_context));
     bool modified = false;
     ASSERT_STATUS_OK(test_transformer.Apply(graph, modified, *logger));
