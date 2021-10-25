@@ -503,9 +503,9 @@ public:
     GemmHelper(const Info_t& info, const Shape_t& shape)
     {
         ORT_UNUSED_PARAMETER(shape);
-        m_transA = info.GetOptionalAttribute<int>(AttrName::TransA, 0);
-        m_transB = info.GetOptionalAttribute<int>(AttrName::TransB, 0);
-        m_broadcast = info.GetOptionalAttribute<int>(AttrName::Broadcast, 0);
+        m_transA = info.GetOptionalAttribute<int>(AttrName::TransA, 0)!=0;
+        m_transB = info.GetOptionalAttribute<int>(AttrName::TransB, 0)!=0;
+        m_broadcast = info.GetOptionalAttribute<int>(AttrName::Broadcast, 0)!=0;
         m_alpha = info.GetOptionalAttribute<float>(AttrName::Alpha, 1.0f);
         m_beta = info.GetOptionalAttribute<float>(AttrName::Beta, 0.0f);
     }
