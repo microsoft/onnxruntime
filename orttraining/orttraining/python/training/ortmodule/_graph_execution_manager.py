@@ -374,7 +374,7 @@ class GraphExecutionManager(GraphExecutionInterface):
                     _logger.suppress_os_stream_output(log_level=self._debug_options.logging.log_level):
                 required_export_kwargs = {'input_names': self._input_info.names,
                                           'output_names': output_names,
-                                          'opset_version': ONNX_OPSET_VERSION,
+                                          'opset_version': self._opset_version,
                                           'do_constant_folding': False,
                                           'training': self._export_mode,
                                           'dynamic_axes': self._input_info.dynamic_axes,
