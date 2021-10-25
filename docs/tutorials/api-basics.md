@@ -17,7 +17,7 @@ These tutorials demonstrate basic inferencing with ONNX Runtime with each langua
 
 
 ## Python
-* [Scikit-learn Logistic Regression](https://microsoft.github.io/onnxruntime/python/tutorial.html)
+* [Scikit-learn Logistic Regression](https://onnxruntime.ai/docs/api/python/tutorial.html)
 * [Image recognition (Resnet50)](https://github.com/onnx/onnx-docker/blob/master/onnx-ecosystem/inference_demos/resnet50_modelzoo_onnxruntime_inference.ipynb)
 
 
