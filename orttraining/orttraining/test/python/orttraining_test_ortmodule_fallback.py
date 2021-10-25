@@ -578,7 +578,7 @@ def test_ortmodule_fallback_warn_message(is_training, persist_fallback):
 
 
 @pytest.mark.parametrize("is_training,persist_fallback",
-                         list(itertools.product([True, False], repeat=1)))
+                         list(itertools.product([True, False], repeat=2)))
 def test_ortmodule_fallback_non_contiguous_tensors():
     # is_training: True for torch.nn.Module training model, eval mode otherwise
     # Validate fix for issue: https://github.com/pytorch/ort/issues/92
