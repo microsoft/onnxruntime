@@ -72,8 +72,6 @@ Status RuntimeOptimizationRecordContainer::SaveToOrtFormat(
   std::vector<flatbuffers::Offset<fbs::RuntimeOptimizationRecordContainerEntry>> fbs_runtime_optimizations_vector;
   fbs_runtime_optimizations_vector.reserve(sat_to_optimizations_.size());
   for (const auto& [sat_name, records] : sat_to_optimizations_) {
-    const auto fbs_sat_name = builder.CreateString(sat_name);
-
     std::vector<flatbuffers::Offset<fbs::RuntimeOptimizationRecord>> fbs_records_vector;
     fbs_records_vector.reserve(records.size());
     for (const auto& record : records) {
