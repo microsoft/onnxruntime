@@ -24,7 +24,7 @@ Abstract:
 // Stack frame layout for the symmetric convolution kernel.
 // d8-d15, x19-x30 need to be preserved if used
 //
-        .equ    .LConvSymFrame_SavedNeonRegisters, (8 * 8)
+        .equ    .LConvSymFrame_SavedNeonRegisters, (8 * 16)
         .equ    .LConvSymFrame_SavedRegisters, .LConvSymFrame_SavedNeonRegisters
         .equ    .LConvSymFrame_PostProcessParams, 0 + .LConvSymFrame_SavedRegisters
         .equ    .LConvSymFrame_KernelFlags, 8 + .LConvSymFrame_SavedRegisters
@@ -101,11 +101,13 @@ Return Value:
         mov     x16,x4                  // save input channels
         ldr     x11,[x8,#.LConvSymPostProcessParams_Bias]
         ldr     x12,[x8,#.LConvSymPostProcessParams_Scale]
+        ldr     w18, [x8, #.LConvSymPostProcessParams_ZeroPoint]
+        mov     w17, #128
         cmp     x7, 2                   // if OutputCount < 2
         add     x5, x2, x5              // c1 = c0 + ldc
-        add     x4, x4, 7               // kc = (kc + 7) & ~7
+        add     x4, x4, 16               // kc = (kc + 16) & ~16
         csel    x5, x2, x5, lo          // if OutputCount < 2  c1 = c0
-        bic     x4, x4, 7
+        bic     x4, x4, 16
 
         ldp     s16,s18,[x11],8         // init accumulators with bias
         ldp     s20,s22,[x11],8
@@ -119,21 +121,20 @@ Return Value:
         mov     v27.16b,v26.16b
         mov     v29.16b,v28.16b
         mov     v31.16b,v30.16b
-        mov     w17, #128
-        ldr     w18, [x8, #.LConvSymPostProcessParams_ZeroPoint]
+        dup     v2.16b,w17
 
 // Nested loops, inner loop: input channel; outter loop: kernel size
 // Each inner iteration processes 8 input channels, 2 output pixels, 8 output channels.
 //
-//                                            B 8x8
+//                                            B 16x8
 //                           ------------------------------------------------------------------
-//                           |v4.b[0] v5.b[0] v4.b[0] v5.b[0] v4.b[0] v5.b[0] v4.b[0] v5.b[0] |
-//                           |  ...    ...     ...     ...       ...    ...     ...     ...   |
-//                           |v4.b[7] v5.b[7] v4.b[7] v5.b[7] v4.b[7] v5.b[7] v4.b[7] v5.b[7] |
-//            A 2x8          ------------------------------------------------------------------
+//                           |v4.b[0]  v5.b[0]  v6.b[0]  v7.b[0]  v8.b[0]  v9.b[0]  v10.b[0]  v11.b[0]  |
+//                           |  ...      ...      ...      ...      ...      ...      ...      ...      |
+//                           |v4.b[15] v5.b[15] v6.b[15] v7.b[15] v8.b[15] v9.b[15] v10.b[15] v11.b[15] |
+//            A 2x16          ------------------------------------------------------------------
 //       ------------------  ------------------------------------------------------------------
-// x13-> |v0.b[0]..v0.b[7]|  |v16.4s   v18.4s  v20.4s  v22.4s  v24.4s  v26.4s  v28.4s  v30.4s |
-// x15-> |v1.b[0]..v1.b[7]|  |v17.4s   v19.4s  v21.4s  v23.4s  v25.4s  v27.4s  v29.4s  v31.4s |
+// x13-> |v0.b[0]..v0.b[15]|  |v16.4s   v18.4s  v20.4s  v22.4s  v24.4s  v26.4s  v28.4s  v30.4s |
+// x15-> |v1.b[0]..v1.b[15]|  |v17.4s   v19.4s  v21.4s  v23.4s  v25.4s  v27.4s  v29.4s  v31.4s |
 //       ------------------  ------------------------------------------------------------------
 // When Input Channels greater than 16, unroll:
 // A registers v6 v7,
@@ -141,7 +142,7 @@ Return Value:
 //
 
 .LConvSym.KernelSizeLoop:
-
+        mov     x14,x4
         # Load next 2 A pointers
         tst     w10,#.LMLAS_CONV_SYM_FLAG_INPUT_DIRECT
         beq     .LConvSym.InputIndirection
@@ -150,7 +151,7 @@ Return Value:
         mov     x13,x0                  // x13 -> A0
         add     x15,x0,x16              // x15 -> A1 = A0 + input channels
         csel    x15, x13, x15, LO       // if OutputCount < 2  x15 -> A0
-        b       .LConvSym.BlockloopPrologue
+        b       .LConvSym.Blockloop
 .LConvSym.InputIndirection:
         cmp     x7,2                    // test if OutputCount < 2
         ldr     x13,[x0]                // x13 -> A0
@@ -160,161 +161,75 @@ Return Value:
 .LConvSym.SkipLoadA1:
         add     x0,x0,8                 // indirect A advance to next pointer, prepare for kernel size loop
 
-.LConvSym.BlockloopPrologue:
-
-        subs     x14,x4,16               // input channel - 16
-        blo     .LConvSym.8InputChannels     // less than 16 deep, no unroll
-
-        dup     v2.8b, w17
-        ldp     d0,d6,[x13],16
-        ldp     d1,d7,[x15],16
-        ldp     d4,d5,[x1]
-        ldp     d8,d9,[x1,64]
-        eor     v0.8b, v0.8b, v2.8b
-        eor     v6.8b, v6.8b, v2.8b
-        eor     v1.8b, v1.8b, v2.8b
-        eor     v7.8b, v7.8b, v2.8b
-
-        subs    x14,x14,16              // input channel - 16
-        blo     .LConvSym.BlockLoopEpilogue  // need 32 input channel for full unrolled loop
-
 .LConvSym.Blockloop:
-        smull   v2.8h, v4.8b, v0.8b
-        smull   v3.8h, v4.8b, v1.8b
-        prfm    PLDL1KEEP, [x1, 448]
-        smull   v10.8h, v5.8b, v0.8b
-        smull   v11.8h, v5.8b, v1.8b
-        ldp     d4, d5, [x1, 16]
-        smlal   v2.8h, v8.8b, v6.8b
-        smlal   v3.8h, v8.8b, v7.8b
-        prfm    PLDL1KEEP, [x1, 512]
-        smlal   v10.8h, v9.8b, v6.8b
-        smlal   v11.8h, v9.8b, v7.8b
+        subs     x14,x14,16               // input channel - 16
 
-        ldp     d8, d9, [x1, 80]
-        smull   v12.8h, v4.8b, v0.8b
-        sadalp  v16.4s,  v2.8h
-        smull   v13.8h, v4.8b, v1.8b
-        sadalp  v17.4s,  v3.8h
-        smull   v14.8h, v5.8b, v0.8b
-        sadalp  v18.4s, v10.8h
-        smull   v15.8h, v5.8b, v1.8b
-        sadalp  v19.4s, v11.8h
-        ldp     d4, d5, [x1, 32]
-        smlal   v12.8h, v8.8b, v6.8b
-        smlal   v13.8h, v8.8b, v7.8b
-        prfm    PLDL1KEEP, [x13, 128]
-        smlal   v14.8h, v9.8b, v6.8b
-        smlal   v15.8h, v9.8b, v7.8b
+        ld1     {v0.16b},[x13],#16
+        ld1     {v1.16b},[x15],#16
+        ld1     {v4.16b},[x1],#16
+        ld1     {v5.16b},[x1],#16
+        ld1     {v6.16b},[x1],#16
+        ld1     {v7.16b},[x1],#16
+        ld1     {v8.16b},[x1],#16
+        ld1     {v9.16b},[x1],#16
+        ld1     {v10.16b},[x1],#16
+        ld1     {v11.16b},[x1],#16
+        eor     v0.16b, v0.16b, v2.16b
+        eor     v1.16b, v1.16b, v2.16b
 
-        ldp     d8, d9, [x1, 96]
-        smull   v2.8h, v4.8b, v0.8b
-        sadalp  v20.4s, v12.8h
-        smull   v3.8h, v4.8b, v1.8b
-        sadalp  v21.4s, v13.8h
-        smull   v10.8h, v5.8b, v0.8b
-        sadalp  v22.4s, v14.8h
-        smull   v11.8h, v5.8b, v1.8b
-        sadalp  v23.4s, v15.8h
-        ldp     d4, d5, [x1, 48]
-        smlal   v2.8h, v8.8b, v6.8b
-        smlal   v3.8h, v8.8b, v7.8b
-        prfm    PLDL1KEEP, [x15, 128]
-        smlal   v10.8h, v9.8b, v6.8b
-        smlal   v11.8h, v9.8b, v7.8b
+        smull   v12.8h,v0.8b,v4.8b
+        smlal2  v12.8h,v0.16b,v4.16b
+        smull   v13.8h,v0.8b,v5.8b
+        smlal2  v13.8h,v0.16b,v5.16b
+        smull   v14.8h,v0.8b,v6.8b
+        smlal2  v14.8h,v0.16b,v6.16b
+        smull   v15.8h,v0.8b,v7.8b
+        smlal2  v15.8h,v0.16b,v7.16b
+        sadalp  v16.4s,v12.8h
+        sadalp  v18.4s,v13.8h
+        sadalp  v20.4s,v14.8h
+        sadalp  v22.4s,v15.8h
 
-        ldp     d8, d9, [x1, 112]
-        smull   v12.8h, v4.8b, v0.8b
-        add     x1, x1, 128
-        sadalp  v24.4s,  v2.8h
-        smull   v13.8h, v4.8b, v1.8b
-        sadalp  v25.4s,  v3.8h
-        smull   v14.8h, v5.8b, v0.8b
-        sadalp  v26.4s, v10.8h
-        smull   v15.8h, v5.8b, v1.8b
-        sadalp  v27.4s, v11.8h
-        smlal   v12.8h, v8.8b, v6.8b
-        ldp     d4, d5, [x1]            // Read B
-        smlal   v13.8h, v8.8b, v7.8b
-        subs    x14, x14, 16
-        smlal   v14.8h, v9.8b, v6.8b
-        dup     v2.8b, w17
-        ldp     d0, d6, [x13], 16       // Read A0
-        smlal   v15.8h, v9.8b, v7.8b
+        smull   v12.8h,v0.8b,v8.8b
+        smlal2  v12.8h,v0.16b,v8.16b
+        smull   v13.8h,v0.8b,v9.8b
+        smlal2  v13.8h,v0.16b,v9.16b
+        smull   v14.8h,v0.8b,v10.8b
+        smlal2  v14.8h,v0.16b,v10.16b
+        smull   v15.8h,v0.8b,v11.8b
+        smlal2  v15.8h,v0.16b,v11.16b
+        sadalp  v24.4s,v12.8h
+        sadalp  v26.4s,v13.8h
+        sadalp  v28.4s,v14.8h
+        sadalp  v30.4s,v15.8h
 
-        sadalp  v28.4s, v12.8h
-        ldp     d1, d7, [x15], 16       // Read A1
-        eor     v0.8b, v0.8b, v2.8b
-        eor     v6.8b, v6.8b, v2.8b
-        sadalp  v29.4s, v13.8h
-        sadalp  v30.4s, v14.8h
-        eor     v1.8b, v1.8b, v2.8b
-        eor     v7.8b, v7.8b, v2.8b
-        ldp     d8, d9, [x1, 64]        // Read B
-        sadalp  v31.4s, v15.8h
-        b.hs    .LConvSym.Blockloop
+        smull   v12.8h,v1.8b,v4.8b
+        smlal2  v12.8h,v1.16b,v4.16b
+        smull   v13.8h,v1.8b,v5.8b
+        smlal2  v13.8h,v1.16b,v5.16b
+        smull   v14.8h,v1.8b,v6.8b
+        smlal2  v14.8h,v1.16b,v6.16b
+        smull   v15.8h,v1.8b,v7.8b
+        smlal2  v15.8h,v1.16b,v7.16b
+        sadalp  v17.4s,v12.8h
+        sadalp  v19.4s,v13.8h
+        sadalp  v21.4s,v14.8h
+        sadalp  v23.4s,v15.8h
 
-.LConvSym.BlockLoopEpilogue:            // remaining 16 input channels
-        smull   v2.8h, v4.8b, v0.8b
-        smull   v3.8h, v4.8b, v1.8b
-        smull   v10.8h, v5.8b, v0.8b
-        smull   v11.8h, v5.8b, v1.8b
-        ldp     d4, d5, [x1, 16]
-        smlal   v2.8h, v8.8b, v6.8b
-        smlal   v3.8h, v8.8b, v7.8b
-        smlal   v10.8h, v9.8b, v6.8b
-        smlal   v11.8h, v9.8b, v7.8b
+        smull   v12.8h,v1.8b,v8.8b
+        smlal2  v12.8h,v1.16b,v8.16b
+        smull   v13.8h,v1.8b,v9.8b
+        smlal2  v13.8h,v1.16b,v9.16b
+        smull   v14.8h,v1.8b,v10.8b
+        smlal2  v14.8h,v1.16b,v10.16b
+        smull   v15.8h,v1.8b,v11.8b
+        smlal2  v15.8h,v1.16b,v11.16b
+        sadalp  v25.4s,v12.8h
+        sadalp  v27.4s,v13.8h
+        sadalp  v29.4s,v14.8h
+        sadalp  v31.4s,v15.8h
 
-        ldp     d8, d9, [x1, 80]
-        smull   v12.8h, v4.8b, v0.8b
-        sadalp  v16.4s,  v2.8h
-        smull   v13.8h, v4.8b, v1.8b
-        sadalp  v17.4s,  v3.8h
-        smull   v14.8h, v5.8b, v0.8b
-        sadalp  v18.4s, v10.8h
-        smull   v15.8h, v5.8b, v1.8b
-        sadalp  v19.4s, v11.8h
-        ldp     d4, d5, [x1, 32]
-        smlal   v12.8h, v8.8b, v6.8b
-        smlal   v13.8h, v8.8b, v7.8b
-        smlal   v14.8h, v9.8b, v6.8b
-        smlal   v15.8h, v9.8b, v7.8b
-
-        ldp     d8, d9, [x1, 96]
-        smull   v2.8h, v4.8b, v0.8b
-        sadalp  v20.4s, v12.8h
-        smull   v3.8h, v4.8b, v1.8b
-        sadalp  v21.4s, v13.8h
-        smull   v10.8h, v5.8b, v0.8b
-        sadalp  v22.4s, v14.8h
-        smull   v11.8h, v5.8b, v1.8b
-        sadalp  v23.4s, v15.8h
-        ldp     d4, d5, [x1, 48]
-        smlal   v2.8h, v8.8b, v6.8b
-        smlal   v3.8h, v8.8b, v7.8b
-        smlal   v10.8h, v9.8b, v6.8b
-        smlal   v11.8h, v9.8b, v7.8b
-
-        ldp     d8, d9, [x1, 112]
-        smull   v12.8h, v4.8b, v0.8b
-        sadalp  v24.4s,  v2.8h
-        smull   v13.8h, v4.8b, v1.8b
-        sadalp  v25.4s,  v3.8h
-        smull   v14.8h, v5.8b, v0.8b
-        sadalp  v26.4s, v10.8h
-        smull   v15.8h, v5.8b, v1.8b
-        sadalp  v27.4s, v11.8h
-        smlal   v12.8h, v8.8b, v6.8b
-        smlal   v13.8h, v8.8b, v7.8b
-        smlal   v14.8h, v9.8b, v6.8b
-        smlal   v15.8h, v9.8b, v7.8b
-        add     x1, x1, 128
-
-        sadalp  v28.4s, v12.8h
-        sadalp  v29.4s, v13.8h
-        sadalp  v30.4s, v14.8h
-        sadalp  v31.4s, v15.8h
-        tbnz    x14, 3, .LConvSym.8InputChannels
+        b.hi     .LConvSym.Blockloop
 
         subs    x9, x9, 1
         b.hi    .LConvSym.KernelSizeLoop
