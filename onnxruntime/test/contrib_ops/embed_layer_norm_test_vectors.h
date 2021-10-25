@@ -315,7 +315,7 @@ inline OpData EmbedLayerNormBatch_Distill() {
                 /*has_segment=*/false);
 }
 
-inline OpData EmbedLayerNormBatch_PositionIds() {
+inline OpData EmbedLayerNormBatch1_PositionIds(bool diff_order = false) {
   int batch_size = 1;
   int sequence_size = 2;
   int hidden_size = 4;
@@ -349,12 +349,23 @@ inline OpData EmbedLayerNormBatch_PositionIds() {
   std::vector<float> beta_data = {
       0.6f, 0.2f, 0.5f, -0.6f};
 
-  std::vector<int32_t> position_ids_data = {
-      0, 1};
+  std::vector<int32_t> position_ids_data;
+  if (diff_order) {
+    position_ids_data = std::vector<int32_t>{1, 1};
+  } else {
+    position_ids_data = std::vector<int32_t>{0, 1};
+  }
 
-  std::vector<float> output_data = {
-      0.39587587118148804, 0.03670068085193634, 0.7449488639831543, -1.4981462955474854,
-      0.61326867341995239, -0.046796366572380066, 0.81048583984375, -1.1954958438873291};
+  std::vector<float> output_data;
+  if (diff_order) {
+    output_data = std::vector<float>{
+        0.60000008344650269, -0.044120028614997864, 0.9184914231300354, -1.0603407621383667,
+        0.61326867341995239, -0.046796366572380066, 0.81048583984375, -1.1954958438873291};
+  } else {
+    output_data = std::vector<float>{
+        0.39587587118148804, 0.03670068085193634, 0.7449488639831543, -1.4981462955474854,
+        0.61326867341995239, -0.046796366572380066, 0.81048583984375, -1.1954958438873291};
+  }
 
   std::vector<int32_t> mask_index_data = {
       2};
@@ -370,7 +381,7 @@ inline OpData EmbedLayerNormBatch_PositionIds() {
                 position_ids_data);
 }
 
-inline OpData EmbedLayerNormBatch_EmbeddingSum() {
+inline OpData EmbedLayerNormBatch1_EmbeddingSum() {
   int batch_size = 1;
   int sequence_size = 2;
   int hidden_size = 4;

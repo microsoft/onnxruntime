@@ -150,16 +150,20 @@ TEST(EmbedLayerNormTest, EmbedLayerNormBatch1_Float16) {
   RunTest(embedlayernorm::EmbedLayerNormBatch1(), /*use_float16=*/true);
 }
 
-TEST(EmbedLayerNormTest, EmbedLayerNormBatch_PositionIds) {
-  RunTest(embedlayernorm::EmbedLayerNormBatch_PositionIds());
+TEST(EmbedLayerNormTest, EmbedLayerNormBatch1_PositionIds) {
+  RunTest(embedlayernorm::EmbedLayerNormBatch1_PositionIds());
 }
 
-TEST(EmbedLayerNormTest, EmbedLayerNormBatch_EmbeddingSum) {
-  RunTest(embedlayernorm::EmbedLayerNormBatch_EmbeddingSum(), false, true);
+TEST(EmbedLayerNormTest, EmbedLayerNormBatch1_PositionIdsDiffOrder) {
+  RunTest(embedlayernorm::EmbedLayerNormBatch1_PositionIds(true));
 }
 
-TEST(EmbedLayerNormTest, EmbedLayerNormBatch_EmbeddingSum_Float16) {
-  RunTest(embedlayernorm::EmbedLayerNormBatch_EmbeddingSum(), true, true);
+TEST(EmbedLayerNormTest, EmbedLayerNormBatch1_EmbeddingSum) {
+  RunTest(embedlayernorm::EmbedLayerNormBatch1_EmbeddingSum(), false, true);
+}
+
+TEST(EmbedLayerNormTest, EmbedLayerNormBatch1_EmbeddingSum_Float16) {
+  RunTest(embedlayernorm::EmbedLayerNormBatch1_EmbeddingSum(), true, true);
 }
 TEST(EmbedLayerNormTest, EmbedLayerNormBatch2) {
   RunTest(embedlayernorm::EmbedLayerNormBatch2());

@@ -135,8 +135,6 @@ __global__ void EmbedLayerNormKernel(
   }
   __syncthreads();
 
-  // Check the position ids for bounds
-  // get the corresponsing element using position ids
   // 2. load pos/segment/word embeddings and add them toghether
   // offset into embeddings is given by word_id * hidden_size
   const int position_offset = (position_ids == nullptr) ? blockIdx.x * hidden_size : position_id * hidden_size;
