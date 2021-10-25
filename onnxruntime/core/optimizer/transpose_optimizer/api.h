@@ -24,7 +24,8 @@ namespace api {
  * Since abstract class instances are created on the fly at the optimizer's request (when finding a node with a
  * certain output, for example), they are returned from the implementer as unique_ptr types. Consequently, the
  * implementer does not need to worry about memory management for these classes and no cache of created classes needs
- * to be maintained.
+ * to be maintained. However they should be small, ideally containing only pointers to the concrete objects that they
+ * manipulate.
  *
  * All editing methods are guaranteed to maintain graph integrity (acyclic, valid input/output names), but validity
  * as an ONNX model may be temporarily violated (ops may have fewer inputs than allowed, incorrect datatypes, etc).
@@ -300,7 +301,7 @@ class Graph {
   /// Determines if the specified value is a node output and if so returns that node.
   /// </summary>
   /// <param name="name">The name of the value. Must be nonempty.</param>
-  /// <returns>Node producing the value or nullptr</returns>
+  /// <returns>Node producing the value or nullptr (or nullptr if value is not a node output)</returns>
   virtual std::unique_ptr<Node> GetNodeProducingOutput(const std::string_view name) const = 0;
 
   /// <summary>
@@ -337,7 +338,7 @@ class Graph {
   /// <param name="domain">The new node's domain. Empty string signifies an unset (default) onnx domain.</param>
   /// <returns>The new node</returns>
   virtual std::unique_ptr<Node> AddNode(const std::string_view op_type, const std::vector<std::string_view>& inputs,
-                                        size_t num_outputs = 1, const std::string_view domain = "") = 0;
+                                        size_t num_outputs, const std::string_view domain = "") = 0;
 
   /// <summary>
   /// Deletes a node from the graph. Behavior is undefined if node has any consumers.
@@ -464,7 +465,7 @@ using LayoutHandler = LayoutHandlerResult (*)(api::Graph& graph, api::Node& node
 /// <summary>
 /// Calls LayoutHandler functions on each node matching an op in the handler_map. Transposes inputs/outputs of affected
 /// ops and updates the op types according to the LayoutHandlerResult. Calls Optimize on the graph if any ops were
-/// affected. Transposes convert inputs from [N, C, H, W] (or [N, C, D1, D2, ...]) layout to [N, H, W, C]
+/// affected. Transposes convert op inputs/outputs from [N, C, H, W] (or [N, C, D1, D2, ...]) layout to [N, H, W, C]
 /// (or [N, D1, D2, ..., C]) ordering.
 /// </summary>
 /// <param name="graph">Graph to change layout of</param>
@@ -477,7 +478,7 @@ bool ChannelFirstToChannelLast(api::Graph& graph, std::unordered_map<std::string
 /// <summary>
 /// Calls LayoutHandler functions on each node matching an op in the handler_map. Transposes inputs/outputs of affected
 /// ops and updates the op types according to the LayoutHandlerResult. Calls Optimize on the graph if any ops were
-/// affected. Transposes convert inputs from [N, H, W, C] (or [N, D1, D2, ..., C]) layout to [N, C, H, W]
+/// affected. Transposes convert op inputs/outputs from [N, H, W, C] (or [N, D1, D2, ..., C]) layout to [N, C, H, W]
 /// (or [N, C, D1, D2, ...]) ordering.
 /// </summary>
 /// <param name="graph">Graph to change layout of</param>

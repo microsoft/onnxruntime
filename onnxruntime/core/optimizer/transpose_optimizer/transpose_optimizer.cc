@@ -51,9 +51,9 @@ struct HandlerInfo {
 // Replaces all node inputs referencing old_value with references to new_value. Values must be non-empty strings.
 // This is an alternative to using MoveOutput for cases when the values aren't node outputs (if one is an initializer,
 // for example).
-static void ReplaceValueReferences(std::vector<std::unique_ptr<api::Node>>& nodes,
+static void ReplaceValueReferences(const std::vector<std::unique_ptr<api::Node>>& nodes,
                                    const std::string_view old_value, const std::string_view new_value) {
-  for (std::unique_ptr<api::Node>& node : nodes) {
+  for (const std::unique_ptr<api::Node>& node : nodes) {
     const std::vector<std::string_view>& inputs = node->Inputs();
     for (size_t i = 0; i < inputs.size(); ++i) {
       if (inputs[i] == old_value) {
@@ -68,7 +68,7 @@ static std::unique_ptr<api::Node> MakeNode1Attr(api::Graph& graph, const std::st
                                                 const std::string_view input, const std::string_view attr_name,
                                                 const std::vector<int64_t>& attr_val) {
   std::vector<std::string_view> inputs{input};
-  std::unique_ptr<api::Node> node = graph.AddNode(op_type, inputs);
+  std::unique_ptr<api::Node> node = graph.AddNode(op_type, inputs, /*num_outputs*/ 1);
   node->SetAttributeInts(attr_name, attr_val);
   return node;
 }
@@ -92,7 +92,7 @@ static std::unique_ptr<api::Node> MakeSqueezeOrUnsqueeze(int64_t opset, api::Gra
 
   std::vector<std::string_view> inputs{input, axes_initializer};
 
-  return graph.AddNode(op_type, inputs);
+  return graph.AddNode(op_type, inputs, /*num_outputs*/ 1);
 }
 
 // Returns whether perm is a valid permutation (contains each value from 0 to perm.size() - 1 exactly once)
@@ -143,6 +143,25 @@ static inline bool NormalizeAndValidateAxis(int64_t& axis, size_t rank) {
   }
 
   return axis >= 0 && axis < rank_int;
+}
+
+// Read int64 data from attribute or input, depending on whether model opset < provided opset
+static std::optional<std::vector<int64_t>> ReadFromAttrOrInput(OptimizerCtx& ctx, api::Node& node,
+                                                               std::string_view attr_name, size_t inp_index,
+                                                               int64_t opset) {
+  if (ctx.opset < opset) {
+    return node.GetAttributeInts(attr_name);
+  } else {
+    auto inputs = node.Inputs();
+    if (inp_index >= inputs.size() || inputs[inp_index] == "") {
+      return std::nullopt;
+    }
+    auto constant = ctx.graph.GetConstant(inputs[inp_index]);
+    if (constant == nullptr) {
+      return std::nullopt;
+    }
+    return constant->DataInt64();
+  }
 }
 
 // Computes inverse permutation. Unsafe if perm is not a valid permutation.
@@ -363,15 +382,7 @@ static void UnsqueezeInput(OptimizerCtx& ctx, api::Node& node, size_t i, const s
   if (inp_node != nullptr && inp_node->IsOp("Squeeze")) {
     const std::vector<std::string_view>& inp_node_inputs = inp_node->Inputs();
     std::optional<std::vector<int64_t>> squeeze_axes = std::nullopt;
-    if (ctx.opset < 13) {
-      squeeze_axes = inp_node->GetAttributeInts("axes");
-    } else if (inp_node_inputs.size() == 2) {
-      std::unique_ptr<api::Tensor> axes_const = ctx.graph.GetConstant(inp_node_inputs[1]);
-      if (axes_const != nullptr) {
-        squeeze_axes = axes_const->DataInt64();
-      }
-    }
-
+    squeeze_axes = ReadFromAttrOrInput(ctx, *inp_node, "axes", /*inp_index*/ 1, /*opset*/ 13);
     if (squeeze_axes != std::nullopt && *squeeze_axes == axes) {
       // Remove the Squeeze node if possible
       if (consumers->comprehensive && consumers->nodes.size() == 0) {
@@ -831,7 +842,7 @@ static bool HandleShape(HandlerArgs& args) {
 
   // X -> Shape -> Y,   Gather
   std::vector<std::string_view> gather_inputs{"", perm_const};
-  auto gather_ptr = args.ctx.graph.AddNode("Gather", gather_inputs);
+  auto gather_ptr = args.ctx.graph.AddNode("Gather", gather_inputs, /*num_outputs*/ 1);
   api::Node& gather = *gather_ptr;
   gather.SetAttributeInt("axis", 0);
 
@@ -916,7 +927,7 @@ static bool HandlePad(HandlerArgs& args) {
   std::string_view gather_indices_const = args.ctx.graph.AddInitializerInt64(pads_shape, gather_indices);
 
   std::vector<std::string_view> gather_inputs{pads_input, gather_indices_const};
-  auto gather_ptr = args.ctx.graph.AddNode("Gather", gather_inputs);
+  auto gather_ptr = args.ctx.graph.AddNode("Gather", gather_inputs, /*num_outputs*/ 1);
   api::Node& gather = *gather_ptr;
   std::string_view gather_output = gather.Outputs()[0];
   args.ctx.graph.CopyValueInfo(pads_input, gather_output);
@@ -1041,45 +1052,20 @@ constexpr HandlerInfo reduce_sum_handler = {&FirstInput, &HandleReduceSum};
 static bool HandleSqueeze(HandlerArgs& args) {
   std::vector<int64_t> new_axes;
 
+  auto axes = ReadFromAttrOrInput(args.ctx, args.node, "axes", /*inp_index*/ 1, /*opset*/ 13);
+
+  // If Squeeze axes are empty, output rank is unknown and must be skipped. Invalid axes are skipped too.
+  if (axes == std::nullopt || !NormalizeAndValidateAxes(*axes, args.perm.size())) {
+    return false;
+  }
+
+  new_axes = SortedAxesForTransposedInput(*axes, args.perm);
+
+  // Update axes
   if (args.ctx.opset < 13) {
-
-    // Axes are attribute
-
-    std::optional<std::vector<int64_t>> axes = args.node.GetAttributeInts("axes");
-    if (axes == std::nullopt || !NormalizeAndValidateAxes(*axes, args.perm.size())) {
-      return false;
-    }
-
-    new_axes = SortedAxesForTransposedInput(*axes, args.perm);
     args.node.SetAttributeInts("axes", new_axes);
-
   } else {
-
-    // Axes are an input
-
-    // Ensure axes input is present, constant, and valid
-    const std::vector<std::string_view>& inputs = args.node.Inputs();
-    if (inputs.size() < 2) {
-      return false;
-    }
-
-    std::string_view axes_inp = inputs[1];
-    if (axes_inp == "") {
-      return false;
-    }
-
-    std::unique_ptr<api::Tensor> axes_const = args.ctx.graph.GetConstant(axes_inp);
-    if (axes_const == nullptr) {
-      return false;
-    }
-
-    auto axes = axes_const->DataInt64();
-    if (!NormalizeAndValidateAxes(axes, args.perm.size())) {
-      return false;
-    }
-
-    // Update axes
-    new_axes = SortedAxesForTransposedInput(axes, args.perm);
+    std::string_view axes_inp = args.node.Inputs()[1];
     std::vector<int64_t> axes_shape{gsl::narrow_cast<int64_t>(new_axes.size())};
     std::string_view new_axes_const = args.ctx.graph.AddInitializerInt64(axes_shape, new_axes);
     args.node.SetInput(1, new_axes_const);
@@ -1108,30 +1094,14 @@ static const std::string_view HelpHandleUnsqueeze(HandlerArgs& args, const std::
 }
 
 static bool HandleUnsqueeze(HandlerArgs& args) {
-  std::vector<int64_t> axes;
+  auto axes = ReadFromAttrOrInput(args.ctx, args.node, "axes", /*inp_index*/ 1, /*opset*/ 13);
 
-  // Read axes from input or attribute, depending on opset
-  if (args.ctx.opset < 13) {
-    std::optional<std::vector<int64_t>> axes_attr = args.node.GetAttributeInts("axes");
-    if (axes_attr == std::nullopt) {
-      return false;
-    }
-    axes = *axes_attr;
-  } else {
-    const std::vector<std::string_view>& inputs = args.node.Inputs();
-    std::unique_ptr<api::Tensor> axes_const = args.ctx.graph.GetConstant(inputs[1]);
-    if (axes_const == nullptr) {
-      return false;
-    }
-    axes = axes_const->DataInt64();
-  }
-
-  if (!NormalizeAndValidateAxes(axes, args.perm.size() + axes.size())) {
+  if (axes == std::nullopt || !NormalizeAndValidateAxes(*axes, args.perm.size() + axes->size())) {
     return false;
   }
 
   // We will leave the axes unchanged and use them to determine how to transpose the output.
-  HelpHandleUnsqueeze(args, axes);
+  HelpHandleUnsqueeze(args, *axes);
   return true;
 }
 
@@ -1332,7 +1302,7 @@ static bool HandleTile(HandlerArgs& args) {
     // Case 2: Repeats is computed. Insert Gather node.
     std::string_view perm_inv_const = args.ctx.graph.AddInitializerInt64(perm_shape, args.perm_inv);
     std::vector<std::string_view> gather_inputs {repeats_inp, perm_inv_const};
-    auto gather_node_ptr = args.ctx.graph.AddNode("Gather", gather_inputs);
+    auto gather_node_ptr = args.ctx.graph.AddNode("Gather", gather_inputs, /*num_outputs*/ 1);
     api::Node& gather_node = *gather_node_ptr;
     std::string_view gather_output = gather_node.Outputs()[0];
     args.ctx.graph.CopyValueInfo(repeats_inp, gather_output);
@@ -1389,7 +1359,7 @@ static bool HandleTranspose(HandlerArgs& args) {
         // Worst-case scenario: Both parent output and 2nd transpose output cannot be removed (both graph outputs)
         // despite computing the same value. Use an Identity op instead.
         std::vector<std::string_view> single_empty_input {""};
-        auto identity_ptr = args.ctx.graph.AddNode("Identity", single_empty_input);
+        auto identity_ptr = args.ctx.graph.AddNode("Identity", single_empty_input, /*num_outputs*/ 1);
         api::Node& identity = *identity_ptr;
         args.ctx.graph.MoveOutput(args.node, 0, identity, 0);
         identity.SetInput(0, transpose_input);
@@ -1438,6 +1408,8 @@ static bool HandleQLinearBinaryOp(HandlerArgs& args) {
 std::vector<size_t> QLinearBinaryOpInputs(OptimizerCtx& ctx, api::Node& node) {
   (void)ctx;
   (void)node;
+  // Inputs are: [A, A_scale, A_zero_point, B, B_scale, B_zero_point, C_scale, C_zero_point],
+  // we want [A, B].
   return {0, 3};
 }
 
@@ -1461,10 +1433,16 @@ static bool HandleQLinearPoolOp(HandlerArgs& args) {
 constexpr HandlerInfo q_linear_pool_op_handler = {&FirstInput, &HandleQLinearPoolOp};
 
 static bool HandleMaxPool(HandlerArgs& args) {
-  // Replace with NhwcMaxPool is possible
+  // Replace with NhwcMaxPool is possible. Only int8 and uint8 dtypes are supported by NhwcMaxPool.
   auto outputs = args.node.Outputs();
   if (outputs.size() == 2 && outputs[1] != "") {
     // Can't optimize if optional "indices" output is provided
+    return false;
+  }
+
+  auto info = args.ctx.graph.GetValueInfo(outputs[0]);
+  api::DataType dtype = info->DType();
+  if (dtype != api::DataType::UINT8 && dtype != api::DataType::INT8) {
     return false;
   }
 
@@ -1775,7 +1753,8 @@ static bool ChangeLayout(api::Graph& graph, std::unordered_map<std::string_view,
       if (last_to_first) {
         std::swap(perm, perm_inv);
       }
-
+      // Once complete, [Op] will be replaced with [Transpose -> Op' -> Transpose] pattern with identical behavior.
+      // Optimize pushes/removes transposes leaving just [Op'] ideally.
       TransposeFirstInput(*ctx, *node, perm_inv);
       TransposeOutputs(*ctx, *node, perm);
       changed = true;
