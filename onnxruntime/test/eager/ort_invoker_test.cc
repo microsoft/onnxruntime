@@ -6,6 +6,7 @@
 #include "core/common/logging/sinks/clog_sink.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "test/framework/test_utils.h"
+#include "asserts.h"
 #include <core/framework/kernel_registry.h>
 #include <core/framework/op_kernel.h>
 #include <core/graph/schema_registry.h>
@@ -23,7 +24,7 @@ TEST(InvokerTest, Basic) {
       logging::LoggingManager::InstanceType::Default,
       &logger_id); 
   std::unique_ptr<Environment> env;
-  Environment::Create(std::move(logging_manager), env);
+  ASSERT_STATUS_OK(Environment::Create(std::move(logging_manager), env));
   IOnnxRuntimeOpSchemaRegistryList tmp_op_registry = {};
   ORTInvoker kernel_invoker(std::move(cpu_execution_provider), env->GetLoggingManager()->DefaultLogger(), tmp_op_registry);
 
@@ -35,8 +36,7 @@ TEST(InvokerTest, Basic) {
   CreateMLValue<float>(kernel_invoker.GetCurrentExecutionProvider().GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x,
                        &B);
   std::vector<OrtValue> result(1);
-  auto status = kernel_invoker.Invoke("Add", {A, B}, result, nullptr);
-  ASSERT_TRUE(status.IsOK());
+  ASSERT_STATUS_OK(kernel_invoker.Invoke("Add", {A, B}, result, nullptr));
   const Tensor& C = result.back().Get<Tensor>();
   auto& c_shape = C.Shape();
   EXPECT_EQ(c_shape.GetDims(), dims_mul_x);
@@ -57,7 +57,7 @@ TEST(InvokerTest, Inplace) {
       logging::LoggingManager::InstanceType::Default,
       &logger_id); 
   std::unique_ptr<Environment> env;
-  Environment::Create(std::move(logging_manager), env);
+  ASSERT_STATUS_OK(Environment::Create(std::move(logging_manager), env));
   IOnnxRuntimeOpSchemaRegistryList tmp_op_registry = {};
   ORTInvoker kernel_invoker(std::move(cpu_execution_provider), env->GetLoggingManager()->DefaultLogger(), tmp_op_registry);
 
@@ -70,7 +70,7 @@ TEST(InvokerTest, Inplace) {
                        &B);
   std::vector<OrtValue> result;
   result.push_back(A);
-  auto status = kernel_invoker.Invoke("Add", {A, B}, result, nullptr);
+  ASSERT_STATUS_OK(kernel_invoker.Invoke("Add", {A, B}, result, nullptr));
 
   std::vector<float> expected_result = {2.0f, 4.0f, 6.0f, 8.0f, 10.0f, 12.0f};
   auto* a_data = A.Get<Tensor>().Data<float>();
@@ -103,7 +103,7 @@ TEST(InvokerTest, CustomOp) {
                     .SinceVersion(1)
                     .Provider(kCpuExecutionProvider)
                     .Build();
-  ASSERT_TRUE(kernel_registry->Register(KernelCreateInfo(std::move(kernel_def), CreateTestKernel)).IsOK());
+  ASSERT_STATUS_OK(kernel_registry->Register(KernelCreateInfo(std::move(kernel_def), CreateTestKernel)));
   // create custom op schema for "Test" op
   std::shared_ptr<onnxruntime::OnnxRuntimeOpSchemaRegistry> schema_registry = std::make_shared<OnnxRuntimeOpSchemaRegistry>();
   std::vector<ONNX_NAMESPACE::OpSchema> schema = {
@@ -112,7 +112,7 @@ TEST(InvokerTest, CustomOp) {
       .Output(0, "Y", "desc", "T")
       .TypeConstraint("T", ONNX_NAMESPACE::OpSchema::all_tensor_types(), "Constrain input and output types to any tensor type.")
       .SetDomain("FakeDomain")};
-  ASSERT_TRUE(schema_registry->RegisterOpSet(schema, "FakeDomain", 0, 1).IsOK());
+  ASSERT_STATUS_OK(schema_registry->RegisterOpSet(schema, "FakeDomain", 0, 1));
   std::list<std::shared_ptr<IOnnxRuntimeOpSchemaCollection>> regs = {schema_registry};
 
   const std::string logger_id{"InvokerTest"};
@@ -122,7 +122,7 @@ TEST(InvokerTest, CustomOp) {
       logging::LoggingManager::InstanceType::Default,
       &logger_id); 
   std::unique_ptr<Environment> env;
-  Environment::Create(std::move(logging_manager), env);
+  ASSERT_STATUS_OK(Environment::Create(std::move(logging_manager), env));
   ORTInvoker kernel_invoker(std::move(cpu_execution_provider), env->GetLoggingManager()->DefaultLogger(), regs);
 
   std::vector<int64_t> dims_mul_x = {3, 2};
@@ -132,8 +132,7 @@ TEST(InvokerTest, CustomOp) {
                        &A);
   std::vector<OrtValue> result;
   result.push_back(A);
-  auto status = kernel_invoker.Invoke("Test", {A,}, result, nullptr, "FakeDomain");
-  ASSERT_TRUE(status.IsOK());
+  ASSERT_STATUS_OK(kernel_invoker.Invoke("Test", {A}, result, nullptr, "FakeDomain"));
 }
 
 }  // namespace test

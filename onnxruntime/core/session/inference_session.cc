@@ -519,7 +519,7 @@ common::Status InferenceSession::RegisterExecutionProvider(const std::shared_ptr
 
     auto trt_ep = execution_providers_.Get(kTensorrtExecutionProvider);
     if (trt_ep) {
-      p_exec_provider->SetComputeStream(trt_ep->GetComputeStream());
+      ORT_RETURN_IF_ERROR(p_exec_provider->SetComputeStream(trt_ep->GetComputeStream()));
     }
   }
 
@@ -921,7 +921,7 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph,
                                           execution_providers_.Get(kDmlExecutionProvider));
 
     bool modified = false;
-    dml_transformer.Apply(graph, modified, *session_logger_);
+    ORT_RETURN_IF_ERROR_SESSIONID_(dml_transformer.Apply(graph, modified, *session_logger_));
   }
 #endif
 
@@ -1355,7 +1355,8 @@ common::Status InferenceSession::Initialize() {
 #if !defined(ORT_MINIMAL_BUILD)
     if (!loading_ort_format) {
       // add predefined transformers
-      AddPredefinedTransformers(graph_transformation_mgr_, session_options_.graph_optimization_level);
+      ORT_RETURN_IF_ERROR_SESSIONID_(AddPredefinedTransformers(graph_transformation_mgr_,
+                                                               session_options_.graph_optimization_level));
 
       // apply any transformations to the main graph and any subgraphs
       ORT_RETURN_IF_ERROR_SESSIONID_(TransformGraph(graph, graph_transformation_mgr_,
@@ -1729,7 +1730,7 @@ Status InferenceSession::PartialRun(onnxruntime::RunOptions& run_options,
 
   // info all execution providers InferenceSession:Run ended
   for (auto* xp : exec_providers_to_stop) {
-    auto status = xp->OnRunEnd();
+    auto status = xp->OnRunEnd(/*sync_stream*/ false);
     ORT_CHECK_AND_SET_RETVAL(status);
   }
 
@@ -1843,7 +1844,7 @@ Status InferenceSession::Run(const RunOptions& run_options,
 
   // info all execution providers InferenceSession:Run ended
   for (auto* xp : exec_providers_to_stop) {
-    auto status = xp->OnRunEnd();
+    auto status = xp->OnRunEnd(/*sync_stream*/ true);
     ORT_CHECK_AND_SET_RETVAL(status);
   }
 
@@ -2223,8 +2224,8 @@ void InferenceSession::InitLogger(logging::LoggingManager* logging_manager) {
 #if !defined(ORT_MINIMAL_BUILD)
 
 // Registers all the predefined transformers with transformer manager
-void InferenceSession::AddPredefinedTransformers(GraphTransformerManager& transformer_manager,
-                                                 TransformerLevel graph_optimization_level) {
+common::Status InferenceSession::AddPredefinedTransformers(GraphTransformerManager& transformer_manager,
+                                                           TransformerLevel graph_optimization_level) {
   const auto& cpu_ep = *execution_providers_.Get(onnxruntime::kCpuExecutionProvider);
   for (int i = static_cast<int>(TransformerLevel::Level1); i <= static_cast<int>(TransformerLevel::MaxLevel); i++) {
     TransformerLevel level = static_cast<TransformerLevel>(i);
@@ -2233,10 +2234,11 @@ void InferenceSession::AddPredefinedTransformers(GraphTransformerManager& transf
       auto transformers_to_register = optimizer_utils::GenerateTransformers(level, session_options_, cpu_ep,
                                                                             optimizers_to_disable_);
       for (auto& entry : transformers_to_register) {
-        transformer_manager.Register(std::move(entry), level);
+        ORT_RETURN_IF_ERROR(transformer_manager.Register(std::move(entry), level));
       }
     }
   }
+  return Status::OK();
 }
 
 #endif  // !defined(ORT_MINIMAL_BUILD)

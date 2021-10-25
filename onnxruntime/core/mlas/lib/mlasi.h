@@ -666,6 +666,17 @@ extern const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8X8DispatchWasmSimd;
 extern const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8X8DispatchDefault;
 
 //
+// Symmetric quantized integer convolution dispatch structure.
+//
+
+struct MLAS_CONV_SYM_DISPATCH;
+
+extern const MLAS_CONV_SYM_DISPATCH MlasConvSymDispatchAvx2;
+extern const MLAS_CONV_SYM_DISPATCH MlasConvSymDispatchAvxVnni;
+extern const MLAS_CONV_SYM_DISPATCH MlasConvSymDispatchAvx512Core;
+extern const MLAS_CONV_SYM_DISPATCH MlasConvSymDispatchAvx512Vnni;
+
+//
 // Quantized depthwise convolution kernels.
 //
 
@@ -707,9 +718,16 @@ struct MLAS_PLATFORM {
 
 #if defined(MLAS_TARGET_AMD64_IX86) || defined(MLAS_TARGET_POWER)
     MLAS_GEMM_FLOAT_KERNEL* GemmFloatKernel;
+#endif
+
+#if defined(MLAS_TARGET_AMD64_IX86)
     const MLAS_GEMM_U8X8_DISPATCH* GemmU8S8Dispatch;
     const MLAS_GEMM_U8X8_DISPATCH* GemmU8U8Dispatch;
+#elif defined(MLAS_TARGET_ARM64)
+    const MLAS_GEMM_U8X8_DISPATCH* GemmU8X8Dispatch;
 #endif
+
+    const MLAS_CONV_SYM_DISPATCH* ConvSymDispatch{nullptr};
 
 #if defined(MLAS_TARGET_AMD64)
     MLAS_SGEMM_KERNEL_M1_ROUTINE* KernelM1Routine;
@@ -746,9 +764,6 @@ struct MLAS_PLATFORM {
     static constexpr int32_t MaximumThreadCount = MLAS_MAXIMUM_THREAD_COUNT;
 #endif
 
-#if defined(MLAS_TARGET_ARM64)
-    const MLAS_GEMM_U8X8_DISPATCH* GemmU8X8Dispatch;
-#endif
 };
 
 extern MLAS_PLATFORM MlasPlatform;

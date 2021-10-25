@@ -14,11 +14,11 @@ DnnlConv::DnnlConv() {}
 void DnnlConv::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   auto dnnl_engine = sp.GetEngine();
 
-  auto conv_src_mem = sp.GetMemory(node.Input(IN_X).Name());
+  auto conv_src_mem = sp.GetMemory(node.Input(IN_X));
   auto src_md = conv_src_mem.get_desc();
   auto src_dims = conv_src_mem.get_desc().dims();
 
-  auto conv_weights_mem = sp.GetMemory(node.Input(IN_W).Name());
+  auto conv_weights_mem = sp.GetMemory(node.Input(IN_W));
   auto weight_md = conv_weights_mem.get_desc();
   auto weight_dims_original = conv_weights_mem.get_desc().dims();
   dnnl::memory::dims weight_dims = weight_dims_original;
@@ -27,7 +27,7 @@ void DnnlConv::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   dnnl::memory conv_bias_mem;
   dnnl::memory::desc bias_md;
   if (bias_exists) {
-    conv_bias_mem = sp.GetMemory(node.Input(IN_B).Name());
+    conv_bias_mem = sp.GetMemory(node.Input(IN_B));
     bias_md = conv_bias_mem.get_desc();
   }
 
