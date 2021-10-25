@@ -4176,3 +4176,58 @@ def test_sigmoid_grad():
         _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
         _test_helpers.assert_values_are_close(ort_x.grad, pt_x.grad)
         _test_helpers.assert_values_are_close(ort_loss, pt_loss)
+
+def test_sigmoid_grad_opset13():
+    class NeuralNetSigmoid(torch.nn.Module):
+        def __init__(self, input_size, hidden_size, num_classes):
+            super(NeuralNetSigmoid, self).__init__()
+
+            self.fc1 = torch.nn.Linear(input_size, hidden_size)
+            self.sigmoid = torch.nn.Sigmoid()
+
+        def forward(self, input1):
+            out = self.fc1(input1)
+            out = self.sigmoid(out)
+            return out
+
+    def run_step(model, x):
+        prediction = model(x)
+        loss = prediction.sum()
+        loss.backward()
+        return prediction, loss
+    device = 'cuda'
+
+    N, D_in, H, D_out = 120, 15360, 500, 15360
+    pt_model = NeuralNetSigmoid(D_in, H, D_out).to(device)
+    old_opset = os.environ.get('ORTMODULE_ONNX_OPSET_VERSION', None)
+    os.environ['ORTMODULE_ONNX_OPSET_VERSION'] = '13'
+
+    with warnings.catch_warnings(record=True) as w:
+        ort_model = ORTModule(copy.deepcopy(pt_model), debug_options=_logger.LogLevel.INFO)
+
+        assert len(w) == 1
+        assert issubclass(w[-1].category, UserWarning)
+        assert "with opset=13" in str(w[-1].message)
+
+    for step in range(1000):
+        pt_x = torch.randn(N, D_in, device=device, requires_grad=True)
+        ort_x = copy.deepcopy(pt_x)
+        ort_prediction, ort_loss = run_step(ort_model, ort_x)
+        pt_prediction, pt_loss = run_step(pt_model, pt_x)
+        if step == 0:
+            model_onx = ort_model._torch_module._execution_manager._training_manager._onnx_models
+            for name in ['exported_model', 'optimized_model', 'optimized_pre_grad_model']:
+                onx = getattr(model_onx, name)
+                opv = None
+                for op in onx.opset_import:
+                    if op.domain == '':
+                        opv = op.version
+                assert opv == 13
+        _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
+        _test_helpers.assert_values_are_close(ort_x.grad, pt_x.grad)
+        _test_helpers.assert_values_are_close(ort_loss, pt_loss)
+
+    if old_opset is None:
+        del os.environ['ORTMODULE_ONNX_OPSET_VERSION']
+    else:
+        os.environ['ORTMODULE_ONNX_OPSET_VERSION'] = old_opset

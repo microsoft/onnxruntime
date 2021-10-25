@@ -175,6 +175,19 @@ class GraphExecutionManager(GraphExecutionInterface):
         # Re-export will be avoided if _skip_check is enabled.
         self._original_model_has_changed = False
 
+        self._opset_version = ONNX_OPSET_VERSION
+        overwrite_opset = os.environ.get('ORTMODULE_ONNX_OPSET_VERSION', None)
+        if overwrite_opset is not None:
+            try:
+                self._opset_version = int(overwrite_opset)
+            except (TypeError, ValueError):
+                raise RuntimeError(
+                    "Unable to overwrite opset version with value %r." % overwrite_opset)
+            if (self._opset_version != ONNX_OPSET_VERSION and
+                    self._debug_options.logging.log_level <= _logger.LogLevel.INFO):
+                warnings.warn("Model will be converted into ONNX with opset=%r." % self._opset_version,
+                              UserWarning)
+
     def _get_torch_gpu_allocator_function_addresses(self):
         if self._use_external_gpu_allocator and torch.cuda.is_available():
             # CPP extension to get torch GPU allocator's alloc and free function addresses
