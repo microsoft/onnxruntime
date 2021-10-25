@@ -6,5 +6,5 @@ import {registerBackend} from 'onnxruntime-common';
 import {onnxjsBackend} from './backend-onnxjs';
 import {wasmBackend} from './backend-wasm';
 
-registerBackend('webgl', onnxjsBackend, 1);
-registerBackend('wasm', wasmBackend, 2);
+registerBackend('webgl', onnxjsBackend, -1);
+registerBackend('wasm', wasmBackend, 0);

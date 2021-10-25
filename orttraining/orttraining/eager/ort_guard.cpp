@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <torch/extension.h>
+#include "ort_eager_common.h"
 
 #include "ort_backends.h"
 #include "ort_log.h"

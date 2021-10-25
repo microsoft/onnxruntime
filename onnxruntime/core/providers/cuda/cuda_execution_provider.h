@@ -29,7 +29,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
 
   Status OnRunStart() override;
 
-  Status OnRunEnd() override;
+  Status OnRunEnd(bool sync_stream) override;
 
   const void* GetExecutionHandle() const noexcept override {
     // The CUDA interface does not return anything interesting.

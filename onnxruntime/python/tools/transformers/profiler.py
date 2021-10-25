@@ -79,6 +79,9 @@ def parse_arguments(argv=None):
     parser.add_argument('-g', '--use_gpu', required=False, action='store_true', help="use GPU")
     parser.set_defaults(use_gpu=False)
 
+    parser.add_argument('-d', '--use_dml', required=False, action='store_true', help="use DML")
+    parser.set_defaults(use_dml=False)
+
     parser.add_argument(
         '--basic_optimization',
         required=False,
@@ -98,14 +101,15 @@ def parse_arguments(argv=None):
     return parser.parse_args(argv)
 
 
-def run_profile(onnx_model_path, use_gpu, basic_optimization, thread_num, all_inputs):
+def run_profile(onnx_model_path, use_gpu, basic_optimization, thread_num, all_inputs, use_dml):
     from benchmark_helper import create_onnxruntime_session
 
     session = create_onnxruntime_session(onnx_model_path,
                                          use_gpu,
                                          enable_all_optimization=not basic_optimization,
                                          num_threads=thread_num,
-                                         enable_profiling=True)
+                                         enable_profiling=True,
+                                         use_dml=use_dml)
 
     for inputs in all_inputs:
         _ = session.run(None, inputs)
@@ -146,7 +150,13 @@ def parse_profile_results(sess_time, kernel_time_only=False, threshold=0):
                                                                          "").replace("_fence_after", "")
 
             if "provider" in item["args"]:
-                device = "CPU" if item["args"]["provider"] == "CPUExecutionProvider" else "CUDA"
+                if item["args"]["provider"] == "CPUExecutionProvider":
+                    device = "CPU"
+                elif item["args"]["provider"] == "CUDAExecutionProvider":
+                    device = "CUDA"
+                elif item["args"]["provider"] == "DmlExecutionProvider":
+                    device = "DML"
+
                 if node_name not in node_provider:
                     node_provider[node_name] = device
                 else:
@@ -463,7 +473,7 @@ def run(args):
     else:  # default
         all_inputs = create_dummy_inputs(onnx_model, args.batch_size, args.sequence_length, args.samples)
 
-    profile_file = run_profile(args.model, args.use_gpu, args.basic_optimization, args.thread_num, all_inputs)
+    profile_file = run_profile(args.model, args.use_gpu, args.basic_optimization, args.thread_num, all_inputs, args.use_dml)
 
     profile_records = load_profile_json(profile_file)
 

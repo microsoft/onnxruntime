@@ -1726,7 +1726,7 @@ Status InferenceSession::PartialRun(onnxruntime::RunOptions& run_options,
 
   // info all execution providers InferenceSession:Run ended
   for (auto* xp : exec_providers_to_stop) {
-    auto status = xp->OnRunEnd();
+    auto status = xp->OnRunEnd(/*sync_stream*/ false);
     ORT_CHECK_AND_SET_RETVAL(status);
   }
 
@@ -1840,7 +1840,7 @@ Status InferenceSession::Run(const RunOptions& run_options,
 
   // info all execution providers InferenceSession:Run ended
   for (auto* xp : exec_providers_to_stop) {
-    auto status = xp->OnRunEnd();
+    auto status = xp->OnRunEnd(/*sync_stream*/ true);
     ORT_CHECK_AND_SET_RETVAL(status);
   }
 
