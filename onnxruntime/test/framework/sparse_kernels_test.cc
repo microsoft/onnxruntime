@@ -794,7 +794,7 @@ static void TestConversion(bool use_1D_indices, int32_t indices_type,
   TensorProto dense;
   // Path is required for loading external data (if any)
   // When path is empty it will look for the data in current dir
-  utils::ConstantNodeProtoToTensorProto(node, Path(), dense);
+  ASSERT_STATUS_OK(utils::ConstantNodeProtoToTensorProto(node, Path(), dense));
 
   gsl::span<const T> expected_span = gsl::make_span<const T>(expected.data(), expected.size());
   checker(expected_span, dense);
@@ -809,7 +809,7 @@ static void TestConversionAllZeros(bool use_1D_indices,
   TensorProto dense;
   // Path is required for loading external data (if any)
   // When path is empty it will look for the data in current dir
-  utils::ConstantNodeProtoToTensorProto(node, Path(), dense);
+  ASSERT_STATUS_OK(utils::ConstantNodeProtoToTensorProto(node, Path(), dense));
 
   gsl::span<const T> expected_span = gsl::make_span<const T>(expected.data(), expected.size());
   checker(expected_span, dense);
@@ -1123,7 +1123,7 @@ static void TestDenseToSparseConversionValues(size_t indices_start,
   TensorProto dense_tensor = CreateDenseTensor(indices_start, inserter, expected_values, expected_indicies);
 
   SparseTensorProto sparse_tensor;
-  utils::DenseTensorToSparseTensorProto(dense_tensor, model_path, sparse_tensor);
+  ASSERT_STATUS_OK(utils::DenseTensorToSparseTensorProto(dense_tensor, model_path, sparse_tensor));
 
   gsl::span<const T>
       expected_values_span = gsl::make_span(expected_values.data(), expected_values.size());
@@ -1146,7 +1146,7 @@ static void TestDenseAllZerosToSparseConversion(
   TensorProto dense_tensor = CreateDenseTensorAllZeros(inserter);
 
   SparseTensorProto sparse_tensor;
-  utils::DenseTensorToSparseTensorProto(dense_tensor, model_path, sparse_tensor);
+  ASSERT_STATUS_OK(utils::DenseTensorToSparseTensorProto(dense_tensor, model_path, sparse_tensor));
 
   gsl::span<const T>
       expected_values_span = gsl::make_span(expected_values.data(), expected_values.size());
@@ -1316,7 +1316,7 @@ TEST(SparseTensorConversionTests, CsrConversion) {
   DataTransferManager dtm;
   {
     auto cpu_transfer = cpu_provider->GetDataTransfer();
-    dtm.RegisterDataTransfer(std::move(cpu_transfer));
+    ASSERT_STATUS_OK(dtm.RegisterDataTransfer(std::move(cpu_transfer)));
   }
   {
     {
@@ -1455,7 +1455,7 @@ TEST(SparseTensorConversionTests, CsrConversion) {
   auto cuda_allocator = cuda_provider->GetAllocator(0, OrtMemTypeDefault);
   {
     auto cuda_transfer = cuda_provider->GetDataTransfer();
-    dtm.RegisterDataTransfer(std::move(cuda_transfer));
+    ASSERT_STATUS_OK(dtm.RegisterDataTransfer(std::move(cuda_transfer)));
   }
   {
     // test where source is on GPU and destination is on CPU
@@ -1535,7 +1535,7 @@ TEST(SparseTensorConversionTests, CooConversion) {
   DataTransferManager dtm;
   {
     auto cpu_transfer = cpu_provider->GetDataTransfer();
-    dtm.RegisterDataTransfer(std::move(cpu_transfer));
+    ASSERT_STATUS_OK(dtm.RegisterDataTransfer(std::move(cpu_transfer)));
   }
 
   {
@@ -1682,7 +1682,7 @@ TEST(SparseTensorConversionTests, CooConversion) {
   auto cuda_allocator = cuda_provider->GetAllocator(0, OrtMemTypeDefault);
   {
     auto cuda_transfer = cuda_provider->GetDataTransfer();
-    dtm.RegisterDataTransfer(std::move(cuda_transfer));
+    ASSERT_STATUS_OK(dtm.RegisterDataTransfer(std::move(cuda_transfer)));
   }
   {
     // test where source is on GPU and destination is on GPU
@@ -1744,7 +1744,7 @@ TEST(SparseTensorConversionTests, BlockSparse) {
   DataTransferManager dtm;
   {
     auto cpu_transfer = cpu_provider->GetDataTransfer();
-    dtm.RegisterDataTransfer(std::move(cpu_transfer));
+    ASSERT_STATUS_OK(dtm.RegisterDataTransfer(std::move(cpu_transfer)));
   }
 
   {

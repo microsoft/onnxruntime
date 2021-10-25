@@ -7,7 +7,7 @@ import {Attribute} from './attribute';
 import {onnxruntime} from './ort-schema/ort-generated';
 import ortFbs = onnxruntime.experimental.fbs;
 import {Tensor} from './tensor';
-import {LongUtil, ProtoUtil} from './util';
+import {LongUtil, ProtoUtil, MIN_CLIP, MAX_CLIP} from './util';
 
 export declare namespace Graph {
   export interface Shape {
@@ -653,14 +653,12 @@ class GraphImpl implements Graph, Graph.Transformer {
   }
 
   /**
-   * Delete the specifed node. Assume the node has only one input and the first output connected to other nodes
+   * Delete the specifed node. Assume the node has one incoming input and the first output connected to other nodes.
+   * An input validation must be done before calling this function.
    * @param nodeIndex The index of node to be deleted
    */
   private deleteNode(nodeIndex: number) {
     const node = this._nodes[nodeIndex];
-    if (node.inputs.length > 1) {
-      throw new Error('Node deletion with multiple inputs is not supported. ');
-    }
     if (node.outputs.length > 1) {
       for (let i = 1; i < node.outputs.length; i++) {
         if (this._allData[node.outputs[i]].to.length > 0) {
@@ -757,12 +755,26 @@ class GraphImpl implements Graph, Graph.Transformer {
         const next = this._allData[node.outputs[0]]._to;
         if (next.length === 1 && this.isActivation(this._nodes[next[0]])) {
           const child = this._nodes[next[0]];
-          node.attributes.set('__internal_activation', 'string', (child.opType));
-          // TODO: need add support for Clip after opset 11, which has min/max as inputs
           if (child.opType === 'Clip') {
-            node.attributes.set('__clip_min', 'float', child.attributes.getFloat('min'));
-            node.attributes.set('__clip_max', 'float', child.attributes.getFloat('max'));
+            if (child.inputs.length === 1) {
+              try {
+                node.attributes.set('__clip_min', 'float', child.attributes.getFloat('min'));
+                node.attributes.set('__clip_max', 'float', child.attributes.getFloat('max'));
+              } catch (e) {
+                node.attributes.set('__clip_min', 'float', MIN_CLIP);
+                node.attributes.set('__clip_max', 'float', MAX_CLIP);
+              }
+            } else if (
+                child.inputs.length >= 3 && this._allData[child.inputs[1]].tensor !== undefined &&
+                this._allData[child.inputs[2]].tensor !== undefined) {
+              node.attributes.set('__clip_min', 'float', this._allData[child.inputs[1]].tensor!.floatData[0]);
+              node.attributes.set('__clip_max', 'float', this._allData[child.inputs[2]].tensor!.floatData[0]);
+            } else {
+              // Skip fusion with clip node since clip min and clip max are not coming from initializer
+              continue;
+            }
           }
+          node.attributes.set('__internal_activation', 'string', (child.opType));
           this.deleteNode(next[0]);
         }
       }
