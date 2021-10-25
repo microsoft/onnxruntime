@@ -1,6 +1,7 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
+import concurrent.futures
 import os
 import subprocess
 from logger import get_logger
@@ -89,10 +90,6 @@ provider_excluded_files = [
                 'math/matmul_integer.h',
                 'math/softmax_impl.cu',
                 'math/softmax.cc',
-                'math/topk.cc',
-                'math/topk.h',
-                'math/topk_impl.cu',
-                'math/topk_impl.h',
                 'nn/batch_norm.cc',
                 'nn/batch_norm.h',
                 'nn/conv.cc',
@@ -109,14 +106,6 @@ provider_excluded_files = [
                 'nn/max_pool_with_index.h',
                 'nn/pool.cc',
                 'nn/pool.h',
-                'object_detection/non_max_suppression.cc',
-                'object_detection/non_max_suppression.h',
-                'object_detection/non_max_suppression_impl.cu',
-                'object_detection/non_max_suppression_impl.h',
-                'object_detection/roialign.cc',
-                'object_detection/roialign.h',
-                'object_detection/roialign_impl.cu',
-                'object_detection/roialign_impl.h',
                 'reduction/reduction_ops.cc',
                 'reduction/reduction_ops.h',
                 'rnn/cudnn_rnn_base.cc',
@@ -130,24 +119,8 @@ provider_excluded_files = [
                 'rnn/rnn_impl.cu',
                 'rnn/rnn_impl.h',
                 'shared_inc/cuda_call.h',
-                'shared_inc/fast_divmod.h',
                 'shared_inc/fpgeneric.h',
                 'shared_inc/integer_gemm.h',
-                'tensor/gather_nd_impl.cu',
-                'tensor/quantize_linear.cc',
-                'tensor/quantize_linear.cu',
-                'tensor/quantize_linear.cuh',
-                'tensor/quantize_linear.h',
-                'tensor/resize.cc',
-                'tensor/resize.h',
-                'tensor/resize_impl.cu',
-                'tensor/resize_impl.h',
-                'tensor/transpose.cc',
-                'tensor/transpose.h',
-                'tensor/upsample.cc',
-                'tensor/upsample.h',
-                'tensor/upsample_impl.cu',
-                'tensor/upsample_impl.h',
                 'cuda_allocator.cc',
                 'cuda_allocator.h',
                 'cuda_call.cc',
@@ -166,6 +139,7 @@ provider_excluded_files = [
                 'cuda_pch.cc',
                 'cuda_pch.h',
                 'cuda_provider_factory.cc',
+                'cuda_provider_factory.h',
                 'cuda_utils.cu',
                 'cudnn_common.cc',
                 'cudnn_common.h',
@@ -177,35 +151,20 @@ provider_excluded_files = [
 ]
 
 training_ops_excluded_files = [
-                    'activation/gelu_grad_impl_common.cuh',
+                    'activation/gelu_grad_impl_common.cuh',  # uses custom tanh
                     'collective/adasum_kernels.cc',
                     'collective/adasum_kernels.h',
-                    'collective/nccl_common.cc',
-                    'collective/ready_event.cc',
-                    'collective/ready_event.h',
-                    'communication/common.h',
-                    'communication/nccl_service.cc',
-                    'communication/nccl_service.h',
-                    'communication/recv.cc',
-                    'communication/recv.h',
-                    'communication/send.cc',
-                    'communication/send.h',
-                    'controlflow/record.cc',
-                    'controlflow/record.h',
-                    'controlflow/wait.cc',
-                    'controlflow/wait.h',
-                    'math/div_grad.cc',
-                    'math/softmax_grad_impl.cu',
-                    'math/softmax_grad.cc',
-                    'nn/batch_norm_grad.cc',
-                    'nn/batch_norm_grad.h',
-                    'nn/batch_norm_internal.cc',
-                    'nn/batch_norm_internal.h',
+                    'math/div_grad.cc',  # miopen API differs from cudnn, no double type support
+                    'math/softmax_grad_impl.cu',  # warp size differences
+                    'math/softmax_grad.cc',  # miopen API differs from cudnn, no double type support
+                    'nn/batch_norm_grad.cc',  # no double type support
+                    'nn/batch_norm_grad.h',  # miopen API differs from cudnn
+                    'nn/batch_norm_internal.cc',  # miopen API differs from cudnn, no double type support
+                    'nn/batch_norm_internal.h',  # miopen API differs from cudnn, no double type support
                     'nn/conv_grad.cc',
                     'nn/conv_grad.h',
-                    'reduction/reduction_all.cc',
-                    'reduction/reduction_ops.cc',
-                    'tensor/gather_nd_grad_impl.cu',
+                    'reduction/reduction_all.cc',  # deterministic = true, ignore ctx setting
+                    'reduction/reduction_ops.cc',  # no double type support
                     'cuda_training_kernels.cc',
                     'cuda_training_kernels.h',
 ]
@@ -214,84 +173,139 @@ HIPIFY_PERL = '/opt/rocm/bin/hipify-perl'
 
 
 def hipify(src_file_path, dst_file_path):
-    log.debug('Hipifying: "{}" -> "{}"'.format(src_file_path, dst_file_path))
-
     dst_file_path = dst_file_path.replace('cuda', 'rocm')
     dir_name = os.path.dirname(dst_file_path)
     if not os.path.exists(dir_name):
         os.makedirs(dir_name, exist_ok=True)
-    with open(dst_file_path, 'w') as f:
-        subprocess.run([HIPIFY_PERL, src_file_path], stdout=f)
-    with open(dst_file_path) as f:
-        s = f.read().replace('kCudaExecutionProvider', 'kRocmExecutionProvider')
-        s = s.replace('CublasHandle', 'RocblasHandle')
-        s = s.replace('cublas_handle', 'rocblas_handle_var')
-        s = s.replace('hipblasHandle_t', 'rocblas_handle')
-        s = s.replace('CudaAsyncBuffer', 'RocmAsyncBuffer')
-        s = s.replace('CudaKernel', 'RocmKernel')
-        s = s.replace('ToCudaType', 'ToHipType')
-        s = s.replace('CudaT', 'HipT')
-        s = s.replace('CUDA_LONG', 'HIP_LONG')
-        s = s.replace('CUDA_RETURN_IF_ERROR', 'HIP_RETURN_IF_ERROR')
-        s = s.replace('CUDA_KERNEL_ASSERT', 'HIP_KERNEL_ASSERT')
-        s = s.replace('CUDA_CALL', 'HIP_CALL')
-        s = s.replace('SliceCuda', 'SliceRocm')
-        s = s.replace('thrust::cuda', 'thrust::hip')
-        s = s.replace('cuda', 'rocm')
-        # s = s.replace('Cuda', 'Rocm')
-        s = s.replace('CUDA', 'ROCM')
+    # Run hipify-perl first, capture output
+    s = subprocess.run([HIPIFY_PERL, src_file_path], stdout=subprocess.PIPE, universal_newlines=True).stdout
 
-        s = s.replace('GPU_WARP_SIZE = 32', 'GPU_WARP_SIZE = 64')
-        s = s.replace('std::exp', 'expf')
-        s = s.replace('std::log', 'logf')
-        s = s.replace('#include <cub/device/device_radix_sort.cuh>',
-                      '#include <hipcub/hipcub.hpp>\n#include <hipcub/backend/rocprim/device/device_radix_sort.hpp>')
-        s = s.replace('#include <cub/device/device_reduce.cuh>',
-                      '#include <hipcub/backend/rocprim/device/device_reduce.hpp>')
-        s = s.replace('#include <cub/device/device_run_length_encode.cuh>',
-                      '#include <hipcub/backend/rocprim/device/device_run_length_encode.hpp>')
-        s = s.replace('#include <cub/device/device_scan.cuh>',
-                      '#include <hipcub/backend/rocprim/device/device_scan.hpp>')
-        s = s.replace('#include <cub/iterator/counting_input_iterator.cuh>',
-                      '#include <hipcub/backend/rocprim/iterator/counting_input_iterator.hpp>')
-        s = s.replace('#include <cub/iterator/discard_output_iterator.cuh>',
-                      '#include <hipcub/backend/rocprim/iterator/discard_output_iterator.hpp>')
-        s = s.replace('typedef half MappedType', 'typedef __half MappedType')
-        # CUBLAS -> ROCBLAS
-        # s = s.replace('CUBLAS', 'HIPBLAS')
-        # s = s.replace('Cublas', 'Hipblas')
-        # s = s.replace('cublas', 'hipblas')
+    # Additional exact-match replacements.
+    # Order matters for all of the following replacements, reglardless of appearing in logical sections.
+    s = s.replace('kCudaExecutionProvider', 'kRocmExecutionProvider')
+    s = s.replace('CUDAStreamType', 'HIPStreamType')
+    s = s.replace('kCudaStreamDefault', 'kHipStreamDefault')
+    s = s.replace('kCudaStreamCopyIn', 'kHipStreamCopyIn')
+    s = s.replace('kCudaStreamCopyOut', 'kHipStreamCopyOut')
+    s = s.replace('kTotalCudaStreams', 'kTotalHipStreams')
 
-        # CURAND -> HIPRAND
-        s = s.replace('CURAND', 'HIPRAND')
-        s = s.replace('Curand', 'Hiprand')
-        s = s.replace('curand', 'hiprand')
+    # We want rocblas interfaces, not hipblas. Also force some hipify replacements back to rocblas from hipblas.
+    s = s.replace('CublasHandle', 'RocblasHandle')
+    s = s.replace('cublas_handle', 'rocblas_handle')
+    s = s.replace('hipblasHandle_t', 'rocblas_handle')
+    s = s.replace('hipblasDatatype_t', 'rocblas_datatype')
+    s = s.replace('HIPBLAS_STATUS_SUCCESS', 'rocblas_status_success')
+    s = s.replace('hipblasStatus_t', 'rocblas_status')
+    s = s.replace('hipblasCreate', 'rocblas_create_handle')
+    s = s.replace('hipblasDestroy', 'rocblas_destroy_handle')
+    s = s.replace('hipblasSetStream', 'rocblas_set_stream')
+    s = s.replace('HIPBLAS_OP_T', 'rocblas_operation_transpose')
 
-        # NCCL -> RCCL
-        # s = s.replace('NCCL_CALL', 'RCCL_CALL')
-        s = s.replace('#include <nccl.h>', '#include <rccl.h>')
+    s = s.replace('RegisterCudaContribKernels', 'RegisterRocmContribKernels')
+    s = s.replace('cudaEvent', 'hipEvent')
+    s = s.replace('CreateCudaAllocator', 'CreateRocmAllocator')
+    s = s.replace('CudaErrString', 'RocmErrString')
+    s = s.replace('CudaAsyncBuffer', 'RocmAsyncBuffer')
+    s = s.replace('CudaKernel', 'RocmKernel')
+    s = s.replace('ToCudaType', 'ToHipType')
+    s = s.replace('CudaT', 'HipT')
+    s = s.replace('CUDA_LONG', 'HIP_LONG')
+    s = s.replace('CUDA_RETURN_IF_ERROR', 'HIP_RETURN_IF_ERROR')
+    s = s.replace('CUDA_KERNEL_ASSERT', 'HIP_KERNEL_ASSERT')
+    s = s.replace('CUDA_CALL', 'HIP_CALL')
+    s = s.replace('SliceCuda', 'SliceRocm')
+    s = s.replace('thrust::cuda', 'thrust::hip')
+    s = s.replace('CudaCall', 'RocmCall')
+    s = s.replace('cuda', 'rocm')
+    # s = s.replace('Cuda', 'Rocm')
+    s = s.replace('CUDA', 'ROCM')
+    s = s.replace('GPU_WARP_SIZE = 32', 'GPU_WARP_SIZE = 64')
+    s = s.replace('std::exp', 'expf')
+    s = s.replace('std::log', 'logf')
+    s = s.replace('#include <cub/device/device_radix_sort.cuh>',
+                  '#include <hipcub/hipcub.hpp>\n#include <hipcub/backend/rocprim/device/device_radix_sort.hpp>')
+    s = s.replace('#include "cub/device/device_radix_sort.cuh"',
+                  '#include <hipcub/hipcub.hpp>\n#include <hipcub/backend/rocprim/device/device_radix_sort.hpp>')
+    s = s.replace('#include <cub/device/device_reduce.cuh>',
+                  '#include <hipcub/backend/rocprim/device/device_reduce.hpp>')
+    s = s.replace('#include <cub/device/device_run_length_encode.cuh>',
+                  '#include <hipcub/backend/rocprim/device/device_run_length_encode.hpp>')
+    s = s.replace('#include <cub/device/device_scan.cuh>',
+                  '#include <hipcub/backend/rocprim/device/device_scan.hpp>')
+    s = s.replace('#include <cub/iterator/counting_input_iterator.cuh>',
+                  '#include <hipcub/backend/rocprim/iterator/counting_input_iterator.hpp>')
+    s = s.replace('#include <cub/iterator/discard_output_iterator.cuh>',
+                  '#include <hipcub/backend/rocprim/iterator/discard_output_iterator.hpp>')
+    s = s.replace('#include <cub/util_allocator.cuh>',
+                  '#include <hipcub/util_allocator.hpp>')
+    s = s.replace('#include "cub/util_allocator.cuh"',
+                  '#include <hipcub/util_allocator.hpp>')
+    s = s.replace('#include <cub/util_type.cuh>',
+                  '#include <hipcub/backend/rocprim/util_type.hpp>')
+    s = s.replace('#include "cub/util_type.cuh"',
+                  '#include <hipcub/backend/rocprim/util_type.hpp>')
+    s = s.replace('typedef half MappedType', 'typedef __half MappedType')
 
-        # CUDNN -> MIOpen
-        s = s.replace('CUDNN', 'MIOPEN')
-        s = s.replace('Cudnn', 'Miopen')
-        s = s.replace('cudnn', 'miopen')
-        # hipify seems to have a bug for MIOpen, cudnn.h -> hipDNN.h, cudnn -> hipdnn
-        s = s.replace('#include <hipDNN.h>', '#include <miopen/miopen.h>')
-        s = s.replace('hipdnn', 'miopen')
-        s = s.replace('HIPDNN_STATUS_SUCCESS', 'miopenStatusSuccess')
-        s = s.replace('HIPDNN', 'MIOPEN')
+    # CUBLAS -> HIPBLAS
+    # Note: We do not use the hipblas marshalling interfaces; use rocblas instead.
+    # s = s.replace('CUBLAS', 'HIPBLAS')
+    # s = s.replace('Cublas', 'Hipblas')
+    # s = s.replace('cublas', 'hipblas')
 
-        # CUSPARSE -> HIPSPARSE
-        s = s.replace('CUSPARSE', 'HIPSPARSE')
+    # CUBLAS -> ROCBLAS
+    s = s.replace('CUBLAS', 'ROCBLAS')
+    s = s.replace('Cublas', 'Rocblas')
+    s = s.replace('cublas', 'rocblas')
 
-        # CUFFT -> HIPFFT
-        s = s.replace('CUFFT', 'HIPFFT')
+    # CURAND -> HIPRAND
+    s = s.replace('CURAND', 'HIPRAND')
+    s = s.replace('Curand', 'Hiprand')
+    s = s.replace('curand', 'hiprand')
 
-        # Undo where above hipify steps went too far.
-        s = s.replace('ROCM_VERSION', 'CUDA_VERSION')  # semantically different meanings, cannot hipify
+    # NCCL -> RCCL
+    # s = s.replace('NCCL_CALL', 'RCCL_CALL')
+    s = s.replace('#include <nccl.h>', '#include <rccl.h>')
 
-    with open(dst_file_path, 'w') as f:
-        f.write(s)
+    # CUDNN -> MIOpen
+    s = s.replace('CUDNN', 'MIOPEN')
+    s = s.replace('Cudnn', 'Miopen')
+    s = s.replace('cudnn', 'miopen')
+    # hipify seems to have a bug for MIOpen, cudnn.h -> hipDNN.h, cudnn -> hipdnn
+    s = s.replace('#include <hipDNN.h>', '#include <miopen/miopen.h>')
+    s = s.replace('hipdnn', 'miopen')
+    s = s.replace('HIPDNN_STATUS_SUCCESS', 'miopenStatusSuccess')
+    s = s.replace('HIPDNN', 'MIOPEN')
+
+    # CUSPARSE -> HIPSPARSE
+    s = s.replace('CUSPARSE', 'HIPSPARSE')
+
+    # CUFFT -> HIPFFT
+    s = s.replace('CUFFT', 'HIPFFT')
+
+    # Undo where above hipify steps went too far.
+    s = s.replace('id, ROCM', 'id, CUDA')  # cuda_execution_provider.cc
+    s = s.replace('ROCM error executing', 'HIP error executing')
+    s = s.replace('ROCM_PINNED', 'CUDA_PINNED')
+    s = s.replace('rocm_err', 'hip_err')
+    s = s.replace('RegisterHipTrainingKernels', 'RegisterRocmTrainingKernels')
+    s = s.replace('ROCM_VERSION', 'CUDA_VERSION')  # semantically different meanings, cannot hipify
+    s = s.replace('__ROCM_ARCH__', '__CUDA_ARCH__')  # semantically different meanings, cannot hipify
+    # "std::log" above incorrectly changed "std::logic_error" to "logfic_error"
+    s = s.replace('logfic_error', 'std::logic_error')
+
+    # Deletions
+    s = s.replace('#include "device_atomic_functions.h"', '')  # HIP atomics in main hip header already
+
+    do_write = True
+    if os.path.exists(dst_file_path):
+        with open(dst_file_path, 'r', encoding='utf-8') as fout_old:
+            do_write = fout_old.read() != s
+    if do_write:
+        with open(dst_file_path, 'w') as f:
+            f.write(s)
+        return 'Hipified: "{}" -> "{}"'.format(src_file_path, dst_file_path)
+    else:
+        return 'Repeated: "{}" -> "{}"'.format(src_file_path, dst_file_path)
 
 
 def list_files(prefix, path):
@@ -305,29 +319,36 @@ def list_files(prefix, path):
 
 
 def amd_hipify(config_build_dir):
-    cuda_contrib_path = os.path.join(contrib_ops_path, 'cuda')
-    rocm_contrib_path = os.path.join(config_build_dir, 'amdgpu', contrib_ops_path, 'rocm')
-    contrib_files = list_files(cuda_contrib_path, '')
-    for file in contrib_files:
-        if file not in contrib_ops_excluded_files:
-            src_file_path = os.path.join(cuda_contrib_path, file)
-            dst_file_path = os.path.join(rocm_contrib_path, file)
-            hipify(src_file_path, dst_file_path)
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        cuda_path = os.path.join(contrib_ops_path, 'cuda')
+        rocm_path = os.path.join(config_build_dir, 'amdgpu', contrib_ops_path, 'rocm')
+        contrib_files = list_files(cuda_path, '')
+        contrib_results = [executor.submit(hipify, os.path.join(cuda_path, f), os.path.join(rocm_path, f))
+                           for f in contrib_files if f not in contrib_ops_excluded_files]
 
-    cuda_provider_path = os.path.join(providers_path, 'cuda')
-    rocm_provider_path = os.path.join(config_build_dir, 'amdgpu', providers_path, 'rocm')
-    provider_files = list_files(cuda_provider_path, '')
-    for file in provider_files:
-        if file not in provider_excluded_files:
-            src_file_path = os.path.join(cuda_provider_path, file)
-            dst_file_path = os.path.join(rocm_provider_path, file)
-            hipify(src_file_path, dst_file_path)
+        cuda_path = os.path.join(providers_path, 'cuda')
+        rocm_path = os.path.join(config_build_dir, 'amdgpu', providers_path, 'rocm')
+        provider_files = list_files(cuda_path, '')
+        provider_results = [executor.submit(hipify, os.path.join(cuda_path, f), os.path.join(rocm_path, f))
+                            for f in provider_files if f not in provider_excluded_files]
 
-    cuda_training_path = os.path.join(training_ops_path, 'cuda')
-    rocm_training_path = os.path.join(config_build_dir, 'amdgpu', training_ops_path, 'rocm')
-    training_files = list_files(cuda_training_path, '')
-    for file in training_files:
-        if file not in training_ops_excluded_files:
-            src_file_path = os.path.join(cuda_training_path, file)
-            dst_file_path = os.path.join(rocm_training_path, file)
-            hipify(src_file_path, dst_file_path)
+        cuda_path = os.path.join(training_ops_path, 'cuda')
+        rocm_path = os.path.join(config_build_dir, 'amdgpu', training_ops_path, 'rocm')
+        training_files = list_files(cuda_path, '')
+        training_results = [executor.submit(hipify, os.path.join(cuda_path, f), os.path.join(rocm_path, f))
+                            for f in training_files if f not in training_ops_excluded_files]
+        # explicitly wait so that hipify warnings finish printing before logging the hipify statements
+        concurrent.futures.wait(contrib_results)
+        concurrent.futures.wait(provider_results)
+        concurrent.futures.wait(training_results)
+        for result in contrib_results:
+            log.debug(result.result())
+        for result in provider_results:
+            log.debug(result.result())
+        for result in training_results:
+            log.debug(result.result())
+
+
+if __name__ == '__main__':
+    import sys
+    amd_hipify(sys.argv[1])

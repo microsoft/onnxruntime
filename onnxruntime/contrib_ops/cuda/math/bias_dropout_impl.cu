@@ -28,7 +28,7 @@ namespace cuda {
 
 constexpr int UNROLL = 4;
 
-template <typename T, bool has_residual>
+template <typename T, bool has_same_shape_bias, bool has_residual>
 __global__ void BiasDropoutKernel(
     const int64_t N,
     const fast_divmod fdm_dim,
@@ -58,14 +58,19 @@ __global__ void BiasDropoutKernel(
   //   use of Philox_4x32_10 is to generate a multiple of 4 times number of threads.
   for (CUDA_LONG id = idx * UNROLL; id < N; id += step_size) {
     rand = curand_uniform4(&state);
-  
+
     // actual computation
     #pragma unroll
     for (int i = 0; i < UNROLL; i++) {
       CUDA_LONG li = id + i;
       if (li < N) {
-        int offset = fdm_dim.mod(li);
-        float bias = float(bias_data[offset]);
+        float bias;
+        if (has_same_shape_bias) {
+          bias = float(bias_data[li]);
+        } else {
+          int offset = fdm_dim.mod(li);
+          bias = float(bias_data[offset]);
+        }
 
         mask_data[li] = (&rand.x)[i] < p;
         float output_data = (float(X_data[li]) + bias) * mask_data[li] * scale;
@@ -83,7 +88,7 @@ __global__ void BiasDropoutKernel(
 }
 
 
-template <typename T, bool has_residual>
+template <typename T, bool has_same_shape_bias, bool has_residual>
 __global__ void BiasDropoutVectorizedKernel(
     const int64_t N,
     const fast_divmod fdm_dim,
@@ -105,7 +110,7 @@ __global__ void BiasDropoutVectorizedKernel(
 
   float4 rand;
 
-  // using vectorized data load/store approach when N % 4 == 0 
+  // using vectorized data load/store approach when N % 4 == 0
   // since this is typical case for input shape size
   using LoadT = aligned_vector<T, UNROLL>;
   using MaskLoadT = aligned_vector<bool, UNROLL>;
@@ -113,8 +118,14 @@ __global__ void BiasDropoutVectorizedKernel(
 
   for (CUDA_LONG id = idx * UNROLL; id < N; id += step_size) {
     rand = curand_uniform4(&state);
-  
+
     // vectorized load into storage
+    T bias_vec[UNROLL];
+    if (has_same_shape_bias) {
+      LoadT *value0 = reinterpret_cast<LoadT*>(&bias_vec);
+      *value0 = *reinterpret_cast<const LoadT*>(&bias_data[id]);
+    }
+
     T src[UNROLL];
     LoadT *value1 = reinterpret_cast<LoadT*>(&src);
     *value1 = *reinterpret_cast<const LoadT*>(&X_data[id]);
@@ -131,8 +142,13 @@ __global__ void BiasDropoutVectorizedKernel(
     // actual computation
     #pragma unroll
     for (int ii = 0; ii < UNROLL; ii++) {
-      int offset = fdm_dim.mod(id + ii);
-      float bias = float(bias_data[offset]);
+      float bias;
+      if (has_same_shape_bias) {
+        bias = float(bias_vec[ii]);
+      } else {
+        int offset = fdm_dim.mod(id + ii);
+        bias = float(bias_data[offset]);
+      }
 
       mask[ii] = (&rand.x)[ii] < p;
       float output_data = (float(src[ii]) + bias) * mask[ii] * scale;
@@ -162,7 +178,8 @@ void BiasDropoutKernelImpl(
     const T* bias_data,
     const T* residual_data,
     T* Y_data,
-    bool* mask_data) {
+    bool* mask_data,
+    bool has_same_shape_bias) {
   const int block_size = 256;
   const int blocks_per_sm = prop.maxThreadsPerMultiProcessor / block_size;
   const int grid_size = std::min(prop.multiProcessorCount * blocks_per_sm, static_cast<int>(CeilDiv(N, block_size * UNROLL)));
@@ -172,16 +189,32 @@ void BiasDropoutKernelImpl(
   auto seeds = generator.NextPhiloxSeeds(counter_offset);
 
   if (N % UNROLL != 0) {
-    if (residual_data == nullptr) {
-      BiasDropoutKernel<T, false><<<grid_size, block_size, 0, stream>>>(N, fdm_dim, ratio, seeds, X_data, bias_data, residual_data, Y_data, mask_data);
+    if (has_same_shape_bias) {
+      if (residual_data == nullptr) {
+        BiasDropoutKernel<T, true, false><<<grid_size, block_size, 0, stream>>>(N, fdm_dim, ratio, seeds, X_data, bias_data, residual_data, Y_data, mask_data);
+      } else {
+        BiasDropoutKernel<T, true, true><<<grid_size, block_size, 0, stream>>>(N, fdm_dim, ratio, seeds, X_data, bias_data, residual_data, Y_data, mask_data);
+      }
     } else {
-      BiasDropoutKernel<T, true><<<grid_size, block_size, 0, stream>>>(N, fdm_dim, ratio, seeds, X_data, bias_data, residual_data, Y_data, mask_data);
+      if (residual_data == nullptr) {
+        BiasDropoutKernel<T, false, false><<<grid_size, block_size, 0, stream>>>(N, fdm_dim, ratio, seeds, X_data, bias_data, residual_data, Y_data, mask_data);
+      } else {
+        BiasDropoutKernel<T, false, true><<<grid_size, block_size, 0, stream>>>(N, fdm_dim, ratio, seeds, X_data, bias_data, residual_data, Y_data, mask_data);
+      }
     }
   } else {
-    if (residual_data == nullptr) {
-      BiasDropoutVectorizedKernel<T, false><<<grid_size, block_size, 0, stream>>>(N, fdm_dim, ratio, seeds, X_data, bias_data, residual_data, Y_data, mask_data);
+    if (has_same_shape_bias) {
+      if (residual_data == nullptr) {
+        BiasDropoutVectorizedKernel<T, true, false><<<grid_size, block_size, 0, stream>>>(N, fdm_dim, ratio, seeds, X_data, bias_data, residual_data, Y_data, mask_data);
+      } else {
+        BiasDropoutVectorizedKernel<T, true, true><<<grid_size, block_size, 0, stream>>>(N, fdm_dim, ratio, seeds, X_data, bias_data, residual_data, Y_data, mask_data);
+      }
     } else {
-      BiasDropoutVectorizedKernel<T, true><<<grid_size, block_size, 0, stream>>>(N, fdm_dim, ratio, seeds, X_data, bias_data, residual_data, Y_data, mask_data);
+      if (residual_data == nullptr) {
+        BiasDropoutVectorizedKernel<T, false, false><<<grid_size, block_size, 0, stream>>>(N, fdm_dim, ratio, seeds, X_data, bias_data, residual_data, Y_data, mask_data);
+      } else {
+        BiasDropoutVectorizedKernel<T, false, true><<<grid_size, block_size, 0, stream>>>(N, fdm_dim, ratio, seeds, X_data, bias_data, residual_data, Y_data, mask_data);
+      }
     }
   }
 }
@@ -198,7 +231,9 @@ void BiasDropoutKernelImpl(
       const T* bias_data,           \
       const T* residual_data,       \
       T* Y_data,                    \
-      bool* mask_data);
+      bool* mask_data,              \
+      bool has_same_shape_bias);
+
 
 SPECIALIZED_BIAS_DROPOUT_IMPL(float)
 SPECIALIZED_BIAS_DROPOUT_IMPL(double)

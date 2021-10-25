@@ -6,6 +6,7 @@
 from onnxruntime.capi.onnxruntime_inference_collection import OrtValue
 from onnxruntime.capi import _pybind_state as C
 from ._fallback_exceptions import ORTModuleDeviceException, wrap_exception
+from ._torch_module_pytorch import TorchModulePytorch
 
 import os
 import copy
@@ -196,10 +197,10 @@ def check_for_name_collisions_and_bind_methods_to_ortmodule(ortmodule: torch.nn.
                     warnings.warn(f"User Module's attribute name {attribute_name} collides with ORTModule's attribute name. "
                     "User Module's attribute may not be returned when trying to retrieve the attribute through ORTModule.")
 
-def parse_os_env_skip_check_flags(env_name, default_skip_check_str):
-    """Returns a list of SkipChecks as defined by os env variable env_name or default provided"""
+def parse_os_env_skip_check_flags(env_name):
+    """Returns a list of SkipChecks as defined by os env variable env_name"""
 
-    return os.getenv(env_name, default_skip_check_str).split('|')
+    return os.getenv(env_name).split('|')
 
 def get_exception_as_string(exception):
     assert isinstance(exception, Exception), 'exception must be a `Exception`'
@@ -208,3 +209,24 @@ def get_exception_as_string(exception):
         raise exception
     except:
         return traceback.format_exc()
+
+def switch_backend_to_pytorch(ortmodule, pytorch_module):
+    ortmodule._torch_module = TorchModulePytorch(pytorch_module)
+
+    # TODO: Rework by implementing the "__getattribute__" method.
+    #       Assigning all default attributes from user's original torch.nn.Module into ORTModule
+    ortmodule._backward_hooks = pytorch_module._backward_hooks
+    ortmodule._forward_hooks = pytorch_module._forward_hooks
+    ortmodule._forward_pre_hooks = pytorch_module._forward_pre_hooks
+    ortmodule._parameters = pytorch_module._parameters
+    ortmodule._buffers = pytorch_module._buffers
+    ortmodule._non_persistent_buffers_set = pytorch_module._non_persistent_buffers_set
+    ortmodule._is_full_backward_hook = pytorch_module._is_full_backward_hook
+    ortmodule._state_dict_hooks = pytorch_module._state_dict_hooks
+    ortmodule._load_state_dict_pre_hooks = pytorch_module._load_state_dict_pre_hooks
+    ortmodule._modules = pytorch_module._modules
+    ortmodule.forward = pytorch_module.forward
+
+def warn_of_constant_inputs(data):
+    warnings.warn(f"Received input of type {type(data)} which may be treated as a constant by ORT by default."
+        " Please consider moving constant arguments to the model constructor.")
