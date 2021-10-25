@@ -261,10 +261,10 @@ Status KernelRegistry::TryFindKernel(const Node& node,
         << " kernel is not supported in " << expected_provider << "."
         << " Encountered following errors: (" << ToString(verify_kernel_def_error_strs) << ")";
 
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, oss.str());
+    return Status(common::ONNXRUNTIME, common::FAIL, oss.str());
   }
 
-  return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Kernel not found");
+  return Status(common::ONNXRUNTIME, common::FAIL, "Kernel not found");
 }
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
@@ -286,7 +286,7 @@ Status KernelRegistry::Register(KernelDefBuilder& kernel_builder,
 
 Status KernelRegistry::Register(KernelCreateInfo&& create_info) {
   if (!create_info.kernel_def) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "kernel def can't be NULL");
+    return Status(common::ONNXRUNTIME, common::FAIL, "kernel def can't be NULL");
   }
   const std::string key = GetMapKey(*create_info.kernel_def);
   // Check op version conflicts.
@@ -294,9 +294,9 @@ Status KernelRegistry::Register(KernelCreateInfo&& create_info) {
   for (auto i = range.first; i != range.second; ++i) {
     if (i->second.kernel_def &&
         i->second.kernel_def->IsConflict(*create_info.kernel_def)) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                             "Failed to add kernel for " + key +
-                                 ": Conflicting with a registered kernel with op versions.");
+      return Status(common::ONNXRUNTIME, common::FAIL,
+                    "Failed to add kernel for " + key +
+                        ": Conflicting with a registered kernel with op versions.");
     }
   }
 

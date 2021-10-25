@@ -1324,23 +1324,15 @@ common::Status InferenceSession::Initialize() {
       return false;
     }();
 
-    const bool saving_runtime_optimizations = [&]() {
-      if (session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigSaveRuntimeOptimizations,
-                                                             "0") != "1") {
-        return false;
-      }
-      if (loading_ort_format || !saving_ort_format) {
-        LOGS(*session_logger_, WARNING) << "The '" << kOrtSessionOptionsConfigSaveRuntimeOptimizations
-                                        << "' option is only applicable when loading an ONNX model and saving an ORT "
-                                           "format model. It will not be enabled.";
-        return false;
-      }
-      return true;
-    }();
+    bool saving_runtime_optimizations = session_options_.config_options.GetConfigOrDefault(
+                                            kOrtSessionOptionsConfigSaveRuntimeOptimizations, "0") != "1";
 
-#if defined(ORT_MINIMAL_BUILD)
-    ORT_UNUSED_PARAMETER(saving_runtime_optimizations);
-#endif
+    if (saving_runtime_optimizations && !(!loading_ort_format && saving_ort_format)) {
+      LOGS(*session_logger_, WARNING) << "The '" << kOrtSessionOptionsConfigSaveRuntimeOptimizations
+                                      << "' option is only applicable when loading an ONNX model and saving an ORT "
+                                         "format model. It will not be enabled.";
+      saving_runtime_optimizations = false;
+    }
 
     const experimental::fbs::SessionState* serialized_session_state =
         loading_ort_format
