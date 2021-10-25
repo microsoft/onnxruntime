@@ -9,7 +9,7 @@ on:
 
 jobs:
   checklinks:
-    name: Linux
+    name: Check website links
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -19,8 +19,7 @@ jobs:
         uses: ruby/setup-ruby@v1
         with:
           ruby-version: 2.6
-          bundler-cache: true
-      - name: Setup Rubygems, Bundler, jekyll
+      - name: bundler and jekyll
         run: | 
           gem install jekyll bundler
           bundle install
