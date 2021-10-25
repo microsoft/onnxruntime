@@ -2138,11 +2138,8 @@ Example 4:
                 {{"YSquare"}, "Mul", {"Y", "Y"}},
                 {{"dTanhX"}, "Sub", {"C_One", "YSquare"}},
                 {{"dX"}, "Mul", {"dY", "dTanhX"}}};
-            OperatorSetIdProto onnx_opset_13;
-            onnx_opset_13.set_domain("");
-            onnx_opset_13.set_version(13);
 
-            return ONNX_NAMESPACE::FunctionBodyHelper::BuildFunctionProto(functionProto, schema, body, {onnx_opset_13});
+            return ONNX_NAMESPACE::FunctionBodyHelper::BuildFunctionProto(functionProto, schema, body, {});
           });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(LayerNormalizationGrad)
