@@ -179,170 +179,170 @@ Return Value:
         blo     .LConvSym.BlockLoopEpilogue  // need 32 input channel for full unrolled loop
 
 .LConvSym.Blockloop:
-        SMULL   v2.8h, v4.8b, v0.8b
-        SMULL   v3.8h, v4.8b, v1.8b
-        PRFM    PLDL1KEEP, [x1, 448]
-        SMULL   v10.8h, v5.8b, v0.8b
-        SMULL   v11.8h, v5.8b, v1.8b
-        LDP     d4, d5, [x1, 16]
-        SMLAL   v2.8h, v8.8b, v6.8b
-        SMLAL   v3.8h, v8.8b, v7.8b
-        PRFM    PLDL1KEEP, [x1, 512]
-        SMLAL   v10.8h, v9.8b, v6.8b
-        SMLAL   v11.8h, v9.8b, v7.8b
+        smull   v2.8h, v4.8b, v0.8b
+        smull   v3.8h, v4.8b, v1.8b
+        prfm    PLDL1KEEP, [x1, 448]
+        smull   v10.8h, v5.8b, v0.8b
+        smull   v11.8h, v5.8b, v1.8b
+        ldp     d4, d5, [x1, 16]
+        smlal   v2.8h, v8.8b, v6.8b
+        smlal   v3.8h, v8.8b, v7.8b
+        prfm    PLDL1KEEP, [x1, 512]
+        smlal   v10.8h, v9.8b, v6.8b
+        smlal   v11.8h, v9.8b, v7.8b
 
-        LDP     d8, d9, [x1, 80]
-        SMULL   v12.8h, v4.8b, v0.8b
-        SADALP  v16.4s,  v2.8h
-        SMULL   v13.8h, v4.8b, v1.8b
-        SADALP  v17.4s,  v3.8h
-        SMULL   v14.8h, v5.8b, v0.8b
-        SADALP  v18.4s, v10.8h
-        SMULL   v15.8h, v5.8b, v1.8b
-        SADALP  v19.4s, v11.8h
-        LDP     d4, d5, [x1, 32]
-        SMLAL   v12.8h, v8.8b, v6.8b
-        SMLAL   v13.8h, v8.8b, v7.8b
-        PRFM    PLDL1KEEP, [x13, 128]
-        SMLAL   v14.8h, v9.8b, v6.8b
-        SMLAL   v15.8h, v9.8b, v7.8b
+        ldp     d8, d9, [x1, 80]
+        smull   v12.8h, v4.8b, v0.8b
+        sadalp  v16.4s,  v2.8h
+        smull   v13.8h, v4.8b, v1.8b
+        sadalp  v17.4s,  v3.8h
+        smull   v14.8h, v5.8b, v0.8b
+        sadalp  v18.4s, v10.8h
+        smull   v15.8h, v5.8b, v1.8b
+        sadalp  v19.4s, v11.8h
+        ldp     d4, d5, [x1, 32]
+        smlal   v12.8h, v8.8b, v6.8b
+        smlal   v13.8h, v8.8b, v7.8b
+        prfm    PLDL1KEEP, [x13, 128]
+        smlal   v14.8h, v9.8b, v6.8b
+        smlal   v15.8h, v9.8b, v7.8b
 
-        LDP     d8, d9, [x1, 96]
-        SMULL   v2.8h, v4.8b, v0.8b
-        SADALP  v20.4s, v12.8h
-        SMULL   v3.8h, v4.8b, v1.8b
-        SADALP  v21.4s, v13.8h
-        SMULL   v10.8h, v5.8b, v0.8b
-        SADALP  v22.4s, v14.8h
-        SMULL   v11.8h, v5.8b, v1.8b
-        SADALP  v23.4s, v15.8h
-        LDP     d4, d5, [x1, 48]
-        SMLAL   v2.8h, v8.8b, v6.8b
-        SMLAL   v3.8h, v8.8b, v7.8b
-        PRFM    PLDL1KEEP, [x15, 128]
-        SMLAL   v10.8h, v9.8b, v6.8b
-        SMLAL   v11.8h, v9.8b, v7.8b
+        ldp     d8, d9, [x1, 96]
+        smull   v2.8h, v4.8b, v0.8b
+        sadalp  v20.4s, v12.8h
+        smull   v3.8h, v4.8b, v1.8b
+        sadalp  v21.4s, v13.8h
+        smull   v10.8h, v5.8b, v0.8b
+        sadalp  v22.4s, v14.8h
+        smull   v11.8h, v5.8b, v1.8b
+        sadalp  v23.4s, v15.8h
+        ldp     d4, d5, [x1, 48]
+        smlal   v2.8h, v8.8b, v6.8b
+        smlal   v3.8h, v8.8b, v7.8b
+        prfm    PLDL1KEEP, [x15, 128]
+        smlal   v10.8h, v9.8b, v6.8b
+        smlal   v11.8h, v9.8b, v7.8b
 
-        LDP     d8, d9, [x1, 112]
-        SMULL   v12.8h, v4.8b, v0.8b
-        ADD     x1, x1, 128
-        SADALP  v24.4s,  v2.8h
-        SMULL   v13.8h, v4.8b, v1.8b
-        SADALP  v25.4s,  v3.8h
-        SMULL   v14.8h, v5.8b, v0.8b
-        SADALP  v26.4s, v10.8h
-        SMULL   v15.8h, v5.8b, v1.8b
-        SADALP  v27.4s, v11.8h
-        SMLAL   v12.8h, v8.8b, v6.8b
-        LDP     d4, d5, [x1]            // Read B
-        SMLAL   v13.8h, v8.8b, v7.8b
-        SUBS    x14, x14, 16
-        SMLAL   v14.8h, v9.8b, v6.8b
+        ldp     d8, d9, [x1, 112]
+        smull   v12.8h, v4.8b, v0.8b
+        add     x1, x1, 128
+        sadalp  v24.4s,  v2.8h
+        smull   v13.8h, v4.8b, v1.8b
+        sadalp  v25.4s,  v3.8h
+        smull   v14.8h, v5.8b, v0.8b
+        sadalp  v26.4s, v10.8h
+        smull   v15.8h, v5.8b, v1.8b
+        sadalp  v27.4s, v11.8h
+        smlal   v12.8h, v8.8b, v6.8b
+        ldp     d4, d5, [x1]            // Read B
+        smlal   v13.8h, v8.8b, v7.8b
+        subs    x14, x14, 16
+        smlal   v14.8h, v9.8b, v6.8b
         dup     v2.8b, w17
-        LDP     d0, d6, [x13], 16       // Read A0
-        SMLAL   v15.8h, v9.8b, v7.8b
+        ldp     d0, d6, [x13], 16       // Read A0
+        smlal   v15.8h, v9.8b, v7.8b
 
-        SADALP  v28.4s, v12.8h
-        LDP     d1, d7, [x15], 16       // Read A1
+        sadalp  v28.4s, v12.8h
+        ldp     d1, d7, [x15], 16       // Read A1
         eor     v0.8b, v0.8b, v2.8b
         eor     v6.8b, v6.8b, v2.8b
-        SADALP  v29.4s, v13.8h
-        SADALP  v30.4s, v14.8h
+        sadalp  v29.4s, v13.8h
+        sadalp  v30.4s, v14.8h
         eor     v1.8b, v1.8b, v2.8b
         eor     v7.8b, v7.8b, v2.8b
-        LDP     d8, d9, [x1, 64]        // Read B
-        SADALP  v31.4s, v15.8h
-        B.HS    .LConvSym.Blockloop
+        ldp     d8, d9, [x1, 64]        // Read B
+        sadalp  v31.4s, v15.8h
+        b.hs    .LConvSym.Blockloop
 
 .LConvSym.BlockLoopEpilogue:            // remaining 16 input channels
-        SMULL   v2.8h, v4.8b, v0.8b
-        SMULL   v3.8h, v4.8b, v1.8b
-        SMULL   v10.8h, v5.8b, v0.8b
-        SMULL   v11.8h, v5.8b, v1.8b
-        LDP     d4, d5, [x1, 16]
-        SMLAL   v2.8h, v8.8b, v6.8b
-        SMLAL   v3.8h, v8.8b, v7.8b
-        SMLAL   v10.8h, v9.8b, v6.8b
-        SMLAL   v11.8h, v9.8b, v7.8b
+        smull   v2.8h, v4.8b, v0.8b
+        smull   v3.8h, v4.8b, v1.8b
+        smull   v10.8h, v5.8b, v0.8b
+        smull   v11.8h, v5.8b, v1.8b
+        ldp     d4, d5, [x1, 16]
+        smlal   v2.8h, v8.8b, v6.8b
+        smlal   v3.8h, v8.8b, v7.8b
+        smlal   v10.8h, v9.8b, v6.8b
+        smlal   v11.8h, v9.8b, v7.8b
 
-        LDP     d8, d9, [x1, 80]
-        SMULL   v12.8h, v4.8b, v0.8b
-        SADALP  v16.4s,  v2.8h
-        SMULL   v13.8h, v4.8b, v1.8b
-        SADALP  v17.4s,  v3.8h
-        SMULL   v14.8h, v5.8b, v0.8b
-        SADALP  v18.4s, v10.8h
-        SMULL   v15.8h, v5.8b, v1.8b
-        SADALP  v19.4s, v11.8h
-        LDP     d4, d5, [x1, 32]
-        SMLAL   v12.8h, v8.8b, v6.8b
-        SMLAL   v13.8h, v8.8b, v7.8b
-        SMLAL   v14.8h, v9.8b, v6.8b
-        SMLAL   v15.8h, v9.8b, v7.8b
+        ldp     d8, d9, [x1, 80]
+        smull   v12.8h, v4.8b, v0.8b
+        sadalp  v16.4s,  v2.8h
+        smull   v13.8h, v4.8b, v1.8b
+        sadalp  v17.4s,  v3.8h
+        smull   v14.8h, v5.8b, v0.8b
+        sadalp  v18.4s, v10.8h
+        smull   v15.8h, v5.8b, v1.8b
+        sadalp  v19.4s, v11.8h
+        ldp     d4, d5, [x1, 32]
+        smlal   v12.8h, v8.8b, v6.8b
+        smlal   v13.8h, v8.8b, v7.8b
+        smlal   v14.8h, v9.8b, v6.8b
+        smlal   v15.8h, v9.8b, v7.8b
 
-        LDP     d8, d9, [x1, 96]
-        SMULL   v2.8h, v4.8b, v0.8b
-        SADALP  v20.4s, v12.8h
-        SMULL   v3.8h, v4.8b, v1.8b
-        SADALP  v21.4s, v13.8h
-        SMULL   v10.8h, v5.8b, v0.8b
-        SADALP  v22.4s, v14.8h
-        SMULL   v11.8h, v5.8b, v1.8b
-        SADALP  v23.4s, v15.8h
-        LDP     d4, d5, [x1, 48]
-        SMLAL   v2.8h, v8.8b, v6.8b
-        SMLAL   v3.8h, v8.8b, v7.8b
-        SMLAL   v10.8h, v9.8b, v6.8b
-        SMLAL   v11.8h, v9.8b, v7.8b
+        ldp     d8, d9, [x1, 96]
+        smull   v2.8h, v4.8b, v0.8b
+        sadalp  v20.4s, v12.8h
+        smull   v3.8h, v4.8b, v1.8b
+        sadalp  v21.4s, v13.8h
+        smull   v10.8h, v5.8b, v0.8b
+        sadalp  v22.4s, v14.8h
+        smull   v11.8h, v5.8b, v1.8b
+        sadalp  v23.4s, v15.8h
+        ldp     d4, d5, [x1, 48]
+        smlal   v2.8h, v8.8b, v6.8b
+        smlal   v3.8h, v8.8b, v7.8b
+        smlal   v10.8h, v9.8b, v6.8b
+        smlal   v11.8h, v9.8b, v7.8b
 
-        LDP     d8, d9, [x1, 112]
-        SMULL   v12.8h, v4.8b, v0.8b
-        SADALP  v24.4s,  v2.8h
-        SMULL   v13.8h, v4.8b, v1.8b
-        SADALP  v25.4s,  v3.8h
-        SMULL   v14.8h, v5.8b, v0.8b
-        SADALP  v26.4s, v10.8h
-        SMULL   v15.8h, v5.8b, v1.8b
-        SADALP  v27.4s, v11.8h
-        SMLAL   v12.8h, v8.8b, v6.8b
-        SMLAL   v13.8h, v8.8b, v7.8b
-        SMLAL   v14.8h, v9.8b, v6.8b
-        SMLAL   v15.8h, v9.8b, v7.8b
-        ADD     x1, x1, 128
+        ldp     d8, d9, [x1, 112]
+        smull   v12.8h, v4.8b, v0.8b
+        sadalp  v24.4s,  v2.8h
+        smull   v13.8h, v4.8b, v1.8b
+        sadalp  v25.4s,  v3.8h
+        smull   v14.8h, v5.8b, v0.8b
+        sadalp  v26.4s, v10.8h
+        smull   v15.8h, v5.8b, v1.8b
+        sadalp  v27.4s, v11.8h
+        smlal   v12.8h, v8.8b, v6.8b
+        smlal   v13.8h, v8.8b, v7.8b
+        smlal   v14.8h, v9.8b, v6.8b
+        smlal   v15.8h, v9.8b, v7.8b
+        add     x1, x1, 128
 
-        SADALP  v28.4s, v12.8h
-        SADALP  v29.4s, v13.8h
-        SADALP  v30.4s, v14.8h
-        SADALP  v31.4s, v15.8h
-        TBNZ    x14, 3, .LConvSym.8InputChannels
+        sadalp  v28.4s, v12.8h
+        sadalp  v29.4s, v13.8h
+        sadalp  v30.4s, v14.8h
+        sadalp  v31.4s, v15.8h
+        tbnz    x14, 3, .LConvSym.8InputChannels
 
-        SUBS    x9, x9, 1
-        B.HI    .LConvSym.KernelSizeLoop
+        subs    x9, x9, 1
+        b.hi    .LConvSym.KernelSizeLoop
 
 .LConvSym.Requantize:
         dup    v9.8h,w18
         tst     w10,#.LMLAS_CONV_SYM_FLAG_PER_CHANNEL_SCALE
         beq     .LConvSym.BroadcastScaleValue
-        LD1     {v4.4s,v5.4s}, [x12]   // load scale vector
+        ld1     {v4.4s,v5.4s}, [x12]   // load scale vector
         b       .LConvSym.AccumulatorsToFloat
 
 .LConvSym.BroadcastScaleValue:
-        LD1R   {v4.4s},[x12]                // load scale Value
+        ld1r   {v4.4s},[x12]                // load scale Value
         mov    v5.16b, v4.16b
 
 .LConvSym.AccumulatorsToFloat:
-        ADDP    v16.4s,v16.4s,v18.4s
-        ADDP    v20.4s,v20.4s,v22.4s
-        ADDP    v24.4s,v24.4s,v26.4s
-        ADDP    v28.4s,v28.4s,v30.4s
-        ADDP    v17.4s,v17.4s,v19.4s
-        ADDP    v21.4s,v21.4s,v23.4s
-        ADDP    v25.4s,v25.4s,v27.4s
-        ADDP    v29.4s,v29.4s,v31.4s
-        ADDP    v0.4s,v16.4s,v20.4s
-        ADDP    v1.4s,v24.4s,v28.4s
-        ADDP    v2.4s,v17.4s,v21.4s
-        ADDP    v3.4s,v25.4s,v29.4s
+        addp    v16.4s,v16.4s,v18.4s
+        addp    v20.4s,v20.4s,v22.4s
+        addp    v24.4s,v24.4s,v26.4s
+        addp    v28.4s,v28.4s,v30.4s
+        addp    v17.4s,v17.4s,v19.4s
+        addp    v21.4s,v21.4s,v23.4s
+        addp    v25.4s,v25.4s,v27.4s
+        addp    v29.4s,v29.4s,v31.4s
+        addp    v0.4s,v16.4s,v20.4s
+        addp    v1.4s,v24.4s,v28.4s
+        addp    v2.4s,v17.4s,v21.4s
+        addp    v3.4s,v25.4s,v29.4s
         scvtf    v0.4s,v0.4s         // convert to float
         scvtf    v1.4s,v1.4s
         scvtf    v2.4s,v2.4s
@@ -351,7 +351,7 @@ Return Value:
         FMUL v1.4s,v1.4s,v5.4s
         FMUL v2.4s,v2.4s,v4.4s
         FMUL v3.4s,v3.4s,v5.4s
-        SUBS    x6, x6, 8
+        subs    x6, x6, 8
         fcvtns   v0.4s,v0.4s          // convert to int
         fcvtns   v1.4s,v1.4s
         fcvtns   v2.4s,v2.4s
@@ -364,10 +364,10 @@ Return Value:
         sqadd   v2.8h,v2.8h,v9.8h
         sqxtun   v0.8b,v0.8h                 // shorten to int8
         sqxtun2  v0.16b,v2.8h
-        B.LO    .LConvSym.PartialStore
+        b.lo    .LConvSym.PartialStore
 
-        ST1     {v0.d}[1],[x5]              // full 2x8 store to c 
-        ST1     {v0.8b}, [x2]
+        st1     {v0.d}[1],[x5]              // full 2x8 store to c 
+        st1     {v0.8b}, [x2]
 
 .LConvSym.ExitKernel:
         ldp     d14,d15,[sp,#48]
@@ -378,68 +378,68 @@ Return Value:
 
 .LConvSym.8InputChannels:
         dup     v2.8b, w17
-        LDR     d0, [x13]
-        LDR     d1, [x15]
-        LDP     d4, d5, [x1]
-        LDP     d6, d7, [x1, 16]
+        ldr     d0, [x13]
+        ldr     d1, [x15]
+        ldp     d4, d5, [x1]
+        ldp     d6, d7, [x1, 16]
         eor     v0.8b, v0.8b, v2.8b
         eor     v1.8b, v1.8b, v2.8b
-        SMULL   v2.8h, v4.8b, v0.8b
-        SMULL   v3.8h, v4.8b, v1.8b
-        SMULL   v10.8h, v5.8b, v0.8b
-        SMULL   v11.8h, v5.8b, v1.8b
-        SMULL   v12.8h, v6.8b, v0.8b
-        SADALP  v16.4s,  v2.8h
-        SMULL   v13.8h, v6.8b, v1.8b
-        SADALP  v17.4s,  v3.8h
-        SMULL   v14.8h, v7.8b, v0.8b
-        SADALP  v18.4s, v10.8h
-        SMULL   v15.8h, v7.8b, v1.8b
-        SADALP  v19.4s, v11.8h
-        LDP     d4, d5, [x1, 32]
-        SMULL   v2.8h, v4.8b, v0.8b
-        SADALP  v20.4s, v12.8h
-        SMULL   v3.8h, v4.8b, v1.8b
-        SADALP  v21.4s, v13.8h
-        SMULL   v10.8h, v5.8b, v0.8b
-        SADALP  v22.4s, v14.8h
-        SMULL   v11.8h, v5.8b, v1.8b
-        SADALP  v23.4s, v15.8h
-        LDP     d6, d7, [x1, 48]
-        SMULL   v12.8h, v6.8b, v0.8b
-        SADALP  v24.4s,  v2.8h
-        SMULL   v13.8h, v6.8b, v1.8b
-        SADALP  v25.4s,  v3.8h
-        SMULL   v14.8h, v7.8b, v0.8b
-        SADALP  v26.4s, v10.8h
-        SMULL   v15.8h, v7.8b, v1.8b
-        SADALP  v27.4s, v11.8h
-        ADD     x1, x1, 64
-        SADALP  v28.4s, v12.8h
-        SADALP  v29.4s, v13.8h
-        SADALP  v30.4s, v14.8h
-        SADALP  v31.4s, v15.8h
+        smull   v2.8h, v4.8b, v0.8b
+        smull   v3.8h, v4.8b, v1.8b
+        smull   v10.8h, v5.8b, v0.8b
+        smull   v11.8h, v5.8b, v1.8b
+        smull   v12.8h, v6.8b, v0.8b
+        sadalp  v16.4s,  v2.8h
+        smull   v13.8h, v6.8b, v1.8b
+        sadalp  v17.4s,  v3.8h
+        smull   v14.8h, v7.8b, v0.8b
+        sadalp  v18.4s, v10.8h
+        smull   v15.8h, v7.8b, v1.8b
+        sadalp  v19.4s, v11.8h
+        ldp     d4, d5, [x1, 32]
+        smull   v2.8h, v4.8b, v0.8b
+        sadalp  v20.4s, v12.8h
+        smull   v3.8h, v4.8b, v1.8b
+        sadalp  v21.4s, v13.8h
+        smull   v10.8h, v5.8b, v0.8b
+        sadalp  v22.4s, v14.8h
+        smull   v11.8h, v5.8b, v1.8b
+        sadalp  v23.4s, v15.8h
+        ldp     d6, d7, [x1, 48]
+        smull   v12.8h, v6.8b, v0.8b
+        sadalp  v24.4s,  v2.8h
+        smull   v13.8h, v6.8b, v1.8b
+        sadalp  v25.4s,  v3.8h
+        smull   v14.8h, v7.8b, v0.8b
+        sadalp  v26.4s, v10.8h
+        smull   v15.8h, v7.8b, v1.8b
+        sadalp  v27.4s, v11.8h
+        add     x1, x1, 64
+        sadalp  v28.4s, v12.8h
+        sadalp  v29.4s, v13.8h
+        sadalp  v30.4s, v14.8h
+        sadalp  v31.4s, v15.8h
 
         # ks loop
-        SUBS    x9, x9, 1
-        B.HI    .LConvSym.KernelSizeLoop
-        B       .LConvSym.Requantize
+        subs    x9, x9, 1
+        b.hi    .LConvSym.KernelSizeLoop
+        b       .LConvSym.Requantize
 
 .LConvSym.PartialStore:
-        TBZ     x6, 2, 7f
-        ST1     {v0.s}[2], [x5], 4
-        STR     s0, [x2], 4
+        tbz     x6, 2, 7f
+        st1     {v0.s}[2], [x5], 4
+        str     s0, [x2], 4
         EXT     v0.16b, v0.16b, v0.16b, 4
 
 7:
-        TBZ     x6, 1, 8f
-        ST1     {v0.h}[4], [x5], 2
-        STR     h0, [x2], 2
+        tbz     x6, 1, 8f
+        st1     {v0.h}[4], [x5], 2
+        str     h0, [x2], 2
         EXT     v0.16b, v0.16b, v0.16b, 2
 8:
-        TBZ     x6, 0, .LConvSym.ExitKernel
-        ST1     {v0.b}[8], [x5]
-        STR     b0, [x2]
+        tbz     x6, 0, .LConvSym.ExitKernel
+        st1     {v0.b}[8], [x5]
+        str     b0, [x2]
         b       .LConvSym.ExitKernel
 
         .end
