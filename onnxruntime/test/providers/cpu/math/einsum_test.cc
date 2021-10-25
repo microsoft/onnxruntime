@@ -251,7 +251,7 @@ TEST(Einsum, ExplicitEinsumAsMatmul_2) {
   test.AddInput<float>("x", {2, 1}, {2.f, 3.f});
   test.AddInput<float>("y", {2, 2}, {1.f, 2.f, 3.f, 4.f});
   test.AddOutput<float>("o", {2, 2}, {8.f, 12.f, 12.f, 18.f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 // Implicit
@@ -297,7 +297,7 @@ TEST(Einsum, ImplicitEinsumAsMatmul_2) {
   test.AddInput<float>("x", {2, 1}, {2.f, 3.f});
   test.AddInput<float>("y", {2, 2}, {1.f, 2.f, 3.f, 4.f});
   test.AddOutput<float>("o", {2, 2}, {8.f, 12.f, 12.f, 18.f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(Einsum, DiagonalWithMatmul) {
@@ -333,7 +333,7 @@ TEST(Einsum, ExplicitEinsumAsDiagonalOpWithAxisReduced) {
   test.AddAttribute<std::string>("equation", "iji->j");
   test.AddInput<float>("x", {2, 2, 2}, {1.f, 2.f, 3.f, 4.f, 1.f, 2.f, 3.f, 4.f});
   test.AddOutput<float>("o", {2}, {3.f, 7.f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(Einsum, ExplicitEinsumAsDiagonalOpWithAxisPreserved) {
@@ -413,7 +413,7 @@ TEST(Einsum, ImplicitEinsumAsDiagonalOpWithAxisReduced) {
   test.AddAttribute<std::string>("equation", "iji");
   test.AddInput<float>("x", {2, 2, 2}, {1.f, 2.f, 3.f, 4.f, 1.f, 2.f, 3.f, 4.f});
   test.AddOutput<float>("o", {2}, {3.f, 7.f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(Einsum, ImplicitEinsumAsBatchedDiagonalOp) {
@@ -527,7 +527,7 @@ TEST(Einsum, ExplicitEinsumAsTensorContractionReshapeLeft) {
   test.AddInput<float>("x", {2, 1, 2, 2}, {1.f, 2.f, 1.f, 2.f, 1.f, 2.f, 1.f, 2.f});
   test.AddInput<float>("y", {2, 2, 2, 1}, {1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f});
   test.AddOutput<float>("o", {2, 2, 2, 1}, {3.f, 9.f, 6.f, 12.f, 15.f, 21.f, 18.f, 24.f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 // Implicit
