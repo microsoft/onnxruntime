@@ -4198,11 +4198,11 @@ def test_tanh_grad():
         return prediction, loss
     device = 'cuda'
 
-    N, D_in, H, D_out = 120, 15360, 500, 15360
+    N, D_in, H, D_out = 120, 1536, 500, 1536
     pt_model = NeuralNetTanh(D_in, H, D_out).to(device)
     ort_model = ORTModule(copy.deepcopy(pt_model))
 
-    for step in range(1000):
+    for step in range(10):
         pt_x = torch.randn(N, D_in, device=device, requires_grad=True)
         ort_x = copy.deepcopy(pt_x)
         ort_prediction, ort_loss = run_step(ort_model, ort_x)
