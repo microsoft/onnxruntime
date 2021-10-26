@@ -1,11 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/optimizer/transpose_optimizer/api_impl.h"
+
 #include <deque>
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/initializer.h"
 #include "core/optimizer/utils.h"
-#include "core/optimizer/transpose_optimizer/api_impl.h"
 #include "core/optimizer/transpose_optimizer/ort_transpose_optimizer.h"
 #include "core/providers/cpu/tensor/transpose.h"
 
@@ -20,7 +21,7 @@ class ApiValueInfo final : public api::ValueInfoRef {
   NodeArg& node_arg_;
 
  public:
-  explicit ApiValueInfo(NodeArg& node_arg) : node_arg_(node_arg){};
+  explicit ApiValueInfo(NodeArg& node_arg) : node_arg_(node_arg){}
   std::string_view Name() const override;
   std::optional<std::vector<int64_t>> Shape() const override;
   api::DataType DType() const override;
@@ -41,7 +42,7 @@ class ApiTensor final : public api::TensorRef {
 
  public:
   explicit ApiTensor(const onnx::TensorProto& tensor_proto, const Graph& graph, AllocatorPtr cpu_allocator) 
-      : tensor_proto_(tensor_proto), graph_(graph), cpu_allocator_(std::move(cpu_allocator)){};
+      : tensor_proto_(tensor_proto), graph_(graph), cpu_allocator_(std::move(cpu_allocator)){}
 
   const onnx::TensorProto& TensorProto() {
     return tensor_proto_;
@@ -57,15 +58,13 @@ class ApiTensor final : public api::TensorRef {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ApiTensor);
 };
 
-class ApiGraph;
-
 class ApiNode final : public api::NodeRef {
  private:
   onnxruntime::Node& node_;
   Graph& graph_;
 
  public:
-  explicit ApiNode(onnxruntime::Node& node, Graph& graph) : node_(node), graph_(graph){};
+  explicit ApiNode(onnxruntime::Node& node, Graph& graph) : node_(node), graph_(graph){}
 
   onnxruntime::Node& Node() {
     return node_;
@@ -101,7 +100,7 @@ class ApiGraph final : public api::GraphRef {
  public:
   explicit ApiGraph(onnxruntime::Graph& graph, AllocatorPtr cpu_allocator, const logging::Logger& logger,
                     const char* new_node_ep) : graph_(graph), cpu_allocator_(std::move(cpu_allocator)),
-                    logger_(logger), new_node_ep_(new_node_ep){};
+                    logger_(logger), new_node_ep_(new_node_ep){}
 
   onnxruntime::Graph& Graph() {
     return graph_;
@@ -268,12 +267,7 @@ template<typename T>
 std::vector<T> TensorDataToVector(const onnxruntime::Tensor& tensor) {
   const T* data = tensor.Data<T>();
   size_t num_elements = gsl::narrow_cast<size_t>(tensor.Shape().Size());
-  std::vector<T> int_data(num_elements);
-  for (size_t i = 0; i < num_elements; ++i) {
-    int_data[i] = *data++;
-  }
-
-  return int_data;
+  return std::vector<T>(data, data + num_elements);
 }
 
 std::vector<int64_t> ApiTensor::DataInt64() const {

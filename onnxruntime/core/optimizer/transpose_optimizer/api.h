@@ -125,7 +125,7 @@ class ValueInfoRef {
   /// <summary>
   /// Inserts constant dimensions of value 1 at the specified axes of the inferred tensor shape. Only used for values
   /// that are node outputs. Has no effect if rank is unknown. Behavior is undefined if axes are negative or exceed
-  /// rank + axes.size(). Preferred to SetShape since it can maintain symbolic shape information.
+  /// rank + axes.size() - 1. Preferred to SetShape since it can maintain symbolic shape information.
   /// </summary>
   /// <param name="axes">Indices of dimensions to add. Indices are relative to final shape.</param>
   virtual void UnsqueezeDims(const std::vector<int64_t>& axes) = 0;
@@ -355,7 +355,7 @@ class GraphRef {
   /// Creates an int64 initializer with the specified shape and values. Returns the name.
   /// </summary>
   /// <param name="shape">Dimensions for new initializer. Entries are Nonnegative.</param>
-  /// <param name="values">Flattened values for new initializer. Length matches produce of dimensions.</param>
+  /// <param name="values">Flattened values for new initializer. Length matches product of dimensions.</param>
   /// <returns>Generated name for the initializer</returns>
   virtual std::string_view AddInitializerInt64(const std::vector<int64_t>& shape,
                                                      const std::vector<int64_t>& values) = 0;
@@ -364,7 +364,7 @@ class GraphRef {
   /// Creates an int32 initializer with the specified shape and values. Returns the name.
   /// </summary>
   /// <param name="shape">Dimensions for new initializer. Entries are Nonnegative.</param>
-  /// <param name="values">Flattened values for new initializer. Length matches produce of dimensions.</param>
+  /// <param name="values">Flattened values for new initializer. Length matches product of dimensions.</param>
   /// <returns>Generated name for the initializer</returns>
   virtual std::string_view AddInitializerInt32(const std::vector<int64_t>& shape,
                                                      const std::vector<int32_t>& values) = 0;
@@ -452,10 +452,10 @@ struct LayoutHandlerResult {
   bool should_change_layout;
   // The rank of the inputs/outputs. All transposes use this rank.
   size_t rank;
-  // If either new_op_typeor new_domain are provided, the node will be replaced with one with the specified op/domain.
+  // If either new_op_type or new_domain are provided, the node will be replaced with one with the specified op/domain.
   // All attributes are copied over.
-  std::optional<std::string_view> new_op_type;
-  std::optional<std::string_view> new_domain;
+  std::optional<std::string> new_op_type;
+  std::optional<std::string> new_domain;
 };
 
 using LayoutHandler = LayoutHandlerResult (*)(api::GraphRef& graph, api::NodeRef& node);
