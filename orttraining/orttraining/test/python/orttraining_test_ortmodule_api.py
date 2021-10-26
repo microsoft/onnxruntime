@@ -4213,3 +4213,37 @@ def test_sigmoid_grad():
         _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
         _test_helpers.assert_values_are_close(ort_x.grad, pt_x.grad)
         _test_helpers.assert_values_are_close(ort_loss, pt_loss)
+
+
+def test_tanh_grad():
+    class NeuralNetTanh(torch.nn.Module):
+        def __init__(self, input_size, hidden_size, num_classes):
+            super(NeuralNetTanh, self).__init__()
+
+            self.fc1 = torch.nn.Linear(input_size, hidden_size)
+            self.tanh = torch.nn.Tanh()
+
+        def forward(self, input1):
+            out = self.fc1(input1)
+            out = self.tanh(out)
+            return out
+
+    def run_step(model, x):
+        prediction = model(x)
+        loss = prediction.sum()
+        loss.backward()
+        return prediction, loss
+    device = 'cuda'
+
+    N, D_in, H, D_out = 120, 1536, 500, 1536
+    pt_model = NeuralNetTanh(D_in, H, D_out).to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+
+    for step in range(10):
+        pt_x = torch.randn(N, D_in, device=device, requires_grad=True)
+        ort_x = copy.deepcopy(pt_x)
+        ort_prediction, ort_loss = run_step(ort_model, ort_x)
+        pt_prediction, pt_loss = run_step(pt_model, pt_x)
+        _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
+        _test_helpers.assert_values_are_close(ort_x.grad, pt_x.grad)
+        _test_helpers.assert_values_are_close(ort_loss, pt_loss)
