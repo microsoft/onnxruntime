@@ -84,7 +84,7 @@ jobs:
      python -m pip install -q setuptools wheel numpy
      python -m pip install -q ninja cmake typing_extensions
      python -m pip install Cerberus dataclasses pandas protobuf scikit-learn scipy tqdm 
-     python -m pip install --pre torch torchvision torchaudio -f https://download.pytorch.org/whl/nightly/cpu/torch_nightly.html
+     python -m pip install torch torchvision torchaudio
      python -c "import torch; import sys; print(sys.path); print(torch.__file__); import ctypes; print(ctypes.WinDLL('c10.dll'))"
      python -c "import ctypes; print(ctypes.WinDLL('c10.dll'))"
      python -m pip list
