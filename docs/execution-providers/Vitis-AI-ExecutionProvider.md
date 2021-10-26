@@ -96,7 +96,7 @@ A couple of environment variables can be used to customize the Vitis-AI executio
 
 When using python, you can base yourself on the following example:
 
-```
+```python
 # Import pyxir before onnxruntime
 import pyxir
 import pyxir.frontend.onnx

@@ -96,7 +96,7 @@ See more information on the TensorRT Execution Provider [here](../execution-prov
    * The path to the CUDA installation must be provided via the CUDA_PATH environment variable, or the `--cuda_home` parameter. The CUDA path should contain `bin`, `include` and `lib` directories.
    * The path to the CUDA `bin` directory must be added to the PATH environment variable so that `nvcc` is found.
    * The path to the cuDNN installation (path to folder that contains libcudnn.so) must be provided via the cuDNN_PATH environment variable, or `--cudnn_home` parameter.
- * Install [TensorRT](https://developer.nvidia.com/nvidia-tensorrt-download)
+ * Install [TensorRT](https://developer.nvidia.com/tensorrt)
    * The TensorRT execution provider for ONNX Runtime is built and tested with TensorRT 8.0.3.4.
    * To use earlier versions of TensorRT, prior to building, change the onnx-tensorrt submodule to a branch corresponding to the TensorRT version. e.g. To use TensorRT 7.2.x,
      * cd cmake/external/onnx-tensorrt
@@ -428,7 +428,7 @@ See more information on the ACL Execution Provider [here](../execution-providers
 source /opt/fsl-imx-xwayland/4.*/environment-setup-aarch64-poky-linux
 alias cmake="/usr/bin/cmake -DCMAKE_TOOLCHAIN_FILE=$OECORE_NATIVE_SYSROOT/usr/share/cmake/OEToolchainConfig.cmake"
 ```
-* See [Build ARM](#ARM) below for information on building for ARM devices
+* See [Build ARM](inferencing.md#ARM) below for information on building for ARM devices
 
 ### Build Instructions
 {: .no_toc }
@@ -498,7 +498,7 @@ source /opt/fsl-imx-xwayland/4.*/environment-setup-aarch64-poky-linux
 alias cmake="/usr/bin/cmake -DCMAKE_TOOLCHAIN_FILE=$OECORE_NATIVE_SYSROOT/usr/share/cmake/OEToolchainConfig.cmake"
 ```
 
-* See [Build ARM](#ARM) below for information on building for ARM devices
+* See [Build ARM](inderencing.md#ARM) below for information on building for ARM devices
 
 ### Build Instructions
 {: .no_toc }
@@ -537,7 +537,7 @@ See more information on the RKNPU Execution Provider [here](../execution-provide
 
 
 * Supported platform: RK1808 Linux
-* See [Build ARM](#ARM) below for information on building for ARM devices
+* See [Build ARM](inferencing.md#ARM) below for information on building for ARM devices
 * Use gcc-linaro-6.3.1-2017.05-x86_64_aarch64-linux-gnu instead of gcc-linaro-6.3.1-2017.05-x86_64_arm-linux-gnueabihf, and modify CMAKE_CXX_COMPILER & CMAKE_C_COMPILER in tool.cmake:
   
 ```
