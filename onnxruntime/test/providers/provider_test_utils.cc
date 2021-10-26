@@ -525,7 +525,7 @@ std::vector<int64_t> OpTester::GetDimsForProto(gsl::span<const int64_t> dims) {
   return dims_for_proto;
 }
 
-void OpTester::AddShapeToTensorData(NodeArg& node_arg, const std::vector<int64_t>& dims,
+void OpTester::AddShapeToTensorData(NodeArg& node_arg, gsl::span<const int64_t> dims,
                                     const std::vector<std::string>* dim_params) {
   if (dim_params && !(dim_params->empty()) && add_shape_to_tensor_data_) {
     // If dim_params presents, configure node_arg's dim value based on dim_params, which supports symbolic dim and dim broadcast.

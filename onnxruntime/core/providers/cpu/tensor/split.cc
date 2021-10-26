@@ -173,7 +173,6 @@ Status Split::ComputeImpl(OpKernelContext& context, const Tensor& input) const {
                                         split_sizes));
 
   // copy dimensions so we can update the selected axis in place
-  auto input_dims = input_shape.GetDims();
   auto output_dimensions = input_shape.GetDimsAsVector();
 
   int64_t input_offset = 0;
