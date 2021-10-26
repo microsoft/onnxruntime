@@ -897,7 +897,7 @@ def run_symbolic_shape_inference(model_path, new_model_path):
         return True, None
     except Exception as e:
         logger.error(e)
-        return False, e
+        return False, "Symbolic shape inference error"
 
 def create_session(model_path, providers, session_options):
     logger.info(model_path)
