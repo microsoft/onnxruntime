@@ -167,5 +167,25 @@ Status SigmoidGrad<T>::Compute(OpKernelContext* context) const {
   dx = dy * y * (1 - y);
   return Status::OK();
 }
+
+ONNX_OPERATOR_KERNEL_EX(
+    TanhGrad,
+    kMSDomain,
+    1,
+    kCpuExecutionProvider,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+    TanhGrad<float>);
+
+template <typename T>
+Status TanhGrad<T>::Compute(OpKernelContext* context) const {
+  auto& dY = *context->Input<Tensor>(0);
+  auto& Y = *context->Input<Tensor>(1);
+  auto& dX = *context->Output(0, dY.Shape());
+  EigenVectorArrayMap<float> dx = EigenVectorArrayMap<float>(dX.template MutableData<T>(), dX.Shape().Size());
+  ConstEigenVectorArrayMap<float> y = ConstEigenVectorArrayMap<float>(Y.template Data<T>(), Y.Shape().Size());
+  ConstEigenVectorArrayMap<float> dy = ConstEigenVectorArrayMap<float>(dY.template Data<T>(), dY.Shape().Size());
+  dx = dy * (1 - y * y);
+  return Status::OK();
+}
 }  // namespace contrib
 }  // namespace onnxruntime
