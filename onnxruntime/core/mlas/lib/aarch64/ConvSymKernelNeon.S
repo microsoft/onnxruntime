@@ -171,19 +171,19 @@ Return Value:
         ld1     {v6.16b},[x1],#16
         ld1     {v7.16b},[x1],#16
         ld1     {v8.16b},[x1],#16
+        eor     v0.16b, v0.16b, v2.16b
+        eor     v1.16b, v1.16b, v2.16b
         ld1     {v9.16b},[x1],#16
         ld1     {v10.16b},[x1],#16
         ld1     {v11.16b},[x1],#16
-        eor     v0.16b, v0.16b, v2.16b
-        eor     v1.16b, v1.16b, v2.16b
 
         smull   v12.8h,v0.8b,v4.8b
-        smlal2  v12.8h,v0.16b,v4.16b
         smull   v13.8h,v0.8b,v5.8b
-        smlal2  v13.8h,v0.16b,v5.16b
         smull   v14.8h,v0.8b,v6.8b
-        smlal2  v14.8h,v0.16b,v6.16b
         smull   v15.8h,v0.8b,v7.8b
+        smlal2  v12.8h,v0.16b,v4.16b
+        smlal2  v13.8h,v0.16b,v5.16b
+        smlal2  v14.8h,v0.16b,v6.16b
         smlal2  v15.8h,v0.16b,v7.16b
         sadalp  v16.4s,v12.8h
         sadalp  v18.4s,v13.8h
@@ -191,12 +191,12 @@ Return Value:
         sadalp  v22.4s,v15.8h
 
         smull   v12.8h,v0.8b,v8.8b
-        smlal2  v12.8h,v0.16b,v8.16b
         smull   v13.8h,v0.8b,v9.8b
-        smlal2  v13.8h,v0.16b,v9.16b
         smull   v14.8h,v0.8b,v10.8b
-        smlal2  v14.8h,v0.16b,v10.16b
         smull   v15.8h,v0.8b,v11.8b
+        smlal2  v12.8h,v0.16b,v8.16b
+        smlal2  v13.8h,v0.16b,v9.16b
+        smlal2  v14.8h,v0.16b,v10.16b
         smlal2  v15.8h,v0.16b,v11.16b
         sadalp  v24.4s,v12.8h
         sadalp  v26.4s,v13.8h
@@ -204,12 +204,12 @@ Return Value:
         sadalp  v30.4s,v15.8h
 
         smull   v12.8h,v1.8b,v4.8b
-        smlal2  v12.8h,v1.16b,v4.16b
         smull   v13.8h,v1.8b,v5.8b
-        smlal2  v13.8h,v1.16b,v5.16b
         smull   v14.8h,v1.8b,v6.8b
-        smlal2  v14.8h,v1.16b,v6.16b
         smull   v15.8h,v1.8b,v7.8b
+        smlal2  v12.8h,v1.16b,v4.16b
+        smlal2  v13.8h,v1.16b,v5.16b
+        smlal2  v14.8h,v1.16b,v6.16b
         smlal2  v15.8h,v1.16b,v7.16b
         sadalp  v17.4s,v12.8h
         sadalp  v19.4s,v13.8h
@@ -217,12 +217,12 @@ Return Value:
         sadalp  v23.4s,v15.8h
 
         smull   v12.8h,v1.8b,v8.8b
-        smlal2  v12.8h,v1.16b,v8.16b
         smull   v13.8h,v1.8b,v9.8b
-        smlal2  v13.8h,v1.16b,v9.16b
         smull   v14.8h,v1.8b,v10.8b
-        smlal2  v14.8h,v1.16b,v10.16b
         smull   v15.8h,v1.8b,v11.8b
+        smlal2  v12.8h,v1.16b,v8.16b
+        smlal2  v13.8h,v1.16b,v9.16b
+        smlal2  v14.8h,v1.16b,v10.16b
         smlal2  v15.8h,v1.16b,v11.16b
         sadalp  v25.4s,v12.8h
         sadalp  v27.4s,v13.8h
