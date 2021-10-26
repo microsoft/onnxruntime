@@ -3,16 +3,18 @@
 
 #pragma once
 
-#include <miopen/miopen.h>
-
-#include "rocm_common.h"
-#include "core/framework/tensor.h"
 #include <cfloat>
+
+#include "core/providers/rocm/rocm_common.h"
+
+#include <miopen/miopen.h>
 
 const double MIOPEN_BN_MIN_EPSILON = 1e-5;
 
 namespace onnxruntime {
 namespace rocm {
+
+#define MIOPEN_CONVOLUTION_FWD_ALGO_COUNT 6
 
 class MiopenTensor final {
  public:
@@ -32,6 +34,20 @@ class MiopenTensor final {
   Status CreateTensorIfNeeded();
 
   miopenTensorDescriptor_t tensor_;
+};
+
+class MiopenTensorDescriptor final {
+ public:
+  MiopenTensorDescriptor();
+  ~MiopenTensorDescriptor();
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(MiopenTensorDescriptor);
+
+  Status Set(const std::vector<int64_t>& filter_dims, miopenDataType_t data_typ);
+
+  operator miopenTensorDescriptor_t() const { return desc_; }
+
+ private:
+  miopenTensorDescriptor_t desc_;
 };
 
 template <typename ElemType>
@@ -66,7 +82,7 @@ struct ReduceConsts<half> {
 inline double ClampMiopenBatchNormEpsilon(double epsilon) {
   if (epsilon < MIOPEN_BN_MIN_EPSILON) {
     if (MIOPEN_BN_MIN_EPSILON - epsilon > FLT_EPSILON)
-      LOGS_DEFAULT(WARNING) << "Provided epsilon is smaller than CUDNN_BN_MIN_EPSILON. Setting it to CUDNN_BN_MIN_EPSILON";
+      LOGS_DEFAULT(WARNING) << "Provided epsilon is smaller than MIOPEN_BN_MIN_EPSILON. Setting it to MIOPEN_BN_MIN_EPSILON";
     return MIOPEN_BN_MIN_EPSILON;
   }
   return epsilon;

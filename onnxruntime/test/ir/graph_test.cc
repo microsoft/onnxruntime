@@ -1296,8 +1296,11 @@ TEST_F(GraphTest, UnusedInitializerAndNodeArgsAreIgnored) {
   ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
   ASSERT_TRUE(graph.GetAllInitializedTensors().empty());
   ASSERT_EQ(nullptr, graph.GetNodeArg(unused_node_arg_name));
+
   // Verify NodeArg from the unused initializer is deleted as well
-  ASSERT_EQ(nullptr, graph.GetNodeArg(unused_initializer_name));
+  // TODO, enable this when we can remove unused NodeArgs with type
+  // See Graph::CleanUnusedInitializersAndNodeArgs
+  // ASSERT_EQ(nullptr, graph.GetNodeArg(unused_initializer_name));
 
   // serialize and reload so we check the loaded from proto path in SetGraphInputsOutputs
   auto proto = model.ToProto();
@@ -1317,7 +1320,9 @@ TEST_F(GraphTest, UnusedInitializerAndNodeArgsAreIgnored) {
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
   ASSERT_TRUE(graph.GetAllInitializedTensors().empty());
   ASSERT_EQ(nullptr, graph.GetNodeArg(unused_node_arg_name));
-  ASSERT_EQ(nullptr, graph.GetNodeArg(unused_initializer_name));
+  // TODO, enable this when we can remove unused NodeArgs with type
+  // See Graph::CleanUnusedInitializersAndNodeArgs
+  // ASSERT_EQ(nullptr, graph.GetNodeArg(unused_initializer_name));
 }
 
 #if !defined(DISABLE_SPARSE_TENSORS)

@@ -645,8 +645,10 @@ std::unique_ptr<IDataTransfer> TensorrtExecutionProvider::GetDataTransfer() cons
   return onnxruntime::CreateGPUDataTransfer(static_cast<void*>(GetComputeStream()));
 }
 
-Status TensorrtExecutionProvider::OnRunEnd() {
-  CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(static_cast<cudaStream_t>(GetComputeStream())));
+Status TensorrtExecutionProvider::OnRunEnd(bool sync_stream) {
+  if (sync_stream) {
+    CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(static_cast<cudaStream_t>(GetComputeStream())));
+  }
   return Status::OK();
 }
 
@@ -911,7 +913,7 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
             if (input_shape != nullptr) {
               auto dim_size = input_shape->dim_size();
               for (int i = 0; i < dim_size; ++i) {
-                auto &dim = input_shape->dim(i);
+                auto& dim = input_shape->dim(i);
                 if (!dim.has_dim_value() && !dim.has_dim_param()) {
                   has_dim_value_or_param = false;
                   break;
