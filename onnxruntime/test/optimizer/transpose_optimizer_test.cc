@@ -77,7 +77,6 @@ int EstimateTransposeCost(const Graph& graph) {
   return cost;
 }
 
-
 TEST(TransposeOptimizerTests, TestSplit) {
   auto build_test_case_1 = [&](ModelTestBuilder& builder) {
     auto* input0_arg = builder.MakeInput<float>({4, 6, 10}, 0.0, 1.0);
@@ -3408,6 +3407,7 @@ TEST(TransposeOptimizerTests, TestBroadcastReusedInputs) {
 
   auto check_optimized_graph_1 = [&](InferenceSessionWrapper& session) {
     int transpose_cost = EstimateTransposeCost(session.GetGraph());
+    // One transpose placed on the rank 2 input to Sum
     EXPECT_EQ(transpose_cost, 2);
   };
 
@@ -3435,6 +3435,7 @@ TEST(TransposeOptimizerTests, TestTransposeGraphOutput) {
 
   auto check_optimized_graph_1 = [&](InferenceSessionWrapper& session) {
     int transpose_cost = EstimateTransposeCost(session.GetGraph());
+    // One transpose is a graph output and cannot be removed. Other doesn't match perm. Cost 12 -> 8.
     EXPECT_EQ(transpose_cost, 8);
   };
 
@@ -3469,6 +3470,7 @@ TEST(TransposeOptimizerTests, TestPushBroadcastUnsqueezeTranspose) {
 
   auto check_optimized_graph_1 = [&](InferenceSessionWrapper& session) {
     int transpose_cost = EstimateTransposeCost(session.GetGraph());
+    // A transpose on rank 2 input of Mul can't be removed but is combined with the other transpose. Cost 8 -> 2.
     EXPECT_EQ(transpose_cost, 2);
   };
 
@@ -3498,6 +3500,7 @@ TEST(TransposeOptimizerTests, TestOptimizeTowardsTranspose) {
 
   auto check_optimized_graph_1 = [&](InferenceSessionWrapper& session) {
     int transpose_cost = EstimateTransposeCost(session.GetGraph());
+    // Pushing Transpose through Mul creates transpose on 2nd input. Cost 8 -> 2.
     EXPECT_EQ(transpose_cost, 2);
   };
 
@@ -3524,6 +3527,7 @@ TEST(TransposeOptimizerTests, TestOnlyOptimizeTowardsTranspose) {
 
   auto check_optimized_graph_1 = [&](InferenceSessionWrapper& session) {
     int transpose_cost = EstimateTransposeCost(session.GetGraph());
+    // Pushing through Mul is skipped to avoid additional cost. Cast 3 remains.
     EXPECT_EQ(transpose_cost, 3);
   };
 
@@ -3577,6 +3581,7 @@ TEST(TransposeOptimizerTests, TestOptimizeBothInputs) {
 
   auto check_optimized_graph_1 = [&](InferenceSessionWrapper& session) {
     int transpose_cost = EstimateTransposeCost(session.GetGraph());
+    // No target transpose after Mul but both input transposes match and are pushed. Cost 6 -> 3.
     EXPECT_EQ(transpose_cost, 3);
   };
 
@@ -3602,6 +3607,7 @@ TEST(TransposeOptimizerTests, TestOmitIdentityTranspose) {
 
   auto check_optimized_graph_1 = [&](InferenceSessionWrapper& session) {
     int transpose_cost = EstimateTransposeCost(session.GetGraph());
+    // No transpose is placed on output since it would be an identity.
     EXPECT_EQ(transpose_cost, 0);
   };
 
@@ -3611,8 +3617,6 @@ TEST(TransposeOptimizerTests, TestOmitIdentityTranspose) {
                     TransformerLevel::Level1,
                     /*opset_version*/ 15);
 }
-
-
 
 
 }  // namespace test
