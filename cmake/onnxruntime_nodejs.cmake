@@ -29,6 +29,9 @@ if(had_error)
 endif()
 
 # setup ARCH
+if (APPLE AND CMAKE_OSX_ARCHITECTURES_LEN GREATER 1)
+    message(FATAL_ERROR "Node.js binding does not support multi-architecture for macOS")
+endif()
 if (APPLE AND CMAKE_OSX_ARCHITECTURES STREQUAL "arm64")
     set(NODEJS_BINDING_ARCH arm64)
 # elseif()
