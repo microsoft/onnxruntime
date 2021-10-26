@@ -1,7 +1,5 @@
 /.vscode/
-/bin/
 /build/
-/prebuilds/
 /script/
 /src/
 /test/

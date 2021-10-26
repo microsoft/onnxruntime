@@ -252,6 +252,10 @@
         12689204749897364688
     ],
     [
+        "TanhGrad com.microsoft CPUExecutionProvider",
+        7147744030478490408
+    ],
+    [
         "ZeroGradient com.microsoft CPUExecutionProvider",
         3284255990062374928
     ]
