@@ -314,6 +314,8 @@ inline AllocatorPtr& GetAllocator() {
 // - to be able to expose SparseTensor returned from run method. We get an OrtValue from run()
 //   and store a copy of it in ort_value_. The OrtValue shared_ptr ref-counting will make sure
 //   the memory stays around.
+//
+//   An object of the class must never have both instance_ and ort_value_ have data at the same time.
 class PySparseTensor {
  public:
   /// <summary>
