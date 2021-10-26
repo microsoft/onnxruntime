@@ -9,8 +9,7 @@
 
 namespace onnxruntime {
 
-TensorShape::TensorShape(gsl::span<const int64_t> dims)
-{
+TensorShape::TensorShape(gsl::span<const int64_t> dims) {
   Allocate(dims.size());
   gsl::copy(dims, gsl::span<int64_t>(values_, size_));
 }
@@ -25,14 +24,14 @@ TensorShape& TensorShape::operator=(const TensorShape& other) {
 TensorShape& TensorShape::operator=(TensorShape&& other) {
   // If the other TensorShape allocated a buffer, then take ownership of it
   if (other.allocated_buffer_) {
-    allocated_buffer_=std::move(other.allocated_buffer_);
-    values_=allocated_buffer_.get();
-    size_=other.size_;
-    other.size_=0; // Just to be safe, set the other to be an empty shape
+    allocated_buffer_ = std::move(other.allocated_buffer_);
+    values_ = allocated_buffer_.get();
+    size_ = other.size_;
+    other.size_ = 0;  // Just to be safe, set the other to be an empty shape
   } else
-    operator=(other); // Otherwise we do a copy using the regular operator=
+    operator=(other);  // Otherwise we do a copy using the regular operator=
 
-  return *this;  
+  return *this;
 }
 
 void TensorShape::Allocate(size_t size) {
@@ -76,7 +75,8 @@ int64_t TensorShape::SizeFromDimension(size_t dimension) const {
 TensorShape TensorShape::Slice(size_t dimstart, size_t dimend) const {
   ORT_ENFORCE(dimstart <= dimend && dimend <= size_,
               "Invalid tensor shape slice argument.");
-  return TensorShape(GetDims().subspan(dimstart, dimend-dimstart));;
+  return TensorShape(GetDims().subspan(dimstart, dimend - dimstart));
+  ;
 }
 
 // output dimensions
