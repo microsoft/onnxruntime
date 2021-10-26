@@ -129,7 +129,6 @@ class TensorShape {
   size_t size_{};
   int64_t small_buffer_[4];
   std::unique_ptr<int64_t[]> allocated_buffer_;
-  //  std::vector<int64_t> m_vector;
 };
 #ifdef __GNUC__
 #pragma GCC diagnostic pop
