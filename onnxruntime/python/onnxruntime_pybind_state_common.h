@@ -307,8 +307,13 @@ inline AllocatorPtr& GetAllocator() {
 // This class exposes SparseTensor to Python
 // The class serves two major purposes
 // - to be able to map numpy arrays memory and use it on input, this serves as a reference holder
-//   so incoming arrays do not disappear
-// - to be able to expose SparseTensor returned from run method
+//   so incoming arrays do not disappear. To this end we create an instance of SparseTensor
+//   on top of the user provided numpy arrays and create a duplicate of py::objects for those
+//   numpy array for ref-counting purposes and store it here.
+// 
+// - to be able to expose SparseTensor returned from run method. We get an OrtValue from run()
+//   and storea copy of it it in ort_value_. The OrtValue shared_ptr ref-counting will make sure
+//   the memory stays around.
 class PySparseTensor {
  public:
   /// <summary>
@@ -366,16 +371,17 @@ class PySparseTensor {
 
  private:
 
-  // This represents data that comes as input, so we either refer to python memory arrays
-  // in which case we use backing_storage_ or create a copy. In this case, if we want
-  // to return an OrtValue python object, we must ref-count PySparseTensor() object that owns
-  // this instance_. Otherwise, we simply return a copy or ort_value_ which ref-counts
-  // itself on copy.
+  //  instance_ represents data that comes as input. Thus we depend on numpy
+  // arrays that own the underlying memory to stay around. We store copies
+  // of py::objects for those arrays in backing_storage_ as an extra ref-count.
+
+  // If we have and able to copy from the OrtValue returned by run() to CPU, then this owns the data
+  // and backing_storage_ is empty.
   std::unique_ptr<SparseTensor> instance_;
-  // These will hold references to underpinning python array objects
-  // when they serve as a backing storage for a feeding SparseTensor
   std::vector<pybind11::object> backing_storage_;
-  OrtValue ort_value_; // OrtValue that comes as a result, memory owned by allocator
+
+  // We create a copy of OrtValue when we obtain it from a run method.
+  OrtValue ort_value_;
 };
 
 class SessionObjectInitializer {
