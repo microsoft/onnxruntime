@@ -8,6 +8,8 @@ from onnx import TensorProto
 This profiler tool could run a transformer model and print out the kernel time spent on each Node of the model.
 Example of profiling of longformer model:
     python profiler.py --model longformer-base-4096_fp32.onnx --batch_size 1 --sequence_length 4096 --global_length 8 --samples 1000 --thread_num 8 --dummy_inputs longformer --use_gpu
+Example of loading profile output file from onnxruntime_perf_test:
+    python profiler.py --profile_file profile_2021-10-25_12-02-41.json
 """
 
 NODES_TYPE_CONTAINING_SUBGRAPH = ['Scan', 'Loop', 'If']
@@ -15,7 +17,7 @@ NODES_TYPE_CONTAINING_SUBGRAPH = ['Scan', 'Loop', 'If']
 
 def parse_arguments(argv=None):
     parser = argparse.ArgumentParser()
-    parser.add_argument('-m', '--model', required=True, type=str, help="onnx model path")
+    parser.add_argument('-m', '--model', required=False, type=str, help="onnx model path")
 
     parser.add_argument('-b', '--batch_size', required=False, type=int, default=1, help="batch size of input")
 
@@ -37,6 +39,10 @@ def parse_arguments(argv=None):
                         type=int,
                         default=1,
                         help="number of global tokens for longformer")
+
+    parser.add_argument('--profile_file', required=False,
+                        type=str,
+                        help="load existing profile output instead of creating a new one")
 
     parser.add_argument(
         '--samples',
@@ -124,7 +130,85 @@ def load_profile_json(profile_file):
     return sess_time
 
 
-def parse_profile_results(sess_time, kernel_time_only=False, threshold=0):
+def parse_kernel_results(sess_time, threshold=0):
+    """Parse profile data and output nodes in two sections - nodes in the original order, and top expensive nodes.
+
+    Args:
+        sess_time (List[Dict]): profile data
+        kernel_time_only (bool, optional): Only include items for kernel time. Defaults to False.
+        threshold (int, optional): Minimum ratio of duration among all. Defaults to 0.
+
+    Returns:
+        List[str]: lines of string for output.
+    """
+    kernel_name_to_op_name = {}
+    kernel_time = {}
+    kernel_freq = {}
+    total = 0
+    session_init = False
+    for item in sess_time:
+        # Skip all MemcpyHostToDevice before session_initialization
+        if item["cat"] == "Session" and item["name"] == "session_initialization":
+            session_init = True
+        if not session_init:
+            continue
+
+        if item["cat"] == "Kernel" and "dur" in item and "args" in item and "op_name" in item["args"]:
+            kernel_name = item["name"]
+
+            op_name = item["args"]["op_name"]
+            if op_name in NODES_TYPE_CONTAINING_SUBGRAPH:
+                continue
+
+            # Handle MemcpyHostToDevice and MemcpyDeviceToHost here
+            if not op_name:
+                op_name = f"({kernel_name})"
+
+            if kernel_name in kernel_time:
+                kernel_time[kernel_name] += item["dur"]
+                kernel_freq[kernel_name] += 1
+            else:
+                kernel_time[kernel_name] = item["dur"]
+                kernel_freq[kernel_name] = 1
+                kernel_name_to_op_name[kernel_name] = op_name
+
+            total += item["dur"]
+
+    # Output items with run time ratio > thresholds, and sorted by duration in the descending order.
+    lines = []
+    lines.append(f"\nTop expensive kernels with Time% >= {threshold*100:.2f}:")
+    lines.append("-" * 64)
+    lines.append("Total(μs)\tTime%\tCalls\tAvg(μs)\tKernel")
+    for kernel_name, duration in sorted(kernel_time.items(), key=lambda x: x[1], reverse=True):
+        ratio = duration / total
+        if ratio < threshold:
+            continue
+
+        calls = kernel_freq[kernel_name]
+        avg_time = duration / float(calls)
+        lines.append(f"{duration:10d}\t{ratio * 100.0:5.2f}\t{calls:5d}\t{avg_time:8.1f}\t{kernel_name}")
+
+
+    # Group by operator
+    op_time = {}
+    for kernel_name, op_name in kernel_name_to_op_name.items():
+        duration = kernel_time[kernel_name]
+        if op_name in op_time:
+            op_time[op_name] += duration
+        else:
+            op_time[op_name] = duration
+
+    lines.append(f"\nGroup kernel time by operator:")
+    lines.append("-" * 64)
+    lines.append("Total(μs)\tTime%\tOperator")
+    for op_name, duration in sorted(op_time.items(), key=lambda x: x[1], reverse=True):
+        ratio = duration / total
+        lines.append(f"{duration:10d}\t{ratio * 100.0:5.2f}\t{op_name}")
+
+    return lines
+
+
+def parse_node_results(sess_time, kernel_time_only=False, threshold=0):
     """Parse profile data and output nodes in two sections - nodes in the original order, and top expensive nodes.
 
     Args:
@@ -170,8 +254,8 @@ def parse_profile_results(sess_time, kernel_time_only=False, threshold=0):
 
     # Output items in the original order.
     lines = [
-        "Results:", "-" * 64,
-        "Duration(μs)\tPercentage\tBefore(Exclusive)\tAfter(Inclusive)\tCalls\tProvider\tNode_Name"
+        "\nNodes in the original order:", "-" * 64,
+        "Total(μs)\tTime%\tAcc %\tAvg(μs)\tCalls\tProvider\tNode"
     ]
     before_percentage = 0.0
     for node_name in node_name_list:
@@ -180,15 +264,16 @@ def parse_profile_results(sess_time, kernel_time_only=False, threshold=0):
         avg_time = duration / float(calls)
         percentage = (duration / total) * 100.0
         provider = node_provider[node_name] if node_name in node_provider else ""
-        lines.append(
-            f"{avg_time:.1f}\t{percentage:5.2f}\t{before_percentage:5.1f}\t{100.0 - before_percentage:5.1f}\t{calls}\t{provider}\t{node_name}"
-        )
         before_percentage += percentage
+        lines.append(
+            f"{duration:10d}\t{percentage:5.2f}\t{before_percentage:5.2f}\t{avg_time:8.1f}\t{calls:5d}\t{provider:8s}\t{node_name}"
+        )
+        
 
     # Output items with run time ratio > thresholds, and sorted by duration in the descending order.
-    lines.append(f"\nTop expensive nodes with threshold={threshold:.2f}:")
+    lines.append(f"\nTop expensive nodes with Time% >= {threshold*100:.2f}:")
     lines.append("-" * 64)
-    lines.append("Duration(μs)\tPercentage\tProvider\tName")
+    lines.append("Total(μs)\tTime%\tAvg(μs)\tCalls\tProvider\tNode")
     for node_name, duration in sorted(node_time.items(), key=lambda x: x[1], reverse=True):
         ratio = duration / total
         if ratio < threshold:
@@ -196,13 +281,14 @@ def parse_profile_results(sess_time, kernel_time_only=False, threshold=0):
 
         calls = node_freq[node_name]
         avg_time = duration / float(calls)
+        percentage = (duration / total) * 100.0
         provider = node_provider[node_name] if node_name in node_provider else ""
-        lines.append(f"{avg_time:.1f}\t{ratio * 100.0:5.2f}\t{provider}\t{node_name}")
+        lines.append(f"{duration:10d}\t{percentage:5.2f}\t{avg_time:8.1f}\t{calls:5d}\t{provider:8s}\t{node_name}")
 
     return lines
 
 
-def group_profile_results(sess_time, kernel_time_only, use_gpu):
+def group_node_results(sess_time, kernel_time_only, use_gpu):
     """Group results by operator name.
 
     Args:
@@ -218,6 +304,7 @@ def group_profile_results(sess_time, kernel_time_only, use_gpu):
     op_cpu_time = {}
     op_cpu_records = {}
     total = 0
+    has_non_cpu_provider = False
     for item in sess_time:
         if item["cat"] == "Node" and "dur" in item and "args" in item and "op_name" in item["args"]:
             if kernel_time_only and "provider" not in item["args"]:
@@ -245,11 +332,13 @@ def group_profile_results(sess_time, kernel_time_only, use_gpu):
                 else:
                     op_cpu_time[op_name] = item["dur"]
                     op_cpu_records[op_name] = 1
+            if "provider" in item["args"] and item["args"]["provider"] and item["args"]["provider"] != "CPUExecutionProvider":
+                has_non_cpu_provider = True
 
-    if use_gpu:
-        lines = ["Average(μs)\tTotal(μs)\tTotal_Percentage\tCalls\tCpu_Duration\tCpu_Calls\tName"]
+    if use_gpu or has_non_cpu_provider:
+        lines = ["Total(μs)\tTime%\tAvg(μs)\tCalls\tCpu_Total(μs)\tCpu_Calls\tOperator"]
     else:
-        lines = ["Average(μs)\tTotal(μs)\tTotal_Percentage\tCalls\tName"]
+        lines = ["Total(μs)\tTime%\tAvg(μs)\tCalls\tOperator"]
 
     for op_name, duration in sorted(op_time.items(), key=lambda x: x[1], reverse=True):
         ratio = duration / total
@@ -258,11 +347,11 @@ def group_profile_results(sess_time, kernel_time_only, use_gpu):
         cpu_calls = op_cpu_records[op_name] if op_name in op_cpu_records else 0
         avg_time = duration / float(calls)
 
-        if use_gpu:
+        if use_gpu or has_non_cpu_provider:
             lines.append(
-                f"{avg_time:.1f}\t{duration}\t{ratio * 100.0:5.2f}\t{calls}\t{cpu_time}\t{cpu_calls}\t{op_name}")
+                f"{duration:10d}\t{ratio * 100.0:5.2f}\t{avg_time:8.1f}\t{calls}\t{cpu_time:13d}\t{cpu_calls:9d}\t{op_name}")
         else:
-            lines.append(f"{avg_time:.1f}\t{duration}\t{ratio * 100.0:5.2f}\t{calls}\t{op_name}")
+            lines.append(f"{duration:10d}\t{ratio * 100.0:5.2f}\t{avg_time:8.1f}\t{calls}\t{op_name}")
 
     return lines
 
@@ -438,6 +527,18 @@ def create_longformer_inputs(onnx_model, batch_size, sequence_length, global_len
     all_inputs = [dummy_inputs for _ in range(samples)]
     return all_inputs
 
+def process_results(profile_file, args):
+    profile_records = load_profile_json(profile_file)
+
+    lines = parse_kernel_results(profile_records, args.threshold)
+
+    lines += parse_node_results(profile_records, args.kernel_time_only, args.threshold)
+
+    lines.append("\nGrouped by operator type:")
+    lines.append("-" * 64)
+    lines += group_node_results(profile_records, args.kernel_time_only, args.use_gpu)
+
+    return lines
 
 def run(args):
     num_threads = args.thread_num if args.thread_num > 0 else psutil.cpu_count(logical=False)
@@ -465,15 +566,7 @@ def run(args):
 
     profile_file = run_profile(args.model, args.use_gpu, args.basic_optimization, args.thread_num, all_inputs)
 
-    profile_records = load_profile_json(profile_file)
-
-    lines = parse_profile_results(profile_records, args.kernel_time_only, args.threshold)
-
-    lines.append("\nGrouped by operator type:")
-    lines.append("-" * 64)
-    lines += group_profile_results(profile_records, args.kernel_time_only, args.use_gpu)
-
-    return lines
+    return profile_file
 
 
 if __name__ == '__main__':
@@ -483,6 +576,13 @@ if __name__ == '__main__':
     from benchmark_helper import setup_logger
     setup_logger(arguments.verbose)
 
-    results = run(arguments)
+    if not arguments.profile_file:
+        assert arguments.model, "requires either --model or --profile_file"
+        profile_file = run(arguments)
+    else:
+        profile_file = arguments.profile_file
+
+    results = process_results(profile_file, arguments)
+
     for line in results:
         print(line)
