@@ -13,13 +13,13 @@ set(OCOS_ENABLE_SPM_TOKENIZER OFF CACHE INTERNAL "")
 
 # disable exceptions
 if (onnxruntime_DISABLE_EXCEPTIONS)
-  set(OCOS_ENABLE_CPP_EXCEPTIONS OFF CACHE INTERNAL "")
-endif()
+    set(OCOS_ENABLE_CPP_EXCEPTIONS OFF CACHE INTERNAL "")
+endif ()
 
 # customize operators used
 if (onnxruntime_REDUCED_OPS_BUILD)
-  set(OCOS_ENABLE_SELECTED_OPLIST ON CACHE INTERNAL "")
-endif()
+    set(OCOS_ENABLE_SELECTED_OPLIST ON CACHE INTERNAL "")
+endif ()
 
 # when onnxruntime-extensions is not a subdirectory of onnxruntime,
 # output binary directory must be explicitly specified.
