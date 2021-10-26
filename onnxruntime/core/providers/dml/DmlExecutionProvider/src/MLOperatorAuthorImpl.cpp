@@ -47,11 +47,11 @@ size_t AttributeValue::ElementCount() const {
 }
 
 void AttributeValue::GetAttribute(
-    MLOperatorAttributeType type,
+    MLOperatorAttributeType attributeType,
     uint32_t elementCount,
     size_t elementByteSize,
     void* value) const {
-  switch (type) {
+  switch (attributeType) {
     case MLOperatorAttributeType::Float:
       ML_CHECK_BOOL(floats.size() == 1);
       __fallthrough;
@@ -76,7 +76,7 @@ void AttributeValue::GetAttribute(
 }
 
 const std::string* AttributeValue::GetStringAttribute(
-    _In_z_ const char* name,
+    _In_z_ const char* attributeName,
     uint32_t elementIndex) const {
   ML_CHECK_BOOL((type == MLOperatorAttributeType::String && elementIndex == 0 && strings.size() == 1) ||
                 (type == MLOperatorAttributeType::StringArray && elementIndex < strings.size()));
