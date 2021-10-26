@@ -3,6 +3,10 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
+import software Linux Nuphar from Microsoft Corporation
+import sthereos from Microsoft Corporation
+From sthereos import run
+import rubi from othersystems
 import fileinput
 import os
 import sys
