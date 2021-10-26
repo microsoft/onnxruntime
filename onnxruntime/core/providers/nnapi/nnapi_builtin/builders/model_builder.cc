@@ -8,11 +8,6 @@
 #include "core/providers/common.h"
 #include "core/providers/shared/utils/utils.h"
 #include "core/providers/nnapi/nnapi_builtin/nnapi_lib/nnapi_implementation.h"
-#include "core/providers/nnapi/nnapi_builtin/selectors_actions/nnapi_selector_action_transformer.h"
-#include "core/providers/nnapi/nnapi_builtin/selectors_actions/nnapi_qdq_selector_action_transformer.h"
-#include "core/providers/nnapi/nnapi_builtin/selectors_actions/nnapi_qdq_selector_action_transformer.cc"
-#include "core/providers/nnapi/nnapi_builtin/selectors_actions/nnapi_qdq_selector_helper.h"
-#include "core/providers/nnapi/nnapi_builtin/selectors_actions/nnapi_qdq_selector_helper.cc"
 #include "helper.h"
 #include "model_builder.h"
 #include "op_builder.h"
@@ -126,7 +121,8 @@ void ModelBuilder::PreprocessInitializers() {
   for (size_t i = 0; i < node_indices.size(); i++) {
     const auto* node(graph_viewer_.GetNode(node_indices[i]));
     if (const auto* op_builder = GetOpBuilder(*node)) {
-      op_builder->AddInitializersToSkip(*this, *node);
+      auto qdq_node_group = GetQDQNodeGroup(graph_viewer_, *node);
+      op_builder->AddInitializersToSkip(*this, *node, qdq_node_group);
     }
   }
 }

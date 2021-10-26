@@ -5,7 +5,7 @@
 
 namespace onnxruntime {
 
-NNAPISelectorActionTransformer::NNAPISelectorActionTransformer(const std::string& name,
+inline NNAPISelectorActionTransformer::NNAPISelectorActionTransformer(const std::string& name,
                                                                NNAPIQDQSelectorsAndActions&& nnapi_qdq_selectors_and_actions)
     : name_{name},
       nnapi_qdq_selectors_and_actions_{std::move(nnapi_qdq_selectors_and_actions)} {
@@ -18,9 +18,9 @@ NNAPISelectorActionTransformer::NNAPISelectorActionTransformer(const std::string
   }
 }
 
-void NNAPIQDQSelectorsAndActions::RegisterSelector(const std::string& name,
-                                                   const NNAPIQDQSelectorAndAction::OpVersionsMap& ops_and_versions_in,
-                                                   std::unique_ptr<NNAPIQDQNodeSelector> selector_in) {
+inline void NNAPIQDQSelectorsAndActions::RegisterSelector(const std::string& name,
+                                                          const NNAPIQDQSelectorAndAction::OpVersionsMap& ops_and_versions_in,
+                                                          std::unique_ptr<NNAPIQDQNodeSelector> selector_in) {
   ORT_ENFORCE(nnapi_selectors_and_actions_map_.find(name) == nnapi_selectors_and_actions_map_.cend(),
               "NNAPI: Existing registration with name ", name);
 
@@ -31,7 +31,7 @@ void NNAPIQDQSelectorsAndActions::RegisterSelector(const std::string& name,
   ORT_IGNORE_RETURN_VALUE(nnapi_selectors_and_actions_map_.emplace(name, std::move(entry)));
 }
 
-std::unique_ptr<ConstNodesToOptimize>
+inline std::unique_ptr<ConstNodesToOptimize>
 NNAPISelectorActionTransformer::Match(const Graph& graph, const Node& node) const {
   std::unique_ptr<ConstNodesToOptimize> node_group;
 

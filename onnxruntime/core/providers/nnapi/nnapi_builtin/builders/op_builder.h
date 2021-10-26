@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include "core/providers/nnapi/nnapi_builtin/selectors_actions/nnapi_qdq_selector_helper.h"
+
 namespace onnxruntime {
 namespace nnapi {
 
@@ -14,7 +16,7 @@ class IOpBuilder {
 
   // Check if the initializers of this operator need preprocess
   // which will not be copied
-  virtual void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const = 0;
+  virtual void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node, std::unique_ptr<ConstNodesToOptimize>& qdq_node_group) const = 0;
 
   // Add the operator to NNAPI model
   virtual Status AddToModelBuilder(ModelBuilder& model_builder, const Node& node) const ORT_MUST_USE_RESULT = 0;

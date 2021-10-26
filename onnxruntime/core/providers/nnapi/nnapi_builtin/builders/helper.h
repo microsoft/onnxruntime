@@ -6,7 +6,14 @@
 #include <string>
 #include "core/graph/basic_types.h"
 #include "core/providers/nnapi/nnapi_builtin/nnapi_lib/NeuralNetworksTypes.h"
+#include "core/providers/nnapi/nnapi_builtin/selectors_actions/nnapi_selector_action_transformer.h"
+#include "core/providers/nnapi/nnapi_builtin/selectors_actions/nnapi_selector_action_transformer.cc"
+#include "core/providers/nnapi/nnapi_builtin/selectors_actions/nnapi_qdq_selector_action_transformer.h"
+#include "core/providers/nnapi/nnapi_builtin/selectors_actions/nnapi_qdq_selector_action_transformer.cc"
+#include "core/providers/nnapi/nnapi_builtin/selectors_actions/nnapi_qdq_selectors.h"
+#include "core/providers/nnapi/nnapi_builtin/selectors_actions/nnapi_qdq_selectors.cc"
 #include "core/providers/nnapi/nnapi_builtin/selectors_actions/nnapi_qdq_selector_helper.h"
+#include "core/providers/nnapi/nnapi_builtin/selectors_actions/nnapi_qdq_selector_helper.cc"
 
 // This is the minimal Android API Level required by ORT NNAPI EP to run
 // ORT running on any host system with Android API level less than this will fall back to CPU EP
@@ -116,6 +123,12 @@ common::Status GetQuantizationScale(const InitializedTensorSet& initializers, co
 
 common::Status GetQuantizationZeroPoint(const InitializedTensorSet& initializers,
                                         const Node& node, size_t idx, int32_t& zero_point) ORT_MUST_USE_RESULT;
+
+bool IsNodeInQDQGroup(std::vector<std::unique_ptr<ConstNodesToOptimize>>& qdq_node_groups, const Node& node);
+
+std::unique_ptr<ConstNodesToOptimize> GetQDQNodeGroup(const onnxruntime::GraphViewer& graph_viewer, const Node& node);
+
+std::vector<std::unique_ptr<ConstNodesToOptimize>> GetQDQNodeGroups(const onnxruntime::GraphViewer& graph_viewer);
 
 // Get Shape/Type of a NodeArg
 // TODO, move to shared_utils

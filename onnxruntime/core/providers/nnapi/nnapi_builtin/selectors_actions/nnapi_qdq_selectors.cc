@@ -23,7 +23,7 @@ int NumActualValues(const Node& node, bool input) {
 }
 }  // namespace
 
-bool BaseSelector::CheckQDQNodes(const Graph& graph, const Node& node,
+inline bool BaseSelector::CheckQDQNodes(const Graph& graph, const Node& node,
                                  const std::vector<const Node*>& dq_nodes,
                                  const std::vector<const Node*>& q_nodes,
                                  int num_dq_inputs) const {
@@ -38,7 +38,7 @@ bool BaseSelector::CheckQDQNodes(const Graph& graph, const Node& node,
          !graph.NodeProducesGraphOutput(node);
 }
 
-bool BaseSelector::Select(const Graph& graph, const Node& node, std::unique_ptr<ConstNodesToOptimize>& selection) const {
+inline bool BaseSelector::Select(const Graph& graph, const Node& node, std::unique_ptr<ConstNodesToOptimize>& selection) const {
   std::vector<const Node*> dq_nodes = graph_utils::FindParentsByType(node, QDQ::DQOpName);
   std::vector<const Node*> q_nodes = graph_utils::FindChildrenByType(node, QDQ::QOpName);
 
@@ -72,7 +72,7 @@ bool BaseSelector::Select(const Graph& graph, const Node& node, std::unique_ptr<
   return true;
 }
 
-bool UnarySelector::Check(const Graph& graph, const Node& node,
+inline bool UnarySelector::Check(const Graph& graph, const Node& node,
                           const std::vector<const Node*>& dq_nodes,
                           const std::vector<const Node*>& q_nodes) const {
   if (!CheckQDQNodes(graph, node, dq_nodes, q_nodes, 1)) {
@@ -88,7 +88,7 @@ bool UnarySelector::Check(const Graph& graph, const Node& node,
            (int8_allowed_ && dt_output == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8)));
 }
 
-bool BinarySelector::Check(const Graph& graph,
+inline bool BinarySelector::Check(const Graph& graph,
                            const Node& node,
                            const std::vector<const Node*>& dq_nodes,
                            const std::vector<const Node*>& q_nodes) const {
@@ -104,7 +104,7 @@ bool BinarySelector::Check(const Graph& graph,
          dt_input_1 == dt_output;
 }
 
-bool VariadicSelector::Check(const Graph& graph,
+inline bool VariadicSelector::Check(const Graph& graph,
                              const Node& node,
                              const std::vector<const Node*>& dq_nodes,
                              const std::vector<const Node*>& q_nodes) const {
@@ -124,11 +124,11 @@ bool VariadicSelector::Check(const Graph& graph,
   return dt_input == dt_output;
 }
 
-void VariadicSelector::UpdateBuilder(ConstNodesToOptimizeBuilder& builder) const {
+inline void VariadicSelector::UpdateBuilder(ConstNodesToOptimizeBuilder& builder) const {
   builder.num_input_defs = 1;  // set to 1 as the first input is variadic
 }
 
-bool ConvSelector::Check(const Graph& graph,
+inline bool ConvSelector::Check(const Graph& graph,
                          const Node& node,
                          const std::vector<const Node*>& dq_nodes,
                          const std::vector<const Node*>& q_nodes) const {
@@ -153,11 +153,11 @@ bool ConvSelector::Check(const Graph& graph,
   return dt_bias == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32;
 }
 
-void ConvSelector::UpdateBuilder(ConstNodesToOptimizeBuilder& builder) const {
+inline void ConvSelector::UpdateBuilder(ConstNodesToOptimizeBuilder& builder) const {
   builder.input_nodes.resize(3);  // add nullptr for bias if missing
 }
 
-bool MatMulSelector::Check(const Graph& graph,
+inline bool MatMulSelector::Check(const Graph& graph,
                            const Node& node,
                            const std::vector<const Node*>& dq_nodes,
                            const std::vector<const Node*>& q_nodes) const {

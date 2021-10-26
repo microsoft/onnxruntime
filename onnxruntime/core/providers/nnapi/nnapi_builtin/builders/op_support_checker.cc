@@ -724,7 +724,7 @@ bool ConvOpSupportChecker::HasSupportedInputsImpl(const Node& node) const {
 
 // TOOD: pass in a qdq_node_group
 bool ConvOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
-                                             const OpSupportCheckParams& params, std::unique_ptr<ConstNodesToOptimize>& /*qdq_group*/) const {
+                                             const OpSupportCheckParams& params, std::unique_ptr<ConstNodesToOptimize>& qdq_group) const {
   const auto& op_type = node.OpType();
   const bool is_qlinear_conv = (op_type == "QLinearConv");
 
@@ -738,37 +738,17 @@ bool ConvOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initial
   NodeAttrHelper helper(node);
   size_t w_idx = is_qlinear_conv ? 3 : 1;
   const auto group = helper.Get("group", 1);
-  /* 
-  // TODO: For Conv node in a QDQ Group
+
+  std::string weight_name;
   if (qdq_group != nullptr) {
-    for (int idx = 0; idx < qdq_group->num_inputs; idx++) {
-      const auto* input_node = qdq_group->Input(idx);
-      const auto weight_tensor_name = input_node->InputDefs()[0]->Name();
+    const auto* dq_w = qdq_group->Input(1);
+    weight_name = dq_w->InputDefs()[0]->Name();
+    LOGS_DEFAULT(VERBOSE) << "QDQ: get weight_name";
+  } else {
+    weight_name = input_defs[w_idx]->Name();
+    LOGS_DEFAULT(VERBOSE) << "non-QDQ: get weight_name";
+  }
 
-      const auto& weight_tensor = *initializers.at(weight_tensor_name);
-      // TODO: Eliminate the redundant code snippets
-      if (weight_tensor.dims().size() != 4) {
-        LOGS_DEFAULT(VERBOSE) << "Only conv 2d is supported.";
-        return false;
-      }
-
-      const auto onnx_dilations = helper.Get("dilations", vector<int>{1, 1});
-      if (onnx_dilations != vector<int>{1, 1}) {
-        if (group != 1 && weight_tensor.dims()[1] != 1) {
-          LOGS_DEFAULT(VERBOSE) << "dilation is not supported on grouped conv";
-          return false;
-        }
-
-        if (params.android_feature_level < ANEURALNETWORKS_FEATURE_LEVEL_3) {
-          LOGS_DEFAULT(VERBOSE) << op_type << " dilations is only supported on Android API level 29+, "
-                                << "actual API level: " << params.android_feature_level;
-         }
-         return false;
-      }
-    }
-  } */
-
-  const auto weight_name = input_defs[w_idx]->Name();
   if (Contains(initializers, weight_name)) {
     const auto& tensor = *initializers.at(weight_name);
     if (tensor.dims().size() != 4) {
@@ -789,10 +769,10 @@ bool ConvOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initial
         return false;
       }
     }
-  } /* else {
+  } else {
     LOGS_DEFAULT(VERBOSE) << "The weight of convolution must be known";
     return false;
-  } */
+  }
 
   if (is_qlinear_conv) {
     // For QLinearConv, we only support uint8 output now

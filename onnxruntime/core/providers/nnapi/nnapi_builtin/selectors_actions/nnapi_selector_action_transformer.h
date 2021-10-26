@@ -13,6 +13,7 @@ class Node;
 
 struct NNAPIQDQNodeSelector {
   // Select one or more qdq nodes structure for NNAPI EP to determine support capabilities
+  // TODO: GetCapability/Compile graph - different?
   virtual bool Select(const Graph& graph, const Node& node, std::unique_ptr<ConstNodesToOptimize>& selection) const = 0;
   virtual ~NNAPIQDQNodeSelector() = default;
 
