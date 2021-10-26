@@ -119,7 +119,6 @@ Return Value:
         mov     v27.16b,v26.16b
         mov     v29.16b,v28.16b
         mov     v31.16b,v30.16b
-        mov     w17, #128
         ldr     w18, [x8, #.LConvSymPostProcessParams_ZeroPoint]
 
 // Nested loops, inner loop: input channel; outter loop: kernel size
@@ -161,24 +160,23 @@ Return Value:
         add     x0,x0,8                 // indirect A advance to next pointer, prepare for kernel size loop
 
 .LConvSym.BlockloopPrologue:
-
+        movi    v2.8b, 128
         subs     x14,x4,16               // input channel - 16
         blo     .LConvSym.8InputChannels     // less than 16 deep, no unroll
 
-        dup     v2.8b, w17
         ldp     d0,d6,[x13],16
         ldp     d1,d7,[x15],16
         ldp     d4,d5,[x1]
         ldp     d8,d9,[x1,64]
-        eor     v0.8b, v0.8b, v2.8b
-        eor     v6.8b, v6.8b, v2.8b
-        eor     v1.8b, v1.8b, v2.8b
-        eor     v7.8b, v7.8b, v2.8b
 
         subs    x14,x14,16              // input channel - 16
         blo     .LConvSym.BlockLoopEpilogue  // need 32 input channel for full unrolled loop
 
 .LConvSym.Blockloop:
+        eor     v0.8b, v0.8b, v2.8b
+        eor     v6.8b, v6.8b, v2.8b
+        eor     v1.8b, v1.8b, v2.8b
+        eor     v7.8b, v7.8b, v2.8b
         smull   v2.8h, v4.8b, v0.8b
         smull   v3.8h, v4.8b, v1.8b
         prfm    PLDL1KEEP, [x1, 448]
@@ -238,23 +236,23 @@ Return Value:
         smlal   v13.8h, v8.8b, v7.8b
         subs    x14, x14, 16
         smlal   v14.8h, v9.8b, v6.8b
-        dup     v2.8b, w17
         ldp     d0, d6, [x13], 16       // Read A0
         smlal   v15.8h, v9.8b, v7.8b
 
-        sadalp  v28.4s, v12.8h
         ldp     d1, d7, [x15], 16       // Read A1
-        eor     v0.8b, v0.8b, v2.8b
-        eor     v6.8b, v6.8b, v2.8b
+        sadalp  v28.4s, v12.8h
         sadalp  v29.4s, v13.8h
         sadalp  v30.4s, v14.8h
-        eor     v1.8b, v1.8b, v2.8b
-        eor     v7.8b, v7.8b, v2.8b
-        ldp     d8, d9, [x1, 64]        // Read B
         sadalp  v31.4s, v15.8h
+        ldp     d8, d9, [x1, 64]        // Read B
+        movi    v2.8b, 128
         b.hs    .LConvSym.Blockloop
 
 .LConvSym.BlockLoopEpilogue:            // remaining 16 input channels
+        eor     v0.8b, v0.8b, v2.8b
+        eor     v6.8b, v6.8b, v2.8b
+        eor     v1.8b, v1.8b, v2.8b
+        eor     v7.8b, v7.8b, v2.8b
         smull   v2.8h, v4.8b, v0.8b
         smull   v3.8h, v4.8b, v1.8b
         smull   v10.8h, v5.8b, v0.8b
@@ -314,6 +312,7 @@ Return Value:
         sadalp  v29.4s, v13.8h
         sadalp  v30.4s, v14.8h
         sadalp  v31.4s, v15.8h
+        movi    v2.8b, 128
         tbnz    x14, 3, .LConvSym.8InputChannels
 
         subs    x9, x9, 1
@@ -347,10 +346,10 @@ Return Value:
         scvtf    v1.4s,v1.4s
         scvtf    v2.4s,v2.4s
         scvtf    v3.4s,v3.4s
-        FMUL v0.4s,v0.4s,v4.4s          // multiply by scale
-        FMUL v1.4s,v1.4s,v5.4s
-        FMUL v2.4s,v2.4s,v4.4s
-        FMUL v3.4s,v3.4s,v5.4s
+        fmul v0.4s,v0.4s,v4.4s          // multiply by scale
+        fmul v1.4s,v1.4s,v5.4s
+        fmul v2.4s,v2.4s,v4.4s
+        fmul v3.4s,v3.4s,v5.4s
         subs    x6, x6, 8
         fcvtns   v0.4s,v0.4s          // convert to int
         fcvtns   v1.4s,v1.4s
@@ -377,7 +376,6 @@ Return Value:
         ret
 
 .LConvSym.8InputChannels:
-        dup     v2.8b, w17
         ldr     d0, [x13]
         ldr     d1, [x15]
         ldp     d4, d5, [x1]
