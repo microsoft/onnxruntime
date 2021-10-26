@@ -15,7 +15,7 @@ DnnlTensor::DnnlTensor(std::string name) {
   tensor_name_ = name;
 }
 
-std::string DnnlTensor::Name() {
+std::string DnnlTensor::Name() const {
   return tensor_name_;
 }
 
@@ -45,7 +45,7 @@ dnnl::memory::dims DnnlTensor::Dim() {
   return dnnl_dims;
 }
 
-dnnl::memory::data_type DnnlTensor::Type() {
+dnnl::memory::data_type DnnlTensor::Type() const {
   auto data_type = arg_->TypeAsProto()->tensor_type().elem_type();
   switch (data_type) {
     case ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED:
@@ -56,6 +56,14 @@ dnnl::memory::data_type DnnlTensor::Type() {
       return dnnl::memory::data_type::bf16;
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
       return dnnl::memory::data_type::f32;
+    case ONNX_NAMESPACE::TensorProto_DataType_INT64:
+      // OneDNN does not have support for tensors of int64_t so we just say
+      // the tensor is int32_t and then use casting in the actual operator
+      // to convert the dnnl::memory::data_handle to an int64_t*.  Care
+      // must be taken that an int64_t tensor does not make it pass the
+      // node capability check unless the operator is explicitly expecting
+      // the int64_t
+      return dnnl::memory::data_type::s32;
     case ONNX_NAMESPACE::TensorProto_DataType_INT32:
       return dnnl::memory::data_type::s32;
     case ONNX_NAMESPACE::TensorProto_DataType_INT8:

@@ -76,7 +76,7 @@ CustomOpLibrary::CustomOpLibrary(const char* library_path, OrtSessionOptions& or
     if (status) {
       // TODO: How to handle unload failure ?
       // Currently we ignore the returned status assuming it is successful
-      platform_env.UnloadDynamicLibrary(library_handle_);
+      ORT_IGNORE_RETURN_VALUE(platform_env.UnloadDynamicLibrary(library_handle_));
 
       // Construct error message string
       std::string error_string = status->msg;
@@ -321,18 +321,22 @@ const CUDAExecutionProviderInfo GetCudaExecutionProviderInfo(ProviderInfo_CUDA* 
 #endif
 
 #ifdef USE_ROCM
-const ROCMExecutionProviderInfo GetROCMExecutionProviderInfo(const ProviderOptionsMap& provider_options_map) {
+const ROCMExecutionProviderInfo GetRocmExecutionProviderInfo(ProviderInfo_ROCM* rocm_provider_info,
+                                                             const ProviderOptionsMap& provider_options_map){
+  ORT_ENFORCE(rocm_provider_info);
   const auto it = provider_options_map.find(kRocmExecutionProvider);
-  return it != provider_options_map.end()
-             ? ROCMExecutionProviderInfo::FromProviderOptions(it->second)
-             : [&]() {
-                 ROCMExecutionProviderInfo info{};
-                 info.device_id = cuda_device_id;
-                 info.gpu_mem_limit = gpu_mem_limit;
-                 info.arena_extend_strategy = arena_extend_strategy;
-                 info.external_allocator_info = external_allocator_info;
-                 return info;
-               }();
+  ROCMExecutionProviderInfo info;
+  if (it != provider_options_map.end())
+    rocm_provider_info->ROCMExecutionProviderInfo__FromProviderOptions(it->second, info);
+  else{
+    info.device_id = cuda_device_id;
+    info.gpu_mem_limit = gpu_mem_limit;
+    info.arena_extend_strategy = arena_extend_strategy;
+    info.miopen_conv_exhaustive_search = miopen_conv_exhaustive_search;
+    info.do_copy_in_default_stream = do_copy_in_default_stream;
+    info.external_allocator_info = external_allocator_info;
+  }
+  return info;
 }
 #endif
 
@@ -520,13 +524,23 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
 #endif
   } else if (type == kRocmExecutionProvider) {
 #ifdef USE_ROCM
-    const ROCMExecutionProviderInfo info = GetROCMExecutionProviderInfo(provider_options_map);
-
-    // This variable is never initialized because the APIs by which is it should be initialized are deprecated, however they still
-    // exist are are in-use. Neverthless, it is used to return CUDAAllocator, hence we must try to initialize it here if we can
-    // since FromProviderOptions might contain external CUDA allocator.
-    external_allocator_info = info.external_allocator_info;
-    return onnxruntime::CreateExecutionProviderFactory_ROCM(info)->CreateProvider();
+    if(auto* rocm_provider_info = TryGetProviderInfo_ROCM())
+    {
+      const ROCMExecutionProviderInfo info = GetRocmExecutionProviderInfo(rocm_provider_info,
+                                                                    provider_options_map);
+      
+      // This variable is never initialized because the APIs by which is it should be initialized are deprecated, however they still
+      // exist are are in-use. Neverthless, it is used to return ROCMAllocator, hence we must try to initialize it here if we can
+      // since FromProviderOptions might contain external ROCM allocator.
+      external_allocator_info = info.external_allocator_info;
+      return rocm_provider_info->CreateExecutionProviderFactory(info)->CreateProvider();
+    }
+    else
+    {
+      if(!Env::Default().GetEnvironmentVar("ROCM_PATH").empty()) {
+        ORT_THROW("ROCM_PATH is set but ROCM wasn't able to be loaded. Please install the correct version of ROCM and MIOpen as mentioned in the GPU requirements page, make sure they're in the PATH, and that your GPU is supported.");
+      }
+    }
 #endif
   } else if (type == kDnnlExecutionProvider) {
 #ifdef USE_DNNL
@@ -1021,8 +1035,8 @@ Set this option to false if you don't want it. Default is True.)pbdoc")
 File path to serialize optimized model to.
 Optimized model is not serialized unless optimized_model_filepath is set.
 Serialized model format will default to ONNX unless:
- - add_session_config_entry is used to set 'session.save_model_format' to 'ORT', or
- - there is no 'session.save_model_format' config entry and optimized_model_filepath ends in '.ort' (case insensitive)
+- add_session_config_entry is used to set 'session.save_model_format' to 'ORT', or
+- there is no 'session.save_model_format' config entry and optimized_model_filepath ends in '.ort' (case insensitive)
 
 )pbdoc")
       .def_readwrite("enable_mem_pattern", &PySessionOptions::enable_mem_pattern,
@@ -1163,7 +1177,7 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
             // is not destructed as long as any session that uses the provided OrtValue initializer is still in scope
             // This is no different than the native APIs
             const OrtValue* ml_value = ml_value_pyobject.attr(PYTHON_ORTVALUE_NATIVE_OBJECT_ATTR).cast<OrtValue*>();
-            options->AddInitializer(name, ml_value);
+            ORT_THROW_IF_ERROR(options->AddInitializer(name, ml_value));
           });
 
   py::class_<RunOptions>(m, "RunOptions", R"pbdoc(Configuration information for a single Run.)pbdoc")

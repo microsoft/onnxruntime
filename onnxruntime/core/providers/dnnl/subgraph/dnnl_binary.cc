@@ -23,8 +23,9 @@ void DnnlBinary::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
     ORT_THROW("op type not supported");
   }
 
-  auto src_0_ori_md = sp.GetMemory(node.Input(IN_A).Name()).get_desc();
-  auto src_1_ori_md = sp.GetMemory(node.Input(IN_B).Name()).get_desc();
+  // GetMemory in OrtFormat. Broadcasting and mix format binary ops can result in computation failure
+  auto src_0_ori_md = sp.GetMemoryInOrtFormat(node.Input(IN_A), eng).get_desc();
+  auto src_1_ori_md = sp.GetMemoryInOrtFormat(node.Input(IN_B), eng).get_desc();
 
   auto src_0_dims = src_0_ori_md.dims();
   auto src_1_dims = src_1_ori_md.dims();
@@ -54,6 +55,8 @@ void DnnlBinary::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
 
   auto binary_src0_mem = sp.GetMemoryAndReshape(node.Input(IN_A), binary_pd.src0_desc(), eng);
   auto binary_src1_mem = sp.GetMemoryAndReshape(node.Input(IN_B), binary_pd.src1_desc(), eng);
+
+
 
   auto binary_dst_mem = dnnl::memory(binary_pd.dst_desc(), eng);
   auto binary_prim = dnnl::binary(binary_pd);

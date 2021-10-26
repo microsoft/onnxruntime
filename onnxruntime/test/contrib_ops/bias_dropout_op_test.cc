@@ -30,7 +30,8 @@ enum TrainingMode { TrainingFalse,
 #if defined(USE_CUDA) || defined(USE_ROCM)
 namespace {
 void RunBiasDropoutTest(const bool use_mask, const std::vector<int64_t>& input_shape, float ratio = -1.0f,
-                        TrainingMode training_mode = TrainingTrue, bool use_float16_ratio = false, bool has_residual = true) {
+                        TrainingMode training_mode = TrainingTrue, bool use_float16_ratio = false,
+                        bool has_residual = true, bool has_same_shape_bias = false) {
   OpTester t{"BiasDropout", 1, kMSDomain};
   const int64_t seed = 42;
   t.AddAttribute("seed", seed);
@@ -40,8 +41,13 @@ void RunBiasDropoutTest(const bool use_mask, const std::vector<int64_t>& input_s
   const std::vector<float> input = ValueRange(input_size, 1.0f, 1.0f);
   t.AddInput("data", input_shape, input);
 
-  std::vector<int64_t> bias_shape{input_shape.back()};
-  const auto bias_size = input_shape.back();
+  std::vector<int64_t> bias_shape;
+  if (has_same_shape_bias) {
+    bias_shape = input_shape;
+  } else {
+    bias_shape.push_back(input_shape.back());
+  }
+  const auto bias_size = has_same_shape_bias ? input_size : input_shape.back();
   const std::vector<float> bias = ValueRange(bias_size, 2.0f, 1.0f);
   t.AddInput("bias", bias_shape, bias);
 
@@ -143,7 +149,7 @@ TEST(BiasDropoutTest, BasicWithoutResidualAndNotVectorized) {
   RunBiasDropoutTest(false, {10, 5, 5}, 0.75f, TrainingTrue, false, false);
 }
 TEST(BiasDropoutTest, MaskAndNotVectorized) {
-  RunBiasDropoutTest(true, {3, 5, 100}, 0.25f);
+  RunBiasDropoutTest(true, {3, 5, 10}, 0.25f);
 }
 
 // N % 4 == 0
@@ -177,6 +183,15 @@ TEST(BiasDropoutTest, RatioLimit) {
 
 TEST(BiasDropoutTest, EmptyRatio) {
   RunBiasDropoutTest(true, {2, 7, 1024});
+}
+
+// has_same_bias_shape == true
+TEST(BiasDropoutTest, BasicBiasSameShape) {
+  RunBiasDropoutTest(false, {10, 10, 10}, 0.75f, TrainingTrue, false, true, true);
+}
+
+TEST(BiasDropoutTest, BasicBiasSameShapeNotVectorized) {
+  RunBiasDropoutTest(false, {10, 5, 5}, 0.75f, TrainingTrue, false, true, true);
 }
 #endif
 

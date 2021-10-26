@@ -881,6 +881,8 @@ template <>
 inline bool Tensor::IsDataType<double>() const { return g_host->Tensor__IsDataType_double(this); }
 template <>
 inline bool Tensor::IsDataType<MLFloat16>() const { return g_host->Tensor__IsDataType_MLFloat16(this); }
+template <>
+inline bool Tensor::IsDataType<BFloat16>() const { return g_host->Tensor__IsDataType_BFloat16(this); }
 
 template <>
 inline bool* Tensor::MutableData<bool>() { return g_host->Tensor__MutableData_bool(this); }

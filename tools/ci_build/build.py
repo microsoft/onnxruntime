@@ -77,9 +77,14 @@ _check_python_version()
 
 def _openvino_verify_device_type(device_read):
     choices = ["CPU_FP32", "GPU_FP32", "GPU_FP16", "VAD-M_FP16", "MYRIAD_FP16", "VAD-F_FP32"]
+
+    choices1 = ["CPU_FP32_NO_PARTITION", "GPU_FP32_NO_PARTITION", "GPU_FP16_NO_PARTITION",
+                "VAD-M_FP16_NO_PARTITION", "MYRIAD_FP16_NO_PARTITION", "VAD-F_FP32_NO_PARTITION"]
     status_hetero = True
     res = False
     if (device_read in choices):
+        res = True
+    elif (device_read in choices1):
         res = True
     elif (device_read.startswith("HETERO:") or device_read.startswith("MULTI:")):
         res = True
@@ -107,6 +112,7 @@ def _openvino_verify_device_type(device_read):
     if (res is False):
         print("\n" + "You have selcted wrong configuration for the build.")
         print("pick the build type for specific Hardware Device from following options: ", choices)
+        print("(or) from the following options with graph partitioning disabled: ", choices1)
         print("\n")
         if not (device_read.startswith("HETERO:") or device_read.startswith("MULTI:")):
             invalid_hetero_build()
@@ -353,6 +359,9 @@ def parse_arguments():
         "--enable_wasm_threads", action='store_true',
         help="Enable WebAssembly multi-threads support")
     parser.add_argument(
+        "--enable_wasm_profiling", action='store_true',
+        help="Enable WebAsselby profiling and preserve function names")
+    parser.add_argument(
         "--enable_wasm_debug_info", action='store_true',
         help="Build WebAssembly with DWARF format debug info")
     parser.add_argument(
@@ -393,9 +402,6 @@ def parse_arguments():
         "--dnnl_opencl_root", action='store', default='',
         help="Path to OpenCL SDK. "
         "e.g. --dnnl_opencl_root \"C:/Program Files (x86)/IntelSWTools/sw_dev_tools/OpenCL/sdk\"")
-    parser.add_argument(
-        "--use_featurizers", action='store_true',
-        help="Build with ML Featurizer support.")
     parser.add_argument(
         "--use_openvino", nargs="?", const="CPU_FP32",
         type=_openvino_verify_device_type,
@@ -448,7 +454,7 @@ def parse_arguments():
         help="Enable operator implemented in language other than cpp")
     parser.add_argument(
         "--cmake_generator",
-        choices=['Visual Studio 15 2017', 'Visual Studio 16 2019', 'Ninja'],
+        choices=['Visual Studio 15 2017', 'Visual Studio 16 2019', 'Visual Studio 17 2022', 'Ninja'],
         default='Visual Studio 16 2019' if is_windows() else None,
         help="Specify the generator that CMake invokes. "
         "This is only supported on Windows")
@@ -605,20 +611,20 @@ def run_subprocess(args, cwd=None, capture_stdout=False, dll_path=None,
     my_env = os.environ.copy()
     if dll_path:
         if is_windows():
-            my_env["PATH"] = dll_path + os.pathsep + my_env["PATH"]
+            if "PATH" in my_env:
+                my_env["PATH"] = dll_path + os.pathsep + my_env["PATH"]
+            else:
+                my_env["PATH"] = dll_path
         else:
             if "LD_LIBRARY_PATH" in my_env:
                 my_env["LD_LIBRARY_PATH"] += os.pathsep + dll_path
             else:
                 my_env["LD_LIBRARY_PATH"] = dll_path
     if python_path:
-        if is_windows():
-            my_env["PYTHONPATH"] = python_path + os.pathsep + my_env["PYTHONPATH"]
+        if "PYTHONPATH" in my_env:
+            my_env["PYTHONPATH"] += os.pathsep + python_path
         else:
-            if "PYTHONPATH" in my_env:
-                my_env["PYTHONPATH"] += os.pathsep + python_path
-            else:
-                my_env["PYTHONPATH"] = python_path
+            my_env["PYTHONPATH"] = python_path
 
     my_env.update(env)
 
@@ -715,7 +721,6 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-DPython_EXECUTABLE=" + sys.executable,
         "-DPYTHON_EXECUTABLE=" + sys.executable,
         "-Donnxruntime_ROCM_VERSION=" + (args.rocm_version if args.use_rocm else ""),
-        "-Donnxruntime_USE_FEATURIZERS=" + ("ON" if args.use_featurizers else "OFF"),
         "-Donnxruntime_USE_MIMALLOC_STL_ALLOCATOR=" + (
             "ON" if args.use_mimalloc == "stl" or args.use_mimalloc == "all" else "OFF"),
         "-Donnxruntime_USE_MIMALLOC_ARENA_ALLOCATOR=" + (
@@ -803,10 +808,12 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                                                                   else "OFF"),
         "-Donnxruntime_ENABLE_WEBASSEMBLY_THREADS=" + ("ON" if args.enable_wasm_threads else "OFF"),
         "-Donnxruntime_ENABLE_WEBASSEMBLY_DEBUG_INFO=" + ("ON" if args.enable_wasm_debug_info else "OFF"),
+        "-Donnxruntime_ENABLE_WEBASSEMBLY_PROFILING=" + ("ON" if args.enable_wasm_profiling else "OFF"),
         "-Donnxruntime_WEBASSEMBLY_MALLOC=" + args.wasm_malloc,
         "-Donnxruntime_ENABLE_EAGER_MODE=" + ("ON" if args.build_eager_mode else "OFF"),
         "-Donnxruntime_ENABLE_EXTERNAL_CUSTOM_OP_SCHEMAS=" + ("ON" if args.enable_external_custom_op_schemas
                                                               else "OFF"),
+        "-Donnxruntime_NVCC_THREADS=" + str(args.parallel),
     ]
     # It should be default ON in CI build pipelines, and OFF in packaging pipelines.
     # And OFF for the people who are not actively developing onnx runtime.
@@ -870,13 +877,25 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                            "ON" if args.use_openvino == "VAD-M_FP16" else "OFF"),
                        "-Donnxruntime_USE_OPENVINO_VAD_F=" + (
                            "ON" if args.use_openvino == "VAD-F_FP32" else "OFF"),
+                       "-Donnxruntime_USE_OPENVINO_MYRIAD_NP=" + (
+                           "ON" if args.use_openvino == "MYRIAD_FP16_NO_PARTITION" else "OFF"),
+                       "-Donnxruntime_USE_OPENVINO_GPU_FP32_NP=" + (
+                           "ON" if args.use_openvino == "GPU_FP32_NO_PARTITION" else "OFF"),
+                       "-Donnxruntime_USE_OPENVINO_GPU_FP16_NP=" + (
+                           "ON" if args.use_openvino == "GPU_FP16_NO_PARTITION" else "OFF"),
+                       "-Donnxruntime_USE_OPENVINO_CPU_FP32_NP=" + (
+                           "ON" if args.use_openvino == "CPU_FP32_NO_PARTITION" else "OFF"),
+                       "-Donnxruntime_USE_OPENVINO_VAD_M_NP=" + (
+                           "ON" if args.use_openvino == "VAD-M_FP16_NO_PARTITION" else "OFF"),
+                       "-Donnxruntime_USE_OPENVINO_VAD_F_NP=" + (
+                           "ON" if args.use_openvino == "VAD-F_FP32_NO_PARTITION" else "OFF"),
                        "-Donnxruntime_USE_OPENVINO_HETERO=" + (
                            "ON" if args.use_openvino.startswith("HETERO") else "OFF"),
                        "-Donnxruntime_USE_OPENVINO_DEVICE=" + (args.use_openvino),
                        "-Donnxruntime_USE_OPENVINO_MULTI=" + (
                            "ON" if args.use_openvino.startswith("MULTI") else "OFF")]
 
-    # TensorRT and OpenVINO providers currently only supports
+    # TensorRT and OpenVINO providers currently only support
     # full_protobuf option.
     if (args.use_full_protobuf or args.use_tensorrt or
             args.use_openvino or args.use_vitisai or args.gen_doc):
@@ -1684,7 +1703,7 @@ def build_python_wheel(
         source_dir, build_dir, configs, use_cuda, cuda_version, use_rocm, rocm_version, use_dnnl,
         use_tensorrt, use_openvino, use_nuphar, use_vitisai, use_acl, use_armnn, use_dml,
         wheel_name_suffix, enable_training, nightly_build=False, default_training_package_device=False,
-        featurizers_build=False, use_ninja=False):
+        use_ninja=False, build_eager_mode=False):
     for config in configs:
         cwd = get_config_build_dir(build_dir, config)
         if is_windows() and not use_ninja:
@@ -1698,12 +1717,12 @@ def build_python_wheel(
             args.append('--nightly_build')
         if default_training_package_device:
             args.append('--default_training_package_device')
-        if featurizers_build:
-            args.append("--use_featurizers")
         if wheel_name_suffix:
             args.append('--wheel_name_suffix={}'.format(wheel_name_suffix))
         if enable_training:
             args.append("--enable_training")
+        if build_eager_mode:
+            args.append("--disable_auditwheel_repair")
 
         # The following arguments are mutually exclusive
         if use_tensorrt:
@@ -2284,8 +2303,8 @@ def main():
                 args.enable_training,
                 nightly_build=nightly_build,
                 default_training_package_device=default_training_package_device,
-                featurizers_build=args.use_featurizers,
-                use_ninja=(args.cmake_generator == 'Ninja')
+                use_ninja=(args.cmake_generator == 'Ninja'),
+                build_eager_mode=args.build_eager_mode
             )
         if args.build_nuget:
             build_nuget_package(

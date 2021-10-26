@@ -259,13 +259,13 @@ NupharExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
         const ONNX_NAMESPACE::TensorProto* steps_tp = nullptr;
         bool found_steps = inputs.size() > 4 && graph_viewer.GetInitializedTensor(inputs[4]->Name(), steps_tp);
         if (found_steps) {
-          GetVectorInt64FromTensorProto(steps, *steps_tp);
+          ORT_THROW_IF_ERROR(GetVectorInt64FromTensorProto(steps, *steps_tp));
         }
 
         const ONNX_NAMESPACE::TensorProto* axes_tp = nullptr;
         bool found_axes = inputs.size() > 3 && graph_viewer.GetInitializedTensor(inputs[3]->Name(), axes_tp);
         if (found_axes) {
-          GetVectorInt64FromTensorProto(axes, *axes_tp);
+          ORT_THROW_IF_ERROR(GetVectorInt64FromTensorProto(axes, *axes_tp));
         }
       } else {
         const onnxruntime::NodeAttributes& attrs = node.GetAttributes();
