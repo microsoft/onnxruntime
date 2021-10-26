@@ -407,7 +407,7 @@ if (onnxruntime_DISABLE_EXTERNAL_INITIALIZERS)
 endif()
 
 if (onnxruntime_DISABLE_RTTI)
-  add_compile_definitions(ORT_NO_RTTI GOOGLE_PROTOBUF_NO_RTTI)
+  add_compile_definitions(ORT_NO_RTTI)
   if (MSVC)
     # Disable RTTI and turn usage of dynamic_cast and typeid into errors
     add_compile_options("$<$<COMPILE_LANGUAGE:CXX>:/GR->" "$<$<COMPILE_LANGUAGE:CXX>:/we4541>")
