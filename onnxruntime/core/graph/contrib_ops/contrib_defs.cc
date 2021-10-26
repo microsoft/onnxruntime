@@ -708,7 +708,7 @@ will be calculated.)DOC";
       .Output(2, "embedding_sum", "sum of word_embedding and position_embedding without layer normalization", "T", OpSchema::Optional)
       .TypeConstraint("T1", {"tensor(int32)"}, "Constrain input and output integer tensors types")
       .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output float tensors types.")
-      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::embedLayerNormalizationShapeInference));
+      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::embedLayerNormalizationShapeInference);
 
   static const char* QEmbedLayerNormalization_ver1_doc = R"DOC(
 QEmbedLayerNormalization is the quantized fusion of embedding layer in BERT model, with optional mask processing.
@@ -746,7 +746,7 @@ If mask is provided, mask index (that is position of first 0 in mask, or number 
       .TypeConstraint("T1", {"tensor(int32)"}, "Constrain mask index to integer types")
       .TypeConstraint("T2", {"tensor(int8)", "tensor(uint8)"}, "Constrain input and output types to int8 tensors.")
       .TypeConstraint("T", {"tensor(float)"}, "Constrain input and output types to float32 tensors.")
-      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE:: embedLayerNormalizationShapeInference);
+      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE:: embedLayerNormalizationShapeInference);
 
   static const char* FastGelu_ver1_doc = R"DOC(
 GELU (Gaussian Error Linear Unit) approximation: Y=0.5*X*(1+tanh(0.797885*X+0.035677*X*X*X)) with an optional input of bias that will be added to X before GELU.)DOC";
