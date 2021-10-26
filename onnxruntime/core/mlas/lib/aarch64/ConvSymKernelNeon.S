@@ -151,7 +151,7 @@ Return Value:
         mov     x13,x0                  // x13 -> A0
         add     x15,x0,x16              // x15 -> A1 = A0 + input channels
         csel    x15, x13, x15, LO       // if OutputCount < 2  x15 -> A0
-        b       .LConvSym.Blockloop
+        b       .LConvSym.Prologue
 .LConvSym.InputIndirection:
         cmp     x7,2                    // test if OutputCount < 2
         ldr     x13,[x0]                // x13 -> A0
@@ -161,34 +161,117 @@ Return Value:
 .LConvSym.SkipLoadA1:
         add     x0,x0,8                 // indirect A advance to next pointer, prepare for kernel size loop
 
-.LConvSym.Blockloop:
-        subs     x14,x14,16               // input channel - 16
-
+.LConvSym.Prologue:
+        subs    x14,x14,16
         ld1     {v0.16b},[x13],#16
-        ld1     {v1.16b},[x15],#16
         ld1     {v4.16b},[x1],#16
         ld1     {v5.16b},[x1],#16
         ld1     {v6.16b},[x1],#16
         ld1     {v7.16b},[x1],#16
-        ld1     {v8.16b},[x1],#16
         eor     v0.16b, v0.16b, v2.16b
-        eor     v1.16b, v1.16b, v2.16b
-        ld1     {v9.16b},[x1],#16
-        ld1     {v10.16b},[x1],#16
-        ld1     {v11.16b},[x1],#16
+        b.ls    .LConvSym.Epilogue
 
+.LConvSym.Blockloop:
+        subs     x14,x14,16               // input channel - 16
+        ld1     {v1.16b},[x15],#16
         smull   v12.8h,v0.8b,v4.8b
         smull   v13.8h,v0.8b,v5.8b
         smull   v14.8h,v0.8b,v6.8b
         smull   v15.8h,v0.8b,v7.8b
+        ld1     {v8.16b},[x1],#16
         smlal2  v12.8h,v0.16b,v4.16b
         smlal2  v13.8h,v0.16b,v5.16b
         smlal2  v14.8h,v0.16b,v6.16b
         smlal2  v15.8h,v0.16b,v7.16b
+        ld1     {v9.16b},[x1],#16
+        eor     v1.16b, v1.16b, v2.16b
         sadalp  v16.4s,v12.8h
         sadalp  v18.4s,v13.8h
         sadalp  v20.4s,v14.8h
         sadalp  v22.4s,v15.8h
+
+        ld1     {v10.16b},[x1],#16
+        smull   v12.8h,v1.8b,v4.8b
+        smull   v13.8h,v1.8b,v5.8b
+        smull   v14.8h,v1.8b,v6.8b
+        smull   v15.8h,v1.8b,v7.8b
+        ld1     {v11.16b},[x1],#16
+        smlal2  v12.8h,v1.16b,v4.16b
+        smlal2  v13.8h,v1.16b,v5.16b
+        smlal2  v14.8h,v1.16b,v6.16b
+        smlal2  v15.8h,v1.16b,v7.16b
+        ld1     {v4.16b},[x1],#16
+        sadalp  v17.4s,v12.8h
+        sadalp  v19.4s,v13.8h
+        sadalp  v21.4s,v14.8h
+        sadalp  v23.4s,v15.8h
+
+
+        ld1     {v5.16b},[x1],#16
+        smull   v12.8h,v0.8b,v8.8b
+        smull   v13.8h,v0.8b,v9.8b
+        smull   v14.8h,v0.8b,v10.8b
+        smull   v15.8h,v0.8b,v11.8b
+        ld1     {v6.16b},[x1],#16
+        smlal2  v12.8h,v0.16b,v8.16b
+        smlal2  v13.8h,v0.16b,v9.16b
+        smlal2  v14.8h,v0.16b,v10.16b
+        smlal2  v15.8h,v0.16b,v11.16b
+        ld1     {v7.16b},[x1],#16
+        sadalp  v24.4s,v12.8h
+        sadalp  v26.4s,v13.8h
+        sadalp  v28.4s,v14.8h
+        sadalp  v30.4s,v15.8h
+
+        ld1     {v0.16b},[x13],#16
+        smull   v12.8h,v1.8b,v8.8b
+        smull   v13.8h,v1.8b,v9.8b
+        smull   v14.8h,v1.8b,v10.8b
+        smull   v15.8h,v1.8b,v11.8b
+        smlal2  v12.8h,v1.16b,v8.16b
+        smlal2  v13.8h,v1.16b,v9.16b
+        smlal2  v14.8h,v1.16b,v10.16b
+        smlal2  v15.8h,v1.16b,v11.16b
+        eor     v0.16b, v0.16b, v2.16b
+        sadalp  v25.4s,v12.8h
+        sadalp  v27.4s,v13.8h
+        sadalp  v29.4s,v14.8h
+        sadalp  v31.4s,v15.8h
+
+        b.hi     .LConvSym.Blockloop
+
+.LConvSym.Epilogue:
+        ld1     {v1.16b},[x15],#16
+        smull   v12.8h,v0.8b,v4.8b
+        smull   v13.8h,v0.8b,v5.8b
+        smull   v14.8h,v0.8b,v6.8b
+        smull   v15.8h,v0.8b,v7.8b
+        ld1     {v8.16b},[x1],#16
+        smlal2  v12.8h,v0.16b,v4.16b
+        smlal2  v13.8h,v0.16b,v5.16b
+        smlal2  v14.8h,v0.16b,v6.16b
+        smlal2  v15.8h,v0.16b,v7.16b
+        ld1     {v9.16b},[x1],#16
+        eor     v1.16b, v1.16b, v2.16b
+        sadalp  v16.4s,v12.8h
+        sadalp  v18.4s,v13.8h
+        sadalp  v20.4s,v14.8h
+        sadalp  v22.4s,v15.8h
+
+        ld1     {v10.16b},[x1],#16
+        smull   v12.8h,v1.8b,v4.8b
+        smull   v13.8h,v1.8b,v5.8b
+        smull   v14.8h,v1.8b,v6.8b
+        smull   v15.8h,v1.8b,v7.8b
+        ld1     {v11.16b},[x1],#16
+        smlal2  v12.8h,v1.16b,v4.16b
+        smlal2  v13.8h,v1.16b,v5.16b
+        smlal2  v14.8h,v1.16b,v6.16b
+        smlal2  v15.8h,v1.16b,v7.16b
+        sadalp  v17.4s,v12.8h
+        sadalp  v19.4s,v13.8h
+        sadalp  v21.4s,v14.8h
+        sadalp  v23.4s,v15.8h
 
         smull   v12.8h,v0.8b,v8.8b
         smull   v13.8h,v0.8b,v9.8b
@@ -203,19 +286,6 @@ Return Value:
         sadalp  v28.4s,v14.8h
         sadalp  v30.4s,v15.8h
 
-        smull   v12.8h,v1.8b,v4.8b
-        smull   v13.8h,v1.8b,v5.8b
-        smull   v14.8h,v1.8b,v6.8b
-        smull   v15.8h,v1.8b,v7.8b
-        smlal2  v12.8h,v1.16b,v4.16b
-        smlal2  v13.8h,v1.16b,v5.16b
-        smlal2  v14.8h,v1.16b,v6.16b
-        smlal2  v15.8h,v1.16b,v7.16b
-        sadalp  v17.4s,v12.8h
-        sadalp  v19.4s,v13.8h
-        sadalp  v21.4s,v14.8h
-        sadalp  v23.4s,v15.8h
-
         smull   v12.8h,v1.8b,v8.8b
         smull   v13.8h,v1.8b,v9.8b
         smull   v14.8h,v1.8b,v10.8b
@@ -228,8 +298,6 @@ Return Value:
         sadalp  v27.4s,v13.8h
         sadalp  v29.4s,v14.8h
         sadalp  v31.4s,v15.8h
-
-        b.hi     .LConvSym.Blockloop
 
         subs    x9, x9, 1
         b.hi    .LConvSym.KernelSizeLoop
