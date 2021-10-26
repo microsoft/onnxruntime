@@ -142,7 +142,7 @@ class NodeRef {
   /// <returns>Op computed by the node</returns>
   virtual const std::string_view OpType() const = 0;
 
-  /// <returns>Domain containing the op. Empty string signifies an unset (default) onnx domain.</returns>
+  /// <returns>Domain containing the op. Empty string if node has no domain set.</returns>
   virtual const std::string_view Domain() const = 0;
 
   /// <returns>Names of input values. Empty string may be included for optional inputs.</returns>
@@ -208,10 +208,15 @@ class NodeRef {
   /// Convenience method. Returns whether node is of the specified op type and domain
   /// </summary>
   /// <param name="op_type">Op type</param>
-  /// <param name="domain">Domain. Empty string signifies an unset (default) onnx domain.</param>
+  /// <param name="domain">Domain. Empty string and "onnx.ai" are treated as equal.</param>
   /// <returns></returns>
   virtual bool IsOp(const std::string_view op_type, const std::string_view domain = "") const {
-    return OpType() == op_type && Domain() == domain;
+    if (OpType() != op_type) {
+      return false;
+    }
+    std::string_view node_domain = Domain();
+    return node_domain == domain ||
+        ((domain == "" || domain == "ai.onnx") && (node_domain == "" || node_domain == "ai.onnx"));
   }
 
   /// <summary>
@@ -267,9 +272,9 @@ struct ValueConsumers {
 /// </summary>
 class GraphRef {
  public:
-  /// <param name="domain">Domain. Empty string signifies an unset (default) onnx domain.</param>
+  /// <param name="domain">Domain name to find in model opset_import</param>
   /// <returns>Opset of domain declared in model, or nullopt if domain is not present</returns>
-  virtual std::optional<int64_t> Opset(const std::string_view domain = "") const = 0;
+  virtual std::optional<int64_t> Opset(const std::string_view domain) const = 0;
 
   /// <returns>Topologically-sorted list of nodes in the graph</returns>
   virtual std::vector<std::unique_ptr<NodeRef>> Nodes() const = 0;
@@ -335,7 +340,7 @@ class GraphRef {
   /// <param name="num_outputs">
   /// Number of outputs for the node. Names automatically generated. Optional outputs not supported.
   /// </param>
-  /// <param name="domain">The new node's domain. Empty string signifies an unset (default) onnx domain.</param>
+  /// <param name="domain">The new node's domain. Empty string signifies default onnx domain.</param>
   /// <returns>The new node</returns>
   virtual std::unique_ptr<NodeRef> AddNode(const std::string_view op_type, const std::vector<std::string_view>& inputs,
                                         size_t num_outputs, const std::string_view domain = "") = 0;

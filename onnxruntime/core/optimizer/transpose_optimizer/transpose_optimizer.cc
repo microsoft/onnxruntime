@@ -1054,7 +1054,7 @@ static bool HandleSqueeze(HandlerArgs& args) {
 
   auto axes = ReadFromAttrOrInput(args.ctx, args.node, "axes", /*inp_index*/ 1, /*opset*/ 13);
 
-  // If Squeeze axes are empty, output rank is unknown and must be skipped. Invalid axes are skipped too.
+  // If Squeeze axes are unset, output rank is unknown and must be skipped. Invalid axes are skipped too.
   if (axes == std::nullopt || !NormalizeAndValidateAxes(*axes, args.perm.size())) {
     return false;
   }
@@ -1533,7 +1533,7 @@ static const HandlerInfo* GetHandler(api::NodeRef& node, bool allow_extended_ops
   std::string key;
   auto domain = node.Domain();
   auto op_type = node.OpType();
-  if (domain == "") {
+  if (domain == "" || domain == "ai.onnx") {
     key = std::string(op_type);
   } else if (domain == "com.microsoft") {
     key = "com.microsoft." + std::string(op_type);
@@ -1608,7 +1608,10 @@ bool ProcessTranspose(OptimizerCtx& ctx, api::NodeRef& transpose, api::NodeRef& 
 
 // Returns nullopt if graph opset is unsupported.
 std::optional<OptimizerCtx> MakeOptimizerContext(api::GraphRef& graph, bool allow_extended_ops) {
-  auto opset = graph.Opset();
+  auto opset = graph.Opset("");
+  if (opset == std::nullopt) {
+    opset = graph.Opset("ai.onnx");
+  }
   if (opset == std::nullopt || *opset > kMaxSupportedOpset || *opset < kMinSupportedOpset) {
     return std::nullopt;
   }

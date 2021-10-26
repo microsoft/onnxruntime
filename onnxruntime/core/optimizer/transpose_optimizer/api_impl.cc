@@ -442,6 +442,7 @@ std::vector<std::unique_ptr<api::NodeRef>> ApiGraph::Nodes() const {
 }
 
 std::unique_ptr<api::TensorRef> ApiGraph::GetConstant(const std::string_view name) const {
+  // TODO: make this work for initializers in parent graphs. See api.h for requirements.
   const auto* tensor = graph_.GetConstantInitializer(std::string(name), false);
   if (tensor == nullptr) {
     return nullptr;
