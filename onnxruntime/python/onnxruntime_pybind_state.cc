@@ -586,7 +586,7 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
           blob_dump_path = option.second;
           params.blob_dump_path = blob_dump_path.c_str();
         }  else if (option.first == "context") {
-          params.context = (void *)std::strtol(option.second.c_str(), NULL, 16);
+          params.context = (void *)(option.second.c_str());
         } else {
           ORT_THROW("Invalid OpenVINO EP option: ", option.first);
         }
