@@ -32,6 +32,11 @@ limitations under the License.
 using namespace onnxruntime::cuda;
 using namespace cub;
 
+#define CHECK_CUDA(expr)  \
+  if (!CUDA_CALL(expr)) { \
+    return false;         \
+  }
+
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
@@ -230,16 +235,13 @@ bool DecoderQkvToContext(
   T* new_value_cache)
 {
   const int max_threads_per_block(prop.maxThreadsPerBlock);
-  const BN = batch_size * num_heads;
+  const int BN = batch_size * num_heads;
   const int BHN = BN * head_size;
   const int BNS = BN * sequence_length;
   const int k_buffer_offset = sequence_length * BHN;
   const int v_buffer_offset = (sequence_length + kv_sequence_length) * BHN;
 
   T* temp_qkv_buffer = workspace_buffer;
-  T* scratch1 = workspace;
-  T* scratch2 = scratch1 + (bytes / element_size);
-  T* scratch3 = scratch2 + (bytes / element_size);
 
   if (!has_layer_state || !use_past) {
     if (!static_kv) {
@@ -264,7 +266,7 @@ bool DecoderQkvToContext(
         return false;
       }
       //copy q to qkv_buffer
-      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(qkv_buffer, temp_qkv_buffer, sequence_length * BHN * sizeof(T), cudaMemcpyDeviceToDevice, stream));
+      CHECK_CUDA(cudaMemcpyAsync(qkv_buffer, temp_qkv_buffer, sequence_length * BHN * sizeof(T), cudaMemcpyDeviceToDevice, stream));
       // concat cache-k with k and copy to qkv_buffer
       if (nullptr != key_cache && !LaunchConcatTensorToTensor(stream, kv_sequence_length, sequence_length, batch_size, head_size, num_heads,
           max_threads_per_block, 1, key_cache, temp_qkv_buffer + k_buffer_offset, qkv_buffer + k_buffer_offset)) {
@@ -282,9 +284,9 @@ bool DecoderQkvToContext(
       }
       // bugbug: the following copies can be optimized, no need to copy them, use the cache directly
       // copy cache-k to qkv_buffer
-      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(qkv_buffer + k_buffer_offset, key_cache, kv_sequence_length * BHN * sizeof(T), cudaMemcpyDeviceToDevice, stream));
+      CHECK_CUDA(cudaMemcpyAsync(qkv_buffer + k_buffer_offset, key_cache, kv_sequence_length * BHN * sizeof(T), cudaMemcpyDeviceToDevice, stream));
       // copy cache-v to qkv_buffer
-      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(qkv_buffer + v_buffer_offset, value_cache, kv_sequence_length * BHN * sizeof(T), cudaMemcpyDeviceToDevice, stream));
+      CHECK_CUDA(cudaMemcpyAsync(qkv_buffer + v_buffer_offset, value_cache, kv_sequence_length * BHN * sizeof(T), cudaMemcpyDeviceToDevice, stream));
     }
   }
 
@@ -293,8 +295,8 @@ bool DecoderQkvToContext(
   const T* k = qkv_buffer + k_buffer_offset;
   const T* v = qkv_buffer + v_buffer_offset;
   if (has_layer_state) {
-    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(new_key_cache, k, kv_sequence_length * BHN * sizeof(T), cudaMemcpyDeviceToDevice, stream));
-    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(new_value_cache, v, kv_sequence_length * BHN * sizeof(T), cudaMemcpyDeviceToDevice, stream));
+    CHECK_CUDA(cudaMemcpyAsync(new_key_cache, k, kv_sequence_length * BHN * sizeof(T), cudaMemcpyDeviceToDevice, stream));
+    CHECK_CUDA(cudaMemcpyAsync(new_value_cache, v, kv_sequence_length * BHN * sizeof(T), cudaMemcpyDeviceToDevice, stream));
   }
 
   // scratch1: BxNxSxS* buffer
@@ -361,6 +363,7 @@ bool LaunchDecoderAttentionKernel(
   const void* key_cache,
   const void* value_cache,
   void* qkv_buffer,
+  void* workspace_buffer,
   void* output,
   void* new_key_cache,
   void* new_value_cache)
@@ -387,6 +390,7 @@ bool LaunchDecoderAttentionKernel(
       reinterpret_cast<const half*>(key_cache),
       reinterpret_cast<const half*>(value_cache),
       reinterpret_cast<half*>(qkv_buffer),
+      reinterpret_cast<half*>(workspace_buffer),
       reinterpret_cast<half*>(output),
       reinterpret_cast<half*>(new_key_cache),
       reinterpret_cast<half*>(new_value_cache)
@@ -412,6 +416,7 @@ bool LaunchDecoderAttentionKernel(
       reinterpret_cast<const float*>(key_cache),
       reinterpret_cast<const float*>(value_cache),
       reinterpret_cast<float*>(qkv_buffer),
+      reinterpret_cast<float*>(workspace_buffer),
       reinterpret_cast<float*>(output),
       reinterpret_cast<float*>(new_key_cache),
       reinterpret_cast<float*>(new_value_cache)

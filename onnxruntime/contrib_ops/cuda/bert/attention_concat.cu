@@ -82,12 +82,12 @@ __global__ void ConcatTensorToTensorLarge(const int tensor_add_sequence_length,
       const int past_SH = tensor_in_sequence_length * H;
       const int past_NSH = num_heads * past_SH;
       const int in_offset = b * past_NSH + n * past_SH + s * H + h + chunk_id * (past_NSH * batch_size);
-      present[out_offset] = past[in_offset];
+      tensor_out[out_offset] = tensor_in[in_offset];
     } else if (s < all_sequence_length) {
       const int SH = tensor_add_sequence_length * H;
       const int NSH = num_heads * SH;
       const int in_offset = b * NSH + n * SH + (s - tensor_in_sequence_length) * H + h + chunk_id * (NSH * batch_size);
-      present[out_offset] = k_v[in_offset];
+      tensor_out[out_offset] = tensor_add[in_offset];
     }
 
     h += stride;

@@ -127,7 +127,7 @@ Status DecoderAttention<T>::ComputeInternal(OpKernelContext* context) const {
       gemm_kv_buffer_p = GetScratchBuffer<T>(batch_size * 2 * key_sequence_length * hidden_size * element_size);
       m = key_sequence_length * batch_size;
       n = 2 * hidden_size;
-      const int query_chuck_size = batch_size * sequence_length * hidden_size;
+
       // broadcast bias for key and value: (2*h2, T_S*B)
       CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
           cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, 1, &one,
@@ -191,8 +191,8 @@ Status DecoderAttention<T>::ComputeInternal(OpKernelContext* context) const {
     }
   }
 
-  IAllocatorUniquePtr<T> qkv_buffer_p = GetScratchBuffer<void>(batch_size * (sequence_length + 2 * kv_sequence_length) * hidden_size * element_size);
-  IAllocatorUniquePtr<T> workspace_p = GetScratchBuffer<void>(2 * batch_size * sequence_length * num_heads_ * element_size * (2 * head_size + kv_sequence_length));
+  auto qkv_buffer_p = GetScratchBuffer<void>(batch_size * (sequence_length + 2 * kv_sequence_length) * hidden_size * element_size);
+  auto workspace_p = GetScratchBuffer<void>(2 * batch_size * sequence_length * num_heads_ * element_size * (2 * head_size + kv_sequence_length));
 
   Tensor* output(context->Output(0, query_shape));
   TensorShape new_cache_shape({batch_size, num_heads_, kv_sequence_length, head_size});
