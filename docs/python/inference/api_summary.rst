@@ -11,6 +11,7 @@ in *ONNX Runtime*.
 
 OrtValue
 =========
+
 *ONNX Runtime* works with native Python data structures which are mapped into ONNX data formats :
 Numpy arrays (tensors), dictionaries (maps), and a list of Numpy arrays (sequences).
 The data backing these are on CPU.
@@ -25,7 +26,7 @@ on a CUDA device:
 
 .. code-block:: python
 
-	#X is numpy array on cpu, create an OrtValue and place it on cuda device id = 0
+	# X is numpy array on cpu, create an OrtValue and place it on cuda device id = 0
 	ortvalue = onnxruntime.OrtValue.ortvalue_from_numpy(X, 'cuda', 0)
 	ortvalue.device_name()  # 'cuda'
 	ortvalue.shape()  # shape of the numpy array X
@@ -33,7 +34,7 @@ on a CUDA device:
 	ortvalue.is_tensor()  # 'True'
 	np.array_equal(ortvalue.numpy(), X)  # 'True'
 
-	#ortvalue can be provided as part of the input feed to a model
+	# ortvalue can be provided as part of the input feed to a model
 	ses = onnxruntime.InferenceSession('model.onnx')
 	res = sess.run(["Y"], {"X": ortvalue})
 
@@ -57,7 +58,7 @@ use IOBinding to put input on CUDA as the follows.
 
 .. code-block:: python
 
-	#X is numpy array on cpu 
+	# X is numpy array on cpu 
 	session = onnxruntime.InferenceSession('model.onnx')
 	io_binding = session.io_binding()
 	# OnnxRuntime will copy the data over to the CUDA device if 'input' is consumed by nodes on the CUDA device 
@@ -72,7 +73,7 @@ The input data is on a device, users directly use the input. The output data is 
 
 .. code-block:: python
 
-	#X is numpy array on cpu
+	# X is numpy array on cpu
 	X_ortvalue = onnxruntime.OrtValue.ortvalue_from_numpy(X, 'cuda', 0)
 	session = onnxruntime.InferenceSession('model.onnx')
 	io_binding = session.io_binding()
@@ -168,8 +169,14 @@ Main class
 Options
 -------
 
+RunOptions
+^^^^^^^^^^
+
 .. autoclass:: onnxruntime.RunOptions
     :members:
+
+SessionOptions
+^^^^^^^^^^^^^^
 
 .. autoclass:: onnxruntime.SessionOptions
     :members:
@@ -177,8 +184,14 @@ Options
 Data
 ----
 
+OrtValue
+^^^^^^^^
+
 .. autoclass:: onnxruntime.OrtValue
     :members:
+
+SparseTensor
+^^^^^^^^^^^^
 
 .. autoclass:: onnxruntime.SparseTensor
     :members:
@@ -186,8 +199,14 @@ Data
 Devices
 -------
 
+IOBinding
+^^^^^^^^^
+
 .. autoclass:: onnxruntime.IOBinding
     :members:
+
+OrtDevice
+^^^^^^^^^
 
 .. autoclass:: onnxruntime.OrtDevice
     :members:
@@ -198,8 +217,14 @@ Internal classes
 These classes cannot be instantiated by users but they are returned
 by methods or functions of this libary.
 
+ModelMetadata
+^^^^^^^^^^^^^
+
 .. autoclass:: onnxruntime.ModelMetadata
     :members:
+
+NodeArg
+^^^^^^^
 
 .. autoclass:: onnxruntime.NodeArg
     :members:

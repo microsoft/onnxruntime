@@ -112,7 +112,7 @@ inline HRESULT StatusCodeToHRESULT(StatusCode status) noexcept {
 }
 #endif
 
-class Status {
+class [[nodiscard]] Status {
  public:
   Status() noexcept = default;
 

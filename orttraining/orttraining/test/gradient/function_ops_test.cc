@@ -231,5 +231,13 @@ TEST_F(FunExpansionTest, LayerNormalizationGrad) {
   TestLayerNormGrad<BFloat16, float, false>({}, {8, 4});
 }
 
+TEST_F(FunExpansionTest, SigmoidGrad_float) {
+  TestUnaryOpGrad<float, true>("SigmoidGrad");
+}
+
+TEST_F(FunExpansionTest, TanhGrad_float) {
+  TestUnaryOpGrad<float, true>("TanhGrad");
+}
+
 }  // namespace test
 }  // namespace onnxruntime

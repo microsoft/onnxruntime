@@ -6,9 +6,250 @@
 #     - master
 #   always: true
 
-jobs: 
-- template: templates/cpu.yml
+parameters:
+- name: DoEsrp
+  type: boolean
+  default: true
+- name: RunTests
+  type: boolean
+  default: true
+
+jobs:
+- job: 'Windows_CI_x64'
+  timeoutInMinutes: 160
+  workspace:
+    clean: all
+  pool: 'Win-CPU-2021'
+  variables:
+    BuildConfig: 'RelWithDebInfo'
+    BuildCommand: '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_nodejs --enable_onnx_tests --enable_wcos --use_telemetry --cmake_generator "Visual Studio 16 2019" --enable_lto'
+    msbuildPlatform: x64
+  steps:
+  - checkout: self
+    clean: true
+    submodules: recursive
+
+  - powershell: |
+      if($env:TELEMETRYGUID)
+      {
+        $length = $env:TELEMETRYGUID.length
+        $fileContent = "#define TraceLoggingOptionMicrosoftTelemetry() \
+          TraceLoggingOptionGroup("+$env:TELEMETRYGUID.substring(1, $length-2)+")"
+        New-Item -Path "$(Build.SourcesDirectory)\include\onnxruntime\core\platform\windows\TraceLoggingConfigPrivate.h" -ItemType "file" -Value "$fileContent" -Force
+        Write-Output "Enabling TELEMETRY"
+      }
+    displayName: 'Create TraceLoggingConfigPrivate.h For WinML Telemetry'
+    env:
+      TELEMETRYGUID: $(TELEMETRYGUID)
+
+  - task: NodeTool@0
+    inputs:
+      versionSpec: '14.x'
+
+  - task: UsePythonVersion@0
+    inputs: 
+      versionSpec: '3.7' 
+      addToPath: true 
+      architecture: 'x64'
+
+  - task: BatchScript@1
+    displayName: 'setup env'
+    inputs:
+      filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\setup_env.bat'
+      modifyEnvironment: true
+      workingFolder: '$(Build.BinariesDirectory)'
+
+  - script: |
+      python -m pip install -q setuptools wheel numpy
+    workingDirectory: '$(Build.BinariesDirectory)'
+    displayName: 'Install python modules'
+
+  - task: PythonScript@0
+    displayName: 'Generate cmake config'
+    inputs:
+      scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
+      arguments: '$(BuildCommand) --update --config $(BuildConfig)'
+      workingDirectory: '$(Build.BinariesDirectory)'
+
+  - task: VSBuild@1
+    displayName: 'Build'
+    inputs:
+      solution: '$(Build.BinariesDirectory)\$(BuildConfig)\onnxruntime.sln'
+      platform: $(msbuildPlatform)
+      configuration: $(BuildConfig)
+      msbuildArchitecture: 'x64'
+      maximumCpuCount: true
+      logProjectEvents: true
+      workingFolder: '$(Build.BinariesDirectory)\$(BuildConfig)'
+      createLogFile: true
+
+  - ${{ if eq(parameters.RunTests, true) }}:
+    - script: |
+        mklink  /D /J $(Build.BinariesDirectory)\$(BuildConfig)\models $(Build.BinariesDirectory)\models
+        DIR dist\ /S /B > wheel_filename_file
+        set /p WHEEL_FILENAME=<wheel_filename_file
+        del wheel_filename_file
+        python.exe -m pip install -q --upgrade %WHEEL_FILENAME%
+        set PATH=%PATH%;$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)
+        @echo %PATH%
+        python $(Build.SourcesDirectory)\tools\ci_build\build.py $(BuildCommand) --test --config $(BuildConfig)
+      workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'
+      displayName: 'Run tests'
+
+  - ${{ if eq(parameters.RunTests, true) }}:
+    - task: PublishTestResults@2
+      displayName: 'Publish unit test results'
+      inputs:
+        testResultsFiles: '**\*.results.xml'
+        searchFolder: '$(Build.BinariesDirectory)'
+        testRunTitle: 'Unit Test Run'
+      condition: succeededOrFailed()
+
+  # Node.js Publish
+  - task: BatchScript@1
+    displayName: 'Setup VS2019 env vars'
+    inputs:
+      filename: 'C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Auxiliary\Build\vcvarsall.bat'
+      arguments: 'x64'
+      modifyEnvironment: true
+  - template: ../templates/win-esrp-dll.yml
+    parameters:
+      FolderPath: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\win32\x64'
+      DisplayName: 'ESRP - Sign Node.js binding binaries'
+      DoEsrp: ${{ parameters.DoEsrp }}
+      Pattern: '*.dll,*.node'
+
+  - script: |
+      del /Q $(Build.SourcesDirectory)\js\node\bin\napi-v3\win32\x64\CodeSignSummary-*.*
+      xcopy /E /I $(Build.SourcesDirectory)\js\node\bin $(Build.ArtifactStagingDirectory)\bin
+    workingDirectory: '$(Build.SourcesDirectory)\js\node'
+    displayName: 'Create Node.js Binding Artifact'
+
+  - task: PublishPipelineArtifact@0
+    displayName: 'Publish Pipeline Artifact: bin-win32_x64'
+    inputs:
+      artifactName: 'bin-win32_x64'
+      targetPath: '$(Build.ArtifactStagingDirectory)'
+
+  - task: DeleteFiles@1
+    displayName: 'Delete files from $(Build.BinariesDirectory)\RelWithDebInfo'
+    condition: and(succeeded(), eq(variables['BuildConfig'], 'RelWithDebInfo'))
+    inputs:
+      SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo'
+      Contents: |
+       **/*.obj
+       **/*.pdb
+       **/*.dll
+
+  #Manually set msBuildCommandline so that we can also set CAExcludePath
+  - task: SDLNativeRules@3
+    displayName: 'Run the PREfast SDL Native Rules for MSBuild'
+    inputs:
+      msBuildArchitecture: amd64
+      setupCommandlines: 'python $(Build.SourcesDirectory)\tools\ci_build\build.py --config RelWithDebInfo --update --cmake_extra_defines onnxruntime_ENABLE_STATIC_ANALYSIS=ON $(BuildCommand)'
+      msBuildCommandline: '"C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\MSBuild\Current\Bin\amd64\msbuild.exe" "$(Build.BinariesDirectory)\RelWithDebInfo\onnxruntime.sln" /p:platform=$(msbuildPlatform) /p:configuration="RelWithDebInfo" /p:CAExcludePath="$(Build.BinariesDirectory);$(Build.SourcesDirectory)\cmake;C:\program files (x86)" /p:VisualStudioVersion="16.0" /m /p:PreferredToolArchitecture=x64'
+      excludedPaths: '$(Build.BinariesDirectory)#$(Build.SourcesDirectory)\cmake#C:\program files (x86)'
+
+  - task: PostAnalysis@2
+    displayName: 'Guardian Break'
+    inputs:
+      GdnBreakGdnToolSDLNativeRulesSeverity: Warning
+
+  - template: ../templates/component-governance-component-detection-steps.yml
+    parameters :
+      condition : 'succeeded'
+
+  - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+    displayName: 'Clean Agent Directories'
+    condition: always()
+
+- template: ../templates/mac-ci.yml
   parameters:
-    AgentPool : 'Win-CPU-2021'
-    DoEsrp: 'true'
-    DoCompliance: 'true'
+    AgentPool : $(AgentPoolMacOS)
+    ArtifactName: 'bin-darwin_x64'
+    JobName: 'Mac_CI_x64'
+    BuildCommand: 'python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --build_nodejs --config Release'
+    DoNodejsPack : 'true'
+    DoNugetPack: 'false'
+    DoEsrp: ${{ parameters.DoEsrp }}
+
+- job: 'Linux_CI_x64'
+  workspace:
+    clean: all
+  timeoutInMinutes: 120
+  pool: $(AgentPoolLinux)
+  steps:    
+    - template: ../templates/set-version-number-variables-step.yml
+    - template: ../templates/get-docker-image-steps.yml
+      parameters:
+        Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cpu
+        Context: tools/ci_build/github/linux/docker
+        DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
+        Repository: onnxruntimecpubuild
+    - task: CmdLine@2
+      inputs:
+        script: |
+          mkdir -p $HOME/.onnx && docker run --rm --volume /data/onnx:/data/onnx:ro --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build --volume /data/models:/build/models:ro \
+          --volume $HOME/.onnx:/home/onnxruntimedev/.onnx -e NIGHTLY_BUILD onnxruntimecpubuild /bin/bash -c "/opt/python/cp37-cp37m/bin/python3 \
+          /onnxruntime_src/tools/ci_build/build.py --build_dir /build --config Release --build_nodejs \
+          --skip_submodule_sync --parallel --build_shared_lib"
+        workingDirectory: $(Build.SourcesDirectory)
+      displayName: 'Build and test'
+    - script: |
+       set -e -x
+       cp -R $(Build.SourcesDirectory)/js/node/bin $(Build.ArtifactStagingDirectory)/bin
+      displayName: 'Create Node.js Binding Artifact'
+    - task: PublishPipelineArtifact@0
+      displayName: 'Publish Pipeline Artifact'
+      inputs:
+        artifactName: 'bin-linux_x64'
+        targetPath: '$(Build.ArtifactStagingDirectory)'
+    - template: ../templates/component-governance-component-detection-steps.yml
+      parameters :
+        condition : 'succeeded'
+    - template: ../templates/clean-agent-build-directory-step.yml
+
+- job: 'NPM_pack'
+  workspace:
+    clean: all
+  timeoutInMinutes: 120
+  dependsOn:
+  - Windows_CI_x64
+  - Mac_CI_x64
+  - Linux_CI_x64
+  pool: $(AgentPoolLinux)
+  steps:    
+    - template: ../templates/set-version-number-variables-step.yml
+    - template: ../templates/get-docker-image-steps.yml
+      parameters:
+        Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cpu
+        Context: tools/ci_build/github/linux/docker
+        DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
+        Repository: onnxruntimecpubuild
+    - task: DownloadPipelineArtifact@2
+      inputs:
+        patterns: 'bin-*/**/*'
+        path: $(Pipeline.Workspace)/nodejs_binding_bin
+      displayName: 'Download Node.js binding artifacts'
+    - task: CmdLine@2
+      inputs:
+        script: find . -type f -follow -print | xargs ls -l
+        workingDirectory: $(Pipeline.Workspace)/nodejs_binding_bin
+      displayName: 'Validate file list of all binding binaries'
+    - task: CmdLine@2
+      inputs:
+        script: |
+          mkdir -p $HOME/.onnx && docker run --rm --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build \
+          --volume $(Pipeline.Workspace)/nodejs_binding_bin:/nodejs_binding_bin:ro -e NIGHTLY_BUILD onnxruntimecpubuild /bin/bash -c "cd /onnxruntime_src/js && \
+          npm ci && cd /onnxruntime_src/js/common && npm ci && npm pack && cd /onnxruntime_src/js/node && npm ci && cp -r /nodejs_binding_bin/*/bin/ . && npm pack"
+        workingDirectory: $(Build.SourcesDirectory)
+    - script: |
+       set -e -x
+       cp $(Build.SourcesDirectory)/js/common/onnxruntime-*.tgz $(Build.ArtifactStagingDirectory)
+       cp $(Build.SourcesDirectory)/js/node/onnxruntime-*.tgz $(Build.ArtifactStagingDirectory)
+      displayName: 'Create Artifacts'
+    - task: PublishPipelineArtifact@0
+      displayName: 'Publish Pipeline Artifact'
+      inputs:
+        artifactName: 'NPM_packages'
+        targetPath: '$(Build.ArtifactStagingDirectory)'

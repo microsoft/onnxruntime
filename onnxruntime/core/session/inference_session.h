@@ -583,8 +583,8 @@ class InferenceSession {
   void ShrinkMemoryArenas(const std::vector<AllocatorPtr>& arenas_to_shrink);
 
 #if !defined(ORT_MINIMAL_BUILD)
-  virtual void AddPredefinedTransformers(GraphTransformerManager& transformer_manager,
-                                         TransformerLevel graph_optimization_level);
+  virtual common::Status AddPredefinedTransformers(GraphTransformerManager& transformer_manager,
+                                                   TransformerLevel graph_optimization_level);
 
   common::Status TransformGraph(onnxruntime::Graph& graph,
                                 const onnxruntime::GraphTransformerManager& graph_transformer_mgr,

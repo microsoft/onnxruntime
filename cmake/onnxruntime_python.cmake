@@ -108,10 +108,15 @@ if (onnxruntime_ENABLE_EAGER_MODE)
   target_link_libraries(onnxruntime_pybind11_state PRIVATE onnxruntime_eager ${TORCH_LIBRARIES} ${TORCH_PYTHON_LIBRARY})
   # the ort_aten.g.cpp is generated from tools. currently it has some limitations.
   # todo: fix this
-  set_source_files_properties("${ORTTRAINING_ROOT}/orttraining/eager/ort_aten.g.cpp" PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
-  set_source_files_properties("${ORTTRAINING_ROOT}/orttraining/eager/ort_aten.cpp" PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
-  set_source_files_properties("${ORTTRAINING_ROOT}/orttraining/eager/ort_guard.cpp" PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
-  set_source_files_properties("${ORTTRAINING_ROOT}/orttraining/eager/ort_tensor.cpp" PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
+  if (NOT MSVC)
+    set_source_files_properties("${ORTTRAINING_ROOT}/orttraining/eager/ort_aten.g.cpp" PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
+    set_source_files_properties("${ORTTRAINING_ROOT}/orttraining/eager/ort_aten.cpp" PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
+    set_source_files_properties("${ORTTRAINING_ROOT}/orttraining/eager/ort_guard.cpp" PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
+    set_source_files_properties("${ORTTRAINING_ROOT}/orttraining/eager/ort_tensor.cpp" PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
+  endif()
+  if (MSVC)
+    target_compile_options(onnxruntime_pybind11_state PUBLIC "/wd4100" "/wd4324" "/wd4458" "/wd4127" "/wd4193" "/wd4624" "/wd4702")
+  endif()
 endif()
 
 target_link_libraries(onnxruntime_pybind11_state PRIVATE
@@ -126,7 +131,6 @@ target_link_libraries(onnxruntime_pybind11_state PRIVATE
     ${PROVIDERS_DML}
     ${PROVIDERS_ACL}
     ${PROVIDERS_ARMNN}
-    ${PROVIDERS_ROCM}
     onnxruntime_optimizer
     onnxruntime_providers
     onnxruntime_util
@@ -289,6 +293,9 @@ if (onnxruntime_ENABLE_TRAINING)
   file(GLOB onnxruntime_python_ortmodule_torch_cpp_ext_torch_gpu_allocator_srcs CONFIGURE_DEPENDS
     "${ORTTRAINING_SOURCE_DIR}/python/training/ortmodule/torch_cpp_extensions/cuda/torch_gpu_allocator/*"
   )
+  file(GLOB onnxruntime_python_ortmodule_torch_cpp_ext_fused_ops_srcs CONFIGURE_DEPENDS
+    "${ORTTRAINING_SOURCE_DIR}/python/training/ortmodule/torch_cpp_extensions/cuda/fused_ops/*"
+  )
 else()
   file(GLOB onnxruntime_python_capi_training_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/python/training/*.py"
@@ -320,9 +327,6 @@ endif()
 
 file(GLOB onnxruntime_python_tools_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/python/tools/*.py"
-)
-file(GLOB onnxruntime_python_tools_featurizers_src CONFIGURE_DEPENDS
-    "${ONNXRUNTIME_ROOT}/python/tools/featurizer_ops/*.py"
 )
 file(GLOB onnxruntime_python_quantization_src CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/python/tools/quantization/*.py"
@@ -364,7 +368,6 @@ add_custom_command(
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/training
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/datasets
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools
-  COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools/featurizer_ops
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools/ort_format_model
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools/ort_format_model/ort_flatbuffers_py
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers
@@ -414,9 +417,6 @@ add_custom_command(
   COMMAND ${CMAKE_COMMAND} -E copy
       ${onnxruntime_python_tools_srcs}
       $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools/
-  COMMAND ${CMAKE_COMMAND} -E copy
-      ${onnxruntime_python_tools_featurizers_src}
-      $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools/featurizer_ops/
   COMMAND ${CMAKE_COMMAND} -E copy
       ${onnxruntime_ort_format_model_conversion_srcs}
       $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools/
@@ -525,6 +525,7 @@ if (onnxruntime_ENABLE_TRAINING)
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/torch_cpp_extensions/cpu/aten_op_executor
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/torch_cpp_extensions/cpu/torch_interop_utils
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/torch_cpp_extensions/cuda/torch_gpu_allocator
+    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/torch_cpp_extensions/cuda/fused_ops
     COMMAND ${CMAKE_COMMAND} -E copy
         ${onnxruntime_python_capi_training_srcs}
         $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/training/
@@ -561,6 +562,9 @@ if (onnxruntime_ENABLE_TRAINING)
     COMMAND ${CMAKE_COMMAND} -E copy
         ${onnxruntime_python_ortmodule_torch_cpp_ext_torch_gpu_allocator_srcs}
         $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/torch_cpp_extensions/cuda/torch_gpu_allocator/
+    COMMAND ${CMAKE_COMMAND} -E copy
+        ${onnxruntime_python_ortmodule_torch_cpp_ext_fused_ops_srcs}
+        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/torch_cpp_extensions/cuda/fused_ops/
   )
 endif()
 

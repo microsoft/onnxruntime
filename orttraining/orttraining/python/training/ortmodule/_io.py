@@ -11,7 +11,7 @@ import warnings
 import gc
 
 from ._fallback import _FallbackManager, ORTModuleIOError, ORTModuleONNXModelException, wrap_exception
-
+from ._utils import warn_of_constant_inputs
 
 class _OutputIdentityOp(torch.autograd.Function):
     '''Internal class used to prepend Identity ops in model's outputs
@@ -141,6 +141,9 @@ def _combine_input_buffers_initializers(params, onnx_input_names, input_info, bu
         # The exporter handles input lists by expanding them so that each
         # element of the list is its own input.
         # ORTModule must match this behavior by also expanding the inputs.
+        if current_input is None or isinstance(current_input, str):
+            # Drop all None and string inputs
+            return
         if isinstance(current_input, abc.Sequence):
             # If the input is a sequence (like a list), expand the list so that
             # each element of the list is an input by itself
@@ -151,7 +154,7 @@ def _combine_input_buffers_initializers(params, onnx_input_names, input_info, bu
             # each element of the dict is an input by itself
             for _, val in current_input.items():
                 _expand_inputs(val, non_none_inputs)
-        elif current_input is not None:
+        else:
             # else just collect all the non none inputs within non_none_inputs
             non_none_inputs.append(current_input)
 
@@ -226,6 +229,8 @@ def deepcopy_model_input(*inputs, **kwargs):
 class _TensorStub(object):
     '''Tensor stub class used to represent model's input or output'''
 
+    __slots__ = ['name', 'dtype', 'shape', 'shape_dims']
+
     def __init__(self, name=None, dtype=None, shape=None, shape_dims=None):
         self.name = name
         self.dtype = dtype
@@ -277,36 +282,36 @@ def unflatten_user_output(output_schema, outputs):
         if user_output is None:
             return None
         elif isinstance(user_output, _TensorStub):
+            out = outputs[output_idx[0]]
             output_idx[0] += 1
-            return outputs[output_idx[0]-1]
+            return out
 
         if isinstance(user_output, abc.Sequence):
             sequence_type = type(user_output)
-            user_output = list(user_output)
-            for idx in range(len(user_output)):
-                user_output[idx] = _replace_stub_with_tensor_value(user_output[idx], outputs, output_idx)
-            try:
-                # namedtuple can be created by passing the list sequence to method _make
-                user_output = sequence_type._make(user_output)
-            except AttributeError:
-                # If attribute error encountered, create the sequence directly
-                user_output = sequence_type(user_output)
+            if hasattr(sequence_type, '_make'):  # namedtuple
+                sequence_type = type(user_output)
+                user_output = sequence_type._make(
+                    _replace_stub_with_tensor_value(uo, outputs, output_idx)
+                    for uo in user_output)
+            else:
+                user_output = sequence_type(
+                    _replace_stub_with_tensor_value(uo, outputs, output_idx)
+                    for uo in user_output)
         elif isinstance(user_output, abc.Mapping):
+            new_user_output = copy.copy(user_output)
             for key in sorted(user_output):
-                user_output[key] = _replace_stub_with_tensor_value(user_output[key], outputs, output_idx)
+                new_user_output[key] = _replace_stub_with_tensor_value(new_user_output[key], outputs, output_idx)
+            user_output = new_user_output
         else:
             raise wrap_exception(ORTModuleIOError,
                                  TypeError(f'ORTModule does not support the following model output type {type(user_output)}.'))
 
         return user_output
 
-    # Replace every _TensorStub value in the schema with the torch.Tensor outputs calculated
-    output_schema_copy = copy.deepcopy(output_schema)
-
     # It is expected that the outputs are ordered in the way defined in the exported onnx model
     # which is the order in which the output schema was saved.
     output_idx = [0]
-    user_output = _replace_stub_with_tensor_value(output_schema_copy, outputs, output_idx)
+    user_output = _replace_stub_with_tensor_value(output_schema, outputs, output_idx)
     return user_output
 
 
@@ -314,8 +319,13 @@ def _extract_schema(data):
     """Extract the data schema by replacing every torch.Tensor value with _TensorStub"""
 
     if data is None:
-        return None
+        return data
+    elif isinstance(data, str):
+        warn_of_constant_inputs(data)
+        return data
     elif _PrimitiveType.is_primitive_type(data):
+        if isinstance(data, bool):
+            warn_of_constant_inputs(data)
         return _TensorStub(dtype=_PrimitiveType.get_primitive_dtype(data), shape_dims=0)
     # Depth first traversal to iterate over the data to replace every tensor with a stub
     elif isinstance(data, torch.Tensor):
@@ -324,7 +334,7 @@ def _extract_schema(data):
     # Instead of replacing the tensor with a stub in the original user input, build the stubbed_schema
     # from scratch from the user input.
     stubbed_schema = None
-    if isinstance(data, abc.Sequence) and not isinstance(data, str):
+    if isinstance(data, abc.Sequence):
         sequence_type = type(data)
         stubbed_schema = [_extract_schema(val) for val in data]
         try:
@@ -431,8 +441,8 @@ def parse_inputs_for_onnx_export(all_input_parameters, onnx_graph, schema, input
     def _add_input(name, input, onnx_graph, onnx_graph_input_names):
         """Returns number of expanded non none inputs that _add_input processed"""
 
-        if input is None:
-            # Drop all None inputs and return 0.
+        if input is None or isinstance(input, str):
+            # Drop all None and string inputs and return 0.
             return 0
 
         num_expanded_non_none_inputs = 0

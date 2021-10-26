@@ -7,8 +7,8 @@ from setuptools import setup, Extension
 from distutils import log as logger
 from distutils.command.build_ext import build_ext as _build_ext
 from glob import glob, iglob
-from os import path, getcwd, environ, remove, listdir
-from shutil import copyfile, copytree, rmtree
+from os import path, getcwd, environ, remove
+from shutil import copyfile
 import platform
 import subprocess
 import sys
@@ -16,7 +16,6 @@ import datetime
 
 from pathlib import Path
 nightly_build = False
-featurizers_build = False
 package_name = 'onnxruntime'
 wheel_name_suffix = None
 
@@ -42,7 +41,6 @@ def parse_arg_remove_string(argv, arg_name_equal):
 
 
 # Any combination of the following arguments can be applied
-featurizers_build = parse_arg_remove_boolean(sys.argv, '--use_featurizers')
 
 if parse_arg_remove_boolean(sys.argv, '--nightly_build'):
     package_name = 'ort-nightly'
@@ -177,7 +175,7 @@ try:
                 self._rewrite_ld_preload(to_preload)
                 self._rewrite_ld_preload_cuda(to_preload_cuda)
             _bdist_wheel.run(self)
-            if is_manylinux:
+            if is_manylinux and not disable_auditwheel_repair:
                 file = glob(path.join(self.dist_dir, '*linux*.whl'))[0]
                 logger.info('repairing %s for manylinux1', file)
                 try:
@@ -292,6 +290,7 @@ requirements_file = "requirements.txt"
 
 local_version = None
 enable_training = parse_arg_remove_boolean(sys.argv, '--enable_training')
+disable_auditwheel_repair = parse_arg_remove_boolean(sys.argv, '--disable_auditwheel_repair')
 default_training_package_device = parse_arg_remove_boolean(sys.argv, '--default_training_package_device')
 
 package_data = {}
@@ -331,10 +330,13 @@ if enable_training:
                      'onnxruntime.training.ortmodule.torch_cpp_extensions',
                      'onnxruntime.training.ortmodule.torch_cpp_extensions.cpu.aten_op_executor',
                      'onnxruntime.training.ortmodule.torch_cpp_extensions.cpu.torch_interop_utils',
-                     'onnxruntime.training.ortmodule.torch_cpp_extensions.cuda.torch_gpu_allocator'])
+                     'onnxruntime.training.ortmodule.torch_cpp_extensions.cuda.torch_gpu_allocator',
+                     'onnxruntime.training.ortmodule.torch_cpp_extensions.cuda.fused_ops'])
     package_data['onnxruntime.training.ortmodule.torch_cpp_extensions.cpu.aten_op_executor'] = ['*.cc']
     package_data['onnxruntime.training.ortmodule.torch_cpp_extensions.cpu.torch_interop_utils'] = ['*.cc']
     package_data['onnxruntime.training.ortmodule.torch_cpp_extensions.cuda.torch_gpu_allocator'] = ['*.cc']
+    package_data['onnxruntime.training.ortmodule.torch_cpp_extensions.cuda.fused_ops'] = \
+        ['*.cpp', '*.cu', '*.cuh', '*.h']
     requirements_file = "requirements-training.txt"
     # with training, we want to follow this naming convention:
     # stable:
@@ -360,47 +362,6 @@ if enable_training:
 if package_name == 'onnxruntime-nuphar':
     packages += ["onnxruntime.nuphar"]
     extra += [path.join('nuphar', 'NUPHAR_CACHE_VERSION')]
-
-if featurizers_build:
-    # Copy the featurizer data from its current directory into the onnx runtime directory so that the
-    # content can be included as module data.
-
-    # Apparently, the root_dir is different based on how the script is invoked
-    source_root_dir = None
-    dest_root_dir = None
-
-    for potential_source_prefix, potential_dest_prefix in [
-        (getcwd(), getcwd()),
-        (path.dirname(__file__), path.dirname(__file__)),
-        (path.join(getcwd(), ".."), getcwd()),
-    ]:
-        potential_dir = path.join(potential_source_prefix, "external", "FeaturizersLibrary", "Data")
-        if path.isdir(potential_dir):
-            source_root_dir = potential_source_prefix
-            dest_root_dir = potential_dest_prefix
-
-            break
-
-    if source_root_dir is None:
-        raise Exception("Unable to find the build root dir")
-
-    assert dest_root_dir is not None
-
-    featurizer_source_dir = path.join(source_root_dir, "external", "FeaturizersLibrary", "Data")
-    assert path.isdir(featurizer_source_dir), featurizer_source_dir
-
-    featurizer_dest_dir = path.join(dest_root_dir, "onnxruntime", "FeaturizersLibrary", "Data")
-    if path.isdir(featurizer_dest_dir):
-        rmtree(featurizer_dest_dir)
-
-    for item in listdir(featurizer_source_dir):
-        this_featurizer_source_fullpath = path.join(featurizer_source_dir)
-        assert path.isdir(this_featurizer_source_fullpath), this_featurizer_source_fullpath
-
-        copytree(this_featurizer_source_fullpath, featurizer_dest_dir)
-
-        packages.append("onnxruntime.FeaturizersLibrary.Data.{}".format(item))
-        package_data[packages[-1]] = listdir(path.join(featurizer_dest_dir, item))
 
 package_data["onnxruntime"] = data + examples + extra
 
