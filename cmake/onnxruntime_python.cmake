@@ -293,8 +293,8 @@ if (onnxruntime_ENABLE_TRAINING)
   file(GLOB onnxruntime_python_ortmodule_torch_cpp_ext_torch_gpu_allocator_srcs CONFIGURE_DEPENDS
     "${ORTTRAINING_SOURCE_DIR}/python/training/ortmodule/torch_cpp_extensions/cuda/torch_gpu_allocator/*"
   )
-  file(GLOB onnxruntime_python_ortmodule_torch_cpp_ext_adam_optimizer_srcs CONFIGURE_DEPENDS
-    "${ORTTRAINING_SOURCE_DIR}/python/training/ortmodule/torch_cpp_extensions/cuda/adam_optimizer/*"
+  file(GLOB onnxruntime_python_ortmodule_torch_cpp_ext_fused_ops_srcs CONFIGURE_DEPENDS
+    "${ORTTRAINING_SOURCE_DIR}/python/training/ortmodule/torch_cpp_extensions/cuda/fused_ops/*"
   )
 else()
   file(GLOB onnxruntime_python_capi_training_srcs CONFIGURE_DEPENDS
@@ -525,7 +525,7 @@ if (onnxruntime_ENABLE_TRAINING)
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/torch_cpp_extensions/cpu/aten_op_executor
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/torch_cpp_extensions/cpu/torch_interop_utils
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/torch_cpp_extensions/cuda/torch_gpu_allocator
-    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/torch_cpp_extensions/cuda/adam_optimizer
+    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/torch_cpp_extensions/cuda/fused_ops
     COMMAND ${CMAKE_COMMAND} -E copy
         ${onnxruntime_python_capi_training_srcs}
         $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/training/
@@ -563,8 +563,8 @@ if (onnxruntime_ENABLE_TRAINING)
         ${onnxruntime_python_ortmodule_torch_cpp_ext_torch_gpu_allocator_srcs}
         $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/torch_cpp_extensions/cuda/torch_gpu_allocator/
     COMMAND ${CMAKE_COMMAND} -E copy
-        ${onnxruntime_python_ortmodule_torch_cpp_ext_adam_optimizer_srcs}
-        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/torch_cpp_extensions/cuda/adam_optimizer/
+        ${onnxruntime_python_ortmodule_torch_cpp_ext_fused_ops_srcs}
+        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/torch_cpp_extensions/cuda/fused_ops/
   )
 endif()
 

@@ -41,8 +41,8 @@ add_custom_target(js_common_npm_ci ALL
     COMMENT "NPM install on /js/common")
 
 add_custom_target(nodejs_binding_wrapper ALL
-    COMMAND ${NPM_CLI} ci --ort-skip-build
-    COMMAND ${NPM_CLI} run build -- --onnxruntime-build-dir=${CMAKE_CURRENT_BINARY_DIR} --config=${CMAKE_BUILD_TYPE}
+    COMMAND ${NPM_CLI} ci
+    COMMAND ${NPM_CLI} run build -- --onnxruntime-build-dir=${CMAKE_CURRENT_BINARY_DIR} --config=${CMAKE_BUILD_TYPE} --arch=x64
     WORKING_DIRECTORY ${JS_NODE_ROOT}
     COMMENT "Using cmake-js to build OnnxRuntime Node.js binding")
 add_dependencies(js_common_npm_ci js_npm_ci)
