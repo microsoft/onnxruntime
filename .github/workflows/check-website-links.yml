@@ -27,10 +27,4 @@ jobs:
         run: bundle exec jekyll build --drafts
       - name: Check for broken links
         run: |
-          bundle exec htmlproofer --assume_extension --only_4xx --http_status_ignore 429 --allow_hash_href --log-level :debug ./_site &> links.log
-        continue-on-error: true
-      - name: Archive log links
-        uses: actions/upload-artifact@v1
-        with:
-          name: links-check.log
-          path: links.log
+          bundle exec htmlproofer --assume_extension --only_4xx --http_status_ignore 429 --allow_hash_href --log-level :info ./_site
