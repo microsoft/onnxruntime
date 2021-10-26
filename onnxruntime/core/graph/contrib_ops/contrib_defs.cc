@@ -236,7 +236,7 @@ void embedLayerNormalizationShapeInference(InferenceContext& ctx) {
         "gamma should have 2 dimension, dimension size known, "
         "and same hidden size as word_embedding.");
   }
-  
+
   auto& beta_shape = getInputShape(ctx, 6);
   auto& beta_dims = gamma_shape.dim();
   if (beta_dims.size() != 1 ||
@@ -526,6 +526,33 @@ void AttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, int p
   }
 }
 
+void DecodingGptTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
+  // Type inference
+  ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 22, 0);
+
+  int64_t max_seq_len = getAttribute(ctx, "max_seq_len", 0);
+  if (max_seq_len == 0) {
+    fail_shape_inference("max_seq_len attribute is invalid");
+  }
+
+  // Shape inference
+  if (hasInputShape(ctx, 22)) {
+    auto& input_shape = getInputShape(ctx, 22);
+    auto& input_dims = input_shape.dim();
+    if (input_dims.size() != 2) {
+      fail_shape_inference("Inputs 22 (start_ids) shall be 2 dimensions");
+    }
+
+    ONNX_NAMESPACE::TensorShapeProto output_shape;
+    output_shape.add_dim();
+    output_shape.add_dim();
+    output_shape.mutable_dim(0)->set_dim_value(max_seq_len);
+    output_shape.mutable_dim(1)->set_dim_value(input_shape.dim(0).dim_value());
+
+    updateOutputShape(ctx, 0, output_shape);
+  }
+}
+
 void RegisterBertSchemas() {
   static const char* Attention_ver1_doc = R"DOC(
 Multi-Head Self Attention that can be either unidirectional (like GPT-2) or bidirectional (like BERT).
@@ -554,8 +581,10 @@ and present state are optional. Present state could appear in output even when p
       .Input(0, "input", "3D input tensor with shape (batch_size, sequence_length, input_hidden_size)", "T")
       .Input(1, "weight", "2D input tensor with shape (input_hidden_size, 3 * hidden_size), where hidden_size = num_heads * head_size", "T")
       .Input(2, "bias", "1D input tensor with shape (3 * hidden_size)", "T")
-      .Input(3, "mask_index", "Attention mask with shape (batch_size, 1, max_sequence_length, max_sequence_length), (batch_size, past_sequence_length + sequence_length)"
-                "or (batch_size, sequence_length, past_sequence_length + sequence_length), or index with shape (batch_size) or (2 * batch_size).", "M", OpSchema::Optional)
+      .Input(3, "mask_index",
+             "Attention mask with shape (batch_size, 1, max_sequence_length, max_sequence_length), (batch_size, past_sequence_length + sequence_length)"
+             "or (batch_size, sequence_length, past_sequence_length + sequence_length), or index with shape (batch_size) or (2 * batch_size).",
+             "M", OpSchema::Optional)
       .Input(4, "past", "past state for key and value with shape (2, batch_size, num_heads, past_sequence_length, head_size).", "T", OpSchema::Optional)
       .Input(5, "extra_add", "additional add to QxK' with shape (batch_size, num_heads, sequence_length, sequence_length).", "T", OpSchema::Optional)
       .Output(0, "output", "3D output tensor with shape (batch_size, append_length, hidden_size)", "T")
@@ -803,7 +832,7 @@ GELU (Gaussian Error Linear Unit) approximation: Y=0.5*X*(1+tanh(0.797885*X+0.03
       .TypeConstraint("U", {"tensor(float)"}, "Constrain mean and inv_std_var to float tensors.")
       .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
 
-  static const char* DecodingGpt_ver1_doc = R"DOC(Decoding of GPT-2 model.)DOC";
+  static const char* DecodingGpt_ver1_doc = R"DOC(Decoding of GPT-2 model. Hidden size global_hidden_units == local_hidden_units since no parallel GPU. )DOC";
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(DecodingGpt)
       .SetDomain(kMSDomain)
@@ -811,35 +840,35 @@ GELU (Gaussian Error Linear Unit) approximation: Y=0.5*X*(1+tanh(0.797885*X+0.03
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
       .SetDoc(DecodingGpt_ver1_doc)
       .Attr("batch_size", "Batch size >= 1", AttributeProto::INT)
-      .Attr("candidate_num", "Number of candidate >= 0", AttributeProto::INT)
-      .Attr("probability_threshold", "probability threshold", AttributeProto::FLOAT, 0.0f)
+      .Attr("candidate_num", "Top K >= 0", AttributeProto::INT)
+      .Attr("probability_threshold", "top p probability threshold", AttributeProto::FLOAT, 0.0f)
       .Attr("max_seq_len", "Max sequence length >= 1", AttributeProto::INT)
       .Attr("head_num", "Number of heads >= 1", AttributeProto::INT)
       .Attr("size_per_head", "Size per head >= 1", AttributeProto::INT)
       .Attr("num_layer", "Number of layers >= 1", AttributeProto::INT)
-      .Attr("start_id", "start word ID >= 0", AttributeProto::INT)
-      .Attr("end_id", "end word ID >= 0", AttributeProto::INT)
+      .Attr("start_id", "bos_token_id >= 0", AttributeProto::INT)
+      .Attr("end_id", "eos_token_id >= 0", AttributeProto::INT)
       .Attr("temperature", "temperature", AttributeProto::FLOAT, 1.0f)
       .Attr("is_fuse_qkv", "is_fuse_qkv", AttributeProto::INT)
-      .Input(0, "self_beta", "self beta tensor", "T")
-      .Input(1, "self_gamma", "self gamma tensor", "T")
-      .Input(2, "self_q_kernel", "self q kernel weight", "T")
-      .Input(3, "self_q_bias", "self q bias weight", "T")
-      .Input(4, "self_k_kernel", "self k kernel weight", "T")
-      .Input(5, "self_k_bias", "self k bias weight", "T")
-      .Input(6, "self_v_kernel", "self v kernel weight", "T")
-      .Input(7, "self_v_bias", "self v bias weight", "T")
-      .Input(8, "self_output_kernel", "self output kernel weight", "T")
-      .Input(9, "self_output_bias", "self output bias weight", "T")
-      .Input(10, "ffn_beta", "ffn beta weight", "T")
-      .Input(11, "ffn_gamma", "ffn gamma weight", "T")
-      .Input(12, "ffn_kernel1", "ffn kernel weight 1", "T")
-      .Input(13, "ffn_bias1", "ffn bias weight 1", "T")
-      .Input(14, "ffn_kernel2", "ffn kernel weight 2", "T")
-      .Input(15, "ffn_bias2", "ffn bias weight 2", "T")
-      .Input(16, "decoding_beta", "ffn kernel weight 2", "T")
-      .Input(17, "decoding_gamma", "ffn bias weight 2", "T")
-      .Input(18, "embedding_table", "embedding table", "T")
+      .Input(0, "self_beta", "input layer normalization bias with shape (global_hidden_units,)", "T")
+      .Input(1, "self_gamma", "input layer normalization weight with shape (global_hidden_units,)", "T")
+      .Input(2, "self_q_kernel", "self q kernel with shape (global_hidden_units, local_hidden_units * 3) for fused QKV, or (global_hidden_units, local_hidden_units) if not fused", "T")
+      .Input(3, "self_q_bias", "self q bias with shape (local_hidden_units * 3,) for fused QKV, or (local_hidden_units,) if not fused ", "T")
+      .Input(4, "self_k_kernel", "self k kernel with shape (global_hidden_units, local_hidden_units)", "T", OpSchema::Optional)
+      .Input(5, "self_k_bias", "self k bias with shape (local_hidden_units,)", "T", OpSchema::Optional)
+      .Input(6, "self_v_kernel", "self v kernel with shape (global_hidden_units, local_hidden_units)", "T", OpSchema::Optional)
+      .Input(7, "self_v_bias", "self v bias with shape (local_hidden_units,)", "T", OpSchema::Optional)
+      .Input(8, "self_output_kernel", "attention dense kernel with shape (local_hidden_units, global_hidden_units)", "T")
+      .Input(9, "self_output_bias", "attention dense bias with shape (global_hidden_units,)", "T")
+      .Input(10, "ffn_beta", "post attention layernorm bias with shape (global_hidden_units,)", "T")
+      .Input(11, "ffn_gamma", "post attention layernorm kernel with shape (global_hidden_units,)", "T")
+      .Input(12, "ffn_kernel1", "ffn dense_h_to_4h kernel with shape (global_hidden_units, local_inner_size)", "T")
+      .Input(13, "ffn_bias1", "ffn dense_h_to_4h bias with shape (local_inner_size,)", "T")
+      .Input(14, "ffn_kernel2", "ffn dense_4h_to_h kernel with shape (local_inner_size, global_hidden_units)", "T")
+      .Input(15, "ffn_bias2", "ffn dense_4h_to_h bias with shape (global_hidden_units,)", "T")
+      .Input(16, "decoding_beta", "final layer normalization bias", "T")
+      .Input(17, "decoding_gamma", "final layer normalization weight", "T")
+      .Input(18, "embedding_table", "embedding lookup table", "T")
       .Input(19, "embedding_kernel", "embedding kernel", "T")
       .Input(20, "position_encoding_table", "position encoding table", "T")
       .Input(21, "attention_mask", "attention mask", "T")
@@ -850,9 +879,7 @@ GELU (Gaussian Error Linear Unit) approximation: Y=0.5*X*(1+tanh(0.797885*X+0.03
       .Output(0, "output_ids", "Output word IDs", "T1")
       .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float or half tensors.")
       .TypeConstraint("T1", {"tensor(int32)"}, "Constrain types to int32 tensors.")
-      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::embedLayerNormalizationShapeInference);
-
-
+      .TypeAndShapeInferenceFunction(DecodingGptTypeAndShapeInference);
 
   static const char* NGramRepeatBlock_ver1_doc = R"DOC(
 Enforce no repetition of n-grams. Scores are set to `-inf` for tokens that form a repeated n-gram if added to the back of the input_ids.
@@ -3009,7 +3036,7 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
            "seq(tensor(uint64))", "seq(tensor(int8))", "seq(tensor(int16))",
            "seq(tensor(int32))", "seq(tensor(int64))", "seq(tensor(float16))",
            "seq(tensor(float))", "seq(tensor(double))", "seq(tensor(string))",
-           "seq(tensor(bool))", "seq(tensor(complex64))","seq(tensor(complex128))"},
+           "seq(tensor(bool))", "seq(tensor(complex64))", "seq(tensor(complex128))"},
           "Constrains input type to all tensor and sequence types.")
       .TypeConstraint(
           "O",
@@ -3025,36 +3052,36 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
            "optional(seq(tensor(bool)))", "optional(seq(tensor(complex64)))", "optional(seq(tensor(complex128)))"},
           "Constrains output type to all optional tensor or optional sequence types.")
       .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
-          const size_t numOutputs = ctx.getNumOutputs();
-          if (numOutputs != 1) {
-            fail_type_inference("Optional is expected to have an output.");
-          }
+        const size_t numOutputs = ctx.getNumOutputs();
+        if (numOutputs != 1) {
+          fail_type_inference("Optional is expected to have an output.");
+        }
 
-          const size_t numInputs = ctx.getNumInputs();
-          const auto* attr_proto = ctx.getAttribute("type");
+        const size_t numInputs = ctx.getNumInputs();
+        const auto* attr_proto = ctx.getAttribute("type");
 
-          if ((numInputs == 0) && (attr_proto != nullptr)) {
-            if (!attr_proto->has_tp())
-              fail_type_inference(
-                  "Attribute 'type' should be a TypeProto and it should specify a type.");
-            auto attr_tp = attr_proto->tp();
-            ctx.getOutputType(0)
-                ->mutable_optional_type()
-                ->mutable_elem_type()
-                ->CopyFrom(attr_tp);
-          } else if (numInputs == 1) {
-            auto input_type = ctx.getInputType(0);
-            if(input_type == nullptr){
-              fail_type_inference("Input type is null. Type information is expected for the input.");
-            }
-            ctx.getOutputType(0)
-                ->mutable_optional_type()
-                ->mutable_elem_type()
-                ->CopyFrom(*input_type);
-          } else {
-            fail_type_inference("Optional is expected to have either an input or the type attribute set.");
+        if ((numInputs == 0) && (attr_proto != nullptr)) {
+          if (!attr_proto->has_tp())
+            fail_type_inference(
+                "Attribute 'type' should be a TypeProto and it should specify a type.");
+          auto attr_tp = attr_proto->tp();
+          ctx.getOutputType(0)
+              ->mutable_optional_type()
+              ->mutable_elem_type()
+              ->CopyFrom(attr_tp);
+        } else if (numInputs == 1) {
+          auto input_type = ctx.getInputType(0);
+          if (input_type == nullptr) {
+            fail_type_inference("Input type is null. Type information is expected for the input.");
           }
-        });
+          ctx.getOutputType(0)
+              ->mutable_optional_type()
+              ->mutable_elem_type()
+              ->CopyFrom(*input_type);
+        } else {
+          fail_type_inference("Optional is expected to have either an input or the type attribute set.");
+        }
+      });
 
   static const char* OptionalHasElement_ver1_doc = R"DOC(
       Returns true if the optional-type input contains an element. If it is an empty optional-type, this op returns false.
@@ -3084,18 +3111,18 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
           {"tensor(bool)"},
           "Constrains output to a boolean tensor.")
       .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
-          const size_t numInputs = ctx.getNumInputs();
-          if (numInputs != 1) {
-            fail_type_inference("OptionalHasElement is expected to have 1 input.");
-          }
-          const size_t numOutputs = ctx.getNumOutputs();
-          if (numOutputs != 1) {
-            fail_type_inference("OptionalHasElement is expected to have 1 output.");
-          }
-          auto* output_tensor_type = ctx.getOutputType(0)->mutable_tensor_type();
-          output_tensor_type->set_elem_type(TensorProto::BOOL);
-          output_tensor_type->mutable_shape()->Clear();
-          });
+        const size_t numInputs = ctx.getNumInputs();
+        if (numInputs != 1) {
+          fail_type_inference("OptionalHasElement is expected to have 1 input.");
+        }
+        const size_t numOutputs = ctx.getNumOutputs();
+        if (numOutputs != 1) {
+          fail_type_inference("OptionalHasElement is expected to have 1 output.");
+        }
+        auto* output_tensor_type = ctx.getOutputType(0)->mutable_tensor_type();
+        output_tensor_type->set_elem_type(TensorProto::BOOL);
+        output_tensor_type->mutable_shape()->Clear();
+      });
 
   static const char* OptionalGetElement_ver1_doc = R"DOC(
       Outputs the element in the optional-type input'. It is an error if the input value does not have an element "
@@ -3132,23 +3159,23 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
            "seq(tensor(uint64))", "seq(tensor(int8))", "seq(tensor(int16))",
            "seq(tensor(int32))", "seq(tensor(int64))", "seq(tensor(float16))",
            "seq(tensor(float))", "seq(tensor(double))", "seq(tensor(string))",
-           "seq(tensor(bool))", "seq(tensor(complex64))","seq(tensor(complex128))"},
+           "seq(tensor(bool))", "seq(tensor(complex64))", "seq(tensor(complex128))"},
           "Constrain output type to all tensor or sequence types.")
       .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
-          const size_t numInputs = ctx.getNumInputs();
-          if (numInputs != 1) {
-            fail_type_inference("OptionalGetElement must have an input element.");
-          }
-          auto input_type = ctx.getInputType(0);
-          if (input_type == nullptr) {
-            fail_type_inference("Input type is null. Input must have Type information.");
-          }
-          if (!input_type->has_optional_type() || !input_type->optional_type().has_elem_type()) {
-            fail_type_inference("Input must be an optional-type value containing an element with type information.");
-          }
-          ctx.getOutputType(0)
-              ->CopyFrom(input_type->optional_type().elem_type());
-          });
+        const size_t numInputs = ctx.getNumInputs();
+        if (numInputs != 1) {
+          fail_type_inference("OptionalGetElement must have an input element.");
+        }
+        auto input_type = ctx.getInputType(0);
+        if (input_type == nullptr) {
+          fail_type_inference("Input type is null. Input must have Type information.");
+        }
+        if (!input_type->has_optional_type() || !input_type->optional_type().has_elem_type()) {
+          fail_type_inference("Input must be an optional-type value containing an element with type information.");
+        }
+        ctx.getOutputType(0)
+            ->CopyFrom(input_type->optional_type().elem_type());
+      });
 
   static const char* GridSample_ver1_doc = R"DOC(
       Given an `input` and a flow-field `grid`, computes the `output` using `input` values and pixel locations from `grid`.

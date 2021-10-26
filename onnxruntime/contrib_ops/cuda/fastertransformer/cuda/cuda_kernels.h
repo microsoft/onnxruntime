@@ -93,7 +93,7 @@ void apply_temperature_penalty_kernelLauncher(T* logits,
 template <typename T>
 void apply_repetition_penalty_kernelLauncher(T* logits,
                                               const float penalty,
-                                              int* start_ids,
+                                              const int* start_ids,
                                               int* output_ids,
                                               const int batch_size,
                                               const int local_batch_size,

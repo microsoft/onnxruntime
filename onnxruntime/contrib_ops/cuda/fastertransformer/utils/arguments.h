@@ -56,7 +56,7 @@ public:
   int request_input_len;
   int request_output_len = 0;
   int max_input_len;
-  int *d_start_ids;
+  const int *d_start_ids;
   const int *d_start_lengths;
   const T *d_attn_mask;
 

@@ -309,7 +309,7 @@ namespace fastertransformer
   template <typename T>
   __global__ void apply_repetition_penalty_kernel(T* logits,
                                                   const float penalty,
-                                                  int* start_ids,
+                                                  const int* start_ids,
                                                   int* output_ids,
                                                   const int batch_size,
                                                   const int local_batch_size,
@@ -348,7 +348,7 @@ namespace fastertransformer
   template <typename T>
   void apply_repetition_penalty_kernelLauncher(T* logits,
                                                const float penalty,
-                                               int* start_ids,
+                                               const int* start_ids,
                                                int* output_ids,
                                                const int batch_size,
                                                const int local_batch_size,
@@ -1273,7 +1273,7 @@ namespace fastertransformer
 
   template void apply_repetition_penalty_kernelLauncher(float* logits,
                                                         const float penalty,
-                                                        int* start_ids,
+                                                        const int* start_ids,
                                                         int* output_ids,
                                                         const int batch_size,
                                                         const int local_batch_size,
@@ -1287,7 +1287,7 @@ namespace fastertransformer
 
 template void apply_repetition_penalty_kernelLauncher(half* logits,
                                                       const float penalty,
-                                                      int* start_ids,
+                                                      const int* start_ids,
                                                       int* output_ids,
                                                       const int batch_size,
                                                       const int local_batch_size,

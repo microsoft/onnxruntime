@@ -95,11 +95,13 @@ Status DecodingGpt2<T>::ComputeInternal(OpKernelContext* context) const {
   decoding_params.cublaslt_handle = cublaslt_handle;
   
   std::vector<int64_t> output_shape(2);
+  //output_shape[0] = batch_size_;
+  //output_shape[1] = max_seq_len_;
   output_shape[0] = max_seq_len_;
   output_shape[1] = batch_size_;
   Tensor* output_ids = context->Output(0, output_shape);
 
-  decoding_params.output_ids = reinterpret_cast<int*>(output_ids->template MutableData<T>()),
+  decoding_params.output_ids = reinterpret_cast<int*>(output_ids->template MutableData<int32_t>()),
   
   check_cuda_error(cudaMemset(decoding_params.output_ids, 0, sizeof(int) * max_seq_len_ * batch_size_));
 
@@ -114,7 +116,7 @@ Status DecodingGpt2<T>::ComputeInternal(OpKernelContext* context) const {
   auto status = context->GetTempSpaceAllocator(&allocator);
   if (!status.IsOK()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, RUNTIME_EXCEPTION,
-                           "There was a problem acquiring temporary memory allocator in Einsum op");
+                           "There was a problem acquiring temporary memory allocator in DecodingGpt op");
   }
 
   fastertransformer::Allocator<AllocatorType::ORT> allocator_(allocator, stream);
@@ -137,9 +139,9 @@ Status DecodingGpt2<T>::ComputeInternal(OpKernelContext* context) const {
   const int hidden_unit = size_per_head_ * head_num_;
   for (int i = 0; i < num_layer_; i++)
   {
+      //params[i].request_max_mem_seq_len = -1;
       params[i].request_batch_size = batch_size_;
       params[i].stream = stream;
-
       params[i].cublas_handle = cublas_handle;
       params[i].cublaslt_handle = cublaslt_handle;
       check_cuda_error(cublasSetStream(params[i].cublas_handle, params[i].stream));
@@ -182,9 +184,9 @@ Status DecodingGpt2<T>::ComputeInternal(OpKernelContext* context) const {
   const DataType_* d_attn_mask = nullptr;
   this->get_tensor(context, 21, &d_attn_mask);
 
-
-  const int* d_start_ids = reinterpret_cast<const int *>(context->Input<Tensor>(22)->template Data<int>());
+  const int* d_start_ids = reinterpret_cast<const int *>(context->Input<Tensor>(22)->template Data<int32_t>());
   ORT_ENFORCE(d_start_ids != nullptr);
+  decoding_params.d_start_ids = d_start_ids;  
 
   const int* d_min_start_length = reinterpret_cast<const int *>(context->Input<Tensor>(23)->template Data<int32_t>());
   ORT_ENFORCE(d_min_start_length != nullptr);
@@ -192,14 +194,12 @@ Status DecodingGpt2<T>::ComputeInternal(OpKernelContext* context) const {
   const int* d_max_start_length = reinterpret_cast<const int *>(context->Input<Tensor>(24)->template Data<int32_t>());
   ORT_ENFORCE(d_max_start_length != nullptr);
 
-
   int min_start_length = -1;
   int max_start_length = -1;
   cudaMemcpyAsync(&min_start_length, d_min_start_length, sizeof(int), cudaMemcpyDeviceToHost, stream);
   cudaMemcpyAsync(&max_start_length, d_max_start_length, sizeof(int), cudaMemcpyDeviceToHost, stream);
   ORT_ENFORCE(min_start_length != -1);
   ORT_ENFORCE(max_start_length != -1);
-
 
   const int* d_start_lengths = reinterpret_cast<const int *>(context->Input<Tensor>(25)->template Data<int32_t>());
   ORT_ENFORCE(d_start_lengths != nullptr);
@@ -223,12 +223,16 @@ Status DecodingGpt2<T>::ComputeInternal(OpKernelContext* context) const {
   decoding_handler->set_layer_parallel_param(layer_parallel_param);
 
   decoding_params.request_batch_size = batch_size_;
-  decoding_params.max_input_len = 1;
+  decoding_params.max_input_len = max_start_length;
   for(int i = 0; i < decoding_handler->get_num_layer(); i++)
   {
       params[i].request_batch_size = batch_size_;
   }
-  decoding_params.request_input_len = 1;
+  decoding_params.request_input_len = min_start_length;
+
+  decoding_params.request_output_len = 32;
+  //decoding_params.parent_ids = nullptr
+  //decoding_params.sequence_length = nullptr
 
   ORT_TRY
   {
