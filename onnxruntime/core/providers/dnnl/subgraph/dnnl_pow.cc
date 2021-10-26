@@ -21,19 +21,7 @@ void DnnlPow::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   float beta = 1.0;
   switch (node.Input(IN_Y).Type()) {
     case dnnl::memory::data_type::f32: {
-      beta = static_cast<float>(*(float*)exponent_src_mem.get_data_handle());
-      break;
-    }
-    case dnnl::memory::data_type::s32: {
-      beta = static_cast<float>(*(int32_t*)exponent_src_mem.get_data_handle());
-      break;
-    }
-    case dnnl::memory::data_type::s8: {
-      beta = static_cast<float>(*(int8_t*)exponent_src_mem.get_data_handle());
-      break;
-    }
-    case dnnl::memory::data_type::u8: {
-      beta = static_cast<float>(*(uint8_t*)exponent_src_mem.get_data_handle());
+      beta = *static_cast<float*>(exponent_src_mem.get_data_handle());
       break;
     }
     default:

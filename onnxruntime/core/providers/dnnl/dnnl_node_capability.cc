@@ -433,10 +433,6 @@ bool DnnlBinaryNodeCapability::Supported(const Node* node, const GraphViewer& gr
   ORT_UNUSED_PARAMETER(graph_viewer);
   if (!IsTypeSupported(node)) return false;
   if (!IsDimensionSupported(node)) return false;
-  //gpu broadcast for source 0 not supported
-  if (dnnl_engine_get_count(dnnl_engine_kind_t::dnnl_gpu)) {
-    return false;
-  }
   return true;
 }
 
