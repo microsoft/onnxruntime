@@ -77,6 +77,7 @@ int EstimateTransposeCost(const Graph& graph) {
   return cost;
 }
 
+
 TEST(TransposeOptimizerTests, TestSplit) {
   auto build_test_case_1 = [&](ModelTestBuilder& builder) {
     auto* input0_arg = builder.MakeInput<float>({4, 6, 10}, 0.0, 1.0);
@@ -233,7 +234,7 @@ TEST(TransposeOptimizerTests, TestPadOpset15) {
   auto build_test_case_1 = [&](ModelTestBuilder& builder) {
     auto* input0_arg = MakeInput<float>(builder, {{4, -1, 2, -1}}, {4, 6, 2, 10}, 0.0, 1.0);
     auto* const_1 = builder.MakeInitializer<int64_t>({8}, {1, -2, 3, 4, 5, 6, 7, 8});
-    auto* const_2 = builder.MakeInitializer<float>({}, 0.0, 1.0);
+    auto* const_2 = builder.MakeInitializer<float>({}, {2.3f});
     auto* transpose_1_out_0 = builder.MakeIntermediate();
     auto* pad_1_out_0 = builder.MakeIntermediate();
     auto* transpose_2_out_0 = builder.MakeOutput();
@@ -263,7 +264,7 @@ TEST(TransposeOptimizerTests, TestPadNonconst) {
     auto* input0_arg = MakeInput<float>(builder, {{4, -1, 2, -1}}, {4, 6, 2, 10}, 0.0, 1.0);
     auto* input1_arg = MakeInput<int64_t>(builder, {{8}}, {8}, {1, 0, 0, 1, 0, 0, -1, 1});
     auto* const_1 = builder.MakeInitializer<int64_t>({8}, {1, -2, 3, 4, 5, 6, 7, 8});
-    auto* const_2 = builder.MakeInitializer<float>({}, 0.0, 1.0);
+    auto* const_2 = builder.MakeInitializer<float>({}, {2.3f});
     auto* transpose_1_out_0 = builder.MakeIntermediate();
     auto* add_1_out_0 = builder.MakeIntermediate();
     auto* pad_1_out_0 = builder.MakeIntermediate();
@@ -293,7 +294,7 @@ TEST(TransposeOptimizerTests, TestPadNonconst) {
 TEST(TransposeOptimizerTests, TestAdd) {
   auto build_test_case_1 = [&](ModelTestBuilder& builder) {
     auto* input0_arg = builder.MakeInput<float>({4, 6, 10}, 0.0, 1.0);
-    auto* const_1 = builder.MakeInitializer<float>({}, 0.0, 1.0);
+    auto* const_1 = builder.MakeInitializer<float>({}, {3.2f});
     auto* transpose_1_out_0 = builder.MakeIntermediate();
     auto* add_1_out_0 = builder.MakeIntermediate();
     auto* transpose_2_out_0 = builder.MakeOutput();
@@ -1861,7 +1862,7 @@ TEST(TransposeOptimizerTests, TestSliceNonconstNoOpt) {
 TEST(TransposeOptimizerTests, TestSliceNonconstInt32NoOpt) {
   auto build_test_case_1 = [&](ModelTestBuilder& builder) {
     auto* input0_arg = builder.MakeInput<float>({2, 4, 6, 5}, 0.0, 1.0);
-    auto* input1_arg = MakeInput<int32_t>(builder, {{2}}, {2}, -1, 5);
+    auto* input1_arg = MakeInput<int32_t>(builder, {{2}}, {2}, {1, -2});
     auto* const_1 = builder.MakeInitializer<int32_t>({2}, {1, -3});
     auto* const_2 = builder.MakeInitializer<int32_t>({2}, {2, 4});
     auto* transpose_1_out_0 = builder.MakeIntermediate();
@@ -1944,8 +1945,8 @@ TEST(TransposeOptimizerTests, TestSliceDefaultAxesNonconstStartsUnknownLengthNoO
 TEST(TransposeOptimizerTests, TestSliceDefaultAxesNonconstStartsInt32) {
   auto build_test_case_1 = [&](ModelTestBuilder& builder) {
     auto* input0_arg = builder.MakeInput<float>({2, 4, 6, 5}, 0.0, 1.0);
-    auto* input1_arg = MakeInput<int32_t>(builder, {{4}}, {4}, -1, 5);
-    auto* input2_arg = MakeInput<int32_t>(builder, {{4}}, {4}, -1, 5);
+    auto* input1_arg = MakeInput<int32_t>(builder, {{4}}, {4}, {1, -3, 0, 0});
+    auto* input2_arg = MakeInput<int32_t>(builder, {{4}}, {4}, {2, 4, 10, 10});
     auto* transpose_1_out_0 = builder.MakeIntermediate();
     auto* slice_1_out_0 = builder.MakeIntermediate();
     auto* transpose_2_out_0 = builder.MakeOutput();
@@ -1972,8 +1973,8 @@ TEST(TransposeOptimizerTests, TestSliceDefaultAxesNonconstStartsInt32) {
 TEST(TransposeOptimizerTests, TestSliceDefaultAxesNonconstStartsUnknownLengthInt32NoOpt) {
   auto build_test_case_1 = [&](ModelTestBuilder& builder) {
     auto* input0_arg = builder.MakeInput<float>({2, 4, 6, 5}, 0.0, 1.0);
-    auto* input1_arg = MakeInput<int32_t>(builder, std::nullopt, {4}, -1, 5);
-    auto* input2_arg = MakeInput<int32_t>(builder, std::nullopt, {4}, -1, 5);
+    auto* input1_arg = MakeInput<int32_t>(builder, std::nullopt, {4}, {1, -3, 0, 0});
+    auto* input2_arg = MakeInput<int32_t>(builder, std::nullopt, {4}, {2, 4, 10, 10});
     auto* transpose_1_out_0 = builder.MakeIntermediate();
     auto* slice_1_out_0 = builder.MakeIntermediate();
     auto* transpose_2_out_0 = builder.MakeOutput();
@@ -1997,6 +1998,33 @@ TEST(TransposeOptimizerTests, TestSliceDefaultAxesNonconstStartsUnknownLengthInt
 }
 
 TEST(TransposeOptimizerTests, TestTile) {
+  auto build_test_case_1 = [&](ModelTestBuilder& builder) {
+    auto* input0_arg = MakeInput<float>(builder, {{2, -1, 6, 3}}, {2, 4, 6, 3}, 0.0, 1.0);
+    auto* const_1 = builder.MakeInitializer<int64_t>({4}, {1, 2, 1, 3});
+    auto* transpose_1_out_0 = builder.MakeIntermediate();
+    auto* tile_1_out_0 = builder.MakeIntermediate();
+    auto* transpose_2_out_0 = builder.MakeOutput();
+
+    auto& transpose_1 = builder.AddNode("Transpose", {input0_arg}, {transpose_1_out_0});
+    transpose_1.AddAttribute("perm", std::vector<int64_t>{0, 3, 1, 2});
+    builder.AddNode("Tile", {transpose_1_out_0, const_1}, {tile_1_out_0});
+    auto& transpose_2 = builder.AddNode("Transpose", {tile_1_out_0}, {transpose_2_out_0});
+    transpose_2.AddAttribute("perm", std::vector<int64_t>{0, 2, 3, 1});
+  };
+
+  auto check_optimized_graph_1 = [&](InferenceSessionWrapper& session) {
+    int transpose_cost = EstimateTransposeCost(session.GetGraph());
+    EXPECT_EQ(transpose_cost, 0);
+  };
+
+  TransformerTester(build_test_case_1,
+                    check_optimized_graph_1,
+                    TransformerLevel::Default,
+                    TransformerLevel::Level1,
+                    /*opset_version*/ 15);
+}
+
+TEST(TransposeOptimizerTests, TestTileNonconstReps) {
   auto build_test_case_1 = [&](ModelTestBuilder& builder) {
     auto* input0_arg = MakeInput<float>(builder, {{2, -1, 6, 3}}, {2, 4, 6, 3}, 0.0, 1.0);
     auto* input1_arg = MakeInput<int64_t>(builder, std::nullopt, {4}, {1, 2, 1, 3});
@@ -3133,8 +3161,8 @@ TEST(TransposeOptimizerTests, TestWhere) {
 TEST(TransposeOptimizerTests, TestQuantizeLinearScalar) {
   auto build_test_case_1 = [&](ModelTestBuilder& builder) {
     auto* input0_arg = MakeInput<float>(builder, {{2, -1, 6, 3}}, {2, 4, 6, 3}, 0.0, 1.0);
-    auto* input1_arg = builder.MakeInput<float>(std::vector<int64_t>{}, 0.0, 1.0);
-    auto* input2_arg = MakeInput<uint8_t>(builder, {std::vector<int64_t>{}}, std::vector<int64_t>{}, 0, 5);
+    auto* input1_arg = MakeInput<float>(builder, {std::vector<int64_t>{}}, std::vector<int64_t>{}, {2.3f});
+    auto* input2_arg = MakeInput<uint8_t>(builder, {std::vector<int64_t>{}}, std::vector<int64_t>{}, {10});
     auto* transpose_1_out_0 = builder.MakeIntermediate();
     auto* quantizelinear_1_out_0 = builder.MakeIntermediate();
     auto* transpose_2_out_0 = builder.MakeOutput();
@@ -3161,8 +3189,8 @@ TEST(TransposeOptimizerTests, TestQuantizeLinearScalar) {
 TEST(TransposeOptimizerTests, TestQuantizeLinearScalarIgnoreAxis) {
   auto build_test_case_1 = [&](ModelTestBuilder& builder) {
     auto* input0_arg = MakeInput<float>(builder, {{2, -1, 6, 3}}, {2, 4, 6, 3}, 0.0, 1.0);
-    auto* input1_arg = builder.MakeInput<float>(std::vector<int64_t>{}, 0.0, 1.0);
-    auto* input2_arg = MakeInput<uint8_t>(builder, {std::vector<int64_t>{}}, std::vector<int64_t>{}, 0, 5);
+    auto* input1_arg = MakeInput<float>(builder, {std::vector<int64_t>{}}, std::vector<int64_t>{}, {2.3f});
+    auto* input2_arg = MakeInput<uint8_t>(builder, {std::vector<int64_t>{}}, std::vector<int64_t>{}, {10});
     auto* transpose_1_out_0 = builder.MakeIntermediate();
     auto* quantizelinear_1_out_0 = builder.MakeIntermediate();
     auto* transpose_2_out_0 = builder.MakeOutput();
@@ -3190,8 +3218,8 @@ TEST(TransposeOptimizerTests, TestQuantizeLinearScalarIgnoreAxis) {
 TEST(TransposeOptimizerTests, TestQuantizeLinearVector) {
   auto build_test_case_1 = [&](ModelTestBuilder& builder) {
     auto* input0_arg = MakeInput<float>(builder, {{2, -1, 6, 3}}, {2, 4, 6, 3}, 0.0, 1.0);
-    auto* input1_arg = MakeInput<float>(builder, {{-1}}, {2}, 0.0, 1.0);
-    auto* input2_arg = MakeInput<uint8_t>(builder, {{-1}}, {2}, 0, 5);
+    auto* input1_arg = MakeInput<float>(builder, {{-1}}, {2}, {2.3f, 2.4f});
+    auto* input2_arg = MakeInput<uint8_t>(builder, {{-1}}, {2}, {10, 12});
     auto* transpose_1_out_0 = builder.MakeIntermediate();
     auto* quantizelinear_1_out_0 = builder.MakeIntermediate();
     auto* transpose_2_out_0 = builder.MakeOutput();
@@ -3219,8 +3247,8 @@ TEST(TransposeOptimizerTests, TestQuantizeLinearVector) {
 TEST(TransposeOptimizerTests, TestQuantizeLinearVectorUnknownRank) {
   auto build_test_case_1 = [&](ModelTestBuilder& builder) {
     auto* input0_arg = MakeInput<float>(builder, {{2, -1, 6, 3}}, {2, 4, 6, 3}, 0.0, 1.0);
-    auto* input1_arg = MakeInput<float>(builder, std::nullopt, {3}, 0.0, 1.0);
-    auto* input2_arg = MakeInput<uint8_t>(builder, std::nullopt, {3}, 0, 5);
+    auto* input1_arg = MakeInput<float>(builder, std::nullopt, {3}, {2.3f, 2.4f, 2.5f});
+    auto* input2_arg = MakeInput<uint8_t>(builder, std::nullopt, {3}, {10, 12, 13});
     auto* transpose_1_out_0 = builder.MakeIntermediate();
     auto* quantizelinear_1_out_0 = builder.MakeIntermediate();
     auto* transpose_2_out_0 = builder.MakeOutput();
@@ -3248,8 +3276,8 @@ TEST(TransposeOptimizerTests, TestQuantizeLinearVectorUnknownRank) {
 TEST(TransposeOptimizerTests, TestQuantizeLinearScalarOpset10) {
   auto build_test_case_1 = [&](ModelTestBuilder& builder) {
     auto* input0_arg = MakeInput<float>(builder, {{2, -1, 6, 3}}, {2, 4, 6, 3}, 0.0, 1.0);
-    auto* input1_arg = builder.MakeInput<float>(std::vector<int64_t>{}, 0.0, 1.0);
-    auto* input2_arg = MakeInput<uint8_t>(builder, {std::vector<int64_t>{}}, std::vector<int64_t>{}, 0, 5);
+    auto* input1_arg = MakeInput<float>(builder, {std::vector<int64_t>{}}, std::vector<int64_t>{}, {2.3f});
+    auto* input2_arg = MakeInput<uint8_t>(builder, {std::vector<int64_t>{}}, std::vector<int64_t>{}, {10});
     auto* transpose_1_out_0 = builder.MakeIntermediate();
     auto* quantizelinear_1_out_0 = builder.MakeIntermediate();
     auto* transpose_2_out_0 = builder.MakeOutput();
@@ -3276,8 +3304,8 @@ TEST(TransposeOptimizerTests, TestQuantizeLinearScalarOpset10) {
 TEST(TransposeOptimizerTests, TestDequantizeLinearScalarIgnoreAxis) {
   auto build_test_case_1 = [&](ModelTestBuilder& builder) {
     auto* input0_arg = MakeInput<uint8_t>(builder, {{2, -1, 6, 3}}, {2, 4, 6, 3}, 0, 5);
-    auto* input1_arg = builder.MakeInput<float>(std::vector<int64_t>{}, 0.0, 1.0);
-    auto* input2_arg = MakeInput<uint8_t>(builder, {std::vector<int64_t>{}}, std::vector<int64_t>{}, 0, 5);
+    auto* input1_arg = MakeInput<float>(builder, {std::vector<int64_t>{}}, std::vector<int64_t>{}, {2.3f});
+    auto* input2_arg = MakeInput<uint8_t>(builder, {std::vector<int64_t>{}}, std::vector<int64_t>{}, {10});
     auto* transpose_1_out_0 = builder.MakeIntermediate();
     auto* dequantizelinear_1_out_0 = builder.MakeIntermediate();
     auto* transpose_2_out_0 = builder.MakeOutput();
@@ -3305,8 +3333,8 @@ TEST(TransposeOptimizerTests, TestDequantizeLinearScalarIgnoreAxis) {
 TEST(TransposeOptimizerTests, TestDequantizeLinearVector) {
   auto build_test_case_1 = [&](ModelTestBuilder& builder) {
     auto* input0_arg = MakeInput<uint8_t>(builder, {{2, -1, 6, 3}}, {2, 4, 6, 3}, 0, 5);
-    auto* input1_arg = builder.MakeInput<float>({2}, 0.0, 1.0);
-    auto* input2_arg = MakeInput<uint8_t>(builder, {{2}}, {2}, 0, 5);
+    auto* input1_arg = MakeInput<float>(builder, {{2}}, {2}, {2.3f, 2.4f});
+    auto* input2_arg = MakeInput<uint8_t>(builder, {{2}}, {2}, {10, 12});
     auto* transpose_1_out_0 = builder.MakeIntermediate();
     auto* dequantizelinear_1_out_0 = builder.MakeIntermediate();
     auto* transpose_2_out_0 = builder.MakeOutput();
@@ -3334,8 +3362,8 @@ TEST(TransposeOptimizerTests, TestDequantizeLinearVector) {
 TEST(TransposeOptimizerTests, TestDequantizeLinearNoAxis) {
   auto build_test_case_1 = [&](ModelTestBuilder& builder) {
     auto* input0_arg = MakeInput<uint8_t>(builder, {{2, -1, 6, 3}}, {2, 4, 6, 3}, 0, 5);
-    auto* input1_arg = builder.MakeInput<float>(std::vector<int64_t>{}, 0.0, 1.0);
-    auto* input2_arg = MakeInput<uint8_t>(builder, {std::vector<int64_t>{}}, std::vector<int64_t>{}, 0, 5);
+    auto* input1_arg = MakeInput<float>(builder, {std::vector<int64_t>{}}, std::vector<int64_t>{}, {2.3f});
+    auto* input2_arg = MakeInput<uint8_t>(builder, {std::vector<int64_t>{}}, std::vector<int64_t>{}, {10});
     auto* transpose_1_out_0 = builder.MakeIntermediate();
     auto* dequantizelinear_1_out_0 = builder.MakeIntermediate();
     auto* transpose_2_out_0 = builder.MakeOutput();
@@ -3407,7 +3435,6 @@ TEST(TransposeOptimizerTests, TestBroadcastReusedInputs) {
 
   auto check_optimized_graph_1 = [&](InferenceSessionWrapper& session) {
     int transpose_cost = EstimateTransposeCost(session.GetGraph());
-    // One transpose placed on the rank 2 input to Sum
     EXPECT_EQ(transpose_cost, 2);
   };
 
@@ -3617,6 +3644,8 @@ TEST(TransposeOptimizerTests, TestOmitIdentityTranspose) {
                     TransformerLevel::Level1,
                     /*opset_version*/ 15);
 }
+
+
 
 
 }  // namespace test

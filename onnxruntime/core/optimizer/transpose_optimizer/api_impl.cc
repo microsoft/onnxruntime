@@ -21,7 +21,7 @@ class ApiValueInfo final : public api::ValueInfoRef {
 
  public:
   explicit ApiValueInfo(NodeArg& node_arg) : node_arg_(node_arg){};
-  const std::string_view Name() const override;
+  std::string_view Name() const override;
   std::optional<std::vector<int64_t>> Shape() const override;
   api::DataType DType() const override;
 
@@ -71,21 +71,21 @@ class ApiNode final : public api::NodeRef {
     return node_;
   }
 
-  const std::string_view OpType() const override {
+  std::string_view OpType() const override {
     return node_.OpType();
   }
-  const std::string_view Domain() const override {
+  std::string_view Domain() const override {
     return node_.Domain();
   }
   std::vector<std::string_view> Inputs() const override;
   std::vector<std::string_view> Outputs() const override;
-  std::optional<int64_t> GetAttributeInt(const std::string_view name) const override;
-  std::optional<std::vector<int64_t>> GetAttributeInts(const std::string_view name) const override;
-  void SetAttributeInt(const std::string_view name, int64_t value) override;
-  void SetAttributeInts(const std::string_view name, const std::vector<int64_t>& value) override;
+  std::optional<int64_t> GetAttributeInt(std::string_view name) const override;
+  std::optional<std::vector<int64_t>> GetAttributeInts(std::string_view name) const override;
+  void SetAttributeInt(std::string_view name, int64_t value) override;
+  void SetAttributeInts(std::string_view name, const std::vector<int64_t>& value) override;
   void CopyAttributes(const api::NodeRef& node) override;
-  void ClearAttribute(const std::string_view name) override;
-  void SetInput(size_t i, const std::string_view name) override;
+  void ClearAttribute(std::string_view name) override;
+  void SetInput(size_t i, std::string_view name) override;
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ApiNode);
@@ -107,32 +107,32 @@ class ApiGraph final : public api::GraphRef {
     return graph_;
   }
 
-  std::optional<int64_t> Opset(const std::string_view domain = "") const override;
+  std::optional<int64_t> Opset(std::string_view domain = "") const override;
   std::vector<std::unique_ptr<api::NodeRef>> Nodes() const override;
-  std::unique_ptr<api::TensorRef> GetConstant(const std::string_view name) const override;
-  std::unique_ptr<api::ValueInfoRef> GetValueInfo(const std::string_view name) const override;
-  std::unique_ptr<api::ValueConsumers> GetValueConsumers(const std::string_view name) const override;
-  std::unique_ptr<api::NodeRef> GetNodeProducingOutput(const std::string_view name) const override;
-  void TransposeInitializer(const std::string_view name, const std::vector<int64_t>& perm) override;
-  void ReshapeInitializer(const std::string_view name, const std::vector<int64_t>& shape) override;
-  std::unique_ptr<api::NodeRef> AddNode(const std::string_view op_type, const std::vector<std::string_view>& inputs,
-                                     size_t num_outputs = 1, const std::string_view domain = "") override;
+  std::unique_ptr<api::TensorRef> GetConstant(std::string_view name) const override;
+  std::unique_ptr<api::ValueInfoRef> GetValueInfo(std::string_view name) const override;
+  std::unique_ptr<api::ValueConsumers> GetValueConsumers(std::string_view name) const override;
+  std::unique_ptr<api::NodeRef> GetNodeProducingOutput(std::string_view name) const override;
+  void TransposeInitializer(std::string_view name, const std::vector<int64_t>& perm) override;
+  void ReshapeInitializer(std::string_view name, const std::vector<int64_t>& shape) override;
+  std::unique_ptr<api::NodeRef> AddNode(std::string_view op_type, const std::vector<std::string_view>& inputs,
+                                     size_t num_outputs = 1, std::string_view domain = "") override;
   void RemoveNode(api::NodeRef& node) override;
-  void RemoveInitializer(const std::string_view name) override;
-  const std::string_view AddInitializerInt64(const std::vector<int64_t>& shape,
+  void RemoveInitializer(std::string_view name) override;
+  std::string_view AddInitializerInt64(const std::vector<int64_t>& shape,
                                              const std::vector<int64_t>& values) override;
-  const std::string_view AddInitializerInt32(const std::vector<int64_t>& shape,
+  std::string_view AddInitializerInt32(const std::vector<int64_t>& shape,
                                              const std::vector<int32_t>& values) override;
   void MoveOutput(api::NodeRef& src_node, size_t src_idx, api::NodeRef& dst_node, size_t dst_idx) override;
-  void CopyValueInfo(const std::string_view src_name, const std::string_view dst_name) override;
-  bool HasValueConsumers(const std::string_view name) const override;
+  void CopyValueInfo(std::string_view src_name, std::string_view dst_name) override;
+  bool HasValueConsumers(std::string_view name) const override;
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ApiGraph);
 };
 
 // <ApiValueInfo>
-const std::string_view ApiValueInfo::Name() const {
+std::string_view ApiValueInfo::Name() const {
   return node_arg_.Name();
 }
 
@@ -306,7 +306,7 @@ std::vector<std::string_view> ApiNode::Outputs() const {
   return NodeArgsToStrings(node_.OutputDefs());
 }
 
-std::optional<int64_t> ApiNode::GetAttributeInt(const std::string_view name) const {
+std::optional<int64_t> ApiNode::GetAttributeInt(std::string_view name) const {
   const onnx::AttributeProto* attr = graph_utils::GetNodeAttribute(node_, std::string(name));
   if (attr == nullptr || attr->type() != onnx::AttributeProto_AttributeType_INT) {
     return std::nullopt;
@@ -315,7 +315,7 @@ std::optional<int64_t> ApiNode::GetAttributeInt(const std::string_view name) con
   return attr->i();
 }
 
-std::optional<std::vector<int64_t>> ApiNode::GetAttributeInts(const std::string_view name) const {
+std::optional<std::vector<int64_t>> ApiNode::GetAttributeInts(std::string_view name) const {
   const onnx::AttributeProto* attr = graph_utils::GetNodeAttribute(node_, std::string(name));
   if (attr == nullptr || attr->type() != onnx::AttributeProto_AttributeType_INTS) {
     return std::nullopt;
@@ -331,11 +331,11 @@ std::optional<std::vector<int64_t>> ApiNode::GetAttributeInts(const std::string_
   return value;
 }
 
-void ApiNode::SetAttributeInt(const std::string_view name, int64_t value) {
+void ApiNode::SetAttributeInt(std::string_view name, int64_t value) {
   node_.AddAttribute(std::string(name), value);
 }
 
-void ApiNode::SetAttributeInts(const std::string_view name, const std::vector<int64_t>& value) {
+void ApiNode::SetAttributeInts(std::string_view name, const std::vector<int64_t>& value) {
   node_.AddAttribute(std::string(name), value);
 }
 
@@ -347,11 +347,11 @@ void ApiNode::CopyAttributes(const api::NodeRef& node) {
   }
 }
 
-void ApiNode::ClearAttribute(const std::string_view name) {
+void ApiNode::ClearAttribute(std::string_view name) {
   node_.ClearAttribute(std::string(name));
 }
 
-void ApiNode::SetInput(size_t i, const std::string_view name) {
+void ApiNode::SetInput(size_t i, std::string_view name) {
   // name could be empty to represent a missing optional.
   const std::string name_str(name);
   NodeArg* new_node_arg = &graph_.GetOrCreateNodeArg(name_str, nullptr);
@@ -407,7 +407,7 @@ void ApiNode::SetInput(size_t i, const std::string_view name) {
 }
 // </ApiNode>
 
-std::optional<int64_t> ApiGraph::Opset(const std::string_view domain) const {
+std::optional<int64_t> ApiGraph::Opset(std::string_view domain) const {
   const auto& version_map = graph_.DomainToVersionMap();
   auto match = version_map.find(std::string(domain));
   if (match == version_map.end()) {
@@ -430,7 +430,7 @@ std::vector<std::unique_ptr<api::NodeRef>> ApiGraph::Nodes() const {
   return nodes;
 }
 
-std::unique_ptr<api::TensorRef> ApiGraph::GetConstant(const std::string_view name) const {
+std::unique_ptr<api::TensorRef> ApiGraph::GetConstant(std::string_view name) const {
   // TODO: make this work for initializers in parent graphs. See api.h for requirements.
   const auto* tensor = graph_.GetConstantInitializer(std::string(name), false);
   if (tensor == nullptr) {
@@ -440,13 +440,13 @@ std::unique_ptr<api::TensorRef> ApiGraph::GetConstant(const std::string_view nam
   return std::unique_ptr<api::TensorRef>(new ApiTensor(*tensor, graph_, cpu_allocator_));
 }
 
-std::unique_ptr<api::ValueInfoRef> ApiGraph::GetValueInfo(const std::string_view name) const {
+std::unique_ptr<api::ValueInfoRef> ApiGraph::GetValueInfo(std::string_view name) const {
   NodeArg* node_arg_ = graph_.GetNodeArg(std::string(name));
   ORT_ENFORCE(node_arg_ != nullptr, "No NodeArg found for name ", name);
   return std::unique_ptr<api::ValueInfoRef>(new ApiValueInfo(*node_arg_));
 }
 
-std::unique_ptr<api::ValueConsumers> ApiGraph::GetValueConsumers(const std::string_view name) const {
+std::unique_ptr<api::ValueConsumers> ApiGraph::GetValueConsumers(std::string_view name) const {
   auto consumers = std::make_unique<api::ValueConsumers>();
   consumers->comprehensive = true;
   // Consumers from GetConsumerNodes can be normal (explicit) inputs or implicit inputs used in subgraphs
@@ -479,7 +479,7 @@ std::unique_ptr<api::ValueConsumers> ApiGraph::GetValueConsumers(const std::stri
   return consumers;
 }
 
-bool ApiGraph::HasValueConsumers(const std::string_view name) const {
+bool ApiGraph::HasValueConsumers(std::string_view name) const {
   auto nodes = graph_.GetConsumerNodes(std::string(name));
   if (nodes.size() > 0) {
     return true;
@@ -495,7 +495,7 @@ bool ApiGraph::HasValueConsumers(const std::string_view name) const {
   return false;
 }
 
-std::unique_ptr<api::NodeRef> ApiGraph::GetNodeProducingOutput(const std::string_view name) const {
+std::unique_ptr<api::NodeRef> ApiGraph::GetNodeProducingOutput(std::string_view name) const {
   auto* node = graph_.GetMutableProducerNode(std::string(name));
   if (node == nullptr) {
     return std::unique_ptr<api::NodeRef>(nullptr);
@@ -504,7 +504,7 @@ std::unique_ptr<api::NodeRef> ApiGraph::GetNodeProducingOutput(const std::string
   return std::unique_ptr<api::NodeRef>(new ApiNode(*node, graph_));
 }
 
-void ApiGraph::TransposeInitializer(const std::string_view name, const std::vector<int64_t>& perm) {
+void ApiGraph::TransposeInitializer(std::string_view name, const std::vector<int64_t>& perm) {
   const ONNX_NAMESPACE::TensorProto* tensor_proto = nullptr;
   const std::string name_str(name);
   bool success = graph_.GetInitializedTensor(name_str, tensor_proto);
@@ -546,7 +546,7 @@ void ApiGraph::TransposeInitializer(const std::string_view name, const std::vect
   graph_.AddInitializedTensor(new_tensor_proto);
 }
 
-void ApiGraph::ReshapeInitializer(const std::string_view name, const std::vector<int64_t>& shape) {
+void ApiGraph::ReshapeInitializer(std::string_view name, const std::vector<int64_t>& shape) {
   const std::string name_str(name);
   const ONNX_NAMESPACE::TensorProto* tensor_proto = nullptr;
   bool success = graph_.GetInitializedTensor(name_str, tensor_proto);
@@ -582,9 +582,9 @@ void ApiGraph::ReshapeInitializer(const std::string_view name, const std::vector
   node_arg->SetShape(new_shape);
 }
 
-std::unique_ptr<api::NodeRef> ApiGraph::AddNode(const std::string_view op_type,
+std::unique_ptr<api::NodeRef> ApiGraph::AddNode(std::string_view op_type,
                                              const std::vector<std::string_view>& inputs, size_t num_outputs, 
-                                             const std::string_view domain) {
+                                             std::string_view domain) {
   const std::string op_type_str(op_type);
   std::string name = graph_.GenerateNodeName(op_type_str);
   std::vector<NodeArg*> input_args;
@@ -647,7 +647,7 @@ void ApiGraph::RemoveNode(api::NodeRef& node) {
   graph_.RemoveNode(ort_node.Index());
 }
 
-void ApiGraph::RemoveInitializer(const std::string_view name) {
+void ApiGraph::RemoveInitializer(std::string_view name) {
   graph_.RemoveInitializedTensor(std::string(name));
 }
 
@@ -665,7 +665,7 @@ inline ONNX_NAMESPACE::TensorProto TensorProtoFromInts(std::string& name, const 
   return tensor_proto;
 }
 
-const std::string_view ApiGraph::AddInitializerInt64(const std::vector<int64_t>& shape,
+std::string_view ApiGraph::AddInitializerInt64(const std::vector<int64_t>& shape,
                                                      const std::vector<int64_t>& values) {
   std::string name = graph_.GenerateNodeArgName("const_transpose_optimizer");
   ONNX_NAMESPACE::TensorProto tensor_proto =
@@ -674,7 +674,7 @@ const std::string_view ApiGraph::AddInitializerInt64(const std::vector<int64_t>&
   return node_arg.Name();
 }
 
-const std::string_view ApiGraph::AddInitializerInt32(const std::vector<int64_t>& shape,
+std::string_view ApiGraph::AddInitializerInt32(const std::vector<int64_t>& shape,
                                                      const std::vector<int32_t>& values) {
   std::string name = graph_.GenerateNodeArgName("const_transpose_optimizer");
   ONNX_NAMESPACE::TensorProto tensor_proto =
@@ -709,7 +709,7 @@ void ApiGraph::MoveOutput(api::NodeRef& src_node, size_t src_idx, api::NodeRef& 
   graph_.UpdateProducerNode(new_name, src_node_idx);
 }
 
-void ApiGraph::CopyValueInfo(const std::string_view src_name, const std::string_view dst_name) {
+void ApiGraph::CopyValueInfo(std::string_view src_name, std::string_view dst_name) {
   NodeArg* src_arg = graph_.GetNodeArg(std::string(src_name));
   if (src_arg != nullptr) {
     NodeArg& dst_arg = graph_.GetOrCreateNodeArg(std::string(dst_name), src_arg->TypeAsProto());

@@ -52,7 +52,7 @@ struct HandlerInfo {
 // This is an alternative to using MoveOutput for cases when the values aren't node outputs (if one is an initializer,
 // for example).
 static void ReplaceValueReferences(const std::vector<std::unique_ptr<api::NodeRef>>& nodes,
-                                   const std::string_view old_value, const std::string_view new_value) {
+                                   std::string_view old_value, std::string_view new_value) {
   for (const std::unique_ptr<api::NodeRef>& node : nodes) {
     const std::vector<std::string_view>& inputs = node->Inputs();
     for (size_t i = 0; i < inputs.size(); ++i) {
@@ -64,8 +64,8 @@ static void ReplaceValueReferences(const std::vector<std::unique_ptr<api::NodeRe
 }
 
 // Create a node with a single attribute of type vector<int64_t>
-static std::unique_ptr<api::NodeRef> MakeNode1Attr(api::GraphRef& graph, const std::string_view op_type,
-                                                const std::string_view input, const std::string_view attr_name,
+static std::unique_ptr<api::NodeRef> MakeNode1Attr(api::GraphRef& graph, std::string_view op_type,
+                                                std::string_view input, std::string_view attr_name,
                                                 const std::vector<int64_t>& attr_val) {
   std::vector<std::string_view> inputs{input};
   std::unique_ptr<api::NodeRef> node = graph.AddNode(op_type, inputs, /*num_outputs*/ 1);
@@ -74,21 +74,21 @@ static std::unique_ptr<api::NodeRef> MakeNode1Attr(api::GraphRef& graph, const s
 }
 
 // Creates a Transpose node. Does not update output ValueInfo.
-static std::unique_ptr<api::NodeRef> MakeTranspose(api::GraphRef& graph, const std::string_view input,
+static std::unique_ptr<api::NodeRef> MakeTranspose(api::GraphRef& graph, std::string_view input,
                                                 const std::vector<int64_t>& perm) {
   return MakeNode1Attr(graph, "Transpose", input, "perm", perm);
 }
 
 // Creates a Squeeze/Unsqueeze node. Does not update output ValueInfo.
 static std::unique_ptr<api::NodeRef> MakeSqueezeOrUnsqueeze(int64_t opset, api::GraphRef& graph, 
-                                                         const std::string_view op_type, const std::string_view input,
+                                                         std::string_view op_type, std::string_view input,
                                                          const std::vector<int64_t>& axes) {
   if (opset < 13) {
     return MakeNode1Attr(graph, op_type, input, "axes", axes);
   }
 
   std::vector<int64_t> axes_shape{gsl::narrow_cast<int64_t>(axes.size())};
-  const std::string_view axes_initializer = graph.AddInitializerInt64(axes_shape, axes);
+  std::string_view axes_initializer = graph.AddInitializerInt64(axes_shape, axes);
 
   std::vector<std::string_view> inputs{input, axes_initializer};
 
@@ -345,7 +345,7 @@ static std::vector<int64_t> SortedAxesForTransposedInput(const std::vector<int64
 /* These helpers hide the most gnarly parts of the transpose optimizer. */
 
 
-static const std::string_view HelpHandleUnsqueeze(HandlerArgs& args, const std::vector<int64_t>& axes);
+static std::string_view HelpHandleUnsqueeze(HandlerArgs& args, const std::vector<int64_t>& axes);
 
 
 // Replaces ith input to node with unsqueezed value. Might create a new Unsqueeze node, find an existing one,
@@ -367,7 +367,7 @@ static void UnsqueezeInput(OptimizerCtx& ctx, api::NodeRef& node, size_t i, cons
     if (consumers->nodes.size() > 0) {
       auto squeeze_ptr = MakeSqueezeOrUnsqueeze(ctx.opset, ctx.graph, "Squeeze", input, axes);
       api::NodeRef& squeeze = *squeeze_ptr;
-      const std::string_view sq_out = squeeze.Outputs()[0];
+      std::string_view sq_out = squeeze.Outputs()[0];
       ctx.graph.CopyValueInfo(input, sq_out);
       ReplaceValueReferences(consumers->nodes, input, sq_out);
     }
@@ -401,7 +401,7 @@ static void UnsqueezeInput(OptimizerCtx& ctx, api::NodeRef& node, size_t i, cons
   // Case 3: Add an Unsqueeze node.
   auto squeeze_ptr = MakeSqueezeOrUnsqueeze(ctx.opset, ctx.graph, "Unsqueeze", input, axes);
   api::NodeRef& squeeze = *squeeze_ptr;
-  const std::string_view sq_out = squeeze.Outputs()[0];
+  std::string_view sq_out = squeeze.Outputs()[0];
   ctx.graph.CopyValueInfo(input, sq_out);
   ctx.graph.GetValueInfo(sq_out)->UnsqueezeDims(axes);
 
@@ -441,7 +441,7 @@ static void TransposeInput(OptimizerCtx& ctx, api::NodeRef& node, size_t i,
       // to counteract the effect. These Transposes will hopefully be optimized out later.
       auto transpose_inv_ptr = MakeTranspose(ctx.graph, input, perm_inv);
       api::NodeRef& transpose_inv = *transpose_inv_ptr;
-      const std::string_view transpose_out = transpose_inv.Outputs()[0];
+      std::string_view transpose_out = transpose_inv.Outputs()[0];
       ctx.graph.CopyValueInfo(input, transpose_out);
       ReplaceValueReferences(consumers->nodes, input, transpose_out);
     }
@@ -470,7 +470,7 @@ static void TransposeInput(OptimizerCtx& ctx, api::NodeRef& node, size_t i,
       const std::vector<int64_t>& perm_combined = ComposePerm(*perm2, perm);
       auto transpose_ptr = MakeTranspose(ctx.graph, inp_node->Inputs()[0], perm_combined);
       api::NodeRef& transpose = *transpose_ptr;
-      const std::string_view transpose_out = transpose.Outputs()[0];
+      std::string_view transpose_out = transpose.Outputs()[0];
       ctx.graph.CopyValueInfo(input, transpose_out);
       ctx.graph.GetValueInfo(transpose_out)->PermuteDims(perm);
       if (consumers->comprehensive && consumers->nodes.size() == 0) {
@@ -493,7 +493,7 @@ static void TransposeInput(OptimizerCtx& ctx, api::NodeRef& node, size_t i,
   // Case 4: Add a new Transpose op
   auto transpose_ptr = MakeTranspose(ctx.graph, input, perm);
   api::NodeRef& transpose = *transpose_ptr;
-  const std::string_view transpose_out = transpose.Outputs()[0];
+  std::string_view transpose_out = transpose.Outputs()[0];
   ctx.graph.CopyValueInfo(input, transpose_out);
   ctx.graph.GetValueInfo(transpose_out)->PermuteDims(perm);
   node.SetInput(i, transpose_out);
@@ -548,7 +548,7 @@ inline static void TransposeFirstInput(OptimizerCtx& ctx, api::NodeRef& node, co
 // Inserts a Transpose op on the ith output of a node. Returns the new, transposed output.
 // Updates shape information assuming that the output from the node will have a transposed shape (using perm_inv)
 // but the overall (returned) output will match the initial shape.
-static const std::string_view TransposeOutput(OptimizerCtx& ctx, api::NodeRef& node, size_t i,
+static std::string_view TransposeOutput(OptimizerCtx& ctx, api::NodeRef& node, size_t i,
                                               const std::vector<int64_t>& perm,
                                               const std::vector<int64_t>& perm_inv) {
   // Make transpose without input initially, then add it to avoid cyclic reference.
@@ -558,13 +558,13 @@ static const std::string_view TransposeOutput(OptimizerCtx& ctx, api::NodeRef& n
 
   // X -> Node -> *Y',   Transpose -> Y      *shape/dtype not set
   ctx.graph.MoveOutput(node, i, *transpose, 0);
-  const std::string_view new_output = node.Outputs()[i];
+  std::string_view new_output = node.Outputs()[i];
 
   // X -> Node -> *Y',   Y' -> Transpose -> Y      *shape/dtype not set
   transpose->SetInput(0, new_output);
 
   // Copy shape info from Y back to Y' and update it.
-  const std::string_view old_output = transpose->Outputs()[0];
+  std::string_view old_output = transpose->Outputs()[0];
   ctx.graph.CopyValueInfo(old_output, new_output);
   ctx.graph.GetValueInfo(new_output)->PermuteDims(perm_inv);
   return old_output;
@@ -592,7 +592,7 @@ static void TransposeOutputs(OptimizerCtx& ctx, api::NodeRef& node, const std::v
 // total number of non-trivial (value != 1) dimensions involved in transposes.
 
 // Given a value, returns the rank of the value excluding dimensions of value 1. Returns 5 if the rank is unknown. 
-static int EstimateValueRank(api::GraphRef& graph, const std::string_view input) {
+static int EstimateValueRank(api::GraphRef& graph, std::string_view input) {
   auto value_info = graph.GetValueInfo(input);
   std::optional<std::vector<int64_t>> shape = value_info->Shape();
   if (shape == std::nullopt) {
@@ -625,7 +625,7 @@ static bool CanLikelyRemoveTranspose(api::GraphRef& graph, api::NodeRef& transpo
 
 // Estimates the cost of transposing an input. Currently uses rank heuristic. Negative if transpose is removed.
 // Feel free to improve as needed.
-static int EstimateTransposeValueCost(api::GraphRef& graph, const std::string_view input,
+static int EstimateTransposeValueCost(api::GraphRef& graph, std::string_view input,
                                       const std::vector<int64_t>& perm_inv) {
   // Case 1: Transposing constants probably costs nothing.
   std::unique_ptr<api::TensorRef> constant = graph.GetConstant(input);
@@ -838,7 +838,7 @@ static bool HandleShape(HandlerArgs& args) {
 
   // Make new_perm initializer
   std::vector<int64_t> perm_shape {gsl::narrow_cast<int64_t>(new_perm.size())};
-  const std::string_view perm_const = args.ctx.graph.AddInitializerInt64(perm_shape, new_perm);
+  std::string_view perm_const = args.ctx.graph.AddInitializerInt64(perm_shape, new_perm);
 
   // X -> Shape -> Y,   Gather
   std::vector<std::string_view> gather_inputs{"", perm_const};
@@ -848,7 +848,7 @@ static bool HandleShape(HandlerArgs& args) {
 
   // X -> Shape -> Y',   Gather -> Y
   args.ctx.graph.MoveOutput(args.node, 0, gather, 0);
-  const std::string_view new_output = args.node.Outputs()[0];
+  std::string_view new_output = args.node.Outputs()[0];
 
   // X -> Shape -> Y',   Y' -> Gather -> Y
   gather.SetInput(0, new_output);
@@ -1087,7 +1087,7 @@ constexpr HandlerInfo squeeze_handler = {&FirstInput, &HandleSqueeze};
 
 // Pushes transpose through unsqueeze and returns final output. Helps UnsqueezeInput to push transposes.
 // axes is the axes of the Unsqueeze node.
-static const std::string_view HelpHandleUnsqueeze(HandlerArgs& args, const std::vector<int64_t>& axes) {
+static std::string_view HelpHandleUnsqueeze(HandlerArgs& args, const std::vector<int64_t>& axes) {
   TransposeFirstInput(args.ctx, args.node, args.perm_inv);
   std::vector<int64_t> new_perm = UnsqueezePerm(axes, args.perm);
   return TransposeOutput(args.ctx, args.node, 0, new_perm, InvertPerm(new_perm));
@@ -1321,9 +1321,9 @@ static bool HandleTranspose(HandlerArgs& args) {
   }
 
   // Input to 1st transpose
-  const std::string_view transpose_input = args.transpose.Inputs()[0];
+  std::string_view transpose_input = args.transpose.Inputs()[0];
   // Output of 2nd transpose
-  const std::string_view node_output = args.node.Outputs()[0];
+  std::string_view node_output = args.node.Outputs()[0];
 
   if (args.perm_inv == *node_perm) {
     // Case 1: Permutations cancel.
@@ -1662,7 +1662,7 @@ bool OptimizeImpl(OptimizerCtx& ctx) {
     api::NodeRef& node = *nodes[i];
     std::vector<std::string_view> inputs = node.Inputs();
     for (size_t j = 0; j < inputs.size(); ++j) {
-      const std::string_view inp = inputs[j];
+      std::string_view inp = inputs[j];
       if (inp == "") {
         continue;
       }

@@ -96,7 +96,7 @@ class TensorRef {
 class ValueInfoRef {
  public:
   /// <returns>The name of the value in the graph</returns>
-  virtual const std::string_view Name() const = 0;
+  virtual std::string_view Name() const = 0;
 
   /// <returns>
   /// The inferred/declared tensor shape of the value. nullopt if rank is unknown, otherwise a vector with entries
@@ -140,10 +140,10 @@ class ValueInfoRef {
 class NodeRef {
  public:
   /// <returns>Op computed by the node</returns>
-  virtual const std::string_view OpType() const = 0;
+  virtual std::string_view OpType() const = 0;
 
   /// <returns>Domain containing the op. Empty string if node has no domain set.</returns>
-  virtual const std::string_view Domain() const = 0;
+  virtual std::string_view Domain() const = 0;
 
   /// <returns>Names of input values. Empty string may be included for optional inputs.</returns>
   virtual std::vector<std::string_view> Inputs() const = 0;
@@ -155,27 +155,27 @@ class NodeRef {
   /// <returns>
   /// The attribute value, or nullopt if the attribute is not present on the node, or is not of type int.
   /// </returns>
-  virtual std::optional<int64_t> GetAttributeInt(const std::string_view name) const = 0;
+  virtual std::optional<int64_t> GetAttributeInt(std::string_view name) const = 0;
 
   /// <param name="name">Name of the attribute to return</param>
   /// <returns>
   /// The attribute value, or nullopt if the attribute is not present on the node, or is not of type int[].
   /// </returns>
-  virtual std::optional<std::vector<int64_t>> GetAttributeInts(const std::string_view name) const = 0;
+  virtual std::optional<std::vector<int64_t>> GetAttributeInts(std::string_view name) const = 0;
 
   /// <summary>
   /// Sets an int attribute with name and value. Overwrites existing value if present.
   /// </summary>
   /// <param name="name">Name of the attribute to set</param>
   /// <param name="value">New value of attribute</param>
-  virtual void SetAttributeInt(const std::string_view name, int64_t value) = 0;
+  virtual void SetAttributeInt(std::string_view name, int64_t value) = 0;
 
   /// <summary>
   /// Sets an int[] attribute with name and value. Overwrites existing value if present.
   /// </summary>
   /// <param name="name">Name of the attribute to set</param>
   /// <param name="value">New value of attribute</param>
-  virtual void SetAttributeInts(const std::string_view name, const std::vector<int64_t>& value) = 0;
+  virtual void SetAttributeInts(std::string_view name, const std::vector<int64_t>& value) = 0;
 
   /// <summary>
   /// Copies all attributes from a node to this node
@@ -187,7 +187,7 @@ class NodeRef {
   /// Removes attribute with name if present
   /// </summary>
   /// <param name="name">Name of the attribute to clear</param>
-  virtual void ClearAttribute(const std::string_view name) = 0;
+  virtual void ClearAttribute(std::string_view name) = 0;
 
   /// <summary>
   /// Sets the ith input of this node. Supports optional inputs. Expands size if i is out of bounds, padding with ""
@@ -195,7 +195,7 @@ class NodeRef {
   /// </summary>
   /// <param name="i">Index of the input to update.</param>
   /// <param name="name">Name of value to use as input or "" for missing optional values.</param>
-  virtual void SetInput(size_t i, const std::string_view name) = 0;
+  virtual void SetInput(size_t i, std::string_view name) = 0;
 
   /// <summary>
   /// Convenience method. Returns whether node is of the specified op type and domain
@@ -203,7 +203,7 @@ class NodeRef {
   /// <param name="op_type">Op type</param>
   /// <param name="domain">Domain. Empty string and "onnx.ai" are treated as equal.</param>
   /// <returns></returns>
-  virtual bool IsOp(const std::string_view op_type, const std::string_view domain = "") const {
+  virtual bool IsOp(std::string_view op_type, std::string_view domain = "") const {
     if (OpType() != op_type) {
       return false;
     }
@@ -218,7 +218,7 @@ class NodeRef {
   /// <param name="name">Attribute name</param>
   /// <param name="default_value">Default value</param>
   /// <returns>Attribute value or default value</returns>
-  virtual int64_t GetAttributeIntDefault(const std::string_view name, int64_t default_value) const {
+  virtual int64_t GetAttributeIntDefault(std::string_view name, int64_t default_value) const {
     std::optional<int64_t> value = GetAttributeInt(name);
     if (value == std::nullopt) {
       return default_value;
@@ -267,7 +267,7 @@ class GraphRef {
  public:
   /// <param name="domain">Domain name to find in model opset_import</param>
   /// <returns>Opset of domain declared in model, or nullopt if domain is not present</returns>
-  virtual std::optional<int64_t> Opset(const std::string_view domain) const = 0;
+  virtual std::optional<int64_t> Opset(std::string_view domain) const = 0;
 
   /// <returns>Topologically-sorted list of nodes in the graph</returns>
   virtual std::vector<std::unique_ptr<NodeRef>> Nodes() const = 0;
@@ -277,14 +277,14 @@ class GraphRef {
   /// </summary>
   /// <param name="name">Value name. Must be nonempty.</param>
   /// <returns>Tensor corresponding to the constant initializer or nullptr</returns>
-  virtual std::unique_ptr<TensorRef> GetConstant(const std::string_view name) const = 0;
+  virtual std::unique_ptr<TensorRef> GetConstant(std::string_view name) const = 0;
 
   /// <summary>
   /// Returns a ValueInfo instance for querying info about the value with the given name. Behavior is undefined if
   /// the name does not refer to a value in the graph.
   /// <param name="name">Value name. Must be nonempty.</param>
   /// <returns>A ValueInfo instance corresponding to the value with the given name</returns>
-  virtual std::unique_ptr<ValueInfoRef> GetValueInfo(const std::string_view name) const = 0;
+  virtual std::unique_ptr<ValueInfoRef> GetValueInfo(std::string_view name) const = 0;
 
   /// <summary>
   /// Returns a ValueConsumers object characterizing the current consumers of the value with the specified name. nodes
@@ -293,14 +293,14 @@ class GraphRef {
   /// </summary>
   /// <param name="name">The name of the value. Must be nonempty.</param>
   /// <returns>ValueConsumers corresponding to usage of specified value within the model</returns>
-  virtual std::unique_ptr<ValueConsumers> GetValueConsumers(const std::string_view name) const = 0;
+  virtual std::unique_ptr<ValueConsumers> GetValueConsumers(std::string_view name) const = 0;
 
   /// <summary>
   /// Determines if the specified value is a node output and if so returns that node.
   /// </summary>
   /// <param name="name">The name of the value. Must be nonempty.</param>
   /// <returns>Node producing the value or nullptr (or nullptr if value is not a node output)</returns>
-  virtual std::unique_ptr<NodeRef> GetNodeProducingOutput(const std::string_view name) const = 0;
+  virtual std::unique_ptr<NodeRef> GetNodeProducingOutput(std::string_view name) const = 0;
 
   /// <summary>
   /// Transposes an initializer "in place". Existing ValueInfo for the initializer must subsequently return the
@@ -309,7 +309,7 @@ class GraphRef {
   /// </summary>
   /// <param name="name">The name of the initializer</param>
   /// <param name="perm">Permutation for transpose. An ordering of the values 0 ... rank - 1.</param>
-  virtual void TransposeInitializer(const std::string_view name, const std::vector<int64_t>& perm) = 0;
+  virtual void TransposeInitializer(std::string_view name, const std::vector<int64_t>& perm) = 0;
 
   // Like TransposeInitializer. Product of dims will always match number of elements. Should be fast since
   // data buffer is unchanged.
@@ -321,7 +321,7 @@ class GraphRef {
   /// </summary>
   /// <param name="name">The name of the initializer</param>
   /// <param name="shape">New shape. Dimensions are nonnegative.</param>
-  virtual void ReshapeInitializer(const std::string_view name, const std::vector<int64_t>& shape) = 0;
+  virtual void ReshapeInitializer(std::string_view name, const std::vector<int64_t>& shape) = 0;
 
   /// <summary>
   /// Creates a new node in the graph with the specified op type. Node name and output names are automatically
@@ -335,8 +335,8 @@ class GraphRef {
   /// </param>
   /// <param name="domain">The new node's domain. Empty string signifies default onnx domain.</param>
   /// <returns>The new node</returns>
-  virtual std::unique_ptr<NodeRef> AddNode(const std::string_view op_type, const std::vector<std::string_view>& inputs,
-                                        size_t num_outputs, const std::string_view domain = "") = 0;
+  virtual std::unique_ptr<NodeRef> AddNode(std::string_view op_type, const std::vector<std::string_view>& inputs,
+                                        size_t num_outputs, std::string_view domain = "") = 0;
 
   /// <summary>
   /// Deletes a node from the graph. Behavior is undefined if node has any consumers.
@@ -349,7 +349,7 @@ class GraphRef {
   /// initializer.
   /// </summary>
   /// <param name="name">Name of initializer to remove</param>
-  virtual void RemoveInitializer(const std::string_view name) = 0;
+  virtual void RemoveInitializer(std::string_view name) = 0;
 
   /// <summary>
   /// Creates an int64 initializer with the specified shape and values. Returns the name.
@@ -357,7 +357,7 @@ class GraphRef {
   /// <param name="shape">Dimensions for new initializer. Entries are Nonnegative.</param>
   /// <param name="values">Flattened values for new initializer. Length matches produce of dimensions.</param>
   /// <returns>Generated name for the initializer</returns>
-  virtual const std::string_view AddInitializerInt64(const std::vector<int64_t>& shape,
+  virtual std::string_view AddInitializerInt64(const std::vector<int64_t>& shape,
                                                      const std::vector<int64_t>& values) = 0;
 
   /// <summary>
@@ -366,7 +366,7 @@ class GraphRef {
   /// <param name="shape">Dimensions for new initializer. Entries are Nonnegative.</param>
   /// <param name="values">Flattened values for new initializer. Length matches produce of dimensions.</param>
   /// <returns>Generated name for the initializer</returns>
-  virtual const std::string_view AddInitializerInt32(const std::vector<int64_t>& shape,
+  virtual std::string_view AddInitializerInt32(const std::vector<int64_t>& shape,
                                                      const std::vector<int32_t>& values) = 0;
 
   /// <summary>
@@ -396,7 +396,7 @@ class GraphRef {
   /// </summary>
   /// <param name="src_name"></param>
   /// <param name="dst_name"></param>
-  virtual void CopyValueInfo(const std::string_view src_name, const std::string_view dst_name) = 0;
+  virtual void CopyValueInfo(std::string_view src_name, std::string_view dst_name) = 0;
 
   /// <summary>
   /// Returns whether there are any consumers of the value with the given name. Override default implementation to
@@ -404,7 +404,7 @@ class GraphRef {
   /// </summary>
   /// <param name="name">The name of the value. Must be nonempty.</param>
   /// <returns>true if the value is not currently referenced anywhere in the model</returns>
-  virtual bool HasValueConsumers(const std::string_view name) const {
+  virtual bool HasValueConsumers(std::string_view name) const {
     auto consumers = GetValueConsumers(name);
     bool unused = consumers->comprehensive && consumers->nodes.size() == 0;
     return !unused;
