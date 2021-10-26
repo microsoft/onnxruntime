@@ -8,6 +8,9 @@
 #include "core/providers/cuda/math/binary_elementwise_ops_impl.h"
 #include "core/providers/cuda/math/binary_elementwise_ops.h"
 #include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
+#ifdef ENABLE_TRAINING
+#include "orttraining/training_ops/cpu/aten_ops/aten_op.h"
+#endif
 
 using namespace onnxruntime::common;
 namespace onnxruntime {
@@ -703,7 +706,7 @@ Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, cudnnRe
 
   size_t num_inputs = ctx->InputCount();
   if (num_inputs == 2) {
-    //override the attribute value with the input value for reduction_axes
+    // override the attribute value with the input value for reduction_axes
     const Tensor* axes_tensor = ctx->Input<Tensor>(1);
     ORT_ENFORCE(axes_tensor != nullptr, "Axes input is null");
     ORT_ENFORCE(axes_tensor->Shape().NumDimensions() == 1, "An axes tensor must be a vector tensor.");
@@ -717,18 +720,29 @@ Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, cudnnRe
   // empty axes and no-op
   if (axes.empty() && noop_with_empty_axes_) {
     auto* Y = ctx->Output(0, X->Shape());
-    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(Y->template MutableData<T>(), X->template Data<T>(), X->SizeInBytes(), cudaMemcpyDeviceToDevice, Stream()));
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(Y->template MutableData<T>(), X->template Data<T>(), X->SizeInBytes(),
+                                         cudaMemcpyDeviceToDevice, Stream()));
     return Status::OK();
   }
 
+#ifdef ENABLE_TRAINING
+  // Use ATenOp for ReduceSum if possible.
+  const TensorShape& input_shape = X->Shape();
+  if (contrib::IsATenOperatorExecutorInitialized() && cudnn_reduce_op == CUDNN_REDUCE_TENSOR_ADD && !calculate_log_ &&
+      !calculate_sqt_ && !log_sum_exp_ && input_shape.Size() > 0) {
+    if (axes.empty()) {
+      axes.resize(input_shape.NumDimensions());
+      std::iota(axes.begin(), axes.end(), 0);
+    }
+    ORT_RETURN_IF_ERROR(contrib::ExecuteReduceSumATenOp(ctx, axes, keepdims_));
+    return Status::OK();
+  }
+#endif
+
   PrepareReduceMetadata prepare_reduce_metadata;
-  ORT_RETURN_IF_ERROR(PrepareForReduce(X,
-                                       keepdims_,
-                                       axes,
-                                       prepare_reduce_metadata));
+  ORT_RETURN_IF_ERROR(PrepareForReduce(X, keepdims_, axes, prepare_reduce_metadata));
   Tensor* Y = ctx->Output(0, prepare_reduce_metadata.squeezed_output_dims);
   const bool fast_reduction = fast_reduction_ && !ctx->GetUseDeterministicCompute();
-
   return ReduceComputeCore<T, ReduceTensorIndices>(*cuda_ep_, *X, prepare_reduce_metadata, *Y, cudnn_reduce_op, axes,
                                                    calculate_log_, calculate_sqt_, log_sum_exp_, fast_reduction);
 }
