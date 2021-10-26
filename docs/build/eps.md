@@ -428,7 +428,7 @@ See more information on the ACL Execution Provider [here](../execution-providers
 source /opt/fsl-imx-xwayland/4.*/environment-setup-aarch64-poky-linux
 alias cmake="/usr/bin/cmake -DCMAKE_TOOLCHAIN_FILE=$OECORE_NATIVE_SYSROOT/usr/share/cmake/OEToolchainConfig.cmake"
 ```
-* See [Build ARM](inferencing.md#ARM) below for information on building for ARM devices
+* See [Build ARM](inferencing.md#arm) below for information on building for ARM devices
 
 ### Build Instructions
 {: .no_toc }
@@ -498,7 +498,7 @@ source /opt/fsl-imx-xwayland/4.*/environment-setup-aarch64-poky-linux
 alias cmake="/usr/bin/cmake -DCMAKE_TOOLCHAIN_FILE=$OECORE_NATIVE_SYSROOT/usr/share/cmake/OEToolchainConfig.cmake"
 ```
 
-* See [Build ARM](inderencing.md#ARM) below for information on building for ARM devices
+* See [Build ARM](inferencing.md#arm) below for information on building for ARM devices
 
 ### Build Instructions
 {: .no_toc }
@@ -537,7 +537,7 @@ See more information on the RKNPU Execution Provider [here](../execution-provide
 
 
 * Supported platform: RK1808 Linux
-* See [Build ARM](inferencing.md#ARM) below for information on building for ARM devices
+* See [Build ARM](inferencing.md#arm) below for information on building for ARM devices
 * Use gcc-linaro-6.3.1-2017.05-x86_64_aarch64-linux-gnu instead of gcc-linaro-6.3.1-2017.05-x86_64_arm-linux-gnueabihf, and modify CMAKE_CXX_COMPILER & CMAKE_C_COMPILER in tool.cmake:
   
 ```
@@ -550,7 +550,7 @@ set(CMAKE_C_COMPILER aarch64-linux-gnu-gcc)
 
 #### Linux
 
-1. Download [rknpu_ddk](#https://github.com/airockchip/rknpu_ddk.git) to any directory.
+1. Download [rknpu_ddk](https://github.com/airockchip/rknpu_ddk.git) to any directory.
 
 2. Build ONNX Runtime library and test:
 

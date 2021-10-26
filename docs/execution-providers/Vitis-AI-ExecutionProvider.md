@@ -39,7 +39,7 @@ The following table lists system requirements for running docker containers as w
 ## Build
 See [Build instructions](../build/eps.md#vitis-ai).
 
-**Hardware setup and docker build**
+**Hardware setup**
 
 1. Clone the Vitis AI repository:
     ```
