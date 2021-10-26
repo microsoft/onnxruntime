@@ -80,9 +80,10 @@ class FusedAdam(torch.optim.Optimizer):
         # Skip buffer
         self._dummy_overflow_buf = torch.cuda.IntTensor([0])
 
-        from onnxruntime.training.ortmodule.torch_cpp_extensions import adam_optimizer
-        self._multi_tensor_adam = adam_optimizer.multi_tensor_adam
+        from onnxruntime.training.ortmodule.torch_cpp_extensions import fused_ops
+        self._multi_tensor_adam = fused_ops.multi_tensor_adam
         self._multi_tensor_applier = MultiTensorApply(2048 * 32)
+        self._TorchTensorVector = fused_ops.TorchTensorVector
 
     def zero_grad(self):
         if self._set_grad_none:
@@ -152,10 +153,10 @@ class FusedAdam(torch.optim.Optimizer):
             if (len(g_16) > 0):
                 self._multi_tensor_applier(self._multi_tensor_adam,
                                            self._dummy_overflow_buf,
-                                           [g_16,
-                                           p_16,
-                                           m_16,
-                                           v_16],
+                                           [self._TorchTensorVector(g_16),
+                                           self._TorchTensorVector(p_16),
+                                           self._TorchTensorVector(m_16),
+                                           self._TorchTensorVector(v_16)],
                                            group['lr'],
                                            beta1,
                                            beta2,
@@ -167,10 +168,10 @@ class FusedAdam(torch.optim.Optimizer):
             if (len(g_32) > 0):
                 self._multi_tensor_applier(self._multi_tensor_adam,
                                            self._dummy_overflow_buf,
-                                           [g_32,
-                                           p_32,
-                                           m_32,
-                                           v_32],
+                                           [self._TorchTensorVector(g_32),
+                                           self._TorchTensorVector(p_32),
+                                           self._TorchTensorVector(m_32),
+                                           self._TorchTensorVector(v_32)],
                                            group['lr'],
                                            beta1,
                                            beta2,
