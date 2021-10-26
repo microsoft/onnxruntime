@@ -128,7 +128,7 @@ __global__ void EmbedLayerNormKernel(
       segment_id = segment_ids[sequence_position];
     }
     if (nullptr == position_ids) {
-      position_id = 0;
+      position_id = blockIdx.x;
     } else {
       position_id = position_ids[sequence_position];
     }
@@ -137,7 +137,7 @@ __global__ void EmbedLayerNormKernel(
 
   // 2. load pos/segment/word embeddings and add them toghether
   // offset into embeddings is given by word_id * hidden_size
-  const int position_offset = (position_ids == nullptr) ? blockIdx.x * hidden_size : position_id * hidden_size;
+  const int position_offset = position_id * hidden_size;
 
   const int word_offset = word_id * hidden_size;
   const int segment_offset = segment_id * hidden_size;

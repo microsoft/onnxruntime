@@ -111,6 +111,9 @@ class FusionEmbedLayerNoMask(Fusion):
         """
         path1 = self.model.match_parent_path(position_embedding_gather, ['Expand', 'Shape'], [1, 1])
         if path1 is None:
+            path1 = self.model.match_parent_path(position_embedding_gather, ['Expand', 'Where', 'Reshape', 'Shape'], [1, 1, 2, 0])
+            if path1 is None:
+                return False
             return False
 
         expand, shape = path1
@@ -470,7 +473,7 @@ class FusionEmbedLayerNoMask(Fusion):
         input_ids = word_embedding_gather.input[1]
         position_ids = position_embedding_gather.input[1]
 
-        if not self.check_attention_subgraph(layernorm, input_name_to_nodes, is_distil_bert=True):
+        if not self.check_attention_subgraph(layernorm, input_name_to_nodes, is_distil_bert=False):
             return False
 
         if not self.check_embedding(word_embedding_gather, None, position_embedding_gather):

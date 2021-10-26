@@ -273,6 +273,7 @@ void embedLayerNormalizationShapeInference(InferenceContext& ctx, int position_i
 
   if (ctx.getNumOutputs() > 2) {
     updateOutputShape(ctx, 2, output_shape);
+    propagateElemTypeFromInputToOutput(ctx, 0, 2);
   }
 }
 }  // namespace ONNX_NAMESPACE

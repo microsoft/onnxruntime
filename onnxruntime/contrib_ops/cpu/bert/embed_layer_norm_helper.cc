@@ -21,10 +21,16 @@ Status CheckInputs(const OpKernelContext* context) {
   const Tensor* gamma = context->Input<Tensor>(5);
   const Tensor* beta = context->Input<Tensor>(6);
   const Tensor* mask = context->Input<Tensor>(7);  // optional. nullptr if not provided
+  const Tensor* position_ids = context->Input<Tensor>(8); // optional. nullptr if not provided
 
   if (nullptr != segment_ids && input_ids->Shape() != segment_ids->Shape()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Input 0 and 1 shall have same shape");
+  }
+
+  if (nullptr != position_ids && input_ids->Shape() != position_ids->Shape()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "input_ids and position_ids shall have same shape");
   }
 
   if (nullptr != mask && input_ids->Shape() != mask->Shape()) {
