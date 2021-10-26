@@ -86,7 +86,7 @@ std::unique_ptr<OrtValue> PySparseTensor::AsOrtValue() const {
     auto ml_type = DataTypeImpl::GetType<SparseTensor>();
     py::object this_object = py::cast(*this);
     // Create an std::function deleter that captures and ref-counts this PySparseTensor
-    ort_value->Init(instance_.get(), ml_type, [object = std::move(this_object)](void*) { ORT_ATTRIBUTE_UNUSED(object); });
+    ort_value->Init(instance_.get(), ml_type, [object = std::move(this_object)](void*) {});
     return ort_value;
   }
 
