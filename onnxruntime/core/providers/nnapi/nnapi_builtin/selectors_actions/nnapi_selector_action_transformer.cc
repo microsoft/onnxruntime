@@ -35,7 +35,6 @@ inline std::unique_ptr<ConstNodesToOptimize>
 NNAPISelectorActionTransformer::Match(const Graph& graph, const Node& node) const {
   std::unique_ptr<ConstNodesToOptimize> node_group;
 
-  // TODO: some nnapi specific checks?
   auto op_rule = op_type_to_nnapi_qdq_sat_.find(node.OpType());
   if (op_rule == op_type_to_nnapi_qdq_sat_.cend()) {
     std::cout << "op_rule is not found:  " << node.OpType() << std::endl;
@@ -60,7 +59,6 @@ NNAPISelectorActionTransformer::Match(const Graph& graph, const Node& node) cons
 
   std::cout << "Found matched QDQ group with op: " << node.OpType() << "  with name: " << node.Name() << std::endl;
 
-  //TODO: how to return a set of node_groups here?
   return node_group;
 }
 

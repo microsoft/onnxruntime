@@ -582,11 +582,11 @@ static Status GetConvMatMulOpQuantizationScaleAndZeroPoint(
   }
   const auto& weight_tensor = *initializers.at(weight_name);
 
+  // TODO: no special handling for qdq_conv_node for the following cases yet
+
   // We are done here if this is u8u8 QLinearConv
   if (weight_tensor.data_type() == ONNX_NAMESPACE::TensorProto_DataType_UINT8)
     return Status::OK();
-
-  // TODO: per-tensor/per-channel is not considered for qdq_conv_node yet
 
   // This is per-tensor u8s8
   // NNAPI does not support per-tensor u8s8
@@ -1455,8 +1455,8 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   } else {
     weight = input_defs[w_idx]->Name();
   }
-
   const auto& weight_tensor = *initializers.at(weight);
+
   auto conv_type = GetConvType(node, model_builder.GetGraphViewer().GetAllInitializedTensors());
   bool conv_2d = (conv_type == ConvType::Regular),
        depthwise_conv_2d = (conv_type == ConvType::Depthwise),
@@ -1581,7 +1581,6 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
         model_builder.AddOperandFromPersistMemoryBuffer(bias, unpacked_tensor.data(), bias_operand_type));
   }
 
-  std::vector<uint32_t> input_indices;
   const auto auto_pad_type = StringToAutoPadType(helper.Get("auto_pad", "NOTSET"));
   bool use_auto_pad = false;
   int32_t nnapi_padding_code = ANEURALNETWORKS_PADDING_SAME;
@@ -1596,6 +1595,7 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
                     auto_pad_type, use_nchw,
                     onnx_pads, nnapi_padding_code, use_auto_pad));
 
+  std::vector<uint32_t> input_indices;
   input_indices.push_back(operand_indices.at(input));
   input_indices.push_back(operand_indices.at(weight));
   input_indices.push_back(operand_indices.at(bias));
@@ -1621,7 +1621,7 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     }
   }
 
-  // TODO: deal with qdq_conv_node case
+  // TODO: deal with qdq_conv_node + activation case
   if (!is_qdq_conv_node) {
     int32_t fuse_code = model_builder.FindActivation(node, *node.OutputDefs()[0]);
     ADD_SCALAR_OPERAND(model_builder, input_indices, fuse_code);

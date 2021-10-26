@@ -11,9 +11,9 @@ namespace onnxruntime {
 //
 
 inline ConstNodesToOptimize::ConstNodesToOptimize(std::vector<const Node*>& input_nodes,
-                                           const Node& target_node,
-                                           std::vector<const Node*>& output_nodes,
-                                           int num_input_defs, int num_output_defs)
+                                                  const Node& target_node,
+                                                  std::vector<const Node*>& output_nodes,
+                                                  int num_input_defs, int num_output_defs)
     : num_inputs{num_input_defs == -1 ? gsl::narrow_cast<int>(input_nodes.size()) : num_input_defs},
       num_outputs{num_output_defs == -1 ? gsl::narrow_cast<int>(output_nodes.size()) : num_output_defs} {
   if (num_input_defs != -1) {

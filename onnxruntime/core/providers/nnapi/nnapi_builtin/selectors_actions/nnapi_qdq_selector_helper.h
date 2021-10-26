@@ -30,18 +30,6 @@ class ConstNodesToOptimize {
                        std::vector<const Node*>& output_nodes,
                        int num_input_defs = -1, int num_output_defs = -1);
 
-  // number of inputs and outputs that the target node has, as defined by the operator schema.
-  // for each input/output, the node connected to that is stored
-  // optional non-variadic inputs/outputs that are missing will have a nullptr entry for the node.
-  //
-  // if the target node has a variadic input/output, the nodes providing those will always begin at the last entry
-  // in the input/output nodes (i.e. at num_inputs - 1 or num_outputs - 1).
-  //
-  // e.g if there are 3 inputs (same applies to outputs)
-  // if there is a variadic input:
-  //   if zero variadic values: num_inputs=3, last input is nullptr
-  //   if one variadic value: num_inputs=3, last input is the single variadic input
-  //   if multiple variadic values: num_inputs=3, total inputs = num_inputs + (NumVariadicInputs() - 1)
   const int num_inputs;
   const int num_outputs;
 
@@ -54,9 +42,8 @@ class ConstNodesToOptimize {
 
   bool IsValid() const { return !nodes_.empty(); }
 
+  // TODO: Not used now
   bool IsCheckedNotSupported() const { return is_checked_; }
-
-  bool IsNNAPISupported() const { return is_supported_; }
 
   // fetch an input.
   // valid indexes are 0 to num_inputs - 1 if no variadic inputs.
@@ -77,9 +64,6 @@ class ConstNodesToOptimize {
   std::vector<const Node*>& AllNodes() { return nodes_; }
 
   bool is_checked_{false};
-  bool is_supported_{true};
-  /* 
-  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ConstNodesToOptimize); */
 
  private:
   const Node* GetNode(int index, bool required) {
@@ -105,8 +89,6 @@ class ConstNodesToOptimize {
   std::vector<const Node*> nodes_;
 };
 
-// Helper to build a NodesToOptimize instance
-// Use in selector to incrementally add pieces
 struct ConstNodesToOptimizeBuilder {
   std::vector<const Node*> input_nodes;
   const Node* target_node{nullptr};

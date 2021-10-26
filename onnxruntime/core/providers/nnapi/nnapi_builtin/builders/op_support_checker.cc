@@ -10,7 +10,6 @@
 #include "core/providers/shared/utils/utils.h"
 #include "helper.h"
 #include "op_support_checker.h"
-#include "core/providers/nnapi/nnapi_builtin/selectors_actions/nnapi_qdq_selector_helper.h"
 
 namespace onnxruntime {
 namespace nnapi {
@@ -330,7 +329,7 @@ class TransposeOpSupportChecker : public BaseOpSupportChecker {
 };
 
 bool TransposeOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const Node& node,
-                                                  const OpSupportCheckParams& /* params */, std::unique_ptr<ConstNodesToOptimize>& /*qdq_groups*/) const {
+                                                  const OpSupportCheckParams& /* params */, std::unique_ptr<ConstNodesToOptimize>& /*qdq_group*/) const {
   Shape input_shape;
   if (!GetShape(*node.InputDefs()[0], input_shape))
     return false;
@@ -368,14 +367,14 @@ bool TransposeOpSupportChecker::HasSupportedInputsImpl(const Node& node) const {
 class ReshapeOpSupportChecker : public BaseOpSupportChecker {
  private:
   bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
-                         const OpSupportCheckParams& params, std::unique_ptr<ConstNodesToOptimize>& qdq_groups) const override;
+                         const OpSupportCheckParams& params, std::unique_ptr<ConstNodesToOptimize>& qdq_group) const override;
 
   // Reshape opset 4- uses attributes for new shape which we do not support for now
   int GetMinSupportedOpSet(const Node& /* node */) const override { return 5; }
 };
 
 bool ReshapeOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
-                                                const OpSupportCheckParams& /* params */, std::unique_ptr<ConstNodesToOptimize>& /* qdq_groups */) const {
+                                                const OpSupportCheckParams& /* params */, std::unique_ptr<ConstNodesToOptimize>& /* qdq_group */) const {
   const auto& perm_name = node.InputDefs()[1]->Name();
   if (!Contains(initializers, perm_name)) {
     LOGS_DEFAULT(VERBOSE) << "New shape of reshape must be known";
@@ -743,10 +742,8 @@ bool ConvOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initial
   if (qdq_group != nullptr) {
     const auto* dq_w = qdq_group->Input(1);
     weight_name = dq_w->InputDefs()[0]->Name();
-    LOGS_DEFAULT(VERBOSE) << "QDQ: get weight_name";
   } else {
     weight_name = input_defs[w_idx]->Name();
-    LOGS_DEFAULT(VERBOSE) << "non-QDQ: get weight_name";
   }
 
   if (Contains(initializers, weight_name)) {

@@ -13,7 +13,7 @@ class Node;
 
 struct NNAPIQDQNodeSelector {
   // Select one or more qdq nodes structure for NNAPI EP to determine support capabilities
-  // TODO: GetCapability/Compile graph - different?
+  // TODO: Select() takes in a graph may cause issues. (graph_viewer?)
   virtual bool Select(const Graph& graph, const Node& node, std::unique_ptr<ConstNodesToOptimize>& selection) const = 0;
   virtual ~NNAPIQDQNodeSelector() = default;
 
@@ -65,13 +65,11 @@ class NNAPISelectorActionTransformer {
 
   NNAPISelectorActionTransformer(const std::string& name, NNAPIQDQSelectorsAndActions&& nnapi_qdq_selectors_and_actions);
 
-  // TODO: Match + Process in SAT Re-impl
   const std::string name_;
   NNAPIQDQSelectorsAndActions nnapi_qdq_selectors_and_actions_;
 
   std::unique_ptr<ConstNodesToOptimize> Match(const Graph& graph, const Node& node) const;
 
-  // TODO: See if we really do need this map here
   std::unordered_map<std::string, const NNAPIQDQSelectorAndAction*> op_type_to_nnapi_qdq_sat_;
 };
 

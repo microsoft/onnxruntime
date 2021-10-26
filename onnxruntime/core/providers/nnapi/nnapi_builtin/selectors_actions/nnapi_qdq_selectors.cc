@@ -24,9 +24,9 @@ int NumActualValues(const Node& node, bool input) {
 }  // namespace
 
 inline bool BaseSelector::CheckQDQNodes(const Graph& graph, const Node& node,
-                                 const std::vector<const Node*>& dq_nodes,
-                                 const std::vector<const Node*>& q_nodes,
-                                 int num_dq_inputs) const {
+                                        const std::vector<const Node*>& dq_nodes,
+                                        const std::vector<const Node*>& q_nodes,
+                                        int num_dq_inputs) const {
   if (num_dq_inputs == -1) {
     num_dq_inputs = NumActualValues(node, true);
   }
@@ -39,17 +39,13 @@ inline bool BaseSelector::CheckQDQNodes(const Graph& graph, const Node& node,
 }
 
 inline bool BaseSelector::Select(const Graph& graph, const Node& node, std::unique_ptr<ConstNodesToOptimize>& selection) const {
+  //TODO: mutable graph design + modify Select()
   std::vector<const Node*> dq_nodes = graph_utils::FindParentsByType(node, QDQ::DQOpName);
   std::vector<const Node*> q_nodes = graph_utils::FindChildrenByType(node, QDQ::QOpName);
 
   if (!Check(graph, node, dq_nodes, q_nodes)) {
     return false;
   }
-  /* 
-  auto get_mutable_node = [&graph](const Node* node) {
-    // we use the non-const GetNode to convert the const Node* to Node*
-    return graph.GetNode(node->Index());
-  }; */
 
   ConstNodesToOptimizeBuilder builder;
   builder.input_nodes.reserve(dq_nodes.size());
@@ -73,8 +69,8 @@ inline bool BaseSelector::Select(const Graph& graph, const Node& node, std::uniq
 }
 
 inline bool UnarySelector::Check(const Graph& graph, const Node& node,
-                          const std::vector<const Node*>& dq_nodes,
-                          const std::vector<const Node*>& q_nodes) const {
+                                 const std::vector<const Node*>& dq_nodes,
+                                 const std::vector<const Node*>& q_nodes) const {
   if (!CheckQDQNodes(graph, node, dq_nodes, q_nodes, 1)) {
     return false;
   }
@@ -89,9 +85,9 @@ inline bool UnarySelector::Check(const Graph& graph, const Node& node,
 }
 
 inline bool BinarySelector::Check(const Graph& graph,
-                           const Node& node,
-                           const std::vector<const Node*>& dq_nodes,
-                           const std::vector<const Node*>& q_nodes) const {
+                                  const Node& node,
+                                  const std::vector<const Node*>& dq_nodes,
+                                  const std::vector<const Node*>& q_nodes) const {
   if (!CheckQDQNodes(graph, node, dq_nodes, q_nodes)) {
     return false;
   }
@@ -105,9 +101,9 @@ inline bool BinarySelector::Check(const Graph& graph,
 }
 
 inline bool VariadicSelector::Check(const Graph& graph,
-                             const Node& node,
-                             const std::vector<const Node*>& dq_nodes,
-                             const std::vector<const Node*>& q_nodes) const {
+                                    const Node& node,
+                                    const std::vector<const Node*>& dq_nodes,
+                                    const std::vector<const Node*>& q_nodes) const {
   if (!CheckQDQNodes(graph, node, dq_nodes, q_nodes)) {
     return false;
   }
@@ -129,15 +125,16 @@ inline void VariadicSelector::UpdateBuilder(ConstNodesToOptimizeBuilder& builder
 }
 
 inline bool ConvSelector::Check(const Graph& graph,
-                         const Node& node,
-                         const std::vector<const Node*>& dq_nodes,
-                         const std::vector<const Node*>& q_nodes) const {
+                                const Node& node,
+                                const std::vector<const Node*>& dq_nodes,
+                                const std::vector<const Node*>& q_nodes) const {
   if (!CheckQDQNodes(graph, node, dq_nodes, q_nodes)) {
     return false;
   }
 
   // TODO: only specific to cpu
   // Currently QLinearConv only support activation type uint8_t and output type uint8_t
+  // TODO: QDQ conv node uint8_t? support
   int32_t dt_input = dq_nodes[0]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
   int32_t dt_output = q_nodes[0]->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
   if (dt_input != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8 ||
@@ -158,9 +155,9 @@ inline void ConvSelector::UpdateBuilder(ConstNodesToOptimizeBuilder& builder) co
 }
 
 inline bool MatMulSelector::Check(const Graph& graph,
-                           const Node& node,
-                           const std::vector<const Node*>& dq_nodes,
-                           const std::vector<const Node*>& q_nodes) const {
+                                  const Node& node,
+                                  const std::vector<const Node*>& dq_nodes,
+                                  const std::vector<const Node*>& q_nodes) const {
   if (dq_nodes.size() != 2) {
     return false;
   }

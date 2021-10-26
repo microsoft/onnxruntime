@@ -53,7 +53,6 @@ static std::unordered_map<std::string, vector<const Node*>> GetAllQuantizedOpInp
 Status ModelBuilder::Prepare() {
   nnapi_model_ = std::unique_ptr<Model>(new Model());
   RETURN_STATUS_ON_ERROR(nnapi_->ANeuralNetworksModel_create(&nnapi_model_->model_));
-
   ORT_RETURN_IF_ERROR(GetTargetDevices());
   all_quantized_op_inputs_ = GetAllQuantizedOpInputs(graph_viewer_);
   PreprocessInitializers();

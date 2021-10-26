@@ -116,7 +116,7 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
     }
   }
 
-  // TODO: Pre-Partition: add selector -> select qdq structure pairs -> obtain qdq_node_groups
+  // Pre-Partition: add selector -> select qdq structure pairs -> obtain qdq_node_groups
   auto qdq_node_groups = nnapi::GetQDQNodeGroups(graph_viewer);
 
   const auto excluded_nodes = utils::CreateExcludedNodeSet(graph_viewer, partitioning_stop_ops_);
@@ -129,26 +129,8 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
 
     const bool excluded = check_excluded_nodes && Contains(excluded_nodes, &node);
 
-    // if a node belongs to a qdq structure?
-    // 1. Check if `node` belongs to `qdq_node_group`
-    // 2. if yes, check input/target/output nodes in the `qdq_node_group` structure
-    //    any of the nodes in the group is not supported then set const bool supported = false; (how to save checked?)
-    // directly check if node belongs to one of the qdq_node_group in qdq_node_groups
-
     if (nnapi::IsNodeInQDQGroup(qdq_node_groups, node)) {
-      //TODO: Record if group is checked not supported to avoid redundant checking
-      // if a node is in a QDQ structure:
-      /*  if (!qdq_group->IsCheckedNotSupported()) {
-        supported = !excluded &&
-                    nnapi::IsNodeSupportedInGroup(node, graph_viewer, params,
-                                                  node_outputs_in_current_group, qdq_group);  // related to internal quantization node?
-        if (!supported) {
-          qdq_group->is_checked_ = true;
-          qdq_group->is_supported_ = false;
-        }
-      } else {
-        supported = false;
-      } */
+      //TODO: Record the group is already checked not supported to avoid redundant checking
       auto qdq_node_group = nnapi::GetQDQNodeGroup(graph_viewer, node);
       supported = !excluded &&
                   nnapi::IsNodeSupportedInGroup(node, graph_viewer, params,
@@ -223,14 +205,13 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
 }
 
 #ifdef __ANDROID__
-static Status
-GetOutputBuffer(Ort::CustomOpApi& ort,
-                OrtKernelContext* context,
-                const nnapi::Model& model,
-                const std::string& output_name,
-                const std::vector<uint32_t>& output_shape,
-                const android::nn::wrapper::Type output_type,
-                void** output_buffer) ORT_MUST_USE_RESULT;
+static Status GetOutputBuffer(Ort::CustomOpApi& ort,
+                              OrtKernelContext* context,
+                              const nnapi::Model& model,
+                              const std::string& output_name,
+                              const std::vector<uint32_t>& output_shape,
+                              const android::nn::wrapper::Type output_type,
+                              void** output_buffer) ORT_MUST_USE_RESULT;
 
 static Status GetOutputBuffer(Ort::CustomOpApi& ort,
                               OrtKernelContext* context,
@@ -465,9 +446,8 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<FusedNodeAndGra
   return Status::OK();
 }
 #else
-common::Status
-NnapiExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
-                                std::vector<NodeComputeInfo>& node_compute_funcs) {
+common::Status NnapiExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
+                                               std::vector<NodeComputeInfo>& node_compute_funcs) {
   for (const auto& fused_node_and_graph : fused_nodes_and_graphs) {
     ORT_UNUSED_PARAMETER(fused_node_and_graph);
     NodeComputeInfo compute_info;

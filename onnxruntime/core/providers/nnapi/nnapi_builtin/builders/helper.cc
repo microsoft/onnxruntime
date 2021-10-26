@@ -338,7 +338,6 @@ bool IsNodeInQDQGroup(std::vector<std::unique_ptr<ConstNodesToOptimize>>& qdq_no
     if (group != nullptr) {
       if (std::find(group->AllNodes().begin(), group->AllNodes().end(), &node) != group->AllNodes().end()) {
         LOGS_DEFAULT(VERBOSE) << "Node:" << node.Name() << "  belongs to a qdq node group.";
-        // Issue: node in the same group? nullptr?
         return true;
       }
     }
