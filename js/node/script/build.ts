@@ -6,23 +6,22 @@ import * as fs from 'fs-extra';
 import minimist from 'minimist';
 import * as path from 'path';
 
-// NPM configs (parsed via 'npm install --xxx')
-
-// skip build on install. usually used in CI where build will be another step.
-const SKIP = !!process.env.npm_config_ort_skip_build;
-if (SKIP) {
-  process.exit(0);
-}
-
 // command line flags
 const buildArgs = minimist(process.argv.slice(2));
 
-// currently only support Debug, Release and RelWithDebInfo
+// --config=Debug|Release|RelWithDebInfo
 const CONFIG: 'Debug'|'Release'|'RelWithDebInfo' = buildArgs.config || 'RelWithDebInfo';
 if (CONFIG !== 'Debug' && CONFIG !== 'Release' && CONFIG !== 'RelWithDebInfo') {
   throw new Error(`unrecognized config: ${CONFIG}`);
 }
+// --arch=x64|ia32|arm64|arm
+const ARCH: 'x64'|'ia32'|'arm64'|'arm' = buildArgs.arch || 'x64';
+if (ARCH !== 'x64' && ARCH !== 'ia32' && ARCH !== 'arm64' && ARCH !== 'arm') {
+  throw new Error(`unrecognized architecture: ${ARCH}`);
+}
+// --onnxruntime-build-dir=
 const ONNXRUNTIME_BUILD_DIR = buildArgs['onnxruntime-build-dir'];
+// --rebuild
 const REBUILD = !!buildArgs.rebuild;
 
 // build path
@@ -42,7 +41,7 @@ if (REBUILD) {
 const command = CMAKE_JS_FULL_PATH;
 const args = [
   (REBUILD ? 'reconfigure' : 'configure'),
-  '--arch=x64',
+  `--arch=${ARCH}`,
   '--CDnapi_build_version=3',
   `--CDCMAKE_BUILD_TYPE=${CONFIG}`,
 ];

@@ -1015,6 +1015,43 @@ def test_gradient_correctness_argmax_diagonal(offset, dim1, dim2):
         _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
         _test_helpers.assert_values_are_close(ort_input.grad, pt_input.grad)
 
+@pytest.mark.parametrize("dim", [None, 0, 1, (0, 1), (-1, 0), (0, 1, 2)])
+@pytest.mark.parametrize("keepdim", [True, False])
+def test_gradient_correctness_reducesum(dim, keepdim):
+    class NeuralNetReduceSum(torch.nn.Module):
+        def __init__(self, input_size, hidden_size, dim, keepdim):
+            super(NeuralNetReduceSum, self).__init__()
+            self.linear = torch.nn.Linear(input_size, hidden_size)
+            self.dim = dim
+            self.keepdim = keepdim
+
+        def forward(self, input):
+            t = self.linear(input)
+            if self.dim is None:
+                return t.sum()
+            else:
+                return torch.sum(t, self.dim, keepdim=self.keepdim)
+
+    N, D, H, W = 16, 256, 128, 64
+    device = 'cuda'
+    pt_model = NeuralNetReduceSum(H, W, dim, keepdim).to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+
+    def run_step(model, input):
+        prediction = model(input)
+        loss = prediction.sum()
+        loss.backward()
+        return prediction
+
+    for _ in range(10):
+        pt_input = torch.rand((N, D, H), device=device, requires_grad=True)
+        ort_input = copy.deepcopy(pt_input)
+        pt_prediction = run_step(pt_model, pt_input)
+        ort_prediction = run_step(ort_model, ort_input)
+
+        _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
+        _test_helpers.assert_values_are_close(ort_input.grad, pt_input.grad)
+
 # Since multinomial is a generator function, we do not have to test for gradient
 # Two consecutive calls on the torch.multinomail on a probability distribution with more 
 # than one index with non-zero probability(eg, [0, 10, 3, 0]) will not result in 

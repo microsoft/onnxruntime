@@ -9,7 +9,7 @@ from . import (_utils,
                _logger,
                _onnx_models,
                _are_deterministic_algorithms_enabled)
-from .torch_cpp_extensions.cpu.aten_op_executor import load_aten_op_executor_cpp_extension_if_needed
+from .torch_cpp_extensions.cpu.aten_op_executor import load_aten_op_executor_cpp_extension
 from ._custom_autograd_function import custom_autograd_function_enabler
 from ._custom_autograd_function_exporter import _post_process_after_export
 from ._graph_execution_interface import GraphExecutionInterface
@@ -175,6 +175,9 @@ class GraphExecutionManager(GraphExecutionInterface):
         # Re-export will be avoided if _skip_check is enabled.
         self._original_model_has_changed = False
 
+        # Load ATenOp executor extension.
+        load_aten_op_executor_cpp_extension()
+
     def _get_torch_gpu_allocator_function_addresses(self):
         if self._use_external_gpu_allocator and torch.cuda.is_available():
             # CPP extension to get torch GPU allocator's alloc and free function addresses
@@ -308,7 +311,6 @@ class GraphExecutionManager(GraphExecutionInterface):
         self._set_device_from_module(inputs, kwargs)
         self._onnx_models.exported_model = self._get_exported_model(
             schema, *inputs, **kwargs)
-        load_aten_op_executor_cpp_extension_if_needed(self._onnx_models.exported_model)
         if self._debug_options.save_onnx_models.save:
             self._onnx_models.save_exported_model(self._debug_options.save_onnx_models.path,
                                                   self._debug_options.save_onnx_models.name_prefix,
