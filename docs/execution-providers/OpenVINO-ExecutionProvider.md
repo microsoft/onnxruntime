@@ -16,7 +16,7 @@ OpenVINO Execution Provider enables deep learning inference on Intel CPUs, Intel
 {:toc}
 
 ## Install
-Pre-built packages and Docker images are published for  ONNX Runtime with OpenVINO by Intel for each release. 
+Pre-built packages and Docker images are published for  ONNX Runtime with OpenVINO by Intel for each release.
 * Python wheels: [intel/onnxruntime](https://github.com/intel/onnxruntime/releases)
 * Docker image: [openvino/onnxruntime_ep_ubuntu18](https://hub.docker.com/r/openvino/onnxruntime_ep_ubuntu18)
 
@@ -60,15 +60,25 @@ More consistent performance, since the devices can now share the inference burde
 For more information on Multi-Device plugin of OpenVINO, please refer to the following
 [documentation](https://docs.openvinotoolkit.org/latest/openvino_docs_IE_DG_supported_plugins_MULTI.html#introducing_multi_device_execution).
 
-### Save/Load blob feature for OpenVINO EP
+### Auto-Device Execution for OpenVINO EP
 
+Use "AUTO:<device 1><device 2>.." as the device name to delegate selection of an actual accelerator to OpenVINO. With the 2021.4 release, Auto-device internally recognizes and selects devices from CPU, integrated GPU and discrete Intel GPUs (when available) depending on the device capabilities and the characteristic of CNN models, for example, precisions. Then Auto-device assigns inference requests to the selected device.
+
+From the application point of view, this is just another device that handles all accelerators in full system.
+
+For more information on Auto-Device plugin of OpenVINO, please refer to the following
+[documentation](https://docs.openvino.ai/cn/latest/openvino_docs_IE_DG_supported_plugins_AUTO.html).
+
+### Model caching feature for OpenVINO EP
+The model caching setting enables blobs with Myriadx(VPU) and as cl_cache files with iGPU.
+#### Save/Load blob capability for Myriadx(VPU)
 This feature enables users to save and load the blobs directly. These pre-compiled blobs can be directly loaded on to the specific hardware device target and inferencing can be done. This feature is only supported on MyriadX(VPU) hardware device target.
+
+#### CL Cache capability for iGPU
 
 Starting from OpenVINO 2021.4 version, this feature is supported in OpenVINO-EP using Model caching mechanism from OpenVINO.[documentation](https://docs.openvinotoolkit.org/latest/openvino_docs_IE_DG_Model_caching_overview.html).
 
-This feature is now available for MyriadX(VPU) and iGPU from OpenVINO 2021.4. Currently, this feature is not supported for Intel CPU's.
-
-Improved overall inferencing time, since this feature eliminates the preliminary steps of creating a network from the model. Here, the pre-compiled blob is directly imported on to the device target.
+This feature enables users to save and load the cl_cache files directly. These cl_cache files can be directly loaded on to igpu hardware device target and inferencing can be done. This feature is only supported on iGPU hardware device target.
 
 There are two different methods of exercising this feature:
 
@@ -76,7 +86,7 @@ There are two different methods of exercising this feature:
 
 This flow can be enabled by setting the runtime config option 'use_compiled_network' to True while using the c++/python API'S. This config option acts like a switch to on and off the feature.
 
-The blobs are saved and loaded from a directory named 'ov_compiled_blobs' from the executable path by default. This path however can be overridden using another runtime config option 'blob_dump_path' which is used to explicitly specify the path where you would like to dump and load the blobs from when already using the use_compiled_network(save/load blob) setting.
+The blobs are saved and loaded from a directory named 'ov_compiled_blobs' from the executable path by default. This path however can be overridden using another runtime config option 'blob_dump_path' which is used to explicitly specify the path where you would like to dump and load the blobs (VPU) or cl_cache(iGPU) files from when already using the use_compiled_network(model caching) setting.
 
 Refer to [Configuration Options](#configuration-options) for more information about using these runtime options.
 
@@ -374,8 +384,8 @@ Below topologies from ONNX open model zoo are fully supported on OpenVINO Execut
 | tiny_yolov2 | Yes | Yes | Yes | Yes* |
 | yolov3 | Yes | Yes | Yes | No* |
 | tiny_yolov3 | Yes | Yes | Yes | No* |
-| mask_rcnn | Yes | Yes | Yes | No* |
-| faster_rcnn | Yes | Yes | Yes | No* |
+| mask_rcnn | No | No | Yes | No* |
+| faster_rcnn | No | No | Yes | No* |
 | yolov4 | Yes | Yes | Yes | No* |
 | yolov5 | Yes | Yes | Yes | No* |
 
@@ -402,7 +412,7 @@ In order to showcase what you can do with the OpenVINO Execution Provider for ON
 [Object detection with YOLOv4 in Python](https://github.com/microsoft/onnxruntime-inference-examples/tree/main/python/OpenVINO_EP/yolov4_object_detection)
 
 ### C/C++ API
-[Image classification with Squeezenet in CPP](https://github.com/microsoft/onnxruntime-inference-examples/tree/main/c_cxx/OpenVINO_EP/squeezenet_classification)
+[Image classification with Squeezenet in CPP](https://github.com/microsoft/onnxruntime-inference-examples/tree/main/c_cxx/OpenVINO_EP)
 
 ### Csharp API
 [Object detection with YOLOv3 in C#](https://github.com/microsoft/onnxruntime-inference-examples/tree/main/c_sharp/OpenVINO_EP/yolov3_object_detection)
