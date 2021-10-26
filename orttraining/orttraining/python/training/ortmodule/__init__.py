@@ -5,6 +5,7 @@
 
 import os
 import sys
+import warnings
 import torch
 from packaging import version
 
@@ -16,10 +17,25 @@ from ._fallback import (_FallbackPolicy,
                         wrap_exception)
 from .torch_cpp_extensions import is_installed as is_torch_cpp_extensions_installed
 
+
+def _defined_from_envvar(name, default_value, warn=True):
+    new_value = os.getenv(name, None)
+    if new_value is None:
+        return default_value
+    try:
+        new_value = type(default_value)(new_value)
+    except (TypeError, ValueError) as e:
+        if warn:
+            warnings.warn(
+                "Unable to overwrite constant %r due to %r." % (name, e))
+        return default_value
+    return new_value
+
+
 ################################################################################
 # All global constant goes here, before ORTModule is imported ##################
 ################################################################################
-ONNX_OPSET_VERSION = 12
+ONNX_OPSET_VERSION = _defined_from_envvar('ORTMODULE_ONNX_OPSET_VERSION', 12, warn=True)
 MINIMUM_RUNTIME_PYTORCH_VERSION_STR = '1.8.1'
 ORTMODULE_TORCH_CPP_DIR = os.path.join(os.path.dirname(__file__), 'torch_cpp_extensions')
 _FALLBACK_INIT_EXCEPTION = None

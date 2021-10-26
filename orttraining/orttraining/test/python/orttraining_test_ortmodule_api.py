@@ -19,7 +19,7 @@ from inspect import signature
 import tempfile
 import os
 from distutils.version import LooseVersion
-
+import onnxruntime.training as orttraining_module
 from onnxruntime.training.ortmodule._custom_gradient_registry import register_gradient
 from onnxruntime.training.ortmodule import (ORTModule,
                                             _utils,
@@ -4177,6 +4177,17 @@ def test_sigmoid_grad():
         _test_helpers.assert_values_are_close(ort_x.grad, pt_x.grad)
         _test_helpers.assert_values_are_close(ort_loss, pt_loss)
 
+def test__defined_from_envvar():
+    os.environ['DUMMY_ORTMODULE'] = '15'
+    assert _defined_from_envvar('DUMMY_ORTMODULE', 14) == 15
+    os.environ['DUMMY_ORTMODULE'] = '15j'
+    with warnings.catch_warnings(record=True) as w:
+        assert orttraining_module._defined_from_envvar('DUMMY_ORTMODULE', 14) == 14
+        assert len(w) == 1
+        assert issubclass(w[-1].category, UserWarning)
+        assert "Unable to overwrite constant" in str(w[-1].message)
+    del os.environ['DUMMY_ORTMODULE']
+
 def test_sigmoid_grad_opset13():
     class NeuralNetSigmoid(torch.nn.Module):
         def __init__(self, input_size, hidden_size, num_classes):
@@ -4199,18 +4210,11 @@ def test_sigmoid_grad_opset13():
 
     N, D_in, H, D_out = 120, 15360, 500, 15360
     pt_model = NeuralNetSigmoid(D_in, H, D_out).to(device)
-    old_opset = os.environ.get('ORTMODULE_ONNX_OPSET_VERSION', None)
-    os.environ['ORTMODULE_ONNX_OPSET_VERSION'] = '13'
-    dgb_opts = DebugOptions(log_level=LogLevel.INFO)
+    old_opset = orttraining_module.ONNX_OPSET_VERSION
+    orttraining_module.ONNX_OPSET_VERSION = 13
+    ort_model = ORTModule(copy.deepcopy(pt_model))
 
-    with warnings.catch_warnings(record=True) as w:
-        ort_model = ORTModule(copy.deepcopy(pt_model), debug_options=dgb_opts)
-
-        assert len(w) == 1
-        assert issubclass(w[-1].category, UserWarning)
-        assert "with opset=13" in str(w[-1].message)
-
-    for step in range(1000):
+    for step in range(2):
         pt_x = torch.randn(N, D_in, device=device, requires_grad=True)
         ort_x = copy.deepcopy(pt_x)
         ort_prediction, ort_loss = run_step(ort_model, ort_x)
@@ -4228,7 +4232,4 @@ def test_sigmoid_grad_opset13():
         _test_helpers.assert_values_are_close(ort_x.grad, pt_x.grad)
         _test_helpers.assert_values_are_close(ort_loss, pt_loss)
 
-    if old_opset is None:
-        del os.environ['ORTMODULE_ONNX_OPSET_VERSION']
-    else:
-        os.environ['ORTMODULE_ONNX_OPSET_VERSION'] = old_opset
+    orttraining_module.ONNX_OPSET_VERSION = old_opset 
