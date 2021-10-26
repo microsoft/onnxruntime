@@ -320,8 +320,7 @@ class PySparseTensor {
   /// <param name="storage">a collection reference guards</param>
   PySparseTensor(std::unique_ptr<SparseTensor>&& instance,
                  std::vector<pybind11::object>&& storage)
-      : backing_storage_(std::move(storage)), ort_value_() {
-    Init(std::move(instance));
+      : instance_(std::move(instance)), backing_storage_(std::move(storage)), ort_value_() {
   }
 
   /// <summary>
@@ -329,12 +328,16 @@ class PySparseTensor {
   /// </summary>
   /// <param name="instance"></param>
   explicit PySparseTensor(std::unique_ptr<SparseTensor>&& instance)
-      : backing_storage_(), ort_value_() {
-    Init(std::move(instance));
+      : instance_(std::move(instance)), backing_storage_(), ort_value_() {
   }
 
+  /// <summary>
+  /// Edge case when we can not copy memory on GPU and therefore
+  /// can not own it.
+  /// </summary>
+  /// <param name="ort_value"></param>
   explicit PySparseTensor(const OrtValue& ort_value)
-      : backing_storage_(), ort_value_(ort_value) {}
+      : instance_(), backing_storage_(), ort_value_(ort_value) {}
 
   PySparseTensor(const PySparseTensor&) = delete;
   PySparseTensor& operator=(const PySparseTensor&) = delete;
@@ -344,28 +347,35 @@ class PySparseTensor {
   }
 
   PySparseTensor& operator=(PySparseTensor&& o) noexcept {
-    ort_value_ = std::move(o.ort_value_);
+    instance_ = std::move(o.instance_);
     backing_storage_ = std::move(o.backing_storage_);
+    ort_value_ = std::move(o.ort_value_);
     return *this;
   }
 
   ~PySparseTensor();
 
   const SparseTensor& Instance() const {
+    if (instance_) {
+      return *instance_;
+    }
     return ort_value_.Get<SparseTensor>();
   }
 
-  std::unique_ptr<OrtValue> AsOrtValue() const {
-    return std::make_unique<OrtValue>(ort_value_);
-  }
+  std::unique_ptr<OrtValue> AsOrtValue() const;
 
  private:
-  void Init(std::unique_ptr<SparseTensor>&& instance);
 
+  // This represents data that comes as input, so we either refer to python memory arrays
+  // in which case we use backing_storage_ or create a copy. In this case, if we want
+  // to return an OrtValue python object, we must ref-count PySparseTensor() object that owns
+  // this instance_. Otherwise, we simply return a copy or ort_value_ which ref-counts
+  // itself on copy.
+  std::unique_ptr<SparseTensor> instance_;
   // These will hold references to underpinning python array objects
   // when they serve as a backing storage for a feeding SparseTensor
   std::vector<pybind11::object> backing_storage_;
-  OrtValue ort_value_;
+  OrtValue ort_value_; // OrtValue that comes as a result, memory owned by allocator
 };
 
 class SessionObjectInitializer {
