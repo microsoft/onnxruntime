@@ -10,7 +10,7 @@
 
 import torch
 from numpy import inf
-from .multi_tensor_apply import MultiTensorApply
+from ._multi_tensor_apply import MultiTensorApply
 multi_tensor_applier = MultiTensorApply(2048 * 32)
 
 class FP16OptimizerModifier(object):
