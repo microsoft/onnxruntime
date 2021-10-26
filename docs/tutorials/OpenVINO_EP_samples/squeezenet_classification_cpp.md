@@ -26,11 +26,11 @@ The source code for this sample is available [here](https://github.com/microsoft
 ## Install ONNX Runtime for OpenVINO Execution Provider
 
 ## Build steps
-[build instructions](../../reference/execution-providers/OpenVINO-ExecutionProvider.md#build)
+[build instructions](../build/eps.md#OpenVINO)
 
 
 ## Reference Documentation
-[Documentation](../../reference/execution-providers/OpenVINO-ExecutionProvider.md)
+[Documentation](../execution-providers/OpenVINO-ExecutionProvider.md)
 
 If you build it by yourself, you must append the "--build_shared_lib" flag to your build command. 
 ```
@@ -45,7 +45,7 @@ If you build it by yourself, you must append the "--build_shared_lib" flag to yo
 
 3. compile the sample
 
-```
+```bash
 g++ -o run_squeezenet squeezenet_cpp_app.cpp -I ../../../include/onnxruntime/core/session/ -I /opt/intel/openvino_2021.4.582/opencv/include/ -I /opt/intel/openvino_2021.4.582/opencv/lib/ -L ./ -lonnxruntime_providers_openvino -lonnxruntime_providers_shared -lonnxruntime -L /opt/intel/openvino_2021.4.582/opencv/lib/ -lopencv_imgcodecs -lopencv_dnn -lopencv_core -lopencv_imgproc
 ```
 
@@ -57,24 +57,24 @@ Note: This build command is using the opencv location from OpenVINO 2021.4 Relea
 
 (using Intel OpenVINO-EP)
 
-```
+```bash
 ./run_squeezenet --use_openvino <path_to_onnx_model> <path_to_sample_image> <path_to_labels_file>
 ```
 
 Example:
 
-```
+```bash
 ./run_squeezenet --use_openvino squeezenet1.1-7.onnx demo.jpeg synset.txt   (using Intel OpenVINO-EP)
 ```
 
 (using Default CPU)
 
-```
+```bash
 ./run_squeezenet --use_cpu <path_to_onnx_model> <path_to_sample_image> <path_to_labels_file>
 ```
 
 Example:
 
-```
+```bash
 ./run_squeezenet --use_cpu squeezenet1.1-7.onnx demo.jpeg synset.txt   (using Default CPU)
 ```

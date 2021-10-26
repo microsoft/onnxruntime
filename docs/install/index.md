@@ -146,12 +146,12 @@ by running `locale-gen en_US.UTF-8` and `update-locale LANG=en_US.UTF-8`
 ||GPU - DirectML: [**Microsoft.ML.OnnxRuntime.DirectML**](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.DirectML)|[ort-nightly (dev)](https://aiinfra.visualstudio.com/PublicPackages/_packaging?_a=feed&feed=ORT-Nightly)|[View](../execution-providers/DirectML-ExecutionProvider)|
 |WinML|[**Microsoft.AI.MachineLearning**](https://www.nuget.org/packages/Microsoft.AI.MachineLearning)||[View](https://docs.microsoft.com/en-us/windows/ai/windows-ml/port-app-to-nuget#prerequisites)|
 |Java|CPU: [**com.microsoft.onnxruntime:onnxruntime**](https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime)||[View](../api/java)|
-||GPU - CUDA: [**com.microsoft.onnxruntime:onnxruntime_gpu**](https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime_gpu)||[View](../api/java-api.md)|
-|Android|[**com.microsoft.onnxruntime:onnxruntime-mobile**](https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime-mobile) ||[View](../tutorials/mobile/mobile/initial-setup)|
-|iOS (C/C++)|CocoaPods: **onnxruntime-mobile-c**||[View](../tutorials/mobile/mobile/initial-setup)|
-|Objective-C|CocoaPods: **onnxruntime-mobile-objc**||[View](../tutorials/mobile/mobile/initial-setup)|
+||GPU - CUDA: [**com.microsoft.onnxruntime:onnxruntime_gpu**](https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime_gpu)||[View](../api/java)|
+|Android|[**com.microsoft.onnxruntime:onnxruntime-mobile**](https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime-mobile) ||[View](../tutorials/mobile/initial-setup)|
+|iOS (C/C++)|CocoaPods: **onnxruntime-mobile-c**||[View](../tutorials/mobile/initial-setup)|
+|Objective-C|CocoaPods: **onnxruntime-mobile-objc**||[View](../tutorials/mobile/initial-setup)|
 |React Native|[**onnxruntime-react-native**](https://www.npmjs.com/package/onnxruntime-react-native)||[View](../api/js)|
-|Node.js|[**onnxruntime-node**](https://www.npmjs.com/package/onnxruntime-node)||[View](../api/js-api.md)|
+|Node.js|[**onnxruntime-node**](https://www.npmjs.com/package/onnxruntime-node)||[View](../api/js.md)|
 |Web|[**onnxruntime-web**](https://www.npmjs.com/package/onnxruntime-web)||[View](../api/js)|
 
 

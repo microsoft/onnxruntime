@@ -151,7 +151,7 @@ Hardware support is required to achieve better performance with quantization on 
 
 ORT leverage TRT EP for quantization on GPU now. Different with CPU EP, TRT takes in full precision model and calibration result for inputs. It decides how to quantize with their own logic. The overall procedure to leverage TRT EP quantization is:
 - Implement a [CalibrationDataReader](https://github.com/microsoft/onnxruntime/blob/07788e082ef2c78c3f4e72f49e7e7c3db6f09cb0/onnxruntime/python/tools/quantization/calibrate.py).
-- Compute quantization parameter with calibration data set. Our quantization tool supports 2 calibration methods: MinMax and Entropy. Note: In order to include all tensors from the model for better calibration, please run symbolic_shape_infer.py first. Please refer to[here](../reference/execution-providers/TensorRT-ExecutionProvider.md#sample) for detail.
+- Compute quantization parameter with calibration data set. Our quantization tool supports 2 calibration methods: MinMax and Entropy. Note: In order to include all tensors from the model for better calibration, please run symbolic_shape_infer.py first. Please refer to[here](../execution-providers/TensorRT-ExecutionProvider.md#sample) for detail.
 - Save quantization parameter into a flatbuffer file
 - Load model and quantization parameter file and run with TRT EP.
 
