@@ -67,28 +67,19 @@ bool LaunchDecoderAttentionKernel(
 
 bool LaunchTransCtx(cudaStream_t stream,
                     const int sequence_length, const int batch_size, const int head_size, const int num_heads,
-                    const int max_threads_per_block, const float* input, float* output);
+                    const int max_threads_per_block, const bool reversed_bs, const float* input, float* output);
 
 bool LaunchTransCtx(cudaStream_t stream,
                     const int sequence_length, const int batch_size, const int head_size, const int num_heads,
-                    const int max_threads_per_block, const half* input, half* output);
+                    const int max_threads_per_block, const bool reversed_bs, const half* input, half* output);
 
-bool LaunchTransQkv(cudaStream_t stream,
+bool LaunchTransQkv(cudaStream_t stream, const int matrix_num,
                     const int sequence_length, const int batch_size, const int head_size, const int num_heads,
-                    const int max_threads_per_block, const float* input, float* output);
+                    const int max_threads_per_block, const bool reversed_bs, const float* input, float* output);
 
-bool LaunchTransQkv(cudaStream_t stream,
+bool LaunchTransQkv(cudaStream_t stream, const int matrix_num,
                     const int sequence_length, const int batch_size, const int head_size, const int num_heads,
-                    const int max_threads_per_block, const half* input, half* output);
-
-// LaunchTransQkv2: (S,B,X,N,H) -> (X,B,N,S,H)
-bool LaunchTransQkv2(cudaStream_t stream,
-                     const int sequence_length, const int batch_size, const int head_size, const int num_heads,
-                     const int matrix_num, const float* input, float* output);
-
-bool LaunchTransQkv2(cudaStream_t stream,
-                     const int sequence_length, const int batch_size, const int head_size, const int num_heads,
-                     const int matrix_num, const half* input, half* output);
+                    const int max_threads_per_block, const bool reversed_bs, const half* input, half* output);
 
 bool LaunchConcatTensorToTensor(cudaStream_t stream,
                                 const int all_sequence_length,

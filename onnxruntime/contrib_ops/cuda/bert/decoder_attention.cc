@@ -192,7 +192,7 @@ Status DecoderAttention<T>::ComputeInternal(OpKernelContext* context) const {
   }
 
   IAllocatorUniquePtr<T> qkv_buffer_p = GetScratchBuffer<void>(batch_size * (sequence_length + 2 * kv_sequence_length) * hidden_size * element_size);
-  IAllocatorUniquePtr<T> workspace_p = GetScratchBuffer<void>(3 * batch_size * sequence_length * hidden_size * element_size);
+  IAllocatorUniquePtr<T> workspace_p = GetScratchBuffer<void>(2 * batch_size * sequence_length * num_heads_ * element_size * (2 * head_size + kv_sequence_length));
 
   Tensor* output(context->Output(0, query_shape));
   TensorShape new_cache_shape({batch_size, num_heads_, kv_sequence_length, head_size});
