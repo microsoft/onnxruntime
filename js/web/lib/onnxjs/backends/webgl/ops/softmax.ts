@@ -86,12 +86,12 @@ export const softmaxV13: OperatorImplementation<SoftmaxAttributes> =
       }
 
       const logicalRowCount = isTransposeRequired ? ShapeUtil.sizeToDimension(transposedInputShape, rank - 1) :
-                                      ShapeUtil.sizeToDimension(inputShape, rank - 1);
+                                                    ShapeUtil.sizeToDimension(inputShape, rank - 1);
       const featureCount = isTransposeRequired ? ShapeUtil.sizeFromDimension(transposedInputShape, rank - 1) :
-                                      ShapeUtil.sizeFromDimension(inputShape, rank - 1);
+                                                 ShapeUtil.sizeFromDimension(inputShape, rank - 1);
 
-      const output = computeSoftmax(inferenceHandler, isTransposeRequired ? transposedInputs : inputs, attributes,
-        logicalRowCount, featureCount);
+      const output = computeSoftmax(
+          inferenceHandler, isTransposeRequired ? transposedInputs : inputs, attributes, logicalRowCount, featureCount);
 
       if (isTransposeRequired) {
         const reversedOutput = transpose(inferenceHandler, output, transposeAttribute!);
@@ -102,17 +102,17 @@ export const softmaxV13: OperatorImplementation<SoftmaxAttributes> =
     };
 
 const computeSoftmax =
-    (inferenceHandler: WebGLInferenceHandler, inputs: Tensor[], attributes: SoftmaxAttributes,
-     logicalRowCount: number, featureCount: number): Tensor[] => {
+    (inferenceHandler: WebGLInferenceHandler, inputs: Tensor[], attributes: SoftmaxAttributes, logicalRowCount: number,
+     featureCount: number): Tensor[] => {
       const computeMaxProgramInfo =
-        createComputeMaxProgramInfo(inferenceHandler, inputs[0], logicalRowCount, featureCount, [logicalRowCount]);
+          createComputeMaxProgramInfo(inferenceHandler, inputs[0], logicalRowCount, featureCount, [logicalRowCount]);
       const max = inferenceHandler.run(
           {...softmaxComputeMaxProgramMetadata, cacheHint: attributes.cacheKey, get: () => computeMaxProgramInfo},
           inputs);
 
-      const computeScaleProgramInfo =
-          createComputScaleProgramInfo(inferenceHandler, inputs[0], logicalRowCount, featureCount,
-             computeMaxProgramInfo.output.dims, [logicalRowCount]);
+      const computeScaleProgramInfo = createComputScaleProgramInfo(
+          inferenceHandler, inputs[0], logicalRowCount, featureCount, computeMaxProgramInfo.output.dims,
+          [logicalRowCount]);
       const scale = inferenceHandler.run(
           {...softmaxComputeScaleProgramMetadata, cacheHint: attributes.cacheKey, get: () => computeScaleProgramInfo},
           [inputs[0], max]);
@@ -131,26 +131,25 @@ const computeSoftmax =
  */
 const createComputeMaxProgramInfo =
     (inferenceHandler: WebGLInferenceHandler, input: Tensor, logicalRowCount: number, featureCount: number,
-     outputShape: number[]):
-        ProgramInfo => {
-          const [textureWidth, textureHeight] =
-              inferenceHandler.calculateTextureWidthAndHeight(input.dims, TextureType.unpacked);
-          const rank = outputShape.length;
+     outputShape: number[]): ProgramInfo => {
+      const [textureWidth, textureHeight] =
+          inferenceHandler.calculateTextureWidthAndHeight(input.dims, TextureType.unpacked);
+      const rank = outputShape.length;
 
-          if (logicalRowCount < 1 || featureCount < 1) {
-            throw new Error('Logical row count N and feature count D must be greater than or equal to 1');
-          }
+      if (logicalRowCount < 1 || featureCount < 1) {
+        throw new Error('Logical row count N and feature count D must be greater than or equal to 1');
+      }
 
-          if (outputShape.length !== 1) {
-            throw new Error('Dimensionality of the output should be 1');
-          }
+      if (outputShape.length !== 1) {
+        throw new Error('Dimensionality of the output should be 1');
+      }
 
-          if (outputShape[0] !== logicalRowCount) {
-            throw new Error('Shape of the output should be equal to logical row count');
-          }
+      if (outputShape[0] !== logicalRowCount) {
+        throw new Error('Shape of the output should be equal to logical row count');
+      }
 
-          const glsl = getGlsl(inferenceHandler.session.backend.glContext.version);
-          const shaderSource = `
+      const glsl = getGlsl(inferenceHandler.session.backend.glContext.version);
+      const shaderSource = `
       float process(int[${rank}] indices) {
         int logical_row_start_offset = indices[0] * ${featureCount};
 
@@ -166,12 +165,12 @@ const createComputeMaxProgramInfo =
 
         return max;
       }`;
-          return {
-            ...softmaxComputeMaxProgramMetadata,
-            output: {dims: outputShape, type: input.type, textureType: TextureType.unpacked},
-            shaderSource
-          };
-        };
+      return {
+        ...softmaxComputeMaxProgramMetadata,
+        output: {dims: outputShape, type: input.type, textureType: TextureType.unpacked},
+        shaderSource
+      };
+    };
 
 /**
  * Create a texture that contains the normalization factor for each of the 'N' rows
