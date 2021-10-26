@@ -239,7 +239,7 @@ TensorShape& TensorShape::operator=(TensorShape&& other) {
 
 void TensorShape::Allocate(size_t size) {
   size_ = size;
-  if (size_ > _countof(small_buffer_)) {
+  if (size_ > std::size(small_buffer_)) {
     allocated_buffer_ = std::make_unique<int64_t[]>(size_);
     values_ = allocated_buffer_.get();
   } else
