@@ -35,5 +35,35 @@ Status ATenOp::Compute(OpKernelContext* p_ctx) const {
   return Status::OK();
 }
 
+bool IsATenOperatorExecutorInitialized() {
+  return aten_ops::ATenOperatorExecutor::Instance().IsInitialized();
+}
+
+Status ExecuteReduceSumATenOp(OpKernelContext* p_ctx, const std::vector<int64_t>& axes, bool keepdims) {
+  ORT_ENFORCE(aten_ops::ATenOperatorExecutor::Instance().IsInitialized() && !axes.empty());
+  std::vector<DLManagedTensor*> dlpacks;
+  auto* p_ctx_internal = static_cast<OpKernelContextInternal*>(p_ctx);
+  OrtValue ort_value = *p_ctx_internal->GetInputMLValue(0);
+  dlpacks.emplace_back(dlpack::OrtValueToDlpack(ort_value));
+  OrtValue axes_tensor;
+  OrtValue keepdims_tensor;
+  std::vector<int64_t> axes_tensor_shape(1, static_cast<int64_t>(axes.size()));
+  std::vector<int64_t> keepdims_tensor_shape(1, 1);
+  auto ml_tensor = DataTypeImpl::GetType<Tensor>();
+  OrtMemoryInfo info("Cpu", OrtDeviceAllocator);
+  axes_tensor.Init(new Tensor(DataTypeImpl::GetType<int64_t>(), axes_tensor_shape,
+                              const_cast<void*>(reinterpret_cast<const void*>(&axes[0])), info),
+                   ml_tensor, ml_tensor->GetDeleteFunc());
+  keepdims_tensor.Init(
+      new Tensor(DataTypeImpl::GetType<bool>(), keepdims_tensor_shape, reinterpret_cast<void*>(&keepdims), info),
+      ml_tensor, ml_tensor->GetDeleteFunc());
+  dlpacks.emplace_back(dlpack::OrtValueToDlpack(axes_tensor));
+  dlpacks.emplace_back(dlpack::OrtValueToDlpack(keepdims_tensor));
+  dlpacks.emplace_back(nullptr);
+  auto result = aten_ops::ATenOperatorExecutor::Instance()("aten::sum", "dim_IntList", dlpacks);
+  ORT_RETURN_IF_ERROR(p_ctx_internal->SetOutputMLValue(0, dlpack::DlpackToOrtValue(result[0])));
+  return Status::OK();
+}
+
 }  // namespace contrib
 }  // namespace onnxruntime

@@ -547,7 +547,7 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistry::RegisterOperatorKernel(
 
         //
         // For backward compatibility, this does not propagate errors for external operators
-        m_kernelRegistry->RegisterCustomKernel(create_info);
+        static_cast<void>(m_kernelRegistry->RegisterCustomKernel(create_info));  // ignore result
     }
 
     return S_OK;

@@ -23,6 +23,15 @@ fs.emptyDirSync(NPM_CACHE_FOLDER);
 fs.emptyDirSync(CHROME_USER_DATA_FOLDER);
 fs.copySync(TEST_E2E_SRC_FOLDER, TEST_E2E_RUN_FOLDER);
 
+// always use a new folder as user-data-dir
+let nextUserDataDirId = 0;
+function getNextUserDataDir() {
+  const dir = path.resolve(CHROME_USER_DATA_FOLDER, nextUserDataDirId.toString())
+  nextUserDataDirId++;
+  fs.emptyDirSync(dir);
+  return dir;
+}
+
 // find packed package
 
 const ORT_COMMON_FOLDER = path.resolve(JS_ROOT_FOLDER, 'common');
@@ -93,10 +102,9 @@ async function testAllBrowserCases({ hostInKarma }) {
 }
 
 async function runKarma({ hostInKarma, main, browser }) {
-  fs.emptyDirSync(CHROME_USER_DATA_FOLDER);
   const selfHostFlag = hostInKarma ? '--self-host' : '';
   await runInShell(
-    `npx karma start --single-run --browsers ${browser} ${selfHostFlag} --test-main=${main} --user-data=${CHROME_USER_DATA_FOLDER}`);
+    `npx karma start --single-run --browsers ${browser} ${selfHostFlag} --test-main=${main} --user-data=${getNextUserDataDir()}`);
 }
 
 async function runInShell(cmd) {

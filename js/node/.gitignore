@@ -2,7 +2,6 @@ node_modules/
 /build/
 /bin/
 /dist/
-/prebuilds/
 /types/
 
 /lib/**/*.js

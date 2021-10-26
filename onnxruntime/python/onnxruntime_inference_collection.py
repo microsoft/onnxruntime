@@ -146,8 +146,10 @@ class Session:
         'providers' can contain either names or names and options. When any options
         are given in 'providers', 'provider_options' should not be used.
 
-        The list of providers is ordered by precedence. For example ['CUDAExecutionProvider', 'CPUExecutionProvider']
-        means execute a node using CUDAExecutionProvider if capable, otherwise execute using CPUExecutionProvider.
+        The list of providers is ordered by precedence. For example
+        `['CUDAExecutionProvider', 'CPUExecutionProvider']`
+        means execute a node using CUDAExecutionProvider if capable,
+        otherwise execute using CPUExecutionProvider.
         """
         # recreate the underlying C.InferenceSession
         self._reset_session(providers, provider_options)
@@ -205,9 +207,11 @@ class Session:
 
         :param output_names: name of the outputs
         :param input_feed: dictionary ``{ input_name: input_ort_value }``
-         See ``OrtValue`` class how to create OrtValue from numpy array or SparseTensor
+            See ``OrtValue`` class how to create `OrtValue`
+            from numpy array or `SparseTensor`
         :param run_options: See :class:`onnxruntime.RunOptions`.
-        :return: an array of OrtValues
+        :return: an array of `OrtValue`
+
         ::
 
             sess.run([output_name], {input_name: x})
@@ -289,9 +293,12 @@ class InferenceSession(Session):
 
         The model type will be inferred unless explicitly set in the SessionOptions.
         To explicitly set:
-          so = onnxruntime.SessionOptions()
-          so.add_session_config_entry('session.load_model_format', 'ONNX') or
-          so.add_session_config_entry('session.load_model_format', 'ORT') or
+
+        ::
+
+            so = onnxruntime.SessionOptions()
+            # so.add_session_config_entry('session.load_model_format', 'ONNX') or
+            so.add_session_config_entry('session.load_model_format', 'ORT')
 
         A file extension of '.ort' will be inferred as an ORT format model.
         All other filenames are assumed to be ONNX format models.
@@ -299,8 +306,10 @@ class InferenceSession(Session):
         'providers' can contain either names or names and options. When any options
         are given in 'providers', 'provider_options' should not be used.
 
-        The list of providers is ordered by precedence. For example ['CUDAExecutionProvider', 'CPUExecutionProvider']
-        means execute a node using CUDAExecutionProvider if capable, otherwise execute using CPUExecutionProvider.
+        The list of providers is ordered by precedence. For example
+        `['CUDAExecutionProvider', 'CPUExecutionProvider']`
+        means execute a node using `CUDAExecutionProvider`
+        if capable, otherwise execute using `CPUExecutionProvider`.
         """
 
         Session.__init__(self)
@@ -523,6 +532,7 @@ class OrtValue:
         '''
         Factory method to construct an OrtValue (which holds a Tensor) from a given Numpy object
         A copy of the data in the Numpy object is held by the OrtValue only if the device is NOT cpu
+
         :param numpy_obj: The Numpy object to construct the OrtValue from
         :param device_type: e.g. cpu, cuda, cpu by default
         :param device_id: device id, e.g. 0
@@ -537,6 +547,7 @@ class OrtValue:
     def ortvalue_from_shape_and_type(shape=None, element_type=None, device_type='cpu', device_id=0):
         '''
         Factory method to construct an OrtValue (which holds a Tensor) from given shape and element_type
+
         :param shape: List of integers indicating the shape of the OrtValue
         :param element_type: The data type of the elements in the OrtValue (numpy type)
         :param device_type: e.g. cpu, cuda, cpu by default
@@ -670,22 +681,23 @@ class SparseTensor:
     def sparse_coo_from_numpy(dense_shape, values, coo_indices, ort_device):
         '''
         Factory method to construct a SparseTensor in COO format from given arguments
-        :param dense_shape: 1-D  numpy array(int64) or a python list that contains a dense_shape of the sparse tensor
-         must be on cpu memory
-        :param values: a homogeneous, contiguous 1-D numpy array that contains non-zero elements of the tensor
-         of a type.
-        :param coo_indices:  contiguous numpy array(int64) that contains COO indices for the tensor. coo_indices may
-         have a 1-D shape when it contains a linear index of non-zero values and its length must be equal to
-         that of the values. It can also be of 2-D shape, in which has it contains pairs of coordinates for
-         each of the nnz values and its length must be exactly twice of the values length.
-        :param ort_device: - describes the backing memory owned by the supplied nummpy arrays. Only CPU memory is
-         suppored for non-numeric data types.
 
-         For primitive types, the method will map values and coo_indices arrays into native memory and will use
-         them as backing storage. It will increment the reference count for numpy arrays and it will decrement it
-         on GC. The buffers may reside in any storage either CPU or GPU.
-         For strings and objects, it will create a copy of the arrays in CPU memory as ORT does not support those
-         on other devices and their memory can not be mapped.
+        :param dense_shape: 1-D  numpy array(int64) or a python list that contains a dense_shape of the sparse tensor
+            must be on cpu memory
+        :param values: a homogeneous, contiguous 1-D numpy array that contains non-zero elements of the tensor
+            of a type.
+        :param coo_indices:  contiguous numpy array(int64) that contains COO indices for the tensor. coo_indices may
+            have a 1-D shape when it contains a linear index of non-zero values and its length must be equal to
+            that of the values. It can also be of 2-D shape, in which has it contains pairs of coordinates for
+            each of the nnz values and its length must be exactly twice of the values length.
+        :param ort_device: - describes the backing memory owned by the supplied nummpy arrays. Only CPU memory is
+            suppored for non-numeric data types.
+
+        For primitive types, the method will map values and coo_indices arrays into native memory and will use
+        them as backing storage. It will increment the reference count for numpy arrays and it will decrement it
+        on GC. The buffers may reside in any storage either CPU or GPU.
+        For strings and objects, it will create a copy of the arrays in CPU memory as ORT does not support those
+        on other devices and their memory can not be mapped.
         '''
         return SparseTensor(C.SparseTensor.sparse_coo_from_numpy(dense_shape, values, coo_indices,
                             ort_device._get_c_device()))
@@ -694,22 +706,23 @@ class SparseTensor:
     def sparse_csr_from_numpy(dense_shape, values, inner_indices, outer_indices, ort_device):
         '''
         Factory method to construct a SparseTensor in CSR format from given arguments
-        :param dense_shape: 1-D numpy array(int64) or a python list that contains a dense_shape of the
-         sparse tensor (rows, cols) must be on cpu memory
-        :param values: a  contiguous, homogeneous 1-D numpy array that contains non-zero elements of the tensor
-         of a type.
-        :param inner_indices:  contiguous 1-D numpy array(int64) that contains CSR inner indices for the tensor.
-         Its length must be equal to that of the values.
-        :param outer_indices:  contiguous 1-D numpy array(int64) that contains CSR outer indices for the tensor.
-         Its length must be equal to the number of rows + 1.
-        :param ort_device: - describes the backing memory owned by the supplied nummpy arrays. Only CPU memory is
-         suppored for non-numeric data types.
 
-         For primitive types, the method will map values and indices arrays into native memory and will use them as
-         backing storage. It will increment the reference count and it will decrement then count when it is GCed.
-         The buffers may reside in any storage either CPU or GPU.
-         For strings and objects, it will create a copy of the arrays in CPU memory as ORT does not support those
-         on other devices and their memory can not be mapped.
+        :param dense_shape: 1-D numpy array(int64) or a python list that contains a dense_shape of the
+            sparse tensor (rows, cols) must be on cpu memory
+        :param values: a  contiguous, homogeneous 1-D numpy array that contains non-zero elements of the tensor
+            of a type.
+        :param inner_indices:  contiguous 1-D numpy array(int64) that contains CSR inner indices for the tensor.
+            Its length must be equal to that of the values.
+        :param outer_indices:  contiguous 1-D numpy array(int64) that contains CSR outer indices for the tensor.
+            Its length must be equal to the number of rows + 1.
+        :param ort_device: - describes the backing memory owned by the supplied nummpy arrays. Only CPU memory is
+            suppored for non-numeric data types.
+
+        For primitive types, the method will map values and indices arrays into native memory and will use them as
+        backing storage. It will increment the reference count and it will decrement then count when it is GCed.
+        The buffers may reside in any storage either CPU or GPU.
+        For strings and objects, it will create a copy of the arrays in CPU memory as ORT does not support those
+        on other devices and their memory can not be mapped.
         '''
         return SparseTensor(C.SparseTensor.sparse_csr_from_numpy(dense_shape, values, inner_indices, outer_indices,
                             ort_device._get_c_device()))
@@ -727,8 +740,12 @@ class SparseTensor:
         The method will return coo representation of the sparse tensor which will enable
         querying COO indices. If the instance did not contain COO format, it would throw.
         You can query coo indices as:
-          coo_indices = sparse_tensor.as_coo_view().indices()
-          which will return a numpy array that is backed by the native memory
+
+        ::
+
+            coo_indices = sparse_tensor.as_coo_view().indices()
+
+        which will return a numpy array that is backed by the native memory.
         '''
         return self._tensor.get_coo_data()
 
@@ -737,9 +754,13 @@ class SparseTensor:
         The method will return CSR(C) representation of the sparse tensor which will enable
         querying CRS(C) indices. If the instance dit not contain CSR(C) format, it would throw.
         You can query indices as:
-          inner_ndices = sparse_tensor.as_csrc_view().inner()
-          outer_ndices = sparse_tensor.as_csrc_view().outer()
-          returning numpy arrays backed by the native memory
+
+        ::
+
+            inner_ndices = sparse_tensor.as_csrc_view().inner()
+            outer_ndices = sparse_tensor.as_csrc_view().outer()
+
+        returning numpy arrays backed by the native memory.
         '''
         return self._tensor.get_csrc_data()
 
@@ -748,16 +769,23 @@ class SparseTensor:
         The method will return coo representation of the sparse tensor which will enable
         querying BlockSparse indices. If the instance did not contain BlockSparse format, it would throw.
         You can query coo indices as:
-          block_sparse_indices = sparse_tensor.as_blocksparse_view().indices()
-          which will return a numpy array that is backed by the native memory
+
+        ::
+
+            block_sparse_indices = sparse_tensor.as_blocksparse_view().indices()
+
+        which will return a numpy array that is backed by the native memory
         '''
         return self._tensor.get_blocksparse_data()
 
     def to_cuda(self, ort_device):
         '''
         Returns a copy of this instance on the specified cuda device
+
         :param ort_device: with name 'cuda' and valid gpu device id
+
         The method will throw if:
+
         - this instance contains strings
         - this instance is already on GPU. Cross GPU copy is not supported
         - CUDA is not present in this build

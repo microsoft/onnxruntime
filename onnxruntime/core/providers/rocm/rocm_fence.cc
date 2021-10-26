@@ -1,11 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/rocm/rocm_fence.h"
-
-#include "core/graph/constants.h"
 #include "core/providers/rocm/rocm_common.h"
 #include "core/providers/rocm/gpu_data_transfer.h"
+#include "core/providers/rocm/rocm_fence.h"
 
 namespace onnxruntime {
 
@@ -49,16 +47,16 @@ bool ROCMFence::CanRelease() {
   hipError_t status;
   status = hipEventQuery(read_event_);
   if (status == hipErrorNotReady) {
-      // ignore and clear the error if not ready
-      hipGetLastError();
+      // ignore and clear the error if not ready; void to silence nodiscard
+      (void)hipGetLastError();
       return false;
   } else if (status != hipSuccess) {
       RocmCall<hipError_t, true>(status, "hipEventQuery(read_event_)", "HIP", hipSuccess);
   }
   status = hipEventQuery(write_event_);
   if (status == hipErrorNotReady) {
-      // ignore and clear the error if not ready
-      hipGetLastError();
+      // ignore and clear the error if not ready; void to silence nodiscard
+      (void)hipGetLastError();
       return false;
   } else if (status != hipSuccess) {
       RocmCall<hipError_t, true>(status, "hipEventQuery(write_event_)", "HIP", hipSuccess);

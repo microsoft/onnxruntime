@@ -694,7 +694,7 @@ namespace Dml
                 .SinceVersion(def->since_version)
                 .Provider(onnxruntime::kDmlExecutionProvider);
 
-            registryForPartitionKernels->Register(builder, fused_kernel_func);
+            ORT_THROW_IF_ERROR(registryForPartitionKernels->Register(builder, fused_kernel_func));
             
             subGraph->SetMetaDef(std::move(def));
         }
