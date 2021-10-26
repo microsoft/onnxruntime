@@ -10,8 +10,10 @@ import sys
 from setuptools import setup
 from torch.utils import cpp_extension
 
-filenames = [os.path.join(os.path.dirname(__file__), 'fused_adam_frontend.cpp'),
-             os.path.join(os.path.dirname(__file__), 'multi_tensor_adam.cu')]
+filenames = [os.path.join(os.path.dirname(__file__), 'fused_ops_frontend.cpp'),
+             os.path.join(os.path.dirname(__file__), 'multi_tensor_adam.cu'),
+             os.path.join(os.path.dirname(__file__), 'multi_tensor_scale_kernel.cu'),
+             os.path.join(os.path.dirname(__file__), 'multi_tensor_axpby_kernel.cu')]
 
 use_rocm = True if os.environ['ONNXRUNTIME_ROCM_VERSION'] else False
 extra_compile_args = {
@@ -22,8 +24,8 @@ if not use_rocm:
         'nvcc': ['-lineinfo', '-O3', '--use_fast_math']
     })
 
-setup(name='adam_optimizer',
-      ext_modules=[cpp_extension.CUDAExtension(name='adam_optimizer',
+setup(name='fused_ops',
+      ext_modules=[cpp_extension.CUDAExtension(name='fused_ops',
                                                sources=filenames,
                                                extra_compile_args=extra_compile_args
                                                )],

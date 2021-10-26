@@ -14,7 +14,7 @@ from onnxruntime.training.ortmodule.torch_cpp_extensions import is_installed as 
 import _test_helpers
 from _orttraining_ortmodule_models import (NeuralNetSinglePositionalArgument,
                                            NeuralNetCustomClassOutput,
-                                           MyStrNet,
+                                           MyCustomClassInputNet,
                                            MyCustomFunctionReluModel)
 
 # PyTorch model definitions for tests
@@ -254,9 +254,13 @@ def test_ortmodule_fallback_input(is_training, fallback_enabled, matching_policy
     os.environ['ORTMODULE_FALLBACK_POLICY'] = policy
     os.environ['ORTMODULE_FALLBACK_RETRY'] = str(not persist_fallback)
 
-    pt_model = MyStrNet()
+    pt_model = MyCustomClassInputNet()
     ort_model = ORTModule(copy.deepcopy(pt_model))
     inputs = torch.randn(1, 2)
+
+    class CustomClass:
+        def __init__(self, x):
+            self.x = x
 
     ort_model.train(is_training)
     pt_model.train(is_training)
@@ -267,17 +271,21 @@ def test_ortmodule_fallback_input(is_training, fallback_enabled, matching_policy
                 if i > 0 and persist_fallback:
                     assert ort_model._torch_module._execution_manager(
                         is_training=is_training)._fallback_manager._exception is not None
-                ort_out = ort_model(inputs, 'hello')
-                pt_out = pt_model(inputs, 'hello')
+                ort_out = ort_model(inputs, CustomClass(1))
+                pt_out = pt_model(inputs, CustomClass(1))
                 _test_helpers.assert_values_are_close(ort_out, pt_out, rtol=0, atol=0)
             else:
                 with pytest.raises(_fallback.ORTModuleIOError) as ex_info:
-                    _ = ort_model(torch.randn(1, 2), 'hello')
-                assert "ORTModule does not support the following model data type <class 'str'>" in str(ex_info.value)
+                    _ = ort_model(torch.randn(1, 2), CustomClass(1))
+                assert "ORTModule does not support the following model data"\
+                    " type <class 'orttraining_test_ortmodule_fallback."\
+                    "test_ortmodule_fallback_input.<locals>.CustomClass'>" in str(ex_info.value)
         else:
             with pytest.raises(_fallback.ORTModuleIOError) as ex_info:
-                _ = ort_model(torch.randn(1, 2), 'hello')
-            assert "ORTModule does not support the following model data type <class 'str'>" in str(ex_info.value)
+                _ = ort_model(torch.randn(1, 2), CustomClass(1))
+            assert "ORTModule does not support the following model data"\
+                " type <class 'orttraining_test_ortmodule_fallback."\
+                "test_ortmodule_fallback_input.<locals>.CustomClass'>" in str(ex_info.value)
 
 
 @pytest.mark.parametrize("is_training,fallback_enabled,matching_policy,persist_fallback",
