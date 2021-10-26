@@ -341,7 +341,7 @@ MlasDgemmProcessCount(
             B += 8 * 2;
             k -= 2;
         }
-        while (k > 0) {
+        if (k > 0) {
 
             MlasLoopUnroll<RowCount, MlasDgemmBroadcastAElements>()(ABroadcast, a, lda);
             MlasDgemmComputeBlock<RowCount>(Accumulators, ABroadcast, B);
@@ -368,14 +368,14 @@ MlasDgemmProcessCount(
             //
             if (CountN >= 6) {
                 MlasLoopUnroll<RowCount, MlasDgemmStoreVector<3>>()(Accumulators, C, ldc, AlphaBroadcast, ZeroMode);
-	    } else if (CountN >= 4) {
+            } else if (CountN >= 4) {
                 MlasLoopUnroll<RowCount, MlasDgemmStoreVector<2>>()(Accumulators, C, ldc, AlphaBroadcast, ZeroMode);
-	    } else if (CountN >= 2) {
+            } else if (CountN >= 2) {
                 MlasLoopUnroll<RowCount, MlasDgemmStoreVector<1>>()(Accumulators, C, ldc, AlphaBroadcast, ZeroMode);
             }
             //
             // Store the remaining unaligned columns.
-	    // 
+            //
             C += (CountN & ~1);
             CountN &= 1;
 

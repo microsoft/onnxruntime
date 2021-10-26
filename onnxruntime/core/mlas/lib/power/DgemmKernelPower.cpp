@@ -10,7 +10,7 @@ Module Name:
 
 Abstract:
 
-    This module implements the kernels for the single precision matrix/matrix
+    This module implements the kernels for the double precision matrix/matrix
     multiply operation (DGEMM).
 
 --*/
