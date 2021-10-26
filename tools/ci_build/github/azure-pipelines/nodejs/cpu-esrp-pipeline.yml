@@ -240,7 +240,7 @@ jobs:
       inputs:
         patterns: 'bin-*/**/*'
         path: $(Pipeline.Workspace)/nodejs_binding_bin
-      displayName: 'Download WebAssembly artifacts'
+      displayName: 'Download Node.js binding artifacts'
     - task: CmdLine@2
       inputs:
         script: find . -type f -follow -print | xargs ls -l
