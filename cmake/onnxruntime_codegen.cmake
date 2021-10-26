@@ -2,16 +2,16 @@
 # Licensed under the MIT License.
 
 file(GLOB_RECURSE onnxruntime_codegen_common_srcs
-    "${ONNXRUNTIME_ROOT}/core/codegen/common/*.h"
-    "${ONNXRUNTIME_ROOT}/core/codegen/common/*.cc"
-)
+        "${ONNXRUNTIME_ROOT}/core/codegen/common/*.h"
+        "${ONNXRUNTIME_ROOT}/core/codegen/common/*.cc"
+        )
 
 file(GLOB_RECURSE onnxruntime_codegen_tvm_srcs CONFIGURE_DEPENDS
-    "${ONNXRUNTIME_ROOT}/core/codegen/mti/*.h"
-    "${ONNXRUNTIME_ROOT}/core/codegen/mti/*.cc"
-    "${ONNXRUNTIME_ROOT}/core/codegen/passes/*.h"
-    "${ONNXRUNTIME_ROOT}/core/codegen/passes/*.cc"
-)
+        "${ONNXRUNTIME_ROOT}/core/codegen/mti/*.h"
+        "${ONNXRUNTIME_ROOT}/core/codegen/mti/*.cc"
+        "${ONNXRUNTIME_ROOT}/core/codegen/passes/*.h"
+        "${ONNXRUNTIME_ROOT}/core/codegen/passes/*.cc"
+        )
 
 source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_codegen_common_srcs} ${onnxruntime_codegen_tvm_srcs})
 

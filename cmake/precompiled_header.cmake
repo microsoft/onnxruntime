@@ -25,5 +25,5 @@ function(target_precompiled_header target_name header_name)
         # Append generated precompiled source to target's sources.
         target_sources(${target_name} PRIVATE ${pch_source_path})
 
-    endif()
+    endif ()
 endfunction()
