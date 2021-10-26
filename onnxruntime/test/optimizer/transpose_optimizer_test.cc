@@ -29,20 +29,23 @@ void SetNodeArgShape(NodeArg* node_arg, const std::optional<std::vector<int64_t>
 }
 
 template <typename T>
-NodeArg* MakeInput(ModelTestBuilder& builder, const std::optional<std::vector<int64_t>>& input_shape, const std::vector<int64_t>& value_shape, T min, T max) {
+NodeArg* MakeInput(ModelTestBuilder& builder, const std::optional<std::vector<int64_t>>& input_shape,
+                   const std::vector<int64_t>& value_shape, T min, T max) {
   auto node_arg = builder.MakeInput<T>(value_shape, min, max);
   SetNodeArgShape(node_arg, input_shape);
   return node_arg;
 }
 
-NodeArg* MakeInputBool(ModelTestBuilder& builder, const std::optional<std::vector<int64_t>>& input_shape, const std::vector<int64_t>& value_shape) {
+NodeArg* MakeInputBool(ModelTestBuilder& builder, const std::optional<std::vector<int64_t>>& input_shape,
+                       const std::vector<int64_t>& value_shape) {
   auto node_arg = builder.MakeInputBool(value_shape);
   SetNodeArgShape(node_arg, input_shape);
   return node_arg;
 }
 
 template <typename T>
-NodeArg* MakeInput(ModelTestBuilder& builder, const std::optional<std::vector<int64_t>>& input_shape, const std::vector<int64_t>& value_shape, const std::vector<T>& data) {
+NodeArg* MakeInput(ModelTestBuilder& builder, const std::optional<std::vector<int64_t>>& input_shape,
+                   const std::vector<int64_t>& value_shape, const std::vector<T>& data) {
   auto node_arg = builder.MakeInput<T>(value_shape, data);
   SetNodeArgShape(node_arg, input_shape);
   return node_arg;
@@ -87,7 +90,7 @@ TEST(TransposeOptimizerTests, TestSplit) {
     auto& transpose_1 = builder.AddNode("Transpose", {input0_arg}, {transpose_1_out_0});
     transpose_1.AddAttribute("perm", std::vector<int64_t>{1, 2, 0});
     auto& split_1 = builder.AddNode("Split", {transpose_1_out_0}, {split_1_out_0, split_1_out_1});
-    split_1.AddAttribute("axis", (int64_t)-1);
+    split_1.AddAttribute("axis", (int64_t)1);
     auto& transpose_2 = builder.AddNode("Transpose", {split_1_out_0}, {transpose_2_out_0});
     transpose_2.AddAttribute("perm", std::vector<int64_t>{2, 0, 1});
     auto& transpose_3 = builder.AddNode("Transpose", {split_1_out_1}, {transpose_3_out_0});
@@ -106,7 +109,7 @@ TEST(TransposeOptimizerTests, TestSplit) {
                     /*opset_version*/ 15);
 }
 
-TEST(TransposeOptimizerTests, TestSplit_2) {
+TEST(TransposeOptimizerTests, TestSplitDefaultAxis) {
   auto build_test_case_1 = [&](ModelTestBuilder& builder) {
     auto* input0_arg = builder.MakeInput<float>({4, 6, 10}, 0.0, 1.0);
     auto* transpose_1_out_0 = builder.MakeIntermediate();
@@ -136,7 +139,7 @@ TEST(TransposeOptimizerTests, TestSplit_2) {
                     /*opset_version*/ 15);
 }
 
-TEST(TransposeOptimizerTests, TestSplit_3) {
+TEST(TransposeOptimizerTests, TestSplitNegativeAxis) {
   auto build_test_case_1 = [&](ModelTestBuilder& builder) {
     auto* input0_arg = builder.MakeInput<float>({4, 6, 10}, 0.0, 1.0);
     auto* transpose_1_out_0 = builder.MakeIntermediate();
@@ -3128,30 +3131,284 @@ TEST(TransposeOptimizerTests, TestWhere) {
                     /*opset_version*/ 15);
 }
 
-TEST(TransposeOptimizerTests, TestSum) {
+TEST(TransposeOptimizerTests, TestQuantizeLinearScalar) {
+  auto build_test_case_1 = [&](ModelTestBuilder& builder) {
+    auto* input0_arg = MakeInput<float>(builder, {{2, -1, 6, 3}}, {2, 4, 6, 3}, 0.0, 1.0);
+    auto* input1_arg = builder.MakeInput<float>(std::vector<int64_t>{}, 0.0, 1.0);
+    auto* input2_arg = MakeInput<uint8_t>(builder, {std::vector<int64_t>{}}, std::vector<int64_t>{}, 0, 5);
+    auto* transpose_1_out_0 = builder.MakeIntermediate();
+    auto* quantizelinear_1_out_0 = builder.MakeIntermediate();
+    auto* transpose_2_out_0 = builder.MakeOutput();
+
+    auto& transpose_1 = builder.AddNode("Transpose", {input0_arg}, {transpose_1_out_0});
+    transpose_1.AddAttribute("perm", std::vector<int64_t>{0, 3, 1, 2});
+    builder.AddNode("QuantizeLinear", {transpose_1_out_0, input1_arg, input2_arg}, {quantizelinear_1_out_0});
+    auto& transpose_2 = builder.AddNode("Transpose", {quantizelinear_1_out_0}, {transpose_2_out_0});
+    transpose_2.AddAttribute("perm", std::vector<int64_t>{0, 2, 3, 1});
+  };
+
+  auto check_optimized_graph_1 = [&](InferenceSessionWrapper& session) {
+    int transpose_cost = EstimateTransposeCost(session.GetGraph());
+    EXPECT_EQ(transpose_cost, 0);
+  };
+
+  TransformerTester(build_test_case_1,
+                    check_optimized_graph_1,
+                    TransformerLevel::Default,
+                    TransformerLevel::Level1,
+                    /*opset_version*/ 15);
+}
+
+TEST(TransposeOptimizerTests, TestQuantizeLinearScalarIgnoreAxis) {
+  auto build_test_case_1 = [&](ModelTestBuilder& builder) {
+    auto* input0_arg = MakeInput<float>(builder, {{2, -1, 6, 3}}, {2, 4, 6, 3}, 0.0, 1.0);
+    auto* input1_arg = builder.MakeInput<float>(std::vector<int64_t>{}, 0.0, 1.0);
+    auto* input2_arg = MakeInput<uint8_t>(builder, {std::vector<int64_t>{}}, std::vector<int64_t>{}, 0, 5);
+    auto* transpose_1_out_0 = builder.MakeIntermediate();
+    auto* quantizelinear_1_out_0 = builder.MakeIntermediate();
+    auto* transpose_2_out_0 = builder.MakeOutput();
+
+    auto& transpose_1 = builder.AddNode("Transpose", {input0_arg}, {transpose_1_out_0});
+    transpose_1.AddAttribute("perm", std::vector<int64_t>{0, 3, 1, 2});
+    auto& quantizelinear_1 = builder.AddNode("QuantizeLinear", {transpose_1_out_0, input1_arg, input2_arg}, {quantizelinear_1_out_0});
+    quantizelinear_1.AddAttribute("axis", (int64_t)10);
+    auto& transpose_2 = builder.AddNode("Transpose", {quantizelinear_1_out_0}, {transpose_2_out_0});
+    transpose_2.AddAttribute("perm", std::vector<int64_t>{0, 2, 3, 1});
+  };
+
+  auto check_optimized_graph_1 = [&](InferenceSessionWrapper& session) {
+    int transpose_cost = EstimateTransposeCost(session.GetGraph());
+    EXPECT_EQ(transpose_cost, 0);
+  };
+
+  TransformerTester(build_test_case_1,
+                    check_optimized_graph_1,
+                    TransformerLevel::Default,
+                    TransformerLevel::Level1,
+                    /*opset_version*/ 15);
+}
+
+TEST(TransposeOptimizerTests, TestQuantizeLinearVector) {
+  auto build_test_case_1 = [&](ModelTestBuilder& builder) {
+    auto* input0_arg = MakeInput<float>(builder, {{2, -1, 6, 3}}, {2, 4, 6, 3}, 0.0, 1.0);
+    auto* input1_arg = MakeInput<float>(builder, {{-1}}, {2}, 0.0, 1.0);
+    auto* input2_arg = MakeInput<uint8_t>(builder, {{-1}}, {2}, 0, 5);
+    auto* transpose_1_out_0 = builder.MakeIntermediate();
+    auto* quantizelinear_1_out_0 = builder.MakeIntermediate();
+    auto* transpose_2_out_0 = builder.MakeOutput();
+
+    auto& transpose_1 = builder.AddNode("Transpose", {input0_arg}, {transpose_1_out_0});
+    transpose_1.AddAttribute("perm", std::vector<int64_t>{0, 3, 1, 2});
+    auto& quantizelinear_1 = builder.AddNode("QuantizeLinear", {transpose_1_out_0, input1_arg, input2_arg}, {quantizelinear_1_out_0});
+    quantizelinear_1.AddAttribute("axis", (int64_t)0);
+    auto& transpose_2 = builder.AddNode("Transpose", {quantizelinear_1_out_0}, {transpose_2_out_0});
+    transpose_2.AddAttribute("perm", std::vector<int64_t>{0, 2, 3, 1});
+  };
+
+  auto check_optimized_graph_1 = [&](InferenceSessionWrapper& session) {
+    int transpose_cost = EstimateTransposeCost(session.GetGraph());
+    EXPECT_EQ(transpose_cost, 0);
+  };
+
+  TransformerTester(build_test_case_1,
+                    check_optimized_graph_1,
+                    TransformerLevel::Default,
+                    TransformerLevel::Level1,
+                    /*opset_version*/ 15);
+}
+
+TEST(TransposeOptimizerTests, TestQuantizeLinearVectorUnknownRank) {
+  auto build_test_case_1 = [&](ModelTestBuilder& builder) {
+    auto* input0_arg = MakeInput<float>(builder, {{2, -1, 6, 3}}, {2, 4, 6, 3}, 0.0, 1.0);
+    auto* input1_arg = MakeInput<float>(builder, std::nullopt, {3}, 0.0, 1.0);
+    auto* input2_arg = MakeInput<uint8_t>(builder, std::nullopt, {3}, 0, 5);
+    auto* transpose_1_out_0 = builder.MakeIntermediate();
+    auto* quantizelinear_1_out_0 = builder.MakeIntermediate();
+    auto* transpose_2_out_0 = builder.MakeOutput();
+
+    auto& transpose_1 = builder.AddNode("Transpose", {input0_arg}, {transpose_1_out_0});
+    transpose_1.AddAttribute("perm", std::vector<int64_t>{0, 3, 1, 2});
+    auto& quantizelinear_1 = builder.AddNode("QuantizeLinear", {transpose_1_out_0, input1_arg, input2_arg}, {quantizelinear_1_out_0});
+    quantizelinear_1.AddAttribute("axis", (int64_t)1);
+    auto& transpose_2 = builder.AddNode("Transpose", {quantizelinear_1_out_0}, {transpose_2_out_0});
+    transpose_2.AddAttribute("perm", std::vector<int64_t>{0, 2, 3, 1});
+  };
+
+  auto check_optimized_graph_1 = [&](InferenceSessionWrapper& session) {
+    int transpose_cost = EstimateTransposeCost(session.GetGraph());
+    EXPECT_EQ(transpose_cost, 0);
+  };
+
+  TransformerTester(build_test_case_1,
+                    check_optimized_graph_1,
+                    TransformerLevel::Default,
+                    TransformerLevel::Level1,
+                    /*opset_version*/ 15);
+}
+
+TEST(TransposeOptimizerTests, TestQuantizeLinearScalarOpset10) {
+  auto build_test_case_1 = [&](ModelTestBuilder& builder) {
+    auto* input0_arg = MakeInput<float>(builder, {{2, -1, 6, 3}}, {2, 4, 6, 3}, 0.0, 1.0);
+    auto* input1_arg = builder.MakeInput<float>(std::vector<int64_t>{}, 0.0, 1.0);
+    auto* input2_arg = MakeInput<uint8_t>(builder, {std::vector<int64_t>{}}, std::vector<int64_t>{}, 0, 5);
+    auto* transpose_1_out_0 = builder.MakeIntermediate();
+    auto* quantizelinear_1_out_0 = builder.MakeIntermediate();
+    auto* transpose_2_out_0 = builder.MakeOutput();
+
+    auto& transpose_1 = builder.AddNode("Transpose", {input0_arg}, {transpose_1_out_0});
+    transpose_1.AddAttribute("perm", std::vector<int64_t>{0, 3, 1, 2});
+    builder.AddNode("QuantizeLinear", {transpose_1_out_0, input1_arg, input2_arg}, {quantizelinear_1_out_0});
+    auto& transpose_2 = builder.AddNode("Transpose", {quantizelinear_1_out_0}, {transpose_2_out_0});
+    transpose_2.AddAttribute("perm", std::vector<int64_t>{0, 2, 3, 1});
+  };
+
+  auto check_optimized_graph_1 = [&](InferenceSessionWrapper& session) {
+    int transpose_cost = EstimateTransposeCost(session.GetGraph());
+    EXPECT_EQ(transpose_cost, 0);
+  };
+
+  TransformerTester(build_test_case_1,
+                    check_optimized_graph_1,
+                    TransformerLevel::Default,
+                    TransformerLevel::Level1,
+                    /*opset_version*/ 10);
+}
+
+TEST(TransposeOptimizerTests, TestDequantizeLinearScalarIgnoreAxis) {
+  auto build_test_case_1 = [&](ModelTestBuilder& builder) {
+    auto* input0_arg = MakeInput<uint8_t>(builder, {{2, -1, 6, 3}}, {2, 4, 6, 3}, 0, 5);
+    auto* input1_arg = builder.MakeInput<float>(std::vector<int64_t>{}, 0.0, 1.0);
+    auto* input2_arg = MakeInput<uint8_t>(builder, {std::vector<int64_t>{}}, std::vector<int64_t>{}, 0, 5);
+    auto* transpose_1_out_0 = builder.MakeIntermediate();
+    auto* dequantizelinear_1_out_0 = builder.MakeIntermediate();
+    auto* transpose_2_out_0 = builder.MakeOutput();
+
+    auto& transpose_1 = builder.AddNode("Transpose", {input0_arg}, {transpose_1_out_0});
+    transpose_1.AddAttribute("perm", std::vector<int64_t>{0, 3, 1, 2});
+    auto& dequantizelinear_1 = builder.AddNode("DequantizeLinear", {transpose_1_out_0, input1_arg, input2_arg}, {dequantizelinear_1_out_0});
+    dequantizelinear_1.AddAttribute("axis", (int64_t)10);
+    auto& transpose_2 = builder.AddNode("Transpose", {dequantizelinear_1_out_0}, {transpose_2_out_0});
+    transpose_2.AddAttribute("perm", std::vector<int64_t>{0, 2, 3, 1});
+  };
+
+  auto check_optimized_graph_1 = [&](InferenceSessionWrapper& session) {
+    int transpose_cost = EstimateTransposeCost(session.GetGraph());
+    EXPECT_EQ(transpose_cost, 0);
+  };
+
+  TransformerTester(build_test_case_1,
+                    check_optimized_graph_1,
+                    TransformerLevel::Default,
+                    TransformerLevel::Level1,
+                    /*opset_version*/ 15);
+}
+
+TEST(TransposeOptimizerTests, TestDequantizeLinearVector) {
+  auto build_test_case_1 = [&](ModelTestBuilder& builder) {
+    auto* input0_arg = MakeInput<uint8_t>(builder, {{2, -1, 6, 3}}, {2, 4, 6, 3}, 0, 5);
+    auto* input1_arg = builder.MakeInput<float>({2}, 0.0, 1.0);
+    auto* input2_arg = MakeInput<uint8_t>(builder, {{2}}, {2}, 0, 5);
+    auto* transpose_1_out_0 = builder.MakeIntermediate();
+    auto* dequantizelinear_1_out_0 = builder.MakeIntermediate();
+    auto* transpose_2_out_0 = builder.MakeOutput();
+
+    auto& transpose_1 = builder.AddNode("Transpose", {input0_arg}, {transpose_1_out_0});
+    transpose_1.AddAttribute("perm", std::vector<int64_t>{0, 3, 1, 2});
+    auto& dequantizelinear_1 = builder.AddNode("DequantizeLinear", {transpose_1_out_0, input1_arg, input2_arg}, {dequantizelinear_1_out_0});
+    dequantizelinear_1.AddAttribute("axis", (int64_t)-4);
+    auto& transpose_2 = builder.AddNode("Transpose", {dequantizelinear_1_out_0}, {transpose_2_out_0});
+    transpose_2.AddAttribute("perm", std::vector<int64_t>{0, 2, 3, 1});
+  };
+
+  auto check_optimized_graph_1 = [&](InferenceSessionWrapper& session) {
+    int transpose_cost = EstimateTransposeCost(session.GetGraph());
+    EXPECT_EQ(transpose_cost, 0);
+  };
+
+  TransformerTester(build_test_case_1,
+                    check_optimized_graph_1,
+                    TransformerLevel::Default,
+                    TransformerLevel::Level1,
+                    /*opset_version*/ 15);
+}
+
+TEST(TransposeOptimizerTests, TestDequantizeLinearNoAxis) {
+  auto build_test_case_1 = [&](ModelTestBuilder& builder) {
+    auto* input0_arg = MakeInput<uint8_t>(builder, {{2, -1, 6, 3}}, {2, 4, 6, 3}, 0, 5);
+    auto* input1_arg = builder.MakeInput<float>(std::vector<int64_t>{}, 0.0, 1.0);
+    auto* input2_arg = MakeInput<uint8_t>(builder, {std::vector<int64_t>{}}, std::vector<int64_t>{}, 0, 5);
+    auto* transpose_1_out_0 = builder.MakeIntermediate();
+    auto* dequantizelinear_1_out_0 = builder.MakeIntermediate();
+    auto* transpose_2_out_0 = builder.MakeOutput();
+
+    auto& transpose_1 = builder.AddNode("Transpose", {input0_arg}, {transpose_1_out_0});
+    transpose_1.AddAttribute("perm", std::vector<int64_t>{0, 3, 1, 2});
+    builder.AddNode("DequantizeLinear", {transpose_1_out_0, input1_arg, input2_arg}, {dequantizelinear_1_out_0});
+    auto& transpose_2 = builder.AddNode("Transpose", {dequantizelinear_1_out_0}, {transpose_2_out_0});
+    transpose_2.AddAttribute("perm", std::vector<int64_t>{0, 2, 3, 1});
+  };
+
+  auto check_optimized_graph_1 = [&](InferenceSessionWrapper& session) {
+    int transpose_cost = EstimateTransposeCost(session.GetGraph());
+    EXPECT_EQ(transpose_cost, 0);
+  };
+
+  TransformerTester(build_test_case_1,
+                    check_optimized_graph_1,
+                    TransformerLevel::Default,
+                    TransformerLevel::Level1,
+                    /*opset_version*/ 10);
+}
+
+TEST(TransposeOptimizerTests, TestCast) {
+  auto build_test_case_1 = [&](ModelTestBuilder& builder) {
+    auto* input0_arg = MakeInput<int32_t>(builder, {{-1, 4, -1, 5}}, {2, 4, 6, 5}, -1, 5);
+    auto* transpose_1_out_0 = builder.MakeIntermediate();
+    auto* cast_1_out_0 = builder.MakeIntermediate();
+    auto* transpose_2_out_0 = builder.MakeOutput();
+
+    auto& transpose_1 = builder.AddNode("Transpose", {input0_arg}, {transpose_1_out_0});
+    transpose_1.AddAttribute("perm", std::vector<int64_t>{0, 3, 1, 2});
+    auto& cast_1 = builder.AddNode("Cast", {transpose_1_out_0}, {cast_1_out_0});
+    cast_1.AddAttribute("to", (int64_t)1);
+    auto& transpose_2 = builder.AddNode("Transpose", {cast_1_out_0}, {transpose_2_out_0});
+    transpose_2.AddAttribute("perm", std::vector<int64_t>{0, 2, 3, 1});
+  };
+
+  auto check_optimized_graph_1 = [&](InferenceSessionWrapper& session) {
+    int transpose_cost = EstimateTransposeCost(session.GetGraph());
+    EXPECT_EQ(transpose_cost, 0);
+  };
+
+  TransformerTester(build_test_case_1,
+                    check_optimized_graph_1,
+                    TransformerLevel::Default,
+                    TransformerLevel::Level1,
+                    /*opset_version*/ 15);
+}
+
+TEST(TransposeOptimizerTests, TestBroadcastReusedInputs) {
   auto build_test_case_1 = [&](ModelTestBuilder& builder) {
     auto* input0_arg = MakeInput<float>(builder, {{-1, -1, 3, 4}}, {1, 2, 3, 4}, 0.0, 1.0);
     auto* input1_arg = MakeInput<float>(builder, {{-1, 3}}, {2, 3}, 0.0, 1.0);
     auto* const_1 = builder.MakeInitializer<float>({2, 3}, 0.0, 1.0);
     auto* transpose_1_out_0 = builder.MakeIntermediate();
+    auto* sum_1_out_0 = builder.MakeIntermediate();
     auto* transpose_2_out_0 = builder.MakeOutput();
-    auto* sum_1_out_0 = builder.MakeOutput();
     auto* transpose_3_out_0 = builder.MakeOutput();
-    auto* identity_1_out_0 = builder.MakeOutput();
 
     auto& transpose_1 = builder.AddNode("Transpose", {input0_arg}, {transpose_1_out_0});
     transpose_1.AddAttribute("perm", std::vector<int64_t>{0, 3, 1, 2});
-    builder.AddNode("Sum", {transpose_1_out_0, const_1, input1_arg, const_1}, {sum_1_out_0});
+    builder.AddNode("Sum", {transpose_1_out_0, const_1, input1_arg, const_1, transpose_1_out_0}, {sum_1_out_0});
     auto& transpose_2 = builder.AddNode("Transpose", {sum_1_out_0}, {transpose_2_out_0});
     transpose_2.AddAttribute("perm", std::vector<int64_t>{0, 2, 3, 1});
     auto& transpose_3 = builder.AddNode("Transpose", {sum_1_out_0}, {transpose_3_out_0});
     transpose_3.AddAttribute("perm", std::vector<int64_t>{0, 2, 3, 1});
-    builder.AddNode("Identity", {const_1}, {identity_1_out_0});
   };
 
   auto check_optimized_graph_1 = [&](InferenceSessionWrapper& session) {
     int transpose_cost = EstimateTransposeCost(session.GetGraph());
-    EXPECT_EQ(transpose_cost, 6);
+    EXPECT_EQ(transpose_cost, 2);
   };
 
   TransformerTester(build_test_case_1,
@@ -3161,37 +3418,24 @@ TEST(TransposeOptimizerTests, TestSum) {
                     /*opset_version*/ 15);
 }
 
-TEST(TransposeOptimizerTests, TestTransposeFull) {
+TEST(TransposeOptimizerTests, TestTransposeGraphOutput) {
   auto build_test_case_1 = [&](ModelTestBuilder& builder) {
-    auto* input0_arg = MakeInput<float>(builder, std::nullopt, {1, 2, 3, 4}, 0.0, 1.0);
-    auto* transpose_1_out_0 = builder.MakeIntermediate();
-    auto* relu_1_out_0 = builder.MakeIntermediate();
-    auto* transpose_6_out_0 = builder.MakeIntermediate();
+    auto* input0_arg = MakeInput<float>(builder, {{-1, -1, -1, -1}}, {1, 2, 3, 4}, 0.0, 1.0);
+    auto* transpose_1_out_0 = builder.MakeOutput();
     auto* transpose_2_out_0 = builder.MakeOutput();
     auto* transpose_3_out_0 = builder.MakeOutput();
-    auto* transpose_4_out_0 = builder.MakeOutput();
-    auto* transpose_5_out_0 = builder.MakeOutput();
-    auto* transpose_7_out_0 = builder.MakeOutput();
 
     auto& transpose_1 = builder.AddNode("Transpose", {input0_arg}, {transpose_1_out_0});
     transpose_1.AddAttribute("perm", std::vector<int64_t>{0, 3, 1, 2});
-    builder.AddNode("Transpose", {transpose_1_out_0}, {transpose_2_out_0});
+    auto& transpose_2 = builder.AddNode("Transpose", {transpose_1_out_0}, {transpose_2_out_0});
+    transpose_2.AddAttribute("perm", std::vector<int64_t>{0, 2, 3, 1});
     auto& transpose_3 = builder.AddNode("Transpose", {transpose_1_out_0}, {transpose_3_out_0});
-    transpose_3.AddAttribute("perm", std::vector<int64_t>{0, 2, 3, 1});
-    auto& transpose_4 = builder.AddNode("Transpose", {transpose_1_out_0}, {transpose_4_out_0});
-    transpose_4.AddAttribute("perm", std::vector<int64_t>{2, 0, 1, 3});
-    auto& transpose_5 = builder.AddNode("Transpose", {transpose_3_out_0}, {transpose_5_out_0});
-    transpose_5.AddAttribute("perm", std::vector<int64_t>{0, 2, 3, 1});
-    builder.AddNode("Relu", {input0_arg}, {relu_1_out_0});
-    auto& transpose_6 = builder.AddNode("Transpose", {relu_1_out_0}, {transpose_6_out_0});
-    transpose_6.AddAttribute("perm", std::vector<int64_t>{0, 3, 1, 2});
-    auto& transpose_7 = builder.AddNode("Transpose", {transpose_6_out_0}, {transpose_7_out_0});
-    transpose_7.AddAttribute("perm", std::vector<int64_t>{0, 2, 3, 1});
+    transpose_3.AddAttribute("perm", std::vector<int64_t>{2, 0, 1, 3});
   };
 
   auto check_optimized_graph_1 = [&](InferenceSessionWrapper& session) {
     int transpose_cost = EstimateTransposeCost(session.GetGraph());
-    EXPECT_EQ(transpose_cost, 20);
+    EXPECT_EQ(transpose_cost, 8);
   };
 
   TransformerTester(build_test_case_1,
@@ -3201,22 +3445,22 @@ TEST(TransposeOptimizerTests, TestTransposeFull) {
                     /*opset_version*/ 15);
 }
 
-TEST(TransposeOptimizerTests, TestTransposeValueTwice) {
+TEST(TransposeOptimizerTests, TestPushBroadcastUnsqueezeTranspose) {
   auto build_test_case_1 = [&](ModelTestBuilder& builder) {
     auto* input0_arg = builder.MakeInput<float>({4, 6, 10}, 0.0, 1.0);
     auto* input1_arg = builder.MakeInput<float>({4, 10}, 0.0, 1.0);
     auto* transpose_1_out_0 = builder.MakeIntermediate();
-    auto* transpose_2_out_0 = builder.MakeIntermediate();
     auto* relu_1_out_0 = builder.MakeIntermediate();
+    auto* transpose_2_out_0 = builder.MakeIntermediate();
     auto* relu_2_out_0 = builder.MakeIntermediate();
     auto* mul_1_out_0 = builder.MakeIntermediate();
     auto* transpose_3_out_0 = builder.MakeOutput();
 
     auto& transpose_1 = builder.AddNode("Transpose", {input0_arg}, {transpose_1_out_0});
     transpose_1.AddAttribute("perm", std::vector<int64_t>{1, 2, 0});
+    builder.AddNode("Relu", {transpose_1_out_0}, {relu_1_out_0});
     auto& transpose_2 = builder.AddNode("Transpose", {input1_arg}, {transpose_2_out_0});
     transpose_2.AddAttribute("perm", std::vector<int64_t>{1, 0});
-    builder.AddNode("Relu", {transpose_1_out_0}, {relu_1_out_0});
     builder.AddNode("Relu", {transpose_2_out_0}, {relu_2_out_0});
     builder.AddNode("Mul", {relu_1_out_0, relu_2_out_0}, {mul_1_out_0});
     auto& transpose_3 = builder.AddNode("Transpose", {mul_1_out_0}, {transpose_3_out_0});
@@ -3235,7 +3479,138 @@ TEST(TransposeOptimizerTests, TestTransposeValueTwice) {
                     /*opset_version*/ 15);
 }
 
+TEST(TransposeOptimizerTests, TestOptimizeTowardsTranspose) {
+  auto build_test_case_1 = [&](ModelTestBuilder& builder) {
+    auto* input0_arg = builder.MakeInput<float>({4, 6, 10}, 0.0, 1.0);
+    auto* input1_arg = builder.MakeInput<float>({10, 4}, 0.0, 1.0);
+    auto* transpose_1_out_0 = builder.MakeIntermediate();
+    auto* mul_1_out_0 = builder.MakeIntermediate();
+    auto* relu_1_out_0 = builder.MakeIntermediate();
+    auto* transpose_2_out_0 = builder.MakeOutput();
 
+    auto& transpose_1 = builder.AddNode("Transpose", {input0_arg}, {transpose_1_out_0});
+    transpose_1.AddAttribute("perm", std::vector<int64_t>{1, 2, 0});
+    builder.AddNode("Mul", {transpose_1_out_0, input1_arg}, {mul_1_out_0});
+    builder.AddNode("Relu", {mul_1_out_0}, {relu_1_out_0});
+    auto& transpose_2 = builder.AddNode("Transpose", {relu_1_out_0}, {transpose_2_out_0});
+    transpose_2.AddAttribute("perm", std::vector<int64_t>{2, 0, 1});
+  };
+
+  auto check_optimized_graph_1 = [&](InferenceSessionWrapper& session) {
+    int transpose_cost = EstimateTransposeCost(session.GetGraph());
+    EXPECT_EQ(transpose_cost, 2);
+  };
+
+  TransformerTester(build_test_case_1,
+                    check_optimized_graph_1,
+                    TransformerLevel::Default,
+                    TransformerLevel::Level1,
+                    /*opset_version*/ 15);
+}
+
+TEST(TransposeOptimizerTests, TestOnlyOptimizeTowardsTranspose) {
+  auto build_test_case_1 = [&](ModelTestBuilder& builder) {
+    auto* input0_arg = builder.MakeInput<float>({4, 6, 10}, 0.0, 1.0);
+    auto* input1_arg = builder.MakeInput<float>({10, 4}, 0.0, 1.0);
+    auto* transpose_1_out_0 = builder.MakeIntermediate();
+    auto* mul_1_out_0 = builder.MakeIntermediate();
+    auto* relu_1_out_0 = builder.MakeOutput();
+
+    auto& transpose_1 = builder.AddNode("Transpose", {input0_arg}, {transpose_1_out_0});
+    transpose_1.AddAttribute("perm", std::vector<int64_t>{1, 2, 0});
+    builder.AddNode("Mul", {transpose_1_out_0, input1_arg}, {mul_1_out_0});
+    builder.AddNode("Relu", {mul_1_out_0}, {relu_1_out_0});
+  };
+
+  auto check_optimized_graph_1 = [&](InferenceSessionWrapper& session) {
+    int transpose_cost = EstimateTransposeCost(session.GetGraph());
+    EXPECT_EQ(transpose_cost, 3);
+  };
+
+  TransformerTester(build_test_case_1,
+                    check_optimized_graph_1,
+                    TransformerLevel::Default,
+                    TransformerLevel::Level1,
+                    /*opset_version*/ 15);
+}
+
+TEST(TransposeOptimizerTests, TestDontOptimizeWrongInput) {
+  auto build_test_case_1 = [&](ModelTestBuilder& builder) {
+    auto* input0_arg = MakeInput<int32_t>(builder, {{-1, 4, -1, 5}}, {2, 4, 6, 5}, -1, 5);
+    auto* input1_arg = MakeInput<float>(builder, {{-1, 4, -1, 5}}, {2, 4, 6, 5}, 0.0, 1.0);
+    auto* transpose_1_out_0 = builder.MakeIntermediate();
+    auto* castlike_1_out_0 = builder.MakeIntermediate();
+    auto* transpose_2_out_0 = builder.MakeOutput();
+
+    auto& transpose_1 = builder.AddNode("Transpose", {input1_arg}, {transpose_1_out_0});
+    transpose_1.AddAttribute("perm", std::vector<int64_t>{0, 3, 1, 2});
+    builder.AddNode("CastLike", {input0_arg, transpose_1_out_0}, {castlike_1_out_0});
+    auto& transpose_2 = builder.AddNode("Transpose", {castlike_1_out_0}, {transpose_2_out_0});
+    transpose_2.AddAttribute("perm", std::vector<int64_t>{0, 2, 3, 1});
+  };
+
+  auto check_optimized_graph_1 = [&](InferenceSessionWrapper& session) {
+    ORT_UNUSED_PARAMETER(session);
+  };
+
+  TransformerTester(build_test_case_1,
+                    check_optimized_graph_1,
+                    TransformerLevel::Default,
+                    TransformerLevel::Level1,
+                    /*opset_version*/ 15);
+}
+
+TEST(TransposeOptimizerTests, TestOptimizeBothInputs) {
+  auto build_test_case_1 = [&](ModelTestBuilder& builder) {
+    auto* input0_arg = builder.MakeInput<float>({4, 6, 10}, 0.0, 1.0);
+    auto* input1_arg = builder.MakeInput<float>({4, 6, 10}, 0.0, 1.0);
+    auto* transpose_1_out_0 = builder.MakeIntermediate();
+    auto* transpose_2_out_0 = builder.MakeIntermediate();
+    auto* mul_1_out_0 = builder.MakeOutput();
+
+    auto& transpose_1 = builder.AddNode("Transpose", {input0_arg}, {transpose_1_out_0});
+    transpose_1.AddAttribute("perm", std::vector<int64_t>{1, 2, 0});
+    auto& transpose_2 = builder.AddNode("Transpose", {input1_arg}, {transpose_2_out_0});
+    transpose_2.AddAttribute("perm", std::vector<int64_t>{1, 2, 0});
+    builder.AddNode("Mul", {transpose_1_out_0, transpose_2_out_0}, {mul_1_out_0});
+  };
+
+  auto check_optimized_graph_1 = [&](InferenceSessionWrapper& session) {
+    int transpose_cost = EstimateTransposeCost(session.GetGraph());
+    EXPECT_EQ(transpose_cost, 3);
+  };
+
+  TransformerTester(build_test_case_1,
+                    check_optimized_graph_1,
+                    TransformerLevel::Default,
+                    TransformerLevel::Level1,
+                    /*opset_version*/ 15);
+}
+
+TEST(TransposeOptimizerTests, TestOmitIdentityTranspose) {
+  auto build_test_case_1 = [&](ModelTestBuilder& builder) {
+    auto* input0_arg = MakeInput<float>(builder, {{-1, 4, -1, 5}}, {2, 4, 6, 5}, 0.0, 1.0);
+    auto* transpose_1_out_0 = builder.MakeIntermediate();
+    auto* reducemax_1_out_0 = builder.MakeOutput();
+
+    auto& transpose_1 = builder.AddNode("Transpose", {input0_arg}, {transpose_1_out_0});
+    transpose_1.AddAttribute("perm", std::vector<int64_t>{0, 3, 1, 2});
+    auto& reducemax_1 = builder.AddNode("ReduceMax", {transpose_1_out_0}, {reducemax_1_out_0});
+    reducemax_1.AddAttribute("axes", std::vector<int64_t>{1});
+    reducemax_1.AddAttribute("keepdims", (int64_t)0);
+  };
+
+  auto check_optimized_graph_1 = [&](InferenceSessionWrapper& session) {
+    int transpose_cost = EstimateTransposeCost(session.GetGraph());
+    EXPECT_EQ(transpose_cost, 0);
+  };
+
+  TransformerTester(build_test_case_1,
+                    check_optimized_graph_1,
+                    TransformerLevel::Default,
+                    TransformerLevel::Level1,
+                    /*opset_version*/ 15);
+}
 
 
 
