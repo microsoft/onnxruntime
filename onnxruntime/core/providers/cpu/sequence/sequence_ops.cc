@@ -506,7 +506,6 @@ Status SplitToSequence::ComputeImpl(OpKernelContext& context, const Tensor& inpu
                                         split_sizes));
 
   // copy dimensions so we can update the selected axis in place
-  auto input_dims = input_shape.GetDims();
   auto output_dimensions = input_shape.GetDimsAsVector();
   std::vector<Tensor> tensors;
   int64_t input_offset = 0;

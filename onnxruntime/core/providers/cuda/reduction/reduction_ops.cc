@@ -186,7 +186,6 @@ Status ReduceKernel<allow_multi_axes>::ReduceKernelShared(
     }
   }
 
-  const auto& input_dims = input_shape.GetDims();
   int64_t input_count = input_shape.Size();
   IAllocatorUniquePtr<float> temp_X;
   if (ReduceTensorIndices == CUDNN_REDUCE_TENSOR_FLATTENED_INDICES && std::is_same<T, MLFloat16>::value) {
