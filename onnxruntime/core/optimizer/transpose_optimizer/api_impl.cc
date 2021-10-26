@@ -86,7 +86,6 @@ class ApiNode final : public api::NodeRef {
   void CopyAttributes(const api::NodeRef& node) override;
   void ClearAttribute(const std::string_view name) override;
   void SetInput(size_t i, const std::string_view name) override;
-  void AddInput(const std::string_view name) override;
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ApiNode);
@@ -352,39 +351,29 @@ void ApiNode::ClearAttribute(const std::string_view name) {
   node_.ClearAttribute(std::string(name));
 }
 
-void ApiNode::AddInput(const std::string_view name) {
-  const std::string name_str(name);
-  NodeArg& node_arg = graph_.GetOrCreateNodeArg(name_str, nullptr);
-  // Append a 1 to ArgsCount or increment the first entry with value 0.
-  std::vector<int32_t>& args_count = node_.MutableInputArgsCount();
-  size_t i = 0;
-  while (i < args_count.size() && args_count[i] > 0) {
-    ++i;
-  }
-  if (i < args_count.size()) {
-    ++args_count[i];
-  } else {
-    args_count.push_back(1);
-  }
-
-  auto& mutable_input_defs = node_.MutableInputDefs();
-  int inp_index = gsl::narrow_cast<int>(mutable_input_defs.size());
-  mutable_input_defs.push_back(&node_arg);
-  if (node_arg.Exists()) {
-    graph_.AddConsumerNode(name_str, &node_);
-    const auto* inp_node = graph_.GetProducerNode(name_str);
-    if (inp_node != nullptr) {
-      int inp_node_out_index = graph_utils::GetNodeOutputIndexFromOutputName(*inp_node, name_str);
-      graph_.AddEdge(inp_node->Index(), node_.Index(), inp_node_out_index, inp_index);
-    }
-  }
-}
-
 void ApiNode::SetInput(size_t i, const std::string_view name) {
   // name could be empty to represent a missing optional.
   const std::string name_str(name);
   NodeArg* new_node_arg = &graph_.GetOrCreateNodeArg(name_str, nullptr);
   auto& mutable_input_defs = node_.MutableInputDefs();
+
+  // Pad with optionals if needed
+  while (i >= mutable_input_defs.size()) {
+    size_t j = mutable_input_defs.size() - 1;
+    NodeArg& node_arg = graph_.GetOrCreateNodeArg("", nullptr);
+    mutable_input_defs.push_back(&node_arg);
+
+    std::vector<int32_t>& args_count = node_.MutableInputArgsCount();
+    if (j < args_count.size() && args_count[j] == 0) {
+      // New input fills missing optional
+      args_count[j] = 1;
+    } else {
+      // Append 1. Technically wrong if last input is variadic (but it never is)
+      args_count.push_back(1);
+    }
+
+  }
+
   NodeArg* old_node_arg = mutable_input_defs[i];
   if (old_node_arg->Exists()) {
     // Input may be referenced multiple times. Only remove from consumers if all references are gone.

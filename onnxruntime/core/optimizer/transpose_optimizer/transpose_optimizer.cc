@@ -1241,11 +1241,7 @@ static bool HandleSlice(HandlerArgs& args) {
     }
 
     std::string_view new_axes_const = AddIntInitializerMatchingDtype(args.ctx.graph, new_axes, int_dtype);
-    if (inputs.size() == 3) {
-      args.node.AddInput(new_axes_const);
-    } else {
-      args.node.SetInput(3, new_axes_const);
-    }
+    args.node.SetInput(3, new_axes_const);
 
   } else {
     // Case 2: Axes input provided. Update if constant.

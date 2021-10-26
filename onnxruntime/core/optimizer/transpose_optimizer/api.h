@@ -190,19 +190,12 @@ class NodeRef {
   virtual void ClearAttribute(const std::string_view name) = 0;
 
   /// <summary>
-  /// Sets the ith input of this node. Supports optional inputs.
+  /// Sets the ith input of this node. Supports optional inputs. Expands size if i is out of bounds, padding with ""
+  /// as needed.
   /// </summary>
-  /// <param name="i">Index of the input to update. Behavior is undefined if out of bounds.</param>
+  /// <param name="i">Index of the input to update.</param>
   /// <param name="name">Name of value to use as input or "" for missing optional values.</param>
   virtual void SetInput(size_t i, const std::string_view name) = 0;
-
-  /// <summary>
-  /// Appends an input to the inputs of this node. Supports optional inputs.
-  ///
-  /// AddInput helps optimize ops with a variable number of inputs (like ReduceSum).
-  /// </summary>
-  /// <param name="name">Name of value to append to inputs or "" for missing optional values.</param>
-  virtual void AddInput(const std::string_view name) = 0;
 
   /// <summary>
   /// Convenience method. Returns whether node is of the specified op type and domain
