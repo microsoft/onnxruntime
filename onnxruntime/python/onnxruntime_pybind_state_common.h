@@ -312,7 +312,7 @@ inline AllocatorPtr& GetAllocator() {
 //   numpy array for ref-counting purposes and store it here.
 // 
 // - to be able to expose SparseTensor returned from run method. We get an OrtValue from run()
-//   and storea copy of it it in ort_value_. The OrtValue shared_ptr ref-counting will make sure
+//   and store a copy of it in ort_value_. The OrtValue shared_ptr ref-counting will make sure
 //   the memory stays around.
 class PySparseTensor {
  public:
@@ -375,7 +375,7 @@ class PySparseTensor {
   // arrays that own the underlying memory to stay around. We store copies
   // of py::objects for those arrays in backing_storage_ as an extra ref-count.
 
-  // If we have and able to copy from the OrtValue returned by run() to CPU, then this owns the data
+  // If we have and are able to copy from the OrtValue returned by run() to CPU, then this owns the data
   // and backing_storage_ is empty.
   std::unique_ptr<SparseTensor> instance_;
   std::vector<pybind11::object> backing_storage_;
