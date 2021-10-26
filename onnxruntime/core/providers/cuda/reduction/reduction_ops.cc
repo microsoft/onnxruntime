@@ -194,7 +194,7 @@ Status ReduceKernel<allow_multi_axes>::ReduceKernelShared(
   }
 
   // CUDNN requires at least 3D input, so pad 1s if needed
-  std::vector<int64_t> input_dims_cudnn = input_dims;
+  std::vector<int64_t> input_dims_cudnn = input_shape.GetDimsAsVector();
   std::vector<int64_t> output_dims_cudnn = output_dims;
   if (rank < 3) {
     std::vector<int64_t> pads(3 - rank, 1);
@@ -364,7 +364,7 @@ template Status ReduceKernel<true>::ReduceKernelShared<MLFloat16, MLFloat16, CUD
 // `input_shape_override` (if provided) is the input shape for compute purposes
 Status PrepareForReduce(const Tensor* X,
                         bool keepdims,
-                        const std::vector<int64_t>& axes,
+                        gsl::span<const int64_t> axes,
                         PrepareReduceMetadata& prepare_reduce_metadata,
                         const TensorShape* input_shape_override) {
   ORT_ENFORCE(nullptr != X);
@@ -379,9 +379,8 @@ Status PrepareForReduce(const Tensor* X,
 
   const auto& input_dims = input_shape.GetDims();
   std::vector<bool> reduced(rank, false);
-  prepare_reduce_metadata.output_dims.reserve(input_dims.size());
   if (axes.size() > 0) {
-    prepare_reduce_metadata.output_dims = input_dims;
+    prepare_reduce_metadata.output_dims = input_shape.GetDimsAsVector();
     for (auto axis : axes) {
       axis = HandleNegativeAxis(axis, rank);
       ORT_ENFORCE(input_dims[axis] != 0,
@@ -393,6 +392,7 @@ Status PrepareForReduce(const Tensor* X,
     }
   } else {
     // no axes provided (i.e.) default axes  => reduce on all dims
+    prepare_reduce_metadata.output_dims.reserve(input_dims.size());
     for (auto dim : input_dims) {
       ORT_ENFORCE(keepdims || dim != 0,
                   "Can't reduce on dim with value of 0 if 'keepdims' is false. "
@@ -417,7 +417,7 @@ Status PrepareForReduce(const Tensor* X,
   }
 
   // CUDNN requires at least 3D input, so pad 1s if needed
-  prepare_reduce_metadata.input_dims_cudnn = input_dims;
+  prepare_reduce_metadata.input_dims_cudnn = input_shape.GetDimsAsVector();
   prepare_reduce_metadata.output_dims_cudnn = prepare_reduce_metadata.output_dims;
   if (rank < 3) {
     std::vector<int64_t> pads(3 - rank, 1);
@@ -434,7 +434,7 @@ Status PrepareForReduce(const Tensor* X,
 template <typename T, cudnnReduceTensorIndices_t ReduceTensorIndices>
 Status ReduceComputeCore(CUDAExecutionProvider& cuda_ep, const Tensor& input, PrepareReduceMetadata& prepare_reduce_metadata,
                          /*out*/ Tensor& output, cudnnReduceTensorOp_t cudnn_reduce_op,
-                         const std::vector<int64_t>& axes,
+                         gsl::span<const int64_t> axes,
                          bool calculate_log, bool calculate_sqt, bool log_sum_exp, bool fast_reduction,
                          const TensorShape* input_shape_override) {
   typedef typename ToCudaType<T>::MappedType CudaT;
@@ -933,7 +933,7 @@ namespace ReductionOps {
 
 template <typename T, cudnnReduceTensorIndices_t ReduceTensorIndices>
 std::unique_ptr<Tensor> ReduceCompute(CUDAExecutionProvider& cuda_ep, cudnnReduceTensorOp_t cudnn_reduce_op, AllocatorPtr allocator,
-                                      const Tensor& input, const std::vector<int64_t>& axes,
+                                      const Tensor& input, gsl::span<const int64_t> axes,
                                       bool keep_dims, bool calculate_log, bool calculate_sqt, bool log_sum_exp,
                                       bool fast_reduction, const TensorShape* input_shape_override) {
   PrepareReduceMetadata prepare_reduce_metadata;
@@ -964,21 +964,21 @@ std::unique_ptr<Tensor> ReduceCompute(CUDAExecutionProvider& cuda_ep, cudnnReduc
 template std::unique_ptr<Tensor> ReduceCompute<float, CUDNN_REDUCE_TENSOR_NO_INDICES>(
     CUDAExecutionProvider& cuda_ep, cudnnReduceTensorOp_t cudnn_reduce_op,
     AllocatorPtr allocator,
-    const Tensor& input, const std::vector<int64_t>& axes,
+    const Tensor& input, gsl::span<const int64_t> axes,
     bool keep_dims, bool calculate_log, bool calculate_sqt, bool log_sum_exp,
     bool fast_reduction, const TensorShape* input_shape_override);
 
 template std::unique_ptr<Tensor> ReduceCompute<double, CUDNN_REDUCE_TENSOR_NO_INDICES>(
     CUDAExecutionProvider& cuda_ep, cudnnReduceTensorOp_t cudnn_reduce_op,
     AllocatorPtr allocator,
-    const Tensor& input, const std::vector<int64_t>& axes,
+    const Tensor& input, gsl::span<const int64_t> axes,
     bool keep_dims, bool calculate_log, bool calculate_sqt, bool log_sum_exp,
     bool fast_reduction, const TensorShape* input_shape_override);
 
 template std::unique_ptr<Tensor> ReduceCompute<MLFloat16, CUDNN_REDUCE_TENSOR_NO_INDICES>(
     CUDAExecutionProvider& cuda_ep, cudnnReduceTensorOp_t cudnn_reduce_op,
     AllocatorPtr allocator,
-    const Tensor& input, const std::vector<int64_t>& axes,
+    const Tensor& input, gsl::span<const int64_t> axes,
     bool keep_dims, bool calculate_log, bool calculate_sqt, bool log_sum_exp,
     bool fast_reduction, const TensorShape* input_shape_override);
 

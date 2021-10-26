@@ -858,7 +858,7 @@ class OpTester {
                         optional<float>(), optional<float>()));
   }
 
-  std::vector<int64_t> GetDimsForProto(const std::vector<int64_t>& dims);
+  std::vector<int64_t> GetDimsForProto(gsl::span<const int64_t> dims);
 
   void AddShapeToTensorData(NodeArg& node_arg, const std::vector<int64_t>& dims, const std::vector<std::string>* dim_params);
 

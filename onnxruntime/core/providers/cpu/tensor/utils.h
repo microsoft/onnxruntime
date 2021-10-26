@@ -15,10 +15,14 @@ struct TensorPitches : std::vector<int64_t> {
   TensorPitches(const TensorShape& shape, size_t rank = 0) : TensorPitches(shape.GetDims(), rank) {}
   TensorPitches(const std::vector<int64_t>& dims, size_t rank = 0)
       : std::vector<int64_t>(std::max(rank, dims.size()), 0) {
+    Calculate(gsl::span<int64_t>(data(), size()), gsl::make_span(dims));
+  }
+  TensorPitches(gsl::span<const int64_t> dims, size_t rank = 0)
+      : std::vector<int64_t>(std::max(rank, dims.size()), 0) {
     Calculate(gsl::span<int64_t>(data(), size()), dims);
   }
 
-  static bool Calculate(gsl::span<int64_t> p, const std::vector<int64_t>& dims) {
+  static bool Calculate(gsl::span<int64_t> p, gsl::span<const int64_t> dims) {
     // The pitches is the size of the next inner axis. Aka the amount to move by one of the next inner axis.
     // For a tensor with shape(2,3,4,5) the values would be: (3*4*5, 4*5, 5, 1)
     // Note that the outermost '2' is never used, as you never need to move by the entire size of the outermost axis
@@ -135,7 +139,7 @@ struct ExtentAxisCounters {
 struct SliceSkips : std::vector<int64_t> {
   SliceSkips(const TensorShape& input_shape, gsl::span<const int64_t> extents, gsl::span<const int64_t> steps)
       : std::vector<int64_t>(input_shape.NumDimensions(), 0) {
-    auto& dims = input_shape.GetDims();
+    auto dims = input_shape.GetDims();
     ORT_ENFORCE(dims.size() == extents.size() &&
                 dims.size() >= steps.size());
 
@@ -175,7 +179,7 @@ struct SliceIteratorBase {
   SliceIteratorBase(const Tensor& tensor, gsl::span<const int64_t> starts,
                     gsl::span<const int64_t> extents, gsl::span<const int64_t> steps)
       : tensor_(tensor), extents_(extents), skips_(tensor_.Shape(), extents, steps), indices_(extents.size(), 0) {
-    auto& dims = tensor_.Shape().GetDims();
+    auto dims = tensor_.Shape().GetDims();
     Init(dims, starts, steps);
   }
 
@@ -186,12 +190,12 @@ struct SliceIteratorBase {
   SliceIteratorBase(const Tensor& tensor, const TensorShape& tensor_shape, gsl::span<const int64_t> starts,
                     gsl::span<const int64_t> extents, gsl::span<const int64_t> steps)
       : tensor_(tensor), extents_(extents), skips_(tensor_shape, extents, steps), indices_(extents.size(), 0) {
-    const auto& dims = tensor_shape.GetDims();
+    auto dims = tensor_shape.GetDims();
     Init(dims, starts, steps);
   }
 
   // Initialize initial skip and inner_extent.
-  void Init(const std::vector<int64_t>& dims, gsl::span<const int64_t> starts, gsl::span<const int64_t> steps) {
+  void Init(gsl::span<const int64_t> dims, gsl::span<const int64_t> starts, gsl::span<const int64_t> steps) {
     ORT_ENFORCE(dims.size() == starts.size() &&
                 dims.size() == extents_.size() &&
                 dims.size() >= steps.size());
@@ -381,7 +385,7 @@ struct WritableSliceIterator {
   WritableSliceIterator(Tensor& tensor, gsl::span<const int64_t> starts,
                         gsl::span<const int64_t> extents, gsl::span<const int64_t> steps)
       : tensor_(tensor), input_(tensor_.template MutableData<T>()), extents_(extents), skips_(tensor_.Shape(), extents, steps), indices_(extents.size(), 0) {
-    auto& dims = tensor_.Shape().GetDims();
+    auto dims = tensor_.Shape().GetDims();
     Init(dims, starts, steps);
   }
 
@@ -392,12 +396,12 @@ struct WritableSliceIterator {
   WritableSliceIterator(Tensor& tensor, const TensorShape& tensor_shape, gsl::span<const int64_t> starts,
                         gsl::span<const int64_t> extents, gsl::span<const int64_t> steps)
       : tensor_(tensor), input_(tensor_.template MutableData<T>()), extents_(extents), skips_(tensor_shape, extents, steps), indices_(extents.size(), 0) {
-    auto& dims = tensor_shape.GetDims();
+    auto dims = tensor_shape.GetDims();
     Init(dims, starts, steps);
   }
 
   // Initialize initial skip and inner_extent.
-  void Init(const std::vector<int64_t>& dims, gsl::span<const int64_t> starts,
+  void Init(gsl::span<const int64_t> dims, gsl::span<const int64_t> starts,
             gsl::span<const int64_t> steps) {
     ORT_ENFORCE(dims.size() == starts.size(),
                 "dims.size()=", dims.size(), " != ", "starts.size()=", starts.size());

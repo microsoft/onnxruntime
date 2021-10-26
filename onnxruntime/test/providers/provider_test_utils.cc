@@ -516,8 +516,8 @@ void OpTester::AddNodes(
     add_attribute_fn(node);
 }
 
-std::vector<int64_t> OpTester::GetDimsForProto(const std::vector<int64_t>& dims) {
-  std::vector<int64_t> dims_for_proto{dims};
+std::vector<int64_t> OpTester::GetDimsForProto(gsl::span<const int64_t> dims) {
+  std::vector<int64_t> dims_for_proto{dims.begin(), dims.end()};
   if (add_symbolic_dim_to_tensor_data_ >= 0 &&
       dims.size() > static_cast<size_t>(add_symbolic_dim_to_tensor_data_)) {
     dims_for_proto[add_symbolic_dim_to_tensor_data_] = -1;

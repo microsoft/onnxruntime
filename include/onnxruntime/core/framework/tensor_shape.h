@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <string>
 #include <cstring>
+#include <gsl/gsl>
 #include "onnxruntime_config.h"
 
 namespace onnxruntime {
@@ -16,60 +17,42 @@ namespace onnxruntime {
 #pragma GCC diagnostic ignored "-Wnull-dereference"
 #endif
 #endif
-class TensorShape : private std::vector<int64_t> {
-  // TODO - Use a custom STL allocator to avoid heap allocations in the common case.
+class TensorShape {
   // We use negative numbers for unknown symbolic dimension. Each negative
   // number represents a unique symbolic dimension.
-  // Private inheritance is used to prevent ambiguity of element versus dimension size
  public:
   TensorShape() = default;
 
-  TensorShape(const TensorShape& /*other*/) = default;
-  TensorShape& operator=(const TensorShape& /*other*/) = default;
+  TensorShape(const TensorShape& other) : TensorShape(other.GetDims()) {}
+  TensorShape& operator=(const TensorShape& other);
 
-  TensorShape(TensorShape&& /*other*/) = default;
-  TensorShape& operator=(TensorShape&& /*other*/) = default;
+  TensorShape(TensorShape&& other) { operator=(std::move(other)); }
+  TensorShape& operator=(TensorShape&& other);
 
-  TensorShape(const std::vector<int64_t>& dims) : std::vector<int64_t>(dims) {}
-
-  TensorShape(std::vector<int64_t>&& dims) : std::vector<int64_t>(std::move(dims)) {}
-
-  TensorShape(const std::initializer_list<int64_t>& dims) : std::vector<int64_t>(dims) {}
-
-  TensorShape(const int64_t* dimension_sizes, size_t dimension_count);
-
-  TensorShape(const std::vector<int64_t>& dims, size_t start, size_t end);
+  TensorShape(gsl::span<const int64_t> dims);
+  TensorShape(const std::vector<int64_t>& dims) : TensorShape(gsl::make_span(dims)) {}
+  TensorShape(const std::initializer_list<int64_t>& dims) : TensorShape(gsl::make_span(dims)) {}
+  TensorShape(const int64_t* dimension_sizes, size_t dimension_count) : TensorShape(gsl::span<const int64_t>(dimension_sizes, dimension_count)) {}
+  TensorShape(const std::vector<int64_t>& dims, size_t start, size_t end) : TensorShape(gsl::span<const int64_t>(&dims[start], end - start)) {}
 
   /**
      Return the dimension specified by <idx>.
   */
-  const int64_t& operator[](size_t idx) const {
-    return std::vector<int64_t>::operator[](static_cast<int>(idx));
-  }
+  const int64_t& operator[](size_t idx) const { return values_[idx]; }
+  int64_t& operator[](size_t idx) { return values_[idx]; }
 
-  int64_t& operator[](size_t idx) {
-    return std::vector<int64_t>::operator[](static_cast<int>(idx));
-  }
-
-  bool operator==(const TensorShape& other) const noexcept {
-    auto thisVector = static_cast<const std::vector<int64_t>*>(this);
-    auto otherVector = static_cast<const std::vector<int64_t>*>(&other);
-    return *thisVector == *otherVector;
-  }
-
-  bool operator!=(const TensorShape& other) const noexcept {
-    return !(*this == other);
-  }
+  bool operator==(const TensorShape& other) const noexcept { return GetDims() == other.GetDims(); }
+  bool operator!=(const TensorShape& other) const noexcept { return GetDims() != other.GetDims(); }
 
   size_t NumDimensions() const noexcept {
-    return size();
+    return size_;
   }
 
   /**
      Copy dims into an array with given size
   */
   void CopyDims(int64_t* dims, size_t num_dims) const {
-    memcpy(dims, data(), sizeof(value_type) * std::min(num_dims, NumDimensions()));
+    memcpy(dims, values_, sizeof(int64_t) * std::min(num_dims, NumDimensions()));
   }
 
   /**
@@ -78,13 +61,14 @@ class TensorShape : private std::vector<int64_t> {
      and this function does no checks to ensure that
   */
   void CopyDims(int64_t* dims, size_t start_dim, size_t num_dims) const {
-    memcpy(dims, data() + start_dim, sizeof(value_type) * std::min(num_dims, NumDimensions() - start_dim));
+    memcpy(dims, values_ + start_dim, sizeof(int64_t) * std::min(num_dims, NumDimensions() - start_dim));
   }
 
   /**
      Return underlying vector representation.
   */
-  const std::vector<int64_t>& GetDims() const { return *this; }
+  gsl::span<const int64_t> GetDims() const { return gsl::span<const int64_t>(values_, size_); }
+  std::vector<int64_t> GetDimsAsVector() const { return std::vector<int64_t>(values_, values_ + size_); }
 
   /**
    * Return the total number of elements. Returns 1 for an empty (rank 0) TensorShape.
@@ -116,7 +100,7 @@ class TensorShape : private std::vector<int64_t> {
   /**
      Return a new TensorShape of the dimensions from dimstart to end.
   */
-  TensorShape Slice(size_t dimstart) const;
+  TensorShape Slice(size_t dimstart) const { return Slice(dimstart, size_); }
 
   /**
      output dimensions nicely formatted
@@ -134,14 +118,18 @@ class TensorShape : private std::vector<int64_t> {
      empty shape or 1D shape (1) is regarded as scalar tensor
   */
   bool IsScalar() const {
-    size_t len = size();
-    return len == 0 || (len == 1 && operator[](0) == 1);
+    size_t len = size_;
+    return len == 0 || (len == 1 && values_[0] == 1);
   }
 
-  static const TensorShape& ReinterpretBaseType(const std::vector<int64_t>& dimensions) {
-    static_assert(sizeof(TensorShape) == sizeof(std::vector<int64_t>), "Size of TensorShape prevents safe casting from vector");
-    return *static_cast<const TensorShape*>(&dimensions);
-  }
+ private:
+  void Allocate(size_t size);
+
+  int64_t* values_{};
+  size_t size_{};
+  int64_t small_buffer_[4];
+  std::unique_ptr<int64_t[]> allocated_buffer_;
+  //  std::vector<int64_t> m_vector;
 };
 #ifdef __GNUC__
 #pragma GCC diagnostic pop
