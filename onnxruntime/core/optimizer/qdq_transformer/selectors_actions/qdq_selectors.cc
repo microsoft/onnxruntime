@@ -21,7 +21,7 @@ int NumActualValues(const Node& node, bool input) {
 }
 }  // namespace
 
-bool BaseSelector::CheckQDQNodes(const Graph& graph, const Node& node,
+bool BaseSelector::CheckQDQNodes(const GraphViewer& graph_viewer, const Node& node,
                                  const std::vector<const Node*>& dq_nodes,
                                  const std::vector<const Node*>& q_nodes,
                                  int num_dq_inputs) const {
@@ -30,17 +30,47 @@ bool BaseSelector::CheckQDQNodes(const Graph& graph, const Node& node,
   }
 
   int num_outputs = NumActualValues(node, false);  // number of outputs that exist
+  bool node_produce_graph_output = false;
+  const auto& graph_outputs_ = graph_viewer.GetOutputs();
+  auto end_outputs = graph_outputs_.cend();
+  for (auto output_def : node.OutputDefs()) {
+    if (std::find(graph_outputs_.cbegin(), end_outputs, output_def) != end_outputs) {
+      node_produce_graph_output = true;
+    }
+  }
 
   return num_dq_inputs == gsl::narrow_cast<int>(dq_nodes.size()) &&
          num_outputs == gsl::narrow_cast<int>(q_nodes.size()) &&
-         !graph.NodeProducesGraphOutput(node);
+         !node_produce_graph_output;
+}
+
+bool BaseSelector::Select(const GraphViewer graph_viewer, const Node& node, QDQNodeGroup& selection) const {
+  std::vector<const Node*> dq_nodes = graph_utils::FindParentsByType(node, QDQ::DQOpName);
+  std::vector<const Node*> q_nodes = graph_utils::FindChildrenByType(node, QDQ::QOpName);
+  if (!Check(graph_viewer, node, dq_nodes, q_nodes)) {
+    return false;
+  }
+
+  selection.dq_nodes.reserve(dq_nodes.size());
+  selection.q_nodes.reserve(q_nodes.size());
+  selection.core_node = node.Index();
+  for (const auto* dq_node : dq_nodes) {
+    selection.dq_nodes.push_back(dq_node->Index());
+  }
+
+  for (const auto* q_node : q_nodes) {
+    selection.q_nodes.push_back(q_node->Index());
+  }
+
+  return true;
 }
 
 bool BaseSelector::Select(Graph& graph, const Node& node, std::unique_ptr<NodesToOptimize>& selection) const {
   std::vector<const Node*> dq_nodes = graph_utils::FindParentsByType(node, QDQ::DQOpName);
   std::vector<const Node*> q_nodes = graph_utils::FindChildrenByType(node, QDQ::QOpName);
 
-  if (!Check(graph, node, dq_nodes, q_nodes)) {
+  const GraphViewer graph_viewer(graph);
+  if (!Check(graph_viewer, node, dq_nodes, q_nodes)) {
     return false;
   }
 
@@ -70,24 +100,24 @@ bool BaseSelector::Select(Graph& graph, const Node& node, std::unique_ptr<NodesT
   return true;
 }
 
-bool DropDQDNodesSelector::Check(const Graph& graph,
+bool DropDQDNodesSelector::Check(const GraphViewer& graph_viewer,
                                  const Node& node,
                                  const std::vector<const Node*>& dq_nodes,
                                  const std::vector<const Node*>& q_nodes) const {
-  if (!CheckQDQNodes(graph, node, dq_nodes, q_nodes, 1)) {
+  if (!CheckQDQNodes(graph_viewer, node, dq_nodes, q_nodes, 1)) {
     return false;
   }
 
   const Node& dq_node = *dq_nodes.front();
   const Node& q_node = *q_nodes.front();
 
-  return IsQDQPairSupported(graph, q_node, dq_node);
+  return IsQDQPairSupported(graph_viewer, q_node, dq_node);
 }
 
-bool UnarySelector::Check(const Graph& graph, const Node& node,
+bool UnarySelector::Check(const GraphViewer& graph_viewer, const Node& node,
                           const std::vector<const Node*>& dq_nodes,
                           const std::vector<const Node*>& q_nodes) const {
-  if (!CheckQDQNodes(graph, node, dq_nodes, q_nodes, 1)) {
+  if (!CheckQDQNodes(graph_viewer, node, dq_nodes, q_nodes, 1)) {
     return false;
   }
 
@@ -100,11 +130,11 @@ bool UnarySelector::Check(const Graph& graph, const Node& node,
            (int8_allowed_ && dt_output == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8)));
 }
 
-bool BinarySelector::Check(const Graph& graph,
+bool BinarySelector::Check(const GraphViewer& graph_viewer,
                            const Node& node,
                            const std::vector<const Node*>& dq_nodes,
                            const std::vector<const Node*>& q_nodes) const {
-  if (!CheckQDQNodes(graph, node, dq_nodes, q_nodes)) {
+  if (!CheckQDQNodes(graph_viewer, node, dq_nodes, q_nodes)) {
     return false;
   }
 
@@ -116,11 +146,11 @@ bool BinarySelector::Check(const Graph& graph,
          dt_input_1 == dt_output;
 }
 
-bool VariadicSelector::Check(const Graph& graph,
+bool VariadicSelector::Check(const GraphViewer& graph_viewer,
                              const Node& node,
                              const std::vector<const Node*>& dq_nodes,
                              const std::vector<const Node*>& q_nodes) const {
-  if (!CheckQDQNodes(graph, node, dq_nodes, q_nodes)) {
+  if (!CheckQDQNodes(graph_viewer, node, dq_nodes, q_nodes)) {
     return false;
   }
 
@@ -140,11 +170,11 @@ void VariadicSelector::UpdateBuilder(NodesToOptimizeBuilder& builder) const {
   builder.num_input_defs = 1;  // set to 1 as the first input is variadic
 }
 
-bool ConvSelector::Check(const Graph& graph,
+bool ConvSelector::Check(const GraphViewer& graph_viewer,
                          const Node& node,
                          const std::vector<const Node*>& dq_nodes,
                          const std::vector<const Node*>& q_nodes) const {
-  if (!CheckQDQNodes(graph, node, dq_nodes, q_nodes)) {
+  if (!CheckQDQNodes(graph_viewer, node, dq_nodes, q_nodes)) {
     return false;
   }
 
@@ -168,7 +198,7 @@ void ConvSelector::UpdateBuilder(NodesToOptimizeBuilder& builder) const {
   builder.input_nodes.resize(3);  // add nullptr for bias if missing
 }
 
-bool MatMulSelector::Check(const Graph& graph,
+bool MatMulSelector::Check(const GraphViewer& graph_viewer,
                            const Node& node,
                            const std::vector<const Node*>& dq_nodes,
                            const std::vector<const Node*>& q_nodes) const {
@@ -181,7 +211,7 @@ bool MatMulSelector::Check(const Graph& graph,
 
   if (qlinear) {
     // QLinearMatMul
-    if (!CheckQDQNodes(graph, node, dq_nodes, q_nodes)) {
+    if (!CheckQDQNodes(graph_viewer, node, dq_nodes, q_nodes)) {
       return false;
     }
 

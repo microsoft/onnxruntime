@@ -17,6 +17,7 @@ struct NodeSelector {
   // Select one or more nodes for an Action to process if the constraints are satisfied.
   // `selection` should not be set if this returns false
   virtual bool Select(Graph& graph, const Node& node, std::unique_ptr<NodesToOptimize>& selection) const = 0;
+  virtual bool Select(const GraphViewer graph_viewer, const Node& node, QDQNodeGroup& selection) const = 0;
   virtual ~NodeSelector() = default;
 
  protected:
@@ -91,7 +92,7 @@ class SelectorsAndActions {
 };
 
 /**
-Class that implements graph transformation via a set of Selector+Action pairs. 
+Class that implements graph transformation via a set of Selector+Action pairs.
 This setup allows optimizations to be captured and applied at runtime in a minimal build.
 */
 class SelectorActionTransformer : public GraphTransformer {
