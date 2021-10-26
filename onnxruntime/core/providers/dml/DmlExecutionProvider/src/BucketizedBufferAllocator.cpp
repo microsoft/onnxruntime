@@ -43,11 +43,11 @@ namespace Dml
         : onnxruntime::IAllocator(OrtMemoryInfo("DML allocator", OrtAllocatorType::OrtDeviceAllocator,
                                                 OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0)))
         , m_device(device)
-        , m_context(context)
         , m_heapProperties(heapProps)
         , m_heapFlags(heapFlags)
         , m_resourceFlags(resourceFlags)
         , m_initialState(initialState)
+        , m_context(context)
     {
     }
 

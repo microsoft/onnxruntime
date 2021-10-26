@@ -165,8 +165,8 @@ class OpNodeInfoWrapper : public Base1_t, public Base2_t, public Closable
         MLOperatorTensorGetter& constantInputGetter) :
             m_impl(impl), 
             m_inputShapesOverride(inputShapesOverride), 
-            m_defaultAttributes(defaultAttributes),
-            m_constantInputGetter(constantInputGetter)
+            m_constantInputGetter(constantInputGetter),
+            m_defaultAttributes(defaultAttributes)
     {
         m_requiredConstantCpuInputs.assign(requiredConstantCpuInputs.begin(), requiredConstantCpuInputs.end());
     }
