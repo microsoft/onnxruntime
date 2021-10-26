@@ -333,6 +333,41 @@ common::Status GetQuantizationZeroPoint(const InitializedTensorSet& initializers
   return Status::OK();
 }
 
+bool IsNodeInQDQGroup(std::vector<std::unique_ptr<ConstNodesToOptimize>>& qdq_node_groups, const Node& node) {
+  for (auto& group : qdq_node_groups) {
+    if (group != nullptr) {
+      if (std::find(group->AllNodes().begin(), group->AllNodes().end(), &node) != group->AllNodes().end()) {
+        LOGS_DEFAULT(VERBOSE) << "Node:" << node.Name() << "  belongs to a qdq node group.";
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+std::unique_ptr<ConstNodesToOptimize> GetQDQNodeGroup(const onnxruntime::GraphViewer& graph_viewer, const Node& node) {
+  std::unique_ptr<ConstNodesToOptimize> qdq_node_group;
+  NNAPISelectorActionTransformer nnapi_selector_action_transformer("NNAPISAT", CreateNNAPISelectorsAndActions());
+  qdq_node_group = nnapi_selector_action_transformer.Match(graph_viewer.GetGraph(), node);
+
+  if (qdq_node_group != nullptr) {
+    std::cout << "QDQ Node Group found: " << node.OpType() << " with matched node's name: " << node.Name() << "\n"
+              << std::endl;
+  }
+
+  return qdq_node_group;
+}
+
+std::vector<std::unique_ptr<ConstNodesToOptimize>> GetQDQNodeGroups(const onnxruntime::GraphViewer& graph_viewer) {
+  std::vector<std::unique_ptr<ConstNodesToOptimize>> qdq_node_groups;
+  for (auto index : graph_viewer.GetNodesInTopologicalOrder()) {
+    const auto* node = graph_viewer.GetNode(index);
+    auto qdq_node_group = GetQDQNodeGroup(graph_viewer, *node);
+    qdq_node_groups.emplace_back(std::move(qdq_node_group));
+  }
+  return qdq_node_groups;
+}
+
 bool GetShape(const NodeArg& node_arg, Shape& shape) {
   shape.clear();
   const auto* shape_proto = node_arg.Shape();
@@ -434,19 +469,20 @@ bool IsInternalQuantizationSupported(const Node& node, const std::unordered_set<
   return true;
 }
 
-bool IsNodeSupported(const Node& node, const GraphViewer& graph_viewer, const OpSupportCheckParams& params) {
+bool IsNodeSupported(const Node& node, const GraphViewer& graph_viewer, const OpSupportCheckParams& params, std::unique_ptr<ConstNodesToOptimize>& qdq_group) {
   const auto& op_support_checkers = GetOpSupportCheckers();
   if (!Contains(op_support_checkers, node.OpType()))
     return false;
 
   const auto* op_support_checker = op_support_checkers.at(node.OpType());
-  return op_support_checker->IsOpSupported(graph_viewer.GetAllInitializedTensors(), node, params);
+  return op_support_checker->IsOpSupported(graph_viewer.GetAllInitializedTensors(), node, params, qdq_group);
 }
 
 bool IsNodeSupportedInGroup(const Node& node, const GraphViewer& graph_viewer,
                             const OpSupportCheckParams& params,
-                            const std::unordered_set<std::string>& node_outputs_in_group) {
-  if (!IsNodeSupported(node, graph_viewer, params))
+                            const std::unordered_set<std::string>& node_outputs_in_group,
+                            std::unique_ptr<ConstNodesToOptimize>& qdq_group) {
+  if (!IsNodeSupported(node, graph_viewer, params, qdq_group))
     return false;
 
   // We also want to check if the node is supported as an internal quantized node

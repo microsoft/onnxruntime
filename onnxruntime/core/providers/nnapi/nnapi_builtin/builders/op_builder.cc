@@ -515,18 +515,30 @@ static Status HandleAutoPad(const Shape& input_shape,
 static Status GetBinaryOpQuantizationScaleAndZeroPoint(
     const ModelBuilder& model_builder, const Node& node,
     float& a_scale, float& b_scale, float& y_scale,
-    int32_t& a_zero_point, int32_t& b_zero_point, int32_t& y_zero_point) ORT_MUST_USE_RESULT;
+    int32_t& a_zero_point, int32_t& b_zero_point, int32_t& y_zero_point, std::unique_ptr<ConstNodesToOptimize>& qdq_node_group) ORT_MUST_USE_RESULT;
 static Status GetBinaryOpQuantizationScaleAndZeroPoint(
     const ModelBuilder& model_builder, const Node& node,
     float& a_scale, float& b_scale, float& y_scale,
-    int32_t& a_zero_point, int32_t& b_zero_point, int32_t& y_zero_point) {
+    int32_t& a_zero_point, int32_t& b_zero_point, int32_t& y_zero_point, std::unique_ptr<ConstNodesToOptimize>& qdq_node_group) {
   const auto& initializers = model_builder.GetInitializerTensors();
-  ORT_RETURN_IF_ERROR(GetQuantizationScale(initializers, node, 1, a_scale));
-  ORT_RETURN_IF_ERROR(GetQuantizationScale(initializers, node, 4, b_scale));
-  ORT_RETURN_IF_ERROR(GetQuantizationScale(initializers, node, 6, y_scale));
-  ORT_RETURN_IF_ERROR(GetQuantizationZeroPoint(initializers, node, 2, a_zero_point));
-  ORT_RETURN_IF_ERROR(GetQuantizationZeroPoint(initializers, node, 5, b_zero_point));
-  ORT_RETURN_IF_ERROR(GetQuantizationZeroPoint(initializers, node, 7, y_zero_point));
+  if (qdq_node_group) {
+    const auto* dq_x = qdq_node_group->Input(0);
+    const auto* dq_w = qdq_node_group->Input(1);
+    const auto* q = qdq_node_group->Output(0);
+    ORT_RETURN_IF_ERROR(GetQuantizationScale(initializers, *dq_x, 1, a_scale));
+    ORT_RETURN_IF_ERROR(GetQuantizationScale(initializers, *dq_w, 1, b_scale));
+    ORT_RETURN_IF_ERROR(GetQuantizationScale(initializers, *q, 1, y_scale));
+    ORT_RETURN_IF_ERROR(GetQuantizationZeroPoint(initializers, *dq_x, 2, a_zero_point));
+    ORT_RETURN_IF_ERROR(GetQuantizationZeroPoint(initializers, *dq_w, 2, b_zero_point));
+    ORT_RETURN_IF_ERROR(GetQuantizationZeroPoint(initializers, *q, 2, y_zero_point));
+  } else {
+    ORT_RETURN_IF_ERROR(GetQuantizationScale(initializers, node, 1, a_scale));
+    ORT_RETURN_IF_ERROR(GetQuantizationScale(initializers, node, 4, b_scale));
+    ORT_RETURN_IF_ERROR(GetQuantizationScale(initializers, node, 6, y_scale));
+    ORT_RETURN_IF_ERROR(GetQuantizationZeroPoint(initializers, node, 2, a_zero_point));
+    ORT_RETURN_IF_ERROR(GetQuantizationZeroPoint(initializers, node, 5, b_zero_point));
+    ORT_RETURN_IF_ERROR(GetQuantizationZeroPoint(initializers, node, 7, y_zero_point));
+  }
 
   return Status::OK();
 }
@@ -544,25 +556,35 @@ static Status GetConvMatMulOpQuantizationScaleAndZeroPoint(
     const ModelBuilder& model_builder, const Node& node,
     float& a_scale, float& w_scale, float& y_scale,
     int32_t& a_zero_point, int32_t& w_zero_point, int32_t& y_zero_point,
-    optional<vector<float>>& w_scales, bool& is_per_tensor_u8s8) ORT_MUST_USE_RESULT;
+    optional<vector<float>>& w_scales, bool& is_per_tensor_u8s8, std::unique_ptr<ConstNodesToOptimize>& qdq_node_group) ORT_MUST_USE_RESULT;
 static Status GetConvMatMulOpQuantizationScaleAndZeroPoint(
     const ModelBuilder& model_builder, const Node& node,
     float& a_scale, float& w_scale, float& y_scale,
     int32_t& a_zero_point, int32_t& w_zero_point, int32_t& y_zero_point,
-    optional<vector<float>>& w_scales, bool& is_per_tensor_u8s8) {
+    optional<vector<float>>& w_scales, bool& is_per_tensor_u8s8, std::unique_ptr<ConstNodesToOptimize>& qdq_node_group) {
   is_per_tensor_u8s8 = false;
   // Get scale and zero points
   // We will handle per-channel weight scale and zero point later
   ORT_RETURN_IF_ERROR(
       GetBinaryOpQuantizationScaleAndZeroPoint(model_builder, node,
                                                a_scale, w_scale, y_scale,
-                                               a_zero_point, w_zero_point, y_zero_point));
+                                               a_zero_point, w_zero_point, y_zero_point, qdq_node_group));
 
   const auto input_defs = node.InputDefs();
   const auto& initializers(model_builder.GetInitializerTensors());
-  const auto& weight_tensor = *initializers.at(input_defs[3]->Name());
+  std::string weight_name;
+  if (qdq_node_group) {
+    const auto* dq_w = qdq_node_group->Input(1);
+    const auto dq_input_defs = dq_w->InputDefs();
+    weight_name = dq_input_defs[0]->Name();
+  } else {
+    weight_name = input_defs[3]->Name();
+  }
+  const auto& weight_tensor = *initializers.at(weight_name);
 
-  // We are done here is this is u8u8 QLinearConv
+  // TODO: no special handling for qdq_conv_node for the following cases yet
+
+  // We are done here if this is u8u8 QLinearConv
   if (weight_tensor.data_type() == ONNX_NAMESPACE::TensorProto_DataType_UINT8)
     return Status::OK();
 
@@ -725,11 +747,11 @@ void CreateSharedOpBuilderImpl(const std::string& op_type,
 class BaseOpBuilder : public IOpBuilder {
  public:
   virtual ~BaseOpBuilder() = default;
-  virtual void AddInitializersToSkip(ModelBuilder& /* model_builder */, const Node& /* node */) const override {}
+  virtual void AddInitializersToSkip(ModelBuilder& /* model_builder */, const Node& /* node */, std::unique_ptr<ConstNodesToOptimize>& /* qdq_node_group */) const override {}
   Status AddToModelBuilder(ModelBuilder& model_builder, const Node& node) const override final ORT_MUST_USE_RESULT;
 
  protected:
-  virtual Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const ORT_MUST_USE_RESULT = 0;
+  virtual Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node, std::unique_ptr<ConstNodesToOptimize>& qdq_node_group) const ORT_MUST_USE_RESULT = 0;
 };
 
 Status BaseOpBuilder::AddToModelBuilder(ModelBuilder& model_builder, const Node& node) const {
@@ -737,9 +759,9 @@ Status BaseOpBuilder::AddToModelBuilder(ModelBuilder& model_builder, const Node&
       model_builder.GetNNAPIFeatureLevel(),
       model_builder.UseNCHW(),
   };
-
-  ORT_RETURN_IF_NOT(IsNodeSupported(node, model_builder.GetGraphViewer(), params), "Unsupported operator ", node.OpType());
-  ORT_RETURN_IF_ERROR(AddToModelBuilderImpl(model_builder, node));
+  auto qdq_node_group = GetQDQNodeGroup(model_builder.GetGraphViewer(), node);
+  ORT_RETURN_IF_NOT(IsNodeSupported(node, model_builder.GetGraphViewer(), params, qdq_node_group), "Unsupported operator ", node.OpType());
+  ORT_RETURN_IF_ERROR(AddToModelBuilderImpl(model_builder, node, qdq_node_group));
   LOGS_DEFAULT(VERBOSE) << "Operator name: [" << node.Name()
                         << "] type: [" << node.OpType() << "] was added";
   return Status::OK();
@@ -751,14 +773,14 @@ Status BaseOpBuilder::AddToModelBuilder(ModelBuilder& model_builder, const Node&
 
 class BinaryOpBuilder : public BaseOpBuilder {
  public:
-  void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const override;
+  void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node, std::unique_ptr<ConstNodesToOptimize>& qdq_node_group) const override;
   static void CreateSharedOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
  private:
-  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const override ORT_MUST_USE_RESULT;
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node, std::unique_ptr<ConstNodesToOptimize>& qdq_node_group) const override ORT_MUST_USE_RESULT;
 };
 
-void BinaryOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {
+void BinaryOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node, std::unique_ptr<ConstNodesToOptimize>& qdq_node_group) const {
   const auto& op = node.OpType();
   if (op == "QLinearAdd") {
     AddBinaryOpQuantizationScaleAndZeroPointToSkip(model_builder, node);
@@ -779,7 +801,7 @@ void BinaryOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const N
       });
 }
 
-Status BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const {
+Status BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node, std::unique_ptr<ConstNodesToOptimize>& /*qdq_node_group*/) const {
   const auto& op_type(node.OpType());
   const auto input_defs(node.InputDefs());
 
@@ -822,9 +844,10 @@ Status BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
           y_zero_point = 0;
 
   if (op_is_qlinear) {
+    std::unique_ptr<ConstNodesToOptimize> qdq_node_group;
     ORT_RETURN_IF_ERROR(GetBinaryOpQuantizationScaleAndZeroPoint(model_builder, node,
                                                                  a_scale, b_scale, y_scale,
-                                                                 a_zero_point, b_zero_point, y_zero_point));
+                                                                 a_zero_point, b_zero_point, y_zero_point, qdq_node_group));
   }
 
   // Verify if the scale and zero point matchs from onnx input and nnapi input match
@@ -850,10 +873,10 @@ Status BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
 
 class ReluOpBuilder : public BaseOpBuilder {
  private:
-  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const override ORT_MUST_USE_RESULT;
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node, std::unique_ptr<ConstNodesToOptimize>& /*qdq_node_group*/) const override ORT_MUST_USE_RESULT;
 };
 
-Status ReluOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const {
+Status ReluOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node, std::unique_ptr<ConstNodesToOptimize>& /*qdq_node_group*/) const {
   auto& shaper(model_builder.GetShaper());
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());
@@ -884,10 +907,10 @@ Status ReluOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
 
 class TransposeOpBuilder : public BaseOpBuilder {
  private:
-  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const override ORT_MUST_USE_RESULT;
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node, std::unique_ptr<ConstNodesToOptimize>& qdq_node_group) const override ORT_MUST_USE_RESULT;
 };
 
-Status TransposeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const {
+Status TransposeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node, std::unique_ptr<ConstNodesToOptimize>& /*qdq_node_group*/) const {
   auto& shaper(model_builder.GetShaper());
 
   auto input = node.InputDefs()[0]->Name();
@@ -928,16 +951,16 @@ Status TransposeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, co
 
 class ReshapeOpBuilder : public BaseOpBuilder {
  public:
-  void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const override;
+  void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node, std::unique_ptr<ConstNodesToOptimize>& qdq_node_group) const override;
   static Status AddReshapeOperator(ModelBuilder& model_builder, const Node& node,
                                    const std::string& input, const std::vector<int32_t>& shape) ORT_MUST_USE_RESULT;
 
  private:
-  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const override ORT_MUST_USE_RESULT;
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node, std::unique_ptr<ConstNodesToOptimize>& qdq_node_group) const override ORT_MUST_USE_RESULT;
   static bool CanSkipReshape(const ModelBuilder& model_builder, const Node& node, size_t input_rank, size_t output_rank);
 };
 
-void ReshapeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {
+void ReshapeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node, std::unique_ptr<ConstNodesToOptimize>& qdq_node_group) const {
   model_builder.AddInitializerToSkip(node.InputDefs()[1]->Name());
 }
 
@@ -1040,7 +1063,7 @@ void ReshapeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const 
   return Status::OK();
 }
 
-Status ReshapeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const {
+Status ReshapeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node, std::unique_ptr<ConstNodesToOptimize>& qdq_node_group) const {
   auto& shaper(model_builder.GetShaper());
   const auto& initializers(model_builder.GetInitializerTensors());
 
@@ -1073,13 +1096,13 @@ Status ReshapeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, cons
 
 class BatchNormalizationOpBuilder : public BaseOpBuilder {
  public:
-  void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const override;
+  void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node, std::unique_ptr<ConstNodesToOptimize>& qdq_node_group) const override;
 
  private:
-  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const override ORT_MUST_USE_RESULT;
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node, std::unique_ptr<ConstNodesToOptimize>& qdq_node_group) const override ORT_MUST_USE_RESULT;
 };
 
-void BatchNormalizationOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {
+void BatchNormalizationOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node, std::unique_ptr<ConstNodesToOptimize>& qdq_node_group) const {
   // skip everything except input0 for BatchNormalization
   model_builder.AddInitializerToSkip(node.InputDefs()[1]->Name());  // scale
   model_builder.AddInitializerToSkip(node.InputDefs()[2]->Name());  // B
@@ -1087,7 +1110,7 @@ void BatchNormalizationOpBuilder::AddInitializersToSkip(ModelBuilder& model_buil
   model_builder.AddInitializerToSkip(node.InputDefs()[4]->Name());  //var
 }
 
-Status BatchNormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const {
+Status BatchNormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node, std::unique_ptr<ConstNodesToOptimize>& qdq_node_group) const {
   auto& shaper(model_builder.GetShaper());
   const auto& operand_types(model_builder.GetOperandTypes());
   const auto& initializers(model_builder.GetInitializerTensors());
@@ -1184,14 +1207,14 @@ Status BatchNormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_bu
 
 class PoolOpBuilder : public BaseOpBuilder {
  public:
-  void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const override;
+  void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node, std::unique_ptr<ConstNodesToOptimize>& qdq_node_group) const override;
   static void CreateSharedOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
  private:
-  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const override ORT_MUST_USE_RESULT;
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node, std::unique_ptr<ConstNodesToOptimize>& qdq_node_group) const override ORT_MUST_USE_RESULT;
 };
 
-void PoolOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {
+void PoolOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node, std::unique_ptr<ConstNodesToOptimize>& qdq_node_group) const {
   const auto& op = node.OpType();
   if (op != "QLinearAveragePool")
     return;
@@ -1220,7 +1243,7 @@ void PoolOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Nod
       });
 }
 
-Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const {
+Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node, std::unique_ptr<ConstNodesToOptimize>& qdq_node_group) const {
   auto& shaper(model_builder.GetShaper());
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());
@@ -1339,11 +1362,11 @@ Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
 
 class ConvOpBuilder : public BaseOpBuilder {
  public:
-  void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const override;
+  void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node, std::unique_ptr<ConstNodesToOptimize>& qdq_node_group) const override;
   static void CreateSharedOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
  private:
-  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const override ORT_MUST_USE_RESULT;
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node, std::unique_ptr<ConstNodesToOptimize>& qdq_node_group) const override ORT_MUST_USE_RESULT;
 };
 
 /* static */ void ConvOpBuilder::CreateSharedOpBuilder(
@@ -1356,9 +1379,12 @@ class ConvOpBuilder : public BaseOpBuilder {
       });
 }
 
-void ConvOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {
+void ConvOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node, std::unique_ptr<ConstNodesToOptimize>& qdq_node_group) const {
   const auto& op = node.OpType();
   const auto input_defs = node.InputDefs();
+
+  auto qdq_node_groups = GetQDQNodeGroups(model_builder.GetGraphViewer());
+  bool is_qdq_conv_node = IsNodeInQDQGroup(qdq_node_groups, node);
 
   // skip the weight for conv as we need to transpose
   if (op == "QLinearConv") {
@@ -1366,12 +1392,19 @@ void ConvOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Nod
     model_builder.AddInitializerToSkip(input_defs[3]->Name());  // w
     if (input_defs.size() > 8)
       model_builder.AddInitializerToSkip(input_defs[8]->Name());  // B
+  } else if (is_qdq_conv_node) {
+    const auto* dq_w = qdq_node_group->Input(1);
+    model_builder.AddInitializerToSkip(dq_w->InputDefs()[0]->Name());  // W
+    const auto* dq_b = qdq_node_group->Input(2);
+    if (dq_b != nullptr) {
+      model_builder.AddInitializerToSkip(dq_b->InputDefs()[0]->Name());  // B
+    }
   } else {
     model_builder.AddInitializerToSkip(input_defs[1]->Name());  // w
   }
 }
 
-Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const {
+Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node, std::unique_ptr<ConstNodesToOptimize>& qdq_node_group) const {
   auto& shaper(model_builder.GetShaper());
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());
@@ -1380,6 +1413,9 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   const auto input_defs = node.InputDefs();
   const auto& op_type = node.OpType();
   bool is_qlinear_conv = (op_type == "QLinearConv");
+
+  auto qdq_node_groups = GetQDQNodeGroups(model_builder.GetGraphViewer());
+  bool is_qdq_conv_node = IsNodeInQDQGroup(qdq_node_groups, node);
 
   // onnx strides are in the order height, width
   // while nnapi strides are in the order width, height
@@ -1411,8 +1447,16 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     }
   }
 
-  const auto& weight = input_defs[w_idx]->Name();
+  std::string weight;
+  if (is_qdq_conv_node) {
+    // weight_tensor is obtained from dq node in the qdq structure
+    const auto* dq_w = qdq_node_group->Input(1);
+    weight = dq_w->InputDefs()[0]->Name();
+  } else {
+    weight = input_defs[w_idx]->Name();
+  }
   const auto& weight_tensor = *initializers.at(weight);
+
   auto conv_type = GetConvType(node, model_builder.GetGraphViewer().GetAllInitializedTensors());
   bool conv_2d = (conv_type == ConvType::Regular),
        depthwise_conv_2d = (conv_type == ConvType::Depthwise),
@@ -1428,11 +1472,11 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   // this is for per-channel quantization weights
   optional<vector<float>> w_scales;
   bool is_per_tensor_u8s8 = false;
-  if (is_qlinear_conv) {
+  if (is_qlinear_conv || is_qdq_conv_node) {
     ORT_RETURN_IF_ERROR(GetConvMatMulOpQuantizationScaleAndZeroPoint(model_builder, node,
                                                                      x_scale, w_scale, y_scale,
                                                                      x_zero_point, w_zero_point, y_zero_point,
-                                                                     w_scales, is_per_tensor_u8s8));
+                                                                     w_scales, is_per_tensor_u8s8, qdq_node_group));
   }
 
   Shape onnx_weight_shape;
@@ -1479,14 +1523,28 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     ORT_RETURN_IF_ERROR(AddInitializerInNewLayout(model_builder, weight, onnx_weight_operand_type, L_1230, is_per_tensor_u8s8));
   }
 
-  if (is_qlinear_conv) {
+  // qdq_conv_node also needs to check for this
+  if (is_qlinear_conv || is_qdq_conv_node) {
     // Verify if the scale and zero point matchs from onnx input/weight and nnapi input/weight
     ORT_RETURN_IF_ERROR(IsValidInputQuantizedType(model_builder, input, x_scale, x_zero_point));
     ORT_RETURN_IF_ERROR(IsValidConvWeightQuantizedType(model_builder, weight, w_scale, w_zero_point, w_scales));
   }
 
-  bool hasBias = (input_defs.size() > b_idx);
-  std::string bias = hasBias ? input_defs[b_idx]->Name() : weight + "_bias";
+  bool hasBias;
+  if (is_qdq_conv_node) {
+    const auto* dq_b = qdq_node_group->Input(2);
+    hasBias = dq_b != nullptr ? true : false;
+  } else {
+    hasBias = (input_defs.size() > b_idx);
+  }
+
+  std::string bias;
+  if (hasBias) {
+    bias = is_qdq_conv_node ? qdq_node_group->Input(2)->InputDefs()[0]->Name() : input_defs[b_idx]->Name();
+  } else {
+    bias = weight + "_bias";
+  }
+
   if (!hasBias) {
     const auto weight_dimen = shaper[weight];
     Shape bias_dimen;
@@ -1507,7 +1565,7 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     } else {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unknown weight type ", TypeToStr(weight_type));
     }
-  } else if (is_qlinear_conv) {
+  } else if (is_qlinear_conv || is_qdq_conv_node) {
     // QLinearConv's bias type need special handling to add scale for quantization input
     const auto& bias_tensor = *model_builder.GetInitializerTensors().at(bias);
     ORT_RETURN_IF_NOT(bias_tensor.data_type() == ONNX_NAMESPACE::TensorProto_DataType_INT32,
@@ -1527,6 +1585,7 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   bool use_auto_pad = false;
   int32_t nnapi_padding_code = ANEURALNETWORKS_PADDING_SAME;
   const auto& input_shape = shaper[input];
+  // qdq_node  has kernel_shape
   const auto& kernel_shape = shaper[weight];
   const auto weight_size_y = kernel_shape[1];
   const auto weight_size_x = kernel_shape[2];
@@ -1562,8 +1621,11 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     }
   }
 
-  int32_t fuse_code = model_builder.FindActivation(node, *node.OutputDefs()[0]);
-  ADD_SCALAR_OPERAND(model_builder, input_indices, fuse_code);
+  // TODO: deal with qdq_conv_node + activation case
+  if (!is_qdq_conv_node) {
+    int32_t fuse_code = model_builder.FindActivation(node, *node.OutputDefs()[0]);
+    ADD_SCALAR_OPERAND(model_builder, input_indices, fuse_code);
+  }
 
   if (model_builder.GetNNAPIFeatureLevel() > ANEURALNETWORKS_FEATURE_LEVEL_2) {
     ADD_SCALAR_OPERAND(model_builder, input_indices, use_nchw);
@@ -1608,10 +1670,10 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
 
 class CastOpBuilder : public BaseOpBuilder {
  private:
-  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const override ORT_MUST_USE_RESULT;
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node, std::unique_ptr<ConstNodesToOptimize>& qdq_node_group) const override ORT_MUST_USE_RESULT;
 };
 
-Status CastOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const {
+Status CastOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node, std::unique_ptr<ConstNodesToOptimize>& qdq_node_group) const {
   auto& shaper(model_builder.GetShaper());
   const auto& operand_indices(model_builder.GetOperandIndices());
   NodeAttrHelper helper(node);
@@ -1648,10 +1710,10 @@ Status CastOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
 
 class SoftMaxOpBuilder : public BaseOpBuilder {
  private:
-  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const override ORT_MUST_USE_RESULT;
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node, std::unique_ptr<ConstNodesToOptimize>& qdq_node_group) const override ORT_MUST_USE_RESULT;
 };
 
-Status SoftMaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const {
+Status SoftMaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node, std::unique_ptr<ConstNodesToOptimize>& qdq_node_group) const {
   auto& shaper(model_builder.GetShaper());
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());
@@ -1699,10 +1761,10 @@ Status SoftMaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, cons
 
 class IdentityOpBuilder : public BaseOpBuilder {
  private:
-  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const override ORT_MUST_USE_RESULT;
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node, std::unique_ptr<ConstNodesToOptimize>& qdq_node_group) const override ORT_MUST_USE_RESULT;
 };
 
-Status IdentityOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const {
+Status IdentityOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node, std::unique_ptr<ConstNodesToOptimize>& qdq_node_group) const {
   // Identity is not really going to do anything
   // Just register the dimension and type, with same index and new name
   auto& shaper(model_builder.GetShaper());
@@ -1728,11 +1790,11 @@ Status IdentityOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, con
 
 class GemmOpBuilder : public BaseOpBuilder {
  public:
-  void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const override;
+  void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node, std::unique_ptr<ConstNodesToOptimize>& qdq_node_group) const override;
   static void CreateSharedOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
  private:
-  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const override ORT_MUST_USE_RESULT;
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node, std::unique_ptr<ConstNodesToOptimize>& qdq_node_group) const override ORT_MUST_USE_RESULT;
 };
 
 /* static */ void GemmOpBuilder::CreateSharedOpBuilder(
@@ -1746,7 +1808,7 @@ class GemmOpBuilder : public BaseOpBuilder {
       });
 }
 
-void GemmOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {
+void GemmOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node, std::unique_ptr<ConstNodesToOptimize>& qdq_node_group) const {
   const auto& op = node.OpType();
   const auto input_defs(node.InputDefs());
   if (op == "MatMul") {
@@ -1762,7 +1824,7 @@ void GemmOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Nod
   }
 }
 
-Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const {
+Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node, std::unique_ptr<ConstNodesToOptimize>& qdq_node_group) const {
   auto& shaper(model_builder.GetShaper());
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());
@@ -1792,11 +1854,12 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   bool is_per_tensor_u8s8 = false;
   if (is_qlinear_matmul) {
     optional<vector<float>> w_scales;
+    std::unique_ptr<ConstNodesToOptimize> qdq_node_group;
     ORT_RETURN_IF_ERROR(
         GetConvMatMulOpQuantizationScaleAndZeroPoint(model_builder, node,
                                                      a_scale, b_scale, y_scale,
                                                      a_zero_point, b_zero_point, y_zero_point,
-                                                     w_scales, is_per_tensor_u8s8));
+                                                     w_scales, is_per_tensor_u8s8, qdq_node_group));
   }
 
   uint32_t input_2_idx;
@@ -1883,14 +1946,14 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
 
 class UnaryOpBuilder : public BaseOpBuilder {
  public:
-  void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const override;
+  void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node, std::unique_ptr<ConstNodesToOptimize>& qdq_node_group) const override;
   static void CreateSharedOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
  private:
-  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const override ORT_MUST_USE_RESULT;
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node, std::unique_ptr<ConstNodesToOptimize>& qdq_node_group) const override ORT_MUST_USE_RESULT;
 };
 
-void UnaryOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {
+void UnaryOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node, std::unique_ptr<ConstNodesToOptimize>& qdq_node_group) const {
   const auto& op = node.OpType();
   if (op != "QLinearSigmoid")
     return;
@@ -1924,7 +1987,7 @@ void UnaryOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const No
       });
 }
 
-Status UnaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const {
+Status UnaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node, std::unique_ptr<ConstNodesToOptimize>& qdq_node_group) const {
   auto& shaper(model_builder.GetShaper());
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());
@@ -1991,10 +2054,10 @@ Status UnaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
 
 class ConcatOpBuilder : public BaseOpBuilder {
  private:
-  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const override ORT_MUST_USE_RESULT;
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node, std::unique_ptr<ConstNodesToOptimize>& qdq_node_group) const override ORT_MUST_USE_RESULT;
 };
 
-Status ConcatOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const {
+Status ConcatOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node, std::unique_ptr<ConstNodesToOptimize>& qdq_node_group) const {
   auto& shaper(model_builder.GetShaper());
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());
@@ -2083,14 +2146,14 @@ Status ConcatOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
 
 class SqueezeOpBuilder : public BaseOpBuilder {
  public:
-  void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const override;
+  void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node, std::unique_ptr<ConstNodesToOptimize>& qdq_node_group) const override;
 
  private:
-  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const override ORT_MUST_USE_RESULT;
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node, std::unique_ptr<ConstNodesToOptimize>& qdq_node_group) const override ORT_MUST_USE_RESULT;
   static Status GetAxes(ModelBuilder& model_builder, const Node& node, vector<int32_t>& axes);
 };
 
-void SqueezeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {
+void SqueezeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node, std::unique_ptr<ConstNodesToOptimize>& qdq_node_group) const {
   if (node.SinceVersion() > 12 && node.InputDefs().size() > 1) {
     model_builder.AddInitializerToSkip(node.InputDefs()[1]->Name());
   }
@@ -2122,7 +2185,7 @@ void SqueezeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const 
   return Status::OK();
 }
 
-Status SqueezeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const {
+Status SqueezeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node, std::unique_ptr<ConstNodesToOptimize>& qdq_node_group) const {
   auto input = node.InputDefs()[0]->Name();
   if (model_builder.IsOperandNHWC(input)) {
     // We want to transpose nhwc operand back to nchw before squeeze
@@ -2140,13 +2203,13 @@ Status SqueezeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, cons
 
 class QuantizeLinearOpBuilder : public BaseOpBuilder {
  public:
-  void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const override;
+  void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node, std::unique_ptr<ConstNodesToOptimize>& qdq_node_group) const override;
 
  private:
-  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const override ORT_MUST_USE_RESULT;
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node, std::unique_ptr<ConstNodesToOptimize>& qdq_node_group) const override ORT_MUST_USE_RESULT;
 };
 
-void QuantizeLinearOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {
+void QuantizeLinearOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node, std::unique_ptr<ConstNodesToOptimize>& qdq_node_group) const {
   const auto input_defs(node.InputDefs());
 
   model_builder.AddInitializerToSkip(input_defs[1]->Name());
@@ -2155,7 +2218,7 @@ void QuantizeLinearOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder,
     model_builder.AddInitializerToSkip(input_defs[2]->Name());
 }
 
-Status QuantizeLinearOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const {
+Status QuantizeLinearOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node, std::unique_ptr<ConstNodesToOptimize>& qdq_node_group) const {
   auto& shaper(model_builder.GetShaper());
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto input_defs(node.InputDefs());
@@ -2188,13 +2251,14 @@ Status QuantizeLinearOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builde
 
 class DequantizeLinearOpBuilder : public BaseOpBuilder {
  public:
-  void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const override;
+  void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node, std::unique_ptr<ConstNodesToOptimize>& qdq_node_group) const override;
 
  private:
-  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const override ORT_MUST_USE_RESULT;
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node, std::unique_ptr<ConstNodesToOptimize>& qdq_node_group) const override ORT_MUST_USE_RESULT;
 };
 
-void DequantizeLinearOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {
+void DequantizeLinearOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node, std::unique_ptr<ConstNodesToOptimize>& qdq_node_group) const {
+  // TODO: check if it is a dq in qdq_structure
   const auto input_defs(node.InputDefs());
 
   model_builder.AddInitializerToSkip(input_defs[1]->Name());
@@ -2203,7 +2267,8 @@ void DequantizeLinearOpBuilder::AddInitializersToSkip(ModelBuilder& model_builde
     model_builder.AddInitializerToSkip(input_defs[2]->Name());
 }
 
-Status DequantizeLinearOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const {
+Status DequantizeLinearOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node, std::unique_ptr<ConstNodesToOptimize>& qdq_node_group) const {
+  // TODO: check if it is a dq in a qdq_structure -> do not add dequantize
   auto& shaper(model_builder.GetShaper());
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto input_defs(node.InputDefs());
@@ -2237,10 +2302,10 @@ Status DequantizeLinearOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_buil
 
 class LRNOpBuilder : public BaseOpBuilder {
  private:
-  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const override ORT_MUST_USE_RESULT;
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node, std::unique_ptr<ConstNodesToOptimize>& qdq_node_group) const override ORT_MUST_USE_RESULT;
 };
 
-Status LRNOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const {
+Status LRNOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node, std::unique_ptr<ConstNodesToOptimize>& qdq_node_group) const {
   auto& shaper(model_builder.GetShaper());
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());
@@ -2295,13 +2360,13 @@ Status LRNOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const No
 
 class ClipOpBuilder : public BaseOpBuilder {
  public:
-  void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const override;
+  void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node, std::unique_ptr<ConstNodesToOptimize>& qdq_node_group) const override;
 
  private:
-  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const override ORT_MUST_USE_RESULT;
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node, std::unique_ptr<ConstNodesToOptimize>& qdq_node_group) const override ORT_MUST_USE_RESULT;
 };
 
-void ClipOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {
+void ClipOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node, std::unique_ptr<ConstNodesToOptimize>& qdq_node_group) const {
   if (node.InputDefs().size() > 1)
     model_builder.AddInitializerToSkip(node.InputDefs()[1]->Name());  // min
 
@@ -2309,7 +2374,7 @@ void ClipOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Nod
     model_builder.AddInitializerToSkip(node.InputDefs()[2]->Name());  // max
 }
 
-Status ClipOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const {
+Status ClipOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node, std::unique_ptr<ConstNodesToOptimize>& qdq_node_group) const {
   auto& shaper(model_builder.GetShaper());
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());
@@ -2352,13 +2417,13 @@ Status ClipOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
 
 class ResizeOpBuilder : public BaseOpBuilder {
  public:
-  void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const override;
+  void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node, std::unique_ptr<ConstNodesToOptimize>& qdq_node_group) const override;
 
  private:
-  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const override ORT_MUST_USE_RESULT;
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node, std::unique_ptr<ConstNodesToOptimize>& qdq_node_group) const override ORT_MUST_USE_RESULT;
 };
 
-void ResizeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {
+void ResizeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node, std::unique_ptr<ConstNodesToOptimize>& qdq_node_group) const {
   // We don't really use ROI here, so add them to skipped list
   model_builder.AddInitializerToSkip(node.InputDefs()[1]->Name());  // ROI
 
@@ -2370,7 +2435,7 @@ void ResizeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const N
     model_builder.AddInitializerToSkip(node.InputDefs()[3]->Name());  // sizes
 }
 
-Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const {
+Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node, std::unique_ptr<ConstNodesToOptimize>& qdq_node_group) const {
   auto& shaper(model_builder.GetShaper());
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());
@@ -2460,10 +2525,10 @@ Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
 
 class FlattenOpBuilder : public BaseOpBuilder {
  private:
-  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const override ORT_MUST_USE_RESULT;
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node, std::unique_ptr<ConstNodesToOptimize>& qdq_node_group) const override ORT_MUST_USE_RESULT;
 };
 
-Status FlattenOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const {
+Status FlattenOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node, std::unique_ptr<ConstNodesToOptimize>& qdq_node_group) const {
   auto input = node.InputDefs()[0]->Name();
   if (model_builder.IsOperandNHWC(input)) {
     // We want to transpose nhwc operand back to nchw before reshape
@@ -2497,7 +2562,7 @@ class MinMaxOpBuilder : public BaseOpBuilder {
                                   bool output_is_nhwc) ORT_MUST_USE_RESULT;
 
  private:
-  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const override ORT_MUST_USE_RESULT;
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node, std::unique_ptr<ConstNodesToOptimize>& qdq_node_group) const override ORT_MUST_USE_RESULT;
 };
 
 /* static */ void MinMaxOpBuilder::CreateSharedOpBuilder(
@@ -2540,7 +2605,7 @@ class MinMaxOpBuilder : public BaseOpBuilder {
   return Status::OK();
 }
 
-Status MinMaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const {
+Status MinMaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node, std::unique_ptr<ConstNodesToOptimize>& qdq_node_group) const {
   const auto input_defs(node.InputDefs());
   std::string input1 = input_defs[0]->Name();
   std::string input2 = input_defs[1]->Name();
@@ -2559,10 +2624,10 @@ Status MinMaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
 
 class EluOpBuilder : public BaseOpBuilder {
  private:
-  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const override ORT_MUST_USE_RESULT;
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node, std::unique_ptr<ConstNodesToOptimize>& qdq_node_group) const override ORT_MUST_USE_RESULT;
 };
 
-Status EluOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const {
+Status EluOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node, std::unique_ptr<ConstNodesToOptimize>& qdq_node_group) const {
   auto& shaper(model_builder.GetShaper());
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());
@@ -2586,13 +2651,13 @@ Status EluOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const No
 
 class SliceOpBuilder : public BaseOpBuilder {
  public:
-  void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const override;
+  void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node, std::unique_ptr<ConstNodesToOptimize>& qdq_node_group) const override;
 
  private:
-  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const override ORT_MUST_USE_RESULT;
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node, std::unique_ptr<ConstNodesToOptimize>& qdq_node_group) const override ORT_MUST_USE_RESULT;
 };
 
-void SliceOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {
+void SliceOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node, std::unique_ptr<ConstNodesToOptimize>& qdq_node_group) const {
   // Skip everything except input0 for Slice
   const auto input_defs = node.InputDefs();
   model_builder.AddInitializerToSkip(input_defs[1]->Name());  // starts
@@ -2605,7 +2670,7 @@ void SliceOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const No
   }
 }
 
-Status SliceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const {
+Status SliceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node, std::unique_ptr<ConstNodesToOptimize>& qdq_node_group) const {
   auto& shaper(model_builder.GetShaper());
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());

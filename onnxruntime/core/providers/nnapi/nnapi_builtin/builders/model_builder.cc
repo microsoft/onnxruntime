@@ -120,7 +120,8 @@ void ModelBuilder::PreprocessInitializers() {
   for (size_t i = 0; i < node_indices.size(); i++) {
     const auto* node(graph_viewer_.GetNode(node_indices[i]));
     if (const auto* op_builder = GetOpBuilder(*node)) {
-      op_builder->AddInitializersToSkip(*this, *node);
+      auto qdq_node_group = GetQDQNodeGroup(graph_viewer_, *node);
+      op_builder->AddInitializersToSkip(*this, *node, qdq_node_group);
     }
   }
 }

@@ -116,21 +116,42 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
     }
   }
 
+  // Pre-Partition: add selector -> select qdq structure pairs -> obtain qdq_node_groups
+  auto qdq_node_groups = nnapi::GetQDQNodeGroups(graph_viewer);
+
   const auto excluded_nodes = utils::CreateExcludedNodeSet(graph_viewer, partitioning_stop_ops_);
   const bool check_excluded_nodes = !excluded_nodes.empty();
 
   std::unordered_set<std::string> node_outputs_in_current_group{};
 
   const auto is_node_supported = [&](const Node& node) -> bool {
+    bool supported = false;
+
     const bool excluded = check_excluded_nodes && Contains(excluded_nodes, &node);
-    const bool supported = !excluded &&
-                           nnapi::IsNodeSupportedInGroup(node, graph_viewer, params,
-                                                         node_outputs_in_current_group);
-    LOGS_DEFAULT(VERBOSE) << "Operator type: [" << node.OpType()
-                          << "] index: [" << node.Index()
-                          << "] name: [" << node.Name()
-                          << "] supported: [" << supported
-                          << "]";
+
+    if (nnapi::IsNodeInQDQGroup(qdq_node_groups, node)) {
+      //TODO: Record the group is already checked not supported to avoid redundant checking
+      auto qdq_node_group = nnapi::GetQDQNodeGroup(graph_viewer, node);
+      supported = !excluded &&
+                  nnapi::IsNodeSupportedInGroup(node, graph_viewer, params,
+                                                node_outputs_in_current_group, qdq_node_group);  // related to internal quantization node?
+      LOGS_DEFAULT(VERBOSE) << "QDQ Group: Operator type: [" << node.OpType()
+                            << "] index: [" << node.Index()
+                            << "] name: [" << node.Name()
+                            << "] supported: [" << supported
+                            << "]";
+
+    } else {
+      std::unique_ptr<ConstNodesToOptimize> qdq_node_group;
+      supported = !excluded &&
+                  nnapi::IsNodeSupportedInGroup(node, graph_viewer, params,
+                                                node_outputs_in_current_group, qdq_node_group);
+      LOGS_DEFAULT(VERBOSE) << "Operator type: [" << node.OpType()
+                            << "] index: [" << node.Index()
+                            << "] name: [" << node.Name()
+                            << "] supported: [" << supported
+                            << "]";
+    }
 
     if (supported) {
       // We want to save all the output names of nodes in the current group for easy query

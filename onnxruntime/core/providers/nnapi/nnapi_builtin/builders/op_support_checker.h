@@ -4,6 +4,7 @@
 #pragma once
 
 #include "helper.h"
+#include "core/providers/nnapi/nnapi_builtin/selectors_actions/nnapi_qdq_selector_helper.h"
 
 namespace onnxruntime {
 namespace nnapi {
@@ -23,7 +24,7 @@ class IOpSupportChecker {
   virtual ~IOpSupportChecker() = default;
 
   // Check if an operator is supported
-  virtual bool IsOpSupported(const InitializedTensorSet& initializers, const Node& node, const OpSupportCheckParams& params) const = 0;
+  virtual bool IsOpSupported(const InitializedTensorSet& initializers, const Node& node, const OpSupportCheckParams& params, std::unique_ptr<ConstNodesToOptimize>& qdq_group) const = 0;
 };
 
 // Get the lookup table with IOpSupportChecker delegates for different onnx operators
