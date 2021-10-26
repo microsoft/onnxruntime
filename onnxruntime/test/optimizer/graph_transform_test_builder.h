@@ -37,6 +37,8 @@ class ModelTestBuilder {
     ONNX_NAMESPACE::TypeProto type_proto;
     type_proto.mutable_tensor_type()->set_elem_type(utils::ToTensorProtoElementType<T>());
 
+    // Set shape even if no dims (for scalar)
+    type_proto.mutable_tensor_type()->mutable_shape();
     for (auto& dim : shape) {
       type_proto.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(dim);
     }

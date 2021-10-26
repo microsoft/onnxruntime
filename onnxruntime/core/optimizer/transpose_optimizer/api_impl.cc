@@ -359,11 +359,11 @@ void ApiNode::SetInput(size_t i, const std::string_view name) {
 
   // Pad with optionals if needed
   while (i >= mutable_input_defs.size()) {
-    size_t j = mutable_input_defs.size() - 1;
     NodeArg& node_arg = graph_.GetOrCreateNodeArg("", nullptr);
     mutable_input_defs.push_back(&node_arg);
 
     std::vector<int32_t>& args_count = node_.MutableInputArgsCount();
+    size_t j = mutable_input_defs.size() - 1;
     if (j < args_count.size() && args_count[j] == 0) {
       // New input fills missing optional
       args_count[j] = 1;
