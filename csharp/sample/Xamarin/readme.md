@@ -9,5 +9,5 @@ From this directory:
 ```
 > mkdir Models
 > cd Models
-> wget https://github.com/onnx/models/blob/master/vision/object_detection_segmentation/faster-rcnn/model/FasterRCNN-10.onnx
+> wget https://github.com/onnx/models/blob/f064171f7dd8e962a8a5b34eac8e1bcf83cebbde/vision/object_detection_segmentation/faster-rcnn/model/FasterRCNN-10.onnx
 ```

@@ -9,7 +9,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         {
             var opt = new SessionOptions();
             opt.AppendExecutionProvider_Nnapi();
-            Assert.NotNull(opt);
         }
     }
 }

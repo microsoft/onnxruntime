@@ -1,3 +1,5 @@
+#!/bin/bash
+
 parametersResolved=true
 parametersValid=true
 locallatestAndroidTestRunId=null

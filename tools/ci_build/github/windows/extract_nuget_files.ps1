@@ -48,7 +48,7 @@ if ($aars.Count -eq 1) {
   Copy-Item $aar.FullName $target_file
 }
 elseif ($aars.Count -gt 1) {
-  Write-Error "Expected one Android .aar file but got: [$aars]"
+  Write-Error "Expected at most one Android .aar file but got: [$aars]"
 }
 
 

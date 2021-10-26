@@ -82,19 +82,16 @@ namespace Microsoft.ML.OnnxRuntime
 
         static Action<SessionOptions> Resolve(string configuration = null, bool useDefaultAsFallback = true)
         {
-            // Non-scoped services
-            {
-                if (string.IsNullOrWhiteSpace(configuration))
-                    return DefaultHandler.Value;
+            if (string.IsNullOrWhiteSpace(configuration))
+                return DefaultHandler.Value;
 
-                if (_configurationHandlers.TryGetValue(configuration, out var handler))
-                    return handler.Value;
+            if (_configurationHandlers.TryGetValue(configuration, out var handler))
+                return handler.Value;
 
-                if (useDefaultAsFallback)
-                    return DefaultHandler.Value;
+            if (useDefaultAsFallback)
+                return DefaultHandler.Value;
 
-                throw new KeyNotFoundException($"Configuration not found for '{configuration}'");
-            }
+            throw new KeyNotFoundException($"Configuration not found for '{configuration}'");
         }
     }
 }

@@ -100,7 +100,7 @@ namespace FasterRcnnSample.Forms
             }
             catch (Exception ex)
             {
-                throw new Exception($"The {nameof(PickPhotoAsync)} method throw an exception", ex);
+                throw new Exception($"The {nameof(PickPhotoAsync)} method threw an exception", ex);
             }
 
             if (photo == null)
@@ -188,7 +188,7 @@ namespace FasterRcnnSample.Forms
             BusyIndicator.IsRunning = busy;
         }
 
-        ImageAcquisitionMode GetAcquisitioinModeFromText(string tag) => tag switch
+        ImageAcquisitionMode GetAcquisitionModeFromText(string tag) => tag switch
         {
             nameof(ImageAcquisitionMode.Capture) => ImageAcquisitionMode.Capture,
             nameof(ImageAcquisitionMode.Pick) => ImageAcquisitionMode.Pick,
@@ -196,7 +196,7 @@ namespace FasterRcnnSample.Forms
         };
 
         void AcquireButton_Clicked(object sender, EventArgs e)
-            => AcquireAndAnalyzeImageAsync(GetAcquisitioinModeFromText((sender as Button).Text)).ContinueWith((task)
+            => AcquireAndAnalyzeImageAsync(GetAcquisitionModeFromText((sender as Button).Text)).ContinueWith((task)
                 => { if (task.IsFaulted) MainThread.BeginInvokeOnMainThread(()
                   => DisplayAlert("Error", task.Exception.Message, "OK")); });
     }
