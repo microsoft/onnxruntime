@@ -881,6 +881,48 @@ def test_gradient_correctness_cross_entropy_loss(use_fp16):
         _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
         _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model, atol=1e-5)
 
+@pytest.mark.parametrize("reduction", ['none', 'sum', 'mean'])
+@pytest.mark.parametrize("zero_infinity", [False, True])
+@pytest.mark.parametrize("int_type", [torch.long, torch.int32])
+def test_gradient_correctness_ctc_loss(reduction, zero_infinity, int_type):
+    # https://pytorch.org/docs/stable/generated/torch.nn.CTCLoss.html
+    class NeuralNetCTCLoss(torch.nn.Module):
+        def __init__(self, classes):
+            super(NeuralNetCTCLoss, self).__init__()
+            self.linear = torch.nn.Linear(classes, classes)
+
+        def forward(self, input, target, input_lengths, target_lengths):
+            loss_fct = torch.nn.CTCLoss(blank=0, reduction=reduction, zero_infinity=zero_infinity)
+            return loss_fct(self.linear(input), target, input_lengths, target_lengths)
+
+    T = 50      # Input sequence length
+    C = 20      # Number of classes (including blank)
+    N = 16      # Batch size
+    device = 'cuda'
+    pt_model = NeuralNetCTCLoss(C).to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+
+    def run_step(model, input, target, input_lengths, target_lengths):
+        loss = model(input, target, input_lengths, target_lengths)
+        loss.sum().backward()
+        return loss
+
+    for _ in range(10):
+        # Initialize random batch of input vectors, for *size = (T,N,C)
+        input = torch.randn(T, N, C, device=device).log_softmax(2).detach().requires_grad_()
+        input_lengths = torch.full(size=(N,), fill_value=T, dtype=int_type, device=device)
+
+        # Initialize random batch of targets (0 = blank, 1:C = classes)
+        target_lengths = torch.randint(low=1, high=T, size=(N,), dtype=int_type, device=device)
+        target = torch.randint(low=1, high=C, size=(sum(target_lengths),), dtype=torch.long, device=device)
+
+        pt_prediction = run_step(pt_model, input, target, input_lengths, target_lengths)
+        ort_prediction = run_step(ort_model, input, target, input_lengths, target_lengths)
+
+        _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
+        if not torch.isnan(list(pt_model.named_parameters())[0][1].grad).any():
+            _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model, atol=1e-5)
+
 @pytest.mark.parametrize("pool_type", ['MaxPool', 'AvgPool', 'AdaptiveAvgPool'])
 def test_gradient_correctness_pool2d(pool_type):
     class NeuralNetPool2d(torch.nn.Module):

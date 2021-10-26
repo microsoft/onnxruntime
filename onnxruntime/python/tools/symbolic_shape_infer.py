@@ -196,6 +196,7 @@ class SymbolicShapeInference:
             'aten::argmax': self._infer_aten_argmax,
             'aten::avg_pool2d': self._infer_aten_pool2d,
             'aten::_adaptive_avg_pool2d': self._infer_aten_pool2d,
+            'aten::_ctc_loss': self._infer_aten_ctc_loss,
         }
         self.run_ = True
         self.suggested_merge_ = {}
@@ -1173,6 +1174,16 @@ class SymbolicShapeInference:
         if node.output[0] and new_shape is not None:
             vi = self.known_vi_[node.output[0]]
             vi.CopyFrom(helper.make_tensor_value_info(node.output[0], onnx.TensorProto.INT64, new_shape))
+
+    def _infer_aten_ctc_loss(self, node):
+        data_shape = self._get_shape(node, 0)
+        elem_type = self.known_vi_[node.input[0]].type.tensor_type.elem_type
+        vi = self.known_vi_[node.output[0]]
+        vi.CopyFrom(helper.make_tensor_value_info(vi.name, elem_type, [data_shape[1]]))
+
+        if len(node.output) > 1:
+            vi = self.known_vi_[node.output[1]]
+            vi.CopyFrom(helper.make_tensor_value_info(vi.name, elem_type, data_shape))
 
     def _infer_BatchNormalization(self, node):
         self._propagate_shape_and_type(node)

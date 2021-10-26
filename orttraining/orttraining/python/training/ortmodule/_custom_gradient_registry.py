@@ -134,3 +134,10 @@ def adaptive_avg_pool2d_gradient():
     ]
 
 CustomGradientRegistry.register_custom_stop_gradient_edges([0], 'com.microsoft', 'ATenOp', 'aten::multinomial', '')
+
+@register_gradient('com.microsoft', 'ATenOp', 'aten::_ctc_loss', '')
+def ctc_loss_gradient():
+    return [
+        (('ATenOp', 'com.microsoft'), ['GO(0)', 'I(0)', 'I(1)', 'I(2)', 'I(3)', 'O(0)', 'O(1)', 'I(4)', 'I(5)'], [
+         'GI(0)'], {'name': {'value': 'aten::_ctc_loss_backward', 'dtype': 'string'}}),
+    ]
