@@ -236,7 +236,7 @@ void embedLayerNormalizationShapeInference(InferenceContext& ctx) {
         "gamma should have 2 dimension, dimension size known, "
         "and same hidden size as word_embedding.");
   }
-  
+
   auto& beta_shape = getInputShape(ctx, 6);
   auto& beta_dims = gamma_shape.dim();
   if (beta_dims.size() != 1 ||
@@ -831,6 +831,30 @@ Enforce no repetition of n-grams. Scores are set to `-inf` for tokens that form 
           return;
         }
         propagateShapeFromInputToOutput(ctx, 1, 0);
+      });
+
+  static const char* BifurcationDetector_ver1_doc = R"DOC(
+TODO:
+)DOC";
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(BifurcationDetector)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(BifurcationDetector_ver1_doc)
+      .Input(0, "src_tokens", "encoder input ids.", "T")
+      .Input(1, "cur_tokens", "decoder input ids.", "T")
+      .Input(2, "find_end_idx", "previous bifurcation index", "T")
+      .Input(3, "pred_tokens", "predicted token ids from aggressive decoding", "T", OpSchema::Optional)
+      .Output(0, "tokens", "decoder input ids after merging predicted tokens", "T")
+      .Output(1, "new_end_idx", "new bifurcation index", "T")
+      .TypeConstraint("T", {"tensor(int64)"}, "Constrain to integer types.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        propagateElemTypeFromInputToOutput(ctx, 1, 0);
+        propagateElemTypeFromInputToOutput(ctx, 2, 1);
+        if (hasInputShape(ctx, 2)) {
+          propagateShapeFromInputToOutput(ctx, 2, 1);
+        }
+        // TODO: add shape inference for tokens.
       });
 }
 
