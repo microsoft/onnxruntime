@@ -5,6 +5,7 @@
 import unittest
 import numpy as np
 from numpy.testing import assert_allclose
+import torch
 import onnxruntime as onnxrt
 import onnxruntime.backend as backend
 from helper import get_name
