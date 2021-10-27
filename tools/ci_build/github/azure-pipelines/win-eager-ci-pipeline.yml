@@ -86,7 +86,6 @@ jobs:
      python -m pip install Cerberus dataclasses pandas protobuf scikit-learn scipy tqdm 
      python -m pip install torch torchvision torchaudio
      python -c "import torch; import sys; print(sys.path); print(torch.__file__); import ctypes; print(ctypes.WinDLL('c10.dll'))"
-     python -c "import ctypes; print(ctypes.WinDLL('c10.dll'))"
      python -m pip list
     workingDirectory: '$(Build.BinariesDirectory)'
     displayName: 'Install python modules'
@@ -105,33 +104,11 @@ jobs:
     displayName: 'Check python modules'
 
   - task: PythonScript@0
-    displayName: 'Generate cmake config'
+    displayName: 'Build Eager mode'
     inputs:
       scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
       arguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --build_eager_mode --enable_training --enable_pybind --config Release'
       workingDirectory: '$(Build.BinariesDirectory)'
-
-  - task: VSBuild@1
-    displayName: 'Build'
-    inputs:
-      solution: '$(Build.BinariesDirectory)\$(BuildConfig)\onnxruntime.sln'
-      platform: $(msbuildPlatform)
-      configuration: $(BuildConfig)
-      msbuildArgs: $(MsbuildArguments)
-      msbuildArchitecture: $(buildArch)
-      maximumCpuCount: true
-      logProjectEvents: false
-      workingFolder: '$(Build.BinariesDirectory)\$(BuildConfig)'
-      createLogFile: true
-
-  - task: DotNetCoreCLI@2
-    displayName: 'Restore nuget packages'
-    inputs:
-      command: restore
-      projects: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
-      configuration: '$(BuildConfig)'
-      arguments: '--configuration $(BuildConfig) -p:Platform="Any CPU" -p:OrtPackageId=$(OrtPackageId)'
-      workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
   - task: DeleteFiles@1
     displayName: 'Delete files from $(Build.BinariesDirectory)\RelWithDebInfo'
