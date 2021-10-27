@@ -173,6 +173,16 @@ jobs:
     DoNugetPack: 'false'
     DoEsrp: ${{ parameters.DoEsrp }}
 
+- template: ../templates/mac-ci.yml
+  parameters:
+    AgentPool : $(AgentPoolMacOS)
+    ArtifactName: 'bin-darwin_arm64'
+    JobName: 'Mac_CI_arm64'
+    BuildCommand: 'python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --build_nodejs --config Release --osx_arch=arm64 --skip_tests'
+    DoNodejsPack : 'true'
+    DoNugetPack: 'false'
+    DoEsrp: ${{ parameters.DoEsrp }}
+
 - job: 'Linux_CI_x64'
   workspace:
     clean: all

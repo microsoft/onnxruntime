@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#pragma once
+
 #pragma warning(push)
 #pragma warning(disable : 4201) // nonstandard extension used: nameless struct/union
 #include <d3d12.h>
