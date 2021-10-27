@@ -75,7 +75,7 @@ namespace Dml
 
         STDMETHOD(FillTensorWithPattern)(
             IMLOperatorTensor* dst,
-            gsl::span<const std::byte> value
+            gsl::span<const std::byte> rawValue
             ) const noexcept final;
 
         STDMETHOD(UploadToResource)(ID3D12Resource* dstData, const void* srcData, uint64_t srcDataSize) const noexcept final;

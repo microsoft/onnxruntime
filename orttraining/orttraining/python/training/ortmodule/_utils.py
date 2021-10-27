@@ -226,3 +226,7 @@ def switch_backend_to_pytorch(ortmodule, pytorch_module):
     ortmodule._load_state_dict_pre_hooks = pytorch_module._load_state_dict_pre_hooks
     ortmodule._modules = pytorch_module._modules
     ortmodule.forward = pytorch_module.forward
+
+def warn_of_constant_inputs(data):
+    warnings.warn(f"Received input of type {type(data)} which may be treated as a constant by ORT by default."
+        " Please consider moving constant arguments to the model constructor.")
