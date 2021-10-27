@@ -67,9 +67,9 @@ size_t GetMaxWorkspaceSize(const MiopenConvState<miopenConvAlgoPerf_t>& s,
 }
 
 Status SliceOutUnwantedOutputSection(hipStream_t stream,
-                                     const void* input_data, const std::vector<int64_t>& input_dims,
+                                     const void* input_data, gsl::span<const int64_t> input_dims,
                                      void* output_data,
-                                     const std::vector<int64_t>& output_dims,
+                                     gsl::span<const int64_t> output_dims,
                                      std::vector<int64_t> starts,
                                      const std::vector<int64_t>& ends,
                                      const std::vector<int64_t>& axes,
@@ -79,7 +79,7 @@ Status SliceOutUnwantedOutputSection(hipStream_t stream,
   ORT_THROW_IF_ERROR(SliceBase::PrepareForCompute(starts, ends, axes, compute_metadata));
 
   // As a sanity check, ensure that the slice operator's output shape matches with the expected output shape
-  ORT_ENFORCE(compute_metadata.output_dims_ == output_dims);
+  ORT_ENFORCE(gsl::make_span(compute_metadata.output_dims_) == output_dims);
 
   return SliceRocm::Impl(stream, input_data, input_dims, output_data, compute_metadata, element_size);
 }
@@ -89,13 +89,13 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
   //set X
   const Tensor* X = context->Input<Tensor>(0);
   const TensorShape& x_shape = X->Shape();
-  const auto& x_dims = x_shape.GetDims();
+  const auto x_dims = x_shape.GetDims();
   s_.x_data = reinterpret_cast<const HipT*>(X->template Data<T>());
   s_.element_size = X->DataType()->Size();
   //set W
   const Tensor* W = context->Input<Tensor>(1);
   const TensorShape& w_shape = W->Shape();
-  std::vector<int64_t> w_dims = w_shape.GetDims();
+  auto w_dims = w_shape.GetDimsAsVector();
   s_.w_data = reinterpret_cast<const HipT*>(W->template Data<T>());
   //set B
   if (context->InputCount() >= 3) {
@@ -186,7 +186,7 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
       s_.y_data = reinterpret_cast<HipT*>(s_.Y->template MutableData<T>());
     }
 
-    std::vector<int64_t> x_dims_miopen = x_dims;
+    std::vector<int64_t> x_dims_miopen{x_dims.begin(), x_dims.end()};
     std::vector<int64_t> y_dims_miopen = !post_slicing_required ? y_dims : y_dims_with_adjusted_pads;
     if (rank < 2) {
       // TODO: Remove asym padding correction.

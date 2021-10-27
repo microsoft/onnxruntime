@@ -159,7 +159,7 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
     // The following block will be executed in case there has been no change in the shapes of the
     // input and the filter compared to the previous run
     if (!y_data) {
-      auto y_dims = s_.y_dims;
+      auto y_dims = s_.y_dims.GetDimsAsVector();
       if (x_dimensions == 3) {
         y_dims.erase(y_dims.begin() + 2);
       }
