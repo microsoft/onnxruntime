@@ -200,9 +200,9 @@ class Conv : public RocmKernel {
 
 Status SliceOutUnwantedOutputSection(hipStream_t stream,
                                      const void* input_data,
-                                     const std::vector<int64_t>& input_dims,
+                                     gsl::span<const int64_t> input_dims,
                                      void* output_data,
-                                     const std::vector<int64_t>& output_dims,
+                                     gsl::span<const int64_t> output_dims,
                                      std::vector<int64_t> starts,
                                      const std::vector<int64_t>& ends,
                                      const std::vector<int64_t>& axes,
