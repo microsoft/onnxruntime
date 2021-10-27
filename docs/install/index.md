@@ -151,7 +151,7 @@ by running `locale-gen en_US.UTF-8` and `update-locale LANG=en_US.UTF-8`
 |iOS (C/C++)|CocoaPods: **onnxruntime-mobile-c**||[View](../tutorials/mobile/initial-setup)|
 |Objective-C|CocoaPods: **onnxruntime-mobile-objc**||[View](../tutorials/mobile/initial-setup)|
 |React Native|[**onnxruntime-react-native**](https://www.npmjs.com/package/onnxruntime-react-native)||[View](../api/js)|
-|Node.js|[**onnxruntime-node**](https://www.npmjs.com/package/onnxruntime-node)||[View](../api/js.md)|
+|Node.js|[**onnxruntime-node**](https://www.npmjs.com/package/onnxruntime-node)||[View](../api/js)|
 |Web|[**onnxruntime-web**](https://www.npmjs.com/package/onnxruntime-web)||[View](../api/js)|
 
 

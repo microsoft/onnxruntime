@@ -26,11 +26,11 @@ The source code for this sample is available [here](https://github.com/microsoft
 ## Install ONNX Runtime for OpenVINO Execution Provider
 
 ## Build steps
-[build instructions](../build/eps.md#OpenVINO)
+[build instructions](../../build/eps.md#openvino)
 
 
 ## Reference Documentation
-[Documentation](../execution-providers/OpenVINO-ExecutionProvider.md)
+[Documentation](../../execution-providers/OpenVINO-ExecutionProvider.md)
 
 If you build it by yourself, you must append the "--build_shared_lib" flag to your build command. 
 ```

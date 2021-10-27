@@ -571,7 +571,7 @@ set(CMAKE_C_COMPILER aarch64-linux-gnu-gcc)
 ## Vitis-AI
 See more information on the Xilinx Vitis-AI execution provider [here](../execution-providers/Vitis-AI-ExecutionProvider.md).
 
-For instructions to setup the hardware environment: [Hardware setup](../execution-providers/Vitis-AI-ExecutionProvider.md#Hardware-setup)
+For instructions to setup the hardware environment: [Hardware setup](../execution-providers/Vitis-AI-ExecutionProvider.md#hardware-setup)
 
 ### Linux
 {: .no_toc }
