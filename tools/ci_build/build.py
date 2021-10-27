@@ -1579,7 +1579,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                     executables.append('onnxruntime_shared_lib_test')
                     executables.append('onnxruntime_global_thread_pools_test')
                     executables.append('onnxruntime_api_tests_without_env')
-                    
+
                 if not args.disable_contrib_ops:
                     executables.append('onnxruntime_sparse_tests')
 
