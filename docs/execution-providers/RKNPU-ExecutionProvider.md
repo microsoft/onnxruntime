@@ -29,7 +29,7 @@ Ort::SessionOptions sf;
 Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_RKNPU(sf));
 Ort::Session session(env, model_path, sf);
 ```
-The C API details are [here](../get-started/with-c.html.md).
+The C API details are [here](../get-started/with-c.md).
 
 
 ## Support Coverage

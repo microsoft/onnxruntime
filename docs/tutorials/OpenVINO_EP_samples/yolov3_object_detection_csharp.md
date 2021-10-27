@@ -26,14 +26,15 @@ The source code for this sample is available [here](https://github.com/microsoft
 ## Install ONNX Runtime for OpenVINO Execution Provider
 
 ## Build steps
-[build instructions](https://www.onnxruntime.ai/docs/reference/execution-providers/OpenVINO-ExecutionProvider.html#build)
+[build instructions](../../build/eps.md#openvino)
 
 
 ## Reference Documentation
-[Documentation](https://www.onnxruntime.ai/docs/reference/execution-providers/OpenVINO-ExecutionProvider.html)
+[Documentation](../../execution-providers/OpenVINO-ExecutionProvider.md)
 
 To build nuget packages of onnxruntime with openvino flavour
-```
+
+```bash
 ./build.sh --config Release --use_openvino MYRIAD_FP16 --build_shared_lib --build_nuget
 ```
 

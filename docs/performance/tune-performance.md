@@ -132,7 +132,7 @@ TensorRT and CUDA are separate execution providers for ONNX Runtime. On the same
 
 ### TensorRT/CUDA or DirectML? 
 {: .no_toc }
-DirectML is the hardware-accelerated DirectX 12 library for machine learning on Windows and supports all DirectX 12 capable devices (Nvidia, Intel, AMD). This means that if you are targeting Windows GPUs, using the DirectML Execution Provider is likely your best bet. This can be used with both the ONNX Runtime as well as [WinML APIs](../api/winrt-api.md).
+DirectML is the hardware-accelerated DirectX 12 library for machine learning on Windows and supports all DirectX 12 capable devices (Nvidia, Intel, AMD). This means that if you are targeting Windows GPUs, using the DirectML Execution Provider is likely your best bet. This can be used with both the ONNX Runtime as well as [WinML APIs](https://docs.microsoft.com/en-us/windows/ai/windows-ml/api-reference).
 
 ## Tuning performance
 Below are some suggestions for things to try for various EPs for tuning performance. 
@@ -223,7 +223,7 @@ The answers below are troubleshooting suggestions based on common previous user-
 
 Here is a list of things to check through when assessing performance issues.
 * Are you using OpenMP? OpenMP will parallelize some of the code for potential performance improvements. This is not recommended for running on single threads.
-* Have you enabled all [graph optimizations](../resources/graph-optimizations.md)? The official published packages do enable all by default, but when building from source, check that these are enabled in your build.
+* Have you enabled all [graph optimizations](graph-optimizations.md)? The official published packages do enable all by default, but when building from source, check that these are enabled in your build.
 * Have you searched through prior filed [Github issues](https://github.com/microsoft/onnxruntime/issues) to see if your problem has been discussed previously? Please do this before filing new issues.
 * If using CUDA or TensorRT, do you have the right versions of the dependent libraries installed? 
 
