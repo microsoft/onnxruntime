@@ -55,10 +55,11 @@ bool IsSigned(DML_TENSOR_DATA_TYPE dataType)
         case DML_TENSOR_DATA_TYPE_INT32: return true;
         case DML_TENSOR_DATA_TYPE_INT16: return true;
         case DML_TENSOR_DATA_TYPE_INT8: return true;
+        default:
+            assert(false);
+            return false;
     }
 
-    assert(false);
-    return false;
 }
 
 DML_TENSOR_DATA_TYPE GetDmlDataTypeFromMlDataType(MLOperatorTensorDataType tensorDataType)
@@ -87,7 +88,9 @@ MLOperatorTensorDataType GetMlDataTypeFromDmlDataType(DML_TENSOR_DATA_TYPE tenso
     case DML_TENSOR_DATA_TYPE_INT64:    return MLOperatorTensorDataType::Int64;
     case DML_TENSOR_DATA_TYPE_FLOAT64:  return MLOperatorTensorDataType::Double;
 
-    default: ML_INVALID_ARGUMENT("Unknown DML_TENSOR_DATA_TYPE.");
+    default: 
+    	ML_INVALID_ARGUMENT("Unknown DML_TENSOR_DATA_TYPE.");
+    	return MLOperatorTensorDataType::Float;
     };
 }
 

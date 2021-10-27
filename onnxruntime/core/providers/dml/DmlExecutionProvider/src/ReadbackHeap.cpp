@@ -10,13 +10,16 @@ namespace Dml
     static ComPtr<ID3D12Resource> CreateReadbackHeap(ID3D12Device* device, size_t size)
     {
         ComPtr<ID3D12Resource> readbackHeap;
-        THROW_IF_FAILED(device->CreateCommittedResource(
-            &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_READBACK),
-            D3D12_HEAP_FLAG_NONE,
-            &CD3DX12_RESOURCE_DESC::Buffer(size),
-            D3D12_RESOURCE_STATE_COPY_DEST,
-            nullptr,
-            IID_PPV_ARGS(&readbackHeap)));
+        auto aux1 = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_READBACK);
+		auto aux2 = CD3DX12_RESOURCE_DESC::Buffer(size);
+
+		THROW_IF_FAILED(device->CreateCommittedResource(
+			&aux1,
+			D3D12_HEAP_FLAG_NONE,
+			&aux2,
+			D3D12_RESOURCE_STATE_COPY_DEST,
+			nullptr,
+			IID_PPV_ARGS(&readbackHeap)));
 
         return readbackHeap;
     }

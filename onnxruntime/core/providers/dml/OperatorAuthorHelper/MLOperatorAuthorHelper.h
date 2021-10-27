@@ -8,7 +8,12 @@
 
 #define ML_CHECK_BOOL(x) THROW_HR_IF(E_INVALIDARG, !(x))
 
-class MLFloat16;
+namespace onnxruntime
+{
+    struct MLFloat16;
+}
+
+using MLFloat16 = onnxruntime::MLFloat16;
 
 //
 // Traits for numeric attribute types
@@ -89,9 +94,8 @@ struct MLTypeTraits<uint64_t>
 };
 
 template <>
-struct MLTypeTraits<MLFloat16>
-{
-    static const MLOperatorTensorDataType TensorType = MLOperatorTensorDataType::Float16;
+struct MLTypeTraits<onnxruntime::MLFloat16> {
+  static const MLOperatorTensorDataType TensorType = MLOperatorTensorDataType::Float16;
 };
 
 inline uint32_t ComputeElementCountFromDimensions(gsl::span<const uint32_t> dimensions)
@@ -119,7 +123,9 @@ inline size_t GetByteSizeFromMlDataType(MLOperatorTensorDataType tensorDataType)
     case MLOperatorTensorDataType::Complex64: return 8;
     case MLOperatorTensorDataType::Complex128: return 16;
     case MLOperatorTensorDataType::Undefined:
-    default: THROW_HR(E_INVALIDARG);
+    default: 
+    	THROW_HR(E_INVALIDARG);
+    	return 0;
     };
 }
 
@@ -463,7 +469,7 @@ public:
 class MLOperatorKernelCreationContext : public MLOperatorAttributes
 {
 public:
-    MLOperatorKernelCreationContext(IMLOperatorKernelCreationContext* impl) : m_impl(impl), MLOperatorAttributes(impl)
+    MLOperatorKernelCreationContext(IMLOperatorKernelCreationContext* impl) : MLOperatorAttributes(impl), m_impl(impl)
     {
         m_impl.As(&m_implPrivate);
     }
@@ -621,7 +627,7 @@ public:
 class MLOperatorTypeInferenceContext : public MLOperatorAttributes
 {
 public:
-    MLOperatorTypeInferenceContext(IMLOperatorTypeInferenceContext* impl) : m_impl(impl), MLOperatorAttributes(impl) {}
+    MLOperatorTypeInferenceContext(IMLOperatorTypeInferenceContext* impl) : MLOperatorAttributes(impl), m_impl(impl) {}
 
     // For cases of interop where the caller needs to pass the unwrapped class across a boundary.
      Microsoft::WRL::ComPtr<IMLOperatorTypeInferenceContext> GetInterface() const noexcept

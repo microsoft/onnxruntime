@@ -1485,6 +1485,7 @@ inline const DML_OPERATOR_SCHEMA& GetSchema(DML_OPERATOR_TYPE operatorType)
     case DML_OPERATOR_ACTIVATION_SHRINK: return DML_ACTIVATION_SHRINK_OPERATOR_SCHEMA;
 
     default: THROW_HR(E_INVALIDARG);
+    return DML_ELEMENT_WISE_IDENTITY_OPERATOR_SCHEMA;
     }
 }
 
@@ -2052,7 +2053,11 @@ inline AbstractOperatorDesc ConvertOperatorDesc(const DML_OPERATOR_DESC& opDesc)
         return AbstractOperatorDesc(
             &DML_ACTIVATION_SHRINK_OPERATOR_SCHEMA,
             GetFields(*static_cast<const DML_ACTIVATION_SHRINK_OPERATOR_DESC*>(opDesc.Desc)));
-    default: THROW_HR(E_INVALIDARG);
+    default: 
+    	THROW_HR(E_INVALIDARG);
+    	return AbstractOperatorDesc(
+				&DML_ELEMENT_WISE_IDENTITY_OPERATOR_SCHEMA,
+				GetFields(*static_cast<const DML_ELEMENT_WISE_IDENTITY_OPERATOR_DESC*>(opDesc.Desc)));
     }
 
 }

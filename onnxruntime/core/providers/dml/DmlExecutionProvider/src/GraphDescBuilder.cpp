@@ -25,6 +25,8 @@ namespace Dml::GraphDescBuilder
 
         assert(false);
         THROW_HR(E_UNEXPECTED);
+        const onnxruntime::NodeArg* arg = node.OutputDefs()[0];
+		return arg->Name();
     }
 
     GraphDesc BuildGraphDesc(
@@ -91,7 +93,7 @@ namespace Dml::GraphDescBuilder
             reuseCommandList = true;
         }
 
-        auto constantCpuGraphInputGetter = [&fusedNodeInputDefs, &transferredInitializerMap](const std::string& argName)
+        auto constantCpuGraphInputGetter = [&transferredInitializerMap](const std::string& argName)
         {
             ComPtr<OnnxTensorWrapper> tensorWrapper;
 

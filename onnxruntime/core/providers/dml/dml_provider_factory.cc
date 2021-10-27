@@ -67,8 +67,8 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_DML(ID
   ComPtr<ID3D12Device> d3d12_device;
   THROW_IF_FAILED(dml_device->GetParentDevice(IID_PPV_ARGS(&d3d12_device)));
   const Env& env = Env::Default();
-  env.GetTelemetryProvider().LogExecutionProviderEvent(&d3d12_device->GetAdapterLuid());
-
+  auto aux1 = d3d12_device->GetAdapterLuid();
+  env.GetTelemetryProvider().LogExecutionProviderEvent(&aux1);
   return std::make_shared<onnxruntime::DMLProviderFactory>(dml_device, cmd_queue);
 }
 

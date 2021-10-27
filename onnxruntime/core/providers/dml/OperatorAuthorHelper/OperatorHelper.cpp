@@ -163,7 +163,9 @@ namespace OperatorHelper
         case MLOperatorTensorDataType::Complex64:  return static_cast<int64_t>(*reinterpret_cast<const float*>(p)); // Read the real component.
         case MLOperatorTensorDataType::Complex128: return static_cast<int64_t>(*reinterpret_cast<const double*>(p)); // Read the real component.
         case MLOperatorTensorDataType::Undefined:
-        default: ML_INVALID_ARGUMENT("Unknown MLOperatorTensorDataType.");
+        default: 
+        	ML_INVALID_ARGUMENT("Unknown MLOperatorTensorDataType.");
+        	return -1;
         };
     }
 
@@ -187,7 +189,9 @@ namespace OperatorHelper
         case MLOperatorTensorDataType::Complex64:  return static_cast<double>(*reinterpret_cast<const float*>(p)); // Read the real component.
         case MLOperatorTensorDataType::Complex128: return static_cast<double>(*reinterpret_cast<const double*>(p)); // Read the real component.
         case MLOperatorTensorDataType::Undefined:
-        default: ML_INVALID_ARGUMENT("Unknown MLOperatorTensorDataType.");
+        default: 
+        	ML_INVALID_ARGUMENT("Unknown MLOperatorTensorDataType.");
+        	return -1.0;
         };
     }
 
@@ -990,8 +994,8 @@ namespace OperatorHelper
         }
         else if (m_components.size() == 2)
         {
-            auto& inputLabels = m_components[0].GetLabels(m_labelIndices);
-            auto& outputLabels = m_components[1].GetLabels(m_labelIndices);
+            auto inputLabels = m_components[0].GetLabels(m_labelIndices);
+            auto outputLabels = m_components[1].GetLabels(m_labelIndices);
             if (inputLabels.size() == outputLabels.size())
             {
                 // Check identity.
@@ -1015,9 +1019,9 @@ namespace OperatorHelper
         else if (m_components.size() == 3)
         {
             // If all components have the same size and label order, then apply elementwise multiplication.
-            auto& inputALabels = m_components[0].GetLabels(m_labelIndices);
-            auto& inputBLabels = m_components[1].GetLabels(m_labelIndices);
-            auto& outputLabels = m_components[2].GetLabels(m_labelIndices);
+            auto inputALabels = m_components[0].GetLabels(m_labelIndices);
+            auto inputBLabels = m_components[1].GetLabels(m_labelIndices);
+            auto outputLabels = m_components[2].GetLabels(m_labelIndices);
             if (equals(inputALabels, outputLabels) && equals(inputBLabels, outputLabels))
             {
                 // Handles: "i,i->i", "ij,ij->ij", "ijk,ijk->ijk", "ijkl,ijkl->ijkl" ...
@@ -1120,7 +1124,7 @@ namespace OperatorHelper
             outputDimensions.push_back(labelSizes[labelIndex]);
         }
 
-        return { std::move(EdgeShapes(outputDimensions)) };
+        return { EdgeShapes(outputDimensions) };
     }
 
     bool EinSumHelper::IsMatMulOperatorType() const noexcept
@@ -1220,7 +1224,7 @@ namespace OperatorHelper
         }
         case 1:
         {
-            return { std::move(EdgeShapes(outputDimensionsSequence)) };
+            return { EdgeShapes(outputDimensionsSequence) };
         }
         case 2:
         {
@@ -1229,7 +1233,7 @@ namespace OperatorHelper
                 EdgeShapes(outputDimensionsSingle)
             };
 
-            return std::move(outputShapes);
+            return outputShapes;
         }
         case 3:
         {
@@ -1239,7 +1243,7 @@ namespace OperatorHelper
                 EdgeShapes(cellOutputDimensionsSingle)
             };
 
-            return std::move(outputShapes);
+            return outputShapes;
         }
         default:
         {
@@ -1289,7 +1293,7 @@ namespace OperatorHelper
             }
         }
 
-        return { std::move(EdgeShapes(outputShape)) };
+        return { EdgeShapes(outputShape) };
     }
 
     void CropHelper::Initialize(
@@ -1332,7 +1336,7 @@ namespace OperatorHelper
             m_sizes[Width]
         };
 
-        return { std::move(EdgeShapes(outputDimensions)) };
+        return { EdgeShapes(outputDimensions) };
     }
 
     std::vector<EdgeShapes> DepthToSpaceHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
@@ -1350,7 +1354,7 @@ namespace OperatorHelper
             inputDimensions[W] * m_blockSize,
         };
 
-        return { std::move(EdgeShapes(outputDimensions)) };
+        return { EdgeShapes(outputDimensions) };
     }
 
     void FlattenHelper::Initialize(
@@ -1382,7 +1386,7 @@ namespace OperatorHelper
         DimensionType elementsFromAxis = ComputeElementCountFromDimensions(outputDimensionsSpan.subspan(m_axis, inputDimensions.size() - m_axis));
         outputDimensions.assign({ elementsToAxis, elementsFromAxis });
 
-        return { std::move(outputDimensions) };
+        return { outputDimensions };
     }
 
     std::vector<EdgeShapes> PoolingHelperBase::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
@@ -1416,7 +1420,7 @@ namespace OperatorHelper
             static_cast<DimensionType>(m_outputSizeW),
         };
 
-        return { std::move(EdgeShapes(outputDimensions)) };
+        return { EdgeShapes(outputDimensions) };
     }
 
     std::vector<EdgeShapes> RoiAlignHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
@@ -1433,7 +1437,7 @@ namespace OperatorHelper
             static_cast<DimensionType>(m_outputSizeW),
         };
 
-        return { std::move(EdgeShapes(outputDimensions)) };
+        return { EdgeShapes(outputDimensions) };
     }
 
     void UnpoolingHelper::Initialize()
@@ -1471,7 +1475,7 @@ namespace OperatorHelper
             outputDimensions = m_inferredOutputDimensions;
         }
 
-        return { std::move(outputDimensions) };
+        return { outputDimensions };
     }
 
     void SqueezeHelper::Initialize(
@@ -1514,7 +1518,7 @@ namespace OperatorHelper
 
         outputDimensions.resize(newOutputDimCount);
 
-        return { std::move(outputDimensions) };
+        return { outputDimensions };
     }
 
     void UnsqueezeHelper::Initialize(
@@ -1542,7 +1546,7 @@ namespace OperatorHelper
             outputDimensions.insert(outputDimensions.begin() + m_axes[i], 1);
         }
 
-        return { std::move(outputDimensions) };
+        return { outputDimensions };
     }
     
     std::vector<EdgeShapes> SpaceToDepthHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
@@ -1560,7 +1564,7 @@ namespace OperatorHelper
             inputDimensions[W] / m_blockSize,
         };
 
-        return { std::move(EdgeShapes(outputDimensions)) };
+        return { EdgeShapes(outputDimensions) };
     }
         
     std::vector<EdgeShapes> ReshapeHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
@@ -1605,7 +1609,7 @@ namespace OperatorHelper
             outElementCount *= outputDimensions[inferDim];
         }
         
-        return { std::move(EdgeShapes(outputDimensions)) };
+        return { EdgeShapes(outputDimensions) };
     }
 
     std::vector<EdgeShapes> ExpandHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
@@ -1631,7 +1635,7 @@ namespace OperatorHelper
         // Determine the broadcasted input shape.
         outputDimensions = OperatorHelper::BroadcastTensorShape(actualInputTensorShape, desiredTensorShape);
         
-        return { std::move(EdgeShapes(outputDimensions)) };
+        return { EdgeShapes(outputDimensions) };
     }
     
     std::vector<EdgeShapes> ConstantOfShapeHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
@@ -1653,12 +1657,12 @@ namespace OperatorHelper
         std::vector<uint32_t> desiredTensorShape;
         DowncastDimensions(gsl::make_span(shapeData, dimCount), /*out*/ desiredTensorShape);
 
-        return { std::move(EdgeShapes(desiredTensorShape)) };
+        return { EdgeShapes(desiredTensorShape) };
     }
 
     std::vector<EdgeShapes> TileHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
     {
-        return { std::move(EdgeShapes(m_outputDimensions)) };
+        return { EdgeShapes(m_outputDimensions) };
     }
 
     void ResizeHelper::Initialize(
@@ -1746,7 +1750,7 @@ namespace OperatorHelper
 
     std::vector<EdgeShapes> OneHotHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
     {
-        return { std::move(EdgeShapes(m_outputDimensions)) };
+        return { EdgeShapes(m_outputDimensions) };
     }
 
 } // namespace OperatorHelper

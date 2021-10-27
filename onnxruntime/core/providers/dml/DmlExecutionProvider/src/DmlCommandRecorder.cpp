@@ -37,7 +37,6 @@ void DmlCommandRecorder::InitializeOperator(
     THROW_IF_FAILED(m_initializer->Reset(ARRAYSIZE(ops), ops));
 
     DML_BINDING_PROPERTIES initBindingProps = m_initializer->GetBindingProperties();
-    DML_BINDING_PROPERTIES execBindingProps = op->GetBindingProperties();
 
     const uint32_t numDescriptors = initBindingProps.RequiredDescriptorCount;
     DescriptorRange descriptorRange = m_descriptorPool.AllocDescriptors(
@@ -102,8 +101,8 @@ void DmlCommandRecorder::InitializeOperator(
     if ((persistentResourceBinding.Type != DML_BINDING_TYPE_NONE) ||
         (temporaryResourceSize > 0))
     {
-        m_currentCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::UAV(nullptr));
-    }
+        auto aux1 = CD3DX12_RESOURCE_BARRIER::UAV(nullptr);
+		m_currentCommandList->ResourceBarrier(1, &aux1);    }
 }
 
 void DmlCommandRecorder::ExecuteOperator(
@@ -166,8 +165,11 @@ void DmlCommandRecorder::ExecuteOperator(
     m_operationsRecordedInCurrentCommandList = true;
 
     // Barrier all outputs.
+    #pragma warning( push )
     #pragma warning(suppress: 6387)
-        m_currentCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::UAV(nullptr));
+        auto aux1 = CD3DX12_RESOURCE_BARRIER::UAV(nullptr);
+		m_currentCommandList->ResourceBarrier(1, &aux1);
+    #pragma warning( pop )
 }
 
 void DmlCommandRecorder::CopyBufferRegion(
@@ -235,8 +237,11 @@ void DmlCommandRecorder::FillBufferWithPattern(
     m_operationsRecordedInCurrentCommandList = true;
 
     // Barrier all outputs.
+    #pragma warning( push )
     #pragma warning(suppress: 6387)
-        m_currentCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::UAV(nullptr));
+        auto aux1 = CD3DX12_RESOURCE_BARRIER::UAV(nullptr);
+		m_currentCommandList->ResourceBarrier(1, &aux1);
+    #pragma warning( pop )
 }
 
 void DmlCommandRecorder::ExecuteCommandList(

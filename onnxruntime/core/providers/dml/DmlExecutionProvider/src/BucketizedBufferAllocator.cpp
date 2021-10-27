@@ -43,11 +43,11 @@ namespace Dml
         : onnxruntime::IAllocator(OrtMemoryInfo("DML allocator", OrtAllocatorType::OrtDeviceAllocator,
                                                 OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0)))
         , m_device(device)
-        , m_context(context)
         , m_heapProperties(heapProps)
         , m_heapFlags(heapFlags)
         , m_resourceFlags(resourceFlags)
         , m_initialState(initialState)
+        , m_context(context)
     {
     }
 
@@ -105,13 +105,14 @@ namespace Dml
             if (bucket->resources.empty())
             {
                 // No more resources in this bucket - allocate a new one
-                THROW_IF_FAILED(m_device->CreateCommittedResource(
-                    &m_heapProperties,
-                    m_heapFlags,
-                    &CD3DX12_RESOURCE_DESC::Buffer(bucketSize, m_resourceFlags),
-                    m_initialState,
-                    nullptr,
-                    IID_PPV_ARGS(&resource)));
+                auto aux1 = CD3DX12_RESOURCE_DESC::Buffer(bucketSize, m_resourceFlags);
+				THROW_IF_FAILED(m_device->CreateCommittedResource(
+					&m_heapProperties,
+					m_heapFlags,
+					&aux1,
+					m_initialState,
+					nullptr,
+					IID_PPV_ARGS(&resource)));
 
                 resourceId = ++m_currentResourceId;
             }
@@ -128,13 +129,14 @@ namespace Dml
             // The allocation will not be pooled.  Construct a new one
             bucketSize = (size + 3) & ~3;
 
-            THROW_IF_FAILED(m_device->CreateCommittedResource(
-                &m_heapProperties,
-                m_heapFlags,
-                &CD3DX12_RESOURCE_DESC::Buffer(bucketSize, m_resourceFlags),
-                m_initialState,
-                nullptr,
-                IID_PPV_ARGS(&resource)));
+            auto aux1 = CD3DX12_RESOURCE_DESC::Buffer(bucketSize, m_resourceFlags);
+			THROW_IF_FAILED(m_device->CreateCommittedResource(
+				&m_heapProperties,
+				m_heapFlags,
+				&aux1,
+				m_initialState,
+				nullptr,
+				IID_PPV_ARGS(&resource)));
 
             resourceId = ++m_currentResourceId;        
         }
@@ -186,7 +188,7 @@ namespace Dml
             // Return the resource to the bucket
             Bucket* bucket = &m_pool[bucketIndex];
             
-            Resource resource = {std::move(allocInfo->DetachResource()), pooledResourceId};
+            Resource resource = {allocInfo->DetachResource(), pooledResourceId};
             bucket->resources.push_back(resource);
         }
         else

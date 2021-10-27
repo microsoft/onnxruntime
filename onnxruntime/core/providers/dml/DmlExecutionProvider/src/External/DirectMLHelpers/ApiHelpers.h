@@ -56,7 +56,9 @@ struct ActivationOperatorDesc
         case DML_OPERATOR_ACTIVATION_TANH: return { activationType, &params.tanh };
         case DML_OPERATOR_ACTIVATION_THRESHOLDED_RELU: return { activationType, &params.thresholdedRelu };
         case DML_OPERATOR_ACTIVATION_SHRINK: return { activationType, &params.shrink };
-        default: THROW_HR(E_INVALIDARG);
+        default: 
+			THROW_HR(E_INVALIDARG);
+			return { activationType, &params.elu };
         }
     }
 };
@@ -152,20 +154,6 @@ private:
         Bucket(Bucket&&) = delete;
         Bucket& operator=(Bucket&&) = delete;
 
-        template <typename T>
-        static T RoundUpToMultiple(T value, T multiple)
-        {
-            static_assert(std::is_integral_v<T>);
-
-            T remainder = value % multiple;
-            if (remainder != 0)
-            {
-                value += multiple - remainder;
-            }
-
-            return value;
-        }
-
         void* TryAllocate(size_t sizeInBytes, size_t alignment)
         {
             size_t alignedOffset = RoundUpToMultiple(allocatedSize, alignment);
@@ -179,6 +167,21 @@ private:
             allocatedSize = newAllocatedSize;
             return static_cast<byte*>(data) + alignedOffset;
         }
+
+		template <typename T>
+		static T RoundUpToMultiple(T value, T multiple)
+		{
+			static_assert(std::is_integral_v<T>);
+
+			T remainder = value % multiple;
+			if (remainder != 0)
+			{
+				value += multiple - remainder;
+			}
+
+			return value;
+		}
+
     };
 
     struct FixedBucket : Bucket
@@ -198,7 +201,7 @@ private:
         explicit DynamicBucket(size_t minimumSize)
         {
             this->allocatedSize = 0;
-            this->capacity = RoundUpToMultiple<size_t>(minimumSize, 4096); // Round up to nearest page granularity
+            this->capacity = this->template RoundUpToMultiple<size_t>(minimumSize, 4096); // Round up to nearest page granularity
 
             this->data = VirtualAlloc(nullptr, this->capacity, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
             THROW_LAST_ERROR_IF_NULL(this->data);
@@ -206,10 +209,10 @@ private:
 
         ~DynamicBucket()
         {
-            if (data)
-            {
-                (void)VirtualFree(data, 0, MEM_RELEASE);
-            }
+            if (this->data)
+			{
+				(void)VirtualFree(this->data, 0, MEM_RELEASE);
+			}
         }
     };
 

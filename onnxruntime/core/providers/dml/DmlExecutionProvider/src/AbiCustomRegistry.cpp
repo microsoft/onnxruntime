@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+
 #include "precomp.h"
 #include "AbiCustomRegistry.h"
 
@@ -204,7 +205,7 @@ onnx::OpSchema AbiCustomRegistry::ConvertOpSchema(
             gsl::span<const uint32_t> requiredConstantCpuInputs;
 
             onnxruntime::OpNodeProtoHelper<onnx::InferenceContext> nodeInfo(&ctx);
-            ComPtr<MLSchemaInferenceContext> abiContext = wil::MakeOrThrow<MLSchemaInferenceContext>(&nodeInfo, &ctx, requiredConstantCpuInputs);
+            ComPtr<MLSchemaInferenceContext> abiContext = MLSchemaInferenceContext::Create(&nodeInfo, &ctx, requiredConstantCpuInputs);
 
             // Do type inference
             if (typeInferrerCapture)
@@ -468,8 +469,6 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistry::RegisterOperatorKernel(
             GraphNodeFactoryRegistration graphReg;
             graphReg.factory = 
                 [kernelFactoryCapture,
-                requiresInputShapesAtCreation,
-                requiresOutputShapesAtCreation,
                 shapeInferrerCapture,
                 defaultAttributesCapture,
                 constantCpuInputCapture](const onnxruntime::Node& node, MLOperatorTensorGetter& constantInputGetter, const void* executionHandle, DmlGraphNodeCreateInfo* graphNodeCreateInfo)
@@ -515,7 +514,7 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistry::RegisterOperatorKernel(
                 onnxruntime::OpNodeProtoHelper<onnxruntime::ProtoHelperNodeContext> protoHelper(&nodeContext);
                               
                 // Create the kernel while allowing input shape and output shape queries according to options
-                ComPtr<MLSupportQueryContext> supportContext = wil::MakeOrThrow<MLSupportQueryContext>(
+                ComPtr<MLSupportQueryContext> supportContext = MLSupportQueryContext::Create(
                         &protoHelper,
                         &defaultAttributesCapture);
 
