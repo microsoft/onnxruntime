@@ -492,7 +492,7 @@ bool ApiGraph::HasValueConsumers(std::string_view name) const {
 std::unique_ptr<api::NodeRef> ApiGraph::GetNodeProducingOutput(std::string_view name) const {
   auto* node = graph_.GetMutableProducerNode(std::string(name));
   if (node == nullptr) {
-    return std::unique_ptr<api::NodeRef>(nullptr);
+    return nullptr;
   }
 
   return std::unique_ptr<api::NodeRef>(new ApiNode(*node, graph_));

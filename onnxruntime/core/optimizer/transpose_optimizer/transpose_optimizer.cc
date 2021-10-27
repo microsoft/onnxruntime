@@ -1720,14 +1720,14 @@ static bool ChangeLayout(api::GraphRef& graph, std::unordered_map<std::string_vi
         // New replacement node will be needed
         std::string_view new_op_type;
         if (result.new_op_type != std::nullopt) {
-          new_op_type = *result.new_op_type;
+          new_op_type = std::string_view(*result.new_op_type);
         } else {
           new_op_type = node->OpType();
         }
 
         std::string_view new_domain;
         if (result.new_domain != std::nullopt) {
-          new_domain = *result.new_domain;
+          new_domain = std::string_view(*result.new_domain);
         } else {
           new_domain = node->Domain();
         }

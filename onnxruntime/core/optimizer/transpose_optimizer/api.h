@@ -448,7 +448,8 @@ bool Optimize(api::GraphRef& graph, bool allow_extended_ops);
 /// will persist.
 /// </summary>
 struct LayoutHandlerResult {
-  // If false, the op is skipped. If true, the inputs/outputs are transposed (and op type/domain are updated)
+  // If false, the op is skipped. If true, the first input and all outputs are transposed (and op type/domain
+  // are updated)
   bool should_change_layout;
   // The rank of the inputs/outputs. All transposes use this rank.
   size_t rank;
@@ -461,10 +462,10 @@ struct LayoutHandlerResult {
 using LayoutHandler = LayoutHandlerResult (*)(api::GraphRef& graph, api::NodeRef& node);
 
 /// <summary>
-/// Calls LayoutHandler functions on each node matching an op in the handler_map. Transposes inputs/outputs of affected
-/// ops and updates the op types according to the LayoutHandlerResult. Calls Optimize on the graph if any ops were
-/// affected. Transposes convert op inputs/outputs from [N, C, H, W] (or [N, C, D1, D2, ...]) layout to [N, H, W, C]
-/// (or [N, D1, D2, ..., C]) ordering.
+/// Calls LayoutHandler functions on each node matching an op in the handler_map. Transposes first input and all
+/// outputs of affected ops and updates the op types according to the LayoutHandlerResult. Calls Optimize on the graph
+/// if any ops were affected. Transposes convert op input/outputs from [N, C, H, W] (or [N, C, D1, D2, ...]) layout
+/// to [N, H, W, C] (or [N, D1, D2, ..., C]) ordering.
 /// </summary>
 /// <param name="graph">Graph to change layout of</param>
 /// <param name="handler_map">Mapping from op types to LayoutHandler functions</param>
@@ -474,10 +475,10 @@ bool ChannelFirstToChannelLast(api::GraphRef& graph, std::unordered_map<std::str
                                bool allow_extended_ops);
 
 /// <summary>
-/// Calls LayoutHandler functions on each node matching an op in the handler_map. Transposes inputs/outputs of affected
-/// ops and updates the op types according to the LayoutHandlerResult. Calls Optimize on the graph if any ops were
-/// affected. Transposes convert op inputs/outputs from [N, H, W, C] (or [N, D1, D2, ..., C]) layout to [N, C, H, W]
-/// (or [N, C, D1, D2, ...]) ordering.
+/// Calls LayoutHandler functions on each node matching an op in the handler_map. Transposes first input and all
+/// outputs of affected ops and updates the op types according to the LayoutHandlerResult. Calls Optimize on the graph
+/// if any ops were affected. Transposes convert op input/outputs from [N, H, W, C] (or [N, D1, D2, ..., C]) layout
+/// to [N, C, H, W] (or [N, C, D1, D2, ...]) ordering.
 /// </summary>
 /// <param name="graph">Graph to change layout of</param>
 /// <param name="handler_map">Mapping from op types to LayoutHandler functions</param>
