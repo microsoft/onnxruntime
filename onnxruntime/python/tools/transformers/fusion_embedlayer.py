@@ -109,6 +109,7 @@ class FusionEmbedLayerNoMask(Fusion):
                         |
                       Gather
         """
+        # remove after tests pass
         path1 = self.model.match_parent_path(position_embedding_gather, ['Expand', 'Shape'], [1, 1])
         if path1 is None:
             path1 = self.model.match_parent_path(position_embedding_gather, ['Expand', 'Where', 'Reshape', 'Shape'], [1, 1, 2, 0])
