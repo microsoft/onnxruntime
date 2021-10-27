@@ -1523,6 +1523,10 @@ def run_training_python_frontend_e2e_tests(cwd):
         'BertModelTest.test_for_pretraining_mixed_precision'], cwd=cwd)
 
 
+def do_not_run_sparse_tests(args):
+    return args.minimal_build or is_reduced_ops_build(args) or args.disable_contrib_ops
+
+
 def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
     for config in configs:
         log.info("Running tests for %s configuration", config)
@@ -1563,7 +1567,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                     executables.append('onnxruntime_global_thread_pools_test.exe')
                     executables.append('onnxruntime_api_tests_without_env.exe')
 
-                if not args.disable_contrib_ops:
+                if not do_not_run_sparse_tests(args):
                     executables.append('onnxruntime_sparse_tests.exe')
 
                 run_subprocess(
@@ -1580,7 +1584,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                     executables.append('onnxruntime_global_thread_pools_test')
                     executables.append('onnxruntime_api_tests_without_env')
 
-                if not args.disable_contrib_ops:
+                if not do_not_run_sparse_tests(args):
                     executables.append('onnxruntime_sparse_tests')
 
                 for exe in executables:
@@ -1606,7 +1610,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
 
             run_subprocess([sys.executable, 'onnxruntime_test_python.py'], cwd=cwd, dll_path=dll_path)
 
-            if not args.disable_contrib_ops:
+            if args.disable_contrib_ops:
                 run_subprocess([sys.executable, 'onnxruntime_test_python_sparse_matmul.py'],
                                cwd=cwd, dll_path=dll_path)
 

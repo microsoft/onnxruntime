@@ -699,7 +699,10 @@ if (onnxruntime_BUILD_WEBASSEMBLY)
   endif()
 endif()
 
-if(NOT onnxruntime_DISABLE_CONTRIB_OPS AND NOT onnxruntime_DISABLE_SPARSE_TENSORS)
+if(NOT onnxruntime_MINIMAL_BUILD AND 
+   NOT onnxruntime_REDUCED_OPS_BUILD AND
+   NOT onnxruntime_DISABLE_CONTRIB_OPS AND
+   NOT onnxruntime_DISABLE_SPARSE_TENSORS)
 
   file(GLOB_RECURSE onnxruntime_sparse_tests_src 
    "${TEST_SRC_DIR}/contrib_ops/sparse/*.h"
