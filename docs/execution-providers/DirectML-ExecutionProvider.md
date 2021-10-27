@@ -22,7 +22,7 @@ The DirectML Execution Provider currently uses DirectML version 1.4.2.
 {:toc}
 
 ## Install
-Pre-built packages of ORT with the DirectML EP is published on Nuget.org. See [How to: Install ORT](./install).
+Pre-built packages of ORT with the DirectML EP is published on Nuget.org. See: [Install ORT](../install).
 
 ## Requirements
 
@@ -52,7 +52,7 @@ Note that building onnxruntime with the DirectML execution provider enabled caus
 
 ## Usage
 
-When using the [C API](../get-started/with-c.html.md) with a DML-enabled build of onnxruntime, the DirectML execution provider can be enabled using one of the two factory functions included in `include/onnxruntime/core/providers/dml/dml_provider_factory.h`.
+When using the [C API](../get-started/with-c.md) with a DML-enabled build of onnxruntime, the DirectML execution provider can be enabled using one of the two factory functions included in `include/onnxruntime/core/providers/dml/dml_provider_factory.h`.
 
 ### `OrtSessionOptionsAppendExecutionProvider_DML` function
 {: .no_toc }

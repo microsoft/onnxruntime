@@ -1,7 +1,7 @@
 ---
 title: Objective-C
 parent: Get Started
-nav_exclude: true
+nav_order: 8
 ---
 # Get started with ORT for Objective-C
 {: .no_toc }
@@ -26,7 +26,7 @@ The artifacts are published to CocoaPods.
 |-|-|-|
 | onnxruntime-mobile-objc | CPU and CoreML | iOS |
 
-Refer to the [installation instructions](../tutorials/mobile/mobile/initial-setup.md#iOS).
+Refer to the [installation instructions](../tutorials/mobile/initial-setup.md#ios).
 
 ## Swift Usage
 

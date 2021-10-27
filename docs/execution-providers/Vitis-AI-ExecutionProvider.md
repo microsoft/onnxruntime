@@ -39,7 +39,7 @@ The following table lists system requirements for running docker containers as w
 ## Build
 See [Build instructions](../build/eps.md#vitis-ai).
 
-**Hardware setup and docker build**
+### Hardware setup
 
 1. Clone the Vitis AI repository:
     ```
@@ -92,11 +92,11 @@ A couple of environment variables can be used to customize the Vitis-AI executio
 | PX_QUANT_SIZE              | 128                    | The number of inputs that will be used for quantization (necessary for Vitis-AI acceleration) |
 | PX_BUILD_DIR               | Use the on-the-fly quantization flow | Loads the quantization and compilation information from the provided build directory and immediately starts Vitis-AI hardware acceleration. This configuration can be used if the model has been executed before using on-the-fly quantization during which the quantization and comilation information was cached in a build directory. |
 
-### Samples
+## Samples
 
 When using python, you can base yourself on the following example:
 
-```
+```python
 # Import pyxir before onnxruntime
 import pyxir
 import pyxir.frontend.onnx

@@ -58,7 +58,7 @@ Conceptually, each partition is reduced to a single fused operator. It is create
 ## Key design decisions
 
 * Multiple threads can invoke the Run() method on the same
-inference session object. See [API doc](../get-started/with-c.html.md) for more details.
+inference session object. See [API doc](../get-started/with-c.md) for more details.
 * To facilitate this, the Compute() function of all kernels is const
 implying the kernels are stateless.
 * Implementations of the operators by execution providers are called
@@ -72,9 +72,9 @@ different representation if they choose to, but it is their responsibility to co
 
 ## Extensibility Options
 
-* [Add a custom operator/kernel](tutorials/mobile/add-custom-op.md)
-* [Add an execution provider](tutorials/mobile/add-execution-provider.md)
-* [Add a new graphtransform](https://github.com/microsoft/onnxruntime/tree/master/include//onnxruntime/core/optimizer/graph_transformer.h)
+* [Add a custom operator/kernel](operators/add-custom-op.md)
+* [Add an execution provider](../execution-providers/add-execution-provider.md)
+* [Add a new graph transform](https://github.com/microsoft/onnxruntime/tree/master/include//onnxruntime/core/optimizer/graph_transformer.h)
 * [Add a new rewrite rule](https://github.com/microsoft/onnxruntime/tree/master/include//onnxruntime/core/optimizer/rewrite_rule.h)
 
 ## The ONNX Runtime and Windows OS integration

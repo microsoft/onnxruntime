@@ -1,7 +1,7 @@
 ---
 title: ORT Training with PyTorch
 parent: Get Started
-nav_order: 9
+nav_order: 11
 ---
 
 # Get started with ORT for Training API (PyTorch)

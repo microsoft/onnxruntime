@@ -1,7 +1,7 @@
 ---
 title: C
 parent: Get Started
-nav_exclude: true
+nav_order: 4
 ---
 
 # Get started with ORT for C
@@ -17,8 +17,8 @@ nav_exclude: true
 
 | Artifact  | Description | Supported Platforms |
 |-----------|-------------|---------------------|
-| [Microsoft.ML.OnnxRuntime](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime) | CPU (Release) |Windows, Linux,  Mac, X64, X86 (Windows-only), ARM64 (Windows-only)...more details: [compatibility](../references/compatibility) |
-| [Microsoft.ML.OnnxRuntime.Gpu](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.gpu) | GPU - CUDA (Release) | Windows, Linux, Mac, X64...more details: [compatibility](../references/compatibility) |
+| [Microsoft.ML.OnnxRuntime](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime) | CPU (Release) |Windows, Linux,  Mac, X64, X86 (Windows-only), ARM64 (Windows-only)...more details: [compatibility](../reference/compatibility) |
+| [Microsoft.ML.OnnxRuntime.Gpu](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.gpu) | GPU - CUDA (Release) | Windows, Linux, Mac, X64...more details: [compatibility](../reference/compatibility) |
 | [Microsoft.ML.OnnxRuntime.DirectML](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.directml) | GPU - DirectML (Release) | Windows 10 1709+ |
 | [ort-nightly](https://aiinfra.visualstudio.com/PublicPackages/_packaging?_a=feed&feed=ORT-Nightly) | CPU, GPU (Dev) | Same as Release versions |
 
@@ -47,7 +47,7 @@ Refer to [onnxruntime_c_api.h](https://github.com/microsoft/onnxruntime/blob/mas
 * Converting an in-memory ONNX Tensor encoded in protobuf format to a pointer that can be used as model input.
 * Setting the thread pool size for each session.
 * Setting graph optimization level for each session.
-* Dynamically loading custom ops. [Instructions](../tutorials/mobile/add-custom-op.md)
+* Dynamically loading custom ops. [Instructions](../reference/operators/add-custom-op.md)
 * Ability to load a model from a byte array. See ```OrtCreateSessionFromArray``` in [onnxruntime_c_api.h](https://github.com/microsoft/onnxruntime/blob/master/include/onnxruntime/core/session/onnxruntime_c_api.h).
 * **Global/shared threadpools:** By default each session creates its own set of threadpools. In situations where multiple
 sessions need to be created (to infer different models) in the same process, you end up with several threadpools created

@@ -146,11 +146,12 @@ There are specific optimization for transformer-based models, like QAttention fo
 This [notebook](https://github.com/microsoft/onnxruntime-inference-examples/tree/main/quantization/notebooks/bert) demonstrates the E2E process.
 
 ## Quantization on GPU
-Hardware suppor is required to achieve better performance with quantization on GPUs. You need a device that support Tensor Core int8 computation, like T4, A100. Older hardware won't get benefit.
+
+Hardware support is required to achieve better performance with quantization on GPUs. You need a device that support Tensor Core int8 computation, like T4, A100. Older hardware won't get benefit.
 
 ORT leverage TRT EP for quantization on GPU now. Different with CPU EP, TRT takes in full precision model and calibration result for inputs. It decides how to quantize with their own logic. The overall procedure to leverage TRT EP quantization is:
 - Implement a [CalibrationDataReader](https://github.com/microsoft/onnxruntime/blob/07788e082ef2c78c3f4e72f49e7e7c3db6f09cb0/onnxruntime/python/tools/quantization/calibrate.py).
-- Compute quantization parameter with calibration data set. Our quantization tool supports 2 calibration methods: MinMax and Entropy. Note: In order to include all tensors from the model for better calibration, please run symbolic_shape_infer.py first. Please refer to[here](https://www.onnxruntime.ai/docs/reference/execution-providers/TensorRT-ExecutionProvider.html#sample) for detail.
+- Compute quantization parameter with calibration data set. Our quantization tool supports 2 calibration methods: MinMax and Entropy. Note: In order to include all tensors from the model for better calibration, please run symbolic_shape_infer.py first. Please refer to[here](../execution-providers/TensorRT-ExecutionProvider.md#samples) for detail.
 - Save quantization parameter into a flatbuffer file
 - Load model and quantization parameter file and run with TRT EP.
 
