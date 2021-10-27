@@ -119,9 +119,9 @@ class ApiGraph final : public api::GraphRef {
   void RemoveNode(api::NodeRef& node) override;
   void RemoveInitializer(std::string_view name) override;
   std::string_view AddInitializerInt64(const std::vector<int64_t>& shape,
-                                             const std::vector<int64_t>& values) override;
+                                       const std::vector<int64_t>& values) override;
   std::string_view AddInitializerInt32(const std::vector<int64_t>& shape,
-                                             const std::vector<int32_t>& values) override;
+                                       const std::vector<int32_t>& values) override;
   void MoveOutput(api::NodeRef& src_node, size_t src_idx, api::NodeRef& dst_node, size_t dst_idx) override;
   void CopyValueInfo(std::string_view src_name, std::string_view dst_name) override;
   bool HasValueConsumers(std::string_view name) const override;
@@ -571,8 +571,8 @@ void ApiGraph::ReshapeInitializer(std::string_view name, const std::vector<int64
 }
 
 std::unique_ptr<api::NodeRef> ApiGraph::AddNode(std::string_view op_type,
-                                             const std::vector<std::string_view>& inputs, size_t num_outputs, 
-                                             std::string_view domain) {
+                                                const std::vector<std::string_view>& inputs, size_t num_outputs,
+                                                std::string_view domain) {
   const std::string op_type_str(op_type);
   std::string name = graph_.GenerateNodeName(op_type_str);
   std::vector<NodeArg*> input_args;
@@ -654,7 +654,7 @@ inline ONNX_NAMESPACE::TensorProto TensorProtoFromInts(std::string& name, const 
 }
 
 std::string_view ApiGraph::AddInitializerInt64(const std::vector<int64_t>& shape,
-                                                     const std::vector<int64_t>& values) {
+                                               const std::vector<int64_t>& values) {
   std::string name = graph_.GenerateNodeArgName("const_transpose_optimizer");
   ONNX_NAMESPACE::TensorProto tensor_proto =
       TensorProtoFromInts<int64_t, ONNX_NAMESPACE::TensorProto_DataType_INT64>(name, shape, values);
@@ -663,7 +663,7 @@ std::string_view ApiGraph::AddInitializerInt64(const std::vector<int64_t>& shape
 }
 
 std::string_view ApiGraph::AddInitializerInt32(const std::vector<int64_t>& shape,
-                                                     const std::vector<int32_t>& values) {
+                                               const std::vector<int32_t>& values) {
   std::string name = graph_.GenerateNodeArgName("const_transpose_optimizer");
   ONNX_NAMESPACE::TensorProto tensor_proto =
       TensorProtoFromInts<int32_t, ONNX_NAMESPACE::TensorProto_DataType_INT32>(name, shape, values);
@@ -713,7 +713,7 @@ void ApiGraph::CopyValueInfo(std::string_view src_name, std::string_view dst_nam
 }
 
 std::unique_ptr<api::GraphRef> MakeApiGraph(onnxruntime::Graph& graph, AllocatorPtr cpu_allocator,
-                                         const logging::Logger& logger, const char* new_node_ep) {
+                                            const logging::Logger& logger, const char* new_node_ep) {
   return std::make_unique<ApiGraph>(graph, std::move(cpu_allocator), logger, new_node_ep);
 }
 

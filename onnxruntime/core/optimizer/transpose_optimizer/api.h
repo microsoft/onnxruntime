@@ -333,7 +333,7 @@ class GraphRef {
   /// <param name="domain">The new node's domain. Empty string signifies default onnx domain.</param>
   /// <returns>The new node</returns>
   virtual std::unique_ptr<NodeRef> AddNode(std::string_view op_type, const std::vector<std::string_view>& inputs,
-                                        size_t num_outputs, std::string_view domain = "") = 0;
+                                           size_t num_outputs, std::string_view domain = "") = 0;
 
   /// <summary>
   /// Deletes a node from the graph. Behavior is undefined if node has any consumers.
@@ -355,7 +355,7 @@ class GraphRef {
   /// <param name="values">Flattened values for new initializer. Length matches product of dimensions.</param>
   /// <returns>Generated name for the initializer</returns>
   virtual std::string_view AddInitializerInt64(const std::vector<int64_t>& shape,
-                                                     const std::vector<int64_t>& values) = 0;
+                                               const std::vector<int64_t>& values) = 0;
 
   /// <summary>
   /// Creates an int32 initializer with the specified shape and values. Returns the name.
@@ -364,7 +364,7 @@ class GraphRef {
   /// <param name="values">Flattened values for new initializer. Length matches product of dimensions.</param>
   /// <returns>Generated name for the initializer</returns>
   virtual std::string_view AddInitializerInt32(const std::vector<int64_t>& shape,
-                                                     const std::vector<int32_t>& values) = 0;
+                                               const std::vector<int32_t>& values) = 0;
 
   /// <summary>
   /// "Moves" an output from one node to another, (effectively transferring the output name, shape, type,
@@ -468,7 +468,8 @@ using LayoutHandler = LayoutHandlerResult (*)(api::GraphRef& graph, api::NodeRef
 /// <param name="handler_map">Mapping from op types to LayoutHandler functions</param>
 /// <param name="allow_extended_ops">Whether com.microsoft ops can be used for optimization</param>
 /// <returns>true if the graph was modified</returns>
-bool ChannelFirstToChannelLast(api::GraphRef& graph, std::unordered_map<std::string_view, LayoutHandler>& handler_map,
+bool ChannelFirstToChannelLast(api::GraphRef& graph,
+                               const std::unordered_map<std::string_view, LayoutHandler>& handler_map,
                                bool allow_extended_ops);
 
 /// <summary>
@@ -481,7 +482,8 @@ bool ChannelFirstToChannelLast(api::GraphRef& graph, std::unordered_map<std::str
 /// <param name="handler_map">Mapping from op types to LayoutHandler functions</param>
 /// <param name="allow_extended_ops">Whether com.microsoft ops can be used for optimization</param>
 /// <returns>true if the graph was modified</returns>
-bool ChannelLastToChannelFirst(api::GraphRef& graph, std::unordered_map<std::string_view, LayoutHandler>& handler_map,
+bool ChannelLastToChannelFirst(api::GraphRef& graph,
+                               const std::unordered_map<std::string_view, LayoutHandler>& handler_map,
                                bool allow_extended_ops);
 
 }  // namespace onnx_layout_transformation

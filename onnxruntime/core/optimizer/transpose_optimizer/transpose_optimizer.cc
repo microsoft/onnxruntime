@@ -65,8 +65,8 @@ static void ReplaceValueReferences(const std::vector<std::unique_ptr<api::NodeRe
 
 // Create a node with a single attribute of type vector<int64_t>
 static std::unique_ptr<api::NodeRef> MakeNode1Attr(api::GraphRef& graph, std::string_view op_type,
-                                                std::string_view input, std::string_view attr_name,
-                                                const std::vector<int64_t>& attr_val) {
+                                                   std::string_view input, std::string_view attr_name,
+                                                   const std::vector<int64_t>& attr_val) {
   std::vector<std::string_view> inputs{input};
   std::unique_ptr<api::NodeRef> node = graph.AddNode(op_type, inputs, /*num_outputs*/ 1);
   node->SetAttributeInts(attr_name, attr_val);
@@ -75,14 +75,14 @@ static std::unique_ptr<api::NodeRef> MakeNode1Attr(api::GraphRef& graph, std::st
 
 // Creates a Transpose node. Does not update output ValueInfo.
 static std::unique_ptr<api::NodeRef> MakeTranspose(api::GraphRef& graph, std::string_view input,
-                                                const std::vector<int64_t>& perm) {
+                                                   const std::vector<int64_t>& perm) {
   return MakeNode1Attr(graph, "Transpose", input, "perm", perm);
 }
 
 // Creates a Squeeze/Unsqueeze node. Does not update output ValueInfo.
 static std::unique_ptr<api::NodeRef> MakeSqueezeOrUnsqueeze(int64_t opset, api::GraphRef& graph, 
-                                                         std::string_view op_type, std::string_view input,
-                                                         const std::vector<int64_t>& axes) {
+                                                            std::string_view op_type, std::string_view input,
+                                                            const std::vector<int64_t>& axes) {
   if (opset < 13) {
     return MakeNode1Attr(graph, op_type, input, "axes", axes);
   }
@@ -548,8 +548,8 @@ inline static void TransposeFirstInput(OptimizerCtx& ctx, api::NodeRef& node, co
 // Updates shape information assuming that the output from the node will have a transposed shape (using perm_inv)
 // but the overall (returned) output will match the initial shape.
 static std::string_view TransposeOutput(OptimizerCtx& ctx, api::NodeRef& node, size_t i,
-                                              const std::vector<int64_t>& perm,
-                                              const std::vector<int64_t>& perm_inv) {
+                                        const std::vector<int64_t>& perm,
+                                        const std::vector<int64_t>& perm_inv) {
   // Make transpose without input initially, then add it to avoid cyclic reference.
 
   // X -> Node -> Y,   Transpose
@@ -1422,7 +1422,7 @@ static bool HandleQLinearPoolOp(HandlerArgs& args) {
 constexpr HandlerInfo q_linear_pool_op_handler = {&FirstInput, &HandleQLinearPoolOp};
 
 static bool HandleMaxPool(HandlerArgs& args) {
-  // Replace with NhwcMaxPool is possible. Only int8 and uint8 dtypes are supported by NhwcMaxPool.
+  // Replace with NhwcMaxPool if possible. Only int8 and uint8 dtypes are supported by NhwcMaxPool.
   auto outputs = args.node.Outputs();
   if (outputs.size() == 2 && outputs[1] != "") {
     // Can't optimize if optional "indices" output is provided
@@ -1545,7 +1545,7 @@ static const HandlerInfo* GetHandler(api::NodeRef& node, bool allow_extended_ops
 // Finds a handler for the node and estimates the cost of pushing a transpose. Does so if deemed beneficial.
 bool ProcessTranspose(OptimizerCtx& ctx, api::NodeRef& transpose, api::NodeRef& node,
                       const std::vector<int64_t>& perm, size_t transpose_input_index,
-                      std::unordered_set<std::string>& outputs_leading_to_transpose) {
+                      const std::unordered_set<std::string>& outputs_leading_to_transpose) {
   const HandlerInfo* info = GetHandler(node, ctx.allow_extended_ops);
   if (info == nullptr) {
     return false;
@@ -1686,7 +1686,8 @@ bool Optimize(api::GraphRef& graph, bool allow_extended_ops) {
 
 // Iterate over nodes in order and call handlers on matching nodes. Transpose inputs/outputs and update op type and
 // domain as requested.
-static bool ChangeLayout(api::GraphRef& graph, std::unordered_map<std::string_view, LayoutHandler>& layout_handler_map,
+static bool ChangeLayout(api::GraphRef& graph,
+                         const std::unordered_map<std::string_view, LayoutHandler>& layout_handler_map,
                          bool last_to_first, bool allow_extended_ops) {
   auto ctx = MakeOptimizerContext(graph, allow_extended_ops);
   if (ctx == std::nullopt) {
@@ -1759,13 +1760,13 @@ static bool ChangeLayout(api::GraphRef& graph, std::unordered_map<std::string_vi
 }
 
 bool ChannelLastToChannelFirst(api::GraphRef& graph, 
-                               std::unordered_map<std::string_view, LayoutHandler>& layout_handler_map,
+                               const std::unordered_map<std::string_view, LayoutHandler>& layout_handler_map,
                                bool allow_extended_ops) {
   return ChangeLayout(graph, layout_handler_map, /*last_to_first*/ true, allow_extended_ops);
 }
 
 bool ChannelFirstToChannelLast(api::GraphRef& graph,
-                               std::unordered_map<std::string_view, LayoutHandler>& layout_handler_map,
+                               const std::unordered_map<std::string_view, LayoutHandler>& layout_handler_map,
                                bool allow_extended_ops) {
   return ChangeLayout(graph, layout_handler_map, /*last_to_first*/ false, allow_extended_ops);
 }
