@@ -62,11 +62,32 @@ add_custom_target(js_common_npm_ci ALL
     WORKING_DIRECTORY ${JS_COMMON_ROOT}
     COMMENT "NPM install on /js/common")
 
-add_custom_target(nodejs_binding_wrapper ALL
-    COMMAND ${NPM_CLI} ci
-    COMMAND ${NPM_CLI} run build -- --onnxruntime-build-dir=${CMAKE_CURRENT_BINARY_DIR} --config=${CMAKE_BUILD_TYPE} --arch=${NODEJS_BINDING_ARCH}
-    WORKING_DIRECTORY ${JS_NODE_ROOT}
-    COMMENT "Using cmake-js to build OnnxRuntime Node.js binding")
+if(WIN32 AND onnxruntime_target_platform STREQUAL "ARM64")
+    # NOTE:
+    # Node.js for Windows ARM64 is not available in official release list.
+    # We uses node.lib for Node.js ARM64 v16.2.0 unofficial build from:
+    # https://unofficial-builds.nodejs.org/download/release/v16.2.0/win-arm64/
+    # The file should be downloaded and saved to ${CMAKE_CURRENT_BINARY_DIR}
+    #
+    # once Node.js for Windows ARM64 is in official release list and cmake-js supports Windows ARM64,
+    # we can remove this section.
+    add_custom_target(nodejs_binding_wrapper ALL
+        COMMAND ${NPM_CLI} ci
+        COMMAND powershell -Command "Invoke-WebRequest https://unofficial-builds.nodejs.org/download/release/v16.2.0/win-arm64/node.lib -OutFile ${CMAKE_CURRENT_BINARY_DIR}/node.lib"
+        COMMAND powershell -Command "Invoke-WebRequest https://unofficial-builds.nodejs.org/download/release/v16.2.0/node-v16.2.0-headers.tar.gz -OutFile ${CMAKE_CURRENT_BINARY_DIR}/node-v16.2.0-headers.tar.gz"
+        COMMAND cd ${CMAKE_CURRENT_BINARY_DIR} && tar -xzf ./node-v16.2.0-headers.tar.gz
+        COMMAND ${CMAKE_COMMAND} -E remove_directory ${JS_NODE_ROOT}/build/
+        COMMAND ${CMAKE_COMMAND} -E make_directory ${JS_NODE_ROOT}/build/
+        COMMAND cd ${JS_NODE_ROOT} && ${CMAKE_COMMAND} ${JS_NODE_ROOT} --no-warn-unused-cli -G"Visual Studio 16 2019" -A"ARM64" -DCMAKE_RUNTIME_OUTPUT_DIRECTORY="${JS_NODE_ROOT}/build/" -DCMAKE_JS_INC="${CMAKE_CURRENT_BINARY_DIR}/node-v16.2.0/include/node" -DCMAKE_JS_SRC="${JS_NODE_ROOT}/node_modules/cmake-js/lib/cpp/win_delay_load_hook.cc" -DNODE_RUNTIME="node" -DNODE_RUNTIMEVERSION="16.2.0" -DNODE_ARCH="arm64" -DCMAKE_JS_LIB="${CMAKE_CURRENT_BINARY_DIR}/node.lib" -Dnapi_build_version="3" -DCMAKE_BUILD_TYPE="RelWithDebInfo" -DCMAKE_SHARED_LINKER_FLAGS="/DELAYLOAD:NODE.EXE" -B ./build
+        WORKING_DIRECTORY ${JS_NODE_ROOT}
+        COMMENT "Using custom script to build OnnxRuntime Node.js binding")
+else()
+    add_custom_target(nodejs_binding_wrapper ALL
+        COMMAND ${NPM_CLI} ci
+        COMMAND ${NPM_CLI} run build -- --onnxruntime-build-dir=${CMAKE_CURRENT_BINARY_DIR} --config=${CMAKE_BUILD_TYPE} --arch=${NODEJS_BINDING_ARCH}
+        WORKING_DIRECTORY ${JS_NODE_ROOT}
+        COMMENT "Using cmake-js to build OnnxRuntime Node.js binding")
+endif()
 add_dependencies(js_common_npm_ci js_npm_ci)
 add_dependencies(nodejs_binding_wrapper js_common_npm_ci)
 add_dependencies(nodejs_binding_wrapper onnxruntime)
