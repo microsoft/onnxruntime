@@ -62,7 +62,7 @@ add_custom_target(js_common_npm_ci ALL
     WORKING_DIRECTORY ${JS_COMMON_ROOT}
     COMMENT "NPM install on /js/common")
 
-if(WIN32 AND onnxruntime_target_platform STREQUAL "ARM64")
+if(WIN32 AND NODEJS_BINDING_ARCH STREQUAL "arm64")
     # NOTE:
     # Node.js for Windows ARM64 is not available in official release list.
     # We uses node.lib for Node.js ARM64 v16.2.0 unofficial build from:
@@ -78,7 +78,8 @@ if(WIN32 AND onnxruntime_target_platform STREQUAL "ARM64")
         COMMAND cd ${CMAKE_CURRENT_BINARY_DIR} && tar -xzf ./node-v16.2.0-headers.tar.gz
         COMMAND ${CMAKE_COMMAND} -E remove_directory ${JS_NODE_ROOT}/build/
         COMMAND ${CMAKE_COMMAND} -E make_directory ${JS_NODE_ROOT}/build/
-        COMMAND cd ${JS_NODE_ROOT} && ${CMAKE_COMMAND} ${JS_NODE_ROOT} --no-warn-unused-cli -G"Visual Studio 16 2019" -A"ARM64" -DCMAKE_RUNTIME_OUTPUT_DIRECTORY="${JS_NODE_ROOT}/build/" -DCMAKE_JS_INC="${CMAKE_CURRENT_BINARY_DIR}/node-v16.2.0/include/node" -DCMAKE_JS_SRC="${JS_NODE_ROOT}/node_modules/cmake-js/lib/cpp/win_delay_load_hook.cc" -DNODE_RUNTIME="node" -DNODE_RUNTIMEVERSION="16.2.0" -DNODE_ARCH="arm64" -DCMAKE_JS_LIB="${CMAKE_CURRENT_BINARY_DIR}/node.lib" -Dnapi_build_version="3" -DCMAKE_BUILD_TYPE="RelWithDebInfo" -DCMAKE_SHARED_LINKER_FLAGS="/DELAYLOAD:NODE.EXE" -B ./build
+        COMMAND cd ${JS_NODE_ROOT} && ${CMAKE_COMMAND} ${JS_NODE_ROOT} --no-warn-unused-cli -G"Visual Studio 16 2019" -A"ARM64" -DCMAKE_RUNTIME_OUTPUT_DIRECTORY="${JS_NODE_ROOT}/build/" -DCMAKE_JS_INC="${CMAKE_CURRENT_BINARY_DIR}/node-v16.2.0/include/node" -DCMAKE_JS_SRC="${JS_NODE_ROOT}/node_modules/cmake-js/lib/cpp/win_delay_load_hook.cc" -DNODE_RUNTIME="node" -DNODE_RUNTIMEVERSION="16.2.0" -DNODE_ARCH="arm64" -DCMAKE_JS_LIB="${CMAKE_CURRENT_BINARY_DIR}/node.lib" -Dnapi_build_version="3" -DCMAKE_BUILD_TYPE="RelWithDebInfo" -DONNXRUNTIME_BUILD_DIR="${CMAKE_CURRENT_BINARY_DIR}" -DCMAKE_SHARED_LINKER_FLAGS="/DELAYLOAD:NODE.EXE" -B ./build
+        COMMAND ${CMAKE_COMMAND} --build ${JS_NODE_ROOT}/build/ --config RelWithDebInfo
         WORKING_DIRECTORY ${JS_NODE_ROOT}
         COMMENT "Using custom script to build OnnxRuntime Node.js binding")
 else()
