@@ -324,17 +324,18 @@ bool ValidateUnidirMask(const Graph& graph, const NodeArg& mask, bool& is_unidir
 
   if (tensor_proto->data_type() == ONNX_NAMESPACE::TensorProto_DataType_UINT8) {
     size_t bytes;
-    if (Status::OK() != utils::GetSizeInBytesFromTensorProto<0>(*tensor_proto, &bytes)) {
+    if (!utils::GetSizeInBytesFromTensorProto<0>(*tensor_proto, &bytes).IsOK()) {
       return false;
     }
-    std::unique_ptr<uint8_t[]> data(new uint8_t[bytes]);
+    auto data = std::make_unique<uint8_t[]>(bytes);
     uint8_t* p = data.get();
-    if (Status::OK() != utils::UnpackTensor<uint8_t>(
-                            *tensor_proto,
-                            tensor_proto->raw_data().size() ? tensor_proto->raw_data().data() : nullptr,
-                            tensor_proto->raw_data().size(),
-                            p,
-                            bytes)) {
+    if (!utils::UnpackTensor<uint8_t>(
+             *tensor_proto,
+             tensor_proto->raw_data().size() ? tensor_proto->raw_data().data() : nullptr,
+             tensor_proto->raw_data().size(),
+             p,
+             bytes)
+             .IsOK()) {
       return false;
     }
     std::vector<uint8_t> mask_data(p, p + bytes);
