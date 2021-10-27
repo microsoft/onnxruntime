@@ -104,36 +104,6 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "fd5fe3de507d4a19f5923c5d4c267e3d730500a9",
-          "repositoryUrl": "https://github.com/microsoft/FeaturizersLibrary.git"
-        },
-        "comments": "git submodule at cmake/external/FeaturizersLibrary"
-      }
-    },
-    {
-      "component": {
-        "type": "git",
-        "git": {
-          "commitHash": "efd9867ff0e8df23016ac6c9828d0d7bf8bec1b1",
-          "repositoryUrl": "https://gitlab.com/libeigen/eigen.git"
-        },
-        "comments": "git submodule at cmake/external/FeaturizersLibrary/src/3rdParty/eigen"
-      }
-    },
-    {
-      "component": {
-        "type": "git",
-        "git": {
-          "commitHash": "30cad267151fa8f1b17da8c1ef0571da6da9a8f1",
-          "repositoryUrl": "https://github.com/google/re2.git"
-        },
-        "comments": "git submodule at cmake/external/FeaturizersLibrary/src/3rdParty/re2"
-      }
-    },
-    {
-      "component": {
-        "type": "git",
-        "git": {
           "commitHash": "a104e0cf23be4fe848f7ef1f3e8996fe429b06bb",
           "repositoryUrl": "https://github.com/dcleblanc/SafeInt.git"
         },
@@ -204,7 +174,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "f44b84154703d29a946d51ddee08f4e5725a61db",
+          "commitHash": "a3d65c80d32c3e584b7aab41d516a0043b2a5e84",
           "repositoryUrl": "https://github.com/emscripten-core/emsdk.git"
         },
         "comments": "git submodule at cmake/external/emsdk"
@@ -384,16 +354,6 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "4acf4553baa886e10e6613fe1452b706b0250e78",
-          "repositoryUrl": "https://github.com/martinmoene/optional-lite.git"
-        },
-        "comments": "git submodule at cmake/external/optional-lite"
-      }
-    },
-    {
-      "component": {
-        "type": "git",
-        "git": {
           "commitHash": "2dc747c574b68a808ea4699d26942c8132fe2b09",
           "repositoryUrl": "https://github.com/protocolbuffers/protobuf.git"
         },
@@ -454,7 +414,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "a1241a967ec7920310a696a6c22ae2426752e135",
+          "commitHash": "9ec2b92d180dff8877e402018b97baa574031b8b",
           "repositoryUrl": "https://github.com/microsoft/onnxruntime-tvm.git"
         },
         "comments": "git submodule at cmake/external/tvm"
