@@ -23,7 +23,7 @@ TEST(InvokerTest, Basic) {
       logging::Severity::kVERBOSE, false,
       logging::LoggingManager::InstanceType::Default,
       &logger_id); 
-  std::unique_ptr<Environment> env;j
+  std::unique_ptr<Environment> env;
   ASSERT_STATUS_OK(Environment::Create(std::move(logging_manager), env));
   IOnnxRuntimeOpSchemaRegistryList tmp_op_registry = {};
   ORTInvoker kernel_invoker(std::move(cpu_execution_provider), env->GetLoggingManager()->DefaultLogger(), tmp_op_registry);
