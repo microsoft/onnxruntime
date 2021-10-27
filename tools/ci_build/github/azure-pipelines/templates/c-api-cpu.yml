@@ -111,7 +111,7 @@ jobs:
   variables:
     MACOSX_DEPLOYMENT_TARGET: '10.14'
   pool:
-    vmImage: 'macOS-10.15'
+    vmImage: 'macOS-11'
   timeoutInMinutes:  120
   steps:
     - template: set-version-number-variables-step.yml
@@ -188,7 +188,7 @@ jobs:
   workspace:
     clean: all
   pool:
-    vmImage: 'macOS-10.15'
+    vmImage: 'macOS-11'
   timeoutInMinutes:  180
   steps:
     - template: set-version-number-variables-step.yml
@@ -556,7 +556,7 @@ jobs:
 
 - template: ../nuget/templates/test_macos.yml
   parameters:
-    AgentPool : macOS-10.15
+    AgentPool : macOS-11
     ArtifactSuffix: 'CPU'
 
 - job: Publish_NuGet_Package_And_Report
@@ -776,7 +776,7 @@ jobs:
   workspace:
     clean: all
   pool:
-    vmImage: 'macOS-10.15'
+    vmImage: 'macOS-11'
   variables:
   - name: runCodesignValidationInjection
     value: false
