@@ -1,6 +1,6 @@
 ---
 title: Limitations
-parent: Deploy ORT format model
+parent: Deploy ORT format model for mobile device and web
 grand_parent: Tutorials
 nav_order: 8
 ---

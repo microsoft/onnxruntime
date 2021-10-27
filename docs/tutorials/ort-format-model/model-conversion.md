@@ -1,6 +1,6 @@
 ---
 title: ONNX Model Conversion
-parent: Deploy ORT format model
+parent: Deploy ORT format model for mobile device and web
 grand_parent: Tutorials
 has_children: false
 nav_order: 3

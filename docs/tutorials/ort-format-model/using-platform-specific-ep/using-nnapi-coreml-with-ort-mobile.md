@@ -1,7 +1,7 @@
 ---
 title: Enabling NNAPI or CoreML Execution Providers
-parent: Deploy on mobile
-grand_parent: Tutorials
+parent: Enable platform specific execution providers
+grand_parent: Deploy ORT format model for mobile device and web
 nav_order: 2
 ---
 
@@ -35,4 +35,4 @@ Once you have all the necessary components setup, follow the instructions to [cr
 
 -------
 
-Next: [Limitations](../ort-format-model/limitations.md)
+Next: [Limitations](../limitations.md)

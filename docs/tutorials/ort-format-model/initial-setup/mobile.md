@@ -1,7 +1,7 @@
 ---
-title: Initial setup
-parent: Deploy on mobile
-grand_parent: Tutorials
+title: Initial setup for ONNX Runtime Mobile
+parent: Initial setup
+grand_parent: Deploy ORT format model for mobile device and web
 has_children: false
 nav_order: 1
 ---
@@ -112,4 +112,4 @@ If you are using the `master` branch in the git repository you should use the ni
 
 -------
 
-Next: [Converting ONNX models to ORT format](../ort-format-model/model-conversion.md)
+Next: [Converting ONNX models to ORT format](../model-conversion.md)
