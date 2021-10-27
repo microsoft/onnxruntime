@@ -56,6 +56,7 @@ jobs:
     buildparameter: ${{ parameters.AdditionalBuildFlags }} ${{ parameters.AdditionalWinBuildFlags}}
     runTests: ${{ parameters.RunOnnxRuntimeTests }}
     buildJava: false
+    buildNodejs: false
 
 - template: win-ci.yml
   parameters:
@@ -69,6 +70,7 @@ jobs:
     buildparameter: --arm ${{ parameters.AdditionalBuildFlags }}  ${{ parameters.AdditionalWinBuildFlags}}
     runTests: false
     buildJava: false
+    buildNodejs: false
 
 - template: win-ci.yml
   parameters:
@@ -82,6 +84,7 @@ jobs:
     buildparameter: --arm64 ${{ parameters.AdditionalBuildFlags }}  ${{ parameters.AdditionalWinBuildFlags}}
     runTests: false
     buildJava: false
+    buildNodejs: true
 
 - template: win-ci.yml
   parameters:
@@ -95,3 +98,4 @@ jobs:
     buildparameter: --build_java ${{ parameters.AdditionalBuildFlags }}  ${{ parameters.AdditionalWinBuildFlags}}
     runTests: ${{ parameters.RunOnnxRuntimeTests }}
     buildJava: true
+    buildNodejs: true
