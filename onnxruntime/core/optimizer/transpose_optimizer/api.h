@@ -220,11 +220,7 @@ class NodeRef {
   /// <param name="default_value">Default value</param>
   /// <returns>Attribute value or default value</returns>
   virtual int64_t GetAttributeIntDefault(std::string_view name, int64_t default_value) const {
-    std::optional<int64_t> value = GetAttributeInt(name);
-    if (value == std::nullopt) {
-      return default_value;
-    }
-    return *value;
+    return GetAttributeInt(name).value_or(default_value);
   }
 
   virtual ~NodeRef(){};

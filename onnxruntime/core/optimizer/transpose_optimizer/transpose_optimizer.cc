@@ -399,11 +399,11 @@ static void UnsqueezeInput(OptimizerCtx& ctx, api::NodeRef& node, size_t i, cons
   }
 
   // Case 3: Add an Unsqueeze node.
-  auto squeeze_ptr = MakeSqueezeOrUnsqueeze(ctx.opset, ctx.graph, "Unsqueeze", input, axes);
-  api::NodeRef& squeeze = *squeeze_ptr;
-  std::string_view sq_out = squeeze.Outputs()[0];
-  ctx.graph.CopyValueInfo(input, sq_out);
-  ctx.graph.GetValueInfo(sq_out)->UnsqueezeDims(axes);
+  auto unsqueeze_ptr = MakeSqueezeOrUnsqueeze(ctx.opset, ctx.graph, "Unsqueeze", input, axes);
+  api::NodeRef& unsqueeze = *unsqueeze_ptr;
+  std::string_view unsq_out = unsqueeze.Outputs()[0];
+  ctx.graph.CopyValueInfo(input, unsq_out);
+  ctx.graph.GetValueInfo(unsq_out)->UnsqueezeDims(axes);
 
   // The transpose optimizer attempts to complete all optimization in a single pass. Adding Unsqueeze ops to inputs
   // is one of the few operations that violates the normal traversal order. If the input to the new Unsqueeze is
@@ -413,7 +413,7 @@ static void UnsqueezeInput(OptimizerCtx& ctx, api::NodeRef& node, size_t i, cons
     if (perm != std::nullopt) {
       auto perm_inv = InvertPerm(*perm);
       std::vector<size_t> indices = {0};
-      HandlerArgs args{ctx, *inp_node, squeeze, *perm, perm_inv, indices};
+      HandlerArgs args{ctx, *inp_node, unsqueeze, *perm, perm_inv, indices};
       const auto new_input = HelpHandleUnsqueeze(args, axes);
       // Use output from optimization (likely from pushed transpose)
       node.SetInput(i, new_input);
@@ -421,7 +421,7 @@ static void UnsqueezeInput(OptimizerCtx& ctx, api::NodeRef& node, size_t i, cons
     }
   }
 
-  node.SetInput(i, sq_out);
+  node.SetInput(i, unsq_out);
 }
 
 // Replaces ith input to node with transposed value. Might create a new Transpose node, find an existing one,
@@ -501,7 +501,7 @@ static void TransposeInput(OptimizerCtx& ctx, api::NodeRef& node, size_t i,
 
 // Unsqueezes inputs of node to have uniform rank. Returns false if input ranks are unknown or exceed the target rank.
 static bool NormalizeInputRanks(OptimizerCtx ctx, api::NodeRef& node, size_t target_rank, 
-                                std::vector<size_t>& input_indices) {
+                                const std::vector<size_t>& input_indices) {
   auto inputs = node.Inputs();
 
   // Get and validate input ranks
@@ -529,15 +529,14 @@ static bool NormalizeInputRanks(OptimizerCtx ctx, api::NodeRef& node, size_t tar
   return true;
 }
 
-// Transposes specified inputs (or all by default) according to perm.
+// Transposes specified inputs according to perm.
 // NOTE: if a Transpose is expected to be above an input to this node, use the inverse of its permutation to cancel it. 
 static void TransposeInputs(OptimizerCtx& ctx, api::NodeRef& node, const std::vector<int64_t>& perm,
-                            std::vector<size_t>& input_indices) {
+                            const std::vector<size_t>& input_indices) {
   auto perm_inv = InvertPerm(perm);
   for (size_t j : input_indices) {
     TransposeInput(ctx, node, j, perm, perm_inv);
   }
-  return;
 }
 
 inline static void TransposeFirstInput(OptimizerCtx& ctx, api::NodeRef& node, const std::vector<int64_t>& perm) {
@@ -652,7 +651,7 @@ static int EstimateTransposeValueCost(api::GraphRef& graph, std::string_view inp
 
 // Estimates total cost of transposing a node's inputs. Negative if transposing is beneficial.
 static int EstimateTransposeInputsCost(api::GraphRef& graph, api::NodeRef& node, const std::vector<int64_t>& perm_inv,
-                                       std::vector<size_t> input_indices) {
+                                       const std::vector<size_t> input_indices) {
   auto inputs = node.Inputs();
   int cost = 0;
   for (size_t j : input_indices) {
@@ -696,7 +695,6 @@ static bool HandleSimpleNode(HandlerArgs& args) {
 
 std::vector<size_t> AllInputs(OptimizerCtx& ctx, api::NodeRef& node) {
   (void)ctx;
-  (void)node;
   size_t num_inputs = node.Inputs().size();
   std::vector<size_t> indices(num_inputs);
   for (size_t i = 0; i < num_inputs; ++i) {
@@ -706,6 +704,14 @@ std::vector<size_t> AllInputs(OptimizerCtx& ctx, api::NodeRef& node) {
 }
 
 constexpr HandlerInfo simple_node_handler = {&AllInputs, &HandleSimpleNode};
+
+std::vector<size_t> FirstInput(OptimizerCtx& ctx, api::NodeRef& node) {
+  (void)ctx;
+  (void)node;
+  return {0};
+}
+
+constexpr HandlerInfo node_1_inp_handler = {&FirstInput, &HandleSimpleNode};
 
 // Node with all inputs broadcastable
 static bool HandleSimpleNodeBroadcast(HandlerArgs& args) {
@@ -727,27 +733,13 @@ std::vector<size_t> NonScalarInputs(OptimizerCtx& ctx, api::NodeRef& node) {
 
 constexpr HandlerInfo broadcast_node_handler = {&NonScalarInputs, &HandleSimpleNodeBroadcast};
 
-std::vector<size_t> FirstInput(OptimizerCtx& ctx, api::NodeRef& node) {
-  (void)ctx;
-  (void)node;
-  return {0};
-}
-
-// Transposes 1st input and all outputs
-static bool HandleSimpleNode1Inp(HandlerArgs& args) {
-  std::vector<size_t> input_indices {0};
-  return HandleSimpleNodeBase(args, /*broadcast_inputs*/ false);
-}
-
-constexpr HandlerInfo node_1_inp_handler = {&FirstInput, &HandleSimpleNode1Inp};
-
 // Transposes all inputs and all outputs. Updates axis attribute.
-static bool HandleSimpleNodeWithAxis(HandlerArgs& args, bool has_default, int64_t default_axis=0) {
+static bool HandleSimpleNodeWithAxis(HandlerArgs& args, std::optional<int64_t> default_axis=std::nullopt) {
   size_t rank = args.perm.size();
   std::optional<int64_t> axis = args.node.GetAttributeInt("axis");
   if (axis == std::nullopt) {
-    if (has_default) {
-      axis = default_axis;
+    if (default_axis != std::nullopt) {
+      axis = *default_axis;
     } else {
       return false;
     }
@@ -766,13 +758,13 @@ static bool HandleSimpleNodeWithAxis(HandlerArgs& args, bool has_default, int64_
 }
 
 static bool HandleSplit(HandlerArgs& args) {
-  return HandleSimpleNodeWithAxis(args, /*has_default*/ true, /*default_axis*/ 0);
+  return HandleSimpleNodeWithAxis(args, /*default_axis*/ 0);
 }
 
 constexpr HandlerInfo split_handler = {&FirstInput, &HandleSplit};
 
 static bool HandleConcat(HandlerArgs& args) {
-  return HandleSimpleNodeWithAxis(args, /*has_default*/ false);
+  return HandleSimpleNodeWithAxis(args);
 }
 
 constexpr HandlerInfo concat_handler = {&AllInputs, &HandleConcat};
@@ -780,7 +772,7 @@ constexpr HandlerInfo concat_handler = {&AllInputs, &HandleConcat};
 // Handles Softmax, Hardmax, and LogSoftmax
 static bool HandleSoftHardMax(HandlerArgs& args) {
   if (args.ctx.opset >= 13) {
-    return HandleSimpleNodeWithAxis(args, /*has_default*/ true, /*default_axis*/ -1);
+    return HandleSimpleNodeWithAxis(args, /*default_axis*/ -1);
   }
 
   // In opset < 13, the input is coerced into 2D then expanded back after.
@@ -802,7 +794,7 @@ static bool HandleSoftHardMax(HandlerArgs& args) {
   }
 
   // No need to update axis.
-  return HandleSimpleNode1Inp(args);
+  return HandleSimpleNode(args);
 }
 
 constexpr HandlerInfo soft_hard_max_handler = {&FirstInput, &HandleSoftHardMax};
@@ -1383,7 +1375,7 @@ static bool HandleTranspose(HandlerArgs& args) {
 constexpr HandlerInfo transpose_handler = {&FirstInput, &HandleTranspose, /*transposes_outputs*/ false};
 
 static bool HandleQLinearConcat(HandlerArgs& args) {
-  return HandleSimpleNodeWithAxis(args, /*has_default*/ false);
+  return HandleSimpleNodeWithAxis(args);
 }
 
 std::vector<size_t> QLinearConcatInputs(OptimizerCtx& ctx, api::NodeRef& node) {

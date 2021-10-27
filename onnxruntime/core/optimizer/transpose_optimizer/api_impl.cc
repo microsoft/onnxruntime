@@ -371,13 +371,7 @@ void ApiNode::SetInput(size_t i, std::string_view name) {
   NodeArg* old_node_arg = mutable_input_defs[i];
   if (old_node_arg->Exists()) {
     // Input may be referenced multiple times. Only remove from consumers if all references are gone.
-    size_t usages = 0;
-    for (const auto* node_arg : mutable_input_defs) {
-      if (node_arg == old_node_arg) {
-        ++usages;
-      }
-    }
-
+    size_t usages = std::count(mutable_input_defs.begin(), mutable_input_defs.end(), old_node_arg);
     if (usages == 1) {
       graph_.RemoveConsumerNode(old_node_arg->Name(), &node_);
     }
@@ -418,7 +412,7 @@ std::vector<std::unique_ptr<api::NodeRef>> ApiGraph::Nodes() const {
   nodes.reserve(sorted_nodes.size());
   for (NodeIndex index : sorted_nodes) {
     auto& node = *graph_.GetNode(index);
-    nodes.push_back(std::unique_ptr<api::NodeRef>(new ApiNode(node, graph_)));
+    nodes.push_back(std::make_unique<ApiNode>(node, graph_));
   }
 
   return nodes;
@@ -431,13 +425,13 @@ std::unique_ptr<api::TensorRef> ApiGraph::GetConstant(std::string_view name) con
     return nullptr;
   }
 
-  return std::unique_ptr<api::TensorRef>(new ApiTensor(*tensor, graph_, cpu_allocator_));
+  return std::make_unique<ApiTensor>(*tensor, graph_, cpu_allocator_);
 }
 
 std::unique_ptr<api::ValueInfoRef> ApiGraph::GetValueInfo(std::string_view name) const {
   NodeArg* node_arg_ = graph_.GetNodeArg(std::string(name));
   ORT_ENFORCE(node_arg_ != nullptr, "No NodeArg found for name ", name);
-  return std::unique_ptr<api::ValueInfoRef>(new ApiValueInfo(*node_arg_));
+  return std::make_unique<ApiValueInfo>(*node_arg_);
 }
 
 std::unique_ptr<api::ValueConsumers> ApiGraph::GetValueConsumers(std::string_view name) const {
@@ -457,7 +451,7 @@ std::unique_ptr<api::ValueConsumers> ApiGraph::GetValueConsumers(std::string_vie
 
     for (const auto* input : node->InputDefs()) {
       if (input->Exists() && input->Name() == name) {
-        consumers->nodes.push_back(std::unique_ptr<api::NodeRef>(new ApiNode(*graph_.GetNode(node->Index()), graph_)));
+        consumers->nodes.push_back(std::make_unique<ApiNode>(*graph_.GetNode(node->Index()), graph_));
         break;
       }
     }
@@ -495,7 +489,7 @@ std::unique_ptr<api::NodeRef> ApiGraph::GetNodeProducingOutput(std::string_view 
     return nullptr;
   }
 
-  return std::unique_ptr<api::NodeRef>(new ApiNode(*node, graph_));
+  return std::make_unique<ApiNode>(*node, graph_);
 }
 
 void ApiGraph::TransposeInitializer(std::string_view name, const std::vector<int64_t>& perm) {
@@ -627,7 +621,7 @@ std::unique_ptr<api::NodeRef> ApiGraph::AddNode(std::string_view op_type,
     graph_.UpdateProducerNode(arg->Name(), node.Index());
   }
 
-  return std::unique_ptr<api::NodeRef>(new ApiNode(node, graph_));
+  return std::make_unique<ApiNode>(node, graph_);
 }
 
 void ApiGraph::RemoveNode(api::NodeRef& node) {
@@ -720,7 +714,7 @@ void ApiGraph::CopyValueInfo(std::string_view src_name, std::string_view dst_nam
 
 std::unique_ptr<api::GraphRef> MakeApiGraph(onnxruntime::Graph& graph, AllocatorPtr cpu_allocator,
                                          const logging::Logger& logger, const char* new_node_ep) {
-  return std::unique_ptr<api::GraphRef>(new ApiGraph(graph, std::move(cpu_allocator), logger, new_node_ep));
+  return std::make_unique<ApiGraph>(graph, std::move(cpu_allocator), logger, new_node_ep);
 }
 
 onnxruntime::Graph& GraphFromApiGraph(onnx_layout_transformation::api::GraphRef& graph) {
