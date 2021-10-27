@@ -403,10 +403,57 @@ typedef struct OrtCUDAProviderOptions {
 * \see OrtApi::SessionOptionsAppendExecutionProvider_ROCM
 */
 typedef struct OrtROCMProviderOptions {
-  int device_id;                      ///< hip device id (0 = default device)
-  int miopen_conv_exhaustive_search;  // miopen conv algo exhaustive search option
-  size_t gpu_mem_limit;               // default hip memory limitation to maximum finite value of size_t.
-  int arena_extend_strategy;          // default area extend strategy to KNextPowerOfTwo.
+#ifdef __cplusplus
+  OrtROCMProviderOptions() : device_id{}, miopen_conv_exhaustive_search{0}, gpu_mem_limit{SIZE_MAX}, arena_extend_strategy{}, do_copy_in_default_stream{1}, has_user_compute_stream{}, user_compute_stream{}, default_memory_arena_cfg{} {}
+#endif
+
+  /** \brief ROCM device Id
+  *   Defaults to 0.
+  */
+  int device_id;
+
+  /** \brief ROCM MIOpen Convolution algorithm exaustive search option.
+  *   Defaults to 0 (false).
+  */
+  int miopen_conv_exhaustive_search;
+
+  /** \brief ROCM memory limit (To use all possible memory pass in maximum size_t)
+  *   Defaults to SIZE_MAX.
+  *   \note If a ::OrtArenaCfg has been applied, it will override this field
+  */
+  size_t gpu_mem_limit;
+
+  /** \brief Strategy used to grow the memory arena
+  *   0 = kNextPowerOfTwo<br>
+  *   1 = kSameAsRequested<br>
+  *   Defaults to 0.
+  *   \note If a ::OrtArenaCfg has been applied, it will override this field
+  */
+  int arena_extend_strategy;
+
+  /** \brief Flag indicating if copying needs to take place on the same stream as the compute stream in the ROCM EP   
+  *   0 = Use separate streams for copying and compute.
+  *   1 = Use the same stream for copying and compute.
+  *   Defaults to 1.
+  *   WARNING: Setting this to 0 may result in data races for some models.
+  *   Please see issue #4829 for more details.
+  */
+  int do_copy_in_default_stream;
+
+  /** \brief Flag indicating if there is a user provided compute stream
+  *   Defaults to 0.
+  */
+  int has_user_compute_stream;
+
+  /** \brief User provided compute stream. 
+  *   If provided, please set `has_user_compute_stream` to 1.
+  */
+  void* user_compute_stream;
+
+  /** \brief ROCM memory arena configuration parameters
+  */
+  OrtArenaCfg* default_memory_arena_cfg;
+
 } OrtROCMProviderOptions;
 
 /** \brief TensorRT Provider Options

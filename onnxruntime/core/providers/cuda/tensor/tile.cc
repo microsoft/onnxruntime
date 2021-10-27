@@ -72,7 +72,7 @@ Status Tile::ComputeInternal(OpKernelContext* ctx) const {
 
   // Repeat tensor has all 1s in it
   if (output_shape == input_shape) {
-    cudaMemcpyAsync(output_tensor.MutableDataRaw(), input_tensor.DataRaw(), input_tensor.SizeInBytes(), cudaMemcpyDeviceToDevice, Stream());
+    CUDA_CALL(cudaMemcpyAsync(output_tensor.MutableDataRaw(), input_tensor.DataRaw(), input_tensor.SizeInBytes(), cudaMemcpyDeviceToDevice, Stream()));
     return Status::OK();
   }
 

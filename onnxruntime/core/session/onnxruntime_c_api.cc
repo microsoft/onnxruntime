@@ -71,22 +71,6 @@ using namespace onnxruntime;
 #endif
 #endif
 
-// Return the OrtStatus if it indicates an error
-#define ORT_API_RETURN_IF_ERROR(expr) \
-  do {                                \
-    auto _status = (expr);            \
-    if (_status)                      \
-      return _status;                 \
-  } while (0)
-
-// Convert internal onnxruntime::Status to OrtStatus and return if there's an error
-#define ORT_API_RETURN_IF_STATUS_NOT_OK(expr) \
-  do {                                        \
-    auto _status = (expr);                    \
-    if (!_status.IsOK())                      \
-      return ToOrtStatus(_status);            \
-  } while (0)
-
 #define TENSOR_READ_API_BEGIN                          \
   API_IMPL_BEGIN                                       \
   auto v = reinterpret_cast<const ::OrtValue*>(value); \
@@ -519,13 +503,14 @@ ORT_API_STATUS_IMPL(OrtApis::AddCustomOpDomain, _Inout_ OrtSessionOptions* optio
 ORT_API_STATUS_IMPL(OrtApis::RegisterCustomOpsLibrary, _Inout_ OrtSessionOptions* options, _In_ const char* library_path, void** library_handle) {
   API_IMPL_BEGIN
 
-  Env::Default().LoadDynamicLibrary(library_path, false, library_handle);
+  ORT_API_RETURN_IF_STATUS_NOT_OK(Env::Default().LoadDynamicLibrary(library_path, false, library_handle));
   if (!*library_handle)
     return OrtApis::CreateStatus(ORT_FAIL, "RegisterCustomOpsLibrary: Failed to load library");
 
   OrtStatus*(ORT_API_CALL * RegisterCustomOps)(OrtSessionOptions * options, const OrtApiBase* api);
 
-  Env::Default().GetSymbolFromLibrary(*library_handle, "RegisterCustomOps", (void**)&RegisterCustomOps);
+  ORT_API_RETURN_IF_STATUS_NOT_OK(Env::Default().GetSymbolFromLibrary(*library_handle, "RegisterCustomOps",
+                                                                      (void**)&RegisterCustomOps));
   if (!RegisterCustomOps)
     return OrtApis::CreateStatus(ORT_FAIL, "RegisterCustomOpsLibrary: Entry point RegisterCustomOps not found in library");
 
@@ -2135,7 +2120,7 @@ Second example, if we wanted to add and remove some members, we'd do this:
     In GetApi we now make it return ort_api_3 for version 3.
 */
 
-static constexpr OrtApi ort_api_1_to_9 = {
+static constexpr OrtApi ort_api_1_to_10 = {
     // NOTE: The ordering of these fields MUST not change after that version has shipped since existing binaries depend on this ordering.
 
     // Shipped as version 1 - DO NOT MODIFY (see above text for more information)
@@ -2380,15 +2365,15 @@ static_assert(offsetof(OrtApi, GetCurrentGpuDeviceId) / sizeof(void*) == 161, "S
 static_assert(offsetof(OrtApi, CreateSessionFromArrayWithPrepackedWeightsContainer) / sizeof(void*) == 169, "Size of version 8 API cannot change");
 
 // So that nobody forgets to finish an API version, this check will serve as a reminder:
-static_assert(std::string_view(ORT_VERSION) == "1.9.0", "ORT_Version change detected, please follow below steps to ensure OrtApi is updated properly");
+static_assert(std::string_view(ORT_VERSION) == "1.10.0", "ORT_Version change detected, please follow below steps to ensure OrtApi is updated properly");
 // 1. Update the hardcoded version string in above static_assert to silence it
-// 2. If there were any APIs added to ort_api_1_to_9 above:
+// 2. If there were any APIs added to ort_api_1_to_10 above:
 //    a. Add the 'End of version #' markers (pattern above should be obvious)
 //    b. Add a static_assert in the directly above list of version sizes to ensure nobody adds any more functions to the just shipped API version
 
 ORT_API(const OrtApi*, OrtApis::GetApi, uint32_t version) {
   if (version >= 1 && version <= ORT_API_VERSION)
-    return &ort_api_1_to_9;
+    return &ort_api_1_to_10;
 
   fprintf(stderr, "The given version [%u] is not supported, only version 1 to %u is supported in this build.\n",
           version, ORT_API_VERSION);

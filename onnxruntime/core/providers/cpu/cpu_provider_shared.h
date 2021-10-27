@@ -23,7 +23,7 @@ struct ProviderHostCPU {
   virtual Status NonMaxSuppressionBase__PrepareCompute(OpKernelContext* ctx, PrepareContext& pc) = 0;
   virtual Status NonMaxSuppressionBase__GetThresholdsFromInputs(const PrepareContext& pc, int64_t& max_output_boxes_per_class, float& iou_threshold, float& score_threshold) = 0;
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_ROCM)
 
   // From cpu/tensor/size.h
   virtual Status Size__Compute(const Size* p, OpKernelContext* context) = 0;
@@ -123,7 +123,7 @@ struct ProviderHostCPU {
   virtual Status embed_layer_norm__CheckInputs(const OpKernelContext* context) = 0;
   virtual Status bias_gelu_helper__CheckInputs(const OpKernelContext* context) = 0;
   virtual Status LongformerAttentionBase__CheckInputs(const contrib::LongformerAttentionBase* p, const TensorShape& input_shape, const TensorShape& weights_shape, const TensorShape& bias_shape, const TensorShape& mask_shape, const TensorShape& global_weights_shape, const TensorShape& global_bias_shape, const TensorShape& global_shape) = 0;
-  virtual Status AttentionBase__CheckInputs(const contrib::AttentionBase* p, const TensorShape& input_shape, const TensorShape& weights_shape, const TensorShape& bias_shape, const Tensor*& mask_index, const Tensor* past, const int max_threads_per_block) = 0;
+  virtual Status AttentionBase__CheckInputs(const contrib::AttentionBase* p, const TensorShape& input_shape, const TensorShape& weights_shape, const TensorShape& bias_shape, const Tensor*& mask_index, const Tensor* past, const Tensor *extra_add_qk, const int max_threads_per_block) = 0;
   virtual Tensor* AttentionBase__GetPresent(const contrib::AttentionBase* p, OpKernelContext* context, const Tensor* past, int batch_size, int head_size, int sequence_length, int& past_sequence_length) = 0;
 #endif
 
@@ -138,6 +138,10 @@ struct ProviderHostCPU {
   virtual void contrib__GetPermutationAndShape(bool ncd_to_ndc, const TensorShape& tensor_shape, std::vector<int64_t>& new_shape, std::vector<size_t>& permutations) = 0;
   virtual Status contrib__PrepareForTrainingCompute(const TensorShape& input_shape, int num_outputs, int64_t& axis, int& before_dims, int& after_dims_including_split_axis, int& after_dims_excluding_split, std::vector<int64_t>& split_sizes) = 0;
   virtual Status contrib__YieldOp__Compute(const contrib::YieldOp* p, OpKernelContext* context) = 0;
+
+  // From aten_op.h
+  virtual bool contrib__IsATenOperatorExecutorInitialized() = 0;
+  virtual Status contrib__ExecuteReduceSumATenOp(OpKernelContext* p_ctx, const std::vector<int64_t>& axes, bool keepdims) = 0;
 #endif
 #endif
 };
@@ -146,7 +150,7 @@ struct ProviderHostCPU {
 
 extern ProviderHostCPU& g_host_cpu;
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_ROCM)
 namespace GatherElements {
 inline Status ValidateInputShapes(const TensorShape& input_data_shape,
                                   const TensorShape& indices_shape,
@@ -204,9 +208,13 @@ inline void VerifyLogitWeightAndLabelShape(const TensorShape& logit_shape, const
 inline void GetNDCFromLogitAndLabelShape(const TensorShape& logit_shape, const TensorShape& label_shape, int64_t& N_D, int64_t& C) { g_host_cpu.contrib__GetNDCFromLogitAndLabelShape(logit_shape, label_shape, N_D, C); }
 inline void GetPermutationAndShape(bool ncd_to_ndc, const TensorShape& tensor_shape, std::vector<int64_t>& new_shape, std::vector<size_t>& permutations) { g_host_cpu.contrib__GetPermutationAndShape(ncd_to_ndc, tensor_shape, new_shape, permutations); }
 inline Status PrepareForTrainingCompute(const TensorShape& input_shape, int num_outputs, int64_t& axis, int& before_dims, int& after_dims_including_split_axis, int& after_dims_excluding_split, std::vector<int64_t>& split_sizes) { return g_host_cpu.contrib__PrepareForTrainingCompute(input_shape, num_outputs, axis, before_dims, after_dims_including_split_axis, after_dims_excluding_split, split_sizes); }
+
+// From aten_op.h
+inline bool IsATenOperatorExecutorInitialized() { return g_host_cpu.contrib__IsATenOperatorExecutorInitialized(); }
+inline Status ExecuteReduceSumATenOp(OpKernelContext* p_ctx, const std::vector<int64_t>& axes, bool keepdims) { return g_host_cpu.contrib__ExecuteReduceSumATenOp(p_ctx, axes, keepdims); }
 }  // namespace contrib
 #endif  // ENABLE_TRAINING
-#endif  // USE_CUDA
+#endif  // USE_CUDA || USE_ROCM
 #endif
 
 }  // namespace onnxruntime

@@ -15,7 +15,7 @@ void DnnlSum::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
 
   std::vector<dnnl::memory> src_mems;
   for (size_t i = IN_DATA_0; i < node.InputCount(); ++i) {
-    src_mems.push_back(sp.GetMemory(node.Input(static_cast<int>(IN_DATA_0 + i)).Name()));
+    src_mems.push_back(sp.GetMemory(node.Input(static_cast<int>(IN_DATA_0 + i))));
   }
 
   std::vector<float> scales;

@@ -48,7 +48,7 @@ Status QAttention<T, int8_t>::CheckInputs(const Tensor* input,
                                           const Tensor* w_zp_tensor,
                                           const Tensor* past_tensor) const {
   auto& device_prop = GetDeviceProp();
-  ORT_RETURN_IF_ERROR(AttentionBase::CheckInputs(input->Shape(), weights->Shape(), bias->Shape(), mask_index, past_tensor, device_prop.maxThreadsPerBlock));
+  ORT_RETURN_IF_ERROR(AttentionBase::CheckInputs(input->Shape(), weights->Shape(), bias->Shape(), mask_index, past_tensor, nullptr, device_prop.maxThreadsPerBlock));
 
   ORT_RETURN_IF_NOT(IsScalarOr1ElementVector(input_scale_tensor),
                     "input scale must be a scalar or 1D tensor of size 1");
@@ -136,12 +136,12 @@ Status QAttention<T, int8_t>::ComputeInternal(OpKernelContext* context) const {
 
   typedef typename ToCudaType<T>::MappedType CudaT;
 
-  GemmInt8(m, n, k,
-           1 /*alpha_matmul*/, 0 /* beta_matmul*/,
-           input->template Data<int8_t>(), k,
-           weights->template Data<int8_t>(), n,
-           gemm_buffer_quantized.get(), n,
-           this);
+  ORT_RETURN_IF_ERROR(GemmInt8(m, n, k,
+                               1 /*alpha_matmul*/, 0 /* beta_matmul*/,
+                               input->template Data<int8_t>(), k,
+                               weights->template Data<int8_t>(), n,
+                               gemm_buffer_quantized.get(), n,
+                               this));
 
   CudaT dequant_scale;
   CudaT input_scale = *(reinterpret_cast<const CudaT*>(input_scale_tensor->template Data<T>()));
@@ -152,14 +152,13 @@ Status QAttention<T, int8_t>::ComputeInternal(OpKernelContext* context) const {
     dequant_scale = input_scale * weight_scale;
   }
   // scale back and bias
-  CudaDequantizeWithBias(
-      Stream(),
-      gemm_buffer_quantized.get(),
-      reinterpret_cast<const CudaT*>(bias->template Data<T>()),
-      reinterpret_cast<CudaT*>(gemm_buffer.get()),
-      dequant_scale,
-      m,
-      n);
+  ORT_RETURN_IF_ERROR(CudaDequantizeWithBias(Stream(),
+                                             gemm_buffer_quantized.get(),
+                                             reinterpret_cast<const CudaT*>(bias->template Data<T>()),
+                                             reinterpret_cast<CudaT*>(gemm_buffer.get()),
+                                             dequant_scale,
+                                             m,
+                                             n));
 
   int past_sequence_length = 0;
   Tensor* present_tensor = GetPresent(context, past_tensor, batch_size, head_size, sequence_length, past_sequence_length);
@@ -183,6 +182,7 @@ Status QAttention<T, int8_t>::ComputeInternal(OpKernelContext* context) const {
           is_unidirectional_,
           past_sequence_length,
           nullptr == past_tensor ? nullptr : past_tensor->template Data<T>(),
+          nullptr, // TODO: support add_qk in quantized attention
           nullptr == present_tensor ? nullptr : present_tensor->template MutableData<T>())) {
     // Get last error to reset it to cudaSuccess.
     CUDA_CALL(cudaGetLastError());

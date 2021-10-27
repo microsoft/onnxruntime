@@ -16,6 +16,12 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Cuda(c
 std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const char* name);
 }  // namespace onnxruntime
 #endif
+#ifdef USE_ROCM
+namespace onnxruntime {
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Rocm(const OrtROCMProviderOptions* provider_options);
+std::unique_ptr<IAllocator> CreateROCMPinnedAllocator(int16_t device_id, const char* name);
+}  // namespace onnxruntime
+#endif
 #include "orttraining/core/framework/communication/mpi/mpi_context.h"
 #include "orttraining/core/framework/tensorboard/event_writer.h"
 #include "orttraining/core/session/training_session.h"
@@ -357,6 +363,16 @@ void setup_training_params(GPT2Parameters& params) {
     info.do_copy_in_default_stream=true;
     params.providers.emplace(kCudaExecutionProvider, CreateExecutionProviderFactory_Cuda(&info));
     params.input_allocator = CreateCUDAPinnedAllocator(info.device_id, CUDA_PINNED);
+  }
+#endif
+
+#ifdef USE_ROCM
+  {
+    OrtROCMProviderOptions info;
+    info.device_id=gsl::narrow<OrtDevice::DeviceId>(MPIContext::GetInstance().GetLocalRank());
+    info.do_copy_in_default_stream=true;
+    params.providers.emplace(kRocmExecutionProvider, CreateExecutionProviderFactory_Rocm(&info));
+    params.input_allocator = CreateROCMPinnedAllocator(info.device_id, CUDA_PINNED);
   }
 #endif
 

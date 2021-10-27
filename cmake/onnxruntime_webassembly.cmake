@@ -39,20 +39,20 @@ target_link_libraries(onnxruntime_webassembly PRIVATE
   re2::re2
 )
 
-set(EXTRA_EXPORTED_RUNTIME_METHODS "['stackAlloc','stackRestore','stackSave','UTF8ToString','stringToUTF8','lengthBytesUTF8']")
+set(EXPORTED_RUNTIME_METHODS "['stackAlloc','stackRestore','stackSave','UTF8ToString','stringToUTF8','lengthBytesUTF8']")
 
-set_target_properties(onnxruntime_webassembly PROPERTIES LINK_FLAGS "                         \
-                      -s \"EXTRA_EXPORTED_RUNTIME_METHODS=${EXTRA_EXPORTED_RUNTIME_METHODS}\" \
-                      -s WASM=1                                                               \
-                      -s NO_EXIT_RUNTIME=0                                                    \
-                      -s ALLOW_MEMORY_GROWTH=1                                                \
-                      -s MODULARIZE=1                                                         \
-                      -s EXPORT_ALL=0                                                         \
-                      -s LLD_REPORT_UNDEFINED                                                 \
-                      -s VERBOSE=0                                                            \
-                      -s NO_FILESYSTEM=1                                                      \
-                      -s MALLOC=${onnxruntime_WEBASSEMBLY_MALLOC}                             \
-                      --closure 1                                                             \
+set_target_properties(onnxruntime_webassembly PROPERTIES LINK_FLAGS "             \
+                      -s \"EXPORTED_RUNTIME_METHODS=${EXPORTED_RUNTIME_METHODS}\" \
+                      -s WASM=1                                                   \
+                      -s NO_EXIT_RUNTIME=0                                        \
+                      -s ALLOW_MEMORY_GROWTH=1                                    \
+                      -s MODULARIZE=1                                             \
+                      -s EXPORT_ALL=0                                             \
+                      -s LLD_REPORT_UNDEFINED                                     \
+                      -s VERBOSE=0                                                \
+                      -s NO_FILESYSTEM=1                                          \
+                      -s MALLOC=${onnxruntime_WEBASSEMBLY_MALLOC}                 \
+                      --closure 1                                                 \
                       --no-entry")
 
 if (CMAKE_BUILD_TYPE STREQUAL "Debug")
@@ -64,6 +64,10 @@ endif()
 # Set link flag to enable exceptions support, this will override default disabling exception throwing behavior when disable exceptions.
 if (onnxruntime_ENABLE_WEBASSEMBLY_EXCEPTION_THROWING)
   set_property(TARGET onnxruntime_webassembly APPEND_STRING PROPERTY LINK_FLAGS " -s DISABLE_EXCEPTION_THROWING=0")
+endif()
+
+if (onnxruntime_ENABLE_WEBASSEMBLY_PROFILING)
+  set_property(TARGET onnxruntime_webassembly APPEND_STRING PROPERTY LINK_FLAGS " --profiling --profiling-funcs")
 endif()
 
 if (onnxruntime_ENABLE_WEBASSEMBLY_THREADS)

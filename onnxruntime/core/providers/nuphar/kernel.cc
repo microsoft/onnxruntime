@@ -30,10 +30,10 @@ NupharKernelState::NupharKernelState(
 
   // create a partitioner
   SubgraphPartitioner subgraph_partitioner;
-  subgraph_partitioner.Partition(
+  ORT_THROW_IF_ERROR(subgraph_partitioner.Partition(
       node,
       subgraphs,
-      [&](const std::string& name) { return provider_.GetConstantInitializer(name); });
+      [&](const std::string& name) { return provider_.GetConstantInitializer(name); }));
 
   for (auto& subgraph : subgraphs) {
     Compile(subgraph);

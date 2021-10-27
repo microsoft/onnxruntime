@@ -37,11 +37,78 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
     : global_context_(global_context), subgraph_context_(subgraph_context) {
   std::string& hw_target = (global_context_.device_id != "") ? global_context_.device_id : global_context_.device_type;
   bool vpu_status = false;
-  bool import_blob_status = false;
   std::string model_blob_name;
   std::ifstream blob_path;
   std::string ov_compiled_blobs_dir = "";
 
+#if defined(OPENVINO_2021_4)
+  if(hw_target == "MYRIAD")
+    vpu_status = true;
+  const std::string compiled_blob_path = onnxruntime::GetEnvironmentVar("OV_BLOB_PATH");
+  if (vpu_status == true && openvino_ep::backend_utils::UseCompiledNetwork() && !compiled_blob_path.empty() &&
+      openvino_ep::BackendManager::GetGlobalContext().is_wholly_supported_graph) {
+    try {
+        LOGS_DEFAULT(INFO) << log_tag << "Importing the pre-compiled blob from the path set by the user";
+        exe_network_ = global_context_.ie_core.ImportNetwork(compiled_blob_path, hw_target, {});
+    } catch (Exception &e) {
+      ORT_THROW(log_tag + " Exception while Importing Network for graph: " + subgraph_context_.subgraph_name + ": " + e.what());
+    } catch(...) {
+      ORT_THROW(log_tag + " Exception while Importing Network for graph: " + subgraph_context_.subgraph_name);
+    }
+    LOGS_DEFAULT(INFO) << log_tag << "Succesfully Created an executable network from a previously exported network";
+  } else {
+  ie_cnn_network_ = CreateCNNNetwork(model_proto, global_context_, subgraph_context_, const_outputs_map_);
+  SetIODefs(model_proto, ie_cnn_network_, subgraph_context_.output_names, const_outputs_map_, global_context_.device_type);
+
+  if (const_outputs_map_.size() == subgraph_context_.output_names.size())
+    subgraph_context_.is_constant = true;
+
+  // Loading model to the plugin
+  if (subgraph_context_.is_constant) {
+    LOGS_DEFAULT(INFO) << log_tag << "The subgraph is a const. Directly moving to Infer stage.";
+    return;
+  }
+
+  std::map<std::string, std::string> config;
+#ifndef NDEBUG
+  if (openvino_ep::backend_utils::IsDebugEnabled()) {
+    config["PERF_COUNT"] = CONFIG_VALUE(YES);
+  }
+#endif
+  if (global_context_.device_type.find("MYRIAD") != std::string::npos) {
+    if (subgraph_context_.set_vpu_config) {
+      config["MYRIAD_DETECT_NETWORK_BATCH"] = CONFIG_VALUE(NO);
+    }
+    if (global_context_.enable_vpu_fast_compile) {
+      config["MYRIAD_HW_INJECT_STAGES"] = CONFIG_VALUE(NO);
+      config["MYRIAD_COPY_OPTIMIZATION"] = CONFIG_VALUE(NO);
+    }
+  //to check preprocessing inside model
+  config["MYRIAD_CHECK_PREPROCESSING_INSIDE_MODEL"] = CONFIG_VALUE(NO);
+  }
+
+  //Enable caching
+  if (global_context_.use_compiled_network == true) {
+    std::string cache_dir_path;
+    if (global_context_.blob_dump_path.empty()) {
+      cache_dir_path = "ov_compiled_blobs";
+    } else {
+      cache_dir_path = global_context_.blob_dump_path;
+    }
+    global_context_.ie_core.SetConfig({{CONFIG_KEY(CACHE_DIR), cache_dir_path}});
+  }
+  try {
+    exe_network_ = global_context_.ie_core.LoadNetwork(*ie_cnn_network_, hw_target, config);
+  } catch (const Exception& e) {
+    ORT_THROW(log_tag + " Exception while Loading Network for graph: " + subgraph_context_.subgraph_name + ": " + e.what());
+  } catch (...) {
+    ORT_THROW(log_tag + " Exception while Loading Network for graph " + subgraph_context_.subgraph_name);
+  }
+  LOGS_DEFAULT(INFO) << log_tag << "Loaded model to the plugin";
+  }
+#else
+  //Flow for OpenVINO versions supported till OV 2021.3
+  bool import_blob_status = false;
   if(hw_target == "MYRIAD" && global_context_.use_compiled_network == true) {
     if(!openvino_ep::backend_utils::UseCompiledNetwork()) {
       std::size_t model_index = global_context_.onnx_model_path_name.find_last_of("/\\");
@@ -134,10 +201,6 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
           config["MYRIAD_HW_INJECT_STAGES"] = CONFIG_VALUE(NO);
           config["MYRIAD_COPY_OPTIMIZATION"] = CONFIG_VALUE(NO);
         }
-    #if defined(OPENVINO_2021_4)
-      //to check preprocessing inside model
-      config["MYRIAD_CHECK_PREPROCESSING_INSIDE_MODEL"] = CONFIG_VALUE(NO);
-    #endif
       }
       try {
         exe_network_ = global_context_.ie_core.LoadNetwork(*ie_cnn_network_, hw_target, config);
@@ -154,6 +217,7 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
       }
     }
   }
+#endif
   //The infer_requests_ pool will be intialized with a default value of 8 infer_request's
   //The nireq value can also be configured to any num_of_threads during runtime
   size_t nireq = global_context_.num_of_threads;

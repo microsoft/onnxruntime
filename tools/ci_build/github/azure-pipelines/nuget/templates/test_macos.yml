@@ -6,7 +6,7 @@ jobs:
   workspace:
     clean: all
   pool:
-    vmImage: 'macOS-10.15'
+    vmImage: 'macOS-11'
   dependsOn:
   - NuGet_Packaging_${{ parameters.ArtifactSuffix }}
   condition: succeeded()

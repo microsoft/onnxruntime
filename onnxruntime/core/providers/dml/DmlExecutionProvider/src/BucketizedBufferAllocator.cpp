@@ -207,6 +207,11 @@ namespace Dml
 
     const AllocationInfo* BucketizedBufferAllocator::DecodeDataHandle(const void* opaqueHandle)
     {
+        if (opaqueHandle == nullptr)
+        {
+            // There is no memory allocated which needs to be decoded.
+            THROW_HR(E_INVALIDARG);
+        }
         const auto* allocInfo = static_cast<const AllocationInfo*>(opaqueHandle);
 
         auto owner = allocInfo->GetOwner();
