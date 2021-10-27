@@ -22,7 +22,8 @@ static void TestShapeWithVector(const std::vector<int64_t>& vector) {
   EXPECT_EQ(shape, shape_copy);
 
   // Test copying to itself
-  shape = shape;
+  TensorShape &shape2=shape;
+  shape = shape2;
   EXPECT_EQ(shape, shape_copy);
 }
 
