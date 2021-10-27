@@ -25,14 +25,6 @@ jobs:
         additionalBuildFlags: --use_dnnl --build_java --build_nodejs
         msbuildPlatform: x64
         isX86: false
-      x86_release:
-        BuildConfig: 'RelWithDebInfo'
-        UseOmp: ''
-        EnvSetupScript: setup_env_x86.bat
-        buildArch: x86
-        additionalBuildFlags:
-        msbuildPlatform: Win32
-        isX86: true
   variables:
     OrtPackageId: 'Microsoft.ML.OnnxRuntime'
     MsbuildArguments: '-maxcpucount'

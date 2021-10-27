@@ -105,13 +105,16 @@ if (onnxruntime_ENABLE_EAGER_MODE)
   # todo: this is because the prebuild pytorch may use a different version of protobuf headers.
   # force the build to find the protobuf headers ort using.
   target_include_directories(onnxruntime_pybind11_state PRIVATE "${REPO_ROOT}/cmake/external/protobuf/src")
-  # target_link_libraries(onnxruntime_pybind11_state PRIVATE onnxruntime_eager ${TORCH_LIBRARIES} ${TORCH_PYTHON_LIBRARY})
-  target_include_directories(onnxruntime_pybind11_state PRIVATE "${TORCH_INSTALL_PREFIX}/include" "${TORCH_INSTALL_PREFIX}/include/torch/csrc/api/include")
-  if (MSVC)
-    target_link_libraries(onnxruntime_pybind11_state PRIVATE onnxruntime_eager "${TORCH_INSTALL_PREFIX}/lib/torch.lib" "${TORCH_INSTALL_PREFIX}/lib/torch_cpu.lib" "${TORCH_INSTALL_PREFIX}/lib/torch_python.lib" "${TORCH_INSTALL_PREFIX}/lib/c10.lib" "${TORCH_INSTALL_PREFIX}/lib/kineto.lib" ${TORCH_PYTHON_LIBRARY})
-  else()
-    target_link_libraries(onnxruntime_pybind11_state PRIVATE onnxruntime_eager "${TORCH_INSTALL_PREFIX}/lib/libtorch.so" ${TORCH_PYTHON_LIBRARY})
-  endif()
+  target_link_libraries(onnxruntime_pybind11_state PRIVATE onnxruntime_eager ${TORCH_LIBRARIES} ${TORCH_PYTHON_LIBRARY})
+  # target_include_directories(onnxruntime_pybind11_state PRIVATE "${TORCH_INSTALL_PREFIX}/include" "${TORCH_INSTALL_PREFIX}/include/torch/csrc/api/include")
+  # if (MSVC)
+  #   # target_link_libraries(onnxruntime_pybind11_state PRIVATE onnxruntime_eager "${TORCH_INSTALL_PREFIX}\\lib\\torch.lib" "${TORCH_INSTALL_PREFIX}\\lib\\torch_cpu.lib" "${TORCH_INSTALL_PREFIX}\\lib\\torch_python.lib" "${TORCH_INSTALL_PREFIX}\\lib\\c10.lib" "${TORCH_INSTALL_PREFIX}\\lib\\kineto.lib" ${TORCH_PYTHON_LIBRARY})
+  #   target_link_libraries(onnxruntime_pybind11_state PRIVATE onnxruntime_eager ${TORCH_PYTHON_LIBRARY})
+  #   # target_link_libraries(onnxruntime_pybind11_state PUBLIC "${TORCH_INSTALL_PREFIX}\\lib\\torch.lib" "${TORCH_INSTALL_PREFIX}\\lib\\torch_cpu.lib" "${TORCH_INSTALL_PREFIX}\\lib\\torch_python.lib" "${TORCH_INSTALL_PREFIX}\\lib\\c10.lib")
+  #   target_link_libraries(onnxruntime_pybind11_state PUBLIC "C:\\Python38\\Lib\\site-packages\\torch\\lib\\torch.lib" "C:\\Python38\\Lib\\site-packages\\torch\\lib\\torch_cpu.lib" "C:\\Python38\\Lib\\site-packages\\torch\\lib\\torch_python.lib" "C:\\Python38\\Lib\\site-packages\\torch\\lib\\c10.lib")
+  # else()
+  #   target_link_libraries(onnxruntime_pybind11_state PRIVATE onnxruntime_eager "${TORCH_INSTALL_PREFIX}/lib/libtorch.so" ${TORCH_PYTHON_LIBRARY})
+  # endif()
 
   # the ort_aten.g.cpp is generated from tools. currently it has some limitations.
   # todo: fix this
