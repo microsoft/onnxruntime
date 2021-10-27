@@ -8,6 +8,7 @@
 #include "orttraining/core/graph/generic_registry.h"
 #include "core/optimizer/graph_transformer.h"
 #include "core/optimizer/graph_transformer_level.h"
+#include "core/optimizer/rule_based_graph_transformer.h"
 
 namespace onnxruntime {
 namespace training {
@@ -69,6 +70,17 @@ class GraphTransformerRegisterOnce final {
       graph_transformer_register_once##name##Counter(       \
       #name, [](const std::unordered_set<std::string>& eps) { \
         return std::make_unique<name>(eps);   \
+      }, TransformerLevel::level, flag); 
+
+#define ONNX_REGISTER_EXTERNAL_REWRITE_RULE(name, level, flag) \
+  ONNX_REGISTER_EXTERNAL_REWRITE_RULE_UNIQ(__COUNTER__, name, level, flag)
+#define ONNX_REGISTER_EXTERNAL_REWRITE_RULE_UNIQ(Counter, name, level, flag) \
+  static ONNX_UNUSED onnxruntime::training::GraphTransformerRegisterOnce \
+      graph_transformer_register_once##name##Counter(       \
+      #name, [](const std::unordered_set<std::string>& eps) { \
+        auto rule_base_transformer = std::make_unique<RuleBasedGraphTransformer>(#name, eps); \
+        ORT_THROW_IF_ERROR(rule_base_transformer->Register(std::make_unique<name>())); \
+        return rule_base_transformer;   \
       }, TransformerLevel::level, flag);  
 
 void GenerateExternalTransformers(

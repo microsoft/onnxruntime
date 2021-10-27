@@ -1,5 +1,4 @@
-
-#include "core/optimizer/graph_transformer.h"
+#include "core/optimizer/rewrite_rule.h"
 #include "orttraining/core/optimizer/graph_transformer_registry.h"
 #include "onnx/defs/schema.h"
 #include <memory>
@@ -8,19 +7,28 @@
 namespace onnxruntime {
 namespace training {
 
-class MyGraphTransformer : public GraphTransformer {
- public:
-  MyGraphTransformer(const std::unordered_set<std::string>& compatible_execution_providers = {}) noexcept
-      : GraphTransformer("MyGraphTransformer", compatible_execution_providers) {}
+class MyRewriteRule : public RewriteRule {
+public:
+  MyRewriteRule() noexcept
+      : RewriteRule("MyRewriteRule") {
+  }
+  std::vector<std::string> TargetOpTypes() const noexcept override {
+    return {};
+  }
 
-  Status ApplyImpl(Graph& /*graph*/, bool& /*modified*/, int /*graph_level*/, const logging::Logger& /*logger*/) const override {
+private:
+  bool SatisfyCondition(const Graph& /*graph*/, const Node& /*node*/, const logging::Logger& /*logger*/) const override {
+    return true;
+  }
+
+  Status Apply(Graph& /*graph*/, Node& /*node*/, RewriteRuleEffect& /*rule_effect*/, const logging::Logger& /*logger*/) const override{
     std::cout << "******************Trigger Customized Graph Transformer:  MyGraphTransformer!" << std::endl;
     return Status::OK();
   }
 };
 
 void RegisterTrainingExternalTransformers() {
-  ONNX_REGISTER_EXTERNAL_GRAPH_TRANSFORMER(MyGraphTransformer, Level1, true);
+  ONNX_REGISTER_EXTERNAL_REWRITE_RULE(MyRewriteRule, Level1, true);
 }
 
 }
