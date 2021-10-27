@@ -1,18 +1,18 @@
 ---
-title: Initial setup for ONNX Runtime Mobile
-parent: Initial setup
-grand_parent: Deploy ORT format model for mobile device and web
+title: Initial setup
+parent: Deploy ORT format model for mobile device and web
+grand_parent: Tutorials
 has_children: false
-nav_order: 1
+nav_order: 2
 ---
-
-{::options toc_levels="2..3" /}
 
 ## Contents
 {: .no_toc}
 
 * TOC
 {:toc}
+
+# Initial setup for ONNX Runtime Mobile
 
 ## Initial setup if using a pre-built package
 
@@ -109,7 +109,10 @@ You must match the python package version to the branch of the ONNX Runtime repo
 If you are using the `master` branch in the git repository you should use the nightly ONNX Runtime python package
   - `pip install -U -i https://test.pypi.org/simple/ ort-nightly`
 
+# Initial setup for ONNX Runtime Web
+
+TBD
 
 -------
 
-Next: [Converting ONNX models to ORT format](../model-conversion.md)
+Next: [Converting ONNX models to ORT format](./model-conversion.md)

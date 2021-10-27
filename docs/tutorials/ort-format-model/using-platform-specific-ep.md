@@ -1,9 +1,15 @@
 ---
-title: Enabling NNAPI or CoreML Execution Providers
-parent: Enable platform specific execution providers
-grand_parent: Deploy ORT format model for mobile device and web
-nav_order: 2
+title: Enable platform specific execution providers
+parent: Deploy ORT format model for mobile device and web
+grand_parent: Tutorials
+nav_order: 6
 ---
+
+## Contents
+{: .no_toc}
+
+* TOC
+{:toc}
 
 ## Using NNAPI and CoreML with ONNX Runtime Mobile
 
@@ -35,4 +41,4 @@ Once you have all the necessary components setup, follow the instructions to [cr
 
 -------
 
-Next: [Limitations](../limitations.md)
+Next: [Packaging and deploy](./packaging-and-deploy.md)
