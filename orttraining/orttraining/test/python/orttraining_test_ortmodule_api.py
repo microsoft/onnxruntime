@@ -318,7 +318,7 @@ class NeuralNetCustomClassOutput(torch.nn.Module):
 class MyStrNet(torch.nn.Module):
     def forward(self, x, my_str):
         if my_str.lower() == 'hello':
-            print('hi')
+            return x+1
         return x
 
 @pytest.fixture(scope='session', autouse=True)
@@ -998,6 +998,43 @@ def test_gradient_correctness_argmax_diagonal(offset, dim1, dim2):
     N, D, H = 16, 256, 128
     device = 'cuda'
     pt_model = NeuralNetDiagonal(offset, dim1, dim2).to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+
+    def run_step(model, input):
+        prediction = model(input)
+        loss = prediction.sum()
+        loss.backward()
+        return prediction
+
+    for _ in range(10):
+        pt_input = torch.rand((N, D, H), device=device, requires_grad=True)
+        ort_input = copy.deepcopy(pt_input)
+        pt_prediction = run_step(pt_model, pt_input)
+        ort_prediction = run_step(ort_model, ort_input)
+
+        _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
+        _test_helpers.assert_values_are_close(ort_input.grad, pt_input.grad)
+
+@pytest.mark.parametrize("dim", [None, 0, 1, (0, 1), (-1, 0), (0, 1, 2)])
+@pytest.mark.parametrize("keepdim", [True, False])
+def test_gradient_correctness_reducesum(dim, keepdim):
+    class NeuralNetReduceSum(torch.nn.Module):
+        def __init__(self, input_size, hidden_size, dim, keepdim):
+            super(NeuralNetReduceSum, self).__init__()
+            self.linear = torch.nn.Linear(input_size, hidden_size)
+            self.dim = dim
+            self.keepdim = keepdim
+
+        def forward(self, input):
+            t = self.linear(input)
+            if self.dim is None:
+                return t.sum()
+            else:
+                return torch.sum(t, self.dim, keepdim=self.keepdim)
+
+    N, D, H, W = 16, 256, 128, 64
+    device = 'cuda'
+    pt_model = NeuralNetReduceSum(H, W, dim, keepdim).to(device)
     ort_model = ORTModule(copy.deepcopy(pt_model))
 
     def run_step(model, input):
@@ -3321,23 +3358,18 @@ def test_hf_save_pretrained():
         for p1, p2 in zip(model1.parameters(), model2.parameters()):
             assert p1.data.ne(p2.data).sum() == 0
 
-def test_input_with_string_exception():
+def test_ortmodule_string_inputs_are_ignored():
 
     pt_model = MyStrNet()
     ort_model = ORTModule(copy.deepcopy(pt_model))
     x = torch.randn(1, 2)
 
-    from onnxruntime.training.ortmodule._fallback import _FallbackPolicy
-    if _test_helpers.is_all_or_nothing_fallback_enabled(None, _FallbackPolicy.FALLBACK_UNSUPPORTED_DATA):
-        # Fallback
-        pt_out = pt_model(x, 'hello')
-        ort_out = pt_model(x, 'hello')
-        _test_helpers.assert_values_are_close(pt_out, ort_out)
-    else:
-        # ORT backend
-        with pytest.raises(_fallback.ORTModuleIOError) as ex_info:
-            _ = ort_model(x, 'hello')
-        assert "ORTModule does not support the following model data type <class 'str'>" in str(ex_info.value)
+    with pytest.warns(UserWarning) as warning_record:
+        out = ort_model(x, 'hello')
+
+    assert len(warning_record) == 2
+    assert "Received input of type <class 'str'> which may be treated as a constant by ORT by default." in warning_record[1].message.args[0]
+    _test_helpers.assert_values_are_close(out, x+1)
 
 def test_ortmodule_list_input():
     class ListNet(torch.nn.Module):
@@ -4174,6 +4206,40 @@ def test_sigmoid_grad():
     ort_model = ORTModule(copy.deepcopy(pt_model))
 
     for step in range(1000):
+        pt_x = torch.randn(N, D_in, device=device, requires_grad=True)
+        ort_x = copy.deepcopy(pt_x)
+        ort_prediction, ort_loss = run_step(ort_model, ort_x)
+        pt_prediction, pt_loss = run_step(pt_model, pt_x)
+        _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
+        _test_helpers.assert_values_are_close(ort_x.grad, pt_x.grad)
+        _test_helpers.assert_values_are_close(ort_loss, pt_loss)
+
+
+def test_tanh_grad():
+    class NeuralNetTanh(torch.nn.Module):
+        def __init__(self, input_size, hidden_size, num_classes):
+            super(NeuralNetTanh, self).__init__()
+
+            self.fc1 = torch.nn.Linear(input_size, hidden_size)
+            self.tanh = torch.nn.Tanh()
+
+        def forward(self, input1):
+            out = self.fc1(input1)
+            out = self.tanh(out)
+            return out
+
+    def run_step(model, x):
+        prediction = model(x)
+        loss = prediction.sum()
+        loss.backward()
+        return prediction, loss
+    device = 'cuda'
+
+    N, D_in, H, D_out = 120, 1536, 500, 1536
+    pt_model = NeuralNetTanh(D_in, H, D_out).to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+
+    for step in range(10):
         pt_x = torch.randn(N, D_in, device=device, requires_grad=True)
         ort_x = copy.deepcopy(pt_x)
         ort_prediction, ort_loss = run_step(ort_model, ort_x)

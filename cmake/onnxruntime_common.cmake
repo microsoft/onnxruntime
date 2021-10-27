@@ -33,10 +33,7 @@ if(WIN32)
          "${ONNXRUNTIME_ROOT}/core/platform/windows/logging/*.h"
          "${ONNXRUNTIME_ROOT}/core/platform/windows/logging/*.cc"
     )
-    # Windows platform adapter code uses advapi32, which isn't linked in by default in desktop ARM
-    if (NOT WINDOWS_STORE)
-        list(APPEND onnxruntime_EXTERNAL_LIBRARIES advapi32)
-    endif()
+
 else()
     list(APPEND onnxruntime_common_src_patterns
          "${ONNXRUNTIME_ROOT}/core/platform/posix/*.h"

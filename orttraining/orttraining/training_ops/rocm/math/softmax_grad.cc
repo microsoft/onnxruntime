@@ -69,13 +69,13 @@ Status SoftMaxGradComputeHelper(
       T,                                                                        \
       kRocmExecutionProvider,                                                   \
       (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      SoftmaxGrad<T>);                                                          \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
-      LogSoftmaxGrad,                                                           \
-      kMSDomain,                                                                \
-      1,                                                                        \
-      T,                                                                        \
-      kRocmExecutionProvider,                                                   \
+      SoftmaxGrad<T>);                                                                     \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                           \
+      LogSoftmaxGrad,                                                                      \
+      kMSDomain,                                                                           \
+      1,                                                                                   \
+      T,                                                                                   \
+      kRocmExecutionProvider,                                                              \
       (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       SoftmaxGrad<T>);
 
