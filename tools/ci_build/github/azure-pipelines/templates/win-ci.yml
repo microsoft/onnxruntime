@@ -59,9 +59,9 @@ jobs:
   pool: ${{ parameters.ort_build_pool_name }}
   timeoutInMinutes:  300  
   variables:
-    ${{ if eq('${{ parameters.buildNodejs }}', true) }}:
+    ${{ if eq(parameters.buildNodejs, true) }}:
       BuildNodeJsParam: '--build_nodejs'
-    ${{ if not(eq('${{ parameters.buildNodejs }}', true)) }}:
+    ${{ if not(eq(parameters.buildNodejs, true)) }}:
       BuildNodeJsParam: ''
 
   steps:
@@ -74,7 +74,7 @@ jobs:
         architecture: ${{ parameters.buildArch }}
 
     - task: NodeTool@0
-      condition: and(succeeded(), eq('${{ parameters.buildNodejs }}', true))
+      condition: and(succeeded(), eq(parameters.buildNodejs, true))
       inputs:
         versionSpec: '14.x'
 
@@ -142,7 +142,7 @@ jobs:
         commitId: $(OnnxRuntimeGitCommitHash)
         DoEsrp: ${{ parameters.DoEsrp }}
 
-    - ${{ if eq('${{ parameters.buildNodejs }}', true) }}:
+    - ${{ if eq(parameters.buildNodejs, true) }}:
       - template: nodejs-artifacts-package-and-publish-steps-windows.yml
         parameters:
           arch: ${{ parameters.packageName }}
