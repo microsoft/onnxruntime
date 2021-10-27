@@ -276,7 +276,10 @@ static void InitNestedModelLocalFunction(onnxruntime::Graph& graph,
   }
   ORT_CATCH(const std::exception& e) {
     LOGS(logger, WARNING) << "Function body initialization failed for Function '"
-                          << onnx_function_proto.name() << "'. Error message " << e.what()
+                          << onnx_function_proto.name()
+#ifndef ORT_NO_EXCEPTIONS
+                          << "'. Error message " << e.what()
+#endif //ORT_NO_EXCEPTIONS
                           << ". Execution will fail if ORT does not have a specialized kernel for this op";
     // Return without using this function op's expansion. No need to fail just yet.
     // If ORT has a specialized kernel for this op then execution will proceed
