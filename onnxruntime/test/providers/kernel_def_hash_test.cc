@@ -174,7 +174,7 @@ TEST(KernelDefHashTest, ExpectedCpuKernelDefHashes) {
 #if defined(ENABLE_TRAINING_OPS)
     AppendKernelDefHashesFromFile(ORT_TSTR("testdata/kernel_def_hashes/training_ops.cpu.json"), result);
 #endif  // ENABLE_TRAINING_OPS
-    // TODO also handle kernels enabled by these symbols: ML_FEATURIZERS, BUILD_MS_EXPERIMENTAL_OPS
+    // TODO also handle kernels enabled by these symbols: BUILD_MS_EXPERIMENTAL_OPS
     std::sort(result.begin(), result.end());
     return result;
   }();

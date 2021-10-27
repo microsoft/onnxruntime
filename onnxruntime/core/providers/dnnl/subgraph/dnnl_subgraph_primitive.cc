@@ -379,6 +379,8 @@ void DnnlSubgraphPrimitive::SetInitializer(std::string memory_name, dnnl::memory
   }
 }
 
+
+
 dnnl::memory DnnlSubgraphPrimitive::GetMemoryAndReshape(const DnnlTensor& tensor, dnnl::memory::desc mem_desc, dnnl::engine eng, bool transpose) {
   // if found just return
   if (HasMemory(tensor.Name(), mem_desc, eng)) {
@@ -435,6 +437,42 @@ dnnl::memory DnnlSubgraphPrimitive::GetMemoryAndReshape(const DnnlTensor& tensor
     SetInitializer(tensor.Name(), mem_to);
   }
   return mem_to;
+}
+
+dnnl::memory DnnlSubgraphPrimitive::GetMemoryInOrtFormat(const DnnlTensor& tensor, const dnnl::engine& eng) {
+  auto from_mem = GetMemory(tensor);
+  auto from_desc = from_mem.get_desc();
+  auto from_dims = from_desc.dims();
+  if (!IsMemoryInExpectedOrtFormat(from_desc)) {
+    dnnl::memory::desc to_md = dnnl::memory::desc(from_dims, tensor.Type(), GetDnnlFormat(from_dims.size()));
+    dnnl::memory to_mem = dnnl::memory(to_md, eng);
+    AddPrimitive(dnnl::reorder(from_mem, to_mem), {{DNNL_ARG_FROM, from_mem},
+                                                   {DNNL_ARG_TO, to_mem}});
+   return to_mem;
+  } else {
+    // If using GPU this will move the memory from the CPU to the GPU.
+    return GetMemoryAndReshape(tensor, from_desc, eng);
+  }
+}
+
+bool DnnlSubgraphPrimitive::IsMemoryInExpectedOrtFormat(const dnnl::memory::desc& desc) const {
+  if (desc.data.format_kind != dnnl_blocked) {
+    return false;
+  }
+  if (desc.data.format_desc.blocking.inner_nblks != 0) {
+    return false;
+  }
+  auto strides = desc.data.format_desc.blocking.strides;
+  // if a data format is dnnl_format::abcd... the stride will go from largest to smallest
+  // if for example we have a shape {2,3,4} we expect a stride of {12, 4, 1} if it were
+  // of dnnl_format::abc if instead the stride were {12, 1, 4} that would be dnnl_format::acb
+  // which does not match what is expected from Onnxruntime.
+  for (size_t i = 1; i < desc.dims().size(); ++i) {
+    if (strides[i - 1] < strides[i]) {
+      return false;
+    }
+  }
+  return true;
 }
 
 void DnnlSubgraphPrimitive::AddReshape(dnnl::memory src, dnnl::memory dst) {

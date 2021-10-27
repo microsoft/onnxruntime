@@ -57,7 +57,7 @@ struct ProviderHostCPUImpl : ProviderHostCPU {
   Status NonMaxSuppressionBase__PrepareCompute(OpKernelContext* ctx, PrepareContext& pc) override { return NonMaxSuppressionBase::PrepareCompute(ctx, pc); }
   Status NonMaxSuppressionBase__GetThresholdsFromInputs(const PrepareContext& pc, int64_t& max_output_boxes_per_class, float& iou_threshold, float& score_threshold) override { return NonMaxSuppressionBase::GetThresholdsFromInputs(pc, max_output_boxes_per_class, iou_threshold, score_threshold); }
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_ROCM)
   // From cpu/tensor/size.h (direct)
   Status Size__Compute(const Size* p, OpKernelContext* context) override { return p->Size::Compute(context); }
   // From cpu/tensor/scatter_nd.h (direct)
@@ -176,6 +176,10 @@ struct ProviderHostCPUImpl : ProviderHostCPU {
   void contrib__GetPermutationAndShape(bool ncd_to_ndc, const TensorShape& tensor_shape, std::vector<int64_t>& new_shape, std::vector<size_t>& permutations) override { contrib::GetPermutationAndShape(ncd_to_ndc, tensor_shape, new_shape, permutations); }
   Status contrib__PrepareForTrainingCompute(const TensorShape& input_shape, int num_outputs, int64_t& axis, int& before_dims, int& after_dims_including_split_axis, int& after_dims_excluding_split, std::vector<int64_t>& split_sizes) override { return contrib::PrepareForTrainingCompute(input_shape, num_outputs, axis, before_dims, after_dims_including_split_axis, after_dims_excluding_split, split_sizes); }
   Status contrib__YieldOp__Compute(const contrib::YieldOp* p, OpKernelContext* context) override { return p->YieldOp::Compute(context); }
+
+  // From aten_op.h (direct)
+  bool contrib__IsATenOperatorExecutorInitialized() override { return contrib::IsATenOperatorExecutorInitialized(); }
+  Status contrib__ExecuteReduceSumATenOp(OpKernelContext* p_ctx, const std::vector<int64_t>& axes, bool keepdims) override { return contrib::ExecuteReduceSumATenOp(p_ctx, axes, keepdims); }
 #endif
 #endif
 };

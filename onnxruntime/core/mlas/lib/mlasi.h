@@ -498,6 +498,7 @@ extern "C" {
 #elif defined(MLAS_TARGET_POWER)
     MLAS_GEMM_FLOAT_KERNEL MlasSgemmKernel;
     MLAS_GEMM_FLOAT_KERNEL MlasSgemmKernelPOWER10;
+    MLAS_GEMM_DOUBLE_KERNEL MlasDgemmKernel;
 #else
     MLAS_GEMM_FLOAT_KERNEL MlasSgemmKernelZero;
     MLAS_GEMM_FLOAT_KERNEL MlasSgemmKernelAdd;
@@ -666,6 +667,17 @@ extern const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8X8DispatchWasmSimd;
 extern const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8X8DispatchDefault;
 
 //
+// Symmetric quantized integer convolution dispatch structure.
+//
+
+struct MLAS_CONV_SYM_DISPATCH;
+
+extern const MLAS_CONV_SYM_DISPATCH MlasConvSymDispatchAvx2;
+extern const MLAS_CONV_SYM_DISPATCH MlasConvSymDispatchAvxVnni;
+extern const MLAS_CONV_SYM_DISPATCH MlasConvSymDispatchAvx512Core;
+extern const MLAS_CONV_SYM_DISPATCH MlasConvSymDispatchAvx512Vnni;
+
+//
 // Quantized depthwise convolution kernels.
 //
 
@@ -707,10 +719,19 @@ struct MLAS_PLATFORM {
 
 #if defined(MLAS_TARGET_AMD64_IX86) || defined(MLAS_TARGET_POWER)
     MLAS_GEMM_FLOAT_KERNEL* GemmFloatKernel;
-    const MLAS_GEMM_U8X8_DISPATCH* GemmU8S8Dispatch;
-    const MLAS_GEMM_U8X8_DISPATCH* GemmU8U8Dispatch;
 #endif
 
+#if defined(MLAS_TARGET_AMD64_IX86)
+    const MLAS_GEMM_U8X8_DISPATCH* GemmU8S8Dispatch;
+    const MLAS_GEMM_U8X8_DISPATCH* GemmU8U8Dispatch;
+#elif defined(MLAS_TARGET_ARM64)
+    const MLAS_GEMM_U8X8_DISPATCH* GemmU8X8Dispatch;
+#endif
+
+    const MLAS_CONV_SYM_DISPATCH* ConvSymDispatch{nullptr};
+#if defined(MLAS_TARGET_POWER)
+    MLAS_GEMM_DOUBLE_KERNEL* GemmDoubleKernel;
+#endif
 #if defined(MLAS_TARGET_AMD64)
     MLAS_SGEMM_KERNEL_M1_ROUTINE* KernelM1Routine;
     MLAS_SGEMM_KERNEL_M1_ROUTINE* KernelM1TransposeBRoutine;
@@ -746,9 +767,6 @@ struct MLAS_PLATFORM {
     static constexpr int32_t MaximumThreadCount = MLAS_MAXIMUM_THREAD_COUNT;
 #endif
 
-#if defined(MLAS_TARGET_ARM64)
-    const MLAS_GEMM_U8X8_DISPATCH* GemmU8X8Dispatch;
-#endif
 };
 
 extern MLAS_PLATFORM MlasPlatform;
@@ -1755,18 +1773,44 @@ MlasPowerOf2Float32x4(MLAS_FLOAT32X4 Vector)
 
 #if defined(MLAS_SSE2_INTRINSICS)
 typedef __m128d MLAS_FLOAT64X2;
+#elif defined(MLAS_VSX_INTRINSICS)
+typedef __vector double MLAS_FLOAT64X2;
 #else
 #define MLAS_FLOAT64X2_UNSUPPORTED
 #endif
 
 #ifndef MLAS_FLOAT64X2_UNSUPPORTED
 
+#if defined(MLAS_VSX_INTRINSICS)
+template<unsigned Lane>
+MLAS_FORCEINLINE
+double
+MlasExtractLaneFloat64x2(MLAS_FLOAT64X2 Vector)
+{
+    return Vector[Lane];
+}
+MLAS_FORCEINLINE
+MLAS_FLOAT64X2
+MlasMultiplyAddFloat64x2(MLAS_FLOAT64X2 Vector1, MLAS_FLOAT64X2 Vector2, MLAS_FLOAT64X2 Vector3)
+{
+    return vec_madd(Vector1, Vector2, Vector3);
+}
+
+MLAS_FORCEINLINE
+MLAS_FLOAT64X2
+MlasBroadcastFloat64x2(const double *Value)
+{
+    return MLAS_FLOAT64X2{*Value, *Value};
+}
+#endif
 MLAS_FORCEINLINE
 MLAS_FLOAT64X2
 MlasBroadcastFloat64x2(double Value)
 {
 #if defined(MLAS_SSE2_INTRINSICS)
     return _mm_set1_pd(Value);
+#elif defined(MLAS_VSX_INTRINSICS)
+    return MLAS_FLOAT64X2{Value, Value};
 #endif
 }
 
@@ -1776,6 +1820,8 @@ MlasZeroFloat64x2(void)
 {
 #if defined(MLAS_SSE2_INTRINSICS)
     return _mm_setzero_pd();
+#elif defined(MLAS_VSX_INTRINSICS)
+    return MlasBroadcastFloat64x2(0.0f);
 #endif
 }
 
@@ -1785,6 +1831,8 @@ MlasLoadFloat64x2(const double* Buffer)
 {
 #if defined(MLAS_SSE2_INTRINSICS)
     return _mm_loadu_pd(Buffer);
+#elif defined(MLAS_VSX_INTRINSICS)
+    return vec_vsx_ld(0, Buffer);
 #endif
 }
 
@@ -1794,6 +1842,8 @@ MlasStoreFloat64x2(double* Buffer, MLAS_FLOAT64X2 Vector)
 {
 #if defined(MLAS_SSE2_INTRINSICS)
     _mm_storeu_pd(Buffer, Vector);
+#elif defined(MLAS_VSX_INTRINSICS)
+    vec_vsx_st(Vector, 0, Buffer);
 #endif
 }
 
@@ -1803,6 +1853,8 @@ MlasStoreAlignedFloat64x2(double* Buffer, MLAS_FLOAT64X2 Vector)
 {
 #if defined(MLAS_SSE2_INTRINSICS)
     _mm_store_pd(Buffer, Vector);
+#elif defined(MLAS_VSX_INTRINSICS)
+    vec_st(Vector, 0, Buffer);
 #endif
 }
 
@@ -1812,6 +1864,8 @@ MlasMultiplyFloat64x2(MLAS_FLOAT64X2 Vector1, MLAS_FLOAT64X2 Vector2)
 {
 #if defined(MLAS_SSE2_INTRINSICS)
     return _mm_mul_pd(Vector1, Vector2);
+#elif defined(MLAS_VSX_INTRINSICS)
+    return Vector1 * Vector2;
 #endif
 }
 

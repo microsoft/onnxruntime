@@ -725,15 +725,27 @@ TYPED_TEST(PadOpTest, Pad_Edge_DimWithZeroInput) {
   using T = TypeParam;
   RunAllOpsetAllDomainPadTests<T>({0},  // 1D
                                   {},
-                                  {1, 1},
+                                  {1, 1},  // not allowed if it pads the empty dim
                                   T(1),
                                   {0},
                                   {},
-                                  "edge");
+                                  "edge",
+                                  OpTester::ExpectResult::kExpectFailure,
+                                  "Cannot use 'edge' mode to pad dimension with a value of 0. Input shape:{0}");
 
   RunAllOpsetAllDomainPadTests<T>({2, 0},  // 2D
                                   {},
-                                  {1, 1, 1, 1},  // ignore pad for dims with value of 0 as there's no edge value to pad with
+                                  {1, 1, 1, 1},  // not allowed if it pads the empty dim 
+                                  T(1),
+                                  {4, 0},
+                                  {},
+                                  "edge",
+                                  OpTester::ExpectResult::kExpectFailure,
+                                  "Cannot use 'edge' mode to pad dimension with a value of 0. Input shape:{2,0}");
+
+  RunAllOpsetAllDomainPadTests<T>({2, 0},  // 2D
+                                  {},
+                                  {1, 0, 1, 0},  
                                   T(1),
                                   {4, 0},
                                   {},
@@ -741,7 +753,17 @@ TYPED_TEST(PadOpTest, Pad_Edge_DimWithZeroInput) {
 
   RunAllOpsetAllDomainPadTests<T>({2, 2, 0},  // 3D
                                   {},
-                                  {0, 1, 1, 0, 1, 1},
+                                  {0, 1, 1, 0, 1, 1},  // not allowed if it pads the empty dim
+                                  T(1),
+                                  {2, 4, 0},
+                                  {},
+                                  "edge",
+                                  OpTester::ExpectResult::kExpectFailure,
+                                  "Cannot use 'edge' mode to pad dimension with a value of 0. Input shape:{2,2,0}");
+
+  RunAllOpsetAllDomainPadTests<T>({2, 2, 0},  // 3D
+                                  {},
+                                  {0, 1, 0, 0, 1, 0},
                                   T(1),
                                   {2, 4, 0},
                                   {},

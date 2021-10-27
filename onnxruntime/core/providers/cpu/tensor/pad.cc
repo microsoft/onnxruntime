@@ -171,11 +171,13 @@ Status PadBase::HandleDimValueZero(const Mode& mode, const TensorShape& input_sh
       break;
     }
     case Mode::Edge: {
-      // we need to override the default logic and set the output dim to 0 where the input dim is zero.
-      // this is to match numpy behavior.
+      // match numpy behavior of failing if mode is 'edge' and there's an attempt to pad a dimension with value of 0
       for (size_t i = 0, end = input_shape.NumDimensions(); i < end; ++i) {
-        if (input_shape[i] == 0)
-          output_shape[i] = 0;
+        if (input_shape[i] == 0 && output_shape[i] > 0) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                                 "Cannot use 'edge' mode to pad dimension with a value of 0. Input shape:",
+                                 input_shape);
+        }
       }
       break;
     }
