@@ -114,7 +114,6 @@ class FusionEmbedLayerNoMask(Fusion):
             path1 = self.model.match_parent_path(position_embedding_gather, ['Expand', 'Where', 'Reshape', 'Shape'], [1, 1, 2, 0])
             if path1 is None:
                 return False
-            return False
 
         expand, shape = path1
         if shape.input[0] != input_ids:
