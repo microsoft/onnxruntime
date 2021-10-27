@@ -214,40 +214,25 @@ const Node& OpKernel::Node() const { return g_host->OpKernel__Node(this); }
 
 TensorShape::TensorShape(gsl::span<const int64_t> dims) {
   Allocate(dims.size());
-  gsl::copy(dims, gsl::span<int64_t>(values_, size_));
+  gsl::copy(dims, values_);
 }
 
 TensorShape& TensorShape::operator=(const TensorShape& other) {
-  allocated_buffer_.reset();
-  Allocate(other.size_);
-  gsl::copy(other.GetDims(), gsl::span<int64_t>(values_, size_));
+  g_host->TensorShape__operator_assign(this, other);
   return *this;
 }
 
 TensorShape& TensorShape::operator=(TensorShape&& other) {
-  // If the other TensorShape allocated a buffer, then take ownership of it
-  if (other.allocated_buffer_) {
-    allocated_buffer_ = std::move(other.allocated_buffer_);
-    values_ = allocated_buffer_.get();
-    size_ = other.size_;
-    other.size_ = 0;  // Just to be safe, set the other to be an empty shape
-  } else
-    operator=(other);  // Otherwise we do a copy using the regular operator=
-
+  g_host->TensorShape__operator_move_assign(this, std::move(other));
   return *this;
 }
 
 void TensorShape::Allocate(size_t size) {
-  size_ = size;
-  if (size_ > std::size(small_buffer_)) {
-    allocated_buffer_ = std::make_unique<int64_t[]>(size_);
-    values_ = allocated_buffer_.get();
-  } else
-    values_ = small_buffer_;
+  g_host->TensorShape__Allocate(this, size);
 }
 
 int64_t TensorShape::Size() const {
-  int64_t size = SizeHelper(0, size_);
+  int64_t size = SizeHelper(0, values_.size());
   //should we cache the size? as multiple operation may be expensive.
   return size;
 }
@@ -257,7 +242,7 @@ int64_t TensorShape::SizeHelper(size_t start, size_t end) const {
 }
 
 TensorShape TensorShape::Slice(size_t dimstart, size_t dimend) const {
-  assert(dimstart <= dimend && dimend <= size_);  // "Invalid tensor shape slice argument."
+  assert(dimstart <= dimend && dimend <= values_.size());  // "Invalid tensor shape slice argument."
   return TensorShape(GetDims().subspan(dimstart, dimend - dimstart));
 }
 

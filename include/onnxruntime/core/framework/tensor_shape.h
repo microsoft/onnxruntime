@@ -45,14 +45,14 @@ class TensorShape {
   bool operator!=(const TensorShape& other) const noexcept { return GetDims() != other.GetDims(); }
 
   size_t NumDimensions() const noexcept {
-    return size_;
+    return values_.size();
   }
 
   /**
      Copy dims into an array with given size
   */
   void CopyDims(int64_t* dims, size_t num_dims) const {
-    memcpy(dims, values_, sizeof(int64_t) * std::min(num_dims, NumDimensions()));
+    memcpy(dims, values_.begin(), sizeof(int64_t) * std::min(num_dims, NumDimensions()));
   }
 
   /**
@@ -61,14 +61,14 @@ class TensorShape {
      and this function does no checks to ensure that
   */
   void CopyDims(int64_t* dims, size_t start_dim, size_t num_dims) const {
-    memcpy(dims, values_ + start_dim, sizeof(int64_t) * std::min(num_dims, NumDimensions() - start_dim));
+    memcpy(dims, values_.begin() + start_dim, sizeof(int64_t) * std::min(num_dims, NumDimensions() - start_dim));
   }
 
   /**
      Return underlying vector representation.
   */
-  gsl::span<const int64_t> GetDims() const { return gsl::span<const int64_t>(values_, size_); }
-  std::vector<int64_t> GetDimsAsVector() const { return std::vector<int64_t>(values_, values_ + size_); }
+  gsl::span<const int64_t> GetDims() const { return values_; }
+  std::vector<int64_t> GetDimsAsVector() const { return std::vector<int64_t>(values_.begin(), values_.end()); }
 
   /**
    * Return the total number of elements. Returns 1 for an empty (rank 0) TensorShape.
@@ -100,7 +100,7 @@ class TensorShape {
   /**
      Return a new TensorShape of the dimensions from dimstart to end.
   */
-  TensorShape Slice(size_t dimstart) const { return Slice(dimstart, size_); }
+  TensorShape Slice(size_t dimstart) const { return Slice(dimstart, values_.size()); }
 
   /**
      output dimensions nicely formatted
@@ -118,17 +118,18 @@ class TensorShape {
      empty shape or 1D shape (1) is regarded as scalar tensor
   */
   bool IsScalar() const {
-    size_t len = size_;
+    size_t len = values_.size();
     return len == 0 || (len == 1 && values_[0] == 1);
   }
 
  private:
   void Allocate(size_t size);
 
-  int64_t* values_{};
-  size_t size_{};
+  gsl::span<int64_t> values_;
   int64_t small_buffer_[4];
   std::unique_ptr<int64_t[]> allocated_buffer_;
+
+  friend struct ProviderHostImpl; // So that the shared provider interface can access Allocate
 };
 #ifdef __GNUC__
 #pragma GCC diagnostic pop
