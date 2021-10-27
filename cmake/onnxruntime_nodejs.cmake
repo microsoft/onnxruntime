@@ -28,6 +28,17 @@ if(had_error)
     message(FATAL_ERROR "Failed to find NPM: " ${had_error})
 endif()
 
+# setup ARCH
+if (APPLE AND CMAKE_OSX_ARCHITECTURES_LEN GREATER 1)
+    message(FATAL_ERROR "CMake.js does not support multi-architecture for macOS")
+endif()
+if (APPLE AND CMAKE_OSX_ARCHITECTURES STREQUAL "arm64")
+    set(NODEJS_BINDING_ARCH arm64)
+# elseif()
+else()
+    set(NODEJS_BINDING_ARCH x64)
+endif()
+
 if(NOT onnxruntime_ENABLE_STATIC_ANALYSIS)
 # add custom target
 add_custom_target(js_npm_ci ALL
@@ -42,7 +53,7 @@ add_custom_target(js_common_npm_ci ALL
 
 add_custom_target(nodejs_binding_wrapper ALL
     COMMAND ${NPM_CLI} ci
-    COMMAND ${NPM_CLI} run build -- --onnxruntime-build-dir=${CMAKE_CURRENT_BINARY_DIR} --config=${CMAKE_BUILD_TYPE} --arch=x64
+    COMMAND ${NPM_CLI} run build -- --onnxruntime-build-dir=${CMAKE_CURRENT_BINARY_DIR} --config=${CMAKE_BUILD_TYPE} --arch=${NODEJS_BINDING_ARCH}
     WORKING_DIRECTORY ${JS_NODE_ROOT}
     COMMENT "Using cmake-js to build OnnxRuntime Node.js binding")
 add_dependencies(js_common_npm_ci js_npm_ci)
