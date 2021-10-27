@@ -140,7 +140,33 @@ Note:
 
 3. Install the latest ONNX Python package using pip to run these ONNX Python API's successfully.
 
-## Configuration Options
+### Support for IO Buffer Optimization
+
+To enable IO Buffer Optimization we have to set OPENCL_LIBS, OPENCL_INCS environment variables before build. For IO Buffer Optimization, the model must be fully supported on
+OpenVINO and we must provide in the remote context cl_context void pointer as C++ Configuration Option. We can provide cl::Buffer address as Input using GPU Memory Allocator for input and output.
+
+Example:
+```bash
+//Set up a remote context
+cl::Context _context;
+.....
+// Set the context through openvino options
+OrtOpenVINOProviderOptions options;
+options.context = (void *) _context.get() ;
+.....
+//Define the Memory area
+Ort::MemoryInfo info_gpu("IGPU", OrtAllocatorType::OrtDeviceAllocator, 0, OrtMemTypeDefault);
+//Create a shared buffer , fill in with data
+cl::Buffer shared_buffer(_context, CL_MEM_READ_WRITE, imgSize, NULL, &err);
+....
+//Cast it to void*, and wrap it as device pointer for Ort::Value
+void *shared_buffer_void = static_cast<void *>(&shared_buffer);
+Ort::Value inputTensors = Ort::Value::CreateTensor(
+        info_gpu, shared_buffer_void, imgSize, inputDims.data(),
+        inputDims.size(), ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT);
+```
+
+### Configuration Options
 
 OpenVINO EP can be configured with certain options at runtime that control the behavior of the EP. These options can be set as key-value pairs as below:-
 
@@ -163,6 +189,7 @@ options.device_id = "";
 options.num_of_threads = 8;
 options.use_compiled_network = false;
 options.blob_dump_path = "";
+options.context = 0x123456ff;
 SessionOptionsAppendExecutionProvider_OpenVINO(session_options, &options);
 ```
 
@@ -177,6 +204,7 @@ The following table lists all the available configuration options and the Key-Va
 | num_of_threads | string | Any unsigned positive number other than 0 | size_t | Overrides the accelerator default value of number of threads with this value at runtime. If this option is not explicitly set, default value of 8 is used during build time. |
 | use_compiled_network | string | True/False | boolean | This option is only available for MYRIAD_FP16 VPU devices for both Linux and Windows and it enables save/load blob functionality. It can be used to directly import pre-compiled blobs if exists or dump a pre-compiled blob at the executable path. |
 | blob_dump_path | string | Any valid string path on the hardware target | string | Explicitly specify the path where you would like to dump and load the blobs for the save/load blob feature when use_compiled_network setting is enabled . This overrides the default path.|
+| context | string | OpenCL Context | void* | This option is only alvailable when UEP is built with OpenCL flags enabled. It takes in the remote context i.e the cl_context address as a void pointer.|
 
 Valid Hetero or Multi-Device combinations:
 HETERO:<DEVICE_TYPE_1>,<DEVICE_TYPE_2>,<DEVICE_TYPE_3>...
