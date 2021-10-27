@@ -454,7 +454,7 @@ static void TransposeInput(OptimizerCtx& ctx, api::NodeRef& node, size_t i,
   std::unique_ptr<api::NodeRef> inp_node = ctx.graph.GetNodeProducingOutput(input);
   if (inp_node != nullptr && inp_node->IsOp("Transpose")) {
     std::optional<std::vector<int64_t>> perm2 = GetPermAttrIfValid(*inp_node);
-    if (perm2 != std::nullopt) {
+    if (perm2 != std::nullopt && perm2->size() == perm.size()) {
       // If they cancel, use pre_transpose_value and remove Transpose if possible.
       if (*perm2 == perm_inv) {
         std::string_view pre_transpose_value = inp_node->Inputs()[0];
@@ -717,7 +717,8 @@ std::vector<size_t> NonScalarInputs(OptimizerCtx& ctx, api::NodeRef& node) {
   std::vector<size_t> indices;
   for (size_t i = 0; i < inputs.size(); ++i) {
     auto info = ctx.graph.GetValueInfo(inputs[i]);
-    if (info->Shape()->size() != 0) {
+    auto shape = info->Shape();
+    if (shape == std::nullopt || shape->size() != 0) {
       indices.push_back(i);
     }
   }
@@ -1316,7 +1317,7 @@ static bool HandleTranspose(HandlerArgs& args) {
   // In this handler a transpose leads to another transpose. "transpose" if the 1st and "node" is the 2nd.
 
   std::optional<std::vector<int64_t>> node_perm = GetPermAttrIfValid(args.node);
-  if (node_perm == std::nullopt) {
+  if (node_perm == std::nullopt || node_perm->size() != args.perm.size()) {
     return false;
   }
 
