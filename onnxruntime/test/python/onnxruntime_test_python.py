@@ -7,6 +7,7 @@ import os
 import numpy as np
 import gc
 
+import torch
 import onnxruntime as onnxrt
 import threading
 import sys
