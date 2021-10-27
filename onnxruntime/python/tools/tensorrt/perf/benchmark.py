@@ -193,9 +193,11 @@ def get_ort_session_inputs_and_outputs(name, session, ort_input):
 
     else:
         sess_inputs = {}
+        sess_outputs = []
         for i in range(len(session.get_inputs())):
             sess_inputs[session.get_inputs()[i].name] = ort_input[i]
-
+        for i in range(len(session.get_outputs())):
+            sess_outputs.append(session.get_outputs()[i].name)
     return (sess_inputs, sess_outputs)
 
 def track_ep_memory(ep): 
@@ -233,22 +235,31 @@ def end_memory_tracking(p, trtexec, success):
         os.remove(MEMORY_FILE)
     return mem_usage
 
-def inference_ort(args, name, session, ep, ort_inputs, result_template, repeat_times, batch_size):
+def inference_ort(args, name, session, ep, ort_inputs, result_template, repeat_times, batch_size, track_memory):
     runtimes = []
     if args.input_data == "random":
         repeat_times = 1 # warn-up run is included in ort_inputs
     else:
         repeat_times += 1 # add warn-up run
     
-    mem_usage = None
+    mem_usage = None 
+    i = 0
+    mem_usages = []
     for ort_input in ort_inputs:
+        
+        io_binding = session.io_binding()
         sess_inputs, sess_outputs = get_ort_session_inputs_and_outputs(name, session, ort_input)
         if debug:
             logger.info("ORT session inputs:")
             logger.info(sess_inputs)
             logger.info("ORT session outputs:")
             logger.info(sess_outputs)
-
+        for name, inp in sess_inputs.items():
+            io_binding.bind_cpu_input(name, inp)
+        
+        for out in sess_outputs: 
+            io_binding.bind_output(out)
+        
         #try:
             #perf_ep = ''
             #if ep == cuda or ep == cuda_fp16: 
@@ -264,7 +275,15 @@ def inference_ort(args, name, session, ep, ort_inputs, result_template, repeat_t
             #if trt in ep or trt_fp16 in ep: 
             #    out = get_output(command)
             #os.environ["ORT_TENSORRT_CACHE_PATH"] = "/perf/onnx-zoo-models/renset152-v2-7/TensorrtExecutionProvider_TRTKernel_graph_main_5145462769846823227_1_0_fp16.engine"
-        runtime = timeit.repeat(lambda: session.run(sess_outputs, sess_inputs), number=1, repeat=repeat_times)
+        #runtime = timeit.repeat(lambda: session.run(sess_outputs, sess_inputs), number=1, repeat=repeat_times)
+        mem_usage = None
+        if track_memory: 
+            p = start_memory_tracking()            
+            runtime = timeit.repeat(lambda: session.run_with_iobinding(io_binding), number=1, repeat=repeat_times)
+            mem_usage = end_memory_tracking(p, False, True)
+            mem_usages.append(mem_usage) 
+        else: 
+            runtime = timeit.repeat(lambda: session.run_with_iobinding(io_binding), number=1, repeat=repeat_times)
         runtimes += runtime[1:] # remove warmup
     
         #except Exception as e:
@@ -272,12 +291,13 @@ def inference_ort(args, name, session, ep, ort_inputs, result_template, repeat_t
             #update_fail_model_map(model_to_fail_ep, name, ep, 'runtime error', e)
             #return None
 
+    mem_usage = max(mem_usages)
     result = {}
     result.update(result_template)
     result.update({"io_binding": False})
     latency_result = get_latency_result(runtimes, batch_size)
     result.update(latency_result)
-    return result
+    return result, mem_usage 
 
 def inference_ort_and_get_prediction(name, session, ort_inputs):
 
@@ -390,7 +410,6 @@ def load_onnx_model_zoo_test_data(path, all_inputs_shape, data_type="fp32"):
             logger.info('Loaded {} outputs successfully.'.format(len(outputs)))
 
         os.chdir(pwd)
-
     return inputs, outputs
 
 def generate_onnx_model_random_input(test_times, ref_input):
@@ -1086,18 +1105,18 @@ def run_onnxruntime(args, models):
                     
                     repeat_times = args.test_times
                     if trt in ep or cuda in ep: 
-                        repeat_times = 10000
+                        repeat_times = 12000
                     try: 
                         if args.track_memory and track_ep_memory(ep): 
                             trtexec = False
-                            p = start_memory_tracking()            
+                            #p = start_memory_tracking()            
                             logger.info("inferencing")
-                            result = inference_ort(args, name, sess, ep, inputs, result_template, repeat_times, batch_size)
+                            result, mem_usage = inference_ort(args, name, sess, ep, inputs, result_template, repeat_times, batch_size, args.track_memory)
                             logger.info("done inferencing")
-                            success = True if result else False
-                            mem_usage = end_memory_tracking(p, trtexec, success)
-                        else: 
-                            result = inference_ort(args, name, sess, ep, inputs, result_template, repeat_times, batch_size)
+                            #success = True if result else False
+                            #mem_usage = end_memory_tracking(p, trtexec, success)
+                       # else: 
+                            #result = inference_ort(args, name, sess, ep, inputs, result_template, repeat_times, batch_size, args.track_memory)
                     except Exception as e:
                         logger.info("in benchmark")
                         logger.error(e)
