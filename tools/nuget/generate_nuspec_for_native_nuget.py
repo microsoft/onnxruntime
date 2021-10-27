@@ -44,6 +44,9 @@ def is_this_file_needed(ep, filename):
 # This function has no return value. It updates files_list directly
 def generate_file_list_for_ep(nuget_artifacts_dir, ep, files_list):
     for child in nuget_artifacts_dir.iterdir():
+        if not child.is_dir():
+            continue
+
         for cpu_arch in ['x86', 'x64', 'arm', 'arm64']:
             if child.name == get_package_name('win', cpu_arch, ep):
                 child = child / 'lib'
@@ -71,6 +74,16 @@ def generate_file_list_for_ep(nuget_artifacts_dir, ep, files_list):
                     if child_file.suffix == '.so' and is_this_file_needed(ep, child_file.name):
                         files_list.append('<file src="' + str(child_file) +
                                           '" target="runtimes/linux-%s/native"/>' % cpu_arch)
+
+        if child.name == 'onnxruntime-android':
+            for child_file in child.iterdir():
+                if child_file.suffix in ['.aar']:
+                    files_list.append('<file src="' + str(child_file) +
+                                      '" target="runtimes/android/native"/>')
+
+        if child.name == 'onnxruntime-ios-xcframework':
+            files_list.append('<file src="' + str(child) + '\\**'
+                              '" target="runtimes/ios/native"/>')
 
 
 def parse_arguments():
@@ -190,6 +203,15 @@ def generate_dependencies(list, package_name, version):
         if include_dml:
             list.append(dml_dependency)
         list.append('</group>')
+        if package_name == 'Microsoft.ML.OnnxRuntime':
+            # Support monoandroid11.0
+            list.append('<group targetFramework="monoandroid11.0">')
+            list.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
+            list.append('</group>')
+            # Support xamarinios10
+            list.append('<group targetFramework="xamarinios10">')
+            list.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
+            list.append('</group>')
         # Support Native C++
         if include_dml:
             list.append('<group targetFramework="native">')
@@ -527,6 +549,29 @@ def generate_files(list, args):
         files_list.append('<file src=' + '"' + target_targets + '" target="build\\netstandard1.1" />')
         files_list.append('<file src=' + '"' + target_targets + '" target="build\\netstandard2.0" />')
 
+        # Process xamarin targets files
+        if args.package_name == 'Microsoft.ML.OnnxRuntime':
+            monoandroid_source_targets = os.path.join(args.sources_path, 'csharp', 'src', 'Microsoft.ML.OnnxRuntime',
+                                                      'targets', 'monoandroid11.0', 'targets.xml')
+            monoandroid_target_targets = os.path.join(args.sources_path, 'csharp', 'src', 'Microsoft.ML.OnnxRuntime',
+                                                      'targets', 'monoandroid11.0', args.package_name + '.targets')
+            os.system(copy_command + ' ' + monoandroid_source_targets + ' ' + monoandroid_target_targets)
+
+            xamarinios_source_targets = os.path.join(args.sources_path, 'csharp', 'src', 'Microsoft.ML.OnnxRuntime',
+                                                     'targets', 'xamarinios10', 'targets.xml')
+            xamarinios_target_targets = os.path.join(args.sources_path, 'csharp', 'src', 'Microsoft.ML.OnnxRuntime',
+                                                     'targets', 'xamarinios10', args.package_name + '.targets')
+            os.system(copy_command + ' ' + xamarinios_source_targets + ' ' + xamarinios_target_targets)
+
+            files_list.append('<file src=' + '"' + monoandroid_target_targets +
+                              '" target="build\\monoandroid11.0" />')
+            files_list.append('<file src=' + '"' + monoandroid_target_targets +
+                              '" target="buildTransitive\\monoandroid11.0" />')
+            files_list.append('<file src=' + '"' + xamarinios_target_targets +
+                              '" target="build\\xamarinios10" />')
+            files_list.append('<file src=' + '"' + xamarinios_target_targets +
+                              '" target="buildTransitive\\xamarinios10" />')
+
     # Process License, ThirdPartyNotices, Privacy
     files_list.append('<file src=' + '"' + os.path.join(args.sources_path, 'LICENSE.txt') + '" target="LICENSE.txt" />')
     files_list.append('<file src=' + '"' + os.path.join(args.sources_path, 'ThirdPartyNotices.txt') +
@@ -555,9 +600,13 @@ def is_linux():
     return sys.platform.startswith("linux")
 
 
+def is_macos():
+    return sys.platform.startswith("darwin")
+
+
 def validate_platform():
-    if not(is_windows() or is_linux()):
-        raise Exception('Native Nuget generation is currently supported only on Windows and Linux')
+    if not(is_windows() or is_linux() or is_macos()):
+        raise Exception('Native Nuget generation is currently supported only on Windows, Linux, and MacOS')
 
 
 def validate_execution_provider(execution_provider):
@@ -585,6 +634,8 @@ def main():
     # Create the nuspec needed to generate the Nuget
     with open(os.path.join(args.native_build_path, 'NativeNuget.nuspec'), 'w') as f:
         for line in lines:
+            # Uncomment the printing of the line if you need to debug what's produced on a CI machine
+            # print(line)
             f.write(line)
             f.write('\n')
 
