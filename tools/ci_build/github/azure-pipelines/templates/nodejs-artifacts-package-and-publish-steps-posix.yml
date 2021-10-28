@@ -29,5 +29,5 @@ steps:
 
     - task: PublishPipelineArtifact@1
       inputs:
-        targetPath: '$(Build.ArtifactStagingDirectory)/${{parameters.artifactName}}.tar.gz' 
+        targetPath: '$(Build.ArtifactStagingDirectory)/${{parameters.artifactName}}.tgz' 
         artifactName: '${{parameters.artifactNameNoVersionString}}'
