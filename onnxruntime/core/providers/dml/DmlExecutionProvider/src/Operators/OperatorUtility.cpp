@@ -436,6 +436,7 @@ namespace Dml
             return *index;
         }
         ML_INVALID_ARGUMENT("Unknown interpolation mode");
+        return (DML_INTERPOLATION_MODE)0;
     }
 
     DML_DEPTH_SPACE_ORDER MapStringToDepthSpaceMode(std::string_view mode)
@@ -450,6 +451,7 @@ namespace Dml
             return *index;
         }
         ML_INVALID_ARGUMENT("Unknown depth/space order");
+        return (DML_DEPTH_SPACE_ORDER)0;
     }
 
 } // namespace Dml

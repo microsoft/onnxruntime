@@ -238,7 +238,7 @@ bool IsPrimitiveAttributeType(MLOperatorAttributeType type) {
   ML_TENSOR_TYPE_CASE(onnxruntime::MLFloat16);
 
   THROW_HR(E_NOTIMPL);
-  return MLOperatorTensorDataType::String;
+  return MLOperatorTensorDataType::Undefined;
  #pragma warning (default:4702)
 }
 
@@ -267,7 +267,7 @@ onnxruntime::MLDataType ToTensorDataType(::MLOperatorTensorDataType type) {
   ML_TENSOR_TYPE_CASE(onnxruntime::MLFloat16);
 
   THROW_HR(E_NOTIMPL);
-  return onnxruntime::DataTypeImpl::GetTensorType<std::string>();
+  return onnxruntime::DataTypeImpl::GetTensorType<float>();
 #pragma warning (default:4702)
 }
 
@@ -398,7 +398,7 @@ std::string ToTypeString(MLOperatorEdgeDescription desc) {
 
     default:
       THROW_HR(E_NOTIMPL);
-      return "Undefined";
+      return "";
   }
 #pragma warning (default:4702)
 }
