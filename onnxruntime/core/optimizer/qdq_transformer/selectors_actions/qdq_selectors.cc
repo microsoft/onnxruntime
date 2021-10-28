@@ -29,9 +29,12 @@ bool BaseSelector::CheckQDQNodes(const Graph& graph, const Node& node,
     num_dq_inputs = NumActualValues(node, true);
   }
 
+  constexpr int num_q_outputs = 1;
+
   int num_outputs = NumActualValues(node, false);  // number of outputs that exist
 
   return num_dq_inputs == gsl::narrow_cast<int>(dq_nodes.size()) &&
+         num_q_outputs == gsl::narrow_cast<int>(node.GetOutputEdgesCount()) &&
          num_outputs == gsl::narrow_cast<int>(q_nodes.size()) &&
          !graph.NodeProducesGraphOutput(node);
 }
