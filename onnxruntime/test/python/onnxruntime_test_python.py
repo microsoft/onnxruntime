@@ -7,7 +7,9 @@ import os
 import numpy as np
 import gc
 
-import torch
+import os
+print("OS path print for eager mode:", os.environ["PATH"])
+print("OS path print for eager mode PYTHONPATH:", os.environ["PYTHONPATH"])
 import onnxruntime as onnxrt
 import threading
 import sys
