@@ -122,6 +122,21 @@ def adaptive_avg_pool2d(g, self, output_size):
 
 
 # For torch.einsum.
+def parse_equation(equation):
+    pos_comma = equation.find(',')
+    pos_arrow = equation.find('->')
+    assert pos_comma != -1 and pos_arrow > pos_comma
+    lhs_labels = [label for label in equation[:pos_comma] if label != ' ']
+    rhs_labels = [label for label in equation[pos_comma + 1:pos_arrow] if label != ' ']
+    result_labels = [label for label in equation[pos_arrow + 2:] if label != ' ']
+    # Two operands and result are not empty, and are all alpha characters.
+    assert lhs_labels and rhs_labels and result_labels
+    assert all(label.isalpha() for label in lhs_labels + rhs_labels + result_labels)
+    # Output has no repeated label, each label must be in at least one operand.
+    assert len(result_labels) == len(set(result_labels))
+    assert all(label in lhs_labels or label in rhs_labels for label in result_labels)
+    return lhs_labels, rhs_labels, result_labels
+
 def need_permute(perm):
     return any(idx != axis for idx, axis in enumerate(perm))
 
@@ -193,80 +208,35 @@ def einsum(g, equation, tensor_list):
     tensors = sym_help._unpack_list(tensor_list)
     num_ops = len(tensors)
     assert num_ops > 0
-    arrow_pos = equation.find('->')
-    if num_ops != 2 or arrow_pos == -1:
-        # Doesn't support implicit output is ellipsis or more than 2 oprands for now.
+
+    # Doesn't support implicit output is ellipsis or more than 2 oprands for now.
+    # Doesn't support ellipsis ('...') for now as not easy to get sizes of oprands.
+    if num_ops != 2 or equation.find('->') == -1 or '.' in equation:
         return g.op("Einsum", *tensors, equation_s=equation)
 
     # Take "ks,ksm->sm" as example. After prcoess inputs,
-    # lhs_labels = [k,s], rhs_labels = [k,s,m].
-    lhs = equation[0:arrow_pos]
-    lhs_labels = []
-    rhs_labels = []
-    curr_op = 0
-    pos = 0
-    while pos < len(lhs):
-        label = lhs[pos]
-        if label == ' ':
-            # Ignore spaces.
-            pass
-        elif label == '.':
-            # Doesn't support ellipsis for now as not easy to get sizes of oprands.
-            return g.op("Einsum", *tensors, equation_s=equation)
-        elif label == ',':
-            curr_op += 1
-            assert curr_op < num_ops
-        else:
-            assert label.isalpha()
-            if curr_op == 0:
-                if label in lhs_labels:
-                    # Repeated label, need to take diagonal, not support for now.
-                    return g.op("Einsum", *tensors, equation_s=equation)
-                lhs_labels.append(label)
-            else:
-                if label in rhs_labels:
-                    # Repeated label, need to take diagonal, not support for now.
-                    return g.op("Einsum", *tensors, equation_s=equation)
-                rhs_labels.append(label)
-        pos += 1
+    # lhs_labels = [k,s], rhs_labels = [k,s,m], result_labels = [s, m].
+    lhs_labels, rhs_labels, result_labels = parse_equation(equation)
 
-    # After process output, result_labels = [s, m], contraction_labels = [k],
-    # label_perm_map = {(s, 0), (m, 1), (k, 2)}, out_size = 2, perm_index = 3.
-    assert curr_op == num_ops - 1
-    label_perm_map = {}
-    result_labels = []
-    perm_index = 0
-    rhs = equation[arrow_pos + 2:]
-    pos = 0
-    while pos < len(rhs):
-        label = rhs[pos]
-        if label == ' ':
-            # Ignore spaces.
-            pass
-        elif label == '.':
-            # Don't support ellipsis for now as not easy to get sizes of oprands.
-            return g.op("Einsum", *tensors, equation_s=equation)
-        else:
-            assert label.isalpha()
-            # Ensure label appeared at least once for some input operand and at most once for the output.
-            assert (label in lhs_labels or label in rhs_labels) and label not in result_labels
-            result_labels.append(label)
-            label_perm_map[label] = perm_index
-            perm_index += 1
-        pos += 1
+    # Doesn't support repeated label in operand for now as it needs to take extra diagonal.
+    if len(lhs_labels) != len(set(lhs_labels)) or len(rhs_labels) != len(set(rhs_labels)):
+        return g.op("Einsum", *tensors, equation_s=equation)
 
-    # Save the actual output size here.
-    out_size = perm_index
     # Add contraction labels (labels not present in output).
+    # After process contraction labels, contraction_labels = [k],
+    # label_perm_map = {(s, 0), (m, 1), (k, 2)}, out_size = 2, perm_size = 3.
+    out_size = len(result_labels)
+    label_perm_map = dict([(label, idx) for idx, label in enumerate(result_labels)])
+    perm_size = out_size
     contraction_labels = []
     for label in lhs_labels + rhs_labels:
         if label not in label_perm_map:
+            # If contraction label is missing in one side, need extra sum(dim), doesn't support for now.
             if label not in lhs_labels or label not in rhs_labels:
-                # If contraction label are missing in one side, need to add extra sum(dim), doesn't support for now.
                 return g.op("Einsum", *tensors, equation_s=equation)
-            label_perm_map[label] = perm_index
+            label_perm_map[label] = perm_size
             contraction_labels.append(label)
-            perm_index += 1
+            perm_size += 1
 
     # Need to unsqueeze and permute the inputs to order of output with contraction labels.
     # lhs_perm = [1,2,0], lhs_unsqueeze_axes = [2].
@@ -293,7 +263,7 @@ def einsum(g, equation, tensor_list):
     rhs_shape_tensor = None
     batched_axes = []
     matmul_output_axes = []
-    contraction_axes = [v for v in range(out_size, perm_index)]
+    contraction_axes = [v for v in range(out_size, perm_size)]
     for axis in range(out_size):
         label = result_labels[axis]
         if label in lhs_labels and label in rhs_labels:
