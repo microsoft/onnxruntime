@@ -69,12 +69,12 @@ TensorDesc::TensorDesc(
     // If needed, flatten the tensor dimensions to a 2D tensor of size [a_0 * ... * a_{coerceAxis-1}, a_{coerceAxis} * ... * a_{n-1}]
     // e.g. Flattening [1,2,3,4] with axis 2 yields [2,12].
     uint32_t coercedSizes[2];
-    if (dimensions.size() > 1 && coerceAxis < gsl::narrow_cast<uint32_t>(dimensions.size()))
+    if (dimensions.size() > 1 && coerceAxis < gsl::narrow_cast<int32_t>(dimensions.size()))
     {
         uint32_t dimension0 = 1u;
         uint32_t dimension1 = dimensions[coerceAxis];
 
-        for (uint32_t i = 0; i < coerceAxis; ++i)
+        for (int32_t i = 0; i < coerceAxis; ++i)
         {
             dimension0 *= dimensions[i];
         }
