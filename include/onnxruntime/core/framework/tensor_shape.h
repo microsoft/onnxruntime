@@ -35,6 +35,9 @@ class TensorShape {
   TensorShape(const int64_t* dimension_sizes, size_t dimension_count) : TensorShape(gsl::span<const int64_t>(dimension_sizes, dimension_count)) {}
   TensorShape(const std::vector<int64_t>& dims, size_t start, size_t end) : TensorShape(gsl::span<const int64_t>(&dims[start], end - start)) {}
 
+  // Create a TensorShape that points to an existing buffer internally. As no copy is made, 'data' must remain valid for the life of the TensorShape
+  static const TensorShape FromExistingBuffer(const std::vector<int64_t>& data) { return TensorShape(External{}, gsl::span<int64_t>(const_cast<int64_t*>(data.data()), data.size())); }
+
   /**
      Return the dimension specified by <idx>.
   */
@@ -123,6 +126,10 @@ class TensorShape {
   }
 
  private:
+
+  struct External {};
+  TensorShape(External, gsl::span<int64_t> buffer) : values_{buffer} {}
+
   void Allocate(size_t size);
 
   gsl::span<int64_t> values_;

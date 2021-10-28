@@ -1839,7 +1839,8 @@ gsl_DISABLE_MSVC_WARNINGS(26410 26415 26418 26472 26439 26440 26473 26481 26482 
     }
 
     gsl_api gsl_constexpr reference back() const {
-        return last_[-1];
+      Expects(size()>0);
+      return last_[-1];
     }
 
     // 26.7.3.6 Iterator support [span.iterators]

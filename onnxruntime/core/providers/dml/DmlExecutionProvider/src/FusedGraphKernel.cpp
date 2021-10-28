@@ -419,7 +419,10 @@ namespace Dml
                     outputDims.push_back(dimSize);
                 }
 
-                onnxruntime::Tensor* tensor = kernelContext->Output(static_cast<int>(i), outputDims);
+                onnxruntime::Tensor* tensor = kernelContext->Output(
+                    static_cast<int>(i), 
+                    onnxruntime::TensorShape::FromExistingBuffer(outputDims)
+                    );
 
                 uint64_t allocId;
                 GraphKernelHelper::UnwrapTensor(m_winmlProvider.Get(), tensor, &outputBindings[i].Buffer, &allocId);

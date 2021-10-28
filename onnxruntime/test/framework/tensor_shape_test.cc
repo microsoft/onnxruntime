@@ -41,14 +41,31 @@ TEST(TensorShapeTest, VariousSizes) {
   std::vector<int64_t> large{1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
 
   TensorShape shape{small};
-  EXPECT_EQ(shape, small);
+  EXPECT_EQ(shape.GetDims(), gsl::make_span(small));
 
   shape=TensorShape{large};
-  EXPECT_EQ(shape, large);
+  EXPECT_EQ(shape.GetDims(), gsl::make_span(large));
 
   shape=TensorShape{small};
-  EXPECT_EQ(shape, small);
+  EXPECT_EQ(shape.GetDims(), gsl::make_span(small));
+}
 
+TEST(TensorShapeTest, FromExistingBuffer) {
+
+  std::vector<int64_t> buffer{12, 23, 34, 45, 56};
+  auto shape = TensorShape::FromExistingBuffer(buffer);
+  auto shape_copy=shape;
+
+  // Pointers and sizes should match as they're the same buffer
+  EXPECT_EQ(gsl::make_span(buffer).begin(), shape.GetDims().begin());
+  EXPECT_EQ(gsl::make_span(buffer).size(), shape.GetDims().size());
+
+  // Pointers should not match as they're no longer the same buffer
+  EXPECT_NE(gsl::make_span(buffer).begin(), shape_copy.GetDims().begin());
+  // Size should still match
+  EXPECT_EQ(gsl::make_span(buffer).size(), shape_copy.GetDims().size());
+
+  EXPECT_EQ(shape, shape_copy);
 }
 
 }  // namespace test
