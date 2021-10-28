@@ -78,7 +78,7 @@ jobs:
      python -m pip install Cerberus dataclasses pandas protobuf scikit-learn scipy tqdm 
      python -m pip install torch torchvision torchaudio
      python -c "import torch; import sys; print(sys.path); print(torch.__file__); import ctypes; print(ctypes.WinDLL('c10.dll'))"
-     python -c "import os; print(os.environ["PATH"])"
+     python -c "import os; print(os.environ['PATH'])"
      python -m pip list
     workingDirectory: '$(Build.BinariesDirectory)'
     displayName: 'Install python modules'
