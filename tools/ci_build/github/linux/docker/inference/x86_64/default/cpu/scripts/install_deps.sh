@@ -63,9 +63,18 @@ cd ninja-1.10.0
 cmake -Bbuild-cmake -H.
 cmake --build build-cmake
 mv ./build-cmake/ninja /usr/bin
+
 echo "Installing Node.js"
-GetFile https://nodejs.org/dist/v12.16.3/node-v12.16.3-linux-x64.tar.gz /tmp/src/node-v12.16.3-linux-x64.tar.gz
-tar --strip 1 -xf /tmp/src/node-v12.16.3-linux-x64.tar.gz -C /usr
+CPU_ARCH=`uname -m`
+if [[ "$CPU_ARCH" = "x86_64" ]]; then
+  NODEJS_ARCH=x64
+elif [[ "$CPU_ARCH" = "aarch64" ]]; then
+  NODEJS_ARCH=arm64
+else
+  NODEJS_ARCH=$CPU_ARCH
+fi
+GetFile https://nodejs.org/dist/v14.18.1/node-v14.18.1-linux-${NODEJS_ARCH}.tar.gz /tmp/src/node-v14.18.1-linux-${NODEJS_ARCH}.tar.gz
+tar --strip 1 -xf /tmp/src/node-v14.18.1-linux-${NODEJS_ARCH}.tar.gz -C /usr
 
 cd /tmp/src
 GetFile https://downloads.gradle-dn.com/distributions/gradle-6.3-bin.zip /tmp/src/gradle-6.3-bin.zip
