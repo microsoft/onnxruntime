@@ -214,8 +214,7 @@ public:
         for (size_t i = 0, rank = m_outputDimensions.size(); i < rank; ++i)
         {
 	
-			m_inputDimensions[i] = 1;
-            if (m_inputDimensions[i] && m_outputDimensions[i] == 1)
+            if (m_inputDimensions[i] == 1 && m_outputDimensions[i] == 1)
             {
                 squeezableDimensionIndices.push_back(gsl::narrow_cast<uint32_t>(i));
             }

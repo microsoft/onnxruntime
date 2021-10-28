@@ -634,7 +634,8 @@ class MLSupportQueryContext final : public OpNodeInfoWrapper<
             const AttributeMap* defaultAttributes,
             MLOperatorTensorGetter& mLOperatorTensorGetter);
 
-    static ComPtr<MLSupportQueryContext> Create(onnxruntime::OpNodeProtoHelper<onnxruntime::ProtoHelperNodeContext>* info,
+    static ComPtr<MLSupportQueryContext> Create(
+            onnxruntime::OpNodeProtoHelper<onnxruntime::ProtoHelperNodeContext>* info,
             const AttributeMap* defaultAttributes);
 
     // TODO - ...

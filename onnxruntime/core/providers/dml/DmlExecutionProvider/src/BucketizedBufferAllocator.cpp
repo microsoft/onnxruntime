@@ -105,14 +105,14 @@ namespace Dml
             if (bucket->resources.empty())
             {
                 // No more resources in this bucket - allocate a new one
-                auto aux1 = CD3DX12_RESOURCE_DESC::Buffer(bucketSize, m_resourceFlags);
+                auto buffer = CD3DX12_RESOURCE_DESC::Buffer(bucketSize, m_resourceFlags);
 				THROW_IF_FAILED(m_device->CreateCommittedResource(
-					&m_heapProperties,
-					m_heapFlags,
-					&aux1,
-					m_initialState,
-					nullptr,
-					IID_PPV_ARGS(&resource)));
+                    &m_heapProperties,
+                    m_heapFlags,
+                    &buffer,
+                    m_initialState,
+                    nullptr,
+                    IID_PPV_ARGS(&resource)));
 
                 resourceId = ++m_currentResourceId;
             }
@@ -129,14 +129,14 @@ namespace Dml
             // The allocation will not be pooled.  Construct a new one
             bucketSize = (size + 3) & ~3;
 
-            auto aux1 = CD3DX12_RESOURCE_DESC::Buffer(bucketSize, m_resourceFlags);
+            auto buffer = CD3DX12_RESOURCE_DESC::Buffer(bucketSize, m_resourceFlags);
 			THROW_IF_FAILED(m_device->CreateCommittedResource(
-				&m_heapProperties,
-				m_heapFlags,
-				&aux1,
-				m_initialState,
-				nullptr,
-				IID_PPV_ARGS(&resource)));
+                &m_heapProperties,
+                m_heapFlags,
+                &buffer,
+                m_initialState,
+                nullptr,
+                IID_PPV_ARGS(&resource)));
 
             resourceId = ++m_currentResourceId;        
         }

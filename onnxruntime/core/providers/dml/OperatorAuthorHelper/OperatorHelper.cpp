@@ -143,7 +143,8 @@ namespace OperatorHelper
         return reinterpret_cast<float&>(result);
     }
 
-    #pragma warning (disable:4702)
+    #pragma warning(push)
+    #pragma warning(disable:4702)
     int64_t CastToInt64(MLOperatorTensorDataType tensorDataType, const void* p)
     {
         switch (tensorDataType)
@@ -168,10 +169,11 @@ namespace OperatorHelper
             ML_INVALID_ARGUMENT("Unknown MLOperatorTensorDataType.");
             return 0;
         };
-        #pragma warning (default:4702)
+        #pragma warning(pop)
     }
 
-    #pragma warning (disable:4702)
+    #pragma warning(push)
+    #pragma warning(disable:4702)
     double CastToFloat64(MLOperatorTensorDataType tensorDataType, const void* p)
     {
         switch (tensorDataType)
@@ -196,7 +198,7 @@ namespace OperatorHelper
             ML_INVALID_ARGUMENT("Unknown MLOperatorTensorDataType.");
             return 0.0;
         };
-        #pragma warning (default:4702)
+        #pragma warning(pop)
     }
 
     int64_t IsFloatDataType(MLOperatorTensorDataType tensorDataType)

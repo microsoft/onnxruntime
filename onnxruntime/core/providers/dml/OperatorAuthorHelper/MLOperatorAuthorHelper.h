@@ -94,7 +94,8 @@ struct MLTypeTraits<uint64_t>
 };
 
 template <>
-struct MLTypeTraits<onnxruntime::MLFloat16> {
+struct MLTypeTraits<onnxruntime::MLFloat16> 
+{
   static const MLOperatorTensorDataType TensorType = MLOperatorTensorDataType::Float16;
 };
 
@@ -103,6 +104,7 @@ inline uint32_t ComputeElementCountFromDimensions(gsl::span<const uint32_t> dime
     return std::accumulate(dimensions.begin(), dimensions.end(), 1, std::multiplies<uint32_t>());
 }
 
+#pragma warning(push)
 #pragma warning(disable:4702)
 inline size_t GetByteSizeFromMlDataType(MLOperatorTensorDataType tensorDataType)
 {
@@ -128,7 +130,7 @@ inline size_t GetByteSizeFromMlDataType(MLOperatorTensorDataType tensorDataType)
         THROW_HR(E_INVALIDARG);
         return 0;
     };
-    #pragma warning(default:4702)
+    #pragma warning(pop)
 }
 
 using MLConstStringParam = const char*;

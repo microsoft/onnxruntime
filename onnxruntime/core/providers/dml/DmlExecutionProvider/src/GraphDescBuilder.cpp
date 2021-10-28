@@ -10,6 +10,7 @@ using namespace Windows::AI::MachineLearning::Adapter;
 namespace Dml::GraphDescBuilder
 {
 
+    #pragma warning(push)
     #pragma warning(disable:4702)
     const std::string& GetUniqueNodeName(const onnxruntime::Node& node)
     {
@@ -27,8 +28,8 @@ namespace Dml::GraphDescBuilder
         assert(false);
         THROW_HR(E_UNEXPECTED);
         const onnxruntime::NodeArg* arg = node.OutputDefs()[0];
-		return arg->Name();
-        #pragma warning(default:4702)
+        return arg->Name();
+        #pragma warning(pop)
     }
 
     GraphDesc BuildGraphDesc(

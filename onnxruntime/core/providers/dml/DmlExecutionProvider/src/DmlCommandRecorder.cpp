@@ -101,8 +101,9 @@ void DmlCommandRecorder::InitializeOperator(
     if ((persistentResourceBinding.Type != DML_BINDING_TYPE_NONE) ||
         (temporaryResourceSize > 0))
     {
-        auto aux1 = CD3DX12_RESOURCE_BARRIER::UAV(nullptr);
-		m_currentCommandList->ResourceBarrier(1, &aux1);    }
+        auto uav = CD3DX12_RESOURCE_BARRIER::UAV(nullptr);
+        m_currentCommandList->ResourceBarrier(1, &uav);
+    }
 }
 
 void DmlCommandRecorder::ExecuteOperator(
@@ -165,11 +166,11 @@ void DmlCommandRecorder::ExecuteOperator(
     m_operationsRecordedInCurrentCommandList = true;
 
     // Barrier all outputs.
-    #pragma warning( push )
-    #pragma warning(suppress: 6387)
-        auto aux1 = CD3DX12_RESOURCE_BARRIER::UAV(nullptr);
-		m_currentCommandList->ResourceBarrier(1, &aux1);
-    #pragma warning( pop )
+    #pragma warning(push)
+    #pragma warning(disable: 6387)
+        auto uav = CD3DX12_RESOURCE_BARRIER::UAV(nullptr);
+        m_currentCommandList->ResourceBarrier(1, &uav);
+    #pragma warning(pop)
 }
 
 void DmlCommandRecorder::CopyBufferRegion(
@@ -237,11 +238,11 @@ void DmlCommandRecorder::FillBufferWithPattern(
     m_operationsRecordedInCurrentCommandList = true;
 
     // Barrier all outputs.
-    #pragma warning( push )
-    #pragma warning(suppress: 6387)
-        auto aux1 = CD3DX12_RESOURCE_BARRIER::UAV(nullptr);
-		m_currentCommandList->ResourceBarrier(1, &aux1);
-    #pragma warning( pop )
+    #pragma warning(push)
+    #pragma warning(disable: 6387)
+        auto uav = CD3DX12_RESOURCE_BARRIER::UAV(nullptr);
+        m_currentCommandList->ResourceBarrier(1, &uav);
+    #pragma warning(pop)
 }
 
 void DmlCommandRecorder::ExecuteCommandList(

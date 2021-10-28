@@ -426,8 +426,7 @@ namespace Dml
 
                 // Get the kernel creation info for the registration, and check if it carries the property
                 // set during registration of kernels that support DML graph node usage.
-                auto aux = dmlNodePropertyMap.insert(std::make_pair(&node, GraphNodeProperties()));
-				auto& graphNodeProperty = aux;
+                auto graphNodeProperty = dmlNodePropertyMap.insert(std::make_pair(&node, GraphNodeProperties()));
 
                 // Ensure that shape information is known statically for the inputs and outputs of the node,
                 // which is required for MLGraph compilation.
@@ -599,8 +598,7 @@ namespace Dml
             {
                 partition->AddInput(arg->Name());
 
-                auto aux = nodeNameToPartitionMap.find(arg->Name());
-				auto& inputPartition = aux;
+                auto inputPartition = nodeNameToPartitionMap.find(arg->Name());
                 if (inputPartition != nodeNameToPartitionMap.end())
                 {
                     inputPartition->second->GetRootMergedPartition()->AddOutput(arg->Name());
@@ -824,8 +822,7 @@ namespace Dml
                     const auto* arg = node.InputDefs()[i];
                     if (arg->Exists())
                     {
-                        auto aux = nodeNameToPartitionMap.find(arg->Name());
-						auto& inputPartition = aux;
+                        auto inputPartition = nodeNameToPartitionMap.find(arg->Name());
 
                         // Add the input of the current node into the partition which the node will be merged into.
                         // Skip this if the input is already merged into the same partition or is not finalized,

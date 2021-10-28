@@ -32,6 +32,7 @@ struct ActivationOperatorDesc
     ActivationOperatorDescUnion params;
     DML_OPERATOR_TYPE activationType;
 
+    #pragma warning(push)
     #pragma warning(disable:4702)
     DML_OPERATOR_DESC GetDmlDesc() const
     {
@@ -61,7 +62,7 @@ struct ActivationOperatorDesc
             THROW_HR(E_INVALIDARG);
             return { activationType, &params.relu };
         }
-        #pragma warning(default:4702)
+        #pragma warning(pop)
     }
 };
 
@@ -170,19 +171,19 @@ private:
             return static_cast<byte*>(data) + alignedOffset;
         }
 
-		template <typename T>
-		static T RoundUpToMultiple(T value, T multiple)
-		{
-			static_assert(std::is_integral_v<T>);
-
-			T remainder = value % multiple;
-			if (remainder != 0)
-			{
-				value += multiple - remainder;
-			}
-
-			return value;
-		}
+        template <typename T>
+        static T RoundUpToMultiple(T value, T multiple)
+        {
+            static_assert(std::is_integral_v<T>);
+            
+            T remainder = value % multiple;
+            if (remainder != 0)
+            {
+            	value += multiple - remainder;
+            }
+            
+            return value;
+        }
 
     };
 

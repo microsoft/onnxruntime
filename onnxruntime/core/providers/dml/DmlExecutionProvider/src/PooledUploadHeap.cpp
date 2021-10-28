@@ -96,16 +96,16 @@ namespace Dml
     /* static */ PooledUploadHeap::Chunk PooledUploadHeap::CreateChunk(ID3D12Device* device, size_t sizeInBytes)
     {
         ComPtr<ID3D12Resource> uploadBuffer;
-        auto aux1 = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
-		auto aux2 = CD3DX12_RESOURCE_DESC::Buffer(sizeInBytes);
+        auto heap = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
+        auto buffer = CD3DX12_RESOURCE_DESC::Buffer(sizeInBytes);
 
-		THROW_IF_FAILED(device->CreateCommittedResource(
-			&aux1,
-			D3D12_HEAP_FLAG_NONE,
-			&aux2,
-			D3D12_RESOURCE_STATE_GENERIC_READ,
-			nullptr,
-			IID_PPV_ARGS(&uploadBuffer)));
+        THROW_IF_FAILED(device->CreateCommittedResource(
+            &heap,
+            D3D12_HEAP_FLAG_NONE,
+            &buffer,
+            D3D12_RESOURCE_STATE_GENERIC_READ,
+            nullptr,
+            IID_PPV_ARGS(&uploadBuffer)));
 
         return Chunk{ sizeInBytes, std::move(uploadBuffer) };
     }

@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-
 #include "precomp.h"
 #include "AbiCustomRegistry.h"
 
@@ -125,6 +124,7 @@ void AbiCustomRegistry::SetAttributesAndDefaults(onnx::OpSchema& schema, const M
                     schema.Attr(attribute.name, "", ToProto(attribute.type), defaultVals);
                     break;
                 }
+
                 #pragma warning(suppress:4063)
                 case MLOperatorAttributeTypeTensor:
                     // Tensor is too complex to express a default value. Default checking is done by the operator code.
@@ -303,6 +303,7 @@ AttributeMap AbiCustomRegistry::GetDefaultAttributes(
         case MLOperatorAttributeType::IntArray:
             attr.ints.assign(&apiAttr.ints[0], &apiAttr.ints[apiAttr.valueCount]);
             break;
+
         #pragma warning(disable:4063)
         case MLOperatorAttributeTypeTensor:
             // Tensor is too complex to express a default value. Default checking is done by the operator code.

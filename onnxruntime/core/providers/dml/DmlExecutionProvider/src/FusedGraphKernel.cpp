@@ -213,11 +213,11 @@ namespace Dml
                 }
 
                 auto aux = contextWrapper.GetOutputTensors(m_outputShapes);
-				ExecuteOperator(
-					m_compiledExecutionPlanOperator.Get(),
-					m_persistentResourceBinding ? &*m_persistentResourceBinding : nullptr,
-					inputPtrs,
-					aux);
+                ExecuteOperator(
+                    m_compiledExecutionPlanOperator.Get(),
+                    m_persistentResourceBinding ? &*m_persistentResourceBinding : nullptr,
+                    inputPtrs,
+                    aux);
 
                 THROW_IF_FAILED(m_provider->AddUAVBarrier());
                 

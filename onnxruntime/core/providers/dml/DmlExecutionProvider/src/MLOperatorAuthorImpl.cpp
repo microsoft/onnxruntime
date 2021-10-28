@@ -16,7 +16,8 @@ using namespace Microsoft::WRL;
 namespace Windows::AI::MachineLearning::Adapter
 {
 
-#pragma warning (disable:4702)
+#pragma warning(push)
+#pragma warning(disable:4702)
 size_t AttributeValue::ElementCount() const {
   switch (type) {
     case MLOperatorAttributeType::Float:
@@ -46,7 +47,7 @@ size_t AttributeValue::ElementCount() const {
       THROW_HR(E_FAIL);
       return 0;
   }
-  #pragma warning (default:4702)
+  #pragma warning(pop)
 }
 
 void AttributeValue::GetAttribute(
@@ -218,7 +219,8 @@ bool IsPrimitiveAttributeType(MLOperatorAttributeType type) {
     return MLTypeTraits<x>::TensorType; \
   }
 
-#pragma warning (disable:4702)
+#pragma warning(push)
+#pragma warning(disable:4702)
 ::MLOperatorTensorDataType ToMLTensorDataType(onnxruntime::MLDataType type) {
   if (onnxruntime::utils::IsDataTypeString(type)) {
     return MLOperatorTensorDataType::String;
@@ -239,7 +241,7 @@ bool IsPrimitiveAttributeType(MLOperatorAttributeType type) {
 
   THROW_HR(E_NOTIMPL);
   return MLOperatorTensorDataType::Undefined;
- #pragma warning (default:4702)
+ #pragma warning(pop)
 }
 
 #undef ML_TENSOR_TYPE_CASE
@@ -248,7 +250,8 @@ bool IsPrimitiveAttributeType(MLOperatorAttributeType type) {
     return onnxruntime::DataTypeImpl::GetTensorType<x>(); \
   }
 
-#pragma warning (disable:4702)
+#pragma warning(push)
+#pragma warning(disable:4702)
 onnxruntime::MLDataType ToTensorDataType(::MLOperatorTensorDataType type) {
   if (type == MLOperatorTensorDataType::String)
     return onnxruntime::DataTypeImpl::GetTensorType<std::string>();
@@ -268,10 +271,11 @@ onnxruntime::MLDataType ToTensorDataType(::MLOperatorTensorDataType type) {
 
   THROW_HR(E_NOTIMPL);
   return onnxruntime::DataTypeImpl::GetTensorType<float>();
-#pragma warning (default:4702)
+#pragma warning(pop)
 }
 
-#pragma warning (disable:4702)
+#pragma warning(push)
+#pragma warning(disable:4702)
 ::MLOperatorTensorDataType ToMLTensorDataType(onnx::TensorProto_DataType type) {
   switch (type) {
     case onnx::TensorProto_DataType_FLOAT:
@@ -323,7 +327,7 @@ onnxruntime::MLDataType ToTensorDataType(::MLOperatorTensorDataType type) {
       THROW_HR(E_NOTIMPL);
       return MLOperatorTensorDataType::Undefined;
   }
-#pragma warning (default:4702)
+#pragma warning(pop)
 }
 
 ::MLOperatorEdgeDescription ToMLEdgeDesc(const onnx::TypeProto* type) {
@@ -344,7 +348,8 @@ onnxruntime::MLDataType ToTensorDataType(::MLOperatorTensorDataType type) {
   return ret;
 }
 
-#pragma warning (disable:4702)
+#pragma warning(push)
+#pragma warning(disable:4702)
 std::string ToTypeString(MLOperatorEdgeDescription desc) {
   if (desc.edgeType != MLOperatorEdgeType::Tensor) {
     THROW_HR(E_NOTIMPL);
@@ -400,7 +405,7 @@ std::string ToTypeString(MLOperatorEdgeDescription desc) {
       THROW_HR(E_NOTIMPL);
       return "";
   }
-#pragma warning (default:4702)
+#pragma warning(pop)
 }
 
 OpKernelInfoWrapper::OpKernelInfoWrapper(
@@ -1769,7 +1774,7 @@ MLSchemaInferenceContext::MLSchemaInferenceContext(
     gsl::span<const uint32_t> requiredConstantCpuInputs,
     MLOperatorTensorGetter& mLOperatorTensorGetter) : OpNodeInfoWrapper(info, nullptr, nullptr, 
                                                         requiredConstantCpuInputs, mLOperatorTensorGetter),
-                                                   m_context(ctx)
+                                                        m_context(ctx)
 {
 }
 
