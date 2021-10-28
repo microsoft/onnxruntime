@@ -4,7 +4,7 @@
 import tempfile
 import torch
 from ... import ORTModule
-from ... import ONNX_OPSET_VERSION
+from .... import ortmodule
 from ...debug_options import DebugOptions
 
 
@@ -91,7 +91,7 @@ class HierarchicalORTModule(torch.nn.Module):
                     try:
                         with tempfile.NamedTemporaryFile(prefix='sub-module') as temp:
                             torch.onnx.export(
-                                module, args, temp, opset_version=ONNX_OPSET_VERSION,
+                                module, args, temp, opset_version=ortmodule.ONNX_OPSET_VERSION,
                                 do_constant_folding=False, export_params=False,
                                 keep_initializers_as_inputs=True,
                                 training=torch.onnx.TrainingMode.TRAINING)
@@ -125,7 +125,7 @@ class HierarchicalORTModule(torch.nn.Module):
                         try:
                             with tempfile.NamedTemporaryFile(prefix='sub-module') as temp:
                                 torch.onnx.export(
-                                    module, args, temp, opset_version=ONNX_OPSET_VERSION,
+                                    module, args, temp, opset_version=ortmodule.ONNX_OPSET_VERSION,
                                     do_constant_folding=False, export_params=False,
                                     keep_initializers_as_inputs=True,
                                     training=torch.onnx.TrainingMode.TRAINING)

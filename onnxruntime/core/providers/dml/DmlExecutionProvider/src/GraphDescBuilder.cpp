@@ -25,6 +25,7 @@ namespace Dml::GraphDescBuilder
 
         assert(false);
         THROW_HR(E_UNEXPECTED);
+        return node.OutputDefs()[0]->Name();
     }
 
     GraphDesc BuildGraphDesc(
