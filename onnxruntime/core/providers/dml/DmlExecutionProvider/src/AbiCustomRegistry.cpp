@@ -28,6 +28,7 @@ onnx::OpSchema::FormalParameterOption AbiCustomRegistry::ConvertFormalParameterO
 
         default:
             THROW_HR(E_NOTIMPL);
+            return onnx::OpSchema::FormalParameterOption::Single;
     }
 }
 

@@ -18,6 +18,8 @@ from .torch_cpp_extensions import is_installed as is_torch_cpp_extensions_instal
 
 ################################################################################
 # All global constant goes here, before ORTModule is imported ##################
+# NOTE: To *change* values in runtime, import onnxruntime.training.ortmodule and
+# assign them new values. Importing them directly do not propagate changes.
 ################################################################################
 ONNX_OPSET_VERSION = 12
 MINIMUM_RUNTIME_PYTORCH_VERSION_STR = '1.8.1'
@@ -30,8 +32,8 @@ ORTMODULE_FALLBACK_POLICY = _FallbackPolicy.FALLBACK_UNSUPPORTED_DEVICE |\
 ORTMODULE_FALLBACK_RETRY = False
 ORTMODULE_IS_DETERMINISTIC = torch.are_deterministic_algorithms_enabled()
 
-ONNXRUNTIME_CUDA_VERSION = ort_info.cuda_version if hasattr(ort_info, 'cuda_version') else ''
-ONNXRUNTIME_ROCM_VERSION = ort_info.rocm_version if hasattr(ort_info, 'rocm_version') else ''
+ONNXRUNTIME_CUDA_VERSION = ort_info.cuda_version if hasattr(ort_info, 'cuda_version') else None
+ONNXRUNTIME_ROCM_VERSION = ort_info.rocm_version if hasattr(ort_info, 'rocm_version') else None
 
 # Verify minimum PyTorch version is installed before proceding to ONNX Runtime initialization
 try:

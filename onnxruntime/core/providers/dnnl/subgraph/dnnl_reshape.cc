@@ -13,21 +13,9 @@ DnnlReshape::DnnlReshape() { }
 void DnnlReshape::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   auto dnnl_engine = sp.GetEngine();
 
-  auto data_mem = sp.GetMemory(node.Input(IN_DATA));
+  // the input shape assumes OrtFormat so we get the memory in OrtFormat.
+  auto data_mem = sp.GetMemoryInOrtFormat(node.Input(IN_DATA), dnnl_engine);
   dnnl::memory::dims data_dims = data_mem.get_desc().dims();
-  auto data_md = data_mem.get_desc();
-
-
-  if (!IsMemoryInExpectedOrtFormat(data_md)) {
-    auto temp_md = dnnl::memory::desc(data_dims, node.Input(IN_DATA).Type(), sp.GetDnnlFormat(data_dims.size()));
-    dnnl::memory temp_mem = dnnl::memory(temp_md, dnnl_engine);
-    sp.AddPrimitive(dnnl::reorder(data_mem, temp_mem), {{DNNL_ARG_FROM, data_mem},
-                                                           {DNNL_ARG_TO, temp_mem}});
-    data_mem = temp_mem;
-  } else {
-    // If using GPU this will move the memory from the CPU to the GPU.
-    data_mem = sp.GetMemoryAndReshape(node.Input(IN_DATA), data_md, dnnl_engine);
-  }
 
   auto shape_mem = sp.GetMemory(node.Input(IN_SHAPE));
   dnnl::memory::dims shape_dims = shape_mem.get_desc().dims();
@@ -45,26 +33,6 @@ void DnnlReshape::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   sp.AddReshape(data_mem, reshaped_mem);
 
   sp.SetMemory(node.Output(OUT_RESHAPED), reshaped_mem, true);
-}
-
-bool DnnlReshape::IsMemoryInExpectedOrtFormat(const dnnl::memory::desc& desc) {
-  if (desc.data.format_kind != dnnl_blocked) {
-    return false;
-  }
-  if (desc.data.format_desc.blocking.inner_nblks != 0) {
-    return false;
-  }
-  auto strides = desc.data.format_desc.blocking.strides;
-  // if a data format is dnnl_format::abcd... the stride will go from largest to smallest
-  // if for example we have a shape {2,3,4} we expect a stride of {12, 4, 1} if it were
-  // of dnnl_format::abc if instead the stride were {12, 1, 4} that would be dnnl_format::acb
-  // which does not match what is expected from Onnxruntime.
-  for (size_t i = 1; i < desc.dims().size(); ++i) {
-    if (strides[i - 1] < strides[i]) {
-      return false;
-    }
-  }
-  return true;
 }
 
 bool DnnlReshape::GetAllowZero(DnnlNode& node) {

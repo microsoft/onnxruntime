@@ -1,7 +1,7 @@
 jobs:
 - job: CoreML_CI
   pool:
-    vmImage: 'macOS-10.15'
+    vmImage: 'macOS-11'
   variables:
     MACOSX_DEPLOYMENT_TARGET: '10.14'
   timeoutInMinutes: 120

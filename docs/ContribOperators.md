@@ -8,6 +8,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.BiasDropout">com.microsoft.BiasDropout</a>
   * <a href="#com.microsoft.BiasGelu">com.microsoft.BiasGelu</a>
   * <a href="#com.microsoft.BiasSoftmax">com.microsoft.BiasSoftmax</a>
+  * <a href="#com.microsoft.BifurcationDetector">com.microsoft.BifurcationDetector</a>
   * <a href="#com.microsoft.CDist">com.microsoft.CDist</a>
   * <a href="#com.microsoft.ComplexMul">com.microsoft.ComplexMul</a>
   * <a href="#com.microsoft.ComplexMulConj">com.microsoft.ComplexMulConj</a>
@@ -114,7 +115,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>output</tt> : T</dt>
-<dd>3D output tensor with shape (batch_size, append_length, hidden_size)</dd>
+<dd>3D output tensor with shape (batch_size, sequence_length, hidden_size)</dd>
 <dt><tt>present</tt> (optional) : T</dt>
 <dd>present state for key and value with shape (2, batch_size, num_heads, past_sequence_length + sequence_length, head_size)</dd>
 </dl>
@@ -460,6 +461,62 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>T</tt> : tensor(float16), tensor(float), tensor(double)</dt>
 <dd>Constrain input and output types to float tensors.</dd>
+</dl>
+
+
+### <a name="com.microsoft.BifurcationDetector"></a><a name="com.microsoft.bifurcationdetector">**com.microsoft.BifurcationDetector**</a>
+
+  Component for aggressive decoding. Find the bifurcation index of predicted tokens, between source tokens,
+  starting from previous suffix match index, and predicted tokens.
+  Concat predicted tokens, starting from bifurcation index, to the back
+  of current tokens. This forms the output tokens.
+  Detect suffix match index in source tokens, between source tokens and output tokens.
+  Detection is based on finding the appearances of last n-gram in output tokens
+  in source tokens.
+  A match is considered found if source tokens contain a single matching n-gram.
+  Return the index of the start of the n-gram in source tokens.
+  No matching if found if src tokens contain multiple or zero matching n-grams. Return -1.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>max_ngram_size</tt> : int</dt>
+<dd>The maximum NGram size for suffix matching.</dd>
+<dt><tt>min_ngram_size</tt> : int</dt>
+<dd>The minimum NGram size for suffix matching.</dd>
+</dl>
+
+#### Inputs (3 - 4)
+
+<dl>
+<dt><tt>src_tokens</tt> : T</dt>
+<dd>Encoder input ids.</dd>
+<dt><tt>cur_tokens</tt> : T</dt>
+<dd>Decoder input ids.</dd>
+<dt><tt>prev_suffix_match_idx</tt> : T</dt>
+<dd>Previous suffix match index</dd>
+<dt><tt>pred_tokens</tt> (optional) : T</dt>
+<dd>Predicted token ids from aggressive decoding</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>tokens</tt> : T</dt>
+<dd>Decoder input ids after merging predicted tokens</dd>
+<dt><tt>suffix_match_idx</tt> : T</dt>
+<dd>new suffix match index</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(int64)</dt>
+<dd>Constrain to integer types.</dd>
 </dl>
 
 
@@ -842,7 +899,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>The epsilon value to use to avoid division by zero.</dd>
 </dl>
 
-#### Inputs (7 - 8)
+#### Inputs (7 - 9)
 
 <dl>
 <dt><tt>input_ids</tt> : T1</dt>
@@ -861,15 +918,19 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>1D beta tensor for layer normalization  with shape (hidden_size)</dd>
 <dt><tt>mask</tt> (optional) : T1</dt>
 <dd>2D attention mask with shape (batch_size, sequence_length)</dd>
+<dt><tt>position_ids</tt> (optional) : T1</dt>
+<dd>2D position ids with shape (batch_size, sequence_length)</dd>
 </dl>
 
-#### Outputs
+#### Outputs (2 - 3)
 
 <dl>
 <dt><tt>output</tt> : T</dt>
 <dd>3D output tensor with shape (batch_size, sequence_length, hidden_size)</dd>
 <dt><tt>mask_index</tt> : T1</dt>
 <dd>1D mask_index tensor with shape (batch_size)</dd>
+<dt><tt>embedding_sum</tt> (optional) : T</dt>
+<dd>sum of word_embedding and position_embedding without layer normalization</dd>
 </dl>
 
 #### Type Constraints

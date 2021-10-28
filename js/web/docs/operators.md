@@ -152,7 +152,7 @@ See [Compatibility](../README.md#Compatibility) for a list of the supported plat
 | [Sinh](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Sinh) |  |
 | [Size](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Size) |  |
 | [Slice](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Slice) | [1-9](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Slice-1), [10](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Slice-10), [11-12](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Slice-11), [13+](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Slice-13) |
-| [Softmax](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Softmax) | [1-10](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Softmax-1), [11-12](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Softmax-11) |
+| [Softmax](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Softmax) | [1-10](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Softmax-1), [11-12](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Softmax-11), [13+](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Softmax-13) |
 | [SoftmaxCrossEntropyLoss](https://github.com/onnx/onnx/blob/master/docs/Operators.md#SoftmaxCrossEntropyLoss) |  |
 | [Softplus](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Softplus) |  |
 | [Softsign](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Softsign) |  |
