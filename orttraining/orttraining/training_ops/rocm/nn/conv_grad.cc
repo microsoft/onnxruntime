@@ -199,7 +199,7 @@ class AlgoIterator {
     }
 
     std::vector<miopenConvAlgoPerf_t> perf_results;
-    AlgoSearch<T_Algo>::FindAlgorithms(args_, provider, perf_results);
+    ORT_RETURN_IF_ERROR(AlgoSearch<T_Algo>::FindAlgorithms(args_, provider, perf_results));
     for (auto& algo_perf : perf_results) {
       if (f(algo_perf) == Status::OK()) {
         cache.Insert(args_.params, algo_perf);
@@ -342,7 +342,7 @@ Status ConvGrad<T>::ComputeInternal(OpKernelContext* context) const {
 
 template <typename T>
 Status ConvGrad<T>::ComputeInputGradient() const {
-  AlgoIterator<T_BwdDataAlgo>(args_).TryAll(
+  return AlgoIterator<T_BwdDataAlgo>(args_).TryAll(
       static_cast<const ROCMExecutionProvider*>(Info().GetExecutionProvider()),
       [&](const T_BwdDataPerf& algo_perf) -> Status {
         const auto one = Consts<HipT>::One;
@@ -353,12 +353,11 @@ Status ConvGrad<T>::ComputeInputGradient() const {
 	    algo_perf.bwd_data_algo, &zero, args_.x_tensor, args_.dx_data, workspace.get(), algo_perf.memory));
         return Status::OK();
       });
-  return Status::OK();
 }
 
 template <typename T>
 Status ConvGrad<T>::ComputeWeightGradient() const {
-  AlgoIterator<T_BwdFilterAlgo>(args_).TryAll(
+  return AlgoIterator<T_BwdFilterAlgo>(args_).TryAll(
       static_cast<const ROCMExecutionProvider*>(Info().GetExecutionProvider()),
       [&](const T_BwdFilterPerf& algo_perf) -> Status {
         const auto one = Consts<HipT>::One;
@@ -369,7 +368,6 @@ Status ConvGrad<T>::ComputeWeightGradient() const {
 	    algo_perf.bwd_weights_algo, &zero, args_.w_desc, args_.dw_data, workspace.get(), algo_perf.memory));
         return Status::OK();
       });
-  return Status::OK();
 }
 
 template <typename T>
