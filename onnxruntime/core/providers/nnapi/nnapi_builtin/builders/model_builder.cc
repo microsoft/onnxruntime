@@ -12,6 +12,7 @@
 #include "model_builder.h"
 #include "op_builder.h"
 #include "op_support_checker.h"
+#include "node_unit.h"
 
 namespace onnxruntime {
 namespace nnapi {
@@ -118,8 +119,9 @@ Status ModelBuilder::GetTargetDevices() {
 void ModelBuilder::PreprocessInitializers() {
   const auto& node_indices = graph_viewer_.GetNodesInTopologicalOrder();
   for (size_t i = 0; i < node_indices.size(); i++) {
-    const auto* node(graph_viewer_.GetNode(node_indices[i]));
-    if (const auto* op_builder = GetOpBuilder(*node)) {
+    const auto* node_old(graph_viewer_.GetNode(node_indices[i]));
+    const auto node = CreateNodeUnit(*node_old);
+    if (const auto* op_builder = GetOpBuilder(*node_old)) {
       op_builder->AddInitializersToSkip(*this, *node);
     }
   }
@@ -192,7 +194,7 @@ static Status GetInputDataType(
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
       type = Type::TENSOR_FLOAT32;
       break;
-    case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT8: {
       // For ONNX the quantized input/initializer does not carry scale and zero point info
       // So we will need to search the operator using this input
       // And dig out the scale and zero point as the input initializers to the operator
@@ -205,9 +207,12 @@ static Status GetInputDataType(
       }
 
       // TODO, verify the scale and zero point match if there are multiple op using same input
+      const auto* node_old(all_quantized_op_inputs.at(name)[0]);
+      const auto node = CreateNodeUnit(*node_old);
       ORT_RETURN_IF_ERROR(GetQuantizedInputScaleAndZeroPoint(
-          initializers, *all_quantized_op_inputs.at(name)[0], name, scale, zero_point));
+          initializers, *node, name, scale, zero_point));
       break;
+    }
       // case ONNX_NAMESPACE::TensorProto_DataType_INT8:
       // We also do not consider ONNX_NAMESPACE::TensorProto_DataType_INT8 case here, since that can only
       // be input 2 of Qlinear[Conv/MatMul], which has to be an initializer tensor and will be added
@@ -486,8 +491,9 @@ Status ModelBuilder::AddOperandFromPersistMemoryBuffer(
 Status ModelBuilder::AddOperations() {
   const auto& node_indices = graph_viewer_.GetNodesInTopologicalOrder();
   for (size_t i = 0; i < node_indices.size(); i++) {
-    const auto* node(graph_viewer_.GetNode(node_indices[i]));
-    if (const auto* op_builder = GetOpBuilder(*node)) {
+    const auto* node_old(graph_viewer_.GetNode(node_indices[i]));
+    const auto node = CreateNodeUnit(*node_old);
+    if (const auto* op_builder = GetOpBuilder(*node_old)) {
       ORT_RETURN_IF_ERROR(op_builder->AddToModelBuilder(*this, *node));
     } else {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,

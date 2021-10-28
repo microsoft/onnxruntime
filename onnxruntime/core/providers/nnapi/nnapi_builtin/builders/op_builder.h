@@ -4,6 +4,9 @@
 #pragma once
 
 namespace onnxruntime {
+
+class INodeUnit;
+
 namespace nnapi {
 
 class ModelBuilder;
@@ -14,10 +17,10 @@ class IOpBuilder {
 
   // Check if the initializers of this operator need preprocess
   // which will not be copied
-  virtual void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const = 0;
+  virtual void AddInitializersToSkip(ModelBuilder& model_builder, const INodeUnit& node) const = 0;
 
   // Add the operator to NNAPI model
-  virtual Status AddToModelBuilder(ModelBuilder& model_builder, const Node& node) const ORT_MUST_USE_RESULT = 0;
+  virtual Status AddToModelBuilder(ModelBuilder& model_builder, const INodeUnit& node) const ORT_MUST_USE_RESULT = 0;
 };
 
 // Get the lookup table with IOpBuilder delegates for different onnx operators
@@ -31,7 +34,7 @@ Status TransposeNHWCToNCHW(ModelBuilder& model_builder, const std::string& input
 
 // Get the quantized input's scale and zero point for the given input
 Status GetQuantizedInputScaleAndZeroPoint(const InitializedTensorSet& initializers,
-                                          const Node& node, const std::string& input_name,
+                                          const INodeUnit& node, const std::string& input_name,
                                           float& scale, int32_t& zero_point) ORT_MUST_USE_RESULT;
 
 }  // namespace nnapi
