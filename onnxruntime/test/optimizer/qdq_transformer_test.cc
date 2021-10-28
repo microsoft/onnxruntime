@@ -635,7 +635,6 @@ TEST(QDQTransformerTests, Transpose_No_Fusion) {
 
     auto check_matmul_graph = [&](InferenceSessionWrapper& session) {
       auto op_to_count = CountOpsInGraph(session.GetGraph());
-      EXPECT_EQ(op_to_count["Transpose"], 1);
       EXPECT_EQ(op_to_count["QuantizeLinear"], 1);
       EXPECT_EQ(op_to_count["DequantizeLinear"], 1);
     };
@@ -1090,8 +1089,7 @@ TEST(QDQTransformerTests, ConvTranspose_QBackward) {
     TransformerTester(build_test_case,
                       check_mp_reshape_graph,
                       TransformerLevel::Level1,
-                      TransformerLevel::Level2,
-                      12 /*opset_version*/);
+                      TransformerLevel::Level2);
   };
 
   test_case({1, 23, 13, 13}, {30, 23, 3, 3}, {0, 3, 1, 2});
@@ -1148,8 +1146,7 @@ TEST(QDQTransformerTests, QBackward_MutilpleSteps) {
     TransformerTester(build_test_case,
                       check_mp_reshape_graph,
                       TransformerLevel::Level1,
-                      TransformerLevel::Level2,
-                      12 /*opset_version*/);
+                      TransformerLevel::Level2);
   };
 
   test_case({1, 23, 13, 13}, {30, 23, 3, 3});
@@ -1193,8 +1190,7 @@ TEST(QDQTransformerTests, ConvTranspose_DQForward) {
     TransformerTester(build_test_case,
                       check_mp_reshape_graph,
                       TransformerLevel::Level1,
-                      TransformerLevel::Level2,
-                      12 /*opset_version*/);
+                      TransformerLevel::Level2);
   };
 
   test_case({1, 13, 13, 23}, {30, 23, 3, 3}, {0, 3, 1, 2});
@@ -1251,8 +1247,7 @@ TEST(QDQTransformerTests, DQForward_MutilpleSteps) {
     TransformerTester(build_test_case,
                       check_mp_reshape_graph,
                       TransformerLevel::Level1,
-                      TransformerLevel::Level2,
-                      12 /*opset_version*/);
+                      TransformerLevel::Level2);
   };
 
   test_case({1, 13, 13, 23}, {30, 23, 3, 3}, {0, 3, 1, 2});
@@ -1301,8 +1296,7 @@ TEST(QDQTransformerTests, QDQPropagation_QDQCancelOut) {
     TransformerTester(build_test_case,
                       check_mp_reshape_graph,
                       TransformerLevel::Level1,
-                      TransformerLevel::Level2,
-                      12 /*opset_version*/);
+                      TransformerLevel::Level2);
   };
 
   test_case({1, 13, 13, 23}, 4, {0, 3, 1, 2});
@@ -1336,8 +1330,7 @@ TEST(QDQTransformerTests, QDQPropagation_QDQ_CancelOut_More) {
     TransformerTester(build_test_case,
                       check_mp_reshape_graph,
                       TransformerLevel::Level1,
-                      TransformerLevel::Level2,
-                      12 /*opset_version*/);
+                      TransformerLevel::Level2);
   };
 
   test_case({1, 13, 13, 23}, false, false);
@@ -1371,8 +1364,7 @@ TEST(QDQTransformerTests, QDQPropagation_Q_No_Parent) {
     TransformerTester(build_test_case,
                       check_mp_reshape_graph,
                       TransformerLevel::Level1,
-                      TransformerLevel::Level2,
-                      12 /*opset_version*/);
+                      TransformerLevel::Level2);
   };
 
   test_case({1, 13, 13, 23}, {0, 2, 3, 1});
@@ -1406,8 +1398,7 @@ TEST(QDQTransformerTests, QDQPropagation_DQ_No_Children) {
     TransformerTester(build_test_case,
                       check_mp_reshape_graph,
                       TransformerLevel::Level1,
-                      TransformerLevel::Level2,
-                      12 /*opset_version*/);
+                      TransformerLevel::Level2);
   };
 
   test_case({1, 13, 13, 23}, {0, 2, 3, 1});
@@ -1443,8 +1434,7 @@ TEST(QDQTransformerTests, QDQPropagation_Per_Layer_No_Propagation) {
     TransformerTester(build_test_case,
                       check_mp_reshape_graph,
                       TransformerLevel::Level1,
-                      TransformerLevel::Level2,
-                      12 /*opset_version*/);
+                      TransformerLevel::Level2);
   };
 
   test_case({1, 13, 13, 23}, {0, 2, 3, 1});
@@ -1475,8 +1465,7 @@ TEST(QDQTransformerTests, QDQPropagation_DQ_Q) {
     TransformerTester(build_test_case,
                       check_mp_reshape_graph,
                       TransformerLevel::Level1,
-                      TransformerLevel::Level2,
-                      12 /*opset_version*/);
+                      TransformerLevel::Level2);
   };
 
   test_case({1, 13, 13, 23});

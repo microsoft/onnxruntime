@@ -283,6 +283,8 @@ else()
     if(POWER AND MLAS_SOURCE_IS_NOT_SET)
         set(mlas_platform_srcs
           ${MLAS_SRC_DIR}/power/SgemmKernelPower.cpp
+          ${MLAS_SRC_DIR}/dgemm.cpp
+          ${MLAS_SRC_DIR}/power/DgemmKernelPower.cpp
         )
         check_cxx_compiler_flag("-mcpu=power10" HAS_POWER10)
         if(HAS_POWER10)

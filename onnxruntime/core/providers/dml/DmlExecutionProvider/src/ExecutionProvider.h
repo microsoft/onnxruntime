@@ -30,7 +30,7 @@ namespace Dml
                                   Windows::AI::MachineLearning::Adapter::IWinmlExecutionProvider>
     {
     public:
-        explicit ExecutionProviderImpl::ExecutionProviderImpl(
+        explicit ExecutionProviderImpl(
             IDMLDevice* dmlDevice,
             ID3D12Device* d3d12Device,
             ID3D12CommandQueue* queue,
