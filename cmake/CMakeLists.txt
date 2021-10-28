@@ -117,7 +117,6 @@ cmake_dependent_option(onnxruntime_DISABLE_EXCEPTIONS "Disable exception handlin
 option(onnxruntime_EXTENDED_MINIMAL_BUILD "onnxruntime_MINIMAL_BUILD with support for execution providers that compile kernels." OFF)
 option(onnxruntime_MINIMAL_BUILD_CUSTOM_OPS "Add custom operator kernels support to a minimal build." OFF)
 option(onnxruntime_REDUCED_OPS_BUILD "Reduced set of kernels are registered in build via modification of the kernel registration source files." OFF)
-option(onnxruntime_DISABLE_ORT_FORMAT_LOAD "Disable loading an ORT format model when onnxruntime_MINIMAL_BUILD=OFF (i.e. in a full build)." OFF)
 option(onnxruntime_DISABLE_EXTERNAL_INITIALIZERS "Don't allow models to load external data" OFF)
 cmake_dependent_option(onnxruntime_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION "Enable runtime graph optimization of ORT format models." ON
                        "NOT onnxruntime_MINIMAL_BUILD OR onnxruntime_EXTENDED_MINIMAL_BUILD" OFF)
@@ -334,7 +333,6 @@ endif()
 # ORT build with as much excluded as possible. Supports ORT flatbuffers models only.
 if (onnxruntime_MINIMAL_BUILD)
   add_compile_definitions(ORT_MINIMAL_BUILD)
-  add_compile_definitions(ENABLE_ORT_FORMAT_LOAD)
 
   if (onnxruntime_EXTENDED_MINIMAL_BUILD)
     # enable EPs that compile kernels at runtime
@@ -375,11 +373,6 @@ if (onnxruntime_MINIMAL_BUILD)
       string(APPEND CMAKE_CXX_FLAGS " -g")
       string(APPEND CMAKE_C_FLAGS " -g")
     endif()
-  endif()
-else()
-  # support ORT format model loading unless onnxruntime_DISABLE_ORT_FORMAT_LOAD is set
-  if (NOT onnxruntime_DISABLE_ORT_FORMAT_LOAD)
-    add_compile_definitions(ENABLE_ORT_FORMAT_LOAD)
   endif()
 endif()
 
