@@ -13,9 +13,7 @@ from .debug_options import DebugOptions
 from ._fallback import (_FallbackManager,
                         _FallbackPolicy,
                         ORTModuleFallbackException)
-from . import (_FALLBACK_INIT_EXCEPTION,
-               ORTMODULE_FALLBACK_POLICY,
-               ORTMODULE_FALLBACK_RETRY)
+from onnxruntime.training import ortmodule
 
 from onnxruntime.tools import pytorch_export_contrib_ops
 
@@ -60,13 +58,13 @@ class ORTModule(torch.nn.Module):
 
         # Fallback settings
         self._fallback_manager = _FallbackManager(pytorch_module=module,
-                                                  policy=ORTMODULE_FALLBACK_POLICY,
-                                                  retry=ORTMODULE_FALLBACK_RETRY)
+                                                  policy=ortmodule.ORTMODULE_FALLBACK_POLICY,
+                                                  retry=ortmodule.ORTMODULE_FALLBACK_RETRY)
 
         try:
             # Read ORTModule module initialization status
-            if _FALLBACK_INIT_EXCEPTION:
-                raise _FALLBACK_INIT_EXCEPTION
+            if ortmodule._FALLBACK_INIT_EXCEPTION:
+                raise ortmodule._FALLBACK_INIT_EXCEPTION
 
             super(ORTModule, self).__init__()
 

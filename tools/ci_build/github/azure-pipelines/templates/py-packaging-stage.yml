@@ -1008,7 +1008,7 @@ stages:
       workspace:
         clean: all
       pool:
-        vmImage: 'macOS-10.15'
+        vmImage: 'macOS-11'
       variables:
         MACOSX_DEPLOYMENT_TARGET: '10.14'
       strategy:

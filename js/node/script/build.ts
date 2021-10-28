@@ -4,18 +4,20 @@
 import {execSync, spawnSync} from 'child_process';
 import * as fs from 'fs-extra';
 import minimist from 'minimist';
+import * as os from 'os';
 import * as path from 'path';
 
 // command line flags
 const buildArgs = minimist(process.argv.slice(2));
 
 // --config=Debug|Release|RelWithDebInfo
-const CONFIG: 'Debug'|'Release'|'RelWithDebInfo' = buildArgs.config || 'RelWithDebInfo';
+const CONFIG: 'Debug'|'Release'|'RelWithDebInfo' =
+    buildArgs.config || (os.platform() === 'win32' ? 'RelWithDebInfo' : 'Release');
 if (CONFIG !== 'Debug' && CONFIG !== 'Release' && CONFIG !== 'RelWithDebInfo') {
   throw new Error(`unrecognized config: ${CONFIG}`);
 }
 // --arch=x64|ia32|arm64|arm
-const ARCH: 'x64'|'ia32'|'arm64'|'arm' = buildArgs.arch || 'x64';
+const ARCH: 'x64'|'ia32'|'arm64'|'arm' = buildArgs.arch || os.arch();
 if (ARCH !== 'x64' && ARCH !== 'ia32' && ARCH !== 'arm64' && ARCH !== 'arm') {
   throw new Error(`unrecognized architecture: ${ARCH}`);
 }
@@ -47,6 +49,11 @@ const args = [
 ];
 if (ONNXRUNTIME_BUILD_DIR && typeof ONNXRUNTIME_BUILD_DIR === 'string') {
   args.push(`--CDONNXRUNTIME_BUILD_DIR=${ONNXRUNTIME_BUILD_DIR}`);
+}
+
+// set cross-compile for arm64 on macOS
+if (os.platform() === 'darwin' && ARCH === 'arm64') {
+  args.push('--CDCMAKE_OSX_ARCHITECTURES=arm64');
 }
 
 // launch cmake-js configure
