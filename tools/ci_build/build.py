@@ -215,6 +215,8 @@ def parse_arguments():
         "--cudnn_home is not specified.")
     parser.add_argument(
         "--enable_cuda_line_info", action='store_true', help="Enable CUDA line info.")
+    parser.add_argument(
+        "--enable_deep_speed_cuda_kernels", action='store_true', help="Enable DeepSpeed CUDA kernels.")
 
     # Python bindings
     parser.add_argument(
@@ -818,12 +820,18 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
     # It should be default ON in CI build pipelines, and OFF in packaging pipelines.
     # And OFF for the people who are not actively developing onnx runtime.
     add_cmake_define_without_override(cmake_extra_defines, "onnxruntime_DEV_MODE", use_dev_mode(args))
+
     if args.use_cuda:
         add_cmake_define_without_override(cmake_extra_defines, "onnxruntime_USE_CUDA", "ON")
         add_cmake_define_without_override(cmake_extra_defines, "onnxruntime_CUDA_VERSION", args.cuda_version)
         # TODO: this variable is not really needed
         add_cmake_define_without_override(cmake_extra_defines, "onnxruntime_CUDA_HOME", cuda_home)
         add_cmake_define_without_override(cmake_extra_defines, "onnxruntime_CUDNN_HOME", cudnn_home)
+        if args.enable_deep_speed_cuda_kernels:
+            add_cmake_define_without_override(cmake_extra_defines, "onnxruntime_ENABLE_DEEP_SPEED_CUDA_KERNELS", "ON")
+    else:
+        if args.enable_deep_speed_cuda_kernels:
+            raise BuildError("Enable CUDA build to enable DeepSpeed CUDA kernels")
 
     if is_windows():
         if args.enable_msvc_static_runtime:

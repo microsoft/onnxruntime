@@ -25,6 +25,11 @@ file(GLOB_RECURSE onnxruntime_cuda_contrib_ops_cu_srcs CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/*.cuh"
 )
 
+file(GLOB_RECURSE onnxruntime_cuda_deep_speed_cc_srcs CONFIGURE_DEPENDS
+  "${ONNXRUNTIME_ROOT}/core/providers/cuda/deep_speed/*.h"
+  "${ONNXRUNTIME_ROOT}/core/providers/cuda/deep_speed/*.cc"
+)
+
 file(GLOB_RECURSE onnxruntime_rocm_contrib_ops_cc_srcs CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/contrib_ops/rocm/*.h"
   "${ONNXRUNTIME_ROOT}/contrib_ops/rocm/*.cc"
@@ -278,6 +283,12 @@ if (onnxruntime_USE_CUDA)
     # add using ONNXRUNTIME_ROOT so they show up under the 'contrib_ops' folder in Visual Studio
     source_group(TREE ${ONNXRUNTIME_ROOT} FILES ${onnxruntime_cuda_contrib_ops_cc_srcs} ${onnxruntime_cuda_contrib_ops_cu_srcs})
     list(APPEND onnxruntime_providers_cuda_src ${onnxruntime_cuda_contrib_ops_cc_srcs} ${onnxruntime_cuda_contrib_ops_cu_srcs})
+  endif()
+
+  # enable deep speed conditionally
+  if(onnxruntime_ENABLE_DEEP_SPEED_CUDA_KERNELS)
+    source_group(TREE ${ONNXRUNTIME_ROOT} FILES ${onnxruntime_cuda_deep_speed_cc_srcs})
+    list(APPEND onnxruntime_providers_cuda_src ${onnxruntime_cuda_deep_speed_cc_srcs})
   endif()
 
   if (onnxruntime_ENABLE_TRAINING OR onnxruntime_ENABLE_TRAINING_OPS)

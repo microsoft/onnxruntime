@@ -167,6 +167,13 @@ KernelCreateInfo BuildKernelCreateInfo();
 }  // namespace cuda
 }  // namespace contrib
 
+namespace deep_speed {
+namespace cuda {
+template <typename T>
+KernelCreateInfo BuildKernelCreateInfo();
+}  // namespace cuda
+}  // namespace deep_speed
+
 namespace contrib {
 namespace rocm {
 template <typename T>

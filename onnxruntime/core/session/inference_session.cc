@@ -1327,7 +1327,7 @@ common::Status InferenceSession::Initialize() {
     // Collect the kernel registries from execution provider instances;
     // There are 2 kinds of kernel registries with priority from high to low as below,
     // 1. Custom execution provider type specific kernel registries.
-    // 2. common execution provider type specific kernel registries.
+    // 2. Common execution provider type specific kernel registries.
     // Kernel registries are shared across sessions.
     // The 1st ones should have already been registered via session-level API into KernelRegistryManager.
     //

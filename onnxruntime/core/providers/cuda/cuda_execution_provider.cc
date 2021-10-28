@@ -18,6 +18,10 @@
 #include "orttraining/training_ops/cuda/cuda_training_kernels.h"
 #endif
 
+#ifdef ENABLE_DEEP_SPEED_CUDA_KERNELS
+#include "core/providers/cuda/deep_speed/deep_speed_kernels.h"
+#endif
+
 using namespace onnxruntime::common;
 
 namespace onnxruntime {
@@ -2065,8 +2069,11 @@ static Status RegisterCudaKernels(KernelRegistry& kernel_registry) {
 
 static std::shared_ptr<onnxruntime::KernelRegistry> s_kernel_registry;
 
+static std::shared_ptr<onnxruntime::KernelRegistry> deep_speed_kernel_registry;
+
 void Shutdown_DeleteRegistry() {
   s_kernel_registry.reset();
+  deep_speed_kernel_registry.reset();
 }
 
 std::shared_ptr<KernelRegistry> CUDAExecutionProvider::GetKernelRegistry() const {
@@ -2080,6 +2087,24 @@ std::shared_ptr<KernelRegistry> CUDAExecutionProvider::GetKernelRegistry() const
 
   return s_kernel_registry;
 }
+
+/*
+std::shared_ptr<KernelRegistry> CUDAExecutionProvider::GetDeepSpeedKernelRegistry() const {
+#ifdef ENABLE_DEEP_SPEED_CUDA_KERNELS
+  if (!deep_speed_kernel_registry) {
+    deep_speed_kernel_registry = KernelRegistry::Create();
+    auto status = deep_speed::cuda::RegisterDeepSpeedKernels(*deep_speed_kernel_registry);
+    if (!status.IsOK())
+      deep_speed_kernel_registry.reset();
+    ORT_THROW_IF_ERROR(status);
+  }
+
+  return deep_speed_kernel_registry;
+#else
+  ORT_THROW("Deep Speed CUDA kernels not supported in this build");
+#endif
+}
+*/
 
 static bool RNNNeedFallbackToCPU(const onnxruntime::Node& node,
                                  const std::vector<std::string> activations_supported,
