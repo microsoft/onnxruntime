@@ -15,22 +15,17 @@ namespace onnxruntime {
 namespace fbs = experimental::fbs;
 
 #if defined(ORT_ENABLE_ADDING_RUNTIME_OPTIMIZATION_RECORDS)
-bool RuntimeOptimizationRecordContainer::AddRecord(const std::string& sat_key,
+void RuntimeOptimizationRecordContainer::AddRecord(const std::string& optimizer_key,
                                                    RuntimeOptimizationRecord&& runtime_optimization_record) {
-  auto& optimizations = sat_to_optimizations_[sat_key];
-  if (std::find(optimizations.begin(), optimizations.end(), runtime_optimization_record) != optimizations.end()) {
-    return false;
-  }
-
+  auto& optimizations = sat_to_optimizations_[optimizer_key];
   optimizations.emplace_back(std::move(runtime_optimization_record));
-  return true;
 }
 #endif
 
 std::vector<RuntimeOptimizationRecord> RuntimeOptimizationRecordContainer::RemoveRecordsForKey(
-    const std::string& sat_key) {
+    const std::string& optimizer_key) {
   std::vector<RuntimeOptimizationRecord> result{};
-  if (auto it = sat_to_optimizations_.find(sat_key); it != sat_to_optimizations_.end()) {
+  if (auto it = sat_to_optimizations_.find(optimizer_key); it != sat_to_optimizations_.end()) {
     result = std::move(it->second);
     sat_to_optimizations_.erase(it);
   }
@@ -58,10 +53,11 @@ static Status SaveRuntimeOptimizationRecordToOrtFormat(
                                         nodes_to_optimize_indexes.num_variadic_outputs);
 
   fbs_runtime_optimization_record =
-      fbs::CreateRuntimeOptimizationRecordDirect(builder,
-                                                 runtime_optimization_record.selector_action_id.c_str(),
-                                                 fbs_nodes_to_optimize,
-                                                 &runtime_optimization_record.produced_node_kernel_def_hashes);
+      fbs::CreateRuntimeOptimizationRecord(builder,
+                                           builder.CreateSharedString(runtime_optimization_record.selector_action_id),
+                                           fbs_nodes_to_optimize,
+                                           builder.CreateVector<uint64_t>(
+                                               runtime_optimization_record.produced_node_kernel_def_hashes));
 
   return Status::OK();
 }
@@ -71,7 +67,7 @@ Status RuntimeOptimizationRecordContainer::SaveToOrtFormat(
     flatbuffers::Offset<FbsRuntimeOptimizationRecordContainer>& fbs_runtime_optimizations) const {
   std::vector<flatbuffers::Offset<fbs::RuntimeOptimizationRecordContainerEntry>> fbs_runtime_optimizations_vector;
   fbs_runtime_optimizations_vector.reserve(sat_to_optimizations_.size());
-  for (const auto& [sat_name, records] : sat_to_optimizations_) {
+  for (const auto& [optimizer_name, records] : sat_to_optimizations_) {
     std::vector<flatbuffers::Offset<fbs::RuntimeOptimizationRecord>> fbs_records_vector;
     fbs_records_vector.reserve(records.size());
     for (const auto& record : records) {
@@ -82,7 +78,7 @@ Status RuntimeOptimizationRecordContainer::SaveToOrtFormat(
 
     fbs_runtime_optimizations_vector.push_back(
         fbs::CreateRuntimeOptimizationRecordContainerEntryDirect(builder,
-                                                                 sat_name.c_str(),
+                                                                 optimizer_name.c_str(),
                                                                  &fbs_records_vector));
   }
 
@@ -90,7 +86,6 @@ Status RuntimeOptimizationRecordContainer::SaveToOrtFormat(
   return Status::OK();
 }
 
-#if defined(ENABLE_ORT_FORMAT_LOAD)
 static Status LoadRuntimeOptimizationRecordFromOrtFormat(
     const fbs::RuntimeOptimizationRecord& fbs_runtime_optimization_record,
     RuntimeOptimizationRecord& runtime_optimization_record_out) {
@@ -134,8 +129,8 @@ Status RuntimeOptimizationRecordContainer::LoadFromOrtFormat(
   for (const auto* fbs_runtime_optimization : fbs_runtime_optimizations) {
     if (!fbs_runtime_optimization) continue;
 
-    std::string sat_name;
-    experimental::utils::LoadStringFromOrtFormat(sat_name, fbs_runtime_optimization->optimizer_name());
+    std::string optimizer_name;
+    experimental::utils::LoadStringFromOrtFormat(optimizer_name, fbs_runtime_optimization->optimizer_name());
 
     std::vector<RuntimeOptimizationRecord> records;
     if (const auto* fbs_runtime_optimization_records = fbs_runtime_optimization->runtime_optimization_records()) {
@@ -150,13 +145,12 @@ Status RuntimeOptimizationRecordContainer::LoadFromOrtFormat(
       }
     }
 
-    ORT_RETURN_IF_NOT(sat_to_optimizations.emplace(sat_name, std::move(records)).second,
-                      "Attempting to load runtime optimization records for a previously loaded optimizer: ", sat_name);
+    ORT_RETURN_IF_NOT(sat_to_optimizations.emplace(optimizer_name, std::move(records)).second,
+                      "Attempting to load runtime optimization records for a previously loaded optimizer: ", optimizer_name);
   }
 
   sat_to_optimizations_ = std::move(sat_to_optimizations);
   return Status::OK();
 }
-#endif  // defined(ENABLE_ORT_FORMAT_LOAD)
 
 }  // namespace onnxruntime

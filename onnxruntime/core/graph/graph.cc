@@ -15,17 +15,18 @@
 
 #include "gsl/gsl"
 #include "core/common/logging/logging.h"
-#include "core/flatbuffers/schema/ort.fbs.h"
 #include "core/flatbuffers/flatbuffers_utils.h"
-#include "core/graph/graph_flatbuffers_utils.h"
+#include "core/flatbuffers/schema/ort.fbs.h"
 #include "core/framework/tensor_shape.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/utils.h"
+#include "core/graph/graph_flatbuffers_utils.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/indexed_sub_graph.h"
 #include "core/graph/model.h"
 #include "core/graph/model_load_utils.h"
 #include "core/graph/op.h"
+#include "core/graph/runtime_optimization_record_container.h"
 
 #if !defined(ORT_MINIMAL_BUILD)
 #include "core/graph/function.h"
@@ -3052,7 +3053,7 @@ common::Status Graph::SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
 
 #if defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
   flatbuffers::Offset<RuntimeOptimizationRecordContainer::FbsRuntimeOptimizationRecordContainer> runtime_optimizations;
-  ORT_RETURN_IF_ERROR(runtime_optimizations_.SaveToOrtFormat(builder, runtime_optimizations));
+  ORT_RETURN_IF_ERROR(RuntimeOptimizations().SaveToOrtFormat(builder, runtime_optimizations));
 #endif
 
   fbs::GraphBuilder gb(builder);
@@ -4238,7 +4239,7 @@ common::Status Graph::LoadFromOrtFormat(const onnxruntime::experimental::fbs::Gr
 #if defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
   // runtime optimizations
   if (const auto* fbs_runtime_optimizations = fbs_graph.runtime_optimizations()) {
-    ORT_RETURN_IF_ERROR(runtime_optimizations_.LoadFromOrtFormat(*fbs_runtime_optimizations));
+    ORT_RETURN_IF_ERROR(MutableRuntimeOptimizations().LoadFromOrtFormat(*fbs_runtime_optimizations));
   }
 #endif  // defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
 
@@ -4246,5 +4247,11 @@ common::Status Graph::LoadFromOrtFormat(const onnxruntime::experimental::fbs::Gr
 }
 
 #endif  // defined(ENABLE_ORT_FORMAT_LOAD)
+
+#if defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
+std::unique_ptr<RuntimeOptimizationRecordContainer> Graph::MakeRuntimeOptimizationRecordContainer() {
+  return std::make_unique<RuntimeOptimizationRecordContainer>();
+}
+#endif  // defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
 
 }  // namespace onnxruntime

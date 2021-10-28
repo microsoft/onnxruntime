@@ -10,6 +10,10 @@
 #include "core/common/common.h"
 #include "core/graph/runtime_optimization_record.h"
 
+#if !defined(ORT_MINIMAL_BUILD)
+#define ORT_ENABLE_ADDING_RUNTIME_OPTIMIZATION_RECORDS
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
 namespace flatbuffers {
 class FlatBufferBuilder;
 template <typename T>
@@ -27,10 +31,10 @@ struct RuntimeOptimizationRecordContainerEntry;
 class RuntimeOptimizationRecordContainer {
  public:
 #if defined(ORT_ENABLE_ADDING_RUNTIME_OPTIMIZATION_RECORDS)
-  bool AddRecord(const std::string& sat_key, RuntimeOptimizationRecord&& runtime_optimization_record);
+  void AddRecord(const std::string& optimizer_key, RuntimeOptimizationRecord&& runtime_optimization_record);
 #endif
 
-  std::vector<RuntimeOptimizationRecord> RemoveRecordsForKey(const std::string& sat_key);
+  std::vector<RuntimeOptimizationRecord> RemoveRecordsForKey(const std::string& optimizer_key);
 
   using FbsRuntimeOptimizationRecordContainer =
       flatbuffers::Vector<flatbuffers::Offset<
@@ -39,9 +43,7 @@ class RuntimeOptimizationRecordContainer {
   Status SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
                          flatbuffers::Offset<FbsRuntimeOptimizationRecordContainer>& fbs_runtime_optimizations) const;
 
-#if defined(ENABLE_ORT_FORMAT_LOAD)
   Status LoadFromOrtFormat(const FbsRuntimeOptimizationRecordContainer& fbs_runtime_optimizations);
-#endif
 
  private:
   using SatToOptimizationRecordsMap = std::unordered_map<std::string, std::vector<RuntimeOptimizationRecord>>;

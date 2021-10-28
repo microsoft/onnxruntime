@@ -3,6 +3,8 @@
 
 #include "core/optimizer/selectors_actions/selector_action_transformer.h"
 
+#include "core/graph/runtime_optimization_record_container.h"
+
 namespace onnxruntime {
 
 #if !defined(ORT_MINIMAL_BUILD)
@@ -90,25 +92,17 @@ Status SelectorActionTransformer::MatchAndProcess(Graph& graph, Node& node, bool
       const auto& action = *selector_and_action.action;
 
       Action::SavedState action_saved_state{};
-      if (action.ShouldRunForSave()) {
-        status = action.RunForSave(graph, *node_group, *runtime_optimization_save_context_, action_saved_state,
+      status = action.RunForSave(graph, *node_group, *runtime_optimization_save_context_, action_saved_state,
                                    modified);
-        if (!status.IsOK()) {
-          break;
-        }
+      if (!status.IsOK()) {
+        break;
       }
 
-      if (graph.MutableRuntimeOptimizations().AddRecord(
-              Name(),
-              RuntimeOptimizationRecord{
-                  selector_and_action.name,
-                  node_group->ToIndexes(),
-                  action_saved_state.produced_node_kernel_def_hashes})) {
-        modified = true;
-      } else {
-        LOGS(logger, WARNING) << "Attempted to add runtime optimization but it already exists. Name: "
-                              << Name() << "." << selector_and_action.name;
-      }
+      graph.MutableRuntimeOptimizations().AddRecord(
+          Name(),
+          RuntimeOptimizationRecord{selector_and_action.name,
+                                    node_group->ToIndexes(),
+                                    action_saved_state.produced_node_kernel_def_hashes});
 #else
       status = ORT_MAKE_STATUS(ONNXRUNTIME, FAILED,
                                "Saving runtime optimizations is not enabled in this build.");

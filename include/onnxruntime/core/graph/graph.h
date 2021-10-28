@@ -31,10 +31,6 @@
 #include "core/graph/graph_nodes.h"
 #include "core/graph/node_arg.h"
 
-#if defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
-#include "core/graph/runtime_optimization_record_container.h"
-#endif
-
 namespace flatbuffers {
 class FlatBufferBuilder;
 template <typename T>
@@ -46,6 +42,10 @@ class Graph;
 struct IndexedSubGraph;
 class Model;
 class OpSignature;
+
+#if defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
+class RuntimeOptimizationRecordContainer;
+#endif
 
 namespace experimental {
 namespace fbs {
@@ -1198,11 +1198,11 @@ class Graph {
 
 #if defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
   const RuntimeOptimizationRecordContainer& RuntimeOptimizations() const {
-    return runtime_optimizations_;
+    return *runtime_optimizations_;
   }
 
   RuntimeOptimizationRecordContainer& MutableRuntimeOptimizations() {
-    return runtime_optimizations_;
+    return *runtime_optimizations_;
   }
 #endif
 
@@ -1522,7 +1522,9 @@ class Graph {
   const bool is_loaded_from_model_file_;
 
 #if defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
-  RuntimeOptimizationRecordContainer runtime_optimizations_;
+  static std::unique_ptr<RuntimeOptimizationRecordContainer> MakeRuntimeOptimizationRecordContainer();
+
+  std::unique_ptr<RuntimeOptimizationRecordContainer> runtime_optimizations_ = MakeRuntimeOptimizationRecordContainer();
 #endif
 };
 

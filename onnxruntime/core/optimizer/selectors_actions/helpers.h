@@ -193,6 +193,11 @@ struct NodeAndMoveInfo {
 };
 
 // helpers for moving inputs/outputs and their edges between nodes
+// if `only_update_dest_definitions` is true, only updates the destination node's definitions. otherwise, updates graph
+// edges and node definitions.
+// setting `only_update_dest_definitions` to true is useful for updating the destination node independently from the
+// rest of the graph. e.g., when creating a temporary node that is used to look up a kernel def, we can set the
+// temporary node's definitions (which is all we need) without updating existing graph edges.
 Status MoveInputOutput(Graph& graph, const NodesToOptimize& selected_nodes, Node& dest,
                        const std::vector<NodeAndMoveInfo>& moves, bool only_update_dest_definitions);
 

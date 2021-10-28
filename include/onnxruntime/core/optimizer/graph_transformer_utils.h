@@ -40,6 +40,12 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
     const IExecutionProvider& execution_provider /*required by constant folding*/,
     const std::unordered_set<std::string>& rules_and_transformers_to_disable = {});
 
+/** Generates all predefined transformers which support runtime optimizations for this level.
+    Any transformers or rewrite rules named in rules_and_transformers_to_disable will be excluded.
+
+    This is a distinct function from GenerateTransformers() because:
+    - Runtime optimizations are used in a different scenario than normal graph optimization.
+    - The set of transformers which support runtime optimizations is different. */
 std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformersForRuntimeOptimizations(
     TransformerLevel level,
     const RuntimeOptimizationSaveContext& runtime_optimization_save_context,

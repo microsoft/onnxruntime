@@ -1,7 +1,7 @@
 # ORT File Format
-This directory contains [the ORT file format schema](ort.fbs) and [the generated C++ header file](ort.fbs.h) for ORT file format.
+This directory contains [the ORT file format schema](ort.fbs) and [the generated C++ header file](ort.fbs.h) for the ORT file format.
 
-[The ORT file format schema](ort.fbs) uses [FlatBuffers](https://github.com/google/flatbuffers) serialization library.
+[The ORT file format schema](ort.fbs) uses the [FlatBuffers](https://github.com/google/flatbuffers) serialization library.
 
 Please do not directly modify [the generated C++ header file](ort.fbs.h) or [the generated Python binding files](../ort_flatbuffers_py).
 
@@ -12,6 +12,8 @@ e.g.
     - \build\Windows\Debug\external\flatbuffers\Debug\flatc.exe
   - Linux Debug build
     - /build/Linux/external/flatbuffers/Debug/flatc
+
+It is possible to use another flatc as well, e.g., from a separate installation. Note that ONNX Runtime uses FlatBuffers 1.12.
 
 To update the ORT file format schema and generated files:
 1. Modify [the ORT file format schema](ort.fbs).

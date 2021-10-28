@@ -11,8 +11,8 @@ namespace {
 // Move or remove an edge.
 //   - moves edges from src+src_slot to dest node+dest_slot if provided.
 //   - remove edges for the src+src_slot if dest+dest_slot not provided.
-void ProcessEdge(Graph& graph, Node& src, const InOutDefSlot& src_slot,
-                 Node* dest, const InOutDefSlot* dest_slot) {
+void ProcessEdge(Graph& graph, const Node& src, const InOutDefSlot& src_slot,
+                 const Node* dest, const InOutDefSlot* dest_slot) {
   if (src_slot.in_out == ArgType::kInput) {
     // move input edge if present
     auto iter = std::find_if(src.InputEdgesBegin(), src.InputEdgesEnd(),

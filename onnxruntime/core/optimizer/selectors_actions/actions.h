@@ -18,15 +18,15 @@ class Node;
 
 // actions that are applied to a set of nodes identified during selection
 struct Action {
-  struct SavedState {
-    std::vector<uint64_t> produced_node_kernel_def_hashes;
-  };
-
   virtual ~Action() = default;
 
   virtual Status Run(Graph& graph, const NodesToOptimize& selected_nodes) const = 0;
 
 #if !defined(ORT_MINIMAL_BUILD)
+  struct SavedState {
+    std::vector<uint64_t> produced_node_kernel_def_hashes;
+  };
+
   // saving interface
   virtual Status RunForSave(Graph& /*graph*/, const NodesToOptimize& /*selected_nodes*/,
                             const RuntimeOptimizationSaveContext& /*save_context*/,
@@ -34,8 +34,6 @@ struct Action {
     // do nothing by default
     return Status::OK();
   }
-
-  virtual bool ShouldRunForSave() const { return false; }
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
  protected:
@@ -59,19 +57,10 @@ struct MultiAction : public Action {
                     const RuntimeOptimizationSaveContext& save_context,
                     SavedState& saved_state, bool& graph_modified) const override {
     for (const auto& action : actions_) {
-      if (!action->ShouldRunForSave()) continue;
       ORT_RETURN_IF_ERROR(action->RunForSave(graph, selected_nodes, save_context, saved_state, graph_modified));
     }
 
     return Status::OK();
-  }
-
-  bool ShouldRunForSave() const override {
-    for (const auto& action : actions_) {
-      if (action->ShouldRunForSave()) return true;
-    }
-
-    return false;
   }
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
@@ -122,8 +111,6 @@ struct ReplaceWithNew : public Action {
   Status RunForSave(Graph& graph, const NodesToOptimize& selected_nodes,
                     const RuntimeOptimizationSaveContext& save_context,
                     SavedState& saved_state, bool& graph_modified) const override;
-
-  bool ShouldRunForSave() const override { return true; }
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
  private:
