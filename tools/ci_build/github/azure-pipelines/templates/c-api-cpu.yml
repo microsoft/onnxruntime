@@ -79,7 +79,7 @@ jobs:
           docker run --rm -e CFLAGS="$(ONNXRUNTIME_CFLAGS)" -e CXXFLAGS="$(ONNXRUNTIME_CXXFLAGS)" --volume /data/onnx:/data/onnx:ro --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build \
           --volume $HOME/.onnx:/home/onnxruntimedev/.onnx -e NIGHTLY_BUILD onnxruntimecpubuildcentos7$(ONNXRUNTIME_ARCH) /bin/bash -c "python3 \
           /onnxruntime_src/tools/ci_build/build.py --build_java --build_nodejs --build_dir /build --config Release \
-          --skip_submodule_sync  --build_shared_lib ${{ parameters.AdditionalBuildFlags }} && cd /build/Release && make install DESTDIR=/build/linux-$(ONNXRUNTIME_ARCH)"
+          --skip_submodule_sync  --parallel --build_shared_lib ${{ parameters.AdditionalBuildFlags }} && cd /build/Release && make install DESTDIR=/build/linux-$(ONNXRUNTIME_ARCH)"
         workingDirectory: $(Build.SourcesDirectory)
 
     - script: |
@@ -557,7 +557,7 @@ jobs:
   variables:
     breakCodesignValidationInjection: ${{ parameters.DoEsrp }}
   dependsOn:
-  #- Linux_C_API_Packaging_CPU_x64
+  - Linux_C_API_Packaging_CPU_x64
   - MacOS_C_API_Packaging_CPU_x64
   - Windows_Packaging_CPU_x64_${{ parameters.BuildVariant }}
   - Windows_Packaging_CPU_arm64_${{ parameters.BuildVariant }}
