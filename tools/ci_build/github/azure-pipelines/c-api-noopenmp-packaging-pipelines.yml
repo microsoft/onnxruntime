@@ -71,7 +71,6 @@ jobs:
           artifactName: 'onnxruntime-linux-x64-cuda-$(OnnxRuntimeVersion)'
           artifactNameNoVersionString:  'onnxruntime-linux-x64-cuda'
           libraryName: 'libonnxruntime.so.$(OnnxRuntimeVersion)'
-          commitId: $(OnnxRuntimeGitCommitHash)
 
     - template: templates/component-governance-component-detection-steps.yml
       parameters :
@@ -560,3 +559,4 @@ jobs:
     AgentPool : Onnxruntime-Linux-GPU
     ArtifactSuffix: 'GPU'
     NugetPackageName : 'Microsoft.ML.OnnxRuntime.Gpu'
+
