@@ -26,8 +26,6 @@ Status ComputeQLinearGlobalAvgPool(
     int64_t image_size,
     bool channels_last,
     concurrency::ThreadPool* tp) {
-  static constexpr int64_t kMiniChannelGroup = 64;
-
   if (!channels_last || C == 1) {
     auto worker = [=](std::ptrdiff_t first, std::ptrdiff_t last) {
       const uint8_t* input = (const uint8_t*)(x + (first * image_size));
@@ -38,38 +36,19 @@ Status ComputeQLinearGlobalAvgPool(
     concurrency::ThreadPool::TryParallelFor(
         tp, static_cast<std::ptrdiff_t>(N * C), {1.0 * image_size, 1.0, 8.0 * image_size}, worker);
   } else {
-    if (N == 1) {
-      int64_t channel_padded = (C + kMiniChannelGroup - 1) & (~(kMiniChannelGroup - 1));
-      int64_t channel_groups = channel_padded / kMiniChannelGroup;
-      auto worker = [=](std::ptrdiff_t first, std::ptrdiff_t last) {
-        std::vector<int32_t> acc_buffer(MlasQLinearSafePaddingElementCount(sizeof(int32_t), C));
-        std::vector<uint8_t> zero_buffer(MlasQLinearSafePaddingElementCount(sizeof(uint8_t), C), 0);
-        const uint8_t* input = x + first * kMiniChannelGroup;
-        uint8_t* output = y + first * kMiniChannelGroup;
-        int64_t channel_count = (last == channel_groups) ? (C - first * kMiniChannelGroup) : ((last - first) * kMiniChannelGroup);
-        MlasQLinearGlobalAveragePoolNhwc(
-            input, x_scale, x_zero_point, output, y_scale, y_zero_point,
-            N, image_size, C, channel_count, acc_buffer.data(), zero_buffer.data());
-      };
-      concurrency::ThreadPool::TryParallelFor(
-          tp, static_cast<std::ptrdiff_t>(channel_groups),
-          {1.0 * N * image_size * kMiniChannelGroup, 1.0 * N * kMiniChannelGroup, 8.0 * N * image_size * kMiniChannelGroup},
-          worker);
-    } else {
-      auto worker = [=](std::ptrdiff_t first, std::ptrdiff_t last) {
-        const uint8_t* input = x + first * C * image_size;
-        uint8_t* output = y + first * C;
-        std::vector<int32_t> acc_buffer(MlasQLinearSafePaddingElementCount(sizeof(int32_t), C));
-        std::vector<uint8_t> zero_buffer(MlasQLinearSafePaddingElementCount(sizeof(uint8_t), C), 0);
-        MlasQLinearGlobalAveragePoolNhwc(
-            input, x_scale, x_zero_point, output, y_scale, y_zero_point,
-            last - first, image_size, C, C, acc_buffer.data(), zero_buffer.data());
-      };
-      concurrency::ThreadPool::TryParallelFor(
-          tp, static_cast<std::ptrdiff_t>(N),
-          {1.0 * image_size * C, 1.0 * C, 8.0 *image_size * C},
-          worker);
-    }
+    auto worker = [=](std::ptrdiff_t first, std::ptrdiff_t last) {
+      const uint8_t* input = x + first * C * image_size;
+      uint8_t* output = y + first * C;
+      std::vector<int32_t> acc_buffer(MlasQLinearSafePaddingElementCount(sizeof(int32_t), C));
+      std::vector<uint8_t> zero_buffer(MlasQLinearSafePaddingElementCount(sizeof(uint8_t), C), 0);
+      MlasQLinearGlobalAveragePoolNhwc(
+          input, x_scale, x_zero_point, output, y_scale, y_zero_point,
+          last - first, image_size, C, C, acc_buffer.data(), zero_buffer.data());
+    };
+    concurrency::ThreadPool::TryParallelFor(
+        tp, static_cast<std::ptrdiff_t>(N),
+        {1.0 * image_size * C, 1.0 * C, 8.0 *image_size * C},
+        worker);
   }
   return Status::OK();
 }
