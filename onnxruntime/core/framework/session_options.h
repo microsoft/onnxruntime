@@ -98,9 +98,6 @@ struct SessionOptions {
   // configuring this makes sense only when you're using parallel executor
   OrtThreadPoolParams inter_op_param;
 
-  CreateThreadFn create_thread_fn = nullptr;
-  JoinThreadFn join_thread_fn = nullptr;
-
   // For models with symbolic input dimensions (most commonly batch size), specifies a set of values to override those
   // symbolic dimensions with, keyed by dimension parameters.
   std::vector<FreeDimensionOverride> free_dimension_overrides;
@@ -122,6 +119,15 @@ struct SessionOptions {
 
   // See onnxruntime_c_api.h for detailed documentation.
   Status AddInitializer(_In_z_ const char* name, _In_ const OrtValue* val) noexcept;
+
+  // function callback to create an external thread
+  CreateThreadFn create_external_thread_fn = nullptr;
+
+  // external thread option to pass to create_thread_fn
+  void* external_thread_options = nullptr;
+
+  // function callback to join an external thread
+  JoinThreadFn join_external_thread_fn = nullptr;
 };
 
 }  // namespace onnxruntime

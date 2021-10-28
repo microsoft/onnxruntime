@@ -515,6 +515,11 @@ inline SessionOptions& SessionOptions::SetCreateThreadFn(CreateThreadFn thread_c
   return *this;
 }
 
+inline SessionOptions& SessionOptions::SetThreadOptions(void* thread_options) {
+  ThrowOnError(GetApi().SessionOptionsSetThreadOptions(p_, thread_options));
+  return *this;
+}
+
 inline SessionOptions& SessionOptions::SetJoinThreadFn(JoinThreadFn join_thread_fn) {
   ThrowOnError(GetApi().SessionOptionsSetJoinThreadFn(p_, join_thread_fn));
   return *this;

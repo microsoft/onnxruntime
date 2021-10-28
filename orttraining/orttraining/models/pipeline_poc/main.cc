@@ -103,8 +103,6 @@ int main(int argc, char* argv[]) {
       TransformerLevel::Level1,          //graph_optimization_level
       {},                                //intra_op_param
       {},                                //inter_op_param
-      {},                                //create_thread_fn
-      {},                                //join_thread_fn
       overrides,                         //free_dimension_overrides
       true,                              //use_per_session_threads
       true,                              //thread_pool_allow_spinning

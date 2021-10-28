@@ -533,13 +533,13 @@ ORT_EXPORT const OrtApiBase* ORT_API_CALL OrtGetApiBase(void) NO_EXCEPTION;
 * Argument is an onnxruntime built-in type which will be provided upon calling
 * 0 means work loop returns normally, and 1 otherwise
 */
-typedef unsigned (*ThreadWorkLoopFn)(void*);
+typedef void (*ThreadWorkLoopFn)(void*);
 
 /** \brief Thread creation function
 *
 * The function returns a thread handle to onnxruntime intra thread pool
 */
-typedef void* (*CreateThreadFn)(ThreadWorkLoopFn, void*);
+typedef void* (*CreateThreadFn)(void*, ThreadWorkLoopFn, void*);
 
 /** \brief Thread join function
 *
@@ -3052,6 +3052,15 @@ struct OrtApi {
   * * \snippet{doc} snippets.dox OrtStatus Return Value
   */
   ORT_API2_STATUS(SessionOptionsSetCreateThreadFn, _In_ OrtSessionOptions* options, _In_ CreateThreadFn create_thread_fn);
+
+  /** \brief Set options for external thread pool
+  *
+  * \param[in] session options
+  * \param[in] void* that refers to external thread options
+  * 
+  * * \snippet{doc} snippets.dox OrtStatus Return Value
+  */
+  ORT_API2_STATUS(SessionOptionsSetThreadOptions, _In_ OrtSessionOptions* options, _In_ void* thread_options);
 
   /** \brief Set thread join function for intra op thread pool
   *

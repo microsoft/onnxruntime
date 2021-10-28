@@ -1846,11 +1846,14 @@ TEST(CApiTest, TestConfigureTensorRTProviderOptions) {
 namespace TestExternalThreadPoolHooks {
 
 std::vector<std::thread> threads;
+int32_t external_thread_options{};
 int32_t external_creation_hook_called{};
 int32_t external_joining_hook_called{};
 
-void* CreateTestingThread(ThreadWorkLoopFn work_loop, void* param) {
-  external_creation_hook_called += 1;
+void* CreateTestingThread(void* options, ThreadWorkLoopFn work_loop, void* param) {
+  if (*((int32_t*)options) == 5) {
+    external_creation_hook_called += 1;
+  }
   threads.push_back(std::thread(work_loop, param));
   return (void*)threads.back().native_handle();
 }
@@ -1866,10 +1869,12 @@ void JoinTestingThread(void* handle) {
 
 TEST(CApiTest, TestExternalThreadPoolHooks) {
   const int32_t thread_count = 3;
+  external_thread_options = 5;
   external_creation_hook_called = external_joining_hook_called = 0;
   Ort::SessionOptions session_options;
   session_options.SetIntraOpNumThreads(thread_count);
   session_options.SetCreateThreadFn(CreateTestingThread);
+  session_options.SetThreadOptions(&external_thread_options);
   session_options.SetJoinThreadFn(JoinTestingThread);
   {
     Ort::Session session(*ort_env, MODEL_URI, session_options);

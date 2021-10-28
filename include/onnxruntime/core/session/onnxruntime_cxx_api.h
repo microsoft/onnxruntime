@@ -349,6 +349,7 @@ struct SessionOptions : Base<OrtSessionOptions> {
   SessionOptions& AppendExecutionProvider_TensorRT(const OrtTensorRTProviderOptions& provider_options); ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_TensorRT
 
   SessionOptions& SetCreateThreadFn(CreateThreadFn thread_create_fn); ///< Wraps OrtApi::SessionOptionsSetCreateThreadFn
+  SessionOptions& SetThreadOptions(void* thread_options);  ///< Wraps OrtApi::SessionOptionsSetThreadOptions
   SessionOptions& SetJoinThreadFn(JoinThreadFn join_thread_fn); ///< Wraps OrtApi::SessionOptionsSetJoinThreadFn
 };
 

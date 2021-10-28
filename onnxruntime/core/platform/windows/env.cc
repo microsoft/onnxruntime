@@ -54,33 +54,33 @@ class WindowsThread : public EnvThread {
     unsigned (*start_address)(int id, Eigen::ThreadPoolInterface* param);
     Eigen::ThreadPoolInterface* param;
     const ThreadOptions& thread_options;
-    bool is_ort_thread;
   };
 
  public:
   WindowsThread(const ORTCHAR_T* name_prefix, int index,
                 unsigned (*start_address)(int id, Eigen::ThreadPoolInterface* param), Eigen::ThreadPoolInterface* param,
                 const ThreadOptions& thread_options) {
-    create_thread_fn = thread_options.create_thread_fn;
-    join_thread_fn = thread_options.join_thread_fn;
-    if (create_thread_fn) {
-      hThread.reset((HANDLE)(create_thread_fn((WorkLoop)ThreadMain, new Param{name_prefix, index, start_address, param, thread_options, false})));
+    create_external_thread_fn = thread_options.create_external_thread_fn;
+    external_thread_options = thread_options.external_thread_options;
+    join_external_thread_fn = thread_options.join_external_thread_fn;
+
+    if (create_external_thread_fn) {
+      hThread.reset((HANDLE)(create_external_thread_fn(external_thread_options, (WorkLoop)ExternalThreadMain, new Param{name_prefix, index, start_address, param, thread_options})));
     } else {
       hThread.reset((HANDLE)_beginthreadex(nullptr, thread_options.stack_size, ThreadMain,
-                                           new Param{name_prefix, index, start_address, param, thread_options, true}, 0,
+                                           new Param{name_prefix, index, start_address, param, thread_options}, 0,
                                            &threadID));
     }
   }
 
   ~WindowsThread() {
-    if (join_thread_fn) {
-      join_thread_fn(hThread.get());
+    if (join_external_thread_fn) {
+      join_external_thread_fn(hThread.get());
     } else {
       DWORD waitStatus = WaitForSingleObject(hThread.get(), INFINITE);
       FAIL_FAST_LAST_ERROR_IF(waitStatus == WAIT_FAILED);
     }
   }
-
 
  private:
   typedef HRESULT(WINAPI* SetThreadDescriptionFunc)(HANDLE hThread, PCWSTR lpThreadDescription);
@@ -89,29 +89,27 @@ class WindowsThread : public EnvThread {
 #pragma warning(disable : 6387)
   static unsigned __stdcall ThreadMain(void* param) {
     std::unique_ptr<Param> p((Param*)param);
-    if (p->is_ort_thread) {
-      // TODO: should I try to use SetThreadSelectedCpuSets?
-      if (!p->thread_options.affinity.empty())
-        SetThreadAffinityMask(GetCurrentThread(), p->thread_options.affinity[p->index]);
+    // TODO: should I try to use SetThreadSelectedCpuSets?
+    if (!p->thread_options.affinity.empty())
+      SetThreadAffinityMask(GetCurrentThread(), p->thread_options.affinity[p->index]);
 #if WINVER >= _WIN32_WINNT_WIN10
-      constexpr SetThreadDescriptionFunc pSetThrDesc = SetThreadDescription;
+    constexpr SetThreadDescriptionFunc pSetThrDesc = SetThreadDescription;
 #elif WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
-      HMODULE kernelModule = GetModuleHandle(TEXT("kernel32.dll"));
-      // kernel32.dll is always loaded
-      assert(kernelModule != nullptr);
-      auto pSetThrDesc =
-          (SetThreadDescriptionFunc)GetProcAddress(kernelModule, "SetThreadDescription");
+    HMODULE kernelModule = GetModuleHandle(TEXT("kernel32.dll"));
+    // kernel32.dll is always loaded
+    assert(kernelModule != nullptr);
+    auto pSetThrDesc =
+        (SetThreadDescriptionFunc)GetProcAddress(kernelModule, "SetThreadDescription");
 #else
-      constexpr SetThreadDescriptionFunc pSetThrDesc = nullptr;
+    constexpr SetThreadDescriptionFunc pSetThrDesc = nullptr;
 #endif
-      if (pSetThrDesc != nullptr) {
-        const ORTCHAR_T* name_prefix =
-            (p->name_prefix == nullptr || wcslen(p->name_prefix) == 0) ? L"onnxruntime" : p->name_prefix;
-        std::wostringstream oss;
-        oss << name_prefix << "-" << p->index;
-        // Ignore the error
-        (void)pSetThrDesc(GetCurrentThread(), oss.str().c_str());
-      }
+    if (pSetThrDesc != nullptr) {
+      const ORTCHAR_T* name_prefix =
+          (p->name_prefix == nullptr || wcslen(p->name_prefix) == 0) ? L"onnxruntime" : p->name_prefix;
+      std::wostringstream oss;
+      oss << name_prefix << "-" << p->index;
+      // Ignore the error
+      (void)pSetThrDesc(GetCurrentThread(), oss.str().c_str());
     }
     unsigned ret = 0;
     ORT_TRY {
@@ -125,6 +123,15 @@ class WindowsThread : public EnvThread {
   }
 #pragma warning(pop)
 
+  static void __stdcall ExternalThreadMain(void* param) {
+    std::unique_ptr<Param> p((Param*)param);
+    ORT_TRY {
+      p->start_address(p->index, p->param);
+    }
+    ORT_CATCH(const std::exception&) {
+      p->param->Cancel();
+    }
+  }
   unsigned threadID = 0;
   wil::unique_handle hThread;
 };

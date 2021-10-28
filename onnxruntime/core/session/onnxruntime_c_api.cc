@@ -2078,14 +2078,21 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSessionFromArrayWithPrepackedWeightsContainer
 
 ORT_API_STATUS_IMPL(OrtApis::SessionOptionsSetCreateThreadFn, _In_ OrtSessionOptions* options, _In_ CreateThreadFn create_thread_fn) {
   API_IMPL_BEGIN
-  options->value.create_thread_fn = create_thread_fn;
+  options->value.create_external_thread_fn = create_thread_fn;
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::SessionOptionsSetThreadOptions, _In_ OrtSessionOptions* options, _In_ void* thread_options) {
+  API_IMPL_BEGIN
+  options->value.external_thread_options = thread_options;
   return nullptr;
   API_IMPL_END
 }
 
 ORT_API_STATUS_IMPL(OrtApis::SessionOptionsSetJoinThreadFn, _In_ OrtSessionOptions* options, _In_ JoinThreadFn join_thread_fn) {
   API_IMPL_BEGIN
-  options->value.join_thread_fn = join_thread_fn;
+  options->value.join_external_thread_fn = join_thread_fn;
   return nullptr;
   API_IMPL_END
 }
@@ -2365,6 +2372,7 @@ static constexpr OrtApi ort_api_1_to_10 = {
 
     // Version 10 - In development, feel free to add/remove/rearrange here
     &OrtApis::SessionOptionsSetCreateThreadFn,
+    &OrtApis::SessionOptionsSetThreadOptions,
     &OrtApis::SessionOptionsSetJoinThreadFn,
 };
 

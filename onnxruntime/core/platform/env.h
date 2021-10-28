@@ -46,8 +46,8 @@ using PIDType = pid_t;
 using FileOffsetType = off_t;
 #endif
 
-typedef unsigned (*WorkLoop)(void*);
-typedef void* (*CreateThreadFunc)(WorkLoop, void*);
+typedef void (*WorkLoop)(void*);
+typedef void* (*CreateThreadFunc)(void*, WorkLoop, void*);
 typedef void (*JoinThreadFunc)(void*);
 
 class EnvThread {
@@ -55,8 +55,9 @@ class EnvThread {
   virtual ~EnvThread() = default;
 
  protected:
-  CreateThreadFunc create_thread_fn{};
-  JoinThreadFunc join_thread_fn{};
+  CreateThreadFunc create_external_thread_fn{};
+  void* external_thread_options{};
+  JoinThreadFunc join_external_thread_fn{};
 };
 
 
@@ -78,8 +79,9 @@ struct ThreadOptions {
   // Set or unset denormal as zero.
   bool set_denormal_as_zero = false;
 
-  CreateThreadFunc create_thread_fn = nullptr;
-  JoinThreadFunc join_thread_fn = nullptr;
+  CreateThreadFunc create_external_thread_fn = nullptr;
+  void* external_thread_options = nullptr;
+  JoinThreadFunc join_external_thread_fn = nullptr;
 };
 /// \brief An interface used by the onnxruntime implementation to
 /// access operating system functionality like the filesystem etc.
