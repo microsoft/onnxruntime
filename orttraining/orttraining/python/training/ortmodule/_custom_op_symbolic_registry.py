@@ -396,18 +396,10 @@ def einsum(g, equation, tensor_list):
         result = g.op("Reshape", result, output_shape_tensor)
 
     # Now output axes is ordered by [batched_axes, lhs_matmul_output_axes, rhs_matmut_output_axes], if this is not same as output, need one permute.
-    output_perm = [-1] * out_size
-    pos = 0
-    for axis in lhs_batched_axes:
-        output_perm[result_labels.index(lhs_labels[axis])] = pos
-        pos += 1
-    for axis in lhs_matmul_output_axes:
-        output_perm[result_labels.index(lhs_labels[axis])] = pos
-        pos += 1
-    for axis in rhs_matmul_output_axes:
-        output_perm[result_labels.index(rhs_labels[axis])] = pos
-        pos += 1
-    assert pos == out_size and all(axis != -1 for axis in output_perm)
+    labels = [lhs_labels[axis] for axis in lhs_batched_axes + lhs_matmul_output_axes] + [rhs_labels[axis] for axis in rhs_matmul_output_axes]
+    assert len(labels) == out_size
+    output_perm = [labels.index(label) for label in result_labels]
+    assert all(axis in output_perm for axis in range(out_size))
     if need_permute(output_perm):
         result = g.op("Transpose", result, perm_i=output_perm)
 
