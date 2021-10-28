@@ -143,7 +143,7 @@ class PosixThread : public EnvThread {
   PosixThread(const ORTCHAR_T* name_prefix, int index,
               unsigned (*start_address)(int id, Eigen::ThreadPoolInterface* param), Eigen::ThreadPoolInterface* param,
               const ThreadOptions& thread_options) {
-    create_external_thread_fn = thread_options.create_external_thread_fn);
+    create_external_thread_fn = thread_options.create_external_thread_fn;
     external_thread_options = thread_options.external_thread_options;
     join_external_thread_fn = thread_options.join_external_thread_fn;
 
