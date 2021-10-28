@@ -1051,7 +1051,7 @@ def test_gradient_correctness_reducesum(dim, keepdim):
         _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
         _test_helpers.assert_values_are_close(ort_input.grad, pt_input.grad)
 
-@pytest.mark.parametrize("equation", ["s,se->se", "se,sc->sec", "se,se->s", "sec,sm->ecm", "sec,ecm->sm", "ks,ksm->sm"])
+@pytest.mark.parametrize("equation", ["s,se->se", "se,sc->sec", "se,se->s", "sec,sm->ecm", "sec,ecm->sm", "ks,ksm->sm", "kes,ems->mek"])
 def test_gradient_correctness_einsum(equation):
     class NeuralNetEinsum(torch.nn.Module):
         def __init__(self, bias_size):
@@ -1063,7 +1063,7 @@ def test_gradient_correctness_einsum(equation):
             return torch.einsum(equation, left, right)
 
     device = 'cuda'
-    K, S, M, E = 16, 2048, 768, 64
+    K, S, M, E = 16, 1024, 768, 64
     C = int(S/E*2)
 
     SIZE_MAP = { 'K': K, 'S': S, 'E': E, 'C': C, 'M': M }

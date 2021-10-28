@@ -262,7 +262,7 @@ def einsum(g, equation, tensor_list):
     for label in lhs_labels + rhs_labels:
         if label not in label_perm_map:
             if label not in lhs_labels or label not in rhs_labels:
-                # If sum label are missing in one side, need to add extra sum(dim), doesn't support for now.
+                # If contraction label are missing in one side, need to add extra sum(dim), doesn't support for now.
                 return g.op("Einsum", *tensors, equation_s=equation)
             label_perm_map[label] = perm_index
             contraction_labels.append(label)
@@ -394,5 +394,22 @@ def einsum(g, equation, tensor_list):
     result = g.op("MatMul", lhs_tensor, rhs_tensor)
     if output_need_reshape:
         result = g.op("Reshape", result, output_shape_tensor)
+
+    # Now output axes is ordered by [batched_axes, lhs_matmul_output_axes, rhs_matmut_output_axes], if this is not same as output, need one permute.
+    output_perm = [-1] * out_size
+    pos = 0
+    for axis in lhs_batched_axes:
+        output_perm[result_labels.index(lhs_labels[axis])] = pos
+        pos += 1
+    for axis in lhs_matmul_output_axes:
+        output_perm[result_labels.index(lhs_labels[axis])] = pos
+        pos += 1
+    for axis in rhs_matmul_output_axes:
+        output_perm[result_labels.index(rhs_labels[axis])] = pos
+        pos += 1
+    assert pos == out_size and all(axis != -1 for axis in output_perm)
+    if need_permute(output_perm):
+        result = g.op("Transpose", result, perm_i=output_perm)
+
     return result
 # End of torch.einsum.
