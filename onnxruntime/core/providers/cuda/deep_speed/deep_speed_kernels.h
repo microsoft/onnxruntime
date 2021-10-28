@@ -7,7 +7,7 @@ namespace onnxruntime {
 namespace deep_speed {
 namespace cuda {
 
-Status RegisterCudaContribKernels(KernelRegistry& kernel_registry);
+Status RegisterDeepSpeedKernels(KernelRegistry& kernel_registry);
 
 }  // namespace cuda
 }  // namespace deep_speed

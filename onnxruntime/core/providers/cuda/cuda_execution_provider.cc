@@ -2088,7 +2088,6 @@ std::shared_ptr<KernelRegistry> CUDAExecutionProvider::GetKernelRegistry() const
   return s_kernel_registry;
 }
 
-/*
 std::shared_ptr<KernelRegistry> CUDAExecutionProvider::GetDeepSpeedKernelRegistry() const {
 #ifdef ENABLE_DEEP_SPEED_CUDA_KERNELS
   if (!deep_speed_kernel_registry) {
@@ -2104,7 +2103,6 @@ std::shared_ptr<KernelRegistry> CUDAExecutionProvider::GetDeepSpeedKernelRegistr
   ORT_THROW("Deep Speed CUDA kernels not supported in this build");
 #endif
 }
-*/
 
 static bool RNNNeedFallbackToCPU(const onnxruntime::Node& node,
                                  const std::vector<std::string> activations_supported,
