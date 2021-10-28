@@ -43,7 +43,6 @@ jobs:
 
     - script: |
         set -e -x
-        cd $(Build.SourcesDirectory)/java/src/test/android
         appcenter test run xcuitest \
           --app "AI-Frameworks/ORT-Mobile-iOS" \
           --devices $(app_center_test_devices) \
@@ -51,5 +50,4 @@ jobs:
           --locale "en_US" \
           --build-dir $(derived_data_path)/Build/Products/Debug-iphoneos \
           --token $(app_center_api_token)
-      workingDirectory: $(Build.SourcesDirectory)/java/src/test/android
       displayName: Run E2E tests on App Center
