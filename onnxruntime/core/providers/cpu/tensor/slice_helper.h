@@ -88,11 +88,22 @@ inline Status PrepareForComputeHelper(const std::vector<int64_t>& raw_starts,
 
     // process step
     auto step = axis_index < raw_steps.size() ? raw_steps[axis_index] : 1;
+    if (step == 0)
+      return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "'step' value cannot be 0");
+
+    if (dim_value == 0) {
+      // shape with empty dim. only output_dims_ matters but set everything for completeness
+      compute_metadata.steps_[axis] = step;
+      compute_metadata.starts_[axis] = 0;
+      compute_metadata.ends_[axis] = 0;
+      compute_metadata.output_dims_[axis] = 0;
+      continue;
+    }
+
     // clamp step to avoid overflow if there's a stupidly large value (which will be multiplied in SliceImpl)
     // as long as the clamped value is >= the size of the dimension a single step will push us past the end
     step = std::clamp(step, -dim_value, dim_value);
-    if (step == 0)
-      return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "'step' value cannot be 0");
+
     compute_metadata.steps_[axis] = step;
 
     // process start

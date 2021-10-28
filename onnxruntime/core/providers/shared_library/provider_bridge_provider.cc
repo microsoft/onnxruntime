@@ -506,7 +506,7 @@ std::unique_ptr<EinsumTypedComputeProcessor<MLFloat16>> EinsumTypedComputeProces
 
 #ifndef DISABLE_CONTRIB_OPS
 namespace contrib {
-Status embed_layer_norm::CheckInputs(const OpKernelContext* context) { return g_host_cpu.embed_layer_norm__CheckInputs(context); }
+Status embed_layer_norm::CheckInputs(const OpKernelContext* context, bool quantizedVersion) { return g_host_cpu.embed_layer_norm__CheckInputs(context, quantizedVersion); }
 Status bias_gelu_helper::CheckInputs(const OpKernelContext* context) { return g_host_cpu.bias_gelu_helper__CheckInputs(context); }
 Status LongformerAttentionBase::CheckInputs(const TensorShape& input_shape, const TensorShape& weights_shape, const TensorShape& bias_shape, const TensorShape& mask_shape, const TensorShape& global_weights_shape, const TensorShape& global_bias_shape, const TensorShape& global_shape) const {
   return g_host_cpu.LongformerAttentionBase__CheckInputs(this, input_shape, weights_shape, bias_shape, mask_shape, global_weights_shape, global_bias_shape, global_shape);
