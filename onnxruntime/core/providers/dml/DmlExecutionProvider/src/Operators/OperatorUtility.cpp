@@ -219,7 +219,7 @@ namespace Dml
                 return std::nullopt;
             }
 
-            if (opIt->inputCountFilter && *opIt->inputCountFilter != candidateOpInputCount)
+            if (opIt->inputCountFilter && *opIt->inputCountFilter != static_cast<uint32_t>(candidateOpInputCount))
             {
                 return std::nullopt;
             }

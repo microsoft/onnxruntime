@@ -178,6 +178,7 @@ onnx::AttributeProto_AttributeType ToProto(MLOperatorAttributeType type) {
       return MLAttributeTypeTraits<MLOperatorAttributeType::Int>::ProtoType;
     case MLOperatorAttributeType::FloatArray:
       return MLAttributeTypeTraits<MLOperatorAttributeType::FloatArray>::ProtoType;
+    #pragma warning(suppress:4063)
     case MLOperatorAttributeTypeTensor:
       return MLAttributeTypeTraits<MLOperatorAttributeTypeTensor>::ProtoType;
     case MLOperatorAttributeType::IntArray:
@@ -475,7 +476,7 @@ HRESULT STDMETHODCALLTYPE OpNodeInfoWrapper<NodeInfoImpl_t, Base1_t, Base2_t>::G
     MLOperatorAttributeType type,
     uint32_t elementCount,
     size_t elementByteSize,
-    void* value) const noexcept try {
+    /*out*/void* attributeValue) const noexcept try {
   VerifyNotClosed();
 
   // Look for a value in the kernel's registered defaults if one does not exist otherwise
@@ -489,22 +490,22 @@ HRESULT STDMETHODCALLTYPE OpNodeInfoWrapper<NodeInfoImpl_t, Base1_t, Base2_t>::G
       THROW_HR(E_FAIL);
     }
 
-    defaultAttr->second.GetAttribute(type, elementCount, elementByteSize, value);
+    defaultAttr->second.GetAttribute(type, elementCount, elementByteSize, /*out*/attributeValue);
   } else {
     switch (type) {
       case MLOperatorAttributeType::Float:
         ML_CHECK_BOOL(elementCount == 1);
-        return GetAttributeHelper<MLOperatorAttributeType::Float>(name, static_cast<uint32_t>(elementByteSize), value);
+        return GetAttributeHelper<MLOperatorAttributeType::Float>(name, static_cast<uint32_t>(elementByteSize), /*out*/attributeValue);
 
       case MLOperatorAttributeType::Int:
         ML_CHECK_BOOL(elementCount == 1);
-        return GetAttributeHelper<MLOperatorAttributeType::Int>(name, static_cast<uint32_t>(elementByteSize), value);
+        return GetAttributeHelper<MLOperatorAttributeType::Int>(name, static_cast<uint32_t>(elementByteSize), /*out*/attributeValue);
 
       case MLOperatorAttributeType::FloatArray:
-        return GetAttributeArrayHelper<MLOperatorAttributeType::FloatArray>(name, elementCount, static_cast<uint32_t>(elementByteSize), value);
+        return GetAttributeArrayHelper<MLOperatorAttributeType::FloatArray>(name, elementCount, static_cast<uint32_t>(elementByteSize), /*out*/attributeValue);
 
       case MLOperatorAttributeType::IntArray:
-        return GetAttributeArrayHelper<MLOperatorAttributeType::IntArray>(name, elementCount, static_cast<uint32_t>(elementByteSize), value);
+        return GetAttributeArrayHelper<MLOperatorAttributeType::IntArray>(name, elementCount, static_cast<uint32_t>(elementByteSize), /*out*/attributeValue);
 
       default:
         ML_CHECK_BOOL(false);

@@ -1083,7 +1083,7 @@ namespace OperatorHelper
         ML_CHECK_VALID_ARGUMENT(inputCount + 1 == m_components.size(), "Mismatch between input tensor count and string equation component count.");
         ML_CHECK_VALID_ARGUMENT(outputCount == 1, "EinSum expects exactly 1 output tensor.");
 
-        std::vector<uint32_t> labelSizes(m_labelIndices.size(), INT_MIN);
+        std::vector<uint32_t> labelSizes(m_labelIndices.size(), static_cast<uint32_t>(INT_MIN));
 
         // Read every input tensor, comparing labels to ensure consistent sizes from the equation parsed earlier.
         for (uint32_t i = 0; i < inputCount; ++i)

@@ -32,6 +32,7 @@ struct ActivationOperatorDesc
     ActivationOperatorDescUnion params;
     DML_OPERATOR_TYPE activationType;
 
+    #pragma warning(disable:4702)
     DML_OPERATOR_DESC GetDmlDesc() const
     {
         switch (activationType)
@@ -60,6 +61,7 @@ struct ActivationOperatorDesc
 			THROW_HR(E_INVALIDARG);
 			return { activationType, &params.elu };
         }
+        #pragma warning(default:4702)
     }
 };
 

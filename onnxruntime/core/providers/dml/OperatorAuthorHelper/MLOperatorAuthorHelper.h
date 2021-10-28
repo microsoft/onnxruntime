@@ -103,6 +103,7 @@ inline uint32_t ComputeElementCountFromDimensions(gsl::span<const uint32_t> dime
     return std::accumulate(dimensions.begin(), dimensions.end(), 1, std::multiplies<uint32_t>());
 }
 
+#pragma warning(disable:4702)
 inline size_t GetByteSizeFromMlDataType(MLOperatorTensorDataType tensorDataType)
 {
     switch (tensorDataType)
@@ -127,6 +128,7 @@ inline size_t GetByteSizeFromMlDataType(MLOperatorTensorDataType tensorDataType)
     	THROW_HR(E_INVALIDARG);
     	return 0;
     };
+    #pragma warning(default:4702)
 }
 
 using MLConstStringParam = const char*;

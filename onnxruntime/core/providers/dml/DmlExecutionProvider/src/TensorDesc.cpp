@@ -50,7 +50,7 @@ TensorDesc::TensorDesc(
     MLOperatorTensorDataType dataType,
     gsl::span<const uint32_t> dimensions, // Desired dimensions
     gsl::span<const uint32_t> nonBroadcastDimensions, // Actual physical dimensions
-    uint32_t coerceAxis,
+    int32_t coerceAxis,
     int32_t placement, // Adjustment offset of the passed dimensions within the minDimensionCount.
     int32_t leftAlignedDimensionCount, // Number of dimensions that remain left aligned when expanded to minimum count (INT32_MAX means all, 0 means all right aligned).
     uint32_t minDimensionCount,
@@ -62,6 +62,7 @@ TensorDesc::TensorDesc(
 
     m_bufferTensorDesc.DataType = GetDmlDataTypeFromMlDataType(dataType);
     ML_CHECK_VALID_ARGUMENT(ApiTraits::IsValidEnumValue(m_bufferTensorDesc.DataType));
+    ML_CHECK_VALID_ARGUMENT(coerceAxis >= 0);
 
     gsl::span<const uint32_t> sizes;
 

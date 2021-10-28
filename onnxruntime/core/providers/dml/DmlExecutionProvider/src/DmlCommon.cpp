@@ -72,6 +72,7 @@ DML_TENSOR_DATA_TYPE GetDmlDataTypeFromMlDataType(MLOperatorTensorDataType tenso
     return dmlTensorDataType;
 }
 
+#pragma warning(disable:4702)
 MLOperatorTensorDataType GetMlDataTypeFromDmlDataType(DML_TENSOR_DATA_TYPE tensorDataType)
 {
     switch (tensorDataType)
@@ -92,6 +93,7 @@ MLOperatorTensorDataType GetMlDataTypeFromDmlDataType(DML_TENSOR_DATA_TYPE tenso
     	ML_INVALID_ARGUMENT("Unknown DML_TENSOR_DATA_TYPE.");
     	return MLOperatorTensorDataType::Float;
     };
+    #pragma warning(default:4702)
 }
 
 size_t ComputeByteSizeFromDimensions(gsl::span<const DimensionType> dimensions, MLOperatorTensorDataType tensorDataType)

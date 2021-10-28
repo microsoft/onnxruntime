@@ -1871,6 +1871,7 @@ struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_ACTIVATION_SHRINK>
 //       using T = decltype(tag); // T is one of the DML_*_OPERATOR_DESC structs
 //   });
 // 
+#pragma warning(disable:4702)
 template <typename Visitor, typename... Ts>
 auto OperatorTypeVisitor(DML_OPERATOR_TYPE type, Visitor&& visitor, Ts&&... args)
 {
@@ -2161,6 +2162,7 @@ auto OperatorTypeVisitor(DML_OPERATOR_TYPE type, Visitor&& visitor, Ts&&... args
         THROW_HR(E_INVALIDARG);
 		return std::invoke(std::forward<Visitor>(visitor), DML_ACTIVATION_SHRINK_OPERATOR_DESC{}, std::forward<Ts>(args)...);
     }
+    #pragma warning(default:4702)
 }
 
 
