@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 #include "onnx/defs/shape_inference.h"
 #include "onnx/defs/tensor_proto_util.h"
+#include "core/framework/tensorprotoutils.h"
 
 #pragma once
 
@@ -322,8 +323,23 @@ bool ValidateUnidirMask(const Graph& graph, const NodeArg& mask, bool& is_unidir
   }
 
   if (tensor_proto->data_type() == ONNX_NAMESPACE::TensorProto_DataType_UINT8) {
-    std::vector<int32_t> int32_data = ONNX_NAMESPACE::ParseData<int32_t>(tensor_proto);
-    if (!ValidateUnidirMask(int32_data, shape->dim(2).dim_value(), is_unidirectional)) {
+    size_t bytes;
+    if (!utils::GetSizeInBytesFromTensorProto<0>(*tensor_proto, &bytes).IsOK()) {
+      return false;
+    }
+    auto data = std::make_unique<uint8_t[]>(bytes);
+    uint8_t* p = data.get();
+    if (!utils::UnpackTensor<uint8_t>(
+             *tensor_proto,
+             tensor_proto->raw_data().size() ? tensor_proto->raw_data().data() : nullptr,
+             tensor_proto->raw_data().size(),
+             p,
+             bytes)
+             .IsOK()) {
+      return false;
+    }
+    std::vector<uint8_t> mask_data(p, p + bytes);
+    if (!ValidateUnidirMask(mask_data, shape->dim(2).dim_value(), is_unidirectional)) {
       DEBUG_LOG("Mask is neither unidirectional nor all ones");
       return false;
     }
