@@ -8,7 +8,7 @@ namespace OperatorHelper
 {
     bool ContainsEmptyDimensions(gsl::span<const DimensionType> dimensions)
     {
-        return std::find(dimensions.begin(), dimensions.end(), 0) != dimensions.end();
+        return std::find(dimensions.begin(), dimensions.end(), 0u) != dimensions.end();
     }
 
     // Convert any negative axis into an absolute axis relative to the back end.
@@ -143,6 +143,7 @@ namespace OperatorHelper
         return reinterpret_cast<float&>(result);
     }
 
+    #pragma warning (disable:4702)
     int64_t CastToInt64(MLOperatorTensorDataType tensorDataType, const void* p)
     {
         switch (tensorDataType)
@@ -167,8 +168,10 @@ namespace OperatorHelper
         	ML_INVALID_ARGUMENT("Unknown MLOperatorTensorDataType.");
         	return -1;
         };
+        #pragma warning (default:4702)
     }
 
+    #pragma warning (disable:4702)
     double CastToFloat64(MLOperatorTensorDataType tensorDataType, const void* p)
     {
         switch (tensorDataType)
@@ -193,6 +196,7 @@ namespace OperatorHelper
         	ML_INVALID_ARGUMENT("Unknown MLOperatorTensorDataType.");
         	return -1.0;
         };
+        #pragma warning (default:4702)
     }
 
     int64_t IsFloatDataType(MLOperatorTensorDataType tensorDataType)

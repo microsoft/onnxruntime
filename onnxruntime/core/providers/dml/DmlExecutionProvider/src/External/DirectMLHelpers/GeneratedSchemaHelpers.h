@@ -1489,6 +1489,7 @@ inline const DML_OPERATOR_SCHEMA& GetSchema(DML_OPERATOR_TYPE operatorType)
     }
 }
 
+#pragma warning (disable:4702)
 inline AbstractOperatorDesc ConvertOperatorDesc(const DML_OPERATOR_DESC& opDesc)
 {
     switch (static_cast<uint32_t>(opDesc.Type))
@@ -2060,5 +2061,6 @@ inline AbstractOperatorDesc ConvertOperatorDesc(const DML_OPERATOR_DESC& opDesc)
 				GetFields(*static_cast<const DML_ELEMENT_WISE_IDENTITY_OPERATOR_DESC*>(opDesc.Desc)));
     }
 
+#pragma warning (default:4702)
 }
 }
