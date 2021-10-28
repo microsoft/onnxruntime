@@ -221,6 +221,10 @@ jobs:
       inputs:
         pathtoPublish: '$(Build.BinariesDirectory)/artifacts'
         artifactName: 'onnxruntime-ios-full-xcframework'
+        
+    - template: component-governance-component-detection-steps.yml
+      parameters :
+        condition : 'succeeded'
 
 - template: win-ci.yml
   parameters:
