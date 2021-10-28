@@ -51,7 +51,8 @@ def _test_ios_packages(args):
         # in case we don't specify the stage dir
         if args.test_project_stage_dir is not None:
             temp_dir = args.test_project_stage_dir
-            shutil.rmtree(temp_dir)
+            if os.path.exists(temp_dir):
+                shutil.rmtree(temp_dir)
             os.makedirs(temp_dir)
 
         # create a zip file contains the framework
