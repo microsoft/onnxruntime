@@ -578,9 +578,9 @@ jobs:
       targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
 
   - task: DownloadPipelineArtifact@0
-    displayName: 'Download Pipeline Artifact - NuGet (OSX x64)'
+    displayName: 'Download Pipeline Artifact - NuGet (OSX)'
     inputs:
-      artifactName: 'onnxruntime-osx-x64'
+      artifactName: 'onnxruntime-osx'
       targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
 
   - task: DownloadPipelineArtifact@0
