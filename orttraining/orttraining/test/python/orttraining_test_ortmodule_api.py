@@ -19,7 +19,6 @@ from inspect import signature
 import tempfile
 import os
 from distutils.version import LooseVersion
-import onnxruntime.training as orttraining_module
 from onnxruntime.training.ortmodule._custom_gradient_registry import register_gradient
 from onnxruntime.training.ortmodule import (ORTModule,
                                             _utils,
@@ -4248,11 +4247,12 @@ def test_tanh_grad():
 
 
 def test__defined_from_envvar():
+    from onnxruntime.training import ortmodule
     os.environ['DUMMY_ORTMODULE'] = '15'
-    assert _defined_from_envvar('DUMMY_ORTMODULE', 14) == 15
+    assert ortmodule._defined_from_envvar('DUMMY_ORTMODULE', 14) == 15
     os.environ['DUMMY_ORTMODULE'] = '15j'
     with warnings.catch_warnings(record=True) as w:
-        assert orttraining_module._defined_from_envvar('DUMMY_ORTMODULE', 14) == 14
+        assert ortmodule._defined_from_envvar('DUMMY_ORTMODULE', 14) == 14
         assert len(w) == 1
         assert issubclass(w[-1].category, UserWarning)
         assert "Unable to overwrite constant" in str(w[-1].message)
