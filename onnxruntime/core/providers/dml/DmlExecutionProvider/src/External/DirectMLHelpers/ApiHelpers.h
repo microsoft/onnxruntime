@@ -56,7 +56,9 @@ struct ActivationOperatorDesc
         case DML_OPERATOR_ACTIVATION_TANH: return { activationType, &params.tanh };
         case DML_OPERATOR_ACTIVATION_THRESHOLDED_RELU: return { activationType, &params.thresholdedRelu };
         case DML_OPERATOR_ACTIVATION_SHRINK: return { activationType, &params.shrink };
-        default: THROW_HR(E_INVALIDARG);
+        default:
+            THROW_HR(E_INVALIDARG);
+            return { activationType, &params.relu };
         }
     }
 };
@@ -206,9 +208,9 @@ private:
 
         ~DynamicBucket()
         {
-            if (data)
+            if (this->data)
             {
-                (void)VirtualFree(data, 0, MEM_RELEASE);
+                (void)VirtualFree(this->data, 0, MEM_RELEASE);
             }
         }
     };
