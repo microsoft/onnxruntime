@@ -1015,6 +1015,54 @@ def test_gradient_correctness_argmax_diagonal(offset, dim1, dim2):
         _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
         _test_helpers.assert_values_are_close(ort_input.grad, pt_input.grad)
 
+@pytest.mark.parametrize("equation", ["s,se->se", "se,sc->sec", "se,se->s", "sec,sm->ecm", "sec,ecm->sm", "ks,ksm->sm"])
+def test_gradient_correctness_einsum(equation):
+    class NeuralNetEinsum(torch.nn.Module):
+        def __init__(self, bias_size):
+            super(NeuralNetEinsum, self).__init__()
+            self.register_parameter(name='bias', param=torch.nn.Parameter(torch.randn(bias_size)))
+
+        def forward(self, left, right):
+            left = left + self.bias
+            return torch.einsum(equation, left, right)
+
+    device = 'cuda'
+    K, S, M, E = 16, 2048, 768, 64
+    C = int(S/E*2)
+
+    SIZE_MAP = { 'K': K, 'S': S, 'E': E, 'C': C, 'M': M }
+
+    pos1 = equation.find(',')
+    pos2 = equation.find('->')
+    lhs_op = equation[0:pos1]
+    rhs_op = equation[pos1 + 1:pos2]
+    lhs_shape = []
+    for c in lhs_op:
+        lhs_shape.append(SIZE_MAP[c.upper()])
+    rhs_shape = []
+    for c in rhs_op:
+        rhs_shape.append(SIZE_MAP[c.upper()])
+
+    pt_model = NeuralNetEinsum(lhs_shape[-1]).to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+
+    def run_step(model, input_left, input_right):
+        prediction = model(input_left, input_right)
+        loss = prediction.sum()
+        loss.backward()
+        return prediction
+
+    for _ in range(10):
+        pt_input_left = torch.rand(lhs_shape, device=device)
+        pt_input_right = torch.rand(rhs_shape, device=device)
+        ort_input_left = copy.deepcopy(pt_input_left)
+        ort_input_right = copy.deepcopy(pt_input_right)
+        pt_prediction = run_step(pt_model, pt_input_left, pt_input_right)
+        ort_prediction = run_step(ort_model, ort_input_left, ort_input_right)
+
+        _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
+        _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model)
+
 # Since multinomial is a generator function, we do not have to test for gradient
 # Two consecutive calls on the torch.multinomail on a probability distribution with more 
 # than one index with non-zero probability(eg, [0, 10, 3, 0]) will not result in 

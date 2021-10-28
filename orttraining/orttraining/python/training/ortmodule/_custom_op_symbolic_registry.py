@@ -6,6 +6,7 @@
 from torch.onnx import register_custom_op_symbolic
 from torch.onnx.symbolic_helper import parse_args, _get_tensor_dim_size, _get_tensor_sizes
 import torch.onnx.symbolic_helper as sym_help
+import torch
 
 
 class CustomOpSymbolicRegistry:
@@ -78,12 +79,14 @@ def diagonal(g, self, offset, dim1, dim2):
     return g.op("com.microsoft::ATenOp", self, offset, dim1, dim2,
                 name_s='aten::diagonal')
 
+
 @register_symbolic('multinomial')
 def multinomial(g, self, num_samples, replacement=False, generator=None):
     if generator is not None and not sym_help._is_none(generator):
         raise RuntimeError("Unsupported: ONNX does not support generator for multinomial")
     return g.op("com.microsoft::ATenOp", self, num_samples, replacement, generator,
                 name_s='aten::multinomial')
+
 
 @register_symbolic('max_pool2d')
 def max_pool2d(g, self, kernel_size, stride, padding, dilation, ceil_mode):
@@ -116,3 +119,280 @@ def avg_pool2d(g, self, kernel_size, stride, padding, ceil_mode, count_include_p
 @register_symbolic('adaptive_avg_pool2d')
 def adaptive_avg_pool2d(g, self, output_size):
     return g.op("com.microsoft::ATenOp", self, output_size, name_s='aten::_adaptive_avg_pool2d')
+
+
+# For torch.einsum.
+def need_permute(perm):
+    return any(idx != axis for idx, axis in enumerate(perm))
+
+def map_labels_to_output(input_labels, label_perm_map):
+    output_len = len(label_perm_map)
+    perm = [-1] * output_len
+    unsqueeze_axes = []
+    idx = 0
+    for label in input_labels:
+        # Lookup output index for label.
+        perm[label_perm_map[label]] = idx
+        idx += 1
+
+    # Add dimensions for missing labels.
+    for i in range(output_len):
+        if perm[i] == -1:
+            unsqueeze_axes.append(idx)
+            perm[i] = idx
+            idx += 1
+
+    return perm, unsqueeze_axes
+
+def unsqueeze_and_permute_for_mul(g, tensor, unsqueeze_axes, perm):
+    # If perm is sorted after removing unsqueeze axes, then permute is not needed.
+    # For example, a.unsqueeze(2).permute([0, 2, 1]) is same as a.unsqueeze(1).
+    if unsqueeze_axes:
+        new_perm = [v for v in perm if v not in unsqueeze_axes]
+        sorted = all(new_perm[i] < new_perm[i + 1] for i in range(len(new_perm) - 1))
+        if sorted:
+            return sym_help._unsqueeze_helper(g, tensor, [perm.index(axis) for axis in unsqueeze_axes])
+
+    if len(unsqueeze_axes) > 0:
+        tensor = sym_help._unsqueeze_helper(g, tensor, unsqueeze_axes)
+    if need_permute(perm):
+        tensor = g.op("Transpose", tensor, perm_i=perm)
+    return tensor
+
+def unsqueeze_and_permute_for_matmul(g, tensor, unsqueeze_axes, perm1, perm2):
+    # When going here, the unsqueeze axes must be some axes at the end.
+    # We can combine two permutes and remove unsqueeze axes, because we will reshape it after this.
+    # For example, a.unsqueeze([2,3]).permute([2,3,1,0]).permute([0,1,3,2])
+    # = a.unsqueeze([2,3]).permute([2,3,0,1]) = a.permute([0,1]) = a.
+    new_perm = [perm1[axis] for axis in perm2]
+    new_perm = [axis for axis in new_perm if axis not in unsqueeze_axes]
+    if need_permute(new_perm):
+        tensor = g.op("Transpose", tensor, perm_i=new_perm)
+    return tensor
+
+def shape_tensor_by_axes(g, input, input_shape, axes):
+    if input_shape is None:
+        input_shape = g.op("Shape", input)
+    return g.op("Gather", input_shape, g.op("Constant", value_t=torch.tensor(axes, dtype=torch.int64)), axis_i=0), input_shape
+
+def total_size_tensor_by_axes(g, input, input_shape, axes):
+    if len(axes) == 1:
+        return shape_tensor_by_axes(g, input, input_shape, axes)
+
+    if input_shape is None:
+        input_shape = g.op("Shape", input)
+    size_tensor = g.op("Gather", input_shape, g.op("Constant", value_t=torch.tensor(axes[0], dtype=torch.int64)), axis_i=0)
+    for i in range(1, len(axes)):
+        next_size = g.op("Gather", input_shape, g.op("Constant", value_t=torch.tensor(axes[i], dtype=torch.int64)), axis_i=0)
+        size_tensor = g.op("Mul", size_tensor, next_size)
+    return sym_help._unsqueeze_helper(g, size_tensor, [0]), input_shape
+
+@register_symbolic('einsum')
+@parse_args('s', 'v')
+def einsum(g, equation, tensor_list):
+    tensors = sym_help._unpack_list(tensor_list)
+    num_ops = len(tensors)
+    assert num_ops > 0
+    arrow_pos = equation.find('->')
+    if num_ops != 2 or arrow_pos == -1:
+        # Doesn't support implicit output is ellipsis or more than 2 oprands for now.
+        return g.op("Einsum", *tensors, equation_s=equation)
+
+    # Take "ks,ksm->sm" as example. After prcoess inputs,
+    # lhs_labels = [k,s], rhs_labels = [k,s,m].
+    lhs = equation[0:arrow_pos]
+    lhs_labels = []
+    rhs_labels = []
+    curr_op = 0
+    pos = 0
+    while pos < len(lhs):
+        label = lhs[pos]
+        if label == ' ':
+            # Ignore spaces.
+            pass
+        elif label == '.':
+            # Doesn't support ellipsis for now as not easy to get sizes of oprands.
+            return g.op("Einsum", *tensors, equation_s=equation)
+        elif label == ',':
+            curr_op += 1
+            assert curr_op < num_ops
+        else:
+            assert label.isalpha()
+            if curr_op == 0:
+                if label in lhs_labels:
+                    # Repeated label, need to take diagonal, not support for now.
+                    return g.op("Einsum", *tensors, equation_s=equation)
+                lhs_labels.append(label)
+            else:
+                if label in rhs_labels:
+                    # Repeated label, need to take diagonal, not support for now.
+                    return g.op("Einsum", *tensors, equation_s=equation)
+                rhs_labels.append(label)
+        pos += 1
+
+    # After process output, result_labels = [s, m], contraction_labels = [k],
+    # label_perm_map = {(s, 0), (m, 1), (k, 2)}, out_size = 2, perm_index = 3.
+    assert curr_op == num_ops - 1
+    label_perm_map = {}
+    result_labels = []
+    perm_index = 0
+    rhs = equation[arrow_pos + 2:]
+    pos = 0
+    while pos < len(rhs):
+        label = rhs[pos]
+        if label == ' ':
+            # Ignore spaces.
+            pass
+        elif label == '.':
+            # Don't support ellipsis for now as not easy to get sizes of oprands.
+            return g.op("Einsum", *tensors, equation_s=equation)
+        else:
+            assert label.isalpha()
+            # Ensure label appeared at least once for some input operand and at most once for the output.
+            assert (label in lhs_labels or label in rhs_labels) and label not in result_labels
+            result_labels.append(label)
+            label_perm_map[label] = perm_index
+            perm_index += 1
+        pos += 1
+
+    # Save the actual output size here.
+    out_size = perm_index
+    # Add contraction labels (labels not present in output).
+    contraction_labels = []
+    for label in lhs_labels + rhs_labels:
+        if label not in label_perm_map:
+            if label not in lhs_labels or label not in rhs_labels:
+                # If sum label are missing in one side, need to add extra sum(dim), doesn't support for now.
+                return g.op("Einsum", *tensors, equation_s=equation)
+            label_perm_map[label] = perm_index
+            contraction_labels.append(label)
+            perm_index += 1
+
+    # Need to unsqueeze and permute the inputs to order of output with contraction labels.
+    # lhs_perm = [1,2,0], lhs_unsqueeze_axes = [2].
+    # rhs_perm = [1,2,0], rhs_unsqueeze_axes = [].
+    lhs_perm, lhs_unsqueeze_axes = map_labels_to_output(lhs_labels, label_perm_map)
+    rhs_perm, rhs_unsqueeze_axes = map_labels_to_output(rhs_labels, label_perm_map)
+
+    lhs_tensor = tensors[0]
+    rhs_tensor = tensors[1]
+
+    # If there is no contraction labels, unsqueeze and permute the inputs and Mul them to get final result.
+    if not contraction_labels:
+        lhs_tensor = unsqueeze_and_permute_for_mul(g, lhs_tensor, lhs_unsqueeze_axes, lhs_perm)
+        rhs_tensor = unsqueeze_and_permute_for_mul(g, rhs_tensor, rhs_unsqueeze_axes, rhs_perm)
+        return g.op("Mul", lhs_tensor, rhs_tensor)
+
+    # If contraction_labels is not empty, need a BatchedMatMul.
+    # Batched labels are those in all inputs and output. Below axes are based on output.
+    # batched_labels = [s], batched_axes = [0]
+    # Matmul output labels are those in one of inputs and output.
+    # matmul_output_labels = [m], matmul_output_axes = [1]
+    # contraction_labels = [k], contraction_axes = [2]
+    lhs_shape_tensor = None
+    rhs_shape_tensor = None
+    batched_axes = []
+    matmul_output_axes = []
+    contraction_axes = [v for v in range(out_size, perm_index)]
+    for axis in range(out_size):
+        label = result_labels[axis]
+        if label in lhs_labels and label in rhs_labels:
+            batched_axes.append(axis)
+        else:
+            matmul_output_axes.append(axis)
+
+    # Based on above unsqueeze and permute on inputs, need to permute again.
+    # For lhs input, the new permute is batched_axes + matmul_output_axes + contraction_axes: [0, 1, 2],
+    # i.e., a.unsqueeze([2]).permute([1,2,0]).permute([0,1,2]) = [s,1,k].
+    # For rhs input, the new permute is batched_axes + contraction_axes + matmul_output_axes: [0, 2, 1].
+    # i.e., b.unsqueeze([]).permute([1,2,0]).permute([0,2,1]) = [s,k,m].
+    lhs_tensor = unsqueeze_and_permute_for_matmul(g, lhs_tensor, lhs_unsqueeze_axes, lhs_perm, batched_axes + matmul_output_axes + contraction_axes)
+    rhs_tensor = unsqueeze_and_permute_for_matmul(g, rhs_tensor, rhs_unsqueeze_axes, rhs_perm, batched_axes + contraction_axes + matmul_output_axes)
+
+    # Need to Reshape two input tensors before the BatchedMatMul and Reshape result to output shape.
+    # Convert all axes based on inputs.
+    # lhs_batched_axes = [1], lhs_contraction_axes = [0], lhs_matmul_output_axes = [], rhs_matmul_output_axes = [2].
+    lhs_batched_axes = [lhs_labels.index(result_labels[axis]) for axis in batched_axes]
+    lhs_contraction_axes = [lhs_labels.index(label) for label in contraction_labels]
+    lhs_matmul_output_axes = [lhs_labels.index(result_labels[axis]) for axis in matmul_output_axes if result_labels[axis] in lhs_labels]
+    rhs_matmul_output_axes = [rhs_labels.index(result_labels[axis]) for axis in matmul_output_axes if result_labels[axis] in rhs_labels]
+
+    # Check if Reshape is needed.
+    # Reshape lhs input to [[batched_shapes], Mul(lhs_matmul_output_shapes), Mul(contraction_shapes)].
+    # Reshape rhs input to [[batched_shapes], Mul(contraction_shapes), Mul(rhs_matmul_output_shapes)]
+    # Here, lhs_need_reshape = True, rhs_need_reshape = False, output_need_reshape = True.
+    lhs_need_reshape = (len(lhs_matmul_output_axes) != 1 or len(lhs_contraction_axes) != 1)
+    rhs_need_reshape = (len(rhs_matmul_output_axes) != 1 or len(lhs_contraction_axes) != 1)
+    output_need_reshape = (len(lhs_matmul_output_axes) != 1 or len(rhs_matmul_output_axes) != 1)
+
+    # batch_shape_tensor = tensor([size(s)])
+    batch_shape_tensor = None
+    if batched_axes and (lhs_need_reshape or rhs_need_reshape or output_need_reshape):
+        batch_shape_tensor, lhs_shape_tensor = shape_tensor_by_axes(g, tensors[0], lhs_shape_tensor, lhs_batched_axes)
+
+    # contraction_shape_tensor = tensor([size(k)])
+    contraction_shape_tensor = None
+    if lhs_need_reshape or rhs_need_reshape:
+        contraction_shape_tensor, lhs_shape_tensor = total_size_tensor_by_axes(g, tensors[0], lhs_shape_tensor, lhs_contraction_axes)
+
+    # output_shape_tensor = tensor([size(s), size(m)])
+    # lhs_single_matmul_output_shape_tensor/rhs_single_matmul_output_shape_tensor is caches for later use if
+    # lhs_matmul_output_axes/rhs_matmul_output_axes has only 1 dim.
+    # Here lhs_single_matmul_output_shape_tensor = None, rhs_single_matmul_output_shape_tensor = tensor([size(m)]).
+    output_shape_tensor = None
+    lhs_single_matmul_output_shape_tensor = None
+    rhs_single_matmul_output_shape_tensor = None
+    if output_need_reshape:
+        shape_tensors = []
+        if batch_shape_tensor is not None:
+            shape_tensors.append(batch_shape_tensor)
+        if lhs_matmul_output_axes:
+            lhs_matmul_output_shape_tensor, lhs_shape_tensor = shape_tensor_by_axes(g, tensors[0], lhs_shape_tensor, lhs_matmul_output_axes)
+            shape_tensors.append(lhs_matmul_output_shape_tensor)
+            if len(lhs_matmul_output_axes) == 1:
+                lhs_single_matmul_output_shape_tensor = shape_tensors[-1]
+        if rhs_matmul_output_axes:
+            rhs_matmul_output_shape_tensor, rhs_shape_tensor = shape_tensor_by_axes(g, tensors[1], rhs_shape_tensor, rhs_matmul_output_axes)
+            shape_tensors.append(rhs_matmul_output_shape_tensor)
+            if len(rhs_matmul_output_axes) == 1:
+                rhs_single_matmul_output_shape_tensor = shape_tensors[-1]
+        output_shape_tensor = g.op("Concat", *shape_tensors, axis_i=0) if len(shape_tensors) > 1 else shape_tensors[0]
+
+    # lhs_new_shape_tensor = tensor([size(s), 1, size(k)])
+    if lhs_need_reshape:
+        shape_tensors = []
+        if batch_shape_tensor is not None:
+            shape_tensors.append(batch_shape_tensor)
+        if lhs_single_matmul_output_shape_tensor is not None:
+            shape_tensors.append(lhs_single_matmul_output_shape_tensor)
+        elif not lhs_matmul_output_axes:
+            shape_tensors.append(g.op("Constant", value_t=torch.tensor([1], dtype=torch.int64)))
+        else:
+            lhs_matmul_output_total_size_tensor, lhs_shape_tensor = total_size_tensor_by_axes(g, tensors[0], lhs_shape_tensor, lhs_matmul_output_axes)
+            shape_tensors.append(lhs_matmul_output_total_size_tensor)
+        shape_tensors.append(contraction_shape_tensor)
+        lhs_new_shape_tensor = g.op("Concat", *shape_tensors, axis_i=0) if len(shape_tensors) > 1 else shape_tensors[0]
+        lhs_tensor = g.op("Reshape", lhs_tensor, lhs_new_shape_tensor)
+
+    # rhs_new_shape_tensor should be tensor([size(s), size(k), size(m)]), but since rhs_need_reshape is False, it's None here.
+    if rhs_need_reshape:
+        shape_tensors = []
+        if batch_shape_tensor is not None:
+            shape_tensors.append(batch_shape_tensor)
+        shape_tensors.append(contraction_shape_tensor)
+        if rhs_single_matmul_output_shape_tensor is not None:
+            shape_tensors.append(rhs_single_matmul_output_shape_tensor)
+        elif not rhs_matmul_output_axes:
+            shape_tensors.append(g.op("Constant", value_t=torch.tensor([1], dtype=torch.int64)))
+        else:
+            rhs_matmul_output_total_size_tensor, rhs_shape_tensor = total_size_tensor_by_axes(g, tensors[1], rhs_shape_tensor, rhs_matmul_output_axes)
+            shape_tensors.append(rhs_matmul_output_total_size_tensor)
+        rhs_new_shape_tensor = g.op("Concat", *shape_tensors, axis_i=0) if len(shape_tensors) > 1 else shape_tensors[0]
+        rhs_tensor = g.op("Reshape", rhs_tensor, rhs_new_shape_tensor)
+
+    # Perform final BatchedMatMul and Reshape to output is needed.
+    result = g.op("MatMul", lhs_tensor, rhs_tensor)
+    if output_need_reshape:
+        result = g.op("Reshape", result, output_shape_tensor)
+    return result
+# End of torch.einsum.
