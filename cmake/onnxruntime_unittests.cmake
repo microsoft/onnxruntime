@@ -723,6 +723,15 @@ if(NOT onnxruntime_MINIMAL_BUILD AND
       onnx_test_data_proto onnxruntime_framework
     DEPENDS ${all_dependencies}
     )
+
+    if (onnxruntime_BUILD_WEBASSEMBLY)
+      set_target_properties(onnxruntime_sparse_tests PROPERTIES LINK_DEPENDS ${TEST_SRC_DIR}/wasm/dump-test-result-in-nodejs.js)
+      set_target_properties(onnxruntime_sparse_tests PROPERTIES LINK_FLAGS "-s ALLOW_MEMORY_GROWTH=1 --pre-js \"${TEST_SRC_DIR}/wasm/dump-test-result-in-nodejs.js\" -s \"EXPORTED_RUNTIME_METHODS=['FS']\" -s EXIT_RUNTIME=1")
+      if (onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
+        set_property(TARGET onnxruntime_sparse_tests APPEND_STRING PROPERTY LINK_FLAGS " -s USE_PTHREADS=1 -s PROXY_TO_PTHREAD=1")
+      endif()
+    endif()
+
     set_target_properties(onnxruntime_sparse_tests PROPERTIES FOLDER "ONNXRuntimeTest")
 endif()
 
