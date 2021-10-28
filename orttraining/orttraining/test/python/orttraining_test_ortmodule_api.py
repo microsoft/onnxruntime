@@ -4281,8 +4281,11 @@ def test_sigmoid_grad_opset13():
 
     N, D_in, H, D_out = 120, 15360, 500, 15360
     pt_model = NeuralNetSigmoid(D_in, H, D_out).to(device)
-    old_opset = orttraining_module.ONNX_OPSET_VERSION
-    orttraining_module.ONNX_OPSET_VERSION = 13
+
+    from onnxruntime.training import ortmodule
+    old_opset = ortmodule.ONNX_OPSET_VERSION
+
+    ortmodule.ONNX_OPSET_VERSION = 13
     ort_model = ORTModule(copy.deepcopy(pt_model))
 
     for step in range(2):
@@ -4303,7 +4306,7 @@ def test_sigmoid_grad_opset13():
         _test_helpers.assert_values_are_close(ort_x.grad, pt_x.grad)
         _test_helpers.assert_values_are_close(ort_loss, pt_loss)
 
-    orttraining_module.ONNX_OPSET_VERSION = old_opset
+    ortmodule.ONNX_OPSET_VERSION = old_opset
  
 @pytest.mark.parametrize("opset_version", [12, 13])
 def test_opset_version_change(opset_version):
