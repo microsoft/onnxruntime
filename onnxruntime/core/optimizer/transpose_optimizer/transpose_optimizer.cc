@@ -583,12 +583,19 @@ static void TransposeOutputs(OptimizerCtx& ctx, api::NodeRef& node, const std::v
 
 /////// </Core Helpers> ///////
 
-/////// <Optimization Hueristics> ///////
+/////// <Optimization Heuristics> ///////
 // Tools to determine whether a transpose should be pushed
 // When a node has multiple inputs, pushing a transpose from one can create more transposes on the other inputs.
 // Generally, we push a transpose if the total number of transposes above the node will strictly decrease.
 // To favor transposing smaller tensors, we actually try to minimize the total number of transposed dimensions = the
 // total number of non-trivial (value != 1) dimensions involved in transposes.
+//
+// This rank estimation is used instead of the product of the dimensions for two reasons: Rank is almost always
+// known statically, and the tensors involved in cost comparisons are almost always broadcastable to each other,
+// meaning a count of non-trivial dimensions is sufficient for comparison.
+//
+// A rank of 5 is used if rank cannot be determined since 5 is the largest rank we expect from something like a Conv
+// and an unknown rank likely corresponds to a data-carrying (non-weight) tensor, which will be large.
 
 // Given a value, returns the rank of the value excluding dimensions of value 1. Returns 5 if the rank is unknown. 
 static int EstimateValueRank(api::GraphRef& graph, std::string_view input) {
@@ -651,7 +658,7 @@ static int EstimateTransposeValueCost(api::GraphRef& graph, std::string_view inp
 
 // Estimates total cost of transposing a node's inputs. Negative if transposing is beneficial.
 static int EstimateTransposeInputsCost(api::GraphRef& graph, api::NodeRef& node, const std::vector<int64_t>& perm_inv,
-                                       const std::vector<size_t> input_indices) {
+                                       const std::vector<size_t>& input_indices) {
   auto inputs = node.Inputs();
   int cost = 0;
   for (size_t j : input_indices) {
@@ -660,7 +667,7 @@ static int EstimateTransposeInputsCost(api::GraphRef& graph, api::NodeRef& node,
   return cost;
 }
 
-/////// </Optimization Hueristics> ///////
+/////// </Optimization Heuristics> ///////
 
 /////// <Handlers> ///////
 // Op-specific optimization code. Handlers are called on nodes of a given optype with at least one Transpose as input.
