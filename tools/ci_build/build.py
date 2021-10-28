@@ -454,7 +454,7 @@ def parse_arguments():
         help="Enable operator implemented in language other than cpp")
     parser.add_argument(
         "--cmake_generator",
-        choices=['Visual Studio 15 2017', 'Visual Studio 16 2019', 'Ninja'],
+        choices=['Visual Studio 15 2017', 'Visual Studio 16 2019', 'Visual Studio 17 2022', 'Ninja'],
         default='Visual Studio 16 2019' if is_windows() else None,
         help="Specify the generator that CMake invokes. "
         "This is only supported on Windows")
@@ -813,6 +813,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_ENABLE_EAGER_MODE=" + ("ON" if args.build_eager_mode else "OFF"),
         "-Donnxruntime_ENABLE_EXTERNAL_CUSTOM_OP_SCHEMAS=" + ("ON" if args.enable_external_custom_op_schemas
                                                               else "OFF"),
+        "-Donnxruntime_NVCC_THREADS=" + str(args.parallel),
     ]
     # It should be default ON in CI build pipelines, and OFF in packaging pipelines.
     # And OFF for the people who are not actively developing onnx runtime.

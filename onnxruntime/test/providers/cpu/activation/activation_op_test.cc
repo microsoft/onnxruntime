@@ -57,7 +57,11 @@ float ReluGrad(float dy, float x) {
 float SigmoidGrad(float dy, float y) {
   return dy * y * (1 - y);
 }
+
+float TanhGrad(float dy, float y) {
+  return dy * (1 - y * y);
 }
+}  // namespace
 #endif
 
 TEST_F(ActivationOpTest, Sigmoid) {
@@ -300,6 +304,22 @@ TEST(SigmoidGradInferenceTest, Basic) {
         const auto dy = params[0], y = params[1];
 
         return SigmoidGrad(dy, y);
+      },
+      {}, 1, kMSDomain);
+}
+
+TEST(TanhGradInferenceTest, Basic) {
+  const std::vector<float> y_vals = {-1.0f, 0, 1.0f, 100.0f, -100.0f, 1000.0f, -1000.0f};
+  const std::vector<float> dY(7, 1.0f);
+
+  TestElementwiseGradientOp(
+      "TanhGrad",
+      {{"dY", dY}, {"Y", y_vals}},
+      [](const std::vector<float>& params) {
+        ORT_ENFORCE(params.size() == 2);
+        const auto dy = params[0], y = params[1];
+
+        return TanhGrad(dy, y);
       },
       {}, 1, kMSDomain);
 }

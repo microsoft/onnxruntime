@@ -43,15 +43,16 @@ size_t AttributeValue::ElementCount() const {
       // The type is validated when default attributes are registered
       assert(false);
       THROW_HR(E_FAIL);
+      return 0;
   }
 }
 
 void AttributeValue::GetAttribute(
-    MLOperatorAttributeType type,
+    MLOperatorAttributeType attributeType,
     uint32_t elementCount,
     size_t elementByteSize,
     void* value) const {
-  switch (type) {
+  switch (attributeType) {
     case MLOperatorAttributeType::Float:
       ML_CHECK_BOOL(floats.size() == 1);
       __fallthrough;
@@ -76,7 +77,7 @@ void AttributeValue::GetAttribute(
 }
 
 const std::string* AttributeValue::GetStringAttribute(
-    _In_z_ const char* name,
+    _In_z_ const char* attributeName,
     uint32_t elementIndex) const {
   ML_CHECK_BOOL((type == MLOperatorAttributeType::String && elementIndex == 0 && strings.size() == 1) ||
                 (type == MLOperatorAttributeType::StringArray && elementIndex < strings.size()));
@@ -238,6 +239,7 @@ struct MLTypeTraits<onnxruntime::MLFloat16> {
   ML_TENSOR_TYPE_CASE(onnxruntime::MLFloat16);
 
   THROW_HR(E_NOTIMPL);
+  return MLOperatorTensorDataType::Undefined;
 }
 
 #undef ML_TENSOR_TYPE_CASE
@@ -264,6 +266,7 @@ onnxruntime::MLDataType ToTensorDataType(::MLOperatorTensorDataType type) {
   ML_TENSOR_TYPE_CASE(onnxruntime::MLFloat16);
 
   THROW_HR(E_NOTIMPL);
+  return onnxruntime::DataTypeImpl::GetTensorType<float>();
 }
 
 ::MLOperatorTensorDataType ToMLTensorDataType(onnx::TensorProto_DataType type) {
@@ -315,6 +318,7 @@ onnxruntime::MLDataType ToTensorDataType(::MLOperatorTensorDataType type) {
 
     default:
       THROW_HR(E_NOTIMPL);
+      return MLOperatorTensorDataType::Undefined;
   }
 }
 
@@ -389,6 +393,7 @@ std::string ToTypeString(MLOperatorEdgeDescription desc) {
 
     default:
       THROW_HR(E_NOTIMPL);
+      return "";
   }
 }
 
@@ -594,7 +599,7 @@ HRESULT OpNodeInfoWrapper<NodeInfoImpl_t, Base1_t, Base2_t>::GetAttributeHelper(
     uint32_t elementByteSize,
     void* value) const {
   using elementType_t = typename MLAttributeTypeTraits<T>::Type;
-  static_assert(!typename MLAttributeTypeTraits<T>::IsArray, "This function only works for simple non-array types.");
+  static_assert(!MLAttributeTypeTraits<T>::IsArray, "This function only works for simple non-array types.");
   ML_CHECK_BOOL(sizeof(elementType_t) == elementByteSize);
   THROW_IF_NOT_OK(m_impl->template GetAttr<elementType_t>(name, static_cast<elementType_t*>(value)));
   return S_OK;

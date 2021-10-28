@@ -33,10 +33,12 @@ class ModelTestBuilder {
   }
 
   template <typename T>
-  NodeArg* MakeInput(const std::vector<int64_t>& shape, T min, T max) {
+  NodeArg* MakeInput(const std::vector<int64_t>& shape, const std::vector<T>& data) {
     ONNX_NAMESPACE::TypeProto type_proto;
     type_proto.mutable_tensor_type()->set_elem_type(utils::ToTensorProtoElementType<T>());
 
+    // Set shape even if no dims (for scalar)
+    type_proto.mutable_tensor_type()->mutable_shape();
     for (auto& dim : shape) {
       type_proto.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(dim);
     }
@@ -44,12 +46,26 @@ class ModelTestBuilder {
     OrtValue input_value;
     CreateMLValue<T>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault),
                      shape,
-                     rand_gen_.Uniform<T>(shape, min, max),
+                     data,
                      &input_value);
     std::string name = graph_.GenerateNodeArgName("input");
     feeds_.insert(std::make_pair(name, input_value));
 
     return &graph_.GetOrCreateNodeArg(name, &type_proto);
+  }
+
+  template <typename T>
+  NodeArg* MakeInput(const std::vector<int64_t>& shape, T min, T max) {
+    return MakeInput<T>(shape, rand_gen_.Uniform<T>(shape, min, max));
+  }
+
+  NodeArg* MakeInputBool(const std::vector<int64_t>& shape) {
+    std::vector<uint8_t> data_uint8 = rand_gen_.Uniform<uint8_t>(shape, 0, 1);
+    std::vector<bool> data;
+    for (uint8_t x : data_uint8) {
+      data.push_back(x);
+    }
+    return MakeInput<bool>(shape, data);
   }
 
   NodeArg* MakeOutput() {

@@ -20,7 +20,9 @@ std::vector<DimensionType> BroadcastTensorShape(
 // e.g. input values = {2,1,3,1,1,5}
 //      value = 1
 //      output indices = {1,3,4}
+#ifndef __clang__
 #pragma optimize("", off)
+#endif
 template <typename T>
 void FindValueIndices(gsl::span<const T> values, T value, /*out*/ std::vector<uint32_t>& indices) {
   indices.clear();
@@ -32,7 +34,9 @@ void FindValueIndices(gsl::span<const T> values, T value, /*out*/ std::vector<ui
     }
   }
 }
+#ifndef __clang__
 #pragma optimize("", on)
+#endif
 
 // Convert any negative axis into an absolute axis relative to the back end.
 // So given 3 dimensions, a -1 refers to axis 2, and -3 to axis 0.
