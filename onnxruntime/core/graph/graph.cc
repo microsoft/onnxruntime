@@ -1296,8 +1296,6 @@ void Graph::InitializeStateFromModelFileGraphProto() {
   }
 
   for (const auto& node : Nodes()) {
-    const auto& node_name = node.Name();
-    ORT_IGNORE_RETURN_VALUE(node_name);
     for (const auto* output_def : node.OutputDefs()) {
       nodes_outputs.insert({output_def->Name(), output_def});
     }
@@ -2632,7 +2630,7 @@ void Graph::InitFunctionBodyForNode(Node& node) {
                            << node.Name() << "' optype " << node.OpType()
 #ifndef ORT_NO_EXCEPTIONS
                            << ". Error message " << e.what()
-#endif //ORT_NO_EXCEPTIONS
+#endif  //ORT_NO_EXCEPTIONS
                            << ". Execution will fail if ORT does not have a specialized kernel for this op";
     // Return without using this function op's expansion. No need to fail just yet.
     // If ORT has a specialized kernel for this op then execution will proceed

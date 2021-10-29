@@ -1163,9 +1163,7 @@ TEST(Loop, SequenceAsLoopCarriedDependency) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
-// TODO: Re-enable test after ONNX TypeInference bug is fixed and consumed in ORT
-// https://github.com/onnx/onnx/issues/3740
-TEST(Loop, DISABLED_OptionalTypeAsLoopCarriedDependency) {
+TEST(Loop, OptionalTypeAsLoopCarriedDependency) {
   auto create_subgraph = [](bool is_optional_tensor_type) {
     std::unordered_map<std::string, int> domain_to_version;
     domain_to_version.insert({"", 16});  // Opset 16 model
