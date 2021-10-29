@@ -3,7 +3,6 @@
 
 #pragma once
 
-#include <gsl/gsl>
 #include <memory>
 #include <optional>
 #include <string>
@@ -68,7 +67,7 @@ enum class DataType : int32_t {
 class TensorRef {
  public:
   /// <returns>The shape of the tensor. Values are nonnegative.</returns>
-  virtual gsl::span<const int64_t> Shape() const = 0;
+  virtual std::vector<int64_t> Shape() const = 0;
 
   /// <returns>The dtype of the tensor.</returns>
   virtual DataType DType() const = 0;
@@ -104,7 +103,7 @@ class ValueInfoRef {
   /// The inferred/declared tensor shape of the value. nullopt if rank is unknown, otherwise a vector with entries
   /// representing the dimensions of the value. Use -1 for unknown dimensions.
   /// </returns>
-  virtual std::optional<gsl::span<const int64_t>> Shape() const = 0;
+  virtual std::optional<std::vector<int64_t>> Shape() const = 0;
 
   /// <returns>The inferred/declared dtype of the value. UNDEFINED (0) if dtype is unknown.</returns>
   virtual DataType DType() const = 0;
