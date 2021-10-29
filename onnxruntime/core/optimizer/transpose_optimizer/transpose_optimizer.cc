@@ -48,6 +48,34 @@ struct HandlerInfo {
 /////// <Helper Utils> ///////
 /* Small utilities for editing nodes and manipulating axes/permutations */
 
+std::vector<int64_t> DataInt64(api::TensorRef& tensor) {
+  std::vector<uint8_t> raw_data = tensor.Data();
+  int64_t* data_int = reinterpret_cast<int64_t*>(raw_data.data());
+  std::vector<int64_t> result(data_int, data_int + tensor.NumElements());
+  return result;
+}
+
+std::vector<int32_t> DataInt32(api::TensorRef& tensor) {
+  std::vector<uint8_t> raw_data = tensor.Data();
+  int32_t* data_int = reinterpret_cast<int32_t*>(raw_data.data());
+  std::vector<int32_t> result(data_int, data_int + tensor.NumElements());
+  return result;
+}
+
+std::string_view AddInitializerInt64(api::GraphRef& graph, const std::vector<int64_t>& shape,
+                                     const std::vector<int64_t>& values) {
+  const uint8_t* raw_data = reinterpret_cast<const uint8_t*>(values.data());
+  std::vector<uint8_t> data(raw_data, raw_data + values.size() * sizeof(int64_t));
+  return graph.AddInitializer(api::DataType::INT64, shape, data);
+}
+
+std::string_view AddInitializerInt32(api::GraphRef& graph, const std::vector<int64_t>& shape,
+                                     const std::vector<int32_t>& values) {
+  const uint8_t* raw_data = reinterpret_cast<const uint8_t*>(values.data());
+  std::vector<uint8_t> data(raw_data, raw_data + values.size() * sizeof(int32_t));
+  return graph.AddInitializer(api::DataType::INT32, shape, data);
+}
+
 // Replaces all node inputs referencing old_value with references to new_value. Values must be non-empty strings.
 // This is an alternative to using MoveOutput for cases when the values aren't node outputs (if one is an initializer,
 // for example).
@@ -88,7 +116,7 @@ static std::unique_ptr<api::NodeRef> MakeSqueezeOrUnsqueeze(int64_t opset, api::
   }
 
   std::vector<int64_t> axes_shape{gsl::narrow_cast<int64_t>(axes.size())};
-  std::string_view axes_initializer = graph.AddInitializerInt64(axes_shape, axes);
+  std::string_view axes_initializer = AddInitializerInt64(graph, axes_shape, axes);
 
   std::vector<std::string_view> inputs{input, axes_initializer};
 
@@ -160,7 +188,7 @@ static std::optional<std::vector<int64_t>> ReadFromAttrOrInput(OptimizerCtx& ctx
     if (constant == nullptr) {
       return std::nullopt;
     }
-    return constant->DataInt64();
+    return DataInt64(*constant);
   }
 }
 
@@ -842,7 +870,7 @@ static bool HandleShape(HandlerArgs& args) {
 
   // Make new_perm initializer
   std::vector<int64_t> perm_shape {gsl::narrow_cast<int64_t>(new_perm.size())};
-  std::string_view perm_const = args.ctx.graph.AddInitializerInt64(perm_shape, new_perm);
+  std::string_view perm_const = AddInitializerInt64(args.ctx.graph, perm_shape, new_perm);
 
   // X -> Shape -> Y,   Gather
   std::vector<std::string_view> gather_inputs{"", perm_const};
@@ -881,13 +909,13 @@ void PermuteInput(api::GraphRef& graph, api::NodeRef& node, size_t i, std::vecto
     auto shape = constant->Shape();
     if (shape.size() == 1 && shape[0] == rank_int) {
       // Create new transposed initializer
-      std::vector<char> data = constant->Data();
-      std::vector<char> new_data(data.size());
+      std::vector<uint8_t> data = constant->Data();
+      std::vector<uint8_t> new_data(data.size());
       size_t bytes_per_val = data.size() / rank;
 
-      char* dst = new_data.data();
+      uint8_t* dst = new_data.data();
       for (size_t j = 0; j < rank; ++j) {
-        char* src = data.data() + perm[j] * bytes_per_val;
+        uint8_t* src = data.data() + perm[j] * bytes_per_val;
         for (size_t k = 0; k < bytes_per_val; ++k) {
           *dst++ = *src++;
         }
@@ -903,7 +931,7 @@ void PermuteInput(api::GraphRef& graph, api::NodeRef& node, size_t i, std::vecto
     }
   }
 
-  std::string_view gather_indices_const = graph.AddInitializerInt64(/*shape*/ {rank_int}, perm);
+  std::string_view gather_indices_const = AddInitializerInt64(graph, /*shape*/ {rank_int}, perm);
   std::vector<std::string_view> gather_inputs{input, gather_indices_const};
   auto gather_ptr = graph.AddNode("Gather", gather_inputs, /*num_outputs*/ 1);
   api::NodeRef& gather = *gather_ptr;
@@ -1037,7 +1065,7 @@ static bool HandleReduceSum(HandlerArgs& args) {
     empty_axes = true;
   } else {
     axes_const = args.ctx.graph.GetConstant(inputs[1]);
-    if (axes_const != nullptr && axes_const->DataInt64().size() == 0) {
+    if (axes_const != nullptr && axes_const->NumElements() == 0) {
       empty_axes = true;
     }
   }
@@ -1062,14 +1090,14 @@ static bool HandleReduceSum(HandlerArgs& args) {
   }
 
   // Case 3: Const axes
-  auto axes = axes_const->DataInt64();
+  auto axes = DataInt64(*axes_const);
   if (!NormalizeAndValidateAxes(axes, args.perm.size())) {
     return false;
   }
 
   std::vector<int64_t> new_axes = SortedAxesForTransposedInput(axes, args.perm);
   std::vector<int64_t> axes_shape{gsl::narrow_cast<int64_t>(new_axes.size())};
-  std::string_view new_axes_const = args.ctx.graph.AddInitializerInt64(axes_shape, new_axes);
+  std::string_view new_axes_const = AddInitializerInt64(args.ctx.graph, axes_shape, new_axes);
   std::string_view axes_inp = inputs[1];
   args.node.SetInput(1, new_axes_const);
 
@@ -1109,7 +1137,7 @@ static bool HandleSqueeze(HandlerArgs& args) {
   } else {
     std::string_view axes_inp = args.node.Inputs()[1];
     std::vector<int64_t> axes_shape{gsl::narrow_cast<int64_t>(new_axes.size())};
-    std::string_view new_axes_const = args.ctx.graph.AddInitializerInt64(axes_shape, new_axes);
+    std::string_view new_axes_const = AddInitializerInt64(args.ctx.graph, axes_shape, new_axes);
     args.node.SetInput(1, new_axes_const);
     if (!args.ctx.graph.HasValueConsumers(axes_inp)) {
       args.ctx.graph.RemoveInitializer(axes_inp);
@@ -1212,16 +1240,16 @@ static std::string_view AddIntInitializerMatchingDtype(api::GraphRef& graph, std
       values_int32.push_back((int32_t)v);
     }
 
-    return graph.AddInitializerInt32(shape, values_int32);
+    return AddInitializerInt32(graph, shape, values_int32);
   }
 
-  return graph.AddInitializerInt64(shape, values);
+  return AddInitializerInt64(graph, shape, values);
 }
 
 // Gets int data from an int32 or int64 tensor
 static std::vector<int64_t> TensorIntData(api::TensorRef& tensor, api::DataType dtype) {
   if (dtype == api::DataType::INT32) {
-    std::vector<int32_t> values_int32 = tensor.DataInt32();
+    std::vector<int32_t> values_int32 = DataInt32(tensor);
     std::vector<int64_t> values;
     values.reserve(values_int32.size());
     for (int32_t v : values_int32) {
@@ -1231,7 +1259,7 @@ static std::vector<int64_t> TensorIntData(api::TensorRef& tensor, api::DataType 
     return values;
   }
 
-  return tensor.DataInt64();
+  return DataInt64(tensor);
 }
 
 static bool HandleSlice(HandlerArgs& args) {
@@ -1323,14 +1351,14 @@ static bool HandleTile(HandlerArgs& args) {
   std::unique_ptr<api::TensorRef> repeats_const = args.ctx.graph.GetConstant(repeats_inp);
   if (repeats_const != nullptr) {
     // Case 1: Repeats is constant. Shuffle order.
-    const std::vector<int64_t>& repeats = repeats_const->DataInt64();
+    const std::vector<int64_t>& repeats = DataInt64(*repeats_const);
     std::vector<int64_t> new_repeats;
     new_repeats.reserve(rank);
     for (int64_t p : args.perm_inv) {
       new_repeats.push_back(repeats[gsl::narrow_cast<size_t>(p)]);
     }
 
-    std::string_view new_repeats_const = args.ctx.graph.AddInitializerInt64(perm_shape, new_repeats);
+    std::string_view new_repeats_const = AddInitializerInt64(args.ctx.graph, perm_shape, new_repeats);
     args.node.SetInput(1, new_repeats_const);
     if (!args.ctx.graph.HasValueConsumers(repeats_inp)) {
       args.ctx.graph.RemoveInitializer(repeats_inp);
@@ -1338,7 +1366,7 @@ static bool HandleTile(HandlerArgs& args) {
 
   } else {
     // Case 2: Repeats is computed. Insert Gather node.
-    std::string_view perm_inv_const = args.ctx.graph.AddInitializerInt64(perm_shape, args.perm_inv);
+    std::string_view perm_inv_const = AddInitializerInt64(args.ctx.graph, perm_shape, args.perm_inv);
     std::vector<std::string_view> gather_inputs {repeats_inp, perm_inv_const};
     auto gather_node_ptr = args.ctx.graph.AddNode("Gather", gather_inputs, /*num_outputs*/ 1);
     api::NodeRef& gather_node = *gather_node_ptr;

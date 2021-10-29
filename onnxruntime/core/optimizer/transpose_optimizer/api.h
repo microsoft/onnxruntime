@@ -69,38 +69,16 @@ class TensorRef {
   /// <returns>The shape of the tensor. Values are nonnegative.</returns>
   virtual std::vector<int64_t> Shape() const = 0;
 
+  virtual size_t NumElements() const = 0;
+
   /// <returns>The dtype of the tensor.</returns>
   virtual DataType DType() const = 0;
 
   /// <summary>
-  /// Retrieves raw data from the tensor. Used for reading initializers specifying axes/pads/scales.
+  /// Retrieves copy of raw data bytes from the tensor. Used for reading initializers specifying axes/pads/scales.
   /// </summary>
   /// <returns>Flattened tensor data in bytes</returns>
-  virtual std::vector<char> Data() const = 0;
-
-  /// <summary>
-  /// Retrieves int64 data from the tensor. Only valid if dtype is INT64. Used for reading initializers specifying
-  /// axes/pads.
-  /// </summary>
-  /// <returns>Flattened tensor data</returns>
-  virtual std::vector<int64_t> DataInt64() const {
-    std::vector<char> raw_data = Data();
-    int64_t* data_int = reinterpret_cast<int64_t*>(raw_data.data());
-    std::vector<int64_t> result(data_int, data_int + raw_data.size() / sizeof(int64_t));
-    return result;
-  }
-
-  /// <summary>
-  /// Retrieves int32 data from the tensor. Only valid if dtype is INT32. Used for reading initializers specifying
-  /// axes for Slice op.
-  /// </summary>
-  /// <returns>Flattened tensor data</returns>
-  virtual std::vector<int32_t> DataInt32() const {
-    std::vector<char> raw_data = Data();
-    int32_t* data_int = reinterpret_cast<int32_t*>(raw_data.data());
-    std::vector<int32_t> result(data_int, data_int + raw_data.size() / sizeof(int32_t));
-    return result;
-  }
+  virtual std::vector<uint8_t> Data() const = 0;
 
   virtual ~TensorRef(){};
 };
@@ -380,34 +358,7 @@ class GraphRef {
   /// </param>
   /// <returns>Generated name for the initializer</returns>
   virtual std::string_view AddInitializer(DataType dtype, const std::vector<int64_t>& shape,
-                                          const std::vector<char>& data) = 0;
-
-  /// <summary>
-  /// Creates an int64 initializer with the specified shape and values. Returns the name.
-  /// </summary>
-  /// <param name="shape">Dimensions for new initializer. Entries are Nonnegative.</param>
-  /// <param name="values">Flattened values for new initializer. Length matches product of dimensions.</param>
-  /// <returns>Generated name for the initializer</returns>
-  virtual std::string_view AddInitializerInt64(const std::vector<int64_t>& shape,
-                                               const std::vector<int64_t>& values) {
-    
-    const char* raw_data = reinterpret_cast<const char*>(values.data());
-    std::vector<char> data(raw_data, raw_data + values.size() * sizeof(int64_t));
-    return AddInitializer(api::DataType::INT64, shape, data);
-  }
-
-  /// <summary>
-  /// Creates an int32 initializer with the specified shape and values. Returns the name.
-  /// </summary>
-  /// <param name="shape">Dimensions for new initializer. Entries are Nonnegative.</param>
-  /// <param name="values">Flattened values for new initializer. Length matches product of dimensions.</param>
-  /// <returns>Generated name for the initializer</returns>
-  virtual std::string_view AddInitializerInt32(const std::vector<int64_t>& shape,
-                                               const std::vector<int32_t>& values) {
-    const char* raw_data = reinterpret_cast<const char*>(values.data());
-    std::vector<char> data(raw_data, raw_data + values.size() * sizeof(int32_t));
-    return AddInitializer(api::DataType::INT32, shape, data);
-  }
+                                          const std::vector<uint8_t>& data) = 0;
 
   /// <summary>
   /// "Moves" an output from one node to another, (effectively transferring the output name, shape, type,
@@ -495,11 +446,10 @@ bool Optimize(api::GraphRef& graph, bool allow_extended_ops);
 /// nodes if possible. Populates shape information on affected node inputs/outputs to reflect the change.
 /// 
 /// Ex:
-///   * -> Conv -> **
+///   * -> NhwcConv -> **
 ///   becomes
-///   * -> Transpose -> Conv -> Transpose -> **
-///   Model is now invalid until Conv op type is changed. Conv inputs/outputs have new shape. Shapes of * and **
-///   are unchanged.
+///   * -> Transpose -> NhwcConv -> Transpose -> **
+///   Conv inputs/outputs have new shape. Shapes of * and ** are unchanged (carrying NCHW data).
 /// 
 /// input_perms/output_perms are matched with node inputs/outputs positionally. Their lengths must be at most equal to
 /// the number of inputs/outputs, respectively. nullptr entires indicate an input or output should not be transposed.

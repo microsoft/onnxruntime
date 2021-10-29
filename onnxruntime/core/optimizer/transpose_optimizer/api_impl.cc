@@ -49,8 +49,9 @@ class ApiTensor final : public api::TensorRef {
   }
 
   std::vector<int64_t> Shape() const override;
+  size_t NumElements() const override;
   api::DataType DType() const override;
-  std::vector<char> Data() const override;
+  std::vector<uint8_t> Data() const override;
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ApiTensor);
@@ -118,7 +119,7 @@ class ApiGraph final : public api::GraphRef {
   void RemoveNode(api::NodeRef& node) override;
   void RemoveInitializer(std::string_view name) override;
   std::string_view AddInitializer(api::DataType dtype, const std::vector<int64_t>& shape,
-                                  const std::vector<char>& data) override;
+                                  const std::vector<uint8_t>& data) override;
   void MoveOutput(api::NodeRef& src_node, size_t src_idx, api::NodeRef& dst_node, size_t dst_idx) override;
   void CopyValueInfo(std::string_view src_name, std::string_view dst_name) override;
   bool HasValueConsumers(std::string_view name) const override;
@@ -236,20 +237,20 @@ void ApiValueInfo::UnsqueezeDims(const std::vector<int64_t>& axes) {
 
 // <ApiTensor>
 std::vector<int64_t> ApiTensor::Shape() const {
-  std::vector<int64_t> shape;
-  shape.reserve(tensor_proto_.dims_size());
-  for (int64_t d : tensor_proto_.dims()) {
-    shape.push_back(d);
-  }
+  return utils::GetTensorShapeFromTensorProto(tensor_proto_);
+}
 
-  return shape;
+size_t ApiTensor::NumElements() const {
+  int64_t size = TensorShape(utils::GetTensorShapeFromTensorProto(tensor_proto_)).Size();
+  ORT_ENFORCE(size >= 0, "Failed to get size of TensorProto");
+  return gsl::narrow_cast<size_t>(size);
 }
 
 api::DataType ApiTensor::DType() const {
   return gsl::narrow_cast<api::DataType>(tensor_proto_.data_type());
 }
 
-std::vector<char> ApiTensor::Data() const {
+std::vector<uint8_t> ApiTensor::Data() const {
   // Reading tensor values from tensor_proto requires some work because of external storage and special/raw_data fields
   const DataTypeImpl* tensor_dtype = DataTypeImpl::TensorTypeFromONNXEnum(tensor_proto_.data_type())->GetElementType();
   auto tensor_shape_dims = utils::GetTensorShapeFromTensorProto(tensor_proto_);
@@ -258,8 +259,8 @@ std::vector<char> ApiTensor::Data() const {
   ORT_THROW_IF_ERROR(utils::TensorProtoToTensor(Env::Default(), model_path_.ToPathString().c_str(),
                                                 tensor_proto_, *tensor));
   size_t num_bytes = gsl::narrow_cast<size_t>(tensor->SizeInBytes());
-  const char* data = static_cast<const char*>(tensor->DataRaw());
-  return std::vector<char>(data, data + num_bytes);
+  const uint8_t* data = static_cast<const uint8_t*>(tensor->DataRaw());
+  return std::vector<uint8_t>(data, data + num_bytes);
 }
 // </ApiTensor>
 
@@ -630,7 +631,7 @@ void ApiGraph::RemoveInitializer(std::string_view name) {
 }
 
 std::string_view ApiGraph::AddInitializer(api::DataType dtype, const std::vector<int64_t>& shape,
-                                          const std::vector<char>& data) {
+                                          const std::vector<uint8_t>& data) {
   std::string name = graph_.GenerateNodeArgName("const_transpose_optimizer");
 
   ONNX_NAMESPACE::TensorProto tensor_proto;
