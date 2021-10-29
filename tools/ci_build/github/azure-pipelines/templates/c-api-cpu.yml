@@ -714,14 +714,25 @@ jobs:
      npm pack
     workingDirectory: '$(Build.SourcesDirectory)/js/node'
     displayName: 'npm pack /js/node'
+  
+  # TODO: check if we can skip onnxruntime-common
 
-  - script: |
-     copy $(Build.SourcesDirectory)/js/common/onnxruntime-common-*.tgz $(Build.ArtifactStagingDirectory)
-     copy $(Build.SourcesDirectory)/js/node/onnxruntime-node-*.tgz $(Build.ArtifactStagingDirectory)
-    displayName: 'Copy package files'
+  - task: CopyFiles@2
+    displayName: 'Copy onnxruntime-common package to staging directory'
+    inputs:
+      SourceFolder: '$(Build.SourcesDirectory)/js/common/'
+      Contents: 'onnxruntime-common-*.tgz'
+      TargetFolder: '$(Build.ArtifactStagingDirectory)'
+
+  - task: CopyFiles@2
+    displayName: 'Copy onnxruntime-node package to staging directory'
+    inputs:
+      SourceFolder: '$(Build.SourcesDirectory)/js/node/'
+      Contents: 'onnxruntime-node-*.tgz'
+      TargetFolder: '$(Build.ArtifactStagingDirectory)'
 
   - task: PublishPipelineArtifact@0
-    displayName: 'Publish NPM packages'
+    displayName: 'Publish NPM packages files'
     inputs:
       artifactName: 'NPM_packages'
       targetPath: '$(Build.ArtifactStagingDirectory)'
