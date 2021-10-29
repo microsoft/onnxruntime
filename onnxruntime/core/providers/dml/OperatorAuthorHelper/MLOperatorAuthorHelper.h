@@ -130,8 +130,8 @@ inline size_t GetByteSizeFromMlDataType(MLOperatorTensorDataType tensorDataType)
         THROW_HR(E_INVALIDARG);
         return 0;
     };
-    #pragma warning(pop)
 }
+#pragma warning(pop)
 
 using MLConstStringParam = const char*;
 class MLOperatorKernelContext;

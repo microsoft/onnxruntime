@@ -62,8 +62,8 @@ struct ActivationOperatorDesc
             THROW_HR(E_INVALIDARG);
             return { activationType, &params.relu };
         }
-        #pragma warning(pop)
     }
+    #pragma warning(pop)
 };
 
 // DML_BUFFER_TENSOR_DESC (DML_TENSOR_TYPE_BUFFER)

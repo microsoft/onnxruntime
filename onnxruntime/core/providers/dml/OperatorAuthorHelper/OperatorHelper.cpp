@@ -169,8 +169,8 @@ namespace OperatorHelper
             ML_INVALID_ARGUMENT("Unknown MLOperatorTensorDataType.");
             return 0;
         };
-        #pragma warning(pop)
     }
+    #pragma warning(pop)
 
     #pragma warning(push)
     #pragma warning(disable:4702)
@@ -198,8 +198,8 @@ namespace OperatorHelper
             ML_INVALID_ARGUMENT("Unknown MLOperatorTensorDataType.");
             return 0.0;
         };
-        #pragma warning(pop)
     }
+    #pragma warning(pop)
 
     int64_t IsFloatDataType(MLOperatorTensorDataType tensorDataType)
     {

@@ -168,8 +168,8 @@ void DmlCommandRecorder::ExecuteOperator(
     // Barrier all outputs.
     #pragma warning(push)
     #pragma warning(disable: 6387)
-        auto uav = CD3DX12_RESOURCE_BARRIER::UAV(nullptr);
-        m_currentCommandList->ResourceBarrier(1, &uav);
+    auto uav = CD3DX12_RESOURCE_BARRIER::UAV(nullptr);
+    m_currentCommandList->ResourceBarrier(1, &uav);
     #pragma warning(pop)
 }
 
@@ -240,8 +240,8 @@ void DmlCommandRecorder::FillBufferWithPattern(
     // Barrier all outputs.
     #pragma warning(push)
     #pragma warning(disable: 6387)
-        auto uav = CD3DX12_RESOURCE_BARRIER::UAV(nullptr);
-        m_currentCommandList->ResourceBarrier(1, &uav);
+    auto uav = CD3DX12_RESOURCE_BARRIER::UAV(nullptr);
+    m_currentCommandList->ResourceBarrier(1, &uav);
     #pragma warning(pop)
 }
 
