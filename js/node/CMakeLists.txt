@@ -8,20 +8,20 @@ add_compile_definitions(NAPI_VERSION=${napi_build_version})
 add_compile_definitions(ORT_API_MANUAL_INIT)
 
 # dist variables
-execute_process(COMMAND node -e "console.log(process.arch)"
-                OUTPUT_VARIABLE node_arch OUTPUT_STRIP_TRAILING_WHITESPACE)
 execute_process(COMMAND node -e "console.log(process.platform)"
                 OUTPUT_VARIABLE node_platform OUTPUT_STRIP_TRAILING_WHITESPACE)
 file(READ ${CMAKE_SOURCE_DIR}/../../VERSION_NUMBER ort_version)
 string(STRIP "${ort_version}" ort_version)
-set(dist_folder "${CMAKE_SOURCE_DIR}/bin/napi-v3/${node_platform}/${node_arch}/")
+set(dist_folder "${CMAKE_SOURCE_DIR}/bin/napi-v3/${node_platform}/${NODE_ARCH}/")
 
 # onnxruntime.dll dir
 if(NOT ONNXRUNTIME_BUILD_DIR)
   if (WIN32)
     set(ONNXRUNTIME_BUILD_DIR ${CMAKE_SOURCE_DIR}/../../build/Windows/${CMAKE_BUILD_TYPE})
+  elseif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+    set(ONNXRUNTIME_BUILD_DIR ${CMAKE_SOURCE_DIR}/../../build/MacOS/${CMAKE_BUILD_TYPE})
   else()
-    set(ONNXRUNTIME_BUILD_DIR ${CMAKE_SOURCE_DIR}/../../build/Linux)
+    set(ONNXRUNTIME_BUILD_DIR ${CMAKE_SOURCE_DIR}/../../build/Linux/${CMAKE_BUILD_TYPE})
   endif()
 endif()
 
