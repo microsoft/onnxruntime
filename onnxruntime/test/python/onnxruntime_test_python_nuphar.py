@@ -5,7 +5,6 @@
 import numpy as np
 import onnx
 from onnx import helper, numpy_helper
-import torch
 import onnxruntime as onnxrt
 from helper import get_name
 import os

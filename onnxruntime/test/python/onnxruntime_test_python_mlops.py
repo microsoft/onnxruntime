@@ -4,7 +4,6 @@
 # -*- coding: UTF-8 -*-
 import unittest
 import numpy as np
-import torch
 import onnxruntime as onnxrt
 from helper import get_name
 

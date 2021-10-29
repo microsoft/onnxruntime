@@ -6,7 +6,6 @@
 import unittest
 import numpy as np
 import onnxmltools
-import torch
 import onnxruntime as onnxrt
 from keras import backend as K
 from keras import Sequential
