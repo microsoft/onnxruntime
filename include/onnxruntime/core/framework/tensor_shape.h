@@ -41,7 +41,7 @@ class TensorShape {
   /**
      Return the dimension specified by <idx>.
   */
-  const int64_t& operator[](size_t idx) const { return values_[idx]; }
+  int64_t operator[](size_t idx) const { return values_[idx]; }
   int64_t& operator[](size_t idx) { return values_[idx]; }
 
   bool operator==(const TensorShape& other) const noexcept { return GetDims() == other.GetDims(); }
@@ -133,7 +133,7 @@ class TensorShape {
   void Allocate(size_t size);
 
   gsl::span<int64_t> values_;
-  int64_t small_buffer_[4];
+  int64_t small_buffer_[5];
   std::unique_ptr<int64_t[]> allocated_buffer_;
 
   friend struct ProviderHostImpl; // So that the shared provider interface can access Allocate

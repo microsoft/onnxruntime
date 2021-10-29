@@ -18,7 +18,6 @@ TensorShape& TensorShape::operator=(const TensorShape& other) {
   if (&other==this)
     return *this;
 
-  allocated_buffer_.reset();
   Allocate(other.values_.size());
   gsl::copy(other.GetDims(), values_);
   return *this;
@@ -40,6 +39,11 @@ TensorShape& TensorShape::operator=(TensorShape&& other) {
 }
 
 void TensorShape::Allocate(size_t size) {
+  if (values_.size() == size)
+    return;
+
+  allocated_buffer_.reset();
+
   if (size > std::size(small_buffer_)) {
     allocated_buffer_ = std::make_unique<int64_t[]>(size);
     values_ = gsl::span<int64_t>(allocated_buffer_.get(), size);

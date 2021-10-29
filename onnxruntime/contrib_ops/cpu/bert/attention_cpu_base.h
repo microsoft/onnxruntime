@@ -61,9 +61,7 @@ class AttentionCPUBase : public AttentionBase {
     BufferUniquePtr mask_data_buffer(mask_data, BufferDeleter(allocator));
 
     const int32_t* mask_index_data = mask_index != nullptr ? mask_index->template Data<int32_t>() : nullptr;
-    gsl::span<const int64_t> mask_index_dims;
-    if(mask_index != nullptr)
-      mask_index_dims=mask_index->Shape().GetDims();
+    gsl::span<const int64_t> mask_index_dims = mask_index != nullptr ? mask_index->Shape().GetDims() : gsl::span<const int64_t>{};
     const T* past_data = past != nullptr ? past->template Data<T>() : nullptr;
     T* present_data = present != nullptr ? present->template MutableData<T>() : nullptr;
 

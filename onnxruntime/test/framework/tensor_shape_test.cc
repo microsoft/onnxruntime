@@ -30,6 +30,7 @@ static void TestShapeWithVector(const std::vector<int64_t>& vector) {
 TEST(TensorShapeTest, VariousSizes) {
 
   // Test various sizes of copying between vectors
+  TestShapeWithVector({});
   TestShapeWithVector({10});
   TestShapeWithVector({10, 20});
   TestShapeWithVector({10, 20, 30});
@@ -52,7 +53,7 @@ TEST(TensorShapeTest, VariousSizes) {
 
 TEST(TensorShapeTest, FromExistingBuffer) {
 
-  std::vector<int64_t> buffer{12, 23, 34, 45, 56};
+  std::vector<int64_t> buffer{12, 23, 34, 45, 56, 67, 78, 89};
   auto shape = TensorShape::FromExistingBuffer(buffer);
   auto shape_copy=shape;
 
@@ -66,6 +67,12 @@ TEST(TensorShapeTest, FromExistingBuffer) {
   EXPECT_EQ(gsl::make_span(buffer).size(), shape_copy.GetDims().size());
 
   EXPECT_EQ(shape, shape_copy);
+
+  // Test assigning from an empty shape
+  TensorShape empty_shape;
+  shape_copy=empty_shape;
+
+  EXPECT_EQ(shape_copy, empty_shape);
 }
 
 }  // namespace test
