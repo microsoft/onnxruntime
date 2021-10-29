@@ -38,8 +38,8 @@ class QLinearConcat(QuantOperatorBase):
         self.quantizer.new_nodes += [qlconcat_node]
 
 class QDQConcat(QDQOperatorBase):
-    def __init__(self, onnx_quantizer, onnx_node):
-        super().__init__(onnx_quantizer, onnx_node)
+    def __init__(self, onnx_quantizer, onnx_node, enable_qdq_for_node_output=False):
+        super().__init__(onnx_quantizer, onnx_node, enable_qdq_for_node_output)
 
     def quantize(self):
         super().quantize()
