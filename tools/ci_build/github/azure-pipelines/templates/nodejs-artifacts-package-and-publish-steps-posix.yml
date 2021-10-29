@@ -2,32 +2,15 @@ parameters:
 - name: arch
   type: string
 
+- name: os
+  type: string
+
 - name: artifactName
   type: string
-  default: 'onnxruntime_nodejs-linux-x64'
+  default: ''
   
-- name: artifactNameNoVersionString
-  type: string
-  default: 'onnxruntime_nodejs-linux-x64'
-
 steps:
-    - task: CmdLine@2
-      displayName: 'Copy build artifacts for zipping'
-      inputs:
-        script: |
-          mkdir $(Build.BinariesDirectory)/${{parameters.artifactName}}
-          cp $(Build.SourcesDirectory)/js/node/bin/napi-v3/linux/${{ parameters.arch }}/onnxruntime_binding.node $(Build.BinariesDirectory)/${{parameters.artifactName}}
-
-    - task: ArchiveFiles@2
-      inputs:
-        rootFolderOrFile: '$(Build.BinariesDirectory)/${{parameters.artifactName}}'
-        includeRootFolder: true
-        archiveType: 'tar' # Options: zip, 7z, tar, wim
-        tarCompression: 'gz'
-        archiveFile: '$(Build.ArtifactStagingDirectory)/${{parameters.artifactName}}.tgz'
-        replaceExistingArchive: true
-
     - task: PublishPipelineArtifact@1
       inputs:
-        targetPath: '$(Build.ArtifactStagingDirectory)/${{parameters.artifactName}}.tgz' 
-        artifactName: '${{parameters.artifactNameNoVersionString}}'
+        targetPath: '$(Build.SourcesDirectory)/js/node/bin/napi-v3/${{ parameters.os }}/${{ parameters.arch }}/onnxruntime_binding.node' 
+        artifactName: '${{parameters.artifactName}}'

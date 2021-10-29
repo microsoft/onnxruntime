@@ -108,8 +108,8 @@ jobs:
     - template: nodejs-artifacts-package-and-publish-steps-posix.yml
       parameters:
           arch: '$(NODEJS_BINDING_ARCH)'
-          artifactName: 'onnxruntime_nodejs-linux-$(ONNXRUNTIME_ARCH)-$(OnnxRuntimeVersion)'
-          artifactNameNoVersionString: 'onnxruntime_nodejs-linux-$(ONNXRUNTIME_ARCH)'
+          os: 'linux'
+          artifactName: 'drop-onnxruntime-nodejs-linux-$(ONNXRUNTIME_ARCH)'
 
     - template: component-governance-component-detection-steps.yml
       parameters :
@@ -598,14 +598,26 @@ jobs:
   - task: DownloadPipelineArtifact@0
     displayName: 'Download Pipeline Artifact - Nodejs (Win x64)'
     inputs:
-      artifactName: 'onnxruntime_nodejs-win-x64'
-      targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+      artifactName: 'drop-onnxruntime-nodejs-win-x64'
+      targetPath: '$(Build.BinariesDirectory)/nodejs-artifact/win32/x64/'
 
   - task: DownloadPipelineArtifact@0
     displayName: 'Download Pipeline Artifact - Nodejs (Win ARM64)'
     inputs:
-      artifactName: 'onnxruntime_nodejs-win-arm64'
-      targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+      artifactName: 'drop-onnxruntime-nodejs-win-arm64'
+      targetPath: '$(Build.BinariesDirectory)/nodejs-artifact/win32/arm64/'
+
+  - task: DownloadPipelineArtifact@0
+    displayName: 'Download Pipeline Artifact - Nodejs (Linux x64)'
+    inputs:
+      artifactName: 'drop-onnxruntime-nodejs-linux-x64'
+      targetPath: '$(Build.BinariesDirectory)/nodejs-artifact/linux/x64/'
+
+  - task: DownloadPipelineArtifact@0
+    displayName: 'Download Pipeline Artifact - Nodejs (Linux aarch64)'
+    inputs:
+      artifactName: 'drop-onnxruntime-nodejs-linux-aarch64'
+      targetPath: '$(Build.BinariesDirectory)/nodejs-artifact/linux/arm64/'
 
   - task: DownloadPipelineArtifact@0
     displayName: 'Download Pipeline Artifact - NuGet'
@@ -647,7 +659,7 @@ jobs:
   - task: CopyFiles@2
     displayName: 'Copy nodejs binaries to: $(Build.SourcesDirectory)\js\node\bin\napi-v3\win32\x64\'
     inputs:
-      SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\nuget-artifacts\onnxruntime_nodejs-win-x64'
+      SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\nodejs-artifacts\win32\x64'
       Contents: '*.node'
       TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\win32\x64'
 
@@ -661,7 +673,7 @@ jobs:
   - task: CopyFiles@2
     displayName: 'Copy nodejs binaries to: $(Build.SourcesDirectory)\js\node\bin\napi-v3\win32\arm64\'
     inputs:
-      SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\nuget-artifacts\onnxruntime_nodejs-win-arm64'
+      SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\nodejs-artifacts\win32\arm64'
       Contents: '*.node'
       TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\win32\arm64'
 
@@ -675,7 +687,7 @@ jobs:
   - task: CopyFiles@2
     displayName: 'Copy nodejs binaries to: $(Build.SourcesDirectory)\js\node\bin\napi-v3\linux\x64\'
     inputs:
-      SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\nuget-artifacts\onnxruntime_nodejs-linux-x64'
+      SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\nodejs-artifacts\linux\x64'
       Contents: '*.node'
       TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\linux\x64'
 
@@ -689,7 +701,7 @@ jobs:
   - task: CopyFiles@2
     displayName: 'Copy nodejs binaries to: $(Build.SourcesDirectory)\js\node\bin\napi-v3\linux\arm64\'
     inputs:
-      SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\nuget-artifacts\onnxruntime_nodejs-linux-aarch64'
+      SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\nodejs-artifacts\linux\arm64'
       Contents: '*.node'
       TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\linux\arm64'
 

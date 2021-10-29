@@ -10,38 +10,18 @@ parameters:
   default: true
   
 - name: artifactName
-  displayName: artifactName，like 'onnxruntime_nodejs-win-x64-1.6.0'
   type: string
   default: ''
   
-- name: artifactNameNoVersionString
-  type: string
-  default: 'onnxruntime_nodejs-win-x64'
-
 steps:
-    - task: CmdLine@2
-      displayName: 'Copy build artifacts for zipping'
-      inputs:
-        script: |
-          mkdir $(Build.BinariesDirectory)\${{parameters.artifactName}}
-          copy $(Build.SourcesDirectory)\js\node\bin\napi-v3\win32\${{ parameters.arch }}\onnxruntime_binding.node $(Build.BinariesDirectory)\${{parameters.artifactName}}
-
     - template: win-esrp-dll.yml
       parameters:
-        FolderPath: '$(Build.BinariesDirectory)\${{parameters.artifactName}}'
+        FolderPath: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\win32\${{ parameters.arch }}'
         DisplayName: 'ESRP - Sign Node.js binding binaries'
         DoEsrp: ${{parameters.DoEsrp}}
         Pattern: '*.node'
 
-    - task: ArchiveFiles@2
-      inputs:
-        rootFolderOrFile: '$(Build.BinariesDirectory)\${{parameters.artifactName}}'
-        includeRootFolder: false
-        archiveType: 'zip' # Options: zip, 7z, tar, wim
-        archiveFile: '$(Build.ArtifactStagingDirectory)\${{parameters.artifactName}}.zip' 
-        replaceExistingArchive: true 
-
     - task: PublishPipelineArtifact@1
       inputs:
-        targetPath: '$(Build.ArtifactStagingDirectory)\${{parameters.artifactName}}.zip' 
-        artifactName: '${{parameters.artifactNameNoVersionString}}'
+        targetPath: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\win32\${{ parameters.arch }}\onnxruntime_binding.node' 
+        artifactName: '${{parameters.artifactName}}'
