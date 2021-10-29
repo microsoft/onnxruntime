@@ -5,7 +5,7 @@
 
 namespace onnxruntime {
 
-class Graph;
+class GraphViewer;
 class Node;
 
 namespace QDQ {
@@ -24,7 +24,7 @@ enum InputIndex : int {
 // 1. Q/DQ doesn't have optional input.
 // 2. scale and zero point is constant scalar
 // 3. Q and DQ have same scale and zero point
-bool IsQDQPairSupported(const Graph& graph, const Node& q_node, const Node& dq_node);
+bool IsQDQPairSupported(const GraphViewer& graph_viewer, const Node& q_node, const Node& dq_node);
 
 }  // namespace QDQ
 }  // namespace onnxruntime

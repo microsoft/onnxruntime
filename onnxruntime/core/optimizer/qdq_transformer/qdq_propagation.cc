@@ -19,7 +19,7 @@ static bool CanNodePropagate(const Node& node) {
 }
 
 static bool TryCancelOutDQQPair(Graph& graph, Node& dq_node, Node& q_node) {
-  if (!QDQ::IsQDQPairSupported(graph, q_node, dq_node)) {
+  if (!QDQ::IsQDQPairSupported(GraphViewer(graph), q_node, dq_node)) {
     return false;
   }
 

@@ -16,35 +16,31 @@ namespace QDQ {
 // always involve those nodes.
 class BaseSelector : public NodeSelector {
  public:
-  bool Select(Graph& graph, const Node& node, std::unique_ptr<NodesToOptimize>& selection) const override;
+  bool Select(const GraphViewer& graph_viewer, const Node& node, QDQNodeGroup& selection) const override;
+  void UpdateBuilder(NodesToOptimizeBuilder&) const override{};
 
  protected:
   BaseSelector() = default;
 
   // base check that we have the expected number of QDQ inputs/outputs, and `node` isn't producing a graph output.
   // num_dq_inputs defaults to the number of inputs `node` has if not explicitly specified
-  bool CheckQDQNodes(const Graph& graph, const Node& node,
+  bool CheckQDQNodes(const GraphViewer& graph_viewer, const Node& node,
                      const std::vector<const Node*>& dq_nodes,
                      const std::vector<const Node*>& q_nodes,
                      int num_dq_inputs = -1) const;
 
  private:
   // derived classes should implement this check
-  bool virtual Check(const Graph& graph, const Node& node,
+  bool virtual Check(const GraphViewer& graph_viewer, const Node& node,
                      const std::vector<const Node*>& dq_nodes,
                      const std::vector<const Node*>& q_nodes) const = 0;
-
-  // override if you need to adjust the values in NodesToOptimize.
-  // e.g. add entries for missing optional DQ inputs or set num_inputs to handle variadic inputs
-  // Called post-Check, if Check returned `true`
-  virtual void UpdateBuilder(NodesToOptimizeBuilder&) const {}
 };
 
 // Single DQ -> node that does not change data -> Q.
 // Zero point and scale are constant scalars and must match
 class DropDQDNodesSelector : public BaseSelector {
  private:
-  bool Check(const Graph& graph, const Node& node,
+  bool Check(const GraphViewer& graph_viewer, const Node& node,
              const std::vector<const Node*>& dq_nodes,
              const std::vector<const Node*>& q_nodes) const override;
 };
@@ -55,7 +51,7 @@ class UnarySelector : public BaseSelector {
   UnarySelector(bool int8_allowed = false) : int8_allowed_{int8_allowed} {}
 
  private:
-  bool Check(const Graph& graph, const Node& node,
+  bool Check(const GraphViewer& graph_viewer, const Node& node,
              const std::vector<const Node*>& dq_nodes,
              const std::vector<const Node*>& q_nodes) const override;
 
@@ -64,31 +60,36 @@ class UnarySelector : public BaseSelector {
 
 // 2 DQ nodes providing input -> node -> Q
 class BinarySelector : public BaseSelector {
-  bool Check(const Graph& graph, const Node& node,
+  bool Check(const GraphViewer& graph_viewer, const Node& node,
              const std::vector<const Node*>& dq_nodes,
              const std::vector<const Node*>& q_nodes) const override;
 };
 
 // Variadic DQ nodes -> node -> Q
 class VariadicSelector : public BaseSelector {
-  bool Check(const Graph& graph, const Node& node,
+ public:
+  void UpdateBuilder(NodesToOptimizeBuilder&) const override;
+
+ private:
+  bool Check(const GraphViewer& graph_viewer, const Node& node,
              const std::vector<const Node*>& dq_nodes,
              const std::vector<const Node*>& q_nodes) const override;
-  void UpdateBuilder(NodesToOptimizeBuilder&) const override;
 };
 
 // DQ nodes for X, W and optionally B -> node -> Q
 class ConvSelector : public BaseSelector {
-  bool Check(const Graph& graph, const Node& node,
+ public:
+  void UpdateBuilder(NodesToOptimizeBuilder&) const override;
+
+ private:
+  bool Check(const GraphViewer& graph_viewer, const Node& node,
              const std::vector<const Node*>& dq_nodes,
              const std::vector<const Node*>& q_nodes) const override;
-
-  void UpdateBuilder(NodesToOptimizeBuilder&) const override;
 };
 
 // 2 DQ nodes for input -> node -> optional Q if QLinearMatMul, MatMulIntegerToFloat if not
 class MatMulSelector : public BaseSelector {
-  bool Check(const Graph& graph, const Node& node,
+  bool Check(const GraphViewer& graph_viewer, const Node& node,
              const std::vector<const Node*>& dq_nodes,
              const std::vector<const Node*>& q_nodes) const override;
 };
