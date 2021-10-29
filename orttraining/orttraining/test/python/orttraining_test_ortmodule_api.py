@@ -1051,7 +1051,8 @@ def test_gradient_correctness_reducesum(dim, keepdim):
         _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
         _test_helpers.assert_values_are_close(ort_input.grad, pt_input.grad)
 
-@pytest.mark.parametrize("equation", ["s,se->se", "se,sc->sec", "se,se->s", "sec,sm->ecm", "sec,ecm->sm", "ks,ksm->sm", "kes,ems->mek"])
+@pytest.mark.parametrize("equation", ["s,se->se", "se,sc->sec", "se,se->s", "sec,sm->ecm",
+                                      "sec,ecm->sm", "ks,ksm->sm", "kes,ems->mek", "kes,ksm->ms"])
 def test_gradient_correctness_einsum(equation):
     class NeuralNetEinsum(torch.nn.Module):
         def __init__(self, bias_size):
@@ -1096,7 +1097,7 @@ def test_gradient_correctness_einsum(equation):
         pt_prediction = run_step(pt_model, pt_input_left, pt_input_right)
         ort_prediction = run_step(ort_model, ort_input_left, ort_input_right)
 
-        _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
+        _test_helpers.assert_values_are_close(ort_prediction, pt_prediction, atol=1e-5)
         _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model)
 
 # Since multinomial is a generator function, we do not have to test for gradient
