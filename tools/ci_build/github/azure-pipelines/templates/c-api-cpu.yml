@@ -599,25 +599,25 @@ jobs:
     displayName: 'Download Pipeline Artifact - Nodejs (Win x64)'
     inputs:
       artifactName: 'drop-onnxruntime-nodejs-win-x64'
-      targetPath: '$(Build.BinariesDirectory)/nodejs-artifact/win32/x64/'
+      targetPath: '$(Build.BinariesDirectory)/nodejs-artifacts/win32/x64/'
 
   - task: DownloadPipelineArtifact@0
     displayName: 'Download Pipeline Artifact - Nodejs (Win ARM64)'
     inputs:
       artifactName: 'drop-onnxruntime-nodejs-win-arm64'
-      targetPath: '$(Build.BinariesDirectory)/nodejs-artifact/win32/arm64/'
+      targetPath: '$(Build.BinariesDirectory)/nodejs-artifacts/win32/arm64/'
 
   - task: DownloadPipelineArtifact@0
     displayName: 'Download Pipeline Artifact - Nodejs (Linux x64)'
     inputs:
       artifactName: 'drop-onnxruntime-nodejs-linux-x64'
-      targetPath: '$(Build.BinariesDirectory)/nodejs-artifact/linux/x64/'
+      targetPath: '$(Build.BinariesDirectory)/nodejs-artifacts/linux/x64/'
 
   - task: DownloadPipelineArtifact@0
     displayName: 'Download Pipeline Artifact - Nodejs (Linux aarch64)'
     inputs:
       artifactName: 'drop-onnxruntime-nodejs-linux-aarch64'
-      targetPath: '$(Build.BinariesDirectory)/nodejs-artifact/linux/arm64/'
+      targetPath: '$(Build.BinariesDirectory)/nodejs-artifacts/linux/arm64/'
 
   - task: DownloadPipelineArtifact@0
     displayName: 'Download Pipeline Artifact - NuGet'
