@@ -2165,6 +2165,7 @@ auto OperatorTypeVisitor(DML_OPERATOR_TYPE type, Visitor&& visitor, Ts&&... args
     }
     #pragma warning(pop)
 }
+#pragma warning(pop)
 
 
 inline gsl::czstring ToString(DML_OPERATOR_TYPE value)

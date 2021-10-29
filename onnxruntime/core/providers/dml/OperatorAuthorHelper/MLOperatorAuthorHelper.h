@@ -132,6 +132,7 @@ inline size_t GetByteSizeFromMlDataType(MLOperatorTensorDataType tensorDataType)
     };
     #pragma warning(pop)
 }
+#pragma warning(pop)
 
 using MLConstStringParam = const char*;
 class MLOperatorKernelContext;

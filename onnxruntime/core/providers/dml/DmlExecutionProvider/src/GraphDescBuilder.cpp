@@ -29,8 +29,8 @@ namespace Dml::GraphDescBuilder
         THROW_HR(E_UNEXPECTED);
         const onnxruntime::NodeArg* arg = node.OutputDefs()[0];
         return arg->Name();
-        #pragma warning(pop)
     }
+    #pragma warning(pop)
 
     GraphDesc BuildGraphDesc(
         const onnxruntime::OpKernelInfo& kernelInfo,

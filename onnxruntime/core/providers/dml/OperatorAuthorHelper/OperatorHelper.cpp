@@ -171,6 +171,7 @@ namespace OperatorHelper
         };
         #pragma warning(pop)
     }
+    #pragma warning(pop)
 
     #pragma warning(push)
     #pragma warning(disable:4702)
@@ -200,6 +201,7 @@ namespace OperatorHelper
         };
         #pragma warning(pop)
     }
+    #pragma warning(pop)
 
     int64_t IsFloatDataType(MLOperatorTensorDataType tensorDataType)
     {

@@ -13,6 +13,8 @@ AbiCustomRegistry::AbiCustomRegistry() :
 {
 }
 
+#pragma warning(push)
+#pragma warning(suppress: 4702)
 onnx::OpSchema::FormalParameterOption AbiCustomRegistry::ConvertFormalParameterOption(MLOperatorParameterOptions options)
 {
     switch (options)
@@ -31,6 +33,7 @@ onnx::OpSchema::FormalParameterOption AbiCustomRegistry::ConvertFormalParameterO
             return onnx::OpSchema::FormalParameterOption::Single;
     }
 }
+#pragma warning(pop)
 
 // Convert edge types from the ABI types to ONNX strings
 std::string AbiCustomRegistry::ConvertFormalParameterType(const MLOperatorSchemaEdgeDescription& formalParameter)
