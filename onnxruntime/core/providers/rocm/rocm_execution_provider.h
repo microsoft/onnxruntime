@@ -29,7 +29,7 @@ class ROCMExecutionProvider : public IExecutionProvider {
 
   Status OnRunStart() override;
 
-  Status OnRunEnd() override;
+  Status OnRunEnd(bool sync_stream) override;
 
   const void* GetExecutionHandle() const noexcept override {
     // The ROCM interface does not return anything interesting.

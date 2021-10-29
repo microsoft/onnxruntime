@@ -2537,7 +2537,9 @@ void Graph::InitFunctionBodyForNode(Node& node) {
   ORT_CATCH(const std::exception& e) {
     LOGS(logger_, WARNING) << "Function body initialization failed for node '"
                            << node.Name() << "' optype " << node.OpType()
+#ifndef ORT_NO_EXCEPTIONS
                            << ". Error message " << e.what()
+#endif //ORT_NO_EXCEPTIONS
                            << ". Execution will fail if ORT does not have a specialized kernel for this op";
     // Return without using this function op's expansion. No need to fail just yet.
     // If ORT has a specialized kernel for this op then execution will proceed
