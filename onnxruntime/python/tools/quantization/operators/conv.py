@@ -166,15 +166,15 @@ class QLinearConv(QuantOperatorBase):
 
 
 class QDQConv(QDQOperatorBase):
-    def __init__(self, onnx_quantizer, onnx_node, enable_qdq_for_node_output=False):
-        super().__init__(onnx_quantizer, onnx_node, enable_qdq_for_node_output)
+    def __init__(self, onnx_quantizer, onnx_node, disable_qdq_for_node_output=False):
+        super().__init__(onnx_quantizer, onnx_node, disable_qdq_for_node_output)
 
     def quantize(self):
         node = self.node
         assert (node.op_type == "Conv")
 
         self.quantizer.quantize_tensor(node.input[0])
-        if self.enable_qdq_for_node_output:
+        if not self.disable_qdq_for_node_output:
             self.quantizer.quantize_tensor(node.output[0])
 
         if self.quantizer.is_per_channel():
