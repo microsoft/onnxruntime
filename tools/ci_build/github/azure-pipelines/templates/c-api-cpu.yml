@@ -659,7 +659,7 @@ jobs:
   - task: CopyFiles@2
     displayName: 'Copy nodejs binaries to: $(Build.SourcesDirectory)\js\node\bin\napi-v3\win32\x64\'
     inputs:
-      SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\nodejs-artifacts\win32\x64'
+      SourceFolder: '$(Build.BinariesDirectory)\nodejs-artifacts\win32\x64'
       Contents: '*.node'
       TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\win32\x64'
 
@@ -673,7 +673,7 @@ jobs:
   - task: CopyFiles@2
     displayName: 'Copy nodejs binaries to: $(Build.SourcesDirectory)\js\node\bin\napi-v3\win32\arm64\'
     inputs:
-      SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\nodejs-artifacts\win32\arm64'
+      SourceFolder: '$(Build.BinariesDirectory)\nodejs-artifacts\win32\arm64'
       Contents: '*.node'
       TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\win32\arm64'
 
@@ -687,7 +687,7 @@ jobs:
   - task: CopyFiles@2
     displayName: 'Copy nodejs binaries to: $(Build.SourcesDirectory)\js\node\bin\napi-v3\linux\x64\'
     inputs:
-      SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\nodejs-artifacts\linux\x64'
+      SourceFolder: '$(Build.BinariesDirectory)\nodejs-artifacts\linux\x64'
       Contents: '*.node'
       TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\linux\x64'
 
@@ -701,7 +701,7 @@ jobs:
   - task: CopyFiles@2
     displayName: 'Copy nodejs binaries to: $(Build.SourcesDirectory)\js\node\bin\napi-v3\linux\arm64\'
     inputs:
-      SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\nodejs-artifacts\linux\arm64'
+      SourceFolder: '$(Build.BinariesDirectory)\nodejs-artifacts\linux\arm64'
       Contents: '*.node'
       TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\linux\arm64'
 
