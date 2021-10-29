@@ -419,7 +419,7 @@ namespace Dml
     TensorDesc DmlOperator::CreateTensorDescFromInput(
         const MLOperatorKernelCreationContext& kernelInfo,
         uint32_t index,
-        uint32_t coerceAxis,
+        int32_t coerceAxis,
         int32_t placement,
         int32_t leftAlignedDimensionCount,
         std::optional<gsl::span<const uint32_t>> tensorShape,
@@ -461,7 +461,7 @@ namespace Dml
     TensorDesc DmlOperator::CreateTensorDescFromOutput(
         const MLOperatorKernelCreationContext& kernelInfo,
         uint32_t index,
-        uint32_t coerceAxis,
+        int32_t coerceAxis,
         int32_t placement,
         int32_t leftAlignedDimensionCount,
         std::optional<gsl::span<const uint32_t>> tensorShape,
