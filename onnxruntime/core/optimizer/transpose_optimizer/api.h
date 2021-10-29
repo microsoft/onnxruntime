@@ -479,10 +479,10 @@ bool Optimize(api::GraphRef& graph, bool allow_extended_ops);
  * conversion and then call Optimize to remove as many as possible. To change the channel ordering of some/all ops
  * in a model, a user of this tool should do the following:
  * 
- * 1. Iterate over the graph nodes and identify nodes for convert. For each one:
+ * 1. Iterate over the graph nodes and identify nodes to convert. For each one:
  *    a. Change the op type and domain (and possibly attributes) to the op/contrib op with the desired ordering.
- *    b. The model is currently invalid since the input tensors are in the original ordering and all consumers
- *       expect the original ordering. Use WrapTransposesAroundNode helper to insert transposes around the
+ *    b. The model is now invalid since the input tensors are in the original ordering (and all consumers
+ *       expect the original ordering). Use WrapTransposesAroundNode helper to insert transposes around the
  *       inputs/outputs of the op to correct this.
  * 2. The model is now correct but has many unnecessary Transpose ops. Call Optimize on the graph.
  * 
@@ -529,9 +529,9 @@ std::vector<int64_t> ChannelFirstToLastPerm(size_t rank);
 std::vector<int64_t> ChannelLastToFirstPerm(size_t rank);
 
 /// <summary>
-/// Swaps out a node for a new copy of that node with the specified op type and domain. ORT nodes cannot have their
-/// op types or domains changed, so a new node is needed. All attributes, inputs, and outputs are moved to the new
-/// node. The old node is removed from the graph and should no longer be accessed.
+/// Swaps out a node for a new copy of that node with the specified op type and domain. Current API does not all nodes
+/// to have their op types or domains changed, so a new node is needed. All attributes, inputs, and outputs are moved
+/// to the new node. The old node is removed from the graph and should no longer be accessed.
 /// </summary>
 /// <param name="graph">Graph containing the node</param>
 /// <param name="node">Node to copy and remove</param>

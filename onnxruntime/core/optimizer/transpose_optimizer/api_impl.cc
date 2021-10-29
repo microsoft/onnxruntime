@@ -629,9 +629,10 @@ void ApiGraph::RemoveInitializer(std::string_view name) {
   graph_.RemoveInitializedTensor(std::string(name));
 }
 
-inline ONNX_NAMESPACE::TensorProto TensorProtoFromData(std::string& name, api::DataType dtype, 
-                                                       const std::vector<int64_t>& shape,
-                                                       const std::vector<char>& data) {
+std::string_view ApiGraph::AddInitializer(api::DataType dtype, const std::vector<int64_t>& shape,
+                                          const std::vector<char>& data) {
+  std::string name = graph_.GenerateNodeArgName("const_transpose_optimizer");
+
   ONNX_NAMESPACE::TensorProto tensor_proto;
   tensor_proto.set_data_type(gsl::narrow_cast<int32_t>(dtype));
   tensor_proto.set_name(name);
@@ -640,14 +641,6 @@ inline ONNX_NAMESPACE::TensorProto TensorProtoFromData(std::string& name, api::D
     tensor_proto.add_dims(dim);
   }
 
-  return tensor_proto;
-}
-
-std::string_view ApiGraph::AddInitializer(api::DataType dtype, const std::vector<int64_t>& shape,
-                                          const std::vector<char>& data) {
-  std::string name = graph_.GenerateNodeArgName("const_transpose_optimizer");
-  ONNX_NAMESPACE::TensorProto tensor_proto =
-      TensorProtoFromData(name, dtype, shape, data);
   const auto& node_arg = graph_utils::AddInitializer(graph_, tensor_proto);
   return node_arg.Name();
 }
