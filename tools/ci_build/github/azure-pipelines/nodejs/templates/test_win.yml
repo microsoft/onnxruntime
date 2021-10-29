@@ -25,7 +25,7 @@ jobs:
      mkdir e2e_test
      cd e2e_test
      npm init -y
-     npm install $((ls $(Build.BinariesDirectory)/nodejs-artifact/*.tgz) -join " ")
+     npm install $(ls $(Build.BinariesDirectory)/nodejs-artifact/*.tgz)
      node -p "require('onnxruntime-node')"
     workingDirectory: '$(Build.BinariesDirectory)'
 
