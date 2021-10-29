@@ -26,7 +26,7 @@ class TestTransformer : public SelectorActionTransformer {
   static constexpr const char* kTransformerName = "test_transformer";
   static constexpr const char* kSelectorActionId = "remove_identity";
 
-  TestTransformer(optional<RuntimeOptimizationSaveContext> save_context)
+  TestTransformer(std::optional<RuntimeOptimizationSaveContext> save_context)
       : SelectorActionTransformer{kTransformerName, GetSelectorsAndActions(), std::move(save_context)} {
   }
 

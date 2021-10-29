@@ -154,7 +154,7 @@ SelectorsAndActions CreateSelectorsAndActions() {
 
 }  // namespace
 
-QDQSelectorActionTransformer::QDQSelectorActionTransformer(optional<RuntimeOptimizationSaveContext> save_context)
+QDQSelectorActionTransformer::QDQSelectorActionTransformer(std::optional<RuntimeOptimizationSaveContext> save_context)
     : SelectorActionTransformer{
           "QDQSelectorActionTransformer",
           CreateSelectorsAndActions(),

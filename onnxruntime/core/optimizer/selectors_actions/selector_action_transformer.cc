@@ -10,7 +10,7 @@ namespace onnxruntime {
 #if !defined(ORT_MINIMAL_BUILD)
 SelectorActionTransformer::SelectorActionTransformer(const std::string& name,
                                                      SelectorsAndActions&& selectors_and_actions,
-                                                     optional<RuntimeOptimizationSaveContext> save_context)
+                                                     std::optional<RuntimeOptimizationSaveContext> save_context)
     : GraphTransformer{name},
       selectors_and_actions_{std::move(selectors_and_actions)},
       runtime_optimization_save_context_{std::move(save_context)} {
@@ -26,7 +26,7 @@ SelectorActionTransformer::SelectorActionTransformer(const std::string& name,
 #else
 SelectorActionTransformer::SelectorActionTransformer(const std::string& name,
                                                      SelectorsAndActions&& selectors_and_actions,
-                                                     optional<RuntimeOptimizationSaveContext> save_context)
+                                                     std::optional<RuntimeOptimizationSaveContext> save_context)
     : GraphTransformer{name},
       selectors_and_actions_{std::move(selectors_and_actions)} {
   ORT_ENFORCE(!save_context.has_value(), "Saving runtime optimizations is not supported in a minimal build.");

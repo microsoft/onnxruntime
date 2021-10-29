@@ -4,8 +4,8 @@
 #pragma once
 
 #include <functional>
+#include <optional>
 
-#include "core/common/optional.h"
 #include "core/framework/kernel_registry_manager.h"
 #include "core/optimizer/graph_transformer.h"
 #include "core/optimizer/selectors_actions/actions.h"
@@ -105,7 +105,7 @@ class SelectorActionTransformer : public GraphTransformer {
   // If `save_context` is provided, the matching Action for the Selector will not be directly applied to the Graph
   // nodes, but saved as a runtime optimization instead.
   SelectorActionTransformer(const std::string& name, SelectorsAndActions&& selectors_and_actions,
-                            optional<RuntimeOptimizationSaveContext> save_context);
+                            std::optional<RuntimeOptimizationSaveContext> save_context);
 
   // can't copy/assign selectors_and_actions_
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(SelectorActionTransformer);
@@ -120,7 +120,7 @@ class SelectorActionTransformer : public GraphTransformer {
 
   std::unordered_map<std::string, const SelectorAndAction*> op_type_to_selector_and_action_;
   // If set, save runtime optimization to graph. Otherwise, apply optimization to graph nodes.
-  optional<RuntimeOptimizationSaveContext> runtime_optimization_save_context_;
+  std::optional<RuntimeOptimizationSaveContext> runtime_optimization_save_context_;
 #else
   // apply any saved optimizations
   Status ApplySaved(Graph& graph, bool& modified, const logging::Logger& logger) const;

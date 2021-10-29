@@ -53,7 +53,8 @@ Status RemoveNodes::Run(Graph& graph, const NodesToOptimize& selected_nodes) con
 }
 
 Status MergeIntoTarget::Run(Graph& graph, const NodesToOptimize& selected_nodes) const {
-  ORT_RETURN_IF_ERROR(MoveInputOutput(graph, selected_nodes, selected_nodes.Target(), value_moves_, false));
+  ORT_RETURN_IF_ERROR(MoveInputOutput(graph, selected_nodes, selected_nodes.Target(), value_moves_,
+                                      /* only_update_dest_definitions */ false));
 
   return node_remover_.Run(graph, selected_nodes);
 }
@@ -97,7 +98,8 @@ static Status CreateReplacementNode(Graph& graph,
 
 Status ReplaceWithNew::Run(Graph& graph, const NodesToOptimize& selected_nodes) const {
   const auto op_type = OpType(selected_nodes);
-  ORT_RETURN_IF_ERROR(CreateReplacementNode(graph, selected_nodes, op_type, domain_, value_moves_, false, nullptr));
+  ORT_RETURN_IF_ERROR(CreateReplacementNode(graph, selected_nodes, op_type, domain_, value_moves_,
+                                            /* only_update_dest_definitions */ false, nullptr));
   return node_remover_.Run(graph, selected_nodes);
 }
 
@@ -108,8 +110,8 @@ Status ReplaceWithNew::RunForSave(Graph& graph, const NodesToOptimize& selected_
   // make temporary node, use it to look up kernel def hash, remove temporary node
   const auto op_type = OpType(selected_nodes);
   Node* replacement{};
-  ORT_RETURN_IF_ERROR(CreateReplacementNode(graph, selected_nodes, op_type, domain_, value_moves_, true,
-                                            &replacement));
+  ORT_RETURN_IF_ERROR(CreateReplacementNode(graph, selected_nodes, op_type, domain_, value_moves_,
+                                            /* only_update_dest_definitions */ true, &replacement));
 
   ORT_RETURN_IF_NOT(graph.SetOpSchemaFromRegistryForNode(*replacement), "Failed to set node op schema.");
 
