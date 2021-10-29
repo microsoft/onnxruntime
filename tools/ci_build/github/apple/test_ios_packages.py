@@ -113,7 +113,7 @@ def _test_ios_packages(args):
                             '-workspace', './ios_package_test.xcworkspace',
                             '-scheme', 'ios_package_test',
                             '-destination', 'platform=iOS Simulator,OS=latest,name=iPhone SE (2nd generation)'],
-                            shell=False, check=True, cwd=target_proj_path)
+                           shell=False, check=True, cwd=target_proj_path)
 
 
 def parse_args():
