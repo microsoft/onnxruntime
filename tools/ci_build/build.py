@@ -341,6 +341,9 @@ def parse_arguments():
         help="Specify the minimum version of the target platform "
         "(e.g. macOS or iOS)"
         "This is only supported on MacOS")
+    parser.add_argument(
+        "--disable_memleak_checker", action='store_true',
+        help="Disable memory leak checker from Windows build")
 
     # WebAssembly build
     parser.add_argument("--build_wasm", action='store_true', help="Build for WebAssembly")
@@ -1120,7 +1123,8 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                 "-Donnxruntime_ENABLE_MEMLEAK_CHECKER=" +
                 ("ON" if config.lower() == 'debug' and not args.use_nuphar and not
                  args.use_openvino and not
-                 args.enable_msvc_static_runtime
+                 args.enable_msvc_static_runtime and not
+                 args.disable_memleak_checker
                  else "OFF"), "-DCMAKE_BUILD_TYPE={}".format(config)],
             cwd=config_build_dir)
 
