@@ -10,6 +10,7 @@ import onnxruntime as onnxrt
 from onnxruntime.capi.onnxruntime_pybind11_state import OrtValue as C_OrtValue, OrtValueVector
 import torch
 from onnxruntime.training.ortmodule import ORTModule
+import _test_helpers
 
 
 class TestOrtValue(unittest.TestCase):
@@ -97,14 +98,14 @@ class TestOrtValue(unittest.TestCase):
         pt_model = NeuralNetTanh(D_in, H, D_out)
         ort_model = ORTModule(copy.deepcopy(pt_model))
 
-        for step in range(2):
-            pt_x = torch.randn(N, D_in, device=device, requires_grad=True)
+        for step in range(10):
+            pt_x = torch.randn(N, D_in, device='cpu', requires_grad=True)
             ort_x = copy.deepcopy(pt_x)
             ort_prediction, ort_loss = run_step(ort_model, ort_x)
             pt_prediction, pt_loss = run_step(pt_model, pt_x)
-            _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
+            _test_helpers.assert_values_are_close(ort_prediction, pt_prediction, atol=1e-4)
             _test_helpers.assert_values_are_close(ort_x.grad, pt_x.grad)
-            _test_helpers.assert_values_are_close(ort_loss, pt_loss)
+            _test_helpers.assert_values_are_close(ort_loss, pt_loss, atol=1e-4)
 
 
 if __name__ == "__main__":
