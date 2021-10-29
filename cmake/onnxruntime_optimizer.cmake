@@ -34,6 +34,8 @@ else()
     "${ONNXRUNTIME_ROOT}/core/optimizer/qdq_transformer/selectors_actions/*.cc"
     "${ONNXRUNTIME_ROOT}/core/optimizer/selectors_actions/*.h"
     "${ONNXRUNTIME_ROOT}/core/optimizer/selectors_actions/*.cc"
+    "${ONNXRUNTIME_ROOT}/core/optimizer/transpose_optimizer/*.h"
+    "${ONNXRUNTIME_ROOT}/core/optimizer/transpose_optimizer/*.cc"
   )
 
   if (onnxruntime_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)

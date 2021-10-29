@@ -164,9 +164,9 @@ class OpNodeInfoWrapper : public Base1_t, public Base2_t, public Closable
         gsl::span<const uint32_t> requiredConstantCpuInputs,
         MLOperatorTensorGetter& constantInputGetter) :
             m_impl(impl), 
-            m_inputShapesOverride(inputShapesOverride), 
-            m_defaultAttributes(defaultAttributes),
-            m_constantInputGetter(constantInputGetter)
+            m_inputShapesOverride(inputShapesOverride),
+            m_constantInputGetter(constantInputGetter),
+            m_defaultAttributes(defaultAttributes)
     {
         m_requiredConstantCpuInputs.assign(requiredConstantCpuInputs.begin(), requiredConstantCpuInputs.end());
     }
@@ -355,9 +355,9 @@ class OpKernelInfoWrapper : public OpNodeInfoWrapper<
     void STDMETHODCALLTYPE GetExecutionInterface(IUnknown** executionInterface) const noexcept override;
 
     // IMLOperatorTensorShapeDescription methods.
-    HRESULT STDMETHODCALLTYPE GetOutputTensorDimensionCount(uint32_t inputIndex, uint32_t* dimensionCount) const noexcept;
+    HRESULT STDMETHODCALLTYPE GetOutputTensorDimensionCount(uint32_t inputIndex, uint32_t* dimensionCount) const noexcept override;
     bool STDMETHODCALLTYPE HasOutputShapeDescription() const noexcept override;
-    HRESULT STDMETHODCALLTYPE GetOutputTensorShape(uint32_t inputIndex, uint32_t dimensionCount, uint32_t* dimensions) const noexcept;
+    HRESULT STDMETHODCALLTYPE GetOutputTensorShape(uint32_t inputIndex, uint32_t dimensionCount, uint32_t* dimensions) const noexcept override;
 
     bool STDMETHODCALLTYPE IsDmlGraphNode() const noexcept override
     {
@@ -418,9 +418,9 @@ class DmlGraphOpKernelInfoWrapper : public OpNodeInfoWrapper<
     void STDMETHODCALLTYPE GetExecutionInterface(IUnknown** executionInterface) const noexcept override;
 
     // IMLOperatorTensorShapeDescription methods.
-    HRESULT STDMETHODCALLTYPE GetOutputTensorDimensionCount(uint32_t inputIndex, uint32_t* dimensionCount) const noexcept;
+    HRESULT STDMETHODCALLTYPE GetOutputTensorDimensionCount(uint32_t inputIndex, uint32_t* dimensionCount) const noexcept override;
     bool STDMETHODCALLTYPE HasOutputShapeDescription() const noexcept override;
-    HRESULT STDMETHODCALLTYPE GetOutputTensorShape(uint32_t inputIndex, uint32_t dimensionCount, uint32_t* dimensions) const noexcept;
+    HRESULT STDMETHODCALLTYPE GetOutputTensorShape(uint32_t inputIndex, uint32_t dimensionCount, uint32_t* dimensions) const noexcept override;
     
     bool STDMETHODCALLTYPE IsDmlGraphNode() const noexcept override;
     
@@ -455,7 +455,7 @@ class OpKernelContextWrapper : public WRL::Base<IMLOperatorKernelContext>, publi
     HRESULT STDMETHODCALLTYPE GetOutputTensor(uint32_t outputIndex, IMLOperatorTensor** tensor) noexcept override;
     HRESULT STDMETHODCALLTYPE GetOutputTensor(uint32_t outputIndex, uint32_t dimensions, const uint32_t* dimensionSizes, IMLOperatorTensor** tensor) noexcept override;
 
-    HRESULT STDMETHODCALLTYPE AllocateTemporaryData(size_t size, IUnknown** data) const override;
+    HRESULT STDMETHODCALLTYPE AllocateTemporaryData(size_t size, IUnknown** data) const;
     HRESULT STDMETHODCALLTYPE AllocateTemporaryData(size_t size, IUnknown** data, uint64_t* allocId) const;
 
     void STDMETHODCALLTYPE GetExecutionInterface(IUnknown** executionInterface) const noexcept override;
@@ -567,8 +567,13 @@ class MLSchemaInferenceContext final : public OpNodeInfoWrapper<
     MLSchemaInferenceContext(
         onnxruntime::OpNodeProtoHelper<onnx::InferenceContext>* info, 
         onnx::InferenceContext* ctx,
-        gsl::span<const uint32_t> requiredConstantCpuInputs
+        gsl::span<const uint32_t> requiredConstantCpuInputs,
+        MLOperatorTensorGetter& mLOperatorTensorGetter
     );
+
+    static ComPtr<MLSchemaInferenceContext> Create(onnxruntime::OpNodeProtoHelper<onnx::InferenceContext>* info, 
+        onnx::InferenceContext* ctx,
+        gsl::span<const uint32_t> requiredConstantCpuInputs);
 
     onnx::InferenceContext* GetContext() const
     {
@@ -625,6 +630,11 @@ class MLSupportQueryContext final : public OpNodeInfoWrapper<
     MLSupportQueryContext() = delete;
 
     MLSupportQueryContext(
+            onnxruntime::OpNodeProtoHelper<onnxruntime::ProtoHelperNodeContext>* info,
+            const AttributeMap* defaultAttributes,
+            MLOperatorTensorGetter& mLOperatorTensorGetter);
+
+    static ComPtr<MLSupportQueryContext> Create(
             onnxruntime::OpNodeProtoHelper<onnxruntime::ProtoHelperNodeContext>* info,
             const AttributeMap* defaultAttributes);
 
