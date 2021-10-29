@@ -323,6 +323,9 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
       to.create_custom_thread_fn = session_options_.create_custom_thread_fn;
       to.custom_thread_creation_options = session_options.custom_thread_creation_options;
       to.join_custom_thread_fn = session_options_.join_custom_thread_fn;
+      if (to.create_custom_thread_fn) {
+        ORT_ENFORCE(to.join_custom_thread_fn, "join custom thread function not set!");
+      }
       thread_pool_ =
           concurrency::CreateThreadPool(&Env::Default(), to, concurrency::ThreadPoolType::INTRA_OP);
     }
