@@ -54,7 +54,9 @@ Status NhwcTransformer::ApplyImpl(Graph& graph, bool& modified, int graph_level,
       std::vector<int64_t> output_perm = ChannelLastToFirstPerm(rank);
       WrapTransposesAroundNode(*api_graph, *node, {&input_perm}, {&output_perm});
 
-      ChangeNodeOpTypeAndDomain(*api_graph, *node, "QLinearConv", "com.microsoft");
+      if (domain != kMSDomain) {
+        SwapNodeOpTypeAndDomain(*api_graph, *node, "QLinearConv", "com.microsoft");
+      }
 
       modified = true;
     }

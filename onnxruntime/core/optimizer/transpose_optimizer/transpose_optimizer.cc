@@ -870,73 +870,111 @@ static bool HandleShape(HandlerArgs& args) {
 
 constexpr HandlerInfo shape_handler = {&FirstInput, &HandleShape, /*transposes_outputs*/ false};
 
-// Reorder pads according to perm. Pads length is twice perm length (all starts then all ends).
-static std::vector<int64_t> PermutePads(const std::vector<int64_t>& pads, const std::vector<int64_t>& perm) {
+// Permutes a 1D node input by creating a new initializer or inserting a Gather op
+void PermuteInput(api::GraphRef& graph, api::NodeRef& node, size_t i, std::vector<int64_t> perm) {
   size_t rank = perm.size();
-  std::vector<int64_t> new_pads;
-  new_pads.reserve(rank * 2);
-  for (int64_t i : perm) {
-    new_pads.push_back(pads[gsl::narrow_cast<size_t>(i)]);
+  int64_t rank_int = gsl::narrow_cast<int64_t>(rank);
+
+  std::string_view input = node.Inputs()[i];
+  auto constant = graph.GetConstant(input);
+  if (constant != nullptr) {
+    auto shape = constant->Shape();
+    if (shape.size() == 1 && shape[0] == rank_int) {
+      // Create new transposed initializer
+      std::vector<char> data = constant->Data();
+      std::vector<char> new_data(data.size());
+      size_t bytes_per_val = data.size() / rank;
+
+      char* dst = new_data.data();
+      for (size_t j = 0; j < rank; ++j) {
+        char* src = data.data() + perm[j] * bytes_per_val;
+        for (size_t k = 0; k < bytes_per_val; ++k) {
+          *dst++ = *src++;
+        }
+      }
+
+      std::string_view new_initializer = graph.AddInitializer(constant->DType(), shape, new_data);
+      node.SetInput(i, new_initializer);
+      if (!graph.HasValueConsumers(input)) {
+        graph.RemoveInitializer(input);
+      }
+
+      return;
+    }
   }
-  for (int64_t i : perm) {
-    new_pads.push_back(pads[gsl::narrow_cast<size_t>(i) + rank]);
-  }
-  return new_pads;
+
+  std::string_view gather_indices_const = graph.AddInitializerInt64(/*shape*/ {rank_int}, perm);
+  std::vector<std::string_view> gather_inputs{input, gather_indices_const};
+  auto gather_ptr = graph.AddNode("Gather", gather_inputs, /*num_outputs*/ 1);
+  api::NodeRef& gather = *gather_ptr;
+  std::string_view gather_output = gather.Outputs()[0];
+  graph.CopyValueInfo(input, gather_output);
+  gather.SetAttributeInt("axis", 0);
+  node.SetInput(i, gather_output);
 }
 
-static bool HandlePad(HandlerArgs& args) {
-  size_t rank = args.perm.size();
-  int64_t opset = args.ctx.opset;
+static bool HandleResize(HandlerArgs& args) {
+  auto inputs = args.node.Inputs();
+  int64_t rank_int = gsl::narrow_cast<int64_t>(args.perm.size());
 
-  if (opset < 11) {
-    std::optional<std::vector<int64_t>> pads = args.node.GetAttributeInts("pads");
-    if (pads == std::nullopt) {
-      return false;
+  if (args.ctx.opset < 11) {
+    PermuteInput(args.ctx.graph, args.node, 1, args.perm_inv);
+  } else {
+    if (inputs[1] != "") {
+      std::vector<int64_t> double_perm_inv = args.perm_inv;
+      double_perm_inv.reserve(2 * args.perm_inv.size());
+      for (int64_t p : args.perm_inv) {
+        double_perm_inv.push_back(p + rank_int);
+      }
+      PermuteInput(args.ctx.graph, args.node, 1, double_perm_inv);
     }
-    std::vector<int64_t> new_pads = PermutePads(*pads, args.perm_inv);
-    args.node.SetAttributeInts("pads", new_pads);
+    for (size_t i = 2; i < inputs.size(); ++i) {
+      if (inputs[i] != "") {
+        PermuteInput(args.ctx.graph, args.node, i, args.perm_inv);
+      }
+    }
   }
 
   TransposeFirstInput(args.ctx, args.node, args.perm_inv);
   TransposeOutputs(args.ctx, args.node, args.perm);
 
-  if (opset < 11) {
-    return true;
-  }
+  return true;
+}
 
-  std::string_view pads_input = args.node.Inputs()[1];
-  std::vector<int64_t> pads_shape{gsl::narrow_cast<int64_t>(rank * 2)};
-  std::shared_ptr<api::TensorRef> pads_const = args.ctx.graph.GetConstant(pads_input);
+constexpr HandlerInfo resize_handler = {&FirstInput, &HandleResize};
 
-  // Case 1: pads is a constant
-  if (pads_const != nullptr) {
-    auto pads = pads_const->DataInt64();
-    std::vector<int64_t> new_pads = PermutePads(pads, args.perm_inv);
-    std::string_view new_pads_const = args.ctx.graph.AddInitializerInt64(pads_shape, new_pads);
-    args.node.SetInput(1, new_pads_const);
-    if (!args.ctx.graph.HasValueConsumers(pads_input)) {
-      args.ctx.graph.RemoveInitializer(pads_input);
-    }
-    return true;
-  }
+static bool HandlePad(HandlerArgs& args) {
+  size_t rank = args.perm.size();
+  int64_t opset = args.ctx.opset;
 
-  // Case 2: pads is computed. Use Gather to reorder pads.
-
-  // Form indices using perm_inv twice
-  std::vector<int64_t> gather_indices = args.perm_inv;
-  gather_indices.reserve(rank * 2);
+  // Pads length is twice perm length (all starts then all ends).
+  std::vector<int64_t> pads_perm = args.perm_inv;
+  pads_perm.reserve(rank * 2);
   for (int64_t p : args.perm_inv) {
-    gather_indices.push_back(p + rank);
+    pads_perm.push_back(p + rank);
   }
-  std::string_view gather_indices_const = args.ctx.graph.AddInitializerInt64(pads_shape, gather_indices);
 
-  std::vector<std::string_view> gather_inputs{pads_input, gather_indices_const};
-  auto gather_ptr = args.ctx.graph.AddNode("Gather", gather_inputs, /*num_outputs*/ 1);
-  api::NodeRef& gather = *gather_ptr;
-  std::string_view gather_output = gather.Outputs()[0];
-  args.ctx.graph.CopyValueInfo(pads_input, gather_output);
-  gather.SetAttributeInt("axis", 0);
-  args.node.SetInput(1, gather_output);
+  if (opset < 11) {
+    // Permute pads attribute
+    std::optional<std::vector<int64_t>> pads = args.node.GetAttributeInts("pads");
+    if (pads == std::nullopt || pads->size() != rank * 2) {
+      return false;
+    }
+
+    std::vector<int64_t> new_pads;
+    new_pads.reserve(pads->size());
+    for (int64_t i : pads_perm) {
+      new_pads.push_back((*pads)[gsl::narrow_cast<size_t>(i)]);
+    }
+
+    args.node.SetAttributeInts("pads", new_pads);
+  } else {
+    // Permute pads input
+    PermuteInput(args.ctx.graph, args.node, 1, pads_perm);
+  }
+
+  TransposeFirstInput(args.ctx, args.node, args.perm_inv);
+  TransposeOutputs(args.ctx, args.node, args.perm);
 
   return true;
 }
@@ -1316,72 +1354,6 @@ static bool HandleTile(HandlerArgs& args) {
 
 constexpr HandlerInfo tile_handler = {&FirstInput, &HandleTile};
 
-void PermuteInput(api::GraphRef& graph, api::NodeRef& node, size_t i, std::vector<int64_t> perm) {
-  size_t rank = perm.size();
-  int64_t rank_int = gsl::narrow_cast<int64_t>(rank);
-
-  std::string_view input = node.Inputs()[i];
-  auto constant = graph.GetConstant(input);
-  if (constant != nullptr) {
-    auto shape = constant->Shape();
-    if (shape.size() == 1 && shape[0] == rank_int) {
-      std::vector<char> data = constant->Data();
-      std::vector<char> new_data(data.size());
-      size_t bytes_per_val = data.size() / rank;
-      char* dst = new_data.data();
-      for (size_t j = 0; j < rank; ++j) {
-        char* src = data.data() + perm[j] * bytes_per_val;
-        for (size_t k = 0; k < bytes_per_val; ++k) {
-          *dst++ = *src++;
-        }
-      }
-      std::string_view new_initializer = graph.AddInitializer(constant->DType(), shape, new_data);
-      node.SetInput(i, new_initializer);
-      if (!graph.HasValueConsumers(input)) {
-        graph.RemoveInitializer(input);
-      }
-      return;
-    }
-  }
-
-  std::string_view gather_indices_const = graph.AddInitializerInt64(/*shape*/ {rank_int}, perm);
-  std::vector<std::string_view> gather_inputs{input, gather_indices_const};
-  auto gather_ptr = graph.AddNode("Gather", gather_inputs, /*num_outputs*/ 1);
-  api::NodeRef& gather = *gather_ptr;
-  std::string_view gather_output = gather.Outputs()[0];
-  graph.CopyValueInfo(input, gather_output);
-  gather.SetAttributeInt("axis", 0);
-  node.SetInput(i, gather_output);
-}
-
-static bool HandleResize(HandlerArgs& args) {
-  auto inputs = args.node.Inputs();
-
-  if (args.ctx.opset < 11) {
-    PermuteInput(args.ctx.graph, args.node, 1, args.perm_inv);
-  } else {
-    if (inputs[1] != "") {
-      std::vector<int64_t> double_perm_inv = args.perm_inv;
-      for (int64_t p : args.perm_inv) {
-        double_perm_inv.push_back(p);
-      }
-      PermuteInput(args.ctx.graph, args.node, 1, double_perm_inv);
-    }
-    for (size_t i = 2; i < inputs.size(); ++i) {
-      if (inputs[i] != "") {
-        PermuteInput(args.ctx.graph, args.node, i, args.perm_inv);
-      }
-    }
-  }
-
-  TransposeFirstInput(args.ctx, args.node, args.perm_inv);
-  TransposeOutputs(args.ctx, args.node, args.perm);
-
-  return true;
-}
-
-constexpr HandlerInfo resize_handler = {&FirstInput, &HandleResize};
-
 static bool HandleTranspose(HandlerArgs& args) {
   // In this handler a transpose leads to another transpose. "transpose" if the 1st and "node" is the 2nd.
 
@@ -1517,12 +1489,9 @@ static bool HandleMaxPool(HandlerArgs& args) {
     return false;
   }
 
-  auto inputs = args.node.Inputs();
-  auto new_node = args.ctx.graph.AddNode("NhwcMaxPool", inputs, /*num_outputs*/ 1, "com.microsoft");
-  new_node->CopyAttributes(args.node);
+  auto new_node = SwapNodeOpTypeAndDomain(args.ctx.graph, args.node, "NhwcMaxPool", "com.microsoft");
   new_node->ClearAttribute("storage_order");  // Only relevant for indices output. Prohibited for NhwcMaxPool.
-  args.ctx.graph.MoveOutput(args.node, 0, *new_node, 0);
-  args.ctx.graph.RemoveNode(args.node);
+
   TransposeFirstInput(args.ctx, *new_node, args.perm_inv);
   TransposeOutputs(args.ctx, *new_node, args.perm);
   return true;
@@ -1779,8 +1748,8 @@ void WrapTransposesAroundNode(api::GraphRef& graph, api::NodeRef& node,
   }
 }
 
-std::unique_ptr<api::NodeRef> ChangeNodeOpTypeAndDomain(api::GraphRef& graph, api::NodeRef& node,
-                                                        std::string_view op_type, std::string_view domain) {
+std::unique_ptr<api::NodeRef> SwapNodeOpTypeAndDomain(api::GraphRef& graph, api::NodeRef& node,
+                                                      std::string_view op_type, std::string_view domain) {
   auto inputs = node.Inputs();
   auto outputs = node.Outputs();
   auto new_node = graph.AddNode(op_type, inputs, outputs.size(), domain);
