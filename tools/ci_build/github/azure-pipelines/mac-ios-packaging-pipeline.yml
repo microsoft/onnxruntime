@@ -16,7 +16,7 @@ jobs:
   displayName: "iOS Packaging"
 
   pool:
-    vmImage: "macOS-10.15"
+    vmImage: "macOS-11"
 
   timeoutInMinutes: 90
 
@@ -97,3 +97,7 @@ jobs:
   - publish: "$(Build.ArtifactStagingDirectory)"
     artifact: ios_packaging_artifacts
     displayName: "Publish artifacts"
+
+  - template: component-governance-component-detection-steps.yml
+    parameters :
+      condition : 'succeeded'

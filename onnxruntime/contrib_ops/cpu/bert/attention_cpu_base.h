@@ -156,7 +156,7 @@ class AttentionCPUBase : public AttentionBase {
                                     output, nullptr);
 
           // Fix unidirectional mask to be parity with huggingface implementation.
-          if (has_unidirectional) {
+          if (has_unidirectional && mask_data != nullptr) {
             for (int s_i = 0; s_i < sequence_length - 1; s_i++) {
               for (int m_i = past_sequence_length + s_i + 1; m_i < all_sequence_length; m_i++) {
                 int j = s_i * all_sequence_length + m_i;

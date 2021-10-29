@@ -208,6 +208,8 @@ py::object GetPyObjectFromSparseTensor(size_t pos, const OrtValue& ort_value, co
       OrtPybindThrowIfError(status);
       py_sparse_tensor.reset(new PySparseTensor(std::move(dst_sparse_tensor)));
     }
+  } else {
+    py_sparse_tensor.reset(new PySparseTensor(ort_value));
   }
 
   py::object result = py::cast(py_sparse_tensor.get(), py::return_value_policy::take_ownership);

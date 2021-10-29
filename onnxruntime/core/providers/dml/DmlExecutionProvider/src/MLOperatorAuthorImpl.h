@@ -66,13 +66,13 @@ public:
     size_t ElementCount() const;
 
     void GetAttribute(
-        MLOperatorAttributeType type,
+        MLOperatorAttributeType attributeType,
         uint32_t elementCount,
         size_t elementByteSize,
         void* value) const;
 
     const std::string* GetStringAttribute(
-        _In_z_ const char* name,
+        _In_z_ const char* attributeName,
         uint32_t elementIndex) const;
 
     std::string name;
