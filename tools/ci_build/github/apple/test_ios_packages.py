@@ -46,9 +46,14 @@ def _test_ios_packages(args):
     # create a temp folder
     import tempfile
     with tempfile.TemporaryDirectory() as temp_dir:
-        # This is for debugging only
-        # temp_dir = <a local directory>
-        # shutil.rmtree(temp_dir)
+        # If we specify the stage dir, then use it to create test project
+        # put this inside the with ..., since we still want the temp dir to be cleared
+        # in case we don't specify the stage dir
+        if args.test_project_stage_dir is not None:
+            temp_dir = args.test_project_stage_dir
+            if os.path.exists(temp_dir):
+                shutil.rmtree(temp_dir)
+            os.makedirs(temp_dir)
 
         # create a zip file contains the framework
         # TODO, move this into a util function
@@ -103,11 +108,12 @@ def _test_ios_packages(args):
         subprocess.run(['pod', 'install'], shell=False, check=True, cwd=target_proj_path)
 
         # run the tests
-        subprocess.run(['xcrun', 'xcodebuild', 'test',
-                        '-workspace', './ios_package_test.xcworkspace',
-                        '-scheme', 'ios_package_test',
-                        '-destination', 'platform=iOS Simulator,OS=latest,name=iPhone SE (2nd generation)'],
-                       shell=False, check=True, cwd=target_proj_path)
+        if not args.prepare_test_project_only:
+            subprocess.run(['xcrun', 'xcodebuild', 'test',
+                            '-workspace', './ios_package_test.xcworkspace',
+                            '-scheme', 'ios_package_test',
+                            '-destination', 'platform=iOS Simulator,OS=latest,name=iPhone SE (2nd generation)'],
+                            shell=False, check=True, cwd=target_proj_path)
 
 
 def parse_args():
@@ -126,6 +132,12 @@ def parse_args():
 
     parser.add_argument('--c_framework_dir', type=pathlib.Path, required=True,
                         help='Provide the parent directory for C/C++ framework')
+
+    parser.add_argument('--test_project_stage_dir', type=pathlib.Path,
+                        help='The stage dir for the test project, if not specified, will use a temporary path')
+
+    parser.add_argument('--prepare_test_project_only', action='store_true',
+                        help='Prepare the test project only, without running the tests')
 
     return parser.parse_args()
 
