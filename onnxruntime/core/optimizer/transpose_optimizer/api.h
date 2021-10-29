@@ -73,18 +73,24 @@ class TensorRef {
   virtual DataType DType() const = 0;
 
   /// <summary>
-  /// Retrieves int64 data from the tensor. Only valid if dtype is INT64. Used for reading initializers specifying
-  /// axes/pads.
+  /// Retrieves raw data from the tensor. Used for reading initializers specifying axes/pads/scales.
   /// </summary>
   /// <returns>Flattened tensor data</returns>
-  virtual std::vector<int64_t> DataInt64() const = 0;
+  virtual std::vector<char> Data() const = 0;
 
-  /// <summary>
-  /// Retrieves int32 data from the tensor. Only valid if dtype is INT32. Used for reading initializers specifying
-  /// axes for Slice op.
-  /// </summary>
-  /// <returns>Flattened tensor data</returns>
-  virtual std::vector<int32_t> DataInt32() const = 0;
+  virtual std::vector<int64_t> DataInt64() const {
+    std::vector<char> raw_data = Data();
+    int64_t* data_int = reinterpret_cast<int64_t*>(raw_data.data());
+    std::vector<int64_t> result(data_int, data_int + raw_data.size() / sizeof(int64_t));
+    return result;
+  }
+
+  virtual std::vector<int32_t> DataInt32() const {
+    std::vector<char> raw_data = Data();
+    int32_t* data_int = reinterpret_cast<int32_t*>(raw_data.data());
+    std::vector<int32_t> result(data_int, data_int + raw_data.size() / sizeof(int32_t));
+    return result;
+  }
 
   virtual ~TensorRef(){};
 };
@@ -276,6 +282,8 @@ class GraphRef {
   /// <returns>Tensor corresponding to the constant initializer or nullptr</returns>
   virtual std::unique_ptr<TensorRef> GetConstant(std::string_view name) const = 0;
 
+  virtual std::unique_ptr<TensorRef> GetLocalConstant(std::string_view name) const = 0;
+
   /// <summary>
   /// Returns a ValueInfo instance for querying info about the value with the given name. Behavior is undefined if
   /// the name does not refer to a value in the graph.
@@ -354,17 +362,23 @@ class GraphRef {
   /// <param name="shape">Dimensions for new initializer. Entries are Nonnegative.</param>
   /// <param name="values">Flattened values for new initializer. Length matches product of dimensions.</param>
   /// <returns>Generated name for the initializer</returns>
-  virtual std::string_view AddInitializerInt64(const std::vector<int64_t>& shape,
-                                               const std::vector<int64_t>& values) = 0;
+  virtual std::string_view AddInitializer(DataType dtype, const std::vector<int64_t>& shape,
+                                          const std::vector<char>& data) = 0;
 
-  /// <summary>
-  /// Creates an int32 initializer with the specified shape and values. Returns the name.
-  /// </summary>
-  /// <param name="shape">Dimensions for new initializer. Entries are Nonnegative.</param>
-  /// <param name="values">Flattened values for new initializer. Length matches product of dimensions.</param>
-  /// <returns>Generated name for the initializer</returns>
+  virtual std::string_view AddInitializerInt64(const std::vector<int64_t>& shape,
+                                               const std::vector<int64_t>& values) {
+    
+    const char* raw_data = reinterpret_cast<const char*>(values.data());
+    std::vector<char> data(raw_data, raw_data + values.size() * sizeof(int64_t));
+    return AddInitializer(api::DataType::INT64, shape, data);
+  }
+
   virtual std::string_view AddInitializerInt32(const std::vector<int64_t>& shape,
-                                               const std::vector<int32_t>& values) = 0;
+                                               const std::vector<int32_t>& values) {
+    const char* raw_data = reinterpret_cast<const char*>(values.data());
+    std::vector<char> data(raw_data, raw_data + values.size() * sizeof(int32_t));
+    return AddInitializer(api::DataType::INT32, shape, data);
+  }
 
   /// <summary>
   /// "Moves" an output from one node to another, (effectively transferring the output name, shape, type,
@@ -439,51 +453,13 @@ bool Optimize(api::GraphRef& graph, bool allow_extended_ops);
  * ops for reordered versions yourself and call Optimize manually.
  */
 
-/// <summary>
-/// Returned by a LayoutHandler function. Indicates whether reordering should occur and what op type to use.
-/// Modifications to attributes can be performed by the LayoutHandler function itself, since all attribute updates
-/// will persist.
-/// </summary>
-struct LayoutHandlerResult {
-  // If false, the op is skipped. If true, the first input and all outputs are transposed (and op type/domain
-  // are updated)
-  bool should_change_layout;
-  // The rank of the inputs/outputs. All transposes use this rank.
-  size_t rank;
-  // If either new_op_type or new_domain are provided, the node will be replaced with one with the specified op/domain.
-  // All attributes are copied over.
-  std::optional<std::string> new_op_type;
-  std::optional<std::string> new_domain;
-};
+std::vector<int64_t> ChannelLastToFirstPerm(size_t rank);
+std::vector<int64_t> ChannelFirstToLastPerm(size_t rank);
+void WrapTransposesAroundNode(api::GraphRef& graph, api::NodeRef& node,
+                              const std::vector<const std::vector<int64_t>*>& input_perms,
+                              const std::vector<const std::vector<int64_t>*>& output_perms);
 
-using LayoutHandler = LayoutHandlerResult (*)(api::GraphRef& graph, api::NodeRef& node);
-
-/// <summary>
-/// Calls LayoutHandler functions on each node matching an op in the handler_map. Transposes first input and all
-/// outputs of affected ops and updates the op types according to the LayoutHandlerResult. Calls Optimize on the graph
-/// if any ops were affected. Transposes convert op input/outputs from [N, C, H, W] (or [N, C, D1, D2, ...]) layout
-/// to [N, H, W, C] (or [N, D1, D2, ..., C]) ordering.
-/// </summary>
-/// <param name="graph">Graph to change layout of</param>
-/// <param name="handler_map">Mapping from op types to LayoutHandler functions</param>
-/// <param name="allow_extended_ops">Whether com.microsoft ops can be used for optimization</param>
-/// <returns>true if the graph was modified</returns>
-bool ChannelFirstToChannelLast(api::GraphRef& graph,
-                               const std::unordered_map<std::string_view, LayoutHandler>& handler_map,
-                               bool allow_extended_ops);
-
-/// <summary>
-/// Calls LayoutHandler functions on each node matching an op in the handler_map. Transposes first input and all
-/// outputs of affected ops and updates the op types according to the LayoutHandlerResult. Calls Optimize on the graph
-/// if any ops were affected. Transposes convert op input/outputs from [N, H, W, C] (or [N, D1, D2, ..., C]) layout
-/// to [N, C, H, W] (or [N, C, D1, D2, ...]) ordering.
-/// </summary>
-/// <param name="graph">Graph to change layout of</param>
-/// <param name="handler_map">Mapping from op types to LayoutHandler functions</param>
-/// <param name="allow_extended_ops">Whether com.microsoft ops can be used for optimization</param>
-/// <returns>true if the graph was modified</returns>
-bool ChannelLastToChannelFirst(api::GraphRef& graph,
-                               const std::unordered_map<std::string_view, LayoutHandler>& handler_map,
-                               bool allow_extended_ops);
+std::unique_ptr<api::NodeRef> ChangeNodeOpTypeAndDomain(api::GraphRef& graph, api::NodeRef& node,
+                                                        std::string_view op_type, std::string_view domain);
 
 }  // namespace onnx_layout_transformation
