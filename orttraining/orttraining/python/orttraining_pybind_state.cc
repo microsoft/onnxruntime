@@ -380,7 +380,6 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
         py::list res;
 
         PyObject* capsule;
-        DLManagedTensor* dlmanaged_tensor;
         PyObject* handle = to_tensor.ptr();
         PyObject* obj;
 
@@ -396,7 +395,7 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
         for (auto it : v) {
           // The same capsule is reused but FromDLPack rename the capsule into used_dltensor.
           PyCapsule_SetName(capsule, "dltensor");
-          dlmanaged_tensor = dlpack::OrtValueToDlpack(it, (void*)&ort_dlmanaged_tensor);
+          dlpack::OrtValueToDlpack(it, (void*)&ort_dlmanaged_tensor);
           obj = PyObject_CallOneArg(handle, capsule);
           if (obj == NULL)
             throw std::runtime_error("Empty tensor returned.");
@@ -425,6 +424,8 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
             PyErr_Clear();
           }
         };
+
+        DLManagedTensor* dlmanaged_tensor;
 
         for (auto it : v) {
           dlmanaged_tensor = dlpack::OrtValueToDlpack(it);
