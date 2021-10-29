@@ -26,7 +26,7 @@ jobs:
      cd e2e_test
      npm init -y
      npm install $((ls $(Build.BinariesDirectory)/nodejs-artifact/*.tgz) -join " ")
-     npm -p "require('onnxruntime-node')"
+     node -p "require('onnxruntime-node')"
     workingDirectory: '$(Build.BinariesDirectory)'
 
   - template: ../../templates/component-governance-component-detection-steps.yml
