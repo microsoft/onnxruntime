@@ -305,7 +305,7 @@ void DmlCommandRecorder::ResourceBarrier(gsl::span<const D3D12_RESOURCE_BARRIER>
 void DmlCommandRecorder::AddUAVBarrier()
 {
     #pragma warning(suppress: 6387)
-        auto barrier = CD3DX12_RESOURCE_BARRIER::UAV(nullptr);
+    auto barrier = CD3DX12_RESOURCE_BARRIER::UAV(nullptr);
     m_currentCommandList->ResourceBarrier(1, &barrier);
     m_operationsRecordedInCurrentCommandList = true; 
 }
