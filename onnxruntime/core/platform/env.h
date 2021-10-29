@@ -57,8 +57,6 @@ class EnvThread {
   JoinCustomThreadFn join_custom_thread_fn{};
 };
 
-
-
 // Parameters that are required to create a set of threads for a thread pool
 struct ThreadOptions {
   // Stack size for a new thread. If it is 0, the operating system uses the same value as the stack that's specified for
