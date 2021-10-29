@@ -98,6 +98,6 @@ jobs:
     artifact: ios_packaging_artifacts
     displayName: "Publish artifacts"
 
-  - template: component-governance-component-detection-steps.yml
+  - template: templates/component-governance-component-detection-steps.yml
     parameters :
       condition : 'succeeded'
