@@ -35,9 +35,9 @@ static void RunAttentionTest(
 
   OpTester tester("DecoderAttention", 1, onnxruntime::kMSDomain);
   tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(num_heads));
-  tester.AddAttribute<int64_t>("static_kv", static_cast<int64_t>(static_kv ? 1 : 0));
-  tester.AddAttribute<int64_t>("use_past", static_cast<int64_t>(use_past ? 1 : 0));
-  tester.AddAttribute<int64_t>("has_layer_state", static_cast<int64_t>(has_layer_state ? 1 : 0));
+  //tester.AddAttribute<int64_t>("static_kv", static_cast<int64_t>(static_kv ? 1 : 0));
+  //tester.AddAttribute<int64_t>("use_past", static_cast<int64_t>(use_past ? 1 : 0));
+  //tester.AddAttribute<int64_t>("has_layer_state", static_cast<int64_t>(has_layer_state ? 1 : 0));
 
   std::vector<int64_t> query_dims = {sequence_length, batch_size, hidden_size};
   std::vector<int64_t> key_dims = {kv_sequence_length, batch_size, hidden_size};
@@ -81,6 +81,9 @@ static void RunAttentionTest(
     tester.AddInput<float>("key_cache", input_cache_dims, *key_cache);
     tester.AddInput<float>("value_cache", input_cache_dims, *value_cache);
   }
+  tester.AddInput<bool>("static_kv", {1}, {static_kv});
+  tester.AddInput<bool>("use_past", {1}, {use_past});
+  tester.AddInput<bool>("has_layer_state", {1}, {has_layer_state});
 
   tester.AddOutput<float>("output", output_dims, output_data);
   if (has_layer_state) {

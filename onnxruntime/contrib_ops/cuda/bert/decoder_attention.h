@@ -16,11 +16,9 @@ class DecoderAttention final : public CudaKernel {
  public:
   DecoderAttention(const OpKernelInfo& info);
   Status ComputeInternal(OpKernelContext* context) const override;
+
  private:
   int num_heads_;
-  bool static_kv_;
-  bool use_past_;
-  bool has_layer_state_;
 };
 
 }  // namespace cuda

@@ -29,14 +29,34 @@ namespace cuda {
 REGISTER_KERNEL_TYPED(float)
 REGISTER_KERNEL_TYPED(MLFloat16)
 
+// bugbug: consider moving it to shared file
+// A wrapper class of cudaEvent_t to destroy the event automatically for avoiding memory leak.
+class AutoDestoryCudaEvent {
+ public:
+  AutoDestoryCudaEvent() : cuda_event_(nullptr) {
+  }
+
+  ~AutoDestoryCudaEvent() {
+    if (cuda_event_ != nullptr)
+      cudaEventDestroy(cuda_event_);
+  }
+
+  cudaEvent_t& Get() {
+    return cuda_event_;
+  }
+
+ private:
+  cudaEvent_t cuda_event_;
+};
+
 template <typename T>
 DecoderAttention<T>::DecoderAttention(const OpKernelInfo& info) : CudaKernel(info) {
   int64_t num_heads = 0;
   ORT_ENFORCE(info.GetAttr("num_heads", &num_heads).IsOK() && num_heads > 0);
   num_heads_ = static_cast<int>(num_heads);
-  static_kv_ = info.GetAttrOrDefault<int64_t>("static_kv", 0) == 1;
-  use_past_ = info.GetAttrOrDefault<int64_t>("use_past", 0) == 1;
-  has_layer_state_ = info.GetAttrOrDefault<int64_t>("has_layer_state", 0) == 1;
+  //static_kv_ = info.GetAttrOrDefault<int64_t>("static_kv", 0) == 1;
+  //use_past_ = info.GetAttrOrDefault<int64_t>("use_past", 0) == 1;
+  //has_layer_state_ = info.GetAttrOrDefault<int64_t>("has_layer_state", 0) == 1;
 }
 
 template <typename T>
@@ -48,6 +68,23 @@ Status DecoderAttention<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* key_padding_mask(context->Input<Tensor>(4));
   const Tensor* key_cache(context->Input<Tensor>(5));
   const Tensor* value_cache(context->Input<Tensor>(6));
+  const Tensor* static_kv(context->Input<Tensor>(7));
+  const Tensor* use_past(context->Input<Tensor>(8));
+  const Tensor* has_layer_state(context->Input<Tensor>(9));
+
+  // Copy static_kv, use_past and has_layer_state to CPU
+  auto pinned_buffer = AllocateBufferOnCPUPinned<void>(3 * sizeof(bool));
+  bool* kernel_state_pinned = reinterpret_cast<bool*>(pinned_buffer.get());
+  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(kernel_state_pinned, static_kv->template Data<bool>(), sizeof(bool), cudaMemcpyDeviceToHost, Stream()));
+  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(kernel_state_pinned + 1, use_past->template Data<bool>(), sizeof(bool), cudaMemcpyDeviceToHost, Stream()));
+  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(kernel_state_pinned + 2, has_layer_state->template Data<bool>(), sizeof(bool), cudaMemcpyDeviceToHost, Stream()));
+
+  // Create an event to make sure the async copy is finished before reading the data.
+  AutoDestoryCudaEvent new_event;
+  cudaEvent_t& isCopyDone = new_event.Get();
+
+  CUDA_RETURN_IF_ERROR(cudaEventCreate(&isCopyDone));
+  CUDA_RETURN_IF_ERROR(cudaEventRecord(isCopyDone, Stream()));
 
   auto& device_prop = GetDeviceProp();
   //TODO: check inputs
@@ -82,6 +119,11 @@ Status DecoderAttention<T>::ComputeInternal(OpKernelContext* context) const {
   IAllocatorUniquePtr<T> gemm_buffer_p(nullptr);
   IAllocatorUniquePtr<T> gemm_query_buffer_p(nullptr);
   IAllocatorUniquePtr<T> gemm_kv_buffer_p(nullptr);
+
+  CUDA_RETURN_IF_ERROR(cudaEventSynchronize(isCopyDone));
+  bool static_kv_ = *kernel_state_pinned;
+  bool use_past_ = *(kernel_state_pinned + 1);
+  bool has_layer_state_ = *(kernel_state_pinned + 2);
 
   // bugbug: need refactor
   if (!has_layer_state_ || !use_past_) {

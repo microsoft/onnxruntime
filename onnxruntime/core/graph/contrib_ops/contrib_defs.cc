@@ -534,7 +534,7 @@ void AttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, int p
 void DecoderAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
   // Type inference
   ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
-  // This is not correct because sometime there is cache output but no cache input
+  // This is not correct because sometime there is cache output but no cache
   // if (ctx.getNumOutputs() > 1 && ctx.getNumInputs() > 5) {
   //   ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 5, 1);
   //   ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 5, 2);
@@ -713,9 +713,9 @@ TODO:
       .SinceVersion(1)
       .SetDoc(Decoder_Attention_doc)
       .Attr("num_heads", "Number of attention heads", AttributeProto::INT)
-      .Attr("static_kv", "If static_kv = 1, cross-attention; else self-attention", AttributeProto::INT)
-      .Attr("use_past", "If use_past = 1, use cache; else no cache", AttributeProto::INT)
-      .Attr("has_layer_state", "If has_layer_state = 1, layer_state = {} or [a,b]; else layer_state = None", AttributeProto::INT)
+      //.Attr("static_kv", "If static_kv = 1, cross-attention; else self-attention", AttributeProto::INT)
+      //.Attr("use_past", "If use_past = 1, use cache; else no cache", AttributeProto::INT)
+      //.Attr("has_layer_state", "If has_layer_state = 1, layer_state = {} or [a,b]; else layer_state = None", AttributeProto::INT)
       .Input(0, "query", "3D input tensor with shape (sequence_length, batch_size, hidden_size), hidden_size = num_heads * head_size", "T")
       .Input(1, "key", "3D input tensor with shape (total_sequence_length, batch_size, hidden_size)", "T")
       .Input(2, "weight", "2D input tensor with shape (hidden_size, 3 * hidden_size)", "T")
@@ -723,6 +723,9 @@ TODO:
       .Input(4, "key_padding_mask", "2D input tensor with shape (batch_size, total_sequence_length)", "B", OpSchema::Optional)
       .Input(5, "key_cache", "input tensor with shape (batch_size, num_heads, sequence_length or total_sequence_length, head_size)", "T", OpSchema::Optional)   // self & cross
       .Input(6, "value_cache", "input tensor with shape (batch_size, num_heads, sequence_length or total_sequence_length, head_size)", "T", OpSchema::Optional)   // self & cross
+      .Input(7, "static_kv", "If static_kv = true, cross-attention; else self-attention", "B")
+      .Input(8, "use_past", "If use_past = true, use cache; else no cache", "B")
+      .Input(9, "has_layer_state", "If has_layer_state = true, layer_state = {} or [a,b]; else layer_state = None", "B")
       .Output(0, "output", "3D output tensor with shape (sequence_length, batch_size, hidden_size)", "T")
       .Output(1, "new_key_cache", "output tensor with shape (batch_size, num_heads, new sequence_length, head_size)", "T", OpSchema::Optional) // self & cross
       .Output(2, "new_value_cache", "output tensor with shape (batch_size, num_heads, new sequence_length, head_size)", "T", OpSchema::Optional) // self & cross
