@@ -41,20 +41,20 @@ ORTTrainingPythonEnv& GetTrainingEnv();
 
 void ResolveExtraProviderOptions(const std::vector<std::string>& provider_types,
                                  const ProviderOptionsVector& original_provider_options_vector,
-                                 ProviderOptionsVector& merged_options){
+                                 ProviderOptionsVector& merged_options) {
   auto& training_env = GetTrainingEnv();
   std::size_t j = 0;  // index for provider_options_vector
   for (const std::string& type : provider_types) {
     auto it = training_env.ext_execution_provider_info_map_.find(type);
-    if (it == training_env.ext_execution_provider_info_map_.end()){
+    if (it == training_env.ext_execution_provider_info_map_.end()) {
       if (j < original_provider_options_vector.size() && !original_provider_options_vector[j].empty()) {
         merged_options.push_back(original_provider_options_vector[j]);
       }
-    }else{
+    } else {
       ProviderOptions options = it->second.second;
       options.insert({kExecutionProviderSharedLibraryPath, it->second.first});
       if (j < original_provider_options_vector.size() && !original_provider_options_vector[j].empty()) {
-        for (auto [k, v] : original_provider_options_vector[j]){
+        for (auto [k, v] : original_provider_options_vector[j]) {
           options.insert({k, v});
         }
       }
@@ -345,6 +345,11 @@ std::unordered_map<std::string, std::unordered_map<std::string, py::object>> Con
   return py_tensor_state;
 }
 
+struct OrtDLManagedTensor {
+  OrtValue handle;
+  DLManagedTensor tensor;
+};
+
 void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn ep_registration_fn) {
   py::class_<std::vector<OrtValue>>(m, "OrtValueVector")
       .def(py::init<>())
@@ -357,16 +362,98 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
       .def("reserve", [](std::vector<OrtValue>* v, const size_t len) { v->reserve(len); })
       .def("shrink_to_fit", [](std::vector<OrtValue>* v) { v->shrink_to_fit(); })
       .def("__len__", [](const std::vector<OrtValue>& v) { return v.size(); })
-      .def("__iter__", [](const std::vector<OrtValue>& v) {
-        return py::make_iterator(v.cbegin(), v.cend());
-      },
-           py::keep_alive<0, 1>())
+      .def(
+          "__iter__", [](const std::vector<OrtValue>& v) {
+            return py::make_iterator(v.cbegin(), v.cend());
+          },
+          py::keep_alive<0, 1>())
       .def("__getitem__", [](const std::vector<OrtValue>& v, const size_t idx) {
         return v.at(idx);
       })
       .def("dlpack_at", [](std::vector<OrtValue>* v, const size_t idx) {
         return py::reinterpret_steal<py::object>(ToDlpack(v->at(idx)));
-      });
+      })
+      .def("to_dlpack", [](const std::vector<OrtValue>& v, py::object to_tensor) -> py::list {
+        if (v.size() == 0)
+          return py::list();
+
+        py::list res;
+
+        PyObject* capsule;
+        DLManagedTensor* dlmanaged_tensor;
+        PyObject* handle = to_tensor.ptr();
+        PyObject* obj;
+
+        py::gil_scoped_acquire acquire;
+
+#if true
+
+        OrtDLManagedTensor ort_dlmanaged_tensor;
+        capsule = PyCapsule_New(&ort_dlmanaged_tensor.tensor, "dltensor", NULL);
+        if (capsule == NULL)
+            throw std::runtime_error("Empty capsule returned.");
+
+        for (auto it : v) {
+          // The same capsule is reused but FromDLPack rename the capsule into used_dltensor.
+          PyCapsule_SetName(capsule, "dltensor");
+          dlmanaged_tensor = dlpack::OrtValueToDlpack(it, (void*)&ort_dlmanaged_tensor);
+          obj = PyObject_CallOneArg(handle, capsule);
+          if (obj == NULL)
+            throw std::runtime_error("Empty tensor returned.");
+          res.append(py::handle(obj));
+        }
+
+#else
+
+        // This piece of code must be removed when the PR is complete.
+        // It is less efficient because it creates a capsule every time a tensor
+        // ownership is transfered.
+
+        // The destructor can be local because it is only used within this function.
+        // The capsule used to share the dlpack structure from OrtValue to
+        // another library only remains alive in the same loop iteration.
+
+        auto destructor = [](PyObject* data) {
+          DLManagedTensor* dlmanged_tensor = reinterpret_cast<DLManagedTensor*>(
+              PyCapsule_GetPointer(data, "dltensor"));
+          if (dlmanged_tensor) {
+            // The dlmanged_tensor has not been consumed, call deleter ourselves.
+            dlmanged_tensor->deleter(const_cast<DLManagedTensor*>(dlmanged_tensor));
+          } else {
+            // The dlmanged_tensor has been consumed,
+            // PyCapsule_GetPointer has set an error indicator.
+            PyErr_Clear();
+          }
+        };
+
+        for (auto it : v) {
+          dlmanaged_tensor = dlpack::OrtValueToDlpack(it);
+          capsule = PyCapsule_New(dlmanaged_tensor, "dltensor", destructor);
+          if (capsule == NULL)
+            throw std::runtime_error("Empty capsule returned.");
+          obj = PyObject_CallOneArg(handle, capsule);
+          if (obj == NULL)
+            throw std::runtime_error("Empty tensor returned.");
+          res.append(py::handle(obj));
+        }
+
+#endif
+
+        return res;
+       },
+       R"pbdoc(Builds a list of all OrtValue converted into tensors using function to_tensor applied to the DLPack structure.
+:param to_tensor: this function takes a capsule holding a pointer onto a DLPack structure and returns
+    a new tensor which becomes the new owner of the data. This function takes one python object and
+    returns a new python object. It fits the same signature as `torch.utils.from_dlpack`.
+:return: a list containing the new tensors
+
+This method is used to replace `tuple(torch._C._from_dlpack(ov.to_dlpack()) for ov in ort_values)`
+by a faster instruction `tuple(ort_values.to_dlpack(torch._C._from_dlpack))`. This loop
+is difficult to parallelize as it goes through the GIL many times.
+It creates many tensors acquiring ownership of existing OrtValue.
+This method saves one object creation and an C++ allocation
+for every transfered tensor.
+)pbdoc");
 
   py::class_<OrtValueCache, OrtValueCachePtr>(m, "OrtValueCache")
       .def(py::init<>())
@@ -375,7 +462,7 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
       })
       .def("keys", [](const OrtValueCachePtr& cache_ptr) {
         py::list keys;
-        for(auto kv : *cache_ptr.get()) {
+        for (auto kv : *cache_ptr.get()) {
           keys.append(kv.first);
         }
         return keys;
@@ -783,7 +870,7 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
         [](const std::string& key, const std::vector<GradientNodeDefinition>& gradient_def) -> void {
           GradientDefinitionRegistry::Instance().Register(key, gradient_def);
         });
-  
+
   m.def("register_custom_stop_gradient_edges",
         [](const std::string& key, const std::unordered_set<size_t> edges) -> void {
           GradientDefinitionRegistry::Instance().SetStopGradientEdgesForNode(key, edges);

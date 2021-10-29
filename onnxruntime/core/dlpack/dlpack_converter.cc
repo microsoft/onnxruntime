@@ -197,12 +197,8 @@ bool IsContiguousTensor(const DLTensor& tensor) {
 
 }  // namespace
 
-// This function returns a pointer to DLManagedTensor constructed from an OrtValue
-// The OrtValue inside OrtDLManagedTensor will increase its own buffer's ref count by one
-// When the consumer of DLManagedTensor is done with the tensor, it should invoke the deleter.
-DLManagedTensor* OrtValueToDlpack(OrtValue& ort_value) {
-  ORT_ENFORCE(ort_value.IsTensor(), "Only tensor type OrtValues are supported");
-  OrtDLManagedTensor* ort_dlmanaged_tensor(new OrtDLManagedTensor);
+DLManagedTensor* OrtValueToDlpack(OrtValue& ort_value, /*OrtDLManagedTensor*/ void* void_ort_dlmanaged_tensor) {
+  OrtDLManagedTensor* ort_dlmanaged_tensor = (OrtDLManagedTensor*)void_ort_dlmanaged_tensor;
   Tensor& tensor = *ort_value.GetMutable<Tensor>();
   ort_dlmanaged_tensor->handle = ort_value;
   ort_dlmanaged_tensor->tensor.manager_ctx = ort_dlmanaged_tensor;
@@ -216,6 +212,15 @@ DLManagedTensor* OrtValueToDlpack(OrtValue& ort_value) {
   ort_dlmanaged_tensor->tensor.dl_tensor.strides = nullptr;
   ort_dlmanaged_tensor->tensor.dl_tensor.byte_offset = 0;
   return &(ort_dlmanaged_tensor->tensor);
+}
+
+// This function returns a pointer to DLManagedTensor constructed from an OrtValue
+// The OrtValue inside OrtDLManagedTensor will increase its own buffer's ref count by one
+// When the consumer of DLManagedTensor is done with the tensor, it should invoke the deleter.
+DLManagedTensor* OrtValueToDlpack(OrtValue& ort_value) {
+  ORT_ENFORCE(ort_value.IsTensor(), "Only tensor type OrtValues are supported");
+  OrtDLManagedTensor* ort_dlmanaged_tensor(new OrtDLManagedTensor);
+  return OrtValueToDlpack(ort_value, ort_dlmanaged_tensor);
 }
 
 OrtValue DlpackToOrtValue(DLManagedTensor* dlpack, bool is_bool_tensor) {

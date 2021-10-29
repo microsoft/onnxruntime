@@ -210,10 +210,18 @@ void addOrtValueMethods(pybind11::module& m) {
 #ifdef ENABLE_TRAINING
       .def("to_dlpack", [](OrtValue* ort_value) -> py::object {
         return py::reinterpret_steal<py::object>(ToDlpack(*ort_value));
-      })
+      }, "Returns a DLPack representing the tensor.")
       .def_static("from_dlpack", [](py::object data, bool is_bool_tensor = false) {
         return FromDlpack(data.ptr(), is_bool_tensor);
-      })
+      }, "Convers a tensor from a external library into an OrtValue by means of the __dlpack__ protocol.")
+      .def("__dlpack__", [](OrtValue* ort_value) -> py::object {
+        return py::reinterpret_steal<py::object>(ToDlpack(*ort_value));
+       }, "Returns a DLPack representing the tensor (part of __dlpack__ protocol).")
+      .def("__dlpack_device__", [](OrtValue* ort_value) -> py::tuple {
+        DLManagedTensor* dlmanaged_tensor = dlpack::OrtValueToDlpack(*ort_value);
+        return py::make_tuple((int)dlmanaged_tensor->dl_tensor.device.device_type,
+                              dlmanaged_tensor->dl_tensor.device.device_id);
+       }, "Returns a tuple of integers, (device, device index) (part of __dlpack__ protocol).")
 #endif
       ;
 }
