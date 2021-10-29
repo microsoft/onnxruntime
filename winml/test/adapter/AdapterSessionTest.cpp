@@ -27,7 +27,8 @@ using namespace winrt::Windows::Storage::Streams;
 
 namespace {
 winrt::com_ptr<_winml::OnnxruntimeEngineFactory> engine_factory;
-const OrtApi *ort_api;
+const OrtApi* ort_api;
+const OrtWinApi* ort_win_api;
 const WinmlAdapterApi *winml_adapter_api;
 OrtEnv* ort_env;
 
@@ -40,6 +41,7 @@ void AdapterSessionTestSetup() {
   WINML_EXPECT_HRESULT_SUCCEEDED(engine_factory->GetOrtEnvironment(&ort_env));
   WINML_EXPECT_NOT_EQUAL(nullptr, winml_adapter_api = engine_factory->UseWinmlAdapterApi());
   WINML_EXPECT_NOT_EQUAL(nullptr, ort_api = engine_factory->UseOrtApi());
+  WINML_EXPECT_NOT_EQUAL(nullptr, ort_win_api = engine_factory->UseOnnxruntimeWindowsApi());
 }
 
 void AdapterSessionTestTeardown() {

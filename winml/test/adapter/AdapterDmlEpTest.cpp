@@ -25,7 +25,7 @@ void AdapterDmlEpTestSetup() {
   GPUTEST;
   winrt::init_apartment();
   ort_api = OrtGetApiBase()->GetApi(2);
-  ort_win_api = OrtGetWindow(ort_api);
+  ort_win_api = OrtGetWindowsApi(ort_api);
   winml_adapter_api = OrtGetWinMLAdapter(ort_api);
   ort_api->CreateEnv(OrtLoggingLevel::ORT_LOGGING_LEVEL_VERBOSE, "Default", &ort_env);
 #ifdef BUILD_INBOX
@@ -147,8 +147,8 @@ void DmlCreateAndFreeGPUAllocationFromD3DResource() {
 
   auto d3d12_resource = CreateD3D12Resource(*device);
   void* dml_allocator_resource;
-  THROW_IF_NOT_OK_MSG(winml_adapter_api->DmlCreateGPUAllocationFromD3DResource(d3d12_resource.get(), &dml_allocator_resource), ort_api);
-  THROW_IF_NOT_OK_MSG(winml_adapter_api->DmlFreeGPUAllocation(dml_allocator_resource), ort_api);
+  THROW_IF_NOT_OK_MSG(ort_win_api->DmlCreateGPUAllocationFromD3DResource(d3d12_resource.get(), &dml_allocator_resource), ort_api);
+  THROW_IF_NOT_OK_MSG(ort_win_api->DmlFreeGPUAllocation(dml_allocator_resource), ort_api);
 }
 
 void DmlGetD3D12ResourceFromAllocation() {
@@ -158,7 +158,7 @@ void DmlGetD3D12ResourceFromAllocation() {
 
   auto d3d12_resource = CreateD3D12Resource(*device);
   void* gpu_allocation;
-  THROW_IF_NOT_OK_MSG(winml_adapter_api->DmlCreateGPUAllocationFromD3DResource(d3d12_resource.get(), &gpu_allocation), ort_api);
+  THROW_IF_NOT_OK_MSG(ort_win_api->DmlCreateGPUAllocationFromD3DResource(d3d12_resource.get(), &gpu_allocation), ort_api);
 
   auto session = CreateDmlSession();
   OrtExecutionProvider* ort_provider;
@@ -196,7 +196,7 @@ void GetAndFreeProviderAllocator() {
   THROW_IF_NOT_OK_MSG(ort_win_api->SessionGetExecutionProvider(session.get(), 0, &ort_provider), ort_api);
   OrtAllocator *allocator;
   THROW_IF_NOT_OK_MSG(ort_win_api->GetProviderAllocator(ort_provider, &allocator), ort_api);
-  auto unique_allocator = UniqueOrtAllocator(allocator, winml_adapter_api->FreeProviderAllocator);
+  auto unique_allocator = UniqueOrtAllocator(allocator, ort_win_api->FreeProviderAllocator);
 
   // Ensure allocation works
   void *data = nullptr;
