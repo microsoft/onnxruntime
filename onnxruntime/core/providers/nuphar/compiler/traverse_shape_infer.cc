@@ -45,7 +45,7 @@ static Status CreateOutputs(
     const std::vector<const ShapeExpr*>& inputs,
     std::vector<ShapeExpr>& outputs) {
   outputs.resize(node->OutputDefs().size());
-  node->ForEachWithIndex(
+  ORT_RETURN_IF_ERROR(node->ForEachWithIndex(
       node->OutputDefs(),
       [&](const NodeArg& def, size_t index) {
         auto shape_proto = def.Shape();
@@ -64,7 +64,7 @@ static Status CreateOutputs(
           outputs[index] = output_shape;
         }
         return Status::OK();
-      });
+      }));
   return Status::OK();
 }
 
@@ -87,7 +87,7 @@ Status ShapeInference(
     if(p_node == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "invalid node index");
     const Node& node = *p_node;
     // initializers
-    node.ForEachWithIndex(
+    ORT_RETURN_IF_ERROR(node.ForEachWithIndex(
         node.InputDefs(),
         [&graph, &context](const NodeArg& def, size_t) {
           ShapeExpr value;
@@ -95,13 +95,13 @@ Status ShapeInference(
             context.inputs.emplace(def.Name(), std::move(value));
           }
           return Status::OK();
-        });
+        }));
 
     // handle subgraph
     const Graph* subgraph = GetSubgraph(node);
     if (nullptr != subgraph) {
       GraphViewer subgraph_viewer(*subgraph);
-      ShapeInference(subgraph_viewer, context);
+      ORT_RETURN_IF_ERROR(ShapeInference(subgraph_viewer, context));
     }
 
     // collect inputs before creating outputs
@@ -116,12 +116,12 @@ Status ShapeInference(
     context.ops.emplace(&node, std::move(op_outputs));
 
     // recall input_from_
-    node.ForEachWithIndex(
+    ORT_RETURN_IF_ERROR(node.ForEachWithIndex(
         node.OutputDefs(),
         [&node, &context](const NodeArg& def, size_t index) {
           context.input_from.emplace(def.Name(), std::make_pair(&node, index));
           return Status::OK();
-        });
+        }));
   }
 
   return Status::OK();

@@ -300,7 +300,7 @@ namespace Dml
 
         for (auto& nodeToAdd : nodesToAdd)
         {
-            auto& node = graph->AddNode(
+            graph->AddNode(
                 nodeToAdd.name,
                 nodeToAdd.opType,
                 nodeToAdd.description,

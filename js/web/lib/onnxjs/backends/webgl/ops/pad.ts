@@ -22,31 +22,54 @@ const padProgramMetadata = {
   inputTypes: [TextureType.unpacked],
 };
 
-export const pad: OperatorImplementation<PadAttributes> =
+export const padV2: OperatorImplementation<PadAttributes> =
     (inferenceHandler: WebGLInferenceHandler, inputs: Tensor[], attributes: PadAttributes): Tensor[] => {
-      validateInputs(inputs);
+      validateInputsV2(inputs);
       const output = inferenceHandler.run(
           {
             ...padProgramMetadata,
             cacheHint: attributes.cacheKey,
-            get: () => createPadProgramInfo(inferenceHandler, inputs, attributes)
+            get: () => createPadProgramInfo(inferenceHandler, inputs[0], attributes)
           },
           inputs);
       return [output];
     };
 
-export const parsePadAttributes: OperatorInitialization<PadAttributes> = (node: Graph.Node): PadAttributes => {
+export const parsePadAttributesV2: OperatorInitialization<PadAttributes> = (node: Graph.Node): PadAttributes => {
   const mode = node.attributes.getString('mode', 'constant');
   const value = node.attributes.getFloat('value', 0.0);
   const pads = node.attributes.getInts('pads');
   return createAttributeWithCacheKey({mode, value, pads});
 };
 
+export const padV11: OperatorImplementation<string> =
+    (inferenceHandler: WebGLInferenceHandler, inputs: Tensor[], mode: string): Tensor[] => {
+      validateInputsV11(inputs);
+      const attrubutes = generatePadAttributesFromInputs(inferenceHandler, inputs, mode);
+      return padV2(inferenceHandler, [inputs[0]], attrubutes);
+    };
+
+export const parsePadAttributesV11: OperatorInitialization<string> = (node: Graph.Node): string =>
+    node.attributes.getString('mode', 'constant');
+
+const generatePadAttributesFromInputs =
+    (inferenceHandler: WebGLInferenceHandler, inputs: Tensor[], mode: string): PadAttributes => {
+      if (!inferenceHandler.session.isInitializer(inputs[1].dataId) ||
+          (inputs.length >= 3 && !inferenceHandler.session.isInitializer(inputs[2].dataId))) {
+        throw new Error('dynamic pad attributes are not allowed');
+      }
+
+      const pads = Array.from(inputs[1].integerData);
+      const value = (inputs.length >= 3) ? inputs[2].floatData[0] : 0.0;
+
+      return createAttributeWithCacheKey({mode, pads, value});
+    };
+
 const createPadProgramInfo =
-    (inferenceHandler: WebGLInferenceHandler, inputs: Tensor[], attributes: PadAttributes): ProgramInfo => {
-      const outputShape = ShapeUtil.padShape(inputs[0].dims.slice(), attributes.pads);
+    (inferenceHandler: WebGLInferenceHandler, input: Tensor, attributes: PadAttributes): ProgramInfo => {
+      const outputShape = ShapeUtil.padShape(input.dims.slice(), attributes.pads);
       const rank = outputShape.length;
-      const padFunction = getPadFunction(inferenceHandler, inputs[0], attributes);
+      const padFunction = getPadFunction(inferenceHandler, input, attributes);
       const shaderSource = `
       ${padFunction}
       float process(int[${rank}] indices) {
@@ -56,16 +79,28 @@ const createPadProgramInfo =
         name: 'Pad',
         inputNames: ['A'],
         inputTypes: [TextureType.unpacked],
-        output: {dims: outputShape, type: inputs[0].type, textureType: TextureType.unpacked},
+        output: {dims: outputShape, type: input.type, textureType: TextureType.unpacked},
         shaderSource
       };
     };
 
-const validateInputs = (inputs: Tensor[]): void => {
+const validateInputsV2 = (inputs: Tensor[]): void => {
   if (!inputs || inputs.length !== 1) {
     throw new Error('Pad requires 1 input');
   }
   if (inputs[0].type !== 'float32' && inputs[0].type !== 'float64') {
+    throw new Error('Invalid input type.');
+  }
+};
+
+const validateInputsV11 = (inputs: Tensor[]): void => {
+  if (!inputs || (inputs.length !== 2 && inputs.length !== 3)) {
+    throw new Error('Pad requires 2 or 3 inputs');
+  }
+  if (inputs[1].type !== 'int32') {
+    throw new Error('Invalid input type.');
+  }
+  if (inputs.length >= 3 && inputs[2].type === 'string') {
     throw new Error('Invalid input type.');
   }
 };

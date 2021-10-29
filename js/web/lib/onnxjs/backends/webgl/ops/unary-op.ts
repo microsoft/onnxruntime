@@ -4,6 +4,7 @@
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../../../attribute-with-cache-key';
 import {Graph} from '../../../graph';
 import {Tensor} from '../../../tensor';
+import {MAX_CLIP, MIN_CLIP} from '../../../util';
 import {FunctionType, GlslValueFunction} from '../glsl-definitions';
 import {getGlsl} from '../glsl-source';
 import {WebGLInferenceHandler} from '../inference-handler';
@@ -237,10 +238,24 @@ export const clip =
             handler, inputs[0], glslClip(attributes.min, attributes.max), attributes.cacheKey),
         inputs)];
 
-export const parseClipAttributes = (node: Graph.Node): ClipAttributes => createAttributeWithCacheKey({
-  min: node.attributes.getFloat('min', -3.4028234663852886e+38),
-  max: node.attributes.getFloat('max', 3.4028234663852886e+38)
-});
+export const parseClipAttributes = (node: Graph.Node): ClipAttributes => createAttributeWithCacheKey(
+    {min: node.attributes.getFloat('min', MIN_CLIP), max: node.attributes.getFloat('max', MAX_CLIP)});
+
+export const clipV11 = (handler: WebGLInferenceHandler, inputs: Tensor[]): Tensor[] => {
+  const attributes = generateClipAttributesFromInputs(handler, inputs);
+  return clip(handler, [inputs[0]], attributes);
+};
+
+const generateClipAttributesFromInputs = (handler: WebGLInferenceHandler, inputs: Tensor[]): ClipAttributes => {
+  if (inputs.length >= 3 &&
+      (!handler.session.isInitializer(inputs[1].dataId) || !handler.session.isInitializer(inputs[2].dataId))) {
+    throw new Error('dynamic clip attributes are not allowed');
+  }
+
+  const min = (inputs.length >= 3) ? inputs[1].numberData[0] : MIN_CLIP;
+  const max = (inputs.length >= 3) ? inputs[2].numberData[0] : MAX_CLIP;
+  return createAttributeWithCacheKey({min, max});
+};
 
 export const ceil = (handler: WebGLInferenceHandler, inputs: Tensor[]):
     Tensor[] => [handler.run(createElementwiseProgramInfoLoader(handler, inputs[0], glslCeil()), inputs)];

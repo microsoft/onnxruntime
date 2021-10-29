@@ -67,11 +67,13 @@ class _FallbackManager(object):
     '''
 
     def __init__(self,
+                 pytorch_module: torch.nn.Module,
                  policy: _FallbackPolicy,
                  retry: bool):
 
-        # Read policy from environment variable for testing purposes
+        self._original_module = pytorch_module
 
+        # Read policy from environment variable for testing purposes
         policy = os.getenv('ORTMODULE_FALLBACK_POLICY', policy)
         if isinstance(policy, str):
             policy = _FallbackPolicy[policy]
@@ -127,6 +129,15 @@ class _FallbackManager(object):
                 if log_level <= _logger.LogLevel.INFO:
                     warnings.warn(
                         f'Fallback for policy {policy.name} is pending.', UserWarning)
+
+                # ORTModuleInitException exceptions do not call `fallback()` through `GraphExecutionManager`,
+                # Instead, it fallbacks to PyTorch implicitly through `ORTModule._torch_module = TorchModulePytorch(module)`
+                if log_level <= _logger.LogLevel.WARNING and policy == _FallbackPolicy.FALLBACK_BAD_INITIALIZATION:
+                    warnings.warn(
+                        (f'Fallback to PyTorch due to exception {type(exception)} was triggered. '
+                        'Report this issue with a minimal repro at https://www.github.com/microsoft/onnxruntime. '
+                        f'See details below:\n\n{_utils.get_exception_as_string(exception)}'), UserWarning)
+
                 self._exception = exception
 
         if override_policy is None:
@@ -147,7 +158,7 @@ class _FallbackManager(object):
 
         return self._exception is not None
 
-    def fallback(self, model: torch.nn.Module, log_level: _logger.LogLevel, *inputs, **kwargs):
+    def fallback(self, log_level: _logger.LogLevel, *inputs, **kwargs):
         '''Executes user PyTorch `model` using the provided inputs and return the result'''
 
         assert self.is_pending(), '`fallback` can only be called when there is a pending fallback'
@@ -161,4 +172,4 @@ class _FallbackManager(object):
         # Pending fallbacks are resetted to enforce retries
         if self.retry:
             self._exception = None
-        return model(*inputs, **kwargs)
+        return self._original_module(*inputs, **kwargs)

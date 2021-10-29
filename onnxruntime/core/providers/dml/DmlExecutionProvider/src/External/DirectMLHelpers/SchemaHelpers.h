@@ -159,13 +159,13 @@ namespace SchemaHelpers
     {
         size_t dimensionCount = src.sizes.size();
 
-        auto* sizes = allocator->Allocate<UINT>(dimensionCount);
+        auto* sizes = allocator->template Allocate<UINT>(dimensionCount);
         std::copy_n(src.sizes.begin(), dimensionCount, sizes);
 
         UINT* strides = nullptr;
         if (src.strides)
         {
-            strides = allocator->Allocate<UINT>(dimensionCount);
+            strides = allocator->template Allocate<UINT>(dimensionCount);
             std::copy_n(src.strides->begin(), dimensionCount, strides);
         }
 
@@ -183,7 +183,7 @@ namespace SchemaHelpers
     template <size_t N>
     DML_TENSOR_DESC MakeTensorDesc(const DmlBufferTensorDesc& src, StackAllocator<N>* allocator)
     {
-        auto* desc = allocator->Allocate<DML_BUFFER_TENSOR_DESC>();
+        auto* desc = allocator->template Allocate<DML_BUFFER_TENSOR_DESC>();
         *desc = MakeBufferTensorDesc(src, allocator);
 
         DML_TENSOR_DESC dst;
@@ -209,7 +209,7 @@ namespace SchemaHelpers
             const auto& value = field.AsTensorDesc();
             if (value)
             {
-                desc = allocator->Allocate<DML_TENSOR_DESC>();
+                desc = allocator->template Allocate<DML_TENSOR_DESC>();
                 *desc = MakeTensorDesc(*value, allocator);
             }
 
@@ -223,7 +223,7 @@ namespace SchemaHelpers
             const auto& values = field.AsTensorDescArray();
             if (values)
             {
-                descs = allocator->Allocate<DML_TENSOR_DESC>(values->size());
+                descs = allocator->template Allocate<DML_TENSOR_DESC>(values->size());
                 for (size_t i = 0; i < values->size(); ++i)
                 {
                     descs[i] = MakeTensorDesc((*values)[i], allocator);
@@ -240,7 +240,7 @@ namespace SchemaHelpers
             const auto& value = field.AsOperatorDesc();
             if (value)
             {
-                desc = allocator->Allocate<DML_OPERATOR_DESC>();
+                desc = allocator->template Allocate<DML_OPERATOR_DESC>();
                 *desc = ConvertOperatorDesc(*value, allocator);
             }
 
@@ -254,7 +254,7 @@ namespace SchemaHelpers
             const auto& values = field.AsOperatorDescArray();
             if (values)
             {
-                descs = allocator->Allocate<DML_OPERATOR_DESC>(values->size());
+                descs = allocator->template Allocate<DML_OPERATOR_DESC>(values->size());
                 for (size_t i = 0; i < values->size(); ++i)
                 {
                     descs[i] = ConvertOperatorDesc((*values)[i], allocator);
@@ -295,7 +295,7 @@ namespace SchemaHelpers
             const auto& values = field.AsUIntArray();
             if (values)
             {
-                arrayPtr = allocator->Allocate<uint32_t>(values->size());
+                arrayPtr = allocator->template Allocate<uint32_t>(values->size());
                 std::copy(values->begin(), values->end(), arrayPtr);
             }
 
@@ -309,7 +309,7 @@ namespace SchemaHelpers
             const auto& values = field.AsIntArray();
             if (values)
             {
-                arrayPtr = allocator->Allocate<int32_t>(values->size());
+                arrayPtr = allocator->template Allocate<int32_t>(values->size());
                 std::copy(values->begin(), values->end(), arrayPtr);
             }
 
@@ -323,7 +323,7 @@ namespace SchemaHelpers
             const auto& values = field.AsFloatArray();
             if (values)
             {
-                arrayPtr = allocator->Allocate<float>(values->size());
+                arrayPtr = allocator->template Allocate<float>(values->size());
                 std::copy(values->begin(), values->end(), arrayPtr);
             }
 
@@ -337,7 +337,7 @@ namespace SchemaHelpers
             const auto& value = field.AsScaleBias();
             if (value)
             {
-                scaleBias = allocator->Allocate<DML_SCALE_BIAS>();
+                scaleBias = allocator->template Allocate<DML_SCALE_BIAS>();
                 *scaleBias = *value;
             }
 
@@ -374,7 +374,7 @@ namespace SchemaHelpers
         });
 
         // Allocate a blob of bytes to hold the struct
-        byte* abiDesc = allocator->Allocate<byte>(abiDescSizeInBytes);
+        byte* abiDesc = allocator->template Allocate<byte>(abiDescSizeInBytes);
 
         // Use the schema to write data into the blob
 

@@ -212,11 +212,12 @@ namespace Dml
                     }
                 }
 
+                auto aux = contextWrapper.GetOutputTensors(m_outputShapes);
                 ExecuteOperator(
                     m_compiledExecutionPlanOperator.Get(),
                     m_persistentResourceBinding ? &*m_persistentResourceBinding : nullptr,
                     inputPtrs,
-                    contextWrapper.GetOutputTensors(m_outputShapes));
+                    aux);
 
                 THROW_IF_FAILED(m_provider->AddUAVBarrier());
                 
@@ -258,7 +259,7 @@ namespace Dml
                 }
             };
 
-            auto FillBindingsFromBuffers = [this](auto& bufferBindings, auto& bindingDescs,  gsl::span<ID3D12Resource*>& resources)
+            auto FillBindingsFromBuffers = [](auto& bufferBindings, auto& bindingDescs,  gsl::span<ID3D12Resource*>& resources)
             {
                 for (ID3D12Resource* resource : resources)
                 {
@@ -483,7 +484,7 @@ namespace Dml
         const void* m_executionHandle = nullptr;
         ComPtr<IWinmlExecutionProvider> m_winmlProvider;
         ComPtr<Dml::IExecutionProvider> m_provider;
-        EdgeShapes m_outputShapes;
+        Windows::AI::MachineLearning::Adapter::EdgeShapes m_outputShapes;
 
         // Re-usable command list, supporting descriptor heap, and DML binding table to update that heap.
         ComPtr<ID3D12GraphicsCommandList> m_graphicsCommandList;
