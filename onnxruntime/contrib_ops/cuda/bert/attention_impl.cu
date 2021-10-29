@@ -324,7 +324,7 @@ bool DecoderQkvToContext(
 
   if (nullptr != key_padding_mask) {
     if (!ComputeSoftmaxWithRawMask<T>(stream, kv_sequence_length, sequence_length, batch_size, num_heads, nullptr, key_padding_mask, nullptr, scratch1, scratch2,
-        false, rsqrt_head_size, 2, static_cast<int>(0), false, nullptr)) {
+        false, 1, 2, static_cast<int>(0), false, nullptr)) {
       return false;
     }
   } else {

@@ -123,6 +123,7 @@ Status DecoderAttention<T>::ComputeInternal(OpKernelContext* context) const {
           reinterpret_cast<const CudaT*>(query->template Data<T>()), k,
           &one, reinterpret_cast<CudaT*>(gemm_query_buffer_p.get()), n, device_prop));
       // gemm_query_buffer in col-base: (h2, S*B)
+
       // Calculate k, v
       gemm_kv_buffer_p = GetScratchBuffer<T>(batch_size * 2 * key_sequence_length * hidden_size * element_size);
       m = key_sequence_length * batch_size;
@@ -137,7 +138,7 @@ Status DecoderAttention<T>::ComputeInternal(OpKernelContext* context) const {
       // matmul: (2*h2, h1)*(h1, T_S*B)
       CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
           cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, k, &one,
-          reinterpret_cast<const CudaT*>(weights->template Data<T>() + hidden_size * hidden_size), n,
+          reinterpret_cast<const CudaT*>(weights->template Data<T>() + hidden_size * hidden_size), n, // bugbug: there is a bug in spliting the weight
           reinterpret_cast<const CudaT*>(key->template Data<T>()), k,
           &one, reinterpret_cast<CudaT*>(gemm_kv_buffer_p.get()), n, device_prop));
       // gemm_kv_buffer in col-base: (2*h2, T_S*B)

@@ -161,7 +161,7 @@ bool LaunchTransCtx(cudaStream_t stream,
 template <typename T>
 __global__ void TransposeQKV(const int H, const bool reversed_bs, const T* input, T* output) {
   // Input:  BxSxKxNxH or SxBxKxNxH
-  // Output: KxBxxSxH
+  // Output: KxBxNxSxH
   // K is the number of identical matrix
 
   int n = threadIdx.y;
@@ -197,7 +197,7 @@ __global__ void TransposeQKVLarge(const int H, const bool reversed_bs, const T* 
   // Use when (H*)*num_heads > 1024
 
   // Input:  BxSxKxNxH or SxBxKxNxH
-  // Output: KxBxxSxH
+  // Output: KxBxNxSxH
   // K is the number of identical matrix
 
   int n = threadIdx.y;

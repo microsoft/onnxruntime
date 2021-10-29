@@ -534,11 +534,15 @@ void AttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, int p
 void DecoderAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
   // Type inference
   ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
-  if (ctx.getNumOutputs() > 1 && ctx.getNumInputs() > 5) {
-    ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 5, 1);
-    ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 5, 2);
+  // This is not correct because sometime there is cache output but no cache input
+  // if (ctx.getNumOutputs() > 1 && ctx.getNumInputs() > 5) {
+  //   ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 5, 1);
+  //   ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 5, 2);
+  // }
+  if (ctx.getNumOutputs() > 1) {
+    ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 1);
+    ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 2);
   }
-
   // Shape inference
   // TODO
 }
