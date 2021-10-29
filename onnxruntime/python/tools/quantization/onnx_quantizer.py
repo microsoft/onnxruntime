@@ -698,8 +698,7 @@ class ONNXQuantizer:
         '''
             :param weight: TensorProto initializer
             :param qType: type to quantize to
-            :param add_weight_initializer: whether to quantize the weight.
-                                           Under some condition, we only want to qunatize scale and zero point.
+            :param add_weight_initializer: whether to quantize the weight. In some cases, we only want to qunatize scale and zero point.
             :return: quantized weight name, zero point name, scale name
         '''
         # Find if this input is already quantized
