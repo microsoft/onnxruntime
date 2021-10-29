@@ -4,11 +4,11 @@
 #pragma once
 
 namespace onnxruntime {
-namespace deep_speed {
 namespace cuda {
+namespace deep_speed {
 
 Status RegisterDeepSpeedKernels(KernelRegistry& kernel_registry);
 
-}  // namespace cuda
 }  // namespace deep_speed
+}  // namespace cuda
 }  // namespace onnxruntime

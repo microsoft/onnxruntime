@@ -2092,7 +2092,7 @@ std::shared_ptr<KernelRegistry> CUDAExecutionProvider::GetDeepSpeedKernelRegistr
 #ifdef ENABLE_DEEP_SPEED_CUDA_KERNELS
   if (!deep_speed_kernel_registry) {
     deep_speed_kernel_registry = KernelRegistry::Create();
-    auto status = deep_speed::cuda::RegisterDeepSpeedKernels(*deep_speed_kernel_registry);
+    auto status = cuda::deep_speed::RegisterDeepSpeedKernels(*deep_speed_kernel_registry);
     if (!status.IsOK())
       deep_speed_kernel_registry.reset();
     ORT_THROW_IF_ERROR(status);
