@@ -538,7 +538,7 @@ class PlannerImpl {
 
       // increment UseCount and add location information if applicable for the provided input def
       auto process_input = [&graph_inputs, &exec_provider, &p_kernel_def, &is_implicit_input,
-                            &set_node_arg_has_explicit_consumer,
+                            &set_node_arg_has_explicit_consumer, &pnode,
                             this](const NodeArg& input, size_t arg_idx) {
         const auto& name = input.Name();
         UseCount(name)++;
@@ -558,7 +558,7 @@ class PlannerImpl {
           OrtValueIndex index = Index(name);
 
           if (!is_implicit_input) {
-            OrtMemType mem_type = p_kernel_def->InputMemoryType(arg_idx);
+            OrtMemType mem_type = utils::InputMemoryType(*pnode, *p_kernel_def, arg_idx);
             plan_.SetLocation(static_cast<size_t>(index), exec_provider->GetAllocator(0, mem_type)->Info());
             set_node_arg_has_explicit_consumer.insert(index);
           } else {  // implicit input

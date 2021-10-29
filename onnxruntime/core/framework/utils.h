@@ -106,6 +106,7 @@ common::Status ExecuteSubgraph(const SessionState& session_state, const FeedsFet
                                ExecutionMode execution_mode, const bool& terminate_flag, const logging::Logger& logger);
 
 bool IsInputOnCpu(const Node& node, const KernelCreateInfo* p_kci, size_t index);
+OrtMemType InputMemoryType(const Node& node, const KernelDef& kernel_def, size_t index);
 
 template <typename T>
 constexpr ONNXTensorElementDataType GetONNXTensorElementDataType() {

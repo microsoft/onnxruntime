@@ -806,12 +806,8 @@ common::Status VerifyInputTensorsAllocatedContiguously(OpKernelContext* context)
 }
 #endif
 
-bool IsInputOnCpu(const Node& node, const KernelCreateInfo* p_kci, size_t index) {
-  if (p_kci && p_kci->kernel_def->IsInputOnCpu(index)) {
-    return true;
-  }
-
 #ifdef ENABLE_TRAINING
+bool IsATenOpNonTensorArgument(const Node& node, size_t index) {
   if (node.GetExecutionProviderType() == kCudaExecutionProvider && node.OpType() == "ATenOp" && node.Domain() == kMSDomain) {
     const auto& attrs = node.GetAttributes();
     ORT_ENFORCE(utils::HasString(attrs.at("name")));
@@ -823,11 +819,37 @@ bool IsInputOnCpu(const Node& node, const KernelCreateInfo* p_kci, size_t index)
 
     return !contrib::aten_ops::ATenOperatorExecutor::Instance().IsTensorArgument(op_name, overload_name, index);
   }
+
+  return false;
+}
+#endif
+
+bool IsInputOnCpu(const Node& node, const KernelCreateInfo* p_kci, size_t index) {
+  if (p_kci && p_kci->kernel_def->IsInputOnCpu(index)) {
+    return true;
+  }
+
+#ifdef ENABLE_TRAINING
+  if (IsATenOpNonTensorArgument(node, index)) {
+    return true;
+  }
 #else
   ORT_UNUSED_PARAMETER(node);
 #endif
 
   return false;
+}
+
+OrtMemType InputMemoryType(const Node& node, const KernelDef& kernel_def, size_t index) {
+#ifdef ENABLE_TRAINING
+  if (IsATenOpNonTensorArgument(node, index)) {
+    return OrtMemTypeCPUInput;
+  }
+#else
+  ORT_UNUSED_PARAMETER(node);
+#endif
+
+  return kernel_def.InputMemoryType(index);
 }
 
 }  // namespace utils

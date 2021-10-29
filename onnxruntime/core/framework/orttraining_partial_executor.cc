@@ -266,7 +266,7 @@ Status PartialExecutor::Execute(const SessionState& session_state, const std::ve
         Fence_t fence = op_kernel_context.InputFence(input_index);
         if (fence) {
           auto execution_provider_type = p_op_kernel->Node().GetExecutionProviderType();
-          if (OrtMemTypeCPUInput == p_op_kernel->KernelDef().InputMemoryType(input_index)) {
+          if (OrtMemTypeCPUInput == utils::InputMemoryType(node, p_op_kernel->KernelDef(), input_index)) {
             execution_provider_type = kCpuExecutionProvider;
           }
           fence->BeforeUsingAsInput(execution_provider_type, queue_id);
