@@ -10,7 +10,7 @@
 
 import torch
 from numpy import inf
-from .multi_tensor_apply import MultiTensorApply
+from ._multi_tensor_apply import MultiTensorApply
 multi_tensor_applier = MultiTensorApply(2048 * 32)
 
 class FP16OptimizerModifier(object):
@@ -26,6 +26,7 @@ class FP16OptimizerModifier(object):
         try:
             if require_apex is True:
                 import amp_C
+                from apex import amp
             if require_torch_non_finite_check is True:
                 _ = torch._amp_foreach_non_finite_check_and_unscale_
         except Exception as _:

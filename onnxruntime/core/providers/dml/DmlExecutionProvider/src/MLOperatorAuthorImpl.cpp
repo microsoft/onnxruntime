@@ -16,6 +16,8 @@ using namespace Microsoft::WRL;
 namespace Windows::AI::MachineLearning::Adapter
 {
 
+#pragma warning(push)
+#pragma warning(disable:4702)
 size_t AttributeValue::ElementCount() const {
   switch (type) {
     case MLOperatorAttributeType::Float:
@@ -43,15 +45,17 @@ size_t AttributeValue::ElementCount() const {
       // The type is validated when default attributes are registered
       assert(false);
       THROW_HR(E_FAIL);
+      return 0;
   }
+  #pragma warning(pop)
 }
 
 void AttributeValue::GetAttribute(
-    MLOperatorAttributeType type,
+    MLOperatorAttributeType attributeType,
     uint32_t elementCount,
     size_t elementByteSize,
     void* value) const {
-  switch (type) {
+  switch (attributeType) {
     case MLOperatorAttributeType::Float:
       ML_CHECK_BOOL(floats.size() == 1);
       __fallthrough;
@@ -76,7 +80,7 @@ void AttributeValue::GetAttribute(
 }
 
 const std::string* AttributeValue::GetStringAttribute(
-    _In_z_ const char* name,
+    _In_z_ const char* attributeName,
     uint32_t elementIndex) const {
   ML_CHECK_BOOL((type == MLOperatorAttributeType::String && elementIndex == 0 && strings.size() == 1) ||
                 (type == MLOperatorAttributeType::StringArray && elementIndex < strings.size()));
@@ -177,6 +181,7 @@ onnx::AttributeProto_AttributeType ToProto(MLOperatorAttributeType type) {
       return MLAttributeTypeTraits<MLOperatorAttributeType::Int>::ProtoType;
     case MLOperatorAttributeType::FloatArray:
       return MLAttributeTypeTraits<MLOperatorAttributeType::FloatArray>::ProtoType;
+    #pragma warning(suppress:4063)
     case MLOperatorAttributeTypeTensor:
       return MLAttributeTypeTraits<MLOperatorAttributeTypeTensor>::ProtoType;
     case MLOperatorAttributeType::IntArray:
@@ -209,16 +214,13 @@ bool IsPrimitiveAttributeType(MLOperatorAttributeType type) {
   }
 }
 
-template <>
-struct MLTypeTraits<onnxruntime::MLFloat16> {
-  static const MLOperatorTensorDataType TensorType = MLOperatorTensorDataType::Float16;
-};
-
 #define ML_TENSOR_TYPE_CASE(x)          \
   if (onnxruntime::utils::IsPrimitiveDataType<x>(type)) { \
     return MLTypeTraits<x>::TensorType; \
   }
 
+#pragma warning(push)
+#pragma warning(disable:4702)
 ::MLOperatorTensorDataType ToMLTensorDataType(onnxruntime::MLDataType type) {
   if (onnxruntime::utils::IsDataTypeString(type)) {
     return MLOperatorTensorDataType::String;
@@ -238,6 +240,8 @@ struct MLTypeTraits<onnxruntime::MLFloat16> {
   ML_TENSOR_TYPE_CASE(onnxruntime::MLFloat16);
 
   THROW_HR(E_NOTIMPL);
+  return MLOperatorTensorDataType::Undefined;
+ #pragma warning(pop)
 }
 
 #undef ML_TENSOR_TYPE_CASE
@@ -246,6 +250,8 @@ struct MLTypeTraits<onnxruntime::MLFloat16> {
     return onnxruntime::DataTypeImpl::GetTensorType<x>(); \
   }
 
+#pragma warning(push)
+#pragma warning(disable:4702)
 onnxruntime::MLDataType ToTensorDataType(::MLOperatorTensorDataType type) {
   if (type == MLOperatorTensorDataType::String)
     return onnxruntime::DataTypeImpl::GetTensorType<std::string>();
@@ -264,8 +270,12 @@ onnxruntime::MLDataType ToTensorDataType(::MLOperatorTensorDataType type) {
   ML_TENSOR_TYPE_CASE(onnxruntime::MLFloat16);
 
   THROW_HR(E_NOTIMPL);
+  return onnxruntime::DataTypeImpl::GetTensorType<float>();
+#pragma warning(pop)
 }
 
+#pragma warning(push)
+#pragma warning(disable:4702)
 ::MLOperatorTensorDataType ToMLTensorDataType(onnx::TensorProto_DataType type) {
   switch (type) {
     case onnx::TensorProto_DataType_FLOAT:
@@ -315,7 +325,9 @@ onnxruntime::MLDataType ToTensorDataType(::MLOperatorTensorDataType type) {
 
     default:
       THROW_HR(E_NOTIMPL);
+      return MLOperatorTensorDataType::Undefined;
   }
+#pragma warning(pop)
 }
 
 ::MLOperatorEdgeDescription ToMLEdgeDesc(const onnx::TypeProto* type) {
@@ -336,6 +348,8 @@ onnxruntime::MLDataType ToTensorDataType(::MLOperatorTensorDataType type) {
   return ret;
 }
 
+#pragma warning(push)
+#pragma warning(disable:4702)
 std::string ToTypeString(MLOperatorEdgeDescription desc) {
   if (desc.edgeType != MLOperatorEdgeType::Tensor) {
     THROW_HR(E_NOTIMPL);
@@ -389,7 +403,9 @@ std::string ToTypeString(MLOperatorEdgeDescription desc) {
 
     default:
       THROW_HR(E_NOTIMPL);
+      return "";
   }
+#pragma warning(pop)
 }
 
 OpKernelInfoWrapper::OpKernelInfoWrapper(
@@ -475,7 +491,7 @@ HRESULT STDMETHODCALLTYPE OpNodeInfoWrapper<NodeInfoImpl_t, Base1_t, Base2_t>::G
     MLOperatorAttributeType type,
     uint32_t elementCount,
     size_t elementByteSize,
-    void* value) const noexcept try {
+    /*out*/void* attributeValue) const noexcept try {
   VerifyNotClosed();
 
   // Look for a value in the kernel's registered defaults if one does not exist otherwise
@@ -489,22 +505,22 @@ HRESULT STDMETHODCALLTYPE OpNodeInfoWrapper<NodeInfoImpl_t, Base1_t, Base2_t>::G
       THROW_HR(E_FAIL);
     }
 
-    defaultAttr->second.GetAttribute(type, elementCount, elementByteSize, value);
+    defaultAttr->second.GetAttribute(type, elementCount, elementByteSize, /*out*/attributeValue);
   } else {
     switch (type) {
       case MLOperatorAttributeType::Float:
         ML_CHECK_BOOL(elementCount == 1);
-        return GetAttributeHelper<MLOperatorAttributeType::Float>(name, static_cast<uint32_t>(elementByteSize), value);
+        return GetAttributeHelper<MLOperatorAttributeType::Float>(name, static_cast<uint32_t>(elementByteSize), /*out*/attributeValue);
 
       case MLOperatorAttributeType::Int:
         ML_CHECK_BOOL(elementCount == 1);
-        return GetAttributeHelper<MLOperatorAttributeType::Int>(name, static_cast<uint32_t>(elementByteSize), value);
+        return GetAttributeHelper<MLOperatorAttributeType::Int>(name, static_cast<uint32_t>(elementByteSize), /*out*/attributeValue);
 
       case MLOperatorAttributeType::FloatArray:
-        return GetAttributeArrayHelper<MLOperatorAttributeType::FloatArray>(name, elementCount, static_cast<uint32_t>(elementByteSize), value);
+        return GetAttributeArrayHelper<MLOperatorAttributeType::FloatArray>(name, elementCount, static_cast<uint32_t>(elementByteSize), /*out*/attributeValue);
 
       case MLOperatorAttributeType::IntArray:
-        return GetAttributeArrayHelper<MLOperatorAttributeType::IntArray>(name, elementCount, static_cast<uint32_t>(elementByteSize), value);
+        return GetAttributeArrayHelper<MLOperatorAttributeType::IntArray>(name, elementCount, static_cast<uint32_t>(elementByteSize), /*out*/attributeValue);
 
       default:
         ML_CHECK_BOOL(false);
@@ -594,7 +610,7 @@ HRESULT OpNodeInfoWrapper<NodeInfoImpl_t, Base1_t, Base2_t>::GetAttributeHelper(
     uint32_t elementByteSize,
     void* value) const {
   using elementType_t = typename MLAttributeTypeTraits<T>::Type;
-  static_assert(!typename MLAttributeTypeTraits<T>::IsArray, "This function only works for simple non-array types.");
+  static_assert(!MLAttributeTypeTraits<T>::IsArray, "This function only works for simple non-array types.");
   ML_CHECK_BOOL(sizeof(elementType_t) == elementByteSize);
   THROW_IF_NOT_OK(m_impl->template GetAttr<elementType_t>(name, static_cast<elementType_t*>(value)));
   return S_OK;
@@ -1740,19 +1756,26 @@ void InferAndVerifyOutputSizes(
   }
 }
 
+ComPtr<MLSchemaInferenceContext> MLSchemaInferenceContext::Create(onnxruntime::OpNodeProtoHelper<onnx::InferenceContext>* info, 
+        onnx::InferenceContext* ctx,
+        gsl::span<const uint32_t> requiredConstantCpuInputs) {
+    MLOperatorTensorGetter mlOperatorTensorGetter = MLOperatorTensorGetter([ctx](uint32_t index) {
+                    Microsoft::WRL::ComPtr<IMLOperatorTensor> tensorWrapper = wil::MakeOrThrow<OnnxTensorWrapper>(
+                                                const_cast<onnx::TensorProto*>(ctx->getInputData(index)));
+                    return tensorWrapper;
+                });
+
+    return wil::MakeOrThrow<MLSchemaInferenceContext>(info, ctx, requiredConstantCpuInputs, mlOperatorTensorGetter);
+}
+
 MLSchemaInferenceContext::MLSchemaInferenceContext(
     onnxruntime::OpNodeProtoHelper<onnx::InferenceContext>* info,
     onnx::InferenceContext* ctx,
-    gsl::span<const uint32_t> requiredConstantCpuInputs) : OpNodeInfoWrapper(info,
-                                                                             nullptr,
-                                                                             nullptr,
-                                                                             requiredConstantCpuInputs,
-                                                                             MLOperatorTensorGetter([ctx](uint32_t index) {
-                                                                               Microsoft::WRL::ComPtr<IMLOperatorTensor> tensorWrapper = wil::MakeOrThrow<OnnxTensorWrapper>(
-                                                                                   const_cast<onnx::TensorProto*>(ctx->getInputData(index)));
-                                                                               return tensorWrapper;
-                                                                             })),
-                                                           m_context(ctx) {
+    gsl::span<const uint32_t> requiredConstantCpuInputs,
+    MLOperatorTensorGetter& mLOperatorTensorGetter) : OpNodeInfoWrapper(info, nullptr, nullptr, 
+                                                        requiredConstantCpuInputs, mLOperatorTensorGetter),
+                                                        m_context(ctx)
+{
 }
 
 HRESULT STDMETHODCALLTYPE MLSchemaInferenceContext::SetOutputTensorShape(
@@ -1805,10 +1828,17 @@ HRESULT STDMETHODCALLTYPE MLKernelInferenceContext::SetOutputTensorShape(
 }
 CATCH_RETURN();
 
+ComPtr<MLSupportQueryContext> MLSupportQueryContext::Create(onnxruntime::OpNodeProtoHelper<onnxruntime::ProtoHelperNodeContext>* info,
+            const AttributeMap* defaultAttributes) {
+    MLOperatorTensorGetter mLOperatorTensorGetter = MLOperatorTensorGetter();
+    return wil::MakeOrThrow<MLSupportQueryContext>(info, defaultAttributes, mLOperatorTensorGetter);
+}
+
 MLSupportQueryContext::MLSupportQueryContext(
         onnxruntime::OpNodeProtoHelper<onnxruntime::ProtoHelperNodeContext>* info,
-        const AttributeMap* defaultAttributes) : 
-    OpNodeInfoWrapper(info, nullptr, defaultAttributes, gsl::span<const uint32_t>(), MLOperatorTensorGetter())
+        const AttributeMap* defaultAttributes,
+        MLOperatorTensorGetter& mLOperatorTensorGetter) : 
+    OpNodeInfoWrapper(info, nullptr, defaultAttributes, gsl::span<const uint32_t>(), mLOperatorTensorGetter)
 {
 }
 
@@ -1880,7 +1910,7 @@ bool ContainsEmptyDimensions(const EdgeShapes& shapes, gsl::span<const uint32_t>
   for (size_t i = 0; i < shapes.EdgeCount(); i++) {
     const std::vector<uint32_t>& shape = shapes.GetShape(i);
 
-    if (std::find(shape.begin(), shape.end(), 0) != shape.end() && 
+    if (std::find(shape.begin(), shape.end(), 0u) != shape.end() && 
         std::find(ignoredShapeIndices.begin(), ignoredShapeIndices.end(), i) == ignoredShapeIndices.end()) {
           return true;
     }

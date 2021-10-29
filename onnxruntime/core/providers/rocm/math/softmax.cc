@@ -199,15 +199,11 @@ Status Softmax<T>::ComputeInternal(OpKernelContext* ctx) const {
     return status;
 
   if (is_transpose_required) {
-    std::vector<size_t> reverse_permutation(rank);
-    for (size_t i = 0, end = permutation.size(); i < end; ++i) {
-      reverse_permutation[permutation[i]] = i;
-    }
     // Perform the transpose to get the axes back to the original ordering
     ORT_RETURN_IF_ERROR(Transpose::DoTranspose(rocm_ep_->GetDeviceProp(),
                                                Stream(),
                                                RocblasHandle(),
-                                               reverse_permutation, *intermediate_output, *Y));
+                                               permutation, *intermediate_output, *Y));
   }
 
   return Status::OK();

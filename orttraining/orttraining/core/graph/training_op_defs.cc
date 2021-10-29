@@ -623,7 +623,7 @@ void RegisterTrainingOpSchemas() {
                 .AddOpset("", 13)
                 .Const("one", int64_t(1))
                 .Const("k", axis)
-                .Const("axis_zero", std::vector<int64_t>({0})) // a 1D tensor constant
+                .Const("axis_zero", std::vector<int64_t>({0}))  // a 1D tensor constant
                 .Add(R"(
                     shape = Shape (dY)
                     n_as_vector = Shape (shape)
@@ -835,8 +835,8 @@ void RegisterTrainingOpSchemas() {
         }
       });
 
-  //TODO: Move this to the right location. Its only here for quick experimentation.
-  //TODO: Use the mutli weight / grad version.
+  // TODO: Move this to the right location. Its only here for quick experimentation.
+  // TODO: Use the mutli weight / grad version.
   ONNX_CONTRIB_OPERATOR_SCHEMA(SGDOptimizer)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
@@ -2081,7 +2081,6 @@ Example 4:
             return true;
           });
 
-
   ONNX_CONTRIB_OPERATOR_SCHEMA(SigmoidGrad)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
@@ -2112,7 +2111,35 @@ Example 4:
             onnx_opset_13.set_version(13);
 
             return ONNX_NAMESPACE::FunctionBodyHelper::BuildFunctionProto(functionProto, schema, body, {onnx_opset_13});
+          });
 
+  ONNX_CONTRIB_OPERATOR_SCHEMA(TanhGrad)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .SetDoc("TanhGrad")
+      .AllowUncheckedAttributes()
+      .Input(0, "dY", "The gradient tensor from output.", "T")
+      .Input(1, "Y", "The input tensor. ", "T")
+      .Output(0, "dX", "Gradient of the input.", "T")
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+          "Constrain input and output types to float tensors.")
+      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput)
+      .SetContextDependentFunctionBodyBuilder(
+          [](const FunctionBodyBuildContext& ctx, const OpSchema& schema, FunctionProto& functionProto) {
+            auto* tp = ctx.getInputType(0);
+            if ((tp == nullptr) || (!tp->has_tensor_type()))
+              return false;
+            auto elem_type = (ONNX_NAMESPACE::TensorProto_DataType)tp->tensor_type().elem_type();
+            std::vector<FunctionBodyHelper::NodeDef> body{
+                ONNX_NAMESPACE::Const("C_One", 1.0f, elem_type),
+                {{"YSquare"}, "Mul", {"Y", "Y"}},
+                {{"dTanhX"}, "Sub", {"C_One", "YSquare"}},
+                {{"dX"}, "Mul", {"dY", "dTanhX"}}};
+
+            return ONNX_NAMESPACE::FunctionBodyHelper::BuildFunctionProto(functionProto, schema, body, {});
           });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(LayerNormalizationGrad)

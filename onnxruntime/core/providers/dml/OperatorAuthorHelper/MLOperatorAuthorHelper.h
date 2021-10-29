@@ -8,7 +8,12 @@
 
 #define ML_CHECK_BOOL(x) THROW_HR_IF(E_INVALIDARG, !(x))
 
-class MLFloat16;
+namespace onnxruntime
+{
+    struct MLFloat16;
+}
+
+using MLFloat16 = onnxruntime::MLFloat16;
 
 //
 // Traits for numeric attribute types
@@ -89,9 +94,9 @@ struct MLTypeTraits<uint64_t>
 };
 
 template <>
-struct MLTypeTraits<MLFloat16>
+struct MLTypeTraits<onnxruntime::MLFloat16> 
 {
-    static const MLOperatorTensorDataType TensorType = MLOperatorTensorDataType::Float16;
+  static const MLOperatorTensorDataType TensorType = MLOperatorTensorDataType::Float16;
 };
 
 inline uint32_t ComputeElementCountFromDimensions(gsl::span<const uint32_t> dimensions)
@@ -99,6 +104,8 @@ inline uint32_t ComputeElementCountFromDimensions(gsl::span<const uint32_t> dime
     return std::accumulate(dimensions.begin(), dimensions.end(), 1, std::multiplies<uint32_t>());
 }
 
+#pragma warning(push)
+#pragma warning(disable:4702)
 inline size_t GetByteSizeFromMlDataType(MLOperatorTensorDataType tensorDataType)
 {
     switch (tensorDataType)
@@ -119,9 +126,12 @@ inline size_t GetByteSizeFromMlDataType(MLOperatorTensorDataType tensorDataType)
     case MLOperatorTensorDataType::Complex64: return 8;
     case MLOperatorTensorDataType::Complex128: return 16;
     case MLOperatorTensorDataType::Undefined:
-    default: THROW_HR(E_INVALIDARG);
+    default:
+        THROW_HR(E_INVALIDARG);
+        return 0;
     };
 }
+#pragma warning(pop)
 
 using MLConstStringParam = const char*;
 class MLOperatorKernelContext;
