@@ -10,7 +10,7 @@ from torch.utils.dlpack import from_dlpack, to_dlpack
 
 from ._fallback import _FallbackManager, ORTModuleFallbackException, ORTModuleIOError, wrap_exception
 
-from onnxruntime.training.ortmodule.torch_cpp_extensions import torch_interop_utils
+from onnxruntime.training.ortmodule.torch_cpp_extensions.cpu import torch_interop_utils
 
 def wrap_as_dlpack_or_not(grad_flag, tensor_flag, inplace_flag, training_mode_flag, arg):
     '''
