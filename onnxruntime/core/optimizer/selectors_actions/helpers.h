@@ -23,23 +23,11 @@ struct NodesToOptimizeIndexes {
   int num_variadic_outputs;
 };
 
+// Struct to represent a DQ->Op->Q node group
 struct QDQNodeGroup {
   std::vector<NodeIndex> dq_nodes;
   std::vector<NodeIndex> q_nodes;
   NodeIndex target_node;
-
-  Status GetNodeType(const GraphViewer& graph_viewer, std::string& node_type) {
-    const auto* node = graph_viewer.GetNode(target_node);
-    ORT_RETURN_IF(node == nullptr, "The node is not in the graph");
-    node_type = node->OpType();
-    return Status::OK();
-  }
-
-  bool IsInGroup(NodeIndex node_index) {
-    return target_node != node_index &&
-           std::find(dq_nodes.begin(), dq_nodes.end(), node_index) != dq_nodes.end() &&
-           std::find(q_nodes.begin(), q_nodes.end(), node_index) != q_nodes.end();
-  }
 };
 
 // Group of nodes that will be optimized. The group will either be merged into the target node, or a new node
