@@ -23,7 +23,7 @@ class ApiValueInfo final : public api::ValueInfoRef {
  public:
   explicit ApiValueInfo(NodeArg& node_arg) : node_arg_(node_arg){}
   std::string_view Name() const override;
-  std::optional<std::vector<int64_t>> Shape() const override;
+  std::optional<gsl::span<const int64_t>> Shape() const override;
   api::DataType DType() const override;
 
   void SetShape(const std::vector<int64_t>* shape) override;
@@ -49,7 +49,7 @@ class ApiTensor final : public api::TensorRef {
   }
 
   std::unique_ptr<onnxruntime::Tensor> MakeTensor() const;
-  std::vector<int64_t> Shape() const override;
+  gsl::span<const int64_t> Shape() const override;
   api::DataType DType() const override;
   std::vector<int64_t> DataInt64() const override;
   std::vector<int32_t> DataInt32() const override;
@@ -148,7 +148,7 @@ const onnx::TensorShapeProto* GetNodeArgShape(const NodeArg* node_arg) {
   return &utils::GetShape(*type);
 }
 
-std::optional<std::vector<int64_t>> ApiValueInfo::Shape() const {
+std::optional<gsl::span<const int64_t>> ApiValueInfo::Shape() const {
   const auto* shape_proto = GetNodeArgShape(&node_arg_);
   if (shape_proto == nullptr) {
     return std::nullopt;
@@ -238,14 +238,8 @@ void ApiValueInfo::UnsqueezeDims(const std::vector<int64_t>& axes) {
 // </ApiValueInfo>
 
 // <ApiTensor>
-std::vector<int64_t> ApiTensor::Shape() const {
-  std::vector<int64_t> shape;
-  shape.reserve(tensor_proto_.dims_size());
-  for (int64_t d : tensor_proto_.dims()) {
-    shape.push_back(d);
-  }
-
-  return shape;
+gsl::span<const int64_t> ApiTensor::Shape() const {
+  return {tensor_proto_.dims().begin(), static_cast<size_t>(tensor_proto_.dims().size())};
 }
 
 api::DataType ApiTensor::DType() const {
