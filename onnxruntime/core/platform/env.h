@@ -28,6 +28,7 @@ limitations under the License.
 #include "core/framework/callback.h"
 #include "core/platform/env_time.h"
 #include "core/platform/telemetry.h"
+#include "core/session/onnxruntime_c_api.h"
 
 #ifndef _WIN32
 #include <sys/types.h>
@@ -46,18 +47,14 @@ using PIDType = pid_t;
 using FileOffsetType = off_t;
 #endif
 
-typedef void (*WorkLoop)(void*);
-typedef void* (*CreateThreadFunc)(void*, WorkLoop, void*);
-typedef void (*JoinThreadFunc)(void*);
-
 class EnvThread {
  public:
   virtual ~EnvThread() = default;
 
  protected:
-  CreateThreadFunc create_external_thread_fn{};
-  void* external_thread_options{};
-  JoinThreadFunc join_external_thread_fn{};
+  CreateCustomThreadFn create_custom_thread_fn{};
+  void* custom_thread_creation_options{};
+  JoinCustomThreadFn join_custom_thread_fn{};
 };
 
 
@@ -79,9 +76,9 @@ struct ThreadOptions {
   // Set or unset denormal as zero.
   bool set_denormal_as_zero = false;
 
-  CreateThreadFunc create_external_thread_fn = nullptr;
-  void* external_thread_options = nullptr;
-  JoinThreadFunc join_external_thread_fn = nullptr;
+  CreateCustomThreadFn create_custom_thread_fn{};
+  void* custom_thread_creation_options{};
+  JoinCustomThreadFn join_custom_thread_fn{};
 };
 /// \brief An interface used by the onnxruntime implementation to
 /// access operating system functionality like the filesystem etc.

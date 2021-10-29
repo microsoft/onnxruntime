@@ -27,9 +27,11 @@ CreateThreadPoolHelper(Env* env, OrtThreadPoolParams options) {
       to.affinity = cpu_list;
   }
   to.set_denormal_as_zero = options.set_denormal_as_zero;
-  to.create_external_thread_fn = reinterpret_cast<CreateThreadFunc>(options.create_external_thread_fn);
-  to.external_thread_options = options.external_thread_options;
-  to.join_external_thread_fn = reinterpret_cast<JoinThreadFunc>(options.join_external_thread_fn);
+
+  // set custom thread management functions
+  to.create_custom_thread_fn = options.create_custom_thread_fn;
+  to.custom_thread_creation_options = options.custom_thread_creation_options;
+  to.join_custom_thread_fn = options.join_custom_thread_fn;
 
   return std::make_unique<ThreadPool>(env, to, options.name, options.thread_pool_size,
                                               options.allow_spinning);

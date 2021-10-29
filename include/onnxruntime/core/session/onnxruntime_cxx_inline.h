@@ -510,18 +510,18 @@ inline SessionOptions& SessionOptions::AppendExecutionProvider_TensorRT(const Or
   return *this;
 }
 
-inline SessionOptions& SessionOptions::SetCreateThreadFn(CreateThreadFn thread_create_fn) {
-  ThrowOnError(GetApi().SessionOptionsSetCreateThreadFn(p_, thread_create_fn));
+inline SessionOptions& SessionOptions::SetCreateCustomThreadFn(CreateCustomThreadFn create_custom_thread_fn) {
+  ThrowOnError(GetApi().SessionOptionsSetCustomCreateThreadFn(p_, create_custom_thread_fn));
   return *this;
 }
 
-inline SessionOptions& SessionOptions::SetThreadOptions(void* thread_options) {
-  ThrowOnError(GetApi().SessionOptionsSetThreadOptions(p_, thread_options));
+inline SessionOptions& SessionOptions::SetCustomThreadCreationOptions(void* custom_thread_creation_options) {
+  ThrowOnError(GetApi().SessionOptionsSetCustomThreadCreationOptions(p_, custom_thread_creation_options));
   return *this;
 }
 
-inline SessionOptions& SessionOptions::SetJoinThreadFn(JoinThreadFn join_thread_fn) {
-  ThrowOnError(GetApi().SessionOptionsSetJoinThreadFn(p_, join_thread_fn));
+inline SessionOptions& SessionOptions::SetJoinCustomThreadFn(JoinCustomThreadFn join_custom_thread_fn) {
+  ThrowOnError(GetApi().SessionOptionsSetJoinCustomThreadFn(p_, join_custom_thread_fn));
   return *this;
 }
 

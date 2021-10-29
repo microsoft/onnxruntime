@@ -2076,23 +2076,23 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSessionFromArrayWithPrepackedWeightsContainer
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::SessionOptionsSetCreateThreadFn, _In_ OrtSessionOptions* options, _In_ CreateThreadFn create_thread_fn) {
+ORT_API_STATUS_IMPL(OrtApis::SessionOptionsSetCreateCustomThreadFn, _In_ OrtSessionOptions* options, _In_ CreateCustomThreadFn create_custom_thread_fn) {
   API_IMPL_BEGIN
-  options->value.create_external_thread_fn = create_thread_fn;
+  options->value.create_custom_thread_fn = create_custom_thread_fn;
   return nullptr;
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::SessionOptionsSetThreadOptions, _In_ OrtSessionOptions* options, _In_ void* thread_options) {
+ORT_API_STATUS_IMPL(OrtApis::SessionOptionsSetCustomThreadCreationOptions, _In_ OrtSessionOptions* options, _In_ void* custom_thread_creation_options) {
   API_IMPL_BEGIN
-  options->value.external_thread_options = thread_options;
+  options->value.custom_thread_creation_options = custom_thread_creation_options;
   return nullptr;
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::SessionOptionsSetJoinThreadFn, _In_ OrtSessionOptions* options, _In_ JoinThreadFn join_thread_fn) {
+ORT_API_STATUS_IMPL(OrtApis::SessionOptionsSetJoinCustomThreadFn, _In_ OrtSessionOptions* options, _In_ JoinCustomThreadFn join_custom_thread_fn) {
   API_IMPL_BEGIN
-  options->value.join_external_thread_fn = join_thread_fn;
+  options->value.join_custom_thread_fn = join_custom_thread_fn;
   return nullptr;
   API_IMPL_END
 }
@@ -2371,9 +2371,9 @@ static constexpr OrtApi ort_api_1_to_10 = {
     // End of Version 9 - DO NOT MODIFY ABOVE (see above text for more information)
 
     // Version 10 - In development, feel free to add/remove/rearrange here
-    &OrtApis::SessionOptionsSetCreateThreadFn,
-    &OrtApis::SessionOptionsSetThreadOptions,
-    &OrtApis::SessionOptionsSetJoinThreadFn,
+    &OrtApis::SessionOptionsSetCreateCustomThreadFn,
+    &OrtApis::SessionOptionsSetCustomThreadCreationOptions,
+    &OrtApis::SessionOptionsSetJoinCustomThreadFn,
 };
 
 // Asserts to do a some checks to ensure older Versions of the OrtApi never change (will detect an addition or deletion but not if they cancel out each other)

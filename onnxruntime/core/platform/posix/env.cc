@@ -143,12 +143,12 @@ class PosixThread : public EnvThread {
   PosixThread(const ORTCHAR_T* name_prefix, int index,
               unsigned (*start_address)(int id, Eigen::ThreadPoolInterface* param), Eigen::ThreadPoolInterface* param,
               const ThreadOptions& thread_options) {
-    create_external_thread_fn = thread_options.create_external_thread_fn);
-    external_thread_options = thread_options.external_thread_options;
-    join_external_thread_fn = thread_options.join_external_thread_fn;
+    create_custom_thread_fn = thread_options.create_custom_thread_fn;
+    custom_thread_creation_options = thread_options.custom_thread_creation_options;
+    join_custom_thread_fn = thread_options.join_custom_thread_fn;
 
-    if (create_external_thread_fn) {
-      hThread = (pthread_t)create_external_thread_fn(external_thread_options, ExternalThreadMain, new Param{name_prefix, index, start_address, param, thread_options});
+    if (create_custom_thread_fn) {
+      hThread = (pthread_t)create_custom_thread_fn(custom_thread_creation_options, CustomThreadMain, new Param{name_prefix, index, start_address, param, thread_options});
     } else {
       pthread_attr_t attr;
       int s = pthread_attr_init(&attr);
@@ -185,8 +185,8 @@ class PosixThread : public EnvThread {
   }
 
   ~PosixThread() override {
-    if (join_external_thread_fn) {
-      join_external_thread_fn((void*)hThread);
+    if (join_custom_thread_fn) {
+      join_custom_thread_fn((void*)hThread);
     } else {
       void* res;
 #ifdef NDEBUG
@@ -210,7 +210,7 @@ class PosixThread : public EnvThread {
     }
     return nullptr;
   }
-  static void ExternalThreadMain(void* param) {
+  static void CustomThreadMain(void* param) {
     ThreadMain(param);
   }
   pthread_t hThread;

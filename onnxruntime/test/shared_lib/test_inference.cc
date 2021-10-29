@@ -1846,41 +1846,41 @@ TEST(CApiTest, TestConfigureTensorRTProviderOptions) {
 namespace TestExternalThreadPoolHooks {
 
 std::vector<std::thread> threads;
-int32_t external_thread_options{};
-int32_t external_creation_hook_called{};
-int32_t external_joining_hook_called{};
+int32_t custom_thread_creation_options{};
+int32_t custom_creation_hook_called{};
+int32_t custom_join_hook_called{};
 
-void* CreateTestingThread(void* options, ThreadWorkLoopFn work_loop, void* param) {
+void* CreateCustomThread(void* options, OrtThreadWorkerFn work_loop, void* param) {
   if (*((int32_t*)options) == 5) {
-    external_creation_hook_called += 1;
+    custom_creation_hook_called += 1;
   }
   threads.push_back(std::thread(work_loop, param));
   return (void*)threads.back().native_handle();
 }
 
-void JoinTestingThread(void* handle) {
+void JoinCustomThread(void* handle) {
   for (auto& t : threads) {
     if ((void*)t.native_handle() == handle) {
-      external_joining_hook_called += 1;
+      custom_join_hook_called += 1;
       t.join();
     }
   }
 }
 
-TEST(CApiTest, TestExternalThreadPoolHooks) {
+TEST(CApiTest, TestCustomThreadPoolHooks) {
   const int32_t thread_count = 3;
-  external_thread_options = 5;
-  external_creation_hook_called = external_joining_hook_called = 0;
+  custom_thread_creation_options = 5;
+  custom_creation_hook_called = custom_join_hook_called = 0;
   Ort::SessionOptions session_options;
   session_options.SetIntraOpNumThreads(thread_count);
-  session_options.SetCreateThreadFn(CreateTestingThread);
-  session_options.SetThreadOptions(&external_thread_options);
-  session_options.SetJoinThreadFn(JoinTestingThread);
+  session_options.SetCreateCustomThreadFn(CreateCustomThread);
+  session_options.SetCustomThreadCreationOptions(&custom_thread_creation_options);
+  session_options.SetJoinCustomThreadFn(JoinCustomThread);
   {
     Ort::Session session(*ort_env, MODEL_URI, session_options);
   }
-  ASSERT_TRUE(external_creation_hook_called == thread_count - 1);
-  ASSERT_TRUE(external_joining_hook_called == thread_count - 1);
+  ASSERT_TRUE(custom_creation_hook_called == thread_count - 1);
+  ASSERT_TRUE(custom_join_hook_called == thread_count - 1);
 }
 
 }  // namespace TestExternalThreadPoolHooks
