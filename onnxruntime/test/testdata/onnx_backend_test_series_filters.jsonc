@@ -73,6 +73,13 @@
         // optional type test data.
         // https://github.com/onnx/onnx/issues/3608
         "^test_optional_*",
+        "^test_if_opt",
+        "^test_loop16_seq_none",
+        "^test_identity",
+        // Following tests are for opset 16 ops and are not yet implemented in ORT
+        "^test_roialign_aligned_*",
+        "^test_scatternd_*",
+        "^test_scatter_elements_with_duplicate_indices",
         //GPU failures
         "^test_batchnorm_epsilon_training_mode_cuda",
         "^test_batchnorm_example_training_mode_cuda",

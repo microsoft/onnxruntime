@@ -406,7 +406,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     if (enable_rocm) {
 #ifdef USE_ROCM
       OrtROCMProviderOptions rocm_options;
-      rocm_options.do_copy_in_default_stream=true;
+      rocm_options.do_copy_in_default_stream = true;
       // TODO: Support arena configuration for users of test runner
       sf.AppendExecutionProvider_ROCM(rocm_options);
 #else
@@ -586,8 +586,11 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"bernoulli_seed", "By design. Test data is for informational purpose because the generator is non deterministic."},
       {"bernoulli_seed_expanded", "By design. Test data is for informational purpose because the generator is non deterministic."},
       {"bernoulli_expanded", "By design. Test data is for informational purpose because the generator is non deterministic."},
-      {"test_roialign_aligned_false", "opset 16 is not implemented yet"},
-      {"test_roialign_aligned_true", "opset 16 is not implemented yet"},
+      {"test_roialign_aligned_true", "Opset 16 not supported yet."},
+      {"test_roialign_aligned_false", "Opset 16 not supported yet."},
+      {"test_scatternd_add", "Opset 16 not supported yet."},
+      {"test_scatternd_multiply", "Opset 16 not supported yet."},
+      {"test_scatter_elements_with_duplicate_indices", "Opset 16 not supported yet."},
   };
 
 #ifdef DISABLE_ML_OPS

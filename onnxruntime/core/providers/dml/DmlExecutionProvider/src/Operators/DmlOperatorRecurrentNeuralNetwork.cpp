@@ -62,6 +62,7 @@ public:
         if (direction == AttrValue::DirectionBidirectional) { return DML_RECURRENT_NETWORK_DIRECTION_BIDIRECTIONAL; }
          
         ML_INVALID_ARGUMENT("Unsupported direction"); // throws
+        return DML_RECURRENT_NETWORK_DIRECTION_FORWARD;
     }
 
     void InitActivationDescs(const MLOperatorKernelCreationContext& kernelInfo, _Out_ std::vector<DML_OPERATOR_DESC>& descs, gsl::span<const std::string> defaultActivations)

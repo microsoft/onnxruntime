@@ -1,0 +1,74 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>netcoreapp3.1</TargetFramework>
+    <Platforms>AnyCPU;x86</Platforms>
+    <OnnxRuntimeCsharpRoot>$(ProjectDir)..\..\..</OnnxRuntimeCsharpRoot>
+    <Configurations>Debug;Release;RelWithDebInfo</Configurations>
+    <IsLinuxBuild Condition="'$([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform($([System.Runtime.InteropServices.OSPlatform]::Linux)))' == 'true'">true</IsLinuxBuild> 
+    <IsWindowsBuild Condition="'$([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform($([System.Runtime.InteropServices.OSPlatform]::Windows)))' == 'true'">true</IsWindowsBuild> 
+    <IsMacOSBuild Condition="'$([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform($([System.Runtime.InteropServices.OSPlatform]::OSX)))' == 'true'">true</IsMacOSBuild> 
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(IsLinuxBuild)'=='true'">
+    <!--internal build related properties for Linux -->
+    <OnnxRuntimeBuildDirectory Condition="'$(OnnxRuntimeBuildDirectory)'==''">$(OnnxRuntimeCsharpRoot)\..\build\Linux</OnnxRuntimeBuildDirectory>
+    <NativeBuildOutputDir>$(OnnxRuntimeBuildDirectory)\$(Configuration)</NativeBuildOutputDir>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(IsWindowsBuild)'=='true'">
+    <!--internal build related properties for Windows -->
+    <OnnxRuntimeBuildDirectory Condition="'$(OnnxRuntimeBuildDirectory)'==''">$(OnnxRuntimeCsharpRoot)\..\build\Windows</OnnxRuntimeBuildDirectory>
+    <NativeBuildOutputDir>$(OnnxRuntimeBuildDirectory)\$(Configuration)\$(Configuration)</NativeBuildOutputDir>    
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(IsMacOSBuild)'=='true'">
+    <!--internal build related properties for OSX -->
+    <OnnxRuntimeBuildDirectory Condition="'$(OnnxRuntimeBuildDirectory)'==''">$(OnnxRuntimeCsharpRoot)\..\build\MacOS</OnnxRuntimeBuildDirectory>
+    <NativeBuildOutputDir>$(OnnxRuntimeBuildDirectory)\$(Configuration)</NativeBuildOutputDir>    
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="$(NativeBuildOutputDir)\libonnxruntime.so" Condition="'$(IsLinuxBuild)'=='true'">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Visible>false</Visible>
+    </None>
+    <None Include="$(NativeBuildOutputDir)\onnxruntime.dll" Condition="'$(IsWindowsBuild)'=='true'">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Visible>false</Visible>
+    </None>
+    <None Include="$(NativeBuildOutputDir)\libonnxruntime.dylib" Condition="'$(IsMacOSBuild)'=='true'">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Visible>false</Visible>
+    </None>
+    <None Include="$(NativeBuildOutputDir)\onnxruntime.pdb" Condition="'$(IsWindowsBuild)'=='true'And Exists('$(NativeBuildOutputDir)\onnxruntime.pdb')">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Visible>false</Visible>
+    </None>
+    <None Include="$(NativeBuildOutputDir)\dnnl.dll" Condition="Exists('$(NativeBuildOutputDir)\dnnl.dll')">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Visible>false</Visible>
+    </None>
+    <None Include="$(NativeBuildOutputDir)\libdnnl.so.1" Condition="Exists('$(NativeBuildOutputDir)\libdnnl.so.1')">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Visible>false</Visible>
+    </None>
+    <None Include="$(NativeBuildOutputDir)\mklml.dll" Condition="Exists('$(NativeBuildOutputDir)\mklml.dll')">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Visible>false</Visible>
+    </None>
+    <None Include="$(NativeBuildOutputDir)\libmklml_intel.so" Condition="Exists('$(NativeBuildOutputDir)\libmklml_intel.so')">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Visible>false</Visible>
+    </None>
+    <None Include="$(NativeBuildOutputDir)\libmklml_gnu.so" Condition="Exists('$(NativeBuildOutputDir)\libmklml_gnu.so')">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Visible>false</Visible>
+    </None>
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="$(OnnxRuntimeCSharpRoot)\src\Microsoft.ML.OnnxRuntime\Microsoft.ML.OnnxRuntime.csproj" />
+    <ProjectReference Include="..\Microsoft.ML.OnnxRuntime.InferenceSample\Microsoft.ML.OnnxRuntime.InferenceSample.csproj" />
+  </ItemGroup>
+</Project>
