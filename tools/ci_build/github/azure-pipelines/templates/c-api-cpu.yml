@@ -736,6 +736,21 @@ jobs:
     AgentPool : macOS-11
     ArtifactSuffix: 'CPU'
 
+- template: ../nodejs/templates/test_win.yml
+  parameters:
+    AgentPool : 'Win-CPU-2021'
+    JobSuffix : 'Win_CPU_x64'
+
+- template: ../nodejs/templates/test_posix.yml
+  parameters:
+    AgentPool : 'Linux-CPU'
+    JobSuffix : 'Linux_CPU_x64'
+
+# - template: ../nodejs/templates/test_posix.yml
+#   parameters:
+#     AgentPool : 'macOS-11'
+#     JobSuffix : 'macOS_CPU_x64'
+
 - job: Publish_NuGet_Package_And_Report
   workspace:
     clean: all
