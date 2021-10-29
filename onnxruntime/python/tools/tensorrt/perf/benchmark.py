@@ -278,12 +278,18 @@ def inference_ort(args, name, session, ep, ort_inputs, result_template, repeat_t
         #runtime = timeit.repeat(lambda: session.run(sess_outputs, sess_inputs), number=1, repeat=repeat_times)
         mem_usage = None
         if track_memory: 
-            p = start_memory_tracking()            
-            runtime = timeit.repeat(lambda: session.run_with_iobinding(io_binding), number=1, repeat=repeat_times)
+            p = start_memory_tracking()    
+            if ep == cpu: 
+                runtime = timeit.repeat(lambda: session.run(sess_outputs, sess_inputs), number=1, repeat=repeat_times)
+            else: 
+                runtime = timeit.repeat(lambda: session.run_with_iobinding(io_binding), number=1, repeat=repeat_times)
             mem_usage = end_memory_tracking(p, False, True)
             mem_usages.append(mem_usage) 
         else: 
-            runtime = timeit.repeat(lambda: session.run_with_iobinding(io_binding), number=1, repeat=repeat_times)
+            if ep == cpu: 
+                runtime = timeit.repeat(lambda: session.run(sess_outputs, sess_inputs), number=1, repeat=repeat_times)
+            else: 
+                runtime = timeit.repeat(lambda: session.run_with_iobinding(io_binding), number=1, repeat=repeat_times)
         runtimes += runtime[1:] # remove warmup
     
         #except Exception as e:
