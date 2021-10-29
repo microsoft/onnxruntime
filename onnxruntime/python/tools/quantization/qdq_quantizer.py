@@ -38,8 +38,8 @@ class QDQQuantizer(ONNXQuantizer):
         # In some cases, for example QDQ BERT model for TensorRT, 
         # adding QDQ for node's output may end up with worse accuracy.
         # So, we don't recommend to add QDQ to node's output under such condition.
-        self.enable_qdq_for_node_output = False if 'EnableQDQForNodeOutput' not in extra_options \
-                                          else extra_options['EnableQDQForNodeOutput']
+        self.disable_qdq_for_node_output = False if 'DisableQDQForNodeOutput' not in extra_options \
+                                          else extra_options['DisableQDQForNodeOutput']
 
         # In some cases, for example QDQ BERT model for TensorRT,
         # QDQ should always appear as a pair. 
@@ -91,7 +91,7 @@ class QDQQuantizer(ONNXQuantizer):
     def quantize_model(self):
         for node in self.model.nodes():
             if self.should_quantize(node):
-                op_quantizer = CreateQDQQuantizer(self, node, self.enable_qdq_for_node_output)
+                op_quantizer = CreateQDQQuantizer(self, node, self.disable_qdq_for_node_output)
                 op_quantizer.quantize()
 
         self.quantize_tensors()
