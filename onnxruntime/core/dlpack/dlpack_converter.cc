@@ -198,7 +198,7 @@ bool IsContiguousTensor(const DLTensor& tensor) {
 }  // namespace
 
 DLManagedTensor* OrtValueToDlpack(OrtValue& ort_value, /*OrtDLManagedTensor*/ void* void_ort_dlmanaged_tensor) {
-  OrtDLManagedTensor* ort_dlmanaged_tensor = (OrtDLManagedTensor*)void_ort_dlmanaged_tensor;
+  OrtDLManagedTensor* ort_dlmanaged_tensor = static_cast<OrtDLManagedTensor*>(void_ort_dlmanaged_tensor);
   Tensor& tensor = *ort_value.GetMutable<Tensor>();
   ort_dlmanaged_tensor->handle = ort_value;
   ort_dlmanaged_tensor->tensor.manager_ctx = ort_dlmanaged_tensor;
