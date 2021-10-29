@@ -30,7 +30,7 @@ namespace Dml
                                   Windows::AI::MachineLearning::Adapter::IWinmlExecutionProvider>
     {
     public:
-        explicit ExecutionProviderImpl(
+        ExecutionProviderImpl(
             IDMLDevice* dmlDevice,
             ID3D12Device* d3d12Device,
             ID3D12CommandQueue* queue,
@@ -129,7 +129,7 @@ namespace Dml
 
         // Waits for flushed work, discards unflushed work, and discards associated references to 
         // prevent circular references.  Must be the last call on the object before destruction.
-        void Close();   
+        void Close() override;   
             
         // Allocate a resource from pools.  Releasing pooledResource returns it to the pool.
         STDMETHOD(AllocatePooledResource)(
