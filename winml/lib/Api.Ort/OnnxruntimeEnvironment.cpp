@@ -76,6 +76,23 @@ static const WinmlAdapterApi* GetVersionedWinmlAdapterApi(const OrtApi* ort_api)
   return ort_get_winml_adapter_fn(ort_api);
 }
 
+static const OrtWinApi* GetVersionedOnnxruntimeWindowsApi(const OrtApi* ort_api) {
+  HMODULE onnxruntime_dll;
+  FAIL_FAST_IF_FAILED(GetOnnxruntimeLibrary(onnxruntime_dll));
+
+  using OrtGetWindowsApiSignature = decltype(OrtGetWindowsApi);
+  auto ort_get_windows_api_fn = reinterpret_cast<OrtGetWindowsApiSignature*>(GetProcAddress(onnxruntime_dll, "OrtGetWindowsApi"));
+  if (ort_get_windows_api_fn == nullptr) {
+    FAIL_FAST_HR(HRESULT_FROM_WIN32(GetLastError()));
+  }
+
+  return ort_get_windows_api_fn(ort_api);
+}
+
+const OrtWinApi* _winml::GetVersionedOnnxruntimeWindowsApi() {
+  return GetVersionedOnnxruntimeWindowsApi(GetVersionedOrtApi());
+}
+
 const WinmlAdapterApi* _winml::GetVersionedWinmlAdapterApi() {
   return GetVersionedWinmlAdapterApi(GetVersionedOrtApi());
 }

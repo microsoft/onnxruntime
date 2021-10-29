@@ -24,6 +24,7 @@ class OnnxruntimeEnvironment {
 };
 
 const OrtApi* GetVersionedOrtApi();
+const OrtWinApi* GetVersionedOnnxruntimeWindowsApi();
 const WinmlAdapterApi* GetVersionedWinmlAdapterApi();
 
 }  // namespace _winml

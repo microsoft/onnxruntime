@@ -152,6 +152,7 @@ class OnnxruntimeEngineFactory : public Microsoft::WRL::RuntimeClass<
   (_Out_ IMLOperatorRegistry** registry) override;
 
   const OrtApi* UseOrtApi();
+  const OrtWinApi* UseOnnxruntimeWindowsApi();
   const WinmlAdapterApi* UseWinmlAdapterApi();
   HRESULT EnsureEnvironment();
   HRESULT GetOrtEnvironment(_Out_ OrtEnv** ort_env);
@@ -167,6 +168,7 @@ class OnnxruntimeEngineFactory : public Microsoft::WRL::RuntimeClass<
 
 private:
   const OrtApi* ort_api_ = nullptr;
+  const OrtWinApi* ort_win_api_ = nullptr;
   const WinmlAdapterApi* winml_adapter_api_ = nullptr;
   std::shared_ptr<OnnxruntimeEnvironment> environment_;
   std::mutex mutex_;

@@ -1,1 +1,2 @@
 OrtGetWinMLAdapter
+OrtGetWindowsApi

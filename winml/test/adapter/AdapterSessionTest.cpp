@@ -105,7 +105,7 @@ void GetExecutionProvider() {
   auto session = CreateUniqueOrtSession(model_path, session_options);
 
   OrtExecutionProvider* ort_provider;
-  THROW_IF_NOT_OK_MSG(winml_adapter_api->SessionGetExecutionProvider(session.get(), 0, &ort_provider), ort_api);
+  THROW_IF_NOT_OK_MSG(ort_win_api->SessionGetExecutionProvider(session.get(), 0, &ort_provider), ort_api);
 }
 
 void GetExecutionProvider_DML() {
@@ -119,9 +119,9 @@ void GetExecutionProvider_DML() {
   auto session = CreateUniqueOrtSession(model_path, session_options);
 
   OrtExecutionProvider* ort_provider;
-  THROW_IF_NOT_OK_MSG(winml_adapter_api->SessionGetExecutionProvider(session.get(), 0, &ort_provider), ort_api);
+  THROW_IF_NOT_OK_MSG(ort_win_api->SessionGetExecutionProvider(session.get(), 0, &ort_provider), ort_api);
   // Test if DML EP method can be called
-  THROW_IF_NOT_OK_MSG(winml_adapter_api->DmlExecutionProviderFlushContext(ort_provider), ort_api);
+  THROW_IF_NOT_OK_MSG(ort_win_api->DmlExecutionProviderFlushContext(ort_provider), ort_api);
 }
 
 void RegisterGraphTransformers() {

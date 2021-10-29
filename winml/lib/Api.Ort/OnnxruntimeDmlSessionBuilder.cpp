@@ -84,20 +84,21 @@ HRESULT OnnxruntimeDmlSessionBuilder::CreateSession(
 HRESULT OnnxruntimeDmlSessionBuilder::Initialize(
     OrtSession* session) {
   RETURN_HR_IF_NULL(E_INVALIDARG, session);
+  auto ort_win_api = engine_factory_->UseOnnxruntimeWindowsApi();
   auto winml_adapter_api = engine_factory_->UseWinmlAdapterApi();
 
   RETURN_HR_IF_NOT_OK_MSG(winml_adapter_api->SessionInitialize(session),
                           engine_factory_->UseOrtApi());
 
   OrtExecutionProvider* ort_provider;
-  RETURN_HR_IF_NOT_OK_MSG(winml_adapter_api->SessionGetExecutionProvider(session, 0, &ort_provider),
+  RETURN_HR_IF_NOT_OK_MSG(ort_win_api->SessionGetExecutionProvider(session, 0, &ort_provider),
                           engine_factory_->UseOrtApi());
 
-  RETURN_HR_IF_NOT_OK_MSG(winml_adapter_api->DmlExecutionProviderSetDefaultRoundingMode(ort_provider, true),
+  RETURN_HR_IF_NOT_OK_MSG(ort_win_api->DmlExecutionProviderSetDefaultRoundingMode(ort_provider, true),
                           engine_factory_->UseOrtApi());
 
   // Flush the D3D12 work from the DML execution provider
-  RETURN_HR_IF_NOT_OK_MSG(winml_adapter_api->DmlExecutionProviderFlushContext(ort_provider),
+  RETURN_HR_IF_NOT_OK_MSG(ort_win_api->DmlExecutionProviderFlushContext(ort_provider),
                           engine_factory_->UseOrtApi());
 
   return S_OK;

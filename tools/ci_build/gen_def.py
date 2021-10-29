@@ -68,7 +68,7 @@ with open(args.output_source, 'w') as file:
             file.write("#include <core/providers/%s/%s_provider_factory.h>\n" % (c, c))
     file.write("void* GetFunctionEntryByName(const char* name){\n")
     for symbol in symbols:
-        if symbol != "OrtGetWinMLAdapter":
+        if symbol != "OrtGetWinMLAdapter" and symbol != "OrtGetWindowsApi":
             file.write("if(strcmp(name,\"%s\") ==0) return (void*)&%s;\n" % (symbol, symbol))
     file.write("return NULL;\n")
     file.write("}\n")

@@ -8,7 +8,7 @@
 #include "adapter/winml_adapter_c_api.h"
 
 using UniqueOrtModel                  = std::unique_ptr<OrtModel,                  decltype(WinmlAdapterApi::ReleaseModel)>;
-using UniqueOrtAllocator              = std::unique_ptr<OrtAllocator,              decltype(WinmlAdapterApi::FreeProviderAllocator)>;
+using UniqueOrtAllocator              = std::unique_ptr<OrtAllocator,              decltype(OrtWinApi::FreeProviderAllocator)>;
 using UniqueOrtSessionOptions         = std::unique_ptr<OrtSessionOptions,         decltype(OrtApi::ReleaseSessionOptions)>;
 using UniqueOrtSession                = std::unique_ptr<OrtSession,                decltype(OrtApi::ReleaseSession)>;
 using UniqueOrtValue                  = std::unique_ptr<OrtValue,                  decltype(OrtApi::ReleaseValue)>;
