@@ -508,7 +508,7 @@ static bool NormalizeInputRanks(OptimizerCtx ctx, api::NodeRef& node, size_t tar
   std::vector<size_t> ranks;
   ranks.reserve(input_indices.size());
   for (size_t i : input_indices) {
-    std::optional<gsl::span<const int64_t>> shape = ctx.graph.GetValueInfo(inputs[i])->Shape();
+    std::optional<std::vector<int64_t>> shape = ctx.graph.GetValueInfo(inputs[i])->Shape();
     if (shape == std::nullopt || shape->size() > target_rank) {
       return false;
     }
@@ -600,7 +600,7 @@ static void TransposeOutputs(OptimizerCtx& ctx, api::NodeRef& node, const std::v
 // Given a value, returns the rank of the value excluding dimensions of value 1. Returns 5 if the rank is unknown. 
 static int EstimateValueRank(api::GraphRef& graph, std::string_view input) {
   auto value_info = graph.GetValueInfo(input);
-  std::optional<gsl::span<const int64_t>> shape = value_info->Shape();
+  std::optional<std::vector<int64_t>> shape = value_info->Shape();
   if (shape == std::nullopt) {
     return 5;
   }
@@ -1114,7 +1114,7 @@ static bool HandleQuantizeDequantizeLinear(HandlerArgs& args) {
     // Update axis in Opset >= 13 if scale/zero_point are non-scalar
     auto inputs = args.node.Inputs();
 
-    std::optional<gsl::span<const int64_t>> inp_shape = args.ctx.graph.GetValueInfo(inputs[1])->Shape();
+    std::optional<std::vector<int64_t>> inp_shape = args.ctx.graph.GetValueInfo(inputs[1])->Shape();
     bool scalar_params = inp_shape != std::nullopt && inp_shape->size() == 0;
 
     if (!scalar_params) {
@@ -1227,7 +1227,7 @@ static bool HandleSlice(HandlerArgs& args) {
   if (inputs.size() < 4 || inputs[3] == "") {
     // Case 1: Axes is missing. Compute using length of starts.
     auto starts_value_info = args.ctx.graph.GetValueInfo(inputs[1]);
-    const std::optional<gsl::span<const int64_t>> starts_shape = starts_value_info->Shape();
+    const std::optional<std::vector<int64_t>> starts_shape = starts_value_info->Shape();
     api::DataType int_dtype = starts_value_info->DType();
 
     if (starts_shape == std::nullopt || starts_shape->size() != 1 || (*starts_shape)[0] < 0) {
