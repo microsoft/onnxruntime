@@ -156,7 +156,7 @@ const MLAS_CONV_SYM_DISPATCH MlasConvSymDispatchAvx512Vnni = {
     16,                                     // FilterOutputChannelPackCount
     64,                                     // KernelChannelCount
     6,                                      // KernelOutputCount
-    4,                                      // KernelInputChannelAlignment
+    1,                                      // KernelInputChannelAlignment
     4,                                      // KernelOutputChannelAlignment
     64,                                     // KernelDepthwiseChannelCount
     6,                                      // KernelDepthwiseOutputCount
@@ -213,6 +213,7 @@ MlasConvSymPackWSize(
     } else {
 
         size_t OutputChannelPackCount = ConvSymDispatch->FilterOutputChannelPackCount;
+        size_t InputChannelPackCount = ConvSymDispatch->FilterInputChannelPackCount;
 
         if (ConvSymDispatch->Kernel == nullptr ||
             OutputChannels < OutputChannelPackCount ||
@@ -223,7 +224,8 @@ MlasConvSymPackWSize(
         }
 
         size_t AlignedOutputChannels = (OutputChannels + OutputChannelPackCount - 1) / OutputChannelPackCount * OutputChannelPackCount;
-        return AlignedOutputChannels * InputChannels * KernelSize;
+        size_t AlignedInputChannels = (InputChannels + InputChannelPackCount - 1) / InputChannelPackCount * InputChannelPackCount;
+        return AlignedOutputChannels * AlignedInputChannels * KernelSize;
     }
 }
 
@@ -303,6 +305,11 @@ MlasConvSymFixupInputZeroPoint(
     return zero_point_value;
 }
 
+template<typename T>
+MLAS_FORCEINLINE
+T AlignAToB(T a, T b) {
+    return (a + b - 1) / b * b;
+}
 
 void
 MlasConvSym(
@@ -331,6 +338,7 @@ MlasConvSym(
     const size_t KernelSize = Params.KernelSize;
     const size_t InputChannels = Params.InputChannels;
     const size_t OutputChannels = Params.OutputChannels;
+    const size_t InputChannelsPackAligned = AlignAToB<size_t>(InputChannels, ConvSymDispatch->FilterInputChannelPackCount);
 
     for (size_t oc_outside = 0; oc_outside < Params.OutputCount;) {
 
@@ -371,7 +379,7 @@ MlasConvSym(
             }
 
             co += ChannelCount;
-            pwb += ChannelCount * InputChannels * KernelSize;
+            pwb += AlignAToB<size_t>(ChannelCount, ConvSymDispatch->FilterOutputChannelPackCount) * InputChannelsPackAligned * KernelSize;
         }
 
         oc_outside += oc_outside_block_size;
