@@ -1198,11 +1198,11 @@ class Graph {
 
 #if defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
   const RuntimeOptimizationRecordContainer& RuntimeOptimizations() const {
-    return *runtime_optimizations_;
+    return runtime_optimizations_;
   }
 
   RuntimeOptimizationRecordContainer& MutableRuntimeOptimizations() {
-    return *runtime_optimizations_;
+    return runtime_optimizations_;
   }
 #endif
 
@@ -1424,6 +1424,13 @@ class Graph {
                      std::hash<std::string>, std::equal_to<std::string>>
       sparse_tensor_names_;
 
+#if defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
+  // Runtime optimization storage.
+  // Note: runtime_optimizations_ == *runtime_optimizations_ptr_ and must be initialized
+  std::unique_ptr<RuntimeOptimizationRecordContainer> runtime_optimizations_ptr_;
+  RuntimeOptimizationRecordContainer& runtime_optimizations_;
+#endif
+
 #if !defined(ORT_MINIMAL_BUILD)
   IOnnxRuntimeOpSchemaCollectionPtr schema_registry_;
 
@@ -1520,12 +1527,6 @@ class Graph {
 
   // distinguishes between graph loaded from model file and graph created from scratch
   const bool is_loaded_from_model_file_;
-
-#if defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
-  static std::unique_ptr<RuntimeOptimizationRecordContainer> MakeRuntimeOptimizationRecordContainer();
-
-  std::unique_ptr<RuntimeOptimizationRecordContainer> runtime_optimizations_ = MakeRuntimeOptimizationRecordContainer();
-#endif
 };
 
 #if !defined(ORT_MINIMAL_BUILD)

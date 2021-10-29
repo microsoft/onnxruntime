@@ -1015,6 +1015,10 @@ Graph::Graph(const Model& owning_model,
              const logging::Logger& logger)
     : owning_model_(owning_model),
       graph_proto_(graph_proto),
+#if defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
+      runtime_optimizations_ptr_(std::make_unique<RuntimeOptimizationRecordContainer>()),
+      runtime_optimizations_(*runtime_optimizations_ptr_),
+#endif
       schema_registry_(schema_registry),
       graph_resolve_needed_(true),
       domain_to_version_(domain_to_version),
@@ -4092,6 +4096,10 @@ Graph::Graph(const Model& owning_model,
              const logging::Logger& logger)
     : owning_model_(owning_model),
       graph_proto_(&deserialized_proto_data_),
+#if defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
+      runtime_optimizations_ptr_(std::make_unique<RuntimeOptimizationRecordContainer>()),
+      runtime_optimizations_(*runtime_optimizations_ptr_),
+#endif
 #if !defined(ORT_MINIMAL_BUILD)
       schema_registry_(schema_registry),
 #endif
@@ -4247,11 +4255,5 @@ common::Status Graph::LoadFromOrtFormat(const onnxruntime::experimental::fbs::Gr
 }
 
 #endif  // defined(ENABLE_ORT_FORMAT_LOAD)
-
-#if defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
-std::unique_ptr<RuntimeOptimizationRecordContainer> Graph::MakeRuntimeOptimizationRecordContainer() {
-  return std::make_unique<RuntimeOptimizationRecordContainer>();
-}
-#endif  // defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
 
 }  // namespace onnxruntime
