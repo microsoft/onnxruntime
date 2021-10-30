@@ -1443,7 +1443,7 @@ common::Status InferenceSession::Initialize() {
     // Resolve the memory pattern flag of the main graph session state
     session_state_->ResolveMemoryPatternFlag();
 
-    // Resolve all memory patterns flags of the subgraph session states
+    // Resolve all memory pattern flags of subgraph session states
     ResolveSubgrapMemoryPatternFlags(*session_state_);
 
     is_inited_ = true;
