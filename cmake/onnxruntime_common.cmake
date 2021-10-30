@@ -33,10 +33,7 @@ if(WIN32)
          "${ONNXRUNTIME_ROOT}/core/platform/windows/logging/*.h"
          "${ONNXRUNTIME_ROOT}/core/platform/windows/logging/*.cc"
     )
-    # Windows platform adapter code uses advapi32, which isn't linked in by default in desktop ARM
-    if (NOT WINDOWS_STORE)
-        list(APPEND onnxruntime_EXTERNAL_LIBRARIES advapi32)
-    endif()
+
 else()
     list(APPEND onnxruntime_common_src_patterns
          "${ONNXRUNTIME_ROOT}/core/platform/posix/*.h"
@@ -204,7 +201,7 @@ endif()
 
 
 if (ARM64 OR ARM OR X86 OR X64 OR X86_64)
-  if(WINDOWS_STORE OR ((ARM64 OR ARM) AND MSVC))
+  if(WINDOWS_STORE OR (WIN32 AND NOT CMAKE_CXX_STANDARD_LIBRARIES MATCHES kernel32.lib) OR ((ARM64 OR ARM) AND MSVC))
     # msvc compiler report syntax error with cpuinfo arm source files
     # and cpuinfo does not have code for getting arm uarch info under windows
   else()

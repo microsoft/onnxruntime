@@ -163,7 +163,9 @@ namespace OperatorHelper
         case MLOperatorTensorDataType::Complex64:  return static_cast<int64_t>(*reinterpret_cast<const float*>(p)); // Read the real component.
         case MLOperatorTensorDataType::Complex128: return static_cast<int64_t>(*reinterpret_cast<const double*>(p)); // Read the real component.
         case MLOperatorTensorDataType::Undefined:
-        default: ML_INVALID_ARGUMENT("Unknown MLOperatorTensorDataType.");
+        default:
+            ML_INVALID_ARGUMENT("Unknown MLOperatorTensorDataType.");
+            return 0;
         };
     }
 
@@ -187,7 +189,9 @@ namespace OperatorHelper
         case MLOperatorTensorDataType::Complex64:  return static_cast<double>(*reinterpret_cast<const float*>(p)); // Read the real component.
         case MLOperatorTensorDataType::Complex128: return static_cast<double>(*reinterpret_cast<const double*>(p)); // Read the real component.
         case MLOperatorTensorDataType::Undefined:
-        default: ML_INVALID_ARGUMENT("Unknown MLOperatorTensorDataType.");
+        default:
+            ML_INVALID_ARGUMENT("Unknown MLOperatorTensorDataType.");
+            return 0.0;
         };
     }
 
@@ -1121,6 +1125,13 @@ namespace OperatorHelper
         }
 
         return { std::move(EdgeShapes(outputDimensions)) };
+    }
+
+    bool EinSumHelper::IsMatMulOperatorType() const noexcept
+    {
+        return m_recognizedOperatorType == RecognizedOperatorType::MatMul || 
+            m_recognizedOperatorType == RecognizedOperatorType::MatMulTransposeA || 
+            m_recognizedOperatorType == RecognizedOperatorType::MatMulTransposeB;
     }
 
     std::vector<EdgeShapes> MatMulHelperBase::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const

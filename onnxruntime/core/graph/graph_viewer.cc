@@ -199,6 +199,17 @@ const std::vector<const NodeArg*>& GraphViewer::GetOutputs() const noexcept {
                                    : filtered_node_outputs_;
 }
 
+bool GraphViewer::NodeProducesGraphOutput(const Node& node) const {
+  const auto& outputs = GetOutputs();
+  auto end_outputs = outputs.cend();
+  for (auto output_def : node.OutputDefs()) {
+    if (std::find(outputs.cbegin(), end_outputs, output_def) != end_outputs) {
+      return true;
+    }
+  }
+  return false;
+}
+
 // Get graph value infos.
 const std::unordered_set<const NodeArg*>& GraphViewer::GetValueInfo() const noexcept {
   return graph_->GetValueInfo();
@@ -262,7 +273,32 @@ bool GraphViewer::IsSubgraph() const {
 }
 
 bool GraphViewer::IsConstantInitializer(const std::string& name, bool check_outer_scope) const {
-  return graph_->GetConstantInitializer(name, check_outer_scope) != nullptr;
+  return GetConstantInitializer(name, check_outer_scope) != nullptr;
+}
+
+const ONNX_NAMESPACE::TensorProto* GraphViewer::GetConstantInitializer(const std::string& initializer_name,
+                                                                       bool check_outer_scope) const {
+  const ONNX_NAMESPACE::TensorProto* initializer = nullptr;
+  if (GetInitializedTensor(initializer_name, initializer)) {
+    if (CanOverrideInitializer()) {
+      const auto& graph_inputs = GetInputsIncludingInitializers();
+      bool is_constant = std::none_of(graph_inputs.cbegin(), graph_inputs.cend(),
+                                      [&initializer_name](const NodeArg* input) {
+                                        return input->Name() == initializer_name;
+                                      });
+
+      if (!is_constant) {
+        initializer = nullptr;
+      }
+    }
+  } else if (check_outer_scope && IsSubgraph()) {
+    // make sure there's not a local value with the same name. if there is it shadows any initializer in outer scope.
+    if (graph_->IsOuterScopeValue(initializer_name)) {
+      initializer = graph_->ParentGraph()->GetConstantInitializer(initializer_name, check_outer_scope);
+    }
+  }
+
+  return initializer;
 }
 
 }  // namespace onnxruntime

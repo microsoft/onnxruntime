@@ -718,7 +718,7 @@ Status TensorProtoToMLValue(const Env& env, const ORTCHAR_T* model_path,
                            tensorp->SizeInBytes(), ", Got ", m.GetLen());
   }
 
-  TensorProtoToTensor(env, model_path, tensor_proto, *tensorp);
+  ORT_RETURN_IF_ERROR(TensorProtoToTensor(env, model_path, tensor_proto, *tensorp));
 
   auto ml_tensor = DataTypeImpl::GetType<Tensor>();
   value.Init(tensorp.release(), ml_tensor, ml_tensor->GetDeleteFunc());
@@ -791,7 +791,7 @@ ONNX_NAMESPACE::TensorProto TensorToTensorProto(const Tensor& tensor, const std:
 
 common::Status ConstantNodeProtoToTensorProto(const ONNX_NAMESPACE::NodeProto& node,
                                               const Path& model_path,
-                                              ONNX_NAMESPACE::TensorProto& tensor) {
+                                              ONNX_NAMESPACE::TensorProto& tensor, const std::string& tensor_name) {
   const AttributeProto& constant_attribute = node.attribute(0);
 
   switch (constant_attribute.type()) {
@@ -836,9 +836,15 @@ common::Status ConstantNodeProtoToTensorProto(const ONNX_NAMESPACE::NodeProto& n
   }
 
   // set name last in case attribute type was tensor (would copy over name)
-  *(tensor.mutable_name()) = node.output(0);
+  *(tensor.mutable_name()) = tensor_name;
 
   return Status::OK();
+}
+
+common::Status ConstantNodeProtoToTensorProto(const ONNX_NAMESPACE::NodeProto& node,
+                                              const Path& model_path,
+                                              ONNX_NAMESPACE::TensorProto& tensor) {
+  return ConstantNodeProtoToTensorProto(node, model_path, tensor, node.output(0));
 }
 
 #if !defined(DISABLE_SPARSE_TENSORS)

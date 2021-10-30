@@ -10,14 +10,17 @@ from ._custom_op_symbolic_registry import CustomOpSymbolicRegistry
 from ._custom_gradient_registry import CustomGradientRegistry
 from . import _utils
 from .debug_options import DebugOptions
-from ._fallback import _FallbackManager, _FallbackPolicy, ORTModuleFallbackException, ORTModuleTorchModelException, wrap_exception
-from . import _FALLBACK_INIT_EXCEPTION, MINIMUM_RUNTIME_PYTORCH_VERSION_STR, ORTMODULE_FALLBACK_POLICY, ORTMODULE_FALLBACK_RETRY
+from ._fallback import (_FallbackManager,
+                        _FallbackPolicy,
+                        ORTModuleFallbackException)
+from onnxruntime.training import ortmodule
+
 from onnxruntime.tools import pytorch_export_contrib_ops
 
 import functools
 import torch
-from typing import Iterator, Optional, Tuple, TypeVar, Set, Callable
-import warnings
+from typing import Iterator, Optional, Tuple, TypeVar, Callable
+
 
 # Needed to override PyTorch methods
 T = TypeVar('T', bound='Module')
@@ -54,14 +57,14 @@ class ORTModule(torch.nn.Module):
             debug_options = DebugOptions()
 
         # Fallback settings
-        self._fallback_manager = _FallbackManager(policy=ORTMODULE_FALLBACK_POLICY,
-                                                  retry=ORTMODULE_FALLBACK_RETRY)
+        self._fallback_manager = _FallbackManager(pytorch_module=module,
+                                                  policy=ortmodule.ORTMODULE_FALLBACK_POLICY,
+                                                  retry=ortmodule.ORTMODULE_FALLBACK_RETRY)
 
         try:
             # Read ORTModule module initialization status
-            global _FALLBACK_INIT_EXCEPTION
-            if _FALLBACK_INIT_EXCEPTION:
-                raise _FALLBACK_INIT_EXCEPTION
+            if ortmodule._FALLBACK_INIT_EXCEPTION:
+                raise ortmodule._FALLBACK_INIT_EXCEPTION
 
             super(ORTModule, self).__init__()
 
@@ -97,26 +100,18 @@ class ORTModule(torch.nn.Module):
             _utils.check_for_name_collisions_and_bind_methods_to_ortmodule(self, module)
 
         except ORTModuleFallbackException as e:
-            self._torch_module = TorchModulePytorch(module)
-            # TODO: Rework by implementing the "__getattribute__" method.
-            #       Assigning all default attributes from user's original torch.nn.Module into ORTModule
-            self._backward_hooks = module._backward_hooks
-            self._forward_hooks = module._forward_hooks
-            self._forward_pre_hooks = module._forward_pre_hooks
-            self._parameters = module._parameters
-            self._buffers = module._buffers
-            self._non_persistent_buffers_set = module._non_persistent_buffers_set
-            self._is_full_backward_hook = module._is_full_backward_hook
-            self._state_dict_hooks = module._state_dict_hooks
-            self._load_state_dict_pre_hooks = module._load_state_dict_pre_hooks
-            self._modules = module._modules
-            self.forward = module.forward
+            # Although backend is switched to PyTorch here,
+            # it is up to _FallbackManager to actually terminate execution or fallback
+            _utils.switch_backend_to_pytorch(self, module)
 
             # Exceptions subject to fallback are handled here
             self._fallback_manager.handle_exception(exception=e,
                                                     log_level=debug_options.logging.log_level)
         except Exception as e:
-            self._torch_module = TorchModulePytorch(module)
+            # Although backend is switched to PyTorch here,
+            # it is up to _FallbackManager to actually terminate execution or fallback
+            _utils.switch_backend_to_pytorch(self, module)
+
             # Catch-all FALLBACK_FORCE_TORCH_FORWARD fallback is handled here
             self._fallback_manager.handle_exception(exception=e,
                                                     log_level=debug_options.logging.log_level,
@@ -296,8 +291,8 @@ class ORTModule(torch.nn.Module):
         yield from self._torch_module.named_modules(*args, **kwargs)
 
     def __getattr__(self, name: str):
-        if '_is_initialized' in self.__dict__ and self.__dict__['_is_initialized'] == True:
-            # If ORTModule is intitialized and attribute is not found in ORTModule,
+        if '_is_initialized' in self.__dict__ and self.__dict__['_is_initialized'] is True:
+            # If ORTModule is initialized and attribute is not found in ORTModule,
             # it must be present in the user's torch.nn.Module. Forward the call to
             # the user's model.
             assert '_torch_module' in self.__dict__, "ORTModule does not have a reference to the user's model"
@@ -311,7 +306,7 @@ class ORTModule(torch.nn.Module):
             # If the name is an attribute of ORTModule, update only ORTModule
             self.__dict__[name] = value
 
-        elif '_is_initialized' in self.__dict__ and self.__dict__['_is_initialized'] == True:
+        elif '_is_initialized' in self.__dict__ and self.__dict__['_is_initialized'] is True:
 
             assert '_torch_module' in self.__dict__, "ORTModule does not have a reference to the user's model"
 

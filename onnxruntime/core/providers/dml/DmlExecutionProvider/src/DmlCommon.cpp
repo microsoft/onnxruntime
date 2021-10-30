@@ -87,7 +87,9 @@ MLOperatorTensorDataType GetMlDataTypeFromDmlDataType(DML_TENSOR_DATA_TYPE tenso
     case DML_TENSOR_DATA_TYPE_INT64:    return MLOperatorTensorDataType::Int64;
     case DML_TENSOR_DATA_TYPE_FLOAT64:  return MLOperatorTensorDataType::Double;
 
-    default: ML_INVALID_ARGUMENT("Unknown DML_TENSOR_DATA_TYPE.");
+    default:
+        ML_INVALID_ARGUMENT("Unknown DML_TENSOR_DATA_TYPE.");
+        return MLOperatorTensorDataType::Undefined;
     };
 }
 

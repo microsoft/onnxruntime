@@ -3,14 +3,18 @@
 
 #pragma once
 
+#include <cfloat>
+
+#include "core/providers/rocm/rocm_common.h"
+
 #include <miopen/miopen.h>
 
-#include "rocm_common.h"
-#include "core/framework/tensor.h"
-#include <cfloat>
+const double MIOPEN_BN_MIN_EPSILON = 1e-5;
 
 namespace onnxruntime {
 namespace rocm {
+
+#define MIOPEN_CONVOLUTION_FWD_ALGO_COUNT 6
 
 class MiopenTensor final {
  public:
@@ -32,6 +36,20 @@ class MiopenTensor final {
   miopenTensorDescriptor_t tensor_;
 };
 
+class MiopenTensorDescriptor final {
+ public:
+  MiopenTensorDescriptor();
+  ~MiopenTensorDescriptor();
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(MiopenTensorDescriptor);
+
+  Status Set(const std::vector<int64_t>& filter_dims, miopenDataType_t data_typ);
+
+  operator miopenTensorDescriptor_t() const { return desc_; }
+
+ private:
+  miopenTensorDescriptor_t desc_;
+};
+
 template <typename ElemType>
 struct Consts {
   static const ElemType Zero;
@@ -44,17 +62,31 @@ struct Consts<half> {
   static const float One;
 };
 
-// As of ROCm 4.2, miopenReduceTensor() requires alpha/beta to be the same data
-// type as the input type. This differs from cudnnReduceTensor() and other
-// MIOpen/cuDNN APIs where alpha/beta are float when input type is half (float16).
-//
-// NOTE: this workaround can be removed in ROCm 4.3:
-//       https://github.com/ROCmSoftwarePlatform/MIOpen/pull/914
 template <typename ElemType>
 struct ReduceConsts {
   static const ElemType Zero;
   static const ElemType One;
 };
+
+#if ROCM_VERSION >= 40300
+// Up until ROCm 4.2 miopenReduceTensor() required alpha/beta to be the same data
+// type as the input type. This differs from cudnnReduceTensor() and other
+// MIOpen/cuDNN APIs where alpha/beta are float when input type is half (float16).
+template <>
+struct ReduceConsts<half> {
+  static const float Zero;
+  static const float One;
+};
+#endif
+
+inline double ClampMiopenBatchNormEpsilon(double epsilon) {
+  if (epsilon < MIOPEN_BN_MIN_EPSILON) {
+    if (MIOPEN_BN_MIN_EPSILON - epsilon > FLT_EPSILON)
+      LOGS_DEFAULT(WARNING) << "Provided epsilon is smaller than MIOPEN_BN_MIN_EPSILON. Setting it to MIOPEN_BN_MIN_EPSILON";
+    return MIOPEN_BN_MIN_EPSILON;
+  }
+  return epsilon;
+}
 
 }  // namespace rocm
 }  // namespace onnxruntime

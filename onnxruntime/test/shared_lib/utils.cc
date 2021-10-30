@@ -2,17 +2,11 @@
 // Licensed under the MIT License.
 
 #include "utils.h"
-#include <limits>
 
 OrtCUDAProviderOptions CreateDefaultOrtCudaProviderOptionsWithCustomStream(void* cuda_compute_stream) {
-  OrtCUDAProviderOptions cuda_options{
-      0,
-      OrtCudnnConvAlgoSearch::EXHAUSTIVE,
-      std::numeric_limits<size_t>::max(),
-      0,
-      true,
-      cuda_compute_stream != nullptr ? 1 : 0,
-      cuda_compute_stream != nullptr ? cuda_compute_stream : nullptr,
-      nullptr};
+  OrtCUDAProviderOptions cuda_options;
+  cuda_options.do_copy_in_default_stream = true;
+  cuda_options.has_user_compute_stream = cuda_compute_stream != nullptr ? 1 : 0;
+  cuda_options.user_compute_stream = cuda_compute_stream;
   return cuda_options;
 }

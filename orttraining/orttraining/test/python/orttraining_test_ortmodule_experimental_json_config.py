@@ -88,7 +88,7 @@ def test_load_config_from_json_2():
         ort_model_attributes = model._torch_module._execution_manager(training_mode)
 
         # test propagate cast ops
-        assert ort_model_attributes._propagate_cast_ops_strategy == C.PropagateCastOpsStrategy.REMOVE_INPUT_OUTPUT_UP_DOWN_CASTS
+        assert ort_model_attributes._propagate_cast_ops_strategy == C.PropagateCastOpsStrategy.INSERT_AND_REDUCE
         assert ort_model_attributes._propagate_cast_ops_level == 5
         assert ort_model_attributes._propagate_cast_ops_allow == ["XYZ", "PQR"]
 

@@ -28,6 +28,7 @@ onnx::OpSchema::FormalParameterOption AbiCustomRegistry::ConvertFormalParameterO
 
         default:
             THROW_HR(E_NOTIMPL);
+            return onnx::OpSchema::FormalParameterOption::Single;
     }
 }
 
@@ -544,7 +545,7 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistry::RegisterOperatorKernel(
 
         //
         // For backward compatibility, this does not propagate errors for external operators
-        m_kernelRegistry->RegisterCustomKernel(create_info);
+        static_cast<void>(m_kernelRegistry->RegisterCustomKernel(create_info));  // ignore result
     }
 
     return S_OK;

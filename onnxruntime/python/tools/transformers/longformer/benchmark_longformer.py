@@ -276,7 +276,7 @@ def test_ort(args, device):
                                                           enable_all_optimization=True,
                                                           num_threads=num_threads)
     if session is None:
-        raise RuntimeError(f"Failed to create ORT sesssion from ONNX file {onnx_model_path}")
+        raise RuntimeError(f"Failed to create ORT session from ONNX file {onnx_model_path}")
 
     description = onnx_model_path
     if (os.environ.get('ORT_LONGFORMER_COMPACT_MEMORY', '0') == "1"):

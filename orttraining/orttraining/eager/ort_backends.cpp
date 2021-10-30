@@ -8,7 +8,6 @@
 #include "ort_backends.h"
 #include "ort_log.h"
 #include "core/platform/env.h"
-#include "core/providers/shared_library/provider_host_api.h"
 
 
 //use the environment from python module
@@ -58,6 +57,13 @@ onnxruntime::Status ORTBackendsManager::set_device(size_t device_index, const st
 
   backends_[device_index] = std::move(invoker);
   return onnxruntime::Status::OK();
+}
+
+OrtDevice ORTBackendsManager::GetOrtDeviceInfo(size_t torch_device_index){
+  auto lookup = backends_.find(torch_device_index);
+  ORT_ENFORCE(lookup != backends_.end());
+  auto allocator = lookup->second->GetCurrentExecutionProvider().GetAllocator(0, OrtMemTypeDefault);
+  return allocator->Info().device;
 }
 
 onnxruntime::ORTInvoker& ORTBackendsManager::GetInvoker(const at::Device device) {
