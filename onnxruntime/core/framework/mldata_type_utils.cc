@@ -1,11 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#pragma once
-
-#include "core/framework/data_types.h"
-#include "core/graph/graph_viewer.h"
-#include "onnx/defs/data_type_utils.h"
+#include "mldata_type_utils.h"
 
 namespace onnxruntime {
 namespace utils {

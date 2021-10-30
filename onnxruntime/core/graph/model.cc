@@ -147,7 +147,7 @@ Model::Model(ModelProto&& model_proto, const PathString& model_path,
   // `allow_released_opsets_only` is for this specific Model instance
   // We will only support released opsets iff IsAllowReleasedONNXOpsetsOnlySet() and `allow_released_opsets_only`
   // are both true
-  auto allow_released_opsets_only_final =
+  auto allow_official_onnx_release_only_final =
       allow_released_opsets_only && model_load_utils::IsAllowReleasedONNXOpsetsOnlySet();
 
   const auto onnx_released_versions =
@@ -171,7 +171,7 @@ Model::Model(ModelProto&& model_proto, const PathString& model_path,
     }
 
     model_load_utils::ValidateOpsetForDomain(onnx_released_versions, logger,
-                                             allow_released_opsets_only_final, domain, version);
+                                             allow_official_onnx_release_only_final, domain, version);
 
     // We need to overwrite the domain here with ("") or else the loop below will try to find ("")
     // in the map and if not found (when domain == kOnnxDomainAlias), adds an entry for ("", 11).
@@ -183,7 +183,7 @@ Model::Model(ModelProto&& model_proto, const PathString& model_path,
     }
   }
 
-  auto domain_map = allow_released_opsets_only_final
+  auto domain_map = allow_official_onnx_release_only_final
                         ? schema_registry->GetLastReleasedOpsetVersions(false)
                         : schema_registry->GetLatestOpsetVersions(false);
   for (const auto& domain : domain_map) {
