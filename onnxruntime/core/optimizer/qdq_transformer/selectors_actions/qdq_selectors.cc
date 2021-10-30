@@ -54,7 +54,7 @@ bool BaseSelector::CheckQDQNodes(const GraphViewer& graph_viewer, const Node& no
          !graph_viewer.NodeProducesGraphOutput(node);
 }
 
-bool BaseSelector::Select(const GraphViewer& graph_viewer, const Node& node, QDQNodeGroup& selection) const {
+bool BaseSelector::Select(const GraphViewer& graph_viewer, const Node& node, NodeGroup& selection) const {
   std::vector<const Node*> dq_nodes = FindQDQNodes(graph_viewer, node, true);
   std::vector<const Node*> q_nodes = FindQDQNodes(graph_viewer, node, false);
   if (!Check(graph_viewer, node, dq_nodes, q_nodes)) {
@@ -78,7 +78,7 @@ bool BaseSelector::Select(const GraphViewer& graph_viewer, const Node& node, QDQ
 }
 
 bool BaseSelector::Select(Graph& graph, const Node& node, std::unique_ptr<NodesToOptimize>& selection) const {
-  QDQNodeGroup qdq_group;
+  NodeGroup qdq_group;
   if (!Select(GraphViewer(graph), node, qdq_group)) {
     return false;
   }
