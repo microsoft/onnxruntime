@@ -7,7 +7,7 @@
 #include "core/common/logging/macros.h"
 #include "core/framework/data_transfer_manager.h"
 #include "core/framework/tensorprotoutils.h"
-#include "core/framework/mldatatypeutils.h"
+#include "core/framework/mldata_type_utils.h"
 #include "core/framework/data_types.h"
 #include "core/framework/kernel_registry.h"
 #include "core/framework/fuse_nodes_funcs.h"

@@ -25,7 +25,7 @@
 #include "core/framework/session_state_flatbuffers_utils.h"
 #include "core/framework/TensorSeq.h"
 #include "core/framework/tensorprotoutils.h"
-#include "core/framework/mldatatypeutils.h"
+#include "core/framework/mldata_type_utils.h"
 #include "core/framework/tensor_type_and_shape.h"
 #include "core/framework/op_kernel_context_internal.h"
 #include "core/framework/ort_value_pattern_planner.h"

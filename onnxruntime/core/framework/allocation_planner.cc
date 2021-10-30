@@ -9,11 +9,11 @@
 #include "core/common/exceptions.h"
 #include "core/platform/env.h"
 #include "core/framework/data_types.h"
+#include "core/framework/kernel_def_builder.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/session_state.h"
 #include "core/framework/tensorprotoutils.h"
-#include "core/framework/kernel_def_builder.h"
-#include "core/framework/mldatatypeutils.h"
+#include "core/framework/mldata_type_utils.h"
 #include "core/framework/utils.h"
 
 using namespace onnxruntime::common;

@@ -10,11 +10,7 @@
 namespace onnxruntime {
 namespace utils {
 
-inline MLDataType GetMLDataType(const onnxruntime::NodeArg& arg) {
-  auto type_proto = arg.TypeAsProto();
-  ORT_ENFORCE(nullptr != type_proto);
-  return DataTypeImpl::TypeFromProto(*type_proto);
-}
+MLDataType GetMLDataType(const onnxruntime::NodeArg& arg);
 
 inline bool IsOptionalTensor(MLDataType type) {
   return type->IsOptionalType() &&

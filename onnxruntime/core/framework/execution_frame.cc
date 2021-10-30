@@ -10,7 +10,7 @@
 #include "core/framework/sequential_execution_plan.h"
 #include "core/framework/ort_value_pattern_planner.h"
 #include "core/framework/tensorprotoutils.h"
-#include "core/framework/mldatatypeutils.h"
+#include "core/framework/mldata_type_utils.h"
 #include "core/framework/sparse_utils.h"
 #include "core/framework/node_index_info.h"
 #include "core/framework/op_kernel.h"
