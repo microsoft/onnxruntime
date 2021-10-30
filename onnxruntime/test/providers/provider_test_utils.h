@@ -248,7 +248,7 @@ class OpTester {
   // Default to the first opset that ORT was available (7).
   // When operators are updated they need to explicitly add tests for the new opset version.
   // This is due to the kernel matching logic. See KernelRegistry::VerifyKernelDef.
-  // Additionally, -1 is supported and defaults to the latest known opset.
+  // Additionally, -1 is supported and defaults to the latest released opset.
   //
   // Defaulting to the latest opset version would result in existing operator implementations for non-CPU EPs to
   // lose their test coverage until an implementation for the new version is added.
@@ -260,9 +260,9 @@ class OpTester {
   explicit OpTester(const char* op, int opset_version = 7, const char* domain = onnxruntime::kOnnxDomain, bool verify_output = true)
       : op_(op), domain_(domain), opset_version_(opset_version), verify_output_(verify_output) {
     if (opset_version_ < 0) {
-      static int latest_onnx_version =
-          ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange().Map().at(ONNX_NAMESPACE::ONNX_DOMAIN).second;
-      opset_version_ = latest_onnx_version;
+      static int latest_released_onnx_version =
+          ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange().LastReleaseVersionMap().at(ONNX_NAMESPACE::ONNX_DOMAIN);
+      opset_version_ = latest_released_onnx_version;
     }
   }
 
