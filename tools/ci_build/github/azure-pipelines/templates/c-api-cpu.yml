@@ -706,16 +706,33 @@ jobs:
       TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\linux\arm64'
 
   - script: |
+     node $(Build.SourcesDirectory)\tools\ci_build\github\js\generate-npm-package-dev-version.js
+    displayName: 'generate @dev package version'
+    condition: and(succeeded(), eq('${{ parameters.IsReleaseBuild}}', false))
+
+  - script: |
+     npm version $(NpmPackageVersionNumber)
+    displayName: 'Bump @dev version for onnxruntime-common'
+    workingDirectory: '$(Build.SourcesDirectory)/js/common'
+    condition: and(succeeded(), eq('${{ parameters.IsReleaseBuild}}', false))
+
+  - script: |
+     npm version $(NpmPackageVersionNumber)
+    displayName: 'Bump @dev version for onnxruntime-node'
+    workingDirectory: '$(Build.SourcesDirectory)/js/node'
+    condition: and(succeeded(), eq('${{ parameters.IsReleaseBuild}}', false))
+
+  - script: |
      npm pack
     workingDirectory: '$(Build.SourcesDirectory)/js/common'
     displayName: 'npm pack /js/common'
+  
+  # TODO: check if we can skip onnxruntime-common
 
   - script: |
      npm pack
     workingDirectory: '$(Build.SourcesDirectory)/js/node'
     displayName: 'npm pack /js/node'
-  
-  # TODO: check if we can skip onnxruntime-common
 
   - task: CopyFiles@2
     displayName: 'Copy onnxruntime-common package to staging directory'
