@@ -936,10 +936,19 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
 
     if is_macOS() and not args.android:
         cmake_args += ["-DCMAKE_OSX_ARCHITECTURES=" + args.osx_arch]
-        # since cmake 3.19, it uses the xcode latest buildsystem, which is not supported by this project.
-        cmake_verstr = subprocess.check_output(['cmake', '--version']).decode('utf-8').split()[2]
-        if args.use_xcode and LooseVersion(cmake_verstr) >= LooseVersion('3.19.0'):
-            cmake_args += ["-T", "buildsystem=1"]
+        if args.use_xcode:
+            cmake_ver = LooseVersion(
+                subprocess.check_output(['cmake', '--version']).decode('utf-8').split()[2])
+            xcode_ver = LooseVersion(
+                subprocess.check_output(['xcrun', 'xcodebuild', '-version']).decode('utf-8').split()[1])
+            # Requires Cmake 3.21.1+ for XCode 13+
+            # The legacy build system is not longer supported on XCode 13+
+            if xcode_ver >= LooseVersion('13') and cmake_ver < LooseVersion('3.21.1'):
+                raise BuildError("CMake 3.21.1+ required to use XCode 13+")
+            # Use legacy build system for old CMake [3.19, 3.21.1) which uses new build system by default
+            # CMake 3.18- use the legacy build system by default
+            if cmake_ver >= LooseVersion('3.19.0') and cmake_ver < LooseVersion('3.21.1'):
+                cmake_args += ["-T", "buildsystem=1"]
         if args.apple_deploy_target:
             cmake_args += ["-DCMAKE_OSX_DEPLOYMENT_TARGET=" + args.apple_deploy_target]
         # Code sign the binaries, if the code signing development identity and/or team id are provided
