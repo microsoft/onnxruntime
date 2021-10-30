@@ -46,8 +46,7 @@ namespace OperatorHelper
 
         return static_cast<OutputType>(std::clamp<InputType>(input, lowestValue, highestValue));
     }
-
-    enum TensorAxis { N, C, H, W, DoNotCoerce = UINT_MAX, LeftAligned = INT_MAX, RightAligned = INT_MIN, NoPlacementAdjustment = 0 };
+    enum TensorAxis { N, C, H, W, DoNotCoerce = INT_MAX, LeftAligned = INT_MAX, RightAligned = INT_MIN, NoPlacementAdjustment = 0 };
     enum BroadcastMode { NoBroadcast, UnidirectionalBroadcast, MultidirectionalBroadcast };
 
     using DimensionType = uint32_t;

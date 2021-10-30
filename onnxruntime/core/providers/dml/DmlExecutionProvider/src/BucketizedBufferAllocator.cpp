@@ -39,15 +39,21 @@ namespace Dml
         const D3D12_HEAP_PROPERTIES& heapProps,
         D3D12_HEAP_FLAGS heapFlags,
         D3D12_RESOURCE_FLAGS resourceFlags,
-        D3D12_RESOURCE_STATES initialState)
-        : onnxruntime::IAllocator(OrtMemoryInfo("DML allocator", OrtAllocatorType::OrtDeviceAllocator,
-                                                OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0)))
-        , m_device(device)
-        , m_context(context)
-        , m_heapProperties(heapProps)
-        , m_heapFlags(heapFlags)
-        , m_resourceFlags(resourceFlags)
-        , m_initialState(initialState)
+        D3D12_RESOURCE_STATES initialState
+        )
+        : onnxruntime::IAllocator(
+            OrtMemoryInfo(
+                "DML allocator",
+                OrtAllocatorType::OrtDeviceAllocator,
+                OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0)
+            )
+        ),
+        m_device(device),
+        m_heapProperties(heapProps),
+        m_heapFlags(heapFlags),
+        m_resourceFlags(resourceFlags),
+        m_initialState(initialState),
+        m_context(context)
     {
     }
 
@@ -105,13 +111,15 @@ namespace Dml
             if (bucket->resources.empty())
             {
                 // No more resources in this bucket - allocate a new one
+                auto buffer = CD3DX12_RESOURCE_DESC::Buffer(bucketSize, m_resourceFlags);
                 THROW_IF_FAILED(m_device->CreateCommittedResource(
                     &m_heapProperties,
                     m_heapFlags,
-                    &CD3DX12_RESOURCE_DESC::Buffer(bucketSize, m_resourceFlags),
+                    &buffer,
                     m_initialState,
                     nullptr,
-                    IID_PPV_ARGS(&resource)));
+                    IID_PPV_ARGS(&resource)
+                ));
 
                 resourceId = ++m_currentResourceId;
             }
@@ -128,15 +136,17 @@ namespace Dml
             // The allocation will not be pooled.  Construct a new one
             bucketSize = (size + 3) & ~3;
 
+            auto buffer = CD3DX12_RESOURCE_DESC::Buffer(bucketSize, m_resourceFlags);
             THROW_IF_FAILED(m_device->CreateCommittedResource(
                 &m_heapProperties,
                 m_heapFlags,
-                &CD3DX12_RESOURCE_DESC::Buffer(bucketSize, m_resourceFlags),
+                &buffer,
                 m_initialState,
                 nullptr,
-                IID_PPV_ARGS(&resource)));
+                IID_PPV_ARGS(&resource)
+            ));
 
-            resourceId = ++m_currentResourceId;        
+            resourceId = ++m_currentResourceId;
         }
 
         assert(resource->GetDesc().Width == bucketSize);
@@ -147,7 +157,8 @@ namespace Dml
             ++m_currentAllocationId,
             resourceId,
             resource.Get(),
-            size);
+            size
+        );
 
     #if _DEBUG
         m_outstandingAllocationsById[allocInfo->GetId()] = allocInfo.Get();
@@ -186,7 +197,7 @@ namespace Dml
             // Return the resource to the bucket
             Bucket* bucket = &m_pool[bucketIndex];
             
-            Resource resource = {std::move(allocInfo->DetachResource()), pooledResourceId};
+            Resource resource = {allocInfo->DetachResource(), pooledResourceId};
             bucket->resources.push_back(resource);
         }
         else
@@ -232,14 +243,19 @@ namespace Dml
 
     CPUAllocator::CPUAllocator(OrtMemType memType)
         : onnxruntime::IAllocator(
-              OrtMemoryInfo("DML CPU",
-                            OrtAllocatorType::OrtDeviceAllocator,
-                            OrtDevice(OrtDevice::CPU, OrtDevice::MemType::DEFAULT, 0),
-                            0, memType)) 
+            OrtMemoryInfo(
+                "DML CPU",
+                OrtAllocatorType::OrtDeviceAllocator,
+                OrtDevice(OrtDevice::CPU, OrtDevice::MemType::DEFAULT, 0),
+                0,
+                memType
+            )
+        )
     {
     }
 
-    void* CPUAllocator::Alloc(size_t size) {
+    void* CPUAllocator::Alloc(size_t size)
+    {
         if (size <= 0)
         {
             return nullptr;
@@ -248,9 +264,9 @@ namespace Dml
         return p;
     }
 
-    void CPUAllocator::Free(void* p) {
+    void CPUAllocator::Free(void* p)
+    {
         free(p);
     }
-
 
 } // namespace Dml

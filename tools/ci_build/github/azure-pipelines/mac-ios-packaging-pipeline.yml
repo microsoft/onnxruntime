@@ -16,11 +16,25 @@ jobs:
   displayName: "iOS Packaging"
 
   pool:
-    vmImage: "macOS-10.15"
+    vmImage: "macOS-11"
 
   timeoutInMinutes: 90
 
   steps:
+  - task: InstallAppleCertificate@2
+    inputs:
+      certSecureFile: '$(ios_signing_certificate_name)'
+      certPwd: '$(ios_signing_certificate_password)'
+      keychain: 'temp'
+      deleteCert: true
+    displayName: 'Install ORT Mobile Test Signing Certificate'
+
+  - task: InstallAppleProvisioningProfile@1
+    inputs:
+      provProfileSecureFile: '$(ios_provision_profile_name)'
+      removeProfile: true
+    displayName: 'Install ORT Mobile Test Provisioning Profile'
+
   - task: UsePythonVersion@0
     inputs:
       versionSpec: "3.9"
@@ -73,6 +87,40 @@ jobs:
         -b="--path_to_protoc_exe" -b "$(Build.BinariesDirectory)/protobuf_install/bin/protoc"
     displayName: "Build iOS framework and assemble pod package files"
 
+  - script: |
+      python tools/ci_build/github/apple/test_ios_packages.py \
+        --fail_if_cocoapods_missing \
+        --framework_info_file "$(Build.BinariesDirectory)/ios_framework/framework_info.json" \
+        --c_framework_dir "$(Build.BinariesDirectory)/ios_framework/framework_out" \
+        --test_project_stage_dir "$(Build.BinariesDirectory)/app_center_test" \
+        --prepare_test_project_only
+    displayName: "Assemble test project for App Center"
+
+  - task: Xcode@5
+    inputs:
+      actions: 'build-for-testing'
+      configuration: 'Debug'
+      xcWorkspacePath: '$(Build.BinariesDirectory)/app_center_test/ios_package_test/ios_package_test.xcworkspace'
+      sdk: 'iphoneos'
+      scheme: 'ios_package_test'
+      signingOption: 'manual'
+      signingIdentity: '$(APPLE_CERTIFICATE_SIGNING_IDENTITY)'
+      provisioningProfileName: 'iOS Team Provisioning Profile'
+      args: '-derivedDataPath $(Build.BinariesDirectory)/app_center_test/ios_package_test/DerivedData'
+      workingDirectory: $(Build.BinariesDirectory)/app_center_test/ios_package_test/
+    displayName: 'Build iphone arm64 tests'
+
+  - script: |
+      set -e -x
+      appcenter test run xcuitest \
+        --app "AI-Frameworks/ORT-Mobile-iOS" \
+        --devices $(app_center_test_devices) \
+        --test-series "master" \
+        --locale "en_US" \
+        --build-dir $(Build.BinariesDirectory)/app_center_test/ios_package_test/DerivedData/Build/Products/Debug-iphoneos \
+        --token $(app_center_api_token)
+    displayName: Run E2E tests on App Center
+
   - bash: |
       set -e
       gem install jazzy
@@ -97,3 +145,7 @@ jobs:
   - publish: "$(Build.ArtifactStagingDirectory)"
     artifact: ios_packaging_artifacts
     displayName: "Publish artifacts"
+
+  - template: templates/component-governance-component-detection-steps.yml
+    parameters :
+      condition : 'succeeded'

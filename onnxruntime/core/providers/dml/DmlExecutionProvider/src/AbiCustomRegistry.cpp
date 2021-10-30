@@ -13,6 +13,8 @@ AbiCustomRegistry::AbiCustomRegistry() :
 {
 }
 
+#pragma warning(push)
+#pragma warning(suppress: 4702)
 onnx::OpSchema::FormalParameterOption AbiCustomRegistry::ConvertFormalParameterOption(MLOperatorParameterOptions options)
 {
     switch (options)
@@ -28,8 +30,10 @@ onnx::OpSchema::FormalParameterOption AbiCustomRegistry::ConvertFormalParameterO
 
         default:
             THROW_HR(E_NOTIMPL);
+            return onnx::OpSchema::FormalParameterOption::Single;
     }
 }
+#pragma warning(pop)
 
 // Convert edge types from the ABI types to ONNX strings
 std::string AbiCustomRegistry::ConvertFormalParameterType(const MLOperatorSchemaEdgeDescription& formalParameter)
@@ -124,6 +128,7 @@ void AbiCustomRegistry::SetAttributesAndDefaults(onnx::OpSchema& schema, const M
                     break;
                 }
 
+                #pragma warning(suppress:4063)
                 case MLOperatorAttributeTypeTensor:
                     // Tensor is too complex to express a default value. Default checking is done by the operator code.
                     __fallthrough;
@@ -204,7 +209,7 @@ onnx::OpSchema AbiCustomRegistry::ConvertOpSchema(
             gsl::span<const uint32_t> requiredConstantCpuInputs;
 
             onnxruntime::OpNodeProtoHelper<onnx::InferenceContext> nodeInfo(&ctx);
-            ComPtr<MLSchemaInferenceContext> abiContext = wil::MakeOrThrow<MLSchemaInferenceContext>(&nodeInfo, &ctx, requiredConstantCpuInputs);
+            ComPtr<MLSchemaInferenceContext> abiContext = MLSchemaInferenceContext::Create(&nodeInfo, &ctx, requiredConstantCpuInputs);
 
             // Do type inference
             if (typeInferrerCapture)
@@ -302,6 +307,7 @@ AttributeMap AbiCustomRegistry::GetDefaultAttributes(
             attr.ints.assign(&apiAttr.ints[0], &apiAttr.ints[apiAttr.valueCount]);
             break;
 
+        #pragma warning(disable:4063)
         case MLOperatorAttributeTypeTensor:
             // Tensor is too complex to express a default value. Default checking is done by the operator code.
             __fallthrough;
@@ -470,8 +476,6 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistry::RegisterOperatorKernel(
             GraphNodeFactoryRegistration graphReg;
             graphReg.factory = 
                 [kernelFactoryCapture,
-                requiresInputShapesAtCreation,
-                requiresOutputShapesAtCreation,
                 shapeInferrerCapture,
                 defaultAttributesCapture,
                 constantCpuInputCapture](const onnxruntime::Node& node, MLOperatorTensorGetter& constantInputGetter, const void* executionHandle, DmlGraphNodeCreateInfo* graphNodeCreateInfo)
@@ -517,7 +521,7 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistry::RegisterOperatorKernel(
                 onnxruntime::OpNodeProtoHelper<onnxruntime::ProtoHelperNodeContext> protoHelper(&nodeContext);
                               
                 // Create the kernel while allowing input shape and output shape queries according to options
-                ComPtr<MLSupportQueryContext> supportContext = wil::MakeOrThrow<MLSupportQueryContext>(
+                ComPtr<MLSupportQueryContext> supportContext = MLSupportQueryContext::Create(
                         &protoHelper,
                         &defaultAttributesCapture);
 

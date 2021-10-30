@@ -10,6 +10,8 @@ using namespace Windows::AI::MachineLearning::Adapter;
 namespace Dml::GraphDescBuilder
 {
 
+    #pragma warning(push)
+    #pragma warning(disable:4702)
     const std::string& GetUniqueNodeName(const onnxruntime::Node& node)
     {
         // The node's name is optional, and it might be re-created with a different index
@@ -25,7 +27,10 @@ namespace Dml::GraphDescBuilder
 
         assert(false);
         THROW_HR(E_UNEXPECTED);
+        const onnxruntime::NodeArg* arg = node.OutputDefs()[0];
+        return arg->Name();
     }
+    #pragma warning(pop)
 
     GraphDesc BuildGraphDesc(
         const onnxruntime::OpKernelInfo& kernelInfo,
@@ -91,7 +96,7 @@ namespace Dml::GraphDescBuilder
             reuseCommandList = true;
         }
 
-        auto constantCpuGraphInputGetter = [&fusedNodeInputDefs, &transferredInitializerMap](const std::string& argName)
+        auto constantCpuGraphInputGetter = [&transferredInitializerMap](const std::string& argName)
         {
             ComPtr<OnnxTensorWrapper> tensorWrapper;
 
