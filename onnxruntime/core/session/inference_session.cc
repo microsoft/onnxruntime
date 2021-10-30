@@ -1232,7 +1232,7 @@ Status AssignNodesToEpsFromHashes(Graph& graph, const fbs::SessionState& fbs_ses
 }  // namespace
 #endif  // defined(ENABLE_ORT_FORMAT_LOAD)
 
-static void ResolveSubgrapMemoryPatternFlags(SessionState& session_state) {
+static void ResolveSubgraphMemoryPatternFlags(SessionState& session_state) {
   for (const auto& entry : session_state.GetSubgraphSessionStateMap()) {
     for (const auto& name_to_subgraph_session_state : entry.second) {
       name_to_subgraph_session_state.second->ResolveMemoryPatternFlag();
@@ -1444,7 +1444,7 @@ common::Status InferenceSession::Initialize() {
     session_state_->ResolveMemoryPatternFlag();
 
     // Resolve all memory pattern flags of subgraph session states
-    ResolveSubgrapMemoryPatternFlags(*session_state_);
+    ResolveSubgraphMemoryPatternFlags(*session_state_);
 
     is_inited_ = true;
 
