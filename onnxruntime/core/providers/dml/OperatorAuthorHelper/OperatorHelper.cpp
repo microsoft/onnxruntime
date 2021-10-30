@@ -169,7 +169,6 @@ namespace OperatorHelper
             ML_INVALID_ARGUMENT("Unknown MLOperatorTensorDataType.");
             return 0;
         };
-        #pragma warning(pop)
     }
     #pragma warning(pop)
 
@@ -199,7 +198,6 @@ namespace OperatorHelper
             ML_INVALID_ARGUMENT("Unknown MLOperatorTensorDataType.");
             return 0.0;
         };
-        #pragma warning(pop)
     }
     #pragma warning(pop)
 

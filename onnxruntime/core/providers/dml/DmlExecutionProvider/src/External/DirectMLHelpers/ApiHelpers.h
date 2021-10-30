@@ -62,7 +62,6 @@ struct ActivationOperatorDesc
             THROW_HR(E_INVALIDARG);
             return { activationType, &params.relu };
         }
-        #pragma warning(pop)
     }
     #pragma warning(pop)
 };

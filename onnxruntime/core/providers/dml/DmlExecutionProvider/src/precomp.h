@@ -46,12 +46,12 @@ using Microsoft::WRL::ComPtr;
 // Windows pollutes the macro space, causing a build break in schema.h.
 #undef OPTIONAL
 
+#include "ErrorHandling.h"
 #include "core/providers/dml/DmlExecutionProvider/inc/DmlExecutionProvider.h"
 #include "core/providers/dml/OperatorAuthorHelper/MLOperatorAuthorHelper.h"
 #include "core/providers/dml/OperatorAuthorHelper/Common.h"
 
 #include "DmlCommon.h"
-#include "ErrorHandling.h"
 #include "TensorDesc.h"
 #include "DescriptorPool.h"
 #include "IExecutionProvider.h"

@@ -94,7 +94,6 @@ MLOperatorTensorDataType GetMlDataTypeFromDmlDataType(DML_TENSOR_DATA_TYPE tenso
         ML_INVALID_ARGUMENT("Unknown DML_TENSOR_DATA_TYPE.");
         return MLOperatorTensorDataType::Undefined;
     };
-    #pragma warning(pop)
 }
 #pragma warning(pop)
 
