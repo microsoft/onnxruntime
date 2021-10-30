@@ -29,7 +29,7 @@ onnx::OpSchema::FormalParameterOption AbiCustomRegistry::ConvertFormalParameterO
             return onnx::OpSchema::FormalParameterOption::Variadic;
 
         default:
-            THROW_HR(E_NOTIMPL);
+            ORT_THROW_HR(E_NOTIMPL);
             return onnx::OpSchema::FormalParameterOption::Single;
     }
 }
@@ -214,13 +214,13 @@ onnx::OpSchema AbiCustomRegistry::ConvertOpSchema(
             // Do type inference
             if (typeInferrerCapture)
             {
-                THROW_IF_FAILED(typeInferrerCapture->InferOutputTypes(abiContext.Get()));
+                ORT_THROW_IF_FAILED(typeInferrerCapture->InferOutputTypes(abiContext.Get()));
             }
 
             // Do shape inference if all input tensor shapes are known
             if (shapeInferrerCapture && InputTensorShapesDefinedOnNode(nodeInfo))
             {
-                THROW_IF_FAILED(shapeInferrerCapture->InferOutputShapes(abiContext.Get()));
+                ORT_THROW_IF_FAILED(shapeInferrerCapture->InferOutputShapes(abiContext.Get()));
             }
 
             abiContext->Close();
@@ -316,7 +316,7 @@ AttributeMap AbiCustomRegistry::GetDefaultAttributes(
             __fallthrough;
 
         default:
-            THROW_HR(E_INVALIDARG);
+            ORT_THROW_HR(E_INVALIDARG);
         }
 
         ret[apiAttr.name] = attr;

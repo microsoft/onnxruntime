@@ -138,7 +138,7 @@ protected:
     {
         if (m_isClosed)
         {
-            THROW_HR(E_INVALIDARG);
+            ORT_THROW_HR(E_INVALIDARG);
         }
     }
 

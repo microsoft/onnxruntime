@@ -59,7 +59,7 @@ struct ActivationOperatorDesc
         case DML_OPERATOR_ACTIVATION_THRESHOLDED_RELU: return { activationType, &params.thresholdedRelu };
         case DML_OPERATOR_ACTIVATION_SHRINK: return { activationType, &params.shrink };
         default:
-            THROW_HR(E_INVALIDARG);
+            ORT_THROW_HR(E_INVALIDARG);
             return { activationType, &params.relu };
         }
     }
@@ -207,7 +207,7 @@ private:
             this->capacity = this->template RoundUpToMultiple<size_t>(minimumSize, 4096); // Round up to nearest page granularity
 
             this->data = VirtualAlloc(nullptr, this->capacity, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-            THROW_LAST_ERROR_IF_NULL(this->data);
+            ORT_THROW_LAST_ERROR_IF_NULL(this->data);
         }
 
         ~DynamicBucket()

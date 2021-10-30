@@ -44,7 +44,7 @@ size_t AttributeValue::ElementCount() const {
     default:
       // The type is validated when default attributes are registered
       assert(false);
-      THROW_HR(E_FAIL);
+      ORT_THROW_HR(E_FAIL);
       return 0;
   }
   #pragma warning(pop)
@@ -75,7 +75,7 @@ void AttributeValue::GetAttribute(
       break;
 
     default:
-      THROW_HR(E_INVALIDARG);
+      ORT_THROW_HR(E_INVALIDARG);
   }
 }
 
@@ -239,7 +239,7 @@ bool IsPrimitiveAttributeType(MLOperatorAttributeType type) {
   ML_TENSOR_TYPE_CASE(uint64_t);
   ML_TENSOR_TYPE_CASE(onnxruntime::MLFloat16);
 
-  THROW_HR(E_NOTIMPL);
+  ORT_THROW_HR(E_NOTIMPL);
   return MLOperatorTensorDataType::Undefined;
  #pragma warning(pop)
 }
@@ -269,7 +269,7 @@ onnxruntime::MLDataType ToTensorDataType(::MLOperatorTensorDataType type) {
   ML_TENSOR_TYPE_CASE(uint64_t);
   ML_TENSOR_TYPE_CASE(onnxruntime::MLFloat16);
 
-  THROW_HR(E_NOTIMPL);
+  ORT_THROW_HR(E_NOTIMPL);
   return onnxruntime::DataTypeImpl::GetTensorType<float>();
 #pragma warning(pop)
 }
@@ -324,7 +324,7 @@ onnxruntime::MLDataType ToTensorDataType(::MLOperatorTensorDataType type) {
       return MLOperatorTensorDataType::Complex128;
 
     default:
-      THROW_HR(E_NOTIMPL);
+      ORT_THROW_HR(E_NOTIMPL);
       return MLOperatorTensorDataType::Undefined;
   }
 #pragma warning(pop)
@@ -352,7 +352,7 @@ onnxruntime::MLDataType ToTensorDataType(::MLOperatorTensorDataType type) {
 #pragma warning(disable:4702)
 std::string ToTypeString(MLOperatorEdgeDescription desc) {
   if (desc.edgeType != MLOperatorEdgeType::Tensor) {
-    THROW_HR(E_NOTIMPL);
+    ORT_THROW_HR(E_NOTIMPL);
   }
 
   switch (desc.tensorDataType) {
@@ -402,7 +402,7 @@ std::string ToTypeString(MLOperatorEdgeDescription desc) {
       return "tensor(complext128)";
 
     default:
-      THROW_HR(E_NOTIMPL);
+      ORT_THROW_HR(E_NOTIMPL);
       return "";
   }
 #pragma warning(pop)
@@ -550,12 +550,12 @@ const std::string* OpNodeInfoWrapper<NodeInfoImpl_t, Base1_t, Base2_t>::GetStrin
   // Look for a value in the kernel's registered defaults if one was not found
   if (!attr) {
     if (!m_defaultAttributes) {
-      THROW_HR(E_FAIL);
+      ORT_THROW_HR(E_FAIL);
     }
 
     auto defaultAttr = m_defaultAttributes->find(name);
     if (defaultAttr == m_defaultAttributes->end()) {
-      THROW_HR(E_FAIL);
+      ORT_THROW_HR(E_FAIL);
     }
 
     return defaultAttr->second.GetStringAttribute(name, elementIndex);
@@ -794,7 +794,7 @@ HRESULT STDMETHODCALLTYPE OpNodeInfoWrapper<NodeInfoImpl_t, Base1_t, Base2_t>::G
                                          m_requiredConstantCpuInputs.end(),
                                          inputIndex) != m_requiredConstantCpuInputs.end();
 
-      THROW_HR_IF(E_INVALIDARG, !inputRequiredAsConstant);
+      ORT_THROW_HR_IF(E_INVALIDARG, !inputRequiredAsConstant);
 
       ComPtr<IMLOperatorTensor> tensorWrapper = m_constantInputGetter(inputIndex);
 
@@ -1257,7 +1257,7 @@ void OpKernelContextWrapper::TransitionResourcesForOperatorIfRequired(bool isBef
 
     for (uint32_t i = 0; i < m_inputTensors.size(); ++i) {
       ComPtr<IMLOperatorTensor> tensor;
-      THROW_IF_FAILED(GetInputTensor(i, tensor.GetAddressOf()));
+      ORT_THROW_IF_FAILED(GetInputTensor(i, tensor.GetAddressOf()));
 
       ComPtr<IUnknown> resource;
       tensor->GetDataInterface(resource.GetAddressOf());
@@ -1268,7 +1268,7 @@ void OpKernelContextWrapper::TransitionResourcesForOperatorIfRequired(bool isBef
 
     for (uint32_t i = 0; i < m_outputTensors.size(); ++i) {
       ComPtr<IMLOperatorTensor> tensor;
-      THROW_IF_FAILED(GetOutputTensor(i, tensor.GetAddressOf()));
+      ORT_THROW_IF_FAILED(GetOutputTensor(i, tensor.GetAddressOf()));
 
       ComPtr<IUnknown> resource;
       tensor->GetDataInterface(resource.GetAddressOf());
@@ -1496,7 +1496,7 @@ std::vector<IMLOperatorTensor*> OpKernelContextWrapper::GetInputTensors() {
 
   for (int i = 0; i < m_impl->InputCount(); ++i) {
     ComPtr<IMLOperatorTensor> tensor;
-    THROW_IF_FAILED(GetInputTensor(i, tensor.GetAddressOf()));
+    ORT_THROW_IF_FAILED(GetInputTensor(i, tensor.GetAddressOf()));
     ret.push_back(m_inputTensors[i].Get());
   }
 
@@ -1507,11 +1507,11 @@ std::vector<IMLOperatorTensor*> OpKernelContextWrapper::GetOutputTensors(const E
   std::vector<IMLOperatorTensor*> ret;
   ret.reserve(m_outputTensors.size());
 
-  THROW_HR_IF(E_INVALIDARG, m_impl->OutputCount() != outputShapes.EdgeCount());
+  ORT_THROW_HR_IF(E_INVALIDARG, m_impl->OutputCount() != outputShapes.EdgeCount());
 
   for (int i = 0; i < m_impl->OutputCount(); ++i) {
     ComPtr<IMLOperatorTensor> tensor;
-    THROW_IF_FAILED(GetOutputTensor(
+    ORT_THROW_IF_FAILED(GetOutputTensor(
         i,
         static_cast<uint32_t>(outputShapes.GetShape(i).size()),
         outputShapes.GetShape(i).data(),
@@ -1604,7 +1604,7 @@ AbiOpKernel::AbiOpKernel(
         m_requiredConstantCpuInputs,
         constantInputGetter);
 
-    THROW_IF_FAILED(operatorFactory->CreateKernel(kernelInfoWrapper.Get(), m_kernel.GetAddressOf()));
+    ORT_THROW_IF_FAILED(operatorFactory->CreateKernel(kernelInfoWrapper.Get(), m_kernel.GetAddressOf()));
     kernelInfoWrapper->Close();
 
     // Ensure that scheduled work, if any, is completed before freeing the kernel if the execution
@@ -1657,7 +1657,7 @@ onnxruntime::Status AbiOpKernel::Compute(onnxruntime::OpKernelContext* context) 
         constantInputGetter);
 
     ComPtr<IMLOperatorKernel> ret;
-    THROW_IF_FAILED(m_operatorFactory->CreateKernel(kernelInfoWrapper.Get(), ret.GetAddressOf()));
+    ORT_THROW_IF_FAILED(m_operatorFactory->CreateKernel(kernelInfoWrapper.Get(), ret.GetAddressOf()));
     kernelInfoWrapper->Close();
 
     return ret;
@@ -1737,7 +1737,7 @@ onnxruntime::Status AbiOpKernel::Compute(onnxruntime::OpKernelContext* context) 
           m_internalOperator,
           m_requiresOutputShapesAtCreation ? &localInferredOutputShapes : nullptr);
 
-      THROW_IF_FAILED(localKernel->Compute(kernelContextWrapper.Get()));
+      ORT_THROW_IF_FAILED(localKernel->Compute(kernelContextWrapper.Get()));
       kernelContextWrapper->Close();
 
       // Ensure that scheduled work, if any, is completed before freeing the kernel if the execution
@@ -1755,7 +1755,7 @@ onnxruntime::Status AbiOpKernel::Compute(onnxruntime::OpKernelContext* context) 
       m_internalOperator,
       m_requiresOutputShapesAtCreation ? &m_inferredOutputShapes : nullptr);
 
-  THROW_IF_FAILED(m_kernel->Compute(kernelContextWrapper.Get()));
+  ORT_THROW_IF_FAILED(m_kernel->Compute(kernelContextWrapper.Get()));
   kernelContextWrapper->Close();
 
   // Ensure that scheduled work, if any, is completed before freeing the kernel if the execution
@@ -1827,7 +1827,7 @@ void InferAndVerifyOutputSizes(
 
   outputShapes.Reset(info.GetOutputCount());
 
-  THROW_IF_FAILED(shapeInferrer->InferOutputShapes(inferenceContext.Get()));
+  ORT_THROW_IF_FAILED(shapeInferrer->InferOutputShapes(inferenceContext.Get()));
   inferenceContext->Close();
 
   for (size_t outputIndex = 0; outputIndex < outputShapes.EdgeCount(); ++outputIndex) {
@@ -2044,7 +2044,7 @@ std::tuple<std::unique_ptr<std::byte[]>, size_t> UnpackTensor(const onnx::Tensor
     size_t elementCount = initializer.##Z();                                                       \
     tensorByteSize = elementCount * sizeof(Y);                                                     \
     unpackedTensor.reset(new std::byte[tensorByteSize]);                                           \
-    THROW_HR_IF(E_FAIL, !onnxruntime::utils::UnpackTensor(                                         \
+    ORT_THROW_HR_IF(E_FAIL, !onnxruntime::utils::UnpackTensor(                                         \
                              initializer,                                                          \
                              initializer.has_raw_data() ? initializer.raw_data().data() : nullptr, \
                              initializer.has_raw_data() ? initializer.raw_data().size() : 0,       \
@@ -2066,7 +2066,7 @@ std::tuple<std::unique_ptr<std::byte[]>, size_t> UnpackTensor(const onnx::Tensor
     CASE_PROTO(UINT64, uint64_t, int64_data_size);
     CASE_PROTO(FLOAT16, onnxruntime::MLFloat16, int32_data_size);
     default:
-      THROW_HR(E_INVALIDARG);
+      ORT_THROW_HR(E_INVALIDARG);
   }
 
   return std::make_tuple(std::move(unpackedTensor), tensorByteSize);

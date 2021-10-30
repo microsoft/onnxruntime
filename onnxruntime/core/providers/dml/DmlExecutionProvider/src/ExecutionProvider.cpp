@@ -67,11 +67,11 @@ namespace Dml
         if (queueType != D3D12_COMMAND_LIST_TYPE_DIRECT && queueType != D3D12_COMMAND_LIST_TYPE_COMPUTE)
         {
             // DML requires either DIRECT or COMPUTE command queues.
-            THROW_HR(E_INVALIDARG);
+            ORT_THROW_HR(E_INVALIDARG);
         }
 
         ComPtr<ID3D12Device> device;
-        THROW_IF_FAILED(commandQueue->GetDevice(IID_PPV_ARGS(&device)));
+        ORT_THROW_IF_FAILED(commandQueue->GetDevice(IID_PPV_ARGS(&device)));
 
         m_impl = wil::MakeOrThrow<ExecutionProviderImpl>(dmlDevice, device.Get(), commandQueue, enableMetacommands);
 
@@ -157,7 +157,7 @@ namespace Dml
 
         featureLevels.NumFeatureLevels = ARRAYSIZE(featureLevelsList);
         featureLevels.pFeatureLevelsRequested = featureLevelsList;
-        THROW_IF_FAILED(d3d12Device->CheckFeatureSupport(
+        ORT_THROW_IF_FAILED(d3d12Device->CheckFeatureSupport(
             D3D12_FEATURE_FEATURE_LEVELS,
             &featureLevels,
             sizeof(featureLevels)
@@ -552,7 +552,7 @@ namespace Dml
             provider,
             true);
 
-        THROW_IF_FAILED(CopyTensor(&destInternal, &srcInternal));
+        ORT_THROW_IF_FAILED(CopyTensor(&destInternal, &srcInternal));
 
         return onnxruntime::common::Status::OK();
     }
@@ -590,7 +590,7 @@ namespace Dml
                 true);
 
             const size_t dataSizeInBytes = ComputeByteSizeFromTensor(dstWrapper);
-            THROW_HR_IF(E_INVALIDARG, dataSizeInBytes != ComputeByteSizeFromTensor(srcWrapper)); // Tensors must be the same size
+            ORT_THROW_HR_IF(E_INVALIDARG, dataSizeInBytes != ComputeByteSizeFromTensor(srcWrapper)); // Tensors must be the same size
 
             if (dataSizeInBytes == 0)
             {
@@ -598,7 +598,7 @@ namespace Dml
             }
 
             dataSizesInBytes.push_back(static_cast<uint32_t>(ComputeByteSizeFromTensor(dstWrapper)));
-            THROW_HR_IF(E_INVALIDARG, dataSizesInBytes[i] != ComputeByteSizeFromTensor(srcWrapper)); // Tensors must be the same size
+            ORT_THROW_HR_IF(E_INVALIDARG, dataSizesInBytes[i] != ComputeByteSizeFromTensor(srcWrapper)); // Tensors must be the same size
 
             dstDatas.push_back(dstWrapper.GetData());
             const AllocationInfo* srcAllocInfo = m_allocator->DecodeDataHandle(MLOperatorTensor(&srcWrapper).GetDataInterface().Get());
@@ -715,7 +715,7 @@ namespace Dml
         for (uint32_t i = 0; i < resourceCount; ++i)
         {
             ComPtr<ID3D12Resource> resource;
-            THROW_IF_FAILED(resources[i]->QueryInterface(resource.GetAddressOf()));
+            ORT_THROW_IF_FAILED(resources[i]->QueryInterface(resource.GetAddressOf()));
 
             // Custom operators receive resources in Common state and must return them to Common
             // state when finished.  Resources are otherwise kept in UAV state (or are promotable to UAV).

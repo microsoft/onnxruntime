@@ -30,8 +30,8 @@ public:
             ComPtr<IMLOperatorTensor> valueTensor;
 
             // Get the extended attributes to be able to access the constant tensor.
-            THROW_IF_FAILED(kernelCreationContextInterface.As(&attributes));
-            THROW_IF_FAILED(attributes->GetTensorAttribute(AttrName::Value, &valueTensor));
+            ORT_THROW_IF_FAILED(kernelCreationContextInterface.As(&attributes));
+            ORT_THROW_IF_FAILED(attributes->GetTensorAttribute(AttrName::Value, &valueTensor));
             MLOperatorTensor wrappedValueTensor(valueTensor.Get());
 
             // Read the raw bytes from the tensor, agnostic to data type, which becomes the GPU fill pattern.
@@ -48,7 +48,7 @@ public:
     void Compute(const MLOperatorKernelContext& kernelContext) override
     {
         std::vector<IMLOperatorTensor*> outputTensors = GetOutputTensorsForExecute(kernelContext);
-        THROW_IF_FAILED(m_executionProvider->FillTensorWithPattern(outputTensors.front(), valueBytes));
+        ORT_THROW_IF_FAILED(m_executionProvider->FillTensorWithPattern(outputTensors.front(), valueBytes));
     }
 
 private:

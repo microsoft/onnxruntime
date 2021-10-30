@@ -187,7 +187,7 @@ namespace Dml
             bool nodesRemoved = false;
             nodesRemoved = graph->RemoveNode(fuseableNode.Index());
             nodesRemoved &= graph->RemoveNode(activationNode.Index());
-            THROW_HR_IF(E_UNEXPECTED, !nodesRemoved);
+            ORT_THROW_HR_IF(E_UNEXPECTED, !nodesRemoved);
 
             *modified = true;
         }
