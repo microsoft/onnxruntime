@@ -36,4 +36,27 @@ def is_installed(torch_cpp_extension_path):
     torch_cpp_exts = glob(os.path.join(torch_cpp_extension_path, '*.so'))
     torch_cpp_exts.extend(glob(os.path.join(torch_cpp_extension_path, '*.dll')))
     torch_cpp_exts.extend(glob(os.path.join(torch_cpp_extension_path, '*.dylib')))
-    return len(torch_cpp_exts) > 0
+    if len(torch_cpp_exts) > 0:
+        return True
+    n_installed = 0
+    try:
+        import aten_op_executor
+        n_installed += 1
+    except ImportError:
+        pass
+    try:
+        import torch_interop_utils
+        n_installed += 1
+    except ImportError:
+        pass
+    try:
+        import fused_ops
+        n_installed += 1
+    except ImportError:
+        pass
+    try:
+        import torch_gpu_allocator
+        n_installed += 1
+    except ImportError:
+        pass
+    return n_installed > 0

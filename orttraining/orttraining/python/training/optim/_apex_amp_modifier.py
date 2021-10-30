@@ -21,7 +21,10 @@ class ApexAMPModifier(FP16OptimizerModifier):
 
     def override_function(m_self):
         from apex import amp as apex_amp
-        from onnxruntime.training.ortmodule.torch_cpp_extensions import fused_ops
+        try:
+            from onnxruntime.training.ortmodule.torch_cpp_extensions import fused_ops
+        except ImportError:
+            import fused_ops
         warnings.warn('Apex AMP fp16_optimizer functions are overrided with faster implementation.', UserWarning)
 
         # Implementation adapted from https://github.com/NVIDIA/apex/blob/082f999a6e18a3d02306e27482cc7486dab71a50/apex/amp/_process_optimizer.py#L161
