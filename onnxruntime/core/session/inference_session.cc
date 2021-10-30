@@ -1232,6 +1232,14 @@ Status AssignNodesToEpsFromHashes(Graph& graph, const fbs::SessionState& fbs_ses
 }  // namespace
 #endif  // defined(ENABLE_ORT_FORMAT_LOAD)
 
+static void ResolveSubgrapMemoryPatternFlags(SessionState& session_state) {
+  for (const auto& entry : session_state.GetSubgraphSessionStateMap()) {
+    for (const auto& name_to_subgraph_session_state : entry.second) {
+      name_to_subgraph_session_state.second->ResolveMemoryPatternFlag();
+    }
+  }
+}
+
 common::Status InferenceSession::Initialize() {
   Status status = Status::OK();
   TimePoint tp;
@@ -1432,7 +1440,12 @@ common::Status InferenceSession::Initialize() {
     }
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
+    // Resolve the memory pattern flag of the main graph session state
     session_state_->ResolveMemoryPatternFlag();
+
+    // Resolve all memory patterns flags of the subgraph session states
+    ResolveSubgrapMemoryPatternFlags(*session_state_);
+
     is_inited_ = true;
 
     // we don't directly use the ORT format bytes currently, so free those now
