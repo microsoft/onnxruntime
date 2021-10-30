@@ -241,6 +241,7 @@ bool NodeArg::HasTensorOrScalarShape() const {
   const auto type_case = type->value_case();
   switch (type_case) {
     case TypeProto::kTensorType:
+      return true;
 #if !defined(DISABLE_SPARSE_TENSORS)
     case TypeProto::kSparseTensorType:
       // Standard tensor has a valid shape field while
