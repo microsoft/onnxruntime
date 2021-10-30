@@ -12,12 +12,22 @@ class Graph;
 class Node;
 
 namespace QDQ {
+
+// Struct to represent a DQ->Op->Q node group
+struct NodeGroup {
+  std::vector<NodeIndex> dq_nodes;
+  std::vector<NodeIndex> q_nodes;
+  NodeIndex target_node;
+};
+
 // Base QDQ checker. Finds and provides the DQ and Q nodes to the operator specific checkers, as the QDQ optimizations
 // always involve those nodes.
 class BaseSelector : public NodeSelector {
  public:
-  bool Select(const GraphViewer& graph_viewer, const Node& node, QDQNodeGroup& selection) const override;
-  void UpdateBuilder(NodesToOptimizeBuilder&) const override{};
+  bool Select(Graph& graph, const Node& node, std::unique_ptr<NodesToOptimize>& selection) const override;
+
+  // This select is a QDQ Selectors only function, which takes a const GraphViewer
+  virtual bool Select(const GraphViewer& graph_viewer, const Node& node, NodeGroup& selection) const;
 
  protected:
   BaseSelector() = default;
@@ -34,6 +44,11 @@ class BaseSelector : public NodeSelector {
   bool virtual Check(const GraphViewer& graph_viewer, const Node& node,
                      const std::vector<const Node*>& dq_nodes,
                      const std::vector<const Node*>& q_nodes) const = 0;
+
+  // override if you need to adjust the values in NodesToOptimize.
+  // e.g. add entries for missing optional DQ inputs or set num_inputs to handle variadic inputs
+  // Called post-Check, if Check returned `true`
+  virtual void UpdateBuilder(NodesToOptimizeBuilder&) const {}
 };
 
 // Single DQ -> node that does not change data -> Q.

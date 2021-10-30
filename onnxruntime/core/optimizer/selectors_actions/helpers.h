@@ -3,8 +3,6 @@
 
 #pragma once
 
-#include "core/graph/graph_viewer.h"
-
 namespace onnxruntime {
 
 //
@@ -21,13 +19,6 @@ struct NodesToOptimizeIndexes {
   bool variadic_output;
   int num_variadic_inputs;
   int num_variadic_outputs;
-};
-
-// Struct to represent a DQ->Op->Q node group
-struct QDQNodeGroup {
-  std::vector<NodeIndex> dq_nodes;
-  std::vector<NodeIndex> q_nodes;
-  NodeIndex target_node;
 };
 
 // Group of nodes that will be optimized. The group will either be merged into the target node, or a new node

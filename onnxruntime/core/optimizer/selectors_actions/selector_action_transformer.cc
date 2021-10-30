@@ -54,7 +54,6 @@ Status SelectorActionTransformer::MatchAndProcess(Graph& graph, Node& node, bool
                                                   const logging::Logger& logger) const {
   Status status = Status::OK();
 
-  const GraphViewer graph_viewer(graph);
   do {
     // TODO: for now this just needs to support ONNX ops. If we ever had a transformer that was going to
     // target non-ONNX ops we'd need to rework a few things to include the op domain in the matches
@@ -77,27 +76,10 @@ Status SelectorActionTransformer::MatchAndProcess(Graph& graph, Node& node, bool
       }
     }
 
-    QDQNodeGroup selection;
-    if (!selector_and_actions.selector->Select(graph_viewer, node, selection)) {
+    std::unique_ptr<NodesToOptimize> node_group;
+    if (!selector_and_actions.selector->Select(graph, node, node_group)) {
       break;
     }
-
-    NodesToOptimizeBuilder builder;
-    builder.input_nodes.reserve(selection.dq_nodes.size());
-    builder.output_nodes.reserve(selection.q_nodes.size());
-
-    for (const auto idx : selection.dq_nodes) {
-      builder.input_nodes.push_back(graph.GetNode(idx));
-    }
-
-    builder.target_node = graph.GetNode(selection.target_node);
-
-    for (const auto idx : selection.q_nodes) {
-      builder.output_nodes.push_back(graph.GetNode(idx));
-    }
-
-    selector_and_actions.selector->UpdateBuilder(builder);
-    std::unique_ptr<NodesToOptimize> node_group = builder.Build();
 
     LOGS(logger, VERBOSE) << "Matched " << node.OpType();
 

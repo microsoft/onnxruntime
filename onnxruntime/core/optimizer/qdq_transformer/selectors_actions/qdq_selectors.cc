@@ -77,6 +77,33 @@ bool BaseSelector::Select(const GraphViewer& graph_viewer, const Node& node, QDQ
   return true;
 }
 
+bool BaseSelector::Select(Graph& graph, const Node& node, std::unique_ptr<NodesToOptimize>& selection) const {
+  QDQNodeGroup qdq_group;
+  if (!Select(GraphViewer(graph), node, qdq_group)) {
+    return false;
+  }
+
+  NodesToOptimizeBuilder builder;
+  builder.input_nodes.reserve(qdq_group.q_nodes.size());
+  builder.output_nodes.reserve(qdq_group.q_nodes.size());
+
+  for (const auto idx : qdq_group.dq_nodes) {
+    builder.input_nodes.push_back(graph.GetNode(idx));
+  }
+
+  builder.target_node = graph.GetNode(qdq_group.target_node);
+
+  for (const auto idx : qdq_group.q_nodes) {
+    builder.output_nodes.push_back(graph.GetNode(idx));
+  }
+
+  UpdateBuilder(builder);
+
+  selection = builder.Build();
+
+  return true;
+}
+
 bool DropDQDNodesSelector::Check(const GraphViewer& graph_viewer,
                                  const Node& node,
                                  const std::vector<const Node*>& dq_nodes,
