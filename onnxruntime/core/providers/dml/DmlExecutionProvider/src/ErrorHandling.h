@@ -50,7 +50,7 @@
         ORT_THROW(E_INVALIDARG);          \
     }
 #else
-#define ORT_THROW_LAST_ERROR_IF_NULL(ptr) ORT_THROW_LAST_ERROR_IF_NULL(ptr)
+#define ORT_THROW_LAST_ERROR_IF_NULL(ptr) THROW_LAST_ERROR_IF_NULL(ptr)
 #endif
 
 #ifdef ORT_NO_EXCEPTIONS
@@ -68,7 +68,7 @@
 #ifdef ORT_NO_EXCEPTIONS
 #define ORT_THROW_LAST_ERROR_IF(condition) ORT_ENFORCE(condition)                      
 #else
-#define ORT_THROW_LAST_ERROR_IF(condition) ORT_THROW_LAST_ERROR_IF(condition) 
+#define ORT_THROW_LAST_ERROR_IF(condition) THROW_LAST_ERROR_IF(condition) 
 #endif
 
 #ifdef ORT_NO_EXCEPTIONS
@@ -78,5 +78,5 @@
         ORT_THROW(hr);          \
     }
 #else
-#define ORT_THROW_HR_IF_NULL_MSG(hr, ptr, fmt, ...) THROW_HR_IF_NULL_MSG(hr, ptr, fmt, ...)
+#define ORT_THROW_HR_IF_NULL_MSG(hr, ptr, fmt, ...) THROW_HR_IF_NULL_MSG(hr, ptr, fmt, __VA_ARGS__)
 #endif
