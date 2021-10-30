@@ -721,7 +721,8 @@ class OpTester {
   std::vector<OrtValue>
   GetFetches() { return fetches_; }
 
-  std::unique_ptr<onnxruntime::Model> BuildGraph(const std::unordered_map<std::string, int>& extra_domain_to_version = {});
+  std::unique_ptr<onnxruntime::Model> BuildGraph(const std::unordered_map<std::string, int>& extra_domain_to_version = {},
+                                                 bool allow_released_onnx_opset_only = true);
 
   // storing p_model as cache
   void SetModelCache(std::shared_ptr<onnxruntime::Model> model) {
@@ -776,7 +777,15 @@ class OpTester {
     return prepacked_weights_container_.GetNumberOfElements();
   }
 
+  bool test_allow_released_onnx_opset_only_ = true;
+
  protected:
+  // Set test_allow_released_onnx_opset_only_ to false or override this method and return false
+  // if inheriting from OpTester to allow testing of a non-released ONNX opset operator
+  virtual bool IsAllowReleasedONNXOpsetsOnlySetForThisTest() const {
+    return test_allow_released_onnx_opset_only_;
+  }
+
   virtual void AddNodes(onnxruntime::Graph& graph, std::vector<onnxruntime::NodeArg*>& graph_input_defs,
                         std::vector<onnxruntime::NodeArg*>& graph_output_defs,
                         std::vector<std::function<void(onnxruntime::Node& node)>>& add_attribute_funcs);
@@ -796,7 +805,8 @@ class OpTester {
                                      const RunOptions* run_options,
                                      const std::unordered_map<std::string, OrtValue>& feeds,
                                      const std::vector<std::string>& output_names,
-                                     const std::string& provider_type);
+                                     const std::string& provider_type,
+                                     bool allow_released_onnx_opset_only = true);
 
   const char* op_;
   std::vector<Data> input_data_;

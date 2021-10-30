@@ -1168,9 +1168,11 @@ TEST(Loop, OptionalTypeAsLoopCarriedDependency) {
     std::unordered_map<std::string, int> domain_to_version;
     domain_to_version.insert({"", 16});  // Opset 16 model
 
+    // Since this test is being written at a time when only opset 15  has been released, we pass in
+    // 'false' for `allow_released_opset_only` while instantiating Model to allow this test to run
     Model model("optional type in Loop subgraph carried dependency", false, ModelMetaData(), PathString(), {},
                 domain_to_version, std::vector<ONNX_NAMESPACE::FunctionProto>{},
-                DefaultLoggingManager().DefaultLogger());
+                DefaultLoggingManager().DefaultLogger(), false);
 
     auto& graph = model.MainGraph();
 
@@ -1250,6 +1252,11 @@ TEST(Loop, OptionalTypeAsLoopCarriedDependency) {
   // CASE 1: Optional tensor + none
   {
     OpTester test("Loop", 16);  // Opset 16 supports optional type
+
+    // Since this test is being written at a time when only opset 15  has been released, we set
+    // `test_allow_released_onnx_opset_only_` to 'false' to allow this test to run
+    test.test_allow_released_onnx_opset_only_ = false;
+
     auto body = create_subgraph(true);
     test.AddAttribute<GraphProto>("body", body);
 
@@ -1265,6 +1272,10 @@ TEST(Loop, OptionalTypeAsLoopCarriedDependency) {
   // CASE 2: Optional tensor + non-none
   {
     OpTester test("Loop", 16);  // Opset 16 supports optional type
+    // Since this test is being written at a time when only opset 15  has been released, we set
+    // `test_allow_released_onnx_opset_only_` to 'false' to allow this test to run
+    test.test_allow_released_onnx_opset_only_ = false;
+
     auto body = create_subgraph(true);
     test.AddAttribute<GraphProto>("body", body);
 
@@ -1281,6 +1292,10 @@ TEST(Loop, OptionalTypeAsLoopCarriedDependency) {
   // CASE 3: Optional tensor sequence + none
   {
     OpTester test("Loop", 16);  // Opset 16 supports optional type
+    // Since this test is being written at a time when only opset 15  has been released, we set
+    // `test_allow_released_onnx_opset_only_` to 'false' to allow this test to run
+    test.test_allow_released_onnx_opset_only_ = false;
+
     auto body = create_subgraph(false);
     test.AddAttribute<GraphProto>("body", body);
 
@@ -1297,6 +1312,10 @@ TEST(Loop, OptionalTypeAsLoopCarriedDependency) {
   // CASE 4: Optional tensor sequence + non-none
   {
     OpTester test("Loop", 16);  // Opset 16 supports optional type
+    // Since this test is being written at a time when only opset 15  has been released, we set
+    // `test_allow_released_onnx_opset_only_` to 'false' to allow this test to run
+    test.test_allow_released_onnx_opset_only_ = false;
+
     auto body = create_subgraph(false);
     test.AddAttribute<GraphProto>("body", body);
 

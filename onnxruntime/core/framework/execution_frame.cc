@@ -10,13 +10,13 @@
 #include "core/framework/sequential_execution_plan.h"
 #include "core/framework/ort_value_pattern_planner.h"
 #include "core/framework/tensorprotoutils.h"
+#include "core/framework/mldatatypeutils.h"
 #include "core/framework/sparse_utils.h"
 #include "core/framework/node_index_info.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/session_state.h"
 #include "core/framework/TensorSeq.h"
 #include "core/framework/utils.h"
-#include "core/framework/mldata_type_utils.h"
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
 #include "core/framework/memory_info.h"
 #endif

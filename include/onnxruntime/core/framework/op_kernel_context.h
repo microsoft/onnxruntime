@@ -73,15 +73,15 @@ class OpKernelContext {
     return *output_ptr;
   }
 
-  #if !defined(DISABLE_SPARSE_TENSORS)
+#if !defined(DISABLE_SPARSE_TENSORS)
   // Fetch a sparse-tensor output corresponding to the specified index.
   // shape must specify the shape of the underlying dense-tensor.
   // Memory allocation for the output may happen when this method is invoked,
   // unless static optimization pre-allocates it.
   SparseTensor* OutputSparse(int index, const TensorShape& shape);
-  #endif
+#endif
 
-  // TODO: Write doc
+  // Use this API to output a "None" of a specific type (e.g. Tensor) at specified index
   template <typename T>
   void OutputOptionalWithoutData(int index) {
     auto* output_ort_value = GetOutputMLValue(index);

@@ -248,9 +248,10 @@ class InferenceSession {
   /**
     * Load an ONNX model.
     * @param istream object of the model.
+    * @allow_released_opsets_only Set true if you would like to only allow released ONNX opsets only, set false otherwise.
     * @return OK if success.
     */
-  common::Status Load(std::istream& model_istream) ORT_MUST_USE_RESULT;
+  common::Status Load(std::istream& model_istream, bool allow_released_opsets_only = true) ORT_MUST_USE_RESULT;
 
   /**
     * Load an ONNX model from the member model_proto_.

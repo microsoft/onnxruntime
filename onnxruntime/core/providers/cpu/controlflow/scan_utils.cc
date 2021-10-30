@@ -13,10 +13,10 @@
 
 #include "gsl/gsl"
 
-#include "core/framework/mldata_type_utils.h"
 #include "core/framework/op_kernel_context_internal.h"
 #include "core/framework/sequential_executor.h"
 #include "core/framework/tensorprotoutils.h"
+#include "core/framework/mldatatypeutils.h"
 #include "core/framework/utils.h"
 #include "core/providers/cpu/controlflow/utils.h"
 #include "core/framework/session_options.h"

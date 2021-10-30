@@ -705,7 +705,8 @@ void OpTester::AddInitializers(onnxruntime::Graph& graph) {
 }
 
 std::unique_ptr<onnxruntime::Model> OpTester::BuildGraph(
-    const std::unordered_map<std::string, int>& extra_domain_to_version) {
+    const std::unordered_map<std::string, int>& extra_domain_to_version,
+    bool allow_released_onnx_opset_only) {
   // Generate the input & output def lists
   std::vector<onnxruntime::NodeArg*> node_input_defs;
   std::vector<onnxruntime::NodeArg*> output_defs;
@@ -735,7 +736,7 @@ std::unique_ptr<onnxruntime::Model> OpTester::BuildGraph(
   auto p_model = std::make_unique<onnxruntime::Model>(
       "test", false, ModelMetaData(), PathString(), custom_schema_registries_,
       domain_to_version, std::vector<ONNX_NAMESPACE::FunctionProto>{},
-      DefaultLoggingManager().DefaultLogger());
+      DefaultLoggingManager().DefaultLogger(), allow_released_onnx_opset_only);
   onnxruntime::Graph& graph = p_model->MainGraph();
   AddNodes(graph, node_input_defs, output_defs, add_attribute_funcs_);
 
@@ -750,7 +751,7 @@ std::vector<OrtValue> OpTester::ExecuteModel(
     const std::string& expected_failure_string, const RunOptions* run_options,
     const std::unordered_map<std::string, OrtValue>& feeds,
     const std::vector<std::string>& output_names,
-    const std::string& provider_type) {
+    const std::string& provider_type, bool allow_released_onnx_opset_only) {
   std::string s1;
   const bool rc = model.ToProto().SerializeToString(&s1);
   if (!rc) {
@@ -758,7 +759,7 @@ std::vector<OrtValue> OpTester::ExecuteModel(
     return {};
   }
   std::stringstream sstr(s1);
-  auto status = session_object.Load(sstr);
+  auto status = session_object.Load(sstr, allow_released_onnx_opset_only);
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
   if (!status.IsOK()) {
     LOGS_DEFAULT(ERROR) << "Load failed with status: " << status.ErrorMessage();
@@ -926,8 +927,12 @@ void OpTester::Run(
     run_called_ = true;
 #endif
 
-    static bool allow_released_onnx_opset_only =
-        model_load_utils::IsAllowReleasedONNXOpsetsOnlySet();
+    // IsAllowReleasedONNXOpsetsOnlySet() checks for the appropriate env var in the process (i.e.) process-wide
+    // `IsAllowReleasedONNXOpsetsOnlySetForThisTest()` is for this specific OpTester instance
+    // We will only support released opsets iff IsAllowReleasedONNXOpsetsOnlySet() and `IsAllowReleasedONNXOpsetsOnlySetForThisTest()`
+    // are both true
+    auto allow_released_onnx_opset_only =
+        IsAllowReleasedONNXOpsetsOnlySetForThisTest() && model_load_utils::IsAllowReleasedONNXOpsetsOnlySet();
 
     if (allow_released_onnx_opset_only) {
       auto& onnx_released_versions =
@@ -944,7 +949,7 @@ void OpTester::Run(
 
     fetches_.clear();
     bool cache_enabled = cached_model_ != nullptr;
-    auto p_model = !cache_enabled ? BuildGraph() : cached_model_;
+    auto p_model = !cache_enabled ? BuildGraph({}, allow_released_onnx_opset_only) : cached_model_;
     auto& graph = p_model->MainGraph();
 
     Status status = Status::OK();
@@ -1029,7 +1034,7 @@ void OpTester::Run(
 
       fetches_ = ExecuteModel<InferenceSession>(
           *p_model, session_object, expect_result, expected_failure_string,
-          run_options, feeds, output_names, provider_types);
+          run_options, feeds, output_names, provider_types, allow_released_onnx_opset_only);
 
       // After the model has initialized (happens in ExecuteModel),
       // we should be able to tell how many constant initializers were pre-packed
@@ -1139,7 +1144,7 @@ void OpTester::Run(
         ASSERT_PROVIDER_STATUS_OK(session_object.RegisterExecutionProvider(std::move(execution_provider)));
         fetches_ = ExecuteModel<InferenceSession>(
             *p_model, session_object, expect_result, expected_failure_string,
-            run_options, feeds, output_names, provider_type);
+            run_options, feeds, output_names, provider_type, allow_released_onnx_opset_only);
 
         // After the model has initialized (happens in ExecuteModel),
         // we should be able to tell how many constant initializers were pre-packed

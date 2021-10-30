@@ -22,10 +22,10 @@
 #include "core/framework/graph_partitioner.h"
 #include "core/framework/kernel_def_builder.h"
 #include "core/framework/kernel_registry.h"
-#include "core/framework/mldata_type_utils.h"
 #include "core/framework/session_state_flatbuffers_utils.h"
 #include "core/framework/TensorSeq.h"
 #include "core/framework/tensorprotoutils.h"
+#include "core/framework/mldatatypeutils.h"
 #include "core/framework/tensor_type_and_shape.h"
 #include "core/framework/op_kernel_context_internal.h"
 #include "core/framework/ort_value_pattern_planner.h"
@@ -842,14 +842,14 @@ common::Status InferenceSession::Load(std::unique_ptr<ModelProto> p_model_proto)
   return Load(loader, "model_loading_proto");
 }
 
-common::Status InferenceSession::Load(std::istream& model_istream) {
+common::Status InferenceSession::Load(std::istream& model_istream, bool allow_released_opsets_only) {
   if (is_model_proto_parsed_) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                            "ModelProto corresponding to the model to be loaded has already been parsed. "
                            "Invoke Load().");
   }
 
-  auto loader = [this, &model_istream](std::shared_ptr<onnxruntime::Model>& model) {
+  auto loader = [this, &model_istream, &allow_released_opsets_only](std::shared_ptr<onnxruntime::Model>& model) {
     ModelProto model_proto;
     Status st = Model::Load(model_istream, &model_proto);
     if (!st.IsOK()) {
@@ -862,7 +862,8 @@ common::Status InferenceSession::Load(std::istream& model_istream) {
     }
 #endif
     return onnxruntime::Model::Load(std::move(model_proto), PathString(), model,
-                                    HasLocalSchema() ? &custom_schema_registries_ : nullptr, *session_logger_);
+                                    HasLocalSchema() ? &custom_schema_registries_ : nullptr,
+                                    *session_logger_, allow_released_opsets_only);
   };
 
   return Load(loader, "model_loading_istream");
