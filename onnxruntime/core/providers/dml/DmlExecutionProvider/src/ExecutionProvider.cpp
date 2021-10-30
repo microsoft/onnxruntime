@@ -88,8 +88,9 @@ namespace Dml
     {
 #ifdef ENABLE_GRAPH_COMPILATION
         return m_impl->GetCapability(graph, kernel_registries);
-#endif
+#else
         return onnxruntime::IExecutionProvider::GetCapability(graph, kernel_registries);
+#endif
     }
 
     void ExecutionProviderImpl::Close()

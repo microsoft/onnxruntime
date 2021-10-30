@@ -55,10 +55,11 @@ bool IsSigned(DML_TENSOR_DATA_TYPE dataType)
         case DML_TENSOR_DATA_TYPE_INT32: return true;
         case DML_TENSOR_DATA_TYPE_INT16: return true;
         case DML_TENSOR_DATA_TYPE_INT8: return true;
+        default:
+            assert(false);
+            return false;
     }
 
-    assert(false);
-    return false;
 }
 
 DML_TENSOR_DATA_TYPE GetDmlDataTypeFromMlDataType(MLOperatorTensorDataType tensorDataType)
@@ -71,6 +72,8 @@ DML_TENSOR_DATA_TYPE GetDmlDataTypeFromMlDataType(MLOperatorTensorDataType tenso
     return dmlTensorDataType;
 }
 
+#pragma warning(push)
+#pragma warning(disable:4702)
 MLOperatorTensorDataType GetMlDataTypeFromDmlDataType(DML_TENSOR_DATA_TYPE tensorDataType)
 {
     switch (tensorDataType)
@@ -87,9 +90,12 @@ MLOperatorTensorDataType GetMlDataTypeFromDmlDataType(DML_TENSOR_DATA_TYPE tenso
     case DML_TENSOR_DATA_TYPE_INT64:    return MLOperatorTensorDataType::Int64;
     case DML_TENSOR_DATA_TYPE_FLOAT64:  return MLOperatorTensorDataType::Double;
 
-    default: ML_INVALID_ARGUMENT("Unknown DML_TENSOR_DATA_TYPE.");
+    default:
+        ML_INVALID_ARGUMENT("Unknown DML_TENSOR_DATA_TYPE.");
+        return MLOperatorTensorDataType::Undefined;
     };
 }
+#pragma warning(pop)
 
 size_t ComputeByteSizeFromDimensions(gsl::span<const DimensionType> dimensions, MLOperatorTensorDataType tensorDataType)
 {

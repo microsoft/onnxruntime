@@ -970,6 +970,8 @@ if (WIN32)
         endif()
         # operator 'operator-name': deprecated between enumerations of different types
         list(APPEND ORT_WARNING_FLAGS "/wd5054")
+        # Enable warning: data member 'member' will be initialized after data member 'member2' / base class 'base_class'
+        list(APPEND ORT_WARNING_FLAGS "/w15038")
         # Treat warning as error if onnxruntime_DEV_MODE is ON
         # For cross-compiled ARM64 binaries, there are too many warnings to fix, hence ignore warnings for now
         if (onnxruntime_DEV_MODE AND NOT CMAKE_CROSSCOMPILING)
