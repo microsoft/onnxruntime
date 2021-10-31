@@ -711,15 +711,19 @@ jobs:
     condition: and(succeeded(), eq('${{ parameters.IsReleaseBuild}}', false))
 
   - script: |
+     echo.$(NpmPackageVersionNumber)
+     echo.$(Build.SourceVersion)
+     echo.$(Build.SourceVersion)>$(Build.SourcesDirectory)\js\common\__commit.txt
      npm version $(NpmPackageVersionNumber)
-     echo.$(Build.SourceVersion)>__commit.txt
     displayName: 'Bump @dev version for onnxruntime-common'
     workingDirectory: '$(Build.SourcesDirectory)/js/common'
     condition: and(succeeded(), eq('${{ parameters.IsReleaseBuild}}', false))
 
   - script: |
+     echo.$(NpmPackageVersionNumber)
+     echo.$(Build.SourceVersion)
+     echo.$(Build.SourceVersion)>$(Build.SourcesDirectory)\js\node\__commit.txt
      npm version $(NpmPackageVersionNumber)
-     echo.$(Build.SourceVersion)>__commit.txt
     displayName: 'Bump @dev version for onnxruntime-node'
     workingDirectory: '$(Build.SourcesDirectory)/js/node'
     condition: and(succeeded(), eq('${{ parameters.IsReleaseBuild}}', false))
