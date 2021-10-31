@@ -48,28 +48,28 @@ struct HandlerInfo {
 /////// <Helper Utils> ///////
 /* Small utilities for editing nodes and manipulating axes/permutations */
 
-std::vector<int64_t> DataInt64(api::TensorRef& tensor) {
+static std::vector<int64_t> DataInt64(api::TensorRef& tensor) {
   std::vector<uint8_t> raw_data = tensor.Data();
   int64_t* data_int = reinterpret_cast<int64_t*>(raw_data.data());
   std::vector<int64_t> result(data_int, data_int + tensor.NumElements());
   return result;
 }
 
-std::vector<int32_t> DataInt32(api::TensorRef& tensor) {
+static std::vector<int32_t> DataInt32(api::TensorRef& tensor) {
   std::vector<uint8_t> raw_data = tensor.Data();
   int32_t* data_int = reinterpret_cast<int32_t*>(raw_data.data());
   std::vector<int32_t> result(data_int, data_int + tensor.NumElements());
   return result;
 }
 
-std::string_view AddInitializerInt64(api::GraphRef& graph, const std::vector<int64_t>& shape,
+static std::string_view AddInitializerInt64(api::GraphRef& graph, const std::vector<int64_t>& shape,
                                      const std::vector<int64_t>& values) {
   const uint8_t* raw_data = reinterpret_cast<const uint8_t*>(values.data());
   std::vector<uint8_t> data(raw_data, raw_data + values.size() * sizeof(int64_t));
   return graph.AddInitializer(api::DataType::INT64, shape, data);
 }
 
-std::string_view AddInitializerInt32(api::GraphRef& graph, const std::vector<int64_t>& shape,
+static std::string_view AddInitializerInt32(api::GraphRef& graph, const std::vector<int64_t>& shape,
                                      const std::vector<int32_t>& values) {
   const uint8_t* raw_data = reinterpret_cast<const uint8_t*>(values.data());
   std::vector<uint8_t> data(raw_data, raw_data + values.size() * sizeof(int32_t));
@@ -463,6 +463,7 @@ static void TransposeInput(api::GraphRef& graph, api::NodeRef& node, size_t i,
   std::string_view input = node.Inputs()[i];
   // Remove this node as a consumer
   node.SetInput(i, "");
+  // Only local constants are editable
   std::unique_ptr<api::TensorRef> constant = graph.GetLocalConstant(input);
   auto consumers = graph.GetValueConsumers(input);
 
