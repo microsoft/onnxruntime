@@ -900,7 +900,7 @@ static bool HandleShape(HandlerArgs& args) {
 constexpr HandlerInfo shape_handler = {&FirstInput, &HandleShape, /*transposes_outputs*/ false};
 
 // Permutes a 1D node input by creating a new initializer or inserting a Gather op
-void PermuteInput(api::GraphRef& graph, api::NodeRef& node, size_t i, std::vector<int64_t> perm) {
+void PermuteInput(api::GraphRef& graph, api::NodeRef& node, size_t i, const std::vector<int64_t>& perm) {
   size_t rank = perm.size();
   int64_t rank_int = gsl::narrow_cast<int64_t>(rank);
 
