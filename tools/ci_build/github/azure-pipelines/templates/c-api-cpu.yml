@@ -707,25 +707,29 @@ jobs:
 
   - script: |
      node $(Build.SourcesDirectory)\tools\ci_build\github\js\generate-npm-package-dev-version.js
-    displayName: 'generate @dev package version'
+    displayName: '[dev] generate package version number'
     condition: and(succeeded(), eq('${{ parameters.IsReleaseBuild}}', false))
 
   - script: |
-     echo.$(NpmPackageVersionNumber)
-     echo.$(Build.SourceVersion)
-     echo.$(Build.SourceVersion)>$(Build.SourcesDirectory)\js\common\__commit.txt
      npm version $(NpmPackageVersionNumber)
-    displayName: 'Bump @dev version for onnxruntime-common'
+    displayName: '[dev] Bump version for onnxruntime-common'
     workingDirectory: '$(Build.SourcesDirectory)/js/common'
     condition: and(succeeded(), eq('${{ parameters.IsReleaseBuild}}', false))
 
   - script: |
-     echo.$(NpmPackageVersionNumber)
-     echo.$(Build.SourceVersion)
-     echo.$(Build.SourceVersion)>$(Build.SourcesDirectory)\js\node\__commit.txt
      npm version $(NpmPackageVersionNumber)
-    displayName: 'Bump @dev version for onnxruntime-node'
+    displayName: '[dev] Bump version for onnxruntime-node'
     workingDirectory: '$(Build.SourcesDirectory)/js/node'
+    condition: and(succeeded(), eq('${{ parameters.IsReleaseBuild}}', false))
+
+  - script: |
+     echo.$(Build.SourceVersion)>$(Build.SourcesDirectory)\js\common\__commit.txt
+    displayName: '[dev] Dump commit number to onnxruntime-common folder'
+    condition: and(succeeded(), eq('${{ parameters.IsReleaseBuild}}', false))
+
+  - script: |
+     echo.$(Build.SourceVersion)>$(Build.SourcesDirectory)\js\node\__commit.txt
+    displayName: '[dev] Dump commit number to onnxruntime-node folder'
     condition: and(succeeded(), eq('${{ parameters.IsReleaseBuild}}', false))
 
   - script: |

@@ -19,6 +19,6 @@ const mm = now.slice(14, 16);
 
 const GIT_COMMIT_ID = child_process.execSync('git rev-parse --short HEAD').toString().trim();
 
-const DATE_STRING = `${YYYY}${MM}${DD}.${hh}${mm}`;
+const DATE_STRING = `${YYYY}${MM}${DD}-${hh}${mm}`;
 const VERSION = `${VERSION_BASE}-dev.${DATE_STRING}.${GIT_COMMIT_ID}`;
 console.log(`##vso[task.setvariable variable=NpmPackageVersionNumber;]${VERSION}`);
