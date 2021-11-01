@@ -269,11 +269,9 @@ std::unique_ptr<TestModelInfo> TestModelInfo::LoadOnnxModel(_In_ const PATH_CHAR
 }
 #endif
 
-#if defined(ENABLE_ORT_FORMAT_LOAD)
 std::unique_ptr<TestModelInfo> TestModelInfo::LoadOrtModel(_In_ const PATH_CHAR_TYPE* model_url) {
   return std::unique_ptr<TestModelInfo>(new OnnxModelInfo(model_url, true));
 }
-#endif
 
 /**
    * test_case_dir must have contents of:
@@ -662,9 +660,7 @@ void LoadTests(const std::vector<std::basic_string<PATH_CHAR_TYPE>>& input_paths
       is_valid_model = is_onnx_format;
 #endif
 
-#if defined(ENABLE_ORT_FORMAT_LOAD)
       is_valid_model = is_valid_model || is_ort_format;
-#endif
       if (!is_valid_model)
         return true;
 
@@ -688,11 +684,7 @@ void LoadTests(const std::vector<std::basic_string<PATH_CHAR_TYPE>>& input_paths
         ORT_THROW("onnx model is not supported in this build");
 #endif
       } else if (is_ort_format) {
-#if defined(ENABLE_ORT_FORMAT_LOAD)
         model_info = TestModelInfo::LoadOrtModel(p.c_str());
-#else
-        ORT_THROW("ort model is not supported in this build");
-#endif
       } else {
         ORT_NOT_IMPLEMENTED(ToMBString(filename_str), " is not supported");
       }
