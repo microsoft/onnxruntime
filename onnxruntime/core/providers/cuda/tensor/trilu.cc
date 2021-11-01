@@ -6,10 +6,10 @@
 
 namespace onnxruntime {
 namespace cuda {
-ONNX_OPERATOR_KERNEL_EX(
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     Trilu,
     kOnnxDomain,
-    1,
+    1, 13,
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
