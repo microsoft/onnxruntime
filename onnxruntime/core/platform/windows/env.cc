@@ -60,12 +60,12 @@ class WindowsThread : public EnvThread {
   WindowsThread(const ORTCHAR_T* name_prefix, int index,
                 unsigned (*start_address)(int id, Eigen::ThreadPoolInterface* param), Eigen::ThreadPoolInterface* param,
                 const ThreadOptions& thread_options) {
-    create_custom_thread_fn = thread_options.create_custom_thread_fn;
+    custom_create_thread_fn = thread_options.custom_create_thread_fn;
     custom_thread_creation_options = thread_options.custom_thread_creation_options;
-    join_custom_thread_fn = thread_options.join_custom_thread_fn;
+    custom_join_thread_fn = thread_options.custom_join_thread_fn;
 
-    if (create_custom_thread_fn) {
-      hThread.reset((HANDLE)(create_custom_thread_fn(custom_thread_creation_options, (OrtThreadWorkerFn)CustomThreadMain, new Param{name_prefix, index, start_address, param, thread_options})));
+    if (custom_create_thread_fn) {
+      hThread.reset((HANDLE)(custom_create_thread_fn(custom_thread_creation_options, (OrtThreadWorkerFn)CustomThreadMain, new Param{name_prefix, index, start_address, param, thread_options})));
     } else {
       hThread.reset((HANDLE)_beginthreadex(nullptr, thread_options.stack_size, ThreadMain,
                                            new Param{name_prefix, index, start_address, param, thread_options}, 0,
@@ -74,8 +74,8 @@ class WindowsThread : public EnvThread {
   }
 
   ~WindowsThread() {
-    if (join_custom_thread_fn) {
-      join_custom_thread_fn(hThread.get());
+    if (custom_join_thread_fn) {
+      custom_join_thread_fn(hThread.get());
     } else {
       DWORD waitStatus = WaitForSingleObject(hThread.get(), INFINITE);
       FAIL_FAST_LAST_ERROR_IF(waitStatus == WAIT_FAILED);

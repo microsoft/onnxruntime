@@ -1850,7 +1850,7 @@ int32_t custom_thread_creation_options{};
 int32_t custom_creation_hook_called{};
 int32_t custom_join_hook_called{};
 
-void* CreateCustomThread(void* options, OrtThreadWorkerFn work_loop, void* param) {
+void* CreateThreadCustomized(void* options, OrtThreadWorkerFn work_loop, void* param) {
   if (*((int32_t*)options) == 5) {
     custom_creation_hook_called += 1;
   }
@@ -1858,7 +1858,7 @@ void* CreateCustomThread(void* options, OrtThreadWorkerFn work_loop, void* param
   return (void*)threads.back().native_handle();
 }
 
-void JoinCustomThread(void* handle) {
+void JoinThreadCustomized(void* handle) {
   for (auto& t : threads) {
     if ((void*)t.native_handle() == handle) {
       custom_join_hook_called += 1;
@@ -1873,9 +1873,9 @@ TEST(CApiTest, TestCustomThreadPoolHooks) {
   custom_creation_hook_called = custom_join_hook_called = 0;
   Ort::SessionOptions session_options;
   session_options.SetIntraOpNumThreads(thread_count);
-  session_options.SetCreateCustomThreadFn(CreateCustomThread);
+  session_options.SetCustomCreateThreadFn(CreateThreadCustomized);
   session_options.SetCustomThreadCreationOptions(&custom_thread_creation_options);
-  session_options.SetJoinCustomThreadFn(JoinCustomThread);
+  session_options.SetCustomJoinThreadFn(JoinThreadCustomized);
   {
     Ort::Session session(*ort_env, MODEL_URI, session_options);
   }

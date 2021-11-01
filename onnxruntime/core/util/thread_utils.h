@@ -30,9 +30,9 @@ struct OrtThreadPoolParams {
   bool set_denormal_as_zero = false;
 
   // members to manage custom threads
-  CreateCustomThreadFn create_custom_thread_fn = nullptr;
+  CustomCreateThreadFn custom_create_thread_fn = nullptr;
   void* custom_thread_creation_options = nullptr;
-  JoinCustomThreadFn join_custom_thread_fn = nullptr;
+  CustomJoinThreadFn custom_join_thread_fn = nullptr;
 };
 
 struct OrtThreadingOptions {

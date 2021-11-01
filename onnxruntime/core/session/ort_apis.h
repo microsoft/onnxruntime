@@ -315,7 +315,7 @@ ORT_API_STATUS_IMPL(GetSparseTensorValuesTypeAndShape, _In_ const OrtValue* ort_
 ORT_API_STATUS_IMPL(GetSparseTensorValues, _In_ const OrtValue* ort_value, _Outptr_ const void** out);
 ORT_API_STATUS_IMPL(GetSparseTensorIndicesTypeShape, _In_ const OrtValue* ort_value, enum OrtSparseIndicesFormat indices_format, _Outptr_ OrtTensorTypeAndShapeInfo** out);
 ORT_API_STATUS_IMPL(GetSparseTensorIndices, _In_ const OrtValue* ort_value, enum OrtSparseIndicesFormat indices_format, _Out_ size_t* num_indices, _Outptr_ const void** indices);
-ORT_API_STATUS_IMPL(SessionOptionsSetCreateCustomThreadFn, _In_ OrtSessionOptions* options, _In_ CreateCustomThreadFn create_thread_fn);
+ORT_API_STATUS_IMPL(SessionOptionsSetCustomCreateThreadFn, _In_ OrtSessionOptions* options, _In_ CustomCreateThreadFn custom_create_thread_fn);
 ORT_API_STATUS_IMPL(SessionOptionsSetCustomThreadCreationOptions, _In_ OrtSessionOptions* options, _In_ void* custom_thread_creation_options);
-ORT_API_STATUS_IMPL(SessionOptionsSetJoinCustomThreadFn, _In_ OrtSessionOptions* options, _In_ JoinCustomThreadFn join_thread_fn);
+ORT_API_STATUS_IMPL(SessionOptionsSetCustomJoinThreadFn, _In_ OrtSessionOptions* options, _In_ CustomJoinThreadFn custom_join_thread_fn);
 }  // namespace OrtApis

@@ -536,18 +536,19 @@ typedef void (*OrtThreadWorkerFn)(void*);
 
 /** \brief Thread creation function
 *
-* The function returns a thread handle to onnxruntime intra thread pool
-* First argument is custom thread creation option
+* The function returns a thread handle to be used in onnxruntime intra thread pool
+* The returned handle is also the argument of CustomJoinThreadFn on thread pool destruction
+* First argument of the function is custom thread creation option
 * Third arugmnet is the parameter to feed to ThreadWorkLoopFn
 */
-typedef void* (*CreateCustomThreadFn)(void*, OrtThreadWorkerFn, void*);
+typedef void* (*CustomCreateThreadFn)(void*, OrtThreadWorkerFn, void*);
 
 /** \brief Thread join function
 *
 * The function will be called by onnxruntime in the intra op thread pool destructor.
-* Argument is the value returned by CreateThreadFn
+* Argument is the value returned by CreateCustomThreadFn
 */
-typedef void (*JoinCustomThreadFn)(void*);
+typedef void (*CustomJoinThreadFn)(void*);
 
 /** \brief The C API
 *
@@ -3053,7 +3054,7 @@ struct OrtApi {
   * 
   * * \snippet{doc} snippets.dox OrtStatus Return Value
   */
-  ORT_API2_STATUS(SessionOptionsSetCustomCreateThreadFn, _In_ OrtSessionOptions* options, _In_ CreateCustomThreadFn create_custom_thread_fn);
+  ORT_API2_STATUS(SessionOptionsSetCustomCreateThreadFn, _In_ OrtSessionOptions* options, _In_ CustomCreateThreadFn custom_create_thread_fn);
 
   /** \brief Set options for external thread pool
   *
@@ -3071,7 +3072,7 @@ struct OrtApi {
   * 
   * * \snippet{doc} snippets.dox OrtStatus Return Value
   */
-  ORT_API2_STATUS(SessionOptionsSetJoinCustomThreadFn, _In_ OrtSessionOptions* options, _In_ JoinCustomThreadFn join_custom_thread_fn);
+  ORT_API2_STATUS(SessionOptionsSetCustomJoinThreadFn, _In_ OrtSessionOptions* options, _In_ CustomJoinThreadFn join_custom_thread_fn);
   /// @}
 };
 

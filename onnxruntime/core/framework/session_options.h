@@ -121,13 +121,13 @@ struct SessionOptions {
   Status AddInitializer(_In_z_ const char* name, _In_ const OrtValue* val) noexcept;
 
   // function callback to create an external thread
-  CreateCustomThreadFn create_custom_thread_fn = nullptr;
+  CustomCreateThreadFn custom_create_thread_fn = nullptr;
 
   // custom option to pass to custom_create_thread_fn
   void* custom_thread_creation_options = nullptr;
 
   // function callback to join a custom thread
-  JoinCustomThreadFn join_custom_thread_fn = nullptr;
+  CustomJoinThreadFn custom_join_thread_fn = nullptr;
 };
 
 }  // namespace onnxruntime

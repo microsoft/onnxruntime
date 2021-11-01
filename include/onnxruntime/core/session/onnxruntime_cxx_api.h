@@ -348,9 +348,9 @@ struct SessionOptions : Base<OrtSessionOptions> {
   SessionOptions& AppendExecutionProvider_OpenVINO(const OrtOpenVINOProviderOptions& provider_options); ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_OpenVINO
   SessionOptions& AppendExecutionProvider_TensorRT(const OrtTensorRTProviderOptions& provider_options); ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_TensorRT
 
-  SessionOptions& SetCreateCustomThreadFn(CreateCustomThreadFn create_custom_thread_fn);  ///< Wraps OrtApi::SessionOptionsSetCreateCustomThreadFn
+  SessionOptions& SetCustomCreateThreadFn(CustomCreateThreadFn custom_create_thread_fn);  ///< Wraps OrtApi::SessionOptionsSetCustomCreateThreadFn
   SessionOptions& SetCustomThreadCreationOptions(void* custom_thread_creation_options);   ///< Wraps OrtApi::SessionOptionsSetCustomThreadCreationOptions
-  SessionOptions& SetJoinCustomThreadFn(JoinCustomThreadFn join_custom_thread_fn);        ///< Wraps OrtApi::SessionOptionsSetJoinCustomThreadFn
+  SessionOptions& SetCustomJoinThreadFn(CustomJoinThreadFn custom_join_thread_fn);        ///< Wraps OrtApi::SessionOptionsSetCustomJoinThreadFn
 };
 
 /** \brief Wrapper around ::OrtModelMetadata

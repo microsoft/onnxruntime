@@ -2076,9 +2076,9 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSessionFromArrayWithPrepackedWeightsContainer
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::SessionOptionsSetCreateCustomThreadFn, _In_ OrtSessionOptions* options, _In_ CreateCustomThreadFn create_custom_thread_fn) {
+ORT_API_STATUS_IMPL(OrtApis::SessionOptionsSetCustomCreateThreadFn, _In_ OrtSessionOptions* options, _In_ CustomCreateThreadFn custom_create_thread_fn) {
   API_IMPL_BEGIN
-  options->value.create_custom_thread_fn = create_custom_thread_fn;
+  options->value.custom_create_thread_fn = custom_create_thread_fn;
   return nullptr;
   API_IMPL_END
 }
@@ -2090,9 +2090,9 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsSetCustomThreadCreationOptions, _In_ 
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::SessionOptionsSetJoinCustomThreadFn, _In_ OrtSessionOptions* options, _In_ JoinCustomThreadFn join_custom_thread_fn) {
+ORT_API_STATUS_IMPL(OrtApis::SessionOptionsSetCustomJoinThreadFn, _In_ OrtSessionOptions* options, _In_ CustomJoinThreadFn custom_join_thread_fn) {
   API_IMPL_BEGIN
-  options->value.join_custom_thread_fn = join_custom_thread_fn;
+  options->value.custom_join_thread_fn = custom_join_thread_fn;
   return nullptr;
   API_IMPL_END
 }
@@ -2371,9 +2371,9 @@ static constexpr OrtApi ort_api_1_to_10 = {
     // End of Version 9 - DO NOT MODIFY ABOVE (see above text for more information)
 
     // Version 10 - In development, feel free to add/remove/rearrange here
-    &OrtApis::SessionOptionsSetCreateCustomThreadFn,
+    &OrtApis::SessionOptionsSetCustomCreateThreadFn,
     &OrtApis::SessionOptionsSetCustomThreadCreationOptions,
-    &OrtApis::SessionOptionsSetJoinCustomThreadFn,
+    &OrtApis::SessionOptionsSetCustomJoinThreadFn,
 };
 
 // Asserts to do a some checks to ensure older Versions of the OrtApi never change (will detect an addition or deletion but not if they cancel out each other)

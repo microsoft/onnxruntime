@@ -320,11 +320,11 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
                              session_options_.execution_mode == ExecutionMode::ORT_SEQUENTIAL &&
                              to.affinity_vec_len == 0;
       to.allow_spinning = allow_intra_op_spinning;
-      to.create_custom_thread_fn = session_options_.create_custom_thread_fn;
+      to.custom_create_thread_fn = session_options_.custom_create_thread_fn;
       to.custom_thread_creation_options = session_options.custom_thread_creation_options;
-      to.join_custom_thread_fn = session_options_.join_custom_thread_fn;
-      if (to.create_custom_thread_fn) {
-        ORT_ENFORCE(to.join_custom_thread_fn, "join custom thread function not set!");
+      to.custom_join_thread_fn = session_options_.custom_join_thread_fn;
+      if (to.custom_create_thread_fn) {
+        ORT_ENFORCE(to.custom_join_thread_fn, "custom join thread function not set!");
       }
       thread_pool_ =
           concurrency::CreateThreadPool(&Env::Default(), to, concurrency::ThreadPoolType::INTRA_OP);
