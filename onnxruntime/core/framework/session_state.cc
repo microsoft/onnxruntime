@@ -689,6 +689,8 @@ void SessionState::ResolveMemoryPatternFlag() {
       }
     }
 
+    // For subgraphs, the implicit inputs need to meet the same crieria
+    // as the explicit inputs for memory pattern to be enabled
     if (graph_viewer_->IsSubgraph()) {
       const auto* parent_node = graph_viewer_->ParentNode();
 
