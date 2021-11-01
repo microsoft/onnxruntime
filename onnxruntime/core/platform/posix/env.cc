@@ -149,6 +149,9 @@ class PosixThread : public EnvThread {
 
     if (custom_create_thread_fn) {
       hThread = (pthread_t)custom_create_thread_fn(custom_thread_creation_options, CustomThreadMain, new Param{name_prefix, index, start_address, param, thread_options});
+      if (!hThread) {
+        ORT_THROW("custom_create_thread_fn returned invalid handle."); 
+      }
     } else {
       pthread_attr_t attr;
       int s = pthread_attr_init(&attr);
@@ -186,7 +189,7 @@ class PosixThread : public EnvThread {
 
   ~PosixThread() override {
     if (custom_join_thread_fn) {
-      custom_join_thread_fn((void*)hThread);
+      custom_join_thread_fn((THREAD_HANDLE)hThread);
     } else {
       void* res;
 #ifdef NDEBUG

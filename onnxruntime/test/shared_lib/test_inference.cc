@@ -1843,24 +1843,24 @@ TEST(CApiTest, TestConfigureTensorRTProviderOptions) {
 #endif
 
 #ifndef _OPENMP
-namespace TestExternalThreadPoolHooks {
+namespace TestCustomThreadHooks {
 
 std::vector<std::thread> threads;
 int32_t custom_thread_creation_options{};
 int32_t custom_creation_hook_called{};
 int32_t custom_join_hook_called{};
 
-void* CreateThreadCustomized(void* options, OrtThreadWorkerFn work_loop, void* param) {
+THREAD_HANDLE CreateThreadCustomized(void* options, OrtThreadWorkerFn work_loop, void* param) {
   if (*((int32_t*)options) == 5) {
     custom_creation_hook_called += 1;
   }
   threads.push_back(std::thread(work_loop, param));
-  return (void*)threads.back().native_handle();
+  return (THREAD_HANDLE)threads.back().native_handle();
 }
 
-void JoinThreadCustomized(void* handle) {
+void JoinThreadCustomized(THREAD_HANDLE handle) {
   for (auto& t : threads) {
-    if ((void*)t.native_handle() == handle) {
+    if ((THREAD_HANDLE)t.native_handle() == handle) {
       custom_join_hook_called += 1;
       t.join();
     }
@@ -1883,5 +1883,5 @@ TEST(CApiTest, TestCustomThreadPoolHooks) {
   ASSERT_TRUE(custom_join_hook_called == thread_count - 1);
 }
 
-}  // namespace TestExternalThreadPoolHooks
+}  // namespace TestCustomThreadHooks
 #endif

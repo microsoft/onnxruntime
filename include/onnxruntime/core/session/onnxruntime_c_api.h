@@ -526,27 +526,32 @@ typedef struct OrtApiBase OrtApiBase;
 */
 ORT_EXPORT const OrtApiBase* ORT_API_CALL OrtGetApiBase(void) NO_EXCEPTION;
 
-
 /** \brief Thread work loop function
 *
-* Onnxruntime will provide this working loop for custom threads
+* Onnxruntime will provide the working loop on custom thread creation
 * Argument is an onnxruntime built-in type which will be provided when intra thread pool calls CustomCreateThreadFn
 */
 typedef void (*OrtThreadWorkerFn)(void* worker_fn_param);
 
+#ifdef _WIN32
+#define THREAD_HANDLE void*  // type of HANDLE
+#else
+#define THREAD_HANDLE int  // type of pthread_t
+#endif
+
 /** \brief Thread creation function
 *
 * The function should return a thread handle to be used in onnxruntime intra op thread pool
-* The handle will be passed to CustomJoinThreadFn on thread pool destruction
+* Onnxruntime will throw exception on return value of nullptr or 0, indicating that the function failed to create a thread
 */
-typedef void* (*CustomCreateThreadFn)(void* custom_thread_creation_options, OrtThreadWorkerFn, void* worker_fn_param);
+typedef THREAD_HANDLE (*CustomCreateThreadFn)(void* custom_thread_creation_options, OrtThreadWorkerFn, void* worker_fn_param);
 
 /** \brief Thread join function
 *
 * Onnxruntime intra op thread pool destructor will call the function to join a custom thread.
 * Argument "thread_handle" is the value returned by CustomCreateThreadFn
 */
-typedef void (*CustomJoinThreadFn)(void* thread_handle);
+typedef void (*CustomJoinThreadFn)(THREAD_HANDLE thread_handle);
 
 /** \brief The C API
 *
