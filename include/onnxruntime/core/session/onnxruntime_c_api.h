@@ -530,25 +530,23 @@ ORT_EXPORT const OrtApiBase* ORT_API_CALL OrtGetApiBase(void) NO_EXCEPTION;
 /** \brief Thread work loop function
 *
 * Onnxruntime will provide this working loop for custom threads
-* Argument is an onnxruntime built-in type which will be provided when intra thread pool calls CreateCustomThreadFn
+* Argument is an onnxruntime built-in type which will be provided when intra thread pool calls CustomCreateThreadFn
 */
-typedef void (*OrtThreadWorkerFn)(void*);
+typedef void (*OrtThreadWorkerFn)(void* worker_fn_param);
 
 /** \brief Thread creation function
 *
 * The function returns a thread handle to be used in onnxruntime intra thread pool
 * The returned handle is also the argument of CustomJoinThreadFn on thread pool destruction
-* First argument of the function is custom thread creation option
-* Third arugmnet is the parameter to feed to ThreadWorkLoopFn
 */
-typedef void* (*CustomCreateThreadFn)(void*, OrtThreadWorkerFn, void*);
+typedef void* (*CustomCreateThreadFn)(void* custom_thread_creation_options, OrtThreadWorkerFn, void* worker_fn_param);
 
 /** \brief Thread join function
 *
 * The function will be called by onnxruntime in the intra op thread pool destructor.
-* Argument is the value returned by CreateCustomThreadFn
+* Argument "thread_handle" is the value returned by CustomCreateThreadFn
 */
-typedef void (*CustomJoinThreadFn)(void*);
+typedef void (*CustomJoinThreadFn)(void* thread_handle);
 
 /** \brief The C API
 *
@@ -3059,7 +3057,7 @@ struct OrtApi {
   /** \brief Set options for external thread pool
   *
   * \param[in] session options
-  * \param[in] void* that refers to custom thread options
+  * \param[in] custom thread creation options (can be nullptr)
   * 
   * * \snippet{doc} snippets.dox OrtStatus Return Value
   */
@@ -3068,7 +3066,7 @@ struct OrtApi {
   /** \brief Set thread join function for intra op thread pool
   *
   * \param[in] session options
-  * \param[in] pointer to function of type void(void*)
+  * \param[in] custom join thread function, must not be nullptr if custom_create_thread_fn is set
   * 
   * * \snippet{doc} snippets.dox OrtStatus Return Value
   */

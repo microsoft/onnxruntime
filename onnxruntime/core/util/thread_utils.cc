@@ -28,7 +28,7 @@ CreateThreadPoolHelper(Env* env, OrtThreadPoolParams options) {
   }
   to.set_denormal_as_zero = options.set_denormal_as_zero;
 
-  // set custom thread management functions
+  // set custom thread management members
   to.custom_create_thread_fn = options.custom_create_thread_fn;
   to.custom_thread_creation_options = options.custom_thread_creation_options;
   to.custom_join_thread_fn = options.custom_join_thread_fn;
