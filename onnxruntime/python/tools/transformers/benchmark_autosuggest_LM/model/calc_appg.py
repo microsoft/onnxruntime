@@ -9,9 +9,10 @@ import time
 from tqdm import tqdm
 from transformers import modeling_tf_pytorch_utils
 
-from model import ModelImp
-from NWModelEval import calculate_appg
+from model_imp import ModelImp
+from appg_model_eval import calculate_appg
 from myutils import outFileHandler
+from main import parse_arguments
 
 def add_time_string_to_file(filename):
     dt = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
@@ -52,6 +53,8 @@ def calc_appg(input_file, output_file, refFile, model):
 if __name__ == "__main__":
     if len(sys.argv) < 4:
         sys.exit(1)
-    model = ModelImp()
-    calc_appg(sys.argv[1], sys.argv[2], sys.argv[3], model)
+    args = parse_arguments()
+    model = ModelImp(args)
+    calc_appg(args.input_file, args.output_file, args.ref_file, model)
+    #calc_appg(sys.argv[1], sys.argv[2], sys.argv[3], model)
 

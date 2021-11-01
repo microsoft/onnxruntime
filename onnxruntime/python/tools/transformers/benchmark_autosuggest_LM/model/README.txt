@@ -1,1 +1,0 @@
-The implementation of your model should go in model.py. Please implement the Eval and EvalBinary methods as necessary.

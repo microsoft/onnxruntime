@@ -39,11 +39,11 @@ def compare(type: str, number:str):
         return
     
     if number == "10K":
-        file1 = "10KPrefixes_RandomSet_WithRepeat_set1_post_fused_orig.tsv"
-        file2 = "10KPrefixes_RandomSet_WithRepeat_set1_post_fused_now.tsv"
+        file1 = "10K_queries_set1_onnx_post_fused_orig.tsv"
+        file2 = "10K_queries_set1_onnx_post_fused_now.tsv"
     elif number == "1K":
-        file1 = "1KPrefixes_RandomSet_WithNoRepeat_onnx_post_fused_orig.tsv"
-        file2 = "1KPrefixes_RandomSet_WithNoRepeat_onnx_post_fused_now.tsv"
+        file1 = "1K_queries_onnx_post_fused_orig.tsv"
+        file2 = "1K_queries_onnx_post_fused_now.tsv"
 
     compare_results(file1, file2)
 

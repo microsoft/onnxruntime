@@ -62,7 +62,7 @@ class Tokenizer:
             last_token = self._tokenizer.convert_ids_to_tokens([ids[-1]])
             
             mask = self._get_mask(last_token[0])
-            if not mask.any(): # not partial word match,the incomplete-word seems to be a complete-token
+            if not mask.any():
                 mask = np.ones_like(mask)
             else:
                 ids = ids[:-1]
@@ -71,7 +71,7 @@ class Tokenizer:
         first_token_masks = []
 
         if not ids:
-            ids = [pad_token_id]  # NOT state token, but, this endup with empty list. This is a hack.
+            ids = [pad_token_id]
             last_complete_word_pos += 1
 
         input_ids.append(ids)

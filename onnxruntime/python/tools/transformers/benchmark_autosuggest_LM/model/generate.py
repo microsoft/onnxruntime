@@ -1,7 +1,5 @@
 import torch
 from torch.nn import functional as F
-import numpy as np
-import os
 import time
 import ipdb
 import myutils
@@ -18,28 +16,18 @@ class  LMGenerator(object):
     # construct once for one task
     def __init__(self,
         max_length,
-        do_sample=False,
-        temperature=1.0,
-        top_k=50,
-        top_p=1.0,
-        repetition_penalty=1.0,
+        num_return_sequences=1,
+        num_beams = 1,
         pad_token_id=0,
         eos_token_ids=[],
         length_penalty=1.,
-        num_return_sequences=1,
-        num_beams = 1,
         enable_ort = False
         ):
         self.max_length = max_length
-        self.do_sample = do_sample
-        self.temperature = temperature
-        self.top_k = top_k
-        self.top_p = top_p
-        self.repetition_penalty = repetition_penalty
-        self.pad_token_id = pad_token_id
-        self.eos_token_ids = eos_token_ids
         self.num_return_sequences = num_return_sequences
         self.num_beams = num_beams
+        self.pad_token_id = pad_token_id
+        self.eos_token_ids = eos_token_ids
         self.length_penalty = length_penalty
         self.enable_ort = enable_ort
 
@@ -125,21 +113,11 @@ class  LMGenerator(object):
         input_ids,
         next_token_logits,
         max_length=None,
-        do_sample=None,
-        temperature=None,
-        top_k=None,
-        top_p=None,
-        repetition_penalty=None,
         length_penalty=None,
         num_return_sequences=None,
         num_beams=None):
 
         max_length = max_length or self.max_length
-        do_sample = do_sample or self.do_sample
-        temperature = temperature or self.temperature
-        top_k = top_k or self.top_k
-        top_p = top_p or self.top_p
-        repetition_penalty = repetition_penalty or self.repetition_penalty
         length_penalty = length_penalty or self.length_penalty
         num_return_sequences = num_return_sequences or self.num_return_sequences
         num_beams = num_beams or self.num_beams
@@ -156,14 +134,6 @@ class  LMGenerator(object):
         if cur_len >= max_length or self.done:
             raise ValueError('Finished')
 
-        # repetition penalty from CTRL paper (https://arxiv.org/abs/1909.05858)
-        if repetition_penalty != 1.0:
-            _pen = next_token_logits.gather(2, input_ids)
-            # num_repeats = (x.unique(return_counts=True, return_inverse=True) for x in input_ids.view(-1, input_ids.size(0)))
-            # num_repeats = torch.stack([x[2].gather(0, x[1]) for x in num_repeats])
-            _pen = (_pen > 0).float() * _pen / repetition_penalty + (_pen < 0).float() * _pen * repetition_penalty
-            next_token_logits.scatter_(2, input_ids, _pen)
-
         if (next_token_logits.shape[2] > 50257):
             next_token_logits[:,:, 50257:] = next_token_logits[:,:, 50257:] - 1000
 
@@ -173,9 +143,6 @@ class  LMGenerator(object):
                 _pen = next_token_logits[..., eos_token_id]
                 _pen = (_pen < 0).float() * (_pen / length_penalty) + (_pen > 0).float() * (_pen * length_penalty)
                 next_token_logits[..., eos_token_id] = _pen
-
-        if self.temperature != 1.0:
-            next_token_logits = next_token_logits / temperature
 
         num_samples = num_return_sequences * num_beams if input_ids.shape[1] == 1 else num_beams
         next_token_log_probs = F.log_softmax(next_token_logits, dim=-1)

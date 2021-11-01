@@ -27,6 +27,8 @@
 
      
 
+ Is it possible that a model won't have any suggestions, after the beam search - I don't think so
+
   To run APPG with ONNX:
   $env:ENABLE_ORT=1
   $env:ENABLE_DLIS=''
@@ -47,6 +49,50 @@ After any changes run the onnx model with:
 >python .\model\main.py -t onnx -m .\onnx_model\deepsuggest_embed_fused_with_pos.onnx -i .\100Prefixes_RandomSet_WithNoRepeat.tsv -o .\100Prefixes_RandomSet_WithNoRepeat_onnx_post_fused_now.tsv
 >python .\compare_results.py onnx
 
-  
+  **Benchmark Tool :**
+
+1. Input file format is list of queries per line.
+
+2. Output file is a tsv which has the following columns in order:
+
+Number of iterations of search/sampling (Counter)
+Total encoding+decoding time
+Total Inference Time
+Total Search Time
+Total E2E Time
+Result
+
+**Tokenizer :**
+
+Currently only GPT2Tokenizer is supported.
+The default tokenizer comes from 'model_files/' (probably saved from pytorch), if a custom tokenizer is required pass the path to it.
+
+**Test Data:**
+
+1K set of input queries
+
+10K set of input queries
+
+50K set of input queries
+
+
+
+1K and 10K queries are actually the first 1K and 10K queries from the 50K set. The number of inputs is the only difference.
+
+
+
+How to test the script:
+
+1. Include an example to test onnx model e2e and what all results does it include
 
   
+  **Accurancy Measurement:**
+
+  calc_appg.py is present to measure the accurancy of the prediction model 
+
+  This tool needs some more refactoring as this is in its crude form.
+
+  python .\model\calc_appg.py -t "onnx" -m .\onnx_model\deepsuggest_embed_fused_with_pos.onnx --num_beams 2 -i ..\DeepSuggest_data\NWMeasurement_RefPredictions_230K.tsv -o calc_output_file.tsv -r ..\DeepSuggest_data\NWMeasurement_RefPredictions_230K.tsv
+
+
+Made output file optional. 
