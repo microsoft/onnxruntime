@@ -1235,6 +1235,9 @@ common::Status InferenceSession::Initialize() {
     env.GetTelemetryProvider().LogSessionCreationStart();
 
     bool have_cpu_ep = false;
+#ifdef USE_CUDA
+    bool have_cuda_ep = false;
+#endif
 
     {
       std::lock_guard<onnxruntime::OrtMutex> initial_guard(session_mutex_);
@@ -1250,6 +1253,9 @@ common::Status InferenceSession::Initialize() {
       }
 
       have_cpu_ep = execution_providers_.Get(onnxruntime::kCpuExecutionProvider) != nullptr;
+#ifdef USE_CUDA
+      have_cuda_ep = execution_providers_.Get(onnxruntime::kCudaExecutionProvider) != nullptr;
+#endif
     }
 
     // Verify that there are no external initializers in the graph if external data is disabled.
@@ -1264,6 +1270,16 @@ common::Status InferenceSession::Initialize() {
     }
 #endif
 
+#ifdef USE_CUDA
+    // Register default CUDAExecutionProvider if user didn't provide it through the Register() calls.
+    // RegisterExecutionProvider locks the session_mutex_ so we can't be holding it when we call that
+    if (!have_cuda_ep) {
+      LOGS(*session_logger_, INFO) << "Adding CUDA execution provider.";
+      CUDAExecutionProviderInfo epi;
+      auto p_cuda_exec_provider = std::make_unique<CUDAExecutionProvider>(epi);
+      ORT_RETURN_IF_ERROR_SESSIONID_(RegisterExecutionProvider(std::move(p_cuda_exec_provider)));
+    }
+#endif
     // Register default CPUExecutionProvider if user didn't provide it through the Register() calls.
     // RegisterExecutionProvider locks the session_mutex_ so we can't be holding it when we call that
     if (!have_cpu_ep) {
