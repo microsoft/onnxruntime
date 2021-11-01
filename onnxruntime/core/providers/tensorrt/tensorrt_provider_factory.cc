@@ -51,7 +51,7 @@ struct Tensorrt_Provider : Provider {
     auto& options = *reinterpret_cast<const OrtTensorRTProviderOptions*>(provider_options);
     TensorrtExecutionProviderInfo info;
     info.device_id = options.device_id;
-    info.has_user_compute_stream = options.has_user_compute_stream;
+    info.has_user_compute_stream = options.has_user_compute_stream != 0;
     info.user_compute_stream = options.user_compute_stream;
     info.has_trt_options = true;
     info.max_partition_iterations = options.trt_max_partition_iterations;
