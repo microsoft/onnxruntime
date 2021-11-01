@@ -47,7 +47,7 @@
 #define ORT_THROW_LAST_ERROR_IF_NULL(ptr)   \
     if(ptr == nullptr)                      \
     {                                       \
-        ORT_THROW(E_POINTER);            \
+        ORT_THROW(E_POINTER);               \
     }
 #else
 #define ORT_THROW_LAST_ERROR_IF_NULL(ptr) THROW_LAST_ERROR_IF_NULL(ptr)
