@@ -21,7 +21,7 @@ __global__ void TriluKernel(
   int i;
   int j;
   devmod_indices.divmod(id, j, i);
-  output_data[id] = ((((i + k) >= j) && upper) || (((i + k) <= j) && !upper)) ? input_data[id] : 0;
+  output_data[id] = ((((i - k) >= j) && upper) || (((i - k) <= j) && !upper)) ? input_data[id] : 0;
 }
 
 Status TriluImpl(
