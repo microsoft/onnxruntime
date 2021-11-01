@@ -5,12 +5,10 @@
 
 namespace onnxruntime {
 namespace utils {
-
 MLDataType GetMLDataType(const onnxruntime::NodeArg& arg) {
   auto type_proto = arg.TypeAsProto();
   ORT_ENFORCE(nullptr != type_proto);
   return DataTypeImpl::TypeFromProto(*type_proto);
 }
-
 }  // namespace utils
 }  // namespace onnxruntime

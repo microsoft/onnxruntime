@@ -9,7 +9,6 @@
 
 namespace onnxruntime {
 namespace utils {
-
 MLDataType GetMLDataType(const onnxruntime::NodeArg& arg);
 
 inline bool IsOptionalTensor(MLDataType type) {

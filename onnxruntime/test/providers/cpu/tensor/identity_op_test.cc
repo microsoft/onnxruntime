@@ -42,7 +42,7 @@ TEST(Identity, OptionalTensorType_NonNone) {
   std::initializer_list<float> data = {-1.0856307f, 0.99734545f};
   test.AddOptionalTypeTensorInput<float>("A", {2}, &data);
   test.AddOptionalTypeTensorOutput<float>("Y", {2}, &data);
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: opset 16 is not supported yet
 }
 
 TEST(Identity, OptionalTensorType_None) {
@@ -51,9 +51,9 @@ TEST(Identity, OptionalTensorType_None) {
   // `test_allow_released_onnx_opset_only_` to 'false' to allow this test to run
   test.test_allow_released_onnx_opset_only_ = false;
 
-  test.AddOptionalTypeTensorInput<float>("A", {}, nullptr);   // None
-  test.AddOptionalTypeTensorOutput<float>("Y", {}, nullptr);  // None
-  test.Run();
+  test.AddOptionalTypeTensorInput<float>("A", {}, nullptr);                            // None
+  test.AddOptionalTypeTensorOutput<float>("Y", {}, nullptr);                           // None
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: opset 16 is not supported yet
 }
 
 TEST(Identity, OptionalTensorSequenceType_NonNone) {
@@ -68,7 +68,7 @@ TEST(Identity, OptionalTensorSequenceType_NonNone) {
 
   test.AddOptionalTypeSeqInput<int64_t>("A", &input);
   test.AddOptionalTypeSeqOutput<int64_t>("Y", &input);
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: opset 16 is not supported yet
 }
 
 TEST(Identity, OptionalTensorSequenceType_None) {
@@ -77,9 +77,9 @@ TEST(Identity, OptionalTensorSequenceType_None) {
   // `test_allow_released_onnx_opset_only_` to 'false' to allow this test to run
   test.test_allow_released_onnx_opset_only_ = false;
 
-  test.AddOptionalTypeSeqInput<float>("A", nullptr);   // None
-  test.AddOptionalTypeSeqOutput<float>("Y", nullptr);  // None
-  test.Run();
+  test.AddOptionalTypeSeqInput<float>("A", nullptr);                                   // None
+  test.AddOptionalTypeSeqOutput<float>("Y", nullptr);                                  // None
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: opset 16 is not supported yet
 }
 }  // namespace test
 }  // namespace onnxruntime
