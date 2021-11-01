@@ -35,7 +35,8 @@ void DropQDQNodesRules(SelectorsAndActions& qdq_selectors_and_actions) {
                                                       SelectorAndAction::OpVersionsMap{{"Gather", {}},
                                                                                        {"Reshape", {}},
                                                                                        {"Transpose", {}},
-                                                                                       {"MaxPool", {12}}},
+                                                                                       {"MaxPool", {12}},
+                                                                                       {"Resize", {}}},
                                                       std::move(selector),
                                                       std::move(action));
 #else

@@ -680,11 +680,7 @@ common::Status InferenceSession::Load(const std::string& model_uri) {
 
   if ((has_explicit_type && model_type == "ORT") ||
       (!has_explicit_type && experimental::utils::IsOrtFormatModel(model_uri))) {
-#if defined(ENABLE_ORT_FORMAT_LOAD)
     return LoadOrtModel(model_uri);
-#else
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "ORT format model is not supported in this build.");
-#endif
   }
 
 #if !defined(ORT_MINIMAL_BUILD)
@@ -707,11 +703,7 @@ common::Status InferenceSession::Load(const std::wstring& model_uri) {
 
   if ((has_explicit_type && model_type == "ORT") ||
       (!has_explicit_type && experimental::utils::IsOrtFormatModel(model_uri))) {
-#if defined(ENABLE_ORT_FORMAT_LOAD)
     return LoadOrtModel(model_uri);
-#else
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "ORT format model is not supported in this build.");
-#endif
   }
 
 #if !defined(ORT_MINIMAL_BUILD)
@@ -735,11 +727,7 @@ common::Status InferenceSession::Load(const void* model_data, int model_data_len
   if ((has_explicit_type && model_type == "ORT") ||
       (!has_explicit_type &&
        experimental::utils::IsOrtFormatModelBytes(model_data, model_data_len))) {
-#if defined(ENABLE_ORT_FORMAT_LOAD)
     return LoadOrtModel(model_data, model_data_len);
-#else
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "ORT format model is not supported in this build.");
-#endif
   }
 
 #if !defined(ORT_MINIMAL_BUILD)
@@ -940,8 +928,6 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph,
 }
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
-#if defined(ENABLE_ORT_FORMAT_LOAD)
-
 template <typename T>
 static Status LoadOrtModelBytes(const std::basic_string<T>& model_uri,
                                 std::basic_string<ORTCHAR_T>& model_location,
@@ -1067,8 +1053,6 @@ Status InferenceSession::LoadOrtModel(std::function<Status()> load_ort_format_mo
   return Status::OK();
 }
 
-#endif  // defined(ENABLE_ORT_FORMAT_LOAD)
-
 bool InferenceSession::IsInitialized() const {
   std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
   return is_inited_;
@@ -1130,7 +1114,6 @@ common::Status InferenceSession::AddPrePackedWeightsContainer(PrepackedWeightsCo
   return Status::OK();
 }
 
-#if defined(ENABLE_ORT_FORMAT_LOAD)
 namespace {
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 Status PartitionOrtFormatModel(onnxruntime::Graph& graph,
@@ -1207,7 +1190,6 @@ Status AssignNodesToEpsFromHashes(Graph& graph, const fbs::SessionState& fbs_ses
   return Status::OK();
 }
 }  // namespace
-#endif  // defined(ENABLE_ORT_FORMAT_LOAD)
 
 common::Status InferenceSession::Initialize() {
   Status status = Status::OK();
@@ -1357,7 +1339,6 @@ common::Status InferenceSession::Initialize() {
     {
       ORT_ENFORCE(loading_ort_format && serialized_session_state != nullptr);
 
-#if defined(ENABLE_ORT_FORMAT_LOAD)
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
       // nodes are already partitioned, but a custom EP may compile some at runtime.
       // run the partitioning to allow that to happen.
@@ -1375,9 +1356,6 @@ common::Status InferenceSession::Initialize() {
 
       ORT_RETURN_IF_ERROR(AssignNodesToEpsFromHashes(graph, *serialized_session_state,
                                                      kernel_registry_manager_, *session_logger_));
-#else  // defined(ENABLE_ORT_FORMAT_LOAD)
-      ORT_NOT_IMPLEMENTED("ORT format loading not enabled.");
-#endif
     }
 
     ORT_RETURN_IF_ERROR_SESSIONID_(

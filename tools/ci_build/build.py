@@ -535,8 +535,6 @@ def parse_arguments():
     parser.add_argument("--disable_rtti", action='store_true', help="Disable RTTI (reduces binary size)")
     parser.add_argument("--disable_exceptions", action='store_true',
                         help="Disable exceptions to reduce binary size. Requires --minimal_build.")
-    parser.add_argument("--disable_ort_format_load", action='store_true',
-                        help='Disable support for loading ORT format models in a non-minimal build.')
 
     parser.add_argument(
         "--rocm_version", help="The version of ROCM stack to use. ")
@@ -760,7 +758,6 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_DISABLE_ML_OPS=" + ("ON" if args.disable_ml_ops else "OFF"),
         "-Donnxruntime_DISABLE_RTTI=" + ("ON" if args.disable_rtti else "OFF"),
         "-Donnxruntime_DISABLE_EXCEPTIONS=" + ("ON" if args.disable_exceptions else "OFF"),
-        "-Donnxruntime_DISABLE_ORT_FORMAT_LOAD=" + ("ON" if args.disable_ort_format_load else "OFF"),
         # Need to use 'is not None' with minimal_build check as it could be an empty list.
         "-Donnxruntime_MINIMAL_BUILD=" + ("ON" if args.minimal_build is not None else "OFF"),
         "-Donnxruntime_EXTENDED_MINIMAL_BUILD=" + ("ON" if args.minimal_build and 'extended' in args.minimal_build
@@ -813,6 +810,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_ENABLE_EAGER_MODE=" + ("ON" if args.build_eager_mode else "OFF"),
         "-Donnxruntime_ENABLE_EXTERNAL_CUSTOM_OP_SCHEMAS=" + ("ON" if args.enable_external_custom_op_schemas
                                                               else "OFF"),
+        "-Donnxruntime_NVCC_THREADS=" + str(args.parallel),
     ]
     # It should be default ON in CI build pipelines, and OFF in packaging pipelines.
     # And OFF for the people who are not actively developing onnx runtime.
@@ -935,10 +933,19 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
 
     if is_macOS() and not args.android:
         cmake_args += ["-DCMAKE_OSX_ARCHITECTURES=" + args.osx_arch]
-        # since cmake 3.19, it uses the xcode latest buildsystem, which is not supported by this project.
-        cmake_verstr = subprocess.check_output(['cmake', '--version']).decode('utf-8').split()[2]
-        if args.use_xcode and LooseVersion(cmake_verstr) >= LooseVersion('3.19.0'):
-            cmake_args += ["-T", "buildsystem=1"]
+        if args.use_xcode:
+            cmake_ver = LooseVersion(
+                subprocess.check_output(['cmake', '--version']).decode('utf-8').split()[2])
+            xcode_ver = LooseVersion(
+                subprocess.check_output(['xcrun', 'xcodebuild', '-version']).decode('utf-8').split()[1])
+            # Requires Cmake 3.21.1+ for XCode 13+
+            # The legacy build system is not longer supported on XCode 13+
+            if xcode_ver >= LooseVersion('13') and cmake_ver < LooseVersion('3.21.1'):
+                raise BuildError("CMake 3.21.1+ required to use XCode 13+")
+            # Use legacy build system for old CMake [3.19, 3.21.1) which uses new build system by default
+            # CMake 3.18- use the legacy build system by default
+            if cmake_ver >= LooseVersion('3.19.0') and cmake_ver < LooseVersion('3.21.1'):
+                cmake_args += ["-T", "buildsystem=1"]
         if args.apple_deploy_target:
             cmake_args += ["-DCMAKE_OSX_DEPLOYMENT_TARGET=" + args.apple_deploy_target]
         # Code sign the binaries, if the code signing development identity and/or team id are provided
@@ -2011,9 +2018,6 @@ def main():
 
     if args.enable_pybind and args.disable_exceptions:
         raise BuildError('Python bindings require exceptions to be enabled.')
-
-    if args.minimal_build is not None and args.disable_ort_format_load:
-        raise BuildError('Minimal build requires loading ORT format models.')
 
     if args.nnapi_min_api:
         if not args.use_nnapi:

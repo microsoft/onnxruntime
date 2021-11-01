@@ -58,3 +58,4 @@ onnxruntime/python/version_info.py
 # direnv, posh-direnv
 .envrc
 .psenvrc
+*.csproj.user

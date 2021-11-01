@@ -1,0 +1,52 @@
+parameters:
+- name: AdditionalBuildFlags
+  displayName: Additional build flags for build.py
+  type: string
+  default: ''
+
+- name: MacosArch  
+  type: string
+  default: 'x86_64'
+
+- name: BuildJava
+  type: boolean
+  default: true
+
+steps:     
+    - script: |
+        rm -rf $(Build.BinariesDirectory)/Release
+        python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --update --build  ${{ parameters.AdditionalBuildFlags }} --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --build_shared_lib --config Release
+      displayName: 'Build ${{ parameters.MacosArch }}'
+
+    - task: ShellScript@2
+      displayName: 'Copy build artifacts for zipping'
+      inputs:
+        scriptPath: 'tools/ci_build/github/linux/copy_strip_binary.sh'
+        args: '-r $(Build.BinariesDirectory) -a onnxruntime-osx-${{ parameters.MacosArch }}-$(OnnxRuntimeVersion) -l libonnxruntime.$(OnnxRuntimeVersion).dylib -c Release -s $(Build.SourcesDirectory) -t $(Build.SourceVersion)'
+        workingDirectory: '$(Build.BinariesDirectory)/Release'
+
+    - task: ArchiveFiles@2
+      inputs:
+        rootFolderOrFile: '$(Build.BinariesDirectory)/onnxruntime-osx-${{ parameters.MacosArch }}-$(OnnxRuntimeVersion)'
+        includeRootFolder: true
+        archiveType: 'tar' # Options: zip, 7z, tar, wim
+        tarCompression: 'gz'
+        archiveFile: '$(Build.ArtifactStagingDirectory)/onnxruntime-osx-${{ parameters.MacosArch }}-$(OnnxRuntimeVersion).tgz'
+        replaceExistingArchive: true
+
+    - script: |
+       set -e -x       
+       mkdir -p $(Build.ArtifactStagingDirectory)/testdata
+       cp $(Build.BinariesDirectory)/Release/libcustom_op_library.dylib $(Build.ArtifactStagingDirectory)/testdata
+      displayName: 'Copy libcustom_op_library.dylib to ArtifactStagingDirectory'
+      condition: and(succeeded(), eq('${{ parameters.MacosArch }}', 'x86_64'))
+
+    - ${{ if and(ne(parameters.MacosArch, 'universal2'), eq(parameters.buildJava, true)) }}:
+        - template: java-api-artifacts-package-and-publish-steps-posix.yml
+          parameters:
+              arch: 'osx-${{ parameters.MacosArch }}'
+              buildConfig: 'Release'
+              artifactName: 'onnxruntime-java-osx-${{ parameters.MacosArch }}'
+              version: '$(OnnxRuntimeVersion)'
+              libraryName: 'libonnxruntime.dylib'
+              nativeLibraryName: 'libonnxruntime4j_jni.dylib'

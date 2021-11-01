@@ -436,13 +436,11 @@ class Node {
 
 #endif
 
-#if defined(ENABLE_ORT_FORMAT_LOAD)
   static Status LoadFromOrtFormat(const onnxruntime::experimental::fbs::Node& fbs_node, Graph& graph,
                                   const logging::Logger& logger, std::unique_ptr<Node>& node);
 
   Status LoadFromOrtFormat(const onnxruntime::experimental::fbs::Node& fbs_node, const logging::Logger& logger);
   Status LoadEdgesFromOrtFormat(const onnxruntime::experimental::fbs::NodeEdge& fbs_node_edgs, const Graph& graph);
-#endif
 
   /**
   @class Definitions
@@ -1181,7 +1179,6 @@ class Graph {
 
   virtual ~Graph();
 
-#if defined(ENABLE_ORT_FORMAT_LOAD)
   static common::Status LoadFromOrtFormat(
       const onnxruntime::experimental::fbs::Graph& fbs_graph, const Model& owning_model,
       const std::unordered_map<std::string, int>& domain_to_version,
@@ -1194,7 +1191,6 @@ class Graph {
   static Status LoadFromOrtFormat(const onnxruntime::experimental::fbs::Graph& fbs_graph,
                                   Graph& parent_graph, const Node& parent_node,
                                   const logging::Logger& logger, std::unique_ptr<Graph>& graph);
-#endif
 
 #if defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
   const RuntimeOptimizationRecordContainer& RuntimeOptimizations() const {
@@ -1224,10 +1220,8 @@ class Graph {
         Graph* parent_graph, const Node* parent_node,
         const logging::Logger& logger);
 
-#if defined(ENABLE_ORT_FORMAT_LOAD)
   // Populate Graph instance from ORT format serialized data.
   common::Status LoadFromOrtFormat(const onnxruntime::experimental::fbs::Graph& fbs_graph);
-#endif
 
 #if !defined(ORT_MINIMAL_BUILD)
   // Constructor: Given a <GraphProto> loaded from model file, construct
