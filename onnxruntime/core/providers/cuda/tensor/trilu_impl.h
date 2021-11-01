@@ -20,5 +20,4 @@ Status TriluImpl(
     const fast_divmod& divmod_indices);
 
 }  // namespace cuda
-
 }  // namespace onnxruntime
