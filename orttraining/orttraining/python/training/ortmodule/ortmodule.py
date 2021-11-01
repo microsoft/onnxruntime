@@ -70,24 +70,7 @@ class ORTModule(torch.nn.Module):
 
             self._torch_module = TorchModuleFactory()(module, debug_options, self._fallback_manager)
 
-            # Create forward dynamically, so each ORTModule instance will have its own copy.
-            # This is needed to be able to copy the forward signatures from the original PyTorch models
-            # and possibly have different signatures for different instances.
-            def _forward(self, *inputs, **kwargs):
-                '''Forward pass starts here and continues at `_ORTModuleFunction.forward`
-
-                ONNX model is exported the first time this method is executed.
-                Next, we build a full training graph with module_gradient_graph_builder.
-                Finally, we instantiate the ONNX Runtime InferenceSession.
-                '''
-
-                return self._torch_module.forward(*inputs, **kwargs)
-
-            # Bind the forward method.
-            self.forward = _forward.__get__(self)
-            # Copy the forward signature from the _torch_module's forward signature.
-            functools.update_wrapper(
-                self.forward.__func__, self._torch_module.forward.__func__)
+            _utils.patch_ortmodule_forward_method(self)
 
             # Support contrib OPs
             pytorch_export_contrib_ops.register()
@@ -322,3 +305,25 @@ class ORTModule(torch.nn.Module):
         else:
             # Setting any new attributes should be done on ORTModule only when 'torch_module' is not defined
             self.__dict__[name] = value
+
+    def __getstate__(self):
+        # Attempting to serialize ORTModule
+
+        state = _utils.get_state_after_deletion_of_non_ortmodule_methods(self, self.module)
+        return state
+
+    def __setstate__(self, state):
+        # Attempt to deserialize ORTModule
+
+        self.__dict__.update(state)
+
+        # Re-register contrib OPs
+        pytorch_export_contrib_ops.register()
+        CustomOpSymbolicRegistry.register_all()
+        CustomGradientRegistry.register_all()
+
+        # Re-initialize the ORTModule forward method
+        _utils.patch_ortmodule_forward_method(self)
+
+        # Re-bind users custom methods to ORTModule
+        _utils.check_for_name_collisions_and_bind_methods_to_ortmodule(self, self.module)

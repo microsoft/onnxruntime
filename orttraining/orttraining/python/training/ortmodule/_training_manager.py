@@ -62,7 +62,7 @@ class TrainingManager(GraphExecutionManager):
         return user_outputs, run_info
 
     def _create_autofunction_class(self):
-        
+
         class _ORTModuleFunction(torch.autograd.Function):
             '''Use a custom torch.autograd.Function to associate self.backward_graph as the
             gradient implementation for self.forward_graph.'''
@@ -184,7 +184,7 @@ class TrainingManager(GraphExecutionManager):
                     else:
                         results.append(None)
 
-                return tuple(results)        
+                return tuple(results)
 
         return _ORTModuleFunction
 
@@ -345,3 +345,22 @@ class TrainingManager(GraphExecutionManager):
             self._initialize_graph_builder(training=True)
             return True
         return False
+
+    def __getstate__(self):
+        # Attempt to serialize training manager
+
+        state = super(TrainingManager, self).__getstate__()
+
+        # Only top level classes are pickleable. So, _ORTModuleFunction is
+        # not pickleable. So, let's not pickle it, and redefine it when
+        # loading the state.
+        state['_forward_class'] = None
+        return state
+
+    def __setstate__(self, state):
+        # Attempt to deserialize training manager
+
+        super(TrainingManager, self).__setstate__(state)
+
+        # Redefine self._forward_class
+        self._forward_class = self._create_autofunction_class()
