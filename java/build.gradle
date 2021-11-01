@@ -3,7 +3,7 @@ plugins {
 	id 'maven-publish'
 	id 'signing'
 	id 'jacoco'
-	id 'com.diffplug.spotless' version '5.9.0'
+	id 'com.diffplug.spotless' version '5.17.0'
 }
 
 allprojects {

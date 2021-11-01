@@ -243,11 +243,11 @@ bool NodeArg::HasTensorOrScalarShape() const {
     case TypeProto::kTensorType:
 #if !defined(DISABLE_SPARSE_TENSORS)
     case TypeProto::kSparseTensorType:
+#endif
       // Standard tensor has a valid shape field while
       // scalar's shape is empty. Thus, we don't need to
       // check shape here.
       return true;
-#endif
     case TypeProto::kSequenceType:
     case TypeProto::kMapType:
     case TypeProto::kOpaqueType:
@@ -611,7 +611,6 @@ flatbuffers::Offset<fbs::NodeEdge> Node::SaveEdgesToOrtFormat(flatbuffers::FlatB
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
-#if defined(ENABLE_ORT_FORMAT_LOAD)
 Status Node::LoadFromOrtFormat(const onnxruntime::experimental::fbs::Node& fbs_node, Graph& graph,
                                const logging::Logger& logger, std::unique_ptr<Node>& node) {
   node.reset(new Node(fbs_node.index(), graph));
@@ -708,7 +707,6 @@ Status Node::LoadEdgesFromOrtFormat(const onnxruntime::experimental::fbs::NodeEd
 
   return Status::OK();
 }
-#endif  // defined(ENABLE_ORT_FORMAT_LOAD)
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 void Node::Init(const std::string& name,
@@ -2537,7 +2535,9 @@ void Graph::InitFunctionBodyForNode(Node& node) {
   ORT_CATCH(const std::exception& e) {
     LOGS(logger_, WARNING) << "Function body initialization failed for node '"
                            << node.Name() << "' optype " << node.OpType()
+#ifndef ORT_NO_EXCEPTIONS
                            << ". Error message " << e.what()
+#endif //ORT_NO_EXCEPTIONS
                            << ". Execution will fail if ORT does not have a specialized kernel for this op";
     // Return without using this function op's expansion. No need to fail just yet.
     // If ORT has a specialized kernel for this op then execution will proceed
@@ -4017,7 +4017,6 @@ std::ostream& operator<<(std::ostream& out, const Graph& graph) {
 }
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
-#if defined(ENABLE_ORT_FORMAT_LOAD)
 Status Graph::LoadFromOrtFormat(const onnxruntime::experimental::fbs::Graph& fbs_graph,
                                 const Model& owning_model,
                                 const std::unordered_map<std::string, int>& domain_to_version,
@@ -4215,7 +4214,5 @@ common::Status Graph::LoadFromOrtFormat(const onnxruntime::experimental::fbs::Gr
 
   return Status::OK();
 }
-
-#endif  // defined(ENABLE_ORT_FORMAT_LOAD)
 
 }  // namespace onnxruntime
