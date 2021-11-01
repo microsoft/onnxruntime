@@ -536,14 +536,14 @@ typedef void (*OrtThreadWorkerFn)(void* worker_fn_param);
 
 /** \brief Thread creation function
 *
-* The function returns a thread handle to be used in onnxruntime intra thread pool
-* The returned handle is also the argument of CustomJoinThreadFn on thread pool destruction
+* The function should return a thread handle to be used in onnxruntime intra op thread pool
+* The handle will be passed to CustomJoinThreadFn on thread pool destruction
 */
 typedef void* (*CustomCreateThreadFn)(void* custom_thread_creation_options, OrtThreadWorkerFn, void* worker_fn_param);
 
 /** \brief Thread join function
 *
-* The function will be called by onnxruntime in the intra op thread pool destructor.
+* Onnxruntime intra op thread pool destructor will call the function to join a custom thread.
 * Argument "thread_handle" is the value returned by CustomCreateThreadFn
 */
 typedef void (*CustomJoinThreadFn)(void* thread_handle);
@@ -3045,16 +3045,16 @@ struct OrtApi {
   */
   ORT_API2_STATUS(GetSparseTensorIndices, _In_ const OrtValue* ort_value, enum OrtSparseIndicesFormat indices_format, _Out_ size_t* num_indices, _Outptr_ const void** indices);
 
-  /** \brief Set thread creation function for intra op thread pool
+  /** \brief Set custom thread creation function for intra op thread pool
   *
   * \param[in] session options
-  * \param[in] custom thread creation function
+  * \param[in] custom thread creation function (can be nullptr)
   * 
   * * \snippet{doc} snippets.dox OrtStatus Return Value
   */
   ORT_API2_STATUS(SessionOptionsSetCustomCreateThreadFn, _In_ OrtSessionOptions* options, _In_ CustomCreateThreadFn custom_create_thread_fn);
 
-  /** \brief Set options for external thread pool
+  /** \brief Set creation options for custom thread 
   *
   * \param[in] session options
   * \param[in] custom thread creation options (can be nullptr)
@@ -3063,7 +3063,7 @@ struct OrtApi {
   */
   ORT_API2_STATUS(SessionOptionsSetCustomThreadCreationOptions, _In_ OrtSessionOptions* options, _In_ void* custom_thread_creation_options);
 
-  /** \brief Set thread join function for intra op thread pool
+  /** \brief Set custom thread join function for intra op thread pool
   *
   * \param[in] session options
   * \param[in] custom join thread function, must not be nullptr if custom_create_thread_fn is set
