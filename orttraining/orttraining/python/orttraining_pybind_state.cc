@@ -396,7 +396,11 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
           // The same capsule is reused but FromDLPack rename the capsule into used_dltensor.
           PyCapsule_SetName(capsule, "dltensor");
           dlpack::OrtValueToDlpack(it, (void*)&ort_dlmanaged_tensor);
+#if (PY_MAJOR_VERSION >= 3 && PY_MINOR_VERSION >= 9)
           obj = PyObject_CallOneArg(handle, capsule);
+#else
+          obj = PyObject_CallFunctionObjArgs(handle, capsule, NULL);
+#endif
           if (obj == NULL)
             throw std::runtime_error("Empty tensor returned.");
           res.append(py::handle(obj));
