@@ -6,6 +6,7 @@
 
 namespace onnxruntime {
 namespace cuda {
+
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     Trilu,
     kOnnxDomain,
@@ -56,5 +57,6 @@ Status Trilu::ComputeInternal(OpKernelContext* ctx) const {
       gsl::narrow<int>(output->Shape().Size()),
       divmod_indices);
 }
+
 }  // namespace cuda
 }  // namespace onnxruntime
