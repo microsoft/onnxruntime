@@ -18,5 +18,7 @@ Status TriluImpl(
     void* output_data,
     int N,
     const fast_divmod& divmod_indices);
-}
+
+}  // namespace cuda
+
 }  // namespace onnxruntime
