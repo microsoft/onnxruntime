@@ -36,25 +36,25 @@ static Status SaveRuntimeOptimizationRecordToOrtFormat(
     flatbuffers::FlatBufferBuilder& builder,
     const RuntimeOptimizationRecord& runtime_optimization_record,
     flatbuffers::Offset<fbs::RuntimeOptimizationRecord>& fbs_runtime_optimization_record) {
-  const auto& nodes_to_optimize_indexes = runtime_optimization_record.nodes_to_optimize_indexes;
+  const auto& nodes_to_optimize_indices = runtime_optimization_record.nodes_to_optimize_indices;
 
-  const auto fbs_node_indexes = builder.CreateVector<uint32_t>(
-      nodes_to_optimize_indexes.nodes.size(),
-      [&](size_t i) { return gsl::narrow<uint32_t>(nodes_to_optimize_indexes.nodes[i]); });
+  const auto fbs_node_indices = builder.CreateVector<uint32_t>(
+      nodes_to_optimize_indices.nodes.size(),
+      [&](size_t i) { return gsl::narrow<uint32_t>(nodes_to_optimize_indices.nodes[i]); });
 
   const auto fbs_nodes_to_optimize =
-      fbs::CreateNodesToOptimizeIndexes(builder,
-                                        fbs_node_indexes,
-                                        nodes_to_optimize_indexes.num_inputs,
-                                        nodes_to_optimize_indexes.num_outputs,
-                                        nodes_to_optimize_indexes.variadic_input,
-                                        nodes_to_optimize_indexes.variadic_output,
-                                        nodes_to_optimize_indexes.num_variadic_inputs,
-                                        nodes_to_optimize_indexes.num_variadic_outputs);
+      fbs::CreateNodesToOptimizeIndices(builder,
+                                        fbs_node_indices,
+                                        nodes_to_optimize_indices.num_inputs,
+                                        nodes_to_optimize_indices.num_outputs,
+                                        nodes_to_optimize_indices.variadic_input,
+                                        nodes_to_optimize_indices.variadic_output,
+                                        nodes_to_optimize_indices.num_variadic_inputs,
+                                        nodes_to_optimize_indices.num_variadic_outputs);
 
   fbs_runtime_optimization_record =
       fbs::CreateRuntimeOptimizationRecord(builder,
-                                           builder.CreateSharedString(runtime_optimization_record.selector_action_id),
+                                           builder.CreateSharedString(runtime_optimization_record.action_id),
                                            fbs_nodes_to_optimize,
                                            builder.CreateVector<uint64_t>(
                                                runtime_optimization_record.produced_node_kernel_def_hashes));
@@ -91,27 +91,27 @@ static Status LoadRuntimeOptimizationRecordFromOrtFormat(
     RuntimeOptimizationRecord& runtime_optimization_record_out) {
   RuntimeOptimizationRecord runtime_optimization_record;
 
-  experimental::utils::LoadStringFromOrtFormat(runtime_optimization_record.selector_action_id,
-                                               fbs_runtime_optimization_record.selector_action_id());
+  experimental::utils::LoadStringFromOrtFormat(runtime_optimization_record.action_id,
+                                               fbs_runtime_optimization_record.action_id());
 
-  auto& nodes_to_optimize_indexes = runtime_optimization_record.nodes_to_optimize_indexes;
-  if (const auto* fbs_nodes_to_optimize_indexes = fbs_runtime_optimization_record.nodes_to_optimize_indexes()) {
-    if (const auto* fbs_node_indexes = fbs_nodes_to_optimize_indexes->node_indexes()) {
-      nodes_to_optimize_indexes.nodes = [&]() {
+  auto& nodes_to_optimize_indices = runtime_optimization_record.nodes_to_optimize_indices;
+  if (const auto* fbs_nodes_to_optimize_indices = fbs_runtime_optimization_record.nodes_to_optimize_indices()) {
+    if (const auto* fbs_node_indices = fbs_nodes_to_optimize_indices->node_indices()) {
+      nodes_to_optimize_indices.nodes = [&]() {
         std::vector<NodeIndex> result;
-        result.reserve(fbs_node_indexes->size());
-        std::transform(fbs_node_indexes->begin(), fbs_node_indexes->end(), std::back_inserter(result),
+        result.reserve(fbs_node_indices->size());
+        std::transform(fbs_node_indices->begin(), fbs_node_indices->end(), std::back_inserter(result),
                        [](const auto idx) { return static_cast<NodeIndex>(idx); });
         return result;
       }();
     }
 
-    nodes_to_optimize_indexes.num_inputs = fbs_nodes_to_optimize_indexes->num_inputs();
-    nodes_to_optimize_indexes.num_outputs = fbs_nodes_to_optimize_indexes->num_outputs();
-    nodes_to_optimize_indexes.variadic_input = fbs_nodes_to_optimize_indexes->has_variadic_input();
-    nodes_to_optimize_indexes.variadic_output = fbs_nodes_to_optimize_indexes->has_variadic_output();
-    nodes_to_optimize_indexes.num_variadic_inputs = fbs_nodes_to_optimize_indexes->num_variadic_inputs();
-    nodes_to_optimize_indexes.num_variadic_outputs = fbs_nodes_to_optimize_indexes->num_variadic_outputs();
+    nodes_to_optimize_indices.num_inputs = fbs_nodes_to_optimize_indices->num_inputs();
+    nodes_to_optimize_indices.num_outputs = fbs_nodes_to_optimize_indices->num_outputs();
+    nodes_to_optimize_indices.variadic_input = fbs_nodes_to_optimize_indices->has_variadic_input();
+    nodes_to_optimize_indices.variadic_output = fbs_nodes_to_optimize_indices->has_variadic_output();
+    nodes_to_optimize_indices.num_variadic_inputs = fbs_nodes_to_optimize_indices->num_variadic_inputs();
+    nodes_to_optimize_indices.num_variadic_outputs = fbs_nodes_to_optimize_indices->num_variadic_outputs();
   }
 
   if (const auto* fbs_kernel_def_hashes = fbs_runtime_optimization_record.produced_node_kernel_def_hashes()) {

@@ -101,7 +101,7 @@ Status SelectorActionTransformer::MatchAndProcess(Graph& graph, Node& node, bool
       graph.MutableRuntimeOptimizations().AddRecord(
           Name(),
           RuntimeOptimizationRecord{selector_and_action.name,
-                                    node_group->ToIndexes(),
+                                    node_group->ToIndices(),
                                     action_saved_state.produced_node_kernel_def_hashes});
 #else
       status = ORT_MAKE_STATUS(ONNXRUNTIME, FAILED,
@@ -135,7 +135,7 @@ void SelectorsAndActions::RegisterAction(const std::string& name,
 // as well as handling subgraphs (values are stored in the current graph, be that the main graph or the subgraph).
 struct ActionReplay {
   const std::string action_name;
-  std::vector<NodesToOptimizeIndexes> node_groups;
+  std::vector<NodesToOptimizeIndices> node_groups;
 };
 
 Status SelectorActionTransformer::ApplySaved(Graph& graph, bool& modified, const logging::Logger& /*logger*/) const {
@@ -159,7 +159,7 @@ Status SelectorActionTransformer::ApplySaved(Graph& graph, bool& modified, const
 
     const std::unique_ptr<Action>& action = action_iter->second;
 
-    for (const NodesToOptimizeIndexes& node_group : entry.node_groups) {
+    for (const NodesToOptimizeIndices& node_group : entry.node_groups) {
       NodesToOptimize nodes_to_optimize{graph, node_group};
 
       // all nodes in the group are still available if IsValid returns true

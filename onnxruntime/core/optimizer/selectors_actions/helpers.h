@@ -43,11 +43,11 @@ class NodesToOptimize {
 
   // construct from saved NodeIndex values. IsValid() will return false if one or more nodes were missing.
   // Use EmptyNodeIndex for nullptr entries in the vectors for missing optional inputs
-  NodesToOptimize(Graph& graph, const NodesToOptimizeIndexes& node_indexes);
+  NodesToOptimize(Graph& graph, const NodesToOptimizeIndices& node_indexes);
 
   static constexpr NodeIndex EmptyNodeIndex = std::numeric_limits<NodeIndex>::max();
 
-  NodesToOptimizeIndexes ToIndexes() const;
+  NodesToOptimizeIndices ToIndices() const;
 
   // number of inputs and outputs that the target node has, as defined by the operator schema.
   // for each input/output, the node connected to that is stored

@@ -181,8 +181,8 @@ table Attribute{
 }
 
 // runtime optimizations
-table NodesToOptimizeIndexes{
-  node_indexes:[uint32];
+table NodesToOptimizeIndices{
+  node_indices:[uint32];
   num_inputs:uint32;
   num_outputs:uint32;
   has_variadic_input:bool;
@@ -192,8 +192,8 @@ table NodesToOptimizeIndexes{
 }
 
 table RuntimeOptimizationRecord{
-  selector_action_id:string;
-  nodes_to_optimize_indexes:NodesToOptimizeIndexes;
+  action_id:string;
+  nodes_to_optimize_indices:NodesToOptimizeIndices;
   produced_node_kernel_def_hashes:[uint64];
 }
 

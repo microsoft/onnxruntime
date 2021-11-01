@@ -160,7 +160,7 @@ NodesToOptimize::NodesToOptimize(const std::vector<Node*>& input_nodes,
 }
 
 NodesToOptimize::NodesToOptimize(Graph& graph,
-                                 const NodesToOptimizeIndexes& indexes)
+                                 const NodesToOptimizeIndices& indexes)
     : num_inputs{indexes.num_inputs},
       num_outputs{indexes.num_outputs} {
   bool missing_nodes = GetNodesByNodeIndex(graph, indexes.nodes, nodes_);
@@ -169,8 +169,8 @@ NodesToOptimize::NodesToOptimize(Graph& graph,
   }
 }
 
-NodesToOptimizeIndexes NodesToOptimize::ToIndexes() const {
-  NodesToOptimizeIndexes indexes;
+NodesToOptimizeIndices NodesToOptimize::ToIndices() const {
+  NodesToOptimizeIndices indexes;
 
   indexes.nodes.reserve(nodes_.size());
   std::for_each(nodes_.cbegin(), nodes_.cend(), [&indexes](const Node* node) {

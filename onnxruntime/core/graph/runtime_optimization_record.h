@@ -10,11 +10,11 @@
 
 namespace onnxruntime {
 
-/** Struct to serialize the node indexes in an ORT format model.
+/** Struct to serialize the node indices in an ORT format model.
 Use NodesToOptimize::EmptyNodeIndex for nullptr entries in the vectors for missing optional inputs
 */
-struct NodesToOptimizeIndexes {
-  /** Indexes of the nodes in the graph that are considered for optimization. */
+struct NodesToOptimizeIndices {
+  /** Indices of the nodes in the graph that are considered for optimization. */
   std::vector<NodeIndex> nodes;
   /** The number of inputs of the target node. */
   int num_inputs;
@@ -34,10 +34,10 @@ struct NodesToOptimizeIndexes {
 It does not contain information about the optimizer itself, that should be maintained seperately.
 */
 struct RuntimeOptimizationRecord {
-  /** The optimization selector-action identifier. */
-  std::string selector_action_id;
+  /** The optimization action identifier. */
+  std::string action_id;
   /** The nodes to consider for optimization. */
-  NodesToOptimizeIndexes nodes_to_optimize_indexes;
+  NodesToOptimizeIndices nodes_to_optimize_indices;
   /** The kernel def hashes of any new nodes introduced by the optimization. */
   std::vector<uint64_t> produced_node_kernel_def_hashes;
 };
