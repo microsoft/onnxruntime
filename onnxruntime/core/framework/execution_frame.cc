@@ -562,12 +562,24 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_va
   return Status::OK();
 }
 
-Status ExecutionFrame::AllocateMLValueTensorPreAllocateBuffer(OrtValue& ort_value, int ort_value_index_reuse,
+Status ExecutionFrame::AllocateMLValueTensorPreAllocateBuffer(OrtValue& ort_value,
+                                                              int ort_value_index_reuse, int reused_tensor_in_tensor_sequence,
                                                               MLDataType element_type, const OrtMemoryInfo& location,
                                                               const TensorShape& shape, bool create_fence) {
   OrtValue& ort_value_reuse = GetMutableMLValue(ort_value_index_reuse);
 
-  auto* reuse_tensor = ort_value_reuse.GetMutable<Tensor>();
+  ORT_ENFORCE(ort_value_reuse.IsTensor() || ort_value_reuse.IsTensorSequence());
+
+  Tensor* reuse_tensor = nullptr;
+  if (ort_value_reuse.IsTensor()) {  // Often occurring case
+    reuse_tensor = ort_value_reuse.GetMutable<Tensor>();
+  } else {
+    auto* input_tensor_seq = ort_value_reuse.GetMutable<TensorSeq>();
+    ORT_ENFORCE(reused_tensor_in_tensor_sequence >= 0 &&
+                static_cast<size_t>(reused_tensor_in_tensor_sequence) < input_tensor_seq->Size());
+    reuse_tensor = &input_tensor_seq->GetMutable(static_cast<size_t>(reused_tensor_in_tensor_sequence));
+  }
+
   auto buffer_num_elements = reuse_tensor->Shape().Size();
   auto required_num_elements = shape.Size();
 
@@ -700,7 +712,9 @@ Status ExecutionFrame::AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_
           ORT_RETURN_IF_ERROR(AllocateAsPerAllocationPlan(reuse_value, reuse_mlvalue_index, shape));
         }
         ORT_RETURN_IF_ERROR(AllocateMLValueTensorPreAllocateBuffer(
-            ort_value, reuse_mlvalue_index, ml_data_type, alloc_info, *shape, per_alloc_plan.create_fence_if_async));
+            ort_value, reuse_mlvalue_index, per_alloc_plan.reused_tensor_in_tensor_sequence,
+            ml_data_type, alloc_info, *shape, per_alloc_plan.create_fence_if_async));
+
         break;
       }
       case AllocKind::kShare: {

@@ -143,7 +143,9 @@ class ExecutionFrame final : public IExecutionFrame {
                                             const OrtMemoryInfo& location, const TensorShape& shape,
                                             bool create_fence = false);
 
-  Status AllocateMLValueTensorPreAllocateBuffer(OrtValue& ort_value, int ort_value_index_reuse, MLDataType element_type,
+  Status AllocateMLValueTensorPreAllocateBuffer(OrtValue& ort_value,
+                                                int ort_value_index_reuse, int reused_tensor_in_tensor_sequence,
+                                                MLDataType element_type,
                                                 const OrtMemoryInfo& location, const TensorShape& shape,
                                                 bool create_fence = false);
 
@@ -178,7 +180,7 @@ class ExecutionFrame final : public IExecutionFrame {
     //   std::unique_lock<std::mutex> lock(mtx_);
     return static_activation_memory_sizes_in_byte_;
   }
-  #endif
+#endif
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ExecutionFrame);

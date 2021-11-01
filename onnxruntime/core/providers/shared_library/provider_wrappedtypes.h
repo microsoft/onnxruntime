@@ -425,8 +425,14 @@ struct KernelDefBuilder final {
     g_host->KernelDefBuilder__Alias(this, input_index, output_index);
     return *this;
   }
+
   KernelDefBuilder& VariadicAlias(int input_offset, int output_offset) {
     g_host->KernelDefBuilder__VariadicAlias(this, input_offset, output_offset);
+    return *this;
+  }
+
+  KernelDefBuilder& SequenceTensorToTensorAlias(int input_index, int output_start_index) {
+    g_host->KernelDefBuilder__SequenceTensorToTensorAlias(this, input_index, output_start_index);
     return *this;
   }
 

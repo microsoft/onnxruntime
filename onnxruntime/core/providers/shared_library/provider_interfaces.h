@@ -444,6 +444,7 @@ struct ProviderHost {
   virtual void KernelDefBuilder__Alias(KernelDefBuilder* p, int input_index, int output_index) = 0;
   virtual void KernelDefBuilder__Alias(KernelDefBuilder* p, const std::vector<std::pair<int, int>>& aliases) = 0;
   virtual void KernelDefBuilder__VariadicAlias(KernelDefBuilder* p, int input_offset, int output_offset) = 0;
+  virtual void KernelDefBuilder__SequenceTensorToTensorAlias(KernelDefBuilder* p, int input_index, int output_start_index) = 0;
   virtual void KernelDefBuilder__ExternalOutputs(KernelDefBuilder* p) = 0;
   virtual void KernelDefBuilder__AllocateInputsContiguously(KernelDefBuilder* p) = 0;
 
