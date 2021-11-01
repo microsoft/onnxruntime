@@ -431,13 +431,11 @@ class Node {
 
 #endif
 
-#if defined(ENABLE_ORT_FORMAT_LOAD)
   static Status LoadFromOrtFormat(const onnxruntime::experimental::fbs::Node& fbs_node, Graph& graph,
                                   const logging::Logger& logger, std::unique_ptr<Node>& node);
 
   Status LoadFromOrtFormat(const onnxruntime::experimental::fbs::Node& fbs_node, const logging::Logger& logger);
   Status LoadEdgesFromOrtFormat(const onnxruntime::experimental::fbs::NodeEdge& fbs_node_edgs, const Graph& graph);
-#endif
 
   /**
   @class Definitions
@@ -644,7 +642,7 @@ class Graph {
   bool IsInitializedTensor(const std::string& name) const;
 
 #if !defined(DISABLE_SPARSE_TENSORS)
-  /** Check if a given name is a sparse initializer's name in the model 
+  /** Check if a given name is a sparse initializer's name in the model
    * we currently convert sparse_initializer field in the model into dense Tensor instances.
    * However, we sometimes want to check if this initializer was stored as sparse in the model.
   */
@@ -674,7 +672,7 @@ class Graph {
   */
   const ONNX_NAMESPACE::TensorProto* GetConstantInitializer(const std::string& name, bool check_outer_scope) const;
 
-  /** returns the initializer's TensorProto if 'name' is an initializer (both constant and overridable). 
+  /** returns the initializer's TensorProto if 'name' is an initializer (both constant and overridable).
   If the initializer is not found, a nullptr is returned.
   @param check_outer_scope If true and the graph is a subgraph,
          check ancestor graph/s for 'name' if not found in 'graph'.
@@ -716,7 +714,7 @@ class Graph {
     return std::find(graph_outputs_.begin(), graph_outputs_.end(), node_arg) != graph_outputs_.end();
   }
 
-  /** Returns true if one or more of the Node outputs are Graph outputs. 
+  /** Returns true if one or more of the Node outputs are Graph outputs.
   @remarks Cheaper than calling GetNodeOutputsInGraphOutputs.
   */
   bool NodeProducesGraphOutput(const Node& node) const {
@@ -1115,7 +1113,7 @@ class Graph {
     // Whether to set that no proto sync is required after resolving.
     // Useful for resolving right after loading from a GraphProto.
     bool no_proto_sync_required = false;
-    // When set to true, graph resolve will be called for initialized function bodies as well. This is used 
+    // When set to true, graph resolve will be called for initialized function bodies as well. This is used
     // in case of nested model local functions.
     bool traverse_function_body = false;
   };
@@ -1169,7 +1167,6 @@ class Graph {
 
   virtual ~Graph();
 
-#if defined(ENABLE_ORT_FORMAT_LOAD)
   static common::Status LoadFromOrtFormat(
       const onnxruntime::experimental::fbs::Graph& fbs_graph, const Model& owning_model,
       const std::unordered_map<std::string, int>& domain_to_version,
@@ -1182,7 +1179,7 @@ class Graph {
   static Status LoadFromOrtFormat(const onnxruntime::experimental::fbs::Graph& fbs_graph,
                                   Graph& parent_graph, const Node& parent_node,
                                   const logging::Logger& logger, std::unique_ptr<Graph>& graph);
-#endif
+
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Graph);
 
@@ -1201,10 +1198,8 @@ class Graph {
         Graph* parent_graph, const Node* parent_node,
         const logging::Logger& logger);
 
-#if defined(ENABLE_ORT_FORMAT_LOAD)
   // Populate Graph instance from ORT format serialized data.
   common::Status LoadFromOrtFormat(const onnxruntime::experimental::fbs::Graph& fbs_graph);
-#endif
 
 #if !defined(ORT_MINIMAL_BUILD)
   // Constructor: Given a <GraphProto> loaded from model file, construct
@@ -1328,8 +1323,8 @@ class Graph {
   // so they can be used to resolve outer scope dependencies when running BuildConnections for the subgraphs.
   common::Status SetOuterScopeNodeArgs(const std::unordered_set<std::string>& outer_scope_node_args);
 
-  // Clear all unused initializers
-  void CleanUnusedInitializers(const std::unordered_set<std::string>* initializer_names_to_preserve = nullptr);
+  // Clear all unused initializers and NodeArgs
+  void CleanUnusedInitializersAndNodeArgs(const std::unordered_set<std::string>* initializer_names_to_preserve = nullptr);
 
   std::vector<NodeArg*> CreateNodeArgs(const google::protobuf::RepeatedPtrField<std::string>& names,
                                        const ArgNameToTypeMap& name_to_type_map);

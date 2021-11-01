@@ -592,7 +592,7 @@ Status SessionState::GeneratePatternGroupCache(const std::vector<std::reference_
       ORT_ENFORCE(exe_plan->allocation_plan[ml_value_idx].alloc_kind == AllocKind::kAllocate);
 
       const auto& counter = exe_plan->allocation_plan[ml_value_idx].program_counter;
-      mem_planner.TraceAllocation(ml_value_idx, counter, size);
+      ORT_RETURN_IF_ERROR(mem_planner.TraceAllocation(ml_value_idx, counter, size));
     }
   }
 
@@ -628,7 +628,7 @@ Status SessionState::GeneratePatternGroupCache(const std::vector<std::reference_
         ORT_ENFORCE(exe_plan->allocation_plan[ml_value_idx].alloc_kind == AllocKind::kAllocate);
 
         const auto& counter = exe_plan->allocation_plan[ml_value_idx].program_counter;
-        mem_planner.TraceAllocation(ml_value_idx, counter, aligned_size);
+        ORT_RETURN_IF_ERROR(mem_planner.TraceAllocation(ml_value_idx, counter, aligned_size));
       }
     }
 
@@ -640,7 +640,7 @@ Status SessionState::GeneratePatternGroupCache(const std::vector<std::reference_
         continue;
       const auto* ml_data_type = static_cast<const TensorTypeBase*>(ml_type)->GetElementType();
       if (ml_data_type != DataTypeImpl::GetType<std::string>()) {
-        mem_planner.TraceFree(ml_value_idx);
+        ORT_RETURN_IF_ERROR(mem_planner.TraceFree(ml_value_idx));
       }
     }
   }
@@ -949,7 +949,6 @@ Status SessionState::CreateSubgraphSessionState() {
   return Status::OK();
 }
 
-#if defined(ENABLE_ORT_FORMAT_LOAD)
 Status SessionState::LoadFromOrtFormat(const fbs::SessionState& fbs_session_state,
                                        const KernelRegistryManager& kernel_registry_manager) {
   using experimental::utils::FbsSessionStateViewer;
@@ -1011,7 +1010,6 @@ Status SessionState::LoadFromOrtFormat(const fbs::SessionState& fbs_session_stat
 
   return Status::OK();
 }
-#endif
 
 // Calculate the use count of a constant initialized tensor, including the use in subgraph.
 // Note: This function doesn't handle the case below:
@@ -1052,13 +1050,7 @@ Status SessionState::FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE
   ORT_RETURN_IF_ERROR(CreateSubgraphSessionState());
 
   if (serialized_session_state) {
-#if defined(ENABLE_ORT_FORMAT_LOAD)
     ORT_RETURN_IF_ERROR(LoadFromOrtFormat(*serialized_session_state, kernel_registry_manager));
-#else
-    return Status(ONNXRUNTIME, INVALID_ARGUMENT,
-                  "ORT format model is not supported in this build.");
-#endif
-
   } else {
 #if !defined(ORT_MINIMAL_BUILD)
     ORT_RETURN_IF_ERROR(PopulateKernelCreateInfo(kernel_registry_manager, saving_ort_format));

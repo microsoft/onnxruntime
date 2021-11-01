@@ -8,6 +8,7 @@
 #include "core/providers/cuda/cuda_fence.h"
 #include "core/providers/cuda/cuda_fwd.h"
 #include "core/providers/cuda/gpu_data_transfer.h"
+#include "core/providers/cuda/cuda_profiler.h"
 
 #ifndef DISABLE_CONTRIB_OPS
 #include "contrib_ops/cuda/cuda_contrib_kernels.h"
@@ -214,6 +215,10 @@ CUDAExecutionProvider::~CUDAExecutionProvider() {
   }
 }
 
+std::unique_ptr<profiling::EpProfiler> CUDAExecutionProvider::GetProfiler() {
+  return std::make_unique<profiling::CudaProfiler>();
+}
+
 CUDAExecutionProvider::PerThreadContext& CUDAExecutionProvider::GetPerThreadContext() const {
   const auto& per_thread_context_cache = PerThreadContextCache();
 
@@ -328,11 +333,13 @@ Status CUDAExecutionProvider::OnRunStart() {
   return Status::OK();
 }
 
-Status CUDAExecutionProvider::OnRunEnd() {
+Status CUDAExecutionProvider::OnRunEnd(bool sync_stream) {
   // record deferred release event on default stream, and release per_thread_context
   auto current_deferred_release_event = GetPerThreadContext().GetCurrentDeferredReleaseEvent();
   CUDA_RETURN_IF_ERROR(cudaEventRecord(current_deferred_release_event, static_cast<cudaStream_t>(GetComputeStream())));
-  CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(static_cast<cudaStream_t>(GetComputeStream())));
+  if (sync_stream) {
+    CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(static_cast<cudaStream_t>(GetComputeStream())));
+  }
   ReleasePerThreadContext();
   std::lock_guard<OrtMutex> lock(deferred_release_cpu_ptr_mutex_);
   deferred_release_cpu_ptr_[current_deferred_release_event].recorded = true;
@@ -2268,7 +2275,6 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
   // These are usually shape related computation subgraphs
   // Following logic can be extended for other EPs
   std::unordered_set<NodeIndex> cpu_nodes = GetCpuPreferredNodes(graph, Type(), kernel_registries, candidates);
-
   std::vector<std::unique_ptr<ComputeCapability>> result;
   for (auto& node_index : candidates) {
     if (cpu_nodes.count(node_index) > 0)
@@ -2278,6 +2284,13 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
     sub_graph->Nodes().push_back(node_index);
     result.push_back(ComputeCapability::Create(std::move(sub_graph)));
   }
+  /*
+  std::vector<std::unique_ptr<ComputeCapability>> result;
+  for (auto& node_index : candidates) {
+    auto sub_graph = IndexedSubGraph::Create();
+    sub_graph->Nodes().push_back(node_index);
+    result.push_back(ComputeCapability::Create(std::move(sub_graph)));
+  }*/
   return result;
 }
 

@@ -206,15 +206,15 @@ void PartitionOptimizerState(
       if (utils::IsPrimitiveDataType<float>(element_type)) {
         float* data_buffer = init_tensor->MutableData<float>();
         p_tensor = std::make_unique<Tensor>(element_type,
-                                                    shape,
-                                                    data_buffer + partition_offset,
-                                                    info);
+                                            shape,
+                                            data_buffer + partition_offset,
+                                            info);
       } else if (utils::IsPrimitiveDataType<MLFloat16>(element_type)) {
         MLFloat16* data_buffer = init_tensor->MutableData<MLFloat16>();
         p_tensor = std::make_unique<Tensor>(element_type,
-                                                    shape,
-                                                    data_buffer + partition_offset,
-                                                    info);
+                                            shape,
+                                            data_buffer + partition_offset,
+                                            info);
 
       } else {
         ORT_THROW("Unsupported type: ", element_type, "for initial optimizer moments.");
@@ -366,23 +366,26 @@ static Status ModifyParametersForOptimizerPartitioning(
           int64_t size_for_current_rank = offset + tensor_count - rank_start;
           std::vector<TensorShape> view_shapes = {{size_for_previous_rank}, {size_for_current_rank}, {0}};
           std::vector<bool> enabled = {false, true};
-          AddParameterPartition(graph, graph_defs, weight_argdef, gradient_argdef, opt_config, view_shapes, enabled,
-                                new_opt_configs, new_weight_argdefs, new_gradient_argdefs, updated_weight_names_map, weight_partition_info);
+          ORT_RETURN_IF_ERROR(AddParameterPartition(graph, graph_defs, weight_argdef, gradient_argdef, opt_config,
+                                                    view_shapes, enabled, new_opt_configs, new_weight_argdefs,
+                                                    new_gradient_argdefs, updated_weight_names_map, weight_partition_info));
         } else if (offset >= rank_start && offset + tensor_count > rank_end) {
           int64_t size_for_current_rank = rank_end - offset;
           int64_t size_for_next_rank = offset + tensor_count - rank_end;
           std::vector<TensorShape> view_shapes = {{0}, {size_for_current_rank}, {size_for_next_rank}};
           std::vector<bool> enabled = {true, false};
-          AddParameterPartition(graph, graph_defs, weight_argdef, gradient_argdef, opt_config, view_shapes, enabled,
-                                new_opt_configs, new_weight_argdefs, new_gradient_argdefs, updated_weight_names_map, weight_partition_info);
+          ORT_RETURN_IF_ERROR(AddParameterPartition(graph, graph_defs, weight_argdef, gradient_argdef, opt_config,
+                                                    view_shapes, enabled, new_opt_configs, new_weight_argdefs,
+                                                    new_gradient_argdefs, updated_weight_names_map, weight_partition_info));
         } else {  // offset < rank_start && offset + tensor_count > rank_end
           int64_t size_for_previous_rank = rank_start - offset;
           int64_t size_for_current_rank = rank_end - rank_start;
           int64_t size_for_next_rank = offset + tensor_count - rank_end;
           std::vector<TensorShape> view_shapes = {{size_for_previous_rank}, {size_for_current_rank}, {size_for_next_rank}};
           std::vector<bool> enabled = {false, true, false};
-          AddParameterPartition(graph, graph_defs, weight_argdef, gradient_argdef, opt_config, view_shapes, enabled,
-                                new_opt_configs, new_weight_argdefs, new_gradient_argdefs, updated_weight_names_map, weight_partition_info);
+          ORT_RETURN_IF_ERROR(AddParameterPartition(graph, graph_defs, weight_argdef, gradient_argdef, opt_config,
+                                                    view_shapes, enabled, new_opt_configs, new_weight_argdefs,
+                                                    new_gradient_argdefs, updated_weight_names_map, weight_partition_info));
         }
       }
     } else {

@@ -221,15 +221,15 @@ Status AveragePoolGrad<T>::Compute(OpKernelContext* context) const {
 
   switch (dX_shape.NumDimensions()) {
     case 3:
-      Compute1DAveragePoolGrad(context);
+      ORT_RETURN_IF_ERROR(Compute1DAveragePoolGrad(context));
       break;
 
     case 4:
-      Compute2DAveragePoolGrad(context);
+      ORT_RETURN_IF_ERROR(Compute2DAveragePoolGrad(context));
       break;
 
     case 5:
-      Compute3DAveragePoolGrad(context);
+      ORT_RETURN_IF_ERROR(Compute3DAveragePoolGrad(context));
       break;
 
     default:

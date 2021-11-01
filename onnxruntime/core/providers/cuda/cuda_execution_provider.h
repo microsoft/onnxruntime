@@ -29,7 +29,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
 
   Status OnRunStart() override;
 
-  Status OnRunEnd() override;
+  Status OnRunEnd(bool sync_stream) override;
 
   const void* GetExecutionHandle() const noexcept override {
     // The CUDA interface does not return anything interesting.
@@ -91,6 +91,8 @@ class CUDAExecutionProvider : public IExecutionProvider {
   void RegisterAllocator(std::shared_ptr<AllocatorManager> allocator_manager) override;
   static AllocatorPtr CreateCudaAllocator(OrtDevice::DeviceId device_id, size_t cuda_mem_limit, ArenaExtendStrategy arena_extend_strategy,
                                           CUDAExecutionProviderExternalAllocatorInfo external_alloc_info, OrtArenaCfg* arena_cfg);
+
+  std::unique_ptr<profiling::EpProfiler> GetProfiler() override;
 
  private:
   CUDAExecutionProviderInfo info_;

@@ -52,8 +52,6 @@ onnxruntime::common::Status SaveAttributeOrtFormat(
     flatbuffers::Offset<fbs::Attribute>& fbs_attr, const Path& model_path,
     const onnxruntime::Graph* subgraph);
 
-#if defined(ENABLE_ORT_FORMAT_LOAD)
-
 onnxruntime::common::Status LoadInitializerOrtFormat(
     const fbs::Tensor& fbs_tensor, ONNX_NAMESPACE::TensorProto& initializer);
 
@@ -68,8 +66,6 @@ onnxruntime::common::Status LoadAttributeOrtFormat(const fbs::Attribute& fbs_att
                                                    std::unique_ptr<onnxruntime::Graph>& sub_graph,
                                                    Graph& graph, Node& node,
                                                    const logging::Logger& logger);
-
-#endif
 
 }  // namespace utils
 }  // namespace experimental

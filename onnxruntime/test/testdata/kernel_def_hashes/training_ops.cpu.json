@@ -168,6 +168,10 @@
         17615601449933173216
     ],
     [
+        "SigmoidGrad com.microsoft CPUExecutionProvider",
+        13197741041840309432
+    ],
+    [
         "SimplifiedLayerNormalizationGrad com.microsoft CPUExecutionProvider",
         9823114592183077488
     ],
@@ -246,6 +250,10 @@
     [
         "SplitTraining com.microsoft CPUExecutionProvider",
         12689204749897364688
+    ],
+    [
+        "TanhGrad com.microsoft CPUExecutionProvider",
+        7147744030478490408
     ],
     [
         "ZeroGradient com.microsoft CPUExecutionProvider",

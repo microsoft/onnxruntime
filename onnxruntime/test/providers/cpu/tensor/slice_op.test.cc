@@ -18,13 +18,17 @@ void RunSliceTest(const std::vector<int64_t>& input_dims,
                   const std::vector<int64_t>& steps,
                   const std::vector<int64_t>& output_dims,
                   const std::vector<T>& output_vals,
-                  bool v10_only = false) {
+                  bool v10_only = false,
+                  const std::unordered_set<std::string>& excluded_providers_input = {}) {
   std::unordered_set<std::string> excluded_providers;
 
   if (!v10_only)
     excluded_providers = {kTensorrtExecutionProvider, kOpenVINOExecutionProvider};
   else
     excluded_providers = {kTensorrtExecutionProvider};
+
+  // merge with the excluded ep from input
+  excluded_providers.insert(excluded_providers_input.cbegin(), excluded_providers_input.cend());
 
   // NNAPI EP does not support empty output
   if (std::any_of(output_dims.cbegin(), output_dims.cend(), [](int64_t i) { return i == 0; })) {
@@ -190,6 +194,17 @@ TEST(SliceTest, Slice2D_TwoAxesEque) {
                       {},
                       {0, 2},
                       {});
+}
+
+TEST(SliceTest, Slice2D_DefaultAxes) {
+  RunSliceTest<float>({2, 2},
+                      {1.0f, 2.0f, 3.0f, 4.0f},
+                      {0},
+                      {1},
+                      {},  // default axes
+                      {},  // default steps
+                      {1, 2},
+                      {1.0f, 2.0f});
 }
 
 TEST(SliceTest, Slice3D) {
@@ -592,6 +607,47 @@ TEST(SliceTest, Slice5D_SubsetOfAxes_Flatten2Dims_OffsetInput) {
                       {1, 1, 1, 2, 2},
                       {-5.f, -6.f, -7.f, -8.f},
                       true);
+}
+
+// test where we use a ridiculously large step, using a large enough step has caused
+// ORT crash due to integer overflow on 32bit system
+// See, https://github.com/microsoft/onnxruntime/issues/9368
+TEST(SliceTest, Slice5D_LargeStep) {
+  RunSliceTest<float>({1, 2, 2, 2, 2},
+                      {1.f, 2.f, 3.f, 4.f,
+                       5.f, 6.f, 7.f, 8.f,
+                       -1.f, -2.f, -3.f, -4.f,
+                       -5.f, -6.f, -7.f, -8.f},
+                      {0},
+                      {1},
+                      {1},
+                      {std::numeric_limits<int64_t>::max()},
+                      {1, 1, 2, 2, 2},
+                      {1.f, 2.f, 3.f, 4.f,
+                       5.f, 6.f, 7.f, 8.f},
+                      true,
+                      // Nuphar EP cannot handle large steps, TODO, add step clamp to Nuphar EP
+                      {kNupharExecutionProvider});
+}
+
+TEST(SliceTest, EmptyDim) {
+  RunSliceTest<float>({0, 6},  // empty dim in shape
+                      {},
+                      {0},  // starts
+                      {1},  // ends
+                      {0},  // axes
+                      {},   // steps
+                      {0, 6},
+                      {});
+
+  RunSliceTest<float>({0, 6},
+                      {},
+                      {1},   // starts
+                      {0},   // ends
+                      {0},   // axes
+                      {-1},  // steps
+                      {0, 6},
+                      {});
 }
 }  // namespace test
 }  // namespace onnxruntime
