@@ -257,7 +257,7 @@ table SessionState {
 
 table InferenceSession {
   // This is the ORT format model version
-  // The version number is defined as kOrtModelVersion in <repo root>/onnxruntime/core/session/inference_session.cc
+  // The version number is defined as kOrtModelVersion in <repo root>/onnxruntime/core/flatbuffers/ort_format_version.h
   // Please update it when there is a change to this schema which will break the compatibilities
   ort_version:string;
 
