@@ -1,6 +1,6 @@
 - **Benchmark tool**
 
-  This is useful to run end to end testing for any onnx model. For other kind of models, there are some specific changed needed.
+  This is useful to run end to end testing for any onnx model. For other kind of models, there are some specific change needed.
 
   **Benchmark Tool :**
 
@@ -39,7 +39,13 @@
   $env:ENABLE_DLIS=1
   $env:ONNX_MODEL_PATH=''
   $env:ENABLE_ORT=''
-  $env:DS_DIR="E:\\mycode\\Deepsuggest\\Deepsuggest\\"
+  $env:DS_DIR="E:\\mycode\\DeepsuggestChanged\\Deepsuggest\\"
+
+
+After any changes run the onnx model with:
+
+>python .\model\main.py -t onnx -m .\onnx_model\deepsuggest_embed_fused_with_pos.onnx -i .\100Prefixes_RandomSet_WithNoRepeat.tsv -o .\100Prefixes_RandomSet_WithNoRepeat_onnx_post_fused_now.tsv
+>python .\compare_results.py onnx
 
   
 

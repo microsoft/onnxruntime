@@ -63,20 +63,9 @@ def parse_arguments():
 def start_processing(inputFilePath: str, outputFilePath: str, model: ModelImp):
     try:
         count = 0
+        first_line = True
         with open(inputFilePath, 'r', encoding = 'utf-8') as inFileHandle:
             with open(outputFilePath, 'w', encoding = 'utf-8') as outFileHandle:
-                '''
-                outFileHandle.write("Iterations\ten+de\tInferTime\tSearchTime\te2e\tResult\n")
-                line = inFileHandle.readline()
-                line = line.strip()
-                while(line):
-                
-                    result = model.Eval(line, outFileHandle)
-                    outFileHandle.write(result)
-                    outFileHandle.write("\n")
-                    line = inFileHandle.readline()
-                    line = line.strip()
-                '''
                 myutils.outFileHandler(outFileHandle)
                 line = inFileHandle.readline()
                 total_time = 0.0
@@ -89,8 +78,9 @@ def start_processing(inputFilePath: str, outputFilePath: str, model: ModelImp):
                     end = time.perf_counter()
 
                     time_taken = (end - start) * 1000
-                    total_time += time_taken
-                    count += 1
+                    if not first_line:
+                        total_time += time_taken
+                        count += 1
                     if result == "[]" and myutils.counterset == False:
                         outFileHandle.write(str(0) + "\t")
                         outFileHandle.write(str(0) + "\t")
@@ -99,11 +89,11 @@ def start_processing(inputFilePath: str, outputFilePath: str, model: ModelImp):
                     outFileHandle.write(str(time_taken) + "\n")
                     
                     line = inFileHandle.readline()
+                    first_line = False
         
                 print("Total Queries: " + str(count))
 
             print("Average latency: ", str(total_time / count))
-            print("Mask any counter:" + str(myutils.mask_any_counter))
     except:
         raise
 

@@ -1,3 +1,7 @@
+#data files
+*result*
+*queries*
+
 *.7z
 
 model_files/*
@@ -8,5 +12,12 @@ dlis/*
 dlis_tokenizer/*
 
 
-10KPrefixes_RandomSet_WithRepeat_set1_result_dlis_original_top_8.tsv
-10KPrefixes_RandomSet_WithRepeat_set1_result_onnx_original_top_8.tsv
+#pycache files
+model/__pycache__/*
+
+# data files
+onnx performs better than dlis/*
+
+for_testing/*
+
+temp_file.csv

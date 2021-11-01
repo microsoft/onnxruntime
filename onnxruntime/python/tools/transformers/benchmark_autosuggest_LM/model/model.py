@@ -6,14 +6,14 @@ import json
 import os
 import time
 from torch import nn
-#from transformers import GPT2Tokenizer, GPT2LMHeadModel
 from transformers import GPT2Tokenizer
 
 from wrapper.onnx import load_onnx
 import utils
 from modeling_gpt2 import GPT2LMHeadModel
 from tnlg_s import (autocomplete, get_args, gpt2_wrapper_for_generate,
-                    initialize_prefix_vocab, DEVICE)
+                    DEVICE)
+from tokenizer import Tokenizer
 from wrapper.onnx import OnnxModelWrapper
 
 SupportedModels = ['onnx', 'dlis']
@@ -26,14 +26,18 @@ class ModelImp:
         self._pad_token_id =0
         self._is_onnx_model = False
 
-        # Load tokenizer
-        self.tokenizer = GPT2Tokenizer.from_pretrained(args.tokenizer_path if args != None else 'model_files/')
-        initialize_prefix_vocab(self.tokenizer)
+        self.tokenizer = Tokenizer(args.tokenizer_path if args != None else 'model_files/')
 
         if (args != None and args.model_type == 'onnx') or os.getenv('ENABLE_ORT', 0) == '1':
             self._is_onnx_model = True
             print("Loading onnx model...")
             start_time = time.perf_counter()
+            print("Loading the following model:")
+            if args != None and args.model_path != None:
+                print(args.model_path)
+            else:
+                print(os.getenv('ONNX_MODEL_PATH'))
+
             self.onnx_model = load_onnx(args.model_path if args != None else os.getenv('ONNX_MODEL_PATH'), device=DEVICE)
             end_time = time.perf_counter()
             print("Time taken for loading onnx model:" + str(end_time - start_time))
@@ -60,8 +64,7 @@ class ModelImp:
     # data is a string
     def Eval(self, data):
         top = self._no_of_suggestions
-        count_start = 0
-        count_start, outputs, probs = autocomplete(self._args, self.wrapped_model, self.tokenizer, [data], count_start, pad_token_id=self._pad_token_id, is_onnx_model=self._is_onnx_model)
+        outputs, probs = autocomplete(self._args, self.wrapped_model, self.tokenizer, data, pad_token_id=self._pad_token_id, is_onnx_model=self._is_onnx_model)
         outputs = outputs[0]
         probs = probs[0]
         outputs = [output.strip() for output, prob in zip(outputs, probs)]

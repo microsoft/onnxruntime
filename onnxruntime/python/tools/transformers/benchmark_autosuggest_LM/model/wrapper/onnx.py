@@ -4,17 +4,17 @@ import numpy as np
 from onnx.onnx_ml_pb2 import TensorShapeProto
 import torch
 import time
+import multiprocessing
 from .base import BaseModelWrapper
 from onnx import numpy_helper
 import myutils
 
 def load_onnx(onnx_path, device):
-    '''Load ONNX checkpoint'''
+    '''Load ONNX model'''
     import onnxruntime as ort
     if device.lower() == 'cpu':
         sess_options = ort.SessionOptions()
-        # sess_options.intra_op_num_threads = 1
-        # sess_options.enable_profiling = False
+        sess_options.intra_op_num_threads = multiprocessing.cpu_count()
         execution_providers = ['CPUExecutionProvider']
         ort_sess = ort.InferenceSession(onnx_path, sess_options, providers=execution_providers)
     else:
@@ -79,10 +79,7 @@ class OnnxModelWrapper(BaseModelWrapper):
         model_inputs = self.get_model_inputs(input_ids, model_state, generator_state)
         model_inputs = self.convert_input_for_onnx(model_inputs)
 
-        #print(type(model_inputs['input_ids']))
-
         if self.io_binding:
-            # vish print(model_inputs['input_ids'].cpu().numpy())
             start_time = time.perf_counter()
             outputs = self.run_with_io_binding(model_inputs)
             end_time = time.perf_counter()

@@ -18,13 +18,37 @@ def compare_files(file1, file2):
 
         print("Total different: " + str(counter))
 
-def compare(type: str):
-    file1 = "10KPrefixes_RandomSet_WithRepeat_set1_result_" + type + "_top_8.tsv"
-    file2 = "10KPrefixes_RandomSet_WithRepeat_set1_result_" + type + "_original_top_8.tsv"
-    compare_files(file1, file2)
+def compare_results(file1, file2):
+    with open(file1, 'r') as f1, open(file2, 'r') as f2:
+        counter = 0
+        line = 0
+        for x, y in zip(f1, f2):
+            #print(x + y)
+            line += 1
+            x = x.split("\t")
+            y = y.split("\t")
+            if x[4] != y[4]:
+                counter += 1
+                #print(str(line) + "     :       " + x[4] + "is diff from" + y[4])
+
+        print("Total different: " + str(counter))
+
+
+def compare(type: str, number:str):
+    if type == "dlis":
+        return
+    
+    if number == "10K":
+        file1 = "10KPrefixes_RandomSet_WithRepeat_set1_post_fused_orig.tsv"
+        file2 = "10KPrefixes_RandomSet_WithRepeat_set1_post_fused_now.tsv"
+    elif number == "1K":
+        file1 = "1KPrefixes_RandomSet_WithNoRepeat_onnx_post_fused_orig.tsv"
+        file2 = "1KPrefixes_RandomSet_WithNoRepeat_onnx_post_fused_now.tsv"
+
+    compare_results(file1, file2)
 
 if __name__  ==  "__main__":
     if len(sys.argv) < 2:
         print("Usage python compare_results.py onnx/dlis")
         sys.exit(1)
-    compare(sys.argv[1])
+    compare(sys.argv[1], sys.argv[2])

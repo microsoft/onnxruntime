@@ -1,4 +1,5 @@
 import os
+from tempfile import TemporaryFile
 import numpy as np
 import torch
 from torch import nn
@@ -11,64 +12,17 @@ import copy
 from generate import LMGenerator
 #from transformers import GPT2Tokenizer,GPT2LMHeadModel
 from transformers import GPT2Tokenizer
+from tokenizer import Tokenizer
 from modeling_gpt2 import GPT2LMHeadModel
 from dlis_gpt2_tokenizer import DLIS_Gpt2Tokenizer
 import myutils
+import bisect
 
 logging.basicConfig(level=logging.INFO)
 logger = logging
 DEVICE = 'cuda:0'
 DlisTokenizer = DLIS_Gpt2Tokenizer("./dlis_tokenizer/vocab", "./dlis_tokenizer/merges.txt", 64)
 
-def pad_sequences_2d(x, maxlen=None, dtype='int64', value=0):
-    '''Right padding'''
-    if maxlen is None:
-        maxlen = max(len(xi) for xi in x)
-    x = (list(xi[:maxlen]) for xi in x)
-    x = [xi + [value] * (maxlen - len(xi)) for xi in x]
-    return np.asarray(x, dtype=dtype)
-
-def pad_sequences_nd(x, shape=None, dtype='int64', value=0):
-    '''N-dim right padding
-    :param x: input sequences (as a mixture of lists/tuple/np.ndarray)
-    :param shape: expected shape. The first dimension can be simply None. If None, all dimensions will be inferred.
-    :parm value: padded value.
-    :return: a np array with `shape` padded with 0.
-    '''
-    xi = x
-    ndim = 0
-    # find ndim
-    while isinstance(xi, (list, tuple, np.ndarray)):
-        ndim += 1
-        xi = xi[0]
-    if shape is None:
-        shape = [None for _ in range(ndim)]
-    else:
-        assert len(shape) == ndim
-    shape = list(shape)
-    if shape[0] is None:
-        shape = [len(x)] + shape[1:]
-
-    # padd recursively from inside out
-    def pad(x, shape, dtype):
-        shape = copy.copy(shape)
-        if shape[1] is None:
-            shape[1] = max(len(xi) for xi in x)
-        if isinstance(x[0][0], (list, tuple, np.ndarray)):
-            if shape[2] is None:
-                shape[2] = max(len(xij) for xi in x for xij in xi)
-            padded = np.asarray([pad(xi, shape[1:], dtype) for xi in x])
-        else:
-            padded = pad_sequences_2d(x, shape[1], dtype=dtype, value=value)
-        if len(padded) >= shape[0]:
-            padded = padded[:shape[0]]
-        else:
-            pad_dim = (shape[0] - len(padded),) + padded.shape[1:]
-            padded = np.concatenate([padded, np.full(pad_dim, value, dtype)])
-        return padded
-    return pad(x, shape, dtype)
-
-pad_sequences = pad_sequences_ndim = pad_sequences_nd
 def get_args():
     '''Cases
     - Finetune LM and save
@@ -198,147 +152,19 @@ def gpt2_wrapper_for_generate(model, pad_token_id, device=DEVICE):
 
     return _model
 
-
-
-VOCAB = None
-ZERO_VEC = None
-SPACE_VEC = None
-GET_MASK = None
-def initialize_prefix_vocab(tokenizer):
-    global VOCAB
-    global ZERO_VEC
-    global SPACE_VEC
-    global GET_MASK
-    VOCAB = [tokenizer.decoder[i] if i < len(tokenizer.decoder) else tokenizer.added_tokens_decoder[i] for i in range(len(tokenizer))]
-    output = [w.startswith('Ġ') for w in VOCAB]
-    SPACE_VEC = np.asarray(output, dtype='float32')
-    ZERO_VEC = np.ones((len(tokenizer),), dtype='float32')
-    GET_MASK = GetMask(VOCAB)
-
-import bisect
-def get_range(sorted_list, prefix):
-    if not prefix:
-        return (0, 0)
-    l = bisect.bisect_left(sorted_list, prefix)
-    end_str = prefix[:-1] + chr(ord(prefix[-1]) + 1)
-    r = bisect.bisect_left(sorted_list, end_str, lo=l)
-    return l, r
-
-class GetMask(object):
-    def __init__(self, vocab=VOCAB):
-        self.vocab = vocab
-        sorted_vocab = sorted(enumerate(vocab), key=lambda x: x[1])
-        keys, values = list(zip(*sorted_vocab))
-        ranks = [x[0] for x in sorted(enumerate(keys), key=lambda x: x[1])]
-        self.ranks = np.asarray(ranks)
-        self.sorted_vocab = values
-
-    def __call__(self, prefix):
-        prefix = prefix.strip()
-        if not prefix:
-            return ZERO_VEC
-        if prefix == 'Ġ':
-            return SPACE_VEC
-        l, r = get_range(self.sorted_vocab, prefix)
-        mask = np.zeros((len(self.vocab),), dtype='float32')
-        mask[l:r] = 1
-        return mask[self.ranks]
-
-def get_word_mask_by_prefix(tokenizer, prefix):
-    global GET_MASK
-    return GET_MASK(prefix)
-
-'''
-def encode_text_with_partial_word(tokenizer, input_text):
-    prefix = input_text.replace('  ', ' ').split(' ')[-1].strip()
-
-    tokens = tokenizer.tokenize(' '.join(input_text.replace('  ', ' ').split(' ')[:-1]))
-    last_complete_word_pos = len(tokens)
-
-    #TODO: How to get the start token
-    mask = get_word_mask_by_prefix(tokenizer, 'Ġ' + prefix) # there is a space before prefix.
-    if not mask.any():
-        tokens = tokenizer.tokenize(input_text)
-        # no word match prefix, means that the incomplete-word would be split to multiple words
-        mask = get_word_mask_by_prefix(tokenizer, tokens[-1])
-        if not mask.any(): # not partial word match,the incomplete-word seems to be a complete-token
-            mask = np.ones_like(mask)
-        else:
-            tokens = tokens[:-1]
-
-    input_ids = tokenizer.convert_tokens_to_ids(tokens)
-    return input_ids, mask, last_complete_word_pos
-'''
-def encode_text_with_partial_word(tokenizer, input_text):
-    prefix = input_text.replace('  ', ' ').split(' ')[-1].strip()
-    input_ids = DlisTokenizer.Tokenize(' '.join(input_text.replace('  ', ' ').split(' ')[:-1]))
-    last_complete_word_pos = len(input_ids)
-
-    #TODO: How to get the start token
-    mask = get_word_mask_by_prefix(tokenizer, 'Ġ' + prefix) # there is a space before prefix.
-    if not mask.any():
-        myutils.mask_any_counter += 1
-        input_ids = DlisTokenizer.Tokenize(input_text)
-        last_token = tokenizer.convert_ids_to_tokens([input_ids[-1]])
-        # no word match prefix, means that the incomplete-word would be split to multiple words
-        mask = get_word_mask_by_prefix(tokenizer, last_token[0])
-        if not mask.any(): # not partial word match,the incomplete-word seems to be a complete-token
-            mask = np.ones_like(mask)
-        else:
-            input_ids = input_ids[:-1]
-    return input_ids, mask, last_complete_word_pos
-
-@torch.no_grad()
-def autocomplete(args, model, tokenizer, input_texts, count_start=0, pad_token_id=0, verbose=False, is_onnx_model = False):
-    start_time = time.perf_counter()
-    first_token_masks = []
-    input_ids = []
-    last_complete_word_positions = []
-    for input_text in input_texts:
-        input_id, mask, last_complete_word_position = encode_text_with_partial_word(tokenizer, input_text)
-        if not input_id:
-            input_id = [pad_token_id]  # NOT state token, but, this endup with empty list. This is a hack.
-            last_complete_word_position += 1
-            # input_id = [tokenizer.eos_token_id]  # NOT state token, but, this endup with empty list. This is a hack.
-        
-        first_token_masks.append(mask)
-        input_ids.append(input_id)
-        last_complete_word_positions.append(last_complete_word_position)
-
-    # TODO: input_ids might be empty
-    # left padding
-    input_ids = [x[::-1] for x in input_ids]
-    lens = [len(x) for x in input_ids]
-    input_ids = pad_sequences(input_ids, value=pad_token_id, dtype='int64')[:, ::-1]
-    assert input_ids.shape[1] == max(lens)
-    input_ids = torch.LongTensor(input_ids.tolist()).to(args.device)
-    last_complete_word_positions = [input_ids.size(1) - l + p for l, p in zip(lens, last_complete_word_positions)]
-    if not args.disable_prefix_filter:
-        first_token_masks = torch.from_numpy(np.asarray(first_token_masks, dtype='float32')).to(args.device)
-
-    input_length = input_ids.size(1)
-
-    generator = LMGenerator(max_length=input_length + args.num_words,
-                            num_return_sequences=args.num_suggestions, do_sample=args.do_sample, num_beams=args.num_beams,
-                            pad_token_id=tokenizer.eos_token_id, eos_token_ids=[tokenizer.eos_token_id], top_p=0.95,
-                            length_penalty=args.length_penalty, repetition_penalty=args.repetition_penalty, enable_ort = is_onnx_model)
-
-    output_ids, probs = generator.generate(model, input_ids, first_token_masks=first_token_masks)
-
+def process_results(output_ids, output_probs, tokenizer, last_complete_word_position):
+    #TODO why is this expanding to a 3D tensor
     if output_ids.dim() == 2: # one output
         output_ids = output_ids[:, None]
 
     returns = []
     returns_probs = []
-    input_len = input_ids.shape[1]
     for i, output_i in enumerate(output_ids):
-        if verbose:
-            logging.info(f'Id: {i + count_start}')
-            logging.info(f'Input: "{input_texts[i]}"\n')
         returns_i = []
         probs_i = []
         for j, output_ij in enumerate(output_i):
-            if returns_i and probs[i, j] < args.sequence_prob_threshold:
+            # TODO is args.sequence_prob_threshold really needed?
+            if returns_i and output_probs[i, j] < 0:
                 break
             output_ij = output_ij.tolist()
             for k in range(len(output_ij)):
@@ -346,57 +172,29 @@ def autocomplete(args, model, tokenizer, input_texts, count_start=0, pad_token_i
                     output_ij = output_ij[:k]
                     break
 
-            output_ij = output_ij[last_complete_word_positions[i]:]
+            output_ij = output_ij[last_complete_word_position:]
             output_text = tokenizer.decode(output_ij).rstrip()
             if output_text not in returns_i:
                 returns_i.append(output_text)
-                probs_i.append(probs[i, j].item())
-                if verbose:
-                    logging.info(f'Output {i + count_start}.{j}: {output_text}\t\t(prob {probs[i, j].item()})\t\t({" ".join(tokenizer.convert_ids_to_tokens(output_ij))})')
-        if verbose:
-            logging.info('-' * 50)
+                probs_i.append(output_probs[i, j].item())
+
         returns.append(returns_i)
         returns_probs.append(probs_i)
 
-    if verbose:
-        logging.info(f'Time: {time.perf_counter() - start_time}s.')
-
-    return count_start + len(output_ids), returns, returns_probs
+    return returns, returns_probs
 
 
-if __name__ == '__main__':
+@torch.no_grad()
+def autocomplete(args, model, tokenizer : Tokenizer, input_text, pad_token_id=0, verbose=False, is_onnx_model = False):
+    start_time = time.perf_counter()
 
-    # DATA_ROOT_DIR = '/mnt/data/xbox_support_data/autocomplete/'
-    args = get_args()
+    input_ids, first_token_masks, last_complete_word_position = tokenizer.encode_text_with_partial_word(input_text, pad_token_id, args.device)
 
-    DEVICE = args.device
+    generator = LMGenerator(max_length=input_ids.size(1) + args.num_words,
+                            num_return_sequences=args.num_suggestions, do_sample=args.do_sample, num_beams=args.num_beams,
+                            pad_token_id=tokenizer.eos_token_id, eos_token_ids=[tokenizer.eos_token_id], top_p=0.95,
+                            length_penalty=args.length_penalty, repetition_penalty=args.repetition_penalty, enable_ort = is_onnx_model)
 
-    # Load starting model
-    tokenizer = GPT2Tokenizer.from_pretrained(args.gpt2_type)
-    lm_model = GPT2LMHeadModel.from_pretrained(args.model)
-    print(isinstance(lm_model, nn.Module))
+    output_ids, output_probs = generator.generate(model, input_ids, first_token_masks=first_token_masks)
 
-    if isinstance(lm_model, nn.Module):
-        num_params = sum(w.numel() for w in lm_model.parameters())
-        print(f'Number of parameters: {num_params:,}')
-        logging.info(f'Number of parameters: {num_params:,}')
-
-    lm_model.to(args.device)
-
-    lm_model.eval()
-    wrapped_model = gpt2_wrapper_for_generate(lm_model, lm_model.config.pad_token_id, device=args.device)
-
-    if args.interactive:
-        import readline  # scroll up/down history using arrow keys
-        count_start = 0
-        input_texts =['Your xbox makes buzzing', 'refund']
-        count_start, _, _ = autocomplete(args, wrapped_model, tokenizer, input_texts, count_start, pad_token_id=lm_model.config.pad_token_id)
-
-        while True:
-            input_text = input("You input: ").strip('\n').lstrip()  # TODO: allow first-n character of a word (dict by space)
-            if not input_text.strip():
-                continue
-            input_texts = [inp for inp in input_text.split(';') if inp]
-            print()
-            count_start, _ , _= autocomplete(args, wrapped_model, tokenizer, input_texts, count_start, pad_token_id=lm_model.config.pad_token_id)
-
+    return process_results(output_ids, output_probs, tokenizer, last_complete_word_position)
