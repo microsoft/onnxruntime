@@ -1275,8 +1275,8 @@ common::Status InferenceSession::Initialize() {
     // RegisterExecutionProvider locks the session_mutex_ so we can't be holding it when we call that
     if (!have_cuda_ep) {
       LOGS(*session_logger_, INFO) << "Adding CUDA execution provider.";
-      CUDAExecutionProviderInfo epi;
-      auto p_cuda_exec_provider = std::make_unique<CUDAExecutionProvider>(epi);
+      CudaExecutionProviderInfo epi;
+      auto p_cuda_exec_provider = std::make_unique<CudaExecutionProvider>(epi);
       ORT_RETURN_IF_ERROR_SESSIONID_(RegisterExecutionProvider(std::move(p_cuda_exec_provider)));
     }
 #endif
