@@ -374,8 +374,6 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const 
     // Reserve mem to avoid re-allocation.
     input_shapes.reserve(feeds.size());
     for (const auto& feed : feeds) {
-      // Can't allow Nones to be used for memory pattern
-      // optimization - so skip optimization if they are found.
       if (!feed.IsTensor()) {
         all_tensors = false;
         break;

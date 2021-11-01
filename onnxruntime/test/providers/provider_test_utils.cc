@@ -1239,7 +1239,7 @@ template std::vector<OrtValue> OpTester::ExecuteModel<training::TrainingSession>
     const RunOptions* run_options,
     const std::unordered_map<std::string, OrtValue>& feeds,
     const std::vector<std::string>& output_names, const std::string& provider_type,
-    , bool allow_released_onnx_opset_only);
+    bool allow_released_onnx_opset_only);
 #endif
 
 }  // namespace test
