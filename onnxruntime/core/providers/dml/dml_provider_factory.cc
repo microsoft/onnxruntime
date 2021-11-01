@@ -10,11 +10,11 @@ using Microsoft::WRL::ComPtr;
 #include <wil/wrl.h>
 #include <wil/result.h>
 
-#include "DmlExecutionProvider\src\ErrorHandling.h"
 #include "core/providers/dml/dml_provider_factory.h"
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/ort_apis.h"
 #include "core/framework/error_code_helper.h"
+#include "DmlExecutionProvider/src/ErrorHandling.h"
 #include "DmlExecutionProvider/inc/DmlExecutionProvider.h"
 #include "core/platform/env.h"
 

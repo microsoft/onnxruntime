@@ -31,7 +31,7 @@
 #include "External/D3DX12/d3dx12.h"
 
 #include <DirectML.h>
-#include "..\..\..\..\include\onnxruntime\core\common\common.h"
+#include "../../../../include/onnxruntime/core/common/common.h"
 #include "ErrorHandling.h"
 
 // DirectML helper libraries

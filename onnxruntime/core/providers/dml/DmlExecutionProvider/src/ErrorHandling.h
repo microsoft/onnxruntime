@@ -44,10 +44,10 @@
 #endif
 
 #ifdef ORT_NO_EXCEPTIONS
-#define ORT_THROW_LAST_ERROR_IF_NULL(ptr) \
-    if(ptr == nullptr)          \
-    {                           \
-        ORT_THROW(E_INVALIDARG);          \
+#define ORT_THROW_LAST_ERROR_IF_NULL(ptr)   \
+    if(ptr == nullptr)                      \
+    {                                       \
+        ORT_THROW(E_POINTER);            \
     }
 #else
 #define ORT_THROW_LAST_ERROR_IF_NULL(ptr) THROW_LAST_ERROR_IF_NULL(ptr)
@@ -60,22 +60,22 @@
 #endif
 
 #ifdef ORT_NO_EXCEPTIONS
-#define ORT_THROW_HR_IF(hr, condition) ORT_ENFORCE(condition, hr)                      
+#define ORT_THROW_HR_IF(hr, condition) ORT_ENFORCE(condition, hr)
 #else
-#define ORT_THROW_HR_IF(hr, condition) THROW_HR_IF(hr, condition) 
+#define ORT_THROW_HR_IF(hr, condition) THROW_HR_IF(hr, condition)
 #endif
 
 #ifdef ORT_NO_EXCEPTIONS
-#define ORT_THROW_LAST_ERROR_IF(condition) ORT_ENFORCE(condition)                      
+#define ORT_THROW_LAST_ERROR_IF(condition) ORT_ENFORCE(condition)
 #else
 #define ORT_THROW_LAST_ERROR_IF(condition) THROW_LAST_ERROR_IF(condition) 
 #endif
 
 #ifdef ORT_NO_EXCEPTIONS
-#define ORT_THROW_HR_IF_NULL_MSG(hr, ptr, fmt, ...) \
-    if(ptr == nullptr)          \
-    {                           \
-        ORT_THROW(hr);          \
+#define ORT_THROW_HR_IF_NULL_MSG(hr, ptr, fmt, ...)     \
+    if(ptr == nullptr)                                  \
+    {                                                   \
+        ORT_THROW(hr);                                  \
     }
 #else
 #define ORT_THROW_HR_IF_NULL_MSG(hr, ptr, fmt, ...) THROW_HR_IF_NULL_MSG(hr, ptr, fmt, __VA_ARGS__)
