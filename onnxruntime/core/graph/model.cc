@@ -711,7 +711,6 @@ common::Status Model::SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
 Model::Model() : model_path_{} {
 }
 
-#if defined(ENABLE_ORT_FORMAT_LOAD)
 common::Status Model::LoadFromOrtFormat(const fbs::Model& fbs_model,
 #if !defined(ORT_MINIMAL_BUILD)
                                         const IOnnxRuntimeOpSchemaRegistryList* local_registries,
@@ -780,6 +779,5 @@ common::Status Model::LoadFromOrtFormat(const fbs::Model& fbs_model,
 #endif
   return Status::OK();
 }
-#endif  // defined(ENABLE_ORT_FORMAT_LOAD)
 
 }  // namespace onnxruntime

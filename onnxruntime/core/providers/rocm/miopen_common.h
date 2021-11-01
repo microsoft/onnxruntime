@@ -15,6 +15,8 @@ namespace onnxruntime {
 namespace rocm {
 
 #define MIOPEN_CONVOLUTION_FWD_ALGO_COUNT 6
+#define MIOPEN_CONVOLUTION_BWD_FILTER_ALGO_COUNT 4
+#define MIOPEN_CONVOLUTION_BWD_DATA_ALGO_COUNT 6
 
 class MiopenTensor final {
  public:

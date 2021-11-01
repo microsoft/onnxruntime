@@ -69,22 +69,16 @@ class TensorRef {
   /// <returns>The shape of the tensor. Values are nonnegative.</returns>
   virtual std::vector<int64_t> Shape() const = 0;
 
+  virtual size_t NumElements() const = 0;
+
   /// <returns>The dtype of the tensor.</returns>
   virtual DataType DType() const = 0;
 
   /// <summary>
-  /// Retrieves int64 data from the tensor. Only valid if dtype is INT64. Used for reading initializers specifying
-  /// axes/pads.
+  /// Retrieves copy of raw data bytes from the tensor. Used for reading initializers specifying axes/pads/scales.
   /// </summary>
-  /// <returns>Flattened tensor data</returns>
-  virtual std::vector<int64_t> DataInt64() const = 0;
-
-  /// <summary>
-  /// Retrieves int32 data from the tensor. Only valid if dtype is INT32. Used for reading initializers specifying
-  /// axes for Slice op.
-  /// </summary>
-  /// <returns>Flattened tensor data</returns>
-  virtual std::vector<int32_t> DataInt32() const = 0;
+  /// <returns>Flattened tensor data in bytes</returns>
+  virtual std::vector<uint8_t> Data() const = 0;
 
   virtual ~TensorRef(){};
 };
@@ -255,10 +249,7 @@ struct ValueConsumers {
 /// the `Nodes`, `GetValueConsumers`, and `GetNodeProducingOutput` methods is sufficient (and `comprehensive`
 /// should be set to `false` as needed).
 ///
-/// Access to parent graphs should be restricted. Returning parent initializers can be acceptable if the
-/// initializer has no consumers outside the current graph and if TransposeInitializer/ReshapeInitializer support
-/// modifying these initializers. In such cases, the initializer can logically be treated by the optimizer as if it
-/// resides within the current graph.
+/// Access to parent graphs should be restricted, except GetConstant which may return initializers from parent graphs.
 /// </summary>
 class GraphRef {
  public:
@@ -271,10 +262,19 @@ class GraphRef {
 
   /// <summary>
   /// Checks whether the value name refers to a constant initializer and if so, returns a Tensor corresponding to it.
+  /// Constants from parent graphs may be included.
   /// </summary>
   /// <param name="name">Value name. Must be nonempty.</param>
   /// <returns>Tensor corresponding to the constant initializer or nullptr</returns>
   virtual std::unique_ptr<TensorRef> GetConstant(std::string_view name) const = 0;
+
+  /// <summary>
+  /// Checks whether the value name refers to a constant initializer in the current graph and if so, returns a Tensor
+  /// corresponding to it. The constant must be mutable (able to be edited by Transpose/ReshapeInitializer).
+  /// </summary>
+  /// <param name="name">Value name. Must be nonempty.</param>
+  /// <returns>Tensor corresponding to the mutable constant initializer from this graph, or nullptr</returns>
+  virtual std::unique_ptr<TensorRef> GetLocalConstant(std::string_view name) const = 0;
 
   /// <summary>
   /// Returns a ValueInfo instance for querying info about the value with the given name. Behavior is undefined if
@@ -301,8 +301,8 @@ class GraphRef {
 
   /// <summary>
   /// Transposes an initializer "in place". Existing ValueInfo for the initializer must subsequently return the
-  /// updated shape. Behavior is undefined if name does not correspond to an initializer, or if rank of initializer
-  /// does not match length of perm.
+  /// updated shape. Behavior is undefined if name does not correspond to an initializer in this graph, or if rank of
+  /// initializer does not match length of perm.
   /// </summary>
   /// <param name="name">The name of the initializer</param>
   /// <param name="perm">Permutation for transpose. An ordering of the values 0 ... rank - 1.</param>
@@ -313,8 +313,8 @@ class GraphRef {
 
   /// <summary>
   /// Reshapes an initializer "in place". Existing ValueInfo for the initializer must subsequently return the
-  /// updated shape. Behavior is undefined if name does not correspond to an initializer, or if number of elements
-  /// does not match requested shape.
+  /// updated shape. Behavior is undefined if name does not correspond to an initializer in this graph, or if number
+  /// of elements does not match requested shape.
   /// </summary>
   /// <param name="name">The name of the initializer</param>
   /// <param name="shape">New shape. Dimensions are nonnegative.</param>
@@ -349,22 +349,16 @@ class GraphRef {
   virtual void RemoveInitializer(std::string_view name) = 0;
 
   /// <summary>
-  /// Creates an int64 initializer with the specified shape and values. Returns the name.
+  /// Creates an initializer with the specified dtype, shape, and data. Returns the name.
   /// </summary>
+  /// <param name="dtype">DataType for new initializer.</param>
   /// <param name="shape">Dimensions for new initializer. Entries are Nonnegative.</param>
-  /// <param name="values">Flattened values for new initializer. Length matches product of dimensions.</param>
+  /// <param name="data">
+  /// Raw bytes for new initializer. Length matches product of dimensions and size of the dtype
+  /// </param>
   /// <returns>Generated name for the initializer</returns>
-  virtual std::string_view AddInitializerInt64(const std::vector<int64_t>& shape,
-                                               const std::vector<int64_t>& values) = 0;
-
-  /// <summary>
-  /// Creates an int32 initializer with the specified shape and values. Returns the name.
-  /// </summary>
-  /// <param name="shape">Dimensions for new initializer. Entries are Nonnegative.</param>
-  /// <param name="values">Flattened values for new initializer. Length matches product of dimensions.</param>
-  /// <returns>Generated name for the initializer</returns>
-  virtual std::string_view AddInitializerInt32(const std::vector<int64_t>& shape,
-                                               const std::vector<int32_t>& values) = 0;
+  virtual std::string_view AddInitializer(DataType dtype, const std::vector<int64_t>& shape,
+                                          const std::vector<uint8_t>& data) = 0;
 
   /// <summary>
   /// "Moves" an output from one node to another, (effectively transferring the output name, shape, type,
@@ -430,60 +424,71 @@ constexpr int64_t kMaxSupportedOpset = 15;
 bool Optimize(api::GraphRef& graph, bool allow_extended_ops);
 
 /* Layout Transformation Tools
- * These methods change the channel ordering of layout sensitive ops (like Conv). They work by replacing the op with
- * an op taking the new ordering (usually a com.microsoft op) and surrounding it with transposes to keep the model
- * correct. Then (if any replacements were made), they call Optimize on the graph.
- *
- * To use, create a LayoutHandler function for each op. Then provide the handler map to ChannelLastToChannelFirst or
- * ChannelFirstToChannelLast. If the parameters of these convenience methods are too restrictive, you can swap the
- * ops for reordered versions yourself and call Optimize manually.
+ * These methods help change the channel ordering of layout sensitive ops (like Conv). ONNX currently only supports
+ * channel first ordering for ops, so this requires changing the op type and domain to a contrib op supporting
+ * the new ordering. The existence of a robust transpose optimizer means that we can freely add transpose ops during
+ * conversion and then call Optimize to remove as many as possible. To change the channel ordering of some/all ops
+ * in a model, a user of this tool should do the following:
+ * 
+ * 1. Iterate over the graph nodes and identify nodes to convert. For each one:
+ *    a. Change the op type and domain (and possibly attributes) to the op/contrib op with the desired ordering.
+ *    b. The model is now invalid since the input tensors are in the original ordering (and all consumers
+ *       expect the original ordering). Use WrapTransposesAroundNode helper to insert transposes around the
+ *       inputs/outputs of the op to correct this.
+ * 2. The model is now correct but has many unnecessary Transpose ops. Call Optimize on the graph.
+ * 
+ * After step 1, the Transpose ops will wrap converted ops in a similar manner to q/dq ops in quantization.
+ * The perm attributes essentially encode the information about which ops are being reordered.
  */
 
 /// <summary>
-/// Returned by a LayoutHandler function. Indicates whether reordering should occur and what op type to use.
-/// Modifications to attributes can be performed by the LayoutHandler function itself, since all attribute updates
-/// will persist.
+/// Inserts transposes around op inputs/outputs. Alternatively transposes initializers or uses existing Transpose
+/// nodes if possible. Populates shape information on affected node inputs/outputs to reflect the change.
+/// 
+/// Ex:
+///   * -> NhwcConv -> **
+///   becomes
+///   * -> Transpose -> NhwcConv -> Transpose -> **
+///   Conv inputs/outputs have new shape. Shapes of * and ** are unchanged (carrying NCHW data).
+/// 
+/// input_perms/output_perms are matched with node inputs/outputs positionally. Their lengths must be at most equal to
+/// the number of inputs/outputs, respectively. nullptr entires indicate an input or output should not be transposed.
 /// </summary>
-struct LayoutHandlerResult {
-  // If false, the op is skipped. If true, the first input and all outputs are transposed (and op type/domain
-  // are updated)
-  bool should_change_layout;
-  // The rank of the inputs/outputs. All transposes use this rank.
-  size_t rank;
-  // If either new_op_type or new_domain are provided, the node will be replaced with one with the specified op/domain.
-  // All attributes are copied over.
-  std::optional<std::string> new_op_type;
-  std::optional<std::string> new_domain;
-};
-
-using LayoutHandler = LayoutHandlerResult (*)(api::GraphRef& graph, api::NodeRef& node);
-
-/// <summary>
-/// Calls LayoutHandler functions on each node matching an op in the handler_map. Transposes first input and all
-/// outputs of affected ops and updates the op types according to the LayoutHandlerResult. Calls Optimize on the graph
-/// if any ops were affected. Transposes convert op input/outputs from [N, C, H, W] (or [N, C, D1, D2, ...]) layout
-/// to [N, H, W, C] (or [N, D1, D2, ..., C]) ordering.
-/// </summary>
-/// <param name="graph">Graph to change layout of</param>
-/// <param name="handler_map">Mapping from op types to LayoutHandler functions</param>
-/// <param name="allow_extended_ops">Whether com.microsoft ops can be used for optimization</param>
-/// <returns>true if the graph was modified</returns>
-bool ChannelFirstToChannelLast(api::GraphRef& graph,
-                               const std::unordered_map<std::string_view, LayoutHandler>& handler_map,
-                               bool allow_extended_ops);
+/// <param name="graph">Graph containing the node</param>
+/// <param name="node">Node to modify</param>
+/// <param name="input_perms">Input permutations. nullptr entries indicate to skip corresponding input.</param>
+/// <param name="output_perms">Output permutations. nullptr entries indicate to skip corresponding output.</param>
+void WrapTransposesAroundNode(api::GraphRef& graph, api::NodeRef& node,
+                              const std::vector<const std::vector<int64_t>*>& input_perms,
+                              const std::vector<const std::vector<int64_t>*>& output_perms);
 
 /// <summary>
-/// Calls LayoutHandler functions on each node matching an op in the handler_map. Transposes first input and all
-/// outputs of affected ops and updates the op types according to the LayoutHandlerResult. Calls Optimize on the graph
-/// if any ops were affected. Transposes convert op input/outputs from [N, H, W, C] (or [N, D1, D2, ..., C]) layout
-/// to [N, C, H, W] (or [N, C, D1, D2, ...]) ordering.
+/// Computes the perm attribute needed to transpose a tensor from channel-first ordering (NCHW or NCD...D) to
+/// channel-last ordering (NHWC or ND...DC). rank must be >= 2.
 /// </summary>
-/// <param name="graph">Graph to change layout of</param>
-/// <param name="handler_map">Mapping from op types to LayoutHandler functions</param>
-/// <param name="allow_extended_ops">Whether com.microsoft ops can be used for optimization</param>
-/// <returns>true if the graph was modified</returns>
-bool ChannelLastToChannelFirst(api::GraphRef& graph,
-                               const std::unordered_map<std::string_view, LayoutHandler>& handler_map,
-                               bool allow_extended_ops);
+/// <param name="rank">Rank of the tensor</param>
+/// <returns>perm attribute to transpose from channel first to channel last. Ex: [0, 2, 3, 1]</returns>
+std::vector<int64_t> ChannelFirstToLastPerm(size_t rank);
+
+/// <summary>
+/// Computes the perm attribute needed to transpose a tensor from channel-last ordering (NHWC or ND...DC) to
+/// channel-last ordering (NCHW or NCD...D). rank must be >= 2.
+/// </summary>
+/// <param name="rank">Rank of the tensor</param>
+/// <returns>perm attribute to transpose from channel last to channel first. Ex: [0, 3, 1, 2]</returns>
+std::vector<int64_t> ChannelLastToFirstPerm(size_t rank);
+
+/// <summary>
+/// Swaps out a node for a new copy of that node with the specified op type and domain. Current API does not all nodes
+/// to have their op types or domains changed, so a new node is needed. All attributes, inputs, and outputs are moved
+/// to the new node. The old node is removed from the graph and should no longer be accessed.
+/// </summary>
+/// <param name="graph">Graph containing the node</param>
+/// <param name="node">Node to copy and remove</param>
+/// <param name="op_type">New node op_type</param>
+/// <param name="domain">New node domain. "" for the default domain.</param>
+/// <returns>The newly created node.</returns>
+std::unique_ptr<api::NodeRef> SwapNodeOpTypeAndDomain(api::GraphRef& graph, api::NodeRef& node,
+                                                      std::string_view op_type, std::string_view domain);
 
 }  // namespace onnx_layout_transformation
