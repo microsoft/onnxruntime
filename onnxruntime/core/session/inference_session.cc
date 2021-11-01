@@ -64,6 +64,10 @@
 #include "core/optimizer/ort_format_runtime_optimization/utils.h"
 #endif
 
+#ifdef USE_CUDA
+#include "core/providers/cuda/cuda_execution_provider.h"
+#endif
+
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::experimental;
 using namespace onnxruntime::common;
@@ -1275,8 +1279,8 @@ common::Status InferenceSession::Initialize() {
     // RegisterExecutionProvider locks the session_mutex_ so we can't be holding it when we call that
     if (!have_cuda_ep) {
       LOGS(*session_logger_, INFO) << "Adding CUDA execution provider.";
-      CudaExecutionProviderInfo epi;
-      auto p_cuda_exec_provider = std::make_unique<CudaExecutionProvider>(epi);
+      CUDAExecutionProviderInfo epi;
+      auto p_cuda_exec_provider = std::make_unique<CUDAExecutionProvider>(epi);
       ORT_RETURN_IF_ERROR_SESSIONID_(RegisterExecutionProvider(std::move(p_cuda_exec_provider)));
     }
 #endif
