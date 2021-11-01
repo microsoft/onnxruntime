@@ -33,7 +33,7 @@ bool BaseSelector::CheckQDQNodes(const Graph& graph, const Node& node,
 
   return num_dq_inputs == gsl::narrow_cast<int>(dq_nodes.size()) &&
          num_outputs == gsl::narrow_cast<int>(q_nodes.size()) &&
-         !graph.NodeProducesGraphOutput(node);
+         optimizer_utils::CheckOutputEdges(graph, node, q_nodes.size());
 }
 
 bool BaseSelector::Select(Graph& graph, const Node& node, std::unique_ptr<NodesToOptimize>& selection) const {
