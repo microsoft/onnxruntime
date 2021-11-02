@@ -1,14 +1,16 @@
 package ai.onnxruntime.example.javavalidator
 
-import ai.onnxruntime.OnnxTensor
-import ai.onnxruntime.OrtEnvironment
-import ai.onnxruntime.OrtException
-import ai.onnxruntime.OrtProvider
+import ai.onnxruntime.*
 import ai.onnxruntime.OrtSession.SessionOptions
 import android.util.Log
+import androidx.test.ext.junit.rules.ActivityScenarioRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import com.microsoft.appcenter.espresso.Factory
+import com.microsoft.appcenter.espresso.ReportHelper
+import org.junit.After
 import org.junit.Assert
+import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.IOException
@@ -18,6 +20,17 @@ private const val TAG = "ORTAndroidTest"
 
 @RunWith(AndroidJUnit4::class)
 class SimpleTest {
+    @get:Rule
+    val activityTestRule = ActivityScenarioRule(MainActivity::class.java)
+
+    @get:Rule
+    var reportHelper: ReportHelper = Factory.getReportHelper()
+
+    @After
+    fun TearDown() {
+        reportHelper.label("Stopping App")
+    }
+
     @Test
     fun runSigmoidModelTest() {
         for (intraOpNumThreads in 1..4) {
@@ -38,9 +51,10 @@ class SimpleTest {
 
     @Throws(OrtException::class, IOException::class)
     fun runSigmoidModelTestImpl(intraOpNumThreads: Int, useNNAPI: Boolean = false) {
+        reportHelper.label("Start Running Test with intraOpNumThreads=$intraOpNumThreads, useNNAPI=$useNNAPI")
         Log.println(Log.INFO, TAG, "Testing with intraOpNumThreads=$intraOpNumThreads")
         Log.println(Log.INFO, TAG, "Testing with useNNAPI=$useNNAPI")
-        val env = OrtEnvironment.getEnvironment()
+        val env = OrtEnvironment.getEnvironment(OrtLoggingLevel.ORT_LOGGING_LEVEL_VERBOSE)
         env.use {
             val opts = SessionOptions()
             opts.setIntraOpNumThreads(intraOpNumThreads)
