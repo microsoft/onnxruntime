@@ -29,7 +29,7 @@ onnx::OpSchema::FormalParameterOption AbiCustomRegistry::ConvertFormalParameterO
             return onnx::OpSchema::FormalParameterOption::Variadic;
 
         default:
-            THROW_HR(E_NOTIMPL);
+            ORT_THROW_HR(E_NOTIMPL);
             return onnx::OpSchema::FormalParameterOption::Single;
     }
 }
@@ -214,13 +214,13 @@ onnx::OpSchema AbiCustomRegistry::ConvertOpSchema(
             // Do type inference
             if (typeInferrerCapture)
             {
-                THROW_IF_FAILED(typeInferrerCapture->InferOutputTypes(abiContext.Get()));
+                ORT_THROW_IF_FAILED(typeInferrerCapture->InferOutputTypes(abiContext.Get()));
             }
 
             // Do shape inference if all input tensor shapes are known
             if (shapeInferrerCapture && InputTensorShapesDefinedOnNode(nodeInfo))
             {
-                THROW_IF_FAILED(shapeInferrerCapture->InferOutputShapes(abiContext.Get()));
+                ORT_THROW_IF_FAILED(shapeInferrerCapture->InferOutputShapes(abiContext.Get()));
             }
 
             abiContext->Close();
@@ -236,8 +236,10 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistry::RegisterOperatorSetSchema(
     const MLOperatorSchemaDescription* const* schema,
     uint32_t schemaCount,
     _In_opt_ IMLOperatorTypeInferrer* typeInferrer,
-    _In_opt_ IMLOperatorShapeInferrer* shapeInferrer) const noexcept try
+    _In_opt_ IMLOperatorShapeInferrer* shapeInferrer) const noexcept
 {
+    ORT_TRY
+    {
     std::vector<onnx::OpSchema> schemaVector;
     schemaVector.reserve(schemaCount);
 
@@ -266,8 +268,9 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistry::RegisterOperatorSetSchema(
         opSetId->version));
 
     return S_OK;
+    }
+    ORT_CATCH_RETURN
 }
-CATCH_RETURN();
 
 // Convert the list of attribute defaults in a kernel registration into a 
 // map of AttributeValue entries, which own their own memory
@@ -313,7 +316,7 @@ AttributeMap AbiCustomRegistry::GetDefaultAttributes(
             __fallthrough;
 
         default:
-            THROW_HR(E_INVALIDARG);
+            ORT_THROW_HR(E_INVALIDARG);
         }
 
         ret[apiAttr.name] = attr;
@@ -343,8 +346,10 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistry::RegisterOperatorKernel(
     bool supportedWith64BitTensorsVia32BitStridesFromAnyEp,
     bool prefer64BitTensorsDirectly,
     _In_reads_(constantCpuInputCount) const uint32_t* requiredConstantCpuInputs,
-    uint32_t constantCpuInputCount) const noexcept try
+    uint32_t constantCpuInputCount) const noexcept
 {
+    ORT_TRY
+    {
 
     // Verify that invalid flags are not passed
     if ((opKernel->options & ~MLOperatorKernelOptions::AllowDynamicInputShapes) !=
@@ -423,7 +428,7 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistry::RegisterOperatorKernel(
             // TODO - handle non-tensor types
             if (opKernel->typeConstraints[i].allowedTypes[j].edgeType != MLOperatorEdgeType::Tensor)
             {
-                THROW_IF_FAILED(E_NOTIMPL);
+                ORT_THROW_IF_FAILED(E_NOTIMPL);
             }
 
             types.push_back(ToTensorDataType(opKernel->typeConstraints[i].allowedTypes[j].tensorDataType));
@@ -497,7 +502,7 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistry::RegisterOperatorKernel(
                             constantInputGetter);
 
                     Microsoft::WRL::ComPtr<IMLOperatorKernel> kernel;
-                    THROW_IF_FAILED(kernelFactoryCapture->CreateKernel(kernelInfoWrapper.Get(), kernel.GetAddressOf()));
+                    ORT_THROW_IF_FAILED(kernelFactoryCapture->CreateKernel(kernelInfoWrapper.Get(), kernel.GetAddressOf()));
                     kernelInfoWrapper->Close();
                 };
 
@@ -524,7 +529,7 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistry::RegisterOperatorKernel(
                         &defaultAttributesCapture);
 
                 BOOL bSupported = FALSE;
-                THROW_IF_FAILED(supportQueryCapture->QuerySupport(supportContext.Get(), &bSupported));
+                ORT_THROW_IF_FAILED(supportQueryCapture->QuerySupport(supportContext.Get(), &bSupported));
                 return !!bSupported;
             };
         }
@@ -543,7 +548,7 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistry::RegisterOperatorKernel(
             supportedWith64BitTensorsVia32BitStridesFromAnyEp ||
             prefer64BitTensorsDirectly)
         {
-            THROW_HR(E_INVALIDARG);
+            ORT_THROW_HR(E_INVALIDARG);
         }
 
         //
@@ -552,7 +557,8 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistry::RegisterOperatorKernel(
     }
 
     return S_OK;
+    }
+    ORT_CATCH_RETURN
 }
-CATCH_RETURN();
 
 }
