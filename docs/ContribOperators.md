@@ -744,8 +744,10 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>3D input tensor with shape (sequence_length, batch_size, hidden_size), hidden_size = num_heads * head_size</dd>
 <dt><tt>key</tt> : T</dt>
 <dd>3D input tensor with shape (total_sequence_length, batch_size, hidden_size)</dd>
-<dt><tt>weight</tt> : T</dt>
-<dd>2D input tensor with shape (hidden_size, 3 * hidden_size)</dd>
+<dt><tt>q_weight</tt> : T</dt>
+<dd>2D input tensor with shape (hidden_size, hidden_size)</dd>
+<dt><tt>kv_weight</tt> : T</dt>
+<dd>2D input tensor with shape (hidden_size, 2 * hidden_size)</dd>
 <dt><tt>bias</tt> : T</dt>
 <dd>1D input tensor with shape (3 * hidden_size)</dd>
 <dt><tt>key_padding_mask</tt> (optional) : B</dt>
@@ -760,6 +762,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>If use_past = true, use cache; else no cache</dd>
 <dt><tt>has_layer_state</tt> : B</dt>
 <dd>If has_layer_state = true, layer_state = {} or [a,b]; else layer_state = None</dd>
+<dt><tt>has_key_padding_mask</tt> : B</dt>
+<dd>has_key_padding_mask or not</dd>
 </dl>
 
 #### Outputs (1 - 3)

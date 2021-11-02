@@ -222,7 +222,7 @@ bool DecoderQkvToContext(
   bool static_kv,
   bool use_past,
   bool has_layer_state,
-  const T* gemm_buffer,
+  bool has_key_padding_mask,
   const T* gemm_query_buffer,
   const T* gemm_kv_buffer,
   const bool* key_padding_mask,
@@ -243,60 +243,53 @@ bool DecoderQkvToContext(
 
   T* temp_qkv_buffer = workspace_buffer;
 
+  const T* q = qkv_buffer;
+  //transpose q and copy them to qkv_buffer
+  if (!LaunchTransQkv(stream, 1, sequence_length, batch_size, head_size, num_heads, max_threads_per_block, true, gemm_query_buffer, qkv_buffer)) {
+    return false;
+  }
+
+  const T* k = qkv_buffer + k_buffer_offset;
+  const T* v = qkv_buffer + v_buffer_offset;
   if (!has_layer_state || !use_past) {
     if (!static_kv) {
-      //transpose qkv and copy them to qkv_buffer
-      if (!LaunchTransQkv(stream, 3, sequence_length, batch_size, head_size, num_heads, max_threads_per_block, true, gemm_buffer, qkv_buffer)) {
+      //transpose kv and copy them to qkv_buffer
+      if (!LaunchTransQkv(stream, 2, sequence_length, batch_size, head_size, num_heads, max_threads_per_block, true, gemm_kv_buffer, qkv_buffer + k_buffer_offset)) {
         return false;
       }
     } else {
-      //transpose q and copy them to qkv_buffer
-      if (!LaunchTransQkv(stream, 1, sequence_length, batch_size, head_size, num_heads, max_threads_per_block, true, gemm_query_buffer, qkv_buffer)) {
-        return false;
-      }
       //transpose kv and copy them to qkv_buffer
-      if (!LaunchTransQkv(stream, 2, sequence_length, batch_size, head_size, num_heads, max_threads_per_block, true, gemm_kv_buffer, qkv_buffer + k_buffer_offset)) {
+      if (!LaunchTransQkv(stream, 2, kv_sequence_length, batch_size, head_size, num_heads, max_threads_per_block, true, gemm_kv_buffer, qkv_buffer + k_buffer_offset)) {
         return false;
       }
     }
   } else {
     if (!static_kv) {
-      // transpose qkv and copy them to workspace buffer
-      if (!LaunchTransQkv(stream, 3, sequence_length, batch_size, head_size, num_heads, max_threads_per_block, true, gemm_buffer, temp_qkv_buffer)) {
+      //transpose kv and copy them to temp_buffer
+      if (!LaunchTransQkv(stream, 2, sequence_length, batch_size, head_size, num_heads, max_threads_per_block, true, gemm_kv_buffer, temp_qkv_buffer)) {
         return false;
       }
-      //copy q to qkv_buffer
-      CHECK_CUDA(cudaMemcpyAsync(qkv_buffer, temp_qkv_buffer, sequence_length * BHN * sizeof(T), cudaMemcpyDeviceToDevice, stream));
       // concat cache-k with k and copy to qkv_buffer
       if (nullptr != key_cache && !LaunchConcatTensorToTensor(stream, kv_sequence_length, sequence_length, batch_size, head_size, num_heads,
-          max_threads_per_block, 1, key_cache, temp_qkv_buffer + k_buffer_offset, qkv_buffer + k_buffer_offset)) {
+          max_threads_per_block, 1, key_cache, temp_qkv_buffer, qkv_buffer + k_buffer_offset)) {
         return false;
       }
       // concat cache-v with v and copy to qkv_buffer
       if (nullptr != value_cache && !LaunchConcatTensorToTensor(stream, kv_sequence_length, sequence_length, batch_size, head_size, num_heads,
-          max_threads_per_block, 1, key_cache, temp_qkv_buffer + 2 * k_buffer_offset, qkv_buffer + v_buffer_offset)) {
+          max_threads_per_block, 1, key_cache, temp_qkv_buffer + k_buffer_offset, qkv_buffer + v_buffer_offset)) {
         return false;
       }
-    } else {
-      //transpose q and copy them to qkv_buffer
-      if (!LaunchTransQkv(stream, 1, sequence_length, batch_size, head_size, num_heads, max_threads_per_block, true, gemm_query_buffer, qkv_buffer)) {
-        return false;
-      }
-      // bugbug: the following copies can be optimized, no need to copy them, use the cache directly
-      // copy cache-k to qkv_buffer
-      CHECK_CUDA(cudaMemcpyAsync(qkv_buffer + k_buffer_offset, key_cache, kv_sequence_length * BHN * sizeof(T), cudaMemcpyDeviceToDevice, stream));
-      // copy cache-v to qkv_buffer
-      CHECK_CUDA(cudaMemcpyAsync(qkv_buffer + v_buffer_offset, value_cache, kv_sequence_length * BHN * sizeof(T), cudaMemcpyDeviceToDevice, stream));
     }
   }
 
-  // copy k, v to cache if needed
-  const T* q = qkv_buffer;
-  const T* k = qkv_buffer + k_buffer_offset;
-  const T* v = qkv_buffer + v_buffer_offset;
   if (has_layer_state) {
-    CHECK_CUDA(cudaMemcpyAsync(new_key_cache, k, kv_sequence_length * BHN * sizeof(T), cudaMemcpyDeviceToDevice, stream));
-    CHECK_CUDA(cudaMemcpyAsync(new_value_cache, v, kv_sequence_length * BHN * sizeof(T), cudaMemcpyDeviceToDevice, stream));
+    if (use_past && static_kv) {
+      CHECK_CUDA(cudaMemcpyAsync(new_key_cache, key_cache, kv_sequence_length * BHN * sizeof(T), cudaMemcpyDeviceToDevice, stream));
+      CHECK_CUDA(cudaMemcpyAsync(new_value_cache, value_cache, kv_sequence_length * BHN * sizeof(T), cudaMemcpyDeviceToDevice, stream));
+    } else {
+      CHECK_CUDA(cudaMemcpyAsync(new_key_cache, k, kv_sequence_length * BHN * sizeof(T), cudaMemcpyDeviceToDevice, stream));
+      CHECK_CUDA(cudaMemcpyAsync(new_value_cache, v, kv_sequence_length * BHN * sizeof(T), cudaMemcpyDeviceToDevice, stream));
+    }
   }
 
   // scratch1: BxNxSxS* buffer
@@ -316,13 +309,21 @@ bool DecoderQkvToContext(
   float alpha = rsqrt_head_size;
   const int strideA = kv_sequence_length * head_size;
   const int strideB = sequence_length * head_size;
-  if (!CUBLAS_CALL(cublasGemmStridedBatchedHelper(
-          cublas, CUBLAS_OP_T, CUBLAS_OP_N, kv_sequence_length, sequence_length, head_size, &alpha, k, head_size, strideA,
-          q, head_size, strideB, &zero, scratch1, kv_sequence_length, temp_matrix_size, BN, prop))) {
-    return false;
+  if (use_past && static_kv) {
+    if (!CUBLAS_CALL(cublasGemmStridedBatchedHelper(
+      cublas, CUBLAS_OP_T, CUBLAS_OP_N, kv_sequence_length, sequence_length, head_size, &alpha, key_cache, head_size, strideA,
+      q, head_size, strideB, &zero, scratch1, kv_sequence_length, temp_matrix_size, BN, prop))) {
+      return false;
+    }
+  } else {
+    if (!CUBLAS_CALL(cublasGemmStridedBatchedHelper(
+      cublas, CUBLAS_OP_T, CUBLAS_OP_N, kv_sequence_length, sequence_length, head_size, &alpha, k, head_size, strideA,
+      q, head_size, strideB, &zero, scratch1, kv_sequence_length, temp_matrix_size, BN, prop))) {
+      return false;
+    }
   }
 
-  if (nullptr != key_padding_mask) {
+  if (has_key_padding_mask) {
     if (!ComputeSoftmaxWithRawMask<T>(stream, kv_sequence_length, sequence_length, batch_size, num_heads, nullptr, key_padding_mask, nullptr, scratch1, scratch2,
         false, 1, 2, static_cast<int>(0), false, nullptr)) {
       return false;
@@ -334,10 +335,18 @@ bool DecoderQkvToContext(
   }
 
   // compute P*V (as V*P), and store in scratch3: BxNxSxH
-  if (!CUBLAS_CALL(cublasGemmStridedBatchedHelper(
-    cublas, CUBLAS_OP_N, CUBLAS_OP_N, head_size, sequence_length, kv_sequence_length, &one, v, head_size, strideA,
-    scratch2, kv_sequence_length, temp_matrix_size, &zero, scratch3, head_size, strideB, BN, prop))) {
-    return false;
+  if (use_past && static_kv) {
+    if (!CUBLAS_CALL(cublasGemmStridedBatchedHelper(
+      cublas, CUBLAS_OP_N, CUBLAS_OP_N, head_size, sequence_length, kv_sequence_length, &one, value_cache, head_size, strideA,
+      scratch2, kv_sequence_length, temp_matrix_size, &zero, scratch3, head_size, strideB, BN, prop))) {
+      return false;
+    }
+  } else {
+    if (!CUBLAS_CALL(cublasGemmStridedBatchedHelper(
+      cublas, CUBLAS_OP_N, CUBLAS_OP_N, head_size, sequence_length, kv_sequence_length, &one, v, head_size, strideA,
+      scratch2, kv_sequence_length, temp_matrix_size, &zero, scratch3, head_size, strideB, BN, prop))) {
+      return false;
+    }
   }
 
   // scratch3 is BxNxSxH, transpose to output SxBxNxH
@@ -358,7 +367,7 @@ bool LaunchDecoderAttentionKernel(
   bool static_kv,
   bool use_past,
   bool has_layer_state,
-  const void* gemm_buffer,
+  bool has_key_padding_mask,
   const void* gemm_query_buffer,
   const void* gemm_kv_buffer,
   const bool* key_padding_mask,
@@ -385,7 +394,7 @@ bool LaunchDecoderAttentionKernel(
       static_kv,
       use_past,
       has_layer_state,
-      reinterpret_cast<const half*>(gemm_buffer),
+      has_key_padding_mask,
       reinterpret_cast<const half*>(gemm_query_buffer),
       reinterpret_cast<const half*>(gemm_kv_buffer),
       key_padding_mask,
@@ -411,7 +420,7 @@ bool LaunchDecoderAttentionKernel(
       static_kv,
       use_past,
       has_layer_state,
-      reinterpret_cast<const float*>(gemm_buffer),
+      has_key_padding_mask,
       reinterpret_cast<const float*>(gemm_query_buffer),
       reinterpret_cast<const float*>(gemm_kv_buffer),
       key_padding_mask,

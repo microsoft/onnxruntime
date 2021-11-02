@@ -52,7 +52,7 @@ bool LaunchDecoderAttentionKernel(
     bool static_kv,                               // Whether cross attention or not
     bool use_past,                                // Whether use cache or not
     bool has_layer_state,                         // Whether output cache or not
-    const void* gemm_buffer,                      // Gemm buffer
+    bool has_key_padding_mask,                    // Whether use key_padding_mask or not
     const void* gemm_query_buffer,                // Query buffer
     const void* gemm_kv_buffer,                   // Key and value buffer
     const bool* key_padding_mask,                 // Key padding mask
