@@ -65,7 +65,6 @@
 #endif
 
 #ifdef USE_CUDA
-#include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cuda_execution_provider.h"
 #endif
 
@@ -171,6 +170,10 @@ Status VerifyEachNodeIsAssignedToAnEp(const Graph& graph, const logging::Logger&
   return status;
 }
 }  // namespace
+
+#ifdef USE_CUDA
+void RunOnUnload(std::function<void()> function);
+#endif
 
 std::atomic<uint32_t> InferenceSession::global_session_id_{1};
 
