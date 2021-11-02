@@ -208,11 +208,13 @@ void PartialSumsImpl(
     const CudaScratchBufferAllocator& allocator,
     const TIndex* dX_indices_sorted,
     const TIndex* dY_indices_sorted,
-    GatheredIndexIndex_t num_gathered_indices,
-    int64_t num_gathered_per_index,
-    int64_t gather_dimension_size,
+    const GatheredIndexIndex_t num_gathered_indices,
+    const int64_t num_gathered_per_index,
+    const int64_t gather_dimension_size,
     const GatheredIndexIndex_t* segment_offsets,
-    SegmentIndex_t num_segments,
+    const SegmentIndex_t num_segments,
+    SegmentIndex_t& last_segment_partial_segment_offset_out,
+    SegmentIndex_t& last_segment_partial_segment_count_out,
     IAllocatorUniquePtr<SegmentIndex_t>& per_segment_partial_segment_counts_out,
     IAllocatorUniquePtr<SegmentIndex_t>& per_segment_partial_segment_offsets_out) {
   // each segment is split into partial segments of at most
@@ -231,7 +233,7 @@ void PartialSumsImpl(
   auto per_segment_partial_segment_offsets = GetOffsetsFromCounts(
       stream, allocator, per_segment_partial_segment_counts.get(), num_segments);
 
-  SegmentIndex_t host_num_partial_segments = 0;
+  // SegmentIndex_t host_num_partial_segments = 0;
   {
     SegmentIndex_t last_segment_partial_segment_offset = 0,
                    last_segment_partial_segment_count = 0;
@@ -246,11 +248,15 @@ void PartialSumsImpl(
         &per_segment_partial_segment_counts.get()[num_segments - 1],
         sizeof(SegmentIndex_t), cudaMemcpyDeviceToHost, stream));
     CUDA_CALL_THROW(cudaStreamSynchronize(stream));
-    host_num_partial_segments =
-        last_segment_partial_segment_offset + last_segment_partial_segment_count;
+    // host_num_partial_segments =
+    //     last_segment_partial_segment_offset + last_segment_partial_segment_count;
+
+    last_segment_partial_segment_offset_out = last_segment_partial_segment_offset;
+    last_segment_partial_segment_count_out = last_segment_partial_segment_count;
   }
 
-  printf("%d", host_num_partial_segments);
+  printf("last_segment_partial_segment_offset: %d, last_segment_partial_segment_count: %d\n",
+         last_segment_partial_segment_offset_out, last_segment_partial_segment_count_out);
 
   per_segment_partial_segment_counts_out = std::move(per_segment_partial_segment_counts);
   per_segment_partial_segment_offsets_out = std::move(per_segment_partial_segment_offsets);
@@ -265,6 +271,8 @@ void GatherGradPrepare(
     int64_t gather_dimension_size,
     int64_t num_gathered_per_index,
     SegmentIndex_t& host_num_segments,
+    SegmentIndex_t& last_segment_partial_segment_offset_out,
+    SegmentIndex_t& last_segment_partial_segment_count_out,
     IAllocatorUniquePtr<SegmentIndex_t>& per_segment_partial_segment_counts_out,
     IAllocatorUniquePtr<SegmentIndex_t>& per_segment_partial_segment_offsets_out) {
   IAllocatorUniquePtr<TIndex> dX_indices_sorted, dY_indices_sorted;
@@ -315,6 +323,7 @@ void GatherGradPrepare(
         dX_indices_sorted.get(), dY_indices_sorted.get(),
         num_gathered_indices, num_gathered_per_index, gather_dimension_size,
         segment_offsets.get(), host_num_segments,
+        last_segment_partial_segment_offset_out, last_segment_partial_segment_count_out,
         per_segment_partial_segment_counts_out, per_segment_partial_segment_offsets_out);
   }
 }
@@ -328,6 +337,8 @@ void GatherGradPrepare(
       int64_t gather_dimension_size,                                               \
       int64_t num_gathered_per_index,                                              \
       SegmentIndex_t& host_num_segments,                                           \
+      SegmentIndex_t& last_segment_partial_segment_offset_out,                     \
+      SegmentIndex_t& last_segment_partial_segment_count_out,                      \
       IAllocatorUniquePtr<SegmentIndex_t>& per_segment_partial_segment_counts_out, \
       IAllocatorUniquePtr<SegmentIndex_t>& per_segment_partial_segment_offsets_out);
 

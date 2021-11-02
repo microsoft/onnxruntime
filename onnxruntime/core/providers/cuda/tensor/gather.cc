@@ -113,6 +113,8 @@ Status Gather::ComputeInternal(OpKernelContext* context) const {
     const int64_t& gather_dimension_size = indices_max;
     const int64_t& num_gathered_per_index = block_size;
 
+    SegmentIndex_t last_segment_partial_segment_offset_out;
+    SegmentIndex_t last_segment_partial_segment_count_out;
     IAllocatorUniquePtr<SegmentIndex_t> per_segment_partial_segment_counts_out;
     IAllocatorUniquePtr<SegmentIndex_t> per_segment_partial_segment_offsets_out;
 
@@ -124,8 +126,11 @@ Status Gather::ComputeInternal(OpKernelContext* context) const {
         gather_dimension_size,
         num_gathered_per_index,
         *p_num_segments,
+        last_segment_partial_segment_offset_out,
+        last_segment_partial_segment_count_out,
         per_segment_partial_segment_counts_out,
         per_segment_partial_segment_offsets_out);
+
 
     return Status::OK();
   }

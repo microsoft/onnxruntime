@@ -49,6 +49,8 @@ void GatherGradPrepare(
     int64_t gather_dimension_size,
     int64_t num_gathered_per_index,
     SegmentIndex_t& host_num_segments,
+    SegmentIndex_t& last_segment_partial_segment_offset_out,
+    SegmentIndex_t& last_segment_partial_segment_count_out,
     IAllocatorUniquePtr<SegmentIndex_t>& per_segment_partial_segment_counts_out,
     IAllocatorUniquePtr<SegmentIndex_t>& per_segment_partial_segment_offsets_out);
 
