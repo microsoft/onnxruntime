@@ -9,7 +9,7 @@ nav_order: 1
 
 ONNX Runtime Mobile can be used to execute ORT format models using NNAPI (via the NNAPI Execution Provider (EP)) on Android platforms, and CoreML (via the CoreML EP) on iOS platforms. This section explains the details of how different optimizations affect performance, and provides some suggestions for performance testing with ORT format models.
 
-First, please review the introductory details in [using NNAPI and CoreML with ONNX Runtime Mobile](../tutorials/mobile/using-nnapi-coreml-with-ort-mobile.md).
+First, please review the introductory details in [using NNAPI and CoreML with ONNX Runtime Mobile](../tutorials/ort-format-model/using-platform-specific-ep.html#using-nnapi-and-coreml-with-onnx-runtime-mobile).
 
 **IMPORTANT NOTE:** The examples on this page refer to the NNAPI EP for brevity. The information equally applies to the CoreML EP, so any reference to 'NNAPI' below can be substituted with 'CoreML'.<br>
 Support for creating a CoreML-aware ORT format model, similar to [creating an NNAPI-aware ORT format model](#3-creating-an-nnapi-aware-ort-format-model), was added in ONNX Runtime version 1.9.

@@ -46,4 +46,4 @@ OrtSession session = env.createSession(<path to model>, opsession_optionstions);
 ```
 
 ## Learn More
-- [Mobile Tutorial](../tutorials/mobile)
+- [Deploy ORT format model for mobile device and web](../tutorials/ort-format-model/)
