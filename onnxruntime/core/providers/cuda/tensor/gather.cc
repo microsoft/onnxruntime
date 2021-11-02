@@ -131,6 +131,23 @@ Status Gather::ComputeInternal(OpKernelContext* context) const {
         per_segment_partial_segment_counts_out,
         per_segment_partial_segment_offsets_out);
 
+    auto* last_segment_partial_segment_offset = context->Output(2, {1});
+    int32_t* p_last_segment_partial_segment_offset = last_segment_partial_segment_offset->MutableData<int32_t>();
+    *p_last_segment_partial_segment_offset = last_segment_partial_segment_offset_out;
+
+    auto* last_segment_partial_segment_count = context->Output(3, {1});
+    int32_t* p_last_segment_partial_segment_count = last_segment_partial_segment_count->MutableData<int32_t>();
+    *p_last_segment_partial_segment_count = last_segment_partial_segment_count_out;
+
+    auto* per_segment_partial_segment_counts = context->Output(4, {*p_num_segments});
+    int32_t* p_per_segment_partial_segment_counts = per_segment_partial_segment_counts->MutableData<int32_t>();
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(p_per_segment_partial_segment_counts, per_segment_partial_segment_counts_out.get(),
+                                         per_segment_partial_segment_counts->SizeInBytes(), cudaMemcpyDeviceToDevice, Stream()));
+
+    auto* per_segment_partial_segment_offsets = context->Output(5, {*p_num_segments});
+    int32_t* p_per_segment_partial_segment_offsets = per_segment_partial_segment_offsets->MutableData<int32_t>();
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(p_per_segment_partial_segment_offsets, per_segment_partial_segment_offsets_out.get(),
+                                         per_segment_partial_segment_offsets->SizeInBytes(), cudaMemcpyDeviceToDevice, Stream()));
 
     return Status::OK();
   }
