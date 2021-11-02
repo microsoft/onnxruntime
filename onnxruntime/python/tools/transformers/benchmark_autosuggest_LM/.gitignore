@@ -10,3 +10,8 @@ for_testing/*
 
 # data files
 onnx performs better than dlis/*
+
+dlis/*
+dlis_tokenizer/*
+model_files/*
+onnx_model/*
