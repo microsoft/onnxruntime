@@ -8,7 +8,6 @@ from ._graph_execution_manager_factory import GraphExecutionManagerFactory
 from ._torch_module_interface import TorchModuleInterface
 from ._fallback import _FallbackManager, ORTModuleTorchModelException, wrap_exception
 from collections import OrderedDict
-import functools
 import torch
 from typing import Iterator, Optional, Tuple, TypeVar, Callable
 
@@ -163,9 +162,6 @@ class TorchModuleORT(TorchModuleInterface):
         return self._original_module
 
     def __setstate__(self, state):
-        # Attempt to deserialize torch module
-
         self.__dict__.update(state)
 
-        # Re-initialize the forward method
-        _utils.patch_torch_module_ort_forward_method(self)
+        _utils.reinitialize_torch_module_ort(self)

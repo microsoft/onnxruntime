@@ -347,20 +347,15 @@ class TrainingManager(GraphExecutionManager):
         return False
 
     def __getstate__(self):
-        # Attempt to serialize training manager
-
         state = super(TrainingManager, self).__getstate__()
 
         # Only top level classes are pickleable. So, _ORTModuleFunction is
         # not pickleable. So, let's not pickle it, and redefine it when
         # loading the state.
-        state['_forward_class'] = None
+        del state['_forward_class']
         return state
 
     def __setstate__(self, state):
-        # Attempt to deserialize training manager
-
         super(TrainingManager, self).__setstate__(state)
 
-        # Redefine self._forward_class
-        self._forward_class = self._create_autofunction_class()
+        _utils.reinitialize_training_manager(self)

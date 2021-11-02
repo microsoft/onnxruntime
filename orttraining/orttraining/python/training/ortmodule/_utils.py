@@ -5,9 +5,14 @@
 
 from onnxruntime.capi.onnxruntime_inference_collection import OrtValue
 from onnxruntime.capi import _pybind_state as C
+from onnxruntime.tools import pytorch_export_contrib_ops
 from ._fallback_exceptions import (
     ORTModuleDeviceException, wrap_exception, ORTModuleIOError)
 from ._torch_module_pytorch import TorchModulePytorch
+from ._custom_op_symbolic_registry import CustomOpSymbolicRegistry
+from ._custom_gradient_registry import CustomGradientRegistry
+from . import _onnx_models
+from .torch_cpp_extensions.cpu.aten_op_executor import load_aten_op_executor_cpp_extension
 
 import os
 import copy
@@ -211,6 +216,8 @@ def get_state_after_deletion_of_non_ortmodule_methods(ortmodule, user_module):
     user_module_attributes = inspect.getmembers(user_module)
 
     # Check if ORTModule has any user defined attributes that are methods.
+    # Methods that were bound in check_for_name_collisions_and_bind_methods_to_ortmodule
+    # must be dropped in this function.
     for attribute_name, attribute in user_module_attributes:
         if inspect.ismethod(attribute):
             # Skip the dunder methods
@@ -221,7 +228,10 @@ def get_state_after_deletion_of_non_ortmodule_methods(ortmodule, user_module):
             # corresponding to attribute_name is an ORTModule method and the user attribute
             # does equals the ORTModule attribute, then this is a user defined method and
             # must be dropped.
-            if attribute_name not in torch_module_attributes and attribute_name in ortmodule_attributes and inspect.ismethod(ortmodule_attributes[attribute_name]) and attribute.__func__ == ortmodule_attributes[attribute_name].__func__:
+            if attribute_name not in torch_module_attributes and \
+                attribute_name in ortmodule_attributes and \
+                inspect.ismethod(ortmodule_attributes[attribute_name]) and \
+                attribute.__func__ == ortmodule_attributes[attribute_name].__func__:
 
                 # forward is expected to be defined by the user.
                 if attribute_name == 'forward':
@@ -303,3 +313,39 @@ def patch_ortmodule_forward_method(ortmodule):
     # Copy the forward signature from the _torch_module's forward signature.
     functools.update_wrapper(
         ortmodule.forward.__func__, ortmodule._torch_module.forward.__func__)
+
+def reinitialize_ortmodule(ortmodule):
+    # Re-register contrib OPs
+    pytorch_export_contrib_ops.register()
+    CustomOpSymbolicRegistry.register_all()
+    CustomGradientRegistry.register_all()
+
+    # Re-initialize the ORTModule forward method
+    patch_ortmodule_forward_method(ortmodule)
+
+    # Re-bind users custom methods to ORTModule
+    check_for_name_collisions_and_bind_methods_to_ortmodule(ortmodule, ortmodule.module)
+
+def reinitialize_torch_module_ort(torch_module):
+    # Re-initialize the forward method
+    patch_torch_module_ort_forward_method(torch_module)
+
+def reinitialize_graph_execution_manager(graph_execution_manager):
+    # Instantiate the onnx models so they can populated on the first call to forward
+    if hasattr(graph_execution_manager, '_onnx_models'):
+        del graph_execution_manager._onnx_models
+    graph_execution_manager._onnx_models = _onnx_models.ONNXModels()
+
+    graph_execution_manager._graph_builder = None
+    graph_execution_manager._graph_info = None
+    graph_execution_manager._execution_agent = None
+
+    # Re-define the torch allocator
+    graph_execution_manager._get_torch_gpu_allocator_function_addresses()
+
+    # Load ATenOp executor extension.
+    load_aten_op_executor_cpp_extension()
+
+def reinitialize_training_manager(training_manager):
+    # Redefine training managers forward_class
+    training_manager._forward_class = training_manager._create_autofunction_class()

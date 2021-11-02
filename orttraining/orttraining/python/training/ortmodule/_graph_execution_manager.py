@@ -456,8 +456,6 @@ class GraphExecutionManager(GraphExecutionInterface):
         self._original_model_has_changed = True
 
     def __getstate__(self):
-        # Attempt to serialize graph execution manager
-
         state = copy.copy(self.__dict__)
         # Remove any re-contructible/pybound object from the state
         serialization_deny_list = [
@@ -470,17 +468,11 @@ class GraphExecutionManager(GraphExecutionInterface):
             "_torch_empty_cache"
         ]
         for attribute_name in serialization_deny_list:
-            state[attribute_name] = None
+            del state[attribute_name]
 
         return state
 
     def __setstate__(self, state):
-        # Attempt to deserialize graph execution manager
-
         self.__dict__.update(state)
 
-        # Instantiate the onnx models so they can populated on the first call to forward
-        self._onnx_models = _onnx_models.ONNXModels()
-
-        # Re-define the torch allocator
-        self._get_torch_gpu_allocator_function_addresses()
+        _utils.reinitialize_graph_execution_manager(self)

@@ -17,7 +17,6 @@ from onnxruntime.training import ortmodule
 
 from onnxruntime.tools import pytorch_export_contrib_ops
 
-import functools
 import torch
 from typing import Iterator, Optional, Tuple, TypeVar, Callable
 
@@ -307,23 +306,10 @@ class ORTModule(torch.nn.Module):
             self.__dict__[name] = value
 
     def __getstate__(self):
-        # Attempting to serialize ORTModule
-
         state = _utils.get_state_after_deletion_of_non_ortmodule_methods(self, self.module)
         return state
 
     def __setstate__(self, state):
-        # Attempt to deserialize ORTModule
-
         self.__dict__.update(state)
 
-        # Re-register contrib OPs
-        pytorch_export_contrib_ops.register()
-        CustomOpSymbolicRegistry.register_all()
-        CustomGradientRegistry.register_all()
-
-        # Re-initialize the ORTModule forward method
-        _utils.patch_ortmodule_forward_method(self)
-
-        # Re-bind users custom methods to ORTModule
-        _utils.check_for_name_collisions_and_bind_methods_to_ortmodule(self, self.module)
+        _utils.reinitialize_ortmodule(self)
