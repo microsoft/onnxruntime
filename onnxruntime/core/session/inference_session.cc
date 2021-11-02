@@ -65,8 +65,8 @@
 #endif
 
 #ifdef USE_CUDA
-#include "core/providers/cuda/cuda_execution_provider_info.h"
 #include "core/providers/cuda/cuda_provider_factory.h"
+#include "core/providers/cuda/cuda_execution_provider_info.h"
 #endif
 
 using namespace ONNX_NAMESPACE;
