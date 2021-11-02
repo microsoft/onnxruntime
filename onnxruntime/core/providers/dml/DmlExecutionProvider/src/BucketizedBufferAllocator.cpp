@@ -112,7 +112,7 @@ namespace Dml
             {
                 // No more resources in this bucket - allocate a new one
                 auto buffer = CD3DX12_RESOURCE_DESC::Buffer(bucketSize, m_resourceFlags);
-                THROW_IF_FAILED(m_device->CreateCommittedResource(
+                ORT_THROW_IF_FAILED(m_device->CreateCommittedResource(
                     &m_heapProperties,
                     m_heapFlags,
                     &buffer,
@@ -137,7 +137,7 @@ namespace Dml
             bucketSize = (size + 3) & ~3;
 
             auto buffer = CD3DX12_RESOURCE_DESC::Buffer(bucketSize, m_resourceFlags);
-            THROW_IF_FAILED(m_device->CreateCommittedResource(
+            ORT_THROW_IF_FAILED(m_device->CreateCommittedResource(
                 &m_heapProperties,
                 m_heapFlags,
                 &buffer,
@@ -185,7 +185,7 @@ namespace Dml
         if (allocInfo->GetOwner() != this)
         {
             // This allocation doesn't belong to this allocator!
-            THROW_HR(E_INVALIDARG);
+            ORT_THROW_HR(E_INVALIDARG);
         }
 
         // Free the resource to the pool if its size matches a bucket size
@@ -221,7 +221,7 @@ namespace Dml
         if (opaqueHandle == nullptr)
         {
             // There is no memory allocated which needs to be decoded.
-            THROW_HR(E_INVALIDARG);
+            ORT_THROW_HR(E_INVALIDARG);
         }
         const auto* allocInfo = static_cast<const AllocationInfo*>(opaqueHandle);
 
@@ -230,7 +230,7 @@ namespace Dml
         if (owner != nullptr && owner != this)
         {
             // This allocation doesn't belong to this allocator!
-            THROW_HR(E_INVALIDARG);
+            ORT_THROW_HR(E_INVALIDARG);
         }
 
         return allocInfo;

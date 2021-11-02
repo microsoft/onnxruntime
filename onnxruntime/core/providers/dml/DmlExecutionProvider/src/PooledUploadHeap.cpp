@@ -99,7 +99,7 @@ namespace Dml
         auto heap = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
         auto buffer = CD3DX12_RESOURCE_DESC::Buffer(sizeInBytes);
 
-        THROW_IF_FAILED(device->CreateCommittedResource(
+        ORT_THROW_IF_FAILED(device->CreateCommittedResource(
             &heap,
             D3D12_HEAP_FLAG_NONE,
             &buffer,
@@ -173,7 +173,7 @@ namespace Dml
 
         // Map the upload heap and copy the source data into it at the specified offset
         void* uploadHeapData = nullptr;
-        THROW_IF_FAILED(chunk->resource->Map(0, nullptr, &uploadHeapData));
+        ORT_THROW_IF_FAILED(chunk->resource->Map(0, nullptr, &uploadHeapData));
         memcpy(static_cast<byte*>(uploadHeapData) + offsetInChunk, src.data(), src.size());
         chunk->resource->Unmap(0, nullptr);
 
