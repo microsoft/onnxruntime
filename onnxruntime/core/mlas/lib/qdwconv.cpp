@@ -16,12 +16,12 @@ Abstract:
 
 #include "mlasi.h"
 
-template<typename FilterType>
+template<typename InputType, typename FilterType>
 void
 MLASCALL
 MlasConvDepthwiseKernel(
-    const uint8_t* const* Input,
-    uint8_t InputZeroPoint,
+    const InputType* const* Input,
+    InputType InputZeroPoint,
     const FilterType* Filter,
     FilterType FilterZeroPoint,
     int32_t* Output,
@@ -35,7 +35,7 @@ MlasConvDepthwiseKernel(
     const __m128i InputZeroPointVector = _mm_set1_epi16(InputZeroPoint);
     const __m128i FilterZeroPointVector = _mm_set1_epi16(FilterZeroPoint);
 #elif defined(MLAS_NEON_INTRINSICS)
-    const uint8x8_t InputZeroPointVector = vdup_n_u8(InputZeroPoint);
+    const uint8x8_t InputZeroPointVector = vdup_n_u8(uint8_t(InputZeroPoint));
     const uint8x8_t FilterZeroPointVector = vdup_n_u8(uint8_t(FilterZeroPoint));
 #endif
 
@@ -57,7 +57,11 @@ MlasConvDepthwiseKernel(
                 __m128i InputVector = _mm_loadl_epi64((const __m128i*)&Input[k][ChannelOffset]);
                 __m128i FilterVector = _mm_loadl_epi64((const __m128i*)&Filter[ChannelKernelOffset]);
 
-                InputVector = _mm_unpacklo_epi8(InputVector, ZeroVector);
+                if (std::is_signed<InputType>::value) {
+                    InputVector = _mm_srai_epi16(_mm_unpacklo_epi8(ZeroVector, InputVector), 8);
+                } else {
+                    InputVector = _mm_unpacklo_epi8(InputVector, ZeroVector);
+                }
 
                 if (std::is_signed<FilterType>::value) {
                     FilterVector = _mm_srai_epi16(_mm_unpacklo_epi8(ZeroVector, FilterVector), 8);
@@ -98,12 +102,17 @@ MlasConvDepthwiseKernel(
 
             for (size_t k = 0; k < KernelSize; k++) {
 
-                uint8x8_t InputVector = vld1_u8(&Input[k][ChannelOffset]);
+                uint8x8_t InputVector = vld1_u8(reinterpret_cast<const uint8_t*>(&Input[k][ChannelOffset]));
                 uint8x8_t FilterVector = vld1_u8(reinterpret_cast<const uint8_t*>(&Filter[ChannelKernelOffset]));
 
-                int16x8_t InputVector16 = vreinterpretq_s16_u16(vsubl_u8(InputVector, InputZeroPointVector));
-                int16x8_t FilterVector16;
+                int16x8_t InputVector16;
+                if (std::is_signed<InputType>::value) {
+                    InputVector16 = vsubl_s8(vreinterpret_s8_u8(InputVector), vreinterpret_s8_u8(InputZeroPointVector));
+                } else {
+                    InputVector16 = vreinterpretq_s16_u16(vsubl_u8(InputVector, InputZeroPointVector));
+                }
 
+                int16x8_t FilterVector16;
                 if (std::is_signed<FilterType>::value) {
                     FilterVector16 = vsubl_s8(vreinterpret_s8_u8(FilterVector), vreinterpret_s8_u8(FilterZeroPointVector));
                 } else {
@@ -175,6 +184,34 @@ MLASCALL
 MlasConvDepthwiseKernel(
     const uint8_t* const* Input,
     uint8_t InputZeroPoint,
+    const uint8_t* Filter,
+    uint8_t FilterZeroPoint,
+    int32_t* Output,
+    size_t Channels,
+    size_t OutputCount,
+    size_t KernelSize
+    );
+
+template
+void
+MLASCALL
+MlasConvDepthwiseKernel(
+    const int8_t* const* Input,
+    int8_t InputZeroPoint,
+    const int8_t* Filter,
+    int8_t FilterZeroPoint,
+    int32_t* Output,
+    size_t Channels,
+    size_t OutputCount,
+    size_t KernelSize
+    );
+
+template
+void
+MLASCALL
+MlasConvDepthwiseKernel(
+    const int8_t* const* Input,
+    int8_t InputZeroPoint,
     const uint8_t* Filter,
     uint8_t FilterZeroPoint,
     int32_t* Output,
@@ -264,6 +301,99 @@ Return Value:
         MlasPlatform.ConvDepthwiseU8U8Kernel(
 #else
         MlasConvDepthwiseKernel<uint8_t>(
+#endif
+            Input,
+            InputZeroPoint,
+            Filter,
+            FilterZeroPoint,
+            Output,
+            Channels,
+            OutputCount,
+            KernelSize);
+    }
+}
+
+void
+MLASCALL
+MlasConvDepthwise(
+    const int8_t* const* Input,
+    int8_t InputZeroPoint,
+    const uint8_t* Filter,
+    uint8_t FilterZeroPoint,
+    bool FilterIsSigned,
+    int32_t* Output,
+    size_t Channels,
+    size_t OutputCount,
+    size_t KernelSize
+    )
+/*++
+
+Routine Description:
+
+    This routine implements the depthwise convolution operation.
+
+    The input is supplied as an indirection buffer. Every pointer in the
+    indirection buffer points at a Channels length vector (either from the
+    input tensor or a vector of padding values). These are grouped in batches
+    of length KernelSize that are processed by the kernel to produce a single
+    output of length Channels. These batches are then repeated OutputCount
+    times.
+
+    The filter tensor is organized in HW1O format, so the length of each row of
+    the filter tensor is Channels. The number of columns of the filter tensor
+    is KernelSize.
+
+Arguments:
+
+    Input - Supplies an indirection buffer to the elements of the input tensor.
+
+    InputZeroPoint - Supplies the zero point offset of the input tensor.
+
+    Filter - Supplies the filter tensor.
+
+    FilterZeroPoint - Supplies the zero point offset of the filter tensor.
+
+    FilterIsSigned - Supplies true if the filter tensor is signed data, else
+        false if the filter tensor is unsigned data.
+
+    Output - Supplies the output tensor in channels last format.
+
+    Channels - Supplies the number of channels.
+
+    OutputCount - Supplies the number of channel sized output elements to
+        produce.
+
+    KernelSize - Supplies the total number of channel sized kernel elements to
+        consume.
+
+Return Value:
+
+    None.
+
+--*/
+{
+    if (FilterIsSigned) {
+
+#if defined(MLAS_TARGET_AMD64)
+        MlasPlatform.ConvDepthwiseS8S8Kernel(
+#else
+        MlasConvDepthwiseKernel<int8t_t, int8_t>(
+#endif
+            Input,
+            InputZeroPoint,
+            reinterpret_cast<const int8_t*>(Filter),
+            static_cast<int8_t>(FilterZeroPoint),
+            Output,
+            Channels,
+            OutputCount,
+            KernelSize);
+
+    } else {
+
+#if defined(MLAS_TARGET_AMD64)
+        MlasPlatform.ConvDepthwiseS8U8Kernel(
+#else
+        MlasConvDepthwiseKernel<int8t_t, uint8_t>(
 #endif
             Input,
             InputZeroPoint,

@@ -465,14 +465,14 @@ void
     int8_t ZeroPoint
     );
 
-template<typename FilterType>
-struct MLAS_U8X8_KERNEL
+template<typename InputType, typename FilterType>
+struct MLAS_X8X8_KERNEL
 {
     typedef
     void
     (MLASCALL DepthwiseKernel)(
-        const uint8_t* const* Input,
-        uint8_t InputZeroPoint,
+        const InputType* const* Input,
+        InputType InputZeroPoint,
         const FilterType* Filter,
         FilterType FilterZeroPoint,
         int32_t* Output,
@@ -681,12 +681,12 @@ extern const MLAS_CONV_SYM_DISPATCH MlasConvSymDispatchAvx512Vnni;
 // Quantized depthwise convolution kernels.
 //
 
-template<typename FilterType>
+template<typename InputType, typename FilterType>
 void
 MLASCALL
 MlasConvDepthwiseKernel(
-    const uint8_t* const* Input,
-    uint8_t InputZeroPoint,
+    const InputType* const* Input,
+    InputType InputZeroPoint,
     const FilterType* Filter,
     FilterType FilterZeroPoint,
     int32_t* Output,
@@ -695,12 +695,12 @@ MlasConvDepthwiseKernel(
     size_t KernelSize
     );
 
-template<typename FilterType>
+template <typename InputType, typename FilterType>
 void
 MLASCALL
 MlasConvDepthwiseKernelAvx2(
-    const uint8_t* const* Input,
-    uint8_t InputZeroPoint,
+    const InputType* const* Input,
+    InputType InputZeroPoint,
     const FilterType* Filter,
     FilterType FilterZeroPoint,
     int32_t* Output,
@@ -748,8 +748,10 @@ struct MLAS_PLATFORM {
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL* ErfKernelRoutine;
     MLAS_QLINEAR_BINARY_OP_S8_KERNEL* QLinearAddS8Kernel;
     MLAS_QLINEAR_BINARY_OP_U8_KERNEL* QLinearAddU8Kernel;
-    MLAS_U8X8_KERNEL<int8_t>::DepthwiseKernel* ConvDepthwiseU8S8Kernel;
-    MLAS_U8X8_KERNEL<uint8_t>::DepthwiseKernel* ConvDepthwiseU8U8Kernel;
+    MLAS_X8X8_KERNEL<uint8_t, int8_t>::DepthwiseKernel* ConvDepthwiseU8S8Kernel;
+    MLAS_X8X8_KERNEL<uint8_t, uint8_t>::DepthwiseKernel* ConvDepthwiseU8U8Kernel;
+    MLAS_X8X8_KERNEL<int8_t, int8_t>::DepthwiseKernel* ConvDepthwiseS8S8Kernel;
+    MLAS_X8X8_KERNEL<int8_t, uint8_t>::DepthwiseKernel* ConvDepthwiseS8U8Kernel;
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL* ComputeExpF32Kernel;
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL* LogisticKernelRoutine;
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL* TanhKernelRoutine;

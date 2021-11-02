@@ -13,6 +13,7 @@
 
 namespace onnxruntime {
 
+template <typename ActType>
 class QLinearConv : public OpKernel {
  public:
   explicit QLinearConv(const OpKernelInfo& info) : OpKernel(info), conv_attrs_(info) {
@@ -53,8 +54,8 @@ class QLinearConv : public OpKernel {
 
   static void ComputeOffset(OpKernelContext* context,
                             int64_t M,
-                            uint8_t& X_zero_point_value,
-                            uint8_t& Y_zero_point_value,
+                            ActType& X_zero_point_value,
+                            ActType& Y_zero_point_value,
                             uint8_t& W_zero_point_value) {
     const Tensor* X_zero_point = context->Input<Tensor>(InputTensors::IN_X_ZERO_POINT);
     const Tensor* W_zero_point = context->Input<Tensor>(InputTensors::IN_W_ZERO_POINT);
@@ -66,8 +67,8 @@ class QLinearConv : public OpKernel {
     ORT_ENFORCE(IsValidQuantParam(W_zero_point, M),
                 "QLinearConv : filter zero point shape invalid");
 
-    X_zero_point_value = *(X_zero_point->template Data<uint8_t>());
-    Y_zero_point_value = *(Y_zero_point->template Data<uint8_t>());
+    X_zero_point_value = *(X_zero_point->template Data<ActType>());
+    Y_zero_point_value = *(Y_zero_point->template Data<ActType>());
 
     const int64_t W_zero_point_size = W_zero_point->Shape().Size();
     const auto* W_zero_point_data = static_cast<const uint8_t*>(W_zero_point->DataRaw());
@@ -142,7 +143,7 @@ class QLinearConv : public OpKernel {
     const Tensor* W_zero_point = nullptr;
     if (Info().TryGetConstantInput(InputTensors::IN_X_ZERO_POINT, &X_zero_point) && IsScalarOr1ElementVector(X_zero_point) &&
         Info().TryGetConstantInput(InputTensors::IN_W_ZERO_POINT, &W_zero_point) && IsValidQuantParam(W_zero_point, static_cast<int64_t>(output_channels))) {
-      auto X_zero_point_value = *(X_zero_point->template Data<uint8_t>());
+      auto X_zero_point_value = *(X_zero_point->template Data<ActType>());
       const size_t W_zero_point_size = static_cast<size_t>(W_zero_point->Shape().Size());
       const auto* W_zero_point_data = W_zero_point->Data<int8_t>();
       if (std::all_of(W_zero_point_data, W_zero_point_data + W_zero_point_size, [](int8_t v) { return v == 0; })) {
@@ -213,15 +214,22 @@ class QLinearConv : public OpKernel {
   std::vector<int32_t> column_sums_;
 };
 
-ONNX_CPU_OPERATOR_KERNEL(
-    QLinearConv,
-    10,
-    KernelDefBuilder()
-        .TypeConstraint("T1", DataTypeImpl::GetTensorType<uint8_t>())
-        .TypeConstraint("T2", {DataTypeImpl::GetTensorType<uint8_t>(), DataTypeImpl::GetTensorType<int8_t>()})
-        .TypeConstraint("T3", DataTypeImpl::GetTensorType<uint8_t>())
-        .TypeConstraint("T4", DataTypeImpl::GetTensorType<int32_t>()),
-    QLinearConv);
+#define REGISTER_QLINEARCONV_TYPED_KERNEL(domain, version, data_type)                                            \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                                                 \
+      QLinearConv,                                                                                               \
+      domain,                                                                                                    \
+      version,                                                                                                   \
+      data_type,                                                                                                 \
+      kCpuExecutionProvider,                                                                                     \
+      KernelDefBuilder()                                                                                         \
+          .TypeConstraint("T1", DataTypeImpl::GetTensorType<data_type>())                                        \
+          .TypeConstraint("T2", {DataTypeImpl::GetTensorType<uint8_t>(), DataTypeImpl::GetTensorType<int8_t>()}) \
+          .TypeConstraint("T3", DataTypeImpl::GetTensorType<data_type>())                                        \
+          .TypeConstraint("T4", DataTypeImpl::GetTensorType<int32_t>()),                                         \
+      QLinearConv<data_type>);
+
+REGISTER_QLINEARCONV_TYPED_KERNEL(kOnnxDomain, 10, int8_t);
+REGISTER_QLINEARCONV_TYPED_KERNEL(kOnnxDomain, 10, uint8_t);
 
 #ifndef DISABLE_CONTRIB_OPS
 
@@ -229,25 +237,17 @@ namespace contrib {
 
 // Register an alternate version of this kernel that supports the channels_last
 // attribute in order to consume and produce NHWC tensors.
-ONNX_OPERATOR_KERNEL_EX(
-    QLinearConv,
-    kMSDomain,
-    1,
-    kCpuExecutionProvider,
-    KernelDefBuilder()
-        .TypeConstraint("T1", DataTypeImpl::GetTensorType<uint8_t>())
-        .TypeConstraint("T2", {DataTypeImpl::GetTensorType<uint8_t>(), DataTypeImpl::GetTensorType<int8_t>()})
-        .TypeConstraint("T3", DataTypeImpl::GetTensorType<uint8_t>())
-        .TypeConstraint("T4", DataTypeImpl::GetTensorType<int32_t>()),
-    QLinearConv);
+REGISTER_QLINEARCONV_TYPED_KERNEL(kMSDomain, 1, int8_t);
+REGISTER_QLINEARCONV_TYPED_KERNEL(kMSDomain, 1, uint8_t);
 
 }  // namespace contrib
 
 #endif
 
-Status QLinearConv::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
-                            /*out*/ bool& is_packed,
-                            /*out*/ PrePackedWeights* prepacked_weights) {
+template <typename ActType>
+Status QLinearConv<ActType>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
+                                     /*out*/ bool& is_packed,
+                                     /*out*/ PrePackedWeights* prepacked_weights) {
   is_packed = false;
 
   // Support packing the weight matrix.
@@ -369,9 +369,10 @@ Status QLinearConv::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr al
   return Status::OK();
 }
 
-Status QLinearConv::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
-                                              int input_idx,
-                                              /*out*/ bool& used_shared_buffers) {
+template <typename ActType>
+Status QLinearConv<ActType>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
+                                                       int input_idx,
+                                                       /*out*/ bool& used_shared_buffers) {
   if (input_idx != 3) {
     return Status::OK();
   }
@@ -389,7 +390,8 @@ Status QLinearConv::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prep
   return Status::OK();
 }
 
-Status QLinearConv::Compute(OpKernelContext* context) const {
+template <typename ActType>
+Status QLinearConv<ActType>::Compute(OpKernelContext* context) const {
   const Tensor* X = context->Input<Tensor>(InputTensors::IN_X);
   const Tensor* W = is_W_packed_ ? nullptr : context->Input<Tensor>(InputTensors::IN_W);
   const auto& W_shape = W ? W->Shape() : W_shape_;
@@ -398,8 +400,8 @@ Status QLinearConv::Compute(OpKernelContext* context) const {
   const int64_t N = X->Shape()[0];
   const int64_t M = W_shape[0];
 
-  uint8_t X_zero_point_value;
-  uint8_t Y_zero_point_value;
+  ActType X_zero_point_value;
+  ActType Y_zero_point_value;
   uint8_t W_zero_point_value;
   ComputeOffset(context, M, X_zero_point_value, Y_zero_point_value, W_zero_point_value);
   std::vector<float> output_scales = ComputeOutputScale(context, M);
@@ -504,24 +506,24 @@ Status QLinearConv::Compute(OpKernelContext* context) const {
     gemm_output_buffer = BufferUniquePtr(gemm_output_data, BufferDeleter(alloc));
   }
 
-  const auto* Xdata = X->template Data<uint8_t>();
+  const auto* Xdata = X->template Data<ActType>();
   const auto* Bdata = B != nullptr ? B->template Data<int32_t>() : nullptr;
-  auto* Ydata = Y->template MutableData<uint8_t>();
+  auto* Ydata = Y->template MutableData<ActType>();
 
   BufferUniquePtr transpose_input_buffer;
   BufferUniquePtr transpose_output_buffer;
 
   // Allocate temporary buffers for transposing to channels last format.
   if (!channels_last_) {
-    auto* transpose_input = alloc->Alloc(SafeInt<size_t>(sizeof(uint8_t)) * X_offset);
+    auto* transpose_input = alloc->Alloc(SafeInt<size_t>(sizeof(ActType)) * X_offset);
     transpose_input_buffer = BufferUniquePtr(transpose_input, BufferDeleter(alloc));
-    auto* transpose_output = alloc->Alloc(SafeInt<size_t>(sizeof(uint8_t)) * Y_offset);
+    auto* transpose_output = alloc->Alloc(SafeInt<size_t>(sizeof(ActType)) * Y_offset);
     transpose_output_buffer = BufferUniquePtr(transpose_output, BufferDeleter(alloc));
   }
 
   BufferUniquePtr col_buffer;
   BufferUniquePtr indirection_buffer;
-  std::vector<uint8_t> padding_data;
+  std::vector<ActType> padding_data;
 
   bool use_indirection_buffer = false;
   if (is_depthwise_conv) {
@@ -533,14 +535,14 @@ Status QLinearConv::Compute(OpKernelContext* context) const {
       // Pointwise convolutions can use the original input tensor in place,
       // otherwise a temporary buffer is required for the im2col transform.
       int64_t group_col_buffer_size = (kernel_rank > 2) ? group_count * col_buffer_size : col_buffer_size;
-      auto* col_data = alloc->Alloc(SafeInt<size_t>(sizeof(uint8_t)) * group_col_buffer_size);
+      auto* col_data = alloc->Alloc(SafeInt<size_t>(sizeof(ActType)) * group_col_buffer_size);
       col_buffer = BufferUniquePtr(col_data, BufferDeleter(alloc));
     }
   }
   if (use_indirection_buffer) {
     // Allocate indirection buffer pointers and prepare a padding vector for
     // the im2col transform.
-    auto* indirection_data = alloc->Alloc(SafeInt<size_t>(sizeof(const uint8_t*)) * kernel_size * output_image_size);
+    auto* indirection_data = alloc->Alloc(SafeInt<size_t>(sizeof(const ActType*)) * kernel_size * output_image_size);
     indirection_buffer = BufferUniquePtr(indirection_data, BufferDeleter(alloc));
     padding_data.resize(static_cast<size_t>(C), X_zero_point_value);
   }
@@ -560,15 +562,15 @@ Status QLinearConv::Compute(OpKernelContext* context) const {
           static_cast<uint8_t*>(transpose_input_buffer.get()),
           static_cast<size_t>(C),
           static_cast<size_t>(input_image_size));
-      input_data = static_cast<uint8_t*>(transpose_input_buffer.get());
-      output_data = static_cast<uint8_t*>(transpose_output_buffer.get());
+      input_data = static_cast<ActType*>(transpose_input_buffer.get());
+      output_data = static_cast<ActType*>(transpose_output_buffer.get());
     }
 
     // Threaded implementation of ND convolution is not yet supported, so
     // prepare all im2col transformations here.
     if (col_buffer && kernel_rank > 2) {
       for (int64_t group_id = 0; group_id < group_count; ++group_id) {
-        math::Im2col<uint8_t, StorageOrder::NHWC>()(
+        math::Im2col<ActType, StorageOrder::NHWC>()(
             input_data + group_id * group_input_channels,
             group_input_channels,
             C,
@@ -579,7 +581,7 @@ Status QLinearConv::Compute(OpKernelContext* context) const {
             dilations.data(),
             pads.data(),
             static_cast<int64_t>(kernel_rank),
-            static_cast<uint8_t*>(col_buffer.get()) + group_id * col_buffer_size,
+            static_cast<ActType*>(col_buffer.get()) + group_id * col_buffer_size,
             X_zero_point_value);
       }
     }
@@ -589,10 +591,10 @@ Status QLinearConv::Compute(OpKernelContext* context) const {
       int64_t output_start = static_cast<int64_t>(work.start);
       int64_t output_count = static_cast<int64_t>(work.end - work.start);
 
-      uint8_t const** worker_indirection_buffer = nullptr;
+      ActType const** worker_indirection_buffer = nullptr;
       if (indirection_buffer) {
-        worker_indirection_buffer = static_cast<uint8_t const**>(indirection_buffer.get()) + output_start * kernel_size;
-        math::Im2col<uint8_t, StorageOrder::NHWC>()(
+        worker_indirection_buffer = static_cast<ActType const**>(indirection_buffer.get()) + output_start * kernel_size;
+        math::Im2col<ActType, StorageOrder::NHWC>()(
             input_data,
             C,
             input_shape.GetDims().data(),
@@ -668,9 +670,9 @@ Status QLinearConv::Compute(OpKernelContext* context) const {
           // pointwise convolutions.
           const auto* group_input_data = input_data + group_id * group_input_channels;
           if (col_buffer) {
-            auto* worker_col_buffer = static_cast<uint8_t*>(col_buffer.get()) + output_start * kernel_dim;
+            auto* worker_col_buffer = static_cast<ActType*>(col_buffer.get()) + output_start * kernel_dim;
             if (kernel_rank == 2) {
-              math::Im2col<uint8_t, StorageOrder::NHWC>()(
+              math::Im2col<ActType, StorageOrder::NHWC>()(
                   group_input_data,
                   group_input_channels,
                   C,
@@ -690,7 +692,7 @@ Status QLinearConv::Compute(OpKernelContext* context) const {
                   worker_col_buffer,
                   X_zero_point_value);
             } else if (kernel_rank == 1) {
-              math::Im2col<uint8_t, StorageOrder::NHWC>()(
+              math::Im2col<ActType, StorageOrder::NHWC>()(
                   group_input_data,
                   group_input_channels,
                   C,
