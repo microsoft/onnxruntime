@@ -1816,8 +1816,8 @@ def build_nuget_package(source_dir, build_dir, configs, use_cuda, use_openvino, 
                         ort_build_dir]
             run_subprocess(cmd_args, cwd=csharp_build_dir)
         else:
-            winml_interop_dir = os.path.join(source_dir, "csharp", "src", "Microsoft.AI.MachineLearning.Interop");
-            winml_interop_project = os.path.join(winml_interop_dir, "Microsoft.AI.MachineLearning.Interop.csproj");
+            winml_interop_dir = os.path.join(source_dir, "csharp", "src", "Microsoft.AI.MachineLearning.Interop")
+            winml_interop_project = os.path.join(winml_interop_dir, "Microsoft.AI.MachineLearning.Interop.csproj")
             winml_interop_project = os.path.normpath(winml_interop_project)
             cmd_args = ["dotnet", "msbuild", winml_interop_project, configuration, "/p:Platform=\"Any CPU\"",
                         ort_build_dir, "-restore"]
