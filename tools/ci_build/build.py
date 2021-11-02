@@ -604,10 +604,12 @@ def get_config_build_dir(build_dir, config):
 
 
 def run_subprocess(args, cwd=None, capture_stdout=False, dll_path=None,
-                   shell=False, env={}, python_path=None):
+                   shell=False, env={}, python_path=None, add_dll_dir_path=None):
     if isinstance(args, str):
         raise ValueError("args should be a sequence of strings, not a string")
 
+    if add_dll_dir_path and is_windows():
+        os.add_dll_directory(add_dll_dir_path)
     my_env = os.environ.copy()
     if dll_path:
         if is_windows():
@@ -1541,9 +1543,14 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                 build_dir, config, "external", "tvm", config))
         if args.use_tensorrt:
             dll_path_list.append(os.path.join(args.tensorrt_home, 'lib'))
+        add_dll_dir_path = None
         if args.build_eager_mode and is_windows():
             import torch
-            dll_path_list.append(os.path.join(os.path.dirname(torch.__file__), 'lib'))
+            if sys.version_info[0] == 3:
+                if sys.version_info[1] <= 7:
+                    dll_path_list.append(os.path.join(os.path.dirname(torch.__file__), 'lib'))
+                else:
+                    add_dll_dir_path = os.path.join(os.path.dirname(torch.__file__), 'lib')
 
 
         dll_path = None
@@ -1572,7 +1579,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                      '/Logger:trx', '/Enablecodecoverage', '/Platform:x64',
                      "/Settings:%s" % os.path.join(
                          source_dir, 'cmake\\codeconv.runsettings')] + executables,
-                    cwd=cwd2, dll_path=dll_path)
+                    cwd=cwd2, dll_path=dll_path, add_dll_dir_path=add_dll_dir_path)
             else:
                 executables = ['onnxruntime_test_all', 'onnxruntime_mlas_test']
                 if args.build_shared_lib:
