@@ -51,7 +51,7 @@ ENV unset OLD_PATH
 # python env
 RUN pip3 install --upgrade setuptools
 ARG NUMPY_VERSION=1.18.5
-ARG ONNX_VERSION=1.7.0
+ARG ONNX_VERSION=1.10.2
 RUN pip3 install --no-cache-dir wheel tqdm boto3 requests six ipdb h5py html2text nltk progressbar pyyaml \
         git+https://github.com/NVIDIA/dllogger \
         numpy==${NUMPY_VERSION} \
