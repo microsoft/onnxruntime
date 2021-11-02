@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "precomp.h"
+#include "DmlOperator.h"
 
 namespace Dml
 {
