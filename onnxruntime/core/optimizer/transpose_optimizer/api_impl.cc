@@ -37,22 +37,21 @@ class ApiValueInfo final : public api::ValueInfoRef {
 class ApiTensor final : public api::TensorRef {
  private:
   const onnx::TensorProto& tensor_proto_;
-  const Graph& graph_;
+  const Path& model_path_;
   AllocatorPtr cpu_allocator_;
 
  public:
-  explicit ApiTensor(const onnx::TensorProto& tensor_proto, const Graph& graph, AllocatorPtr cpu_allocator) 
-      : tensor_proto_(tensor_proto), graph_(graph), cpu_allocator_(std::move(cpu_allocator)){}
+  explicit ApiTensor(const onnx::TensorProto& tensor_proto, const Path& model_path, AllocatorPtr cpu_allocator) 
+      : tensor_proto_(tensor_proto), model_path_(model_path), cpu_allocator_(std::move(cpu_allocator)) {}
 
   const onnx::TensorProto& TensorProto() {
     return tensor_proto_;
   }
 
-  std::unique_ptr<onnxruntime::Tensor> MakeTensor() const;
   std::vector<int64_t> Shape() const override;
+  size_t NumElements() const override;
   api::DataType DType() const override;
-  std::vector<int64_t> DataInt64() const override;
-  std::vector<int32_t> DataInt32() const override;
+  std::vector<uint8_t> Data() const override;
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ApiTensor);
@@ -109,6 +108,7 @@ class ApiGraph final : public api::GraphRef {
   std::optional<int64_t> Opset(std::string_view domain = "") const override;
   std::vector<std::unique_ptr<api::NodeRef>> Nodes() const override;
   std::unique_ptr<api::TensorRef> GetConstant(std::string_view name) const override;
+  std::unique_ptr<api::TensorRef> GetLocalConstant(std::string_view name) const override;
   std::unique_ptr<api::ValueInfoRef> GetValueInfo(std::string_view name) const override;
   std::unique_ptr<api::ValueConsumers> GetValueConsumers(std::string_view name) const override;
   std::unique_ptr<api::NodeRef> GetNodeProducingOutput(std::string_view name) const override;
@@ -118,10 +118,8 @@ class ApiGraph final : public api::GraphRef {
                                      size_t num_outputs = 1, std::string_view domain = "") override;
   void RemoveNode(api::NodeRef& node) override;
   void RemoveInitializer(std::string_view name) override;
-  std::string_view AddInitializerInt64(const std::vector<int64_t>& shape,
-                                       const std::vector<int64_t>& values) override;
-  std::string_view AddInitializerInt32(const std::vector<int64_t>& shape,
-                                       const std::vector<int32_t>& values) override;
+  std::string_view AddInitializer(api::DataType dtype, const std::vector<int64_t>& shape,
+                                  const std::vector<uint8_t>& data) override;
   void MoveOutput(api::NodeRef& src_node, size_t src_idx, api::NodeRef& dst_node, size_t dst_idx) override;
   void CopyValueInfo(std::string_view src_name, std::string_view dst_name) override;
   bool HasValueConsumers(std::string_view name) const override;
@@ -239,45 +237,30 @@ void ApiValueInfo::UnsqueezeDims(const std::vector<int64_t>& axes) {
 
 // <ApiTensor>
 std::vector<int64_t> ApiTensor::Shape() const {
-  std::vector<int64_t> shape;
-  shape.reserve(tensor_proto_.dims_size());
-  for (int64_t d : tensor_proto_.dims()) {
-    shape.push_back(d);
-  }
+  return utils::GetTensorShapeFromTensorProto(tensor_proto_);
+}
 
-  return shape;
+size_t ApiTensor::NumElements() const {
+  int64_t size = TensorShape(utils::GetTensorShapeFromTensorProto(tensor_proto_)).Size();
+  ORT_ENFORCE(size >= 0, "Failed to get size of TensorProto");
+  return gsl::narrow_cast<size_t>(size);
 }
 
 api::DataType ApiTensor::DType() const {
   return gsl::narrow_cast<api::DataType>(tensor_proto_.data_type());
 }
 
-// Reading tensor values from tensor_proto requires some work because of external storage and special/raw_data fields
-std::unique_ptr<onnxruntime::Tensor> ApiTensor::MakeTensor() const {
+std::vector<uint8_t> ApiTensor::Data() const {
+  // Reading tensor values from tensor_proto requires some work because of external storage and special/raw_data fields
   const DataTypeImpl* tensor_dtype = DataTypeImpl::TensorTypeFromONNXEnum(tensor_proto_.data_type())->GetElementType();
   auto tensor_shape_dims = utils::GetTensorShapeFromTensorProto(tensor_proto_);
   TensorShape tensor_shape{std::move(tensor_shape_dims)};
   auto tensor = onnxruntime::Tensor::Create(tensor_dtype, tensor_shape, cpu_allocator_);
-  ORT_THROW_IF_ERROR(utils::TensorProtoToTensor(Env::Default(), graph_.ModelPath().ToPathString().c_str(),
+  ORT_THROW_IF_ERROR(utils::TensorProtoToTensor(Env::Default(), model_path_.ToPathString().c_str(),
                                                 tensor_proto_, *tensor));
-  return tensor;
-}
-
-template<typename T>
-std::vector<T> TensorDataToVector(const onnxruntime::Tensor& tensor) {
-  const T* data = tensor.Data<T>();
-  size_t num_elements = gsl::narrow_cast<size_t>(tensor.Shape().Size());
-  return std::vector<T>(data, data + num_elements);
-}
-
-std::vector<int64_t> ApiTensor::DataInt64() const {
-  auto tensor = MakeTensor();
-  return TensorDataToVector<int64_t>(*tensor);
-}
-
-std::vector<int32_t> ApiTensor::DataInt32() const {
-  auto tensor = MakeTensor();
-  return TensorDataToVector<int32_t>(*tensor);
+  size_t num_bytes = gsl::narrow_cast<size_t>(tensor->SizeInBytes());
+  const uint8_t* data = static_cast<const uint8_t*>(tensor->DataRaw());
+  return std::vector<uint8_t>(data, data + num_bytes);
 }
 // </ApiTensor>
 
@@ -419,13 +402,21 @@ std::vector<std::unique_ptr<api::NodeRef>> ApiGraph::Nodes() const {
 }
 
 std::unique_ptr<api::TensorRef> ApiGraph::GetConstant(std::string_view name) const {
-  // TODO: make this work for initializers in parent graphs. See api.h for requirements.
-  const auto* tensor = graph_.GetConstantInitializer(std::string(name), false);
+  const auto* tensor = graph_.GetConstantInitializer(std::string(name), /*check_outer_scope*/ true);
   if (tensor == nullptr) {
     return nullptr;
   }
 
-  return std::make_unique<ApiTensor>(*tensor, graph_, cpu_allocator_);
+  return std::make_unique<ApiTensor>(*tensor, graph_.ModelPath(), cpu_allocator_);
+}
+
+std::unique_ptr<api::TensorRef> ApiGraph::GetLocalConstant(std::string_view name) const {
+  const auto* tensor = graph_.GetConstantInitializer(std::string(name), /*check_outer_scope*/ false);
+  if (tensor == nullptr) {
+    return nullptr;
+  }
+
+  return std::make_unique<ApiTensor>(*tensor, graph_.ModelPath(), cpu_allocator_);
 }
 
 std::unique_ptr<api::ValueInfoRef> ApiGraph::GetValueInfo(std::string_view name) const {
@@ -639,34 +630,18 @@ void ApiGraph::RemoveInitializer(std::string_view name) {
   graph_.RemoveInitializedTensor(std::string(name));
 }
 
-template<typename T, onnx::TensorProto_DataType DType>
-inline ONNX_NAMESPACE::TensorProto TensorProtoFromInts(std::string& name, const std::vector<int64_t>& shape,
-                                                       const std::vector<T>& values) {
+std::string_view ApiGraph::AddInitializer(api::DataType dtype, const std::vector<int64_t>& shape,
+                                          const std::vector<uint8_t>& data) {
+  std::string name = graph_.GenerateNodeArgName("const_transpose_optimizer");
+
   ONNX_NAMESPACE::TensorProto tensor_proto;
-  tensor_proto.set_data_type(DType);
+  tensor_proto.set_data_type(gsl::narrow_cast<int32_t>(dtype));
   tensor_proto.set_name(name);
-  tensor_proto.set_raw_data(values.data(), values.size() * sizeof(T));
+  tensor_proto.set_raw_data(data.data(), data.size());
   for (int64_t dim : shape) {
     tensor_proto.add_dims(dim);
   }
 
-  return tensor_proto;
-}
-
-std::string_view ApiGraph::AddInitializerInt64(const std::vector<int64_t>& shape,
-                                               const std::vector<int64_t>& values) {
-  std::string name = graph_.GenerateNodeArgName("const_transpose_optimizer");
-  ONNX_NAMESPACE::TensorProto tensor_proto =
-      TensorProtoFromInts<int64_t, ONNX_NAMESPACE::TensorProto_DataType_INT64>(name, shape, values);
-  const auto& node_arg = graph_utils::AddInitializer(graph_, tensor_proto);
-  return node_arg.Name();
-}
-
-std::string_view ApiGraph::AddInitializerInt32(const std::vector<int64_t>& shape,
-                                               const std::vector<int32_t>& values) {
-  std::string name = graph_.GenerateNodeArgName("const_transpose_optimizer");
-  ONNX_NAMESPACE::TensorProto tensor_proto =
-      TensorProtoFromInts<int32_t, ONNX_NAMESPACE::TensorProto_DataType_INT32>(name, shape, values);
   const auto& node_arg = graph_utils::AddInitializer(graph_, tensor_proto);
   return node_arg.Name();
 }
