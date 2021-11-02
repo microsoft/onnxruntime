@@ -386,8 +386,8 @@ class PercentileCalibrater(HistogramCalibrater):
                  op_types_to_calibrate=[],
                  augmented_model_path='augmented_model.onnx',
                  method='percentile',
-                 num_quantized_bins=128,
-                 percentile=99.99):
+                 num_quantized_bins=2048,
+                 percentile=99.999):
         '''
         :param model: ONNX model to calibrate. It can be a ModelProto or a model path
         :param op_types_to_calibrate: operator types to calibrate. By default, calibrate all the float32/float16 tensors.
