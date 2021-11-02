@@ -172,6 +172,9 @@ Status VerifyEachNodeIsAssignedToAnEp(const Graph& graph, const logging::Logger&
 }
 }  // namespace
 
+#ifdef USE_CUDA
+ProviderInfo_CUDA* TryGetProviderInfo_CUDA();
+#endif
 
 std::atomic<uint32_t> InferenceSession::global_session_id_{1};
 
