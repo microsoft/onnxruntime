@@ -610,6 +610,7 @@ def run_subprocess(args, cwd=None, capture_stdout=False, dll_path=None,
 
     if add_dll_dir_path and is_windows():
         os.add_dll_directory(add_dll_dir_path)
+        print("Added DLL directory:", add_dll_dir_path)
     my_env = os.environ.copy()
     if dll_path:
         if is_windows():
@@ -1551,6 +1552,8 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                     dll_path_list.append(os.path.join(os.path.dirname(torch.__file__), 'lib'))
                 else:
                     add_dll_dir_path = os.path.join(os.path.dirname(torch.__file__), 'lib')
+        if add_dll_dir_path:
+            print("Current dll directory:", add_dll_dir_path)
 
 
         dll_path = None
