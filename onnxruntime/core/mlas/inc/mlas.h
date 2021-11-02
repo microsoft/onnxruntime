@@ -707,6 +707,20 @@ MlasConvDepthwise(
     size_t KernelSize
     );
 
+void
+MLASCALL
+MlasConvDepthwise(
+    const int8_t* const* Input,
+    int8_t InputZeroPoint,
+    const uint8_t* Filter,
+    uint8_t FilterZeroPoint,
+    bool FilterIsSigned,
+    int32_t* Output,
+    size_t Channels,
+    size_t OutputCount,
+    size_t KernelSize
+    );
+
 //
 // Symmetric quantized integer convolution routines.
 //
@@ -732,7 +746,7 @@ MlasConvSymPackW(
 
 int32_t
 MlasConvSymFixupInputZeroPoint(
-    uint8_t zero_point_value
+    int32_t zero_point_value
     );
 
 struct MLAS_CONV_SYM_PARAMS {
@@ -865,6 +879,15 @@ MLASCALL
 MlasTranspose(
     const uint8_t* Input,
     uint8_t* Output,
+    size_t M,
+    size_t N
+    );
+
+void
+MLASCALL
+MlasTranspose(
+    const int8_t* Input,
+    int8_t* Output,
     size_t M,
     size_t N
     );
