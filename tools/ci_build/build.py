@@ -1547,6 +1547,9 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                 build_dir, config, "external", "tvm", config))
         if args.use_tensorrt:
             dll_path_list.append(os.path.join(args.tensorrt_home, 'lib'))
+        if args.build_eager_mode and is_windows():
+            import torch
+            dll_path_list.append(os.path.join(os.path.dirname(torch.__file__), 'lib'))
 
         dll_path = None
         if len(dll_path_list) > 0:
