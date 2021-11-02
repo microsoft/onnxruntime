@@ -33,7 +33,7 @@ The follow options can be used to reduce the build size:
     - A minimal build will ONLY support loading and executing ORT format models
     - RTTI is disabled by default in this build, unless the Python bindings (`--build_wheel`) are enabled.
     - If you wish to enable execution providers that compile kernels such as NNAPI or CoreML specify `--minimal_build extended`.
-      - See [here](../mobile/using-nnapi-coreml-with-ort-mobile.md) for details on using NNAPI and CoreML with ONNX Runtime Mobile
+      - See [here](./using-platform-specific-ep.html#using-nnapi-and-coreml-with-onnx-runtime-mobile) for details on using NNAPI and CoreML with ONNX Runtime Mobile
 
 ##### Reduce build to required operator kernels
   - `--include_ops_by_config` [REQUIRED] 
