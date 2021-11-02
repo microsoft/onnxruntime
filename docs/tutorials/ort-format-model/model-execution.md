@@ -52,7 +52,9 @@ OrtSession session = env.createSession(<path to model>, session_options);
 
 JavaScript API
 ```js
-// TBD
+import * as ort from "onnxruntime-web";
+
+const session = await ort.InferenceSession.create("<path to model>");
 ```
 
 ### Load ORT format model from an in-memory byte array
@@ -84,6 +86,17 @@ byte[] model_bytes = Files.readAllBytes(Paths.get(<path to model>));
 
 OrtEnvironment env = OrtEnvironment.getEnvironment();
 OrtSession session = env.createSession(model_bytes, session_options);
+```
+
+JavaScript API
+```js
+import * as ort from "onnxruntime-web";
+
+const response = await fetch(modelUrl);
+const arrayBuffer = await response.arrayBuffer();
+model_bytes = new Uint8Array(arrayBuffer);
+
+const session = await ort.InferenceSession.create(model_bytes);
 ```
 
 ------
