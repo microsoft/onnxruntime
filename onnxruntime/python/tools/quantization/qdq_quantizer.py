@@ -44,10 +44,10 @@ class QDQQuantizer(ONNXQuantizer):
         # In some cases, for example QDQ BERT model for TensorRT,
         # QDQ should always appear as a pair. 
         # For our quantization tool, we do quantization on Dequantizelinear's input 
-        # to remove Quantizelinear as optimization for weights.   
-        # Therefore, we need to disable this optimization.
-        self.force_qdq_appear_as_pair = False if 'ForceQDQAppearAsPair' not in extra_options \
-                                        else extra_options['ForceQDQAppearAsPair'] 
+        # to remove Quantizelinear as optimization for weight.   
+        # Therefore, we need to disable this optimization and add qdq pair to weight.
+        self.add_qdq_pair_to_weight = False if 'AddQDQPairToWeight' not in extra_options \
+                                        else extra_options['AddQDQPairToWeight'] 
 
     def quantize_tensor(self, tensor_name):
         weight = find_by_name(tensor_name, self.model.initializer())
@@ -98,7 +98,7 @@ class QDQQuantizer(ONNXQuantizer):
         self.quantize_weights_per_channel()
         self.quantize_bias_tensors()
         self.remove_nodes()
-        if not self.force_qdq_appear_as_pair:
+        if not self.add_qdq_pair_to_weight:
             self.remove_quantized_weights()
 
         self.model.model.producer_name = __producer__
@@ -123,10 +123,10 @@ class QDQQuantizer(ONNXQuantizer):
             initializer = find_by_name(tensor_name, self.model.initializer())
             if initializer is not None:
 
-                if self.force_qdq_appear_as_pair:
+                if self.add_qdq_pair_to_weight:
                     q_weight_name, zp_name, scale_name = self.quantize_weight(initializer,
                                                                               self.weight_qType,
-                                                                              add_weight_initializer=False)
+                                                                              keep_float_weight=True)
                     qlinear_node = onnx.helper.make_node("QuantizeLinear", [tensor_name, scale_name, zp_name],
                                                          [tensor_name + "_QuantizeLinear"],
                                                          tensor_name + "_QuantizeLinear")
@@ -202,9 +202,9 @@ class QDQQuantizer(ONNXQuantizer):
         if self.opset_version < 13 and len(self.tensors_to_quantize_per_channel) > 0:
             raise ValueError("Per-Channel support with QDQ format requires onnx opset version 13 or above.")
         for weight_name, axis in self.tensors_to_quantize_per_channel:
-            if self.force_qdq_appear_as_pair:
+            if self.add_qdq_pair_to_weight:
                 q_name, zp_name, scale_name = self.quantize_weight_per_channel(weight_name, onnx_proto.TensorProto.INT8,
-                                                                               axis, add_weight_initializer=False)
+                                                                               axis, keep_float_weight=True)
                 qlinear_node = onnx.helper.make_node("QuantizeLinear", [tensor_name, scale_name, zp_name],
                                                      [tensor_name + "_QuantizeLinear"],
                                                      tensor_name + "_QuantizeLinear",

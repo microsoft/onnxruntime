@@ -694,11 +694,12 @@ class ONNXQuantizer:
 
         return (quantized_input_names, zero_point_names, scale_names, nodes)
 
-    def quantize_weight(self, weight, qType, reduce_range=False, add_weight_initializer=True):
+    def quantize_weight(self, weight, qType, reduce_range=False, keep_float_weight=False):
         '''
             :param weight: TensorProto initializer
             :param qType: type to quantize to
-            :param add_weight_initializer: whether to quantize the weight. In some cases, we only want to qunatize scale and zero point.
+            :param keep_float_weight: Whether to quantize the weight. In some cases, we only want to qunatize scale and zero point.
+                                      If keep_float_weight is False, quantize the weight, or don't quantize the weight. 
             :return: quantized weight name, zero point name, scale name
         '''
         # Find if this input is already quantized
@@ -719,7 +720,7 @@ class ONNXQuantizer:
         zero_initializer = onnx.helper.make_tensor(zp_name, qType, [], [zero_point])
         self.model.initializer().extend([scale_initializer, zero_initializer])
 
-        if add_weight_initializer:
+        if not keep_float_weight:
             q_weight_data = np.asarray(q_weight_data,
                                        dtype=onnx.mapping.TENSOR_TYPE_TO_NP_TYPE[qType]).reshape(weight.dims)
             q_weight_initializer = onnx.numpy_helper.from_array(q_weight_data, q_weight_name)
@@ -733,7 +734,7 @@ class ONNXQuantizer:
         return q_weight_name, zp_name, scale_name
 
     def quantize_weight_per_channel(self, weight_name, weight_qType, channel_axis, reduce_range=True, 
-                                    add_weight_initializer=True):
+                                    keep_float_weight=False):
         # Find if this input is already quantized
         if weight_name in self.quantized_value_map:
             quantized_value = self.quantized_value_map[weight_name]
@@ -785,7 +786,7 @@ class ONNXQuantizer:
 
         self.model.initializer().extend([scale_initializer, zero_initializer])
 
-        if add_weight_initializer:
+        if not keep_float_weight:
             quantized_weights = np.asarray(
                 quantized_weights, dtype=onnx.mapping.TENSOR_TYPE_TO_NP_TYPE[weight_qType]).reshape(initializer.dims)
             q_weight_initializer = onnx.numpy_helper.from_array(quantized_weights, q_weight_name)
