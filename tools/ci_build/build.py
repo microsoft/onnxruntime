@@ -1555,7 +1555,6 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
         if add_dll_dir_path:
             print("Current dll directory:", add_dll_dir_path)
 
-
         dll_path = None
         if len(dll_path_list) > 0:
             dll_path = os.pathsep.join(dll_path_list)
