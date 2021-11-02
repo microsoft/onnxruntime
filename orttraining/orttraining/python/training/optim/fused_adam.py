@@ -80,10 +80,9 @@ class FusedAdam(torch.optim.Optimizer):
         # Skip buffer
         self._dummy_overflow_buf = torch.cuda.IntTensor([0])
 
-        try:
-            from onnxruntime.training.ortmodule.torch_cpp_extensions import fused_ops
-        except ImportError:
-            import fused_ops
+        from onnxruntime.training.ortmodule.torch_cpp_extensions import get_fused_ops_extension
+        fused_ops = get_fused_ops_extension()
+
         self._multi_tensor_adam = fused_ops.multi_tensor_adam
         self._multi_tensor_applier = MultiTensorApply(2048 * 32)
         self._TorchTensorVector = fused_ops.TorchTensorVector

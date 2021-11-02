@@ -9,11 +9,9 @@ import torch
 from torch.utils.dlpack import from_dlpack, to_dlpack
 
 from ._fallback import _FallbackManager, ORTModuleFallbackException, ORTModuleIOError, wrap_exception
+from .torch_cpp_extensions import get_torch_interop_utils_extension
 
-try:
-    from onnxruntime.training.ortmodule.torch_cpp_extensions import torch_interop_utils
-except ImportError:
-    import torch_interop_utils
+torch_interop_utils = get_torch_interop_utils_extension()
 
 
 def wrap_as_dlpack_or_not(grad_flag, tensor_flag, inplace_flag, training_mode_flag, arg):

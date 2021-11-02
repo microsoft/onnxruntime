@@ -27,36 +27,52 @@ TODO: Create environment variables to allow extensions to be hosted outside ONNX
       (e.g. ORTMODULE_EXTERNAL_TORCH_CPP_EXTENSION_DIR, ORTMODULE_EXTERNAL_TORCH_CUDA_EXTENSION_DIR)
 
 """
+import warnings
 
-import os
-from glob import glob
+
+def get_fused_ops_extension():
+    try:
+        from onnxruntime.training.ortmodule.torch_cpp_extensions import fused_ops
+    except ImportError:
+        warnings.warn("Imported fused_ops from site-packages.", ImportWarning)
+        import fused_ops
+    return fused_ops
+
+
+def get_aten_op_executor_extension():
+    try:
+        from onnxruntime.training.ortmodule.torch_cpp_extensions import aten_op_executor
+    except ImportError:
+        warnings.warn("Imported aten_op_executor from site-packages.", ImportWarning)
+        import aten_op_executor
+    return fused_ops
+
+
+def get_torch_interop_utils_extension():
+    try:
+        from onnxruntime.training.ortmodule.torch_cpp_extensions import torch_interop_utils
+    except ImportError:
+        warnings.warn("Imported torch_interop_utils from site-packages.", ImportWarning)
+        import torch_interop_utils
+    return fused_ops
+
+
+def get_torch_gpu_allocator_extension():
+    try:
+        from onnxruntime.training.ortmodule.torch_cpp_extensions import torch_gpu_allocator
+    except ImportError:
+        warnings.warn("Imported torch_gpu_allocator from site-packages.", ImportWarning)
+        import torch_gpu_allocator
+    return fused_ops
 
 
 def is_installed(torch_cpp_extension_path):
-    torch_cpp_exts = glob(os.path.join(torch_cpp_extension_path, '*.so'))
-    torch_cpp_exts.extend(glob(os.path.join(torch_cpp_extension_path, '*.dll')))
-    torch_cpp_exts.extend(glob(os.path.join(torch_cpp_extension_path, '*.dylib')))
-    if len(torch_cpp_exts) > 0:
-        return True
-    n_installed = 0
     try:
-        import aten_op_executor
-        n_installed += 1
+        get_aten_op_executor_extension()
     except ImportError:
-        pass
+        return False
     try:
-        import torch_interop_utils
-        n_installed += 1
+        get_torch_interop_utils_extension()
     except ImportError:
-        pass
-    try:
-        import fused_ops
-        n_installed += 1
-    except ImportError:
-        pass
-    try:
-        import torch_gpu_allocator
-        n_installed += 1
-    except ImportError:
-        pass
-    return n_installed > 0
+        return False
+    return True
