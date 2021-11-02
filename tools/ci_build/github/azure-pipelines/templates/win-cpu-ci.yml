@@ -151,7 +151,7 @@ jobs:
       workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
 
-  - ${{ if and(eq(parameters.BuildConfig, 'RelWithDebInfo')), eq(parameters.RunOnnxRuntimeTests, true)) }}:
+  - ${{ if and(eq(parameters.BuildConfig, 'RelWithDebInfo'), eq(parameters.RunOnnxRuntimeTests, true)) }}:
       - task: DotNetCoreCLI@2
         displayName: 'Test C#'
         inputs:
