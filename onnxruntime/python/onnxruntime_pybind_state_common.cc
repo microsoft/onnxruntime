@@ -24,21 +24,22 @@ OrtDevice::DeviceId cuda_device_id = 0;
 // TODO remove deprecated global config
 size_t gpu_mem_limit = std::numeric_limits<size_t>::max();
 
-#if defined(USE_CUDA) || defined(USE_ROCM)
 #ifdef USE_CUDA
 // TODO remove deprecated global config
-OrtCudnnConvAlgoSearch cudnn_conv_algo_search = OrtCudnnConvAlgoSearch::EXHAUSTIVE;
+OrtCudnnConvAlgoSearch cudnn_conv_algo_search = OrtCudnnConvAlgoSearchExhaustive;
 // TODO remove deprecated global config
 bool do_copy_in_default_stream = true;
 onnxruntime::CUDAExecutionProviderExternalAllocatorInfo external_allocator_info{};
+// TODO remove deprecated global config
+onnxruntime::ArenaExtendStrategy arena_extend_strategy = onnxruntime::ArenaExtendStrategy::kNextPowerOfTwo;
 #endif
 
 #ifdef USE_ROCM
-#include "core/providers/rocm/rocm_execution_provider.h"
-#include "core/providers/rocm/rocm_allocator.h"
+// TODO remove deprecated global config
+bool miopen_conv_exhaustive_search = false;
+// TODO remove deprecated global config
+bool do_copy_in_default_stream = true;
 onnxruntime::ROCMExecutionProviderExternalAllocatorInfo external_allocator_info{};
-#endif
-
 // TODO remove deprecated global config
 onnxruntime::ArenaExtendStrategy arena_extend_strategy = onnxruntime::ArenaExtendStrategy::kNextPowerOfTwo;
 #endif
@@ -79,11 +80,18 @@ OrtValue FromDlpack(PyObject* dlpack_tensor, const bool is_bool_tensor) {
 
 #endif
 
-void PySparseTensor::Init(std::unique_ptr<SparseTensor>&& instance) {
-  auto sparse_tensor(std::move(instance));
-  auto ml_type = DataTypeImpl::GetType<SparseTensor>();
-  ort_value_.Init(sparse_tensor.get(), ml_type, ml_type->GetDeleteFunc());
-  sparse_tensor.release();
+std::unique_ptr<OrtValue> PySparseTensor::AsOrtValue() const {
+  if (instance_) {
+    auto ort_value = std::make_unique<OrtValue>();
+    auto ml_type = DataTypeImpl::GetType<SparseTensor>();
+    py::object this_object = py::cast(*this);
+    // Create an std::function deleter that captures and ref-counts this PySparseTensor
+    ort_value->Init(instance_.get(), ml_type, [object = std::move(this_object)](void*) {});
+    return ort_value;
+  }
+
+  assert(ort_value_.IsAllocated());
+  return std::make_unique<OrtValue>(ort_value_);
 }
 
 PySparseTensor::~PySparseTensor() {

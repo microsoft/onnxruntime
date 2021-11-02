@@ -7,8 +7,8 @@ from setuptools import setup, Extension
 from distutils import log as logger
 from distutils.command.build_ext import build_ext as _build_ext
 from glob import glob, iglob
-from os import path, getcwd, environ, remove, listdir
-from shutil import copyfile, copytree, rmtree
+from os import path, getcwd, environ, remove
+from shutil import copyfile
 import platform
 import subprocess
 import sys
@@ -16,7 +16,6 @@ import datetime
 
 from pathlib import Path
 nightly_build = False
-featurizers_build = False
 package_name = 'onnxruntime'
 wheel_name_suffix = None
 
@@ -42,7 +41,6 @@ def parse_arg_remove_string(argv, arg_name_equal):
 
 
 # Any combination of the following arguments can be applied
-featurizers_build = parse_arg_remove_boolean(sys.argv, '--use_featurizers')
 
 if parse_arg_remove_boolean(sys.argv, '--nightly_build'):
     package_name = 'ort-nightly'
@@ -52,6 +50,7 @@ wheel_name_suffix = parse_arg_remove_string(sys.argv, '--wheel_name_suffix=')
 
 cuda_version = None
 rocm_version = None
+is_rocm = False
 # The following arguments are mutually exclusive
 if parse_arg_remove_boolean(sys.argv, '--use_tensorrt'):
     package_name = 'onnxruntime-gpu-tensorrt' if not nightly_build else 'ort-trt-nightly'
@@ -59,6 +58,7 @@ elif wheel_name_suffix == 'gpu':
     # TODO: how to support multiple CUDA versions?
     cuda_version = parse_arg_remove_string(sys.argv, '--cuda_version=')
 elif parse_arg_remove_boolean(sys.argv, '--use_rocm'):
+    is_rocm = True
     package_name = 'onnxruntime-rocm' if not nightly_build else 'ort-rocm-nightly'
     rocm_version = parse_arg_remove_string(sys.argv, '--rocm_version=')
 elif parse_arg_remove_boolean(sys.argv, '--use_openvino'):
@@ -157,7 +157,7 @@ try:
                 if len(args) > 3:
                     subprocess.run(args, check=True, stdout=subprocess.PIPE)
 
-                dest = 'onnxruntime/capi/libonnxruntime_providers_cuda.so'
+                dest = 'onnxruntime/capi/libonnxruntime_providers_' + 'rocm.so' if is_rocm else 'cuda.so'
                 if path.isfile(dest):
                     result = subprocess.run(['patchelf', '--print-needed', dest],
                                             check=True, stdout=subprocess.PIPE, universal_newlines=True)
@@ -177,7 +177,7 @@ try:
                 self._rewrite_ld_preload(to_preload)
                 self._rewrite_ld_preload_cuda(to_preload_cuda)
             _bdist_wheel.run(self)
-            if is_manylinux:
+            if is_manylinux and not disable_auditwheel_repair:
                 file = glob(path.join(self.dist_dir, '*linux*.whl'))[0]
                 logger.info('repairing %s for manylinux1', file)
                 try:
@@ -192,17 +192,20 @@ except ImportError as error:
     print(error)
     bdist_wheel = None
 
+providers_cuda_or_rocm = 'libonnxruntime_providers_rocm.so' if is_rocm else 'libonnxruntime_providers_cuda.so'
+
 # Additional binaries
 if platform.system() == 'Linux':
     libs = ['onnxruntime_pybind11_state.so', 'libdnnl.so.2', 'libmklml_intel.so', 'libmklml_gnu.so', 'libiomp5.so',
             'mimalloc.so']
-    dl_libs = ['libonnxruntime_providers_shared.so', 'libonnxruntime_providers_cuda.so']
+    dl_libs = ['libonnxruntime_providers_shared.so']
+    dl_libs.append(providers_cuda_or_rocm)
     # DNNL, TensorRT & OpenVINO EPs are built as shared libs
     libs.extend(['libonnxruntime_providers_shared.so'])
     libs.extend(['libonnxruntime_providers_dnnl.so'])
     libs.extend(['libonnxruntime_providers_tensorrt.so'])
     libs.extend(['libonnxruntime_providers_openvino.so'])
-    libs.extend(['libonnxruntime_providers_cuda.so'])
+    libs.append(providers_cuda_or_rocm)
     # Nuphar Libs
     libs.extend(['libtvm.so.0.5.1'])
     if nightly_build:
@@ -292,6 +295,7 @@ requirements_file = "requirements.txt"
 
 local_version = None
 enable_training = parse_arg_remove_boolean(sys.argv, '--enable_training')
+disable_auditwheel_repair = parse_arg_remove_boolean(sys.argv, '--disable_auditwheel_repair')
 default_training_package_device = parse_arg_remove_boolean(sys.argv, '--default_training_package_device')
 
 package_data = {}
@@ -327,13 +331,17 @@ if enable_training:
                      'onnxruntime.training.ortmodule',
                      'onnxruntime.training.ortmodule.experimental',
                      'onnxruntime.training.ortmodule.experimental.json_config',
+                     'onnxruntime.training.ortmodule.experimental.hierarchical_ortmodule',
                      'onnxruntime.training.ortmodule.torch_cpp_extensions',
-                     'onnxruntime.training.ortmodule.torch_cpp_extensions.aten_op_executor',
-                     'onnxruntime.training.ortmodule.torch_cpp_extensions.torch_interop_utils',
-                     'onnxruntime.training.ortmodule.torch_cpp_extensions.torch_gpu_allocator'])
-    package_data['onnxruntime.training.ortmodule.torch_cpp_extensions.aten_op_executor'] = ['*.cc']
-    package_data['onnxruntime.training.ortmodule.torch_cpp_extensions.torch_interop_utils'] = ['*.cc']
-    package_data['onnxruntime.training.ortmodule.torch_cpp_extensions.torch_gpu_allocator'] = ['*.cc']
+                     'onnxruntime.training.ortmodule.torch_cpp_extensions.cpu.aten_op_executor',
+                     'onnxruntime.training.ortmodule.torch_cpp_extensions.cpu.torch_interop_utils',
+                     'onnxruntime.training.ortmodule.torch_cpp_extensions.cuda.torch_gpu_allocator',
+                     'onnxruntime.training.ortmodule.torch_cpp_extensions.cuda.fused_ops'])
+    package_data['onnxruntime.training.ortmodule.torch_cpp_extensions.cpu.aten_op_executor'] = ['*.cc']
+    package_data['onnxruntime.training.ortmodule.torch_cpp_extensions.cpu.torch_interop_utils'] = ['*.cc']
+    package_data['onnxruntime.training.ortmodule.torch_cpp_extensions.cuda.torch_gpu_allocator'] = ['*.cc']
+    package_data['onnxruntime.training.ortmodule.torch_cpp_extensions.cuda.fused_ops'] = \
+        ['*.cpp', '*.cu', '*.cuh', '*.h']
     requirements_file = "requirements-training.txt"
     # with training, we want to follow this naming convention:
     # stable:
@@ -359,47 +367,6 @@ if enable_training:
 if package_name == 'onnxruntime-nuphar':
     packages += ["onnxruntime.nuphar"]
     extra += [path.join('nuphar', 'NUPHAR_CACHE_VERSION')]
-
-if featurizers_build:
-    # Copy the featurizer data from its current directory into the onnx runtime directory so that the
-    # content can be included as module data.
-
-    # Apparently, the root_dir is different based on how the script is invoked
-    source_root_dir = None
-    dest_root_dir = None
-
-    for potential_source_prefix, potential_dest_prefix in [
-        (getcwd(), getcwd()),
-        (path.dirname(__file__), path.dirname(__file__)),
-        (path.join(getcwd(), ".."), getcwd()),
-    ]:
-        potential_dir = path.join(potential_source_prefix, "external", "FeaturizersLibrary", "Data")
-        if path.isdir(potential_dir):
-            source_root_dir = potential_source_prefix
-            dest_root_dir = potential_dest_prefix
-
-            break
-
-    if source_root_dir is None:
-        raise Exception("Unable to find the build root dir")
-
-    assert dest_root_dir is not None
-
-    featurizer_source_dir = path.join(source_root_dir, "external", "FeaturizersLibrary", "Data")
-    assert path.isdir(featurizer_source_dir), featurizer_source_dir
-
-    featurizer_dest_dir = path.join(dest_root_dir, "onnxruntime", "FeaturizersLibrary", "Data")
-    if path.isdir(featurizer_dest_dir):
-        rmtree(featurizer_dest_dir)
-
-    for item in listdir(featurizer_source_dir):
-        this_featurizer_source_fullpath = path.join(featurizer_source_dir)
-        assert path.isdir(this_featurizer_source_fullpath), this_featurizer_source_fullpath
-
-        copytree(this_featurizer_source_fullpath, featurizer_dest_dir)
-
-        packages.append("onnxruntime.FeaturizersLibrary.Data.{}".format(item))
-        package_data[packages[-1]] = listdir(path.join(featurizer_dest_dir, item))
 
 package_data["onnxruntime"] = data + examples + extra
 

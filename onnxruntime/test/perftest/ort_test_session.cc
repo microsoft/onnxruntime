@@ -42,15 +42,10 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #endif
   } else if (provider_name == onnxruntime::kCudaExecutionProvider) {
 #ifdef USE_CUDA
-    OrtCUDAProviderOptions cuda_options{
-        0,
-        static_cast<OrtCudnnConvAlgoSearch>(performance_test_config.run_config.cudnn_conv_algo),
-        std::numeric_limits<size_t>::max(),
-        0,
-        !performance_test_config.run_config.do_cuda_copy_in_separate_stream,
-        0,
-        nullptr,
-        nullptr};  // TODO: Support arena configuration for users of perf test
+    OrtCUDAProviderOptions cuda_options;
+    cuda_options.cudnn_conv_algo_search = static_cast<OrtCudnnConvAlgoSearch>(performance_test_config.run_config.cudnn_conv_algo);
+    cuda_options.do_copy_in_default_stream = !performance_test_config.run_config.do_cuda_copy_in_separate_stream;
+    // TODO: Support arena configuration for users of perf test
     session_options.AppendExecutionProvider_CUDA(cuda_options);
 #else
     ORT_THROW("CUDA is not supported in this build\n");
@@ -235,15 +230,11 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     tensorrt_options.trt_force_sequential_engine_build = trt_force_sequential_engine_build;
     session_options.AppendExecutionProvider_TensorRT(tensorrt_options);
 
-    OrtCUDAProviderOptions cuda_options{
-        device_id,
-        static_cast<OrtCudnnConvAlgoSearch>(performance_test_config.run_config.cudnn_conv_algo),
-        std::numeric_limits<size_t>::max(),
-        0,
-        !performance_test_config.run_config.do_cuda_copy_in_separate_stream,
-        0,
-        nullptr,
-        nullptr};  // TODO: Support arena configuration for users of perf test
+    OrtCUDAProviderOptions cuda_options;
+    cuda_options.device_id=device_id;
+    cuda_options.cudnn_conv_algo_search=static_cast<OrtCudnnConvAlgoSearch>(performance_test_config.run_config.cudnn_conv_algo);
+    cuda_options.do_copy_in_default_stream=!performance_test_config.run_config.do_cuda_copy_in_separate_stream;
+    // TODO: Support arena configuration for users of perf test
     session_options.AppendExecutionProvider_CUDA(cuda_options);
 #else
     ORT_THROW("TensorRT is not supported in this build\n");
@@ -280,8 +271,12 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
         std::set<std::string> ov_supported_device_types = {"CPU_FP32", "GPU_FP32", "GPU_FP16", "VAD-M_FP16", "MYRIAD_FP16", "VAD-F_FP32"};
         if (ov_supported_device_types.find(value) != ov_supported_device_types.end()) {
           device_type = value;
+        } else if (value.find("HETERO:") == 0) {
+          device_type = value;
+        } else if (value.find("MULTI:") == 0) {
+          device_type = value;
         } else {
-          ORT_THROW("[ERROR] [OpenVINO] You have selcted wrong configuration value for the key 'device_type'. select from 'CPU_FP32', 'GPU_FP32', 'GPU_FP16', 'VAD-M_FP16', 'MYRIAD_FP16', 'VAD-F_FP32' or from Hetero/Multi options available. \n");
+          ORT_THROW("[ERROR] [OpenVINO] You have selcted wrong configuration value for the key 'device_type'. select from 'CPU_FP32', 'GPU_FP32', 'GPU_FP16', 'VAD-M_FP16', 'MYRIAD_FP16', 'VAD-F_FP32' or from HETERO/MULTI options available. \n");
         }
       } else if (key == "device_id") {
         device_id = value;
@@ -359,11 +354,10 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #endif
   } else if (provider_name == onnxruntime::kRocmExecutionProvider) {
 #ifdef USE_ROCM
-    OrtROCMProviderOptions rocm_options{
-        0,
-        0,
-        std::numeric_limits<size_t>::max(),
-        0};
+    OrtROCMProviderOptions rocm_options;
+    rocm_options.miopen_conv_exhaustive_search = performance_test_config.run_config.cudnn_conv_algo;
+    rocm_options.do_copy_in_default_stream = !performance_test_config.run_config.do_cuda_copy_in_separate_stream;
+    // TODO: Support arena configuration for users of perf test
     session_options.AppendExecutionProvider_ROCM(rocm_options);
 #else
     ORT_THROW("ROCM is not supported in this build\n");

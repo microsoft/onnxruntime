@@ -1,7 +1,7 @@
 jobs:
 - job: Android_CI
   pool:
-    vmImage: 'macOS-10.15'
+    vmImage: 'macOS-11'
   timeoutInMinutes: 180
   steps:
   # Onnx has no 3.9 python package available yet, need to use python 3.8 to avoid build onnx package
@@ -17,6 +17,14 @@ jobs:
 
   - script: /bin/bash tools/ci_build/github/android/setup_gradle_wrapper.sh $(pwd)
     displayName: Setup gradle wrapper to use gradle 6.8.3
+
+  # We build the host protoc to <ORT_ROOT>/protobuf_install
+  - script: |
+      /bin/bash $(Build.SourcesDirectory)/tools/ci_build/github/apple/build_host_protoc.sh \
+        $(Build.SourcesDirectory) \
+        $(Build.BinariesDirectory)/protobuf \
+        $(Build.SourcesDirectory)/protobuf_install
+    displayName: Build Host Protoc
 
   - script: |
       python3 tools/python/run_android_emulator.py \
@@ -45,6 +53,7 @@ jobs:
         --skip_submodule_sync \
         --parallel \
         --cmake_generator=Ninja \
+        --path_to_protoc_exe $(Build.SourcesDirectory)/protobuf_install/bin/protoc \
         --build_java
     displayName: CPU EP, Build and Test on Android Emulator
 

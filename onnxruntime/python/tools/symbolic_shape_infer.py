@@ -191,6 +191,7 @@ class SymbolicShapeInference:
             'aten::embedding': self._infer_Gather,
             'aten::diagonal': self._infer_aten_diagonal,
             'aten::max_pool2d_with_indices': self._infer_aten_pool2d,
+            'aten::multinomial': self._infer_aten_multinomial,
             'aten::unfold': self._infer_aten_unfold,
             'aten::argmax': self._infer_aten_argmax,
             'aten::avg_pool2d': self._infer_aten_pool2d,
@@ -893,16 +894,17 @@ class SymbolicShapeInference:
                                           data_shape[:axis] + indices_shape + data_shape[axis + 1:]))
         # for 1D input, do some sympy compute
         if node.input[0] in self.sympy_data_ and len(data_shape) == 1 and 0 == get_attribute(node, 'axis', 0):
-            idx = self._get_value(node, 1)
-            data = self.sympy_data_[node.input[0]]
-            if type(data) == list:
-                if type(idx) == np.ndarray and len(idx.shape) == 1:
-                    self.sympy_data_[node.output[0]] = [data[int(i)] for i in idx]
+            idx = self._try_get_value(node, 1)
+            if idx is not None:
+                data = self.sympy_data_[node.input[0]]
+                if type(data) == list:
+                    if type(idx) == np.ndarray and len(idx.shape) == 1:
+                        self.sympy_data_[node.output[0]] = [data[int(i)] for i in idx]
+                    else:
+                        self.sympy_data_[node.output[0]] = data[int(idx)]
                 else:
-                    self.sympy_data_[node.output[0]] = data[int(idx)]
-            else:
-                assert idx == 0
-                self.sympy_data_[node.output[0]] = data
+                    assert idx == 0 or idx == -1
+                    self.sympy_data_[node.output[0]] = data
 
     def _infer_GatherElements(self, node):
         indices_shape = self._get_shape(node, 1)
@@ -1102,6 +1104,19 @@ class SymbolicShapeInference:
             vi.CopyFrom(
                 helper.make_tensor_value_info(node.output[0], self.known_vi_[node.input[0]].type.tensor_type.elem_type,
                                               get_shape_from_sympy_shape(new_shape)))
+
+    def _infer_aten_multinomial(self, node):
+        sympy_shape = self._get_sympy_shape(node, 0)
+        rank = len(sympy_shape)
+        assert rank in [1,2]
+        num_samples = self._try_get_value(node, 1)
+        di = rank - 1
+        last_dim = num_samples if num_samples else str(self._new_symbolic_dim_from_output(node, 0, di))
+        output_shape = sympy_shape[:-1] + [last_dim]
+        vi = self.known_vi_[node.output[0]]
+        vi.CopyFrom(
+            helper.make_tensor_value_info(node.output[0], onnx.TensorProto.INT64,
+                                          get_shape_from_sympy_shape(output_shape)))
 
     def _infer_aten_pool2d(self, node):
         sympy_shape = self._get_sympy_shape(node, 0)
@@ -1673,13 +1688,20 @@ class SymbolicShapeInference:
         vi.CopyFrom(helper.make_tensor_value_info(node.output[0], output_dtype, shape))
 
         if len(node.output) > 1:
+            # input shape: (batch_size, sequence_length, hidden_size)
             # past shape: (2, batch_size, num_heads, past_sequence_length, head_size)
-            # mask shape: (batch_size, total_sequence_length) or (batch_size, sequence_length, total_sequence_length)
-            # present shape: (2, batch_size, num_heads, total_sequence_length, head_size)
+            # mask shape: (batch_size, total_sequence_length) or (batch_size, sequence_length, total_sequence_length) or (batch_size, 1, max_seq_len, max_seq_len)
+            # present shape: (2, batch_size, num_heads, total_sequence_length, head_size), where total_sequence_length=sequence_length+past_sequence_length
+            input_shape = self._get_shape(node, 0)
             past_shape = self._get_shape(node, 4)
             mask_shape = self._get_shape(node, 3)
-            if len(past_shape) == 5 and len(mask_shape) in [2, 3]:
-                past_shape[3] = mask_shape[-1]
+            if len(past_shape) == 5:
+                if len(mask_shape) in [2, 3]:
+                    past_shape[3] = mask_shape[-1]
+                elif isinstance(input_shape[1], int) and isinstance(past_shape[3], int):
+                    past_shape[3] = input_shape[1] + past_shape[3]
+                else:
+                    past_shape[3] = f"{past_shape[3]}+{input_shape[1]}"
                 vi = self.known_vi_[node.output[1]]
                 vi.CopyFrom(helper.make_tensor_value_info(vi.name, output_dtype, past_shape))
 
@@ -1711,6 +1733,12 @@ class SymbolicShapeInference:
         mask_index_shape = [input_ids_shape[0]]
         vi = self.known_vi_[node.output[1]]
         vi.CopyFrom(helper.make_tensor_value_info(node.output[1], onnx.TensorProto.INT32, mask_index_shape))
+
+        if len(node.output) > 2:
+            # Optional output of add before layer nomalization is done
+            # shape is same as the output
+            vi = self.known_vi_[node.output[2]]
+            vi.CopyFrom(helper.make_tensor_value_info(node.output[2], word_embedding_dtype, output_shape))
 
     def _infer_SkipLayerNormalization(self, node):
         self._propagate_shape_and_type(node)

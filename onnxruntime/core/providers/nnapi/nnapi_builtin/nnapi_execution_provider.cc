@@ -235,8 +235,15 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<FusedNodeAndGra
     nnapi::ModelBuilder builder(graph_viewer);
     builder.SetUseNCHW(nnapi_flags_ & NNAPI_FLAG_USE_NCHW);
     builder.SetUseFp16(nnapi_flags_ & NNAPI_FLAG_USE_FP16);
-    if (nnapi_flags_ & NNAPI_FLAG_CPU_DISABLED) {
+
+    bool cpu_disabled = nnapi_flags_ & NNAPI_FLAG_CPU_DISABLED;
+    bool cpu_only = nnapi_flags_ & NNAPI_FLAG_CPU_ONLY;
+    if (cpu_disabled && cpu_only) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Both NNAPI_FLAG_CPU_DISABLED and NNAPI_FLAG_CPU_ONLY are set");
+    } else if (cpu_disabled) {
       builder.SetTargetDeviceOption(nnapi::ModelBuilder::TargetDeviceOption::CPU_DISABLED);
+    } else if (cpu_only) {
+      builder.SetTargetDeviceOption(nnapi::ModelBuilder::TargetDeviceOption::CPU_ONLY);
     }
 
     std::unique_ptr<nnapi::Model> nnapi_model;

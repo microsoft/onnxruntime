@@ -25,7 +25,7 @@ struct DispatchBiasSoftmaxForward {
 
 template <typename T>
 struct DispatchBiasSoftMaxForwardViaDnnLibrary {
-  void operator()(
+  Status operator()(
       cudaStream_t stream,
       cudnnHandle_t cudaDnnHandle,
       int element_count,

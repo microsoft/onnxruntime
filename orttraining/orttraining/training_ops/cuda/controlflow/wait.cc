@@ -6,7 +6,7 @@
 // Include event mechanism shared by CPU and GPU implementations.
 #include "orttraining/training_ops/cpu/controlflow/event_pool.h"
 #include "orttraining/training_ops/cpu/controlflow/wait.h"
-#include "core/profile/profile.h"
+#include "core/providers/cuda/nvtx_profile.h" 
 #include "core/profile/context.h"
 
 namespace onnxruntime {
@@ -44,7 +44,7 @@ Status WaitEvent::ComputeInternal(OpKernelContext* ctx) const {
     const Tensor* X = ctx->Input<Tensor>(i_out + 1);
     const TensorShape& data_shape = X->Shape();
     Tensor* Y = ctx->Output(i_out, data_shape);
-    CopyTensor(*X, *Y);
+    ORT_RETURN_IF_ERROR(CopyTensor(*X, *Y));
   }
 
 #ifdef ENABLE_NVTX_PROFILE

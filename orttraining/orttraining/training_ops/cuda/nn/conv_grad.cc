@@ -141,11 +141,11 @@ struct AlgoSearch<T_BwdDataPerf> {
     ORT_ENFORCE(sizeof(algos) / sizeof(algos[0]) == num_algos, "Missing cuDNN convolution backward data algorithms.");
     int perf_count;
     std::unique_ptr<T_BwdDataPerf[]> candidates(new T_BwdDataPerf[num_algos]);
-    if (args.params.algo_mode == OrtCudnnConvAlgoSearch::HEURISTIC) {
+    if (args.params.algo_mode == OrtCudnnConvAlgoSearchHeuristic) {
       CUDNN_RETURN_IF_ERROR(cudnnGetConvolutionBackwardDataAlgorithm_v7(args.handle, args.w_desc, args.y_tensor,
                                                                         args.conv_desc, args.x_tensor, num_algos,
                                                                         &perf_count, candidates.get()));
-    } else if (args.params.algo_mode == OrtCudnnConvAlgoSearch::EXHAUSTIVE) {
+    } else if (args.params.algo_mode == OrtCudnnConvAlgoSearchExhaustive) {
       size_t max_workspace_size = provider->GetCudnnConvUseMaxWorkspace() ? GetMaxWorkspaceSize(args, algos, num_algos)
                                                                           : AlgoSearchWorkspaceSize;
       // Use GetTransientScratchBuffer() so the workspace can be freed instead of cached.
@@ -182,11 +182,11 @@ struct AlgoSearch<T_BwdFilterPerf> {
     ORT_ENFORCE(sizeof(algos) / sizeof(algos[0]) == num_algos, "Missing cuDNN convolution backward filter algorithms.");
     std::unique_ptr<T_BwdFilterPerf[]> candidates(new T_BwdFilterPerf[num_algos]);
     int perf_count;
-    if (args.params.algo_mode == OrtCudnnConvAlgoSearch::HEURISTIC) {
+    if (args.params.algo_mode == OrtCudnnConvAlgoSearchHeuristic) {
       CUDNN_RETURN_IF_ERROR(cudnnGetConvolutionBackwardFilterAlgorithm_v7(args.handle, args.x_tensor, args.y_tensor,
                                                                           args.conv_desc, args.w_desc, num_algos,
                                                                           &perf_count, candidates.get()));
-    } else if (args.params.algo_mode == OrtCudnnConvAlgoSearch::EXHAUSTIVE) {
+    } else if (args.params.algo_mode == OrtCudnnConvAlgoSearchExhaustive) {
       size_t max_workspace_size = provider->GetCudnnConvUseMaxWorkspace() ? GetMaxWorkspaceSize(args, algos, num_algos)
                                                                           : AlgoSearchWorkspaceSize;
       // Use GetTransientScratchBuffer() so the workspace can be freed instead of cached.
@@ -228,7 +228,7 @@ class AlgoIterator {
     }
 
     std::vector<T_Perf> perf_results;
-    ORT_RETURN_IF_ERROR(args_.params.algo_mode == OrtCudnnConvAlgoSearch::DEFAULT
+    ORT_RETURN_IF_ERROR(args_.params.algo_mode == OrtCudnnConvAlgoSearchDefault
                             ? OnlyDefaultAlgorithm(args_, perf_results)
                             : AlgoSearch<T_Perf>::FindAlgorithms(args_, provider, perf_results));
     for (auto& algo_perf : perf_results) {
@@ -363,7 +363,7 @@ Status ConvGrad<T>::ComputeInternal(OpKernelContext* context) const {
 
 template <typename T>
 Status ConvGrad<T>::ComputeInputGradient() const {
-  AlgoIterator<T_BwdDataPerf>(args_).TryAll(
+  return AlgoIterator<T_BwdDataPerf>(args_).TryAll(
       static_cast<const CUDAExecutionProvider*>(Info().GetExecutionProvider()),
       [&](const T_BwdDataPerf& algo_perf) -> Status {
         const auto one = Consts<CudaT>::One;
@@ -375,12 +375,11 @@ Status ConvGrad<T>::ComputeInputGradient() const {
             algo_perf.algo, workspace.get(), algo_perf.memory, &zero, args_.x_tensor, args_.dx_data));
         return Status::OK();
       });
-  return Status::OK();
 }
 
 template <typename T>
 Status ConvGrad<T>::ComputeWeightGradient() const {
-  AlgoIterator<T_BwdFilterPerf>(args_).TryAll(
+  return AlgoIterator<T_BwdFilterPerf>(args_).TryAll(
       static_cast<const CUDAExecutionProvider*>(Info().GetExecutionProvider()),
       [&](const T_BwdFilterPerf& algo_perf) -> Status {
         const auto one = Consts<CudaT>::One;
@@ -392,7 +391,6 @@ Status ConvGrad<T>::ComputeWeightGradient() const {
             algo_perf.algo, workspace.get(), algo_perf.memory, &zero, args_.w_desc, args_.dw_data));
         return Status::OK();
       });
-  return Status::OK();
 }
 
 template <typename T>

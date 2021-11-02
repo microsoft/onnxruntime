@@ -493,7 +493,7 @@ class OnnxModel:
         return None
 
     def convert_model_float32_to_float16(self, cast_input_output=True):
-        logger.warn(
+        logger.warning(
             'The function convert_model_float32_to_float16 is deprecated. Use convert_float_to_float16 instead!')
         self.convert_float_to_float16(use_symbolic_shape_infer=True, keep_io_types=cast_input_output)
 
@@ -740,8 +740,9 @@ class OnnxModel:
         for input in input_to_remove:
             self.model.graph.input.remove(input)
 
-        logger.info("Graph pruned: {} inputs, {} outputs and {} nodes are removed".format(
-            len(input_to_remove), len(output_to_remove), len(nodes_to_remove)))
+        if input_to_remove or output_to_remove or nodes_to_remove:
+            logger.info("Graph pruned: {} inputs, {} outputs and {} nodes are removed".format(
+                len(input_to_remove), len(output_to_remove), len(nodes_to_remove)))
 
         self.update_graph()
 
@@ -863,11 +864,9 @@ class OnnxModel:
         #    self.graph_topological_sort(graph)
         OnnxModel.graph_topological_sort(self.model.graph)
 
-    def save_model_to_file(self, output_path, use_external_data_format=False):
+    def save_model_to_file(self, output_path, use_external_data_format=False, all_tensors_to_one_file=True):
         logger.info(f"Sort graphs in topological order")
         self.topological_sort()
-
-        logger.info(f"Output model to {output_path}")
 
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
 
@@ -878,13 +877,27 @@ class OnnxModel:
         else:
             # Save model to external data, which is needed for model size > 2GB
             if use_external_data_format:
-                data_file = str(Path(output_path).name + ".data")
-                if os.path.isfile(data_file):
-                    os.remove(data_file)
+                output_dir = Path(output_path).parent
+                output_dir.mkdir(parents=True, exist_ok=True)
+                location = Path(output_path).name + ".data" if all_tensors_to_one_file else None
+
+                # Show warnings of potential confliction of existing external data file.
+                if all_tensors_to_one_file:
+                    if os.path.exists(location):
+                        logger.warning(
+                            f"External data file ({location}) existed. Please remove the file and try again.")
+                else:
+                    if os.listdir(output_dir):
+                        logger.warning(
+                            f"Output directory ({output_dir}) for external data is not empty. Please try again with a new directory."
+                        )
+
                 external_data_helper.convert_model_to_external_data(self.model,
-                                                                    all_tensors_to_one_file=True,
-                                                                    location=data_file)
+                                                                    all_tensors_to_one_file=all_tensors_to_one_file,
+                                                                    location=location)
             save_model(self.model, output_path)
+
+        logger.info(f"Model saved to {output_path}")
 
     def get_graph_inputs_excluding_initializers(self):
         """

@@ -16,9 +16,9 @@ class DnnlTensor {
  public:
   DnnlTensor(const NodeArg* arg);
   DnnlTensor(std::string name);
-  std::string Name();
+  std::string Name() const;
   dnnl::memory::dims Dim();
-  dnnl::memory::data_type Type();
+  dnnl::memory::data_type Type() const;
   dnnl::memory::format_tag Format();
   //check whether the tensor is dynamic, e.g. contains unspecified dimension
   bool IsDynamic();

@@ -231,7 +231,7 @@ namespace Dml
         uint32_t supportedDeviceDataTypeMask // Each bit corresponds to each DML_TENSOR_DATA_TYPE.
         )
     {
-        THROW_HR_IF(E_INVALIDARG, allow64BitInputThroughStrides && !nodeNameToPartitionMap);
+        ORT_THROW_HR_IF(E_INVALIDARG, allow64BitInputThroughStrides && !nodeNameToPartitionMap);
 
         bool prefer64BitTensorsDirectly = false;
         bool supportedWith64BitTensorsVia32BitStrides = false;
@@ -368,7 +368,7 @@ namespace Dml
         _In_opt_ const std::unordered_map<std::string, GraphPartition*>* nodeNameToPartitionMap
         )
     {
-        THROW_HR_IF(E_INVALIDARG, allow64BitInputThroughStrides && !nodeNameToPartitionMap);
+        ORT_THROW_HR_IF(E_INVALIDARG, allow64BitInputThroughStrides && !nodeNameToPartitionMap);
 
         const onnxruntime::KernelCreateInfo* createInfo;
         Status st = registry.TryFindKernel(node, onnxruntime::kDmlExecutionProvider, &createInfo);
@@ -426,7 +426,7 @@ namespace Dml
 
                 // Get the kernel creation info for the registration, and check if it carries the property
                 // set during registration of kernels that support DML graph node usage.
-                auto& graphNodeProperty = dmlNodePropertyMap.insert(std::make_pair(&node, GraphNodeProperties()));
+                auto graphNodeProperty = dmlNodePropertyMap.insert(std::make_pair(&node, GraphNodeProperties()));
 
                 // Ensure that shape information is known statically for the inputs and outputs of the node,
                 // which is required for MLGraph compilation.
@@ -598,7 +598,7 @@ namespace Dml
             {
                 partition->AddInput(arg->Name());
 
-                auto& inputPartition = nodeNameToPartitionMap.find(arg->Name());
+                auto inputPartition = nodeNameToPartitionMap.find(arg->Name());
                 if (inputPartition != nodeNameToPartitionMap.end())
                 {
                     inputPartition->second->GetRootMergedPartition()->AddOutput(arg->Name());
@@ -670,7 +670,7 @@ namespace Dml
                 .SinceVersion(def->since_version)
                 .Provider(onnxruntime::kDmlExecutionProvider);
 
-            registryForPartitionKernels->Register(builder, fused_kernel_func);
+            ORT_THROW_IF_ERROR(registryForPartitionKernels->Register(builder, fused_kernel_func));
             
             subGraph->SetMetaDef(std::move(def));
         }
@@ -822,7 +822,7 @@ namespace Dml
                     const auto* arg = node.InputDefs()[i];
                     if (arg->Exists())
                     {
-                        auto& inputPartition = nodeNameToPartitionMap.find(arg->Name());
+                        auto inputPartition = nodeNameToPartitionMap.find(arg->Name());
 
                         // Add the input of the current node into the partition which the node will be merged into.
                         // Skip this if the input is already merged into the same partition or is not finalized,
@@ -947,7 +947,6 @@ namespace Dml
                         assert(iter != initializerPartitionMap.end());
                         if (iter->second.size() > 1)
                         {
-                            bool inputConstant = false;
                             if (requiredInitializerMap.find(input) != requiredInitializerMap.end())
                             {
                                 // The kernel relies on this input to be initialized, and it should be small enough to copy

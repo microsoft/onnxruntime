@@ -114,18 +114,20 @@ Status AllocateOutput(OpKernelContextInternal& context, const GraphViewer& subgr
   std::copy(graph_output_dims.cbegin(), graph_output_dims.cend(), std::back_inserter(scan_output_dims));
 
   if (!temporary) {
-    OutputIterator::Create(context, output_index, is_loop_state_var, is_v8, TensorShape(scan_output_dims),
-                           create_slicer_func, zero_data_func,
-                           output_iterator, direction);
+    ORT_RETURN_IF_ERROR(OutputIterator::Create(context, output_index, is_loop_state_var, is_v8,
+                                               TensorShape(scan_output_dims),
+                                               create_slicer_func, zero_data_func,
+                                               output_iterator, direction));
   } else {
     auto mltype = utils::GetMLDataType(*graph_output);
 
     // the outputs from Scan are constrained to tensors, so we can safely cast to TensorTypeBase
     auto ml_data_type = static_cast<const TensorTypeBase*>(mltype)->GetElementType();
 
-    OutputIterator::Create(context, output_index, is_loop_state_var, is_v8, TensorShape(scan_output_dims),
-                           create_slicer_func, zero_data_func,
-                           output_iterator, direction, temporary, ml_data_type);
+    ORT_RETURN_IF_ERROR(OutputIterator::Create(context, output_index, is_loop_state_var, is_v8,
+                                               TensorShape(scan_output_dims),
+                                               create_slicer_func, zero_data_func,
+                                               output_iterator, direction, temporary, ml_data_type));
   }
 
   return Status::OK();

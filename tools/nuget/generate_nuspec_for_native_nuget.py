@@ -44,6 +44,9 @@ def is_this_file_needed(ep, filename):
 # This function has no return value. It updates files_list directly
 def generate_file_list_for_ep(nuget_artifacts_dir, ep, files_list):
     for child in nuget_artifacts_dir.iterdir():
+        if not child.is_dir():
+            continue
+
         for cpu_arch in ['x86', 'x64', 'arm', 'arm64']:
             if child.name == get_package_name('win', cpu_arch, ep):
                 child = child / 'lib'
@@ -51,9 +54,11 @@ def generate_file_list_for_ep(nuget_artifacts_dir, ep, files_list):
                     if child_file.suffix in ['.dll', '.pdb', '.lib'] and is_this_file_needed(ep, child_file.name):
                         files_list.append('<file src="' + str(child_file) +
                                           '" target="runtimes/win-%s/native"/>' % cpu_arch)
-        for cpu_arch in ['x64', 'arm64']:
+        for cpu_arch in ['x86_64', 'arm64']:
             if child.name == get_package_name('osx', cpu_arch, ep):
                 child = child / 'lib'
+                if cpu_arch == 'x86_64':
+                    cpu_arch = 'x64'
                 for child_file in child.iterdir():
                     # Check if the file has digits like onnxruntime.1.8.0.dylib. We can skip such things
                     is_versioned_dylib = re.match(r'.*[\.\d+]+\.dylib$', child_file.name)
@@ -72,6 +77,16 @@ def generate_file_list_for_ep(nuget_artifacts_dir, ep, files_list):
                         files_list.append('<file src="' + str(child_file) +
                                           '" target="runtimes/linux-%s/native"/>' % cpu_arch)
 
+        if child.name == 'onnxruntime-android':
+            for child_file in child.iterdir():
+                if child_file.suffix in ['.aar']:
+                    files_list.append('<file src="' + str(child_file) +
+                                      '" target="runtimes/android/native"/>')
+
+        if child.name == 'onnxruntime-ios-xcframework':
+            files_list.append('<file src="' + str(child) + '\\**'
+                              '" target="runtimes/ios/native"/>')
+
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description="ONNX Runtime create nuget spec script "
@@ -87,8 +102,6 @@ def parse_arguments():
     parser.add_argument("--packages_path", required=True, help="Nuget packages output directory.")
     parser.add_argument("--sources_path", required=True, help="OnnxRuntime source code root.")
     parser.add_argument("--commit_id", required=True, help="The last commit id included in this package.")
-    parser.add_argument("--is_store_build", default=False, type=lambda x: x.lower() == 'true',
-                        help="Build for the Microsoft Store")
     parser.add_argument("--is_release_build", required=False, default=None, type=str,
                         help="Flag indicating if the build is a release build. Accepted values: true/false.")
     parser.add_argument("--execution_provider", required=False, default='None', type=str,
@@ -192,6 +205,15 @@ def generate_dependencies(list, package_name, version):
         if include_dml:
             list.append(dml_dependency)
         list.append('</group>')
+        if package_name == 'Microsoft.ML.OnnxRuntime':
+            # Support monoandroid11.0
+            list.append('<group targetFramework="monoandroid11.0">')
+            list.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
+            list.append('</group>')
+            # Support xamarinios10
+            list.append('<group targetFramework="xamarinios10">')
+            list.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
+            list.append('</group>')
         # Support Native C++
         if include_dml:
             list.append('<group targetFramework="native">')
@@ -252,7 +274,7 @@ def generate_files(list, args):
     is_windowsai_package = args.package_name == 'Microsoft.AI.MachineLearning'
 
     includes_winml = is_windowsai_package
-    includes_directml = (is_dml_package or is_windowsai_package) and not args.is_store_build and (
+    includes_directml = (is_dml_package or is_windowsai_package) and (
         args.target_architecture == 'x64' or args.target_architecture == 'x86')
 
     is_windows_build = is_windows()
@@ -296,9 +318,7 @@ def generate_files(list, args):
     else:
         runtimes_native_folder = 'native'
 
-    runtimes = '{}{}\\{}"'.format(runtimes_target,
-                                  args.target_architecture,
-                                  'lib\\uap10.0' if args.is_store_build else runtimes_native_folder)
+    runtimes = '{}{}\\{}"'.format(runtimes_target, args.target_architecture, runtimes_native_folder)
 
     # Process headers
     files_list.append('<file src=' + '"' + os.path.join(args.sources_path,
@@ -359,7 +379,7 @@ def generate_files(list, args):
         files_list.append('<file src=' + '"' + os.path.join(args.ort_build_path, args.build_config,
                                                             'microsoft.ai.machinelearning.experimental.winmd') +
                           '" target="winmds\\Microsoft.AI.MachineLearning.Experimental.winmd" />')
-        if args.target_architecture == 'x64' and not args.is_store_build:
+        if args.target_architecture == 'x64':
             interop_dll_path = 'Microsoft.AI.MachineLearning.Interop\\net5.0-windows10.0.17763.0'
             interop_dll = interop_dll_path + '\\Microsoft.AI.MachineLearning.Interop.dll'
             files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, interop_dll) +
@@ -402,18 +422,15 @@ def generate_files(list, args):
         # Process microsoft.ai.machinelearning import lib, dll, and pdb
         files_list.append('<file src=' + '"' +
                           os.path.join(args.native_build_path, 'microsoft.ai.machinelearning.lib') +
-                          runtimes_target + args.target_architecture + '\\' +
-                          ('lib\\uap10.0' if args.is_store_build else '_native') +
+                          runtimes_target + args.target_architecture + '\\_native' +
                           '\\Microsoft.AI.MachineLearning.lib" />')
         files_list.append('<file src=' + '"' + os.path.join(args.native_build_path,
                                                             'microsoft.ai.machinelearning.dll') +
-                          runtimes_target + args.target_architecture + '\\' +
-                          ('lib\\uap10.0' if args.is_store_build else '_native') +
+                          runtimes_target + args.target_architecture + '\\_native' +
                           '\\Microsoft.AI.MachineLearning.dll" />')
         files_list.append('<file src=' + '"' + os.path.join(args.native_build_path,
                                                             'microsoft.ai.machinelearning.pdb') +
-                          runtimes_target + args.target_architecture + '\\' +
-                          ('lib\\uap10.0' if args.is_store_build else '_native') +
+                          runtimes_target + args.target_architecture + '\\_native' +
                           '\\Microsoft.AI.MachineLearning.pdb" />')
     # Process execution providers which are built as shared libs
     if args.execution_provider == "tensorrt" and not is_ado_packaging_build:
@@ -500,14 +517,14 @@ def generate_files(list, args):
         windowsai_rules = 'Microsoft.AI.MachineLearning.Rules.Project.xml'
         windowsai_native_rules = os.path.join(args.sources_path, 'csharp', 'src', windowsai_src, windowsai_rules)
         windowsai_native_targets = os.path.join(args.sources_path, 'csharp', 'src', windowsai_src, windowsai_targets)
-        build = 'build\\{}'.format('uap10.0' if args.is_store_build else 'native')
+        build = 'build\\native'
         files_list.append('<file src=' + '"' + windowsai_native_props + '" target="' + build + '" />')
         # Process native targets
         files_list.append('<file src=' + '"' + windowsai_native_targets + '" target="' + build + '" />')
         # Process rules
         files_list.append('<file src=' + '"' + windowsai_native_rules + '" target="' + build + '" />')
         # Process .net5.0 targets
-        if args.target_architecture == 'x64' and not args.is_store_build:
+        if args.target_architecture == 'x64':
             interop_src = 'Microsoft.AI.MachineLearning.Interop'
             interop_targets = 'Microsoft.AI.MachineLearning.targets'
             windowsai_net50_targets = os.path.join(args.sources_path, 'csharp', 'src', interop_src, interop_targets)
@@ -533,6 +550,29 @@ def generate_files(list, args):
         files_list.append('<file src=' + '"' + target_targets + '" target="build\\native" />')
         files_list.append('<file src=' + '"' + target_targets + '" target="build\\netstandard1.1" />')
         files_list.append('<file src=' + '"' + target_targets + '" target="build\\netstandard2.0" />')
+
+        # Process xamarin targets files
+        if args.package_name == 'Microsoft.ML.OnnxRuntime':
+            monoandroid_source_targets = os.path.join(args.sources_path, 'csharp', 'src', 'Microsoft.ML.OnnxRuntime',
+                                                      'targets', 'monoandroid11.0', 'targets.xml')
+            monoandroid_target_targets = os.path.join(args.sources_path, 'csharp', 'src', 'Microsoft.ML.OnnxRuntime',
+                                                      'targets', 'monoandroid11.0', args.package_name + '.targets')
+            os.system(copy_command + ' ' + monoandroid_source_targets + ' ' + monoandroid_target_targets)
+
+            xamarinios_source_targets = os.path.join(args.sources_path, 'csharp', 'src', 'Microsoft.ML.OnnxRuntime',
+                                                     'targets', 'xamarinios10', 'targets.xml')
+            xamarinios_target_targets = os.path.join(args.sources_path, 'csharp', 'src', 'Microsoft.ML.OnnxRuntime',
+                                                     'targets', 'xamarinios10', args.package_name + '.targets')
+            os.system(copy_command + ' ' + xamarinios_source_targets + ' ' + xamarinios_target_targets)
+
+            files_list.append('<file src=' + '"' + monoandroid_target_targets +
+                              '" target="build\\monoandroid11.0" />')
+            files_list.append('<file src=' + '"' + monoandroid_target_targets +
+                              '" target="buildTransitive\\monoandroid11.0" />')
+            files_list.append('<file src=' + '"' + xamarinios_target_targets +
+                              '" target="build\\xamarinios10" />')
+            files_list.append('<file src=' + '"' + xamarinios_target_targets +
+                              '" target="buildTransitive\\xamarinios10" />')
 
     # Process License, ThirdPartyNotices, Privacy
     files_list.append('<file src=' + '"' + os.path.join(args.sources_path, 'LICENSE.txt') + '" target="LICENSE.txt" />')
@@ -562,9 +602,13 @@ def is_linux():
     return sys.platform.startswith("linux")
 
 
+def is_macos():
+    return sys.platform.startswith("darwin")
+
+
 def validate_platform():
-    if not(is_windows() or is_linux()):
-        raise Exception('Native Nuget generation is currently supported only on Windows and Linux')
+    if not(is_windows() or is_linux() or is_macos()):
+        raise Exception('Native Nuget generation is currently supported only on Windows, Linux, and MacOS')
 
 
 def validate_execution_provider(execution_provider):
@@ -592,6 +636,8 @@ def main():
     # Create the nuspec needed to generate the Nuget
     with open(os.path.join(args.native_build_path, 'NativeNuget.nuspec'), 'w') as f:
         for line in lines:
+            # Uncomment the printing of the line if you need to debug what's produced on a CI machine
+            # print(line)
             f.write(line)
             f.write('\n')
 

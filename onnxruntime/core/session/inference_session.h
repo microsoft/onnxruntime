@@ -514,7 +514,6 @@ class InferenceSession {
   common::Status SaveToOrtFormat(const std::basic_string<ORTCHAR_T>& filepath) const;
 #endif
 
-#if defined(ENABLE_ORT_FORMAT_LOAD)
   /**
     * Load an ORT format model.
     * @param model_uri absolute path of the model file.
@@ -536,8 +535,6 @@ class InferenceSession {
   common::Status LoadOrtModel(const void* model_data, int model_data_len) ORT_MUST_USE_RESULT;
 
   common::Status LoadOrtModel(std::function<Status()> load_ort_format_model_bytes) ORT_MUST_USE_RESULT;
-
-#endif  // defined(ENABLE_ORT_FORMAT_LOAD)
 
   // Create a Logger for a single execution if possible. Otherwise use the default logger.
   // If a new logger is created, it will also be stored in new_run_logger,
@@ -583,8 +580,8 @@ class InferenceSession {
   void ShrinkMemoryArenas(const std::vector<AllocatorPtr>& arenas_to_shrink);
 
 #if !defined(ORT_MINIMAL_BUILD)
-  virtual void AddPredefinedTransformers(GraphTransformerManager& transformer_manager,
-                                         TransformerLevel graph_optimization_level);
+  virtual common::Status AddPredefinedTransformers(GraphTransformerManager& transformer_manager,
+                                                   TransformerLevel graph_optimization_level);
 
   common::Status TransformGraph(onnxruntime::Graph& graph,
                                 const onnxruntime::GraphTransformerManager& graph_transformer_mgr,

@@ -93,10 +93,25 @@ def call_python_forward_function(
                 ctx = arg.grad_fn
                 first_tensor_output = arg
                 break
-            if training_mode_flag:
-                # Must extract one valid context from result tensors.
-                assert ctx is not None
 
+            # Context can be None because not all autograd.Function's are differentiable. The function
+            # https://github.com/pytorch/pytorch/blob/d701357d921ef167d42c125e65b6f7da6be3ad0f/torch/csrc/autograd/custom_function.cpp#L209?
+            # means if all output of forward function are not differentiable, then grad_fn will be None (not be set).
+            # For example,
+            #  class Bar(torch.autograd.Function):
+            #      # A non-differentiable autograd Function whose forard output
+            #      # doesn't have grad_fn attribute.
+            #      @staticmethod
+            #      def forward(ctx, x):
+            #          y = torch.ones_like(x)
+            #          return y
+
+            #      @staticmethod
+            #      def backward(ctx, dy):
+            #          dx = torch.zeros_like(dy)
+            #          return dx
+
+            if training_mode_flag and ctx:
                 #         FORWARD                                                    BACKWARD FUNCTION CONNECTIONS
                 # input_1 (leaf, constructed by from_dlpack)   <----reference----  AccumulateGrad gradient function
                 #             ↓                                                                 ↑
@@ -105,17 +120,16 @@ def call_python_forward_function(
                 #    output_1, output_2   --- shared_ptr<PyNode> ---                            ↑
                 #             ↓                                                       previous gradient function
 
-                # We remove the edges starting between current autograd.Function's gradient function and 
+                # We remove the edges starting between current autograd.Function's gradient function and
                 # it's input's gradient function (e.g. AccumulateGrad gradient function), then
                 # AccumulateGrad gradient function will be destroyed, releasing the reference to input_1
                 # (https://github.com/pytorch/pytorch/blob/15532595209d2daf34d35e10f8d3d3b64966aea2/torch/csrc/autograd/functions/accumulate_grad.cpp#L21).
                 # The next edges are stored in Node, with which we can get next gradient function.
                 # https://github.com/pytorch/pytorch/blob/15532595209d2daf34d35e10f8d3d3b64966aea2/torch/csrc/autograd/function.h#L527
-                torch_interop_utils.clear_grad_fns_for_next_edges(first_tensor_output, ctx.saved_tensors)
+                # filter out the None in the saved_tensors.
+                saved_tensors = [t for t in ctx.saved_tensors if t is not None]
+                torch_interop_utils.clear_grad_fns_for_next_edges(first_tensor_output, saved_tensors)
                 torch_interop_utils.register_grad_fn(id(ctx), first_tensor_output)
-            else:
-                # Context must not present under non-training mode.
-                assert ctx is None
             return ctx
 
         if isinstance(result, torch.Tensor):

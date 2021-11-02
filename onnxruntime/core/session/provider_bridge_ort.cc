@@ -33,8 +33,16 @@
 #include "orttraining/core/framework/torch/refcount_tracker.h"
 #endif
 #endif
+#ifdef ENABLE_NVTX_PROFILE
+#include "core/providers/cuda/nvtx_profile.h"
+#endif
 #if defined(ORT_USE_NCCL)
 #include "orttraining/training_ops/cuda/communication/nccl_service.h"
+#include "orttraining/core/framework/distributed_run_context.h"
+#endif
+
+#if defined(USE_ROCM) && defined(ORT_USE_NCCL)
+#include "orttraining/training_ops/rocm/communication/nccl_service.h"
 #include "orttraining/core/framework/distributed_run_context.h"
 #endif
 
@@ -55,6 +63,7 @@ using IndexedSubGraph_MetaDef = IndexedSubGraph::MetaDef;
 #include "core/providers/shared_library/provider_interfaces.h"
 
 #include "core/providers/cuda/cuda_provider_factory.h"
+#include "core/providers/rocm/rocm_provider_factory.h"
 #include "core/providers/dnnl/dnnl_provider_factory.h"
 #include "core/providers/tensorrt/tensorrt_provider_factory.h"
 #include "core/providers/openvino/openvino_provider_factory.h"
@@ -80,6 +89,8 @@ namespace onnxruntime {
 
 ProviderInfo_CUDA* TryGetProviderInfo_CUDA();
 ProviderInfo_CUDA& GetProviderInfo_CUDA();
+ProviderInfo_ROCM* TryGetProviderInfo_ROCM();
+ProviderInfo_ROCM& GetProviderInfo_ROCM();
 ProviderHostCPU& GetProviderHostCPU();
 
 struct TensorShapeProto_Dimension_Iterator_Impl : TensorShapeProto_Dimension_Iterator {
@@ -170,6 +181,21 @@ struct ProviderHostImpl : ProviderHost {
 
   bool CudaCall_false(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) override { return GetProviderInfo_CUDA().CudaCall_false(retCode, exprString, libName, successCode, msg); }
   bool CudaCall_true(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) override { return GetProviderInfo_CUDA().CudaCall_true(retCode, exprString, libName, successCode, msg); }
+#endif
+
+#ifdef USE_ROCM
+  std::unique_ptr<IAllocator> CreateROCMAllocator(int16_t device_id, const char* name) override { return GetProviderInfo_ROCM().CreateROCMAllocator(device_id, name); }
+  std::unique_ptr<IAllocator> CreateROCMPinnedAllocator(int16_t device_id, const char* name) override { return GetProviderInfo_ROCM().CreateROCMPinnedAllocator(device_id, name); }
+  std::unique_ptr<IDataTransfer> CreateGPUDataTransfer(void* stream) override { return GetProviderInfo_ROCM().CreateGPUDataTransfer(stream); }
+
+  void rocm__Impl_Cast(void* stream, const int64_t* input_data, int32_t* output_data, size_t count) override { return GetProviderInfo_ROCM().rocm__Impl_Cast(stream, input_data, output_data, count); }
+  void rocm__Impl_Cast(void* stream, const int32_t* input_data, int64_t* output_data, size_t count) override { return GetProviderInfo_ROCM().rocm__Impl_Cast(stream, input_data, output_data, count); }
+
+  void rocm__Impl_Cast(void* stream, const double* input_data, float* output_data, size_t count) override { return GetProviderInfo_ROCM().rocm__Impl_Cast(stream, input_data, output_data, count); }
+  void rocm__Impl_Cast(void* stream, const float* input_data, double* output_data, size_t count) override { return GetProviderInfo_ROCM().rocm__Impl_Cast(stream, input_data, output_data, count); }
+
+  bool RocmCall_false(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) override { return GetProviderInfo_ROCM().RocmCall_false(retCode, exprString, libName, successCode, msg); }
+  bool RocmCall_true(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) override { return GetProviderInfo_ROCM().RocmCall_true(retCode, exprString, libName, successCode, msg); }
 #endif
 
   std::string GetEnvironmentVar(const std::string& var_name) override { return Env::Default().GetEnvironmentVar(var_name); }
@@ -850,6 +876,7 @@ struct ProviderHostImpl : ProviderHost {
   bool Tensor__IsDataType_float(const Tensor* p) noexcept override { return p->IsDataType<float>(); }
   bool Tensor__IsDataType_double(const Tensor* p) noexcept override { return p->IsDataType<double>(); }
   bool Tensor__IsDataType_MLFloat16(const Tensor* p) noexcept override { return p->IsDataType<MLFloat16>(); }
+  bool Tensor__IsDataType_BFloat16(const Tensor* p) noexcept override { return p->IsDataType<BFloat16>(); }
   bool Tensor__IsDataTypeString(const Tensor* p) noexcept override { return p->IsDataTypeString(); }
 
   const TensorShape& Tensor__Shape(const Tensor* p) override { return p->Shape(); }
@@ -883,7 +910,7 @@ struct ProviderHostImpl : ProviderHost {
   training::DistributedRunContext& GetDistributedRunContextInstance() override { return training::DistributedRunContext::GetInstance(); }
 #endif
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_ROCM)
 
   PhiloxGenerator& PhiloxGenerator__Default() override { return PhiloxGenerator::Default(); }
 
@@ -926,7 +953,11 @@ struct ProviderSharedLibrary {
     }
 
     void (*PProvider_SetHost)(void*);
-    Env::Default().GetSymbolFromLibrary(handle_, "Provider_SetHost", (void**)&PProvider_SetHost);
+    error = Env::Default().GetSymbolFromLibrary(handle_, "Provider_SetHost", (void**)&PProvider_SetHost);
+    if (!error.IsOK()) {
+      LOGS_DEFAULT(ERROR) << error.ErrorMessage();
+      return false;
+    }
 
     PProvider_SetHost(&provider_host_);
     return true;
@@ -934,7 +965,10 @@ struct ProviderSharedLibrary {
 
   void Unload() {
     if (handle_) {
-      Env::Default().UnloadDynamicLibrary(handle_);
+      auto status = Env::Default().UnloadDynamicLibrary(handle_);
+      if (!status.IsOK()) {
+        LOGS_DEFAULT(ERROR) << status.ErrorMessage();
+      }
       handle_ = nullptr;
     }
   }
@@ -977,7 +1011,11 @@ struct ProviderLibrary {
     }
 
     Provider* (*PGetProvider)();
-    Env::Default().GetSymbolFromLibrary(handle_, "GetProvider", (void**)&PGetProvider);
+    error = Env::Default().GetSymbolFromLibrary(handle_, "GetProvider", (void**)&PGetProvider);
+    if (!error.IsOK()) {
+      LOGS_DEFAULT(ERROR) << error.ErrorMessage();
+      return nullptr;
+    }
 
     provider_ = PGetProvider();
     return provider_;
@@ -988,8 +1026,12 @@ struct ProviderLibrary {
       if (provider_)
         provider_->Shutdown();
 
-      if (unload_)
-        Env::Default().UnloadDynamicLibrary(handle_);
+      if (unload_) {
+        auto status = Env::Default().UnloadDynamicLibrary(handle_);
+        if (!status.IsOK()) {
+          LOGS_DEFAULT(ERROR) << status.ErrorMessage();
+        }
+      }
 
       handle_ = nullptr;
       provider_ = nullptr;
@@ -1011,6 +1053,12 @@ static ProviderLibrary s_library_cuda(LIBRARY_PREFIX "onnxruntime_providers_cuda
                                       false /* unload - On Linux if we unload the cuda shared provider we crash */
 #endif
 );
+static ProviderLibrary s_library_rocm(LIBRARY_PREFIX "onnxruntime_providers_rocm" LIBRARY_EXTENSION
+#ifndef _WIN32
+                                      ,
+                                      false /* unload - On Linux if we unload the rocm shared provider we crash */
+#endif
+);
 static ProviderLibrary s_library_dnnl(LIBRARY_PREFIX "onnxruntime_providers_dnnl" LIBRARY_EXTENSION);
 static ProviderLibrary s_library_openvino(LIBRARY_PREFIX "onnxruntime_providers_openvino" LIBRARY_EXTENSION);
 static ProviderLibrary s_library_tensorrt(LIBRARY_PREFIX "onnxruntime_providers_tensorrt" LIBRARY_EXTENSION);
@@ -1020,6 +1068,7 @@ void UnloadSharedProviders() {
   s_library_openvino.Unload();
   s_library_tensorrt.Unload();
   s_library_cuda.Unload();
+  s_library_rocm.Unload();
   s_library_shared.Unload();
 }
 
@@ -1031,8 +1080,22 @@ std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const c
   return nullptr;
 }
 
+std::unique_ptr<IAllocator> CreateROCMPinnedAllocator(int16_t device_id, const char* name) {
+  if (auto* info = onnxruntime::TryGetProviderInfo_ROCM())
+    return info->CreateROCMPinnedAllocator(device_id, name);
+
+  return nullptr;
+}
+
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Cuda(const OrtCUDAProviderOptions* provider_options) {
   if (auto* provider = s_library_cuda.Get())
+    return provider->CreateExecutionProviderFactory(provider_options);
+
+  return nullptr;
+}
+
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Rocm(const OrtROCMProviderOptions* provider_options) {
+  if (auto* provider = s_library_rocm.Get())
     return provider->CreateExecutionProviderFactory(provider_options);
 
   return nullptr;
@@ -1086,6 +1149,20 @@ ProviderInfo_CUDA& GetProviderInfo_CUDA() {
   ORT_THROW("CUDA Provider not available, can't get interface for it");
 }
 
+ProviderInfo_ROCM* TryGetProviderInfo_ROCM() {
+  if (auto* provider = s_library_rocm.Get())
+    return reinterpret_cast<ProviderInfo_ROCM*>(provider->GetInfo());
+
+  return nullptr;
+}
+
+ProviderInfo_ROCM& GetProviderInfo_ROCM() {
+  if (auto* info = TryGetProviderInfo_ROCM())
+    return *info;
+
+  ORT_THROW("ROCM Provider not available, can't get interface for it");
+}
+
 void CopyGpuToCpu(
     void* dst_ptr,
     const void* src_ptr,
@@ -1094,14 +1171,33 @@ void CopyGpuToCpu(
     const OrtMemoryInfo& src_location) {
   if (auto* info = onnxruntime::TryGetProviderInfo_CUDA())
     return info->CopyGpuToCpu(dst_ptr, src_ptr, size, dst_location, src_location);
+  if (auto* info = onnxruntime::TryGetProviderInfo_ROCM())
+    return info->CopyGpuToCpu(dst_ptr, src_ptr, size, dst_location, src_location);
   ORT_THROW("GPU-to-CPU copy is not implemented.");
 }
 
 void cudaMemcpy_HostToDevice(void* dst, const void* src, size_t count) {
   if (auto* info = onnxruntime::TryGetProviderInfo_CUDA())
     return info->cudaMemcpy_HostToDevice(dst, src, count);
+  if (auto* info = onnxruntime::TryGetProviderInfo_ROCM())
+    return info->rocmMemcpy_HostToDevice(dst, src, count);
   ORT_THROW("cudaMemcpy_HostToDevice is not implemented.");
 }
+
+#ifdef ENABLE_NVTX_PROFILE
+namespace profile
+{
+void NvtxRangeCreator::BeginImpl()
+{
+  GetProviderInfo_CUDA().NvtxRangeCreator__BeginImpl(this);
+}
+
+void NvtxRangeCreator::EndImpl()
+{
+  GetProviderInfo_CUDA().NvtxRangeCreator__EndImpl(this);
+}
+}
+#endif
 
 #if defined(USE_CUDA) && defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
 namespace cuda {
@@ -1109,6 +1205,14 @@ INcclService& INcclService::GetInstance() {
   return GetProviderInfo_CUDA().GetINcclService();
 }
 }  // namespace cuda
+#endif
+
+#if defined(USE_ROCM) && defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
+namespace rocm {
+INcclService& INcclService::GetInstance() {
+  return GetProviderInfo_ROCM().GetINcclService();
+}
+}  // namespace rocm
 #endif
 
 void UpdateProviderInfo_Tensorrt(OrtTensorRTProviderOptions* provider_options, const ProviderOptions& options) {
@@ -1193,7 +1297,9 @@ ORT_API_STATUS_IMPL(OrtApis::SetCurrentGpuDeviceId, _In_ int device_id) {
   API_IMPL_BEGIN
   if (auto* info = onnxruntime::TryGetProviderInfo_CUDA())
     return info->SetCurrentGpuDeviceId(device_id);
-  return CreateStatus(ORT_FAIL, "CUDA execution provider is either not enabled or not available.");
+  if (auto* info = onnxruntime::TryGetProviderInfo_ROCM())
+    return info->SetCurrentGpuDeviceId(device_id);
+  return CreateStatus(ORT_FAIL, "CUDA and/or ROCM execution provider is either not enabled or not available.");
   API_IMPL_END
 }
 
@@ -1201,7 +1307,9 @@ ORT_API_STATUS_IMPL(OrtApis::GetCurrentGpuDeviceId, _In_ int* device_id) {
   API_IMPL_BEGIN
   if (auto* info = onnxruntime::TryGetProviderInfo_CUDA())
     return info->GetCurrentGpuDeviceId(device_id);
-  return CreateStatus(ORT_FAIL, "CUDA execution provider is either not enabled or not available.");
+  if (auto* info = onnxruntime::TryGetProviderInfo_ROCM())
+    return info->GetCurrentGpuDeviceId(device_id);
+  return CreateStatus(ORT_FAIL, "CUDA and/or ROCM execution provider is either not enabled or not available.");
   API_IMPL_END
 }
 
@@ -1210,6 +1318,25 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_CUDA, _In_ Or
   auto factory = onnxruntime::CreateExecutionProviderFactory_Cuda(cuda_options);
   if (!factory) {
     return OrtApis::CreateStatus(ORT_FAIL, "OrtSessionOptionsAppendExecutionProvider_Cuda: Failed to load shared library");
+  }
+
+  options->provider_factories.push_back(factory);
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_ROCM, _In_ OrtSessionOptions* options, int device_id) {
+  OrtROCMProviderOptions provider_options{};
+  provider_options.device_id = device_id;
+
+  return OrtApis::SessionOptionsAppendExecutionProvider_ROCM(options, &provider_options);
+}
+
+ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_ROCM, _In_ OrtSessionOptions* options, _In_ const OrtROCMProviderOptions* rocm_options) {
+  API_IMPL_BEGIN
+  auto factory = onnxruntime::CreateExecutionProviderFactory_Rocm(rocm_options);
+  if (!factory) {
+    return OrtApis::CreateStatus(ORT_FAIL, "OrtSessionOptionsAppendExecutionProvider_Rocm: Failed to load shared library");
   }
 
   options->provider_factories.push_back(factory);
