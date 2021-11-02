@@ -768,6 +768,7 @@ void RegisterTrainingOpSchemas() {
       .Input(0, "shape", "Shape of the Gather input X.", "I")
       .Input(1, "indices", "Tensor of int32/int64 indices, of any rank q.", "Tind")
       .Input(2, "dY", "Gradient of output", "T")
+      .Input(3, "num_segments", "Num of Segments", "Int32", OpSchema::Optional)
       .Output(0, "dX", "Gradient of input", "T")
       .Attr(
           "axis",
@@ -780,6 +781,10 @@ void RegisterTrainingOpSchemas() {
           {"tensor(int64)"},
           "Constrain input shape to integer tensors.")
       .TypeConstraint(
+          "Int32",
+          {"tensor(int32)"},
+          "Constrain input shape to integer tensors.")
+      .TypeConstraint(
           "T",
           {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
           "Constrain input and output types to float tensors.")
@@ -787,6 +792,88 @@ void RegisterTrainingOpSchemas() {
           "Tind",
           {"tensor(int32)", "tensor(int64)"},
           "Constrain indices to integer types");
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(GatherInternal)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .SetDoc("GatherInternal")
+      .Attr(
+          "axis",
+          "Which axis to gather on. Negative value means "
+          "counting dimensions from the back. Accepted range is [-r, r-1] where r = rank(data).",
+          AttributeProto::INT,
+          static_cast<int64_t>(0))
+      .Input(
+          0,
+          "data",
+          "Tensor of rank r >= 1.",
+          "T")
+      .Input(
+          1,
+          "indices",
+          "Tensor of int32/int64 indices, of any rank q. All index values are expected to be within bounds [-s, s-1] "
+          "along axis of size s. It is an error if any of the index values are out of bounds.",
+          "Tind")
+      .Output(
+          0,
+          "output",
+          "Tensor of rank q + (r - 1).",
+          "T")
+      .Output(
+          1,
+          "num_segments",
+          "Number of segments",
+          "Int32",
+          OpSchema::Optional)
+      .TypeConstraint(
+          "T",
+          OpSchema::all_tensor_types_with_bfloat(),
+          "Constrain input and output types to any tensor type.")
+      .TypeConstraint(
+          "Tind",
+          {"tensor(int32)", "tensor(int64)"},
+          "Constrain indices to integer types")
+      .TypeConstraint(
+          "Int32",
+          {"tensor(int32)"},
+          "Constrain to int32") 
+      .TypeAndShapeInferenceFunction([](InferenceContext& /*ctx*/) {
+        // propagateElemTypeFromInputToOutput(ctx, 0, 0);
+        // propagateElemTypeFromInputToOutput(ctx, 1, 1);
+        // if (!hasNInputShapes(ctx, 2)) {
+        //   return;
+        // }
+        // const TensorShapeProto& data_shape =
+        //     ctx.getInputType(0)->tensor_type().shape();
+        // const TensorShapeProto& indices_shape =
+        //     ctx.getInputType(1)->tensor_type().shape();
+        // int r = data_shape.dim_size();
+        // if (r < 1) {
+        //   fail_shape_inference("data tensor must have rank >= 1");
+        // }
+        // int q = indices_shape.dim_size();
+        // int axis = static_cast<int>(getAttribute(ctx, "axis", 0));
+        // if (axis < -r || axis >= r) {
+        //   fail_shape_inference("axis must be in [-r, r-1]");
+        // }
+        // if (axis < 0) {
+        //   axis += r;
+        // }
+        // int out_rank = q + r - 1;
+        // if (out_rank == 0) {
+        //   ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape();
+        // }
+        // for (int i = 0; i < out_rank; ++i) {
+        //   *ctx.getOutputType(0)
+        //         ->mutable_tensor_type()
+        //         ->mutable_shape()
+        //         ->add_dim() = (i < axis) ? data_shape.dim(i) : // i < axis < r
+        //       (i >= axis && i < axis + q) ? indices_shape.dim(i - axis)
+        //                                   : // i - axis < q
+        //           data_shape.dim(i - q + 1); // i < out_rank < q + r - 1
+        // }
+      });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(GatherElementsGrad)
       .SetDomain(kMSDomain)

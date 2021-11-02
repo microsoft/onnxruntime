@@ -4,6 +4,13 @@
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "gather_impl.h"
 
+#include <cub/device/device_radix_sort.cuh>
+#include <cub/device/device_reduce.cuh>
+#include <cub/device/device_run_length_encode.cuh>
+#include <cub/device/device_scan.cuh>
+#include <cub/iterator/counting_input_iterator.cuh>
+#include <cub/iterator/discard_output_iterator.cuh>
+
 namespace onnxruntime {
 namespace cuda {
 
@@ -100,6 +107,109 @@ void GatherImpl(
       ORT_THROW("Unsupported element size by the Gather CUDA kernel");
   }
 }
+
+template <typename TInputIterator, typename TOutputIterator>
+__global__ void CopyKernel(TOutputIterator dst, TInputIterator src, int64_t length) {
+  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, length);
+  dst[id] = src[id];
+}
+
+// get sorted dX and dY indices, ordered by dX indices
+template <typename TIndex>
+void GetSortedIndices(
+    cudaStream_t stream,
+    const CudaScratchBufferAllocator& allocator,
+    const TIndex* dX_indices,
+    GatheredIndexIndex_t num_gathered_indices,
+    IAllocatorUniquePtr<TIndex>& dX_indices_sorted_out,
+    IAllocatorUniquePtr<TIndex>& dY_indices_sorted_out) {
+  auto dY_indices = allocator.GetScratchBuffer<TIndex>(num_gathered_indices);
+  CopyKernel<<<CeilDiv(num_gathered_indices, GridDim::maxThreadsPerBlock),
+               GridDim::maxThreadsPerBlock, 0, stream>>>(
+      dY_indices.get(), cub::CountingInputIterator<TIndex>{0}, num_gathered_indices);
+
+  auto dX_indices_sorted = allocator.GetScratchBuffer<TIndex>(num_gathered_indices);
+  auto dY_indices_sorted = allocator.GetScratchBuffer<TIndex>(num_gathered_indices);
+
+  size_t temp_storage_size_bytes = 0;
+  CUDA_CALL_THROW(cub::DeviceRadixSort::SortPairs(
+      nullptr, temp_storage_size_bytes,
+      dX_indices, dX_indices_sorted.get(),
+      dY_indices.get(), dY_indices_sorted.get(),
+      num_gathered_indices, 0, sizeof(TIndex)*8, stream));
+
+  auto temp_storage = allocator.GetScratchBuffer<void>(temp_storage_size_bytes);
+  CUDA_CALL_THROW(cub::DeviceRadixSort::SortPairs(
+      temp_storage.get(), temp_storage_size_bytes,
+      dX_indices, dX_indices_sorted.get(),
+      dY_indices.get(), dY_indices_sorted.get(),
+      num_gathered_indices, 0, sizeof(TIndex)*8, stream));
+
+  dX_indices_sorted_out = std::move(dX_indices_sorted);
+  dY_indices_sorted_out = std::move(dY_indices_sorted);
+}
+
+
+template <typename T, typename TIndex>
+void GatherGradPrepare(
+    cudaStream_t stream,
+    const CudaScratchBufferAllocator& allocator,
+    const TIndex* dX_indices,
+    const GatheredIndexIndex_t num_gathered_indices,
+    SegmentIndex_t& host_num_segments) {
+
+  IAllocatorUniquePtr<TIndex> dX_indices_sorted, dY_indices_sorted;
+  GetSortedIndices(
+      stream,
+      allocator,
+      dX_indices, num_gathered_indices,
+      dX_indices_sorted, dY_indices_sorted);
+
+  // get number of segments and segment counts
+  // SegmentIndex_t host_num_segments = 0;
+  auto segment_counts = allocator.GetScratchBuffer<GatheredIndexIndex_t>(num_gathered_indices);
+  {
+    auto num_segments = allocator.GetScratchBuffer<SegmentIndex_t>(1);
+    size_t temp_storage_size_bytes = 0;
+    CUDA_CALL_THROW(cub::DeviceRunLengthEncode::Encode(
+        nullptr, temp_storage_size_bytes,
+        dX_indices_sorted.get(), cub::DiscardOutputIterator<TIndex>{}, segment_counts.get(),
+        num_segments.get(), num_gathered_indices, stream));
+
+    auto temp_storage = allocator.GetScratchBuffer<void>(temp_storage_size_bytes);
+    CUDA_CALL_THROW(cub::DeviceRunLengthEncode::Encode(
+        temp_storage.get(), temp_storage_size_bytes,
+        dX_indices_sorted.get(), cub::DiscardOutputIterator<TIndex>{}, segment_counts.get(),
+        num_segments.get(), num_gathered_indices, stream));
+
+    // CPU/GPU sync!
+    CUDA_CALL_THROW(cudaMemcpyAsync(
+        &host_num_segments, num_segments.get(), sizeof(SegmentIndex_t), cudaMemcpyDeviceToHost, stream));
+    // CUDA_CALL_THROW(cudaStreamSynchronize(stream));
+  }
+}
+
+#define SPECIALIZED(T, TIndex)                         \
+  template void GatherGradPrepare<T, TIndex>(          \
+      cudaStream_t stream,                             \
+      const CudaScratchBufferAllocator& allocator,     \
+      const TIndex* dX_indices,                        \
+      const GatheredIndexIndex_t num_gathered_indices, \
+      SegmentIndex_t& host_num_segments);
+
+#define SPECIALIZED_WITH_IDX(T) \
+  SPECIALIZED(T, int32_t)       \
+  SPECIALIZED(T, int64_t)
+
+SPECIALIZED_WITH_IDX(float)
+SPECIALIZED_WITH_IDX(half)
+#if CUDA_VERSION >= 11000 && (__CUDA_ARCH__ >= 800 || !defined(__CUDA_ARCH__))
+SPECIALIZED_WITH_IDX(nv_bfloat16)
+#endif
+
+#undef SPECIALIZED_WITH_IDX
+#undef SPECIALIZED
+
 
 }  // namespace cuda
 }  // namespace onnxruntime

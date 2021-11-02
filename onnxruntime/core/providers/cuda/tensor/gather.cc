@@ -44,6 +44,23 @@ ONNX_OPERATOR_KERNEL_EX(
                                     DataTypeImpl::GetTensorType<int64_t>()}),
     Gather);
 
+ONNX_OPERATOR_KERNEL_EX(
+    GatherInternal,
+    kMSDomain,
+    1,
+    kCudaExecutionProvider,
+    (*KernelDefBuilder::Create())
+        // properly force CPU/GPU synch inside the kernel
+        .OutputMemoryType(OrtMemTypeCPUInput, 1)
+        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
+        .TypeConstraint("Int32", DataTypeImpl::GetTensorType<int32_t>())
+        .TypeConstraint("Tind", std::vector<MLDataType>{
+                                    DataTypeImpl::GetTensorType<int32_t>(),
+                                    DataTypeImpl::GetTensorType<int64_t>()}),
+    Gather);
+
+using GatheredIndexIndex_t = int32_t;
+
 Status Gather::ComputeInternal(OpKernelContext* context) const {
   Prepare p;
   ORT_RETURN_IF_ERROR(PrepareForCompute(context, p));
@@ -87,6 +104,20 @@ Status Gather::ComputeInternal(OpKernelContext* context) const {
         element_size,
         output_data,
         p.output_tensor->Shape().Size());
+
+    auto* num_segments = context->Output(1, {1});
+    int32_t* p_num_segments = num_segments->MutableData<int32_t>();
+
+    const SafeInt<GatheredIndexIndex_t> num_gathered_indices{N};
+   
+
+    GatherGradPrepare<float, int64_t>(
+      Stream(),
+      CudaScratchBufferAllocator{*this},
+      reinterpret_cast<const int64_t*>(indices_data),
+      num_gathered_indices,
+      *p_num_segments);
+
     return Status::OK();
   }
 

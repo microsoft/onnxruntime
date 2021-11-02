@@ -27,7 +27,9 @@ ONNX_OPERATOR_KERNEL_EX(
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
         .InputMemoryType(OrtMemTypeCPUInput, 0)
+        .InputMemoryType(OrtMemTypeCPUInput, 3)
         .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
+        .TypeConstraint("Int32", DataTypeImpl::GetTensorType<int32_t>())
         .TypeConstraint("T", ALL_IEEE_FLOAT_TENSOR_TYPES)
         .TypeConstraint("Tind", std::vector<MLDataType>{
                                     DataTypeImpl::GetTensorType<int32_t>(),
@@ -112,6 +114,10 @@ Status GatherGrad::ComputeInternal(OpKernelContext* context) const {
   const TensorShape X_shape(X_shape_tensor->template Data<int64_t>(), X_shape_tensor->Shape().Size());
   const Tensor* gathered_indices = context->Input<Tensor>(1);
   const Tensor* dY = context->Input<Tensor>(2);
+
+  const Tensor* num_segments = context->Input<Tensor>(3);
+  const int32_t* p_num_segments = num_segments->template Data<int32_t>();
+  std::cout<< "num_segments: " << *p_num_segments << "\n";
 
   Tensor* dX = context->Output(0, X_shape);
   CUDA_RETURN_IF_ERROR(cudaMemsetAsync(dX->MutableDataRaw(), 0, dX->SizeInBytes(), Stream()));

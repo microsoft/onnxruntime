@@ -62,15 +62,36 @@ def nll_loss(g, self, target, weight, reduction, ignore_index):
     return output
 
 
+# @register_symbolic('embedding')
+# def embedding(g, weight, indices, padding_idx, scale_grad_by_freq, sparse):
+#     output = g.op("com.microsoft::ATenOp", weight, indices, padding_idx, scale_grad_by_freq, sparse,
+#                   name_s='aten::embedding')
+#     indices_shape = _get_tensor_sizes(indices)
+#     if indices_shape is not None and hasattr(weight.type(), 'with_sizes'):
+#         output_type = weight.type().with_sizes(
+#             indices_shape + [_get_tensor_dim_size(weight, 1)])
+#         output.setType(output_type)
+#     return output
+
 @register_symbolic('embedding')
+@parse_args("v", "v", "i", "b", "v")
 def embedding(g, weight, indices, padding_idx, scale_grad_by_freq, sparse):
-    output = g.op("com.microsoft::ATenOp", weight, indices, padding_idx, scale_grad_by_freq, sparse,
-                  name_s='aten::embedding')
-    indices_shape = _get_tensor_sizes(indices)
-    if indices_shape is not None and hasattr(weight.type(), 'with_sizes'):
-        output_type = weight.type().with_sizes(
-            indices_shape + [_get_tensor_dim_size(weight, 1)])
-        output.setType(output_type)
+    # if scale_grad_by_freq and sym_help._training_mode:
+    #     raise RuntimeError("Unsupported: ONNX export of embedding with scale_grad_by_freq=True "
+    #                        "for training mode. ONNX does not support scaling the gradients.")
+    # if padding_idx >= 0 and sym_help._training_mode:
+    #     warnings.warn("Warning: ONNX export of embedding with padding_idx >= 0 "
+    #                   "for training mode. "
+    #                   "ONNX does not support not updating the embedding vector at padding_idx during training.")
+    output, num_segments = g.op("com.microsoft::GatherInternal", weight, indices, outputs=2)
+
+    # indices_shape = _get_tensor_sizes(indices)
+    # if indices_shape is not None and hasattr(weight.type(), 'with_sizes'):
+    #     output_type = weight.type().with_sizes(
+    #         indices_shape + [_get_tensor_dim_size(weight, 1)])
+    #     output.setType(output_type)
+    # num_segments.setType()
+
     return output
 
 @register_symbolic('bitwise_or')
