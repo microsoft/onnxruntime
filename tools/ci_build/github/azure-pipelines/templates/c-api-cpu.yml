@@ -821,7 +821,7 @@ jobs:
 
 - template: ../nodejs/templates/test_posix.yml
   parameters:
-    AgentPool : 'macOS-11'
+    IsMacOS: true
     JobSuffix : 'macOS_CPU_x64'
 
 - job: Publish_NuGet_Package_And_Report

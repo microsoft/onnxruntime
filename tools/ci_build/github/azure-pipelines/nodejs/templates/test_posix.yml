@@ -1,4 +1,5 @@
 parameters:
+  IsMacOS: false
   AgentPool: 'Linux-CPU'
   JobSuffix: ''
 
@@ -7,7 +8,11 @@ jobs:
   workspace:
     clean: all
   timeoutInMinutes:  120
-  pool: ${{ parameters.AgentPool }}
+  - ${{ if eq(parameters.IsMacOS, true) }}:
+    pool:
+      vmImage: 'macOS-11'
+  - ${{ if not(eq(parameters.IsMacOS, true)) }}:
+    pool: ${{ parameters.AgentPool }}
   dependsOn:
   - Nodejs_Packaging_CPU
   condition: succeeded()
