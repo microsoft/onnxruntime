@@ -26,7 +26,7 @@ namespace Dml::GraphDescBuilder
         }
 
         assert(false);
-        THROW_HR(E_UNEXPECTED);
+        ORT_THROW_HR(E_UNEXPECTED);
         const onnxruntime::NodeArg* arg = node.OutputDefs()[0];
         return arg->Name();
     }
@@ -67,7 +67,7 @@ namespace Dml::GraphDescBuilder
                 // which then causes them to have a different name. If that happens we can't figure out how to
                 // correlate inputs to the fused graph index. This likely requires a higher-level fix, but for now
                 // just bail early.
-                THROW_HR(E_UNEXPECTED);
+                ORT_THROW_HR(E_UNEXPECTED);
             }
 
             nameToFusedNodeInputIndex.emplace(graphInput->Name(), gsl::narrow_cast<uint32_t>(inputIndex));
@@ -237,7 +237,7 @@ namespace Dml::GraphDescBuilder
             DML_OPERATOR_DESC dmlDesc = SchemaHelpers::ConvertOperatorDesc(opDesc, &allocator);
 
             ComPtr<IDMLOperator> op;
-            THROW_IF_FAILED(device->CreateOperator(&dmlDesc, IID_PPV_ARGS(&op)));
+            ORT_THROW_IF_FAILED(device->CreateOperator(&dmlDesc, IID_PPV_ARGS(&op)));
             allocator.Reset();
 
             NodeInfo nodeInfo = {};
@@ -253,7 +253,7 @@ namespace Dml::GraphDescBuilder
             const onnxruntime::NodeArg* graphOutput = graph.GetNodeArg(
                 GraphKernelHelper::GetFusedNodeArgNameMatchingGraph(fusedNodeOutputDefs[outputIndex]->Name()));
 
-            THROW_HR_IF_NULL_MSG(E_POINTER, graphOutput, "FusedNode's nodeArgList does not contain one of the nodeArg");
+            ORT_THROW_HR_IF_NULL_MSG(E_POINTER, graphOutput, "FusedNode's nodeArgList does not contain one of the nodeArg");
             const auto& outputNodeAndIndex = nameToNodeAndIndexMap.at(graphOutput->Name());
 
             DML_OUTPUT_GRAPH_EDGE_DESC edge = {};

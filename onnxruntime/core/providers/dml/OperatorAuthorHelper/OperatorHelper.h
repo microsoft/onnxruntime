@@ -5,8 +5,9 @@
 
 #include "Common.h"
 #include "Attributes.h"
-#include "MLOperatorAuthorHelper.h"
 #include "core/common/common.h"
+#include "..\DmlExecutionProvider\src\ErrorHandling.h"
+#include "MLOperatorAuthorHelper.h"
 
 namespace OperatorHelper {
 bool ContainsEmptyDimensions(gsl::span<const DimensionType> dimensions);
