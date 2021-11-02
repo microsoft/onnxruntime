@@ -7,6 +7,8 @@
 namespace onnxruntime {
 namespace cuda {
 
+constexpr int MAX_DIMS = 16;
+
 template <typename T>
 __global__ void _TileKernel(
     const size_t shape_rank,
@@ -19,6 +21,12 @@ __global__ void _TileKernel(
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
   CUDA_LONG input_index = 0;
   CUDA_LONG output_index = id;
+
+  #pragma unroll
+  for (int dim = 0; dim < MAX_DIMS; ++dim) {
+    if (dim == shape_rank) {
+      break;
+    }
   for (int dim = 0; dim < shape_rank; ++dim) {
     int out_coord, r;
     fdm_output_strides[dim].divmod(output_index, out_coord, r);
