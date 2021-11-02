@@ -65,8 +65,8 @@
 #endif
 
 #ifdef USE_CUDA
-// for registering CUDA EP as default GPU provider.
-#include "core/session/provider_bridge_ort.h"
+#include "core/providers/cuda/cuda_execution_provider_info.h"
+#include "core/providers/cuda/cuda_provider_factory.h"
 #endif
 
 using namespace ONNX_NAMESPACE;
@@ -1285,7 +1285,8 @@ common::Status InferenceSession::Initialize() {
     if (!have_cuda_ep) {
       LOGS(*session_logger_, INFO) << "Adding CUDA execution provider.";
       if (auto* cuda_provider_info = TryGetProviderInfo_CUDA()) {
-        auto p_cuda_exec_provider = cuda_provider_info->CreateExecutionProviderFactory(*info)->CreateProvider();
+        CUDAExecutionProviderInfo info;
+        auto p_cuda_exec_provider = cuda_provider_info->CreateExecutionProviderFactory(info)->CreateProvider();
         ORT_RETURN_IF_ERROR_SESSIONID_(RegisterExecutionProvider(std::move(p_cuda_exec_provider)));
       } else {
         if (!Env::Default().GetEnvironmentVar("CUDA_PATH").empty()) {
