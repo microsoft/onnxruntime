@@ -38,15 +38,14 @@ Status Trilu::ComputeInternal(OpKernelContext* ctx) const {
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Input tensor should have a rank of at least 2");
   }
   Tensor* output = ctx->Output(0, shape);
-  size_t ndim = input_dims.size();
-  TensorPitches input_pitches(input_dims);
-  TArray<int64_t> input_strides(input_pitches);
-  auto batch_size = input_dims[ndim - 1] * input_dims[ndim - 2];
+  auto batch_size = input_dims[rank - 1] * input_dims[rank - 2];
   if (batch_size == 0) {
     return Status::OK();
   }
-  const fast_divmod row_divmod_indices(gsl::narrow_cast<int>(input_strides[ndim - 1] * input_dims[ndim - 1]));
-  const fast_divmod batch_divmod_indices(gsl::narrow_cast<int>(input_strides[ndim - 2] * input_dims[ndim - 2]));
+  TensorPitches input_pitches(input_dims);
+  TArray<int64_t> input_strides(input_pitches);
+  const fast_divmod row_col_divmod_indices(gsl::narrow_cast<int>(input_strides[rank - 1] * input_dims[rank - 1]));
+  const fast_divmod batch_divmod_indices(gsl::narrow_cast<int>(input_strides[rank - 2] * input_dims[rank - 2]));
 
   size_t element_size = input.DataType()->Size();
   return TriluImpl(
@@ -58,7 +57,7 @@ Status Trilu::ComputeInternal(OpKernelContext* ctx) const {
       output->MutableDataRaw(),
       gsl::narrow<int>(output->Shape().Size()),
       batch_divmod_indices,
-      row_divmod_indices);
+      row_col_divmod_indices);
 }
 
 }  // namespace cuda
