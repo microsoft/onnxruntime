@@ -149,6 +149,110 @@ void GetSortedIndices(
   dY_indices_sorted_out = std::move(dY_indices_sorted);
 }
 
+template <typename T>
+IAllocatorUniquePtr<T> GetOffsetsFromCounts(
+    cudaStream_t stream,
+    const CudaScratchBufferAllocator& allocator,
+    const T* counts, int32_t num_counts) {
+  auto offsets = allocator.GetScratchBuffer<T>(num_counts);
+  size_t temp_storage_size_bytes = 0;
+  CUDA_CALL_THROW(cub::DeviceScan::ExclusiveSum(
+      nullptr, temp_storage_size_bytes,
+      counts, offsets.get(), num_counts, stream));
+
+  auto temp_storage = allocator.GetScratchBuffer<void>(temp_storage_size_bytes);
+  CUDA_CALL_THROW(cub::DeviceScan::ExclusiveSum(
+      temp_storage.get(), temp_storage_size_bytes,
+      counts, offsets.get(), num_counts, stream));
+
+  return offsets;
+}
+
+constexpr GatheredIndexIndex_t kMaxPartialSegmentSize = 10;
+
+// partial sums implementation adapted from here:
+// https://github.com/pytorch/pytorch/blob/b186831c08e0e4e447eedb8a5cfab582995d37f9/aten/src/ATen/native/cuda/EmbeddingBackwardKernel.cu
+__global__ void ComputePerSegmentPartialSegmentCountsKernel(
+    SegmentIndex_t* ret, const GatheredIndexIndex_t* segment_offsets,
+    SegmentIndex_t num_of_segments, GatheredIndexIndex_t num_gathered_indices) {
+  const auto id = blockIdx.x * blockDim.x + threadIdx.x;
+  if (id < num_of_segments) {
+    const auto idx_start = segment_offsets[id];
+    const auto idx_end = (id == num_of_segments - 1) ? num_gathered_indices : segment_offsets[id + 1];
+    const auto size = idx_end - idx_start;
+    ret[id] = CeilDiv(size, kMaxPartialSegmentSize);
+  }
+}
+
+__global__ void ComputePartialSegmentOffsetsKernel(
+    GatheredIndexIndex_t* ret,
+    const SegmentIndex_t* partials_per_segment,
+    const SegmentIndex_t* partials_per_segment_offset,
+    const GatheredIndexIndex_t* segment_offsets,
+    SegmentIndex_t num_of_segments) {
+  const auto id = blockIdx.x * blockDim.x + threadIdx.x;
+  if (id < num_of_segments) {
+    auto idx = partials_per_segment_offset[id];
+    const auto num_partials = partials_per_segment[id];
+    const auto segment_offset = segment_offsets[id];
+    for (SegmentIndex_t i = 0; i < num_partials; ++i) {
+      ret[idx++] = segment_offset + i * kMaxPartialSegmentSize;
+    }
+  }
+}
+
+// get partial sums of gathered dY values first, then sum the partial sums into
+// the corresponding dX value
+template <typename TIndex>
+void PartialSumsImpl(
+    cudaStream_t stream,
+    const CudaScratchBufferAllocator& allocator,
+    const TIndex* dX_indices_sorted,
+    const TIndex* dY_indices_sorted,
+    GatheredIndexIndex_t num_gathered_indices,
+    int64_t num_gathered_per_index,
+    int64_t gather_dimension_size,
+    const GatheredIndexIndex_t* segment_offsets,
+    SegmentIndex_t num_segments) {
+  // each segment is split into partial segments of at most
+  // kMaxPartialSegmentSize index pairs.
+
+  // compute the number of partial segments per segment
+  auto per_segment_partial_segment_counts = allocator.GetScratchBuffer<SegmentIndex_t>(num_segments);
+  {
+    const auto blocks_per_grid = CeilDiv(num_gathered_indices, GridDim::maxThreadsPerBlock);
+    ComputePerSegmentPartialSegmentCountsKernel<<<blocks_per_grid, GridDim::maxThreadsPerBlock, 0, stream>>>(
+        per_segment_partial_segment_counts.get(),
+        segment_offsets, num_segments, num_gathered_indices);
+  }
+
+  // compute partial segment offsets per segment
+  auto per_segment_partial_segment_offsets = GetOffsetsFromCounts(
+      stream, allocator, per_segment_partial_segment_counts.get(), num_segments);
+
+  SegmentIndex_t host_num_partial_segments = 0;
+  {
+    SegmentIndex_t last_segment_partial_segment_offset = 0,
+                   last_segment_partial_segment_count = 0;
+    // CPU/GPU sync!
+    CUDA_CALL_THROW(cudaMemcpyAsync(
+        &last_segment_partial_segment_offset,
+        &per_segment_partial_segment_offsets.get()[num_segments - 1],
+        sizeof(SegmentIndex_t), cudaMemcpyDeviceToHost, stream));
+    // CPU/GPU sync!
+    CUDA_CALL_THROW(cudaMemcpyAsync(
+        &last_segment_partial_segment_count,
+        &per_segment_partial_segment_counts.get()[num_segments - 1],
+        sizeof(SegmentIndex_t), cudaMemcpyDeviceToHost, stream));
+    CUDA_CALL_THROW(cudaStreamSynchronize(stream));
+    host_num_partial_segments =
+        last_segment_partial_segment_offset + last_segment_partial_segment_count;
+  }
+
+  printf("%d", host_num_partial_segments);
+
+
+}
 
 template <typename TIndex>
 void GatherGradPrepare(
@@ -156,6 +260,8 @@ void GatherGradPrepare(
     const CudaScratchBufferAllocator& allocator,
     const TIndex* dX_indices,
     const GatheredIndexIndex_t num_gathered_indices,
+    int64_t gather_dimension_size,
+    int64_t num_gathered_per_index,
     SegmentIndex_t& host_num_segments) {
 
   IAllocatorUniquePtr<TIndex> dX_indices_sorted, dY_indices_sorted;
@@ -185,23 +291,44 @@ void GatherGradPrepare(
     // CPU/GPU sync!
     CUDA_CALL_THROW(cudaMemcpyAsync(
         &host_num_segments, num_segments.get(), sizeof(SegmentIndex_t), cudaMemcpyDeviceToHost, stream));
-    // CUDA_CALL_THROW(cudaStreamSynchronize(stream));
+    CUDA_CALL_THROW(cudaStreamSynchronize(stream));
   }
+
+  // constexpr GatheredIndexIndex_t kMaxSegmentSizeThreshold = 32;
+  // if (host_max_segment_count <= kMaxSegmentSizeThreshold) {
+  //   DirectSumImpl(
+  //       stream, dX_indices_sorted.get(), dY_indices_sorted.get(),
+  //       dY_data, dX_data,
+  //       num_gathered_indices, num_gathered_per_index, gather_dimension_size, num_batches);
+  // } else {
+  {
+    auto segment_offsets = GetOffsetsFromCounts(
+        stream, allocator, segment_counts.get(), host_num_segments);
+    segment_counts.reset();
+
+    PartialSumsImpl(
+        stream,
+        allocator,
+        dX_indices_sorted.get(), dY_indices_sorted.get(),
+        num_gathered_indices, num_gathered_per_index, gather_dimension_size,
+        segment_offsets.get(), host_num_segments);
+  }
+
 }
 
-#define SPECIALIZED(TIndex)                         \
-  template void GatherGradPrepare<TIndex>(          \
+#define SPECIALIZED(TIndex)                            \
+  template void GatherGradPrepare<TIndex>(             \
       cudaStream_t stream,                             \
       const CudaScratchBufferAllocator& allocator,     \
       const TIndex* dX_indices,                        \
       const GatheredIndexIndex_t num_gathered_indices, \
+      int64_t gather_dimension_size,                   \
+      int64_t num_gathered_per_index,                  \
       SegmentIndex_t& host_num_segments);
-
 
 SPECIALIZED(int32_t)
 SPECIALIZED(int64_t)
 
-#undef SPECIALIZED_WITH_IDX
 #undef SPECIALIZED
 
 

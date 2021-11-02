@@ -46,6 +46,8 @@ void GatherGradPrepare(
     const CudaScratchBufferAllocator& allocator,
     const TIndex* dX_indices,
     const GatheredIndexIndex_t num_gathered_indices,
+    int64_t gather_dimension_size,
+    int64_t num_gathered_per_index,
     SegmentIndex_t& host_num_segments);
 
 }  // namespace cuda

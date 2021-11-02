@@ -353,6 +353,10 @@ void PartialSumsImpl(
         last_segment_partial_segment_offset + last_segment_partial_segment_count;
   }
 
+  // SegmentIndex_t host_num_partial_segments = 0;
+  // auto per_segment_partial_segment_counts = allocator.GetScratchBuffer<SegmentIndex_t>(num_segments);
+  // auto per_segment_partial_segment_offsets = allocator.GetScratchBuffer<SegmentIndex_t>(num_segments);
+
   // compute index offsets per partial segment
   auto partial_segment_offsets = allocator.GetScratchBuffer<GatheredIndexIndex_t>(host_num_partial_segments);
   {

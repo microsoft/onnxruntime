@@ -108,16 +108,16 @@ Status Gather::ComputeInternal(OpKernelContext* context) const {
     int32_t* p_num_segments = num_segments->MutableData<int32_t>();
 
     const SafeInt<GatheredIndexIndex_t> num_gathered_indices{N};
-    // const int64_t& gather_dimension_size = indices_max;
-    // const int64_t& num_gathered_per_index = block_size;
+    const int64_t& gather_dimension_size = indices_max;
+    const int64_t& num_gathered_per_index = block_size;
 
     GatherGradPrepare<int64_t>(
       Stream(),
       CudaScratchBufferAllocator{*this},
       reinterpret_cast<const int64_t*>(indices_data),
       num_gathered_indices,
-      // gather_dimension_size,
-      // num_gathered_per_index,
+      gather_dimension_size,
+      num_gathered_per_index,
       *p_num_segments);
 
     return Status::OK();
