@@ -1,0 +1,9 @@
+setuptools
+wheel
+numpy
+ninja
+cmake
+typing_extensions
+torch
+torchvision
+torchaudio
