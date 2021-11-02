@@ -27,7 +27,7 @@ from .onnx_quantizer import ONNXQuantizer
 
 class QDQQuantizer(ONNXQuantizer):
     def __init__(self, model, per_channel, reduce_range, mode, static, weight_qType, input_qType, tensors_range,
-                 nodes_to_quantize, nodes_to_exclude, op_types_to_quantize, nodes_to_exclude_output_quantization=[], extra_options={}):
+                 nodes_to_quantize, nodes_to_exclude, op_types_to_quantize, op_types_to_exclude_output_quantization=[], extra_options={}):
         ONNXQuantizer.__init__(self, model, per_channel, reduce_range, mode, static, weight_qType, input_qType,
                                tensors_range, nodes_to_quantize, nodes_to_exclude, op_types_to_quantize, extra_options)
         self.tensors_to_quantize = []
@@ -35,11 +35,11 @@ class QDQQuantizer(ONNXQuantizer):
         self.bias_to_quantize = []
         self.nodes_to_remove = []
 
-        # Specific nodes to exclude qdq quantization for their outputs.
+        # Specific op types to exclude qdq quantization for their outputs.
         # In some cases, for example QDQ BERT model for TensorRT, 
         # adding QDQ for node's output may end up with worse accuracy.
         # So, we don't recommend to add QDQ to node's output under such condition.
-        self.nodes_to_exclude_output_quantization = nodes_to_exclude_output_quantization
+        self.op_types_to_exclude_output_quantization = op_types_to_exclude_output_quantization
 
         # In some cases, for example QDQ BERT model for TensorRT,
         # QDQ should always appear as a pair. 
@@ -91,7 +91,7 @@ class QDQQuantizer(ONNXQuantizer):
     def quantize_model(self):
         for node in self.model.nodes():
             if self.should_quantize(node):
-                op_quantizer = CreateQDQQuantizer(self, node, self.nodes_to_exclude_output_quantization)
+                op_quantizer = CreateQDQQuantizer(self, node, self.op_types_to_exclude_output_quantization)
                 op_quantizer.quantize()
 
         self.quantize_tensors()
