@@ -608,6 +608,7 @@ def run_subprocess(args, cwd=None, capture_stdout=False, dll_path=None,
     if isinstance(args, str):
         raise ValueError("args should be a sequence of strings, not a string")
 
+    print("Added DLL directory everytime:", add_dll_dir_path)
     if add_dll_dir_path and is_windows():
         os.add_dll_directory(add_dll_dir_path)
         print("Added DLL directory:", add_dll_dir_path)
