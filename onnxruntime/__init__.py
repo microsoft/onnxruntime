@@ -19,7 +19,6 @@ __author__ = "Microsoft"
 # here we need to save the exception and continue with Cuda version validation in order to post
 # meaningful messages to the user.
 # the saved exception is raised after device version validation.
-
 try:
     from onnxruntime.capi._pybind_state import get_all_providers, get_available_providers, get_device, set_seed, \
         RunOptions, SessionOptions, set_default_logger_severity, enable_telemetry_events, disable_telemetry_events, \
