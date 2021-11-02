@@ -119,6 +119,9 @@ struct SessionOptions {
 
   // See onnxruntime_c_api.h for detailed documentation.
   Status AddInitializer(_In_z_ const char* name, _In_ const OrtValue* val) noexcept;
+
+  // Set this flag to true to prefer DeepSpeed CUDA kernels where applicable.
+  bool prefer_deep_speed_cuda_kernels = false;
 };
 
 }  // namespace onnxruntime

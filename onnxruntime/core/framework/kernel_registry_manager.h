@@ -29,17 +29,25 @@ class KernelRegistryManager {
  public:
   KernelRegistryManager() = default;
 
-  // Register kernels from providers
+  // Register kernels from providers and stores them in `stock_provider_registries_`
   Status RegisterKernels(const ExecutionProviders& execution_providers) ORT_MUST_USE_RESULT;
+
+  // Register one kernel registry per-EP that will exist in `special_provider_registries_`
+  // in addition to the kernel registry per-EP in `stock_provider_registries_`.
+  // The precedence of these registries is such that they are of lower priority than the custom
+  // registries but are of higher priority than the one in `stock_provider_registries_`.
+  Status RegisterSpecialKernelRegistry(const std::string& type,
+                                       std::shared_ptr<KernelRegistry> kernel_registry) ORT_MUST_USE_RESULT;
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
   // The registry passed in this function has highest priority than anything already in this KernelRegistryManager,
   // and anything registered from RegisterKernels
   // For example, if you do:
   // RegisterKernels(providers)
+  // RegisterSpecialKernelRegistry(special_kernels)
   // RegisterKernelRegistry(A);
   // RegisterKernelRegistry(B);
-  // Then B > A > providers
+  // Then B > A > special_kernels > providers
   void RegisterKernelRegistry(std::shared_ptr<KernelRegistry> kernel_registry);
 
   /**
@@ -50,11 +58,24 @@ class KernelRegistryManager {
    */
   std::vector<const KernelRegistry*> GetKernelRegistriesByProviderType(const std::string& type) const {
     std::vector<const KernelRegistry*> result;
+
+    // First, look in all the custom registries
     for (auto& registry : custom_kernel_registries_) {
       result.push_back(registry.get());
     }
-    auto iter = provider_type_to_registry_.find(type);
-    if (iter != provider_type_to_registry_.end()) result.push_back(iter->second.get());
+
+    // Second, look in the "special" EP registry
+    auto iter = special_provider_registries_.find(type);
+    if (iter != special_provider_registries_.end()) {
+      result.push_back(iter->second.get());
+    }
+
+    // Third, look in the "stock" EP registry
+    iter = stock_provider_registries_.find(type);
+    if (iter != stock_provider_registries_.end()) {
+      result.push_back(iter->second.get());
+    }
+
     return result;
   }
 #endif
@@ -85,8 +106,16 @@ class KernelRegistryManager {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(KernelRegistryManager);
 
  private:
-  // key is provider type. Each kernel registry in this collection only belongs to one specific provider
-  std::unordered_map<std::string, std::shared_ptr<KernelRegistry>> provider_type_to_registry_;
+  // Each kernel registry in this collection only belongs to one specific provider (key is provider type).
+  // All the kernel registries in this container are the "stock" EP kernel registries (i.e.) the kernel
+  // registries that come along with an EP implementation
+  std::unordered_map<std::string, std::shared_ptr<KernelRegistry>> stock_provider_registries_;
+
+  // Each kernel registry in this collection only belongs to one specific provider (key is provider type).
+  // All the kernel registries in this container are the "stock" EP kernel registries (i.e.) the kernel
+  // registries that come along with an EP implementation
+  std::unordered_map<std::string, std::shared_ptr<KernelRegistry>> special_provider_registries_;
+
   // Each kernel registry may contain kernels from many different providers.
   // in order to search kernels from a specific provider, we have to iterate all its elements
   std::list<std::shared_ptr<KernelRegistry>> custom_kernel_registries_;

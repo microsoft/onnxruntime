@@ -1325,13 +1325,31 @@ common::Status InferenceSession::Initialize() {
         prepacked_weights_container_);
 
     // Collect the kernel registries from execution provider instances;
-    // There are 2 kinds of kernel registries with priority from high to low as below,
+    // There are 3 kinds of kernel registries with priority from high to low as below,
     // 1. Custom execution provider type specific kernel registries.
-    // 2. Common execution provider type specific kernel registries.
+    // 2. Special execution provider type specific kernel registries
+    // 3. Stock execution provider type specific kernel registries.
     // Kernel registries are shared across sessions.
     // The 1st ones should have already been registered via session-level API into KernelRegistryManager.
     //
-    // Register 2nd registries into KernelRegistryManager.
+    // Register 2nd and 3rd registries into KernelRegistryManager.
+
+    // Register "special" EP kernel registries (if any)
+    if (session_options_.prefer_deep_speed_cuda_kernels) {
+#ifdef ENABLE_DEEP_SPEED_CUDA_KERNELS
+      auto cuda_ep = execution_providers_.Get(onnxruntime::kCudaExecutionProvider);
+
+      if (cuda_ep != nullptr) {
+        auto deep_speed_kernel_registry = reinterpret_cast<CUDAExecutionProvider*>(cuda_ep)->GetDeepSpeedKernelRegistry();
+      } else {
+        LOGS(*session_logger_, WARNING) << "No CUDA EP registered for this session and hence DeepSpeed CUDA kernels cannot be used";
+      }
+#else
+      ORT_THROW("Deep Speed CUDA kernels not supported in this build");
+#endif
+    }
+
+    // Register "stock" EP kernel registries
     ORT_RETURN_IF_ERROR_SESSIONID_(kernel_registry_manager_.RegisterKernels(execution_providers_));
 
     const bool loading_ort_format = !ort_format_model_bytes_.empty();

@@ -29,8 +29,8 @@ std::unique_ptr<OpKernel> KernelRegistryManager::CreateKernel(const onnxruntime:
 
 Status KernelRegistryManager::RegisterKernels(const ExecutionProviders& execution_providers) {
   for (auto& provider : execution_providers) {
-    auto iter = provider_type_to_registry_.find(provider->Type());
-    if (iter != provider_type_to_registry_.end()) {
+    auto iter = stock_provider_registries_.find(provider->Type());
+    if (iter != stock_provider_registries_.end()) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "found duplicated provider ", provider->Type(),
                              " in KernelRegistryManager");
     }
@@ -40,9 +40,25 @@ Status KernelRegistryManager::RegisterKernels(const ExecutionProviders& executio
       continue;
     }
 
-    provider_type_to_registry_.insert(std::make_pair(provider->Type(), registry));
+    stock_provider_registries_.insert(std::make_pair(provider->Type(), registry));
   }
   return Status::OK();
+}
+
+Status KernelRegistryManager::RegisterSpecialKernelRegistry(const std::string& type,
+                                                            std::shared_ptr<KernelRegistry> kernel_registry) {
+  if (!kernel_registry) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Kernel registry cannot be null");
+  }
+
+  auto iter = special_provider_registries_.find(type);
+  if (iter != special_provider_registries_.end()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                           "Found duplicated provider in special provider "
+                           "registry in KernelRegistryManager");
+  }
+
+  special_provider_registries_.insert(std::make_pair(type, kernel_registry));
 }
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
@@ -80,6 +96,7 @@ Status KernelRegistryManager::SearchKernelRegistry(const onnxruntime::Node& node
     return Status(ONNXRUNTIME, FAIL, create_error_message("The node is not placed on any Execution Provider. "));
   }
 
+  // First, look in all the custom registries
   for (auto& registry : custom_kernel_registries_) {
     status = registry->TryFindKernel(node, std::string(), kernel_create_info);
     if (status.IsOK()) {
@@ -87,9 +104,23 @@ Status KernelRegistryManager::SearchKernelRegistry(const onnxruntime::Node& node
     }
   }
 
+  // Second, look in the "special" EP registry
   KernelRegistry* p = nullptr;
-  auto iter = provider_type_to_registry_.find(ptype);
-  if (iter != provider_type_to_registry_.end()) {
+  auto iter = special_provider_registries_.find(ptype);
+  if (iter != special_provider_registries_.end()) {
+    p = iter->second.get();
+  }
+
+  if (p != nullptr) {
+    status = p->TryFindKernel(node, std::string(), kernel_create_info);
+    if (status.IsOK()) {
+      return status;
+    }
+  }
+
+  // Third, look in the "stock" EP registry
+  iter = stock_provider_registries_.find(ptype);
+  if (iter != stock_provider_registries_.end()) {
     p = iter->second.get();
   }
 
@@ -107,14 +138,22 @@ Status KernelRegistryManager::SearchKernelRegistry(const onnxruntime::Node& node
 bool KernelRegistryManager::SearchKernelRegistriesByHash(uint64_t kernel_def_hash,
                                                          const KernelCreateInfo** kernel_create_info) const {
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+  // First, look in all the custom registries
   for (const auto& registry : custom_kernel_registries_) {
     if (registry->TryFindKernelByHash(kernel_def_hash, kernel_create_info)) {
       return true;
     }
   }
 #endif
+  // Second, look in the "special" EP registry
+  for (const auto& kv : special_provider_registries_) {
+    if (kv.second->TryFindKernelByHash(kernel_def_hash, kernel_create_info)) {
+      return true;
+    }
+  }
 
-  for (const auto& kv : provider_type_to_registry_) {
+  // Third, look in the "stock" EP registry
+  for (const auto& kv : stock_provider_registries_) {
     if (kv.second->TryFindKernelByHash(kernel_def_hash, kernel_create_info)) {
       return true;
     }
