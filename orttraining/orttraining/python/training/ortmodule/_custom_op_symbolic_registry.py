@@ -116,3 +116,11 @@ def avg_pool2d(g, self, kernel_size, stride, padding, ceil_mode, count_include_p
 @register_symbolic('adaptive_avg_pool2d')
 def adaptive_avg_pool2d(g, self, output_size):
     return g.op("com.microsoft::ATenOp", self, output_size, name_s='aten::_adaptive_avg_pool2d')
+
+
+@register_symbolic('binary_cross_entropy_with_logits')
+def binary_cross_entropy_with_logits(g, self, target, weight, pos_weight, reduction):
+    if (weight is not None and not sym_help._is_none(weight)) or (pos_weight is not None and not sym_help._is_none(pos_weight)):
+        raise RuntimeError("Unsupported: ONNX does not support for now")
+    return g.op("com.microsoft::ATenOp", self, target, weight, pos_weight, reduction,
+                name_s='aten::binary_cross_entropy_with_logits')
