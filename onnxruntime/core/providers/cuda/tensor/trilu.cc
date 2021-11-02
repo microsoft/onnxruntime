@@ -3,6 +3,9 @@
 
 #include "core/providers/cuda/tensor/trilu.h"
 #include "core/providers/cuda/tensor/trilu_impl.h"
+#include "core/providers/cpu/tensor/utils.h"
+
+using namespace onnxruntime::common;
 
 namespace onnxruntime {
 namespace cuda {
@@ -31,9 +34,19 @@ Status Trilu::ComputeInternal(OpKernelContext* ctx) const {
   const TensorShape& shape = input.Shape();
   const std::vector<int64_t>& input_dims = shape.GetDims();
   int32_t rank = gsl::narrow_cast<int32_t>(input_dims.size());
-  if (rank != 2) return Status(common::ONNXRUNTIME, common::FAIL, "two dim tensor input is expected");
+  if (rank < 2) {
+    return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Input tensor should have a rank of at least 2");
+  }
   Tensor* output = ctx->Output(0, shape);
-  const fast_divmod divmod_indices(gsl::narrow_cast<int>(input_dims[0]));
+  size_t ndim = input_dims.size();
+  TensorPitches input_pitches(input_dims);
+  TArray<int64_t> input_strides(input_pitches);
+  auto batch_size = input_dims[ndim - 1] * input_dims[ndim - 2];
+  if (batch_size == 0) {
+    return Status::OK();
+  }
+  const fast_divmod row_divmod_indices(gsl::narrow_cast<int>(input_strides[ndim - 1] * input_dims[ndim - 1]));
+  const fast_divmod batch_divmod_indices(gsl::narrow_cast<int>(input_strides[ndim - 2] * input_dims[ndim - 2]));
 
   size_t element_size = input.DataType()->Size();
   return TriluImpl(
@@ -41,11 +54,11 @@ Status Trilu::ComputeInternal(OpKernelContext* ctx) const {
       upper_,
       element_size,
       k_val,
-      input_dims,
       input.DataRaw(),
       output->MutableDataRaw(),
       gsl::narrow<int>(output->Shape().Size()),
-      divmod_indices);
+      batch_divmod_indices,
+      row_divmod_indices);
 }
 
 }  // namespace cuda

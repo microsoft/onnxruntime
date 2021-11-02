@@ -13,11 +13,11 @@ Status TriluImpl(
     bool upper,
     size_t element_size,
     int64_t k,
-    const TArray<int64_t>& input_dims,
     const void* input_data,
     void* output_data,
     int N,
-    const fast_divmod& divmod_indices);
+    const fast_divmod& batch_divmod_indices,
+    const fast_divmod& row_divmod_indices);
 
 }  // namespace cuda
 }  // namespace onnxruntime
