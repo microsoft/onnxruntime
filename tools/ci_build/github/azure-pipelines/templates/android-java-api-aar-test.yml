@@ -55,7 +55,8 @@ jobs:
     workingDirectory: $(Build.BinariesDirectory)
 
   - script: |
-      cd $(Build.SourcesDirectory)/java/src/test/android
+      set -e -x
+      cd android_test/android
       appcenter test run espresso \
         --app "AI-Frameworks/ORT-Mobile-Android" \
         --devices $(app_center_android_test_devices) \
@@ -65,6 +66,7 @@ jobs:
         --build-dir ./app/build/outputs/apk/androidTest/debug \
         --token $(app_center_api_token)
     displayName: Run E2E tests using App Center
+    workingDirectory: $(Build.BinariesDirectory)
 
   - script: |
       python3 $(Build.SourcesDirectory)/tools/python/run_android_emulator.py \
