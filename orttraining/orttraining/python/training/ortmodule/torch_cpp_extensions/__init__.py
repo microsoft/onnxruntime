@@ -45,7 +45,7 @@ def get_aten_op_executor_extension():
     except ImportError:
         warnings.warn("Imported aten_op_executor from site-packages.", ImportWarning)
         import aten_op_executor
-    return fused_ops
+    return aten_op_executor
 
 
 def get_torch_interop_utils_extension():
@@ -54,7 +54,7 @@ def get_torch_interop_utils_extension():
     except ImportError:
         warnings.warn("Imported torch_interop_utils from site-packages.", ImportWarning)
         import torch_interop_utils
-    return fused_ops
+    return torch_interop_utils
 
 
 def get_torch_gpu_allocator_extension():
@@ -63,7 +63,7 @@ def get_torch_gpu_allocator_extension():
     except ImportError:
         warnings.warn("Imported torch_gpu_allocator from site-packages.", ImportWarning)
         import torch_gpu_allocator
-    return fused_ops
+    return torch_gpu_allocator
 
 
 def is_installed(torch_cpp_extension_path):

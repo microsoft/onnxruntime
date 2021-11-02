@@ -9,8 +9,7 @@ from . import (_utils,
                _logger,
                _onnx_models,
                _are_deterministic_algorithms_enabled)
-from .torch_cpp_extensions import (
-        get_aten_op_executor_extension, get_torch_gpu_allocator_extension)
+from .torch_cpp_extensions import get_torch_gpu_allocator_extension
 from ._custom_autograd_function import custom_autograd_function_enabler
 from ._custom_autograd_function_exporter import _post_process_after_export
 from ._graph_execution_interface import GraphExecutionInterface
@@ -37,9 +36,6 @@ import warnings
 from enum import IntFlag
 
 from torch.utils.cpp_extension import ROCM_HOME
-
-aten_op_executor = get_aten_op_executor_extension()
-torch_gpu_allocator = get_torch_gpu_allocator_extension()
 
 
 class _RunStateInfo(object):
@@ -180,12 +176,13 @@ class GraphExecutionManager(GraphExecutionInterface):
         self._original_model_has_changed = False
 
         # Load ATenOp executor extension.
+        from .torch_cpp_extensions.cpu.aten_op_executor import load_aten_op_executor_cpp_extension
         load_aten_op_executor_cpp_extension()
 
     def _get_torch_gpu_allocator_function_addresses(self):
         if self._use_external_gpu_allocator and torch.cuda.is_available():
             # CPP extension to get torch GPU allocator's alloc and free function addresses
-            from onnxruntime.training.ortmodule.torch_cpp_extensions import torch_gpu_allocator
+            torch_gpu_allocator = get_torch_gpu_extension()
             self._torch_alloc = torch_gpu_allocator.gpu_caching_allocator_raw_alloc_address()
             self._torch_free = torch_gpu_allocator.gpu_caching_allocator_raw_delete_address()
             self._torch_empty_cache = torch_gpu_allocator.gpu_caching_allocator_empty_cache_address()
