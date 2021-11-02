@@ -1582,7 +1582,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                      '/Logger:trx', '/Enablecodecoverage', '/Platform:x64',
                      "/Settings:%s" % os.path.join(
                          source_dir, 'cmake\\codeconv.runsettings')] + executables,
-                    cwd=cwd2, dll_path=dll_path, add_dll_dir_path=add_dll_dir_path)
+                    cwd=cwd2, dll_path=dll_path)
             else:
                 executables = ['onnxruntime_test_all', 'onnxruntime_mlas_test']
                 if args.build_shared_lib:
@@ -1594,7 +1594,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
 
         else:
             ctest_cmd = [ctest_path, "--build-config", config, "--verbose", "--timeout", "7200"]
-            run_subprocess(ctest_cmd, cwd=cwd, dll_path=dll_path, add_dll_dir_path=add_dll_dir_path)
+            run_subprocess(ctest_cmd, cwd=cwd, dll_path=dll_path)
 
         if args.enable_pybind:
             # Disable python tests for TensorRT because many tests are
