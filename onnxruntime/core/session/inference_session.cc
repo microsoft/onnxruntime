@@ -65,7 +65,8 @@
 #endif
 
 #ifdef USE_CUDA
-#include "core/providers/cuda/cuda_execution_provider.h"
+// for registering CUDA EP as default GPU provider.
+#include "core/session/provider_bridge_ort.h"
 #endif
 
 using namespace ONNX_NAMESPACE;
@@ -1280,9 +1281,14 @@ common::Status InferenceSession::Initialize() {
     // RegisterExecutionProvider locks the session_mutex_ so we can't be holding it when we call that
     if (!have_cuda_ep) {
       LOGS(*session_logger_, INFO) << "Adding CUDA execution provider.";
-      CUDAExecutionProviderInfo epi;
-      auto p_cuda_exec_provider = std::make_unique<CUDAExecutionProvider>(epi);
-      ORT_RETURN_IF_ERROR_SESSIONID_(RegisterExecutionProvider(std::move(p_cuda_exec_provider)));
+      if (auto* cuda_provider_info = TryGetProviderInfo_CUDA()) {
+        auto p_cuda_exec_provider = cuda_provider_info->CreateExecutionProviderFactory(*info)->CreateProvider();
+        ORT_RETURN_IF_ERROR_SESSIONID_(RegisterExecutionProvider(std::move(p_cuda_exec_provider)));
+      } else {
+        if (!Env::Default().GetEnvironmentVar("CUDA_PATH").empty()) {
+          ORT_THROW("CUDA_PATH is set but CUDA wasn't able to be loaded. Please install the correct version of CUDA and cuDNN as mentioned in the GPU requirements page (https://onnxruntime.ai/docs/reference/execution-providers/CUDA-ExecutionProvider.html#requirements), make sure they're in the PATH, and that your GPU is supported.");
+        }
+      }
     }
 #endif
     // Register default CPUExecutionProvider if user didn't provide it through the Register() calls.
