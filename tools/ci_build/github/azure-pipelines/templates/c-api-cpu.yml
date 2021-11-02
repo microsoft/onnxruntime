@@ -814,14 +814,13 @@ jobs:
     AgentPool : 'Win-CPU-2021'
     JobSuffix : 'Win_CPU_x64'
 
-- template: ../nodejs/templates/test_posix.yml
+- template: ../nodejs/templates/test_linux.yml
   parameters:
     AgentPool : 'Linux-CPU'
     JobSuffix : 'Linux_CPU_x64'
 
-- template: ../nodejs/templates/test_posix.yml
+- template: ../nodejs/templates/test_macos.yml
   parameters:
-    IsMacOS: true
     JobSuffix : 'macOS_CPU_x64'
 
 - job: Publish_NuGet_Package_And_Report

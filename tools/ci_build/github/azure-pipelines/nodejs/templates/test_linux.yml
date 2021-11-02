@@ -1,5 +1,5 @@
 parameters:
-  AgentPool: 'Win-CPU'
+  AgentPool: 'Linux-CPU'
   JobSuffix: ''
 
 jobs:
@@ -16,3 +16,4 @@ jobs:
     value: '$(Build.BinariesDirectory)'
   steps:
   - template: test.yml
+  
