@@ -40,6 +40,7 @@
 #include "core/platform/Barrier.h"
 #include "core/platform/ort_mutex.h"
 #include "core/platform/threadpool.h"
+#include "core/providers/providers.h"
 #include "core/providers/cpu/controlflow/utils.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/flatbuffers/flatbuffers_utils.h"
