@@ -46,7 +46,7 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(const OpenVINOExecutionProv
 
   AllocatorCreationInfo device_info(
       [](OrtDevice::DeviceId) {
-        return CreateCPUAllocator(OrtMemoryInfo(OpenVINO, OrtDeviceAllocator));
+        return CreateCPUAllocator(OrtMemoryInfo(OpenVINO_CPU, OrtDeviceAllocator));
       });
 
   InsertAllocator(CreateAllocator(device_info));
