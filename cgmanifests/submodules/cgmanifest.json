@@ -101,28 +101,6 @@
       }
     },
     {
-      "Component": {
-        "Type": "other",
-        "other": {
-          "Name": "junit",
-          "Version": "1.6.2",
-          "DownloadUrl": "https://oss.sonatype.org/service/local/repositories/releases/content/org/junit/platform/junit-platform-console-standalone/1.6.2/junit-platform-console-standalone-1.6.2.jar"
-        },
-        "comments": "java build/test dependency"
-      }
-    },
-    {
-      "Component": {
-        "Type": "other",
-        "other": {
-          "Name": "protobuf",
-          "Version": "3.9.2",
-          "DownloadUrl": "https://oss.sonatype.org/service/local/repositories/google-releases/content/com/google/protobuf/protobuf-java/3.9.2/protobuf-java-3.9.2.jar"
-        },
-        "comments": "java build/test dependency"
-      }
-    },
-    {
       "component": {
         "type": "git",
         "git": {
