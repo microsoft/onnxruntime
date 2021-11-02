@@ -150,7 +150,7 @@ void GetSortedIndices(
 }
 
 
-template <typename T, typename TIndex>
+template <typename TIndex>
 void GatherGradPrepare(
     cudaStream_t stream,
     const CudaScratchBufferAllocator& allocator,
@@ -189,23 +189,17 @@ void GatherGradPrepare(
   }
 }
 
-#define SPECIALIZED(T, TIndex)                         \
-  template void GatherGradPrepare<T, TIndex>(          \
+#define SPECIALIZED(TIndex)                         \
+  template void GatherGradPrepare<TIndex>(          \
       cudaStream_t stream,                             \
       const CudaScratchBufferAllocator& allocator,     \
       const TIndex* dX_indices,                        \
       const GatheredIndexIndex_t num_gathered_indices, \
       SegmentIndex_t& host_num_segments);
 
-#define SPECIALIZED_WITH_IDX(T) \
-  SPECIALIZED(T, int32_t)       \
-  SPECIALIZED(T, int64_t)
 
-SPECIALIZED_WITH_IDX(float)
-SPECIALIZED_WITH_IDX(half)
-#if CUDA_VERSION >= 11000 && (__CUDA_ARCH__ >= 800 || !defined(__CUDA_ARCH__))
-SPECIALIZED_WITH_IDX(nv_bfloat16)
-#endif
+SPECIALIZED(int32_t)
+SPECIALIZED(int64_t)
 
 #undef SPECIALIZED_WITH_IDX
 #undef SPECIALIZED

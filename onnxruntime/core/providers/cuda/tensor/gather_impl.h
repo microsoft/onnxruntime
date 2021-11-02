@@ -40,7 +40,7 @@ class CudaScratchBufferAllocator {
 using GatheredIndexIndex_t = int32_t;
 using SegmentIndex_t = GatheredIndexIndex_t;
 
-template <typename T, typename TIndex>
+template <typename TIndex>
 void GatherGradPrepare(
     cudaStream_t stream,
     const CudaScratchBufferAllocator& allocator,

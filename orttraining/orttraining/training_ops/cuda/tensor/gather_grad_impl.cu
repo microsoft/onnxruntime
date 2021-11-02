@@ -70,14 +70,14 @@ void GetSortedIndices(
       nullptr, temp_storage_size_bytes,
       dX_indices, dX_indices_sorted.get(),
       dY_indices.get(), dY_indices_sorted.get(),
-      num_gathered_indices, 0, sizeof(TIndex)*8, stream));
+      num_gathered_indices, 0, sizeof(TIndex) * 8, stream));
 
   auto temp_storage = allocator.GetScratchBuffer<void>(temp_storage_size_bytes);
   CUDA_CALL_THROW(cub::DeviceRadixSort::SortPairs(
       temp_storage.get(), temp_storage_size_bytes,
       dX_indices, dX_indices_sorted.get(),
       dY_indices.get(), dY_indices_sorted.get(),
-      num_gathered_indices, 0, sizeof(TIndex)*8, stream));
+      num_gathered_indices, 0, sizeof(TIndex) * 8, stream));
 
   dX_indices_sorted_out = std::move(dX_indices_sorted);
   dY_indices_sorted_out = std::move(dY_indices_sorted);
@@ -419,6 +419,7 @@ void Impl(
     const int64_t gather_dimension_size,
     const int64_t num_gathered_per_index,
     const int64_t num_batches,
+    const int32_t num_segments_in,
     T* dX_data) {
   IAllocatorUniquePtr<TIndex> dX_indices_sorted, dY_indices_sorted;
   GetSortedIndices(
@@ -449,6 +450,8 @@ void Impl(
         &host_num_segments, num_segments.get(), sizeof(SegmentIndex_t), cudaMemcpyDeviceToHost, stream));
     CUDA_CALL_THROW(cudaStreamSynchronize(stream));
   }
+
+  std::cout << "host_num_segments: " << host_num_segments << " num_segments_in: " << num_segments_in << "\n";
 
   // get largest segment size and use that to select implementation
   GatheredIndexIndex_t host_max_segment_count = 0;
@@ -538,12 +541,14 @@ void GatherGradImpl(
     const int64_t gather_dimension_size,
     const int64_t num_gathered_per_index,
     const int64_t num_batches,
+    const int32_t num_segments,
     T* dX_data) {
   gather_grad_internal::Impl(
       stream,
       allocator,
       dY_data, dX_indices,
       num_gathered_indices, gather_dimension_size, num_gathered_per_index, num_batches,
+      num_segments,
       dX_data);
 }
 
@@ -557,6 +562,7 @@ void GatherGradImpl(
       const int64_t gather_dimension_size,             \
       const int64_t num_gathered_per_index,            \
       const int64_t num_batches,                       \
+      const int32_t num_segments,                      \
       T* dX_data);
 
 #define SPECIALIZED_WITH_IDX(T) \

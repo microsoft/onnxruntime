@@ -50,8 +50,8 @@ ONNX_OPERATOR_KERNEL_EX(
     1,
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
-        // properly force CPU/GPU synch inside the kernel
-        .OutputMemoryType(OrtMemTypeCPUInput, 1)
+        // Set the output-1 to stay in CUDA_PINNED memory to avoid synchronous memcpy
+        .OutputMemoryType(OrtMemTypeCPU, 1)
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
         .TypeConstraint("Int32", DataTypeImpl::GetTensorType<int32_t>())
         .TypeConstraint("Tind", std::vector<MLDataType>{
@@ -72,7 +72,6 @@ Status Gather::ComputeInternal(OpKernelContext* context) const {
   const int64_t input_block_size = input_shape.SizeFromDimension(p.axis);
   const int64_t output_block_size = N * block_size;
   const int64_t indices_max = input_shape[p.axis];
-
   const void* input_data = p.input_tensor->DataRaw();
   const void* indices_data = p.indices_tensor->DataRaw();
   void* output_data = p.output_tensor->MutableDataRaw();
@@ -109,13 +108,16 @@ Status Gather::ComputeInternal(OpKernelContext* context) const {
     int32_t* p_num_segments = num_segments->MutableData<int32_t>();
 
     const SafeInt<GatheredIndexIndex_t> num_gathered_indices{N};
-   
+    // const int64_t& gather_dimension_size = indices_max;
+    // const int64_t& num_gathered_per_index = block_size;
 
-    GatherGradPrepare<float, int64_t>(
+    GatherGradPrepare<int64_t>(
       Stream(),
       CudaScratchBufferAllocator{*this},
       reinterpret_cast<const int64_t*>(indices_data),
       num_gathered_indices,
+      // gather_dimension_size,
+      // num_gathered_per_index,
       *p_num_segments);
 
     return Status::OK();
