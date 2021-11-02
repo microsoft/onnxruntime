@@ -156,7 +156,7 @@ struct ProviderHostCPUImpl : ProviderHostCPU {
   Status EinsumTypedComputeProcessor__Run(EinsumTypedComputeProcessor<MLFloat16>* p) override { return p->Run(); }
 
 #ifndef DISABLE_CONTRIB_OPS
-  Status embed_layer_norm__CheckInputs(const OpKernelContext* context) override { return contrib::embed_layer_norm::CheckInputs(context); }
+  Status embed_layer_norm__CheckInputs(const OpKernelContext* context, bool quantizedVersion) override { return contrib::embed_layer_norm::CheckInputs(context, quantizedVersion); }
   Status bias_gelu_helper__CheckInputs(const OpKernelContext* context) override { return contrib::bias_gelu_helper::CheckInputs(context); }
   Status LongformerAttentionBase__CheckInputs(const contrib::LongformerAttentionBase* p, const TensorShape& input_shape, const TensorShape& weights_shape, const TensorShape& bias_shape, const TensorShape& mask_shape, const TensorShape& global_weights_shape, const TensorShape& global_bias_shape, const TensorShape& global_shape) override {
     return p->contrib::LongformerAttentionBase::CheckInputs(input_shape, weights_shape, bias_shape, mask_shape, global_weights_shape, global_bias_shape, global_shape);

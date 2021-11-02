@@ -84,7 +84,7 @@ template<typename T>
 void SetFusedActivation(T& opDesc, const DML_OPERATOR_DESC* fusedActivation)
 {
     // Activation is only fused for sum operators, which have a template specialization
-    THROW_HR(E_INVALIDARG);
+    ORT_THROW_HR(E_INVALIDARG);
 }
 
 template<>
@@ -120,7 +120,7 @@ public:
         if (fusedActivation != std::nullopt)
         {    
             // Activation is only fused for two-input sum operators
-            THROW_HR_IF(E_INVALIDARG, opDescDesc.Type != DML_OPERATOR_ELEMENT_WISE_ADD1 || kernelInfo.GetInputCount() > 2);
+            ORT_THROW_HR_IF(E_INVALIDARG, opDescDesc.Type != DML_OPERATOR_ELEMENT_WISE_ADD1 || kernelInfo.GetInputCount() > 2);
 
             SetFusedActivation(opDesc, &fusedActivationDmlDesc);
         }
@@ -138,8 +138,8 @@ ComPtr<IDMLCompiledOperator> CreateSecondaryOperator(
 {
     ComPtr<IDMLOperator> dmlOperator;
     ComPtr<IDMLCompiledOperator> compiledOperator;
-    THROW_IF_FAILED(dmlDevice->CreateOperator(&operatorDesc, IID_PPV_ARGS(&dmlOperator)));
-    THROW_IF_FAILED(dmlDevice->CompileOperator(dmlOperator.Get(), executionFlags, IID_PPV_ARGS(&compiledOperator)));
+    ORT_THROW_IF_FAILED(dmlDevice->CreateOperator(&operatorDesc, IID_PPV_ARGS(&dmlOperator)));
+    ORT_THROW_IF_FAILED(dmlDevice->CompileOperator(dmlOperator.Get(), executionFlags, IID_PPV_ARGS(&compiledOperator)));
     return compiledOperator;
 }
 
@@ -162,7 +162,7 @@ public:
         DML_OPERATOR_DESC fusedActivationDmlDesc = fusedActivation ? fusedActivation->GetDmlDesc() : DML_OPERATOR_DESC();
         
         // Activation is only fused for two-input sum operators
-        THROW_HR_IF(E_INVALIDARG, fusedActivation != std::nullopt && inputCount != 2);
+        ORT_THROW_HR_IF(E_INVALIDARG, fusedActivation != std::nullopt && inputCount != 2);
 
         if (inputCount == 1)
         {
@@ -230,7 +230,7 @@ public:
         gsl::span<IMLOperatorTensor*> outputTensors{ &outputTensor, 1 };
 
         // Combine the first two inputs and store the result in the output tensor.
-        THROW_IF_FAILED(m_executionProvider->ExecuteOperator(
+        ORT_THROW_IF_FAILED(m_executionProvider->ExecuteOperator(
             m_compiledOperator.Get(),
             m_persistentResourceBinding ? &*m_persistentResourceBinding : nullptr,
             gsl::make_span(inputTensors),
@@ -247,7 +247,7 @@ public:
                                                    ? m_compiledOperator.Get()
                                                    : m_compiledOperators[inputIndex - 2].Get();
 
-            THROW_IF_FAILED(m_executionProvider->ExecuteOperator(
+            ORT_THROW_IF_FAILED(m_executionProvider->ExecuteOperator(
                 compiledOperator,
                 m_persistentResourceBinding ? &*m_persistentResourceBinding : nullptr,
                 gsl::make_span(inputTensors),
@@ -338,9 +338,9 @@ public:
             DML_OPERATOR_DESC identityDescDesc = { DML_OPERATOR_ELEMENT_WISE_IDENTITY, &identityDesc };
 
             ComPtr<IDMLOperator> identityOp;
-            THROW_IF_FAILED(m_dmlDevice->CreateOperator(&identityDescDesc, IID_PPV_ARGS(&identityOp)));
+            ORT_THROW_IF_FAILED(m_dmlDevice->CreateOperator(&identityDescDesc, IID_PPV_ARGS(&identityOp)));
 
-            THROW_IF_FAILED(m_dmlDevice->CompileOperator(identityOp.Get(), GetExecutionFlags(), IID_PPV_ARGS(&m_compiledIdentityOp)));
+            ORT_THROW_IF_FAILED(m_dmlDevice->CompileOperator(identityOp.Get(), GetExecutionFlags(), IID_PPV_ARGS(&m_compiledIdentityOp)));
         }
     }
 
@@ -367,7 +367,7 @@ public:
             gsl::span<IMLOperatorTensor*> outputTensors{ &outputTensor, 1 };
 
             // Add the first two inputs and store the result in the output tensor.
-            THROW_IF_FAILED(m_executionProvider->ExecuteOperator(
+            ORT_THROW_IF_FAILED(m_executionProvider->ExecuteOperator(
                 m_compiledOperator.Get(),
                 m_persistentResourceBinding ? &*m_persistentResourceBinding : nullptr,
                 gsl::make_span(inputTensors),
@@ -384,7 +384,7 @@ public:
                     ? m_compiledOperator.Get()
                     : m_compiledOperators[inputIndex - 2].Get();
 
-                THROW_IF_FAILED(m_executionProvider->ExecuteOperator(
+                ORT_THROW_IF_FAILED(m_executionProvider->ExecuteOperator(
                     compiledOperator,
                     m_persistentResourceBinding ? &*m_persistentResourceBinding : nullptr,
                     gsl::make_span(inputTensors),
@@ -392,7 +392,7 @@ public:
             }
 
             // Dispatch the identity w/ scale operator in-place on the output.
-            THROW_IF_FAILED(m_executionProvider->ExecuteOperator(
+            ORT_THROW_IF_FAILED(m_executionProvider->ExecuteOperator(
                 m_compiledIdentityOp.Get(),
                 nullptr, // persistent resoruce binding
                 outputTensors,
