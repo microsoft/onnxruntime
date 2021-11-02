@@ -94,10 +94,7 @@ bool UnarySelector::Check(const Graph& graph, const Node& node,
   int32_t dt_input = dq_nodes[0]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
   int32_t dt_output = q_nodes[0]->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
 
-  return ((dt_input == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8 ||
-           (int8_allowed_ && dt_input == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8))) &&
-         ((dt_output == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8 ||
-           (int8_allowed_ && dt_output == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8)));
+  return dt_input == dt_output;
 }
 
 bool BinarySelector::Check(const Graph& graph,
@@ -108,7 +105,6 @@ bool BinarySelector::Check(const Graph& graph,
     return false;
   }
 
-  // Currently QLinearAdd and QLinearMul only support activation type uint8_t
   int32_t dt_input_1 = dq_nodes[0]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
   int32_t dt_input_2 = dq_nodes[1]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
   int32_t dt_output = q_nodes[0]->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
@@ -148,11 +144,10 @@ bool ConvSelector::Check(const Graph& graph,
     return false;
   }
 
-  // Currently QLinearConv only support activation type uint8_t and output type uint8_t
+  // input and output types need to be same
   int32_t dt_input = dq_nodes[0]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
   int32_t dt_output = q_nodes[0]->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
-  if (dt_input != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8 ||
-      dt_output != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8) {
+  if (dt_input != dt_output) {
     return false;
   }
 
@@ -185,17 +180,14 @@ bool MatMulSelector::Check(const Graph& graph,
       return false;
     }
 
+    int32_t dt_input = dq_nodes[0]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
     int32_t dt_output = q_nodes[0]->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
-    if (dt_output != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8) {
-      return false;
-    }
+    return dt_input == dt_output;
   } else {
     // MatMulIntegerToFloat has no Q node, so no call to CheckQDQNodes
   }
 
-  // Currently Quant MatMul only support activation type uint8_t
-  int32_t dt_input = dq_nodes[0]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
-  return (dt_input == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8);
+  return true;
 }
 
 }  // namespace QDQ

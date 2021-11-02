@@ -43,7 +43,6 @@ class BaseSelector : public NodeSelector {
 // Single DQ -> node that does not change data -> Q.
 // Zero point and scale are constant scalars and must match
 class DropDQDNodesSelector : public BaseSelector {
- private:
   bool Check(const Graph& graph, const Node& node,
              const std::vector<const Node*>& dq_nodes,
              const std::vector<const Node*>& q_nodes) const override;
@@ -51,15 +50,10 @@ class DropDQDNodesSelector : public BaseSelector {
 
 // single input. default is to only support uint8.
 class UnarySelector : public BaseSelector {
- public:
-  UnarySelector(bool int8_allowed = false) : int8_allowed_{int8_allowed} {}
-
- private:
   bool Check(const Graph& graph, const Node& node,
              const std::vector<const Node*>& dq_nodes,
              const std::vector<const Node*>& q_nodes) const override;
 
-  bool int8_allowed_;
 };
 
 // 2 DQ nodes providing input -> node -> Q
