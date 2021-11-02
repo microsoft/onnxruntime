@@ -378,6 +378,7 @@ Return Value:
     bool HasP10Instructions = ((hwcap2 & PPC_FEATURE2_MMA) && (hwcap2 & PPC_FEATURE2_ARCH_3_1));
     if (HasP10Instructions) {
         this->GemmFloatKernel = MlasSgemmKernelPOWER10;
+        this->GemmDoubleKernel = MlasDgemmKernelPOWER10;
     }
 #endif
 #endif
