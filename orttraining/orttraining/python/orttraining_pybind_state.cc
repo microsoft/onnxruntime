@@ -374,6 +374,7 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
         return py::reinterpret_steal<py::object>(ToDlpack(v->at(idx)));
       })
       .def("to_dlpack", [](const std::vector<OrtValue>& v, py::object to_tensor) -> py::list {
+
         if (v.size() == 0)
           return py::list();
 
@@ -385,64 +386,66 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
 
         py::gil_scoped_acquire acquire;
 
-#if true
+        const Tensor& tensor = v[0].Get<Tensor>();
 
-        OrtDLManagedTensor ort_dlmanaged_tensor;
-        capsule = PyCapsule_New(&ort_dlmanaged_tensor.tensor, "dltensor", NULL);
-        if (capsule == NULL)
-            throw std::runtime_error("Empty capsule returned.");
-
-        for (auto it : v) {
-          // The same capsule is reused but FromDLPack rename the capsule into used_dltensor.
-          PyCapsule_SetName(capsule, "dltensor");
-          dlpack::OrtValueToDlpack(it, (void*)&ort_dlmanaged_tensor);
-#if (PY_MAJOR_VERSION >= 3 && PY_MINOR_VERSION >= 9)
-          obj = PyObject_CallOneArg(handle, capsule);
-#else
-          obj = PyObject_CallFunctionObjArgs(handle, capsule, NULL);
-#endif
-          if (obj == NULL)
-            throw std::runtime_error("Empty tensor returned.");
-          res.append(py::handle(obj));
-        }
-
-#else
-
-        // This piece of code must be removed when the PR is complete.
-        // It is less efficient because it creates a capsule every time a tensor
-        // ownership is transfered.
-
-        // The destructor can be local because it is only used within this function.
-        // The capsule used to share the dlpack structure from OrtValue to
-        // another library only remains alive in the same loop iteration.
-
-        auto destructor = [](PyObject* data) {
-          DLManagedTensor* dlmanged_tensor = reinterpret_cast<DLManagedTensor*>(
-              PyCapsule_GetPointer(data, "dltensor"));
-          if (dlmanged_tensor) {
-            // The dlmanged_tensor has not been consumed, call deleter ourselves.
-            dlmanged_tensor->deleter(const_cast<DLManagedTensor*>(dlmanged_tensor));
-          } else {
-            // The dlmanged_tensor has been consumed,
-            // PyCapsule_GetPointer has set an error indicator.
-            PyErr_Clear();
-          }
-        };
-
-        DLManagedTensor* dlmanaged_tensor;
-
-        for (auto it : v) {
-          dlmanaged_tensor = dlpack::OrtValueToDlpack(it);
-          capsule = PyCapsule_New(dlmanaged_tensor, "dltensor", destructor);
+        if (tensor.Location().device.Type() == OrtDevice::CPU) {
+          OrtDLManagedTensor ort_dlmanaged_tensor;
+          capsule = PyCapsule_New(&ort_dlmanaged_tensor.tensor, "dltensor", NULL);
           if (capsule == NULL)
             throw std::runtime_error("Empty capsule returned.");
-          obj = PyObject_CallOneArg(handle, capsule);
-          if (obj == NULL)
-            throw std::runtime_error("Empty tensor returned.");
-          res.append(py::handle(obj));
-        }
 
+          for (auto it : v) {
+            // The same capsule is reused but FromDLPack rename the capsule into used_dltensor.
+            PyCapsule_SetName(capsule, "dltensor");
+            dlpack::OrtValueToDlpack(it, (void*)&ort_dlmanaged_tensor);
+    #if (PY_MAJOR_VERSION >= 3 && PY_MINOR_VERSION >= 9)
+            obj = PyObject_CallOneArg(handle, capsule);
+    #else
+            obj = PyObject_CallFunctionObjArgs(handle, capsule, NULL);
+    #endif
+            if (obj == NULL)
+              throw std::runtime_error("Empty tensor returned.");
+            res.append(py::handle(obj));
+          }
+        } else {
+          // This piece of code should be removed when the issue on GPU is found.
+          // It is less efficient because it creates a capsule every time a tensor
+          // ownership is transfered.
+
+          // The destructor can be local because it is only used within this function.
+          // The capsule used to share the dlpack structure from OrtValue to
+          // another library only remains alive in the same loop iteration.
+
+          auto destructor = [](PyObject* data) {
+            DLManagedTensor* dlmanaged_tensor = reinterpret_cast<DLManagedTensor*>(
+                PyCapsule_GetPointer(data, "dltensor"));
+            if (dlmanaged_tensor) {
+              // The dlmanaged_tensor has not been consumed, call deleter ourselves.
+              dlmanaged_tensor->deleter(const_cast<DLManagedTensor*>(dlmanaged_tensor));
+            } else {
+              // The dlmanaged_tensor has been consumed,
+              // PyCapsule_GetPointer has set an error indicator.
+              PyErr_Clear();
+            }
+          };
+
+          DLManagedTensor* dlmanaged_tensor;
+
+          for (auto it : v) {
+            dlmanaged_tensor = dlpack::OrtValueToDlpack(it);
+            capsule = PyCapsule_New(dlmanaged_tensor, "dltensor", destructor);
+            if (capsule == NULL)
+              throw std::runtime_error("Empty capsule returned.");
+#if (PY_MAJOR_VERSION >= 3 && PY_MINOR_VERSION >= 9)
+            obj = PyObject_CallOneArg(handle, capsule);
+#else
+            obj = PyObject_CallFunctionObjArgs(handle, capsule, NULL);
 #endif
+            if (obj == NULL)
+              throw std::runtime_error("Empty tensor returned.");
+            res.append(py::handle(obj));
+          }
+        }
 
         return res;
        },
