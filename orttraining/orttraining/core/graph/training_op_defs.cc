@@ -769,6 +769,30 @@ void RegisterTrainingOpSchemas() {
       .Input(1, "indices", "Tensor of int32/int64 indices, of any rank q.", "Tind")
       .Input(2, "dY", "Gradient of output", "T")
       .Input(3, "num_segments", "Num of Segments", "Int32", OpSchema::Optional)
+      .Input(
+          4,
+          "last_segment_partial_segment_offset",
+          "last_segment_partial_segment_offset",
+          "Int32",
+          OpSchema::Optional)
+      .Input(
+          5,
+          "last_segment_partial_segment_count",
+          "last_segment_partial_segment_count",
+          "Int32",
+          OpSchema::Optional)
+      .Input(
+          6,
+          "per_segment_partial_segment_counts",
+          "per_segment_partial_segment_counts",
+          "Int32",
+          OpSchema::Optional)
+      .Input(
+          7,
+          "per_segment_partial_segment_offsets",
+          "per_segment_partial_segment_offsets",
+          "Int32",
+          OpSchema::Optional)
       .Output(0, "dX", "Gradient of input", "T")
       .Attr(
           "axis",
@@ -824,6 +848,30 @@ void RegisterTrainingOpSchemas() {
           1,
           "num_segments",
           "Number of segments",
+          "Int32",
+          OpSchema::Optional)
+      .Output(
+          2,
+          "last_segment_partial_segment_offset",
+          "last_segment_partial_segment_offset",
+          "Int32",
+          OpSchema::Optional)
+      .Output(
+          3,
+          "last_segment_partial_segment_count",
+          "last_segment_partial_segment_count",
+          "Int32",
+          OpSchema::Optional)
+      .Output(
+          4,
+          "per_segment_partial_segment_counts",
+          "per_segment_partial_segment_counts",
+          "Int32",
+          OpSchema::Optional)
+      .Output(
+          5,
+          "per_segment_partial_segment_offsets",
+          "per_segment_partial_segment_offsets",
           "Int32",
           OpSchema::Optional)
       .TypeConstraint(

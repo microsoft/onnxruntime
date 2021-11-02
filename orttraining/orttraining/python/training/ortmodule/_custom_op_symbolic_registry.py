@@ -83,7 +83,7 @@ def embedding(g, weight, indices, padding_idx, scale_grad_by_freq, sparse):
     #     warnings.warn("Warning: ONNX export of embedding with padding_idx >= 0 "
     #                   "for training mode. "
     #                   "ONNX does not support not updating the embedding vector at padding_idx during training.")
-    output, num_segments = g.op("com.microsoft::GatherInternal", weight, indices, outputs=2)
+    output = g.op("com.microsoft::GatherInternal", weight, indices, outputs=6)[0]
 
     # indices_shape = _get_tensor_sizes(indices)
     # if indices_shape is not None and hasattr(weight.type(), 'with_sizes'):

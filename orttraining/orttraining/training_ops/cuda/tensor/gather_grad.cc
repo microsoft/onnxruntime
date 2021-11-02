@@ -28,6 +28,8 @@ ONNX_OPERATOR_KERNEL_EX(
     (*KernelDefBuilder::Create())
         .InputMemoryType(OrtMemTypeCPUInput, 0)
         .InputMemoryType(OrtMemTypeCPU, 3)
+        .InputMemoryType(OrtMemTypeCPU, 4)
+        .InputMemoryType(OrtMemTypeCPU, 5)
         .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
         .TypeConstraint("Int32", DataTypeImpl::GetTensorType<int32_t>())
         .TypeConstraint("T", ALL_IEEE_FLOAT_TENSOR_TYPES)
@@ -100,7 +102,7 @@ Status DispatchToGatherGradImpl(
     Tensor& dX) {
   if (utils::IsPrimitiveDataType<float>(t_data_type)) {
     return DispatchToGatherGradImplByTindex<float>(
-        stream, tindex_data_type, allocator, num_gathered_per_index, gather_dimension_size, num_batches, 
+        stream, tindex_data_type, allocator, num_gathered_per_index, gather_dimension_size, num_batches,
         num_segments, dY, gathered_indices, dX);
   } else if (utils::IsPrimitiveDataType<MLFloat16>(t_data_type)) {
     return DispatchToGatherGradImplByTindex<MLFloat16>(
@@ -109,7 +111,7 @@ Status DispatchToGatherGradImpl(
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
   } else if (utils::IsPrimitiveDataType<BFloat16>(t_data_type)) {
     return DispatchToGatherGradImplByTindex<BFloat16>(
-        stream, tindex_data_type, allocator, num_gathered_per_index, gather_dimension_size, num_batches, 
+        stream, tindex_data_type, allocator, num_gathered_per_index, gather_dimension_size, num_batches,
         num_segments, dY, gathered_indices, dX);
 #endif
   }

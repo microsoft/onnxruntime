@@ -52,6 +52,8 @@ ONNX_OPERATOR_KERNEL_EX(
     (*KernelDefBuilder::Create())
         // Set the output-1 to stay in CUDA_PINNED memory to avoid synchronous memcpy
         .OutputMemoryType(OrtMemTypeCPU, 1)
+        .OutputMemoryType(OrtMemTypeCPU, 2)
+        .OutputMemoryType(OrtMemTypeCPU, 3)
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
         .TypeConstraint("Int32", DataTypeImpl::GetTensorType<int32_t>())
         .TypeConstraint("Tind", std::vector<MLDataType>{
@@ -112,13 +114,13 @@ Status Gather::ComputeInternal(OpKernelContext* context) const {
     const int64_t& num_gathered_per_index = block_size;
 
     GatherGradPrepare<int64_t>(
-      Stream(),
-      CudaScratchBufferAllocator{*this},
-      reinterpret_cast<const int64_t*>(indices_data),
-      num_gathered_indices,
-      gather_dimension_size,
-      num_gathered_per_index,
-      *p_num_segments);
+        Stream(),
+        CudaScratchBufferAllocator{*this},
+        reinterpret_cast<const int64_t*>(indices_data),
+        num_gathered_indices,
+        gather_dimension_size,
+        num_gathered_per_index,
+        *p_num_segments);
 
     return Status::OK();
   }
