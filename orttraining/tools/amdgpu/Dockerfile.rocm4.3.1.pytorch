@@ -138,6 +138,8 @@ RUN git clone -b wezhan/tnlrv4 --recursive https://github.com/microsoft/onnxrunt
 RUN pip3 install --no-cache-dir GPUtil azureml azureml-core datasets tokenizers ninja cerberus sympy sacremoses sacrebleu
 
 RUN pip install transformers==2.10.0 sklearn tensorboardX
+RUN pip install --pre torch-ort -f https://download.onnxruntime.ai/torch_ort_nightly.html
+RUN python -m torch_ort.configure
 
 # Enable ssh access without password needed
 RUN sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/g' /etc/ssh/sshd_config
