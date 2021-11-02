@@ -48,7 +48,9 @@ void GatherGradPrepare(
     const GatheredIndexIndex_t num_gathered_indices,
     int64_t gather_dimension_size,
     int64_t num_gathered_per_index,
-    SegmentIndex_t& host_num_segments);
+    SegmentIndex_t& host_num_segments,
+    IAllocatorUniquePtr<SegmentIndex_t>& per_segment_partial_segment_counts_out,
+    IAllocatorUniquePtr<SegmentIndex_t>& per_segment_partial_segment_offsets_out);
 
 }  // namespace cuda
 }  // namespace onnxruntime

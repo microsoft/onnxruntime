@@ -113,6 +113,9 @@ Status Gather::ComputeInternal(OpKernelContext* context) const {
     const int64_t& gather_dimension_size = indices_max;
     const int64_t& num_gathered_per_index = block_size;
 
+    IAllocatorUniquePtr<SegmentIndex_t> per_segment_partial_segment_counts_out;
+    IAllocatorUniquePtr<SegmentIndex_t> per_segment_partial_segment_offsets_out;
+
     GatherGradPrepare<int64_t>(
         Stream(),
         CudaScratchBufferAllocator{*this},
@@ -120,7 +123,9 @@ Status Gather::ComputeInternal(OpKernelContext* context) const {
         num_gathered_indices,
         gather_dimension_size,
         num_gathered_per_index,
-        *p_num_segments);
+        *p_num_segments,
+        per_segment_partial_segment_counts_out,
+        per_segment_partial_segment_offsets_out);
 
     return Status::OK();
   }

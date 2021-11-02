@@ -212,7 +212,9 @@ void PartialSumsImpl(
     int64_t num_gathered_per_index,
     int64_t gather_dimension_size,
     const GatheredIndexIndex_t* segment_offsets,
-    SegmentIndex_t num_segments) {
+    SegmentIndex_t num_segments,
+    IAllocatorUniquePtr<SegmentIndex_t>& per_segment_partial_segment_counts_out,
+    IAllocatorUniquePtr<SegmentIndex_t>& per_segment_partial_segment_offsets_out) {
   // each segment is split into partial segments of at most
   // kMaxPartialSegmentSize index pairs.
 
@@ -249,6 +251,9 @@ void PartialSumsImpl(
   }
 
   printf("%d", host_num_partial_segments);
+
+  per_segment_partial_segment_counts_out = std::move(per_segment_partial_segment_counts);
+  per_segment_partial_segment_offsets_out = std::move(per_segment_partial_segment_offsets);
 }
 
 template <typename TIndex>
@@ -259,7 +264,9 @@ void GatherGradPrepare(
     const GatheredIndexIndex_t num_gathered_indices,
     int64_t gather_dimension_size,
     int64_t num_gathered_per_index,
-    SegmentIndex_t& host_num_segments) {
+    SegmentIndex_t& host_num_segments,
+    IAllocatorUniquePtr<SegmentIndex_t>& per_segment_partial_segment_counts_out,
+    IAllocatorUniquePtr<SegmentIndex_t>& per_segment_partial_segment_offsets_out) {
   IAllocatorUniquePtr<TIndex> dX_indices_sorted, dY_indices_sorted;
   GetSortedIndices(
       stream,
@@ -307,19 +314,22 @@ void GatherGradPrepare(
         allocator,
         dX_indices_sorted.get(), dY_indices_sorted.get(),
         num_gathered_indices, num_gathered_per_index, gather_dimension_size,
-        segment_offsets.get(), host_num_segments);
+        segment_offsets.get(), host_num_segments,
+        per_segment_partial_segment_counts_out, per_segment_partial_segment_offsets_out);
   }
 }
 
-#define SPECIALIZED(TIndex)                            \
-  template void GatherGradPrepare<TIndex>(             \
-      cudaStream_t stream,                             \
-      const CudaScratchBufferAllocator& allocator,     \
-      const TIndex* dX_indices,                        \
-      const GatheredIndexIndex_t num_gathered_indices, \
-      int64_t gather_dimension_size,                   \
-      int64_t num_gathered_per_index,                  \
-      SegmentIndex_t& host_num_segments);
+#define SPECIALIZED(TIndex)                                                        \
+  template void GatherGradPrepare<TIndex>(                                         \
+      cudaStream_t stream,                                                         \
+      const CudaScratchBufferAllocator& allocator,                                 \
+      const TIndex* dX_indices,                                                    \
+      const GatheredIndexIndex_t num_gathered_indices,                             \
+      int64_t gather_dimension_size,                                               \
+      int64_t num_gathered_per_index,                                              \
+      SegmentIndex_t& host_num_segments,                                           \
+      IAllocatorUniquePtr<SegmentIndex_t>& per_segment_partial_segment_counts_out, \
+      IAllocatorUniquePtr<SegmentIndex_t>& per_segment_partial_segment_offsets_out);
 
 SPECIALIZED(int32_t)
 SPECIALIZED(int64_t)
