@@ -45,7 +45,7 @@ namespace SchemaInferenceOverrider
                     &ctx, 
                     constantCpuInputsCapture);
 
-                THROW_IF_FAILED(shapeInferrer->InferOutputShapes(abiContext.Get()));
+                ORT_THROW_IF_FAILED(shapeInferrer->InferOutputShapes(abiContext.Get()));
                 abiContext->Close();
             }
         });
