@@ -15,6 +15,7 @@ jobs:
   - name: OnnxRuntimeBuildDirectory
     value: '$(Build.BinariesDirectory)'
   steps:
+  - checkout: none
   - task: DownloadPipelineArtifact@0
     displayName: 'Download NPM packages'
     inputs:

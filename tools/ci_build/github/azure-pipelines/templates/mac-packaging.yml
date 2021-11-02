@@ -12,6 +12,16 @@ parameters:
   type: boolean
   default: true
 
+- name: BuildNodejs
+  type: boolean
+  default: false
+
+variables:
+  ${{ if eq(parameters.MacosArch, 'x86_64') }}:
+    NodejsBindingArch: x64
+  ${{ if eq(parameters.MacosArch, 'arm64') }}:
+    NodejsBindingArch: arm64
+
 steps:     
     - script: |
         rm -rf $(Build.BinariesDirectory)/Release
@@ -41,7 +51,7 @@ steps:
       displayName: 'Copy libcustom_op_library.dylib to ArtifactStagingDirectory'
       condition: and(succeeded(), eq('${{ parameters.MacosArch }}', 'x86_64'))
 
-    - ${{ if and(ne(parameters.MacosArch, 'universal2'), eq(parameters.buildJava, true)) }}:
+    - ${{ if eq(parameters.BuildJava, true) }}:
         - template: java-api-artifacts-package-and-publish-steps-posix.yml
           parameters:
               arch: 'osx-${{ parameters.MacosArch }}'
@@ -50,3 +60,10 @@ steps:
               version: '$(OnnxRuntimeVersion)'
               libraryName: 'libonnxruntime.dylib'
               nativeLibraryName: 'libonnxruntime4j_jni.dylib'
+
+    - ${{ if eq(parameters.BuildNodejs, true) }}:
+        - template: nodejs-artifacts-package-and-publish-steps-posix.yml
+          parameters:
+              arch: '$(NodejsBindingArch)'
+              os: 'darwin'
+              artifactName: 'drop-onnxruntime-nodejs-osx-$(MacosArch)'

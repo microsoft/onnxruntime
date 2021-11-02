@@ -148,18 +148,24 @@ jobs:
       
     - template: mac-packaging.yml
       parameters :
-        AdditionalBuildFlags : ${{ parameters.AdditionalBuildFlags }} --build_java --cmake_extra_defines CMAKE_OSX_ARCHITECTURES=arm64
+        AdditionalBuildFlags : ${{ parameters.AdditionalBuildFlags }} --build_java --build_nodejs --cmake_extra_defines CMAKE_OSX_ARCHITECTURES=arm64
         MacosArch: arm64
+        BuildJava: true
+        BuildNodejs: true
         
     - template: mac-packaging.yml
       parameters :
         AdditionalBuildFlags : ${{ parameters.AdditionalBuildFlags }} --cmake_extra_defines CMAKE_OSX_ARCHITECTURES="arm64;x86_64"
         MacosArch: universal2
+        BuildJava: false
+        BuildNodejs: false
 
     - template: mac-packaging.yml
       parameters :
-        AdditionalBuildFlags : ${{ parameters.AdditionalBuildFlags }} --build_java
+        AdditionalBuildFlags : ${{ parameters.AdditionalBuildFlags }} --build_java --build_nodejs
         MacosArch: x86_64
+        BuildJava: true
+        BuildNodejs: true
 
     - task: PublishPipelineArtifact@1
       inputs:
@@ -267,7 +273,7 @@ jobs:
     buildArch: x64
     msbuildPlatform: arm64
     packageName: arm64
-    buildparameter: --arm64 ${{ parameters.AdditionalBuildFlags }}  ${{ parameters.AdditionalWinBuildFlags}}
+    buildparameter: --build_nodejs --arm64 ${{ parameters.AdditionalBuildFlags }}  ${{ parameters.AdditionalWinBuildFlags}}
     runTests: false
     buildJava: false
     buildNodejs: true
@@ -281,7 +287,7 @@ jobs:
     buildArch: x64
     msbuildPlatform: x64
     packageName: x64
-    buildparameter: --build_java ${{ parameters.AdditionalBuildFlags }}  ${{ parameters.AdditionalWinBuildFlags}}
+    buildparameter: --build_java --build_nodejs ${{ parameters.AdditionalBuildFlags }}  ${{ parameters.AdditionalWinBuildFlags}}
     runTests: ${{ parameters.RunOnnxRuntimeTests }}
     buildJava: true
     buildNodejs: true
@@ -612,6 +618,18 @@ jobs:
       targetPath: '$(Build.BinariesDirectory)/nodejs-artifacts/win32/arm64/'
 
   - task: DownloadPipelineArtifact@0
+    displayName: 'Download Pipeline Artifact - Nodejs (macOS x86_64)'
+    inputs:
+      artifactName: 'drop-onnxruntime-nodejs-osx-x86_64'
+      targetPath: '$(Build.BinariesDirectory)/nodejs-artifacts/darwin/x64/'
+
+  - task: DownloadPipelineArtifact@0
+    displayName: 'Download Pipeline Artifact - Nodejs (macOS arm64)'
+    inputs:
+      artifactName: 'drop-onnxruntime-nodejs-osx-arm64'
+      targetPath: '$(Build.BinariesDirectory)/nodejs-artifacts/darwin/arm64/'
+
+  - task: DownloadPipelineArtifact@0
     displayName: 'Download Pipeline Artifact - Nodejs (Linux x64)'
     inputs:
       artifactName: 'drop-onnxruntime-nodejs-linux-x64'
@@ -709,6 +727,34 @@ jobs:
       Contents: '*.node'
       TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\linux\arm64'
 
+  # Node.js binding darwin/x64
+  - task: CopyFiles@2
+    displayName: 'Copy nuget binaries to: $(Build.SourcesDirectory)\js\node\bin\napi-v3\darwin\x64\'
+    inputs:
+      SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\nuget-artifacts\onnxruntime-osx-x86_64\lib'
+      Contents: 'libonnxruntime.*.dylib'
+      TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\darwin\x64'
+  - task: CopyFiles@2
+    displayName: 'Copy nodejs binaries to: $(Build.SourcesDirectory)\js\node\bin\napi-v3\darwin\x64\'
+    inputs:
+      SourceFolder: '$(Build.BinariesDirectory)\nodejs-artifacts\darwin\x64'
+      Contents: '*.node'
+      TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\darwin\x64'
+
+  # Node.js binding darwin/arm64
+  - task: CopyFiles@2
+    displayName: 'Copy nuget binaries to: $(Build.SourcesDirectory)\js\node\bin\napi-v3\darwin\arm64\'
+    inputs:
+      SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\nuget-artifacts\onnxruntime-osx-arm64\lib'
+      Contents: 'libonnxruntime.*.dylib'
+      TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\darwin\arm64'
+  - task: CopyFiles@2
+    displayName: 'Copy nodejs binaries to: $(Build.SourcesDirectory)\js\node\bin\napi-v3\darwin\arm64\'
+    inputs:
+      SourceFolder: '$(Build.BinariesDirectory)\nodejs-artifacts\darwin\arm64'
+      Contents: '*.node'
+      TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\darwin\arm64'
+
   - task: PowerShell@2
     inputs:
       filePath: '$(Build.SourcesDirectory)\tools\ci_build\github\js\pack-npm-packages.ps1'
@@ -773,10 +819,10 @@ jobs:
     AgentPool : 'Linux-CPU'
     JobSuffix : 'Linux_CPU_x64'
 
-# - template: ../nodejs/templates/test_posix.yml
-#   parameters:
-#     AgentPool : 'macOS-11'
-#     JobSuffix : 'macOS_CPU_x64'
+- template: ../nodejs/templates/test_posix.yml
+  parameters:
+    AgentPool : 'macOS-11'
+    JobSuffix : 'macOS_CPU_x64'
 
 - job: Publish_NuGet_Package_And_Report
   workspace:
