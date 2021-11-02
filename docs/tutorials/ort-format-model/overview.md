@@ -36,7 +36,7 @@ The pre-built package includes support for selected operators and ONNX opset ver
 
 ONNX operator and types supported by the pre-built package for each ONNX Runtime release:
 - [mobile](../../reference/mobile/prebuilt-package)
-- [web](TBD)
+- web: TBD
 
 ## Custom build
 
