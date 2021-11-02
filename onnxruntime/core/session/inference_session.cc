@@ -171,9 +171,6 @@ Status VerifyEachNodeIsAssignedToAnEp(const Graph& graph, const logging::Logger&
 }
 }  // namespace
 
-#ifdef USE_CUDA
-void RunOnUnload(std::function<void()> function);
-#endif
 
 std::atomic<uint32_t> InferenceSession::global_session_id_{1};
 

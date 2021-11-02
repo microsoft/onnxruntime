@@ -17,6 +17,8 @@
 
 namespace onnxruntime {
 
+void RunOnUnload(std::function<void()> function);
+
 // Logical device representation.
 class CUDAExecutionProvider : public IExecutionProvider {
  public:
