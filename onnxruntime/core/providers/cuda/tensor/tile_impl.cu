@@ -27,7 +27,6 @@ __global__ void _TileKernel(
     if (dim == shape_rank) {
       break;
     }
-  for (int dim = 0; dim < shape_rank; ++dim) {
     int out_coord, r;
     fdm_output_strides[dim].divmod(output_index, out_coord, r);
     output_index = r;
