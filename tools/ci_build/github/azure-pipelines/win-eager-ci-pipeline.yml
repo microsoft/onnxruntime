@@ -73,7 +73,7 @@ jobs:
     displayName: 'API Documentation Check and generate'
 
   - script: |
-     python -m pip install -r $(Build.SourcesDirectory)\tools\ci_build\github\windows\requirements_eager.txt
+     python -m pip install -r $(Build.SourcesDirectory)\tools\ci_build\github\windows\eager\requirements.txt
      python -m pip list
     workingDirectory: '$(Build.BinariesDirectory)'
     displayName: 'Install python modules'

@@ -22,7 +22,7 @@ __author__ = "Microsoft"
 try:
     import torch
 except ImportError:
-    pass
+    print("Torch not found. It is required for Eager mode.")
 
 try:
     from onnxruntime.capi._pybind_state import get_all_providers, get_available_providers, get_device, set_seed, \

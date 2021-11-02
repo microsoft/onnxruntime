@@ -604,14 +604,10 @@ def get_config_build_dir(build_dir, config):
 
 
 def run_subprocess(args, cwd=None, capture_stdout=False, dll_path=None,
-                   shell=False, env={}, python_path=None, add_dll_dir_path=None):
+                   shell=False, env={}, python_path=None):
     if isinstance(args, str):
         raise ValueError("args should be a sequence of strings, not a string")
 
-    # print("Added DLL directory everytime:", add_dll_dir_path)
-    if add_dll_dir_path and is_windows():
-        os.add_dll_directory(add_dll_dir_path)
-        print("Added DLL directory:", add_dll_dir_path, " for:", args)
     my_env = os.environ.copy()
     if dll_path:
         if is_windows():
@@ -1545,16 +1541,6 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                 build_dir, config, "external", "tvm", config))
         if args.use_tensorrt:
             dll_path_list.append(os.path.join(args.tensorrt_home, 'lib'))
-        add_dll_dir_path = None
-        if args.build_eager_mode and is_windows():
-            import torch
-            if sys.version_info[0] == 3:
-                if sys.version_info[1] <= 7:
-                    dll_path_list.append(os.path.join(os.path.dirname(torch.__file__), 'lib'))
-                else:
-                    add_dll_dir_path = os.path.join(os.path.dirname(torch.__file__), 'lib')
-        if add_dll_dir_path:
-            print("Current dll directory:", add_dll_dir_path)
 
         dll_path = None
         if len(dll_path_list) > 0:
@@ -1610,25 +1596,25 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
             if is_windows():
                 cwd = os.path.join(cwd, config)
 
-            run_subprocess([sys.executable, 'onnxruntime_test_python.py'], cwd=cwd, dll_path=dll_path, add_dll_dir_path=add_dll_dir_path)
+            run_subprocess([sys.executable, 'onnxruntime_test_python.py'], cwd=cwd, dll_path=dll_path)
 
             if not args.disable_contrib_ops:
                 run_subprocess([sys.executable, 'onnxruntime_test_python_sparse_matmul.py'],
-                               cwd=cwd, dll_path=dll_path, add_dll_dir_path=add_dll_dir_path)
+                               cwd=cwd, dll_path=dll_path)
 
             if args.enable_symbolic_shape_infer_tests:
                 run_subprocess([sys.executable, 'onnxruntime_test_python_symbolic_shape_infer.py'],
-                               cwd=cwd, dll_path=dll_path, add_dll_dir_path=add_dll_dir_path)
+                               cwd=cwd, dll_path=dll_path)
 
             # For CUDA enabled builds test IOBinding feature
             if args.use_cuda:
                 # We need to have Torch installed to test the IOBinding feature
                 # which currently uses Torch's allocator to allocate GPU memory for testing
                 log.info("Testing IOBinding feature")
-                run_subprocess([sys.executable, 'onnxruntime_test_python_iobinding.py'], cwd=cwd, dll_path=dll_path, add_dll_dir_path=add_dll_dir_path)
+                run_subprocess([sys.executable, 'onnxruntime_test_python_iobinding.py'], cwd=cwd, dll_path=dll_path)
 
             if not args.disable_ml_ops:
-                run_subprocess([sys.executable, 'onnxruntime_test_python_mlops.py'], cwd=cwd, dll_path=dll_path, add_dll_dir_path=add_dll_dir_path)
+                run_subprocess([sys.executable, 'onnxruntime_test_python_mlops.py'], cwd=cwd, dll_path=dll_path)
 
             if args.enable_training and args.use_cuda:
                 # run basic frontend tests
@@ -1637,7 +1623,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
             if args.build_eager_mode:
                 # run eager mode test
                 args_list = [sys.executable, os.path.join(cwd, 'eager_test')]
-                run_subprocess(args_list, cwd=cwd, dll_path=dll_path, python_path=cwd, add_dll_dir_path=add_dll_dir_path)
+                run_subprocess(args_list, cwd=cwd, dll_path=dll_path, python_path=cwd)
 
             try:
                 import onnx  # noqa
@@ -1648,10 +1634,10 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                 onnx_test = False
 
             if onnx_test:
-                run_subprocess([sys.executable, 'onnxruntime_test_python_backend.py'], cwd=cwd, dll_path=dll_path, add_dll_dir_path=add_dll_dir_path)
+                run_subprocess([sys.executable, 'onnxruntime_test_python_backend.py'], cwd=cwd, dll_path=dll_path)
                 if not args.disable_contrib_ops:
                     run_subprocess([sys.executable, '-m', 'unittest', 'discover', '-s', 'quantization'],
-                                   cwd=cwd, dll_path=dll_path, add_dll_dir_path=add_dll_dir_path)
+                                   cwd=cwd, dll_path=dll_path)
                     if args.enable_transformers_tool_test:
                         import numpy
                         import google.protobuf
@@ -1666,7 +1652,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
 
                 if not args.disable_ml_ops:
                     run_subprocess([sys.executable, 'onnxruntime_test_python_backend_mlops.py'],
-                                   cwd=cwd, dll_path=dll_path, add_dll_dir_path=add_dll_dir_path)
+                                   cwd=cwd, dll_path=dll_path)
 
                 run_subprocess([sys.executable,
                                 os.path.join(source_dir, 'onnxruntime', 'test', 'onnx', 'gen_test_models.py'),
@@ -1675,7 +1661,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                 if not args.skip_onnx_tests:
                     run_subprocess([os.path.join(cwd, 'onnx_test_runner'), 'test_models'], cwd=cwd)
                     if config != 'Debug':
-                        run_subprocess([sys.executable, 'onnx_backend_test_series.py'], cwd=cwd, dll_path=dll_path, add_dll_dir_path=add_dll_dir_path)
+                        run_subprocess([sys.executable, 'onnx_backend_test_series.py'], cwd=cwd, dll_path=dll_path)
 
             if not args.skip_keras_test:
                 try:
@@ -1690,7 +1676,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                 if onnxml_test:
                     run_subprocess(
                         [sys.executable, 'onnxruntime_test_python_keras.py'],
-                        cwd=cwd, dll_path=dll_path, add_dll_dir_path=add_dll_dir_path)
+                        cwd=cwd, dll_path=dll_path)
 
 
 def nuphar_run_python_tests(build_dir, configs):
