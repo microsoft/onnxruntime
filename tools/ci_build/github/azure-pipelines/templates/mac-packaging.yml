@@ -16,12 +16,6 @@ parameters:
   type: boolean
   default: false
 
-variables:
-  ${{ if eq(parameters.MacosArch, 'x86_64') }}:
-    NodejsBindingArch: x64
-  ${{ if eq(parameters.MacosArch, 'arm64') }}:
-    NodejsBindingArch: arm64
-
 steps:     
     - script: |
         rm -rf $(Build.BinariesDirectory)/Release
@@ -64,6 +58,9 @@ steps:
     - ${{ if eq(parameters.BuildNodejs, true) }}:
         - template: nodejs-artifacts-package-and-publish-steps-posix.yml
           parameters:
-              arch: '$(NodejsBindingArch)'
+              ${{ if eq(parameters.MacosArch, 'x86_64') }}:
+                  arch: x64
+              ${{ if eq(parameters.MacosArch, 'arm64') }}:
+                  arch: arm64
               os: 'darwin'
               artifactName: 'drop-onnxruntime-nodejs-osx-$(MacosArch)'
