@@ -40,7 +40,7 @@ constexpr const char* CUDA_PINNED = "CudaPinned";
 constexpr const char* MIGRAPHX = "MIGraphX";
 constexpr const char* MIGRAPHX_PINNED = "MIGraphXPinned";
 constexpr const char* OpenVINO = "OpenVINO";
-constexpr const char* IGPU = "IGPU";
+constexpr const char* OpenVINO_GPU = "OpenVINO_GPU";
 
 
 constexpr size_t kAllocAlignment = 256;
