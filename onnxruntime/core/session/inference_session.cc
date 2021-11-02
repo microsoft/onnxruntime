@@ -40,6 +40,7 @@
 #include "core/platform/Barrier.h"
 #include "core/platform/ort_mutex.h"
 #include "core/platform/threadpool.h"
+#include "core/providers/providers.h"
 #include "core/providers/cpu/controlflow/utils.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/flatbuffers/flatbuffers_utils.h"
@@ -62,6 +63,11 @@
 
 #if defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
 #include "core/optimizer/ort_format_runtime_optimization/utils.h"
+#endif
+
+#ifdef USE_CUDA
+#include "core/providers/cuda/cuda_provider_factory.h"
+#include "core/providers/cuda/cuda_execution_provider_info.h"
 #endif
 
 using namespace ONNX_NAMESPACE;
@@ -166,6 +172,10 @@ Status VerifyEachNodeIsAssignedToAnEp(const Graph& graph, const logging::Logger&
   return status;
 }
 }  // namespace
+
+#ifdef USE_CUDA
+ProviderInfo_CUDA* TryGetProviderInfo_CUDA();
+#endif
 
 std::atomic<uint32_t> InferenceSession::global_session_id_{1};
 
@@ -1235,6 +1245,9 @@ common::Status InferenceSession::Initialize() {
     env.GetTelemetryProvider().LogSessionCreationStart();
 
     bool have_cpu_ep = false;
+#ifdef USE_CUDA
+    bool have_cuda_ep = false;
+#endif
 
     {
       std::lock_guard<onnxruntime::OrtMutex> initial_guard(session_mutex_);
@@ -1250,6 +1263,9 @@ common::Status InferenceSession::Initialize() {
       }
 
       have_cpu_ep = execution_providers_.Get(onnxruntime::kCpuExecutionProvider) != nullptr;
+#ifdef USE_CUDA
+      have_cuda_ep = execution_providers_.Get(onnxruntime::kCudaExecutionProvider) != nullptr;
+#endif
     }
 
     // Verify that there are no external initializers in the graph if external data is disabled.
@@ -1264,6 +1280,22 @@ common::Status InferenceSession::Initialize() {
     }
 #endif
 
+#ifdef USE_CUDA
+    // Register default CUDAExecutionProvider if user didn't provide it through the Register() calls.
+    // RegisterExecutionProvider locks the session_mutex_ so we can't be holding it when we call that
+    if (!have_cuda_ep) {
+      LOGS(*session_logger_, INFO) << "Adding CUDA execution provider.";
+      if (auto* cuda_provider_info = TryGetProviderInfo_CUDA()) {
+        CUDAExecutionProviderInfo info;
+        auto p_cuda_exec_provider = cuda_provider_info->CreateExecutionProviderFactory(info)->CreateProvider();
+        ORT_RETURN_IF_ERROR_SESSIONID_(RegisterExecutionProvider(std::move(p_cuda_exec_provider)));
+      } else {
+        if (!Env::Default().GetEnvironmentVar("CUDA_PATH").empty()) {
+          ORT_THROW("CUDA_PATH is set but CUDA wasn't able to be loaded. Please install the correct version of CUDA and cuDNN as mentioned in the GPU requirements page (https://onnxruntime.ai/docs/reference/execution-providers/CUDA-ExecutionProvider.html#requirements), make sure they're in the PATH, and that your GPU is supported.");
+        }
+      }
+    }
+#endif
     // Register default CPUExecutionProvider if user didn't provide it through the Register() calls.
     // RegisterExecutionProvider locks the session_mutex_ so we can't be holding it when we call that
     if (!have_cpu_ep) {
