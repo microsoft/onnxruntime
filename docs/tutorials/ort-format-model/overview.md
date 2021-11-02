@@ -9,9 +9,9 @@ nav_order: 1
 
 # Overview
 
-ORT format model is a pre-optimized ONNX model used in ONNX Runtime Mobile and ONNX Runtime Web, which use a special build of ONNX Runtime that minimizes the binary size and reduces memory usage. The special build does this primarily by only including specified operators and types in the build, and by saving the ONNX model to an internal format ('ORT format model').
+ORT format model is a pre-optimized ONNX model used to run with a custom ORT build that minimizes the binary size and reduces memory usage for client side inference including Mobile and Web. The custom build does this primarily by only including specified operators and types in the build, and by saving the ONNX model to an internal format ('ORT format model'). Both ONNX Runtime Mobile and ONNX Runtime Web now utilize ORT format and minimal build for optimized inference.
 
-An ONNX model must be converted to an ORT format model to be used with ONNX Runtime Mobile or ONNX Runtime Web.
+An ONNX model must be converted to an ORT format model to be used with minimal build in ONNX Runtime Mobile or ONNX Runtime Web.
 
 ![Steps to build for mobile platforms](../../../images/mobile.png){:width="60%"}
 
