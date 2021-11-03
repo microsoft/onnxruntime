@@ -157,7 +157,6 @@ def get_latency_result(runtimes, batch_size):
     }
     return result
 
-
 def get_ort_session_inputs_and_outputs(name, session, ort_input):
 
     sess_inputs = {}
@@ -187,9 +186,6 @@ def get_ort_session_inputs_and_outputs(name, session, ort_input):
     elif 'yolov4' in name.lower():
         sess_inputs[session.get_inputs()[0].name] = ort_input[0]
         sess_outputs = ['Identity:0']
-
-    elif 'shufflenet-v2' in name.lower() or 'shufflenet_v2' in name.lower():
-        sess_inputs[session.get_inputs()[0].name] = ort_input
 
     else:
         sess_inputs = {}
@@ -235,6 +231,13 @@ def end_memory_tracking(p, trtexec, success):
         os.remove(MEMORY_FILE)
     return mem_usage
 
+def inference_ort_with_ep(ep, session, repeat_times, sess_outputs, sess_inputs, io_binding):
+    if cpu in ep: 
+        runtime = timeit.repeat(lambda: session.run(sess_outputs, sess_inputs), number=1, repeat=repeat_times)
+    else: # other eps utilize python binding 
+        runtime = timeit.repeat(lambda: session.run_with_iobinding(io_binding), number=1, repeat=repeat_times)
+    return runtime
+
 def inference_ort(args, name, session, ep, ort_inputs, result_template, repeat_times, batch_size, track_memory):
     runtimes = []
     if args.input_data == "random":
@@ -242,11 +245,10 @@ def inference_ort(args, name, session, ep, ort_inputs, result_template, repeat_t
     else:
         repeat_times += 1 # add warn-up run
     
-    mem_usage = None 
-    i = 0
-    mem_usages = []
+    mem_usages = []   
+    p = None
+    mem_usage = None
     for ort_input in ort_inputs:
-        
         io_binding = session.io_binding()
         sess_inputs, sess_outputs = get_ort_session_inputs_and_outputs(name, session, ort_input)
         if debug:
@@ -256,51 +258,31 @@ def inference_ort(args, name, session, ep, ort_inputs, result_template, repeat_t
             logger.info(sess_outputs)
         for name, inp in sess_inputs.items():
             io_binding.bind_cpu_input(name, inp)
-        
         for out in sess_outputs: 
             io_binding.bind_output(out)
+       
+        try:
+            if track_memory: 
+                p = start_memory_tracking()    
+                runtime = inference_ort_with_ep(ep, session, repeat_times, sess_outputs, sess_inputs, io_binding)
+                mem_usage = end_memory_tracking(p, False, True)
+                mem_usages.append(mem_usage) 
+            else: 
+                runtime = inference_ort_with_ep(ep, session, repeat_times, sess_outputs, sess_inputs, io_binding)
+            runtimes += runtime[1:] # remove warmup
         
-        #try:
-            #perf_ep = ''
-            #if ep == cuda or ep == cuda_fp16: 
-            #    perf_ep = 'cuda'
-            #if ep == trt or ep == trt_fp16: 
-            #    perf_ep = 'tensorrt'
-            #if ep == cpu: 
-            #    perf_ep = 'cpu'
-            #command = ['./code/onnxruntime/build/Linux/Release/onnxruntime_perf_test', '-e', 'tensorrt','-t', '50', '-i','"','trt_max_workspace_size|4294967296', 'trt_engine_cache_enable|True']
-            #if trt_fp16 in ep: 
-            #    command.extend['trt_fp16_enable|True']
-            #command.extend(['"', model_path])
-            #if trt in ep or trt_fp16 in ep: 
-            #    out = get_output(command)
-            #os.environ["ORT_TENSORRT_CACHE_PATH"] = "/perf/onnx-zoo-models/renset152-v2-7/TensorrtExecutionProvider_TRTKernel_graph_main_5145462769846823227_1_0_fp16.engine"
-        #runtime = timeit.repeat(lambda: session.run(sess_outputs, sess_inputs), number=1, repeat=repeat_times)
-        mem_usage = None
-        if track_memory: 
-            p = start_memory_tracking()    
-            if ep == cpu: 
-                runtime = timeit.repeat(lambda: session.run(sess_outputs, sess_inputs), number=1, repeat=repeat_times)
-            else: 
-                runtime = timeit.repeat(lambda: session.run_with_iobinding(io_binding), number=1, repeat=repeat_times)
-            mem_usage = end_memory_tracking(p, False, True)
-            mem_usages.append(mem_usage) 
-        else: 
-            if ep == cpu: 
-                runtime = timeit.repeat(lambda: session.run(sess_outputs, sess_inputs), number=1, repeat=repeat_times)
-            else: 
-                runtime = timeit.repeat(lambda: session.run_with_iobinding(io_binding), number=1, repeat=repeat_times)
-        runtimes += runtime[1:] # remove warmup
-    
-        #except Exception as e:
-            #logger.error(e)
-            #update_fail_model_map(model_to_fail_ep, name, ep, 'runtime error', e)
-            #return None
+        except Exception as e:
+            logger.error(e)
+            if track_memory:
+                end_memory_tracking(p, False, False)
+            raise(e)
 
-    mem_usage = max(mem_usages)
+    if len(mem_usages) > 0: 
+        mem_usage = max(mem_usages)
+    
     result = {}
     result.update(result_template)
-    result.update({"io_binding": False})
+    result.update({"io_binding": True})
     latency_result = get_latency_result(runtimes, batch_size)
     result.update(latency_result)
     return result, mem_usage 
@@ -1072,7 +1054,8 @@ def run_onnxruntime(args, models):
                 # memory tracking variables 
                 p = None # keep track of process to kill upon error
                 mem_usage = None
-         
+                result = None
+
                 # get standalone TensorRT perf
                 if standalone_trt in ep and args.trtexec: 
                     trtexec = True 
@@ -1102,29 +1085,21 @@ def run_onnxruntime(args, models):
                         "version": onnxruntime.__version__,
                         "device": ep,
                         "fp16": fp16,
-                        "io_binding": False,
+                        "io_binding": True,
                         "model_name": name,
                         "inputs": len(sess.get_inputs()),
                         "batch_size": batch_size,
                         "sequence_length": 1,
                         "datetime": str(datetime.now()),}
                     
-                    repeat_times = args.test_times
-                    if trt in ep or cuda in ep: 
-                        repeat_times = 12000
+                    # standardizing cuda and trt runs
+                    repeat_times = args.test_times if ep == cpu else 12000   
+                    track_memory = False if ep == cpu else args.track_memory
+                    
                     try: 
-                        if args.track_memory and track_ep_memory(ep): 
-                            trtexec = False
-                            #p = start_memory_tracking()            
-                            logger.info("inferencing")
-                            result, mem_usage = inference_ort(args, name, sess, ep, inputs, result_template, repeat_times, batch_size, args.track_memory)
-                            logger.info("done inferencing")
-                            #success = True if result else False
-                            #mem_usage = end_memory_tracking(p, trtexec, success)
-                       # else: 
-                            #result = inference_ort(args, name, sess, ep, inputs, result_template, repeat_times, batch_size, args.track_memory)
+                        trtexec = False
+                        result, mem_usage = inference_ort(args, name, sess, ep, inputs, result_template, repeat_times, batch_size, track_memory)
                     except Exception as e:
-                        logger.info("in benchmark")
                         logger.error(e)
                         update_fail_model_map(model_to_fail_ep, name, ep, 'runtime error', e)
                         continue
@@ -1136,13 +1111,11 @@ def run_onnxruntime(args, models):
                         mem_usage = result["memory"]
                     if mem_usage: 
                         latency_result[ep]["memory"] = mem_usage
-
                     if not args.trtexec: # skip standalone
                         success_results.append(result)
 
                     model_to_latency[name] = copy.deepcopy(latency_result)
                     remove_files(model_info["working_directory"])
-                    logger.info("in result")
                 logger.info("---------------------------- benchmark [end] ----------------------------------\n")
 
 
