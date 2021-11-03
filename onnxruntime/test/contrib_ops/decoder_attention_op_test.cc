@@ -31,72 +31,80 @@ static void RunAttentionTest(
     const std::vector<float>* new_value_cache = nullptr,
     const std::vector<float>* key_cache = nullptr,
     const std::vector<float>* value_cache = nullptr,
-    const std::initializer_list<bool>* key_padding_mask_data = nullptr
+    const std::initializer_list<bool>* key_padding_mask_data = nullptr,
+    bool use_float16 = false
 ) {
-  int head_size = hidden_size / num_heads;
+  int min_cuda_architecture = use_float16 ? 530 : 0;
+  bool enable_cuda = HasCudaEnvironment(min_cuda_architecture);
+  bool enable_cpu = false;
 
-  OpTester tester("DecoderAttention", 1, onnxruntime::kMSDomain);
-  tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(num_heads));
+  if (enable_cpu || enable_cuda) {
+    OpTester tester("DecoderAttention", 1, onnxruntime::kMSDomain);
+    tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(num_heads));
 
-  std::vector<int64_t> query_dims = {sequence_length, batch_size, hidden_size};
-  std::vector<int64_t> key_dims = {kv_sequence_length, batch_size, hidden_size};
-  std::vector<int64_t> q_weights_dims = {hidden_size, hidden_size};
-  std::vector<int64_t> kv_weights_dims = {hidden_size, 2 * hidden_size};
-  std::vector<int64_t> bias_dims = {3 * hidden_size};
-  std::vector<int64_t> input_cache_dims = {batch_size, num_heads, input_cache_sen_len, head_size};
+    int head_size = hidden_size / num_heads;
+    std::vector<int64_t> query_dims = {sequence_length, batch_size, hidden_size};
+    std::vector<int64_t> key_dims = {kv_sequence_length, batch_size, hidden_size};
+    std::vector<int64_t> q_weights_dims = {hidden_size, hidden_size};
+    std::vector<int64_t> kv_weights_dims = {hidden_size, 2 * hidden_size};
+    std::vector<int64_t> bias_dims = {3 * hidden_size};
+    std::vector<int64_t> input_cache_dims = {batch_size, num_heads, input_cache_sen_len, head_size};
 
-  std::vector<int64_t> output_dims = {sequence_length, batch_size, hidden_size};
+    std::vector<int64_t> output_dims = {sequence_length, batch_size, hidden_size};
 
-  tester.AddInput<float>("query", query_dims, query_data);
-  tester.AddInput<float>("key", key_dims, key_data);
-  tester.AddInput<float>("q_weight", q_weights_dims, q_weights_data);
-  tester.AddInput<float>("kv_weight", kv_weights_dims, kv_weights_data);
-  tester.AddInput<float>("bias", bias_dims, bias_data);
+    tester.AddInput<float>("query", query_dims, query_data);
+    tester.AddInput<float>("key", key_dims, key_data);
+    tester.AddInput<float>("q_weight", q_weights_dims, q_weights_data);
+    tester.AddInput<float>("kv_weight", kv_weights_dims, kv_weights_data);
+    tester.AddInput<float>("bias", bias_dims, bias_data);
 
-  int src_len = 0;
-  if (!has_layer_state || !use_past) {
-    if (!static_kv) {
-      src_len = sequence_length;
+    int src_len = 0;
+    if (!has_layer_state || !use_past) {
+      if (!static_kv) {
+        src_len = sequence_length;
+      } else {
+        src_len = kv_sequence_length;
+      }
     } else {
-      src_len = kv_sequence_length;
+      if (!static_kv) {
+        src_len = input_cache_sen_len + sequence_length;
+      } else {
+        src_len = input_cache_sen_len;
+      }
     }
-  } else {
-    if (!static_kv) {
-      src_len = input_cache_sen_len + sequence_length;
+
+    if (nullptr == key_padding_mask_data || !has_key_padding_mask) {
+      tester.AddOptionalInputEdge<bool>();
     } else {
-      src_len = input_cache_sen_len;
+      std::vector<int64_t> key_padding_mask_dims = {batch_size, src_len};
+      tester.AddInput<bool>("key_padding_mask", key_padding_mask_dims, *key_padding_mask_data);
+    }
+
+    if (!has_layer_state || !use_past) {
+      tester.AddOptionalInputEdge<float>();
+      tester.AddOptionalInputEdge<float>();
+    } else {
+      tester.AddInput<float>("key_cache", input_cache_dims, *key_cache);
+      tester.AddInput<float>("value_cache", input_cache_dims, *value_cache);
+    }
+    tester.AddInput<bool>("static_kv", {1}, {static_kv});
+    tester.AddInput<bool>("use_past", {1}, {use_past});
+    tester.AddInput<bool>("has_layer_state", {1}, {has_layer_state});
+    tester.AddInput<bool>("has_key_padding_mask", {1}, {has_key_padding_mask});
+
+    tester.AddOutput<float>("output", output_dims, output_data);
+    if (has_layer_state) {
+      std::vector<int64_t> output_cache_dims = {batch_size, num_heads, src_len, head_size};
+      tester.AddOutput<float>("new_key_cache", output_cache_dims, *new_key_cache);
+      tester.AddOutput<float>("new_value_cache", output_cache_dims, *new_value_cache);
+    }
+
+    if (enable_cuda) {
+      std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+      execution_providers.push_back(DefaultCudaExecutionProvider());
+      tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
     }
   }
-
-  if (nullptr == key_padding_mask_data || !has_key_padding_mask) {
-    tester.AddOptionalInputEdge<bool>();
-  } else {
-    std::vector<int64_t> key_padding_mask_dims = {batch_size, src_len};
-    tester.AddInput<bool>("key_padding_mask", key_padding_mask_dims, *key_padding_mask_data);
-  }
-
-  if (!has_layer_state || !use_past) {
-    tester.AddOptionalInputEdge<float>();
-    tester.AddOptionalInputEdge<float>();
-  } else {
-    tester.AddInput<float>("key_cache", input_cache_dims, *key_cache);
-    tester.AddInput<float>("value_cache", input_cache_dims, *value_cache);
-  }
-  tester.AddInput<bool>("static_kv", {1}, {static_kv});
-  tester.AddInput<bool>("use_past", {1}, {use_past});
-  tester.AddInput<bool>("has_layer_state", {1}, {has_layer_state});
-  tester.AddInput<bool>("has_key_padding_mask", {1}, {has_key_padding_mask});
-
-  tester.AddOutput<float>("output", output_dims, output_data);
-  if (has_layer_state) {
-    std::vector<int64_t> output_cache_dims = {batch_size, num_heads, src_len, head_size};
-    tester.AddOutput<float>("new_key_cache", output_cache_dims, *new_key_cache);
-    tester.AddOutput<float>("new_value_cache", output_cache_dims, *new_value_cache);
-  }
-
-  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.push_back(DefaultCudaExecutionProvider());
-  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
 
