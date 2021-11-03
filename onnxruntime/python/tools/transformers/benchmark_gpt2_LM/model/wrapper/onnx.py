@@ -35,7 +35,7 @@ class OnnxModelWrapper(BaseModelWrapper):
                     'tensor(float16)': torch.float16,
                     'tensor(float)': torch.float}
 
-    def __init__(self, ort_sess, pad_token_id=0, float_type=None, io_binding=True, max_batch_size=64, max_sequence_length=512, *args, **kwargs):
+    def __init__(self, ort_sess, pad_token_id=0, io_binding=True, max_batch_size=16, max_sequence_length=64):
         super().__init__(ort_sess, pad_token_id=pad_token_id, float_type=None)
         self.ort_sess = ort_sess
         past_inputs = [x for x in self.ort_sess.get_inputs() if x.name.startswith('past')]
@@ -56,25 +56,26 @@ class OnnxModelWrapper(BaseModelWrapper):
         if past is not None:
             model_inputs.update({f'past_{i}': p for i, p in enumerate(past)})
         else:
-            shape = [x for x in self.past_shape]  # copy
+            shape = [x for x in self.past_shape]
             shape[3] = 0
             shape[1] = model_inputs['input_ids'].shape[0]
             zeros = torch.zeros(shape).type_as(model_inputs['attention_mask'])
             model_inputs.update({f'past_{i}': zeros for i in range(self.n_layers)})
+
         if self.io_binding:
             model_inputs = {k: v.contiguous() for k, v in model_inputs.items()}
         else:
             model_inputs = {k: v.cpu().numpy() for k, v in model_inputs.items()}
         return model_inputs
 
-    def forward(self, input_ids, model_state, generator_state):
+    def forward(self, input_ids, model_state, generator_state, is_beam_search=True):
         """
         :param input_ids: [LongTensor(shape=(batch_size, seq_len)). Here batch_size means `num_contexts x num_sequence_per_sample`
         :param model_state: the `past` in `GPT2LMHeadModel` call.
         """
-        batch_size, num_sequences_per_sample, cur_len = input_ids.shape
+        _, _, cur_len = input_ids.shape
         input_ids = input_ids.view(-1, cur_len)
-        
+
         device = input_ids.device
         model_inputs = self.get_model_inputs(input_ids, model_state, generator_state)
         model_inputs = self.convert_input_for_onnx(model_inputs)
@@ -105,12 +106,6 @@ class OnnxModelWrapper(BaseModelWrapper):
             self.output_buffers[output.name] = torch.zeros(np.prod(shape), dtype=self.type_lookups[output.type], device=self.device)
         self.buffer_sizes = {k: v.size(0) for k, v in self.output_buffers.items()}
 
-    def resize_buffers(self, name_regex, size):
-        for output in self.ort_sess.get_outputs():
-            if re.search(name_regex, output.name):
-                self.output_buffers[output.name] = torch.zeros(size, dtype=self.type_lookups[output.type], device=self.device)
-                self.buffer_sizes[output.name] = size
-
     def get_output_shape(self, input_dict):
         vocab_size = self.ort_sess.get_outputs()[0].shape[-1]
         logits_shape = tuple(input_dict['input_ids'].size()) + (vocab_size,)
@@ -124,20 +119,8 @@ class OnnxModelWrapper(BaseModelWrapper):
         outputs = {}
         for name, shape in output_shapes.items():
             output = buffers[name].view(-1)[:np.prod(shape)].view(shape)
-            # if name == 'logits':
-            #     output = output.clone() # buffers are shared, so one needs to be careful
             outputs[name] = output
         return outputs
-
-    def check_and_resize_buffers(self, output_shapes):
-        logits_size = np.prod(output_shapes['logits'])
-        present_size = np.prod(output_shapes['present_0'])
-
-        if logits_size > self.buffer_sizes['logits']:
-            self.resize_buffers('logits', logits_size)
-
-        if present_size > self.buffer_sizes['present_0']:
-            self.resize_buffers('present', present_size)
 
     def run_with_io_binding(self, input_dict):
         # Bind inputs and outputs to onnxruntime session

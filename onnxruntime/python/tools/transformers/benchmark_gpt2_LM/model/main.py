@@ -54,7 +54,7 @@ def parse_arguments():
     parser.add_argument("--num_beams",
                         required=False,
                         type=int,
-                        default=1,
+                        default=0,
                         help="Number of beams in beam search")
 
     parser.add_argument("--device",
@@ -80,7 +80,7 @@ def parse_arguments():
     
     parser.add_argument("--tokenizer_path",
                         required=False,
-                        default="model_files/",
+                        default="tokenizer_files/",
                         help="Path where tokenizer files reside")
 
     return parser.parse_args()

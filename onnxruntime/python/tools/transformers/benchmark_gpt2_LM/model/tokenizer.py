@@ -1,11 +1,16 @@
+from logging import exception
 from transformers import GPT2Tokenizer
 import bisect
 import numpy as np
 import myutils
 import torch
 
+# These are static limits to shave some kind of limitation on the processing
+# can be increased as needed
+MAX_TOKENS_LENGTH=1024
+
 class Tokenizer:
-    """ This class is to create GPT2Tokenizer required to encode and decode text and output ids of a model respectively.
+    """ This class represents an object of GPT2Tokenizer required to encode and decode text and output ids of a model respectively.
     It only needs the path of tokenizer to initialize
     """
     def __init__(self, tokenizer_path:str):
@@ -52,35 +57,52 @@ class Tokenizer:
         pad_token_id   : in case, string can't be encoded, token id that should be used for padding
         device         : device on which input should be created cuda or cpu
         """
-        prefix = input_text.replace('  ', ' ').split(' ')[-1].strip()
-        ids = self._tokenizer.encode(' '.join(input_text.replace('  ', ' ').split(' ')[:-1]))
-        last_complete_word_pos = len(ids)
+        try:
+            prefix = input_text.replace('  ', ' ').split(' ')[-1].strip()
+            ids = self._tokenizer.encode(' '.join(input_text.replace('  ', ' ').split(' ')[:-1]))
+            last_complete_word_pos = len(ids)
 
-        mask = self._get_mask('Ġ' + prefix)
-        if not mask.any():
-            ids = self._tokenizer.encode(input_text)
-            last_token = self._tokenizer.convert_ids_to_tokens([ids[-1]])
-            
-            mask = self._get_mask(last_token[0])
+            mask = self._get_mask('Ġ' + prefix)
             if not mask.any():
-                mask = np.ones_like(mask)
-            else:
-                ids = ids[:-1]
+                ids = self._tokenizer.encode(input_text)
+                last_token = self._tokenizer.convert_ids_to_tokens([ids[-1]])
+                
+                mask = self._get_mask(last_token[0])
+                if not mask.any():
+                    mask = np.ones_like(mask)
+                else:
+                    ids = ids[:-1]
+            
+            input_ids = []
+            first_token_masks = []
+
+            if not ids:
+                ids = [pad_token_id]
+                last_complete_word_pos += 1
+
+            # is this possible? Input text is not an indicator of number of tokens it would
+            # produce so checking the post encoded length             
+            if len(ids) > MAX_TOKENS_LENGTH:
+                raise Exception(f"Input{input_text} is tokenized into more than {MAX_TOKENS_LENGTH} tokens")
+
+            input_ids.append(ids)
+            first_token_masks.append(mask)
+
+            input_ids = torch.from_numpy(np.asarray(input_ids, dtype='int64')).to(device)
+            first_token_masks = torch.from_numpy(np.asarray(first_token_masks, dtype='float32')).to(device)
+        except Exception as e:
+            raise("Caught exception during encoding" + str(e))
         
-        input_ids = []
-        first_token_masks = []
-
-        if not ids:
-            ids = [pad_token_id]
-            last_complete_word_pos += 1
-
-        input_ids.append(ids)
-        first_token_masks.append(mask)
-
-        input_ids = torch.from_numpy(np.asarray(input_ids, dtype='int64')).to(device)
-        first_token_masks = torch.from_numpy(np.asarray(first_token_masks, dtype='float32')).to(device)
-
         return input_ids, first_token_masks, last_complete_word_pos
 
     def decode(self, ids):
+        """
+        decodes given ids into text
+        """
         return self._tokenizer.decode(ids)
+
+    def get_token_count(self):
+        """
+        returns the original number of tokens
+        """
+        return 50257
