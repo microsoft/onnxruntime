@@ -207,7 +207,6 @@ bool LaunchAttentionKernel(
 }
 
 
-// bugbug: need refactor
 template <typename T>
 bool DecoderQkvToContext(
   const cudaDeviceProp& prop,

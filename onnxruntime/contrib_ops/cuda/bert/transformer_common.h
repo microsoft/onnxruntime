@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include "core/providers/cuda/cuda_common.h"
+
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
@@ -37,6 +39,25 @@ class TransformerOptions {
   bool initialized_{false};
 
   static TransformerOptions instance;
+};
+
+// A wrapper class of cudaEvent_t to destroy the event automatically for avoiding memory leak.
+class AutoDestoryCudaEvent {
+ public:
+  AutoDestoryCudaEvent() : cuda_event_(nullptr) {
+  }
+
+  ~AutoDestoryCudaEvent() {
+    if (cuda_event_ != nullptr)
+      cudaEventDestroy(cuda_event_);
+  }
+
+  cudaEvent_t& Get() {
+    return cuda_event_;
+  }
+
+ private:
+  cudaEvent_t cuda_event_;
 };
 
 }  // namespace cuda

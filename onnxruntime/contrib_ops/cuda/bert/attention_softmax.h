@@ -219,7 +219,7 @@ __device__ inline void SoftmaxWithRawMaskSmall(const int all_sequence_length,
         thread_data += -10000.0f;
     } else {
       const bool mask = key_padding_mask[mask_offset];
-      if (!mask) {
+      if (mask) {
         thread_data = -CUDART_INF_F;
       }
     }

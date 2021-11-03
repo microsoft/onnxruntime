@@ -285,7 +285,6 @@ TEST(DecoderAttentionTest, SelfAttentionWithCache) {
   std::vector<float> bias_data = {
       -0.5f, 0.6f, 1.2f, 2.1f, 0.5f, 0.7f, 0.2f, 1.2f, 0.5f, 0.4f, 0.3f, 1.2f};
 
-  // bugbug: Is this correct?
   std::vector<float> output_data = {
       1.502f, 0.05172f, 4.25f, 5.6499996185302734f,
       2.0621f, 0.037995f, 4.2499995231628418f, 5.6499991416931152f};
@@ -391,7 +390,7 @@ TEST(DecoderAttentionTest, SelfAttentionNoStateNoCachePaddingMask) {
       3.1495983600616455f, 0.10843668878078461f, 4.25f, 5.6499996185302734f,
       3.9696791172027588f, 0.073143675923347473f, 4.2499995231628418f, 5.6499991416931152f};
 
-  std::initializer_list<bool> key_padding_mask_data = {true, true};
+  std::initializer_list<bool> key_padding_mask_data = {false, false};
 
   //self-attn without cache
   RunAttentionTest(input_data, input_data, q_weight_data, kv_weight_data, bias_data, output_data,

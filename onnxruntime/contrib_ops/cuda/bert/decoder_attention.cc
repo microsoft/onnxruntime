@@ -1,10 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "decoder_attention.h"
 #include "attention_impl.h"
+#include "decoder_attention.h"
+#include "transformer_common.h"
 #include "core/framework/op_kernel.h"
-#include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
 
 using namespace onnxruntime::cuda;
@@ -29,34 +29,11 @@ namespace cuda {
 REGISTER_KERNEL_TYPED(float)
 REGISTER_KERNEL_TYPED(MLFloat16)
 
-// bugbug: consider moving it to shared file
-// A wrapper class of cudaEvent_t to destroy the event automatically for avoiding memory leak.
-class AutoDestoryCudaEvent {
- public:
-  AutoDestoryCudaEvent() : cuda_event_(nullptr) {
-  }
-
-  ~AutoDestoryCudaEvent() {
-    if (cuda_event_ != nullptr)
-      cudaEventDestroy(cuda_event_);
-  }
-
-  cudaEvent_t& Get() {
-    return cuda_event_;
-  }
-
- private:
-  cudaEvent_t cuda_event_;
-};
-
 template <typename T>
 DecoderAttention<T>::DecoderAttention(const OpKernelInfo& info) : CudaKernel(info) {
   int64_t num_heads = 0;
   ORT_ENFORCE(info.GetAttr("num_heads", &num_heads).IsOK() && num_heads > 0);
   num_heads_ = static_cast<int>(num_heads);
-  //static_kv_ = info.GetAttrOrDefault<int64_t>("static_kv", 0) == 1;
-  //use_past_ = info.GetAttrOrDefault<int64_t>("use_past", 0) == 1;
-  //has_layer_state_ = info.GetAttrOrDefault<int64_t>("has_layer_state", 0) == 1;
 }
 
 template <typename T>
@@ -73,24 +50,26 @@ Status DecoderAttention<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* use_past(context->Input<Tensor>(9));
   const Tensor* has_layer_state(context->Input<Tensor>(10));
   const Tensor* has_key_padding_mask(context->Input<Tensor>(11));
+  //TODO: check inputs
+
+  cudaStream_t stream = Stream();
 
   // Copy static_kv, use_past and has_layer_state to CPU
   auto pinned_buffer = AllocateBufferOnCPUPinned<void>(4 * sizeof(bool));
   bool* kernel_state_pinned = reinterpret_cast<bool*>(pinned_buffer.get());
-  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(kernel_state_pinned, static_kv->template Data<bool>(), sizeof(bool), cudaMemcpyDeviceToHost, Stream()));
-  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(kernel_state_pinned + 1, use_past->template Data<bool>(), sizeof(bool), cudaMemcpyDeviceToHost, Stream()));
-  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(kernel_state_pinned + 2, has_layer_state->template Data<bool>(), sizeof(bool), cudaMemcpyDeviceToHost, Stream()));
-  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(kernel_state_pinned + 3, has_key_padding_mask->template Data<bool>(), sizeof(bool), cudaMemcpyDeviceToHost, Stream()));
+  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(kernel_state_pinned, static_kv->template Data<bool>(), sizeof(bool), cudaMemcpyDeviceToHost, stream));
+  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(kernel_state_pinned + 1, use_past->template Data<bool>(), sizeof(bool), cudaMemcpyDeviceToHost, stream));
+  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(kernel_state_pinned + 2, has_layer_state->template Data<bool>(), sizeof(bool), cudaMemcpyDeviceToHost, stream));
+  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(kernel_state_pinned + 3, has_key_padding_mask->template Data<bool>(), sizeof(bool), cudaMemcpyDeviceToHost, stream));
 
   // Create an event to make sure the async copy is finished before reading the data.
   AutoDestoryCudaEvent new_event;
   cudaEvent_t& isCopyDone = new_event.Get();
 
   CUDA_RETURN_IF_ERROR(cudaEventCreate(&isCopyDone));
-  CUDA_RETURN_IF_ERROR(cudaEventRecord(isCopyDone, Stream()));
+  CUDA_RETURN_IF_ERROR(cudaEventRecord(isCopyDone, stream));
 
   auto& device_prop = GetDeviceProp();
-  //TODO: check inputs
 
   // query shape (batch_size, sequence_length, input_hidden_size)
   const auto& query_shape = query->Shape();
@@ -111,6 +90,7 @@ Status DecoderAttention<T>::ComputeInternal(OpKernelContext* context) const {
   // weight: (h1, h2)
   // h = N*H
   cublasHandle_t cublas = CublasHandle();
+  cublasSetStream(cublas, stream);
   constexpr size_t element_size = sizeof(T);
 
   typedef typename ToCudaType<T>::MappedType CudaT;
@@ -166,7 +146,7 @@ Status DecoderAttention<T>::ComputeInternal(OpKernelContext* context) const {
       CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
           cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, k, &one,
           reinterpret_cast<const CudaT*>(kv_weights->template Data<T>()), n,
-          reinterpret_cast<const CudaT*>(key->template Data<T>()), k,
+          reinterpret_cast<const CudaT*>(query->template Data<T>()), k,
           &one, reinterpret_cast<CudaT*>(gemm_kv_buffer_p.get()), n, device_prop));
       // gemm_kv_buffer in col-base: (2*h2, T_S*B)
     } else {
@@ -208,7 +188,7 @@ Status DecoderAttention<T>::ComputeInternal(OpKernelContext* context) const {
       CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
           cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, k, &one,
           reinterpret_cast<const CudaT*>(kv_weights->template Data<T>()), n,
-          reinterpret_cast<const CudaT*>(key->template Data<T>()), k,
+          reinterpret_cast<const CudaT*>(query->template Data<T>()), k,
           &one, reinterpret_cast<CudaT*>(gemm_kv_buffer_p.get()), n, device_prop));
       // gemm_kv_buffer in col-base: (2*h2, T_S*B)
     } else {
@@ -226,7 +206,7 @@ Status DecoderAttention<T>::ComputeInternal(OpKernelContext* context) const {
 
   if (!LaunchDecoderAttentionKernel(
           device_prop,
-          Stream(),
+          stream,
           cublas,
           element_size,
           batch_size,

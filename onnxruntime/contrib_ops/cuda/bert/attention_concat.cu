@@ -10,8 +10,6 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-// bugbug:
-// make this function generic
 template <typename T>
 __global__ void ConcatTensorToTensor(const int tensor_add_sequence_length,
                                      const T* tensor_in,
