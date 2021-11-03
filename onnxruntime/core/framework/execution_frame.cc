@@ -649,6 +649,18 @@ static Status AllocateSparseTensor(OrtValue& mlvalue, const DataTypeImpl& ml_typ
 }
 #endif
 
+Status ExecutionFrame::AllocateReusedOrtValueIfNotAllocatedHelper(int reuse_mlvalue_index, const TensorShape* shape) {
+  // In case OrtRunOptions.only_execute_path_to_fetches == true, it is possible that 'reuse_value'
+  // is not allocated (its upstream op is not executed due to the option).
+  // In this case we need to allocate 'reuse_value' and then let 'ort_value' to reuse it.
+  OrtValue& reuse_value = GetMutableMLValue(reuse_mlvalue_index);
+  if (!reuse_value.IsAllocated()) {
+    ORT_RETURN_IF_ERROR(AllocateAsPerAllocationPlan(reuse_value, reuse_mlvalue_index, shape));
+  }
+
+  return Status::OK();
+}
+
 // This method is not thread safe!
 Status ExecutionFrame::AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_value_index, const TensorShape* shape) {
   const SequentialExecutionPlan* p_seq_exec_plan = session_state_.GetExecutionPlan();
@@ -696,19 +708,15 @@ Status ExecutionFrame::AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_
       case AllocKind::kReuse: {
         int reuse_mlvalue_index = per_alloc_plan.reused_buffer;
 
-        // In case OrtRunOptions.only_execute_path_to_fetches == true, it is possible that 'reuse_value'
-        // is not allocated (its upstream op is not executed due to the option).
-        // In this case we need to allocate 'reuse_value' and then let 'ort_value' to reuse it.
-        OrtValue& reuse_value = GetMutableMLValue(reuse_mlvalue_index);
-        if (!reuse_value.IsAllocated()) {
-          ORT_RETURN_IF_ERROR(AllocateAsPerAllocationPlan(reuse_value, reuse_mlvalue_index, shape));
-        }
+        AllocateReusedOrtValueIfNotAllocatedHelper(reuse_mlvalue_index, shape);
+
         ORT_RETURN_IF_ERROR(AllocateMLValueTensorPreAllocateBuffer(
             ort_value, reuse_mlvalue_index, ml_data_type, alloc_info, *shape, per_alloc_plan.create_fence_if_async));
         break;
       }
       case AllocKind::kShare: {
         int reuse_mlvalue_index = per_alloc_plan.reused_buffer;
+
         // copy at the OrtValue level so the shared_ptr for the data is shared between the two OrtValue instances
         ort_value = GetMutableMLValue(reuse_mlvalue_index);
         break;
@@ -739,16 +747,13 @@ Status ExecutionFrame::AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_
     if (alloc_kind == AllocKind::kReuse) {
       int reuse_mlvalue_index = per_alloc_plan.reused_buffer;
 
-      // In case OrtRunOptions.only_execute_path_to_fetches == true, it is possible that 'reuse_value'
-      // is not allocated (its upstream op is not executed due to the option).
-      // In this case we need to allocate 'reuse_value' and then let 'ort_value' to reuse it.
+      AllocateReusedOrtValueIfNotAllocatedHelper(reuse_mlvalue_index, shape);
+
       OrtValue& reuse_value = GetMutableMLValue(reuse_mlvalue_index);
-      if (!reuse_value.IsAllocated()) {
-        ORT_RETURN_IF_ERROR(AllocateAsPerAllocationPlan(reuse_value, reuse_mlvalue_index, shape));
-      }
 
       // copy at the OrtValue level so the shared_ptr for the data is shared between the two OrtValue instances
       ort_value = reuse_value;
+
       return Status::OK();
     } else {
       return AllocateTensorSequence(ort_value);

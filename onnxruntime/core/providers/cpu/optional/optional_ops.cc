@@ -61,6 +61,42 @@ static void CopySequenceTensor(AllocatorPtr alloc,
   tgt->SetElements(std::move(output_tensors));
 }
 
+static Status PropagateInputOrtValueToFirstOutput(const OrtValue* input_ort_value,
+                                                  OpKernelContext* ctx) {
+  if (input_ort_value->IsTensor()) {
+    const auto* input_tensor = &input_ort_value->Get<Tensor>();
+    auto* output_tensor = ctx->Output(0, input_tensor->Shape());
+
+    // If the allocation planner had deemed that we re-use the input OrtValue
+    // as the output OrtValue, the data pointers in the input_tensor and the
+    // output_tensor will be the same and the copy is a no-op.
+    // CopyCpuTensor() already has such copy optimizations - so
+    // just re-use it.
+    CopyCpuTensor(input_tensor, output_tensor);
+
+  } else if (input_ort_value->IsTensorSequence()) {
+    const auto* input_tensor_sequence = &input_ort_value->Get<TensorSeq>();
+    auto* output_tensor_sequence = ctx->Output<TensorSeq>(0);
+
+    AllocatorPtr alloc;
+    ORT_RETURN_IF_ERROR(ctx->GetTempSpaceAllocator(&alloc));
+
+    // If the allocation planner had deemed that we re-use the input OrtValue
+    // as the output OrtValue, the pointers of the source TensorSeq and the
+    // target TensorSeq will be the same and the copy is a no-op.
+    // CopySequenceTensor() already has such copy optimizations
+    CopySequenceTensor(alloc, input_tensor_sequence, output_tensor_sequence);
+
+  } else {
+    // Will not reach here
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Only Optional type OrtValues containing Tensors "
+                           "and Sequence Tensors are acceptable");
+  }
+
+  return Status::OK();
+}
+
 static bool CheckValidTypeProto(const onnx::TypeProto& tp) {
   // Optional types can currently be Tensors or SequenceTensors only
   // Ensure that the TypeProto holds those types
@@ -74,39 +110,10 @@ static bool CheckValidTypeProto(const onnx::TypeProto& tp) {
 Status Optional::Compute(OpKernelContext* ctx) const {
   const auto* input_ort_value = ctx->GetInputOrtValue(0);
 
-  if (input_ort_value != nullptr) {  // An input was provided by the user
+  if (input_ort_value != nullptr) {
+    // An input was provided by the user - so just propagate it to the output
+    PropagateInputOrtValueToFirstOutput(input_ort_value, ctx);
 
-    if (input_ort_value->IsTensor()) {
-      const auto* input_tensor = &input_ort_value->Get<Tensor>();
-      auto* output_tensor = ctx->Output(0, input_tensor->Shape());
-
-      // If the allocation planner had deemed that we re-use the input OrtValue
-      // as the output OrtValue, the data pointers in the input_tensor and the
-      // output_tensor will be the same and the copy is a no-op.
-      // CopyCpuTensor() already has such copy optimizations - so
-      // just re-ue it.
-      CopyCpuTensor(input_tensor, output_tensor);
-
-    } else if (input_ort_value->IsTensorSequence()) {
-      const auto* input_tensor_sequence = &input_ort_value->Get<TensorSeq>();
-      auto* output_tensor_sequence = ctx->Output<TensorSeq>(0);
-
-      AllocatorPtr alloc;
-      ORT_RETURN_IF_ERROR(ctx->GetTempSpaceAllocator(&alloc));
-
-      // If the allocation planner had deemed that we re-use the input OrtValue
-      // as the output OrtValue, the pointers of the source TensorSeq and the
-      // target TensorSeq will be the same and the copy is a no-op.
-      // CopySequenceTensor() already has such copy optimizations
-      CopySequenceTensor(alloc, input_tensor_sequence, output_tensor_sequence);
-
-    } else {
-      // Will not reach here
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Only Optional type OrtValues containing Tensors "
-                             "and Sequence Tensors can be used as input to "
-                             "OptionalGetElement op");
-    }
   } else {  // No input was provided - we use the type proto to construct the output OrtValue
 
     CheckValidTypeProto(*type_proto_);
@@ -141,36 +148,8 @@ Status OptionalGetElement::Compute(OpKernelContext* ctx) const {
                            "OrtValue which contains no data");
   }
 
-  if (input_ort_value->IsTensor()) {
-    const auto* input_tensor = &input_ort_value->Get<Tensor>();
-    auto* output_tensor = ctx->Output(0, input_tensor->Shape());
-
-    // If the allocation planner had deemed that we re-use the input OrtValue
-    // as the output OrtValue, the data pointers in the input_tensor and the
-    // output_tensor will be the same and the copy is a no-op.
-    // CopyCpuTensor() already has such copy optimizations - so
-    // just re-ue it.
-    CopyCpuTensor(input_tensor, output_tensor);
-
-  } else if (input_ort_value->IsTensorSequence()) {
-    const auto* input_tensor_sequence = &input_ort_value->Get<TensorSeq>();
-    auto* output_tensor_sequence = ctx->Output<TensorSeq>(0);
-
-    AllocatorPtr alloc;
-    ORT_RETURN_IF_ERROR(ctx->GetTempSpaceAllocator(&alloc));
-
-    // If the allocation planner had deemed that we re-use the input OrtValue
-    // as the output OrtValue, the pointers of the source TensorSeq and the
-    // target TensorSeq will be the same and the copy is a no-op.
-    // CopySequenceTensor() already has such copy optimizations
-    CopySequenceTensor(alloc, input_tensor_sequence, output_tensor_sequence);
-
-  } else {
-    // Will not reach here
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Only Optional type OrtValues containing Tensors and Sequence Tensors "
-                           "can be used as input to OptionalGetElement op");
-  }
+  // Propagate input to the output
+  PropagateInputOrtValueToFirstOutput(input_ort_value, ctx);
 
   return Status::OK();
 }

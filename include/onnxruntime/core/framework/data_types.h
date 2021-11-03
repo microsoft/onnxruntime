@@ -200,7 +200,7 @@ class DataTypeImpl {
   static const std::vector<MLDataType>& AllTensorAndSequenceTensorTypes();
   static const std::vector<MLDataType>& AllFixedSizeTensorAndSequenceTensorTypes();
   static const std::vector<MLDataType>& AllOptionalTypes();
-  static const std::vector<MLDataType>& AllTensorAndSequenceTensorTypesAndOptionalTypes();
+  static const std::vector<MLDataType>& AllTensorAndSequenceTensorAndOptionalTypes();
 };
 
 std::ostream& operator<<(std::ostream& out, MLDataType data_type);
@@ -566,6 +566,8 @@ class SparseTensorType : public SparseTensorTypeBase {
   }
 };
 
+#endif  // !defined(DISABLE_SPARSE_TENSORS)
+
 /// Common base-class for all optional types.
 class OptionalTypeBase : public DataTypeImpl {
  public:
@@ -639,7 +641,6 @@ class OptionalType : public OptionalTypeBase {
     data_types_internal::SetOptionalType<T, elemT>::Set(MutableTypeProto());
   }
 };
-#endif  // !defined(DISABLE_SPARSE_TENSORS)
 
 /**
   * \brief Provide a specialization for your C++ Non-tensor type

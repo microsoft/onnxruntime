@@ -330,6 +330,32 @@ void NodeArg::ClearShape() {
   }
 }
 
+common::Status NodeArg::OverrideTypesHelper(const ONNX_NAMESPACE::TypeProto& input_type,
+                                            int32_t input_tensor_elem_type,
+                                            int32_t current_tensor_elem_type,
+                                            bool override_types) {
+  if (input_tensor_elem_type != current_tensor_elem_type) {
+    if (override_types) {
+      DataType inferred_type = DataTypeUtils::ToType(input_type);
+      // The "SetType" call will override the shape information to empty.
+      // If the original tensor has shape information, need to set it back.
+      if (Shape()) {
+        auto old_shape = *Shape();
+        SetType(inferred_type);
+        SetShape(old_shape);
+      } else {
+        SetType(inferred_type);
+      }
+    } else {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Tensor element type mismatch. ",
+                             static_cast<TensorProto_DataType>(input_tensor_elem_type), " != ",
+                             static_cast<TensorProto_DataType>(current_tensor_elem_type));
+    }
+  }
+
+  return Status::OK();
+}
+
 common::Status NodeArg::UpdateTypeAndShape(const ONNX_NAMESPACE::TypeProto& input_type, bool strict,
                                            bool override_types, const logging::Logger& logger) {
   if (!utils::HasType(node_arg_info_)) {
@@ -352,24 +378,7 @@ common::Status NodeArg::UpdateTypeAndShape(const ONNX_NAMESPACE::TypeProto& inpu
       const auto& input_tensor_elem_type = input_tensor_type.elem_type();
       const auto& current_tensor_elem_type = current_type.tensor_type().elem_type();
 
-      if (input_tensor_elem_type != current_tensor_elem_type) {
-        if (override_types) {
-          DataType inferred_type = DataTypeUtils::ToType(input_type);
-          // The "SetType" call will override the shape information to empty.
-          // If the original tensor has shape information, need to set it back.
-          if (Shape()) {
-            auto old_shape = *Shape();
-            SetType(inferred_type);
-            SetShape(old_shape);
-          } else {
-            SetType(inferred_type);
-          }
-        } else {
-          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Tensor element type mismatch. ",
-                                 static_cast<TensorProto_DataType>(input_tensor_elem_type), " != ",
-                                 static_cast<TensorProto_DataType>(current_tensor_elem_type));
-        }
-      }
+      OverrideTypesHelper(input_type, input_tensor_elem_type, current_tensor_elem_type, override_types);
 
       if (utils::HasShape(input_tensor_type)) {
         if (utils::HasShape(current_type)) {
@@ -388,22 +397,7 @@ common::Status NodeArg::UpdateTypeAndShape(const ONNX_NAMESPACE::TypeProto& inpu
       const auto input_tensor_elem_type = input_tensor_type.elem_type();
       const auto current_tensor_elem_type = current_type.sparse_tensor_type().elem_type();
 
-      if (input_tensor_elem_type != current_tensor_elem_type) {
-        if (override_types) {
-          DataType inferred_type = DataTypeUtils::ToType(input_type);
-          if (Shape()) {
-            auto old_shape = *Shape();
-            SetType(inferred_type);
-            SetShape(old_shape);
-          } else {
-            SetType(inferred_type);
-          }
-        } else {
-          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "SparseTensor element type mismatch. ",
-                                 static_cast<TensorProto_DataType>(input_tensor_elem_type), " != ",
-                                 static_cast<TensorProto_DataType>(current_tensor_elem_type));
-        }
-      }
+      OverrideTypesHelper(input_type, input_tensor_elem_type, current_tensor_elem_type, override_types);
 
       if (utils::HasShape(input_tensor_type)) {
         if (utils::HasShape(current_type)) {
@@ -417,10 +411,10 @@ common::Status NodeArg::UpdateTypeAndShape(const ONNX_NAMESPACE::TypeProto& inpu
 #endif
 
     case TypeProto::kOptionalType: {
-      if (utils::HasOptionalTensorType(input_type) && !utils::HasOptionalTensorType(current_type)) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Optional Type mismatch. Expected: Seq tensor. Got: Tensor");
-      } else if (!utils::HasOptionalTensorType(input_type) && utils::HasOptionalTensorType(current_type)) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Optional Type mismatch. Expected: Tensor. Got: Seq Tensor");
+      if ((utils::HasOptionalTensorType(input_type) && !utils::HasOptionalTensorType(current_type)) ||
+          (!utils::HasOptionalTensorType(input_type) && utils::HasOptionalTensorType(current_type))) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Optional Type mismatch. Expected: ", current_type,
+                               " . Got: ", input_type);
       }
 
       // Updating element type and shape is only applicable for optional tensors
@@ -432,24 +426,7 @@ common::Status NodeArg::UpdateTypeAndShape(const ONNX_NAMESPACE::TypeProto& inpu
         const auto& input_tensor_elem_type = input_tensor_type.elem_type();
         const auto& current_tensor_elem_type = optional_current_type.tensor_type().elem_type();
 
-        if (input_tensor_elem_type != current_tensor_elem_type) {
-          if (override_types) {
-            DataType inferred_type = DataTypeUtils::ToType(input_type);
-            // The "SetType" call will override the shape information to empty.
-            // If the original tensor has shape information, need to set it back.
-            if (Shape()) {
-              auto old_shape = *Shape();
-              SetType(inferred_type);
-              SetShape(old_shape);
-            } else {
-              SetType(inferred_type);
-            }
-          } else {
-            return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Optional Tensor element type mismatch. ",
-                                   static_cast<TensorProto_DataType>(input_tensor_elem_type), " != ",
-                                   static_cast<TensorProto_DataType>(current_tensor_elem_type));
-          }
-        }
+        OverrideTypesHelper(input_type, input_tensor_elem_type, current_tensor_elem_type, override_types);
 
         if (utils::HasShape(optional_input_type.tensor_type())) {
           if (utils::HasShape(optional_current_type.tensor_type())) {

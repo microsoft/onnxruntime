@@ -1140,7 +1140,7 @@ const std::vector<MLDataType>& DataTypeImpl::AllOptionalTypes() {
   return all_optional_types;
 }
 
-const std::vector<MLDataType>& DataTypeImpl::AllTensorAndSequenceTensorTypesAndOptionalTypes() {
+const std::vector<MLDataType>& DataTypeImpl::AllTensorAndSequenceTensorAndOptionalTypes() {
   static std::vector<MLDataType> all_tensor_and_sequence_types_and_optional_types =
       []() {
         auto temp = AllTensorTypes();
