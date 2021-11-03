@@ -101,7 +101,7 @@ static Status LoadRuntimeOptimizationRecordFromOrtFormat(
         std::vector<NodeIndex> result;
         result.reserve(fbs_node_indices->size());
         std::transform(fbs_node_indices->begin(), fbs_node_indices->end(), std::back_inserter(result),
-                       [](const auto idx) { return static_cast<NodeIndex>(idx); });
+                       [](const uint32_t idx) { return static_cast<NodeIndex>(idx); });
         return result;
       }();
     }
@@ -117,11 +117,11 @@ static Status LoadRuntimeOptimizationRecordFromOrtFormat(
   if (const auto* fbs_produced_nodes = fbs_runtime_optimization_record.produced_nodes()) {
     runtime_optimization_record.produced_nodes.reserve(fbs_produced_nodes->size());
     for (const auto* fbs_node_index_and_kernel_def_hash : *fbs_produced_nodes) {
-      if (fbs_node_index_and_kernel_def_hash) {
-        runtime_optimization_record.produced_nodes.push_back(
-            {static_cast<NodeIndex>(fbs_node_index_and_kernel_def_hash->node_index()),
-             fbs_node_index_and_kernel_def_hash->kernel_def_hash()});
-      }
+      if (!fbs_node_index_and_kernel_def_hash) continue;
+
+      runtime_optimization_record.produced_nodes.push_back(
+          NodeIndexAndKernelDefHash{static_cast<NodeIndex>(fbs_node_index_and_kernel_def_hash->node_index()),
+                                    fbs_node_index_and_kernel_def_hash->kernel_def_hash()});
     }
   }
 

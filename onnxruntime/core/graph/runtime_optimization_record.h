@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <limits>
 #include <vector>
 #include <string>
 
@@ -34,9 +35,17 @@
 namespace onnxruntime {
 
 /** Struct to serialize the node indices in an ORT format model.
-Use NodesToOptimize::EmptyNodeIndex for nullptr entries in the vectors for missing optional inputs
+Use EmptyNodeIndex for nullptr entries in the vectors for missing optional inputs
 */
 struct NodesToOptimizeIndices {
+  /** Index value that represents an empty node.
+Note: Depending on the platform, it may be possible for NodeIndex values to be greater than kEmptyNodeIndex.
+Such values are NOT valid here. Only values less than or equal to kEmptyNodeIndex will be able to be saved properly to
+an ORT format model. This also means that non-empty node indices here must be in the range [0, kEmptyNodeIndex).
+   */
+  static constexpr NodeIndex kEmptyNodeIndex = std::numeric_limits<uint32_t>::max();
+  static_assert(kEmptyNodeIndex <= std::numeric_limits<NodeIndex>::max());
+
   /** Indices of the nodes in the graph that are considered for optimization. */
   std::vector<NodeIndex> nodes;
   /** The number of inputs of the target node. */

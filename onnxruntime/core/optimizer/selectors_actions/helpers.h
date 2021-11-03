@@ -42,10 +42,8 @@ class NodesToOptimize {
                   int num_input_defs = -1, int num_output_defs = -1);
 
   // construct from saved NodeIndex values. IsValid() will return false if one or more nodes were missing.
-  // Use EmptyNodeIndex for nullptr entries in the vectors for missing optional inputs
+  // Use NodesToOptimizeIndices::kEmptyNodeIndex for nullptr entries in the vectors for missing optional inputs
   NodesToOptimize(Graph& graph, const NodesToOptimizeIndices& node_indexes);
-
-  static constexpr NodeIndex EmptyNodeIndex = std::numeric_limits<NodeIndex>::max();
 
   NodesToOptimizeIndices ToIndices() const;
 

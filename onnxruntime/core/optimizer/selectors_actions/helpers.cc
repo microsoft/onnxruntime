@@ -106,7 +106,7 @@ Status MoveInputOutputImpl(Graph& graph, const ValueMoveInfo& move_info, Node& s
 }
 
 Node* GetNodeByNodeIndex(Graph& graph, NodeIndex idx, bool& missing) {
-  if (idx == NodesToOptimize::EmptyNodeIndex) {
+  if (idx == NodesToOptimizeIndices::kEmptyNodeIndex) {
     return nullptr;
   }
 
@@ -174,7 +174,10 @@ NodesToOptimizeIndices NodesToOptimize::ToIndices() const {
 
   indexes.nodes.reserve(nodes_.size());
   std::for_each(nodes_.cbegin(), nodes_.cend(), [&indexes](const Node* node) {
-    indexes.nodes.push_back(node != nullptr ? node->Index() : EmptyNodeIndex);
+    const NodeIndex node_idx = node != nullptr ? node->Index() : NodesToOptimizeIndices::kEmptyNodeIndex;
+    ORT_ENFORCE(node_idx <= NodesToOptimizeIndices::kEmptyNodeIndex,
+                "Node index value is too large to save to ORT format model: ", node_idx);
+    indexes.nodes.push_back(node_idx);
   });
 
   indexes.num_inputs = num_inputs;
