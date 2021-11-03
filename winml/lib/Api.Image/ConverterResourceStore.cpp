@@ -12,10 +12,10 @@
 
 using namespace _winml;
 
-ConverterResources::ConverterResources(Pool& pool, ConverterResourceDescription& descriptor) : m_pool(pool),
-                                                                                          Descriptor(descriptor),
+ConverterResources::ConverterResources(Pool& pool, ConverterResourceDescription& descriptor) : Descriptor(descriptor),
                                                                                           Tensorizer(std::make_unique<VideoFrameToTensorConverter>()),
-                                                                                          Detensorizer(std::make_unique<TensorToVideoFrameConverter>()) {
+                                                                                          Detensorizer(std::make_unique<TensorToVideoFrameConverter>()),
+                                                                                          m_pool(pool) {
 }
 
 void ConverterResources::ReturnToCache() {

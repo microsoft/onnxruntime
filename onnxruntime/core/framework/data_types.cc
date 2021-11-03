@@ -845,33 +845,33 @@ const NonTensorTypeBase* DataTypeImpl::SequenceTensorTypeFromONNXEnum(int type) 
 const SparseTensorTypeBase* DataTypeImpl::SparseTensorTypeFromONNXEnum(int type) {
   switch (type) {
     case TensorProto_DataType_FLOAT:
-      return reinterpret_cast<const SparseTensorTypeBase*>(DataTypeImpl::GetSparseTensorType<float>());
+      return DataTypeImpl::GetSparseTensorType<float>()->AsSparseTensorType();
     case TensorProto_DataType_BOOL:
-      return reinterpret_cast<const SparseTensorTypeBase*>(DataTypeImpl::GetSparseTensorType<bool>());
+      return DataTypeImpl::GetSparseTensorType<bool>()->AsSparseTensorType();
     case TensorProto_DataType_INT32:
-      return reinterpret_cast<const SparseTensorTypeBase*>(DataTypeImpl::GetSparseTensorType<int32_t>());
+      return DataTypeImpl::GetSparseTensorType<int32_t>()->AsSparseTensorType();
     case TensorProto_DataType_DOUBLE:
-      return reinterpret_cast<const SparseTensorTypeBase*>(DataTypeImpl::GetSparseTensorType<double>());
+      return DataTypeImpl::GetSparseTensorType<double>()->AsSparseTensorType();
     case TensorProto_DataType_STRING:
-      return reinterpret_cast<const SparseTensorTypeBase*>(DataTypeImpl::GetSparseTensorType<std::string>());
+      return DataTypeImpl::GetSparseTensorType<std::string>()->AsSparseTensorType();
     case TensorProto_DataType_UINT8:
-      return reinterpret_cast<const SparseTensorTypeBase*>(DataTypeImpl::GetSparseTensorType<uint8_t>());
+      return DataTypeImpl::GetSparseTensorType<uint8_t>()->AsSparseTensorType();
     case TensorProto_DataType_UINT16:
-      return reinterpret_cast<const SparseTensorTypeBase*>(DataTypeImpl::GetSparseTensorType<uint16_t>());
+      return DataTypeImpl::GetSparseTensorType<uint16_t>()->AsSparseTensorType();
     case TensorProto_DataType_INT8:
-      return reinterpret_cast<const SparseTensorTypeBase*>(DataTypeImpl::GetSparseTensorType<int8_t>());
+      return DataTypeImpl::GetSparseTensorType<int8_t>()->AsSparseTensorType();
     case TensorProto_DataType_INT16:
-      return reinterpret_cast<const SparseTensorTypeBase*>(DataTypeImpl::GetSparseTensorType<int16_t>());
+      return DataTypeImpl::GetSparseTensorType<int16_t>()->AsSparseTensorType();
     case TensorProto_DataType_INT64:
-      return reinterpret_cast<const SparseTensorTypeBase*>(DataTypeImpl::GetSparseTensorType<int64_t>());
+      return DataTypeImpl::GetSparseTensorType<int64_t>()->AsSparseTensorType();
     case TensorProto_DataType_UINT32:
-      return reinterpret_cast<const SparseTensorTypeBase*>(DataTypeImpl::GetSparseTensorType<uint32_t>());
+      return DataTypeImpl::GetSparseTensorType<uint32_t>()->AsSparseTensorType();
     case TensorProto_DataType_UINT64:
-      return reinterpret_cast<const SparseTensorTypeBase*>(DataTypeImpl::GetSparseTensorType<uint64_t>());
+      return DataTypeImpl::GetSparseTensorType<uint64_t>()->AsSparseTensorType();
     case TensorProto_DataType_FLOAT16:
-      return reinterpret_cast<const SparseTensorTypeBase*>(DataTypeImpl::GetSparseTensorType<MLFloat16>());
+      return DataTypeImpl::GetSparseTensorType<MLFloat16>()->AsSparseTensorType();
     case TensorProto_DataType_BFLOAT16:
-      return reinterpret_cast<const SparseTensorTypeBase*>(DataTypeImpl::GetSparseTensorType<BFloat16>());
+      return DataTypeImpl::GetSparseTensorType<BFloat16>()->AsSparseTensorType();
     default:
       ORT_NOT_IMPLEMENTED("sparse tensor type ", type, " is not supported");
   }

@@ -219,7 +219,7 @@ namespace Dml
                 return std::nullopt;
             }
 
-            if (opIt->inputCountFilter && *opIt->inputCountFilter != candidateOpInputCount)
+            if (opIt->inputCountFilter && *opIt->inputCountFilter != static_cast<uint32_t>(candidateOpInputCount))
             {
                 return std::nullopt;
             }
@@ -416,6 +416,8 @@ namespace Dml
         return {};
     }
 
+    #pragma warning(push)
+    #pragma warning(suppress: 4702)
     DML_INTERPOLATION_MODE MapStringToInteropolationMode(std::string_view mode)
     {
         // The ONNX modes are "nearest" and "linear."  Other modes exist for compatibility,
@@ -438,7 +440,10 @@ namespace Dml
         ML_INVALID_ARGUMENT("Unknown interpolation mode");
         return (DML_INTERPOLATION_MODE)0;
     }
+    #pragma warning(pop)
 
+    #pragma warning(push)
+    #pragma warning(suppress: 4702)
     DML_DEPTH_SPACE_ORDER MapStringToDepthSpaceMode(std::string_view mode)
     {
         constexpr NameAndIndex mapping[] =
@@ -453,5 +458,6 @@ namespace Dml
         ML_INVALID_ARGUMENT("Unknown depth/space order");
         return (DML_DEPTH_SPACE_ORDER)0;
     }
+    #pragma warning(pop)
 
 } // namespace Dml

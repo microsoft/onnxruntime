@@ -27,7 +27,7 @@ public:
         m_outputTensorDescs.front() = m_inputTensorDescs.front();
 
         ComPtr<IMLOperatorKernelCreationContextPrivate> contextPrivate;
-        THROW_IF_FAILED(kernelInfo.GetInterface()->QueryInterface(contextPrivate.GetAddressOf()));
+        ORT_THROW_IF_FAILED(kernelInfo.GetInterface()->QueryInterface(contextPrivate.GetAddressOf()));
 
         if (contextPrivate->IsDmlGraphNode())
         {
@@ -53,7 +53,7 @@ public:
         if (inputTensor.GetDataInterface().Get() != outputTensor.GetDataInterface().Get())
         {
             // Copy elements from input tensor to output tensor.
-            THROW_IF_FAILED(m_executionProvider->CopyTensor(
+            ORT_THROW_IF_FAILED(m_executionProvider->CopyTensor(
                 outputTensor.GetInterface().Get(),
                 inputTensor.GetInterface().Get()));
         }

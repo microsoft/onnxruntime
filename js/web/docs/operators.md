@@ -67,7 +67,7 @@ See [Compatibility](../README.md#Compatibility) for a list of the supported plat
 | [HardSigmoid](https://github.com/onnx/onnx/blob/master/docs/Operators.md#HardSigmoid) |  |
 | [HardSwish](https://github.com/onnx/onnx/blob/master/docs/Operators.md#HardSwish) |  |
 | [Hardmax](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Hardmax) |  |
-| [Identity](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Identity) | [1-12](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Identity-1), [13](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Identity-13), [14+](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Identity-14) |
+| [Identity](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Identity) | [1-12](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Identity-1), [13](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Identity-13), [14-15](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Identity-14), [16+](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Identity-16) |
 | [If](https://github.com/onnx/onnx/blob/master/docs/Operators.md#If) |  |
 | [InstanceNormalization](https://github.com/onnx/onnx/blob/master/docs/Operators.md#InstanceNormalization) | [6+](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#InstanceNormalization-6) |
 | [IsInf](https://github.com/onnx/onnx/blob/master/docs/Operators.md#IsInf) |  |
