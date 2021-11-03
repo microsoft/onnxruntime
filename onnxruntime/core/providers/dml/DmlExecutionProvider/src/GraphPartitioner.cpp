@@ -240,7 +240,7 @@ namespace Dml
         uint32_t supportedDeviceDataTypeMask // Each bit corresponds to each DML_TENSOR_DATA_TYPE.
         )
     {
-        THROW_HR_IF(E_INVALIDARG, allow64BitInputThroughStrides && !nodeNameToPartitionMap);
+        ORT_THROW_HR_IF(E_INVALIDARG, allow64BitInputThroughStrides && !nodeNameToPartitionMap);
 
         bool prefer64BitTensorsDirectly = false;
         bool support64BitTensorsViaEmulation = false;
@@ -392,7 +392,7 @@ namespace Dml
         _In_opt_ const std::unordered_map<std::string, GraphPartition*>* nodeNameToPartitionMap
         )
     {
-        THROW_HR_IF(E_INVALIDARG, allow64BitInputThroughStrides && !nodeNameToPartitionMap);
+        ORT_THROW_HR_IF(E_INVALIDARG, allow64BitInputThroughStrides && !nodeNameToPartitionMap);
 
         const onnxruntime::KernelCreateInfo* createInfo;
         Status st = registry.TryFindKernel(node, onnxruntime::kDmlExecutionProvider, &createInfo);

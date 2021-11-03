@@ -138,7 +138,7 @@ protected:
     {
         if (m_isClosed)
         {
-            THROW_HR(E_INVALIDARG);
+            ORT_THROW_HR(E_INVALIDARG);
         }
     }
 
@@ -188,7 +188,7 @@ class OpNodeInfoWrapper : public Base1_t, public Base2_t, public Closable
         MLOperatorAttributeType type,
         uint32_t elementCount,
         size_t elementByteSize,
-        void* value) const noexcept override;
+        void* attributeValue) const noexcept override;
 
     HRESULT STDMETHODCALLTYPE GetStringAttributeElementLength(
         _In_z_ const char* name,
