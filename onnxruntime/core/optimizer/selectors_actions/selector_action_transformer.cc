@@ -54,6 +54,7 @@ Status SelectorActionTransformer::MatchAndProcess(Graph& graph, Node& node, bool
                                                   const logging::Logger& logger) const {
   Status status = Status::OK();
 
+  const GraphViewer graph_viewer(graph);
   do {
     // TODO: for now this just needs to support ONNX ops. If we ever had a transformer that was going to
     // target non-ONNX ops we'd need to rework a few things to include the op domain in the matches
@@ -76,8 +77,8 @@ Status SelectorActionTransformer::MatchAndProcess(Graph& graph, Node& node, bool
       }
     }
 
-    std::unique_ptr<NodesToOptimize> node_group;
-    if (!selector_and_actions.selector->Select(graph, node, node_group)) {
+    std::unique_ptr<NodesToOptimizeIndexes> node_selection;
+    if (!selector_and_actions.selector->Select(graph_viewer, node, node_selection)) {
       break;
     }
 
@@ -89,7 +90,7 @@ Status SelectorActionTransformer::MatchAndProcess(Graph& graph, Node& node, bool
       // e.g. map<transformer name, map<action name, vector<NodesToOptimizeIndexes>>>
       ORT_NOT_IMPLEMENTED("TODO: Save the selected nodes into the Graph.");
     } else {
-      status = selector_and_actions.action->Run(graph, *node_group);
+      status = selector_and_actions.action->Run(graph, NodesToOptimize(graph, *node_selection));
       if (!status.IsOK()) {
         break;
       }

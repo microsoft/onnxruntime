@@ -77,30 +77,20 @@ bool BaseSelector::Select(const GraphViewer& graph_viewer, const Node& node, Nod
   return true;
 }
 
-bool BaseSelector::Select(Graph& graph, const Node& node, std::unique_ptr<NodesToOptimize>& selection) const {
+bool BaseSelector::Select(const GraphViewer& graph_viewer, const Node& node,
+                          std::unique_ptr<NodesToOptimizeIndexes>& selection) const {
   NodeGroup qdq_group;
-  if (!Select(GraphViewer(graph), node, qdq_group)) {
+  if (!Select(graph_viewer, node, qdq_group)) {
     return false;
   }
 
-  NodesToOptimizeBuilder builder;
-  builder.input_nodes.reserve(qdq_group.q_nodes.size());
-  builder.output_nodes.reserve(qdq_group.q_nodes.size());
-
-  for (const auto idx : qdq_group.dq_nodes) {
-    builder.input_nodes.push_back(graph.GetNode(idx));
-  }
-
-  builder.target_node = graph.GetNode(qdq_group.target_node);
-
-  for (const auto idx : qdq_group.q_nodes) {
-    builder.output_nodes.push_back(graph.GetNode(idx));
-  }
+  NodesToOptimizeIndexesBuilder builder;
+  builder.input_nodes = qdq_group.dq_nodes;
+  builder.output_nodes = qdq_group.q_nodes;
+  builder.target_node = qdq_group.target_node;
 
   UpdateBuilder(builder);
-
   selection = builder.Build();
-
   return true;
 }
 
@@ -115,7 +105,11 @@ bool DropDQDNodesSelector::Check(const GraphViewer& graph_viewer,
   const Node& dq_node = *dq_nodes.front();
   const Node& q_node = *q_nodes.front();
 
-  return IsQDQPairSupported(graph_viewer, q_node, dq_node);
+  auto get_const_initializer = [&graph_viewer](const std::string& initializer_name) {
+    return graph_viewer.GetConstantInitializer(initializer_name, true);
+  };
+
+  return IsQDQPairSupported(q_node, dq_node, get_const_initializer, graph_viewer.ModelPath());
 }
 
 bool UnarySelector::Check(const GraphViewer& graph_viewer, const Node& node,
@@ -170,7 +164,7 @@ bool VariadicSelector::Check(const GraphViewer& graph_viewer,
   return dt_input == dt_output;
 }
 
-void VariadicSelector::UpdateBuilder(NodesToOptimizeBuilder& builder) const {
+void VariadicSelector::UpdateBuilder(NodesToOptimizeIndexesBuilder& builder) const {
   builder.num_input_defs = 1;  // set to 1 as the first input is variadic
 }
 
@@ -198,8 +192,11 @@ bool ConvSelector::Check(const GraphViewer& graph_viewer,
   return dt_bias == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32;
 }
 
-void ConvSelector::UpdateBuilder(NodesToOptimizeBuilder& builder) const {
-  builder.input_nodes.resize(3);  // add nullptr for bias if missing
+void ConvSelector::UpdateBuilder(NodesToOptimizeIndexesBuilder& builder) const {
+  if (builder.input_nodes.size() == 2) {
+    // add EmptyNodeIndex for bias if missing
+    builder.input_nodes.push_back(NodesToOptimize::EmptyNodeIndex);
+  }
 }
 
 bool MatMulSelector::Check(const GraphViewer& graph_viewer,

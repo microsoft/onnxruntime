@@ -155,6 +155,9 @@ class GraphViewer {
   @param check_outer_scope If true and the graph is a subgraph,
          check ancestor graph/s for 'name' if not found in 'graph'.
   @remarks check_outer_scope of true is not supported in a minimal build
+           This function will return the result from GetConstantInitializer of the underlying Graph,
+           if a const initializer is part of the underlying Graph but not part of this GraphViewer,
+           it will still be returned instead of nullptr
   */
   const ONNX_NAMESPACE::TensorProto* GetConstantInitializer(const std::string& name, bool check_outer_scope) const;
 

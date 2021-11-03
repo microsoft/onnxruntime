@@ -11,14 +11,52 @@ namespace onnxruntime {
 
 // Struct to serialize the node indexes in an ORT format model.
 // Use EmptyNodeIndex for nullptr entries in the vectors for missing optional inputs
-struct NodesToOptimizeIndexes {
-  std::vector<NodeIndex> nodes;
-  int num_inputs;
-  int num_outputs;
-  bool variadic_input;
-  bool variadic_output;
-  int num_variadic_inputs;
-  int num_variadic_outputs;
+class NodesToOptimizeIndexes {
+ public:
+  const std::vector<NodeIndex>& GetNodes() const { return nodes_; }
+  int GetNumInputs() const { return num_inputs_; }
+  int GetNumOutputs() const { return num_outputs_; }
+  bool HasVariadicInput() const { return variadic_input_; }
+  bool HasVariadicOutput() const { return variadic_output_; }
+  int GetNumVariadicInputs() const { return num_variadic_inputs_; }
+  int GetNumVariadicOutputs() const { return num_variadic_outputs_; }
+
+  NodesToOptimizeIndexes(const std::vector<NodeIndex>& nodes,
+                         int num_inputs,
+                         int num_outputs,
+                         bool variadic_input,
+                         bool variadic_output,
+                         int num_variadic_inputs,
+                         int num_variadic_outputs)
+      : nodes_(nodes),
+        num_inputs_(num_inputs),
+        num_outputs_(num_outputs),
+        variadic_input_(variadic_input),
+        variadic_output_(variadic_output),
+        num_variadic_inputs_(num_variadic_inputs),
+        num_variadic_outputs_(num_variadic_outputs) {
+  }
+
+  NodesToOptimizeIndexes(const std::vector<NodeIndex>& input_nodes,
+                         NodeIndex target_node,
+                         const std::vector<NodeIndex>& output_nodes,
+                         int num_input_defs = -1, int num_output_defs = -1);
+
+ private:
+  // if the last input in num_inputs is for the variadic input, the variadic input could have zero or more values
+  // so we need to special case the zero and count that as one. same for outputs
+  int NumInputEntries() const { return variadic_input_ ? num_inputs_ + std::max(1, num_variadic_inputs_) - 1
+                                                       : num_inputs_; }
+  int NumOutputEntries() const { return variadic_output_ ? num_outputs_ + std::max(1, num_variadic_outputs_) - 1
+                                                         : num_outputs_; }
+
+  std::vector<NodeIndex> nodes_;
+  int num_inputs_;
+  int num_outputs_;
+  bool variadic_input_{false};
+  bool variadic_output_{false};
+  int num_variadic_inputs_{0};
+  int num_variadic_outputs_{0};
 };
 
 // Group of nodes that will be optimized. The group will either be merged into the target node, or a new node
@@ -135,18 +173,18 @@ class NodesToOptimize {
   std::vector<Node*> nodes_;
 };
 
-// Helper to build a NodesToOptimize instance
+// Helper to build a NodesToOptimizeIndexes instance
 // Use in selector to incrementally add pieces
-struct NodesToOptimizeBuilder {
-  std::vector<Node*> input_nodes;
-  Node* target_node{nullptr};
-  std::vector<Node*> output_nodes;
+struct NodesToOptimizeIndexesBuilder {
+  std::vector<NodeIndex> input_nodes;
+  NodeIndex target_node{NodesToOptimize::EmptyNodeIndex};
+  std::vector<NodeIndex> output_nodes;
   int num_input_defs{-1};
   int num_output_defs{-1};
 
-  std::unique_ptr<NodesToOptimize> Build() {
-    ORT_ENFORCE(target_node != nullptr, "A target node must be set.");
-    return std::make_unique<NodesToOptimize>(input_nodes, *target_node, output_nodes, num_input_defs, num_output_defs);
+  std::unique_ptr<NodesToOptimizeIndexes> Build() const {
+    ORT_ENFORCE(target_node != std::numeric_limits<NodeIndex>::max(), "A target node must be set.");
+    return std::make_unique<NodesToOptimizeIndexes>(input_nodes, target_node, output_nodes, num_input_defs, num_output_defs);
   }
 };
 

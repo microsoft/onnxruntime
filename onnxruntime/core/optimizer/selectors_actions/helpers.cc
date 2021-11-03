@@ -130,6 +130,29 @@ bool GetNodesByNodeIndex(Graph& graph, const std::vector<NodeIndex>& indexes, st
 // Selections
 //
 
+NodesToOptimizeIndexes::NodesToOptimizeIndexes(
+    const std::vector<NodeIndex>& input_nodes,
+    NodeIndex target_node,
+    const std::vector<NodeIndex>& output_nodes,
+    int num_input_defs, int num_output_defs)
+    : num_inputs_{num_input_defs == -1 ? gsl::narrow_cast<int>(input_nodes.size()) : num_input_defs},
+      num_outputs_{num_output_defs == -1 ? gsl::narrow_cast<int>(output_nodes.size()) : num_output_defs} {
+  if (num_input_defs != -1) {
+    variadic_input_ = true;
+    num_variadic_inputs_ = gsl::narrow_cast<int>(input_nodes.size()) - num_input_defs + 1;
+  }
+
+  if (num_output_defs != -1) {
+    variadic_output_ = true;
+    num_variadic_outputs_ = gsl::narrow_cast<int>(output_nodes.size()) - num_output_defs + 1;
+  }
+
+  nodes_.reserve(NumInputEntries() + 1 + NumOutputEntries());
+  std::copy(input_nodes.begin(), input_nodes.end(), std::back_inserter(nodes_));
+  nodes_.push_back(target_node);
+  std::copy(output_nodes.begin(), output_nodes.end(), std::back_inserter(nodes_));
+}
+
 NodesToOptimize::NodesToOptimize(const std::vector<Node*>& input_nodes,
                                  Node& target_node,
                                  const std::vector<Node*>& output_nodes,
@@ -154,30 +177,28 @@ NodesToOptimize::NodesToOptimize(const std::vector<Node*>& input_nodes,
 
 NodesToOptimize::NodesToOptimize(Graph& graph,
                                  const NodesToOptimizeIndexes& indexes)
-    : num_inputs{indexes.num_inputs},
-      num_outputs{indexes.num_outputs} {
-  bool missing_nodes = GetNodesByNodeIndex(graph, indexes.nodes, nodes_);
+    : num_inputs{indexes.GetNumInputs()},
+      num_outputs{indexes.GetNumOutputs()},
+      variadic_input_{indexes.HasVariadicInput()},
+      variadic_output_{indexes.HasVariadicOutput()},
+      num_variadic_inputs_{indexes.GetNumVariadicInputs()},
+      num_variadic_outputs_{indexes.GetNumVariadicOutputs()} {
+  bool missing_nodes = !GetNodesByNodeIndex(graph, indexes.GetNodes(), nodes_);
   if (missing_nodes) {
     nodes_.clear();  // this will result in IsValid returning false
   }
 }
 
 NodesToOptimizeIndexes NodesToOptimize::ToIndexes() const {
-  NodesToOptimizeIndexes indexes;
-
-  indexes.nodes.reserve(nodes_.size());
-  std::for_each(nodes_.cbegin(), nodes_.cend(), [&indexes](const Node* node) {
-    indexes.nodes.push_back(node != nullptr ? node->Index() : EmptyNodeIndex);
+  std::vector<NodeIndex> nodes;
+  nodes.reserve(nodes_.size());
+  std::for_each(nodes_.cbegin(), nodes_.cend(), [&nodes](const Node* node) {
+    nodes.push_back(node != nullptr ? node->Index() : EmptyNodeIndex);
   });
 
-  indexes.num_inputs = num_inputs;
-  indexes.num_outputs = num_outputs;
-  indexes.variadic_input = variadic_input_;
-  indexes.variadic_output = variadic_output_;
-  indexes.num_variadic_inputs = num_variadic_inputs_;
-  indexes.num_variadic_outputs = num_variadic_outputs_;
-
-  return indexes;
+  return NodesToOptimizeIndexes(nodes, num_inputs, num_outputs,
+                                variadic_input_, variadic_output_,
+                                num_variadic_inputs_, num_variadic_outputs_);
 }
 
 std::vector<Node*> NodesToOptimize::Inputs(const std::vector<int>& indexes, bool required) const {
