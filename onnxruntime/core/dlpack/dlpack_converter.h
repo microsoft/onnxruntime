@@ -11,6 +11,15 @@
 namespace onnxruntime {
 namespace dlpack {
 
+typedef struct {
+  OrtValue handle;
+  DLManagedTensor tensor;
+} OrtDLManagedTensor;
+
+typedef void DlpackDeleterFct(DLManagedTensor* arg);
+
+DlpackDeleterFct* GetDlpackDeleter();
+
 // This convertor will take an OrtValue and wrap it as a DLPack tensor
 // This may create a new ownership to the underlying tensor in OrtValue,
 // so we do pass-by-value here. We don't use pass-by-reference because
@@ -21,7 +30,7 @@ DLManagedTensor* OrtValueToDlpack(OrtValue& ort_value);
 // similar to the previous function but the structure DLManagedTensor
 // is already allocated. This function can be used when multiple
 // OrtValue are converted in the same function. This saves allocations.
-DLManagedTensor* OrtValueToDlpack(OrtValue& ort_value, /*OrtDLManagedTensor*/ void* ort_dlmanaged_tensor);
+DLManagedTensor* OrtValueToDlpack(OrtValue& ort_value, OrtDLManagedTensor* ort_dlmanaged_tensor, DlpackDeleterFct* deleter);
 
 // DLPack uses same config for both bool and unit8. Parameter is_bool_tensor is to
 // tell ORT the data type when creating OrtValue.

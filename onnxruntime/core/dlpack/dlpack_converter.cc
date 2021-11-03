@@ -99,13 +99,6 @@ DLDevice GetDlpackDevice(const OrtValue& ort_value, const int64_t& device_id) {
   return device;
 }
 
-struct OrtDLManagedTensor {
-  OrtValue handle;
-  DLManagedTensor tensor;
-};
-
-void DlpackDeleter(DLManagedTensor* arg) { delete static_cast<OrtDLManagedTensor*>(arg->manager_ctx); }
-
 OrtDevice GetOrtDevice(const DLDevice& device) {
   switch (device.device_type) {
     case DLDeviceType::kDLCPU:
@@ -197,12 +190,13 @@ bool IsContiguousTensor(const DLTensor& tensor) {
 
 }  // namespace
 
-DLManagedTensor* OrtValueToDlpack(OrtValue& ort_value, /*OrtDLManagedTensor*/ void* void_ort_dlmanaged_tensor) {
-  OrtDLManagedTensor* ort_dlmanaged_tensor = static_cast<OrtDLManagedTensor*>(void_ort_dlmanaged_tensor);
+void DlpackDeleterEmpty(DLManagedTensor*) {}
+
+DLManagedTensor* OrtValueToDlpack(OrtValue& ort_value, OrtDLManagedTensor* ort_dlmanaged_tensor, DlpackDeleterFct* deleter) {
   Tensor& tensor = *ort_value.GetMutable<Tensor>();
   ort_dlmanaged_tensor->handle = ort_value;
   ort_dlmanaged_tensor->tensor.manager_ctx = ort_dlmanaged_tensor;
-  ort_dlmanaged_tensor->tensor.deleter = &DlpackDeleter;
+  ort_dlmanaged_tensor->tensor.deleter = deleter == NULL ? &DlpackDeleterEmpty : deleter;
   ort_dlmanaged_tensor->tensor.dl_tensor.data = (tensor.MutableDataRaw());
   ort_dlmanaged_tensor->tensor.dl_tensor.device = GetDlpackDevice(ort_value, tensor.Location().device.Id());
   ort_dlmanaged_tensor->tensor.dl_tensor.ndim = static_cast<int>(tensor.Shape().NumDimensions());
@@ -214,13 +208,15 @@ DLManagedTensor* OrtValueToDlpack(OrtValue& ort_value, /*OrtDLManagedTensor*/ vo
   return &(ort_dlmanaged_tensor->tensor);
 }
 
+void DlpackDeleter(DLManagedTensor* arg) { delete static_cast<OrtDLManagedTensor*>(arg->manager_ctx); }
+
 // This function returns a pointer to DLManagedTensor constructed from an OrtValue
 // The OrtValue inside OrtDLManagedTensor will increase its own buffer's ref count by one
 // When the consumer of DLManagedTensor is done with the tensor, it should invoke the deleter.
 DLManagedTensor* OrtValueToDlpack(OrtValue& ort_value) {
   ORT_ENFORCE(ort_value.IsTensor(), "Only tensor type OrtValues are supported");
   OrtDLManagedTensor* ort_dlmanaged_tensor(new OrtDLManagedTensor);
-  return OrtValueToDlpack(ort_value, ort_dlmanaged_tensor);
+  return OrtValueToDlpack(ort_value, ort_dlmanaged_tensor, &DlpackDeleter);
 }
 
 OrtValue DlpackToOrtValue(DLManagedTensor* dlpack, bool is_bool_tensor) {
@@ -235,8 +231,11 @@ OrtValue DlpackToOrtValue(DLManagedTensor* dlpack, bool is_bool_tensor) {
 
   OrtValue ort_value;
   std::function<void(void*)> deleter = [dlpack](void* p) {
-    dlpack->deleter(dlpack);
-    DataTypeImpl::GetType<Tensor>()->GetDeleteFunc()(p);
+    if (dlpack->deleter != NULL)
+      dlpack->deleter(dlpack);
+    auto deleter = DataTypeImpl::GetType<Tensor>()->GetDeleteFunc();
+    if (deleter != NULL)
+      deleter(p);
   };
 
   ort_value.Init(p_tensor.release(), DataTypeImpl::GetType<Tensor>(), deleter);

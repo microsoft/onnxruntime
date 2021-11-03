@@ -10,6 +10,7 @@
 
 #include "core/common/parse_string.h"
 #include "core/session/environment.h"
+#include "core/dlpack/dlpack_converter.h"
 #include "orttraining/core/session/training_session.h"
 #include "orttraining/core/agent/training_agent.h"
 #include "orttraining/core/graph/optimizer_config.h"
@@ -345,11 +346,6 @@ std::unordered_map<std::string, std::unordered_map<std::string, py::object>> Con
   return py_tensor_state;
 }
 
-struct OrtDLManagedTensor {
-  OrtValue handle;
-  DLManagedTensor tensor;
-};
-
 void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn ep_registration_fn) {
   py::class_<std::vector<OrtValue>>(m, "OrtValueVector")
       .def(py::init<>())
@@ -378,37 +374,40 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
         if (v.size() == 0)
           return py::list();
 
-        py::list res;
+        py::list list_dlpacks;
 
-        PyObject* capsule;
         PyObject* handle = to_tensor.ptr();
         PyObject* obj;
 
         py::gil_scoped_acquire acquire;
 
-        const Tensor& tensor = v[0].Get<Tensor>();
-
-        if (tensor.Location().device.Type() == OrtDevice::CPU) {
-          OrtDLManagedTensor ort_dlmanaged_tensor;
-          capsule = PyCapsule_New(&ort_dlmanaged_tensor.tensor, "dltensor", NULL);
-          if (capsule == NULL)
-            throw std::runtime_error("Empty capsule returned.");
+        #if true
+        //const Tensor& tensor = v[0].Get<Tensor>();
+        //if (tensor.Location().device.Type() == OrtDevice::FPGA) {     
+          DLManagedTensor* dlmanaged_tensor;
+          PyObject* capsule = NULL;
 
           for (auto it : v) {
-            // The same capsule is reused but FromDLPack rename the capsule into used_dltensor.
-            PyCapsule_SetName(capsule, "dltensor");
-            dlpack::OrtValueToDlpack(it, (void*)&ort_dlmanaged_tensor);
-    #if (PY_MAJOR_VERSION >= 3 && PY_MINOR_VERSION >= 9)
-            obj = PyObject_CallOneArg(handle, capsule);
-    #else
+            // A new instance of dlpack needs to be created. The object which consumes it
+            // is responsible for its deletion.
+            dlmanaged_tensor = dlpack::OrtValueToDlpack(it);
+            if (capsule == NULL) {
+              capsule = PyCapsule_New(dlmanaged_tensor, "dltensor", NULL);
+            } else {
+              // The same capsule is reused but FromDLPack rename the capsule into used_dltensor.
+              PyCapsule_SetName(capsule, "dltensor");
+              PyCapsule_SetPointer(capsule, dlmanaged_tensor);
+            }
             obj = PyObject_CallFunctionObjArgs(handle, capsule, NULL);
-    #endif
             if (obj == NULL)
               throw std::runtime_error("Empty tensor returned.");
-            res.append(py::handle(obj));
+            list_dlpacks.append(obj);
+            Py_DECREF(obj);
           }
-        } else {
-          // This piece of code should be removed when the issue on GPU is found.
+          Py_DECREF(capsule);
+        #else
+        //} else {
+          // This piece of code should be removed when the PR is compete.
           // It is less efficient because it creates a capsule every time a tensor
           // ownership is transfered.
 
@@ -416,38 +415,24 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
           // The capsule used to share the dlpack structure from OrtValue to
           // another library only remains alive in the same loop iteration.
 
-          auto destructor = [](PyObject* data) {
-            DLManagedTensor* dlmanaged_tensor = reinterpret_cast<DLManagedTensor*>(
-                PyCapsule_GetPointer(data, "dltensor"));
-            if (dlmanaged_tensor) {
-              // The dlmanaged_tensor has not been consumed, call deleter ourselves.
-              dlmanaged_tensor->deleter(const_cast<DLManagedTensor*>(dlmanaged_tensor));
-            } else {
-              // The dlmanaged_tensor has been consumed,
-              // PyCapsule_GetPointer has set an error indicator.
-              PyErr_Clear();
-            }
-          };
-
           DLManagedTensor* dlmanaged_tensor;
+          PyObject* capsule;
 
           for (auto it : v) {
             dlmanaged_tensor = dlpack::OrtValueToDlpack(it);
-            capsule = PyCapsule_New(dlmanaged_tensor, "dltensor", destructor);
+            capsule = PyCapsule_New(dlmanaged_tensor, "dltensor", DlpackCapsuleDestructor);
             if (capsule == NULL)
               throw std::runtime_error("Empty capsule returned.");
-#if (PY_MAJOR_VERSION >= 3 && PY_MINOR_VERSION >= 9)
-            obj = PyObject_CallOneArg(handle, capsule);
-#else
             obj = PyObject_CallFunctionObjArgs(handle, capsule, NULL);
-#endif
+            Py_DECREF(capsule);
             if (obj == NULL)
               throw std::runtime_error("Empty tensor returned.");
-            res.append(py::handle(obj));
+            list_dlpacks.append(obj);
+            Py_DECREF(obj);
           }
         }
-
-        return res;
+          #endif
+        return list_dlpacks;
        },
        R"pbdoc(Builds a list of all OrtValue converted into tensors using function to_tensor applied to the DLPack structure.
 :param to_tensor: this function takes a capsule holding a pointer onto a DLPack structure and returns

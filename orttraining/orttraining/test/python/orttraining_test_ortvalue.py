@@ -4,6 +4,7 @@
 
 import unittest
 import copy
+import sys
 import numpy as np
 from numpy.testing import assert_almost_equal
 import onnxruntime as onnxrt
@@ -66,6 +67,12 @@ class TestOrtValue(unittest.TestCase):
 
         ortvalues = vect.to_dlpack(my_to_tensor)
         self.assertEqual(len(ortvalues), len(vect))
+
+        # We make sure the function does not leak any python object.
+        cf = [sys.getrefcount(o) for o in ortvalues]
+        dummy = [numpy.array([[0, 1]]), dict(a=3)]
+        cf2 = [sys.getrefcount(o) for o in dummy]
+        self.assertEqual(cf, cf2)  # it should be [3, 3]
 
         ptr2 = []
         for av1, v2 in zip(narrays, ortvalues):
