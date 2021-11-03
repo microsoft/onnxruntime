@@ -227,13 +227,13 @@ Status QAttention<T>::Compute(OpKernelContext* context) const {
     const auto* weights_data = packed_weights_ ? nullptr : static_cast<const uint8_t*>(weights->DataRaw());
     const bool weights_is_signed = packed_weights_ ? weights_is_signed_ : weights->IsDataType<int8_t>();
 
-    MLAS_GEMM_U8X8_SHAPE_PARAMS gemm_shape;
+    MLAS_GEMM_QUANT_SHAPE_PARAMS gemm_shape;
     gemm_shape.M = sequence_length;
     gemm_shape.N = head_size;
     gemm_shape.K = input_hidden_size;
     gemm_shape.BIsSigned = weights_is_signed;
 
-    std::vector<MLAS_GEMM_U8X8_DATA_PARAMS> gemm_data_vec(loop_len);
+    std::vector<MLAS_GEMM_QUANT_DATA_PARAMS> gemm_data_vec(loop_len);
     std::vector<MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR> scale_bias_procs;
     scale_bias_procs.reserve(loop_len);
 

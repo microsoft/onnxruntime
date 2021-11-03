@@ -83,13 +83,13 @@ struct MLAS_GEMM_U8S8_KERNEL_AVX2
     typedef int8_t OffsetBType;
 
     static constexpr size_t PackedK = 4;
-    static constexpr MLAS_GEMM_U8X8_STRIDES Strides{ 24, 256, 128 };
-    static constexpr MLAS_GEMM_U8X8_STRIDES PackedStrides{ 48, 256, 384 };
+    static constexpr MLAS_GEMM_QUANT_STRIDES Strides{ 24, 256, 128 };
+    static constexpr MLAS_GEMM_QUANT_STRIDES PackedStrides{ 48, 256, 384 };
 };
 
 constexpr size_t MLAS_GEMM_U8S8_KERNEL_AVX2::PackedK;
-constexpr MLAS_GEMM_U8X8_STRIDES MLAS_GEMM_U8S8_KERNEL_AVX2::Strides;
-constexpr MLAS_GEMM_U8X8_STRIDES MLAS_GEMM_U8S8_KERNEL_AVX2::PackedStrides;
+constexpr MLAS_GEMM_QUANT_STRIDES MLAS_GEMM_U8S8_KERNEL_AVX2::Strides;
+constexpr MLAS_GEMM_QUANT_STRIDES MLAS_GEMM_U8S8_KERNEL_AVX2::PackedStrides;
 
 template<>
 MLAS_FORCEINLINE
@@ -194,13 +194,13 @@ struct MLAS_GEMM_U8U8_KERNEL_AVX2
     typedef uint8_t OffsetBType;
 
     static constexpr size_t PackedK = 2;
-    static constexpr MLAS_GEMM_U8X8_STRIDES Strides{ 24, 256, 128 };
-    static constexpr MLAS_GEMM_U8X8_STRIDES PackedStrides{ 48, 256, 384 };
+    static constexpr MLAS_GEMM_QUANT_STRIDES Strides{ 24, 256, 128 };
+    static constexpr MLAS_GEMM_QUANT_STRIDES PackedStrides{ 48, 256, 384 };
 };
 
 constexpr size_t MLAS_GEMM_U8U8_KERNEL_AVX2::PackedK;
-constexpr MLAS_GEMM_U8X8_STRIDES MLAS_GEMM_U8U8_KERNEL_AVX2::Strides;
-constexpr MLAS_GEMM_U8X8_STRIDES MLAS_GEMM_U8U8_KERNEL_AVX2::PackedStrides;
+constexpr MLAS_GEMM_QUANT_STRIDES MLAS_GEMM_U8U8_KERNEL_AVX2::Strides;
+constexpr MLAS_GEMM_QUANT_STRIDES MLAS_GEMM_U8U8_KERNEL_AVX2::PackedStrides;
 
 
 template<>

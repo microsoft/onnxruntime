@@ -13,7 +13,7 @@ Abstract:
     This module defines the set of template functions to implement a kernel of
     quantized integer matrix/matrix multiply operation (QGEMM).
 
-    To implement a new kernel, there needs to specialize template functions below:
+    To implement a new kernel, template functions below need to be specialized:
         MlasGemmU8X8FixupZeroPointA
         MlasGemmU8X8FixupZeroPointB
         MlasGemmU8X8CopyPackA
@@ -37,7 +37,7 @@ Abstract:
 // matrix/matrix multiply operation.
 //
 
-struct MLAS_GEMM_U8X8_STRIDES {
+struct MLAS_GEMM_QUANT_STRIDES {
     size_t M;
     size_t N;
     size_t K;
@@ -107,7 +107,7 @@ MlasGemmU8X8FixupZeroPointB(
     }
 
     //
-    // Fill the misaligned slots of the zero point buffer with zeroes to guard
+    // Fill the misaligned slots of the zero point buffer with zeros to guard
     // against tools that check for uninitialized data usage.
     //
 
@@ -188,8 +188,8 @@ MlasGemmU8X8ScaleSumBuffer(
 template<typename KernelType>
 void
 MlasGemmU8X8Operation(
-    const MLAS_GEMM_U8X8_SHAPE_PARAMS* Shape,
-    const MLAS_GEMM_U8X8_DATA_PARAMS* Data,
+    const MLAS_GEMM_QUANT_SHAPE_PARAMS* Shape,
+    const MLAS_GEMM_QUANT_DATA_PARAMS* Data,
     const size_t RangeStartM,
     const size_t RangeCountM,
     const size_t RangeStartN,
@@ -222,7 +222,7 @@ Return Value:
 
 --*/
 {
-    constexpr MLAS_GEMM_U8X8_STRIDES Strides = KernelType::Strides;
+    constexpr MLAS_GEMM_QUANT_STRIDES Strides = KernelType::Strides;
 
     MLAS_DECLSPEC_ALIGN(typename KernelType::PackedAType PanelA[Strides.M * Strides.K], 64);
     MLAS_DECLSPEC_ALIGN(typename KernelType::PackedBType PanelB[Strides.N * Strides.K], 64);
@@ -423,8 +423,8 @@ Return Value:
 template<typename KernelType>
 void
 MlasGemmU8X8PackedOperation(
-    const MLAS_GEMM_U8X8_SHAPE_PARAMS* Shape,
-    const MLAS_GEMM_U8X8_DATA_PARAMS* Data,
+    const MLAS_GEMM_QUANT_SHAPE_PARAMS* Shape,
+    const MLAS_GEMM_QUANT_DATA_PARAMS* Data,
     const size_t RangeStartM,
     const size_t RangeCountM,
     const size_t RangeStartN,
@@ -457,7 +457,7 @@ Return Value:
 
 --*/
 {
-    constexpr MLAS_GEMM_U8X8_STRIDES Strides = KernelType::PackedStrides;
+    constexpr MLAS_GEMM_QUANT_STRIDES Strides = KernelType::PackedStrides;
 
     MLAS_DECLSPEC_ALIGN(typename KernelType::PackedAType PanelA[Strides.M * Strides.K], 64);
 
@@ -653,8 +653,8 @@ Return Value:
 typedef
 void
 (MLAS_GEMM_U8X8_OPERATION)(
-    const MLAS_GEMM_U8X8_SHAPE_PARAMS* Shape,
-    const MLAS_GEMM_U8X8_DATA_PARAMS* Data,
+    const MLAS_GEMM_QUANT_SHAPE_PARAMS* Shape,
+    const MLAS_GEMM_QUANT_DATA_PARAMS* Data,
     const size_t RangeStartM,
     const size_t RangeCountM,
     const size_t RangeStartN,

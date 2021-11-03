@@ -149,12 +149,12 @@ Status ConvInteger::Compute(OpKernelContext* context) const {
         }
       }
 
-      MLAS_GEMM_U8X8_SHAPE_PARAMS gemm_shape;
+      MLAS_GEMM_QUANT_SHAPE_PARAMS gemm_shape;
       gemm_shape.M = static_cast<size_t>(M / conv_attrs_.group);
       gemm_shape.N = static_cast<size_t>(output_image_size);
       gemm_shape.K = static_cast<size_t>(kernel_dim);
       
-      MLAS_GEMM_U8X8_DATA_PARAMS gemm_params;
+      MLAS_GEMM_QUANT_DATA_PARAMS gemm_params;
       gemm_params.A = Wdata + group_id * W_offset;
       gemm_params.lda = static_cast<size_t>(kernel_dim);
       gemm_params.ZeroPointA = filter_offset;

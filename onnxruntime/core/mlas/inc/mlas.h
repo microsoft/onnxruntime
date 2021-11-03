@@ -528,15 +528,16 @@ private:
     MLAS_QUANTIZATION_GRANULARITY QuantGran_;
 };
 
-struct MLAS_GEMM_U8X8_SHAPE_PARAMS {
+struct MLAS_GEMM_QUANT_SHAPE_PARAMS {
     size_t M = 0;
     size_t N = 0;
     size_t K = 0;
+    bool AIsSigned = false;
     bool BIsSigned = false;
     bool IsAccumulateMode = false;
 };
 
-struct MLAS_GEMM_U8X8_DATA_PARAMS {
+struct MLAS_GEMM_QUANT_DATA_PARAMS {
     const uint8_t* A = nullptr;
     size_t lda = 0;
     uint8_t ZeroPointA = 0;
@@ -553,8 +554,8 @@ struct MLAS_GEMM_U8X8_DATA_PARAMS {
 void
 MLASCALL
 MlasGemm(
-    const MLAS_GEMM_U8X8_SHAPE_PARAMS& Shape,
-    const MLAS_GEMM_U8X8_DATA_PARAMS& DataParams,
+    const MLAS_GEMM_QUANT_SHAPE_PARAMS& Shape,
+    const MLAS_GEMM_QUANT_DATA_PARAMS& DataParams,
     MLAS_THREADPOOL* ThreadPool
     );
 
@@ -572,8 +573,8 @@ MlasGemm(
 void
 MLASCALL
 MlasGemmBatch(
-    const MLAS_GEMM_U8X8_SHAPE_PARAMS& Shape,
-    const MLAS_GEMM_U8X8_DATA_PARAMS* DataParams,
+    const MLAS_GEMM_QUANT_SHAPE_PARAMS& Shape,
+    const MLAS_GEMM_QUANT_DATA_PARAMS* DataParams,
     const size_t BatchN,
     MLAS_THREADPOOL* ThreadPool
     );
