@@ -95,5 +95,5 @@ for submodule_line in submodule_lines:
 
 cgmanifest = {"Version": 1, "Registrations": registrations}
 
-with open(os.path.join(SCRIPT_DIR, "generated/cgmanifest.json"), mode="w") as generated_cgmanifest_file:
+with open(os.path.join(SCRIPT_DIR, "generated", "cgmanifest.json"), mode="w") as generated_cgmanifest_file:
     print(json.dumps(cgmanifest, indent=2), file=generated_cgmanifest_file)
