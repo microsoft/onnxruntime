@@ -28,7 +28,7 @@ class BaseSelector : public NodeSelector {
               std::unique_ptr<NodesToOptimizeIndexes>& selection) const override;
 
   // This select is a QDQ Selectors only function, which takes a const GraphViewer
-  virtual bool Select(const GraphViewer& graph_viewer, const Node& node, NodeGroup& selection) const;
+  bool Select(const GraphViewer& graph_viewer, const Node& node, NodeGroup& selection) const;
 
  protected:
   BaseSelector() = default;

@@ -12,7 +12,6 @@ class TensorProto;
 
 namespace onnxruntime {
 
-class GraphViewer;
 class Node;
 class Path;
 

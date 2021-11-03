@@ -130,27 +130,38 @@ bool GetNodesByNodeIndex(Graph& graph, const std::vector<NodeIndex>& indexes, st
 // Selections
 //
 
-NodesToOptimizeIndexes::NodesToOptimizeIndexes(
-    const std::vector<NodeIndex>& input_nodes,
-    NodeIndex target_node,
-    const std::vector<NodeIndex>& output_nodes,
-    int num_input_defs, int num_output_defs)
-    : num_inputs_{num_input_defs == -1 ? gsl::narrow_cast<int>(input_nodes.size()) : num_input_defs},
-      num_outputs_{num_output_defs == -1 ? gsl::narrow_cast<int>(output_nodes.size()) : num_output_defs} {
+/* static */ std::unique_ptr<NodesToOptimizeIndexes>
+NodesToOptimizeIndexes::CreateNodesToOptimizeIndexes(const std::vector<NodeIndex>& input_nodes,
+                                                     NodeIndex target_node,
+                                                     const std::vector<NodeIndex>& output_nodes,
+                                                     int num_input_defs, int num_output_defs) {
+  int num_inputs = num_input_defs == -1 ? gsl::narrow_cast<int>(input_nodes.size()) : num_input_defs;
+  int num_outputs = num_output_defs == -1 ? gsl::narrow_cast<int>(output_nodes.size()) : num_output_defs;
+  bool variadic_input = false;
+  bool variadic_output = false;
+  int num_variadic_inputs = 0;
+  int num_variadic_outputs = 0;
+
   if (num_input_defs != -1) {
-    variadic_input_ = true;
-    num_variadic_inputs_ = gsl::narrow_cast<int>(input_nodes.size()) - num_input_defs + 1;
+    variadic_input = true;
+    num_variadic_inputs = gsl::narrow_cast<int>(input_nodes.size()) - num_input_defs + 1;
   }
 
   if (num_output_defs != -1) {
-    variadic_output_ = true;
-    num_variadic_outputs_ = gsl::narrow_cast<int>(output_nodes.size()) - num_output_defs + 1;
+    variadic_output = true;
+    num_variadic_outputs = gsl::narrow_cast<int>(output_nodes.size()) - num_output_defs + 1;
   }
 
-  nodes_.reserve(NumInputEntries() + 1 + NumOutputEntries());
-  std::copy(input_nodes.begin(), input_nodes.end(), std::back_inserter(nodes_));
-  nodes_.push_back(target_node);
-  std::copy(output_nodes.begin(), output_nodes.end(), std::back_inserter(nodes_));
+  std::vector<NodeIndex> nodes;
+  nodes.reserve(NumIOEntries(variadic_input, num_inputs, num_variadic_inputs) + 1 +
+                NumIOEntries(variadic_output, num_outputs, num_variadic_outputs));
+  std::copy(input_nodes.begin(), input_nodes.end(), std::back_inserter(nodes));
+  nodes.push_back(target_node);
+  std::copy(output_nodes.begin(), output_nodes.end(), std::back_inserter(nodes));
+
+  return std::make_unique<NodesToOptimizeIndexes>(std::move(nodes), num_inputs, num_outputs,
+                                                  variadic_input, variadic_output,
+                                                  num_variadic_inputs, num_variadic_outputs);
 }
 
 NodesToOptimize::NodesToOptimize(const std::vector<Node*>& input_nodes,
@@ -177,13 +188,13 @@ NodesToOptimize::NodesToOptimize(const std::vector<Node*>& input_nodes,
 
 NodesToOptimize::NodesToOptimize(Graph& graph,
                                  const NodesToOptimizeIndexes& indexes)
-    : num_inputs{indexes.GetNumInputs()},
-      num_outputs{indexes.GetNumOutputs()},
-      variadic_input_{indexes.HasVariadicInput()},
-      variadic_output_{indexes.HasVariadicOutput()},
-      num_variadic_inputs_{indexes.GetNumVariadicInputs()},
-      num_variadic_outputs_{indexes.GetNumVariadicOutputs()} {
-  bool missing_nodes = !GetNodesByNodeIndex(graph, indexes.GetNodes(), nodes_);
+    : num_inputs{indexes.num_inputs_},
+      num_outputs{indexes.num_outputs_},
+      variadic_input_{indexes.variadic_input_},
+      variadic_output_{indexes.variadic_output_},
+      num_variadic_inputs_{indexes.num_variadic_inputs_},
+      num_variadic_outputs_{indexes.num_variadic_outputs_} {
+  bool missing_nodes = !GetNodesByNodeIndex(graph, indexes.nodes_, nodes_);
   if (missing_nodes) {
     nodes_.clear();  // this will result in IsValid returning false
   }
@@ -196,7 +207,7 @@ NodesToOptimizeIndexes NodesToOptimize::ToIndexes() const {
     nodes.push_back(node != nullptr ? node->Index() : EmptyNodeIndex);
   });
 
-  return NodesToOptimizeIndexes(nodes, num_inputs, num_outputs,
+  return NodesToOptimizeIndexes(std::move(nodes), num_inputs, num_outputs,
                                 variadic_input_, variadic_output_,
                                 num_variadic_inputs_, num_variadic_outputs_);
 }

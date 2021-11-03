@@ -193,10 +193,7 @@ bool ConvSelector::Check(const GraphViewer& graph_viewer,
 }
 
 void ConvSelector::UpdateBuilder(NodesToOptimizeIndexesBuilder& builder) const {
-  if (builder.input_nodes.size() == 2) {
-    // add EmptyNodeIndex for bias if missing
-    builder.input_nodes.push_back(NodesToOptimize::EmptyNodeIndex);
-  }
+  builder.input_nodes.resize(3, NodesToOptimize::EmptyNodeIndex);
 }
 
 bool MatMulSelector::Check(const GraphViewer& graph_viewer,
