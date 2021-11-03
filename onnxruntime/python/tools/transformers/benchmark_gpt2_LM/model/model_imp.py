@@ -62,8 +62,8 @@ class ModelImp:
             else:
                 results = [ answer for answer in outputs if len(answer) > 1]
             results = json.dumps(results)
-        except:
-            raise
+        except Exception as e:
+            raise e
 
         return results
 

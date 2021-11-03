@@ -70,8 +70,8 @@ class ModelRunner:
             output_ids, output_probs = generator.generate(model, input_ids, first_token_masks=first_token_masks)
 
             outputs, output_probs = self._process_results(output_ids, output_probs, tokenizer, last_complete_word_position)
-        except:
-            raise
+        except Exception as e:
+            raise e
         
         #After this output probs doesn't really have an importance, just returning outputs
         return outputs

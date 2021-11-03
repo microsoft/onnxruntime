@@ -113,8 +113,8 @@ def start_processing(inputFilePath: str, outputFilePath: str, model: ModelImp):
                 print("Total Queries: " + str(count))
 
             print("Average latency: ", str(total_time / count))
-    except:
-        raise
+    except Exception as e:
+        raise e
 
 def initilize_processing():
     try:

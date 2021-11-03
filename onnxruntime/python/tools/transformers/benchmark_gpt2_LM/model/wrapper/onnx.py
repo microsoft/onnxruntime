@@ -147,6 +147,6 @@ class OnnxModelWrapper(BaseModelWrapper):
                                    output_buffer.data_ptr())
 
         self.ort_sess.run_with_iobinding(io_binding)
-        self.check_and_resize_buffers(output_shapes)
+
         outputs = self.get_outputs_from_buffers(self.output_buffers, output_shapes)
         return [outputs[output.name] for output in ort_output_info]
