@@ -378,7 +378,7 @@ common::Status NodeArg::UpdateTypeAndShape(const ONNX_NAMESPACE::TypeProto& inpu
       const auto& input_tensor_elem_type = input_tensor_type.elem_type();
       const auto& current_tensor_elem_type = current_type.tensor_type().elem_type();
 
-      OverrideTypesHelper(input_type, input_tensor_elem_type, current_tensor_elem_type, override_types);
+      ORT_RETURN_IF_ERROR(OverrideTypesHelper(input_type, input_tensor_elem_type, current_tensor_elem_type, override_types));
 
       if (utils::HasShape(input_tensor_type)) {
         if (utils::HasShape(current_type)) {
@@ -397,7 +397,7 @@ common::Status NodeArg::UpdateTypeAndShape(const ONNX_NAMESPACE::TypeProto& inpu
       const auto input_tensor_elem_type = input_tensor_type.elem_type();
       const auto current_tensor_elem_type = current_type.sparse_tensor_type().elem_type();
 
-      OverrideTypesHelper(input_type, input_tensor_elem_type, current_tensor_elem_type, override_types);
+      ORT_RETURN_IF_ERROR(OverrideTypesHelper(input_type, input_tensor_elem_type, current_tensor_elem_type, override_types));
 
       if (utils::HasShape(input_tensor_type)) {
         if (utils::HasShape(current_type)) {
@@ -413,8 +413,8 @@ common::Status NodeArg::UpdateTypeAndShape(const ONNX_NAMESPACE::TypeProto& inpu
     case TypeProto::kOptionalType: {
       if ((utils::HasOptionalTensorType(input_type) && !utils::HasOptionalTensorType(current_type)) ||
           (!utils::HasOptionalTensorType(input_type) && utils::HasOptionalTensorType(current_type))) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Optional Type mismatch. Expected: ", current_type,
-                               " . Got: ", input_type);
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Optional Type mismatch. Expected: ", ONNX_NAMESPACE::Utils::DataTypeUtils::ToType(current_type),
+                               " . Got: ", ONNX_NAMESPACE::Utils::DataTypeUtils::ToType(input_type));
       }
 
       // Updating element type and shape is only applicable for optional tensors
@@ -426,7 +426,7 @@ common::Status NodeArg::UpdateTypeAndShape(const ONNX_NAMESPACE::TypeProto& inpu
         const auto& input_tensor_elem_type = input_tensor_type.elem_type();
         const auto& current_tensor_elem_type = optional_current_type.tensor_type().elem_type();
 
-        OverrideTypesHelper(input_type, input_tensor_elem_type, current_tensor_elem_type, override_types);
+        ORT_RETURN_IF_ERROR(OverrideTypesHelper(input_type, input_tensor_elem_type, current_tensor_elem_type, override_types));
 
         if (utils::HasShape(optional_input_type.tensor_type())) {
           if (utils::HasShape(optional_current_type.tensor_type())) {

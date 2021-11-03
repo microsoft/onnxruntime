@@ -708,7 +708,7 @@ Status ExecutionFrame::AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_
       case AllocKind::kReuse: {
         int reuse_mlvalue_index = per_alloc_plan.reused_buffer;
 
-        AllocateReusedOrtValueIfNotAllocatedHelper(reuse_mlvalue_index, shape);
+        ORT_RETURN_IF_ERROR(AllocateReusedOrtValueIfNotAllocatedHelper(reuse_mlvalue_index, shape));
 
         ORT_RETURN_IF_ERROR(AllocateMLValueTensorPreAllocateBuffer(
             ort_value, reuse_mlvalue_index, ml_data_type, alloc_info, *shape, per_alloc_plan.create_fence_if_async));
@@ -747,7 +747,7 @@ Status ExecutionFrame::AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_
     if (alloc_kind == AllocKind::kReuse) {
       int reuse_mlvalue_index = per_alloc_plan.reused_buffer;
 
-      AllocateReusedOrtValueIfNotAllocatedHelper(reuse_mlvalue_index, shape);
+      ORT_RETURN_IF_ERROR(AllocateReusedOrtValueIfNotAllocatedHelper(reuse_mlvalue_index, shape));
 
       OrtValue& reuse_value = GetMutableMLValue(reuse_mlvalue_index);
 

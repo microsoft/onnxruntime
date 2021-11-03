@@ -112,7 +112,7 @@ Status Optional::Compute(OpKernelContext* ctx) const {
 
   if (input_ort_value != nullptr) {
     // An input was provided by the user - so just propagate it to the output
-    PropagateInputOrtValueToFirstOutput(input_ort_value, ctx);
+    ORT_RETURN_IF_ERROR(PropagateInputOrtValueToFirstOutput(input_ort_value, ctx));
 
   } else {  // No input was provided - we use the type proto to construct the output OrtValue
 
@@ -149,7 +149,7 @@ Status OptionalGetElement::Compute(OpKernelContext* ctx) const {
   }
 
   // Propagate input to the output
-  PropagateInputOrtValueToFirstOutput(input_ort_value, ctx);
+  ORT_RETURN_IF_ERROR(PropagateInputOrtValueToFirstOutput(input_ort_value, ctx));
 
   return Status::OK();
 }
