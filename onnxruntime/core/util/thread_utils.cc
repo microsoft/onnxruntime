@@ -104,4 +104,52 @@ ORT_API_STATUS_IMPL(SetGlobalDenormalAsZero, _Inout_ OrtThreadingOptions* tp_opt
   return nullptr;
 }
 
+ORT_API_STATUS_IMPL(SetGlobalInterOpCustomCreateThreadFn, _Inout_ OrtThreadingOptions* tp_options, _In_ CustomCreateThreadFn custom_create_thread_fn) {
+  if (!tp_options) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Received null OrtThreadingOptions");
+  }
+  tp_options->inter_op_thread_pool_params.custom_create_thread_fn = custom_create_thread_fn;
+  return nullptr;
+}
+
+ORT_API_STATUS_IMPL(SetGlobalInterOpCustomThreadCreationOptions, _Inout_ OrtThreadingOptions* tp_options, _In_ void* custom_thread_creation_options) {
+  if (!tp_options) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Received null OrtThreadingOptions");
+  }
+  tp_options->inter_op_thread_pool_params.custom_thread_creation_options = custom_thread_creation_options;
+  return nullptr;
+}
+
+ORT_API_STATUS_IMPL(SetGlobalInterOpCustomJoinThreadFn, _Inout_ OrtThreadingOptions* tp_options, _In_ CustomJoinThreadFn custom_join_thread_fn) {
+  if (!tp_options) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Received null OrtThreadingOptions");
+  }
+  tp_options->inter_op_thread_pool_params.custom_join_thread_fn = custom_join_thread_fn;
+  return nullptr;
+}
+
+ORT_API_STATUS_IMPL(SetGlobalIntraOpCustomCreateThreadFn, _Inout_ OrtThreadingOptions* tp_options, _In_ CustomCreateThreadFn custom_create_thread_fn) {
+  if (!tp_options) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Received null OrtThreadingOptions");
+  }
+  tp_options->intra_op_thread_pool_params.custom_create_thread_fn = custom_create_thread_fn;
+  return nullptr;
+}
+
+ORT_API_STATUS_IMPL(SetGlobalIntraOpCustomThreadCreationOptions, _Inout_ OrtThreadingOptions* tp_options, _In_ void* custom_thread_creation_options) {
+  if (!tp_options) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Received null OrtThreadingOptions");
+  }
+  tp_options->intra_op_thread_pool_params.custom_thread_creation_options = custom_thread_creation_options;
+  return nullptr;
+}
+
+ORT_API_STATUS_IMPL(SetGlobalIntraOpCustomJoinThreadFn, _Inout_ OrtThreadingOptions* tp_options, _In_ CustomJoinThreadFn custom_join_thread_fn) {
+  if (!tp_options) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Received null OrtThreadingOptions");
+  }
+  tp_options->intra_op_thread_pool_params.custom_join_thread_fn = custom_join_thread_fn;
+  return nullptr;
+}
+
 }  // namespace OrtApis

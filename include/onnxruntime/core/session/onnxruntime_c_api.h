@@ -533,11 +533,7 @@ ORT_EXPORT const OrtApiBase* ORT_API_CALL OrtGetApiBase(void) NO_EXCEPTION;
 */
 typedef void (*OrtThreadWorkerFn)(void* worker_fn_param);
 
-#ifdef _WIN32
-#define THREAD_HANDLE void*  // type of HANDLE
-#else
-#define THREAD_HANDLE int  // type of pthread_t
-#endif
+#define THREAD_HANDLE void* // either a windows handle or a posix pthread_t
 
 /** \brief Thread creation function
 *
@@ -3050,14 +3046,14 @@ struct OrtApi {
   */
   ORT_API2_STATUS(GetSparseTensorIndices, _In_ const OrtValue* ort_value, enum OrtSparseIndicesFormat indices_format, _Out_ size_t* num_indices, _Outptr_ const void** indices);
 
-  /** \brief Set custom thread creation function for intra op thread pool
+  /** \brief Set custom thread creation function
   *
   * \param[in] session options
-  * \param[in] custom thread creation function (can be nullptr)
+  * \param[in] custom thread creation function
   * 
   * * \snippet{doc} snippets.dox OrtStatus Return Value
   */
-  ORT_API2_STATUS(SessionOptionsSetCustomCreateThreadFn, _In_ OrtSessionOptions* options, _In_ CustomCreateThreadFn custom_create_thread_fn);
+  ORT_API2_STATUS(SessionOptionsSetCustomCreateThreadFn, _Inout_ OrtSessionOptions* options, _In_ CustomCreateThreadFn custom_create_thread_fn);
 
   /** \brief Set creation options for custom thread 
   *
@@ -3066,16 +3062,70 @@ struct OrtApi {
   * 
   * * \snippet{doc} snippets.dox OrtStatus Return Value
   */
-  ORT_API2_STATUS(SessionOptionsSetCustomThreadCreationOptions, _In_ OrtSessionOptions* options, _In_ void* custom_thread_creation_options);
+  ORT_API2_STATUS(SessionOptionsSetCustomThreadCreationOptions, _Inout_ OrtSessionOptions* options, _In_ void* custom_thread_creation_options);
 
-  /** \brief Set custom thread join function for intra op thread pool
+  /** \brief Set custom thread join function
   *
   * \param[in] session options
   * \param[in] custom join thread function, must not be nullptr if custom_create_thread_fn is set
   * 
   * * \snippet{doc} snippets.dox OrtStatus Return Value
   */
-  ORT_API2_STATUS(SessionOptionsSetCustomJoinThreadFn, _In_ OrtSessionOptions* options, _In_ CustomJoinThreadFn join_custom_thread_fn);
+  ORT_API2_STATUS(SessionOptionsSetCustomJoinThreadFn, _Inout_ OrtSessionOptions* options, _In_ CustomJoinThreadFn join_custom_thread_fn);
+
+  /** \brief Set custom thread creation function for global inter op thread pool
+  *
+  * \param[inout] tp_options
+  * \param[in] custom thread creation function
+  * 
+  * * \snippet{doc} snippets.dox OrtStatus Return Value
+  */
+  ORT_API2_STATUS(SetGlobalInterOpCustomCreateThreadFn, _Inout_ OrtThreadingOptions* tp_options, _In_ CustomCreateThreadFn custom_create_thread_fn);
+
+  /** \brief Set custom thread creation options for global inter op thread pool
+  *
+  * \param[inout] tp_options
+  * \param[in] custom thread creation options (can be nullptr)
+  * 
+  * * \snippet{doc} snippets.dox OrtStatus Return Value
+  */
+  ORT_API2_STATUS(SetGlobalInterOpCustomThreadCreationOptions, _Inout_ OrtThreadingOptions* tp_options, _In_ void* custom_thread_creation_options);
+
+  /** \brief Set custom thread join function for global inter op thread pool
+  *
+  * \param[inout] tp_options
+  * \param[in] custom thread join function, must not be nullptr if custom_create_thread_fn is set
+  * 
+  * * \snippet{doc} snippets.dox OrtStatus Return Value
+  */
+  ORT_API2_STATUS(SetGlobalInterOpCustomJoinThreadFn, _Inout_ OrtThreadingOptions* tp_options, _In_ CustomJoinThreadFn custom_join_thread_fn);
+
+  /** \brief Set custom thread creation function for global intra op thread pool
+  *
+  * \param[inout] tp_options
+  * \param[in] custom thread creation function
+  * 
+  * * \snippet{doc} snippets.dox OrtStatus Return Value
+  */
+  ORT_API2_STATUS(SetGlobalIntraOpCustomCreateThreadFn, _Inout_ OrtThreadingOptions* tp_options, _In_ CustomCreateThreadFn custom_create_thread_fn);
+
+  /** \brief Set custom thread creation options for global intra op thread pool
+  *
+  * \param[inout] tp_options
+  * \param[in] custom thread creation options (can be nullptr)
+  * 
+  * * \snippet{doc} snippets.dox OrtStatus Return Value
+  */
+  ORT_API2_STATUS(SetGlobalIntraOpCustomThreadCreationOptions, _Inout_ OrtThreadingOptions* tp_options, _In_ void* custom_thread_creation_options);
+
+  /** \brief Set custom thread join function for global intra op thread pool
+  *
+  * \param[inout] tp_options
+  * \param[in] custom thread join function, must not be nullptr if custom_create_thread_fn is set
+  * 
+  * * \snippet{doc} snippets.dox OrtStatus Return Value
+  */
+  ORT_API2_STATUS(SetGlobalIntraOpCustomJoinThreadFn, _Inout_ OrtThreadingOptions* tp_options, _In_ CustomJoinThreadFn custom_join_thread_fn);
   /// @}
 };
 

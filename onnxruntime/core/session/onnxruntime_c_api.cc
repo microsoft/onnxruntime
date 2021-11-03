@@ -2076,21 +2076,21 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSessionFromArrayWithPrepackedWeightsContainer
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::SessionOptionsSetCustomCreateThreadFn, _In_ OrtSessionOptions* options, _In_ CustomCreateThreadFn custom_create_thread_fn) {
+ORT_API_STATUS_IMPL(OrtApis::SessionOptionsSetCustomCreateThreadFn, _Inout_ OrtSessionOptions* options, _In_ CustomCreateThreadFn custom_create_thread_fn) {
   API_IMPL_BEGIN
   options->value.custom_create_thread_fn = custom_create_thread_fn;
   return nullptr;
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::SessionOptionsSetCustomThreadCreationOptions, _In_ OrtSessionOptions* options, _In_ void* custom_thread_creation_options) {
+ORT_API_STATUS_IMPL(OrtApis::SessionOptionsSetCustomThreadCreationOptions, _Inout_ OrtSessionOptions* options, _In_ void* custom_thread_creation_options) {
   API_IMPL_BEGIN
   options->value.custom_thread_creation_options = custom_thread_creation_options;
   return nullptr;
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::SessionOptionsSetCustomJoinThreadFn, _In_ OrtSessionOptions* options, _In_ CustomJoinThreadFn custom_join_thread_fn) {
+ORT_API_STATUS_IMPL(OrtApis::SessionOptionsSetCustomJoinThreadFn, _Inout_ OrtSessionOptions* options, _In_ CustomJoinThreadFn custom_join_thread_fn) {
   API_IMPL_BEGIN
   options->value.custom_join_thread_fn = custom_join_thread_fn;
   return nullptr;
@@ -2374,6 +2374,14 @@ static constexpr OrtApi ort_api_1_to_10 = {
     &OrtApis::SessionOptionsSetCustomCreateThreadFn,
     &OrtApis::SessionOptionsSetCustomThreadCreationOptions,
     &OrtApis::SessionOptionsSetCustomJoinThreadFn,
+
+    &OrtApis::SetGlobalInterOpCustomCreateThreadFn,
+    &OrtApis::SetGlobalInterOpCustomThreadCreationOptions,
+    &OrtApis::SetGlobalInterOpCustomJoinThreadFn,
+
+    &OrtApis::SetGlobalIntraOpCustomCreateThreadFn,
+    &OrtApis::SetGlobalIntraOpCustomThreadCreationOptions,
+    &OrtApis::SetGlobalIntraOpCustomJoinThreadFn,
 };
 
 // Asserts to do a some checks to ensure older Versions of the OrtApi never change (will detect an addition or deletion but not if they cancel out each other)
