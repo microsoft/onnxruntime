@@ -150,7 +150,7 @@ Status PartialExecutor::Execute(const SessionState& session_state, const std::ve
   ExecutionFrame& frame = state_.GetExecutionFrame(feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches,
                                                    fetch_allocators, session_state);
 
-  // LOGS(logger, INFO) << "Begin execution";
+  LOGS(logger, INFO) << "Begin execution";
   const SequentialExecutionPlan& seq_exec_plan = *session_state.GetExecutionPlan();
   const auto& exec_plan_vec = seq_exec_plan.execution_plan;
   VLOGS(logger, 1) << "Size of execution plan vector: " << exec_plan_vec.size();
