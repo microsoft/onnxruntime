@@ -100,8 +100,6 @@ int main(int argc, char** argv) {
     ort_env.reset(new Ort::Env(tp_options, ORT_LOGGING_LEVEL_VERBOSE, "Default"));  // this is the only change from test/providers/test_main.cc
     g_ort->ReleaseThreadingOptions(tp_options);
     status = RUN_ALL_TESTS();
-
-    ORT_ENFORCE(custom_creation_hook_called == expexted_custom_calls, "custom thread creation functions were not called as expected");
   }
   ORT_CATCH(const std::exception& ex) {
     ORT_HANDLE_EXCEPTION([&]() {
@@ -112,7 +110,11 @@ int main(int argc, char** argv) {
 
   //TODO: Fix the C API issue
   ort_env.reset();  //If we don't do this, it will crash
+
+#ifndef _OPENMP
+  ORT_ENFORCE(custom_creation_hook_called == expexted_custom_calls, "custom thread creation functions were not called as expected");
   ORT_ENFORCE(custom_join_hook_called == expexted_custom_calls, "custom thread joining functions were not called as expected");
+#endif
 
 #ifndef USE_ONNXRUNTIME_DLL
   //make memory leak checker happy
