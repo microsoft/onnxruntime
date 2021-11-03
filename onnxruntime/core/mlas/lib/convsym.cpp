@@ -64,6 +64,7 @@ extern "C" {
     MLAS_CONV_SYM_KERNEL MlasConvSymKernelAvx512Vnni;
     MLAS_CONV_SYM_DEPTHWISE_KERNEL MlasConvSymDepthwiseKernelAvx512Vnni;
 #elif defined(MLAS_TARGET_ARM64)
+    MLAS_CONV_SYM_KERNEL MlasConvSymKernelNeon;
     MLAS_CONV_SYM_DEPTHWISE_KERNEL MlasConvSymDepthwiseKernelNeon;
     MLAS_CONV_SYM_DEPTHWISE_ROUTINE_KERNELSIZE MlasConvSymDepthwiseKernelSize9Arm64;
     MLAS_CONV_SYM_DEPTHWISE_ROUTINE_KERNELSIZE MlasConvSymDepthwiseKernelSize25Arm;
@@ -153,13 +154,13 @@ const MLAS_CONV_SYM_DISPATCH MlasConvSymDispatchAvx512Vnni = {
 
 #elif defined(MLAS_TARGET_ARM64)
 const MLAS_CONV_SYM_DISPATCH MlasConvSymDispatchNeon = {
-    nullptr,
+    MlasConvSymKernelNeon,
     MlasConvSymDepthwiseKernelNeon,
-    4,   // FilterInputChannelPackCount
-    16,  // FilterOutputChannelPackCount
+    8,   // FilterInputChannelPackCount
+    8,   // FilterOutputChannelPackCount
     8,   // KernelChannelCount
-    8,   // KernelOutputCount
-    4,   // KernelInputChannelAlignment
+    2,   // KernelOutputCount
+    8,   // KernelInputChannelAlignment
     8,   // KernelOutputChannelAlignment
     16,  // KernelDepthwiseChannelCount
     4,   // KernelDepthwiseOutputCount

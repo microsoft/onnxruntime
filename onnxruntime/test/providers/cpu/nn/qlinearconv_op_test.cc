@@ -585,6 +585,36 @@ TEST(QLinearConvTest, Conv1D_U8S8) {
   test.Run();
 }
 
+TEST(QLinearConvTest, Conv2D_U8S8aaa) {
+  QLinearConvOpTester<uint8_t, int8_t> test;
+  test.GenerateRandomInput({1, 64, 15, 11}, .05f, 4);
+  test.GenerateRandomWeights({64, 64, 3, 3}, .125f, 0);
+  test.GenerateRandomBias();
+  test.SetPads({1, 1, 1, 1});
+  test.SetOutputScaleAndZeroPoint(.55f, 54);
+  test.Run();
+}
+
+TEST(QLinearConvTest, Conv2D_U8S8bbb) {
+  QLinearConvOpTester<uint8_t, int8_t> test;
+  test.GenerateRandomInput({1, 48, 15, 11}, .05f, 4);
+  test.GenerateRandomWeights({48, 48, 3, 3}, .125f, 0);
+  test.GenerateRandomBias();
+  test.SetPads({1, 1, 1, 1});
+  test.SetOutputScaleAndZeroPoint(.55f, 54);
+  test.Run();
+}
+
+TEST(QLinearConvTest, Conv2D_U8S8ccc) {
+  QLinearConvOpTester<uint8_t, int8_t> test;
+  test.GenerateRandomInput({1, 32, 15, 11}, .05f, 4);
+  test.GenerateRandomWeights({32, 32, 3, 3}, .125f, 0);
+  test.GenerateRandomBias();
+  test.SetPads({1, 1, 1, 1});
+  test.SetOutputScaleAndZeroPoint(.55f, 54);
+  test.Run();
+}
+
 TEST(QLinearConvTest, Conv2D_U8S8_Sym_M64_C64) {
   QLinearConvOpTester<uint8_t, int8_t> test;
   test.GenerateRandomInput({1, 64, 15, 11}, .05f, 4);
