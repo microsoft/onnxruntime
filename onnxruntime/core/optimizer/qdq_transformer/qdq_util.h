@@ -4,6 +4,7 @@
 #pragma once
 
 #include <functional>
+#include <string>
 
 namespace ONNX_NAMESPACE {
 class TensorProto;
