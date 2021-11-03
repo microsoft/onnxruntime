@@ -317,7 +317,11 @@ void PartialSumsImpl(
     int64_t gather_dimension_size,
     int64_t num_batches,
     const GatheredIndexIndex_t* segment_offsets,
-    SegmentIndex_t num_segments) {
+    SegmentIndex_t num_segments,
+    const int32_t last_segment_partial_segment_offset_in,
+    const int32_t last_segment_partial_segment_count_in,
+    const int32_t* per_segment_partial_segment_counts_in,
+    const int32_t* per_segment_partial_segment_offsets_in) {
   // each segment is split into partial segments of at most
   // kMaxPartialSegmentSize index pairs.
 
@@ -351,6 +355,9 @@ void PartialSumsImpl(
     CUDA_CALL_THROW(cudaStreamSynchronize(stream));
     host_num_partial_segments =
         last_segment_partial_segment_offset + last_segment_partial_segment_count;
+
+    std::cout << "last_segment_partial_segment_offset" << last_segment_partial_segment_offset << "last_segment_partial_segment_offset_in" << last_segment_partial_segment_offset_in << "\n";
+    std::cout << "last_segment_partial_segment_count" << last_segment_partial_segment_count << "last_segment_partial_segment_count_in" << last_segment_partial_segment_count_in << "\n";
   }
 
   // SegmentIndex_t host_num_partial_segments = 0;
@@ -424,6 +431,10 @@ void Impl(
     const int64_t num_gathered_per_index,
     const int64_t num_batches,
     const int32_t num_segments_in,
+    const int32_t last_segment_partial_segment_offset,
+    const int32_t last_segment_partial_segment_count,
+    const int32_t* per_segment_partial_segment_counts,
+    const int32_t* per_segment_partial_segment_offsets,
     T* dX_data) {
   IAllocatorUniquePtr<TIndex> dX_indices_sorted, dY_indices_sorted;
   GetSortedIndices(
@@ -478,25 +489,29 @@ void Impl(
     CUDA_CALL_THROW(cudaStreamSynchronize(stream));
   }
 
-  constexpr GatheredIndexIndex_t kMaxSegmentSizeThreshold = 32;
-  if (host_max_segment_count <= kMaxSegmentSizeThreshold) {
-    DirectSumImpl(
-        stream, dX_indices_sorted.get(), dY_indices_sorted.get(),
-        dY_data, dX_data,
-        num_gathered_indices, num_gathered_per_index, gather_dimension_size, num_batches);
-  } else {
-    auto segment_offsets = GetOffsetsFromCounts(
-        stream, allocator, segment_counts.get(), host_num_segments);
-    segment_counts.reset();
+  // constexpr GatheredIndexIndex_t kMaxSegmentSizeThreshold = 32;
+  // if (host_max_segment_count <= kMaxSegmentSizeThreshold) {
+  //   DirectSumImpl(
+  //       stream, dX_indices_sorted.get(), dY_indices_sorted.get(),
+  //       dY_data, dX_data,
+  //       num_gathered_indices, num_gathered_per_index, gather_dimension_size, num_batches);
+  // } else {
+  auto segment_offsets = GetOffsetsFromCounts(
+      stream, allocator, segment_counts.get(), host_num_segments);
+  segment_counts.reset();
 
-    PartialSumsImpl(
-        stream,
-        allocator,
-        dX_indices_sorted.get(), dY_indices_sorted.get(),
-        dY_data, dX_data,
-        num_gathered_indices, num_gathered_per_index, gather_dimension_size, num_batches,
-        segment_offsets.get(), host_num_segments);
-  }
+  PartialSumsImpl(
+      stream,
+      allocator,
+      dX_indices_sorted.get(), dY_indices_sorted.get(),
+      dY_data, dX_data,
+      num_gathered_indices, num_gathered_per_index, gather_dimension_size, num_batches,
+      segment_offsets.get(), host_num_segments,
+      last_segment_partial_segment_offset,
+      last_segment_partial_segment_count,
+      per_segment_partial_segment_counts,
+      per_segment_partial_segment_offsets);
+  // }
 }
 
 // this is a backup implementation that doesn't incur GPU/CPU syncs, but
@@ -546,6 +561,10 @@ void GatherGradImpl(
     const int64_t num_gathered_per_index,
     const int64_t num_batches,
     const int32_t num_segments,
+    const int32_t last_segment_partial_segment_offset,
+    const int32_t last_segment_partial_segment_count,
+    const int32_t* per_segment_partial_segment_counts,
+    const int32_t* per_segment_partial_segment_offsets,
     T* dX_data) {
   gather_grad_internal::Impl(
       stream,
@@ -553,20 +572,28 @@ void GatherGradImpl(
       dY_data, dX_indices,
       num_gathered_indices, gather_dimension_size, num_gathered_per_index, num_batches,
       num_segments,
+      last_segment_partial_segment_offset,
+      last_segment_partial_segment_count,
+      per_segment_partial_segment_counts,
+      per_segment_partial_segment_offsets,
       dX_data);
 }
 
-#define SPECIALIZED(T, TIndex)                         \
-  template void GatherGradImpl<T, TIndex>(             \
-      cudaStream_t stream,                             \
-      const CudaScratchBufferAllocator& allocator,     \
-      const T* dY_data,                                \
-      const TIndex* dX_indices,                        \
-      const GatheredIndexIndex_t num_gathered_indices, \
-      const int64_t gather_dimension_size,             \
-      const int64_t num_gathered_per_index,            \
-      const int64_t num_batches,                       \
-      const int32_t num_segments,                      \
+#define SPECIALIZED(T, TIndex)                            \
+  template void GatherGradImpl<T, TIndex>(                \
+      cudaStream_t stream,                                \
+      const CudaScratchBufferAllocator& allocator,        \
+      const T* dY_data,                                   \
+      const TIndex* dX_indices,                           \
+      const GatheredIndexIndex_t num_gathered_indices,    \
+      const int64_t gather_dimension_size,                \
+      const int64_t num_gathered_per_index,               \
+      const int64_t num_batches,                          \
+      const int32_t num_segments,                         \
+      const int32_t last_segment_partial_segment_offset,  \
+      const int32_t last_segment_partial_segment_count,   \
+      const int32_t* per_segment_partial_segment_counts,  \
+      const int32_t* per_segment_partial_segment_offsets, \
       T* dX_data);
 
 #define SPECIALIZED_WITH_IDX(T) \

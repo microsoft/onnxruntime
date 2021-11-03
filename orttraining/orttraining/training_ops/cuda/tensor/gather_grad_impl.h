@@ -37,6 +37,10 @@ void GatherGradImpl(
     const int64_t num_gathered_per_index,
     const int64_t num_batches,
     const int32_t num_segments,
+    const int32_t last_segment_partial_segment_offset,
+    const int32_t last_segment_partial_segment_count,
+    const int32_t* per_segment_partial_segment_counts,
+    const int32_t* per_segment_partial_segment_offsets,
     T* dX_data);
 
 }  // namespace cuda
