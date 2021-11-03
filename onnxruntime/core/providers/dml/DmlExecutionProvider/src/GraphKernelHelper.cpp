@@ -29,9 +29,9 @@ namespace GraphKernelHelper
                                             D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS};
 
         Microsoft::WRL::ComPtr<ID3D12Device> d3dDevice;
-        THROW_IF_FAILED(provider->GetD3DDevice(d3dDevice.GetAddressOf()));
+        ORT_THROW_IF_FAILED(provider->GetD3DDevice(d3dDevice.GetAddressOf()));
 
-        THROW_IF_FAILED(d3dDevice->CreateCommittedResource(
+        ORT_THROW_IF_FAILED(d3dDevice->CreateCommittedResource(
             &heapProperties,
             D3D12_HEAP_FLAG_NONE,
             &resourceDesc,
@@ -39,7 +39,7 @@ namespace GraphKernelHelper
             nullptr,
             IID_PPV_ARGS(buffer.GetAddressOf())));
 
-        THROW_IF_FAILED(provider->UploadToResource(buffer.Get(), tensorPtr, tensorByteSize));
+        ORT_THROW_IF_FAILED(provider->UploadToResource(buffer.Get(), tensorPtr, tensorByteSize));
 
         return buffer;
     }
@@ -67,9 +67,9 @@ namespace GraphKernelHelper
                                             D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS};
 
         Microsoft::WRL::ComPtr<ID3D12Device> d3dDevice;
-        THROW_IF_FAILED(provider->GetD3DDevice(d3dDevice.GetAddressOf()));
+        ORT_THROW_IF_FAILED(provider->GetD3DDevice(d3dDevice.GetAddressOf()));
 
-        THROW_IF_FAILED(d3dDevice->CreateCommittedResource(
+        ORT_THROW_IF_FAILED(d3dDevice->CreateCommittedResource(
             &heapProperties,
             D3D12_HEAP_FLAG_NONE,
             &resourceDesc,
@@ -80,7 +80,7 @@ namespace GraphKernelHelper
         // Map the buffer and copy the data
         void* bufferData = nullptr;
         D3D12_RANGE range = {0, tensorByteSize};
-        THROW_IF_FAILED(buffer->Map(0, &range, &bufferData));
+        ORT_THROW_IF_FAILED(buffer->Map(0, &range, &bufferData));
         memcpy(bufferData, tensorPtr, tensorByteSize);
         buffer->Unmap(0, &range);
 
@@ -99,7 +99,7 @@ namespace GraphKernelHelper
 
         *allocId = winmlProvider->TryGetPooledAllocationId(allocationUnk, 0);
 
-        THROW_IF_FAILED(resourceUnk->QueryInterface(resource));
+        ORT_THROW_IF_FAILED(resourceUnk->QueryInterface(resource));
     }
 
     bool GetGraphInputConstness(
@@ -248,7 +248,7 @@ namespace GraphKernelHelper
             else if (inputsConstant[i])
             {                
                 const onnxruntime::Tensor* inputTensor = nullptr;
-                THROW_HR_IF(E_UNEXPECTED, !kernelInfo.TryGetConstantInput(i, &inputTensor));
+                ORT_THROW_HR_IF(E_UNEXPECTED, !kernelInfo.TryGetConstantInput(i, &inputTensor));
 
                 const std::byte* tensorData = reinterpret_cast<const std::byte*>(inputTensor->DataRaw());
 

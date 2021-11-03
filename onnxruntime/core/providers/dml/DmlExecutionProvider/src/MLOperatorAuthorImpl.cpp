@@ -44,7 +44,7 @@ size_t AttributeValue::ElementCount() const {
     default:
       // The type is validated when default attributes are registered
       assert(false);
-      THROW_HR(E_FAIL);
+      ORT_THROW_HR(E_FAIL);
       return 0;
   }
   #pragma warning(pop)
@@ -75,7 +75,7 @@ void AttributeValue::GetAttribute(
       break;
 
     default:
-      THROW_HR(E_INVALIDARG);
+      ORT_THROW_HR(E_INVALIDARG);
   }
 }
 
@@ -239,7 +239,7 @@ bool IsPrimitiveAttributeType(MLOperatorAttributeType type) {
   ML_TENSOR_TYPE_CASE(uint64_t);
   ML_TENSOR_TYPE_CASE(onnxruntime::MLFloat16);
 
-  THROW_HR(E_NOTIMPL);
+  ORT_THROW_HR(E_NOTIMPL);
   return MLOperatorTensorDataType::Undefined;
  #pragma warning(pop)
 }
@@ -269,7 +269,7 @@ onnxruntime::MLDataType ToTensorDataType(::MLOperatorTensorDataType type) {
   ML_TENSOR_TYPE_CASE(uint64_t);
   ML_TENSOR_TYPE_CASE(onnxruntime::MLFloat16);
 
-  THROW_HR(E_NOTIMPL);
+  ORT_THROW_HR(E_NOTIMPL);
   return onnxruntime::DataTypeImpl::GetTensorType<float>();
 #pragma warning(pop)
 }
@@ -324,7 +324,7 @@ onnxruntime::MLDataType ToTensorDataType(::MLOperatorTensorDataType type) {
       return MLOperatorTensorDataType::Complex128;
 
     default:
-      THROW_HR(E_NOTIMPL);
+      ORT_THROW_HR(E_NOTIMPL);
       return MLOperatorTensorDataType::Undefined;
   }
 #pragma warning(pop)
@@ -352,7 +352,7 @@ onnxruntime::MLDataType ToTensorDataType(::MLOperatorTensorDataType type) {
 #pragma warning(disable:4702)
 std::string ToTypeString(MLOperatorEdgeDescription desc) {
   if (desc.edgeType != MLOperatorEdgeType::Tensor) {
-    THROW_HR(E_NOTIMPL);
+    ORT_THROW_HR(E_NOTIMPL);
   }
 
   switch (desc.tensorDataType) {
@@ -402,7 +402,7 @@ std::string ToTypeString(MLOperatorEdgeDescription desc) {
       return "tensor(complext128)";
 
     default:
-      THROW_HR(E_NOTIMPL);
+      ORT_THROW_HR(E_NOTIMPL);
       return "";
   }
 #pragma warning(pop)
@@ -443,32 +443,36 @@ template <class NodeInfoImpl_t, class Base1_t, class Base2_t>
 HRESULT STDMETHODCALLTYPE OpNodeInfoWrapper<NodeInfoImpl_t, Base1_t, Base2_t>::GetAttributeElementCount(
     _In_z_ const char* name,
     MLOperatorAttributeType type,
-    uint32_t* elementCount) const noexcept try {
-  VerifyNotClosed();
+    uint32_t* elementCount) const noexcept 
+{
+    ORT_TRY
+    {
+      VerifyNotClosed();
 
-  *elementCount = 0;
+      *elementCount = 0;
 
-  if (IsPrimitiveAttributeType(type)) {
-    *elementCount = m_impl->GetPrimitiveAttrElementCount(ToProto(type), std::string(name));
-  } else {
-    // ONNX runtime does not implement OpNodeProtoHelper<Impl_t>::GetPrimitiveAttrElementCount for tensors.
-    // So we need to test presence a different way.
+      if (IsPrimitiveAttributeType(type)) {
+        *elementCount = m_impl->GetPrimitiveAttrElementCount(ToProto(type), std::string(name));
+      } else {
+        // ONNX runtime does not implement OpNodeProtoHelper<Impl_t>::GetPrimitiveAttrElementCount for tensors.
+        // So we need to test presence a different way.
 
-    const onnx::AttributeProto* attributeProto = m_impl->TryGetAttribute(std::string(name));
-    *elementCount = attributeProto ? 1 : 0;
-  }
+        const onnx::AttributeProto* attributeProto = m_impl->TryGetAttribute(std::string(name));
+        *elementCount = attributeProto ? 1 : 0;
+      }
 
-  // Look for a value in the kernel's registered defaults if one was not found
-  if (*elementCount == 0 && m_defaultAttributes) {
-    auto defaultAttr = m_defaultAttributes->find(name);
-    if (defaultAttr != m_defaultAttributes->end()) {
-      *elementCount = static_cast<uint32_t>(defaultAttr->second.ElementCount());
+      // Look for a value in the kernel's registered defaults if one was not found
+      if (*elementCount == 0 && m_defaultAttributes) {
+        auto defaultAttr = m_defaultAttributes->find(name);
+        if (defaultAttr != m_defaultAttributes->end()) {
+          *elementCount = static_cast<uint32_t>(defaultAttr->second.ElementCount());
+        }
+      }
+
+      return S_OK;
     }
-  }
-
-  return S_OK;
+    ORT_CATCH_RETURN
 }
-CATCH_RETURN();
 
 template <class NodeInfoImpl_t, class Base1_t, class Base2_t>
 template <MLOperatorAttributeType T>
@@ -491,46 +495,50 @@ HRESULT STDMETHODCALLTYPE OpNodeInfoWrapper<NodeInfoImpl_t, Base1_t, Base2_t>::G
     MLOperatorAttributeType type,
     uint32_t elementCount,
     size_t elementByteSize,
-    /*out*/void* attributeValue) const noexcept try {
-  VerifyNotClosed();
+    /*out*/void* attributeValue) const noexcept 
+{
+    ORT_TRY
+    {
+      VerifyNotClosed();
 
-  // Look for a value in the kernel's registered defaults if one does not exist otherwise
-  if (m_impl->GetPrimitiveAttrElementCount(ToProto(type), name) == 0) {
-    if (!m_defaultAttributes) {
-      THROW_HR(E_FAIL);
+      // Look for a value in the kernel's registered defaults if one does not exist otherwise
+      if (m_impl->GetPrimitiveAttrElementCount(ToProto(type), name) == 0) {
+        if (!m_defaultAttributes) {
+          ORT_THROW_HR(E_FAIL);
+        }
+
+        auto defaultAttr = m_defaultAttributes->find(name);
+        if (defaultAttr == m_defaultAttributes->end()) {
+          ORT_THROW_HR(E_FAIL);
+        }
+
+        defaultAttr->second.GetAttribute(type, elementCount, elementByteSize, /*out*/attributeValue);
+      } else {
+        switch (type) {
+          case MLOperatorAttributeType::Float:
+            ML_CHECK_BOOL(elementCount == 1);
+            return GetAttributeHelper<MLOperatorAttributeType::Float>(name, static_cast<uint32_t>(elementByteSize), /*out*/attributeValue);
+
+          case MLOperatorAttributeType::Int:
+            ML_CHECK_BOOL(elementCount == 1);
+            return GetAttributeHelper<MLOperatorAttributeType::Int>(name, static_cast<uint32_t>(elementByteSize), /*out*/attributeValue);
+
+          case MLOperatorAttributeType::FloatArray:
+            return GetAttributeArrayHelper<MLOperatorAttributeType::FloatArray>(name, elementCount, static_cast<uint32_t>(elementByteSize), /*out*/attributeValue);
+
+          case MLOperatorAttributeType::IntArray:
+            return GetAttributeArrayHelper<MLOperatorAttributeType::IntArray>(name, elementCount, static_cast<uint32_t>(elementByteSize), /*out*/attributeValue);
+
+          default:
+            ML_CHECK_BOOL(false);
+            break;
+        }
+      }
+
+      return S_OK;
     }
-
-    auto defaultAttr = m_defaultAttributes->find(name);
-    if (defaultAttr == m_defaultAttributes->end()) {
-      THROW_HR(E_FAIL);
-    }
-
-    defaultAttr->second.GetAttribute(type, elementCount, elementByteSize, /*out*/attributeValue);
-  } else {
-    switch (type) {
-      case MLOperatorAttributeType::Float:
-        ML_CHECK_BOOL(elementCount == 1);
-        return GetAttributeHelper<MLOperatorAttributeType::Float>(name, static_cast<uint32_t>(elementByteSize), /*out*/attributeValue);
-
-      case MLOperatorAttributeType::Int:
-        ML_CHECK_BOOL(elementCount == 1);
-        return GetAttributeHelper<MLOperatorAttributeType::Int>(name, static_cast<uint32_t>(elementByteSize), /*out*/attributeValue);
-
-      case MLOperatorAttributeType::FloatArray:
-        return GetAttributeArrayHelper<MLOperatorAttributeType::FloatArray>(name, elementCount, static_cast<uint32_t>(elementByteSize), /*out*/attributeValue);
-
-      case MLOperatorAttributeType::IntArray:
-        return GetAttributeArrayHelper<MLOperatorAttributeType::IntArray>(name, elementCount, static_cast<uint32_t>(elementByteSize), /*out*/attributeValue);
-
-      default:
-        ML_CHECK_BOOL(false);
-        break;
-    }
-  }
-
-  return S_OK;
+    ORT_CATCH_RETURN
 }
-CATCH_RETURN();
 
 template <class NodeInfoImpl_t, class Base1_t, class Base2_t>
 const std::string* OpNodeInfoWrapper<NodeInfoImpl_t, Base1_t, Base2_t>::GetStringAttribute(
@@ -542,12 +550,12 @@ const std::string* OpNodeInfoWrapper<NodeInfoImpl_t, Base1_t, Base2_t>::GetStrin
   // Look for a value in the kernel's registered defaults if one was not found
   if (!attr) {
     if (!m_defaultAttributes) {
-      THROW_HR(E_FAIL);
+      ORT_THROW_HR(E_FAIL);
     }
 
     auto defaultAttr = m_defaultAttributes->find(name);
     if (defaultAttr == m_defaultAttributes->end()) {
-      THROW_HR(E_FAIL);
+      ORT_THROW_HR(E_FAIL);
     }
 
     return defaultAttr->second.GetStringAttribute(name, elementIndex);
@@ -569,39 +577,47 @@ template <class NodeInfoImpl_t, class Base1_t, class Base2_t>
 HRESULT STDMETHODCALLTYPE OpNodeInfoWrapper<NodeInfoImpl_t, Base1_t, Base2_t>::GetStringAttributeElementLength(
     _In_z_ const char* name,
     uint32_t elementIndex,
-    uint32_t* attributeElementByteLength) const noexcept try {
-  VerifyNotClosed();
+    uint32_t* attributeElementByteLength) const noexcept 
+{
+    ORT_TRY
+    {
+      VerifyNotClosed();
 
-  *attributeElementByteLength = 0;
-  const std::string* protoString = GetStringAttribute(name, elementIndex);
+      *attributeElementByteLength = 0;
+      const std::string* protoString = GetStringAttribute(name, elementIndex);
 
-  // Check for overflow and casting safety
-  ML_CHECK_BOOL(protoString->size() < protoString->size() + 1);
-  ML_CHECK_BOOL(protoString->size() + 1 <= std::numeric_limits<uint32_t>::max());
+      // Check for overflow and casting safety
+      ML_CHECK_BOOL(protoString->size() < protoString->size() + 1);
+      ML_CHECK_BOOL(protoString->size() + 1 <= std::numeric_limits<uint32_t>::max());
 
-  // Set the length including null termination
-  *attributeElementByteLength = static_cast<uint32_t>(protoString->size() + 1);
-  return S_OK;
+      // Set the length including null termination
+      *attributeElementByteLength = static_cast<uint32_t>(protoString->size() + 1);
+      return S_OK;
+    }
+    ORT_CATCH_RETURN
 }
-CATCH_RETURN();
 
 template <class NodeInfoImpl_t, class Base1_t, class Base2_t>
 HRESULT STDMETHODCALLTYPE OpNodeInfoWrapper<NodeInfoImpl_t, Base1_t, Base2_t>::GetStringAttributeElement(
     _In_z_ const char* name,
     uint32_t elementIndex,
     uint32_t attributeElementByteLength,
-    char* attributeElement) const noexcept try {
-  VerifyNotClosed();
+    char* attributeElement) const noexcept 
+{
+    ORT_TRY
+    {
+      VerifyNotClosed();
 
-  const std::string* protoString = GetStringAttribute(name, elementIndex);
+      const std::string* protoString = GetStringAttribute(name, elementIndex);
 
-  size_t stringLength = protoString->size();
-  ML_CHECK_BOOL(stringLength < attributeElementByteLength);
-  memcpy(attributeElement, protoString->c_str(), stringLength + 1);
+      size_t stringLength = protoString->size();
+      ML_CHECK_BOOL(stringLength < attributeElementByteLength);
+      memcpy(attributeElement, protoString->c_str(), stringLength + 1);
 
-  return S_OK;
+      return S_OK;
+    }
+    ORT_CATCH_RETURN
 }
-CATCH_RETURN();
 
 template <class NodeInfoImpl_t, class Base1_t, class Base2_t>
 template <MLOperatorAttributeType T>
@@ -619,88 +635,104 @@ HRESULT OpNodeInfoWrapper<NodeInfoImpl_t, Base1_t, Base2_t>::GetAttributeHelper(
 template <class NodeInfoImpl_t, class Base1_t, class Base2_t>
 HRESULT STDMETHODCALLTYPE OpNodeInfoWrapper<NodeInfoImpl_t, Base1_t, Base2_t>::GetTensorAttribute(
     _In_z_ const char* name,
-    _Outptr_ IMLOperatorTensor** tensor) const noexcept try {
-  VerifyNotClosed();
+    _Outptr_ IMLOperatorTensor** tensor) const noexcept 
+{
+    ORT_TRY
+    {
+      VerifyNotClosed();
 
-  *tensor = nullptr;
+      *tensor = nullptr;
 
-  // Read the tensor if present, and wrap it in a IMLOperatorTensor.
-  const onnx::AttributeProto* attributeProto = m_impl->TryGetAttribute(std::string(name));
-  if (attributeProto) {
-    if (attributeProto->has_t()) {
-      const onnx::TensorProto* tensorProto = &attributeProto->t();
-      Microsoft::WRL::ComPtr<IMLOperatorTensor> tensorWrapper = wil::MakeOrThrow<OnnxTensorWrapper>(const_cast<onnx::TensorProto*>(tensorProto));
-      *tensor = tensorWrapper.Detach();
+      // Read the tensor if present, and wrap it in a IMLOperatorTensor.
+      const onnx::AttributeProto* attributeProto = m_impl->TryGetAttribute(std::string(name));
+      if (attributeProto) {
+        if (attributeProto->has_t()) {
+          const onnx::TensorProto* tensorProto = &attributeProto->t();
+          Microsoft::WRL::ComPtr<IMLOperatorTensor> tensorWrapper = wil::MakeOrThrow<OnnxTensorWrapper>(const_cast<onnx::TensorProto*>(tensorProto));
+          *tensor = tensorWrapper.Detach();
+          return S_OK;
+        }
+      }
+
+      return E_INVALIDARG;  // The argument has no valid matching attribute.
+    }
+    ORT_CATCH_RETURN
+}
+
+template <class NodeInfoImpl_t, class Base1_t, class Base2_t>
+HRESULT STDMETHODCALLTYPE OpNodeInfoWrapper<NodeInfoImpl_t, Base1_t, Base2_t>::GetInputEdgeDescription(uint32_t inputIndex, MLOperatorEdgeDescription* edgeDesc) const noexcept 
+{
+    ORT_TRY
+    {
+      VerifyNotClosed();
+
+      memset(edgeDesc, 0, sizeof(*edgeDesc));
+      const onnx::TypeProto* type = m_impl->GetInputType(inputIndex);
+      ML_CHECK_BOOL(type != nullptr);
+      *edgeDesc = ToMLEdgeDesc(type);
+
+      assert(edgeDesc->edgeType != MLOperatorEdgeType::Undefined);
+      assert((edgeDesc->edgeType != MLOperatorEdgeType::Tensor /*&& edgeDesc->edgeType != MLOperatorEdgeType::TensorSequence*/) ||
+             edgeDesc->tensorDataType != MLOperatorTensorDataType::Undefined);
+
       return S_OK;
     }
-  }
-
-  return E_INVALIDARG;  // The argument has no valid matching attribute.
+    ORT_CATCH_RETURN
 }
-CATCH_RETURN();
 
 template <class NodeInfoImpl_t, class Base1_t, class Base2_t>
-HRESULT STDMETHODCALLTYPE OpNodeInfoWrapper<NodeInfoImpl_t, Base1_t, Base2_t>::GetInputEdgeDescription(uint32_t inputIndex, MLOperatorEdgeDescription* edgeDesc) const noexcept try {
-  VerifyNotClosed();
+HRESULT STDMETHODCALLTYPE OpNodeInfoWrapper<NodeInfoImpl_t, Base1_t, Base2_t>::GetOutputEdgeDescription(uint32_t outputIndex, MLOperatorEdgeDescription* edgeDesc) const noexcept 
+{
+    ORT_TRY
+    {
+      VerifyNotClosed();
 
-  memset(edgeDesc, 0, sizeof(*edgeDesc));
-  const onnx::TypeProto* type = m_impl->GetInputType(inputIndex);
-  ML_CHECK_BOOL(type != nullptr);
-  *edgeDesc = ToMLEdgeDesc(type);
+      memset(edgeDesc, 0, sizeof(*edgeDesc));
+      const onnx::TypeProto* type = m_impl->GetOutputType(outputIndex);
+      ML_CHECK_BOOL(type != nullptr);
+      *edgeDesc = ToMLEdgeDesc(type);
 
-  assert(edgeDesc->edgeType != MLOperatorEdgeType::Undefined);
-  assert((edgeDesc->edgeType != MLOperatorEdgeType::Tensor /*&& edgeDesc->edgeType != MLOperatorEdgeType::TensorSequence*/) ||
-         edgeDesc->tensorDataType != MLOperatorTensorDataType::Undefined);
-
-  return S_OK;
+      return S_OK;
+    }
+    ORT_CATCH_RETURN
 }
-CATCH_RETURN();
 
 template <class NodeInfoImpl_t, class Base1_t, class Base2_t>
-HRESULT STDMETHODCALLTYPE OpNodeInfoWrapper<NodeInfoImpl_t, Base1_t, Base2_t>::GetOutputEdgeDescription(uint32_t outputIndex, MLOperatorEdgeDescription* edgeDesc) const noexcept try {
-  VerifyNotClosed();
+HRESULT STDMETHODCALLTYPE OpNodeInfoWrapper<NodeInfoImpl_t, Base1_t, Base2_t>::GetInputTensorShape(uint32_t inputIndex, uint32_t dimensionCount, uint32_t* dimensions) const noexcept
+{
+    ORT_TRY
+    {
+      VerifyNotClosed();
 
-  memset(edgeDesc, 0, sizeof(*edgeDesc));
-  const onnx::TypeProto* type = m_impl->GetOutputType(outputIndex);
-  ML_CHECK_BOOL(type != nullptr);
-  *edgeDesc = ToMLEdgeDesc(type);
+      memset(dimensions, 0, dimensionCount * sizeof(dimensions[0]));
+      if (inputIndex >= GetInputCount()) {
+        return E_INVALIDARG;
+      }
 
-  return S_OK;
+      // Input shapes are determined either from the override or from the underlying proto
+      if (m_inputShapesOverride) {
+        if (m_inputShapesOverride->GetShape(inputIndex).size() != dimensionCount) {
+          return E_INVALIDARG;
+        }
+
+        for (uint32_t i = 0; i < dimensionCount; ++i) {
+          dimensions[i] = m_inputShapesOverride->GetShape(inputIndex)[i];
+        }
+      } else {
+        const auto* inputType = m_impl->GetInputType(inputIndex);
+        ML_CHECK_BOOL(inputType->has_tensor_type());
+        for (uint32_t i = 0; i < dimensionCount; ++i) {
+          // Shape inference is only done when all dimensions of all inputs have known values,
+          // so the input tensors will always have shapes at this point.
+          assert(inputType->tensor_type().shape().dim(i).has_dim_value());
+          dimensions[i] = static_cast<uint32_t>(inputType->tensor_type().shape().dim(i).dim_value());
+        }
+      }
+
+      return S_OK;
+    }
+    ORT_CATCH_RETURN
 }
-CATCH_RETURN();
-
-template <class NodeInfoImpl_t, class Base1_t, class Base2_t>
-HRESULT STDMETHODCALLTYPE OpNodeInfoWrapper<NodeInfoImpl_t, Base1_t, Base2_t>::GetInputTensorShape(uint32_t inputIndex, uint32_t dimensionCount, uint32_t* dimensions) const noexcept try {
-  VerifyNotClosed();
-
-  memset(dimensions, 0, dimensionCount * sizeof(dimensions[0]));
-  if (inputIndex >= GetInputCount()) {
-    return E_INVALIDARG;
-  }
-
-  // Input shapes are determined either from the override or from the underlying proto
-  if (m_inputShapesOverride) {
-    if (m_inputShapesOverride->GetShape(inputIndex).size() != dimensionCount) {
-      return E_INVALIDARG;
-    }
-
-    for (uint32_t i = 0; i < dimensionCount; ++i) {
-      dimensions[i] = m_inputShapesOverride->GetShape(inputIndex)[i];
-    }
-  } else {
-    const auto* inputType = m_impl->GetInputType(inputIndex);
-    ML_CHECK_BOOL(inputType->has_tensor_type());
-    for (uint32_t i = 0; i < dimensionCount; ++i) {
-      // Shape inference is only done when all dimensions of all inputs have known values,
-      // so the input tensors will always have shapes at this point.
-      assert(inputType->tensor_type().shape().dim(i).has_dim_value());
-      dimensions[i] = static_cast<uint32_t>(inputType->tensor_type().shape().dim(i).dim_value());
-    }
-  }
-
-  return S_OK;
-}
-CATCH_RETURN();
 
 template <class NodeInfoImpl_t, class Base1_t, class Base2_t>
 bool STDMETHODCALLTYPE OpNodeInfoWrapper<NodeInfoImpl_t, Base1_t, Base2_t>::IsInputValid(uint32_t inputIndex) const noexcept {
@@ -721,119 +753,139 @@ bool STDMETHODCALLTYPE OpNodeInfoWrapper<NodeInfoImpl_t, Base1_t, Base2_t>::IsOu
 }
 
 template <class NodeInfoImpl_t, class Base1_t, class Base2_t>
-HRESULT STDMETHODCALLTYPE OpNodeInfoWrapper<NodeInfoImpl_t, Base1_t, Base2_t>::GetInputTensorDimensionCount(uint32_t inputIndex, uint32_t* dimensionCount) const noexcept try {
-  VerifyNotClosed();
+HRESULT STDMETHODCALLTYPE OpNodeInfoWrapper<NodeInfoImpl_t, Base1_t, Base2_t>::GetInputTensorDimensionCount(uint32_t inputIndex, uint32_t* dimensionCount) const noexcept 
+{
+    ORT_TRY
+    {
+      VerifyNotClosed();
 
-  *dimensionCount = 0;
+      *dimensionCount = 0;
 
-  if (inputIndex >= GetInputCount()) {
-    return E_INVALIDARG;
-  }
+      if (inputIndex >= GetInputCount()) {
+        return E_INVALIDARG;
+      }
 
-  // Input shapes are determined either from the override or from the underlying proto
-  if (m_inputShapesOverride) {
-    *dimensionCount = gsl::narrow_cast<uint32_t>(m_inputShapesOverride->GetShape(inputIndex).size());
-  } else {
-    const auto* inputType = m_impl->GetInputType(inputIndex);
-    ML_CHECK_BOOL(inputType->has_tensor_type());
+      // Input shapes are determined either from the override or from the underlying proto
+      if (m_inputShapesOverride) {
+        *dimensionCount = gsl::narrow_cast<uint32_t>(m_inputShapesOverride->GetShape(inputIndex).size());
+      } else {
+        const auto* inputType = m_impl->GetInputType(inputIndex);
+        ML_CHECK_BOOL(inputType->has_tensor_type());
 
-    // Shape inference is only done when all dimensions of all inputs have known values,
-    // so the input tensors will always have shapes at this point.
-    assert(inputType->tensor_type().has_shape());
+        // Shape inference is only done when all dimensions of all inputs have known values,
+        // so the input tensors will always have shapes at this point.
+        assert(inputType->tensor_type().has_shape());
 
-    *dimensionCount = inputType->tensor_type().shape().dim_size();
-  }
+        *dimensionCount = inputType->tensor_type().shape().dim_size();
+      }
 
-  return S_OK;
+      return S_OK;
+    }
+    ORT_CATCH_RETURN
 }
-CATCH_RETURN();
 
 template <class NodeInfoImpl_t, class Base1_t, class Base2_t>
-HRESULT STDMETHODCALLTYPE OpNodeInfoWrapper<NodeInfoImpl_t, Base1_t, Base2_t>::GetConstantInputTensor(uint32_t inputIndex, IMLOperatorTensor** tensor) const noexcept try {
-  bool inputRequiredAsConstant = std::find(
-                                     m_requiredConstantCpuInputs.begin(),
-                                     m_requiredConstantCpuInputs.end(),
-                                     inputIndex) != m_requiredConstantCpuInputs.end();
+HRESULT STDMETHODCALLTYPE OpNodeInfoWrapper<NodeInfoImpl_t, Base1_t, Base2_t>::GetConstantInputTensor(uint32_t inputIndex, IMLOperatorTensor** tensor) const noexcept 
+{
+    ORT_TRY
+    {
+      bool inputRequiredAsConstant = std::find(
+                                         m_requiredConstantCpuInputs.begin(),
+                                         m_requiredConstantCpuInputs.end(),
+                                         inputIndex) != m_requiredConstantCpuInputs.end();
 
-  THROW_HR_IF(E_INVALIDARG, !inputRequiredAsConstant);
+      ORT_THROW_HR_IF(E_INVALIDARG, !inputRequiredAsConstant);
 
-  ComPtr<IMLOperatorTensor> tensorWrapper = m_constantInputGetter(inputIndex);
+      ComPtr<IMLOperatorTensor> tensorWrapper = m_constantInputGetter(inputIndex);
 
-  if (tensorWrapper == nullptr) {
-    // This shouldn't happen since kernel creation is deferred and repeated when required constant inputs are not present.
-    return E_UNEXPECTED;
-  }
+      if (tensorWrapper == nullptr) {
+        // This shouldn't happen since kernel creation is deferred and repeated when required constant inputs are not present.
+        return E_UNEXPECTED;
+      }
 
-  *tensor = tensorWrapper.Detach();
+      *tensor = tensorWrapper.Detach();
 
-  return S_OK;
+      return S_OK;
+    }
+    ORT_CATCH_RETURN
 }
-CATCH_RETURN();
 
-HRESULT STDMETHODCALLTYPE OpKernelInfoWrapper::GetOutputTensorShape(uint32_t outputIndex, uint32_t dimensionCount, uint32_t* dimensions) const noexcept try {
-  VerifyNotClosed();
+HRESULT STDMETHODCALLTYPE OpKernelInfoWrapper::GetOutputTensorShape(uint32_t outputIndex, uint32_t dimensionCount, uint32_t* dimensions) const noexcept 
+{
+    ORT_TRY
+    {
+      VerifyNotClosed();
 
-  memset(dimensions, 0, dimensionCount * sizeof(dimensions[0]));
+      memset(dimensions, 0, dimensionCount * sizeof(dimensions[0]));
 
-  if (!HasOutputShapeDescription()) {
-    return E_FAIL;
-  }
+      if (!HasOutputShapeDescription()) {
+        return E_FAIL;
+      }
 
-  if (outputIndex >= GetOutputCount()) {
-    return E_INVALIDARG;
-  }
+      if (outputIndex >= GetOutputCount()) {
+        return E_INVALIDARG;
+      }
 
-  if (m_inferredOutputShapes->GetShape(outputIndex).size() != dimensionCount) {
-    return E_INVALIDARG;
-  }
+      if (m_inferredOutputShapes->GetShape(outputIndex).size() != dimensionCount) {
+        return E_INVALIDARG;
+      }
 
-  for (uint32_t i = 0; i < dimensionCount; ++i) {
-    dimensions[i] = m_inferredOutputShapes->GetShape(outputIndex)[i];
-  }
+      for (uint32_t i = 0; i < dimensionCount; ++i) {
+        dimensions[i] = m_inferredOutputShapes->GetShape(outputIndex)[i];
+      }
 
-  return S_OK;
+      return S_OK;
+    }
+    ORT_CATCH_RETURN
 }
-CATCH_RETURN();
 
-HRESULT STDMETHODCALLTYPE OpKernelInfoWrapper::GetOutputTensorDimensionCount(uint32_t outputIndex, uint32_t* dimensionCount) const noexcept try {
-  VerifyNotClosed();
+HRESULT STDMETHODCALLTYPE OpKernelInfoWrapper::GetOutputTensorDimensionCount(uint32_t outputIndex, uint32_t* dimensionCount) const noexcept 
+{
+    ORT_TRY
+    {
+      VerifyNotClosed();
 
-  *dimensionCount = 0;
+      *dimensionCount = 0;
 
-  if (!HasOutputShapeDescription()) {
-    return E_FAIL;
-  }
+      if (!HasOutputShapeDescription()) {
+        return E_FAIL;
+      }
 
-  if (outputIndex >= GetOutputCount()) {
-    return E_INVALIDARG;
-  }
+      if (outputIndex >= GetOutputCount()) {
+        return E_INVALIDARG;
+      }
 
-  *dimensionCount = gsl::narrow_cast<uint32_t>(m_inferredOutputShapes->GetShape(outputIndex).size());
+      *dimensionCount = gsl::narrow_cast<uint32_t>(m_inferredOutputShapes->GetShape(outputIndex).size());
 
-  return S_OK;
+      return S_OK;
+    }
+    ORT_CATCH_RETURN
 }
-CATCH_RETURN();
 
 bool STDMETHODCALLTYPE OpKernelInfoWrapper::HasTensorShapeDescription() const noexcept {
   return m_allowInputShapeQuery;
 }
 
-HRESULT STDMETHODCALLTYPE OpKernelInfoWrapper::GetTensorShapeDescription(IMLOperatorTensorShapeDescription** shapeInfo) const noexcept try {
-  VerifyNotClosed();
+HRESULT STDMETHODCALLTYPE OpKernelInfoWrapper::GetTensorShapeDescription(IMLOperatorTensorShapeDescription** shapeInfo) const noexcept 
+{
+    ORT_TRY
+    {
+      VerifyNotClosed();
 
-  *shapeInfo = nullptr;
+      *shapeInfo = nullptr;
 
-  if (!HasTensorShapeDescription()) {
-    *shapeInfo = nullptr;
-    return E_FAIL;
-    //return MLStatus::REQUIREMENT_NOT_REGISTERED;
-  }
+      if (!HasTensorShapeDescription()) {
+        *shapeInfo = nullptr;
+        return E_FAIL;
+        //return MLStatus::REQUIREMENT_NOT_REGISTERED;
+      }
 
-  ComPtr<IMLOperatorTensorShapeDescription> ret = const_cast<OpKernelInfoWrapper*>(this);
-  *shapeInfo = ret.Detach();
-  return S_OK;
+      ComPtr<IMLOperatorTensorShapeDescription> ret = const_cast<OpKernelInfoWrapper*>(this);
+      *shapeInfo = ret.Detach();
+      return S_OK;
+    }
+    ORT_CATCH_RETURN
 }
-CATCH_RETURN();
 
 void STDMETHODCALLTYPE OpKernelInfoWrapper::GetExecutionInterface(IUnknown** executionInterface) const noexcept {
   m_abiExecutionObject.CopyTo(executionInterface);
@@ -878,70 +930,82 @@ DmlGraphOpKernelInfoWrapper::DmlGraphOpKernelInfoWrapper(
   m_abiExecutionObject.As(&m_winmlProvider);
 }
 
-HRESULT STDMETHODCALLTYPE DmlGraphOpKernelInfoWrapper::GetOutputTensorShape(uint32_t outputIndex, uint32_t dimensionCount, uint32_t* dimensions) const noexcept try {
-  VerifyNotClosed();
+HRESULT STDMETHODCALLTYPE DmlGraphOpKernelInfoWrapper::GetOutputTensorShape(uint32_t outputIndex, uint32_t dimensionCount, uint32_t* dimensions) const noexcept 
+{
+    ORT_TRY
+    {
+      VerifyNotClosed();
 
-  memset(dimensions, 0, dimensionCount * sizeof(dimensions[0]));
+      memset(dimensions, 0, dimensionCount * sizeof(dimensions[0]));
 
-  if (!HasOutputShapeDescription()) {
-    return E_FAIL;
-  }
+      if (!HasOutputShapeDescription()) {
+        return E_FAIL;
+      }
 
-  if (outputIndex >= GetOutputCount()) {
-    return E_INVALIDARG;
-  }
+      if (outputIndex >= GetOutputCount()) {
+        return E_INVALIDARG;
+      }
 
-  if (m_inferredOutputShapes->GetShape(outputIndex).size() != dimensionCount) {
-    return E_INVALIDARG;
-  }
+      if (m_inferredOutputShapes->GetShape(outputIndex).size() != dimensionCount) {
+        return E_INVALIDARG;
+      }
 
-  for (uint32_t i = 0; i < dimensionCount; ++i) {
-    dimensions[i] = m_inferredOutputShapes->GetShape(outputIndex)[i];
-  }
+      for (uint32_t i = 0; i < dimensionCount; ++i) {
+        dimensions[i] = m_inferredOutputShapes->GetShape(outputIndex)[i];
+      }
 
-  return S_OK;
+      return S_OK;
+    }
+    ORT_CATCH_RETURN
 }
-CATCH_RETURN();
 
-HRESULT STDMETHODCALLTYPE DmlGraphOpKernelInfoWrapper::GetOutputTensorDimensionCount(uint32_t outputIndex, uint32_t* dimensionCount) const noexcept try {
-  VerifyNotClosed();
+HRESULT STDMETHODCALLTYPE DmlGraphOpKernelInfoWrapper::GetOutputTensorDimensionCount(uint32_t outputIndex, uint32_t* dimensionCount) const noexcept 
+{
+    ORT_TRY
+    {
+      VerifyNotClosed();
 
-  *dimensionCount = 0;
+      *dimensionCount = 0;
 
-  if (!HasOutputShapeDescription()) {
-    return E_FAIL;
-  }
+      if (!HasOutputShapeDescription()) {
+        return E_FAIL;
+      }
 
-  if (outputIndex >= GetOutputCount()) {
-    return E_INVALIDARG;
-  }
+      if (outputIndex >= GetOutputCount()) {
+        return E_INVALIDARG;
+      }
 
-  *dimensionCount = gsl::narrow_cast<uint32_t>(m_inferredOutputShapes->GetShape(outputIndex).size());
+      *dimensionCount = gsl::narrow_cast<uint32_t>(m_inferredOutputShapes->GetShape(outputIndex).size());
 
-  return S_OK;
+      return S_OK;
+    }
+    ORT_CATCH_RETURN
 }
-CATCH_RETURN();
 
 bool STDMETHODCALLTYPE DmlGraphOpKernelInfoWrapper::HasTensorShapeDescription() const noexcept {
   return true;
 }
 
-HRESULT STDMETHODCALLTYPE DmlGraphOpKernelInfoWrapper::GetTensorShapeDescription(IMLOperatorTensorShapeDescription** shapeInfo) const noexcept try {
-  VerifyNotClosed();
+HRESULT STDMETHODCALLTYPE DmlGraphOpKernelInfoWrapper::GetTensorShapeDescription(IMLOperatorTensorShapeDescription** shapeInfo) const noexcept 
+{
+    ORT_TRY
+    {
+      VerifyNotClosed();
 
-  *shapeInfo = nullptr;
+      *shapeInfo = nullptr;
 
-  if (!HasTensorShapeDescription()) {
-    *shapeInfo = nullptr;
-    return E_FAIL;
-    //return MLStatus::REQUIREMENT_NOT_REGISTERED;
-  }
+      if (!HasTensorShapeDescription()) {
+        *shapeInfo = nullptr;
+        return E_FAIL;
+        //return MLStatus::REQUIREMENT_NOT_REGISTERED;
+      }
 
-  ComPtr<IMLOperatorTensorShapeDescription> ret = const_cast<DmlGraphOpKernelInfoWrapper*>(this);
-  *shapeInfo = ret.Detach();
-  return S_OK;
+      ComPtr<IMLOperatorTensorShapeDescription> ret = const_cast<DmlGraphOpKernelInfoWrapper*>(this);
+      *shapeInfo = ret.Detach();
+      return S_OK;
+    }
+    ORT_CATCH_RETURN
 }
-CATCH_RETURN();
 
 void STDMETHODCALLTYPE DmlGraphOpKernelInfoWrapper::GetExecutionInterface(IUnknown** executionInterface) const noexcept {
   m_abiExecutionObject.CopyTo(executionInterface);
@@ -984,20 +1048,24 @@ void DmlGraphOpKernelInfoWrapper::SetDmlProperties(_In_ const MLOperatorKernelDm
 HRESULT STDMETHODCALLTYPE DmlGraphOpKernelInfoWrapper::SetDmlOperator(
     IDMLOperator* op,
     _In_ const DML_OPERATOR_DESC* desc,
-    _In_opt_ const MLOperatorKernelDmlProperties* dmlProperties) const noexcept try {
-  ML_CHECK_BOOL(op != nullptr);
-  ML_CHECK_BOOL(dmlProperties != nullptr);
+    _In_opt_ const MLOperatorKernelDmlProperties* dmlProperties) const noexcept 
+{
+    ORT_TRY
+    {
+      ML_CHECK_BOOL(op != nullptr);
+      ML_CHECK_BOOL(dmlProperties != nullptr);
 
-  m_graphNodeCreateInfo->initialized = true;
+      m_graphNodeCreateInfo->initialized = true;
 
-  SetDmlProperties(dmlProperties);
+      SetDmlProperties(dmlProperties);
 
-  m_graphNodeCreateInfo->op = op;
-  m_graphNodeCreateInfo->desc = std::make_unique<AbstractOperatorDesc>(SchemaHelpers::ConvertOperatorDesc(*desc));
+      m_graphNodeCreateInfo->op = op;
+      m_graphNodeCreateInfo->desc = std::make_unique<AbstractOperatorDesc>(SchemaHelpers::ConvertOperatorDesc(*desc));
 
-  return S_OK;
+      return S_OK;
+    }
+    ORT_CATCH_RETURN
 }
-CATCH_RETURN();
 
 OnnxTensorWrapper::OnnxTensorWrapper(onnx::TensorProto* impl) : m_impl(impl) {
   // The tensor may be stored as raw data or in typed fields.
@@ -1020,27 +1088,35 @@ uint32_t STDMETHODCALLTYPE OnnxTensorWrapper::GetDimensionCount() const noexcept
 
 HRESULT STDMETHODCALLTYPE OnnxTensorWrapper::GetShape(
     uint32_t dimensionCount,
-    uint32_t* dimensions) const noexcept try {
-  VerifyNotClosed();
+    uint32_t* dimensions) const noexcept 
+{
+    ORT_TRY
+    {
+      VerifyNotClosed();
 
-  std::fill(dimensions, dimensions + dimensionCount, 0u);
+      std::fill(dimensions, dimensions + dimensionCount, 0u);
 
-  uint32_t count = static_cast<uint32_t>(m_impl->dims().size());
-  ML_CHECK_BOOL(dimensionCount == count);
+      uint32_t count = static_cast<uint32_t>(m_impl->dims().size());
+      ML_CHECK_BOOL(dimensionCount == count);
 
-  for (uint32_t i = 0; i < dimensionCount; ++i) {
-    dimensions[i] = static_cast<uint32_t>(m_impl->dims()[i]);
-  }
+      for (uint32_t i = 0; i < dimensionCount; ++i) {
+        dimensions[i] = static_cast<uint32_t>(m_impl->dims()[i]);
+      }
 
-  return S_OK;
+      return S_OK;
+    }
+    ORT_CATCH_RETURN
 }
-CATCH_RETURN();
 
-MLOperatorTensorDataType STDMETHODCALLTYPE OnnxTensorWrapper::GetTensorDataType() const noexcept {
-  try {
+MLOperatorTensorDataType STDMETHODCALLTYPE OnnxTensorWrapper::GetTensorDataType() const noexcept 
+{
+  ORT_TRY 
+  {
     VerifyNotClosed();
     return ToMLTensorDataType(static_cast<onnx::TensorProto_DataType>(m_impl->data_type()));
-  } catch (...) {
+  } 
+  ORT_CATCH_GENERIC
+  {
     return MLOperatorTensorDataType::Undefined;
   }
 }
@@ -1107,27 +1183,35 @@ uint32_t STDMETHODCALLTYPE TensorWrapper::GetDimensionCount() const noexcept {
 
 HRESULT STDMETHODCALLTYPE TensorWrapper::GetShape(
     uint32_t dimensionCount,
-    uint32_t* dimensions) const noexcept try {
-  VerifyNotClosed();
+    uint32_t* dimensions) const noexcept 
+{
+    ORT_TRY
+    {
+      VerifyNotClosed();
 
-  std::fill(dimensions, dimensions + dimensionCount, 0u);
+      std::fill(dimensions, dimensions + dimensionCount, 0u);
 
-  uint32_t count = static_cast<uint32_t>(m_impl->Shape().NumDimensions());
-  ML_CHECK_BOOL(dimensionCount == count);
+      uint32_t count = static_cast<uint32_t>(m_impl->Shape().NumDimensions());
+      ML_CHECK_BOOL(dimensionCount == count);
 
-  for (size_t i = 0; i < dimensionCount; ++i) {
-    dimensions[i] = static_cast<uint32_t>(m_impl->Shape()[i]);
-  }
+      for (size_t i = 0; i < dimensionCount; ++i) {
+        dimensions[i] = static_cast<uint32_t>(m_impl->Shape()[i]);
+      }
 
-  return S_OK;
+      return S_OK;
+    }
+    ORT_CATCH_RETURN
 }
-CATCH_RETURN();
 
-MLOperatorTensorDataType STDMETHODCALLTYPE TensorWrapper::GetTensorDataType() const noexcept {
-  try {
+MLOperatorTensorDataType STDMETHODCALLTYPE TensorWrapper::GetTensorDataType() const noexcept
+{
+  ORT_TRY 
+  {
     VerifyNotClosed();
     return ToMLTensorDataType(m_impl->DataType());
-  } catch (...) {
+  } 
+  ORT_CATCH_GENERIC  
+  {
     return MLOperatorTensorDataType::Undefined;
   }
 }
@@ -1173,7 +1257,7 @@ void OpKernelContextWrapper::TransitionResourcesForOperatorIfRequired(bool isBef
 
     for (uint32_t i = 0; i < m_inputTensors.size(); ++i) {
       ComPtr<IMLOperatorTensor> tensor;
-      THROW_IF_FAILED(GetInputTensor(i, tensor.GetAddressOf()));
+      ORT_THROW_IF_FAILED(GetInputTensor(i, tensor.GetAddressOf()));
 
       ComPtr<IUnknown> resource;
       tensor->GetDataInterface(resource.GetAddressOf());
@@ -1184,7 +1268,7 @@ void OpKernelContextWrapper::TransitionResourcesForOperatorIfRequired(bool isBef
 
     for (uint32_t i = 0; i < m_outputTensors.size(); ++i) {
       ComPtr<IMLOperatorTensor> tensor;
-      THROW_IF_FAILED(GetOutputTensor(i, tensor.GetAddressOf()));
+      ORT_THROW_IF_FAILED(GetOutputTensor(i, tensor.GetAddressOf()));
 
       ComPtr<IUnknown> resource;
       tensor->GetDataInterface(resource.GetAddressOf());
@@ -1262,125 +1346,145 @@ void OpKernelContextWrapper::Close() {
 
   ClearTempAllocations();
 
-  __super::Close();
+  Closable::Close();
 }
 
-HRESULT STDMETHODCALLTYPE OpKernelContextWrapper::GetInputTensor(uint32_t inputIndex, IMLOperatorTensor** tensor) const noexcept try {
-  VerifyNotClosed();
-  *tensor = nullptr;
+HRESULT STDMETHODCALLTYPE OpKernelContextWrapper::GetInputTensor(uint32_t inputIndex, IMLOperatorTensor** tensor) const noexcept 
+{
+    ORT_TRY
+    {
+      VerifyNotClosed();
+      *tensor = nullptr;
 
-  ML_CHECK_BOOL(inputIndex < m_inputTensors.size());
+      ML_CHECK_BOOL(inputIndex < m_inputTensors.size());
 
-  if (m_inputTensors[inputIndex]->GetInterface() == nullptr) {
-    auto inputTensor = m_impl->Input<onnxruntime::Tensor>(inputIndex);
+      if (m_inputTensors[inputIndex]->GetInterface() == nullptr) {
+        auto inputTensor = m_impl->Input<onnxruntime::Tensor>(inputIndex);
 
-    ComPtr<TensorWrapper> tensorWrapper = wil::MakeOrThrow<TensorWrapper>(
-        const_cast<onnxruntime::Tensor*>(inputTensor),
-        IsAllocationInterface(inputTensor->Location()),
-        m_winmlProvider.Get(),
-        m_internalOperator);
+        ComPtr<TensorWrapper> tensorWrapper = wil::MakeOrThrow<TensorWrapper>(
+            const_cast<onnxruntime::Tensor*>(inputTensor),
+            IsAllocationInterface(inputTensor->Location()),
+            m_winmlProvider.Get(),
+            m_internalOperator);
 
-    const_cast<OpKernelContextWrapper*>(this)->m_inputTensors[inputIndex] = tensorWrapper;
-  }
-
-  const_cast<OpKernelContextWrapper*>(this)->m_inputTensors[inputIndex].CopyTo(tensor);
-
-  return S_OK;
-}
-CATCH_RETURN();
-
-HRESULT STDMETHODCALLTYPE OpKernelContextWrapper::GetOutputTensor(uint32_t outputIndex, IMLOperatorTensor** tensor) noexcept try {
-  VerifyNotClosed();
-
-  *tensor = nullptr;
-
-  ML_CHECK_BOOL(outputIndex < m_outputTensors.size());
-
-  // GetOutputTensor must be called unless a kernel provides shape inferencing,
-  // in which case m_outputShapes will be valid here.
-  if (!m_outputShapes) {
-    return E_FAIL;
-    //return MLStatus::SHAPE_INFERENCE_NOT_REGISTERED;
-  }
-
-  uint32_t dimensionCount = gsl::narrow_cast<uint32_t>(m_outputShapes->GetShape(outputIndex).size());
-  return GetOutputTensor(outputIndex, dimensionCount, m_outputShapes->GetShape(outputIndex).data(), tensor);
-}
-CATCH_RETURN();
-
-HRESULT STDMETHODCALLTYPE OpKernelContextWrapper::GetOutputTensor(uint32_t outputIndex, uint32_t dimensions, const uint32_t* dimensionSizes, IMLOperatorTensor** tensor) noexcept try {
-  VerifyNotClosed();
-  *tensor = nullptr;
-
-  ML_CHECK_BOOL(outputIndex < m_outputTensors.size());
-
-  // Verify that the provided shape matches the shape determined using the kernel's shape inference function.
-  if (m_outputTensors[outputIndex]->GetInterface() == nullptr) {
-    if (m_outputShapes) {
-      if ((m_outputShapes->GetShape(outputIndex).size() != dimensions ||
-           memcmp(dimensionSizes, m_outputShapes->GetShape(outputIndex).data(), dimensions * sizeof(*dimensionSizes)))) {
-        return E_INVALIDARG;
+        const_cast<OpKernelContextWrapper*>(this)->m_inputTensors[inputIndex] = tensorWrapper;
       }
+
+      const_cast<OpKernelContextWrapper*>(this)->m_inputTensors[inputIndex].CopyTo(tensor);
+
+      return S_OK;
     }
-    std::vector<int64_t> convertedSizes(dimensions);
-    for (size_t i = 0; i < dimensions; ++i) {
-      convertedSizes[i] = dimensionSizes[i];
+    ORT_CATCH_RETURN
+}
+
+HRESULT STDMETHODCALLTYPE OpKernelContextWrapper::GetOutputTensor(uint32_t outputIndex, IMLOperatorTensor** tensor) noexcept 
+{
+    ORT_TRY
+    {
+      VerifyNotClosed();
+
+      *tensor = nullptr;
+
+      ML_CHECK_BOOL(outputIndex < m_outputTensors.size());
+
+      // GetOutputTensor must be called unless a kernel provides shape inferencing,
+      // in which case m_outputShapes will be valid here.
+      if (!m_outputShapes) {
+        return E_FAIL;
+        //return MLStatus::SHAPE_INFERENCE_NOT_REGISTERED;
+      }
+
+      uint32_t dimensionCount = gsl::narrow_cast<uint32_t>(m_outputShapes->GetShape(outputIndex).size());
+      return GetOutputTensor(outputIndex, dimensionCount, m_outputShapes->GetShape(outputIndex).data(), tensor);
     }
+    ORT_CATCH_RETURN
+}
 
-    onnxruntime::TensorShape shape(convertedSizes.data(), dimensions);
-    auto outputTensor = m_impl->Output(outputIndex, shape);
-    if (outputTensor) {
-      ComPtr<TensorWrapper> tensorWrapper = wil::MakeOrThrow<TensorWrapper>(
-          const_cast<onnxruntime::Tensor*>(outputTensor),
-          IsAllocationInterface(outputTensor->Location()),
-          m_winmlProvider.Get(),
-          m_internalOperator);
+HRESULT STDMETHODCALLTYPE OpKernelContextWrapper::GetOutputTensor(uint32_t outputIndex, uint32_t dimensions, const uint32_t* dimensionSizes, IMLOperatorTensor** tensor) noexcept 
+{
+        ORT_TRY
+    {
+      VerifyNotClosed();
+      *tensor = nullptr;
 
-      const_cast<OpKernelContextWrapper*>(this)->m_outputTensors[outputIndex] = tensorWrapper;
+      ML_CHECK_BOOL(outputIndex < m_outputTensors.size());
+
+      // Verify that the provided shape matches the shape determined using the kernel's shape inference function.
+      if (m_outputTensors[outputIndex]->GetInterface() == nullptr) {
+        if (m_outputShapes) {
+          if ((m_outputShapes->GetShape(outputIndex).size() != dimensions ||
+               memcmp(dimensionSizes, m_outputShapes->GetShape(outputIndex).data(), dimensions * sizeof(*dimensionSizes)))) {
+            return E_INVALIDARG;
+          }
+        }
+        std::vector<int64_t> convertedSizes(dimensions);
+        for (size_t i = 0; i < dimensions; ++i) {
+          convertedSizes[i] = dimensionSizes[i];
+        }
+
+        onnxruntime::TensorShape shape(convertedSizes.data(), dimensions);
+        auto outputTensor = m_impl->Output(outputIndex, shape);
+        if (outputTensor) {
+          ComPtr<TensorWrapper> tensorWrapper = wil::MakeOrThrow<TensorWrapper>(
+              const_cast<onnxruntime::Tensor*>(outputTensor),
+              IsAllocationInterface(outputTensor->Location()),
+              m_winmlProvider.Get(),
+              m_internalOperator);
+
+          const_cast<OpKernelContextWrapper*>(this)->m_outputTensors[outputIndex] = tensorWrapper;
+        }
+      }
+
+      m_outputTensors[outputIndex].CopyTo(tensor);
+
+      return S_OK;
     }
-  }
-
-  m_outputTensors[outputIndex].CopyTo(tensor);
-
-  return S_OK;
+    ORT_CATCH_RETURN
 }
-CATCH_RETURN();
 
-HRESULT STDMETHODCALLTYPE OpKernelContextWrapper::AllocateTemporaryData(size_t size, IUnknown** abiAllocation) const try {
-  uint64_t allocId;
-  return AllocateTemporaryData(size, abiAllocation, &allocId);
+HRESULT STDMETHODCALLTYPE OpKernelContextWrapper::AllocateTemporaryData(size_t size, IUnknown** abiAllocation) const
+{
+    ORT_TRY
+    {
+      uint64_t allocId;
+      return AllocateTemporaryData(size, abiAllocation, &allocId);
+    }
+    ORT_CATCH_RETURN
 }
-CATCH_RETURN();
 
-HRESULT STDMETHODCALLTYPE OpKernelContextWrapper::AllocateTemporaryData(size_t size, IUnknown** abiAllocation, uint64_t* allocId) const try {
-  VerifyNotClosed();
+HRESULT STDMETHODCALLTYPE OpKernelContextWrapper::AllocateTemporaryData(size_t size, IUnknown** abiAllocation, uint64_t* allocId) const
+{
+    ORT_TRY
+    {
+      VerifyNotClosed();
 
-  *abiAllocation = nullptr;
-  onnxruntime::AllocatorPtr alloc;
-  THROW_IF_NOT_OK(m_impl->GetTempSpaceAllocator(&alloc));
+      *abiAllocation = nullptr;
+      onnxruntime::AllocatorPtr alloc;
+      THROW_IF_NOT_OK(m_impl->GetTempSpaceAllocator(&alloc));
 
-  if (!IsAllocationInterface(alloc->Info())) {
-    return E_FAIL;
-  }
+      if (!IsAllocationInterface(alloc->Info())) {
+        return E_FAIL;
+      }
 
-  ComPtr<IUnknown> allocation;
-  allocation.Attach(static_cast<IUnknown*>(alloc->Alloc(size)));
+      ComPtr<IUnknown> allocation;
+      allocation.Attach(static_cast<IUnknown*>(alloc->Alloc(size)));
 
-  *allocId = m_winmlProvider->TryGetPooledAllocationId(allocation.Get(), 0);
+      *allocId = m_winmlProvider->TryGetPooledAllocationId(allocation.Get(), 0);
 
-  TranslateAllocationDataToAbi(m_winmlProvider.Get(), m_internalOperator, alloc->Info(), allocation.Get(), abiAllocation);
+      TranslateAllocationDataToAbi(m_winmlProvider.Get(), m_internalOperator, alloc->Info(), allocation.Get(), abiAllocation);
 
-  if (m_winmlProvider->TransitionsRequiredForOperator(m_internalOperator)) {
-    m_winmlProvider->TransitionResourcesForOperator(true, 1, abiAllocation);
-  }
+      if (m_winmlProvider->TransitionsRequiredForOperator(m_internalOperator)) {
+        m_winmlProvider->TransitionResourcesForOperator(true, 1, abiAllocation);
+      }
 
-  // Ensure the allocation is freed and transitioned when the context destructs
-  m_temporaryAllocations.push_back(allocation);
-  m_temporaryAbiAllocations.push_back(*abiAllocation);
+      // Ensure the allocation is freed and transitioned when the context destructs
+      m_temporaryAllocations.push_back(allocation);
+      m_temporaryAbiAllocations.push_back(*abiAllocation);
 
-  return S_OK;
+      return S_OK;
+    }
+    ORT_CATCH_RETURN
 }
-CATCH_RETURN();
 
 void STDMETHODCALLTYPE OpKernelContextWrapper::GetExecutionInterface(IUnknown** executionInterface) const noexcept {
   m_abiExecutionObject.CopyTo(executionInterface);
@@ -1392,7 +1496,7 @@ std::vector<IMLOperatorTensor*> OpKernelContextWrapper::GetInputTensors() {
 
   for (int i = 0; i < m_impl->InputCount(); ++i) {
     ComPtr<IMLOperatorTensor> tensor;
-    THROW_IF_FAILED(GetInputTensor(i, tensor.GetAddressOf()));
+    ORT_THROW_IF_FAILED(GetInputTensor(i, tensor.GetAddressOf()));
     ret.push_back(m_inputTensors[i].Get());
   }
 
@@ -1403,11 +1507,11 @@ std::vector<IMLOperatorTensor*> OpKernelContextWrapper::GetOutputTensors(const E
   std::vector<IMLOperatorTensor*> ret;
   ret.reserve(m_outputTensors.size());
 
-  THROW_HR_IF(E_INVALIDARG, m_impl->OutputCount() != outputShapes.EdgeCount());
+  ORT_THROW_HR_IF(E_INVALIDARG, m_impl->OutputCount() != outputShapes.EdgeCount());
 
   for (int i = 0; i < m_impl->OutputCount(); ++i) {
     ComPtr<IMLOperatorTensor> tensor;
-    THROW_IF_FAILED(GetOutputTensor(
+    ORT_THROW_IF_FAILED(GetOutputTensor(
         i,
         static_cast<uint32_t>(outputShapes.GetShape(i).size()),
         outputShapes.GetShape(i).data(),
@@ -1500,7 +1604,7 @@ AbiOpKernel::AbiOpKernel(
         m_requiredConstantCpuInputs,
         constantInputGetter);
 
-    THROW_IF_FAILED(operatorFactory->CreateKernel(kernelInfoWrapper.Get(), m_kernel.GetAddressOf()));
+    ORT_THROW_IF_FAILED(operatorFactory->CreateKernel(kernelInfoWrapper.Get(), m_kernel.GetAddressOf()));
     kernelInfoWrapper->Close();
 
     // Ensure that scheduled work, if any, is completed before freeing the kernel if the execution
@@ -1553,7 +1657,7 @@ onnxruntime::Status AbiOpKernel::Compute(onnxruntime::OpKernelContext* context) 
         constantInputGetter);
 
     ComPtr<IMLOperatorKernel> ret;
-    THROW_IF_FAILED(m_operatorFactory->CreateKernel(kernelInfoWrapper.Get(), ret.GetAddressOf()));
+    ORT_THROW_IF_FAILED(m_operatorFactory->CreateKernel(kernelInfoWrapper.Get(), ret.GetAddressOf()));
     kernelInfoWrapper->Close();
 
     return ret;
@@ -1633,7 +1737,7 @@ onnxruntime::Status AbiOpKernel::Compute(onnxruntime::OpKernelContext* context) 
           m_internalOperator,
           m_requiresOutputShapesAtCreation ? &localInferredOutputShapes : nullptr);
 
-      THROW_IF_FAILED(localKernel->Compute(kernelContextWrapper.Get()));
+      ORT_THROW_IF_FAILED(localKernel->Compute(kernelContextWrapper.Get()));
       kernelContextWrapper->Close();
 
       // Ensure that scheduled work, if any, is completed before freeing the kernel if the execution
@@ -1651,7 +1755,7 @@ onnxruntime::Status AbiOpKernel::Compute(onnxruntime::OpKernelContext* context) 
       m_internalOperator,
       m_requiresOutputShapesAtCreation ? &m_inferredOutputShapes : nullptr);
 
-  THROW_IF_FAILED(m_kernel->Compute(kernelContextWrapper.Get()));
+  ORT_THROW_IF_FAILED(m_kernel->Compute(kernelContextWrapper.Get()));
   kernelContextWrapper->Close();
 
   // Ensure that scheduled work, if any, is completed before freeing the kernel if the execution
@@ -1723,7 +1827,7 @@ void InferAndVerifyOutputSizes(
 
   outputShapes.Reset(info.GetOutputCount());
 
-  THROW_IF_FAILED(shapeInferrer->InferOutputShapes(inferenceContext.Get()));
+  ORT_THROW_IF_FAILED(shapeInferrer->InferOutputShapes(inferenceContext.Get()));
   inferenceContext->Close();
 
   for (size_t outputIndex = 0; outputIndex < outputShapes.EdgeCount(); ++outputIndex) {
@@ -1781,52 +1885,64 @@ MLSchemaInferenceContext::MLSchemaInferenceContext(
 HRESULT STDMETHODCALLTYPE MLSchemaInferenceContext::SetOutputTensorShape(
     uint32_t outputIndex,
     uint32_t dimensionCount,
-    const uint32_t* dimensions) noexcept try {
-  VerifyNotClosed();
+    const uint32_t* dimensions) noexcept
+{
+    ORT_TRY
+    {
+      VerifyNotClosed();
 
-  MLOperatorEdgeDescription edgeDesc;
-  THROW_IF_FAILED(GetOutputEdgeDescription(outputIndex, &edgeDesc));
-  ML_CHECK_BOOL(edgeDesc.edgeType == MLOperatorEdgeType::Undefined || edgeDesc.edgeType == MLOperatorEdgeType::Tensor);
+      MLOperatorEdgeDescription edgeDesc;
+      ORT_THROW_IF_FAILED(GetOutputEdgeDescription(outputIndex, &edgeDesc));
+      ML_CHECK_BOOL(edgeDesc.edgeType == MLOperatorEdgeType::Undefined || edgeDesc.edgeType == MLOperatorEdgeType::Tensor);
 
-  // In the process of calling mutable_tensor_type, the type may switch from undefined to tensor.
-  // This is done here in case the dimension count is zero (scalar)
-  m_context->getOutputType(outputIndex)->mutable_tensor_type();
+      // In the process of calling mutable_tensor_type, the type may switch from undefined to tensor.
+      // This is done here in case the dimension count is zero (scalar)
+      m_context->getOutputType(outputIndex)->mutable_tensor_type();
 
-  for (uint32_t i = 0; i < dimensionCount; ++i) {
-    auto dim = m_context->getOutputType(outputIndex)->mutable_tensor_type()->mutable_shape()->add_dim();
-    dim->set_dim_value(dimensions[i]);
-  }
+      for (uint32_t i = 0; i < dimensionCount; ++i) {
+        auto dim = m_context->getOutputType(outputIndex)->mutable_tensor_type()->mutable_shape()->add_dim();
+        dim->set_dim_value(dimensions[i]);
+      }
 
-  return S_OK;
+      return S_OK;
+    }
+    ORT_CATCH_RETURN
 }
-CATCH_RETURN();
 
 HRESULT STDMETHODCALLTYPE MLSchemaInferenceContext::SetOutputEdgeDescription(
     uint32_t outputIndex,
-    const MLOperatorEdgeDescription* edgeDesc) const noexcept try {
-  VerifyNotClosed();
+    const MLOperatorEdgeDescription* edgeDesc) const noexcept
+{
+    ORT_TRY
+    {
+      VerifyNotClosed();
 
-  std::string typeStr = ToTypeString(*edgeDesc);
-  m_context->getOutputType(outputIndex)->CopyFrom(onnx::Utils::DataTypeUtils::ToTypeProto(&typeStr));
-  return S_OK;
+      std::string typeStr = ToTypeString(*edgeDesc);
+      m_context->getOutputType(outputIndex)->CopyFrom(onnx::Utils::DataTypeUtils::ToTypeProto(&typeStr));
+      return S_OK;
+    }
+    ORT_CATCH_RETURN
 }
-CATCH_RETURN();
 
 HRESULT STDMETHODCALLTYPE MLKernelInferenceContext::SetOutputTensorShape(
     uint32_t outputIndex,
     uint32_t dimensionCount,
-    const uint32_t* dimensions) noexcept try {
-  VerifyNotClosed();
+    const uint32_t* dimensions) noexcept
+{
+    ORT_TRY
+    {
+      VerifyNotClosed();
 
-  if (outputIndex >= m_inferredOutputShapes.EdgeCount()) {
-    return E_INVALIDARG;
-  }
+      if (outputIndex >= m_inferredOutputShapes.EdgeCount()) {
+        return E_INVALIDARG;
+      }
 
-  m_inferredOutputShapes.GetMutableShape(outputIndex).assign(dimensions, dimensions + dimensionCount);
+      m_inferredOutputShapes.GetMutableShape(outputIndex).assign(dimensions, dimensions + dimensionCount);
 
-  return S_OK;
+      return S_OK;
+    }
+    ORT_CATCH_RETURN
 }
-CATCH_RETURN();
 
 ComPtr<MLSupportQueryContext> MLSupportQueryContext::Create(onnxruntime::OpNodeProtoHelper<onnxruntime::ProtoHelperNodeContext>* info,
             const AttributeMap* defaultAttributes) {
@@ -1928,7 +2044,7 @@ std::tuple<std::unique_ptr<std::byte[]>, size_t> UnpackTensor(const onnx::Tensor
     size_t elementCount = initializer.##Z();                                                       \
     tensorByteSize = elementCount * sizeof(Y);                                                     \
     unpackedTensor.reset(new std::byte[tensorByteSize]);                                           \
-    THROW_HR_IF(E_FAIL, !onnxruntime::utils::UnpackTensor(                                         \
+    ORT_THROW_HR_IF(E_FAIL, !onnxruntime::utils::UnpackTensor(                                         \
                              initializer,                                                          \
                              initializer.has_raw_data() ? initializer.raw_data().data() : nullptr, \
                              initializer.has_raw_data() ? initializer.raw_data().size() : 0,       \
@@ -1950,7 +2066,7 @@ std::tuple<std::unique_ptr<std::byte[]>, size_t> UnpackTensor(const onnx::Tensor
     CASE_PROTO(UINT64, uint64_t, int64_data_size);
     CASE_PROTO(FLOAT16, onnxruntime::MLFloat16, int32_data_size);
     default:
-      THROW_HR(E_INVALIDARG);
+      ORT_THROW_HR(E_INVALIDARG);
   }
 
   return std::make_tuple(std::move(unpackedTensor), tensorByteSize);

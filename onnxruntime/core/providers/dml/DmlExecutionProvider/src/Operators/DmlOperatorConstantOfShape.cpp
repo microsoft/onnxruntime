@@ -37,8 +37,8 @@ public:
             ComPtr<IMLOperatorTensor> valueTensor;
 
             // Get the extended attributes to be able to access the constant tensor.
-            THROW_IF_FAILED(kernelCreationContextInterface.As(&attributes));
-            THROW_IF_FAILED(attributes->GetTensorAttribute(AttrName::Value, &valueTensor));
+            ORT_THROW_IF_FAILED(kernelCreationContextInterface.As(&attributes));
+            ORT_THROW_IF_FAILED(attributes->GetTensorAttribute(AttrName::Value, &valueTensor));
             MLOperatorTensor wrappedValueTensor(valueTensor.Get());
 
             // Read the raw bytes from the tensor, agnostic to data type, which becomes the GPU fill pattern.
@@ -51,6 +51,7 @@ public:
             memcpy(operatorDesc.Value.Bytes, rawData, std::min(rawDataByteSize, sizeof(operatorDesc.Value.Bytes)));
         }
         // Else valueBytes is empty, and the default fill pattern is 0.
+
 
         DML_OPERATOR_DESC opDesc = { DML_OPERATOR_FILL_VALUE_CONSTANT, &operatorDesc };
         SetDmlOperatorDesc(opDesc, kernelCreationContext);
