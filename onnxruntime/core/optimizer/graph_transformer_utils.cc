@@ -173,8 +173,17 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
                                                                            onnxruntime::kArmNNExecutionProvider};
 
       if (!disable_quant_qdq) {
+#if defined(MLAS_TARGET_ARM64)
+        bool is_int8_allowed = true;
+#else
+        bool is_int8_allowed = false;
+#endif
+
+        if (!is_int8_allowed) {
+          transformers.emplace_back(std::make_unique<QDQS8ToU8Transformer>(cpu_ep));
+        }
         transformers.emplace_back(std::make_unique<QDQPropagationTransformer>(cpu_ep));
-        transformers.emplace_back(std::make_unique<QDQSelectorActionTransformer>());
+        transformers.emplace_back(std::make_unique<QDQSelectorActionTransformer>(is_int8_allowed));
       }
 
       transformers.emplace_back(std::make_unique<GemmActivationFusion>(cpu_ep));

@@ -94,7 +94,10 @@ bool UnarySelector::Check(const Graph& graph, const Node& node,
   int32_t dt_input = dq_nodes[0]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
   int32_t dt_output = q_nodes[0]->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
 
-  return dt_input == dt_output;
+  return ((dt_input == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8 ||
+           (int8_allowed_ && dt_input == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8))) &&
+         ((dt_output == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8 ||
+           (int8_allowed_ && dt_output == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8)));
 }
 
 bool BinarySelector::Check(const Graph& graph,
@@ -151,6 +154,10 @@ bool ConvSelector::Check(const Graph& graph,
     return false;
   }
 
+  if (!int8_allowed_ && dt_input == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8) {
+    return false;
+  }
+
   if (dq_nodes.size() < 3) {  // no bias
     return true;
   }
@@ -171,6 +178,11 @@ bool MatMulSelector::Check(const Graph& graph,
     return false;
   }
 
+  int32_t dt_input = dq_nodes[0]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+  if (!int8_allowed_ && dt_input == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8) {
+    return false;
+  }
+
   // potential match for QLinearMatMul or MatMulIntegerToFloat
   bool qlinear = !q_nodes.empty();
 
@@ -180,11 +192,8 @@ bool MatMulSelector::Check(const Graph& graph,
       return false;
     }
 
-    int32_t dt_input = dq_nodes[0]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
     int32_t dt_output = q_nodes[0]->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
     return dt_input == dt_output;
-  } else {
-    // MatMulIntegerToFloat has no Q node, so no call to CheckQDQNodes
   }
 
   return true;
