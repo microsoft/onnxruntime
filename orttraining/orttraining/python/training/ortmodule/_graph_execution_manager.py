@@ -182,7 +182,6 @@ class GraphExecutionManager(GraphExecutionInterface):
     def _get_torch_gpu_allocator_function_addresses(self):
         if self._use_external_gpu_allocator and torch.cuda.is_available():
             # CPP extension to get torch GPU allocator's alloc and free function addresses
-            from .torch_cpp_extensions import get_torch_gpu_extension
             torch_gpu_allocator = get_torch_gpu_extension()
             self._torch_alloc = torch_gpu_allocator.gpu_caching_allocator_raw_alloc_address()
             self._torch_free = torch_gpu_allocator.gpu_caching_allocator_raw_delete_address()
