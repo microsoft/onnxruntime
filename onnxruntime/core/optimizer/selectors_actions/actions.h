@@ -24,7 +24,7 @@ struct Action {
 
 #if !defined(ORT_MINIMAL_BUILD)
   struct SavedState {
-    std::vector<uint64_t> produced_node_kernel_def_hashes;
+    std::vector<NodeIndexAndKernelDefHash> produced_nodes;
   };
 
   // saving interface

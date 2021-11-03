@@ -57,11 +57,17 @@ struct AttributeBuilder;
 struct NodesToOptimizeIndices;
 struct NodesToOptimizeIndicesBuilder;
 
+struct NodeIndexAndKernelDefHash;
+struct NodeIndexAndKernelDefHashBuilder;
+
 struct RuntimeOptimizationRecord;
 struct RuntimeOptimizationRecordBuilder;
 
 struct RuntimeOptimizationRecordContainerEntry;
 struct RuntimeOptimizationRecordContainerEntryBuilder;
+
+struct RuntimeOptimizations;
+struct RuntimeOptimizationsBuilder;
 
 struct Graph;
 struct GraphBuilder;
@@ -1662,6 +1668,8 @@ inline flatbuffers::Offset<Attribute> CreateAttributeDirect(
       graphs__);
 }
 
+/// nodes to consider for a runtime optimization
+/// see corresponding type in onnxruntime/core/graph/runtime_optimization_record.h
 struct NodesToOptimizeIndices FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   typedef NodesToOptimizeIndicesBuilder Builder;
   enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
@@ -1786,12 +1794,66 @@ inline flatbuffers::Offset<NodesToOptimizeIndices> CreateNodesToOptimizeIndicesD
       num_variadic_outputs);
 }
 
+struct NodeIndexAndKernelDefHash FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef NodeIndexAndKernelDefHashBuilder Builder;
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
+    VT_NODE_INDEX = 4,
+    VT_KERNEL_DEF_HASH = 6
+  };
+  uint32_t node_index() const {
+    return GetField<uint32_t>(VT_NODE_INDEX, 0);
+  }
+  uint64_t kernel_def_hash() const {
+    return GetField<uint64_t>(VT_KERNEL_DEF_HASH, 0);
+  }
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           VerifyField<uint32_t>(verifier, VT_NODE_INDEX) &&
+           VerifyField<uint64_t>(verifier, VT_KERNEL_DEF_HASH) &&
+           verifier.EndTable();
+  }
+};
+
+struct NodeIndexAndKernelDefHashBuilder {
+  typedef NodeIndexAndKernelDefHash Table;
+  flatbuffers::FlatBufferBuilder &fbb_;
+  flatbuffers::uoffset_t start_;
+  void add_node_index(uint32_t node_index) {
+    fbb_.AddElement<uint32_t>(NodeIndexAndKernelDefHash::VT_NODE_INDEX, node_index, 0);
+  }
+  void add_kernel_def_hash(uint64_t kernel_def_hash) {
+    fbb_.AddElement<uint64_t>(NodeIndexAndKernelDefHash::VT_KERNEL_DEF_HASH, kernel_def_hash, 0);
+  }
+  explicit NodeIndexAndKernelDefHashBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  NodeIndexAndKernelDefHashBuilder &operator=(const NodeIndexAndKernelDefHashBuilder &);
+  flatbuffers::Offset<NodeIndexAndKernelDefHash> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = flatbuffers::Offset<NodeIndexAndKernelDefHash>(end);
+    return o;
+  }
+};
+
+inline flatbuffers::Offset<NodeIndexAndKernelDefHash> CreateNodeIndexAndKernelDefHash(
+    flatbuffers::FlatBufferBuilder &_fbb,
+    uint32_t node_index = 0,
+    uint64_t kernel_def_hash = 0) {
+  NodeIndexAndKernelDefHashBuilder builder_(_fbb);
+  builder_.add_kernel_def_hash(kernel_def_hash);
+  builder_.add_node_index(node_index);
+  return builder_.Finish();
+}
+
+/// a single runtime optimization
+/// see corresponding type in onnxruntime/core/graph/runtime_optimization_record.h
 struct RuntimeOptimizationRecord FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   typedef RuntimeOptimizationRecordBuilder Builder;
   enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_ACTION_ID = 4,
     VT_NODES_TO_OPTIMIZE_INDICES = 6,
-    VT_PRODUCED_NODE_KERNEL_DEF_HASHES = 8
+    VT_PRODUCED_NODES = 8
   };
   const flatbuffers::String *action_id() const {
     return GetPointer<const flatbuffers::String *>(VT_ACTION_ID);
@@ -1799,8 +1861,8 @@ struct RuntimeOptimizationRecord FLATBUFFERS_FINAL_CLASS : private flatbuffers::
   const onnxruntime::experimental::fbs::NodesToOptimizeIndices *nodes_to_optimize_indices() const {
     return GetPointer<const onnxruntime::experimental::fbs::NodesToOptimizeIndices *>(VT_NODES_TO_OPTIMIZE_INDICES);
   }
-  const flatbuffers::Vector<uint64_t> *produced_node_kernel_def_hashes() const {
-    return GetPointer<const flatbuffers::Vector<uint64_t> *>(VT_PRODUCED_NODE_KERNEL_DEF_HASHES);
+  const flatbuffers::Vector<flatbuffers::Offset<onnxruntime::experimental::fbs::NodeIndexAndKernelDefHash>> *produced_nodes() const {
+    return GetPointer<const flatbuffers::Vector<flatbuffers::Offset<onnxruntime::experimental::fbs::NodeIndexAndKernelDefHash>> *>(VT_PRODUCED_NODES);
   }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
@@ -1808,8 +1870,9 @@ struct RuntimeOptimizationRecord FLATBUFFERS_FINAL_CLASS : private flatbuffers::
            verifier.VerifyString(action_id()) &&
            VerifyOffset(verifier, VT_NODES_TO_OPTIMIZE_INDICES) &&
            verifier.VerifyTable(nodes_to_optimize_indices()) &&
-           VerifyOffset(verifier, VT_PRODUCED_NODE_KERNEL_DEF_HASHES) &&
-           verifier.VerifyVector(produced_node_kernel_def_hashes()) &&
+           VerifyOffset(verifier, VT_PRODUCED_NODES) &&
+           verifier.VerifyVector(produced_nodes()) &&
+           verifier.VerifyVectorOfTables(produced_nodes()) &&
            verifier.EndTable();
   }
 };
@@ -1824,8 +1887,8 @@ struct RuntimeOptimizationRecordBuilder {
   void add_nodes_to_optimize_indices(flatbuffers::Offset<onnxruntime::experimental::fbs::NodesToOptimizeIndices> nodes_to_optimize_indices) {
     fbb_.AddOffset(RuntimeOptimizationRecord::VT_NODES_TO_OPTIMIZE_INDICES, nodes_to_optimize_indices);
   }
-  void add_produced_node_kernel_def_hashes(flatbuffers::Offset<flatbuffers::Vector<uint64_t>> produced_node_kernel_def_hashes) {
-    fbb_.AddOffset(RuntimeOptimizationRecord::VT_PRODUCED_NODE_KERNEL_DEF_HASHES, produced_node_kernel_def_hashes);
+  void add_produced_nodes(flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<onnxruntime::experimental::fbs::NodeIndexAndKernelDefHash>>> produced_nodes) {
+    fbb_.AddOffset(RuntimeOptimizationRecord::VT_PRODUCED_NODES, produced_nodes);
   }
   explicit RuntimeOptimizationRecordBuilder(flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
@@ -1843,9 +1906,9 @@ inline flatbuffers::Offset<RuntimeOptimizationRecord> CreateRuntimeOptimizationR
     flatbuffers::FlatBufferBuilder &_fbb,
     flatbuffers::Offset<flatbuffers::String> action_id = 0,
     flatbuffers::Offset<onnxruntime::experimental::fbs::NodesToOptimizeIndices> nodes_to_optimize_indices = 0,
-    flatbuffers::Offset<flatbuffers::Vector<uint64_t>> produced_node_kernel_def_hashes = 0) {
+    flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<onnxruntime::experimental::fbs::NodeIndexAndKernelDefHash>>> produced_nodes = 0) {
   RuntimeOptimizationRecordBuilder builder_(_fbb);
-  builder_.add_produced_node_kernel_def_hashes(produced_node_kernel_def_hashes);
+  builder_.add_produced_nodes(produced_nodes);
   builder_.add_nodes_to_optimize_indices(nodes_to_optimize_indices);
   builder_.add_action_id(action_id);
   return builder_.Finish();
@@ -1855,14 +1918,14 @@ inline flatbuffers::Offset<RuntimeOptimizationRecord> CreateRuntimeOptimizationR
     flatbuffers::FlatBufferBuilder &_fbb,
     const char *action_id = nullptr,
     flatbuffers::Offset<onnxruntime::experimental::fbs::NodesToOptimizeIndices> nodes_to_optimize_indices = 0,
-    const std::vector<uint64_t> *produced_node_kernel_def_hashes = nullptr) {
+    const std::vector<flatbuffers::Offset<onnxruntime::experimental::fbs::NodeIndexAndKernelDefHash>> *produced_nodes = nullptr) {
   auto action_id__ = action_id ? _fbb.CreateString(action_id) : 0;
-  auto produced_node_kernel_def_hashes__ = produced_node_kernel_def_hashes ? _fbb.CreateVector<uint64_t>(*produced_node_kernel_def_hashes) : 0;
+  auto produced_nodes__ = produced_nodes ? _fbb.CreateVector<flatbuffers::Offset<onnxruntime::experimental::fbs::NodeIndexAndKernelDefHash>>(*produced_nodes) : 0;
   return onnxruntime::experimental::fbs::CreateRuntimeOptimizationRecord(
       _fbb,
       action_id__,
       nodes_to_optimize_indices,
-      produced_node_kernel_def_hashes__);
+      produced_nodes__);
 }
 
 struct RuntimeOptimizationRecordContainerEntry FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
@@ -1939,6 +2002,60 @@ inline flatbuffers::Offset<RuntimeOptimizationRecordContainerEntry> CreateRuntim
       runtime_optimization_records__);
 }
 
+struct RuntimeOptimizations FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef RuntimeOptimizationsBuilder Builder;
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
+    VT_RECORDS = 4
+  };
+  /// mapping from optimizer name to [RuntimeOptimizationRecord]
+  const flatbuffers::Vector<flatbuffers::Offset<onnxruntime::experimental::fbs::RuntimeOptimizationRecordContainerEntry>> *records() const {
+    return GetPointer<const flatbuffers::Vector<flatbuffers::Offset<onnxruntime::experimental::fbs::RuntimeOptimizationRecordContainerEntry>> *>(VT_RECORDS);
+  }
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           VerifyOffset(verifier, VT_RECORDS) &&
+           verifier.VerifyVector(records()) &&
+           verifier.VerifyVectorOfTables(records()) &&
+           verifier.EndTable();
+  }
+};
+
+struct RuntimeOptimizationsBuilder {
+  typedef RuntimeOptimizations Table;
+  flatbuffers::FlatBufferBuilder &fbb_;
+  flatbuffers::uoffset_t start_;
+  void add_records(flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<onnxruntime::experimental::fbs::RuntimeOptimizationRecordContainerEntry>>> records) {
+    fbb_.AddOffset(RuntimeOptimizations::VT_RECORDS, records);
+  }
+  explicit RuntimeOptimizationsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  RuntimeOptimizationsBuilder &operator=(const RuntimeOptimizationsBuilder &);
+  flatbuffers::Offset<RuntimeOptimizations> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = flatbuffers::Offset<RuntimeOptimizations>(end);
+    return o;
+  }
+};
+
+inline flatbuffers::Offset<RuntimeOptimizations> CreateRuntimeOptimizations(
+    flatbuffers::FlatBufferBuilder &_fbb,
+    flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<onnxruntime::experimental::fbs::RuntimeOptimizationRecordContainerEntry>>> records = 0) {
+  RuntimeOptimizationsBuilder builder_(_fbb);
+  builder_.add_records(records);
+  return builder_.Finish();
+}
+
+inline flatbuffers::Offset<RuntimeOptimizations> CreateRuntimeOptimizationsDirect(
+    flatbuffers::FlatBufferBuilder &_fbb,
+    std::vector<flatbuffers::Offset<onnxruntime::experimental::fbs::RuntimeOptimizationRecordContainerEntry>> *records = nullptr) {
+  auto records__ = records ? _fbb.CreateVectorOfSortedTables<onnxruntime::experimental::fbs::RuntimeOptimizationRecordContainerEntry>(records) : 0;
+  return onnxruntime::experimental::fbs::CreateRuntimeOptimizations(
+      _fbb,
+      records__);
+}
+
 struct Graph FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   typedef GraphBuilder Builder;
   enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
@@ -1976,8 +2093,8 @@ struct Graph FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   const flatbuffers::Vector<flatbuffers::Offset<onnxruntime::experimental::fbs::SparseTensor>> *sparse_initializers() const {
     return GetPointer<const flatbuffers::Vector<flatbuffers::Offset<onnxruntime::experimental::fbs::SparseTensor>> *>(VT_SPARSE_INITIALIZERS);
   }
-  const flatbuffers::Vector<flatbuffers::Offset<onnxruntime::experimental::fbs::RuntimeOptimizationRecordContainerEntry>> *runtime_optimizations() const {
-    return GetPointer<const flatbuffers::Vector<flatbuffers::Offset<onnxruntime::experimental::fbs::RuntimeOptimizationRecordContainerEntry>> *>(VT_RUNTIME_OPTIMIZATIONS);
+  const onnxruntime::experimental::fbs::RuntimeOptimizations *runtime_optimizations() const {
+    return GetPointer<const onnxruntime::experimental::fbs::RuntimeOptimizations *>(VT_RUNTIME_OPTIMIZATIONS);
   }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
@@ -2004,8 +2121,7 @@ struct Graph FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
            verifier.VerifyVector(sparse_initializers()) &&
            verifier.VerifyVectorOfTables(sparse_initializers()) &&
            VerifyOffset(verifier, VT_RUNTIME_OPTIMIZATIONS) &&
-           verifier.VerifyVector(runtime_optimizations()) &&
-           verifier.VerifyVectorOfTables(runtime_optimizations()) &&
+           verifier.VerifyTable(runtime_optimizations()) &&
            verifier.EndTable();
   }
 };
@@ -2038,7 +2154,7 @@ struct GraphBuilder {
   void add_sparse_initializers(flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<onnxruntime::experimental::fbs::SparseTensor>>> sparse_initializers) {
     fbb_.AddOffset(Graph::VT_SPARSE_INITIALIZERS, sparse_initializers);
   }
-  void add_runtime_optimizations(flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<onnxruntime::experimental::fbs::RuntimeOptimizationRecordContainerEntry>>> runtime_optimizations) {
+  void add_runtime_optimizations(flatbuffers::Offset<onnxruntime::experimental::fbs::RuntimeOptimizations> runtime_optimizations) {
     fbb_.AddOffset(Graph::VT_RUNTIME_OPTIMIZATIONS, runtime_optimizations);
   }
   explicit GraphBuilder(flatbuffers::FlatBufferBuilder &_fbb)
@@ -2063,7 +2179,7 @@ inline flatbuffers::Offset<Graph> CreateGraph(
     flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>> inputs = 0,
     flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>> outputs = 0,
     flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<onnxruntime::experimental::fbs::SparseTensor>>> sparse_initializers = 0,
-    flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<onnxruntime::experimental::fbs::RuntimeOptimizationRecordContainerEntry>>> runtime_optimizations = 0) {
+    flatbuffers::Offset<onnxruntime::experimental::fbs::RuntimeOptimizations> runtime_optimizations = 0) {
   GraphBuilder builder_(_fbb);
   builder_.add_runtime_optimizations(runtime_optimizations);
   builder_.add_sparse_initializers(sparse_initializers);
@@ -2087,7 +2203,7 @@ inline flatbuffers::Offset<Graph> CreateGraphDirect(
     const std::vector<flatbuffers::Offset<flatbuffers::String>> *inputs = nullptr,
     const std::vector<flatbuffers::Offset<flatbuffers::String>> *outputs = nullptr,
     const std::vector<flatbuffers::Offset<onnxruntime::experimental::fbs::SparseTensor>> *sparse_initializers = nullptr,
-    std::vector<flatbuffers::Offset<onnxruntime::experimental::fbs::RuntimeOptimizationRecordContainerEntry>> *runtime_optimizations = nullptr) {
+    flatbuffers::Offset<onnxruntime::experimental::fbs::RuntimeOptimizations> runtime_optimizations = 0) {
   auto initializers__ = initializers ? _fbb.CreateVector<flatbuffers::Offset<onnxruntime::experimental::fbs::Tensor>>(*initializers) : 0;
   auto node_args__ = node_args ? _fbb.CreateVector<flatbuffers::Offset<onnxruntime::experimental::fbs::ValueInfo>>(*node_args) : 0;
   auto nodes__ = nodes ? _fbb.CreateVector<flatbuffers::Offset<onnxruntime::experimental::fbs::Node>>(*nodes) : 0;
@@ -2095,7 +2211,6 @@ inline flatbuffers::Offset<Graph> CreateGraphDirect(
   auto inputs__ = inputs ? _fbb.CreateVector<flatbuffers::Offset<flatbuffers::String>>(*inputs) : 0;
   auto outputs__ = outputs ? _fbb.CreateVector<flatbuffers::Offset<flatbuffers::String>>(*outputs) : 0;
   auto sparse_initializers__ = sparse_initializers ? _fbb.CreateVector<flatbuffers::Offset<onnxruntime::experimental::fbs::SparseTensor>>(*sparse_initializers) : 0;
-  auto runtime_optimizations__ = runtime_optimizations ? _fbb.CreateVectorOfSortedTables<onnxruntime::experimental::fbs::RuntimeOptimizationRecordContainerEntry>(runtime_optimizations) : 0;
   return onnxruntime::experimental::fbs::CreateGraph(
       _fbb,
       initializers__,
@@ -2106,7 +2221,7 @@ inline flatbuffers::Offset<Graph> CreateGraphDirect(
       inputs__,
       outputs__,
       sparse_initializers__,
-      runtime_optimizations__);
+      runtime_optimizations);
 }
 
 struct StringStringEntry FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {

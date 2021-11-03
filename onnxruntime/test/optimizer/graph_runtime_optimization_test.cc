@@ -141,9 +141,10 @@ TEST(GraphRuntimeOptimizationTest, TestTransformerSavesRuntimeOptimization) {
 
     const auto* fbs_runtime_optimizations = fbs_session->model()->graph()->runtime_optimizations();
     ASSERT_NE(fbs_runtime_optimizations, nullptr);
-    ASSERT_EQ(fbs_runtime_optimizations->size(), 1u);
+    ASSERT_NE(fbs_runtime_optimizations->records(), nullptr);
+    ASSERT_EQ(fbs_runtime_optimizations->records()->size(), 1u);
 
-    const auto* fbs_runtime_optimization_entry = (*fbs_runtime_optimizations)[0];
+    const auto* fbs_runtime_optimization_entry = (*fbs_runtime_optimizations->records())[0];
     ASSERT_NE(fbs_runtime_optimization_entry, nullptr);
 
     auto check_string = [](const flatbuffers::String* fbs_str, const char* cstr) {

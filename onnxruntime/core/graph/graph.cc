@@ -3056,8 +3056,9 @@ common::Status Graph::SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
   auto node_edges = builder.CreateVector(node_edges_vec);
 
 #if defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
-  flatbuffers::Offset<RuntimeOptimizationRecordContainer::FbsRuntimeOptimizationRecordContainer> runtime_optimizations;
-  ORT_RETURN_IF_ERROR(RuntimeOptimizations().SaveToOrtFormat(builder, runtime_optimizations));
+  flatbuffers::Offset<RuntimeOptimizationRecordContainer::FbsRuntimeOptimizationRecordContainer> runtime_optimization_records;
+  ORT_RETURN_IF_ERROR(RuntimeOptimizations().SaveToOrtFormat(builder, runtime_optimization_records));
+  const auto runtime_optimizations = fbs::CreateRuntimeOptimizations(builder, runtime_optimization_records);
 #endif
 
   fbs::GraphBuilder gb(builder);
@@ -4246,7 +4247,9 @@ common::Status Graph::LoadFromOrtFormat(const onnxruntime::experimental::fbs::Gr
 #if defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
   // runtime optimizations
   if (const auto* fbs_runtime_optimizations = fbs_graph.runtime_optimizations()) {
-    ORT_RETURN_IF_ERROR(MutableRuntimeOptimizations().LoadFromOrtFormat(*fbs_runtime_optimizations));
+    if (const auto* fbs_runtime_optimization_records = fbs_runtime_optimizations->records()) {
+      ORT_RETURN_IF_ERROR(MutableRuntimeOptimizations().LoadFromOrtFormat(*fbs_runtime_optimization_records));
+    }
   }
 #endif  // defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
 

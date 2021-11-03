@@ -6,6 +6,8 @@ import flatbuffers
 from flatbuffers.compat import import_numpy
 np = import_numpy()
 
+# nodes to consider for a runtime optimization
+# see corresponding type in onnxruntime/core/graph/runtime_optimization_record.h
 class NodesToOptimizeIndices(object):
     __slots__ = ['_tab']
 

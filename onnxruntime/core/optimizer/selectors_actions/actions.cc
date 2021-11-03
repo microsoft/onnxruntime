@@ -119,7 +119,7 @@ Status ReplaceWithNew::RunForSave(Graph& graph, const NodesToOptimize& selected_
   ORT_RETURN_IF_ERROR(save_context.kernel_registry_manager.get().SearchKernelRegistry(*replacement,
                                                                                       &kernel_create_info));
   const auto replacement_kernel_def_hash = kernel_create_info->kernel_def->GetHash();
-  saved_state.produced_node_kernel_def_hashes.push_back(replacement_kernel_def_hash);
+  saved_state.produced_nodes.push_back({replacement->Index(), replacement_kernel_def_hash});
 
   ORT_RETURN_IF_NOT(graph.RemoveNode(replacement->Index()), "Failed to remove node.");
 

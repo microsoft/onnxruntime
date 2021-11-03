@@ -102,7 +102,7 @@ Status SelectorActionTransformer::MatchAndProcess(Graph& graph, Node& node, bool
           Name(),
           RuntimeOptimizationRecord{selector_and_action.name,
                                     node_group->ToIndices(),
-                                    action_saved_state.produced_node_kernel_def_hashes});
+                                    action_saved_state.produced_nodes});
 #else
       status = ORT_MAKE_STATUS(ONNXRUNTIME, FAILED,
                                "Saving runtime optimizations is not enabled in this build.");
