@@ -6,6 +6,7 @@ import itertools
 import math
 import random
 import copy
+from onnx.onnx_ml_pb2 import TensorAnnotation
 import torch
 from transformers import AutoConfig, BertForSequenceClassification, Trainer
 from transformers.modeling_outputs import SequenceClassifierOutput
@@ -980,6 +981,34 @@ def test_gradient_correctness_argmax_unfold():
 
         _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
         _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model)
+
+@pytest.mark.parametrize("high", [1, 2, 10])
+def test_correctness_argmax_bitwise_or(high):
+    N, D, H = 16, 256, 128
+    device = 'cuda'
+
+    class NeuralNetBitwiseOr(torch.nn.Module):
+        def __init__(self, high):
+            super(NeuralNetBitwiseOr, self).__init__()
+            self.other = torch.randint(0, high, (N, D, H), device=device)
+
+        def forward(self, input):
+            return torch.bitwise_or(input, self.other)
+
+    pt_model = NeuralNetBitwiseOr(high).to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+
+    def run_step(model, input):
+        prediction = model(input)
+        return prediction
+
+    for _ in range(10):
+        pt_input = torch.randint(-10, 10, (N, D, H), device=device)
+        ort_input = copy.deepcopy(pt_input)
+        pt_prediction = run_step(pt_model, pt_input)
+        ort_prediction = run_step(ort_model, ort_input)
+
+        _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
 
 @pytest.mark.parametrize("offset", [-1, 0, 1])
 @pytest.mark.parametrize("dim1, dim2", ([0, 1], [0, 2], [1, 2], [2, 0]))

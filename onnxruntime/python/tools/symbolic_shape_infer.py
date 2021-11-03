@@ -189,6 +189,7 @@ class SymbolicShapeInference:
         }
         self.aten_op_dispatcher_ = {
             'aten::embedding': self._infer_Gather,
+            'aten::bitwise_or': self._infer_aten_bitwise_or,
             'aten::diagonal': self._infer_aten_diagonal,
             'aten::max_pool2d_with_indices': self._infer_aten_pool2d,
             'aten::multinomial': self._infer_aten_multinomial,
@@ -641,7 +642,7 @@ class SymbolicShapeInference:
         vi.CopyFrom(helper.make_tensor_value_info(node.output[0], output_dtype, new_shape))
 
     def _fuse_tensor_type(self, node, out_idx, dst_type, src_type):
-        ''' 
+        '''
         update dst_tensor_type to be compatible with src_tensor_type when dimension mismatches
         '''
         dst_tensor_type = dst_type.sequence_type.elem_type.tensor_type if is_sequence(
@@ -1073,6 +1074,17 @@ class SymbolicShapeInference:
             vi = self.known_vi_[o]
             vi.CopyFrom(
                 helper.make_tensor_value_info(o, vi.type.tensor_type.elem_type,
+                                              get_shape_from_sympy_shape(sympy_shape)))
+
+    def _infer_aten_bitwise_or(self, node):
+        sympy_shape = self._get_sympy_shape(node, 0)
+        other = self._try_get_value(node, 1)
+        assert other is not None
+
+        if node.output[0]:
+            vi = self.known_vi_[node.output[0]]
+            vi.CopyFrom(
+                helper.make_tensor_value_info(node.output[0], self.known_vi_[node.input[0]].type.tensor_type.elem_type,
                                               get_shape_from_sympy_shape(sympy_shape)))
 
     def _infer_aten_diagonal(self, node):

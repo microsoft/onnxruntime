@@ -73,6 +73,12 @@ def embedding(g, weight, indices, padding_idx, scale_grad_by_freq, sparse):
     return output
 
 
+@register_symbolic('bitwise_or')
+def bitwise_or(g, self, other):
+    return g.op("com.microsoft::ATenOp", self, other,
+                name_s='aten::bitwise_or')
+
+
 @register_symbolic('diagonal')
 def diagonal(g, self, offset, dim1, dim2):
     return g.op("com.microsoft::ATenOp", self, offset, dim1, dim2,
