@@ -1,98 +1,95 @@
-- **Benchmark tool**
+**Benchmark tool**
 
-  This is useful to run end to end testing for any onnx model. For other kind of models, there are some specific change needed.
+This can be used to test beam search on 1 layer gpt2 onnx model.
 
-  **Benchmark Tool :**
-
-  1. Input file format is list of queries per line.
-
-  2. Output file is a tsv which has the following columns in order:
-
-     Total Inference Time : Inference time is the time spent in computation for outputs from inputs with a model.
-
-     Counter : Number of iterations in beam search
-
-     Total Model Time: Total time spent on model (inference + some input/output processing). There is some additional time involved which can be following (needs investigation where though)
-
-     1. The session is run IO binded in onnx, the results seems to copied from GPU to CPU for doing beam search. 
-     2. Past state is taken out and copied back for next input. 
-     3. Attention mask, positions ids are generated.
-     4. 
-
-     Total Search Time: Total time spent in beam search. Once outputs are processed, they are sorted and required number of sequences are only processed further.
-
-     Result: Resulting suggestions for the query
-
-     Total Query Time: E2E time for a query, which includes encoding, decoding, inference and search time.
-
-     
-
- Is it possible that a model won't have any suggestions, after the beam search - I don't think so
-
-  To run APPG with ONNX:
-  $env:ENABLE_ORT=1
-  $env:ENABLE_DLIS=''
-  $env:ONNX_MODEL_PATH=".\\onnx_model\\deepsuggest_opt.onnx"
-
-  python .\model\calc_appg.py .\NWMeaseurement_RefPredctions_230K.tsv .\output_file .\NWMeaseurement_RefPredctions_230K.tsv
-
-  To run with DLIS :
-
-  $env:ENABLE_DLIS=1
-  $env:ONNX_MODEL_PATH=''
-  $env:ENABLE_ORT=''
-  $env:DS_DIR="E:\\mycode\\DeepsuggestChanged\\Deepsuggest\\"
+Other kind of models are not supported yet.
 
 
-After any changes run the onnx model with:
 
->python .\model\main.py -t onnx -m .\onnx_model\deepsuggest_embed_fused_with_pos.onnx -i .\100Prefixes_RandomSet_WithNoRepeat.tsv -o .\100Prefixes_RandomSet_WithNoRepeat_onnx_post_fused_now.tsv
->python .\compare_results.py onnx
+**Requirements:**
 
-  **Benchmark Tool :**
+1. GPU machine. V100 was used to test this. 
 
-1. Input file format is list of queries per line.
+2. GPT2 ONNX Model that follows the regular GPT2 style of inputs and outputs.
 
-2. Output file is a tsv which has the following columns in order:
+    Model should have 4 inputs, with the following dimensions: 
 
-Number of iterations of search/sampling (Counter)
-Total encoding+decoding time
-Total Inference Time
-Total Search Time
-Total E2E Time
-Result
+   **input_ids** `[batch_size,seq_len]`
+
+   **position_ids** `[batch_size,seq_len]`
+
+   **attention_mask** `[batch_size,total_seq_len]`
+
+   **past_0**`[2,batch_size,16,past_seq_len,64]`
+
+   And 2 outputs:
+
+   **logits**	type: `[batch_size,seq_len,50297]`
+
+   **present_0** type: `[2,batch_size,16,total_seq_len,64]`
+
+   past_0, attention_mask, logits, present_0 can be float16 or float32. inputs_ids and position_ids are int64.
+
+   
+
+3. Create python venv with all the packages in required_packages.txt
+
+   >  pip install -r required_packages.txt
+
+   
+
+**Run the script:**
+
+```
+python .\model\main.py -t "onnx" -m .\onnx_model\deepsuggest_embed_fused_with_pos.onnx --num_beams 2 -i .\1K_queries.tsv -o .\1K_queries_onnx_post_fused_now.tsv
+```
+
+The following options are required to run the script as provided in the above example:
+
+1. -t "onnx"
+2. -m <path to the model location>
+3. --num_beams <beam_size for iterations>
+4. --input_file <input file with query per line>: 	Sample is provided in the repo, refer 1K_ queries.tsv
+5. --output_file <output file with the results> : Following the format of output.tsv
+
+| TotalInferenceTime | Counter | TotalModelTime | TotalSearchTime | Result                                                       | TotalQueryTime |
+| ------------------ | ------- | -------------- | --------------- | ------------------------------------------------------------ | -------------- |
+| 5.2609             | 4       | 6.9058         | 7.4306          | ["snap", "snake", "snacks",  "snack", "snap on", "snakes",  "snapped", "snail"] | 19.6145        |
+| 11.583             | 8       | 15.8132        | 17.6436         | ["runoff", "runoff test", "runoff test  kit", "runoff test kit/", "runoff test kit/youtube",  "runoff test kit/youtube/", "runoff test kit/youtube/h",  "runoff test kit/youtube/hc"] | 36.4981        |
+
+**Total Inference Time** : Inference time is the time spent in computation for outputs from inputs with a model.
+
+**Counter** : Number of iterations in beam search
+
+**Total Model Time**: Total time spent on model (inference + some input/output processing). There is some additional time involved which can be following 
+
+**Total Search Time**: Total time spent in beam search. Once outputs are processed, they are sorted and required number of sequences are only processed further.
+
+**Result:** Resulting suggestions for the query
+
+**Total Query Time:** E2E time for a query, which includes encoding, decoding, inference and search time.
+
+
 
 **Tokenizer :**
 
-Currently only GPT2Tokenizer is supported.
-The default tokenizer comes from 'model_files/' (probably saved from pytorch), if a custom tokenizer is required pass the path to it.
+Currently only GPT2Tokenizer is supported. The one available in the repo is under tokenizer_files\ - it is exactly same apart from the extra tokens that it uses for this particular model.
 
-**Test Data:**
+The default tokenizer comes from 'model_files/' , if a custom tokenizer is required pass the path to it. There might be some changes needed for other tokenizers to work.
+
+
+
+
+
+**Test Data included in the repo:**
 
 1K set of input queries
 
 10K set of input queries
 
-50K set of input queries
 
 
 
-1K and 10K queries are actually the first 1K and 10K queries from the 50K set. The number of inputs is the only difference.
+ **Accuracy Measurement:**
 
-
-
-How to test the script:
-
-1. Include an example to test onnx model e2e and what all results does it include
-
-  
-  **Accurancy Measurement:**
-
-  calc_appg.py is present to measure the accurancy of the prediction model 
-
-  This tool needs some more refactoring as this is in its crude form.
-
-  python .\model\calc_appg.py -t "onnx" -m .\onnx_model\deepsuggest_embed_fused_with_pos.onnx --num_beams 2 -i ..\DeepSuggest_data\NWMeasurement_RefPredictions_230K.tsv -o calc_output_file.tsv -r ..\DeepSuggest_data\NWMeasurement_RefPredictions_230K.tsv
-
-
-Made output file optional. 
+TBD.
