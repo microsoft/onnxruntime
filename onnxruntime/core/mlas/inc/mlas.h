@@ -1064,33 +1064,36 @@ MlasQuantizeLinear(
  * @param CountN
  * @return
 */
+
+template<typename OutputType>
 void
 MLASCALL
 MlasRequantizeOutput(
     const int32_t* Input,
     size_t InputLeadingDimension,
-    uint8_t* Output,
+    OutputType* Output,
     size_t OutputLeadingDimension,
     const int32_t* Bias,
     const float* Scale,
     bool PerColumnScale,
-    uint8_t ZeroPoint,
+    OutputType ZeroPoint,
     size_t StartM,
     size_t StartN,
     size_t CountM,
     size_t CountN
     );
 
+template<typename OutputType>
 class MLAS_QGEMM_REQUANT_OUTPUT_PROCESSOR : public MLAS_QGEMM_OUTPUT_PROCESSOR
 {
    public:
     MLAS_QGEMM_REQUANT_OUTPUT_PROCESSOR(
-        uint8_t* Output,
+        OutputType* Output,
         size_t OutputLeadingDimension,
         const int32_t* Bias,
         const float* Scale,
         bool PerColumnScale,
-        uint8_t ZeroPoint)
+        OutputType ZeroPoint)
         : Output_(Output),
           OutputLeadingDimension_(OutputLeadingDimension),
           Bias_(Bias),
@@ -1113,12 +1116,12 @@ class MLAS_QGEMM_REQUANT_OUTPUT_PROCESSOR : public MLAS_QGEMM_OUTPUT_PROCESSOR
 
 
    private:
-    uint8_t* Output_;
+    OutputType* Output_;
     size_t OutputLeadingDimension_;
     const int32_t* Bias_;
     const float* Scale_;
     bool PerColumnScale_;
-    uint8_t ZeroPoint_;
+    OutputType ZeroPoint_;
 };
 
 

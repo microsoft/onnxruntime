@@ -101,7 +101,7 @@ class QGemm : protected GemmBase, public MatMulIntegerBase {
 
     std::vector<float> output_scales = ComputeOutputScale(a_scale, b_scale, y_scale);
     std::unique_ptr<MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR> scale_bias_proc_ptr;
-    std::unique_ptr<MLAS_QGEMM_REQUANT_OUTPUT_PROCESSOR> requant_proc_ptr;
+    std::unique_ptr<MLAS_QGEMM_REQUANT_OUTPUT_PROCESSOR<uint8_t>> requant_proc_ptr;
     SetPostProcessor(y_zp, N, output_scales, y, gemm_param, scale_bias_proc_ptr, requant_proc_ptr);
 
     MlasGemmBatch(gemm_shape, &gemm_param, 1, context->GetOperatorThreadPool());
@@ -179,9 +179,9 @@ class QGemm : protected GemmBase, public MatMulIntegerBase {
                                Tensor* y,
                                MLAS_GEMM_U8X8_DATA_PARAMS& gemm_param,
                                std::unique_ptr<MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR>& scale_bias_proc_ptr,
-                               std::unique_ptr<MLAS_QGEMM_REQUANT_OUTPUT_PROCESSOR>& requant_proc_ptr) {
+                               std::unique_ptr<MLAS_QGEMM_REQUANT_OUTPUT_PROCESSOR<uint8_t>>& requant_proc_ptr) {
     if (nullptr != y_zp) {
-      requant_proc_ptr = std::make_unique<MLAS_QGEMM_REQUANT_OUTPUT_PROCESSOR>(
+      requant_proc_ptr = std::make_unique<MLAS_QGEMM_REQUANT_OUTPUT_PROCESSOR<uint8_t>>(
           static_cast<uint8_t*>(y->MutableDataRaw()),
           out_lda,
           nullptr,

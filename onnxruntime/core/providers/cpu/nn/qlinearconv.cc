@@ -559,7 +559,7 @@ Status QLinearConv<ActType>::Compute(OpKernelContext* context) const {
       // Transpose the input from channels first (NCHW) to channels last (NHWC).
       MlasTranspose(
           Xdata,
-          static_cast<uint8_t*>(transpose_input_buffer.get()),
+          static_cast<ActType*>(transpose_input_buffer.get()),
           static_cast<size_t>(C),
           static_cast<size_t>(input_image_size));
       input_data = static_cast<ActType*>(transpose_input_buffer.get());
