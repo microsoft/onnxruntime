@@ -29,7 +29,7 @@ steps:
     npm init -y
     npm install $(NpmPackageFilesForTest)
     node -p "require('onnxruntime-node')"
-  workingDirectory: '$(Build.BinariesDirectory)/test_e2e'
+  workingDirectory: '$(Build.BinariesDirectory)/e2e_test'
 
 - template: ../../templates/component-governance-component-detection-steps.yml
   parameters :
