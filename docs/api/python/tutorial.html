@@ -1,0 +1,224 @@
+
+<!DOCTYPE html>
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Tutorial &#8212; ONNX Runtime 1.7.0 documentation</title>
+    <link rel="stylesheet" href="static/pygments.css" type="text/css" />
+    <link rel="stylesheet" href="static/alabaster.css" type="text/css" />
+    <link rel="stylesheet" type="text/css" href="static/graphviz.css" />
+    <link rel="stylesheet" type="text/css" href="static/gallery.css" />
+    <link rel="stylesheet" type="text/css" href="static/gallery-binder.css" />
+    <link rel="stylesheet" type="text/css" href="static/gallery-dataframe.css" />
+    <link rel="stylesheet" type="text/css" href="static/gallery-rendered-html.css" />
+    <script id="documentation_options" data-url_root="./" src="static/documentation_options.js"></script>
+    <script src="static/jquery.js"></script>
+    <script src="static/underscore.js"></script>
+    <script src="static/doctools.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="API Summary" href="api_summary.html" />
+    <link rel="prev" title="Python Bindings for ONNX Runtime" href="index.html" />
+   
+  <link rel="stylesheet" href="static/custom.css" type="text/css" />
+  
+  
+  <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9" />
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <div class="section" id="tutorial">
+<h1>Tutorial<a class="headerlink" href="#tutorial" title="Permalink to this headline">¶</a></h1>
+<p><em>ONNX Runtime</em> provides an easy way to run
+machine learned models with high performance on CPU or GPU
+without dependencies on the training framework.
+Machine learning frameworks are usually optimized for
+batch training rather than for prediction, which is a
+more common scenario in applications, sites, and services.
+At a high level, you can:</p>
+<ol class="arabic simple">
+<li><p>Train a model using your favorite framework.</p></li>
+<li><p>Convert or export the model into ONNX format.
+See <a class="reference external" href="https://github.com/onnx/tutorials">ONNX Tutorials</a>
+for more details.</p></li>
+<li><p>Load and run the model using <em>ONNX Runtime</em>.</p></li>
+</ol>
+<p>In this tutorial, we will briefly create a
+pipeline with <em>scikit-learn</em>, convert it into
+ONNX format and run the first predictions.</p>
+<div class="section" id="step-1-train-a-model-using-your-favorite-framework">
+<span id="l-logreg-example"></span><h2>Step 1: Train a model using your favorite framework<a class="headerlink" href="#step-1-train-a-model-using-your-favorite-framework" title="Permalink to this headline">¶</a></h2>
+<p>We’ll use the famous iris datasets.</p>
+<p>&lt;&lt;&lt;</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">sklearn.datasets</span> <span class="kn">import</span> <span class="n">load_iris</span>
+<span class="kn">from</span> <span class="nn">sklearn.model_selection</span> <span class="kn">import</span> <span class="n">train_test_split</span>
+<span class="n">iris</span> <span class="o">=</span> <span class="n">load_iris</span><span class="p">()</span>
+<span class="n">X</span><span class="p">,</span> <span class="n">y</span> <span class="o">=</span> <span class="n">iris</span><span class="o">.</span><span class="n">data</span><span class="p">,</span> <span class="n">iris</span><span class="o">.</span><span class="n">target</span>
+<span class="n">X_train</span><span class="p">,</span> <span class="n">X_test</span><span class="p">,</span> <span class="n">y_train</span><span class="p">,</span> <span class="n">y_test</span> <span class="o">=</span> <span class="n">train_test_split</span><span class="p">(</span><span class="n">X</span><span class="p">,</span> <span class="n">y</span><span class="p">)</span>
+
+<span class="kn">from</span> <span class="nn">sklearn.linear_model</span> <span class="kn">import</span> <span class="n">LogisticRegression</span>
+<span class="n">clr</span> <span class="o">=</span> <span class="n">LogisticRegression</span><span class="p">()</span>
+<span class="n">clr</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">X_train</span><span class="p">,</span> <span class="n">y_train</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">clr</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>&gt;&gt;&gt;</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>    <span class="n">LogisticRegression</span><span class="p">()</span>
+</pre></div>
+</div>
+</div>
+<div class="section" id="step-2-convert-or-export-the-model-into-onnx-format">
+<h2>Step 2: Convert or export the model into ONNX format<a class="headerlink" href="#step-2-convert-or-export-the-model-into-onnx-format" title="Permalink to this headline">¶</a></h2>
+<p><a class="reference external" href="https://github.com/onnx/onnx">ONNX</a> is a format to describe
+the machine learned model.
+It defines a set of commonly used operators to compose models.
+There are <a class="reference external" href="https://github.com/onnx/tutorials">tools</a>
+to convert other model formats into ONNX. Here we will use
+<a class="reference external" href="https://github.com/onnx/onnxmltools">ONNXMLTools</a>.</p>
+<p>&lt;&lt;&lt;</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">skl2onnx</span> <span class="kn">import</span> <span class="n">convert_sklearn</span>
+<span class="kn">from</span> <span class="nn">skl2onnx.common.data_types</span> <span class="kn">import</span> <span class="n">FloatTensorType</span>
+
+<span class="n">initial_type</span> <span class="o">=</span> <span class="p">[(</span><span class="s1">&#39;float_input&#39;</span><span class="p">,</span> <span class="n">FloatTensorType</span><span class="p">([</span><span class="kc">None</span><span class="p">,</span> <span class="mi">4</span><span class="p">]))]</span>
+<span class="n">onx</span> <span class="o">=</span> <span class="n">convert_sklearn</span><span class="p">(</span><span class="n">clr</span><span class="p">,</span> <span class="n">initial_types</span><span class="o">=</span><span class="n">initial_type</span><span class="p">)</span>
+<span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="s2">&quot;logreg_iris.onnx&quot;</span><span class="p">,</span> <span class="s2">&quot;wb&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+    <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">onx</span><span class="o">.</span><span class="n">SerializeToString</span><span class="p">())</span>
+</pre></div>
+</div>
+<p>&gt;&gt;&gt;</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>    
+</pre></div>
+</div>
+</div>
+<div class="section" id="step-3-load-and-run-the-model-using-onnx-runtime">
+<h2>Step 3: Load and run the model using ONNX Runtime<a class="headerlink" href="#step-3-load-and-run-the-model-using-onnx-runtime" title="Permalink to this headline">¶</a></h2>
+<p>We will use <em>ONNX Runtime</em> to compute the predictions
+for this machine learning model.</p>
+<p>Note: The next release (ORT 1.10) will require explicitly setting
+the providers parameter if you want to use execution providers other
+than the default CPU provider (as opposed to the current behavior of
+providers getting set/registered by default based on the build flags) when
+instantiating InferenceSession. Following code assumes NVIDIA GPU is available,
+you can specify other execution providers or don't include providers parameter
+to use default CPU provider.</p>
+<p>&lt;&lt;&lt;</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">numpy</span>
+<span class="kn">import</span> <span class="nn">onnxruntime</span> <span class="k">as</span> <span class="nn">rt</span>
+
+<span class="n">sess</span> <span class="o">=</span> <span class="n">rt</span><span class="o">.</span><span class="n">InferenceSession</span><span class="p">(</span><span class="s2">&quot;logreg_iris.onnx&quot;</span><span class="p">,</span> <span class="n">providers=</span><span class="p">[</span><span class="s2">&quot;CUDAExecutionProvider&quot;</span><span class="p">]</span><span class="p">)</span>
+<span class="n">input_name</span> <span class="o">=</span> <span class="n">sess</span><span class="o">.</span><span class="n">get_inputs</span><span class="p">()[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">name</span>
+<span class="n">pred_onx</span> <span class="o">=</span> <span class="n">sess</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="kc">None</span><span class="p">,</span> <span class="p">{</span><span class="n">input_name</span><span class="p">:</span> <span class="n">X_test</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">numpy</span><span class="o">.</span><span class="n">float32</span><span class="p">)})[</span><span class="mi">0</span><span class="p">]</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">pred_onx</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>&gt;&gt;&gt;</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>    <span class="p">[</span><span class="mi">0</span> <span class="mi">1</span> <span class="mi">0</span> <span class="mi">0</span> <span class="mi">1</span> <span class="mi">2</span> <span class="mi">2</span> <span class="mi">0</span> <span class="mi">0</span> <span class="mi">2</span> <span class="mi">1</span> <span class="mi">0</span> <span class="mi">2</span> <span class="mi">2</span> <span class="mi">1</span> <span class="mi">1</span> <span class="mi">2</span> <span class="mi">2</span> <span class="mi">2</span> <span class="mi">0</span> <span class="mi">2</span> <span class="mi">2</span> <span class="mi">1</span> <span class="mi">2</span> <span class="mi">1</span> <span class="mi">1</span> <span class="mi">1</span> <span class="mi">0</span> <span class="mi">2</span> <span class="mi">1</span> <span class="mi">1</span> <span class="mi">1</span> <span class="mi">1</span> <span class="mi">0</span> <span class="mi">1</span> <span class="mi">0</span> <span class="mi">0</span>
+     <span class="mi">1</span><span class="p">]</span>
+</pre></div>
+</div>
+<p>The code can be changed to get one specific output
+by specifying its name into a list.</p>
+<p>&lt;&lt;&lt;</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">numpy</span>
+<span class="kn">import</span> <span class="nn">onnxruntime</span> <span class="k">as</span> <span class="nn">rt</span>
+
+<span class="n">sess</span> <span class="o">=</span> <span class="n">rt</span><span class="o">.</span><span class="n">InferenceSession</span><span class="p">(</span><span class="s2">&quot;logreg_iris.onnx&quot;</span><span class="p">,</span> <span class="n">providers=</span><span class="p">[</span><span class="s2">&quot;CUDAExecutionProvider&quot;</span><span class="p">]</span><span class="p">)</span>
+<span class="n">input_name</span> <span class="o">=</span> <span class="n">sess</span><span class="o">.</span><span class="n">get_inputs</span><span class="p">()[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">name</span>
+<span class="n">label_name</span> <span class="o">=</span> <span class="n">sess</span><span class="o">.</span><span class="n">get_outputs</span><span class="p">()[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">name</span>
+<span class="n">pred_onx</span> <span class="o">=</span> <span class="n">sess</span><span class="o">.</span><span class="n">run</span><span class="p">(</span>
+    <span class="p">[</span><span class="n">label_name</span><span class="p">],</span> <span class="p">{</span><span class="n">input_name</span><span class="p">:</span> <span class="n">X_test</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">numpy</span><span class="o">.</span><span class="n">float32</span><span class="p">)})[</span><span class="mi">0</span><span class="p">]</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">pred_onx</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>&gt;&gt;&gt;</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>    <span class="p">[</span><span class="mi">0</span> <span class="mi">1</span> <span class="mi">0</span> <span class="mi">0</span> <span class="mi">1</span> <span class="mi">2</span> <span class="mi">2</span> <span class="mi">0</span> <span class="mi">0</span> <span class="mi">2</span> <span class="mi">1</span> <span class="mi">0</span> <span class="mi">2</span> <span class="mi">2</span> <span class="mi">1</span> <span class="mi">1</span> <span class="mi">2</span> <span class="mi">2</span> <span class="mi">2</span> <span class="mi">0</span> <span class="mi">2</span> <span class="mi">2</span> <span class="mi">1</span> <span class="mi">2</span> <span class="mi">1</span> <span class="mi">1</span> <span class="mi">1</span> <span class="mi">0</span> <span class="mi">2</span> <span class="mi">1</span> <span class="mi">1</span> <span class="mi">1</span> <span class="mi">1</span> <span class="mi">0</span> <span class="mi">1</span> <span class="mi">0</span> <span class="mi">0</span>
+     <span class="mi">1</span><span class="p">]</span>
+</pre></div>
+</div>
+</div>
+</div>
+
+
+          </div>
+          
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+            <p class="logo"><a href="index.html">
+              <img class="logo" src="static/ONNX_Runtime_icon.png" alt="Logo"/>
+            </a></p>
+<h1 class="logo"><a href="index.html">ONNX Runtime</a></h1>
+
+
+
+
+
+
+
+
+<h3>Navigation</h3>
+<ul class="current">
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Tutorial</a></li>
+<li class="toctree-l1"><a class="reference internal" href="api_summary.html">API Summary</a></li>
+<li class="toctree-l1"><a class="reference internal" href="auto_examples/index.html">Gallery of examples</a></li>
+</ul>
+
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="index.html">Documentation overview</a><ul>
+      <li>Previous: <a href="index.html" title="previous chapter">Python Bindings for ONNX Runtime</a></li>
+      <li>Next: <a href="api_summary.html" title="next chapter">API Summary</a></li>
+  </ul></li>
+</ul>
+</div>
+<div id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" />
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</div>
+<script>$('#searchbox').show(0);</script>
+
+
+
+
+
+
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &copy;2018-2021, Microsoft.
+      
+      |
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 3.5.1</a>
+      &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.12</a>
+      
+      |
+      <a href="sources/tutorial.rst.txt"
+          rel="nofollow">Page source</a>
+    </div>
+
+    
+
+    
+  </body>
+</html>

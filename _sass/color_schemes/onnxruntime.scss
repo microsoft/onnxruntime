@@ -1,2 +1,13 @@
 $link-color: $blue-000;
 $btn-primary-color: $blue-000;
+
+// Code is too light in default theme //
+.highlight .n {
+  color: #555 !important;
+}
+.highlight .nn {
+  color: #555 !important;
+}
+.highlight .c1 {
+  color: #188616 !important;
+}

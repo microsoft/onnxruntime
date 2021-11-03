@@ -1,6 +1,5 @@
 ---
-parent: Tutorials
-nav_order: 5
+nav_exclude: true 
 ---
 
 # Character recognition with MNIST in Java

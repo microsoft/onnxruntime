@@ -12,6 +12,69 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <link rel="import" href="docs/redirect.json">
+    <link rel="stylesheet" href="css/custom.css">
+    <link rel="stylesheet" href="css/responsive.css">
+    <link rel="icon" href="./images/ONNXRuntime-Favicon.png" type="image/gif" sizes="16x16">
+
+    <!--Redirect for moved links-->
+
+    <!--[if lt IE 9]><script type="text/javascript">var IE_fix=true;</script><![endif]-->
+    <script type="text/javascript">
+        
+        window.onload = function ()
+        {
+            var delay = "0";
+            setTimeout(GoToURL, delay);
+        }
+        function GoToURL()
+        {
+            if(typeof IE_fix != "undefined") // IE8 and lower fix to pass the http referer
+            {
+                var url = "/docs";
+                var referLink = document.createElement("a");
+                referLink.href = url;
+                document.body.appendChild(referLink);
+                referLink.click();
+            }
+            else { 
+
+                var redirectRulesUrl = window.location.origin;
+                var isTest =  window.location.origin.includes("github.io");
+
+                if(isTest){
+                    redirectRulesUrl = redirectRulesUrl + "/onnxruntime/docs/redirect.json";
+                }
+                else{
+                    redirectRulesUrl = redirectRulesUrl + "/docs/redirect.json"
+                }
+                
+
+                $.getJSON(redirectRulesUrl, (json) => {
+
+                    var redirectRules = json.redirectRules;
+                    var pathname = window.location.pathname;
+                    
+                    for(let i = 0; i < redirectRules.length; i++){
+
+                        if(pathname.includes(redirectRules[i].pathname)){
+                            if(!isTest){
+                                window.location.replace(redirectRules[i].redirect);
+                                break;
+                             }
+                             else{
+                                 window.location.replace(redirectRules[i].testRedirect);
+                                 break;
+                             }
+                        }
+                    }
+                });
+
+             }
+        }
+    </script>
+
+
     <title>ONNX Runtime | Oops</title>
     <link rel="icon" href="/images/ONNXRuntime-Favicon.png" type="image/gif" sizes="16x16">
     <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Open+Sans:300,400,700">
@@ -40,6 +103,9 @@
                             <ul class="navbar-nav navbar-nav mr-auto text-uppercase" id="navigation">
                                 <li class="nav-item">
                                     <a class="nav-link pr-3" href="/index.html#getStartedTable">Get Started</a>
+                                </li>
+                                <li class="nav-item">
+                                    <a class="nav-link pr-3" href="/docs">Docs</a>
                                 </li>
                                 <li class="nav-item">
                                     <a class="nav-link pr-3" target="_blank" href="https://cloudblogs.microsoft.com/opensource/tag/onnx">News</a>
