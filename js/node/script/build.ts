@@ -54,9 +54,9 @@ if (ONNXRUNTIME_BUILD_DIR && typeof ONNXRUNTIME_BUILD_DIR === 'string') {
 // set CMAKE_OSX_ARCHITECTURES for macOS build
 if (os.platform() === 'darwin') {
   if (ARCH === 'x64') {
-    args.push(`--CDCMAKE_OSX_ARCHITECTURES=x86_64`);
+    args.push('--CDCMAKE_OSX_ARCHITECTURES=x86_64');
   } else if (ARCH === 'arm64') {
-    args.push(`--CDCMAKE_OSX_ARCHITECTURES=arm64`);
+    args.push('--CDCMAKE_OSX_ARCHITECTURES=arm64');
   } else {
     throw new Error(`architecture not supported for macOS build: ${ARCH}`);
   }
