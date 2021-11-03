@@ -39,7 +39,7 @@ Status Trilu::ComputeInternal(OpKernelContext* ctx) const {
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Input tensor should have a rank of at least 2");
   }
   Tensor* output = ctx->Output(0, shape);
-  int matrix_size = input_dims[rank - 1] * input_dims[rank - 2];
+  int64_t matrix_size = input_dims[rank - 1] * input_dims[rank - 2];
   if (matrix_size == 0) {
     return Status::OK();
   }
