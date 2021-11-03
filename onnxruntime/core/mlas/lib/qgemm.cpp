@@ -31,8 +31,8 @@ struct MLAS_GEMM_U8X8_WORK_BLOCK {
 void
 MlasGemmU8X8Threaded(
     const MLAS_GEMM_U8X8_WORK_BLOCK* WorkBlock,
-    const MLAS_GEMM_U8X8_SHAPE_PARAMS* Shape,
-    const MLAS_GEMM_U8X8_DATA_PARAMS* Data,
+    const MLAS_GEMM_QUANT_SHAPE_PARAMS* Shape,
+    const MLAS_GEMM_QUANT_DATA_PARAMS* Data,
     ptrdiff_t ThreadId
     )
 /*++
@@ -112,8 +112,8 @@ Return Value:
 void
 MLASCALL
 MlasGemm(
-    const MLAS_GEMM_U8X8_SHAPE_PARAMS &Shape,
-    const MLAS_GEMM_U8X8_DATA_PARAMS &DataParams,
+    const MLAS_GEMM_QUANT_SHAPE_PARAMS &Shape,
+    const MLAS_GEMM_QUANT_DATA_PARAMS &DataParams,
     MLAS_THREADPOOL *ThreadPool)
 /*++
 
@@ -143,8 +143,8 @@ Return Value:
 void
 MLASCALL
 MlasGemmBatch(
-    const MLAS_GEMM_U8X8_SHAPE_PARAMS& Shape,
-    const MLAS_GEMM_U8X8_DATA_PARAMS* DataParams,
+    const MLAS_GEMM_QUANT_SHAPE_PARAMS& Shape,
+    const MLAS_GEMM_QUANT_DATA_PARAMS* DataParams,
     const size_t BatchN,
     MLAS_THREADPOOL* ThreadPool)
 {

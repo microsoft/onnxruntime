@@ -653,7 +653,7 @@ Status QLinearConv<ActType>::Compute(OpKernelContext* context) const {
             static_cast<size_t>(kernel_size));
       } else {
         for (int64_t group_id = 0; group_id < group_count; ++group_id) {
-          MLAS_GEMM_U8X8_DATA_PARAMS gemm_params;
+          MLAS_GEMM_QUANT_DATA_PARAMS gemm_params;
           gemm_params.ZeroPointA = X_zero_point_value;
           if (packed_W_buffer_) {
             gemm_params.B = static_cast<const int8_t*>(packed_W_buffer_.get()) + group_id * packed_W_size_,
@@ -722,7 +722,7 @@ Status QLinearConv<ActType>::Compute(OpKernelContext* context) const {
             gemm_params.lda = static_cast<size_t>(C);
           }
 
-          MLAS_GEMM_U8X8_SHAPE_PARAMS gemm_shape;
+          MLAS_GEMM_QUANT_SHAPE_PARAMS gemm_shape;
           gemm_shape.M = static_cast<size_t>(output_count);
           gemm_shape.N = static_cast<size_t>(group_output_channels);
           gemm_shape.K = static_cast<size_t>(kernel_dim);

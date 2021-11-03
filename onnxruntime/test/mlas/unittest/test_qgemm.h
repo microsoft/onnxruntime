@@ -33,13 +33,13 @@ class MlasQgemmU8X8U8X8TestBase : public MlasTestBase {
                 bool BIsSigned,
                 int32_t* C,
                 size_t ldc) {
-    MLAS_GEMM_U8X8_SHAPE_PARAMS GemmShape;
+    MLAS_GEMM_QUANT_SHAPE_PARAMS GemmShape;
     GemmShape.M = M;
     GemmShape.N = N;
     GemmShape.K = K;
     GemmShape.BIsSigned = BIsSigned;
 
-    std::vector<MLAS_GEMM_U8X8_DATA_PARAMS> GemmParameters(BatchSize);
+    std::vector<MLAS_GEMM_QUANT_DATA_PARAMS> GemmParameters(BatchSize);
 
     for (size_t i = 0; i < GemmParameters.size(); i++) {
       auto& params = GemmParameters[i];
@@ -76,13 +76,13 @@ class MlasQgemmU8X8U8X8TestBase : public MlasTestBase {
                 bool BIsSigned,
                 int32_t* C,
                 size_t ldc) {
-    MLAS_GEMM_U8X8_SHAPE_PARAMS GemmShape;
+    MLAS_GEMM_QUANT_SHAPE_PARAMS GemmShape;
     GemmShape.M = M;
     GemmShape.N = N;
     GemmShape.K = K;
     GemmShape.BIsSigned = BIsSigned;
 
-    std::vector<MLAS_GEMM_U8X8_DATA_PARAMS> GemmParameters(BatchSize);
+    std::vector<MLAS_GEMM_QUANT_DATA_PARAMS> GemmParameters(BatchSize);
 
     for (size_t i = 0; i < GemmParameters.size(); i++) {
       auto& params = GemmParameters[i];
@@ -122,7 +122,7 @@ class MlasQgemmU8X8U8X8TestBase : public MlasTestBase {
                 size_t ldc,
                 float CScale,
                 const float* Bias) {
-    MLAS_GEMM_U8X8_SHAPE_PARAMS GemmShape;
+    MLAS_GEMM_QUANT_SHAPE_PARAMS GemmShape;
     GemmShape.M = M;
     GemmShape.N = N;
     GemmShape.K = K;
@@ -131,7 +131,7 @@ class MlasQgemmU8X8U8X8TestBase : public MlasTestBase {
     std::vector<MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR> ScaleBiasProcessors;
     ScaleBiasProcessors.reserve(BatchSize);
 
-    std::vector<MLAS_GEMM_U8X8_DATA_PARAMS> GemmParameters(BatchSize);
+    std::vector<MLAS_GEMM_QUANT_DATA_PARAMS> GemmParameters(BatchSize);
 
     for (size_t i = 0; i < BatchSize; i++) {
       auto& params = GemmParameters[i];
