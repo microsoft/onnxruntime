@@ -186,30 +186,22 @@ def combine_unsqueeze_and_permute_for_matmul(unsqueeze_axes, perm1, perm2):
 def is_axes_contiguous(axes):
     return len(axes) < 2 or all(axes[axis] + 1 == axes[axis + 1] for axis in range(len(axes) - 1))
 
-def get_shape_tensor_by_axes(g, input, input_shape, axes):
+def get_shape_tensor_by_axes(g, input, input_shape, axes, need_numel_shape):
     if input_shape is None:
         input_shape = g.op("Shape", input)
     shape_tensor = g.op("Gather", input_shape, g.op("Constant", value_t=torch.tensor(axes, dtype=torch.int64)), axis_i=0)
-    return shape_tensor, input_shape
-
-def get_numel_shape_tensor_by_axes(g, input, input_shape, axes):
-    assert len(axes) > 1
-    if input_shape is None:
-        input_shape = g.op("Shape", input)
-    shape_tensor = g.op("Gather", input_shape, g.op("Constant", value_t=torch.tensor(axes, dtype=torch.int64)), axis_i=0)
-    return g.op("ReduceProd", shape_tensor), input_shape
+    numel_shape_tensor = None
+    if need_numel_shape:
+        assert len(axes) > 1
+        numel_shape_tensor = g.op("ReduceProd", shape_tensor)
+    return shape_tensor, numel_shape_tensor, input_shape
 
 def reshape_tensor(g, input, shape_tensors):
     shape_tensor = g.op("Concat", *shape_tensors, axis_i=0) if len(shape_tensors) > 1 else shape_tensors[0]
     return g.op("Reshape", input, shape_tensor)
 
 def permute_and_reshape_tensor(g, tensor, is_lhs, rank, perm, matmul_output_axes, contraction_axes,
-                               batch_length, contraction_numel_tensor, shape_tensor):
-    matmul_output_numel_tensor = None
-    if len(matmul_output_axes) > 1:
-        matmul_output_numel_tensor, shape_tensor = get_numel_shape_tensor_by_axes(
-            g, tensor, shape_tensor, matmul_output_axes)
-
+                               batch_length, matmul_output_numel_tensor, contraction_numel_tensor, shape_tensor):
     # If matmul_output_axes and contraction_axes are contiguous in input tensor,
     # we can move Reshape to before Transpose, so it's possible that the Transpoase is fused to MatMul.
     # Otherwise, we have to Transpose first to move those axes together and then Reshape.
@@ -250,8 +242,8 @@ def permute_and_reshape_tensor(g, tensor, is_lhs, rank, perm, matmul_output_axes
                 elif axis == remaining_axes[-1]:
                     shape_tensors.append(g.op("Constant", value_t=torch.tensor([-1], dtype=torch.int64)))
                 else:
-                    single_axis_shape_tensor, shape_tensor = get_shape_tensor_by_axes(
-                        g, tensor, shape_tensor, [axis])
+                    single_axis_shape_tensor, _, shape_tensor = get_shape_tensor_by_axes(
+                        g, tensor, shape_tensor, [axis], False)
                     shape_tensors.append(single_axis_shape_tensor)
             # Adjust the perm.
             perm = [axis for axis in perm if axis not in axes_to_remove]
@@ -391,8 +383,23 @@ def einsum(g, equation, tensor_list):
     # contraction_numel_tensor should be tensor([size(k)]) for the example, but since length is 1, it's None here.
     contraction_numel_tensor = None
     if len(lhs_contraction_axes) > 1:
-        contraction_numel_tensor, lhs_shape_tensor = get_numel_shape_tensor_by_axes(
-            g, lhs_tensor, lhs_shape_tensor, lhs_contraction_axes)
+        _, contraction_numel_tensor, lhs_shape_tensor = get_shape_tensor_by_axes(
+            g, lhs_tensor, lhs_shape_tensor, lhs_contraction_axes, True)
+
+    # Prepare some shape tensors for Reshape if needed.
+    # Both lhs_matmul_output_shape_tensor and lhs_matmul_output_numel_tensor is None for the example.
+    lhs_matmul_output_shape_tensor = None
+    lhs_matmul_output_numel_tensor = None
+    if len(lhs_matmul_output_axes) > 1:
+        lhs_matmul_output_shape_tensor, lhs_matmul_output_numel_tensor, lhs_shape_tensor = get_shape_tensor_by_axes(
+            g, lhs_tensor, lhs_shape_tensor, lhs_matmul_output_axes, True)
+
+    # Both rhs_matmul_output_shape_tensor and rhs_matmul_output_numel_tensor is None for the example.
+    rhs_matmul_output_shape_tensor = None
+    rhs_matmul_output_numel_tensor = None
+    if len(rhs_matmul_output_axes) > 1:
+        rhs_matmul_output_shape_tensor, rhs_matmul_output_numel_tensor, rhs_shape_tensor = get_shape_tensor_by_axes(
+            g, rhs_tensor, rhs_shape_tensor, rhs_matmul_output_axes, True)
 
     new_lhs_tensor = lhs_tensor
     # Need to Reshape lhs_tensor if lhs_matmul_output_axes or lhs_contraction_axes is not 1, otherwise permute it directly.
@@ -400,7 +407,7 @@ def einsum(g, equation, tensor_list):
     if len(lhs_matmul_output_axes) != 1 or len(lhs_contraction_axes) != 1:
         new_lhs_tensor, lhs_shape_tensor = permute_and_reshape_tensor(
             g, lhs_tensor, True, len(lhs_labels), lhs_perm, lhs_matmul_output_axes, lhs_contraction_axes,
-            len(batched_axes), contraction_numel_tensor, lhs_shape_tensor)
+            len(batched_axes), lhs_matmul_output_numel_tensor, contraction_numel_tensor, lhs_shape_tensor)
     else:
         if need_permute(lhs_perm):
             new_lhs_tensor = g.op("Transpose", lhs_tensor, perm_i=lhs_perm)
@@ -411,7 +418,7 @@ def einsum(g, equation, tensor_list):
     if len(rhs_matmul_output_axes) != 1 or len(rhs_contraction_axes) != 1:
         new_rhs_tensor, rhs_shape_tensor = permute_and_reshape_tensor(
             g, rhs_tensor, False, len(rhs_labels), rhs_perm, rhs_matmul_output_axes, rhs_contraction_axes,
-            len(batched_axes), contraction_numel_tensor, rhs_shape_tensor)
+            len(batched_axes), rhs_matmul_output_numel_tensor, contraction_numel_tensor, rhs_shape_tensor)
     else:
         if need_permute(rhs_perm):
             new_rhs_tensor = g.op("Transpose", rhs_tensor, perm_i=rhs_perm)
@@ -427,15 +434,11 @@ def einsum(g, equation, tensor_list):
             if len(lhs_matmul_output_axes) == 1:
                 shape_tensors.append(g.op("Constant", value_t=torch.tensor([0], dtype=torch.int64)))
             else:
-                lhs_matmul_output_shape_tensor, lhs_shape_tensor = get_shape_tensor_by_axes(
-                    g, lhs_tensor, lhs_shape_tensor, lhs_matmul_output_axes)
                 shape_tensors.append(lhs_matmul_output_shape_tensor)
         if rhs_matmul_output_axes:
             if len(rhs_matmul_output_axes) == 1:
                 shape_tensors.append(g.op("Constant", value_t=torch.tensor([-1], dtype=torch.int64)))
             else:
-                rhs_matmul_output_shape_tensor, rhs_shape_tensor = get_shape_tensor_by_axes(
-                    g, rhs_tensor, rhs_shape_tensor, rhs_matmul_output_axes)
                 shape_tensors.append(rhs_matmul_output_shape_tensor)
         result = reshape_tensor(g, result, shape_tensors)
 
