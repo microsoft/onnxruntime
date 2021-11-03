@@ -66,8 +66,15 @@
         "^test_mul_uint8_cpu",
         "^test_add_uint8_cpu",
         "^test_div_uint8_cpu",
-        // Following tests are for opset 15 ops and are not yet implemented in ORT
+        // Optional type support not implemented in ORT
         "^test_optional_*",
+        "^test_if_opt",
+        "^test_loop16_seq_none",
+        // Following tests are for opset 16 ops and are not yet implemented in ORT
+        "^test_identity",
+        "^test_roialign_aligned_*",
+        "^test_scatternd_*",
+        "^test_scatter_elements_with_duplicate_indices",
         //GPU failures
         "^test_batchnorm_epsilon_training_mode_cuda",
         "^test_batchnorm_example_training_mode_cuda",

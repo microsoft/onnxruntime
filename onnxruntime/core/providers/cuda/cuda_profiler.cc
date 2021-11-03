@@ -126,7 +126,7 @@ void CudaProfiler::EndProfiling(TimePoint start_time, Events& events) {
                                                                          {"block_y", std::to_string(stat.block_y_)},
                                                                          {"block_z", std::to_string(stat.block_z_)}};
       EventRecord event{
-          KEVENT, -1, -1, stat.name_, DUR(profiling_start, stat.stop_), DUR(stat.start_, stat.stop_), {args.begin(), args.end()}};
+          KEVENT, -1, -1, stat.name_, DUR(profiling_start, stat.start_), DUR(stat.start_, stat.stop_), {args.begin(), args.end()}};
       auto ts = id_map[stat.correlation_id];
       if (event_map.find(ts) == event_map.end()) {
         event_map.insert({ts, {event}});
@@ -140,15 +140,14 @@ void CudaProfiler::EndProfiling(TimePoint start_time, Events& events) {
       while (insert_iter != events.end() && insert_iter->ts < ts) {
         insert_iter++;
       }
-      if (insert_iter != events.end() && insert_iter != events.begin() && insert_iter->ts > ts) {
-        insert_iter--;
-      }
       if (insert_iter != events.end() && insert_iter->ts == ts) {
         for (auto& evt_iter : map_iter.second) {
           evt_iter.args["op_name"] = insert_iter->args["op_name"];
         }
+        insert_iter = events.insert(insert_iter+1, map_iter.second.begin(), map_iter.second.end());
+      } else {
+        insert_iter = events.insert(insert_iter, map_iter.second.begin(), map_iter.second.end());
       }
-      insert_iter = events.insert(insert_iter, map_iter.second.begin(), map_iter.second.end());
       while (insert_iter != events.end() && insert_iter->cat == EventCategory::KERNEL_EVENT) {
         insert_iter++;
       }
