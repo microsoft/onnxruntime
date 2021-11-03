@@ -57,7 +57,6 @@ using namespace TestGlobalCustomThreadHooks;
 int main(int argc, char** argv) {
   int status = 0;
   const int thread_pool_size = std::thread::hardware_concurrency();
-  const int expexted_custom_calls = (thread_pool_size - 1) << 1;
   ORT_TRY {
     ::testing::InitGoogleTest(&argc, argv);
     const OrtApi* g_ort = OrtGetApiBase()->GetApi(ORT_API_VERSION);
@@ -112,6 +111,7 @@ int main(int argc, char** argv) {
   ort_env.reset();  //If we don't do this, it will crash
 
 #ifndef _OPENMP
+  const int expexted_custom_calls = (thread_pool_size - 1) << 1;
   ORT_ENFORCE(custom_creation_hook_called == expexted_custom_calls, "custom thread creation functions were not called as expected");
   ORT_ENFORCE(custom_join_hook_called == expexted_custom_calls, "custom thread joining functions were not called as expected");
 #endif
