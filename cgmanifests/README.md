@@ -15,11 +15,11 @@ If any of these dependencies change, this file should be updated.
 ### How to Generate
 1. Change to the repository root directory.
 2. Ensure the git submodules are checked out and up to date. For example, with:
-    ```bash
+    ```
     $ git submodule update --init --recursive
     ```
 3. Run the generator script:
-    ```bash
+    ```
     $ python cgmanifests/generate_cgmanifest.py
     ```
 
