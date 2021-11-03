@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 import {Attribute} from '../../../attribute';
+import {MAX_CLIP, MIN_CLIP} from '../../../util';
 import {GlslValueFunction} from '../glsl-definitions';
 import {glslClip, glslRelu, glslSigmoid} from './unary-op';
 
@@ -39,7 +40,7 @@ export const parseInternalActivationAttributes = (attributes: Attribute): Intern
   const activation = attributes.getString('activation', '');
 
   if (activation === 'Clip') {
-    const [clipMin, clipMax] = attributes.getFloats('activation_params', [-3.402823e+38, 3.402823e+38]);
+    const [clipMin, clipMax] = attributes.getFloats('activation_params', [MIN_CLIP, MAX_CLIP]);
     return {activation, clipMax, clipMin, activationCacheKey: `${activation}:${clipMin},${clipMax}`};
   }
   return {activation, activationCacheKey: activation};
