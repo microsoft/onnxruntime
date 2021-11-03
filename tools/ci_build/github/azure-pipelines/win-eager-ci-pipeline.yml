@@ -11,7 +11,6 @@ jobs:
     matrix:
       x64_release:
         BuildConfig: 'RelWithDebInfo'
-        UseOmp: ''
         EnvSetupScript: setup_env.bat
         buildArch: x64
         additionalBuildFlags: --use_dnnl --build_java --build_nodejs
