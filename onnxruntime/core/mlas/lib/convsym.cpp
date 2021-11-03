@@ -213,8 +213,12 @@ MlasConvSymPackWSize(
 
         if (ConvSymDispatch->DepthwiseKernel != nullptr &&
             InputChannels == 1 && OutputChannels == 1) {
-
-            size_t AlignedGroupCount = (GroupCount + 15) & ~15;
+#ifdef MLAS_TARGET_ARM64
+            constexpr size_t GroupAlign = 8;
+#else
+            constexpr size_t GroupAlign = 16;
+#endif
+            size_t AlignedGroupCount = (GroupCount + GroupAlign - 1) & ~(GroupAlign - 1);
 
             if (AlignedGroupCount != GroupCount) {
                 return 0;

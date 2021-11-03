@@ -276,7 +276,7 @@ SkipScaleVecLoad2
 ProcC16P1
         //
         // Channel 16 kernel size 1
-        // TODO!! seperate kernel for this?
+        // TODO!! is this reachable at all?
         //
         ldr     x12,[x14],#8                // x12 -> A2
         ldr     x13,[x15],#8                // x13 -> A3
@@ -485,7 +485,6 @@ SkipScaleBroadcast
         b.lo    ExitKernel                // exit if OutputCount < 4
         str     q20,[x2]
 
-
 ExitKernel
         EPILOG_RESTORE_REG_PAIR d14,d15,#48
         EPILOG_RESTORE_REG_PAIR d12,d13,#32
@@ -493,109 +492,198 @@ ExitKernel
         EPILOG_RESTORE_REG_PAIR d8,d9,#64!
         EPILOG_RETURN
 
-//
-// Process an input block of length Channels for each element of the kernel.
-//
-// Filter:  v0
-// Input:
-// x0  -> x10 -> v4
-// x9  -> x11 -> v6
-// x14 -> x12 -> v2
-// x15 -> x13 -> v10
-//
 Process8Channels
         cmp     x3,1
         b.eq    ProcC8P1
-        ldr     x12,[x14],#8                // x12 -> A2
-        ldr     x13,[x15],#8                // x13 -> A3
+
+        ldr     x12,[x0],#8                 // x12 -> A0 iter 1
+        ldr     x13,[x9],#8                 // x13 -> A1 iter 1
+        ld1     {v0.8b},[x1],x4             // filter iter 0
+        ld1     {v1.8b},[x1],x4             // filter iter 1
+        ldr     d4,[x10,x5]                 // A0 iter 0
+        ldr     x10,[x14],#8                // x10 -> A2 iter 0
         mov     v28.16b,v24.16b
+        ldr     d6,[x11,x5]                 // A1 iter 0
         mov     v29.16b,v25.16b
+        ldr     x11,[x15],#8                // x11 -> A3 iter 0
         mov     v16.16b,v24.16b
+        ldr     d2,[x12,x5]                 // A0 iter 1
         mov     v17.16b,v25.16b
-        ld1     {v0.d}[0],[x1],x4
-        subs    x3,x3,1                     // decrement input blocks remaining
-        ldr     d4,[x10,x5]
-        ldr     d6,[x11,x5]
-        ldr     d2,[x12,x5]
-        ldr     d10,[x13,x5]
+        ldr     x12,[x14],#8                // x12 -> A2 iter 1
+        subs    x3,x3,2                     // decrement input blocks remaining
+        ldr     d10,[x13,x5]                // A1 iter 1
         mov     v20.16b,v24.16b
+        ldr     x13,[x15],#8                // x13 -> A3 iter 1
         mov     v21.16b,v25.16b
 
 BlockLoopC8
-        b.ls    EpilogueC8P1
-        ldr     x10,[x0],#8                 // x10 -> A0
-        ldr     x11,[x9],#8                 // x11 -> A1
-        ldr     x12,[x14],#8                // x12 -> A2
-        ldr     x13,[x15],#8                // x13 -> A3
+        //
+        // Process 2 pixels, and load next two pixels
+        //
         eor     v4.8b,v4.8b,v8.8b           // fix sign bits
         eor     v6.8b,v6.8b,v8.8b
+        smull   v12.8h,v0.8b,v4.8b
+        ldr     d4,[x10,x5]                 // A2 iter 0
+        smull   v14.8h,v0.8b,v6.8b
+        b.eq    EpilogueC8P2
+        ldr     x10,[x0],#8                 // x10 -> A0 iter 2
         eor     v2.8b,v2.8b,v8.8b
         eor     v10.8b,v10.8b,v8.8b
-        smull   v5.8h,v0.8b,v4.8b
-        smull   v7.8h,v0.8b,v6.8b
-        smull   v3.8h,v0.8b,v2.8b
-        smull   v11.8h,v0.8b,v10.8b
-        ldr     d4,[x10,x5]
-        ld1     {v0.d}[0],[x1],x4
-        ldr     d6,[x11,x5]
-        ldr     d2,[x12,x5]
-        ldr     d10,[x13,x5]
-        saddw   v24.4s,v24.4s,v5.4h
-        saddw2  v25.4s,v25.4s,v5.8h
-        saddw   v28.4s,v28.4s,v7.4h
-        saddw2  v29.4s,v29.4s,v7.8h
-        subs    x3,x3,1                     // decrement input blocks remaining
-        saddw   v16.4s,v16.4s,v3.4h
-        saddw2  v17.4s,v17.4s,v3.8h
-        saddw   v20.4s,v20.4s,v11.4h
-        saddw2  v21.4s,v21.4s,v11.8h
+        ldr     d6,[x11,x5]                 // A3 iter 0
+        cmp     x3,1
+        smlal   v12.8h,v1.8b,v2.8b
+        ldr     x11,[x9],#8                 // x11 -> A1 iter 2
+        smlal   v14.8h,v1.8b,v10.8b
+        ldr     d2,[x12,x5]                 // A2 iter 1
+        b.eq    EpilogueC8P3                // 3 pixel remains      
+        ldr     d10,[x13,x5]                // A3 iter 1
+        saddw   v24.4s,v24.4s,v12.4h
+        ldr     x12,[x0],#8                 // x12 -> A0 iter 3
+        saddw2  v25.4s,v25.4s,v12.8h
+        ldr     x13,[x9],#8                 // x13 -> A1 iter 3
+        saddw   v28.4s,v28.4s,v14.4h
+        saddw2  v29.4s,v29.4s,v14.8h
+        eor     v4.8b,v4.8b,v8.8b
+        eor     v6.8b,v6.8b,v8.8b
+        subs    x3,x3,2                     // decrement input blocks remaining
+        smull   v12.8h,v0.8b,v4.8b
+        ldr     d4,[x10,x5]                 // A0 iter 2
+        smull   v14.8h,v0.8b,v6.8b
+        ldr     x10,[x14],#8                // x10 -> A2 iter 2
+        ldr     d6,[x11,x5]                 // A1 iter 2
+        eor     v2.8b,v2.8b,v8.8b
+        eor     v10.8b,v10.8b,v8.8b
+        ld1     {v0.8b},[x1],x4             // filter iter 2
+        smlal   v12.8h,v1.8b,v2.8b
+        ldr     x11,[x15],#8                // x11 -> A3 iter 2
+        ldr     d2,[x12,x5]                 // A0 iter 3
+        smlal   v14.8h,v1.8b,v10.8b
+        ldr     x12,[x14],#8                // x12 -> A2 iter 3
+        saddw   v16.4s,v16.4s,v12.4h
+        ldr     d10,[x13,x5]                // A1 iter 3
+        saddw2  v17.4s,v17.4s,v12.8h
+        ld1     {v1.8b},[x1],x4             // filter iter 3
+        saddw   v20.4s,v20.4s,v14.4h
+        ldr     x13,[x15],#8                // x13 -> A3 iter 3
+        saddw2  v21.4s,v21.4s,v14.8h
         b       BlockLoopC8
+
+EpilogueC8P2
+        //
+        // Loop epilogue (process last 2 pixels) mixed
+        // with loading of dequantization params
+        //
+        ldr     d6,[x11,x5]                 // A3 iter 0
+        eor     v2.8b,v2.8b,v8.8b
+        eor     v10.8b,v10.8b,v8.8b
+        smlal   v12.8h,v1.8b,v2.8b
+        ldr     d2,[x12,x5]                 // A2 iter 1
+        smlal   v14.8h,v1.8b,v10.8b
+        ldr     d10,[x13,x5]                // A3 iter 1
+        saddw   v24.4s,v24.4s,v12.4h
+        saddw2  v25.4s,v25.4s,v12.8h
+        saddw   v28.4s,v28.4s,v14.4h
+        saddw2  v29.4s,v29.4s,v14.8h
+        ldr     w9,[sp,#ConvSymDepthwiseKernelFrame_KernelFlags]
+        eor     v4.8b,v4.8b,v8.8b
+        eor     v6.8b,v6.8b,v8.8b
+        smull   v12.8h,v0.8b,v4.8b
+        ldr     x12,[x8,#ConvSymDepthwisePostProcessParams_Scale]
+        smull   v14.8h,v0.8b,v6.8b
+        ldr     w15,[x8,#ConvSymDepthwisePostProcessParams_ZeroPoint]
+        eor     v2.8b,v2.8b,v8.8b
+        eor     v10.8b,v10.8b,v8.8b
+        smlal   v12.8h,v1.8b,v2.8b
+        smlal   v14.8h,v1.8b,v10.8b
+        tst     w9,#MLAS_CONV_SYM_FLAG_PER_CHANNEL_SCALE
+        ld1r    {v4.4s},[x12]               // load scale val
+        b.eq    SkipScaleVecLoad2C8
+        ldp     q4,q11,[x12],#32            // load scale vector if per channel
+SkipScaleVecLoad2C8
+        saddw   v16.4s,v16.4s,v12.4h
+        saddw2  v17.4s,v17.4s,v12.8h
+        saddw   v20.4s,v20.4s,v14.4h
+        saddw2  v21.4s,v21.4s,v14.8h
+        b       DequantC8
 
 ProcC8P1
         //
         // Channel 8 kernel size 1
+        // TODO!! is this reachable at all?
         //
         ldr     x12,[x14],#8                // x12 -> A2
-        ldr     x13,[x15],#8                // x13 -> A3
         mov     v28.16b,v24.16b
+        ldr     x13,[x15],#8                // x13 -> A3
         mov     v29.16b,v25.16b
+        ld1     {v0.8b},[x1]
         mov     v16.16b,v24.16b
-        mov     v17.16b,v25.16b
-        ld1     {v0.d}[0],[x1],x4
-        subs    x3,x3,1                     // decrement input blocks remaining
         ldr     d4,[x10,x5]
+        mov     v17.16b,v25.16b
         ldr     d6,[x11,x5]
-        ldr     d2,[x12,x5]
-        ldr     d10,[x13,x5]
         mov     v20.16b,v24.16b
+        ldr     d2,[x12,x5]
+        subs    x3,x3,2                     // decrement input blocks remaining
+        ldr     d10,[x13,x5]
         mov     v21.16b,v25.16b
         b       EpilogueC8P1
 
-EpilogueC8P1
-        ldr     w9,[sp,#ConvSymDepthwiseKernelFrame_KernelFlags]
-        ldr     x12,[x8,#ConvSymDepthwisePostProcessParams_Scale]
-        eor     v4.8b,v4.8b,v8.8b           // fix sign bits
+EpilogueC8P3
+        //
+        // Loop epilogue (process 2 of last 3 pixels)
+        //
+        ldr     x12,[x14],#8                // x12 -> A2 iter 2
+        ldr     d10,[x13,x5]                // A3 iter 1
+        saddw   v24.4s,v24.4s,v12.4h
+        saddw2  v25.4s,v25.4s,v12.8h
+        ldr     x13,[x15],#8                // x13 -> A3 iter 2
+        saddw   v28.4s,v28.4s,v14.4h
+        saddw2  v29.4s,v29.4s,v14.8h
+        eor     v4.8b,v4.8b,v8.8b
         eor     v6.8b,v6.8b,v8.8b
+        smull   v12.8h,v0.8b,v4.8b
+        ldr     d4,[x10,x5]                 // A0 iter 2
+        smull   v14.8h,v0.8b,v6.8b
+        ld1     {v0.8b},[x1]                // filter iter 2
         eor     v2.8b,v2.8b,v8.8b
         eor     v10.8b,v10.8b,v8.8b
-        smull   v5.8h,v0.8b,v4.8b
-        smull   v7.8h,v0.8b,v6.8b
-        smull   v3.8h,v0.8b,v2.8b
-        smull   v11.8h,v0.8b,v10.8b
+        ldr     d6,[x11,x5]                 // A1 iter 2
+        smlal   v12.8h,v1.8b,v2.8b
+        ldr     d2,[x12,x5]                 // A2 iter 2
+        smlal   v14.8h,v1.8b,v10.8b
+        ldr     d10,[x13,x5]                // A3 iter 2
+        saddw   v16.4s,v16.4s,v12.4h
+        saddw2  v17.4s,v17.4s,v12.8h
+        saddw   v20.4s,v20.4s,v14.4h
+        saddw2  v21.4s,v21.4s,v14.8h
+
+EpilogueC8P1
+        //
+        // Loop epilogue (process last single pixel) mixed with loading of dequantization params
+        //
+        ldr     w9,[sp,#ConvSymDepthwiseKernelFrame_KernelFlags]
+        eor     v4.8b,v4.8b,v8.8b
+        eor     v6.8b,v6.8b,v8.8b
+        ldr     x12,[x8,#ConvSymDepthwisePostProcessParams_Scale]
+        smull   v12.8h,v0.8b,v4.8b
         ldr     w15,[x8,#ConvSymDepthwisePostProcessParams_ZeroPoint]
-        saddw   v24.4s,v24.4s,v5.4h
-        saddw2  v25.4s,v25.4s,v5.8h
+        smull   v14.8h,v0.8b,v6.8b
+        saddw   v24.4s,v24.4s,v12.4h
+        saddw2  v25.4s,v25.4s,v12.8h
+        saddw   v28.4s,v28.4s,v14.4h
+        saddw2  v29.4s,v29.4s,v14.8h
+        eor     v2.8b,v2.8b,v8.8b
+        eor     v10.8b,v10.8b,v8.8b
+        smull   v12.8h,v0.8b,v2.8b
+        smull   v14.8h,v0.8b,v10.8b
         tst     w9,#MLAS_CONV_SYM_FLAG_PER_CHANNEL_SCALE
-        ld1r    {v4.4s},[x12]               // load scale Value
+        ld1r    {v4.4s},[x12]               // load scale val
         b.eq    SkipScaleVecLoadC8
-        ldp     q4,q5,[x12]                 // load scale vector
+        ldp     q4,q11,[x12]                // load scale vector if per channel
 SkipScaleVecLoadC8
-        saddw   v28.4s,v28.4s,v7.4h
-        saddw2  v29.4s,v29.4s,v7.8h
-        saddw   v16.4s,v16.4s,v3.4h
-        saddw2  v17.4s,v17.4s,v3.8h
-        saddw   v20.4s,v20.4s,v11.4h
-        saddw2  v21.4s,v21.4s,v11.8h
+        saddw   v16.4s,v16.4s,v12.4h
+        saddw2  v17.4s,v17.4s,v12.8h
+        saddw   v20.4s,v20.4s,v14.4h
+        saddw2  v21.4s,v21.4s,v14.8h
 
 DequantC8
         scvtf   v24.4s,v24.4s               // convert to float
@@ -607,16 +695,16 @@ DequantC8
         scvtf   v20.4s,v20.4s
         scvtf   v21.4s,v21.4s
         b.ne    SkipScaleBroadcastC8
-        mov     v5.16b,v4.16b
+        mov     v11.16b,v4.16b              // broadcast scale val if not per channel
 SkipScaleBroadcastC8
         fmul    v24.4s,v24.4s,v4.4s         // multiply by scale
-        fmul    v25.4s,v25.4s,v5.4s
+        fmul    v25.4s,v25.4s,v11.4s
         fmul    v28.4s,v28.4s,v4.4s
-        fmul    v29.4s,v29.4s,v5.4s
+        fmul    v29.4s,v29.4s,v11.4s
         fmul    v16.4s,v16.4s,v4.4s
-        fmul    v17.4s,v17.4s,v5.4s
+        fmul    v17.4s,v17.4s,v11.4s
         fmul    v20.4s,v20.4s,v4.4s
-        fmul    v21.4s,v21.4s,v5.4s
+        fmul    v21.4s,v21.4s,v11.4s
         fcvtns  v24.4s,v24.4s               // convert to int
         fcvtns  v25.4s,v25.4s
         fcvtns  v28.4s,v28.4s
@@ -645,17 +733,13 @@ SkipScaleBroadcastC8
         cmp     x7,2                        // OutputCount < 2 ?
         st1     {v24.8b},[x2],x4
         b.lo    ExitKernel                // exit if OutputCount < 2
-
         st1     {v28.8b},[x2],x4
         b.ls    ExitKernel                // exit if OutputCount <=2
-
         cmp     x7,4                        // OutputCount < 4 ?
         st1     {v16.8b},[x2],x4
         b.lo    ExitKernel                // exit if OutputCount < 4
-
-        st1     {v20.8b},[x2],x4
+        str     d20,[x2]
         b       ExitKernel
-
         NESTED_END MlasConvSymDepthwiseKernelNeon
 
         END
