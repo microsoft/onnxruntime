@@ -63,4 +63,4 @@ steps:
               ${{ if eq(parameters.MacosArch, 'arm64') }}:
                   arch: arm64
               os: 'darwin'
-              artifactName: 'drop-onnxruntime-nodejs-osx-$(MacosArch)'
+              artifactName: 'drop-onnxruntime-nodejs-osx-${{ parameters.MacosArch }}'
