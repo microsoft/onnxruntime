@@ -174,8 +174,6 @@ Status SaveAttributeOrtFormat(flatbuffers::FlatBufferBuilder& builder,
 
 #endif
 
-#if defined(ENABLE_ORT_FORMAT_LOAD)
-
 Status LoadInitializerOrtFormat(const fbs::Tensor& fbs_tensor,
                                 TensorProto& initializer) {
   initializer.Clear();
@@ -309,8 +307,6 @@ Status LoadAttributeOrtFormat(const fbs::Attribute& fbs_attr,
 
   return Status::OK();
 }
-
-#endif  // defined(ENABLE_ORT_FORMAT_LOAD)
 
 }  // namespace utils
 }  // namespace experimental
