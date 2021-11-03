@@ -87,7 +87,6 @@ class GraphExecutionManager(GraphExecutionInterface):
         self._onnx_models = _onnx_models.ONNXModels()
 
         # Model after inference optimization or gradient building.
-        self._optimized_onnx_model = None
         self._graph_builder = None
         self._graph_info = None
         self._graph_initializer_names = None
@@ -147,8 +146,8 @@ class GraphExecutionManager(GraphExecutionInterface):
         self._module_output_schema = None
         self._device = _utils.get_device_from_module(module)
 
-        self._module_parameters = inspect.signature(
-            self._original_module.forward).parameters.values()
+        self._module_parameters = list(inspect.signature(
+            self._original_module.forward).parameters.values())
 
         # TODO: remove after PyTorch ONNX exporter supports VAR_KEYWORD parameters.
         for input_parameter in self._module_parameters:
@@ -455,3 +454,25 @@ class GraphExecutionManager(GraphExecutionInterface):
     def signal_model_changed(self):
         """Signals the execution manager to re-export the model on the next forward call"""
         self._original_model_has_changed = True
+
+    def __getstate__(self):
+        state = copy.copy(self.__dict__)
+        # Remove any re-contructible/pybound object from the state
+        serialization_deny_list = [
+            "_onnx_models",
+            "_graph_builder",
+            "_graph_info",
+            "_execution_agent",
+            "_torch_alloc",
+            "_torch_free",
+            "_torch_empty_cache"
+        ]
+        for attribute_name in serialization_deny_list:
+            del state[attribute_name]
+
+        return state
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+
+        _utils.reinitialize_graph_execution_manager(self)
