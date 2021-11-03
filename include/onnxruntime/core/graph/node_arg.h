@@ -78,10 +78,10 @@ class NodeArg {
   @param current_tensor_elem_type Tensor element type parsed from existing type
   @param override_types If true, resolve the two inputs or two outputs type when different
   @returns Success unless there is existing type or shape info that can't be successfully updated. */
-  common::Status NodeArg::OverrideTypesHelper(const ONNX_NAMESPACE::TypeProto& input_type,
-                                              int32_t input_tensor_elem_type,
-                                              int32_t current_tensor_elem_type,
-                                              bool override_types);
+  common::Status OverrideTypesHelper(const ONNX_NAMESPACE::TypeProto& input_type,
+                                     int32_t input_tensor_elem_type,
+                                     int32_t current_tensor_elem_type,
+                                     bool override_types);
 
   /** Validate and merge type [and shape] info from input_type.
   @param strict If true, the shape update will fail if there are incompatible values.
