@@ -36,11 +36,10 @@ export function getActicationSnippet(attributes: InternalActivationAttributes) {
 }
 
 export const parseInternalActivationAttributes = (attributes: Attribute): InternalActivationAttributes => {
-  const activation = attributes.getString('__internal_activation', '');
+  const activation = attributes.getString('activation', '');
 
   if (activation === 'Clip') {
-    const clipMax = attributes.getFloat('__clip_max', 3.402823e+38);
-    const clipMin = attributes.getFloat('__clip_min', -3.402823e+38);
+    const [clipMin, clipMax] = attributes.getFloats('activation_params', [-3.402823e+38, 3.402823e+38]);
     return {activation, clipMax, clipMin, activationCacheKey: `${activation}:${clipMin},${clipMax}`};
   }
   return {activation, activationCacheKey: activation};

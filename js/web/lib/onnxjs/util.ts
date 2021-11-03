@@ -476,7 +476,7 @@ export class LongUtil {
     if (Long.isLong(n)) {
       return n.toNumber();
     } else if (n instanceof flatbuffers.Long) {
-      return Long.fromValue({low: n.low, high: n.high, unsigned: true}).toNumber();
+      return Long.fromValue({low: n.low, high: n.high, unsigned: false}).toNumber();
     }
     return n;
   }

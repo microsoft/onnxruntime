@@ -61,6 +61,10 @@ export const WEBGL_OP_RESOLVE_RULES: readonly OpSet.ResolveRule[] = [
   ['Exp', '', '6+', unaryOps.exp],
   ['Flatten', '', '1+', flatten, parseFlattenAttributes],
   ['Floor', '', '6+', unaryOps.floor],
+  // FusedConv is under com.microsoft domain, not under ai.onnx.
+  // Since there is no conflict yet, only a name is used here.
+  // But, when any name conflict occurs, using a domain needs to be considered.
+  ['FusedConv', '', '1+', conv, parseConvAttributes],
   ['Gather', '', '1+', gather, parseGatherAttributes],
   ['Gemm', '', '7-10', gemm, parseGemmAttributesV7],
   ['Gemm', '', '11+', gemm, parseGemmAttributesV11],
