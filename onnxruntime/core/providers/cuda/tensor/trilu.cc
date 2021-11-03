@@ -17,6 +17,7 @@ ONNX_OPERATOR_KERNEL_EX(
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
         .InputMemoryType(OrtMemTypeCPUInput, 1)
+        .MayInplace(0, 0)
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
     Trilu);
 
@@ -38,14 +39,12 @@ Status Trilu::ComputeInternal(OpKernelContext* ctx) const {
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Input tensor should have a rank of at least 2");
   }
   Tensor* output = ctx->Output(0, shape);
-  auto batch_size = input_dims[rank - 1] * input_dims[rank - 2];
-  if (batch_size == 0) {
+  int matrix_size = input_dims[rank - 1] * input_dims[rank - 2];
+  if (matrix_size == 0) {
     return Status::OK();
   }
-  TensorPitches input_pitches(input_dims);
-  TArray<int64_t> input_strides(input_pitches);
-  const fast_divmod row_col_divmod_indices(gsl::narrow_cast<int>(input_strides[rank - 1] * input_dims[rank - 1]));
-  const fast_divmod batch_divmod_indices(gsl::narrow_cast<int>(input_strides[rank - 2] * input_dims[rank - 2]));
+  const fast_divmod row_col_divmod_indices(gsl::narrow_cast<int>(input_dims[rank - 1]));
+  const fast_divmod batch_divmod_indices(gsl::narrow_cast<int>(matrix_size));
 
   size_t element_size = input.DataType()->Size();
   return TriluImpl(

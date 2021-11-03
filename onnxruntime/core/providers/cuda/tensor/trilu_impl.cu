@@ -7,9 +7,8 @@
 namespace onnxruntime {
 namespace cuda {
 
-template <typename T>
+template <typename T, bool upper>
 __global__ void TriluKernel(
-    bool upper,
     int64_t k,
     const T* input_data,
     T* output_data,
@@ -18,10 +17,10 @@ __global__ void TriluKernel(
     const fast_divmod row_col_divmod_indices) {
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
 
-  int i;
-  int j;
-  row_col_divmod_indices.divmod(batch_divmod_indices.mod(id), j, i);
-  output_data[id] = ((((i - k) >= j) && upper) || (((i - k) <= j) && !upper)) ? input_data[id] : 0;
+  int row, col;
+
+  row_col_divmod_indices.divmod(batch_divmod_indices.mod(id), row, col);
+  output_data[id] = ((((row + k) <= col) && upper) || (((row + k) >= col) && !upper)) ? input_data[id] : 0;
 }
 
 Status TriluImpl(
@@ -37,40 +36,80 @@ Status TriluImpl(
   int blocksPerGrid = (int)(ceil(static_cast<float>(N) / GridDim::maxThreadsPerBlock));
   switch (element_size) {
     case sizeof(int8_t):
-      TriluKernel<int8_t><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
-          upper, k,
-          reinterpret_cast<const ToCudaType<int8_t>::MappedType*>(input_data),
-          reinterpret_cast<ToCudaType<int8_t>::MappedType*>(output_data),
-          (CUDA_LONG)N,
-          batch_divmod_indices,
-          row_col_divmod_indices);
+      if (upper) {
+        TriluKernel<int8_t, true><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
+            k,
+            reinterpret_cast<const ToCudaType<int8_t>::MappedType*>(input_data),
+            reinterpret_cast<ToCudaType<int8_t>::MappedType*>(output_data),
+            (CUDA_LONG)N,
+            batch_divmod_indices,
+            row_col_divmod_indices);
+      } else {
+        TriluKernel<int8_t, false><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
+            k,
+            reinterpret_cast<const ToCudaType<int8_t>::MappedType*>(input_data),
+            reinterpret_cast<ToCudaType<int8_t>::MappedType*>(output_data),
+            (CUDA_LONG)N,
+            batch_divmod_indices,
+            row_col_divmod_indices);
+      }
       break;
     case sizeof(int16_t):
-      TriluKernel<int16_t><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
-          upper, k,
-          reinterpret_cast<const ToCudaType<int16_t>::MappedType*>(input_data),
-          reinterpret_cast<ToCudaType<int16_t>::MappedType*>(output_data),
-          (CUDA_LONG)N,
-          batch_divmod_indices,
-          row_col_divmod_indices);
+      if (upper) {
+        TriluKernel<int16_t, true><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
+            k,
+            reinterpret_cast<const ToCudaType<int16_t>::MappedType*>(input_data),
+            reinterpret_cast<ToCudaType<int16_t>::MappedType*>(output_data),
+            (CUDA_LONG)N,
+            batch_divmod_indices,
+            row_col_divmod_indices);
+      } else {
+        TriluKernel<int16_t, false><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
+            k,
+            reinterpret_cast<const ToCudaType<int16_t>::MappedType*>(input_data),
+            reinterpret_cast<ToCudaType<int16_t>::MappedType*>(output_data),
+            (CUDA_LONG)N,
+            batch_divmod_indices,
+            row_col_divmod_indices);
+      }
       break;
     case sizeof(int32_t):
-      TriluKernel<int32_t><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
-          upper, k,
-          reinterpret_cast<const ToCudaType<int32_t>::MappedType*>(input_data),
-          reinterpret_cast<ToCudaType<int32_t>::MappedType*>(output_data),
-          (CUDA_LONG)N,
-          batch_divmod_indices,
-          row_col_divmod_indices);
+      if (upper) {
+        TriluKernel<int32_t, true><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
+            k,
+            reinterpret_cast<const ToCudaType<int32_t>::MappedType*>(input_data),
+            reinterpret_cast<ToCudaType<int32_t>::MappedType*>(output_data),
+            (CUDA_LONG)N,
+            batch_divmod_indices,
+            row_col_divmod_indices);
+      } else {
+        TriluKernel<int32_t, false><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
+            k,
+            reinterpret_cast<const ToCudaType<int32_t>::MappedType*>(input_data),
+            reinterpret_cast<ToCudaType<int32_t>::MappedType*>(output_data),
+            (CUDA_LONG)N,
+            batch_divmod_indices,
+            row_col_divmod_indices);
+      }
       break;
     case sizeof(int64_t):
-      TriluKernel<int64_t><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
-          upper, k,
-          reinterpret_cast<const ToCudaType<int64_t>::MappedType*>(input_data),
-          reinterpret_cast<ToCudaType<int64_t>::MappedType*>(output_data),
-          (CUDA_LONG)N,
-          batch_divmod_indices,
-          row_col_divmod_indices);
+      if (upper) {
+        TriluKernel<int64_t, true><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
+            k,
+            reinterpret_cast<const ToCudaType<int64_t>::MappedType*>(input_data),
+            reinterpret_cast<ToCudaType<int64_t>::MappedType*>(output_data),
+            (CUDA_LONG)N,
+            batch_divmod_indices,
+            row_col_divmod_indices);
+      } else {
+        TriluKernel<int64_t, false><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
+            k,
+            reinterpret_cast<const ToCudaType<int64_t>::MappedType*>(input_data),
+            reinterpret_cast<ToCudaType<int64_t>::MappedType*>(output_data),
+            (CUDA_LONG)N,
+            batch_divmod_indices,
+            row_col_divmod_indices);
+      }
       break;
     default:
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Type not supported for transpose on CUDA. Element size was ",
