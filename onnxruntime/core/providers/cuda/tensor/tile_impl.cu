@@ -48,11 +48,7 @@ __global__ void _TileKernel(
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
   CUDA_LONG input_index = 0;
   CUDA_LONG output_index = id;
-
   for (int dim = 0; dim < shape_rank; ++dim) {
-    if (dim == shape_rank) {
-      break;
-    }
     int out_coord, r;
     fdm_output_strides[dim].divmod(output_index, out_coord, r);
     output_index = r;
