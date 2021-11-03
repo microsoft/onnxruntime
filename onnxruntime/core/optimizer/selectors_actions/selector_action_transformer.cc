@@ -77,7 +77,7 @@ Status SelectorActionTransformer::MatchAndProcess(Graph& graph, Node& node, bool
       }
     }
 
-    std::unique_ptr<NodesToOptimizeIndexes> node_selection;
+    std::unique_ptr<NodesToOptimizeIndices> node_selection;
     if (!selector_and_actions.selector->Select(graph_viewer, node, node_selection)) {
       break;
     }
@@ -87,7 +87,7 @@ Status SelectorActionTransformer::MatchAndProcess(Graph& graph, Node& node, bool
     if (save_) {
       // TODO: save to Graph using transformer and action name so the node groups and actions are scoped to a
       // specific transformer.
-      // e.g. map<transformer name, map<action name, vector<NodesToOptimizeIndexes>>>
+      // e.g. map<transformer name, map<action name, vector<NodesToOptimizeIndices>>>
       ORT_NOT_IMPLEMENTED("TODO: Save the selected nodes into the Graph.");
     } else {
       status = selector_and_actions.action->Run(graph, NodesToOptimize(graph, *node_selection));
@@ -116,7 +116,7 @@ void SelectorsAndActions::RegisterAction(const std::string& name,
 // as well as handling subgraphs (values are stored in the current graph, be that the main graph or the subgraph).
 struct ActionReplay {
   const std::string action_name;
-  std::vector<NodesToOptimizeIndexes> node_groups;
+  std::vector<NodesToOptimizeIndices> node_groups;
 };
 
 Status SelectorActionTransformer::ApplySaved(Graph& graph, bool& modified, const logging::Logger& /*logger*/) const {
@@ -140,7 +140,7 @@ Status SelectorActionTransformer::ApplySaved(Graph& graph, bool& modified, const
 
     const std::unique_ptr<Action>& action = action_iter->second;
 
-    for (const NodesToOptimizeIndexes& node_group : entry.node_groups) {
+    for (const NodesToOptimizeIndices& node_group : entry.node_groups) {
       NodesToOptimize nodes_to_optimize{graph, node_group};
 
       // all nodes in the group are still available if IsValid returns true

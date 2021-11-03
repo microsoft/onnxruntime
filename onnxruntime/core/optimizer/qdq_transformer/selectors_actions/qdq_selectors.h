@@ -25,7 +25,7 @@ struct NodeGroup {
 class BaseSelector : public NodeSelector {
  public:
   bool Select(const GraphViewer& graph_viewer, const Node& node,
-              std::unique_ptr<NodesToOptimizeIndexes>& selection) const override;
+              std::unique_ptr<NodesToOptimizeIndices>& selection) const override;
 
   // This select is a QDQ Selectors only function, which takes a const GraphViewer
   bool Select(const GraphViewer& graph_viewer, const Node& node, NodeGroup& selection) const;
@@ -49,7 +49,7 @@ class BaseSelector : public NodeSelector {
   // override if you need to adjust the values in NodesToOptimize.
   // e.g. add entries for missing optional DQ inputs or set num_inputs to handle variadic inputs
   // Called post-Check, if Check returned `true`
-  virtual void UpdateBuilder(NodesToOptimizeIndexesBuilder&) const {}
+  virtual void UpdateBuilder(NodesToOptimizeIndicesBuilder&) const {}
 };
 
 // Single DQ -> node that does not change data -> Q.
@@ -84,7 +84,7 @@ class BinarySelector : public BaseSelector {
 // Variadic DQ nodes -> node -> Q
 class VariadicSelector : public BaseSelector {
  public:
-  void UpdateBuilder(NodesToOptimizeIndexesBuilder&) const override;
+  void UpdateBuilder(NodesToOptimizeIndicesBuilder&) const override;
 
  private:
   bool Check(const GraphViewer& graph_viewer, const Node& node,
@@ -95,7 +95,7 @@ class VariadicSelector : public BaseSelector {
 // DQ nodes for X, W and optionally B -> node -> Q
 class ConvSelector : public BaseSelector {
  public:
-  void UpdateBuilder(NodesToOptimizeIndexesBuilder&) const override;
+  void UpdateBuilder(NodesToOptimizeIndicesBuilder&) const override;
 
  private:
   bool Check(const GraphViewer& graph_viewer, const Node& node,

@@ -17,9 +17,9 @@ inline int NumIOEntries(bool variadic_io, int num_io, int num_variadic_io) {
 // Selection helpers
 //
 
-// Struct to serialize the node indexes in an ORT format model.
+// Struct to serialize the node indices in an ORT format model.
 // Use EmptyNodeIndex for nullptr entries in the vectors for missing optional inputs
-struct NodesToOptimizeIndexes {
+struct NodesToOptimizeIndices {
   const std::vector<NodeIndex> nodes_;
   const int num_inputs_;
   const int num_outputs_;
@@ -28,7 +28,7 @@ struct NodesToOptimizeIndexes {
   const int num_variadic_inputs_;
   const int num_variadic_outputs_;
 
-  NodesToOptimizeIndexes(std::vector<NodeIndex>&& nodes,
+  NodesToOptimizeIndices(std::vector<NodeIndex>&& nodes,
                          int num_inputs,
                          int num_outputs,
                          bool variadic_input,
@@ -43,8 +43,8 @@ struct NodesToOptimizeIndexes {
         num_variadic_inputs_(num_variadic_inputs),
         num_variadic_outputs_(num_variadic_outputs) {}
 
-  static std::unique_ptr<NodesToOptimizeIndexes>
-  CreateNodesToOptimizeIndexes(const std::vector<NodeIndex>& input_nodes,
+  static std::unique_ptr<NodesToOptimizeIndices>
+  CreateNodesToOptimizeIndices(const std::vector<NodeIndex>& input_nodes,
                                NodeIndex target_node,
                                const std::vector<NodeIndex>& output_nodes,
                                int num_input_defs = -1, int num_output_defs = -1);
@@ -82,11 +82,11 @@ class NodesToOptimize {
 
   // construct from saved NodeIndex values. IsValid() will return false if one or more nodes were missing.
   // Use EmptyNodeIndex for nullptr entries in the vectors for missing optional inputs
-  NodesToOptimize(Graph& graph, const NodesToOptimizeIndexes& node_indexes);
+  NodesToOptimize(Graph& graph, const NodesToOptimizeIndices& node_indices);
 
   static constexpr NodeIndex EmptyNodeIndex = std::numeric_limits<NodeIndex>::max();
 
-  NodesToOptimizeIndexes ToIndexes() const;
+  NodesToOptimizeIndices ToIndices() const;
 
   // number of inputs and outputs that the target node has, as defined by the operator schema.
   // for each input/output, the node connected to that is stored
@@ -113,15 +113,15 @@ class NodesToOptimize {
   bool IsValid() const { return !nodes_.empty(); }
 
   // fetch an input.
-  // valid indexes are 0 to num_inputs - 1 if no variadic inputs.
-  // if there are variadic inputs, valid indexes are 0 to num_inputs + num_extra_variadic_inputs - 1
+  // valid indices are 0 to num_inputs - 1 if no variadic inputs.
+  // if there are variadic inputs, valid indices are 0 to num_inputs + num_extra_variadic_inputs - 1
   // e.g. 3 inputs. last is variadic with 3 values. num_inputs=3 num_extra_variadic_inputs=2 for a total of 5 inputs.
   Node* Input(int idx, bool required = true) const {
     return GetNode(idx, required);
   }
 
   // inputs filtered by index. includes all variadic.
-  std::vector<Node*> Inputs(const std::vector<int>& indexes, bool required = true) const;
+  std::vector<Node*> Inputs(const std::vector<int>& indices, bool required = true) const;
 
   Node& Target() const {
     return *GetNode(NumInputEntries() + 0, /*required*/ true);
@@ -132,7 +132,7 @@ class NodesToOptimize {
   }
 
   // outputs filtered by index. includes all variadic.
-  std::vector<Node*> Outputs(const std::vector<int>& indexes, bool required = true) const;
+  std::vector<Node*> Outputs(const std::vector<int>& indices, bool required = true) const;
 
   // Get the Node or Nodes (if variadic) at a specific index.
   std::vector<Node*> GetNodesAtLocation(const NodeLocation& location, bool required = true) const;
@@ -162,18 +162,18 @@ class NodesToOptimize {
   std::vector<Node*> nodes_;
 };
 
-// Helper to build a NodesToOptimizeIndexes instance
+// Helper to build a NodesToOptimizeIndices instance
 // Use in selector to incrementally add pieces
-struct NodesToOptimizeIndexesBuilder {
+struct NodesToOptimizeIndicesBuilder {
   std::vector<NodeIndex> input_nodes;
   NodeIndex target_node{NodesToOptimize::EmptyNodeIndex};
   std::vector<NodeIndex> output_nodes;
   int num_input_defs{-1};
   int num_output_defs{-1};
 
-  std::unique_ptr<NodesToOptimizeIndexes> Build() const {
+  std::unique_ptr<NodesToOptimizeIndices> Build() const {
     ORT_ENFORCE(target_node != NodesToOptimize::EmptyNodeIndex, "A target node must be set.");
-    return NodesToOptimizeIndexes::CreateNodesToOptimizeIndexes(
+    return NodesToOptimizeIndices::CreateNodesToOptimizeIndices(
         input_nodes, target_node, output_nodes, num_input_defs, num_output_defs);
   }
 };

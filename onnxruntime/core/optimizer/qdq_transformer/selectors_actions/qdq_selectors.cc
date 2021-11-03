@@ -78,13 +78,13 @@ bool BaseSelector::Select(const GraphViewer& graph_viewer, const Node& node, Nod
 }
 
 bool BaseSelector::Select(const GraphViewer& graph_viewer, const Node& node,
-                          std::unique_ptr<NodesToOptimizeIndexes>& selection) const {
+                          std::unique_ptr<NodesToOptimizeIndices>& selection) const {
   NodeGroup qdq_group;
   if (!Select(graph_viewer, node, qdq_group)) {
     return false;
   }
 
-  NodesToOptimizeIndexesBuilder builder;
+  NodesToOptimizeIndicesBuilder builder;
   builder.input_nodes = qdq_group.dq_nodes;
   builder.output_nodes = qdq_group.q_nodes;
   builder.target_node = qdq_group.target_node;
@@ -164,7 +164,7 @@ bool VariadicSelector::Check(const GraphViewer& graph_viewer,
   return dt_input == dt_output;
 }
 
-void VariadicSelector::UpdateBuilder(NodesToOptimizeIndexesBuilder& builder) const {
+void VariadicSelector::UpdateBuilder(NodesToOptimizeIndicesBuilder& builder) const {
   builder.num_input_defs = 1;  // set to 1 as the first input is variadic
 }
 
@@ -192,7 +192,7 @@ bool ConvSelector::Check(const GraphViewer& graph_viewer,
   return dt_bias == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32;
 }
 
-void ConvSelector::UpdateBuilder(NodesToOptimizeIndexesBuilder& builder) const {
+void ConvSelector::UpdateBuilder(NodesToOptimizeIndicesBuilder& builder) const {
   builder.input_nodes.resize(3, NodesToOptimize::EmptyNodeIndex);
 }
 

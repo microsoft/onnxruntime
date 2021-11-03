@@ -19,7 +19,7 @@ struct NodeSelector {
   // Select one or more nodes for an Action to process if the constraints are satisfied.
   // `selection` should not be set if this returns false
   virtual bool Select(const GraphViewer& graph_viewer, const Node& node,
-                      std::unique_ptr<NodesToOptimizeIndexes>& selection) const = 0;
+                      std::unique_ptr<NodesToOptimizeIndices>& selection) const = 0;
 
   virtual ~NodeSelector() = default;
 
