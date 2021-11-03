@@ -3,6 +3,8 @@
 
 #pragma once
 
+#if defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
+
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -34,7 +36,7 @@ class RuntimeOptimizationRecordContainer {
   void AddRecord(const std::string& optimizer_key, RuntimeOptimizationRecord&& runtime_optimization_record);
 #endif
 
-  std::vector<RuntimeOptimizationRecord> RemoveRecordsForKey(const std::string& optimizer_key);
+  // TODO add a way to access and remove them
 
   using FbsRuntimeOptimizationRecordContainer =
       flatbuffers::Vector<flatbuffers::Offset<
@@ -51,3 +53,5 @@ class RuntimeOptimizationRecordContainer {
 };
 
 }  // namespace onnxruntime
+
+#endif  // defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)

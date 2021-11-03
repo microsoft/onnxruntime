@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#if defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
+
 #include "core/graph/runtime_optimization_record_container.h"
 
 #include <algorithm>
@@ -21,16 +23,6 @@ void RuntimeOptimizationRecordContainer::AddRecord(const std::string& optimizer_
   optimizations.emplace_back(std::move(runtime_optimization_record));
 }
 #endif
-
-std::vector<RuntimeOptimizationRecord> RuntimeOptimizationRecordContainer::RemoveRecordsForKey(
-    const std::string& optimizer_key) {
-  std::vector<RuntimeOptimizationRecord> result{};
-  if (auto it = sat_to_optimizations_.find(optimizer_key); it != sat_to_optimizations_.end()) {
-    result = std::move(it->second);
-    sat_to_optimizations_.erase(it);
-  }
-  return result;
-}
 
 static Status SaveRuntimeOptimizationRecordToOrtFormat(
     flatbuffers::FlatBufferBuilder& builder,
@@ -168,3 +160,5 @@ Status RuntimeOptimizationRecordContainer::LoadFromOrtFormat(
 }
 
 }  // namespace onnxruntime
+
+#endif  // defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
