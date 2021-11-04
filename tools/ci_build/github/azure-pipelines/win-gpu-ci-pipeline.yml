@@ -196,7 +196,7 @@ stages:
         parameters :
           condition : 'succeeded'
 
-- stage: inference
+- stage: training
   jobs:
   - template: templates/win-ci-2019.yml
     parameters:
