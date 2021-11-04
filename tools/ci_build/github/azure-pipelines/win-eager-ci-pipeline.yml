@@ -33,19 +33,6 @@ jobs:
       addToPath: true
       architecture: $(buildArch)
 
-  - task: NodeTool@0
-    inputs:
-      versionSpec: '12.x'
-      force32bit: $(isX86)
-
-  - task: JavaToolInstaller@0
-    #Our build machine doesn't have java x86
-    condition: and(succeeded(), eq(variables['buildArch'], 'x64'))
-    inputs:
-      versionSpec: '11'
-      jdkArchitectureOption: $(buildArch)
-      jdkSourceOption: 'PreInstalled'
-
   - task: BatchScript@1
     displayName: 'setup env'
     inputs:
@@ -65,7 +52,6 @@ jobs:
 
   - script: |
      python -m pip install -r $(Build.SourcesDirectory)\tools\ci_build\github\windows\eager\requirements.txt
-     python -m pip list
     workingDirectory: '$(Build.BinariesDirectory)'
     displayName: 'Install python modules'
   
@@ -76,34 +62,12 @@ jobs:
       modifyEnvironment: true
       workingFolder: '$(Build.BinariesDirectory)'
 
-  - script: |
-     python -c "import torch; import sys; print(sys.path); print(torch.__file__)"
-     python -m pip list
-    workingDirectory: '$(Build.BinariesDirectory)'
-    displayName: 'Check python modules'
-
   - task: PythonScript@0
     displayName: 'Build Eager mode'
     inputs:
       scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-      arguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --build_eager_mode --enable_training --enable_pybind --config Release'
+      arguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --build_eager_mode --enable_training --enable_pybind --config Release --parallel'
       workingDirectory: '$(Build.BinariesDirectory)'
-
-  - task: DeleteFiles@1
-    displayName: 'Delete files from $(Build.BinariesDirectory)\RelWithDebInfo'
-    condition: and(succeeded(), eq(variables['BuildConfig'], 'RelWithDebInfo'))
-    inputs:
-      SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo'
-      Contents: |
-       **/*.obj
-       **/*.pdb
-       **/*.dll
-
-  - task: PostAnalysis@2
-    displayName: 'Guardian Break'
-    condition: and(succeeded(), and(eq(variables['buildArch'], 'x64'), eq(variables['BuildConfig'], 'RelWithDebInfo')))
-    inputs:
-      GdnBreakGdnToolSDLNativeRulesSeverity: Warning
 
   - task: PublishTestResults@2
     displayName: 'Publish unit test results'
