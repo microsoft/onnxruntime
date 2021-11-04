@@ -1,4 +1,3 @@
-
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
@@ -11,15 +10,6 @@
 #include <unordered_map>
 #include <unordered_set>
 
-#include "core/common/common.h"
-#include "core/common/const_pointer_container.h"
-#include "core/common/path.h"
-#include "core/common/status.h"
-#include "core/common/logging/logging.h"
-#include "core/graph/basic_types.h"
-#include "core/graph/constants.h"
-#include "core/graph/graph_nodes.h"
-#include "core/graph/node_arg.h"
 #if !defined(ORT_MINIMAL_BUILD)
 #include "onnx/defs/schema.h"
 #else
@@ -27,8 +17,19 @@
 #endif
 #include "onnx/onnx_pb.h"
 #include "onnx/onnx-operators_pb.h"
-#include "core/graph/function.h"
+
 #include "gsl/gsl"
+
+#include "core/common/common.h"
+#include "core/common/const_pointer_container.h"
+#include "core/common/path.h"
+#include "core/common/status.h"
+#include "core/common/logging/logging.h"
+#include "core/graph/basic_types.h"
+#include "core/graph/constants.h"
+#include "core/graph/function.h"
+#include "core/graph/graph_nodes.h"
+#include "core/graph/node_arg.h"
 
 namespace flatbuffers {
 class FlatBufferBuilder;
@@ -41,6 +42,10 @@ class Graph;
 struct IndexedSubGraph;
 class Model;
 class OpSignature;
+
+#if defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
+class RuntimeOptimizationRecordContainer;
+#endif
 
 namespace experimental {
 namespace fbs {
@@ -1007,6 +1012,13 @@ class Graph {
   IOnnxRuntimeOpSchemaCollectionPtr GetSchemaRegistry() const;
 
   /**
+  Looks up the op schema in the schema registry and sets it for the given node.
+  @param node The node to update.
+  @return Whether the node's op schema was set to a valid value.
+  */
+  bool SetOpSchemaFromRegistryForNode(Node& node);
+
+  /**
   Create a single Function based Node that is the result of the a fusion of multiple nodes in this Graph.
   A new Graph instance will be created for the fused nodes.
   @param sub_graph A IndexSubGraph instance with details of the nodes to fuse. Ownership is transferred to the new Node
@@ -1179,6 +1191,16 @@ class Graph {
   static Status LoadFromOrtFormat(const onnxruntime::experimental::fbs::Graph& fbs_graph,
                                   Graph& parent_graph, const Node& parent_node,
                                   const logging::Logger& logger, std::unique_ptr<Graph>& graph);
+
+#if defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
+  const RuntimeOptimizationRecordContainer& RuntimeOptimizations() const {
+    return runtime_optimizations_;
+  }
+
+  RuntimeOptimizationRecordContainer& MutableRuntimeOptimizations() {
+    return runtime_optimizations_;
+  }
+#endif
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Graph);
@@ -1395,6 +1417,13 @@ class Graph {
   std::unordered_set<std::reference_wrapper<const std::string>,
                      std::hash<std::string>, std::equal_to<std::string>>
       sparse_tensor_names_;
+
+#if defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
+  // Runtime optimization storage.
+  // Note: runtime_optimizations_ == *runtime_optimizations_ptr_ and must be initialized
+  std::unique_ptr<RuntimeOptimizationRecordContainer> runtime_optimizations_ptr_;
+  RuntimeOptimizationRecordContainer& runtime_optimizations_;
+#endif
 
 #if !defined(ORT_MINIMAL_BUILD)
   IOnnxRuntimeOpSchemaCollectionPtr schema_registry_;
