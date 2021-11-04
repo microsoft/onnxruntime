@@ -46,9 +46,11 @@ ThreadPoolProfiler::ThreadPoolProfiler(int num_threads, const CHAR_TYPE* thread_
   child_thread_stats_.assign(num_threads, {});
   if (thread_pool_name) {
 #ifdef _WIN32
-    using convert_type = std::codecvt_utf8<wchar_t>;
-    std::wstring_convert<convert_type, wchar_t> converter;
-    thread_pool_name_ = converter.to_bytes(thread_pool_name);
+    std::wstring ws(thread_pool_name);
+    thread_pool_name_.resize(ws.length());
+    std::transform(ws.begin(), ws.end(), thread_pool_name_.begin(), [] (wchar_t c) {
+		return (char)c;
+    });
 #else
     thread_pool_name_ = thread_pool_name;
 #endif

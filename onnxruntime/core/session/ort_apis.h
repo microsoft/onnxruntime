@@ -296,7 +296,7 @@ ORT_API_STATUS_IMPL(FillSparseTensorCoo, _Inout_ OrtValue* ort_value, _In_ const
                     _In_ const int64_t* values_shape, size_t values_shape_len, _In_ const void* values,
                     _In_ const int64_t* indices_data, size_t indices_num);
 ORT_API_STATUS_IMPL(FillSparseTensorCsr, _Inout_ OrtValue* ort_value, _In_ const OrtMemoryInfo* data_mem_info,
-                    _In_ const int64_t* values_shape, size_t values_shape_len, const void* values,
+                    _In_ const int64_t* values_shape, size_t values_shape_len, _In_ const void* values,
                     _In_ const int64_t* inner_indices_data, size_t inner_indices_num,
                     _In_ const int64_t* outer_indices_data, size_t outer_indices_num);
 ORT_API_STATUS_IMPL(FillSparseTensorBlockSparse, _Inout_ OrtValue* ort_value, _In_ const OrtMemoryInfo* data_mem_info,
