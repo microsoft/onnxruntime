@@ -21,6 +21,7 @@
 #include "core/providers/cpu/tensor/utils.h"
 #include "core/framework/session_options.h"
 #include "core/framework/TensorSeq.h"
+#include "core/providers/utils.h"
 
 #include "gsl/gsl"
 
@@ -514,16 +515,10 @@ Status LoopImpl::Execute(const FeedsFetchesManager& ffm) {
       // as it could be a main graph input which will be missing the type
       // in the corresponding OrtValue for the "None" case because
       // the user doesn't provide any input for the "None" case.
-
-      if (utils::HasOptionalTensorType(tp)) {
-        context_.OutputOptionalWithoutData<Tensor>(0);
-      } else if (utils::HasOptionalTensorSequenceType(tp)) {
-        context_.OutputOptionalWithoutData<TensorSeq>(0);
-      } else {
-        // Will never hit this
-        ORT_THROW(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported type for Loop op");
-      }
-
+      ORT_RETURN_IF_ERROR(utils::OutputOptionalWithoutDataHelper(tp,
+                                                                 static_cast<OpKernelContext*>(&context_),
+                                                                 output_idx));
+      return Status::OK();
     } else if (input.IsTensor()) {
       const auto& input_tensor = input.Get<Tensor>();
       Tensor* output = context_.Output(output_idx, input_tensor.Shape());

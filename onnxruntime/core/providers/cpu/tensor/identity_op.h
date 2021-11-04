@@ -14,6 +14,7 @@
 #include "core/framework/op_kernel.h"
 #include "core/framework/TensorSeq.h"
 #include "core/framework/tensorprotoutils.h"
+#include "core/providers/utils.h"
 
 namespace onnxruntime {
 
@@ -34,16 +35,7 @@ class IdentityOp final : public OpKernel {
       // as it could be a main graph input which will be missing the type
       // in the corresponding OrtValue for the "None" case because
       // the user doesn't provide any input for the "None" case.
-
-      if (utils::HasOptionalTensorType(*input_type_proto)) {
-        context->OutputOptionalWithoutData<Tensor>(0);
-      } else if (utils::HasOptionalTensorSequenceType(*input_type_proto)) {
-        context->OutputOptionalWithoutData<TensorSeq>(0);
-      } else {
-        // Will never hit this
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported type for Identity op");
-      }
-
+      ORT_RETURN_IF_ERROR(utils::OutputOptionalWithoutDataHelper(*input_type_proto, context, 0));
       return Status::OK();
     }
 
