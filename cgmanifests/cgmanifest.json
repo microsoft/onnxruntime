@@ -1,6 +1,20 @@
 {
    "Registrations": [
       {
+        "component": {
+          "Type": "maven",
+          "maven": { "GroupId": "org.junit.platform", "ArtifactId": "junit-platform-console-standalone", "Version": "1.6.2" },
+          "DevelopmentDependency": true
+        }
+      },
+      {
+        "component": {
+          "Type": "maven",
+          "maven": { "GroupId": "com.google.protobuf", "ArtifactId": "protobuf-java", "Version": "3.9.2" },
+          "DevelopmentDependency": true
+        }
+      },
+      {
          "component": {
             "type": "git",
             "git": {

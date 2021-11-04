@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include "core/graph/runtime_optimization_record.h"
+
 namespace onnxruntime {
 
 // if the last input in num_inputs is for the variadic input, the variadic input could have zero or more values
@@ -81,10 +83,8 @@ class NodesToOptimize {
                   int num_input_defs = -1, int num_output_defs = -1);
 
   // construct from saved NodeIndex values. IsValid() will return false if one or more nodes were missing.
-  // Use EmptyNodeIndex for nullptr entries in the vectors for missing optional inputs
+  // Use NodesToOptimizeIndices::kEmptyNodeIndex for nullptr entries in the vectors for missing optional inputs
   NodesToOptimize(Graph& graph, const NodesToOptimizeIndices& node_indices);
-
-  static constexpr NodeIndex EmptyNodeIndex = std::numeric_limits<NodeIndex>::max();
 
   NodesToOptimizeIndices ToIndices() const;
 
@@ -231,10 +231,16 @@ struct NodeAndMoveInfo {
 };
 
 // helpers for moving inputs/outputs and their edges between nodes
+// if `only_update_dest_definitions` is true, only updates the destination node's definitions. otherwise, updates graph
+// edges and node definitions.
+// setting `only_update_dest_definitions` to true is useful for updating the destination node independently from the
+// rest of the graph. e.g., when creating a temporary node that is used to look up a kernel def, we can set the
+// temporary node's definitions (which is all we need) without updating existing graph edges.
 Status MoveInputOutput(Graph& graph, const NodesToOptimize& selected_nodes, Node& dest,
-                       const std::vector<NodeAndMoveInfo>& moves);
+                       const std::vector<NodeAndMoveInfo>& moves, bool only_update_dest_definitions);
 
-Status MoveInputOutput(Graph& graph, Node& src, Node& dest, const ValueMoveInfo& move_info);
+Status MoveInputOutput(Graph& graph, Node& src, Node& dest, const ValueMoveInfo& move_info,
+                       bool only_update_dest_definitions);
 
 //
 // Helpers to make the 'move' configuration more easily read

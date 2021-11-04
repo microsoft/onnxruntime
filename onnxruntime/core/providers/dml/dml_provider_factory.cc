@@ -14,6 +14,7 @@ using Microsoft::WRL::ComPtr;
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/ort_apis.h"
 #include "core/framework/error_code_helper.h"
+#include "DmlExecutionProvider/src/ErrorHandling.h"
 #include "DmlExecutionProvider/inc/DmlExecutionProvider.h"
 #include "core/platform/env.h"
 
@@ -57,15 +58,15 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_DML(ID
   // order to be able to compare the pointers for COM object identity.
   ComPtr<IUnknown> d3d12_device_0;
   ComPtr<IUnknown> d3d12_device_1;
-  THROW_IF_FAILED(dml_device->GetParentDevice(IID_PPV_ARGS(&d3d12_device_0)));
-  THROW_IF_FAILED(cmd_queue->GetDevice(IID_PPV_ARGS(&d3d12_device_1)));
+  ORT_THROW_IF_FAILED(dml_device->GetParentDevice(IID_PPV_ARGS(&d3d12_device_0)));
+  ORT_THROW_IF_FAILED(cmd_queue->GetDevice(IID_PPV_ARGS(&d3d12_device_1)));
 
   if (d3d12_device_0 != d3d12_device_1) {
-    THROW_HR(E_INVALIDARG);
+    ORT_THROW_HR(E_INVALIDARG);
   }
 
   ComPtr<ID3D12Device> d3d12_device;
-  THROW_IF_FAILED(dml_device->GetParentDevice(IID_PPV_ARGS(&d3d12_device)));
+  ORT_THROW_IF_FAILED(dml_device->GetParentDevice(IID_PPV_ARGS(&d3d12_device)));
   const Env& env = Env::Default();
   auto luid = d3d12_device->GetAdapterLuid();
   env.GetTelemetryProvider().LogExecutionProviderEvent(&luid);
@@ -98,23 +99,23 @@ bool IsSoftwareAdapter(IDXGIAdapter1* adapter) {
 
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_DML(int device_id) {
   ComPtr<IDXGIFactory4> dxgi_factory;
-  THROW_IF_FAILED(CreateDXGIFactory2(0, IID_PPV_ARGS(&dxgi_factory)));
+  ORT_THROW_IF_FAILED(CreateDXGIFactory2(0, IID_PPV_ARGS(&dxgi_factory)));
 
   ComPtr<IDXGIAdapter1> adapter;
-  THROW_IF_FAILED(dxgi_factory->EnumAdapters1(device_id, &adapter));
+  ORT_THROW_IF_FAILED(dxgi_factory->EnumAdapters1(device_id, &adapter));
 
   // Disallow using DML with the software adapter (Microsoft Basic Display Adapter) because CPU evaluations are much faster
-  THROW_HR_IF(E_INVALIDARG, IsSoftwareAdapter(adapter.Get()));
+  ORT_THROW_HR_IF(E_INVALIDARG, IsSoftwareAdapter(adapter.Get()));
 
   ComPtr<ID3D12Device> d3d12_device;
-  THROW_IF_FAILED(D3D12CreateDevice(adapter.Get(), D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(&d3d12_device)));
+  ORT_THROW_IF_FAILED(D3D12CreateDevice(adapter.Get(), D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(&d3d12_device)));
 
   D3D12_COMMAND_QUEUE_DESC cmd_queue_desc = {};
   cmd_queue_desc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
   cmd_queue_desc.Flags = D3D12_COMMAND_QUEUE_FLAG_DISABLE_GPU_TIMEOUT;
 
   ComPtr<ID3D12CommandQueue> cmd_queue;
-  THROW_IF_FAILED(d3d12_device->CreateCommandQueue(&cmd_queue_desc, IID_PPV_ARGS(&cmd_queue)));
+  ORT_THROW_IF_FAILED(d3d12_device->CreateCommandQueue(&cmd_queue_desc, IID_PPV_ARGS(&cmd_queue)));
 
   DML_CREATE_DEVICE_FLAGS flags = DML_CREATE_DEVICE_FLAG_NONE;
 
@@ -130,7 +131,7 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_DML(in
 #endif
 
   ComPtr<IDMLDevice> dml_device;
-  THROW_IF_FAILED(DMLCreateDevice1(d3d12_device.Get(),
+  ORT_THROW_IF_FAILED(DMLCreateDevice1(d3d12_device.Get(),
                                    flags,
                                    DML_FEATURE_LEVEL_2_0,
                                    IID_PPV_ARGS(&dml_device)));
