@@ -690,6 +690,16 @@ Status TensorProtoToTensor(const Env& env, const ORTCHAR_T* model_path,
   return Status::OK();
 }
 
+void TensorProtoToValueInfoProto(const ONNX_NAMESPACE::TensorProto& input, ONNX_NAMESPACE::ValueInfoProto& output) {
+  ONNX_NAMESPACE::TypeProto_Tensor* t = output.mutable_type()->mutable_tensor_type();
+  t->set_elem_type(input.data_type());
+  for (int64_t dim : input.dims()) {
+    t->mutable_shape()->add_dim()->set_dim_value(dim);
+  }
+  output.set_name(input.name());
+  output.set_doc_string(input.doc_string());
+}
+
 #ifdef _MSC_VER
 #pragma warning(push)
 #pragma warning(disable : 6239)
@@ -1096,7 +1106,6 @@ inline void CopyElement<uint8_t>(void* dst, const void* src, int64_t dst_index, 
   reinterpret_cast<uint8_t*>(dst)[dst_index] = reinterpret_cast<const uint8_t*>(src)[src_index];
 }
 
-
 template <typename T>
 static void SetIndices(gsl::span<int64_t> gathered_indices,
                        std::string& raw_indices,
@@ -1107,7 +1116,8 @@ static void SetIndices(gsl::span<int64_t> gathered_indices,
   for (auto src_index : gathered_indices) {
     ORT_IF_CONSTEXPR(sizeof(T) == sizeof(int8_t)) {
       ind_dest[dest_index] = static_cast<T>(src_index);
-    } else {
+    }
+    else {
       auto* dst = ind_dest + dest_index;
       T v = static_cast<T>(src_index);
       memcpy(dst, &v, sizeof(T));

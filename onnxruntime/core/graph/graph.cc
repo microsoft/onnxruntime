@@ -1029,6 +1029,8 @@ Graph::Graph(const Model& owning_model,
     model_local_functions_[function_utils::GetFunctionIdentifier(func->domain(), func->name())] = func;
   }
 
+  std::vector<TensorProto*> created_initializers;
+
   // Process 'Constant' nodes
   // Put the 'TensorProto' stored in the 'Constant' nodes attribute into the graphs initializer list
   for (auto& node : graph_proto_->node()) {
@@ -1038,6 +1040,7 @@ Graph::Graph(const Model& owning_model,
 
     const gsl::not_null<TensorProto*> tensor{graph_proto_->add_initializer()};
     auto status = utils::ConstantNodeProtoToTensorProto(node, model_path, *tensor);
+    created_initializers.push_back(tensor);
     ORT_ENFORCE(status.IsOK(), status.ToString());
 #if !defined(DISABLE_SPARSE_TENSORS)
     if (node.attribute(0).type() == AttributeProto_AttributeType_SPARSE_TENSOR) {
@@ -1045,6 +1048,14 @@ Graph::Graph(const Model& owning_model,
       ORT_ENFORCE(p.second, "Duplicate constant node sparse initializer name: '", tensor->name(), "' Model is invalid.");
     }
 #endif
+  }
+
+  // Ensure initializers are also graph inputs.
+  if (ir_version_ < 4) {
+    for (const auto* initializer : created_initializers) {
+      ValueInfoProto* input = graph_proto_->add_input();
+      utils::TensorProtoToValueInfoProto(*initializer, *input);
+    }
   }
 
   // Remove constant nodes as they're replaced with initializers above.
@@ -2537,7 +2548,7 @@ void Graph::InitFunctionBodyForNode(Node& node) {
                            << node.Name() << "' optype " << node.OpType()
 #ifndef ORT_NO_EXCEPTIONS
                            << ". Error message " << e.what()
-#endif //ORT_NO_EXCEPTIONS
+#endif  //ORT_NO_EXCEPTIONS
                            << ". Execution will fail if ORT does not have a specialized kernel for this op";
     // Return without using this function op's expansion. No need to fail just yet.
     // If ORT has a specialized kernel for this op then execution will proceed
