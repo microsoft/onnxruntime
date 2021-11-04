@@ -45,6 +45,10 @@ ProviderInfo_CUDA* TryGetProviderInfo_CUDA();
 }
 #endif
 
+#ifdef USE_DML
+#include "core/providers/dml/dml_provider_factory.h"
+#endif
+
 #ifdef ENABLE_EXTENSION_CUSTOM_OPS
 #include "onnxruntime_extensions.h"
 #endif
@@ -1905,6 +1909,22 @@ ORT_API_STATUS_IMPL(OrtApis::ReleaseAvailableProviders, _In_ char** ptr,
   return NULL;
 }
 
+ORT_API_STATUS_IMPL(OrtApis::GetProviderInterface, _In_ const char *provider_name,
+                    uint32_t version, const void ** provider_interface) {
+  API_IMPL_BEGIN
+  *provider_interface = nullptr;
+  if (strcmp(provider_name, "DML") == 0) {
+    *provider_interface = GetOrtDmlApi(version);
+    if (*provider_interface == nullptr) {
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Specified version is not supported for DirectML provider.");  
+    }
+  } else {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Specified device is not supported.");
+  }
+  API_IMPL_END
+  return NULL;
+}
+
 ORT_API_STATUS_IMPL(OrtApis::TensorAt, _Inout_ OrtValue* value, const int64_t* location_values, size_t location_values_count,
                     _Outptr_ void** out) {
   TENSOR_READWRITE_API_BEGIN
@@ -2075,6 +2095,16 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSessionFromArrayWithPrepackedWeightsContainer
   return status;
   API_IMPL_END
 }
+
+
+ORT_API_STATUS_IMPL(OrtApis::GetValueMemoryInfo, const OrtValue* value, const OrtMemoryInfo** memory_info) {
+  API_IMPL_BEGIN
+  const auto& tensor = value->Get<onnxruntime::Tensor>();
+  *memory_info = &tensor.Location();
+  return nullptr;
+  API_IMPL_END
+}
+
 
 static constexpr OrtApiBase ort_api_base = {
     &OrtApis::GetApi,
@@ -2350,6 +2380,8 @@ static constexpr OrtApi ort_api_1_to_10 = {
     // End of Version 9 - DO NOT MODIFY ABOVE (see above text for more information)
 
     // Version 10 - In development, feel free to add/remove/rearrange here
+    &OrtApis::GetValueMemoryInfo,
+    &OrtApis::GetProviderInterface,
 };
 
 // Asserts to do a some checks to ensure older Versions of the OrtApi never change (will detect an addition or deletion but not if they cancel out each other)

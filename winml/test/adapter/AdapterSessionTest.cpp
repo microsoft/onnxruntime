@@ -17,6 +17,7 @@
 #include "core/common/logging/logging.h"
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/ort_env.h"
+#include "core/providers/dml/dml_provider_factory.h"
 
 using namespace _winml;
 using namespace winrt::Windows::Foundation::Collections;
@@ -28,7 +29,6 @@ using namespace winrt::Windows::Storage::Streams;
 namespace {
 winrt::com_ptr<_winml::OnnxruntimeEngineFactory> engine_factory;
 const OrtApi* ort_api;
-const OrtWinApi* ort_win_api;
 const WinmlAdapterApi *winml_adapter_api;
 OrtEnv* ort_env;
 
@@ -41,7 +41,6 @@ void AdapterSessionTestSetup() {
   WINML_EXPECT_HRESULT_SUCCEEDED(engine_factory->GetOrtEnvironment(&ort_env));
   WINML_EXPECT_NOT_EQUAL(nullptr, winml_adapter_api = engine_factory->UseWinmlAdapterApi());
   WINML_EXPECT_NOT_EQUAL(nullptr, ort_api = engine_factory->UseOrtApi());
-  WINML_EXPECT_NOT_EQUAL(nullptr, ort_win_api = engine_factory->UseOnnxruntimeWindowsApi());
 }
 
 void AdapterSessionTestTeardown() {
@@ -107,7 +106,7 @@ void GetExecutionProvider() {
   auto session = CreateUniqueOrtSession(model_path, session_options);
 
   OrtExecutionProvider* ort_provider;
-  THROW_IF_NOT_OK_MSG(ort_win_api->SessionGetExecutionProvider(session.get(), 0, &ort_provider), ort_api);
+  THROW_IF_NOT_OK_MSG(winml_adapter_api->SessionGetExecutionProvider(session.get(), 0, &ort_provider), ort_api);
 }
 
 void GetExecutionProvider_DML() {
@@ -121,9 +120,9 @@ void GetExecutionProvider_DML() {
   auto session = CreateUniqueOrtSession(model_path, session_options);
 
   OrtExecutionProvider* ort_provider;
-  THROW_IF_NOT_OK_MSG(ort_win_api->SessionGetExecutionProvider(session.get(), 0, &ort_provider), ort_api);
+  THROW_IF_NOT_OK_MSG(winml_adapter_api->SessionGetExecutionProvider(session.get(), 0, &ort_provider), ort_api);
   // Test if DML EP method can be called
-  THROW_IF_NOT_OK_MSG(ort_win_api->DmlExecutionProviderFlushContext(ort_provider), ort_api);
+  THROW_IF_NOT_OK_MSG(winml_adapter_api->DmlExecutionProviderFlushContext(ort_provider), ort_api);
 }
 
 void RegisterGraphTransformers() {

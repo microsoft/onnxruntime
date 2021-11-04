@@ -3023,6 +3023,10 @@ struct OrtApi {
   */
   ORT_API2_STATUS(GetSparseTensorIndices, _In_ const OrtValue* ort_value, enum OrtSparseIndicesFormat indices_format, _Out_ size_t* num_indices, _Outptr_ const void** indices);
 
+  ORT_API2_STATUS(GetValueMemoryInfo, _In_ const OrtValue* value, _Outptr_ const OrtMemoryInfo** memory_info);
+
+  ORT_API2_STATUS(GetProviderInterface, _In_ const char *provider_name, uint32_t version, const void **provider_interface);
+
   /// @}
 };
 

@@ -40,7 +40,7 @@ namespace Dml
         D3D12_HEAP_FLAGS heapFlags,
         D3D12_RESOURCE_FLAGS resourceFlags,
         D3D12_RESOURCE_STATES initialState)
-        : onnxruntime::IAllocator(OrtMemoryInfo("DML allocator", OrtAllocatorType::OrtDeviceAllocator,
+        : onnxruntime::IAllocator(OrtMemoryInfo("DML", OrtAllocatorType::OrtDeviceAllocator,
                                                 OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0)))
         , m_device(device)
         , m_context(context)

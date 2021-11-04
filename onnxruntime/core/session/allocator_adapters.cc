@@ -31,6 +31,10 @@ const OrtMemoryInfo* OrtAllocatorImplWrappingIAllocator::Info() const {
   return &i_allocator_->Info();
 }
 
+onnxruntime::AllocatorPtr OrtAllocatorImplWrappingIAllocator::GetWrappedIAllocator() {
+  return i_allocator_;
+}
+
 IAllocatorImplWrappingOrtAllocator::IAllocatorImplWrappingOrtAllocator(OrtAllocator* ort_allocator)
     : IAllocator(*ort_allocator->Info(ort_allocator)), ort_allocator_(ort_allocator) {}
 
@@ -52,7 +56,8 @@ ORT_API_STATUS_IMPL(OrtApis::CreateAllocator, const OrtSession* sess,
   if (!allocator_ptr) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "No requested allocator available");
   }
-  *out = new onnxruntime::OrtAllocatorImplWrappingIAllocator(std::move(allocator_ptr));
+  auto all = new onnxruntime::OrtAllocatorImplWrappingIAllocator(std::move(allocator_ptr));
+  *out = all;
   return nullptr;
   API_IMPL_END
 }

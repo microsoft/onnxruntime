@@ -290,8 +290,6 @@ target_link_libraries(winml_lib_ort INTERFACE winml_lib_telemetry)
 
 list(APPEND winml_adapter_files
     ${winml_adapter_dir}/pch.h
-    ${winml_adapter_dir}/onnxruntime_win_c_api.h
-    ${winml_adapter_dir}/onnxruntime_win_c_api.cpp
     ${winml_adapter_dir}/winml_adapter_apis.h
     ${winml_adapter_dir}/winml_adapter_c_api.h
     ${winml_adapter_dir}/winml_adapter_c_api.cpp

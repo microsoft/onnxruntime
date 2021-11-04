@@ -47,7 +47,9 @@ static constexpr WinmlAdapterApi winml_adapter_api_1 = {
     &winmla::OrtSessionOptionsAppendExecutionProviderEx_DML,
 
     // OrtSession methods
+    
     &winmla::CreateSessionWithoutModel,
+    &winmla::SessionGetExecutionProvider,
     &winmla::SessionInitialize,
     &winmla::SessionRegisterGraphTransformers,
     &winmla::SessionRegisterCustomRegistry,
@@ -59,6 +61,18 @@ static constexpr WinmlAdapterApi winml_adapter_api_1 = {
     &winmla::SessionGetIntraOpThreadSpinning,
     &winmla::SessionGetNamedDimensionsOverrides,
 
+    // Dml methods (TODO need to figure out how these need to move to session somehow...)
+    &winmla::DmlExecutionProviderSetDefaultRoundingMode,
+    &winmla::DmlExecutionProviderFlushContext,
+    &winmla::DmlExecutionProviderReleaseCompletedReferences,
+    &winmla::DmlCreateGPUAllocationFromD3DResource,
+    &winmla::DmlFreeGPUAllocation,
+    &winmla::DmlGetD3D12ResourceFromAllocation,
+    &winmla::DmlCopyTensor,
+
+    &winmla::GetProviderMemoryInfo,
+    &winmla::GetProviderAllocator,
+    &winmla::FreeProviderAllocator,
     &winmla::GetValueMemoryInfo,
 
     &winmla::ExecutionProviderSync,
@@ -86,8 +100,8 @@ static constexpr WinmlAdapterApi winml_adapter_api_1 = {
     &winmla::ReleaseModel
 };
 
-const WinmlAdapterApi* ORT_API_CALL OrtGetWinMLAdapter(_In_ const OrtApi* ort_api) NO_EXCEPTION {
-  if (OrtApis::GetApi(2) == ort_api) {
+const WinmlAdapterApi* ORT_API_CALL OrtGetWinMLAdapter(_In_ uint32_t version) NO_EXCEPTION {
+  if (version > 2) {
     return &winml_adapter_api_1;
   }
 
