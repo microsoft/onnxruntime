@@ -829,30 +829,32 @@ class OpTester {
     ORT_TRY {
       TensorShape shape{dims};
 
+      OrtValue value;
+
       if (!is_optional_type_tensor || (is_optional_type_tensor && values != nullptr)) {
         // In case values is nullptr for optional type tensor, it means we are creating
         // an optional type tensor which is None and we hence skip values count validation
         ORT_ENFORCE(shape.Size() == values_count,
                     values_count, " input values doesn't match tensor size of ",
                     shape.Size());
-      }
 
-      OrtValue value;
-
-      // If it is an optional tensor type with no values (i.e.) None,
-      // we won't even pass it in to Run() as part of the feeds,
-      // so we don't even have to create a Tensor.
-      // Conversely, if it is an optional tensor type with values,
-      // we pass it in as a regular tensor.
-      if (values || !is_optional_type_tensor) {
+        // If it is an optional tensor type with no values (i.e.) None,
+        // we won't even pass it in to Run() as part of the feeds,
+        // so we don't even have to create a Tensor.
+        // Conversely, if it is an optional tensor type with values,
+        // we pass it in as a regular tensor.
         auto allocator = test::AllocatorManager::Instance().GetAllocator(CPU);
         Tensor::InitOrtValue(DataTypeImpl::GetType<T>(), shape, std::move(allocator), value);
 
-        auto* data_ptr = value.GetMutable<Tensor>()->template MutableData<T>();
-        for (int64_t i = 0; i < values_count; i++) {
-          data_ptr[i] = values[i];
+        // values *could* be nullptr for a non-optional tensor if it is empty.
+        // Update the data buffer of the input only if values if non-nullptr.
+        if (values != nullptr) {
+          auto* data_ptr = value.GetMutable<Tensor>()->template MutableData<T>();
+          for (int64_t i = 0; i < values_count; i++) {
+            data_ptr[i] = values[i];
+          }
         }
-      } else {  // None OrtValue. Initialize appropriately.
+      } else {  // "None" Tensor OrtValue. Initialize appropriately.
         auto ml_tensor = DataTypeImpl::GetType<Tensor>();
         value.Init(nullptr, ml_tensor, ml_tensor->GetDeleteFunc());
       }
