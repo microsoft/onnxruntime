@@ -101,6 +101,7 @@ stages:
         additionalBuildFlags: --enable_training --build_wheel
         msbuildPlatform: x64
         isX86: false
+        job_name_suffix: ${{ variables['System.StageName'] }}
         RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
         # Liqun is fixing them
         RunStaticCodeAnalysis: false
