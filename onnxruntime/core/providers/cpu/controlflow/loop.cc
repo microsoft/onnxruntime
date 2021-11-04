@@ -518,7 +518,6 @@ Status LoopImpl::Execute(const FeedsFetchesManager& ffm) {
       ORT_RETURN_IF_ERROR(utils::OutputOptionalWithoutDataHelper(tp,
                                                                  static_cast<OpKernelContext*>(&context_),
                                                                  output_idx));
-      return Status::OK();
     } else if (input.IsTensor()) {
       const auto& input_tensor = input.Get<Tensor>();
       Tensor* output = context_.Output(output_idx, input_tensor.Shape());
