@@ -38,7 +38,7 @@ void MyCustomKernel::Compute(OrtKernelContext* context) {
   // To make sure custom kernels and ORT CUDA kernels are implicitly synchronized:
   // (1) Create your session with a compute stream passed in via SessionOptions and use the same compute
   //     stream to launch the custom op (OR)
-  // (2) Use the API KernelContext_GetCUDAStream() to query the CUDA compute stream being used by ORT kernels in this session
+  // (2) Use the API KernelContext_GetGPUComputeStream() to query the CUDA compute stream being used by ORT kernels in this session
   //     and use the same compute stream to launch the custom op.
   // Here, an example for (1) is shown (See test_inference.cc to see how this custom op is used.)
 #else
@@ -77,7 +77,7 @@ void MyCustomKernelMultipleDynamicInputs::Compute(OrtKernelContext* context) {
   // To make sure custom kernels and ORT CUDA kernels are implicitly synchronized:
   // (1) Create your session with a compute stream passed in via SessionOptions and use the same compute
   //     stream to launch the custom op (OR)
-  // (2) Use the API KernelContext_GetCUDAStream() to query the CUDA compute stream being used by ORT kernels in this session
+  // (2) Use the API KernelContext_GetGPUComputeStream() to query the CUDA compute stream being used by ORT kernels in this session
   //     and use the same compute stream to launch the custom op.
   // Here, an example for (1) is shown (See test_inference.cc to see how this custom op is used.)
 #else
@@ -180,25 +180,25 @@ void SliceCustomOpKernel::Compute(OrtKernelContext* context) {
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT:
 
       custom_slice(ort_.GetTensorData<float>(input_X), slice_from, slice_to,
-                   ort_.GetTensorMutableData<float>(output), ort_.KernelContext_GetCUDAStream(context));
+                   ort_.GetTensorMutableData<float>(output), ort_.KernelContext_GetGPUComputeStream(context));
       // cudaStreamSynchronize(nullptr);
       // If everything is setup correctly, custom op implementations need not have such explicit synchronization logic as above.
       // To make sure custom kernels and ORT CUDA kernels are implicitly synchronized:
       // (1) Create your session with a compute stream passed in via SessionOptions and use the same compute
       //     stream to launch the custom op (OR)
-      // (2) Use the API KernelContext_GetCUDAStream() to query the CUDA compute stream being used by ORT kernels in this session
+      // (2) Use the API KernelContext_GetGPUComputeStream() to query the CUDA compute stream being used by ORT kernels in this session
       //     and use the same compute stream to launch the custom op.
       // Here, an example for (2) is shown (See test_inference.cc to see how this custom op is used.)
       break;
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE:
       custom_slice(ort_.GetTensorData<double>(input_X), slice_from, slice_to,
-                   ort_.GetTensorMutableData<double>(output), ort_.KernelContext_GetCUDAStream(context));
+                   ort_.GetTensorMutableData<double>(output), ort_.KernelContext_GetGPUComputeStream(context));
       // cudaStreamSynchronize(nullptr);
       // If everything is setup correctly, custom op implementations need not have such explicit synchronization logic as above.
       // To make sure custom kernels and ORT CUDA kernels are implicitly synchronized:
       // (1) Create your session with a compute stream passed in via SessionOptions and use the same compute
       //     stream to launch the custom op (OR)
-      // (2) Use the API KernelContext_GetCUDAStream() to query the CUDA compute stream being used by ORT kernels in this session
+      // (2) Use the API KernelContext_GetGPUComputeStream() to query the CUDA compute stream being used by ORT kernels in this session
       //     and use the same compute stream to launch the custom op.
       // Here, an example for (2) is shown (See test_inference.cc to see how this custom op is used.)
       break;

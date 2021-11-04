@@ -1132,9 +1132,9 @@ inline OrtValue* CustomOpApi::KernelContext_GetOutput(OrtKernelContext* context,
   return out;
 }
 
-inline void* CustomOpApi::KernelContext_GetCUDAStream(const OrtKernelContext* context) {
+inline void* CustomOpApi::KernelContext_GetGPUComputeStream(const OrtKernelContext* context) {
   void* out;
-  ThrowOnError(api_.KernelContext_GetCUDAStream(context, &out));
+  ThrowOnError(api_.KernelContext_GetGPUComputeStream(context, &out));
   return out;
 }
 
