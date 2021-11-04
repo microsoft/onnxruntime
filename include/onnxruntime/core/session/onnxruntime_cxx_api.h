@@ -699,6 +699,7 @@ struct Value : Base<OrtValue> {
   Value& operator=(Value&&) = default;
 
   bool IsTensor() const;  ///< Returns true if Value is a tensor, false for other types like map/sequence/etc
+  bool HasValue() const;  /// < Return true if OrtValue contains data and returns false if the OrtValue is a None
 
 #if !defined(DISABLE_SPARSE_TENSORS)
   /// <summary>
