@@ -188,7 +188,7 @@ def quantize_static(model_input,
                                           Dyanmic mode currently is supported. Will support more in future.
             DisableShapeInference = True/False : in dynamic quantize mode, shape inference is not must have
                                                  and if it cause some issue, you could disable it.
-
+            MatMulConstBOnly = True/False: Default is False. If enabled, only MatMul with const B will be quantized.
     '''
 
     mode = QuantizationMode.QLinearOps
@@ -268,7 +268,17 @@ def quantize_dynamic(model_input: Path,
     :param nodes_to_exclude:
         List of nodes names to exclude. The nodes in this list will be excluded from quantization
         when it is not None.
-    :parma use_external_data_format: option used for large size (>2GB) model. Set to False by default. 
+    :parma use_external_data_format: option used for large size (>2GB) model. Set to False by default.
+        :param extra_options:
+        key value pair dictionary for various options in different case. Current used:
+            extra.Sigmoid.nnapi = True/False  (Default is False)
+            ActivationSymmetric = True/False: symmetrize calibration data for activations (default is False).
+            WeightSymmetric = True/False: symmetrize calibration data for weights (default is True).
+            EnableSubgraph = True/False : Default is False. If enabled, subgraph will be quantized.
+                                          Dyanmic mode currently is supported. Will support more in future.
+            DisableShapeInference = True/False : in dynamic quantize mode, shape inference is not must have
+                                                 and if it cause some issue, you could disable it.
+            MatMulConstBOnly = True/False: Default is False. If enabled, only MatMul with const B will be quantized.
     '''
 
     mode = QuantizationMode.IntegerOps

@@ -6,17 +6,17 @@
 #define ML_CHECK_VALID_ARGUMENT(x, ...)\
   {\
     if ((x) == false) {\
-      THROW_HR(E_INVALIDARG);\
+      ORT_THROW_HR(E_INVALIDARG);\
     }\
   }
 
 #define ML_INVALID_ARGUMENT(msg)\
-      THROW_HR(E_INVALIDARG);\
+      ORT_THROW_HR(E_INVALIDARG);\
 
 #define ML_CHECK_HRESULT(hr, ...)\
   {\
     if (FAILED(hr)) {\
-      THROW_HR(E_INVALIDARG);\
+      ORT_THROW_HR(E_INVALIDARG);\
     }\
   }
 

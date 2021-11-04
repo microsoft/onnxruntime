@@ -1767,7 +1767,8 @@ def derive_linux_build_property():
         return "/p:IsLinuxBuild=\"true\""
 
 
-def build_nuget_package(source_dir, build_dir, configs, use_cuda, use_openvino, use_tensorrt, use_dnnl, use_nuphar):
+def build_nuget_package(source_dir, build_dir, configs, use_cuda, use_openvino, use_tensorrt, use_dnnl, use_nuphar,
+                        use_winml):
     if not (is_windows() or is_linux()):
         raise BuildError(
             'Currently csharp builds and nuget package creation is only supportted '
@@ -1777,9 +1778,13 @@ def build_nuget_package(source_dir, build_dir, configs, use_cuda, use_openvino, 
     is_linux_build = derive_linux_build_property()
 
     # derive package name and execution provider based on the build args
+    target_name = "/t:CreatePackage"
     execution_provider = "/p:ExecutionProvider=\"None\""
     package_name = "/p:OrtPackageId=\"Microsoft.ML.OnnxRuntime\""
-    if use_openvino:
+    if use_winml:
+        package_name = "/p:OrtPackageId=\"Microsoft.AI.MachineLearning\""
+        target_name = "/t:CreateWindowsAIPackage"
+    elif use_openvino:
         execution_provider = "/p:ExecutionProvider=\"openvino\""
         package_name = "/p:OrtPackageId=\"Microsoft.ML.OnnxRuntime.OpenVino\""
     elif use_tensorrt:
@@ -1812,13 +1817,24 @@ def build_nuget_package(source_dir, build_dir, configs, use_cuda, use_openvino, 
 
         configuration = "/p:Configuration=\"" + config + "\""
 
-        cmd_args = ["dotnet", "msbuild", "OnnxRuntime.CSharp.sln", configuration, package_name, is_linux_build,
-                    ort_build_dir]
-        run_subprocess(cmd_args, cwd=csharp_build_dir)
+        if not use_winml:
+            cmd_args = ["dotnet", "msbuild", "OnnxRuntime.CSharp.sln", configuration, package_name, is_linux_build,
+                        ort_build_dir]
+            run_subprocess(cmd_args, cwd=csharp_build_dir)
+        else:
+            winml_interop_dir = os.path.join(source_dir, "csharp", "src", "Microsoft.AI.MachineLearning.Interop")
+            winml_interop_project = os.path.join(winml_interop_dir, "Microsoft.AI.MachineLearning.Interop.csproj")
+            winml_interop_project = os.path.normpath(winml_interop_project)
+            cmd_args = ["dotnet", "msbuild", winml_interop_project, configuration, "/p:Platform=\"Any CPU\"",
+                        ort_build_dir, "-restore"]
+            run_subprocess(cmd_args, cwd=csharp_build_dir)
+
+        nuget_exe = os.path.normpath(os.path.join(native_dir, config, "nuget_exe", "src", "nuget.exe"))
+        nuget_exe_arg = "/p:NugetExe=\"" + nuget_exe + "\""
 
         cmd_args = [
-            "dotnet", "msbuild", "OnnxRuntime.CSharp.proj", "/t:CreatePackage",
-            package_name, configuration, execution_provider, is_linux_build, ort_build_dir]
+            "dotnet", "msbuild", "OnnxRuntime.CSharp.proj", target_name,
+            package_name, configuration, execution_provider, is_linux_build, ort_build_dir, nuget_exe_arg]
         run_subprocess(cmd_args, cwd=csharp_build_dir)
 
 
@@ -2318,7 +2334,8 @@ def main():
                 args.use_openvino,
                 args.use_tensorrt,
                 args.use_dnnl,
-                args.use_nuphar
+                args.use_nuphar,
+                args.use_winml,
             )
 
     if args.test and args.build_nuget:
