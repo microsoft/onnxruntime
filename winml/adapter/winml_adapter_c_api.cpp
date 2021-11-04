@@ -47,7 +47,6 @@ static constexpr WinmlAdapterApi winml_adapter_api_1 = {
     &winmla::OrtSessionOptionsAppendExecutionProviderEx_DML,
 
     // OrtSession methods
-    
     &winmla::CreateSessionWithoutModel,
     &winmla::SessionGetExecutionProvider,
     &winmla::SessionInitialize,
@@ -65,9 +64,6 @@ static constexpr WinmlAdapterApi winml_adapter_api_1 = {
     &winmla::DmlExecutionProviderSetDefaultRoundingMode,
     &winmla::DmlExecutionProviderFlushContext,
     &winmla::DmlExecutionProviderReleaseCompletedReferences,
-    &winmla::DmlCreateGPUAllocationFromD3DResource,
-    &winmla::DmlFreeGPUAllocation,
-    &winmla::DmlGetD3D12ResourceFromAllocation,
     &winmla::DmlCopyTensor,
 
     &winmla::GetProviderMemoryInfo,

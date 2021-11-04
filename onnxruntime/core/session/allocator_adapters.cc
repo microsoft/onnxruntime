@@ -56,8 +56,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateAllocator, const OrtSession* sess,
   if (!allocator_ptr) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "No requested allocator available");
   }
-  auto all = new onnxruntime::OrtAllocatorImplWrappingIAllocator(std::move(allocator_ptr));
-  *out = all;
+  *out = new onnxruntime::OrtAllocatorImplWrappingIAllocator(std::move(allocator_ptr));
   return nullptr;
   API_IMPL_END
 }

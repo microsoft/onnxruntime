@@ -357,11 +357,6 @@ def generate_files(list, args):
                           '" target="build\\native\\include" />')
 
     if includes_winml:
-        # Add OnnxRuntime-Win headers
-        files_list.append('<file src=' + '"' +
-                          os.path.join(args.sources_path,
-                                       'winml\\adapter\\onnxruntime_win_c_api.h') +
-                          '" target="build\\native\\include" />')
         # Add microsoft.ai.machinelearning headers
         files_list.append('<file src=' + '"' + os.path.join(args.ort_build_path, args.build_config,
                                                             'microsoft.ai.machinelearning.h') +

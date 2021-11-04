@@ -343,30 +343,6 @@ struct WinmlAdapterApi {
   OrtStatus*(ORT_API_CALL* DmlExecutionProviderReleaseCompletedReferences)(_In_ OrtExecutionProvider* dml_provider)NO_EXCEPTION;
 
   /**
-    * DmlCreateGPUAllocationFromD3DResource
-	 * This api is used to create a DML EP input based on a user specified d3d12 resource.
-    * 
-    * WinML uses this as part of its Tensor apis to allow callers to specify their own D3D12 resources as inputs/outputs.
-    */
-  OrtStatus*(ORT_API_CALL* DmlCreateGPUAllocationFromD3DResource)(_In_ ID3D12Resource* pResource, _Out_ void** dml_resource)NO_EXCEPTION;
-
-  /**
-    * DmlFreeGPUAllocation
-	 * This api is used free the DML EP input created by DmlCreateGPUAllocationFromD3DResource.
-    * 
-    * WinML uses this as part of its Tensor apis to allow callers to specify their own D3D12 resources as inputs/outputs.
-    */
-  OrtStatus*(ORT_API_CALL* DmlFreeGPUAllocation)(_In_ void* ptr)NO_EXCEPTION;
-
-  /**
-    * DmlGetD3D12ResourceFromAllocation
-	 * This api is used to get the D3D12 resource when a OrtValue has been allocated by the DML EP and accessed via GetMutableTensorData.
-    * 
-    * WinML uses this in the image feature path to get the d3d resource and perform and tensorization on inputs directly into the allocated d3d12 resource.
-    */
-  OrtStatus*(ORT_API_CALL* DmlGetD3D12ResourceFromAllocation)(_In_ OrtExecutionProvider* provider, _In_ void* allocation, _Out_ ID3D12Resource** resource)NO_EXCEPTION;
-
-  /**
     * DmlCopyTensor
 	 * This api is used copy a tensor allocated by the DML EP Allocator to the CPU.
     * 
