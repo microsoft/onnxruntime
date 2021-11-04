@@ -1080,6 +1080,10 @@
         18226282479886582688
     ],
     [
+        "Loop ai.onnx CPUExecutionProvider",
+        3437102755395866648
+    ],
+    [
         "LpNormalization ai.onnx CPUExecutionProvider",
         5940113166682524360
     ],
@@ -1482,10 +1486,6 @@
     [
         "OptionalHasElement ai.onnx CPUExecutionProvider",
         103583056104706000
-    ],
-    [
-        "Loop ai.onnx CPUExecutionProvider",
-        3437102755395866648
     ],
     [
         "Or ai.onnx CPUExecutionProvider",
