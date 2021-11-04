@@ -75,30 +75,6 @@ DLDataType GetDlpackDataType(const OrtValue& ort_value) {
   return dtype;
 }
 
-DLDevice GetDlpackDevice(const OrtValue& ort_value, const int64_t& device_id) {
-  ORT_ENFORCE(ort_value.IsTensor(), "Only OrtValues that are Tensors are currently supported");
-  DLDevice device;
-  device.device_id = static_cast<int>(device_id);
-  const Tensor& tensor = ort_value.Get<Tensor>();
-  const auto& location = tensor.Location();
-  switch (location.device.Type()) {
-    case OrtDevice::CPU:
-      device.device_type = DLDeviceType::kDLCPU;
-      break;
-    case OrtDevice::GPU:
-#ifdef USE_ROCM
-      device.device_type = DLDeviceType::kDLROCM;
-#else
-      device.device_type = DLDeviceType::kDLCUDA;
-#endif
-      break;
-    default:
-      ORT_THROW("Cannot pack tensors on this device.");
-  }
-
-  return device;
-}
-
 OrtDevice GetOrtDevice(const DLDevice& device) {
   switch (device.device_type) {
     case DLDeviceType::kDLCPU:
@@ -190,13 +166,43 @@ bool IsContiguousTensor(const DLTensor& tensor) {
 
 }  // namespace
 
-void DlpackDeleterEmpty(DLManagedTensor*) {}
+DLDevice GetDlpackDevice(const OrtValue& ort_value, const int64_t& device_id) {
+  ORT_ENFORCE(ort_value.IsTensor(), "Only OrtValues that are Tensors are currently supported");
+  DLDevice device;
+  device.device_id = static_cast<int>(device_id);
+  const Tensor& tensor = ort_value.Get<Tensor>();
+  const auto& location = tensor.Location();
+  switch (location.device.Type()) {
+    case OrtDevice::CPU:
+      device.device_type = DLDeviceType::kDLCPU;
+      break;
+    case OrtDevice::GPU:
+#ifdef USE_ROCM
+      device.device_type = DLDeviceType::kDLROCM;
+#else
+      device.device_type = DLDeviceType::kDLCUDA;
+#endif
+      break;
+    default:
+      ORT_THROW("Cannot pack tensors on this device.");
+  }
 
-DLManagedTensor* OrtValueToDlpack(OrtValue& ort_value, OrtDLManagedTensor* ort_dlmanaged_tensor, DlpackDeleterFct* deleter) {
+  return device;
+}
+
+static void DlpackDeleter(DLManagedTensor* arg) { delete static_cast<OrtDLManagedTensor*>(arg->manager_ctx); }
+
+// This function returns a pointer to DLManagedTensor constructed from an OrtValue
+// The OrtValue inside OrtDLManagedTensor will increase its own buffer's ref count by one
+// When the consumer of DLManagedTensor is done with the tensor, it should invoke the deleter.
+DLManagedTensor* OrtValueToDlpack(OrtValue& ort_value) {
+  ORT_ENFORCE(ort_value.IsTensor(), "Only tensor type OrtValues are supported");
+  OrtDLManagedTensor* ort_dlmanaged_tensor(new OrtDLManagedTensor);
+
   Tensor& tensor = *ort_value.GetMutable<Tensor>();
   ort_dlmanaged_tensor->handle = ort_value;
   ort_dlmanaged_tensor->tensor.manager_ctx = ort_dlmanaged_tensor;
-  ort_dlmanaged_tensor->tensor.deleter = deleter == NULL ? &DlpackDeleterEmpty : deleter;
+  ort_dlmanaged_tensor->tensor.deleter = &DlpackDeleter;
   ort_dlmanaged_tensor->tensor.dl_tensor.data = (tensor.MutableDataRaw());
   ort_dlmanaged_tensor->tensor.dl_tensor.device = GetDlpackDevice(ort_value, tensor.Location().device.Id());
   ort_dlmanaged_tensor->tensor.dl_tensor.ndim = static_cast<int>(tensor.Shape().NumDimensions());
@@ -206,17 +212,6 @@ DLManagedTensor* OrtValueToDlpack(OrtValue& ort_value, OrtDLManagedTensor* ort_d
   ort_dlmanaged_tensor->tensor.dl_tensor.strides = nullptr;
   ort_dlmanaged_tensor->tensor.dl_tensor.byte_offset = 0;
   return &(ort_dlmanaged_tensor->tensor);
-}
-
-void DlpackDeleter(DLManagedTensor* arg) { delete static_cast<OrtDLManagedTensor*>(arg->manager_ctx); }
-
-// This function returns a pointer to DLManagedTensor constructed from an OrtValue
-// The OrtValue inside OrtDLManagedTensor will increase its own buffer's ref count by one
-// When the consumer of DLManagedTensor is done with the tensor, it should invoke the deleter.
-DLManagedTensor* OrtValueToDlpack(OrtValue& ort_value) {
-  ORT_ENFORCE(ort_value.IsTensor(), "Only tensor type OrtValues are supported");
-  OrtDLManagedTensor* ort_dlmanaged_tensor(new OrtDLManagedTensor);
-  return OrtValueToDlpack(ort_value, ort_dlmanaged_tensor, &DlpackDeleter);
 }
 
 OrtValue DlpackToOrtValue(DLManagedTensor* dlpack, bool is_bool_tensor) {

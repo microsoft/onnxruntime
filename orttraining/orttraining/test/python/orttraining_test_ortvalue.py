@@ -9,8 +9,10 @@ import numpy as np
 from numpy.testing import assert_almost_equal
 import onnxruntime as onnxrt
 from onnxruntime.capi.onnxruntime_pybind11_state import OrtValue as C_OrtValue, OrtValueVector
-import torch
 from onnxruntime.training.ortmodule import ORTModule
+import torch
+from torch._C import _from_dlpack
+from torch.utils.dlpack import from_dlpack
 import _test_helpers
 
 
@@ -50,7 +52,7 @@ class TestOrtValue(unittest.TestCase):
             ovar = ov.numpy()
             assert_almost_equal(ar, ovar)
 
-    def testOrtValueVectorDlPack(self):
+    def OrtValueVectorDlPackOrtValue(self, my_to_tensor):
         narrays = [
             np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32),
             np.array([[6.0, 7.0], [8.0, 9.0], [1.0, 6.0]], dtype=np.float32)]
@@ -62,15 +64,15 @@ class TestOrtValue(unittest.TestCase):
             ptr.append(ortvalue.data_ptr())
         self.assertEqual(len(vect), 2)
 
-        def my_to_tensor(dlpack_structure):
-            return C_OrtValue.from_dlpack(dlpack_structure, False)
-
         ortvalues = vect.to_dlpack(my_to_tensor)
         self.assertEqual(len(ortvalues), len(vect))
+        if my_to_tensor is None:
+            self.assertIn("PyCapsule", str(type(ortvalues[0])))
+            ortvalues = [C_OrtValue.from_dlpack(o, False) for o in ortvalues]
 
         # We make sure the function does not leak any python object.
         cf = [sys.getrefcount(o) for o in ortvalues]
-        dummy = [numpy.array([[0, 1]]), dict(a=3)]
+        dummy = [np.array([[0, 1]]), dict(a=3)]
         cf2 = [sys.getrefcount(o) for o in dummy]
         self.assertEqual(cf, cf2)  # it should be [3, 3]
 
@@ -80,6 +82,24 @@ class TestOrtValue(unittest.TestCase):
             av2 = v2.numpy()
             assert_almost_equal(av1, av2)
         self.assertEqual(ptr, ptr2)
+
+    def testOrtValueVectorDlPackOrtValue(self):
+        def my_to_tensor(dlpack_structure):
+            return C_OrtValue.from_dlpack(dlpack_structure, False)
+        self.OrtValueVectorDlPackOrtValue(my_to_tensor)
+
+    def testOrtValueVectorDlPackTorch(self):
+        def my_to_tensor(dlpack_structure):
+            return from_dlpack(dlpack_structure)
+        self.OrtValueVectorDlPackOrtValue(my_to_tensor)
+
+    def testOrtValueVectorDlPack_Torch(self):
+        def my_to_tensor(dlpack_structure):
+            return _from_dlpack(dlpack_structure)
+        self.OrtValueVectorDlPackOrtValue(my_to_tensor)
+
+    def testOrtValueVectorDlPackNone(self):
+        self.OrtValueVectorDlPackOrtValue(None)
 
     def test_ortmodule_dlpack(self):
 

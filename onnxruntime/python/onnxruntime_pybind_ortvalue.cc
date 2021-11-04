@@ -14,6 +14,7 @@
 #include "core/framework/tensor.h"
 #include "core/framework/sparse_tensor.h"
 #include "core/framework/TensorSeq.h"
+#include "core/dlpack/dlpack_converter.h"
 
 namespace onnxruntime {
 namespace python {
@@ -222,10 +223,10 @@ void addOrtValueMethods(pybind11::module& m) {
        "Returns a DLPack representing the tensor (part of __dlpack__ protocol). "
        "This method does not copy the pointer shape, instead, it copies the pointer value. "
        "The OrtValue must be persist until the dlpack structure is consumed.")
-      .def("__dlpack_device__", [](OrtValue* ort_value) -> py::tuple {
-        DLManagedTensor* dlmanaged_tensor = dlpack::OrtValueToDlpack(*ort_value);
-        return py::make_tuple((int)dlmanaged_tensor->dl_tensor.device.device_type,
-                              dlmanaged_tensor->dl_tensor.device.device_id);
+      .def("__dlpack_device__", [](const OrtValue* ort_value) -> py::tuple {
+        const onnxruntime::Tensor& tensor = ort_value->Get<Tensor>();
+        DLDevice device = onnxruntime::dlpack::GetDlpackDevice(*ort_value, tensor.Location().device.Id());
+        return py::make_tuple((int)device.device_type, device.device_id);
        }, "Returns a tuple of integers, (device, device index) (part of __dlpack__ protocol).")
 #endif
       ;

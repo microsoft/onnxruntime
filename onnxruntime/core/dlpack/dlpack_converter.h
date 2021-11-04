@@ -16,25 +16,18 @@ typedef struct {
   DLManagedTensor tensor;
 } OrtDLManagedTensor;
 
-typedef void DlpackDeleterFct(DLManagedTensor* arg);
-
-DlpackDeleterFct* GetDlpackDeleter();
-
 // This convertor will take an OrtValue and wrap it as a DLPack tensor
 // This may create a new ownership to the underlying tensor in OrtValue,
 // so we do pass-by-value here. We don't use pass-by-reference because
 // it implies no new ownership.
 DLManagedTensor* OrtValueToDlpack(OrtValue& ort_value);
 
-// This convertor will take an OrtValue and wrap it as a DLPack tensor,
-// similar to the previous function but the structure DLManagedTensor
-// is already allocated. This function can be used when multiple
-// OrtValue are converted in the same function. This saves allocations.
-DLManagedTensor* OrtValueToDlpack(OrtValue& ort_value, OrtDLManagedTensor* ort_dlmanaged_tensor, DlpackDeleterFct* deleter);
-
 // DLPack uses same config for both bool and unit8. Parameter is_bool_tensor is to
 // tell ORT the data type when creating OrtValue.
 OrtValue DlpackToOrtValue(DLManagedTensor* dlpack, bool is_bool_tensor = false);
+
+// Return the device of an OrtValue.
+DLDevice GetDlpackDevice(const OrtValue& ort_value, const int64_t& device_id);
 
 }  // namespace dlpack
 }  // namespace onnxruntime

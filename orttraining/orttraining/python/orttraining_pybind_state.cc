@@ -375,17 +375,26 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
           return py::list();
 
         py::list list_dlpacks;
-
-        PyObject* handle = to_tensor.ptr();
         PyObject* obj;
 
         py::gil_scoped_acquire acquire;
 
-        #if true
-        //const Tensor& tensor = v[0].Get<Tensor>();
-        //if (tensor.Location().device.Type() == OrtDevice::FPGA) {     
+        if (to_tensor.is_none()) {
+          DLManagedTensor* dlmanaged_tensor;
+          PyObject* capsule;
+
+          for (auto it : v) {
+            dlmanaged_tensor = dlpack::OrtValueToDlpack(it);
+            capsule = PyCapsule_New(dlmanaged_tensor, "dltensor", DlpackCapsuleDestructor);
+            if (capsule == NULL)
+              throw std::runtime_error("Empty capsule returned.");
+            list_dlpacks.append(capsule);
+            Py_DECREF(capsule);
+          }
+        } else {
           DLManagedTensor* dlmanaged_tensor;
           PyObject* capsule = NULL;
+          PyObject* handle = to_tensor.ptr();
 
           for (auto it : v) {
             // A new instance of dlpack needs to be created. The object which consumes it
@@ -405,40 +414,18 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
             Py_DECREF(obj);
           }
           Py_DECREF(capsule);
-        #else
-        //} else {
-          // This piece of code should be removed when the PR is compete.
-          // It is less efficient because it creates a capsule every time a tensor
-          // ownership is transfered.
-
-          // The destructor can be local because it is only used within this function.
-          // The capsule used to share the dlpack structure from OrtValue to
-          // another library only remains alive in the same loop iteration.
-
-          DLManagedTensor* dlmanaged_tensor;
-          PyObject* capsule;
-
-          for (auto it : v) {
-            dlmanaged_tensor = dlpack::OrtValueToDlpack(it);
-            capsule = PyCapsule_New(dlmanaged_tensor, "dltensor", DlpackCapsuleDestructor);
-            if (capsule == NULL)
-              throw std::runtime_error("Empty capsule returned.");
-            obj = PyObject_CallFunctionObjArgs(handle, capsule, NULL);
-            Py_DECREF(capsule);
-            if (obj == NULL)
-              throw std::runtime_error("Empty tensor returned.");
-            list_dlpacks.append(obj);
-            Py_DECREF(obj);
-          }
         }
-          #endif
         return list_dlpacks;
        },
-       R"pbdoc(Builds a list of all OrtValue converted into tensors using function to_tensor applied to the DLPack structure.
+       R"pbdoc(Converts all OrtValue into tensors through DLPack protocol, the method creates
+a DLPack structure for every tensors, then calls python function `to_tensor` to a new object
+consuming the DLPack structure or return a list of capsule if this function is None.
+
 :param to_tensor: this function takes a capsule holding a pointer onto a DLPack structure and returns
     a new tensor which becomes the new owner of the data. This function takes one python object and
-    returns a new python object. It fits the same signature as `torch.utils.from_dlpack`.
-:return: a list containing the new tensors
+    returns a new python object. It fits the same signature as `torch.utils.from_dlpack`,
+    if None, the method returns a capsule for every new DLPack structure.
+:return: a list containing the new tensors or a the new capsules if *to_tensor* is None
 
 This method is used to replace `tuple(torch._C._from_dlpack(ov.to_dlpack()) for ov in ort_values)`
 by a faster instruction `tuple(ort_values.to_dlpack(torch._C._from_dlpack))`. This loop
