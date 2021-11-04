@@ -50,7 +50,7 @@ TensorDesc::TensorDesc(
     MLOperatorTensorDataType dataType,
     gsl::span<const uint32_t> dimensions, // Desired dimensions
     gsl::span<const uint32_t> nonBroadcastDimensions, // Actual physical dimensions
-    uint32_t coerceAxis,
+    int32_t coerceAxis,
     int32_t placement, // Adjustment offset of the passed dimensions within the minDimensionCount.
     int32_t leftAlignedDimensionCount, // Number of dimensions that remain left aligned when expanded to minimum count (INT32_MAX means all, 0 means all right aligned).
     uint32_t minDimensionCount,
@@ -62,18 +62,19 @@ TensorDesc::TensorDesc(
 
     m_bufferTensorDesc.DataType = GetDmlDataTypeFromMlDataType(dataType);
     ML_CHECK_VALID_ARGUMENT(ApiTraits::IsValidEnumValue(m_bufferTensorDesc.DataType));
+    ML_CHECK_VALID_ARGUMENT(coerceAxis >= 0);
 
     gsl::span<const uint32_t> sizes;
 
     // If needed, flatten the tensor dimensions to a 2D tensor of size [a_0 * ... * a_{coerceAxis-1}, a_{coerceAxis} * ... * a_{n-1}]
     // e.g. Flattening [1,2,3,4] with axis 2 yields [2,12].
     uint32_t coercedSizes[2];
-    if (dimensions.size() > 1 && coerceAxis < gsl::narrow_cast<uint32_t>(dimensions.size()))
+    if (dimensions.size() > 1 && coerceAxis < gsl::narrow_cast<int32_t>(dimensions.size()))
     {
         uint32_t dimension0 = 1u;
         uint32_t dimension1 = dimensions[coerceAxis];
 
-        for (uint32_t i = 0; i < coerceAxis; ++i)
+        for (int32_t i = 0; i < coerceAxis; ++i)
         {
             dimension0 *= dimensions[i];
         }

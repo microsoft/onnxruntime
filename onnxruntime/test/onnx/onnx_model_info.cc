@@ -2,29 +2,23 @@
 // Licensed under the MIT License.
 
 #include "onnx_model_info.h"
-#include "core/platform/env.h"
-#include "re2/re2.h"
-#include "pb_helper.h"
-
-#if defined(ENABLE_ORT_FORMAT_LOAD)
 
 #include <fstream>
+
+#include "pb_helper.h"
+#include "re2/re2.h"
+
 #include "core/flatbuffers/schema/ort.fbs.h"
 #include "core/flatbuffers/flatbuffers_utils.h"
+#include "core/platform/env.h"
+
 using namespace onnxruntime::experimental;
-
-#endif
-
 using namespace onnxruntime;
 
 OnnxModelInfo::OnnxModelInfo(_In_ const PATH_CHAR_TYPE* model_url, bool is_ort_model)
     : model_url_(model_url) {
   if (is_ort_model) {
-#if defined(ENABLE_ORT_FORMAT_LOAD)
     InitOrtModelInfo(model_url);
-#else
-    ORT_THROW("ort model is not supported in this build");
-#endif
   } else {
 #if !defined(ORT_MINIMAL_BUILD)
     InitOnnxModelInfo(model_url);
@@ -100,8 +94,6 @@ void OnnxModelInfo::InitOnnxModelInfo(_In_ const PATH_CHAR_TYPE* model_url) {  /
 
 #endif  // #if !defined(ORT_MINIMAL_BUILD)
 
-#if defined(ENABLE_ORT_FORMAT_LOAD)
-
 void OnnxModelInfo::InitOrtModelInfo(_In_ const PATH_CHAR_TYPE* model_url) {
   std::vector<uint8_t> bytes;
   size_t num_bytes = 0;
@@ -175,5 +167,3 @@ void OnnxModelInfo::InitOrtModelInfo(_In_ const PATH_CHAR_TYPE* model_url) {
   ORT_THROW_IF_ERROR(add_node_args(fbs_graph->inputs(), input_value_info_));
   ORT_THROW_IF_ERROR(add_node_args(fbs_graph->outputs(), output_value_info_));
 }
-
-#endif  //#if defined(ENABLE_ORT_FORMAT_LOAD)
