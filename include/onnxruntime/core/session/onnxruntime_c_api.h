@@ -537,14 +537,14 @@ typedef void (*OrtThreadWorkerFn)(void* worker_fn_param);
 
 /** \brief Thread creation function
 *
-* The function should return a thread handle to be used in onnxruntime intra op thread pool
+* The function should return a thread handle to be used in onnxruntime thread pools
 * Onnxruntime will throw exception on return value of nullptr or 0, indicating that the function failed to create a thread
 */
 typedef THREAD_HANDLE (*CustomCreateThreadFn)(void* custom_thread_creation_options, OrtThreadWorkerFn, void* worker_fn_param);
 
 /** \brief Thread join function
 *
-* Onnxruntime intra op thread pool destructor will call the function to join a custom thread.
+* Onnxruntime thread pool destructor will call the function to join a custom thread.
 * Argument "thread_handle" is the value returned by CustomCreateThreadFn
 */
 typedef void (*CustomJoinThreadFn)(THREAD_HANDLE thread_handle);

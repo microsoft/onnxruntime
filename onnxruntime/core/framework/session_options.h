@@ -123,7 +123,7 @@ struct SessionOptions {
   // custom function callback to create a thread
   CustomCreateThreadFn custom_create_thread_fn = nullptr;
 
-  // custom option to pass to custom_create_thread_fn
+  // custom options to pass to custom_create_thread_fn
   void* custom_thread_creation_options = nullptr;
 
   // custom function callback to join a thread

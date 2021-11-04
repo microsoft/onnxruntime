@@ -1847,9 +1847,9 @@ TEST(CApiTest, TestConfigureTensorRTProviderOptions) {
 namespace TestPerSessionCustomThreadHooks {
 
 std::vector<std::thread> threads;
-int32_t custom_thread_creation_options{};
-int32_t custom_creation_hook_called{};
-int32_t custom_join_hook_called{};
+int32_t custom_thread_creation_options = 5;
+int32_t custom_creation_hook_called = 0;
+int32_t custom_join_hook_called = 0;
 
 THREAD_HANDLE CreateThreadCustomized(void* options, OrtThreadWorkerFn work_loop, void* param) {
   if (*((int32_t*)options) == 5) {
@@ -1870,8 +1870,6 @@ void JoinThreadCustomized(THREAD_HANDLE handle) {
 
 TEST(CApiTest, TestPerSessionCustomThreadPoolHooks) {
   const int32_t thread_count = 3;
-  custom_thread_creation_options = 5;
-  custom_creation_hook_called = custom_join_hook_called = 0;
   Ort::SessionOptions session_options;
   // test both intra and inter op thread pool
   session_options.SetExecutionMode(ExecutionMode::ORT_PARALLEL);

@@ -325,9 +325,8 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
       to.custom_create_thread_fn = session_options_.custom_create_thread_fn;
       to.custom_thread_creation_options = session_options.custom_thread_creation_options;
       to.custom_join_thread_fn = session_options_.custom_join_thread_fn;
-
       if (to.custom_create_thread_fn) {
-        ORT_ENFORCE(to.custom_join_thread_fn, "custom join thread function not set!");
+        ORT_ENFORCE(to.custom_join_thread_fn, "custom join thread function not set for intra op thread pool");
       }
       thread_pool_ =
           concurrency::CreateThreadPool(&Env::Default(), to, concurrency::ThreadPoolType::INTRA_OP);
@@ -354,7 +353,9 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
       to.custom_create_thread_fn = session_options_.custom_create_thread_fn;
       to.custom_thread_creation_options = session_options.custom_thread_creation_options;
       to.custom_join_thread_fn = session_options_.custom_join_thread_fn;
-
+      if (to.custom_create_thread_fn) {
+        ORT_ENFORCE(to.custom_join_thread_fn, "custom join thread function not set for inter op thread pool");
+      }
       inter_op_thread_pool_ =
           concurrency::CreateThreadPool(&Env::Default(), to, concurrency::ThreadPoolType::INTER_OP);
       if (inter_op_thread_pool_ == nullptr) {
