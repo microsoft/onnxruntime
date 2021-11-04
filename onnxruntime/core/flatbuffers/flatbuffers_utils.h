@@ -43,8 +43,6 @@ onnxruntime::common::Status SaveValueInfoOrtFormat(
     flatbuffers::FlatBufferBuilder& builder, const ONNX_NAMESPACE::ValueInfoProto& value_info_proto,
     flatbuffers::Offset<fbs::ValueInfo>& fbs_value_info);
 
-#if defined(ENABLE_ORT_FORMAT_LOAD)
-
 void LoadStringFromOrtFormat(std::string& dst, const flatbuffers::String* fbs_string);
 
 // This macro is to be used on a protobuf message (protobug_msg), which will not create an empty string field (str_field)
@@ -61,8 +59,6 @@ onnxruntime::common::Status LoadValueInfoOrtFormat(
 onnxruntime::common::Status LoadOpsetImportOrtFormat(
     const flatbuffers::Vector<flatbuffers::Offset<fbs::OperatorSetId>>* fbs_op_set_ids,
     std::unordered_map<std::string, int>& domain_to_version);
-
-#endif
 
 // check if filename ends in .ort
 template <typename T>
