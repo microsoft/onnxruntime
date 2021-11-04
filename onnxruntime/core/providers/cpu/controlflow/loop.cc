@@ -21,6 +21,7 @@
 #include "core/providers/cpu/tensor/utils.h"
 #include "core/framework/session_options.h"
 #include "core/framework/TensorSeq.h"
+#include "core/providers/utils.h"
 
 #include "gsl/gsl"
 
@@ -114,20 +115,34 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(Loop,
                                        .TypeConstraint("V", DataTypeImpl::AllTensorTypes()),
                                    Loop);
 
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(Loop,
+                                   13, 15,
+                                   KernelDefBuilder()
+                                       .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
+                                       .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
+                                       .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorTypes()),
+                                   Loop);
+
 ONNX_CPU_OPERATOR_KERNEL(Loop,
-                         13,
+                         16,
                          KernelDefBuilder()
                              .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
                              .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
-                             .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorTypes()),
+                             .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorAndOptionalTypes()),
                          Loop);
-
 Loop::Info::Info(const onnxruntime::Node& node, const GraphViewer& subgraph_in)
     : subgraph(subgraph_in) {
   num_loop_carried_vars = static_cast<int>(node.InputDefs().size()) - 2;  // skip 'M' and 'cond'
   num_implicit_inputs = static_cast<int>(node.ImplicitInputDefs().size());
   num_subgraph_inputs = 2 + num_loop_carried_vars;  // iter_num, cond, loop carried vars
   num_outputs = static_cast<int>(node.OutputDefs().size());
+
+  // Hold the type for loop carried dependencies - we will use it later
+  const auto& node_input_types = node.InputDefs();
+  loop_carried_vars_types.reserve(num_subgraph_inputs);
+  for (int i = 0; i < num_loop_carried_vars; ++i) {
+    loop_carried_vars_types.push_back(node_input_types[i + 2]->TypeAsProto());
+  }
 
   auto& subgraph_inputs = subgraph.GetInputs();
   auto& subgraph_outputs = subgraph.GetOutputs();
@@ -492,19 +507,30 @@ Status LoopImpl::Execute(const FeedsFetchesManager& ffm) {
 
   // As the loop carried variables may change shape across iterations there's no way to avoid a copy
   // as we need the final shape.
-  auto copy_mlvalue_to_output = [this](OrtValue& input, int output_idx, int64_t iter_num_value) {
-    if (input.IsTensor()) {
-      const auto& data = input.Get<Tensor>();
-      Tensor* output = context_.Output(output_idx, data.Shape());
+  auto copy_mlvalue_to_output = [this](OrtValue& input, int output_idx,
+                                       int64_t iter_num_value, const TypeProto& tp) {
+    // Only Optional type can be None (i.e.) not have data
+    if (tp.has_optional_type() && !input.IsAllocated()) {
+      // We can't rely on the input OrtValue containing type information
+      // as it could be a main graph input which will be missing the type
+      // in the corresponding OrtValue for the "None" case because
+      // the user doesn't provide any input for the "None" case.
+      ORT_RETURN_IF_ERROR(utils::OutputOptionalWithoutDataHelper(tp,
+                                                                 static_cast<OpKernelContext*>(&context_),
+                                                                 output_idx));
+    } else if (input.IsTensor()) {
+      const auto& input_tensor = input.Get<Tensor>();
+      Tensor* output = context_.Output(output_idx, input_tensor.Shape());
       // Safely use the IDataTransfer abstraction as we only allow using
       // Loop on CUDA if the copy stream is the same as the compute stream.
       // So there is no explicit sync required between the compute and copy streams
       // to avoid data races.
-      ORT_RETURN_IF_ERROR(session_state_.GetDataTransferMgr().CopyTensor(input.Get<Tensor>(), *output));
+      ORT_RETURN_IF_ERROR(session_state_.GetDataTransferMgr().CopyTensor(input_tensor, *output));
     } else if (input.IsTensorSequence()) {
+      TensorSeq* output = context_.Output<TensorSeq>(output_idx);
+
       if (iter_num_value != 0) {
         // We can move the subgraph outputs directly into the Loop's outputs.
-        TensorSeq* output = context_.Output<TensorSeq>(output_idx);
         *output = std::move(*input.GetMutable<TensorSeq>());
       } else {
         // We can't move the Loop's inputs directly into the Loop's outputs
@@ -512,7 +538,7 @@ Status LoopImpl::Execute(const FeedsFetchesManager& ffm) {
         std::vector<Tensor> tensors;
 
         auto& data = input.Get<TensorSeq>();
-        TensorSeq* output = context_.Output<TensorSeq>(output_idx);
+
         output->SetType(data.DataType());
 
         AllocatorPtr alloc;
@@ -537,7 +563,7 @@ Status LoopImpl::Execute(const FeedsFetchesManager& ffm) {
   if (iter_num_value != 0) {
     for (int i = 0; i < info_.num_loop_carried_vars; ++i) {
       // need to allocate Loop output and copy OrtValue from fetches
-      ORT_RETURN_IF_ERROR(copy_mlvalue_to_output(fetches[i + 1], i, iter_num_value));  // skip cond
+      ORT_RETURN_IF_ERROR(copy_mlvalue_to_output(fetches[i + 1], i, iter_num_value, *info_.loop_carried_vars_types[i]));  // skip cond
     }
 
     for (int i = info_.num_loop_carried_vars; i < info_.num_outputs; ++i) {
@@ -551,7 +577,7 @@ Status LoopImpl::Execute(const FeedsFetchesManager& ffm) {
     // no iterations.
     // copy input loop carried vars to output.
     for (int i = 0; i < info_.num_loop_carried_vars; ++i) {
-      ORT_RETURN_IF_ERROR(copy_mlvalue_to_output(feeds[i + 2], i, iter_num_value));  // skip iter# and cond
+      ORT_RETURN_IF_ERROR(copy_mlvalue_to_output(feeds[i + 2], i, iter_num_value, *info_.loop_carried_vars_types[i]));  // skip iter# and cond
     }
 
     // create empty outputs for loop outputs using the subgraph output shapes for the rank
