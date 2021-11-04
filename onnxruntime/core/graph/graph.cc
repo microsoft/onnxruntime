@@ -15,17 +15,18 @@
 
 #include "gsl/gsl"
 #include "core/common/logging/logging.h"
-#include "core/flatbuffers/schema/ort.fbs.h"
 #include "core/flatbuffers/flatbuffers_utils.h"
-#include "core/graph/graph_flatbuffers_utils.h"
+#include "core/flatbuffers/schema/ort.fbs.h"
 #include "core/framework/tensor_shape.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/utils.h"
+#include "core/graph/graph_flatbuffers_utils.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/indexed_sub_graph.h"
 #include "core/graph/model.h"
 #include "core/graph/model_load_utils.h"
 #include "core/graph/op.h"
+#include "core/graph/runtime_optimization_record_container.h"
 
 #if !defined(ORT_MINIMAL_BUILD)
 #include "core/graph/function.h"
@@ -692,7 +693,7 @@ Status Node::LoadEdgesFromOrtFormat(const onnxruntime::experimental::fbs::NodeEd
                 "input index: ", fbs_node_edges.node_index(), " is not the same as this node's index:", index_);
 
   auto add_edges = [&graph](const flatbuffers::Vector<const onnxruntime::experimental::fbs::EdgeEnd*>* fbs_edges,
-                            EdgeSet& edge_set, const std::string dst_name) -> Status {
+                            EdgeSet& edge_set, const std::string& dst_name) -> Status {
     if (fbs_edges) {
       for (const auto* fbs_edge : *fbs_edges) {
         ORT_RETURN_IF(nullptr == fbs_edge, "Node::LoadEdgesFromOrtFormat, edge is missing for ", dst_name);
@@ -1012,6 +1013,10 @@ Graph::Graph(const Model& owning_model,
              const logging::Logger& logger)
     : owning_model_(owning_model),
       graph_proto_(graph_proto),
+#if defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
+      runtime_optimizations_ptr_(std::make_unique<RuntimeOptimizationRecordContainer>()),
+      runtime_optimizations_(*runtime_optimizations_ptr_),
+#endif
       schema_registry_(schema_registry),
       graph_resolve_needed_(true),
       domain_to_version_(domain_to_version),
@@ -2105,7 +2110,7 @@ Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op, const Reso
     // Check all <arg_count> actual parameters (corresponding to the k-th input)
     // match the formal parameter definition (i-th argument).
     for (int j = 0; j < arg_count; ++j, ++k) {
-      auto& input_def = node.MutableDefinitions().input_defs[k];
+      const auto* input_def = node.GetDefinitions().input_defs[k];
       if (!input_def->Exists())
         continue;
 
@@ -2391,8 +2396,7 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
 
     NodeProto node_proto;
     node.ToProto(node_proto);
-    auto& node_name = node.Name();
-    auto& domain = node.Domain();
+    const auto& node_name = node.Name();
 
     if (!node.Op()) {
       {
@@ -2408,16 +2412,7 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
         ORT_RETURN_IF_ERROR(status);
       }
 
-      auto maxInclusiveVersion = DomainToVersionMap().find(domain)->second;
-      node.op_ = schema_registry_->GetSchema(node.OpType(), maxInclusiveVersion, node.Domain());
-
-      if (node.op_) {
-        node.since_version_ = node.op_->since_version();
-
-        if (node.op_->Deprecated()) {
-          node.op_ = nullptr;
-        }
-      }
+      SetOpSchemaFromRegistryForNode(node);
 
       if (!node.op_ || (node.op_ && (node.op_->HasFunction() || node.op_->HasContextDependentFunction()))) {
         InitFunctionBodyForNode(node);
@@ -3060,6 +3055,12 @@ common::Status Graph::SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
   auto nodes = builder.CreateVector(nodes_vec);
   auto node_edges = builder.CreateVector(node_edges_vec);
 
+#if defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
+  flatbuffers::Offset<RuntimeOptimizationRecordContainer::FbsRuntimeOptimizationRecordContainer> runtime_optimization_records;
+  ORT_RETURN_IF_ERROR(RuntimeOptimizations().SaveToOrtFormat(builder, runtime_optimization_records));
+  const auto runtime_optimizations = fbs::CreateRuntimeOptimizations(builder, runtime_optimization_records);
+#endif
+
   fbs::GraphBuilder gb(builder);
   gb.add_initializers(initializers);
   gb.add_node_args(node_args);
@@ -3070,6 +3071,9 @@ common::Status Graph::SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
   gb.add_outputs(outputs);
 #if !defined(DISABLE_SPARSE_TENSORS)
   gb.add_sparse_initializers(sparse_initializers);
+#endif
+#if defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
+  gb.add_runtime_optimizations(runtime_optimizations);
 #endif
   fbs_graph = gb.Finish();
   return Status::OK();
@@ -3646,6 +3650,29 @@ Status Graph::SetGraphInputsOutputs() {
 IOnnxRuntimeOpSchemaCollectionPtr Graph::GetSchemaRegistry() const {
   return schema_registry_;
 }
+
+bool Graph::SetOpSchemaFromRegistryForNode(Node& node) {
+  if (node.op_ != nullptr) return true;
+
+  node.op_ = [&]() -> const ONNX_NAMESPACE::OpSchema* {
+    const auto domain_to_version_it = DomainToVersionMap().find(node.Domain());
+    if (domain_to_version_it == DomainToVersionMap().end()) {
+      return nullptr;
+    }
+    const auto max_inclusive_version = domain_to_version_it->second;
+    return schema_registry_->GetSchema(node.OpType(), max_inclusive_version, node.Domain());
+  }();
+
+  if (node.op_) {
+    node.since_version_ = node.op_->since_version();
+
+    if (node.op_->Deprecated()) {
+      node.op_ = nullptr;
+    }
+  }
+
+  return node.op_ != nullptr;
+}
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
@@ -4069,6 +4096,10 @@ Graph::Graph(const Model& owning_model,
              const logging::Logger& logger)
     : owning_model_(owning_model),
       graph_proto_(&deserialized_proto_data_),
+#if defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
+      runtime_optimizations_ptr_(std::make_unique<RuntimeOptimizationRecordContainer>()),
+      runtime_optimizations_(*runtime_optimizations_ptr_),
+#endif
 #if !defined(ORT_MINIMAL_BUILD)
       schema_registry_(schema_registry),
 #endif
@@ -4090,6 +4121,7 @@ common::Status Graph::LoadFromOrtFormat(const onnxruntime::experimental::fbs::Gr
   // 4. Deserialize the NodeEdges
   //        We need all the Node instances to exist as the EdgeEnd has a Node* for the other end of the edge
   // 5. Deserialize the Inputs/Outputs/outer_scope_node_args
+  // 6. Deserialize the runtime optimizations, if enabled
 
   // Initializers
   auto fbs_initializers = fbs_graph.initializers();
@@ -4211,6 +4243,15 @@ common::Status Graph::LoadFromOrtFormat(const onnxruntime::experimental::fbs::Gr
   ComputeOverridableInitializers();
 
   ORT_RETURN_IF_ERROR(add_node_args(fbs_graph.outputs(), graph_outputs_));
+
+#if defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
+  // runtime optimizations
+  if (const auto* fbs_runtime_optimizations = fbs_graph.runtime_optimizations()) {
+    if (const auto* fbs_runtime_optimization_records = fbs_runtime_optimizations->records()) {
+      ORT_RETURN_IF_ERROR(MutableRuntimeOptimizations().LoadFromOrtFormat(*fbs_runtime_optimization_records));
+    }
+  }
+#endif  // defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
 
   return Status::OK();
 }
