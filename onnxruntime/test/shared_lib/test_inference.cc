@@ -176,6 +176,7 @@ static constexpr PATH_TYPE VARIED_INPUT_CUSTOM_OP_MODEL_URI_2 = TSTR("testdata/f
 static constexpr PATH_TYPE OPTIONAL_INPUT_OUTPUT_CUSTOM_OP_MODEL_URI = TSTR("testdata/foo_bar_1.onnx");
 static constexpr PATH_TYPE OPTIONAL_INPUT_OUTPUT_CUSTOM_OP_MODEL_URI_2 = TSTR("testdata/foo_bar_2.onnx");
 static constexpr PATH_TYPE CUSTOM_OP_MODEL_WITH_ATTRIBUTES_URI = TSTR("testdata/foo_bar_3.onnx");
+static constexpr PATH_TYPE OPTIONAL_SEQUENCE_TYPE_MODEL_URI = TSTR("testdata/model_optional_sequence_type.onnx");
 #if !defined(DISABLE_SPARSE_TENSORS)
 static constexpr PATH_TYPE SPARSE_OUTPUT_MODEL_URI = TSTR("testdata/sparse_initializer_as_output.onnx");
 #ifndef DISABLE_CONTRIB_OPS
@@ -259,7 +260,7 @@ TEST(CApiTest, SparseOutputModel) {
   const char* const output_names[] = {"values"};
   Ort::Session session(*ort_env, SPARSE_OUTPUT_MODEL_URI, Ort::SessionOptions{});
   auto ort_outputs = session.Run(Ort::RunOptions{}, input_names.data(), ort_inputs.data(), ort_inputs.size(),
-                                   output_names, 1);
+                                 output_names, 1);
   ASSERT_EQ(ort_outputs.size(), 1U);
   const auto& sparse_output = ort_outputs[0];
   auto ti = sparse_output.GetTypeInfo();
@@ -290,7 +291,6 @@ TEST(CApiTest, SparseOutputModel) {
 
 #ifndef DISABLE_CONTRIB_OPS
 TEST(CApiTest, SparseInputModel) {
-
   std::vector<int64_t> common_shape{9, 9};  // inputs and outputs same shape
   std::vector<float> A_values{1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0,
                               10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0,
@@ -322,7 +322,7 @@ TEST(CApiTest, SparseInputModel) {
                             42, 43, 44, 45, 46, 47, 0, 0, 0,
                             48, 49, 50, 51, 52, 53, 0, 0, 0};
 
-   std::vector<float> Y_result{546, 561, 576, 552, 564, 576, 39, 42, 45,
+  std::vector<float> Y_result{546, 561, 576, 552, 564, 576, 39, 42, 45,
                               1410, 1461, 1512, 1362, 1392, 1422, 201, 222, 243,
                               2274, 2361, 2448, 2172, 2220, 2268, 363, 402, 441,
                               2784, 2850, 2916, 4362, 4485, 4608, 1551, 1608, 1665,
@@ -332,36 +332,36 @@ TEST(CApiTest, SparseInputModel) {
                               786, 915, 1044, 3324, 3462, 3600, 4911, 5178, 5445,
                               894, 1041, 1188, 3756, 3912, 4068, 5559, 5862, 6165};
 
-   Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
-   Ort::Value::Shape ort_dense_shape{common_shape.data(), common_shape.size()};
-   Ort::Value::Shape ort_values_shape{&indices_shape[0], 1U};
-   auto a_st = Ort::Value::CreateSparseTensor(info, A_values.data(), ort_dense_shape, ort_values_shape);
-   a_st.UseCooIndices(A_indices.data(), A_indices.size());
+  Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+  Ort::Value::Shape ort_dense_shape{common_shape.data(), common_shape.size()};
+  Ort::Value::Shape ort_values_shape{&indices_shape[0], 1U};
+  auto a_st = Ort::Value::CreateSparseTensor(info, A_values.data(), ort_dense_shape, ort_values_shape);
+  a_st.UseCooIndices(A_indices.data(), A_indices.size());
 
-   auto b_tensor = Ort::Value::CreateTensor(info, B_data.data(), B_data.size(), common_shape.data(), common_shape.size());
+  auto b_tensor = Ort::Value::CreateTensor(info, B_data.data(), B_data.size(), common_shape.data(), common_shape.size());
 
-   std::vector<Ort::Value> ort_inputs;
-   ort_inputs.push_back(std::move(a_st));
-   ort_inputs.push_back(std::move(b_tensor));
-   const char* input_names[] = {"sparse_A", "dense_B"};
-   const char* const output_names[] = {"dense_Y"};
-   Ort::Session session(*ort_env, SPARSE_INPUT_MATMUL_MODEL_URI, Ort::SessionOptions{});
-   auto ort_outputs = session.Run(Ort::RunOptions{}, input_names, ort_inputs.data(), ort_inputs.size(),
-                                  output_names, 1);
-   ASSERT_EQ(ort_outputs.size(), 1U);
-   const auto& dense_Y = ort_outputs[0];
-   ASSERT_TRUE(dense_Y.IsTensor());
+  std::vector<Ort::Value> ort_inputs;
+  ort_inputs.push_back(std::move(a_st));
+  ort_inputs.push_back(std::move(b_tensor));
+  const char* input_names[] = {"sparse_A", "dense_B"};
+  const char* const output_names[] = {"dense_Y"};
+  Ort::Session session(*ort_env, SPARSE_INPUT_MATMUL_MODEL_URI, Ort::SessionOptions{});
+  auto ort_outputs = session.Run(Ort::RunOptions{}, input_names, ort_inputs.data(), ort_inputs.size(),
+                                 output_names, 1);
+  ASSERT_EQ(ort_outputs.size(), 1U);
+  const auto& dense_Y = ort_outputs[0];
+  ASSERT_TRUE(dense_Y.IsTensor());
 
-   auto result_ts = dense_Y.GetTensorTypeAndShapeInfo();
-   ASSERT_EQ(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, result_ts.GetElementType());
-   ASSERT_EQ(common_shape, result_ts.GetShape());
+  auto result_ts = dense_Y.GetTensorTypeAndShapeInfo();
+  ASSERT_EQ(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, result_ts.GetElementType());
+  ASSERT_EQ(common_shape, result_ts.GetShape());
 
-   const auto* result_vals = dense_Y.GetTensorData<float>();
-   auto result_span = gsl::make_span(result_vals, Y_result.size());
-   ASSERT_TRUE(std::equal(Y_result.cbegin(), Y_result.cend(), result_span.cbegin(), result_span.cend()));
+  const auto* result_vals = dense_Y.GetTensorData<float>();
+  auto result_span = gsl::make_span(result_vals, Y_result.size());
+  ASSERT_TRUE(std::equal(Y_result.cbegin(), Y_result.cend(), result_span.cbegin(), result_span.cend()));
 }
-#endif // DISABLE_CONTRIB_OPS
-#endif // !defined(DISABLE_SPARSE_TENSORS)
+#endif  // DISABLE_CONTRIB_OPS
+#endif  // !defined(DISABLE_SPARSE_TENSORS)
 
 TEST(CApiTest, custom_op_handler) {
   std::cout << "Running custom op inference" << std::endl;
@@ -1840,3 +1840,46 @@ TEST(CApiTest, TestConfigureTensorRTProviderOptions) {
   ASSERT_TRUE(stat(engine_cache_path, &buffer) == 0);
 }
 #endif
+
+TEST(CApiTest, TestOptionalTypeModel) {
+  const auto& api = Ort::GetApi();
+
+  Ort::MemoryInfo mem_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
+
+  float data[] = {2.f, 1.f, 4.f, 3.f, 6.f, 5.f};
+  const int data_len = sizeof(data) / sizeof(data[0]);
+  const int64_t shape[] = {2, 3};
+  const size_t shape_len = sizeof(shape) / sizeof(shape[0]);
+  Ort::Value val = Ort::Value::CreateTensor<float>(mem_info, data, data_len, shape, shape_len);
+
+  std::vector<Ort::Value> seq;
+  seq.push_back(std::move(val));
+
+  Ort::Value seq_value = Ort::Value::CreateSequence(seq);
+
+  std::vector<const char*> input_names{"opt_in"};
+  const char* output_names[] = {"opt_out"};
+
+  Ort::SessionOptions session_options;
+  Ort::Session session(*ort_env, OPTIONAL_SEQUENCE_TYPE_MODEL_URI, session_options);
+
+  // The model has an Identity node
+
+  // Non-None input produces Non-None output
+  {
+    auto outputs = session.Run(Ort::RunOptions{nullptr}, input_names.data(), &seq_value, 1, output_names, 1);
+    ASSERT_EQ(outputs.size(), 1);
+    ASSERT_TRUE(outputs[0].HasValue());  // Non-None
+
+    size_t num_elements_in_sequence = 0;
+    api.GetValueCount(outputs[0], &num_elements_in_sequence);
+    ASSERT_EQ(num_elements_in_sequence, 1);
+  }
+
+  // None input produces None output
+  {
+    auto outputs = session.Run(Ort::RunOptions{nullptr}, nullptr, nullptr, 0, output_names, 1);
+    ASSERT_EQ(outputs.size(), 1);
+    ASSERT_TRUE(!outputs[0].HasValue());  // None
+  }
+}
