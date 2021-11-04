@@ -1,7 +1,7 @@
 jobs:
 - job: iOS_CI_on_Mac
   pool:
-    vmImage: 'macOS-10.15'
+    vmImage: 'macOS-11'
   variables:
     MACOSX_DEPLOYMENT_TARGET: '10.14'
   timeoutInMinutes: 150

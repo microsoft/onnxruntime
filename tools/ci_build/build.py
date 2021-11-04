@@ -403,9 +403,6 @@ def parse_arguments():
         help="Path to OpenCL SDK. "
         "e.g. --dnnl_opencl_root \"C:/Program Files (x86)/IntelSWTools/sw_dev_tools/OpenCL/sdk\"")
     parser.add_argument(
-        "--use_featurizers", action='store_true',
-        help="Build with ML Featurizer support.")
-    parser.add_argument(
         "--use_openvino", nargs="?", const="CPU_FP32",
         type=_openvino_verify_device_type,
         help="Build with OpenVINO for specific hardware.")
@@ -457,7 +454,7 @@ def parse_arguments():
         help="Enable operator implemented in language other than cpp")
     parser.add_argument(
         "--cmake_generator",
-        choices=['Visual Studio 15 2017', 'Visual Studio 16 2019', 'Ninja'],
+        choices=['Visual Studio 15 2017', 'Visual Studio 16 2019', 'Visual Studio 17 2022', 'Ninja'],
         default='Visual Studio 16 2019' if is_windows() else None,
         help="Specify the generator that CMake invokes. "
         "This is only supported on Windows")
@@ -538,8 +535,6 @@ def parse_arguments():
     parser.add_argument("--disable_rtti", action='store_true', help="Disable RTTI (reduces binary size)")
     parser.add_argument("--disable_exceptions", action='store_true',
                         help="Disable exceptions to reduce binary size. Requires --minimal_build.")
-    parser.add_argument("--disable_ort_format_load", action='store_true',
-                        help='Disable support for loading ORT format models in a non-minimal build.')
 
     parser.add_argument(
         "--rocm_version", help="The version of ROCM stack to use. ")
@@ -731,7 +726,6 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-DPython_EXECUTABLE=" + sys.executable,
         "-DPYTHON_EXECUTABLE=" + sys.executable,
         "-Donnxruntime_ROCM_VERSION=" + (args.rocm_version if args.use_rocm else ""),
-        "-Donnxruntime_USE_FEATURIZERS=" + ("ON" if args.use_featurizers else "OFF"),
         "-Donnxruntime_USE_MIMALLOC_STL_ALLOCATOR=" + (
             "ON" if args.use_mimalloc == "stl" or args.use_mimalloc == "all" else "OFF"),
         "-Donnxruntime_USE_MIMALLOC_ARENA_ALLOCATOR=" + (
@@ -771,7 +765,6 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_DISABLE_ML_OPS=" + ("ON" if args.disable_ml_ops else "OFF"),
         "-Donnxruntime_DISABLE_RTTI=" + ("ON" if args.disable_rtti else "OFF"),
         "-Donnxruntime_DISABLE_EXCEPTIONS=" + ("ON" if args.disable_exceptions else "OFF"),
-        "-Donnxruntime_DISABLE_ORT_FORMAT_LOAD=" + ("ON" if args.disable_ort_format_load else "OFF"),
         # Need to use 'is not None' with minimal_build check as it could be an empty list.
         "-Donnxruntime_MINIMAL_BUILD=" + ("ON" if args.minimal_build is not None else "OFF"),
         "-Donnxruntime_EXTENDED_MINIMAL_BUILD=" + ("ON" if args.minimal_build and 'extended' in args.minimal_build
@@ -824,6 +817,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_ENABLE_EAGER_MODE=" + ("ON" if args.build_eager_mode else "OFF"),
         "-Donnxruntime_ENABLE_EXTERNAL_CUSTOM_OP_SCHEMAS=" + ("ON" if args.enable_external_custom_op_schemas
                                                               else "OFF"),
+        "-Donnxruntime_NVCC_THREADS=" + str(args.parallel),
     ]
     if args.external_graph_transformer_path:
         cmake_args.append("-Donnxruntime_EXTERNAL_TRANSFORMER_SRC_PATH=" + args.external_graph_transformer_path)
@@ -948,10 +942,19 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
 
     if is_macOS() and not args.android:
         cmake_args += ["-DCMAKE_OSX_ARCHITECTURES=" + args.osx_arch]
-        # since cmake 3.19, it uses the xcode latest buildsystem, which is not supported by this project.
-        cmake_verstr = subprocess.check_output(['cmake', '--version']).decode('utf-8').split()[2]
-        if args.use_xcode and LooseVersion(cmake_verstr) >= LooseVersion('3.19.0'):
-            cmake_args += ["-T", "buildsystem=1"]
+        if args.use_xcode:
+            cmake_ver = LooseVersion(
+                subprocess.check_output(['cmake', '--version']).decode('utf-8').split()[2])
+            xcode_ver = LooseVersion(
+                subprocess.check_output(['xcrun', 'xcodebuild', '-version']).decode('utf-8').split()[1])
+            # Requires Cmake 3.21.1+ for XCode 13+
+            # The legacy build system is not longer supported on XCode 13+
+            if xcode_ver >= LooseVersion('13') and cmake_ver < LooseVersion('3.21.1'):
+                raise BuildError("CMake 3.21.1+ required to use XCode 13+")
+            # Use legacy build system for old CMake [3.19, 3.21.1) which uses new build system by default
+            # CMake 3.18- use the legacy build system by default
+            if cmake_ver >= LooseVersion('3.19.0') and cmake_ver < LooseVersion('3.21.1'):
+                cmake_args += ["-T", "buildsystem=1"]
         if args.apple_deploy_target:
             cmake_args += ["-DCMAKE_OSX_DEPLOYMENT_TARGET=" + args.apple_deploy_target]
         # Code sign the binaries, if the code signing development identity and/or team id are provided
@@ -1724,7 +1727,7 @@ def build_python_wheel(
         source_dir, build_dir, configs, use_cuda, cuda_version, use_rocm, rocm_version, use_dnnl,
         use_tensorrt, use_openvino, use_nuphar, use_vitisai, use_acl, use_armnn, use_dml,
         wheel_name_suffix, enable_training, nightly_build=False, default_training_package_device=False,
-        featurizers_build=False, use_ninja=False, build_eager_mode=False):
+        use_ninja=False, build_eager_mode=False):
     for config in configs:
         cwd = get_config_build_dir(build_dir, config)
         if is_windows() and not use_ninja:
@@ -1738,8 +1741,6 @@ def build_python_wheel(
             args.append('--nightly_build')
         if default_training_package_device:
             args.append('--default_training_package_device')
-        if featurizers_build:
-            args.append("--use_featurizers")
         if wheel_name_suffix:
             args.append('--wheel_name_suffix={}'.format(wheel_name_suffix))
         if enable_training:
@@ -2036,9 +2037,6 @@ def main():
     if args.enable_pybind and args.disable_exceptions:
         raise BuildError('Python bindings require exceptions to be enabled.')
 
-    if args.minimal_build is not None and args.disable_ort_format_load:
-        raise BuildError('Minimal build requires loading ORT format models.')
-
     if args.nnapi_min_api:
         if not args.use_nnapi:
             raise BuildError("Using --nnapi_min_api requires --use_nnapi")
@@ -2326,7 +2324,6 @@ def main():
                 args.enable_training,
                 nightly_build=nightly_build,
                 default_training_package_device=default_training_package_device,
-                featurizers_build=args.use_featurizers,
                 use_ninja=(args.cmake_generator == 'Ninja'),
                 build_eager_mode=args.build_eager_mode
             )

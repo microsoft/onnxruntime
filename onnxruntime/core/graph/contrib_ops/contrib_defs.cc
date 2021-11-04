@@ -236,7 +236,7 @@ void embedLayerNormalizationShapeInference(InferenceContext& ctx) {
         "gamma should have 2 dimension, dimension size known, "
         "and same hidden size as word_embedding.");
   }
-  
+
   auto& beta_shape = getInputShape(ctx, 6);
   auto& beta_dims = gamma_shape.dim();
   if (beta_dims.size() != 1 ||
@@ -261,6 +261,11 @@ void embedLayerNormalizationShapeInference(InferenceContext& ctx) {
   ONNX_NAMESPACE::TensorShapeProto mask_index_shape;
   *mask_index_shape.add_dim() = input_ids_dims[0];
   updateOutputShape(ctx, 1, mask_index_shape);
+
+  if (ctx.getNumOutputs() > 2) {
+    updateOutputShape(ctx, 2, output_shape);
+    propagateElemTypeFromInputToOutput(ctx, 0, 2);
+  }
 }
 }  // namespace ONNX_NAMESPACE
 
@@ -558,7 +563,7 @@ and present state are optional. Present state could appear in output even when p
                 "or (batch_size, sequence_length, past_sequence_length + sequence_length), or index with shape (batch_size) or (2 * batch_size).", "M", OpSchema::Optional)
       .Input(4, "past", "past state for key and value with shape (2, batch_size, num_heads, past_sequence_length, head_size).", "T", OpSchema::Optional)
       .Input(5, "extra_add", "additional add to QxK' with shape (batch_size, num_heads, sequence_length, sequence_length).", "T", OpSchema::Optional)
-      .Output(0, "output", "3D output tensor with shape (batch_size, append_length, hidden_size)", "T")
+      .Output(0, "output", "3D output tensor with shape (batch_size, sequence_length, hidden_size)", "T")
       .Output(1, "present", "present state for key and value with shape (2, batch_size, num_heads, past_sequence_length + sequence_length, head_size)", "T", OpSchema::Optional)
       .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float tensors.")
       .TypeConstraint("M", {"tensor(int32)"}, "Constrain mask index to integer types")
@@ -697,8 +702,10 @@ will be calculated.)DOC";
       .Input(5, "gamma", "1D gamma tensor for layer normalization with shape (hidden_size)", "T")
       .Input(6, "beta", "1D beta tensor for layer normalization  with shape (hidden_size)", "T")
       .Input(7, "mask", "2D attention mask with shape (batch_size, sequence_length)", "T1", OpSchema::Optional)
+      .Input(8, "position_ids", "2D position ids with shape (batch_size, sequence_length)", "T1", OpSchema::Optional)
       .Output(0, "output", "3D output tensor with shape (batch_size, sequence_length, hidden_size)", "T")
       .Output(1, "mask_index", "1D mask_index tensor with shape (batch_size)", "T1")
+      .Output(2, "embedding_sum", "sum of word_embedding and position_embedding without layer normalization", "T", OpSchema::Optional)
       .TypeConstraint("T1", {"tensor(int32)"}, "Constrain input and output integer tensors types")
       .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output float tensors types.")
       .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::embedLayerNormalizationShapeInference);
@@ -772,13 +779,13 @@ GELU (Gaussian Error Linear Unit) approximation: Y=0.5*X*(1+tanh(0.797885*X+0.03
             .Const("one", 1.0, elem_type)
             .Add(hasBias ? "X_bias = Add (X, bias)" : "X_bias = Identity (X)")
             .Add(R"(
-                T1 = Mul (X_bias, X_bias) 
-                T2 = Mul (c, T1) 
-                T3 = Add (b, T2) 
-                T4 = Mul (X_bias, T3) 
-                T5 = Tanh (T4) 
-                T6 = Add (one, T5) 
-                T7 = Mul (X_bias, T6) 
+                T1 = Mul (X_bias, X_bias)
+                T2 = Mul (c, T1)
+                T3 = Add (b, T2)
+                T4 = Mul (X_bias, T3)
+                T5 = Tanh (T4)
+                T6 = Add (one, T5)
+                T7 = Mul (X_bias, T6)
                 Y = Mul (a, T7)
             )");
 
@@ -824,6 +831,43 @@ Enforce no repetition of n-grams. Scores are set to `-inf` for tokens that form 
           return;
         }
         propagateShapeFromInputToOutput(ctx, 1, 0);
+      });
+
+  static const char* BifurcationDetector_ver1_doc = R"DOC(
+Component for aggressive decoding. Find the bifurcation index of predicted tokens, between source tokens,
+starting from previous suffix match index, and predicted tokens.
+Concat predicted tokens, starting from bifurcation index, to the back
+of current tokens. This forms the output tokens.
+Detect suffix match index in source tokens, between source tokens and output tokens.
+Detection is based on finding the appearances of last n-gram in output tokens
+in source tokens.
+A match is considered found if source tokens contain a single matching n-gram.
+Return the index of the start of the n-gram in source tokens.
+No matching if found if src tokens contain multiple or zero matching n-grams. Return -1.
+)DOC";
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(BifurcationDetector)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(BifurcationDetector_ver1_doc)
+      .Attr("min_ngram_size", "The minimum NGram size for suffix matching.", AttributeProto::INT, static_cast<int64_t>(1))
+      .Attr("max_ngram_size", "The maximum NGram size for suffix matching.", AttributeProto::INT, static_cast<int64_t>(3))
+      .Input(0, "src_tokens", "Encoder input ids.", "T")
+      .Input(1, "cur_tokens", "Decoder input ids.", "T")
+      .Input(2, "prev_suffix_match_idx", "Previous suffix match index", "T")
+      .Input(3, "pred_tokens", "Predicted token ids from aggressive decoding", "T", OpSchema::Optional)
+      .Output(0, "tokens", "Decoder input ids after merging predicted tokens", "T")
+      .Output(1, "suffix_match_idx", "new suffix match index", "T")
+      .TypeConstraint("T", {"tensor(int64)"}, "Constrain to integer types.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        propagateElemTypeFromInputToOutput(ctx, 1, 0);
+        propagateElemTypeFromInputToOutput(ctx, 2, 1);
+        if (hasInputShape(ctx, 2)) {
+          propagateShapeFromInputToOutput(ctx, 2, 1);
+        }
+        // output tokens lengths is dynamic as it depends on the bifurcation index of predicted tokens and source tokens,
+        // and current tokens length.
+        // tokens_length = cur_tokens_length + bifurcation_index + 1.
       });
 }
 

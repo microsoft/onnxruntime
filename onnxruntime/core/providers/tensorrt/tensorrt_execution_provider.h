@@ -125,7 +125,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
 
   void RegisterAllocator(std::shared_ptr<AllocatorManager> allocator_manager) override;
 
-  Status OnRunEnd() override;
+  Status OnRunEnd(bool sync_stream) override;
 
   Status SetComputeStream(void* stream) override;
 

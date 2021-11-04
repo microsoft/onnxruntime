@@ -1734,6 +1734,12 @@ class SymbolicShapeInference:
         vi = self.known_vi_[node.output[1]]
         vi.CopyFrom(helper.make_tensor_value_info(node.output[1], onnx.TensorProto.INT32, mask_index_shape))
 
+        if len(node.output) > 2:
+            # Optional output of add before layer nomalization is done
+            # shape is same as the output
+            vi = self.known_vi_[node.output[2]]
+            vi.CopyFrom(helper.make_tensor_value_info(node.output[2], word_embedding_dtype, output_shape))
+
     def _infer_SkipLayerNormalization(self, node):
         self._propagate_shape_and_type(node)
 

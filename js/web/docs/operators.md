@@ -67,7 +67,7 @@ See [Compatibility](../README.md#Compatibility) for a list of the supported plat
 | [HardSigmoid](https://github.com/onnx/onnx/blob/master/docs/Operators.md#HardSigmoid) |  |
 | [HardSwish](https://github.com/onnx/onnx/blob/master/docs/Operators.md#HardSwish) |  |
 | [Hardmax](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Hardmax) |  |
-| [Identity](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Identity) | [1-12](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Identity-1), [13](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Identity-13), [14+](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Identity-14) |
+| [Identity](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Identity) | [1-12](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Identity-1), [13](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Identity-13), [14-15](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Identity-14), [16+](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Identity-16) |
 | [If](https://github.com/onnx/onnx/blob/master/docs/Operators.md#If) |  |
 | [InstanceNormalization](https://github.com/onnx/onnx/blob/master/docs/Operators.md#InstanceNormalization) | [6+](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#InstanceNormalization-6) |
 | [IsInf](https://github.com/onnx/onnx/blob/master/docs/Operators.md#IsInf) |  |
@@ -152,7 +152,7 @@ See [Compatibility](../README.md#Compatibility) for a list of the supported plat
 | [Sinh](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Sinh) |  |
 | [Size](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Size) |  |
 | [Slice](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Slice) | [1-9](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Slice-1), [10](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Slice-10), [11-12](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Slice-11), [13+](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Slice-13) |
-| [Softmax](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Softmax) | [1-10](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Softmax-1), [11-12](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Softmax-11) |
+| [Softmax](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Softmax) | [1-10](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Softmax-1), [11-12](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Softmax-11), [13+](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Softmax-13) |
 | [SoftmaxCrossEntropyLoss](https://github.com/onnx/onnx/blob/master/docs/Operators.md#SoftmaxCrossEntropyLoss) |  |
 | [Softplus](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Softplus) |  |
 | [Softsign](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Softsign) |  |
