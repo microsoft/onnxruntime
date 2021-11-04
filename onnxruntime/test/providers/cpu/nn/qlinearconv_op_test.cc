@@ -848,7 +848,10 @@ TEST(QLinearConvTest, Conv2D_U8S8_Depthwise) {
 
 TEST(QLinearConvTest, Conv2D_U8S8_Depthwise_PerChannel) {
   for (int8_t weight_zero_point : std::initializer_list<int8_t>{0, -2}) {
-    for (int64_t channels : std::initializer_list<int64_t>{7, 8, 9, 16, 40, 48, 52, 64, 192}) {
+    for (int64_t channels : std::initializer_list<int64_t>{7, 8, 9, 16,
+                                                           40, 48, 52, 64,
+                                                           192, 999, 1024, 1024 + 16,
+                                                           1024 + 32, 1024 + 48, 999}) {
       QLinearConvOpTester<uint8_t, int8_t> test;
       test.GenerateRandomInput({1, channels, 17, 17}, .03f, 12);
       test.GenerateRandomWeights({channels, 1, 3, 3}, .10f, weight_zero_point);
