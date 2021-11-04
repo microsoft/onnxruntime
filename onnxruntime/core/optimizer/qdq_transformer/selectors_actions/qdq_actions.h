@@ -20,6 +20,12 @@ struct QDQReplaceWithNew : public ReplaceWithNew {
       : ReplaceWithNew{domain, op_name, std::move(value_moves)} {}
 
   Status Run(Graph&, const NodesToOptimize& selected_nodes) const override;
+
+#if !defined(ORT_MINIMAL_BUILD)
+  Status RunForSave(Graph& graph, const NodesToOptimize& selected_nodes,
+                    const RuntimeOptimizationSaveContext& save_context,
+                    SavedState& saved_state, bool& graph_modified) const override;
+#endif  // !defined(ORT_MINIMAL_BUILD)
 };
 
 // replace node with QLinear version

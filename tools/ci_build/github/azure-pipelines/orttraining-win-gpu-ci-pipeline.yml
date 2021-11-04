@@ -28,3 +28,4 @@ jobs:
     # Enable unreleased onnx opsets in CI builds
     # This facilitates testing the implementation for the new opsets
     AllowReleasedOpsetOnly: '0'
+    DoCompliance: 'true'

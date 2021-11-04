@@ -34,7 +34,7 @@ public:
         std::vector<IMLOperatorTensor*> inputTensors = GetInputTensorsForExecute(kernelContext);
         std::vector<IMLOperatorTensor*> outputTensors = GetOutputTensorsForExecute(kernelContext);
 
-        THROW_IF_FAILED(m_executionProvider->ExecuteOperator(
+        ORT_THROW_IF_FAILED(m_executionProvider->ExecuteOperator(
             m_compiledOperator.Get(),
             m_persistentResourceBinding ? &*m_persistentResourceBinding : nullptr,
             gsl::make_span(inputTensors),
