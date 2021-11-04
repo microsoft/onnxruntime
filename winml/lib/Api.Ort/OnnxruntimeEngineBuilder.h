@@ -23,6 +23,9 @@ class OnnxruntimeEngineBuilder : public Microsoft::WRL::RuntimeClass<
   STDMETHOD(GetID3D12CommandQueue)
   (_Outptr_ ID3D12CommandQueue** queue);
 
+  STDMETHOD(SetOpenVinoOptions)
+  (_In_ OpenVinoDeviceOptions* options);
+
   STDMETHOD(SetBatchSizeOverride)
   (uint32_t batch_size_override);
 
@@ -47,6 +50,7 @@ class OnnxruntimeEngineBuilder : public Microsoft::WRL::RuntimeClass<
   wfc::IMapView<winrt::hstring, uint32_t> named_dimension_overrides_;
   uint32_t intra_op_num_threads_override_ = 0;
   bool allow_thread_spinning_ = true;
+  bool is_open_vino_ = false;
 };
 
 }  // namespace _winml

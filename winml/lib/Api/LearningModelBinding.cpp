@@ -114,7 +114,7 @@ std::tuple<std::string, winrt::com_ptr<_winml::IValue>, _winml::BindingType> Lea
   // If it is a placeholder, gpu resources will be preallocated during bind.
   // This enables the chaining scenario.
   auto spDevice = m_session.Device().as<LearningModelDevice>();
-  auto isGpuSession = !spDevice->IsCpuDevice();
+  auto isGpuSession = spDevice->IsDmlDevice();
   auto spTensor = featureValue.try_as<winml::ITensor>();
   auto isTensorWithShape = spTensor != nullptr && spTensor.Shape().Size() != 0;
   auto shouldAlwaysTensorize = isTensorWithShape && isGpuSession;
@@ -158,7 +158,7 @@ void LearningModelBinding::Bind(
   // the DML EP is not thread safe.
   auto session = m_session.as<winmlp::LearningModelSession>();
   auto device = m_session.Device().as<winmlp::LearningModelDevice>();
-  CWinMLAutoLock lock(!device->IsCpuDevice() ? session->GetDMLEPLock() : nullptr);
+  CWinMLAutoLock lock(device->IsDmlDevice() ? session->GetDMLEPLock() : nullptr);
 
   _winmlt::TelemetryEvent binding_event(_winmlt::EventCategory::kBinding);
 
@@ -185,7 +185,7 @@ void LearningModelBinding::Clear() try {
   // the DML EP is not thread safe.
   auto session = m_session.as<winmlp::LearningModelSession>();
   auto device = m_session.Device().as<winmlp::LearningModelDevice>();
-  CWinMLAutoLock lock(!device->IsCpuDevice() ? session->GetDMLEPLock() : nullptr);
+  CWinMLAutoLock lock(device->IsDmlDevice() ? session->GetDMLEPLock() : nullptr);
 
   inputs_.clear();
   input_names_.clear();
@@ -479,7 +479,7 @@ STDMETHODIMP LearningModelBinding::Bind(
     // the DML EP is not thread safe.
     auto session = m_session.as<winmlp::LearningModelSession>();
     auto device = m_session.Device().as<winmlp::LearningModelDevice>();
-    CWinMLAutoLock lock(!device->IsCpuDevice() ? session->GetDMLEPLock() : nullptr);
+    CWinMLAutoLock lock(device->IsDmlDevice() ? session->GetDMLEPLock() : nullptr);
     
     _winmlt::TelemetryEvent binding_event(_winmlt::EventCategory::kBinding);
     _winml::BindingType binding_type;

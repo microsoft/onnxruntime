@@ -430,12 +430,12 @@ HRESULT ImageFeatureValue::GetValue(_winml::BindingContext& context, _winml::IVa
     auto bufferSize = std::accumulate(std::begin(resourceMetadata.TensorDescriptor.sizes), std::end(resourceMetadata.TensorDescriptor.sizes), static_cast<int64_t>(1), std::multiplies<int64_t>());
     auto bufferByteSize = GetSizeFromTensorDataType(resourceMetadata.TensorDescriptor.dataType) * bufferSize;
     auto singleFrameBufferSize = bufferByteSize / m_batchSize;
-    if (spDevice->IsCpuDevice()) {
-      auto resource = reinterpret_cast<BYTE*>(void_resource.get());
-      CPUTensorize(m_videoFrames, resourceMetadata.Bounds, resourceMetadata.TensorDescriptor, spSession, resource, static_cast<unsigned int>(singleFrameBufferSize));
-    } else {
+    if (spDevice->IsDmlDevice()) {
       auto resource = reinterpret_cast<ID3D12Resource*>(void_resource.get());
       GPUTensorize(m_videoFrames, resourceMetadata.Bounds, resourceMetadata.TensorDescriptor, spSession, resource, context);
+    } else {
+      auto resource = reinterpret_cast<BYTE*>(void_resource.get());
+      CPUTensorize(m_videoFrames, resourceMetadata.Bounds, resourceMetadata.TensorDescriptor, spSession, resource, static_cast<unsigned int>(singleFrameBufferSize));
     }
   }
 

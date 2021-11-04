@@ -25,8 +25,7 @@ WINML_CATCH_ALL
 
 LearningModelDevice::LearningModelDevice(winml::LearningModelDeviceKind const& deviceKind) try : m_deviceCache(std::make_unique<_winml::D3DDeviceCache>(deviceKind)) {
   m_deviceKind = deviceKind;
-  m_isCpuDevice = m_deviceKind == LearningModelDeviceKind::Cpu || m_deviceKind == LearningModelDeviceKind::Default;
-  if (m_isCpuDevice) {
+  if (IsCpuDevice()) {
     assert(m_deviceCache->GetD3D12Device() == nullptr);
   }
 }
@@ -34,13 +33,16 @@ WINML_CATCH_ALL
 
 LearningModelDevice::LearningModelDevice(wgdx::Direct3D11::IDirect3DDevice const& device) try : m_deviceCache(std::make_unique<_winml::D3DDeviceCache>(device)) {
   m_deviceKind = LearningModelDeviceKind::DirectX;
-  m_isCpuDevice = false;
 }
 WINML_CATCH_ALL
 
 LearningModelDevice::LearningModelDevice(ID3D12CommandQueue* queue) try : m_deviceKind(LearningModelDeviceKind::DirectX),
-                                                                          m_deviceCache(std::make_unique<_winml::D3DDeviceCache>(queue)) {
-  m_isCpuDevice = false;
+                                                                          m_deviceCache(std::make_unique<_winml::D3DDeviceCache>(queue)) {}
+WINML_CATCH_ALL
+
+LearningModelDevice::LearningModelDevice(std::unique_ptr<_winml::OpenVinoDeviceOptions>&& options) try : m_deviceCache(std::make_unique<_winml::D3DDeviceCache>(winml::LearningModelDeviceKind::Cpu)) {
+  assert(m_deviceCache->GetD3D12Device() == nullptr);
+  open_vino_device_options_ = std::move(options);
 }
 WINML_CATCH_ALL
 
@@ -69,7 +71,23 @@ LearningModelDevice::GetDeviceKind() {
 }
 
 bool LearningModelDevice::IsCpuDevice() {
-  return m_isCpuDevice;
+  return m_deviceKind == LearningModelDeviceKind::Cpu ||
+         m_deviceKind == LearningModelDeviceKind::Default ||
+         IsOpenVinoDevice();
+}
+
+bool LearningModelDevice::IsDmlDevice() {
+  return m_deviceKind == LearningModelDeviceKind::DirectX ||
+         m_deviceKind == LearningModelDeviceKind::DirectXHighPerformance ||
+         m_deviceKind == LearningModelDeviceKind::DirectXMinPower;
+}
+
+bool LearningModelDevice::IsOpenVinoDevice() {
+  return open_vino_device_options_ != nullptr;
+}
+
+_winml::OpenVinoDeviceOptions* LearningModelDevice::UseOpenVinoOptions() {
+  return open_vino_device_options_.get();
 }
 
 const LUID&

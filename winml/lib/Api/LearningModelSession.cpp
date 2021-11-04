@@ -114,7 +114,10 @@ void LearningModelSession::Initialize() {
   com_ptr<_winml::IEngineBuilder> engine_builder;
   WINML_THROW_IF_FAILED(engine_factory_->CreateEngineBuilder(engine_builder.put()));
 
-  if (device_impl->IsCpuDevice() == false) {
+  if (device_impl->IsOpenVinoDevice()) {
+    WINML_THROW_IF_FAILED(engine_builder->SetOpenVinoOptions(device_impl->UseOpenVinoOptions()));
+  }
+  else if (device_impl->IsDmlDevice()) {
     WINML_THROW_IF_FAILED(engine_builder->SetD3D12Resources(device_impl->GetD3DDevice(), device_impl->GetDeviceQueue()));
     WINML_THROW_IF_FAILED(engine_builder->SetMetacommandsEnabled(device_impl->MetacommandsEnabled()));
   }
@@ -225,7 +228,7 @@ uint64_t LearningModelSession::Run(winrt::com_ptr<winmlp::LearningModelBinding> 
   // if this is being called on the GPU, grab the DML lock
   // the DML EP is not thread safe.
   auto device = device_.as<LearningModelDevice>();
-  CWinMLAutoLock lock(!device->IsCpuDevice() ? GetDMLEPLock() : nullptr);
+  CWinMLAutoLock lock(device->IsDmlDevice() ? GetDMLEPLock() : nullptr);
 
   binding_impl->BindUnboundOutputs();
 
@@ -268,7 +271,7 @@ uint64_t LearningModelSession::Run(winrt::com_ptr<winmlp::LearningModelBinding> 
                outputs_raw.data(),
                output_names_raw.size()));
 
-  if (!device->IsCpuDevice()) {
+  if (device->IsDmlDevice()) {
     // Flush the D3D12 work from the DML execution provider and queue a fence before we release the lock.
     // This allows us to wait without holding onto the lock in GetResults.
     WINML_THROW_IF_FAILED(engine_->FlushContext());
@@ -287,7 +290,7 @@ LearningModelSession::GetResults(
   // First wait on the fence value for the expected frame. This is passed in so that
   // the fence value is added to the queue in a thread safe manor.
   auto device = device_.as<winmlp::LearningModelDevice>();
-  auto is_gpu_evaluation = !device->IsCpuDevice();
+  auto is_gpu_evaluation = device->IsDmlDevice();
 
   if (is_gpu_evaluation) {
     device->GetD3DDeviceCache()->WaitForFenceValue(evaluation_complete_fence);
@@ -336,7 +339,7 @@ LearningModelSession::EvaluateAsync(
   // If we're running on the CPU, then return now and process the rest in the background.
   // If we're running on the GPU, then queue up the work first (fast) and wait for the
   // results (slow) in the background.
-  bool should_queue_work = (!device->IsCpuDevice());
+  bool should_queue_work = device->IsDmlDevice();
   if (!should_queue_work) {
     co_await resume_background();
   }

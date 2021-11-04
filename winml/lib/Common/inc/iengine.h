@@ -7,6 +7,8 @@ struct OrtTypeInfo;
 
 namespace _winml {
 
+struct OpenVinoDeviceOptions {};
+
 interface IEngineFactory;
 
 using Resource = std::unique_ptr<void, std::function<void(void*)>>;
@@ -207,6 +209,9 @@ IEngineBuilder : IUnknown {
 
   STDMETHOD(GetID3D12CommandQueue)
   (ID3D12CommandQueue **queue) PURE;
+
+  STDMETHOD(SetOpenVinoOptions)
+  (OpenVinoDeviceOptions * options) PURE;
 
   STDMETHOD(SetBatchSizeOverride)
   (uint32_t batch_size_override) PURE;

@@ -107,6 +107,9 @@ HRESULT OnnxruntimeValue::IsCpu(bool* out) {
   *out = !strcmp(name, "Cpu") ||
          type == OrtMemType::OrtMemTypeCPUOutput ||
          type == OrtMemType::OrtMemTypeCPUInput;
+
+  *out |= strcmp(name, "OpenVINO") == 0 && type == OrtMemType::OrtMemTypeDefault;
+
   return S_OK;
 }
 

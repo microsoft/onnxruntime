@@ -102,4 +102,11 @@ namespace ROOT_NS.AI.MachineLearning.Experimental {
 
     void Save(String file_name);
   }
+
+  [threading(both)]
+  [marshaling_behavior(agile)]
+  [dualapipartition(1)]
+  runtimeclass LearningModelDeviceExperimental {
+    static ROOT_NS.AI.MachineLearning.LearningModelDevice CreateOpenVinoDevice();
+  }
 }  // namespace Microsoft.AI.MachineLearning.Experimental

@@ -232,6 +232,14 @@ if (onnxruntime_USE_DML)
     )
 endif()
 
+if (onnxruntime_USE_OPENVINO)
+  list(APPEND winml_lib_api_ort_files
+    ${winml_lib_api_ort_dir}/OnnxruntimeOpenVinoSessionBuilder.h
+    ${winml_lib_api_ort_dir}/OnnxruntimeOpenVinoSessionBuilder.cpp
+    )
+endif()
+
+
 # Add static library that will be archived/linked for both static/dynamic library
 onnxruntime_add_static_library(winml_lib_ort ${winml_lib_api_ort_files})
 
@@ -555,6 +563,8 @@ endif(onnxruntime_USE_DML)
 onnxruntime_add_static_library(winml_lib_api_experimental
   ${winml_lib_api_experimental_dir}/LearningModelBuilder.cpp
   ${winml_lib_api_experimental_dir}/LearningModelBuilder.h
+  ${winml_lib_api_experimental_dir}/LearningModelDeviceExperimental.cpp
+  ${winml_lib_api_experimental_dir}/LearningModelDeviceExperimental.h
   ${winml_lib_api_experimental_dir}/LearningModelInputs.cpp
   ${winml_lib_api_experimental_dir}/LearningModelInputs.h
   ${winml_lib_api_experimental_dir}/LearningModelOutputs.cpp

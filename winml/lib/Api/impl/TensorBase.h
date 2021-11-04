@@ -104,8 +104,8 @@ struct TensorBase : TBase {
     auto session = context.session.as<winmlp::LearningModelSession>();
     auto device = session->Device().as<winmlp::LearningModelDevice>();
     WINML_THROW_HR_IF_TRUE_MSG(WINML_ERR_INVALID_BINDING,
-                               device->IsCpuDevice(),
-                               "Cannot create GPU tensor on CPU device");
+                               !device->IsDmlDevice(),
+                               "Windows ML can only create GPU tensors on DirectML devices.");
 
     auto engine = session->GetEngine();
     RETURN_IF_FAILED(engine->CreateTensorValueFromExternalD3DResource(resource, shape_.data(), shape_.size(), TensorKind(), out));
@@ -262,10 +262,10 @@ struct TensorBase : TBase {
     auto spSession = context.session.as<winmlp::LearningModelSession>();
     auto spDevice = spSession->Device().as<winmlp::LearningModelDevice>();
 
-    if (spDevice->IsCpuDevice()) {
-      RETURN_IF_FAILED(CPUTensorize(context, out));
-    } else {
+    if (spDevice->IsDmlDevice()) {
       RETURN_IF_FAILED(GPUTensorize(context, out));
+    } else {
+      RETURN_IF_FAILED(CPUTensorize(context, out));
     }
 
     return S_OK;

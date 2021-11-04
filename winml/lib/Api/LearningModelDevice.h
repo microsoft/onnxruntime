@@ -4,6 +4,7 @@
 #pragma once
 
 #include "LearningModelDevice.g.h"
+#include "iengine.h"
 
 namespace _winml {
 class ConverterResourceStore;
@@ -24,6 +25,8 @@ struct LearningModelDevice : LearningModelDeviceT<LearningModelDevice, IMetacomm
 
   LearningModelDevice(
       ID3D12CommandQueue* queue);
+
+  LearningModelDevice(std::unique_ptr<_winml::OpenVinoDeviceOptions>&& options);
 
   ~LearningModelDevice();
 
@@ -53,6 +56,15 @@ struct LearningModelDevice : LearningModelDeviceT<LearningModelDevice, IMetacomm
   bool
   IsCpuDevice();
 
+  bool
+  IsDmlDevice();
+
+  bool
+  IsOpenVinoDevice();
+
+  _winml::OpenVinoDeviceOptions*
+  UseOpenVinoOptions();
+
   const LUID&
   GetDeviceLuid();
 
@@ -81,7 +93,6 @@ struct LearningModelDevice : LearningModelDeviceT<LearningModelDevice, IMetacomm
   // stores the device kind that was originally chosen in the constructor
   winml::LearningModelDeviceKind m_deviceKind;
   // if the user asked us to run on the cpu, or asked us to choose and we chose cpu
-  bool m_isCpuDevice;
   bool m_areMetacommandsEnabled = true;
   std::shared_ptr<_winml::ConverterResourceStore> m_detensorizerStore;
   std::once_flag m_detensorizerStoreInitialized;
@@ -89,6 +100,8 @@ struct LearningModelDevice : LearningModelDeviceT<LearningModelDevice, IMetacomm
   std::once_flag m_tensorizerStoreInitialized;
 
   std::unique_ptr<_winml::D3DDeviceCache> m_deviceCache;
+
+  std::unique_ptr<_winml::OpenVinoDeviceOptions> open_vino_device_options_ = nullptr;
 };
 }  // namespace WINMLP
 

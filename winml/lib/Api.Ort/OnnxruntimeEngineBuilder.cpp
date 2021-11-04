@@ -6,6 +6,7 @@
 #include "OnnxruntimeEngine.h"
 #include "OnnxruntimeEngineBuilder.h"
 #include "OnnxruntimeCpuSessionBuilder.h"
+#include "OnnxruntimeOpenVinoSessionBuilder.h"
 
 #ifdef USE_DML
 #include "OnnxruntimeDmlSessionBuilder.h"
@@ -24,12 +25,14 @@ STDMETHODIMP OnnxruntimeEngineBuilder::CreateEngine(_Outptr_ _winml::IEngine** o
 
   Microsoft::WRL::ComPtr<IOrtSessionBuilder> onnxruntime_session_builder;
 
-  if (device_ == nullptr) {
-    RETURN_IF_FAILED(Microsoft::WRL::MakeAndInitialize<OnnxruntimeCpuSessionBuilder>(&onnxruntime_session_builder, engine_factory_.Get()));
-  } else {
+  if (device_) {
 #ifdef USE_DML
     RETURN_IF_FAILED(Microsoft::WRL::MakeAndInitialize<OnnxruntimeDmlSessionBuilder>(&onnxruntime_session_builder, engine_factory_.Get(), device_.Get(), queue_.Get(), metacommands_enabled_));
 #endif
+  } else if (is_open_vino_) {
+    RETURN_IF_FAILED(Microsoft::WRL::MakeAndInitialize<OnnxruntimeOpenVinoSessionBuilder>(&onnxruntime_session_builder, engine_factory_.Get()));
+  } else {
+    RETURN_IF_FAILED(Microsoft::WRL::MakeAndInitialize<OnnxruntimeCpuSessionBuilder>(&onnxruntime_session_builder, engine_factory_.Get()));
   }
 
   OrtSessionOptions* ort_options;
@@ -85,6 +88,12 @@ STDMETHODIMP OnnxruntimeEngineBuilder::GetID3D12CommandQueue(_Outptr_ ID3D12Comm
   *queue = queue_.Get();
   return S_OK;
 }
+
+STDMETHODIMP OnnxruntimeEngineBuilder::SetOpenVinoOptions(_In_ OpenVinoDeviceOptions* /*options*/) {
+  is_open_vino_ = true;
+  return S_OK;
+}
+
 
 STDMETHODIMP OnnxruntimeEngineBuilder::SetBatchSizeOverride(uint32_t batch_size_override) {
   batch_size_override_ = batch_size_override;

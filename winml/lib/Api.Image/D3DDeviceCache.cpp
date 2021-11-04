@@ -43,7 +43,9 @@ using namespace _winml;
 D3DDeviceCache::D3DDeviceCache(winml::LearningModelDeviceKind const& deviceKind) {
   WINML_THROW_IF_FAILED(CoCreateGuid(&fence_guid_));
 
-  if (deviceKind == winml::LearningModelDeviceKind::Cpu || deviceKind == winml::LearningModelDeviceKind::Default) {
+  if (deviceKind != winml::LearningModelDeviceKind::DirectX &&
+      deviceKind != winml::LearningModelDeviceKind::DirectXHighPerformance &&
+      deviceKind != winml::LearningModelDeviceKind::DirectXMinPower) {
     // CPU device don't make any GPU devices
     device_luid_.HighPart = device_luid_.LowPart = 0;
     return;

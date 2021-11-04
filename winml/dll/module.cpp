@@ -13,6 +13,7 @@
 #include "LearningModelOperator.h"
 #include "LearningModelSessionOptionsExperimental.h"
 #include "LearningModelSessionExperimental.h"
+#include "LearningModelDeviceExperimental.h"
 
 #define STRINGIFY(x) #x
 #define XSTRINGIFY(x) STRINGIFY(x)
@@ -115,6 +116,14 @@ STDAPI DllGetExperimentalActivationFactory(void* classId, void** factory) noexce
       *factory = winrt::detach_abi(winrt::make<WINML_EXPERIMENTAL::factory_implementation::LearningModelSessionExperimental>());
       return 0;
     }
+
+    std::wostringstream learning_model_device_experimental_class;
+    learning_model_device_experimental_class << XSTRINGIFY(WINML_ROOT_NS) << ".AI.MachineLearning.Experimental.LearningModelDeviceExperimental";
+    if (requal(name, learning_model_device_experimental_class.str())) {
+      *factory = winrt::detach_abi(winrt::make<WINML_EXPERIMENTAL::factory_implementation::LearningModelDeviceExperimental>());
+      return 0;
+    }
+
 
     return winrt::hresult_class_not_available(name).to_abi();
   } catch (...) {
