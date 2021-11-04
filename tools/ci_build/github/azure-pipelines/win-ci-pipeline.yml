@@ -17,7 +17,7 @@ stages:
         additionalBuildFlags: --use_dnnl --build_java --build_nodejs --build_wheel
         msbuildPlatform: x64
         isX86: false
-        job_name_suffix: ${{ variables['System.StageName'] }}
+        job_name_suffix: x64_debug
         RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
         RunStaticCodeAnalysis: false
 
@@ -35,7 +35,7 @@ stages:
         additionalBuildFlags: --build_wheel --use_dnnl --build_java --build_nodejs
         msbuildPlatform: x64
         isX86: false
-        job_name_suffix: ${{ variables['System.StageName'] }}
+        job_name_suffix: x64_release
         RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
         RunStaticCodeAnalysis: true
 
@@ -51,7 +51,7 @@ stages:
         additionalBuildFlags: --use_winml --enable_wcos --disable_rtti
         msbuildPlatform: x64
         isX86: false
-        job_name_suffix: ${{ variables['System.StageName'] }}
+        job_name_suffix: x64_release_winml
         RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
         # WinML has many warnings
         RunStaticCodeAnalysis: false
@@ -69,7 +69,7 @@ stages:
         additionalBuildFlags: --build_wheel
         msbuildPlatform: Win32
         isX86: true
-        job_name_suffix: ${{ variables['System.StageName'] }}
+        job_name_suffix: x86_release
         RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
         RunStaticCodeAnalysis: true
 
@@ -85,7 +85,7 @@ stages:
         additionalBuildFlags: --enable_training --build_wheel
         msbuildPlatform: x64
         isX86: false
-        job_name_suffix: ${{ variables['System.StageName'] }}
+        job_name_suffix: training_x64_debug
         RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
         RunStaticCodeAnalysis: false
 
@@ -101,7 +101,7 @@ stages:
         additionalBuildFlags: --enable_training --build_wheel
         msbuildPlatform: x64
         isX86: false
-        job_name_suffix: ${{ variables['System.StageName'] }}
+        job_name_suffix: training_x64_release
         RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
         # Liqun is fixing them
         RunStaticCodeAnalysis: false
