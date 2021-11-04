@@ -24,11 +24,15 @@ parameters:
   type: boolean
   default: false
 
+- name: EnablePython
+  type: boolean
+  default: true
+
 - name: RunOnnxRuntimeTests
   displayName: Run Tests?
   type: boolean
   default: true
-  
+
 - name: RunStaticCodeAnalysis
   displayName: Run Static Code Analysis
   type: boolean
@@ -133,12 +137,13 @@ jobs:
       workingFolder: '$(Build.BinariesDirectory)\${{ parameters.BuildConfig }}'
       createLogFile: true
 
-  - task: PythonScript@0
-    displayName: 'Build wheel'
-    inputs:
-      scriptPath: '$(Build.SourcesDirectory)\setup.py'
-      arguments: 'bdist_wheel'
-      workingDirectory: '$(Build.BinariesDirectory)\${{ parameters.BuildConfig }}\${{ parameters.BuildConfig }}'
+  - ${{ if eq(parameters.EnablePython, true) }}:
+      - task: PythonScript@0
+        displayName: 'Build wheel'
+        inputs:
+          scriptPath: '$(Build.SourcesDirectory)\setup.py'
+          arguments: 'bdist_wheel'
+          workingDirectory: '$(Build.BinariesDirectory)\${{ parameters.BuildConfig }}\${{ parameters.BuildConfig }}'
 
 
   - task: NuGetCommand@2
