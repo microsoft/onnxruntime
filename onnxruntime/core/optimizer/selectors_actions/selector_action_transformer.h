@@ -113,7 +113,15 @@ class SelectorActionTransformer : public GraphTransformer {
   SelectorsAndActions selectors_and_actions_;
 
 #if !defined(ORT_MINIMAL_BUILD)
-  Status MatchAndProcess(Graph& graph, Node& node, bool& modified, const logging::Logger& logger) const;
+
+  // check if the node matches any of the registered operators.
+  // if it does, run the Selector.
+  // if that selects nodes, run the Action.
+  //
+  // Note, MatchAndProcess takes both Graph and GraphViewer to avoid expensive recreate of GraphViewer,
+  // the graph must be the same as the graph_viewer's underlying graph
+  Status MatchAndProcess(Graph& graph, const GraphViewer& graph_viewer, Node& node,
+                         bool& modified, const logging::Logger& logger) const;
 
   std::unordered_map<std::string, const SelectorAndAction*> op_type_to_selector_and_action_;
   bool save_;  // save the node groups for use in runtime optimization in a minimal build with an ORT format model

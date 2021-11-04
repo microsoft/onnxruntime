@@ -47,14 +47,10 @@ void SelectorsAndActions::RegisterSelectorAndAction(const std::string& name,
   ORT_IGNORE_RETURN_VALUE(selectors_and_actions_map_.emplace(name, std::move(entry)));
 }
 
-// check if the node matches any of the registered operators.
-// if it does, run the Selector.
-// if that selects nodes, run the Action.
-Status SelectorActionTransformer::MatchAndProcess(Graph& graph, Node& node, bool& modified,
+Status SelectorActionTransformer::MatchAndProcess(Graph& graph, const GraphViewer& graph_viewer,
+                                                  Node& node, bool& modified,
                                                   const logging::Logger& logger) const {
   Status status = Status::OK();
-
-  const GraphViewer graph_viewer(graph);
   do {
     // TODO: for now this just needs to support ONNX ops. If we ever had a transformer that was going to
     // target non-ONNX ops we'd need to rework a few things to include the op domain in the matches
@@ -173,7 +169,7 @@ Status SelectorActionTransformer::ApplyImpl(Graph& graph, bool& modified, int gr
 #if !defined(ORT_MINIMAL_BUILD)
     // TODO: use GraphTransformer::GetCompatibleExecutionProviders if we need something more flexible
     if (node->GetExecutionProviderType() == kCpuExecutionProvider) {
-      ORT_RETURN_IF_ERROR(MatchAndProcess(graph, *node, modified, logger));
+      ORT_RETURN_IF_ERROR(MatchAndProcess(graph, graph_viewer, *node, modified, logger));
     }
 #else
     ORT_RETURN_IF_ERROR(ApplySaved(graph, modified, logger));
