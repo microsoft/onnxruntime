@@ -6,7 +6,6 @@ import itertools
 import math
 import random
 import copy
-from onnx.onnx_ml_pb2 import TensorAnnotation
 import torch
 from transformers import AutoConfig, BertForSequenceClassification, Trainer
 from transformers.modeling_outputs import SequenceClassifierOutput
