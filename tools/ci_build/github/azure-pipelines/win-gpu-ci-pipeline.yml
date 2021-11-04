@@ -6,6 +6,7 @@ parameters:
 
 stages:
 - stage: inference
+  dependsOn: []
   jobs:
     - job: 'build'
       pool: 'Win-GPU-2019'
@@ -197,6 +198,7 @@ stages:
           condition : 'succeeded'
 
 - stage: training
+  dependsOn: []
   jobs:
   - template: templates/win-ci-2019.yml
     parameters:
