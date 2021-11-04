@@ -14,7 +14,9 @@
 #include "core/framework/tensor.h"
 #include "core/framework/sparse_tensor.h"
 #include "core/framework/TensorSeq.h"
+#ifdef ENABLE_TRAINING 
 #include "core/dlpack/dlpack_converter.h"
+#endif
 
 namespace onnxruntime {
 namespace python {
