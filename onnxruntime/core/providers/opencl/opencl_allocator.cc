@@ -10,7 +10,7 @@ namespace onnxruntime {
 namespace opencl {
 
 OpenCLAllocator::OpenCLAllocator(const cl::Context& ctx)
-    : IAllocator(OrtMemoryInfo(ALLOCATOR_NAME, OrtAllocatorType::OrtDeviceAllocator,
+    : IAllocator(OrtMemoryInfo(AllocatorName, OrtAllocatorType::OrtDeviceAllocator,
                                OrtDevice(OrtDevice::GPU, OrtMemType::OrtMemTypeDefault, /*TODO: used true id here*/ 0))),
       ctx_(ctx) {
 }

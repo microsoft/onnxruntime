@@ -8,15 +8,16 @@
 
 namespace {
 
-#include "opencl_generated/math/kernels/add.cl.inc"
+#define CONTENT_NAME elementwise_kernel_src
+#include "opencl_generated/math/kernels/elementwise.cl.inc"
+#undef CONTENT_NAME
 
-std::string GetKernelSrc(const std::string& name_define, const std::string& type_define, const std::string& op_define,
-                         const std::string& src) {
+std::string GetKernelSrc(const std::string& name_define, const std::string& type_define, const std::string& op_define) {
   std::stringstream oss;
   oss << "#define NAME " << name_define << "\n"
       << "#define T " << type_define << "\n"
       << "#define OP(X,Y) " << op_define << "\n"
-      << src;
+      << elementwise_kernel_src;
   return oss.str();
 }
 
@@ -29,8 +30,8 @@ namespace opencl {
   class CLASS_NAME : public OpenCLKernel {                                          \
    public:                                                                          \
     explicit CLASS_NAME(const OpKernelInfo& info) : OpenCLKernel(info) {            \
-      std::cout << "Init " #CLASS_NAME "(OpenCLKernel)" << std::endl;               \
-      LoadProgram(GetKernelSrc((#CLASS_NAME), "float", (OP_DEFINE), kernel_src));   \
+      std::cout << "Init " #CLASS_NAME " (OpenCLKernel)" << std::endl;              \
+      LoadProgram(GetKernelSrc((#CLASS_NAME), "float", (OP_DEFINE)));               \
       LoadKernel(#CLASS_NAME);                                                      \
     };                                                                              \
                                                                                     \

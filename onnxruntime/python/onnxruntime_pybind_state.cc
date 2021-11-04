@@ -545,7 +545,7 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
 #ifdef USE_ROCM
     if (auto* rocm_provider_info = TryGetProviderInfo_ROCM()) {
       const ROCMExecutionProviderInfo info = GetRocmExecutionProviderInfo(rocm_provider_info,
-                                                                          provider_options_map);
+                                                                    provider_options_map);
 
       // This variable is never initialized because the APIs by which is it should be initialized are deprecated, however they still
       // exist are are in-use. Neverthless, it is used to return ROCMAllocator, hence we must try to initialize it here if we can
@@ -635,6 +635,11 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
 
     // clear nuphar_settings after use to avoid it being accidentally passed on to next session
     nuphar_settings.clear();
+    return p;
+#endif
+  } else if (type == kOpenCLExecutionProvider) {
+#if USE_OPENCL
+    auto p = onnxruntime::CreateExecutionProviderFactory_OpenCL()->CreateProvider();
     return p;
 #endif
   } else if (type == kVitisAIExecutionProvider) {

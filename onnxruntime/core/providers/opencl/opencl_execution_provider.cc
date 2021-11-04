@@ -11,6 +11,7 @@
 #include <utility>
 
 // Add includes of kernel implementations
+#include "memcpy_kernel.h"
 #include "core/providers/opencl/math/elementwise.h"
 
 namespace onnxruntime {
@@ -18,6 +19,8 @@ namespace opencl {
 
 Status RegisterOpenCLKernels(KernelRegistry& kernel_registry) {
   static const BuildKernelCreateInfoFn function_table[] = {
+      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kOpenCLExecutionProvider, kOnnxDomain, 1, MemcpyFromHost)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kOpenCLExecutionProvider, kOnnxDomain, 1, MemcpyToHost)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kOpenCLExecutionProvider, kOnnxDomain, 7, Add)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kOpenCLExecutionProvider, kOnnxDomain, 7, Sub)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kOpenCLExecutionProvider, kOnnxDomain, 7, Mul)>,
@@ -48,11 +51,6 @@ OpenCLExecutionProvider::OpenCLExecutionProvider(const OpenCLExecutionProviderIn
     : IExecutionProvider(kOpenCLExecutionProvider) {
   Status status;
   status = InitOpenCLContext();
-  if (!status.IsOK()) {
-    // FIXME:
-  }
-
-  status = InitOpenCLAllocator();
   if (!status.IsOK()) {
     // FIXME:
   }
@@ -100,7 +98,7 @@ Status OpenCLExecutionProvider::InitOpenCLContext() {
   return Status::OK();
 }
 
-Status OpenCLExecutionProvider::InitOpenCLAllocator() {
+void OpenCLExecutionProvider::RegisterAllocator(std::shared_ptr<AllocatorManager> allocator_manager) {
   // FIXME: Is it possible to use arena on OpenCL? cl_mem is opaque pointer in
   // OpenCL 1.2 and Shared Virtual Memory (SVM) is only available in OpenCL
   // 2.0, which still have limited support on a wide range of devices. Without
@@ -108,17 +106,19 @@ Status OpenCLExecutionProvider::InitOpenCLAllocator() {
   // an arena.
   //
   // See https://stackoverflow.com/a/40951614
-  AllocatorCreationInfo alloc_info{
+  InsertAllocator(CreateAllocator(AllocatorCreationInfo{
       [ctx = this->ctx_](int) {
         return std::make_unique<opencl::OpenCLAllocator>(ctx);
       },
       0,
       /*use_arena=*/false,
-  };
+  }));
 
-  InsertAllocator(CreateAllocator(alloc_info));
-
-  return Status::OK();
+  InsertAllocator(CreateAllocator(AllocatorCreationInfo{
+      [](int) {
+        return std::make_unique<CPUAllocator>(
+            OrtMemoryInfo(opencl::AllocatorName, OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeCPUOutput));
+      }}));
 }
 
 std::unique_ptr<onnxruntime::IDataTransfer> OpenCLExecutionProvider::GetDataTransfer() const {

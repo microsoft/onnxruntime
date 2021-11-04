@@ -27,6 +27,7 @@ class OpenCLExecutionProvider : public IExecutionProvider {
 
   std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
   std::unique_ptr<onnxruntime::IDataTransfer> GetDataTransfer() const override;
+  void RegisterAllocator(std::shared_ptr<AllocatorManager> allocator_manager) override;
 
   cl::Device GetOpenCLDevice() const { return dev_; }
   cl::Context GetOpenCLContext() const { return ctx_; }
@@ -34,7 +35,6 @@ class OpenCLExecutionProvider : public IExecutionProvider {
 
  private:
   Status InitOpenCLContext();
-  Status InitOpenCLAllocator();
 
   cl::Device dev_;
   cl::Context ctx_;

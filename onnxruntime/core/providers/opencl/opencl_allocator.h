@@ -13,7 +13,7 @@
 namespace onnxruntime {
 namespace opencl {
 
-#define ALLOCATOR_NAME "OpenCL"
+constexpr auto AllocatorName = "OpenCL";
 
 enum MemoryKind: uint8_t {
   Buffer = 0,
@@ -28,8 +28,6 @@ struct OpenCLFatPtr {
 
 class OpenCLAllocator : public IAllocator {
  public:
-
-
   explicit OpenCLAllocator(const cl::Context& ctx);
   ~OpenCLAllocator() override;
 
