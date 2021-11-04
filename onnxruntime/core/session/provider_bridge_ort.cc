@@ -313,6 +313,14 @@ struct ProviderHostImpl : ProviderHost {
   int int64s__size(const ONNX_NAMESPACE::int64s* p) override { return p->size(); }
   const int64_t& int64s__Get(const ONNX_NAMESPACE::int64s* p, int index) override { return p->Get(index); }
 
+  // TypeProto_Optional (wrapped)
+  const ONNX_NAMESPACE::TypeProto& TypeProto_Optional__elem_type(const ONNX_NAMESPACE::TypeProto_Optional* p) override { return p->elem_type(); }
+  ONNX_NAMESPACE::TypeProto* TypeProto_Optional__mutable_elem_type(ONNX_NAMESPACE::TypeProto_Optional* p) override { return p->mutable_elem_type(); }
+
+  // TypeProto_Sequence (wrapped)
+  const ONNX_NAMESPACE::TypeProto& TypeProto_Sequence__elem_type(const ONNX_NAMESPACE::TypeProto_Sequence* p) override { return p->elem_type(); }
+  ONNX_NAMESPACE::TypeProto* TypeProto_Sequence__mutable_elem_type(ONNX_NAMESPACE::TypeProto_Sequence* p) override { return p->mutable_elem_type(); }
+
   // TypeProto_Tensor (wrapped)
   bool TypeProto_Tensor__has_shape(const ONNX_NAMESPACE::TypeProto_Tensor* p) override { return p->has_shape(); }
   const ONNX_NAMESPACE::TensorShapeProto& TypeProto_Tensor__shape(const ONNX_NAMESPACE::TypeProto_Tensor* p) override { return p->shape(); }
@@ -345,6 +353,12 @@ struct ProviderHostImpl : ProviderHost {
     return p->mutable_sparse_tensor_type();
   }
 #endif
+
+  const ONNX_NAMESPACE::TypeProto_Optional& TypeProto__optional_type(const ONNX_NAMESPACE::TypeProto* p) override { return p->optional_type(); }
+  ONNX_NAMESPACE::TypeProto_Optional* TypeProto__mutable_optional_type(ONNX_NAMESPACE::TypeProto* p) override { return p->mutable_optional_type(); }
+
+  const ONNX_NAMESPACE::TypeProto_Sequence& TypeProto__sequence_type(const ONNX_NAMESPACE::TypeProto* p) override { return p->sequence_type(); }
+  ONNX_NAMESPACE::TypeProto_Sequence* TypeProto__mutable_sequence_type(ONNX_NAMESPACE::TypeProto* p) override { return p->mutable_sequence_type(); }
 
   // AttributeProto (wrapped)
   std::unique_ptr<ONNX_NAMESPACE::AttributeProto> AttributeProto__construct() override { return std::make_unique<ONNX_NAMESPACE::AttributeProto>(); }
@@ -1151,18 +1165,15 @@ void cudaMemcpy_HostToDevice(void* dst, const void* src, size_t count) {
 }
 
 #ifdef ENABLE_NVTX_PROFILE
-namespace profile
-{
-void NvtxRangeCreator::BeginImpl()
-{
+namespace profile {
+void NvtxRangeCreator::BeginImpl() {
   GetProviderInfo_CUDA().NvtxRangeCreator__BeginImpl(this);
 }
 
-void NvtxRangeCreator::EndImpl()
-{
+void NvtxRangeCreator::EndImpl() {
   GetProviderInfo_CUDA().NvtxRangeCreator__EndImpl(this);
 }
-}
+}  // namespace profile
 #endif
 
 #if defined(USE_CUDA) && defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
