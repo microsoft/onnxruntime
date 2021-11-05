@@ -4320,3 +4320,28 @@ def test_serialize_ortmodule():
     assert ort_out is not None
     _test_helpers.assert_values_are_close(pt_out, ort_out)
     _test_helpers.assert_gradients_match_and_reset_gradient(ort_model_2, pt_model)
+
+def test_trilu():
+    class SimpleTriuModel(torch.nn.Module):
+        def forward(self, x):
+            y = torch.triu(x)
+            return y
+
+    def run_step(model, x):
+        prediction = model(x)
+        loss = prediction.sum()
+        loss.backward()
+        return prediction, loss
+
+    device = 'cuda'
+    pt_model = SimpleTriuModel().to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+
+    for i in range(10):
+        pt_x = torch.rand((1, 10, 10), requires_grad=True, device=device)
+        ort_x = copy.deepcopy(pt_x)
+
+        pt_prediction, pt_loss = run_step(pt_model, pt_x)
+        ort_prediction, ort_loss = run_step(ort_model, ort_x)
+        _test_helpers.assert_values_are_close(pt_prediction, ort_prediction)
+        _test_helpers.assert_values_are_close(pt_loss, ort_loss)
