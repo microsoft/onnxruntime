@@ -6,6 +6,8 @@
 #include <string>
 #include "core/graph/basic_types.h"
 #include "core/providers/nnapi/nnapi_builtin/nnapi_lib/NeuralNetworksTypes.h"
+#include "core/optimizer/qdq_transformer/selectors_actions/qdq_selectors.h"
+#include "core/optimizer/selectors_actions/helpers.h"
 
 // This is the minimal Android API Level required by ORT NNAPI EP to run
 // ORT running on any host system with Android API level less than this will fall back to CPU EP
@@ -29,6 +31,7 @@ using InitializerMap = std::unordered_map<std::string, const ONNX_NAMESPACE::Ten
 class Node;
 class NodeArg;
 class GraphViewer;
+struct NodeGroup;
 
 namespace nnapi {
 
@@ -116,6 +119,12 @@ common::Status GetQuantizationScale(const InitializedTensorSet& initializers, co
 common::Status GetQuantizationZeroPoint(const InitializedTensorSet& initializers,
                                         const Node& node, size_t idx, int32_t& zero_point) ORT_MUST_USE_RESULT;
 
+bool IsNodeInQDQGroup(const Node& node);
+
+std::optional<QDQ::NodeGroup> GetQDQNodeGroup(const onnxruntime::GraphViewer& graph_viewer, const Node& node);
+
+void GetQDQNodeGroups(const onnxruntime::GraphViewer& graph_viewer);
+
 // Get Shape/Type of a NodeArg
 // TODO, move to shared_utils
 bool GetShape(const NodeArg& node_arg, Shape& shape);
@@ -145,6 +154,10 @@ std::string Shape2String(const std::vector<uint32_t>& shape);
 // Check the given input is an initializer tensor
 bool CheckIsInitializer(const InitializedTensorSet& initializers, const Node& node,
                         size_t index, const char* input_name) ORT_MUST_USE_RESULT;
+
+inline std::unordered_map<const Node*, std::optional<QDQ::NodeGroup>> target_node_to_qdq_group;
+
+inline std::vector<std::optional<QDQ::NodeGroup>> qdq_node_groups;
 
 }  // namespace nnapi
 }  // namespace onnxruntime

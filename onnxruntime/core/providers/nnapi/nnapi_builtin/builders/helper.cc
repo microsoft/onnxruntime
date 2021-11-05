@@ -333,6 +333,35 @@ common::Status GetQuantizationZeroPoint(const InitializedTensorSet& initializers
   return Status::OK();
 }
 
+bool IsNodeInQDQGroup(const Node& node) {
+  return target_node_to_qdq_group.find(&node) != target_node_to_qdq_group.end();
+}
+
+std::optional<QDQ::NodeGroup> GetQDQNodeGroup(const onnxruntime::GraphViewer& graph_viewer, const Node& node) {
+  QDQ::ConvSelector qdq_conv_selector;
+  auto qdq_node_group = qdq_conv_selector.GetQDQSelection(graph_viewer, node);
+  if (qdq_node_group != std::nullopt) {
+    auto it = target_node_to_qdq_group.find(&node);
+    if (it != target_node_to_qdq_group.end()) {
+      it->second = qdq_node_group;
+    } else {
+      target_node_to_qdq_group.emplace(&node, qdq_node_group);
+    }
+    std::cout << "QDQ Node Group found: " << node.OpType() << " with matched target node's name: " << node.Name() << "\n"
+              << std::endl;
+  }
+
+  return qdq_node_group;
+}
+
+void GetQDQNodeGroups(const onnxruntime::GraphViewer& graph_viewer) {
+  for (auto index : graph_viewer.GetNodesInTopologicalOrder()) {
+    const auto* node = graph_viewer.GetNode(index);
+    auto qdq_node_group = GetQDQNodeGroup(graph_viewer, *node);
+    qdq_node_groups.push_back(qdq_node_group);
+  }
+}
+
 bool GetShape(const NodeArg& node_arg, Shape& shape) {
   shape.clear();
   const auto* shape_proto = node_arg.Shape();
