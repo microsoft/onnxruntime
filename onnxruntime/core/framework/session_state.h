@@ -297,14 +297,12 @@ class SessionState {
                          flatbuffers::Offset<onnxruntime::experimental::fbs::SessionState>& fbs_session_state) const;
 #endif
 
-#if defined(ENABLE_ORT_FORMAT_LOAD)
   void SetCompiledKernelHashes(std::unordered_map<std::string, uint64_t>&& compiled_kernel_hashes) {
     compiled_kernel_hashes_ = std::move(compiled_kernel_hashes);
   }
 
   Status LoadFromOrtFormat(const onnxruntime::experimental::fbs::SessionState& fbs_session_state,
                            const KernelRegistryManager& kernel_registry_manager);
-#endif
 
   Status FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE>& graph_loc,
                               KernelRegistryManager& kernel_registry_manager,

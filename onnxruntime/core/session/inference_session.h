@@ -248,9 +248,10 @@ class InferenceSession {
   /**
     * Load an ONNX model.
     * @param istream object of the model.
+    * @allow_released_opsets_only Set true if you would like to only allow released ONNX opsets only, set false otherwise.
     * @return OK if success.
     */
-  common::Status Load(std::istream& model_istream) ORT_MUST_USE_RESULT;
+  common::Status Load(std::istream& model_istream, bool allow_released_opsets_only = true) ORT_MUST_USE_RESULT;
 
   /**
     * Load an ONNX model from the member model_proto_.
@@ -514,7 +515,6 @@ class InferenceSession {
   common::Status SaveToOrtFormat(const std::basic_string<ORTCHAR_T>& filepath) const;
 #endif
 
-#if defined(ENABLE_ORT_FORMAT_LOAD)
   /**
     * Load an ORT format model.
     * @param model_uri absolute path of the model file.
@@ -536,8 +536,6 @@ class InferenceSession {
   common::Status LoadOrtModel(const void* model_data, int model_data_len) ORT_MUST_USE_RESULT;
 
   common::Status LoadOrtModel(std::function<Status()> load_ort_format_model_bytes) ORT_MUST_USE_RESULT;
-
-#endif  // defined(ENABLE_ORT_FORMAT_LOAD)
 
   // Create a Logger for a single execution if possible. Otherwise use the default logger.
   // If a new logger is created, it will also be stored in new_run_logger,
@@ -584,7 +582,8 @@ class InferenceSession {
 
 #if !defined(ORT_MINIMAL_BUILD)
   virtual common::Status AddPredefinedTransformers(GraphTransformerManager& transformer_manager,
-                                                   TransformerLevel graph_optimization_level);
+                                                   TransformerLevel graph_optimization_level,
+                                                   bool saving_runtime_optimizations) const;
 
   common::Status TransformGraph(onnxruntime::Graph& graph,
                                 const onnxruntime::GraphTransformerManager& graph_transformer_mgr,

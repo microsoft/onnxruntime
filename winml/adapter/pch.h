@@ -9,4 +9,5 @@
 
 #if USE_DML
 #include <DirectML.h>
+#include "core/providers/dml/DmlExecutionProvider/src/ErrorHandling.h"
 #endif USE_DML
