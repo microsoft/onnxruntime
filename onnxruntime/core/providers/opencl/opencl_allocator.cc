@@ -30,9 +30,9 @@ void* OpenCLAllocator::Alloc(size_t size) {
 
   if (it == cache_.end() || it->second.empty()) {
     cl_int err{};
-    auto* ptr = new cl::Buffer(ctx_, CL_MEM_READ_WRITE, size, &err);
+    auto* ptr = new cl::Buffer(ctx_, CL_MEM_READ_WRITE, size, nullptr, &err);
     OPENCL_CHECK_ERROR(err);
-    std::cerr << "OpenCLAllocator allocated " << ptr << std::endl;
+    std::cerr << "OpenCLAllocator allocated " << ptr << "-->" << ptr->operator()() << std::endl;
     ptr_to_size_[ptr] = size;
     return ptr;
   }

@@ -74,9 +74,7 @@ Status OpenCLExecutionProvider::InitOpenCLContext() {
   std::vector<cl::Platform> platforms;
   cl::Platform::get(&platforms);
   std::cerr << "num platforms:" << platforms.size() << "\n";
-  if (platforms.empty()) {
-    exit(-1);
-  }
+  ORT_ENFORCE(!platforms.empty());
   // FIXME: add platform selection logic
   auto selected_platform = platforms[0];
   cl_context_properties properties[] = {CL_CONTEXT_PLATFORM, (cl_context_properties)(selected_platform)(), 0};
@@ -86,9 +84,7 @@ Status OpenCLExecutionProvider::InitOpenCLContext() {
 
   std::vector<cl::Device> devices = ctx_.getInfo<CL_CONTEXT_DEVICES>();
   std::cout << "num devices:" << devices.size() << std::endl;
-  if (devices.empty()) {
-    exit(-1);
-  }
+  ORT_ENFORCE(!devices.empty());
   // FIXME: add device selection logic
   dev_ = std::move(devices[0]);
 
@@ -122,7 +118,7 @@ void OpenCLExecutionProvider::RegisterAllocator(std::shared_ptr<AllocatorManager
 }
 
 std::unique_ptr<onnxruntime::IDataTransfer> OpenCLExecutionProvider::GetDataTransfer() const {
-  return std::make_unique<opencl::OpenCLDataTransfer>();
+  return std::make_unique<opencl::OpenCLDataTransfer>(cmd_queue_);
 }
 
 }  // namespace onnxruntime
