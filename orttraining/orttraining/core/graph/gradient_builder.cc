@@ -96,6 +96,11 @@ IMPLEMENT_GRADIENT_BUILDER(GetTanhGradient) {
               {GI(0)})};
 }
 
+IMPLEMENT_GRADIENT_BUILDER(GetTriluGradient) {
+  return std::vector<NodeDef>{
+      NodeDef(OpDef{"Trilu", kMSDomain, 1}, {GO(0)}, {GI(0)})};
+}
+
 IMPLEMENT_GRADIENT_BUILDER(GetSqrtGradient) {
   std::vector<NodeDef> result;
   NodeDef half_constant_node = HalfConstantNode(OElemType(0));
