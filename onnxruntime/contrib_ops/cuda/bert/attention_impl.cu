@@ -275,7 +275,7 @@ bool DecoderQkvToContext(
       }
       // concat cache-v with v and copy to qkv_buffer
       if (nullptr != value_cache && !LaunchConcatTensorToTensor(stream, kv_sequence_length, sequence_length, batch_size, head_size, num_heads,
-          max_threads_per_block, 1, key_cache, temp_qkv_buffer + k_buffer_offset, qkv_buffer + v_buffer_offset)) {
+          max_threads_per_block, 1, value_cache, temp_qkv_buffer + k_buffer_offset, qkv_buffer + v_buffer_offset)) {
         return false;
       }
     }
