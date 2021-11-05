@@ -9,7 +9,8 @@ namespace onnxruntime {
 
 namespace {
 
-// if the last input in num_inputs is for the variadic input, the variadic input could have zero or more values
+// if the last input/output in num_io is for the variadic input/output,
+// the variadic input/output could have zero or more values
 // so we need to special case the zero and count that as one. same for outputs
 static int NumIOEntries(bool variadic_io, int num_io, int num_variadic_io) {
   return variadic_io
