@@ -95,9 +95,12 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
 #endif
   }();
 
-  const nnapi::OpSupportCheckParams params{
+  std::vector<const Node*> dq_nodes_in_group;
+
+  nnapi::OpSupportCheckParams params{
       android_feature_level,
       !!(nnapi_flags_ & NNAPI_FLAG_USE_NCHW),
+      dq_nodes_in_group,
   };
 
   if (params.android_feature_level < ORT_NNAPI_MIN_API_LEVEL) {
@@ -125,27 +128,26 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
   std::unordered_set<std::string> node_outputs_in_current_group{};
 
   const auto is_node_supported = [&](const Node& node) -> bool {
-    bool supported = false;
-
     const bool excluded = check_excluded_nodes && Contains(excluded_nodes, &node);
 
-    if (nnapi::IsNodeInQDQGroup(qdq_node_groups, node)) {
-      //TODO: Record the group is already checked not supported to avoid redundant checking
-      auto qdq_node_group = nnapi::GetQDQNodeGroup(graph_viewer, node);
-      supported = !excluded &&
-                  nnapi::IsNodeSupportedInGroup(node, graph_viewer, params,
-                                                node_outputs_in_current_group, qdq_node_group);  // related to internal quantization node?
+    if (nnapi::IsNodeInQDQGroup(node)) {
+      auto qdq_node_group = nnapi::target_node_to_qdq_group.at(&node);
+      for (auto idx : qdq_node_group.dq_nodes) {
+        const auto* dq_node = graph_viewer.GetNode(idx);
+        params.dq_nodes_in_group.push_back(dq_node);
+      }
+    }
+
+    const bool supported = !excluded &&
+                           nnapi::IsNodeSupportedInGroup(node, graph_viewer, params,
+                                                         node_outputs_in_current_group);
+    if (nnapi::IsNodeInQDQGroup(node)) {
       LOGS_DEFAULT(VERBOSE) << "QDQ Group: Operator type: [" << node.OpType()
                             << "] index: [" << node.Index()
                             << "] name: [" << node.Name()
                             << "] supported: [" << supported
                             << "]";
-
     } else {
-      std::unique_ptr<ConstNodesToOptimize> qdq_node_group;
-      supported = !excluded &&
-                  nnapi::IsNodeSupportedInGroup(node, graph_viewer, params,
-                                                node_outputs_in_current_group, qdq_node_group);
       LOGS_DEFAULT(VERBOSE) << "Operator type: [" << node.OpType()
                             << "] index: [" << node.Index()
                             << "] name: [" << node.Name()

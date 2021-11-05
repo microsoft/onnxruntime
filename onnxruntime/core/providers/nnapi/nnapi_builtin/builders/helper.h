@@ -6,14 +6,8 @@
 #include <string>
 #include "core/graph/basic_types.h"
 #include "core/providers/nnapi/nnapi_builtin/nnapi_lib/NeuralNetworksTypes.h"
-#include "core/providers/nnapi/nnapi_builtin/selectors_actions/nnapi_selector_action_transformer.h"
-#include "core/providers/nnapi/nnapi_builtin/selectors_actions/nnapi_selector_action_transformer.cc"
-#include "core/providers/nnapi/nnapi_builtin/selectors_actions/nnapi_qdq_selector_action_transformer.h"
-#include "core/providers/nnapi/nnapi_builtin/selectors_actions/nnapi_qdq_selector_action_transformer.cc"
-#include "core/providers/nnapi/nnapi_builtin/selectors_actions/nnapi_qdq_selectors.h"
-#include "core/providers/nnapi/nnapi_builtin/selectors_actions/nnapi_qdq_selectors.cc"
-#include "core/providers/nnapi/nnapi_builtin/selectors_actions/nnapi_qdq_selector_helper.h"
-#include "core/providers/nnapi/nnapi_builtin/selectors_actions/nnapi_qdq_selector_helper.cc"
+#include "core/optimizer/qdq_transformer/selectors_actions/qdq_selectors.h"
+#include "core/optimizer/selectors_actions/helpers.h"
 
 // This is the minimal Android API Level required by ORT NNAPI EP to run
 // ORT running on any host system with Android API level less than this will fall back to CPU EP
@@ -37,6 +31,7 @@ using InitializerMap = std::unordered_map<std::string, const ONNX_NAMESPACE::Ten
 class Node;
 class NodeArg;
 class GraphViewer;
+struct QDQNodeGroup;
 
 namespace nnapi {
 
@@ -124,11 +119,11 @@ common::Status GetQuantizationScale(const InitializedTensorSet& initializers, co
 common::Status GetQuantizationZeroPoint(const InitializedTensorSet& initializers,
                                         const Node& node, size_t idx, int32_t& zero_point) ORT_MUST_USE_RESULT;
 
-bool IsNodeInQDQGroup(std::vector<std::unique_ptr<ConstNodesToOptimize>>& qdq_node_groups, const Node& node);
+bool IsNodeInQDQGroup(const Node& node);
 
-std::unique_ptr<ConstNodesToOptimize> GetQDQNodeGroup(const onnxruntime::GraphViewer& graph_viewer, const Node& node);
+QDQNodeGroup GetQDQNodeGroup(const onnxruntime::GraphViewer& graph_viewer, const Node& node);
 
-std::vector<std::unique_ptr<ConstNodesToOptimize>> GetQDQNodeGroups(const onnxruntime::GraphViewer& graph_viewer);
+std::vector<QDQNodeGroup> GetQDQNodeGroups(const onnxruntime::GraphViewer& graph_viewer);
 
 // Get Shape/Type of a NodeArg
 // TODO, move to shared_utils
@@ -139,14 +134,13 @@ bool GetType(const NodeArg& node_arg, int32_t& type);
 void GetFlattenOutputShape(const Node& node, const Shape& input_shape, int32_t& dim_1, int32_t& dim_2);
 
 // If a node is supported by NNAPI
-bool IsNodeSupported(const Node& node, const GraphViewer& graph_viewer, const OpSupportCheckParams& params, std::unique_ptr<ConstNodesToOptimize>& qdq_group);
+bool IsNodeSupported(const Node& node, const GraphViewer& graph_viewer, const OpSupportCheckParams& params);
 
 // If a node is supported by NNAPI in a partition node group
 // `node_outputs_in_group` is the set of the output names of the nodes added to this group so far
 bool IsNodeSupportedInGroup(const Node& node, const GraphViewer& graph_viewer,
                             const OpSupportCheckParams& params,
-                            const std::unordered_set<std::string>& node_outputs_in_group,
-                            std::unique_ptr<ConstNodesToOptimize>& qdq_group);
+                            const std::unordered_set<std::string>& node_outputs_in_group);
 
 // If a graph input is supported by NNAPI
 bool IsInputSupported(const NodeArg& input, const std::string& parent_name);
@@ -160,6 +154,8 @@ std::string Shape2String(const std::vector<uint32_t>& shape);
 // Check the given input is an initializer tensor
 bool CheckIsInitializer(const InitializedTensorSet& initializers, const Node& node,
                         size_t index, const char* input_name) ORT_MUST_USE_RESULT;
+
+inline std::unordered_map<const Node*, QDQNodeGroup> target_node_to_qdq_group;
 
 }  // namespace nnapi
 }  // namespace onnxruntime
