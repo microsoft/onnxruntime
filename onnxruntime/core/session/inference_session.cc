@@ -807,14 +807,14 @@ common::Status InferenceSession::Load(std::unique_ptr<ModelProto> p_model_proto)
   return Load(loader, "model_loading_proto");
 }
 
-common::Status InferenceSession::Load(std::istream& model_istream) {
+common::Status InferenceSession::Load(std::istream& model_istream, bool allow_released_opsets_only) {
   if (is_model_proto_parsed_) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                            "ModelProto corresponding to the model to be loaded has already been parsed. "
                            "Invoke Load().");
   }
 
-  auto loader = [this, &model_istream](std::shared_ptr<onnxruntime::Model>& model) {
+  auto loader = [this, &model_istream, &allow_released_opsets_only](std::shared_ptr<onnxruntime::Model>& model) {
     ModelProto model_proto;
     Status st = Model::Load(model_istream, &model_proto);
     if (!st.IsOK()) {
@@ -827,7 +827,8 @@ common::Status InferenceSession::Load(std::istream& model_istream) {
     }
 #endif
     return onnxruntime::Model::Load(std::move(model_proto), PathString(), model,
-                                    HasLocalSchema() ? &custom_schema_registries_ : nullptr, *session_logger_);
+                                    HasLocalSchema() ? &custom_schema_registries_ : nullptr,
+                                    *session_logger_, allow_released_opsets_only);
   };
 
   return Load(loader, "model_loading_istream");
@@ -1556,12 +1557,18 @@ common::Status InferenceSession::ValidateInputs(const std::vector<std::string>& 
     auto expected_type = iter->second.ml_data_type;
     auto& input_ml_value = feeds.at(i);
     if (input_ml_value.IsTensor()) {
-      // check for type
-      if (!expected_type->IsTensorType()) {
+      if (!expected_type->IsTensorType() &&
+          !utils::IsOptionalTensor(expected_type)) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input with name: ", feed_name,
                                " is not expected to be of type tensor.");
       }
-      auto expected_element_type = expected_type->AsTensorType()->GetElementType();
+
+      // check for type
+      auto expected_element_type = expected_type->IsTensorType()
+                                       ? expected_type
+                                             ->AsTensorType()
+                                             ->GetElementType()
+                                       : utils::GetElementTypeFromOptionalTensor(expected_type);
       auto input_element_type = input_ml_value.Get<Tensor>().DataType();
       ORT_RETURN_IF_ERROR_SESSIONID_(CheckTypes(input_element_type, expected_element_type, "tensor"));
 
@@ -1593,11 +1600,18 @@ common::Status InferenceSession::ValidateInputs(const std::vector<std::string>& 
 #endif
 
     } else if (input_ml_value.IsTensorSequence()) {
-      if (!expected_type->IsTensorSequenceType()) {
+      if (!expected_type->IsTensorSequenceType() &&
+          !utils::IsOptionalSeqTensor(expected_type)) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input with name: ", feed_name,
                                " is not expected to be of type tensor sequence.");
       }
-      auto expected_element_type = expected_type->AsSequenceTensorBase()->GetElementType();
+
+      auto expected_element_type = expected_type->IsTensorSequenceType()
+                                       ? expected_type
+                                             ->AsSequenceTensorType()
+                                             ->GetElementType()
+                                       : utils::GetElementTypeFromOptionalSeqTensor(expected_type);
+
       auto input_element_type = input_ml_value.Get<TensorSeq>().DataType();
       ORT_RETURN_IF_ERROR_SESSIONID_(CheckTypes(input_element_type, expected_element_type, "seq"));
     } else {
