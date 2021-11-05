@@ -931,7 +931,6 @@ std::unique_ptr<IndexedSubGraph> MIGraphXExecutionProvider::GetSubGraph(const st
   }
 
   for (auto it = fused_outputs.begin(), end = fused_outputs.end(); it != end; ++it) {
-    std::cout << "output_name = " << it->first->Name() << ", order = " << it->second << std::endl;
     outputs.insert(std::pair<int, const NodeArg*>(it->second, it->first));
   }
 
@@ -1066,10 +1065,6 @@ MIGraphXExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
   std::string onnx_string_buffer;
   model_proto->SerializeToString(onnx_string_buffer);
 
-  std::ofstream ofs("ort_getcapability.onnx");
-  ofs.write(onnx_string_buffer.data(), onnx_string_buffer.size());
-  ofs.close();
-
   // This is a list of initializers that migraphx considers as constants.
   // Example weights, reshape shape etc.
   std::unordered_set<std::string> mgx_required_initializers;
@@ -1147,145 +1142,6 @@ bool get_input_output_names(const GraphViewer& graph,
   return no_input_shape;
 }
 
-template<class T>
-void print_vec(std::ostream& os, const std::vector<T>& vec, std::size_t column_size)
-{
-    os << "{";
-    if (vec.size() <= 8 * column_size)
-    {
-        for (std::size_t i = 0; i < vec.size(); ++i)
-        {
-            if (i == vec.size() - 1) os << vec[i];
-            else os << vec[i] << ", ";
-            if ((i + 1) % column_size == 0)
-            {
-                os << std::endl;
-            }
-        }
-    }
-    else
-    {
-        for (std::size_t i = 0; i < 4 * column_size; ++i)
-        {
-            os << vec[i] << ", ";
-            if ((i + 1) % column_size == 0)
-            {
-                os << std::endl;
-            }
-        }
-        os << "..." << std::endl;
-        std::size_t offset = vec.size() - 4 * column_size;
-        for (std::size_t i = 0; i < 4 * column_size; ++i)
-        {
-            if (i == vec.size() - 1) os << vec[i + offset];
-            else os << vec[i + offset] << ", ";
-            if ((i + 1) % column_size == 0)
-            {
-                os << std::endl;
-            }
-        }
-    }
-    os << "}";
-}
-
-template<class T>
-void print_vec(std::vector<T>& vec, std::size_t column_size)
-{
-    print_vec(std::cout, vec, column_size);
-}
-
-
-template<class T>
-std::ostream& operator << (std::ostream& os, const std::vector<T>& vec)
-{
-    print_vec(os, vec, 8);
-    return os;
-}
-
-void print_argument(std::ostream& os, const migraphx::argument& arg)
-{
-    auto s = arg.get_shape();
-    auto lens = s.lengths();
-    auto elem_num = std::accumulate(lens.begin(), lens.end(), 1, std::multiplies<size_t>());
-    migraphx_shape_datatype_t type = s.type();
-    // os << "type = " << type_name(type) << ", lens = " << s.lengths() << std::endl;
-    if (type == migraphx_shape_float_type)
-    {
-        // float *ptr = reinterpret_cast<float*>(arg.data());
-        std::vector<float> data(elem_num);
-        (void)hipMemcpy(data.data(), arg.data(), elem_num * sizeof(float), hipMemcpyDeviceToHost);
-        // std::vector<float> data(ptr, ptr + elem_num);
-        os << data;
-    }
-    // else if (type == migraphx_shape_half_type)
-    // {
-    //     half *ptr = reinterpret_cast<half*>(arg.data());
-    //     std::vector<half> data(ptr, ptr + elem_num);
-    //     os << data;
-    // }
-    else if (type == migraphx_shape_double_type)
-    {
-        double *ptr = reinterpret_cast<double*>(arg.data());
-        std::vector<double> data(ptr, ptr + elem_num);
-        os << data;
-    }
-    else if (type == migraphx_shape_int32_type)
-    {
-        int *ptr = reinterpret_cast<int*>(arg.data());
-        std::vector<int> data(ptr, ptr + elem_num);
-        os << data;
-    }
-    else if (type == migraphx_shape_uint64_type)
-    {
-        int64_t *ptr = reinterpret_cast<int64_t*>(arg.data());
-        std::vector<int64_t> data(ptr, ptr + elem_num);
-        os << data;
-    }
-    else if (type == migraphx_shape_int8_type)
-    {
-        int8_t *ptr = reinterpret_cast<int8_t*>(arg.data());
-        std::vector<int8_t> data(ptr, ptr + elem_num);
-        os << data;
-    }
-    else if (type == migraphx_shape_uint32_type)
-    {
-        uint32_t *ptr = reinterpret_cast<uint32_t*>(arg.data());
-        std::vector<int32_t> data(ptr, ptr + elem_num);
-        os << data;
-    }
-    else if (type == migraphx_shape_int64_type)
-    {
-        // uint64_t *ptr = reinterpret_cast<uint64_t*>(arg.data());
-        std::vector<int64_t> data(elem_num);
-        (void)hipMemcpy(data.data(), arg.data(), elem_num * sizeof(int64_t), hipMemcpyDeviceToHost);
-        // std::vector<uint64_t> data(ptr, ptr + elem_num);
-        os << data;
-    }
-    else if (type == migraphx_shape_uint8_type)
-    {
-        uint8_t *ptr = reinterpret_cast<uint8_t*>(arg.data());
-        std::vector<uint8_t> data(ptr, ptr + elem_num);
-        os << data;
-    }
-    else if (type == migraphx_shape_bool_type)
-    {
-        bool *ptr = reinterpret_cast<bool*>(arg.data());
-        std::vector<bool> data(ptr, ptr + elem_num);
-        os << data;
-    }
-    else
-    {
-        std::cout << "Type not support" << std::endl;
-        std::abort();
-    }
-}
-
-std::ostream& operator << (std::ostream& os, const migraphx::argument& arg)
-{
-    print_argument(os, arg);
-    return os;
-}
-
 Status MIGraphXExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& fused_nodes,
                                           std::vector<NodeComputeInfo>& node_compute_funcs) {
   migraphx::onnx_options options;
@@ -1314,19 +1170,8 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<onnxruntime::Node*>&
     std::string onnx_string_buffer;
     model_proto->SerializeToString(onnx_string_buffer);
 
-    std::ofstream ofs("ort_compile.onnx");
-    ofs.write(onnx_string_buffer.data(), onnx_string_buffer.size());
-    ofs.close();
-
     std::vector<std::string> input_names, output_names;
     no_input_shape = no_input_shape or get_input_output_names(*graph_body_viewer, input_names, output_names);
-
-    std::unordered_map<std::string, std::size_t> output_name_index;
-    std::cout << "output_num = " << output_names.size() << std::endl;
-    for (std::size_t i = 0; i < output_names.size(); ++i) {
-      std::cout << "name = " << output_names[i] << std::endl;
-      output_name_index[output_names[i]] = i;
-    }
 
     // by parsing the model_proto, create a program corresponding to
     // the input fused_node
@@ -1356,7 +1201,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<onnxruntime::Node*>&
     compute_info.create_state_func = [=](ComputeContext* context, FunctionState* state) {
       std::unique_ptr<MIGraphXFuncState> p = std::make_unique<MIGraphXFuncState>();
       *p = {context->allocate_func, context->release_func, context->allocator_handle, map_progs_[context->node_name],
-            map_onnx_string_[context->node_name], options, t_, map_input_index_[context->node_name], map_output_index_[context->node_name], &mgx_mu_,
+            map_onnx_string_[context->node_name], options, t_, map_input_index_[context->node_name], &mgx_mu_,
             map_no_input_shape_[context->node_name], fp16_enable_};
       *state = p.release();
       return 0;
@@ -1371,7 +1216,6 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<onnxruntime::Node*>&
       Ort::CustomOpApi ort{*api};
       MIGraphXFuncState* mgx_state = reinterpret_cast<MIGraphXFuncState*>(state);
       std::unordered_map<std::string, std::size_t>& map_input_name_index = mgx_state->input_name_indexes;
-      std::unordered_map<std::string, std::size_t>& map_output_name_index = mgx_state->output_name_indexes;
       migraphx::target t = mgx_state->t;
       migraphx::program& prog = mgx_state->prog;
       std::string& onnx_string = mgx_state->onnx_string;
@@ -1397,14 +1241,6 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<onnxruntime::Node*>&
       } else {
         param_shapes = prog.get_parameter_shapes();
         auto prog_output_shapes = prog.get_output_shapes();
-
-        std::cout << "************ Output_name_indices ***************" << std::endl;
-        std::cout << "output_num = " << map_output_name_index.size() << std::endl;
-        for(auto oit : map_output_name_index)
-        {
-          std::cout << "name: " << oit.first << ", index = " << oit.second << std::endl;
-        }
-        std::cout << "************************************************" << std::endl << std::endl;
 
         // check whether input shapes match with shapes of program inputs
         // migraphx::onnx_options cmp_options;
@@ -1466,10 +1302,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<onnxruntime::Node*>&
             if (mgx_type != mgx_s.type()) {
               LOGS_DEFAULT(FATAL) << "MIGraphX: param type mismatch";
             }
-            migraphx::argument in_arg(param_shapes[name], const_cast<void*>(ort.GetTensorData<void>(input_tensor)));
-            std::cout << "input: " << name << ", val = " << in_arg << std::endl;
-            m.add(name, in_arg);
-            // m.add(name, migraphx::argument(param_shapes[name], const_cast<void*>(ort.GetTensorData<void>(input_tensor))));
+            m.add(name, migraphx::argument(param_shapes[name], const_cast<void*>(ort.GetTensorData<void>(input_tensor))));
           }
           // It is a output argument
           else {
@@ -1506,10 +1339,6 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<onnxruntime::Node*>&
         std::lock_guard<OrtMutex> lock(*(mgx_state->mgx_mu_ptr));
         auto prog_outputs = prog.eval(m);
         HIP_CALL_THROW(hipDeviceSynchronize());
-        for(std::size_t i = 0; i < prog_outputs.size(); ++i)
-        {
-            std::cout << "Output_" << i << ": val = " << prog_outputs[i] << std::endl;
-        }
 
         // In case of input parameters are reused as output parameter call hipMemcpy
         auto output_num = prog_outputs.size();
