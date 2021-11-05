@@ -25,11 +25,15 @@ def GenerateModel(model_name):
         helper.make_tensor_value_info('X', TensorProto.UINT8, [1, 1, 5, 5]),
     ]
 
+    outputs = [
+        helper.make_tensor_value_info('Y', TensorProto.UINT8, [1, 1, 3, 3]),
+    ]
+
     graph = helper.make_graph(
         nodes,
-        "NNAPI_Internal_uint8_Test",
+        "QDQ_Conv_Model_Basic",
         inputs,
-        [helper.make_tensor_value_info('Y', TensorProto.UINT8, [1, 1, 3, 3])],
+        outputs,
         initializers
     )
 

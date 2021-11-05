@@ -1638,7 +1638,7 @@ TEST(QDQTransformerTests, QDQ_Selector_Test) {
   const ORTCHAR_T* model_file_name = ORT_TSTR("testdata/qdq_conv_model_basic.onnx");
 
   SessionOptions so;
-  // We want to keep the graph unoptimized
+  // We want to keep the graph un-optimized to prevent QDQ transformer to kick in
   so.graph_optimization_level = TransformerLevel::Default;
   InferenceSessionWrapper session_object{so, GetEnvironment()};
   ASSERT_STATUS_OK(session_object.Load(model_file_name));
@@ -1651,10 +1651,11 @@ TEST(QDQTransformerTests, QDQ_Selector_Test) {
   ASSERT_EQ("Conv", conv_node->OpType());
 
   onnxruntime::QDQ::ConvSelector conv_selector;
+
+  // Create a GraphViewer covers the whole graph
   const GraphViewer whole_graph_viewer(graph);
 
-  // Create a GraphViewer cover the whole graph
-  // Make sure the conv QDQ group is selected
+  // Make sure the conv QDQ group is selected for the full graph
   {
     const auto result = conv_selector.GetQDQSelection(whole_graph_viewer, *conv_node);
     ASSERT_TRUE(result.has_value());
@@ -1664,8 +1665,8 @@ TEST(QDQTransformerTests, QDQ_Selector_Test) {
     ASSERT_EQ(std::vector<NodeIndex>({4}), qdq_group.q_nodes);
   }
 
-  // Create a graph viewer cover part of the graph
-  // Make sure the qdq conv selector will fail
+  // Create a graph viewer covers part of the graph
+  // Make sure the qdq conv selector will fail for the partial graph
   {
     // Get 3 nodes out of 5 nodes in the graph
     std::vector<const Node*> nodes{
@@ -1674,12 +1675,14 @@ TEST(QDQTransformerTests, QDQ_Selector_Test) {
         graph.GetNode(4),
     };
 
+    // Generate the indexed subgraph
     const auto compute_capability = utils::MakeComputeCapability(
         whole_graph_viewer, nodes,
         []() { return "sub_graph"; },
         "Test Provider");
 
     const GraphViewer partial_graph_viewer(graph, *compute_capability->sub_graph);
+    ASSERT_EQ(3, partial_graph_viewer.NumberOfNodes());
     const auto result = conv_selector.GetQDQSelection(partial_graph_viewer, *conv_node);
     ASSERT_FALSE(result.has_value());
   }
