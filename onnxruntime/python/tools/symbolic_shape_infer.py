@@ -1084,7 +1084,7 @@ class SymbolicShapeInference:
         if node.output[0]:
             vi = self.known_vi_[node.output[0]]
             vi.CopyFrom(
-                helper.make_tensor_value_info(node.output[0], self.known_vi_[node.input[0]].type.tensor_type.elem_type,
+                helper.make_tensor_value_info(node.output[0], onnx.TensorProto.BOOL,
                                               get_shape_from_sympy_shape(sympy_shape)))
 
     def _infer_aten_diagonal(self, node):
