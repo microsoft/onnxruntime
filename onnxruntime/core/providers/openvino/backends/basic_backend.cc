@@ -269,18 +269,9 @@ void BasicBackend::StartAsyncInference(Ort::CustomOpApi& ort, OrtKernelContext* 
 
   for (auto input_info_iter = graph_input_info.begin();
        input_info_iter != graph_input_info.end(); ++input_info_iter) {
-
     // Get OpenVINO's input buffer
     InferenceEngine::Blob::Ptr graph_input_blob;
     std::string input_name = input_info_iter->first;
-
-    // OrtValue wraps a device pointer
-    const OrtValue* tensor = ort.KernelContext_GetInput(context, subgraph_context_.input_names.at(input_name));
-    auto mem_info = ort.GetTensorMemoryInfo(tensor);
-    if (mem_info->device.Type() == OrtDevice::GPU) {
-      ORT_THROW(log_tag + "IO Optimization is not supported for this model");
-    }
-
     try {
       graph_input_blob = infer_request->GetBlob(input_name);
 
