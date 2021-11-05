@@ -117,13 +117,6 @@ try:
             if not is_manylinux:
                 self.root_is_pure = False
 
-        def _rewrite_ld_preload(self, to_preload):
-            with open('onnxruntime/capi/_ld_preload.py', 'a') as f:
-                if len(to_preload) > 0:
-                    f.write('from ctypes import CDLL, RTLD_GLOBAL\n')
-                    for library in to_preload:
-                        f.write('_{} = CDLL("{}", mode=RTLD_GLOBAL)\n'.format(library.split('.')[0], library))
-
         def _rewrite_ld_preload_cuda(self, to_preload):
             with open('onnxruntime/capi/_ld_preload.py', 'a') as f:
                 if len(to_preload) > 0:
@@ -141,21 +134,7 @@ try:
                 dest = 'onnxruntime/capi/onnxruntime_pybind11_state_manylinux1.so'
                 logger.info('copying %s -> %s', source, dest)
                 copyfile(source, dest)
-                result = subprocess.run(['patchelf', '--print-needed', dest],
-                                        check=True, stdout=subprocess.PIPE, universal_newlines=True)
-                dependencies = ['librccl.so', 'libamdhip64.so', 'librocblas.so', 'libMIOpen.so',
-                                'libhsa-runtime64.so', 'libhsakmt.so']
-                to_preload = []
                 to_preload_cuda = []
-                args = ['patchelf', '--debug']
-                for line in result.stdout.split('\n'):
-                    for dependency in dependencies:
-                        if dependency in line:
-                            to_preload.append(line)
-                            args.extend(['--remove-needed', line])
-                args.append(dest)
-                if len(args) > 3:
-                    subprocess.run(args, check=True, stdout=subprocess.PIPE)
 
                 dest = 'onnxruntime/capi/libonnxruntime_providers_' + 'rocm.so' if is_rocm else 'cuda.so'
                 if path.isfile(dest):
@@ -163,18 +142,18 @@ try:
                                             check=True, stdout=subprocess.PIPE, universal_newlines=True)
                     cuda_dependencies = ['libcublas.so', 'libcublasLt.so', 'libcudnn.so', 'libcudart.so',
                                          'libcurand.so', 'libcufft.so', 'libnvToolsExt.so']
+                    rocm_dependencies = ['librccl.so', 'libamdhip64.so', 'librocblas.so', 'libMIOpen.so',
+                                         'libhsa-runtime64.so', 'libhsakmt.so'] 
                     args = ['patchelf', '--debug']
                     for line in result.stdout.split('\n'):
-                        for dependency in cuda_dependencies:
+                        for dependency in (cuda_dependencies + rocm_dependencies):
                             if dependency in line:
-                                if dependency not in to_preload:
-                                    to_preload_cuda.append(line)
+                                to_preload_cuda.append(line)
                                 args.extend(['--remove-needed', line])
                     args.append(dest)
                     if len(args) > 3:
                         subprocess.run(args, check=True, stdout=subprocess.PIPE)
 
-                self._rewrite_ld_preload(to_preload)
                 self._rewrite_ld_preload_cuda(to_preload_cuda)
             _bdist_wheel.run(self)
             if is_manylinux and not disable_auditwheel_repair:
