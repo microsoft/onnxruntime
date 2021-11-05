@@ -6,14 +6,29 @@
 #include "OnnxruntimeEngine.h"
 #include "OnnxruntimeEngineBuilder.h"
 #include "OnnxruntimeCpuSessionBuilder.h"
-#include "OnnxruntimeOpenVinoSessionBuilder.h"
+#include "OnnxruntimeErrors.h"
 
 #ifdef USE_DML
 #include "OnnxruntimeDmlSessionBuilder.h"
 #endif
 
-#include "OnnxruntimeErrors.h"
+#ifdef USE_OPENVINO
+#include "OnnxruntimeOpenVinoSessionBuilder.h"
+struct __declspec(uuid("4e84bd04-4212-4ecd-92a4-0b403e75872c")) OpenVinoProviderOptions;
+#endif
+
+#ifdef USE_TENSORRT
+#include "OnnxruntimeTensorRTSessionBuilder.h"
+struct __declspec(uuid("55411b0d-06d1-426d-94a1-cdd70802f1bd")) TensorRTProviderOptions;
+#endif
+
+#ifdef USE_CUDA
+#include "OnnxruntimeCUDASessionBuilder.h"
+struct __declspec(uuid("34001d56-7780-4aa9-9e37-da05d2ead6d2")) CUDAProviderOptions;
+#endif
+
 using namespace _winml;
+
 
 HRESULT OnnxruntimeEngineBuilder::RuntimeClassInitialize(_In_ OnnxruntimeEngineFactory* engine_factory) {
   engine_factory_ = engine_factory;
@@ -25,12 +40,40 @@ STDMETHODIMP OnnxruntimeEngineBuilder::CreateEngine(_Outptr_ _winml::IEngine** o
 
   Microsoft::WRL::ComPtr<IOrtSessionBuilder> onnxruntime_session_builder;
 
-  if (device_) {
+  if (custom_execution_provider_options_ != nullptr) {
+
+#ifdef USE_OPENVINO
+    Microsoft::WRL::ComPtr<IUnknown> open_vino_options;
+    RETURN_IF_FAILED(custom_execution_provider_options_->QueryInterface(__uuidof(OpenVinoProviderOptions), &open_vino_options));
+    if (open_vino_options != nullptr) {  
+      RETURN_IF_FAILED(Microsoft::WRL::MakeAndInitialize<OnnxruntimeOpenVinoSessionBuilder>(
+        &onnxruntime_session_builder, engine_factory_.Get(), custom_execution_provider_options_.Get()));
+    }
+#endif
+
+#ifdef USE_TENSORRT
+    Microsoft::WRL::ComPtr<IUnknown> tensorrt_options;
+    RETURN_IF_FAILED(custom_execution_provider_options_->QueryInterface(__uuidof(TensorRTProviderOptions), &tensorrt_options));
+    if (tensorrt_options != nullptr) {  
+      RETURN_IF_FAILED(Microsoft::WRL::MakeAndInitialize<OnnxruntimeTensorRTSessionBuilder>(
+        &onnxruntime_session_builder, engine_factory_.Get(), custom_execution_provider_options_.Get()));
+    }
+#endif
+
+#ifdef USE_CUDA
+    Microsoft::WRL::ComPtr<IUnknown> cuda_options;
+    RETURN_IF_FAILED(custom_execution_provider_options_->QueryInterface(__uuidof(CUDAProviderOptions), &cuda_options));
+    if (cuda_options != nullptr) {  
+      RETURN_IF_FAILED(Microsoft::WRL::MakeAndInitialize<OnnxruntimeCUDASessionBuilder>(
+        &onnxruntime_session_builder, engine_factory_.Get(), custom_execution_provider_options_.Get()));
+    }
+#endif
+
+  }
+  else if (device_) {
 #ifdef USE_DML
     RETURN_IF_FAILED(Microsoft::WRL::MakeAndInitialize<OnnxruntimeDmlSessionBuilder>(&onnxruntime_session_builder, engine_factory_.Get(), device_.Get(), queue_.Get(), metacommands_enabled_));
 #endif
-  } else if (is_open_vino_) {
-    RETURN_IF_FAILED(Microsoft::WRL::MakeAndInitialize<OnnxruntimeOpenVinoSessionBuilder>(&onnxruntime_session_builder, engine_factory_.Get()));
   } else {
     RETURN_IF_FAILED(Microsoft::WRL::MakeAndInitialize<OnnxruntimeCpuSessionBuilder>(&onnxruntime_session_builder, engine_factory_.Get()));
   }
@@ -89,8 +132,8 @@ STDMETHODIMP OnnxruntimeEngineBuilder::GetID3D12CommandQueue(_Outptr_ ID3D12Comm
   return S_OK;
 }
 
-STDMETHODIMP OnnxruntimeEngineBuilder::SetOpenVinoOptions(_In_ OpenVinoDeviceOptions* /*options*/) {
-  is_open_vino_ = true;
+STDMETHODIMP OnnxruntimeEngineBuilder::SetExecutionProviderOptions(_In_ _winml::IExecutionProviderOptions* options) {
+  custom_execution_provider_options_ = options;
   return S_OK;
 }
 

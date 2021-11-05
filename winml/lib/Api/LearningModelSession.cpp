@@ -114,8 +114,10 @@ void LearningModelSession::Initialize() {
   com_ptr<_winml::IEngineBuilder> engine_builder;
   WINML_THROW_IF_FAILED(engine_factory_->CreateEngineBuilder(engine_builder.put()));
 
-  if (device_impl->IsOpenVinoDevice()) {
-    WINML_THROW_IF_FAILED(engine_builder->SetOpenVinoOptions(device_impl->UseOpenVinoOptions()));
+  if (device_impl->HasCustomExecutionProvider()) {
+    winrt::com_ptr<_winml::IExecutionProviderOptions> custom_provider_options;
+    WINML_THROW_IF_FAILED(device_impl->GetExecutionProviderOptions(custom_provider_options.put()));
+    WINML_THROW_IF_FAILED(engine_builder->SetExecutionProviderOptions(custom_provider_options.get()));
   }
   else if (device_impl->IsDmlDevice()) {
     WINML_THROW_IF_FAILED(engine_builder->SetD3D12Resources(device_impl->GetD3DDevice(), device_impl->GetDeviceQueue()));

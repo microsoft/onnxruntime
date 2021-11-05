@@ -26,7 +26,7 @@ struct LearningModelDevice : LearningModelDeviceT<LearningModelDevice, IMetacomm
   LearningModelDevice(
       ID3D12CommandQueue* queue);
 
-  LearningModelDevice(std::unique_ptr<_winml::OpenVinoDeviceOptions>&& options);
+  LearningModelDevice(_winml::IExecutionProviderOptions* execution_provider_options);
 
   ~LearningModelDevice();
 
@@ -60,10 +60,10 @@ struct LearningModelDevice : LearningModelDeviceT<LearningModelDevice, IMetacomm
   IsDmlDevice();
 
   bool
-  IsOpenVinoDevice();
+  HasCustomExecutionProvider();
 
-  _winml::OpenVinoDeviceOptions*
-  UseOpenVinoOptions();
+  HRESULT
+  GetExecutionProviderOptions(_winml::IExecutionProviderOptions** out);
 
   const LUID&
   GetDeviceLuid();
@@ -101,7 +101,7 @@ struct LearningModelDevice : LearningModelDeviceT<LearningModelDevice, IMetacomm
 
   std::unique_ptr<_winml::D3DDeviceCache> m_deviceCache;
 
-  std::unique_ptr<_winml::OpenVinoDeviceOptions> open_vino_device_options_ = nullptr;
+  winrt::com_ptr<_winml::IExecutionProviderOptions> execution_provider_options_ = nullptr;
 };
 }  // namespace WINMLP
 

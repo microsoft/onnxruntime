@@ -10,7 +10,7 @@ namespace _winml {
 
 class OnnxruntimeEngineFactory;
 
-class OnnxruntimeOpenVinoSessionBuilder : public Microsoft::WRL::RuntimeClass<
+class OnnxruntimeCUDASessionBuilder : public Microsoft::WRL::RuntimeClass<
                                          Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>,
                                          IOrtSessionBuilder> {
  public:

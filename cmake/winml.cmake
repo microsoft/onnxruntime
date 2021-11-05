@@ -69,6 +69,18 @@ else()
   set(winml_api_use_ns_prefix true)
 endif()
 
+if (onnxruntime_USE_OPENVINO)
+  set(winml_midl_defines "${winml_midl_defines} /DUSE_OPENVINO")
+endif()
+
+if (onnxruntime_USE_TENSORRT)
+  set(winml_midl_defines "${winml_midl_defines} /DUSE_TENSORRT")
+endif()
+
+if (onnxruntime_USE_CUDA)
+  set(winml_midl_defines "${winml_midl_defines} /DUSE_CUDA")
+endif()
+
 get_filename_component(exclusions "${winml_api_root}/exclusions.txt" ABSOLUTE)
 convert_forward_slashes_to_back(${exclusions} CPPWINRT_COMPONENT_EXCLUSION_LIST)
 
@@ -239,6 +251,12 @@ if (onnxruntime_USE_OPENVINO)
     )
 endif()
 
+if (onnxruntime_USE_CUDA)
+  list(APPEND winml_lib_api_ort_files
+    ${winml_lib_api_ort_dir}/OnnxruntimeCUDASessionBuilder.h
+    ${winml_lib_api_ort_dir}/OnnxruntimeCUDASessionBuilder.cpp
+    )
+endif()
 
 # Add static library that will be archived/linked for both static/dynamic library
 onnxruntime_add_static_library(winml_lib_ort ${winml_lib_api_ort_files})

@@ -108,7 +108,15 @@ HRESULT OnnxruntimeValue::IsCpu(bool* out) {
          type == OrtMemType::OrtMemTypeCPUOutput ||
          type == OrtMemType::OrtMemTypeCPUInput;
 
+#ifdef USE_OPENVINO
   *out |= strcmp(name, "OpenVINO") == 0 && type == OrtMemType::OrtMemTypeDefault;
+#endif
+#ifdef USE_TENSORRT
+  *out |= strcmp(name, "TensorRT") == 0 && type == OrtMemType::OrtMemTypeDefault;
+#endif
+#ifdef USE_TENSORRT
+  *out |= strcmp(name, "CUDA") == 0 && type == OrtMemType::OrtMemTypeDefault;
+#endif
 
   return S_OK;
 }

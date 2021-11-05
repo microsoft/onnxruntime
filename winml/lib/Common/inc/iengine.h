@@ -7,11 +7,14 @@ struct OrtTypeInfo;
 
 namespace _winml {
 
-struct OpenVinoDeviceOptions {};
-
 interface IEngineFactory;
 
 using Resource = std::unique_ptr<void, std::function<void(void*)>>;
+
+MIDL_INTERFACE("4e84bd04-4212-4ecd-92a4-0b403e75872c")
+IExecutionProviderOptions : IUnknown {
+};
+
 MIDL_INTERFACE("31f39226-cfe8-4758-af38-3d01b2a33ee1")
 IValue : IUnknown {
   STDMETHOD(IsEmpty)
@@ -210,8 +213,8 @@ IEngineBuilder : IUnknown {
   STDMETHOD(GetID3D12CommandQueue)
   (ID3D12CommandQueue **queue) PURE;
 
-  STDMETHOD(SetOpenVinoOptions)
-  (OpenVinoDeviceOptions * options) PURE;
+  STDMETHOD(SetExecutionProviderOptions)
+  (IExecutionProviderOptions *options) PURE;
 
   STDMETHOD(SetBatchSizeOverride)
   (uint32_t batch_size_override) PURE;

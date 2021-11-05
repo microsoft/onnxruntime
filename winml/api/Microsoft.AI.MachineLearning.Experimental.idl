@@ -107,6 +107,17 @@ namespace ROOT_NS.AI.MachineLearning.Experimental {
   [marshaling_behavior(agile)]
   [dualapipartition(1)]
   runtimeclass LearningModelDeviceExperimental {
+
+    static ROOT_NS.AI.MachineLearning.LearningModelDevice CreateDMLDevice();
+
+#ifdef USE_OPENVINO
     static ROOT_NS.AI.MachineLearning.LearningModelDevice CreateOpenVinoDevice();
+#endif
+#ifdef USE_TENSORRT
+    static ROOT_NS.AI.MachineLearning.LearningModelDevice CreateTensorRTDevice();
+#endif
+#ifdef USE_CUDA
+    static ROOT_NS.AI.MachineLearning.LearningModelDevice CreateCUDADevice();
+#endif
   }
 }  // namespace Microsoft.AI.MachineLearning.Experimental

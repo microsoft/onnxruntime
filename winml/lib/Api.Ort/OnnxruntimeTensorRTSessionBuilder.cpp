@@ -5,23 +5,23 @@
 
 #ifdef USE_DML
 
-#include "OnnxruntimeOpenVinoSessionBuilder.h"
+#include "OnnxruntimeTensorRTSessionBuilder.h"
 #include "OnnxruntimeEngine.h"
 #include "OnnxruntimeErrors.h"
 #include "LearningModelDevice.h"
 
-#include "core/providers/openvino/openvino_provider_factory.h"
+#include "core/providers/tensorrt/tensorrt_provider_factory.h"
 
 using namespace _winml;
 
-HRESULT OnnxruntimeOpenVinoSessionBuilder::RuntimeClassInitialize(OnnxruntimeEngineFactory* engine_factory, IExecutionProviderOptions* options) {
+HRESULT OnnxruntimeTensorRTSessionBuilder::RuntimeClassInitialize(OnnxruntimeEngineFactory* engine_factory, IExecutionProviderOptions* options) {
   engine_factory_ = engine_factory;
   options_.copy_from(options);
   return S_OK;
 }
 
 HRESULT
-OnnxruntimeOpenVinoSessionBuilder::CreateSessionOptions(
+OnnxruntimeTensorRTSessionBuilder::CreateSessionOptions(
     OrtSessionOptions** options) {
   RETURN_HR_IF_NULL(E_POINTER, options);
 
@@ -38,9 +38,9 @@ OnnxruntimeOpenVinoSessionBuilder::CreateSessionOptions(
   RETURN_HR_IF_NOT_OK_MSG(ort_api->SetSessionGraphOptimizationLevel(session_options.get(), GraphOptimizationLevel::ORT_ENABLE_ALL),
                           ort_api);
 
-  OrtOpenVINOProviderOptions open_vino_options = {};
+  OrtTensorRTProviderOptions tensorrt_options = {};
   // Request the dml ep
-  RETURN_HR_IF_NOT_OK_MSG(ort_api->SessionOptionsAppendExecutionProvider_OpenVINO(session_options.get(), &open_vino_options),
+  RETURN_HR_IF_NOT_OK_MSG(ort_api->SessionOptionsAppendExecutionProvider_TensorRT(session_options.get(), &tensorrt_options),
                           ort_api);
 
 #ifndef _WIN64
@@ -57,7 +57,7 @@ OnnxruntimeOpenVinoSessionBuilder::CreateSessionOptions(
   return S_OK;
 }
 
-HRESULT OnnxruntimeOpenVinoSessionBuilder::CreateSession(
+HRESULT OnnxruntimeTensorRTSessionBuilder::CreateSession(
     OrtSessionOptions* options,
     OrtSession** session) {
   RETURN_HR_IF_NULL(E_POINTER, session);
@@ -78,7 +78,7 @@ HRESULT OnnxruntimeOpenVinoSessionBuilder::CreateSession(
   return S_OK;
 }
 
-HRESULT OnnxruntimeOpenVinoSessionBuilder::Initialize(
+HRESULT OnnxruntimeTensorRTSessionBuilder::Initialize(
     OrtSession* session) {
   RETURN_HR_IF_NULL(E_INVALIDARG, session);
   auto winml_adapter_api = engine_factory_->UseWinmlAdapterApi();

@@ -40,9 +40,10 @@ LearningModelDevice::LearningModelDevice(ID3D12CommandQueue* queue) try : m_devi
                                                                           m_deviceCache(std::make_unique<_winml::D3DDeviceCache>(queue)) {}
 WINML_CATCH_ALL
 
-LearningModelDevice::LearningModelDevice(std::unique_ptr<_winml::OpenVinoDeviceOptions>&& options) try : m_deviceCache(std::make_unique<_winml::D3DDeviceCache>(winml::LearningModelDeviceKind::Cpu)) {
+LearningModelDevice::LearningModelDevice(_winml::IExecutionProviderOptions* execution_provider_options) try :
+   m_deviceCache(std::make_unique<_winml::D3DDeviceCache>(winml::LearningModelDeviceKind::Cpu)) {
+  execution_provider_options_.copy_from(execution_provider_options);
   assert(m_deviceCache->GetD3D12Device() == nullptr);
-  open_vino_device_options_ = std::move(options);
 }
 WINML_CATCH_ALL
 
@@ -73,7 +74,7 @@ LearningModelDevice::GetDeviceKind() {
 bool LearningModelDevice::IsCpuDevice() {
   return m_deviceKind == LearningModelDeviceKind::Cpu ||
          m_deviceKind == LearningModelDeviceKind::Default ||
-         IsOpenVinoDevice();
+         HasCustomExecutionProvider();
 }
 
 bool LearningModelDevice::IsDmlDevice() {
@@ -82,12 +83,14 @@ bool LearningModelDevice::IsDmlDevice() {
          m_deviceKind == LearningModelDeviceKind::DirectXMinPower;
 }
 
-bool LearningModelDevice::IsOpenVinoDevice() {
-  return open_vino_device_options_ != nullptr;
+bool LearningModelDevice::HasCustomExecutionProvider() {
+  return execution_provider_options_ != nullptr;
 }
 
-_winml::OpenVinoDeviceOptions* LearningModelDevice::UseOpenVinoOptions() {
-  return open_vino_device_options_.get();
+HRESULT LearningModelDevice::GetExecutionProviderOptions(_winml::IExecutionProviderOptions** out) {
+  *out = execution_provider_options_.get();
+  (*out)->AddRef();
+  return S_OK;
 }
 
 const LUID&
