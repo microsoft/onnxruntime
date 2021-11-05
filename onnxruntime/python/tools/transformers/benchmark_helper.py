@@ -213,6 +213,27 @@ def inference_ort(ort_session, ort_inputs, result_template, repeat_times, batch_
     result.update(get_latency_result(runtimes, batch_size))
     return result
 
+def run_ort_latency(ort_session, io_binding, repeat_times, sleep_time):
+    result = []
+    for i in range(repeat_times):
+        if sleep_time > 0:
+            time.sleep(sleep_time)
+        t_start = time.perf_counter()
+        ort_session.run_with_iobinding(io_binding)
+        elapsed_time = (time.perf_counter() - t_start)
+        result.append(elapsed_time)
+    return result
+
+def run_torch_latency(inference, input_ids, repeat_times, sleep_time):
+    result = []
+    for i in range(repeat_times):
+        if sleep_time > 0:
+            time.sleep(sleep_time)
+        t_start = time.perf_counter()
+        inference(input_ids)
+        elapsed_time = (time.perf_counter() - t_start)
+        result.append(elapsed_time)
+    return result
 
 def inference_ort_with_io_binding(ort_session,
                                   ort_inputs,
@@ -224,7 +245,8 @@ def inference_ort_with_io_binding(ort_session,
                                   output_buffer_max_sizes,
                                   batch_size,
                                   device,
-                                  data_type=numpy.longlong):
+                                  data_type=numpy.longlong,
+                                  sleep_time=0):
     result = {}
 
     # Bind inputs and outputs to onnxruntime session
@@ -242,7 +264,8 @@ def inference_ort_with_io_binding(ort_session,
     for i in range(len(ort_output_names)):
         io_binding.bind_output(ort_output_names[i], output_buffers[i].device.type, 0, numpy.float32,
                                ort_outputs[i].shape, output_buffers[i].data_ptr())
-    runtimes = timeit.repeat(lambda: ort_session.run_with_iobinding(io_binding), number=1, repeat=repeat_times)
+    #runtimes = timeit.repeat(lambda: ort_session.run_with_iobinding(io_binding), number=1, repeat=repeat_times)
+    runtimes = run_ort_latency(ort_session, io_binding, repeat_times, sleep_time)
     result.update(result_template)
     result.update({"io_binding": True})
     result.update(get_latency_result(runtimes, batch_size))
