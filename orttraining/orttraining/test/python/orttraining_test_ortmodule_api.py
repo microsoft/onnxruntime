@@ -18,6 +18,7 @@ from collections import namedtuple
 from inspect import signature
 import tempfile
 import os
+import pickle
 from distutils.version import LooseVersion
 
 from onnxruntime.training.ortmodule._custom_gradient_registry import register_gradient
@@ -320,6 +321,27 @@ class MyStrNet(torch.nn.Module):
         if my_str.lower() == 'hello':
             return x+1
         return x
+
+class SerializationNet(torch.nn.Module):
+    def __init__(self, input_size, hidden_size, num_classes):
+        super(SerializationNet, self).__init__()
+
+        self.fc1 = torch.nn.Linear(input_size, hidden_size)
+        self.relu = torch.nn.ReLU()
+        self.fc2 = torch.nn.Linear(hidden_size, num_classes)
+
+    def forward(self, input1):
+        out = self.fc1(input1)
+        out = self.relu(out)
+        out = self.fc2(out)
+        return out
+
+    def train_step(self, input):
+        out = self(input)
+        loss = out.sum()
+        loss.backward()
+
+        return out
 
 @pytest.fixture(scope='session', autouse=True)
 def run_before_test_session(request):
@@ -924,7 +946,6 @@ def test_export_correctness_pool2d(pool_type, stride):
             super(NeuralNetPool2d, self).__init__()
             self.conv = torch.nn.Conv2d(3, 64, kernel_size=7, stride=2, padding=3, bias=False)
             self.pool_type = pool_type
-            
 
         def forward(self, input):
             x = self.conv(input)
@@ -1015,9 +1036,46 @@ def test_gradient_correctness_argmax_diagonal(offset, dim1, dim2):
         _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
         _test_helpers.assert_values_are_close(ort_input.grad, pt_input.grad)
 
+@pytest.mark.parametrize("dim", [None, 0, 1, (0, 1), (-1, 0), (0, 1, 2)])
+@pytest.mark.parametrize("keepdim", [True, False])
+def test_gradient_correctness_reducesum(dim, keepdim):
+    class NeuralNetReduceSum(torch.nn.Module):
+        def __init__(self, input_size, hidden_size, dim, keepdim):
+            super(NeuralNetReduceSum, self).__init__()
+            self.linear = torch.nn.Linear(input_size, hidden_size)
+            self.dim = dim
+            self.keepdim = keepdim
+
+        def forward(self, input):
+            t = self.linear(input)
+            if self.dim is None:
+                return t.sum()
+            else:
+                return torch.sum(t, self.dim, keepdim=self.keepdim)
+
+    N, D, H, W = 16, 256, 128, 64
+    device = 'cuda'
+    pt_model = NeuralNetReduceSum(H, W, dim, keepdim).to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+
+    def run_step(model, input):
+        prediction = model(input)
+        loss = prediction.sum()
+        loss.backward()
+        return prediction
+
+    for _ in range(10):
+        pt_input = torch.rand((N, D, H), device=device, requires_grad=True)
+        ort_input = copy.deepcopy(pt_input)
+        pt_prediction = run_step(pt_model, pt_input)
+        ort_prediction = run_step(ort_model, ort_input)
+
+        _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
+        _test_helpers.assert_values_are_close(ort_input.grad, pt_input.grad)
+
 # Since multinomial is a generator function, we do not have to test for gradient
-# Two consecutive calls on the torch.multinomail on a probability distribution with more 
-# than one index with non-zero probability(eg, [0, 10, 3, 0]) will not result in 
+# Two consecutive calls on the torch.multinomail on a probability distribution with more
+# than one index with non-zero probability(eg, [0, 10, 3, 0]) will not result in
 # the same output. Thus we reset the seed before each call to the op torch.multinomial.
 @pytest.mark.parametrize("input_shape", ([5], [2,5]))
 @pytest.mark.parametrize("num_samples, replacement", ((1, False), (2, True)))
@@ -1046,8 +1104,8 @@ def test_aten_multinomial(input_shape, num_samples, replacement):
     ort_input = copy.deepcopy(pt_input)
     pt_prediction = run_step(pt_model, pt_input)
     ort_prediction = run_step(ort_model, ort_input)
-    # run the ort prediction again since the first call involves export 
-    # and run step, which means the torch.multinomial is called twice in a row without 
+    # run the ort prediction again since the first call involves export
+    # and run step, which means the torch.multinomial is called twice in a row without
     # resetting the generator in between, which will result in a different output
     ort_prediction = run_step(ort_model, ort_input)
 
@@ -1806,7 +1864,7 @@ def test_exception_raised_for_custom_class_return_value_module(device):
         with pytest.raises(_fallback.ORTModuleIOError) as runtime_error:
             ort_model(x, y, z)
         assert 'ORTModule does not support the following model output type' in str(runtime_error.value)
-    
+
     del os.environ['ORTMODULE_SKIPCHECK_POLICY']
 
 def test_dynamic_axes_config():
@@ -2646,7 +2704,7 @@ def test_forward_dynamic_args():
             assert output is not None
         hash_args_size3 = hash(repr(model._torch_module._execution_manager(model._is_training())._input_info.schema))
         assert hash_args_size3 != hash_args_size2
-    
+
     del os.environ['ORTMODULE_SKIPCHECK_POLICY']
 
 
@@ -4176,3 +4234,89 @@ def test_sigmoid_grad():
         _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
         _test_helpers.assert_values_are_close(ort_x.grad, pt_x.grad)
         _test_helpers.assert_values_are_close(ort_loss, pt_loss)
+
+def test_tanh_grad():
+    class NeuralNetTanh(torch.nn.Module):
+        def __init__(self, input_size, hidden_size, num_classes):
+            super(NeuralNetTanh, self).__init__()
+
+            self.fc1 = torch.nn.Linear(input_size, hidden_size)
+            self.tanh = torch.nn.Tanh()
+
+        def forward(self, input1):
+            out = self.fc1(input1)
+            out = self.tanh(out)
+            return out
+
+    def run_step(model, x):
+        prediction = model(x)
+        loss = prediction.sum()
+        loss.backward()
+        return prediction, loss
+    device = 'cuda'
+
+    N, D_in, H, D_out = 120, 1536, 500, 1536
+    pt_model = NeuralNetTanh(D_in, H, D_out).to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+
+    for step in range(10):
+        pt_x = torch.randn(N, D_in, device=device, requires_grad=True)
+        ort_x = copy.deepcopy(pt_x)
+        ort_prediction, ort_loss = run_step(ort_model, ort_x)
+        pt_prediction, pt_loss = run_step(pt_model, pt_x)
+        _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
+        _test_helpers.assert_values_are_close(ort_x.grad, pt_x.grad)
+        _test_helpers.assert_values_are_close(ort_loss, pt_loss)
+
+@pytest.mark.parametrize("opset_version", [12, 13])
+def test_opset_version_change(opset_version):
+    device = 'cuda'
+
+    N, D_in, H, D_out = 64, 784, 500, 10
+    x = torch.randn(N, D_in, device=device)
+    model = NeuralNetSinglePositionalArgument(D_in, H, D_out).to(device)
+
+    ort_model = ORTModule(model)
+
+    # Must import a namespace containing ONNX_OPSET_VERSION, not ONNX_OPSET_VERSION directly
+    from onnxruntime.training import ortmodule
+    ortmodule.ONNX_OPSET_VERSION=opset_version
+
+    # Make sure model runs without any exception
+    prediction = ort_model(x)
+    assert prediction is not None
+    prediction = prediction.sum()
+    prediction.backward()
+
+    # Check opset version on ONNX model
+    exported_model = ort_model._torch_module._execution_manager(ort_model._is_training())._onnx_models.exported_model
+    assert exported_model.opset_import[0].version == opset_version
+
+def test_serialize_ortmodule():
+
+    device = 'cuda'
+    N, D_in, H, D_out = 64, 784, 500, 10
+    pt_model = SerializationNet(D_in, H, D_out).to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+
+    x_1 = torch.randn(N, D_in, device=device)
+    x_2 = copy.deepcopy(x_1)
+    pt_out = pt_model.train_step(x_1)
+    ort_out = ort_model.train_step(x_2)
+    _test_helpers.assert_values_are_close(pt_out, ort_out)
+    _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model)
+    pt_out, ort_out = None, None
+
+    # Serialize ortmodule
+    serialized_model = pickle.dumps(ort_model)
+
+    # load from serialized string
+    ort_model_2 = pickle.loads(serialized_model)
+
+    x_1 = torch.randn(N, D_in, device=device)
+    x_2 = copy.deepcopy(x_1)
+    pt_out = pt_model.train_step(x_1)
+    ort_out = ort_model_2.train_step(x_2)
+    assert ort_out is not None
+    _test_helpers.assert_values_are_close(pt_out, ort_out)
+    _test_helpers.assert_gradients_match_and_reset_gradient(ort_model_2, pt_model)

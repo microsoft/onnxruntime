@@ -53,6 +53,22 @@ def FP16_Optimizer(optimizer, **kwargs):
         >>>                                    get_tensor_model_parallel_rank=mpu.get_model_parallel_rank,
         >>>                                    get_tensor_model_parallel_group=mpu.get_model_parallel_group)
 
+        3. APEX AMP Override:
+
+        >>> from onnxruntime.training.optim.fp16_optimizer import FP16_Optimizer as ORT_FP16_Optimizer
+        >>> optimizer = torch.optim.SGD(model.parameters(), lr=1e-3)
+
+        >>> model, optimizer = amp.initialize(model, optimizer, opt_level="O2")
+        >>> optimizer = ORT_FP16_Optimizer(optimizer)
+        >>>
+        >>> # Wrap model with ORTModule tricks
+        >>> def patch_new_fwd(old_new_fwd):
+        >>>     def new_new_fwd(self, *args, **kwargs):
+        >>>         return old_new_fwd(*args, **kwargs)
+        >>>     return new_new_fwd
+
+        >>> model.forward = types.MethodType(patch_new_fwd(model.forward), model)
+        >>> model = ORTModule(model)
     Args:
         optimizer: the FP16_Optimizer instance
 
@@ -61,6 +77,9 @@ def FP16_Optimizer(optimizer, **kwargs):
 
     """
     def get_full_qualified_type_name(o):
+        if hasattr(optimizer, "_amp_stash"):
+            return "apex.amp.optimizer.unique_name_as_id"
+
         klass = o.__class__
         module = klass.__module__
         if module == 'builtins':

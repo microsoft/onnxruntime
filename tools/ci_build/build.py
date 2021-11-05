@@ -454,7 +454,7 @@ def parse_arguments():
         help="Enable operator implemented in language other than cpp")
     parser.add_argument(
         "--cmake_generator",
-        choices=['Visual Studio 15 2017', 'Visual Studio 16 2019', 'Ninja'],
+        choices=['Visual Studio 15 2017', 'Visual Studio 16 2019', 'Visual Studio 17 2022', 'Ninja'],
         default='Visual Studio 16 2019' if is_windows() else None,
         help="Specify the generator that CMake invokes. "
         "This is only supported on Windows")
@@ -535,8 +535,6 @@ def parse_arguments():
     parser.add_argument("--disable_rtti", action='store_true', help="Disable RTTI (reduces binary size)")
     parser.add_argument("--disable_exceptions", action='store_true',
                         help="Disable exceptions to reduce binary size. Requires --minimal_build.")
-    parser.add_argument("--disable_ort_format_load", action='store_true',
-                        help='Disable support for loading ORT format models in a non-minimal build.')
 
     parser.add_argument(
         "--rocm_version", help="The version of ROCM stack to use. ")
@@ -760,7 +758,6 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_DISABLE_ML_OPS=" + ("ON" if args.disable_ml_ops else "OFF"),
         "-Donnxruntime_DISABLE_RTTI=" + ("ON" if args.disable_rtti else "OFF"),
         "-Donnxruntime_DISABLE_EXCEPTIONS=" + ("ON" if args.disable_exceptions else "OFF"),
-        "-Donnxruntime_DISABLE_ORT_FORMAT_LOAD=" + ("ON" if args.disable_ort_format_load else "OFF"),
         # Need to use 'is not None' with minimal_build check as it could be an empty list.
         "-Donnxruntime_MINIMAL_BUILD=" + ("ON" if args.minimal_build is not None else "OFF"),
         "-Donnxruntime_EXTENDED_MINIMAL_BUILD=" + ("ON" if args.minimal_build and 'extended' in args.minimal_build
@@ -813,6 +810,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_ENABLE_EAGER_MODE=" + ("ON" if args.build_eager_mode else "OFF"),
         "-Donnxruntime_ENABLE_EXTERNAL_CUSTOM_OP_SCHEMAS=" + ("ON" if args.enable_external_custom_op_schemas
                                                               else "OFF"),
+        "-Donnxruntime_NVCC_THREADS=" + str(args.parallel),
     ]
     # It should be default ON in CI build pipelines, and OFF in packaging pipelines.
     # And OFF for the people who are not actively developing onnx runtime.
@@ -935,10 +933,19 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
 
     if is_macOS() and not args.android:
         cmake_args += ["-DCMAKE_OSX_ARCHITECTURES=" + args.osx_arch]
-        # since cmake 3.19, it uses the xcode latest buildsystem, which is not supported by this project.
-        cmake_verstr = subprocess.check_output(['cmake', '--version']).decode('utf-8').split()[2]
-        if args.use_xcode and LooseVersion(cmake_verstr) >= LooseVersion('3.19.0'):
-            cmake_args += ["-T", "buildsystem=1"]
+        if args.use_xcode:
+            cmake_ver = LooseVersion(
+                subprocess.check_output(['cmake', '--version']).decode('utf-8').split()[2])
+            xcode_ver = LooseVersion(
+                subprocess.check_output(['xcrun', 'xcodebuild', '-version']).decode('utf-8').split()[1])
+            # Requires Cmake 3.21.1+ for XCode 13+
+            # The legacy build system is not longer supported on XCode 13+
+            if xcode_ver >= LooseVersion('13') and cmake_ver < LooseVersion('3.21.1'):
+                raise BuildError("CMake 3.21.1+ required to use XCode 13+")
+            # Use legacy build system for old CMake [3.19, 3.21.1) which uses new build system by default
+            # CMake 3.18- use the legacy build system by default
+            if cmake_ver >= LooseVersion('3.19.0') and cmake_ver < LooseVersion('3.21.1'):
+                cmake_args += ["-T", "buildsystem=1"]
         if args.apple_deploy_target:
             cmake_args += ["-DCMAKE_OSX_DEPLOYMENT_TARGET=" + args.apple_deploy_target]
         # Code sign the binaries, if the code signing development identity and/or team id are provided
@@ -1760,7 +1767,8 @@ def derive_linux_build_property():
         return "/p:IsLinuxBuild=\"true\""
 
 
-def build_nuget_package(source_dir, build_dir, configs, use_cuda, use_openvino, use_tensorrt, use_dnnl, use_nuphar):
+def build_nuget_package(source_dir, build_dir, configs, use_cuda, use_openvino, use_tensorrt, use_dnnl, use_nuphar,
+                        use_winml):
     if not (is_windows() or is_linux()):
         raise BuildError(
             'Currently csharp builds and nuget package creation is only supportted '
@@ -1770,9 +1778,13 @@ def build_nuget_package(source_dir, build_dir, configs, use_cuda, use_openvino, 
     is_linux_build = derive_linux_build_property()
 
     # derive package name and execution provider based on the build args
+    target_name = "/t:CreatePackage"
     execution_provider = "/p:ExecutionProvider=\"None\""
     package_name = "/p:OrtPackageId=\"Microsoft.ML.OnnxRuntime\""
-    if use_openvino:
+    if use_winml:
+        package_name = "/p:OrtPackageId=\"Microsoft.AI.MachineLearning\""
+        target_name = "/t:CreateWindowsAIPackage"
+    elif use_openvino:
         execution_provider = "/p:ExecutionProvider=\"openvino\""
         package_name = "/p:OrtPackageId=\"Microsoft.ML.OnnxRuntime.OpenVino\""
     elif use_tensorrt:
@@ -1805,13 +1817,24 @@ def build_nuget_package(source_dir, build_dir, configs, use_cuda, use_openvino, 
 
         configuration = "/p:Configuration=\"" + config + "\""
 
-        cmd_args = ["dotnet", "msbuild", "OnnxRuntime.CSharp.sln", configuration, package_name, is_linux_build,
-                    ort_build_dir]
-        run_subprocess(cmd_args, cwd=csharp_build_dir)
+        if not use_winml:
+            cmd_args = ["dotnet", "msbuild", "OnnxRuntime.CSharp.sln", configuration, package_name, is_linux_build,
+                        ort_build_dir]
+            run_subprocess(cmd_args, cwd=csharp_build_dir)
+        else:
+            winml_interop_dir = os.path.join(source_dir, "csharp", "src", "Microsoft.AI.MachineLearning.Interop")
+            winml_interop_project = os.path.join(winml_interop_dir, "Microsoft.AI.MachineLearning.Interop.csproj")
+            winml_interop_project = os.path.normpath(winml_interop_project)
+            cmd_args = ["dotnet", "msbuild", winml_interop_project, configuration, "/p:Platform=\"Any CPU\"",
+                        ort_build_dir, "-restore"]
+            run_subprocess(cmd_args, cwd=csharp_build_dir)
+
+        nuget_exe = os.path.normpath(os.path.join(native_dir, config, "nuget_exe", "src", "nuget.exe"))
+        nuget_exe_arg = "/p:NugetExe=\"" + nuget_exe + "\""
 
         cmd_args = [
-            "dotnet", "msbuild", "OnnxRuntime.CSharp.proj", "/t:CreatePackage",
-            package_name, configuration, execution_provider, is_linux_build, ort_build_dir]
+            "dotnet", "msbuild", "OnnxRuntime.CSharp.proj", target_name,
+            package_name, configuration, execution_provider, is_linux_build, ort_build_dir, nuget_exe_arg]
         run_subprocess(cmd_args, cwd=csharp_build_dir)
 
 
@@ -2011,9 +2034,6 @@ def main():
 
     if args.enable_pybind and args.disable_exceptions:
         raise BuildError('Python bindings require exceptions to be enabled.')
-
-    if args.minimal_build is not None and args.disable_ort_format_load:
-        raise BuildError('Minimal build requires loading ORT format models.')
 
     if args.nnapi_min_api:
         if not args.use_nnapi:
@@ -2314,7 +2334,8 @@ def main():
                 args.use_openvino,
                 args.use_tensorrt,
                 args.use_dnnl,
-                args.use_nuphar
+                args.use_nuphar,
+                args.use_winml,
             )
 
     if args.test and args.build_nuget:
