@@ -3024,11 +3024,11 @@ struct OrtApi {
   */
   ORT_API2_STATUS(GetSparseTensorIndices, _In_ const OrtValue* ort_value, enum OrtSparseIndicesFormat indices_format, _Out_ size_t* num_indices, _Outptr_ const void** indices);
 
-  /** \brief Returns the DeviceType of Tensor
+  /** \brief Returns Memory Info of Tensor
   * \param[in] ort_value ::OrtValue containing tensor.
-  * \param[out] int8_t :: OrtDeviceType Enum 
+  * \param[out] OrtMemoryInfo :: OrtMemoryInfo of the tensor allocated. Do not free the returned pointer as it refers to internal data owned by the ::OrtValue 
   */
-  ORT_API2_STATUS(GetTensorDeviceType, _In_ const OrtValue* value, _Out_ int8_t* out);
+  ORT_API2_STATUS(GetTensorMemoryInfo, _In_ const OrtValue* value, _Out_ const OrtMemoryInfo** mem_info);
  
 };
 

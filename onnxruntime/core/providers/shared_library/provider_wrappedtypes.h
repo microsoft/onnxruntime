@@ -844,7 +844,6 @@ struct Tensor final {
   ptrdiff_t ByteOffset() const { return g_host->Tensor__ByteOffset(this); }
   size_t SizeInBytes() const { return g_host->Tensor__SizeInBytes(this); }
   const OrtMemoryInfo& Location() const { return g_host->Tensor__Location(this); }
-  int8_t DeviceType() const { return g_host->Tensor__DeviceType(this); }
 
   int32_t GetElementType() const { return g_host->Tensor__GetElementType(this); }
   MLDataType DataType() const { return g_host->Tensor__DataType(this); }

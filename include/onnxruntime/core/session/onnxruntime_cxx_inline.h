@@ -1092,10 +1092,10 @@ inline T* CustomOpApi::GetTensorMutableData(_Inout_ OrtValue* value) {
   return data;
 }
 
-inline int8_t CustomOpApi::GetTensorDeviceType(_In_ const OrtValue* value) {
-  int8_t device_type;
-  ThrowOnError(api_.GetTensorDeviceType(value, &device_type)); 
-  return device_type;
+inline const OrtMemoryInfo* CustomOpApi::GetTensorMemoryInfo(_In_ const OrtValue* value) {
+  const OrtMemoryInfo* mem_info;
+  ThrowOnError(api_.GetTensorMemoryInfo(value, &mem_info)); 
+  return mem_info;
 }
 
 template <typename T>

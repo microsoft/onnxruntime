@@ -363,8 +363,8 @@ void FillInputBlob(InferenceEngine::Blob::Ptr& inputBlob, size_t batch_slice_idx
   size_t input_data_size = inputBlob->byteSize();
 
   const OrtValue* tensor = ort.KernelContext_GetInput(context, subgraph_context.input_names.at(input_name));
-  auto device_type = ort.GetTensorDeviceType(tensor);
-  if (device_type == OrtDevice::GPU) {
+  auto mem_info = ort.GetTensorMemoryInfo(tensor);
+  if (strcmp(mem_info->name, OpenVINO_GPU) == 0) {
     ORT_THROW(log_tag + "IO Buffering is not enabled, Please enable Input on CPU");
   }
   auto tensor_shape = ort.GetTensorTypeAndShape(tensor);

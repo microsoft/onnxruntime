@@ -905,7 +905,7 @@ struct CustomOpApi {
   template <typename T>
   T* GetTensorMutableData(_Inout_ OrtValue* value);
 
-  int8_t GetTensorDeviceType(_In_ const OrtValue* value);
+  const OrtMemoryInfo* GetTensorMemoryInfo(_In_ const OrtValue* value);
   
   template <typename T>
   const T* GetTensorData(_Inout_ const OrtValue* value);
