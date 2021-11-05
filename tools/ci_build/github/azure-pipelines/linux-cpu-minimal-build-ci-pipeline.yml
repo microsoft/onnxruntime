@@ -179,15 +179,23 @@ jobs:
 
 
   - task: AzureCLI@2
-    displayName: 'Azure CLI'
-    condition: and (succeeded(), in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI'), eq(variables['Build.SourceBranch'], 'refs/heads/master'))
+    displayName: 'Publish binary size data'
+    condition: and(succeededOrFailed(), in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI'), eq(variables['Build.SourceBranch'], 'refs/heads/master'))
     inputs:
       azureSubscription: AIInfraBuild
       scriptLocation: inlineScript
       scriptType: bash
       inlineScript: |
-        /usr/bin/python3 $(Build.SourcesDirectory)/tools/ci_build/github/windows/post_binary_sizes_to_dashboard.py --commit_hash=$(Build.SourceVersion) \
-        --size_data_file=$(Build.BinariesDirectory)/MinSizeRel/binary_size_data.txt --build_project=onnxruntime --build_id=$(Build.BuildId)
+        BINARY_SIZE_DATA_FILE="$(Build.BinariesDirectory)/MinSizeRel/binary_size_data.txt"
+        if [[ ! -f "${BINARY_SIZE_DATA_FILE}" ]]; then
+          echo "File not found: ${BINARY_SIZE_DATA_FILE}"
+          exit 1
+        fi
+        /usr/bin/python3 $(Build.SourcesDirectory)/tools/ci_build/github/windows/post_binary_sizes_to_dashboard.py \
+          --commit_hash=$(Build.SourceVersion) \
+          --size_data_file="${BINARY_SIZE_DATA_FILE}" \
+          --build_project=onnxruntime \
+          --build_id=$(Build.BuildId)
       workingDirectory: '$(Build.BinariesDirectory)'
 
   - task: PublishTestResults@2
