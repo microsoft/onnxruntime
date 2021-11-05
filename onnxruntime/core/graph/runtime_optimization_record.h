@@ -37,6 +37,9 @@ namespace onnxruntime {
 /** Struct to serialize the node indices in an ORT format model.
 Use EmptyNodeIndex for nullptr entries in the vectors for missing optional inputs
 */
+
+// Struct to serialize the node indices in an ORT format model.
+// Use kEmptyNodeIndex for nullptr entries in the vectors for missing optional inputs
 struct NodesToOptimizeIndices {
   /** Index value that represents an empty node.
 Note: Depending on the platform, it may be possible for NodeIndex values to be greater than kEmptyNodeIndex.

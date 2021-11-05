@@ -24,11 +24,10 @@ struct NodeGroup {
 // always involve those nodes.
 class BaseSelector : public NodeSelector {
  public:
-  bool Select(const GraphViewer& graph_viewer, const Node& node,
-              std::unique_ptr<NodesToOptimizeIndices>& selection) const override;
+  std::optional<NodesToOptimizeIndices> Select(const GraphViewer& graph_viewer, const Node& node) const override;
 
   // This select is a QDQ Selectors only function, which takes a const GraphViewer
-  bool Select(const GraphViewer& graph_viewer, const Node& node, NodeGroup& selection) const;
+  std::optional<NodeGroup> GetQDQSelection(const GraphViewer& graph_viewer, const Node& node) const;
 
  protected:
   BaseSelector() = default;

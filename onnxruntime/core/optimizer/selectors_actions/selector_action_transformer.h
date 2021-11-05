@@ -23,8 +23,7 @@ class Node;
 struct NodeSelector {
   // Select one or more nodes for an Action to process if the constraints are satisfied.
   // `selection` should not be set if this returns false
-  virtual bool Select(const GraphViewer& graph_viewer, const Node& node,
-                      std::unique_ptr<NodesToOptimizeIndices>& selection) const = 0;
+  virtual std::optional<NodesToOptimizeIndices> Select(const GraphViewer& graph_viewer, const Node& node) const = 0;
 
   virtual ~NodeSelector() = default;
 
@@ -125,8 +124,10 @@ class SelectorActionTransformer : public GraphTransformer {
   // if it does, run the Selector.
   // if that selects nodes, run the Action.
   //
-  // Note, MatchAndProcess takes both Graph and GraphViewer to avoid expensive recreate of GraphViewer,
-  // the graph must be the same as the graph_viewer's underlying graph
+  // Some part of the MatchAndProcess use a GraphViewer of the given graph,
+  // we choose to supply both the graph and the graph_viewer to avoid expensive
+  // and repeatedly construction of the graph_viewer.
+  // NOTE, the graph must be the same as the graph_viewer's underlying graph
   Status MatchAndProcess(Graph& graph, const GraphViewer& graph_viewer, Node& node,
                          bool& modified, const logging::Logger& logger) const;
 

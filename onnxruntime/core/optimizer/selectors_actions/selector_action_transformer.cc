@@ -77,14 +77,15 @@ Status SelectorActionTransformer::MatchAndProcess(Graph& graph, const GraphViewe
       }
     }
 
-    std::unique_ptr<NodesToOptimizeIndices> node_selection;
-    if (!selector_and_actions.selector->Select(graph_viewer, node, node_selection)) {
+    const auto node_selection_opt = selector_and_action.selector->Select(graph_viewer, node);
+    if (!node_selection_opt.has_value()) {
       break;
     }
+    const auto node_selection = *node_selection_opt;
 
     LOGS(logger, VERBOSE) << "Matched " << node.OpType();
 
-    NodesToOptimize node_group(graph, *node_selection);
+    NodesToOptimize node_group(graph, node_selection);
 
     if (runtime_optimization_save_context_.has_value()) {
 #if defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
@@ -100,7 +101,7 @@ Status SelectorActionTransformer::MatchAndProcess(Graph& graph, const GraphViewe
       graph.MutableRuntimeOptimizations().AddRecord(
           Name(),
           RuntimeOptimizationRecord{selector_and_action.name,
-                                    node_group,
+                                    node_selection,
                                     action_saved_state.produced_nodes});
 #else
       status = ORT_MAKE_STATUS(ONNXRUNTIME, FAILED,

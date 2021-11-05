@@ -7,50 +7,9 @@
 
 namespace onnxruntime {
 
-// if the last input in num_inputs is for the variadic input, the variadic input could have zero or more values
-// so we need to special case the zero and count that as one. same for outputs
-inline int NumIOEntries(bool variadic_io, int num_io, int num_variadic_io) {
-  return variadic_io
-             ? num_io + std::max(1, num_variadic_io) - 1
-             : num_io;
-}
-
 //
 // Selection helpers
 //
-
-// Struct to serialize the node indices in an ORT format model.
-// Use EmptyNodeIndex for nullptr entries in the vectors for missing optional inputs
-struct NodesToOptimizeIndices {
-  const std::vector<NodeIndex> nodes_;
-  const int num_inputs_;
-  const int num_outputs_;
-  const bool variadic_input_;
-  const bool variadic_output_;
-  const int num_variadic_inputs_;
-  const int num_variadic_outputs_;
-
-  NodesToOptimizeIndices(std::vector<NodeIndex>&& nodes,
-                         int num_inputs,
-                         int num_outputs,
-                         bool variadic_input,
-                         bool variadic_output,
-                         int num_variadic_inputs,
-                         int num_variadic_outputs)
-      : nodes_(std::move(nodes)),
-        num_inputs_(num_inputs),
-        num_outputs_(num_outputs),
-        variadic_input_(variadic_input),
-        variadic_output_(variadic_output),
-        num_variadic_inputs_(num_variadic_inputs),
-        num_variadic_outputs_(num_variadic_outputs) {}
-
-  static std::unique_ptr<NodesToOptimizeIndices>
-  CreateNodesToOptimizeIndices(const std::vector<NodeIndex>& input_nodes,
-                               NodeIndex target_node,
-                               const std::vector<NodeIndex>& output_nodes,
-                               int num_input_defs = -1, int num_output_defs = -1);
-};
 
 // Group of nodes that will be optimized. The group will either be merged into the target node, or a new node
 // will be created to replace the entire group, including the target node.
@@ -152,8 +111,8 @@ class NodesToOptimize {
 
   // // if the last input in num_inputs is for the variadic input, the variadic input could have zero or more values
   // // so we need to special case the zero and count that as one. same for outputs
-  int NumInputEntries() const { return NumIOEntries(variadic_input_, num_inputs, num_variadic_inputs_); }
-  int NumOutputEntries() const { return NumIOEntries(variadic_output_, num_outputs, num_variadic_outputs_); }
+  int NumInputEntries() const;
+  int NumOutputEntries() const;
 
   bool variadic_input_{false};  // is last input variadic
   bool variadic_output_{false};
@@ -166,16 +125,12 @@ class NodesToOptimize {
 // Use in selector to incrementally add pieces
 struct NodesToOptimizeIndicesBuilder {
   std::vector<NodeIndex> input_nodes;
-  NodeIndex target_node{NodesToOptimize::EmptyNodeIndex};
+  NodeIndex target_node{NodesToOptimizeIndices::kEmptyNodeIndex};
   std::vector<NodeIndex> output_nodes;
   int num_input_defs{-1};
   int num_output_defs{-1};
 
-  std::unique_ptr<NodesToOptimizeIndices> Build() const {
-    ORT_ENFORCE(target_node != NodesToOptimize::EmptyNodeIndex, "A target node must be set.");
-    return NodesToOptimizeIndices::CreateNodesToOptimizeIndices(
-        input_nodes, target_node, output_nodes, num_input_defs, num_output_defs);
-  }
+  NodesToOptimizeIndices Build() const;
 };
 
 //

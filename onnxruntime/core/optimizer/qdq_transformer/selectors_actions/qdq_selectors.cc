@@ -54,44 +54,36 @@ bool BaseSelector::CheckQDQNodes(const GraphViewer& graph_viewer, const Node& no
          !graph_viewer.NodeProducesGraphOutput(node);
 }
 
-bool BaseSelector::Select(const GraphViewer& graph_viewer, const Node& node, NodeGroup& selection) const {
+std::optional<NodeGroup> BaseSelector::GetQDQSelection(const GraphViewer& graph_viewer, const Node& node) const {
   std::vector<const Node*> dq_nodes = FindQDQNodes(graph_viewer, node, true);
   std::vector<const Node*> q_nodes = FindQDQNodes(graph_viewer, node, false);
   if (!Check(graph_viewer, node, dq_nodes, q_nodes)) {
-    return false;
+    return std::nullopt;
   }
 
-  selection.dq_nodes.clear();
-  selection.q_nodes.clear();
-  selection.dq_nodes.reserve(dq_nodes.size());
-  selection.q_nodes.reserve(q_nodes.size());
-  selection.target_node = node.Index();
-  for (const auto* dq_node : dq_nodes) {
-    selection.dq_nodes.push_back(dq_node->Index());
-  }
-
-  for (const auto* q_node : q_nodes) {
-    selection.q_nodes.push_back(q_node->Index());
-  }
-
-  return true;
+  NodeGroup node_group;
+  node_group.dq_nodes.reserve(dq_nodes.size());
+  node_group.q_nodes.reserve(q_nodes.size());
+  node_group.target_node = node.Index();
+  auto get_node_idx = [&](const Node* n) { return n->Index(); };
+  std::transform(dq_nodes.begin(), dq_nodes.end(), std::back_inserter(node_group.dq_nodes), get_node_idx);
+  std::transform(q_nodes.begin(), q_nodes.end(), std::back_inserter(node_group.q_nodes), get_node_idx);
+  return node_group;
 }
 
-bool BaseSelector::Select(const GraphViewer& graph_viewer, const Node& node,
-                          std::unique_ptr<NodesToOptimizeIndices>& selection) const {
-  NodeGroup qdq_group;
-  if (!Select(graph_viewer, node, qdq_group)) {
-    return false;
+std::optional<NodesToOptimizeIndices> BaseSelector::Select(const GraphViewer& graph_viewer, const Node& node) const {
+  const auto qdq_group = GetQDQSelection(graph_viewer, node);
+  if (!qdq_group.has_value()) {
+    return std::nullopt;
   }
 
   NodesToOptimizeIndicesBuilder builder;
-  builder.input_nodes = qdq_group.dq_nodes;
-  builder.output_nodes = qdq_group.q_nodes;
-  builder.target_node = qdq_group.target_node;
+  builder.input_nodes = qdq_group->dq_nodes;
+  builder.output_nodes = qdq_group->q_nodes;
+  builder.target_node = qdq_group->target_node;
 
   UpdateBuilder(builder);
-  selection = builder.Build();
-  return true;
+  return builder.Build();
 }
 
 bool DropDQDNodesSelector::Check(const GraphViewer& graph_viewer,
@@ -193,7 +185,7 @@ bool ConvSelector::Check(const GraphViewer& graph_viewer,
 }
 
 void ConvSelector::UpdateBuilder(NodesToOptimizeIndicesBuilder& builder) const {
-  builder.input_nodes.resize(3, NodesToOptimize::EmptyNodeIndex);
+  builder.input_nodes.resize(3, NodesToOptimizeIndices::kEmptyNodeIndex);
 }
 
 bool MatMulSelector::Check(const GraphViewer& graph_viewer,
