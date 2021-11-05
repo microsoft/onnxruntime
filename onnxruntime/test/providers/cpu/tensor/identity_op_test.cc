@@ -18,9 +18,9 @@ TEST(Identity, FloatType) {
 TEST(Identity, StringType) {
   OpTester test("Identity", 10, kOnnxDomain);
   std::vector<int64_t> dims{2, 2};
-  test.AddInput<std::string>("X", dims, {"a" , "b", "x", "y"});
-  test.AddOutput<std::string>("Y", dims, {"a" , "b", "x", "y"});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});//TensorRT: unsupported data type
+  test.AddInput<std::string>("X", dims, {"a", "b", "x", "y"});
+  test.AddOutput<std::string>("Y", dims, {"a", "b", "x", "y"});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: unsupported data type
 }
 
 TEST(Identity, SequenceType) {
@@ -33,5 +33,53 @@ TEST(Identity, SequenceType) {
   test.Run();
 }
 
+TEST(Identity, OptionalTensorType_NonNone) {
+  OpTester test("Identity", 16, kOnnxDomain);
+  // Since this test is being written at a time when only opset 15  has been released, we set
+  // `test_allow_released_onnx_opset_only_` to 'false' to allow this test to run
+  test.test_allow_released_onnx_opset_only_ = false;
+
+  std::initializer_list<float> data = {-1.0856307f, 0.99734545f};
+  test.AddOptionalTypeTensorInput<float>("A", {2}, &data);
+  test.AddOptionalTypeTensorOutput<float>("Y", {2}, &data);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: opset 16 is not supported yet
+}
+
+TEST(Identity, OptionalTensorType_None) {
+  OpTester test("Identity", 16, kOnnxDomain);
+  // Since this test is being written at a time when only opset 15  has been released, we set
+  // `test_allow_released_onnx_opset_only_` to 'false' to allow this test to run
+  test.test_allow_released_onnx_opset_only_ = false;
+
+  test.AddOptionalTypeTensorInput<float>("A", {}, nullptr);                            // None
+  test.AddOptionalTypeTensorOutput<float>("Y", {}, nullptr);                           // None
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: opset 16 is not supported yet
+}
+
+TEST(Identity, OptionalTensorSequenceType_NonNone) {
+  OpTester test("Identity", 16, kOnnxDomain);
+  // Since this test is being written at a time when only opset 15  has been released, we set
+  // `test_allow_released_onnx_opset_only_` to 'false' to allow this test to run
+  test.test_allow_released_onnx_opset_only_ = false;
+
+  SeqTensors<int64_t> input;
+  input.AddTensor({3, 2}, {1, 2, 3, 4, 5, 6});
+  input.AddTensor({3, 3}, {1, 2, 3, 4, 5, 6, 7, 8, 9});
+
+  test.AddOptionalTypeSeqInput<int64_t>("A", &input);
+  test.AddOptionalTypeSeqOutput<int64_t>("Y", &input);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: opset 16 is not supported yet
+}
+
+TEST(Identity, OptionalTensorSequenceType_None) {
+  OpTester test("Identity", 16, kOnnxDomain);
+  // Since this test is being written at a time when only opset 15  has been released, we set
+  // `test_allow_released_onnx_opset_only_` to 'false' to allow this test to run
+  test.test_allow_released_onnx_opset_only_ = false;
+
+  test.AddOptionalTypeSeqInput<float>("A", nullptr);                                   // None
+  test.AddOptionalTypeSeqOutput<float>("Y", nullptr);                                  // None
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: opset 16 is not supported yet
+}
 }  // namespace test
 }  // namespace onnxruntime
