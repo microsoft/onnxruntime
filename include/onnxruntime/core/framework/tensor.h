@@ -148,12 +148,6 @@ class Tensor final {
   */
   const OrtMemoryInfo& Location() const { return alloc_info_; }
 
-
-  /**
-    Reutrns the device type of the tensor's memory
-  */ 
-  int8_t DeviceType() const { return alloc_info_.device.Type();}
-
   /**
      May return nullptr if tensor size is zero
   */

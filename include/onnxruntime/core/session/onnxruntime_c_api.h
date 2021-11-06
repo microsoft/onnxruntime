@@ -3024,7 +3024,7 @@ struct OrtApi {
   */
   ORT_API2_STATUS(GetSparseTensorIndices, _In_ const OrtValue* ort_value, enum OrtSparseIndicesFormat indices_format, _Out_ size_t* num_indices, _Outptr_ const void** indices);
 
-  /** \brief Returns Memory Info of Tensor
+  /** \brief Returns a pointer to the ::OrtMemoryInfo of a Tensor
   * \param[in] ort_value ::OrtValue containing tensor.
   * \param[out] OrtMemoryInfo :: OrtMemoryInfo of the tensor allocated. Do not free the returned pointer as it refers to internal data owned by the ::OrtValue 
   */
