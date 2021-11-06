@@ -203,9 +203,6 @@ static constexpr OrtDmlApi ort_dml_api_10_to_x = {
   &DmlGetD3D12ResourceFromAllocation
 };
 
-
-  //nullptr,//&DmlGetD3D12ResourceFromAllocation,
-
 const OrtDmlApi* GetOrtDmlApi(_In_ uint32_t /*version*/) NO_EXCEPTION {
 #ifdef USE_DML
   return &ort_dml_api_10_to_x;
