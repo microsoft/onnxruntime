@@ -20,7 +20,7 @@ __global__ void TriluKernel(
   int row, col;
 
   row_col_divmod_indices.divmod(batch_divmod_indices.mod(id), row, col);
-  output_data[id] = ((((row + k) <= col) && upper) || (((row + k) >= col) && !upper)) ? input_data[id] : 0;
+  output_data[id] = upper ? (((row + k) <= col) ? input_data[id] : 0) : (((row + k) >= col) ? input_data[id] : 0);
 }
 
 Status TriluImpl(
