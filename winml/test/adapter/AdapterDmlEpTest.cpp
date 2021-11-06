@@ -26,7 +26,7 @@ void AdapterDmlEpTestSetup() {
   GPUTEST;
   winrt::init_apartment();
   ort_api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
-  ort_api->GetProviderInterface("DML", ORT_API_VERSION, reinterpret_cast<const void**>(&ort_dml_api));
+  ort_api->GetExecutionProviderApi("DML", ORT_API_VERSION, reinterpret_cast<const void**>(&ort_dml_api));
   winml_adapter_api = OrtGetWinMLAdapter(ORT_API_VERSION);
   ort_api->CreateEnv(OrtLoggingLevel::ORT_LOGGING_LEVEL_VERBOSE, "Default", &ort_env);
 #ifdef BUILD_INBOX

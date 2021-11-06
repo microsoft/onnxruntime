@@ -170,7 +170,7 @@ static auto GetStrings(const OrtApi* ort_api, const OrtValue* ort_value,
 HRESULT OnnxruntimeValue::GetResource(_winml::Resource& out) {
   auto ort_api = engine_->GetEngineFactory()->UseOrtApi();
   const OrtDmlApi* ort_dml_api;
-  RETURN_HR_IF_NOT_OK_MSG(ort_api->GetProviderInterface("DML", ORT_API_VERSION, reinterpret_cast<const void**>(&ort_dml_api)),
+  RETURN_HR_IF_NOT_OK_MSG(ort_api->GetExecutionProviderApi("DML", ORT_API_VERSION, reinterpret_cast<const void**>(&ort_dml_api)),
                           ort_api);
 
   void* mutable_data = nullptr;
@@ -626,7 +626,7 @@ class DmlAllocatorWrapper : public Microsoft::WRL::RuntimeClass<
 HRESULT OnnxruntimeEngine::CreateTensorValueFromExternalD3DResource(ID3D12Resource* d3d_resource, const int64_t* shape, size_t count, winml::TensorKind kind, _Out_ IValue** out) {
   auto ort_api = engine_factory_->UseOrtApi();
   const OrtDmlApi* ort_dml_api;
-  RETURN_HR_IF_NOT_OK_MSG(ort_api->GetProviderInterface("DML", ORT_API_VERSION, reinterpret_cast<const void**>(&ort_dml_api)),
+  RETURN_HR_IF_NOT_OK_MSG(ort_api->GetExecutionProviderApi("DML", ORT_API_VERSION, reinterpret_cast<const void**>(&ort_dml_api)),
                           ort_api);
 
   OrtMemoryInfo* ort_memory_info;
@@ -647,7 +647,7 @@ HRESULT OnnxruntimeEngine::CreateTensorValueFromExternalD3DResource(ID3D12Resour
       DmlAllocatorResource(dml_allocator_resource,
                            [](void* ptr) {
                              const OrtDmlApi* ort_dml_api;
-                             GetVersionedOrtApi()->GetProviderInterface("DML", ORT_API_VERSION, reinterpret_cast<const void**>(&ort_dml_api));
+                             GetVersionedOrtApi()->GetExecutionProviderApi("DML", ORT_API_VERSION, reinterpret_cast<const void**>(&ort_dml_api));
                              ort_dml_api->DmlFreeGPUAllocation(ptr);
                            });
 

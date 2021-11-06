@@ -66,12 +66,17 @@
         "^test_mul_uint8_cpu",
         "^test_add_uint8_cpu",
         "^test_div_uint8_cpu",
-        // Optional type support not implemented in ORT
+        // Optional operators are supported in ORT but the ONNX backend test runner
+        // doesn't yet have capability to deal with optional type test data.
+        // These tests have been validated using the in-house onnx_test_runner.
+        // Uncomment here once the ONNX backend test runner is able to handle
+        // optional type test data.
+        // https://github.com/onnx/onnx/issues/3608
         "^test_optional_*",
         "^test_if_opt",
         "^test_loop16_seq_none",
-        // Following tests are for opset 16 ops and are not yet implemented in ORT
         "^test_identity",
+        // Following tests are for opset 16 ops and are not yet implemented in ORT
         "^test_roialign_aligned_*",
         "^test_scatternd_*",
         "^test_scatter_elements_with_duplicate_indices",
@@ -85,7 +90,8 @@
         "^test_lstm_batchwise_cuda",
         "^test_gru_batchwise_cuda",
         "^test_div_uint8_cuda",
-        "^test_add_uint8_cuda"
+        "^test_add_uint8_cuda",
+        "^test_roialign_aligned_*"
     ],
     "current_failing_tests_x86": [
         "^test_vgg19",

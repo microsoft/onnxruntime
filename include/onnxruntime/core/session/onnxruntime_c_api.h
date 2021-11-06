@@ -179,6 +179,7 @@ typedef enum ONNXType {
   ONNX_TYPE_MAP,
   ONNX_TYPE_OPAQUE,
   ONNX_TYPE_SPARSETENSOR,
+  ONNX_TYPE_OPTIONAL
 } ONNXType;
 
 // These types are synced with internal
@@ -3023,9 +3024,23 @@ struct OrtApi {
   */
   ORT_API2_STATUS(GetSparseTensorIndices, _In_ const OrtValue* ort_value, enum OrtSparseIndicesFormat indices_format, _Out_ size_t* num_indices, _Outptr_ const void** indices);
 
+  /**
+   * \brief Sets out to 1 iff an optional type OrtValue has an element, 0 otherwise (OrtValue is None)
+   * Use this API to find if the optional type OrtValue is None or not.
+   * If the optional type OrtValue is not None, use the OrtValue just like any other OrtValue.
+   * For example, if you get an OrtValue that corresponds to Optional(tensor) and 
+   * if HasValue() returns true, use it as tensor and so on.
+
+   * \param[in] value Input OrtValue.
+   * \param[out] out indicating if the input OrtValue contains data (1) or if it is a None (0)
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   */
+  ORT_API2_STATUS(HasValue, _In_ const OrtValue* value, _Out_ int* out);
+
   ORT_API2_STATUS(GetValueMemoryInfo, _In_ const OrtValue* value, _Outptr_ const OrtMemoryInfo** memory_info);
 
-  ORT_API2_STATUS(GetProviderInterface, _In_ const char *provider_name, uint32_t version, const void **provider_interface);
+  ORT_API2_STATUS(GetExecutionProviderApi, _In_ const char *provider_name, uint32_t version, const void **provider_interface);
 
   /// @}
 };
