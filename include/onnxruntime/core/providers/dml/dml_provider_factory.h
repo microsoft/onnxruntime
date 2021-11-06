@@ -74,24 +74,18 @@ struct OrtDmlApi {
   /**
     * DmlCreateGPUAllocationFromD3DResource
 	 * This api is used to create a DML EP input based on a user specified d3d12 resource.
-    * 
-    * WinML uses this as part of its Tensor apis to allow callers to specify their own D3D12 resources as inputs/outputs.
-    */
+  */
   ORT_API2_STATUS(DmlCreateGPUAllocationFromD3DResource, _In_ ID3D12Resource* pResource, _Out_ void** dml_resource);
 
   /**
     * DmlFreeGPUAllocation
 	 * This api is used free the DML EP input created by DmlCreateGPUAllocationFromD3DResource.
-    * 
-    * WinML uses this as part of its Tensor apis to allow callers to specify their own D3D12 resources as inputs/outputs.
     */
   ORT_API2_STATUS(DmlFreeGPUAllocation, _In_ void* ptr);
 
   /**
     * DmlGetD3D12ResourceFromAllocation
 	 * This api is used to get the D3D12 resource when a OrtValue has been allocated by the DML EP and accessed via GetMutableTensorData.
-    * 
-    * WinML uses this in the image feature path to get the d3d resource and perform and tensorization on inputs directly into the allocated d3d12 resource.
     */
   ORT_API2_STATUS(DmlGetD3D12ResourceFromAllocation, _In_ OrtAllocator* provider, _In_ void* allocation, _Out_ ID3D12Resource** resource);
 };
