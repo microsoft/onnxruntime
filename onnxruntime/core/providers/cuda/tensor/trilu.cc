@@ -54,7 +54,7 @@ Status Trilu::ComputeInternal(OpKernelContext* ctx) const {
       k_val,
       input.DataRaw(),
       output->MutableDataRaw(),
-      gsl::narrow<int>(output->Shape().Size()),
+      gsl::narrow<int>(shape.Size()),
       batch_divmod_indices,
       row_col_divmod_indices);
 }
