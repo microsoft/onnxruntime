@@ -552,9 +552,9 @@ void BeamSearchShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
 
   if (ctx.getNumOutputs() > 1) {
     // Here we assume that the third output exist only if second output exists.
-    ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 6, 1);
+    ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 5, 1);
     if (ctx.getNumOutputs() > 2) {
-      ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 6, 2);
+      ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 5, 2);
     }
   }
 
@@ -577,9 +577,9 @@ void BeamSearchShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
   int64_t batch_beam_size = input_ids_dims[0].dim_value();
   int64_t sequence_length = input_ids_dims[1].dim_value();
 
-  const auto max_length = ctx.getInputData(3);
-  const auto num_beams = ctx.getInputData(4);
-  const auto num_return_sequences = ctx.getInputData(5);
+  const auto max_length = ctx.getInputData(1);
+  const auto num_beams = ctx.getInputData(3);
+  const auto num_return_sequences = ctx.getInputData(4);
   if (num_beams == nullptr || max_length == nullptr || num_return_sequences == nullptr) {  // not initializer
     return;
   }
@@ -635,28 +635,27 @@ void RegisterTextGenerationSchemas() {
         .Attr("early_stopping", "early stop or not", AttributeProto::INT, static_cast<int64_t>(0))
         .Attr(
             "body",
-            "The GPT subgraph with input_ids, position_ids, attention_mask, past_0, past_1, ... as inputs, and logits, present_0, present_1, ... as output",
+            "The GPT-2 subgraph with input_ids, position_ids, attention_mask, past_0, past_1, ... as inputs, and logits, present_0, present_1, ... as output",
             AttributeProto::GRAPH)
-        .Input(0, "input_ids", "The sequence used as a prompt for the generation. Shape (batch_size * num_beams, sequence_length)", "I")
-        .Input(1, "attention_mask", "Mask to avoid performing attention on padding token indices. Shape (batch_size, sequence_length)", "M", OpSchema::Optional)
-        .Input(2, "min_length", "The minimum length below which the score of eos_token_id is set to -Inf. 1D input tensor with shape (1,)", "I", OpSchema::Optional)
-        .Input(3, "max_length", "1D input tensor with shape (1,)", "I")
-        .Input(4, "num_beams", "Number of beams for beam search. 1 means no beam search. 1D input tensor with shape (1,)", "I")
-        .Input(5, "num_return_sequences", "1D input tensor with shape (1,)", "I")
-        .Input(6, "temperature", "The value used to module the logits distribution. Accepts value != 0.0. 1D input tensor with shape (1,)", "T")
-        .Input(7, "length_penalty",
+        .Input(0, "input_ids", "The sequence used as a prompt for the generation. Shape is (batch_size * num_beams, sequence_length)", "I")
+        .Input(1, "max_length", "The maximum length of the sequence to be generated. Shape is (1)", "I")
+        .Input(2, "min_length", "The minimum length below which the score of eos_token_id is set to -Inf. Shape is (1)", "I", OpSchema::Optional)
+        .Input(3, "num_beams", "Number of beams for beam search. 1 means no beam search. Shape is (1)", "I")
+        .Input(4, "num_return_sequences", "The number of returned sequences in the batch. Shape is (1)", "I")
+        .Input(5, "temperature", "The value used to module the next token probabilities. Accepts value != 0.0. Shape is (1)", "T")
+        .Input(6, "length_penalty",
               "Exponential penalty to the length. Default value 1.0 means no penalty."
-              "Set to values < 1.0 in order to encourage the model to generate shorter sequences, to a value > 1.0 in order to encourage the model to produce longer sequences."
-              "1D input tensor with shape (1,)",
+              "Value > 1.0 encourages longer sequences, while values < 1.0 produces shorter sequences."
+              "Shape is (1,)",
               "T", OpSchema::Optional)
-        .Input(8, "repetition_penalty", "The parameter for repetition penalty. Default value 1.0 means no penalty. Accepts value > 0.0, shape (1,)", "T", OpSchema::Optional)
-        .Input(9, "vocab_mask", "Mask of vocabulary. Word that masked with 0 are not allowed to be generated, and 1 is allowed. shape (vacab_size,)", "M", OpSchema::Optional)
-        .Output(0, "sequences", "Word IDs of generated sequences. Shape: (batch_size * num_return_sequences, max_sequence_length)", "I")
-        .Output(1, "sequences_scores", "Final beam score of the generated sequences. shape (batch_size*num_return_sequences)", "T", OpSchema::Optional)
+        .Input(7, "repetition_penalty", "The parameter for repetition penalty. Default value 1.0 means no penalty. Accepts value > 0.0. Shape is (1)", "T", OpSchema::Optional)
+        .Input(8, "vocab_mask", "Mask of vocabulary. Words that masked with 0 are not allowed to be generated, and 1 is allowed. Shape is (vacab_size)", "M", OpSchema::Optional)
+        .Output(0, "sequences", "Word IDs of generated sequences. Shape is (batch_size * num_return_sequences, max_sequence_length)", "I")
+        .Output(1, "sequences_scores", "Final beam score of the generated sequences. Shape is (batch_size*num_return_sequences)", "T", OpSchema::Optional)
         .Output(2, "scores",
                 "Processed beam scores for each vocabulary token at each generation step."
                 "Beam scores consisting of log softmax scores for each vocabulary token and sum of log softmax of previously generated tokens in this beam."
-                "Shape (max_length - input_ids_sequence_length, batch_size*num_beams*num_return_sequences, vocab_size)",
+                "Shape is (max_length - input_ids_sequence_length, batch_size*num_beams*num_return_sequences, vocab_size)",
                 "T", OpSchema::Optional)
         .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float tensors.")
         .TypeConstraint("I", {"tensor(int32)"}, "Constrain to integer types")

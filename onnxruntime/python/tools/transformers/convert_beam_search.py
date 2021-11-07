@@ -8,11 +8,11 @@ import argparse
 from pathlib import Path
 from onnx import helper
 import numpy as np
-from transformers import AutoConfig
+from transformers import GPT2Config
 from gpt2_helper import PRETRAINED_GPT2_MODELS
-from onnx_model import OnnxModel
 from convert_to_onnx import main as convert_gpt2_to_onnx
-from benchmark_helper import create_onnxruntime_session, setup_logger, prepare_environment, Precision
+from benchmark_helper import Precision
+
 """
 This converts GPT2 model to onnx with beam search operator.
 
@@ -20,10 +20,9 @@ Examples:
    python convert_beam_search.py -m gpt2 --gpt2_onnx .\onnx_models\gpt2_past_fp32.onnx --output .\onnx_models\gpt2_beam_search.onnx --output_sequences_scores
 """
 
-config = None
+config:GPT2Config = None
 
 logger = logging.getLogger('')
-
 
 def parse_arguments(argv=None):
     parser = argparse.ArgumentParser()
@@ -91,7 +90,7 @@ def parse_arguments(argv=None):
                                    default=0,
                                    help='No repeat ngram size')
 
-    beam_search_group.add_argument('--beam_size', type=int, required=False, default=4, help='Beam size')
+    beam_search_group.add_argument('--num_beams', type=int, required=False, default=4, help='Beam size')
 
     beam_search_group.add_argument('--num_return_sequences',
                                    type=int,
@@ -150,7 +149,7 @@ def parse_arguments(argv=None):
     return args
 
 
-def convert_gpt2_to_onnx(args):
+def gpt2_to_onnx(args):
     model_name = args.model_name_or_path
 
     print(f"use convert_to_onnx.py to convert model {model_name} to onnx {args.gpt2_onnx} ...")
@@ -164,29 +163,48 @@ def convert_gpt2_to_onnx(args):
         arguments.append('--use_external_data_format')
 
     # mixed precision conversion options
-    if args.io_block_list:
-        arguments.append('--io_block_list')
-        arguments.extend(args.io_block_list)
-    if args.op_block_list:
-        arguments.append('--op_block_list')
-        arguments.extend(args.op_block_list)
-    if args.node_block_list:
-        arguments.append('--node_block_list')
-        arguments.extend(args.node_block_list)
-    if args.force_fp16_initializers:
-        arguments.append('--force_fp16_initializers')
+    if args.precision == Precision.FLOAT16:
+        assert args.use_gpu, "fp16 or mixed precision model cannot run in CPU. Please add --use_gpu"
+        if args.io_block_list:
+            arguments.append('--io_block_list')
+            arguments.extend(args.io_block_list)
+        if args.op_block_list:
+            arguments.append('--op_block_list')
+            arguments.extend(args.op_block_list)
+        if args.node_block_list:
+            arguments.append('--node_block_list')
+            arguments.extend(args.node_block_list)
+        if args.force_fp16_initializers:
+            arguments.append('--force_fp16_initializers')
 
     convert_gpt2_to_onnx(arguments)
 
+    # Run symbolic shape inference to walk around ORT shape inference issue for subgraph.
+    from onnxruntime.tools.symbolic_shape_infer import SymbolicShapeInference
+    out = SymbolicShapeInference.infer_shapes(onnx.load(args.gpt2_onnx), auto_merge=True, guess_output_rank=False)
+    if out:
+       onnx.save(out, args.gpt2_onnx)
+
+def create_ort_session(model_path, use_gpu):
+    from onnxruntime import SessionOptions, InferenceSession, __version__ as ort_version, GraphOptimizationLevel
+    sess_options = SessionOptions()
+    sess_options.graph_optimization_level = GraphOptimizationLevel.ORT_DISABLE_ALL
+    execution_providers = ['CUDAExecutionProvider', 'CPUExecutionProvider'
+                           ] if use_gpu else ['CPUExecutionProvider']
+
+    ort_session = InferenceSession(model_path, sess_options, providers=execution_providers)
+    return ort_session
 
 def convert_model(args):
     if os.path.exists(args.gpt2_onnx):
         print(f"skip convert_to_onnx since path existed: {args.gpt2_onnx}")
     else:
-        convert_gpt2_to_onnx(args)
+        gpt2_to_onnx(args)
+
+    #create_ort_session(args.gpt2_onnx, args.use_gpu)
 
     global config
-    config = AutoConfig.from_pretrained(args.model_name_or_path, cache_dir=args.cache_dir)
+    config = GPT2Config.from_pretrained(args.model_name_or_path, cache_dir=args.cache_dir)
     print(config)
 
     eos_token_id = config.eos_token_id
@@ -196,7 +214,7 @@ def convert_model(args):
     model = onnx.load(args.gpt2_onnx)
     model.graph.name = "gpt2 subgraph"
     inputs = [
-        "input_ids", "attention_mask", "min_length", "max_length", "num_beams", "num_return_sequences", "temperature",
+        "input_ids", "max_length", "min_length", "num_beams", "num_return_sequences", "temperature",
         "length_penalty", "repetition_penalty"
     ]
 
@@ -220,11 +238,8 @@ def convert_model(args):
 
     # graph inputs
     input_ids = helper.make_tensor_value_info('input_ids', TensorProto.INT32, ['batch_size', 'sequence_length'])
-    attention_mask = helper.make_tensor_value_info('attention_mask', TensorProto.INT32,
-                                                   ['batch_size', 'sequence_length'])
-
-    min_length = helper.make_tensor_value_info('min_length', TensorProto.INT32, [1])
     max_length = helper.make_tensor_value_info('max_length', TensorProto.INT32, [1])
+    min_length = helper.make_tensor_value_info('min_length', TensorProto.INT32, [1])
     num_beams = helper.make_tensor_value_info('num_beams', TensorProto.INT32, [1])
     num_return_sequences = helper.make_tensor_value_info('num_return_sequences', TensorProto.INT32, [1])
     temperature = helper.make_tensor_value_info('temperature', TensorProto.FLOAT, [1])
@@ -232,7 +247,7 @@ def convert_model(args):
     repetition_penalty = helper.make_tensor_value_info('repetition_penalty', TensorProto.FLOAT, [1])
 
     graph_inputs = [
-        input_ids, attention_mask, min_length, max_length, num_beams, num_return_sequences, temperature, length_penalty,
+        input_ids, max_length, min_length, num_beams, num_return_sequences, temperature, length_penalty,
         repetition_penalty
     ]
 
@@ -275,8 +290,8 @@ def test_model(args):
     print('-' * 50)
     print("Test PyTorch model and beam search with huggingface transformers...")
     beam_outputs = model.generate(input_ids,
-                                  min_length=args.min_length,
                                   max_length=args.max_length,
+                                  min_length=args.min_length,
                                   num_beams=args.num_beams,
                                   early_stopping=args.early_stopping,
                                   no_repeat_ngram_size=args.no_repeat_ngram_size,
@@ -293,22 +308,16 @@ def test_model(args):
 
     print('-' * 50)
     print("Test ONNX model and bream search with onnxruntime...")
-    from onnxruntime import SessionOptions, InferenceSession, __version__ as ort_version, GraphOptimizationLevel
-    sess_options = SessionOptions()
-    execution_providers = ['CUDAExecutionProvider', 'CPUExecutionProvider'
-                           ] if args.use_gpu else ['CPUExecutionProvider']
 
-    ort_session = InferenceSession(args.output, sess_options, providers=execution_providers)
+    ort_session = create_ort_session(args.output, args.use_gpu)
 
-    _, sequence_length = input_ids.shape
     batch_size = 2
     input_ids = input_ids.repeat(batch_size, 1)
 
     inputs = {
         "input_ids": input_ids.cpu().numpy().astype(np.int32),
-        "attention_mask": np.ones((batch_size, sequence_length), dtype=np.float32),
-        "min_length": np.array([args.min_length], dtype=np.int32),
         "max_length": np.array([args.max_length], dtype=np.int32),
+        "min_length": np.array([args.min_length], dtype=np.int32),
         "num_beams": np.array([args.num_beams], dtype=np.int32),
         "num_return_sequences": np.array([args.num_return_sequences], dtype=np.int32),
         "temperature": np.array([args.temperature], dtype=np.float32),
@@ -332,15 +341,16 @@ def test_model(args):
 
 
 def main():
+    args = parse_arguments()
+
     # TODO: remove debug code
     import time
-    print('You have 30 seconds to attach a debugger.')
-    time.sleep(30)
+    print('You have 15 seconds to attach a debugger.')
+    time.sleep(15)
 
-    args = parse_arguments()
     convert_model(args)
-    test_model(args)
 
+    test_model(args)
 
 if __name__ == '__main__':
     main()
