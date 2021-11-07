@@ -62,6 +62,9 @@ struct LearningModelDevice : LearningModelDeviceT<LearningModelDevice, IMetacomm
   bool
   HasCustomExecutionProvider();
 
+  bool
+  ForceCpuBindings();
+
   HRESULT
   GetExecutionProviderOptions(_winml::IExecutionProviderOptions** out);
 

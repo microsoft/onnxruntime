@@ -414,12 +414,19 @@ HRESULT ImageFeatureValue::GetValue(_winml::BindingContext& context, _winml::IVa
 
   // create the OrtValue
   winrt::com_ptr<_winml::IValue> value;
-  RETURN_IF_FAILED(engine->CreateTensorValue(
-      resourceMetadata.TensorDescriptor.sizes,
-      sizeof(resourceMetadata.TensorDescriptor.sizes) / sizeof(resourceMetadata.TensorDescriptor.sizes[0]),
-      resourceMetadata.TensorDescriptor.dataType == _winml::ImageTensorDataType::kImageTensorDataTypeFloat32 ?
-        winml::TensorKind::Float : winml::TensorKind::Float16,
-      value.put()));
+  if (spDevice->ForceCpuBindings()) {
+    RETURN_IF_FAILED(engine->CreateTensorValueFromDefaultAllocator(
+        resourceMetadata.TensorDescriptor.sizes,
+        sizeof(resourceMetadata.TensorDescriptor.sizes) / sizeof(resourceMetadata.TensorDescriptor.sizes[0]),
+        resourceMetadata.TensorDescriptor.dataType == _winml::ImageTensorDataType::kImageTensorDataTypeFloat32 ? winml::TensorKind::Float : winml::TensorKind::Float16,
+        value.put()));
+  } else {
+    RETURN_IF_FAILED(engine->CreateTensorValue(
+        resourceMetadata.TensorDescriptor.sizes,
+        sizeof(resourceMetadata.TensorDescriptor.sizes) / sizeof(resourceMetadata.TensorDescriptor.sizes[0]),
+        resourceMetadata.TensorDescriptor.dataType == _winml::ImageTensorDataType::kImageTensorDataTypeFloat32 ? winml::TensorKind::Float : winml::TensorKind::Float16,
+        value.put()));
+  }
 
   // Get the tensor raw data
   _winml::Resource void_resource;

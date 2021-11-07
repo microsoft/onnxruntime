@@ -114,9 +114,6 @@ HRESULT OnnxruntimeValue::IsCpu(bool* out) {
 #ifdef USE_TENSORRT
   *out |= strcmp(name, "TensorRT") == 0 && type == OrtMemType::OrtMemTypeDefault;
 #endif
-#ifdef USE_TENSORRT
-  *out |= strcmp(name, "CUDA") == 0 && type == OrtMemType::OrtMemTypeDefault;
-#endif
 
   return S_OK;
 }
@@ -582,6 +579,7 @@ HRESULT OnnxruntimeEngine::CreateTensorValue(const int64_t* shape, size_t count,
   auto winml_adapter_api = engine_factory_->UseWinmlAdapterApi();
 
   OrtExecutionProvider* ort_provider;
+
   RETURN_HR_IF_NOT_OK_MSG(winml_adapter_api->SessionGetExecutionProvider(session_.get(), 0, &ort_provider),
                           engine_factory_->UseOrtApi());
 

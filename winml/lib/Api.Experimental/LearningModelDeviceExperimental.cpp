@@ -8,7 +8,7 @@
 #include <wrl/client.h>
 
 #ifdef USE_OPENVINO
-MIDL_INTERFACE("4e84bd04-4212-4ecd-92a4-0b403e75872c")
+MIDL_INTERFACE("f292bc6f-0dd3-423c-bb72-3575222285e1")
 IOpenVinoProviderOptions : IUnknown {
   // nothing here yet
 };
@@ -18,7 +18,12 @@ class OpenVinoExecutionProviderOptions : public Microsoft::WRL::RuntimeClass<
                                      _winml::IExecutionProviderOptions,
                                      IOpenVinoProviderOptions>
 {
-  // nothing here yet
+  STDMETHOD(ForceCpuBindings)
+  (bool* options)
+  {
+    *options = false;
+    return S_OK;
+  }
 };
 #endif
 
@@ -33,7 +38,13 @@ class TensorRTExecutionProviderOptions : public Microsoft::WRL::RuntimeClass<
                                      _winml::IExecutionProviderOptions,
                                      ITensorRTProviderOptions>
 {
-  // nothing here yet
+  STDMETHOD(ForceCpuBindings)
+  (bool* options)
+  {
+    *options = true;
+    return S_OK;
+  }
+
 };
 #endif
 
@@ -48,7 +59,12 @@ class CUDAExecutionProviderOptions : public Microsoft::WRL::RuntimeClass<
                                      _winml::IExecutionProviderOptions,
                                      ICUDAProviderOptions>
 {
-  // nothing here yet
+  STDMETHOD(ForceCpuBindings)
+  (bool* options)
+  {
+    *options = true;
+    return S_OK;
+  }
 };
 #endif
 

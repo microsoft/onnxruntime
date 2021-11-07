@@ -87,6 +87,13 @@ bool LearningModelDevice::HasCustomExecutionProvider() {
   return execution_provider_options_ != nullptr;
 }
 
+bool LearningModelDevice::ForceCpuBindings() {
+  bool force_cpu = false;
+  return execution_provider_options_ != nullptr &&
+         SUCCEEDED(execution_provider_options_->ForceCpuBindings(&force_cpu)) &&
+         force_cpu;
+}
+
 HRESULT LearningModelDevice::GetExecutionProviderOptions(_winml::IExecutionProviderOptions** out) {
   *out = execution_provider_options_.get();
   (*out)->AddRef();

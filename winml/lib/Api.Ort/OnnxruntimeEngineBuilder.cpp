@@ -14,7 +14,7 @@
 
 #ifdef USE_OPENVINO
 #include "OnnxruntimeOpenVinoSessionBuilder.h"
-struct __declspec(uuid("4e84bd04-4212-4ecd-92a4-0b403e75872c")) OpenVinoProviderOptions;
+struct __declspec(uuid("f292bc6f-0dd3-423c-bb72-3575222285e1")) OpenVinoProviderOptions;
 #endif
 
 #ifdef USE_TENSORRT
@@ -39,44 +39,43 @@ STDMETHODIMP OnnxruntimeEngineBuilder::CreateEngine(_Outptr_ _winml::IEngine** o
   auto ort_api = engine_factory_->UseOrtApi();
 
   Microsoft::WRL::ComPtr<IOrtSessionBuilder> onnxruntime_session_builder;
-
-  if (custom_execution_provider_options_ != nullptr) {
+  do {
+#ifdef USE_DML
+    if (device_) {
+      RETURN_IF_FAILED(Microsoft::WRL::MakeAndInitialize<OnnxruntimeDmlSessionBuilder>(&onnxruntime_session_builder, engine_factory_.Get(), device_.Get(), queue_.Get(), metacommands_enabled_));
+      break;
+    }
+#endif
 
 #ifdef USE_OPENVINO
     Microsoft::WRL::ComPtr<IUnknown> open_vino_options;
-    RETURN_IF_FAILED(custom_execution_provider_options_->QueryInterface(__uuidof(OpenVinoProviderOptions), &open_vino_options));
-    if (open_vino_options != nullptr) {  
+    if (custom_execution_provider_options_ != nullptr && SUCCEEDED(custom_execution_provider_options_->QueryInterface(__uuidof(OpenVinoProviderOptions), &open_vino_options))) {
       RETURN_IF_FAILED(Microsoft::WRL::MakeAndInitialize<OnnxruntimeOpenVinoSessionBuilder>(
-        &onnxruntime_session_builder, engine_factory_.Get(), custom_execution_provider_options_.Get()));
+          &onnxruntime_session_builder, engine_factory_.Get(), custom_execution_provider_options_.Get()));
+      break;
     }
 #endif
 
 #ifdef USE_TENSORRT
     Microsoft::WRL::ComPtr<IUnknown> tensorrt_options;
-    RETURN_IF_FAILED(custom_execution_provider_options_->QueryInterface(__uuidof(TensorRTProviderOptions), &tensorrt_options));
-    if (tensorrt_options != nullptr) {  
+    if (custom_execution_provider_options_ != nullptr && SUCCEEDED(custom_execution_provider_options_->QueryInterface(__uuidof(TensorRTProviderOptions), &tensorrt_options))) {
       RETURN_IF_FAILED(Microsoft::WRL::MakeAndInitialize<OnnxruntimeTensorRTSessionBuilder>(
-        &onnxruntime_session_builder, engine_factory_.Get(), custom_execution_provider_options_.Get()));
+          &onnxruntime_session_builder, engine_factory_.Get(), custom_execution_provider_options_.Get()));
+      break;
     }
 #endif
 
 #ifdef USE_CUDA
     Microsoft::WRL::ComPtr<IUnknown> cuda_options;
-    RETURN_IF_FAILED(custom_execution_provider_options_->QueryInterface(__uuidof(CUDAProviderOptions), &cuda_options));
-    if (cuda_options != nullptr) {  
+    if (custom_execution_provider_options_ != nullptr && SUCCEEDED(custom_execution_provider_options_->QueryInterface(__uuidof(CUDAProviderOptions), &cuda_options))) {
       RETURN_IF_FAILED(Microsoft::WRL::MakeAndInitialize<OnnxruntimeCUDASessionBuilder>(
-        &onnxruntime_session_builder, engine_factory_.Get(), custom_execution_provider_options_.Get()));
+          &onnxruntime_session_builder, engine_factory_.Get(), custom_execution_provider_options_.Get()));
+      break;
     }
 #endif
 
-  }
-  else if (device_) {
-#ifdef USE_DML
-    RETURN_IF_FAILED(Microsoft::WRL::MakeAndInitialize<OnnxruntimeDmlSessionBuilder>(&onnxruntime_session_builder, engine_factory_.Get(), device_.Get(), queue_.Get(), metacommands_enabled_));
-#endif
-  } else {
     RETURN_IF_FAILED(Microsoft::WRL::MakeAndInitialize<OnnxruntimeCpuSessionBuilder>(&onnxruntime_session_builder, engine_factory_.Get()));
-  }
+  } while (false);
 
   OrtSessionOptions* ort_options;
   RETURN_IF_FAILED(onnxruntime_session_builder->CreateSessionOptions(&ort_options));

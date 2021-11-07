@@ -125,42 +125,42 @@ void LearningModelSession::Initialize() {
   }
 
 
-  // Make onnxruntime apply the batch size override, if any
-  if (session_options_) {
-    if (session_options_.BatchSizeOverride() != 0) {
-      WINML_THROW_IF_FAILED(engine_builder->SetBatchSizeOverride(session_options_.BatchSizeOverride()));
-    }
+  //// Make onnxruntime apply the batch size override, if any
+  //if (session_options_) {
+  //  if (session_options_.BatchSizeOverride() != 0) {
+  //    WINML_THROW_IF_FAILED(engine_builder->SetBatchSizeOverride(session_options_.BatchSizeOverride()));
+  //  }
 
-    com_ptr<winmlp::LearningModelSessionOptions> session_options_impl = session_options_.as<winmlp::LearningModelSessionOptions>();
+  //  com_ptr<winmlp::LearningModelSessionOptions> session_options_impl = session_options_.as<winmlp::LearningModelSessionOptions>();
 
-    // Make Onnxruntime apply the number of intra op threads
-    uint32_t numIntraOpThreads = session_options_impl->GetIntraOpNumThreads();
-    WINML_THROW_IF_FAILED(engine_builder->SetIntraOpNumThreadsOverride(numIntraOpThreads));
-    
-    // Make onnxruntime apply named dimension overrides, if any
-    if (session_options_impl && session_options_impl->NamedDimensionOverrides().Size() > 0) {
-      WINML_THROW_IF_FAILED(engine_builder->SetNamedDimensionOverrides(session_options_impl->NamedDimensionOverrides()));
-    }
-    bool allowSpinning = session_options_impl->GetIntraOpThreadSpinning();
-    WINML_THROW_IF_FAILED(engine_builder->SetIntraOpThreadSpinning(allowSpinning));
+  //  // Make Onnxruntime apply the number of intra op threads
+  //  uint32_t numIntraOpThreads = session_options_impl->GetIntraOpNumThreads();
+  //  WINML_THROW_IF_FAILED(engine_builder->SetIntraOpNumThreadsOverride(numIntraOpThreads));
+  //  
+  //  // Make onnxruntime apply named dimension overrides, if any
+  //  if (session_options_impl && session_options_impl->NamedDimensionOverrides().Size() > 0) {
+  //    WINML_THROW_IF_FAILED(engine_builder->SetNamedDimensionOverrides(session_options_impl->NamedDimensionOverrides()));
+  //  }
+  //  bool allowSpinning = session_options_impl->GetIntraOpThreadSpinning();
+  //  WINML_THROW_IF_FAILED(engine_builder->SetIntraOpThreadSpinning(allowSpinning));
 
-  } else {
-    // Onnxruntime will use half the number of concurrent threads supported on the system
-    // by default. This causes MLAS to not exercise every logical core.
-    // If session options aren't provided, force the thread pool size to be maxxed out
-    // to ensure that WinML always runs the fastest.
-    WINML_THROW_IF_FAILED(engine_builder->SetIntraOpNumThreadsOverride(std::thread::hardware_concurrency()));
-  }
+  //} else {
+  //  // Onnxruntime will use half the number of concurrent threads supported on the system
+  //  // by default. This causes MLAS to not exercise every logical core.
+  //  // If session options aren't provided, force the thread pool size to be maxxed out
+  //  // to ensure that WinML always runs the fastest.
+  //  WINML_THROW_IF_FAILED(engine_builder->SetIntraOpNumThreadsOverride(std::thread::hardware_concurrency()));
+  //}
 
   com_ptr<_winml::IEngine> engine;
   WINML_THROW_IF_FAILED(engine_builder->CreateEngine(engine.put()));
 
   // Register the custom operator registry
-  operator_registry_ = MLOperatorRegistry(model_impl->GetOperatorRegistry(), [](auto registry) { registry->Release(); });
-  WINML_THROW_IF_FAILED(engine->RegisterCustomRegistry(operator_registry_.get()));
+  //operator_registry_ = MLOperatorRegistry(model_impl->GetOperatorRegistry(), [](auto registry) { registry->Release(); });
+  //WINML_THROW_IF_FAILED(engine->RegisterCustomRegistry(operator_registry_.get()));
 
-  // Register transformers - this should probably not be exposed on IEngine, but an internal call as this configuration step is ort specific.
-  WINML_THROW_IF_FAILED(engine->RegisterGraphTransformers());
+  //// Register transformers - this should probably not be exposed on IEngine, but an internal call as this configuration step is ort specific.
+  //WINML_THROW_IF_FAILED(engine->RegisterGraphTransformers());
 
   // Load the model into the session
   WINML_THROW_IF_FAILED(engine->LoadModel(model.get()));

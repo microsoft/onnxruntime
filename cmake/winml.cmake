@@ -251,6 +251,13 @@ if (onnxruntime_USE_OPENVINO)
     )
 endif()
 
+if (onnxruntime_USE_TENSORRT)
+  list(APPEND winml_lib_api_ort_files
+    ${winml_lib_api_ort_dir}/OnnxruntimeTensorRTSessionBuilder.h
+    ${winml_lib_api_ort_dir}/OnnxruntimeTensorRTSessionBuilder.cpp
+    )
+endif()
+
 if (onnxruntime_USE_CUDA)
   list(APPEND winml_lib_api_ort_files
     ${winml_lib_api_ort_dir}/OnnxruntimeCUDASessionBuilder.h

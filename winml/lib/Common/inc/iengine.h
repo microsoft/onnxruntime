@@ -13,6 +13,8 @@ using Resource = std::unique_ptr<void, std::function<void(void*)>>;
 
 MIDL_INTERFACE("4e84bd04-4212-4ecd-92a4-0b403e75872c")
 IExecutionProviderOptions : IUnknown {
+  STDMETHOD(ForceCpuBindings)
+  (bool* force_cpu) PURE;
 };
 
 MIDL_INTERFACE("31f39226-cfe8-4758-af38-3d01b2a33ee1")
@@ -148,6 +150,9 @@ IEngine : IUnknown {
   () PURE;
 
   STDMETHOD(CreateTensorValue)
+  (const int64_t* shape, size_t count, winml::TensorKind kind, _Out_ IValue** out) PURE;
+
+  STDMETHOD(CreateTensorValueFromDefaultAllocator)
   (const int64_t* shape, size_t count, winml::TensorKind kind, _Out_ IValue** out) PURE;
 
   STDMETHOD(CreateTensorValueFromExternalD3DResource)

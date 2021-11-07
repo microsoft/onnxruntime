@@ -84,6 +84,8 @@ class OnnxruntimeEngine : public Microsoft::WRL::RuntimeClass<
   () override;
   STDMETHOD(CreateTensorValue)
   (const int64_t* shape, size_t count, winml::TensorKind kind, _Out_ IValue** out) override;
+  STDMETHOD(CreateTensorValueFromDefaultAllocator)
+  (const int64_t* shape, size_t count, winml::TensorKind kind, _Out_ IValue** out) override;
   STDMETHOD(CreateTensorValueFromExternalD3DResource)
   (ID3D12Resource* resource, const int64_t* shape, size_t count, winml::TensorKind kind, _Out_ IValue** out) override;
   STDMETHOD(CreateTensorValueFromExternalBuffer)
@@ -125,7 +127,6 @@ class OnnxruntimeEngine : public Microsoft::WRL::RuntimeClass<
   OrtSession* UseOrtSession();
   const OrtApi* UseOrtApi();
   OnnxruntimeEngineFactory* GetEngineFactory();
-  HRESULT CreateTensorValueFromDefaultAllocator(const int64_t* shape, size_t count, winml::TensorKind kind, _Out_ IValue** out);
 
  private:
   Microsoft::WRL::ComPtr<OnnxruntimeEngineFactory> engine_factory_;

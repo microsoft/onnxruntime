@@ -53,7 +53,7 @@ static void CreateSessionDeviceCpu() {
   LearningModelDevice learningModelDevice = nullptr;
   WINML_EXPECT_NO_THROW(APITest::LoadModel(L"model.onnx", learningModel));
 
-  WINML_EXPECT_NO_THROW(learningModelDevice = LearningModelDevice(LearningModelDeviceKind::Cpu));
+  WINML_EXPECT_NO_THROW(learningModelDevice = Experimental::LearningModelDeviceExperimental::CreateTensorRTDevice());
   WINML_EXPECT_NO_THROW(LearningModelSession(learningModel, learningModelDevice));
   // for the CPU device, make sure that we get back NULL and 0 for any device properties
   WINML_EXPECT_EQUAL(learningModelDevice.Direct3D11Device(), nullptr);
