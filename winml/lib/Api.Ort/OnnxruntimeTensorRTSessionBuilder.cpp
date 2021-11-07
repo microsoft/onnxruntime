@@ -35,10 +35,29 @@ OnnxruntimeTensorRTSessionBuilder::CreateSessionOptions(
   auto session_options = UniqueOrtSessionOptions(ort_options, ort_api->ReleaseSessionOptions);
 
   // set the graph optimization level to all (used to be called level 3)
-  RETURN_HR_IF_NOT_OK_MSG(ort_api->SetSessionGraphOptimizationLevel(session_options.get(), GraphOptimizationLevel::ORT_ENABLE_ALL),
+  RETURN_HR_IF_NOT_OK_MSG(ort_api->SetSessionGraphOptimizationLevel(session_options.get(), GraphOptimizationLevel::ORT_DISABLE_ALL),
                           ort_api);
 
   OrtTensorRTProviderOptions tensorrt_options = {};
+  tensorrt_options.device_id = 0;
+  tensorrt_options.has_user_compute_stream = 0;
+  tensorrt_options.user_compute_stream = nullptr;
+  tensorrt_options.trt_max_partition_iterations = 1000;
+  tensorrt_options.trt_min_subgraph_size = 1;
+  tensorrt_options.trt_max_workspace_size = 1 << 30;
+  tensorrt_options.trt_fp16_enable = false;
+  tensorrt_options.trt_int8_enable = false;
+  tensorrt_options.trt_int8_calibration_table_name = "";
+  tensorrt_options.trt_int8_use_native_calibration_table = false;
+  tensorrt_options.trt_dla_enable = false;
+  tensorrt_options.trt_dla_core = 0;
+  tensorrt_options.trt_dump_subgraphs = false;
+  tensorrt_options.trt_engine_cache_enable = false;
+  tensorrt_options.trt_engine_cache_path = "";
+  tensorrt_options.trt_engine_decryption_enable = false;
+  tensorrt_options.trt_engine_decryption_lib_path = "";
+  tensorrt_options.trt_force_sequential_engine_build = false;
+
   // Request the dml ep
   RETURN_HR_IF_NOT_OK_MSG(ort_api->SessionOptionsAppendExecutionProvider_TensorRT(session_options.get(), &tensorrt_options),
                           ort_api);
