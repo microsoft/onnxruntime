@@ -23,9 +23,9 @@ namespace Dml
                 return; // early-out
 
             wil::unique_handle h(CreateEvent(nullptr, TRUE, FALSE, nullptr));
-            THROW_LAST_ERROR_IF(!h);
+            ORT_THROW_LAST_ERROR_IF(!h);
 
-            THROW_IF_FAILED(fence->SetEventOnCompletion(fenceValue, h.get()));
+            ORT_THROW_IF_FAILED(fence->SetEventOnCompletion(fenceValue, h.get()));
 
             WaitForSingleObject(h.get(), INFINITE);
         }

@@ -155,10 +155,11 @@ SelectorsAndActions CreateSelectorsAndActions() {
 
 }  // namespace
 
-QDQSelectorActionTransformer::QDQSelectorActionTransformer()
+QDQSelectorActionTransformer::QDQSelectorActionTransformer(std::optional<RuntimeOptimizationSaveContext> save_context)
     : SelectorActionTransformer{
           "QDQSelectorActionTransformer",
-          CreateSelectorsAndActions()} {
+          CreateSelectorsAndActions(),
+          std::move(save_context)} {
 }
 
 }  // namespace onnxruntime

@@ -110,14 +110,13 @@ option(onnxruntime_DISABLE_CONTRIB_OPS "Disable contrib ops" OFF)
 option(onnxruntime_DISABLE_ML_OPS "Disable traditional ML ops" OFF)
 option(onnxruntime_DISABLE_SPARSE_TENSORS "Disable sparse tensors data types" OFF)
 option(onnxruntime_MINIMAL_BUILD "Exclude as much as possible from the build. Support ORT format models. No support for ONNX format models." OFF)
-cmake_dependent_option(onnxruntime_DISABLE_RTTI "Disable RTTI" ON "onnxruntime_MINIMAL_BUILD;NOT onnxruntime_ENABLE_PYTHON" OFF)
+cmake_dependent_option(onnxruntime_DISABLE_RTTI "Disable RTTI" ON "NOT onnxruntime_ENABLE_PYTHON" OFF)
 # For now onnxruntime_DISABLE_EXCEPTIONS will only work with onnxruntime_MINIMAL_BUILD, more changes (ONNX, non-CPU EP, ...) are required to run this standalone
 cmake_dependent_option(onnxruntime_DISABLE_EXCEPTIONS "Disable exception handling. Requires onnxruntime_MINIMAL_BUILD currently." ON "onnxruntime_MINIMAL_BUILD;NOT onnxruntime_ENABLE_PYTHON" OFF)
 
 option(onnxruntime_EXTENDED_MINIMAL_BUILD "onnxruntime_MINIMAL_BUILD with support for execution providers that compile kernels." OFF)
 option(onnxruntime_MINIMAL_BUILD_CUSTOM_OPS "Add custom operator kernels support to a minimal build." OFF)
 option(onnxruntime_REDUCED_OPS_BUILD "Reduced set of kernels are registered in build via modification of the kernel registration source files." OFF)
-option(onnxruntime_DISABLE_ORT_FORMAT_LOAD "Disable loading an ORT format model when onnxruntime_MINIMAL_BUILD=OFF (i.e. in a full build)." OFF)
 option(onnxruntime_DISABLE_EXTERNAL_INITIALIZERS "Don't allow models to load external data" OFF)
 cmake_dependent_option(onnxruntime_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION "Enable runtime graph optimization of ORT format models." ON
                        "NOT onnxruntime_MINIMAL_BUILD OR onnxruntime_EXTENDED_MINIMAL_BUILD" OFF)
@@ -171,6 +170,10 @@ set(ONNX_CUSTOM_PROTOC_EXECUTABLE "" CACHE STRING "Specify custom protoc executa
 
 # pre-build python path
 option(onnxruntime_PREBUILT_PYTORCH_PATH "Path to pytorch installation dir")
+
+if (onnxruntime_USE_CUDA)
+  set(onnxruntime_DISABLE_RTTI OFF)
+endif()
 
 if (APPLE)
     if (NOT CMAKE_OSX_ARCHITECTURES)
@@ -334,7 +337,6 @@ endif()
 # ORT build with as much excluded as possible. Supports ORT flatbuffers models only.
 if (onnxruntime_MINIMAL_BUILD)
   add_compile_definitions(ORT_MINIMAL_BUILD)
-  add_compile_definitions(ENABLE_ORT_FORMAT_LOAD)
 
   if (onnxruntime_EXTENDED_MINIMAL_BUILD)
     # enable EPs that compile kernels at runtime
@@ -346,11 +348,6 @@ if (onnxruntime_MINIMAL_BUILD)
   endif()
 
   set(onnxruntime_REDUCED_OPS_BUILD ON)
-
-  if (NOT onnxruntime_ENABLE_PYTHON)
-    # Python bindings use typeid so can't automatically disable RTTI in that case
-    set(onnxruntime_DISABLE_RTTI ON)
-  endif()
 
   if (MSVC)
     # turn on LTO (which adds some compiler flags and turns on LTCG) unless it's a Debug build to minimize binary size
@@ -375,11 +372,6 @@ if (onnxruntime_MINIMAL_BUILD)
       string(APPEND CMAKE_CXX_FLAGS " -g")
       string(APPEND CMAKE_C_FLAGS " -g")
     endif()
-  endif()
-else()
-  # support ORT format model loading unless onnxruntime_DISABLE_ORT_FORMAT_LOAD is set
-  if (NOT onnxruntime_DISABLE_ORT_FORMAT_LOAD)
-    add_compile_definitions(ENABLE_ORT_FORMAT_LOAD)
   endif()
 endif()
 
@@ -970,6 +962,8 @@ if (WIN32)
         endif()
         # operator 'operator-name': deprecated between enumerations of different types
         list(APPEND ORT_WARNING_FLAGS "/wd5054")
+        # Enable warning: data member 'member' will be initialized after data member 'member2' / base class 'base_class'
+        list(APPEND ORT_WARNING_FLAGS "/w15038")
         # Treat warning as error if onnxruntime_DEV_MODE is ON
         # For cross-compiled ARM64 binaries, there are too many warnings to fix, hence ignore warnings for now
         if (onnxruntime_DEV_MODE AND NOT CMAKE_CROSSCOMPILING)
