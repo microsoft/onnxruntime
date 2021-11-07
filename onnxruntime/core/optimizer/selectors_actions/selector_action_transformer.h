@@ -3,8 +3,13 @@
 
 #pragma once
 
+#include <functional>
+#include <optional>
+
+#include "core/framework/kernel_registry_manager.h"
 #include "core/optimizer/graph_transformer.h"
 #include "core/optimizer/selectors_actions/actions.h"
+#include "core/optimizer/selectors_actions/runtime_optimization_save_context.h"
 
 namespace onnxruntime {
 
@@ -96,9 +101,11 @@ This setup allows optimizations to be captured and applied at runtime in a minim
 */
 class SelectorActionTransformer : public GraphTransformer {
  protected:
-  // set `save` to find matching node groups and save them for later replay. if `save` is true the matching Action
-  // for the Selector will not be called, so the nodes in the Graph will be preserved.
-  SelectorActionTransformer(const std::string& name, SelectorsAndActions&& selectors_and_actions, bool save = false);
+  // Set `save_context` to find matching node groups and save them for later replay.
+  // If `save_context` is provided, the matching Action for the Selector will not be directly applied to the Graph
+  // nodes, but saved as a runtime optimization instead.
+  SelectorActionTransformer(const std::string& name, SelectorsAndActions&& selectors_and_actions,
+                            std::optional<RuntimeOptimizationSaveContext> save_context);
 
   // can't copy/assign selectors_and_actions_
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(SelectorActionTransformer);
@@ -112,7 +119,8 @@ class SelectorActionTransformer : public GraphTransformer {
   Status MatchAndProcess(Graph& graph, Node& node, bool& modified, const logging::Logger& logger) const;
 
   std::unordered_map<std::string, const SelectorAndAction*> op_type_to_selector_and_action_;
-  bool save_;  // save the node groups for use in runtime optimization in a minimal build with an ORT format model
+  // If set, save runtime optimization to graph. Otherwise, apply optimization to graph nodes.
+  std::optional<RuntimeOptimizationSaveContext> runtime_optimization_save_context_;
 #else
   // apply any saved optimizations
   Status ApplySaved(Graph& graph, bool& modified, const logging::Logger& logger) const;

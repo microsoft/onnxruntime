@@ -1326,14 +1326,20 @@ including arg name, arg type (contains both type and shape).)pbdoc")
                -> std::vector<py::object> {
              NameMLValMap feeds;
              for (auto feed : pyfeeds) {
-               OrtValue ml_value;
-               auto px = sess->GetSessionHandle()->GetModelInputs();
-               if (!px.first.IsOK() || !px.second) {
-                 throw std::runtime_error("Either failed to get model inputs from the session object or the input def list was null");
+               // No need to process 'None's sent in by the user
+               // to feed Optional inputs in the graph.
+               // We just won't include anything in the feed and ORT
+               // will handle such implicit 'None's internally.
+               if (!feed.second.is(py::none())) {
+                 OrtValue ml_value;
+                 auto px = sess->GetSessionHandle()->GetModelInputs();
+                 if (!px.first.IsOK() || !px.second) {
+                   throw std::runtime_error("Either failed to get model inputs from the session object or the input def list was null");
+                 }
+                 CreateGenericMLValue(px.second, GetAllocator(), feed.first, feed.second, &ml_value);
+                 ThrowIfPyErrOccured();
+                 feeds.insert(std::make_pair(feed.first, ml_value));
                }
-               CreateGenericMLValue(px.second, GetAllocator(), feed.first, feed.second, &ml_value);
-               ThrowIfPyErrOccured();
-               feeds.insert(std::make_pair(feed.first, ml_value));
              }
 
              std::vector<OrtValue> fetches;
@@ -1353,12 +1359,16 @@ including arg name, arg type (contains both type and shape).)pbdoc")
              rfetch.reserve(fetches.size());
              size_t pos = 0;
              for (auto fet : fetches) {
-               if (fet.IsTensor()) {
-                 rfetch.push_back(AddTensorAsPyObj(fet, nullptr, nullptr));
-               } else if (fet.IsSparseTensor()) {
-                 rfetch.push_back(GetPyObjectFromSparseTensor(pos, fet, nullptr));
-               } else {
-                 rfetch.push_back(AddNonTensorAsPyObj(fet, nullptr, nullptr));
+               if (fet.IsAllocated()) {
+                 if (fet.IsTensor()) {
+                   rfetch.push_back(AddTensorAsPyObj(fet, nullptr, nullptr));
+                 } else if (fet.IsSparseTensor()) {
+                   rfetch.push_back(GetPyObjectFromSparseTensor(pos, fet, nullptr));
+                 } else {
+                   rfetch.push_back(AddNonTensorAsPyObj(fet, nullptr, nullptr));
+                 }
+               } else {  // Send back None because the corresponding OrtValue was empty
+                 rfetch.push_back(py::none());
                }
                ++pos;
              }
