@@ -32,7 +32,26 @@
 
   <PropertyGroup Condition="'$(DisableOnnxRuntimeDllCopy)' != 'true'">
     <OnnxRuntimeBinary Condition="'$(OnnxRuntimeBinary)' == ''">$(RuntimesDirectory)\$(WindowsAIBinarySubfolder)onnxruntime.dll</OnnxRuntimeBinary>
+    <OnnxRuntimeBinary>$([System.IO.Path]::GetFullPath($(OnnxRuntimeBinary)))</OnnxRuntimeBinary>
   </PropertyGroup>
+
+  <PropertyGroup Condition="'$(DisableOnnxRuntimeDllCopy)' != 'true' AND Exists('$(RuntimesDirectory)\$(WindowsAIBinarySubfolder)onnxruntime_providers_shared.dll')">
+    <OnnxRuntimeSharedProviderBinary>$(RuntimesDirectory)\$(WindowsAIBinarySubfolder)onnxruntime_providers_shared.dll</OnnxRuntimeSharedProviderBinary>
+    <OnnxRuntimeSharedProviderBinary>$([System.IO.Path]::GetFullPath($(OnnxRuntimeSharedProviderBinary)))</OnnxRuntimeSharedProviderBinary>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(DisableOnnxRuntimeDllCopy)' != 'true' AND Exists('$(RuntimesDirectory)\$(WindowsAIBinarySubfolder)onnxruntime_providers_cuda.dll')">
+    <OnnxRuntimeCudaProviderBinary>$(RuntimesDirectory)\$(WindowsAIBinarySubfolder)onnxruntime_providers_cuda.dll</OnnxRuntimeCudaProviderBinary>
+    <OnnxRuntimeCudaProviderBinary>$([System.IO.Path]::GetFullPath($(OnnxRuntimeCudaProviderBinary)))</OnnxRuntimeCudaProviderBinary>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(DisableOnnxRuntimeDllCopy)' != 'true' AND Exists('$(RuntimesDirectory)\$(WindowsAIBinarySubfolder)onnxruntime_providers_openvino.dll')">
+    <OnnxRuntimeOpenVinoProviderBinary>$(RuntimesDirectory)\$(WindowsAIBinarySubfolder)onnxruntime_providers_openvino.dll</OnnxRuntimeOpenVinoProviderBinary>
+    <OnnxRuntimeOpenVinoProviderBinary>$([System.IO.Path]::GetFullPath($(OnnxRuntimeOpenVinoProviderBinary)))</OnnxRuntimeOpenVinoProviderBinary>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(DisableOnnxRuntimeDllCopy)' != 'true' AND Exists('$(RuntimesDirectory)\$(WindowsAIBinarySubfolder)onnxruntime_providers_tensorrt.dll')">
+    <OnnxRuntimeTensorRTProviderBinary>$(RuntimesDirectory)\$(WindowsAIBinarySubfolder)onnxruntime_providers_tensorrt.dll</OnnxRuntimeTensorRTProviderBinary>
+    <OnnxRuntimeTensorRTProviderBinary>$([System.IO.Path]::GetFullPath($(OnnxRuntimeTensorRTProviderBinary)))</OnnxRuntimeTensorRTProviderBinary>
+  </PropertyGroup>
+
 
   <PropertyGroup Label="Globals">
     <!-- Assume apps using the WinML package only want the DirectML binaries (no need for a build dependency). -->

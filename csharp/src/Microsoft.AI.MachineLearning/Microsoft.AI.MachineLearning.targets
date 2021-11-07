@@ -10,6 +10,7 @@
   </ItemGroup>
 
   <ItemGroup Condition="'$(NuGetProjectStyle)' != 'PackageReference'">
-    <ReferenceCopyLocalPaths Include="$(WindowsAIBinary);$(OnnxRuntimeBinary)" />
+    <ReferenceCopyLocalPaths Include="$(WindowsAIBinary);$(OnnxRuntimeBinary);$(OnnxRuntimeSharedProviderBinary);$(OnnxRuntimeCudaProviderBinary);$(OnnxRuntimeOpenVinoProviderBinary);$(OnnxRuntimeTensorRTProviderBinary)" />
   </ItemGroup>
 </Project>
+
