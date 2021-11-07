@@ -51,9 +51,15 @@ if (ONNXRUNTIME_BUILD_DIR && typeof ONNXRUNTIME_BUILD_DIR === 'string') {
   args.push(`--CDONNXRUNTIME_BUILD_DIR=${ONNXRUNTIME_BUILD_DIR}`);
 }
 
-// set cross-compile for arm64 on macOS
-if (os.platform() === 'darwin' && ARCH === 'arm64') {
-  args.push('--CDCMAKE_OSX_ARCHITECTURES=arm64');
+// set CMAKE_OSX_ARCHITECTURES for macOS build
+if (os.platform() === 'darwin') {
+  if (ARCH === 'x64') {
+    args.push('--CDCMAKE_OSX_ARCHITECTURES=x86_64');
+  } else if (ARCH === 'arm64') {
+    args.push('--CDCMAKE_OSX_ARCHITECTURES=arm64');
+  } else {
+    throw new Error(`architecture not supported for macOS build: ${ARCH}`);
+  }
 }
 
 // launch cmake-js configure
