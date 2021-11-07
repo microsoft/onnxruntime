@@ -156,6 +156,10 @@ set_property(TARGET onnxruntime_pybind11_state APPEND_STRING PROPERTY LINK_FLAGS
 add_dependencies(onnxruntime_pybind11_state ${onnxruntime_pybind11_state_dependencies})
 
 if (MSVC)
+  if (onnxruntime_ENABLE_TRAINING)
+    target_compile_options(onnxruntime_pybind11_state PRIVATE "/bigobj")
+  endif()
+
   set_target_properties(onnxruntime_pybind11_state PROPERTIES LINK_FLAGS "${ONNXRUNTIME_SO_LINK_FLAG}")
   # if MSVC, pybind11 looks for release version of python lib (pybind11/detail/common.h undefs _DEBUG)
   target_link_libraries(onnxruntime_pybind11_state PRIVATE Python::Module)
