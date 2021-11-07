@@ -29,10 +29,9 @@ class Direct8BitOp(QuantOperatorBase):
 
 
 class QDQDirect8BitOp(QDQOperatorBase):
-    def __init__(self, onnx_quantizer, onnx_node, disable_qdq_for_node_output=False):
+    def __init__(self, onnx_quantizer, onnx_node):
         self.quantizer = onnx_quantizer
         self.node = onnx_node
-        self.disable_qdq_for_node_output = disable_qdq_for_node_output
 
     def quantize(self):
         self.quantizer.quantize_tensor(self.node.input[0])

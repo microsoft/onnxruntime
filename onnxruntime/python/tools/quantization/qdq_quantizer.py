@@ -27,7 +27,7 @@ from .onnx_quantizer import ONNXQuantizer
 
 class QDQQuantizer(ONNXQuantizer):
     def __init__(self, model, per_channel, reduce_range, mode, static, weight_qType, input_qType, tensors_range,
-                 nodes_to_quantize, nodes_to_exclude, op_types_to_quantize, op_types_to_exclude_output_quantization=[], extra_options={}):
+                 nodes_to_quantize, nodes_to_exclude, op_types_to_quantize, extra_options={}):
         ONNXQuantizer.__init__(self, model, per_channel, reduce_range, mode, static, weight_qType, input_qType,
                                tensors_range, nodes_to_quantize, nodes_to_exclude, op_types_to_quantize, extra_options)
         self.tensors_to_quantize = []
@@ -36,10 +36,12 @@ class QDQQuantizer(ONNXQuantizer):
         self.nodes_to_remove = []
 
         # Specific op types to exclude qdq quantization for their outputs.
-        # In some cases, for example QDQ BERT model for TensorRT, 
-        # adding QDQ for node's output may end up with worse accuracy.
+        # In TRT, it's not recommended to quantize outputs for weighted ops such as Conv, Matmul, Gemm
+        # because those ops may be followed by nodes that require high resolution inputs.
+        # Adding QDQ for those ops' output may end up with worse accuracy.
         # So, we don't recommend to add QDQ to node's output under such condition.
-        self.op_types_to_exclude_output_quantization = op_types_to_exclude_output_quantization
+        self.op_types_to_exclude_output_quantization = [] if 'OpTypesToExcludeOutputQuantizatioin' not in extra_options \
+                                                        else extra_options['OpTypesToExcludeOutputQuantizatioin']
 
         # In some cases, for example QDQ BERT model for TensorRT,
         # QDQ should always appear as a pair. 

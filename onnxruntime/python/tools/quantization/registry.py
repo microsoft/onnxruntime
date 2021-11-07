@@ -80,8 +80,7 @@ def CreateOpQuantizer(onnx_quantizer, node):
     return QuantOperatorBase(onnx_quantizer, node)
 
 
-def CreateQDQQuantizer(onnx_quantizer, node, op_types_to_exclude_output_quantization):
-    disable_qdq_for_node_output = True if node.op_type in op_types_to_exclude_output_quantization else False
+def CreateQDQQuantizer(onnx_quantizer, node):
     if node.op_type in QDQRegistry.keys():
-        return QDQRegistry[node.op_type](onnx_quantizer, node, disable_qdq_for_node_output)
-    return QDQOperatorBase(onnx_quantizer, node, disable_qdq_for_node_output)
+        return QDQRegistry[node.op_type](onnx_quantizer, node)
+    return QDQOperatorBase(onnx_quantizer, node)
