@@ -1792,21 +1792,33 @@ def build_nuget_package(source_dir, build_dir, configs, use_cuda, use_openvino, 
     if use_winml:
         package_name = "/p:OrtPackageId=\"Microsoft.AI.MachineLearning\""
         target_name = "/t:CreateWindowsAIPackage"
-    elif use_openvino:
-        execution_provider = "/p:ExecutionProvider=\"openvino\""
-        package_name = "/p:OrtPackageId=\"Microsoft.ML.OnnxRuntime.OpenVino\""
-    elif use_tensorrt:
-        execution_provider = "/p:ExecutionProvider=\"tensorrt\""
-        package_name = "/p:OrtPackageId=\"Microsoft.ML.OnnxRuntime.TensorRT\""
-    elif use_dnnl:
-        execution_provider = "/p:ExecutionProvider=\"dnnl\""
-        package_name = "/p:OrtPackageId=\"Microsoft.ML.OnnxRuntime.DNNL\""
-    elif use_cuda:
-        package_name = "/p:OrtPackageId=\"Microsoft.ML.OnnxRuntime.Gpu\""
-    elif use_nuphar:
-        package_name = "/p:OrtPackageId=\"Microsoft.ML.OnnxRuntime.Nuphar\""
+        providers = []
+        if use_openvino:
+            providers.append("openvino")
+        if use_tensorrt:
+            providers.append("tensorrt")
+        if use_cuda:
+            providers.append("cuda")
+        all_providers = ','.join(providers)
+        if len(all_providers) > 0:
+            execution_provider = "/p:ExecutionProvider=\"" + all_providers + "\""
+
     else:
-        pass
+        if use_openvino:
+            execution_provider = "/p:ExecutionProvider=\"openvino\""
+            package_name = "/p:OrtPackageId=\"Microsoft.ML.OnnxRuntime.OpenVino\""
+        elif use_tensorrt:
+            execution_provider = "/p:ExecutionProvider=\"tensorrt\""
+            package_name = "/p:OrtPackageId=\"Microsoft.ML.OnnxRuntime.TensorRT\""
+        elif use_dnnl:
+            execution_provider = "/p:ExecutionProvider=\"dnnl\""
+            package_name = "/p:OrtPackageId=\"Microsoft.ML.OnnxRuntime.DNNL\""
+        elif use_cuda:
+            package_name = "/p:OrtPackageId=\"Microsoft.ML.OnnxRuntime.Gpu\""
+        elif use_nuphar:
+            package_name = "/p:OrtPackageId=\"Microsoft.ML.OnnxRuntime.Nuphar\""
+        else:
+            pass
 
     # set build directory based on build_dir arg
     native_dir = os.path.normpath(os.path.join(source_dir, build_dir))

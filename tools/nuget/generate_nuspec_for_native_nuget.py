@@ -105,10 +105,22 @@ def parse_arguments():
     parser.add_argument("--is_release_build", required=False, default=None, type=str,
                         help="Flag indicating if the build is a release build. Accepted values: true/false.")
     parser.add_argument("--execution_provider", required=False, default='None', type=str,
-                        choices=['cuda', 'dnnl', 'openvino', 'tensorrt', 'None'],
-                        help="The selected execution provider for this build.")
+                        help="The selected execution providers for this build.")
+    args = parser.parse_args()
 
-    return parser.parse_args()
+    execution_provider_list = args.execution_provider.split(",")
+
+    execution_provider_list_has_none = 'None' in execution_provider_list
+    if execution_provider_list_has_none and len(execution_provider_list) > 1:
+        raise Exception('The selected execution providers cannot contain None and other providers at the same time.')
+
+    args.__dict__['include_cpu_only'] = execution_provider_list_has_none
+    args.__dict__['include_cuda'] =  'cuda' in execution_provider_list
+    args.__dict__['include_dnnl'] =  'dnnl' in execution_provider_list
+    args.__dict__['include_openvino'] =  'openvino' in execution_provider_list
+    args.__dict__['include_tensorrt'] =  'tensorrt' in execution_provider_list
+
+    return args
 
 
 def generate_id(list, package_name):
@@ -332,19 +344,19 @@ def generate_files(list, args):
                                    'include\\onnxruntime\\core\\providers\\cpu\\cpu_provider_factory.h') +
                       '" target="build\\native\\include" />')
 
-    if args.execution_provider == 'openvino':
+    if args.include_openvino:
         files_list.append('<file src=' + '"' +
                           os.path.join(args.sources_path,
                                        'include\\onnxruntime\\core\\providers\\openvino\\openvino_provider_factory.h') +
                           '" target="build\\native\\include" />')
 
-    if args.execution_provider == 'tensorrt':
+    if args.include_tensorrt:
         files_list.append('<file src=' + '"' +
                           os.path.join(args.sources_path,
                                        'include\\onnxruntime\\core\\providers\\tensorrt\\tensorrt_provider_factory.h') +
                           '" target="build\\native\\include" />')
 
-    if args.execution_provider == 'dnnl':
+    if args.include_dnnl:
         files_list.append('<file src=' + '"' +
                           os.path.join(args.sources_path,
                                        'include\\onnxruntime\\core\\providers\\dnnl\\dnnl_provider_factory.h') +
@@ -433,40 +445,40 @@ def generate_files(list, args):
                           runtimes_target + args.target_architecture + '\\_native' +
                           '\\Microsoft.AI.MachineLearning.pdb" />')
     # Process execution providers which are built as shared libs
-    if args.execution_provider == "tensorrt" and not is_ado_packaging_build:
+    if args.include_tensorrt and not is_ado_packaging_build:
         files_list.append('<file src=' + '"' + os.path.join(args.native_build_path,
                           nuget_dependencies['providers_shared_lib']) +
-                          runtimes_target + args.target_architecture + '\\native" />')
+                          runtimes + ' />')
         files_list.append('<file src=' + '"' + os.path.join(args.native_build_path,
                           nuget_dependencies['cuda_ep_shared_lib']) +
-                          runtimes_target + args.target_architecture + '\\native" />')
+                          runtimes + ' />')
         files_list.append('<file src=' + '"' + os.path.join(args.native_build_path,
                           nuget_dependencies['tensorrt_ep_shared_lib']) +
-                          runtimes_target + args.target_architecture + '\\native" />')
+                          runtimes + ' />')
 
-    if args.execution_provider == "dnnl":
+    if args.include_dnnl:
         files_list.append('<file src=' + '"' + os.path.join(args.native_build_path,
                           nuget_dependencies['providers_shared_lib']) +
-                          runtimes_target + args.target_architecture + '\\native" />')
+                          runtimes + ' />')
         files_list.append('<file src=' + '"' + os.path.join(args.native_build_path,
                           nuget_dependencies['dnnl_ep_shared_lib']) +
-                          runtimes_target + args.target_architecture + '\\native" />')
+                          runtimes + ' />')
 
-    if args.execution_provider == "openvino":
+    if args.include_openvino:
         files_list.append('<file src=' + '"' + os.path.join(args.native_build_path,
                           nuget_dependencies['providers_shared_lib']) +
-                          runtimes_target + args.target_architecture + '\\native" />')
+                          runtimes + ' />')
         files_list.append('<file src=' + '"' + os.path.join(args.native_build_path,
                           nuget_dependencies['openvino_ep_shared_lib']) +
-                          runtimes_target + args.target_architecture + '\\native" />')
+                          runtimes + ' />')
 
-    if args.execution_provider == "cuda" or is_cuda_gpu_package and not is_ado_packaging_build:
+    if args.include_cuda or is_cuda_gpu_package and not is_ado_packaging_build:
         files_list.append('<file src=' + '"' + os.path.join(args.native_build_path,
                           nuget_dependencies['providers_shared_lib']) +
-                          runtimes_target + args.target_architecture + '\\native" />')
+                          runtimes + ' />')
         files_list.append('<file src=' + '"' + os.path.join(args.native_build_path,
                           nuget_dependencies['cuda_ep_shared_lib']) +
-                          runtimes_target + args.target_architecture + '\\native" />')
+                          runtimes + ' />')
 
     # process all other library dependencies
     if is_cpu_package or is_cuda_gpu_package or is_dml_package or is_mklml_package:
@@ -614,10 +626,10 @@ def validate_platform():
         raise Exception('Native Nuget generation is currently supported only on Windows, Linux, and MacOS')
 
 
-def validate_execution_provider(execution_provider):
+def validate_execution_provider(args):
     if is_linux():
-        if not (execution_provider == 'None' or execution_provider == 'dnnl' or execution_provider == 'cuda'
-                or execution_provider == 'tensorrt' or execution_provider == 'openvino'):
+        if not (args.include_cpu_only or args.include_dnnl or args.include_cuda
+                or args.include_tensorrt or args.include_openvino):
             raise Exception('On Linux platform nuget generation is supported only '
                             'for cpu|cuda|dnnl|tensorrt|openvino execution providers.')
 
@@ -628,7 +640,7 @@ def main():
 
     validate_platform()
 
-    validate_execution_provider(args.execution_provider)
+    validate_execution_provider(args)
 
     if (args.is_release_build.lower() != 'true' and args.is_release_build.lower() != 'false'):
         raise Exception('Only valid options for IsReleaseBuild are: true and false')
