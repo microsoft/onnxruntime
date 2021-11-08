@@ -240,7 +240,7 @@ std::vector<int64_t> ChannelFirstToLastPerm(size_t rank) {
 }
 
 // Adds 1 dimensions to indices of shape corresponding to axes. Unsafe if axes has negative/duplicated entries.
-static std::vector<int64_t> UnsqueezeShape(const std::vector<int64_t>& shape, const std::vector<int64_t>& axes) {
+static std::vector<int64_t> UnsqueezeShape(gsl::span<const int64_t> shape, const std::vector<int64_t>& axes) {
   size_t new_rank = shape.size() + axes.size();
   std::vector<int64_t> new_shape(new_rank);
 

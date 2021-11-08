@@ -600,7 +600,7 @@ Status TensorProtoToTensor(const Env& env, const ORTCHAR_T* model_path,
                            Tensor& tensor) {
   // Validate tensor compatibility
   std::vector<int64_t> tensor_shape_vec = GetTensorShapeFromTensorProto(tensor_proto);
-  if (tensor_shape_vec != tensor.Shape().GetDims()) {
+  if (gsl::make_span(tensor_shape_vec) != tensor.Shape().GetDims()) {
     return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "TensorProtoToTensor() tensor shape mismatch!");
   }
   const DataTypeImpl* const source_type = DataTypeImpl::TensorTypeFromONNXEnum(tensor_proto.data_type())->GetElementType();

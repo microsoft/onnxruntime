@@ -215,16 +215,16 @@ void TestBiasGeluGradBroadcastBias(const std::string& op, int opset_version, con
   const std::vector<float> dY(input_size, 1.0f);
   const std::vector<float> B = ValueRange(bias_size, 1.0f);
 
-  test.AddInput<float>("dY", input_shape.GetDims(), dY);
-  test.AddInput<float>("X", input_shape.GetDims(), X);
-  test.AddInput<float>("B", bias_shape.GetDims(), B);
+  test.AddInput<float>("dY", input_shape.GetDimsAsVector(), dY);
+  test.AddInput<float>("X", input_shape.GetDimsAsVector(), X);
+  test.AddInput<float>("B", bias_shape.GetDimsAsVector(), B);
 
   std::vector<float> expected_dX{};
   for (int64_t i = 0; i < input_size; ++i) {
     expected_dX.push_back(compute_gelu_grad_scalar_fn(dY[i], X[i] + B[i % bias_size]));
   }
 
-  test.AddOutput("dX", input_shape.GetDims(), expected_dX);
+  test.AddOutput("dX", input_shape.GetDimsAsVector(), expected_dX);
 
   test.Run();
 }

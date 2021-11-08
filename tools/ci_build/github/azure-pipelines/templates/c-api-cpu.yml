@@ -55,11 +55,13 @@ jobs:
         ONNXRUNTIME_ARCH: x64
         ONNXRUNTIME_CFLAGS: '-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all'
         ONNXRUNTIME_CXXFLAGS: '-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all'
+        NODEJS_BINDING_ARCH: x64
       ARCH_AARCH64:
         BASE_IMAGE: arm64v8/centos:7
         ONNXRUNTIME_ARCH: aarch64
         ONNXRUNTIME_CFLAGS: '-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -O3 -Wl,--strip-all'
         ONNXRUNTIME_CXXFLAGS: '-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -O3 -Wl,--strip-all'
+        NODEJS_BINDING_ARCH: arm64
   pool: 'Linux-CPU'
   steps:
     - template: set-version-number-variables-step.yml
@@ -76,7 +78,7 @@ jobs:
           mkdir -p $HOME/.onnx
           docker run --rm -e CFLAGS="$(ONNXRUNTIME_CFLAGS)" -e CXXFLAGS="$(ONNXRUNTIME_CXXFLAGS)" --volume /data/onnx:/data/onnx:ro --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build \
           --volume $HOME/.onnx:/home/onnxruntimedev/.onnx -e NIGHTLY_BUILD onnxruntimecpubuildcentos7$(ONNXRUNTIME_ARCH) /bin/bash -c "python3 \
-          /onnxruntime_src/tools/ci_build/build.py --build_java --build_dir /build --config Release \
+          /onnxruntime_src/tools/ci_build/build.py --build_java --build_nodejs --build_dir /build --config Release \
           --skip_submodule_sync  --parallel --build_shared_lib ${{ parameters.AdditionalBuildFlags }} && cd /build/Release && make install DESTDIR=/build/linux-$(ONNXRUNTIME_ARCH)"
         workingDirectory: $(Build.SourcesDirectory)
 
@@ -102,6 +104,12 @@ jobs:
           artifactName: 'onnxruntime-linux-$(ONNXRUNTIME_ARCH)-$(OnnxRuntimeVersion)'
           artifactNameNoVersionString: 'onnxruntime-linux-$(ONNXRUNTIME_ARCH)'
           libraryName: 'libonnxruntime.so.$(OnnxRuntimeVersion)'
+
+    - template: nodejs-artifacts-package-and-publish-steps-posix.yml
+      parameters:
+          arch: '$(NODEJS_BINDING_ARCH)'
+          os: 'linux'
+          artifactName: 'drop-onnxruntime-nodejs-linux-$(ONNXRUNTIME_ARCH)'
 
     - template: component-governance-component-detection-steps.yml
       parameters :
@@ -140,18 +148,24 @@ jobs:
       
     - template: mac-packaging.yml
       parameters :
-        AdditionalBuildFlags : ${{ parameters.AdditionalBuildFlags }} --build_java --cmake_extra_defines CMAKE_OSX_ARCHITECTURES=arm64
+        AdditionalBuildFlags : ${{ parameters.AdditionalBuildFlags }} --build_java --build_nodejs --cmake_extra_defines CMAKE_OSX_ARCHITECTURES=arm64
         MacosArch: arm64
+        BuildJava: true
+        BuildNodejs: true
         
     - template: mac-packaging.yml
       parameters :
         AdditionalBuildFlags : ${{ parameters.AdditionalBuildFlags }} --cmake_extra_defines CMAKE_OSX_ARCHITECTURES="arm64;x86_64"
         MacosArch: universal2
+        BuildJava: false
+        BuildNodejs: false
 
     - template: mac-packaging.yml
       parameters :
-        AdditionalBuildFlags : ${{ parameters.AdditionalBuildFlags }} --build_java
+        AdditionalBuildFlags : ${{ parameters.AdditionalBuildFlags }} --build_java --build_nodejs
         MacosArch: x86_64
+        BuildJava: true
+        BuildNodejs: true
 
     - task: PublishPipelineArtifact@1
       inputs:
@@ -238,6 +252,7 @@ jobs:
     buildparameter: ${{ parameters.AdditionalBuildFlags }} ${{ parameters.AdditionalWinBuildFlags}}
     runTests: ${{ parameters.RunOnnxRuntimeTests }}
     buildJava: false
+    buildNodejs: false
 
 - template: win-ci.yml
   parameters:
@@ -251,6 +266,7 @@ jobs:
     buildparameter: --arm ${{ parameters.AdditionalBuildFlags }}  ${{ parameters.AdditionalWinBuildFlags}}
     runTests: false
     buildJava: false
+    buildNodejs: false
 
 - template: win-ci.yml
   parameters:
@@ -261,9 +277,10 @@ jobs:
     buildArch: x64
     msbuildPlatform: arm64
     packageName: arm64
-    buildparameter: --arm64 ${{ parameters.AdditionalBuildFlags }}  ${{ parameters.AdditionalWinBuildFlags}}
+    buildparameter: --build_nodejs --arm64 ${{ parameters.AdditionalBuildFlags }}  ${{ parameters.AdditionalWinBuildFlags}}
     runTests: false
     buildJava: false
+    buildNodejs: true
 
 - template: win-ci.yml
   parameters:
@@ -274,10 +291,10 @@ jobs:
     buildArch: x64
     msbuildPlatform: x64
     packageName: x64
-    buildparameter: --build_java ${{ parameters.AdditionalBuildFlags }}  ${{ parameters.AdditionalWinBuildFlags}}
+    buildparameter: --build_java --build_nodejs ${{ parameters.AdditionalBuildFlags }}  ${{ parameters.AdditionalWinBuildFlags}}
     runTests: ${{ parameters.RunOnnxRuntimeTests }}
     buildJava: true
-
+    buildNodejs: true
 
 - job: Jar_Packaging
   workspace:
@@ -543,6 +560,241 @@ jobs:
     displayName: 'Clean Agent Directories'
     condition: always()
 
+- job: Nodejs_Packaging_CPU
+  workspace:
+    clean: all
+  pool: 'Win-CPU-2021'
+  variables:
+    ${{ if eq(parameters.IsReleaseBuild, true) }}:
+      NpmPackagingMode: 'release'
+    ${{ if not(eq(parameters.IsReleaseBuild, true)) }}:
+      NpmPackagingMode: 'dev'
+    breakCodesignValidationInjection: ${{ parameters.DoEsrp }}
+  dependsOn:
+  - Linux_C_API_Packaging_CPU_x64
+  - MacOS_C_API_Packaging_CPU_x64
+  - Windows_Packaging_CPU_x64_${{ parameters.BuildVariant }}
+  - Windows_Packaging_CPU_arm64_${{ parameters.BuildVariant }}
+  condition: succeeded()
+  steps:
+  - checkout: self
+    submodules: true
+  - task: DownloadPipelineArtifact@0
+    displayName: 'Download Pipeline Artifact - NuGet (Win x64)'
+    inputs:
+      artifactName: 'onnxruntime-win-x64'
+      targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+
+  - task: DownloadPipelineArtifact@0
+    displayName: 'Download Pipeline Artifact - NuGet (Win ARM64)'
+    inputs:
+      artifactName: 'onnxruntime-win-arm64'
+      targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+
+  - task: DownloadPipelineArtifact@0
+    displayName: 'Download Pipeline Artifact - NuGet (OSX)'
+    inputs:
+      artifactName: 'onnxruntime-osx'
+      targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+
+  - task: DownloadPipelineArtifact@0
+    displayName: 'Download Pipeline Artifact - NuGet (Linux x64)'
+    inputs:
+      artifactName: 'onnxruntime-linux-x64'
+      targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+
+  - task: DownloadPipelineArtifact@0
+    displayName: 'Download Pipeline Artifact - NuGet (Linux aarch64)'
+    inputs:
+      artifactName: 'onnxruntime-linux-aarch64'
+      targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+
+  - task: DownloadPipelineArtifact@0
+    displayName: 'Download Pipeline Artifact - Nodejs (Win x64)'
+    inputs:
+      artifactName: 'drop-onnxruntime-nodejs-win-x64'
+      targetPath: '$(Build.BinariesDirectory)/nodejs-artifacts/win32/x64/'
+
+  - task: DownloadPipelineArtifact@0
+    displayName: 'Download Pipeline Artifact - Nodejs (Win ARM64)'
+    inputs:
+      artifactName: 'drop-onnxruntime-nodejs-win-arm64'
+      targetPath: '$(Build.BinariesDirectory)/nodejs-artifacts/win32/arm64/'
+
+  - task: DownloadPipelineArtifact@0
+    displayName: 'Download Pipeline Artifact - Nodejs (macOS x86_64)'
+    inputs:
+      artifactName: 'drop-onnxruntime-nodejs-osx-x86_64'
+      targetPath: '$(Build.BinariesDirectory)/nodejs-artifacts/darwin/x64/'
+
+  - task: DownloadPipelineArtifact@0
+    displayName: 'Download Pipeline Artifact - Nodejs (macOS arm64)'
+    inputs:
+      artifactName: 'drop-onnxruntime-nodejs-osx-arm64'
+      targetPath: '$(Build.BinariesDirectory)/nodejs-artifacts/darwin/arm64/'
+
+  - task: DownloadPipelineArtifact@0
+    displayName: 'Download Pipeline Artifact - Nodejs (Linux x64)'
+    inputs:
+      artifactName: 'drop-onnxruntime-nodejs-linux-x64'
+      targetPath: '$(Build.BinariesDirectory)/nodejs-artifacts/linux/x64/'
+
+  - task: DownloadPipelineArtifact@0
+    displayName: 'Download Pipeline Artifact - Nodejs (Linux aarch64)'
+    inputs:
+      artifactName: 'drop-onnxruntime-nodejs-linux-aarch64'
+      targetPath: '$(Build.BinariesDirectory)/nodejs-artifacts/linux/arm64/'
+
+  - task: DownloadPipelineArtifact@0
+    displayName: 'Download Pipeline Artifact - NuGet'
+    inputs:
+      artifactName: 'drop-extra'
+      targetPath: '$(Build.BinariesDirectory)/extra-artifact'
+
+  - task: PowerShell@2
+    displayName: 'PowerShell Script'
+    inputs:
+      targetType: filePath
+      filePath: $(Build.SourcesDirectory)\tools\ci_build\github\windows\extract_nuget_files.ps1
+
+  - script: |
+     dir
+    workingDirectory: '$(Build.BinariesDirectory)/nuget-artifact'
+    displayName: 'List artifacts'
+
+  - script: |
+     npm ci
+    workingDirectory: '$(Build.SourcesDirectory)/js'
+    displayName: 'Install NPM packages /js'
+  - script: |
+     npm ci
+    workingDirectory: '$(Build.SourcesDirectory)/js/common'
+    displayName: 'Install NPM packages /js/common'
+  - script: |
+     npm ci
+    workingDirectory: '$(Build.SourcesDirectory)/js/node'
+    displayName: 'Install NPM packages /js/node'
+
+  # Node.js binding win32/x64
+  - task: CopyFiles@2
+    displayName: 'Copy nuget binaries to: $(Build.SourcesDirectory)\js\node\bin\napi-v3\win32\x64\'
+    inputs:
+      SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\nuget-artifacts\onnxruntime-win-x64\lib'
+      Contents: '*.dll'
+      TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\win32\x64'
+  - task: CopyFiles@2
+    displayName: 'Copy nodejs binaries to: $(Build.SourcesDirectory)\js\node\bin\napi-v3\win32\x64\'
+    inputs:
+      SourceFolder: '$(Build.BinariesDirectory)\nodejs-artifacts\win32\x64'
+      Contents: '*.node'
+      TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\win32\x64'
+
+  # Node.js binding win32/arm64
+  - task: CopyFiles@2
+    displayName: 'Copy nuget binaries to: $(Build.SourcesDirectory)\js\node\bin\napi-v3\win32\arm64\'
+    inputs:
+      SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\nuget-artifacts\onnxruntime-win-arm64\lib'
+      Contents: '*.dll'
+      TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\win32\arm64'
+  - task: CopyFiles@2
+    displayName: 'Copy nodejs binaries to: $(Build.SourcesDirectory)\js\node\bin\napi-v3\win32\arm64\'
+    inputs:
+      SourceFolder: '$(Build.BinariesDirectory)\nodejs-artifacts\win32\arm64'
+      Contents: '*.node'
+      TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\win32\arm64'
+
+  # Node.js binding linux/x64
+  - task: CopyFiles@2
+    displayName: 'Copy nuget binaries to: $(Build.SourcesDirectory)\js\node\bin\napi-v3\linux\x64\'
+    inputs:
+      SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\nuget-artifacts\onnxruntime-linux-x64\lib'
+      Contents: 'libonnxruntime.so.*'
+      TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\linux\x64'
+  - task: CopyFiles@2
+    displayName: 'Copy nodejs binaries to: $(Build.SourcesDirectory)\js\node\bin\napi-v3\linux\x64\'
+    inputs:
+      SourceFolder: '$(Build.BinariesDirectory)\nodejs-artifacts\linux\x64'
+      Contents: '*.node'
+      TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\linux\x64'
+
+  # Node.js binding linux/arm64
+  - task: CopyFiles@2
+    displayName: 'Copy nuget binaries to: $(Build.SourcesDirectory)\js\node\bin\napi-v3\linux\arm64\'
+    inputs:
+      SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\nuget-artifacts\onnxruntime-linux-aarch64\lib'
+      Contents: 'libonnxruntime.so.*'
+      TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\linux\arm64'
+  - task: CopyFiles@2
+    displayName: 'Copy nodejs binaries to: $(Build.SourcesDirectory)\js\node\bin\napi-v3\linux\arm64\'
+    inputs:
+      SourceFolder: '$(Build.BinariesDirectory)\nodejs-artifacts\linux\arm64'
+      Contents: '*.node'
+      TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\linux\arm64'
+
+  # Node.js binding darwin/x64
+  - task: CopyFiles@2
+    displayName: 'Copy nuget binaries to: $(Build.SourcesDirectory)\js\node\bin\napi-v3\darwin\x64\'
+    inputs:
+      SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\nuget-artifacts\onnxruntime-osx-x86_64\lib'
+      Contents: 'libonnxruntime.*.dylib'
+      TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\darwin\x64'
+  - task: CopyFiles@2
+    displayName: 'Copy nodejs binaries to: $(Build.SourcesDirectory)\js\node\bin\napi-v3\darwin\x64\'
+    inputs:
+      SourceFolder: '$(Build.BinariesDirectory)\nodejs-artifacts\darwin\x64'
+      Contents: '*.node'
+      TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\darwin\x64'
+
+  # Node.js binding darwin/arm64
+  - task: CopyFiles@2
+    displayName: 'Copy nuget binaries to: $(Build.SourcesDirectory)\js\node\bin\napi-v3\darwin\arm64\'
+    inputs:
+      SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\nuget-artifacts\onnxruntime-osx-arm64\lib'
+      Contents: 'libonnxruntime.*.dylib'
+      TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\darwin\arm64'
+  - task: CopyFiles@2
+    displayName: 'Copy nodejs binaries to: $(Build.SourcesDirectory)\js\node\bin\napi-v3\darwin\arm64\'
+    inputs:
+      SourceFolder: '$(Build.BinariesDirectory)\nodejs-artifacts\darwin\arm64'
+      Contents: '*.node'
+      TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\darwin\arm64'
+
+  - task: PowerShell@2
+    inputs:
+      filePath: '$(Build.SourcesDirectory)\tools\ci_build\github\js\pack-npm-packages.ps1'
+      arguments: '$(NpmPackagingMode) $(Build.SourcesDirectory) node'
+      workingDirectory: $(Build.BinariesDirectory)
+      errorActionPreference: stop
+    displayName: 'Pack NPM packages'
+
+  - task: CopyFiles@2
+    displayName: 'Copy onnxruntime-common package to staging directory'
+    inputs:
+      SourceFolder: '$(Build.SourcesDirectory)/js/common/'
+      Contents: 'onnxruntime-common-*.tgz'
+      TargetFolder: '$(Build.ArtifactStagingDirectory)'
+
+  - task: CopyFiles@2
+    displayName: 'Copy onnxruntime-node package to staging directory'
+    inputs:
+      SourceFolder: '$(Build.SourcesDirectory)/js/node/'
+      Contents: 'onnxruntime-node-*.tgz'
+      TargetFolder: '$(Build.ArtifactStagingDirectory)'
+
+  - task: PublishPipelineArtifact@0
+    displayName: 'Publish NPM packages files'
+    inputs:
+      artifactName: 'NPM_packages'
+      targetPath: '$(Build.ArtifactStagingDirectory)'
+
+  - template: component-governance-component-detection-steps.yml
+    parameters :
+      condition : 'succeeded'
+
+  - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+    displayName: 'Clean Agent Directories'
+    condition: always()
+
 - template: ../nuget/templates/test_win.yml
   parameters:
     AgentPool : 'Win-CPU-2021'
@@ -560,6 +812,20 @@ jobs:
   parameters:
     AgentPool : macOS-11
     ArtifactSuffix: 'CPU'
+
+- template: ../nodejs/templates/test_win.yml
+  parameters:
+    AgentPool : 'Win-CPU-2021'
+    JobSuffix : 'Win_CPU_x64'
+
+- template: ../nodejs/templates/test_linux.yml
+  parameters:
+    AgentPool : 'Linux-CPU'
+    JobSuffix : 'Linux_CPU_x64'
+
+- template: ../nodejs/templates/test_macos.yml
+  parameters:
+    JobSuffix : 'macOS_CPU_x64'
 
 - job: Publish_NuGet_Package_And_Report
   workspace:
