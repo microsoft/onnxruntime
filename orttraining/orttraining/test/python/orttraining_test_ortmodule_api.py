@@ -4324,15 +4324,21 @@ def test_serialize_ortmodule():
         ort_model_2, pt_model)
 
 
-def test_trilu():
-    class SimpleTriuModel(torch.nn.Module):
-        def forward(self, x, k):
-            y = torch.triu(x, k)
-            return y
+@pytest.mark.parametrize("batch_size, M, N", [(1, 2, 3), (1, 4, 3), (1, 5, 5), (10, 3, 4), (10, 4, 3), (10, 4, 4)])
+@pytest.mark.parametrize("k", [None, -5, -3, -1, 0, 2, 4])
+@pytest.mark.parametrize("has_upper, upper", [(True, 1), (True, 0), (False, 1)])
+def test_trilu_grad(batch_size, M, N, k, has_upper, upper):
+    class NeuralNetTrilu(torch.nn.Module):
+        def __init__(self, has_upper, upper):
+            super(NeuralNetTrilu, self).__init__()
+            self.upper = upper
+            self.has_upper = has_upper
 
-    class SimpleTrilModel(torch.nn.Module):
         def forward(self, x, k):
-            y = torch.tril(x, k)
+            if self.has_upper is False or self.upper == 1:
+                y = torch.triu(x) if k is None else torch.triu(x, k)
+            else:
+                y = torch.tril(x) if k is None else torch.tril(x, k)
             return y
 
     def run_step(model, x, k):
@@ -4342,18 +4348,14 @@ def test_trilu():
         return prediction, loss
 
     device = 'cuda'
-    pt_model = random.choice([SimpleTriuModel(), SimpleTrilModel()]).to(device)
+    pt_model = NeuralNetTrilu(has_upper, upper).to(device)
     ort_model = ORTModule(copy.deepcopy(pt_model))
 
-    for M in range(1, 5):
-        for N in range(1, 5):
-            batch_size = random.randrange(1000)
-            pt_x = torch.rand((batch_size, M, N),
-                              requires_grad=True, device=device)
-            ort_x = copy.deepcopy(pt_x)
-            k = random.randrange(-M, M)
+    pt_x = torch.rand((batch_size, M, N), requires_grad=True, device=device)
+    ort_x = copy.deepcopy(pt_x)
 
-            pt_prediction, pt_loss = run_step(pt_model, pt_x, k)
-            ort_prediction, ort_loss = run_step(ort_model, ort_x, k)
-            _test_helpers.assert_values_are_close(pt_prediction, ort_prediction)
-            _test_helpers.assert_values_are_close(pt_loss, ort_loss)
+    pt_prediction, pt_loss = run_step(pt_model, pt_x, k)
+    ort_prediction, ort_loss = run_step(ort_model, ort_x, k)
+    _test_helpers.assert_values_are_close(pt_prediction, ort_prediction)
+    _test_helpers.assert_values_are_close(pt_loss, ort_loss)
+    _test_helpers.assert_values_are_close(pt_x.grad, ort_x.grad)

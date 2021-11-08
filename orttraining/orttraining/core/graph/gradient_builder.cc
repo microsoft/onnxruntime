@@ -97,11 +97,10 @@ IMPLEMENT_GRADIENT_BUILDER(GetTanhGradient) {
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetTriluGradient) {
-  auto attributes = SrcNodeAttributes();
   if (GetSrcNodeInputSize() == 1) {
-    return std::vector<NodeDef>{NodeDef(OpDef{"Trilu", kMSDomain, 1}, {GO(0)}, {GI(0)}, attributes)};
+    return std::vector<NodeDef>{NodeDef(OpDef{"Trilu", kMSDomain, 1}, {GO(0)}, {GI(0)}, SrcNodeAttributes())};
   } else if (GetSrcNodeInputSize() == 2) {
-    return std::vector<NodeDef>{NodeDef(OpDef{"Trilu", kMSDomain, 1}, {GO(0), I(1)}, {GI(0)}, attributes)};
+    return std::vector<NodeDef>{NodeDef(OpDef{"Trilu", kMSDomain, 1}, {GO(0), I(1)}, {GI(0)}, SrcNodeAttributes())};
   } else {
     ORT_ENFORCE(false, "the number of input arguments must be 1 or 2");
   }
