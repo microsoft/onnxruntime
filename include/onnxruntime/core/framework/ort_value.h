@@ -49,9 +49,11 @@ struct OrtValue {
   template <typename T>
   const T& Get() const {
     ORT_ENFORCE(onnxruntime::DataTypeImpl::GetType<T>() == type_, onnxruntime::DataTypeImpl::GetType<T>(), " != ", type_);
+    ORT_ENFORCE(IsAllocated(), "OrtValue contains no data");
     return *static_cast<T*>(data_.get());
   }
 
+  // May return nullptr, if this OrtValue is an optional type and it is "None".
   template <typename T>
   T* GetMutable() {
     ORT_ENFORCE(onnxruntime::DataTypeImpl::GetType<T>() == type_, onnxruntime::DataTypeImpl::GetType<T>(), " != ", type_);

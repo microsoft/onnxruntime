@@ -18,6 +18,7 @@ from collections import namedtuple
 from inspect import signature
 import tempfile
 import os
+import pickle
 from distutils.version import LooseVersion
 
 from onnxruntime.training.ortmodule._custom_gradient_registry import register_gradient
@@ -320,6 +321,27 @@ class MyStrNet(torch.nn.Module):
         if my_str.lower() == 'hello':
             return x+1
         return x
+
+class SerializationNet(torch.nn.Module):
+    def __init__(self, input_size, hidden_size, num_classes):
+        super(SerializationNet, self).__init__()
+
+        self.fc1 = torch.nn.Linear(input_size, hidden_size)
+        self.relu = torch.nn.ReLU()
+        self.fc2 = torch.nn.Linear(hidden_size, num_classes)
+
+    def forward(self, input1):
+        out = self.fc1(input1)
+        out = self.relu(out)
+        out = self.fc2(out)
+        return out
+
+    def train_step(self, input):
+        out = self(input)
+        loss = out.sum()
+        loss.backward()
+
+        return out
 
 @pytest.fixture(scope='session', autouse=True)
 def run_before_test_session(request):
@@ -4269,3 +4291,32 @@ def test_opset_version_change(opset_version):
     # Check opset version on ONNX model
     exported_model = ort_model._torch_module._execution_manager(ort_model._is_training())._onnx_models.exported_model
     assert exported_model.opset_import[0].version == opset_version
+
+def test_serialize_ortmodule():
+
+    device = 'cuda'
+    N, D_in, H, D_out = 64, 784, 500, 10
+    pt_model = SerializationNet(D_in, H, D_out).to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+
+    x_1 = torch.randn(N, D_in, device=device)
+    x_2 = copy.deepcopy(x_1)
+    pt_out = pt_model.train_step(x_1)
+    ort_out = ort_model.train_step(x_2)
+    _test_helpers.assert_values_are_close(pt_out, ort_out)
+    _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model)
+    pt_out, ort_out = None, None
+
+    # Serialize ortmodule
+    serialized_model = pickle.dumps(ort_model)
+
+    # load from serialized string
+    ort_model_2 = pickle.loads(serialized_model)
+
+    x_1 = torch.randn(N, D_in, device=device)
+    x_2 = copy.deepcopy(x_1)
+    pt_out = pt_model.train_step(x_1)
+    ort_out = ort_model_2.train_step(x_2)
+    assert ort_out is not None
+    _test_helpers.assert_values_are_close(pt_out, ort_out)
+    _test_helpers.assert_gradients_match_and_reset_gradient(ort_model_2, pt_model)
