@@ -1163,5 +1163,177 @@ TEST(Loop, SequenceAsLoopCarriedDependency) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
+TEST(Loop, OptionalTypeAsLoopCarriedDependency) {
+  auto create_subgraph = [](bool is_optional_tensor_type) {
+    std::unordered_map<std::string, int> domain_to_version;
+    domain_to_version.insert({"", 16});  // Opset 16 model
+
+    // Since this test is being written at a time when only opset 15  has been released, we pass in
+    // 'false' for `allow_released_opset_only` while instantiating Model to allow this test to run
+    Model model("optional type in Loop subgraph carried dependency", false, ModelMetaData(), PathString(), {},
+                domain_to_version, std::vector<ONNX_NAMESPACE::FunctionProto>{},
+                DefaultLoggingManager().DefaultLogger(), false);
+
+    auto& graph = model.MainGraph();
+
+    std::vector<NodeArg*> inputs;
+    std::vector<NodeArg*> outputs;
+
+    /* Subgraph Passes an optional tensor through an Identity op on each loop iteration
+
+    Inputs: iter_num, cond_in, loop_var_0_in
+
+          loop_var_0_in                           cond_in            iter_num   
+                |                                    |                (unused)   
+           [Identity]                            [Identity] 
+                |                                    |
+                |                                 cond_out   
+           loop_var_0_out 
+   */
+
+    // graph inputs types.
+    TypeProto int64_scalar;
+    int64_scalar.mutable_tensor_type()->set_elem_type(TensorProto_DataType_INT64);
+    int64_scalar.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+
+    TypeProto bool_scalar;
+    bool_scalar.mutable_tensor_type()->set_elem_type(TensorProto_DataType_BOOL);
+    bool_scalar.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+
+    TypeProto optional;
+    auto* tensor_type = is_optional_tensor_type ? optional
+                                                      .mutable_optional_type()
+                                                      ->mutable_elem_type()
+                                                      ->mutable_tensor_type()
+                                                : optional
+                                                      .mutable_optional_type()
+                                                      ->mutable_elem_type()
+                                                      ->mutable_sequence_type()
+                                                      ->mutable_elem_type()
+                                                      ->mutable_tensor_type();
+
+    tensor_type->set_elem_type(TensorProto_DataType_FLOAT);
+    tensor_type->mutable_shape()->add_dim()->set_dim_value(1);
+
+    // graph inputs
+    auto& iter_num_in = graph.GetOrCreateNodeArg("iter_num_in", &int64_scalar);
+    auto& cond_in = graph.GetOrCreateNodeArg("cond_in", &bool_scalar);
+    auto& loop_var_0_in = graph.GetOrCreateNodeArg("loop_var_0_in", &optional);
+
+    // graph outputs
+    auto& cond_out = graph.GetOrCreateNodeArg("cond_out", &bool_scalar);
+    auto& loop_var_0_out = graph.GetOrCreateNodeArg("loop_var_0_out", &optional);
+
+    // cond_in -> cond_out
+    {
+      inputs = {&cond_in};
+      outputs = {&cond_out};
+
+      graph.AddNode("cond_in_identity", "Identity", "Forward cond_in to cond_out", inputs, outputs);
+    }
+
+    // iter_num_in -> loop_var_0_out
+    {
+      inputs = {&loop_var_0_in};
+      outputs = {&loop_var_0_out};
+
+      graph.AddNode("loop_var_out", "Identity", "optional pass-through", inputs, outputs);
+    }
+
+    graph.SetInputs({&iter_num_in, &cond_in, &loop_var_0_in});
+    graph.SetOutputs({&cond_out, &loop_var_0_out});
+
+    auto status = graph.Resolve();
+    EXPECT_EQ(status, Status::OK());
+
+    return graph.ToGraphProto();
+  };
+
+  // CASE 1: Optional tensor + none
+  {
+    OpTester test("Loop", 16);  // Opset 16 supports optional type
+
+    // Since this test is being written at a time when only opset 15  has been released, we set
+    // `test_allow_released_onnx_opset_only_` to 'false' to allow this test to run
+    test.test_allow_released_onnx_opset_only_ = false;
+
+    auto body = create_subgraph(true);
+    test.AddAttribute<GraphProto>("body", body);
+
+    test.AddInput<int64_t>("M", {1}, {3});
+    test.AddInput<bool>("cond", {1}, {true});
+    test.AddOptionalTypeTensorInput<float>("A", {}, nullptr);   // None
+    test.AddOptionalTypeTensorOutput<float>("Y", {}, nullptr);  // None
+
+    // Disable TensorRT on unsupported data type BOOL
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  }
+
+  // CASE 2: Optional tensor + non-none
+  {
+    OpTester test("Loop", 16);  // Opset 16 supports optional type
+    // Since this test is being written at a time when only opset 15  has been released, we set
+    // `test_allow_released_onnx_opset_only_` to 'false' to allow this test to run
+    test.test_allow_released_onnx_opset_only_ = false;
+
+    auto body = create_subgraph(true);
+    test.AddAttribute<GraphProto>("body", body);
+
+    test.AddInput<int64_t>("M", {1}, {3});
+    test.AddInput<bool>("cond", {1}, {true});
+    std::initializer_list<float> data = {-1.0856307f, 0.99734545f};
+    test.AddOptionalTypeTensorInput<float>("A", {2}, &data);   // Non-None
+    test.AddOptionalTypeTensorOutput<float>("Y", {2}, &data);  // Non-None
+
+    // Disable TensorRT on unsupported data type BOOL
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  }
+
+  // CASE 3: Optional tensor sequence + none
+  {
+    OpTester test("Loop", 16);  // Opset 16 supports optional type
+    // Since this test is being written at a time when only opset 15  has been released, we set
+    // `test_allow_released_onnx_opset_only_` to 'false' to allow this test to run
+    test.test_allow_released_onnx_opset_only_ = false;
+
+    auto body = create_subgraph(false);
+    test.AddAttribute<GraphProto>("body", body);
+
+    test.AddInput<int64_t>("M", {1}, {3});
+    test.AddInput<bool>("cond", {1}, {true});
+
+    test.AddOptionalTypeSeqInput<float>("A", nullptr);   // None
+    test.AddOptionalTypeSeqOutput<float>("Y", nullptr);  // None
+
+    // Disable TensorRT on unsupported data type BOOL
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  }
+
+  // CASE 4: Optional tensor sequence + non-none
+  {
+    OpTester test("Loop", 16);  // Opset 16 supports optional type
+    // Since this test is being written at a time when only opset 15  has been released, we set
+    // `test_allow_released_onnx_opset_only_` to 'false' to allow this test to run
+    test.test_allow_released_onnx_opset_only_ = false;
+
+    auto body = create_subgraph(false);
+    test.AddAttribute<GraphProto>("body", body);
+
+    test.AddInput<int64_t>("M", {1}, {3});
+    test.AddInput<bool>("cond", {1}, {true});
+
+    SeqTensors<float> seq;
+    seq.AddTensor({1}, {1.f});
+    seq.AddTensor({1}, {1.f});
+    seq.AddTensor({1}, {1.f});
+
+    test.AddOptionalTypeSeqInput<float>("A", &seq);   // Non-None
+    test.AddOptionalTypeSeqOutput<float>("Y", &seq);  // Non-None
+
+    // Disable TensorRT on unsupported data type BOOL
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  }
+}
+
 }  // namespace test
 }  // namespace onnxruntime

@@ -26,6 +26,10 @@ class OpKernelContext {
   MLDataType InputType(int index) const;
   MLDataType OutputType(int index) const;
 
+  const OrtValue* GetInputOrtValue(int index) const {
+    return GetInputMLValue(index);
+  }
+
   template <typename T>
   const T* Input(int index) const {
     const OrtValue* p_ml_value = GetInputMLValue(index);
@@ -69,13 +73,25 @@ class OpKernelContext {
     return *output_ptr;
   }
 
-  #if !defined(DISABLE_SPARSE_TENSORS)
+#if !defined(DISABLE_SPARSE_TENSORS)
   // Fetch a sparse-tensor output corresponding to the specified index.
   // shape must specify the shape of the underlying dense-tensor.
   // Memory allocation for the output may happen when this method is invoked,
   // unless static optimization pre-allocates it.
   SparseTensor* OutputSparse(int index, const TensorShape& shape);
-  #endif
+#endif
+
+  // Use this API to output a "None" of a specific type (e.g. Tensor) at specified index
+  template <typename T>
+  void OutputOptionalWithoutData(int index) {
+    auto* output_ort_value = GetOutputMLValue(index);
+
+    auto type = DataTypeImpl::GetType<T>();
+
+    output_ort_value->Init(nullptr,  // This OrtValue is "None" and has no data
+                           type,
+                           type->GetDeleteFunc());
+  }
 
   // Retrieve indexed shape obtained from memory planning before actual
   // computation. If the indexed shape cannot be inferred, this function returns
