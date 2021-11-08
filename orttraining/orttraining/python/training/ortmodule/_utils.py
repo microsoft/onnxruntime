@@ -14,6 +14,7 @@ import copy
 import inspect
 import torch
 from torch.utils.dlpack import from_dlpack, to_dlpack
+from torch._C import _from_dlpack
 import traceback
 from typing import List
 import types
@@ -43,6 +44,33 @@ def _ortvalue_to_torch_tensor(ortvalue, device):
     # So we need to convert the torch tensor to torch.bool type if OrtValue is bool tensor.
     dlpack_tensor = ortvalue.to_dlpack()
     return _torch_tensor_from_dl_pack(dlpack_tensor, ortvalue, device)
+
+
+def _ortvalues_to_torch_tensor(ortvalues, device):
+    if len(ortvalues) == 0:
+        return tuple()
+    if (hasattr(ortvalues, 'to_dlpack') and
+            all(ortvalue.data_type() != 'tensor(bool)' for ortvalue in ortvalues)):
+        if device == 'ort':
+            return tuple(ortvalues.to_dlpack(
+                lambda dlpack_structure: C_OrtValue.from_dlpack(dlpack_structure, False)))
+        return tuple(ortvalues.to_dlpack(_from_dlpack))
+
+    def _to_dlpack(ortvalues, my_tensor):
+        tensors = []
+        for ov in ortvalues:
+            if hasattr(ov, '_ortvalue'):
+                ov = ov._ortvalue
+            dlp = my_tensor(ov)
+            if ov.data_type() == 'tensor(bool)':
+                dlp = dlp.to(torch.bool)
+            tensors.append(dlp)
+        return tuple(tensors)
+
+    if 'ort' == (device if isinstance(device, str) else device.type):
+        return _to_dlpack(ortvalues, C.OrtValue.ort_from_dlpack)
+    return _to_dlpack(ortvalues, from_dlpack)
+
 
 def _torch_tensor_to_dlpack(tensor):
     if tensor.device.type == 'ort':

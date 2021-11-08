@@ -21,7 +21,6 @@ from onnxruntime.capi import _pybind_state as C
 from onnxruntime.capi.onnxruntime_inference_collection import get_ort_device_type
 
 import torch
-from torch._C import _from_dlpack
 import warnings
 
 
@@ -161,65 +160,30 @@ class TrainingManager(GraphExecutionManager):
                 require_grad_names_set = set(self._input_info.require_grad_names)
                 require_grad_names_index = 0
 
-                if hasattr(backward_outputs, 'to_dlpack'):
-                    # Fast version: all backward_outputs are converted first.
-                    # This version only works if backward_outputs is an OrtValueVector.
-                    if self._device.type == 'ort':
-                        # ort
-                        transfered_backward_outputs = backward_outputs.to_dlpack(
-                            lambda dlpack_structure: C_OrtValue.from_dlpack(dlpack_structure, False))
+                # Fast version: all backward_outputs are converted first.
+                # This version only works if backward_outputs is an OrtValueVector.
+                transfered_backward_outputs = _utils._ortvalues_to_torch_tensor(backward_outputs, self._device.type)
+
+                # Return input and initializer gradients
+                for input_name in self._graph_info.user_input_names:
+                    # Append to the results the backward output for each input that required grad
+                    if input_name in require_grad_names_set:
+                        results.append(transfered_backward_outputs[require_grad_names_index])
+                        require_grad_names_index += 1
                     else:
-                        # torch
-                        transfered_backward_outputs = backward_outputs.to_dlpack(_from_dlpack)
+                        # input_name is not found in the self._input_info.require_grad_names list
+                        # Append None to results for each input that did not require grad
+                        results.append(None)
 
-                    # Return input and initializer gradients
-                    for input_name in self._graph_info.user_input_names:
-                        # Append to the results the backward output for each input that required grad
-                        if input_name in require_grad_names_set:
-                            results.append(transfered_backward_outputs[require_grad_names_index])
-                            require_grad_names_index += 1
-                        else:
-                            # input_name is not found in the self._input_info.require_grad_names list
-                            # Append None to results for each input that did not require grad
-                            results.append(None)
-
-                    # Append gradients of initializer to results
-                    # Go over each initializer, check if it required grad and append to results accordingly
-                    initializer_index = num_user_input_grads
-                    for initializer_name in self._graph_info.initializer_names:
-                        if initializer_name in self._graph_initializer_names_to_train:
-                            results.append(transfered_backward_outputs[initializer_index])
-                            initializer_index += 1
-                        else:
-                            results.append(None)
-
-                else:
-                    # Slow version.
-                    # Return input and initializer gradients
-                    for input_name in self._graph_info.user_input_names:
-                        # Append to the results the backward output for each input that required grad
-                        if input_name in require_grad_names_set:
-                            results.append(_utils._torch_tensor_from_dl_pack(
-                                backward_outputs.dlpack_at(require_grad_names_index),
-                                backward_outputs[require_grad_names_index], self._device))
-                            require_grad_names_index += 1
-                        else:
-                            # input_name is not found in the self._input_info.require_grad_names list
-                            # Append None to results for each input that did not require grad
-                            results.append(None)
-
-                    # Append gradients of initializer to results
-                    # Go over each initializer, check if it required grad and append to results accordingly
-                    initializer_index = num_user_input_grads
-                    for initializer_name in self._graph_info.initializer_names:
-                        if initializer_name in self._graph_initializer_names_to_train:
-                            results.append(_utils._torch_tensor_from_dl_pack(
-                                backward_outputs.dlpack_at(initializer_index),
-                                backward_outputs[initializer_index], self._device))
-                            initializer_index += 1
-                        else:
-                            results.append(None)
-
+                # Append gradients of initializer to results
+                # Go over each initializer, check if it required grad and append to results accordingly
+                initializer_index = num_user_input_grads
+                for initializer_name in self._graph_info.initializer_names:
+                    if initializer_name in self._graph_initializer_names_to_train:
+                        results.append(transfered_backward_outputs[initializer_index])
+                        initializer_index += 1
+                    else:
+                        results.append(None)
                 return tuple(results)        
 
         return _ORTModuleFunction
