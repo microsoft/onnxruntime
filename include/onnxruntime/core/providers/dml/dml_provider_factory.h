@@ -75,7 +75,7 @@ struct OrtDmlApi {
     * DmlCreateGPUAllocationFromD3DResource
 	 * This api is used to create a DML EP input based on a user specified d3d12 resource.
   */
-  ORT_API2_STATUS(DmlCreateGPUAllocationFromD3DResource, _In_ ID3D12Resource* pResource, _Out_ void** dml_resource);
+  ORT_API2_STATUS(DmlCreateGPUAllocationFromD3DResource, _In_ ID3D12Resource* d3d_resource, _Out_ void** dml_resource);
 
   /**
     * DmlFreeGPUAllocation
