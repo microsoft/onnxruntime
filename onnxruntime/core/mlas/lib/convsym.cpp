@@ -306,7 +306,7 @@ MlasConvSymFixupInputZeroPoint(
 
 void
 MlasConvSym(
-    const MLAS_CONV_SYM_PARAMS& Params
+    const MLAS_CONV_SYM_U8S8_PARAMS& Params
     )
 {
     const MLAS_CONV_SYM_DISPATCH* ConvSymDispatch = MlasPlatform.ConvSymDispatch;
@@ -380,7 +380,7 @@ MlasConvSym(
 
 void
 MlasConvSymDepthwise(
-    const MLAS_CONV_SYM_PARAMS& Params
+    const MLAS_CONV_SYM_U8S8_PARAMS& Params
     )
 {
     const MLAS_CONV_SYM_DISPATCH* ConvSymDispatch = MlasPlatform.ConvSymDispatch;

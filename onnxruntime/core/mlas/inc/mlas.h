@@ -532,18 +532,19 @@ struct MLAS_GEMM_QUANT_SHAPE_PARAMS {
     size_t M = 0;
     size_t N = 0;
     size_t K = 0;
-    bool AIsSigned = false;
     bool BIsSigned = false;
     bool IsAccumulateMode = false;
 };
 
+
+template <typename ActType, typename WeightType, typename WeightyZeroType>
 struct MLAS_GEMM_QUANT_DATA_PARAMS {
-    const uint8_t* A = nullptr;
+    const ActType* A = nullptr;
     size_t lda = 0;
-    uint8_t ZeroPointA = 0;
-    const void* B = 0;
+    ActType ZeroPointA = 0;
+    const WeightType* B = 0;
     size_t ldb = 0;
-    const uint8_t* ZeroPointB = nullptr;
+    const WeightyZeroType* ZeroPointB = nullptr;
     bool BIsPacked = false;
     bool PerColumnZeroPoints = false;
     int32_t* C = nullptr;
@@ -551,11 +552,13 @@ struct MLAS_GEMM_QUANT_DATA_PARAMS {
     const MLAS_QGEMM_OUTPUT_PROCESSOR* OutputProcessor = nullptr;
 };
 
+using MLAS_GEMM_U8X8_DATA_PARAMS = MLAS_GEMM_QUANT_DATA_PARAMS<uint8_t, void, uint8_t>;
+
 void
 MLASCALL
 MlasGemm(
     const MLAS_GEMM_QUANT_SHAPE_PARAMS& Shape,
-    const MLAS_GEMM_QUANT_DATA_PARAMS& DataParams,
+    const MLAS_GEMM_U8X8_DATA_PARAMS& DataParams,
     MLAS_THREADPOOL* ThreadPool
     );
 
@@ -574,10 +577,42 @@ void
 MLASCALL
 MlasGemmBatch(
     const MLAS_GEMM_QUANT_SHAPE_PARAMS& Shape,
-    const MLAS_GEMM_QUANT_DATA_PARAMS* DataParams,
+    const MLAS_GEMM_U8X8_DATA_PARAMS* DataParams,
     const size_t BatchN,
     MLAS_THREADPOOL* ThreadPool
     );
+
+#if defined(MLAS_TARGET_ARM64)
+using MLAS_GEMM_S8S8_DATA_PARAMS = MLAS_GEMM_QUANT_DATA_PARAMS<int8_t, int8_t, int8_t>;
+
+void
+MLASCALL
+MlasGemm(
+    const MLAS_GEMM_QUANT_SHAPE_PARAMS& Shape,
+    const MLAS_GEMM_S8S8_DATA_PARAMS& DataParams,
+    MLAS_THREADPOOL* ThreadPool
+    );
+
+/**
+ * @brief Batched GEMM, for multiplying multiple pairs of matrices.
+ * Note:  We only support uniform batching, so shapes and types of the
+ *        input must be same: M, N, K, BIsSigned must be the
+ *        same across all parameter blocks.
+ *
+ * @param [IN]  Shape        A single shape descriptor for all the multiplications
+ * @param [IN]  DataParams   Array of data descriptors for the matrices.
+ * @param [IN]  BatchN       Size of the parameters array, also number of multiplications to perform
+ * @param [IN]  ThreadPool   optional thread pool for parallel processing
+ */
+void
+MLASCALL
+MlasGemmBatch(
+    const MLAS_GEMM_QUANT_SHAPE_PARAMS& Shape,
+              const MLAS_GEMM_S8S8_DATA_PARAMS* DataParams,
+    const size_t BatchN,
+    MLAS_THREADPOOL* ThreadPool
+    );
+#endif
 
 //
 // Buffer packing routines.
@@ -750,11 +785,12 @@ MlasConvSymFixupInputZeroPoint(
     int32_t zero_point_value
     );
 
+template<typename ActType = uint8_t>
 struct MLAS_CONV_SYM_PARAMS {
-    const uint8_t* InputDirect;
-    const uint8_t* const* InputIndirection;
+    const ActType* InputDirect;
+    const ActType* const* InputIndirection;
     const void* Filter;
-    uint8_t* Output;
+    ActType* Output;
     size_t InputChannels;
     size_t OutputChannels;
     size_t OutputCount;
@@ -762,17 +798,20 @@ struct MLAS_CONV_SYM_PARAMS {
     const int32_t* Bias;
     const float* Scale;
     bool PerChannelScale;
-    uint8_t OutputZeroPoint;
+    ActType OutputZeroPoint;
 };
+
+using MLAS_CONV_SYM_U8S8_PARAMS = MLAS_CONV_SYM_PARAMS<uint8_t>;
+using MLAS_CONV_SYM_S8S8_PARAMS = MLAS_CONV_SYM_PARAMS<int8_t>;
 
 void
 MlasConvSym(
-    const MLAS_CONV_SYM_PARAMS& Params
+    const MLAS_CONV_SYM_U8S8_PARAMS& Params
     );
 
 void
 MlasConvSymDepthwise(
-    const MLAS_CONV_SYM_PARAMS& Params
+    const MLAS_CONV_SYM_U8S8_PARAMS& Params
     );
 
 //

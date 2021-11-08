@@ -189,7 +189,7 @@ template<typename KernelType>
 void
 MlasGemmU8X8Operation(
     const MLAS_GEMM_QUANT_SHAPE_PARAMS* Shape,
-    const MLAS_GEMM_QUANT_DATA_PARAMS* Data,
+    const MLAS_GEMM_U8X8_DATA_PARAMS* Data,
     const size_t RangeStartM,
     const size_t RangeCountM,
     const size_t RangeStartN,
@@ -424,7 +424,7 @@ template<typename KernelType>
 void
 MlasGemmU8X8PackedOperation(
     const MLAS_GEMM_QUANT_SHAPE_PARAMS* Shape,
-    const MLAS_GEMM_QUANT_DATA_PARAMS* Data,
+    const MLAS_GEMM_U8X8_DATA_PARAMS* Data,
     const size_t RangeStartM,
     const size_t RangeCountM,
     const size_t RangeStartN,
@@ -654,7 +654,7 @@ typedef
 void
 (MLAS_GEMM_U8X8_OPERATION)(
     const MLAS_GEMM_QUANT_SHAPE_PARAMS* Shape,
-    const MLAS_GEMM_QUANT_DATA_PARAMS* Data,
+    const MLAS_GEMM_U8X8_DATA_PARAMS* Data,
     const size_t RangeStartM,
     const size_t RangeCountM,
     const size_t RangeStartN,

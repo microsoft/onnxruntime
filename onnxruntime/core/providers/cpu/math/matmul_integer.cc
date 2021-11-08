@@ -92,7 +92,7 @@ Status MatMulInteger::Compute(OpKernelContext* ctx) const {
   gemm_shape.BIsSigned = b_is_signed;
 
   const size_t batch_size = helper.OutputOffsets().size();
-  std::vector<MLAS_GEMM_QUANT_DATA_PARAMS> gemm_data_vec(batch_size);
+  std::vector<MLAS_GEMM_U8X8_DATA_PARAMS> gemm_data_vec(batch_size);
 
   for (size_t batch = 0; batch < batch_size; batch++) {
     auto& gemm_params = gemm_data_vec[batch];

@@ -228,7 +228,9 @@ class QLinearConv : public OpKernel {
           .TypeConstraint("T4", DataTypeImpl::GetTensorType<int32_t>()),                                         \
       QLinearConv<data_type>);
 
+#if defined(MLAS_TARGET_ARM64)
 REGISTER_QLINEARCONV_TYPED_KERNEL(kOnnxDomain, 10, int8_t);
+#endif
 REGISTER_QLINEARCONV_TYPED_KERNEL(kOnnxDomain, 10, uint8_t);
 
 #ifndef DISABLE_CONTRIB_OPS
@@ -237,7 +239,9 @@ namespace contrib {
 
 // Register an alternate version of this kernel that supports the channels_last
 // attribute in order to consume and produce NHWC tensors.
+#if defined(MLAS_TARGET_ARM64)
 REGISTER_QLINEARCONV_TYPED_KERNEL(kMSDomain, 1, int8_t);
+#endif
 REGISTER_QLINEARCONV_TYPED_KERNEL(kMSDomain, 1, uint8_t);
 
 }  // namespace contrib
@@ -613,7 +617,7 @@ Status QLinearConv<ActType>::Compute(OpKernelContext* context) const {
       auto* worker_output = output_data + output_start * M;
 
       if (is_symmetric_conv_) {
-        MLAS_CONV_SYM_PARAMS conv_params = {};
+        MLAS_CONV_SYM_PARAMS<ActType> conv_params = {};
         if (worker_indirection_buffer) {
           conv_params.InputIndirection = worker_indirection_buffer;
         } else {
@@ -653,7 +657,7 @@ Status QLinearConv<ActType>::Compute(OpKernelContext* context) const {
             static_cast<size_t>(kernel_size));
       } else {
         for (int64_t group_id = 0; group_id < group_count; ++group_id) {
-          MLAS_GEMM_QUANT_DATA_PARAMS gemm_params;
+          MLAS_GEMM_U8X8_DATA_PARAMS gemm_params;
           gemm_params.ZeroPointA = X_zero_point_value;
           if (packed_W_buffer_) {
             gemm_params.B = static_cast<const int8_t*>(packed_W_buffer_.get()) + group_id * packed_W_size_,

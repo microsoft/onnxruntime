@@ -23,16 +23,16 @@ Abstract:
 // threads.
 //
 
-struct MLAS_GEMM_U8X8_WORK_BLOCK {
+struct MLAS_GEMM_QUANT_WORK_BLOCK {
     ptrdiff_t ThreadCountM;
     ptrdiff_t ThreadCountN;
 };
 
 void
 MlasGemmU8X8Threaded(
-    const MLAS_GEMM_U8X8_WORK_BLOCK* WorkBlock,
+    const MLAS_GEMM_QUANT_WORK_BLOCK* WorkBlock,
     const MLAS_GEMM_QUANT_SHAPE_PARAMS* Shape,
-    const MLAS_GEMM_QUANT_DATA_PARAMS* Data,
+    const MLAS_GEMM_U8X8_DATA_PARAMS* Data,
     ptrdiff_t ThreadId
     )
 /*++
@@ -108,12 +108,42 @@ Return Value:
     GemmU8X8Operation(Shape, Data, RangeStartM, RangeCountM, RangeStartN, RangeCountN);
 }
 
+template<typename DataParamType>
+void MLASCALL
+MlasGemm(const MLAS_GEMM_QUANT_SHAPE_PARAMS& Shape,
+         const DataParamType& DataParams,
+         MLAS_THREADPOOL* ThreadPool)
+/*++
 
+Routine Description:
+
+    This routine implements the quantized integer matrix/matrix multiply
+    operation (QGEMM).
+
+Arguments:
+
+    Shape - Supplies the structure containing the GEMM input and output shapes.
+
+    Data  - Supplies the structure containing the GEMM input and output data layout
+
+    ThreadPool - Supplies the thread pool object to use, else nullptr if the
+        base library threading support should be used.
+
+Return Value:
+
+    None.
+
+--*/
+{
+    MlasGemmBatch(Shape, &DataParams, 1, ThreadPool);
+}
+
+template <typename DataParamType>
 void
 MLASCALL
 MlasGemm(
     const MLAS_GEMM_QUANT_SHAPE_PARAMS &Shape,
-    const MLAS_GEMM_QUANT_DATA_PARAMS &DataParams,
+    const DataParamType &DataParams,
     MLAS_THREADPOOL *ThreadPool)
 /*++
 
@@ -140,11 +170,12 @@ Return Value:
     MlasGemmBatch(Shape, &DataParams, 1, ThreadPool);
 }
 
+template <typename DataParamType>
 void
 MLASCALL
 MlasGemmBatch(
     const MLAS_GEMM_QUANT_SHAPE_PARAMS& Shape,
-    const MLAS_GEMM_QUANT_DATA_PARAMS* DataParams,
+    const DataParamType* DataParams,
     const size_t BatchN,
     MLAS_THREADPOOL* ThreadPool)
 {
@@ -185,7 +216,7 @@ MlasGemmBatch(
     // works okay for operations involving skinny matrices.
     //
 
-    MLAS_GEMM_U8X8_WORK_BLOCK WorkBlock;
+    MLAS_GEMM_QUANT_WORK_BLOCK WorkBlock;
 
     if (N > M) {
 
@@ -217,6 +248,186 @@ MlasGemmBatch(
     });
 }
 
+void
+MLASCALL
+MlasGemmBatch(
+    const MLAS_GEMM_QUANT_SHAPE_PARAMS& Shape,
+    const MLAS_GEMM_U8X8_DATA_PARAMS* DataParams,
+    const size_t BatchN,
+    MLAS_THREADPOOL* ThreadPool)
+{
+    const size_t M = Shape.M;
+    const size_t N = Shape.N;
+    const size_t K = Shape.K;
+
+    //
+    // Compute the number of target threads given the complexity of the SGEMM
+    // operation. Small requests should run using the single threaded path.
+    //
+
+    const double Complexity = double(M) * double(N) * double(K) * double(BatchN);
+
+    ptrdiff_t TargetThreadCount;
+
+    if (Complexity < double(MLAS_QGEMM_THREAD_COMPLEXITY * MlasPlatform.MaximumThreadCount)) {
+        TargetThreadCount = ptrdiff_t(Complexity / double(MLAS_QGEMM_THREAD_COMPLEXITY)) + 1;
+    } else {
+        TargetThreadCount = MlasPlatform.MaximumThreadCount;
+    }
+
+    ptrdiff_t MaximumThreadCount = MlasGetMaximumThreadCount(ThreadPool);
+
+    if (TargetThreadCount >= MaximumThreadCount) {
+        TargetThreadCount = MaximumThreadCount;
+    }
+
+    ptrdiff_t ThreadsPerGemm = TargetThreadCount / BatchN;
+    if (ThreadsPerGemm < 1) {
+        ThreadsPerGemm = 1;
+    }
+
+    //
+    // Segment the operation across multiple threads.
+    //
+    // N.B. Currently, the operation is segmented as a 1D partition, which
+    // works okay for operations involving skinny matrices.
+    //
+
+    MLAS_GEMM_QUANT_WORK_BLOCK WorkBlock;
+
+    if (N > M) {
+
+        const size_t BlockedN = (N + MLAS_QGEMM_STRIDEN_THREAD_ALIGN - 1) /
+            MLAS_QGEMM_STRIDEN_THREAD_ALIGN;
+
+        if (size_t(ThreadsPerGemm) > BlockedN) {
+            ThreadsPerGemm = ptrdiff_t(BlockedN);
+        }
+
+        WorkBlock.ThreadCountM = 1;
+        WorkBlock.ThreadCountN = ThreadsPerGemm;
+
+    } else {
+
+        if (size_t(ThreadsPerGemm) > M) {
+            ThreadsPerGemm = ptrdiff_t(M);
+        }
+
+        WorkBlock.ThreadCountM = ThreadsPerGemm;
+        WorkBlock.ThreadCountN = 1;
+    }
+    TargetThreadCount = ThreadsPerGemm * BatchN;
+
+    MlasTrySimpleParallel(ThreadPool, TargetThreadCount, [&](ptrdiff_t tid) {
+        const auto gemm_i = tid / ThreadsPerGemm;
+        const auto blk_i = tid % ThreadsPerGemm;
+        MlasGemmU8X8Threaded(&WorkBlock, &Shape, &DataParams[gemm_i], blk_i);
+    });
+}
+
+#if defined(MLAS_TARGET_ARM64)
+void MLASCALL
+MlasGemm(const MLAS_GEMM_QUANT_SHAPE_PARAMS& Shape,
+         const MLAS_GEMM_U8X8_DATA_PARAMS& DataParams,
+         MLAS_THREADPOOL* ThreadPool)
+/*++
+
+Routine Description:
+
+    This routine implements the quantized integer matrix/matrix multiply
+    operation (QGEMM).
+
+Arguments:
+
+    Shape - Supplies the structure containing the GEMM input and output shapes.
+
+    Data  - Supplies the structure containing the GEMM input and output data layout
+
+    ThreadPool - Supplies the thread pool object to use, else nullptr if the
+        base library threading support should be used.
+
+Return Value:
+
+    None.
+
+--*/
+{
+    MlasGemmBatch(Shape, &DataParams, 1, ThreadPool);
+}
+
+void MLASCALL
+MlasGemmBatch(const MLAS_GEMM_QUANT_SHAPE_PARAMS& Shape,
+              const MLAS_GEMM_U8X8_DATA_PARAMS* DataParams,
+              const size_t BatchN,
+              MLAS_THREADPOOL* ThreadPool)
+{
+    const size_t M = Shape.M;
+    const size_t N = Shape.N;
+    const size_t K = Shape.K;
+
+    //
+    // Compute the number of target threads given the complexity of the SGEMM
+    // operation. Small requests should run using the single threaded path.
+    //
+
+    const double Complexity = double(M) * double(N) * double(K) * double(BatchN);
+
+    ptrdiff_t TargetThreadCount;
+
+    if (Complexity < double(MLAS_QGEMM_THREAD_COMPLEXITY * MlasPlatform.MaximumThreadCount)) {
+        TargetThreadCount = ptrdiff_t(Complexity / double(MLAS_QGEMM_THREAD_COMPLEXITY)) + 1;
+    } else {
+        TargetThreadCount = MlasPlatform.MaximumThreadCount;
+    }
+
+    ptrdiff_t MaximumThreadCount = MlasGetMaximumThreadCount(ThreadPool);
+
+    if (TargetThreadCount >= MaximumThreadCount) {
+        TargetThreadCount = MaximumThreadCount;
+    }
+
+    ptrdiff_t ThreadsPerGemm = TargetThreadCount / BatchN;
+    if (ThreadsPerGemm < 1) {
+        ThreadsPerGemm = 1;
+    }
+
+    //
+    // Segment the operation across multiple threads.
+    //
+    // N.B. Currently, the operation is segmented as a 1D partition, which
+    // works okay for operations involving skinny matrices.
+    //
+
+    MLAS_GEMM_QUANT_WORK_BLOCK WorkBlock;
+
+    if (N > M) {
+        const size_t BlockedN =
+            (N + MLAS_QGEMM_STRIDEN_THREAD_ALIGN - 1) / MLAS_QGEMM_STRIDEN_THREAD_ALIGN;
+
+        if (size_t(ThreadsPerGemm) > BlockedN) {
+            ThreadsPerGemm = ptrdiff_t(BlockedN);
+        }
+
+        WorkBlock.ThreadCountM = 1;
+        WorkBlock.ThreadCountN = ThreadsPerGemm;
+
+    } else {
+        if (size_t(ThreadsPerGemm) > M) {
+            ThreadsPerGemm = ptrdiff_t(M);
+        }
+
+        WorkBlock.ThreadCountM = ThreadsPerGemm;
+        WorkBlock.ThreadCountN = 1;
+    }
+    TargetThreadCount = ThreadsPerGemm * BatchN;
+
+    MlasTrySimpleParallel(ThreadPool, TargetThreadCount, [&](ptrdiff_t tid) {
+        const auto gemm_i = tid / ThreadsPerGemm;
+        const auto blk_i = tid % ThreadsPerGemm;
+        MlasGemmU8X8Threaded(&WorkBlock, &Shape, &DataParams[gemm_i], blk_i);
+    });
+}
+#endif
 
 size_t
 MLASCALL

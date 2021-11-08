@@ -294,7 +294,7 @@ void ComputeGemm(const int M,
   gemm_shape.K = static_cast<size_t>(K);
   gemm_shape.BIsSigned = b_is_signed;
 
-  MLAS_GEMM_QUANT_DATA_PARAMS gemm_params;
+  MLAS_GEMM_U8X8_DATA_PARAMS gemm_params;
   gemm_params.A = quantized_A_buffer;
   gemm_params.lda = static_cast<size_t>(K);
   gemm_params.ZeroPointA = a_zero_point;

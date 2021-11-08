@@ -93,7 +93,7 @@ Status QLinearMatMul::Compute(OpKernelContext* ctx) const {
   auto* gemm_output = static_cast<int32_t*>(gemm_output_buffer.get());
 
 
-  std::vector<MLAS_GEMM_QUANT_DATA_PARAMS> gemm_params(num_gemms);
+  std::vector<MLAS_GEMM_U8X8_DATA_PARAMS> gemm_params(num_gemms);
   std::vector<MLAS_QGEMM_REQUANT_OUTPUT_PROCESSOR<uint8_t>> requant_procs;
   requant_procs.reserve(num_gemms);
 

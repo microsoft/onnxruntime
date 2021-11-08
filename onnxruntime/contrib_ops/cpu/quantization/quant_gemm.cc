@@ -83,7 +83,7 @@ class QGemm : protected GemmBase, public MatMulIntegerBase {
     }
 
     MLAS_GEMM_QUANT_SHAPE_PARAMS gemm_shape{M, N, K, b_is_signed, c != nullptr};
-    MLAS_GEMM_QUANT_DATA_PARAMS gemm_param;
+    MLAS_GEMM_U8X8_DATA_PARAMS gemm_param;
 
     gemm_param.A = a_data;
     gemm_param.lda = gemm_shape.K;
@@ -177,7 +177,7 @@ class QGemm : protected GemmBase, public MatMulIntegerBase {
                                size_t out_lda,
                                const std::vector<float>& output_scales,
                                Tensor* y,
-                               MLAS_GEMM_QUANT_DATA_PARAMS& gemm_param,
+                               MLAS_GEMM_U8X8_DATA_PARAMS& gemm_param,
                                std::unique_ptr<MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR>& scale_bias_proc_ptr,
                                std::unique_ptr<MLAS_QGEMM_REQUANT_OUTPUT_PROCESSOR<uint8_t>>& requant_proc_ptr) {
     if (nullptr != y_zp) {
