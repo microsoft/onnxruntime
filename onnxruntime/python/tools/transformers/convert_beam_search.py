@@ -63,6 +63,9 @@ def parse_arguments(argv=None):
     parser.add_argument('-e', '--use_external_data_format', required=False, action='store_true')
     parser.set_defaults(use_external_data_format=False)
 
+    parser.add_argument('--run_baseline', required=False, action='store_true', help="run huggingface beam search")
+    parser.set_defaults(run_baseline=False)
+
     beam_search_group = parser.add_argument_group("beam search options")
 
     beam_search_group.add_argument('--output_sequences_scores',
@@ -215,7 +218,7 @@ def convert_model(args):
     model.graph.name = "gpt2 subgraph"
     inputs = [
         "input_ids", "max_length", "min_length", "num_beams", "num_return_sequences", "temperature",
-        "length_penalty", "repetition_penalty"
+        "length_penalty", "repetition_penalty", "vocab_mask"
     ]
 
     outputs = ["sequences"]
@@ -245,10 +248,11 @@ def convert_model(args):
     temperature = helper.make_tensor_value_info('temperature', TensorProto.FLOAT, [1])
     length_penalty = helper.make_tensor_value_info('length_penalty', TensorProto.FLOAT, [1])
     repetition_penalty = helper.make_tensor_value_info('repetition_penalty', TensorProto.FLOAT, [1])
+    vocab_mask = helper.make_tensor_value_info('vocab_mask', TensorProto.INT32, [vocab_size])
 
     graph_inputs = [
         input_ids, max_length, min_length, num_beams, num_return_sequences, temperature, length_penalty,
-        repetition_penalty
+        repetition_penalty, vocab_mask
     ]
 
     # graph outputs
@@ -283,28 +287,33 @@ def test_model(args):
                                             pad_token_id=tokenizer.eos_token_id)
     input_ids = tokenizer.encode('I enjoy walking in the park', return_tensors='pt')
 
+    global config
+    if config is None:
+        config = GPT2Config.from_pretrained(args.model_name_or_path, cache_dir=args.cache_dir)
+
     eos_token_id = config.eos_token_id
     pad_token_id = config.eos_token_id
     vocab_size = config.vocab_size
 
-    print('-' * 50)
-    print("Test PyTorch model and beam search with huggingface transformers...")
-    beam_outputs = model.generate(input_ids,
-                                  max_length=args.max_length,
-                                  min_length=args.min_length,
-                                  num_beams=args.num_beams,
-                                  early_stopping=args.early_stopping,
-                                  no_repeat_ngram_size=args.no_repeat_ngram_size,
-                                  eos_token_id=eos_token_id,
-                                  pad_token_id=pad_token_id,
-                                  num_return_sequences=args.num_return_sequences,
-                                  temperature=args.temperature,
-                                  length_penalty=args.length_penalty,
-                                  repetition_penalty=args.repetition_penalty)
-    print("input_ids", input_ids)
-    print("huggingface transformers output:", beam_outputs)
-    for i, beam_output in enumerate(beam_outputs):
-        print("{}: {}".format(i, tokenizer.decode(beam_output, skip_special_tokens=True)))
+    if args.run_baseline:
+        print('-' * 50)
+        print("Test PyTorch model and beam search with huggingface transformers...")
+        beam_outputs = model.generate(input_ids,
+                                    max_length=args.max_length,
+                                    min_length=args.min_length,
+                                    num_beams=args.num_beams,
+                                    early_stopping=args.early_stopping,
+                                    no_repeat_ngram_size=args.no_repeat_ngram_size,
+                                    eos_token_id=eos_token_id,
+                                    pad_token_id=pad_token_id,
+                                    num_return_sequences=args.num_return_sequences,
+                                    temperature=args.temperature,
+                                    length_penalty=args.length_penalty,
+                                    repetition_penalty=args.repetition_penalty)
+        print("input_ids", input_ids)
+        print("huggingface transformers output:", beam_outputs)
+        for i, beam_output in enumerate(beam_outputs):
+            print("{}: {}".format(i, tokenizer.decode(beam_output, skip_special_tokens=True)))
 
     print('-' * 50)
     print("Test ONNX model and bream search with onnxruntime...")
@@ -323,7 +332,7 @@ def test_model(args):
         "temperature": np.array([args.temperature], dtype=np.float32),
         "length_penalty": np.array([args.length_penalty], dtype=np.float32),
         "repetition_penalty": np.array([args.repetition_penalty], dtype=np.float32),
-        "vocab_mask": np.ones((vocab_size), dtype=np.float32)
+        "vocab_mask": np.ones((vocab_size), dtype=np.int32)
     }
 
     test_data_dir = Path(args.output).parent.as_posix()
@@ -348,7 +357,10 @@ def main():
     print('You have 15 seconds to attach a debugger.')
     time.sleep(15)
 
-    convert_model(args)
+    if os.path.exists(args.output):
+        print(f"skip conversion since path existed: {args.output}")
+    else:
+        convert_model(args)
 
     test_model(args)
 
