@@ -185,7 +185,7 @@ class TrainingManager(GraphExecutionManager):
                     else:
                         results.append(None)
 
-                return tuple(results)        
+                return tuple(results)
 
         return _ORTModuleFunction
 
