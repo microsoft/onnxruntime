@@ -3040,7 +3040,7 @@ struct OrtApi {
 
   ORT_API2_STATUS(GetValueMemoryInfo, _In_ const OrtValue* value, _Outptr_ const OrtMemoryInfo** memory_info);
 
-  ORT_API2_STATUS(GetExecutionProviderApi, _In_ const char *provider_name, uint32_t version, const void **provider_interface);
+  ORT_API2_STATUS(GetExecutionProviderApi, _In_ const char* provider_name, uint32_t version, const void** provider_interface);
 
   /// @}
 };
