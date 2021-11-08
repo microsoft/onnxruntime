@@ -1,0 +1,38 @@
+steps:
+- checkout: none
+- task: DownloadPipelineArtifact@0
+  displayName: 'Download NPM packages'
+  inputs:
+    artifactName: NPM_packages
+    targetPath: '$(Build.BinariesDirectory)/nodejs-artifact'
+- script: mkdir e2e_test
+  workingDirectory: '$(Build.BinariesDirectory)'
+
+- task: PowerShell@2
+  condition: and(succeeded(), eq(variables['Agent.OS'], 'Windows_NT'))
+  displayName: 'Extract package file name (Windows)'
+  inputs:
+    targetType: 'inline'
+    script: |
+      Write-Host "##vso[task.setvariable variable=NpmPackageFilesForTest;]$(ls $(Build.BinariesDirectory)/nodejs-artifact/*.tgz)"
+    workingDirectory: '$(Build.BinariesDirectory)/e2e_test'
+
+- task: CmdLine@2
+  condition: and(succeeded(), ne(variables['Agent.OS'], 'Windows_NT'))
+  displayName: 'Extract package file name (POSIX)'
+  inputs:
+    script: |
+      echo "##vso[task.setvariable variable=NpmPackageFilesForTest;]`ls $(Build.BinariesDirectory)/nodejs-artifact/*.tgz`"
+    workingDirectory: '$(Build.BinariesDirectory)/e2e_test'
+
+- script: |
+    npm init -y
+    npm install $(NpmPackageFilesForTest)
+    node -p "require('onnxruntime-node')"
+  workingDirectory: '$(Build.BinariesDirectory)/e2e_test'
+
+- template: ../../templates/component-governance-component-detection-steps.yml
+  parameters :
+    condition : 'always'
+
+- template: ../../templates/clean-agent-build-directory-step.yml

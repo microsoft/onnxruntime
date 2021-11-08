@@ -248,9 +248,10 @@ class InferenceSession {
   /**
     * Load an ONNX model.
     * @param istream object of the model.
+    * @allow_released_opsets_only Set true if you would like to only allow released ONNX opsets only, set false otherwise.
     * @return OK if success.
     */
-  common::Status Load(std::istream& model_istream) ORT_MUST_USE_RESULT;
+  common::Status Load(std::istream& model_istream, bool allow_released_opsets_only = true) ORT_MUST_USE_RESULT;
 
   /**
     * Load an ONNX model from the member model_proto_.
@@ -581,7 +582,8 @@ class InferenceSession {
 
 #if !defined(ORT_MINIMAL_BUILD)
   virtual common::Status AddPredefinedTransformers(GraphTransformerManager& transformer_manager,
-                                                   TransformerLevel graph_optimization_level);
+                                                   TransformerLevel graph_optimization_level,
+                                                   bool saving_runtime_optimizations) const;
 
   common::Status TransformGraph(onnxruntime::Graph& graph,
                                 const onnxruntime::GraphTransformerManager& graph_transformer_mgr,

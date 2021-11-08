@@ -2,12 +2,12 @@
 
 import json
 import os
+import re
 import subprocess
 import sys
-import re
 
 SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
-REPO_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, "..", ".."))
+REPO_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, ".."))
 
 package_name = None
 package_filename = None
@@ -16,7 +16,7 @@ package_url = None
 registrations = []
 
 with open(os.path.join(REPO_DIR, 'tools', 'ci_build', 'github', 'linux', 'docker', 'Dockerfile.manylinux2014_cuda11'),
-          "r") as f:
+          mode="r") as f:
     for line in f:
         if not line.strip():
             package_name = None
@@ -95,4 +95,5 @@ for submodule_line in submodule_lines:
 
 cgmanifest = {"Version": 1, "Registrations": registrations}
 
-print(json.dumps(cgmanifest, indent=2))
+with open(os.path.join(SCRIPT_DIR, "generated", "cgmanifest.json"), mode="w") as generated_cgmanifest_file:
+    print(json.dumps(cgmanifest, indent=2), file=generated_cgmanifest_file)

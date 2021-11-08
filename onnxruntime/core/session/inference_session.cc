@@ -14,6 +14,8 @@
 #include "core/common/denormal.h"
 #include "core/common/logging/logging.h"
 #include "core/common/parse_string.h"
+#include "core/flatbuffers/flatbuffers_utils.h"
+#include "core/flatbuffers/ort_format_version.h"
 #include "core/framework/bfc_arena.h"
 #include "core/framework/allocatormgr.h"
 #include "core/framework/error_code_helper.h"
@@ -36,13 +38,13 @@
 #include "core/optimizer/graph_transformer.h"
 #include "core/optimizer/insert_cast_transformer.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
+#include "core/optimizer/selectors_actions/runtime_optimization_save_context.h"
 #include "core/optimizer/transformer_memcpy.h"
 #include "core/platform/Barrier.h"
 #include "core/platform/ort_mutex.h"
 #include "core/platform/threadpool.h"
 #include "core/providers/cpu/controlflow/utils.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
-#include "core/flatbuffers/flatbuffers_utils.h"
 #ifdef USE_DML  // TODO: This is necessary for the workaround in TransformGraph
 #include "core/providers/dml/DmlExecutionProvider/src/GraphTransformer.h"
 #endif
@@ -168,29 +170,6 @@ Status VerifyEachNodeIsAssignedToAnEp(const Graph& graph, const logging::Logger&
 }  // namespace
 
 std::atomic<uint32_t> InferenceSession::global_session_id_{1};
-
-// The current model versions for saving the ort format models
-// This version is NOT onnxruntime version
-// Only update this version when there is a file format change which will break the compatibilites
-// Once this model version is updated, the kSupportedOrtModelVersions in IsOrtModelVersionSupported
-// below will also need to be updated.
-// See onnxruntime/core/flatbuffers/schema/README.md for more details on versioning.
-// Version 1 - history begins
-// Version 2 - add serialization/deserialization of sparse_initializer
-// Version 3 - add `graph_doc_string` to Model
-// Version 4 - update kernel def hashing to not depend on ordering of type constraint types (NOT BACKWARDS COMPATIBLE)
-static constexpr const char* kOrtModelVersion = "4";
-
-// Check if the given ort model version is supported in this build
-static bool IsOrtModelVersionSupported(const std::string& ort_model_version) {
-  // The ort model versions we will support in this build
-  // This may contain more versions than the kOrtModelVersion, based on the compatibilities
-  static const std::unordered_set<std::string> kSupportedOrtModelVersions{
-      std::string(kOrtModelVersion),
-  };
-
-  return kSupportedOrtModelVersions.find(ort_model_version) != kSupportedOrtModelVersions.cend();
-}
 
 static Status FinalizeSessionOptions(const SessionOptions& user_provided_session_options,
                                      const ONNX_NAMESPACE::ModelProto& model_proto,
@@ -828,14 +807,14 @@ common::Status InferenceSession::Load(std::unique_ptr<ModelProto> p_model_proto)
   return Load(loader, "model_loading_proto");
 }
 
-common::Status InferenceSession::Load(std::istream& model_istream) {
+common::Status InferenceSession::Load(std::istream& model_istream, bool allow_released_opsets_only) {
   if (is_model_proto_parsed_) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                            "ModelProto corresponding to the model to be loaded has already been parsed. "
                            "Invoke Load().");
   }
 
-  auto loader = [this, &model_istream](std::shared_ptr<onnxruntime::Model>& model) {
+  auto loader = [this, &model_istream, &allow_released_opsets_only](std::shared_ptr<onnxruntime::Model>& model) {
     ModelProto model_proto;
     Status st = Model::Load(model_istream, &model_proto);
     if (!st.IsOK()) {
@@ -848,7 +827,8 @@ common::Status InferenceSession::Load(std::istream& model_istream) {
     }
 #endif
     return onnxruntime::Model::Load(std::move(model_proto), PathString(), model,
-                                    HasLocalSchema() ? &custom_schema_registries_ : nullptr, *session_logger_);
+                                    HasLocalSchema() ? &custom_schema_registries_ : nullptr,
+                                    *session_logger_, allow_released_opsets_only);
   };
 
   return Load(loader, "model_loading_istream");
@@ -1344,9 +1324,14 @@ common::Status InferenceSession::Initialize() {
 
 #if !defined(ORT_MINIMAL_BUILD)
     if (!loading_ort_format) {
+      const bool saving_runtime_optimizations =
+          saving_ort_format &&
+          session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigSaveRuntimeOptimizations,
+                                                             "0") == "1";
       // add predefined transformers
       ORT_RETURN_IF_ERROR_SESSIONID_(AddPredefinedTransformers(graph_transformation_mgr_,
-                                                               session_options_.graph_optimization_level));
+                                                               session_options_.graph_optimization_level,
+                                                               saving_runtime_optimizations));
 
       // apply any transformations to the main graph and any subgraphs
       ORT_RETURN_IF_ERROR_SESSIONID_(TransformGraph(graph, graph_transformation_mgr_,
@@ -1572,12 +1557,18 @@ common::Status InferenceSession::ValidateInputs(const std::vector<std::string>& 
     auto expected_type = iter->second.ml_data_type;
     auto& input_ml_value = feeds.at(i);
     if (input_ml_value.IsTensor()) {
-      // check for type
-      if (!expected_type->IsTensorType()) {
+      if (!expected_type->IsTensorType() &&
+          !utils::IsOptionalTensor(expected_type)) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input with name: ", feed_name,
                                " is not expected to be of type tensor.");
       }
-      auto expected_element_type = expected_type->AsTensorType()->GetElementType();
+
+      // check for type
+      auto expected_element_type = expected_type->IsTensorType()
+                                       ? expected_type
+                                             ->AsTensorType()
+                                             ->GetElementType()
+                                       : utils::GetElementTypeFromOptionalTensor(expected_type);
       auto input_element_type = input_ml_value.Get<Tensor>().DataType();
       ORT_RETURN_IF_ERROR_SESSIONID_(CheckTypes(input_element_type, expected_element_type, "tensor"));
 
@@ -1609,11 +1600,18 @@ common::Status InferenceSession::ValidateInputs(const std::vector<std::string>& 
 #endif
 
     } else if (input_ml_value.IsTensorSequence()) {
-      if (!expected_type->IsTensorSequenceType()) {
+      if (!expected_type->IsTensorSequenceType() &&
+          !utils::IsOptionalSeqTensor(expected_type)) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input with name: ", feed_name,
                                " is not expected to be of type tensor sequence.");
       }
-      auto expected_element_type = expected_type->AsSequenceTensorBase()->GetElementType();
+
+      auto expected_element_type = expected_type->IsTensorSequenceType()
+                                       ? expected_type
+                                             ->AsSequenceTensorType()
+                                             ->GetElementType()
+                                       : utils::GetElementTypeFromOptionalSeqTensor(expected_type);
+
       auto input_element_type = input_ml_value.Get<TensorSeq>().DataType();
       ORT_RETURN_IF_ERROR_SESSIONID_(CheckTypes(input_element_type, expected_element_type, "seq"));
     } else {
@@ -2213,14 +2211,24 @@ void InferenceSession::InitLogger(logging::LoggingManager* logging_manager) {
 
 // Registers all the predefined transformers with transformer manager
 common::Status InferenceSession::AddPredefinedTransformers(GraphTransformerManager& transformer_manager,
-                                                           TransformerLevel graph_optimization_level) {
+                                                           TransformerLevel graph_optimization_level,
+                                                           bool saving_runtime_optimizations) const {
   const auto& cpu_ep = *execution_providers_.Get(onnxruntime::kCpuExecutionProvider);
   for (int i = static_cast<int>(TransformerLevel::Level1); i <= static_cast<int>(TransformerLevel::MaxLevel); i++) {
     TransformerLevel level = static_cast<TransformerLevel>(i);
     if (graph_optimization_level >= level) {
       // Generate and register transformers for level
-      auto transformers_to_register = optimizer_utils::GenerateTransformers(level, session_options_, cpu_ep,
-                                                                            optimizers_to_disable_);
+      std::vector<std::unique_ptr<GraphTransformer>> transformers_to_register = [&]() {
+        if (level != TransformerLevel::Level1 && saving_runtime_optimizations) {
+          RuntimeOptimizationSaveContext save_context{kernel_registry_manager_};
+          return optimizer_utils::GenerateTransformersForRuntimeOptimizations(level, save_context,
+                                                                              optimizers_to_disable_);
+        } else {
+          return optimizer_utils::GenerateTransformers(level, session_options_, cpu_ep,
+                                                       optimizers_to_disable_);
+        }
+      }();
+
       for (auto& entry : transformers_to_register) {
         ORT_RETURN_IF_ERROR(transformer_manager.Register(std::move(entry), level));
       }
