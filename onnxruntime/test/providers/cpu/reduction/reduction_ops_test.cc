@@ -756,7 +756,7 @@ TEST(ReductionOpTest, ReduceMax_int32) {
 #if defined(OPENVINO_CONFIG_GPU_FP32) || defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_MYRIAD)
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  // OpenVINO: Disabled temporarily
 #else
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: axis must be 0
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});                          //TensorRT: axis must be 0
 #endif
 }
 
@@ -777,7 +777,7 @@ TEST(ReductionOpTest, ReduceMax_int64) {
 #if defined(OPENVINO_CONFIG_GPU_FP32) || defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_MYRIAD)
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  // OpenVINO: Disabled temporarily
 #else
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: axis must be 0
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});                          //TensorRT: axis must be 0
 #endif
 }
 
@@ -798,7 +798,7 @@ TEST(ReductionOpTest, ReduceMax_int8) {
 #if defined(OPENVINO_CONFIG_MYRIAD)
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  // OpenVINO: Disabled temporarily
 #else
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: axis must be 0
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});                          //TensorRT: axis must be 0
 #endif
 }
 
@@ -819,7 +819,7 @@ TEST(ReductionOpTest, ReduceMax_uint8) {
 #if defined(OPENVINO_CONFIG_MYRIAD)
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  // OpenVINO: Disabled temporarily
 #else
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: axis must be 0
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});                          //TensorRT: axis must be 0
 #endif
 }
 
@@ -1027,7 +1027,7 @@ TEST(ReductionOpTest, ReduceMean) {
                         9.0f, 10.0f,
                         11.0f, 12.0f});
   test.AddOutput<float>("reduced", {1, 2, 1}, {5.5f, 7.5f});
-  
+
   test.Run();
 }
 
@@ -2117,6 +2117,29 @@ TEST(ReductionOpTest, ArgMax_int32_last_index_dups) {
                           {1, 1,
                            0, 1,
                            1, 0});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+TEST(ReductionOpTest, ArgMax_float_last_index_dups) {
+  OpTester test("ArgMax", 12);
+  test.AddAttribute("axis", (int64_t)1);
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddAttribute("select_last_index", (int64_t)1);
+
+  test.AddInput<float>("data", {3, 2, 2},
+                       {2.f, 4.f,
+                        3.f, 4.f,
+
+                        8.f, 6.f,
+                        7.f, 8.f,
+
+                        10.f, 10.f,  // dupes
+                        11.f, 12.f});
+  test.AddOutput<int64_t>("reduced", {3, 1, 2},
+                          {1, 1,
+                           0, 1,
+                           1, 0});
+
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
