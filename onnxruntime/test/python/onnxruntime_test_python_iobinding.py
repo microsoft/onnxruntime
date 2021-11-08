@@ -48,7 +48,7 @@ class TestIOBinding(unittest.TestCase):
     def test_bind_input_only(self):
         input = self.create_ortvalue_input_on_gpu()
 
-        session = onnxruntime.InferenceSession(get_name("mul_1.onnx"))
+        session = onnxruntime.InferenceSession(get_name("mul_1.onnx"), providers=['CUDAExecutionProvider'])
         io_binding = session.io_binding()
         
         # Bind input to CUDA
@@ -69,7 +69,7 @@ class TestIOBinding(unittest.TestCase):
     def test_bind_input_and_preallocated_output(self):
         input = self.create_ortvalue_input_on_gpu()
 
-        session = onnxruntime.InferenceSession(get_name("mul_1.onnx"))
+        session = onnxruntime.InferenceSession(get_name("mul_1.onnx"), providers=['CUDAExecutionProvider'])
         io_binding = session.io_binding()
         
         # Bind input to CUDA
@@ -95,7 +95,7 @@ class TestIOBinding(unittest.TestCase):
 
 
     def test_bind_input_and_non_preallocated_output(self):
-        session = onnxruntime.InferenceSession(get_name("mul_1.onnx"))
+        session = onnxruntime.InferenceSession(get_name("mul_1.onnx"), providers=['CUDAExecutionProvider'])
         io_binding = session.io_binding()
         
         # Bind input to CUDA
@@ -136,7 +136,7 @@ class TestIOBinding(unittest.TestCase):
         self.assertTrue(np.array_equal(self.create_expected_output_alternate(), ort_outputs[0].numpy()))
 
     def test_bind_input_and_bind_output_with_ortvalues(self):
-        session = onnxruntime.InferenceSession(get_name("mul_1.onnx"))
+        session = onnxruntime.InferenceSession(get_name("mul_1.onnx"), providers=['CUDAExecutionProvider'])
         io_binding = session.io_binding()
         
         # Bind ortvalue as input
