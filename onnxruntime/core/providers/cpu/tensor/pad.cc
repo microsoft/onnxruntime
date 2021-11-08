@@ -275,7 +275,7 @@ static Status PadImpl(OpKernelContext* ctx,
 
   const auto& input_tensor = *ctx->Input<Tensor>(0);
   const auto& orig_input_shape = input_tensor.Shape();
-  std::vector<int64_t> output_dims(orig_input_shape.GetDims());
+  std::vector<int64_t> output_dims(orig_input_shape.GetDimsAsVector());
   size_t data_rank = output_dims.size();
 
   // make copy of raw_pads as it may be mutated below
@@ -484,7 +484,7 @@ Status Pad::Compute(OpKernelContext* ctx) const {
     size_t data_rank = input_tensor.Shape().NumDimensions();
 
     const Tensor& pads_tensor = *ctx->Input<Tensor>(1);
-    const std::vector<int64_t>& pads_tensor_dims = pads_tensor.Shape().GetDims();
+    auto pads_tensor_dims = pads_tensor.Shape().GetDims();
     ORT_ENFORCE(pads_tensor.IsDataType<int64_t>(),
                 "Pads tensor should be an INT64 tensor");
     ORT_ENFORCE(pads_tensor_dims.size() == 1 || (pads_tensor_dims.size() == 2 && pads_tensor_dims[0] == 1),

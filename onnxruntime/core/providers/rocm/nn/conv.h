@@ -114,11 +114,11 @@ struct MiopenConvState {
   miopenHandle_t handle;
 
   // if x/w dims changed, update algo and miopenTensors
-  std::vector<int64_t> last_x_dims;
-  std::vector<int64_t> last_w_dims;
+  TensorShape last_x_dims;
+  TensorShape last_w_dims;
 
   // these would be recomputed if x/w dims change
-  std::vector<int64_t> y_dims;
+  TensorShape y_dims;
   std::vector<int64_t> y_dims_with_adjusted_pads;
   size_t workspace_bytes;
   decltype(AlgoPerfType().bwd_data_algo) bwd_data_algo;
@@ -200,9 +200,9 @@ class Conv : public RocmKernel {
 
 Status SliceOutUnwantedOutputSection(hipStream_t stream,
                                      const void* input_data,
-                                     const std::vector<int64_t>& input_dims,
+                                     gsl::span<const int64_t> input_dims,
                                      void* output_data,
-                                     const std::vector<int64_t>& output_dims,
+                                     gsl::span<const int64_t> output_dims,
                                      std::vector<int64_t> starts,
                                      const std::vector<int64_t>& ends,
                                      const std::vector<int64_t>& axes,

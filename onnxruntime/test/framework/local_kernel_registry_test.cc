@@ -142,7 +142,7 @@ class OptionalOpKernel : public OpKernel {
     const auto* W = context->Input<Tensor>(1);
 
     auto* X_Data = X->Data<T>();
-    auto& shape = X->Shape().GetDims();
+    auto shape = X->Shape().GetDims();
     auto* Y = context->Output(0, shape);
     auto* Y_Data = Y->MutableData<T>();
     size_t size = 1;
@@ -215,8 +215,7 @@ void RunSession(InferenceSession& session_object,
   ASSERT_EQ(1u, fetches.size());
   auto& rtensor = fetches.front().Get<Tensor>();
   TensorShape expected_shape(dims_y);
-  //Use reinterpret_cast to bypass a gcc bug: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=51213
-  EXPECT_EQ(*reinterpret_cast<const std::vector<int64_t>*>(&expected_shape), *reinterpret_cast<const std::vector<int64_t>*>(&rtensor.Shape()));
+  EXPECT_EQ(expected_shape, rtensor.Shape());
   const std::vector<float> found(rtensor.template Data<float>(), rtensor.template Data<float>() + expected_shape.Size());
   ASSERT_EQ(values_y, found);
 }
