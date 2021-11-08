@@ -54,7 +54,7 @@ class TestInferenceSession(unittest.TestCase):
 
     def testSetProviders(self):
         if 'CUDAExecutionProvider' in onnxrt.get_available_providers():
-            sess = onnxrt.InferenceSession(get_name("mul_1.onnx"))
+            sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=['CUDAExecutionProvider'])
             # confirm that CUDA Provider is in list of registered providers.
             self.assertTrue('CUDAExecutionProvider' in sess.get_providers())
             # reset the session and register only CPU Provider.
@@ -64,7 +64,7 @@ class TestInferenceSession(unittest.TestCase):
 
     def testSetProvidersWithOptions(self):
         if 'TensorrtExecutionProvider' in onnxrt.get_available_providers():
-            sess = onnxrt.InferenceSession(get_name("mul_1.onnx"))
+            sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=['TensorrtExecutionProvider'])
             self.assertIn('TensorrtExecutionProvider', sess.get_providers())
 
             options = sess.get_provider_options()
@@ -127,7 +127,7 @@ class TestInferenceSession(unittest.TestCase):
             import ctypes
             CUDA_SUCCESS = 0
             def runBaseTest1():
-                sess = onnxrt.InferenceSession(get_name("mul_1.onnx"))
+                sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=['CUDAExecutionProvider'])
                 self.assertTrue('CUDAExecutionProvider' in sess.get_providers())
 
                 option1 = {'device_id': 0}
@@ -140,7 +140,7 @@ class TestInferenceSession(unittest.TestCase):
                 self.assertEqual(['CUDAExecutionProvider', 'CPUExecutionProvider'], sess.get_providers())
 
             def runBaseTest2():
-                sess = onnxrt.InferenceSession(get_name("mul_1.onnx"))
+                sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=['CUDAExecutionProvider'])
                 self.assertIn('CUDAExecutionProvider', sess.get_providers())
 
                 # test get/set of "gpu_mem_limit" configuration.
@@ -841,8 +841,8 @@ class TestInferenceSession(unittest.TestCase):
         numpy_arr_input = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
         numpy_arr_output = np.array([[1.0, 4.0], [9.0, 16.0], [25.0, 36.0]], dtype=np.float32)
 
-        def test_session_with_ortvalue_input(ortvalue):
-            sess = onnxrt.InferenceSession(get_name("mul_1.onnx"))
+        def test_session_with_ortvalue_input(ortvalue, provider='CPUExecutionProvider'):
+            sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=[provider])
             res = sess.run(["Y"], {"X": ortvalue})
             self.assertTrue(np.array_equal(res[0], numpy_arr_output))
 
@@ -868,7 +868,7 @@ class TestInferenceSession(unittest.TestCase):
             self.assertTrue(np.array_equal(ortvalue2.numpy(), numpy_arr_input))
 
             # Pass in the constructed OrtValue to a session via Run() and check results
-            test_session_with_ortvalue_input(ortvalue2)
+            test_session_with_ortvalue_input(ortvalue2, 'CUDAExecutionProvider')
 
             # The constructed OrtValue should still be valid after being used in a session
             self.assertTrue(np.array_equal(ortvalue2.numpy(), numpy_arr_input))
