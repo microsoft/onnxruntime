@@ -29,7 +29,7 @@ using namespace winrt::Windows::Storage::Streams;
 namespace {
 winrt::com_ptr<_winml::OnnxruntimeEngineFactory> engine_factory;
 const OrtApi* ort_api;
-const WinmlAdapterApi *winml_adapter_api;
+const WinmlAdapterApi* winml_adapter_api;
 OrtEnv* ort_env;
 
 void AdapterSessionTestSetup() {
