@@ -2125,7 +2125,7 @@ TEST(ReductionOpTest, ArgMax_float_last_index_dups) {
   test.AddAttribute("axis", static_cast<int64_t>(1));
   test.AddAttribute("keepdims", static_cast<int64_t>(1));
 
-  // Since select_last_index is 0, tis test should run on both CPU and CUDA
+  // Since select_last_index is 0 by default, this test should run on both CPU and CUDA
   test.AddAttribute("select_last_index", static_cast<int64_t>(0));
 
   test.AddInput<float>("data", {3, 4},
