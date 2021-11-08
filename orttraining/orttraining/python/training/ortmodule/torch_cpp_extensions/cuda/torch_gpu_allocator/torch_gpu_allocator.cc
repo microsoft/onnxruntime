@@ -4,12 +4,26 @@
 #include <torch/extension.h>
 #include <c10/___gpu_identifier___/___gpu_allocator_header___.h>
 
+void* delegate_raw_alloc(size_t nbytes) {
+  std::cout << "[delegate_raw_alloc]" << std::endl;
+  auto allocator = c10::cuda::CUDACachingAllocator::get()
+  return allocator.raw_allocate(nbytes);
+}
+
+void delegate_raw_delete(void* ptr) {
+  std::cout << "[delegate_raw_delete]" << std::endl;
+  auto allocator = c10::cuda::CUDACachingAllocator::get()
+  allocator.raw_deallocate(ptr);
+}
+
 size_t gpu_caching_allocator_raw_alloc_address() {
-  return reinterpret_cast<size_t>(&c10::___gpu_identifier___::___gpu_allocator_header___::raw_alloc);
+  //return reinterpret_cast<size_t>(&c10::___gpu_identifier___::___gpu_allocator_header___::raw_alloc);
+  return reinterpret_cast<size_t>(&delegate_raw_alloc);
 }
 
 size_t gpu_caching_allocator_raw_delete_address() {
-  return reinterpret_cast<size_t>(&c10::___gpu_identifier___::___gpu_allocator_header___::raw_delete);
+  //return reinterpret_cast<size_t>(&c10::___gpu_identifier___::___gpu_allocator_header___::raw_delete);
+  return reinterpret_cast<size_t>(&delegate_raw_delete);
 }
 
 size_t gpu_caching_allocator_empty_cache_address() {
