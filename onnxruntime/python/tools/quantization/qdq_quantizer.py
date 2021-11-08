@@ -93,7 +93,7 @@ class QDQQuantizer(ONNXQuantizer):
     def quantize_model(self):
         for node in self.model.nodes():
             if self.should_quantize(node):
-                op_quantizer = CreateQDQQuantizer(self, node, self.op_types_to_exclude_output_quantization)
+                op_quantizer = CreateQDQQuantizer(self, node)
                 op_quantizer.quantize()
 
         self.quantize_tensors()
