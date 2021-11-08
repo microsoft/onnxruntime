@@ -100,7 +100,11 @@ ONNX_CPU_OPERATOR_KERNEL(If,
                          16,
                          KernelDefBuilder()
                              .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
+#if !defined(DISABLE_OPTIONAL_TYPE)
                              .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorAndOptionalTypes()),
+#else
+                             .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorTypes()),
+#endif
                          If);
 If::Info::Info(const onnxruntime::Node& node, const GraphViewer& subgraph_in) : subgraph(subgraph_in) {
   num_implicit_inputs = static_cast<int>(node.ImplicitInputDefs().size());
@@ -151,11 +155,13 @@ class IfImpl {
   // track where the fetches provided to subgraph execution were allocated.
   std::vector<std::pair<AllocationType, OrtValue>> outputs_;
 
+#if !defined(DISABLE_OPTIONAL_TYPE)
   // track which outputs are optional tensor types
   std::vector<int> optional_tensor_type_subgraph_outputs_;
 
   // track which outputs are optional tensor sequence types
   std::vector<int> optional_tensor_sequence_type_subgraph_outputs_;
+#endif
 };
 
 void If::Init(const OpKernelInfo& info) {
@@ -280,18 +286,26 @@ Status IfImpl::AllocateOutputTensors() {
 
   const auto& graph_outputs = info_.subgraph.GetOutputs();
 
+#if !defined(DISABLE_OPTIONAL_TYPE)
   // The number of optional type outputs can be atmost the total
   // number of subgraph outputs (it is okay to over-allocate)
   optional_tensor_type_subgraph_outputs_.reserve(graph_outputs.size());
   optional_tensor_sequence_type_subgraph_outputs_.reserve(graph_outputs.size());
+#endif
 
   for (auto& graph_output : graph_outputs) {
     const auto* graph_output_type = graph_output->TypeAsProto();
 
+#if !defined(DISABLE_OPTIONAL_TYPE)
     bool is_optional_tensor = utils::HasOptionalTensorType(*graph_output_type);
     bool is_optional_tensor_sequence = utils::HasOptionalTensorSequenceType(*graph_output_type);
+#endif
 
-    if (graph_output_type->has_tensor_type() || is_optional_tensor) {
+    if (graph_output_type->has_tensor_type()
+#if !defined(DISABLE_OPTIONAL_TYPE)
+        || is_optional_tensor
+#endif
+    ) {
       auto* graph_output_shape = graph_output->Shape();
       bool symbolic_dim_in_shape = false;
 
@@ -315,7 +329,11 @@ Status IfImpl::AllocateOutputTensors() {
         // we still need a value to put in the feeds we give to the execution frame, so just use an empty MLValue
         outputs_.push_back({AllocationType::Delayed, {}});
       }
-    } else if (graph_output_type->has_sequence_type() || is_optional_tensor_sequence) {
+    } else if (graph_output_type->has_sequence_type()
+#if !defined(DISABLE_OPTIONAL_TYPE)
+               || is_optional_tensor_sequence
+#endif
+    ) {
       auto* seq_tensor = context_.Output<TensorSeq>(index);
       if (!seq_tensor)
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to create output tensor for ", graph_output->Name());
@@ -325,12 +343,14 @@ Status IfImpl::AllocateOutputTensors() {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Only tensors or sequence of tensors are supported");
     }
 
+#if !defined(DISABLE_OPTIONAL_TYPE)
     // track optional type outputs - we will use them later
     if (is_optional_tensor) {
       optional_tensor_type_subgraph_outputs_.push_back(index);
     } else if (is_optional_tensor_sequence) {
       optional_tensor_sequence_type_subgraph_outputs_.push_back(index);
     }
+#endif
 
     ++index;
   }
@@ -399,6 +419,7 @@ Status IfImpl::Execute(const FeedsFetchesManager& ffm) {
 
   ORT_RETURN_IF_ERROR(status);
 
+#if !defined(DISABLE_OPTIONAL_TYPE)
   // Deal with Nones in fetches
   for (auto& output_index : optional_tensor_type_subgraph_outputs_) {
     // "None" - reflect Nones in the output of If
@@ -415,6 +436,7 @@ Status IfImpl::Execute(const FeedsFetchesManager& ffm) {
       context_.OutputOptionalWithoutData<TensorSeq>(output_index);
     }
   }
+#endif
 
   return status;
 }
