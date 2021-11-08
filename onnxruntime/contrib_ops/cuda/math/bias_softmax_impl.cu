@@ -11,7 +11,7 @@
 #include "core/providers/cuda/cu_inc/binary_elementwise_impl.cuh"
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/math/binary_elementwise_ops_impl_functors.cuh"
-#include "core/providers/cuda/math/softmax_impl.cuh"
+#include "core/providers/cuda/math/softmax_warpwise_impl.cuh"
 #include "core/providers/cuda/shared_inc/accumulation_type.h"
 
 using namespace onnxruntime;

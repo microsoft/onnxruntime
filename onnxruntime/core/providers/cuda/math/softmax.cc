@@ -26,25 +26,29 @@ Status SoftMaxComputeHelper(
   auto Y_data = reinterpret_cast<CudaT*>(Y);
   auto X_data = reinterpret_cast<const CudaT*>(X);
 
-  // cudnnSoftmaxForward/Backward is not optimal implementation.
-  // TODO: remove cudnn path completely in the future.
   if (D <= 1024 && D * sizeof(T) <= 4096) {
-    dispatch_softmax_forward<CudaT, CudaT, AccumulationType_t<CudaT>, is_log_softmax>(stream, Y_data, X_data, gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(N));
-    return Status::OK();
-  }
-
-  std::vector<int64_t> dims({N, 1, 1, D});  // cudnn expects 4D shape in NCHW format
-
-  const auto alpha = Consts<CudaT>::One;
-  const auto beta = Consts<CudaT>::Zero;
-  CudnnTensor input_tensor;
-  CudnnTensor output_tensor;
-  ORT_RETURN_IF_ERROR(input_tensor.Set(dims, CudnnTensor::GetDataType<CudaT>()));
-  ORT_RETURN_IF_ERROR(output_tensor.Set(dims, CudnnTensor::GetDataType<CudaT>()));
-  if (is_log_softmax) {
-    CUDNN_RETURN_IF_ERROR(cudnnSoftmaxForward(handle, CUDNN_SOFTMAX_LOG, CUDNN_SOFTMAX_MODE_INSTANCE, &alpha, input_tensor, X_data, &beta, output_tensor, Y_data));
+    dispatch_warpwise_softmax_forward<CudaT, CudaT, AccumulationType_t<CudaT>, is_log_softmax>(stream, Y_data, X_data, gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(N));
   } else {
-    CUDNN_RETURN_IF_ERROR(cudnnSoftmaxForward(handle, CUDNN_SOFTMAX_ACCURATE, CUDNN_SOFTMAX_MODE_INSTANCE, &alpha, input_tensor, X_data, &beta, output_tensor, Y_data));
+    const bool use_cudnn_softmax_impl = false;
+    // cudnnSoftmaxForward/Backward is not optimal implementation.
+    // Leave cudnn path for comparision of different input data.
+    if (use_cudnn_softmax_impl) {
+      std::vector<int64_t> dims({N, 1, 1, D});  // cudnn expects 4D shape in NCHW format
+
+      const auto alpha = Consts<CudaT>::One;
+      const auto beta = Consts<CudaT>::Zero;
+      CudnnTensor input_tensor;
+      CudnnTensor output_tensor;
+      ORT_RETURN_IF_ERROR(input_tensor.Set(dims, CudnnTensor::GetDataType<CudaT>()));
+      ORT_RETURN_IF_ERROR(output_tensor.Set(dims, CudnnTensor::GetDataType<CudaT>()));
+      if (is_log_softmax) {
+        CUDNN_RETURN_IF_ERROR(cudnnSoftmaxForward(handle, CUDNN_SOFTMAX_LOG, CUDNN_SOFTMAX_MODE_INSTANCE, &alpha, input_tensor, X_data, &beta, output_tensor, Y_data));
+      } else {
+        CUDNN_RETURN_IF_ERROR(cudnnSoftmaxForward(handle, CUDNN_SOFTMAX_ACCURATE, CUDNN_SOFTMAX_MODE_INSTANCE, &alpha, input_tensor, X_data, &beta, output_tensor, Y_data));
+      }
+    } else {
+      dispatch_blockwise_softmax_forward<CudaT, CudaT, AccumulationType_t<CudaT>, is_log_softmax>(stream, Y_data, X_data, gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(N));
+    }
   }
 
   return Status::OK();
@@ -74,7 +78,7 @@ SPECIALIZED_SOFTMAX_HELPER_IMPL(MLFloat16)
     int64_t D = input_shape.SizeFromDimension(axis);                                                           \
     auto Y_data = reinterpret_cast<CudaT*>(Y);                                                                 \
     auto X_data = reinterpret_cast<const CudaT*>(X);                                                           \
-    dispatch_softmax_forward<CudaT, CudaT, AccumulationType_t<CudaT>, is_log_softmax>(                         \
+    dispatch_warpwise_softmax_forward<CudaT, CudaT, AccumulationType_t<CudaT>, is_log_softmax>(                         \
         stream, Y_data, X_data, gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(N)); \
     return Status::OK();                                                                                       \
   }

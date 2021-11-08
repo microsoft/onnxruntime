@@ -20,7 +20,7 @@
 #include "hip/hip_runtime.h"
 
 #include "core/providers/rocm/cu_inc/common.cuh"
-#include "core/providers/rocm/math/softmax_impl.cuh"
+#include "core/providers/rocm/math/softmax_warpwise_impl.cuh"
 #include "core/providers/rocm/math/softmax.h"
 
 #include <limits>
@@ -136,7 +136,7 @@ __global__ void softmax_warp_forward(output_t* dst, const input_t* src, int batc
 }
 
 template <typename input_t, typename output_t, typename acc_t, bool is_log_softmax>
-void dispatch_softmax_forward(hipStream_t stream, output_t* dst, const input_t* src, int softmax_elements, int softmax_elements_stride, int batch_count) {
+void dispatch_warpwise_softmax_forward(hipStream_t stream, output_t* dst, const input_t* src, int softmax_elements, int softmax_elements_stride, int batch_count) {
   if (softmax_elements == 0) {
     return;
   } else {
@@ -197,8 +197,8 @@ void dispatch_softmax_forward(hipStream_t stream, output_t* dst, const input_t* 
 }
 
 #define SPECIALIZED_SOFTMAX_IMPL(input_t, output_t, acc_t) \
-template void dispatch_softmax_forward<input_t, output_t, acc_t, false>(hipStream_t stream, output_t * dst, const input_t* src, int softmax_elements, int softmax_elements_stride, int batch_count); \
-template void dispatch_softmax_forward<input_t, output_t, acc_t, true>(hipStream_t stream, output_t * dst, const input_t* src, int softmax_elements, int softmax_elements_stride, int batch_count);
+template void dispatch_warpwise_softmax_forward<input_t, output_t, acc_t, false>(hipStream_t stream, output_t * dst, const input_t* src, int softmax_elements, int softmax_elements_stride, int batch_count); \
+template void dispatch_warpwise_softmax_forward<input_t, output_t, acc_t, true>(hipStream_t stream, output_t * dst, const input_t* src, int softmax_elements, int softmax_elements_stride, int batch_count);
 
 SPECIALIZED_SOFTMAX_IMPL(float, float, float)
 SPECIALIZED_SOFTMAX_IMPL(half, half, float)
