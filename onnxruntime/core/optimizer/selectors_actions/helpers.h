@@ -109,8 +109,6 @@ class NodesToOptimize {
     return node;
   }
 
-  // // if the last input in num_inputs is for the variadic input, the variadic input could have zero or more values
-  // // so we need to special case the zero and count that as one. same for outputs
   int NumInputEntries() const;
   int NumOutputEntries() const;
 

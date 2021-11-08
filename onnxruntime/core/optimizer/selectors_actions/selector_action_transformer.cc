@@ -81,7 +81,7 @@ Status SelectorActionTransformer::MatchAndProcess(Graph& graph, const GraphViewe
     if (!node_selection_opt.has_value()) {
       break;
     }
-    const auto node_selection = *node_selection_opt;
+    const auto& node_selection = *node_selection_opt;
 
     LOGS(logger, VERBOSE) << "Matched " << node.OpType();
 

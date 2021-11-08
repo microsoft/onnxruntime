@@ -26,7 +26,8 @@ class BaseSelector : public NodeSelector {
  public:
   std::optional<NodesToOptimizeIndices> Select(const GraphViewer& graph_viewer, const Node& node) const override;
 
-  // This select is a QDQ Selectors only function, which takes a const GraphViewer
+  // This is a QDQ Selectors only function, will return QDQ::NodeGroup instead of NodesToOptimizeIndices
+  // Can be used in QDQ handling in EPs such as NNAPI
   std::optional<NodeGroup> GetQDQSelection(const GraphViewer& graph_viewer, const Node& node) const;
 
  protected:
