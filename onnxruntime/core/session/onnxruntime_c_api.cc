@@ -1916,7 +1916,8 @@ ORT_API_STATUS_IMPL(OrtApis::ReleaseAvailableProviders, _In_ char** ptr,
 }
 
 ORT_API_STATUS_IMPL(OrtApis::GetExecutionProviderApi, _In_ const char *provider_name,
-                    uint32_t version, const void ** provider_interface) {
+ORT_API_STATUS_IMPL(OrtApis::GetExecutionProviderApi, _In_ const char* provider_name,
+                    uint32_t version, const void** provider_interface) {
   API_IMPL_BEGIN
   *provider_interface = nullptr;
   if (strcmp(provider_name, "DML") == 0) {
