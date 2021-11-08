@@ -7,7 +7,7 @@ class QDQOperatorBase:
     def __init__(self, onnx_quantizer, onnx_node):
         self.quantizer = onnx_quantizer
         self.node = onnx_node
-        self.disable_qdq_for_node_output = True if onnx_node.op_type in self.op_types_to_exclude_output_quantization \
+        self.disable_qdq_for_node_output = True if onnx_node.op_type in onnx_quantizer.op_types_to_exclude_output_quantization \
                                            else False
 
     def quantize(self):
