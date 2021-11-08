@@ -31,7 +31,6 @@ using InitializerMap = std::unordered_map<std::string, const ONNX_NAMESPACE::Ten
 class Node;
 class NodeArg;
 class GraphViewer;
-struct NodeGroup;
 
 namespace nnapi {
 

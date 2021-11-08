@@ -347,8 +347,8 @@ std::optional<QDQ::NodeGroup> GetQDQNodeGroup(const onnxruntime::GraphViewer& gr
     } else {
       target_node_to_qdq_group.emplace(&node, qdq_node_group);
     }
-    std::cout << "QDQ Node Group found: " << node.OpType() << " with matched target node's name: " << node.Name() << "\n"
-              << std::endl;
+    LOGS_DEFAULT(VERBOSE) << "QDQ Node Group found: " << node.OpType()
+                          << " with matched target node's name: " << node.Name() << "\n";
   }
 
   return qdq_node_group;

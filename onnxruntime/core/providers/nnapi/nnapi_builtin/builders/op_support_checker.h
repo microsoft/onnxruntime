@@ -12,7 +12,7 @@ struct OpSupportCheckParams {
   OpSupportCheckParams(int32_t android_feature_level, bool use_nchw, std::vector<const Node*> dq_nodes_in_group)
       : android_feature_level(android_feature_level),
         use_nchw(use_nchw),
-        dq_nodes_in_group(dq_nodes_in_group) {
+        dq_nodes_in_group(std::move(dq_nodes_in_group)) {
   }
 
   int32_t android_feature_level = 0;
