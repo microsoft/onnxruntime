@@ -32,8 +32,8 @@ Status Trilu::ComputeInternal(OpKernelContext* ctx) const {
   }
   if (input_ptr == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
   const Tensor& input = *input_ptr;
-  const TensorShape& shape = input.Shape();
-  const std::vector<int64_t>& input_dims = shape.GetDims();
+  const auto& shape = input.Shape();
+  const auto& input_dims = shape.GetDims();
   int32_t rank = gsl::narrow_cast<int32_t>(input_dims.size());
   if (rank < 2) {
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Input tensor should have a rank of at least 2");
