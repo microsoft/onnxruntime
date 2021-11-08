@@ -4305,6 +4305,7 @@ def test_sigmoid_grad_opset13():
     pt_model = NeuralNetSigmoid(D_in, H, D_out).to(device)
 
     from onnxruntime.training import ortmodule
+    old_opst_cst = ortmodule.ONNX_OPSET_VERSION
     old_opset = os.getenv("ORTMODULE_ONNX_OPSET_VERSION", None)
     os.environ["ORTMODULE_ONNX_OPSET_VERSION"] = '13'
     assert ortmodule.ONNX_OPSET_VERSION == 12
@@ -4333,6 +4334,8 @@ def test_sigmoid_grad_opset13():
         del os.environ["ORTMODULE_ONNX_OPSET_VERSION"]
     else:
         os.environ["ORTMODULE_ONNX_OPSET_VERSION"] = old_opset
+    assert ortmodule.ONNX_OPSET_VERSION == 13
+    ortmodule.ONNX_OPSET_VERSION = old_opst_cst
  
 @pytest.mark.parametrize("opset_version", [12, 13])
 def test_opset_version_change(opset_version):

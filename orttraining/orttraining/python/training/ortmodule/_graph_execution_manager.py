@@ -93,6 +93,11 @@ class GraphExecutionManager(GraphExecutionInterface):
         self._graph_initializer_names_to_train = None
         self._graph_initializers = None
 
+        # Update constant ONNX_OPSET_VERSION with env var ORTMODULE_ONNX_OPSET_VERSION
+        # if defined.
+        ortmodule.ONNX_OPSET_VERSION = ortmodule._defined_from_envvar(
+            'ORTMODULE_ONNX_OPSET_VERSION', ortmodule.ONNX_OPSET_VERSION, warn=True)
+
         # TrainingAgent or InferenceAgent
         self._execution_agent = None
 
@@ -362,9 +367,7 @@ class GraphExecutionManager(GraphExecutionInterface):
                     _logger.suppress_os_stream_output(log_level=self._debug_options.logging.log_level):
                 required_export_kwargs = {'input_names': self._input_info.names,
                                           'output_names': output_names,
-                                          'opset_version': ortmodule._defined_from_envvar(
-                                                'ORTMODULE_ONNX_OPSET_VERSION',
-                                                ortmodule.ONNX_OPSET_VERSION, warn=True),
+                                          'opset_version': ortmodule.ONNX_OPSET_VERSION,
                                           'do_constant_folding': False,
                                           'training': self._export_mode,
                                           'dynamic_axes': self._input_info.dynamic_axes,
