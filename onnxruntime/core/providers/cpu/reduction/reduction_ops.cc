@@ -692,7 +692,7 @@ bool CommonFastReduceSwitch(OpKernelContext* ctx,
 
   fast_kind = OptimizeShapeForFastReduce(
       reduced_dims, input_axes.empty() ? axes_ : input_axes,
-      fast_shape, output_shape, fast_axes, keepdims_, noop_with_empty_axes);
+      fast_shape, output_shape, fast_axes, keepdims_ != 0, noop_with_empty_axes);
 
   if (which_fast_reduce != FastReduceKind::kNone) {
     if (IsFastReduceKindAvailable(fast_kind, which_fast_reduce)) {

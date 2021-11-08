@@ -140,10 +140,10 @@ class MlasQLinearGlobalAveragePoolU8Test : public MlasTestBase {
               for (size_t ys = 0; ys < _countof(scales); ++ys) {
                 for (size_t i = 0; i < _countof(ImageSize); i++) {
                   for (size_t s = 0; s < _countof(Stride); s++) {
-                    Test(channel_last, Batch[b], Stride[s], Stride[s], ImageSize[i],
+                    Test(channel_last != 0, Batch[b], Stride[s], Stride[s], ImageSize[i],
                          scales[xs], zero_points[xzp], scales[ys], zero_points[yzp], unalign_offset);
                     if (channel_last == 1 && Stride[s] > 32) {
-                      Test(channel_last, Batch[b], Stride[s], 32, ImageSize[i],
+                      Test(channel_last != 0, Batch[b], Stride[s], 32, ImageSize[i],
                            scales[xs], zero_points[xzp], scales[ys], zero_points[yzp], unalign_offset);
                     }
                     unalign_offset = (unalign_offset + 1) & 3;
