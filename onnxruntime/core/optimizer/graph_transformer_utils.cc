@@ -27,6 +27,7 @@
 #include "core/optimizer/gemm_transpose_fusion.h"
 #include "core/optimizer/identity_elimination.h"
 #include "core/optimizer/layer_norm_fusion.h"
+#include "core/optimizer/gemm_sum_fusion.h"
 #include "core/optimizer/matmul_add_fusion.h"
 #include "core/optimizer/matmul_integer_to_float.h"
 #include "core/optimizer/matmul_scale_fusion.h"
@@ -74,6 +75,7 @@ std::vector<std::unique_ptr<RewriteRule>> GenerateRewriteRules(
       rules.push_back(std::make_unique<DivMulFusion>());
       rules.push_back(std::make_unique<FuseReluClip>());
       rules.push_back(std::make_unique<GemmTransposeFusion>());
+      rules.push_back(std::make_unique<GemmSumFusion>());
       rules.push_back(std::make_unique<NotWhereFusion>());
       rules.push_back(std::make_unique<ConvAddFusion>());
       rules.push_back(std::make_unique<ConvMulFusion>());
