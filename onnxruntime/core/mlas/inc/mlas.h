@@ -532,9 +532,9 @@ struct MLAS_GEMM_QUANT_SHAPE_PARAMS {
     size_t M = 0;
     size_t N = 0;
     size_t K = 0;
-    bool AIsSigned = false;
     bool BIsSigned = false;
     bool IsAccumulateMode = false;
+    bool AIsSigned = false;
 };
 
 struct MLAS_GEMM_QUANT_DATA_PARAMS {
@@ -606,6 +606,7 @@ MLASCALL
 MlasGemmPackBSize(
     size_t N,
     size_t K,
+    bool AIsSigned,
     bool BIsSigned
     );
 
@@ -616,6 +617,7 @@ MlasGemmPackB(
     size_t K,
     const uint8_t* B,
     size_t ldb,
+    bool AIsSigned,
     bool BIsSigned,
     void* PackedB
     );
@@ -750,9 +752,10 @@ MlasConvSymFixupInputZeroPoint(
     int32_t zero_point_value
     );
 
+template <typename ActType = uint8_t>
 struct MLAS_CONV_SYM_PARAMS {
-    const uint8_t* InputDirect;
-    const uint8_t* const* InputIndirection;
+    const ActType* InputDirect;
+    const ActType* const* InputIndirection;
     const void* Filter;
     uint8_t* Output;
     size_t InputChannels;
@@ -762,17 +765,20 @@ struct MLAS_CONV_SYM_PARAMS {
     const int32_t* Bias;
     const float* Scale;
     bool PerChannelScale;
-    uint8_t OutputZeroPoint;
+    ActType OutputZeroPoint;
 };
+
+using MLAS_CONV_SYM_U8S8_PARAMS = MLAS_CONV_SYM_PARAMS<uint8_t>;
+using MLAS_CONV_SYM_S8S8_PARAMS = MLAS_CONV_SYM_PARAMS<int8_t>;
 
 void
 MlasConvSym(
-    const MLAS_CONV_SYM_PARAMS& Params
+    const MLAS_CONV_SYM_U8S8_PARAMS& Params
     );
 
 void
 MlasConvSymDepthwise(
-    const MLAS_CONV_SYM_PARAMS& Params
+    const MLAS_CONV_SYM_U8S8_PARAMS& Params
     );
 
 //

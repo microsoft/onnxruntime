@@ -82,7 +82,7 @@ Status QAttention<T>::PrePack(const Tensor& weights, int input_idx, AllocatorPtr
   const auto* weights_data = static_cast<const uint8_t*>(weights.DataRaw());
   weights_is_signed_ = weights.IsDataType<int8_t>();
 
-  packed_weights_size_ = MlasGemmPackBSize(head_size, input_hidden_size, weights_is_signed_);
+  packed_weights_size_ = MlasGemmPackBSize(head_size, input_hidden_size, false /*AIsSigned*/, weights_is_signed_);
   if (packed_weights_size_ == 0) {
     return Status::OK();
   }
@@ -99,7 +99,7 @@ Status QAttention<T>::PrePack(const Tensor& weights, int input_idx, AllocatorPtr
   packed_weights_ = BufferUniquePtr(packed_weights_data, BufferDeleter(alloc));
 
   for (size_t i = 0; i < loop_len; i++) {
-    MlasGemmPackB(head_size, input_hidden_size, weights_data, hidden_size_x3, weights_is_signed_, packed_weights_data);
+    MlasGemmPackB(head_size, input_hidden_size, weights_data, hidden_size_x3, false /*AIsSigned*/, weights_is_signed_, packed_weights_data);
     packed_weights_data += packed_weights_size_;
     weights_data += head_size;
   }

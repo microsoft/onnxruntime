@@ -686,14 +686,20 @@ struct MLAS_GEMM_U8X8_DISPATCH {
 MLAS_FORCEINLINE
 const MLAS_GEMM_U8X8_DISPATCH*
 MlasGemmU8X8GetDispatch(
+    bool AIsSigned,
     bool BIsSigned
 )
 {
-    const MLAS_GEMM_U8X8_DISPATCH* GemmU8X8Dispatch;
+    const MLAS_GEMM_U8X8_DISPATCH* GemmU8X8Dispatch = nullptr;
 
+    MLAS_UNREFERENCED_PARAMETER(AIsSigned);
     MLAS_UNREFERENCED_PARAMETER(BIsSigned);
 
 #if defined(MLAS_TARGET_AMD64_IX86)
+    if (AIsSigned) {
+        return GemmU8X8Dispatch;
+    }
+
     if (BIsSigned) {
         GemmU8X8Dispatch = MlasPlatform.GemmU8S8Dispatch;
     }
@@ -701,15 +707,35 @@ MlasGemmU8X8GetDispatch(
         GemmU8X8Dispatch = MlasPlatform.GemmU8U8Dispatch;
     }
 #elif defined(MLAS_TARGET_ARM64)
-    GemmU8X8Dispatch = MlasPlatform.GemmU8X8Dispatch;
-    if (USE_NEONS8_KERNEL && BIsSigned && GemmU8X8Dispatch == &MlasGemmU8X8DispatchNeon) {
-        GemmU8X8Dispatch = &MlasGemmS8S8DispatchNeon;
+    if (AIsSigned) {
+        GemmU8X8Dispatch = MlasPlatform.GemmU8X8Dispatch;
+        if (USE_NEONS8_KERNEL && BIsSigned && GemmU8X8Dispatch == &MlasGemmU8X8DispatchNeon) {
+            GemmU8X8Dispatch = &MlasGemmS8S8DispatchNeon;
+        }
+    } else {
+        GemmU8X8Dispatch = MlasPlatform.GemmU8X8Dispatch;
+        if (USE_NEONS8_KERNEL && BIsSigned && GemmU8X8Dispatch == &MlasGemmU8X8DispatchNeon) {
+            GemmU8X8Dispatch = &MlasGemmS8S8DispatchNeon;
+        }
     }
+
 #elif defined(MLAS_TARGET_ARM64EC) || (defined(MLAS_TARGET_ARM) && !defined(_MSC_VER))
+    if (AIsSigned) {
+        return GemmU8X8Dispatch;
+    }
+
     GemmU8X8Dispatch = &MlasGemmU8X8DispatchNeon;
 #elif defined(MLAS_TARGET_WASM_SIMD)
+    if (AIsSigned) {
+        return GemmU8X8Dispatch;
+    }
+
     GemmU8X8Dispatch = &MlasGemmU8X8DispatchWasmSimd;
 #else
+    if (AIsSigned) {
+        return GemmU8X8Dispatch;
+    }
+
     GemmU8X8Dispatch = &MlasGemmU8X8DispatchDefault;
 #endif
 

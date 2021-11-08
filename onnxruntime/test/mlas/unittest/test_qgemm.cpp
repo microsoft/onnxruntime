@@ -45,13 +45,13 @@ static size_t QGemmRegistShortExecute() {
   count += QgemmShortExecuteTest<uint8_t, float, false, false>::RegisterShortExecuteTests();
   count += QgemmShortExecuteTest<int8_t, int32_t, false, false>::RegisterShortExecuteTests();
   count += QgemmShortExecuteTest<uint8_t, int32_t, false, false>::RegisterShortExecuteTests();
-  if (MlasGemmPackBSize(128, 128, false) > 0) {
+  if (MlasGemmPackBSize(128, 128, false /*AIsSigned*/, false) > 0) {
     // QGEMM U8U8=float packed tests
     count += QgemmShortExecuteTest<uint8_t, float, true, false>::RegisterShortExecuteTests();
     // QGEMM U8u8=int32_t packed tests
     count += QgemmShortExecuteTest<uint8_t, int32_t, true, false>::RegisterShortExecuteTests();
   }
-  if (MlasGemmPackBSize(128, 128, true) > 0) {
+  if (MlasGemmPackBSize(128, 128, false /*AIsSigned*/, true) > 0) {
     // QGEMM U8S8=float packed tests
     count += QgemmShortExecuteTest<int8_t, float, true, false>::RegisterShortExecuteTests();
     // QGEMM U8S8=int32_t packed tests
@@ -63,11 +63,11 @@ static size_t QGemmRegistShortExecute() {
     count += QgemmShortExecuteTest<uint8_t, float, false, true>::RegisterShortExecuteTests();
     count += QgemmShortExecuteTest<int8_t, int32_t, false, true>::RegisterShortExecuteTests();
     count += QgemmShortExecuteTest<uint8_t, int32_t, false, true>::RegisterShortExecuteTests();
-    if (MlasGemmPackBSize(128, 128, false) > 0) {
+    if (MlasGemmPackBSize(128, 128, false /*AIsSigned*/, false) > 0) {
       count += QgemmShortExecuteTest<uint8_t, float, true, true>::RegisterShortExecuteTests();
       count += QgemmShortExecuteTest<uint8_t, int32_t, true, true>::RegisterShortExecuteTests();
     }
-    if (MlasGemmPackBSize(128, 128, true) > 0) {
+    if (MlasGemmPackBSize(128, 128, false /*AIsSigned*/, true) > 0) {
       count += QgemmShortExecuteTest<int8_t, float, true, true>::RegisterShortExecuteTests();
       count += QgemmShortExecuteTest<int8_t, int32_t, true, true>::RegisterShortExecuteTests();
     }

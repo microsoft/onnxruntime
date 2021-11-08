@@ -228,7 +228,9 @@ class QLinearConv : public OpKernel {
           .TypeConstraint("T4", DataTypeImpl::GetTensorType<int32_t>()),                                         \
       QLinearConv<data_type>);
 
+#if defined(MLAS_TARGET_ARM64)
 REGISTER_QLINEARCONV_TYPED_KERNEL(kOnnxDomain, 10, int8_t);
+#endif
 REGISTER_QLINEARCONV_TYPED_KERNEL(kOnnxDomain, 10, uint8_t);
 
 #ifndef DISABLE_CONTRIB_OPS
@@ -237,7 +239,9 @@ namespace contrib {
 
 // Register an alternate version of this kernel that supports the channels_last
 // attribute in order to consume and produce NHWC tensors.
+#if defined(MLAS_TARGET_ARM64)
 REGISTER_QLINEARCONV_TYPED_KERNEL(kMSDomain, 1, int8_t);
+#endif
 REGISTER_QLINEARCONV_TYPED_KERNEL(kMSDomain, 1, uint8_t);
 
 }  // namespace contrib
@@ -302,7 +306,10 @@ Status QLinearConv<ActType>::PrePack(const Tensor& tensor, int input_idx, Alloca
 
   // Don't pack the filter buffer if the MlasConvDepthwise path is used.
   if (group_input_channels != 1 && group_output_channels != 1) {
-    packed_W_size_ = MlasGemmPackBSize(group_output_channels, kernel_dim, is_W_signed_);
+    packed_W_size_ = MlasGemmPackBSize(group_output_channels,
+                                       kernel_dim,
+                                       std::is_same<ActType, int8_t>::value,
+                                       is_W_signed_);
     if (packed_W_size_ != 0) {
       size_t packed_W_data_size = SafeInt<size_t>(group_count) * packed_W_size_;
       auto* packed_W = static_cast<uint8_t*>(alloc->Alloc(packed_W_data_size));
@@ -326,7 +333,13 @@ Status QLinearConv<ActType>::PrePack(const Tensor& tensor, int input_idx, Alloca
 
       for (int64_t group_id = 0; group_id < conv_attrs_.group; ++group_id) {
         ReorderFilter(Wdata, group_reordered_W, group_output_channels, group_input_channels, kernel_size);
-        MlasGemmPackB(group_output_channels, kernel_dim, group_reordered_W, group_output_channels, is_W_signed_, packed_W);
+        MlasGemmPackB(group_output_channels,
+                      kernel_dim,
+                      group_reordered_W,
+                      group_output_channels,
+                      std::is_same<ActType, int8_t>::value,
+                      is_W_signed_,
+                      packed_W);
         packed_W += packed_W_size_;
         Wdata += W_offset;
       }
@@ -613,7 +626,7 @@ Status QLinearConv<ActType>::Compute(OpKernelContext* context) const {
       auto* worker_output = output_data + output_start * M;
 
       if (is_symmetric_conv_) {
-        MLAS_CONV_SYM_PARAMS conv_params = {};
+        MLAS_CONV_SYM_PARAMS<ActType> conv_params = {};
         if (worker_indirection_buffer) {
           conv_params.InputIndirection = worker_indirection_buffer;
         } else {

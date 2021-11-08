@@ -96,7 +96,7 @@ Return Value:
     // Dispatch the partitioned operation.
     //
 
-    const auto* GemmU8X8Dispatch = MlasGemmU8X8GetDispatch(Shape->BIsSigned);
+    const auto* GemmU8X8Dispatch = MlasGemmU8X8GetDispatch(Shape->AIsSigned, Shape->BIsSigned);
     MLAS_GEMM_U8X8_OPERATION* GemmU8X8Operation;
 
     if (Data->BIsPacked) {
@@ -148,6 +148,24 @@ MlasGemmBatch(
     const size_t BatchN,
     MLAS_THREADPOOL* ThreadPool)
 {
+    if (Shape.AIsSigned) {
+        if (!Shape.BIsSigned) {
+#ifdef MLAS_NO_EXCEPTION
+            abort();
+#else
+            throw std::invalid_argument("Only support B is signed if A is signed.");
+#endif
+        }
+
+#if !defined(MLAS_TARGET_ARM64)
+#if defined(MLAS_NO_EXCEPTION)
+        abort();
+#else
+        throw std::invalid_argument("Only ARM64 supports A is signed.");
+#endif
+#endif
+    }
+
     const size_t M = Shape.M;
     const size_t N = Shape.N;
     const size_t K = Shape.K;
@@ -222,7 +240,8 @@ size_t
 MLASCALL
 MlasGemmPackBSize(
     size_t N,
-    size_t K,
+    size_t K, 
+    bool AIsSigned,
     bool BIsSigned
     )
 /*++
@@ -252,7 +271,7 @@ Return Value:
     // Retrieve the packing parameters.
     //
 
-    const auto* GemmU8X8Dispatch = MlasGemmU8X8GetDispatch(BIsSigned);
+    const auto* GemmU8X8Dispatch = MlasGemmU8X8GetDispatch(AIsSigned, BIsSigned);
 
     size_t PackedK = GemmU8X8Dispatch->PackedK;
     size_t PackedStrideK = GemmU8X8Dispatch->PackedStrideK;
@@ -285,6 +304,7 @@ MlasGemmPackB(
     size_t K,
     const uint8_t* B,
     size_t ldb,
+    bool AIsSigned,
     bool BIsSigned,
     void* PackedB
     )
@@ -320,7 +340,7 @@ Return Value:
     // Retrieve the packing parameters.
     //
 
-    const auto* GemmU8X8Dispatch = MlasGemmU8X8GetDispatch(BIsSigned);
+    const auto* GemmU8X8Dispatch = MlasGemmU8X8GetDispatch(AIsSigned, BIsSigned);
 
     size_t PackedK = GemmU8X8Dispatch->PackedK;
     size_t PackedStrideK = GemmU8X8Dispatch->PackedStrideK;

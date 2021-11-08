@@ -9,9 +9,9 @@ template <bool Packed, bool Threaded>
 class MlasQgemmU8X8U8X8TestBase : public MlasTestBase {
  private:
   void* PackB(size_t N, size_t K, const uint8_t* B, size_t ldb, bool BIsSigned) {
-    size_t PackedBSize = MlasGemmPackBSize(N, K, BIsSigned);
+    size_t PackedBSize = MlasGemmPackBSize(N, K, false /*AIsSigned*/, BIsSigned);
     void* PackedB = BufferBPacked.GetBuffer(PackedBSize);
-    MlasGemmPackB(N, K, B, ldb, BIsSigned, PackedB);
+    MlasGemmPackB(N, K, B, ldb, false /*AIsSigned*/, BIsSigned, PackedB);
     return PackedB;
   }
 
