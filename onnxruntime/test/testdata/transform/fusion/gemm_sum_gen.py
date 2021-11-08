@@ -158,6 +158,24 @@ def gen_gemm_sum_no_fusion_broadcast_failure(model_path):
 
     save(model_path, nodes, inputs, outputs, initializers=[])
 
+def gen_gemm_sum_no_fusion_original_gemm_output_used(model_path):
+    nodes = [
+        helper.make_node(op_type="Gemm", inputs=["A", "B"], outputs=["tp0"]),
+        helper.make_node(op_type="Sum", inputs=["tp0", "C"], outputs=["output"]),
+    ]
+
+    inputs = [
+        helper.make_tensor_value_info("A", TensorProto.FLOAT, ['M', 'K']),
+        helper.make_tensor_value_info("B", TensorProto.FLOAT, ['K', 'N']),
+        helper.make_tensor_value_info("C", TensorProto.FLOAT, ['M', 'N']), 
+    ]
+
+    outputs = [
+        helper.make_tensor_value_info("tp0", TensorProto.FLOAT, ['M', 'N']),
+        helper.make_tensor_value_info("output", TensorProto.FLOAT, ['M', 'N'])
+    ]
+
+    save(model_path, nodes, inputs, outputs, initializers=[])
 
 gen_gemm_sum_basic("gemm_sum_basic.onnx")
 gen_gemm_sum_attributes("gemm_sum_attributes.onnx")
@@ -166,3 +184,4 @@ gen_gemm_sum_no_fusion_c_used("gemm_sum_no_fusion_c_used.onnx")
 gen_gemm_sum_no_fusion_sum_multiple_inputs("gemm_sum_no_fusion_sum_multiple_inputs.onnx")
 gen_gemm_sum_fusion_broadcast("gemm_sum_fusion_broadcast.onnx")
 gen_gemm_sum_no_fusion_broadcast_failure("gemm_sum_no_fusion_broadcast_failure.onnx")
+gen_gemm_sum_no_fusion_original_gemm_output_used("gemm_sum_no_fusion_original_gemm_output_used.onnx")

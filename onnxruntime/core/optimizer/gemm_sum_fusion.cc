@@ -98,8 +98,9 @@ bool GemmSumFusion::SatisfyCondition(const Graph& graph, const Node& node, const
     return false;
   }
 
-  // This gemm node must have exactly one output for this fusion pattern to be valid.
-  if (node.OutputDefs().size() != 1) {
+  // This gemm node must have exactly one output for this fusion pattern to be valid. We have already
+  // verified that this node does not produce any graph outputs, so we can check output edges.
+  if (node.GetOutputEdgesCount() != 1) {
     return false;
   }
 
