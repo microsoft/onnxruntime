@@ -87,7 +87,7 @@ struct OrtDmlApi {
     * DmlGetD3D12ResourceFromAllocation
 	 * This api is used to get the D3D12 resource when a OrtValue has been allocated by the DML EP and accessed via GetMutableTensorData.
     */
-  ORT_API2_STATUS(DmlGetD3D12ResourceFromAllocation, _In_ OrtAllocator* provider, _In_ void* allocation, _Out_ ID3D12Resource** resource);
+  ORT_API2_STATUS(DmlGetD3D12ResourceFromAllocation, _In_ OrtAllocator* provider, _In_ void* dml_allocation, _Out_ ID3D12Resource** d3d_resource);
 };
 
 #ifdef __cplusplus
