@@ -99,7 +99,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
           Stream(),
           reinterpret_cast<const CudaT*>(gemm_buffer.get()),
           nullptr == mask_index ? nullptr : mask_index->template Data<int>(),
-          nullptr == mask_index ? nullptr : &(mask_index->Shape().GetDims()),
+          nullptr == mask_index ? gsl::span<const int64_t>() : mask_index->Shape().GetDims(),
           output->template MutableData<T>(),
           batch_size,
           sequence_length,

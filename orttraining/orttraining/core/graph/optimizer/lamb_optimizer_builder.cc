@@ -45,7 +45,7 @@ Status LambOptimizerBuilder::Build(
 
   // Loss scale ArgDef.
   if (!opt_configs[0].loss_scale_input_name.empty()) {
-    input_argdefs.emplace_back(ArgDef(opt_configs[0].loss_scale_input_name, graph_defs.CreateTypeProto({1}, ONNX_NAMESPACE::TensorProto_DataType_FLOAT)));
+    input_argdefs.emplace_back(ArgDef(opt_configs[0].loss_scale_input_name, graph_defs.CreateTypeProto(std::array<const int64_t, 1>{1}, ONNX_NAMESPACE::TensorProto_DataType_FLOAT)));
   } else {
     input_argdefs.emplace_back(ArgDef());
   }
