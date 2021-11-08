@@ -2107,6 +2107,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSessionFromArrayWithPrepackedWeightsContainer
 
 ORT_API_STATUS_IMPL(OrtApis::GetValueMemoryInfo, const OrtValue* value, const OrtMemoryInfo** memory_info) {
   API_IMPL_BEGIN
+  *memory_info = nullptr;
   const auto& tensor = value->Get<onnxruntime::Tensor>();
   *memory_info = &tensor.Location();
   return nullptr;
