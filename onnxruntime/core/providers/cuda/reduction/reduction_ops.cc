@@ -1049,9 +1049,13 @@ template std::unique_ptr<Tensor> ReduceCompute<MLFloat16, CUDNN_REDUCE_TENSOR_NO
   REGISTER_KERNEL_TYPED_11(name, double)
 
 REGISTER_KERNEL_HFD_11(ArgMin)
+
+// If supporting select_last_index == 1, please remove
+// logic in ArgMaxNeedFallbackToCPU() in cuda_execution_provider.cc
 REGISTER_ARGMAX_KERNEL_TYPED_13(MLFloat16)
 REGISTER_ARGMAX_KERNEL_TYPED_13(float)
 REGISTER_ARGMAX_KERNEL_TYPED_13(double)
+
 REGISTER_KERNEL_HFD(ReduceL1)
 REGISTER_KERNEL_HFD(ReduceL2)
 

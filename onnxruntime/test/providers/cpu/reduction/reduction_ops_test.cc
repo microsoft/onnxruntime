@@ -2122,23 +2122,20 @@ TEST(ReductionOpTest, ArgMax_int32_last_index_dups) {
 
 TEST(ReductionOpTest, ArgMax_float_last_index_dups) {
   OpTester test("ArgMax", 12);
-  test.AddAttribute("axis", (int64_t)1);
-  test.AddAttribute("keepdims", (int64_t)1);
-  test.AddAttribute("select_last_index", (int64_t)1);
+  test.AddAttribute("axis", static_cast<int64_t>(1));
+  test.AddAttribute("keepdims", static_cast<int64_t>(1));
 
-  test.AddInput<float>("data", {3, 2, 2},
-                       {2.f, 4.f,
-                        3.f, 4.f,
+  // Since select_last_index is 0, tis test should run on both CPU and CUDA
+  test.AddAttribute("select_last_index", static_cast<int64_t>(0));
 
-                        8.f, 6.f,
-                        7.f, 8.f,
+  test.AddInput<float>("data", {3, 4},
+                       {2.f, 4.f, 3.f, 4.f,  // dupes
 
-                        10.f, 10.f,  // dupes
-                        11.f, 12.f});
-  test.AddOutput<int64_t>("reduced", {3, 1, 2},
-                          {1, 1,
-                           0, 1,
-                           1, 0});
+                        8.f, 6.f, 7.f, 8.f,  // dupes
+
+                        12.f, 12.f, 11.f, 12.f});  // dupes
+  test.AddOutput<int64_t>("reduced", {3, 1},
+                          {1, 0, 0});
 
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }

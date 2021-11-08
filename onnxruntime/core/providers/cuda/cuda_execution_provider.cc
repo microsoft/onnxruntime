@@ -2149,6 +2149,31 @@ static bool RNNNeedFallbackToCPU(const onnxruntime::Node& node,
   return false;
 }
 
+static bool ArgMaxNeedFallbackToCPU(const onnxruntime::Node& node) {
+  // Opset 12 introduced the attribute "select_last_index"
+  if (node.SinceVersion() >= 12) {
+    const auto& node_attributes = node.GetAttributes();
+
+    for (auto& attr : node_attributes) {
+      auto& attr_name = attr.first;
+      auto& attr_value = attr.second;
+
+      // CuDNN doesn't support picking the last index in case of encountering
+      // duplicate max values.
+      // CuDNN's API doc doesn't mention what happens in case duplicates are encountered,
+      // but based on testing, the results seem to indicate a "stable" implementation
+      // (i.e.) relative ordering is preserved.
+      if ("select_last_index" == attr_name) {
+        if (attr_value.i() != 0) {
+          return true;
+        }
+      }
+    }
+  }
+
+  return false;
+}
+
 static bool ConvTransposeNeedFallbackToCPU(const onnxruntime::Node& node) {
   const auto& node_attributes = node.GetAttributes();
   // Check attributes
@@ -2268,6 +2293,9 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
       force_inside = !not_supported;
     } else if ("ConvTranspose" == node.OpType()) {
       not_supported = ConvTransposeNeedFallbackToCPU(node);
+      force_inside = !not_supported;
+    } else if ("ArgMax" == node.OpType()) {
+      not_supported = ArgMaxNeedFallbackToCPU(node);
       force_inside = !not_supported;
     } else if ("Cast" == node.OpType()) {
       not_supported = CastNeedFallbackToCPU(node);
