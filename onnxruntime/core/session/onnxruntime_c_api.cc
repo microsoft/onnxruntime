@@ -1920,7 +1920,9 @@ ORT_API_STATUS_IMPL(OrtApis::GetExecutionProviderApi, _In_ const char *provider_
   API_IMPL_BEGIN
   *provider_interface = nullptr;
   if (strcmp(provider_name, "DML") == 0) {
+#ifdef USE_DML
     *provider_interface = GetOrtDmlApi(version);
+#endif
     if (*provider_interface == nullptr) {
       return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Specified version is not supported for DirectML provider.");  
     }
