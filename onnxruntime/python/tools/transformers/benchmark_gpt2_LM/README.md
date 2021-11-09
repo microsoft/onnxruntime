@@ -1,8 +1,10 @@
 **Benchmark tool**
 
-This can be used to test beam search on 1 layer gpt2 onnx model. Both pytorch and onnx models can be tested
+This can be used to test beam search on any gpt2 model. Both pytorch and onnx models can be tested.
 
 Other kind of models are not supported yet.
+
+Also, currently this tool has been be verified to work on GPU. CPU would need additional changes.
 
 
 
@@ -89,14 +91,3 @@ The following options are required to run the script as provided in the above ex
 1K set of input queries
 
 10K set of input queries
-
-
-
-
- **Accuracy Measurement:**
-
-Use the following commands to measure e2e accurancy of the model:
-
-python .\model\calc_appg.py -t "onnx" -m .\onnx_model\deepsuggest_embed_fused_with_pos.onnx --num_beams 2 --run_beam_search -i .\NWMeasurement_RefPredictions_230K.tsv -o calc_output_file.tsv -r .\NWMeasurement_RefPredictions_230K.tsv
-
-calc_output_file.tsv can be removed after this test.
