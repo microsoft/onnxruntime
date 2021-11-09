@@ -19,4 +19,7 @@ class QDQOperatorBase:
             nodes_to_iterate = itertools.chain(node.input, node.output)
 
         for tensor_name in nodes_to_iterate:
-            self.quantizer.quantize_tensor(tensor_name)
+            if self.quantizer.is_per_channel():
+                self.quantizer.quantize_tensor_per_channel(tensor_name, 1)
+            else:
+                self.quantizer.quantize_tensor(tensor_name)
