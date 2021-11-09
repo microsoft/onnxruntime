@@ -7,7 +7,7 @@ const path = require('path');
 const webpack = require('webpack');
 const TerserPlugin = require("terser-webpack-plugin");
 
-function addCopyrightBannerPlugin(mode) {
+function addCopyrightBannerPlugin(mode, target) {
   const VERSION = require(path.join(__dirname, 'package.json')).version;
   const COPYRIGHT_BANNER = `/*!
  * ONNX Runtime Common v${VERSION}
@@ -19,6 +19,7 @@ function addCopyrightBannerPlugin(mode) {
     return new TerserPlugin({
       extractComments: false,
       terserOptions: {
+        ecma: target === 'es6' ? 2015 : 2017,
         format: {
           preamble: COPYRIGHT_BANNER,
           comments: false,
@@ -36,7 +37,7 @@ function addCopyrightBannerPlugin(mode) {
 function buildConfig({
   suffix = '',
   format = 'umd',
-  target = 'es5',
+  target = 'es2017',
   mode = 'production',
   devtool = 'source-map'
 }) {
@@ -54,7 +55,7 @@ function buildConfig({
     resolve: { extensions: ['.ts', '.js'] },
     plugins: [
       new webpack.WatchIgnorePlugin({ paths: [/\.js$/, /\.d\.ts$/] }),
-      addCopyrightBannerPlugin(mode),
+      addCopyrightBannerPlugin(mode, target),
     ],
     module: {
       rules: [{
@@ -63,7 +64,7 @@ function buildConfig({
           {
             loader: 'ts-loader',
             options: {
-              compilerOptions: { target: target }
+              compilerOptions: { target }
             }
           }
         ]
