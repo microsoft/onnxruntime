@@ -10,6 +10,12 @@
 #include <unordered_map>
 #include <unordered_set>
 
+#ifdef _WIN32
+#pragma warning(push)
+// disable some warnings from protobuf to pass Windows build
+#pragma warning(disable : 4244)
+#endif
+
 #if !defined(ORT_MINIMAL_BUILD)
 #include "onnx/defs/schema.h"
 #else
@@ -17,6 +23,10 @@
 #endif
 #include "onnx/onnx_pb.h"
 #include "onnx/onnx-operators_pb.h"
+
+#ifdef _WIN32
+#pragma warning(pop)
+#endif
 
 #include "gsl/gsl"
 
