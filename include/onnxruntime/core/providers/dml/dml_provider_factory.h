@@ -77,7 +77,7 @@ struct OrtDmlApi {
 
   /**
     * DmlFreeGPUAllocation
-	 * This api is used free the DML EP input created by DmlCreateGPUAllocationFromD3DResource.
+    * This api is used free the DML EP input created by DmlCreateGPUAllocationFromD3DResource.
     */
   ORT_API2_STATUS(DmlFreeGPUAllocation, _In_ void* dml_resource);
 
