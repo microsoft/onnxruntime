@@ -757,7 +757,7 @@ struct MLAS_CONV_SYM_PARAMS {
     const ActType* InputDirect;
     const ActType* const* InputIndirection;
     const void* Filter;
-    uint8_t* Output;
+    ActType* Output;
     size_t InputChannels;
     size_t OutputChannels;
     size_t OutputCount;
@@ -780,6 +780,18 @@ void
 MlasConvSymDepthwise(
     const MLAS_CONV_SYM_U8S8_PARAMS& Params
     );
+
+#ifdef MLAS_TARGET_ARM64
+void
+MlasConvSym(
+    const MLAS_CONV_SYM_S8S8_PARAMS& Params
+    );
+
+void
+MlasConvSymDepthwise(
+    const MLAS_CONV_SYM_S8S8_PARAMS& Params
+    );
+#endif
 
 //
 // Pooling routines.

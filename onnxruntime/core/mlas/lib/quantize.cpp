@@ -723,9 +723,11 @@ MlasRequantizeOutput(
             WordVector.val[1] = vqaddq_s16(WordVector.val[1], ZeroPointVector);
 
             if (std::is_signed<OutputType>::value) {
-                vst1q_s8(RowOutput, vqmovn_high_s16(vqmovn_s16(WordVector.val[0]), WordVector.val[1]));
+                vst1q_s8(reinterpret_cast<int8_t*>(RowOutput),
+                         vqmovn_high_s16(vqmovn_s16(WordVector.val[0]), WordVector.val[1]));
             } else {
-                vst1q_u8(RowOutput, vqmovun_high_s16(vqmovun_s16(WordVector.val[0]), WordVector.val[1]));
+                vst1q_u8(reinterpret_cast<uint8_t*>(RowOutput),
+                         vqmovun_high_s16(vqmovun_s16(WordVector.val[0]), WordVector.val[1]));
             }
             RowOutput += 16;
 
@@ -822,7 +824,7 @@ MlasRequantizeOutput(
 
             } else {
 
-                vst1q_lane_u8(RowOutput, ByteVector, 0);
+                vst1q_lane_u8(reinterpret_cast<uint8_t*>(RowOutput), ByteVector, 0);
                 RowOutput += 1;
 
                 n -= 1;

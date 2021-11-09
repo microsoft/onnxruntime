@@ -47,13 +47,13 @@ struct MLAS_GEMM_U8X8_KERNEL_UDOT
     typedef uint8_t OffsetBType;
 
     static constexpr size_t PackedK = 8;
-    static constexpr MLAS_GEMM_U8X8_STRIDES Strides{ 24, 128, 256 };
-    static constexpr MLAS_GEMM_U8X8_STRIDES PackedStrides{ 24, 128, 384 };
+    static constexpr MLAS_GEMM_QUANT_STRIDES Strides{ 24, 128, 256 };
+    static constexpr MLAS_GEMM_QUANT_STRIDES PackedStrides{ 24, 128, 384 };
 };
 
 constexpr size_t MLAS_GEMM_U8X8_KERNEL_UDOT::PackedK;
-constexpr MLAS_GEMM_U8X8_STRIDES MLAS_GEMM_U8X8_KERNEL_UDOT::Strides;
-constexpr MLAS_GEMM_U8X8_STRIDES MLAS_GEMM_U8X8_KERNEL_UDOT::PackedStrides;
+constexpr MLAS_GEMM_QUANT_STRIDES MLAS_GEMM_U8X8_KERNEL_UDOT::Strides;
+constexpr MLAS_GEMM_QUANT_STRIDES MLAS_GEMM_U8X8_KERNEL_UDOT::PackedStrides;
 
 template<>
 MLAS_FORCEINLINE

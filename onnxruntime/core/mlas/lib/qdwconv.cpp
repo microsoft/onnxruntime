@@ -284,7 +284,7 @@ Return Value:
 #if defined(MLAS_TARGET_AMD64)
         MlasPlatform.ConvDepthwiseU8S8Kernel(
 #else
-        MlasConvDepthwiseKernel<int8_t>(
+        MlasConvDepthwiseKernel<uint8_t, int8_t>(
 #endif
             Input,
             InputZeroPoint,
@@ -300,7 +300,7 @@ Return Value:
 #if defined(MLAS_TARGET_AMD64)
         MlasPlatform.ConvDepthwiseU8U8Kernel(
 #else
-        MlasConvDepthwiseKernel<uint8_t>(
+        MlasConvDepthwiseKernel<uint8_t, uint8_t>(
 #endif
             Input,
             InputZeroPoint,
@@ -377,7 +377,7 @@ Return Value:
 #if defined(MLAS_TARGET_AMD64)
         MlasPlatform.ConvDepthwiseS8S8Kernel(
 #else
-        MlasConvDepthwiseKernel<int8t_t, int8_t>(
+        MlasConvDepthwiseKernel<int8_t, int8_t>(
 #endif
             Input,
             InputZeroPoint,
@@ -393,7 +393,7 @@ Return Value:
 #if defined(MLAS_TARGET_AMD64)
         MlasPlatform.ConvDepthwiseS8U8Kernel(
 #else
-        MlasConvDepthwiseKernel<int8t_t, uint8_t>(
+        MlasConvDepthwiseKernel<int8_t, uint8_t>(
 #endif
             Input,
             InputZeroPoint,

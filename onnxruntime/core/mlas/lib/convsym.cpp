@@ -435,3 +435,22 @@ MlasConvSymDepthwise(
         OutputCountRemaining -= OutputCount;
     }
 }
+
+#ifdef MLAS_TARGET_ARM64
+void
+MlasConvSym(
+    const MLAS_CONV_SYM_S8S8_PARAMS& Params
+    )
+{
+    MLAS_UNREFERENCED_PARAMETER(Params);
+}
+
+void
+MlasConvSymDepthwise(
+    const MLAS_CONV_SYM_S8S8_PARAMS& Params
+    )
+{
+    MLAS_UNREFERENCED_PARAMETER(Params);
+}
+
+#endif

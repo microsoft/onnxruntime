@@ -667,7 +667,7 @@ Status QLinearConv<ActType>::Compute(OpKernelContext* context) const {
       } else {
         for (int64_t group_id = 0; group_id < group_count; ++group_id) {
           MLAS_GEMM_QUANT_DATA_PARAMS gemm_params;
-          gemm_params.ZeroPointA = X_zero_point_value;
+          gemm_params.ZeroPointA = static_cast<uint8_t>(X_zero_point_value);
           if (packed_W_buffer_) {
             gemm_params.B = static_cast<const int8_t*>(packed_W_buffer_.get()) + group_id * packed_W_size_,
             gemm_params.BIsPacked = true;
@@ -728,10 +728,10 @@ Status QLinearConv<ActType>::Compute(OpKernelContext* context) const {
               // Use the im2col buffer prepared outside the thread, indexed by group.
               worker_col_buffer += group_id * col_buffer_size;
             }
-            gemm_params.A = worker_col_buffer;
+            gemm_params.A = reinterpret_cast<const uint8_t*>(worker_col_buffer);
             gemm_params.lda = static_cast<size_t>(kernel_dim);
           } else {
-            gemm_params.A = group_input_data + output_start * C;
+            gemm_params.A = reinterpret_cast<const uint8_t*>(group_input_data + output_start * C);
             gemm_params.lda = static_cast<size_t>(C);
           }
 
@@ -739,6 +739,7 @@ Status QLinearConv<ActType>::Compute(OpKernelContext* context) const {
           gemm_shape.M = static_cast<size_t>(output_count);
           gemm_shape.N = static_cast<size_t>(group_output_channels);
           gemm_shape.K = static_cast<size_t>(kernel_dim);
+          gemm_shape.AIsSigned = std::is_signed<ActType>::value;
           gemm_shape.BIsSigned = is_W_signed;
 
           MlasGemm(gemm_shape, gemm_params, nullptr);
