@@ -199,6 +199,17 @@ const std::vector<const NodeArg*>& GraphViewer::GetOutputs() const noexcept {
                                    : filtered_node_outputs_;
 }
 
+bool GraphViewer::NodeProducesGraphOutput(const Node& node) const {
+  const auto& outputs = GetOutputs();
+  auto end_outputs = outputs.cend();
+  for (auto output_def : node.OutputDefs()) {
+    if (std::find(outputs.cbegin(), end_outputs, output_def) != end_outputs) {
+      return true;
+    }
+  }
+  return false;
+}
+
 // Get graph value infos.
 const std::unordered_set<const NodeArg*>& GraphViewer::GetValueInfo() const noexcept {
   return graph_->GetValueInfo();
@@ -262,7 +273,12 @@ bool GraphViewer::IsSubgraph() const {
 }
 
 bool GraphViewer::IsConstantInitializer(const std::string& name, bool check_outer_scope) const {
-  return graph_->GetConstantInitializer(name, check_outer_scope) != nullptr;
+  return GetConstantInitializer(name, check_outer_scope) != nullptr;
+}
+
+const ONNX_NAMESPACE::TensorProto* GraphViewer::GetConstantInitializer(const std::string& initializer_name,
+                                                                       bool check_outer_scope) const {
+  return graph_->GetConstantInitializer(initializer_name, check_outer_scope);
 }
 
 }  // namespace onnxruntime
