@@ -3038,12 +3038,32 @@ struct OrtApi {
    */
   ORT_API2_STATUS(HasValue, _In_ const OrtValue* value, _Out_ int* out);
 
+  /// @}
+  /// \name OrtKernelContext
+  /// @{
+  /** \brief Used for custom operators, gets the GPU compute stream to use to launch the custom a GPU kernel     
+  *   \see ::OrtCustomOp
+  * \param[context] OrtKernelContext instance
+  * \param[out] Returns pointer to a GPU compute stream that can be used to launch the custom GPU kernel.
+  *             If retrieving the GPU compute stream is not relevant (GPU not enabled in the build, kernel partitioned to
+  *             some other EP), then a nullptr is returned as the output param.
+  *             Do not free or mutate the returned pointer as it refers to internal data owned by the underlying session.
+  *             Only use it for custom kernel launching.
+  */
+  ORT_API2_STATUS(KernelContext_GetGPUComputeStream, _In_ const OrtKernelContext* context, _Outptr_ void** out);
+
+  /// @}
+  /// \name GetValueMemoryInfo
+  /// @{
   /**
-   * THIS API WILL BE SWAPPER OUT for the one currently in development in this PR:
+   * THIS API WILL BE SWAPPED OUT for the one currently in development in this PR:
    * https://github.com/microsoft/onnxruntime/pull/9588
    */
   ORT_API2_STATUS(GetValueMemoryInfo, _In_ const OrtValue* value, _Outptr_ const OrtMemoryInfo** memory_info);
 
+  /// @}
+  /// \name GetExecutionProviderApi
+  /// @{
   /**
    * \brief Get a pointer to the requested version of the Execution Provider specific
    * API extensions to the OrtApi 
@@ -3058,20 +3078,6 @@ struct OrtApi {
    */
   ORT_API2_STATUS(GetExecutionProviderApi, _In_ const char* provider_name, _In_ uint32_t version, _Outptr_ const void** provider_api);
 
-  /// @}
-
-  /// \name OrtKernelContext
-  /// @{
-  /** \brief Used for custom operators, gets the GPU compute stream to use to launch the custom a GPU kernel     
-  *   \see ::OrtCustomOp
-  * \param[context] OrtKernelContext instance
-  * \param[out] Returns pointer to a GPU compute stream that can be used to launch the custom GPU kernel.
-  *             If retrieving the GPU compute stream is not relevant (GPU not enabled in the build, kernel partitioned to
-  *             some other EP), then a nullptr is returned as the output param.
-  *             Do not free or mutate the returned pointer as it refers to internal data owned by the underlying session.
-  *             Only use it for custom kernel launching.
-  */
-  ORT_API2_STATUS(KernelContext_GetGPUComputeStream, _In_ const OrtKernelContext* context, _Outptr_ void** out);
   /// @}
 };
 

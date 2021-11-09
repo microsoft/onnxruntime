@@ -63,7 +63,7 @@ struct OrtDmlApi {
    * IDXGIFactory::EnumAdapters. A device_id of 0 always corresponds to the default adapter, which is typically the 
    * primary display GPU installed on the system. A negative device_id is invalid.
   */
-  ORT_API2_STATUS(OrtSessionOptionsAppendExecutionProvider_DML, _In_ OrtSessionOptions* options, int device_id);
+  ORT_API2_STATUS(SessionOptionsAppendExecutionProvider_DML, _In_ OrtSessionOptions* options, int device_id);
 
   /**
    * Creates a DirectML Execution Provider using the given DirectML device, and which executes work on the supplied D3D12
@@ -74,7 +74,7 @@ struct OrtDmlApi {
    * See also: DMLCreateDevice
    * See also: ID3D12Device::CreateCommandQueue
    */
-  ORT_API2_STATUS(OrtSessionOptionsAppendExecutionProvider_DML1, _In_ OrtSessionOptions* options,
+  ORT_API2_STATUS(SessionOptionsAppendExecutionProvider_DML1, _In_ OrtSessionOptions* options,
                 _In_ IDMLDevice* dml_device, _In_ ID3D12CommandQueue* cmd_queue);
 
   /**

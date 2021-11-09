@@ -164,10 +164,10 @@ API_IMPL_END
   return nullptr;
 }
 
-ORT_API_STATUS_IMPL(DmlCreateGPUAllocationFromD3DResource, _In_ ID3D12Resource* pResource, _Out_ void** dml_resource) {
+ORT_API_STATUS_IMPL(DmlCreateGPUAllocationFromD3DResource, _In_ ID3D12Resource* d3d_resource, _Out_ void** dml_resource) {
   API_IMPL_BEGIN
 #ifdef USE_DML
-  *dml_resource = Dml::CreateGPUAllocationFromD3DResource(pResource);
+  *dml_resource = Dml::CreateGPUAllocationFromD3DResource(d3d_resource);
 #else
   *dml_resource = nullptr;
 #endif  // USE_DML
