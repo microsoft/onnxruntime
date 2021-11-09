@@ -259,7 +259,7 @@ TEST(CApiTest, SparseOutputModel) {
   const char* const output_names[] = {"values"};
   Ort::Session session(*ort_env, SPARSE_OUTPUT_MODEL_URI, Ort::SessionOptions{});
   auto ort_outputs = session.Run(Ort::RunOptions{}, input_names.data(), ort_inputs.data(), ort_inputs.size(),
-                                   output_names, 1);
+                                 output_names, 1);
   ASSERT_EQ(ort_outputs.size(), 1U);
   const auto& sparse_output = ort_outputs[0];
   auto ti = sparse_output.GetTypeInfo();
@@ -290,7 +290,6 @@ TEST(CApiTest, SparseOutputModel) {
 
 #ifndef DISABLE_CONTRIB_OPS
 TEST(CApiTest, SparseInputModel) {
-
   std::vector<int64_t> common_shape{9, 9};  // inputs and outputs same shape
   std::vector<float> A_values{1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0,
                               10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0,
@@ -322,7 +321,7 @@ TEST(CApiTest, SparseInputModel) {
                             42, 43, 44, 45, 46, 47, 0, 0, 0,
                             48, 49, 50, 51, 52, 53, 0, 0, 0};
 
-   std::vector<float> Y_result{546, 561, 576, 552, 564, 576, 39, 42, 45,
+  std::vector<float> Y_result{546, 561, 576, 552, 564, 576, 39, 42, 45,
                               1410, 1461, 1512, 1362, 1392, 1422, 201, 222, 243,
                               2274, 2361, 2448, 2172, 2220, 2268, 363, 402, 441,
                               2784, 2850, 2916, 4362, 4485, 4608, 1551, 1608, 1665,
@@ -332,36 +331,36 @@ TEST(CApiTest, SparseInputModel) {
                               786, 915, 1044, 3324, 3462, 3600, 4911, 5178, 5445,
                               894, 1041, 1188, 3756, 3912, 4068, 5559, 5862, 6165};
 
-   Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
-   Ort::Value::Shape ort_dense_shape{common_shape.data(), common_shape.size()};
-   Ort::Value::Shape ort_values_shape{&indices_shape[0], 1U};
-   auto a_st = Ort::Value::CreateSparseTensor(info, A_values.data(), ort_dense_shape, ort_values_shape);
-   a_st.UseCooIndices(A_indices.data(), A_indices.size());
+  Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+  Ort::Value::Shape ort_dense_shape{common_shape.data(), common_shape.size()};
+  Ort::Value::Shape ort_values_shape{&indices_shape[0], 1U};
+  auto a_st = Ort::Value::CreateSparseTensor(info, A_values.data(), ort_dense_shape, ort_values_shape);
+  a_st.UseCooIndices(A_indices.data(), A_indices.size());
 
-   auto b_tensor = Ort::Value::CreateTensor(info, B_data.data(), B_data.size(), common_shape.data(), common_shape.size());
+  auto b_tensor = Ort::Value::CreateTensor(info, B_data.data(), B_data.size(), common_shape.data(), common_shape.size());
 
-   std::vector<Ort::Value> ort_inputs;
-   ort_inputs.push_back(std::move(a_st));
-   ort_inputs.push_back(std::move(b_tensor));
-   const char* input_names[] = {"sparse_A", "dense_B"};
-   const char* const output_names[] = {"dense_Y"};
-   Ort::Session session(*ort_env, SPARSE_INPUT_MATMUL_MODEL_URI, Ort::SessionOptions{});
-   auto ort_outputs = session.Run(Ort::RunOptions{}, input_names, ort_inputs.data(), ort_inputs.size(),
-                                  output_names, 1);
-   ASSERT_EQ(ort_outputs.size(), 1U);
-   const auto& dense_Y = ort_outputs[0];
-   ASSERT_TRUE(dense_Y.IsTensor());
+  std::vector<Ort::Value> ort_inputs;
+  ort_inputs.push_back(std::move(a_st));
+  ort_inputs.push_back(std::move(b_tensor));
+  const char* input_names[] = {"sparse_A", "dense_B"};
+  const char* const output_names[] = {"dense_Y"};
+  Ort::Session session(*ort_env, SPARSE_INPUT_MATMUL_MODEL_URI, Ort::SessionOptions{});
+  auto ort_outputs = session.Run(Ort::RunOptions{}, input_names, ort_inputs.data(), ort_inputs.size(),
+                                 output_names, 1);
+  ASSERT_EQ(ort_outputs.size(), 1U);
+  const auto& dense_Y = ort_outputs[0];
+  ASSERT_TRUE(dense_Y.IsTensor());
 
-   auto result_ts = dense_Y.GetTensorTypeAndShapeInfo();
-   ASSERT_EQ(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, result_ts.GetElementType());
-   ASSERT_EQ(common_shape, result_ts.GetShape());
+  auto result_ts = dense_Y.GetTensorTypeAndShapeInfo();
+  ASSERT_EQ(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, result_ts.GetElementType());
+  ASSERT_EQ(common_shape, result_ts.GetShape());
 
-   const auto* result_vals = dense_Y.GetTensorData<float>();
-   auto result_span = gsl::make_span(result_vals, Y_result.size());
-   ASSERT_TRUE(std::equal(Y_result.cbegin(), Y_result.cend(), result_span.cbegin(), result_span.cend()));
+  const auto* result_vals = dense_Y.GetTensorData<float>();
+  auto result_span = gsl::make_span(result_vals, Y_result.size());
+  ASSERT_TRUE(std::equal(Y_result.cbegin(), Y_result.cend(), result_span.cbegin(), result_span.cend()));
 }
-#endif // DISABLE_CONTRIB_OPS
-#endif // !defined(DISABLE_SPARSE_TENSORS)
+#endif  // DISABLE_CONTRIB_OPS
+#endif  // !defined(DISABLE_SPARSE_TENSORS)
 
 TEST(CApiTest, custom_op_handler) {
   std::cout << "Running custom op inference" << std::endl;
@@ -497,11 +496,9 @@ TEST(CApiTest, varied_input_custom_op_handler) {
   std::vector<float> expected_values_z = {10.0f};
 
 #ifdef USE_CUDA
-  cudaStream_t compute_stream = nullptr;
-  cudaStreamCreateWithFlags(&compute_stream, cudaStreamNonBlocking);
-  SliceCustomOp slice_custom_op{onnxruntime::kCudaExecutionProvider, compute_stream};
+  SliceCustomOp slice_custom_op{onnxruntime::kCudaExecutionProvider};
 #else
-  SliceCustomOp slice_custom_op{onnxruntime::kCpuExecutionProvider, nullptr};
+  SliceCustomOp slice_custom_op{onnxruntime::kCpuExecutionProvider};
 #endif
 
   Ort::CustomOpDomain custom_op_domain("abc");
@@ -509,8 +506,7 @@ TEST(CApiTest, varied_input_custom_op_handler) {
 
 #ifdef USE_CUDA
   TestInference<float>(*ort_env, VARIED_INPUT_CUSTOM_OP_MODEL_URI, inputs, "Z",
-                       expected_dims_z, expected_values_z, 1, custom_op_domain, nullptr, nullptr, false, compute_stream);
-  cudaStreamDestroy(compute_stream);
+                       expected_dims_z, expected_values_z, 1, custom_op_domain, nullptr);
 #else
   TestInference<float>(*ort_env, VARIED_INPUT_CUSTOM_OP_MODEL_URI, inputs, "Z",
                        expected_dims_z, expected_values_z, 0, custom_op_domain, nullptr);
