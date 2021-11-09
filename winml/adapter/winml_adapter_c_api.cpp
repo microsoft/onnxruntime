@@ -97,7 +97,7 @@ static constexpr WinmlAdapterApi winml_adapter_api_1 = {
 };
 
 const WinmlAdapterApi* ORT_API_CALL OrtGetWinMLAdapter(_In_ uint32_t ort_version) NO_EXCEPTION {
-  if (version > 2) {
+  if (version >= 2) {
     return &winml_adapter_api_1;
   }
 
