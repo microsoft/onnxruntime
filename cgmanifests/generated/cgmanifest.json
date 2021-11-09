@@ -17,8 +17,8 @@
         "Type": "other",
         "other": {
           "Name": "automake",
-          "Version": "1.16.4",
-          "DownloadUrl": "http://ftp.gnu.org/gnu/automake/automake-1.16.4.tar.gz"
+          "Version": "1.16.5",
+          "DownloadUrl": "http://ftp.gnu.org/gnu/automake/automake-1.16.5.tar.gz"
         },
         "comments": "manylinux dependency"
       }
@@ -50,8 +50,8 @@
         "Type": "other",
         "other": {
           "Name": "libxcrypt",
-          "Version": "4.4.23",
-          "DownloadUrl": "https://github.com/besser82/libxcrypt/archive/v4.4.23.tar.gz"
+          "Version": "4.4.26",
+          "DownloadUrl": "https://github.com/besser82/libxcrypt/archive/v4.4.26.tar.gz"
         },
         "comments": "manylinux dependency"
       }
@@ -61,8 +61,8 @@
         "Type": "other",
         "other": {
           "Name": "git",
-          "Version": "2.32.0",
-          "DownloadUrl": "https://www.kernel.org/pub/software/scm/git/git-2.32.0.tar.gz"
+          "Version": "2.33.1",
+          "DownloadUrl": "https://www.kernel.org/pub/software/scm/git/git-2.33.1.tar.gz"
         },
         "comments": "manylinux dependency"
       }
@@ -94,8 +94,8 @@
         "Type": "other",
         "other": {
           "Name": "openssl",
-          "Version": "1.1.1k",
-          "DownloadUrl": "https://www.openssl.org/source/openssl-1.1.1k.tar.gz"
+          "Version": "1.1.1l",
+          "DownloadUrl": "https://www.openssl.org/source/openssl-1.1.1l.tar.gz"
         },
         "comments": "manylinux dependency"
       }
