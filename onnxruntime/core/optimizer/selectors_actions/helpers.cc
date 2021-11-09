@@ -8,6 +8,16 @@ using namespace ::onnxruntime::common;
 namespace onnxruntime {
 
 namespace {
+
+// if the last input/output in num_io is for the variadic input/output,
+// the variadic input/output could have zero or more values
+// so we need to special case the zero and count that as one.
+int NumIOEntries(bool variadic_io, int num_io, int num_variadic_io) {
+  return variadic_io
+             ? num_io + std::max(1, num_variadic_io) - 1
+             : num_io;
+}
+
 // Move or remove an edge.
 //   - moves edges from src+src_slot to dest node+dest_slot if provided.
 //   - remove edges for the src+src_slot if dest+dest_slot not provided.
@@ -116,11 +126,11 @@ Node* GetNodeByNodeIndex(Graph& graph, NodeIndex idx, bool& missing) {
   return node;
 }
 
-bool GetNodesByNodeIndex(Graph& graph, const std::vector<NodeIndex>& indexes, std::vector<Node*>& nodes) {
-  nodes.reserve(indexes.size());
+bool GetNodesByNodeIndex(Graph& graph, const std::vector<NodeIndex>& indices, std::vector<Node*>& nodes) {
+  nodes.reserve(indices.size());
   bool missing = false;
 
-  for (auto iter = indexes.cbegin(), end = indexes.cend(); iter != end; ++iter) {
+  for (auto iter = indices.cbegin(), end = indices.cend(); iter != end; ++iter) {
     nodes.push_back(GetNodeByNodeIndex(graph, *iter, missing));
 
     // bail if we're missing a node
@@ -136,6 +146,50 @@ bool GetNodesByNodeIndex(Graph& graph, const std::vector<NodeIndex>& indexes, st
 //
 // Selections
 //
+
+// Helper to create the NodesToOptimizeIndices
+// specify num_input_defs/num_output_defs if the last input/output is variadic (default is non-variadic)
+static NodesToOptimizeIndices GetNodesToOptimizeIndices(
+    const std::vector<NodeIndex>& input_nodes, NodeIndex target_node, const std::vector<NodeIndex>& output_nodes,
+    int num_input_defs, int num_output_defs) {
+  int num_inputs = num_input_defs == -1 ? gsl::narrow_cast<int>(input_nodes.size()) : num_input_defs;
+  int num_outputs = num_output_defs == -1 ? gsl::narrow_cast<int>(output_nodes.size()) : num_output_defs;
+  bool variadic_input = false;
+  bool variadic_output = false;
+  int num_variadic_inputs = 0;
+  int num_variadic_outputs = 0;
+
+  if (num_input_defs != -1) {
+    variadic_input = true;
+    num_variadic_inputs = gsl::narrow_cast<int>(input_nodes.size()) - num_input_defs + 1;
+  }
+
+  if (num_output_defs != -1) {
+    variadic_output = true;
+    num_variadic_outputs = gsl::narrow_cast<int>(output_nodes.size()) - num_output_defs + 1;
+  }
+
+  std::vector<NodeIndex> node_indices;
+  node_indices.reserve(NumIOEntries(variadic_input, num_inputs, num_variadic_inputs) + 1 +
+                       NumIOEntries(variadic_output, num_outputs, num_variadic_outputs));
+  std::copy(input_nodes.begin(), input_nodes.end(), std::back_inserter(node_indices));
+  node_indices.push_back(target_node);
+  std::copy(output_nodes.begin(), output_nodes.end(), std::back_inserter(node_indices));
+
+  std::for_each(node_indices.cbegin(), node_indices.cend(), [](NodeIndex node_idx) {
+    ORT_ENFORCE(node_idx <= NodesToOptimizeIndices::kEmptyNodeIndex,
+                "Node index value is too large to save to ORT format model: ", node_idx);
+  });
+
+  return NodesToOptimizeIndices{std::move(node_indices), num_inputs, num_outputs,
+                                variadic_input, variadic_output,
+                                num_variadic_inputs, num_variadic_outputs};
+}
+
+NodesToOptimizeIndices NodesToOptimizeIndicesBuilder::Build() const {
+  ORT_ENFORCE(target_node != NodesToOptimizeIndices::kEmptyNodeIndex, "A target node must be set.");
+  return GetNodesToOptimizeIndices(input_nodes, target_node, output_nodes, num_input_defs, num_output_defs);
+}
 
 NodesToOptimize::NodesToOptimize(const std::vector<Node*>& input_nodes,
                                  Node& target_node,
@@ -160,41 +214,39 @@ NodesToOptimize::NodesToOptimize(const std::vector<Node*>& input_nodes,
 }
 
 NodesToOptimize::NodesToOptimize(Graph& graph,
-                                 const NodesToOptimizeIndices& indexes)
-    : num_inputs{indexes.num_inputs},
-      num_outputs{indexes.num_outputs} {
-  bool missing_nodes = GetNodesByNodeIndex(graph, indexes.nodes, nodes_);
+                                 const NodesToOptimizeIndices& indices)
+    : num_inputs{indices.num_inputs},
+      num_outputs{indices.num_outputs},
+      variadic_input_{indices.variadic_input},
+      variadic_output_{indices.variadic_output},
+      num_variadic_inputs_{indices.num_variadic_inputs},
+      num_variadic_outputs_{indices.num_variadic_outputs} {
+  bool missing_nodes = !GetNodesByNodeIndex(graph, indices.nodes, nodes_);
   if (missing_nodes) {
     nodes_.clear();  // this will result in IsValid returning false
   }
 }
 
 NodesToOptimizeIndices NodesToOptimize::ToIndices() const {
-  NodesToOptimizeIndices indexes;
-
-  indexes.nodes.reserve(nodes_.size());
-  std::for_each(nodes_.cbegin(), nodes_.cend(), [&indexes](const Node* node) {
+  std::vector<NodeIndex> node_indices;
+  node_indices.reserve(nodes_.size());
+  std::for_each(nodes_.cbegin(), nodes_.cend(), [&node_indices](const Node* node) {
     const NodeIndex node_idx = node != nullptr ? node->Index() : NodesToOptimizeIndices::kEmptyNodeIndex;
     ORT_ENFORCE(node_idx <= NodesToOptimizeIndices::kEmptyNodeIndex,
                 "Node index value is too large to save to ORT format model: ", node_idx);
-    indexes.nodes.push_back(node_idx);
+    node_indices.push_back(node_idx);
   });
 
-  indexes.num_inputs = num_inputs;
-  indexes.num_outputs = num_outputs;
-  indexes.variadic_input = variadic_input_;
-  indexes.variadic_output = variadic_output_;
-  indexes.num_variadic_inputs = num_variadic_inputs_;
-  indexes.num_variadic_outputs = num_variadic_outputs_;
-
-  return indexes;
+  return NodesToOptimizeIndices{std::move(node_indices), num_inputs, num_outputs,
+                                variadic_input_, variadic_output_,
+                                num_variadic_inputs_, num_variadic_outputs_};
 }
 
-std::vector<Node*> NodesToOptimize::Inputs(const std::vector<int>& indexes, bool required) const {
+std::vector<Node*> NodesToOptimize::Inputs(const std::vector<int>& indices, bool required) const {
   std::vector<Node*> results;
   results.reserve(NumInputEntries());
 
-  for (auto idx : indexes) {
+  for (auto idx : indices) {
     if (idx == num_inputs - 1 && HasVariadicInput()) {
       for (int i = 0, end = NumVariadicInputs(); i < end; ++i) {
         results.push_back(GetNode(idx + i, required));
@@ -207,14 +259,14 @@ std::vector<Node*> NodesToOptimize::Inputs(const std::vector<int>& indexes, bool
   return results;
 }
 
-std::vector<Node*> NodesToOptimize::Outputs(const std::vector<int>& indexes, bool required) const {
+std::vector<Node*> NodesToOptimize::Outputs(const std::vector<int>& indices, bool required) const {
   std::vector<Node*> results;
   results.reserve(NumOutputEntries());
 
   // offset by all the inputs and the target node
   const int offset = NumInputEntries() + 1;
 
-  for (auto idx : indexes) {
+  for (auto idx : indices) {
     if (idx == num_outputs - 1 && HasVariadicOutput()) {
       for (int i = 0, end = NumVariadicOutputs(); i < end; ++i) {
         results.push_back(GetNode(offset + idx + i, required));
@@ -235,6 +287,14 @@ std::vector<Node*> NodesToOptimize::GetNodesAtLocation(const NodeLocation& locat
   } else
     return {&Target()};
 };
+
+int NodesToOptimize::NumInputEntries() const {
+  return NumIOEntries(variadic_input_, num_inputs, num_variadic_inputs_);
+}
+
+int NodesToOptimize::NumOutputEntries() const {
+  return NumIOEntries(variadic_output_, num_outputs, num_variadic_outputs_);
+}
 
 //
 // Actions

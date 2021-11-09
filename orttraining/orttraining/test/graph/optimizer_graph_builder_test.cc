@@ -243,12 +243,12 @@ TEST_F(OptimizerGraphBuilderTest, ZeroSplitInitialOptimizerState) {
   PartitionOptimizerState(partition_offset, partition_size, initial_states);
 
   std::vector<float> expected_vec(init_value.begin() + partition_offset, init_value.begin() + partition_offset + partition_size);
-  std::vector<int64_t> expected_shape = {partition_size};
+  std::array<int64_t, 1> expected_shape = {partition_size};
 
   for (const auto& state : initial_states) {
     const auto& init_tensor = state.second.Get<Tensor>();
     const auto& shape = init_tensor.Shape().GetDims();
-    ASSERT_EQ(shape, expected_shape);
+    ASSERT_EQ(shape, gsl::make_span(expected_shape));
     const std::vector<float> found(init_tensor.Data<float>(),
                                    init_tensor.Data<float>() + partition_size);
     ASSERT_EQ(expected_vec, found);

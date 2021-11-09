@@ -28,7 +28,7 @@ ONNX_CPU_OPERATOR_KERNEL(
 Status Compress::Compute(OpKernelContext* ctx) const {
   const auto* input_tensor = ctx->Input<Tensor>(0);
   size_t rank = input_tensor->Shape().NumDimensions();
-  auto& input_dimensions = input_tensor->Shape().GetDims();
+  auto input_dimensions = input_tensor->Shape().GetDims();
   int64_t axis = axis_;
   if (has_axis_) {
     axis = HandleNegativeAxis(axis, rank);  // handle negative and enforce axis is valid
@@ -50,7 +50,7 @@ Status Compress::Compute(OpKernelContext* ctx) const {
     }
   }
 
-  std::vector<int64_t> output_dims(input_dimensions);
+  std::vector<int64_t> output_dims(input_dimensions.begin(), input_dimensions.end());
   if (has_axis_) {
     output_dims[axis] = positive_condition_count;
   } else {

@@ -1138,6 +1138,12 @@ inline OrtValue* CustomOpApi::KernelContext_GetOutput(OrtKernelContext* context,
   return out;
 }
 
+inline void* CustomOpApi::KernelContext_GetGPUComputeStream(const OrtKernelContext* context) {
+  void* out;
+  ThrowOnError(api_.KernelContext_GetGPUComputeStream(context, &out));
+  return out;
+}
+
 inline SessionOptions& SessionOptions::DisablePerSessionThreads() {
   ThrowOnError(GetApi().DisablePerSessionThreads(p_));
   return *this;

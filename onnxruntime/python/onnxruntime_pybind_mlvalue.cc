@@ -34,7 +34,7 @@ const char* PYTHON_ORTVALUE_OBJECT_NAME = "OrtValue";
 const char* PYTHON_ORTVALUE_NATIVE_OBJECT_ATTR = "_ortvalue";
 
 static bool PyObjectCheck_NumpyArray(PyObject* o) {
-  return PyObject_HasAttrString(o, "__array_finalize__");
+  return (PyObject_HasAttrString(o, "__array_finalize__") != 0);
 }
 
 bool IsNumpyArray(py::object& obj) {
