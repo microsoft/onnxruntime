@@ -26,6 +26,7 @@ onnxruntime_add_static_library(onnxruntime_mlas
   ${MLAS_SRC_DIR}/qlmul.cpp
   ${MLAS_SRC_DIR}/qpostprocessor.cpp
   ${MLAS_SRC_DIR}/qlgavgpool.cpp
+  ${MLAS_SRC_DIR}/qdwconv_kernelsize.cpp
 )
 
 set(ONNXRUNTIME_MLAS_LIBS onnxruntime_mlas)
