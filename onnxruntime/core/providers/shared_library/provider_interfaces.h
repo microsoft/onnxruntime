@@ -220,6 +220,9 @@ struct ProviderHost {
   virtual std::string Status__ToString(const Status* p) = 0;
 
   // TensorShape
+  virtual void TensorShape__operator_assign(TensorShape* p, const TensorShape& other) = 0;
+  virtual void TensorShape__operator_move_assign(TensorShape* p, TensorShape&& other) = 0;
+  virtual void TensorShape__Allocate(TensorShape* p, size_t size) = 0;
   virtual int64_t TensorShape__SizeHelper(const TensorShape* p, size_t start, size_t end) = 0;
   virtual std::string TensorShape__ToString(const TensorShape* p) = 0;
   virtual int64_t TensorShape__SizeToDimension(const TensorShape* p, size_t dimension) = 0;

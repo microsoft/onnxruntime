@@ -5,7 +5,6 @@
 
 interface IDMLOperation;
 interface IDMLOperator;
-enum DML_TENSOR_DATA_TYPE;
 struct DML_OPERATOR_DESC;
 
 struct MLOperatorKernelDmlProperties

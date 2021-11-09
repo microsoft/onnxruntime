@@ -86,7 +86,7 @@ Status SliceGrad::ComputeImpl(OpKernelContext* ctx,
   if (flattened_output_dims) {
     // if we have flattened output dims we need to also flatten the input dims.
     // as we're combining the innermost dims and keeping all values we can just copy the size of the last dim
-    std::vector<int64_t> flattened_input_dims(output_grad_tensor.Shape().GetDims());
+    std::vector<int64_t> flattened_input_dims(output_grad_tensor.Shape().GetDimsAsVector());
     flattened_input_dims.resize(flattened_output_dims->size());
     flattened_input_dims.back() = flattened_output_dims->back();
     TensorShape input_shape(std::move(flattened_input_dims));

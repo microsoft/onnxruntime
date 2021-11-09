@@ -422,7 +422,7 @@ namespace Dml
 
                 onnxruntime::Tensor* tensor = kernelContext->Output(
                     static_cast<int>(i), 
-                    onnxruntime::TensorShape::ReinterpretBaseType(outputDims)
+                    onnxruntime::TensorShape::FromExistingBuffer(outputDims)
                     );
 
                 uint64_t allocId;
