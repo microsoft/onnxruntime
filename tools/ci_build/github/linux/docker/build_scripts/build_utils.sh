@@ -11,7 +11,7 @@ MANYLINUX_CXXFLAGS="-g -O2 -Wall -fdebug-prefix-map=/=. -fstack-protector-strong
 MANYLINUX_LDFLAGS="-Wl,-Bsymbolic-functions -Wl,-z,relro -Wl,-z,now"
 
 export BASE_POLICY=manylinux
-if [ "${POLICY:0:9}" == "musllinux" ]; then
+if [ "${AUDITWHEEL_POLICY:0:9}" == "musllinux" ]; then
 	export BASE_POLICY=musllinux
 fi
 
