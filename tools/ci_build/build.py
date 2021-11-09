@@ -560,13 +560,14 @@ def parse_arguments():
     parser.add_argument(
         "--enable_external_custom_op_schemas", action='store_true',
         help="Enable registering user defined custom operation schemas at shared library load time.\
-              This feature is only supported/available on Ubuntu.")
-    
+            This feature is only supported/available on Ubuntu.")
+
     parser.add_argument(
         "--external_graph_transformer_path", type=str,
         help="path to the external graph transformer dir.")
-    
-    parser.add_argument("--test_external_transformer_example", action='store_true',
+
+    parser.add_argument(
+        "--test_external_transformer_example", action='store_true',
         help="run the example external transformer test, mainly used in CI pipeline.")
 
     return parser.parse_args()
@@ -1648,9 +1649,9 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                 args_list = [sys.executable, os.path.join(cwd, 'eager_test')]
                 run_subprocess(args_list, cwd=cwd, dll_path=dll_path, python_path=cwd)
                 if args.test_external_transformer_example:
-                    run_subprocess([sys.executable, 
-                                    os.path.join(source_dir, 
-                                                 'orttraining', 
+                    run_subprocess([sys.executable,
+                                    os.path.join(source_dir,
+                                                 'orttraining',
                                                  'orttraining',
                                                  'test',
                                                  'external_transformer',
