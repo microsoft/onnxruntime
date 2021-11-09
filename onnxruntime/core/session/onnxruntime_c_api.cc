@@ -1916,8 +1916,10 @@ ORT_API_STATUS_IMPL(OrtApis::ReleaseAvailableProviders, _In_ char** ptr,
   return NULL;
 }
 
-ORT_API_STATUS_IMPL(OrtApis::GetExecutionProviderApi, _In_ const char *provider_name,
-                    _In_ uint32_t version, _Outptr_ const void ** provider_api) {
+ORT_API_STATUS_IMPL(OrtApis::GetExecutionProviderApi,
+                    [[maybe_unused]] _In_ const char* provider_name,
+                    [[maybe_unused]] _In_ uint32_t version,
+                    _Outptr_ const void** provider_api) {
   API_IMPL_BEGIN
 
   *provider_api = nullptr;
@@ -1929,11 +1931,6 @@ ORT_API_STATUS_IMPL(OrtApis::GetExecutionProviderApi, _In_ const char *provider_
     }
     return NULL;
   }
-#endif
-
-#ifndef USE_DML
-  // When no provider is supported the version parameter is unused.
-  (version);
 #endif
 
   return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Specified provider is not supported.");
