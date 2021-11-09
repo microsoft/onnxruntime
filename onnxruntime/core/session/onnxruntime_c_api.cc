@@ -2381,12 +2381,9 @@ static constexpr OrtApi ort_api_1_to_10 = {
     &OrtApis::SessionOptionsSetCustomCreateThreadFn,
     &OrtApis::SessionOptionsSetCustomThreadCreationOptions,
     &OrtApis::SessionOptionsSetCustomJoinThreadFn,
-    &OrtApis::SetGlobalInterOpCustomCreateThreadFn,
-    &OrtApis::SetGlobalInterOpCustomThreadCreationOptions,
-    &OrtApis::SetGlobalInterOpCustomJoinThreadFn,
-    &OrtApis::SetGlobalIntraOpCustomCreateThreadFn,
-    &OrtApis::SetGlobalIntraOpCustomThreadCreationOptions,
-    &OrtApis::SetGlobalIntraOpCustomJoinThreadFn,
+    &OrtApis::SetGlobalCustomCreateThreadFn,
+    &OrtApis::SetGlobalCustomThreadCreationOptions,
+    &OrtApis::SetGlobalCustomJoinThreadFn,
 };
 
 // Asserts to do a some checks to ensure older Versions of the OrtApi never change (will detect an addition or deletion but not if they cancel out each other)

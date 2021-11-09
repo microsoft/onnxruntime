@@ -1851,17 +1851,17 @@ int32_t custom_thread_creation_options = 5;
 int32_t custom_creation_hook_called = 0;
 int32_t custom_join_hook_called = 0;
 
-THREAD_HANDLE CreateThreadCustomized(void* options, OrtThreadWorkerFn work_loop, void* param) {
+CUSTOM_THREAD_HANDLE CreateThreadCustomized(void* options, OrtThreadWorkerFn work_loop, void* param) {
   if (*((int32_t*)options) == 5) {
     custom_creation_hook_called += 1;
   }
   threads.push_back(std::thread(work_loop, param));
-  return (THREAD_HANDLE)threads.back().native_handle();
+  return (CUSTOM_THREAD_HANDLE)threads.back().native_handle();
 }
 
-void JoinThreadCustomized(THREAD_HANDLE handle) {
+void JoinThreadCustomized(CUSTOM_THREAD_HANDLE handle) {
   for (auto& t : threads) {
-    if ((THREAD_HANDLE)t.native_handle() == handle) {
+    if ((CUSTOM_THREAD_HANDLE)t.native_handle() == handle) {
       custom_join_hook_called += 1;
       t.join();
     }

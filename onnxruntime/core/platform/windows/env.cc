@@ -65,11 +65,10 @@ class WindowsThread : public EnvThread {
     custom_join_thread_fn = thread_options.custom_join_thread_fn;
 
     if (custom_create_thread_fn) {
-      HANDLE custom_thread_handle = (HANDLE)custom_create_thread_fn(custom_thread_creation_options, (OrtThreadWorkerFn)CustomThreadMain, new Param{name_prefix, index, start_address, param, thread_options});
+      custom_thread_handle = custom_create_thread_fn(custom_thread_creation_options, (OrtThreadWorkerFn)CustomThreadMain, new Param{name_prefix, index, start_address, param, thread_options});
       if (!custom_thread_handle) {
         ORT_THROW("custom_create_thread_fn returned invalid handle."); 
       }
-      hThread.reset(custom_thread_handle);
     } else {
       hThread.reset((HANDLE)_beginthreadex(nullptr, thread_options.stack_size, ThreadMain,
                                            new Param{name_prefix, index, start_address, param, thread_options}, 0,
@@ -78,8 +77,9 @@ class WindowsThread : public EnvThread {
   }
 
   ~WindowsThread() {
-    if (custom_join_thread_fn) {
-      custom_join_thread_fn((HANDLE)hThread.get());
+    if (custom_thread_handle) {
+      custom_join_thread_fn(custom_thread_handle);
+      custom_thread_handle = nullptr;
     } else {
       DWORD waitStatus = WaitForSingleObject(hThread.get(), INFINITE);
       FAIL_FAST_LAST_ERROR_IF(waitStatus == WAIT_FAILED);

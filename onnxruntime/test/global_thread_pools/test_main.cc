@@ -33,17 +33,17 @@ int32_t custom_thread_creation_options = 5;
 int32_t custom_creation_hook_called = 0;
 int32_t custom_join_hook_called = 0;
 
-THREAD_HANDLE CreateThreadCustomized(void* options, OrtThreadWorkerFn work_loop, void* param) {
+CUSTOM_THREAD_HANDLE CreateThreadCustomized(void* options, OrtThreadWorkerFn work_loop, void* param) {
   if (*((int32_t*)options) == 5) {
     custom_creation_hook_called += 1;
   }
   threads.push_back(std::thread(work_loop, param));
-  return (THREAD_HANDLE)threads.back().native_handle();
+  return (CUSTOM_THREAD_HANDLE)threads.back().native_handle();
 }
 
-void JoinThreadCustomized(THREAD_HANDLE handle) {
+void JoinThreadCustomized(CUSTOM_THREAD_HANDLE handle) {
   for (auto& t : threads) {
-    if ((THREAD_HANDLE)t.native_handle() == handle) {
+    if ((CUSTOM_THREAD_HANDLE)t.native_handle() == handle) {
       custom_join_hook_called += 1;
       t.join();
     }
@@ -72,25 +72,16 @@ int main(int argc, char** argv) {
     st_ptr.reset(g_ort->SetGlobalIntraOpNumThreads(tp_options, thread_pool_size));
     ORT_RETURN_IF_NON_NULL_STATUS(st_ptr);
 
-    st_ptr.reset(g_ort->SetGlobalIntraOpCustomCreateThreadFn(tp_options, CreateThreadCustomized));
+    st_ptr.reset(g_ort->SetGlobalCustomCreateThreadFn(tp_options, CreateThreadCustomized));
     ORT_RETURN_IF_NON_NULL_STATUS(st_ptr);
 
-    st_ptr.reset(g_ort->SetGlobalIntraOpCustomThreadCreationOptions(tp_options, &custom_thread_creation_options));
+    st_ptr.reset(g_ort->SetGlobalCustomThreadCreationOptions(tp_options, &custom_thread_creation_options));
     ORT_RETURN_IF_NON_NULL_STATUS(st_ptr);
 
-    st_ptr.reset(g_ort->SetGlobalIntraOpCustomJoinThreadFn(tp_options, JoinThreadCustomized));
+    st_ptr.reset(g_ort->SetGlobalCustomJoinThreadFn(tp_options, JoinThreadCustomized));
     ORT_RETURN_IF_NON_NULL_STATUS(st_ptr);
 
     st_ptr.reset(g_ort->SetGlobalInterOpNumThreads(tp_options, thread_pool_size));
-    ORT_RETURN_IF_NON_NULL_STATUS(st_ptr);
-
-    st_ptr.reset(g_ort->SetGlobalInterOpCustomCreateThreadFn(tp_options, CreateThreadCustomized));
-    ORT_RETURN_IF_NON_NULL_STATUS(st_ptr);
-
-    st_ptr.reset(g_ort->SetGlobalInterOpCustomThreadCreationOptions(tp_options, &custom_thread_creation_options));
-    ORT_RETURN_IF_NON_NULL_STATUS(st_ptr);
-
-    st_ptr.reset(g_ort->SetGlobalInterOpCustomJoinThreadFn(tp_options, JoinThreadCustomized));
     ORT_RETURN_IF_NON_NULL_STATUS(st_ptr);
 
     st_ptr.reset(g_ort->SetGlobalDenormalAsZero(tp_options));

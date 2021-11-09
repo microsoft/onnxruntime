@@ -148,8 +148,8 @@ class PosixThread : public EnvThread {
     custom_join_thread_fn = thread_options.custom_join_thread_fn;
 
     if (custom_create_thread_fn) {
-      hThread = (pthread_t)custom_create_thread_fn(custom_thread_creation_options, CustomThreadMain, new Param{name_prefix, index, start_address, param, thread_options});
-      if (!hThread) {
+      custom_thread_handle = custom_create_thread_fn(custom_thread_creation_options, CustomThreadMain, new Param{name_prefix, index, start_address, param, thread_options});
+      if (!custom_thread_handle) {
         ORT_THROW("custom_create_thread_fn returned invalid handle."); 
       }
     } else {
@@ -188,8 +188,9 @@ class PosixThread : public EnvThread {
   }
 
   ~PosixThread() override {
-    if (custom_join_thread_fn) {
-      custom_join_thread_fn((THREAD_HANDLE)hThread);
+    if (custom_thread_handle) {
+      custom_join_thread_fn(custom_thread_handle);
+      custom_thread_handle = nullptr;
     } else {
       void* res;
 #ifdef NDEBUG

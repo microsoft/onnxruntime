@@ -321,12 +321,8 @@ ORT_API_STATUS_IMPL(SessionOptionsSetCustomCreateThreadFn, _Inout_ OrtSessionOpt
 ORT_API_STATUS_IMPL(SessionOptionsSetCustomThreadCreationOptions, _Inout_ OrtSessionOptions* options, _In_ void* custom_thread_creation_options);
 ORT_API_STATUS_IMPL(SessionOptionsSetCustomJoinThreadFn, _Inout_ OrtSessionOptions* options, _In_ CustomJoinThreadFn custom_join_thread_fn);
 
-ORT_API_STATUS_IMPL(SetGlobalInterOpCustomCreateThreadFn, _Inout_ OrtThreadingOptions* tp_options, _In_ CustomCreateThreadFn custom_create_thread_fn);
-ORT_API_STATUS_IMPL(SetGlobalInterOpCustomThreadCreationOptions, _Inout_ OrtThreadingOptions* tp_options, _In_ void* custom_thread_creation_options);
-ORT_API_STATUS_IMPL(SetGlobalInterOpCustomJoinThreadFn, _Inout_ OrtThreadingOptions* tp_options, _In_ CustomJoinThreadFn custom_join_thread_fn);
-
-ORT_API_STATUS_IMPL(SetGlobalIntraOpCustomCreateThreadFn, _Inout_ OrtThreadingOptions* tp_options, _In_ CustomCreateThreadFn custom_create_thread_fn);
-ORT_API_STATUS_IMPL(SetGlobalIntraOpCustomThreadCreationOptions, _Inout_ OrtThreadingOptions* tp_options, _In_ void* custom_thread_creation_options);
-ORT_API_STATUS_IMPL(SetGlobalIntraOpCustomJoinThreadFn, _Inout_ OrtThreadingOptions* tp_options, _In_ CustomJoinThreadFn custom_join_thread_fn);
+ORT_API_STATUS_IMPL(SetGlobalCustomCreateThreadFn, _Inout_ OrtThreadingOptions* tp_options, _In_ CustomCreateThreadFn custom_create_thread_fn);
+ORT_API_STATUS_IMPL(SetGlobalCustomThreadCreationOptions, _Inout_ OrtThreadingOptions* tp_options, _In_ void* custom_thread_creation_options);
+ORT_API_STATUS_IMPL(SetGlobalCustomJoinThreadFn, _Inout_ OrtThreadingOptions* tp_options, _In_ CustomJoinThreadFn custom_join_thread_fn);
 
 }  // namespace OrtApis
