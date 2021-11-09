@@ -142,9 +142,9 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_DML(in
 
 }  // namespace onnxruntime
 
-// These exports should be deprecated, and the exports from the OrtDmlApi should be used
-// to provide reliably versioned provider API exports.
 // [[deprecated]]
+// This export should be deprecated.
+// The OrtSessionOptionsAppendExecutionProvider_DML export on the OrtDmlApi should be used instead.
 ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_DML, _In_ OrtSessionOptions* options, int device_id) {
 API_IMPL_BEGIN
   options->provider_factories.push_back(onnxruntime::CreateExecutionProviderFactory_DML(device_id));
@@ -152,9 +152,9 @@ API_IMPL_END
   return nullptr;
 }
 
-// These exports should be deprecated, and the exports from the OrtDmlApi should be used
-// to provide reliably versioned provider API exports.
 // [[deprecated]]
+// This export should be deprecated.
+// The OrtSessionOptionsAppendExecutionProvider_DML1 export on the OrtDmlApi should be used instead.
 ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProviderEx_DML, _In_ OrtSessionOptions* options,
                     _In_ IDMLDevice* dml_device, _In_ ID3D12CommandQueue* cmd_queue) {
 API_IMPL_BEGIN

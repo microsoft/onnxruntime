@@ -29,7 +29,11 @@ extern "C" {
  * the adapter index. The device ID corresponds to the enumeration order of hardware adapters as given by 
  * IDXGIFactory::EnumAdapters. A device_id of 0 always corresponds to the default adapter, which is typically the 
  * primary display GPU installed on the system. A negative device_id is invalid.
-*/
+ * 
+ * [[deprecated]]
+ * This export should be deprecated.
+ * The OrtSessionOptionsAppendExecutionProvider_DML export on the OrtDmlApi should be used instead.
+ */
 ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_DML, _In_ OrtSessionOptions* options, int device_id);
 
 /**
@@ -40,6 +44,10 @@ ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_DML, _In_ OrtSessionOpti
  * objects.
  * See also: DMLCreateDevice
  * See also: ID3D12Device::CreateCommandQueue
+ * 
+ * [[deprecated]]
+ * This export should be deprecated.
+ * The OrtSessionOptionsAppendExecutionProvider_DML1 export on the OrtDmlApi should be used instead.
  */
 ORT_API_STATUS(OrtSessionOptionsAppendExecutionProviderEx_DML, _In_ OrtSessionOptions* options,
                _In_ IDMLDevice* dml_device, _In_ ID3D12CommandQueue* cmd_queue);
