@@ -1928,7 +1928,7 @@ ORT_API_STATUS_IMPL(OrtApis::GetExecutionProviderApi, _In_ const char* provider_
       return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Specified version is not supported for DirectML provider.");  
     }
   } else {
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Specified device is not supported.");
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Specified provider is not supported.");
   }
   API_IMPL_END
   return NULL;
