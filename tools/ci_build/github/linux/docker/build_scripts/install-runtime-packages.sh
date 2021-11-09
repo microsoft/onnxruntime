@@ -7,6 +7,9 @@ set -exuo pipefail
 # Set build environment variables
 MY_DIR=$(dirname "${BASH_SOURCE[0]}")
 
+# Get build utilities
+source $MY_DIR/build_utils.sh
+
 # Libraries that are allowed as part of the manylinux2014 profile
 # Extract from PEP: https://www.python.org/dev/peps/pep-0599/#the-manylinux2014-policy
 # On RPM-based systems, they are provided by these packages:
@@ -22,12 +25,19 @@ MY_DIR=$(dirname "${BASH_SOURCE[0]}")
 # mesa:       libGL.so.1
 #
 # PEP is missing the package for libSM.so.6 for RPM based system
+#
+# With PEP600, more packages are allowed by auditwheel policies
+# - libz.so.1
+# - libexpat.so.1
+
 
 # MANYLINUX_DEPS: Install development packages (except for libgcc which is provided by gcc install)
 if [ "${AUDITWHEEL_POLICY}" == "manylinux2010" ] || [ "${AUDITWHEEL_POLICY}" == "manylinux2014" ]; then
-	MANYLINUX_DEPS="glibc-devel libstdc++-devel glib2-devel libX11-devel libXext-devel libXrender-devel mesa-libGL-devel libICE-devel libSM-devel"
+	MANYLINUX_DEPS="glibc-devel libstdc++-devel glib2-devel libX11-devel libXext-devel libXrender-devel mesa-libGL-devel libICE-devel libSM-devel zlib-devel expat-devel"
 elif [ "${AUDITWHEEL_POLICY}" == "manylinux_2_24" ]; then
-	MANYLINUX_DEPS="libc6-dev libstdc++-6-dev libglib2.0-dev libx11-dev libxext-dev libxrender-dev libgl1-mesa-dev libice-dev libsm-dev"
+	MANYLINUX_DEPS="libc6-dev libstdc++-6-dev libglib2.0-dev libx11-dev libxext-dev libxrender-dev libgl1-mesa-dev libice-dev libsm-dev libz-dev libexpat1-dev"
+elif [ "${AUDITWHEEL_POLICY}" == "musllinux_1_1" ]; then
+	MANYLINUX_DEPS="musl-dev libstdc++ glib-dev libx11-dev libxext-dev libxrender-dev mesa-dev libice-dev libsm-dev zlib-dev expat-dev"
 else
 	echo "Unsupported policy: '${AUDITWHEEL_POLICY}'"
 	exit 1
@@ -43,15 +53,17 @@ if [ "${AUDITWHEEL_POLICY}" == "manylinux2010" ] || [ "${AUDITWHEEL_POLICY}" == 
 	fi
 elif [ "${AUDITWHEEL_POLICY}" == "manylinux_2_24" ]; then
 	RUNTIME_DEPS="zlib1g libbz2-1.0 libexpat1 libncurses5 libreadline7 tk libgdbm3 libdb5.3 libpcap0.8 liblzma5 libssl1.1 libkeyutils1 libkrb5-3 libcomerr2 libidn2-0 libcurl3 uuid libffi6"
+elif [ "${AUDITWHEEL_POLICY}" == "musllinux_1_1" ]; then
+	RUNTIME_DEPS="zlib bzip2 expat ncurses5-libs readline tk gdbm db xz openssl keyutils-libs krb5-libs libcom_err libidn2 libcurl libuuid libffi"
 else
 	echo "Unsupported policy: '${AUDITWHEEL_POLICY}'"
 	exit 1
 fi
 
-BASETOOLS="autoconf automake bison bzip2 diffutils file hardlink make patch unzip"
+BASETOOLS="autoconf automake bison bzip2 diffutils file make patch unzip"
 if [ "${AUDITWHEEL_POLICY}" == "manylinux2010" ]; then
 	PACKAGE_MANAGER=yum
-	BASETOOLS="${BASETOOLS} which"
+	BASETOOLS="${BASETOOLS} hardlink which"
 	# See https://unix.stackexchange.com/questions/41784/can-yum-express-a-preference-for-x86-64-over-i386-packages
 	echo "multilib_policy=best" >> /etc/yum.conf
 	fixup-mirrors
@@ -72,7 +84,7 @@ if [ "${AUDITWHEEL_POLICY}" == "manylinux2010" ]; then
 	fi
 elif [ "${AUDITWHEEL_POLICY}" == "manylinux2014" ]; then
 	PACKAGE_MANAGER=yum
-	BASETOOLS="${BASETOOLS} hostname which"
+	BASETOOLS="${BASETOOLS} hardlink hostname which"
 	# See https://unix.stackexchange.com/questions/41784/can-yum-express-a-preference-for-x86-64-over-i386-packages
 	echo "multilib_policy=best" >> /etc/yum.conf
 	# Error out if requested packages do not exist
@@ -111,13 +123,18 @@ elif [ "${AUDITWHEEL_POLICY}" == "manylinux2014" ]; then
 	fi
 elif [ "${AUDITWHEEL_POLICY}" == "manylinux_2_24" ]; then
 	PACKAGE_MANAGER=apt
-	BASETOOLS="${BASETOOLS} hostname"
+	BASETOOLS="${BASETOOLS} hardlink hostname"
 	export DEBIAN_FRONTEND=noninteractive
 	sed -i 's/none/en_US/g' /etc/apt/apt.conf.d/docker-no-languages
 	apt-get update -qq
 	apt-get upgrade -qq -y
 	apt-get install -qq -y --no-install-recommends ca-certificates gpg curl locales
 	TOOLCHAIN_DEPS="binutils gcc g++ gfortran"
+elif [ "${AUDITWHEEL_POLICY}" == "musllinux_1_1" ]; then
+	TOOLCHAIN_DEPS="binutils gcc g++ gfortran"
+	BASETOOLS="${BASETOOLS} curl util-linux"
+	PACKAGE_MANAGER=apk
+	apk add --no-cache ca-certificates gnupg
 else
 	echo "Unsupported policy: '${AUDITWHEEL_POLICY}'"
 	exit 1
@@ -127,6 +144,8 @@ if [ "${PACKAGE_MANAGER}" == "yum" ]; then
 	yum -y install ${BASETOOLS} ${TOOLCHAIN_DEPS} ${MANYLINUX_DEPS} ${RUNTIME_DEPS}
 elif [ "${PACKAGE_MANAGER}" == "apt" ]; then
 	apt-get install -qq -y --no-install-recommends ${BASETOOLS} ${TOOLCHAIN_DEPS} ${MANYLINUX_DEPS} ${RUNTIME_DEPS}
+elif [ "${PACKAGE_MANAGER}" == "apk" ]; then
+	apk add --no-cache ${BASETOOLS} ${TOOLCHAIN_DEPS} ${MANYLINUX_DEPS} ${RUNTIME_DEPS}
 else
 	echo "Not implemented"
 	exit 1
@@ -138,9 +157,11 @@ fi
 # centralized in this script to avoid code duplication
 LC_ALL=C ${MY_DIR}/update-system-packages.sh
 
-# we'll be removing libcrypt.so.1 later on
-# this is needed to ensure the new one will be found
-# as LD_LIBRARY_PATH does not seem enough.
-# c.f. https://github.com/pypa/manylinux/issues/1022
-echo "/usr/local/lib" > /etc/ld.so.conf.d/00-manylinux.conf
-ldconfig
+if [ "${BASE_POLICY}" == "manylinux" ]; then
+	# we'll be removing libcrypt.so.1 later on
+	# this is needed to ensure the new one will be found
+	# as LD_LIBRARY_PATH does not seem enough.
+	# c.f. https://github.com/pypa/manylinux/issues/1022
+	echo "/usr/local/lib" > /etc/ld.so.conf.d/00-manylinux.conf
+	ldconfig
+fi
