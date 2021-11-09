@@ -39,7 +39,7 @@ Routine Description:
 Arguments:
 
     A (x0) - Supplies the address of matrix A. The matrix data has been packed
-        using MlasGemmU8X8CopyPackA<MLAS_GEMM_S8S8_KERNEL_NEON>.
+        using MlasGemmU8X8CopyPackA<MLAS_GEMM_U8S8_KERNEL_NEON>.
 
     B (x1) - Supplies the address of matrix B. The matrix data has been packed
         using MlasGemmU8X8CopyPackB<MLAS_GEMM_S8S8_KERNEL_NEON>.
