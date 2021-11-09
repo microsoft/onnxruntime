@@ -207,16 +207,16 @@ class QDQQuantizer(ONNXQuantizer):
             if self.add_qdq_pair_to_weight:
                 q_name, zp_name, scale_name = self.quantize_weight_per_channel(weight_name, onnx_proto.TensorProto.INT8,
                                                                                axis, keep_float_weight=True)
-                qlinear_node = onnx.helper.make_node("QuantizeLinear", [tensor_name, scale_name, zp_name],
-                                                     [tensor_name + "_QuantizeLinear"],
-                                                     tensor_name + "_QuantizeLinear",
+                qlinear_node = onnx.helper.make_node("QuantizeLinear", [weight_name, scale_name, zp_name],
+                                                     [weight_name + "_QuantizeLinear"],
+                                                     weight_name + "_QuantizeLinear",
                                                      axis=axis)
                 dequant_node = onnx.helper.make_node("DequantizeLinear",
-                                                     [tensor_name + "_QuantizeLinear", scale_name, zp_name],
-                                                     [tensor_name + "_DequantizeLinear"],
-                                                     tensor_name + "_DequantizeLinear",
+                                                     [weight_name + "_QuantizeLinear", scale_name, zp_name],
+                                                     [weight_name + "_DequantizeLinear"],
+                                                     weight_name + "_DequantizeLinear",
                                                      axis=axis)
-                self.model.replace_input_of_all_nodes(tensor_name, tensor_name + "_DequantizeLinear")
+                self.model.replace_input_of_all_nodes(weight_name, weight_name + "_DequantizeLinear")
 
                 self.model.add_nodes([qlinear_node, dequant_node])
             else:
