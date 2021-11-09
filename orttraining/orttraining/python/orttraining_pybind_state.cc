@@ -409,7 +409,7 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
             }
             obj = PyObject_CallFunctionObjArgs(handle, capsule, NULL);
             if (obj == NULL)
-              throw std::runtime_error("Empty tensor returned.");
+              throw std::runtime_error("to_tensor returned a null pointer. This is usually caused by an error during the conversion.");
             list_dlpacks.append(obj);
             Py_DECREF(obj);
           }
