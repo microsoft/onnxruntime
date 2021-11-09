@@ -13,15 +13,15 @@
 namespace onnxruntime {
 namespace opencl {
 
-constexpr auto AllocatorName = "OpenCL";
+constexpr auto DeviceAllocatorName = "OpenCL";
+constexpr auto CPUAllocatorName = "OpenCL_CPU";
 
-enum MemoryKind: uint8_t {
+enum MemoryKind : uint8_t {
   Buffer = 0,
   Image2D = 1,
 };
 
-struct OpenCLFatPtr {
-  std::variant<cl::Buffer, cl::Image2D> ptr;
+struct OpenCLPtrMetadata {
   size_t size;
   MemoryKind kind;
 };
@@ -37,7 +37,7 @@ class OpenCLAllocator : public IAllocator {
  private:
   cl::Context ctx_;
   // FIXME: better caching, cache for kernel benchmark at the moment
-  std::unordered_map<void*, size_t> ptr_to_size_;
+  std::unordered_map<void*, OpenCLPtrMetadata> meta_;
   std::unordered_map<size_t, std::list<void*>> cache_;
 };
 

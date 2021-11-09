@@ -36,12 +36,18 @@ namespace opencl {
     };                                                                              \
                                                                                     \
     Status Compute(OpKernelContext* context) const override {                       \
-      std::cout << "Node: " << context->GetNodeName()                               \
+      std::cerr << "Node: " << context->GetNodeName()                               \
                 << ", num inputs: " << context->InputCount()                        \
                 << ", num outputs: " << context->OutputCount() << std::endl;        \
       const auto* a = context->Input<Tensor>(0);                                    \
       const auto* b = context->Input<Tensor>(1);                                    \
       const auto* c = context->Output(0, a->Shape());                               \
+      std::cerr << " Input[0] shape " << a->Shape() << " " << a                     \
+                << "--> cl::Buffer(" << CL_BUFFER_FROM_TENSOR(*a)() << ")\n";       \
+      std::cerr << " Input[1] shape " << b->Shape() << " " << b                     \
+                << "--> cl::Buffer(" << CL_BUFFER_FROM_TENSOR(*b)() << ")\n";       \
+      std::cerr << " Output[0] shape " << c->Shape() << " " << c                    \
+                << "--> cl::Buffer(" << CL_BUFFER_FROM_TENSOR(*c)() << ")\n";       \
                                                                                     \
       size_t n = a->Shape().Size();                                                 \
                                                                                     \

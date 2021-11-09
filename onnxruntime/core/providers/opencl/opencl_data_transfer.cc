@@ -11,7 +11,8 @@
 namespace onnxruntime {
 namespace opencl {
 
-OpenCLDataTransfer::OpenCLDataTransfer(cl::CommandQueue cmd_queue) : cmd_queue_{std::move(cmd_queue)} {}
+OpenCLDataTransfer::OpenCLDataTransfer(cl::CommandQueue cmd_queue)
+    : cmd_queue_{std::move(cmd_queue)} {}
 
 OpenCLDataTransfer::~OpenCLDataTransfer() {}
 
@@ -27,16 +28,18 @@ common::Status OpenCLDataTransfer::CopyTensor(const Tensor& src, Tensor& dst, in
   const auto& dst_device = dst.Location().device;
 
   if (src_device.Type() == OrtDevice::CPU && dst_device.Type() == OrtDevice::GPU) {
-    std::cout << "OpenCL copy host --> device\n";
     ORT_ENFORCE(src.ByteOffset() == 0);
-    OPENCL_CHECK_ERROR(cmd_queue_.enqueueWriteBuffer(CL_BUFFER_FROM_TENSOR(dst), CL_FALSE, 0, src.SizeInBytes(), src.DataRaw()));
+    auto dst_buffer = CL_BUFFER_FROM_TENSOR(dst);
+    std::cerr << "OpenCL copy host " << src.DataRaw() << " --> device cl::Buffer(" << dst_buffer() << ")\n";
+    OPENCL_CHECK_ERROR(cmd_queue_.enqueueWriteBuffer(dst_buffer, CL_TRUE, 0, src.SizeInBytes(), src.DataRaw()));
     return Status::OK();
   }
 
   if (src_device.Type() == OrtDevice::GPU && dst_device.Type() == OrtDevice::CPU) {
-    std::cout << "OpenCL copy device --> host\n";
     ORT_ENFORCE(dst.ByteOffset() == 0);
-    OPENCL_CHECK_ERROR(cmd_queue_.enqueueReadBuffer(CL_BUFFER_FROM_TENSOR(src), CL_TRUE, 0, dst.SizeInBytes(), dst.MutableDataRaw()));
+    auto src_buffer = CL_BUFFER_FROM_TENSOR(src);
+    std::cerr << "OpenCL copy host " << src.DataRaw() << " <-- device cl::Buffer(" << src_buffer() << ")\n";
+    OPENCL_CHECK_ERROR(cmd_queue_.enqueueReadBuffer(src_buffer, CL_TRUE, 0, dst.SizeInBytes(), dst.MutableDataRaw()));
     return Status::OK();
   }
 

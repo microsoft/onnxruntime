@@ -14,10 +14,10 @@ const char* GetErrorString(cl_int error_code);
 #define TO_STRING(T) TO_STRING_(T)
 
 // NOLINTNEXTLINE(cppcoreguidelines-macro-usage)
-#define OPENCL_CHECK_ERROR(error_code)                                                    \
-  if ((error_code) != CL_SUCCESS) {                                                       \
-    printf(__FILE__ ":" TO_STRING(__LINE__) "\n");                                        \
-    printf("OpenCL Error Code  : %d\n", (int)(error_code));                               \
-    printf("       Error String: %s\n", onnxruntime::opencl::GetErrorString(error_code)); \
-    exit(-1);                                                                             \
+#define OPENCL_CHECK_ERROR(error_code)                                                             \
+  if ((error_code) != CL_SUCCESS) {                                                                \
+    fprintf(stderr, __FILE__ ":" TO_STRING(__LINE__) "\n");                                        \
+    fprintf(stderr, "OpenCL Error Code  : %d\n", (int)(error_code));                               \
+    fprintf(stderr, "       Error String: %s\n", onnxruntime::opencl::GetErrorString(error_code)); \
+    exit(-1);                                                                                      \
   }

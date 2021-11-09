@@ -8,20 +8,19 @@
 
 #include "opencl_utils.h"
 
-
 namespace onnxruntime {
 namespace opencl {
 
 class OpenCLDataTransfer : public IDataTransfer {
  public:
-  OpenCLDataTransfer(cl::CommandQueue cmd_queue);
+  explicit OpenCLDataTransfer(cl::CommandQueue cmd_queue);
   ~OpenCLDataTransfer();
 
   bool CanCopy(const OrtDevice& src_device, const OrtDevice& dst_device) const override;
 
   common::Status CopyTensor(const Tensor& src, Tensor& dst, int exec_queue_id) const override;
 
- public:
+ private:
   cl::CommandQueue cmd_queue_;
 };
 

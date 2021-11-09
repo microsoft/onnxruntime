@@ -81,6 +81,7 @@ Status OpenCLExecutionProvider::InitOpenCLContext() {
   cl_int err{};
   ctx_ = cl::Context(CL_DEVICE_TYPE_GPU, properties, /*notifyFptr=*/nullptr, /*data=*/nullptr, &err);
   OPENCL_CHECK_ERROR(err);
+  std::cerr << "created cl::Context(" << ctx_() << ")\n";
 
   std::vector<cl::Device> devices = ctx_.getInfo<CL_CONTEXT_DEVICES>();
   std::cout << "num devices:" << devices.size() << std::endl;
@@ -90,6 +91,7 @@ Status OpenCLExecutionProvider::InitOpenCLContext() {
 
   cmd_queue_ = cl::CommandQueue(ctx_, dev_, /*properties=*/0, &err);
   OPENCL_CHECK_ERROR(err);
+  std::cerr << "created cl::CommandQueue(" << cmd_queue_() << ") in cl::Context(" << ctx_() << ")\n";
 
   return Status::OK();
 }
@@ -113,7 +115,7 @@ void OpenCLExecutionProvider::RegisterAllocator(std::shared_ptr<AllocatorManager
   InsertAllocator(CreateAllocator(AllocatorCreationInfo{
       [](int) {
         return std::make_unique<CPUAllocator>(
-            OrtMemoryInfo(opencl::AllocatorName, OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeCPUOutput));
+            OrtMemoryInfo(opencl::CPUAllocatorName, OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeCPUOutput));
       }}));
 }
 

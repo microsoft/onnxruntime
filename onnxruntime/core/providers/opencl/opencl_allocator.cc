@@ -10,7 +10,7 @@ namespace onnxruntime {
 namespace opencl {
 
 OpenCLAllocator::OpenCLAllocator(const cl::Context& ctx)
-    : IAllocator(OrtMemoryInfo(AllocatorName, OrtAllocatorType::OrtDeviceAllocator,
+    : IAllocator(OrtMemoryInfo(DeviceAllocatorName, OrtAllocatorType::OrtDeviceAllocator,
                                OrtDevice(OrtDevice::GPU, OrtMemType::OrtMemTypeDefault, /*TODO: used true id here*/ 0))),
       ctx_(ctx) {
 }
@@ -32,8 +32,8 @@ void* OpenCLAllocator::Alloc(size_t size) {
     cl_int err{};
     auto* ptr = new cl::Buffer(ctx_, CL_MEM_READ_WRITE, size, nullptr, &err);
     OPENCL_CHECK_ERROR(err);
-    std::cerr << "OpenCLAllocator allocated " << ptr << "-->" << ptr->operator()() << std::endl;
-    ptr_to_size_[ptr] = size;
+    std::cerr << "OpenCLAllocator allocated " << ptr << " --> cl::Buffer(" << ptr->operator()() << ") in cl::Context(" << ctx_() << ")" << std::endl;
+    meta_[ptr] = {size, MemoryKind::Buffer};
     return ptr;
   }
 
@@ -44,10 +44,10 @@ void* OpenCLAllocator::Alloc(size_t size) {
 }
 
 void OpenCLAllocator::Free(void* p) {
-  size_t size = ptr_to_size_[p];
-  auto it = cache_.find(size);
+  auto meta = meta_[p];
+  auto it = cache_.find(meta.size);
   if (it == cache_.end()) {
-    it = cache_.insert({size, {}}).first;
+    it = cache_.insert({meta.size, {}}).first;
   }
   it->second.push_front(p);
 }
