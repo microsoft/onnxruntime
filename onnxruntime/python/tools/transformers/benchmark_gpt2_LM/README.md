@@ -4,7 +4,7 @@ This can be used to test beam search on any gpt2 model. Both pytorch and onnx mo
 
 Other kind of models are not supported yet.
 
-Also, currently this tool has been be verified to work on GPU. CPU would need additional changes.
+Also, currently this tool has been verified to work on GPU. CPU would need additional changes.
 
 
 
@@ -14,7 +14,7 @@ Also, currently this tool has been be verified to work on GPU. CPU would need ad
 
 2. GPT2 ONNX Model that follows the regular GPT2 style of inputs and outputs.
 
-    Model should have 4 inputs, with the following dimensions: 
+   Model should have 4 inputs, with the following dimensions:
 
    **input_ids** `[batch_size,seq_len]`
 
@@ -24,11 +24,15 @@ Also, currently this tool has been be verified to work on GPU. CPU would need ad
 
    **past_0**`[2,batch_size,16,past_seq_len,64]`
 
+   **past_1** and so on with the same structure
+
    And 2 outputs:
 
    **logits**	type: `[batch_size,seq_len,50297]`
 
    **present_0** type: `[2,batch_size,16,total_seq_len,64]`
+
+   **present_1** and so on with the same structure
 
    past_0, attention_mask, logits, present_0 can be float16 or float32. inputs_ids and position_ids are int64.
 
@@ -36,7 +40,7 @@ Also, currently this tool has been be verified to work on GPU. CPU would need ad
 
 3. Create python venv with all the packages in required_packages.txt
 
-   >  pip install -r required_packages.txt
+   >  pip install -r requirements.txt
 
    
 
