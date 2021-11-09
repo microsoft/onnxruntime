@@ -9,6 +9,10 @@ MY_DIR=$(dirname "${BASH_SOURCE[0]}")
 # Get build utilities
 source $MY_DIR/build_utils.sh
 
+if [ "${BASE_POLICY}" == "musllinux" ]; then
+	echo "Skip PyPy build on musllinux"
+	exit 0
+fi
 
 PYTHON_VERSION=$1
 PYPY_VERSION=$2

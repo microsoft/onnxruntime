@@ -924,6 +924,10 @@
         16515685968327103576
     ],
     [
+        "Identity ai.onnx CPUExecutionProvider",
+        17661628575887109792
+    ],
+    [
         "If ai.onnx CPUExecutionProvider",
         2236645891232685176
     ],
@@ -934,6 +938,10 @@
     [
         "If ai.onnx CPUExecutionProvider",
         17525337343748410800
+    ],
+    [
+        "If ai.onnx CPUExecutionProvider",
+        14605093928914589528
     ],
     [
         "InstanceNormalization ai.onnx CPUExecutionProvider",
@@ -1070,6 +1078,10 @@
     [
         "Loop ai.onnx CPUExecutionProvider",
         18226282479886582688
+    ],
+    [
+        "Loop ai.onnx CPUExecutionProvider",
+        3437102755395866648
     ],
     [
         "LpNormalization ai.onnx CPUExecutionProvider",
@@ -1462,6 +1474,18 @@
     [
         "OneHot ai.onnx CPUExecutionProvider",
         15162687909384154912
+    ],
+    [
+        "Optional ai.onnx CPUExecutionProvider",
+        4007199385789893408
+    ],
+    [
+        "OptionalGetElement ai.onnx CPUExecutionProvider",
+        8727767224223660008
+    ],
+    [
+        "OptionalHasElement ai.onnx CPUExecutionProvider",
+        103583056104706000
     ],
     [
         "Or ai.onnx CPUExecutionProvider",

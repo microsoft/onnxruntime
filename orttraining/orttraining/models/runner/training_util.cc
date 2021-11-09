@@ -81,7 +81,7 @@ common::Status DataSet::GetTensorDimensionsFromInputs(const std::map<std::string
     auto metric = it->second;
 
     const Tensor& first_tensor = data_[0]->at(input_index).Get<Tensor>();
-    std::vector<int64_t> shape_vector = first_tensor.Shape().GetDims();
+    auto shape_vector = first_tensor.Shape().GetDims();
 
     ORT_RETURN_IF_NOT(metric.second < shape_vector.size(), "Index out of bounds for input: ", input_name.c_str(),
                       "; requested index: ", metric.second, ", actual size: ", shape_vector.size());
@@ -99,7 +99,7 @@ std::vector<OrtValue> DataSet::GetKthBatch(size_t batch_size, size_t k_th, Alloc
     const Tensor& first_tensor = data_[0]->at(input_index).Get<Tensor>();
 
     MLDataType element_type = first_tensor.DataType();
-    std::vector<int64_t> shape_vector = first_tensor.Shape().GetDims();
+    std::vector<int64_t> shape_vector = first_tensor.Shape().GetDimsAsVector();
     if (first_tensor.Shape().Size() > 1) {
       shape_vector.insert(shape_vector.begin(), batch_size);
     } else {
