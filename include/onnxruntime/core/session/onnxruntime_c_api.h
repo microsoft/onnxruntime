@@ -3039,6 +3039,20 @@ struct OrtApi {
   ORT_API2_STATUS(HasValue, _In_ const OrtValue* value, _Out_ int* out);
 
   /// @}
+
+  /// \name OrtKernelContext
+  /// @{
+  /** \brief Used for custom operators, gets the GPU compute stream to use to launch the custom a GPU kernel     
+  *   \see ::OrtCustomOp
+  * \param[context] OrtKernelContext instance
+  * \param[out] Returns pointer to a GPU compute stream that can be used to launch the custom GPU kernel.
+  *             If retrieving the GPU compute stream is not relevant (GPU not enabled in the build, kernel partitioned to
+  *             some other EP), then a nullptr is returned as the output param.
+  *             Do not free or mutate the returned pointer as it refers to internal data owned by the underlying session.
+  *             Only use it for custom kernel launching.
+  */
+  ORT_API2_STATUS(KernelContext_GetGPUComputeStream, _In_ const OrtKernelContext* context, _Outptr_ void** out);
+  /// @}
 };
 
 /*

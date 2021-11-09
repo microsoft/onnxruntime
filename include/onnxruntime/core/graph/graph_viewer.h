@@ -80,6 +80,10 @@ class GraphViewer {
   */
   const std::vector<const NodeArg*>& GetOutputs() const noexcept;
 
+  /** Returns true if one or more of the Node outputs are Graph outputs.
+  */
+  bool NodeProducesGraphOutput(const Node& node) const;
+
   /** Gets all ValueInfo NodeArg instances in the Graph.
   @remarks NOT filtered using filter_info_.
   */
@@ -145,6 +149,16 @@ class GraphViewer {
                            if the name is not found in 'graph_'.
   */
   bool IsConstantInitializer(const std::string& name, bool check_outer_scope) const;
+
+  /** returns the initializer's TensorProto if 'name' is an initializer, is constant and
+  cannot be overridden at runtime. If the initializer is not found or is not constant, a nullptr is returned.
+  @param check_outer_scope If true and the graph is a subgraph,
+         check ancestor graph/s for 'name' if not found in 'graph'.
+  @remarks This function will return the result from GetConstantInitializer of the underlying Graph,
+           if a const initializer is part of the underlying Graph but not part of this GraphViewer,
+           it will still be returned instead of nullptr
+  */
+  const ONNX_NAMESPACE::TensorProto* GetConstantInitializer(const std::string& name, bool check_outer_scope) const;
 
   /** Get the Node containing this Graph if IsSubgraph is true. Returns nullptr otherwise. */
   const Node* ParentNode() const noexcept { return graph_->ParentNode(); }

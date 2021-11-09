@@ -389,7 +389,7 @@ Status TfIdfVectorizer::Compute(OpKernelContext* ctx) const {
   int32_t num_rows = 0;
   size_t B = 0;
   size_t C = 0;
-  auto& input_dims = input_shape.GetDims();
+  auto input_dims = input_shape.GetDims();
   if (input_dims.empty()) {
     num_rows = 1;
     C = 1;

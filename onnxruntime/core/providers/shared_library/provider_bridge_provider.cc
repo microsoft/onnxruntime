@@ -212,20 +212,27 @@ Status IDataTransfer::CopySparseTensors(const std::vector<SparseSrcDstPair>& src
 
 const Node& OpKernel::Node() const { return g_host->OpKernel__Node(this); }
 
-TensorShape::TensorShape(const int64_t* dimension_sizes, size_t dimension_count)
-    : std::vector<int64_t>(dimension_count) {
-  for (size_t i = 0; i < dimension_count; ++i) {
-    (*this)[i] = dimension_sizes[i];
-  }
+TensorShape::TensorShape(gsl::span<const int64_t> dims) {
+  Allocate(dims.size());
+  gsl::copy(dims, values_);
 }
 
-TensorShape::TensorShape(const std::vector<int64_t>& dims, size_t start, size_t end) {
-  assign(dims.begin() + start, dims.begin() + end);
+TensorShape& TensorShape::operator=(const TensorShape& other) {
+  g_host->TensorShape__operator_assign(this, other);
+  return *this;
+}
+
+TensorShape& TensorShape::operator=(TensorShape&& other) {
+  g_host->TensorShape__operator_move_assign(this, std::move(other));
+  return *this;
+}
+
+void TensorShape::Allocate(size_t size) {
+  g_host->TensorShape__Allocate(this, size);
 }
 
 int64_t TensorShape::Size() const {
-  size_t arraySize = size();
-  int64_t size = SizeHelper(0, arraySize);
+  int64_t size = SizeHelper(0, values_.size());
   //should we cache the size? as multiple operation may be expensive.
   return size;
 }
@@ -235,12 +242,8 @@ int64_t TensorShape::SizeHelper(size_t start, size_t end) const {
 }
 
 TensorShape TensorShape::Slice(size_t dimstart, size_t dimend) const {
-  assert(dimstart <= dimend && dimend <= size());  // "Invalid tensor shape slice argument."
-  return TensorShape(*this, dimstart, dimend);
-}
-
-TensorShape TensorShape::Slice(size_t dimstart) const {
-  return Slice(dimstart, size());
+  assert(dimstart <= dimend && dimend <= values_.size());  // "Invalid tensor shape slice argument."
+  return TensorShape(GetDims().subspan(dimstart, dimend - dimstart));
 }
 
 std::string TensorShape::ToString() const {

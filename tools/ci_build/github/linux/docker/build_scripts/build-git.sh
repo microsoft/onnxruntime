@@ -7,6 +7,10 @@ set -exuo pipefail
 # Get script directory
 MY_DIR=$(dirname "${BASH_SOURCE[0]}")
 
+if [ "${AUDITWHEEL_POLICY}" == "musllinux_1_1" ]; then
+	export NO_REGEX=NeedsStartEnd
+fi
+
 # Get build utilities
 source $MY_DIR/build_utils.sh
 

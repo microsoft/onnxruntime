@@ -532,6 +532,7 @@ def parse_arguments():
                         help="Disable contrib ops (reduces binary size)")
     parser.add_argument("--disable_ml_ops", action='store_true',
                         help="Disable traditional ML ops (reduces binary size)")
+    # Please note in our CMakeLists.txt this is already default on. But in this file we reverse it to default OFF.
     parser.add_argument("--disable_rtti", action='store_true', help="Disable RTTI (reduces binary size)")
     parser.add_argument("--disable_exceptions", action='store_true',
                         help="Disable exceptions to reduce binary size. Requires --minimal_build.")
@@ -756,7 +757,8 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_CROSS_COMPILING=" + ("ON" if args.arm64 or args.arm64ec or args.arm else "OFF"),
         "-Donnxruntime_DISABLE_CONTRIB_OPS=" + ("ON" if args.disable_contrib_ops else "OFF"),
         "-Donnxruntime_DISABLE_ML_OPS=" + ("ON" if args.disable_ml_ops else "OFF"),
-        "-Donnxruntime_DISABLE_RTTI=" + ("ON" if args.disable_rtti else "OFF"),
+        "-Donnxruntime_DISABLE_RTTI=" + ("ON" if args.disable_rtti or (args.minimal_build is not None
+                                         and not args.enable_pybind) else "OFF"),
         "-Donnxruntime_DISABLE_EXCEPTIONS=" + ("ON" if args.disable_exceptions else "OFF"),
         # Need to use 'is not None' with minimal_build check as it could be an empty list.
         "-Donnxruntime_MINIMAL_BUILD=" + ("ON" if args.minimal_build is not None else "OFF"),
@@ -1547,6 +1549,12 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                 build_dir, config, "external", "tvm", config))
         if args.use_tensorrt:
             dll_path_list.append(os.path.join(args.tensorrt_home, 'lib'))
+        # Adding the torch lib path for loading DLLs for onnxruntime in eager mode
+        # This works for Python 3.7 and below, and doesn't work for Python 3.8+
+        # User will need to import torch before onnxruntime and it will work for all versions
+        if args.build_eager_mode and is_windows():
+            import torch
+            dll_path_list.append(os.path.join(os.path.dirname(torch.__file__), 'lib'))
 
         dll_path = None
         if len(dll_path_list) > 0:
