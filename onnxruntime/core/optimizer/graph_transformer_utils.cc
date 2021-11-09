@@ -196,7 +196,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
           transformers.emplace_back(std::make_unique<QDQS8ToU8Transformer>(cpu_ep));
         }
         transformers.emplace_back(std::make_unique<QDQPropagationTransformer>(cpu_ep));
-        transformers.emplace_back(std::make_unique<QDQSelectorActionTransformer>(is_int8_allowed));
+        transformers.emplace_back(std::make_unique<QDQSelectorActionTransformer>(std::nullopt, is_int8_allowed));
       }
 
       transformers.emplace_back(std::make_unique<GemmActivationFusion>(cpu_ep));
