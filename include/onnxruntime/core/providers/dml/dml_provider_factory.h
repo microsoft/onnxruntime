@@ -48,8 +48,6 @@ ORT_API_STATUS(OrtSessionOptionsAppendExecutionProviderEx_DML, _In_ OrtSessionOp
 struct OrtDmlApi;
 typedef struct OrtDmlApi OrtDmlApi;
 
-const OrtDmlApi* GetOrtDmlApi(_In_ uint32_t version) NO_EXCEPTION;
-
 struct OrtDmlApi {
   /**
    * Creates a DirectML Execution Provider which executes on the hardware adapter with the given device_id, also known as
@@ -68,9 +66,9 @@ struct OrtDmlApi {
    * See also: DMLCreateDevice
    * See also: ID3D12Device::CreateCommandQueue
    */
-  ORT_API2_STATUS(OrtSessionOptionsAppendExecutionProviderEx_DML, _In_ OrtSessionOptions* options,
+  ORT_API2_STATUS(OrtSessionOptionsAppendExecutionProvider_DML1, _In_ OrtSessionOptions* options,
                 _In_ IDMLDevice* dml_device, _In_ ID3D12CommandQueue* cmd_queue);
-                
+
   /**
     * DmlCreateGPUAllocationFromD3DResource
 	 * This api is used to create a DML EP input based on a user specified d3d12 resource.

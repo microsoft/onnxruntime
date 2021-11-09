@@ -26,9 +26,9 @@ void AdapterDmlEpTestSetup() {
   GPUTEST;
   winrt::init_apartment();
   ort_api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
-  ort_api->GetExecutionProviderApi("DML", ORT_API_VERSION, reinterpret_cast<const void**>(&ort_dml_api));
+  THROW_IF_NOT_OK_MSG(ort_api->GetExecutionProviderApi("DML", ORT_API_VERSION, reinterpret_cast<const void**>(&ort_dml_api)), ort_api);
   winml_adapter_api = OrtGetWinMLAdapter(ORT_API_VERSION);
-  ort_api->CreateEnv(OrtLoggingLevel::ORT_LOGGING_LEVEL_VERBOSE, "Default", &ort_env);
+  THROW_IF_NOT_OK_MSG(ort_api->CreateEnv(OrtLoggingLevel::ORT_LOGGING_LEVEL_VERBOSE, "Default", &ort_env), ort_api);
 #ifdef BUILD_INBOX
   winrt_activation_handler = WINRT_RoGetActivationFactory;
 #endif
@@ -164,11 +164,11 @@ void DmlGetD3D12ResourceFromAllocation() {
   auto session = CreateDmlSession();
 
   OrtMemoryInfo* ort_memory_info;
-  ort_api->CreateMemoryInfo("DML", OrtAllocatorType::OrtDeviceAllocator, 0, OrtMemType::OrtMemTypeDefault, &ort_memory_info);
+  THROW_IF_NOT_OK_MSG(ort_api->CreateMemoryInfo("DML", OrtAllocatorType::OrtDeviceAllocator, 0, OrtMemType::OrtMemTypeDefault, &ort_memory_info), ort_api);
   auto memory_info = UniqueOrtMemoryInfo(ort_memory_info, ort_api->ReleaseMemoryInfo);
 
   OrtAllocator* ort_allocator;
-  ort_api->CreateAllocator(session.get(), memory_info.get(), &ort_allocator);
+  THROW_IF_NOT_OK_MSG(ort_api->CreateAllocator(session.get(), memory_info.get(), &ort_allocator), ort_api);
   auto allocator = UniqueOrtAllocator(ort_allocator, ort_api->ReleaseAllocator);
 
   winrt::com_ptr<ID3D12Resource> d3d12_resource_from_allocation;
@@ -190,7 +190,7 @@ void GetValueMemoryInfo() {
   auto session = CreateDmlSession();
 
   OrtMemoryInfo* ort_memory_info;
-  ort_api->CreateMemoryInfo("DML", OrtAllocatorType::OrtDeviceAllocator, 0, OrtMemType::OrtMemTypeDefault, &ort_memory_info);
+  THROW_IF_NOT_OK_MSG(ort_api->CreateMemoryInfo("DML", OrtAllocatorType::OrtDeviceAllocator, 0, OrtMemType::OrtMemTypeDefault, &ort_memory_info), ort_api);
   auto memory_info = UniqueOrtMemoryInfo(ort_memory_info, ort_api->ReleaseMemoryInfo);
   auto tensor = CreateTensorFromMemoryInfo(memory_info.get());
 
@@ -235,7 +235,7 @@ void DmlCopyTensor() {
 
   // GPU to CPU
   OrtMemoryInfo* ort_memory_info;
-  ort_api->CreateMemoryInfo("DML", OrtAllocatorType::OrtDeviceAllocator, 0, OrtMemType::OrtMemTypeDefault, &ort_memory_info);
+  THROW_IF_NOT_OK_MSG(ort_api->CreateMemoryInfo("DML", OrtAllocatorType::OrtDeviceAllocator, 0, OrtMemType::OrtMemTypeDefault, &ort_memory_info), ort_api);
   auto dml_memory_info = UniqueOrtMemoryInfo(ort_memory_info, ort_api->ReleaseMemoryInfo);
 
   auto resource = CreateD3D12Resource(*device);
@@ -271,7 +271,7 @@ void ValueGetDeviceId() {
   auto session = CreateDmlSession();
 
   OrtMemoryInfo* ort_memory_info;
-  ort_api->CreateMemoryInfo("DML", OrtAllocatorType::OrtDeviceAllocator, 0, OrtMemType::OrtMemTypeDefault, &ort_memory_info);
+  THROW_IF_NOT_OK_MSG(ort_api->CreateMemoryInfo("DML", OrtAllocatorType::OrtDeviceAllocator, 0, OrtMemType::OrtMemTypeDefault, &ort_memory_info), ort_api);
   auto memory_info = UniqueOrtMemoryInfo(ort_memory_info, ort_api->ReleaseMemoryInfo);
   auto gpu_tensor = CreateTensorFromMemoryInfo(memory_info.get());
 

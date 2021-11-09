@@ -47,6 +47,7 @@ ProviderInfo_CUDA* TryGetProviderInfo_CUDA();
 
 #ifdef USE_DML
 #include "core/providers/dml/dml_provider_factory.h"
+const OrtDmlApi* GetOrtDmlApi(_In_ uint32_t version) NO_EXCEPTION;
 #endif
 
 #ifdef ENABLE_EXTENSION_CUSTOM_OPS
@@ -1916,15 +1917,14 @@ ORT_API_STATUS_IMPL(OrtApis::ReleaseAvailableProviders, _In_ char** ptr,
 }
 
 ORT_API_STATUS_IMPL(OrtApis::GetExecutionProviderApi, _In_ const char *provider_name,
-ORT_API_STATUS_IMPL(OrtApis::GetExecutionProviderApi, _In_ const char* provider_name,
-                    uint32_t version, const void** provider_interface) {
+                    _In_ uint32_t version, _Outptr_ const void ** provider_api) {
   API_IMPL_BEGIN
-  *provider_interface = nullptr;
+  *provider_api = nullptr;
   if (strcmp(provider_name, "DML") == 0) {
 #ifdef USE_DML
-    *provider_interface = GetOrtDmlApi(version);
+    *provider_api = GetOrtDmlApi(version);
 #endif
-    if (*provider_interface == nullptr) {
+    if (*provider_api == nullptr) {
       return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Specified version is not supported for DirectML provider.");  
     }
   } else {
@@ -2106,7 +2106,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSessionFromArrayWithPrepackedWeightsContainer
 }
 
 
-ORT_API_STATUS_IMPL(OrtApis::GetValueMemoryInfo, const OrtValue* value, const OrtMemoryInfo** memory_info) {
+ORT_API_STATUS_IMPL(OrtApis::GetValueMemoryInfo, _In_ const OrtValue* value, _Outptr_ const OrtMemoryInfo** memory_info) {
   API_IMPL_BEGIN
   *memory_info = nullptr;
   const auto& tensor = value->Get<onnxruntime::Tensor>();

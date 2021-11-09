@@ -1,6 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+// The winml "provider factory" is not a true execution provider.
+// It is placed here as an execution provider to facilitate the export of the WinMLAdapter API
+// via the OrtGetWinMLAdapter method.
+
 #include "onnxruntime_c_api.h"
 
 struct OrtWinApi;

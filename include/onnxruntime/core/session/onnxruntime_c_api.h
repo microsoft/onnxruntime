@@ -3038,9 +3038,25 @@ struct OrtApi {
    */
   ORT_API2_STATUS(HasValue, _In_ const OrtValue* value, _Out_ int* out);
 
+  /**
+   * THIS API WILL BE SWAPPER OUT for the one currently in development in this PR:
+   * https://github.com/microsoft/onnxruntime/pull/9588
+   */
   ORT_API2_STATUS(GetValueMemoryInfo, _In_ const OrtValue* value, _Outptr_ const OrtMemoryInfo** memory_info);
 
-  ORT_API2_STATUS(GetExecutionProviderApi, _In_ const char* provider_name, uint32_t version, const void** provider_api);
+  /**
+   * \brief Get a pointer to the requested version of the Execution Provider specific
+   * API extensions to the OrtApi 
+
+   * \param[in] provider_name The name of the execution provider name. Currently only the following
+   * values are supported: "DML".
+   * \param[in] version Must be ::ORT_API_VERSION.
+   * \param[out] provider_api A void pointer containing a reference to the execution provider versioned api structure.
+   * For example, the provider_api pointer can be cast to the OrtDmlApi* when the provider_name is "DML".
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   */
+  ORT_API2_STATUS(GetExecutionProviderApi, _In_ const char* provider_name, _In_ uint32_t version, _Outptr_ const void** provider_api);
 
   /// @}
 };
