@@ -399,6 +399,9 @@ if package_name == 'onnxruntime-nuphar':
     packages += ["onnxruntime.nuphar"]
     extra += [path.join('nuphar', 'NUPHAR_CACHE_VERSION')]
 
+if package_name == 'onnxruntime-stvm':
+    packages += ['onnxruntime.providers.stvm']
+
 package_data["onnxruntime"] = data + examples + extra
 
 version_number = ''

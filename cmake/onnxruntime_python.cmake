@@ -661,10 +661,11 @@ if (onnxruntime_USE_STVM)
   )
   add_custom_command(
     TARGET onnxruntime_pybind11_state POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/stvm
+    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/providers
+    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/providers/stvm
     COMMAND ${CMAKE_COMMAND} -E copy
         ${onnxruntime_python_providers_stvm_srcs}
-        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/stvm
+        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/providers/stvm
     COMMAND ${CMAKE_COMMAND} -E copy
         ${DNNL_DLL_PATH} $<TARGET_FILE:onnxruntime_providers_stvm>
         $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
