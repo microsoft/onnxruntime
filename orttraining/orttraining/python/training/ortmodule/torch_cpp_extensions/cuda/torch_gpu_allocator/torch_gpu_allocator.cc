@@ -1,16 +1,16 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <c10/cuda/CUDACachingAllocator.h>
+#include <c10/___gpu_identifier___/___gpu_allocator_header___.h>
 #include <torch/extension.h>
 
 void* delegate_raw_alloc(size_t nbytes) {
-  auto allocator = c10::cuda::CUDACachingAllocator::get();
+  auto allocator = c10::___gpu_identifier___::___gpu_allocator_header___::get();
   return allocator->raw_allocate(nbytes);
 }
 
 void delegate_raw_delete(void* ptr) {
-  auto allocator = c10::cuda::CUDACachingAllocator::get();
+  auto allocator = c10::___gpu_identifier___::___gpu_allocator_header___::get();
   allocator->raw_deallocate(ptr);
 }
 
