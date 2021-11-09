@@ -63,7 +63,7 @@ class ModelTestBuilder {
     std::vector<uint8_t> data_uint8 = rand_gen_.Uniform<uint8_t>(shape, 0, 1);
     std::vector<bool> data;
     for (uint8_t x : data_uint8) {
-      data.push_back(x);
+      data.push_back(x != 0);
     }
     return MakeInput<bool>(shape, data);
   }

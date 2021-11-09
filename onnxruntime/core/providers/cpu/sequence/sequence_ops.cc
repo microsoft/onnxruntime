@@ -379,7 +379,7 @@ Status SplitToSequence::PrepareForCompute(const TensorShape& input_shape, int64_
                                           int& after_dims_including_split_axis, int& after_dims_excluding_split,
                                           bool& is_uneven_split, int& num_remaining_splits,
                                           std::vector<int64_t>& split_sizes) const {
-  auto& input_dims = input_shape.GetDims();
+  auto input_dims = input_shape.GetDims();
   const auto num_dimensions = gsl::narrow_cast<int64_t>(input_shape.NumDimensions());
   axis = HandleNegativeAxis(axis_, num_dimensions);  // handle negative and enforce axis is valid
   const int64_t split_dim_size = input_dims[axis];
@@ -506,8 +506,7 @@ Status SplitToSequence::ComputeImpl(OpKernelContext& context, const Tensor& inpu
                                         split_sizes));
 
   // copy dimensions so we can update the selected axis in place
-  auto& input_dims = input_shape.GetDims();
-  std::vector<int64_t> output_dimensions{input_dims};
+  auto output_dimensions = input_shape.GetDimsAsVector();
   std::vector<Tensor> tensors;
   int64_t input_offset = 0;
   const T* input_data = input.template Data<T>();

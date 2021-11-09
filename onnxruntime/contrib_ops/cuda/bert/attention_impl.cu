@@ -65,7 +65,7 @@ bool QkvToContext(
     const cudaDeviceProp& prop, cublasHandle_t& cublas, cudaStream_t stream,
     const int batch_size, const int sequence_length, const int num_heads, const int head_size, const size_t element_size,
     const T* input, T* output, T* workspace,
-    const int* mask_index, const std::vector<int64_t>* mask_index_dims,
+    const int* mask_index, gsl::span<const int64_t> mask_index_dims,
     bool is_unidirectional, int past_sequence_length, const T* past, const T* extra_add_qk, T* present, bool use_persistent_softmax) {
   const int all_sequence_length = past_sequence_length + sequence_length;
   const size_t bytes = GetAttentionScratchSize(element_size, batch_size, num_heads, sequence_length, all_sequence_length);
@@ -106,7 +106,7 @@ bool QkvToContext(
   }
 
   // Raw attention mask could be 2D (BxS) or 3D (BxSxS*) or 4D(Bx1xMxM), where M is the max sequence length.
-  bool use_raw_attention_mask = (nullptr != mask_index && nullptr != mask_index_dims && mask_index_dims->size() >= 2);
+  bool use_raw_attention_mask = (nullptr != mask_index && mask_index_dims.size() >= 2);
 
   // compute Q*K' (as K'*Q), scaled by 1/sqrt(H) and store in scratch1: BxNxSxS*
   // Q: BxNxSxH, K (present_k): BxNxS*xH, Q*K': BxNxSxS*
@@ -126,8 +126,8 @@ bool QkvToContext(
 
   // apply softmax and store result P to scratch2: BxNxSxS*
   if (use_raw_attention_mask) {  // 2d, 3d or 4d attention mask
-    const int mask_dimension = static_cast<int>(mask_index_dims->size());
-    const int64_t max_sequence_length = mask_dimension == 4 ? mask_index_dims->at(3) : 0;
+    const int mask_dimension = static_cast<int>(mask_index_dims.size());
+    const int64_t max_sequence_length = mask_dimension == 4 ? mask_index_dims.at(3) : 0;
 
     T* persistent_softmax_workspace = scratch1; // replace Q*K' in place with masked score if persistent softmax is selected.
     if (!ComputeSoftmaxWithRawMask<T>(stream, all_sequence_length, sequence_length, batch_size, num_heads, mask_index, extra_add_qk, scratch1, scratch2, 
@@ -136,9 +136,9 @@ bool QkvToContext(
       return false;
     }
   } else if (nullptr != mask_index) {  // 1d mask index
-    ORT_ENFORCE(nullptr != mask_index_dims && mask_index_dims->size() == 1);
+    ORT_ENFORCE(mask_index_dims.size() == 1);
     // mask_index has 1D shape: either (batch_size) or (2*batch_size). Only the later one has start postions.
-    const int* mask_start = (mask_index_dims->at(0) > batch_size) ? mask_index + batch_size : nullptr;
+    const int* mask_start = (mask_index_dims.at(0) > batch_size) ? mask_index + batch_size : nullptr;
     if (!ComputeSoftmaxWithMask1D<T>(stream, all_sequence_length, sequence_length, batch_size, num_heads, mask_index, mask_start, extra_add_qk, scratch1, scratch2, is_unidirectional)) {
       return false;
     }
@@ -164,7 +164,7 @@ bool LaunchAttentionKernel(
     cudaStream_t stream,
     const void* input,
     const int* mask_index,
-    const std::vector<int64_t>* mask_index_dims,
+    gsl::span<const int64_t> mask_index_dims,
     void* output,
     const int batch_size,
     const int sequence_length,

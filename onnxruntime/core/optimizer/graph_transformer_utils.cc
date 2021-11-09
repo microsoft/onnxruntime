@@ -127,6 +127,19 @@ std::unique_ptr<RuleBasedGraphTransformer> GenerateRuleBasedGraphTransformer(
   return rule_transformer;
 }
 
+static void FilterTransformers(std::vector<std::unique_ptr<GraphTransformer>>& transformers,
+                               const std::unordered_set<std::string>& transformers_to_disable) {
+  if (transformers_to_disable.empty()) return;
+
+  transformers.erase(
+      std::remove_if(transformers.begin(), transformers.end(),
+                     [&](const std::unique_ptr<GraphTransformer>& transformer) {
+                       return !transformer ||
+                              transformers_to_disable.find(transformer->Name()) != transformers_to_disable.end();
+                     }),
+      transformers.end());
+}
+
 std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
     TransformerLevel level,
     const SessionOptions& session_options,
@@ -222,29 +235,39 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
     } break;
 
     default:
-      ORT_ENFORCE(false, "Unsupported level " + std::to_string(static_cast<uint32_t>(level)));
-      break;
+      ORT_THROW("Unsupported optimization level: ", static_cast<int>(level));
   }
 
   if (rule_transformer != nullptr) {
     transformers.emplace_back(std::move(rule_transformer));
   }
 
-  if (rules_and_transformers_to_disable.empty()) {
-    return transformers;
-  } else {
-    // filter out any disabled transformers
-    std::vector<std::unique_ptr<GraphTransformer>> filtered_list;
-    auto end = rules_and_transformers_to_disable.cend();
-    std::for_each(transformers.begin(), transformers.end(),
-                  [&](std::unique_ptr<GraphTransformer>& item) {
-                    if ((item != nullptr) && (rules_and_transformers_to_disable.find(item->Name()) == end)) {
-                      filtered_list.push_back(std::move(item));
-                    }
-                  });
+  FilterTransformers(transformers, rules_and_transformers_to_disable);
 
-    return filtered_list;
+  return transformers;
+}
+
+std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformersForRuntimeOptimizations(
+    TransformerLevel level,
+    const RuntimeOptimizationSaveContext& runtime_optimization_save_context,
+    const std::unordered_set<std::string>& rules_and_transformers_to_disable) {
+  std::vector<std::unique_ptr<GraphTransformer>> transformers;
+
+  switch (level) {
+    case TransformerLevel::Level1:
+      break;
+    case TransformerLevel::Level2:
+      transformers.emplace_back(std::make_unique<QDQSelectorActionTransformer>(runtime_optimization_save_context));
+      break;
+    case TransformerLevel::Level3:
+      break;
+    default:
+      ORT_THROW("Unsupported optimization level: ", static_cast<int>(level));
   }
+
+  FilterTransformers(transformers, rules_and_transformers_to_disable);
+
+  return transformers;
 }
 
 }  // namespace optimizer_utils

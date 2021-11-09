@@ -5,13 +5,13 @@
 #include "test/providers/provider_test_utils.h"
 
 namespace onnxruntime {
-namespace cuda {
+namespace contrib {
 namespace test {
 
 using namespace std;
 using namespace onnxruntime::test;
 
-#ifdef USE_CUDA
+#if USE_CUDA || USE_ROCM
 namespace {
 
 struct ConvGradOpAttributes {
@@ -315,8 +315,8 @@ TEST(ConvTest, Conv3D_Bias) {
   TestConvGradOp(attrs, {dY, X, W}, {dY_shape, X_shape, W_shape}, {dX, dW, dB}, {dX_shape, dW_shape, dB_shape});
   TestConvGradOp(attrs, {dY, X, W}, {dY_shape, X_shape, W_shape}, {dX, dW, dB}, {dX_shape, dW_shape, dB_shape}, true);
 }
-#endif  // USE_CUDA
+#endif  // USE_CUDA || USE_ROCM
 
 }  // namespace test
-}  // namespace cuda
+}  // namespace contrib
 }  // namespace onnxruntime

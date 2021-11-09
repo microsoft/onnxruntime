@@ -165,8 +165,6 @@ Status SaveValueInfoOrtFormat(flatbuffers::FlatBufferBuilder& builder,
 
 #endif  // #if !defined(ORT_MINIMAL_BUILD)
 
-#if defined(ENABLE_ORT_FORMAT_LOAD)
-
 void LoadStringFromOrtFormat(std::string& dst, const flatbuffers::String* fbs_string) {
   if (fbs_string)
     dst = fbs_string->c_str();
@@ -306,8 +304,6 @@ Status LoadOpsetImportOrtFormat(const flatbuffers::Vector<flatbuffers::Offset<fb
   }
   return Status::OK();
 }
-
-#endif  // defined(ENABLE_ORT_FORMAT_LOAD)
 
 bool IsOrtFormatModelBytes(const void* bytes, int num_bytes) {
   return num_bytes > 8 &&  // check buffer is large enough to contain identifier so we don't read random memory

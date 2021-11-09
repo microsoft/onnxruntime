@@ -3,23 +3,13 @@
 
 #pragma once
 
+#include "core/graph/runtime_optimization_record.h"
+
 namespace onnxruntime {
 
 //
 // Selection helpers
 //
-
-// Struct to serialize the node indexes in an ORT format model.
-// Use EmptyNodeIndex for nullptr entries in the vectors for missing optional inputs
-struct NodesToOptimizeIndexes {
-  std::vector<NodeIndex> nodes;
-  int num_inputs;
-  int num_outputs;
-  bool variadic_input;
-  bool variadic_output;
-  int num_variadic_inputs;
-  int num_variadic_outputs;
-};
 
 // Group of nodes that will be optimized. The group will either be merged into the target node, or a new node
 // will be created to replace the entire group, including the target node.
@@ -52,12 +42,10 @@ class NodesToOptimize {
                   int num_input_defs = -1, int num_output_defs = -1);
 
   // construct from saved NodeIndex values. IsValid() will return false if one or more nodes were missing.
-  // Use EmptyNodeIndex for nullptr entries in the vectors for missing optional inputs
-  NodesToOptimize(Graph& graph, const NodesToOptimizeIndexes& node_indexes);
+  // Use NodesToOptimizeIndices::kEmptyNodeIndex for nullptr entries in the vectors for missing optional inputs
+  NodesToOptimize(Graph& graph, const NodesToOptimizeIndices& node_indexes);
 
-  static constexpr NodeIndex EmptyNodeIndex = std::numeric_limits<NodeIndex>::max();
-
-  NodesToOptimizeIndexes ToIndexes() const;
+  NodesToOptimizeIndices ToIndices() const;
 
   // number of inputs and outputs that the target node has, as defined by the operator schema.
   // for each input/output, the node connected to that is stored
@@ -203,10 +191,16 @@ struct NodeAndMoveInfo {
 };
 
 // helpers for moving inputs/outputs and their edges between nodes
+// if `only_update_dest_definitions` is true, only updates the destination node's definitions. otherwise, updates graph
+// edges and node definitions.
+// setting `only_update_dest_definitions` to true is useful for updating the destination node independently from the
+// rest of the graph. e.g., when creating a temporary node that is used to look up a kernel def, we can set the
+// temporary node's definitions (which is all we need) without updating existing graph edges.
 Status MoveInputOutput(Graph& graph, const NodesToOptimize& selected_nodes, Node& dest,
-                       const std::vector<NodeAndMoveInfo>& moves);
+                       const std::vector<NodeAndMoveInfo>& moves, bool only_update_dest_definitions);
 
-Status MoveInputOutput(Graph& graph, Node& src, Node& dest, const ValueMoveInfo& move_info);
+Status MoveInputOutput(Graph& graph, Node& src, Node& dest, const ValueMoveInfo& move_info,
+                       bool only_update_dest_definitions);
 
 //
 // Helpers to make the 'move' configuration more easily read

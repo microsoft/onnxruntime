@@ -168,11 +168,18 @@ def quantize_data(data, qType, symmetric, reduce_range=False):
     - *S*: scale
     - *z*: zero point
     '''
-    rmin = min(data)
-    rmax = max(data)
-    qmin, qmax = get_qmin_qmax_for_qType(qType, reduce_range)
 
-    zero_point, scale = compute_scale_zp(rmin, rmax, qmin, qmax, symmetric)
+    rmin = 0
+    rmax = 0
+    zero_point = 0
+    scale = 1.0
+    if len(data):
+        rmin = min(data)
+        rmax = max(data)
+        qmin, qmax = get_qmin_qmax_for_qType(qType, reduce_range)
+
+        zero_point, scale = compute_scale_zp(rmin, rmax, qmin, qmax, symmetric)
+
     quantized_data = quantize_nparray(qType, numpy.asarray(data), scale, zero_point)
 
     return rmin, rmax, zero_point, scale, quantized_data
