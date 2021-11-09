@@ -79,19 +79,19 @@ struct OrtDmlApi {
 
   /**
     * DmlCreateGPUAllocationFromD3DResource
-	 * This api is used to create a DML EP input based on a user specified d3d12 resource.
+    * This api is used to create a DML EP input based on a user specified d3d12 resource.
   */
   ORT_API2_STATUS(DmlCreateGPUAllocationFromD3DResource, _In_ ID3D12Resource* d3d_resource, _Out_ void** dml_resource);
 
   /**
     * DmlFreeGPUAllocation
-	 * This api is used free the DML EP input created by DmlCreateGPUAllocationFromD3DResource.
+    * This api is used free the DML EP input created by DmlCreateGPUAllocationFromD3DResource.
     */
   ORT_API2_STATUS(DmlFreeGPUAllocation, _In_ void* dml_resource);
 
   /**
     * DmlGetD3D12ResourceFromAllocation
-	 * This api is used to get the D3D12 resource when a OrtValue has been allocated by the DML EP and accessed via GetMutableTensorData.
+    * This api is used to get the D3D12 resource when a OrtValue has been allocated by the DML EP and accessed via GetMutableTensorData.
     */
   ORT_API2_STATUS(DmlGetD3D12ResourceFromAllocation, _In_ OrtAllocator* provider, _In_ void* dml_allocation, _Out_ ID3D12Resource** d3d_resource);
 };
