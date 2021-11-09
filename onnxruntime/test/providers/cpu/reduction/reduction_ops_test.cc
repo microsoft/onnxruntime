@@ -2122,20 +2122,28 @@ TEST(ReductionOpTest, ArgMax_int32_last_index_dups) {
 
 TEST(ReductionOpTest, ArgMax_float_last_index_dups) {
   OpTester test("ArgMax", 12);
-  test.AddAttribute("axis", static_cast<int64_t>(1));
+  test.AddAttribute("axis", static_cast<int64_t>(0));
   test.AddAttribute("keepdims", static_cast<int64_t>(1));
 
   // Since select_last_index is 0 by default, this test should run on both CPU and CUDA
   test.AddAttribute("select_last_index", static_cast<int64_t>(0));
 
-  test.AddInput<float>("data", {3, 4},
-                       {2.f, 4.f, 3.f, 4.f,  // dupes
+  std::vector<float> data_vec;
 
-                        8.f, 6.f, 7.f, 8.f,  // dupes
+  // Use a high value for the number of entries in the data vector
+  // This is to test if the CuDNN reduction implementation is stable
+  // even if it takes the parallelized approach.
 
-                        12.f, 12.f, 11.f, 12.f});  // dupes
-  test.AddOutput<int64_t>("reduced", {3, 1},
-                          {1, 0, 0});
+  // Assmption: CuDNN implementation will be parallelized if the cardinality
+  // of entries in the input is 10k.
+
+  size_t data_size = 10000;
+  data_vec.reserve(data_size);
+  for (size_t i = 0; i < data_size; ++i) {
+    data_vec.push_back(10.f);  // dupes
+  }
+  test.AddInput<float>("data", {10000}, data_vec);
+  test.AddOutput<int64_t>("reduced", {1}, {0});
 
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
