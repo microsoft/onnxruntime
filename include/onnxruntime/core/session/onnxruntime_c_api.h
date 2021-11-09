@@ -265,7 +265,7 @@ typedef OrtStatus* OrtStatusPtr;
 /** \brief Memory allocation interface
 *
 * Structure of function pointers that defines a memory allocator. This can be created and filled in by the user for custom allocators.
-* 
+*
 * When an allocator is passed to any function, be sure that the allocator object is not destroyed until the last allocated object using it is freed.
 */
 typedef struct OrtAllocator {
@@ -374,7 +374,7 @@ typedef struct OrtCUDAProviderOptions {
   */
   int arena_extend_strategy;
 
-  /** \brief Flag indicating if copying needs to take place on the same stream as the compute stream in the CUDA EP   
+  /** \brief Flag indicating if copying needs to take place on the same stream as the compute stream in the CUDA EP
   *   0 = Use separate streams for copying and compute.
   *   1 = Use the same stream for copying and compute.
   *   Defaults to 1.
@@ -388,7 +388,7 @@ typedef struct OrtCUDAProviderOptions {
   */
   int has_user_compute_stream;
 
-  /** \brief User provided compute stream. 
+  /** \brief User provided compute stream.
   *   If provided, please set `has_user_compute_stream` to 1.
   */
   void* user_compute_stream;
@@ -432,7 +432,7 @@ typedef struct OrtROCMProviderOptions {
   */
   int arena_extend_strategy;
 
-  /** \brief Flag indicating if copying needs to take place on the same stream as the compute stream in the ROCM EP   
+  /** \brief Flag indicating if copying needs to take place on the same stream as the compute stream in the ROCM EP
   *   0 = Use separate streams for copying and compute.
   *   1 = Use the same stream for copying and compute.
   *   Defaults to 1.
@@ -446,7 +446,7 @@ typedef struct OrtROCMProviderOptions {
   */
   int has_user_compute_stream;
 
-  /** \brief User provided compute stream. 
+  /** \brief User provided compute stream.
   *   If provided, please set `has_user_compute_stream` to 1.
   */
   void* user_compute_stream;
@@ -513,11 +513,13 @@ struct OrtApiBase {
   /** \brief Get a pointer to the requested version of the ::OrtApi
   *
   * \param[in] version Must be ::ORT_API_VERSION
-  * \return The ::OrtApi for the version requested, nullptr will be returned if this version is unsupported, for example when using a runtime
+  * \return The ::OrtApi for the version requested, nullptr will be returned if
+  *   this version is unsupported, for example when using a runtime
   *   older than the version created with this header file.
   */
   const OrtApi*(ORT_API_CALL* GetApi)(uint32_t version)NO_EXCEPTION;
-  const char*(ORT_API_CALL* GetVersionString)(void)NO_EXCEPTION;  ///< Returns a null terminated string of the version of the Onnxruntime library (eg: "1.8.1")
+  // Returns a null terminated string of the version of the Onnxruntime library (eg: "1.8.1")
+  const char*(ORT_API_CALL* GetVersionString)(void)NO_EXCEPTION;
 };
 typedef struct OrtApiBase OrtApiBase;
 
