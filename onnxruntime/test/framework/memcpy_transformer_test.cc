@@ -337,7 +337,7 @@ TEST(TransformerTest, MemcpyTransformerTestGraphInputConsumedOnMultipleDevices) 
   EXPECT_TRUE(modified);
 
   auto op_count_map = CountOpsInGraph(graph);
-  ASSERT_TRUE(op_count_map["MemcpyToHost"] == 1);
+  ASSERT_TRUE(op_count_map["MemcpyFromHost"] == 1);
 }
 
 TEST(TransformerTest, MemcpyTransformerTestImplicitInputConsumedOnMultipleDevices) {
