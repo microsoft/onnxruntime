@@ -1397,12 +1397,12 @@ TEST_F(GraphTransformationTests, GemmSumFusionBasic) {
   ASSERT_EQ(node.GetAttributes().at("alpha").f(), 1.0);
   ASSERT_EQ(node.GetAttributes().at("beta").f(), 1.0);
   auto new_input_defs = node.InputDefs();
-  ASSERT_EQ(new_input_defs.size(), 3);
+  ASSERT_EQ(new_input_defs.size(), 3u);
   ASSERT_TRUE(new_input_defs[0]->Name() == "A");
   ASSERT_TRUE(new_input_defs[1]->Name() == "B");
   ASSERT_TRUE(new_input_defs[2]->Name() == "C");
   auto new_output_defs = node.OutputDefs();
-  ASSERT_EQ(new_output_defs.size(), 1);
+  ASSERT_EQ(new_output_defs.size(), 1u);
   ASSERT_TRUE(new_output_defs[0]->Name() == "output");
 }
 
@@ -1435,12 +1435,12 @@ TEST_F(GraphTransformationTests, GemmSumFusionAttributes) {
   ASSERT_EQ(node.GetAttributes().at("alpha").f(), 3.5);
   ASSERT_EQ(node.GetAttributes().at("beta").f(), 1.0);
   auto new_input_defs = node.InputDefs();
-  ASSERT_EQ(new_input_defs.size(), 3);
+  ASSERT_EQ(new_input_defs.size(), 3u);
   ASSERT_TRUE(new_input_defs[0]->Name() == "A");
   ASSERT_TRUE(new_input_defs[1]->Name() == "B");
   ASSERT_TRUE(new_input_defs[2]->Name() == "C");
   auto new_output_defs = node.OutputDefs();
-  ASSERT_EQ(new_output_defs.size(), 1);
+  ASSERT_EQ(new_output_defs.size(), 1u);
   ASSERT_TRUE(new_output_defs[0]->Name() == "output");
 }
 
@@ -1476,12 +1476,12 @@ TEST_F(GraphTransformationTests, GemmSumFusionInternalNodes) {
       ASSERT_EQ(node.GetAttributes().at("beta").f(), 1.0);
 
       auto new_input_defs = node.InputDefs();
-      ASSERT_EQ(new_input_defs.size(), 3);
+      ASSERT_EQ(new_input_defs.size(), 3u);
       ASSERT_TRUE(new_input_defs[0]->Name() == "tp0");
       ASSERT_TRUE(new_input_defs[1]->Name() == "tp1");
       ASSERT_TRUE(new_input_defs[2]->Name() == "tp3");
       auto new_output_defs = node.OutputDefs();
-      ASSERT_EQ(new_output_defs.size(), 1);
+      ASSERT_EQ(new_output_defs.size(), 1u);
       ASSERT_TRUE(new_output_defs[0]->Name() == "tp4");
     }
   }
@@ -1513,16 +1513,16 @@ TEST_F(GraphTransformationTests, GemmSumFusionNoFusionCUsed) {
   for (Node& node : graph.Nodes()) {
     if (node.OpType() == "Gemm") {
       auto new_input_defs = node.InputDefs();
-      ASSERT_EQ(new_input_defs.size(), 3);
+      ASSERT_EQ(new_input_defs.size(), 3u);
       ASSERT_TRUE(new_input_defs[0]->Name() == "A");
       ASSERT_TRUE(new_input_defs[1]->Name() == "B");
       ASSERT_TRUE(new_input_defs[2]->Name() == "C");
     } else if (node.OpType() == "Sum") {
       auto new_input_defs = node.InputDefs();
-      ASSERT_EQ(new_input_defs.size(), 2);
+      ASSERT_EQ(new_input_defs.size(), 2u);
       ASSERT_TRUE(new_input_defs[1]->Name() == "D");
       auto new_output_defs = node.OutputDefs();
-      ASSERT_EQ(new_output_defs.size(), 1);
+      ASSERT_EQ(new_output_defs.size(), 1u);
       ASSERT_TRUE(new_output_defs[0]->Name() == "output");
     } else {
       FAIL();
@@ -1556,16 +1556,16 @@ TEST_F(GraphTransformationTests, GemmSumFusionNoFusionSumMultipleInputs) {
   for (Node& node : graph.Nodes()) {
     if (node.OpType() == "Gemm") {
       auto new_input_defs = node.InputDefs();
-      ASSERT_EQ(new_input_defs.size(), 2);
+      ASSERT_EQ(new_input_defs.size(), 2u);
       ASSERT_TRUE(new_input_defs[0]->Name() == "A");
       ASSERT_TRUE(new_input_defs[1]->Name() == "B");
     } else if (node.OpType() == "Sum") {
       auto new_input_defs = node.InputDefs();
-      ASSERT_EQ(new_input_defs.size(), 3);
+      ASSERT_EQ(new_input_defs.size(), 3u);
       ASSERT_TRUE(new_input_defs[1]->Name() == "C");
       ASSERT_TRUE(new_input_defs[2]->Name() == "D");
       auto new_output_defs = node.OutputDefs();
-      ASSERT_EQ(new_output_defs.size(), 1);
+      ASSERT_EQ(new_output_defs.size(), 1u);
       ASSERT_TRUE(new_output_defs[0]->Name() == "output");
     } else {
       FAIL();
@@ -1602,12 +1602,12 @@ TEST_F(GraphTransformationTests, GemmSumFusionBroadcast) {
   ASSERT_EQ(node.GetAttributes().at("alpha").f(), 1.0);
   ASSERT_EQ(node.GetAttributes().at("beta").f(), 1.0);
   auto new_input_defs = node.InputDefs();
-  ASSERT_EQ(new_input_defs.size(), 3);
+  ASSERT_EQ(new_input_defs.size(), 3u);
   ASSERT_TRUE(new_input_defs[0]->Name() == "A");
   ASSERT_TRUE(new_input_defs[1]->Name() == "B");
   ASSERT_TRUE(new_input_defs[2]->Name() == "C");
   auto new_output_defs = node.OutputDefs();
-  ASSERT_EQ(new_output_defs.size(), 1);
+  ASSERT_EQ(new_output_defs.size(), 1u);
   ASSERT_TRUE(new_output_defs[0]->Name() == "output");
 }
 
@@ -1636,15 +1636,15 @@ TEST_F(GraphTransformationTests, GemmSumFusionNoFusionBroadcastFailure) {
   for (Node& node : graph.Nodes()) {
     if (node.OpType() == "Gemm") {
       auto new_input_defs = node.InputDefs();
-      ASSERT_EQ(new_input_defs.size(), 2);
+      ASSERT_EQ(new_input_defs.size(), 2u);
       ASSERT_TRUE(new_input_defs[0]->Name() == "A");
       ASSERT_TRUE(new_input_defs[1]->Name() == "B");
     } else if (node.OpType() == "Sum") {
       auto new_input_defs = node.InputDefs();
-      ASSERT_EQ(new_input_defs.size(), 2);
+      ASSERT_EQ(new_input_defs.size(), 2u);
       ASSERT_TRUE(new_input_defs[1]->Name() == "C");
       auto new_output_defs = node.OutputDefs();
-      ASSERT_EQ(new_output_defs.size(), 1);
+      ASSERT_EQ(new_output_defs.size(), 1u);
       ASSERT_TRUE(new_output_defs[0]->Name() == "output");
     } else {
       FAIL();
@@ -1677,15 +1677,15 @@ TEST_F(GraphTransformationTests, GemmSumFusionNoFusionOriginalGemmOutputUsed) {
   for (Node& node : graph.Nodes()) {
     if (node.OpType() == "Gemm") {
       auto new_input_defs = node.InputDefs();
-      ASSERT_EQ(new_input_defs.size(), 2);
+      ASSERT_EQ(new_input_defs.size(), 2u);
       ASSERT_TRUE(new_input_defs[0]->Name() == "A");
       ASSERT_TRUE(new_input_defs[1]->Name() == "B");
     } else if (node.OpType() == "Sum") {
       auto new_input_defs = node.InputDefs();
-      ASSERT_EQ(new_input_defs.size(), 2);
+      ASSERT_EQ(new_input_defs.size(), 2u);
       ASSERT_TRUE(new_input_defs[1]->Name() == "C");
       auto new_output_defs = node.OutputDefs();
-      ASSERT_EQ(new_output_defs.size(), 1);
+      ASSERT_EQ(new_output_defs.size(), 1u);
       ASSERT_TRUE(new_output_defs[0]->Name() == "output");
     } else {
       FAIL();
