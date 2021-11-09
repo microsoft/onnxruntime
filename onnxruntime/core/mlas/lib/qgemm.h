@@ -710,7 +710,7 @@ MlasGemmU8X8GetDispatch(
     if (AIsSigned) {
         GemmU8X8Dispatch = MlasPlatform.GemmU8X8Dispatch;
         if (USE_NEONS8_KERNEL && BIsSigned && GemmU8X8Dispatch == &MlasGemmU8X8DispatchNeon) {
-            GemmU8X8Dispatch = &MlasGemmU8S8DispatchNeon;
+            GemmU8X8Dispatch = &MlasGemmS8S8DispatchNeon;
         }
     } else {
         GemmU8X8Dispatch = MlasPlatform.GemmU8X8Dispatch;
