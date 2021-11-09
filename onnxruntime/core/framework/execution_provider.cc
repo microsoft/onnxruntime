@@ -174,7 +174,7 @@ common::Status IExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>&
 #endif
 
 int IExecutionProvider::ModelMetadefIdGenerator::GenerateId(const onnxruntime::GraphViewer& graph_viewer,
-                                                            uint64_t& model_hash) {
+                                                            HashValue& model_hash) {
   model_hash = 0;
 
   // find the top level graph
@@ -191,7 +191,7 @@ int IExecutionProvider::ModelMetadefIdGenerator::GenerateId(const onnxruntime::G
   // the same memory (unit tests prove this can occur). the raw bytes of the Graph instance should be a unique
   // fingerprint for the instance that can use used as the key to the hash of the model path/contents.
   MurmurHash3::x86_128(&main_graph, gsl::narrow_cast<int32_t>(sizeof(Graph)), instance_hash[0], &instance_hash);
-  uint64_t graph_instance_hash = instance_hash[0] | (uint64_t(instance_hash[1]) << 32);
+  HashValue graph_instance_hash = instance_hash[0] | (uint64_t(instance_hash[1]) << 32);
 
   // if we've already hashed this main graph instance use the cached value
   auto entry = main_graph_hash_.find(graph_instance_hash);
@@ -234,7 +234,7 @@ int IExecutionProvider::ModelMetadefIdGenerator::GenerateId(const onnxruntime::G
   return model_metadef_id_[model_hash]++;
 }
 
-int IExecutionProvider::GenerateMetaDefId(const onnxruntime::GraphViewer& graph_viewer, uint64_t& model_hash) const {
+int IExecutionProvider::GenerateMetaDefId(const onnxruntime::GraphViewer& graph_viewer, HashValue& model_hash) const {
   ORT_ENFORCE(metadef_id_generator_,
               "IExecutionProvider constructor must be called with true for use_metadef_id_creator");
 

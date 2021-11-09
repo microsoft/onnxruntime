@@ -8,7 +8,7 @@
 namespace onnxruntime {
 
 using KernelCreateMap = std::multimap<std::string, KernelCreateInfo>;
-using KernelDefHashes = std::vector<std::pair<std::string, uint64_t>>;
+using KernelDefHashes = std::vector<std::pair<std::string, HashValue>>;
 
 /**
  * Each provider has a KernelRegistry. Often, the KernelRegistry only belongs to that specific provider.
@@ -48,7 +48,7 @@ class KernelRegistry {
 #endif
 
   // Try to find the kernel given a kernel def hash.
-  bool TryFindKernelByHash(uint64_t kernel_def_hash, const KernelCreateInfo** out) const;
+  bool TryFindKernelByHash(HashValue kernel_def_hash, const KernelCreateInfo** out) const;
 
   bool IsEmpty() const { return kernel_creator_fn_map_.empty(); }
 
@@ -97,6 +97,6 @@ class KernelRegistry {
   KernelCreateMap kernel_creator_fn_map_;
 
   // map from kernel def hash to entry in kernel_creator_fn_map_
-  std::unordered_map<uint64_t, KernelCreateMap::iterator> kernel_def_hash_lookup_;
+  std::unordered_map<HashValue, KernelCreateMap::iterator> kernel_def_hash_lookup_;
 };
 }  // namespace onnxruntime

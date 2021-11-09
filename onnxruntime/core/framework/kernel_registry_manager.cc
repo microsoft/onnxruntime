@@ -104,7 +104,7 @@ Status KernelRegistryManager::SearchKernelRegistry(const onnxruntime::Node& node
 }
 #endif
 
-bool KernelRegistryManager::SearchKernelRegistriesByHash(uint64_t kernel_def_hash,
+bool KernelRegistryManager::SearchKernelRegistriesByHash(HashValue kernel_def_hash,
                                                          const KernelCreateInfo** kernel_create_info) const {
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
   for (const auto& registry : custom_kernel_registries_) {

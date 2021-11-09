@@ -82,7 +82,7 @@ InternalTestingExecutionProvider::GetCapability(const onnxruntime::GraphViewer& 
 
   // create functor to generate a guaranteed unique metadef id
   auto generate_metadef_name = [this, &graph_viewer]() {
-    uint64_t model_hash;
+    HashValue model_hash;
     int metadef_id = GenerateMetaDefId(graph_viewer, model_hash);
     auto meta_def = std::make_unique<::onnxruntime::IndexedSubGraph::MetaDef>();
     return ep_name_ + "_" + std::to_string(model_hash) + "_" + std::to_string(metadef_id);
