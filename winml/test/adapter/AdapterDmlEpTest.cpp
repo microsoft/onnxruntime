@@ -148,8 +148,8 @@ void DmlCreateAndFreeGPUAllocationFromD3DResource() {
 
   auto d3d12_resource = CreateD3D12Resource(*device);
   void* dml_allocator_resource;
-  THROW_IF_NOT_OK_MSG(ort_dml_api->DmlCreateGPUAllocationFromD3DResource(d3d12_resource.get(), &dml_allocator_resource), ort_api);
-  THROW_IF_NOT_OK_MSG(ort_dml_api->DmlFreeGPUAllocation(dml_allocator_resource), ort_api);
+  THROW_IF_NOT_OK_MSG(ort_dml_api->CreateGPUAllocationFromD3DResource(d3d12_resource.get(), &dml_allocator_resource), ort_api);
+  THROW_IF_NOT_OK_MSG(ort_dml_api->FreeGPUAllocation(dml_allocator_resource), ort_api);
 }
 
 void DmlGetD3D12ResourceFromAllocation() {
@@ -159,7 +159,7 @@ void DmlGetD3D12ResourceFromAllocation() {
 
   auto d3d12_resource = CreateD3D12Resource(*device);
   void* gpu_allocation;
-  THROW_IF_NOT_OK_MSG(ort_dml_api->DmlCreateGPUAllocationFromD3DResource(d3d12_resource.get(), &gpu_allocation), ort_api);
+  THROW_IF_NOT_OK_MSG(ort_dml_api->CreateGPUAllocationFromD3DResource(d3d12_resource.get(), &gpu_allocation), ort_api);
 
   auto session = CreateDmlSession();
 
@@ -172,11 +172,11 @@ void DmlGetD3D12ResourceFromAllocation() {
   auto allocator = UniqueOrtAllocator(ort_allocator, ort_api->ReleaseAllocator);
 
   winrt::com_ptr<ID3D12Resource> d3d12_resource_from_allocation;
-  THROW_IF_NOT_OK_MSG(ort_dml_api->DmlGetD3D12ResourceFromAllocation(allocator.get(), gpu_allocation, d3d12_resource_from_allocation.put()), ort_api);
+  THROW_IF_NOT_OK_MSG(ort_dml_api->GetD3D12ResourceFromAllocation(allocator.get(), gpu_allocation, d3d12_resource_from_allocation.put()), ort_api);
   // Ensure resource is the same
   WINML_EXPECT_EQUAL(d3d12_resource, d3d12_resource_from_allocation);
 
-  THROW_IF_NOT_OK_MSG(ort_dml_api->DmlFreeGPUAllocation(gpu_allocation), ort_api);
+  THROW_IF_NOT_OK_MSG(ort_dml_api->FreeGPUAllocation(gpu_allocation), ort_api);
 }
 
 UniqueOrtValue CreateTensorFromMemoryInfo(const OrtMemoryInfo* memory_info) {
@@ -240,7 +240,7 @@ void DmlCopyTensor() {
 
   auto resource = CreateD3D12Resource(*device);
   void* dml_allocator_resource;
-  THROW_IF_NOT_OK_MSG(ort_dml_api->DmlCreateGPUAllocationFromD3DResource(resource.get(), &dml_allocator_resource), ort_api);
+  THROW_IF_NOT_OK_MSG(ort_dml_api->CreateGPUAllocationFromD3DResource(resource.get(), &dml_allocator_resource), ort_api);
 
   std::array<int64_t, 3> shape = {720, 720, 3};
   OrtValue* gpu_value;
@@ -256,7 +256,7 @@ void DmlCopyTensor() {
   dst_cpu_tensor = CreateTensorFromMemoryInfo(cpu_memory_info);
   THROW_IF_NOT_OK_MSG(winml_adapter_api->DmlCopyTensor(dml_provider, gpu_value, dst_cpu_tensor.get()), ort_api);
 
-  THROW_IF_NOT_OK_MSG(ort_dml_api->DmlFreeGPUAllocation(dml_allocator_resource), ort_api);
+  THROW_IF_NOT_OK_MSG(ort_dml_api->FreeGPUAllocation(dml_allocator_resource), ort_api);
 }
 
 void CreateCustomRegistry() {

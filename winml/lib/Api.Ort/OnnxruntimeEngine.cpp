@@ -189,7 +189,7 @@ HRESULT OnnxruntimeValue::GetResource(_winml::Resource& out) {
   bool is_cpu = false;
   if (SUCCEEDED(IsCpu(&is_cpu)) && !is_cpu) {
     winrt::com_ptr<ID3D12Resource> resource;
-    RETURN_HR_IF_NOT_OK_MSG(ort_dml_api->DmlGetD3D12ResourceFromAllocation(allocator.get(), mutable_data,
+    RETURN_HR_IF_NOT_OK_MSG(ort_dml_api->GetD3D12ResourceFromAllocation(allocator.get(), mutable_data,
                                                                                  resource.put()),
                             ort_api);
     out = _winml::Resource(resource.get(), [](void*) { /*do nothing, as this pointer is actually a com pointer! */ });
@@ -640,7 +640,7 @@ HRESULT OnnxruntimeEngine::CreateTensorValueFromExternalD3DResource(ID3D12Resour
   auto allocator = UniqueOrtAllocator(ort_allocator, ort_api->ReleaseAllocator);
 
   void* dml_allocator_resource;
-  RETURN_HR_IF_NOT_OK_MSG(ort_dml_api->DmlCreateGPUAllocationFromD3DResource(d3d_resource, &dml_allocator_resource),
+  RETURN_HR_IF_NOT_OK_MSG(ort_dml_api->CreateGPUAllocationFromD3DResource(d3d_resource, &dml_allocator_resource),
                           engine_factory_->UseOrtApi());
 
   auto unique_dml_allocator_resource =
@@ -648,7 +648,7 @@ HRESULT OnnxruntimeEngine::CreateTensorValueFromExternalD3DResource(ID3D12Resour
                            [](void* ptr) {
                              const OrtDmlApi* ort_dml_api;
                              GetVersionedOrtApi()->GetExecutionProviderApi("DML", ORT_API_VERSION, reinterpret_cast<const void**>(&ort_dml_api));
-                             ort_dml_api->DmlFreeGPUAllocation(ptr);
+                             ort_dml_api->FreeGPUAllocation(ptr);
                            });
 
   // create the OrtValue as a tensor letting ort know that we own the data buffer

@@ -164,7 +164,7 @@ API_IMPL_END
   return nullptr;
 }
 
-ORT_API_STATUS_IMPL(DmlCreateGPUAllocationFromD3DResource, _In_ ID3D12Resource* d3d_resource, _Out_ void** dml_resource) {
+ORT_API_STATUS_IMPL(CreateGPUAllocationFromD3DResource, _In_ ID3D12Resource* d3d_resource, _Out_ void** dml_resource) {
   API_IMPL_BEGIN
 #ifdef USE_DML
   *dml_resource = Dml::CreateGPUAllocationFromD3DResource(d3d_resource);
@@ -175,7 +175,7 @@ ORT_API_STATUS_IMPL(DmlCreateGPUAllocationFromD3DResource, _In_ ID3D12Resource* 
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(DmlFreeGPUAllocation, _In_ void* ptr) {
+ORT_API_STATUS_IMPL(FreeGPUAllocation, _In_ void* ptr) {
   API_IMPL_BEGIN
 #ifdef USE_DML
   Dml::FreeGPUAllocation(ptr);
@@ -184,7 +184,7 @@ ORT_API_STATUS_IMPL(DmlFreeGPUAllocation, _In_ void* ptr) {
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(DmlGetD3D12ResourceFromAllocation, _In_ OrtAllocator* ort_allocator, _In_ void* allocation, _Out_ ID3D12Resource** d3d_resource) {
+ORT_API_STATUS_IMPL(GetD3D12ResourceFromAllocation, _In_ OrtAllocator* ort_allocator, _In_ void* allocation, _Out_ ID3D12Resource** d3d_resource) {
   API_IMPL_BEGIN
 #ifdef USE_DML
   auto wrapping_allocator = static_cast<onnxruntime::OrtAllocatorImplWrappingIAllocator*>(ort_allocator);
@@ -204,9 +204,9 @@ ORT_API_STATUS_IMPL(DmlGetD3D12ResourceFromAllocation, _In_ OrtAllocator* ort_al
 static constexpr OrtDmlApi ort_dml_api_10_to_x = {
   &OrtSessionOptionsAppendExecutionProvider_DML,
   &OrtSessionOptionsAppendExecutionProviderEx_DML,
-  &DmlCreateGPUAllocationFromD3DResource,
-  &DmlFreeGPUAllocation,
-  &DmlGetD3D12ResourceFromAllocation
+  &CreateGPUAllocationFromD3DResource,
+  &FreeGPUAllocation,
+  &GetD3D12ResourceFromAllocation
 };
 
 const OrtDmlApi* GetOrtDmlApi(_In_ uint32_t /*version*/) NO_EXCEPTION {
