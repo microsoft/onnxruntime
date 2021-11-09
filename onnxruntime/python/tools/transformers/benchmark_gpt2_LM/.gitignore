@@ -24,3 +24,6 @@ onnx_model/*
 #appg files
 model/calc_appg.py
 model/appg_model_eval.py
+
+#tokenizer files
+tokenizer_files/*

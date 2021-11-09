@@ -1,6 +1,6 @@
 **Benchmark tool**
 
-This can be used to test beam search on 1 layer gpt2 onnx model.
+This can be used to test beam search on 1 layer gpt2 onnx model. Both pytorch and onnx models can be tested
 
 Other kind of models are not supported yet.
 
@@ -41,16 +41,29 @@ Other kind of models are not supported yet.
 **Run the script:**
 
 ```
-python .\model\main.py -t "onnx" -m .\onnx_model\deepsuggest_embed_fused_with_pos.onnx --num_beams 2 -i .\1K_queries.tsv -o .\1K_queries_onnx_post_fused_now.tsv
+Test onnx:
+
+the model onnx_gpt2.onnx has to be converted using onnxruntime.transformers.convert_to_onnx if not already done.
+
+python .\model\main.py -t "onnx" -m "onnx_gpt2.onnx" --num_beams 2 --run_beam_search --length_penalty 1.6 --tokenizer gpt2  --input_file .\1K_queries.tsv --output_file .\1K_queries_onnx_output.tsv
+
+
+Test pytroch model:
+
+python .\model\main.py -t pt -m "gpt2" --num_beams 2 --run_beam_search --length_penalty 1.6 --tokenizer gpt2  --input_file .\1K_queries.tsv  --output_file .\1K_queries_pt_output.tsv
+
+Note: Provide absolute paths for all the files.
 ```
 
 The following options are required to run the script as provided in the above example:
 
 1. -t "onnx"
-2. -m <path to the model location>
-3. --num_beams <beam_size for iterations>
-4. --input_file <input file with query per line>: 	Sample is provided in the repo, refer 1K_ queries.tsv
-5. --output_file <output file with the results> : Following the format of output.tsv
+2. -m <path to the model location> if not one of the standard HF models.
+3. --run_beam_search - mandatory currently but left as an option as without this needs support soon.
+4. --num_beams <number of beams to explore> Higher the number, higher the convergence time would be 
+5. --tokenizer <path to tokenizer> - currently a tokenizer is provided, if a custom tokenizer needs to be used, might need some changes.
+6. --input_file <input file with query per line>: 	Sample is provided in the repo, refer 1K_ queries.tsv
+7. --output_file <output file with the results> : Following is the format of output.tsv
 
 | TotalInferenceTime | Counter | TotalModelTime | TotalSearchTime | Result                                                       | TotalQueryTime |
 | ------------------ | ------- | -------------- | --------------- | ------------------------------------------------------------ | -------------- |
@@ -71,16 +84,6 @@ The following options are required to run the script as provided in the above ex
 
 
 
-**Tokenizer :**
-
-Currently only GPT2Tokenizer is supported. The one available in the repo is under tokenizer_files\ - it is exactly same apart from the extra tokens that it uses for this particular model.
-
-The default tokenizer comes from 'model_files/' , if a custom tokenizer is required pass the path to it. There might be some changes needed for other tokenizers to work.
-
-
-
-
-
 **Test Data included in the repo:**
 
 1K set of input queries
@@ -92,4 +95,8 @@ The default tokenizer comes from 'model_files/' , if a custom tokenizer is requi
 
  **Accuracy Measurement:**
 
-TBD.
+Use the following commands to measure e2e accurancy of the model:
+
+python .\model\calc_appg.py -t "onnx" -m .\onnx_model\deepsuggest_embed_fused_with_pos.onnx --num_beams 2 --run_beam_search -i .\NWMeasurement_RefPredictions_230K.tsv -o calc_output_file.tsv -r .\NWMeasurement_RefPredictions_230K.tsv
+
+calc_output_file.tsv can be removed after this test.

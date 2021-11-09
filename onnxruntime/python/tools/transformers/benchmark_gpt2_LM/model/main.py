@@ -5,7 +5,7 @@ import myutils
 
 from model_imp import ModelImp
 
-SupportedModels = ['onnx', 'dlis']
+SupportedModels = ['onnx', 'pt']
 MaxSuggestions = 8
 
 def parse_arguments():
@@ -26,6 +26,12 @@ def parse_arguments():
                         help="Path of the model") # might need to pass model dir instead of the exact file path 
                                                   # in case of other model types
 
+    parser.add_argument("--num_heads",
+                        required=False,
+                        type=int,
+                        default=12,
+                        help="Number of heads in the pytorch model to create zero tensors for first input")
+
     parser.add_argument("-i",
                         "--input_file",
                         required=True,
@@ -37,6 +43,11 @@ def parse_arguments():
                         required=True,
                         type=str,
                         help="Output file for test data")
+
+    parser.add_argument("--run_beam_search",
+                        action='store_true',
+                        required=True,
+                        help="Do we need to run beam search on the model")
 
     parser.add_argument("-r",
                         "--ref_file",
@@ -74,10 +85,20 @@ def parse_arguments():
                         help='Number next words to generate')
 
     parser.add_argument('--length_penalty',
-                        type=int,
-                        default=1.6,
-                        help='Number next words to generate')
+                        type=float,
+                        default=1.0,
+                        help='Beam search length penalty')
     
+    parser.add_argument('--repetition_penalty',
+                        type=float,
+                        default=1.0,
+                        help='Beam search repetition penalty')
+
+    parser.add_argument('--temperature',
+                        type=float,
+                        default=1.0,
+                        help='Beam search temperature')
+
     parser.add_argument("--tokenizer_path",
                         required=False,
                         default="tokenizer_files/",
@@ -125,8 +146,4 @@ def initilize_processing():
         sys.stderr.write(str(e))
 
 if __name__ == "__main__":
-    if len(sys.argv) < 4:
-        print("Usage: python main.py -m <model_path> -i <input_file> -o <output_file>")
-        sys.exit(1)
-    
     initilize_processing()

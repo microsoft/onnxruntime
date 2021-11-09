@@ -16,29 +16,28 @@ TIME_INFO = {'total_model_runtime': 0,
 class  Generator(object):
     def __init__(
         self, max_length, num_return_sequences=1, num_beams = 0, pad_token_id=0, eos_token_ids=[],
-        length_penalty=1.0, is_onnx_model = False, tokenizer: Tokenizer = None
-        ):
+        length_penalty=1.0, tokenizer: Tokenizer = None, temperature = 1.0,
+        repetition_penalty = 1.0, num_layers = 1):
         self._max_length = max_length
         self._num_return_sequences = num_return_sequences
         self._num_beams = num_beams
         self._pad_token_id = pad_token_id
         self._eos_token_ids = eos_token_ids
         self._length_penalty = length_penalty
-        self._is_onnx_model = is_onnx_model
         self._tokenizer = tokenizer
         self._beam_search = num_beams > 0
+        self._temperature = temperature
+        self._repetition_penalty = repetition_penalty
 
     def _update_generator_status(self, generator_status, batch_size):
-        # TODO find if this is only needed for ORT?
-        if self._is_onnx_model:
-            last_n_seq = generator_status['last_num_sequences_per_sample']
-            input_seq_index = generator_status['input_seq_index']
-            input_seq_index = (
-                input_seq_index +
-                (last_n_seq *
-                    torch.arange(batch_size).unsqueeze(1).to('cuda:0')))
-                        
-            generator_status['input_seq_index'] = input_seq_index.view(-1)
+        last_n_seq = generator_status['last_num_sequences_per_sample']
+        input_seq_index = generator_status['input_seq_index']
+        input_seq_index = (
+            input_seq_index +
+            (last_n_seq *
+                torch.arange(batch_size).unsqueeze(1).to('cuda:0')))
+                    
+        generator_status['input_seq_index'] = input_seq_index.view(-1)
 
     def _update_logits_with_first_token_masks(self, next_token_logits, first_token_masks):
         for eos_token_id in set(self._eos_token_ids):
@@ -53,39 +52,38 @@ class  Generator(object):
         generator_status = None
         model_status = None
 
-        # TODO this is reverted back inside OnnxModelWrapper->forward()
-        # may be there is a better way to handle this.
+        try:
+            if input_ids.ndim == 2:
+                input_ids = input_ids.unsqueeze(1)
 
-        if input_ids.ndim == 2:
-            # (batch_size, sequence_len) -> (batch_size, 1, sequence_len)
-            input_ids = input_ids.unsqueeze(1)
+            batch_size = input_ids.size(0)
+            self.done = False
+            self.unfinished_sents = input_ids.new(batch_size, 1).fill_(1)
+            self.log_probs = input_ids.new(batch_size, 1).fill_(0).float()
 
-        batch_size = input_ids.size(0)
-        self.done = False
-        self.unfinished_sents = input_ids.new(batch_size, 1).fill_(1)
-        self.log_probs = input_ids.new(batch_size, 1).fill_(0).float()
+            counter = 0
+            inference_start_time = time.perf_counter()
 
-        counter = 0
-        inference_start_time = time.perf_counter()
+            while not self.done:
+                model_start_time = time.perf_counter()
+                next_token_logits, model_status = model(input_ids, model_status, generator_status)
+                model_end_time = time.perf_counter()
 
-        while not self.done:
-            model_start_time = time.perf_counter()
-            next_token_logits, model_status = model(input_ids, model_status, generator_status)
-            model_end_time = time.perf_counter()
-            
-            TIME_INFO['total_model_runtime'] += (model_end_time - model_start_time)
+                TIME_INFO['total_model_runtime'] += (model_end_time - model_start_time)
 
-            if counter == 0: # first token
-                    next_token_logits = self._update_logits_with_first_token_masks(next_token_logits, first_token_masks)
+                if counter == 0: # first token
+                        next_token_logits = self._update_logits_with_first_token_masks(next_token_logits, first_token_masks)
 
-            input_ids, generator_status = self._search_next(input_ids, next_token_logits, **kwargs)
-            self._update_generator_status(generator_status, batch_size)
-            yield input_ids[:, :self._num_return_sequences], generator_status['log_probs'][:, :self._num_return_sequences].exp()
+                input_ids, generator_status = self._search_next(input_ids, next_token_logits, **kwargs)
+                self._update_generator_status(generator_status, batch_size)
+                yield input_ids[:, :self._num_return_sequences], generator_status['log_probs'][:, :self._num_return_sequences].exp()
 
-            counter += 1
-        
-        TIME_INFO['search_steps'] = counter
-        TIME_INFO['total_search_time'] = time.perf_counter() - inference_start_time - TIME_INFO['total_model_runtime']
+                counter += 1
+
+            TIME_INFO['search_steps'] = counter
+            TIME_INFO['total_search_time'] = time.perf_counter() - inference_start_time - TIME_INFO['total_model_runtime']
+        except Exception as e:
+            raise e
 
     def generate(self, model, input_ids, *args, **kwargs):
         """
@@ -121,7 +119,7 @@ class  Generator(object):
 
                 return x
         except Exception as e:
-            raise("Caught exception in generation:" + str(e))
+            raise e
 
     def _apply_length_penalty(self, next_token_logits):
         '''
@@ -133,6 +131,12 @@ class  Generator(object):
                 pen = next_token_logits[..., eos_token_id]
                 pen = (pen < 0).float() * (pen / self._length_penalty) + (pen > 0).float() * (pen * self._length_penalty)
                 next_token_logits[..., eos_token_id] = pen
+
+    def _apply_repetition_penalty(self, input_ids, next_token_logits):
+        if self.repetition_penalty != 1.0:
+            pen = next_token_logits.gather(2, input_ids)
+            pen = (pen > 0).float() * pen / self._repetition_penalty + (pen < 0).float() * pen * self._repetition_penalty
+            next_token_logits.scatter_(2, input_ids, pen)
 
     def _first_top_k_sort(self, input_ids, next_token_logits):
         ''' First top K: extract top (_num_return_sequences * _num_beams)
@@ -179,7 +183,7 @@ class  Generator(object):
 
     def _mask_extra_tokens(self, next_token_logits):
         # the self._tokenizer has only extra tokens sometimes, subtract 1000 from all of them  to make it insignificant
-        original_tokens_count = self._tokenizer.get_token_count()
+        original_tokens_count = self._tokenizer.get_gpt2_token_count()
         if (next_token_logits.shape[2] > original_tokens_count):
             next_token_logits[:,:, original_tokens_count:] = next_token_logits[:,:, original_tokens_count:] - 1000
 
@@ -187,16 +191,19 @@ class  Generator(object):
         # `input_ids` is 3D as following. `next_token_logits` is also 3D with shape (batch_size, input_num_sequences, vocab_size)
         batch_size, input_num_sequences, cur_len = input_ids.shape  # input is 3D.
 
-        if self._is_onnx_model:
-            next_token_logits = next_token_logits[:,-1]
-            next_token_logits = next_token_logits.view(batch_size, input_num_sequences, -1)
+        next_token_logits = next_token_logits[:,-1]
+        next_token_logits = next_token_logits.view(batch_size, input_num_sequences, -1)
 
         if cur_len >= self._max_length or self.done:
-            raise ValueError('Finished')
+            raise ValueError('Finished but still trying to beam search')
 
         self._mask_extra_tokens(next_token_logits)
 
         self._apply_length_penalty(next_token_logits)
+
+        if self._temperature != 1.0:
+            next_token_logits = next_token_logits / self._temperature
+
         next_token_log_probs, next_tokens = self._first_top_k_sort(input_ids, next_token_logits)
 
         if self._num_beams > 1:

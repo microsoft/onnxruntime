@@ -14,8 +14,11 @@ class Tokenizer:
     It only needs the path of tokenizer to initialize
     """
     def __init__(self, tokenizer_path:str):
+        self._is_gpt2 = False
+        if tokenizer_path == "gpt2":
+            self._is_gpt2 = True
+
         self._tokenizer = GPT2Tokenizer.from_pretrained(tokenizer_path)
-        #print(self._tokenizer.eos_token_id)
         self._initialize_prefix_vocab()
         self.eos_token_id = self._tokenizer.eos_token_id
 
@@ -62,6 +65,7 @@ class Tokenizer:
             ids = self._tokenizer.encode(' '.join(input_text.replace('  ', ' ').split(' ')[:-1]))
             last_complete_word_pos = len(ids)
 
+            first_token_masks = []
             mask = self._get_mask('Ġ' + prefix)
             if not mask.any():
                 ids = self._tokenizer.encode(input_text)
@@ -73,9 +77,9 @@ class Tokenizer:
                 else:
                     ids = ids[:-1]
             
-            input_ids = []
-            first_token_masks = []
+            first_token_masks.append(mask)
 
+            input_ids = []
             if not ids:
                 ids = [pad_token_id]
                 last_complete_word_pos += 1
@@ -86,13 +90,14 @@ class Tokenizer:
                 raise Exception(f"Input{input_text} is tokenized into more than {MAX_TOKENS_LENGTH} tokens")
 
             input_ids.append(ids)
-            first_token_masks.append(mask)
 
-            input_ids = torch.from_numpy(np.asarray(input_ids, dtype='int64')).to(device)
             first_token_masks = torch.from_numpy(np.asarray(first_token_masks, dtype='float32')).to(device)
+            input_ids = torch.from_numpy(np.asarray(input_ids, dtype='int64')).to(device)
         except Exception as e:
-            raise("Caught exception during encoding" + str(e))
+            raise Exception(f"Caught exception during encoding {str(e)}")
         
+        if self._is_gpt2:
+            first_token_masks = first_token_masks[:, :self.get_gpt2_token_count()]
         return input_ids, first_token_masks, last_complete_word_pos
 
     def decode(self, ids):
@@ -101,8 +106,11 @@ class Tokenizer:
         """
         return self._tokenizer.decode(ids)
 
-    def get_token_count(self):
+    def get_gpt2_token_count(self):
         """
-        returns the original number of tokens
+        returns the original number of tokens. The extra tokens are in addition to gpt2 tokenizer.
+        The model would be trained using the extra tokens for some benefit, but these have to be masked out during inference
+
+        TODO This can be changed to configurable in future
         """
         return 50257
