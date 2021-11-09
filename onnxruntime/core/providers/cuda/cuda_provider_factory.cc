@@ -176,8 +176,8 @@ struct CUDA_Provider : Provider {
     info.gpu_mem_limit = params->gpu_mem_limit;
     info.arena_extend_strategy = static_cast<onnxruntime::ArenaExtendStrategy>(params->arena_extend_strategy);
     info.cudnn_conv_algo_search = params->cudnn_conv_algo_search;
-    info.do_copy_in_default_stream = params->do_copy_in_default_stream;
-    info.has_user_compute_stream = params->has_user_compute_stream;
+    info.do_copy_in_default_stream = params->do_copy_in_default_stream != 0;
+    info.has_user_compute_stream = params->has_user_compute_stream != 0;
     info.user_compute_stream = params->user_compute_stream;
     info.default_memory_arena_cfg = params->default_memory_arena_cfg;
 

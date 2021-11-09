@@ -325,8 +325,8 @@ class UpsampleBase {
     }
   }
 
-  void ParseScalesDataFromOutputSize(const std::vector<int64_t>& output_dims,
-                                     const std::vector<int64_t>& input_dims,
+  void ParseScalesDataFromOutputSize(gsl::span<const int64_t> output_dims,
+                                     gsl::span<const int64_t> input_dims,
                                      std::vector<float>& scales) const {
     for (size_t i = 0, end = input_dims.size(); i < end; ++i) {
       // Handle corner case to avoid dividing by zero in the next step
@@ -348,7 +348,7 @@ class UpsampleBase {
   }
 
   void ComputeOutputShape(const std::vector<float>& scales,
-                          const std::vector<int64_t>& input_dims,
+                          gsl::span<const int64_t> input_dims,
                           std::vector<int64_t>& output_dims) const {
     for (std::size_t i = 0; i < input_dims.size(); i++) {
       output_dims[i] = static_cast<int64_t>(scales[i] * input_dims[i]);
