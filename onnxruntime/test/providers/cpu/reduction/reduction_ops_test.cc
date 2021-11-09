@@ -2130,11 +2130,11 @@ TEST(ReductionOpTest, ArgMax_float_last_index_dups) {
 
   std::vector<float> data_vec;
 
-  // Use a high value for the number of entries in the data vector
+  // Use a high value for the number of entries in the input data vector.
   // This is to test if the CuDNN reduction implementation is stable
-  // even if it takes the parallelized approach.
+  // even if it takes the parallelized path.
 
-  // Assmption: CuDNN implementation will be parallelized if the cardinality
+  // Assumption: CuDNN implementation will be parallelized if the cardinality
   // of entries in the input is 10k.
 
   size_t data_size = 10000;
