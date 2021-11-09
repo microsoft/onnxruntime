@@ -297,7 +297,7 @@ class UpsampleBase {
                   "  * 2-D inputs or\n"
                   "  * 3-D inputs ('Bilinear', 'Trilinear') or\n"
                   "  * 4-D inputs with the corresponding outermost 2 scale values being 1"
-                  " or the corresponding outermost 1 and innermost scale values being 1 or\n"
+                  " or the corresponding outermost and innermost scale values being 1 or\n"
                   "  * 5-D inputs with the corresponding outermost 2 scale values being 1"
                   "in the ",
                   is_resize_ ? "Resize operator" : "Upsample operator");
