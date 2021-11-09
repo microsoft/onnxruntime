@@ -19,7 +19,7 @@ from ._fallback import (_FallbackManager,
                         ORTModuleTorchModelException,
                         wrap_exception)
 from ._gradient_accumulation_manager import GradientAccumulationManager
-from onnxruntime.training.ortmodule import ONNX_OPSET_VERSION
+from onnxruntime.training import ortmodule
 
 from onnxruntime.capi import _pybind_state as C
 from onnxruntime.tools.symbolic_shape_infer import SymbolicShapeInference
@@ -87,19 +87,23 @@ class GraphExecutionManager(GraphExecutionInterface):
         self._onnx_models = _onnx_models.ONNXModels()
 
         # Model after inference optimization or gradient building.
-        self._optimized_onnx_model = None
         self._graph_builder = None
         self._graph_info = None
         self._graph_initializer_names = None
         self._graph_initializer_names_to_train = None
         self._graph_initializers = None
 
+        # Update constant ONNX_OPSET_VERSION with env var ORTMODULE_ONNX_OPSET_VERSION
+        # if defined.
+        ortmodule.ONNX_OPSET_VERSION = ortmodule._defined_from_envvar(
+            'ORTMODULE_ONNX_OPSET_VERSION', ortmodule.ONNX_OPSET_VERSION, warn=True)
+
         # TrainingAgent or InferenceAgent
         self._execution_agent = None
 
         # indicators of some logic have been executed previously thus could be skipped for faster training
         # default is enabled, if not define in os env
-        self._skip_check = _SkipCheck(_SkipCheck.SKIP_CHECK_DEVICE | _SkipCheck.SKIP_CHECK_BUILD_GRADIENT | _SkipCheck.SKIP_CHECK_EXECUTION_AGENT)        
+        self._skip_check = _SkipCheck(_SkipCheck.SKIP_CHECK_DEVICE | _SkipCheck.SKIP_CHECK_BUILD_GRADIENT | _SkipCheck.SKIP_CHECK_EXECUTION_AGENT)
         if os.getenv('ORTMODULE_SKIPCHECK_POLICY') is not None:
             self._skip_check = reduce(lambda x, y: x | y,
                                       [_SkipCheck[name] for name in
@@ -147,8 +151,8 @@ class GraphExecutionManager(GraphExecutionInterface):
         self._module_output_schema = None
         self._device = _utils.get_device_from_module(module)
 
-        self._module_parameters = inspect.signature(
-            self._original_module.forward).parameters.values()
+        self._module_parameters = list(inspect.signature(
+            self._original_module.forward).parameters.values())
 
         # TODO: remove after PyTorch ONNX exporter supports VAR_KEYWORD parameters.
         for input_parameter in self._module_parameters:
@@ -363,7 +367,7 @@ class GraphExecutionManager(GraphExecutionInterface):
                     _logger.suppress_os_stream_output(log_level=self._debug_options.logging.log_level):
                 required_export_kwargs = {'input_names': self._input_info.names,
                                           'output_names': output_names,
-                                          'opset_version': ONNX_OPSET_VERSION,
+                                          'opset_version': ortmodule.ONNX_OPSET_VERSION,
                                           'do_constant_folding': False,
                                           'training': self._export_mode,
                                           'dynamic_axes': self._input_info.dynamic_axes,
@@ -455,3 +459,25 @@ class GraphExecutionManager(GraphExecutionInterface):
     def signal_model_changed(self):
         """Signals the execution manager to re-export the model on the next forward call"""
         self._original_model_has_changed = True
+
+    def __getstate__(self):
+        state = copy.copy(self.__dict__)
+        # Remove any re-contructible/pybound object from the state
+        serialization_deny_list = [
+            "_onnx_models",
+            "_graph_builder",
+            "_graph_info",
+            "_execution_agent",
+            "_torch_alloc",
+            "_torch_free",
+            "_torch_empty_cache"
+        ]
+        for attribute_name in serialization_deny_list:
+            del state[attribute_name]
+
+        return state
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+
+        _utils.reinitialize_graph_execution_manager(self)

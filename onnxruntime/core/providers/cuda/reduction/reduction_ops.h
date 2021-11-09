@@ -17,7 +17,7 @@ namespace ReductionOps {
 
 template <typename T, cudnnReduceTensorIndices_t ReduceTensorIndices = CUDNN_REDUCE_TENSOR_NO_INDICES>
 std::unique_ptr<Tensor> ReduceCompute(CUDAExecutionProvider& cuda_ep, cudnnReduceTensorOp_t cudnn_reduce_op, AllocatorPtr allocator,
-                                      const Tensor& input, const std::vector<int64_t>& axes,
+                                      const Tensor& input, gsl::span<const int64_t> axes,
                                       bool keep_dims, bool calculate_log, bool calculate_sqt, bool log_sum_exp,
                                       bool fast_reduction, const TensorShape* input_shape_override = nullptr);
 
@@ -219,14 +219,14 @@ class ReduceLogSumExp final : public ReduceKernel<true> {
 
 Status PrepareForReduce(const Tensor* X,
                         bool keepdims,
-                        const std::vector<int64_t>& axes,
+                        gsl::span<const int64_t> axes,
                         PrepareReduceMetadata& prepare_reduce_metadata,
                         const TensorShape* input_shape_override = nullptr);
 
 template <typename T, cudnnReduceTensorIndices_t ReduceTensorIndices>
 Status ReduceComputeCore(CUDAExecutionProvider& cuda_ep, const Tensor& input, PrepareReduceMetadata& prepare_reduce_metadata,
                          /*out*/ Tensor& output, cudnnReduceTensorOp_t cudnn_reduce_op,
-                         const std::vector<int64_t>& axes,
+                         gsl::span<const int64_t> axes,
                          bool calculate_log, bool calculate_sqt, bool log_sum_exp, bool fast_reduction,
                          const TensorShape* input_shape_override = nullptr);
 

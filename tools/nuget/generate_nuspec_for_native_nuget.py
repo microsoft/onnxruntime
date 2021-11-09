@@ -54,9 +54,11 @@ def generate_file_list_for_ep(nuget_artifacts_dir, ep, files_list):
                     if child_file.suffix in ['.dll', '.pdb', '.lib'] and is_this_file_needed(ep, child_file.name):
                         files_list.append('<file src="' + str(child_file) +
                                           '" target="runtimes/win-%s/native"/>' % cpu_arch)
-        for cpu_arch in ['x64', 'arm64']:
+        for cpu_arch in ['x86_64', 'arm64']:
             if child.name == get_package_name('osx', cpu_arch, ep):
                 child = child / 'lib'
+                if cpu_arch == 'x86_64':
+                    cpu_arch = 'x64'
                 for child_file in child.iterdir():
                     # Check if the file has digits like onnxruntime.1.8.0.dylib. We can skip such things
                     is_versioned_dylib = re.match(r'.*[\.\d+]+\.dylib$', child_file.name)
@@ -524,8 +526,11 @@ def generate_files(list, args):
         # Process .net5.0 targets
         if args.target_architecture == 'x64':
             interop_src = 'Microsoft.AI.MachineLearning.Interop'
+            interop_props = 'Microsoft.AI.MachineLearning.props'
             interop_targets = 'Microsoft.AI.MachineLearning.targets'
+            windowsai_net50_props = os.path.join(args.sources_path, 'csharp', 'src', interop_src, interop_props)
             windowsai_net50_targets = os.path.join(args.sources_path, 'csharp', 'src', interop_src, interop_targets)
+            files_list.append('<file src=' + '"' + windowsai_net50_props + '" target="build\\net5.0" />')
             files_list.append('<file src=' + '"' + windowsai_net50_targets + '" target="build\\net5.0" />')
 
     if is_cpu_package or is_cuda_gpu_package or is_dml_package or is_mklml_package:

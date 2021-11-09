@@ -270,7 +270,7 @@ void PyCustomKernel::Compute(OrtKernelContext* context) {
     auto ort_value = ort_.KernelContext_GetInput(context, i);
     inputs.push_back(const_cast<OrtValue*>(ort_value)->Get<Tensor>().DataRaw());
     inputs_type.push_back(GetType(ort_value));
-    inputs_dim.push_back(const_cast<OrtValue*>(ort_value)->Get<Tensor>().Shape().GetDims());
+    inputs_dim.push_back(const_cast<OrtValue*>(ort_value)->Get<Tensor>().Shape().GetDimsAsVector());
   }
 
   std::string err;

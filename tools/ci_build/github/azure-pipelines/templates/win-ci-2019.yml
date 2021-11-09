@@ -24,7 +24,7 @@ parameters:
   AllowReleasedOpsetOnly: '0'
 jobs:
 - job: ${{ parameters.JobName }}
-  timeoutInMinutes: 160
+  timeoutInMinutes: 200
   strategy:
     maxParallel: 2
     matrix:

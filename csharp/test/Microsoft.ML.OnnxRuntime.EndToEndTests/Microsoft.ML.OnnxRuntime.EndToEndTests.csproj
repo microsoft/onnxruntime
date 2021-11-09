@@ -1,6 +1,6 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework Condition="'$(TargetFramework)' == ''">netcoreapp2.1</TargetFramework>
+    <TargetFramework Condition="'$(TargetFramework)' == ''">netcoreapp3.1</TargetFramework>
     <IsPackable>false</IsPackable>
     <OnnxRuntimeCsharpRoot>$(MSBuildThisFileDirectory)..\..</OnnxRuntimeCsharpRoot>
     <Platform>AnyCPU</Platform>

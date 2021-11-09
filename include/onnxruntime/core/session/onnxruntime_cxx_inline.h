@@ -890,6 +890,12 @@ inline bool Value::IsTensor() const {
   return out != 0;
 }
 
+inline bool Value::HasValue() const {
+  int out;
+  ThrowOnError(GetApi().HasValue(p_, &out));
+  return out != 0;
+}
+
 #if !defined(DISABLE_SPARSE_TENSORS)
 inline bool Value::IsSparseTensor() const {
   int out;
