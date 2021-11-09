@@ -597,6 +597,13 @@ class OrtValue:
         '''
         return self._ortvalue.data_type()
 
+    def proto_type(self):
+        '''
+        Returns the proto type of the data in the OrtValue
+        if the OrtValue is a tensor.
+        '''
+        return self._ortvalue.proto_type()
+
     def has_value(self):
         '''
         Returns True if the OrtValue corresponding to an

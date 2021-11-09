@@ -186,6 +186,18 @@ void addOrtValueMethods(pybind11::module& m) {
 
         return *ONNX_NAMESPACE::Utils::DataTypeUtils::ToType(*type_proto);
       })
+      .def("proto_type", [](const OrtValue* ort_value) -> int32_t {
+        if (ort_value->IsTensor()) {
+          return ort_value->Get<Tensor>().GetElementType();
+        } else if (ort_value->IsSparseTensor()) {
+          return ort_value->Get<SparseTensor>().GetElementType();
+        } else if (ort_value->IsTensorSequence()) {
+          return ort_value->Get<TensorSeq>().DataType()->AsPrimitiveDataType()->GetDataType();
+        } else {
+          throw std::runtime_error("proto_type is unavailable for this value.");
+        }
+      }, "Returns an integer equal to the ONNX proto type of the tensor or sequence. "
+         "Raises an exception in any other case.")
       .def("has_value", [](const OrtValue* ort_value) -> bool {
         return ort_value->IsAllocated();
       })

@@ -200,6 +200,29 @@ class TestOrtValue(unittest.TestCase):
     def self_ortvalues_to_torch_tensor_list_ort(self):
         self._ortvalues_to_torch_tensor_list('ort')
 
+    def test_type_proto(self):
+        values = {
+            np.bool_: ("tensor(bool)", 9),
+            np.int8: ("tensor(int8)", 3),
+            np.uint8: ("tensor(uint8)", 2),
+            np.int16: ("tensor(int16)", 5),
+            np.uint16: ("tensor(uint16)", 4),
+            np.int32: ("tensor(int32)", 6),
+            np.uint32: ("tensor(uint32)", 12),
+            np.int64: ("tensor(int64)", 7),
+            np.uint64: ("tensor(uint64)", 13),
+            np.float16: ("tensor(float16)", 10),
+            np.float32: ("tensor(float)", 1),
+            np.float64: ("tensor(double)", 11),
+        }
+        for dt, expected in values.items():
+            numpy_arr_input = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=dt)
+            ortvalue = onnxrt.OrtValue.ortvalue_from_numpy(numpy_arr_input)
+            stype = ortvalue.data_type()
+            self.assertIn(stype, expected)
+            proto_type = ortvalue.proto_type()
+            self.assertIn(proto_type, expected)
+
 
 if __name__ == "__main__":
     unittest.main()

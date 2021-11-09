@@ -41,7 +41,7 @@ def _ortvalue_from_torch_tensor(torch_tensor):
 
 def _torch_tensor_from_dl_pack(dlpack, ortvalue, device):
     torch_tensor = from_dlpack(dlpack) if device.type != 'ort' else C.ort_from_dlpack(dlpack)
-    return torch_tensor.to(torch.bool) if ortvalue.data_type() == 'tensor(bool)' else torch_tensor
+    return torch_tensor.to(torch.bool) if ortvalue.proto_type() == 9 else torch_tensor
 
 
 def _ortvalue_to_torch_tensor(ortvalue, device):
@@ -56,7 +56,7 @@ def _ortvalues_to_torch_tensor(ortvalues, device):
     if len(ortvalues) == 0:
         return tuple()
     if (hasattr(ortvalues, 'to_dlpack') and
-            all(ortvalue.data_type() != 'tensor(bool)' for ortvalue in ortvalues)):
+            all(ortvalue.proto_type() != 9 for ortvalue in ortvalues)):
         if device == 'ort':
             return tuple(ortvalues.to_dlpack(
                 lambda dlpack_structure: C.OrtValue.from_dlpack(dlpack_structure, False)))
@@ -106,14 +106,14 @@ def _ortvalues_to_torch_tensor(ortvalues, device):
             return fct(ortvalues, C.ort_from_dlpack)
 
         def my_tensor(dlp, ov):
-            return C.OrtValue.from_dlpack(dlp, ov.data_type() == 'tensor(bool)')
+            return C.OrtValue.from_dlpack(dlp, ov.proto_type() == 9)
 
         fct = _to_dlpack_at2 if hasattr(ortvalues, 'dlpack_at') else _to_dlpack2
         return _to_dlpack2(ortvalues, my_tensor)
     else:
         def my_tensor(dlp, ov):
             te = from_dlpack(dlp)
-            if ov.data_type() == 'tensor(bool)':
+            if ov.proto_type() == 9:
                 te = te.to(torch.bool)
             return te
 
