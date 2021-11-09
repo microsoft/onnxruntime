@@ -2391,6 +2391,7 @@ static constexpr OrtApi ort_api_1_to_10 = {
 
     // Version 10 - In development, feel free to add/remove/rearrange here
     &OrtApis::HasValue,
+    &OrtApis::KernelContext_GetGPUComputeStream,
     &OrtApis::GetValueMemoryInfo,
     &OrtApis::GetExecutionProviderApi,
 };

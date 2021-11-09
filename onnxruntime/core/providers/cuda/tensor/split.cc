@@ -63,8 +63,8 @@ Status Split::ComputeInternal(OpKernelContext* ctx) const {
 
   auto input_data = input_tensor->DataRaw();
 
-  auto& input_dims = input_shape.GetDims();
-  std::vector<int64_t> output_dimensions{input_dims};
+  auto input_dims = input_shape.GetDims();
+  std::vector<int64_t> output_dimensions{input_shape.GetDimsAsVector()};
 
   CudaAsyncBuffer<void*> output_ptr(this, num_outputs);
   gsl::span<void*> output_ptr_span = output_ptr.CpuSpan();

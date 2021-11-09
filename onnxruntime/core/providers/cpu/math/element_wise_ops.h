@@ -537,7 +537,7 @@ struct BroadcastIterator {
 };
 
 struct Broadcaster {
-  Broadcaster(const std::vector<int64_t>& shape1, const std::vector<int64_t>& shape2) {
+  Broadcaster(gsl::span<const int64_t> shape1, gsl::span<const int64_t> shape2) {
     size_t dimension_count_max = std::max(shape1.size(), shape2.size());
     size_t dimension_count_min = std::min(shape1.size(), shape2.size());
     output_shape_.resize(dimension_count_max);

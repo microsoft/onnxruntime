@@ -24,8 +24,17 @@ parameters:
   type: boolean
   default: false
 
+- name: EnablePython
+  type: boolean
+  default: true
+
 - name: RunOnnxRuntimeTests
   displayName: Run Tests?
+  type: boolean
+  default: true
+
+- name: RunStaticCodeAnalysis
+  displayName: Run Static Code Analysis
   type: boolean
   default: true
 
@@ -83,15 +92,16 @@ jobs:
     workingDirectory: '$(Build.BinariesDirectory)'
     displayName: 'Install python modules'
 
-  - powershell: |
-     $Env:USE_MSVC_STATIC_RUNTIME=1
-     $Env:ONNX_ML=1
-     $Env:CMAKE_ARGS="-DONNX_USE_PROTOBUF_SHARED_LIBS=OFF -DProtobuf_USE_STATIC_LIBS=ON -DONNX_USE_LITE_PROTO=ON -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=${{ parameters.buildArch }}-windows-static"
-     python setup.py bdist_wheel
-     python -m pip uninstall -y onnx -qq
-     Get-ChildItem -Path dist/*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname}
-    workingDirectory: '$(Build.SourcesDirectory)\cmake\external\onnx'
-    displayName: 'Install ONNX'
+  - ${{ if eq(parameters.RunOnnxRuntimeTests, true) }}:
+      - powershell: |
+         $Env:USE_MSVC_STATIC_RUNTIME=1
+         $Env:ONNX_ML=1
+         $Env:CMAKE_ARGS="-DONNX_USE_PROTOBUF_SHARED_LIBS=OFF -DProtobuf_USE_STATIC_LIBS=ON -DONNX_USE_LITE_PROTO=ON -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=${{ parameters.buildArch }}-windows-static"
+         python setup.py bdist_wheel
+         python -m pip uninstall -y onnx -qq
+         Get-ChildItem -Path dist/*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname}
+        workingDirectory: '$(Build.SourcesDirectory)\cmake\external\onnx'
+        displayName: 'Install ONNX'
 
   - task: NuGetToolInstaller@0
     displayName: Use Nuget 5.7.0
@@ -111,7 +121,7 @@ jobs:
     displayName: 'Generate cmake config'
     inputs:
       scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-      arguments: '--config ${{ parameters.BuildConfig }} --build_dir $(Build.BinariesDirectory) ${{ parameters.UseOmp }} --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 16 2019" --build_wheel --use_winml  --build_shared_lib --enable_onnx_tests --enable_wcos ${{ parameters.additionalBuildFlags }}'
+      arguments: '--config ${{ parameters.BuildConfig }} --build_dir $(Build.BinariesDirectory) ${{ parameters.UseOmp }} --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 16 2019"  --build_shared_lib --enable_onnx_tests ${{ parameters.additionalBuildFlags }}'
       workingDirectory: '$(Build.BinariesDirectory)'
 
   - task: VSBuild@1
@@ -127,12 +137,13 @@ jobs:
       workingFolder: '$(Build.BinariesDirectory)\${{ parameters.BuildConfig }}'
       createLogFile: true
 
-  - task: PythonScript@0
-    displayName: 'Build wheel'
-    inputs:
-      scriptPath: '$(Build.SourcesDirectory)\setup.py'
-      arguments: 'bdist_wheel'
-      workingDirectory: '$(Build.BinariesDirectory)\${{ parameters.BuildConfig }}\${{ parameters.BuildConfig }}'
+  - ${{ if eq(parameters.EnablePython, true) }}:
+      - task: PythonScript@0
+        displayName: 'Build wheel'
+        inputs:
+          scriptPath: '$(Build.SourcesDirectory)\setup.py'
+          arguments: 'bdist_wheel'
+          workingDirectory: '$(Build.BinariesDirectory)\${{ parameters.BuildConfig }}\${{ parameters.BuildConfig }}'
 
 
   - task: NuGetCommand@2
@@ -161,16 +172,22 @@ jobs:
           arguments: '--configuration ${{ parameters.BuildConfig }} -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId) --blame'
           workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
-  - powershell: |
-     Get-ChildItem -Path dist/*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname}
-     python $(Build.SourcesDirectory)\tools\ci_build\build.py --config ${{ parameters.BuildConfig }} --build_dir $(Build.BinariesDirectory) ${{ parameters.UseOmp }} --skip_submodule_sync --build_shared_lib --test --cmake_generator "Visual Studio 16 2019" --build_wheel --use_winml  --build_shared_lib --enable_onnx_tests --enable_wcos ${{ parameters.additionalBuildFlags }}
-   
-    workingDirectory: '$(Build.BinariesDirectory)\${{ parameters.BuildConfig }}\${{ parameters.BuildConfig }}'
-    condition: and(succeeded(), eq('${{ parameters.RunOnnxRuntimeTests}}', true))
-    displayName: 'Run tests'
+  - ${{ if eq(parameters.EnablePython, true) }}:
+      - powershell: |
+         Get-ChildItem -Path dist/*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname}
+       
+        workingDirectory: '$(Build.BinariesDirectory)\${{ parameters.BuildConfig }}\${{ parameters.BuildConfig }}'
+        displayName: 'Install onnxruntime wheel'
+
+  - ${{ if eq(parameters.RunOnnxRuntimeTests, true) }}:
+      - powershell: |
+         python $(Build.SourcesDirectory)\tools\ci_build\build.py --config ${{ parameters.BuildConfig }} --build_dir $(Build.BinariesDirectory) ${{ parameters.UseOmp }} --skip_submodule_sync --build_shared_lib --test --cmake_generator "Visual Studio 16 2019"  --build_shared_lib --enable_onnx_tests ${{ parameters.additionalBuildFlags }}
+       
+        workingDirectory: '$(Build.BinariesDirectory)\${{ parameters.BuildConfig }}\${{ parameters.BuildConfig }}'
+        displayName: 'Run tests'
 
 
-  - ${{ if eq(parameters.BuildConfig, 'RelWithDebInfo') }}:
+  - ${{ if eq(parameters.RunStaticCodeAnalysis, true) }}:
       - task: DeleteFiles@1
         displayName: 'Delete binaries files from $(Build.BinariesDirectory)\RelWithDebInfo'
         inputs:
@@ -184,7 +201,7 @@ jobs:
         displayName: 'Generate cmake config'
         inputs:
           scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-          arguments: '--config RelWithDebInfo --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 16 2019" --build_wheel --build_shared_lib --enable_onnx_tests ${{ parameters.additionalBuildFlags }} --cmake_extra_defines onnxruntime_ENABLE_STATIC_ANALYSIS=ON'
+          arguments: '--config RelWithDebInfo --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 16 2019" --build_shared_lib --enable_onnx_tests ${{ parameters.additionalBuildFlags }} --cmake_extra_defines onnxruntime_ENABLE_STATIC_ANALYSIS=ON'
           workingDirectory: '$(Build.BinariesDirectory)'
 
 
@@ -202,13 +219,14 @@ jobs:
           createLogFile: true
 
 
-  - task: PublishTestResults@2
-    displayName: 'Publish unit test results'
-    inputs:
-      testResultsFiles: '**/*.results.xml'
-      searchFolder: '$(Build.BinariesDirectory)/${{ parameters.BuildConfig }}'
-      testRunTitle: 'Unit Test Run'
-    condition: succeededOrFailed()
+  - ${{ if eq(parameters.RunOnnxRuntimeTests, true) }}:
+      - task: PublishTestResults@2
+        displayName: 'Publish unit test results'
+        inputs:
+          testResultsFiles: '**/*.results.xml'
+          searchFolder: '$(Build.BinariesDirectory)/${{ parameters.BuildConfig }}'
+          testRunTitle: 'Unit Test Run'
+        condition: succeededOrFailed()
 
   - template: component-governance-component-detection-steps.yml
     parameters :
