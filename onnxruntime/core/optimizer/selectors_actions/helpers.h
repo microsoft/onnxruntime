@@ -43,7 +43,7 @@ class NodesToOptimize {
 
   // construct from saved NodeIndex values. IsValid() will return false if one or more nodes were missing.
   // Use NodesToOptimizeIndices::kEmptyNodeIndex for nullptr entries in the vectors for missing optional inputs
-  NodesToOptimize(Graph& graph, const NodesToOptimizeIndices& node_indexes);
+  NodesToOptimize(Graph& graph, const NodesToOptimizeIndices& node_indices);
 
   NodesToOptimizeIndices ToIndices() const;
 
@@ -72,15 +72,15 @@ class NodesToOptimize {
   bool IsValid() const { return !nodes_.empty(); }
 
   // fetch an input.
-  // valid indexes are 0 to num_inputs - 1 if no variadic inputs.
-  // if there are variadic inputs, valid indexes are 0 to num_inputs + num_extra_variadic_inputs - 1
+  // valid indices are 0 to num_inputs - 1 if no variadic inputs.
+  // if there are variadic inputs, valid indices are 0 to num_inputs + num_extra_variadic_inputs - 1
   // e.g. 3 inputs. last is variadic with 3 values. num_inputs=3 num_extra_variadic_inputs=2 for a total of 5 inputs.
   Node* Input(int idx, bool required = true) const {
     return GetNode(idx, required);
   }
 
   // inputs filtered by index. includes all variadic.
-  std::vector<Node*> Inputs(const std::vector<int>& indexes, bool required = true) const;
+  std::vector<Node*> Inputs(const std::vector<int>& indices, bool required = true) const;
 
   Node& Target() const {
     return *GetNode(NumInputEntries() + 0, /*required*/ true);
@@ -91,7 +91,7 @@ class NodesToOptimize {
   }
 
   // outputs filtered by index. includes all variadic.
-  std::vector<Node*> Outputs(const std::vector<int>& indexes, bool required = true) const;
+  std::vector<Node*> Outputs(const std::vector<int>& indices, bool required = true) const;
 
   // Get the Node or Nodes (if variadic) at a specific index.
   std::vector<Node*> GetNodesAtLocation(const NodeLocation& location, bool required = true) const;
@@ -109,12 +109,8 @@ class NodesToOptimize {
     return node;
   }
 
-  // if the last input in num_inputs is for the variadic input, the variadic input could have zero or more values
-  // so we need to special case the zero and count that as one. same for outputs
-  int NumInputEntries() const { return variadic_input_ ? num_inputs + std::max(1, num_variadic_inputs_) - 1
-                                                       : num_inputs; }
-  int NumOutputEntries() const { return variadic_output_ ? num_outputs + std::max(1, num_variadic_outputs_) - 1
-                                                         : num_outputs; }
+  int NumInputEntries() const;
+  int NumOutputEntries() const;
 
   bool variadic_input_{false};  // is last input variadic
   bool variadic_output_{false};
@@ -123,19 +119,16 @@ class NodesToOptimize {
   std::vector<Node*> nodes_;
 };
 
-// Helper to build a NodesToOptimize instance
+// Helper to build a NodesToOptimizeIndices instance
 // Use in selector to incrementally add pieces
-struct NodesToOptimizeBuilder {
-  std::vector<Node*> input_nodes;
-  Node* target_node{nullptr};
-  std::vector<Node*> output_nodes;
+struct NodesToOptimizeIndicesBuilder {
+  std::vector<NodeIndex> input_nodes;
+  NodeIndex target_node{NodesToOptimizeIndices::kEmptyNodeIndex};
+  std::vector<NodeIndex> output_nodes;
   int num_input_defs{-1};
   int num_output_defs{-1};
 
-  std::unique_ptr<NodesToOptimize> Build() {
-    ORT_ENFORCE(target_node != nullptr, "A target node must be set.");
-    return std::make_unique<NodesToOptimize>(input_nodes, *target_node, output_nodes, num_input_defs, num_output_defs);
-  }
+  NodesToOptimizeIndices Build() const;
 };
 
 //
