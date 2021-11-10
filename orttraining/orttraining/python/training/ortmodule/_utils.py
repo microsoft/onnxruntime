@@ -57,7 +57,7 @@ def _ortvalues_to_torch_tensor(ortvalues, device):
         return tuple()
     if (hasattr(ortvalues, 'to_dlpack') and
             all(ortvalue.proto_type() != 9 for ortvalue in ortvalues)):
-        if device == 'ort':
+        if 'ort' == (device if isinstance(device, str) else device.type):
             return tuple(ortvalues.to_dlpack(
                 lambda dlpack_structure: C.OrtValue.from_dlpack(dlpack_structure, False)))
         return tuple(ortvalues.to_dlpack(_from_dlpack))
