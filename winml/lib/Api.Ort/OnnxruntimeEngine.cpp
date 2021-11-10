@@ -169,9 +169,6 @@ static auto GetStrings(const OrtApi* ort_api, const OrtValue* ort_value,
 
 HRESULT OnnxruntimeValue::GetResource(_winml::Resource& out) {
   auto ort_api = engine_->GetEngineFactory()->UseOrtApi();
-  const OrtDmlApi* ort_dml_api;
-  RETURN_HR_IF_NOT_OK_MSG(ort_api->GetExecutionProviderApi("DML", ORT_API_VERSION, reinterpret_cast<const void**>(&ort_dml_api)),
-                          ort_api);
 
   void* mutable_data = nullptr;
   RETURN_HR_IF_NOT_OK_MSG(ort_api->GetTensorMutableData(value_.get(), &mutable_data),
@@ -181,13 +178,17 @@ HRESULT OnnxruntimeValue::GetResource(_winml::Resource& out) {
   RETURN_HR_IF_NOT_OK_MSG(ort_api->GetValueMemoryInfo(value_.get(), &ort_memory_info),
                           ort_api);
 
-  OrtAllocator* ort_allocator;
-  RETURN_HR_IF_NOT_OK_MSG(ort_api->CreateAllocator(engine_->UseOrtSession(), ort_memory_info, &ort_allocator),
-                          ort_api);
-  auto allocator = UniqueOrtAllocator(ort_allocator, ort_api->ReleaseAllocator);
-
   bool is_cpu = false;
   if (SUCCEEDED(IsCpu(&is_cpu)) && !is_cpu) {
+    const OrtDmlApi* ort_dml_api;
+    RETURN_HR_IF_NOT_OK_MSG(ort_api->GetExecutionProviderApi("DML", ORT_API_VERSION, reinterpret_cast<const void**>(&ort_dml_api)),
+                            ort_api);
+
+    OrtAllocator* ort_allocator;
+    RETURN_HR_IF_NOT_OK_MSG(ort_api->CreateAllocator(engine_->UseOrtSession(), ort_memory_info, &ort_allocator),
+                            ort_api);
+    auto allocator = UniqueOrtAllocator(ort_allocator, ort_api->ReleaseAllocator);
+    
     winrt::com_ptr<ID3D12Resource> resource;
     RETURN_HR_IF_NOT_OK_MSG(ort_dml_api->GetD3D12ResourceFromAllocation(allocator.get(), mutable_data,
                                                                                  resource.put()),
