@@ -134,6 +134,8 @@ bool GemmSumFusion::SatisfyCondition(const Graph& graph, const Node& node, const
 
   // valid bias_shapes are (N) or (1, N) or (M, 1) or (M, N) as
   // GEMM only supports unidirectional broadcast on the bias input C
+  //
+  // TODO: verify if scalar shape works here together with matmul_add_fusion.
   if (!other_sum_input->Shape()) {
     return false;
   }
@@ -150,7 +152,6 @@ bool GemmSumFusion::SatisfyCondition(const Graph& graph, const Node& node, const
     return dim.has_dim_value() && dim.dim_value() == 1;
   };
 
-  // TODO: This is based on matmul_add_fusion.cc. Should this support the case where bias_shape is a scalar?
   const bool valid = ((bias_shape.dim_size() == 1 && bias_shape.dim()[0] == N) ||
                       (bias_shape.dim_size() == 2 && dim_has_value_1(bias_shape.dim()[0]) && bias_shape.dim()[1] == N) ||
                       (bias_shape.dim_size() == 2 && bias_shape.dim()[0] == M &&
