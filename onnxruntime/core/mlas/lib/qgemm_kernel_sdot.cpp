@@ -26,8 +26,8 @@ extern "C" {
     size_t
     MLASCALL
     MlasGemmS8S8KernelSDot(
-        const int8_t* A,
-        const int8_t* B,
+        const uint8_t* A,
+        const uint8_t* B,
         int32_t* C,
         size_t PackedCountK,
         size_t CountM,
@@ -42,9 +42,9 @@ extern "C" {
 
 struct MLAS_GEMM_S8S8_KERNEL_SDOT
 {
-    typedef int8_t PackedAType;
-    typedef int8_t PackedBType;
-    typedef int8_t OffsetBType;
+    typedef uint8_t PackedAType;
+    typedef uint8_t PackedBType;
+    typedef uint8_t OffsetBType;
 
     static constexpr size_t PackedK = 8;
     static constexpr MLAS_GEMM_QUANT_STRIDES Strides{ 24, 128, 256 };
@@ -70,7 +70,7 @@ MlasGemmU8X8FixupZeroPointB<MLAS_GEMM_S8S8_KERNEL_SDOT>(
 template<>
 void
 MlasGemmU8X8CopyPackA<MLAS_GEMM_S8S8_KERNEL_SDOT>(
-    MLAS_GEMM_S8S8_KERNEL_SDOT::PackedAType* D,
+    MLAS_GEMM_S8S8_KERNEL_SDOT::PackedAType* D_uint8_t,
     const uint8_t* A,
     size_t lda,
     size_t CountM,
@@ -79,6 +79,7 @@ MlasGemmU8X8CopyPackA<MLAS_GEMM_S8S8_KERNEL_SDOT>(
     bool AIsSigned
     )
 {
+    int8_t* D = reinterpret_cast<int8_t*>(D_uint8_t);
     MLAS_UNREFERENCED_PARAMETER(AIsSigned);
     int8_t PaddedMatrixAData[16];
 
@@ -528,13 +529,13 @@ MlasGemmU8X8CopyPackA<MLAS_GEMM_S8S8_KERNEL_SDOT>(
 MLAS_FORCEINLINE
 void
 MlasGemmU8X8CopyPackBProcessSDot(
-    MLAS_GEMM_S8S8_KERNEL_SDOT::PackedBType* D,
+    int8_t* D,
     int8x8_t BytesRow[4],
     int32x4_t ColumnSums[2]
     )
 {
-    int8x16_t v02 = vcombine_u8(BytesRow[0], BytesRow[2]);
-    int8x16_t v13 = vcombine_u8(BytesRow[1], BytesRow[3]);
+    int8x16_t v02 = vcombine_s8(BytesRow[0], BytesRow[2]);
+    int8x16_t v13 = vcombine_s8(BytesRow[1], BytesRow[3]);
 
     int8x16x2_t zw = vzipq_s8(v02, v13);
     int16x8x2_t zd = vzipq_s16(vreinterpretq_s16_s8(zw.val[0]), vreinterpretq_s16_s8(zw.val[1]));
@@ -549,7 +550,7 @@ MlasGemmU8X8CopyPackBProcessSDot(
 template<>
 void
 MlasGemmU8X8CopyPackB<MLAS_GEMM_S8S8_KERNEL_SDOT>(
-    MLAS_GEMM_S8S8_KERNEL_SDOT::PackedBType* D,
+    MLAS_GEMM_S8S8_KERNEL_SDOT::PackedBType* Dst,
     const uint8_t* B,
     size_t ldb,
     size_t CountN,
@@ -559,6 +560,7 @@ MlasGemmU8X8CopyPackB<MLAS_GEMM_S8S8_KERNEL_SDOT>(
     )
 {
     MLAS_UNREFERENCED_PARAMETER(BIsSigned);
+    int8_t* D = reinterpret_cast<int8_t*>(Dst);
     const int8x16_t ZeroVector = vmovq_n_s8(0);
     int8x8_t BytesRow[4];
 

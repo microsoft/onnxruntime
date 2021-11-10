@@ -99,8 +99,7 @@ MlasGemmU8X8CopyPackA<MLAS_GEMM_U8X8_KERNEL_NEON>(
 {
     const uint8_t BitFlipByte = AIsSigned ? 0x80 : 0;
     const uint32_t BitFlip4Bytes = AIsSigned ? 0x80808080 : 0;
-    const uint32x4_t BitFlipVector = vdup_n_u32(BitFlip4Bytes);
-    const uint32x4_t ZeroVector = vmov_n_u8(0);
+    const uint32x4_t BitFlipVector = vdupq_n_u32(BitFlip4Bytes);
 
     //
     // Process four rows of matrix A in a loop.
@@ -1017,7 +1016,7 @@ MlasGemmU8X8CopyPackA<MLAS_GEMM_S8S8_KERNEL_NEON>(
     size_t lda,
     size_t CountM,
     size_t CountK,
-    int32_t* RowSumBuffer
+    int32_t* RowSumBuffer,
     bool AIsSigned
     )
 {
