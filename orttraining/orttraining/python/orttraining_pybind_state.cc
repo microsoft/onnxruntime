@@ -379,15 +379,11 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
 
         if (to_tensor.is_none()) {
           DLManagedTensor* dlmanaged_tensor;
-          PyObject* capsule;
 
           for (auto it : v) {
             dlmanaged_tensor = dlpack::OrtValueToDlpack(it);
-            capsule = PyCapsule_New(dlmanaged_tensor, "dltensor", DlpackCapsuleDestructor);
-            if (capsule == NULL)
-              throw std::runtime_error("Empty capsule returned.");
+            py::capsule capsule(dlmanaged_tensor, "dltensor", DlpackCapsuleDestructor);
             list_dlpacks.append(capsule);
-            Py_DECREF(capsule);
           }
         } else {
           DLManagedTensor* dlmanaged_tensor;

@@ -234,17 +234,18 @@ void addOrtValueMethods(pybind11::module& m) {
       .def_static("from_dlpack", [](py::object data, bool is_bool_tensor) {
         return FromDlpack(data.ptr(), is_bool_tensor);
       }, py::arg("data"), py::arg("is_bool_tensor")=false,
-        "Convers a tensor from a external library into an OrtValue by means of the __dlpack__ protocol.")
+        "Converts a tensor from a external library into an OrtValue by means of the __dlpack__ protocol.")
       .def("__dlpack__", [](OrtValue* ort_value, py::object /* stream */) -> py::object {
         return py::reinterpret_steal<py::object>(ToDlpack(*ort_value));
        }, py::arg("stream")=py::none(),
        "Returns a DLPack representing the tensor (part of __dlpack__ protocol). "
        "This method does not copy the pointer shape, instead, it copies the pointer value. "
-       "The OrtValue must be persist until the dlpack structure is consumed.")
+       "The OrtValue must persist until the dlpack structure is consumed.")
       .def("__dlpack_device__", [](const OrtValue* ort_value) -> py::tuple {
+        ORT_ENFORCE(ort_value->IsTensor(), "Only tensor type OrtValues are supported");
         const onnxruntime::Tensor& tensor = ort_value->Get<Tensor>();
         DLDevice device = onnxruntime::dlpack::GetDlpackDevice(*ort_value, tensor.Location().device.Id());
-        return py::make_tuple((int)device.device_type, device.device_id);
+        return py::make_tuple(static_cast<int>(device.device_type), device.device_id);
        }, "Returns a tuple of integers, (device, device index) (part of __dlpack__ protocol).")
 #endif
       ;
