@@ -9,7 +9,7 @@ nav_order: 1
 
 # Overview
 
-The execution environment on Mobile devices, and for web browsers, have fixed memory and disk storage. Therefore, it is essential that any AI execution library is optimized to consume minimun resources in terms of disk footprint and memory. ONNX Runtime was enhanced to target these size contrained environments. These enhancments are packaged in the ONNX Runtime Mobile offering. 
+The execution environment on Mobile devices, and for web browsers, have fixed memory and disk storage. Therefore, it is essential that any AI execution library is optimized to consume minimun resources in terms of disk footprint and memory. ONNX Runtime was enhanced to target these size constrained environments. These enhancments are packaged in the ONNX Runtime Mobile offering. 
 
 ONNX Runtime Mobile uses the ORT formatted model which enables us to create a smaller size runtime library suitable for Mobile devices. The ORT formatted model file is generated from the regular ONNX model using the `onnxruntime` python package. 
 
@@ -33,7 +33,7 @@ The pre-built package includes support for selected operators and ONNX opset ver
 | Platform | Package location | Included Execution Providers |
 |----------|------------------|----------|
 | Android | onnxruntime-mobile package in Maven  | CPU Execution Provider <br>NNAPI Execution Provider |
-| iOS (preview) | onnxruntime-mobile CocoaPod (C/C++ APIs) <br>onnxruntime-mobile-objc CocoaPod (Objective-C API) | CPU Execution Provider <br>CoreML Execution Provider |
+| iOS | onnxruntime-mobile CocoaPod (C/C++ APIs) <br>onnxruntime-mobile-objc CocoaPod (Objective-C API) | CPU Execution Provider <br>CoreML Execution Provider |
 | Web (preview) | onnxruntime-web package in NPM | WebAssembly Execution Provider <br>WebGL Execution Provider |
 
 ### Operators and Types supported

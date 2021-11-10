@@ -87,7 +87,8 @@ It is suggested you do not use the unreleased 'master' branch unless there is a 
 
 | Release | Date | Branch |
 |---------|--------|
-| 1.8 | 2021-06-02 | rel-1.8.0 |
+| 1.9 | 2021-09-22 | rel-1.9.1 |
+| 1.8 | 2021-06-02 | rel-1.8.2 |
 | 1.7 | 2021-03-03 | rel-1.7.2 |
 | 1.6 | 2020-12-11 | rel-1.6.0 |
 | 1.5 | 2020-10-30 | rel-1.5.3 |
