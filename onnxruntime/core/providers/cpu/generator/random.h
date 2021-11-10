@@ -8,6 +8,7 @@
 
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
+#include "core/framework/random_seed.h"
 #include "core/platform/ort_mutex.h"
 
 namespace onnxruntime {
@@ -22,11 +23,8 @@ class RandomNormal final : public OpKernel {
     float seed = 0.f;
     if (info.GetAttr<float>("seed", &seed).IsOK()) {
       generator_ = std::default_random_engine{gsl::narrow_cast<uint32_t>(seed)};
-    }
-    else {
-      generator_ = std::default_random_engine{
-        gsl::narrow_cast<uint32_t>(std::chrono::high_resolution_clock::now().time_since_epoch().count())
-      };
+    } else {
+      generator_ = std::default_random_engine{gsl::narrow_cast<uint32_t>(utils::GetRandomSeed() + info.node().Index())};
     }
 
     int64_t dtype;
@@ -45,8 +43,8 @@ class RandomNormal final : public OpKernel {
  private:
   float mean_;
   float scale_;
-  
-  // generator_ is updated with every call to Compute(). 
+
+  // generator_ is updated with every call to Compute().
   // use generator_mutex_ to ensure Compute() can be called concurrently.
   // this is to ensure that a model with random generators is deterministic and still can be executed in parallel.
   mutable std::default_random_engine generator_;
@@ -65,11 +63,8 @@ class RandomNormalLike final : public OpKernel {
     float seed = 0.f;
     if (info.GetAttr<float>("seed", &seed).IsOK()) {
       generator_ = std::default_random_engine{gsl::narrow_cast<uint32_t>(seed)};
-    }
-    else {
-      generator_ = std::default_random_engine{
-        gsl::narrow_cast<uint32_t>(std::chrono::high_resolution_clock::now().time_since_epoch().count())
-      };
+    } else {
+      generator_ = std::default_random_engine{gsl::narrow_cast<uint32_t>(utils::GetRandomSeed() + info.node().Index())};
     }
 
     int64_t dtype;
@@ -85,7 +80,7 @@ class RandomNormalLike final : public OpKernel {
  private:
   float mean_;
   float scale_;
-  
+
   // see comments for generator_ and generator_mutex_ in RandomNormal class.
   mutable std::default_random_engine generator_;
   mutable onnxruntime::OrtMutex generator_mutex_;
@@ -102,11 +97,8 @@ class RandomUniform final : public OpKernel {
     float seed = 0.f;
     if (info.GetAttr<float>("seed", &seed).IsOK()) {
       generator_ = std::default_random_engine{gsl::narrow_cast<uint32_t>(seed)};
-    }
-    else {
-      generator_ = std::default_random_engine{
-        gsl::narrow_cast<uint32_t>(std::chrono::high_resolution_clock::now().time_since_epoch().count())
-      };
+    } else {
+      generator_ = std::default_random_engine{gsl::narrow_cast<uint32_t>(utils::GetRandomSeed() + info.node().Index())};
     }
 
     int64_t dtype;
@@ -142,11 +134,8 @@ class RandomUniformLike final : public OpKernel {
     float seed = 0.f;
     if (info.GetAttr<float>("seed", &seed).IsOK()) {
       generator_ = std::default_random_engine{gsl::narrow_cast<uint32_t>(seed)};
-    }
-    else {
-      generator_ = std::default_random_engine{
-        gsl::narrow_cast<uint32_t>(std::chrono::high_resolution_clock::now().time_since_epoch().count())
-      };
+    } else {
+      generator_ = std::default_random_engine{gsl::narrow_cast<uint32_t>(utils::GetRandomSeed() + info.node().Index())};
     }
 
     int64_t dtype;
@@ -162,7 +151,7 @@ class RandomUniformLike final : public OpKernel {
  private:
   float high_;
   float low_;
-  
+
   // see comments for generator_ and generator_mutex_ in RandomNormal class.
   mutable std::default_random_engine generator_;
   mutable onnxruntime::OrtMutex generator_mutex_;
@@ -177,11 +166,8 @@ class Multinomial final : public OpKernel {
     float seed = 0.f;
     if (info.GetAttr<float>("seed", &seed).IsOK()) {
       generator_ = std::default_random_engine{gsl::narrow_cast<uint32_t>(seed)};
-    }
-    else {
-      generator_ = std::default_random_engine{
-        gsl::narrow_cast<uint32_t>(std::chrono::high_resolution_clock::now().time_since_epoch().count())
-      };
+    } else {
+      generator_ = std::default_random_engine{gsl::narrow_cast<uint32_t>(utils::GetRandomSeed() + info.node().Index())};
     }
 
     int64_t output_dtype_tmp;
