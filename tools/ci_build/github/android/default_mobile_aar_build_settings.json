@@ -19,6 +19,7 @@
         "--disable_exceptions",
         "--enable_reduced_operator_type_support",
         "--use_nnapi",
-        "--skip_tests"
+        "--skip_tests",
+        "--disable_ort_format_runtime_graph_optimizations"
     ]
 }
