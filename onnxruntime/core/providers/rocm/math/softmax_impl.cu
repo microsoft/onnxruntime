@@ -21,6 +21,7 @@
 
 #include "core/providers/rocm/cu_inc/common.cuh"
 #include "core/providers/rocm/math/softmax_warpwise_impl.cuh"
+#include "core/providers/rocm/math/softmax_blockwise_impl.cuh"
 #include "core/providers/rocm/math/softmax.h"
 
 #include <limits>
