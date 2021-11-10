@@ -10,6 +10,7 @@
 #include "core/platform/env.h"
 #include "core/providers/common.h"
 #include "core/providers/nnapi/nnapi_builtin/builders/helper.h"
+#include "core/providers/nnapi/nnapi_builtin/builders/qdq_support_helper.h"
 #include "core/providers/nnapi/nnapi_builtin/builders/op_support_checker.h"
 #include "core/providers/nnapi/nnapi_builtin/nnapi_lib/nnapi_implementation.h"
 #include "core/providers/partitioning_utils.h"
@@ -95,12 +96,10 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
 #endif
   }();
 
-  std::vector<const Node*> dq_nodes_in_group;
-
   nnapi::OpSupportCheckParams params{
       android_feature_level,
       !!(nnapi_flags_ & NNAPI_FLAG_USE_NCHW),
-      dq_nodes_in_group,
+      std::make_unique<nnapi::QDQSupportHelper>(nnapi::CreateSelectors()),
   };
 
   if (params.android_feature_level < ORT_NNAPI_MIN_API_LEVEL) {
@@ -125,16 +124,16 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
   std::unordered_set<std::string> node_outputs_in_current_group{};
 
   // Add QDQ selector and obtain qdq node groups in the graph before checking if a node is supported
-  nnapi::GetQDQNodeGroups(graph_viewer);
+  params.qdq_support_helper->GetQDQNodeGroups(graph_viewer);
 
   const auto is_node_supported = [&](const Node& node) -> bool {
     const bool excluded = check_excluded_nodes && Contains(excluded_nodes, &node);
 
-    if (nnapi::IsNodeInQDQGroup(node)) {
-      auto qdq_node_group = nnapi::target_node_to_qdq_group.at(&node);
+    if (params.qdq_support_helper->IsNodeInQDQGroup(node)) {
+      auto qdq_node_group = params.qdq_support_helper->target_node_to_qdq_group_.at(&node);
       for (auto idx : qdq_node_group->dq_nodes) {
         const auto* dq_node = graph_viewer.GetNode(idx);
-        params.dq_nodes_in_group.push_back(dq_node);
+        params.qdq_support_helper->dq_nodes_in_qdq_selection.push_back(dq_node);
       }
     }
 

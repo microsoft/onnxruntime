@@ -4,20 +4,21 @@
 #pragma once
 
 #include "helper.h"
+#include "qdq_support_helper.h"
 
 namespace onnxruntime {
 namespace nnapi {
 
 struct OpSupportCheckParams {
-  OpSupportCheckParams(int32_t android_feature_level, bool use_nchw, std::vector<const Node*> dq_nodes_in_group)
+  OpSupportCheckParams(int32_t android_feature_level, bool use_nchw, std::unique_ptr<QDQSupportHelper> qdq_support_helper)
       : android_feature_level(android_feature_level),
         use_nchw(use_nchw),
-        dq_nodes_in_group(std::move(dq_nodes_in_group)) {
+        qdq_support_helper(std::move(qdq_support_helper)) {
   }
 
   int32_t android_feature_level = 0;
   bool use_nchw = false;
-  std::vector<const Node*> dq_nodes_in_group;
+  std::unique_ptr<QDQSupportHelper> qdq_support_helper;
 };
 
 class IOpSupportChecker {
