@@ -28,8 +28,3 @@ These examples use the [TensorFlow-ONNX converter](https://github.com/onnx/tenso
 ### TFLite
 {: .no_toc }
 * [TFLite: Image classifciation (mobiledet)](https://github.com/onnx/tensorflow-onnx/blob/master/tutorials/mobiledet-tflite.ipynb)
-
-## Accelerate TensorFlow model inferencing
-{: .no_toc }
-* [Accelerate BERT model on CPU](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/python/tools/transformers/notebooks/PyTorch_Bert-Squad_OnnxRuntime_CPU.ipynb)
-* [Accelerate BERT model on GPU](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/python/tools/transformers/notebooks/PyTorch_Bert-Squad_OnnxRuntime_GPU.ipynb)
