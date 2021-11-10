@@ -51,10 +51,14 @@ class QDQQuantizer(ONNXQuantizer):
         self.add_qdq_pair_to_weight = False if 'AddQDQPairToWeight' not in extra_options \
                                         else extra_options['AddQDQPairToWeight'] 
 
+        # The default behavior is that multiple nodes can share a QDQ pair as their inputs. 
+        # In TRT, QDQ pair can’t be shared between nodes, so it will create dedicated QDQ pairs for each node. 
         self.dedicated_qdq_pair = False if 'DedicatedQDQPair' not in extra_options else extra_options['DedicatedQDQPair'] 
         if self.dedicated_qdq_pair:
             self.tensor_to_its_receiving_nodes = {}
 
+        # In TRT, it recommended to add QDQ pair to inputs of Add node followed by ReduceMean node. 
+        # If True and Add node is in op_types_to_quantize, other Add nodes that don't meet the requirement above won't be adding QDQ pair.
         if "Add" in self.op_types_to_quantize:
             self.add_qdq_to_add_node_followed_by_redeuce_mean_node = False if 'AddQDQToAddNodeFollowedByReduceMeanNode' not in extra_options \
                                                                         else extra_options['AddQDQToAddNodeFollowedByReduceMeanNode']
@@ -105,7 +109,7 @@ class QDQQuantizer(ONNXQuantizer):
     def remove_nodes(self):
         self.model.remove_nodes(self.nodes_to_remove)
 
-    def pre_quantize_setup(self):
+    def pre_quantization_setup(self):
         if self.add_qdq_to_add_node_followed_by_redeuce_mean_node:
             for node in self.model.nodes():
                 if node.op_type == "Add":
@@ -129,7 +133,7 @@ class QDQQuantizer(ONNXQuantizer):
                         self.tensor_to_its_receiving_nodes[tensor_name].append(node)
 
     def quantize_model(self):
-        self.pre_quantize_setup()
+        self.pre_quantization_setup()
         for node in self.model.nodes():
             if self.should_quantize(node):
                 op_quantizer = CreateQDQQuantizer(self, node)

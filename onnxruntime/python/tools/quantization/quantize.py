@@ -194,6 +194,10 @@ def quantize_static(model_input,
                                               inserts both QuantizeLinear/DeQuantizeLinear nodes to weight.
             OpTypesToExcludeOutputQuantizatioin = list of op type : Default is []. If any op type is specified, it won't quantize  
                                                                     the output of ops with this specific op types.
+            DedicatedQDQPair = True/False : Default is False. When inserting QDQ pair, multiple nodes can share a single QDQ pair as their inputs.
+                                            If True, it will create identical and dedicated QDQ pair for each node.  
+            AddQDQToAddNodeFollowedByReduceMeanNode = True/False : Default is False. It adds QDQ pairs to every Add node if Add op type is in op_types_to_quantize.
+                                                                   If True, only Add node followed by ReduceMean node is going to be added QDQ pair. 
     '''
 
     mode = QuantizationMode.QLinearOps
