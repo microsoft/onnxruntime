@@ -8,25 +8,32 @@
 namespace onnxruntime {
 
 /**
-@Class GemmTransposeFusion
+@Class GemmSumFusion
 
 Rewrite rule that fuses Gemm and Sum nodes to a single Gemm node.
 This fusion can be applied in the following scenario:
 1) Sum at output of Gemm: when the output of a Gemm is immedietly summed with
     exactly one other element, we can fuse this Sum with Gemm by using the other
     Sum input as C, provided that the C input to the Gemm is missing.
-    is set accordingly. This is supported for opset >= 11, as this is when Gemm
-    input C became optional.
+    This is supported for opset >= 11, as this is when Gemm input C became optional.
 
 TODO: Support the Add use case: Sum(x, y) ~= Add.
  
-It is attempted to be triggered only on nodes with op type "Gemm".
+This patterm is attempted to be triggered only on nodes with op type "Gemm".
 
-A --> Gemm --> Sum   ==  A -----+
-       ^        ^               |
-       |        |               v
-B -----+        C        B --> Gemm <-- C
+A --> Gemm --> D --> Sum --> E
+       ^              ^
+       |              |
+B -----+              C
 
+is equivalent to
+
+A --> Gemm --> E
+      ^  ^
+      |  |
+B ----+  C
+
+Where each letter represents a tensor.
 */
 class GemmSumFusion : public RewriteRule {
  public:
