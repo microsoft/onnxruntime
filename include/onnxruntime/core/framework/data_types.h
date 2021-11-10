@@ -60,7 +60,9 @@ class SparseTensorTypeBase;
 #endif
 class SequenceTensorTypeBase;
 class NonTensorTypeBase;
+#if !defined(DISABLE_OPTIONAL_TYPE)
 class OptionalTypeBase;
+#endif
 class PrimitiveDataTypeBase;
 class Tensor;
 class TensorSeq;
@@ -132,9 +134,11 @@ class DataTypeImpl {
   }
 #endif
 
+#if !defined(DISABLE_OPTIONAL_TYPE)
   virtual const OptionalTypeBase* AsOptionalType() const {
     return nullptr;
   }
+#endif
 
   virtual const NonTensorTypeBase* AsNonTensorType() const {
     return nullptr;
@@ -163,8 +167,10 @@ class DataTypeImpl {
   static MLDataType GetSparseTensorType();
 #endif
 
+#if !defined(DISABLE_OPTIONAL_TYPE)
   template <typename T, typename elemT>
   static MLDataType GetOptionalType();
+#endif
 
   /**
    * Convert an ONNX TypeProto to onnxruntime DataTypeImpl.
@@ -199,8 +205,11 @@ class DataTypeImpl {
   static const std::vector<MLDataType>& AllIEEEFloatTensorExceptHalfTypes();
   static const std::vector<MLDataType>& AllTensorAndSequenceTensorTypes();
   static const std::vector<MLDataType>& AllFixedSizeTensorAndSequenceTensorTypes();
+
+#if !defined(DISABLE_OPTIONAL_TYPE)
   static const std::vector<MLDataType>& AllOptionalTypes();
   static const std::vector<MLDataType>& AllTensorAndSequenceTensorAndOptionalTypes();
+#endif
 };
 
 std::ostream& operator<<(std::ostream& out, MLDataType data_type);
@@ -319,11 +328,13 @@ struct IsSparseTensorContainedType : public IsAnyOf<T, float, uint8_t, int8_t, u
 };
 #endif
 
+#if !defined(DISABLE_OPTIONAL_TYPE)
 /// Tells if the specified type is one of ORT types
 /// that can be contained within an optional struct.
 template <typename T>
 struct IsOptionalOrtType : public IsAnyOf<T, Tensor, TensorSeq> {
 };
+#endif
 
 /// This template's Get() returns a corresponding MLDataType
 /// It dispatches the call to either GetTensorType<>() or
@@ -568,6 +579,8 @@ class SparseTensorType : public SparseTensorTypeBase {
 
 #endif  // !defined(DISABLE_SPARSE_TENSORS)
 
+#if !defined(DISABLE_OPTIONAL_TYPE)
+
 /// Common base-class for all optional types.
 class OptionalTypeBase : public DataTypeImpl {
  public:
@@ -641,6 +654,8 @@ class OptionalType : public OptionalTypeBase {
     data_types_internal::SetOptionalType<T, elemT>::Set(MutableTypeProto());
   }
 };
+
+#endif
 
 /**
   * \brief Provide a specialization for your C++ Non-tensor type
@@ -1007,6 +1022,7 @@ class PrimitiveDataType : public PrimitiveDataTypeBase {
   }
 #endif
 
+#if !defined(DISABLE_OPTIONAL_TYPE)
 #define ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, TYPE)             \
   template <>                                                  \
   MLDataType OptionalType<ORT_TYPE, TYPE>::Type() {            \
@@ -1017,6 +1033,7 @@ class PrimitiveDataType : public PrimitiveDataTypeBase {
   MLDataType DataTypeImpl::GetOptionalType<ORT_TYPE, TYPE>() { \
     return OptionalType<ORT_TYPE, TYPE>::Type();               \
   }
+#endif
 
 #if !defined(DISABLE_ML_OPS)
 #define ORT_REGISTER_MAP(TYPE)               \

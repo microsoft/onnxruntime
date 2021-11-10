@@ -123,17 +123,25 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(Loop,
                                        .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorTypes()),
                                    Loop);
 
+#if !defined(DISABLE_OPTIONAL_TYPE)
 ONNX_CPU_OPERATOR_KERNEL(Loop,
                          16,
                          KernelDefBuilder()
                              .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
                              .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
-#if !defined(DISABLE_OPTIONAL_TYPE)
                              .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorAndOptionalTypes()),
-#else
-                             .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorTypes()),
-#endif
                          Loop);
+#else
+ONNX_CPU_OPERATOR_KERNEL(Loop,
+                         16,
+                         KernelDefBuilder()
+                             .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
+                             .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
+                             .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorTypes()),
+                         Loop);
+
+#endif
+
 Loop::Info::Info(const onnxruntime::Node& node, const GraphViewer& subgraph_in)
     : subgraph(subgraph_in) {
   num_loop_carried_vars = static_cast<int>(node.InputDefs().size()) - 2;  // skip 'M' and 'cond'
@@ -564,6 +572,7 @@ Status LoopImpl::Execute(const FeedsFetchesManager& ffm) {
         output->SetElements(std::move(tensors));
       }
     }
+
     return Status::OK();
   };
 

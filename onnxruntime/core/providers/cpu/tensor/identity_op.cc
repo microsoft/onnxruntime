@@ -46,13 +46,18 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     IdentityOp<false>);
 
 // Opset 16 supported optional type
+#if !defined(DISABLE_OPTIONAL_TYPE)
 ONNX_CPU_OPERATOR_KERNEL(
     Identity,
     16,
-#if !defined(DISABLE_OPTIONAL_TYPE)
     KernelDefBuilder().TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorAndOptionalTypes()).Alias(0, 0),
-#else
-    KernelDefBuilder().TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorTypes()).Alias(0, 0),
-#endif
     IdentityOp<false>);
+#else
+ONNX_CPU_OPERATOR_KERNEL(
+    Identity,
+    16,
+    KernelDefBuilder().TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorTypes()).Alias(0, 0),
+    IdentityOp<false>);
+#endif
+
 }  // namespace onnxruntime
