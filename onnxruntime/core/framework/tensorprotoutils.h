@@ -47,11 +47,6 @@ common::Status TensorProtoToMLValue(const Env& env, const ORTCHAR_T* tensor_prot
                                     const ONNX_NAMESPACE::TensorProto& input, const MemBuffer& m, OrtValue& value);
 
 /**
- * Sets the ValueInfoProto.type.tensor_type to match the input TensorProto.
- */
-void TensorProtoToValueInfoProto(const ONNX_NAMESPACE::TensorProto& input, ONNX_NAMESPACE::ValueInfoProto& output);
-
-/**
  * @brief Deserialize a TensorProto into a preallocated empty Tensor
  * @param env
  * @param model_path

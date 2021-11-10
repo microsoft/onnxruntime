@@ -89,7 +89,7 @@ class NodeArg {
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
-  /** Gets this NodeArg as a ValueInfoProto. */
+  /** Gets this NodeArg as a NodeArgInfo, AKA ValueInfoProto. */
   const NodeArgInfo& ToProto() const noexcept { return node_arg_info_; }
 
   /** Gets a flag indicating whether this NodeArg exists or not.

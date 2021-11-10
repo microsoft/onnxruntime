@@ -1053,8 +1053,14 @@ Graph::Graph(const Model& owning_model,
   // Ensure initializers are also graph inputs.
   if (ir_version_ < 4) {
     for (const auto* initializer : created_initializers) {
-      ValueInfoProto* input = graph_proto_->add_input();
-      utils::TensorProtoToValueInfoProto(*initializer, *input);
+      TypeProto type_proto;
+      TypeProto_Tensor* t = type_proto.mutable_tensor_type();
+      t->set_elem_type(initializer->data_type());
+      for (int64_t dim : initializer->dims()) {
+        t->mutable_shape()->add_dim()->set_dim_value(dim);
+      }
+      const NodeArg& node_arg = GetOrCreateNodeArg(initializer->name(), &type_proto);
+      *(graph_proto_->add_input()) = node_arg.ToProto();
     }
   }
 
