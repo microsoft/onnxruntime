@@ -45,14 +45,6 @@ ProviderInfo_CUDA* TryGetProviderInfo_CUDA();
 }
 #endif
 
-#ifdef USE_OPENVINO
-
-#include "core/providers/openvino/openvino_provider_factory.h"
-namespace onnxruntime {
-ProviderInfo_OpenVINO* GetProviderInfo_OpenVINO();
-}
-#endif
-
 #ifdef ENABLE_EXTENSION_CUSTOM_OPS
 #include "onnxruntime_extensions.h"
 #endif
