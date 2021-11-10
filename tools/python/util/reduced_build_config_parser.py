@@ -24,9 +24,12 @@ def parse_config(config_file: str, enable_type_reduction: bool = False):
 
     1. Specifying required operators
 
-    The basic format for specifying required operators is `domain;opsets;op1,op2...`
+    The basic format for specifying required operators is `domain;opset1,opset2;op1,op2...`
     e.g. `ai.onnx;11;Add,Cast,Clip,... for a single opset
          `ai.onnx;11,12;Add,Cast,Clip,... for multiple opsets
+
+         note: Configuration information is accrued as the file is parsed. If an operator requires support from multiple
+         opsets that can be done with one entry for each opset, or one entry with multiple opsets in it.
 
     If the configuration file is generated from ORT format models it may optionally contain JSON for per-operator
     type reduction. The required types are generally listed per input and/or output of the operator.
