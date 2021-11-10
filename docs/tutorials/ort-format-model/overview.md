@@ -9,6 +9,10 @@ nav_order: 1
 
 # Overview
 
+The execution environment on Mobile devices, and for web browsers, have fixed memory and disk storage. Therefore, it is essential that any AI execution library is optimized to consume minimun resources in terms of disk footprint and memory. ONNX Runtime was enhanced to target these size contrained environments. These enhancments are packaged in the ONNX Runtime Mobile offering. 
+
+ONNX Runtime Mobile uses the ORT formatted model which enables us to create a smaller size runtime library suitable for Mobile devices. The ORT formatted model file is generated from the regular ONNX model using the `onnxruntime` python package. 
+
 ORT format model is a pre-optimized ONNX model used to run with a custom ORT build that minimizes the binary size and reduces memory usage for client side inference including Mobile and Web. The custom build does this primarily by only including specified operators and types in the build, and by saving the ONNX model to an internal format ('ORT format model'). Both ONNX Runtime Mobile and ONNX Runtime Web now utilize ORT format and minimal build for optimized inference.
 
 An ONNX model must be converted to an ORT format model to be used with minimal build in ONNX Runtime Mobile or ONNX Runtime Web.
