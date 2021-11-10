@@ -13,7 +13,7 @@
 #    in <repo root>/onnxruntime/test/testdata/, so the tests for those models are skipped.
 # 5. Build baseline minimal ORT for Android arm64-v8a including no kernels and disable exceptions.
 #    This step is to report the baseline binary size for Android.
-# 6. Build extended minimal ORT with runtime optimizations disabled.
+# 6. Build full (6a) and extended minimal (6b) ORT with runtime optimizations disabled.
 jobs:
 - job: Linux_CPU_Minimal_Build_E2E
   timeoutInMinutes: 120
@@ -205,7 +205,7 @@ jobs:
     workingDirectory: $(Build.SourcesDirectory)
 
   - task: CmdLine@2
-    displayName: 6. Build extended minimal onnxruntime with runtime optimizations disabled
+    displayName: 6a. Build full onnxruntime with runtime optimizations disabled
     inputs:
       script: |
         docker run --rm \
@@ -216,7 +216,27 @@ jobs:
           -e BUILD_BUILDNUMBER \
           onnxruntimecpubuild \
             /opt/python/cp37-cp37m/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
-              --build_dir /build/6 --cmake_generator Ninja \
+              --build_dir /build/6a --cmake_generator Ninja \
+              --config Debug \
+              --skip_submodule_sync \
+              --build_shared_lib \
+              --parallel \
+              --disable_ort_format_runtime_graph_optimizations
+      workingDirectory: $(Build.SourcesDirectory)
+
+  - task: CmdLine@2
+    displayName: 6b. Build extended minimal onnxruntime with runtime optimizations disabled
+    inputs:
+      script: |
+        docker run --rm \
+          --volume $(Build.SourcesDirectory):/onnxruntime_src \
+          --volume $(Build.BinariesDirectory):/build \
+          -e ALLOW_RELEASED_ONNX_OPSET_ONLY=1 \
+          -e NIGHTLY_BUILD \
+          -e BUILD_BUILDNUMBER \
+          onnxruntimecpubuild \
+            /opt/python/cp37-cp37m/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
+              --build_dir /build/6b --cmake_generator Ninja \
               --config Debug \
               --skip_submodule_sync \
               --build_shared_lib \
