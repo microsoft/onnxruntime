@@ -136,9 +136,11 @@ MlasGemmU8X8CopyPackA<MLAS_GEMM_U8S8_KERNEL_AVX2>(
     size_t lda,
     size_t CountM,
     size_t CountK,
-    int32_t* RowSumBuffer
+    int32_t* RowSumBuffer,
+    bool AIsSigned
     )
 {
+    MLAS_UNREFERENCED_PARAMETER(AIsSigned);
     MlasGemmU8S8CopyPackAAvx2(D, A, lda, CountM, CountK, RowSumBuffer);
 }
 
@@ -212,9 +214,11 @@ MlasGemmU8X8CopyPackA<MLAS_GEMM_U8U8_KERNEL_AVX2>(
     size_t lda,
     size_t CountM,
     size_t CountK,
-    int32_t* RowSumBuffer
+    int32_t* RowSumBuffer,
+    bool AIsSigned
     )
 {
+    MLAS_UNREFERENCED_PARAMETER(AIsSigned);
     MlasGemmU8U8CopyPackAAvx2(D, A, lda, CountM, CountK, RowSumBuffer);
 }
 

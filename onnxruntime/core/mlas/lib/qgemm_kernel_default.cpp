@@ -55,9 +55,11 @@ MlasGemmU8X8CopyPackA<MLAS_GEMM_U8X8_KERNEL_DEFAULT>(
     size_t lda,
     size_t CountM,
     size_t CountK,
-    int32_t* RowSumBuffer
+    int32_t* RowSumBuffer,
+    bool AIsSigned
     )
 {
+    MLAS_UNREFERENCED_PARAMETER(AIsSigned);
     const size_t AlignedCountK =
         (CountK + MLAS_GEMM_U8X8_KERNEL_DEFAULT::PackedK - 1) & ~(MLAS_GEMM_U8X8_KERNEL_DEFAULT::PackedK - 1);
 

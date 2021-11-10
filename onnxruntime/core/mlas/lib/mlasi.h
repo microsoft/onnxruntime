@@ -664,6 +664,7 @@ extern const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8X8DispatchNeon;
 extern const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8S8DispatchNeon;
 extern const MLAS_GEMM_U8X8_DISPATCH MlasGemmS8S8DispatchNeon;
 extern const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8X8DispatchUdot;
+extern const MLAS_GEMM_U8X8_DISPATCH MlasGemmS8S8DispatchSdot;
 extern const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8X8DispatchWasmSimd;
 extern const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8X8DispatchDefault;
 

@@ -68,9 +68,13 @@ MlasGemmU8X8TryGemvKernel(
 }
 
 template <typename KernelType>
-MLAS_FORCEINLINE int32_t
-MlasGemmU8X8FixupZeroPointA(int32_t ZeroPointA)
+MLAS_FORCEINLINE
+int32_t
+MlasGemmU8X8FixupZeroPointA(
+    int32_t ZeroPointA,
+    bool AIsSigned)
 {
+    MLAS_UNREFERENCED_PARAMETER(AIsSigned);
     return ZeroPointA;
 }
 
@@ -126,7 +130,8 @@ MlasGemmU8X8CopyPackA(
     size_t lda,
     size_t CountM,
     size_t CountK,
-    int32_t* RowSumBuffer
+    int32_t* RowSumBuffer,
+    bool AIsSigned
 );
 
 template<typename KernelType>
@@ -264,7 +269,7 @@ Return Value:
     // kernel requires signed data.
     //
 
-    ZeroPointA = MlasGemmU8X8FixupZeroPointA<KernelType>(ZeroPointA);
+    ZeroPointA = MlasGemmU8X8FixupZeroPointA<KernelType>(ZeroPointA, Shape->AIsSigned);
 
     //
     // Fixup the sign bit of the per-matrix zero point offset of matrix B if the
@@ -345,7 +350,8 @@ Return Value:
                     lda,
                     CountM,
                     CountK,
-                    RowSumBuffer);
+                    RowSumBuffer,
+                    Shape->AIsSigned);
 
                 //
                 // Apply the global depth value constant without the ZeroPointB scaling from:
@@ -485,7 +491,7 @@ Return Value:
     // kernel requires signed data.
     //
 
-    ZeroPointA = MlasGemmU8X8FixupZeroPointA<KernelType>(ZeroPointA);
+    ZeroPointA = MlasGemmU8X8FixupZeroPointA<KernelType>(ZeroPointA, Shape->AIsSigned);
 
     //
     // Fixup the sign bit of the per-matrix zero point offset of matrix B if the
@@ -572,7 +578,8 @@ Return Value:
                     lda,
                     CountM,
                     CountK,
-                    RowSumBuffer);
+                    RowSumBuffer,
+                    Shape->AIsSigned);
 
                 //
                 // Apply the global depth value constant without the ZeroPointB scaling from:
@@ -681,7 +688,6 @@ struct MLAS_GEMM_U8X8_DISPATCH {
     size_t PackedStrideK;
 };
 
-#define USE_NEONS8_KERNEL true
 
 MLAS_FORCEINLINE
 const MLAS_GEMM_U8X8_DISPATCH*
@@ -707,23 +713,20 @@ MlasGemmU8X8GetDispatch(
         GemmU8X8Dispatch = MlasPlatform.GemmU8U8Dispatch;
     }
 #elif defined(MLAS_TARGET_ARM64)
-    if (AIsSigned) {
-        GemmU8X8Dispatch = MlasPlatform.GemmU8X8Dispatch;
-        if (USE_NEONS8_KERNEL && BIsSigned && GemmU8X8Dispatch == &MlasGemmU8X8DispatchNeon) {
+    if (AIsSigned && BIsSigned) { // S8S8
+        if (GemmU8X8Dispatch == &MlasGemmU8X8DispatchNeon) {
             GemmU8X8Dispatch = &MlasGemmS8S8DispatchNeon;
+        } else {
+            GemmU8X8Dispatch = &MlasGemmS8S8DispatchSdot;
         }
     } else {
         GemmU8X8Dispatch = MlasPlatform.GemmU8X8Dispatch;
-        if (USE_NEONS8_KERNEL && BIsSigned && GemmU8X8Dispatch == &MlasGemmU8X8DispatchNeon) {
+        if (BIsSigned && GemmU8X8Dispatch == &MlasGemmU8X8DispatchNeon) {
             GemmU8X8Dispatch = &MlasGemmU8S8DispatchNeon;
         }
     }
 
 #elif defined(MLAS_TARGET_ARM64EC) || (defined(MLAS_TARGET_ARM) && !defined(_MSC_VER))
-    if (AIsSigned) {
-        return GemmU8X8Dispatch;
-    }
-
     GemmU8X8Dispatch = &MlasGemmU8X8DispatchNeon;
 #elif defined(MLAS_TARGET_WASM_SIMD)
     if (AIsSigned) {

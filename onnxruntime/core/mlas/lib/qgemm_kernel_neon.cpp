@@ -57,6 +57,19 @@ constexpr size_t MLAS_GEMM_U8X8_KERNEL_NEON::PackedK;
 constexpr MLAS_GEMM_QUANT_STRIDES MLAS_GEMM_U8X8_KERNEL_NEON::Strides;
 constexpr MLAS_GEMM_QUANT_STRIDES MLAS_GEMM_U8X8_KERNEL_NEON::PackedStrides;
 
+template <>
+MLAS_FORCEINLINE int32_t
+MlasGemmU8X8FixupZeroPointA<MLAS_GEMM_U8X8_KERNEL_NEON>(
+    int32_t ZeroPointA,
+    bool AIsSigned)
+{
+    if(AIsSigned) {
+        ZeroPointA = (uint8_t)(ZeroPointA ^ 0x80);
+    }
+
+    return ZeroPointA;
+}
+
 template<>
 MLAS_FORCEINLINE
 int32_t
@@ -80,9 +93,15 @@ MlasGemmU8X8CopyPackA<MLAS_GEMM_U8X8_KERNEL_NEON>(
     size_t lda,
     size_t CountM,
     size_t CountK,
-    int32_t* RowSumBuffer
+    int32_t* RowSumBuffer,
+    bool AIsSigned
     )
 {
+    const uint8_t BitFlipByte = AIsSigned ? 0x80 : 0;
+    const uint32_t BitFlip4Bytes = AIsSigned ? 0x80808080 : 0;
+    const uint32x4_t BitFlipVector = vdup_n_u32(BitFlip4Bytes);
+    const uint32x4_t ZeroVector = vmov_n_u8(0);
+
     //
     // Process four rows of matrix A in a loop.
     //
@@ -110,13 +129,13 @@ MlasGemmU8X8CopyPackA<MLAS_GEMM_U8X8_KERNEL_NEON>(
 
         while (k >= 16) {
 
-            uint32x4_t v0 = vld1q_u32(reinterpret_cast<const uint32_t*>(a0));
+            uint32x4_t v0 = veorq_u32(vld1q_u32(reinterpret_cast<const uint32_t*>(a0)), BitFlipVector);
             a0 += 16;
-            uint32x4_t v1 = vld1q_u32(reinterpret_cast<const uint32_t*>(a1));
+            uint32x4_t v1 = veorq_u32(vld1q_u32(reinterpret_cast<const uint32_t*>(a1)), BitFlipVector);
             a1 += 16;
-            uint32x4_t v2 = vld1q_u32(reinterpret_cast<const uint32_t*>(a2));
+            uint32x4_t v2 = veorq_u32(vld1q_u32(reinterpret_cast<const uint32_t*>(a2)), BitFlipVector);
             a2 += 16;
-            uint32x4_t v3 = vld1q_u32(reinterpret_cast<const uint32_t*>(a3));
+            uint32x4_t v3 = veorq_u32(vld1q_u32(reinterpret_cast<const uint32_t*>(a3)), BitFlipVector);
             a3 += 16;
 
 #if defined(MLAS_NEON32_INTRINSICS)
@@ -163,13 +182,13 @@ MlasGemmU8X8CopyPackA<MLAS_GEMM_U8X8_KERNEL_NEON>(
 
         while (k >= 4) {
 
-            uint32_t v0 = *reinterpret_cast<const uint32_t*>(a0);
+            uint32_t v0 = (*reinterpret_cast<const uint32_t*>(a0)) ^ BitFlip4Bytes;
             a0 += 4;
-            uint32_t v1 = *reinterpret_cast<const uint32_t*>(a1);
+            uint32_t v1 = (*reinterpret_cast<const uint32_t*>(a1)) ^ BitFlip4Bytes;
             a1 += 4;
-            uint32_t v2 = *reinterpret_cast<const uint32_t*>(a2);
+            uint32_t v2 = (*reinterpret_cast<const uint32_t*>(a2)) ^ BitFlip4Bytes;
             a2 += 4;
-            uint32_t v3 = *reinterpret_cast<const uint32_t*>(a3);
+            uint32_t v3 = (*reinterpret_cast<const uint32_t*>(a3)) ^ BitFlip4Bytes;
             a3 += 4;
 
             *reinterpret_cast<uint32_t*>(&D[0]) = v0;
@@ -195,10 +214,10 @@ MlasGemmU8X8CopyPackA<MLAS_GEMM_U8X8_KERNEL_NEON>(
 
             while (k > 0) {
 
-                d[0] = *a0++;
-                d[4] = *a1++;
-                d[8] = *a2++;
-                d[12] = *a3++;
+                d[0] = (*a0++) ^ BitFlipByte;
+                d[4] = (*a1++) ^ BitFlipByte;
+                d[8] = (*a2++) ^ BitFlipByte;
+                d[12] = (*a3++) ^ BitFlipByte;
 
                 d += 1;
                 k -= 1;
@@ -241,9 +260,9 @@ MlasGemmU8X8CopyPackA<MLAS_GEMM_U8X8_KERNEL_NEON>(
 
         while (k >= 4) {
 
-            uint32_t v0 = *reinterpret_cast<const uint32_t*>(a0);
+            uint32_t v0 = (*reinterpret_cast<const uint32_t*>(a0))^ BitFlip4Bytes;
             a0 += 4;
-            uint32_t v1 = *reinterpret_cast<const uint32_t*>(a1);
+            uint32_t v1 = (*reinterpret_cast<const uint32_t*>(a1)) ^ BitFlip4Bytes;
             a1 += 4;
 
             *reinterpret_cast<uint32_t*>(&D[0]) = v0;
@@ -267,8 +286,8 @@ MlasGemmU8X8CopyPackA<MLAS_GEMM_U8X8_KERNEL_NEON>(
 
             while (k > 0) {
 
-                d[0] = *a0++;
-                d[4] = *a1++;
+                d[0] = (*a0++) ^ BitFlipByte;
+                d[4] = (*a1++) ^ BitFlipByte;
 
                 d += 1;
                 k -= 1;
@@ -307,7 +326,7 @@ MlasGemmU8X8CopyPackA<MLAS_GEMM_U8X8_KERNEL_NEON>(
 
         while (k >= 16) {
 
-            uint8x16_t v = vld1q_u8(a);
+            uint8x16_t v = veorq_u8(vld1q_u8(a), vreinterpretq_u8_u32(BitFlipVector));
             a += 16;
 
             vst1q_u8(D, v);
@@ -538,8 +557,11 @@ constexpr MLAS_GEMM_QUANT_STRIDES MLAS_GEMM_U8S8_KERNEL_NEON::PackedStrides;
 
 template <>
 MLAS_FORCEINLINE int32_t
-MlasGemmU8X8FixupZeroPointA<MLAS_GEMM_U8S8_KERNEL_NEON>(int32_t ZeroPointA)
+MlasGemmU8X8FixupZeroPointA<MLAS_GEMM_U8S8_KERNEL_NEON>(
+    int32_t ZeroPointA,
+    bool AIsSigned)
 {
+    MLAS_UNREFERENCED_PARAMETER(AIsSigned);
     return int8_t(ZeroPointA ^ 0x80);
 }
 
@@ -551,10 +573,11 @@ MlasGemmU8X8CopyPackA<MLAS_GEMM_U8S8_KERNEL_NEON>(
     size_t lda,
     size_t CountM,
     size_t CountK,
-    int32_t* RowSumBuffer
+    int32_t* RowSumBuffer,
+    bool AIsSigned
     )
 {
-
+    MLAS_UNREFERENCED_PARAMETER(AIsSigned);
     const uint8x16_t BitFlipVector = vdupq_n_u8(0x80);
 
     //
@@ -995,8 +1018,10 @@ MlasGemmU8X8CopyPackA<MLAS_GEMM_S8S8_KERNEL_NEON>(
     size_t CountM,
     size_t CountK,
     int32_t* RowSumBuffer
+    bool AIsSigned
     )
 {
+    MLAS_UNREFERENCED_PARAMETER(AIsSigned);
     //
     // Process four rows of matrix A.
     //

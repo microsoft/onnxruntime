@@ -43,9 +43,11 @@ MlasGemmU8X8CopyPackA<MLAS_GEMM_U8S8_KERNEL_SSE41>(
     size_t lda,
     size_t CountM,
     size_t CountK,
-    int32_t* RowSumBuffer
+    int32_t* RowSumBuffer,
+    bool AIsSigned
     )
 {
+    MLAS_UNREFERENCED_PARAMETER(AIsSigned);
     const __m128i ZeroVector = _mm_setzero_si128();
     const __m128i OnesWordBroadcast = _mm_set1_epi16(1);
 

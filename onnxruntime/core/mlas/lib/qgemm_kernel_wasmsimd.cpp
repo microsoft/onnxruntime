@@ -63,9 +63,11 @@ MlasGemmU8X8CopyPackA<MLAS_GEMM_U8X8_KERNEL_WASMSIMD>(
     size_t lda,
     size_t CountM,
     size_t CountK,
-    int32_t* RowSumBuffer
+    int32_t* RowSumBuffer,
+    bool AIsSigned
     )
 {
+    MLAS_UNREFERENCED_PARAMETER(AIsSigned);
     const v128_t ZeroVector = wasm_i64x2_const(0, 0);
     const v128_t OnesWordBroadcast = wasm_i16x8_splat(1);
     uint8_t PaddedMatrixAData[8] = { 0 };
