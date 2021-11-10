@@ -24,8 +24,9 @@ def parse_config(config_file: str, enable_type_reduction: bool = False):
 
     1. Specifying required operators
 
-    The basic format for specifying required operators is `domain;opset;op1,op2...`
-    e.g. `ai.onnx;11;Add,Cast,Clip,...
+    The basic format for specifying required operators is `domain;opsets;op1,op2...`
+    e.g. `ai.onnx;11;Add,Cast,Clip,... for a single opset
+         `ai.onnx;11,12;Add,Cast,Clip,... for multiple opsets
 
     If the configuration file is generated from ORT format models it may optionally contain JSON for per-operator
     type reduction. The required types are generally listed per input and/or output of the operator.
@@ -113,7 +114,7 @@ def parse_config(config_file: str, enable_type_reduction: bool = False):
                 continue
 
             domain, opset_str, operators_str = [segment.strip() for segment in line.split(';')]
-            opset = int(opset_str)
+            opsets = [int(s) for s in opset_str.split(',')]
 
             # any type reduction information is serialized json that starts/ends with { and }.
             # type info is optional for each operator.
@@ -169,12 +170,13 @@ def parse_config(config_file: str, enable_type_reduction: bool = False):
             else:
                 operators = set([op.strip() for op in operators_str.split(',')])
 
-            if domain not in required_ops:
-                required_ops[domain] = {opset: operators}
-            elif opset not in required_ops[domain]:
-                required_ops[domain][opset] = operators
-            else:
-                required_ops[domain][opset].update(operators)
+            for opset in opsets:
+                if domain not in required_ops:
+                    required_ops[domain] = {opset: operators}
+                elif opset not in required_ops[domain]:
+                    required_ops[domain][opset] = operators
+                else:
+                    required_ops[domain][opset].update(operators)
 
     if len(required_ops) == 0 and no_ops_specified_means_all_ops_are_required:
         required_ops = None
