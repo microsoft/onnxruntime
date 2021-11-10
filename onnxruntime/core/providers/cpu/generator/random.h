@@ -24,6 +24,7 @@ class RandomNormal final : public OpKernel {
     if (info.GetAttr<float>("seed", &seed).IsOK()) {
       generator_ = std::default_random_engine{gsl::narrow_cast<uint32_t>(seed)};
     } else {
+      // node index is added to the global seed to avoid two nodes generating the same sequence of random data
       generator_ = std::default_random_engine{gsl::narrow_cast<uint32_t>(utils::GetRandomSeed() + info.node().Index())};
     }
 
@@ -64,6 +65,7 @@ class RandomNormalLike final : public OpKernel {
     if (info.GetAttr<float>("seed", &seed).IsOK()) {
       generator_ = std::default_random_engine{gsl::narrow_cast<uint32_t>(seed)};
     } else {
+      // node index is added to the global seed to avoid two nodes generating the same sequence of random data
       generator_ = std::default_random_engine{gsl::narrow_cast<uint32_t>(utils::GetRandomSeed() + info.node().Index())};
     }
 
@@ -98,6 +100,7 @@ class RandomUniform final : public OpKernel {
     if (info.GetAttr<float>("seed", &seed).IsOK()) {
       generator_ = std::default_random_engine{gsl::narrow_cast<uint32_t>(seed)};
     } else {
+      // node index is added to the global seed to avoid two nodes generating the same sequence of random data
       generator_ = std::default_random_engine{gsl::narrow_cast<uint32_t>(utils::GetRandomSeed() + info.node().Index())};
     }
 
@@ -135,6 +138,7 @@ class RandomUniformLike final : public OpKernel {
     if (info.GetAttr<float>("seed", &seed).IsOK()) {
       generator_ = std::default_random_engine{gsl::narrow_cast<uint32_t>(seed)};
     } else {
+      // node index is added to the global seed to avoid two nodes generating the same sequence of random data
       generator_ = std::default_random_engine{gsl::narrow_cast<uint32_t>(utils::GetRandomSeed() + info.node().Index())};
     }
 
@@ -167,6 +171,7 @@ class Multinomial final : public OpKernel {
     if (info.GetAttr<float>("seed", &seed).IsOK()) {
       generator_ = std::default_random_engine{gsl::narrow_cast<uint32_t>(seed)};
     } else {
+      // node index is added to the global seed to avoid two nodes generating the same sequence of random data
       generator_ = std::default_random_engine{gsl::narrow_cast<uint32_t>(utils::GetRandomSeed() + info.node().Index())};
     }
 
