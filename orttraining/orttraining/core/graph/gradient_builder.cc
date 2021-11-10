@@ -96,6 +96,16 @@ IMPLEMENT_GRADIENT_BUILDER(GetTanhGradient) {
               {GI(0)})};
 }
 
+IMPLEMENT_GRADIENT_BUILDER(GetTriluGradient) {
+  if (GetSrcNodeInputSize() == 1) {
+    return std::vector<NodeDef>{NodeDef(OpDef{"Trilu", kMSDomain, 1}, {GO(0)}, {GI(0)}, SrcNodeAttributes())};
+  } else if (GetSrcNodeInputSize() == 2) {
+    return std::vector<NodeDef>{NodeDef(OpDef{"Trilu", kMSDomain, 1}, {GO(0), I(1)}, {GI(0)}, SrcNodeAttributes())};
+  } else {
+    ORT_ENFORCE(false, "the number of input arguments must be 1 or 2");
+  }
+}
+
 IMPLEMENT_GRADIENT_BUILDER(GetSqrtGradient) {
   std::vector<NodeDef> result;
   NodeDef half_constant_node = HalfConstantNode(OElemType(0));
