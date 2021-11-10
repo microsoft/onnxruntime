@@ -1574,13 +1574,13 @@ TEST(GradientCheckerTest, SigmoidGrad) {
   UnaryOpGradientTest("Sigmoid");
 }
 
-void GradientCheckerSoftmaxGradHelper(bool is_log_softmax) {
+void GradientCheckerSoftmaxGradHelper(bool is_log_softmax, int version = 0) {
   TensorShape shape({3, 4, 5});
   float max_error;
   GradientChecker<float, float, float> gradient_checker;
 
   const std::string op = is_log_softmax ? "LogSoftmax" : "Softmax";
-  OpDef op_def{op};
+  OpDef op_def = version == 0 ? OpDef{op} : OpDef{op, kOnnxDomain, version};
 
   // default_axis
   {
@@ -1607,6 +1607,14 @@ TEST(GradientCheckerTest, SoftMaxGrad) {
 
 TEST(GradientCheckerTest, LogSoftMaxGrad) {
   GradientCheckerSoftmaxGradHelper(true);
+}
+
+TEST(GradientCheckerTest, LogSoftMaxGrad_13) {
+  GradientCheckerSoftmaxGradHelper(true, 13);
+}
+
+TEST(GradientCheckerTest, SoftMaxGrad_13) {
+  GradientCheckerSoftmaxGradHelper(false, 13);
 }
 
 void TestSoftmaxCrossEntropyGrad(const TensorShape& input_shape, const std::string& reduction) {

@@ -61,6 +61,8 @@ template <typename T>
 class SoftmaxGrad final : public OpKernel {
  public:
   explicit SoftmaxGrad(const OpKernelInfo& info) : OpKernel(info) {
+    const auto& node = info.node();
+    opset_ = node.SinceVersion();
     axis_ = info.GetAttrOrDefault<int64_t>("axis", 0);
   }
 
@@ -69,6 +71,7 @@ class SoftmaxGrad final : public OpKernel {
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SoftmaxGrad);
   int64_t axis_;
+  int opset_;
 };
 
 template <typename T>

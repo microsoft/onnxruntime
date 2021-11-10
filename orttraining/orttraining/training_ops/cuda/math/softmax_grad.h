@@ -15,8 +15,12 @@ template <typename T>
 class SoftmaxGrad final : public CudaKernel {
  public:
   SoftmaxGrad(const OpKernelInfo& info) : CudaKernel{info} {
-    info.GetAttrOrDefault("axis", &axis_, static_cast<int64_t>(1));
+    const auto& node = info.node();
+    opset_ = node.SinceVersion();
+    axis_ = info.GetAttrOrDefault("axis", static_cast<int64_t>(opset_ < 13 ? 1 : -1));
     log_softmax_ = info.GetKernelDef().OpName() == "LogSoftmaxGrad";
+    cuda_ep_ = const_cast<CUDAExecutionProvider*>(
+        static_cast<const CUDAExecutionProvider*>(info.GetExecutionProvider()));
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;
@@ -24,6 +28,8 @@ class SoftmaxGrad final : public CudaKernel {
  private:
   int64_t axis_;
   bool log_softmax_;
+  int opset_;
+  CUDAExecutionProvider* cuda_ep_;
 };
 
 }  // namespace cuda
