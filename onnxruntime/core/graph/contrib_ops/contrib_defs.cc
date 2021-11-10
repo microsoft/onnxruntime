@@ -559,7 +559,7 @@ void BeamSearchShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
   }
 
   // Shape inference
-  // input 0 (input_ids) shape: (batch_size * num_beams, sequence_length)
+  // input 0 (input_ids) shape: (batch_size, sequence_length)
   // output 0 (sequences) shape: (batch_size * num_return_sequences, max_length)
   // output 1 (sequences_scores) shape: (batch_size * num_return_sequences)
   // output 2 (scores) shape: (max_length-sequence_length, batch_size*num_beams*num_return_sequences, vocab_size)
@@ -574,7 +574,8 @@ void BeamSearchShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
   if (!(input_ids_dims[0].has_dim_value() && input_ids_dims[1].has_dim_value())) {
     return;
   }
-  int64_t batch_beam_size = input_ids_dims[0].dim_value();
+  
+  int64_t batch_size = input_ids_dims[0].dim_value();
   int64_t sequence_length = input_ids_dims[1].dim_value();
 
   const auto max_length = ctx.getInputData(1);
@@ -599,11 +600,6 @@ void BeamSearchShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
     fail_shape_inference("Failed to parse num_return_sequences or it is not positive integer scalar");
   }
 
-  if (batch_beam_size % num_beams_value != 0) {
-    fail_shape_inference("input_ids dimension 0 shall be multiple of num_beams");
-  }
-
-  int64_t batch_size = batch_beam_size / num_beams_value;
   ONNX_NAMESPACE::TensorShapeProto sequences_shape;
   sequences_shape.add_dim()->set_dim_value(batch_size * num_beams_value);
   sequences_shape.add_dim()->set_dim_value(batch_size * sequence_length);
@@ -637,7 +633,7 @@ void RegisterTextGenerationSchemas() {
             "body",
             "The GPT-2 subgraph with input_ids, position_ids, attention_mask, past_0, past_1, ... as inputs, and logits, present_0, present_1, ... as output",
             AttributeProto::GRAPH)
-        .Input(0, "input_ids", "The sequence used as a prompt for the generation. Shape is (batch_size * num_beams, sequence_length)", "I")
+        .Input(0, "input_ids", "The sequence used as a prompt for the generation. Shape is (batch_size, sequence_length)", "I")
         .Input(1, "max_length", "The maximum length of the sequence to be generated. Shape is (1)", "I")
         .Input(2, "min_length", "The minimum length below which the score of eos_token_id is set to -Inf. Shape is (1)", "I", OpSchema::Optional)
         .Input(3, "num_beams", "Number of beams for beam search. 1 means no beam search. Shape is (1)", "I")

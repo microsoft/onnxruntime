@@ -318,6 +318,11 @@ def test_model(args):
     print('-' * 50)
     print("Test ONNX model and bream search with onnxruntime...")
 
+    # TODO: remove debug code
+    import time
+    print('You have 15 seconds to attach a debugger.')
+    time.sleep(15)
+    
     ort_session = create_ort_session(args.output, args.use_gpu)
 
     batch_size = 2
@@ -351,11 +356,6 @@ def test_model(args):
 
 def main():
     args = parse_arguments()
-
-    # TODO: remove debug code
-    import time
-    print('You have 15 seconds to attach a debugger.')
-    time.sleep(15)
 
     if os.path.exists(args.output):
         print(f"skip conversion since path existed: {args.output}")
