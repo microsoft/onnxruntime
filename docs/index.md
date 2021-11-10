@@ -24,6 +24,18 @@ ONNX Runtime is an accelerator for machine learning models with multi platform s
 
 ---
 
+
+## QuickStart Template
+
+|:----------------------------------------------------------------------------------|:-----------------------------------------------------------------------------------|
+|  <span class="fs-5"> [ORT Web JavaScript Site Template using NextJS](https://github.com/microsoft/onnxruntime-nextjs-template){: .btn  .mr-4 target="_blank"} </span>         | 
+
+
+---
+
+
+
+
 ## ONNX Runtime for Inferencing
 
 ONNX Runtime Inference powers machine learning models in key Microsoft products and services across Office, Azure, Bing, as well as dozens of community projects.
