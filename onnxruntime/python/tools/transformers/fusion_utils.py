@@ -36,7 +36,8 @@ class FusionUtils:
             if parent_node and parent_node.op_type == 'Cast':
                 inputs = [parent_node.input[0]]
 
-        cast_node = helper.make_node('Cast', inputs=inputs, outputs=[cast_output])
+        node_name = self.model.create_node_name('Cast')
+        cast_node = helper.make_node('Cast', inputs=inputs, outputs=[cast_output], name=node_name)
         cast_node.attribute.extend([helper.make_attribute("to", int(TensorProto.INT32))])
         self.model.add_node(cast_node)
 
