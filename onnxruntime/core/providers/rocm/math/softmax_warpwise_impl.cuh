@@ -17,10 +17,11 @@
 // The code below is mostly copied from Pytorch PersistentSoftmax.cuh
 
 #pragma once
-#include "core/providers/cuda/cu_inc/common.cuh"
+#include "hip/hip_runtime.h"
+#include "core/providers/rocm/cu_inc/common.cuh"
 
 namespace onnxruntime {
-namespace cuda {
+namespace rocm {
 
 inline int log2_ceil(int value) {
   int log2_value = 0;
@@ -64,7 +65,7 @@ __device__ __forceinline__ void warp_reduce(acc_t* sum) {
 // A "WARP" contains "GPU_WARP_SIZE" threads, these treads are guaranteed to belong to the same warp.
 // This is important because it means only __shfl_ instructions are required for reductions.
 // Note that this means WARP_SIZE must be a power of two and <= architecture warp size.
-// CUDA warp size is 32 for all existing GPU architecures, but there is no guarantee this will not change for future arch.
+// ROCM warp size is 64 for all existing GPU architecures, but there is no guarantee this will not change for future arch.
 // is_log_softmax is a flag indicating whether SoftMax or LogSoftMax should be computed.
 // The template can be instantiated with any floating point type for the type arguments input_t, output_t and acc_t.
 // This allows SoftMax to be fused with a cast immediately following the SoftMax.
@@ -79,7 +80,7 @@ __global__ void softmax_warp_forward(output_t* dst, const input_t* src, int batc
   constexpr int next_power_of_two = 1 << log2_elements;
   constexpr int WARP_SIZE = (next_power_of_two < GPU_WARP_SIZE) ? next_power_of_two : GPU_WARP_SIZE;
   constexpr int WARP_ITERATIONS = next_power_of_two / WARP_SIZE;
-  constexpr int WARP_BATCH = (next_power_of_two <= 128) ? 2 : 1;
+  constexpr int WARP_BATCH = 1;
 
   int first_batch = (blockDim.y * blockIdx.x + threadIdx.y) * WARP_BATCH;
 
@@ -132,9 +133,9 @@ __global__ void softmax_warp_forward(output_t* dst, const input_t* src, int batc
 #pragma unroll
     for (int it = 0; it < WARP_ITERATIONS; ++it) {
       if (is_log_softmax) {
-        sum[i] += std::exp((float)(elements[i][it] - max_value[i]));
+        sum[i] += expf((float)(elements[i][it] - max_value[i]));
       } else {
-        elements[i][it] = std::exp((float)(elements[i][it] - max_value[i]));
+        elements[i][it] = expf((float)(elements[i][it] - max_value[i]));
         sum[i] += elements[i][it];
       }
     }
@@ -146,7 +147,7 @@ __global__ void softmax_warp_forward(output_t* dst, const input_t* src, int batc
   for (int i = 0; i < WARP_BATCH; ++i) {
     if (i >= local_batches)
       break;
-    if (is_log_softmax) sum[i] = max_value[i] + std::log((float)(sum[i]));
+    if (is_log_softmax) sum[i] = max_value[i] + logf((float)(sum[i]));
 #pragma unroll
     for (int it = 0; it < WARP_ITERATIONS; ++it) {
       int element_index = local_idx + it * WARP_SIZE;

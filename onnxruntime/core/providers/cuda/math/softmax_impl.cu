@@ -119,10 +119,10 @@ void dispatch_blockwise_softmax_forward(cudaStream_t stream, output_t* output, c
   constexpr int ILP = sizeof(float4) / sizeof(input_t);
   dim3 block = SoftMax_getBlockSize(ILP, softmax_elements);
   if (is_log_softmax) {
-    cunn_SoftMaxForward<ILP, input_t, acc_t, output_t, LogSoftMaxForwardEpilogue>
+    softmax_block_forward<ILP, input_t, acc_t, output_t, LogSoftMaxForwardEpilogue>
       <<<grid, block, block.x * sizeof(acc_t), stream>>>(output, const_cast<input_t*>(input), softmax_elements);
   } else {
-    cunn_SoftMaxForward<ILP, input_t, acc_t, output_t, SoftMaxForwardEpilogue>
+    softmax_block_forward<ILP, input_t, acc_t, output_t, SoftMaxForwardEpilogue>
       <<<grid, block, block.x * sizeof(acc_t), stream>>>(output, const_cast<input_t*>(input), softmax_elements);
   }
 }
