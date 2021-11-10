@@ -128,6 +128,14 @@ ORT_API_STATUS(OperatorGetOutputName,
                _In_ size_t index,
                _Out_ const char** const name);
 
+ORT_API_STATUS(JoinModels,
+               _In_ OrtModel* first_model,
+               _In_ OrtModel* second_model,
+               _In_ const char* const* output_names,
+               _In_ const char* const* input_names,
+               size_t num_linkages,
+               bool promote_unlinked_outputs,
+               _In_ const char* const join_node_prefix);
 // maps and sequences???
 //ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange().Map().at(ONNX_NAMESPACE::ONNX_DOMAIN).second
 

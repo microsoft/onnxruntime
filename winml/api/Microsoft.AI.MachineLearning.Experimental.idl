@@ -102,4 +102,29 @@ namespace ROOT_NS.AI.MachineLearning.Experimental {
 
     void Save(String file_name);
   }
+
+  //! \class LearningModelJoinOptions
+  //! \brief TODO:Docs
+  [dualapipartition(1)]
+  runtimeclass LearningModelJoinOptions
+  {
+      // default constructor
+      LearningModelJoinOptions();
+
+      Boolean PromoteUnlinkedOutputsToFusedOutputs{ get; set; };
+      Boolean CloseModelOnJoin { get; set; };
+      String JoinedNodePrefix { get; set; };
+
+      void Link(String firstModelOutput, String secondModelInput);
+  }
+
+  [marshaling_behavior(agile)]
+  [dualapipartition(1)]
+  runtimeclass LearningModelExperimental {
+    LearningModelExperimental(ROOT_NS.AI.MachineLearning.LearningModel model);
+
+    void Save(String file_name);
+    ROOT_NS.AI.MachineLearning.LearningModel JoinModel(ROOT_NS.AI.MachineLearning.LearningModel other, LearningModelJoinOptions options);
+  }
+
 }  // namespace Microsoft.AI.MachineLearning.Experimental
