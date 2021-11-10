@@ -772,7 +772,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                                                      args.minimal_build or args.use_extensions))
                                                      else "OFF"),
         "-Donnxruntime_REDUCED_OPS_BUILD=" + ("ON" if is_reduced_ops_build(args) else "OFF"),
-        "-Donnxruntime_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION" + (
+        "-Donnxruntime_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION=" + (
             "ON" if not args.disable_ort_format_runtime_graph_optimizations else "OFF"),
         "-Donnxruntime_ENABLE_LANGUAGE_INTEROP_OPS=" + ("ON" if args.enable_language_interop_ops else "OFF"),
         "-Donnxruntime_USE_DML=" + ("ON" if args.use_dml else "OFF"),
