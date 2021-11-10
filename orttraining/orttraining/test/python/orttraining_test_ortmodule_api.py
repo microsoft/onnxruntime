@@ -1110,6 +1110,38 @@ def test_aten_multinomial(input_shape, num_samples, replacement):
 
     _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
 
+def test_gradient_correctness_bce_with_logits():
+    class NeuralNetBCEWithLogitsLoss(torch.nn.Module):
+        def __init__(self, input_size, hidden_size):
+            super(NeuralNetBCEWithLogitsLoss, self).__init__()
+            self.linear = torch.nn.Linear(input_size, hidden_size)
+
+        def forward(self, input, target):
+            loss_fct = torch.nn.BCEWithLogitsLoss()
+            return loss_fct(self.linear(input), target)
+
+    N, D, H = 16, 256, 128
+    device = 'cuda'
+    pt_model = NeuralNetBCEWithLogitsLoss(D, H).to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+
+    def run_step(model, input, target):
+        prediction = model(input, target)
+        loss = prediction.sum()
+        loss.backward()
+        return prediction
+
+    for _ in range(10):
+        pt_input = torch.rand((N, D), device=device, requires_grad=True)
+        ort_input = copy.deepcopy(pt_input)
+        pt_target = torch.rand((N, H), device=device)
+        ort_target = copy.deepcopy(pt_target)
+        pt_prediction = run_step(pt_model, pt_input, pt_target)
+        ort_prediction = run_step(ort_model, ort_input, ort_target)
+
+        _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
+        _test_helpers.assert_values_are_close(ort_input.grad, pt_input.grad)
+
 def test_module_with_non_differential_output():
     device = 'cuda'
     N, D_in, H, D_out = 32, 128, 64, 10
