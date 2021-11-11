@@ -73,8 +73,19 @@ jobs:
     displayName: 'Run Release unit tests'
     inputs:
       script: |
-        cd /tmp
-        python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --build_dir $(Build.BinariesDirectory) --cmake_generator Ninja --config Release --test --skip_submodule_sync --build_shared_lib --parallel --build_wheel --enable_onnx_tests --enable_transformers_tool_test --build_nodejs --ctest_path ""
+        python3 $(Build.SourcesDirectory)/tools/ci_build/build.py \
+          --build_dir $(Build.BinariesDirectory) \
+          --cmake_generator Ninja \
+          --config Release \
+          --test \
+          --skip_submodule_sync \
+          --build_shared_lib \
+          --parallel \
+          --build_wheel \
+          --enable_onnx_tests \
+          --enable_transformers_tool_test \
+          --build_nodejs \
+          --ctest_path ""
 
   - task: CmdLine@2
     displayName: 'Install Debug python package'
@@ -87,9 +98,20 @@ jobs:
   - task: CmdLine@2
     displayName: 'Run Debug unit tests'
     inputs:
-      scriptPath: $(Build.SourcesDirectory)/tools/ci_build/build.py
-      arguments: --build_dir $(Build.BinariesDirectory) --cmake_generator Ninja --config Debug --test --skip_submodule_sync --build_shared_lib --parallel --build_wheel --enable_onnx_tests --enable_transformers_tool_test --build_nodejs --ctest_path ""
-      workingDirectory: /tmp
+      script: |
+        python3 $(Build.SourcesDirectory)/tools/ci_build/build.py \
+          --build_dir $(Build.BinariesDirectory) \
+          --cmake_generator Ninja \
+          --config Debug \
+          --test \
+          --skip_submodule_sync \
+          --build_shared_lib \
+          --parallel \
+          --build_wheel \
+          --enable_onnx_tests \
+          --enable_transformers_tool_test \
+          --build_nodejs \
+          --ctest_path ""
 
   - task: CmdLine@2
     displayName: 'Symbolic shape infer'
