@@ -3095,7 +3095,7 @@ struct OrtApi {
   /** \brief Set custom thread join function
   *
   * \param[in] session options
-  * \param[in] custom join thread function, must not be nullptr if custom_create_thread_fn is set
+  * \param[in] custom join thread function, must not be nullpter when custom_create_thread_fn is set
   * 
   * * \snippet{doc} snippets.dox OrtStatus Return Value
   */
@@ -3122,7 +3122,7 @@ struct OrtApi {
   /** \brief Set custom thread join function for global thread pools
   *
   * \param[inout] tp_options
-  * \param[in] custom thread join function, must be set when custom_create_thread_fn is set
+  * \param[in] custom thread join function, must not be nullptr when global custom_create_thread_fn is set
   * 
   * * \snippet{doc} snippets.dox OrtStatus Return Value
   */

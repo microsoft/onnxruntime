@@ -55,7 +55,7 @@ class EnvThread {
   CustomCreateThreadFn custom_create_thread_fn = nullptr;
   void* custom_thread_creation_options = nullptr;
   CustomJoinThreadFn custom_join_thread_fn = nullptr;
-  void* custom_thread_handle = nullptr;
+  CUSTOM_THREAD_HANDLE custom_thread_handle = nullptr;
 };
 
 // Parameters that are required to create a set of threads for a thread pool

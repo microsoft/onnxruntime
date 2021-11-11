@@ -1852,12 +1852,12 @@ CUSTOM_THREAD_HANDLE CreateThreadCustomized(void* options, OrtThreadWorkerFn wor
     custom_creation_hook_called += 1;
   }
   threads.push_back(std::thread(work_loop, param));
-  return (CUSTOM_THREAD_HANDLE)threads.back().native_handle();
+  return static_cast<CUSTOM_THREAD_HANDLE>(threads.back().native_handle());
 }
 
 void JoinThreadCustomized(CUSTOM_THREAD_HANDLE handle) {
   for (auto& t : threads) {
-    if ((CUSTOM_THREAD_HANDLE)t.native_handle() == handle) {
+    if (static_cast<CUSTOM_THREAD_HANDLE>(t.native_handle()) == handle) {
       custom_join_hook_called += 1;
       t.join();
     }
