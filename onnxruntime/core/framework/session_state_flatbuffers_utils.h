@@ -9,7 +9,7 @@
 #include "core/flatbuffers/schema/ort.fbs.h"
 #include "core/graph/basic_types.h"
 
-namespace onnxruntime::utils {
+namespace onnxruntime::fbs::utils {
 
 /**
  * Gets the key that can be used to look up a fbs::SubGraphSessionState in a fbs::SessionState.
@@ -78,4 +78,4 @@ class FbsSessionStateViewer {
   const fbs::SessionState& fbs_session_state_;
 };
 
-}  // namespace onnxruntime::utils
+}  // namespace onnxruntime::fbs::utils
