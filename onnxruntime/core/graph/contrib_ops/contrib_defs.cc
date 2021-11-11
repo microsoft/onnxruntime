@@ -734,6 +734,30 @@ TODO:
         DecoderAttentionTypeAndShapeInference(ctx);
       });
 
+  static const char* GreedySearch_doc = R"DOC(
+    TODO:
+  )DOC";
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(GreedySearch)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(GreedySearch_doc)
+      .Attr("pad_token_id", "pad_token_id", AttributeProto::INT)
+      .Attr("eos_token_id", "eos_token_id", AttributeProto::INT)
+      .Attr("min_length", "min_length", AttributeProto::INT)
+      .Input(0, "logits", "todo", "T")
+      .Input(1, "input_ids", "todo", "M")
+      .Input(2, "sequence_lengths", "todo", "M")
+      .Input(3, "unfinished_sequences", "todo", "M")
+      .Input(4, "cur_len", "todo", "M")
+      .Output(0, "input_ids", "todo", "M")
+      .Output(1, "sequence_lengths", "todo", "M")
+      .Output(2, "unfinished_sequences", "todo", "M")
+      .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "todo")
+      .TypeConstraint("M", {"tensor(int64)"}, "todo")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        //todo
+      });
 
   static const char* EmbedLayerNormalization_ver1_doc = R"DOC(
 EmbedLayerNormalization is the fusion of embedding layer in BERT model, with optional mask processing.
