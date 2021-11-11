@@ -968,7 +968,7 @@ class OpTester {
     auto node_arg = NodeArg(name, &sequence_tensor_proto.proto);
 #endif
 
-    data.push_back(Data(node_arg, std::move(value), optional<float>(), optional<float>()));
+    data.push_back(Data(std::move(node_arg), std::move(value), optional<float>(), optional<float>()));
   }
 
   std::vector<int64_t> GetDimsForProto(const std::vector<int64_t>& dims);
