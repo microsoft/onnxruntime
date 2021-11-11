@@ -862,7 +862,9 @@ ORT_API_STATUS_IMPL(winmla::JoinModels,
   // add all nodes
   for (int i = 0; i < second_model_proto->graph().node_size(); i++) {
     auto& other_node = *second_model_proto->mutable_graph()->mutable_node(i);
-    *other_node.mutable_name() = second_model_prefix + other_node.name();
+    if (0 != strcmp(other_node.name().c_str(), "")) {
+      *other_node.mutable_name() = second_model_prefix + other_node.name();
+    }
     for (int j = 0; j < other_node.input_size(); j++) {
       *other_node.mutable_input(j) = second_model_prefix + other_node.input(j);
     }
