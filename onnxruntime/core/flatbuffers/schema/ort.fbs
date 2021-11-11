@@ -180,6 +180,43 @@ table Attribute{
   graphs:[Graph];
 }
 
+// runtime optimizations
+
+/// nodes to consider for a runtime optimization
+/// see corresponding type in onnxruntime/core/graph/runtime_optimization_record.h
+table NodesToOptimizeIndices{
+  node_indices:[uint32];
+  num_inputs:uint32;
+  num_outputs:uint32;
+  has_variadic_input:bool;
+  has_variadic_output:bool;
+  num_variadic_inputs:uint32;
+  num_variadic_outputs:uint32;
+}
+
+table NodeIndexAndKernelDefHash{
+  node_index:uint32;
+  kernel_def_hash:uint64;
+}
+
+/// a single runtime optimization
+/// see corresponding type in onnxruntime/core/graph/runtime_optimization_record.h
+table RuntimeOptimizationRecord{
+  action_id:string;
+  nodes_to_optimize_indices:NodesToOptimizeIndices;
+  produced_nodes:[NodeIndexAndKernelDefHash];
+}
+
+table RuntimeOptimizationRecordContainerEntry{
+  optimizer_name:string (key);
+  runtime_optimization_records:[RuntimeOptimizationRecord];
+}
+
+table RuntimeOptimizations{
+  /// mapping from optimizer name to [RuntimeOptimizationRecord]
+  records:[RuntimeOptimizationRecordContainerEntry];
+}
+
 table Graph{
   initializers:[Tensor];
 
@@ -192,6 +229,8 @@ table Graph{
   inputs:[string];
   outputs:[string];
   sparse_initializers:[SparseTensor];
+
+  runtime_optimizations:RuntimeOptimizations;
 }
 
 table StringStringEntry {
@@ -233,7 +272,7 @@ table SessionState {
 
 table InferenceSession {
   // This is the ORT format model version
-  // The version number is defined as kOrtModelVersion in <repo root>/onnxruntime/core/session/inference_session.cc
+  // The version number is defined as kOrtModelVersion in <repo root>/onnxruntime/core/flatbuffers/ort_format_version.h
   // Please update it when there is a change to this schema which will break the compatibilities
   ort_version:string;
 

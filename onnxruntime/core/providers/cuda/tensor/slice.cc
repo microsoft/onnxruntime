@@ -130,7 +130,7 @@ static Status ComputeSliceStrides(const TensorShape& input_shape,
       aggregated_last_dim *= input_dimensions[i];
     }
 
-    auto flattened_input_dims(input_dimensions);
+    std::vector<int64_t> flattened_input_dims(input_dimensions.begin(), input_dimensions.end());
     flattened_input_dims.resize(dimension_count);
     flattened_input_dims.back() = aggregated_last_dim;
     ORT_ENFORCE(TensorPitches::Calculate(input_strides_span, flattened_input_dims));
