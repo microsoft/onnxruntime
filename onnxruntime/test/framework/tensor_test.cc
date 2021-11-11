@@ -159,8 +159,7 @@ TEST(TensorTest, StringTensorTest) {
     Tensor t(DataTypeImpl::GetType<std::string>(), shape, alloc);
 
     auto& tensor_shape = t.Shape();
-    //Use reinterpret_cast to bypass a gcc bug: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=51213
-    EXPECT_EQ(*reinterpret_cast<const std::vector<int64_t>*>(&shape), *reinterpret_cast<const std::vector<int64_t>*>(&tensor_shape));
+    EXPECT_EQ(shape, tensor_shape);
     EXPECT_EQ(t.DataType(), DataTypeImpl::GetType<std::string>());
     auto& location = t.Location();
     ASSERT_STREQ(location.name, CPU);

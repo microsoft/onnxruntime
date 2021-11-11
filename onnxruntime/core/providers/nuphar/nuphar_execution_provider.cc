@@ -377,7 +377,7 @@ Status NupharExecutionProvider::SaveInitializer(
     for (int i = 0; i < dims.size(); ++i)
       shape_dims[i] = dims[i];
 
-    const TensorShape& shape = TensorShape::ReinterpretBaseType(shape_dims);
+    const auto shape = TensorShape::FromExistingBuffer(shape_dims);
     auto data_type = OrtTypeInfo::ElementTypeFromProto(proto->data_type());
     auto t = std::make_unique<Tensor>(
         data_type,

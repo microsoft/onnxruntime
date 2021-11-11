@@ -413,6 +413,41 @@ std::pair<COMPARE_RESULT, std::string> CompareOrtValue(const OrtValue& o, const 
   }
 }
 
+static std::pair<COMPARE_RESULT, std::string> CompareTensorOrtValueAndTensorTypeProto(const ONNX_NAMESPACE::TypeProto_Tensor& t,
+                                                                                      const Ort::Value& o) {
+  // below code doesn't work
+  //if (((TensorTypeBase*)o.Type())->GetElementType() != DataTypeImpl::ElementTypeFromProto(t.elem_type())) {
+  //	return COMPARE_RESULT::TYPE_MISMATCH;
+  //}
+
+  auto info = o.GetTensorTypeAndShapeInfo();
+  ONNXTensorElementDataType real_type = info.GetElementType();
+  ONNXTensorElementDataType expected_type = onnxruntime::utils::CApiElementTypeFromProtoType(t.elem_type());
+  if (real_type != expected_type) {
+    std::ostringstream oss;
+    oss << "expect " << ElementTypeToString((MLDataType)expected_type) << " got "
+        << ElementTypeToString((MLDataType)real_type);
+
+    return std::make_pair(COMPARE_RESULT::TYPE_MISMATCH, oss.str());
+  }
+  std::vector<int64_t> shape = info.GetShape();
+  const auto& tensor_shape_proto = t.shape();
+  if (!AreShapesEqual(shape, tensor_shape_proto)) {
+    std::ostringstream oss;
+    oss << "Tensor shape mismatch, model file expects '";
+    if (tensor_shape_proto.dim_size() == 0) {
+      oss << "(unknown)";
+    } else {
+      oss << tensor_shape_proto;
+    }
+    oss << "', real output is ";
+    VectorToString(shape, oss);
+    return std::make_pair(COMPARE_RESULT::SHAPE_MISMATCH, oss.str());
+  }
+
+  return std::make_pair(COMPARE_RESULT::SUCCESS, "");
+}
+
 std::pair<COMPARE_RESULT, std::string> VerifyValueInfo(const ONNX_NAMESPACE::ValueInfoProto& v, const Ort::Value& o) {
   if (!v.has_type()) return std::make_pair(COMPARE_RESULT::SUCCESS, "");
   if (v.type().has_tensor_type()) {
@@ -421,41 +456,32 @@ std::pair<COMPARE_RESULT, std::string> VerifyValueInfo(const ONNX_NAMESPACE::Val
     }
 
     ::ONNX_NAMESPACE::TypeProto_Tensor t = v.type().tensor_type();
-    // below code doesn't work
-    //if (((TensorTypeBase*)o.Type())->GetElementType() != DataTypeImpl::ElementTypeFromProto(t.elem_type())) {
-    //	return COMPARE_RESULT::TYPE_MISMATCH;
-    //}
-    auto info = o.GetTensorTypeAndShapeInfo();
-    ONNXTensorElementDataType real_type = info.GetElementType();
-    ONNXTensorElementDataType expected_type = onnxruntime::utils::CApiElementTypeFromProtoType(t.elem_type());
-    if (real_type != expected_type) {
-      std::ostringstream oss;
-      oss << "expect " << ElementTypeToString((MLDataType)expected_type) << " got "
-          << ElementTypeToString((MLDataType)real_type);
 
-      return std::make_pair(COMPARE_RESULT::TYPE_MISMATCH, oss.str());
-    }
-    std::vector<int64_t> shape = info.GetShape();
-    const auto& tensor_shape_proto = t.shape();
-    if (!AreShapesEqual(shape, tensor_shape_proto)) {
-      std::ostringstream oss;
-      oss << "Tensor shape mismatch, model file expects '";
-      if (tensor_shape_proto.dim_size() == 0) {
-        oss << "(unknown)";
-      } else {
-        oss << tensor_shape_proto;
-      }
-      oss << "', real output is ";
-      VectorToString(shape, oss);
-      return std::make_pair(COMPARE_RESULT::SHAPE_MISMATCH, oss.str());
-    }
+    return CompareTensorOrtValueAndTensorTypeProto(t, o);
   } else if (v.type().has_sequence_type()) {
     // TODO: CXX API doesn't have IsTensorSequence() supported for Ort::Value
     // TODO: Repeat whatever we did for Tensor above in a loop ?
     return std::make_pair(COMPARE_RESULT::SUCCESS, "");
-  }
+  } else if (v.type().has_optional_type()) {
+    const auto& tp = v.type().optional_type().elem_type();
 
-  else {
+    if (tp.has_tensor_type() && !o.IsTensor()) {
+      return std::make_pair(COMPARE_RESULT::TYPE_MISMATCH, "");
+    }
+
+    // For None, we do not have to validate anything against the ValueInfoProto.
+    // If we have reached this point and are in possession of a None, we have
+    // already ensured that the expected OrtValue is None as well.
+    if (!o.HasValue()) {
+      ::ONNX_NAMESPACE::TypeProto_Tensor t = tp.tensor_type();
+
+      return CompareTensorOrtValueAndTensorTypeProto(t, o);
+    }
+
+    // TODO: Deal with sequences the same way we choose to deal with it
+    // in the above else if()
+
+  } else {
     // Cannot do this check for tensor/sequence of tensor type.
     // For tensor type, o.Type() is TensorTypeBase*, but p points to a subclass of TensorTypeBase
     // For sequences of tensor type, o.Type() is SequenceTensorTypeBase*, but p points to a subclass of SequenceTensorTypeBase
@@ -465,6 +491,7 @@ std::pair<COMPARE_RESULT, std::string> VerifyValueInfo(const ONNX_NAMESPACE::Val
       return std::make_pair(COMPARE_RESULT::TYPE_MISMATCH, "");
     }
   }
+
   return std::make_pair(COMPARE_RESULT::SUCCESS, "");
 }
 }  // namespace onnxruntime

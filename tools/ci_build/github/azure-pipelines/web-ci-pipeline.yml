@@ -15,11 +15,13 @@ variables:
   #   VersionSuffix
 
   ${{ if eq(parameters.NpmPublish, 'nightly (@dev)') }}:
-    VersionSuffix: '-dev.${YYYYMMDD}.${REV}'
+    NpmPackagingMode: 'dev'
   ${{ if eq(parameters.NpmPublish, 'release candidate (@rc)') }}:
-    VersionSuffix: '-rc'
+    NpmPackagingMode: 'rc'
   ${{ if eq(parameters.NpmPublish, 'production (@latest)') }}:
-    VersionSuffix: ''
+    NpmPackagingMode: 'release'
+  ${{ if eq(parameters.NpmPublish, 'custom') }}:
+    NpmPackagingMode: '$(VersionSuffix)'
 
 stages:
 - stage: Extract_commit
@@ -58,6 +60,7 @@ stages:
     parameters:
       CommitOverride: true
       BuildConfig: 'Debug'
+      NpmPackagingMode: '$(NpmPackagingMode)'
 
 - stage: Build_wasm_Release
   dependsOn: Extract_commit
@@ -73,9 +76,9 @@ stages:
   jobs:
   - template: templates/win-web-ci.yml
     parameters:
-      NpmVersionSuffix: '$(VersionSuffix)'
       CommitOverride: true
       BuildConfig: 'Release'
+      NpmPackagingMode: '$(NpmPackagingMode)'
 
 - stage: Test_web_BrowserStack
   dependsOn: Build_wasm_Release

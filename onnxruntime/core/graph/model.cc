@@ -46,7 +46,8 @@ Model::Model(const std::string& graph_name,
              const IOnnxRuntimeOpSchemaRegistryList& local_registries,
              const std::unordered_map<std::string, int>& domain_to_version,
              const std::vector<ONNX_NAMESPACE::FunctionProto>& model_local_functions,
-             const logging::Logger& logger)
+             const logging::Logger& logger,
+             bool allow_released_opsets_only)
     : model_path_(Path::Parse(model_path)) {
   model_proto_.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
   model_proto_.mutable_graph()->set_name(graph_name);
@@ -62,11 +63,16 @@ Model::Model(const std::string& graph_name,
     schema_registry->RegisterRegistry(schema_collection);
   }
 
-  auto allow_released_opsets_only =
-      model_load_utils::IsAllowReleasedONNXOpsetsOnlySet();
+  // IsAllowReleasedONNXOpsetsOnlySet() checks for the appropriate env var in the process (i.e.) process-wide
+  // `allow_released_opsets_only` is for this specific Model instance
+  // We will only support released opsets iff IsAllowReleasedONNXOpsetsOnlySet() and `allow_released_opsets_only`
+  // are both true
+  auto allow_released_opsets_only_final =
+      allow_released_opsets_only && model_load_utils::IsAllowReleasedONNXOpsetsOnlySet();
+
   auto* p_domain_to_version = &domain_to_version;
   DomainToVersionMap domain_to_version_static;
-  domain_to_version_static = allow_released_opsets_only
+  domain_to_version_static = allow_released_opsets_only_final
                                  ? schema_registry->GetLastReleasedOpsetVersions(is_onnx_domain_only)
                                  : schema_registry->GetLatestOpsetVersions(is_onnx_domain_only);
   if (p_domain_to_version->empty()) {
@@ -75,7 +81,7 @@ Model::Model(const std::string& graph_name,
 
   for (const auto& domain : *p_domain_to_version) {
     model_load_utils::ValidateOpsetForDomain(
-        domain_to_version_static, logger, allow_released_opsets_only,
+        domain_to_version_static, logger, allow_released_opsets_only_final,
         domain.first, domain.second);
     const gsl::not_null<OperatorSetIdProto*> opset_id_proto{model_proto_.add_opset_import()};
     opset_id_proto->set_domain(domain.first);
@@ -96,13 +102,14 @@ Model::Model(const std::string& graph_name,
 }
 
 Model::Model(const ModelProto& model_proto, const PathString& model_path,
-             const IOnnxRuntimeOpSchemaRegistryList* local_registries, const logging::Logger& logger)
-    : Model(ModelProto(model_proto), model_path, local_registries, logger) {
+             const IOnnxRuntimeOpSchemaRegistryList* local_registries, const logging::Logger& logger,
+             bool allow_released_opsets_only)
+    : Model(ModelProto(model_proto), model_path, local_registries, logger, allow_released_opsets_only) {
 }
 
 Model::Model(ModelProto&& model_proto, const PathString& model_path,
              const IOnnxRuntimeOpSchemaRegistryList* local_registries,
-             const logging::Logger& logger)
+             const logging::Logger& logger, bool allow_released_opsets_only)
     : model_path_(Path::Parse(model_path)) {
   if (!utils::HasGraph(model_proto)) {
     ORT_THROW("ModelProto does not have a graph.");
@@ -136,8 +143,13 @@ Model::Model(ModelProto&& model_proto, const PathString& model_path,
     }
   }
 
-  bool allow_official_onnx_release_only =
-      model_load_utils::IsAllowReleasedONNXOpsetsOnlySet();
+  // IsAllowReleasedONNXOpsetsOnlySet() checks for the appropriate env var in the process (i.e.) process-wide
+  // `allow_released_opsets_only` is for this specific Model instance
+  // We will only support released opsets iff IsAllowReleasedONNXOpsetsOnlySet() and `allow_released_opsets_only`
+  // are both true
+  auto allow_official_onnx_release_only_final =
+      allow_released_opsets_only && model_load_utils::IsAllowReleasedONNXOpsetsOnlySet();
+
   const auto onnx_released_versions =
       schema_registry->GetLastReleasedOpsetVersions(false);
 
@@ -159,7 +171,7 @@ Model::Model(ModelProto&& model_proto, const PathString& model_path,
     }
 
     model_load_utils::ValidateOpsetForDomain(onnx_released_versions, logger,
-                                             allow_official_onnx_release_only, domain, version);
+                                             allow_official_onnx_release_only_final, domain, version);
 
     // We need to overwrite the domain here with ("") or else the loop below will try to find ("")
     // in the map and if not found (when domain == kOnnxDomainAlias), adds an entry for ("", 11).
@@ -171,7 +183,7 @@ Model::Model(ModelProto&& model_proto, const PathString& model_path,
     }
   }
 
-  auto domain_map = allow_official_onnx_release_only
+  auto domain_map = allow_official_onnx_release_only_final
                         ? schema_registry->GetLastReleasedOpsetVersions(false)
                         : schema_registry->GetLatestOpsetVersions(false);
   for (const auto& domain : domain_map) {
@@ -355,15 +367,17 @@ Status Model::Load(const ModelProto& model_proto,
 Status Model::Load(ModelProto&& model_proto,
                    std::shared_ptr<Model>& model,
                    const IOnnxRuntimeOpSchemaRegistryList* local_registries,
-                   const logging::Logger& logger) {
-  return Model::Load(std::move(model_proto), PathString{}, model, local_registries, logger);
+                   const logging::Logger& logger,
+                   bool allow_released_opsets_only) {
+  return Model::Load(std::move(model_proto), PathString{}, model, local_registries, logger, allow_released_opsets_only);
 }
 
 Status Model::Load(ModelProto&& model_proto,
                    const PathString& model_path,
                    std::shared_ptr<Model>& model,
                    const IOnnxRuntimeOpSchemaRegistryList* local_registries,
-                   const logging::Logger& logger) {
+                   const logging::Logger& logger,
+                   bool allow_released_opsets_only) {
   // we expect a graph to be present
   if (!utils::HasGraph(model_proto)) {
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "No graph was found in the protobuf.");
@@ -373,7 +387,7 @@ Status Model::Load(ModelProto&& model_proto,
   GSL_SUPPRESS(r .11)
   auto status = Status::OK();
   ORT_TRY {
-    model.reset(new Model(std::move(model_proto), model_path, local_registries, logger));
+    model.reset(new Model(std::move(model_proto), model_path, local_registries, logger, allow_released_opsets_only));
   }
   ORT_CATCH(const std::exception& ex) {
     ORT_HANDLE_EXCEPTION([&]() {

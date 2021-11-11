@@ -240,7 +240,7 @@ std::vector<int64_t> ChannelFirstToLastPerm(size_t rank) {
 }
 
 // Adds 1 dimensions to indices of shape corresponding to axes. Unsafe if axes has negative/duplicated entries.
-static std::vector<int64_t> UnsqueezeShape(const std::vector<int64_t>& shape, const std::vector<int64_t>& axes) {
+static std::vector<int64_t> UnsqueezeShape(gsl::span<const int64_t> shape, const std::vector<int64_t>& axes) {
   size_t new_rank = shape.size() + axes.size();
   std::vector<int64_t> new_shape(new_rank);
 
@@ -908,7 +908,7 @@ void PermuteInput(api::GraphRef& graph, api::NodeRef& node, size_t i, const std:
   auto constant = graph.GetConstant(input);
   if (constant != nullptr) {
     auto shape = constant->Shape();
-    if (shape.size() == 1 && shape[0] == rank_int) {
+    if (shape.size() == 1 && (shape[0] == rank_int || shape[0] == 0)) {
       // Create new transposed initializer
       std::vector<uint8_t> data = constant->Data();
       std::vector<uint8_t> new_data(data.size());
