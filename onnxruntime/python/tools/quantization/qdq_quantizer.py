@@ -57,6 +57,9 @@ class QDQQuantizer(ONNXQuantizer):
         if self.dedicated_qdq_pair:
             self.tensor_to_its_receiving_nodes = {}
 
+        # Channel axis when per_channel is True
+        self.qdq_channel_axis = 0 if 'QDQChannelAxis' not in extra_options else extra_options['QDQChannelAxis']
+
         # In TRT, it recommended to add QDQ pair to inputs of Add node followed by ReduceMean node. 
         # If True and Add node is in op_types_to_quantize, other Add nodes that don't meet the requirement above won't be adding QDQ pair.
         if "Add" in self.op_types_to_quantize:

@@ -198,6 +198,7 @@ def quantize_static(model_input,
                                             If True, it will create identical and dedicated QDQ pair for each node.  
             AddQDQToAddNodeFollowedByReduceMeanNode = True/False : Default is False. It adds QDQ pairs to every Add node if Add op type is in op_types_to_quantize.
                                                                    If True, only Add node followed by ReduceMean node is going to be added QDQ pair. 
+            QDQChannelAxis = Integer : Default is 0. Channel axis for QDQ pair when per_channel is True.
     '''
 
     mode = QuantizationMode.QLinearOps

@@ -20,6 +20,6 @@ class QDQOperatorBase:
 
         for tensor_name in nodes_to_iterate:
             if self.quantizer.is_per_channel():
-                self.quantizer.quantize_tensor_per_channel(tensor_name, 1)
+                self.quantizer.quantize_tensor_per_channel(tensor_name, self.quantizer.qdq_channel_axis)
             else:
                 self.quantizer.quantize_tensor(tensor_name)
