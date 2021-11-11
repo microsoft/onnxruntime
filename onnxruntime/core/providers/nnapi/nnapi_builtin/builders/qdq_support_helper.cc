@@ -86,7 +86,7 @@ QDQ::NodeGroupNonIndex QDQSupportHelper::GetQDQNodeGroup(const GraphViewer& grap
   QDQ::NodeGroupNonIndex qdq_node_group_nonindex;
 
   // Obtain the qdq node group from the qdq node index group
-  if (qdq_node_group.target_node != NULL) {
+  if (qdq_node_group.target_node != 0) {
     qdq_node_group_nonindex.target_node = &node;
     nodes_in_qdq_group.insert(&node);
   }
@@ -96,7 +96,6 @@ QDQ::NodeGroupNonIndex QDQSupportHelper::GetQDQNodeGroup(const GraphViewer& grap
       const auto* dq_node = graph_viewer.GetNode(idx);
       qdq_node_group_nonindex.dq_nodes.push_back(dq_node);
       nodes_in_qdq_group.insert(dq_node);
-      std::cout << "push back dq nodes" << std::endl;
     }
   }
   if (!qdq_node_group.q_nodes.empty()) {

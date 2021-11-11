@@ -70,8 +70,6 @@ class QDQSupportHelper {
   std::unordered_map<std::string, const Selector*> op_type_to_selectors_map_;
 
   std::unordered_set<const Node*> nodes_in_qdq_group;
-
-  // TODO: Add unordered_set to store the nodes in qdq_group
 };
 
 /* Selector Rules Related */
