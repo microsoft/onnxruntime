@@ -67,6 +67,14 @@ set_target_properties(onnxruntime_framework PROPERTIES FOLDER "ONNXRuntime")
 # need onnx to build to create headers that this project includes
 add_dependencies(onnxruntime_framework ${onnxruntime_EXTERNAL_DEPENDENCIES})
 
+#XXX: Experimental
+if(WIN32 AND onnxruntime_USE_JEMALLOC)
+  target_include_directories(onnxruntime_framework PRIVATE
+                      D:/dev/oss/Jemalloc/include/
+                      D:/dev/oss/Jemalloc/include/msvc_compat)
+  target_link_libraries(onnxruntime_common onnxruntime_jemalloc_shim)
+endif()
+
 # In order to find the shared provider libraries we need to add the origin to the rpath for all executables we build
 # For the shared onnxruntime library, this is set in onnxruntime.cmake through CMAKE_SHARED_LINKER_FLAGS
 # But our test files don't use the shared library so this must be set for them.

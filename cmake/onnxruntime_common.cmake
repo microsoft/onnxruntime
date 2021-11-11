@@ -75,6 +75,12 @@ file(GLOB onnxruntime_common_src CONFIGURE_DEPENDS
     ${onnxruntime_common_src_patterns}
     )
 
+if(WIN32 AND onnxruntime_USE_JEMALLOC)
+    list(REMOVE_ITEM onnxruntime_common_src 
+    "${ONNXRUNTIME_ROOT}/core/platform/windows/debug_alloc.cc"
+    "${ONNXRUNTIME_ROOT}/core/platform/windows/debug_alloc.h")
+endif()
+
 source_group(TREE ${REPO_ROOT} FILES ${onnxruntime_common_src})
 
 onnxruntime_add_static_library(onnxruntime_common ${onnxruntime_common_src})
@@ -95,6 +101,27 @@ if (onnxruntime_USE_MIMALLOC_STL_ALLOCATOR OR onnxruntime_USE_MIMALLOC_ARENA_ALL
         list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES mimalloc-static)
         target_link_libraries(onnxruntime_common mimalloc-static)
     endif()
+endif()
+
+if(WIN32 AND onnxruntime_USE_JEMALLOC)
+    if (onnxruntime_USE_MIMALLOC_STL_ALLOCATOR OR onnxruntime_USE_MIMALLOC_ARENA_ALLOCATOR)
+        message(WARNING "Can't use JEMALLOC with MIMALLOC at the same time")
+    elseif (${CMAKE_CXX_COMPILER_ID} MATCHES "GNU")
+        # Some of the non-windows targets see strange runtime failures
+        message(WARNING "Ignoring request to link to mimalloc - only windows supported")
+    endif()
+#XXX: experimental
+    file(GLOB onnxruntime_jemalloc_shim_src
+             "${ONNXRUNTIME_ROOT}/core/platform/windows/jemalloc/*.cc")
+    add_library(onnxruntime_jemalloc_shim ${onnxruntime_jemalloc_shim_src})
+    target_include_directories(onnxruntime_jemalloc_shim PRIVATE
+                        D:/dev/oss/Jemalloc/include/
+                        D:/dev/oss/Jemalloc/include/msvc_compat)
+#XXX: May want to change to IMPORTED library.
+    target_link_libraries(onnxruntime_jemalloc_shim D:/dev/oss/Jemalloc/build/${CMAKE_BUILD_TYPE}/jemalloc.lib)
+
+    add_definitions(-DUSE_JEMALLOC -DJEMALLOC_EXPORT=)
+    target_link_libraries(onnxruntime_common onnxruntime_jemalloc_shim)
 endif()
 
 onnxruntime_add_include_to_target(onnxruntime_common date_interface wil)

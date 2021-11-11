@@ -69,13 +69,23 @@ std::ostream& operator<<(std::ostream& out, const TensorProto& tensor_proto) {
 }  // namespace ONNX_NAMESPACE
 
 namespace onnxruntime {
+#ifdef USE_JEMALLOC
+namespace port {
+void* ort_jemalloc_aligned_alloc(size_t size, size_t alignment) noexcept;
+void ort_jemalloc_dellocate(void* p) noexcept;
+} // port
+#endif // USE_JEMALLOC
 namespace utils {
 void* DefaultAlloc(size_t size) {
   if (size <= 0) return nullptr;
   void* p;
   size_t alignment = MlasGetPreferredBufferAlignment();
 #if _MSC_VER
+#ifdef USE_JEMALLOC
+  p = port::ort_jemalloc_aligned_alloc(size, alignment);
+#else
   p = _aligned_malloc(size, alignment);
+#endif // USE_JEMALLOC
   if (p == nullptr)
     ORT_THROW_EX(std::bad_alloc);
 #elif defined(_LIBCPP_SGX_CONFIG)
@@ -92,7 +102,13 @@ void* DefaultAlloc(size_t size) {
 
 void DefaultFree(void* p) {
 #if _MSC_VER
+#ifdef USE_JEMALLOC
+  if (p) {
+    port::ort_jemalloc_dellocate(p);
+  }
+#else
   _aligned_free(p);
+#endif // USE_JEMALLOC
 #else
   free(p);
 #endif
