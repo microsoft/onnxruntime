@@ -127,7 +127,11 @@ void CheckKernelDefHashes(const KernelDefHashes& actual, const KernelDefHashes& 
         "Some expected kernel def hashes were not found.\n",
         kNoteReference, "\n",
         DumpKernelDefHashes(expected_minus_actual));
-    ADD_FAILURE() << message;
+    if (is_strict) {
+      ADD_FAILURE() << message;
+    } else {
+      std::cerr << message << "\n";
+    }
   }
 
   KernelDefHashes actual_minus_expected{};

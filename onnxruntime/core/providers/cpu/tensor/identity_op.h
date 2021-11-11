@@ -39,6 +39,8 @@ class IdentityOp final : public OpKernel {
       ORT_RETURN_IF_ERROR(utils::OutputOptionalWithoutDataHelper(*input_type_proto, context, 0));
       return Status::OK();
     }
+#else
+    ORT_UNUSED_PARAMETER(input_type_proto);
 #endif
 
     if (input_ort_value->IsTensor()) {

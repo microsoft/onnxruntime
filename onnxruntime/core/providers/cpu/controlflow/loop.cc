@@ -533,6 +533,7 @@ Status LoopImpl::Execute(const FeedsFetchesManager& ffm) {
                                                                  output_idx));
     } else if (input.IsTensor()) {
 #else
+    ORT_UNUSED_PARAMETER(tp);
     if (input.IsTensor()) {
 #endif
       const auto& input_tensor = input.Get<Tensor>();
