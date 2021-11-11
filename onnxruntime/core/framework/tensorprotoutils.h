@@ -45,7 +45,6 @@ std::vector<int64_t> GetTensorShapeFromTensorProto(const ONNX_NAMESPACE::TensorP
  */
 common::Status TensorProtoToMLValue(const Env& env, const ORTCHAR_T* tensor_proto_path,
                                     const ONNX_NAMESPACE::TensorProto& input, const MemBuffer& m, OrtValue& value);
-
 /**
  * @brief Deserialize a TensorProto into a preallocated empty Tensor
  * @param env
