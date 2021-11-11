@@ -20,24 +20,6 @@ using std::vector;
 
 using OpVersionsMap = std::unordered_map<std::string, std::vector<ONNX_NAMESPACE::OperatorSetVersion>>;
 
-void ConvQDQRules(Selectors& qdq_selectors) {
-  // 4 or 5 Nodes. 0=DQ X, 1=DQ W, 2=DQ B (optional), 3=Conv, 4=Q
-  // Handle the DQ input for the Bias being optional.
-
-  std::unique_ptr<QDQ::BaseSelector> selector(new QDQ::ConvSelector());
-
-  qdq_selectors.RegisterSelector(OpVersionsMap{{"Conv", {}}},
-                                 std::move(selector));
-}
-
-Selectors CreateSelectors() {
-  Selectors qdq_selectors;
-
-  ConvQDQRules(qdq_selectors);
-
-  return qdq_selectors;
-}
-
 QDQSupportHelper::QDQSupportHelper(Selectors&& selectors)
     : selectors_{std::move(selectors)} {
   for (const auto& entry : selectors_.SelectorsSet()) {
@@ -58,8 +40,8 @@ void Selectors::RegisterSelector(const Selector::OpVersionsMap& ops_and_versions
   ORT_IGNORE_RETURN_VALUE(selectors_set_.insert(std::move(entry)));
 }
 
-std::optional<QDQ::NodeGroup> QDQSupportHelper::Match(const GraphViewer& graph_viewer, const Node& node) const {
-  std::optional<QDQ::NodeGroup> qdq_node_group;
+QDQ::NodeGroup QDQSupportHelper::Match(const GraphViewer& graph_viewer, const Node& node) const {
+  QDQ::NodeGroup qdq_node_group;
 
   if (node.Domain() != kOnnxDomain) {
     return qdq_node_group;
@@ -87,29 +69,52 @@ std::optional<QDQ::NodeGroup> QDQSupportHelper::Match(const GraphViewer& graph_v
     return qdq_node_group;
   }
 
+  qdq_node_group = *node_selection_opt;
+
   LOGS_DEFAULT(VERBOSE) << "QDQ Node Group found: " << node.OpType()
                         << " with matched target node's name: " << node.Name() << "\n";
 
   return qdq_node_group;
 }
 
-bool QDQSupportHelper::IsNodeInQDQGroup(const Node& node) {
-  return target_node_to_qdq_group_.find(&node) != target_node_to_qdq_group_.end();
+bool QDQSupportHelper::IsNodeInQDQGroup(const Node& node) const {
+  return nodes_in_qdq_group.find(&node) != nodes_in_qdq_group.end();
 }
 
-std::optional<QDQ::NodeGroup> QDQSupportHelper::GetQDQNodeGroup(const GraphViewer& graph_viewer, const Node& node) {
+QDQ::NodeGroupNonIndex QDQSupportHelper::GetQDQNodeGroup(const GraphViewer& graph_viewer, const Node& node) {
   auto qdq_node_group = Match(graph_viewer, node);
+  QDQ::NodeGroupNonIndex qdq_node_group_nonindex;
 
-  if (qdq_node_group != std::nullopt) {
-    auto it = target_node_to_qdq_group_.find(&node);
-    if (it != target_node_to_qdq_group_.end()) {
-      it->second = qdq_node_group;
-    } else {
-      target_node_to_qdq_group_.emplace(&node, qdq_node_group);
+  // Obtain the qdq node group from the qdq node index group
+  if (qdq_node_group.target_node != NULL) {
+    qdq_node_group_nonindex.target_node = &node;
+    nodes_in_qdq_group.insert(&node);
+  }
+
+  if (!qdq_node_group.dq_nodes.empty()) {
+    for (auto idx : qdq_node_group.dq_nodes) {
+      const auto* dq_node = graph_viewer.GetNode(idx);
+      qdq_node_group_nonindex.dq_nodes.push_back(dq_node);
+      nodes_in_qdq_group.insert(dq_node);
+      std::cout << "push back dq nodes" << std::endl;
+    }
+  }
+  if (!qdq_node_group.q_nodes.empty()) {
+    for (auto idx : qdq_node_group.q_nodes) {
+      const auto* q_node = graph_viewer.GetNode(idx);
+      qdq_node_group_nonindex.q_nodes.push_back(q_node);
+      nodes_in_qdq_group.insert(q_node);
     }
   }
 
-  return qdq_node_group;
+  auto it = target_node_to_qdq_group_.find(&node);
+  if (it != target_node_to_qdq_group_.end()) {
+    it->second = qdq_node_group_nonindex;
+  } else {
+    target_node_to_qdq_group_.emplace(&node, qdq_node_group_nonindex);
+  }
+
+  return qdq_node_group_nonindex;
 }
 
 void QDQSupportHelper::GetQDQNodeGroups(const GraphViewer& graph_viewer) {
@@ -118,6 +123,25 @@ void QDQSupportHelper::GetQDQNodeGroups(const GraphViewer& graph_viewer) {
     auto qdq_node_group = GetQDQNodeGroup(graph_viewer, *node);
     qdq_node_groups_.push_back(qdq_node_group);
   }
+}
+
+/* Selector Rules Related */
+void ConvQDQRules(Selectors& qdq_selectors) {
+  // 4 or 5 Nodes. 0=DQ X, 1=DQ W, 2=DQ B (optional), 3=Conv, 4=Q
+  // Handle the DQ input for the Bias being optional.
+
+  std::unique_ptr<QDQ::BaseSelector> selector(new QDQ::ConvSelector());
+
+  qdq_selectors.RegisterSelector(OpVersionsMap{{"Conv", {}}},
+                                 std::move(selector));
+}
+
+Selectors CreateSelectors() {
+  Selectors qdq_selectors;
+
+  ConvQDQRules(qdq_selectors);
+
+  return qdq_selectors;
 }
 
 }  // namespace nnapi

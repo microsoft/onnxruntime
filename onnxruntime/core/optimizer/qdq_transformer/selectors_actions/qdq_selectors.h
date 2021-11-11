@@ -20,6 +20,12 @@ struct NodeGroup {
   NodeIndex target_node;
 };
 
+struct NodeGroupNonIndex {
+  std::vector<const Node*> dq_nodes;
+  std::vector<const Node*> q_nodes;
+  const Node* target_node;
+};
+
 // Base QDQ checker. Finds and provides the DQ and Q nodes to the operator specific checkers, as the QDQ optimizations
 // always involve those nodes.
 class BaseSelector : public NodeSelector {

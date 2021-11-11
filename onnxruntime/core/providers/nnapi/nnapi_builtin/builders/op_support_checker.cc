@@ -739,8 +739,12 @@ bool ConvOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initial
 
   std::string weight_name;
   if (params.qdq_support_helper->IsNodeInQDQGroup(node)) {
-    const auto* dq_w = params.qdq_support_helper->dq_nodes_in_qdq_selection.at(1);
-    weight_name = dq_w->InputDefs()[0]->Name();
+    auto qdq_group_map = params.qdq_support_helper->target_node_to_qdq_group_;
+    auto qdq_group = qdq_group_map.find(&node)->second;
+    if (!qdq_group.dq_nodes.empty()) {
+      const auto* dq_w = qdq_group.dq_nodes.at(1);
+      weight_name = dq_w->InputDefs()[0]->Name();
+    }
   } else {
     weight_name = input_defs[w_idx]->Name();
   }

@@ -46,7 +46,6 @@ class Selectors {
 
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(Selectors);
 
- private:
   std::unordered_set<std::unique_ptr<Selector>> selectors_set_;
 };
 
@@ -54,23 +53,25 @@ class QDQSupportHelper {
  public:
   QDQSupportHelper(Selectors&& selectors);
 
-  std::optional<QDQ::NodeGroup> Match(const GraphViewer& graph_viewer, const Node& node) const;
+  QDQ::NodeGroup Match(const GraphViewer& graph_viewer, const Node& node) const;
 
-  bool IsNodeInQDQGroup(const Node& node);
+  bool IsNodeInQDQGroup(const Node& node) const;
 
-  std::optional<QDQ::NodeGroup> GetQDQNodeGroup(const onnxruntime::GraphViewer& graph_viewer, const Node& node);
+  QDQ::NodeGroupNonIndex GetQDQNodeGroup(const onnxruntime::GraphViewer& graph_viewer, const Node& node);
 
   void GetQDQNodeGroups(const onnxruntime::GraphViewer& graph_viewer);
 
   Selectors selectors_;
 
-  std::vector<std::optional<QDQ::NodeGroup>> qdq_node_groups_;
+  std::vector<QDQ::NodeGroupNonIndex> qdq_node_groups_;
 
-  std::unordered_map<const Node*, std::optional<QDQ::NodeGroup>> target_node_to_qdq_group_;
+  std::unordered_map<const Node*, QDQ::NodeGroupNonIndex> target_node_to_qdq_group_;
 
   std::unordered_map<std::string, const Selector*> op_type_to_selectors_map_;
 
-  std::vector<const Node*> dq_nodes_in_qdq_selection;
+  std::unordered_set<const Node*> nodes_in_qdq_group;
+
+  // TODO: Add unordered_set to store the nodes in qdq_group
 };
 
 /* Selector Rules Related */

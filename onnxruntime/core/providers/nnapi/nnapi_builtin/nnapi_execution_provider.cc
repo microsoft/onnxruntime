@@ -128,24 +128,28 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
 
   const auto is_node_supported = [&](const Node& node) -> bool {
     const bool excluded = check_excluded_nodes && Contains(excluded_nodes, &node);
-
+    bool supported = false;
     if (params.qdq_support_helper->IsNodeInQDQGroup(node)) {
-      auto qdq_node_group = params.qdq_support_helper->target_node_to_qdq_group_.at(&node);
-      for (auto idx : qdq_node_group->dq_nodes) {
-        const auto* dq_node = graph_viewer.GetNode(idx);
-        params.qdq_support_helper->dq_nodes_in_qdq_selection.push_back(dq_node);
-      }
+      supported = !excluded &&
+                  nnapi::IsNodeSupportedInGroup(node, graph_viewer, params,
+                                                node_outputs_in_current_group);
+      // For debug purpose, will delete later
+      LOGS_DEFAULT(VERBOSE) << "QDQ: Operator type: [" << node.OpType()
+                            << "] index: [" << node.Index()
+                            << "] name: [" << node.Name()
+                            << "] supported: [" << supported
+                            << "]";
+    } else {
+      supported = !excluded &&
+                  nnapi::IsNodeSupportedInGroup(node, graph_viewer, params,
+                                                node_outputs_in_current_group);
+
+      LOGS_DEFAULT(VERBOSE) << "Operator type: [" << node.OpType()
+                            << "] index: [" << node.Index()
+                            << "] name: [" << node.Name()
+                            << "] supported: [" << supported
+                            << "]";
     }
-
-    const bool supported = !excluded &&
-                           nnapi::IsNodeSupportedInGroup(node, graph_viewer, params,
-                                                         node_outputs_in_current_group);
-
-    LOGS_DEFAULT(VERBOSE) << "Operator type: [" << node.OpType()
-                          << "] index: [" << node.Index()
-                          << "] name: [" << node.Name()
-                          << "] supported: [" << supported
-                          << "]";
 
     if (supported) {
       // We want to save all the output names of nodes in the current group for easy query
@@ -199,13 +203,14 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
 }
 
 #ifdef __ANDROID__
-static Status GetOutputBuffer(Ort::CustomOpApi& ort,
-                              OrtKernelContext* context,
-                              const nnapi::Model& model,
-                              const std::string& output_name,
-                              const std::vector<uint32_t>& output_shape,
-                              const android::nn::wrapper::Type output_type,
-                              void** output_buffer) ORT_MUST_USE_RESULT;
+static Status
+GetOutputBuffer(Ort::CustomOpApi& ort,
+                OrtKernelContext* context,
+                const nnapi::Model& model,
+                const std::string& output_name,
+                const std::vector<uint32_t>& output_shape,
+                const android::nn::wrapper::Type output_type,
+                void** output_buffer) ORT_MUST_USE_RESULT;
 
 static Status GetOutputBuffer(Ort::CustomOpApi& ort,
                               OrtKernelContext* context,
@@ -447,8 +452,9 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<FusedNodeAndGra
   return Status::OK();
 }
 #else
-common::Status NnapiExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
-                                               std::vector<NodeComputeInfo>& node_compute_funcs) {
+common::Status
+NnapiExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
+                                std::vector<NodeComputeInfo>& node_compute_funcs) {
   for (const auto& fused_node_and_graph : fused_nodes_and_graphs) {
     ORT_UNUSED_PARAMETER(fused_node_and_graph);
     NodeComputeInfo compute_info;
