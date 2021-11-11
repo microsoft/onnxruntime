@@ -12,13 +12,18 @@ nav_order: 2
 * TOC
 {:toc}
 
-# Initial setup for ONNX Runtime Mobile
+# Initial setup if using a pre-built package
 
-## Initial setup if using a pre-built package
+## Install ONNX Runtime python package
 
-### Android
+Install the onnxruntime python package from [https://pypi.org/project/onnxruntime/](https://pypi.org/project/onnxruntime/) in order to convert models from ONNX format to the internal ORT format.
+Version v1.8 or higher is required.
 
-##### Java/Kotlin
+- `pip install onnxruntime` will install the latest release
+
+## Android
+
+### Java/Kotlin
 
 In your Android Studio Project, make the following changes to:
 
@@ -36,16 +41,16 @@ In your Android Studio Project, make the following changes to:
     }
     ```
 
-##### C/C++
+### C/C++
 
 Download the onnxruntime-mobile AAR hosted at [MavenCentral](https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-mobile), change the file extension from `.aar` to `.zip`, and unzip it. Include the header files from the `headers` folder, and the relevant `libonnxruntime.so` dynamic library from the `jni` folder in your NDK project.
 
 
-### iOS
+## iOS
 
 In your CocoaPods `Podfile`, add the `onnxruntime-mobile-c` or `onnxruntime-mobile-objc` pod depending on which API you wish to use.
 
-##### C/C++
+### C/C++
 
   ```
   use_frameworks!
@@ -53,7 +58,7 @@ In your CocoaPods `Podfile`, add the `onnxruntime-mobile-c` or `onnxruntime-mobi
   pod 'onnxruntime-mobile-c'
   ```
 
-##### Objective-C
+### Objective-C
 
   ```
   use_frameworks!
@@ -63,16 +68,21 @@ In your CocoaPods `Podfile`, add the `onnxruntime-mobile-c` or `onnxruntime-mobi
 
 Run `pod install`.
 
-### Install ONNX Runtime python package
+## Web
 
-Install the onnxruntime python package from [https://pypi.org/project/onnxruntime/](https://pypi.org/project/onnxruntime/) in order to convert models from ONNX format to the internal ORT format.
-Version v1.8 or higher is required.
+In your web application project, add NPM package `onnxruntime-web` as your dependency.
 
-- `pip install onnxruntime` will install the latest release
+```sh
+# use NPM to install ONNX Runtime Web
+npm install onnxruntime-web
 
-## Initial setup if performing a custom build
+# or, use yarn to install ONNX Runtime Web
+yarn add onnxruntime-web
+```
 
-### Clone ONNX Runtime repository
+# Initial setup if performing a custom build
+
+## Clone ONNX Runtime repository
 
 Use git to clone the ONNX Runtime repository
   - `git clone --recursive https://github.com/Microsoft/onnxruntime`
@@ -86,7 +96,7 @@ Select the branch you wish to use. The latest release is recommended.
 It is suggested you do not use the unreleased 'master' branch unless there is a specific new feature you require.
 
 | Release | Date | Branch |
-|---------|--------|
+|---------|------|--------|
 | 1.9 | 2021-09-22 | rel-1.9.1 |
 | 1.8 | 2021-06-02 | rel-1.8.2 |
 | 1.7 | 2021-03-03 | rel-1.7.2 |
@@ -96,7 +106,7 @@ It is suggested you do not use the unreleased 'master' branch unless there is a 
 
 The directory the ONNX Runtime repository was cloned into is referred to as `<ONNX Runtime repository root>` in this documentation.
 
-### Install ONNX Runtime python package
+## Install ONNX Runtime python package
 
 Install the onnxruntime python package from [https://pypi.org/project/onnxruntime/](https://pypi.org/project/onnxruntime/) in order to convert models from ONNX format to the internal ORT format. Version 1.5.3 or higher is required.
 
@@ -109,10 +119,6 @@ You must match the python package version to the branch of the ONNX Runtime repo
 
 If you are using the `master` branch in the git repository you should use the nightly ONNX Runtime python package
   - `pip install -U -i https://test.pypi.org/simple/ ort-nightly`
-
-# Initial setup for ONNX Runtime Web
-
-TBD
 
 -------
 
