@@ -44,6 +44,7 @@ struct MLAS_GEMM_U8X8_KERNEL_UDOT
 {
     typedef uint8_t PackedAType;
     typedef uint8_t PackedBType;
+    typedef uint8_t OffsetAType;
     typedef uint8_t OffsetBType;
 
     static constexpr size_t PackedK = 8;

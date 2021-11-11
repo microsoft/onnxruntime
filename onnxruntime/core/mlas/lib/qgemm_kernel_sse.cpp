@@ -21,6 +21,7 @@ struct MLAS_GEMM_U8X8_KERNEL_SSE
 {
     typedef int16_t PackedAType;
     typedef int16_t PackedBType;
+    typedef uint8_t OffsetAType;
     typedef int8_t OffsetBType;
 
     static constexpr size_t PackedK = 2;

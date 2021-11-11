@@ -46,6 +46,7 @@ struct MLAS_GEMM_U8X8_KERNEL_NEON
 {
     typedef uint8_t PackedAType;
     typedef uint8_t PackedBType;
+    typedef uint8_t OffsetAType;
     typedef uint8_t OffsetBType;
 
     static constexpr size_t PackedK = 4;
@@ -543,6 +544,7 @@ extern "C" {
 struct MLAS_GEMM_U8S8_KERNEL_NEON {
     typedef uint8_t PackedAType;
     typedef uint8_t PackedBType;
+    typedef uint8_t OffsetAType;
     typedef int8_t OffsetBType;
 
     static constexpr size_t PackedK = 16;
@@ -997,6 +999,7 @@ const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8S8DispatchNeon = {
 struct MLAS_GEMM_S8S8_KERNEL_NEON {
     typedef uint8_t PackedAType;
     typedef uint8_t PackedBType;
+    typedef int8_t OffsetAType;
     typedef int8_t OffsetBType;
 
     static constexpr size_t PackedK = 16;

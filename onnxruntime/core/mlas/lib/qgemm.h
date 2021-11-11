@@ -249,7 +249,7 @@ Return Value:
         Data->ZeroPointB + RangeStartN : nullptr;
     bool IsAccumulateMode = Shape->IsAccumulateMode;
 
-    int32_t ZeroPointA = Data->ZeroPointA;
+    int32_t ZeroPointA = typename KernelType::OffsetAType(Data->ZeroPointA);
     int32_t ZeroPointB = typename KernelType::OffsetBType(*Data->ZeroPointB);
 
     //
@@ -483,7 +483,7 @@ Return Value:
         Data->ZeroPointB + RangeStartN : nullptr;
     bool IsAccumulateMode = Shape->IsAccumulateMode;
 
-    int32_t ZeroPointA = Data->ZeroPointA;
+    int32_t ZeroPointA = typename KernelType::OffsetAType(Data->ZeroPointA);
     int32_t ZeroPointB = typename KernelType::OffsetBType(*Data->ZeroPointB);
 
     //

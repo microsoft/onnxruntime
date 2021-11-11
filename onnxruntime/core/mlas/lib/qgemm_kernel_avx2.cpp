@@ -80,6 +80,7 @@ struct MLAS_GEMM_U8S8_KERNEL_AVX2
 {
     typedef uint8_t PackedAType;
     typedef uint8_t PackedBType;
+    typedef uint8_t OffsetAType;
     typedef int8_t OffsetBType;
 
     static constexpr size_t PackedK = 4;
@@ -193,6 +194,7 @@ struct MLAS_GEMM_U8U8_KERNEL_AVX2
 {
     typedef int16_t PackedAType;
     typedef uint8_t PackedBType;
+    typedef uint8_t OffsetAType;
     typedef uint8_t OffsetBType;
 
     static constexpr size_t PackedK = 2;
