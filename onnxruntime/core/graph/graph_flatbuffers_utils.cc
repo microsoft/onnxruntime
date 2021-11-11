@@ -11,8 +11,7 @@
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
 
-namespace onnxruntime {
-namespace utils {
+namespace onnxruntime::fbs::utils {
 
 #if !defined(ORT_MINIMAL_BUILD)
 
@@ -122,7 +121,7 @@ Status SaveAttributeOrtFormat(flatbuffers::FlatBufferBuilder& builder,
     case fbs::AttributeType::TENSOR: {
       flatbuffers::Offset<fbs::Tensor> fbs_tensor;
       ORT_RETURN_IF_ERROR(
-          utils::SaveInitializerOrtFormat(builder, attr_proto.t(), model_path, fbs_tensor));
+          fbs::utils::SaveInitializerOrtFormat(builder, attr_proto.t(), model_path, fbs_tensor));
       GET_FBS_ATTR(builder, type, t, fbs_tensor);
     } break;
     case fbs::AttributeType::GRAPH: {
@@ -152,7 +151,7 @@ Status SaveAttributeOrtFormat(flatbuffers::FlatBufferBuilder& builder,
       for (const auto& tensor : attr_proto.tensors()) {
         flatbuffers::Offset<fbs::Tensor> fbs_tensor;
         ORT_RETURN_IF_ERROR(
-            utils::SaveInitializerOrtFormat(builder, tensor, model_path, fbs_tensor));
+            fbs::utils::SaveInitializerOrtFormat(builder, tensor, model_path, fbs_tensor));
         fbs_tensors_vec.push_back(fbs_tensor);
       }
       auto tensors = builder.CreateVector(fbs_tensors_vec);
@@ -231,7 +230,7 @@ Status LoadSparseInitializerOrtFormat(const fbs::SparseTensor& fbs_sparse_tensor
 Status LoadAttributeOrtFormat(const fbs::Attribute& fbs_attr,
                               ONNX_NAMESPACE::AttributeProto& attr_proto,
                               std::unique_ptr<onnxruntime::Graph>& sub_graph,
-                              Graph& graph, Node& node,
+                              onnxruntime::Graph& graph, onnxruntime::Node& node,
                               const logging::Logger& logger) {
   attr_proto.Clear();
   LOAD_STR_FROM_ORT_FORMAT(attr_proto, name, fbs_attr.name());
@@ -262,7 +261,7 @@ Status LoadAttributeOrtFormat(const fbs::Attribute& fbs_attr,
       auto fbs_graph = fbs_attr.g();
       ORT_RETURN_IF(nullptr == fbs_graph, "Null graph attribute. Invalid ORT format model.");
       attr_proto.mutable_g()->set_name("Empty graph proto from deserialization of ORT format model");
-      ORT_RETURN_IF_ERROR(Graph::LoadFromOrtFormat(*fbs_graph, graph, node, logger, sub_graph));
+      ORT_RETURN_IF_ERROR(onnxruntime::Graph::LoadFromOrtFormat(*fbs_graph, graph, node, logger, sub_graph));
     } break;
     case AttributeProto_AttributeType_FLOATS: {
       auto fbs_floats = fbs_attr.floats();
@@ -306,5 +305,4 @@ Status LoadAttributeOrtFormat(const fbs::Attribute& fbs_attr,
   return Status::OK();
 }
 
-}  // namespace utils
-}  // namespace onnxruntime
+}  // namespace onnxruntime::fbs::utils

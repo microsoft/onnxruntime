@@ -662,14 +662,14 @@ Status Model::SaveWithExternalInitializers(Model& model,
 
 common::Status Model::SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
                                       flatbuffers::Offset<fbs::Model>& fbs_model) const {
-  auto producer_name = utils::SaveStringToOrtFormat(
+  auto producer_name = fbs::utils::SaveStringToOrtFormat(
       builder, model_proto_.has_producer_name(), model_proto_.producer_name());
-  auto producer_version = utils::SaveStringToOrtFormat(
+  auto producer_version = fbs::utils::SaveStringToOrtFormat(
       builder, model_proto_.has_producer_version(), model_proto_.producer_version());
   auto domain = builder.CreateSharedString(model_proto_.domain());
-  auto doc_string = utils::SaveStringToOrtFormat(
+  auto doc_string = fbs::utils::SaveStringToOrtFormat(
       builder, model_proto_.has_doc_string(), model_proto_.doc_string());
-  auto graph_doc_string = utils::SaveStringToOrtFormat(
+  auto graph_doc_string = fbs::utils::SaveStringToOrtFormat(
       builder, model_proto_.has_graph() && model_proto_.graph().has_doc_string(), model_proto_.graph().doc_string());
 
   std::vector<flatbuffers::Offset<fbs::OperatorSetId>> op_set_ids_vec;
@@ -738,8 +738,8 @@ common::Status Model::LoadFromOrtFormat(const fbs::Model& fbs_model,
     for (const auto* prop : *fbs_metadata_props) {
       ORT_RETURN_IF(nullptr == prop, "Null entry in metadata_props. Invalid ORT format model.");
       std::string key, value;
-      utils::LoadStringFromOrtFormat(key, prop->key());
-      utils::LoadStringFromOrtFormat(value, prop->value());
+      fbs::utils::LoadStringFromOrtFormat(key, prop->key());
+      fbs::utils::LoadStringFromOrtFormat(value, prop->value());
       model->model_metadata_.insert({key, value});
     }
   }
@@ -769,17 +769,17 @@ common::Status Model::LoadFromOrtFormat(const fbs::Model& fbs_model,
     prop->set_value(metadata.second);
   }
 #else
-  utils::LoadStringFromOrtFormat(model->producer_name_, fbs_model.producer_name());
-  utils::LoadStringFromOrtFormat(model->producer_version_, fbs_model.producer_version());
-  utils::LoadStringFromOrtFormat(model->domain_, fbs_model.domain());
-  utils::LoadStringFromOrtFormat(model->doc_string_, fbs_model.doc_string());
-  utils::LoadStringFromOrtFormat(model->graph_doc_string_, fbs_model.graph_doc_string());
+  fbs::utils::LoadStringFromOrtFormat(model->producer_name_, fbs_model.producer_name());
+  fbs::utils::LoadStringFromOrtFormat(model->producer_version_, fbs_model.producer_version());
+  fbs::utils::LoadStringFromOrtFormat(model->domain_, fbs_model.domain());
+  fbs::utils::LoadStringFromOrtFormat(model->doc_string_, fbs_model.doc_string());
+  fbs::utils::LoadStringFromOrtFormat(model->graph_doc_string_, fbs_model.graph_doc_string());
   model->model_version_ = fbs_model.model_version();
   model->ir_version_ = fbs_model.ir_version();
 #endif
 
   std::unordered_map<std::string, int> domain_to_version;
-  ORT_RETURN_IF_ERROR(utils::LoadOpsetImportOrtFormat(fbs_model.opset_import(), domain_to_version));
+  ORT_RETURN_IF_ERROR(fbs::utils::LoadOpsetImportOrtFormat(fbs_model.opset_import(), domain_to_version));
 
   auto fbs_graph = fbs_model.graph();
   ORT_RETURN_IF(nullptr == fbs_graph, "Graph is null. Invalid ORT format model.");

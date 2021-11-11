@@ -28,7 +28,6 @@ namespace onnxruntime {
 namespace fbs {
 struct OperatorSetId;
 struct ValueInfo;
-}  // namespace fbs
 
 namespace utils {
 
@@ -73,4 +72,5 @@ bool IsOrtFormatModel(const std::basic_string<T>& filename) {
 bool IsOrtFormatModelBytes(const void* bytes, int num_bytes);
 
 }  // namespace utils
+}  // namespace fbs
 }  // namespace onnxruntime

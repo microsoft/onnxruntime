@@ -678,7 +678,7 @@ common::Status InferenceSession::Load(const std::string& model_uri) {
   bool has_explicit_type = !model_type.empty();
 
   if ((has_explicit_type && model_type == "ORT") ||
-      (!has_explicit_type && utils::IsOrtFormatModel(model_uri))) {
+      (!has_explicit_type && fbs::utils::IsOrtFormatModel(model_uri))) {
     return LoadOrtModel(model_uri);
   }
 
@@ -701,7 +701,7 @@ common::Status InferenceSession::Load(const std::wstring& model_uri) {
   bool has_explicit_type = !model_type.empty();
 
   if ((has_explicit_type && model_type == "ORT") ||
-      (!has_explicit_type && utils::IsOrtFormatModel(model_uri))) {
+      (!has_explicit_type && fbs::utils::IsOrtFormatModel(model_uri))) {
     return LoadOrtModel(model_uri);
   }
 
@@ -725,7 +725,7 @@ common::Status InferenceSession::Load(const void* model_data, int model_data_len
 
   if ((has_explicit_type && model_type == "ORT") ||
       (!has_explicit_type &&
-       utils::IsOrtFormatModelBytes(model_data, model_data_len))) {
+       fbs::utils::IsOrtFormatModelBytes(model_data, model_data_len))) {
     return LoadOrtModel(model_data, model_data_len);
   }
 
@@ -1311,7 +1311,7 @@ common::Status InferenceSession::Initialize() {
         const bool has_explicit_type = !model_type.empty();
         return ((has_explicit_type && model_type == "ORT") ||
                 (!has_explicit_type &&
-                 utils::IsOrtFormatModel(session_options_.optimized_model_filepath)));
+                 fbs::utils::IsOrtFormatModel(session_options_.optimized_model_filepath)));
       }
       return false;
     }();
