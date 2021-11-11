@@ -53,6 +53,10 @@ Abstract:
 #if defined(_M_ARM) || defined(__arm__)
 #define MLAS_TARGET_ARM
 #endif
+#if defined(MLAS_TARGET_ARM64) || defined(MLAS_TARGET_ARM64EC) || defined(MLAS_TARGET_ARM)
+#define MLAS_TARGET_ARM_ANY
+#endif
+
 #if defined(__VSX__)
 #define MLAS_TARGET_POWER
 #endif

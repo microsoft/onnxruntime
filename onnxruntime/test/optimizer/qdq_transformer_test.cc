@@ -205,6 +205,7 @@ TEST(QDQTransformerTests, ConvMaxPoolReshape_UInt8) {
   test_case({1, 22, 11, 13, 15}, {30, 22, 5, 3, 3}, 12);
 }
 
+#if !defined(MLAS_TARGET_ARM_ANY)
 TEST(QDQTransformerTests, ConvMaxPoolReshape_Int8) {
   auto test_case = [&](const std::vector<int64_t>& input_shape, const std::vector<int64_t>& weights_shape) {
     auto build_test_case = [&](ModelTestBuilder& builder) {
@@ -254,6 +255,7 @@ TEST(QDQTransformerTests, ConvMaxPoolReshape_Int8) {
   test_case({1, 23, 13, 13}, {30, 23, 3, 3});
   test_case({1, 22, 11, 13, 15}, {30, 22, 5, 3, 3});
 }
+#endif
 
 template <typename InputType, typename OutputType>
 void QDQTransformerAveragePoolTests() {
@@ -1026,6 +1028,7 @@ TEST(QDQTransformerTests, ConvAveragePoolReshape_UInt8) {
   test_case({1, 22, 11, 13, 15}, {30, 22, 5, 3, 3});
 }
 
+#if !defined(MLAS_TARGET_ARM_ANY)
 TEST(QDQTransformerTests, ConvAveragePoolReshape_Int8) {
   auto test_case = [&](const std::vector<int64_t>& input_shape, const std::vector<int64_t>& weights_shape) {
     auto build_test_case = [&](ModelTestBuilder& builder) {
@@ -1343,6 +1346,7 @@ TEST(QDQTransformerTests, DQForward_MutilpleSteps) {
 
   test_case({1, 13, 13, 23}, {30, 23, 3, 3}, {0, 3, 1, 2});
 }
+#endif
 
 TEST(QDQTransformerTests, QDQPropagation_QDQCancelOut) {
   auto test_case = [&](const std::vector<int64_t>& input_shape, size_t maxpool_dim, const std::vector<int64_t>& perms) {
