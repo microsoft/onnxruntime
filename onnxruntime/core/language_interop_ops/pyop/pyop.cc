@@ -209,7 +209,7 @@ bool PyOpLibProxy::InvokePythonFunc(void*                            raw_inst,
     }
 
     scope.Add(pyArgs);
-    auto pyResult = PyEval_CallObject(pyFunc, pyArgs);
+    auto pyResult = PyObject_CallObject(pyFunc, pyArgs);
     if (nullptr == pyResult) {
         logging_func("InvokePythonFunc: no result");
         return false;
