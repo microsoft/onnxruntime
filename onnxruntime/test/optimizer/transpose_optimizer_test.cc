@@ -3824,7 +3824,6 @@ TEST(TransposeOptimizerTests, TestOmitIdentityTranspose) {
 // either of those changes would have fixed the issue.
 // see https://github.com/microsoft/onnxruntime/issues/9671 for more details.
 TEST(TransposeOptimizerTests, RegressionTest_GitHubIssue9671) {
-  Status status;
   auto model_uri = ORT_TSTR("testdata/gh_issue_9671.onnx");
 
   SessionOptions so;

@@ -155,7 +155,9 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
 
   switch (level) {
     case TransformerLevel::Level1: {
-      // RewriteRule transformers are the simplest so run them first
+      // RewriteRule optimizations are the simplest (they generally remove unnecessary nodes and are cheap to run)
+      // so run them first so there is potentially less for the more intensive optimizations like ConstantFolding,
+      // CommonSubexpressionElimination and TransposeOptimizer to do.
       auto rule_transformer = GenerateRuleBasedGraphTransformer(level, rules_and_transformers_to_disable, {});
       if (rule_transformer != nullptr) {
         transformers.emplace_back(std::move(rule_transformer));
