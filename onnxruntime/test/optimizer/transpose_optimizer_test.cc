@@ -8,10 +8,11 @@
 #include "graph_transform_test_builder.h"
 
 #include "core/graph/graph.h"
+#include "test/test_environment.h"
+#include "test/util/include/asserts.h"
 
 namespace onnxruntime {
 namespace test {
-
 
 void SetNodeArgShape(NodeArg* node_arg, const std::optional<std::vector<int64_t>>& shape) {
   if (shape == std::nullopt) {
@@ -76,7 +77,6 @@ int EstimateTransposeCost(const Graph& graph) {
   }
   return cost;
 }
-
 
 TEST(TransposeOptimizerTests, TestSplit) {
   auto build_test_case_1 = [&](ModelTestBuilder& builder) {
@@ -3849,8 +3849,22 @@ TEST(TransposeOptimizerTests, TestOmitIdentityTranspose) {
                     /*opset_version*/ 15);
 }
 
+// regression test for a model where the transpose optimizations were not completed in a single pass in level 1.
+// fixed by
+//   a) moving the RewriteRule level 1 optimizations so they run prior to the transpose optimizer; and
+//   b) not returning `true` from TransposeOptimizer::ShouldOnlyApplyOnce as it should be safe to run the
+//      transpose optimizer multiple times to ensure it completes in level 1.
+// either of those changes would have fixed the issue.
+// see https://github.com/microsoft/onnxruntime/issues/9671 for more details.
+TEST(TransposeOptimizerTests, RegressionTest_GitHubIssue9671) {
+  auto model_uri = ORT_TSTR("testdata/gh_issue_9671.onnx");
 
-
+  SessionOptions so;
+  so.session_logid = "TransposeOptimizerTests.RegressionTest_GitHubIssue9671";
+  InferenceSession session_object{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session_object.Load(model_uri));
+  ASSERT_STATUS_OK(session_object.Initialize());  // optimizers run during initialization
+}
 
 }  // namespace test
 }  // namespace onnxruntime
