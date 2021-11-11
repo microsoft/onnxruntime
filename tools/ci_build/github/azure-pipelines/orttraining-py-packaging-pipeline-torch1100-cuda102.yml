@@ -8,6 +8,6 @@ stages:
     cuda_version: '10.2'
     gcc_version: 10
     cmake_cuda_architectures: 37;50;52;60;61;70;75;80;86
-    docker_file: Dockerfile.manylinux2014_training_cuda11_3
+    docker_file: Dockerfile.manylinux2014_training_cuda10_2
     agent_pool: Onnxruntime-Linux-GPU
     upload_wheel: 'yes'
