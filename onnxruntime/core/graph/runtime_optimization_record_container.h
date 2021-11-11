@@ -26,9 +26,9 @@ class Vector;
 
 namespace onnxruntime {
 
-namespace experimental::fbs {
+namespace fbs {
 struct RuntimeOptimizationRecordContainerEntry;
-}  // namespace experimental::fbs
+}  // namespace fbs
 
 class RuntimeOptimizationRecordContainer {
  public:
@@ -40,7 +40,7 @@ class RuntimeOptimizationRecordContainer {
 
   using FbsRuntimeOptimizationRecordContainer =
       flatbuffers::Vector<flatbuffers::Offset<
-          onnxruntime::experimental::fbs::RuntimeOptimizationRecordContainerEntry>>;
+          onnxruntime::fbs::RuntimeOptimizationRecordContainerEntry>>;
 
   Status SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
                          flatbuffers::Offset<FbsRuntimeOptimizationRecordContainer>& fbs_runtime_optimizations) const;

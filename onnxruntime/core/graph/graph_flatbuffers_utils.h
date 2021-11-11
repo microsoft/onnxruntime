@@ -25,8 +25,6 @@ namespace logging {
 class Logger;
 }
 
-namespace experimental {
-
 namespace fbs {
 struct Attribute;
 struct Tensor;
@@ -68,5 +66,4 @@ onnxruntime::common::Status LoadAttributeOrtFormat(const fbs::Attribute& fbs_att
                                                    const logging::Logger& logger);
 
 }  // namespace utils
-}  // namespace experimental
 }  // namespace onnxruntime

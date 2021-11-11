@@ -25,8 +25,6 @@ class Vector;
 
 namespace onnxruntime {
 
-namespace experimental {
-
 namespace fbs {
 struct OperatorSetId;
 struct ValueInfo;
@@ -75,5 +73,4 @@ bool IsOrtFormatModel(const std::basic_string<T>& filename) {
 bool IsOrtFormatModelBytes(const void* bytes, int num_bytes);
 
 }  // namespace utils
-}  // namespace experimental
 }  // namespace onnxruntime
