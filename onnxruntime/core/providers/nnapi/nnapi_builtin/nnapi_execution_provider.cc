@@ -128,28 +128,15 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
 
   const auto is_node_supported = [&](const Node& node) -> bool {
     const bool excluded = check_excluded_nodes && Contains(excluded_nodes, &node);
-    bool supported = false;
-    if (params.qdq_support_helper->IsNodeInQDQGroup(node)) {
-      supported = !excluded &&
-                  nnapi::IsNodeSupportedInGroup(node, graph_viewer, params,
-                                                node_outputs_in_current_group);
-      // For debug purpose, will delete later
-      LOGS_DEFAULT(VERBOSE) << "QDQ: Operator type: [" << node.OpType()
-                            << "] index: [" << node.Index()
-                            << "] name: [" << node.Name()
-                            << "] supported: [" << supported
-                            << "]";
-    } else {
-      supported = !excluded &&
-                  nnapi::IsNodeSupportedInGroup(node, graph_viewer, params,
-                                                node_outputs_in_current_group);
+    const bool supported = !excluded &&
+                           nnapi::IsNodeSupportedInGroup(node, graph_viewer, params,
+                                                         node_outputs_in_current_group);
 
-      LOGS_DEFAULT(VERBOSE) << "Operator type: [" << node.OpType()
-                            << "] index: [" << node.Index()
-                            << "] name: [" << node.Name()
-                            << "] supported: [" << supported
-                            << "]";
-    }
+    LOGS_DEFAULT(VERBOSE) << "Operator type: [" << node.OpType()
+                          << "] index: [" << node.Index()
+                          << "] name: [" << node.Name()
+                          << "] supported: [" << supported
+                          << "]";
 
     if (supported) {
       // We want to save all the output names of nodes in the current group for easy query
