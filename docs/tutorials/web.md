@@ -7,11 +7,11 @@ nav_order: 7
 
 # Deploy and inference ML models on the web
 
-One of the hardest parts when deploying and inferencing in languages that are not commonly used for data science is figuring out how to do the data processing and inferencing. We have done all the hard work for you with [this template](https://github.com/microsoft/onnxruntime-nextjs-template)! In this tutorial we will use a template QuickStart to start building out a static web app using ORT-web. We will do the inference in JavaScript on the browser for a computer vision model. Let's learn a bit more about the library, ONNX Runtime (ORT), which allows us to inference in many different languages.
+One of the hardest parts when deploying and inferencing in languages that are not commonly used for data science is figuring out how to do the data processing and inferencing. We have done all the hard work for you with [this template](https://github.com/microsoft/onnxruntime-nextjs-template)! In this tutorial we will use a template QuickStart to start building out a static web app using ORT-web. We will do the inference in JavaScript on the browser for a computer vision model. Let's learn a bit more about the library, ONNX Runtime Web, which allows us to inference in many different languages.
 
 Example template output:
 
-<img src="../../images/ort-web-demo.gif" width="50%" height="50%"/>
+<img src="../../images/ort-web-demo.gif" width="75%" height="75%"/>
 
 ## What is ORT-Web?
 
