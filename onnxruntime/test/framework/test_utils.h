@@ -73,7 +73,7 @@ void CreateMLValue(AllocatorPtr alloc, const std::vector<int64_t>& dims, const s
 
 // Lifetime of data_buffer should be managed by the caller.
 template <typename T>
-void CreateMLValue(const std::vector<int64_t>& dims, T* data_buffer, const OrtMemoryInfo& info,
+void CreateMLValue(gsl::span<const int64_t> dims, T* data_buffer, const OrtMemoryInfo& info,
                    OrtValue* p_mlvalue) {
   TensorShape shape(dims);
   auto element_type = DataTypeImpl::GetType<T>();
