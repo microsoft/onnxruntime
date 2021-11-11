@@ -21,8 +21,8 @@ class Node;
 
 // Base class for a selector which checks for a match and returns the set of nodes involved.
 struct NodeSelector {
-  // Select one or more nodes for an Action to process if the constraints are satisfied.
-  // `selection` should not be set if this returns false
+  // Select one or more nodes for an Action to process if the constraints are satisfied,
+  // otherwise returns std::nullopt
   virtual std::optional<NodesToOptimizeIndices> Select(const GraphViewer& graph_viewer, const Node& node) const = 0;
 
   virtual ~NodeSelector() = default;

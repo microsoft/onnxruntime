@@ -11,8 +11,8 @@ namespace {
 
 // if the last input/output in num_io is for the variadic input/output,
 // the variadic input/output could have zero or more values
-// so we need to special case the zero and count that as one. same for outputs
-static int NumIOEntries(bool variadic_io, int num_io, int num_variadic_io) {
+// so we need to special case the zero and count that as one.
+int NumIOEntries(bool variadic_io, int num_io, int num_variadic_io) {
   return variadic_io
              ? num_io + std::max(1, num_variadic_io) - 1
              : num_io;

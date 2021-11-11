@@ -86,7 +86,7 @@ class BaseOpSupportChecker : public IOpSupportChecker {
   virtual bool HasSupportedInputsImpl(const Node& node) const;
 
   virtual int GetMinSupportedOpSet(const Node& /* node */) const { return 1; }
-  virtual int GetMaxSupportedOpSet(const Node& /* node */) const { return 14; }
+  virtual int GetMaxSupportedOpSet(const Node& /* node */) const { return 15; }
 
  private:
   bool HasSupportedOpSet(const Node& node) const;

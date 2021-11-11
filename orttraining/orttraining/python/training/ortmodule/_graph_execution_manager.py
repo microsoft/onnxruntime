@@ -93,6 +93,11 @@ class GraphExecutionManager(GraphExecutionInterface):
         self._graph_initializer_names_to_train = None
         self._graph_initializers = None
 
+        # Update constant ONNX_OPSET_VERSION with env var ORTMODULE_ONNX_OPSET_VERSION
+        # if defined.
+        ortmodule.ONNX_OPSET_VERSION = ortmodule._defined_from_envvar(
+            'ORTMODULE_ONNX_OPSET_VERSION', ortmodule.ONNX_OPSET_VERSION, warn=True)
+
         # TrainingAgent or InferenceAgent
         self._execution_agent = None
 

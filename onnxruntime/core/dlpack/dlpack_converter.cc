@@ -212,7 +212,7 @@ DLManagedTensor* OrtValueToDlpack(OrtValue& ort_value) {
   ort_dlmanaged_tensor->tensor.dl_tensor.ndim = static_cast<int>(tensor.Shape().NumDimensions());
   ort_dlmanaged_tensor->tensor.dl_tensor.dtype = GetDlpackDataType(ort_value);
   ort_dlmanaged_tensor->tensor.dl_tensor.shape =
-      tensor.Shape().NumDimensions() > 0 ? const_cast<int64_t*>(&tensor.Shape()[0]) : nullptr;
+      tensor.Shape().NumDimensions() > 0 ? &const_cast<TensorShape&>(tensor.Shape())[0] : nullptr;
   ort_dlmanaged_tensor->tensor.dl_tensor.strides = nullptr;
   ort_dlmanaged_tensor->tensor.dl_tensor.byte_offset = 0;
   return &(ort_dlmanaged_tensor->tensor);
