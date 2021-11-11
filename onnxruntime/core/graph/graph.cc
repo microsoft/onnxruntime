@@ -79,7 +79,6 @@ static Status MergeShapeInfo(const std::string& output_name,
       && !(utils::HasSparseTensorType(source) && utils::HasSparseTensorType(target))
 #endif
   ) {
-    // TODO: Adjust error message based on compile options chosen
     std::ostringstream ss;
     ss << "Source and target must both be tensors";
 

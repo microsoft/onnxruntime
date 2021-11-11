@@ -160,7 +160,16 @@ TEST(KernelDefHashTest, DISABLED_PrintCpuKernelDefHashes) {
 }
 
 TEST(KernelDefHashTest, ExpectedCpuKernelDefHashes) {
+#if !defined(DISABLE_OPTIONAL_TYPE)
   const bool is_strict = ParseEnvironmentVariableWithDefault<bool>(kStrictKernelDefHashCheckEnvVar, false);
+#else
+  // In builds with the optional type disabled, we cannot do a strict checking of kernel def hashes
+  // as the kernel def hashes of some ops (at the time of writing, these ops are Loop/If/Identity in opset 16)
+  // are bound to be different when compared with the kernel def hashes of a regular build with the optional
+  // type enabled.
+  // TODO: Can we test all other kernel def hashes but dis-regard ones that are expected to be different ?
+  const bool is_strict = false;
+#endif
 
   const auto expected_cpu_kernel_def_hashes = []() {
     KernelDefHashes result{};
