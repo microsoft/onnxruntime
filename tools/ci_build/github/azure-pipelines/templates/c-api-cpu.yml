@@ -145,14 +145,14 @@ jobs:
         python3 -m pip install $(Build.SourcesDirectory)/cmake/external/onnx
         sudo xcode-select --switch /Applications/Xcode_12.4.app/Contents/Developer
       displayName: 'Build and Test MacOS'
-      
+
     - template: mac-packaging.yml
       parameters :
         AdditionalBuildFlags : ${{ parameters.AdditionalBuildFlags }} --build_java --build_nodejs --cmake_extra_defines CMAKE_OSX_ARCHITECTURES=arm64
         MacosArch: arm64
         BuildJava: true
         BuildNodejs: true
-        
+
     - template: mac-packaging.yml
       parameters :
         AdditionalBuildFlags : ${{ parameters.AdditionalBuildFlags }} --cmake_extra_defines CMAKE_OSX_ARCHITECTURES="arm64;x86_64"
@@ -235,7 +235,7 @@ jobs:
       inputs:
         pathtoPublish: '$(Build.BinariesDirectory)/artifacts'
         artifactName: 'onnxruntime-ios-full-xcframework'
-        
+
     - template: component-governance-component-detection-steps.yml
       parameters :
         condition : 'succeeded'
@@ -333,7 +333,7 @@ jobs:
       buildType: 'current'
       artifactName: 'drop-onnxruntime-java-osx-x86_64'
       targetPath: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-osx-x86_64'
- 
+
   - task: PowerShell@2
     displayName: 'PowerShell Script'
     inputs:
@@ -417,7 +417,7 @@ jobs:
     inputs:
       artifactName: 'onnxruntime-linux-x64'
       targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
-      
+
   - task: DownloadPipelineArtifact@0
     displayName: 'Download Pipeline Artifact - NuGet'
     inputs:

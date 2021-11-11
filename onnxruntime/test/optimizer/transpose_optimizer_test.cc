@@ -404,6 +404,39 @@ TEST(TransposeOptimizerTests, TestResizeSizeRoi) {
                     /*opset_version*/ 15);
 }
 
+TEST(TransposeOptimizerTests, TestResizeRoiScalesZeroRank0) {
+  auto build_test_case_1 = [&](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInput<uint8_t>({1, 512, 512, 3},
+                                             std::numeric_limits<uint8_t>::min(),
+                                             std::numeric_limits<uint8_t>::max());
+    auto* resize_in_roi = builder.MakeInitializer<float>({0}, {});
+    auto* resize_in_scales = builder.MakeInitializer<float>({0}, {});
+    auto* resize_in_sizes = builder.MakeInitializer<int64_t>({4}, {1, 256, 32, 32});
+
+    auto* transpose1_out_transposed = builder.MakeIntermediate();
+    auto* resize_out_Y = builder.MakeIntermediate();
+    auto* output = builder.MakeOutput();
+
+    auto& transpose_1 = builder.AddNode("Transpose", {input}, {transpose1_out_transposed});
+    transpose_1.AddAttribute("perm", std::vector<int64_t>{0, 3, 1, 2});
+    builder.AddNode("Resize",
+                    {transpose1_out_transposed, resize_in_roi, resize_in_scales, resize_in_sizes},
+                    {resize_out_Y});
+    auto& transpose_2 = builder.AddNode("Transpose", {resize_out_Y}, {output});
+    transpose_2.AddAttribute("perm", std::vector<int64_t>{0, 2, 3, 1});
+  };
+
+  auto check_optimized_graph_1 = [&](InferenceSessionWrapper& session) {
+    int transpose_cost = EstimateTransposeCost(session.GetGraph());
+    EXPECT_EQ(transpose_cost, 0);
+  };
+
+  TransformerTester(build_test_case_1,
+                    check_optimized_graph_1,
+                    TransformerLevel::Default,
+                    TransformerLevel::Level1);
+}
+
 TEST(TransposeOptimizerTests, TestResizeNonconst) {
   auto build_test_case_1 = [&](ModelTestBuilder& builder) {
     auto* input0_arg = MakeInput<float>(builder, {{4, -1, 2, -1}}, {4, 6, 2, 10}, 0.0, 1.0);
