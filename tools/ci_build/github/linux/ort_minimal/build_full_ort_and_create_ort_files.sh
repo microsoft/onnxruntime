@@ -67,6 +67,3 @@ python3 /onnxruntime_src/tools/python/convert_onnx_models_to_ort.py \
     --custom_op_library ${BUILD_DIR}/Debug/libcustom_op_library.so \
     /home/onnxruntimedev/.test_data/custom_ops_model
 rm -rf /home/onnxruntimedev/.test_data/custom_ops_model
-
-# Clear the build
-rm -rf ${BUILD_DIR}
