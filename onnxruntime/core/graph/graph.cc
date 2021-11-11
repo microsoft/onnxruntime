@@ -1029,8 +1029,6 @@ Graph::Graph(const Model& owning_model,
     model_local_functions_[function_utils::GetFunctionIdentifier(func->domain(), func->name())] = func;
   }
 
-  std::vector<TensorProto*> created_initializers;
-
   // Process 'Constant' nodes
   // Put the 'TensorProto' stored in the 'Constant' nodes attribute into the graphs initializer list
   for (auto& node : graph_proto_->node()) {
@@ -1040,28 +1038,19 @@ Graph::Graph(const Model& owning_model,
 
     const gsl::not_null<TensorProto*> tensor{graph_proto_->add_initializer()};
     auto status = utils::ConstantNodeProtoToTensorProto(node, model_path, *tensor);
-    created_initializers.push_back(tensor);
     ORT_ENFORCE(status.IsOK(), status.ToString());
+    // Ensure initializers are also graph inputs.
+    if (ir_version_ < 4) {
+      TypeProto t{TypeProtoFromTensorProto(*tensor)};
+      const NodeArg& node_arg = GetOrCreateNodeArg(tensor->name(), &t);
+      *(graph_proto_->add_input()) = node_arg.ToProto();
+    }
 #if !defined(DISABLE_SPARSE_TENSORS)
     if (node.attribute(0).type() == AttributeProto_AttributeType_SPARSE_TENSOR) {
       auto p = sparse_tensor_names_.emplace(tensor->name());
       ORT_ENFORCE(p.second, "Duplicate constant node sparse initializer name: '", tensor->name(), "' Model is invalid.");
     }
 #endif
-  }
-
-  // Ensure initializers are also graph inputs.
-  if (ir_version_ < 4) {
-    for (const auto* initializer : created_initializers) {
-      TypeProto type_proto;
-      TypeProto_Tensor* t = type_proto.mutable_tensor_type();
-      t->set_elem_type(initializer->data_type());
-      for (int64_t dim : initializer->dims()) {
-        t->mutable_shape()->add_dim()->set_dim_value(dim);
-      }
-      const NodeArg& node_arg = GetOrCreateNodeArg(initializer->name(), &type_proto);
-      *(graph_proto_->add_input()) = node_arg.ToProto();
-    }
   }
 
   // Remove constant nodes as they're replaced with initializers above.
