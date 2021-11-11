@@ -70,9 +70,9 @@ class WindowsThread : public EnvThread {
         ORT_THROW("custom_create_thread_fn returned invalid handle."); 
       }
     } else {
-      hThread.reset((HANDLE)_beginthreadex(nullptr, thread_options.stack_size, ThreadMain,
-                                           new Param{name_prefix, index, start_address, param, thread_options}, 0,
-                                           &threadID));
+      hThread.reset(reinterpret_cast<HANDLE>(_beginthreadex(nullptr, thread_options.stack_size, ThreadMain,
+                                                            new Param{name_prefix, index, start_address, param, thread_options}, 0,
+                                                            &threadID)));
     }
   }
 
