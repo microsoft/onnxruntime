@@ -69,7 +69,6 @@ def main():
 
     if 'python' in languages:
         with tempfile.TemporaryDirectory() as temp_dir_name:
-            temp_dir_name = '/Users/gwang/temp/fff'
             updated_schema_path = pathlib.Path(temp_dir_name, 'ort.py.fbs').resolve()
             update_namespace(schema_path, updated_schema_path)
             generate_python(flatc, updated_schema_path)
