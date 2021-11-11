@@ -70,30 +70,43 @@ static bool UsingLatestOnnxOpset(const DomainToVersionMap& opset_versions) {
 static Status MergeShapeInfo(const std::string& output_name,
                              const TypeProto& source, TypeProto& target,
                              bool strict, const logging::Logger& logger) {
-#if !defined(DISABLE_SPARSE_TENSORS)
-  if (!(utils::HasTensorType(source) && utils::HasTensorType(target)) &&
-      !(utils::HasOptionalTensorType(source) && utils::HasOptionalTensorType(target)) &&
-      !(utils::HasSparseTensorType(source) && utils::HasSparseTensorType(target))) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                           "Source and target must both be either tensors, "
-                           "optional tensors, or sparse tensors");
-  }
-#else
-  if (!(utils::HasTensorType(source) && utils::HasTensorType(target))) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                           "Source and target must both be tensors");
-  }
+  if (!(utils::HasTensorType(source) && utils::HasTensorType(target))
+#if !defined(DISABLE_OPTIONAL_TYPE)
+      && !(utils::HasOptionalTensorType(source) && utils::HasOptionalTensorType(target))
 #endif
+
+#if !defined(DISABLE_SPARSE_TENSORS)
+      && !(utils::HasSparseTensorType(source) && utils::HasSparseTensorType(target))
+#endif
+  ) {
+    // TODO: Adjust error message based on compile options chosen
+    std::ostringstream ss;
+    ss << "Source and target must both be tensors";
+
+#if !defined(DISABLE_OPTIONAL_TYPE)
+    ss << " , or optional typed entities";
+#endif
+
+#if !defined(DISABLE_SPARSE_TENSORS)
+    ss << " , or sparse tensors";
+#endif
+
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, ss.str());
+  }
 
   auto status = Status::OK();
 
   ORT_TRY {
     if (utils::HasTensorType(source)) {
       ONNX_NAMESPACE::mergeInShapeInfo(source.tensor_type(), *target.mutable_tensor_type());
-    } else if (utils::HasOptionalTensorType(source)) {
+    }
+#if !defined(DISABLE_OPTIONAL_TYPE)
+    else if (utils::HasOptionalTensorType(source)) {
       ONNX_NAMESPACE::mergeInShapeInfo(utils::GetOptionalTypeProto(source).tensor_type(),
                                        *utils::GetMutableOptionalTypeProto(target)->mutable_tensor_type());
     }
+#endif
+
 #if !defined(DISABLE_SPARSE_TENSORS)
     else {
       ONNX_NAMESPACE::mergeInShapeInfo(source.sparse_tensor_type(), *target.mutable_sparse_tensor_type());
@@ -113,9 +126,13 @@ static Status MergeShapeInfo(const std::string& output_name,
                             << ". Falling back to lenient merge.";
       if (utils::HasTensorType(source)) {
         ONNX_NAMESPACE::UnionShapeInfo(utils::GetShape(source), *target.mutable_tensor_type());
-      } else if (utils::HasOptionalTensorType(source)) {
+      }
+#if !defined(DISABLE_OPTIONAL_TYPE)
+      else if (utils::HasOptionalTensorType(source)) {
         ONNX_NAMESPACE::UnionShapeInfo(utils::GetShape(source), *utils::GetMutableOptionalTypeProto(target)->mutable_tensor_type());
       }
+#endif
+
 #if !defined(DISABLE_SPARSE_TENSORS)
       else {
         ONNX_NAMESPACE::UnionShapeInfo(utils::GetShape(source), *target.mutable_sparse_tensor_type());
@@ -234,6 +251,8 @@ const TensorShapeProto* NodeArg::Shape() const {
       return nullptr;
     }
 #endif
+
+#if !defined(DISABLE_OPTIONAL_TYPE)
     case TypeProto::kOptionalType: {
       // Shape is applicable only for optional tensor type
       if (utils::HasOptionalTensorType(*type) &&
@@ -242,6 +261,8 @@ const TensorShapeProto* NodeArg::Shape() const {
       }
       return nullptr;
     }
+#endif
+
     case TypeProto::kSequenceType:
     case TypeProto::kMapType:
     case TypeProto::kOpaqueType:
@@ -286,6 +307,8 @@ void NodeArg::SetShape(const TensorShapeProto& shape) {
       *(node_arg_info_.mutable_type()->mutable_sparse_tensor_type()->mutable_shape()) = shape;
       break;
 #endif
+
+#if !defined(DISABLE_OPTIONAL_TYPE)
     case TypeProto::kOptionalType:
       // Set shape only for optional tensors
       if (utils::HasOptionalTensorType(node_arg_info_.type())) {
@@ -294,6 +317,7 @@ void NodeArg::SetShape(const TensorShapeProto& shape) {
               ->mutable_shape()) = shape;
       }
       break;
+#endif
     case TypeProto::kSequenceType:
     case TypeProto::kMapType:
     case TypeProto::kOpaqueType:
@@ -314,6 +338,8 @@ void NodeArg::ClearShape() {
       node_arg_info_.mutable_type()->mutable_sparse_tensor_type()->clear_shape();
       break;
 #endif
+
+#if !defined(DISABLE_OPTIONAL_TYPE)
     case TypeProto::kOptionalType:
       // Clear shape only for optional tensors
       if (utils::HasOptionalTensorType(node_arg_info_.type())) {
@@ -322,6 +348,8 @@ void NodeArg::ClearShape() {
             ->clear_shape();
       }
       break;
+#endif
+
     case TypeProto::kSequenceType:
     case TypeProto::kMapType:
     case TypeProto::kOpaqueType:
@@ -411,6 +439,7 @@ common::Status NodeArg::UpdateTypeAndShape(const ONNX_NAMESPACE::TypeProto& inpu
     }
 #endif
 
+#if !defined(DISABLE_OPTIONAL_TYPE)
     case TypeProto::kOptionalType: {
       if ((utils::HasOptionalTensorType(input_type) && !utils::HasOptionalTensorType(current_type)) ||
           (!utils::HasOptionalTensorType(input_type) && utils::HasOptionalTensorType(current_type))) {
@@ -445,6 +474,7 @@ common::Status NodeArg::UpdateTypeAndShape(const ONNX_NAMESPACE::TypeProto& inpu
 
       break;
     }
+#endif
 
     case TypeProto::kSequenceType:
     case TypeProto::kMapType:
@@ -1901,10 +1931,12 @@ bool FullyDefinedType(const TypeProto& type_proto) {
       auto& seq_type = type_proto.sequence_type();
       return utils::HasElemType(seq_type) && FullyDefinedType(seq_type.elem_type());
     }
+#if !defined(DISABLE_OPTIONAL_TYPE)
     case TypeProto::kOptionalType: {
       auto& optional_type = type_proto.optional_type();
       return utils::HasElemType(optional_type) && FullyDefinedType(optional_type.elem_type());
     }
+#endif
     case TypeProto::kMapType: {
       auto& map_type = type_proto.map_type();
       return utils::HasKeyType(map_type) &&
@@ -2341,11 +2373,15 @@ Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op, const Reso
         TypeProto merge_target;
         if (utils::HasTensorType(onnx_inferred_type)) {
           *merge_target.mutable_tensor_type()->mutable_shape() = *output_def->Shape();
-        } else if (utils::HasOptionalTensorType(onnx_inferred_type)) {
+        }
+#if !defined(DISABLE_OPTIONAL_TYPE)
+        else if (utils::HasOptionalTensorType(onnx_inferred_type)) {
           *utils::GetMutableOptionalTypeProto(merge_target)
                ->mutable_tensor_type()
                ->mutable_shape() = *output_def->Shape();
         }
+#endif
+
 #if !defined(DISABLE_SPARSE_TENSORS)
         else if (utils::HasSparseTensorType(onnx_inferred_type)) {
           *merge_target.mutable_sparse_tensor_type()->mutable_shape() = *output_def->Shape();
