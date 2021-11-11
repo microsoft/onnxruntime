@@ -5,11 +5,9 @@
 #include <string>
 #include <vector>
 
-#include <core/graph/graph.h>
 #include <core/graph/graph_viewer.h>
 #include <core/providers/common.h>
 
-#include "op_support_checker.h"
 #include "qdq_support_helper.h"
 
 namespace onnxruntime {
