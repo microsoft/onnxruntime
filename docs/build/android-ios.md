@@ -7,7 +7,7 @@ nav_order: 5
 # Build ONNX Runtime for Android and iOS
 {: .no_toc }
 
-Below are general build instructions for Android and iOS. For examples of deploying ONNX Runtime on mobile platforms (includes overall smaller package size and other configurations), see [Deploy ORT format model for mobile device and web](../tutorials/ort-format-model/).
+Below are general build instructions for Android and iOS. For examples of deploying ONNX Runtime on mobile platforms (includes overall smaller package size and other configurations), see [Deploy on mobile device and web](../tutorials/ort-format-model/).
 
 ## Contents
 {: .no_toc }

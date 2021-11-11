@@ -1,6 +1,6 @@
 ---
 title: Enable platform specific execution providers
-parent: Deploy ORT format model for mobile device and web
+parent: Deploy on mobile device and web
 grand_parent: Tutorials
 nav_order: 6
 ---

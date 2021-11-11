@@ -1,6 +1,6 @@
 ---
 title: Initial setup
-parent: Deploy ORT format model for mobile device and web
+parent: Deploy on mobile device and web
 grand_parent: Tutorials
 has_children: false
 nav_order: 2
