@@ -45,7 +45,7 @@ REGISTER_KERNEL_TYPED(MLFloat16)
 // StridedBatchedGemm can be used for the following GEMM computation
 // C[pnm] = A[pnk]*B[km] or C[pnm] = A[pnk]*B[pkm]
 static bool CanUseStridedBatchedGemm(const TensorShape& left_shape, const TensorShape& right_shape,
-                                     bool transa, bool transb,
+                                     bool transa, bool transb, bool trans_batch_a, bool trans_batch_b,
                                      int64_t& stride_A, int64_t& stride_B, int64_t& stride_C, int64_t& batch_count) {
   size_t left_num_dims = left_shape.NumDimensions();
   size_t right_num_dims = right_shape.NumDimensions();
@@ -54,25 +54,33 @@ static bool CanUseStridedBatchedGemm(const TensorShape& left_shape, const Tensor
     return false;
   }
 
+  size_t left_leading_axis = trans_batch_a ? 0 : left_num_dims - 2;
+  size_t right_leading_axis = trans_batch_b ? 0 : right_num_dims - 2;
   int64_t left_p = left_shape.SizeToDimension(left_num_dims - 2);
-  int64_t left_k = transa ? left_shape[left_num_dims - 2] : left_shape[left_num_dims - 1];
+  if (trans_batch_a) {
+    left_p = left_p * left_shape[left_num_dims - 2] / left_shape[0];
+  }
+  int64_t left_k = transa ? left_shape[left_leading_axis] : left_shape[left_num_dims - 1];
 
   if (right_num_dims >= 3) {
     int64_t right_p = right_shape.SizeToDimension(right_num_dims - 2);
+    if (trans_batch_b) {
+      right_p = right_p * right_shape[right_num_dims - 2] / right_shape[0];
+    }
     if (left_p != right_p) {
       return false;
     }
   }
 
-  int64_t right_k = transb ? right_shape[right_num_dims - 1] : right_shape[right_num_dims - 2];
+  int64_t right_k = transb ? right_shape[right_num_dims - 1] : right_shape[right_leading_axis];
   if (left_k != right_k) {
     return false;
   }
 
-  int64_t n = transa ? left_shape[left_num_dims - 1] : left_shape[left_num_dims - 2];
-  int64_t m = transb ? right_shape[right_num_dims - 2] : right_shape[right_num_dims - 1];
-  stride_A = n * left_k;
-  stride_B = right_num_dims == 2 ? 0 : right_k * m;
+  int64_t n = transa ? left_shape[left_num_dims - 1] : left_shape[left_leading_axis];
+  int64_t m = transb ? right_shape[right_leading_axis] : right_shape[right_num_dims - 1];
+  stride_A = n * left_k / (trans_batch_a ? left_shape[0] : 1);
+  stride_B = right_num_dims == 2 ? 0 : right_k * m / (trans_batch_b ? right_shape[0] : 1);
   stride_C = n * m;
   batch_count = left_p;
   return true;
@@ -97,7 +105,7 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
   }
 
   MatMulComputeHelper helper;
-  ORT_RETURN_IF_ERROR(helper.Compute(left_X->Shape(), right_X->Shape(), transa, transb));
+  ORT_RETURN_IF_ERROR(helper.Compute(left_X->Shape(), right_X->Shape(), transa, transb, trans_batch_a_, trans_batch_b_, false));
 
   Tensor* Y = ctx->Output(0, helper.OutputShape());
 
@@ -110,9 +118,9 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
 
   rocblas_operation transA = transa ? rocblas_operation_transpose : rocblas_operation_none;
   rocblas_operation transB = transb ? rocblas_operation_transpose : rocblas_operation_none;
-  const int lda = transa ? static_cast<int>(helper.M()) : static_cast<int>(helper.K());
-  const int ldb = transb ? static_cast<int>(helper.K()) : static_cast<int>(helper.N());
-  const int ldc = static_cast<int>(helper.N());
+  const int lda = helper.Lda(transa);
+  const int ldb = helper.Ldb(transb);
+  const int ldc = helper.Ldc();
   int64_t stride_A, stride_B, stride_C, batch_count;
 
   if (helper.OutputOffsets().size() == 1) {
@@ -133,7 +141,7 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
         ldc));
     return Status::OK();
   } else if (CanUseStridedBatchedGemm(left_X->Shape(), right_X->Shape(),
-                                      transa, transb, stride_A, stride_B, stride_C, batch_count)) {
+                                      transa, transb, trans_batch_a_, trans_batch_b_, stride_A, stride_B, stride_C, batch_count)) {
     ROCBLAS_RETURN_IF_ERROR(rocblasGemmStridedBatchedHelper(Base::RocblasHandle(),
                                                           transB,
                                                           transA,
@@ -155,6 +163,8 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
     return Status::OK();
   }
 
+  // Fill offsets when needed.
+  helper.FillOffsets();
   RocmAsyncBuffer<const HipT*> left_arrays(this, helper.LeftOffsets().size());
   RocmAsyncBuffer<const HipT*> right_arrays(this, helper.RightOffsets().size());
   RocmAsyncBuffer<HipT*> output_arrays(this, helper.OutputOffsets().size());
