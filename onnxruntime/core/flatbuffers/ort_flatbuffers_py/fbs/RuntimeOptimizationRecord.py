@@ -38,7 +38,7 @@ class RuntimeOptimizationRecord(object):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(6))
         if o != 0:
             x = self._tab.Indirect(o + self._tab.Pos)
-            from ort_flatbuffers_py.experimental.fbs.NodesToOptimizeIndices import NodesToOptimizeIndices
+            from ort_flatbuffers_py.fbs.NodesToOptimizeIndices import NodesToOptimizeIndices
             obj = NodesToOptimizeIndices()
             obj.Init(self._tab.Bytes, x)
             return obj
@@ -51,7 +51,7 @@ class RuntimeOptimizationRecord(object):
             x = self._tab.Vector(o)
             x += flatbuffers.number_types.UOffsetTFlags.py_type(j) * 4
             x = self._tab.Indirect(x)
-            from ort_flatbuffers_py.experimental.fbs.NodeIndexAndKernelDefHash import NodeIndexAndKernelDefHash
+            from ort_flatbuffers_py.fbs.NodeIndexAndKernelDefHash import NodeIndexAndKernelDefHash
             obj = NodeIndexAndKernelDefHash()
             obj.Init(self._tab.Bytes, x)
             return obj
