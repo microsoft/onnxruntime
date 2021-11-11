@@ -45,7 +45,7 @@ struct MLAS_GEMM_S8S8_KERNEL_SDOT
     typedef uint8_t PackedAType;
     typedef uint8_t PackedBType;
     typedef int8_t OffsetAType;
-    typedef uint8_t OffsetBType;
+    typedef int8_t OffsetBType;
 
     static constexpr size_t PackedK = 8;
     static constexpr MLAS_GEMM_QUANT_STRIDES Strides{ 24, 128, 256 };
