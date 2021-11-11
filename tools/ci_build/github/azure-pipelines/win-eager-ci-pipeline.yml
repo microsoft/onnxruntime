@@ -1,0 +1,82 @@
+parameters:
+- name: RunOnnxRuntimeTests
+  displayName: Run Tests?
+  type: boolean
+  default: true
+
+jobs:
+- job: 'build'
+  pool: 'Win-CPU-2019'
+  strategy:
+    matrix:
+      x64_release:
+        BuildConfig: 'RelWithDebInfo'
+        EnvSetupScript: setup_env.bat
+        buildArch: x64
+        additionalBuildFlags: --use_dnnl --build_java --build_nodejs
+        msbuildPlatform: x64
+        isX86: false
+  variables:
+    OrtPackageId: 'Microsoft.ML.OnnxRuntime'
+    MsbuildArguments: '-maxcpucount'
+    OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
+    DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true    
+    setVcvars: true
+    ALLOW_RELEASED_ONNX_OPSET_ONLY: '0'
+  timeoutInMinutes: 120
+  workspace:
+    clean: all
+  steps:
+  - task: UsePythonVersion@0
+    inputs:
+      versionSpec: '3.7'
+      addToPath: true
+      architecture: $(buildArch)
+
+  - task: BatchScript@1
+    displayName: 'setup env'
+    inputs:
+      filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\$(EnvSetupScript)'
+      modifyEnvironment: true
+      workingFolder: '$(Build.BinariesDirectory)'
+
+  - script: |
+     set ORT_DOXY_SRC=$(Build.SourcesDirectory)
+     set ORT_DOXY_OUT=$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)
+     mkdir %ORT_DOXY_SRC% 
+     mkdir %ORT_DOXY_OUT%
+     "C:\Program Files\doxygen\bin\doxygen.exe" $(Build.SourcesDirectory)\tools\ci_build\github\Doxyfile_csharp.cfg
+     
+    workingDirectory: '$(Build.SourcesDirectory)'
+    displayName: 'API Documentation Check and generate'
+
+  - script: |
+     python -m pip install -r $(Build.SourcesDirectory)\tools\ci_build\github\windows\eager\requirements.txt
+    workingDirectory: '$(Build.BinariesDirectory)'
+    displayName: 'Install python modules'
+  
+  - task: BatchScript@1
+    displayName: 'setup env 2'
+    inputs:
+      filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\$(EnvSetupScript)'
+      modifyEnvironment: true
+      workingFolder: '$(Build.BinariesDirectory)'
+
+  - task: PythonScript@0
+    displayName: 'Build Eager mode'
+    inputs:
+      scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
+      arguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --build_eager_mode --enable_training --enable_pybind --config Release --parallel'
+      workingDirectory: '$(Build.BinariesDirectory)'
+
+  - task: PublishTestResults@2
+    displayName: 'Publish unit test results'
+    inputs:
+      testResultsFiles: '**/*.results.xml'
+      searchFolder: '$(Build.BinariesDirectory)/$(BuildConfig)'
+      testRunTitle: 'Unit Test Run'
+    condition: succeededOrFailed()
+
+  - template: templates/component-governance-component-detection-steps.yml
+    parameters :
+      condition : 'succeeded'

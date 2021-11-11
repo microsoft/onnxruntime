@@ -77,8 +77,8 @@ ONNX_CPU_OPERATOR_KERNEL(
 // Updates starts and steps to match flattened_output_dims if it is.
 // e.g. if input shape is { 2, 2, 2 }, output shape is { 1, 2, 2 }, and the 'steps' value for the last two dims is 1,
 // we are keeping all the data of the inner most two dimensions so can combine those into dims of { 1, 4 }
-static void FlattenOutputDims(const std::vector<int64_t>& input_dimensions,
-                              const std::vector<int64_t>& output_dims,
+static void FlattenOutputDims(gsl::span<const int64_t> input_dimensions,
+                              gsl::span<const int64_t> output_dims,
                               std::vector<int64_t>& starts,
                               std::vector<int64_t>& ends,
                               std::vector<int64_t>& steps,
@@ -94,7 +94,7 @@ static void FlattenOutputDims(const std::vector<int64_t>& input_dimensions,
 
   if (num_to_combine > 1) {
     auto num_dims = output_dims.size() - num_to_combine + 1;
-    *flattened_output_dims = output_dims;
+    *flattened_output_dims = std::vector<int64_t>(output_dims.begin(), output_dims.end());
     flattened_output_dims->resize(num_dims);
 
     int64_t dim_value = 1;
@@ -232,7 +232,7 @@ static Status SliceImpl(OpKernelContext* ctx,
   if (compute_metadata.p_flattened_output_dims_) {
     // if we have flattened output dims we need to also flatten the input dims.
     // as we're combining the innermost dims and keeping all values we can just copy the size of the last dim
-    std::vector<int64_t> flattened_input_dims(input_tensor.Shape().GetDims());
+    auto flattened_input_dims=input_tensor.Shape().GetDimsAsVector();
     flattened_input_dims.resize(compute_metadata.p_flattened_output_dims_->size());
     flattened_input_dims.back() = compute_metadata.p_flattened_output_dims_->back();
     TensorShape input_shape(std::move(flattened_input_dims));
@@ -265,7 +265,7 @@ static inline bool CallSliceImplIfEnabled(OpKernelContext* ctx,
 Status SliceBase::Compute(OpKernelContext* ctx) const {
   const auto* input_tensor_ptr = ctx->Input<Tensor>(0);
   const auto& input_tensor = *input_tensor_ptr;
-  const auto& input_dimensions = input_tensor.Shape().GetDims();
+  const auto input_dimensions = input_tensor.Shape().GetDims();
 
   if (input_dimensions.empty()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Cannot slice scalars");
