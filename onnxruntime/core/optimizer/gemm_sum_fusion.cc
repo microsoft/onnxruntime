@@ -21,7 +21,7 @@ Status GemmSumFusion::Apply(Graph& graph, Node& gemm_node, RewriteRuleEffect& mo
   Node& sum_node = *graph.GetNode(gemm_node.OutputEdgesBegin()->GetNode().Index());
 
   // The first two input defs for our new gemm (aka tensor A and tensor B in GemmSumFusion's
-  // documentation) are exactly the same as the old gemm's output defs.
+  // documentation) are exactly the same as the old gemm's input defs.
   std::vector<NodeArg*> new_gemm_input_defs = gemm_node.MutableInputDefs();
 
   // The other new gemm's input def is the old sum's other input def (aka tensor C in
