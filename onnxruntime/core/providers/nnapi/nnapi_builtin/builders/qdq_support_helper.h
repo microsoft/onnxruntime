@@ -55,8 +55,6 @@ class QDQSupportHelper {
 
   bool IsNodeInQDQGroup(const Node& node) const;
 
-  //void GetQDQNodeGroups(const GraphViewer& graph_viewer);
-
   std::unordered_map<const Node*, QDQ::NodeGroupNonIndex> target_node_to_qdq_group_;
 
  private:

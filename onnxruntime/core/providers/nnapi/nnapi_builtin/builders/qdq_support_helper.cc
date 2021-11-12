@@ -45,6 +45,10 @@ void Selectors::RegisterSelector(const Selector::OpVersionsMap& ops_and_versions
   ORT_IGNORE_RETURN_VALUE(selectors_set_.insert(std::move(entry)));
 }
 
+bool QDQSupportHelper::IsNodeInQDQGroup(const Node& node) const {
+  return nodes_in_qdq_group.find(&node) != nodes_in_qdq_group.end();
+}
+
 std::optional<QDQ::NodeGroup> QDQSupportHelper::Match(const Node& node) const {
   std::optional<QDQ::NodeGroup> qdq_node_group;
 
@@ -80,10 +84,6 @@ std::optional<QDQ::NodeGroup> QDQSupportHelper::Match(const Node& node) const {
   return qdq_node_group;
 }
 
-bool QDQSupportHelper::IsNodeInQDQGroup(const Node& node) const {
-  return nodes_in_qdq_group.find(&node) != nodes_in_qdq_group.end();
-}
-
 void QDQSupportHelper::GetQDQNodeGroup(const Node& node) {
   auto qdq_node_group = Match(node);
   QDQ::NodeGroupNonIndex qdq_node_group_nonindex;
@@ -114,13 +114,6 @@ void QDQSupportHelper::GetQDQNodeGroup(const Node& node) {
   }
 }
 
-/* void QDQSupportHelper::GetQDQNodeGroups(const GraphViewer& graph_viewer) {
-  for (auto index : graph_viewer.GetNodesInTopologicalOrder()) {
-    const auto* node = graph_viewer.GetNode(index);
-    GetQDQNodeGroup(graph_viewer, *node);
-  }
-}
- */
 /* Selector Rules Related */
 void ConvQDQRules(Selectors& qdq_selectors) {
   // 4 or 5 Nodes. 0=DQ X, 1=DQ W, 2=DQ B (optional), 3=Conv, 4=Q
