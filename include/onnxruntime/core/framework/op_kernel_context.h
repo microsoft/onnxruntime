@@ -160,6 +160,14 @@ class OpKernelContext {
   }
 
   /**
+  Return the compute stream associated with the EP that the kernel is partitioned to.
+  For EPs that do not have a compute stream (e.g. CPU EP), a nullptr is returned.
+  */
+  void* GetComputeStream() const {
+    return kernel_->Info().GetExecutionProvider()->GetComputeStream();
+  }
+
+  /**
   Returns the opset domain of the underlying kernel
   **/
   const std::string& GetOpDomain() const;

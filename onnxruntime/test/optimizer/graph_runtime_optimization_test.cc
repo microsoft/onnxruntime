@@ -32,27 +32,27 @@ class TestTransformer : public SelectorActionTransformer {
 
  private:
   struct SurroundingIdentitySelector : NodeSelector {
-    bool Select(Graph& graph, const Node& node, std::unique_ptr<NodesToOptimize>& selection_out) const override {
+    std::optional<NodesToOptimizeIndices> Select(const GraphViewer& graph_viewer, const Node& node) const override {
       // all inputs are identity
       const auto inputs = graph_utils::FindParentsByType(node, "Identity");
-      if (inputs.size() != node.GetInputEdgesCount()) return false;
+      if (inputs.size() != node.GetInputEdgesCount()) return std::nullopt;
 
       // does not produce graph output
-      if (!graph.GetNodeOutputsInGraphOutputs(node).empty()) return false;
+      if (graph_viewer.NodeProducesGraphOutput(node)) return std::nullopt;
 
       // all outputs are identity
       const auto outputs = graph_utils::FindChildrenByType(node, "Identity");
-      if (outputs.size() != node.GetOutputEdgesCount()) return false;
+      if (outputs.size() != node.GetOutputEdgesCount()) return std::nullopt;
 
-      NodesToOptimizeBuilder builder{};
-      builder.target_node = graph.GetNode(node.Index());
+      NodesToOptimizeIndicesBuilder builder;
 
-      auto get_mutable_node = [&](const Node* n) { return n ? graph.GetNode(n->Index()) : nullptr; };
-      std::transform(inputs.begin(), inputs.end(), std::back_inserter(builder.input_nodes), get_mutable_node);
-      std::transform(outputs.begin(), outputs.end(), std::back_inserter(builder.output_nodes), get_mutable_node);
+      builder.target_node = node.Index();
 
-      selection_out = builder.Build();
-      return true;
+      auto get_node_idx = [&](const Node* n) { return n ? n->Index() : NodesToOptimizeIndices::kEmptyNodeIndex; };
+      std::transform(inputs.begin(), inputs.end(), std::back_inserter(builder.input_nodes), get_node_idx);
+      std::transform(outputs.begin(), outputs.end(), std::back_inserter(builder.output_nodes), get_node_idx);
+
+      return builder.Build();
     }
   };
 

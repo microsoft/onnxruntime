@@ -783,12 +783,7 @@ void InitializeSession(InferenceSession* sess,
   ProviderOptionsMap provider_options_map;
   GenerateProviderOptionsMap(provider_types, provider_options, provider_options_map);
 
-  if (provider_types.empty()) {
-    // use default registration priority.
-    ep_registration_fn(sess, GetAllExecutionProviderNames(), provider_options_map);
-  } else {
-    ep_registration_fn(sess, provider_types, provider_options_map);
-  }
+  ep_registration_fn(sess, provider_types, provider_options_map);
 
 #if !defined(ORT_MINIMAL_BUILD)
   if (!disabled_optimizer_names.empty()) {

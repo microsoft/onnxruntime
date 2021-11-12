@@ -1104,6 +1104,12 @@ Graph::Graph(const Model& owning_model,
     const gsl::not_null<TensorProto*> tensor{graph_proto_->add_initializer()};
     auto status = utils::ConstantNodeProtoToTensorProto(node, model_path, *tensor);
     ORT_ENFORCE(status.IsOK(), status.ToString());
+    // Ensure initializers are also graph inputs.
+    if (ir_version_ < 4) {
+      TypeProto t{TypeProtoFromTensorProto(*tensor)};
+      const NodeArg& node_arg = GetOrCreateNodeArg(tensor->name(), &t);
+      *(graph_proto_->add_input()) = node_arg.ToProto();
+    }
 #if !defined(DISABLE_SPARSE_TENSORS)
     if (node.attribute(0).type() == AttributeProto_AttributeType_SPARSE_TENSOR) {
       auto p = sparse_tensor_names_.emplace(tensor->name());

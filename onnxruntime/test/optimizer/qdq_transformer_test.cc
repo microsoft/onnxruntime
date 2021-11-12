@@ -1,16 +1,20 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/framework/compute_capability.h"
 #include "core/graph/model.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/mlas/inc/mlas.h"
+#include "core/optimizer/qdq_transformer/selectors_actions/qdq_selectors.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_selector_action_transformer.h"
+#include "core/providers/partitioning_utils.h"
 #include "core/session/environment.h"
 #include "core/session/inference_session.h"
 
 #include "test/compare_ortvalue.h"
 #include "test/test_environment.h"
 #include "test/framework/test_utils.h"
+#include "test/util/include/asserts.h"
 #include "test/util/include/inference_session_wrapper.h"
 
 #include "gtest/gtest.h"
@@ -1629,5 +1633,59 @@ TEST(QDQTransformerTests, Concat_UInt8) {
 }
 
 #endif  // DISABLE_CONTRIB_OPS
+
+TEST(QDQTransformerTests, QDQ_Selector_Test) {
+  const ORTCHAR_T* model_file_name = ORT_TSTR("testdata/qdq_conv_model_basic.onnx");
+
+  SessionOptions so;
+  // We want to keep the graph un-optimized to prevent QDQ transformer to kick in
+  so.graph_optimization_level = TransformerLevel::Default;
+  InferenceSessionWrapper session_object{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session_object.Load(model_file_name));
+  ASSERT_STATUS_OK(session_object.Initialize());
+  const Graph& graph = session_object.GetGraph();
+  const auto* conv_node = graph.GetNode(3);
+
+  // Make sure node 3 is the conv node
+  ASSERT_TRUE(nullptr != conv_node);
+  ASSERT_EQ("Conv", conv_node->OpType());
+
+  onnxruntime::QDQ::ConvSelector conv_selector;
+
+  // Create a GraphViewer covers the whole graph
+  const GraphViewer whole_graph_viewer(graph);
+
+  // Make sure the conv QDQ group is selected for the full graph
+  {
+    const auto result = conv_selector.GetQDQSelection(whole_graph_viewer, *conv_node);
+    ASSERT_TRUE(result.has_value());
+    const auto& qdq_group = *result;
+    ASSERT_EQ(std::vector<NodeIndex>({0, 1, 2}), qdq_group.dq_nodes);
+    ASSERT_EQ(NodeIndex(3), qdq_group.target_node);
+    ASSERT_EQ(std::vector<NodeIndex>({4}), qdq_group.q_nodes);
+  }
+
+  // Create a graph viewer covers part of the graph
+  // Make sure the qdq conv selector will fail for the partial graph
+  {
+    // Get 3 nodes out of 5 nodes in the graph
+    std::vector<const Node*> nodes{
+        graph.GetNode(0),
+        graph.GetNode(3),
+        graph.GetNode(4),
+    };
+
+    // Generate the indexed subgraph
+    const auto compute_capability = utils::MakeComputeCapability(
+        whole_graph_viewer, nodes,
+        []() { return "sub_graph"; },
+        "Test Provider");
+
+    const GraphViewer partial_graph_viewer(graph, *compute_capability->sub_graph);
+    ASSERT_EQ(3, partial_graph_viewer.NumberOfNodes());
+    const auto result = conv_selector.GetQDQSelection(partial_graph_viewer, *conv_node);
+    ASSERT_FALSE(result.has_value());
+  }
+}
 }  // namespace test
 }  // namespace onnxruntime
