@@ -412,8 +412,8 @@ Below topologies from ONNX open model zoo are fully supported on OpenVINO Execut
 | tiny_yolov2 | Yes | Yes | Yes | Yes* |
 | yolov3 | Yes | Yes | Yes | No* |
 | tiny_yolov3 | Yes | Yes | Yes | No* |
-| mask_rcnn | No | No | Yes | No* |
-| faster_rcnn | No | No | Yes | No* |
+| mask_rcnn | Yes | Yes | Yes | No* |
+| faster_rcnn | Yes | Yes | Yes | No* |
 | yolov4 | Yes | Yes | Yes | No* |
 | yolov5 | Yes | Yes | Yes | No* |
 
