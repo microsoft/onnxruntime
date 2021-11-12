@@ -15,7 +15,6 @@ Status SoftMaxComputeHelper(
     const T* input,
     const TensorShape& shape,
     T* Y,
-    cudnnHandle_t handle,
     int64_t axis);
 
 template <typename input_t, typename output_t, typename acc_t, bool is_log_softmax>
