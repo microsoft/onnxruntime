@@ -811,7 +811,7 @@ static void ModelBuilding_StandardDeviationNormalization() {
   auto session = LearningModelSession(final_model, LearningModelDevice(LearningModelDeviceKind::Cpu));
   LearningModelBinding binding(session);
 
-  // Bind A
+  // Bind
   auto input = std::vector<float>(SIZET(height * width * channels), 1);
   binding.Bind(L"Input", TensorFloat::CreateFromArray(input_shape, input));
   auto channels_shape = std::vector<int64_t>(SIZET(1), 3);
