@@ -16,7 +16,7 @@ class CudnnTensor final {
   ~CudnnTensor();
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(CudnnTensor);
 
-  Status Set(const std::vector<int64_t>& input_dims, cudnnDataType_t dataType);
+  Status Set(gsl::span<const int64_t> input_dims, cudnnDataType_t dataType);
   Status Set(const CudnnTensor& x_desc, cudnnBatchNormMode_t mode);
 
   operator cudnnTensorDescriptor_t() const { return tensor_; }

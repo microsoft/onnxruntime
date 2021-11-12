@@ -125,6 +125,7 @@ ORT_API_STATUS_IMPL(CreateTensorWithDataAsOrtValue, _In_ const OrtMemoryInfo* in
                     _Inout_ void* p_data, size_t p_data_len, _In_ const int64_t* shape, size_t shape_len,
                     ONNXTensorElementDataType type, _Outptr_ OrtValue** out);
 ORT_API_STATUS_IMPL(IsTensor, _In_ const OrtValue* value, _Out_ int* out);
+ORT_API_STATUS_IMPL(HasValue, _In_ const OrtValue* value, _Out_ int* out);
 ORT_API_STATUS_IMPL(GetTensorMutableData, _Inout_ OrtValue* value, _Outptr_ void** out);
 ORT_API_STATUS_IMPL(FillStringTensor, _Inout_ OrtValue* value, _In_ const char* const* s, size_t s_len);
 ORT_API_STATUS_IMPL(FillStringTensorElement, _Inout_ OrtValue* value, _In_ const char* s, size_t index);
@@ -315,4 +316,6 @@ ORT_API_STATUS_IMPL(GetSparseTensorValuesTypeAndShape, _In_ const OrtValue* ort_
 ORT_API_STATUS_IMPL(GetSparseTensorValues, _In_ const OrtValue* ort_value, _Outptr_ const void** out);
 ORT_API_STATUS_IMPL(GetSparseTensorIndicesTypeShape, _In_ const OrtValue* ort_value, enum OrtSparseIndicesFormat indices_format, _Outptr_ OrtTensorTypeAndShapeInfo** out);
 ORT_API_STATUS_IMPL(GetSparseTensorIndices, _In_ const OrtValue* ort_value, enum OrtSparseIndicesFormat indices_format, _Out_ size_t* num_indices, _Outptr_ const void** indices);
+ORT_API_STATUS_IMPL(KernelContext_GetGPUComputeStream, _In_ const OrtKernelContext* context, _Outptr_ void** out);
+
 }  // namespace OrtApis

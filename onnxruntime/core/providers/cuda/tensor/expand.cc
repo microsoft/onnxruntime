@@ -74,8 +74,8 @@ Status Expand::ComputeInternal(OpKernelContext* ctx) const {
     return Status::OK();
   }
 
-  output_dims = output_shape.GetDims();
-  auto input_dims = input_data_tensor.Shape().GetDims();
+  output_dims = output_shape.GetDimsAsVector();
+  auto input_dims = input_data_tensor.Shape().GetDimsAsVector();
 
   CalcEffectiveDims(input_dims, output_dims);
   int rank = gsl::narrow_cast<int>(output_dims.size());

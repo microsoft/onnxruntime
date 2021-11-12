@@ -233,15 +233,15 @@ template <typename T>
 Status ConvGrad<T>::PrepareArgs(const Tensor& x, const Tensor& dY, const Tensor& w, Tensor* dB, Tensor* dX,
                                 Tensor* dW) const {
   const TensorShape& x_shape = x.Shape();
-  std::vector<int64_t> x_dims = x_shape.GetDims();
+  std::vector<int64_t> x_dims = x_shape.GetDimsAsVector();
   args_.x_data = reinterpret_cast<const HipT*>(x.template Data<T>());
 
   const TensorShape& dy_shape = dY.Shape();
-  std::vector<int64_t> dy_dims = dy_shape.GetDims();
+  std::vector<int64_t> dy_dims = dy_shape.GetDimsAsVector();
   args_.dy_data = reinterpret_cast<const HipT*>(dY.template Data<T>());
 
   const TensorShape& w_shape = w.Shape();
-  std::vector<int64_t> w_dims = w_shape.GetDims();
+  std::vector<int64_t> w_dims = w_shape.GetDimsAsVector();
   args_.w_data = reinterpret_cast<const HipT*>(w.template Data<T>());
 
   args_.db_data = dB ? reinterpret_cast<HipT*>(dB->template MutableData<T>()) : nullptr;

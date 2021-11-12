@@ -13,6 +13,8 @@
 #endif
 #include "core/framework/op_kernel.h"
 #include "core/framework/TensorSeq.h"
+#include "core/framework/tensorprotoutils.h"
+#include "core/providers/utils.h"
 
 namespace onnxruntime {
 
@@ -23,10 +25,22 @@ class IdentityOp final : public OpKernel {
   }
 
   Status Compute(OpKernelContext* context) const override {
-    auto X_ml_type = context->InputType(0);
-    if (X_ml_type == DataTypeImpl::GetType<Tensor>()) {
-      const auto* X = context->Input<Tensor>(0);
-      ORT_ENFORCE(X != nullptr);
+    const auto* input_type_proto = Node().InputDefs()[0]->TypeAsProto();
+
+    const auto* input_ort_value = context->GetInputOrtValue(0);
+
+    // Only Optional type can be None (i.e.) not have data
+    if (input_type_proto->has_optional_type() && !input_ort_value->IsAllocated()) {
+      // We can't rely on the input OrtValue containing type information
+      // as it could be a main graph input which will be missing the type
+      // in the corresponding OrtValue for the "None" case because
+      // the user doesn't provide any input for the "None" case.
+      ORT_RETURN_IF_ERROR(utils::OutputOptionalWithoutDataHelper(*input_type_proto, context, 0));
+      return Status::OK();
+    }
+
+    if (input_ort_value->IsTensor()) {
+      const auto* X = &input_ort_value->Get<Tensor>();
       const TensorShape& shape = X->Shape();
       Tensor* Y = context->Output(0, shape);
       auto X_type = X->DataType();
@@ -59,26 +73,33 @@ class IdentityOp final : public OpKernel {
           memset(mask_data, 0, mask->SizeInBytes());
         }
       }
-    } else {
-      const auto* X = context->Input<TensorSeq>(0);
-      ORT_ENFORCE(X != nullptr);
+    } else {  // Has to be TensorSeq
+      const auto* X = &input_ort_value->Get<TensorSeq>();
       TensorSeq* output = context->Output<TensorSeq>(0);
-      output->SetType(X->DataType());
 
-      AllocatorPtr alloc;
-      auto status = context->GetTempSpaceAllocator(&alloc);
-      if (!status.IsOK()) {
-        ORT_THROW("Unable to get an allocator");
-      }
-      std::vector<Tensor> tensors;
-      for (auto it = X->begin(), end = X->end(); it != end; ++it) {
-        Tensor tmp(it->DataType(), onnxruntime::TensorShape(it->Shape()), alloc);
-        size_t bytes = it->SizeInBytes();
-        memcpy(tmp.MutableDataRaw(), it->DataRaw(), bytes);
-        tensors.push_back(std::move(tmp));
-      }
+      // Check if the output is an alias of the input
+      // If so, there is nothing else to be done.
+      // Equivalent of checking if two buffer pointers are
+      // different before copying over the contents while
+      // processing Tensors.
+      if (X != output) {
+        output->SetType(X->DataType());
 
-      output->SetElements(std::move(tensors));
+        AllocatorPtr alloc;
+        auto status = context->GetTempSpaceAllocator(&alloc);
+        if (!status.IsOK()) {
+          ORT_THROW("Unable to get an allocator");
+        }
+        std::vector<Tensor> tensors;
+        for (auto it = X->begin(), end = X->end(); it != end; ++it) {
+          Tensor tmp(it->DataType(), onnxruntime::TensorShape(it->Shape()), alloc);
+          size_t bytes = it->SizeInBytes();
+          memcpy(tmp.MutableDataRaw(), it->DataRaw(), bytes);
+          tensors.push_back(std::move(tmp));
+        }
+
+        output->SetElements(std::move(tensors));
+      }
     }
 
     return Status::OK();

@@ -890,6 +890,12 @@ inline bool Value::IsTensor() const {
   return out != 0;
 }
 
+inline bool Value::HasValue() const {
+  int out;
+  ThrowOnError(GetApi().HasValue(p_, &out));
+  return out != 0;
+}
+
 #if !defined(DISABLE_SPARSE_TENSORS)
 inline bool Value::IsSparseTensor() const {
   int out;
@@ -1129,6 +1135,12 @@ inline OrtValue* CustomOpApi::KernelContext_GetOutput(OrtKernelContext* context,
                                                       _In_ const int64_t* dim_values, size_t dim_count) {
   OrtValue* out;
   ThrowOnError(api_.KernelContext_GetOutput(context, index, dim_values, dim_count, &out));
+  return out;
+}
+
+inline void* CustomOpApi::KernelContext_GetGPUComputeStream(const OrtKernelContext* context) {
+  void* out;
+  ThrowOnError(api_.KernelContext_GetGPUComputeStream(context, &out));
   return out;
 }
 
