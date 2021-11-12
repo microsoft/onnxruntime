@@ -116,3 +116,15 @@ def avg_pool2d(g, self, kernel_size, stride, padding, ceil_mode, count_include_p
 @register_symbolic('adaptive_avg_pool2d')
 def adaptive_avg_pool2d(g, self, output_size):
     return g.op("com.microsoft::ATenOp", self, output_size, name_s='aten::_adaptive_avg_pool2d')
+
+
+@register_symbolic('binary_cross_entropy_with_logits')
+def binary_cross_entropy_with_logits(g, self, target, weight, pos_weight, reduction):
+    # If weight is not None, we need to check if it requires grad and add gradient graph accordingly.
+    # But current custom_gradient_registry doesn't support such None checking,
+    # So doesn't support non-None weight for now.
+    if weight is None or sym_help._is_none(weight):
+        return g.op("com.microsoft::ATenOp", self, target, weight, pos_weight, reduction,
+                    name_s='aten::binary_cross_entropy_with_logits')
+    from torch.onnx.symbolic_opset12 import binary_cross_entropy_with_logits as bce
+    return bce(g, self, target, weight, pos_weight, reduction)

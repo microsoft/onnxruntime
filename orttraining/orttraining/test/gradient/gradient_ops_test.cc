@@ -2749,6 +2749,61 @@ TEST(GradientCheckerTest, ScatterNDGrad) {
   }
 }
 
+TEST(GradientCheckerTest, TriluGrad) {
+  float max_error;
+  GradientChecker<float, float, float> gradient_checker;
+  OpDef op_def{"Trilu", kMSDomain, 1};
+  const int M = 3;
+  const int N = 4;
+  TensorShape shape = {M, N};
+  TensorInfo x_info(shape);
+  TensorInfo k_info({1}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>());
+  TensorInfo y_info(shape);
+  std::vector<float> x_data = {};
+  // Initialize input data
+  float f = 1.0;
+  for (int i = 0; i < M; i++) {
+    for (int j = 0; j < N; j++, f++) {
+      x_data.push_back(f);
+    }
+  }
+
+  // Test without optional input and without attribute
+  {
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_info}, {y_info}, &max_error, {x_data}));
+    EXPECT_IS_TINY(max_error);
+  }
+  {
+    // Test without optional input and with attribute upper=1
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_info}, {y_info}, &max_error, {x_data}, {MakeAttribute("upper", int64_t(1))}));
+    EXPECT_IS_TINY(max_error);
+  }
+  {
+    // Test without optional input and with attribute upper=0
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_info}, {y_info}, &max_error, {x_data}, {MakeAttribute("upper", int64_t(0))}));
+    EXPECT_IS_TINY(max_error);
+  }
+  for (int64_t k = -M; k <= M; k++) {
+    std::vector<float> k_data = {static_cast<float>(k)};
+
+    // Test with optional input and without attribute
+    {
+      ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_info, k_info}, {y_info}, &max_error, {x_data, k_data}));
+      EXPECT_IS_TINY(max_error);
+    }
+    {
+      // Test with optional input and with attribute upper=1
+      ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_info, k_info}, {y_info}, &max_error, {x_data, k_data}, {MakeAttribute("upper", int64_t(1))}));
+      EXPECT_IS_TINY(max_error);
+    }
+    {
+      // Test with optional input and with attribute upper=0
+      ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_info, k_info}, {y_info}, &max_error, {x_data, k_data}, {MakeAttribute("upper", int64_t(0))}));
+      EXPECT_IS_TINY(max_error);
+    }
+  }
+}
+
 }  // namespace test
 }  // namespace onnxruntime
 

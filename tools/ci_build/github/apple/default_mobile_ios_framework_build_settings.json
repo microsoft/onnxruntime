@@ -20,6 +20,7 @@
         "--enable_reduced_operator_type_support",
         "--use_coreml",
         "--skip_tests",
-        "--apple_deploy_target=11.0"
+        "--apple_deploy_target=11.0",
+        "--disable_ort_format_runtime_graph_optimizations"
     ]
 }
