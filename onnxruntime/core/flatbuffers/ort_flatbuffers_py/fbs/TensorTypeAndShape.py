@@ -6,43 +6,43 @@ import flatbuffers
 from flatbuffers.compat import import_numpy
 np = import_numpy()
 
-class MapType(object):
+class TensorTypeAndShape(object):
     __slots__ = ['_tab']
 
     @classmethod
-    def GetRootAsMapType(cls, buf, offset):
+    def GetRootAsTensorTypeAndShape(cls, buf, offset):
         n = flatbuffers.encode.Get(flatbuffers.packer.uoffset, buf, offset)
-        x = MapType()
+        x = TensorTypeAndShape()
         x.Init(buf, n + offset)
         return x
 
     @classmethod
-    def MapTypeBufferHasIdentifier(cls, buf, offset, size_prefixed=False):
+    def TensorTypeAndShapeBufferHasIdentifier(cls, buf, offset, size_prefixed=False):
         return flatbuffers.util.BufferHasIdentifier(buf, offset, b"\x4F\x52\x54\x4D", size_prefixed=size_prefixed)
 
-    # MapType
+    # TensorTypeAndShape
     def Init(self, buf, pos):
         self._tab = flatbuffers.table.Table(buf, pos)
 
-    # MapType
-    def KeyType(self):
+    # TensorTypeAndShape
+    def ElemType(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(4))
         if o != 0:
             return self._tab.Get(flatbuffers.number_types.Int32Flags, o + self._tab.Pos)
         return 0
 
-    # MapType
-    def ValueType(self):
+    # TensorTypeAndShape
+    def Shape(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(6))
         if o != 0:
             x = self._tab.Indirect(o + self._tab.Pos)
-            from ort_flatbuffers_py.experimental.fbs.TypeInfo import TypeInfo
-            obj = TypeInfo()
+            from ort_flatbuffers_py.fbs.Shape import Shape
+            obj = Shape()
             obj.Init(self._tab.Bytes, x)
             return obj
         return None
 
-def MapTypeStart(builder): builder.StartObject(2)
-def MapTypeAddKeyType(builder, keyType): builder.PrependInt32Slot(0, keyType, 0)
-def MapTypeAddValueType(builder, valueType): builder.PrependUOffsetTRelativeSlot(1, flatbuffers.number_types.UOffsetTFlags.py_type(valueType), 0)
-def MapTypeEnd(builder): return builder.EndObject()
+def TensorTypeAndShapeStart(builder): builder.StartObject(2)
+def TensorTypeAndShapeAddElemType(builder, elemType): builder.PrependInt32Slot(0, elemType, 0)
+def TensorTypeAndShapeAddShape(builder, shape): builder.PrependUOffsetTRelativeSlot(1, flatbuffers.number_types.UOffsetTFlags.py_type(shape), 0)
+def TensorTypeAndShapeEnd(builder): return builder.EndObject()

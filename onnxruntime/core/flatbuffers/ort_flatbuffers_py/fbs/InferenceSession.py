@@ -36,7 +36,7 @@ class InferenceSession(object):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(6))
         if o != 0:
             x = self._tab.Indirect(o + self._tab.Pos)
-            from ort_flatbuffers_py.experimental.fbs.Model import Model
+            from ort_flatbuffers_py.fbs.Model import Model
             obj = Model()
             obj.Init(self._tab.Bytes, x)
             return obj
@@ -47,7 +47,7 @@ class InferenceSession(object):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(8))
         if o != 0:
             x = self._tab.Indirect(o + self._tab.Pos)
-            from ort_flatbuffers_py.experimental.fbs.SessionState import SessionState
+            from ort_flatbuffers_py.fbs.SessionState import SessionState
             obj = SessionState()
             obj.Init(self._tab.Bytes, x)
             return obj

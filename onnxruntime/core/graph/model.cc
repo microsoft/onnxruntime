@@ -31,7 +31,6 @@
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime;
 using namespace onnxruntime::common;
-using namespace onnxruntime::experimental;
 
 namespace onnxruntime {
 
@@ -663,14 +662,14 @@ Status Model::SaveWithExternalInitializers(Model& model,
 
 common::Status Model::SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
                                       flatbuffers::Offset<fbs::Model>& fbs_model) const {
-  auto producer_name = experimental::utils::SaveStringToOrtFormat(
+  auto producer_name = fbs::utils::SaveStringToOrtFormat(
       builder, model_proto_.has_producer_name(), model_proto_.producer_name());
-  auto producer_version = experimental::utils::SaveStringToOrtFormat(
+  auto producer_version = fbs::utils::SaveStringToOrtFormat(
       builder, model_proto_.has_producer_version(), model_proto_.producer_version());
   auto domain = builder.CreateSharedString(model_proto_.domain());
-  auto doc_string = experimental::utils::SaveStringToOrtFormat(
+  auto doc_string = fbs::utils::SaveStringToOrtFormat(
       builder, model_proto_.has_doc_string(), model_proto_.doc_string());
-  auto graph_doc_string = experimental::utils::SaveStringToOrtFormat(
+  auto graph_doc_string = fbs::utils::SaveStringToOrtFormat(
       builder, model_proto_.has_graph() && model_proto_.graph().has_doc_string(), model_proto_.graph().doc_string());
 
   std::vector<flatbuffers::Offset<fbs::OperatorSetId>> op_set_ids_vec;
@@ -685,12 +684,12 @@ common::Status Model::SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
   auto op_set_ids = builder.CreateVector(op_set_ids_vec);
 
   flatbuffers::Offset<flatbuffers::Vector<
-      flatbuffers::Offset<onnxruntime::experimental::fbs::StringStringEntry>>>
+      flatbuffers::Offset<onnxruntime::fbs::StringStringEntry>>>
       metadata_props{0};
 
   // We will not serialize an empty metadata_props
   if (!model_metadata_.empty()) {
-    std::vector<flatbuffers::Offset<onnxruntime::experimental::fbs::StringStringEntry>> metadata_props_vec;
+    std::vector<flatbuffers::Offset<onnxruntime::fbs::StringStringEntry>> metadata_props_vec;
     metadata_props_vec.reserve(model_metadata_.size());
     for (const auto& prop : model_metadata_) {
       metadata_props_vec.push_back(
@@ -739,8 +738,8 @@ common::Status Model::LoadFromOrtFormat(const fbs::Model& fbs_model,
     for (const auto* prop : *fbs_metadata_props) {
       ORT_RETURN_IF(nullptr == prop, "Null entry in metadata_props. Invalid ORT format model.");
       std::string key, value;
-      experimental::utils::LoadStringFromOrtFormat(key, prop->key());
-      experimental::utils::LoadStringFromOrtFormat(value, prop->value());
+      fbs::utils::LoadStringFromOrtFormat(key, prop->key());
+      fbs::utils::LoadStringFromOrtFormat(value, prop->value());
       model->model_metadata_.insert({key, value});
     }
   }
@@ -770,17 +769,17 @@ common::Status Model::LoadFromOrtFormat(const fbs::Model& fbs_model,
     prop->set_value(metadata.second);
   }
 #else
-  experimental::utils::LoadStringFromOrtFormat(model->producer_name_, fbs_model.producer_name());
-  experimental::utils::LoadStringFromOrtFormat(model->producer_version_, fbs_model.producer_version());
-  experimental::utils::LoadStringFromOrtFormat(model->domain_, fbs_model.domain());
-  experimental::utils::LoadStringFromOrtFormat(model->doc_string_, fbs_model.doc_string());
-  experimental::utils::LoadStringFromOrtFormat(model->graph_doc_string_, fbs_model.graph_doc_string());
+  fbs::utils::LoadStringFromOrtFormat(model->producer_name_, fbs_model.producer_name());
+  fbs::utils::LoadStringFromOrtFormat(model->producer_version_, fbs_model.producer_version());
+  fbs::utils::LoadStringFromOrtFormat(model->domain_, fbs_model.domain());
+  fbs::utils::LoadStringFromOrtFormat(model->doc_string_, fbs_model.doc_string());
+  fbs::utils::LoadStringFromOrtFormat(model->graph_doc_string_, fbs_model.graph_doc_string());
   model->model_version_ = fbs_model.model_version();
   model->ir_version_ = fbs_model.ir_version();
 #endif
 
   std::unordered_map<std::string, int> domain_to_version;
-  ORT_RETURN_IF_ERROR(experimental::utils::LoadOpsetImportOrtFormat(fbs_model.opset_import(), domain_to_version));
+  ORT_RETURN_IF_ERROR(fbs::utils::LoadOpsetImportOrtFormat(fbs_model.opset_import(), domain_to_version));
 
   auto fbs_graph = fbs_model.graph();
   ORT_RETURN_IF(nullptr == fbs_graph, "Graph is null. Invalid ORT format model.");
