@@ -19,7 +19,7 @@ unsigned char CONCAT(__embed_uchar_, CONTENT_NAME)[{array_length}] = {{
 {content}
 }};
 char* CONTENT_NAME = (char*)CONCAT(__embed_uchar_, CONTENT_NAME);
-unsigned int CONCAT(CONTENT_NAME, _len) = {length};
+[[maybe_unused]] unsigned int CONCAT(CONTENT_NAME, _len) = {length};
 """
 
 def batch_iter(iter, batch_size=12):
@@ -68,7 +68,12 @@ if __name__ == "__main__":
         content.write("  ")
         content.write(",\n  ".join(lines))
 
-        generated = template.strip().format(filename=filename, content=content.getvalue(), array_length=raw_content_len + (0 if args.no_null_terminated else 1), length=raw_content_len)
+        generated = template.strip().format(
+            filename=filename,
+            content=content.getvalue(),
+            array_length=raw_content_len + (0 if args.no_null_terminated else 1),
+            length=raw_content_len
+        )
         if args.output:
             os.makedirs(os.path.dirname(args.output), exist_ok=True)
             with open(args.output, "w") as fout:
