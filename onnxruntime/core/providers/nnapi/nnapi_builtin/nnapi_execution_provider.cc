@@ -96,10 +96,10 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
 #endif
   }();
 
-  nnapi::OpSupportCheckParams params{
+  const nnapi::OpSupportCheckParams params{
       android_feature_level,
       !!(nnapi_flags_ & NNAPI_FLAG_USE_NCHW),
-      std::make_unique<nnapi::QDQSupportHelper>(nnapi::CreateSelectors()),
+      std::make_unique<nnapi::QDQSupportHelper>(nnapi::CreateSelectors(), graph_viewer),
   };
 
   if (params.android_feature_level < ORT_NNAPI_MIN_API_LEVEL) {
@@ -124,7 +124,7 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
   std::unordered_set<std::string> node_outputs_in_current_group{};
 
   // Add QDQ selector and obtain qdq node groups in the graph before checking if a node is supported
-  params.qdq_support_helper->GetQDQNodeGroups(graph_viewer);
+  //params.qdq_support_helper->GetQDQNodeGroups(graph_viewer);
 
   const auto is_node_supported = [&](const Node& node) -> bool {
     const bool excluded = check_excluded_nodes && Contains(excluded_nodes, &node);
