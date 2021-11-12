@@ -6,6 +6,7 @@
 #include "core/common/common.h"
 #include "core/framework/fence.h"
 #include "core/framework/allocator_stats.h"
+#include "core/framework/tensor_shape.h"
 #include "core/session/onnxruntime_c_api.h"
 #include "ortdevice.h"
 #include "ortmemoryinfo.h"
@@ -60,6 +61,7 @@ class IAllocator {
   @remarks Use SafeInt when calculating the size of memory to allocate using Alloc.
   */
   virtual void* Alloc(size_t size) = 0;
+  virtual void* Alloc(const TensorShape&) { return nullptr; }
 
   virtual void Free(void* p) = 0;
 

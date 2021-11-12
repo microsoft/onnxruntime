@@ -109,6 +109,7 @@ void CPUAllocator::Free(void* p) {
 }
 }  // namespace onnxruntime
 
+std::ostream& operator<<(std::ostream& out, const OrtDevice& dev) { return (out << dev.ToString()); }
 std::ostream& operator<<(std::ostream& out, const OrtMemoryInfo& info) { return (out << info.ToString()); }
 
 ORT_API_STATUS_IMPL(OrtApis::CreateMemoryInfo, _In_ const char* name1, enum OrtAllocatorType type, int id1,
