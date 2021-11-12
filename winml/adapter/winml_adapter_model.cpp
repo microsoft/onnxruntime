@@ -810,8 +810,6 @@ ORT_API_STATUS_IMPL(winmla::JoinModels,
 
   // Remove old outputs
   if (promote_unlinked_outputs) {
-    // loop through first model outputs and remove the linked ones in the main model inputs
-
     // Copy the output of the first model
     auto first_outputs = first_model_proto->graph().output();
     
