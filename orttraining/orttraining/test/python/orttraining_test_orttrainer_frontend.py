@@ -104,7 +104,7 @@ def testORTTrainerOptionsDefaultValues(test_input):
         '_internal_use': {
             'enable_internal_postprocess': True,
             'extra_postprocess': None,
-            'onnx_opset_version' : 12,
+            'onnx_opset_version' : 14,
             'enable_onnx_contrib_ops': True,
         },
         'provider_options':{},

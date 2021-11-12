@@ -18,7 +18,7 @@ import onnxruntime.capi.pt_patch
 
 from onnxruntime.tools.symbolic_shape_infer import SymbolicShapeInference
 
-DEFAULT_OPSET_VERSION = 12
+DEFAULT_OPSET_VERSION = 14
 
 class IODescription():
     def __init__(self, name, shape, dtype=None, num_classes=None):

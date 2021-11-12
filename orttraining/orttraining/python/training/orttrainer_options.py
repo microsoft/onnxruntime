@@ -436,7 +436,7 @@ class ORTTrainerOptions(object):
         _internal_use.extra_postprocess (callable, default is None)
             a functor to postprocess the ONNX model and return a new ONNX model.
             It does not override :py:attr:`._internal_use.enable_internal_postprocess`, but complement it
-        _internal_use.onnx_opset_version (int, default is 12):
+        _internal_use.onnx_opset_version (int, default is 14):
             ONNX opset version used during model exporting.
         _internal_use.enable_onnx_contrib_ops (bool, default is True)
             enable PyTorch to export nodes as contrib ops in ONNX.
@@ -820,8 +820,8 @@ _ORTTRAINER_OPTIONS_SCHEMA = {
             'onnx_opset_version': {
                 'type': 'integer',
                 'min': 12,
-                'max': 13,
-                'default': 12
+                'max': 14,
+                'default': 14
             },
             'enable_onnx_contrib_ops': {
                 'type': 'boolean',
