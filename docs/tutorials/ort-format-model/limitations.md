@@ -2,7 +2,7 @@
 title: Limitations
 parent: Deploy on mobile device and web
 grand_parent: Tutorials
-nav_order: 8
+nav_order: 7
 ---
 
 ## Limitations

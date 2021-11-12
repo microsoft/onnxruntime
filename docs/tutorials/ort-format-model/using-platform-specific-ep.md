@@ -41,4 +41,4 @@ Once you have all the necessary components setup, follow the instructions to [cr
 
 -------
 
-Next: [Packaging and deploy](./packaging-and-deploy.md)
+Next: [Limitations](./limitations.md)
