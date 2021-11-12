@@ -165,10 +165,9 @@ void DmlGetD3D12ResourceFromAllocation() {
 
   OrtMemoryInfo* ort_memory_info;
   THROW_IF_NOT_OK_MSG(ort_api->CreateMemoryInfo("DML", OrtAllocatorType::OrtDeviceAllocator, 0, OrtMemType::OrtMemTypeDefault, &ort_memory_info), ort_api);
-  auto memory_info = UniqueOrtMemoryInfo(ort_memory_info, ort_api->ReleaseMemoryInfo);
 
   OrtAllocator* ort_allocator;
-  THROW_IF_NOT_OK_MSG(ort_api->CreateAllocator(session.get(), memory_info.get(), &ort_allocator), ort_api);
+  THROW_IF_NOT_OK_MSG(ort_api->CreateAllocator(session.get(), ort_memory_info, &ort_allocator), ort_api);
   auto allocator = UniqueOrtAllocator(ort_allocator, ort_api->ReleaseAllocator);
 
   winrt::com_ptr<ID3D12Resource> d3d12_resource_from_allocation;
@@ -191,8 +190,7 @@ void GetTensorMemoryInfo() {
 
   OrtMemoryInfo* ort_memory_info;
   THROW_IF_NOT_OK_MSG(ort_api->CreateMemoryInfo("DML", OrtAllocatorType::OrtDeviceAllocator, 0, OrtMemType::OrtMemTypeDefault, &ort_memory_info), ort_api);
-  auto memory_info = UniqueOrtMemoryInfo(ort_memory_info, ort_api->ReleaseMemoryInfo);
-  auto tensor = CreateTensorFromMemoryInfo(memory_info.get());
+  auto tensor = CreateTensorFromMemoryInfo(ort_memory_info);
 
   const OrtMemoryInfo* value_memory_info;
   THROW_IF_NOT_OK_MSG(ort_api->GetTensorMemoryInfo(tensor.get(), &value_memory_info), ort_api);
@@ -236,7 +234,6 @@ void DmlCopyTensor() {
   // GPU to CPU
   OrtMemoryInfo* ort_memory_info;
   THROW_IF_NOT_OK_MSG(ort_api->CreateMemoryInfo("DML", OrtAllocatorType::OrtDeviceAllocator, 0, OrtMemType::OrtMemTypeDefault, &ort_memory_info), ort_api);
-  auto dml_memory_info = UniqueOrtMemoryInfo(ort_memory_info, ort_api->ReleaseMemoryInfo);
 
   auto resource = CreateD3D12Resource(*device);
   void* dml_allocator_resource;
@@ -245,7 +242,7 @@ void DmlCopyTensor() {
   std::array<int64_t, 3> shape = {720, 720, 3};
   OrtValue* gpu_value;
   THROW_IF_NOT_OK_MSG(ort_api->CreateTensorWithDataAsOrtValue(
-      dml_memory_info.get(),
+      ort_memory_info,
       dml_allocator_resource,
       static_cast<size_t>(resource->GetDesc().Width),
       shape.data(),
@@ -272,8 +269,7 @@ void ValueGetDeviceId() {
 
   OrtMemoryInfo* ort_memory_info;
   THROW_IF_NOT_OK_MSG(ort_api->CreateMemoryInfo("DML", OrtAllocatorType::OrtDeviceAllocator, 0, OrtMemType::OrtMemTypeDefault, &ort_memory_info), ort_api);
-  auto memory_info = UniqueOrtMemoryInfo(ort_memory_info, ort_api->ReleaseMemoryInfo);
-  auto gpu_tensor = CreateTensorFromMemoryInfo(memory_info.get());
+  auto gpu_tensor = CreateTensorFromMemoryInfo(ort_memory_info);
 
   int16_t device_id;
   THROW_IF_NOT_OK_MSG(winml_adapter_api->ValueGetDeviceId(gpu_tensor.get(), &device_id), ort_api);

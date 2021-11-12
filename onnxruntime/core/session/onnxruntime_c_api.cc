@@ -2111,8 +2111,6 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSessionFromArrayWithPrepackedWeightsContainer
 
 ORT_API_STATUS_IMPL(OrtApis::GetTensorMemoryInfo, _In_ const OrtValue* value, _Outptr_ const OrtMemoryInfo** memory_info) {
   TENSOR_READ_API_BEGIN
-  *memory_info = nullptr;
-  const auto& tensor = value->Get<onnxruntime::Tensor>();
   *memory_info = &tensor.Location();
   return nullptr;
   API_IMPL_END

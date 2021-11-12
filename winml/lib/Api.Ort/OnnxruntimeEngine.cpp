@@ -92,17 +92,16 @@ HRESULT OnnxruntimeValue::IsEmpty(bool* out) {
 HRESULT OnnxruntimeValue::IsCpu(bool* out) {
   auto ort_api = engine_->GetEngineFactory()->UseOrtApi();
 
-  OrtMemoryInfo* ort_memory_info;
+  const OrtMemoryInfo* ort_memory_info;
   RETURN_HR_IF_NOT_OK_MSG(ort_api->GetTensorMemoryInfo(value_.get(), &ort_memory_info),
                           ort_api);
-  auto memory_info = UniqueOrtMemoryInfo(ort_memory_info, ort_api->ReleaseMemoryInfo);
 
   const char* name;
-  RETURN_HR_IF_NOT_OK_MSG(ort_api->MemoryInfoGetName(memory_info.get(), &name),
+  RETURN_HR_IF_NOT_OK_MSG(ort_api->MemoryInfoGetName(ort_memory_info, &name),
                           ort_api);
 
   OrtMemType type;
-  RETURN_HR_IF_NOT_OK_MSG(ort_api->MemoryInfoGetMemType(memory_info.get(), &type),
+  RETURN_HR_IF_NOT_OK_MSG(ort_api->MemoryInfoGetMemType(ort_memory_info, &type),
                           ort_api);
 
   *out = !strcmp(name, "Cpu") ||
@@ -632,10 +631,9 @@ HRESULT OnnxruntimeEngine::CreateTensorValueFromExternalD3DResource(ID3D12Resour
   OrtMemoryInfo* ort_memory_info;
   RETURN_HR_IF_NOT_OK_MSG(ort_api->CreateMemoryInfo("DML", OrtAllocatorType::OrtDeviceAllocator, 0, OrtMemType::OrtMemTypeDefault, &ort_memory_info),
                           ort_api);
-  auto memory_info = UniqueOrtMemoryInfo(ort_memory_info, ort_api->ReleaseMemoryInfo);
 
   OrtAllocator* ort_allocator;
-  RETURN_HR_IF_NOT_OK_MSG(ort_api->CreateAllocator(session_.get(), memory_info.get(), &ort_allocator),
+  RETURN_HR_IF_NOT_OK_MSG(ort_api->CreateAllocator(session_.get(), ort_memory_info, &ort_allocator),
                           ort_api);
   auto allocator = UniqueOrtAllocator(ort_allocator, ort_api->ReleaseAllocator);
 
@@ -654,7 +652,7 @@ HRESULT OnnxruntimeEngine::CreateTensorValueFromExternalD3DResource(ID3D12Resour
   // create the OrtValue as a tensor letting ort know that we own the data buffer
   OrtValue* ort_value;
   RETURN_HR_IF_NOT_OK_MSG(ort_api->CreateTensorWithDataAsOrtValue(
-                              memory_info.get(),
+                              ort_memory_info,
                               unique_dml_allocator_resource.get(),
                               static_cast<size_t>(d3d_resource->GetDesc().Width),
                               shape,
