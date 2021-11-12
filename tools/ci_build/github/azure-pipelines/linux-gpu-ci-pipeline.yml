@@ -97,7 +97,7 @@ jobs:
          python3 -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu -qq
          cp $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/manylinux/requirements.txt $(Build.BinariesDirectory)/requirements.txt
          # Test ORT with the latest ONNX release.
-         sed -i 's/git+http:\/\/github\.com\/onnx\/onnx.*/onnx==1.9.0/' $(Build.BinariesDirectory)/requirements.txt
+         sed -i 's/git+http:\/\/github\.com\/onnx\/onnx.*/onnx==1.10.2/' $(Build.BinariesDirectory)/requirements.txt
          python3 -m pip install -r $(Build.BinariesDirectory)/requirements.txt
          python3 -m pip install $(Build.BinariesDirectory)/Release/dist/*.whl
          ln -s /data/models $(Build.BinariesDirectory)
