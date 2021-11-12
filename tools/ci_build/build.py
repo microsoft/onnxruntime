@@ -100,7 +100,7 @@ def _openvino_verify_device_type(device_read):
                 break
 
     def invalid_hetero_build():
-        print("\n" + "If trying to build Hetero or Multi or Auto, specifiy the supported devices along with it." + + "\n")
+        print("\n" + "If trying to build Hetero/Multi/Auto, specifiy the supported devices along with it." + + "\n")
         print("specify the keyword HETERO or MULTI or AUTO followed by the devices ")
         print("in the order of priority you want to build" + "\n")
         print("The different hardware devices that can be added in HETERO or MULTI or AUTO")
@@ -115,7 +115,7 @@ def _openvino_verify_device_type(device_read):
         print("pick the build type for specific Hardware Device from following options: ", choices)
         print("(or) from the following options with graph partitioning disabled: ", choices1)
         print("\n")
-        if not (device_read.startswith("HETERO:") or device_read.startswith("MULTI:") or device_read.startswith("AUTO:")):
+        if not (device_read.startswith("HETERO") or device_read.startswith("MULTI") or device_read.startswith("AUTO")):
             invalid_hetero_build()
         sys.exit("Wrong Build Type selected")
 

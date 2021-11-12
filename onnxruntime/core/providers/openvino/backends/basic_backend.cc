@@ -442,7 +442,6 @@ void BasicBackend::Infer(Ort::CustomOpApi& ort, OrtKernelContext* context) {
       auto out_name = item.first;
       auto node = item.second;
       auto output_tensor = GetOutputTensor(ort, context, out_name, subgraph_context_.output_names, node);
-      LOGS_DEFAULT(INFO) << log_tag << "GetOutputTensor";
       FillOutputsWithConstantData(ort, node, output_tensor);
     }
     // Get Output tensors

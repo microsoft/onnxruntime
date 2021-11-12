@@ -7,7 +7,6 @@
 #include <map>
 #include <algorithm>
 #include <iostream>
-#include "core/framework/ortdevice.h"
 
 namespace onnxruntime {
 
