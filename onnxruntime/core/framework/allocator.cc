@@ -111,6 +111,7 @@ void CPUAllocator::Free(void* p) {
 }
 }  // namespace onnxruntime
 
+std::ostream& operator<<(std::ostream& out, const OrtDevice& dev) { return (out << dev.ToString()); }
 std::ostream& operator<<(std::ostream& out, const OrtMemoryInfo& info) { return (out << info.ToString()); }
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(push)
