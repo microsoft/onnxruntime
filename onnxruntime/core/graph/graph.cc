@@ -3129,9 +3129,13 @@ common::Status Graph::SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
   auto node_edges = builder.CreateVector(node_edges_vec);
 
 #if defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
-  flatbuffers::Offset<RuntimeOptimizationRecordContainer::FbsRuntimeOptimizationRecordContainer> runtime_optimization_records;
-  ORT_RETURN_IF_ERROR(RuntimeOptimizations().SaveToOrtFormat(builder, runtime_optimization_records));
-  const auto runtime_optimizations = fbs::CreateRuntimeOptimizations(builder, runtime_optimization_records);
+  auto runtime_optimizations = flatbuffers::Offset<fbs::RuntimeOptimizations>{};  // null value
+  if (!RuntimeOptimizations().IsEmpty()) {
+    flatbuffers::Offset<RuntimeOptimizationRecordContainer::FbsRuntimeOptimizationRecordContainer>
+        runtime_optimization_records;
+    ORT_RETURN_IF_ERROR(RuntimeOptimizations().SaveToOrtFormat(builder, runtime_optimization_records));
+    runtime_optimizations = fbs::CreateRuntimeOptimizations(builder, runtime_optimization_records);
+  }
 #endif
 
   fbs::GraphBuilder gb(builder);
