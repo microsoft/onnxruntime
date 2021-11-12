@@ -5,9 +5,15 @@
 
 const path = require('path');
 const webpack = require('webpack');
+const BundleAnalyzerPlugin = require('webpack-bundle-analyzer').BundleAnalyzerPlugin;
 const NodePolyfillPlugin = require('node-polyfill-webpack-plugin');
 const TerserPlugin = require("terser-webpack-plugin");
 const minimist = require('minimist');
+
+// commandline args
+const args = minimist(process.argv);
+const bundleMode = args['bundle-mode'] || 'prod';  // 'prod'|'dev'|'perf'|'node'|undefined;
+const useAnalyzer = !!args.a || !!args['use-analyzer'];  // -a, --use-analyzer
 
 const VERSION = require(path.join(__dirname, 'package.json')).version;
 const COPYRIGHT_BANNER = `/*!
@@ -34,7 +40,7 @@ function defaultTerserPluginOptions() {
 }
 
 // common config for release bundle
-function buildConfig({ filename, format, target, mode, devtool }) {
+function buildConfig({ filename, format, target, mode, devtool, build_defs }) {
   const config = {
     target: [format === 'commonjs' ? 'node' : 'web', target],
     entry: path.resolve(__dirname, 'lib/index.ts'),
@@ -59,7 +65,12 @@ function buildConfig({ filename, format, target, mode, devtool }) {
         "perf_hooks": false,
       }
     },
-    plugins: [new webpack.WatchIgnorePlugin({ paths: [/\.js$/, /\.d\.ts$/] })],
+    plugins: [
+      new webpack.DefinePlugin({
+        BUILD_DEFS: build_defs
+      }),
+      new webpack.WatchIgnorePlugin({ paths: [/\.js$/, /\.d\.ts$/] })
+    ],
     module: {
       rules: [{
         test: /\.ts$/,
@@ -80,6 +91,10 @@ function buildConfig({ filename, format, target, mode, devtool }) {
     devtool
   };
 
+  if (useAnalyzer) {
+    config.plugins.unshift(new BundleAnalyzerPlugin());
+  }
+
   if (mode === 'production') {
     config.resolve.alias['./binding/ort-wasm-threaded.js'] = './binding/ort-wasm-threaded.min.js';
     config.resolve.alias['./binding/ort-wasm-threaded.worker.js'] = './binding/ort-wasm-threaded.min.worker.js';
@@ -99,9 +114,10 @@ function buildOrtConfig({
   suffix = '',
   target = 'es5',
   mode = 'production',
-  devtool = 'source-map'
+  devtool = 'source-map',
+  build_defs = {}
 }) {
-  const config = buildConfig({ filename: `ort${suffix}.js`, format: 'umd', target, mode, devtool });
+  const config = buildConfig({ filename: `ort${suffix}.js`, format: 'umd', target, mode, devtool, build_defs });
   // set global name 'ort'
   config.output.library.name = 'ort';
   return config;
@@ -113,9 +129,10 @@ function buildOrtWebConfig({
   format = 'umd',
   target = 'es5',
   mode = 'production',
-  devtool = 'source-map'
+  devtool = 'source-map',
+  build_defs = {}
 }) {
-  const config = buildConfig({ filename: `ort-web${suffix}.js`, format, target, mode, devtool });
+  const config = buildConfig({ filename: `ort-web${suffix}.js`, format, target, mode, devtool, build_defs });
   // exclude onnxruntime-common from bundle
   config.externals = {
     'onnxruntime-common': {
@@ -207,8 +224,6 @@ function buildTestRunnerConfig({
 }
 
 module.exports = () => {
-  const args = minimist(process.argv);
-  const bundleMode = args['bundle-mode'] || 'prod';  // 'prod'|'dev'|'perf'|'node'|undefined;
   const builds = [];
 
   switch (bundleMode) {
