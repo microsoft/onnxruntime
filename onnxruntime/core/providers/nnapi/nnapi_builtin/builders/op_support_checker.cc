@@ -725,6 +725,7 @@ bool ConvOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initial
                                              const OpSupportCheckParams& params) const {
   const auto& op_type = node.OpType();
   const bool is_qlinear_conv = (op_type == "QLinearConv");
+  const bool is_qdq_node = params.qdq_support_helper->IsNodeInQDQGroup(node);
 
   // We don't support nhwc com.microsoft.QLinearConv for now
   if (is_qlinear_conv && node.Domain() == kMSDomain) {
@@ -737,10 +738,11 @@ bool ConvOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initial
   size_t w_idx = is_qlinear_conv ? 3 : 1;
   const auto group = helper.Get("group", 1);
 
+  auto qdq_group_map = params.qdq_support_helper->target_node_to_qdq_group_;
+  auto qdq_group = qdq_group_map.find(&node)->second;
+
   std::string weight_name;
-  if (params.qdq_support_helper->IsNodeInQDQGroup(node)) {
-    auto qdq_group_map = params.qdq_support_helper->target_node_to_qdq_group_;
-    auto qdq_group = qdq_group_map.find(&node)->second;
+  if (is_qdq_node) {
     if (!qdq_group.dq_nodes.empty()) {
       const auto* dq_w = qdq_group.dq_nodes.at(1);
       weight_name = dq_w->InputDefs()[0]->Name();
@@ -774,11 +776,14 @@ bool ConvOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initial
     return false;
   }
 
-  if (is_qlinear_conv) {
+  if (is_qlinear_conv || is_qdq_node) {
     // For QLinearConv, we only support uint8 output now
     int32_t output_type;
-    if (!GetType(*node.OutputDefs()[0], output_type))
+    auto tensor_type = is_qdq_node ? GetType(*qdq_group.q_nodes.at(0)->OutputDefs()[0], output_type)
+                                   : GetType(*node.OutputDefs()[0], output_type);
+    if (!tensor_type) {
       return false;
+    }
 
     if (output_type != ONNX_NAMESPACE::TensorProto_DataType_UINT8) {
       LOGS_DEFAULT(VERBOSE) << "[" << op_type
@@ -787,7 +792,17 @@ bool ConvOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initial
       return false;
     }
 
-    if (input_defs.size() > 8 && !Contains(initializers, input_defs[8]->Name())) {
+    std::string bias_name;
+    if (is_qdq_node) {
+      if (!qdq_group.dq_nodes.empty()) {
+        const auto* dq_b = qdq_group.dq_nodes.at(2);
+        bias_name = dq_b->InputDefs()[0]->Name();
+      }
+    } else {
+      bias_name = input_defs[8]->Name();
+    }
+
+    if (input_defs.size() > 8 && !Contains(initializers, bias_name)) {
       LOGS_DEFAULT(VERBOSE) << "Bias of QLinearConv must be known";
       return false;
     }
