@@ -52,11 +52,8 @@
 #include "orttraining/core/optimizer/insert_output_rewriter.h"
 #include "orttraining/core/optimizer/localized_recompute.h"
 #include "orttraining/core/optimizer/loss_rewriter.h"
-<<<<<<< HEAD
 #include "orttraining/core/optimizer/graph_transformer_registry.h"
-=======
 #include "orttraining/core/optimizer/transformer_layer_recompute.h"
->>>>>>> master
 
 namespace onnxruntime {
 namespace training {
