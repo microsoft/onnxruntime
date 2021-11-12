@@ -31,7 +31,7 @@ class Graph(object):
             x = self._tab.Vector(o)
             x += flatbuffers.number_types.UOffsetTFlags.py_type(j) * 4
             x = self._tab.Indirect(x)
-            from ort_flatbuffers_py.experimental.fbs.Tensor import Tensor
+            from ort_flatbuffers_py.fbs.Tensor import Tensor
             obj = Tensor()
             obj.Init(self._tab.Bytes, x)
             return obj
@@ -56,7 +56,7 @@ class Graph(object):
             x = self._tab.Vector(o)
             x += flatbuffers.number_types.UOffsetTFlags.py_type(j) * 4
             x = self._tab.Indirect(x)
-            from ort_flatbuffers_py.experimental.fbs.ValueInfo import ValueInfo
+            from ort_flatbuffers_py.fbs.ValueInfo import ValueInfo
             obj = ValueInfo()
             obj.Init(self._tab.Bytes, x)
             return obj
@@ -81,7 +81,7 @@ class Graph(object):
             x = self._tab.Vector(o)
             x += flatbuffers.number_types.UOffsetTFlags.py_type(j) * 4
             x = self._tab.Indirect(x)
-            from ort_flatbuffers_py.experimental.fbs.Node import Node
+            from ort_flatbuffers_py.fbs.Node import Node
             obj = Node()
             obj.Init(self._tab.Bytes, x)
             return obj
@@ -113,7 +113,7 @@ class Graph(object):
             x = self._tab.Vector(o)
             x += flatbuffers.number_types.UOffsetTFlags.py_type(j) * 4
             x = self._tab.Indirect(x)
-            from ort_flatbuffers_py.experimental.fbs.NodeEdge import NodeEdge
+            from ort_flatbuffers_py.fbs.NodeEdge import NodeEdge
             obj = NodeEdge()
             obj.Init(self._tab.Bytes, x)
             return obj
@@ -178,7 +178,7 @@ class Graph(object):
             x = self._tab.Vector(o)
             x += flatbuffers.number_types.UOffsetTFlags.py_type(j) * 4
             x = self._tab.Indirect(x)
-            from ort_flatbuffers_py.experimental.fbs.SparseTensor import SparseTensor
+            from ort_flatbuffers_py.fbs.SparseTensor import SparseTensor
             obj = SparseTensor()
             obj.Init(self._tab.Bytes, x)
             return obj
@@ -201,7 +201,7 @@ class Graph(object):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(20))
         if o != 0:
             x = self._tab.Indirect(o + self._tab.Pos)
-            from ort_flatbuffers_py.experimental.fbs.RuntimeOptimizations import RuntimeOptimizations
+            from ort_flatbuffers_py.fbs.RuntimeOptimizations import RuntimeOptimizations
             obj = RuntimeOptimizations()
             obj.Init(self._tab.Bytes, x)
             return obj
