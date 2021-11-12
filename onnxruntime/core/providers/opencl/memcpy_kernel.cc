@@ -1,4 +1,4 @@
-#include "opencl_onnxruntime_utils.h"
+#include "opencl_utils.h"
 #include "opencl_data_transfer.h"
 
 #include "core/framework/data_transfer_manager.h"

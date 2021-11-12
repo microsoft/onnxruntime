@@ -4,7 +4,6 @@
 
 #include "core/providers/opencl/opencl_kernel.h"
 #include "core/providers/opencl/opencl_utils.h"
-#include "core/providers/opencl/opencl_onnxruntime_utils.h"
 
 namespace {
 
@@ -67,10 +66,11 @@ namespace opencl {
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()), \
       CLASS_NAME)
 
-ELEMENT_WISE_OP_IMPL(Add, "(X)+(Y)");
-ELEMENT_WISE_OP_IMPL(Sub, "(X)-(Y)");
-ELEMENT_WISE_OP_IMPL(Mul, "(X)*(Y)");
-ELEMENT_WISE_OP_IMPL(Div, "(X)/(Y)");
+// FIXME: disable temporarily, for testing image2d kernel
+// ELEMENT_WISE_OP_IMPL(Add, "(X)+(Y)");
+// ELEMENT_WISE_OP_IMPL(Sub, "(X)-(Y)");
+// ELEMENT_WISE_OP_IMPL(Mul, "(X)*(Y)");
+// ELEMENT_WISE_OP_IMPL(Div, "(X)/(Y)");
 
 }  // namespace opencl
 }  // namespace onnxruntime

@@ -6,7 +6,7 @@
 #include "core/framework/ortdevice.h"
 #include "core/framework/tensor.h"
 
-#include "opencl_onnxruntime_utils.h"
+#include "opencl_utils.h"
 
 namespace onnxruntime {
 namespace opencl {
@@ -24,26 +24,31 @@ bool OpenCLDataTransfer::CanCopy(const OrtDevice& src_device, const OrtDevice& d
 common::Status OpenCLDataTransfer::CopyTensor(const Tensor& src, Tensor& dst, int exec_queue_id) const {
   ORT_ENFORCE(exec_queue_id == 0);
 
+  // *.Location().mem_type == *.Location().device.MemType() for OpenCL EP
   const auto& src_device = src.Location().device;
   const auto& dst_device = dst.Location().device;
 
   if (src_device.Type() == OrtDevice::CPU && dst_device.Type() == OrtDevice::GPU) {
     ORT_ENFORCE(src.ByteOffset() == 0);
-    auto dst_buffer = CL_BUFFER_FROM_TENSOR(dst);
-    std::cerr << "OpenCL copy host " << src.DataRaw() << " --> device cl::Buffer(" << dst_buffer() << ")\n";
-    OPENCL_CHECK_ERROR(cmd_queue_.enqueueWriteBuffer(dst_buffer, CL_TRUE, 0, src.SizeInBytes(), src.DataRaw()));
-    return Status::OK();
+    if (dst_device.MemType() == CLMemType::OPENCL_BUFFER) {
+      auto dst_buffer = CL_BUFFER_FROM_TENSOR(dst);
+      std::cerr << "OpenCL copy host " << src.DataRaw() << " --> device cl::Buffer(" << dst_buffer() << ")\n";
+      OPENCL_CHECK_ERROR(cmd_queue_.enqueueWriteBuffer(dst_buffer, CL_TRUE, 0, src.SizeInBytes(), src.DataRaw()));
+      return Status::OK();
+    }
   }
 
   if (src_device.Type() == OrtDevice::GPU && dst_device.Type() == OrtDevice::CPU) {
     ORT_ENFORCE(dst.ByteOffset() == 0);
-    auto src_buffer = CL_BUFFER_FROM_TENSOR(src);
-    std::cerr << "OpenCL copy host " << src.DataRaw() << " <-- device cl::Buffer(" << src_buffer() << ")\n";
-    OPENCL_CHECK_ERROR(cmd_queue_.enqueueReadBuffer(src_buffer, CL_TRUE, 0, dst.SizeInBytes(), dst.MutableDataRaw()));
-    return Status::OK();
+    if (src_device.MemType() == CLMemType::OPENCL_BUFFER) {
+      auto src_buffer = CL_BUFFER_FROM_TENSOR(src);
+      std::cerr << "OpenCL copy host " << src.DataRaw() << " <-- device cl::Buffer(" << src_buffer() << ")\n";
+      OPENCL_CHECK_ERROR(cmd_queue_.enqueueReadBuffer(src_buffer, CL_TRUE, 0, dst.SizeInBytes(), dst.MutableDataRaw()));
+      return Status::OK();
+    }
   }
 
-  return Status(common::ONNXRUNTIME, common::FAIL, "Memcpy opencl: unable to get an allocator.");
+  return ORT_MAKE_STATUS(NONE, EP_FAIL, "Cannot copy from ", src_device, " to ", dst_device);
 }
 
 }  // namespace opencl

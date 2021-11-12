@@ -1,6 +1,6 @@
 #pragma once
 
-#include "core/providers/opencl/opencl_onnxruntime_utils.h"
+#include "core/providers/opencl/opencl_utils.h"
 
 namespace onnxruntime {
 namespace opencl {

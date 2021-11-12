@@ -19,6 +19,11 @@ class OpenCLDataTransfer : public IDataTransfer {
   bool CanCopy(const OrtDevice& src_device, const OrtDevice& dst_device) const override;
 
   common::Status CopyTensor(const Tensor& src, Tensor& dst, int exec_queue_id) const override;
+  common::Status CopyTensorToBuffer(const Tensor& src, Tensor& dst);
+  common::Status CopyTensor1DToImage2D(const Tensor& src, Tensor& dst);
+  common::Status CopyTensor2DToImage2D(const Tensor& src, Tensor& dst);
+  common::Status CopyTensorNCHWToImage2D(const Tensor& src, Tensor& dst);
+  common::Status CopyTensorNCHWcToImage2D(const Tensor& src, Tensor& dst);
 
  private:
   cl::CommandQueue cmd_queue_;

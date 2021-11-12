@@ -2,7 +2,7 @@
 
 #include "opencl_execution_provider.h"
 #include "core/framework/op_kernel.h"
-#include "core/providers/opencl/opencl_onnxruntime_utils.h"
+#include "core/providers/opencl/opencl_utils.h"
 
 namespace onnxruntime {
 namespace opencl {

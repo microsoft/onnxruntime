@@ -22,9 +22,9 @@ Status RegisterOpenCLKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kOpenCLExecutionProvider, kOnnxDomain, 1, MemcpyFromHost)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kOpenCLExecutionProvider, kOnnxDomain, 1, MemcpyToHost)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kOpenCLExecutionProvider, kOnnxDomain, 7, Add)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kOpenCLExecutionProvider, kOnnxDomain, 7, Sub)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kOpenCLExecutionProvider, kOnnxDomain, 7, Mul)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kOpenCLExecutionProvider, kOnnxDomain, 7, Div)>,
+      // BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kOpenCLExecutionProvider, kOnnxDomain, 7, Sub)>,
+      // BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kOpenCLExecutionProvider, kOnnxDomain, 7, Mul)>,
+      // BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kOpenCLExecutionProvider, kOnnxDomain, 7, Div)>,
   };
 
   for (auto& function_table_entry : function_table) {
@@ -106,7 +106,15 @@ void OpenCLExecutionProvider::RegisterAllocator(std::shared_ptr<AllocatorManager
   // See https://stackoverflow.com/a/40951614
   InsertAllocator(CreateAllocator(AllocatorCreationInfo{
       [ctx = this->ctx_](int) {
-        return std::make_unique<opencl::OpenCLAllocator>(ctx);
+        return std::make_unique<opencl::OpenCLBufferAllocator>(ctx);
+      },
+      0,
+      /*use_arena=*/false,
+  }));
+
+  InsertAllocator(CreateAllocator(AllocatorCreationInfo{
+      [ctx = this->ctx_](int) {
+        return std::make_unique<opencl::OpenCLImage2DAllocator>(ctx);
       },
       0,
       /*use_arena=*/false,
