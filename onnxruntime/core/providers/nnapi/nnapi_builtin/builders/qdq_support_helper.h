@@ -53,7 +53,7 @@ class QDQSupportHelper {
  public:
   QDQSupportHelper(Selectors&& selectors);
 
-  QDQ::NodeGroup Match(const GraphViewer& graph_viewer, const Node& node) const;
+  std::optional<QDQ::NodeGroup> Match(const GraphViewer& graph_viewer, const Node& node) const;
 
   bool IsNodeInQDQGroup(const Node& node) const;
 

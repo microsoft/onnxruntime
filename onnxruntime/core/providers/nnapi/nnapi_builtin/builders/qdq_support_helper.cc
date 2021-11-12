@@ -4,6 +4,7 @@
 #include <iostream>
 #include <string>
 #include <vector>
+#include <optional>
 
 #include <core/graph/graph_viewer.h>
 #include <core/providers/common.h>
@@ -38,8 +39,8 @@ void Selectors::RegisterSelector(const Selector::OpVersionsMap& ops_and_versions
   ORT_IGNORE_RETURN_VALUE(selectors_set_.insert(std::move(entry)));
 }
 
-QDQ::NodeGroup QDQSupportHelper::Match(const GraphViewer& graph_viewer, const Node& node) const {
-  QDQ::NodeGroup qdq_node_group;
+std::optional<QDQ::NodeGroup> QDQSupportHelper::Match(const GraphViewer& graph_viewer, const Node& node) const {
+  std::optional<QDQ::NodeGroup> qdq_node_group;
 
   if (node.Domain() != kOnnxDomain) {
     return qdq_node_group;
@@ -61,13 +62,11 @@ QDQ::NodeGroup QDQSupportHelper::Match(const GraphViewer& graph_viewer, const No
     }
   }
 
-  auto node_selection_opt = selector.selector->GetQDQSelection(graph_viewer, node);
-  if (!node_selection_opt.has_value()) {
+  qdq_node_group = selector.selector->GetQDQSelection(graph_viewer, node);
+  if (!qdq_node_group.has_value()) {
     LOGS_DEFAULT(VERBOSE) << "No matched qdq selection returned";
     return qdq_node_group;
   }
-
-  qdq_node_group = *node_selection_opt;
 
   LOGS_DEFAULT(VERBOSE) << "QDQ Node Group found: " << node.OpType()
                         << " with matched target node's name: " << node.Name() << "\n";
@@ -84,20 +83,17 @@ QDQ::NodeGroupNonIndex QDQSupportHelper::GetQDQNodeGroup(const GraphViewer& grap
   QDQ::NodeGroupNonIndex qdq_node_group_nonindex;
 
   // Obtain the qdq node group from the qdq node index group
-  if (qdq_node_group.target_node != 0) {
+  if (qdq_node_group.has_value()) {
     qdq_node_group_nonindex.target_node = &node;
     nodes_in_qdq_group.insert(&node);
-  }
 
-  if (!qdq_node_group.dq_nodes.empty()) {
-    for (auto idx : qdq_node_group.dq_nodes) {
+    for (auto idx : qdq_node_group->dq_nodes) {
       const auto* dq_node = graph_viewer.GetNode(idx);
       qdq_node_group_nonindex.dq_nodes.push_back(dq_node);
       nodes_in_qdq_group.insert(dq_node);
     }
-  }
-  if (!qdq_node_group.q_nodes.empty()) {
-    for (auto idx : qdq_node_group.q_nodes) {
+
+    for (auto idx : qdq_node_group->q_nodes) {
       const auto* q_node = graph_viewer.GetNode(idx);
       qdq_node_group_nonindex.q_nodes.push_back(q_node);
       nodes_in_qdq_group.insert(q_node);
