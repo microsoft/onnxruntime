@@ -36,7 +36,7 @@ tensorproto_type_to_cpp = {v: k for k, v in cpp_to_tensorproto_type.items()}
 
 def check_graph(graph, opsets, required_ops, global_types, special_types, unsupported_ops):
     '''
-    Check the graph and any subgraphs for usage of types or operators which we know are not supported. 
+    Check the graph and any subgraphs for usage of types or operators which we know are not supported.
     There are some gray areas around operators using int32/int64/bools which
     :param graph: Graph to process.
     :param opsets: Map of domain to opset version that the model imports.
