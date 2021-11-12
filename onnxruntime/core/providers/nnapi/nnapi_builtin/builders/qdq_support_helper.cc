@@ -78,7 +78,7 @@ bool QDQSupportHelper::IsNodeInQDQGroup(const Node& node) const {
   return nodes_in_qdq_group.find(&node) != nodes_in_qdq_group.end();
 }
 
-QDQ::NodeGroupNonIndex QDQSupportHelper::GetQDQNodeGroup(const GraphViewer& graph_viewer, const Node& node) {
+void QDQSupportHelper::GetQDQNodeGroup(const GraphViewer& graph_viewer, const Node& node) {
   auto qdq_node_group = Match(graph_viewer, node);
   QDQ::NodeGroupNonIndex qdq_node_group_nonindex;
 
@@ -106,15 +106,12 @@ QDQ::NodeGroupNonIndex QDQSupportHelper::GetQDQNodeGroup(const GraphViewer& grap
   } else {
     target_node_to_qdq_group_.emplace(&node, qdq_node_group_nonindex);
   }
-
-  return qdq_node_group_nonindex;
 }
 
 void QDQSupportHelper::GetQDQNodeGroups(const GraphViewer& graph_viewer) {
   for (auto index : graph_viewer.GetNodesInTopologicalOrder()) {
     const auto* node = graph_viewer.GetNode(index);
-    auto qdq_node_group = GetQDQNodeGroup(graph_viewer, *node);
-    qdq_node_groups_.push_back(qdq_node_group);
+    GetQDQNodeGroup(graph_viewer, *node);
   }
 }
 

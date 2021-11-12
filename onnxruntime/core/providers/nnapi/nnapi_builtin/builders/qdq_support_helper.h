@@ -53,19 +53,18 @@ class QDQSupportHelper {
  public:
   QDQSupportHelper(Selectors&& selectors);
 
-  std::optional<QDQ::NodeGroup> Match(const GraphViewer& graph_viewer, const Node& node) const;
-
   bool IsNodeInQDQGroup(const Node& node) const;
 
-  QDQ::NodeGroupNonIndex GetQDQNodeGroup(const onnxruntime::GraphViewer& graph_viewer, const Node& node);
+  void GetQDQNodeGroup(const onnxruntime::GraphViewer& graph_viewer, const Node& node);
 
   void GetQDQNodeGroups(const onnxruntime::GraphViewer& graph_viewer);
 
-  Selectors selectors_;
-
-  std::vector<QDQ::NodeGroupNonIndex> qdq_node_groups_;
-
   std::unordered_map<const Node*, QDQ::NodeGroupNonIndex> target_node_to_qdq_group_;
+
+ private:
+  std::optional<QDQ::NodeGroup> Match(const GraphViewer& graph_viewer, const Node& node) const;
+
+  Selectors selectors_;
 
   std::unordered_map<std::string, const Selector*> op_type_to_selectors_map_;
 
