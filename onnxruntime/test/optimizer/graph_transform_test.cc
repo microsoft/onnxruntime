@@ -35,6 +35,7 @@
 #include "core/optimizer/fast_gelu_fusion.h"
 #include "core/optimizer/gelu_approximation.h"
 #include "core/optimizer/gelu_fusion.h"
+#include "core/optimizer/gemm_sum_fusion.h"
 #include "core/optimizer/gemm_activation_fusion.h"
 #include "core/optimizer/gemm_transpose_fusion.h"
 #include "core/optimizer/graph_transformer.h"
@@ -1365,6 +1366,331 @@ TEST_F(GraphTransformationTests, GemmTransposeFusionInputOutput) {
   auto new_input_defs = node.InputDefs();
   ASSERT_TRUE(new_input_defs[0]->Name() == "B");
   ASSERT_TRUE(new_input_defs[1]->Name() == "A");
+}
+
+// Sum(Gemm(A, B, _), C) -> Gemm(A, B, C)
+TEST_F(GraphTransformationTests, GemmSumFusionBasic) {
+  auto model_uri = MODEL_FOLDER "fusion/gemm_sum_basic.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+  Graph& graph = p_model->MainGraph();
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["Sum"], 1);
+  ASSERT_EQ(op_to_count["Gemm"], 1);
+  ASSERT_EQ(graph.NumberOfNodes(), 2);
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
+  ASSERT_STATUS_OK(rule_transformer_L1->Register(std::make_unique<GemmSumFusion>()));
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["Sum"], 0);
+  ASSERT_EQ(op_to_count["Gemm"], 1);
+  ASSERT_EQ(graph.NumberOfNodes(), 1);
+
+  auto& node = *graph.Nodes().begin();
+  ASSERT_TRUE(node.OpType() == "Gemm");
+  ASSERT_FALSE(static_cast<bool>(node.GetAttributes().at("transA").i()));
+  ASSERT_FALSE(static_cast<bool>(node.GetAttributes().at("transB").i()));
+  ASSERT_EQ(node.GetAttributes().at("alpha").f(), 1.0);
+  ASSERT_EQ(node.GetAttributes().at("beta").f(), 1.0);
+  auto new_input_defs = node.InputDefs();
+  ASSERT_EQ(new_input_defs.size(), 3u);
+  ASSERT_TRUE(new_input_defs[0]->Name() == "A");
+  ASSERT_TRUE(new_input_defs[1]->Name() == "B");
+  ASSERT_TRUE(new_input_defs[2]->Name() == "C");
+  auto new_output_defs = node.OutputDefs();
+  ASSERT_EQ(new_output_defs.size(), 1u);
+  ASSERT_TRUE(new_output_defs[0]->Name() == "output");
+}
+
+// Sum(Gemm(A, B, _), C) -> Gemm(A, B, C), with attributes
+TEST_F(GraphTransformationTests, GemmSumFusionAttributes) {
+  auto model_uri = MODEL_FOLDER "fusion/gemm_sum_attributes.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+  Graph& graph = p_model->MainGraph();
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["Sum"], 1);
+  ASSERT_EQ(op_to_count["Gemm"], 1);
+  ASSERT_EQ(graph.NumberOfNodes(), 2);
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
+  ASSERT_STATUS_OK(rule_transformer_L1->Register(std::make_unique<GemmSumFusion>()));
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["Sum"], 0);
+  ASSERT_EQ(op_to_count["Gemm"], 1);
+  ASSERT_EQ(graph.NumberOfNodes(), 1);
+
+  auto& node = *graph.Nodes().begin();
+  ASSERT_TRUE(node.OpType() == "Gemm");
+  ASSERT_FALSE(static_cast<bool>(node.GetAttributes().at("transA").i()));
+  ASSERT_TRUE(static_cast<bool>(node.GetAttributes().at("transB").i()));
+  ASSERT_EQ(node.GetAttributes().at("alpha").f(), 3.5);
+  ASSERT_EQ(node.GetAttributes().at("beta").f(), 1.0);
+  auto new_input_defs = node.InputDefs();
+  ASSERT_EQ(new_input_defs.size(), 3u);
+  ASSERT_TRUE(new_input_defs[0]->Name() == "A");
+  ASSERT_TRUE(new_input_defs[1]->Name() == "B");
+  ASSERT_TRUE(new_input_defs[2]->Name() == "C");
+  auto new_output_defs = node.OutputDefs();
+  ASSERT_EQ(new_output_defs.size(), 1u);
+  ASSERT_TRUE(new_output_defs[0]->Name() == "output");
+}
+
+// Identity(Sum(Gemm(Identity(A), Identity(B), _), Identity(C)) should still fuse Gemm/Sum internally.
+TEST_F(GraphTransformationTests, GemmSumFusionInternalNodes) {
+  auto model_uri = MODEL_FOLDER "fusion/gemm_sum_internal_nodes.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+  Graph& graph = p_model->MainGraph();
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["Sum"], 1);
+  ASSERT_EQ(op_to_count["Gemm"], 1);
+  ASSERT_EQ(op_to_count["Identity"], 4);
+  ASSERT_EQ(graph.NumberOfNodes(), 6);
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
+  ASSERT_STATUS_OK(rule_transformer_L1->Register(std::make_unique<GemmSumFusion>()));
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["Sum"], 0);
+  ASSERT_EQ(op_to_count["Gemm"], 1);
+  ASSERT_EQ(op_to_count["Identity"], 4);
+  ASSERT_EQ(graph.NumberOfNodes(), 5);
+
+  for(Node &node : graph.Nodes()) {
+    if(node.OpType() == "Gemm") {
+      ASSERT_FALSE(static_cast<bool>(node.GetAttributes().at("transA").i()));
+      ASSERT_FALSE(static_cast<bool>(node.GetAttributes().at("transB").i()));
+      ASSERT_EQ(node.GetAttributes().at("alpha").f(), 1.0);
+      ASSERT_EQ(node.GetAttributes().at("beta").f(), 1.0);
+
+      auto new_input_defs = node.InputDefs();
+      ASSERT_EQ(new_input_defs.size(), 3u);
+      ASSERT_TRUE(new_input_defs[0]->Name() == "tp0");
+      ASSERT_TRUE(new_input_defs[1]->Name() == "tp1");
+      ASSERT_TRUE(new_input_defs[2]->Name() == "tp3");
+      auto new_output_defs = node.OutputDefs();
+      ASSERT_EQ(new_output_defs.size(), 1u);
+      ASSERT_TRUE(new_output_defs[0]->Name() == "tp4");
+    }
+  }
+}
+
+// Sum(Gemm(A, B, C), D) does not perform transform.
+TEST_F(GraphTransformationTests, GemmSumFusionNoFusionCUsed) {
+  auto model_uri = MODEL_FOLDER "fusion/gemm_sum_no_fusion_c_used.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+  Graph& graph = p_model->MainGraph();
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["Sum"], 1);
+  ASSERT_EQ(op_to_count["Gemm"], 1);
+  ASSERT_EQ(graph.NumberOfNodes(), 2);
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
+  ASSERT_STATUS_OK(rule_transformer_L1->Register(std::make_unique<GemmSumFusion>()));
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  op_to_count = CountOpsInGraph(graph);
+  // Assert that the Sum still exists. Fusion should not occur with this pattern.
+  ASSERT_EQ(op_to_count["Sum"], 1);
+  ASSERT_EQ(op_to_count["Gemm"], 1);
+  ASSERT_EQ(graph.NumberOfNodes(), 2);
+
+  for (Node& node : graph.Nodes()) {
+    if (node.OpType() == "Gemm") {
+      auto new_input_defs = node.InputDefs();
+      ASSERT_EQ(new_input_defs.size(), 3u);
+      ASSERT_TRUE(new_input_defs[0]->Name() == "A");
+      ASSERT_TRUE(new_input_defs[1]->Name() == "B");
+      ASSERT_TRUE(new_input_defs[2]->Name() == "C");
+    } else if (node.OpType() == "Sum") {
+      auto new_input_defs = node.InputDefs();
+      ASSERT_EQ(new_input_defs.size(), 2u);
+      ASSERT_TRUE(new_input_defs[1]->Name() == "D");
+      auto new_output_defs = node.OutputDefs();
+      ASSERT_EQ(new_output_defs.size(), 1u);
+      ASSERT_TRUE(new_output_defs[0]->Name() == "output");
+    } else {
+      FAIL();
+    }
+  }
+}
+
+// Sum(Gemm(A, B), C, D) does not perform transform.
+TEST_F(GraphTransformationTests, GemmSumFusionNoFusionSumMultipleInputs) {
+  auto model_uri = MODEL_FOLDER "fusion/gemm_sum_no_fusion_sum_multiple_inputs.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+  Graph& graph = p_model->MainGraph();
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["Sum"], 1);
+  ASSERT_EQ(op_to_count["Gemm"], 1);
+  ASSERT_EQ(graph.NumberOfNodes(), 2);
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
+  ASSERT_STATUS_OK(rule_transformer_L1->Register(std::make_unique<GemmSumFusion>()));
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  op_to_count = CountOpsInGraph(graph);
+  // Assert that the Sum still exists. Fusion should not occur with this pattern.
+  ASSERT_EQ(op_to_count["Sum"], 1);
+  ASSERT_EQ(op_to_count["Gemm"], 1);
+  ASSERT_EQ(graph.NumberOfNodes(), 2);
+
+  for (Node& node : graph.Nodes()) {
+    if (node.OpType() == "Gemm") {
+      auto new_input_defs = node.InputDefs();
+      ASSERT_EQ(new_input_defs.size(), 2u);
+      ASSERT_TRUE(new_input_defs[0]->Name() == "A");
+      ASSERT_TRUE(new_input_defs[1]->Name() == "B");
+    } else if (node.OpType() == "Sum") {
+      auto new_input_defs = node.InputDefs();
+      ASSERT_EQ(new_input_defs.size(), 3u);
+      ASSERT_TRUE(new_input_defs[1]->Name() == "C");
+      ASSERT_TRUE(new_input_defs[2]->Name() == "D");
+      auto new_output_defs = node.OutputDefs();
+      ASSERT_EQ(new_output_defs.size(), 1u);
+      ASSERT_TRUE(new_output_defs[0]->Name() == "output");
+    } else {
+      FAIL();
+    }
+  }
+}
+
+// Sum(Gemm(A, B, _), C) -> Gemm(A, B, C), with broadcast.
+TEST_F(GraphTransformationTests, GemmSumFusionBroadcast) {
+  auto model_uri = MODEL_FOLDER "fusion/gemm_sum_fusion_broadcast.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+  Graph& graph = p_model->MainGraph();
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["Sum"], 1);
+  ASSERT_EQ(op_to_count["Gemm"], 1);
+  ASSERT_EQ(graph.NumberOfNodes(), 2);
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
+  ASSERT_STATUS_OK(rule_transformer_L1->Register(std::make_unique<GemmSumFusion>()));
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["Sum"], 0);
+  ASSERT_EQ(op_to_count["Gemm"], 1);
+  ASSERT_EQ(graph.NumberOfNodes(), 1);
+
+  auto& node = *graph.Nodes().begin();
+  ASSERT_TRUE(node.OpType() == "Gemm");
+  ASSERT_FALSE(static_cast<bool>(node.GetAttributes().at("transA").i()));
+  ASSERT_FALSE(static_cast<bool>(node.GetAttributes().at("transB").i()));
+  ASSERT_EQ(node.GetAttributes().at("alpha").f(), 1.0);
+  ASSERT_EQ(node.GetAttributes().at("beta").f(), 1.0);
+  auto new_input_defs = node.InputDefs();
+  ASSERT_EQ(new_input_defs.size(), 3u);
+  ASSERT_TRUE(new_input_defs[0]->Name() == "A");
+  ASSERT_TRUE(new_input_defs[1]->Name() == "B");
+  ASSERT_TRUE(new_input_defs[2]->Name() == "C");
+  auto new_output_defs = node.OutputDefs();
+  ASSERT_EQ(new_output_defs.size(), 1u);
+  ASSERT_TRUE(new_output_defs[0]->Name() == "output");
+}
+
+// Sum(Gemm(A, B, _), C), with invalid broadcasting (no fusion performed).
+TEST_F(GraphTransformationTests, GemmSumFusionNoFusionBroadcastFailure) {
+  auto model_uri = MODEL_FOLDER "fusion/gemm_sum_no_fusion_broadcast_failure.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+  Graph& graph = p_model->MainGraph();
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["Sum"], 1);
+  ASSERT_EQ(op_to_count["Gemm"], 1);
+  ASSERT_EQ(graph.NumberOfNodes(), 2);
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
+  ASSERT_STATUS_OK(rule_transformer_L1->Register(std::make_unique<GemmSumFusion>()));
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["Sum"], 1);
+  ASSERT_EQ(op_to_count["Gemm"], 1);
+  ASSERT_EQ(graph.NumberOfNodes(), 2);
+
+  for (Node& node : graph.Nodes()) {
+    if (node.OpType() == "Gemm") {
+      auto new_input_defs = node.InputDefs();
+      ASSERT_EQ(new_input_defs.size(), 2u);
+      ASSERT_TRUE(new_input_defs[0]->Name() == "A");
+      ASSERT_TRUE(new_input_defs[1]->Name() == "B");
+    } else if (node.OpType() == "Sum") {
+      auto new_input_defs = node.InputDefs();
+      ASSERT_EQ(new_input_defs.size(), 2u);
+      ASSERT_TRUE(new_input_defs[1]->Name() == "C");
+      auto new_output_defs = node.OutputDefs();
+      ASSERT_EQ(new_output_defs.size(), 1u);
+      ASSERT_TRUE(new_output_defs[0]->Name() == "output");
+    } else {
+      FAIL();
+    }
+  }
+}
+
+// Sum(Gemm(A, B, _), C) where intermediate Gemm output is used, so fusion cannot be performed.
+TEST_F(GraphTransformationTests, GemmSumFusionNoFusionOriginalGemmOutputUsed) {
+  auto model_uri = MODEL_FOLDER "fusion/gemm_sum_no_fusion_original_gemm_output_used.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+  Graph& graph = p_model->MainGraph();
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["Sum"], 1);
+  ASSERT_EQ(op_to_count["Gemm"], 1);
+  ASSERT_EQ(graph.NumberOfNodes(), 2);
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
+  ASSERT_STATUS_OK(rule_transformer_L1->Register(std::make_unique<GemmSumFusion>()));
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["Sum"], 1);
+  ASSERT_EQ(op_to_count["Gemm"], 1);
+  ASSERT_EQ(graph.NumberOfNodes(), 2);
+
+  for (Node& node : graph.Nodes()) {
+    if (node.OpType() == "Gemm") {
+      auto new_input_defs = node.InputDefs();
+      ASSERT_EQ(new_input_defs.size(), 2u);
+      ASSERT_TRUE(new_input_defs[0]->Name() == "A");
+      ASSERT_TRUE(new_input_defs[1]->Name() == "B");
+    } else if (node.OpType() == "Sum") {
+      auto new_input_defs = node.InputDefs();
+      ASSERT_EQ(new_input_defs.size(), 2u);
+      ASSERT_TRUE(new_input_defs[1]->Name() == "C");
+      auto new_output_defs = node.OutputDefs();
+      ASSERT_EQ(new_output_defs.size(), 1u);
+      ASSERT_TRUE(new_output_defs[0]->Name() == "output");
+    } else {
+      FAIL();
+    }
+  }
 }
 
 TEST_F(GraphTransformationTests, FuseConvBnAddMulFloat16) {
