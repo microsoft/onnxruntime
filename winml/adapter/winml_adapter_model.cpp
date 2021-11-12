@@ -911,9 +911,6 @@ ORT_API_STATUS_IMPL(winmla::JoinModels,
                      &op_output_name_const_str, 1,
                      nullptr, nullptr, 0);
   }
-
-  // merge model metadata
-
   first_model->RefreshModelInfo();
 
   return nullptr;
