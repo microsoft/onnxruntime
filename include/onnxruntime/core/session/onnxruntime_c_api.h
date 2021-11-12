@@ -3095,7 +3095,7 @@ struct OrtApi {
   /** \brief Set custom thread join function
   *
   * \param[in] session options
-  * \param[in] custom join thread function, must not be nullpter when custom_create_thread_fn is set
+  * \param[in] custom join thread function, must not be nullptr when custom_create_thread_fn is set
   * 
   * * \snippet{doc} snippets.dox OrtStatus Return Value
   */
