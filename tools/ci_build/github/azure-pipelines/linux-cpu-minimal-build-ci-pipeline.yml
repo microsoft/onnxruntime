@@ -13,7 +13,7 @@
 #    in <repo root>/onnxruntime/test/testdata/, so the tests for those models are skipped.
 # 5. Build baseline minimal ORT for Android arm64-v8a including no kernels and disable exceptions.
 #    This step is to report the baseline binary size for Android.
-# 6. Build full (6a) and extended minimal (6b) ORT with runtime optimizations disabled.
+# 6. Build full (6a) and extended minimal (6b) ORT with runtime optimizations enabled.
 jobs:
 - job: Linux_CPU_Minimal_Build_E2E
   timeoutInMinutes: 120
