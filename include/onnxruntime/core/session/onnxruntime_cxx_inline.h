@@ -510,18 +510,18 @@ inline SessionOptions& SessionOptions::AppendExecutionProvider_TensorRT(const Or
   return *this;
 }
 
-inline SessionOptions& SessionOptions::SetCustomCreateThreadFn(CustomCreateThreadFn custom_create_thread_fn) {
-  ThrowOnError(GetApi().SessionOptionsSetCustomCreateThreadFn(p_, custom_create_thread_fn));
+inline SessionOptions& SessionOptions::SetCustomCreateThreadFn(OrtCustomCreateThreadFn ort_custom_create_thread_fn) {
+  ThrowOnError(GetApi().SessionOptionsSetCustomCreateThreadFn(p_, ort_custom_create_thread_fn));
   return *this;
 }
 
-inline SessionOptions& SessionOptions::SetCustomThreadCreationOptions(void* custom_thread_creation_options) {
-  ThrowOnError(GetApi().SessionOptionsSetCustomThreadCreationOptions(p_, custom_thread_creation_options));
+inline SessionOptions& SessionOptions::SetCustomThreadCreationOptions(void* ort_custom_thread_creation_options) {
+  ThrowOnError(GetApi().SessionOptionsSetCustomThreadCreationOptions(p_, ort_custom_thread_creation_options));
   return *this;
 }
 
-inline SessionOptions& SessionOptions::SetCustomJoinThreadFn(CustomJoinThreadFn custom_join_thread_fn) {
-  ThrowOnError(GetApi().SessionOptionsSetCustomJoinThreadFn(p_, custom_join_thread_fn));
+inline SessionOptions& SessionOptions::SetCustomJoinThreadFn(OrtCustomJoinThreadFn ort_custom_join_thread_fn) {
+  ThrowOnError(GetApi().SessionOptionsSetCustomJoinThreadFn(p_, ort_custom_join_thread_fn));
   return *this;
 }
 

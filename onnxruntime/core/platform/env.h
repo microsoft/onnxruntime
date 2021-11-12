@@ -52,10 +52,10 @@ class EnvThread {
   virtual ~EnvThread() = default;
 
  protected:
-  CustomCreateThreadFn custom_create_thread_fn = nullptr;
+  OrtCustomCreateThreadFn custom_create_thread_fn = nullptr;
   void* custom_thread_creation_options = nullptr;
-  CustomJoinThreadFn custom_join_thread_fn = nullptr;
-  CUSTOM_THREAD_HANDLE custom_thread_handle = nullptr;
+  OrtCustomJoinThreadFn custom_join_thread_fn = nullptr;
+  OrtCustomThreadHandle custom_thread_handle = nullptr;
 };
 
 // Parameters that are required to create a set of threads for a thread pool
@@ -75,9 +75,9 @@ struct ThreadOptions {
   // Set or unset denormal as zero.
   bool set_denormal_as_zero = false;
 
-  CustomCreateThreadFn custom_create_thread_fn = nullptr;
+  OrtCustomCreateThreadFn custom_create_thread_fn = nullptr;
   void* custom_thread_creation_options = nullptr;
-  CustomJoinThreadFn custom_join_thread_fn = nullptr;
+  OrtCustomJoinThreadFn custom_join_thread_fn = nullptr;
 };
 /// \brief An interface used by the onnxruntime implementation to
 /// access operating system functionality like the filesystem etc.

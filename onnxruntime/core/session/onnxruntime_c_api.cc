@@ -2082,23 +2082,23 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSessionFromArrayWithPrepackedWeightsContainer
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::SessionOptionsSetCustomCreateThreadFn, _Inout_ OrtSessionOptions* options, _In_ CustomCreateThreadFn custom_create_thread_fn) {
+ORT_API_STATUS_IMPL(OrtApis::SessionOptionsSetCustomCreateThreadFn, _Inout_ OrtSessionOptions* options, _In_ OrtCustomCreateThreadFn ort_custom_create_thread_fn) {
   API_IMPL_BEGIN
-  options->value.custom_create_thread_fn = custom_create_thread_fn;
+  options->value.custom_create_thread_fn = ort_custom_create_thread_fn;
   return nullptr;
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::SessionOptionsSetCustomThreadCreationOptions, _Inout_ OrtSessionOptions* options, _In_ void* custom_thread_creation_options) {
+ORT_API_STATUS_IMPL(OrtApis::SessionOptionsSetCustomThreadCreationOptions, _Inout_ OrtSessionOptions* options, _In_ void* ort_custom_thread_creation_options) {
   API_IMPL_BEGIN
-  options->value.custom_thread_creation_options = custom_thread_creation_options;
+  options->value.custom_thread_creation_options = ort_custom_thread_creation_options;
   return nullptr;
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::SessionOptionsSetCustomJoinThreadFn, _Inout_ OrtSessionOptions* options, _In_ CustomJoinThreadFn custom_join_thread_fn) {
+ORT_API_STATUS_IMPL(OrtApis::SessionOptionsSetCustomJoinThreadFn, _Inout_ OrtSessionOptions* options, _In_ OrtCustomJoinThreadFn ort_custom_join_thread_fn) {
   API_IMPL_BEGIN
-  options->value.custom_join_thread_fn = custom_join_thread_fn;
+  options->value.custom_join_thread_fn = ort_custom_join_thread_fn;
   return nullptr;
   API_IMPL_END
 }
