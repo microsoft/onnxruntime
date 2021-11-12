@@ -38,7 +38,7 @@ class RuntimeOptimizationRecordContainerEntry(object):
             x = self._tab.Vector(o)
             x += flatbuffers.number_types.UOffsetTFlags.py_type(j) * 4
             x = self._tab.Indirect(x)
-            from ort_flatbuffers_py.experimental.fbs.RuntimeOptimizationRecord import RuntimeOptimizationRecord
+            from ort_flatbuffers_py.fbs.RuntimeOptimizationRecord import RuntimeOptimizationRecord
             obj = RuntimeOptimizationRecord()
             obj.Init(self._tab.Bytes, x)
             return obj
