@@ -3060,6 +3060,7 @@ struct OrtApi {
    * \snippet{doc} snippets.dox OrtStatus Return Value
    */
   ORT_API2_STATUS(HasValue, _In_ const OrtValue* value, _Out_ int* out);
+  /// @}
 
   /// \name OrtKernelContext
   /// @{
@@ -3073,7 +3074,10 @@ struct OrtApi {
   *             Only use it for custom kernel launching.
   */
   ORT_API2_STATUS(KernelContext_GetGPUComputeStream, _In_ const OrtKernelContext* context, _Outptr_ void** out);
+  /// @}
 
+  /// \name SessionOptions
+  /// @{
   /** \brief Set custom thread creation function
   *
   * \param[in] session options
@@ -3100,7 +3104,10 @@ struct OrtApi {
   * * \snippet{doc} snippets.dox OrtStatus Return Value
   */
   ORT_API2_STATUS(SessionOptionsSetCustomJoinThreadFn, _Inout_ OrtSessionOptions* options, _In_ OrtCustomJoinThreadFn ort_custom_join_thread_fn);
+  /// @}
 
+  /// \name OrtThreadingOptions
+  /// @{
   /** \brief Set custom thread creation function for global thread pools
   *
   * \param[inout] tp_options
