@@ -810,11 +810,6 @@ ORT_API_STATUS_IMPL(winmla::JoinModels,
 
   // Remove old outputs
   if (promote_unlinked_outputs) {
-    // remove all first model outputs
-    for (int i = 0; i < second_model_proto->graph().output_size(); i++) {
-      first_model_proto->mutable_graph()->mutable_output()->Clear();
-    }
-  } else {
     // loop through first model outputs and remove the linked ones in the main model inputs
     for (int i = first_model_proto->graph().output_size() - 1; i >= 0 ; i--) {
       auto& output_name = first_model_proto->graph().output(i).name();
@@ -825,6 +820,11 @@ ORT_API_STATUS_IMPL(winmla::JoinModels,
       if (!is_linked) {
         first_model_proto->mutable_graph()->mutable_output()->DeleteSubrange(i, 1);
       }
+    }
+  } else {
+    // remove all first model outputs
+    for (int i = 0; i < second_model_proto->graph().output_size(); i++) {
+      first_model_proto->mutable_graph()->mutable_output()->Clear();
     }
   }
 
