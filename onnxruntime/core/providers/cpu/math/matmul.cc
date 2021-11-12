@@ -169,7 +169,7 @@ Status MatMul<float>::Compute(OpKernelContext* ctx) const {
   const bool trans_b = trans_b_attr_ && b_shape.NumDimensions() != 1;
 
   MatMulComputeHelper helper;
-  ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b_shape, trans_a, trans_b, trans_batch_a_attr_, trans_batch_b_attr_));
+  ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b_shape, trans_a, trans_b, trans_batch_a_, trans_batch_b_));
   Tensor* y = ctx->Output(0, helper.OutputShape());
 
   // Bail out early if the output is going to be empty
