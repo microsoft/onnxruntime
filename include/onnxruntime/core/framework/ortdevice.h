@@ -70,3 +70,5 @@ inline bool operator==(const OrtDevice& left, const OrtDevice& other) {
 inline bool operator!=(const OrtDevice& left, const OrtDevice& other) {
   return !(left == other);
 }
+
+std::ostream& operator<<(std::ostream& out, const OrtDevice& dev);

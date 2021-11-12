@@ -178,6 +178,9 @@ option(onnxruntime_EXTERNAL_TRANSFORMER_SRC_PATH "Path to external transformer s
 
 option(onnxruntime_ENABLE_CUDA_PROFILING "Enable CUDA kernel profiling" OFF)
 
+# enable tracy for manually performance instrument (opencl ep only).
+option(onnxruntime_ENABLE_TRACY "Enable Tracy for manually performance instrument (OpenCL EP only)." OFF)
+
 if (onnxruntime_USE_CUDA)
   set(onnxruntime_DISABLE_RTTI OFF)
 endif()
@@ -930,8 +933,8 @@ include(eigen)
 #onnxruntime_EXTERNAL_LIBRARIES could contain onnx, onnx_proto,libprotobuf, cuda/cudnn,
 # dnnl/mklml, onnxruntime_codegen_tvm, tvm and pthread
 # pthread is always at the last
-set(onnxruntime_EXTERNAL_LIBRARIES onnx onnx_proto ${PROTOBUF_LIB} re2::re2 absl::inlined_vector  absl::flat_hash_set 
-  absl::flat_hash_map absl::node_hash_set absl::node_hash_map absl::base absl::throw_delegate absl::raw_hash_set 
+set(onnxruntime_EXTERNAL_LIBRARIES onnx onnx_proto ${PROTOBUF_LIB} re2::re2 absl::inlined_vector  absl::flat_hash_set
+  absl::flat_hash_map absl::node_hash_set absl::node_hash_map absl::base absl::throw_delegate absl::raw_hash_set
   absl::hash absl::city absl::low_level_hash absl::raw_logging_internal)
 
 set(onnxruntime_LINK_DIRS )
@@ -1096,6 +1099,11 @@ if (onnxruntime_USE_NUPHAR)
     list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_NUPHAR=1)
     list(APPEND ONNXRUNTIME_PROVIDER_NAMES nuphar)
 endif()
+if (onnxruntime_USE_OPENCL)
+    list(APPEND ORT_PROVIDER_FLAGS -DUSE_OPENCL=1)
+    list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_OPENCL=1)
+    list(APPEND ONNXRUNTIME_PROVIDER_NAMES opencl)
+endif()
 if (onnxruntime_USE_TVM)
     list(APPEND ORT_PROVIDER_FLAGS  -DUSE_TVM=1)
     list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_TVM=1)
@@ -1136,6 +1144,13 @@ if (onnxruntime_USE_COREML)
     list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_COREML=1)
     list(APPEND ONNXRUNTIME_PROVIDER_NAMES coreml)
 endif()
+
+add_subdirectory(external/tracy EXCLUDE_FROM_ALL)
+include_directories(external/tracy)
+if(onnxruntime_ENABLE_TRACY)
+    add_compile_definitions(TRACY_ENABLE)
+endif()
+
 function(onnxruntime_set_compile_flags target_name)
     target_compile_definitions(${target_name} PUBLIC EIGEN_USE_THREADS)
     if (MSVC)
@@ -1206,7 +1221,7 @@ function(onnxruntime_configure_target target_name)
     set_target_properties(${target_name} PROPERTIES INTERPROCEDURAL_OPTIMIZATION_RELWITHDEBINFO TRUE)
     set_target_properties(${target_name} PROPERTIES INTERPROCEDURAL_OPTIMIZATION_MINSIZEREL TRUE)
   endif()
-  
+
   # Keep BinSkim happy
   if(MSVC AND NOT onnxruntime_target_platform MATCHES "ARM")
     target_link_options(${target_name} PRIVATE "/CETCOMPAT")
@@ -1872,7 +1887,7 @@ endif()
 
 set(ONNXRUNTIME_TARGETS onnxruntime_common onnxruntime_graph onnxruntime_framework onnxruntime_util onnxruntime_providers onnxruntime_optimizer onnxruntime_session onnxruntime_mlas onnxruntime_flatbuffers)
 if (onnxruntime_USE_NUPHAR_TVM)
-  list(APPEND ONNXRUNTIME_TARGETS onnxruntime_codegen_tvm)  
+  list(APPEND ONNXRUNTIME_TARGETS onnxruntime_codegen_tvm)
 endif()
 if (onnxruntime_ENABLE_EAGER_MODE)
   if (NOT onnxruntime_ENABLE_TRAINING OR NOT onnxruntime_ENABLE_PYTHON)
@@ -2040,4 +2055,3 @@ if (onnxruntime_ENABLE_EXTERNAL_CUSTOM_OP_SCHEMAS)
     COMMENT "Installing protobuf"
   )
 endif()
-

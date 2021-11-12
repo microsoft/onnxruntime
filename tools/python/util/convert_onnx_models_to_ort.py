@@ -56,8 +56,8 @@ def _create_session_options(optimization_level: ort.GraphOptimizationLevel,
 def _convert(model_path_or_dir: pathlib.Path, output_dir: typing.Optional[pathlib.Path],
              optimization_level_str: str, optimization_style: OptimizationStyle,
              custom_op_library: pathlib.Path, create_optimized_onnx_model: bool, allow_conversion_failures: bool,
-             target_platform: str, session_options_config_entries: typing.Dict[str, str]) \
-        -> typing.List[pathlib.Path]:
+             target_platform: str, session_options_config_entries: typing.Dict[str, str],
+             providers: typing.List[str]) -> typing.List[pathlib.Path]:
 
     model_dir = model_path_or_dir if model_path_or_dir.is_dir() else model_path_or_dir.parent
     output_dir = output_dir or model_dir
@@ -78,8 +78,6 @@ def _convert(model_path_or_dir: pathlib.Path, output_dir: typing.Optional[pathli
 
     if len(models) == 0:
         raise ValueError("No model files were found in '{}'".format(model_path_or_dir))
-
-    providers = ['CPUExecutionProvider']
 
     # if the optimization level is 'all' we manually exclude the NCHWc transformer. It's not applicable to ARM
     # devices, and creates a device specific model which won't run on all hardware.
@@ -197,6 +195,10 @@ def parse_args():
                              'such as QDQIsInt8Allowed(arm), NCHWc (amd64) and NHWC (arm/amd64) format, different '
                              'optimizer level options, etc.')
 
+    parser.add_argument('--providers', nargs="+", default=["CPUExecutionProvider"],
+                        choices=ort.get_available_providers(),
+                        help="This option should not be used unless instructed by EP's documentation.")
+
     parser.add_argument('model_path_or_dir', type=pathlib.Path,
                         help='Provide path to ONNX model or directory containing ONNX model/s to convert. '
                              'All files with a .onnx extension, including those in subdirectories, will be '
@@ -240,7 +242,8 @@ def convert_onnx_models_to_ort():
             create_optimized_onnx_model=args.save_optimized_onnx_model,
             allow_conversion_failures=args.allow_conversion_failures,
             target_platform=args.target_platform,
-            session_options_config_entries=session_options_config_entries)
+            session_options_config_entries=session_options_config_entries,
+            providers=args.providers)
 
         with contextlib.ExitStack() as context_stack:
             if optimization_style == OptimizationStyle.Runtime:
@@ -264,7 +267,8 @@ def convert_onnx_models_to_ort():
                     create_optimized_onnx_model=False,  # not useful as they would be created in a temp directory
                     allow_conversion_failures=args.allow_conversion_failures,
                     target_platform=args.target_platform,
-                    session_options_config_entries=session_options_config_entries_for_second_conversion)
+                    session_options_config_entries=session_options_config_entries_for_second_conversion,
+                    providers=args.providers)
 
             print("Generating config file from ORT format models with optimization style '{}' and level '{}'".format(
                 optimization_style.name, optimization_level_str))

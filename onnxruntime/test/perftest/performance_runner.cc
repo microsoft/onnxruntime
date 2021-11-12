@@ -109,6 +109,7 @@ void PerformanceResult::DumpToFile(const std::basic_string<ORTCHAR_T>& path, boo
 }
 
 Status PerformanceRunner::Run() {
+  ZoneScopedN("PerformanceRunner::Run");
   if (!Initialize()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "failed to initialize.");
   }
@@ -287,6 +288,7 @@ PerformanceRunner::PerformanceRunner(Ort::Env& env, const PerformanceTestConfig&
 PerformanceRunner::~PerformanceRunner() = default;
 
 bool PerformanceRunner::Initialize() {
+  ZoneScopedN("PerformanceRunner::Initialize");
   std::basic_string<PATH_CHAR_TYPE> test_case_dir;
   auto st = GetDirNameFromFilePath(performance_test_config_.model_info.model_file_path, test_case_dir);
   if (!st.IsOK()) {

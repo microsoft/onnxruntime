@@ -209,6 +209,12 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
                                                                             onnxruntime::kRocmExecutionProvider,
                                                                             onnxruntime::kAclExecutionProvider,
                                                                             onnxruntime::kArmNNExecutionProvider};
+      const InlinedHashSet<std::string_view> cpu_cuda_rocm_acl_armnn_opencl_eps = {onnxruntime::kCpuExecutionProvider,
+                                                                                   onnxruntime::kCudaExecutionProvider,
+                                                                                   onnxruntime::kRocmExecutionProvider,
+                                                                                   onnxruntime::kAclExecutionProvider,
+                                                                                   onnxruntime::kArmNNExecutionProvider,
+                                                                                   onnxruntime::kOpenCLExecutionProvider};
 
       if (!disable_quant_qdq) {
         // currently we don't support QDQS8ToU8Transformer in a minimal build and if supported, this needs to run in
@@ -224,7 +230,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       transformers.emplace_back(std::make_unique<MatMulIntegerToFloatFusion>(cpu_ep));
       transformers.emplace_back(std::make_unique<DynamicQuantizeMatMulFusion>(cpu_ep));
 
-      transformers.emplace_back(std::make_unique<ConvActivationFusion>(cpu_cuda_rocm_acl_armnn_eps));
+      transformers.emplace_back(std::make_unique<ConvActivationFusion>(cpu_cuda_rocm_acl_armnn_opencl_eps));
 
       transformers.emplace_back(std::make_unique<GeluFusion>(cpu_cuda_rocm_eps));
       transformers.emplace_back(std::make_unique<LayerNormFusion>(cpu_cuda_rocm_eps));

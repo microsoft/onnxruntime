@@ -515,6 +515,9 @@ def parse_arguments():
     parser.add_argument(
         "--armnn_libs", help="Path to ArmNN libraries")
     parser.add_argument(
+        "--use_opencl", action="store_true",
+        help="Enable OpenCL Execution Provider for mobile GPU.")
+    parser.add_argument(
         "--build_micro_benchmarks", action='store_true',
         help="Build ONNXRuntime micro-benchmarks.")
 
@@ -766,6 +769,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_ENABLE_MICROSOFT_INTERNAL=" + ("ON" if args.enable_msinternal else "OFF"),
         "-Donnxruntime_USE_VITISAI=" + ("ON" if args.use_vitisai else "OFF"),
         "-Donnxruntime_USE_NUPHAR=" + ("ON" if args.use_nuphar else "OFF"),
+        "-Donnxruntime_USE_OPENCL=" + ("ON" if args.use_opencl else "OFF"),
         "-Donnxruntime_USE_TENSORRT=" + ("ON" if args.use_tensorrt else "OFF"),
         "-Donnxruntime_TENSORRT_HOME=" + (tensorrt_home if args.use_tensorrt else ""),
         # set vars for TVM
@@ -1735,7 +1739,7 @@ def run_nodejs_tests(nodejs_binding_dir):
 
 def build_python_wheel(
         source_dir, build_dir, configs, use_cuda, cuda_version, use_rocm, rocm_version, use_dnnl,
-        use_tensorrt, use_openvino, use_nuphar, use_tvm, use_vitisai, use_acl, use_armnn, use_dml,
+        use_tensorrt, use_opencl, use_openvino, use_nuphar, use_tvm, use_vitisai, use_acl, use_armnn, use_dml,
         wheel_name_suffix, enable_training, nightly_build=False, default_training_package_device=False,
         use_ninja=False, build_eager_mode=False):
     for config in configs:
@@ -1768,6 +1772,8 @@ def build_python_wheel(
             args.append('--use_rocm')
             if rocm_version:
                 args.append('--rocm_version={}'.format(rocm_version))
+        elif use_opencl:
+            args.append('--use_opencl')
         elif use_openvino:
             args.append('--use_openvino')
         elif use_dnnl:
@@ -2366,6 +2372,7 @@ def main():
                 args.rocm_version,
                 args.use_dnnl,
                 args.use_tensorrt,
+                args.use_opencl,
                 args.use_openvino,
                 args.use_nuphar,
                 args.use_tvm,

@@ -114,6 +114,16 @@
       "component": {
         "type": "git",
         "git": {
+          "commitHash": "dcd5bede6859d26833cd85f0d6bbcee7382dc9b3",
+          "repositoryUrl": "https://github.com/KhronosGroup/OpenCL-Headers.git"
+        },
+        "comments": "git submodule at cmake/external/cl3w/OpenCL-Headers"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
           "commitHash": "c3cceac115c072fb63df1836ff46d8c60d9eb304",
           "repositoryUrl": "https://github.com/NVlabs/cub.git"
         },
@@ -164,7 +174,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "3acac70a551c321574732e5bfd67930244bb7151",
+          "commitHash": "fc645b7626ebf86530dbd82fbece74d457e7ae07",
           "repositoryUrl": "https://github.com/emscripten-core/emsdk.git"
         },
         "comments": "git submodule at cmake/external/emsdk"
@@ -284,7 +294,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "e9456d57605c883cdf985e634ab483e2c1500bb1",
+          "commitHash": "4f54a1950e1174dca490900eb7b07cc374f53d41",
           "repositoryUrl": "https://github.com/onnx/onnx-tensorrt.git"
         },
         "comments": "git submodule at cmake/external/onnx-tensorrt"
@@ -388,6 +398,16 @@
           "repositoryUrl": "https://github.com/tensorflow/tensorboard.git"
         },
         "comments": "git submodule at cmake/external/tensorboard"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "92b182d47e51e59064778819db08aba0d7017c1e",
+          "repositoryUrl": "https://github.com/wolfpld/tracy.git"
+        },
+        "comments": "git submodule at cmake/external/tracy"
       }
     },
     {
