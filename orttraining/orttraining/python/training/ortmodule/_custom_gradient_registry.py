@@ -142,6 +142,7 @@ def ctc_loss_gradient():
     return [
         (('ATenOp', 'com.microsoft'), ['GO(0)', 'I(0)', 'I(1)', 'I(2)', 'I(3)', 'O(0)', 'O(1)', 'I(4)', 'I(5)'], [
          'GI(0)'], {'name': {'value': 'aten::_ctc_loss_backward', 'dtype': 'string'}}),
+    ]
 
 
 @register_gradient('com.microsoft', 'ATenOp', 'aten::binary_cross_entropy_with_logits', '')
