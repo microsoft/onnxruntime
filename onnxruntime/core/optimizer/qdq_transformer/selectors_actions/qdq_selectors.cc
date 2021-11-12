@@ -54,14 +54,14 @@ bool BaseSelector::CheckQDQNodes(const GraphViewer& graph_viewer, const Node& no
          !graph_viewer.NodeProducesGraphOutput(node);
 }
 
-std::optional<NodeGroup> BaseSelector::GetQDQSelection(const GraphViewer& graph_viewer, const Node& node) const {
+std::optional<NodeGroupIndices> BaseSelector::GetQDQSelection(const GraphViewer& graph_viewer, const Node& node) const {
   std::vector<const Node*> dq_nodes = FindQDQNodes(graph_viewer, node, true);
   std::vector<const Node*> q_nodes = FindQDQNodes(graph_viewer, node, false);
   if (!Check(graph_viewer, node, dq_nodes, q_nodes)) {
     return std::nullopt;
   }
 
-  NodeGroup node_group;
+  NodeGroupIndices node_group;
   node_group.dq_nodes.reserve(dq_nodes.size());
   node_group.q_nodes.reserve(q_nodes.size());
   node_group.target_node = node.Index();

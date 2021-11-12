@@ -25,7 +25,6 @@ QDQSupportHelper::QDQSupportHelper(Selectors&& selectors, const GraphViewer& gra
   for (const auto& entry : selectors_.SelectorsSet()) {
     for (const auto& op_info : entry->op_versions_map) {
       bool inserted = op_type_to_selectors_map_.insert({op_info.first, &*entry}).second;
-
       ORT_ENFORCE(inserted, "Multiple entries for operator is not supported. OpType=", op_info.first);
     }
   }
@@ -49,16 +48,16 @@ bool QDQSupportHelper::IsNodeInQDQGroup(const Node& node) const {
   return nodes_in_qdq_group.find(&node) != nodes_in_qdq_group.end();
 }
 
-std::optional<QDQ::NodeGroup> QDQSupportHelper::Match(const Node& node) const {
-  std::optional<QDQ::NodeGroup> qdq_node_group;
+std::optional<QDQ::NodeGroupIndices> QDQSupportHelper::Match(const Node& node) const {
+  std::optional<QDQ::NodeGroupIndices> qdq_node_group_indices;
 
   if (node.Domain() != kOnnxDomain) {
-    return qdq_node_group;
+    return qdq_node_group_indices;
   }
 
   auto op_rule = op_type_to_selectors_map_.find(node.OpType());
   if (op_rule == op_type_to_selectors_map_.cend()) {
-    return qdq_node_group;
+    return qdq_node_group_indices;
   }
 
   const auto& selector = *op_rule->second;
@@ -68,49 +67,49 @@ std::optional<QDQ::NodeGroup> QDQSupportHelper::Match(const Node& node) const {
   if (!versions.empty()) {
     if (std::find(versions.cbegin(), versions.cend(), node.SinceVersion()) == versions.cend()) {
       LOGS_DEFAULT(VERBOSE) << "Specified op type version is not supported";
-      return qdq_node_group;
+      return qdq_node_group_indices;
     }
   }
 
-  qdq_node_group = selector.selector->GetQDQSelection(graph_viewer_, node);
-  if (!qdq_node_group.has_value()) {
+  qdq_node_group_indices = selector.selector->GetQDQSelection(graph_viewer_, node);
+  if (!qdq_node_group_indices.has_value()) {
     LOGS_DEFAULT(VERBOSE) << "No matched qdq selection returned";
-    return qdq_node_group;
+    return qdq_node_group_indices;
   }
 
   LOGS_DEFAULT(VERBOSE) << "QDQ Node Group found: " << node.OpType()
                         << " with matched target node's name: " << node.Name() << "\n";
 
-  return qdq_node_group;
+  return qdq_node_group_indices;
 }
 
 void QDQSupportHelper::GetQDQNodeGroup(const Node& node) {
-  auto qdq_node_group = Match(node);
-  QDQ::NodeGroupNonIndex qdq_node_group_nonindex;
+  auto qdq_node_group_indices = Match(node);
+  QDQ::NodeGroup qdq_node_group;
 
   // Obtain the qdq node group from the qdq node index group
-  if (qdq_node_group.has_value()) {
-    qdq_node_group_nonindex.target_node = &node;
+  if (qdq_node_group_indices.has_value()) {
+    qdq_node_group.target_node = &node;
     nodes_in_qdq_group.insert(&node);
 
-    for (auto idx : qdq_node_group->dq_nodes) {
+    for (auto idx : qdq_node_group_indices->dq_nodes) {
       const auto* dq_node = graph_viewer_.GetNode(idx);
-      qdq_node_group_nonindex.dq_nodes.push_back(dq_node);
+      qdq_node_group.dq_nodes.push_back(dq_node);
       nodes_in_qdq_group.insert(dq_node);
     }
 
-    for (auto idx : qdq_node_group->q_nodes) {
+    for (auto idx : qdq_node_group_indices->q_nodes) {
       const auto* q_node = graph_viewer_.GetNode(idx);
-      qdq_node_group_nonindex.q_nodes.push_back(q_node);
+      qdq_node_group.q_nodes.push_back(q_node);
       nodes_in_qdq_group.insert(q_node);
     }
   }
 
   auto it = target_node_to_qdq_group_.find(&node);
   if (it != target_node_to_qdq_group_.end()) {
-    it->second = qdq_node_group_nonindex;
+    it->second = qdq_node_group;
   } else {
-    target_node_to_qdq_group_.emplace(&node, qdq_node_group_nonindex);
+    target_node_to_qdq_group_.emplace(&node, qdq_node_group);
   }
 }
 

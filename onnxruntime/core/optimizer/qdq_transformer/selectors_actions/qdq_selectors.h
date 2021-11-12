@@ -13,14 +13,15 @@ class Node;
 
 namespace QDQ {
 
-// Struct to represent a DQ->Op->Q node group
-struct NodeGroup {
+// Struct to represent a DQ->Op->Q node group by nodeindex
+struct NodeGroupIndices {
   std::vector<NodeIndex> dq_nodes;
   std::vector<NodeIndex> q_nodes;
   NodeIndex target_node;
 };
 
-struct NodeGroupNonIndex {
+// Struct to represent a DQ->Op->Q node group by node
+struct NodeGroup {
   std::vector<const Node*> dq_nodes;
   std::vector<const Node*> q_nodes;
   const Node* target_node;
@@ -32,9 +33,9 @@ class BaseSelector : public NodeSelector {
  public:
   std::optional<NodesToOptimizeIndices> Select(const GraphViewer& graph_viewer, const Node& node) const override;
 
-  // This is a QDQ Selectors only function, will return QDQ::NodeGroup instead of NodesToOptimizeIndices
+  // This is a QDQ Selectors only function, will return QDQ::NodeGroupIndices instead of NodesToOptimizeIndices
   // Can be used in QDQ handling in EPs such as NNAPI
-  std::optional<NodeGroup> GetQDQSelection(const GraphViewer& graph_viewer, const Node& node) const;
+  std::optional<NodeGroupIndices> GetQDQSelection(const GraphViewer& graph_viewer, const Node& node) const;
 
  protected:
   BaseSelector() = default;
