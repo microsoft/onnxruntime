@@ -1,5 +1,6 @@
 ---
 title: C# API
+description: Overview of the C# API
 nav_exclude: true
 redirect_from: /docs/reference/api/csharp-api
 ---
