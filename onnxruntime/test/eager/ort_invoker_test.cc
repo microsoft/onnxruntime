@@ -39,7 +39,7 @@ TEST(InvokerTest, Basic) {
   ASSERT_STATUS_OK(kernel_invoker.Invoke("Add", {A, B}, result, nullptr));
   const Tensor& C = result.back().Get<Tensor>();
   auto& c_shape = C.Shape();
-  EXPECT_EQ(c_shape.GetDims(), dims_mul_x);
+  EXPECT_EQ(c_shape.GetDimsAsVector(), dims_mul_x);
 
   std::vector<float> expected_result = {2.0f, 4.0f, 6.0f, 8.0f, 10.0f, 12.0f};
   auto* c_data = C.Data<float>();

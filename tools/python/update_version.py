@@ -50,7 +50,7 @@ def update_version():
                 if inserted is False and len(sections) == 3 and \
                         sections[0].isdigit() and sections[1].isdigit() and sections[2].isdigit():
                     f.write(version + '\n')
-                    f.write('^^^^^\n\n')
+                    f.write('^'*len(version) + '\n\n')
                     f.write('Release Notes : https://github.com/Microsoft/onnxruntime/releases/tag/v'
                             + version.strip() + '\n\n')
                     inserted = True

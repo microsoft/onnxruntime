@@ -153,7 +153,7 @@ std::optional<std::vector<int64_t>> ApiValueInfo::Shape() const {
   }
 
   TensorShape shape = utils::GetTensorShapeFromTensorShapeProto(*shape_proto);
-  return shape.GetDims();
+  return shape.GetDimsAsVector();
 }
 
 api::DataType ApiValueInfo::DType() const {

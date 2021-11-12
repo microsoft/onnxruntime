@@ -282,6 +282,9 @@ struct ProviderHostImpl : ProviderHost {
   std::string Status__ToString(const Status* p) override { return p->Status::ToString(); }
 
   // TensorShape (direct)
+  void TensorShape__operator_assign(TensorShape* p, const TensorShape& other) override { p->TensorShape::operator=(other); }
+  void TensorShape__operator_move_assign(TensorShape* p, TensorShape&& other) override { p->TensorShape::operator=(std::move(other)); }
+  void TensorShape__Allocate(TensorShape* p, size_t size) override { p->TensorShape::Allocate(size); }
   int64_t TensorShape__SizeHelper(const TensorShape* p, size_t start, size_t end) override { return p->TensorShape::SizeHelper(start, end); }
   std::string TensorShape__ToString(const TensorShape* p) override { return p->TensorShape::ToString(); }
   int64_t TensorShape__SizeToDimension(const TensorShape* p, size_t dimension) override { return p->TensorShape::SizeToDimension(dimension); }
