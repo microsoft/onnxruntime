@@ -12,8 +12,7 @@
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
 
-namespace onnxruntime {
-namespace utils {
+namespace onnxruntime::fbs::utils {
 
 #if !defined(ORT_MINIMAL_BUILD)
 
@@ -308,5 +307,4 @@ bool IsOrtFormatModelBytes(const void* bytes, int num_bytes) {
          fbs::InferenceSessionBufferHasIdentifier(bytes);
 }
 
-}  // namespace utils
-}  // namespace onnxruntime
+}  // namespace onnxruntime::fbs::utils

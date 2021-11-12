@@ -630,7 +630,7 @@ Status Node::SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
       subgraph = it->second;
     }
     ORT_RETURN_IF_ERROR(
-        utils::SaveAttributeOrtFormat(builder, attr_proto, fbs_attr, ModelPath(), subgraph));
+        fbs::utils::SaveAttributeOrtFormat(builder, attr_proto, fbs_attr, ModelPath(), subgraph));
     attributes_vec.push_back(fbs_attr);
   }
   auto attributes = builder.CreateVector(attributes_vec);
@@ -696,16 +696,16 @@ Status Node::LoadFromOrtFormat(const onnxruntime::fbs::Node& fbs_node, const log
   };
 
   // index_ was set in the ctor of this Node instance
-  utils::LoadStringFromOrtFormat(name_, fbs_node.name());
-  utils::LoadStringFromOrtFormat(description_, fbs_node.doc_string());
-  utils::LoadStringFromOrtFormat(domain_, fbs_node.domain());
+  fbs::utils::LoadStringFromOrtFormat(name_, fbs_node.name());
+  fbs::utils::LoadStringFromOrtFormat(description_, fbs_node.doc_string());
+  fbs::utils::LoadStringFromOrtFormat(domain_, fbs_node.domain());
   since_version_ = fbs_node.since_version();
-  utils::LoadStringFromOrtFormat(op_type_, fbs_node.op_type());
+  fbs::utils::LoadStringFromOrtFormat(op_type_, fbs_node.op_type());
   node_type_ = static_cast<Node::Type>(fbs_node.type());
   // we skip populating the saved EP here
   // the node will either be assigned to another EP by the ORT format model-specific graph partitioning or fall back to
   // the EP encoded in its kernel def hash
-  //utils::LoadStringFromOrtFormat(execution_provider_type_, fbs_node.execution_provider_type());
+  // fbs::utils::LoadStringFromOrtFormat(execution_provider_type_, fbs_node.execution_provider_type());
   ORT_RETURN_IF_ERROR(LoadNodeArgsFromOrtFormat(fbs_node.inputs(), definitions_.input_defs));
 
   // attributes
@@ -716,7 +716,7 @@ Status Node::LoadFromOrtFormat(const onnxruntime::fbs::Node& fbs_node, const log
       AttributeProto attr_proto;
       std::unique_ptr<Graph> subgraph;
       ORT_RETURN_IF_ERROR(
-          utils::LoadAttributeOrtFormat(*fbs_attr, attr_proto, subgraph, *graph_, *this, logger));
+          fbs::utils::LoadAttributeOrtFormat(*fbs_attr, attr_proto, subgraph, *graph_, *this, logger));
 
       // If we have a sub graph in this attributes, it will be loaded into subgraph ptr
       // while the attribute proto contains the sub graph will have the empty g() field
@@ -3079,7 +3079,7 @@ common::Status Graph::SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
     if (sparse_tensor_names_.find(pair.first) == sparse_end) {
       flatbuffers::Offset<fbs::Tensor> fbs_tensor;
       ORT_RETURN_IF_ERROR(
-          utils::SaveInitializerOrtFormat(builder, *pair.second, model_path, fbs_tensor));
+          fbs::utils::SaveInitializerOrtFormat(builder, *pair.second, model_path, fbs_tensor));
       initializers_data.push_back(fbs_tensor);
     }
 #if !defined(DISABLE_SPARSE_TENSORS)
@@ -3088,7 +3088,7 @@ common::Status Graph::SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
       ORT_RETURN_IF_ERROR(utils::DenseTensorToSparseTensorProto(*pair.second, model_path, sparse_initializer));
       flatbuffers::Offset<fbs::SparseTensor> fbs_sparse_tensor;
       ORT_RETURN_IF_ERROR(
-          utils::SaveSparseInitializerOrtFormat(builder, sparse_initializer, model_path, fbs_sparse_tensor));
+          fbs::utils::SaveSparseInitializerOrtFormat(builder, sparse_initializer, model_path, fbs_sparse_tensor));
       sparse_initializers_data.push_back(fbs_sparse_tensor);
     }
 #endif
@@ -3103,7 +3103,7 @@ common::Status Graph::SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
   for (const auto& pair : node_args_) {
     flatbuffers::Offset<fbs::ValueInfo> fbs_val_info;
     ORT_RETURN_IF_ERROR(
-        utils::SaveValueInfoOrtFormat(builder, pair.second->ToProto(), fbs_val_info));
+        fbs::utils::SaveValueInfoOrtFormat(builder, pair.second->ToProto(), fbs_val_info));
     node_args_data.push_back(fbs_val_info);
   }
   auto node_args = builder.CreateVector(node_args_data);
@@ -4208,7 +4208,7 @@ common::Status Graph::LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph
     for (const auto* fbs_tensor : *fbs_initializers) {
       ORT_RETURN_IF(nullptr == fbs_tensor, "Initializer tensor is missing. Invalid ORT format model.");
       TensorProto* initializer = deserialized_proto_data_.add_initializer();
-      ORT_RETURN_IF_ERROR(utils::LoadInitializerOrtFormat(*fbs_tensor, *initializer));
+      ORT_RETURN_IF_ERROR(fbs::utils::LoadInitializerOrtFormat(*fbs_tensor, *initializer));
       auto p = name_to_initial_tensor_.emplace(initializer->name(), initializer);
       if (!p.second) {
         LOGS(logger_, WARNING) << "Duplicate initializer (dense or ConstantNode): '" << initializer->name()
@@ -4227,7 +4227,7 @@ common::Status Graph::LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph
     for (const auto* fbs_sparse_tensor : *fbs_sparse_initializers) {
       ORT_RETURN_IF(nullptr == fbs_sparse_tensor, "Sparse Initializer tensor is missing. Invalid ORT format model.");
       SparseTensorProto sparse_initializer;
-      ORT_RETURN_IF_ERROR(utils::LoadSparseInitializerOrtFormat(*fbs_sparse_tensor, sparse_initializer));
+      ORT_RETURN_IF_ERROR(fbs::utils::LoadSparseInitializerOrtFormat(*fbs_sparse_tensor, sparse_initializer));
       TensorProto& initializer = *deserialized_proto_data_.add_initializer();
       ORT_RETURN_IF_ERROR(utils::SparseTensorProtoToDenseTensorProto(sparse_initializer, model_path, initializer));
       auto p = name_to_initial_tensor_.emplace(initializer.name(), &initializer);
@@ -4249,7 +4249,7 @@ common::Status Graph::LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph
     for (const auto* fbs_value_info : *fbs_node_args) {
       ORT_RETURN_IF(nullptr == fbs_value_info, "NodeArg is missing. Invalid ORT format model.");
       NodeArgInfo node_arg_info;
-      ORT_RETURN_IF_ERROR(utils::LoadValueInfoOrtFormat(*fbs_value_info, node_arg_info));
+      ORT_RETURN_IF_ERROR(fbs::utils::LoadValueInfoOrtFormat(*fbs_value_info, node_arg_info));
       // NodeArg ctor is private, cannot use make_unique
       node_args_[fbs_value_info->name()->str()] = std::unique_ptr<NodeArg>(new NodeArg(std::move(node_arg_info)));
     }
