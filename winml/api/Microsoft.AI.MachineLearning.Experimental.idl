@@ -104,7 +104,7 @@ namespace ROOT_NS.AI.MachineLearning.Experimental {
   }
 
   //! \class LearningModelJoinOptions
-  //! \brief TODO:Docs
+  //! \brief This class defines Join Options to be used with the JoinModels method
   [dualapipartition(1)]
   runtimeclass LearningModelJoinOptions
   {

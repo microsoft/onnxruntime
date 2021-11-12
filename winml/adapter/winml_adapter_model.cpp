@@ -875,6 +875,8 @@ ORT_API_STATUS_IMPL(winmla::JoinModels,
     node = std::move(other_node);
   }
 
+  // WinML+RT API only supports opset 7 and above models.
+  // In practice this number is always overwritten by the for loop below which will find the actual opset version.
   int64_t opset = 7;
   for (int i = 0; i < second_model_proto->opset_import_size(); i++) {
     auto mutable_opset_import = second_model_proto->mutable_opset_import(i);
