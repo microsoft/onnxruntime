@@ -537,10 +537,6 @@ def parse_arguments():
     parser.add_argument("--disable_exceptions", action='store_true',
                         help="Disable exceptions to reduce binary size. Requires --minimal_build.")
 
-    parser.add_argument("--disable_ort_format_runtime_graph_optimizations", action='store_true',
-                        help="Disable the ORT format model runtime graph optimization capability "
-                             "(reduces binary size)")
-
     parser.add_argument(
         "--rocm_version", help="The version of ROCM stack to use. ")
     parser.add_argument("--use_rocm", action='store_true', help="Build with ROCm")
@@ -772,8 +768,6 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                                                      args.minimal_build or args.use_extensions))
                                                      else "OFF"),
         "-Donnxruntime_REDUCED_OPS_BUILD=" + ("ON" if is_reduced_ops_build(args) else "OFF"),
-        "-Donnxruntime_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION=" + (
-            "ON" if not args.disable_ort_format_runtime_graph_optimizations else "OFF"),
         "-Donnxruntime_ENABLE_LANGUAGE_INTEROP_OPS=" + ("ON" if args.enable_language_interop_ops else "OFF"),
         "-Donnxruntime_USE_DML=" + ("ON" if args.use_dml else "OFF"),
         "-Donnxruntime_USE_WINML=" + ("ON" if args.use_winml else "OFF"),
