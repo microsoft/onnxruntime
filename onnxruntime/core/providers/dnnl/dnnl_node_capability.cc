@@ -426,6 +426,13 @@ bool DnnlElementwiseCapability::IsDimensionSupported(const Node* node) const {
     return true;
   }
 
+  //reject gpu elmentwise op with 5 dims or more
+  if (dnnl_engine_get_count(dnnl_engine_kind_t::dnnl_gpu)) {
+    if(node_inputs[0]->Shape()->dim_size() > 5 ){
+      return false;
+    } 
+  }
+
   // OneDNN will silently convert scaler values to a {1} tensor which causes issues for
   // for Onnruntime when it expects an empty tensor i.e. {}
   // TODO convert {1} outputs back to scaler {} once that is done DnnlElementwiseCapability
@@ -502,4 +509,14 @@ bool DnnlReshapeNodeCapability::IsDimensionSupported(const Node* node) const {
 
   return true;
 }
+
+// DnnlDynamicQuantizeLinearNodeCapability class
+// reserve for future capability change
+//-------------------------------------
+bool DnnlDynamicQuantizeLinearNodeCapability::Supported(const Node* node, const GraphViewer& graph_viewer) const {
+  ORT_UNUSED_PARAMETER(graph_viewer);
+  if (!IsTypeSupported(node)) return false;
+  return true;
+}
+
 }  // namespace onnxruntime

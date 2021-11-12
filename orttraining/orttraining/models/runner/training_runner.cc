@@ -346,7 +346,7 @@ Status TrainingRunner::PrepareFeedNamesAndFeeds(const SessionMode mode,
       feed_names.push_back(name);
       const float loss_scale = (mode == EvaluateStep) ? 1.0f : loss_scaler_->GetLossScale();
       OrtValue loss_scale_val;
-      TrainingUtil::CreateCpuMLValue({1}, std::vector<float>{loss_scale}, &loss_scale_val, input_allocator_);
+      TrainingUtil::CreateCpuMLValue(std::array<int64_t, 1>{1}, std::vector<float>{loss_scale}, &loss_scale_val, input_allocator_);
       feeds.push_back(loss_scale_val);
     }
   }
@@ -359,7 +359,7 @@ Status TrainingRunner::PrepareFeedNamesAndFeeds(const SessionMode mode,
       // learning rate is 0 if there is no learning-rate scheduler. Otherwise, learning rate is obtained from the scheduler.
       const float learning_rate = lr_scheduler ? lr_scheduler->GetLearningRate(step_ + 1) : 0.0f;
       OrtValue lr_val;
-      TrainingUtil::CreateCpuMLValue({1}, std::vector<float>{learning_rate}, &lr_val, input_allocator_);
+      TrainingUtil::CreateCpuMLValue(std::array<int64_t, 1>{1}, std::vector<float>{learning_rate}, &lr_val, input_allocator_);
       feeds.push_back(lr_val);
     }
   }

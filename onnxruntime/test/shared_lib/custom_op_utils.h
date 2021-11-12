@@ -169,21 +169,20 @@ struct MyCustomOpWithAttributes : Ort::CustomOpBase<MyCustomOpWithAttributes, My
 
 //Slice array of floats or doubles between [from, to) and save to output
 struct SliceCustomOpKernel {
-  SliceCustomOpKernel(Ort::CustomOpApi ort, const OrtKernelInfo* /*info*/, void* compute_stream)
-      : ort_(ort), compute_stream_(compute_stream) {
+  SliceCustomOpKernel(Ort::CustomOpApi ort, const OrtKernelInfo* /*info*/)
+      : ort_(ort) {
   }
 
   void Compute(OrtKernelContext* context);
 
  private:
   Ort::CustomOpApi ort_;
-  void* compute_stream_;
 };
 
 struct SliceCustomOp : Ort::CustomOpBase<SliceCustomOp, SliceCustomOpKernel> {
-  explicit SliceCustomOp(const char* provider, void* compute_stream) : provider_(provider), compute_stream_(compute_stream) {}
+  explicit SliceCustomOp(const char* provider) : provider_(provider) {}
   void* CreateKernel(Ort::CustomOpApi api, const OrtKernelInfo* info) const {
-    return new SliceCustomOpKernel(api, info, compute_stream_);
+    return new SliceCustomOpKernel(api, info);
   };
 
   const char* GetName() const { return "Slice"; };
@@ -207,5 +206,4 @@ struct SliceCustomOp : Ort::CustomOpBase<SliceCustomOp, SliceCustomOpKernel> {
 
  private:
   const char* provider_;
-  void* compute_stream_;
 };

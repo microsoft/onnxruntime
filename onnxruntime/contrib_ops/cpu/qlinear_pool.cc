@@ -541,7 +541,7 @@ Status QLinearAveragePool::Compute(OpKernelContext* context) const {
   std::vector<int64_t> kernel_shape = pool_attrs_.kernel_shape;
 
   if (channels_last_) {
-    std::vector<int64_t> x_dims = x_shape.GetDims();
+    std::vector<int64_t> x_dims = x_shape.GetDimsAsVector();
     SwitchDimsNchwNhwc(x_dims, false);
     x_shape = TensorShape(x_dims);
   }

@@ -918,6 +918,7 @@ struct CustomOpApi {
   const OrtValue* KernelContext_GetInput(const OrtKernelContext* context, _In_ size_t index);
   size_t KernelContext_GetOutputCount(const OrtKernelContext* context);
   OrtValue* KernelContext_GetOutput(OrtKernelContext* context, _In_ size_t index, _In_ const int64_t* dim_values, size_t dim_count);
+  void* KernelContext_GetGPUComputeStream(const OrtKernelContext* context);
 
   void ThrowOnError(OrtStatus* result);
 
