@@ -793,20 +793,20 @@ static void ModelBuilding_StandardDeviationNormalization() {
                .SetOutput(L"transposed", L"Output"))
       .CreateModel();
 
-  auto sub_eperimental = winml_experimental::LearningModelExperimental(sub_model);
+  auto sub_experimental = winml_experimental::LearningModelExperimental(sub_model);
   winml_experimental::LearningModelJoinOptions div_join_options;
   div_join_options.Link(sub_model.OutputFeatures().GetAt(0).Name(), div_model.InputFeatures().GetAt(0).Name());
   div_join_options.JoinedNodePrefix(L"DivModel.");
-  auto joined_model = sub_eperimental.JoinModel(div_model, div_join_options);
+  auto joined_model = sub_experimental.JoinModel(div_model, div_join_options);
 
-  auto joined_model_eperimental = winml_experimental::LearningModelExperimental(joined_model);
+  auto joined_model_experimental = winml_experimental::LearningModelExperimental(joined_model);
   winml_experimental::LearningModelJoinOptions transpose_join_options;
   transpose_join_options.Link(joined_model.OutputFeatures().GetAt(0).Name(), transpose_model.InputFeatures().GetAt(0).Name());
   transpose_join_options.JoinedNodePrefix(L"TransposeModel.");
-  auto final_model = joined_model_eperimental.JoinModel(transpose_model, transpose_join_options);
+  auto final_model = joined_model_experimental.JoinModel(transpose_model, transpose_join_options);
 
-  auto final_model_eperimental = winml_experimental::LearningModelExperimental(final_model);
-  final_model_eperimental.Save(L"ModelBuilding_StandardDeviationNormalization.onnx");
+  auto final_model_experimental = winml_experimental::LearningModelExperimental(final_model);
+  final_model_experimental.Save(L"ModelBuilding_StandardDeviationNormalization.onnx");
 
   auto session = LearningModelSession(final_model, LearningModelDevice(LearningModelDeviceKind::Cpu));
   LearningModelBinding binding(session);
