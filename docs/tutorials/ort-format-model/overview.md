@@ -9,7 +9,7 @@ nav_order: 1
 
 # Overview
 
-The execution environment on Mobile devices, and for web browsers, have fixed memory and disk storage. The execution scenario on web browsers have strict memory consumption and network bandwidths requirement. Therefore, it is essential that any AI execution library is optimized to consume minimun resources in terms of disk footprint, memory and network usage (both model size and binary size). ONNX Runtime was enhanced to target these size constrained environments. These enhancments are packaged in the ONNX Runtime Mobile and web offering. 
+The execution environment on Mobile devices, and for web browsers, have fixed memory and disk storage. The execution scenario on web browsers have strict memory consumption and network bandwidths requirement. Therefore, it is essential that any AI execution library is optimized to consume minimum resources in terms of disk footprint, memory and network usage (both model size and binary size). ONNX Runtime was enhanced to target these size constrained environments. These enhancements are packaged in the ONNX Runtime Mobile and web offering. 
 
 ONNX Runtime Mobile and web uses the ORT formatted model which enables us to create a smaller size runtime library suitable for Mobile devices. The ORT formatted model file is generated from the regular ONNX model using the `onnxruntime` python package. 
 
