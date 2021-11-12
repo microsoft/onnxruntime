@@ -14,6 +14,11 @@ TensorShape::TensorShape(gsl::span<const int64_t> dims) {
   gsl::copy(dims, values_);
 }
 
+TensorShape::TensorShape(const std::initializer_list<int64_t>& dims) {
+  Allocate(dims.size());
+  std::copy(dims.begin(), dims.end(), values_.begin());
+}
+
 TensorShape& TensorShape::operator=(const TensorShape& other) {
   if (&other==this)
     return *this;
