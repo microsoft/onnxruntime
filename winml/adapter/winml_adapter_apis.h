@@ -69,7 +69,6 @@ ORT_API_STATUS(DmlExecutionProviderReleaseCompletedReferences, _In_ OrtExecution
 ORT_API_STATUS(GetProviderMemoryInfo, _In_ OrtExecutionProvider* provider, OrtMemoryInfo** memory_info);
 ORT_API_STATUS(GetProviderAllocator, _In_ OrtExecutionProvider* provider, OrtAllocator** allocator);
 ORT_API_STATUS(FreeProviderAllocator, _In_ OrtAllocator* allocator);
-ORT_API_STATUS(GetValueMemoryInfo, const OrtValue* value, OrtMemoryInfo** memory_info);
 
 // ExecutionProvider Methods
 ORT_API_STATUS(ExecutionProviderSync, _In_ OrtExecutionProvider* provider);

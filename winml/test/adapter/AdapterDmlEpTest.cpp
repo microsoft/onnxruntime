@@ -185,7 +185,7 @@ UniqueOrtValue CreateTensorFromMemoryInfo(const OrtMemoryInfo* memory_info) {
   return UniqueOrtValue(tensor, ort_api->ReleaseValue);
 }
 
-void GetValueMemoryInfo() {
+void GetTensorMemoryInfo() {
   GPUTEST;
   auto session = CreateDmlSession();
 
@@ -195,7 +195,7 @@ void GetValueMemoryInfo() {
   auto tensor = CreateTensorFromMemoryInfo(memory_info.get());
 
   const OrtMemoryInfo* value_memory_info;
-  THROW_IF_NOT_OK_MSG(ort_api->GetValueMemoryInfo(tensor.get(), &value_memory_info), ort_api);
+  THROW_IF_NOT_OK_MSG(ort_api->GetTensorMemoryInfo(tensor.get(), &value_memory_info), ort_api);
   CreateTensorFromMemoryInfo(value_memory_info);
 }
 
@@ -308,7 +308,7 @@ const AdapterDmlEpTestApi& getapi() {
     DmlExecutionProviderReleaseCompletedReferences,
     DmlCreateAndFreeGPUAllocationFromD3DResource,
     DmlGetD3D12ResourceFromAllocation,
-    GetValueMemoryInfo,
+    GetTensorMemoryInfo,
     ExecutionProviderSync,
     DmlCopyTensor,
     CreateCustomRegistry,

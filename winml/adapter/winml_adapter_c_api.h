@@ -376,14 +376,6 @@ struct WinmlAdapterApi {
   OrtStatus*(ORT_API_CALL* FreeProviderAllocator)(_In_ OrtAllocator* allocator)NO_EXCEPTION;
 
   /**
-    * GetValueMemoryInfo
-	 * This api gets the memory info of an OrtValue.
-    * 
-    * WinML uses this to determine if an OrtValue is allocated on the Cpu or elsewhere.
-    */
-  OrtStatus*(ORT_API_CALL* GetValueMemoryInfo)(const OrtValue* value, OrtMemoryInfo** memory_info)NO_EXCEPTION;
-
-  /**
     * ExecutionProviderSync
 	 * This api syncs the EP.
     * 

@@ -3053,13 +3053,15 @@ struct OrtApi {
   ORT_API2_STATUS(KernelContext_GetGPUComputeStream, _In_ const OrtKernelContext* context, _Outptr_ void** out);
 
   /// @}
-  /// \name GetValueMemoryInfo
+  /// \name GetTensorMemoryInfo
   /// @{
   /**
-   * THIS API WILL BE SWAPPED OUT for the one currently in development in this PR:
-   * https://github.com/microsoft/onnxruntime/pull/9588
-   */
-  ORT_API2_STATUS(GetValueMemoryInfo, _In_ const OrtValue* value, _Outptr_ const OrtMemoryInfo** memory_info);
+   * \brief Get a pointer to the requested version of the Execution Provider specific
+   * API extensions to the OrtApi 
+  * \param[in] ort_value ::OrtValue containing tensor.
+  * \param[out] mem_info ::OrtMemoryInfo of the tensor. Do NOT free the returned pointer. It is valid for the lifetime of the ::OrtValue
+  */
+  ORT_API2_STATUS(GetTensorMemoryInfo, _In_ const OrtValue* value, _Out_ const OrtMemoryInfo** mem_info);
 
   /// @}
   /// \name GetExecutionProviderApi
@@ -3067,7 +3069,6 @@ struct OrtApi {
   /**
    * \brief Get a pointer to the requested version of the Execution Provider specific
    * API extensions to the OrtApi 
-
    * \param[in] provider_name The name of the execution provider name. Currently only the following
    * values are supported: "DML".
    * \param[in] version Must be ::ORT_API_VERSION.

@@ -2109,8 +2109,8 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSessionFromArrayWithPrepackedWeightsContainer
 }
 
 
-ORT_API_STATUS_IMPL(OrtApis::GetValueMemoryInfo, _In_ const OrtValue* value, _Outptr_ const OrtMemoryInfo** memory_info) {
-  API_IMPL_BEGIN
+ORT_API_STATUS_IMPL(OrtApis::GetTensorMemoryInfo, _In_ const OrtValue* value, _Outptr_ const OrtMemoryInfo** memory_info) {
+  TENSOR_READ_API_BEGIN
   *memory_info = nullptr;
   const auto& tensor = value->Get<onnxruntime::Tensor>();
   *memory_info = &tensor.Location();
@@ -2395,7 +2395,7 @@ static constexpr OrtApi ort_api_1_to_10 = {
     // Version 10 - In development, feel free to add/remove/rearrange here
     &OrtApis::HasValue,
     &OrtApis::KernelContext_GetGPUComputeStream,
-    &OrtApis::GetValueMemoryInfo,
+    &OrtApis::GetTensorMemoryInfo,
     &OrtApis::GetExecutionProviderApi,
 };
 

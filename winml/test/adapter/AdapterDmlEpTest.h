@@ -11,7 +11,7 @@ struct AdapterDmlEpTestApi
   VoidTest DmlExecutionProviderReleaseCompletedReferences;
   VoidTest DmlCreateGPUAllocationFromD3DResource;
   VoidTest DmlCreateAndFreeGPUAllocationFromD3DResource;
-  VoidTest GetValueMemoryInfo;
+  VoidTest GetTensorMemoryInfo;
   VoidTest ExecutionProviderSync;
   VoidTest DmlCopyTensor;
   VoidTest CreateCustomRegistry;
@@ -29,7 +29,7 @@ WINML_TEST(AdapterDmlEpTest, DmlExecutionProviderFlushContext)
 WINML_TEST(AdapterDmlEpTest, DmlExecutionProviderReleaseCompletedReferences)
 WINML_TEST(AdapterDmlEpTest, DmlCreateGPUAllocationFromD3DResource)
 WINML_TEST(AdapterDmlEpTest, DmlCreateAndFreeGPUAllocationFromD3DResource)
-WINML_TEST(AdapterDmlEpTest, GetValueMemoryInfo)
+WINML_TEST(AdapterDmlEpTest, GetTensorMemoryInfo)
 WINML_TEST(AdapterDmlEpTest, ExecutionProviderSync)
 WINML_TEST(AdapterDmlEpTest, DmlCopyTensor)
 WINML_TEST(AdapterDmlEpTest, CreateCustomRegistry)

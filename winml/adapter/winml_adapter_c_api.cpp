@@ -69,7 +69,6 @@ static constexpr WinmlAdapterApi winml_adapter_api_1 = {
     &winmla::GetProviderMemoryInfo,
     &winmla::GetProviderAllocator,
     &winmla::FreeProviderAllocator,
-    &winmla::GetValueMemoryInfo,
 
     &winmla::ExecutionProviderSync,
 

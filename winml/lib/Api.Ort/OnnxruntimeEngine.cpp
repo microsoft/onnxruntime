@@ -91,10 +91,9 @@ HRESULT OnnxruntimeValue::IsEmpty(bool* out) {
 
 HRESULT OnnxruntimeValue::IsCpu(bool* out) {
   auto ort_api = engine_->GetEngineFactory()->UseOrtApi();
-  auto winml_adapter_api = engine_->GetEngineFactory()->UseWinmlAdapterApi();
 
   OrtMemoryInfo* ort_memory_info;
-  RETURN_HR_IF_NOT_OK_MSG(winml_adapter_api->GetValueMemoryInfo(value_.get(), &ort_memory_info),
+  RETURN_HR_IF_NOT_OK_MSG(ort_api->GetTensorMemoryInfo(value_.get(), &ort_memory_info),
                           ort_api);
   auto memory_info = UniqueOrtMemoryInfo(ort_memory_info, ort_api->ReleaseMemoryInfo);
 
@@ -175,7 +174,7 @@ HRESULT OnnxruntimeValue::GetResource(_winml::Resource& out) {
                           ort_api);
     
   const OrtMemoryInfo* ort_memory_info;
-  RETURN_HR_IF_NOT_OK_MSG(ort_api->GetValueMemoryInfo(value_.get(), &ort_memory_info),
+  RETURN_HR_IF_NOT_OK_MSG(ort_api->GetTensorMemoryInfo(value_.get(), &ort_memory_info),
                           ort_api);
 
   bool is_cpu = false;
