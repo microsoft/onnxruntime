@@ -125,7 +125,7 @@ Status Pool<T, PoolType>::ComputeInternal(OpKernelContext* context) const {
   typedef typename ToCudaType<T>::MappedType CudaT;
   const Tensor* X = context->Input<Tensor>(0);
   const TensorShape& x_shape = X->Shape();
-  const auto& x_dims = x_shape.GetDims();
+  const auto x_dims = x_shape.GetDims();
 
   if (x_shape.NumDimensions() < 3) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Input dimension cannot be less than 3.");
@@ -151,8 +151,8 @@ Status Pool<T, PoolType>::ComputeInternal(OpKernelContext* context) const {
   auto x_data = reinterpret_cast<const CudaT*>(X->template Data<T>());
   auto y_data = reinterpret_cast<CudaT*>(Y->template MutableData<T>());
 
-  std::vector<int64_t> x_dims_cudnn = x_dims;
-  std::vector<int64_t> y_dims_cudnn = y_dims;
+  std::vector<int64_t> x_dims_cudnn(x_dims.begin(), x_dims.end());
+  std::vector<int64_t> y_dims_cudnn(y_dims.begin(), y_dims.end());
   if (kernel_shape.size() < 2) {
     // cudnn only takes 4D or 5D input, so pad dimensions if needed
     x_dims_cudnn.push_back(1);

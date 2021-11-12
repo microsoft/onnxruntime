@@ -189,6 +189,11 @@ def quantize_static(model_input,
             DisableShapeInference = True/False : in dynamic quantize mode, shape inference is not must have
                                                  and if it cause some issue, you could disable it.
             MatMulConstBOnly = True/False: Default is False. If enabled, only MatMul with const B will be quantized.
+            AddQDQPairToWeight = True/False : Default is False which quantizes floating-point weight and feeds it to 
+                                              soley inserted DeQuantizeLinear node. If True, it remains floating-point weight and 
+                                              inserts both QuantizeLinear/DeQuantizeLinear nodes to weight.
+            OpTypesToExcludeOutputQuantizatioin = list of op type : Default is []. If any op type is specified, it won't quantize  
+                                                                    the output of ops with this specific op types.
     '''
 
     mode = QuantizationMode.QLinearOps

@@ -8,10 +8,11 @@
 #include "graph_transform_test_builder.h"
 
 #include "core/graph/graph.h"
+#include "test/test_environment.h"
+#include "test/util/include/asserts.h"
 
 namespace onnxruntime {
 namespace test {
-
 
 void SetNodeArgShape(NodeArg* node_arg, const std::optional<std::vector<int64_t>>& shape) {
   if (shape == std::nullopt) {
@@ -76,7 +77,6 @@ int EstimateTransposeCost(const Graph& graph) {
   }
   return cost;
 }
-
 
 TEST(TransposeOptimizerTests, TestSplit) {
   auto build_test_case_1 = [&](ModelTestBuilder& builder) {
@@ -402,6 +402,39 @@ TEST(TransposeOptimizerTests, TestResizeSizeRoi) {
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
                     /*opset_version*/ 15);
+}
+
+TEST(TransposeOptimizerTests, TestResizeRoiScalesZeroRank0) {
+  auto build_test_case_1 = [&](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInput<uint8_t>({1, 512, 512, 3},
+                                             std::numeric_limits<uint8_t>::min(),
+                                             std::numeric_limits<uint8_t>::max());
+    auto* resize_in_roi = builder.MakeInitializer<float>({0}, {});
+    auto* resize_in_scales = builder.MakeInitializer<float>({0}, {});
+    auto* resize_in_sizes = builder.MakeInitializer<int64_t>({4}, {1, 256, 32, 32});
+
+    auto* transpose1_out_transposed = builder.MakeIntermediate();
+    auto* resize_out_Y = builder.MakeIntermediate();
+    auto* output = builder.MakeOutput();
+
+    auto& transpose_1 = builder.AddNode("Transpose", {input}, {transpose1_out_transposed});
+    transpose_1.AddAttribute("perm", std::vector<int64_t>{0, 3, 1, 2});
+    builder.AddNode("Resize",
+                    {transpose1_out_transposed, resize_in_roi, resize_in_scales, resize_in_sizes},
+                    {resize_out_Y});
+    auto& transpose_2 = builder.AddNode("Transpose", {resize_out_Y}, {output});
+    transpose_2.AddAttribute("perm", std::vector<int64_t>{0, 2, 3, 1});
+  };
+
+  auto check_optimized_graph_1 = [&](InferenceSessionWrapper& session) {
+    int transpose_cost = EstimateTransposeCost(session.GetGraph());
+    EXPECT_EQ(transpose_cost, 0);
+  };
+
+  TransformerTester(build_test_case_1,
+                    check_optimized_graph_1,
+                    TransformerLevel::Default,
+                    TransformerLevel::Level1);
 }
 
 TEST(TransposeOptimizerTests, TestResizeNonconst) {
@@ -3816,8 +3849,22 @@ TEST(TransposeOptimizerTests, TestOmitIdentityTranspose) {
                     /*opset_version*/ 15);
 }
 
+// regression test for a model where the transpose optimizations were not completed in a single pass in level 1.
+// fixed by
+//   a) moving the RewriteRule level 1 optimizations so they run prior to the transpose optimizer; and
+//   b) not returning `true` from TransposeOptimizer::ShouldOnlyApplyOnce as it should be safe to run the
+//      transpose optimizer multiple times to ensure it completes in level 1.
+// either of those changes would have fixed the issue.
+// see https://github.com/microsoft/onnxruntime/issues/9671 for more details.
+TEST(TransposeOptimizerTests, RegressionTest_GitHubIssue9671) {
+  auto model_uri = ORT_TSTR("testdata/gh_issue_9671.onnx");
 
-
+  SessionOptions so;
+  so.session_logid = "TransposeOptimizerTests.RegressionTest_GitHubIssue9671";
+  InferenceSession session_object{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session_object.Load(model_uri));
+  ASSERT_STATUS_OK(session_object.Initialize());  // optimizers run during initialization
+}
 
 }  // namespace test
 }  // namespace onnxruntime
