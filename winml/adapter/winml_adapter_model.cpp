@@ -811,21 +811,29 @@ ORT_API_STATUS_IMPL(winmla::JoinModels,
   // Remove old outputs
   if (promote_unlinked_outputs) {
     // loop through first model outputs and remove the linked ones in the main model inputs
-    for (int i = first_model_proto->graph().output_size() - 1; i >= 0 ; i--) {
-      auto& output_name = first_model_proto->graph().output(i).name();
+
+    // Copy the output of the first model
+    auto first_outputs = first_model_proto->graph().output();
+    
+    // Clear all outputs
+    first_model_proto->mutable_graph()->mutable_output()->Clear();
+
+    // Add back output
+    for (int i = first_outputs.size() - 1; i >= 0 ; i--) {
+      auto& output = first_outputs.at(i);
+      auto output_name = output.name();
 
       auto found_it = std::find_if(output_names, output_names + num_linkages,
                         [output_name](auto& name) { return std::strcmp(name, output_name.c_str()) == 0; });
-      bool is_linked = found_it != (output_names + num_linkages);  // figure out if output.name() exists in the output_names mapped
-      if (!is_linked) {
-        first_model_proto->mutable_graph()->mutable_output()->DeleteSubrange(i, 1);
+      if (found_it == (output_names + num_linkages)) {
+        // if output.name() is not found in the linkages, it is unlinked, and it should be promoted
+        auto& promoted_output = *first_model_proto->mutable_graph()->add_output();
+        promoted_output = std::move(output);
       }
     }
   } else {
     // remove all first model outputs
-    for (int i = 0; i < second_model_proto->graph().output_size(); i++) {
-      first_model_proto->mutable_graph()->mutable_output()->Clear();
-    }
+    first_model_proto->mutable_graph()->mutable_output()->Clear();
   }
 
   // add all model outputs from the second model
