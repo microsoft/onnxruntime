@@ -534,7 +534,8 @@ ORT_EXPORT const OrtApiBase* ORT_API_CALL OrtGetApiBase(void) NO_EXCEPTION;
 */
 typedef void (*OrtThreadWorkerFn)(void* ort_worker_fn_param);
 
-typedef const void* OrtCustomThreadHandle;
+struct _OrtCustomHandleType;
+typedef const _OrtCustomHandleType* OrtCustomThreadHandle;
 
 /** \brief Ort custom thread creation function
 *
