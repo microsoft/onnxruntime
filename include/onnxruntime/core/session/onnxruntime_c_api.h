@@ -3056,9 +3056,11 @@ struct OrtApi {
   /// \name GetTensorMemoryInfo
   /// @{
   /** \brief Returns a pointer to the ::OrtMemoryInfo of a Tensor
-  * \param[in] ort_value ::OrtValue containing tensor.
-  * \param[out] mem_info ::OrtMemoryInfo of the tensor. Do NOT free the returned pointer. It is valid for the lifetime of the ::OrtValue
-  */
+   * \param[in] ort_value ::OrtValue containing tensor.
+   * \param[out] mem_info ::OrtMemoryInfo of the tensor. Do NOT free the returned pointer. It is valid for the lifetime of the ::OrtValue
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   */
   ORT_API2_STATUS(GetTensorMemoryInfo, _In_ const OrtValue* value, _Out_ const OrtMemoryInfo** mem_info);
 
   /// @}
