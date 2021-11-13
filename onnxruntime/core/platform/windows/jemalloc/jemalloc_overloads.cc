@@ -124,39 +124,39 @@ void operator delete[](void* p) noexcept {
 }
 
 // Hard to override malloc/free. Replace base functions
-#if defined(_MSC_VER) && !defined(_DEBUG)
-
-extern "C" {
- _Check_return_ _Ret_maybenull_ _Post_writable_byte_size_(size) 
-_CRTRESTRICT
-void*  __cdecl _malloc_base(_In_ _CRT_GUARDOVERFLOW size_t size) {
-  return je_malloc(size);
-}
-
-void __cdecl _free_base(_Pre_maybenull_ _Post_invalid_ void* p) {
-  if (p) {
-    je_free(p);
-  }
-}
-
-_Success_(return != 0) _Check_return_ _Ret_maybenull_ _Post_writable_byte_size_(size)
-_CRTRESTRICT
-void* __cdecl _realloc_base(_Pre_maybenull_ _Post_invalid_ void* p, _In_ size_t size) {
-  return je_realloc(p, size);
-}
-
-_Check_return_ _Ret_maybenull_ _Post_writable_byte_size_(count* size)
-_CRTRESTRICT
-void* __cdecl _calloc_base(
-    _In_ size_t count,
-    _In_ size_t size) {
-  return je_calloc(count, size);
-}
-
-_Check_return_
-size_t __cdecl _msize_base(_Pre_notnull_ void* p) {
-  return je_malloc_usable_size(p);
-}
-}
-
-#endif
+//#if defined(_MSC_VER) && !defined(_DEBUG)
+//
+//extern "C" {
+// _Check_return_ _Ret_maybenull_ _Post_writable_byte_size_(size) 
+//_CRTRESTRICT
+//void*  __cdecl _malloc_base(_In_ _CRT_GUARDOVERFLOW size_t size) {
+//  return je_malloc(size);
+//}
+//
+//void __cdecl _free_base(_Pre_maybenull_ _Post_invalid_ void* p) {
+//  if (p) {
+//    je_free(p);
+//  }
+//}
+//
+//_Success_(return != 0) _Check_return_ _Ret_maybenull_ _Post_writable_byte_size_(size)
+//_CRTRESTRICT
+//void* __cdecl _realloc_base(_Pre_maybenull_ _Post_invalid_ void* p, _In_ size_t size) {
+//  return je_realloc(p, size);
+//}
+//
+//_Check_return_ _Ret_maybenull_ _Post_writable_byte_size_(count* size)
+//_CRTRESTRICT
+//void* __cdecl _calloc_base(
+//    _In_ size_t count,
+//    _In_ size_t size) {
+//  return je_calloc(count, size);
+//}
+//
+//_Check_return_
+//size_t __cdecl _msize_base(_Pre_notnull_ void* p) {
+//  return je_malloc_usable_size(p);
+//}
+//}
+//
+//#endif
