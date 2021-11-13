@@ -2082,6 +2082,27 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSessionFromArrayWithPrepackedWeightsContainer
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtApis::SessionOptionsSetCustomCreateThreadFn, _Inout_ OrtSessionOptions* options, _In_ OrtCustomCreateThreadFn ort_custom_create_thread_fn) {
+  API_IMPL_BEGIN
+  options->value.custom_create_thread_fn = ort_custom_create_thread_fn;
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::SessionOptionsSetCustomThreadCreationOptions, _Inout_ OrtSessionOptions* options, _In_ void* ort_custom_thread_creation_options) {
+  API_IMPL_BEGIN
+  options->value.custom_thread_creation_options = ort_custom_thread_creation_options;
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::SessionOptionsSetCustomJoinThreadFn, _Inout_ OrtSessionOptions* options, _In_ OrtCustomJoinThreadFn ort_custom_join_thread_fn) {
+  API_IMPL_BEGIN
+  options->value.custom_join_thread_fn = ort_custom_join_thread_fn;
+  return nullptr;
+  API_IMPL_END
+}
+
 static constexpr OrtApiBase ort_api_base = {
     &OrtApis::GetApi,
     &OrtApis::GetVersionString,
@@ -2358,6 +2379,12 @@ static constexpr OrtApi ort_api_1_to_10 = {
     // Version 10 - In development, feel free to add/remove/rearrange here
     &OrtApis::HasValue,
     &OrtApis::KernelContext_GetGPUComputeStream,
+    &OrtApis::SessionOptionsSetCustomCreateThreadFn,
+    &OrtApis::SessionOptionsSetCustomThreadCreationOptions,
+    &OrtApis::SessionOptionsSetCustomJoinThreadFn,
+    &OrtApis::SetGlobalCustomCreateThreadFn,
+    &OrtApis::SetGlobalCustomThreadCreationOptions,
+    &OrtApis::SetGlobalCustomJoinThreadFn,
 };
 
 // Asserts to do a some checks to ensure older Versions of the OrtApi never change (will detect an addition or deletion but not if they cancel out each other)
