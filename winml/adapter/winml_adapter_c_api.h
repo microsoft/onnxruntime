@@ -487,5 +487,14 @@ struct WinmlAdapterApi {
       _In_ size_t index,
       _Out_ const char** const name)NO_EXCEPTION;
 
+  OrtStatus*(ORT_API_CALL* JoinModels)(
+      _In_ OrtModel* first_model,
+      _In_ OrtModel* second_model,
+      _In_ const char* const* output_names,
+      _In_ const char* const* input_names,
+      size_t num_linkages,
+      bool promote_unlinked_outputs,
+      _In_ const char* const join_node_prefix)NO_EXCEPTION;
+
   ORT_CLASS_RELEASE(Model);
 };
