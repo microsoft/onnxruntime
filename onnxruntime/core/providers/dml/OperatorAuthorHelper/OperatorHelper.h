@@ -6,7 +6,7 @@
 #include "Common.h"
 #include "Attributes.h"
 #include "core/common/common.h"
-#include "..\DmlExecutionProvider\src\ErrorHandling.h"
+#include "../DmlExecutionProvider/src/ErrorHandling.h"
 #include "MLOperatorAuthorHelper.h"
 
 namespace OperatorHelper {

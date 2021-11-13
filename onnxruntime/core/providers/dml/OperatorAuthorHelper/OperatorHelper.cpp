@@ -86,13 +86,56 @@ namespace OperatorHelper
 
         const std::vector<uint32_t>& tensorDimensions = tensor.GetShape();
         const uint32_t elementCount = ComputeElementCountFromDimensions(tensorDimensions);
+        result.resize(elementCount);
 
         switch (tensor.GetTensorDataType())
         {
-        case MLOperatorTensorDataType::Float:
+        case MLOperatorTensorDataType::Float16:
+            {
+                const onnxruntime::MLFloat16* data = tensor.GetData<onnxruntime::MLFloat16>();
+                std::transform(result.begin(), result.end(), result.begin(), [](auto v) {return static_cast<float>(v); });
+            }
+            break;
+
+        case MLOperatorTensorDataType::/*Float32*/Float:
             {
                 const float* data = tensor.GetData<float>();
                 result.assign(data, data + elementCount);
+            }
+            break;
+
+        case MLOperatorTensorDataType::/*Float64*/Double:
+            {
+                const double* data = tensor.GetData<double>();
+                std::transform(result.begin(), result.end(), result.begin(), [](auto v) {return static_cast<float>(v); });
+            }
+            break;
+
+        case MLOperatorTensorDataType::Int32:
+            {
+                const int32_t* data = tensor.GetData<int32_t>();
+                std::transform(result.begin(), result.end(), result.begin(), [](auto v) {return static_cast<float>(v); });
+            }
+            break;
+
+        case MLOperatorTensorDataType::UInt32:
+            {
+                const uint32_t* data = tensor.GetData<uint32_t>();
+                std::transform(result.begin(), result.end(), result.begin(), [](auto v) {return static_cast<float>(v); });
+            }
+            break;
+
+        case MLOperatorTensorDataType::Int64:
+            {
+                const int64_t* data = tensor.GetData<int64_t>();
+                std::transform(result.begin(), result.end(), result.begin(), [](auto v) {return static_cast<float>(v); });
+            }
+            break;
+
+        case MLOperatorTensorDataType::UInt64:
+            {
+                const uint64_t* data = tensor.GetData<uint64_t>();
+                std::transform(result.begin(), result.end(), result.begin(), [](auto v) {return static_cast<float>(v); });
             }
             break;
 
@@ -1110,7 +1153,7 @@ namespace OperatorHelper
                 uint32_t labelIndex = labelIndices[j];
                 assert(labelIndex < labelSizes.size());
 
-                if (labelSizes[labelIndex] == INT_MIN)
+                if (labelSizes[labelIndex] == static_cast<uint32_t>(INT_MIN))
                 {
                     labelSizes[labelIndex] = dimensionSize;
                 }
