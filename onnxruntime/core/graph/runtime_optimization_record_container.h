@@ -32,6 +32,8 @@ struct RuntimeOptimizationRecordContainerEntry;
 
 class RuntimeOptimizationRecordContainer {
  public:
+  bool IsEmpty() const { return sat_to_optimizations_.empty(); }
+
 #if defined(ORT_ENABLE_ADDING_RUNTIME_OPTIMIZATION_RECORDS)
   void AddRecord(const std::string& optimizer_key, RuntimeOptimizationRecord&& runtime_optimization_record);
 #endif
