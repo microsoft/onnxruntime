@@ -2,11 +2,13 @@
 // Licensed under the MIT License.
 
 #include <algorithm>
+#include <random>
+
+#include "core/mlas/inc/mlas.h"
 #include "core/util/math.h"
+#include "default_providers.h"
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
-#include <random>
-#include "default_providers.h"
 
 namespace onnxruntime {
 namespace test {
@@ -495,7 +497,7 @@ class QLinearConvOpTester {
     abs_error = 1.0f;
 #endif
 
-    test.AddOutput<uint8_t>("y", Y_shape, Y_data, false /* sort_output */, 0.0f /* rel_error */, abs_error);
+    test.AddOutput<ActType>("y", Y_shape, Y_data, false /* sort_output */, 0.0f /* rel_error */, abs_error);
 
     if (!pads_.empty()) {
       test.AddAttribute("pads", pads_);
@@ -1070,7 +1072,7 @@ TEST(QLinearConvTest, Conv2D_S8S8_Pointwise) {
 }
 
 TEST(QLinearConvTest, Conv2D_S8U8_Pointwise) {
-  QLinearConvOpTester<int8_t, uint8_t> test;
+  QLinearConvOpTester<int8_t, int8_t> test;
   test.GenerateRandomInput({3, 24, 19, 19}, .05f, 4);
   test.GenerateRandomWeights({32, 24, 1, 1}, .105f, 126);
   test.GenerateRandomBias();
