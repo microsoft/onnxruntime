@@ -3061,7 +3061,6 @@ struct OrtApi {
    */
   ORT_API2_STATUS(HasValue, _In_ const OrtValue* value, _Out_ int* out);
   /// @}
-
   /// \name OrtKernelContext
   /// @{
   /** \brief Used for custom operators, gets the GPU compute stream to use to launch the custom a GPU kernel     
@@ -3074,6 +3073,33 @@ struct OrtApi {
   *             Only use it for custom kernel launching.
   */
   ORT_API2_STATUS(KernelContext_GetGPUComputeStream, _In_ const OrtKernelContext* context, _Outptr_ void** out);
+
+  /// @}
+  /// \name GetTensorMemoryInfo
+  /// @{
+  /** \brief Returns a pointer to the ::OrtMemoryInfo of a Tensor
+   * \param[in] ort_value ::OrtValue containing tensor.
+   * \param[out] mem_info ::OrtMemoryInfo of the tensor. Do NOT free the returned pointer. It is valid for the lifetime of the ::OrtValue
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   */
+  ORT_API2_STATUS(GetTensorMemoryInfo, _In_ const OrtValue* value, _Out_ const OrtMemoryInfo** mem_info);
+
+  /// @}
+  /// \name GetExecutionProviderApi
+  /// @{
+  /** \brief Get a pointer to the requested version of the Execution Provider specific
+   * API extensions to the OrtApi 
+   * \param[in] provider_name The name of the execution provider name. Currently only the following
+   * values are supported: "DML".
+   * \param[in] version Must be ::ORT_API_VERSION.
+   * \param[out] provider_api A void pointer containing a reference to the execution provider versioned api structure.
+   * For example, the provider_api pointer can be cast to the OrtDmlApi* when the provider_name is "DML".
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   */
+  ORT_API2_STATUS(GetExecutionProviderApi, _In_ const char* provider_name, _In_ uint32_t version, _Outptr_ const void** provider_api);
+
   /// @}
 
   /// \name SessionOptions

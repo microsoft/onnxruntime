@@ -916,6 +916,8 @@ struct CustomOpApi {
   template <typename T>
   const T* GetTensorData(_Inout_ const OrtValue* value);
 
+  const OrtMemoryInfo* GetTensorMemoryInfo(_In_ const OrtValue* value);
+
   std::vector<int64_t> GetTensorShape(const OrtTensorTypeAndShapeInfo* info);
   void ReleaseTensorTypeAndShapeInfo(OrtTensorTypeAndShapeInfo* input);
   size_t KernelContext_GetInputCount(const OrtKernelContext* context);
