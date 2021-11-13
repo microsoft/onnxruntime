@@ -28,6 +28,11 @@ struct OrtThreadPoolParams {
 
   // Set or unset denormal as zero
   bool set_denormal_as_zero = false;
+
+  // members to manage custom threads
+  OrtCustomCreateThreadFn custom_create_thread_fn = nullptr;
+  void* custom_thread_creation_options = nullptr;
+  OrtCustomJoinThreadFn custom_join_thread_fn = nullptr;
 };
 
 struct OrtThreadingOptions {
