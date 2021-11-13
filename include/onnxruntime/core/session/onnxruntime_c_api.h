@@ -3055,9 +3055,7 @@ struct OrtApi {
   /// @}
   /// \name GetTensorMemoryInfo
   /// @{
-  /**
-   * \brief Get a pointer to the requested version of the Execution Provider specific
-   * API extensions to the OrtApi 
+  /** \brief Returns a pointer to the ::OrtMemoryInfo of a Tensor
   * \param[in] ort_value ::OrtValue containing tensor.
   * \param[out] mem_info ::OrtMemoryInfo of the tensor. Do NOT free the returned pointer. It is valid for the lifetime of the ::OrtValue
   */
@@ -3066,8 +3064,7 @@ struct OrtApi {
   /// @}
   /// \name GetExecutionProviderApi
   /// @{
-  /**
-   * \brief Get a pointer to the requested version of the Execution Provider specific
+  /** \brief Get a pointer to the requested version of the Execution Provider specific
    * API extensions to the OrtApi 
    * \param[in] provider_name The name of the execution provider name. Currently only the following
    * values are supported: "DML".
