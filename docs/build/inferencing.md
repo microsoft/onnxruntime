@@ -1,11 +1,14 @@
 ---
 title: Build for inferencing
-parent: Build ORT
+parent: Build ONNX Runtime
 nav_order: 1
+redirect_from: /docs/how-to/build/inferencing
 ---
 
 # Build ONNX Runtime for inferencing
 {: .no_toc }
+
+Follow the instructions below to build ONNX Runtime to perform inference.
 
 ## Contents
 {: .no_toc }

@@ -8,6 +8,8 @@ redirect_from: /docs/reference/api/csharp-api
 # C# API Reference
 {: .no_toc }
 
+This page shows the main elements of the C# API for ONNX Runtime.
+
 ### OrtEnv
 ```cs
 class OrtEnv
