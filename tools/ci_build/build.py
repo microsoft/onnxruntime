@@ -511,7 +511,7 @@ def parse_arguments():
     # options to reduce binary size
     parser.add_argument("--minimal_build", default=None, nargs='*', type=str.lower,
                         help="Create a build that only supports ORT format models. "
-                        "See /docs/ONNX_Runtime_Format_Model_Usage.md for more information. "
+                        "See https://onnxruntime.ai/docs/tutorials/mobile/ for more information. "
                         "RTTI is automatically disabled in a minimal build. "
                         "To enable execution providers that compile kernels at runtime (e.g. NNAPI) pass 'extended' "
                         "as a parameter. e.g. '--minimal_build extended'. "
@@ -768,7 +768,6 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                                                      args.minimal_build or args.use_extensions))
                                                      else "OFF"),
         "-Donnxruntime_REDUCED_OPS_BUILD=" + ("ON" if is_reduced_ops_build(args) else "OFF"),
-        # enable pyop if it is nightly build
         "-Donnxruntime_ENABLE_LANGUAGE_INTEROP_OPS=" + ("ON" if args.enable_language_interop_ops else "OFF"),
         "-Donnxruntime_USE_DML=" + ("ON" if args.use_dml else "OFF"),
         "-Donnxruntime_USE_WINML=" + ("ON" if args.use_winml else "OFF"),
