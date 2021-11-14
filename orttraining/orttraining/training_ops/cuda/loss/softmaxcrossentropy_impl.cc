@@ -53,7 +53,6 @@ Status SoftmaxCrossEntropy<T>::ComputeInternal(OpKernelContext* ctx) const {
                                               logit_data,
                                               logit_reshape,
                                               log_prob_data,
-                                              CudnnHandle(),
                                               1 /*axis default*/);
   ORT_RETURN_IF_ERROR(status);
 
@@ -154,7 +153,6 @@ Status SparseSoftmaxCrossEntropy<T, Tin>::ComputeInternal(OpKernelContext* ctx) 
                                               logit_data,
                                               logit_reshape,
                                               log_prob_data,
-                                              CudnnHandle(),
                                               1 /*axis default*/);
   ORT_RETURN_IF_ERROR(status);
 
