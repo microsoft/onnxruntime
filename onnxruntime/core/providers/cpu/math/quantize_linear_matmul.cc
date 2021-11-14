@@ -13,16 +13,24 @@
 
 namespace onnxruntime {
 
-ONNX_OPERATOR_KERNEL_EX(
-    QLinearMatMul,
-    kOnnxDomain,
-    10,
-    kCpuExecutionProvider,
-    KernelDefBuilder()
-        .TypeConstraint("T1", DataTypeImpl::GetTensorType<uint8_t>())
-        .TypeConstraint("T2", {DataTypeImpl::GetTensorType<uint8_t>(), DataTypeImpl::GetTensorType<int8_t>()})
-        .TypeConstraint("T3", DataTypeImpl::GetTensorType<uint8_t>()),
-    QLinearMatMul);
+#define REGISTER_QLINEARMATMUL_TYPED_KERNEL(act_type, weight_type)          \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                            \
+      QLinearMatMul,                                                        \
+      kOnnxDomain,                                                          \
+      10,                                                                   \
+      act_type##_##weight_type,                                             \
+      kCpuExecutionProvider,                                                \
+      KernelDefBuilder()                                                    \
+          .TypeConstraint("T1", DataTypeImpl::GetTensorType<act_type>())    \
+          .TypeConstraint("T2", DataTypeImpl::GetTensorType<weight_type>()) \
+          .TypeConstraint("T3", DataTypeImpl::GetTensorType<act_type>()),   \
+      QLinearMatMul);
+
+#if defined(MLAS_TARGET_ARM_ANY)
+REGISTER_QLINEARMATMUL_TYPED_KERNEL(int8_t, int8_t);
+#endif
+REGISTER_QLINEARMATMUL_TYPED_KERNEL(uint8_t, uint8_t);
+REGISTER_QLINEARMATMUL_TYPED_KERNEL(uint8_t, int8_t);
 
 Status QLinearMatMul::Compute(OpKernelContext* ctx) const {
   const auto* a = ctx->Input<Tensor>(IN_A);
@@ -83,15 +91,15 @@ Status QLinearMatMul::Compute(OpKernelContext* ctx) const {
   gemm_shape.M = static_cast<size_t>(helper.M());
   gemm_shape.N = static_cast<size_t>(helper.N());
   gemm_shape.K = static_cast<size_t>(helper.K());
+  gemm_shape.AIsSigned = a->IsDataType<int8_t>();
   gemm_shape.BIsSigned = b_is_signed;
 
   AllocatorPtr alloc;
   ORT_RETURN_IF_ERROR(ctx->GetTempSpaceAllocator(&alloc));
   auto gemm_output_data = alloc->Alloc(SafeInt<size_t>(gemm_shape.M) *
-      gemm_shape.N * sizeof(int32_t) * num_gemms);
+                                       gemm_shape.N * sizeof(int32_t) * num_gemms);
   BufferUniquePtr gemm_output_buffer(gemm_output_data, BufferDeleter(alloc));
   auto* gemm_output = static_cast<int32_t*>(gemm_output_buffer.get());
-
 
   std::vector<MLAS_GEMM_QUANT_DATA_PARAMS> gemm_params(num_gemms);
   std::vector<MLAS_QGEMM_REQUANT_OUTPUT_PROCESSOR<uint8_t>> requant_procs;
