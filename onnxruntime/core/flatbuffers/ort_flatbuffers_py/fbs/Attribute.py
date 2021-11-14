@@ -71,7 +71,7 @@ class Attribute(object):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(16))
         if o != 0:
             x = self._tab.Indirect(o + self._tab.Pos)
-            from ort_flatbuffers_py.experimental.fbs.Tensor import Tensor
+            from ort_flatbuffers_py.fbs.Tensor import Tensor
             obj = Tensor()
             obj.Init(self._tab.Bytes, x)
             return obj
@@ -82,7 +82,7 @@ class Attribute(object):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(18))
         if o != 0:
             x = self._tab.Indirect(o + self._tab.Pos)
-            from ort_flatbuffers_py.experimental.fbs.Graph import Graph
+            from ort_flatbuffers_py.fbs.Graph import Graph
             obj = Graph()
             obj.Init(self._tab.Bytes, x)
             return obj
@@ -169,7 +169,7 @@ class Attribute(object):
             x = self._tab.Vector(o)
             x += flatbuffers.number_types.UOffsetTFlags.py_type(j) * 4
             x = self._tab.Indirect(x)
-            from ort_flatbuffers_py.experimental.fbs.Tensor import Tensor
+            from ort_flatbuffers_py.fbs.Tensor import Tensor
             obj = Tensor()
             obj.Init(self._tab.Bytes, x)
             return obj
@@ -194,7 +194,7 @@ class Attribute(object):
             x = self._tab.Vector(o)
             x += flatbuffers.number_types.UOffsetTFlags.py_type(j) * 4
             x = self._tab.Indirect(x)
-            from ort_flatbuffers_py.experimental.fbs.Graph import Graph
+            from ort_flatbuffers_py.fbs.Graph import Graph
             obj = Graph()
             obj.Init(self._tab.Bytes, x)
             return obj

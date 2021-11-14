@@ -31,7 +31,7 @@ class Shape(object):
             x = self._tab.Vector(o)
             x += flatbuffers.number_types.UOffsetTFlags.py_type(j) * 4
             x = self._tab.Indirect(x)
-            from ort_flatbuffers_py.experimental.fbs.Dimension import Dimension
+            from ort_flatbuffers_py.fbs.Dimension import Dimension
             obj = Dimension()
             obj.Init(self._tab.Bytes, x)
             return obj

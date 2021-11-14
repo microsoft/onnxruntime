@@ -37,7 +37,7 @@ class NodeEdge(object):
         if o != 0:
             x = self._tab.Vector(o)
             x += flatbuffers.number_types.UOffsetTFlags.py_type(j) * 12
-            from ort_flatbuffers_py.experimental.fbs.EdgeEnd import EdgeEnd
+            from ort_flatbuffers_py.fbs.EdgeEnd import EdgeEnd
             obj = EdgeEnd()
             obj.Init(self._tab.Bytes, x)
             return obj
@@ -61,7 +61,7 @@ class NodeEdge(object):
         if o != 0:
             x = self._tab.Vector(o)
             x += flatbuffers.number_types.UOffsetTFlags.py_type(j) * 12
-            from ort_flatbuffers_py.experimental.fbs.EdgeEnd import EdgeEnd
+            from ort_flatbuffers_py.fbs.EdgeEnd import EdgeEnd
             obj = EdgeEnd()
             obj.Init(self._tab.Bytes, x)
             return obj
