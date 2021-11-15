@@ -29,6 +29,11 @@ class OnnxRuntimeBackend(Backend):
     """  # noqa: E501
 
     allowReleasedOpsetsOnly = bool(os.getenv('ALLOW_RELEASED_ONNX_OPSET_ONLY', '1') == '1')
+    ExecutionProvidersToSkip = []
+
+    @classmethod
+    def ep_to_skip(cls, ep):
+        ExecutionProvidersToSkip.append(ep)
 
     @classmethod
     def is_compatible(cls, model, device=None, **kwargs):
@@ -107,7 +112,12 @@ class OnnxRuntimeBackend(Backend):
             for k, v in kwargs.items():
                 if hasattr(options, k):
                     setattr(options, k, v)
-            inf = InferenceSession(model, sess_options=options, providers=get_available_providers())
+
+            providers = get_available_providers()
+            if 'TensorRTExecutionProvider' in providers and 'TensorrtExecutionProvider' in cls.ExecutionProvidersToSkip:
+                providers = ['CudaExecutionProvider'] 
+            print(providers)
+            inf = InferenceSession(model, sess_options=options, providers=providers)
             # backend API is primarily used for ONNX test/validation. As such, we should disable session.run() fallback
             # which may hide test failures.
             inf.disable_fallback()
