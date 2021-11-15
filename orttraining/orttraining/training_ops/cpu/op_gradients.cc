@@ -51,10 +51,11 @@ Status ReluGrad<T>::Compute(OpKernelContext* context) const {
   return Status::OK();
 }
 
-ONNX_OPERATOR_KERNEL_EX(
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     SoftmaxGrad,
     kMSDomain,
     1,
+    12,
     kCpuExecutionProvider,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     SoftmaxGrad<float>);
@@ -116,13 +117,15 @@ Status SoftmaxGrad<T>::Compute(OpKernelContext* context) const {
     }
 
     // Allocate a temporary tensor to hold transposed input
-    auto temp_input = Tensor::Create(Y.DataType(), TensorShape(transposed_input_dims), alloc);
+    auto temp_input0 = Tensor::Create(Y.DataType(), TensorShape(transposed_input_dims), alloc);
 
     // Perform the transpose
-    ORT_RETURN_IF_ERROR(Transpose::DoTranspose(permutation, Y, *temp_input));
-    transposed_Y = std::move(temp_input);
-    ORT_RETURN_IF_ERROR(Transpose::DoTranspose(permutation, dY, *temp_input));
-    transposed_dY = std::move(temp_input);
+    ORT_RETURN_IF_ERROR(Transpose::DoTranspose(permutation, Y, *temp_input0));
+    transposed_Y = std::move(temp_input0);
+
+    auto temp_input1 = Tensor::Create(Y.DataType(), TensorShape(transposed_input_dims), alloc);
+    ORT_RETURN_IF_ERROR(Transpose::DoTranspose(permutation, dY, *temp_input1));
+    transposed_dY = std::move(temp_input1);
 
     // Allocate memory for the intermediate output
     intermediate_output = Tensor::Create(dX.DataType(), TensorShape(transposed_input_dims), alloc);
@@ -154,10 +157,11 @@ Status SoftmaxGrad<T>::Compute(OpKernelContext* context) const {
   return Status::OK();
 }
 
-ONNX_OPERATOR_KERNEL_EX(
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     LogSoftmaxGrad,
     kMSDomain,
     1,
+    12,
     kCpuExecutionProvider,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     LogSoftmaxGrad<float>);
@@ -177,7 +181,8 @@ Status LogSoftmaxGrad<T>::Compute(OpKernelContext* context) const {
   const TensorShape input_shape{Y.Shape()};
   auto& dX = *context->Output(0, Y.Shape());
 
-  auto axis = HandleNegativeAxis(axis_, Y.Shape().NumDimensions());
+  size_t rank = input_shape.NumDimensions();
+  const size_t axis = static_cast<size_t>(HandleNegativeAxis(axis_, rank));
 
   size_t N = input_shape.SizeToDimension(axis);
   size_t D = input_shape.SizeFromDimension(axis);
@@ -189,9 +194,47 @@ Status LogSoftmaxGrad<T>::Compute(OpKernelContext* context) const {
   const int d = gsl::narrow_cast<int>(D);
   const int nd = gsl::narrow_cast<int>(N * D);
 
-  const float* Ydata = Y.template Data<float>();
-  const float* dYdata = dY.template Data<float>();
-  float* dXdata = dX.template MutableData<float>();
+  bool is_transpose_required = opset_ >= 13 && axis != (rank - 1);
+
+  std::unique_ptr<Tensor> transposed_dY;
+  std::unique_ptr<Tensor> transposed_Y;
+  std::vector<int64_t> transposed_input_dims;
+  std::unique_ptr<Tensor> intermediate_output;  // output that the softmax implementation will write into while using transposed input
+  std::vector<size_t> permutation(rank);
+
+  if (is_transpose_required) {
+    AllocatorPtr alloc;
+    auto status = context->GetTempSpaceAllocator(&alloc);
+    if (!status.IsOK())
+      return status;
+
+    std::iota(std::begin(permutation), std::end(permutation), 0);
+
+    // swap the innermost dim with the dim corresponding to axis
+    permutation[axis] = rank - 1;
+    permutation[rank - 1] = axis;
+
+    transposed_input_dims.reserve(rank);
+    for (auto e : permutation) {
+      transposed_input_dims.push_back(input_shape[e]);
+    }
+
+    // Allocate a temporary tensor to hold transposed input
+    auto temp_input = Tensor::Create(Y.DataType(), TensorShape(transposed_input_dims), alloc);
+
+    // Perform the transpose
+    ORT_RETURN_IF_ERROR(Transpose::DoTranspose(permutation, Y, *temp_input));
+    transposed_Y = std::move(temp_input);
+    ORT_RETURN_IF_ERROR(Transpose::DoTranspose(permutation, dY, *temp_input));
+    transposed_dY = std::move(temp_input);
+
+    // Allocate memory for the intermediate output
+    intermediate_output = Tensor::Create(dX.DataType(), TensorShape(transposed_input_dims), alloc);
+  }
+
+  const float* Ydata = is_transpose_required ? transposed_Y->template Data<T>() : Y.template Data<float>();
+  const float* dYdata = is_transpose_required ? transposed_dY->template Data<T>() : dY.template Data<float>();
+  float* dXdata = is_transpose_required ? intermediate_output->template MutableData<T>() : dX.template MutableData<float>();
 
   std::vector<float> eY(nd);
   float* eYdata = eY.data();
@@ -203,6 +246,11 @@ Status LogSoftmaxGrad<T>::Compute(OpKernelContext* context) const {
     float sdY;
     math::Sum<float, CPUMathUtil>(d, dYdata + i * d, &sdY, nullptr, nullptr);
     math::Axpy<float, CPUMathUtil>(d, -sdY, eYdata + i * d, dXdata + i * d, nullptr);
+  }
+
+  if (is_transpose_required) {
+    // Perform the transpose to get the axes back to the original ordering
+    ORT_RETURN_IF_ERROR(Transpose::DoTranspose(permutation, *intermediate_output, dX));
   }
 
   return Status::OK();

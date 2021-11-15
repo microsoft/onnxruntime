@@ -91,18 +91,20 @@ SPECIALIZED_SOFTMAXGRAD_HELPER_IMPL_BFloat16(true)
 #endif
 
 #define REGISTER_GRADIENT_KERNEL_TYPED(T)                                                  \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                           \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                 \
       SoftmaxGrad,                                                                         \
       kMSDomain,                                                                           \
       1,                                                                                   \
+      12,                                                                                  \
       T,                                                                                   \
       kCudaExecutionProvider,                                                              \
       (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       SoftmaxGrad<T>);                                                                     \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                           \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                 \
       LogSoftmaxGrad,                                                                      \
       kMSDomain,                                                                           \
       1,                                                                                   \
+      12,                                                                                  \
       T,                                                                                   \
       kCudaExecutionProvider,                                                              \
       (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
@@ -158,19 +160,20 @@ SPECIALIZED_SOFTMAXGRAD_HELPER_IMPL_BFloat16(true)
     }
 
     // Allocate a temporary tensor to hold transposed input
-    auto temp_input = Tensor::Create(Y->DataType(), TensorShape(transposed_input_dims), alloc);
+    auto temp_input0 = Tensor::Create(Y->DataType(), TensorShape(transposed_input_dims), alloc);
 
     // Perform the transpose
     ORT_RETURN_IF_ERROR(Transpose::DoTranspose(cuda_ep_->GetDeviceProp(),
                                                Stream(),
                                                CublasHandle(),
-                                               permutation, *Y, *temp_input));
-    transposed_Y = std::move(temp_input);
+                                               permutation, *Y, *temp_input0));
+    transposed_Y = std::move(temp_input0);
+    auto temp_input1 = Tensor::Create(Y->DataType(), TensorShape(transposed_input_dims), alloc);
     ORT_RETURN_IF_ERROR(Transpose::DoTranspose(cuda_ep_->GetDeviceProp(),
                                                Stream(),
                                                CublasHandle(),
-                                               permutation, *dY, *temp_input));
-    transposed_dY = std::move(temp_input);
+                                               permutation, *dY, *temp_input1));
+    transposed_dY = std::move(temp_input1);
 
     // Allocate memory for the intermediate output
     intermediate_output = Tensor::Create(dX->DataType(), TensorShape(transposed_input_dims), alloc);

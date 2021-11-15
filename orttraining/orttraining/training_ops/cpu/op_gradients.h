@@ -63,7 +63,7 @@ class SoftmaxGrad final : public OpKernel {
   explicit SoftmaxGrad(const OpKernelInfo& info) : OpKernel(info) {
     const auto& node = info.node();
     opset_ = node.SinceVersion();
-    axis_ = info.GetAttrOrDefault<int64_t>("axis", 0);
+    axis_ = info.GetAttrOrDefault("axis", static_cast<int64_t>(opset_ < 13 ? 1 : -1));
   }
 
   Status Compute(OpKernelContext* context) const override;
@@ -78,7 +78,9 @@ template <typename T>
 class LogSoftmaxGrad final : public OpKernel {
  public:
   explicit LogSoftmaxGrad(const OpKernelInfo& info) : OpKernel(info) {
-    axis_ = info.GetAttrOrDefault<int64_t>("axis", 0);
+    const auto& node = info.node();
+    opset_ = node.SinceVersion();
+    axis_ = info.GetAttrOrDefault("axis", static_cast<int64_t>(opset_ < 13 ? 1 : -1));
   }
 
   Status Compute(OpKernelContext* context) const override;
@@ -86,6 +88,7 @@ class LogSoftmaxGrad final : public OpKernel {
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(LogSoftmaxGrad);
   int64_t axis_;
+  int opset_;
 };
 
 }  // namespace contrib
