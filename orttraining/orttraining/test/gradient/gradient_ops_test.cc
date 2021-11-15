@@ -1577,7 +1577,11 @@ TEST(GradientCheckerTest, SigmoidGrad) {
 void GradientCheckerSoftmaxGradHelper(bool is_log_softmax, int version = 0) {
   TensorShape shape({3, 4, 5});
   float max_error;
-  GradientChecker<float, float, float> gradient_checker;
+  std::unordered_map<std::string, int> domain_to_version;
+  if (version != 0) {
+    domain_to_version.insert({{kOnnxDomain, 13}});
+  }
+  GradientChecker<float, float, float> gradient_checker(domain_to_version);
 
   const std::string op = is_log_softmax ? "LogSoftmax" : "Softmax";
   OpDef op_def = version == 0 ? OpDef{op} : OpDef{op, kOnnxDomain, version};
@@ -1683,7 +1687,7 @@ TEST(GradientCheckerTest, SparseSoftmaxCrossEntropyGrad) {
   TestSparseSoftmaxCrossEntropyGrad({2, 3, 2}, "sum");
 }
 
-void TestSoftmaxCrossEntropyLossGrad(const TensorShape& index_shape,  //label_shape
+void TestSoftmaxCrossEntropyLossGrad(const TensorShape& index_shape,  // label_shape
                                      const std::string& reduction,
                                      int64_t ignore_index = 0,
                                      int64_t D = 2 /* num_class*/) {
@@ -1935,10 +1939,10 @@ void TestDropoutOp(float ratio, TensorShape& x_shape, bool default_ratio = true)
   test.AddOutput<bool>("mask", x_shape.GetDimsAsVector(), {true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true});
   test.Run();
 
-  //Check output
+  // Check output
   auto fwd_output = test.GetFetches();
   for (size_t idx = 0; idx < x_data.size() / 8; ++idx) {
-    //convert the binary to bool
+    // convert the binary to bool
     if (ratio > 0) {
       std::bitset<8> mask(fwd_output[1].Get<Tensor>().Data<bool>()[idx]);
       for (size_t i = 0; i < 8; ++i) {
@@ -1995,22 +1999,22 @@ void TestDropoutGradOp(float ratio, TensorShape& x_shape, bool default_ratio = t
 #ifdef USE_CUDA
 TEST(GradientCheckerTest, DISABLED_Dropout) {
   {
-    //Ratio 0
+    // Ratio 0
     TensorShape x_shape({2, 2, 2, 2});
     TestDropoutOp(0.0f, x_shape, false);
   }
-  //Ratio 0.2, 3D
+  // Ratio 0.2, 3D
   {
     TensorShape x_shape({4, 2, 2});
     TestDropoutOp(0.2f, x_shape, false);
   }
-  //Ratio 0.4, 2D
+  // Ratio 0.4, 2D
   {
     TensorShape x_shape({4, 4});
     TestDropoutOp(0.4f, x_shape, false);
   }
 
-  //Default ratio, 1D
+  // Default ratio, 1D
   {
     TensorShape x_shape({16});
     TestDropoutOp(0.2f, x_shape, true);
@@ -2019,30 +2023,30 @@ TEST(GradientCheckerTest, DISABLED_Dropout) {
 
 TEST(GradientCheckerTest, DISABLED_DropoutGrad) {
   {
-    //Ratio 0
+    // Ratio 0
     TensorShape x_shape({8, 2});
     TestDropoutGradOp(0.0f, x_shape);
   }
 
-  //Ratio 0.2, 1D
+  // Ratio 0.2, 1D
   {
     TensorShape x_shape({16});
     TestDropoutGradOp(0.2f, x_shape, false);
   }
 
-  //Ratio 0.3, 2D
+  // Ratio 0.3, 2D
   {
     TensorShape x_shape({8, 2});
     TestDropoutGradOp(0.3f, x_shape, false);
   }
 
-  //Ratio 0.4, 3D
+  // Ratio 0.4, 3D
   {
     TensorShape x_shape({2, 4, 2});
     TestDropoutGradOp(0.4f, x_shape, false);
   }
 
-  //default Ratio, 4D
+  // default Ratio, 4D
   {
     TensorShape x_shape({2, 4, 2});
     TestDropoutGradOp(0.6f, x_shape);
@@ -2142,7 +2146,7 @@ TEST(GradientCheckerTest, SimplifiedLayerNormGrad) {
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 }
-#endif  //USE_CUDA
+#endif  // USE_CUDA
 
 TEST(GradientUtilsTest, InPlaceAccumulatorFloat32) {
   OpTester test("InPlaceAccumulator", 1, onnxruntime::kMSDomain);
@@ -2173,7 +2177,7 @@ TEST(GradientUtilsTest, InPlaceAccumulatorFloat16) {
   // Didn't implement mixed precision InPlaceAccumulator in CPU
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCpuExecutionProvider});
 }
-#endif  //defined(USE_CUDA) || defined(USE_ROCM)
+#endif  // defined(USE_CUDA) || defined(USE_ROCM)
 
 TEST(GradientUtilsTest, ZeroGradientFloat32) {
   OpTester test("ZeroGradient", 1, onnxruntime::kMSDomain);
@@ -2283,7 +2287,7 @@ void RunExpandGradTests(const OpDef& op_def) {
   GradientChecker<float, float, float> gradient_checker;
   const std::vector<ONNX_NAMESPACE::AttributeProto> attributes = {};
 
-  //input_shape = (2, 3, 1), target_shape = (2, 3, 4) ==> shape(result) = (2, 3, 4)
+  // input_shape = (2, 3, 1), target_shape = (2, 3, 4) ==> shape(result) = (2, 3, 4)
   {
     TensorInfo x_info({2, 3, 1}, true);
     TensorInfo shape_info({3}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>());
@@ -2295,7 +2299,7 @@ void RunExpandGradTests(const OpDef& op_def) {
     EXPECT_IS_TINY(max_error);
   }
 
-  //input_shape = (2, 3, 1), target_shape = (1, 1, 4) ==> shape(result) = (2, 3, 4)
+  // input_shape = (2, 3, 1), target_shape = (1, 1, 4) ==> shape(result) = (2, 3, 4)
   {
     TensorInfo x_info({2, 3, 1}, true);
     TensorInfo shape_info({3}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>());
@@ -2307,7 +2311,7 @@ void RunExpandGradTests(const OpDef& op_def) {
     EXPECT_IS_TINY(max_error);
   }
 
-  //input_shape = (2, 3, 1), target_shape = (4) ==> shape(result) = (2, 3, 4)
+  // input_shape = (2, 3, 1), target_shape = (4) ==> shape(result) = (2, 3, 4)
   {
     TensorInfo x_info({2, 3, 1}, true);
     TensorInfo shape_info({1}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>());
@@ -2319,7 +2323,7 @@ void RunExpandGradTests(const OpDef& op_def) {
     EXPECT_IS_TINY(max_error);
   }
 
-  //input_shape = (2, 3, 1), target_shape = (1, 1) ==> shape(result) = (2, 3, 1)
+  // input_shape = (2, 3, 1), target_shape = (1, 1) ==> shape(result) = (2, 3, 1)
   {
     TensorInfo x_info({2, 3, 1}, true);
     TensorInfo shape_info({2}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>());
@@ -2331,7 +2335,7 @@ void RunExpandGradTests(const OpDef& op_def) {
     EXPECT_IS_TINY(max_error);
   }
 
-  //input_shape = (2, 3), target_shape = (4, 5, 2, 3) ==> shape(result) = (4, 5, 2, 3)
+  // input_shape = (2, 3), target_shape = (4, 5, 2, 3) ==> shape(result) = (4, 5, 2, 3)
   {
     TensorInfo x_info({2, 3}, true);
     TensorInfo shape_info({4}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>());
@@ -2343,7 +2347,7 @@ void RunExpandGradTests(const OpDef& op_def) {
     EXPECT_IS_TINY(max_error);
   }
 
-  //input_shape = (1, 2, 3), target_shape = (4, 5, 1, 1) ==> shape(result) = (4, 5, 2, 3)
+  // input_shape = (1, 2, 3), target_shape = (4, 5, 1, 1) ==> shape(result) = (4, 5, 2, 3)
   {
     TensorInfo x_info({1, 2, 3}, true);
     TensorInfo shape_info({4}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>());
@@ -2814,5 +2818,3 @@ TEST(GradientCheckerTest, TriluGrad) {
 
 }  // namespace test
 }  // namespace onnxruntime
-
-#endif  // NDEBUG
