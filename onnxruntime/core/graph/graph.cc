@@ -440,14 +440,18 @@ common::Status NodeArg::UpdateTypeAndShape(const ONNX_NAMESPACE::TypeProto& inpu
 
 #if !defined(DISABLE_OPTIONAL_TYPE)
     case TypeProto::kOptionalType: {
-      if ((utils::HasOptionalTensorType(input_type) && !utils::HasOptionalTensorType(current_type)) ||
-          (!utils::HasOptionalTensorType(input_type) && utils::HasOptionalTensorType(current_type))) {
+      bool is_input_type_optional_tensor_type = utils::HasOptionalTensorType(input_type);
+      bool is_current_type_optional_tensor_type = utils::HasOptionalTensorType(current_type);
+
+      // Check for homogeneity within optional type
+      if ((is_input_type_optional_tensor_type && !is_current_type_optional_tensor_type) ||
+          (!is_input_type_optional_tensor_type && is_current_type_optional_tensor_type)) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Optional Type mismatch. Expected: ", ONNX_NAMESPACE::Utils::DataTypeUtils::ToType(current_type),
                                " . Got: ", ONNX_NAMESPACE::Utils::DataTypeUtils::ToType(input_type));
       }
 
       // Updating element type and shape is only applicable for optional tensors
-      if (utils::HasOptionalTensorType(input_type)) {
+      if (is_input_type_optional_tensor_type) {
         const auto& optional_input_type = utils::GetOptionalTypeProto(input_type);
         auto& optional_current_type = *utils::GetMutableOptionalTypeProto(current_type);
 

@@ -127,11 +127,7 @@ void CheckKernelDefHashes(const KernelDefHashes& actual, const KernelDefHashes& 
         "Some expected kernel def hashes were not found.\n",
         kNoteReference, "\n",
         DumpKernelDefHashes(expected_minus_actual));
-    if (is_strict) {
-      ADD_FAILURE() << message;
-    } else {
-      std::cerr << message << "\n";
-    }
+    ADD_FAILURE() << message;
   }
 
   KernelDefHashes actual_minus_expected{};
@@ -159,17 +155,13 @@ TEST(KernelDefHashTest, DISABLED_PrintCpuKernelDefHashes) {
   std::cout << DumpKernelDefHashes(cpu_kernel_def_hashes) << "\n";
 }
 
-TEST(KernelDefHashTest, ExpectedCpuKernelDefHashes) {
+// TODO: Enable this test when optional type isdisabled when we have a way to conditionally
+// change the expected hash list (right now they are read from a file as shown below).
+// The actual hashes of some operators change when the optional type is disabled.
 #if !defined(DISABLE_OPTIONAL_TYPE)
+
+TEST(KernelDefHashTest, ExpectedCpuKernelDefHashes) {
   const bool is_strict = ParseEnvironmentVariableWithDefault<bool>(kStrictKernelDefHashCheckEnvVar, false);
-#else
-  // In builds with the optional type disabled, we cannot do a strict checking of kernel def hashes
-  // as the kernel def hashes of some ops (at the time of writing, these ops are Loop/If/Identity in opset 16)
-  // are bound to be different when compared with the kernel def hashes of a regular build with the optional
-  // type enabled.
-  // TODO: Can we test all other kernel def hashes but dis-regard ones that are expected to be different ?
-  const bool is_strict = false;
-#endif
 
   const auto expected_cpu_kernel_def_hashes = []() {
     KernelDefHashes result{};
@@ -198,6 +190,8 @@ TEST(KernelDefHashTest, ExpectedCpuKernelDefHashes) {
 
   CheckKernelDefHashes(cpu_kernel_def_hashes, expected_cpu_kernel_def_hashes, is_strict);
 }
+
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime
