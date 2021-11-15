@@ -299,7 +299,7 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::InitOpTesterWithGradGraph(
     const std::vector<AttributeProto>& attributes) {
   std::unordered_map<std::string, int> extra_domain_to_version = domain_to_version_;
   // Insser (domain, version) pair only if it is not already in the map.
-  extra_domain_to_version.insert({{kMSDomain, 13}, {kOnnxDomain, 9}});
+  extra_domain_to_version.insert({{kMSDomain, 1}, {kOnnxDomain, 9}});
   ORT_RETURN_IF_ERROR(InitOpTesterWithGraph(op_session, x_infos, y_infos, x_datas, y_datas, attributes,
                                             extra_domain_to_version));
   // build grad graph
