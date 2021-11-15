@@ -220,13 +220,15 @@ Status LogSoftmaxGrad<T>::Compute(OpKernelContext* context) const {
     }
 
     // Allocate a temporary tensor to hold transposed input
-    auto temp_input = Tensor::Create(Y.DataType(), TensorShape(transposed_input_dims), alloc);
+    auto temp_input0 = Tensor::Create(Y.DataType(), TensorShape(transposed_input_dims), alloc);
 
     // Perform the transpose
-    ORT_RETURN_IF_ERROR(Transpose::DoTranspose(permutation, Y, *temp_input));
-    transposed_Y = std::move(temp_input);
-    ORT_RETURN_IF_ERROR(Transpose::DoTranspose(permutation, dY, *temp_input));
-    transposed_dY = std::move(temp_input);
+    ORT_RETURN_IF_ERROR(Transpose::DoTranspose(permutation, Y, *temp_input0));
+    transposed_Y = std::move(temp_input0);
+
+    auto temp_input1 = Tensor::Create(Y.DataType(), TensorShape(transposed_input_dims), alloc);
+    ORT_RETURN_IF_ERROR(Transpose::DoTranspose(permutation, dY, *temp_input1));
+    transposed_dY = std::move(temp_input1);
 
     // Allocate memory for the intermediate output
     intermediate_output = Tensor::Create(dX.DataType(), TensorShape(transposed_input_dims), alloc);
