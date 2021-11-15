@@ -1113,6 +1113,12 @@ inline T* CustomOpApi::GetTensorMutableData(_Inout_ OrtValue* value) {
   return data;
 }
 
+inline const OrtMemoryInfo* CustomOpApi::GetTensorMemoryInfo(_In_ const OrtValue* value) {
+  const OrtMemoryInfo* mem_info;
+  ThrowOnError(api_.GetTensorMemoryInfo(value, &mem_info)); 
+  return mem_info;
+}
+
 template <typename T>
 inline const T* CustomOpApi::GetTensorData(_Inout_ const OrtValue* value) {
   return GetTensorMutableData<T>(const_cast<OrtValue*>(value));

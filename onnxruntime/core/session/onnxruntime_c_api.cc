@@ -2243,8 +2243,8 @@ static constexpr OrtApi ort_api_1_to_10 = {
     &OrtApis::CreateTensorWithDataAsOrtValue,
     &OrtApis::IsTensor,
     &OrtApis::GetTensorMutableData,
-    &OrtApis::FillStringTensor,
 
+    &OrtApis::FillStringTensor,
     &OrtApis::GetStringTensorDataLength,
     &OrtApis::GetStringTensorContent,
 
