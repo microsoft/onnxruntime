@@ -48,7 +48,7 @@ bool QDQSupportHelper::IsNodeInQDQGroup(const Node& node) const {
   return nodes_in_qdq_group.find(&node) != nodes_in_qdq_group.end();
 }
 
-const QDQ::NodeGroup QDQSupportHelper::GetQDQNodeGroup(const Node& target_node) const {
+const QDQ::NodeGroup QDQSupportHelper::GetQDQNodeGroupWithTargetNode(const Node& target_node) const {
   return target_node_to_qdq_group_.find(&target_node)->second;
 }
 

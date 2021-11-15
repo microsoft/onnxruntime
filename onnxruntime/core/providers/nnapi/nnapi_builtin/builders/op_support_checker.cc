@@ -738,7 +738,7 @@ bool ConvOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initial
   size_t w_idx = is_qlinear_conv ? 3 : 1;
   const auto group = helper.Get("group", 1);
 
-  const auto qdq_group = params.qdq_support_helper->GetQDQNodeGroup(node);
+  const auto qdq_group = params.qdq_support_helper->GetQDQNodeGroupWithTargetNode(node);
 
   std::string weight_name;
   if (is_qdq_node) {
