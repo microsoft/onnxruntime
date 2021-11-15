@@ -115,7 +115,7 @@ class OnnxRuntimeBackend(Backend):
 
             providers = get_available_providers()
             if 'TensorrtExecutionProvider' in providers and 'TensorrtExecutionProvider' in cls.ExecutionProvidersToSkip:
-                providers = ['CudaExecutionProvider'] 
+                providers = ['CUDAExecutionProvider'] 
 
             inf = InferenceSession(model, sess_options=options, providers=providers)
             # backend API is primarily used for ONNX test/validation. As such, we should disable session.run() fallback
