@@ -52,7 +52,7 @@ struct TensorInfo {
 template <typename X_T, typename Y_T, typename JAC_T>
 class GradientChecker {
  public:
-  GradientChecker() = default;
+  GradientChecker(const std::unordered_map<std::string, int>& domain_to_version = {}) : domain_to_version_(domain_to_version) {}
 
   /// Returns in 'max_error' the maximum element-wise error for dy/dx between the
   /// computed and numeric Jacobian matrices where 'xs' and 'ys' are tensors.
@@ -153,6 +153,8 @@ class GradientChecker {
                                       bool check_not_have_gradient = true,
                                       bool check_not_have_shape_inferencing = false,
                                       std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers = nullptr);
+
+  std::unordered_map<std::string, int> domain_to_version_;
 };
 }  // namespace test
 }  // namespace onnxruntime
