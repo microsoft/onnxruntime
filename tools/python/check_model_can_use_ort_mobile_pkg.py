@@ -37,7 +37,6 @@ tensorproto_type_to_cpp = {v: k for k, v in cpp_to_tensorproto_type.items()}
 def check_graph(graph, opsets, required_ops, global_types, special_types, unsupported_ops):
     '''
     Check the graph and any subgraphs for usage of types or operators which we know are not supported.
-    There are some gray areas around operators using int32/int64/bools which
     :param graph: Graph to process.
     :param opsets: Map of domain to opset version that the model imports.
     :param required_ops: Operators that are included in the pre-built package.
@@ -140,8 +139,9 @@ def _get_global_tensorproto_types(op_type_impl_filter):
             print(f'Error: Unexpected data type of {t}')
             sys.exit(-1)
 
-    # a subset of operators require int32 and int64 to always be enabled as they're used with shapes and indices.
-    # additional we have a number of operators (e.g. Not) that use bool which isn't included in type reduction.
+    # a subset of operators require int32 and int64 to always be enabled, as those types are used for dimensions in
+    # shapes and indices.
+    # additionally we have a number of operators (e.g. Not, Where) that always require the use of bool.
     # this _may_ mean values involving these types can be processed, but without adding a lot more code we don't know
     # for sure.
     special_types = [cpp_to_tensorproto_type['int32_t'],
@@ -158,7 +158,7 @@ def main():
 
     script_dir = os.path.dirname(os.path.realpath(__file__))
 
-    # config that was used to create the pre-build package.
+    # config that was used to create the pre-built package.
     # TODO: Would be nice to specify ORT release and pull the config for that release.
     default_config_path = \
         pathlib.Path(os.path.join(script_dir, '../ci_build/github/android/mobile_package.required_operators.config')
