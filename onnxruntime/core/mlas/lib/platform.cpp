@@ -348,6 +348,7 @@ Return Value:
 #if defined(MLAS_TARGET_ARM64)
 
     this->GemmU8X8Dispatch = &MlasGemmU8X8DispatchNeon;
+    this->ConvSymDispatch = &MlasConvSymDispatchNeon;
 
     //
     // Check if the processor supports ASIMD dot product instructions.
