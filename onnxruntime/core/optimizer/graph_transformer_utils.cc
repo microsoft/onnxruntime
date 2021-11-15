@@ -5,6 +5,7 @@
 
 #include "core/mlas/inc/mlas.h"
 #include "core/optimizer/attention_fusion.h"
+#include "core/optimizer/bias_dropout_fusion.h"
 #include "core/optimizer/bias_gelu_fusion.h"
 #include "core/optimizer/bias_softmax_fusion.h"
 #include "core/optimizer/cast_elimination.h"
@@ -24,30 +25,31 @@
 #include "core/optimizer/gelu_approximation.h"
 #include "core/optimizer/gelu_fusion.h"
 #include "core/optimizer/gemm_activation_fusion.h"
+#include "core/optimizer/gemm_sum_fusion.h"
 #include "core/optimizer/gemm_transpose_fusion.h"
 #include "core/optimizer/identity_elimination.h"
 #include "core/optimizer/layer_norm_fusion.h"
 #include "core/optimizer/matmul_add_fusion.h"
 #include "core/optimizer/matmul_integer_to_float.h"
 #include "core/optimizer/matmul_scale_fusion.h"
+#include "core/optimizer/matmul_transpose_fusion.h"
 #include "core/optimizer/nchwc_transformer.h"
 #include "core/optimizer/nhwc_transformer.h"
 #include "core/optimizer/noop_elimination.h"
 #include "core/optimizer/not_where_fusion.h"
+#include "core/optimizer/qdq_transformer/qdq_propagation.h"
+#include "core/optimizer/qdq_transformer/qdq_s8_to_u8.h"
+#include "core/optimizer/qdq_transformer/relu_quantizelinear.h"
+#include "core/optimizer/qdq_transformer/selectors_actions/qdq_selector_action_transformer.h"
 #include "core/optimizer/relu_clip_fusion.h"
 #include "core/optimizer/reshape_fusion.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
 #include "core/optimizer/skip_layer_norm_fusion.h"
 #include "core/optimizer/slice_elimination.h"
-#include "core/optimizer/unsqueeze_elimination.h"
-#include "core/optimizer/qdq_transformer/qdq_propagation.h"
-#include "core/optimizer/qdq_transformer/qdq_s8_to_u8.h"
-#include "core/optimizer/qdq_transformer/relu_quantizelinear.h"
-#include "core/optimizer/qdq_transformer/selectors_actions/qdq_selector_action_transformer.h"
 #include "core/optimizer/transpose_optimizer/ort_transpose_optimizer.h"
+#include "core/optimizer/unsqueeze_elimination.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
-#include "core/optimizer/matmul_transpose_fusion.h"
-#include "core/optimizer/bias_dropout_fusion.h"
+
 
 namespace onnxruntime {
 class IExecutionProvider;
@@ -73,6 +75,7 @@ std::vector<std::unique_ptr<RewriteRule>> GenerateRewriteRules(
       rules.push_back(std::make_unique<NoopElimination>());
       rules.push_back(std::make_unique<DivMulFusion>());
       rules.push_back(std::make_unique<FuseReluClip>());
+      rules.push_back(std::make_unique<GemmSumFusion>());
       rules.push_back(std::make_unique<GemmTransposeFusion>());
       rules.push_back(std::make_unique<NotWhereFusion>());
       rules.push_back(std::make_unique<ConvAddFusion>());
@@ -127,20 +130,42 @@ std::unique_ptr<RuleBasedGraphTransformer> GenerateRuleBasedGraphTransformer(
   return rule_transformer;
 }
 
+static void FilterTransformers(std::vector<std::unique_ptr<GraphTransformer>>& transformers,
+                               const std::unordered_set<std::string>& transformers_to_disable) {
+  if (transformers_to_disable.empty()) return;
+
+  transformers.erase(
+      std::remove_if(transformers.begin(), transformers.end(),
+                     [&](const std::unique_ptr<GraphTransformer>& transformer) {
+                       return !transformer ||
+                              transformers_to_disable.find(transformer->Name()) != transformers_to_disable.end();
+                     }),
+      transformers.end());
+}
+
 std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
     TransformerLevel level,
     const SessionOptions& session_options,
     const IExecutionProvider& cpu_execution_provider, /*required by constant folding*/
     const std::unordered_set<std::string>& rules_and_transformers_to_disable) {
   std::vector<std::unique_ptr<GraphTransformer>> transformers;
-  std::unique_ptr<RuleBasedGraphTransformer> rule_transformer = nullptr;
-  bool disable_quant_qdq = session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsDisableQuantQDQ, "0") == "1";
+  bool disable_quant_qdq =
+      session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsDisableQuantQDQ, "0") == "1";
 #ifndef DISABLE_CONTRIB_OPS
-  bool enable_gelu_approximation = session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsEnableGeluApproximation, "0") == "1";
+  bool enable_gelu_approximation =
+      session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsEnableGeluApproximation, "0") == "1";
 #endif
 
   switch (level) {
     case TransformerLevel::Level1: {
+      // RewriteRule optimizations are the simplest (they generally remove unnecessary nodes and are cheap to run)
+      // so run them first so there is potentially less for the more intensive optimizations like ConstantFolding,
+      // CommonSubexpressionElimination and TransposeOptimizer to do.
+      auto rule_transformer = GenerateRuleBasedGraphTransformer(level, rules_and_transformers_to_disable, {});
+      if (rule_transformer != nullptr) {
+        transformers.emplace_back(std::move(rule_transformer));
+      }
+
       // no filtering on execution provider for L1 optimizations as they only use official ONNX operators
       transformers.emplace_back(std::make_unique<CommonSubexpressionElimination>());
       transformers.emplace_back(std::make_unique<ConstantFolding>(cpu_execution_provider, !disable_quant_qdq));
@@ -150,15 +175,10 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
           session_options.free_dimension_overrides));
       auto cpu_allocator = cpu_execution_provider.GetAllocator(0, OrtMemTypeDefault);
       transformers.emplace_back(std::make_unique<TransposeOptimizer>(std::move(cpu_allocator)));
-
-      rule_transformer = GenerateRuleBasedGraphTransformer(level, rules_and_transformers_to_disable, {});
     } break;
 
     case TransformerLevel::Level2: {
       std::unordered_set<std::string> cpu_ep = {onnxruntime::kCpuExecutionProvider};
-
-      // create rule based transformer consisting of all the level2 rewrite rules
-      rule_transformer = GenerateRuleBasedGraphTransformer(level, rules_and_transformers_to_disable, cpu_ep);
 
 #ifndef DISABLE_CONTRIB_OPS
       const std::unordered_set<std::string> cuda_rocm_eps = {onnxruntime::kCudaExecutionProvider,
@@ -222,29 +242,35 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
     } break;
 
     default:
-      ORT_ENFORCE(false, "Unsupported level " + std::to_string(static_cast<uint32_t>(level)));
+      ORT_THROW("Unsupported optimization level: ", static_cast<int>(level));
+  }
+
+  FilterTransformers(transformers, rules_and_transformers_to_disable);
+
+  return transformers;
+}
+
+std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformersForRuntimeOptimizations(
+    TransformerLevel level,
+    const RuntimeOptimizationSaveContext& runtime_optimization_save_context,
+    const std::unordered_set<std::string>& rules_and_transformers_to_disable) {
+  std::vector<std::unique_ptr<GraphTransformer>> transformers;
+
+  switch (level) {
+    case TransformerLevel::Level1:
       break;
+    case TransformerLevel::Level2:
+      transformers.emplace_back(std::make_unique<QDQSelectorActionTransformer>(runtime_optimization_save_context));
+      break;
+    case TransformerLevel::Level3:
+      break;
+    default:
+      ORT_THROW("Unsupported optimization level: ", static_cast<int>(level));
   }
 
-  if (rule_transformer != nullptr) {
-    transformers.emplace_back(std::move(rule_transformer));
-  }
+  FilterTransformers(transformers, rules_and_transformers_to_disable);
 
-  if (rules_and_transformers_to_disable.empty()) {
-    return transformers;
-  } else {
-    // filter out any disabled transformers
-    std::vector<std::unique_ptr<GraphTransformer>> filtered_list;
-    auto end = rules_and_transformers_to_disable.cend();
-    std::for_each(transformers.begin(), transformers.end(),
-                  [&](std::unique_ptr<GraphTransformer>& item) {
-                    if ((item != nullptr) && (rules_and_transformers_to_disable.find(item->Name()) == end)) {
-                      filtered_list.push_back(std::move(item));
-                    }
-                  });
-
-    return filtered_list;
-  }
+  return transformers;
 }
 
 }  // namespace optimizer_utils

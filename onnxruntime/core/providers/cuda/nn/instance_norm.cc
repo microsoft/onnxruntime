@@ -95,10 +95,10 @@ Status InstanceNorm<T>::ComputeInternal(OpKernelContext* p_op_kernel_context) co
     auto image_size = input_count / stats_count;
 
     CudnnTensor data_desc;
-    ORT_RETURN_IF_ERROR(data_desc.Set({1, stats_count, image_size, 1}, CudnnTensor::GetDataType<CudaT>()));
+    ORT_RETURN_IF_ERROR(data_desc.Set(std::array<int64_t, 4>{1, stats_count, image_size, 1}, CudnnTensor::GetDataType<CudaT>()));
 
     CudnnTensor stats_desc;
-    ORT_RETURN_IF_ERROR(stats_desc.Set({1, stats_count, 1, 1}, CudnnTensor::GetDataType<CudaT>()));
+    ORT_RETURN_IF_ERROR(stats_desc.Set(std::array<int64_t, 4>{1, stats_count, 1, 1}, CudnnTensor::GetDataType<CudaT>()));
 
     auto mean = GetScratchBuffer<CudaT>(stats_count);
     auto variance = GetScratchBuffer<CudaT>(stats_count);

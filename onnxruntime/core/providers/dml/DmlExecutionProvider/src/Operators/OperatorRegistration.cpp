@@ -590,7 +590,7 @@ MLOperatorEdgeDescription EdgeDesc()
 void RegisterDmlOperators(IMLOperatorRegistry* registry)
 {
     ComPtr<IMLOperatorRegistryPrivate> registryPrivate;
-    THROW_IF_FAILED(registry->QueryInterface(registryPrivate.GetAddressOf()));
+    ORT_THROW_IF_FAILED(registry->QueryInterface(registryPrivate.GetAddressOf()));
 
     std::vector<MLOperatorEdgeTypeConstrant> typeConstraints;
     std::vector<MLOperatorEdgeDescription> edgeDescs;
@@ -680,7 +680,7 @@ void RegisterDmlOperators(IMLOperatorRegistry* registry)
             supportQuery = wil::MakeOrThrow<MLOperatorSupportQuery>(information.supportQueryFunction);
         }
 
-        THROW_IF_FAILED(registryPrivate->RegisterOperatorKernel(
+        ORT_THROW_IF_FAILED(registryPrivate->RegisterOperatorKernel(
             &desc, 
             factory.Get(), 
             shapeInferrer.Get(),

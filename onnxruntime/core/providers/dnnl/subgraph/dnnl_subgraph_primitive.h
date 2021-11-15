@@ -55,11 +55,13 @@ class DnnlSubgraphPrimitive {
   dnnl::memory GetMemory(const DnnlTensor& tensor);
   dnnl::memory GetMemory(const DnnlTensor& tensor, dnnl::memory::desc mem_desc, dnnl::engine eng);
   //set memory to a tensor (output)
-  // if always_copy_output is true a copy of the memory will be made when the output is leaving the subgraph.
-  void SetMemory(DnnlTensor tensor, dnnl::memory mem, bool always_copy_output = false);
+  //if always_copy_output is true a copy of the memory will be made when the output is leaving the subgraph.
+  //is_scalar is true to indicate a scalar output in order to allocate the correct onnxruntime output buffer
+  void SetMemory(DnnlTensor tensor, dnnl::memory mem, bool always_copy_output = false, bool is_scalar = false);
   void SetMemory(std::string memory_name, dnnl::memory mem);
   void SetInitializer(std::string memory_name, dnnl::memory mem);
   dnnl::memory::desc GetOutputInfo(std::string name);
+  bool IsScalarOutput(const std::string& name);
   bool IsDynamic();
   OrtMutex& GetMutex() { return mutex_; }
 
@@ -87,6 +89,7 @@ class DnnlSubgraphPrimitive {
   std::vector<std::unordered_map<int, dnnl::memory>> net_args_;
 
   std::vector<std::pair<dnnl::memory, dnnl::memory>> reshapes_;
+  std::unordered_set<std::string> scalar_outputs_;
 
   ort_dnnl::DnnlSubgraph* subgraph_;
 

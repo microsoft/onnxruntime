@@ -58,6 +58,10 @@ DNNLExecutionProvider::~DNNLExecutionProvider() {
 std::vector<std::vector<NodeIndex>> DNNLExecutionProvider::GetSupportedNodes(const GraphViewer& graph_viewer) const {
   std::vector<std::vector<size_t>> supported_node_vecs;
   std::vector<size_t> supported_node_vec;
+  
+  std::unordered_map<std::string,int> all_nodes_count;
+  std::unordered_map<std::string,int> supported_nodes_count;
+
   const auto& node_indices = graph_viewer.GetNodesInTopologicalOrder();
   for (size_t i = 0; i < node_indices.size(); i++) {
     auto node_idx = node_indices[i];
@@ -65,7 +69,14 @@ std::vector<std::vector<NodeIndex>> DNNLExecutionProvider::GetSupportedNodes(con
 
     bool supported = opManager_.IsNodeSupported(node, graph_viewer);
 
-    if (debug_log_) {
+    //update count
+    if(debug_log_){
+      auto node_optype_ver = node->OpType() + "_" + std::to_string(node->SinceVersion());
+      all_nodes_count[node_optype_ver]++;
+      if (supported) {
+        supported_nodes_count[node_optype_ver]++;
+      }
+
       LOGS_DEFAULT(ERROR) << "Operator type: [" << node->OpType()
                           << "] index: [" << node_idx
                           << "] name: [" << node->Name()
@@ -86,6 +97,23 @@ std::vector<std::vector<NodeIndex>> DNNLExecutionProvider::GetSupportedNodes(con
   if (!supported_node_vec.empty()) {
     supported_node_vecs.push_back(supported_node_vec);
   }
+
+  //collect statistics and report
+  if (debug_log_) {
+    int all_counts = 0;
+    int support_counts = 0;
+    for(auto e: all_nodes_count){
+      auto optype_ver = e.first;
+      auto all_count = e.second;
+      auto support_count = supported_nodes_count[optype_ver];
+      all_counts += all_count;
+      support_counts += support_count;
+      LOGS_DEFAULT(ERROR) << "Operator type: [" << optype_ver << "] coverage: " << support_count << ":" << all_count << " percentage: " << (float)support_count / (float)all_count;
+    }
+    LOGS_DEFAULT(ERROR) << "Total coverge: " << support_counts << ":" << all_counts
+                          << " percentage: " << (float)support_counts / (float)all_counts;
+  }
+  
 
   return supported_node_vecs;
 }
@@ -333,6 +361,11 @@ Status DNNLExecutionProvider::Compile(const std::vector<Node*>& fused_nodes,
           auto output_name = subgraph_primitive->GetOrderedOutputs()[i];
           auto output_md = subgraph_primitive->GetOutputInfo(output_name);
           auto output_shape = output_md.dims();
+          //if an output is a scaler, onednn internally uses tensor representation (eg, (1,1,...))
+          //but allocating an output with no shape instead of the equivalent tensorshape to avoid shape mismatch
+          if (subgraph_primitive->IsScalarOutput(output_name)) {
+            output_shape.clear();
+          }
           auto* output_tensor =
               ort.KernelContext_GetOutput(context, i, output_shape.data(), output_shape.size());
           auto* tensor_info = ort.GetTensorTypeAndShape(output_tensor);

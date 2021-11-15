@@ -113,7 +113,7 @@ static const Tensor* Marshalling(
 
   // input
   const auto& tensor_shape = original_initializer->Shape();
-  auto input_shape = tensor_shape.GetDims();
+  auto input_shape = tensor_shape.GetDimsAsVector();
   if (input_shape.empty())
     input_shape.push_back(1);
   const void* input_data = original_initializer->DataRaw();

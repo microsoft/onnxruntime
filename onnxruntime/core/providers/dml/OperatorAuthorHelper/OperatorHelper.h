@@ -5,8 +5,9 @@
 
 #include "Common.h"
 #include "Attributes.h"
-#include "MLOperatorAuthorHelper.h"
 #include "core/common/common.h"
+#include "..\DmlExecutionProvider\src\ErrorHandling.h"
+#include "MLOperatorAuthorHelper.h"
 
 namespace OperatorHelper {
 bool ContainsEmptyDimensions(gsl::span<const DimensionType> dimensions);
@@ -506,9 +507,9 @@ public:
     GemmHelper(const Info_t& info, const Shape_t& shape)
     {
         ORT_UNUSED_PARAMETER(shape);
-        m_transA = info.template GetOptionalAttribute<int>(AttrName::TransA, 0);
-        m_transB = info.template GetOptionalAttribute<int>(AttrName::TransB, 0);
-        m_broadcast = info.template GetOptionalAttribute<int>(AttrName::Broadcast, 0);
+        m_transA = info.template GetOptionalAttribute<int>(AttrName::TransA, 0) != 0;
+        m_transB = info.template GetOptionalAttribute<int>(AttrName::TransB, 0) != 0;
+        m_broadcast = info.template GetOptionalAttribute<int>(AttrName::Broadcast, 0) != 0;
         m_alpha = info.template GetOptionalAttribute<float>(AttrName::Alpha, 1.0f);
         m_beta = info.template GetOptionalAttribute<float>(AttrName::Beta, 0.0f);
     }

@@ -36,12 +36,7 @@ static void CountOpsInGraphImpl(const Graph& graph, bool recurse_into_subgraphs,
   for (auto& node : graph.Nodes()) {
     std::string key = node.Domain() + (node.Domain().empty() ? "" : ".") + node.OpType();
 
-    auto pos = ops.find(key);
-    if (pos == ops.end()) {
-      ops[key] = 1;
-    } else {
-      ++pos->second;
-    }
+    ++ops[key];
 
     if (recurse_into_subgraphs && node.ContainsSubgraph()) {
       for (auto& subgraph : node.GetSubgraphs()) {
