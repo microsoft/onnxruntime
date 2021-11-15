@@ -399,7 +399,7 @@ void RunRandomNormalGpuTest(const std::vector<int64_t> dims, const float mean, c
   };
 
   test.SetCustomOutputVerifier(output_verifier);
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCpuExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCpuExecutionProvider, kTensorrtExecutionProvider});
 }
 
 TEST(Random, RandomNormalGpu) {
@@ -503,7 +503,7 @@ void RunRandomUniformGpuTest(const std::vector<int64_t> dims, const float low, c
   };
 
   test.SetCustomOutputVerifier(output_verifier);
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCpuExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCpuExecutionProvider, kTensorrtExecutionProvider});
 }
 
 TEST(Random, RandomUniformGpu) {
