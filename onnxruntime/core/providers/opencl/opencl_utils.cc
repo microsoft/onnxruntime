@@ -136,5 +136,33 @@ const char* GetErrorString(cl_int error_code) {
   }
 }
 
+cl::Program LoadProgram(const cl::Context& ctx, const cl::Device& dev, const std::string& src) {
+  return LoadProgram(ctx, dev, src.data(), src.size());
+}
+
+cl::Program LoadProgram(const cl::Context& ctx, const cl::Device& dev, const char* src, size_t src_len) {
+  cl_int err{};
+  cl::Program program(ctx, {src, src_len}, /*build=*/true, &err);
+  if (err != CL_SUCCESS) {
+    std::ostringstream oss;
+    oss << "OpenCL Error Code  : " << static_cast<int>(err)
+        << "\n       Error String: " << onnxruntime::opencl::GetErrorString(err)
+        << "\nKernel Source:\n"
+        << src << "\n";
+    auto log = program.getBuildInfo<CL_PROGRAM_BUILD_LOG>(dev);
+    oss << "Build Log:\n"
+        << log;
+    ORT_THROW(oss.str());
+  }
+  return program;
+}
+
+cl::Kernel LoadKernel(const cl::Program& program, const char* name) {
+  cl_int err{};
+  auto kernel = cl::Kernel(program, name, &err);
+  OPENCL_CHECK_ERROR(err);
+  return kernel;
+}
+
 }  // namespace opencl
 }  // namespace onnxruntime

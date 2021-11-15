@@ -3,8 +3,10 @@
 #include <CL/cl.hpp>
 
 #include <cstdio>
+#include <sstream>
 #include "core/framework/op_kernel.h"
 #include "core/framework/tensor.h"
+#include "opencl_forward_decl.h"
 #include "opencl_execution_provider.h"
 
 #define ONNX_OPENCL_OPERATOR_KERNEL(name, ver, builder, ...) \
@@ -20,21 +22,22 @@
 #define TO_STRING(T) TO_STRING_(T)
 
 // NOLINTNEXTLINE(cppcoreguidelines-macro-usage)
-#define OPENCL_CHECK_ERROR(error_code)                                                             \
-  if ((error_code) != CL_SUCCESS) {                                                                \
-    fprintf(stderr, __FILE__ ":" TO_STRING(__LINE__) "\n");                                        \
-    fprintf(stderr, "OpenCL Error Code  : %d\n", (int)(error_code));                               \
-    fprintf(stderr, "       Error String: %s\n", onnxruntime::opencl::GetErrorString(error_code)); \
-    exit(-1);                                                                                      \
+#define OPENCL_CHECK_ERROR(error_code)                                                   \
+  if ((error_code) != CL_SUCCESS) {                                                      \
+    std::ostringstream oss;                                                              \
+    oss << __FILE__ ":" TO_STRING(__LINE__)                                              \
+        << "\nOpenCL Error Code  : " << (int)(error_code)                                \
+        << "\n       Error String: " << onnxruntime::opencl::GetErrorString(error_code); \
+    ORT_THROW(oss.str());                                                                \
   }
 
 namespace onnxruntime {
 namespace opencl {
 
-template <typename T>
-KernelCreateInfo BuildKernelCreateInfo();
-
 const char* GetErrorString(cl_int error_code);
+cl::Program LoadProgram(const cl::Context& ctx, const cl::Device& dev, const std::string& src);
+cl::Program LoadProgram(const cl::Context& ctx, const cl::Device& dev, const char* src, size_t src_len);
+cl::Kernel LoadKernel(const cl::Program& program, const char* name);
 
 // NOTE: for OrtDevice ctor
 struct CLMemType {
@@ -68,8 +71,8 @@ class Image2DDesc : private std::pair<int64_t, int64_t> {
         return PackFromTensor1D(shape);
       case 2:
         return PackFromTensor2D(shape);
-      case 4:
-        return PackFromTensorNCHW(shape);
+      // case 4:
+      //   return PackFromTensorNCHW(shape);
       case 5:
         return PackFromTensorNCHWc(shape);
       default:
@@ -80,7 +83,7 @@ class Image2DDesc : private std::pair<int64_t, int64_t> {
   static Image2DDesc PackFromTensor1D(const TensorShape& shape) {
     ORT_ENFORCE(shape.NumDimensions() == 1);
     //
-    return {512, CeilDiv(shape[0], 4 * 512)};
+    return {1024, CeilDiv(shape[0], 4 * 1024)};
   }
 
   static Image2DDesc PackFromTensor2D(const TensorShape& shape) {
@@ -88,16 +91,16 @@ class Image2DDesc : private std::pair<int64_t, int64_t> {
     return {CeilDiv(shape[0], 4), shape[1]};
   }
 
-  static Image2DDesc PackFromTensorNCHW(const TensorShape& shape) {
-    ORT_ENFORCE(shape.NumDimensions() == 4);
-    int64_t W = shape[0];
-    int64_t H = shape[1];
-    int64_t C = shape[2];
-    int64_t N = shape[3];
-    int64_t c = 4;
-    int64_t Cc = CeilDiv(C, c);
-    return {Cc * W, N * H};
-  }
+  // static Image2DDesc PackFromTensorNCHW(const TensorShape& shape) {
+  //   ORT_ENFORCE(shape.NumDimensions() == 4);
+  //   int64_t W = shape[0];
+  //   int64_t H = shape[1];
+  //   int64_t C = shape[2];
+  //   int64_t N = shape[3];
+  //   int64_t c = 4;
+  //   int64_t Cc = CeilDiv(C, c);
+  //   return {Cc * W, N * H};
+  // }
 
   // NCHWc is actually Tensor of shape N[C/c]HWc then packed as NH C/cWc
   static Image2DDesc PackFromTensorNCHWc(const TensorShape& shape) {
@@ -111,16 +114,24 @@ class Image2DDesc : private std::pair<int64_t, int64_t> {
     return {Cc * W, N * H};
   }
 
-  int64_t Height() const {
+  auto Height() const {
     return second;
   }
 
-  int64_t Width() const {
+  auto Width() const {
     return first;
   }
 
+  size_t UHeight() const {
+    return static_cast<size_t>(second);
+  }
+
+  size_t UWidth() const {
+    return static_cast<size_t>(first);
+  }
+
   TensorShape AsTensorShape() const {
-    return {Height(), Width()};
+    return {Width(), Height()};
   }
 };
 
@@ -134,18 +145,29 @@ class KernelLauncher {
 
   template <typename T>
   KernelLauncher& setArg(T&& arg) {
-    OPENCL_CHECK_ERROR(kernel_.setArg(index_++, std::forward<T>(arg)));
+    OPENCL_CHECK_ERROR(kernel_.setArg(index_, std::forward<T>(arg)));
+    index_ += 1;
+    return *this;
+  }
+
+  KernelLauncher& setBuffer(const cl::Buffer& arg) {
+    OPENCL_CHECK_ERROR(kernel_.setArg<cl::Buffer>(index_, arg));
+    index_ += 1;
     return *this;
   }
 
   KernelLauncher& setBuffer(const Tensor& arg) {
-    OPENCL_CHECK_ERROR(kernel_.setArg<cl::Buffer>(index_++, CL_BUFFER_FROM_TENSOR(arg)));
+    return setBuffer(CL_BUFFER_FROM_TENSOR(arg));
+  }
+
+  KernelLauncher& setImage2D(const cl::Image2D& arg) {
+    OPENCL_CHECK_ERROR(kernel_.setArg<cl::Image2D>(index_, arg));
+    index_ += 1;
     return *this;
   }
 
   KernelLauncher& setImage2D(const Tensor& arg) {
-    OPENCL_CHECK_ERROR(kernel_.setArg<cl::Image2D>(index_++, CL_IMAGE2D_FROM_TENSOR(arg)));
-    return *this;
+    return setImage2D(CL_IMAGE2D_FROM_TENSOR(arg));
   }
 
   void Launch(const cl::CommandQueue& queue, const cl::NDRange& global, const cl::NDRange& local = cl::NullRange) {

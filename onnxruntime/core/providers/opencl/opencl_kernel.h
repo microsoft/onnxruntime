@@ -15,29 +15,15 @@ class OpenCLKernel : public OpKernel {
 
  protected:
   void LoadProgram(const std::string& src) {
-    LoadProgram(src.data(), src.size());
+    program_ = onnxruntime::opencl::LoadProgram(exec_->GetOpenCLContext(), exec_->GetOpenCLDevice(), src);
   }
 
   void LoadProgram(const char* src, size_t src_len) {
-    cl_int err{};
-    program_ = cl::Program(exec_->GetOpenCLContext(), {src, src_len}, /*build=*/true, &err);
-    // OPENCL_CHECK_ERROR(err); FIXME: generialize macro
-    if (err != CL_SUCCESS) {
-      printf("OpenCL Error Code  : %d\n", static_cast<int>(err));
-      printf("       Error String: %s\n", onnxruntime::opencl::GetErrorString(err));
-      printf("Kernel Source:\n");
-      printf("%.*s\n", static_cast<int>(src_len), src);
-      auto log = program_.getBuildInfo<CL_PROGRAM_BUILD_LOG>(exec_->GetOpenCLDevice());
-      printf("Build Log:\n");
-      printf("%s\n", log.c_str());
-      exit(-1);
-    }
+    program_ = onnxruntime::opencl::LoadProgram(exec_->GetOpenCLContext(), exec_->GetOpenCLDevice(), src, src_len);
   }
 
   bool LoadKernel(const char* kernel_name) {
-    cl_int err{};
-    cl::Kernel kernel(program_, kernel_name, &err);
-    OPENCL_CHECK_ERROR(err);
+    auto kernel = onnxruntime::opencl::LoadKernel(program_, kernel_name);
     kernels_[kernel_name] = kernel;
     return kernels_.insert({kernel_name, kernel}).second;
   }

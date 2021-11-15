@@ -8,7 +8,7 @@
 namespace {
 
 #define CONTENT_NAME elementwise_kernel_src
-#include "opencl_generated/math/kernels/elementwise.cl.inc"
+#include "opencl_generated/math/kernels/elementwise_image2d.cl.inc"
 #undef CONTENT_NAME
 
 std::string GetKernelSrc(const std::string& name_define, const std::string& type_define, const std::string& op_define) {
@@ -44,14 +44,13 @@ class Add : public OpenCLKernel {
     std::cerr << " Input[1] shape " << b->Shape() << " " << b << "--> cl::Image(" << CL_IMAGE2D_FROM_TENSOR(*b)() << ")\n";
     std::cerr << " Output[0] shape " << c->Shape() << " " << c << "--> cl::Image(" << CL_IMAGE2D_FROM_TENSOR(*c)() << ")\n";
 
-    size_t n = a->Shape().Size();
+    auto desc = Image2DDesc::PackFromTensor(a->Shape());
 
     KernelLauncher{GetKernel("Add")}
         .setImage2D(*a)
         .setImage2D(*b)
         .setImage2D(*c)
-        .setArg<cl_int>(n)
-        .Launch(GetCommandQueue(), {n});
+        .Launch(GetCommandQueue(), {desc.UWidth(), desc.UHeight()});
 
     return Status::OK();
   }
@@ -62,7 +61,9 @@ ONNX_OPENCL_OPERATOR_KERNEL(
     7,
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::GetTensorType<float>())
-        .InputMemoryType((OrtMemType)CLMemType::OPENCL_IMAGE_2D, 1),
+        .InputMemoryType((OrtMemType)CLMemType::OPENCL_IMAGE_2D, 0)
+        .InputMemoryType((OrtMemType)CLMemType::OPENCL_IMAGE_2D, 1)
+        .OutputMemoryType((OrtMemType)CLMemType::OPENCL_IMAGE_2D, 0),
     Add)
 
 }  // namespace opencl

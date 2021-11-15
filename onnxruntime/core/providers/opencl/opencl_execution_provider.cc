@@ -93,6 +93,8 @@ Status OpenCLExecutionProvider::InitOpenCLContext() {
   OPENCL_CHECK_ERROR(err);
   std::cerr << "created cl::CommandQueue(" << cmd_queue_() << ") in cl::Context(" << ctx_() << ")\n";
 
+  InitKernelsForDataTransfer();
+
   return Status::OK();
 }
 
@@ -127,8 +129,35 @@ void OpenCLExecutionProvider::RegisterAllocator(std::shared_ptr<AllocatorManager
       }}));
 }
 
+/*
+#pragma region IDataTransfer related code
+*/
 std::unique_ptr<onnxruntime::IDataTransfer> OpenCLExecutionProvider::GetDataTransfer() const {
-  return std::make_unique<opencl::OpenCLDataTransfer>(cmd_queue_);
+  return std::make_unique<opencl::OpenCLDataTransfer>(this);
 }
+
+namespace {
+#define CONTENT_NAME copy1d_kernel_src
+#include "opencl_generated/kernels/copy_tensor_1d.cl.inc"
+#undef CONTENT_NAME
+}  // namespace
+
+void OpenCLExecutionProvider::InitKernelsForDataTransfer() {
+  program_copy_1d_ = ::onnxruntime::opencl::LoadProgram(GetOpenCLContext(), GetOpenCLDevice(), copy1d_kernel_src, copy1d_kernel_src_len);
+  kernel_copy_btoi_ = ::onnxruntime::opencl::LoadKernel(program_copy_1d_, "CopyTensor1DToImage2D");
+  kernel_copy_itob_ = ::onnxruntime::opencl::LoadKernel(program_copy_1d_, "CopyImage2DToTensor1D");
+}
+
+const cl::Kernel& OpenCLExecutionProvider::GetCopyTensor1DToImage2DKernel() const {
+  return kernel_copy_btoi_;
+}
+
+const cl::Kernel& OpenCLExecutionProvider::GetCopyImage2DToTensor1DKernel() const {
+  return kernel_copy_itob_;
+}
+
+/*
+#pragma endregion
+*/
 
 }  // namespace onnxruntime
