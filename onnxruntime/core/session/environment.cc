@@ -117,10 +117,10 @@ Status Environment::CreateAndRegisterAllocator(const OrtMemoryInfo& mem_info, co
 #if defined(USE_MIMALLOC_ARENA_ALLOCATOR) || defined(USE_MIMALLOC_STL_ALLOCATOR)
 #error jemalloc and mimalloc should not both be enabled
 #endif
-  //JEMalloc already has memory pool, so just use device allocator.
+  // JEMalloc already has memory pool, so just use device allocator.
   create_arena = false;
 #elif !(defined(__amd64__) || defined(_M_AMD64))
-  //Disable Arena allocator for x86_32 build because it may run into infinite loop when integer overflow happens
+  // Disable Arena allocator for x86_32 build because it may run into infinite loop when integer overflow happens
   create_arena = false;
 #endif
 
@@ -213,7 +213,7 @@ Status Environment::Initialize(std::unique_ptr<logging::LoggingManager> logging_
 #if !defined(ORT_MINIMAL_BUILD)
     // Register Microsoft domain with min/max op_set version as 1/1.
     std::call_once(schemaRegistrationOnceFlag, []() {
-      ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance().AddDomainToVersion(onnxruntime::kMSDomain, 1, 1);
+      ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance().AddDomainToVersion(onnxruntime::kMSDomain, 1, 13);
       ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance().AddDomainToVersion(onnxruntime::kMSExperimentalDomain, 1, 1);
       ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance().AddDomainToVersion(onnxruntime::kMSNchwcDomain, 1, 1);
 #ifdef USE_DML
