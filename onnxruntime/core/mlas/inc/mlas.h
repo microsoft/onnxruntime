@@ -1106,23 +1106,24 @@ MlasRequantizeOutput(
     size_t CountN
     );
 
-template<typename OutputType>
 class MLAS_QGEMM_REQUANT_OUTPUT_PROCESSOR : public MLAS_QGEMM_OUTPUT_PROCESSOR
 {
    public:
     MLAS_QGEMM_REQUANT_OUTPUT_PROCESSOR(
-        OutputType* Output,
+        uint8_t* Output,
         size_t OutputLeadingDimension,
         const int32_t* Bias,
         const float* Scale,
         bool PerColumnScale,
-        OutputType ZeroPoint)
+        uint8_t ZeroPoint,
+        bool OutputIsSigned)
         : Output_(Output),
           OutputLeadingDimension_(OutputLeadingDimension),
           Bias_(Bias),
           Scale_(Scale),
           PerColumnScale_(PerColumnScale),
-          ZeroPoint_(ZeroPoint)
+          ZeroPoint_(ZeroPoint),
+          OutputIsSigned_(OutputIsSigned)
     {
     }
 
@@ -1133,18 +1134,24 @@ class MLAS_QGEMM_REQUANT_OUTPUT_PROCESSOR : public MLAS_QGEMM_OUTPUT_PROCESSOR
                  size_t CountN,
                  size_t ldc) const override
     {
+        if(OutputIsSigned_){
+        MlasRequantizeOutput(C, ldc, reinterpret_cast<int8_t*>(Output_), OutputLeadingDimension_, Bias_, Scale_,
+                             PerColumnScale_, static_cast<int8_t>(ZeroPoint_), StartM, StartN, CountM, CountN);
+        } else {
         MlasRequantizeOutput(C, ldc, Output_, OutputLeadingDimension_, Bias_, Scale_,
                              PerColumnScale_, ZeroPoint_, StartM, StartN, CountM, CountN);
+        }
     }
 
 
    private:
-    OutputType* Output_;
+    uint8_t* Output_;
     size_t OutputLeadingDimension_;
     const int32_t* Bias_;
     const float* Scale_;
     bool PerColumnScale_;
-    OutputType ZeroPoint_;
+    uint8_t ZeroPoint_;
+    bool OutputIsSigned_;
 };
 
 

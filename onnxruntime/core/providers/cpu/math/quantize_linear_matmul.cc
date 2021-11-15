@@ -102,14 +102,14 @@ Status QLinearMatMul::Compute(OpKernelContext* ctx) const {
   auto* gemm_output = static_cast<int32_t*>(gemm_output_buffer.get());
 
   std::vector<MLAS_GEMM_QUANT_DATA_PARAMS> gemm_params(num_gemms);
-  std::vector<MLAS_QGEMM_REQUANT_OUTPUT_PROCESSOR<uint8_t>> requant_procs;
+  std::vector<MLAS_QGEMM_REQUANT_OUTPUT_PROCESSOR> requant_procs;
   requant_procs.reserve(num_gemms);
 
   auto b_zp_data = static_cast<const uint8_t*>(b_offset->DataRaw());
   for (size_t i = 0; i < num_gemms; i++) {
-    gemm_params[i].A = a->template Data<uint8_t>() + helper.LeftOffsets()[i];
+    gemm_params[i].A = static_cast<const uint8_t*>(a->DataRaw()) + helper.LeftOffsets()[i];
     gemm_params[i].lda = gemm_shape.K;
-    gemm_params[i].ZeroPointA = *a_offset->template Data<uint8_t>();
+    gemm_params[i].ZeroPointA = *(static_cast<const uint8_t*>(a_offset->DataRaw()));
 
     gemm_params[i].B = b_data + helper.RightOffsets()[i];
     gemm_params[i].ldb = gemm_shape.N;
@@ -121,12 +121,13 @@ Status QLinearMatMul::Compute(OpKernelContext* ctx) const {
 
     gemm_params[i].PerColumnZeroPoints = !IsScalarOr1ElementVector(b_offset);
 
-    requant_procs.emplace_back(y->template MutableData<uint8_t>() + helper.OutputOffsets()[i],
+    requant_procs.emplace_back(static_cast<uint8_t*>(y->MutableDataRaw()) + helper.OutputOffsets()[i],
                                static_cast<size_t>(helper.N()),
                                nullptr,
                                output_scales.data() + helper.RightScaleOffsets()[i],
                                output_scales.size() > 1,
-                               *y_offset->template Data<uint8_t>());
+                               *(static_cast<const uint8_t*>(y_offset->DataRaw())),
+                               y->IsDataType<int8_t>());
     gemm_params[i].OutputProcessor = &(requant_procs[i]);
   }
 
