@@ -595,6 +595,9 @@ void ThreadPool::ParallelFor(std::ptrdiff_t n, const TensorOpCost& c,
   }
 
   ptrdiff_t block = CalculateParallelForBlock(n, cost, nullptr, d_of_p);
+  if (block > thread_options_.block_size_limit) {
+    block = thread_options_.block_size_limit;
+  }
   ParallelForFixedBlockSizeScheduling(n, block, f);
 }
 

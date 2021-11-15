@@ -27,9 +27,9 @@ CreateThreadPoolHelper(Env* env, OrtThreadPoolParams options) {
       to.affinity = cpu_list;
   }
   to.set_denormal_as_zero = options.set_denormal_as_zero;
-
+  to.block_size_limit = options.block_size_limit;
   return std::make_unique<ThreadPool>(env, to, options.name, options.thread_pool_size,
-                                              options.allow_spinning);
+                                      options.allow_spinning);
 }
 
 std::unique_ptr<ThreadPool>

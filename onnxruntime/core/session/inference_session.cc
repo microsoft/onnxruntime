@@ -297,6 +297,10 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
                              session_options_.execution_mode == ExecutionMode::ORT_SEQUENTIAL &&
                              to.affinity_vec_len == 0;
       to.allow_spinning = allow_intra_op_spinning;
+      auto block_size_limit = atoi(session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigBlockSizeLimit, "0").c_str());
+      if (block_size_limit > 0) {
+        to.block_size_limit = block_size_limit;
+      }
       thread_pool_ =
           concurrency::CreateThreadPool(&Env::Default(), to, concurrency::ThreadPoolType::INTRA_OP);
     }
@@ -317,6 +321,10 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
       to.name = inter_thread_pool_name_.c_str();
       to.set_denormal_as_zero = set_denormal_as_zero;
       to.allow_spinning = allow_inter_op_spinning;
+      auto block_size_limit = atoi(session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigBlockSizeLimit, "0").c_str());
+      if (block_size_limit > 0) {
+        to.block_size_limit = block_size_limit;
+      }
       inter_op_thread_pool_ =
           concurrency::CreateThreadPool(&Env::Default(), to, concurrency::ThreadPoolType::INTER_OP);
       if (inter_op_thread_pool_ == nullptr) {

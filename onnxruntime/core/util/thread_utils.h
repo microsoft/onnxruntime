@@ -28,6 +28,7 @@ struct OrtThreadPoolParams {
 
   // Set or unset denormal as zero
   bool set_denormal_as_zero = false;
+  int block_size_limit = std::numeric_limits<int>::max();
 };
 
 struct OrtThreadingOptions {
