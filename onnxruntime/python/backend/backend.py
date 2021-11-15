@@ -33,7 +33,7 @@ class OnnxRuntimeBackend(Backend):
 
     @classmethod
     def ep_to_skip(cls, ep):
-        ExecutionProvidersToSkip.append(ep)
+        cls.ExecutionProvidersToSkip.append(ep)
 
     @classmethod
     def is_compatible(cls, model, device=None, **kwargs):
@@ -114,9 +114,9 @@ class OnnxRuntimeBackend(Backend):
                     setattr(options, k, v)
 
             providers = get_available_providers()
-            if 'TensorRTExecutionProvider' in providers and 'TensorrtExecutionProvider' in cls.ExecutionProvidersToSkip:
+            if 'TensorrtExecutionProvider' in providers and 'TensorrtExecutionProvider' in cls.ExecutionProvidersToSkip:
                 providers = ['CudaExecutionProvider'] 
-            print(providers)
+
             inf = InferenceSession(model, sess_options=options, providers=providers)
             # backend API is primarily used for ONNX test/validation. As such, we should disable session.run() fallback
             # which may hide test failures.
@@ -173,3 +173,4 @@ is_compatible = OnnxRuntimeBackend.is_compatible
 prepare = OnnxRuntimeBackend.prepare
 run = OnnxRuntimeBackend.run_model
 supports_device = OnnxRuntimeBackend.supports_device
+ep_to_skip = OnnxRuntimeBackend.ep_to_skip

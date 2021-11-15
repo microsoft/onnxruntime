@@ -122,7 +122,7 @@ def create_backend_test(testname=None):
         backend_test.exclude('(' + '|'.join(filters) + ')')
         print('excluded tests:', filters)
 
-        backend_test.ep_to_skip('TensorrtExecutionProvider')
+        c2.ep_to_skip('TensorrtExecutionProvider')
 
     # import all test cases at global scope to make
     # them visible to python.unittest.
