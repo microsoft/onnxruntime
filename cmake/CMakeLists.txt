@@ -171,6 +171,9 @@ set(ONNX_CUSTOM_PROTOC_EXECUTABLE "" CACHE STRING "Specify custom protoc executa
 # pre-build python path
 option(onnxruntime_PREBUILT_PYTORCH_PATH "Path to pytorch installation dir")
 
+# external transformer src path
+option(onnxruntime_EXTERNAL_TRANSFORMER_SRC_PATH "Path to external transformer src dir")
+
 if (onnxruntime_USE_CUDA)
   set(onnxruntime_DISABLE_RTTI OFF)
 endif()
@@ -332,6 +335,10 @@ if (onnxruntime_BUILD_WEBASSEMBLY)
   if (onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
     string(APPEND CMAKE_CXX_FLAGS " -pthread")
   endif()
+endif()
+
+if (onnxruntime_EXTERNAL_TRANSFORMER_SRC_PATH)
+  add_definitions(-DORT_TRAINING_EXTERNAL_GRAPH_TRANSFORMERS=1)
 endif()
 
 # ORT build with as much excluded as possible. Supports ORT flatbuffers models only.

@@ -560,7 +560,15 @@ def parse_arguments():
     parser.add_argument(
         "--enable_external_custom_op_schemas", action='store_true',
         help="Enable registering user defined custom operation schemas at shared library load time.\
-              This feature is only supported/available on Ubuntu.")
+            This feature is only supported/available on Ubuntu.")
+
+    parser.add_argument(
+        "--external_graph_transformer_path", type=str,
+        help="path to the external graph transformer dir.")
+
+    parser.add_argument(
+        "--test_external_transformer_example", action='store_true',
+        help="run the example external transformer test, mainly used in CI pipeline.")
 
     return parser.parse_args()
 
@@ -813,6 +821,8 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                                                               else "OFF"),
         "-Donnxruntime_NVCC_THREADS=" + str(args.parallel),
     ]
+    if args.external_graph_transformer_path:
+        cmake_args.append("-Donnxruntime_EXTERNAL_TRANSFORMER_SRC_PATH=" + args.external_graph_transformer_path)
     # It should be default ON in CI build pipelines, and OFF in packaging pipelines.
     # And OFF for the people who are not actively developing onnx runtime.
     add_cmake_define_without_override(cmake_extra_defines, "onnxruntime_DEV_MODE", use_dev_mode(args))
@@ -1637,6 +1647,15 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                 # run eager mode test
                 args_list = [sys.executable, os.path.join(cwd, 'eager_test')]
                 run_subprocess(args_list, cwd=cwd, dll_path=dll_path, python_path=cwd)
+                if args.test_external_transformer_example:
+                    run_subprocess([sys.executable,
+                                    os.path.join(source_dir,
+                                                 'orttraining',
+                                                 'orttraining',
+                                                 'test',
+                                                 'external_transformer',
+                                                 'test',
+                                                 'external_transformers_test.py')], cwd=cwd, dll_path=dll_path)
 
             try:
                 import onnx  # noqa
