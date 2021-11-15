@@ -11,21 +11,27 @@ class Direct8BitOp(QuantOperatorBase):
     def quantize(self):
         node = self.node
 
-        # Quantize when input[0] is quantized already. Otherwise keep it.
-        if node.input[0] not in self.quantizer.quantized_value_map:
-            self.quantizer.new_nodes += [node]
+        # Force quantize those ops if possible, use black list on node if this is not you want
+        if (not self.quantizer.is_valid_quantize_weight(node.input[0])):
+            super().quantize()
             return
 
+        (quantized_input_names, zero_point_names, scale_names, nodes) = \
+            self.quantizer.quantize_inputs(node, [0])
+        if quantized_input_names is None:
+            return super().quantize()
+
         # Create an entry for output quantized value
-        quantized_input_value = self.quantizer.quantized_value_map[node.input[0]]
         quantized_output_value = QuantizedValue(node.output[0], node.output[0] + "_quantized",
-                                                quantized_input_value.scale_name, quantized_input_value.zp_name,
-                                                quantized_input_value.value_type)
+                                                scale_names[0], zero_point_names[0],
+                                                QuantizedValueType.Input)
         self.quantizer.quantized_value_map[node.output[0]] = quantized_output_value
 
-        node.input[0] = quantized_input_value.q_name
+        node.input[0] = quantized_input_names[0]
         node.output[0] = quantized_output_value.q_name
-        self.quantizer.new_nodes += [node]
+        nodes.append(node)
+        
+        self.quantizer.new_nodes += nodes
 
 
 class QDQDirect8BitOp(QDQOperatorBase):

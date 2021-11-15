@@ -296,7 +296,7 @@ class ONNXQuantizer:
 
         # Remove ununsed initializers from graph, starting from the top level graph.
         if self.parent is None:
-            _, initializers_not_found = CleanGraphInitializers(self.model.graph())
+            _, initializers_not_found = ONNXQuantizer.CleanGraphInitializers(self.model.graph())
             if len(initializers_not_found) > 0:
                 raise RuntimeError("Invalid model with unknown initializers/tensors." + str(initializers_not_found))
 
@@ -879,13 +879,13 @@ class ONNXQuantizer:
                 for attr in node.attribute:
                     kv = {}
                     if attr.type == onnx.AttributeProto.GRAPH:
-                        cleaned_sub_graph, sub_requesting_tensor_names = CleanGraphInitializers(attr.g)
+                        cleaned_sub_graph, sub_requesting_tensor_names = ONNXQuantizer.CleanGraphInitializers(attr.g)
                         kv = {attr.name: cleaned_sub_graph}
                         requesting_tensor_names.update({gn: 1 for gn in sub_requesting_tensor_names})
                     elif attr.type == onnx.AttributeProto.GRAPHS:
                         cleaned_graphes = []
                         for subgraph in attr.graphs:
-                            cleaned_sub_graph, sub_requesting_tensor_names = CleanGraphInitializers(subgraph)
+                            cleaned_sub_graph, sub_requesting_tensor_names = ONNXQuantizer.CleanGraphInitializers(subgraph)
                             cleaned_graphes.extend([cleaned_sub_graph])
                             requesting_tensor_names.update({gn: 1 for gn in sub_requesting_tensor_names})
                         kv = {attr.name: cleaned_graphes}
@@ -905,6 +905,8 @@ class ONNXQuantizer:
         name_to_input = {}
         for input in graph.input:
             name_to_input[input.name] = input
+            if input.name in requesting_tensor_names:
+                requesting_tensor_names.pop(input.name, None)
 
         new_inis = []
         for ini_tensor in graph.initializer:
