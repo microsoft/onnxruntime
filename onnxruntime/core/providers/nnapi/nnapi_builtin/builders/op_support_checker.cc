@@ -738,8 +738,7 @@ bool ConvOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initial
   size_t w_idx = is_qlinear_conv ? 3 : 1;
   const auto group = helper.Get("group", 1);
 
-  auto qdq_group_map = params.qdq_support_helper->target_node_to_qdq_group_;
-  auto qdq_group = qdq_group_map.find(&node)->second;
+  const auto qdq_group = params.qdq_support_helper->GetQDQNodeGroup(node);
 
   std::string weight_name;
   if (is_qdq_node) {
@@ -806,7 +805,8 @@ bool ConvOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initial
       LOGS_DEFAULT(VERBOSE) << "Bias of QLinearConv must be known";
       return false;
     }
-
+    
+    // TODO: These two functions needs to update for qdq case
     // a/b/y_scale
     if (!HasValidQuantizationScales(initializers, node, {1, 4, 6}, params))
       return false;

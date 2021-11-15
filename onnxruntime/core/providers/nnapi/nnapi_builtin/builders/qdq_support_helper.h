@@ -55,17 +55,18 @@ class QDQSupportHelper {
 
   bool IsNodeInQDQGroup(const Node& node) const;
 
-  std::unordered_map<const Node*, QDQ::NodeGroup> target_node_to_qdq_group_;
+  const QDQ::NodeGroup GetQDQNodeGroup(const Node& target_node) const;
 
  private:
   Selectors selectors_;
   const GraphViewer& graph_viewer_;
   std::unordered_map<std::string, const Selector*> op_type_to_selectors_map_;
   std::unordered_set<const Node*> nodes_in_qdq_group;
+  std::unordered_map<const Node*, QDQ::NodeGroup> target_node_to_qdq_group_;
 
   std::optional<QDQ::NodeGroupIndices> Match(const Node& node) const;
 
-  void GetQDQNodeGroup(const Node& node);
+  void SetQDQNodeGroup(const Node& node);
 };
 
 /* Selector Rules Related */

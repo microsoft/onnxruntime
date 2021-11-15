@@ -31,7 +31,7 @@ QDQSupportHelper::QDQSupportHelper(Selectors&& selectors, const GraphViewer& gra
 
   for (auto index : graph_viewer_.GetNodesInTopologicalOrder()) {
     const auto* node = graph_viewer_.GetNode(index);
-    GetQDQNodeGroup(*node);
+    SetQDQNodeGroup(*node);
   }
 }
 
@@ -46,6 +46,10 @@ void Selectors::RegisterSelector(const Selector::OpVersionsMap& ops_and_versions
 
 bool QDQSupportHelper::IsNodeInQDQGroup(const Node& node) const {
   return nodes_in_qdq_group.find(&node) != nodes_in_qdq_group.end();
+}
+
+const QDQ::NodeGroup QDQSupportHelper::GetQDQNodeGroup(const Node& target_node) const {
+  return target_node_to_qdq_group_.find(&target_node)->second;
 }
 
 std::optional<QDQ::NodeGroupIndices> QDQSupportHelper::Match(const Node& node) const {
@@ -83,7 +87,7 @@ std::optional<QDQ::NodeGroupIndices> QDQSupportHelper::Match(const Node& node) c
   return qdq_node_group_indices;
 }
 
-void QDQSupportHelper::GetQDQNodeGroup(const Node& node) {
+void QDQSupportHelper::SetQDQNodeGroup(const Node& node) {
   auto qdq_node_group_indices = Match(node);
   QDQ::NodeGroup qdq_node_group;
 
@@ -103,13 +107,13 @@ void QDQSupportHelper::GetQDQNodeGroup(const Node& node) {
       qdq_node_group.q_nodes.push_back(q_node);
       nodes_in_qdq_group.insert(q_node);
     }
-  }
 
-  auto it = target_node_to_qdq_group_.find(&node);
-  if (it != target_node_to_qdq_group_.end()) {
-    it->second = qdq_node_group;
-  } else {
-    target_node_to_qdq_group_.emplace(&node, qdq_node_group);
+    auto it = target_node_to_qdq_group_.find(&node);
+    if (it != target_node_to_qdq_group_.end()) {
+      it->second = qdq_node_group;
+    } else {
+      target_node_to_qdq_group_[&node] = std::move(qdq_node_group);
+    }
   }
 }
 
