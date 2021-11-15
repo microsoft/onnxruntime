@@ -19,4 +19,11 @@ class TopK final : public OpKernel {
   bool largest_; // opset-11 only
   bool sorted_; // opset-11 only
 };
+
+template <typename T>
+Status GetTopK(const Tensor* input, const int axis, const unsigned k, bool largest, bool sorted,
+               AllocatorPtr allocator,
+               onnxruntime::concurrency::ThreadPool* threadpool,
+               std::unique_ptr<Tensor>& output_values,
+               std::unique_ptr<Tensor>& output_indices);
 }  // namespace onnxruntime
