@@ -294,8 +294,11 @@ class ONNXQuantizer:
         self.model.graph().ClearField('node')
         self.model.graph().node.extend(self.new_nodes)
 
-        # Remove ununsed weights from graph.
-        self.remove_quantized_weights()
+        # Remove ununsed initializers from graph, starting from the top level graph.
+        if self.parent is None:
+            _, initializers_not_found = CleanGraphInitializers(self.model.graph())
+            if len(initializers_not_found) > 0:
+                raise RuntimeError("Invalid model with unknown initializers/tensors." + str(initializers_not_found))
 
         self.model.model.producer_name = __producer__
         self.model.model.producer_version = __version__
@@ -857,23 +860,63 @@ class ONNXQuantizer:
 
         return quantization_params
 
-    def remove_quantized_weights(self):
-        ''' Remove the weights which are already quantized from graph initializer list.
-            This function assumes that after quantization, all nodes that previously use a weight:
-                - use output from DequantizeLinear as input if they do not support quantization.
-                - use quantized weight if they support quantization.
+
+    # static method
+    def CleanGraphInitializers(graph):
         '''
-        for tensor_name, quant_value in self.quantized_value_map.items():
-            if quant_value.value_type == QuantizedValueType.Initializer:
-                weight = self.model.get_initializer(tensor_name)
+        return cleaned graph, and list of tensor names from this graph and all its subgraphes that can not be found in this graph and its subgraphes
+        '''
+        requesting_tensor_names = {}
+        requesting_tensor_names.update({input_name: 1 for node in graph.node for input_name in node.input})
+        requesting_tensor_names.update({g_out.name: 1 for g_out in graph.output})
 
-                if weight is not None:
-                    self.model.initializer().remove(weight)
+        new_nodes = []
+        for node in graph.node:
+            node_2_add = node
+            graph_attrs = [attr for attr in node.attribute if attr.type == onnx.AttributeProto.GRAPH or attr.type == onnx.AttributeProto.GRAPHS]
+            if len(graph_attrs) > 0:
+                kwargs = {}
+                for attr in node.attribute:
+                    kv = {}
+                    if attr.type == onnx.AttributeProto.GRAPH:
+                        cleaned_sub_graph, sub_requesting_tensor_names = CleanGraphInitializers(attr.g)
+                        kv = {attr.name: cleaned_sub_graph}
+                        requesting_tensor_names.update({gn: 1 for gn in sub_requesting_tensor_names})
+                    elif attr.type == onnx.AttributeProto.GRAPHS:
+                        cleaned_graphes = []
+                        for subgraph in attr.graphs:
+                            cleaned_sub_graph, sub_requesting_tensor_names = CleanGraphInitializers(subgraph)
+                            cleaned_graphes.extend([cleaned_sub_graph])
+                            requesting_tensor_names.update({gn: 1 for gn in sub_requesting_tensor_names})
+                        kv = {attr.name: cleaned_graphes}
+                    else:
+                        kv = attribute_to_kwarg(attr)
+                    kwargs.update(kv)
+                node_2_add = onnx.helper.make_node(node.op_type, node.input, node.output, name=node.name, **kwargs)
+            new_nodes.extend([node_2_add])
+        graph.ClearField('node')
+        graph.node.extend(new_nodes)
 
-                    # Remove from graph.input
-                    try:
-                        weight_input = next(val for val in self.model.graph().input if val.name == tensor_name)
-                        self.model.graph().input.remove(weight_input)
-                    except StopIteration:
-                        if self.model.ir_version() < 4:
-                            print("Warning: invalid weight name {} found in the graph (not a graph input)".format(tensor_name))
+        generated_names = {}
+        generated_names.update({output_name: 1 for node in graph.node for output_name in node.output})
+        for gn in generated_names:
+            requesting_tensor_names.pop(gn, None)
+
+        name_to_input = {}
+        for input in graph.input:
+            name_to_input[input.name] = input
+
+        new_inis = []
+        for ini_tensor in graph.initializer:
+            if ini_tensor.name in requesting_tensor_names:
+                requesting_tensor_names.pop(ini_tensor.name, None)
+                new_inis.extend([ini_tensor])
+            else:
+                # remove it from initializer, also remove it from grpah input if already there
+                if ini_tensor.name in name_to_input:
+                    graph.input.remove(name_to_input[ini_tensor.name])
+
+        graph.ClearField('initializer')
+        graph.initializer.extend(new_inis)
+
+        return graph, requesting_tensor_names
