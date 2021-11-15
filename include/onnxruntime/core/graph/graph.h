@@ -518,7 +518,8 @@ class Node {
             const std::vector<NodeArg*>& input_args,
             const std::vector<NodeArg*>& output_args,
             const NodeAttributes* attributes,
-            const std::string& domain);
+            const std::string& domain,
+            int since_version = -1);
 
   // internal only method to allow selected classes to directly alter the input/output definitions and arg counts
   Definitions& MutableDefinitions() noexcept;
@@ -855,7 +856,8 @@ class Graph {
                 const std::vector<NodeArg*>& input_args,
                 const std::vector<NodeArg*>& output_args,
                 const NodeAttributes* attributes = nullptr,
-                const std::string& domain = "");
+                const std::string& domain = "",
+                int since_version = -1);
 
   /** Remove a Node from this Graph and free it.
   The output edges of this specified node MUST have been removed before removing the node.
