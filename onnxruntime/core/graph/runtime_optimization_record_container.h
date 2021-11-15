@@ -33,10 +33,11 @@ struct RuntimeOptimizationRecordContainerEntry;
 class RuntimeOptimizationRecordContainer {
  public:
 #if defined(ORT_ENABLE_ADDING_RUNTIME_OPTIMIZATION_RECORDS)
-  void AddRecord(const std::string& optimizer_key, RuntimeOptimizationRecord&& runtime_optimization_record);
+  void AddRecord(const std::string& optimizer_name, RuntimeOptimizationRecord&& runtime_optimization_record);
 #endif
 
   // TODO add a way to access and remove them
+  std::vector<RuntimeOptimizationRecord> RemoveRecordsForOptimizer(const std::string& optimizer_key);
 
   using FbsRuntimeOptimizationRecordContainer =
       flatbuffers::Vector<flatbuffers::Offset<
@@ -48,8 +49,8 @@ class RuntimeOptimizationRecordContainer {
   Status LoadFromOrtFormat(const FbsRuntimeOptimizationRecordContainer& fbs_runtime_optimizations);
 
  private:
-  using SatToOptimizationRecordsMap = std::unordered_map<std::string, std::vector<RuntimeOptimizationRecord>>;
-  SatToOptimizationRecordsMap sat_to_optimizations_;
+  using OptimizerNameToRecordsMap = std::unordered_map<std::string, std::vector<RuntimeOptimizationRecord>>;
+  OptimizerNameToRecordsMap optimizer_name_to_records_;
 };
 
 }  // namespace onnxruntime

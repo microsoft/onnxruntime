@@ -23,6 +23,7 @@ struct Action {
   virtual Status Run(Graph& graph, const NodesToOptimize& selected_nodes) const = 0;
 
 #if !defined(ORT_MINIMAL_BUILD)
+  // per-action saved state
   struct SavedState {
     std::vector<NodeIndexAndKernelDefHash> produced_nodes;
   };

@@ -4,11 +4,15 @@
 #pragma once
 
 #include <functional>
+#if !defined(ORT_MINIMAL_BUILD)
 #include <optional>
+#endif  // !defined(ORT_MINIMAL_BUILD)
+#include <variant>
 
 #include "core/framework/kernel_registry_manager.h"
 #include "core/optimizer/graph_transformer.h"
 #include "core/optimizer/selectors_actions/actions.h"
+#include "core/optimizer/selectors_actions/runtime_optimization_load_context.h"
 #include "core/optimizer/selectors_actions/runtime_optimization_save_context.h"
 
 namespace onnxruntime {
@@ -52,50 +56,48 @@ struct SelectorAndAction {
   // can't copy/assign our unique_ptr members
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(SelectorAndAction);
 };
-#endif
 
-// class to manage a set of selector and associated actions in a full build,
-// or just the set of actions in a minimal build.
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
+// class to manage a set of selector and associated actions
 class SelectorsAndActions {
  public:
   SelectorsAndActions() = default;
+  SelectorsAndActions(SelectorsAndActions&&) = default;
+
+  ORT_DISALLOW_COPY_AND_ASSIGNMENT(SelectorsAndActions);
 
 #if !defined(ORT_MINIMAL_BUILD)
-  SelectorsAndActions(SelectorsAndActions&& rhs) noexcept
-      : selectors_and_actions_map_{std::move(rhs.selectors_and_actions_map_)} {}
 
   // register a selector and action for the specified ops.
   // the name used in the registration is for matching the action when replaying the optimizations in a minimal build.
   // as it's stored in the ORT format model a shorter name is better. the name is scoped to this SelectorsAndActions
   // instance (which is scoped to a single SelectorActionTransformer instance).
   void RegisterSelectorAndAction(const std::string& name,
-                                 const SelectorAndAction::OpVersionsMap& ops_and_versions_in,
-                                 std::unique_ptr<NodeSelector> selector_in,
-                                 std::unique_ptr<Action> action_in);
+                                 const SelectorAndAction::OpVersionsMap& ops_and_versions,
+                                 std::unique_ptr<NodeSelector> selector,
+                                 std::unique_ptr<Action> action);
 
   const std::unordered_map<std::string, std::unique_ptr<SelectorAndAction>>& SelectorsAndActionsMap() const {
     return selectors_and_actions_map_;
   }
 
-#else
-  SelectorsAndActions(SelectorsAndActions&& rhs) noexcept
-      : actions_map_{std::move(rhs.actions_map_)} {}
+#else  // !defined(ORT_MINIMAL_BUILD)
 
+  // register an action
   void RegisterAction(const std::string& name, std::unique_ptr<Action> action);
 
-  const std::unordered_map<std::string, std::unique_ptr<Action>>& ActionsMap() const {
-    return actions_map_;
-  }
-#endif
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
-  ORT_DISALLOW_COPY_AND_ASSIGNMENT(SelectorsAndActions);
+  // return registered Action or nullptr if not found
+  const Action* LookUpAction(const std::string& name) const;
 
  private:
 #if !defined(ORT_MINIMAL_BUILD)
   std::unordered_map<std::string, std::unique_ptr<SelectorAndAction>> selectors_and_actions_map_;
-#else
+#else  // // !defined(ORT_MINIMAL_BUILD)
   std::unordered_map<std::string, std::unique_ptr<Action>> actions_map_;
-#endif
+#endif  // !defined(ORT_MINIMAL_BUILD)
 };
 
 /**
@@ -103,12 +105,22 @@ Class that implements graph transformation via a set of Selector+Action pairs.
 This setup allows optimizations to be captured and applied at runtime in a minimal build.
 */
 class SelectorActionTransformer : public GraphTransformer {
+ public:
+  struct DirectApplicationContext {};
+
+  // Union of graph transformation application contexts for various scenarios.
+  // - DirectApplicationContext: Directly apply transformations to the graph. Run Selectors and Actions.
+  // - RuntimeOptimizationSaveContext: Save runtime optimizations separately in the graph for later replay.
+  //     Run Selectors and save Actions.
+  // - RuntimeOptimizationLoadContext: Load runtime optimizations from the graph and replay them if applicable.
+  //     Run Actions.
+  using ApplyContextVariant = std::variant<DirectApplicationContext,
+                                           RuntimeOptimizationSaveContext,
+                                           RuntimeOptimizationLoadContext>;
+
  protected:
-  // Set `save_context` to find matching node groups and save them for later replay.
-  // If `save_context` is provided, the matching Action for the Selector will not be directly applied to the Graph
-  // nodes, but saved as a runtime optimization instead.
   SelectorActionTransformer(const std::string& name, SelectorsAndActions&& selectors_and_actions,
-                            std::optional<RuntimeOptimizationSaveContext> save_context);
+                            const ApplyContextVariant& apply_context);
 
   // can't copy/assign selectors_and_actions_
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(SelectorActionTransformer);
@@ -116,9 +128,10 @@ class SelectorActionTransformer : public GraphTransformer {
  private:
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
 
-  SelectorsAndActions selectors_and_actions_;
-
 #if !defined(ORT_MINIMAL_BUILD)
+
+  Status ApplyDirect(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger,
+                     const RuntimeOptimizationSaveContext* save_context) const;
 
   // check if the node matches any of the registered operators.
   // if it does, run the Selector.
@@ -129,15 +142,24 @@ class SelectorActionTransformer : public GraphTransformer {
   // and repeatedly construction of the graph_viewer.
   // NOTE, the graph must be the same as the graph_viewer's underlying graph
   Status MatchAndProcess(Graph& graph, const GraphViewer& graph_viewer, Node& node,
-                         bool& modified, const logging::Logger& logger) const;
+                         bool& modified, const logging::Logger& logger,
+                         const RuntimeOptimizationSaveContext* save_context) const;
 
-  std::unordered_map<std::string, const SelectorAndAction*> op_type_to_selector_and_action_;
-  // If set, save runtime optimization to graph. Otherwise, apply optimization to graph nodes.
-  std::optional<RuntimeOptimizationSaveContext> runtime_optimization_save_context_;
-#else
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
+#if defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
   // apply any saved optimizations
-  Status ApplySaved(Graph& graph, bool& modified, const logging::Logger& logger) const;
-#endif
+  Status ApplyFromRuntimeOptimizations(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger,
+                                       const RuntimeOptimizationLoadContext& load_context) const;
+#endif  // defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
+
+  SelectorsAndActions selectors_and_actions_;
+
+  ApplyContextVariant apply_context_;
+
+#if !defined(ORT_MINIMAL_BUILD)
+  std::unordered_map<std::string, const SelectorAndAction*> op_type_to_selector_and_action_;
+#endif  // !defined(ORT_MINIMAL_BUILD)
 };
 
 }  // namespace onnxruntime
