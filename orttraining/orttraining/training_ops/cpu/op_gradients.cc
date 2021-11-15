@@ -55,6 +55,15 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     SoftmaxGrad,
     kMSDomain,
     1,
+    10,
+    kCpuExecutionProvider,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+    SoftmaxGrad<float>);
+
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
+    SoftmaxGrad,
+    kMSDomain,
+    11,
     12,
     kCpuExecutionProvider,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
@@ -161,6 +170,15 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     LogSoftmaxGrad,
     kMSDomain,
     1,
+    10,
+    kCpuExecutionProvider,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+    LogSoftmaxGrad<float>);
+
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
+    LogSoftmaxGrad,
+    kMSDomain,
+    11,
     12,
     kCpuExecutionProvider,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),

@@ -651,6 +651,26 @@ void RegisterTrainingOpSchemas() {
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(SoftmaxGrad)
       .SetDomain(kMSDomain)
+      .SinceVersion(11)
+      .Input(0, "dY", "Gradient of output Y", "T")
+      .Input(1, "Y", "Input tensor", "T")
+      .Output(0, "dX", "Gradient of input X", "T")
+      .Attr(
+          "axis",
+          "Describes the axis of the inputs when coerced "
+          "to 2D; defaults to one because the 0th axis most likely describes "
+          "the batch_size",
+          AttributeProto::INT,
+          static_cast<int64_t>(1))
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+          "Constrain input and output types to float tensors.")
+      .TypeAndShapeInferenceFunction(propagateShapeAndTypeFromFirstInput)
+      .SetContextDependentFunctionBodyBuilder(SoftMaxGradFunctionBodyBuilder);
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(SoftmaxGrad)
+      .SetDomain(kMSDomain)
       .SinceVersion(13)
       .Input(0, "dY", "Gradient of output Y", "T")
       .Input(1, "Y", "Input tensor", "T")
@@ -672,6 +692,25 @@ void RegisterTrainingOpSchemas() {
   ONNX_CONTRIB_OPERATOR_SCHEMA(LogSoftmaxGrad)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
+      .Input(0, "dY", "Gradient of output Y", "T")
+      .Input(1, "X", "Input tensor", "T")
+      .Output(0, "dX", "Gradient of input X", "T")
+      .Attr(
+          "axis",
+          "Describes the axis of the inputs when coerced "
+          "to 2D; defaults to one because the 0th axis most likely describes "
+          "the batch_size",
+          AttributeProto::INT,
+          static_cast<int64_t>(1))
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain input and output types to float tensors.")
+      .TypeAndShapeInferenceFunction(propagateShapeAndTypeFromFirstInput);
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(LogSoftmaxGrad)
+      .SetDomain(kMSDomain)
+      .SinceVersion(11)
       .Input(0, "dY", "Gradient of output Y", "T")
       .Input(1, "X", "Input tensor", "T")
       .Output(0, "dX", "Gradient of input X", "T")

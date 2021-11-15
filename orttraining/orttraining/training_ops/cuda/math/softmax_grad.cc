@@ -95,15 +95,15 @@ SPECIALIZED_SOFTMAXGRAD_HELPER_IMPL_BFloat16(true)
       SoftmaxGrad,                                                                         \
       kMSDomain,                                                                           \
       1,                                                                                   \
-      12,                                                                                  \
+      10,                                                                                  \
       T,                                                                                   \
       kCudaExecutionProvider,                                                              \
       (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       SoftmaxGrad<T>);                                                                     \
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                 \
-      LogSoftmaxGrad,                                                                      \
+      SoftmaxGrad,                                                                         \
       kMSDomain,                                                                           \
-      1,                                                                                   \
+      11,                                                                                  \
       12,                                                                                  \
       T,                                                                                   \
       kCudaExecutionProvider,                                                              \
@@ -113,6 +113,24 @@ SPECIALIZED_SOFTMAXGRAD_HELPER_IMPL_BFloat16(true)
       SoftmaxGrad,                                                                         \
       kMSDomain,                                                                           \
       13,                                                                                  \
+      T,                                                                                   \
+      kCudaExecutionProvider,                                                              \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      SoftmaxGrad<T>);                                                                     \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                 \
+      LogSoftmaxGrad,                                                                      \
+      kMSDomain,                                                                           \
+      1,                                                                                   \
+      10,                                                                                  \
+      T,                                                                                   \
+      kCudaExecutionProvider,                                                              \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      SoftmaxGrad<T>);                                                                     \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                 \
+      LogSoftmaxGrad,                                                                      \
+      kMSDomain,                                                                           \
+      11,                                                                                  \
+      12,                                                                                  \
       T,                                                                                   \
       kCudaExecutionProvider,                                                              \
       (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
