@@ -54,7 +54,7 @@ Routine Description:
 Arguments:
 
     Input (x0) - Supplies the address of the indirection buffer.
- 
+
     Filter (x1) - Supplies the address of the filter buffer.
 
     Channels (x2) - Supplies the number of input and output channels.
@@ -62,9 +62,9 @@ Arguments:
     Output (x3) - Supplies the address of the output buffer.
 
     OutputCount (x4)- Supplies the number of image pixels.
-  
+
     PostProcessParams (x5) - Supplies the address of the post process parameter block.
- 
+
     KernelFlags (x6) - Supplies additional flags controlling the operation.
 
 Return Value:
@@ -74,7 +74,7 @@ Return Value:
 --*/
 
         LEAF_ENTRY MlasConvSymDepthwiseKernelSize9Arm64
-        
+
         PROLOG_SAVE_REG_PAIR      x19, x20, #MlasConvSymDepthwiseKernelSize9_SavedRegisters_Neg !
         PROLOG_SAVE_REG_PAIR      x21, x22, #MlasConvSymDepthwiseKernelSize9_backup_x21_x22
         PROLOG_SAVE_REG_PAIR      x23, x24, #MlasConvSymDepthwiseKernelSize9_backup_x23_x24
@@ -113,7 +113,7 @@ MlasConvSymDepthwiseKernelSize9_OutputLoop
         ldp     x24, x25, [x0, #-40]
         ldp     x26, x27, [x0, #-24]
         ldur    x28, [x0, #-8]
-        
+
         cbz     x4, MlasConvSymDepthwiseKernelSize9_Dup_Inputs
         ldp     x10, x11, [x0], #72         // input ptrs for Output0
         ldp     x12, x13, [x0, #-56]
@@ -141,7 +141,7 @@ MlasConvSymDepthwiseKernelSize9_Loaded_Input
         umov    x1, v12.d[0]                // filter
         umov    x5, v13.d[0]                // bias
         umov    x7, v13.d[1]                // scale
-    
+
         cmp     x8, x2                      // Save one register by not using count down to zero here
         bhs     MlasConvSymDepthwiseKernelSize9_Finish_Channels16_Loop
 
@@ -239,7 +239,7 @@ MlasConvSymDepthwiseKernelSize9_Channels16_Loop
         eor     v21.16b, v21.16b, v5.16b
         eor     v22.16b, v22.16b, v5.16b
         eor     v23.16b, v23.16b, v5.16b
-        
+
         smlal   v24.8h, v14.8b, v20.8b
         smlal2  v25.8h, v14.16b, v20.16b
         smlal   v26.8h, v14.8b, v21.8b

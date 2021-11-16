@@ -190,14 +190,6 @@ MlasConvSymPackWSize(
     const MLAS_CONV_SYM_DISPATCH* ConvSymDispatch = MlasPlatform.ConvSymDispatch;
 
     if (ConvSymDispatch == nullptr) {
-
-#if defined(MLAS_TARGET_ARM64)
-        // After convsym enanled, remove logic here
-        if ((InputChannels == 1 && OutputChannels == 1 && ((GroupCount & 15) == 0)
-            && (KernelSize == 9 || KernelSize == 25))) {
-            return GroupCount * KernelSize;
-        }
-#endif
         return 0;
     }
 
@@ -309,8 +301,7 @@ MlasConvSymFixupInputZeroPoint(
 {
     const MLAS_CONV_SYM_DISPATCH* ConvSymDispatch = MlasPlatform.ConvSymDispatch;
 
-    // After ConvSym for arm64 enabled, could revert it back here. 
-    if (ConvSymDispatch == nullptr || ConvSymDispatch->FixupInputZeroPoint) {
+    if (ConvSymDispatch != nullptr && ConvSymDispatch->FixupInputZeroPoint) { 
         return static_cast<int32_t>(zero_point_value) - 128;
     }
     return zero_point_value;

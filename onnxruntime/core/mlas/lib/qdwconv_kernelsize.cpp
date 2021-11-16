@@ -266,7 +266,7 @@ MlasConvSymDepthwiseKernelSize25Arm(
 
             if (is_per_channel) {
                 vscale_0123 = vld1q_f32(scale); scale += 4;
-                vscale_4567 = vld1q_f32(scale); scale += 4; 
+                vscale_4567 = vld1q_f32(scale); scale += 4;
                 vscale_89AB = vld1q_f32(scale); scale += 4;
                 vscale_CDEF = vld1q_f32(scale); scale += 4;
             }
