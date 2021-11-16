@@ -104,4 +104,4 @@ stages:
         job_name_suffix: training_x64_release
         RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
         # Liqun is fixing them
-        RunStaticCodeAnalysis: false
+        RunStaticCodeAnalysis: true
