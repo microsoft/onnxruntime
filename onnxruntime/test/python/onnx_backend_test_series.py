@@ -122,8 +122,8 @@ def create_backend_test(testname=None):
         backend_test.exclude('(' + '|'.join(filters) + ')')
         print('excluded tests:', filters)
 
-        # Current TensorRT fails on many testcases, therefore we temporarily skip it.
-        # c2.ep_to_skip('TensorrtExecutionProvider')
+        # exclude TRT EP temporarily and only test CUDA EP to retain previous behavior 
+        os.environ["EXCLUDE_PROVIDERS"] = "TensorrtExecutionProvider"
 
     # import all test cases at global scope to make
     # them visible to python.unittest.
@@ -158,4 +158,4 @@ if __name__ == '__main__':
     args = parse_args()
 
     backend_test = create_backend_test(args.testname)
-    unittest.main(verbosity=2)
+    unittest.main()

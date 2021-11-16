@@ -29,16 +29,7 @@ class OnnxRuntimeBackend(Backend):
     """  # noqa: E501
 
     allowReleasedOpsetsOnly = bool(os.getenv('ALLOW_RELEASED_ONNX_OPSET_ONLY', '1') == '1')
-    ExecutionProvidersToSkip = []
-
-    @classmethod
-    def ep_to_skip(cls, ep):
-        """
-        Skip specific execution provider for inference.
-
-        :param ep: execution provider name
-        """
-        cls.ExecutionProvidersToSkip.append(ep)
+    ExcludeProviders = os.getenv('EXCLUDE_PROVIDERS').split(',') 
 
     @classmethod
     def is_compatible(cls, model, device=None, **kwargs):
@@ -119,13 +110,12 @@ class OnnxRuntimeBackend(Backend):
                     setattr(options, k, v)
 
             providers = get_available_providers()
-            print(providers)
 
-            # Current TensorRT fails on many testcases, therefore we temporarily skip it.
-            if 'TensorrtExecutionProvider' in providers and 'TensorrtExecutionProvider' in cls.ExecutionProvidersToSkip:
-                inf = InferenceSession(model, sess_options=options, providers=['CUDAExecutionProvider'])
-            else:
-                inf = InferenceSession(model, sess_options=options, providers=get_available_providers())
+            # exclude TRT EP temporarily and only test CUDA EP to retain previous behavior 
+            if 'TensorrtExecutionProvider' in providers and 'TensorrtExecutionProvider' in cls.ExcludeProviders:
+                providers=['CUDAExecutionProvider']
+            
+            inf = InferenceSession(model, sess_options=options, providers=providers)
             # backend API is primarily used for ONNX test/validation. As such, we should disable session.run() fallback
             # which may hide test failures.
             inf.disable_fallback()
@@ -181,4 +171,3 @@ is_compatible = OnnxRuntimeBackend.is_compatible
 prepare = OnnxRuntimeBackend.prepare
 run = OnnxRuntimeBackend.run_model
 supports_device = OnnxRuntimeBackend.supports_device
-ep_to_skip = OnnxRuntimeBackend.ep_to_skip
