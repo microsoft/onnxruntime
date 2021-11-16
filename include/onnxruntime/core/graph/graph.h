@@ -636,8 +636,12 @@ class Graph {
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
-  /** Add an initializer tensor to the Graph. */
-  void AddInitializedTensor(const ONNX_NAMESPACE::TensorProto& tensor_proto);
+  /** Add an initializer tensor to the Graph. 
+    @param force_nodearg_creation If true creates a corresponding NodeArg for the initialized tensor.
+    If set to false, a NodeArg is created ONLY if the graph is not loaded from a model file and a NodeArg
+    with the same name as the initialized tensor does not exist.
+  */
+  void AddInitializedTensor(const ONNX_NAMESPACE::TensorProto& tensor_proto, bool force_nodearg_creation = false);
 #endif
 
   /** Remove the initializer tensor with the provided name from the Graph. */
