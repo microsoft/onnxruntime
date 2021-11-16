@@ -42,9 +42,21 @@ CreateThreadPoolHelper(Env* env, OrtThreadPoolParams options, ThreadPoolType tpo
                                                              options.thread_pool_size,
                                                              options.allow_spinning);
                                                              */
+    /*
     return std::make_unique<ThreadPoolLiteII>(env, to, options.name,
                                               options.thread_pool_size,
                                               options.allow_spinning);
+    */
+
+    return std::make_unique<ThreadPoolLite>(env, to, options.name,
+                                            options.thread_pool_size,
+                                            options.allow_spinning);
+
+    /*
+    return std::make_unique<ThreadPool>(env, to, options.name,
+                                        options.thread_pool_size,
+                                        options.allow_spinning);
+    */
   }
 }
 

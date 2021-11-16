@@ -54,6 +54,7 @@ class ThreadPoolLite : public ThreadPool {
   struct Slot {
     ORT_ALIGN_TO_AVOID_FALSE_SHARING std::atomic<Stage> stage_{empty};
     ORT_ALIGN_TO_AVOID_FALSE_SHARING SchdFn schd_fn_;
+    int32_t place_holder_{};
     Slot() {}
     Slot(const Slot& slot) {
       stage_.store(slot.stage_, std::memory_order_relaxed);
