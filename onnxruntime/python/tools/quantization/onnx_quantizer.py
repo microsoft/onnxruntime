@@ -42,6 +42,7 @@ class ONNXQuantizer:
         self.static = static  # use static quantization for inputs.
         self.fuse_dynamic_quant = False
         self.enable_subgraph_quantization = 'EnableSubgraph' in self.extra_options and self.extra_options['EnableSubgraph']
+        self.force_quantize_no_input_check = 'ForceQuantizeNoInputCheck' in self.extra_options and self.extra_options['ForceQuantizeNoInputCheck']
         self.q_matmul_const_b_only = 'MatMulConstBOnly' in self.extra_options and self.extra_options['MatMulConstBOnly']
         is_weight_int8 = weight_qType == QuantType.QInt8
         self.is_weight_symmetric = is_weight_int8 if 'WeightSymmetric' not in self.extra_options else self.extra_options['WeightSymmetric']
@@ -544,6 +545,13 @@ class ONNXQuantizer:
 
         self.quantized_value_map[input_name] = QuantizedValue(input_name, output_name, scale_name, zp_name, qType)
         return nodes + [qlinear_node]
+
+    def find_quantized_value(self, input_name):
+        if input_name in self.quantized_value_map:
+            return self.quantizer.quantized_value_map[input_name]
+        if self.parent is not None:
+            return self.parent.find_quantized_value(input_name)
+        return None
 
     def quantize_bias_static(self, bias_name, input_name, weight_name):
         '''
