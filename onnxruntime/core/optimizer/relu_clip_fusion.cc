@@ -96,9 +96,19 @@ Status FuseReluClip::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_eff
         mutable_next_node->ClearAttribute("min");
         mutable_next_node->AddAttribute("min", 0.f);
       } else {
+        // Add initialized tensor to the graph
         graph.AddInitializedTensor(replacement_min);
+
+        // Create a NodeArg for the initialized tensor if it hasn't been
+        // created as part of the call to AddInitializedTensor()
+        ONNX_NAMESPACE::TypeProto t;
+        t.mutable_tensor_type()->set_elem_type(replacement_min.data_type());
+        NodeArg* replacement_min_nodearg = &graph.GetOrCreateNodeArg(replacement_min.name(), &t);
+        //NodeArg* replacement_min_nodearg = graph.GetNodeArg(replacement_min.name());
+
+        ORT_ENFORCE(replacement_min_nodearg != nullptr);
+
         auto& mutable_input_defs = mutable_next_node->MutableInputDefs();
-        NodeArg* replacement_min_nodearg = graph.GetNodeArg(replacement_min.name());
         if (mutable_input_defs.size() == 1) {  // Clip node only has the required 'input' so add optional 'min' input
           mutable_input_defs.push_back(replacement_min_nodearg);
           mutable_next_node->MutableInputArgsCount().push_back(1);
