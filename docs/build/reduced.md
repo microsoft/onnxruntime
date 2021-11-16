@@ -11,7 +11,7 @@ For applications where package binary size is important, ONNX Runtime provides o
 
 To reduce the compiled binary size of ONNX Runtime, the operator kernels included in the build can be reduced to just the kernels required by your model/s.
 
-For deployment on mobile devices specifically, please read more detailed guidance on [How to: Build for mobile](./mobile.md).
+For deployment on mobile devices specifically, please read more detailed guidance on [Deploy ONNX Runtime Mobile](../tutorials/mobile/).
 
 ## Contents
 {: .no_toc }

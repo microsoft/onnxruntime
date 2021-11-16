@@ -22,11 +22,11 @@ The source code for this sample is available [here](https://github.com/microsoft
 ## Install ONNX Runtime for OpenVINO Execution Provider
 
 ## Build steps
-[build instructions](https://www.onnxruntime.ai/docs/reference/execution-providers/OpenVINO-ExecutionProvider.html#build)
+[build instructions](../../execution-providers/OpenVINO-ExecutionProvider.md#build)
 
 
 ## Reference Documentation
-[Documentation](https://www.onnxruntime.ai/docs/reference/execution-providers/OpenVINO-ExecutionProvider.html)
+[Documentation](../../execution-providers/OpenVINO-ExecutionProvider.md)
 
 
 ## Requirements

@@ -1,7 +1,7 @@
 ---
 title: ORT Training with PyTorch
 parent: Get Started
-nav_order: 10
+nav_order: 11
 ---
 
 # Get started with ORT for Training API (PyTorch)
@@ -28,11 +28,6 @@ python -m torch_ort.configure
    model = ORTModule(model)
 ```
 
-## Contents
-{: .no_toc }
-
-* TOC placeholder
-{:toc}
 
 ## Samples
-[ONNX Runtime Training Examples](../tutorials/training)
+[ONNX Runtime Training Examples](https://github.com/microsoft/onnxruntime-training-examples)

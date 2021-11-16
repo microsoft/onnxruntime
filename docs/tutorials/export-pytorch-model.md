@@ -55,7 +55,7 @@ For more on writing a symbolic function, see the [torch.onnx documentation](http
 ### Extend ONNX Runtime with Custom Ops
 
 The next step is to add an op schema and kernel implementation in ONNX Runtime.
-See [custom operators](/docs/how-to/add-custom-op) for details.
+See [custom operators](../reference/operators/add-custom-op.md) for details.
 
 ### Test End-to-End: Export and Run
 

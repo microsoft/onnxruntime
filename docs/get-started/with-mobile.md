@@ -46,4 +46,4 @@ OrtSession session = env.createSession(<path to model>, opsession_optionstions);
 ```
 
 ## Learn More
-- [Mobile Tutorial](./Tutorials/Mobile/)
+- [Mobile Tutorial](../tutorials/mobile)

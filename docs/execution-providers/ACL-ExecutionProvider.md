@@ -18,7 +18,7 @@ nav_order: 4
 
 
 ## Build
-For build instructions, please see the [BUILD page](./build/eps.md#arm-compute-library).
+For build instructions, please see the [build page](../build/eps.md#arm-compute-library).
 
 ## Usage
 ### C/C++
@@ -33,6 +33,6 @@ Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_ACL(sf, enable_cpu_me
 The C API details are [here](../get-started/with-c.html).
 
 ## Performance Tuning
-For performance tuning, please see guidance on this page: [ONNX Runtime Perf Tuning](./performance/tune-performance.md)
+For performance tuning, please see guidance on this page: [ONNX Runtime Perf Tuning](../performance/tune-performance.md)
 
 When/if using [onnxruntime_perf_test](https://github.com/microsoft/onnxruntime/tree/master/onnxruntime/test/perftest){:target="_blank"}, use the flag -e acl

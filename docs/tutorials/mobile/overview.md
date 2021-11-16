@@ -35,7 +35,7 @@ The pre-built package includes support for selected operators and ONNX opset ver
 
 ### Operators and Types supported
 
-ONNX operator and types supported by the pre-built package for each ONNX Runtime release are documented [here](../tutorials/mobile/prebuilt-package).
+ONNX operator and types supported by the pre-built package for each ONNX Runtime release are documented [here](../../reference/mobile/prebuilt-package).
 
 
 ## Custom build
@@ -44,5 +44,4 @@ Performing a custom build will ensure the smallest possibly binary size and that
 
 
 -------
-Next: [Initial setup](initial-setup)
-
+Next: [Initial setup](./initial-setup.md)

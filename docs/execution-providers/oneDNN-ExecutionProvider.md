@@ -37,7 +37,7 @@ bool enable_cpu_mem_arena = true;
 Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Dnnl(sf, enable_cpu_mem_arena));
 ```
 
-The C API details are [here](../get-started/with-c.html.md).
+The C API details are [here](../get-started/with-c.md).
 
 ### Python
 
