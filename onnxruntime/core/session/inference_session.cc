@@ -63,7 +63,6 @@
 #endif
 
 using namespace ONNX_NAMESPACE;
-using namespace onnxruntime::experimental;
 using namespace onnxruntime::common;
 
 namespace onnxruntime {
@@ -293,6 +292,14 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
                              session_options_.execution_mode == ExecutionMode::ORT_SEQUENTIAL &&
                              to.affinity_vec_len == 0;
       to.allow_spinning = allow_intra_op_spinning;
+
+      // Set custom threading functions
+      to.custom_create_thread_fn = session_options_.custom_create_thread_fn;
+      to.custom_thread_creation_options = session_options.custom_thread_creation_options;
+      to.custom_join_thread_fn = session_options_.custom_join_thread_fn;
+      if (to.custom_create_thread_fn) {
+        ORT_ENFORCE(to.custom_join_thread_fn, "custom join thread function not set for intra op thread pool");
+      }
       thread_pool_ =
           concurrency::CreateThreadPool(&Env::Default(), to, concurrency::ThreadPoolType::INTRA_OP);
     }
@@ -313,6 +320,14 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
       to.name = inter_thread_pool_name_.c_str();
       to.set_denormal_as_zero = set_denormal_as_zero;
       to.allow_spinning = allow_inter_op_spinning;
+
+      // Set custom threading functions
+      to.custom_create_thread_fn = session_options_.custom_create_thread_fn;
+      to.custom_thread_creation_options = session_options.custom_thread_creation_options;
+      to.custom_join_thread_fn = session_options_.custom_join_thread_fn;
+      if (to.custom_create_thread_fn) {
+        ORT_ENFORCE(to.custom_join_thread_fn, "custom join thread function not set for inter op thread pool");
+      }
       inter_op_thread_pool_ =
           concurrency::CreateThreadPool(&Env::Default(), to, concurrency::ThreadPoolType::INTER_OP);
       if (inter_op_thread_pool_ == nullptr) {
@@ -675,7 +690,7 @@ common::Status InferenceSession::Load(const std::string& model_uri) {
   bool has_explicit_type = !model_type.empty();
 
   if ((has_explicit_type && model_type == "ORT") ||
-      (!has_explicit_type && experimental::utils::IsOrtFormatModel(model_uri))) {
+      (!has_explicit_type && fbs::utils::IsOrtFormatModel(model_uri))) {
     return LoadOrtModel(model_uri);
   }
 
@@ -698,7 +713,7 @@ common::Status InferenceSession::Load(const std::wstring& model_uri) {
   bool has_explicit_type = !model_type.empty();
 
   if ((has_explicit_type && model_type == "ORT") ||
-      (!has_explicit_type && experimental::utils::IsOrtFormatModel(model_uri))) {
+      (!has_explicit_type && fbs::utils::IsOrtFormatModel(model_uri))) {
     return LoadOrtModel(model_uri);
   }
 
@@ -722,7 +737,7 @@ common::Status InferenceSession::Load(const void* model_data, int model_data_len
 
   if ((has_explicit_type && model_type == "ORT") ||
       (!has_explicit_type &&
-       experimental::utils::IsOrtFormatModelBytes(model_data, model_data_len))) {
+       fbs::utils::IsOrtFormatModelBytes(model_data, model_data_len))) {
     return LoadOrtModel(model_data, model_data_len);
   }
 
@@ -1155,7 +1170,7 @@ Status ReplayRuntimeOptimizations(
 
 Status AssignNodesToEpsFromHashesImpl(Graph& graph, const fbs::SessionState& fbs_session_state,
                                       const KernelRegistryManager& kernel_registry_manager) {
-  using experimental::utils::FbsSessionStateViewer;
+  using fbs::utils::FbsSessionStateViewer;
   const FbsSessionStateViewer fbs_session_state_viewer{fbs_session_state};
   ORT_RETURN_IF_ERROR(fbs_session_state_viewer.Validate());
 
@@ -1314,12 +1329,12 @@ common::Status InferenceSession::Initialize() {
         const bool has_explicit_type = !model_type.empty();
         return ((has_explicit_type && model_type == "ORT") ||
                 (!has_explicit_type &&
-                 experimental::utils::IsOrtFormatModel(session_options_.optimized_model_filepath)));
+                 fbs::utils::IsOrtFormatModel(session_options_.optimized_model_filepath)));
       }
       return false;
     }();
 
-    const experimental::fbs::SessionState* serialized_session_state =
+    const fbs::SessionState* serialized_session_state =
         loading_ort_format
             ? fbs::GetInferenceSession(ort_format_model_bytes_.data())->session_state()
             : nullptr;

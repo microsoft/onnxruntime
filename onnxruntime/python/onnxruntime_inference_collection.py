@@ -356,13 +356,11 @@ class InferenceSession(Session):
         providers, provider_options = check_and_normalize_provider_args(providers,
                                                                         provider_options,
                                                                         available_providers)
-
         if providers == [] and len(available_providers) > 1:
-            warnings.warn("Deprecation warning. This ORT build has {} enabled. ".format(available_providers) +
-                          "The next release (ORT 1.10) will require explicitly setting the providers parameter " +
-                          "(as opposed to the current behavior of providers getting set/registered by default " +
-                          "based on the build flags) when instantiating InferenceSession."
-                          "For example, onnxruntime.InferenceSession(..., providers=[\"CUDAExecutionProvider\"], ...)")
+            raise ValueError("This ORT build has {} enabled. ".format(available_providers) +
+                             "Since ORT 1.9, you are required to explicitly set " +
+                             "the providers parameter when instantiating InferenceSession. For example, "
+                             "onnxruntime.InferenceSession(..., providers={}, ...)".format(available_providers))
 
         session_options = self._sess_options if self._sess_options else C.get_default_session_options()
         if self._model_path:

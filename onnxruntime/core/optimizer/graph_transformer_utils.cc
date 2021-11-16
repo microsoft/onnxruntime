@@ -31,6 +31,7 @@
 #include "core/optimizer/gelu_approximation.h"
 #include "core/optimizer/gelu_fusion.h"
 #include "core/optimizer/gemm_activation_fusion.h"
+#include "core/optimizer/gemm_sum_fusion.h"
 #include "core/optimizer/gemm_transpose_fusion.h"
 #include "core/optimizer/identity_elimination.h"
 #include "core/optimizer/layer_norm_fusion.h"
@@ -92,6 +93,7 @@ std::vector<std::unique_ptr<RewriteRule>> GenerateRewriteRules(
       rules.push_back(std::make_unique<NoopElimination>());
       rules.push_back(std::make_unique<DivMulFusion>());
       rules.push_back(std::make_unique<FuseReluClip>());
+      rules.push_back(std::make_unique<GemmSumFusion>());
       rules.push_back(std::make_unique<GemmTransposeFusion>());
       rules.push_back(std::make_unique<NotWhereFusion>());
       rules.push_back(std::make_unique<ConvAddFusion>());
@@ -152,14 +154,23 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
     const IExecutionProvider& cpu_execution_provider, /*required by constant folding*/
     const std::unordered_set<std::string>& rules_and_transformers_to_disable) {
   std::vector<std::unique_ptr<GraphTransformer>> transformers;
-  std::unique_ptr<RuleBasedGraphTransformer> rule_transformer = nullptr;
-  bool disable_quant_qdq = session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsDisableQuantQDQ, "0") == "1";
+  bool disable_quant_qdq =
+      session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsDisableQuantQDQ, "0") == "1";
 #ifndef DISABLE_CONTRIB_OPS
-  bool enable_gelu_approximation = session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsEnableGeluApproximation, "0") == "1";
+  bool enable_gelu_approximation =
+      session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsEnableGeluApproximation, "0") == "1";
 #endif
 
   switch (level) {
     case TransformerLevel::Level1: {
+      // RewriteRule optimizations are the simplest (they generally remove unnecessary nodes and are cheap to run)
+      // so run them first so there is potentially less for the more intensive optimizations like ConstantFolding,
+      // CommonSubexpressionElimination and TransposeOptimizer to do.
+      auto rule_transformer = GenerateRuleBasedGraphTransformer(level, rules_and_transformers_to_disable, {});
+      if (rule_transformer != nullptr) {
+        transformers.emplace_back(std::move(rule_transformer));
+      }
+
       // no filtering on execution provider for L1 optimizations as they only use official ONNX operators
       transformers.emplace_back(std::make_unique<CommonSubexpressionElimination>());
       transformers.emplace_back(std::make_unique<ConstantFolding>(cpu_execution_provider, !disable_quant_qdq));
@@ -169,15 +180,10 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
           session_options.free_dimension_overrides));
       auto cpu_allocator = cpu_execution_provider.GetAllocator(0, OrtMemTypeDefault);
       transformers.emplace_back(std::make_unique<TransposeOptimizer>(std::move(cpu_allocator)));
-
-      rule_transformer = GenerateRuleBasedGraphTransformer(level, rules_and_transformers_to_disable, {});
     } break;
 
     case TransformerLevel::Level2: {
       std::unordered_set<std::string> cpu_ep = {onnxruntime::kCpuExecutionProvider};
-
-      // create rule based transformer consisting of all the level2 rewrite rules
-      rule_transformer = GenerateRuleBasedGraphTransformer(level, rules_and_transformers_to_disable, cpu_ep);
 
 #ifndef DISABLE_CONTRIB_OPS
       const std::unordered_set<std::string> cuda_rocm_eps = {onnxruntime::kCudaExecutionProvider,
@@ -242,10 +248,6 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
 
     default:
       ORT_THROW("Unsupported optimization level: ", static_cast<int>(level));
-  }
-
-  if (rule_transformer != nullptr) {
-    transformers.emplace_back(std::move(rule_transformer));
   }
 
   FilterTransformers(transformers, rules_and_transformers_to_disable);

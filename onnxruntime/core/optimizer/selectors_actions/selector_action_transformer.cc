@@ -131,7 +131,7 @@ Status SelectorActionTransformer::MatchAndProcess(
                                     node_selection,
                                     action_saved_state.produced_nodes});
 #else   // defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
-      status = ORT_MAKE_STATUS(ONNXRUNTIME, FAILED,
+      status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                                "Saving runtime optimizations is not enabled in this build.");
       break;
 #endif  // defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)

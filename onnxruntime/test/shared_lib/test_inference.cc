@@ -9,6 +9,7 @@
 #include <atomic>
 #include <mutex>
 #include <algorithm>
+#include <thread>
 
 #include <gtest/gtest.h>
 
@@ -18,6 +19,7 @@
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/onnxruntime_run_options_config_keys.h"
+#include "core/util/thread_utils.h"
 #include "providers.h"
 #include "test_allocator.h"
 #include "test_fixture.h"
@@ -1835,4 +1837,49 @@ TEST(CApiTest, TestConfigureTensorRTProviderOptions) {
   struct stat buffer;
   ASSERT_TRUE(stat(engine_cache_path, &buffer) == 0);
 }
+#endif
+
+#ifndef _OPENMP
+namespace TestPerSessionCustomThreadHooks {
+
+std::vector<std::thread> threads;
+int32_t custom_thread_creation_options = 5;
+int32_t custom_creation_hook_called = 0;
+int32_t custom_join_hook_called = 0;
+
+OrtCustomThreadHandle CreateThreadCustomized(void* options, OrtThreadWorkerFn work_loop, void* param) {
+  if (*((int32_t*)options) == 5) {
+    custom_creation_hook_called += 1;
+  }
+  threads.push_back(std::thread(work_loop, param));
+  return reinterpret_cast<OrtCustomThreadHandle>(threads.back().native_handle());
+}
+
+void JoinThreadCustomized(OrtCustomThreadHandle handle) {
+  for (auto& t : threads) {
+    if (reinterpret_cast<OrtCustomThreadHandle>(t.native_handle()) == handle) {
+      custom_join_hook_called += 1;
+      t.join();
+    }
+  }
+}
+
+TEST(CApiTest, TestPerSessionCustomThreadPoolHooks) {
+  const int32_t thread_count = 3;
+  Ort::SessionOptions session_options;
+  // test both intra and inter op thread pool
+  session_options.SetExecutionMode(ExecutionMode::ORT_PARALLEL);
+  session_options.SetIntraOpNumThreads(thread_count);
+  session_options.SetInterOpNumThreads(thread_count);
+  session_options.SetCustomCreateThreadFn(CreateThreadCustomized);
+  session_options.SetCustomThreadCreationOptions(&custom_thread_creation_options);
+  session_options.SetCustomJoinThreadFn(JoinThreadCustomized);
+  {
+    Ort::Session session(*ort_env, MODEL_URI, session_options);
+  }
+  ASSERT_TRUE(custom_creation_hook_called == (thread_count - 1) << 1);
+  ASSERT_TRUE(custom_join_hook_called == (thread_count - 1) << 1);
+}
+
+}  // namespace TestPerSessionCustomThreadHooks
 #endif
