@@ -100,7 +100,7 @@ Status FuseReluClip::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_eff
         graph.AddInitializedTensor(replacement_min);
 
         // Create a NodeArg for the initialized tensor.
-        // Graph::AddInitializedTensor() has logic to not create a NodeArg if the graph
+        // Graph::AddInitializedTensor() has logic to not create a NodeArg in the graph
         // if `is_loaded_from_model_file_` is set to true and hence we create the NodeArg
         // here.
         ONNX_NAMESPACE::TypeProto t;
