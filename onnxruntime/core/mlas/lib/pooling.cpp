@@ -1491,3 +1491,133 @@ Return Value:
         OutputCount -= 1;
     }
 }
+
+#if defined(MLAS_TARGET_ARM_ANY)
+void
+MLASCALL
+MlasMaximumPool(
+    const int8_t* const* Input,
+    int8_t* Output,
+    size_t Channels,
+    size_t OutputCount,
+    size_t KernelSize
+    )
+/*++
+
+Routine Description:
+
+    This routine implements the maximum pooling operation.
+
+    The input is supplied as an indirection buffer. Every pointer in the
+    indirection buffer points at a Channels length vector (either from the
+    input tensor or a vector of padding values). These are grouped in batches
+    of length KernelSize that are processed by the kernel to produce a single
+    output of length Channels. These batches are then repeated OutputCount
+    times.
+
+Arguments:
+
+    Input - Supplies an indirection buffer to the elements of the input tensor.
+
+    Output - Supplies the output tensor in channels last format.
+
+    Channels - Supplies the number of channels.
+
+    OutputCount - Supplies the number of channel sized output elements to
+        produce.
+
+    KernelSize - Supplies the total number of channel sized kernel elements to
+        consume.
+
+Return Value:
+
+    None.
+
+--*/
+{
+    while (OutputCount > 0) {
+
+        size_t ChannelOffset = 0;
+        size_t c = Channels;
+
+#if defined(MLAS_NEON_INTRINSICS)
+
+        while (c >= 32) {
+
+            int8x16_t MaximumVector0 = vdupq_n_s8(-128);
+            int8x16_t MaximumVector1 = vdupq_n_s8(-128);
+
+            for (size_t k = 0; k < KernelSize; k++) {
+
+                int8x16_t InputVector0 = vld1q_s8(&Input[k][ChannelOffset]);
+                int8x16_t InputVector1 = vld1q_s8(&Input[k][ChannelOffset + 16]);
+
+                MaximumVector0 = vmaxq_s8(MaximumVector0, InputVector0);
+                MaximumVector1 = vmaxq_s8(MaximumVector1, InputVector1);
+            }
+
+            vst1q_s8(&Output[0], MaximumVector0);
+            vst1q_s8(&Output[16], MaximumVector1);
+            Output += 32;
+
+            ChannelOffset += 32;
+            c -= 32;
+        }
+
+        while (c >= 16) {
+
+            int8x16_t MaximumVector0 = vdupq_n_s8(-128);
+
+            for (size_t k = 0; k < KernelSize; k++) {
+
+                int8x16_t InputVector0 = vld1q_s8(&Input[k][ChannelOffset]);
+
+                MaximumVector0 = vmaxq_s8(MaximumVector0, InputVector0);
+            }
+
+            vst1q_s8(&Output[0], MaximumVector0);
+            Output += 16;
+
+            ChannelOffset += 16;
+            c -= 16;
+        }
+
+        if (c >= 8) {
+
+            int8x8_t MaximumVector0 = vdup_n_s8(-128);
+
+            for (size_t k = 0; k < KernelSize; k++) {
+
+                int8x8_t InputVector0 = vld1_s8(&Input[k][ChannelOffset]);
+
+                MaximumVector0 = vmax_s8(MaximumVector0, InputVector0);
+            }
+
+            vst1_s8(&Output[0], MaximumVector0);
+            Output += 8;
+
+            ChannelOffset += 8;
+            c -= 8;
+        }
+
+#endif
+
+        while (c > 0) {
+
+            int32_t MaximumValue = -128;
+
+            for (size_t k = 0; k < KernelSize; k++) {
+                MaximumValue = std::max(MaximumValue, int32_t(Input[k][ChannelOffset]));
+            }
+
+            *Output++ = int8_t(MaximumValue);
+
+            ChannelOffset += 1;
+            c -= 1;
+        }
+
+        Input += KernelSize;
+        OutputCount -= 1;
+    }
+}
+#endif

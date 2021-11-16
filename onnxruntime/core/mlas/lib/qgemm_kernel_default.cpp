@@ -21,16 +21,17 @@ struct MLAS_GEMM_U8X8_KERNEL_DEFAULT
 {
     typedef uint8_t PackedAType;
     typedef uint8_t PackedBType;
+    typedef uint8_t OffsetAType;
     typedef uint8_t OffsetBType;
 
     static constexpr size_t PackedK = 4;
-    static constexpr MLAS_GEMM_U8X8_STRIDES Strides{ 16, 128, 128 };
-    static constexpr MLAS_GEMM_U8X8_STRIDES PackedStrides{ 16, 128, 128 };
+    static constexpr MLAS_GEMM_QUANT_STRIDES Strides{ 16, 128, 128 };
+    static constexpr MLAS_GEMM_QUANT_STRIDES PackedStrides{ 16, 128, 128 };
 };
 
 constexpr size_t MLAS_GEMM_U8X8_KERNEL_DEFAULT::PackedK;
-constexpr MLAS_GEMM_U8X8_STRIDES MLAS_GEMM_U8X8_KERNEL_DEFAULT::Strides;
-constexpr MLAS_GEMM_U8X8_STRIDES MLAS_GEMM_U8X8_KERNEL_DEFAULT::PackedStrides;
+constexpr MLAS_GEMM_QUANT_STRIDES MLAS_GEMM_U8X8_KERNEL_DEFAULT::Strides;
+constexpr MLAS_GEMM_QUANT_STRIDES MLAS_GEMM_U8X8_KERNEL_DEFAULT::PackedStrides;
 
 template<>
 MLAS_FORCEINLINE
@@ -55,9 +56,11 @@ MlasGemmU8X8CopyPackA<MLAS_GEMM_U8X8_KERNEL_DEFAULT>(
     size_t lda,
     size_t CountM,
     size_t CountK,
-    int32_t* RowSumBuffer
+    int32_t* RowSumBuffer,
+    bool AIsSigned
     )
 {
+    MLAS_UNREFERENCED_PARAMETER(AIsSigned);
     const size_t AlignedCountK =
         (CountK + MLAS_GEMM_U8X8_KERNEL_DEFAULT::PackedK - 1) & ~(MLAS_GEMM_U8X8_KERNEL_DEFAULT::PackedK - 1);
 

@@ -312,13 +312,13 @@ MlasConvSymPackW(
 
 int32_t
 MlasConvSymFixupInputZeroPoint(
-    uint8_t zero_point_value
+    int32_t zero_point_value
     )
 {
     const MLAS_CONV_SYM_DISPATCH* ConvSymDispatch = MlasPlatform.ConvSymDispatch;
 
     if (ConvSymDispatch != nullptr && ConvSymDispatch->FixupInputZeroPoint) {
-        return static_cast<int32_t>(zero_point_value) - 128;
+        return zero_point_value - 128;
     }
     return zero_point_value;
 }
@@ -326,7 +326,7 @@ MlasConvSymFixupInputZeroPoint(
 
 void
 MlasConvSym(
-    const MLAS_CONV_SYM_PARAMS& Params
+    const MLAS_CONV_SYM_U8S8_PARAMS& Params
     )
 {
     const MLAS_CONV_SYM_DISPATCH* ConvSymDispatch = MlasPlatform.ConvSymDispatch;
@@ -400,7 +400,7 @@ MlasConvSym(
 
 void
 MlasConvSymDepthwise(
-    const MLAS_CONV_SYM_PARAMS& Params
+    const MLAS_CONV_SYM_U8S8_PARAMS& Params
     )
 {
     const MLAS_CONV_SYM_DISPATCH* ConvSymDispatch = MlasPlatform.ConvSymDispatch;
@@ -455,3 +455,22 @@ MlasConvSymDepthwise(
         OutputCountRemaining -= OutputCount;
     }
 }
+
+#ifdef MLAS_TARGET_ARM64
+void
+MlasConvSym(
+    const MLAS_CONV_SYM_S8S8_PARAMS& Params
+    )
+{
+    MLAS_UNREFERENCED_PARAMETER(Params);
+}
+
+void
+MlasConvSymDepthwise(
+    const MLAS_CONV_SYM_S8S8_PARAMS& Params
+    )
+{
+    MLAS_UNREFERENCED_PARAMETER(Params);
+}
+
+#endif

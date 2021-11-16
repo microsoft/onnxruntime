@@ -6,11 +6,11 @@ Licensed under the MIT License.
 
 Module Name:
 
-    qgemm_kernel_default.cpp
+    qgemm_kernel_udot.cpp
 
 Abstract:
 
-    This module implements default QGEMM kernel.
+    This module implements udot QGEMM kernel.
 
 --*/
 
@@ -44,16 +44,17 @@ struct MLAS_GEMM_U8X8_KERNEL_UDOT
 {
     typedef uint8_t PackedAType;
     typedef uint8_t PackedBType;
+    typedef uint8_t OffsetAType;
     typedef uint8_t OffsetBType;
 
     static constexpr size_t PackedK = 8;
-    static constexpr MLAS_GEMM_U8X8_STRIDES Strides{ 24, 128, 256 };
-    static constexpr MLAS_GEMM_U8X8_STRIDES PackedStrides{ 24, 128, 384 };
+    static constexpr MLAS_GEMM_QUANT_STRIDES Strides{ 24, 128, 256 };
+    static constexpr MLAS_GEMM_QUANT_STRIDES PackedStrides{ 24, 128, 384 };
 };
 
 constexpr size_t MLAS_GEMM_U8X8_KERNEL_UDOT::PackedK;
-constexpr MLAS_GEMM_U8X8_STRIDES MLAS_GEMM_U8X8_KERNEL_UDOT::Strides;
-constexpr MLAS_GEMM_U8X8_STRIDES MLAS_GEMM_U8X8_KERNEL_UDOT::PackedStrides;
+constexpr MLAS_GEMM_QUANT_STRIDES MLAS_GEMM_U8X8_KERNEL_UDOT::Strides;
+constexpr MLAS_GEMM_QUANT_STRIDES MLAS_GEMM_U8X8_KERNEL_UDOT::PackedStrides;
 
 template<>
 MLAS_FORCEINLINE
@@ -78,9 +79,11 @@ MlasGemmU8X8CopyPackA<MLAS_GEMM_U8X8_KERNEL_UDOT>(
     size_t lda,
     size_t CountM,
     size_t CountK,
-    int32_t* RowSumBuffer
+    int32_t* RowSumBuffer,
+    bool AIsSigned
     )
 {
+    MLAS_UNREFERENCED_PARAMETER(AIsSigned);
     uint8_t PaddedMatrixAData[16];
 
     //

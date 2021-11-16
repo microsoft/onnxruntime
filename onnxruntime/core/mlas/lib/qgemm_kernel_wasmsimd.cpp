@@ -31,14 +31,15 @@ struct MLAS_GEMM_U8X8_KERNEL_WASMSIMD
 {
     typedef int16_t PackedAType;
     typedef int16_t PackedBType;
+    typedef uint8_t OffsetAType;
     typedef int8_t OffsetBType;
 
     static constexpr size_t PackedK = 2;
-    static constexpr MLAS_GEMM_U8X8_STRIDES Strides{ 12, 128, 128 };
+    static constexpr MLAS_GEMM_QUANT_STRIDES Strides{ 12, 128, 128 };
 };
 
 constexpr size_t MLAS_GEMM_U8X8_KERNEL_WASMSIMD::PackedK;
-constexpr MLAS_GEMM_U8X8_STRIDES MLAS_GEMM_U8X8_KERNEL_WASMSIMD::Strides;
+constexpr MLAS_GEMM_QUANT_STRIDES MLAS_GEMM_U8X8_KERNEL_WASMSIMD::Strides;
 
 template<>
 MLAS_FORCEINLINE
@@ -63,9 +64,11 @@ MlasGemmU8X8CopyPackA<MLAS_GEMM_U8X8_KERNEL_WASMSIMD>(
     size_t lda,
     size_t CountM,
     size_t CountK,
-    int32_t* RowSumBuffer
+    int32_t* RowSumBuffer,
+    bool AIsSigned
     )
 {
+    MLAS_UNREFERENCED_PARAMETER(AIsSigned);
     const v128_t ZeroVector = wasm_i64x2_const(0, 0);
     const v128_t OnesWordBroadcast = wasm_i16x8_splat(1);
     uint8_t PaddedMatrixAData[8] = { 0 };

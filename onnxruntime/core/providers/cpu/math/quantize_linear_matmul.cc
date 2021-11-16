@@ -13,16 +13,24 @@
 
 namespace onnxruntime {
 
-ONNX_OPERATOR_KERNEL_EX(
-    QLinearMatMul,
-    kOnnxDomain,
-    10,
-    kCpuExecutionProvider,
-    KernelDefBuilder()
-        .TypeConstraint("T1", DataTypeImpl::GetTensorType<uint8_t>())
-        .TypeConstraint("T2", {DataTypeImpl::GetTensorType<uint8_t>(), DataTypeImpl::GetTensorType<int8_t>()})
-        .TypeConstraint("T3", DataTypeImpl::GetTensorType<uint8_t>()),
-    QLinearMatMul);
+#define REGISTER_QLINEARMATMUL_TYPED_KERNEL(act_type, weight_type)          \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                            \
+      QLinearMatMul,                                                        \
+      kOnnxDomain,                                                          \
+      10,                                                                   \
+      act_type##_##weight_type,                                             \
+      kCpuExecutionProvider,                                                \
+      KernelDefBuilder()                                                    \
+          .TypeConstraint("T1", DataTypeImpl::GetTensorType<act_type>())    \
+          .TypeConstraint("T2", DataTypeImpl::GetTensorType<weight_type>()) \
+          .TypeConstraint("T3", DataTypeImpl::GetTensorType<act_type>()),   \
+      QLinearMatMul);
+
+#if defined(MLAS_TARGET_ARM_ANY)
+REGISTER_QLINEARMATMUL_TYPED_KERNEL(int8_t, int8_t);
+#endif
+REGISTER_QLINEARMATMUL_TYPED_KERNEL(uint8_t, uint8_t);
+REGISTER_QLINEARMATMUL_TYPED_KERNEL(uint8_t, int8_t);
 
 Status QLinearMatMul::Compute(OpKernelContext* ctx) const {
   const auto* a = ctx->Input<Tensor>(IN_A);
@@ -79,29 +87,29 @@ Status QLinearMatMul::Compute(OpKernelContext* ctx) const {
   }
 
   const size_t num_gemms = helper.OutputOffsets().size();
-  MLAS_GEMM_U8X8_SHAPE_PARAMS gemm_shape;
+  MLAS_GEMM_QUANT_SHAPE_PARAMS gemm_shape;
   gemm_shape.M = static_cast<size_t>(helper.M());
   gemm_shape.N = static_cast<size_t>(helper.N());
   gemm_shape.K = static_cast<size_t>(helper.K());
+  gemm_shape.AIsSigned = a->IsDataType<int8_t>();
   gemm_shape.BIsSigned = b_is_signed;
 
   AllocatorPtr alloc;
   ORT_RETURN_IF_ERROR(ctx->GetTempSpaceAllocator(&alloc));
   auto gemm_output_data = alloc->Alloc(SafeInt<size_t>(gemm_shape.M) *
-      gemm_shape.N * sizeof(int32_t) * num_gemms);
+                                       gemm_shape.N * sizeof(int32_t) * num_gemms);
   BufferUniquePtr gemm_output_buffer(gemm_output_data, BufferDeleter(alloc));
   auto* gemm_output = static_cast<int32_t*>(gemm_output_buffer.get());
 
-
-  std::vector<MLAS_GEMM_U8X8_DATA_PARAMS> gemm_params(num_gemms);
+  std::vector<MLAS_GEMM_QUANT_DATA_PARAMS> gemm_params(num_gemms);
   std::vector<MLAS_QGEMM_REQUANT_OUTPUT_PROCESSOR> requant_procs;
   requant_procs.reserve(num_gemms);
 
   auto b_zp_data = static_cast<const uint8_t*>(b_offset->DataRaw());
   for (size_t i = 0; i < num_gemms; i++) {
-    gemm_params[i].A = a->template Data<uint8_t>() + helper.LeftOffsets()[i];
+    gemm_params[i].A = static_cast<const uint8_t*>(a->DataRaw()) + helper.LeftOffsets()[i];
     gemm_params[i].lda = gemm_shape.K;
-    gemm_params[i].ZeroPointA = *a_offset->template Data<uint8_t>();
+    gemm_params[i].ZeroPointA = *(static_cast<const uint8_t*>(a_offset->DataRaw()));
 
     gemm_params[i].B = b_data + helper.RightOffsets()[i];
     gemm_params[i].ldb = gemm_shape.N;
@@ -113,12 +121,13 @@ Status QLinearMatMul::Compute(OpKernelContext* ctx) const {
 
     gemm_params[i].PerColumnZeroPoints = !IsScalarOr1ElementVector(b_offset);
 
-    requant_procs.emplace_back(y->template MutableData<uint8_t>() + helper.OutputOffsets()[i],
+    requant_procs.emplace_back(static_cast<uint8_t*>(y->MutableDataRaw()) + helper.OutputOffsets()[i],
                                static_cast<size_t>(helper.N()),
                                nullptr,
                                output_scales.data() + helper.RightScaleOffsets()[i],
                                output_scales.size() > 1,
-                               *y_offset->template Data<uint8_t>());
+                               *(static_cast<const uint8_t*>(y_offset->DataRaw())),
+                               y->IsDataType<int8_t>());
     gemm_params[i].OutputProcessor = &(requant_procs[i]);
   }
 

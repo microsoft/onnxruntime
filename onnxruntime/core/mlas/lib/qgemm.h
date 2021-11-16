@@ -13,7 +13,7 @@ Abstract:
     This module defines the set of template functions to implement a kernel of
     quantized integer matrix/matrix multiply operation (QGEMM).
 
-    To implement a new kernel, there needs to specialize template functions below:
+    To implement a new kernel, template functions below need to be specialized:
         MlasGemmU8X8FixupZeroPointA
         MlasGemmU8X8FixupZeroPointB
         MlasGemmU8X8CopyPackA
@@ -37,7 +37,7 @@ Abstract:
 // matrix/matrix multiply operation.
 //
 
-struct MLAS_GEMM_U8X8_STRIDES {
+struct MLAS_GEMM_QUANT_STRIDES {
     size_t M;
     size_t N;
     size_t K;
@@ -68,9 +68,13 @@ MlasGemmU8X8TryGemvKernel(
 }
 
 template <typename KernelType>
-MLAS_FORCEINLINE int32_t
-MlasGemmU8X8FixupZeroPointA(int32_t ZeroPointA)
+MLAS_FORCEINLINE
+int32_t
+MlasGemmU8X8FixupZeroPointA(
+    int32_t ZeroPointA,
+    bool AIsSigned)
 {
+    MLAS_UNREFERENCED_PARAMETER(AIsSigned);
     return ZeroPointA;
 }
 
@@ -107,7 +111,7 @@ MlasGemmU8X8FixupZeroPointB(
     }
 
     //
-    // Fill the misaligned slots of the zero point buffer with zeroes to guard
+    // Fill the misaligned slots of the zero point buffer with zeros to guard
     // against tools that check for uninitialized data usage.
     //
 
@@ -126,7 +130,8 @@ MlasGemmU8X8CopyPackA(
     size_t lda,
     size_t CountM,
     size_t CountK,
-    int32_t* RowSumBuffer
+    int32_t* RowSumBuffer,
+    bool AIsSigned
 );
 
 template<typename KernelType>
@@ -188,8 +193,8 @@ MlasGemmU8X8ScaleSumBuffer(
 template<typename KernelType>
 void
 MlasGemmU8X8Operation(
-    const MLAS_GEMM_U8X8_SHAPE_PARAMS* Shape,
-    const MLAS_GEMM_U8X8_DATA_PARAMS* Data,
+    const MLAS_GEMM_QUANT_SHAPE_PARAMS* Shape,
+    const MLAS_GEMM_QUANT_DATA_PARAMS* Data,
     const size_t RangeStartM,
     const size_t RangeCountM,
     const size_t RangeStartN,
@@ -222,7 +227,7 @@ Return Value:
 
 --*/
 {
-    constexpr MLAS_GEMM_U8X8_STRIDES Strides = KernelType::Strides;
+    constexpr MLAS_GEMM_QUANT_STRIDES Strides = KernelType::Strides;
 
     MLAS_DECLSPEC_ALIGN(typename KernelType::PackedAType PanelA[Strides.M * Strides.K], 64);
     MLAS_DECLSPEC_ALIGN(typename KernelType::PackedBType PanelB[Strides.N * Strides.K], 64);
@@ -244,7 +249,7 @@ Return Value:
         Data->ZeroPointB + RangeStartN : nullptr;
     bool IsAccumulateMode = Shape->IsAccumulateMode;
 
-    int32_t ZeroPointA = Data->ZeroPointA;
+    int32_t ZeroPointA = typename KernelType::OffsetAType(Data->ZeroPointA);
     int32_t ZeroPointB = typename KernelType::OffsetBType(*Data->ZeroPointB);
 
     //
@@ -264,7 +269,7 @@ Return Value:
     // kernel requires signed data.
     //
 
-    ZeroPointA = MlasGemmU8X8FixupZeroPointA<KernelType>(ZeroPointA);
+    ZeroPointA = MlasGemmU8X8FixupZeroPointA<KernelType>(ZeroPointA, Shape->AIsSigned);
 
     //
     // Fixup the sign bit of the per-matrix zero point offset of matrix B if the
@@ -345,7 +350,8 @@ Return Value:
                     lda,
                     CountM,
                     CountK,
-                    RowSumBuffer);
+                    RowSumBuffer,
+                    Shape->AIsSigned);
 
                 //
                 // Apply the global depth value constant without the ZeroPointB scaling from:
@@ -423,8 +429,8 @@ Return Value:
 template<typename KernelType>
 void
 MlasGemmU8X8PackedOperation(
-    const MLAS_GEMM_U8X8_SHAPE_PARAMS* Shape,
-    const MLAS_GEMM_U8X8_DATA_PARAMS* Data,
+    const MLAS_GEMM_QUANT_SHAPE_PARAMS* Shape,
+    const MLAS_GEMM_QUANT_DATA_PARAMS* Data,
     const size_t RangeStartM,
     const size_t RangeCountM,
     const size_t RangeStartN,
@@ -457,7 +463,7 @@ Return Value:
 
 --*/
 {
-    constexpr MLAS_GEMM_U8X8_STRIDES Strides = KernelType::PackedStrides;
+    constexpr MLAS_GEMM_QUANT_STRIDES Strides = KernelType::PackedStrides;
 
     MLAS_DECLSPEC_ALIGN(typename KernelType::PackedAType PanelA[Strides.M * Strides.K], 64);
 
@@ -477,7 +483,7 @@ Return Value:
         Data->ZeroPointB + RangeStartN : nullptr;
     bool IsAccumulateMode = Shape->IsAccumulateMode;
 
-    int32_t ZeroPointA = Data->ZeroPointA;
+    int32_t ZeroPointA = typename KernelType::OffsetAType(Data->ZeroPointA);
     int32_t ZeroPointB = typename KernelType::OffsetBType(*Data->ZeroPointB);
 
     //
@@ -485,7 +491,7 @@ Return Value:
     // kernel requires signed data.
     //
 
-    ZeroPointA = MlasGemmU8X8FixupZeroPointA<KernelType>(ZeroPointA);
+    ZeroPointA = MlasGemmU8X8FixupZeroPointA<KernelType>(ZeroPointA, Shape->AIsSigned);
 
     //
     // Fixup the sign bit of the per-matrix zero point offset of matrix B if the
@@ -572,7 +578,8 @@ Return Value:
                     lda,
                     CountM,
                     CountK,
-                    RowSumBuffer);
+                    RowSumBuffer,
+                    Shape->AIsSigned);
 
                 //
                 // Apply the global depth value constant without the ZeroPointB scaling from:
@@ -653,8 +660,8 @@ Return Value:
 typedef
 void
 (MLAS_GEMM_U8X8_OPERATION)(
-    const MLAS_GEMM_U8X8_SHAPE_PARAMS* Shape,
-    const MLAS_GEMM_U8X8_DATA_PARAMS* Data,
+    const MLAS_GEMM_QUANT_SHAPE_PARAMS* Shape,
+    const MLAS_GEMM_QUANT_DATA_PARAMS* Data,
     const size_t RangeStartM,
     const size_t RangeCountM,
     const size_t RangeStartN,
@@ -681,19 +688,24 @@ struct MLAS_GEMM_U8X8_DISPATCH {
     size_t PackedStrideK;
 };
 
-#define USE_NEONS8_KERNEL true
 
 MLAS_FORCEINLINE
 const MLAS_GEMM_U8X8_DISPATCH*
 MlasGemmU8X8GetDispatch(
+    bool AIsSigned,
     bool BIsSigned
 )
 {
-    const MLAS_GEMM_U8X8_DISPATCH* GemmU8X8Dispatch;
+    const MLAS_GEMM_U8X8_DISPATCH* GemmU8X8Dispatch = nullptr;
 
+    MLAS_UNREFERENCED_PARAMETER(AIsSigned);
     MLAS_UNREFERENCED_PARAMETER(BIsSigned);
 
 #if defined(MLAS_TARGET_AMD64_IX86)
+    if (AIsSigned) {
+        return GemmU8X8Dispatch;
+    }
+
     if (BIsSigned) {
         GemmU8X8Dispatch = MlasPlatform.GemmU8S8Dispatch;
     }
@@ -702,14 +714,31 @@ MlasGemmU8X8GetDispatch(
     }
 #elif defined(MLAS_TARGET_ARM64)
     GemmU8X8Dispatch = MlasPlatform.GemmU8X8Dispatch;
-    if (USE_NEONS8_KERNEL && BIsSigned && GemmU8X8Dispatch == &MlasGemmU8X8DispatchNeon) {
-        GemmU8X8Dispatch = &MlasGemmS8S8DispatchNeon;
+    if (AIsSigned && BIsSigned) { // S8S8
+        if (GemmU8X8Dispatch == &MlasGemmU8X8DispatchNeon) {
+            GemmU8X8Dispatch = &MlasGemmS8S8DispatchNeon;
+        } else {
+            GemmU8X8Dispatch = &MlasGemmS8S8DispatchSdot;
+        }
+    } else {
+        if (BIsSigned && GemmU8X8Dispatch == &MlasGemmU8X8DispatchNeon) {
+            GemmU8X8Dispatch = &MlasGemmU8S8DispatchNeon;
+        }
     }
+
 #elif defined(MLAS_TARGET_ARM64EC) || (defined(MLAS_TARGET_ARM) && !defined(_MSC_VER))
     GemmU8X8Dispatch = &MlasGemmU8X8DispatchNeon;
 #elif defined(MLAS_TARGET_WASM_SIMD)
+    if (AIsSigned) {
+        return GemmU8X8Dispatch;
+    }
+
     GemmU8X8Dispatch = &MlasGemmU8X8DispatchWasmSimd;
 #else
+    if (AIsSigned) {
+        return GemmU8X8Dispatch;
+    }
+
     GemmU8X8Dispatch = &MlasGemmU8X8DispatchDefault;
 #endif
 
