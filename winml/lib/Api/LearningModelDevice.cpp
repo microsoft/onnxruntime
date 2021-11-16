@@ -100,7 +100,7 @@ LearningModelDevice::GetDeviceQueue() {
 
 STDMETHODIMP
 LearningModelDevice::SetMetacommandsEnabled(boolean enabled) {
-  m_areMetacommandsEnabled = enabled;
+  m_areMetacommandsEnabled = (enabled != 0);
   return S_OK;
 }
 

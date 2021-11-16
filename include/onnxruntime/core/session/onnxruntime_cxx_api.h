@@ -352,6 +352,10 @@ struct SessionOptions : Base<OrtSessionOptions> {
   SessionOptions& AppendExecutionProvider_OpenVINO(const OrtOpenVINOProviderOptions& provider_options);  ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_OpenVINO
   SessionOptions& AppendExecutionProvider_TensorRT(const OrtTensorRTProviderOptions& provider_options);  ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_TensorRT
   SessionOptions& AppendExecutionProvider_MIGraphX1(const OrtMIGraphXProviderOptions& provider_options); ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_MIGraphX1
+
+  SessionOptions& SetCustomCreateThreadFn(OrtCustomCreateThreadFn ort_custom_create_thread_fn);  ///< Wraps OrtApi::SessionOptionsSetCustomCreateThreadFn
+  SessionOptions& SetCustomThreadCreationOptions(void* ort_custom_thread_creation_options);   ///< Wraps OrtApi::SessionOptionsSetCustomThreadCreationOptions
+  SessionOptions& SetCustomJoinThreadFn(OrtCustomJoinThreadFn ort_custom_join_thread_fn);        ///< Wraps OrtApi::SessionOptionsSetCustomJoinThreadFn
 };
 
 /** \brief Wrapper around ::OrtModelMetadata
@@ -913,12 +917,15 @@ struct CustomOpApi {
   template <typename T>
   const T* GetTensorData(_Inout_ const OrtValue* value);
 
+  const OrtMemoryInfo* GetTensorMemoryInfo(_In_ const OrtValue* value);
+
   std::vector<int64_t> GetTensorShape(const OrtTensorTypeAndShapeInfo* info);
   void ReleaseTensorTypeAndShapeInfo(OrtTensorTypeAndShapeInfo* input);
   size_t KernelContext_GetInputCount(const OrtKernelContext* context);
   const OrtValue* KernelContext_GetInput(const OrtKernelContext* context, _In_ size_t index);
   size_t KernelContext_GetOutputCount(const OrtKernelContext* context);
   OrtValue* KernelContext_GetOutput(OrtKernelContext* context, _In_ size_t index, _In_ const int64_t* dim_values, size_t dim_count);
+  void* KernelContext_GetGPUComputeStream(const OrtKernelContext* context);
 
   void ThrowOnError(OrtStatus* result);
 

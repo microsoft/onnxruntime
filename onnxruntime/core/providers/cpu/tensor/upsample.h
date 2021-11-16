@@ -290,10 +290,16 @@ class UpsampleBase {
     if (UpsampleMode::LINEAR == mode) {
       ORT_ENFORCE(scales.size() == 2 ||
                       (scales.size() == 4 && scales[0] == 1 && scales[1] == 1) ||
+                      (scales.size() == 4 && scales[0] == 1 && scales[3] == 1) ||
                       scales.size() == 3 ||
                       (scales.size() == 5 && scales[0] == 1 && scales[1] == 1),
-                  "'Linear' mode only support 2-D inputs or 3-D inputs ('Bilinear', 'Trilinear') "
-                  "or 4-D inputs or 5-D inputs with the corresponding outermost 2 scale values being 1 in the ",
+                  "'Linear' mode only support:\n"
+                  "  * 2-D inputs or\n"
+                  "  * 3-D inputs ('Bilinear', 'Trilinear') or\n"
+                  "  * 4-D inputs with the corresponding outermost 2 scale values being 1"
+                  " or the corresponding outermost and innermost scale values being 1 or\n"
+                  "  * 5-D inputs with the corresponding outermost 2 scale values being 1"
+                  "in the ",
                   is_resize_ ? "Resize operator" : "Upsample operator");
     }
 
@@ -325,8 +331,8 @@ class UpsampleBase {
     }
   }
 
-  void ParseScalesDataFromOutputSize(const std::vector<int64_t>& output_dims,
-                                     const std::vector<int64_t>& input_dims,
+  void ParseScalesDataFromOutputSize(gsl::span<const int64_t> output_dims,
+                                     gsl::span<const int64_t> input_dims,
                                      std::vector<float>& scales) const {
     for (size_t i = 0, end = input_dims.size(); i < end; ++i) {
       // Handle corner case to avoid dividing by zero in the next step
@@ -348,7 +354,7 @@ class UpsampleBase {
   }
 
   void ComputeOutputShape(const std::vector<float>& scales,
-                          const std::vector<int64_t>& input_dims,
+                          gsl::span<const int64_t> input_dims,
                           std::vector<int64_t>& output_dims) const {
     for (std::size_t i = 0; i < input_dims.size(); i++) {
       output_dims[i] = static_cast<int64_t>(scales[i] * input_dims[i]);

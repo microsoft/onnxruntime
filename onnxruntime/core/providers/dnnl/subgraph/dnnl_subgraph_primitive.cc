@@ -6,6 +6,7 @@
 #include "dnnl_batchnorm.h"
 #include "dnnl_binary.h"
 #include "dnnl_conv.h"
+#include "dnnl_dynamicquantizelinear.h"
 #include "dnnl_elementwise.h"
 #include "dnnl_gemm.h"
 #include "dnnl_lrn.h"
@@ -52,6 +53,8 @@ void DnnlSubgraphPrimitive::AddKernels() {
       DnnlBinary().CreatePrimitive(*this, node);
     } else if (node.OpType() == "Conv") {
       DnnlConv().CreatePrimitive(*this, node);
+    } else if (node.OpType() == "DynamicQuantizeLinear") {
+      DnnlDynamicQuantizeLinear().CreatePrimitive(*this, node);
     } else if (elementwise_ops.count(node.OpType())) {
       DnnlElementwise().CreatePrimitive(*this, node);
     } else if (node.OpType() == "Gemm") {
@@ -144,6 +147,7 @@ void DnnlSubgraphPrimitive::Compile(const std::unordered_map<std::string, OnnxTe
   net_.clear();
   net_args_.clear();
   reshapes_.clear();
+  scalar_outputs_.clear();
   //initializer should not be cleared upon recompile
   //initializers_.clear();
 
@@ -297,9 +301,12 @@ bool DnnlSubgraphPrimitive::HasMemory(std::string memory_name, dnnl::memory::des
   return false;
 }
 
-void DnnlSubgraphPrimitive::SetMemory(DnnlTensor tensor, dnnl::memory mem, bool always_copy_output) {
+void DnnlSubgraphPrimitive::SetMemory(DnnlTensor tensor, dnnl::memory mem, bool always_copy_output, bool is_scalar) {
   if (always_copy_output) {
     outputs_are_always_copied_.insert(tensor.Name());
+  }
+  if (is_scalar) {
+    scalar_outputs_.insert(tensor.Name());
   }
   SetMemory(tensor.Name(), mem);
 }
@@ -511,6 +518,10 @@ onnxruntime::common::Status DnnlSubgraphPrimitive::Predict(const std::unordered_
   }
 
   return Status::OK();
+}
+
+bool DnnlSubgraphPrimitive::IsScalarOutput(const std::string& name) {
+  return Contains(scalar_outputs_,name);
 }
 
 dnnl::memory::desc DnnlSubgraphPrimitive::GetOutputInfo(std::string name) {

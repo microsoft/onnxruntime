@@ -143,47 +143,63 @@ class PosixThread : public EnvThread {
   PosixThread(const ORTCHAR_T* name_prefix, int index,
               unsigned (*start_address)(int id, Eigen::ThreadPoolInterface* param), Eigen::ThreadPoolInterface* param,
               const ThreadOptions& thread_options) {
-    pthread_attr_t attr;
-    int s = pthread_attr_init(&attr);
-    if (s != 0) {
-      auto[err_no, err_msg] = GetSystemError();
-      ORT_THROW("pthread_attr_init failed, error code: ", err_no, " error msg: ", err_msg);
-    }
-    if (thread_options.stack_size > 0) {
-      s = pthread_attr_setstacksize(&attr, thread_options.stack_size);
-      if (s != 0) {
-        auto[err_no, err_msg] = GetSystemError();
-        ORT_THROW("pthread_attr_setstacksize failed, error code: ", err_no, " error msg: ", err_msg);
+    custom_create_thread_fn = thread_options.custom_create_thread_fn;
+    custom_thread_creation_options = thread_options.custom_thread_creation_options;
+    custom_join_thread_fn = thread_options.custom_join_thread_fn;
+
+    if (custom_create_thread_fn) {
+      custom_thread_handle = custom_create_thread_fn(custom_thread_creation_options, CustomThreadMain, new Param{name_prefix, index, start_address, param, thread_options});
+      if (!custom_thread_handle) {
+        ORT_THROW("custom_create_thread_fn returned invalid handle."); 
       }
-    }
-    s = pthread_create(&hThread, &attr, ThreadMain,
-                       new Param{name_prefix, index, start_address, param, thread_options});
-    if (s != 0) {
-      auto[err_no, err_msg] = GetSystemError();
-      ORT_THROW("pthread_create failed, error code: ", err_no, " error msg: ", err_msg);
-    }
+    } else {
+      pthread_attr_t attr;
+      int s = pthread_attr_init(&attr);
+      if (s != 0) {
+        auto [err_no, err_msg] = GetSystemError();
+        ORT_THROW("pthread_attr_init failed, error code: ", err_no, " error msg: ", err_msg);
+      }
+      if (thread_options.stack_size > 0) {
+        s = pthread_attr_setstacksize(&attr, thread_options.stack_size);
+        if (s != 0) {
+          auto [err_no, err_msg] = GetSystemError();
+          ORT_THROW("pthread_attr_setstacksize failed, error code: ", err_no, " error msg: ", err_msg);
+        }
+      }
+      s = pthread_create(&hThread, &attr, ThreadMain,
+                         new Param{name_prefix, index, start_address, param, thread_options});
+      if (s != 0) {
+        auto [err_no, err_msg] = GetSystemError();
+        ORT_THROW("pthread_create failed, error code: ", err_no, " error msg: ", err_msg);
+      }
 #if !defined(__APPLE__) && !defined(__ANDROID__) && !defined(__wasm__)
-    if (!thread_options.affinity.empty()) {
-      cpu_set_t cpuset;
-      CPU_ZERO(&cpuset);
-      CPU_SET(thread_options.affinity[index], &cpuset);
-      s = pthread_setaffinity_np(hThread, sizeof(cpu_set_t), &cpuset);
-      if (s != 0) {
-        auto[err_no, err_msg] = GetSystemError();
-        ORT_THROW("pthread_setaffinity_np failed, error code: ", err_no, " error msg: ", err_msg);
+      if (!thread_options.affinity.empty()) {
+        cpu_set_t cpuset;
+        CPU_ZERO(&cpuset);
+        CPU_SET(thread_options.affinity[index], &cpuset);
+        s = pthread_setaffinity_np(hThread, sizeof(cpu_set_t), &cpuset);
+        if (s != 0) {
+          auto [err_no, err_msg] = GetSystemError();
+          ORT_THROW("pthread_setaffinity_np failed, error code: ", err_no, " error msg: ", err_msg);
+        }
       }
-    }
 #endif
+    }
   }
 
   ~PosixThread() override {
-    void* res;
+    if (custom_thread_handle) {
+      custom_join_thread_fn(custom_thread_handle);
+      custom_thread_handle = nullptr;
+    } else {
+      void* res;
 #ifdef NDEBUG
-    pthread_join(hThread, &res);
+      pthread_join(hThread, &res);
 #else
-    int ret = pthread_join(hThread, &res);
-    assert(ret == 0);
+      int ret = pthread_join(hThread, &res);
+      assert(ret == 0);
 #endif
+    }
   }
 
  private:
@@ -197,6 +213,9 @@ class PosixThread : public EnvThread {
       //ignore any exceptions
     }
     return nullptr;
+  }
+  static void CustomThreadMain(void* param) {
+    ThreadMain(param);
   }
   pthread_t hThread;
 };

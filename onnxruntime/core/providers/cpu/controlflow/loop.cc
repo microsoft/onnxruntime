@@ -417,8 +417,8 @@ Status LoopImpl::Initialize() {
   auto cpu_allocator = session_state_.GetExecutionProviders()
                            .Get(onnxruntime::kCpuExecutionProvider)
                            ->GetAllocator(0, OrtMemTypeDefault);
-  iter_num_mlvalue_ = MakeScalarMLValue<int64_t>(cpu_allocator, 0, iter_num_rank);
-  condition_mlvalue_ = MakeScalarMLValue<bool>(cpu_allocator, condition_, condition_rank);
+  iter_num_mlvalue_ = MakeScalarMLValue<int64_t>(cpu_allocator, 0, iter_num_rank != 0);
+  condition_mlvalue_ = MakeScalarMLValue<bool>(cpu_allocator, condition_, condition_rank != 0);
 
   loop_output_tensors_.resize(info_.num_outputs - info_.num_loop_carried_vars);
 

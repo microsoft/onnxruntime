@@ -85,7 +85,7 @@ void ORTTensorImpl::cacheSizeMetadata() {
 
   numel_ = shape.Size();
 
-  sizes_and_strides_.set_sizes(shape.GetDims());
+  sizes_and_strides_.set_sizes(shape.GetDimsAsVector());
 
   for (std::size_t i = 0; i < strides.size(); i++) {
     sizes_and_strides_.stride_at_unchecked(i) = strides[i];

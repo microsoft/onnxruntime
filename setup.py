@@ -163,9 +163,11 @@ try:
                                             check=True, stdout=subprocess.PIPE, universal_newlines=True)
                     cuda_dependencies = ['libcublas.so', 'libcublasLt.so', 'libcudnn.so', 'libcudart.so',
                                          'libcurand.so', 'libcufft.so', 'libnvToolsExt.so']
+                    rocm_dependencies = ['librccl.so', 'libamdhip64.so', 'librocblas.so', 'libMIOpen.so',
+                                         'libhsa-runtime64.so', 'libhsakmt.so']
                     args = ['patchelf', '--debug']
                     for line in result.stdout.split('\n'):
-                        for dependency in cuda_dependencies:
+                        for dependency in (cuda_dependencies + rocm_dependencies):
                             if dependency in line:
                                 if dependency not in to_preload:
                                     to_preload_cuda.append(line)
@@ -282,8 +284,7 @@ packages = [
     'onnxruntime.tools',
     'onnxruntime.tools.ort_format_model',
     'onnxruntime.tools.ort_format_model.ort_flatbuffers_py',
-    'onnxruntime.tools.ort_format_model.ort_flatbuffers_py.experimental',
-    'onnxruntime.tools.ort_format_model.ort_flatbuffers_py.experimental.fbs',
+    'onnxruntime.tools.ort_format_model.ort_flatbuffers_py.fbs',
     'onnxruntime.quantization',
     'onnxruntime.quantization.operators',
     'onnxruntime.quantization.CalTableFlatBuffers',
