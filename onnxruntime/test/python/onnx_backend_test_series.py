@@ -158,4 +158,4 @@ if __name__ == '__main__':
     args = parse_args()
 
     backend_test = create_backend_test(args.testname)
-    unittest.main()
+    unittest.main(verbosity=2)
