@@ -37,16 +37,16 @@ class RandomBase : public CudaKernel {
     int64_t dtype;
     if (info.GetAttr<int64_t>("dtype", &dtype).IsOK()) {
       dtype_ = static_cast<ONNX_NAMESPACE::TensorProto::DataType>(dtype);
-      ORT_ENFORCE(
-          ONNX_NAMESPACE::TensorProto::DataType_IsValid(dtype_) && dtype_ != ONNX_NAMESPACE::TensorProto::UNDEFINED,
-          "Invalid dtype of ", dtype_);
+      ORT_ENFORCE(ONNX_NAMESPACE::TensorProto::DataType_IsValid(dtype_) &&
+                      dtype_ != ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED,
+                  "Invalid dtype of ", dtype_);
     }
   }
 
  protected:
   mutable std::unique_ptr<PhiloxGenerator> generator_;
   ONNX_NAMESPACE::TensorProto::DataType dtype_ =
-      ONNX_NAMESPACE::TensorProto::DataType::TensorProto_DataType_UNDEFINED;  // optional and may be inferred
+      ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED;  // optional and may be inferred
 };
 
 class RandomNormalBase : public RandomBase {
@@ -66,7 +66,9 @@ class RandomNormalBase : public RandomBase {
 class RandomNormal final : public RandomNormalBase {
  public:
   explicit RandomNormal(const OpKernelInfo& info) : RandomNormalBase(info) {
-    ORT_ENFORCE(dtype_ != ONNX_NAMESPACE::TensorProto::UNDEFINED, "Invalid dtype of ", dtype_);
+    if (dtype_ == ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED) {
+      dtype_ = ONNX_NAMESPACE::TensorProto_DataType_FLOAT;
+    }
     std::vector<int64_t> shape;
     ORT_ENFORCE(info.GetAttrs<int64_t>("shape", shape).IsOK());
     shape_ = TensorShape(shape);
@@ -104,7 +106,9 @@ class RandomUniformBase : public RandomBase {
 class RandomUniform final : public RandomUniformBase {
  public:
   explicit RandomUniform(const OpKernelInfo& info) : RandomUniformBase(info) {
-    ORT_ENFORCE(dtype_ != ONNX_NAMESPACE::TensorProto::UNDEFINED, "Invalid dtype of ", dtype_);
+    if (dtype_ == ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED) {
+      dtype_ = ONNX_NAMESPACE::TensorProto_DataType_FLOAT;
+    }
     std::vector<int64_t> shape;
     ORT_ENFORCE(info.GetAttrs<int64_t>("shape", shape).IsOK());
     shape_ = TensorShape(shape);

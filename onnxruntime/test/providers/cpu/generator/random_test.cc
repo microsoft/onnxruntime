@@ -33,7 +33,7 @@ TEST(Random, RandomNormal2DDouble) {
                 [&generator, &distribution](double& value) { value = distribution(generator); });
 
   test.AddOutput<double>("Y", dims, expected_output);
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kRocmExecutionProvider});
 }
 
 void RunRandomNormalLike3DFloat(bool infer_dtype = false) {
@@ -68,7 +68,7 @@ void RunRandomNormalLike3DFloat(bool infer_dtype = false) {
 
   test.AddOutput<float>("Y", dims, expected_output);
 
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kRocmExecutionProvider});
 }
 
 TEST(Random, RandomNormalLike3DDouble) {
@@ -105,7 +105,7 @@ TEST(Random, RandomUniform1DFloat) {
   test.AddOutput<float>("Y", dims, expected_output);
 
   // TensorRT does not support manual seed overrides and there will be result mismatch
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kTensorrtExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kRocmExecutionProvider, kTensorrtExecutionProvider});
 }
 
 void RunRandomUniformLikeTest(bool infer_dtype = false) {
@@ -138,7 +138,7 @@ void RunRandomUniformLikeTest(bool infer_dtype = false) {
   test.AddOutput<double>("Y", dims, expected_output);
 
   // TensorRT does not support seed parameter and there will be result mismatch
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kTensorrtExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kRocmExecutionProvider, kTensorrtExecutionProvider});
 }
 
 TEST(Random, RandomUniformLike2DDouble) {

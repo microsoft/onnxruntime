@@ -8,20 +8,6 @@ namespace cuda {
 
 using namespace ONNX_NAMESPACE;
 
-namespace {
-
-static TensorProto::DataType InferDataType(const Tensor& tensor) {
-  auto elem_type = tensor.GetElementType();
-  int dtype = TensorProto_DataType_UNDEFINED;
-  if (elem_type == TensorProto_DataType_FLOAT || elem_type == TensorProto_DataType_DOUBLE ||
-      elem_type == TensorProto_DataType_FLOAT16) {
-    dtype = elem_type;
-  }
-  return static_cast<TensorProto::DataType>(dtype);
-}
-
-};  // namespace
-
 ONNX_OPERATOR_KERNEL_EX(RandomNormal, kOnnxDomain, 1, kCudaExecutionProvider,
                         (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes()),
                         RandomNormal);
@@ -56,13 +42,13 @@ Status RandomNormal::ComputeInternal(OpKernelContext* p_ctx) const { return Comp
 Status RandomNormalLike::ComputeInternal(OpKernelContext* p_ctx) const {
   const Tensor* p_X = p_ctx->Input<Tensor>(0);
   if (!p_X) return Status(common::ONNXRUNTIME, common::FAIL, "X Input is not available.");
-  const TensorShape& shape = p_X->Shape();
-  auto dtype = dtype_ != TensorProto_DataType_UNDEFINED ? dtype_ : InferDataType(*p_X);
-  if (dtype == TensorProto_DataType_UNDEFINED) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Could not infer data type from input tensor with data type ",
-                           p_X->DataType());
+  if (dtype_ == TensorProto_DataType_UNDEFINED && !p_X->IsDataType<float>() && !p_X->IsDataType<double>() &&
+      !p_X->IsDataType<MLFloat16>()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                           "Output data type is required to be one of float types, but got incompatible data type ",
+                           p_X->DataType(), " from input tensor.");
   }
-  return Compute(p_ctx, shape, dtype);
+  return Compute(p_ctx, p_X->Shape(), dtype_ != TensorProto_DataType_UNDEFINED ? dtype_ : p_X->GetElementType());
 }
 
 Status RandomUniformBase::Compute(OpKernelContext* p_ctx, const TensorShape& shape, int dtype) const {
@@ -79,13 +65,13 @@ Status RandomUniform::ComputeInternal(OpKernelContext* p_ctx) const { return Com
 Status RandomUniformLike::ComputeInternal(OpKernelContext* p_ctx) const {
   const Tensor* p_X = p_ctx->Input<Tensor>(0);
   if (!p_X) return Status(common::ONNXRUNTIME, common::FAIL, "X Input is not available.");
-  const TensorShape& shape = p_X->Shape();
-  auto dtype = dtype_ != TensorProto_DataType_UNDEFINED ? dtype_ : InferDataType(*p_X);
-  if (dtype == TensorProto_DataType_UNDEFINED) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Could not infer data type from input tensor with data type ",
-                           p_X->DataType());
+  if (dtype_ == TensorProto_DataType_UNDEFINED && !p_X->IsDataType<float>() && !p_X->IsDataType<double>() &&
+      !p_X->IsDataType<MLFloat16>()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                           "Output data type is required to be one of float types, but got incompatible data type ",
+                           p_X->DataType(), " from input tensor.");
   }
-  return Compute(p_ctx, shape, dtype);
+  return Compute(p_ctx, p_X->Shape(), dtype_ != TensorProto_DataType_UNDEFINED ? dtype_ : p_X->GetElementType());
 }
 
 }  // namespace cuda
