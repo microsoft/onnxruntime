@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include "core/providers/rocm/rocm_pch.h"
 
 namespace onnxruntime {
 

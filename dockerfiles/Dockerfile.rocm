@@ -19,7 +19,7 @@ ENV LANG C.UTF-8
 
 # Install rocm
 RUN apt-get update && apt-get install -y gnupg2 --no-install-recommends curl && \
-  curl -sL http://repo.radeon.com/rocm/apt/debian/rocm.gpg.key | apt-key add - && \
+  curl -sL http://repo.radeon.com/rocm/rocm.gpg.key | apt-key add - && \
   sh -c 'echo deb [arch=amd64] http://repo.radeon.com/rocm/apt/4.0/ xenial main > /etc/apt/sources.list.d/rocm.list'
 
 RUN apt-get update &&\
