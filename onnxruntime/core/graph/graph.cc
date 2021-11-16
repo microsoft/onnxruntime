@@ -2770,7 +2770,7 @@ void Graph::SetDescription(const std::string& description) {
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
-void Graph::AddInitializedTensor(const TensorProto& tensor, bool force_nodearg_creation) {
+void Graph::AddInitializedTensor(const TensorProto& tensor) {
   auto existing = name_to_initial_tensor_.find(tensor.name());
   if (existing != name_to_initial_tensor_.cend()) {
     ORT_ENFORCE(existing->second == &tensor,
@@ -2782,7 +2782,7 @@ void Graph::AddInitializedTensor(const TensorProto& tensor, bool force_nodearg_c
   *(tensor_added) = tensor;
   name_to_initial_tensor_[tensor.name()] = tensor_added;
   SetGraphResolveNeeded();
-  if (force_nodearg_creation || (!is_loaded_from_model_file_ && GetNodeArg(tensor.name()) == nullptr)) {
+  if (!is_loaded_from_model_file_ && GetNodeArg(tensor.name()) == nullptr) {
     // make sure there is a NodeArg for the initializer as SetGraphInputsOutputs may add it to the graph inputs.
     // the shape will be set to the correct value in TypeCheckInputsAndInitializers as we don't yet know whether there
     // will be a matching graph input for this initializer (we prefer shape info from the graph input).
