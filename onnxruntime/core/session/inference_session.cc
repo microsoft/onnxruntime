@@ -296,6 +296,14 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
                              session_options_.execution_mode == ExecutionMode::ORT_SEQUENTIAL &&
                              to.affinity_vec_len == 0;
       to.allow_spinning = allow_intra_op_spinning;
+
+      // Set custom threading functions
+      to.custom_create_thread_fn = session_options_.custom_create_thread_fn;
+      to.custom_thread_creation_options = session_options.custom_thread_creation_options;
+      to.custom_join_thread_fn = session_options_.custom_join_thread_fn;
+      if (to.custom_create_thread_fn) {
+        ORT_ENFORCE(to.custom_join_thread_fn, "custom join thread function not set for intra op thread pool");
+      }
       thread_pool_ =
           concurrency::CreateThreadPool(&Env::Default(), to, concurrency::ThreadPoolType::INTRA_OP);
     }
@@ -316,6 +324,14 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
       to.name = inter_thread_pool_name_.c_str();
       to.set_denormal_as_zero = set_denormal_as_zero;
       to.allow_spinning = allow_inter_op_spinning;
+
+      // Set custom threading functions
+      to.custom_create_thread_fn = session_options_.custom_create_thread_fn;
+      to.custom_thread_creation_options = session_options.custom_thread_creation_options;
+      to.custom_join_thread_fn = session_options_.custom_join_thread_fn;
+      if (to.custom_create_thread_fn) {
+        ORT_ENFORCE(to.custom_join_thread_fn, "custom join thread function not set for inter op thread pool");
+      }
       inter_op_thread_pool_ =
           concurrency::CreateThreadPool(&Env::Default(), to, concurrency::ThreadPoolType::INTER_OP);
       if (inter_op_thread_pool_ == nullptr) {
