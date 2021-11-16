@@ -5,6 +5,7 @@
 
 #include "core/mlas/inc/mlas.h"
 #include "core/optimizer/attention_fusion.h"
+#include "core/optimizer/bias_dropout_fusion.h"
 #include "core/optimizer/bias_gelu_fusion.h"
 #include "core/optimizer/bias_softmax_fusion.h"
 #include "core/optimizer/cast_elimination.h"
@@ -24,30 +25,31 @@
 #include "core/optimizer/gelu_approximation.h"
 #include "core/optimizer/gelu_fusion.h"
 #include "core/optimizer/gemm_activation_fusion.h"
+#include "core/optimizer/gemm_sum_fusion.h"
 #include "core/optimizer/gemm_transpose_fusion.h"
 #include "core/optimizer/identity_elimination.h"
 #include "core/optimizer/layer_norm_fusion.h"
 #include "core/optimizer/matmul_add_fusion.h"
 #include "core/optimizer/matmul_integer_to_float.h"
 #include "core/optimizer/matmul_scale_fusion.h"
+#include "core/optimizer/matmul_transpose_fusion.h"
 #include "core/optimizer/nchwc_transformer.h"
 #include "core/optimizer/nhwc_transformer.h"
 #include "core/optimizer/noop_elimination.h"
 #include "core/optimizer/not_where_fusion.h"
+#include "core/optimizer/qdq_transformer/qdq_propagation.h"
+#include "core/optimizer/qdq_transformer/qdq_s8_to_u8.h"
+#include "core/optimizer/qdq_transformer/relu_quantizelinear.h"
+#include "core/optimizer/qdq_transformer/selectors_actions/qdq_selector_action_transformer.h"
 #include "core/optimizer/relu_clip_fusion.h"
 #include "core/optimizer/reshape_fusion.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
 #include "core/optimizer/skip_layer_norm_fusion.h"
 #include "core/optimizer/slice_elimination.h"
-#include "core/optimizer/unsqueeze_elimination.h"
-#include "core/optimizer/qdq_transformer/qdq_propagation.h"
-#include "core/optimizer/qdq_transformer/qdq_s8_to_u8.h"
-#include "core/optimizer/qdq_transformer/relu_quantizelinear.h"
-#include "core/optimizer/qdq_transformer/selectors_actions/qdq_selector_action_transformer.h"
 #include "core/optimizer/transpose_optimizer/ort_transpose_optimizer.h"
+#include "core/optimizer/unsqueeze_elimination.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
-#include "core/optimizer/matmul_transpose_fusion.h"
-#include "core/optimizer/bias_dropout_fusion.h"
+
 
 namespace onnxruntime {
 class IExecutionProvider;
@@ -73,6 +75,7 @@ std::vector<std::unique_ptr<RewriteRule>> GenerateRewriteRules(
       rules.push_back(std::make_unique<NoopElimination>());
       rules.push_back(std::make_unique<DivMulFusion>());
       rules.push_back(std::make_unique<FuseReluClip>());
+      rules.push_back(std::make_unique<GemmSumFusion>());
       rules.push_back(std::make_unique<GemmTransposeFusion>());
       rules.push_back(std::make_unique<NotWhereFusion>());
       rules.push_back(std::make_unique<ConvAddFusion>());
