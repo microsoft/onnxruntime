@@ -44,8 +44,8 @@
         16349480652468900704
     ],
     [
-      "SimplifiedLayerNormalization ai.onnx CPUExecutionProvider",
-      418129161279605176
+        "SimplifiedLayerNormalization ai.onnx CPUExecutionProvider",
+        418129161279605176
     ],
     [
         "SparseToDenseMatMul com.microsoft CPUExecutionProvider",
@@ -160,6 +160,10 @@
         8512357837341844248
     ],
     [
+        "NhwcMaxPool com.microsoft CPUExecutionProvider",
+        11773579655431087496
+    ],
+    [
         "NGramRepeatBlock com.microsoft CPUExecutionProvider",
         17162613206685017176
     ],
@@ -181,15 +185,31 @@
     ],
     [
         "QLinearAveragePool com.microsoft CPUExecutionProvider",
-        9152647959212466896
+        7697522567125769728
+    ],
+    [
+        "QLinearAveragePool com.microsoft CPUExecutionProvider",
+        16087397801315871440
     ],
     [
         "QLinearConv com.microsoft CPUExecutionProvider",
-        16835965565578160400
+        10904143578341560456
+    ],
+    [
+        "QLinearConv com.microsoft CPUExecutionProvider",
+        11232265474041605760
+    ],
+    [
+        "QLinearConv com.microsoft CPUExecutionProvider",
+        11596245951504387848
     ],
     [
         "QLinearGlobalAveragePool com.microsoft CPUExecutionProvider",
-        8729391959357542728
+        2087133060447455992
+    ],
+    [
+        "QLinearGlobalAveragePool com.microsoft CPUExecutionProvider",
+        8306008644377580528
     ],
     [
         "QLinearLeakyRelu com.microsoft CPUExecutionProvider",
@@ -264,15 +284,15 @@
         1734858160766311432
     ],
     [
-      "QEmbedLayerNormalization com.microsoft CPUExecutionProvider",
-      9235385557940152248
+        "QEmbedLayerNormalization com.microsoft CPUExecutionProvider",
+        9235385557940152248
     ],
     [
-      "QGemm com.microsoft CPUExecutionProvider",
-      13737193491843065240
+        "QGemm com.microsoft CPUExecutionProvider",
+        13737193491843065240
     ],
     [
-      "GridSample com.microsoft CPUExecutionProvider",
-      15019666093341768288
+        "GridSample com.microsoft CPUExecutionProvider",
+        15019666093341768288
     ]
 ]
