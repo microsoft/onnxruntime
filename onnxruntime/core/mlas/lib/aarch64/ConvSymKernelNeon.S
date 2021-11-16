@@ -157,19 +157,19 @@ Return Value:
 .LConvSym.SkipLoadA1:
 
 .LConvSym.BlockLoopPrologue:
-        subs    x14,x4,16               // input channel - 16
+        cmp     x7,2                    // test if OutputCount < 2
         add     x0,x0,8                 // indirect A advance to next pointer, prepare for kernel size loop
-        movi    v12.8b, 128
+        csel    x15,x13,x15,lo          // if OutputCount < 2  x15 -> A0
+        subs    x14,x4,16               // input channel - 16
+        movi    v12.8b,128
         blo     .LConvSym.8InputChannels     // less than 16 deep, no unroll
 
-        cmp     x7,2                    // test if OutputCount < 2
+        ldr     d0,[x13],8
+        ldr     d1,[x15],8
         ldr     d8,[x1,64]
         ldr     d9,[x1,72]
-        ldr     d0,[x13],8
-        csel    x15,x13,x15,lo          // if OutputCount < 2  x15 -> A0
         ldr     d6,[x13],8
         subs    x14,x14,16              // input channel - 16
-        ldr     d1,[x15],8
         ldr     d7,[x15],8
         blo     .LConvSym.BlockLoopEpilogue  // need 32 input channel for full unrolled loop
 

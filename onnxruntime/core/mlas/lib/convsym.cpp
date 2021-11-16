@@ -230,6 +230,12 @@ MlasConvSymPackWSize(
 
     } else {
 
+#ifdef MLAS_TARGET_ARM64
+        if (InputChannels < 128) {
+            return 0;
+        }
+#endif
+
         size_t OutputChannelPackCount = ConvSymDispatch->FilterOutputChannelPackCount;
 
         if (ConvSymDispatch->Kernel == nullptr ||
