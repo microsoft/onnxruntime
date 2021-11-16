@@ -29,7 +29,9 @@ class OnnxRuntimeBackend(Backend):
     """  # noqa: E501
 
     allowReleasedOpsetsOnly = bool(os.getenv('ALLOW_RELEASED_ONNX_OPSET_ONLY', '1') == '1')
-    ExcludeProviders = os.getenv('EXCLUDE_PROVIDERS').split(',') 
+    ExcludeProviders = os.getenv('EXCLUDE_PROVIDERS')
+    if ExcludeProviders:
+        ExcludeProviders = ExcludeProviders.split(',')
 
     @classmethod
     def is_compatible(cls, model, device=None, **kwargs):
