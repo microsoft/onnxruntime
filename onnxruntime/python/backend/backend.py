@@ -33,6 +33,11 @@ class OnnxRuntimeBackend(Backend):
 
     @classmethod
     def ep_to_skip(cls, ep):
+        """
+        Skip specific execution provider for inference.
+
+        :param ep: execution provider name
+        """
         cls.ExecutionProvidersToSkip.append(ep)
 
     @classmethod
@@ -114,6 +119,8 @@ class OnnxRuntimeBackend(Backend):
                     setattr(options, k, v)
 
             providers = get_available_providers()
+
+            # Current TensorRT fails on many testcases, therefore we temporarily skip it.
             if 'TensorrtExecutionProvider' in providers and 'TensorrtExecutionProvider' in cls.ExecutionProvidersToSkip:
                 providers = ['CUDAExecutionProvider'] 
 
