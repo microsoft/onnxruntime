@@ -1202,6 +1202,39 @@ MlasQLinearGlobalAveragePoolNhwc(
     const uint8_t* ZeroBuffer
     );
 
+#if defined(MLAS_TARGET_ARM_ANY)
+void
+MLASCALL
+MlasQLinearGlobalAveragePoolNchw(
+    const int8_t* Input,
+    float ScaleInput,
+    int32_t ZeroPointInput,
+    int8_t* Output,
+    float ScaleOutput,
+    int32_t ZeroPointOutput,
+    size_t Channels,
+    size_t ImageSize,
+    int32_t* AccumulateBuffer
+    );
+
+void
+MLASCALL
+MlasQLinearGlobalAveragePoolNhwc(
+    const int8_t* Input,
+    float ScaleInput,
+    int32_t ZeroPointInput,
+    int8_t* Output,
+    float ScaleOutput,
+    int32_t ZeroPointOutput,
+    size_t Batch,
+    size_t ImageSize,
+    size_t Stride,
+    size_t Channels,
+    int32_t* AccumulateBuffer,
+    const int8_t* ZeroBuffer
+    );
+#endif
+
 //
 // InputA is of size N,
 // Input B is of size 1 if IsScalarB == true, otherwise it is of size N

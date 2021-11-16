@@ -10,6 +10,7 @@
 namespace onnxruntime {
 namespace contrib {
 
+template<typename T>
 class QLinearAveragePool final : public OpKernel, public PoolBase {
  public:
   QLinearAveragePool(const OpKernelInfo& info) : OpKernel(info), PoolBase(info) {
