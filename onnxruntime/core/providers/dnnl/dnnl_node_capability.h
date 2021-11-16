@@ -289,4 +289,16 @@ class DnnlReshapeNodeCapability : public DnnlDefaultNodeCapability {
   bool IsDimensionSupported(const Node* node) const;
 };
 
+/**
+ * Decide if a DynamicQuantizeLinear op is supported by DnnlExecutionProvider
+ */
+class DnnlDynamicQuantizeLinearNodeCapability : public DnnlDefaultNodeCapability {
+ public:
+  DnnlDynamicQuantizeLinearNodeCapability() : DnnlDefaultNodeCapability({type_float32}) {}
+
+  bool Supported(const Node* node, const GraphViewer& graph_viewer) const override;
+
+ private:
+};
+
 }  // namespace onnxruntime

@@ -111,7 +111,6 @@ Status SoftmaxCrossEntropyLoss<T, Tin>::ComputeInternal(OpKernelContext* ctx) co
                                               logit_data,
                                               logit_reshape,
                                               log_prob_data,
-                                              CudnnHandle(),
                                               1);
   ORT_RETURN_IF_ERROR(status);
 

@@ -1110,6 +1110,38 @@ def test_aten_multinomial(input_shape, num_samples, replacement):
 
     _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
 
+def test_gradient_correctness_bce_with_logits():
+    class NeuralNetBCEWithLogitsLoss(torch.nn.Module):
+        def __init__(self, input_size, hidden_size):
+            super(NeuralNetBCEWithLogitsLoss, self).__init__()
+            self.linear = torch.nn.Linear(input_size, hidden_size)
+
+        def forward(self, input, target):
+            loss_fct = torch.nn.BCEWithLogitsLoss()
+            return loss_fct(self.linear(input), target)
+
+    N, D, H = 16, 256, 128
+    device = 'cuda'
+    pt_model = NeuralNetBCEWithLogitsLoss(D, H).to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+
+    def run_step(model, input, target):
+        prediction = model(input, target)
+        loss = prediction.sum()
+        loss.backward()
+        return prediction
+
+    for _ in range(10):
+        pt_input = torch.rand((N, D), device=device, requires_grad=True)
+        ort_input = copy.deepcopy(pt_input)
+        pt_target = torch.rand((N, H), device=device)
+        ort_target = copy.deepcopy(pt_target)
+        pt_prediction = run_step(pt_model, pt_input, pt_target)
+        ort_prediction = run_step(ort_model, ort_input, ort_target)
+
+        _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
+        _test_helpers.assert_values_are_close(ort_input.grad, pt_input.grad)
+
 def test_module_with_non_differential_output():
     device = 'cuda'
     N, D_in, H, D_out = 32, 128, 64, 10
@@ -4373,7 +4405,8 @@ def test_serialize_ortmodule():
     pt_out = pt_model.train_step(x_1)
     ort_out = ort_model.train_step(x_2)
     _test_helpers.assert_values_are_close(pt_out, ort_out)
-    _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model)
+    _test_helpers.assert_gradients_match_and_reset_gradient(
+        ort_model, pt_model)
     pt_out, ort_out = None, None
 
     # Serialize ortmodule
@@ -4388,4 +4421,72 @@ def test_serialize_ortmodule():
     ort_out = ort_model_2.train_step(x_2)
     assert ort_out is not None
     _test_helpers.assert_values_are_close(pt_out, ort_out)
-    _test_helpers.assert_gradients_match_and_reset_gradient(ort_model_2, pt_model)
+    _test_helpers.assert_gradients_match_and_reset_gradient(
+        ort_model_2, pt_model)
+
+
+@pytest.mark.parametrize("batch_size, M, N", [(1, 2, 3), (1, 4, 3), (1, 5, 5), (10, 3, 4), (10, 4, 3), (10, 4, 4)])
+@pytest.mark.parametrize("k", [None, -5, -3, -1, 0, 2, 4])
+@pytest.mark.parametrize("has_upper, upper", [(True, 1), (True, 0), (False, 1)])
+def test_trilu_grad(batch_size, M, N, k, has_upper, upper):
+    class NeuralNetTrilu(torch.nn.Module):
+        def __init__(self, has_upper, upper):
+            super(NeuralNetTrilu, self).__init__()
+            self.upper = upper
+            self.has_upper = has_upper
+
+        def forward(self, x, k):
+            if self.has_upper is False or self.upper == 1:
+                y = torch.triu(x) if k is None else torch.triu(x, k)
+            else:
+                y = torch.tril(x) if k is None else torch.tril(x, k)
+            return y
+
+    def run_step(model, x, k):
+        prediction = model(x, k)
+        loss = prediction.sum()
+        loss.backward()
+        return prediction, loss
+
+    device = 'cuda'
+    pt_model = NeuralNetTrilu(has_upper, upper).to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+
+    pt_x = torch.rand((batch_size, M, N), requires_grad=True, device=device)
+    ort_x = copy.deepcopy(pt_x)
+
+    pt_prediction, pt_loss = run_step(pt_model, pt_x, k)
+    ort_prediction, ort_loss = run_step(ort_model, ort_x, k)
+    _test_helpers.assert_values_are_close(pt_prediction, ort_prediction)
+    _test_helpers.assert_values_are_close(pt_loss, ort_loss)
+    _test_helpers.assert_values_are_close(pt_x.grad, ort_x.grad)
+
+
+@pytest.mark.parametrize("M, N", [(2400, 128), (2400, 256), (2400, 512), (2400, 1024), (2400, 2048), (2400, 4096), (2400, 12800)])
+def test_softmax(M, N):
+    class NeuralNetSoftmax(torch.nn.Module):
+        def __init__(self):
+            super(NeuralNetSoftmax, self).__init__()
+            self.m = torch.nn.Softmax(dim=1)
+
+        def forward(self, x):
+            return self.m(x)
+
+    def run_step(model, x):
+        prediction = model(x)
+        loss = prediction.sum()
+        loss.backward()
+        return prediction, loss
+
+    device = 'cuda'
+    pt_model = NeuralNetSoftmax().to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+
+    pt_x = torch.rand((M, N), requires_grad=True, device=device)
+    ort_x = copy.deepcopy(pt_x)
+
+    pt_prediction, pt_loss = run_step(pt_model, pt_x)
+    ort_prediction, ort_loss = run_step(ort_model, ort_x)
+    _test_helpers.assert_values_are_close(pt_prediction, ort_prediction)
+    _test_helpers.assert_values_are_close(pt_loss, ort_loss)
+    _test_helpers.assert_values_are_close(pt_x.grad, ort_x.grad)

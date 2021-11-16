@@ -1,8 +1,4 @@
 parameters:
-- name: NpmVersionSuffix
-  type: string
-  default: ''
-
 - name: CommitOverride
   type: boolean
   default: false
@@ -10,6 +6,10 @@ parameters:
 - name: BuildConfig
   type: string
   default: 'Debug'
+
+- name: NpmPackagingMode
+  type: string
+  default: 'dev'
 
 jobs:
 - job: build_onnxruntime_web
@@ -100,29 +100,13 @@ jobs:
      node -e "a=require('child_process').execSync('git ls-files -m').toString();if(a)throw new Error('Following documents are not up-to-date: (did you run \"npm run build:doc\"?)\n'+a)"
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'Check out of dated documents'
-  - task: CopyFiles@2
+  - task: PowerShell@2
     inputs:
-      sourceFolder: $(Pipeline.Workspace)
-      contents: __commit.txt
-      targetFolder: $(Build.SourcesDirectory)\js\common
-    displayName: 'Copy commit ID to js/common'
-  - task: CopyFiles@2
-    inputs:
-      sourceFolder: $(Pipeline.Workspace)
-      contents: __commit.txt
-      targetFolder: $(Build.SourcesDirectory)\js\web
-    displayName: 'Copy commit ID to js/web'
-  - script: |
-     set /p __ort_current_version__=<$(Build.SourcesDirectory)\VERSION_NUMBER
-     node -p "a=new Date().toISOString();YYYYMMDD=a.slice(0,4)+a.slice(5,7)+a.slice(8,10);REV=0;`${process.env.__ort_current_version__}${{ parameters.NpmVersionSuffix }}`" >$(Build.SourcesDirectory)\VERSION_NUMBER
-     python .\tools\python\update_version.py
-    workingDirectory: '$(Build.SourcesDirectory)'
-    displayName: 'update package version'
-    condition: ne('${{ parameters.NpmVersionSuffix }}', '')
-  - script: |
-     npm run build
-    workingDirectory: '$(Build.SourcesDirectory)\js\web'
-    displayName: 'Build ort-web'
+      filePath: '$(Build.SourcesDirectory)\tools\ci_build\github\js\pack-npm-packages.ps1'
+      arguments: '$(NpmPackagingMode) $(Build.SourcesDirectory) web'
+      workingDirectory: $(Build.BinariesDirectory)
+      errorActionPreference: stop
+    displayName: 'Pack NPM packages'
   - script: |
      npm test
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
@@ -135,16 +119,6 @@ jobs:
      npm test -- --wasm-enable-proxy -b=wasm
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'Run ort-web tests - WebAssembly: proxy'
-  - script: |
-      npm pack
-    workingDirectory: '$(Build.SourcesDirectory)\js\common'
-    displayName: 'Generate NPM package (onnxruntime-common)'
-    condition: and(succeeded(), eq('${{ parameters.BuildConfig }}', 'Release'))
-  - script: |
-      npm pack
-    workingDirectory: '$(Build.SourcesDirectory)\js\web'
-    displayName: 'Generate NPM package (onnxruntime-web)'
-    condition: and(succeeded(), eq('${{ parameters.BuildConfig }}', 'Release'))
   - script: |
       npm run test:e2e
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
