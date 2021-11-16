@@ -10,6 +10,19 @@ import sys
 from setuptools import setup
 from torch.utils import cpp_extension
 
+def workaround_strict_prototypes_warning():
+    # Calling this function to eliminate -Wstrict-prototypes warnings.
+    # Per https://stackoverflow.com/a/29634231/23845, it's a 15+ year bug
+    # https://bugs.python.org/issue1222585, which hasn't been fixed.
+    # Following Pytorch, we use a workaround from stackoverflow.
+    # This is safe because we only compile C++ code in this extension.
+    import distutils.sysconfig
+    cfg_vars = distutils.sysconfig.get_config_vars()
+    for key, value in cfg_vars.items():
+        if type(value) == str:
+            cfg_vars[key] = value.replace("-Wstrict-prototypes", "")
+
+workaround_strict_prototypes_warning()
 
 # TODO: Implement a cleaner way to auto-generate torch_gpu_allocator.cc
 use_rocm = True if os.environ['ONNXRUNTIME_ROCM_VERSION'] else False
