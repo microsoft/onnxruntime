@@ -833,6 +833,18 @@ MlasMaximumPool(
     size_t KernelSize
     );
 
+#if defined(MLAS_TARGET_ARM_ANY)
+void
+MLASCALL
+MlasMaximumPool(
+    const int8_t* const* Input,
+    int8_t* Output,
+    size_t Channels,
+    size_t OutputCount,
+    size_t KernelSize
+    );
+#endif
+
 //
 // Miscellaneous compute routines.
 //
