@@ -160,10 +160,6 @@
         8512357837341844248
     ],
     [
-        "NhwcMaxPool com.microsoft CPUExecutionProvider",
-        11773579655431087496
-    ],
-    [
         "NGramRepeatBlock com.microsoft CPUExecutionProvider",
         17162613206685017176
     ],
@@ -185,15 +181,7 @@
     ],
     [
         "QLinearAveragePool com.microsoft CPUExecutionProvider",
-        7697522567125769728
-    ],
-    [
-        "QLinearAveragePool com.microsoft CPUExecutionProvider",
         16087397801315871440
-    ],
-    [
-        "QLinearConv com.microsoft CPUExecutionProvider",
-        10904143578341560456
     ],
     [
         "QLinearConv com.microsoft CPUExecutionProvider",
@@ -202,10 +190,6 @@
     [
         "QLinearConv com.microsoft CPUExecutionProvider",
         11596245951504387848
-    ],
-    [
-        "QLinearGlobalAveragePool com.microsoft CPUExecutionProvider",
-        2087133060447455992
     ],
     [
         "QLinearGlobalAveragePool com.microsoft CPUExecutionProvider",
