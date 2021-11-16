@@ -1,13 +1,15 @@
 ---
 title: NNAPI
+description: Instructions to execute ONNX Runtime with the NNAPI execution provider
 parent: Execution Providers
 nav_order: 7
+redirect_from: /docs/reference/execution-providers/NNAPI-ExecutionProvider
 ---
 {::options toc_levels="2" /}
 
 # NNAPI Execution Provider
 
-[Android Neural Networks API (NNAPI)](https://developer.android.com/ndk/guides/neuralnetworks) is a unified interface to CPU, GPU, and NN accelerators on Android.
+Accelerate ONNX models on Android devices with ONNX Runtime and the NNAPI execution provider. [Android Neural Networks API (NNAPI)](https://developer.android.com/ndk/guides/neuralnetworks) is a unified interface to CPU, GPU, and NN accelerators on Android.
 
 ## Contents
 {: .no_toc }
