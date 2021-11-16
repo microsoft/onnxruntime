@@ -26,7 +26,7 @@ class TestTransformer : public SelectorActionTransformer {
   static constexpr const char* kTransformerName = "test_transformer";
   static constexpr const char* kSelectorActionId = "remove_identity";
 
-  TestTransformer(const ApplyContextVariant& apply_context)
+  TestTransformer(const SatApplyContextVariant& apply_context)
       : SelectorActionTransformer{kTransformerName, GetSelectorsAndActions(), apply_context} {
   }
 
@@ -102,7 +102,7 @@ TEST(GraphRuntimeOptimizationTest, TestTransformerSavesRuntimeOptimization) {
   // run SAT to save runtime optimization
   {
     auto kernel_registry_manager = CreateKernelRegistryManager();
-    auto save_context = RuntimeOptimizationSaveContext{std::cref(*kernel_registry_manager)};
+    auto save_context = SatRuntimeOptimizationSaveContext{std::cref(*kernel_registry_manager)};
     sat::TestTransformer test_transformer{save_context};
     bool modified = false;
     ASSERT_STATUS_OK(test_transformer.Apply(graph, modified, *logger));

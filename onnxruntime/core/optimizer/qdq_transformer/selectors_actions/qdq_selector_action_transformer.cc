@@ -155,7 +155,7 @@ SelectorsAndActions CreateSelectorsAndActions() {
 
 }  // namespace
 
-QDQSelectorActionTransformer::QDQSelectorActionTransformer(const ApplyContextVariant& apply_context)
+QDQSelectorActionTransformer::QDQSelectorActionTransformer(const SatApplyContextVariant& apply_context)
     : SelectorActionTransformer{
           "QDQSelectorActionTransformer",
           CreateSelectorsAndActions(),

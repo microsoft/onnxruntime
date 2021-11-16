@@ -12,8 +12,7 @@
 #include "core/framework/kernel_registry_manager.h"
 #include "core/optimizer/graph_transformer.h"
 #include "core/optimizer/selectors_actions/actions.h"
-#include "core/optimizer/selectors_actions/runtime_optimization_load_context.h"
-#include "core/optimizer/selectors_actions/runtime_optimization_save_context.h"
+#include "core/optimizer/selectors_actions/selector_action_transformer_apply_contexts.h"
 
 namespace onnxruntime {
 
@@ -95,7 +94,7 @@ class SelectorsAndActions {
  private:
 #if !defined(ORT_MINIMAL_BUILD)
   std::unordered_map<std::string, std::unique_ptr<SelectorAndAction>> selectors_and_actions_map_;
-#else  // // !defined(ORT_MINIMAL_BUILD)
+#else   // !defined(ORT_MINIMAL_BUILD)
   std::unordered_map<std::string, std::unique_ptr<Action>> actions_map_;
 #endif  // !defined(ORT_MINIMAL_BUILD)
 };
@@ -105,22 +104,9 @@ Class that implements graph transformation via a set of Selector+Action pairs.
 This setup allows optimizations to be captured and applied at runtime in a minimal build.
 */
 class SelectorActionTransformer : public GraphTransformer {
- public:
-  struct DirectApplicationContext {};
-
-  // Union of graph transformation application contexts for various scenarios.
-  // - DirectApplicationContext: Directly apply transformations to the graph. Run Selectors and Actions.
-  // - RuntimeOptimizationSaveContext: Save runtime optimizations separately in the graph for later replay.
-  //     Run Selectors and save Actions.
-  // - RuntimeOptimizationLoadContext: Load runtime optimizations from the graph and replay them if applicable.
-  //     Run Actions.
-  using ApplyContextVariant = std::variant<DirectApplicationContext,
-                                           RuntimeOptimizationSaveContext,
-                                           RuntimeOptimizationLoadContext>;
-
  protected:
   SelectorActionTransformer(const std::string& name, SelectorsAndActions&& selectors_and_actions,
-                            const ApplyContextVariant& apply_context);
+                            const SatApplyContextVariant& apply_context);
 
   // can't copy/assign selectors_and_actions_
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(SelectorActionTransformer);
@@ -131,7 +117,7 @@ class SelectorActionTransformer : public GraphTransformer {
 #if !defined(ORT_MINIMAL_BUILD)
 
   Status ApplyDirect(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger,
-                     const RuntimeOptimizationSaveContext* save_context) const;
+                     const SatRuntimeOptimizationSaveContext* save_context) const;
 
   // check if the node matches any of the registered operators.
   // if it does, run the Selector.
@@ -143,19 +129,19 @@ class SelectorActionTransformer : public GraphTransformer {
   // NOTE, the graph must be the same as the graph_viewer's underlying graph
   Status MatchAndProcess(Graph& graph, const GraphViewer& graph_viewer, Node& node,
                          bool& modified, const logging::Logger& logger,
-                         const RuntimeOptimizationSaveContext* save_context) const;
+                         const SatRuntimeOptimizationSaveContext* save_context) const;
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
 #if defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
   // apply any saved optimizations
   Status ApplyFromRuntimeOptimizations(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger,
-                                       const RuntimeOptimizationLoadContext& load_context) const;
+                                       const SatRuntimeOptimizationLoadContext& load_context) const;
 #endif  // defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
 
   SelectorsAndActions selectors_and_actions_;
 
-  ApplyContextVariant apply_context_;
+  SatApplyContextVariant apply_context_;
 
 #if !defined(ORT_MINIMAL_BUILD)
   std::unordered_map<std::string, const SelectorAndAction*> op_type_to_selector_and_action_;

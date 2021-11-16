@@ -60,7 +60,7 @@ const Action* SelectorsAndActions::LookUpAction(const std::string& name) const {
 
 SelectorActionTransformer::SelectorActionTransformer(const std::string& name,
                                                      SelectorsAndActions&& selectors_and_actions,
-                                                     const ApplyContextVariant& apply_context)
+                                                     const SatApplyContextVariant& apply_context)
     : GraphTransformer{name},
       selectors_and_actions_{std::move(selectors_and_actions)},
       apply_context_{apply_context} {
@@ -80,7 +80,7 @@ SelectorActionTransformer::SelectorActionTransformer(const std::string& name,
 
 Status SelectorActionTransformer::MatchAndProcess(
     Graph& graph, const GraphViewer& graph_viewer, Node& node, bool& modified, const logging::Logger& logger,
-    const RuntimeOptimizationSaveContext* save_context) const {
+    const SatRuntimeOptimizationSaveContext* save_context) const {
   Status status = Status::OK();
 
   do {
@@ -149,7 +149,7 @@ Status SelectorActionTransformer::MatchAndProcess(
 }
 
 Status SelectorActionTransformer::ApplyDirect(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger,
-                                              const RuntimeOptimizationSaveContext* save_context) const {
+                                              const SatRuntimeOptimizationSaveContext* save_context) const {
   GraphViewer graph_viewer(graph);
 
   for (auto index : graph_viewer.GetNodesInTopologicalOrder()) {
@@ -176,7 +176,7 @@ Status SelectorActionTransformer::ApplyDirect(Graph& graph, bool& modified, int 
 static Status RegisterProducedNodesWithLoadContext(NodeIndex pre_action_max_index, NodeIndex post_action_max_index,
                                                    const Graph& graph,
                                                    const RuntimeOptimizationRecord& record,
-                                                   const RuntimeOptimizationLoadContext& load_context) {
+                                                   const SatRuntimeOptimizationLoadContext& load_context) {
   assert(post_action_max_index >= pre_action_max_index);
 
   const auto num_new_node_indices = post_action_max_index - pre_action_max_index;
@@ -210,7 +210,7 @@ static Status RegisterProducedNodesWithLoadContext(NodeIndex pre_action_max_inde
 
 Status SelectorActionTransformer::ApplyFromRuntimeOptimizations(
     Graph& graph, bool& modified, int graph_level, const logging::Logger& logger,
-    const RuntimeOptimizationLoadContext& load_context) const {
+    const SatRuntimeOptimizationLoadContext& load_context) const {
   for (auto& node : graph.Nodes()) {
     ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level, logger));
   }
@@ -248,7 +248,7 @@ Status SelectorActionTransformer::ApplyFromRuntimeOptimizations(
 
 Status SelectorActionTransformer::ApplyImpl(Graph& graph, bool& modified, int graph_level,
                                             const logging::Logger& logger) const {
-  if (const auto* load_context = std::get_if<RuntimeOptimizationLoadContext>(&apply_context_)) {
+  if (const auto* load_context = std::get_if<SatRuntimeOptimizationLoadContext>(&apply_context_)) {
 #if defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
     return ApplyFromRuntimeOptimizations(graph, modified, graph_level, logger, *load_context);
 #else   // defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
@@ -257,11 +257,11 @@ Status SelectorActionTransformer::ApplyImpl(Graph& graph, bool& modified, int gr
 #endif  // defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
   }
 
-  assert(std::holds_alternative<RuntimeOptimizationSaveContext>(apply_context_) ||
-         std::holds_alternative<DirectApplicationContext>(apply_context_));
+  assert(std::holds_alternative<SatRuntimeOptimizationSaveContext>(apply_context_) ||
+         std::holds_alternative<SatDirectApplicationContext>(apply_context_));
 
 #if !defined(ORT_MINIMAL_BUILD)
-  const auto* save_context = std::get_if<RuntimeOptimizationSaveContext>(&apply_context_);
+  const auto* save_context = std::get_if<SatRuntimeOptimizationSaveContext>(&apply_context_);
   return ApplyDirect(graph, modified, graph_level, logger, save_context);
 #else   // !defined(ORT_MINIMAL_BUILD)
   return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,

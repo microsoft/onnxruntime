@@ -11,7 +11,7 @@ Transformer that fuses QDQ and fp32 ops into quantized ops.
 */
 class QDQSelectorActionTransformer : public SelectorActionTransformer {
  public:
-  QDQSelectorActionTransformer(const ApplyContextVariant& apply_context = ApplyContextVariant{});
+  QDQSelectorActionTransformer(const SatApplyContextVariant& apply_context = SatApplyContextVariant{});
 };
 
 }  // namespace onnxruntime

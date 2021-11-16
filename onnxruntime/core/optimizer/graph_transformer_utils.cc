@@ -3,8 +3,15 @@
 
 #include "core/optimizer/graph_transformer_utils.h"
 
+#include <algorithm>
+
+#include "core/optimizer/qdq_transformer/selectors_actions/qdq_selector_action_transformer.h"
+
+#if !defined(ORT_MINIMAL_BUILD)
+
 #include "core/mlas/inc/mlas.h"
 #include "core/optimizer/attention_fusion.h"
+#include "core/optimizer/bias_dropout_fusion.h"
 #include "core/optimizer/bias_gelu_fusion.h"
 #include "core/optimizer/bias_softmax_fusion.h"
 #include "core/optimizer/cast_elimination.h"
@@ -30,29 +37,41 @@
 #include "core/optimizer/matmul_add_fusion.h"
 #include "core/optimizer/matmul_integer_to_float.h"
 #include "core/optimizer/matmul_scale_fusion.h"
+#include "core/optimizer/matmul_transpose_fusion.h"
 #include "core/optimizer/nchwc_transformer.h"
 #include "core/optimizer/nhwc_transformer.h"
 #include "core/optimizer/noop_elimination.h"
 #include "core/optimizer/not_where_fusion.h"
+#include "core/optimizer/qdq_transformer/qdq_propagation.h"
+#include "core/optimizer/qdq_transformer/qdq_s8_to_u8.h"
+#include "core/optimizer/qdq_transformer/relu_quantizelinear.h"
 #include "core/optimizer/relu_clip_fusion.h"
 #include "core/optimizer/reshape_fusion.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
 #include "core/optimizer/skip_layer_norm_fusion.h"
 #include "core/optimizer/slice_elimination.h"
-#include "core/optimizer/unsqueeze_elimination.h"
-#include "core/optimizer/qdq_transformer/qdq_propagation.h"
-#include "core/optimizer/qdq_transformer/qdq_s8_to_u8.h"
-#include "core/optimizer/qdq_transformer/relu_quantizelinear.h"
-#include "core/optimizer/qdq_transformer/selectors_actions/qdq_selector_action_transformer.h"
 #include "core/optimizer/transpose_optimizer/ort_transpose_optimizer.h"
+#include "core/optimizer/unsqueeze_elimination.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
-#include "core/optimizer/matmul_transpose_fusion.h"
-#include "core/optimizer/bias_dropout_fusion.h"
 
-namespace onnxruntime {
-class IExecutionProvider;
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
-namespace optimizer_utils {
+namespace onnxruntime::optimizer_utils {
+
+static void FilterTransformers(std::vector<std::unique_ptr<GraphTransformer>>& transformers,
+                               const std::unordered_set<std::string>& transformers_to_disable) {
+  if (transformers_to_disable.empty()) return;
+
+  transformers.erase(
+      std::remove_if(transformers.begin(), transformers.end(),
+                     [&](const std::unique_ptr<GraphTransformer>& transformer) {
+                       return !transformer ||
+                              transformers_to_disable.find(transformer->Name()) != transformers_to_disable.end();
+                     }),
+      transformers.end());
+}
+
+#if !defined(ORT_MINIMAL_BUILD)
 
 std::string GenerateRuleBasedTransformerName(TransformerLevel level) {
   return "Level" + std::to_string(static_cast<uint32_t>(level)) + "_RuleBasedTransformer";
@@ -89,7 +108,7 @@ std::vector<std::unique_ptr<RewriteRule>> GenerateRewriteRules(
       break;
 
     default:
-      ORT_ENFORCE(false, "Unsupported level" + std::to_string(static_cast<uint32_t>(level)));
+      ORT_THROW("Unsupported optimization level: ", static_cast<int>(level));
   }
 
   if (rules_to_disable.empty()) {
@@ -125,19 +144,6 @@ std::unique_ptr<RuleBasedGraphTransformer> GenerateRuleBasedGraphTransformer(
   }
 
   return rule_transformer;
-}
-
-static void FilterTransformers(std::vector<std::unique_ptr<GraphTransformer>>& transformers,
-                               const std::unordered_set<std::string>& transformers_to_disable) {
-  if (transformers_to_disable.empty()) return;
-
-  transformers.erase(
-      std::remove_if(transformers.begin(), transformers.end(),
-                     [&](const std::unique_ptr<GraphTransformer>& transformer) {
-                       return !transformer ||
-                              transformers_to_disable.find(transformer->Name()) != transformers_to_disable.end();
-                     }),
-      transformers.end());
 }
 
 std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
@@ -247,9 +253,13 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
   return transformers;
 }
 
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
+#if defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
+
 std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformersForRuntimeOptimizations(
     TransformerLevel level,
-    const RuntimeOptimizationSaveContext& runtime_optimization_save_context,
+    const SatApplyContextVariant& apply_context,
     const std::unordered_set<std::string>& rules_and_transformers_to_disable) {
   std::vector<std::unique_ptr<GraphTransformer>> transformers;
 
@@ -257,7 +267,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformersForRuntimeOpt
     case TransformerLevel::Level1:
       break;
     case TransformerLevel::Level2:
-      transformers.emplace_back(std::make_unique<QDQSelectorActionTransformer>(runtime_optimization_save_context));
+      transformers.emplace_back(std::make_unique<QDQSelectorActionTransformer>(apply_context));
       break;
     case TransformerLevel::Level3:
       break;
@@ -270,5 +280,6 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformersForRuntimeOpt
   return transformers;
 }
 
-}  // namespace optimizer_utils
-}  // namespace onnxruntime
+#endif  // defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
+
+}  // namespace onnxruntime::optimizer_utils

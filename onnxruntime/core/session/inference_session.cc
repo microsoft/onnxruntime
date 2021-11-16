@@ -38,7 +38,7 @@
 #include "core/optimizer/graph_transformer.h"
 #include "core/optimizer/insert_cast_transformer.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
-#include "core/optimizer/selectors_actions/runtime_optimization_save_context.h"
+#include "core/optimizer/selectors_actions/selector_action_transformer_apply_contexts.h"
 #include "core/optimizer/transformer_memcpy.h"
 #include "core/platform/Barrier.h"
 #include "core/platform/ort_mutex.h"
@@ -60,10 +60,6 @@
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
 #include "core/framework/customregistry.h"
 #include "core/session/custom_ops.h"
-#endif
-
-#if defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
-#include "core/optimizer/ort_format_runtime_optimization/utils.h"
 #endif
 
 using namespace ONNX_NAMESPACE;
@@ -1137,13 +1133,19 @@ Status PartitionOrtFormatModel(onnxruntime::Graph& graph,
 }
 
 #if defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
-Status TransformGraphForOrtFormatModel(onnxruntime::Graph& graph, const logging::Logger& logger) {
-  const auto runtime_transformers = std::vector<std::unique_ptr<GraphTransformer>>{};
-  // TODO enable transformers
-  //const auto runtime_transformers = optimizer_utils::GenerateOrtFormatRuntimeTransformers();
-  for (const auto& runtime_transformer : runtime_transformers) {
-    bool modified = false;
-    ORT_RETURN_IF_ERROR(runtime_transformer->Apply(graph, modified, logger));
+Status ReplayRuntimeOptimizations(
+    onnxruntime::Graph& graph, const logging::Logger& logger, TransformerLevel max_level,
+    std::unordered_map<NodeIndex, HashValue>& actual_node_index_to_kernel_def_hash) {
+  SatRuntimeOptimizationLoadContext load_context{std::ref(actual_node_index_to_kernel_def_hash)};
+  bool modified = false;
+
+  for (int level = static_cast<int>(TransformerLevel::Level2); level <= static_cast<int>(max_level); ++level) {
+    // don't need to specify optimizers to disable, optimizers will process whatever runtime optimizations there are
+    const auto transformers = optimizer_utils::GenerateTransformersForRuntimeOptimizations(
+        static_cast<TransformerLevel>(level), load_context);
+    for (const auto& transformer : transformers) {
+      ORT_RETURN_IF_ERROR(transformer->Apply(graph, modified, logger));
+    }
   }
 
   return Status::OK();
@@ -1361,7 +1363,13 @@ common::Status InferenceSession::Initialize() {
       }
 
 #if defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
-      ORT_RETURN_IF_ERROR_SESSIONID_(TransformGraphForOrtFormatModel(graph, *session_logger_));
+      std::unordered_map<NodeIndex, HashValue> actual_node_index_to_kernel_def_hash{};
+      {
+        ORT_RETURN_IF_ERROR_SESSIONID_(ReplayRuntimeOptimizations(
+            graph, *session_logger_, session_options_.graph_optimization_level,
+            actual_node_index_to_kernel_def_hash));
+      }
+      // TODO set kernel def hashes for produced nodes
 #endif  // defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
@@ -2220,7 +2228,7 @@ common::Status InferenceSession::AddPredefinedTransformers(GraphTransformerManag
       // Generate and register transformers for level
       std::vector<std::unique_ptr<GraphTransformer>> transformers_to_register = [&]() {
         if (level != TransformerLevel::Level1 && saving_runtime_optimizations) {
-          RuntimeOptimizationSaveContext save_context{kernel_registry_manager_};
+          SatRuntimeOptimizationSaveContext save_context{kernel_registry_manager_};
           return optimizer_utils::GenerateTransformersForRuntimeOptimizations(level, save_context,
                                                                               optimizers_to_disable_);
         } else {

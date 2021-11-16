@@ -9,7 +9,7 @@
 #include "core/graph/graph_utils.h"  // TODO: Minimize usage of this given we want to use Actions in a minimal build
 #include "core/graph/runtime_optimization_record.h"
 #include "core/optimizer/selectors_actions/helpers.h"
-#include "core/optimizer/selectors_actions/runtime_optimization_save_context.h"
+#include "core/optimizer/selectors_actions/selector_action_transformer_apply_contexts.h"
 
 namespace onnxruntime {
 
@@ -30,7 +30,7 @@ struct Action {
 
   // saving interface
   virtual Status RunForSave(Graph& /*graph*/, const NodesToOptimize& /*selected_nodes*/,
-                            const RuntimeOptimizationSaveContext& /*save_context*/,
+                            const SatRuntimeOptimizationSaveContext& /*save_context*/,
                             SavedState& /*saved_state*/, bool& /*graph_modified*/) const {
     // do nothing by default
     return Status::OK();
@@ -55,7 +55,7 @@ struct MultiAction : public Action {
 
 #if !defined(ORT_MINIMAL_BUILD)
   Status RunForSave(Graph& graph, const NodesToOptimize& selected_nodes,
-                    const RuntimeOptimizationSaveContext& save_context,
+                    const SatRuntimeOptimizationSaveContext& save_context,
                     SavedState& saved_state, bool& graph_modified) const override {
     for (const auto& action : actions_) {
       ORT_RETURN_IF_ERROR(action->RunForSave(graph, selected_nodes, save_context, saved_state, graph_modified));
@@ -110,7 +110,7 @@ struct ReplaceWithNew : public Action {
 
 #if !defined(ORT_MINIMAL_BUILD)
   Status RunForSave(Graph& graph, const NodesToOptimize& selected_nodes,
-                    const RuntimeOptimizationSaveContext& save_context,
+                    const SatRuntimeOptimizationSaveContext& save_context,
                     SavedState& saved_state, bool& graph_modified) const override;
 #endif  // !defined(ORT_MINIMAL_BUILD)
 

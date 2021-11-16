@@ -105,7 +105,7 @@ Status ReplaceWithNew::Run(Graph& graph, const NodesToOptimize& selected_nodes) 
 
 #if !defined(ORT_MINIMAL_BUILD)
 Status ReplaceWithNew::RunForSave(Graph& graph, const NodesToOptimize& selected_nodes,
-                                  const RuntimeOptimizationSaveContext& save_context,
+                                  const SatRuntimeOptimizationSaveContext& save_context,
                                   SavedState& saved_state, bool& graph_modified) const {
   // make temporary node, use it to look up kernel def hash, remove temporary node
   const auto op_type = OpType(selected_nodes);
