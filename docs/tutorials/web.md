@@ -5,11 +5,6 @@ has_children: false
 nav_order: 7
 ---
 
-## Contents
-{: .no_toc }
-
-* TOC placeholder
-{:toc}
 
 # Deploy and inference ML models on the web
 {: .no_toc }
@@ -23,6 +18,13 @@ Below is what the site looks like from the template. It is looping through a lis
 Example template output:
 
 <img src="../../images/ort-web-demo.gif" width="75%" height="75%"/>
+
+
+## Contents
+{: .no_toc }
+
+* TOC placeholder
+{:toc}
 
 ## What is ORT-Web?
 
