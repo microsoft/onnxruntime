@@ -99,7 +99,7 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
   const nnapi::OpSupportCheckParams params{
       android_feature_level,
       !!(nnapi_flags_ & NNAPI_FLAG_USE_NCHW),
-      std::make_unique<nnapi::QDQSupportHelper>(nnapi::CreateSelectors(), graph_viewer),
+      nnapi::QDQSupportHelper(nnapi::CreateSelectors(), graph_viewer),
   };
 
   if (params.android_feature_level < ORT_NNAPI_MIN_API_LEVEL) {

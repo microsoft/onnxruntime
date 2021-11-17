@@ -33,6 +33,11 @@ QDQSupportHelper::QDQSupportHelper(Selectors&& selectors, const GraphViewer& gra
     const auto* node = graph_viewer_.GetNode(index);
     SetQDQNodeGroup(*node);
   }
+
+  target_nodes_.reserve(target_node_to_qdq_group_.size());
+  for (const auto kv : target_node_to_qdq_group_) {
+    target_nodes_.push_back(kv.first);
+  }
 }
 
 void Selectors::RegisterSelector(const Selector::OpVersionsMap& ops_and_versions_in,
@@ -44,8 +49,12 @@ void Selectors::RegisterSelector(const Selector::OpVersionsMap& ops_and_versions
   ORT_IGNORE_RETURN_VALUE(selectors_set_.insert(std::move(entry)));
 }
 
-bool QDQSupportHelper::IsNodeInQDQGroup(const Node& node) const {
-  return nodes_in_qdq_group.find(&node) != nodes_in_qdq_group.end();
+const bool QDQSupportHelper::IsNodeInQDQGroup(const Node& node) const {
+  return nodes_in_qdq_group_.find(&node) != nodes_in_qdq_group_.end();
+}
+
+const bool QDQSupportHelper::IsNodeTargetNode(const Node& node) const {
+  return std::find(target_nodes_.begin(), target_nodes_.end(), &node) != target_nodes_.end();
 }
 
 const QDQ::NodeGroup QDQSupportHelper::GetQDQNodeGroupWithTargetNode(const Node& target_node) const {
@@ -94,26 +103,21 @@ void QDQSupportHelper::SetQDQNodeGroup(const Node& node) {
   // Obtain the qdq node group from the qdq node index group
   if (qdq_node_group_indices.has_value()) {
     qdq_node_group.target_node = &node;
-    nodes_in_qdq_group.insert(&node);
+    nodes_in_qdq_group_.insert(&node);
 
     for (auto idx : qdq_node_group_indices->dq_nodes) {
       const auto* dq_node = graph_viewer_.GetNode(idx);
       qdq_node_group.dq_nodes.push_back(dq_node);
-      nodes_in_qdq_group.insert(dq_node);
+      nodes_in_qdq_group_.insert(dq_node);
     }
 
     for (auto idx : qdq_node_group_indices->q_nodes) {
       const auto* q_node = graph_viewer_.GetNode(idx);
       qdq_node_group.q_nodes.push_back(q_node);
-      nodes_in_qdq_group.insert(q_node);
+      nodes_in_qdq_group_.insert(q_node);
     }
 
-    auto it = target_node_to_qdq_group_.find(&node);
-    if (it != target_node_to_qdq_group_.end()) {
-      it->second = qdq_node_group;
-    } else {
-      target_node_to_qdq_group_[&node] = std::move(qdq_node_group);
-    }
+    target_node_to_qdq_group_[&node] = std::move(qdq_node_group);
   }
 }
 

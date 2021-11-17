@@ -10,7 +10,7 @@ namespace onnxruntime {
 namespace nnapi {
 
 struct OpSupportCheckParams {
-  OpSupportCheckParams(int32_t android_feature_level, bool use_nchw, std::unique_ptr<QDQSupportHelper> qdq_support_helper)
+  OpSupportCheckParams(int32_t android_feature_level, bool use_nchw, QDQSupportHelper qdq_support_helper)
       : android_feature_level(android_feature_level),
         use_nchw(use_nchw),
         qdq_support_helper(std::move(qdq_support_helper)) {
@@ -18,7 +18,7 @@ struct OpSupportCheckParams {
 
   int32_t android_feature_level = 0;
   bool use_nchw = false;
-  std::unique_ptr<QDQSupportHelper> qdq_support_helper;
+  QDQSupportHelper qdq_support_helper;
 };
 
 class IOpSupportChecker {

@@ -725,7 +725,7 @@ bool ConvOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initial
                                              const OpSupportCheckParams& params) const {
   const auto& op_type = node.OpType();
   const bool is_qlinear_conv = (op_type == "QLinearConv");
-  const bool is_qdq_node = params.qdq_support_helper->IsNodeInQDQGroup(node);
+  const bool is_qdq_node = params.qdq_support_helper.IsNodeInQDQGroup(node);
 
   // We don't support nhwc com.microsoft.QLinearConv for now
   if (is_qlinear_conv && node.Domain() == kMSDomain) {
@@ -738,7 +738,7 @@ bool ConvOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initial
   size_t w_idx = is_qlinear_conv ? 3 : 1;
   const auto group = helper.Get("group", 1);
 
-  const auto qdq_group = params.qdq_support_helper->GetQDQNodeGroupWithTargetNode(node);
+  const auto qdq_group = params.qdq_support_helper.GetQDQNodeGroupWithTargetNode(node);
 
   std::string weight_name;
   if (is_qdq_node) {
