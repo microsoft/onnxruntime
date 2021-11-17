@@ -23,8 +23,8 @@ struct OpenCLExecutionProviderInfo {
 // Logical device representation.
 class OpenCLExecutionProvider : public IExecutionProvider {
   friend class opencl::OpenCLDataTransfer;
- public:
 
+ public:
   explicit OpenCLExecutionProvider(const OpenCLExecutionProviderInfo& info);
   OpenCLExecutionProvider(OpenCLExecutionProvider&&) noexcept;
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(OpenCLExecutionProvider);
@@ -37,6 +37,9 @@ class OpenCLExecutionProvider : public IExecutionProvider {
   cl::Device GetOpenCLDevice() const { return dev_; }
   cl::Context GetOpenCLContext() const { return ctx_; }
   cl::CommandQueue GetCommandQueue() const { return cmd_queue_; }
+
+  IAllocatorUniquePtr<cl::Buffer> GetScratchBuffer(size_t nbytes) const;
+  IAllocatorUniquePtr<cl::Image2D> GetScratchImage2D(opencl::Image2DDesc desc) const;
 
  private:
   Status InitOpenCLContext();

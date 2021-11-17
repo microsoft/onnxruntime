@@ -138,11 +138,12 @@ Status OpenCLDataTransfer::CopyTensor1DToImage2D(const Tensor& src, const Image2
   // solution here...
   std::cerr << "CopyTensor1DToImage2D\n";
   cl_int err{};
-  float* b = const_cast<float*>(src.Data<float>());
-  Buffer tmp_buffer(exec_->GetCommandQueue(), b, b + src.SizeInBytes(), /*readOnly=*/true, /*useHostPtr=*/true, &err);
+  auto tmp = exec_->GetScratchBuffer(src.SizeInBytes());
+  ORT_RETURN_IF_CL_ERROR(exec_->GetCommandQueue().enqueueWriteBuffer(*tmp, /*blocking=*/CL_FALSE, 0, src.SizeInBytes(), src.DataRaw()));
   ORT_RETURN_IF_CL_ERROR(err);
-  ORT_RETURN_IF_ERROR(CopyBuffer1DToImage2D(tmp_buffer, src.Shape(), dst, desc));
-  exec_->GetCommandQueue().finish();  // do sync copy, since we cannot extend the lifetime of src or tmp_buffer
+  ORT_RETURN_IF_ERROR(CopyBuffer1DToImage2D(*tmp, src.Shape(), dst, desc));
+  // do sync copy, since we cannot extend the lifetime of src or tmp
+  exec_->GetCommandQueue().finish();
   return Status::OK();
 }
 
@@ -158,13 +159,11 @@ Status OpenCLDataTransfer::CopyImage2DToTensor1D(const Image2D& src, const Image
   // NOTE: See CopyTensor1DToImage2D for the underlying issue of using enqueueReadImage
   std::cerr << "CopyImage2DToTensor1D\n";
   cl_int err{};
-  float* b = dst.MutableData<float>();
-  Buffer tmp_buffer(exec_->GetCommandQueue(), b, b + dst.SizeInBytes(), /*readOnly=*/false, /*useHostPtr=*/false, &err);
-  // auto tmp_buffer_ptr = (cl::Buffer*)exec_->GetAllocator(0, (OrtMemType)CLMemType::OPENCL_BUFFER)->Alloc(desc.UHeight() * desc.UWidth() * 4 * sizeof(float));
+  auto tmp = exec_->GetScratchBuffer(dst.SizeInBytes());
   ORT_RETURN_IF_CL_ERROR(err);
-  ORT_RETURN_IF_ERROR(CopyImage2DToBuffer1D(src, desc, tmp_buffer, dst.Shape()));
-  ORT_RETURN_IF_CL_ERROR(exec_->GetCommandQueue().enqueueReadBuffer(tmp_buffer, /*blocking=*/CL_TRUE, /*offset=*/0, dst.SizeInBytes(), dst.MutableDataRaw()));
-  // exec_->GetAllocator(0, (OrtMemType)CLMemType::OPENCL_BUFFER)->Free(tmp_buffer_ptr);
+  ORT_RETURN_IF_ERROR(CopyImage2DToBuffer1D(src, desc, *tmp, dst.Shape()));
+  // do sync copy, since we cannot extend the lifetime of src or tmp
+  ORT_RETURN_IF_CL_ERROR(exec_->GetCommandQueue().enqueueReadBuffer(*tmp, /*blocking=*/CL_TRUE, /*offset=*/0, dst.SizeInBytes(), dst.MutableDataRaw()));
   return Status::OK();
 }
 

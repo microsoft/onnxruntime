@@ -129,6 +129,24 @@ void OpenCLExecutionProvider::RegisterAllocator(std::shared_ptr<AllocatorManager
       }}));
 }
 
+IAllocatorUniquePtr<cl::Buffer> OpenCLExecutionProvider::GetScratchBuffer(size_t nbytes) const {
+  auto alloc = GetAllocator(0, (OrtMemType)opencl::CLMemType::OPENCL_BUFFER);
+  return IAllocatorUniquePtr<cl::Buffer>{
+      static_cast<cl::Buffer*>(alloc->Alloc(nbytes)),
+      [=](void* ptr) {
+        alloc->Free(ptr);
+      }};
+}
+
+IAllocatorUniquePtr<cl::Image2D> OpenCLExecutionProvider::GetScratchImage2D(opencl::Image2DDesc desc) const {
+  auto alloc = GetAllocator(0, (OrtMemType)opencl::CLMemType::OPENCL_IMAGE_2D);
+  return IAllocatorUniquePtr<cl::Image2D>{
+      static_cast<cl::Image2D*>(alloc->Alloc(desc.AsTensorShape())),
+      [=](void* ptr) {
+        alloc->Free(ptr);
+      }};
+}
+
 /*
 #pragma region IDataTransfer related code
 */
