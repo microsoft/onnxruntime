@@ -663,9 +663,10 @@ Status QLinearConv<ActType>::Compute(OpKernelContext* context) const {
 
       if (is_depthwise_conv) {
         MlasConvDepthwise(
-            worker_indirection_buffer,
+            reinterpret_cast<const void* const*>(worker_indirection_buffer),
             X_zero_point_value,
-            reordered_W,
+            std::is_signed<ActType>::value,
+            reinterpret_cast<const void* const*>(reordered_W),
             W_zero_point_value,
             is_W_signed,
             worker_gemm_output,

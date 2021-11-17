@@ -703,23 +703,10 @@ MlasConv(
 void
 MLASCALL
 MlasConvDepthwise(
-    const uint8_t* const* Input,
+    const void* const* Input,
     uint8_t InputZeroPoint,
-    const uint8_t* Filter,
-    uint8_t FilterZeroPoint,
-    bool FilterIsSigned,
-    int32_t* Output,
-    size_t Channels,
-    size_t OutputCount,
-    size_t KernelSize
-    );
-
-void
-MLASCALL
-MlasConvDepthwise(
-    const int8_t* const* Input,
-    int8_t InputZeroPoint,
-    const uint8_t* Filter,
+    bool InputIsSigned,
+    const void* Filter,
     uint8_t FilterZeroPoint,
     bool FilterIsSigned,
     int32_t* Output,
