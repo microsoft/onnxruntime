@@ -50,7 +50,7 @@ There are many ways to create a custom model that is specific to the task you ar
 
 ## The Template
 
-The goal of this template is to provide code examples and a starting point for deploying your models. Let’s dive into the template and breakdown the code while looking at how to deploy a computer vision model. This template uses NextJS, which is an implementation of ReactJS which much like this template gives you a starting point for building production React apps. Read more about [NextJS Here](https://nextjs.org/). This template is configured with webpack, onnxruntime-web, React, TypeScript and dev environments for testing and debugging.
+The goal of this template is to provide a starting point for your accelerated ML web application. The template generates a computer vision application using the [NextJS](https://nextjs.org/) framework, authored in typescript and built with webpack. Let’s dive into the template and breakdown the code.
 
 ## The `utils` Folder 
 
