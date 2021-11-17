@@ -16,6 +16,9 @@ from torch.utils.dlpack import from_dlpack
 import _test_helpers
 
 
+has_cuda = torch.cuda.is_available()
+
+
 class TestOrtValue(unittest.TestCase):
 
     def testOrtValueDlPack(self):
@@ -52,54 +55,78 @@ class TestOrtValue(unittest.TestCase):
             ovar = ov.numpy()
             assert_almost_equal(ar, ovar)
 
-    def OrtValueVectorDlPackOrtValue(self, my_to_tensor):
+    def OrtValueVectorDlPackOrtValue(self, my_to_tensor, tensor_type, device):
         narrays = [
             np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32),
             np.array([[6.0, 7.0], [8.0, 9.0], [1.0, 6.0]], dtype=np.float32)]
         vect = OrtValueVector()
         ptr = []
         for a in narrays:
-            ortvalue = onnxrt.OrtValue.ortvalue_from_numpy(a)
+            ortvalue = onnxrt.OrtValue.ortvalue_from_numpy(a, device)
             vect.push_back(ortvalue._ortvalue)
             ptr.append(ortvalue.data_ptr())
         self.assertEqual(len(vect), 2)
 
-        ortvalues = vect.to_dlpack(my_to_tensor)
-        self.assertEqual(len(ortvalues), len(vect))
+        converted_values = vect.to_dlpack(my_to_tensor)
+        self.assertEqual(len(converted_values), len(vect))
         if my_to_tensor is None:
-            self.assertIn("PyCapsule", str(type(ortvalues[0])))
-            ortvalues = [C_OrtValue.from_dlpack(o, False) for o in ortvalues]
+            self.assertIn("PyCapsule", str(type(converted_values[0])))
+            converted_values = [C_OrtValue.from_dlpack(o, False) for o in converted_values]
+        else:
+            assert all(map(lambda v: isinstance(v, tensor_type), converted_values))
 
         # We make sure the function does not leak any python object.
-        cf = [sys.getrefcount(o) for o in ortvalues]
+        cf = [sys.getrefcount(o) for o in converted_values]
         dummy = [np.array([[0, 1]]), dict(a=3)]
         cf2 = [sys.getrefcount(o) for o in dummy]
         self.assertEqual(cf, cf2)  # it should be [3, 3]
 
         ptr2 = []
-        for av1, v2 in zip(narrays, ortvalues):
+        for av1, v2 in zip(narrays, converted_values):
             ptr2.append(v2.data_ptr())
             av2 = v2.numpy()
             assert_almost_equal(av1, av2)
         self.assertEqual(ptr, ptr2)
 
-    def testOrtValueVectorDlPackOrtValue(self):
+    def testOrtValueVectorDlPackOrtValue_cpu(self):
         def my_to_tensor(dlpack_structure):
             return C_OrtValue.from_dlpack(dlpack_structure, False)
-        self.OrtValueVectorDlPackOrtValue(my_to_tensor)
+        self.OrtValueVectorDlPackOrtValue(my_to_tensor, C_OrtValue, 'cpu')
 
-    def testOrtValueVectorDlPackTorch(self):
+    def testOrtValueVectorDlPackTorch_cpu(self):
         def my_to_tensor(dlpack_structure):
             return from_dlpack(dlpack_structure)
-        self.OrtValueVectorDlPackOrtValue(my_to_tensor)
+        self.OrtValueVectorDlPackOrtValue(my_to_tensor, torch.Tensor, 'cpu')
 
-    def testOrtValueVectorDlPack_Torch(self):
+    def testOrtValueVectorDlPack_Torch_cpu(self):
         def my_to_tensor(dlpack_structure):
             return _from_dlpack(dlpack_structure)
-        self.OrtValueVectorDlPackOrtValue(my_to_tensor)
+        self.OrtValueVectorDlPackOrtValue(my_to_tensor, torch.Tensor, 'cpu')
 
-    def testOrtValueVectorDlPackNone(self):
-        self.OrtValueVectorDlPackOrtValue(None)
+    def testOrtValueVectorDlPackNone_cpu(self):
+        self.OrtValueVectorDlPackOrtValue(None, None, 'cpu')
+
+    @unittest.skipIf(not has_cuda, reason="No CUDA availabled.")
+    def testOrtValueVectorDlPackOrtValue_cuda(self):
+        def my_to_tensor(dlpack_structure):
+            return C_OrtValue.from_dlpack(dlpack_structure, False)
+        self.OrtValueVectorDlPackOrtValue(my_to_tensor, OrtValue, 'cuda:0')
+
+    @unittest.skipIf(not has_cuda, reason="No CUDA availabled.")
+    def testOrtValueVectorDlPackTorch_cuda(self):
+        def my_to_tensor(dlpack_structure):
+            return from_dlpack(dlpack_structure)
+        self.OrtValueVectorDlPackOrtValue(my_to_tensor, torch.Tensor, 'cuda:0')
+
+    @unittest.skipIf(not has_cuda, reason="No CUDA availabled.")
+    def testOrtValueVectorDlPack_Torch_cuda(self):
+        def my_to_tensor(dlpack_structure):
+            return _from_dlpack(dlpack_structure)
+        self.OrtValueVectorDlPackOrtValue(my_to_tensor, torch.Tensor, 'cuda:0')
+
+    @unittest.skipIf(not has_cuda, reason="No CUDA availabled.")
+    def testOrtValueVectorDlPackNone_cuda(self):
+        self.OrtValueVectorDlPackOrtValue(None, None, 'cuda:0')
 
     def test_ortmodule_dlpack(self):
 
@@ -158,26 +185,32 @@ class TestOrtValue(unittest.TestCase):
         assert y1 is not None
         assert y2 is not None and y2.dtype == torch.bool
 
-    def _ortvalues_to_torch_tensor_ortvaluevector(self, device):
+    def _ortvalues_to_torch_tensor_ortvaluevector(self, device, tensor_type):
         narrays = [
             np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32),
             np.array([[6.0, 7.0], [8.0, 9.0], [1.0, 6.0]], dtype=np.float32)]
         vect = OrtValueVector()
         ptr = []
         for a in narrays:
-            ortvalue = onnxrt.OrtValue.ortvalue_from_numpy(a)
+            ortvalue = onnxrt.OrtValue.ortvalue_from_numpy(
+                a, device if device != 'ort' else 'cpu')
             vect.push_back(ortvalue._ortvalue)
             ptr.append(ortvalue.data_ptr())
         self.assertEqual(len(vect), 2)
         tensors = _utils._ortvalues_to_torch_tensor(vect, device)
         self.assertEqual(len(tensors), len(vect))
         self.assertEqual(ptr, [t.data_ptr() for t in tensors])
+        assert all(map(lambda v: isinstance(v, tensor_type), tensors))
 
     def test_ortvalues_to_torch_tensor_ortvaluevector_cpu(self):
-        self._ortvalues_to_torch_tensor_ortvaluevector('cpu')
+        self._ortvalues_to_torch_tensor_ortvaluevector('cpu', torch.Tensor)
 
     def test_ortvalues_to_torch_tensor_ortvaluevector_ort(self):
-        self._ortvalues_to_torch_tensor_ortvaluevector('ort')
+        self._ortvalues_to_torch_tensor_ortvaluevector('ort', C_OrtValue)
+
+    @unittest.skipIf(not has_cuda, reason="No CUDA availabled.")
+    def test_ortvalues_to_torch_tensor_ortvaluevector_cuda(self):
+        self._ortvalues_to_torch_tensor_ortvaluevector('cuda:0', torch.Tensor)
 
     def _ortvalues_to_torch_tensor_list(self, device):
         narrays = [
@@ -186,19 +219,25 @@ class TestOrtValue(unittest.TestCase):
         vect = []
         ptr = []
         for a in narrays:
-            ortvalue = onnxrt.OrtValue.ortvalue_from_numpy(a)
+            ortvalue = onnxrt.OrtValue.ortvalue_from_numpy(
+                a, device=device if device != 'ort' else 'cpu')
             vect.append(ortvalue._ortvalue)
             ptr.append(ortvalue.data_ptr())
         self.assertEqual(len(vect), 2)
         tensors = _utils._ortvalues_to_torch_tensor(vect, device)
         self.assertEqual(len(tensors), len(vect))
         self.assertEqual(ptr, [t.data_ptr() for t in tensors])
+        assert all(lambda v: isinstance(v, tensor_type), tensors)
 
     def self_ortvalues_to_torch_tensor_list_cpu(self):
         self._ortvalues_to_torch_tensor_list('cpu')
 
     def self_ortvalues_to_torch_tensor_list_ort(self):
         self._ortvalues_to_torch_tensor_list('ort')
+
+    @unittest.skipIf(not has_cuda, reason="No CUDA availabled.")
+    def self_ortvalues_to_torch_tensor_list_cuda(self):
+        self._ortvalues_to_torch_tensor_list('cuda:0')
 
     def test_type_proto(self):
         values = {
