@@ -1577,11 +1577,7 @@ TEST(GradientCheckerTest, SigmoidGrad) {
 void GradientCheckerSoftmaxGradHelper(bool is_log_softmax, int version = 0) {
   TensorShape shape({3, 4, 5});
   float max_error;
-  std::unordered_map<std::string, int> domain_to_version;
-  if (version != 0) {
-    domain_to_version.insert({{kMSDomain, version}});
-  }
-  GradientChecker<float, float, float> gradient_checker(domain_to_version);
+  GradientChecker<float, float, float> gradient_checker;
 
   const std::string op = is_log_softmax ? "LogSoftmax" : "Softmax";
   OpDef op_def = version == 0 ? OpDef{op} : OpDef{op, kOnnxDomain, version};

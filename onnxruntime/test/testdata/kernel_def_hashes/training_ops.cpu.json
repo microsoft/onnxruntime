@@ -97,15 +97,11 @@
     ],
     [
         "LogSoftmaxGrad com.microsoft CPUExecutionProvider",
-        1848880822626226096
-    ],
-    [
-        "LogSoftmaxGrad com.microsoft CPUExecutionProvider",
-        17053952659881519080
-    ],
-    [
-        "LogSoftmaxGrad com.microsoft CPUExecutionProvider",
         2657523710083167200
+    ],
+    [
+        "LogSoftmaxGrad_13 com.microsoft CPUExecutionProvider",
+        1917456134240183096
     ],
     [
         "MaxPoolGrad ai.onnx CPUExecutionProvider",
@@ -248,12 +244,8 @@
         4483165757863027152
     ],
     [
-        "SoftmaxGrad com.microsoft CPUExecutionProvider",
-        7404313310773566064
-    ],
-    [
-        "SoftmaxGrad com.microsoft CPUExecutionProvider",
-        12394130870222042960
+        "SoftmaxGrad_13 com.microsoft CPUExecutionProvider",
+        8375491041422269560
     ],
     [
         "SparseSoftmaxCrossEntropy ai.onnx CPUExecutionProvider",

@@ -16,7 +16,7 @@ namespace test {
 static void RegisterSchemas() {
   static bool registered = false;
   if (!registered) {
-    onnxruntime::RegisterOrtOpSchemas();
+    onnxruntime::training::RegisterTrainingOpSchemas();
     registered = true;
   }
 }

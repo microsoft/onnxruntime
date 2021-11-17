@@ -35,7 +35,7 @@ class RegistrationValidator(op_registration_utils.RegistrationProcessor):
     def process_registration(self, lines: typing.List[str], domain: str, operator: str,
                              start_version: int, end_version: typing.Optional[int] = None,
                              type: typing.Optional[str] = None):
-        key = domain + ':' + operator + (':' + type if type is not None else '')
+        key = domain + ':' + operator
         prev_start, prev_end = self.last_op_registrations[key] if key in self.last_op_registrations else (None, None)
 
         if prev_start:
@@ -58,7 +58,7 @@ class RegistrationValidator(op_registration_utils.RegistrationProcessor):
                 self.failed = True
                 return
 
-        self.last_op_registrations[domain + ':' + operator] = (start_version, end_version)
+        self.last_op_registrations[key] = (start_version, end_version)
 
     def ok(self):
         return not self.failed
@@ -89,8 +89,7 @@ if __name__ == "__main__":
     ort_root = os.path.abspath(args.ort_root) if args.ort_root else ''
     include_cuda = True  # validate CPU and CUDA EP registrations
 
-    registration_files = op_registration_utils.get_kernel_registration_files(
-        ort_root, include_cuda)
+    registration_files = op_registration_utils.get_kernel_registration_files(ort_root, include_cuda)
 
     for file in registration_files:
         log.info("Processing {}".format(file))

@@ -572,6 +572,7 @@ OpSchema& RegisterLambOpSchema(OpSchema&& op_schema) {
 
   return op_schema;
 }
+
 bool SoftMaxGradFunctionBodyBuilder(const FunctionBodyBuildContext& ctx, const OpSchema& schema, FunctionProto& functionProto) {
   // SoftmaxGrad computes dX = Y * ( dY - dot(Y, dY))
   // ONNX does not have a dot product, which can be simulated as a pointwise-multiplication ("Mul"),
@@ -616,6 +617,7 @@ bool SoftMaxGradFunctionBodyBuilder(const FunctionBodyBuildContext& ctx, const O
   schema.BuildFunction(functionProto);
   return true;
 }
+
 void RegisterTrainingOpSchemas() {
   ONNX_CONTRIB_OPERATOR_SCHEMA(ReluGrad)
       .SetDomain(kMSDomain)
@@ -649,29 +651,9 @@ void RegisterTrainingOpSchemas() {
       .TypeAndShapeInferenceFunction(propagateShapeAndTypeFromFirstInput)
       .SetContextDependentFunctionBodyBuilder(SoftMaxGradFunctionBodyBuilder);
 
-  ONNX_CONTRIB_OPERATOR_SCHEMA(SoftmaxGrad)
+  ONNX_CONTRIB_OPERATOR_SCHEMA(SoftmaxGrad_13)
       .SetDomain(kMSDomain)
-      .SinceVersion(11)
-      .Input(0, "dY", "Gradient of output Y", "T")
-      .Input(1, "Y", "Input tensor", "T")
-      .Output(0, "dX", "Gradient of input X", "T")
-      .Attr(
-          "axis",
-          "Describes the axis of the inputs when coerced "
-          "to 2D; defaults to one because the 0th axis most likely describes "
-          "the batch_size",
-          AttributeProto::INT,
-          static_cast<int64_t>(1))
-      .TypeConstraint(
-          "T",
-          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
-          "Constrain input and output types to float tensors.")
-      .TypeAndShapeInferenceFunction(propagateShapeAndTypeFromFirstInput)
-      .SetContextDependentFunctionBodyBuilder(SoftMaxGradFunctionBodyBuilder);
-
-  ONNX_CONTRIB_OPERATOR_SCHEMA(SoftmaxGrad)
-      .SetDomain(kMSDomain)
-      .SinceVersion(13)
+      .SinceVersion(1)
       .Input(0, "dY", "Gradient of output Y", "T")
       .Input(1, "Y", "Input tensor", "T")
       .Output(0, "dX", "Gradient of input X", "T")
@@ -708,28 +690,9 @@ void RegisterTrainingOpSchemas() {
           "Constrain input and output types to float tensors.")
       .TypeAndShapeInferenceFunction(propagateShapeAndTypeFromFirstInput);
 
-  ONNX_CONTRIB_OPERATOR_SCHEMA(LogSoftmaxGrad)
+  ONNX_CONTRIB_OPERATOR_SCHEMA(LogSoftmaxGrad_13)
       .SetDomain(kMSDomain)
-      .SinceVersion(11)
-      .Input(0, "dY", "Gradient of output Y", "T")
-      .Input(1, "X", "Input tensor", "T")
-      .Output(0, "dX", "Gradient of input X", "T")
-      .Attr(
-          "axis",
-          "Describes the axis of the inputs when coerced "
-          "to 2D; defaults to one because the 0th axis most likely describes "
-          "the batch_size",
-          AttributeProto::INT,
-          static_cast<int64_t>(1))
-      .TypeConstraint(
-          "T",
-          {"tensor(float16)", "tensor(float)", "tensor(double)"},
-          "Constrain input and output types to float tensors.")
-      .TypeAndShapeInferenceFunction(propagateShapeAndTypeFromFirstInput);
-
-  ONNX_CONTRIB_OPERATOR_SCHEMA(LogSoftmaxGrad)
-      .SetDomain(kMSDomain)
-      .SinceVersion(13)
+      .SinceVersion(1)
       .Input(0, "dY", "Gradient of output Y", "T")
       .Input(1, "X", "Input tensor", "T")
       .Output(0, "dX", "Gradient of input X", "T")
@@ -3485,7 +3448,7 @@ Return true if all elements are true and false otherwise.
 }  // namespace training
 
 void RegisterOrtOpSchemas() {
-  ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance().AddDomainToVersion(onnxruntime::kMSDomain, 1, 13);
+  ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance().AddDomainToVersion(onnxruntime::kMSDomain, 1, 1);
   ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance().AddDomainToVersion(onnxruntime::kMSExperimentalDomain, 1, 1);
   ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance().AddDomainToVersion(onnxruntime::kMSNchwcDomain, 1, 1);
 

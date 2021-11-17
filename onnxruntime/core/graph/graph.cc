@@ -776,15 +776,13 @@ void Node::Init(const std::string& name,
                 const std::vector<NodeArg*>& input_args,
                 const std::vector<NodeArg*>& output_args,
                 const NodeAttributes* attributes,
-                const std::string& domain,
-                int since_version) {
+                const std::string& domain) {
   name_ = name;
   op_type_ = op_type;
   description_ = description;
   definitions_.input_defs = input_args;
   definitions_.output_defs = output_args;
   domain_ = domain;
-  since_version_ = since_version;
   priority_ = 0;
   if (kOnnxDomainAlias == domain_) {
     domain_ = kOnnxDomain;
@@ -3196,8 +3194,7 @@ Node& Graph::AddNode(const std::string& name,
                      const std::vector<NodeArg*>& input_args,
                      const std::vector<NodeArg*>& output_args,
                      const NodeAttributes* attributes,
-                     const std::string& domain,
-                     int since_version) {
+                     const std::string& domain) {
   std::vector<NodeArg*> inputs;
   std::vector<NodeArg*> outputs;
   inputs.resize(input_args.size());
@@ -3212,7 +3209,7 @@ Node& Graph::AddNode(const std::string& name,
   }
 
   const gsl::not_null<Node*> node = AllocateNode();
-  node->Init(name, op_type, description, inputs, outputs, attributes, domain, since_version);
+  node->Init(name, op_type, description, inputs, outputs, attributes, domain);
   if (0 != op_type.compare(kNoOp)) {
     GraphProtoSyncNeeded(true);
   }
@@ -3735,9 +3732,8 @@ bool Graph::SetOpSchemaFromRegistryForNode(Node& node) {
   }();
 
   if (node.op_) {
-    if (node.since_version_ < node.op_->since_version()) {
-      node.since_version_ = node.op_->since_version();
-    }
+    node.since_version_ = node.op_->since_version();
+
     if (node.op_->Deprecated()) {
       node.op_ = nullptr;
     }

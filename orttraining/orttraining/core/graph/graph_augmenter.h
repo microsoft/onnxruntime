@@ -48,7 +48,6 @@ struct NodeDef {
           const std::string& name = "",
           int priority = 0) : op_type(op_def.type),
                               domain(op_def.domain),
-                              version(op_def.opset_version),
                               input_args(input_args),
                               output_args(output_args),
                               attributes(attributes),
@@ -74,7 +73,6 @@ struct NodeDef {
           const std::string& name = "",
           int priority = 0) : op_type(op_def.type),
                               domain(op_def.domain),
-                              version(op_def.opset_version),
                               input_args(input_args),
                               output_args(output_args),
                               name(name),
@@ -101,7 +99,6 @@ struct NodeDef {
 
   std::string op_type;
   std::string domain = kOnnxDomain;
-  int version = 1;
   std::vector<ArgDef> input_args;
   std::vector<ArgDef> output_args;
   NodeAttributes attributes;
