@@ -122,7 +122,7 @@ Once we have the imageData we will send it into the `imageDataToTensor` function
 function imageDataToTensor(image: Jimp, dims: number[]): Tensor {
     // 1. Get buffer data from image and create R, G, and B arrays.
     var imageBufferData = image.bitmap.data;
-    const [redArray, greenArray, blueArray] = new Array(new Array<number>(), Array<number>(), Array<number>());
+    const [redArray, greenArray, blueArray] = new Array(new Array<number>(), new Array<number>(), new Array<number>());
 
     // 2. Loop through the image buffer and extract the R, G, and B channels
     for (let i = 0; i < imageBufferData.length; i += 4) {
