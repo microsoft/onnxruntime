@@ -14,7 +14,8 @@ tvm::runtime::Module TVMCompile(const std::string& onnx_txt,
                                 int opt_level,
                                 int opset,
                                 bool freeze_params,
-                                const std::vector<std::vector<int64_t>>& input_shapes)
+                                const std::vector<std::vector<int64_t>>& input_shapes,
+                                const std::string& tuning_logfile)
 {
   tvm::Array<tvm::Array<tvm::Integer>> shapes;
   for (size_t i = 0; i < input_shapes.size(); ++i)
@@ -28,7 +29,7 @@ tvm::runtime::Module TVMCompile(const std::string& onnx_txt,
   }
 
   const tvm::PackedFunc* compile = tvm::runtime::Registry::Get("tvm_onnx_import_and_compile");
-  tvm::runtime::Module mod = (*compile)(TVMByteArray{onnx_txt.data(), onnx_txt.size()}, target, target_host, opt_level, opset, freeze_params, shapes);
+  tvm::runtime::Module mod = (*compile)(TVMByteArray{onnx_txt.data(), onnx_txt.size()}, target, target_host, opt_level, opset, freeze_params, shapes, tuning_logfile);
   return mod;
 }
 

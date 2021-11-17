@@ -13,7 +13,8 @@ namespace stvm {
                                     int opt_level,
                                     int opset,
                                     bool freeze_params,
-                                    const std::vector<std::vector<int64_t>>& input_shapes);
+                                    const std::vector<std::vector<int64_t>>& input_shapes,
+                                    const std::string& tuning_logfile);
     void TVMSetInputs(tvm::runtime::Module& mod, std::vector<size_t>& inds, std::vector<DLTensor>& inputs);
     void TVMRun(tvm::runtime::Module& mod, std::vector<DLTensor>& outputs, tvm::runtime::TVMRetValue *ret);
 }  // namespace stvm

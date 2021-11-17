@@ -34,7 +34,7 @@ def run_without_benchmark(mod):
     run()
 
 @tvm.register_func("tvm_onnx_import_and_compile")
-def onnx_compile(model_string, target, target_host, opt_level, opset, freeze_params, input_shapes):
+def onnx_compile(model_string, target, target_host, opt_level, opset, freeze_params, input_shapes, tuning_logfile = ""):
     model = onnx.load_model_from_string(bytes(model_string))
 
     # Collect only feed input names from all input names
@@ -56,7 +56,9 @@ def onnx_compile(model_string, target, target_host, opt_level, opset, freeze_par
     # import ipdb; ipdb.set_trace()
 
     print("Build TVM graph executor")
-    tuning_logfile = os.getenv("AUTOTVM_TUNING_LOG")
+    # Tuning file can be set by client through ep options
+    if tuning_logfile == "":
+        tuning_logfile = os.getenv("AUTOTVM_TUNING_LOG")
     if tuning_logfile:
         print("Use tuning file: ", tuning_logfile)
         with auto_scheduler.ApplyHistoryBest(tuning_logfile):

@@ -437,7 +437,8 @@ tvm::runtime::Module* StvmExecutionProvider::CompileFunc(std::string func_name, 
                                                 info_.opt_level,
                                                 opsets_[func_name],
                                                 info_.freeze_weights,
-                                                input_shapes);
+                                                input_shapes,
+                                                info_.tuning_file_path);
   auto module_ptr = std::make_shared<tvm::runtime::Module>();
   *module_ptr = mod_f;
   modules_[func_name] = module_ptr;
