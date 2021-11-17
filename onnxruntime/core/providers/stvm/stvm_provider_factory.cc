@@ -24,13 +24,13 @@ struct StvmProviderFactory : IExecutionProviderFactory {
 };
 
 
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Stvm(const StvmExecutionProviderInfo& info) {
-    return std::make_shared<onnxruntime::StvmProviderFactory>(info);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Stvm(const char* settings) {
+    StvmExecutionProviderInfo info = StvmExecutionProviderInfo::FromOptionsString(settings);
+    return std::make_shared<StvmProviderFactory>(info);
 }
 }  // namespace onnxruntime
 
 ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Stvm, _In_ OrtSessionOptions* options, _In_ const char* settings) {
-  onnxruntime::StvmExecutionProviderInfo info = onnxruntime::StvmExecutionProviderInfo::FromOptionsString(settings);
-  options->provider_factories.push_back(onnxruntime::CreateExecutionProviderFactory_Stvm(info));
+  options->provider_factories.push_back(onnxruntime::CreateExecutionProviderFactory_Stvm(settings));
   return nullptr;
 }

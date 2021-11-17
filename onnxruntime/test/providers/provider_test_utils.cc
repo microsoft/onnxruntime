@@ -996,6 +996,7 @@ void OpTester::Run(
         kCudaExecutionProvider,
         kDnnlExecutionProvider,
         kNupharExecutionProvider,
+        // kStvmExecutionProvider,
         kTensorrtExecutionProvider,
         kOpenVINOExecutionProvider,
         kDmlExecutionProvider,
@@ -1004,7 +1005,6 @@ void OpTester::Run(
         kNnapiExecutionProvider,
         kRocmExecutionProvider,
         kCoreMLExecutionProvider,
-//        kStvmExecutionProvider  //TODO(vvchernov): update test build and tests
     };
 
     bool has_run = false;
@@ -1083,6 +1083,8 @@ void OpTester::Run(
           execution_provider = DefaultOpenVINOExecutionProvider();
         else if (provider_type == onnxruntime::kNupharExecutionProvider)
           execution_provider = DefaultNupharExecutionProvider();
+        // else if (provider_type == onnxruntime::kStvmExecutionProvider)
+        //   execution_provider = DefaultStvmExecutionProvider();
         else if (provider_type == onnxruntime::kTensorrtExecutionProvider)
           execution_provider = DefaultTensorrtExecutionProvider();
         else if (provider_type == onnxruntime::kNnapiExecutionProvider)
@@ -1113,6 +1115,7 @@ void OpTester::Run(
           if (provider_type == onnxruntime::kOpenVINOExecutionProvider ||
               provider_type == onnxruntime::kTensorrtExecutionProvider ||
               provider_type == onnxruntime::kNupharExecutionProvider ||
+              // provider_type == onnxruntime::kStvmExecutionProvider ||
               provider_type == onnxruntime::kNnapiExecutionProvider ||
               provider_type == onnxruntime::kCoreMLExecutionProvider ||
               provider_type == onnxruntime::kDnnlExecutionProvider)

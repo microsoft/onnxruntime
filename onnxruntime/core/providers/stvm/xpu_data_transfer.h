@@ -9,10 +9,10 @@
 
 namespace onnxruntime {
 
-class GPUDataTransfer : public IDataTransfer {
+class XPUDataTransfer : public IDataTransfer {
  public:
-  GPUDataTransfer();
-  ~GPUDataTransfer();
+  XPUDataTransfer();
+  ~XPUDataTransfer();
 
   bool CanCopy(const OrtDevice& src_device, const OrtDevice& dst_device) const override;
 
@@ -20,6 +20,15 @@ class GPUDataTransfer : public IDataTransfer {
   using IDataTransfer::CopyTensor;
   common::Status CopyTensor(const Tensor& src, Tensor& dst, int exec_queue_id) const override;
   DLDevice get_context(const OrtDevice& device) const;
+};
+
+class StvmCPUDataTransfer : public IDataTransfer {
+ public:
+  StvmCPUDataTransfer() = default;
+  // Dampen MSVC warning about not fully overriding CopyTensor
+  using IDataTransfer::CopyTensor;
+  bool CanCopy(const OrtDevice& src_device, const OrtDevice& dst_device) const override;
+  common::Status CopyTensor(const Tensor& src, Tensor& dst, int exec_queue_id) const override;
 };
 
 }  // namespace onnxruntime

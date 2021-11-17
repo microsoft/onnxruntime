@@ -1,23 +1,24 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/shared_library/provider_api.h"
+#include "core/framework/tensor.h"
 
 #include "xpu_data_transfer.h"
 #include "stvm_utils.h"
 
 namespace onnxruntime {
-GPUDataTransfer::GPUDataTransfer() {
+XPUDataTransfer::XPUDataTransfer() {
 }
 
-GPUDataTransfer::~GPUDataTransfer() {
+XPUDataTransfer::~XPUDataTransfer() {
 }
 
-bool GPUDataTransfer::CanCopy(const OrtDevice& src_device, const OrtDevice& dst_device) const {
-    return (src_device.Type() == OrtDevice::GPU || dst_device.Type() == OrtDevice::GPU);
+bool XPUDataTransfer::CanCopy(const OrtDevice& src_device, const OrtDevice& dst_device) const {
+    return (src_device.Type() == OrtDevice::CPU && dst_device.Type() == OrtDevice::CPU) ||
+    (src_device.Type() == OrtDevice::GPU || dst_device.Type() == OrtDevice::GPU);
 }
 
-common::Status GPUDataTransfer::CopyTensor(const Tensor& src, Tensor& dst, int _exec_queue_id) const {
+common::Status XPUDataTransfer::CopyTensor(const Tensor& src, Tensor& dst, int _exec_queue_id) const {
   _exec_queue_id = _exec_queue_id + 1;
   size_t bytes = src.SizeInBytes();
   const void* src_data = src.DataRaw();
@@ -26,6 +27,10 @@ common::Status GPUDataTransfer::CopyTensor(const Tensor& src, Tensor& dst, int _
   const OrtDevice& dst_device = dst.Location().device;
 
   if ((src_device.Type() == OrtDevice::CPU) && (dst_device.Type() == OrtDevice::CPU)) {
+      if (src_data == dst_data) {
+        // no need copying as both pointers are referring to same piece of memory.
+        return Status::OK();
+      }
       memcpy(dst_data, src_data, bytes);
   } else {
     DLTensor tvm_src, tvm_dst;
@@ -53,21 +58,26 @@ common::Status GPUDataTransfer::CopyTensor(const Tensor& src, Tensor& dst, int _
   return Status::OK();
 }
 
-DLDevice GPUDataTransfer::get_context(const OrtDevice& device) const
+DLDevice XPUDataTransfer::get_context(const OrtDevice& device) const
 {
-  DLDevice context;
-  switch (device.Type()) {
-  case OrtDevice::CPU:
-      context = {kDLCPU, 0};
-      break;
-  case OrtDevice::GPU:
-      context = {kDLVulkan, 0};
-      break;
-  default:
-      ORT_NOT_IMPLEMENTED("GPUDataTransfer get_context");
-      break;
+  return GetDLDevice(device);
+}
+
+bool StvmCPUDataTransfer::CanCopy(const OrtDevice& src_device, const OrtDevice& dst_device) const {
+  return src_device.Type() == OrtDevice::CPU && dst_device.Type() == OrtDevice::CPU;
+}
+
+common::Status StvmCPUDataTransfer::CopyTensor(const Tensor& src, Tensor& dst, int /*exec_queue_id*/) const {
+  const void* src_data = src.DataRaw();
+  void* dst_data = dst.MutableDataRaw();
+  if (src_data == dst_data) {
+    // no need copying as both pointers are referring to same piece of memory.
+    return Status::OK();
   }
-  return context;
+  // Copying only happens between two same size tensors.
+  ORT_ENFORCE(src.SizeInBytes() == dst.SizeInBytes());
+  memcpy(dst_data, src_data, src.SizeInBytes());
+  return Status::OK();
 }
 
 }  // namespace onnxruntime

@@ -23,6 +23,8 @@ std::unique_ptr<IExecutionProvider> GetExecutionProvider(const std::string& prov
     execution_provider = DefaultDnnlExecutionProvider();
   else if (provider_type == onnxruntime::kNupharExecutionProvider)
     execution_provider = DefaultNupharExecutionProvider();
+  // else if (provider_type == onnxruntime::kStvmExecutionProvider)
+  //   execution_provider = DefaultStvmExecutionProvider();
   else if (provider_type == onnxruntime::kTensorrtExecutionProvider)
     execution_provider = DefaultTensorrtExecutionProvider();
   else if (provider_type == onnxruntime::kOpenVINOExecutionProvider)

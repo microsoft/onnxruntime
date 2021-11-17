@@ -19,6 +19,11 @@ std::string openvino_device_type;
 std::string nuphar_settings;
 #endif
 
+#ifdef USE_STVM
+// TODO remove deprecated global config
+std::string stvm_settings;
+#endif
+
 // TODO remove deprecated global config
 OrtDevice::DeviceId cuda_device_id = 0;
 // TODO remove deprecated global config

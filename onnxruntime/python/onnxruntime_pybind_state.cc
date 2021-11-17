@@ -647,7 +647,7 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
               .Parse(it->second));
     }
 
-    auto p = onnxruntime::CreateExecutionProviderFactory_Stvm(true, stvm_settings.c_str())->CreateProvider();
+    auto p = onnxruntime::CreateExecutionProviderFactory_Stvm(stvm_settings.c_str())->CreateProvider();
 
     // clear stvm_settings after use to avoid it being accidentally passed on to next session
     stvm_settings.clear();

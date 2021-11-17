@@ -483,7 +483,7 @@ set(ONNXRUNTIME_TEST_LIBS
     ${PROVIDERS_ACL}
     ${PROVIDERS_ARMNN}
     ${PROVIDERS_COREML}
-    ${PROVIDERS_STVM}
+    # ${PROVIDERS_STVM}
     onnxruntime_optimizer
     onnxruntime_providers
     onnxruntime_util

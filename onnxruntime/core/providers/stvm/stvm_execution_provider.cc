@@ -43,7 +43,7 @@ class STVMRunner {
 
     STVMRunner(StvmExecutionProvider* ep,
                const std::string& name,
-               const onnxruntime::Graph& graph) {
+               const Graph& graph) {
         // Extract input shapes
         const ORTGraphNodes& all_nodes = graph.GetInputsIncludingInitializers();
         TVMTensorShapes input_shapes;
@@ -107,7 +107,7 @@ class STVMRunner {
         auto& shape = info.second;
         const OrtValue* input_tensor = ort.KernelContext_GetInput(context, i);
         ORT_ENFORCE(input_tensor->IsTensor());
-        const Tensor& tensor = input_tensor->Get<onnxruntime::Tensor>();
+        const Tensor& tensor = input_tensor->Get<Tensor>();
         const OrtDevice& device = tensor.Location().device;
         auto tensor_info = ort.GetTensorTypeAndShape(input_tensor);
         auto tensor_type = ort.GetTensorElementType(tensor_info);
@@ -134,7 +134,7 @@ class STVMRunner {
         //setup output tensor property
         OrtValue* output_tensor = ort.KernelContext_GetOutput(context, i, output_shapes_[i].data(), output_shapes_[i].size());
         ORT_ENFORCE(output_tensor->IsTensor());
-        const Tensor& tensor = output_tensor->Get<onnxruntime::Tensor>();
+        const Tensor& tensor = output_tensor->Get<Tensor>();
         const OrtDevice& device = tensor.Location().device;
         auto tensor_info = ort.GetTensorTypeAndShape(output_tensor);
         auto tensor_type = ort.GetTensorElementType(tensor_info);
@@ -187,7 +187,7 @@ class STVMRunner {
 };
 
 StvmExecutionProvider::StvmExecutionProvider(const StvmExecutionProviderInfo& info)
-    : IExecutionProvider{onnxruntime::kStvmExecutionProvider},
+    : IExecutionProvider{kStvmExecutionProvider},
       info_{info} {
   ProcessInfo();
 
@@ -214,7 +214,7 @@ AllocatorPtr StvmExecutionProvider::GetAllocator(int id, OrtMemType mem_type) co
 }
 
 std::vector<std::unique_ptr<ComputeCapability>>
-StvmExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer,
+StvmExecutionProvider::GetCapability(const GraphViewer& graph_viewer,
                                      const std::vector<const KernelRegistry*>& /*kernel_registries*/) const {
   std::vector<std::unique_ptr<ComputeCapability>> result;
   if (graph_viewer.IsSubgraph()) {
@@ -222,11 +222,11 @@ StvmExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewe
   }
 #if 1
   // Construct modelproto from graph
-  onnxruntime::Model model(graph_viewer.Name(), true, ModelMetaData(), PathString{}, IOnnxRuntimeOpSchemaRegistryList(), graph_viewer.DomainToVersionMap(), std::vector<ONNX_NAMESPACE::FunctionProto>(), *GetLogger());
-  onnxruntime::Graph& graph_build = model.MainGraph();
+  Model model(graph_viewer.Name(), true, ModelMetaData(), PathString{}, IOnnxRuntimeOpSchemaRegistryList(), graph_viewer.DomainToVersionMap(), std::vector<ONNX_NAMESPACE::FunctionProto>(), *GetLogger());
+  Graph& graph_build = model.MainGraph();
 
   for (const auto& node : graph_viewer.Nodes()) {
-    std::vector<onnxruntime::NodeArg*> inputs, outputs;
+    std::vector<NodeArg*> inputs, outputs;
     for (auto input : node.InputDefs()) {
       auto& n_input = graph_build.GetOrCreateNodeArg(input->Name(), input->TypeAsProto());
       inputs.push_back(&n_input);
@@ -255,7 +255,7 @@ StvmExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewe
   const std::vector<NodeIndex>& sorted_nodes = graph_viewer.GetNodesInTopologicalOrder();
   std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
   for (auto& node_idx : sorted_nodes) {
-    graph_viewer.GetNode(node_idx)->ForEachDef([&required_initializers, &init_tensors](const onnxruntime::NodeArg& node_arg, bool is_input) {
+    graph_viewer.GetNode(node_idx)->ForEachDef([&required_initializers, &init_tensors](const NodeArg& node_arg, bool is_input) {
               if(is_input && init_tensors.count(node_arg.Name())) {
                   required_initializers.insert(node_arg.Name());
               } }, true);
@@ -289,15 +289,15 @@ StvmExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewe
   return result;
 }
 
-common::Status StvmExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& nodes,
+common::Status StvmExecutionProvider::Compile(const std::vector<Node*>& nodes,
                                               std::vector<NodeComputeInfo>& node_compute_funcs) {
   for (auto* fused_node : nodes) {
     auto func_body = fused_node->GetFunctionBody();
     if (!func_body)
       return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Function body is empty");
     const std::string func_name = fused_node->Name();
-    const onnxruntime::Graph& node_graph = func_body->Body();
-    onnxruntime::Model model(node_graph.Name(), true, ModelMetaData(), PathString(),
+    const Graph& node_graph = func_body->Body();
+    Model model(node_graph.Name(), true, ModelMetaData(), PathString(),
                              IOnnxRuntimeOpSchemaRegistryList(), node_graph.DomainToVersionMap(),
                              std::vector<ONNX_NAMESPACE::FunctionProto>(), *GetLogger());
     ONNX_NAMESPACE::ModelProto model_proto = model.ToProto();
@@ -332,12 +332,11 @@ common::Status StvmExecutionProvider::Compile(const std::vector<onnxruntime::Nod
   return Status::OK();
 }
 
-std::unique_ptr<onnxruntime::IDataTransfer> StvmExecutionProvider::GetDataTransfer() const {
-  LOG(INFO) << "transferring data";
+std::unique_ptr<IDataTransfer> StvmExecutionProvider::GetDataTransfer() const {
   if (GPUTargetCheck()) {
-    return std::make_unique<onnxruntime::GPUDataTransfer>();
+    return std::make_unique<onnxruntime::XPUDataTransfer>();
   } else if (info_.target.find("llvm") != std::string::npos) {
-    return std::make_unique<onnxruntime::CPUDataTransfer>();
+    return std::make_unique<onnxruntime::StvmCPUDataTransfer>();
   } else {
     ORT_NOT_IMPLEMENTED("STVM GetDataTransfer is not implemented for target ", info_.target);
   }

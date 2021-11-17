@@ -137,14 +137,6 @@ constexpr ProviderInfo kProvidersInPriorityOrder[] =
             false,
 #endif
         },
-        {
-          kStvmExecutionProvider,
-#ifdef USE_STVM
-          true,
-#else
-          false,
-#endif
-        },
         {kCpuExecutionProvider, true},  // kCpuExecutionProvider is always last
 };
 }  // namespace
