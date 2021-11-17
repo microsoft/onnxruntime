@@ -22,10 +22,25 @@ const COPYRIGHT_BANNER = `/*!
 * Licensed under the MIT License.
 */`;
 
-function defaultTerserPluginOptions() {
+function terserEcmaVersionFromWebpackTarget(target) {
+  switch (target) {
+    case 'es5':
+      return 5;
+    case 'es6':
+    case 'es2015':
+      return 2015;
+    case 'es2017':
+      return 2017;
+    default:
+      throw new RangeError(`not supported ECMA version: ${target}`);
+  }
+}
+
+function defaultTerserPluginOptions(target) {
   return {
     extractComments: false,
     terserOptions: {
+      ecma: terserEcmaVersionFromWebpackTarget(target),
       format: {
         comments: false,
       },
@@ -99,7 +114,7 @@ function buildConfig({ filename, format, target, mode, devtool, build_defs }) {
     config.resolve.alias['./binding/ort-wasm-threaded.js'] = './binding/ort-wasm-threaded.min.js';
     config.resolve.alias['./binding/ort-wasm-threaded.worker.js'] = './binding/ort-wasm-threaded.min.worker.js';
 
-    const options = defaultTerserPluginOptions();
+    const options = defaultTerserPluginOptions(target);
     options.terserOptions.format.preamble = COPYRIGHT_BANNER;
     config.plugins.push(new TerserPlugin(options));
   } else {
@@ -112,7 +127,7 @@ function buildConfig({ filename, format, target, mode, devtool, build_defs }) {
 // "ort{.min}.js" config
 function buildOrtConfig({
   suffix = '',
-  target = 'es5',
+  target = 'es2017',
   mode = 'production',
   devtool = 'source-map',
   build_defs = {}
@@ -127,7 +142,7 @@ function buildOrtConfig({
 function buildOrtWebConfig({
   suffix = '',
   format = 'umd',
-  target = 'es5',
+  target = 'es2017',
   mode = 'production',
   devtool = 'source-map',
   build_defs = {}
@@ -156,7 +171,7 @@ function buildOrtWebConfig({
 function buildTestRunnerConfig({
   suffix = '',
   format = 'umd',
-  target = 'es5',
+  target = 'es2017',
   mode = 'production',
   devtool = 'source-map'
 }) {
@@ -203,7 +218,7 @@ function buildTestRunnerConfig({
           {
             loader: 'ts-loader',
             options: {
-              compilerOptions: { target: target }
+              compilerOptions: { target }
             }
           }
         ]
@@ -217,7 +232,7 @@ function buildTestRunnerConfig({
   };
 
   if (mode === 'production') {
-    config.plugins.push(new TerserPlugin(defaultTerserPluginOptions()));
+    config.plugins.push(new TerserPlugin(defaultTerserPluginOptions(target)));
   }
 
   return config;
@@ -235,8 +250,8 @@ module.exports = () => {
         buildOrtConfig({ mode: 'development', devtool: 'inline-source-map' }),
         // ort.es6.min.js
         buildOrtConfig({ suffix: '.es6.min', target: 'es6' }),
-        // ort.es6.js
-        buildOrtConfig({ suffix: '.es6', mode: 'development', devtool: 'inline-source-map', target: 'es6' }),
+        // ort.es5.min.js
+        buildOrtConfig({ suffix: '.es5.min', target: 'es5' }),
 
         // ort-web.min.js
         buildOrtWebConfig({ suffix: '.min' }),
@@ -244,8 +259,8 @@ module.exports = () => {
         buildOrtWebConfig({ mode: 'development', devtool: 'inline-source-map' }),
         // ort-web.es6.min.js
         buildOrtWebConfig({ suffix: '.es6.min', target: 'es6' }),
-        // ort-web.es6.js
-        buildOrtWebConfig({ suffix: '.es6', mode: 'development', devtool: 'inline-source-map', target: 'es6' }),
+        // ort-web.es5.min.js
+        buildOrtWebConfig({ suffix: '.es5.min', target: 'es5' }),
       );
 
     case 'node':

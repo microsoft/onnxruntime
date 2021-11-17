@@ -7,6 +7,20 @@ const path = require('path');
 const webpack = require('webpack');
 const TerserPlugin = require("terser-webpack-plugin");
 
+function terserEcmaVersionFromWebpackTarget(target) {
+  switch (target) {
+    case 'es5':
+      return 5;
+    case 'es6':
+    case 'es2015':
+      return 2015;
+    case 'es2017':
+      return 2017;
+    default:
+      throw new RangeError(`not supported ECMA version: ${target}`);
+  }
+}
+
 function addCopyrightBannerPlugin(mode, target) {
   const VERSION = require(path.join(__dirname, 'package.json')).version;
   const COPYRIGHT_BANNER = `/*!
@@ -19,7 +33,7 @@ function addCopyrightBannerPlugin(mode, target) {
     return new TerserPlugin({
       extractComments: false,
       terserOptions: {
-        ecma: target === 'es6' ? 2015 : 2017,
+        ecma: terserEcmaVersionFromWebpackTarget(target),
         format: {
           preamble: COPYRIGHT_BANNER,
           comments: false,
@@ -77,10 +91,10 @@ function buildConfig({
 
 module.exports = (env, argv) => {
   return [
-    buildConfig({ suffix: '.es6', mode: 'development', devtool: 'inline-source-map', target: 'es6' }),
-    buildConfig({ mode: 'development', devtool: 'inline-source-map' }),
+    buildConfig({ suffix: '.es5.min', target: 'es5' }),
     buildConfig({ suffix: '.es6.min', target: 'es6' }),
     buildConfig({ suffix: '.min' }),
+    buildConfig({ mode: 'development', devtool: 'inline-source-map' }),
     buildConfig({ format: 'commonjs', suffix: '.node' }),
   ];
 };
