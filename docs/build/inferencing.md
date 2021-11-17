@@ -515,8 +515,8 @@ ls -l /code/onnxruntime/build/Linux/MinSizeRel/dist/*.whl
 
 ---
 
-### Android/iOS
-Please see [Build for Android/iOS](./android-ios.md)
+### Mobile 
+Please see [Build for Android](./android.md) and [Build for iOS](./ios.md)
 
 ### Web
 Please see [Build for Web](./web.md)
