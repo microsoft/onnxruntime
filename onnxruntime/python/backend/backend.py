@@ -29,9 +29,6 @@ class OnnxRuntimeBackend(Backend):
     """  # noqa: E501
 
     allowReleasedOpsetsOnly = bool(os.getenv('ALLOW_RELEASED_ONNX_OPSET_ONLY', '1') == '1')
-    ExcludeProviders = os.getenv('EXCLUDE_PROVIDERS')
-    if ExcludeProviders:
-        ExcludeProviders = ExcludeProviders.split(',')
 
     @classmethod
     def is_compatible(cls, model, device=None, **kwargs):
@@ -113,8 +110,13 @@ class OnnxRuntimeBackend(Backend):
 
             providers = get_available_providers()
 
+            if os.getenv('EXCLUDE_PROVIDERS'):
+                exclude_providers = os.getenv('EXCLUDE_PROVIDERS').split(',')
+            else:
+                exclude_providers = []
+
             # exclude TRT EP temporarily and only test CUDA EP to retain previous behavior 
-            if 'TensorrtExecutionProvider' in providers and 'TensorrtExecutionProvider' in cls.ExcludeProviders:
+            if 'TensorrtExecutionProvider' in providers and 'TensorrtExecutionProvider' in exclude_providers:
                 providers=['CUDAExecutionProvider']
             
             inf = InferenceSession(model, sess_options=options, providers=providers)
