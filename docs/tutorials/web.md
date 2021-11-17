@@ -26,7 +26,7 @@ Example template output:
 * TOC placeholder
 {:toc}
 
-## What is ORT-Web?
+## What is ONNX Runtime Web (ORT-Web)?
 
 `ORT-Web` enables JavaScript developers to run and deploy machine learning models client-side. With ORT web you have the option to use a backend of either `WebGL` for GPU processing or `WASM` for CPU processing. All ONNX operators are supported by the WASM backend but only a subset are currently supported by the WebGL backend. If you want to do JavaScript server side inferencing with node checkout the [onnxruntime-node library](https://onnxruntime.ai/docs/get-started/with-javascript.html#onnx-runtime-nodejs-binding).
 
