@@ -720,11 +720,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 ### <a name="com.microsoft.DecoderAttention"></a><a name="com.microsoft.decoderattention">**com.microsoft.DecoderAttention**</a>
 
-  huggingface(3.5.1) bart decoder attention
-  notice:
-    when static_kv = 1 -> cache is cross_(key, value)_cache in layer_state[2] and layer_state[3]
-    when static_kv = 0 -> cache is self_(key, value)_cache in layer_state[0] and layer_state[1]
-  TODO:
+  This DecoderAttention supports self attention and cross attention, key and value cache, and key_padding_mask.
+  Some boolean parameters are passed by runtime input for generic attention in decoder
 
 #### Version
 

@@ -534,17 +534,12 @@ void AttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, int p
 void DecoderAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
   // Type inference
   ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
-  // This is not correct because sometime there is cache output but no cache
-  // if (ctx.getNumOutputs() > 1 && ctx.getNumInputs() > 5) {
-  //   ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 5, 1);
-  //   ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 5, 2);
-  // }
   if (ctx.getNumOutputs() > 1) {
     ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 1);
     ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 2);
   }
   // Shape inference
-  // TODO
+  //
 }
 
 void RegisterBertSchemas() {
@@ -701,11 +696,8 @@ Global attention flags have value 1 for the tokens attend globally and 0 otherwi
       .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
 
   static const char* Decoder_Attention_doc = R"DOC(
-huggingface(3.5.1) bart decoder attention
-notice:
-  when static_kv = 1 -> cache is cross_(key, value)_cache in layer_state[2] and layer_state[3]
-  when static_kv = 0 -> cache is self_(key, value)_cache in layer_state[0] and layer_state[1]
-TODO:
+This DecoderAttention supports self attention and cross attention, key and value cache, and key_padding_mask. The attention mask is not support at the moment.
+Some boolean parameters are passed by runtime input for generic purpose
 )DOC";
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(DecoderAttention)

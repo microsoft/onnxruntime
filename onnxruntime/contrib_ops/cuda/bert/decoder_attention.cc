@@ -29,6 +29,146 @@ namespace cuda {
 REGISTER_KERNEL_TYPED(float)
 REGISTER_KERNEL_TYPED(MLFloat16)
 
+namespace {
+
+Status CheckInputs(const TensorShape& query_shape,
+                   const TensorShape& key_shape,
+                   const TensorShape& q_weights_shape,
+                   const TensorShape& kv_weights_shape,
+                   const TensorShape& bias_shape,
+                   const Tensor* key_padding_mask,
+                   const Tensor* key_cache,
+                   const Tensor* value_cache,
+                   const bool static_kv,
+                   const bool use_past,
+                   const bool has_layer_state,
+                   const bool has_key_padding_mask) {
+
+  const auto& query_shape_dims = query_shape.GetDims();
+  if (query_shape_dims.size() != 3) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'query' is expected to have 3 dimensions, got ",
+                           query_shape_dims.size());
+  }
+
+  int sequence_length = static_cast<int>(query_shape_dims[0]);
+  int batch_size = static_cast<int>(query_shape_dims[1]);
+  int hidden_size = static_cast<int>(query_shape_dims[2]);
+
+  const auto& key_shape_dims = key_shape.GetDims();
+  if (key_shape_dims.size() != 3) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'key' is expected to have 3 dimensions, got ",
+                           key_shape_dims.size());
+  }
+  int kv_sequence_length = static_cast<int>(key_shape_dims[0]);
+
+  if (query_shape_dims[1] != key_shape_dims[1]) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "query and key shall have the same batch size");
+  }
+
+  if (query_shape_dims[2] != key_shape_dims[2]) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "query and key shall have the same hidden size");
+  }
+
+  const auto& q_weights_dims = q_weights_shape.GetDims();
+  if (q_weights_dims.size() != 2) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'q_weights' is expected to have 2 dimensions, got ",
+                           q_weights_dims.size());
+  }
+
+  const auto& kv_weights_dims = kv_weights_shape.GetDims();
+  if (kv_weights_dims.size() != 2) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'kv_weights' is expected to have 2 dimensions, got ",
+                           kv_weights_dims.size());
+  }
+
+  if (q_weights_dims[0] != hidden_size || q_weights_dims[1] != hidden_size) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "q_weights shall have shape (hidden size, hidden size)");
+  }
+
+  if (kv_weights_dims[0] != hidden_size || kv_weights_dims[1] != 2 * hidden_size) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "kv_weights shall have shape (hidden size, 2 * hidden size)");
+  }
+
+  const auto& bias_dims = bias_shape.GetDims();
+  if (bias_dims.size() != 1) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'bias' is expected to have 1 dimension, got ",
+                           bias_dims.size());
+  }
+
+  if (bias_dims[0] != 3 * hidden_size) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "bias shall have shape (3 * hidden size)");
+  }
+
+  int key_length = kv_sequence_length;
+  if (key_padding_mask != nullptr && has_key_padding_mask == true) {
+    const auto& kp_mask_dims = key_padding_mask->Shape().GetDims();
+
+    if (kp_mask_dims.size() != 2) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'key_padding_mask' is expected to have 2 dimension, got ",
+                             kp_mask_dims.size());
+    }
+
+    if (kp_mask_dims[0] != batch_size) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "key_padding_mask shall have same batch size with query");
+    }
+
+    if (!has_layer_state || !use_past) {
+      if (!static_kv) {
+        key_length = sequence_length;
+      }
+    } else {
+      if (!static_kv) {
+        key_length = sequence_length + kv_sequence_length;
+      }
+    }
+
+    if (kp_mask_dims[1] != key_length) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "key_padding_mask shall have same sequence length as generated key");
+    }
+  }
+
+  if (key_cache != nullptr && value_cache != nullptr && has_layer_state && use_past) {
+    const auto& key_cache_dims = key_cache->Shape().GetDims();
+    if (key_cache_dims.size() != 4) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'key_cache' is expected to have 4 dimension, got ",
+                             key_cache_dims.size());
+    }
+
+    const auto& value_cache_dims = value_cache->Shape().GetDims();
+    if (value_cache_dims.size() != 4) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'value_cache' is expected to have 4 dimension, got ",
+                             value_cache_dims.size());
+    }
+
+    if (key_cache_dims[0] != batch_size) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "key_cache shall have same batch size as query");
+    }
+
+    if (value_cache_dims[0] != batch_size) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "value_cache shall have same batch size as query");
+    }
+
+    if (key_cache_dims[1] * key_cache_dims[3] != hidden_size) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "key_cache shall have correct hidden size");
+    }
+
+    if (value_cache_dims[1] * value_cache_dims[3] != hidden_size) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "value_cache shall have correct hidden size");
+    }
+
+    if (key_cache_dims[2] != key_length) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "key_cache shall have correct sequence length");
+    }
+
+    if (value_cache_dims[2] != key_length) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "value_cache shall have correct sequence length");
+    }
+  }
+
+  return Status::OK();
+}
+} // anonymous namespace
+
 template <typename T>
 DecoderAttention<T>::DecoderAttention(const OpKernelInfo& info) : CudaKernel(info) {
   int64_t num_heads = 0;
@@ -50,7 +190,6 @@ Status DecoderAttention<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* use_past(context->Input<Tensor>(9));
   const Tensor* has_layer_state(context->Input<Tensor>(10));
   const Tensor* has_key_padding_mask(context->Input<Tensor>(11));
-  //TODO: check inputs
 
   cudaStream_t stream = Stream();
 
@@ -106,6 +245,21 @@ Status DecoderAttention<T>::ComputeInternal(OpKernelContext* context) const {
   bool use_past_ = *(kernel_state_pinned + 1);
   bool has_layer_state_ = *(kernel_state_pinned + 2);
   bool has_key_padding_mask_ = *(kernel_state_pinned + 3);
+
+  ORT_RETURN_IF_ERROR(
+    CheckInputs(query->Shape(),
+                key->Shape(),
+                q_weights->Shape(),
+                kv_weights->Shape(),
+                bias->Shape(),
+                key_padding_mask,
+                key_cache,
+                value_cache,
+                static_kv_,
+                use_past_,
+                has_layer_state_,
+                has_key_padding_mask_)
+  );
 
   // calcualte q
   gemm_query_buffer_p = GetScratchBuffer<T>(batch_size * sequence_length * hidden_size * element_size);

@@ -20,6 +20,69 @@ import os
 
 torch.manual_seed(0)
 
+"""
+This is an example of export bart decoder attention with huggingface v3.5.1
+def my_bart_attention_forward(
+    self,
+    query,
+    key: Tensor,
+    key_padding_mask: Optional[Tensor],
+    layer_state: Optional[List[Tensor]],
+    attn_mask: Optional[Tensor] = None,
+    output_attentions: bool=False,
+    use_past=torch.tensor(False),
+):
+    static_kv: bool = self.encoder_decoder_attention
+    q_weight = self.q_proj.weight.transpose(0,1)
+    q_weight = q_weight.reshape(self.embed_dim, self.embed_dim)
+
+    kv_weight = torch.stack((self.k_v_proj.k_proj.weight.transpose(0,1), self.k_v_proj.v_proj.weight.transpose(0,1)), dim=1)
+    kv_weight = kv_weight.reshape(self.embed_dim, 2 * self.embed_dim)
+
+    bias = torch.stack((self.q_proj.bias, self.k_v_proj.k_proj.bias, self.k_v_proj.v_proj.bias), dim=0)
+    bias = bias.reshape(3 * self.embed_dim)
+
+    self_p_k, self_p_v, enc_dec_p_k, enc_dec_p_v = layer_state
+    if static_kv:
+        key_cache, value_cache = enc_dec_p_k, enc_dec_p_v
+    else:
+        key_cache, value_cache = self_p_k, self_p_v
+
+    if not static_kv:
+        key_padding_mask = torch.tensor(False)
+
+    attn_output, new_key_cache, new_value_cache = torch.ops.onnxruntime.DecoderAttention(
+                                                    query,
+                                                    key,
+                                                    q_weight,
+                                                    kv_weight,
+                                                    bias,
+                                                    key_padding_mask,
+                                                    key_cache,
+                                                    value_cache,
+                                                    torch.tensor(static_kv), #static_kv
+                                                    use_past, #use_past
+                                                    torch.tensor(True), #has_layer_state
+                                                    torch.tensor(static_kv), #has_key_padding_mask
+                                                    self.num_heads)
+
+    if not use_past:
+        if self.encoder_decoder_attention:
+            layer_state[2] = new_key_cache
+            layer_state[3] = new_value_cache
+        else:
+            layer_state[0] = new_key_cache
+            layer_state[1] = new_value_cache
+    else:
+        if not self.encoder_decoder_attention:
+            layer_state[0] = new_key_cache
+            layer_state[1] = new_value_cache
+
+    attn_output = self.out_proj(attn_output)
+
+    return attn_output, None, layer_state
+"""
+
 class Config:
     batch_size = 0
     sequence_length = 0
