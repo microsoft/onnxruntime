@@ -84,7 +84,10 @@ class TestOrtValue(unittest.TestCase):
         ptr2 = []
         for av1, v2 in zip(narrays, converted_values):
             ptr2.append(v2.data_ptr())
-            av2 = v2.numpy()
+            if hasattr(v2, 'cpu'):
+                av2 = v2.cpu().numpy()
+            else:
+                av2 = v2.numpy()
             assert_almost_equal(av1, av2)
         self.assertEqual(ptr, ptr2)
 
