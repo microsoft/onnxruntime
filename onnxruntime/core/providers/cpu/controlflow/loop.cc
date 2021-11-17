@@ -123,7 +123,6 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(Loop,
                                        .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorTypes()),
                                    Loop);
 
-#if !defined(DISABLE_OPTIONAL_TYPE)
 ONNX_CPU_OPERATOR_KERNEL(Loop,
                          16,
                          KernelDefBuilder()
@@ -131,16 +130,6 @@ ONNX_CPU_OPERATOR_KERNEL(Loop,
                              .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
                              .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorAndOptionalTypes()),
                          Loop);
-#else
-ONNX_CPU_OPERATOR_KERNEL(Loop,
-                         16,
-                         KernelDefBuilder()
-                             .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
-                             .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
-                             .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorTypes()),
-                         Loop);
-
-#endif
 
 Loop::Info::Info(const onnxruntime::Node& node, const GraphViewer& subgraph_in)
     : subgraph(subgraph_in) {

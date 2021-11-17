@@ -96,22 +96,12 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(If,
                                    If);
 
 // optional type is supported starting opset-16
-#if !defined(DISABLE_OPTIONAL_TYPE)
 ONNX_CPU_OPERATOR_KERNEL(If,
                          16,
                          KernelDefBuilder()
                              .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
                              .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorAndOptionalTypes()),
                          If);
-#else
-ONNX_CPU_OPERATOR_KERNEL(If,
-                         16,
-                         KernelDefBuilder()
-                             .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
-                             .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorTypes()),
-                         If);
-
-#endif
 
 If::Info::Info(const onnxruntime::Node& node, const GraphViewer& subgraph_in) : subgraph(subgraph_in) {
   num_implicit_inputs = static_cast<int>(node.ImplicitInputDefs().size());
@@ -347,13 +337,8 @@ Status IfImpl::AllocateOutputTensors() {
       outputs_.push_back({AllocationType::IfOutput, *context_.GetOutputMLValue(index)});
     } else {
       // Shouldn't hit this as the kernel assignment logic should check for the types before assigning this kernel
-#if !defined(DISABLE_OPTIONAL_TYPE)
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "Only tensors, tensor sequence, optional tensor, and optional tensor sequence types are supported");
-#else
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Only tensors and tensor sequence types are supported");
-#endif
     }
 
 #if !defined(DISABLE_OPTIONAL_TYPE)

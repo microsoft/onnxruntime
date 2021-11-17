@@ -131,12 +131,10 @@ void CopyMutableSeqElement(const ONNX_NAMESPACE::TypeProto& elem_proto,
   proto.mutable_sequence_type()->mutable_elem_type()->CopyFrom(elem_proto);
 }
 
-#if !defined(DISABLE_OPTIONAL_TYPE)
 void CopyMutableOptionalElement(const ONNX_NAMESPACE::TypeProto& elem_proto,
                                 ONNX_NAMESPACE::TypeProto& proto) {
   proto.mutable_optional_type()->mutable_elem_type()->CopyFrom(elem_proto);
 }
-#endif
 
 void AssignOpaqueDomainName(const char* domain, const char* name,
                             ONNX_NAMESPACE::TypeProto& proto) {
@@ -513,7 +511,6 @@ MLDataType SequenceTensorTypeBase::Type() {
 }
 
 #if !defined(DISABLE_OPTIONAL_TYPE)
-
 ///// OptionalTypeBase
 
 struct OptionalTypeBase::Impl : public data_types_internal::TypeProtoImpl {
@@ -552,7 +549,32 @@ MLDataType OptionalTypeBase::Type() {
   static OptionalTypeBase optional_type_base;
   return &optional_type_base;
 }
+#endif
 
+/// DisabledTypeBase
+
+#if defined(DISABLE_OPTIONAL_TYPE)
+struct DisabledTypeBase::Impl : public data_types_internal::TypeProtoImpl {
+};
+
+DisabledTypeBase::DisabledTypeBase() : impl_(new Impl()) {}
+
+DisabledTypeBase::~DisabledTypeBase() {
+  delete impl_;
+}
+
+const ONNX_NAMESPACE::TypeProto* DisabledTypeBase::GetTypeProto() const {
+  return impl_->GetProto();
+}
+
+ONNX_NAMESPACE::TypeProto& DisabledTypeBase::MutableTypeProto() {
+  return impl_->MutableTypeProto();
+}
+
+MLDataType DisabledTypeBase::Type() {
+  static DisabledTypeBase disabled_base;
+  return &disabled_base;
+}
 #endif
 
 /// NoTensorTypeBase
@@ -686,7 +708,6 @@ ORT_REGISTER_SEQ(VectorMapStringToFloat);
 ORT_REGISTER_SEQ(VectorMapInt64ToFloat);
 #endif
 
-#if !defined(DISABLE_OPTIONAL_TYPE)
 #define ORT_REGISTER_OPTIONAL_ORT_TYPE(ORT_TYPE)     \
   ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, int32_t);     \
   ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, float);       \
@@ -705,7 +726,6 @@ ORT_REGISTER_SEQ(VectorMapInt64ToFloat);
 
 ORT_REGISTER_OPTIONAL_ORT_TYPE(Tensor)
 ORT_REGISTER_OPTIONAL_ORT_TYPE(TensorSeq)
-#endif
 
 // Used for Tensor Proto registrations
 #define REGISTER_TENSOR_PROTO(TYPE, reg_fn)                  \
@@ -1047,7 +1067,6 @@ std::vector<MLDataType> GetTensorTypesFromTypeList() {
   return boost::mp11::mp_apply<GetTensorTypesImpl, L>{}();
 }
 
-#if !defined(DISABLE_OPTIONAL_TYPE)
 template <typename... ElementTypes>
 struct GetOptionalTensorTypesImpl {
   std::vector<MLDataType> operator()() const {
@@ -1071,7 +1090,6 @@ template <typename L>
 std::vector<MLDataType> GetOptionalSequenceTensorTypesFromTypeList() {
   return boost::mp11::mp_apply<GetOptionalSequenceTensorTypesImpl, L>{}();
 }
-#endif
 
 template <typename... ElementTypes>
 struct GetSequenceTensorTypesImpl {
@@ -1159,7 +1177,6 @@ const std::vector<MLDataType>& DataTypeImpl::AllTensorAndSequenceTensorTypes() {
   return all_tensor_and_sequence_types;
 }
 
-#if !defined(DISABLE_OPTIONAL_TYPE)
 const std::vector<MLDataType>& DataTypeImpl::AllOptionalTypes() {
   static std::vector<MLDataType> all_optional_types =
       []() {
@@ -1185,7 +1202,6 @@ const std::vector<MLDataType>& DataTypeImpl::AllTensorAndSequenceTensorAndOption
 
   return all_tensor_and_sequence_types_and_optional_types;
 }
-#endif
 
 // helper to stream. expected to only be used for error output, so any typeid lookup
 // cost should be fine. alternative would be to add a static string field to DataTypeImpl

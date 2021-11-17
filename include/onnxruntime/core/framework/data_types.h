@@ -167,10 +167,8 @@ class DataTypeImpl {
   static MLDataType GetSparseTensorType();
 #endif
 
-#if !defined(DISABLE_OPTIONAL_TYPE)
   template <typename T, typename elemT>
   static MLDataType GetOptionalType();
-#endif
 
   /**
    * Convert an ONNX TypeProto to onnxruntime DataTypeImpl.
@@ -205,11 +203,8 @@ class DataTypeImpl {
   static const std::vector<MLDataType>& AllIEEEFloatTensorExceptHalfTypes();
   static const std::vector<MLDataType>& AllTensorAndSequenceTensorTypes();
   static const std::vector<MLDataType>& AllFixedSizeTensorAndSequenceTensorTypes();
-
-#if !defined(DISABLE_OPTIONAL_TYPE)
   static const std::vector<MLDataType>& AllOptionalTypes();
   static const std::vector<MLDataType>& AllTensorAndSequenceTensorAndOptionalTypes();
-#endif
 };
 
 std::ostream& operator<<(std::ostream& out, MLDataType data_type);
@@ -516,6 +511,49 @@ class TensorType : public TensorTypeBase {
   }
 };
 
+#if defined(DISABLE_OPTIONAL_TYPE)
+
+/// Common base-class for all disabled types. We need DataTypeImpl::ToString to work in a minimal build
+/// with disabled types to keep the ORT format model kernel hashes stable.
+class DisabledTypeBase : public DataTypeImpl {
+ public:
+  static MLDataType Type();
+
+  bool IsCompatible(const ONNX_NAMESPACE::TypeProto&) const override {
+    // We always want to return false for the IsCompatible() for a disabled type
+    // because this will ensure that no kernel supporting the disabled type will
+    // be matched to a model node requiring that type and the model load will
+    // result in failure.
+    return false;
+  }
+
+  size_t Size() const override {
+    ORT_THROW("Type is disabled in this build.");
+  }
+
+  DeleteFunc GetDeleteFunc() const override {
+    ORT_THROW("Type is disabled in this build.");
+  }
+
+  // This must work
+  const ONNX_NAMESPACE::TypeProto* GetTypeProto() const override;
+
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(DisabledTypeBase);
+
+ protected:
+  // This must work
+  ONNX_NAMESPACE::TypeProto& MutableTypeProto();
+
+  DisabledTypeBase();
+  ~DisabledTypeBase() override;
+
+ private:
+  struct Impl;
+  Impl* impl_;
+};
+
+#endif
+
 #if !defined(DISABLE_SPARSE_TENSORS)
 /// Common base-class for all sparse-tensors (with different element types).
 class SparseTensorTypeBase : public DataTypeImpl {
@@ -579,9 +617,9 @@ class SparseTensorType : public SparseTensorTypeBase {
 
 #endif  // !defined(DISABLE_SPARSE_TENSORS)
 
-#if !defined(DISABLE_OPTIONAL_TYPE)
-
 /// Common base-class for all optional types.
+
+#if !defined(DISABLE_OPTIONAL_TYPE)
 class OptionalTypeBase : public DataTypeImpl {
  public:
   static MLDataType Type();
@@ -626,17 +664,27 @@ class OptionalTypeBase : public DataTypeImpl {
   struct Impl;
   Impl* impl_;
 };
+#endif
 
+// Derive from OptionalTypeBase if the Optional type support is enabled,
+// else derive from DisabledTypeBase
 template <typename T, typename elemT>
-class OptionalType : public OptionalTypeBase {
+class OptionalType :
+#if !defined(DISABLE_OPTIONAL_TYPE)
+    public OptionalTypeBase
+#else
+    public DisabledTypeBase
+#endif
+{
  public:
+  static MLDataType Type();
+
+#if !defined(DISABLE_OPTIONAL_TYPE)
   static_assert(data_types_internal::IsOptionalOrtType<T>::value,
                 "Requires one of the supported types: Tensor or TensorSeq");
 
   static_assert(data_types_internal::IsTensorContainedType<elemT>::value,
                 "Requires one of the tensor fundamental types");
-
-  static MLDataType Type();
 
   MLDataType GetElementType() const override {
     if (std::is_same<T, Tensor>::value) {
@@ -648,14 +696,13 @@ class OptionalType : public OptionalTypeBase {
       ORT_ENFORCE(false, "Unsupported optional type");
     }
   }
+#endif
 
  private:
   OptionalType() {
     data_types_internal::SetOptionalType<T, elemT>::Set(MutableTypeProto());
   }
 };
-
-#endif
 
 /**
   * \brief Provide a specialization for your C++ Non-tensor type
@@ -1022,7 +1069,6 @@ class PrimitiveDataType : public PrimitiveDataTypeBase {
   }
 #endif
 
-#if !defined(DISABLE_OPTIONAL_TYPE)
 #define ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, TYPE)             \
   template <>                                                  \
   MLDataType OptionalType<ORT_TYPE, TYPE>::Type() {            \
@@ -1033,7 +1079,6 @@ class PrimitiveDataType : public PrimitiveDataTypeBase {
   MLDataType DataTypeImpl::GetOptionalType<ORT_TYPE, TYPE>() { \
     return OptionalType<ORT_TYPE, TYPE>::Type();               \
   }
-#endif
 
 #if !defined(DISABLE_ML_OPS)
 #define ORT_REGISTER_MAP(TYPE)               \

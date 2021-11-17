@@ -443,8 +443,7 @@ common::Status NodeArg::UpdateTypeAndShape(const ONNX_NAMESPACE::TypeProto& inpu
       bool is_current_type_optional_tensor_type = utils::HasOptionalTensorType(current_type);
 
       // Check for homogeneity within optional type
-      if ((is_input_type_optional_tensor_type && !is_current_type_optional_tensor_type) ||
-          (!is_input_type_optional_tensor_type && is_current_type_optional_tensor_type)) {
+      if (is_input_type_optional_tensor_type != is_current_type_optional_tensor_type) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Optional Type mismatch. Expected: ", ONNX_NAMESPACE::Utils::DataTypeUtils::ToType(current_type),
                                " . Got: ", ONNX_NAMESPACE::Utils::DataTypeUtils::ToType(input_type));
       }
