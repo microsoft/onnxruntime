@@ -96,13 +96,13 @@ Return Value:
     // Dispatch the partitioned operation.
     //
 
-    const auto* GemmU8X8Dispatch = MlasGemmU8X8GetDispatch(Shape->AIsSigned, Shape->BIsSigned);
+    const auto* GemmQuantDispatch = MlasGemmQuantGetDispatch(Shape->AIsSigned, Shape->BIsSigned);
     MLAS_GEMM_U8X8_OPERATION* GemmU8X8Operation;
 
     if (Data->BIsPacked) {
-        GemmU8X8Operation = GemmU8X8Dispatch->PackedOperation;
+        GemmU8X8Operation = GemmQuantDispatch->PackedOperation;
     } else {
-        GemmU8X8Operation = GemmU8X8Dispatch->Operation;
+        GemmU8X8Operation = GemmQuantDispatch->Operation;
     }
 
     GemmU8X8Operation(Shape, Data, RangeStartM, RangeCountM, RangeStartN, RangeCountN);
@@ -271,10 +271,10 @@ Return Value:
     // Retrieve the packing parameters.
     //
 
-    const auto* GemmU8X8Dispatch = MlasGemmU8X8GetDispatch(AIsSigned, BIsSigned);
+    const auto* GemmQuantDispatch = MlasGemmQuantGetDispatch(AIsSigned, BIsSigned);
 
-    size_t PackedK = GemmU8X8Dispatch->PackedK;
-    size_t PackedStrideK = GemmU8X8Dispatch->PackedStrideK;
+    size_t PackedK = GemmQuantDispatch->PackedK;
+    size_t PackedStrideK = GemmQuantDispatch->PackedStrideK;
 
     if (PackedStrideK == 0) {
         return 0;
@@ -340,10 +340,10 @@ Return Value:
     // Retrieve the packing parameters.
     //
 
-    const auto* GemmU8X8Dispatch = MlasGemmU8X8GetDispatch(AIsSigned, BIsSigned);
+    const auto* GemmQuantDispatch = MlasGemmQuantGetDispatch(AIsSigned, BIsSigned);
 
-    size_t PackedK = GemmU8X8Dispatch->PackedK;
-    size_t PackedStrideK = GemmU8X8Dispatch->PackedStrideK;
+    size_t PackedK = GemmQuantDispatch->PackedK;
+    size_t PackedStrideK = GemmQuantDispatch->PackedStrideK;
 
     //
     // Reserve and initialize storage for the column sum buffer to hold the sums
@@ -382,7 +382,7 @@ Return Value:
 
             CountN = std::min(N - n, BatchedN);
 
-            GemmU8X8Dispatch->CopyPackBRoutine(pb, B + n, ldb, CountN, CountK, ColumnSumBuffer, BIsSigned);
+            GemmQuantDispatch->CopyPackBRoutine(pb, B + n, ldb, CountN, CountK, ColumnSumBuffer, BIsSigned);
 
             //
             // Accumulate this batch of the column sum buffer into the packed

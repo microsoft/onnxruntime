@@ -693,56 +693,56 @@ struct MLAS_GEMM_QUANT_DISPATCH {
 
 MLAS_FORCEINLINE
 const MLAS_GEMM_QUANT_DISPATCH*
-MlasGemmU8X8GetDispatch(
+MlasGemmQuantGetDispatch(
     bool AIsSigned,
     bool BIsSigned
 )
 {
-    const MLAS_GEMM_QUANT_DISPATCH* GemmU8X8Dispatch = nullptr;
+    const MLAS_GEMM_QUANT_DISPATCH* GemmQuantDispatch = nullptr;
 
     MLAS_UNREFERENCED_PARAMETER(AIsSigned);
     MLAS_UNREFERENCED_PARAMETER(BIsSigned);
 
 #if defined(MLAS_TARGET_AMD64_IX86)
     if (AIsSigned) {
-        return GemmU8X8Dispatch;
+        return GemmQuantDispatch;
     }
 
     if (BIsSigned) {
-        GemmU8X8Dispatch = MlasPlatform.GemmU8S8Dispatch;
+        GemmQuantDispatch = MlasPlatform.GemmU8S8Dispatch;
     }
     else {
-        GemmU8X8Dispatch = MlasPlatform.GemmU8U8Dispatch;
+        GemmQuantDispatch = MlasPlatform.GemmU8U8Dispatch;
     }
 #elif defined(MLAS_TARGET_ARM64)
-    GemmU8X8Dispatch = MlasPlatform.GemmU8X8Dispatch;
+    GemmQuantDispatch = MlasPlatform.GemmU8X8Dispatch;
     if (AIsSigned && BIsSigned) { // S8S8
-        if (GemmU8X8Dispatch == &MlasGemmU8X8DispatchNeon) {
-            GemmU8X8Dispatch = &MlasGemmS8S8DispatchNeon;
+        if (GemmQuantDispatch == &MlasGemmU8X8DispatchNeon) {
+            GemmQuantDispatch = &MlasGemmS8S8DispatchNeon;
         } else {
-            GemmU8X8Dispatch = &MlasGemmS8S8DispatchSdot;
+            GemmQuantDispatch = &MlasGemmS8S8DispatchSdot;
         }
     } else {
-        if (BIsSigned && GemmU8X8Dispatch == &MlasGemmU8X8DispatchNeon) {
-            GemmU8X8Dispatch = &MlasGemmU8S8DispatchNeon;
+        if (BIsSigned && GemmQuantDispatch == &MlasGemmU8X8DispatchNeon) {
+            GemmQuantDispatch = &MlasGemmU8S8DispatchNeon;
         }
     }
 
 #elif defined(MLAS_TARGET_ARM64EC) || (defined(MLAS_TARGET_ARM) && !defined(_MSC_VER))
-    GemmU8X8Dispatch = &MlasGemmU8X8DispatchNeon;
+    GemmQuantDispatch = &MlasGemmU8X8DispatchNeon;
 #elif defined(MLAS_TARGET_WASM_SIMD)
     if (AIsSigned) {
-        return GemmU8X8Dispatch;
+        return GemmQuantDispatch;
     }
 
-    GemmU8X8Dispatch = &MlasGemmU8X8DispatchWasmSimd;
+    GemmQuantDispatch = &MlasGemmU8X8DispatchWasmSimd;
 #else
     if (AIsSigned) {
-        return GemmU8X8Dispatch;
+        return GemmQuantDispatch;
     }
 
-    GemmU8X8Dispatch = &MlasGemmU8X8DispatchDefault;
+    GemmQuantDispatch = &MlasGemmU8X8DispatchDefault;
 #endif
 
-    return GemmU8X8Dispatch;
+    return GemmQuantDispatch;
 }
