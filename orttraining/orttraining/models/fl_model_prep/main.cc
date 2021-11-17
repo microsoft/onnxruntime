@@ -12,6 +12,7 @@
 #include "core/session/environment.h"
 #include "orttraining/core/session/training_session.h"
 #include "orttraining/core/framework/tensorboard/event_writer.h"
+#include "orttraining/models/fl_model_prep/gradient_generated.h"
 #include "core/graph/model.h"
 
 #include "core/framework/allocator.h"
@@ -33,6 +34,18 @@ using namespace onnxruntime::common;
 using namespace onnxruntime::training;
 using namespace std;
 
+
+static NodeDef ConstantScalarNode(float value, const std::string& arg_name) {
+  onnx::TensorProto tensor_proto;
+  tensor_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  tensor_proto.add_float_data(value);
+  tensor_proto.add_dims(1);
+
+  return NodeDef("Constant",
+                 {},
+                 {ArgDef(arg_name, nullptr)},
+                 {ONNX_NAMESPACE::MakeAttribute("value", tensor_proto)});
+}
 
 struct BinaryCrossEntropy : public ILossFunction {
   GraphAugmenter::GraphDefs operator()(const Graph& graph, const LossFunctionInfo& loss_func_info) override {
@@ -79,11 +92,7 @@ struct BinaryCrossEntropy : public ILossFunction {
 
     // (1-p(x)) * log(1-q(x))
     {
-      onnx::TensorProto tensor_proto;
-      tensor_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
-      tensor_proto.add_float_data(1.f);
-      tensor_proto.set_name("one");
-      graph_defs.AddInitializers({tensor_proto});
+      new_nodes.emplace_back(ConstantScalarNode(1.0, "one"));
 
       new_nodes.emplace_back(NodeDef("Sub",  // Op
                                      {
@@ -367,43 +376,26 @@ onnxruntime::common::Status CreateTrainingGraph(const ModelPrepParameters& param
 }
 
 void WriteWeightsToFile(std::map<std::string, std::vector<float>> weights, const std::string& output_path) {
-  ofstream f(output_path, ios::out | ios::binary);
-  // construct metadata
-  std::string key_list;
-  std::string length_list;
-  for (auto weight_iter = weights.begin(); weight_iter != weights.end(); weight_iter++) {
-    if (weight_iter != weights.begin()) {
-      key_list += ",";
-      length_list += ",";
-    }
-    key_list += "\"" + weight_iter->first + "\"";
-    length_list += std::to_string(weight_iter->second.size());
-  }
-  std::string metadata = "{";
-  metadata += "\"version\":1.0,";
-  metadata += "\"key_list\":[" + key_list + "],";
-  metadata += "\"length_list\":[" + length_list + "]}";
-  bool needs_swap = endian::native == endian::little;
-  uint32_t metadata_length = (uint32_t)(metadata.size() * sizeof(metadata[0]));
-  if (needs_swap) {
-    metadata_length = ntohl(metadata_length);
-  }
-  f.write((char *) &metadata_length, sizeof(uint32_t)); 
-  f.write(metadata.data(), metadata.size());
+  ofstream shape_file(output_path + "shape.txt", ios::out);
+  std::vector<float> concatenated_weights = {};
   for (const auto& weight : weights) {
-      for (const auto& value : weight.second) {
-          uint32_t u_value = 0;
-          memcpy(&u_value, &value, sizeof(float));
-          if (needs_swap) {
-            u_value = ntohl(u_value);
-          }
-          f.write((char*) &value, sizeof(float));
-      }
+      shape_file << weight.first << std::endl;
+      std::copy(weight.second.begin(), weight.second.end(), std::back_inserter(concatenated_weights));
   }
-  /*for (auto weight_iter = weights.begin(); weight_iter != weights.end(); weight_iter++) {
-      for (auto value_iter = weight_iter->second.begin(); value_iter != weight_iter->second.end(); value_iter++) {
-      }
-  }*/
+  shape_file.close();
+
+  gradient::Metadata metadata(1.0, 1.0);
+  flatbuffers::FlatBufferBuilder builder(1024);
+  auto fb_weight_vector = builder.CreateVector(concatenated_weights.data(), concatenated_weights.size());
+  gradient::GradientBuilder grad_builder(builder);
+  grad_builder.add_metadata(&metadata);
+  grad_builder.add_gradients(fb_weight_vector);
+  auto grad = grad_builder.Finish();
+  builder.Finish(grad);
+
+  ofstream f(output_path, ios::out | ios::binary);
+  const uint8_t* buffer_ptr = builder.GetBufferPointer();
+  f.write(reinterpret_cast<const char*>(buffer_ptr), builder.GetSize());
   f.close();
 }
 
@@ -551,6 +543,8 @@ onnxruntime::common::Status PrepareTrainingGraphForInferenceSession(const ModelP
     new_model->MainGraph().RemoveInitializedTensor(*initializer);
   }
 
+  // Ensure node attributes have graph reference
+
   status = onnxruntime::Model::Save(*new_model, params.modified_training_onnx_model_path);
   if (!status.IsOK()) {
     std::cerr << "Failed to save training graph: " << status.ErrorMessage() << std::endl;
@@ -560,6 +554,24 @@ onnxruntime::common::Status PrepareTrainingGraphForInferenceSession(const ModelP
   std::cout << "Modified training graph written to " << params.modified_training_onnx_model_path << std::endl;
 
   return status;
+}
+
+static void CreateBoolOrtValue(const std::vector<int64_t>& dims,
+                             const std::vector<uint8_t>& value,
+                             OrtValue* p_mlvalue,
+                             AllocatorPtr alloc) {
+  TensorShape shape(dims);
+  assert(shape.Size() == static_cast<int64_t>(value.size()));
+  auto element_type = DataTypeImpl::GetType<bool>();
+  auto p_tensor = onnxruntime::make_unique<Tensor>(element_type, shape, alloc);
+
+  if (value.size() > 0) {
+    memcpy(p_tensor->MutableDataRaw(), value.data(), p_tensor->SizeInBytes());
+  }
+
+  p_mlvalue->Init(p_tensor.release(),
+                  DataTypeImpl::GetType<Tensor>(),
+                  DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
 }
 
 template <typename T>
@@ -641,6 +653,9 @@ onnxruntime::common::Status SaveOptimizedOrtModel(const std::string& source_mode
       } else if (data_type->compare("tensor(int64)") == 0) { 
         auto value = std::vector<int64_t>(total_size, 1);
         CreateOrtValue(dims, value, &v, alloc);
+      } else if (data_type->compare("tensor(bool)") == 0) { 
+        auto value = std::vector<uint8_t>(total_size, 0);
+        CreateBoolOrtValue(dims, value, &v, alloc);
       }
       else {
           std::cerr << "Unsupported data type: " << (*data_type) << std::endl;
