@@ -84,12 +84,6 @@ Status SoftmaxGrad<T>::Compute(OpKernelContext* context) const {
     return Status::OK();
   }
 
-  std::vector<float> scale_(N);
-  std::vector<float> sum_multiplier_(D, 1.f);  // initialize all multiplier values to 1.0
-  const int n = gsl::narrow_cast<int>(N);
-  const int d = gsl::narrow_cast<int>(D);
-  const int nd = gsl::narrow_cast<int>(N * D);
-
   bool is_transpose_required = opset_ >= 13 && axis != (rank - 1);
 
   std::unique_ptr<Tensor> transposed_dY;
@@ -114,6 +108,8 @@ Status SoftmaxGrad<T>::Compute(OpKernelContext* context) const {
     for (auto e : permutation) {
       transposed_input_dims.push_back(input_shape[e]);
     }
+    N = TensorShape(transposed_input_dims).SizeToDimension(rank - 1);
+    D = TensorShape(transposed_input_dims).SizeFromDimension(rank - 1);
 
     // Allocate a temporary tensor to hold transposed input
     auto temp_input0 = Tensor::Create(Y.DataType(), TensorShape(transposed_input_dims), alloc);
@@ -130,6 +126,11 @@ Status SoftmaxGrad<T>::Compute(OpKernelContext* context) const {
     intermediate_output = Tensor::Create(dX.DataType(), TensorShape(transposed_input_dims), alloc);
   }
 
+  std::vector<float> scale_(N);
+  std::vector<float> sum_multiplier_(D, 1.f);  // initialize all multiplier values to 1.0
+  const int n = gsl::narrow_cast<int>(N);
+  const int d = gsl::narrow_cast<int>(D);
+  const int nd = gsl::narrow_cast<int>(N * D);
   float* scaledata = scale_.data();
   const float* Ydata = is_transpose_required ? transposed_Y->template Data<T>() : Y.template Data<float>();
   const float* dYdata = is_transpose_required ? transposed_dY->template Data<T>() : dY.template Data<float>();
@@ -189,9 +190,6 @@ Status LogSoftmaxGrad<T>::Compute(OpKernelContext* context) const {
     return Status::OK();
   }
 
-  const int d = gsl::narrow_cast<int>(D);
-  const int nd = gsl::narrow_cast<int>(N * D);
-
   bool is_transpose_required = opset_ >= 13 && axis != (rank - 1);
 
   std::unique_ptr<Tensor> transposed_dY;
@@ -216,6 +214,8 @@ Status LogSoftmaxGrad<T>::Compute(OpKernelContext* context) const {
     for (auto e : permutation) {
       transposed_input_dims.push_back(input_shape[e]);
     }
+    N = TensorShape(transposed_input_dims).SizeToDimension(rank - 1);
+    D = TensorShape(transposed_input_dims).SizeFromDimension(rank - 1);
 
     // Allocate a temporary tensor to hold transposed input
     auto temp_input0 = Tensor::Create(Y.DataType(), TensorShape(transposed_input_dims), alloc);
@@ -235,6 +235,9 @@ Status LogSoftmaxGrad<T>::Compute(OpKernelContext* context) const {
   const float* Ydata = is_transpose_required ? transposed_Y->template Data<T>() : Y.template Data<float>();
   const float* dYdata = is_transpose_required ? transposed_dY->template Data<T>() : dY.template Data<float>();
   float* dXdata = is_transpose_required ? intermediate_output->template MutableData<T>() : dX.template MutableData<float>();
+
+  const int d = gsl::narrow_cast<int>(D);
+  const int nd = gsl::narrow_cast<int>(N * D);
 
   std::vector<float> eY(nd);
   float* eYdata = eY.data();
