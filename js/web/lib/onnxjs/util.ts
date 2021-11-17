@@ -472,11 +472,14 @@ export class ProtoUtil {
 }
 
 export class LongUtil {
-  static longToNumber(n: Long|flatbuffers.Long|number) {
+  // This function is called to get a number from long type of data for attribute, dim, and ir version,
+  // which values are signed integers.
+  // To make it more generic, add an optional paramter to convert to a unsigned number.
+  static longToNumber(n: Long|flatbuffers.Long|number, unsigned?: boolean) {
     if (Long.isLong(n)) {
       return n.toNumber();
     } else if (n instanceof flatbuffers.Long) {
-      return Long.fromValue({low: n.low, high: n.high, unsigned: true}).toNumber();
+      return Long.fromValue({low: n.low, high: n.high, unsigned: unsigned ?? false}).toNumber();
     }
     return n;
   }

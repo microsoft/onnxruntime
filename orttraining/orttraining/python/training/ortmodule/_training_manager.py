@@ -47,7 +47,8 @@ class TrainingManager(GraphExecutionManager):
         forward_inputs = C.OrtValueVector()
         forward_inputs.reserve(len(inputs))
         for input in inputs:
-            forward_inputs.push_back(_utils._torch_tensor_to_dlpack(input), input.dtype == torch.bool)
+            dlp = _utils._torch_tensor_to_dlpack(input)
+            forward_inputs.push_back(dlp, input.dtype == torch.bool)
 
         forward_outputs = C.OrtValueVector()
         # Run and return module outputs.
@@ -61,7 +62,7 @@ class TrainingManager(GraphExecutionManager):
         return user_outputs, run_info
 
     def _create_autofunction_class(self):
-        
+
         class _ORTModuleFunction(torch.autograd.Function):
             '''Use a custom torch.autograd.Function to associate self.backward_graph as the
             gradient implementation for self.forward_graph.'''
@@ -183,7 +184,7 @@ class TrainingManager(GraphExecutionManager):
                     else:
                         results.append(None)
 
-                return tuple(results)        
+                return tuple(results)
 
         return _ORTModuleFunction
 
@@ -344,3 +345,17 @@ class TrainingManager(GraphExecutionManager):
             self._initialize_graph_builder(training=True)
             return True
         return False
+
+    def __getstate__(self):
+        state = super(TrainingManager, self).__getstate__()
+
+        # Only top level classes are pickleable. So, _ORTModuleFunction is
+        # not pickleable. So, let's not pickle it, and redefine it when
+        # loading the state.
+        del state['_forward_class']
+        return state
+
+    def __setstate__(self, state):
+        super(TrainingManager, self).__setstate__(state)
+
+        _utils.reinitialize_training_manager(self)

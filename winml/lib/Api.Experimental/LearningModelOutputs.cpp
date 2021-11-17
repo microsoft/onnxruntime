@@ -7,8 +7,8 @@ namespace WINML_EXPERIMENTALP
 {
 
 LearningModelOutputs::LearningModelOutputs(winml_experimental::LearningModelBuilder builder) :
-    builder_(builder),
-    output_descriptors_(winrt::single_threaded_vector<winml::ILearningModelFeatureDescriptor>()) {
+    output_descriptors_(winrt::single_threaded_vector<winml::ILearningModelFeatureDescriptor>()),
+    builder_(builder) {
 }
 
 winml_experimental::LearningModelBuilder LearningModelOutputs::Add(winml::ILearningModelFeatureDescriptor const& output)

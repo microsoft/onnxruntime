@@ -89,6 +89,7 @@ provider_excluded_files = [
                 'math/matmul_integer.cuh',
                 'math/matmul_integer.h',
                 'math/softmax_impl.cu',
+                'math/softmax_warpwise_impl.cuh',
                 'math/softmax.cc',
                 'nn/batch_norm.cc',
                 'nn/batch_norm.h',
@@ -121,14 +122,6 @@ provider_excluded_files = [
                 'shared_inc/cuda_call.h',
                 'shared_inc/fpgeneric.h',
                 'shared_inc/integer_gemm.h',
-                'tensor/resize.cc',
-                'tensor/resize.h',
-                'tensor/resize_impl.cu',
-                'tensor/resize_impl.h',
-                'tensor/upsample.cc',
-                'tensor/upsample.h',
-                'tensor/upsample_impl.cu',
-                'tensor/upsample_impl.h',
                 'cuda_allocator.cc',
                 'cuda_allocator.h',
                 'cuda_call.cc',
@@ -159,28 +152,20 @@ provider_excluded_files = [
 ]
 
 training_ops_excluded_files = [
-                    'activation/gelu_grad_impl_common.cuh',
+                    'activation/gelu_grad_impl_common.cuh',  # uses custom tanh
                     'collective/adasum_kernels.cc',
                     'collective/adasum_kernels.h',
-                    'collective/nccl_common.cc',
-                    'collective/ready_event.cc',
-                    'collective/ready_event.h',
-                    'controlflow/record.cc',
-                    'controlflow/record.h',
-                    'controlflow/wait.cc',
-                    'controlflow/wait.h',
-                    'math/div_grad.cc',
-                    'math/softmax_grad_impl.cu',
-                    'math/softmax_grad.cc',
-                    'nn/batch_norm_grad.cc',
-                    'nn/batch_norm_grad.h',
-                    'nn/batch_norm_internal.cc',
-                    'nn/batch_norm_internal.h',
+                    'math/div_grad.cc',  # miopen API differs from cudnn, no double type support
+                    'math/softmax_grad_impl.cu',  # warp size differences
+                    'math/softmax_grad.cc',  # miopen API differs from cudnn, no double type support
+                    'nn/batch_norm_grad.cc',  # no double type support
+                    'nn/batch_norm_grad.h',  # miopen API differs from cudnn
+                    'nn/batch_norm_internal.cc',  # miopen API differs from cudnn, no double type support
+                    'nn/batch_norm_internal.h',  # miopen API differs from cudnn, no double type support
                     'nn/conv_grad.cc',
                     'nn/conv_grad.h',
-                    'reduction/reduction_all.cc',
-                    'reduction/reduction_ops.cc',
-                    'tensor/gather_nd_grad_impl.cu',
+                    'reduction/reduction_all.cc',  # deterministic = true, ignore ctx setting
+                    'reduction/reduction_ops.cc',  # no double type support
                     'cuda_training_kernels.cc',
                     'cuda_training_kernels.h',
 ]
@@ -306,6 +291,8 @@ def hipify(src_file_path, dst_file_path):
     s = s.replace('RegisterHipTrainingKernels', 'RegisterRocmTrainingKernels')
     s = s.replace('ROCM_VERSION', 'CUDA_VERSION')  # semantically different meanings, cannot hipify
     s = s.replace('__ROCM_ARCH__', '__CUDA_ARCH__')  # semantically different meanings, cannot hipify
+    # "std::log" above incorrectly changed "std::logic_error" to "logfic_error"
+    s = s.replace('logfic_error', 'std::logic_error')
 
     # Deletions
     s = s.replace('#include "device_atomic_functions.h"', '')  # HIP atomics in main hip header already
@@ -361,3 +348,8 @@ def amd_hipify(config_build_dir):
             log.debug(result.result())
         for result in training_results:
             log.debug(result.result())
+
+
+if __name__ == '__main__':
+    import sys
+    amd_hipify(sys.argv[1])

@@ -44,6 +44,7 @@ Status EmbedLayerNorm<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* gamma = context->Input<Tensor>(5);
   const Tensor* beta = context->Input<Tensor>(6);
   const Tensor* mask = context->Input<Tensor>(7);  // optional. nullptr if not provided
+  const Tensor* position_ids = context->Input<Tensor>(8); // optional. nullptr if not provided
 
   const auto& input_dims = input_ids->Shape().GetDims();
   int64_t hidden_size = word_embedding->Shape()[1];
@@ -53,6 +54,8 @@ Status EmbedLayerNorm<T>::ComputeInternal(OpKernelContext* context) const {
 
   TensorShape mask_index_shape({input_dims[0]});
   Tensor* mask_index = context->Output(1, mask_index_shape);
+
+  Tensor* embedding_sum = context->Output(2, output_shape);
 
   int batch_size = static_cast<int>(input_dims[0]);
   int sequence_length = static_cast<int>(input_dims[1]);
@@ -74,7 +77,9 @@ Status EmbedLayerNorm<T>::ComputeInternal(OpKernelContext* context) const {
           static_cast<int>(hidden_size),
           batch_size,
           sequence_length,
-          element_size)) {
+          element_size,
+          embedding_sum == nullptr ? nullptr : embedding_sum->template MutableData<T>(),
+          position_ids == nullptr ? nullptr : position_ids->template Data<int32_t>())) {
     // Get last error to reset it to cudaSuccess.
     CUDA_CALL(cudaGetLastError());
     return Status(common::ONNXRUNTIME, common::FAIL);

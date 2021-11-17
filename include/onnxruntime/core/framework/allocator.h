@@ -37,8 +37,12 @@ namespace onnxruntime {
 constexpr const char* CPU = "Cpu";
 constexpr const char* CUDA = "Cuda";
 constexpr const char* CUDA_PINNED = "CudaPinned";
+constexpr const char* DML = "DML";
 constexpr const char* MIGRAPHX = "MIGraphX";
 constexpr const char* MIGRAPHX_PINNED = "MIGraphXPinned";
+constexpr const char* OpenVINO_CPU = "OpenVINO_CPU";
+constexpr const char* OpenVINO_GPU = "OpenVINO_GPU";
+
 
 constexpr size_t kAllocAlignment = 256;
 

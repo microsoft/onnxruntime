@@ -423,7 +423,7 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
                                   past,
                                   extra_add_qk));
 
-  const auto& shape = input->Shape().GetDims();
+  const auto shape = input->Shape().GetDims();
   const int batch_size = static_cast<int>(shape[0]);
   const int sequence_length = static_cast<int>(shape[1]);
   const int input_hidden_size = static_cast<int>(shape[2]);

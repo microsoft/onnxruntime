@@ -45,6 +45,11 @@ ProviderInfo_CUDA* TryGetProviderInfo_CUDA();
 }
 #endif
 
+#ifdef USE_DML
+#include "core/providers/dml/dml_provider_factory.h"
+const OrtDmlApi* GetOrtDmlApi(_In_ uint32_t version) NO_EXCEPTION;
+#endif
+
 #ifdef ENABLE_EXTENSION_CUSTOM_OPS
 #include "onnxruntime_extensions.h"
 #endif
@@ -906,6 +911,12 @@ ORT_API(void, OrtApis::ClearBoundOutputs, _Inout_ OrtIoBinding* binding_ptr) {
 ORT_API_STATUS_IMPL(OrtApis::IsTensor, _In_ const OrtValue* value, _Out_ int* out) {
   auto v = reinterpret_cast<const ::OrtValue*>(value);
   *out = v->IsTensor() ? 1 : 0;
+  return nullptr;
+}
+
+ORT_API_STATUS_IMPL(OrtApis::HasValue, _In_ const OrtValue* value, _Out_ int* out) {
+  auto v = reinterpret_cast<const ::OrtValue*>(value);
+  *out = v->IsAllocated() ? 1 : 0;
   return nullptr;
 }
 
@@ -1837,7 +1848,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateOpaqueValue, _In_z_ const char* domain_name, 
   MLDataType ml_type = DataTypeImpl::GetDataType(dtype);
   ORT_ENFORCE(ml_type != nullptr,
               "Specified domain and type names combination does not refer to a registered opaque type");
-  const auto* non_tensor_base = ml_type->AsNonTensorTypeBase();
+  const auto* non_tensor_base = ml_type->AsNonTensorType();
   ORT_ENFORCE(non_tensor_base != nullptr, "Opaque type is not a non_tensor type!!!");
   std::unique_ptr<OrtValue> ort_val(new OrtValue);
   non_tensor_base->FromDataContainer(data_container, data_container_size, *ort_val);
@@ -1854,7 +1865,7 @@ ORT_API_STATUS_IMPL(OrtApis::GetOpaqueValue, _In_ const char* domain_name, _In_ 
   MLDataType ml_type = DataTypeImpl::GetDataType(dtype);
   ORT_ENFORCE(ml_type != nullptr,
               "Specified domain and type names combination does not refer to a registered opaque type");
-  const auto* non_tensor_base = ml_type->AsNonTensorTypeBase();
+  const auto* non_tensor_base = ml_type->AsNonTensorType();
   ORT_ENFORCE(non_tensor_base != nullptr, "Opaque type is not a non_tensor type!!!");
   non_tensor_base->ToDataContainer(*in, data_container_size, data_container);
   API_IMPL_END
@@ -1903,6 +1914,27 @@ ORT_API_STATUS_IMPL(OrtApis::ReleaseAvailableProviders, _In_ char** ptr,
   }
   API_IMPL_END
   return NULL;
+}
+
+ORT_API_STATUS_IMPL(OrtApis::GetExecutionProviderApi,
+                    [[maybe_unused]] _In_ const char* provider_name,
+                    [[maybe_unused]] _In_ uint32_t version,
+                    _Outptr_ const void** provider_api) {
+  API_IMPL_BEGIN
+
+  *provider_api = nullptr;
+#ifdef USE_DML
+  if (strcmp(provider_name, "DML") == 0) {
+    *provider_api = GetOrtDmlApi(version);
+    if (*provider_api == nullptr) {
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Specified version is not supported for the DirectML provider.");
+    }
+    return NULL;
+  }
+#endif
+
+  return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Specified provider is not supported.");
+  API_IMPL_END
 }
 
 ORT_API_STATUS_IMPL(OrtApis::TensorAt, _Inout_ OrtValue* value, const int64_t* location_values, size_t location_values_count,
@@ -2076,6 +2108,34 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSessionFromArrayWithPrepackedWeightsContainer
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtApis::GetTensorMemoryInfo, _In_ const OrtValue* value, _Outptr_ const OrtMemoryInfo** memory_info) {
+  TENSOR_READ_API_BEGIN
+  *memory_info = &tensor.Location();
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::SessionOptionsSetCustomCreateThreadFn, _Inout_ OrtSessionOptions* options, _In_ OrtCustomCreateThreadFn ort_custom_create_thread_fn) {
+  API_IMPL_BEGIN
+  options->value.custom_create_thread_fn = ort_custom_create_thread_fn;
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::SessionOptionsSetCustomThreadCreationOptions, _Inout_ OrtSessionOptions* options, _In_ void* ort_custom_thread_creation_options) {
+  API_IMPL_BEGIN
+  options->value.custom_thread_creation_options = ort_custom_thread_creation_options;
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::SessionOptionsSetCustomJoinThreadFn, _Inout_ OrtSessionOptions* options, _In_ OrtCustomJoinThreadFn ort_custom_join_thread_fn) {
+  API_IMPL_BEGIN
+  options->value.custom_join_thread_fn = ort_custom_join_thread_fn;
+  return nullptr;
+  API_IMPL_END
+}
+
 static constexpr OrtApiBase ort_api_base = {
     &OrtApis::GetApi,
     &OrtApis::GetVersionString,
@@ -2183,8 +2243,8 @@ static constexpr OrtApi ort_api_1_to_10 = {
     &OrtApis::CreateTensorWithDataAsOrtValue,
     &OrtApis::IsTensor,
     &OrtApis::GetTensorMutableData,
-    &OrtApis::FillStringTensor,
 
+    &OrtApis::FillStringTensor,
     &OrtApis::GetStringTensorDataLength,
     &OrtApis::GetStringTensorContent,
 
@@ -2350,6 +2410,16 @@ static constexpr OrtApi ort_api_1_to_10 = {
     // End of Version 9 - DO NOT MODIFY ABOVE (see above text for more information)
 
     // Version 10 - In development, feel free to add/remove/rearrange here
+    &OrtApis::HasValue,
+    &OrtApis::KernelContext_GetGPUComputeStream,
+    &OrtApis::GetTensorMemoryInfo,
+    &OrtApis::GetExecutionProviderApi,
+    &OrtApis::SessionOptionsSetCustomCreateThreadFn,
+    &OrtApis::SessionOptionsSetCustomThreadCreationOptions,
+    &OrtApis::SessionOptionsSetCustomJoinThreadFn,
+    &OrtApis::SetGlobalCustomCreateThreadFn,
+    &OrtApis::SetGlobalCustomThreadCreationOptions,
+    &OrtApis::SetGlobalCustomJoinThreadFn,
 };
 
 // Asserts to do a some checks to ensure older Versions of the OrtApi never change (will detect an addition or deletion but not if they cancel out each other)

@@ -58,7 +58,7 @@ jobs:
           artifactName: ${{ parameters.artifactName }} 
           artifactNameNoVersionString: ${{ parameters.artifactNameNoVersionString }}  
           libraryName: 'libonnxruntime.so.$(OnnxRuntimeVersion)'
-          commitId: $(OnnxRuntimeGitCommitHash)
+
 
     - template: templates/component-governance-component-detection-steps.yml
       parameters :

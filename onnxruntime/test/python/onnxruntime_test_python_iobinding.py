@@ -1,5 +1,5 @@
 import numpy as np
-import onnxruntime
+import onnxruntime as onnxrt
 import unittest
 
 from helper import get_name
@@ -7,13 +7,13 @@ from helper import get_name
 class TestIOBinding(unittest.TestCase):
 
     def create_ortvalue_input_on_gpu(self):
-        return onnxruntime.OrtValue.ortvalue_from_numpy(np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32), 'cuda', 0)
+        return onnxrt.OrtValue.ortvalue_from_numpy(np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32), 'cuda', 0)
 
     def create_ortvalue_alternate_input_on_gpu(self):
-        return onnxruntime.OrtValue.ortvalue_from_numpy(np.array([[2.0, 4.0], [6.0, 8.0], [10.0, 12.0]], dtype=np.float32), 'cuda', 0)
+        return onnxrt.OrtValue.ortvalue_from_numpy(np.array([[2.0, 4.0], [6.0, 8.0], [10.0, 12.0]], dtype=np.float32), 'cuda', 0)
 
     def create_uninitialized_ortvalue_input_on_gpu(self):
-        return onnxruntime.OrtValue.ortvalue_from_shape_and_type([3, 2], np.float32, 'cuda', 0)
+        return onnxrt.OrtValue.ortvalue_from_shape_and_type([3, 2], np.float32, 'cuda', 0)
 
     def create_numpy_input(self):
         return np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
@@ -27,7 +27,7 @@ class TestIOBinding(unittest.TestCase):
     def test_bind_input_to_cpu_arr(self):
         input = self.create_numpy_input()
 
-        session = onnxruntime.InferenceSession(get_name("mul_1.onnx"))
+        session = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=onnxrt.get_available_providers())
         io_binding = session.io_binding()
         
         # Bind Numpy object (input) that's on CPU to wherever the model needs it
@@ -48,7 +48,7 @@ class TestIOBinding(unittest.TestCase):
     def test_bind_input_only(self):
         input = self.create_ortvalue_input_on_gpu()
 
-        session = onnxruntime.InferenceSession(get_name("mul_1.onnx"))
+        session = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=onnxrt.get_available_providers())
         io_binding = session.io_binding()
         
         # Bind input to CUDA
@@ -69,7 +69,7 @@ class TestIOBinding(unittest.TestCase):
     def test_bind_input_and_preallocated_output(self):
         input = self.create_ortvalue_input_on_gpu()
 
-        session = onnxruntime.InferenceSession(get_name("mul_1.onnx"))
+        session = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=onnxrt.get_available_providers())
         io_binding = session.io_binding()
         
         # Bind input to CUDA
@@ -95,7 +95,7 @@ class TestIOBinding(unittest.TestCase):
 
 
     def test_bind_input_and_non_preallocated_output(self):
-        session = onnxruntime.InferenceSession(get_name("mul_1.onnx"))
+        session = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=onnxrt.get_available_providers())
         io_binding = session.io_binding()
         
         # Bind input to CUDA
@@ -136,7 +136,7 @@ class TestIOBinding(unittest.TestCase):
         self.assertTrue(np.array_equal(self.create_expected_output_alternate(), ort_outputs[0].numpy()))
 
     def test_bind_input_and_bind_output_with_ortvalues(self):
-        session = onnxruntime.InferenceSession(get_name("mul_1.onnx"))
+        session = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=onnxrt.get_available_providers())
         io_binding = session.io_binding()
         
         # Bind ortvalue as input
