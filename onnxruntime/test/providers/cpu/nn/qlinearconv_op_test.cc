@@ -905,7 +905,7 @@ TEST(QLinearConvTest, Conv2D_U8S8_Depthwise_Kernelsize_PerChannel) {
     for (const auto kd : std::initializer_list<std::pair<int64_t, int64_t>>{{3LL, 3LL}, {5LL, 5LL}, {25LL, 1LL}}) {
       for (int with_bias : std::initializer_list<int>{0, 1}) {
         QLinearConvOpTester<uint8_t, int8_t> test;
-        test.GenerateRandomInput({1, channels, 17, 17}, .03f, 12);
+        test.GenerateRandomInput({1, channels, 37, 37}, .03f, 12);
         test.GenerateRandomWeights({channels, 1, kd.first, kd.second}, .10f, 0);
         std::vector<float> weight_scales;
         for (int64_t i = 0; i < channels; i++) {
