@@ -753,7 +753,7 @@ MlasGemmQuantKernel<MLAS_GEMM_U8X8_KERNEL_UDOT>(
         RowSumBuffer, ColumnSumBuffer, ZeroPointB, ZeroMode);
 }
 
-const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8X8DispatchUdot = {
+const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchUdot = {
     MlasGemmQuantOperation<MLAS_GEMM_U8X8_KERNEL_UDOT>,
     MlasGemmQuantPackedOperation<MLAS_GEMM_U8X8_KERNEL_UDOT>,
     MlasGemmQuantCopyPackB<MLAS_GEMM_U8X8_KERNEL_UDOT>,

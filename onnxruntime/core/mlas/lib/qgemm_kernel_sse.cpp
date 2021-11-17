@@ -486,7 +486,7 @@ MlasGemmQuantKernel<MLAS_GEMM_U8X8_KERNEL_SSE>(
     return 1;
 }
 
-const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8X8DispatchSse = {
+const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchSse = {
     MlasGemmQuantOperation<MLAS_GEMM_U8X8_KERNEL_SSE>,
     nullptr,
     nullptr,

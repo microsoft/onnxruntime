@@ -682,7 +682,7 @@ void
     bool BIsSigned
     );
 
-struct MLAS_GEMM_U8X8_DISPATCH {
+struct MLAS_GEMM_QUANT_DISPATCH {
     MLAS_GEMM_U8X8_OPERATION* Operation;
     MLAS_GEMM_U8X8_OPERATION* PackedOperation;
     MLAS_GEMM_U8X8_COPY_PACKB_ROUTINE* CopyPackBRoutine;
@@ -692,13 +692,13 @@ struct MLAS_GEMM_U8X8_DISPATCH {
 
 
 MLAS_FORCEINLINE
-const MLAS_GEMM_U8X8_DISPATCH*
+const MLAS_GEMM_QUANT_DISPATCH*
 MlasGemmU8X8GetDispatch(
     bool AIsSigned,
     bool BIsSigned
 )
 {
-    const MLAS_GEMM_U8X8_DISPATCH* GemmU8X8Dispatch = nullptr;
+    const MLAS_GEMM_QUANT_DISPATCH* GemmU8X8Dispatch = nullptr;
 
     MLAS_UNREFERENCED_PARAMETER(AIsSigned);
     MLAS_UNREFERENCED_PARAMETER(BIsSigned);

@@ -439,7 +439,7 @@ MlasGemmQuantKernel<MLAS_GEMM_U8S8_KERNEL_SSE41>(
     return 1;
 }
 
-const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8S8DispatchSse41 = {
+const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8S8DispatchSse41 = {
     MlasGemmQuantOperation<MLAS_GEMM_U8S8_KERNEL_SSE41>,
     MlasGemmQuantPackedOperation<MLAS_GEMM_U8S8_KERNEL_SSE41>,
     MlasGemmQuantCopyPackB<MLAS_GEMM_U8S8_KERNEL_SSE41>,

@@ -183,7 +183,7 @@ MlasGemmQuantKernel<MLAS_GEMM_U8S8_KERNEL_AVX2>(
                                        RowSumBuffer, ColumnSumBuffer, ZeroPointB, ZeroMode);
 }
 
-const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8S8DispatchAvx2 = {
+const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8S8DispatchAvx2 = {
     MlasGemmQuantOperation<MLAS_GEMM_U8S8_KERNEL_AVX2>,
     MlasGemmQuantPackedOperation<MLAS_GEMM_U8S8_KERNEL_AVX2>,
     MlasGemmQuantCopyPackB<MLAS_GEMM_U8S8_KERNEL_AVX2>,
@@ -264,7 +264,7 @@ MlasGemmQuantKernel<MLAS_GEMM_U8U8_KERNEL_AVX2>(
                                        RowSumBuffer, ColumnSumBuffer, ZeroPointB, ZeroMode);
 }
 
-const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8U8DispatchAvx2 = {
+const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8U8DispatchAvx2 = {
     MlasGemmQuantOperation<MLAS_GEMM_U8U8_KERNEL_AVX2>,
     MlasGemmQuantPackedOperation<MLAS_GEMM_U8U8_KERNEL_AVX2>,
     MlasGemmQuantCopyPackB<MLAS_GEMM_U8U8_KERNEL_AVX2>,

@@ -508,7 +508,7 @@ MlasGemmQuantKernel<MLAS_GEMM_U8X8_KERNEL_NEON>(
                                   RowSumBuffer, ColumnSumBuffer, ZeroPointB, ZeroMode);
 }
 
-const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8X8DispatchNeon = {
+const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchNeon = {
     MlasGemmQuantOperation<MLAS_GEMM_U8X8_KERNEL_NEON>,
     MlasGemmQuantPackedOperation<MLAS_GEMM_U8X8_KERNEL_NEON>,
     MlasGemmQuantCopyPackB<MLAS_GEMM_U8X8_KERNEL_NEON>,
@@ -987,7 +987,7 @@ MlasGemmQuantKernel<MLAS_GEMM_U8S8_KERNEL_NEON>(
 }
 
 
-const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8S8DispatchNeon = {
+const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8S8DispatchNeon = {
     MlasGemmQuantOperation<MLAS_GEMM_U8S8_KERNEL_NEON>,
     MlasGemmQuantPackedOperation<MLAS_GEMM_U8S8_KERNEL_NEON>,
     MlasGemmQuantCopyPackB<MLAS_GEMM_U8S8_KERNEL_NEON>,
@@ -1305,7 +1305,7 @@ MlasGemmQuantKernel<MLAS_GEMM_S8S8_KERNEL_NEON>(
 }
 
 
-const MLAS_GEMM_U8X8_DISPATCH MlasGemmS8S8DispatchNeon = {
+const MLAS_GEMM_QUANT_DISPATCH MlasGemmS8S8DispatchNeon = {
     MlasGemmQuantOperation<MLAS_GEMM_S8S8_KERNEL_NEON>,
     MlasGemmQuantPackedOperation<MLAS_GEMM_S8S8_KERNEL_NEON>,
     MlasGemmQuantCopyPackB<MLAS_GEMM_S8S8_KERNEL_NEON>,

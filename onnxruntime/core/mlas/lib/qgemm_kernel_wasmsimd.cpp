@@ -498,7 +498,7 @@ MlasGemmQuantKernel<MLAS_GEMM_U8X8_KERNEL_WASMSIMD>(
     return 1;
 }
 
-const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8X8DispatchWasmSimd = {
+const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchWasmSimd = {
     MlasGemmQuantOperation<MLAS_GEMM_U8X8_KERNEL_WASMSIMD>,
     nullptr,
     nullptr,
