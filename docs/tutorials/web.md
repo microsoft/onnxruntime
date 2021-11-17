@@ -90,7 +90,6 @@ First, we need to get our image from path (can be local or url) and convert it t
 ```javascript
 import Jimp  from 'jimp/*';
 import { Tensor } from 'onnxruntime-web';
-const jimp = require('jimp');
 
 export default async function getImageTensorFromPath(path: string, dims: number[] =  [1, 3, 224, 224]): Promise<Tensor> {
   // 1. load the image  
