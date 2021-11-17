@@ -7,7 +7,11 @@ nav_order: 7
 
 # Deploy and inference ML models on the web
 
-One of the hardest parts when deploying and inferencing in languages that are not commonly used for data science is figuring out how to do the data processing and inferencing. We have done all the hard work for you with [this template](https://github.com/microsoft/onnxruntime-nextjs-template)! In this tutorial we will use a template QuickStart to start building out a static web app using ORT-web. We will do the inference in JavaScript on the browser for a computer vision model. Let's learn a bit more about the library, ONNX Runtime Web, which allows us to inference in many different languages.
+In this tutorial we will use a template QuickStart to start building out a static web app using ONNX Runtime web. We will do the inference in JavaScript on the browser for a computer vision model.
+
+One of the hardest parts when deploying and inferencing in languages that are not commonly used for data science is figuring out how to do the data processing and inferencing. We have done all the hard work for you with [this template](https://github.com/microsoft/onnxruntime-nextjs-template)! 
+
+Below is what the site looks like from the template. It is looping through a list of example images, calling the inference session with a SqueezeNet model, then returning the score and label from inference.
 
 Example template output:
 
@@ -35,24 +39,24 @@ There are benefits to doing on device and in browser inferencing.
 
 1. ONNX Model Zoo
 
-We will be using [SqueezeNet](https://github.com/onnx/models/tree/master/vision/classification/squeezenet) from the [ONNX Model Zoo](https://github.com/onnx/models). SqueezeNet models perform image classification - they take images as input and classify the major object in the image into a set of pre-defined classes. They are trained on the ImageNet dataset which contains images from 1000 different classes. SqueezeNet models are highly efficient in terms of size and speed while providing good accuracies. This makes them ideal for platforms with strict constraints on size, like client side inferencing.
+  We will be using [SqueezeNet](https://github.com/onnx/models/tree/master/vision/classification/squeezenet) from the [ONNX Model Zoo](https://github.com/onnx/models). SqueezeNet models perform image classification - they take images as input and classify the major object in the image into a set of pre-defined classes. They are trained on the ImageNet dataset which contains images from 1000 different classes. SqueezeNet models are highly efficient in terms of size and speed while providing good accuracies. This makes them ideal for platforms with strict constraints on size, like client side inferencing.
 
 2. Create a model and export to ONNX Format
 
-There are many ways to create a custom model that is specific to the task you are trying to solve. Use code to build your model or use the low code/no code tools to create the model. Check out the resources below to learn about some different ways to create a customized model. All of these resources have an export to ONNX format functionality so that you can leverage this template and source code. 
+  There are many ways to create a custom model that is specific to the task you are trying to solve. Use code to build your model or use the low code/no code tools to create the model. Check out the resources below to learn about some different ways to create a customized model. All of these resources have an export to ONNX format functionality so that you can leverage this template and source code. 
 
-- [Use AutoML to create a custom model](https://docs.microsoft.com/azure/machine-learning/concept-automated-ml)
-- [Use Custom Vision Cognitive Services to create a custom model](https://docs.microsoft.com/azure/cognitive-services/custom-vision-service/overview)
-- [Use Azure Machine Learning Designer to create a custom model](https://docs.microsoft.com/en-us/azure/machine-learning/concept-designer)
-- [Build your own model with PyTorch.](https://docs.microsoft.com/learn/paths/pytorch-fundamentals/)
+  - [Use AutoML to create a custom model](https://docs.microsoft.com/azure/machine-learning/concept-automated-ml)
+  - [Use Custom Vision Cognitive Services to create a custom model](https://docs.microsoft.com/azure/cognitive-services/custom-vision-service/overview)
+  - [Use Azure Machine Learning Designer to create a custom model](https://docs.microsoft.com/en-us/azure/machine-learning/concept-designer)
+  - [Build your own model with PyTorch.](https://docs.microsoft.com/learn/paths/pytorch-fundamentals/)
 
-# Create a Static Site with NextJS (a ReactJS Framework) to deploy models in the browser
+## Create a Static Site with NextJS (a ReactJS Framework) to deploy models in the browser
 
-## The Template
+### The Template
 
 The goal of this template is to provide a starting point for your accelerated ML web application. The template generates a computer vision application using the [NextJS](https://nextjs.org/) framework, authored in typescript and built with webpack. Let’s dive into the template and breakdown the code.
 
-## The `utils` Folder 
+### The `utils` Folder 
 
 There are three files in the Utils folder `imageHelper.ts`, `modelHelper.ts` and `predict.ts`. Predict is the entry point from the web component to start inferencing. Here we import the helpers and call the default functions to get the image tensor and to run our model inference. 
 
