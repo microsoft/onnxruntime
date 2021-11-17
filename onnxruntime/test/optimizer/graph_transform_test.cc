@@ -1941,6 +1941,30 @@ TEST_F(GraphTransformationTests, ReluClip11Fusion) {
   }
 }
 
+TEST_F(GraphTransformationTests, ReluClip11FusionGHIssue9753) {
+  auto model_uri = MODEL_FOLDER "fusion/relu_clip_fusion_gh_issue_9753.onnx";
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
+  Graph& graph = model->MainGraph();
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+
+  // The model contains one Relu and one Clip
+  ASSERT_TRUE(op_to_count["Relu"] == 1);
+  ASSERT_TRUE(op_to_count["Clip"] == 1);
+
+  auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
+  ASSERT_STATUS_OK(rule_transformer_L1->Register(std::make_unique<FuseReluClip>()));
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  op_to_count = CountOpsInGraph(graph);
+
+  // After fusion, the model only contains Clip.
+  ASSERT_TRUE(op_to_count["Relu"] == 0);
+  ASSERT_TRUE(op_to_count["Clip"] == 1);
+}
+
 // Test Reshape Fusion with 2 constant initializers for Concat inputs.
 TEST_F(GraphTransformationTests, ReshapeFusionTest) {
   auto model_uri = MODEL_FOLDER "fusion/reshape.onnx";
