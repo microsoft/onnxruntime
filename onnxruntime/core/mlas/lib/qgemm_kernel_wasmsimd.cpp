@@ -44,7 +44,7 @@ constexpr MLAS_GEMM_QUANT_STRIDES MLAS_GEMM_U8X8_KERNEL_WASMSIMD::Strides;
 template<>
 MLAS_FORCEINLINE
 int32_t
-MlasGemmU8X8FixupZeroPointB<MLAS_GEMM_U8X8_KERNEL_WASMSIMD>(
+MlasGemmQuantFixupZeroPointB<MLAS_GEMM_U8X8_KERNEL_WASMSIMD>(
     int32_t ZeroPointB,
     bool BIsSigned
     )
@@ -58,7 +58,7 @@ MlasGemmU8X8FixupZeroPointB<MLAS_GEMM_U8X8_KERNEL_WASMSIMD>(
 
 template<>
 void
-MlasGemmU8X8CopyPackA<MLAS_GEMM_U8X8_KERNEL_WASMSIMD>(
+MlasGemmQuantCopyPackA<MLAS_GEMM_U8X8_KERNEL_WASMSIMD>(
     MLAS_GEMM_U8X8_KERNEL_WASMSIMD::PackedAType* D,
     const uint8_t* A,
     size_t lda,
@@ -186,7 +186,7 @@ MlasGemmU8X8CopyPackBProcessWasmSimd(
 
 template<>
 void
-MlasGemmU8X8CopyPackB<MLAS_GEMM_U8X8_KERNEL_WASMSIMD>(
+MlasGemmQuantCopyPackB<MLAS_GEMM_U8X8_KERNEL_WASMSIMD>(
     MLAS_GEMM_U8X8_KERNEL_WASMSIMD::PackedBType* D,
     const uint8_t* B,
     size_t ldb,
@@ -339,7 +339,7 @@ MlasGemmU8X8MultiplyAccumulateRowWasmSimd(
 
 template<>
 size_t
-MlasGemmU8X8Kernel<MLAS_GEMM_U8X8_KERNEL_WASMSIMD>(
+MlasGemmQuantKernel<MLAS_GEMM_U8X8_KERNEL_WASMSIMD>(
     const MLAS_GEMM_U8X8_KERNEL_WASMSIMD::PackedAType* A,
     const MLAS_GEMM_U8X8_KERNEL_WASMSIMD::PackedBType* B,
     int32_t* C,
@@ -499,7 +499,7 @@ MlasGemmU8X8Kernel<MLAS_GEMM_U8X8_KERNEL_WASMSIMD>(
 }
 
 const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8X8DispatchWasmSimd = {
-    MlasGemmU8X8Operation<MLAS_GEMM_U8X8_KERNEL_WASMSIMD>,
+    MlasGemmQuantOperation<MLAS_GEMM_U8X8_KERNEL_WASMSIMD>,
     nullptr,
     nullptr,
     MLAS_GEMM_U8X8_KERNEL_WASMSIMD::PackedK,

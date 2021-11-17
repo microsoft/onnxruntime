@@ -34,7 +34,7 @@ constexpr MLAS_GEMM_QUANT_STRIDES MLAS_GEMM_U8X8_KERNEL_SSE::Strides;
 template<>
 MLAS_FORCEINLINE
 int32_t
-MlasGemmU8X8FixupZeroPointB<MLAS_GEMM_U8X8_KERNEL_SSE>(
+MlasGemmQuantFixupZeroPointB<MLAS_GEMM_U8X8_KERNEL_SSE>(
     int32_t ZeroPointB,
     bool BIsSigned
     )
@@ -48,7 +48,7 @@ MlasGemmU8X8FixupZeroPointB<MLAS_GEMM_U8X8_KERNEL_SSE>(
 
 template<>
 void
-MlasGemmU8X8CopyPackA<MLAS_GEMM_U8X8_KERNEL_SSE>(
+MlasGemmQuantCopyPackA<MLAS_GEMM_U8X8_KERNEL_SSE>(
     MLAS_GEMM_U8X8_KERNEL_SSE::PackedAType* D,
     const uint8_t* A,
     size_t lda,
@@ -175,7 +175,7 @@ MlasGemmU8X8CopyPackBProcessSse(
 
 template<>
 void
-MlasGemmU8X8CopyPackB<MLAS_GEMM_U8X8_KERNEL_SSE>(
+MlasGemmQuantCopyPackB<MLAS_GEMM_U8X8_KERNEL_SSE>(
     MLAS_GEMM_U8X8_KERNEL_SSE::PackedBType* D,
     const uint8_t* B,
     size_t ldb,
@@ -327,7 +327,7 @@ MlasGemmU8X8MultiplyAccumulateRowSse(
 
 template<>
 size_t
-MlasGemmU8X8Kernel<MLAS_GEMM_U8X8_KERNEL_SSE>(
+MlasGemmQuantKernel<MLAS_GEMM_U8X8_KERNEL_SSE>(
     const MLAS_GEMM_U8X8_KERNEL_SSE::PackedAType* A,
     const MLAS_GEMM_U8X8_KERNEL_SSE::PackedBType* B,
     int32_t* C,
@@ -487,7 +487,7 @@ MlasGemmU8X8Kernel<MLAS_GEMM_U8X8_KERNEL_SSE>(
 }
 
 const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8X8DispatchSse = {
-    MlasGemmU8X8Operation<MLAS_GEMM_U8X8_KERNEL_SSE>,
+    MlasGemmQuantOperation<MLAS_GEMM_U8X8_KERNEL_SSE>,
     nullptr,
     nullptr,
     MLAS_GEMM_U8X8_KERNEL_SSE::PackedK,

@@ -60,7 +60,7 @@ constexpr MLAS_GEMM_QUANT_STRIDES MLAS_GEMM_U8X8_KERNEL_NEON::PackedStrides;
 
 template <>
 MLAS_FORCEINLINE int32_t
-MlasGemmU8X8FixupZeroPointA<MLAS_GEMM_U8X8_KERNEL_NEON>(
+MlasGemmQuantFixupZeroPointA<MLAS_GEMM_U8X8_KERNEL_NEON>(
     int32_t ZeroPointA,
     bool AIsSigned)
 {
@@ -74,7 +74,7 @@ MlasGemmU8X8FixupZeroPointA<MLAS_GEMM_U8X8_KERNEL_NEON>(
 template<>
 MLAS_FORCEINLINE
 int32_t
-MlasGemmU8X8FixupZeroPointB<MLAS_GEMM_U8X8_KERNEL_NEON>(
+MlasGemmQuantFixupZeroPointB<MLAS_GEMM_U8X8_KERNEL_NEON>(
     int32_t ZeroPointB,
     bool BIsSigned
     )
@@ -88,7 +88,7 @@ MlasGemmU8X8FixupZeroPointB<MLAS_GEMM_U8X8_KERNEL_NEON>(
 
 template<>
 void
-MlasGemmU8X8CopyPackA<MLAS_GEMM_U8X8_KERNEL_NEON>(
+MlasGemmQuantCopyPackA<MLAS_GEMM_U8X8_KERNEL_NEON>(
     MLAS_GEMM_U8X8_KERNEL_NEON::PackedAType* D,
     const uint8_t* A,
     size_t lda,
@@ -393,7 +393,7 @@ MlasGemmU8X8CopyPackBProcessNeon(
 
 template<>
 void
-MlasGemmU8X8CopyPackB<MLAS_GEMM_U8X8_KERNEL_NEON>(
+MlasGemmQuantCopyPackB<MLAS_GEMM_U8X8_KERNEL_NEON>(
     MLAS_GEMM_U8X8_KERNEL_NEON::PackedBType* D,
     const uint8_t* B,
     size_t ldb,
@@ -490,7 +490,7 @@ MlasGemmU8X8CopyPackB<MLAS_GEMM_U8X8_KERNEL_NEON>(
 template<>
 MLAS_FORCEINLINE
 size_t
-MlasGemmU8X8Kernel<MLAS_GEMM_U8X8_KERNEL_NEON>(
+MlasGemmQuantKernel<MLAS_GEMM_U8X8_KERNEL_NEON>(
     const MLAS_GEMM_U8X8_KERNEL_NEON::PackedAType* A,
     const MLAS_GEMM_U8X8_KERNEL_NEON::PackedBType* B,
     int32_t* C,
@@ -509,9 +509,9 @@ MlasGemmU8X8Kernel<MLAS_GEMM_U8X8_KERNEL_NEON>(
 }
 
 const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8X8DispatchNeon = {
-    MlasGemmU8X8Operation<MLAS_GEMM_U8X8_KERNEL_NEON>,
-    MlasGemmU8X8PackedOperation<MLAS_GEMM_U8X8_KERNEL_NEON>,
-    MlasGemmU8X8CopyPackB<MLAS_GEMM_U8X8_KERNEL_NEON>,
+    MlasGemmQuantOperation<MLAS_GEMM_U8X8_KERNEL_NEON>,
+    MlasGemmQuantPackedOperation<MLAS_GEMM_U8X8_KERNEL_NEON>,
+    MlasGemmQuantCopyPackB<MLAS_GEMM_U8X8_KERNEL_NEON>,
     MLAS_GEMM_U8X8_KERNEL_NEON::PackedK,
     MLAS_GEMM_U8X8_KERNEL_NEON::PackedStrides.K,
 };
@@ -558,7 +558,7 @@ constexpr MLAS_GEMM_QUANT_STRIDES MLAS_GEMM_U8S8_KERNEL_NEON::PackedStrides;
 
 template <>
 MLAS_FORCEINLINE int32_t
-MlasGemmU8X8FixupZeroPointA<MLAS_GEMM_U8S8_KERNEL_NEON>(
+MlasGemmQuantFixupZeroPointA<MLAS_GEMM_U8S8_KERNEL_NEON>(
     int32_t ZeroPointA,
     bool AIsSigned)
 {
@@ -568,7 +568,7 @@ MlasGemmU8X8FixupZeroPointA<MLAS_GEMM_U8S8_KERNEL_NEON>(
 
 template<>
 void
-MlasGemmU8X8CopyPackA<MLAS_GEMM_U8S8_KERNEL_NEON>(
+MlasGemmQuantCopyPackA<MLAS_GEMM_U8S8_KERNEL_NEON>(
     MLAS_GEMM_U8S8_KERNEL_NEON::PackedAType* D,
     const uint8_t* A,
     size_t lda,
@@ -837,7 +837,7 @@ MlasGemmU8X8CopyPackA<MLAS_GEMM_U8S8_KERNEL_NEON>(
 
 template<>
 void
-MlasGemmU8X8CopyPackB<MLAS_GEMM_U8S8_KERNEL_NEON>(
+MlasGemmQuantCopyPackB<MLAS_GEMM_U8S8_KERNEL_NEON>(
     MLAS_GEMM_U8S8_KERNEL_NEON::PackedBType* D,
     const uint8_t* B,
     size_t ldb,
@@ -968,7 +968,7 @@ MlasGemmU8X8CopyPackB<MLAS_GEMM_U8S8_KERNEL_NEON>(
 template<>
 MLAS_FORCEINLINE
 size_t
-MlasGemmU8X8Kernel<MLAS_GEMM_U8S8_KERNEL_NEON>(
+MlasGemmQuantKernel<MLAS_GEMM_U8S8_KERNEL_NEON>(
     const MLAS_GEMM_U8S8_KERNEL_NEON::PackedAType* A,
     const MLAS_GEMM_U8S8_KERNEL_NEON::PackedBType* B,
     int32_t* C,
@@ -988,9 +988,9 @@ MlasGemmU8X8Kernel<MLAS_GEMM_U8S8_KERNEL_NEON>(
 
 
 const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8S8DispatchNeon = {
-    MlasGemmU8X8Operation<MLAS_GEMM_U8S8_KERNEL_NEON>,
-    MlasGemmU8X8PackedOperation<MLAS_GEMM_U8S8_KERNEL_NEON>,
-    MlasGemmU8X8CopyPackB<MLAS_GEMM_U8S8_KERNEL_NEON>,
+    MlasGemmQuantOperation<MLAS_GEMM_U8S8_KERNEL_NEON>,
+    MlasGemmQuantPackedOperation<MLAS_GEMM_U8S8_KERNEL_NEON>,
+    MlasGemmQuantCopyPackB<MLAS_GEMM_U8S8_KERNEL_NEON>,
     MLAS_GEMM_U8S8_KERNEL_NEON::PackedK,
     MLAS_GEMM_U8S8_KERNEL_NEON::PackedStrides.K,
 };
@@ -1013,7 +1013,7 @@ constexpr MLAS_GEMM_QUANT_STRIDES MLAS_GEMM_S8S8_KERNEL_NEON::PackedStrides;
 
 template<>
 void
-MlasGemmU8X8CopyPackA<MLAS_GEMM_S8S8_KERNEL_NEON>(
+MlasGemmQuantCopyPackA<MLAS_GEMM_S8S8_KERNEL_NEON>(
     MLAS_GEMM_S8S8_KERNEL_NEON::PackedAType* D,
     const uint8_t* A,
     size_t lda,
@@ -1270,7 +1270,7 @@ MlasGemmU8X8CopyPackA<MLAS_GEMM_S8S8_KERNEL_NEON>(
 
 template<>
 void
-MlasGemmU8X8CopyPackB<MLAS_GEMM_S8S8_KERNEL_NEON>(
+MlasGemmQuantCopyPackB<MLAS_GEMM_S8S8_KERNEL_NEON>(
     MLAS_GEMM_S8S8_KERNEL_NEON::PackedBType* D,
     const uint8_t* B,
     size_t ldb,
@@ -1280,13 +1280,13 @@ MlasGemmU8X8CopyPackB<MLAS_GEMM_S8S8_KERNEL_NEON>(
     bool BIsSigned
     )
 {
-    MlasGemmU8X8CopyPackB<MLAS_GEMM_U8S8_KERNEL_NEON>(D, B, ldb, CountN, CountK, ColumnSumBuffer, BIsSigned);
+    MlasGemmQuantCopyPackB<MLAS_GEMM_U8S8_KERNEL_NEON>(D, B, ldb, CountN, CountK, ColumnSumBuffer, BIsSigned);
 }
 
 template<>
 MLAS_FORCEINLINE
 size_t
-MlasGemmU8X8Kernel<MLAS_GEMM_S8S8_KERNEL_NEON>(
+MlasGemmQuantKernel<MLAS_GEMM_S8S8_KERNEL_NEON>(
     const MLAS_GEMM_S8S8_KERNEL_NEON::PackedAType* A,
     const MLAS_GEMM_S8S8_KERNEL_NEON::PackedBType* B,
     int32_t* C,
@@ -1306,9 +1306,9 @@ MlasGemmU8X8Kernel<MLAS_GEMM_S8S8_KERNEL_NEON>(
 
 
 const MLAS_GEMM_U8X8_DISPATCH MlasGemmS8S8DispatchNeon = {
-    MlasGemmU8X8Operation<MLAS_GEMM_S8S8_KERNEL_NEON>,
-    MlasGemmU8X8PackedOperation<MLAS_GEMM_S8S8_KERNEL_NEON>,
-    MlasGemmU8X8CopyPackB<MLAS_GEMM_S8S8_KERNEL_NEON>,
+    MlasGemmQuantOperation<MLAS_GEMM_S8S8_KERNEL_NEON>,
+    MlasGemmQuantPackedOperation<MLAS_GEMM_S8S8_KERNEL_NEON>,
+    MlasGemmQuantCopyPackB<MLAS_GEMM_S8S8_KERNEL_NEON>,
     MLAS_GEMM_S8S8_KERNEL_NEON::PackedK,
     MLAS_GEMM_S8S8_KERNEL_NEON::PackedStrides.K,
 };

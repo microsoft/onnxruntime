@@ -14,15 +14,15 @@ Abstract:
     quantized integer matrix/matrix multiply operation (QGEMM).
 
     To implement a new kernel, template functions below need to be specialized:
-        MlasGemmU8X8FixupZeroPointA
-        MlasGemmU8X8FixupZeroPointB
-        MlasGemmU8X8CopyPackA
-        MlasGemmU8X8CopyPackB
-        MlasGemmU8X8Kernel
-    Specialization of MlasGemmU8X8TryGemvKernel is optional.
+        MlasGemmQuantFixupZeroPointA
+        MlasGemmQuantFixupZeroPointB
+        MlasGemmQuantCopyPackA
+        MlasGemmQuantCopyPackB
+        MlasGemmQuantKernel
+    Specialization of MlasGemmQuantTryGemvKernel is optional.
 
-    MlasGemmU8X8Operation and MlasGemmU8X8PackedOperation are shared kernel drivers.
-    MlasGemmU8X8ScaleSumBuffer is a helper function.
+    MlasGemmQuantOperation and MlasGemmQuantPackedOperation are shared kernel drivers.
+    MlasGemmQuantScaleSumBuffer is a helper function.
 
     It also includes the dispatcher logics.
 
@@ -46,13 +46,14 @@ struct MLAS_GEMM_QUANT_STRIDES {
 template<typename KernelType>
 MLAS_FORCEINLINE
 bool
-MlasGemmU8X8TryGemvKernel(
+MlasGemmQuantTryGemvKernel(
     const uint8_t* A,
     const uint8_t* B,
     size_t ldb,
     int32_t* C,
     size_t CountK,
     size_t CountN,
+    bool AIsSigned,
     bool BIsSigned
 )
 {
@@ -62,6 +63,7 @@ MlasGemmU8X8TryGemvKernel(
     MLAS_UNREFERENCED_PARAMETER(C);
     MLAS_UNREFERENCED_PARAMETER(CountK);
     MLAS_UNREFERENCED_PARAMETER(CountN);
+    MLAS_UNREFERENCED_PARAMETER(AIsSigned);
     MLAS_UNREFERENCED_PARAMETER(BIsSigned);
 
     return false;
@@ -70,7 +72,7 @@ MlasGemmU8X8TryGemvKernel(
 template <typename KernelType>
 MLAS_FORCEINLINE
 int32_t
-MlasGemmU8X8FixupZeroPointA(
+MlasGemmQuantFixupZeroPointA(
     int32_t ZeroPointA,
     bool AIsSigned)
 {
@@ -80,7 +82,7 @@ MlasGemmU8X8FixupZeroPointA(
 
 template<typename KernelType>
 int32_t
-MlasGemmU8X8FixupZeroPointB(
+MlasGemmQuantFixupZeroPointB(
     int32_t ZeroPointB,
     bool BIsSigned
 )
@@ -93,7 +95,7 @@ MlasGemmU8X8FixupZeroPointB(
 template<typename KernelType>
 MLAS_FORCEINLINE
 void
-MlasGemmU8X8FixupZeroPointB(
+MlasGemmQuantFixupZeroPointB(
     const uint8_t* PackedZeroPointB,
     int32_t* ZeroPointBBuffer,
     size_t N,
@@ -105,7 +107,7 @@ MlasGemmU8X8FixupZeroPointB(
     for (size_t n = 0; n < N; n++) {
 
         ZeroPointB = typename KernelType::OffsetBType(PackedZeroPointB[n]);
-        ZeroPointB = MlasGemmU8X8FixupZeroPointB<KernelType>(ZeroPointB, BIsSigned);
+        ZeroPointB = MlasGemmQuantFixupZeroPointB<KernelType>(ZeroPointB, BIsSigned);
 
         ZeroPointBBuffer[n] = -ZeroPointB;
     }
@@ -124,7 +126,7 @@ MlasGemmU8X8FixupZeroPointB(
 
 template<typename KernelType>
 void
-MlasGemmU8X8CopyPackA(
+MlasGemmQuantCopyPackA(
     typename KernelType::PackedAType* D,
     const uint8_t* A,
     size_t lda,
@@ -136,7 +138,7 @@ MlasGemmU8X8CopyPackA(
 
 template<typename KernelType>
 void
-MlasGemmU8X8CopyPackB(
+MlasGemmQuantCopyPackB(
     typename KernelType::PackedBType* D,
     const uint8_t* B,
     size_t ldb,
@@ -148,7 +150,7 @@ MlasGemmU8X8CopyPackB(
 
 template<typename KernelType>
 size_t
-MlasGemmU8X8Kernel(
+MlasGemmQuantKernel(
     const typename KernelType::PackedAType* A,
     const typename KernelType::PackedBType* B,
     int32_t* C,
@@ -165,7 +167,7 @@ MlasGemmU8X8Kernel(
 
 inline
 void
-MlasGemmU8X8ScaleSumBuffer(
+MlasGemmQuantScaleSumBuffer(
     int32_t* Output,
     const int32_t* Input,
     size_t N,
@@ -180,19 +182,19 @@ MlasGemmU8X8ScaleSumBuffer(
 
 MLAS_FORCEINLINE
 void
-MlasGemmU8X8ScaleSumBuffer(
+MlasGemmQuantScaleSumBuffer(
     int32_t* SumBuffer,
     size_t N,
     int32_t Scale
 )
 {
-    return MlasGemmU8X8ScaleSumBuffer(SumBuffer, SumBuffer, N, Scale);
+    return MlasGemmQuantScaleSumBuffer(SumBuffer, SumBuffer, N, Scale);
 }
 
 
 template<typename KernelType>
 void
-MlasGemmU8X8Operation(
+MlasGemmQuantOperation(
     const MLAS_GEMM_QUANT_SHAPE_PARAMS* Shape,
     const MLAS_GEMM_QUANT_DATA_PARAMS* Data,
     const size_t RangeStartM,
@@ -259,7 +261,7 @@ Return Value:
     if ((RangeCountM == 1) &&
         (ZeroPointA == 0) && (PackedZeroPointB == nullptr) && (ZeroPointB == 0) &&
         (Data->OutputProcessor == nullptr)) {
-        if (MlasGemmU8X8TryGemvKernel<KernelType>(A, B, ldb, C, K, RangeCountN, Shape->BIsSigned)) {
+        if (MlasGemmQuantTryGemvKernel<KernelType>(A, B, ldb, C, K, RangeCountN, Shape->AIsSigned, Shape->BIsSigned)) {
             return;
         }
     }
@@ -269,7 +271,7 @@ Return Value:
     // kernel requires signed data.
     //
 
-    ZeroPointA = MlasGemmU8X8FixupZeroPointA<KernelType>(ZeroPointA, Shape->AIsSigned);
+    ZeroPointA = MlasGemmQuantFixupZeroPointA<KernelType>(ZeroPointA, Shape->AIsSigned);
 
     //
     // Fixup the sign bit of the per-matrix zero point offset of matrix B if the
@@ -277,7 +279,7 @@ Return Value:
     // ignored if per-column zero point offsets are used instead.
     //
 
-    ZeroPointB = MlasGemmU8X8FixupZeroPointB<KernelType>(ZeroPointB, Shape->BIsSigned);
+    ZeroPointB = MlasGemmQuantFixupZeroPointB<KernelType>(ZeroPointB, Shape->BIsSigned);
 
     //
     // Step through each slice of matrix B along the K dimension.
@@ -307,7 +309,7 @@ Return Value:
             //
 
             if (PackedZeroPointB != nullptr) {
-                MlasGemmU8X8FixupZeroPointB<KernelType>(
+                MlasGemmQuantFixupZeroPointB<KernelType>(
                     PackedZeroPointB + n,
                     ZeroPointBBuffer,
                     CountN,
@@ -318,7 +320,7 @@ Return Value:
             // Copy a panel of matrix B to a local packed buffer.
             //
 
-            MlasGemmU8X8CopyPackB<KernelType>(
+            MlasGemmQuantCopyPackB<KernelType>(
                 PanelB,
                 B + n,
                 ldb,
@@ -327,7 +329,7 @@ Return Value:
                 ColumnSumBuffer,
                 Shape->BIsSigned);
 
-            MlasGemmU8X8ScaleSumBuffer(ColumnSumBuffer, CountN, -ZeroPointA);
+            MlasGemmQuantScaleSumBuffer(ColumnSumBuffer, CountN, -ZeroPointA);
 
             //
             // Step through each slice of matrix A along the M dimension.
@@ -344,7 +346,7 @@ Return Value:
                 // Copy a panel of matrix A to a local packed buffer.
                 //
 
-                MlasGemmU8X8CopyPackA<KernelType>(
+                MlasGemmQuantCopyPackA<KernelType>(
                     PanelA,
                     A + m * lda,
                     lda,
@@ -373,7 +375,7 @@ Return Value:
                 //
 
                 if (PackedZeroPointB == nullptr) {
-                    MlasGemmU8X8ScaleSumBuffer(RowSumBuffer, CountM, -ZeroPointB);
+                    MlasGemmQuantScaleSumBuffer(RowSumBuffer, CountM, -ZeroPointB);
                 }
 
                 //
@@ -389,7 +391,7 @@ Return Value:
 
                 while (RowsRemaining > 0) {
 
-                    size_t RowsHandled = MlasGemmU8X8Kernel<KernelType>(
+                    size_t RowsHandled = MlasGemmQuantKernel<KernelType>(
                         pa,
                         PanelB,
                         c,
@@ -428,7 +430,7 @@ Return Value:
 
 template<typename KernelType>
 void
-MlasGemmU8X8PackedOperation(
+MlasGemmQuantPackedOperation(
     const MLAS_GEMM_QUANT_SHAPE_PARAMS* Shape,
     const MLAS_GEMM_QUANT_DATA_PARAMS* Data,
     const size_t RangeStartM,
@@ -491,7 +493,7 @@ Return Value:
     // kernel requires signed data.
     //
 
-    ZeroPointA = MlasGemmU8X8FixupZeroPointA<KernelType>(ZeroPointA, Shape->AIsSigned);
+    ZeroPointA = MlasGemmQuantFixupZeroPointA<KernelType>(ZeroPointA, Shape->AIsSigned);
 
     //
     // Fixup the sign bit of the per-matrix zero point offset of matrix B if the
@@ -499,7 +501,7 @@ Return Value:
     // ignored if per-column zero point offsets are used instead.
     //
 
-    ZeroPointB = MlasGemmU8X8FixupZeroPointB<KernelType>(ZeroPointB, Shape->BIsSigned);
+    ZeroPointB = MlasGemmQuantFixupZeroPointB<KernelType>(ZeroPointB, Shape->BIsSigned);
 
     //
     // Extract the pointer to the column sum buffer from the packed matrix.
@@ -538,7 +540,7 @@ Return Value:
             CountN = std::min(RangeCountN - n, Strides.N);
 
             if (k == 0) {
-                MlasGemmU8X8ScaleSumBuffer(ColumnSumBuffer, PackedColumnSumBuffer + n,
+                MlasGemmQuantScaleSumBuffer(ColumnSumBuffer, PackedColumnSumBuffer + n,
                     CountN, -ZeroPointA);
             }
 
@@ -548,7 +550,7 @@ Return Value:
             //
 
             if (PackedZeroPointB != nullptr) {
-                MlasGemmU8X8FixupZeroPointB<KernelType>(
+                MlasGemmQuantFixupZeroPointB<KernelType>(
                     PackedZeroPointB + n,
                     ZeroPointBBuffer,
                     CountN,
@@ -572,7 +574,7 @@ Return Value:
                 // Copy a panel of matrix A to a local packed buffer.
                 //
 
-                MlasGemmU8X8CopyPackA<KernelType>(
+                MlasGemmQuantCopyPackA<KernelType>(
                     PanelA,
                     A + m * lda,
                     lda,
@@ -601,7 +603,7 @@ Return Value:
                 //
 
                 if (PackedZeroPointB == nullptr) {
-                    MlasGemmU8X8ScaleSumBuffer(RowSumBuffer, CountM, -ZeroPointB);
+                    MlasGemmQuantScaleSumBuffer(RowSumBuffer, CountM, -ZeroPointB);
                 }
 
                 //
@@ -617,7 +619,7 @@ Return Value:
 
                 while (RowsRemaining > 0) {
 
-                    size_t RowsHandled = MlasGemmU8X8Kernel<KernelType>(
+                    size_t RowsHandled = MlasGemmQuantKernel<KernelType>(
                         pa,
                         b,
                         c,

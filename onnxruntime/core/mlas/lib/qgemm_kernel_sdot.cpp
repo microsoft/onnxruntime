@@ -59,7 +59,7 @@ constexpr MLAS_GEMM_QUANT_STRIDES MLAS_GEMM_S8S8_KERNEL_SDOT::PackedStrides;
 template<>
 MLAS_FORCEINLINE
 int32_t
-MlasGemmU8X8FixupZeroPointB<MLAS_GEMM_S8S8_KERNEL_SDOT>(
+MlasGemmQuantFixupZeroPointB<MLAS_GEMM_S8S8_KERNEL_SDOT>(
     int32_t ZeroPointB,
     bool BIsSigned
     )
@@ -70,7 +70,7 @@ MlasGemmU8X8FixupZeroPointB<MLAS_GEMM_S8S8_KERNEL_SDOT>(
 
 template<>
 void
-MlasGemmU8X8CopyPackA<MLAS_GEMM_S8S8_KERNEL_SDOT>(
+MlasGemmQuantCopyPackA<MLAS_GEMM_S8S8_KERNEL_SDOT>(
     MLAS_GEMM_S8S8_KERNEL_SDOT::PackedAType* D_uint8_t,
     const uint8_t* A,
     size_t lda,
@@ -550,7 +550,7 @@ MlasGemmU8X8CopyPackBProcessSDot(
 
 template<>
 void
-MlasGemmU8X8CopyPackB<MLAS_GEMM_S8S8_KERNEL_SDOT>(
+MlasGemmQuantCopyPackB<MLAS_GEMM_S8S8_KERNEL_SDOT>(
     MLAS_GEMM_S8S8_KERNEL_SDOT::PackedBType* Dst,
     const uint8_t* B,
     size_t ldb,
@@ -732,7 +732,7 @@ MlasGemmU8X8CopyPackB<MLAS_GEMM_S8S8_KERNEL_SDOT>(
 template<>
 MLAS_FORCEINLINE
 size_t
-MlasGemmU8X8Kernel<MLAS_GEMM_S8S8_KERNEL_SDOT>(
+MlasGemmQuantKernel<MLAS_GEMM_S8S8_KERNEL_SDOT>(
     const MLAS_GEMM_S8S8_KERNEL_SDOT::PackedAType* A,
     const MLAS_GEMM_S8S8_KERNEL_SDOT::PackedBType* B,
     int32_t* C,
@@ -751,9 +751,9 @@ MlasGemmU8X8Kernel<MLAS_GEMM_S8S8_KERNEL_SDOT>(
 }
 
 const MLAS_GEMM_U8X8_DISPATCH MlasGemmS8S8DispatchSdot = {
-    MlasGemmU8X8Operation<MLAS_GEMM_S8S8_KERNEL_SDOT>,
-    MlasGemmU8X8PackedOperation<MLAS_GEMM_S8S8_KERNEL_SDOT>,
-    MlasGemmU8X8CopyPackB<MLAS_GEMM_S8S8_KERNEL_SDOT>,
+    MlasGemmQuantOperation<MLAS_GEMM_S8S8_KERNEL_SDOT>,
+    MlasGemmQuantPackedOperation<MLAS_GEMM_S8S8_KERNEL_SDOT>,
+    MlasGemmQuantCopyPackB<MLAS_GEMM_S8S8_KERNEL_SDOT>,
     MLAS_GEMM_S8S8_KERNEL_SDOT::PackedK,
     MLAS_GEMM_S8S8_KERNEL_SDOT::PackedStrides.K,
 };

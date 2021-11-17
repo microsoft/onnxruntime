@@ -36,7 +36,7 @@ constexpr MLAS_GEMM_QUANT_STRIDES MLAS_GEMM_U8X8_KERNEL_DEFAULT::PackedStrides;
 template<>
 MLAS_FORCEINLINE
 int32_t
-MlasGemmU8X8FixupZeroPointB<MLAS_GEMM_U8X8_KERNEL_DEFAULT>(
+MlasGemmQuantFixupZeroPointB<MLAS_GEMM_U8X8_KERNEL_DEFAULT>(
     int32_t ZeroPointB,
     bool BIsSigned
     )
@@ -50,7 +50,7 @@ MlasGemmU8X8FixupZeroPointB<MLAS_GEMM_U8X8_KERNEL_DEFAULT>(
 
 template<>
 void
-MlasGemmU8X8CopyPackA<MLAS_GEMM_U8X8_KERNEL_DEFAULT>(
+MlasGemmQuantCopyPackA<MLAS_GEMM_U8X8_KERNEL_DEFAULT>(
     MLAS_GEMM_U8X8_KERNEL_DEFAULT::PackedAType* D,
     const uint8_t* A,
     size_t lda,
@@ -93,7 +93,7 @@ MlasGemmU8X8CopyPackA<MLAS_GEMM_U8X8_KERNEL_DEFAULT>(
 
 template<>
 void
-MlasGemmU8X8CopyPackB<MLAS_GEMM_U8X8_KERNEL_DEFAULT>(
+MlasGemmQuantCopyPackB<MLAS_GEMM_U8X8_KERNEL_DEFAULT>(
     MLAS_GEMM_U8X8_KERNEL_DEFAULT::PackedBType* D,
     const uint8_t* B,
     size_t ldb,
@@ -143,7 +143,7 @@ MlasGemmU8X8CopyPackB<MLAS_GEMM_U8X8_KERNEL_DEFAULT>(
 
 template<>
 size_t
-MlasGemmU8X8Kernel<MLAS_GEMM_U8X8_KERNEL_DEFAULT>(
+MlasGemmQuantKernel<MLAS_GEMM_U8X8_KERNEL_DEFAULT>(
     const MLAS_GEMM_U8X8_KERNEL_DEFAULT::PackedAType* A,
     const MLAS_GEMM_U8X8_KERNEL_DEFAULT::PackedBType* B,
     int32_t* C,
@@ -199,7 +199,7 @@ MlasGemmU8X8Kernel<MLAS_GEMM_U8X8_KERNEL_DEFAULT>(
 }
 
 const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8X8DispatchDefault = {
-    MlasGemmU8X8Operation<MLAS_GEMM_U8X8_KERNEL_DEFAULT>,
+    MlasGemmQuantOperation<MLAS_GEMM_U8X8_KERNEL_DEFAULT>,
     nullptr,
     nullptr,
     MLAS_GEMM_U8X8_KERNEL_DEFAULT::PackedK,
