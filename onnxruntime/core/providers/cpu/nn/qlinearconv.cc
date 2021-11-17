@@ -147,7 +147,7 @@ class QLinearConv : public OpKernel {
       const size_t W_zero_point_size = static_cast<size_t>(W_zero_point->Shape().Size());
       const auto* W_zero_point_data = W_zero_point->Data<int8_t>();
       if (std::all_of(W_zero_point_data, W_zero_point_data + W_zero_point_size, [](int8_t v) { return v == 0; })) {
-        size_t packed_size = MlasConvSymPackWSize(group_count, group_input_channels, group_output_channels, kernel_size);
+        size_t packed_size = MlasConvSymPackWSize(group_count, group_input_channels, group_output_channels, kernel_size, std::is_signed<ActType>::value);
         if (packed_size != 0) {
           const Tensor* B = nullptr;
           Info().TryGetConstantInput(8, &B);
@@ -155,7 +155,7 @@ class QLinearConv : public OpKernel {
 
           column_sums_.resize(output_channels);
           const int8_t* sdata = (const int8_t*)Wdata;
-          int32_t X_zero_point_fixup = MlasConvSymFixupInputZeroPoint(X_zero_point_value);
+          int32_t X_zero_point_fixup = MlasConvSymFixupInputZeroPoint(X_zero_point_value, std::is_signed<ActType>::value);
           for (size_t oc = 0; oc < output_channels; oc++) {
             int32_t sum = 0;
             for (size_t ks = 0; ks < kernel_size * group_input_channels; ks++) {
@@ -173,7 +173,8 @@ class QLinearConv : public OpKernel {
                            kernel_size,
                            reinterpret_cast<const int8_t*>(Wdata),
                            reinterpret_cast<int8_t*>(packed_W),
-                           packed_size);
+                           packed_size,
+                           std::is_signed<ActType>::value);
 
           is_symmetric_conv_ = true;
 
@@ -258,12 +259,6 @@ Status QLinearConv<ActType>::PrePack(const Tensor& tensor, int input_idx, Alloca
 
   // Support packing the weight matrix.
   if (input_idx != InputTensors::IN_W) {
-    return Status::OK();
-  }
-
-  bool is_activation_signed = std::is_signed<ActType>::value;
-  // TODO: add support for S8S8 on ARM devices
-  if (is_activation_signed) {
     return Status::OK();
   }
 
@@ -634,9 +629,9 @@ Status QLinearConv<ActType>::Compute(OpKernelContext* context) const {
       auto* worker_output = output_data + output_start * M;
 
       if (is_symmetric_conv_) {
-        MLAS_CONV_SYM_PARAMS<ActType> conv_params = {};
+        MLAS_CONV_SYM_PARAMS conv_params = {};
         if (worker_indirection_buffer) {
-          conv_params.InputIndirection = worker_indirection_buffer;
+          conv_params.InputIndirection = reinterpret_cast<void const**>(worker_indirection_buffer);
         } else {
           conv_params.InputDirect = input_data + output_start * C;
         }
@@ -650,6 +645,7 @@ Status QLinearConv<ActType>::Compute(OpKernelContext* context) const {
         conv_params.Scale = output_scales.data();
         conv_params.PerChannelScale = output_scales.size() > 1;
         conv_params.OutputZeroPoint = Y_zero_point_value;
+        conv_params.InputIsSigned = std::is_signed<ActType>::value;
 
         if (is_depthwise_conv) {
           MlasConvSymDepthwise(conv_params);

@@ -240,7 +240,7 @@ Return Value:
                 this->GemvU8S8Kernel = MlasGemvU8S8KernelAvx2;
                 this->GemmU8U8Dispatch = &MlasGemmU8U8DispatchAvx2;
                 this->GemmU8U8Kernel = MlasGemmU8U8KernelAvx2;
-                this->ConvSymDispatch = &MlasConvSymDispatchAvx2;
+                this->ConvSymU8S8Dispatch = &MlasConvSymDispatchAvx2;
 
                 this->GemmFloatKernel = MlasGemmFloatKernelFma3;
                 this->GemmDoubleKernel = MlasGemmDoubleKernelFma3;
@@ -284,7 +284,7 @@ Return Value:
                     this->GemmU8U8Dispatch = &MlasGemmU8S8DispatchAvx2;
                     this->GemmU8S8Kernel = MlasGemmU8S8KernelAvxVnni;
                     this->GemvU8S8Kernel = MlasGemvU8S8KernelAvxVnni;
-                    this->ConvSymDispatch = &MlasConvSymDispatchAvxVnni;
+                    this->ConvSymU8S8Dispatch = &MlasConvSymDispatchAvxVnni;
                 }
 
 #if !defined(ORT_MINIMAL_BUILD)
@@ -322,7 +322,7 @@ Return Value:
                         this->GemmU8S8Kernel = MlasGemmU8S8KernelAvx512Core;
                         this->GemvU8S8Kernel = MlasGemvU8S8KernelAvx512Core;
                         this->GemmU8U8Kernel = MlasGemmU8U8KernelAvx512Core;
-                        this->ConvSymDispatch = &MlasConvSymDispatchAvx512Core;
+                        this->ConvSymU8S8Dispatch = &MlasConvSymDispatchAvx512Core;
 
                         //
                         // Check if the processor supports AVX512VNNI.
@@ -333,7 +333,7 @@ Return Value:
                             this->GemmU8U8Dispatch = &MlasGemmU8S8DispatchAvx2;
                             this->GemmU8S8Kernel = MlasGemmU8S8KernelAvx512Vnni;
                             this->GemvU8S8Kernel = MlasGemvU8S8KernelAvx512Vnni;
-                            this->ConvSymDispatch = &MlasConvSymDispatchAvx512Vnni;
+                            this->ConvSymU8S8Dispatch = &MlasConvSymDispatchAvx512Vnni;
                         }
                     }
                 }
@@ -352,7 +352,7 @@ Return Value:
 #if defined(MLAS_TARGET_ARM64)
 
     this->GemmU8X8Dispatch = &MlasGemmU8X8DispatchNeon;
-    this->ConvSymDispatch = &MlasConvSymDispatchNeon;
+    this->ConvSymU8S8Dispatch = &MlasConvSymDispatchNeon;
 
     //
     // Check if the processor supports ASIMD dot product instructions.

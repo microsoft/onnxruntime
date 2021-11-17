@@ -731,7 +731,8 @@ struct MLAS_PLATFORM {
     const MLAS_GEMM_QUANT_DISPATCH* GemmU8X8Dispatch;
 #endif
 
-    const MLAS_CONV_SYM_DISPATCH* ConvSymDispatch{nullptr};
+    const MLAS_CONV_SYM_DISPATCH* ConvSymU8S8Dispatch{nullptr};
+    const MLAS_CONV_SYM_DISPATCH* ConvSymS8S8Dispatch{nullptr};
 #if defined(MLAS_TARGET_POWER)
     MLAS_GEMM_DOUBLE_KERNEL* GemmDoubleKernel;
 #endif

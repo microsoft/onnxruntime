@@ -45,7 +45,7 @@ void
 (MLASCALL MLAS_CONV_SYM_KERNEL)(
     const void* Input,
     const void* Filter,
-    uint8_t* Output,
+    void* Output,
     size_t KernelSize,
     size_t InputChannels,
     size_t OutputChannels,
@@ -60,7 +60,7 @@ void
 (MLASCALL MLAS_CONV_SYM_DEPTHWISE_KERNEL)(
     const void* Input,
     const void* Filter,
-    uint8_t* Output,
+    void* Output,
     size_t KernelSize,
     size_t Channels,
     size_t ChannelOffset,
@@ -195,15 +195,23 @@ MlasConvSymSetOutputZeroPoint(
     PostProcessParams.OutputZeroPoint = OutputZeroPoint;
 }
 
+MLAS_FORCEINLINE
+const
+MLAS_CONV_SYM_DISPATCH*
+GetConvSymDispatch(bool InputIsSigned){
+    return InputIsSigned ? MlasPlatform.ConvSymS8S8Dispatch : MlasPlatform.ConvSymU8S8Dispatch;
+}
+
 size_t
 MlasConvSymPackWSize(
     size_t GroupCount,
     size_t InputChannels,
     size_t OutputChannels,
-    size_t KernelSize
+    size_t KernelSize,
+    bool InputIsSigned
     )
 {
-    const MLAS_CONV_SYM_DISPATCH* ConvSymDispatch = MlasPlatform.ConvSymDispatch;
+    const MLAS_CONV_SYM_DISPATCH* ConvSymDispatch = GetConvSymDispatch(InputIsSigned);
 
     if (ConvSymDispatch == nullptr) {
         return 0;
@@ -255,7 +263,8 @@ MlasConvSymPackW(
     size_t KernelSize,
     const int8_t* W,
     int8_t* PackedW,
-    size_t PackedWSize
+    size_t PackedWSize,
+    bool InputIsSigned
     )
 {
     memset(PackedW, 0, PackedWSize);
@@ -273,7 +282,7 @@ MlasConvSymPackW(
 
     } else {
 
-        const MLAS_CONV_SYM_DISPATCH* ConvSymDispatch = MlasPlatform.ConvSymDispatch;
+        const MLAS_CONV_SYM_DISPATCH* ConvSymDispatch = GetConvSymDispatch(InputIsSigned);
         size_t InputChannelPackCount = ConvSymDispatch->FilterInputChannelPackCount;
         size_t OutputChannelPackCount = ConvSymDispatch->FilterOutputChannelPackCount;
 
@@ -312,10 +321,11 @@ MlasConvSymPackW(
 
 int32_t
 MlasConvSymFixupInputZeroPoint(
-    int32_t zero_point_value
+    int32_t zero_point_value,
+    bool InputIsSigned
     )
 {
-    const MLAS_CONV_SYM_DISPATCH* ConvSymDispatch = MlasPlatform.ConvSymDispatch;
+    const MLAS_CONV_SYM_DISPATCH* ConvSymDispatch = GetConvSymDispatch(InputIsSigned);
 
     if (ConvSymDispatch != nullptr && ConvSymDispatch->FixupInputZeroPoint) {
         return zero_point_value - 128;
@@ -326,10 +336,10 @@ MlasConvSymFixupInputZeroPoint(
 
 void
 MlasConvSym(
-    const MLAS_CONV_SYM_U8S8_PARAMS& Params
+    const MLAS_CONV_SYM_PARAMS& Params
     )
 {
-    const MLAS_CONV_SYM_DISPATCH* ConvSymDispatch = MlasPlatform.ConvSymDispatch;
+    const MLAS_CONV_SYM_DISPATCH* ConvSymDispatch = GetConvSymDispatch(Params.InputIsSigned);
 
     int32_t KernelFlags = 0;
 
@@ -360,7 +370,7 @@ MlasConvSym(
         for (size_t co = 0; co < OutputChannels;) {
 
             const size_t ChannelCount = std::min<size_t>(OutputChannels - co, KernelChannelCount);
-            auto* conv_out = Params.Output + (oc_outside * OutputChannels) + co;
+            auto* conv_out = static_cast<int8_t*>(Params.Output) + (oc_outside * OutputChannels) + co;
 
             PostProcessParams.Bias = Params.Bias + co;
             PostProcessParams.Scale = Params.Scale + (Params.PerChannelScale ? co : 0);
@@ -371,7 +381,7 @@ MlasConvSym(
                 if (Params.InputIndirection) {
                     Input = Params.InputIndirection + (oc_outside + oc) * KernelSize;
                 } else {
-                    Input = Params.InputDirect + (oc_outside + oc) * InputChannels;
+                    Input = static_cast<const int8_t*>(Params.InputDirect) + (oc_outside + oc) * InputChannels;
                 }
                 size_t OutputCount = std::min<size_t>(oc_outside_block_size - oc, KernelOutputCount);
 
@@ -400,10 +410,10 @@ MlasConvSym(
 
 void
 MlasConvSymDepthwise(
-    const MLAS_CONV_SYM_U8S8_PARAMS& Params
+    const MLAS_CONV_SYM_PARAMS& Params
     )
 {
-    const MLAS_CONV_SYM_DISPATCH* ConvSymDispatch = MlasPlatform.ConvSymDispatch;
+    const MLAS_CONV_SYM_DISPATCH* ConvSymDispatch = GetConvSymDispatch(Params.InputIsSigned);
 
     unsigned KernelFlags = 0;
 
@@ -422,7 +432,7 @@ MlasConvSymDepthwise(
     const size_t OutputChannels = Params.OutputChannels;
 
     const auto* InputIndirection = Params.InputIndirection;
-    auto* Output = Params.Output;
+    auto* Output = static_cast<int8_t*>(Params.Output);
 
     for (size_t OutputCountRemaining = Params.OutputCount; OutputCountRemaining > 0;) {
 
@@ -455,22 +465,3 @@ MlasConvSymDepthwise(
         OutputCountRemaining -= OutputCount;
     }
 }
-
-#ifdef MLAS_TARGET_ARM64
-void
-MlasConvSym(
-    const MLAS_CONV_SYM_S8S8_PARAMS& Params
-    )
-{
-    MLAS_UNREFERENCED_PARAMETER(Params);
-}
-
-void
-MlasConvSymDepthwise(
-    const MLAS_CONV_SYM_S8S8_PARAMS& Params
-    )
-{
-    MLAS_UNREFERENCED_PARAMETER(Params);
-}
-
-#endif

@@ -724,7 +724,8 @@ MlasConvSymPackWSize(
     size_t GroupCount,
     size_t InputChannels,
     size_t OutputChannels,
-    size_t KernelSize
+    size_t KernelSize,
+    bool InputIsSigned
     );
 
 void
@@ -735,20 +736,21 @@ MlasConvSymPackW(
     size_t KernelSize,
     const int8_t* W,
     int8_t* PackedW,
-    size_t PackedWSize
+    size_t PackedWSize,
+    bool InputIsSigned
     );
 
 int32_t
 MlasConvSymFixupInputZeroPoint(
-    int32_t zero_point_value
+    int32_t zero_point_value,
+    bool InputIsSigned
     );
 
-template <typename ActType = uint8_t>
 struct MLAS_CONV_SYM_PARAMS {
-    const ActType* InputDirect;
-    const ActType* const* InputIndirection;
+    const void* InputDirect;
+    const void* const* InputIndirection;
     const void* Filter;
-    ActType* Output;
+    void* Output;
     size_t InputChannels;
     size_t OutputChannels;
     size_t OutputCount;
@@ -756,33 +758,19 @@ struct MLAS_CONV_SYM_PARAMS {
     const int32_t* Bias;
     const float* Scale;
     bool PerChannelScale;
-    ActType OutputZeroPoint;
+    uint8_t OutputZeroPoint;
+    bool InputIsSigned;
 };
 
-using MLAS_CONV_SYM_U8S8_PARAMS = MLAS_CONV_SYM_PARAMS<uint8_t>;
-using MLAS_CONV_SYM_S8S8_PARAMS = MLAS_CONV_SYM_PARAMS<int8_t>;
-
 void
 MlasConvSym(
-    const MLAS_CONV_SYM_U8S8_PARAMS& Params
+    const MLAS_CONV_SYM_PARAMS& Params
     );
 
 void
 MlasConvSymDepthwise(
-    const MLAS_CONV_SYM_U8S8_PARAMS& Params
+    const MLAS_CONV_SYM_PARAMS& Params
     );
-
-#ifdef MLAS_TARGET_ARM64
-void
-MlasConvSym(
-    const MLAS_CONV_SYM_S8S8_PARAMS& Params
-    );
-
-void
-MlasConvSymDepthwise(
-    const MLAS_CONV_SYM_S8S8_PARAMS& Params
-    );
-#endif
 
 //
 // Pooling routines.
