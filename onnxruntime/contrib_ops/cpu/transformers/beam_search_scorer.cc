@@ -1,0 +1,198 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#include <queue>
+#include <math.h>
+#include "core/common/common.h"
+#include "core/framework/allocator.h"
+#include "core/framework/tensorprotoutils.h"
+#include "core/framework/utils.h"
+#include "core/providers/cpu/tensor/utils.h"
+#include "core/providers/cpu/rnn/rnn_helpers.h"
+#include "beam_search_scorer.h"
+
+namespace onnxruntime {
+namespace contrib {
+
+using ::onnxruntime::rnn::detail::Allocate;
+
+BeamHypotheses::BeamHypotheses(int num_beams, float length_penalty, bool early_stopping)
+    : num_beams_(num_beams),
+      length_penalty_(length_penalty),
+      early_stopping_(early_stopping),
+      worst_score_(1e9) {}
+
+void BeamHypotheses::Add(gsl::span<int64_t>& hypothesis, float sum_logprobs) {
+  auto length = hypothesis.size();
+  float score = sum_logprobs / pow(static_cast<float>(length), length_penalty_);
+
+  if (this->Size() < num_beams_ || score > worst_score_) {
+    HypothesisScore item(hypothesis, score);
+    beams_.push(item);
+    if (this->Size() > num_beams_) {
+      beams_.pop();
+    }
+    worst_score_ = beams_.top().score;
+  }
+}
+
+bool BeamHypotheses::IsDone(float best_sum_logprobs, int current_length) {
+  // If there are enough hypotheses and that none of the hypotheses being generated can become better
+  // than the worst one in the heap, then we are done with this sentence.
+
+  if (Size() < num_beams_)
+    return false;
+
+  if (early_stopping_)
+    return true;
+
+  float current_score = best_sum_logprobs / pow(static_cast<float>(current_length), length_penalty_);
+  return worst_score_ >= current_score;
+}
+
+BeamSearchScorer::BeamSearchScorer(int batch_size,
+                                   int num_beams,
+                                   int max_length,
+                                   float length_penalty,
+                                   bool early_stopping,
+                                   int num_return_sequences,
+                                   int pad_token_id,
+                                   int eos_token_id)
+    : batch_size_(batch_size),
+      num_beams_(num_beams),
+      max_length_(max_length),
+      length_penalty_(length_penalty),
+      early_stopping_(early_stopping),
+      num_beam_hyps_to_keep_(num_return_sequences),
+      pad_token_id_(pad_token_id),
+      eos_token_id_(eos_token_id),
+      hypothesis_buffer_length_(0),
+      hypothesis_buffer_offset_(0) {
+  for (int batch = 0; batch < batch_size; batch++) {
+    beam_hyps.push_back(BeamHypotheses(num_beams, length_penalty, early_stopping));
+  }
+
+  for (int batch = 0; batch < batch_size; batch++) {
+    done_.push_back(false);
+  }
+}
+
+bool BeamSearchScorer::IsDone() {
+  for (int batch = 0; batch < batch_size_; batch++) {
+    if (!done_[batch])
+      return false;
+  }
+  return true;
+}
+
+void BeamSearchScorer::Process(ISequences* sequences,
+                               gsl::span<const float>& next_scores,
+                               gsl::span<const int64_t>& next_tokens,
+                               gsl::span<const int64_t>& next_indices,
+                               AllocatorPtr& allocator) {
+  // sequences shape is (batch_size * num_beams, total_sequence_length)
+  // It contains word ID of whole sequence generated so far.
+  // It is different from subgraph input_ids, which only need one word when past state is not empty.
+
+  const int sequence_length = sequences->GetSequenceLength();
+
+  ORT_ENFORCE(next_scores.size() == next_tokens.size());
+  ORT_ENFORCE(next_scores.size() == next_indices.size());
+
+  // Allocate buffers only once
+  if (next_beam_scores_.empty()) {
+    size_t batch_beam_size = static_cast<size_t>(batch_size_ * num_beams_);
+    const bool fill_zeros = false;
+    next_beam_scores_ = Allocate<float>(allocator, batch_beam_size, next_beam_scores_ptr_, fill_zeros);
+    next_beam_tokens_ = Allocate<int64_t>(allocator, batch_beam_size, next_beam_tokens_ptr_, fill_zeros);
+    next_beam_indices_ = Allocate<int64_t>(allocator, batch_beam_size, next_beam_indices_ptr_, fill_zeros);
+
+    // Space to store intermediate sequence with length sequence_length, sequence_length + 1, ..., max_sequence_length
+    int buffer_per_beam = (max_length_ * (max_length_ + 1) - (sequence_length - 1) * sequence_length) / 2;
+    hypothesis_buffer_length_ = batch_beam_size * static_cast<size_t>(buffer_per_beam);
+    hypothesis_buffer_ = Allocate<int64_t>(allocator, hypothesis_buffer_length_, hypothesis_buffer_ptr_, fill_zeros);
+  }
+
+  for (int batch = 0; batch < batch_size_; batch++) {
+    BeamHypotheses& beam_hyp = beam_hyps[batch];
+    if (done_[batch]) {
+      ORT_ENFORCE(beam_hyp.Size() >= num_beams_, "Batch can only be done if all beams have been generated");
+
+      // Pad the batch
+      for (int j = 0; j < num_beams_; j++) {
+        next_beam_scores_[batch * num_beams_ + j] = 0.0f;
+        next_beam_tokens_[batch * num_beams_ + j] = pad_token_id_;
+        next_beam_indices_[batch * num_beams_ + j] = 0;
+      }
+      continue;
+    }
+
+    // Next tokens for this sentence
+    int beam_idx = 0;
+    int top_k = 2 * num_beams_;
+    for (int j = 0; j < top_k; j++) {
+      int64_t next_token = next_tokens[batch * top_k + j];
+      float next_score = next_scores[batch * top_k + j];
+      int64_t next_index = next_indices[batch * top_k + j];
+
+      int batch_beam_idx = batch * num_beams_ + static_cast<int>(next_index);
+      // Add to generated hypotheses if end of sentence
+      if ((eos_token_id_ >= 0) && (next_token == eos_token_id_)) {
+        bool is_beam_token_worse_than_top_num_beams = (j >= num_beams_);
+        if (is_beam_token_worse_than_top_num_beams) {
+          continue;
+        }
+
+        // Clone the sequence and append to buffer.
+        gsl::span<const int64_t> src = sequences->GetSequence(batch_beam_idx);
+        auto clone = hypothesis_buffer_.subspan(hypothesis_buffer_offset_, sequence_length);
+        gsl::copy(src, clone);
+        hypothesis_buffer_offset_ += sequence_length;
+        beam_hyp.Add(clone, next_score);
+      } else {
+        // Add next predicted token since it is not eos_token
+        next_beam_scores_[batch * num_beams_ + beam_idx] = next_score;
+        next_beam_tokens_[batch * num_beams_ + beam_idx] = next_token;
+        next_beam_indices_[batch * num_beams_ + beam_idx] = batch_beam_idx;
+        ++beam_idx;
+      }
+
+      // Once the beam for next step is full, don't add more tokens to it.
+      if (beam_idx == num_beams_)
+        break;
+    }
+
+    ORT_ENFORCE(beam_idx == num_beams_);
+    ORT_ENFORCE(hypothesis_buffer_offset_ <= batch_size_ * num_beams_ * max_length_);
+
+    //  Check if we are done so that we can save a pad step if all(done)
+    if (!done_[batch]) {
+      gsl::span<const float> topk_scores = next_scores.subspan(batch * num_beams_, top_k);
+      const float* best_sum_logprobs = std::max_element(topk_scores.begin(), topk_scores.end());
+      if (beam_hyp.IsDone(*best_sum_logprobs, sequence_length)) {
+        done_[batch] = true;
+      }
+    }
+  }
+}
+
+void BeamSearchScorer::Finalize(ISequences* sequences,
+                                gsl::span<const float>& final_beam_scores,
+                                gsl::span<const int64_t>& final_beam_tokens,
+                                gsl::span<const int64_t>& final_beam_indices,
+                                AllocatorPtr& allocator,
+                                Tensor* output_sequences,
+                                Tensor* output_sequence_scores) {
+    //TODO: implement
+    ORT_ENFORCE(sequences != nullptr);
+    ORT_ENFORCE(final_beam_scores.data() != nullptr);
+    ORT_ENFORCE(final_beam_tokens.data() != nullptr);
+    ORT_ENFORCE(final_beam_indices.data() != nullptr);
+    ORT_ENFORCE(allocator.get() != nullptr);
+    ORT_ENFORCE(output_sequences != nullptr);
+    ORT_ENFORCE(output_sequence_scores != nullptr);
+}
+
+
+}  // namespace contrib
+}  // namespace onnxruntime

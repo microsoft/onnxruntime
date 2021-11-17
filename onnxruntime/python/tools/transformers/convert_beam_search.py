@@ -325,7 +325,7 @@ def test_model(args):
     
     ort_session = create_ort_session(args.output, args.use_gpu)
 
-    batch_size = 2
+    batch_size = 1
     input_ids = input_ids.repeat(batch_size, 1)
 
     inputs = {
