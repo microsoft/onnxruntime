@@ -110,14 +110,11 @@ class OnnxRuntimeBackend(Backend):
 
             providers = get_available_providers()
 
-            if os.getenv('EXCLUDE_PROVIDERS'):
-                exclude_providers = os.getenv('EXCLUDE_PROVIDERS').split(',')
-            else:
-                exclude_providers = []
-
-            # exclude TRT EP temporarily and only test CUDA EP to retain previous behavior
-            if 'TensorrtExecutionProvider' in providers and 'TensorrtExecutionProvider' in exclude_providers:
-                providers = ['CUDAExecutionProvider']
+            if os.getenv('ORT_ONNX_BACKEND_EXCLUDE_PROVIDERS'):
+                exclude_providers = os.getenv('ORT_ONNX_BACKEND_EXCLUDE_PROVIDERS').split(',')
+                for exclude_provider in exclude_providers:
+                    if exclude_provider in providers:
+                        providers.remove(exclude_provider)
 
             inf = InferenceSession(model, sess_options=options, providers=providers)
             # backend API is primarily used for ONNX test/validation. As such, we should disable session.run() fallback

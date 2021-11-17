@@ -123,7 +123,7 @@ def create_backend_test(testname=None):
         print('excluded tests:', filters)
 
         # exclude TRT EP temporarily and only test CUDA EP to retain previous behavior 
-        os.environ["EXCLUDE_PROVIDERS"] = "TensorrtExecutionProvider"
+        os.environ["ORT_ONNX_BACKEND_EXCLUDE_PROVIDERS"] = "TensorrtExecutionProvider"
 
     # import all test cases at global scope to make
     # them visible to python.unittest.
