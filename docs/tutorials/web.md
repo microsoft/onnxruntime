@@ -421,3 +421,5 @@ We have walked through how to use this template, there is a bonus here though! U
 - Check out [ONNX Runtime Web Demo for more models](https://github.com/microsoft/onnxruntime-web-demo). ONNX Runtime Web demo is an interactive demo portal showing real use cases running ONNX Runtime Web in VueJS. It currently supports four examples for you to quickly experience the power of ONNX Runtime Web.
 
 - [This blog](https://hackernoon.com/how-to-run-machine-learning-models-in-the-browser-using-onnx) shows how to use ORT Web with Python for deploying a pre-trained AlexNet model to the browser. 
+
+- Check out more [ONNX Runtime JS examples](https://github.com/microsoft/onnxruntime-inference-examples/tree/main/js)
