@@ -119,6 +119,15 @@ struct SessionOptions {
 
   // See onnxruntime_c_api.h for detailed documentation.
   Status AddInitializer(_In_z_ const char* name, _In_ const OrtValue* val) noexcept;
+
+  // custom function callback to create a thread
+  OrtCustomCreateThreadFn custom_create_thread_fn = nullptr;
+
+  // custom options to pass to custom_create_thread_fn
+  void* custom_thread_creation_options = nullptr;
+
+  // custom function callback to join a thread
+  OrtCustomJoinThreadFn custom_join_thread_fn = nullptr;
 };
 
 }  // namespace onnxruntime
