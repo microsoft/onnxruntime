@@ -57,6 +57,7 @@ void UnaryOpQDQRules(SelectorsAndActions& qdq_selectors_and_actions, bool is_int
                                                       std::move(selector),
                                                       std::move(action));
 #else
+  ORT_UNUSED_PARAMETER(is_int8_allowed);
   qdq_selectors_and_actions.RegisterAction(action_name, std::move(action));
 #endif
 }
@@ -116,11 +117,12 @@ void ConvQDQRules(SelectorsAndActions& qdq_selectors_and_actions, bool is_int8_a
                                                       std::move(action));
 
 #else
+  ORT_UNUSED_PARAMETER(is_int8_allowed);
   qdq_selectors_and_actions.RegisterAction(action_name, std::move(action));
 #endif
 }
 
-void MatMulQDQRules(SelectorsAndActions& qdq_selectors_and_actions, bool is_int_allowed = false) {
+void MatMulQDQRules(SelectorsAndActions& qdq_selectors_and_actions, bool is_int8_allowed = false) {
   // 3 or 4 nodes. 2 x DQ for inputs, target, optional Q
   // Replace with QLinearMatMul if Q found, or MatMulIntegerToFloat if not.
   // Delete all original nodes.
@@ -129,13 +131,14 @@ void MatMulQDQRules(SelectorsAndActions& qdq_selectors_and_actions, bool is_int_
   std::unique_ptr<Action> action(new QDQ::MatMulReplaceWithQLinear());
 
 #if !defined(ORT_MINIMAL_BUILD)
-  std::unique_ptr<NodeSelector> selector(new QDQ::MatMulSelector(is_int_allowed));
+  std::unique_ptr<NodeSelector> selector(new QDQ::MatMulSelector(is_int8_allowed));
   qdq_selectors_and_actions.RegisterSelectorAndAction(action_name,
                                                       SelectorAndAction::OpVersionsMap{{"MatMul", {}}},
                                                       std::move(selector),
                                                       std::move(action));
 
 #else
+  ORT_UNUSED_PARAMETER(is_int8_allowed);
   qdq_selectors_and_actions.RegisterAction(action_name, std::move(action));
 #endif
 }
