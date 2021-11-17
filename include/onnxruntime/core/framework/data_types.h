@@ -135,25 +135,17 @@ class DataTypeImpl {
   }
 
   // Returns this if this is of tensor-type and null otherwise
-  virtual const TensorTypeBase* AsTensorType() const {
-    return nullptr;
-  }
+  const TensorTypeBase* AsTensorType() const;
 
-  virtual const SequenceTensorTypeBase* AsSequenceTensorType() const {
-    return nullptr;
-  }
+  const SequenceTensorTypeBase* AsSequenceTensorType() const;
 
 #if !defined(DISABLE_SPARSE_TENSORS)
   // Returns this if this is of sparse-tensor-type and null otherwise
-  virtual const SparseTensorTypeBase* AsSparseTensorType() const {
-    return nullptr;
-  }
+  const SparseTensorTypeBase* AsSparseTensorType() const;
 #endif
 
 #if !defined(DISABLE_OPTIONAL_TYPE)
-  virtual const OptionalTypeBase* AsOptionalType() const {
-    return nullptr;
-  }
+  const OptionalTypeBase* AsOptionalType() const;
 #endif
 
   virtual const NonTensorTypeBase* AsNonTensorType() const {
@@ -458,10 +450,6 @@ class TensorTypeBase : public DataTypeImpl {
   /// where TypeProto was created ad-hoc and not queried from MLDataType
   bool IsCompatible(const ONNX_NAMESPACE::TypeProto& type_proto) const override;
 
-  const TensorTypeBase* AsTensorType() const override {
-    return this;
-  }
-
   DeleteFunc GetDeleteFunc() const override;
 
   const ONNX_NAMESPACE::TypeProto* GetTypeProto() const override;
@@ -562,10 +550,6 @@ class SparseTensorTypeBase : public DataTypeImpl {
  public:
   static MLDataType Type();
 
-  const SparseTensorTypeBase* AsSparseTensorType() const override {
-    return this;
-  }
-
   bool IsCompatible(const ONNX_NAMESPACE::TypeProto& type_proto) const override;
 
   DeleteFunc GetDeleteFunc() const override;
@@ -618,10 +602,6 @@ class SparseTensorType : public SparseTensorTypeBase {
 class OptionalTypeBase : public DataTypeImpl {
  public:
   static MLDataType Type();
-
-  const OptionalTypeBase* AsOptionalType() const override {
-    return this;
-  }
 
   bool IsCompatible(const ONNX_NAMESPACE::TypeProto& type_proto) const override;
 
@@ -861,10 +841,6 @@ class SequenceTensorTypeBase : public DataTypeImpl {
 
   bool IsCompatible(const ONNX_NAMESPACE::TypeProto& type_proto) const override;
 
-  const SequenceTensorTypeBase* AsSequenceTensorType() const override {
-    return this;
-  }
-
   virtual MLDataType GetElementType() const {
     // should never reach here.
     ORT_NOT_IMPLEMENTED(__FUNCTION__, " is not implemented");
@@ -1016,6 +992,24 @@ class PrimitiveDataType : public PrimitiveDataTypeBase {
                               data_types_internal::TensorElementTypeSetter<T>::GetElementType()} {
   }
 };
+
+inline const TensorTypeBase* DataTypeImpl::AsTensorType() const {
+  return IsTensorType() ? static_cast<const TensorTypeBase*>(this) : nullptr;
+}
+
+inline const SequenceTensorTypeBase* DataTypeImpl::AsSequenceTensorType() const {
+  return IsTensorSequenceType() ? static_cast<const SequenceTensorTypeBase*>(this) : nullptr;
+}
+
+#if !defined(DISABLE_SPARSE_TENSORS)
+inline const SparseTensorTypeBase* DataTypeImpl::AsSparseTensorType() const {
+  return IsSparseTensorType() ? static_cast<const SparseTensorTypeBase*>(this) : nullptr;
+}
+#endif
+
+inline const OptionalTypeBase* DataTypeImpl::AsOptionalType() const {
+  return IsOptionalType() ? static_cast<const OptionalTypeBase*>(this) : nullptr;
+}
 
 // Explicit specialization of base class template function
 // is only possible within the enclosing namespace scope,
