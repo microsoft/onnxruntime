@@ -33,6 +33,9 @@ TEST(Random, RandomNormal2DDouble) {
                 [&generator, &distribution](double& value) { value = distribution(generator); });
 
   test.AddOutput<double>("Y", dims, expected_output);
+
+  // The expected_output is generated using std lib, which is used by CPU kernel only.
+  // So we need to exclude other EPs here. Ditto for other places.
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kRocmExecutionProvider});
 }
 

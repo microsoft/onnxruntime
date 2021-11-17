@@ -44,7 +44,7 @@ class RandomBase : public CudaKernel {
   }
 
  protected:
-  mutable std::unique_ptr<PhiloxGenerator> generator_;
+  std::unique_ptr<PhiloxGenerator> generator_;
   ONNX_NAMESPACE::TensorProto::DataType dtype_ =
       ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED;  // optional and may be inferred
 };
