@@ -5,6 +5,12 @@ has_children: false
 nav_order: 7
 ---
 
+## Contents
+{: .no_toc }
+
+* TOC placeholder
+{:toc}
+
 # Deploy and inference ML models on the web
 
 In this tutorial we will use a template QuickStart to start building out a static web app using ONNX Runtime web. We will do the inference in JavaScript on the browser for a computer vision model.
