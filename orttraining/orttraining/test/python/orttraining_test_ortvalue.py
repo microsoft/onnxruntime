@@ -110,23 +110,23 @@ class TestOrtValue(unittest.TestCase):
     def testOrtValueVectorDlPackOrtValue_cuda(self):
         def my_to_tensor(dlpack_structure):
             return C_OrtValue.from_dlpack(dlpack_structure, False)
-        self.OrtValueVectorDlPackOrtValue(my_to_tensor, OrtValue, 'cuda:0')
+        self.OrtValueVectorDlPackOrtValue(my_to_tensor, C_OrtValue, 'cuda')
 
     @unittest.skipIf(not has_cuda, reason="No CUDA availabled.")
     def testOrtValueVectorDlPackTorch_cuda(self):
         def my_to_tensor(dlpack_structure):
             return from_dlpack(dlpack_structure)
-        self.OrtValueVectorDlPackOrtValue(my_to_tensor, torch.Tensor, 'cuda:0')
+        self.OrtValueVectorDlPackOrtValue(my_to_tensor, torch.Tensor, 'cuda')
 
     @unittest.skipIf(not has_cuda, reason="No CUDA availabled.")
     def testOrtValueVectorDlPack_Torch_cuda(self):
         def my_to_tensor(dlpack_structure):
             return _from_dlpack(dlpack_structure)
-        self.OrtValueVectorDlPackOrtValue(my_to_tensor, torch.Tensor, 'cuda:0')
+        self.OrtValueVectorDlPackOrtValue(my_to_tensor, torch.Tensor, 'cuda')
 
     @unittest.skipIf(not has_cuda, reason="No CUDA availabled.")
     def testOrtValueVectorDlPackNone_cuda(self):
-        self.OrtValueVectorDlPackOrtValue(None, None, 'cuda:0')
+        self.OrtValueVectorDlPackOrtValue(None, None, 'cuda')
 
     def test_ortmodule_dlpack(self):
 
@@ -210,7 +210,7 @@ class TestOrtValue(unittest.TestCase):
 
     @unittest.skipIf(not has_cuda, reason="No CUDA availabled.")
     def test_ortvalues_to_torch_tensor_ortvaluevector_cuda(self):
-        self._ortvalues_to_torch_tensor_ortvaluevector('cuda:0', torch.Tensor)
+        self._ortvalues_to_torch_tensor_ortvaluevector('cuda', torch.Tensor)
 
     def _ortvalues_to_torch_tensor_list(self, device):
         narrays = [
@@ -237,7 +237,7 @@ class TestOrtValue(unittest.TestCase):
 
     @unittest.skipIf(not has_cuda, reason="No CUDA availabled.")
     def self_ortvalues_to_torch_tensor_list_cuda(self):
-        self._ortvalues_to_torch_tensor_list('cuda:0')
+        self._ortvalues_to_torch_tensor_list('cuda')
 
     def test_type_proto(self):
         values = {
