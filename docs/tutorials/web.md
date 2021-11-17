@@ -12,6 +12,7 @@ nav_order: 7
 {:toc}
 
 # Deploy and inference ML models on the web
+{: .no_toc }
 
 In this tutorial we will use a template QuickStart to start building out a static web app using ONNX Runtime web. We will do the inference in JavaScript on the browser for a computer vision model.
 
@@ -30,6 +31,7 @@ Example template output:
 ## Browser inferencing considerations
 
 ### Why inference in the browser?
+{: .no_toc }
 There are benefits to doing on device and in browser inferencing. 
 - **It's faster.** That's right, you can cut inferencing time way down which inferencing is done right on the client for models that are optimized to work on less powerful hardware. 
 - **It's safer** and helps with privacy. Since the data never leaves the device for inferencing, it is a safer method of doing inferencing.
@@ -38,6 +40,7 @@ There are benefits to doing on device and in browser inferencing.
 
 
 ### Why wouldn't you want to inference in the browser?
+{: .no_toc }
 - **The model is too large** and requires higher hardware specs. In order to do inference on the client you need to have a model that is small enough to run efficiently on less powerful hardware. 
 - You don't want the model to be downloaded onto the device.
 
@@ -59,15 +62,15 @@ There are benefits to doing on device and in browser inferencing.
 ## Create a Static Site with NextJS (a ReactJS Framework) to deploy models in the browser
 
 ### The Template
-
+{: .no_toc }
 The goal of this template is to provide a starting point for your accelerated ML web application. The template generates a computer vision application using the [NextJS](https://nextjs.org/) framework, authored in typescript and built with webpack. Let’s dive into the template and breakdown the code.
 
 ### The `utils` Folder 
-
+{: .no_toc }
 There are three files in the Utils folder `imageHelper.ts`, `modelHelper.ts` and `predict.ts`. Predict is the entry point from the web component to start inferencing. Here we import the helpers and call the default functions to get the image tensor and to run our model inference. 
 
 ### predict.ts
-
+{: .no_toc }
 ```javascript
 // Language: typescript
 // Path: react-next\utils\predict.ts
@@ -84,7 +87,7 @@ export async function inferenceSqueezenet(path: string): Promise<[any,number]> {
 }
 ```
 ### imageHelper.ts
-
+{: .no_toc }
 First, we need to get our image from path (can be local or url) and convert it to a tensor. The `getImageTensorFromPath` function in the `imageHelper.ts` uses `JIMP` to read the file, resize and return the `imageData`. [JIMP](https://www.npmjs.com/package/jimp) is a JavaScript image manipulation library. It has many built in functions for working with image data such as resizing, grey scale, write, and more. In this example we only need to resize however in your code you may need additional image data processing. 
 
 ```javascript
@@ -144,7 +147,7 @@ function imageDataToTensor(image: Jimp, dims: number[]): Tensor {
 
 ```
 ### modelHelper.ts
-
+{: .no_toc }
 The inputTensor is ready for inferencing. Let's call the default `modelHelper.ts` function and walk through the logic. First we create the `ort.InferenceSession` by sending in the path to the model and the `SessionOptions`. For the `executionProviders` you can use either `webgl` to use the GPU or `wasm` to use the CPU. See the documentation to learn more about the `SessionOptions` available for inferencing configuration [here](https://onnxruntime.ai/docs/api/js/interfaces/InferenceSession.SessionOptions.html).
 
 ```javascript
@@ -210,7 +213,7 @@ Then let's call the `runInference` function by sending in the `session` and our 
 Once the inference completes, we return the top 5 results and time it took to run the inference. This is then displayed on the `ImageCanvas` web component.
 
 ## The `data` Folder
-
+{: .no_toc }
 The data folder in this template has `imagenetClasses` that is used to assign the label based on the inferencing result index. Additionally, there is a `sample-image-urls.ts` provided for testing the application.
 
 ## ImageCanvas FSX Element Web Component
@@ -307,7 +310,7 @@ This web component element is then imported in the `index.tsx`.
 <ImageCanvas width={240} height={240}/>
 ```
 ## next.config.js
-
+{: .no_toc }
 We need to add a couple plugins in the `next.config.js`. This is the webpack configuration implemented in the NextJS Framework. The `CopyPlugin` is used to copy the `wasm` files and the model folder files to the `out` folder for deployment. 
 
 ```javascript
@@ -347,7 +350,7 @@ module.exports = {
 }
 ```
 ## package.json
-
+{: .no_toc }
 Since we want to deploy this as a static site. We need to update the build command in the `package.json` to `next build && next export` to generate our static site output. This generates all the assets that are needed to deploy the static site and puts them in the `out` folder.
 
 ```json
