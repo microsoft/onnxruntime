@@ -9,6 +9,9 @@ import sys
 
 from setuptools import setup
 from torch.utils import cpp_extension
+from onnxruntime.training.ortmodule.torch_cpp_extensions import workaround_strict_prototypes_warning
+
+workaround_strict_prototypes_warning()
 
 filenames = [os.path.join(os.path.dirname(__file__), 'fused_ops_frontend.cpp'),
              os.path.join(os.path.dirname(__file__), 'multi_tensor_adam.cu'),

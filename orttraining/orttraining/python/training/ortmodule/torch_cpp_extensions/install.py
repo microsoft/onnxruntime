@@ -4,6 +4,7 @@
 # --------------------------------------------------------------------------
 
 from onnxruntime.training import ortmodule
+from onnxruntime.training.ortmodule.torch_cpp_extensions import workaround_strict_prototypes_warning
 
 from glob import glob
 from shutil import copyfile
@@ -40,6 +41,7 @@ def _install_extension(ext_name, ext_path, cwd):
 
 def build_torch_cpp_extensions():
     '''Builds PyTorch CPP extensions and returns metadata'''
+    workaround_strict_prototypes_warning()
 
     # Run this from within onnxruntime package folder
     is_gpu_available = ortmodule.ONNXRUNTIME_CUDA_VERSION is not None or\
@@ -83,7 +85,8 @@ def build_torch_cpp_extensions():
                                             'lib.*',
                                             '*.dylib')))
     for ext in torch_cpp_exts:
-        dest_ext = os.path.join(ortmodule.ORTMODULE_TORCH_CPP_DIR, os.path.basename(ext))
+        dest_ext = os.path.join(
+            ortmodule.ORTMODULE_TORCH_CPP_DIR, os.path.basename(ext))
         print(f'Installing {ext} -> {dest_ext}')
         copyfile(ext, dest_ext)
 

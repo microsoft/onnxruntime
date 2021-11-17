@@ -34,6 +34,21 @@ from glob import glob
 
 def is_installed(torch_cpp_extension_path):
     torch_cpp_exts = glob(os.path.join(torch_cpp_extension_path, '*.so'))
-    torch_cpp_exts.extend(glob(os.path.join(torch_cpp_extension_path, '*.dll')))
-    torch_cpp_exts.extend(glob(os.path.join(torch_cpp_extension_path, '*.dylib')))
+    torch_cpp_exts.extend(
+        glob(os.path.join(torch_cpp_extension_path, '*.dll')))
+    torch_cpp_exts.extend(
+        glob(os.path.join(torch_cpp_extension_path, '*.dylib')))
     return len(torch_cpp_exts) > 0
+
+
+def workaround_strict_prototypes_warning():
+    # Calling this function to eliminate -Wstrict-prototypes warnings.
+    # Per https://stackoverflow.com/a/29634231/23845, it's a 15+ year bug
+    # https://bugs.python.org/issue1222585, which hasn't been fixed.
+    # Following Pytorch, we use a workaround from stackoverflow.
+    # This is safe because we only compile C++ code in this extension.
+    import distutils.sysconfig
+    cfg_vars = distutils.sysconfig.get_config_vars()
+    for key, value in cfg_vars.items():
+        if type(value) == str:
+            cfg_vars[key] = value.replace("-Wstrict-prototypes", "")
