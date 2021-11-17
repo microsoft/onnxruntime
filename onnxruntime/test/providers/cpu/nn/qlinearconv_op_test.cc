@@ -883,7 +883,7 @@ TEST(QLinearConvTest, Conv2D_U8S8_Depthwise_NoBias) {
 
 TEST(QLinearConvTest, Conv2D_U8S8_Depthwise_Kernelsize) {
   for (int64_t channels : std::initializer_list<int64_t>{16, 64}) {
-    for (const auto kd : std::initializer_list<std::pair<int64_t, int64_t>>{{3LL, 3LL}, {1LL, 9LL}, {5LL, 5LL}}) {
+    for (const auto& kd : std::initializer_list<std::pair<int64_t, int64_t>>{{3LL, 3LL}, {1LL, 9LL}, {5LL, 5LL}}) {
       for (int with_bias : std::initializer_list<int>{0, 1}) {
         QLinearConvOpTester<uint8_t, int8_t> test;
         test.GenerateRandomInput({1, channels, 17, 17}, .03f, 12);
@@ -902,7 +902,7 @@ TEST(QLinearConvTest, Conv2D_U8S8_Depthwise_Kernelsize) {
 
 TEST(QLinearConvTest, Conv2D_U8S8_Depthwise_Kernelsize_PerChannel) {
   for (int64_t channels : std::initializer_list<int64_t>{32, 96}) {
-    for (const auto kd : std::initializer_list<std::pair<int64_t, int64_t>>{{3LL, 3LL}, {5LL, 5LL}, {25LL, 1LL}}) {
+    for (const auto& kd : std::initializer_list<std::pair<int64_t, int64_t>>{{3LL, 3LL}, {5LL, 5LL}, {25LL, 1LL}}) {
       for (int with_bias : std::initializer_list<int>{0, 1}) {
         QLinearConvOpTester<uint8_t, int8_t> test;
         test.GenerateRandomInput({1, channels, 37, 37}, .03f, 12);
