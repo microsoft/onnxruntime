@@ -80,8 +80,8 @@ def testORTTrainerOptionsDefaultValues(test_input):
             'number_recompute_layers': 0,
             'allow_layer_norm_mod_precision': False,
             'propagate_cast_ops_config': {
-                'strategy': PropagateCastOpsStrategy.NONE,
-                'level': -1,
+                'strategy': PropagateCastOpsStrategy.FLOOD_FILL,
+                'level': 1,
                 'allow': []
             }
         },

@@ -1,6 +1,0 @@
---pre
--f https://download.pytorch.org/whl/lts/1.8/torch_lts.html
-torch==1.8.2+cu102
-torchvision==0.9.2+cu102
-torchtext==0.9.2
-setuptools>=41.4.0

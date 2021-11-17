@@ -1014,14 +1014,27 @@ bool DataOps::op_is_supported(std::string name, std::vector<SupportedOp>& op_lis
       if (op_list[i].version <= version_id_) {
         auto it = op_list[i].device_type.begin();
         while (it != op_list[i].device_type.end()) {
+          //status variable is set to True if it's Hetero/Multi/Auto device type
+          bool status = false;
+
           //if device supported is all then we support it
           if (*it == "All") {
             return true;
           }
 
+         //The operator to be marked true, it should be supported by all the devices specified with HETERO/MULTI/AUTO
+          if (device_id_.find("HETERO") == 0 || device_id_.find("MULTI") == 0 || device_id_.find("AUTO") == 0) {
+              status = true;
+              if (device_id_.find(*it) == std::string::npos) {
+                return false;
+              }
+          }
+
           //check for device supported
-          if (device_id_.find(*it) != std::string::npos) {
-            return true;
+          if (status == false) {
+            if (device_id_.find(*it) != std::string::npos) {
+              return true;
+            }
           }
 
           it++;
@@ -1057,7 +1070,8 @@ bool DataOps::type_is_supported(const NodeArg* node_arg, bool is_initializer) {
   } else {
     auto dtype = type_proto->tensor_type().elem_type();
 
-    if (device_id_ == "MYRIAD" || device_id_ == "HDDL" || device_id_.find("HETERO") != std::string::npos || device_id_.find("MULTI") != std::string::npos) {
+    if (device_id_ == "MYRIAD" || device_id_ == "HDDL" || device_id_.find("HETERO") != std::string::npos ||
+        device_id_.find("MULTI") != std::string::npos || device_id_.find("AUTO") != std::string::npos) {
       for (auto const& var : supported_types_vpu_) {
         if ((var.first <= version_id_) &&
             (var.second == dtype)) {

@@ -89,6 +89,7 @@ provider_excluded_files = [
                 'math/matmul_integer.cuh',
                 'math/matmul_integer.h',
                 'math/softmax_impl.cu',
+                'math/softmax_warpwise_impl.cuh',
                 'math/softmax.cc',
                 'nn/batch_norm.cc',
                 'nn/batch_norm.h',

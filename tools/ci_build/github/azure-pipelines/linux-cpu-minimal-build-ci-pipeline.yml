@@ -1,18 +1,19 @@
-# This CI has 4 major steps
+# This CI has the following steps:
 # 1. Build full ORT, install the full ORT python wheel and use it to generate ort format test models
-#    and include ops config file for step 3
+#    and include ops config file for step 3.
 # 2. Build minimal ORT including all the kernels and disable exceptions.
 #    This step is build only to safe-guard the --disable_exceptions option.
 # 3. Build minimal ORT include only the kernels using the include ops config file from step 1,
 #    and the models from <repo root>/onnxruntime/test/testdata/, run UT, and use onnx_test_runner to
 #    test the ort format models generated in step 1.
 #    Exceptions are enabled in this step to help debugging in case of CI failure.
-#    This step builds and tests ORT with and without type reduction enabled.
-# 3.1. Build minimal ORT with type reduction from a globally allowed types list.
+#    This step builds and tests ORT with (3a) and without (3b) type reduction enabled.
+# 4. Build minimal ORT with type reduction from a globally allowed types list.
 #    This step uses a hard-coded list of types which may not include the types needed by the models
 #    in <repo root>/onnxruntime/test/testdata/, so the tests for those models are skipped.
-# 4. Build baseline minimal ORT for Android arm64-v8a including no kernels and disable exceptions
-#    This step is to report the baseline binary size for Android
+# 5. Build baseline minimal ORT for Android arm64-v8a including no kernels and disable exceptions.
+#    This step is to report the baseline binary size for Android.
+# 6. Build full (6a) and extended minimal (6b) ORT with runtime optimizations enabled.
 jobs:
 - job: Linux_CPU_Minimal_Build_E2E
   timeoutInMinutes: 120
@@ -44,7 +45,7 @@ jobs:
       Repository: onnxruntimecpubuild
 
   - task: CmdLine@2
-    displayName: Build full onnxruntime and generate ORT format test files
+    displayName: 1. Build full onnxruntime and generate ORT format test files
     inputs:
       script: |
         docker run --rm \
@@ -55,11 +56,12 @@ jobs:
           -e NIGHTLY_BUILD \
           -e BUILD_BUILDNUMBER \
           onnxruntimecpubuild \
-            /bin/bash /onnxruntime_src/tools/ci_build/github/linux/ort_minimal/build_full_ort_and_create_ort_files.sh
+            /bin/bash /onnxruntime_src/tools/ci_build/github/linux/ort_minimal/build_full_ort_and_create_ort_files.sh \
+              /build/1
       workingDirectory: $(Build.SourcesDirectory)
 
   - task: CmdLine@2
-    displayName: Build minimal onnxruntime [exceptions DISABLED, type reduction DISABLED, training ops ENABLED]
+    displayName: 2. Build minimal onnxruntime [exceptions DISABLED, type reduction DISABLED, training ops ENABLED]
     inputs:
       script: |
         # We will try to build minimal ORT with exceptions disabled and training ops enabled
@@ -72,8 +74,8 @@ jobs:
           -e BUILD_BUILDNUMBER \
           onnxruntimecpubuild \
             /opt/python/cp37-cp37m/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
-              --build_dir /build --cmake_generator Ninja \
-              --config Debug\
+              --build_dir /build/2 --cmake_generator Ninja \
+              --config Debug \
               --skip_submodule_sync \
               --build_shared_lib \
               --parallel \
@@ -84,7 +86,7 @@ jobs:
       workingDirectory: $(Build.SourcesDirectory)
 
   - task: CmdLine@2
-    displayName: Build minimal onnxruntime [exceptions ENABLED, type reduction DISABLED, custom ops ENABLED] and run tests
+    displayName: 3a. Build minimal onnxruntime [exceptions ENABLED, type reduction DISABLED, custom ops ENABLED] and run tests
     inputs:
       script: |
         docker run --rm \
@@ -96,7 +98,7 @@ jobs:
           -e BUILD_BUILDNUMBER \
           onnxruntimecpubuild \
             /bin/bash /onnxruntime_src/tools/ci_build/github/linux/ort_minimal/build_minimal_ort_and_run_tests.sh \
-              --build-directory /build/without_type_reduction \
+              --build-directory /build/3a \
               --reduced-ops-config /home/onnxruntimedev/.test_data/required_ops.ort_models.config \
               --enable-custom-ops
       workingDirectory: $(Build.SourcesDirectory)
@@ -106,7 +108,7 @@ jobs:
     workingDirectory: $(Build.SourcesDirectory)
 
   - task: CmdLine@2
-    displayName: Build minimal onnxruntime [exceptions ENABLED, type reduction ENABLED] and run tests
+    displayName: 3b. Build minimal onnxruntime [exceptions ENABLED, type reduction ENABLED] and run tests
     inputs:
       script: |
         docker run --rm \
@@ -118,7 +120,7 @@ jobs:
           -e BUILD_BUILDNUMBER \
           onnxruntimecpubuild \
             /bin/bash /onnxruntime_src/tools/ci_build/github/linux/ort_minimal/build_minimal_ort_and_run_tests.sh \
-              --build-directory /build/with_type_reduction \
+              --build-directory /build/3b \
               --reduced-ops-config /home/onnxruntimedev/.test_data/required_ops_and_types.ort_models.config \
               --enable-type-reduction
       workingDirectory: $(Build.SourcesDirectory)
@@ -128,7 +130,7 @@ jobs:
     workingDirectory: $(Build.SourcesDirectory)
 
   - task: CmdLine@2
-    displayName: Build minimal onnxruntime [exceptions ENABLED, type reduction ENABLED (globally allowed types)] and run tests
+    displayName: 4. Build minimal onnxruntime [exceptions ENABLED, type reduction ENABLED (globally allowed types)] and run tests
     inputs:
       script: |
         printf "%s\n%s\n" \
@@ -144,7 +146,7 @@ jobs:
           -e BUILD_BUILDNUMBER \
           onnxruntimecpubuild \
             /bin/bash /onnxruntime_src/tools/ci_build/github/linux/ort_minimal/build_minimal_ort_and_run_tests.sh \
-              --build-directory /build/with_type_reduction_globally_allowed_types \
+              --build-directory /build/4 \
               --reduced-ops-config /home/onnxruntimedev/.test_data/globally_allowed_types.config \
               --enable-type-reduction \
               --skip-model-tests
@@ -155,7 +157,7 @@ jobs:
     workingDirectory: $(Build.SourcesDirectory)
 
   - task: CmdLine@2
-    displayName: Build onnxruntime minimal baseline for Android arm64-v8a and report binary size
+    displayName: 5. Build onnxruntime minimal baseline for Android arm64-v8a and report binary size
     inputs:
       script: |
         NDK_HOME=$(realpath $ANDROID_NDK_HOME)
@@ -172,9 +174,9 @@ jobs:
           -e BUILD_ID=$(Build.BuildId) \
           -e BUILD_REASON=$(Build.Reason) \
           -e BUILD_BRANCH=$(Build.SourceBranch) \
-          -e DASHBOARD_MYSQL_ORT_PASSWORD=$(dashboard-mysql-ort-password) \
           onnxruntimecpubuild \
-            /bin/bash /onnxruntime_src/tools/ci_build/github/linux/ort_minimal/build_minimal_ort_android_baseline_and_report_bin_size.sh
+            /bin/bash /onnxruntime_src/tools/ci_build/github/linux/ort_minimal/build_minimal_ort_android_baseline_and_report_bin_size.sh \
+              /build/5
       workingDirectory: $(Build.SourcesDirectory)
 
 
@@ -186,7 +188,7 @@ jobs:
       scriptLocation: inlineScript
       scriptType: bash
       inlineScript: |
-        BINARY_SIZE_DATA_FILE="$(Build.BinariesDirectory)/MinSizeRel/binary_size_data.txt"
+        BINARY_SIZE_DATA_FILE="$(Build.BinariesDirectory)/5/MinSizeRel/binary_size_data.txt"
         if [[ ! -f "${BINARY_SIZE_DATA_FILE}" ]]; then
           echo "File not found: ${BINARY_SIZE_DATA_FILE}"
           exit 1
@@ -197,6 +199,51 @@ jobs:
           --build_project=onnxruntime \
           --build_id=$(Build.BuildId)
       workingDirectory: '$(Build.BinariesDirectory)'
+
+  - script: git checkout -- .
+    displayName: Discard local changes to Git repository files
+    workingDirectory: $(Build.SourcesDirectory)
+
+  - task: CmdLine@2
+    displayName: 6a. Build full onnxruntime with runtime optimizations enabled
+    inputs:
+      script: |
+        docker run --rm \
+          --volume $(Build.SourcesDirectory):/onnxruntime_src \
+          --volume $(Build.BinariesDirectory):/build \
+          -e ALLOW_RELEASED_ONNX_OPSET_ONLY=1 \
+          -e NIGHTLY_BUILD \
+          -e BUILD_BUILDNUMBER \
+          onnxruntimecpubuild \
+            /opt/python/cp37-cp37m/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
+              --build_dir /build/6a --cmake_generator Ninja \
+              --config Debug \
+              --skip_submodule_sync \
+              --build_shared_lib \
+              --parallel \
+              --cmake_extra_defines onnxruntime_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION=ON
+      workingDirectory: $(Build.SourcesDirectory)
+
+  - task: CmdLine@2
+    displayName: 6b. Build extended minimal onnxruntime with runtime optimizations enabled
+    inputs:
+      script: |
+        docker run --rm \
+          --volume $(Build.SourcesDirectory):/onnxruntime_src \
+          --volume $(Build.BinariesDirectory):/build \
+          -e ALLOW_RELEASED_ONNX_OPSET_ONLY=1 \
+          -e NIGHTLY_BUILD \
+          -e BUILD_BUILDNUMBER \
+          onnxruntimecpubuild \
+            /opt/python/cp37-cp37m/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
+              --build_dir /build/6b --cmake_generator Ninja \
+              --config Debug \
+              --skip_submodule_sync \
+              --build_shared_lib \
+              --parallel \
+              --minimal_build extended \
+              --cmake_extra_defines onnxruntime_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION=ON
+      workingDirectory: $(Build.SourcesDirectory)
 
   - task: PublishTestResults@2
     displayName: 'Publish unit test results'
