@@ -50,8 +50,8 @@ class OpenCLExecutionProvider : public IExecutionProvider {
   // return value. Bind kernels to it directly will cause the kernel being
   // created from time to time. So we move the kernels here.
   void InitKernelsForDataTransfer();
-  const cl::Kernel& GetCopyTensor1DToImage2DKernel() const;
-  const cl::Kernel& GetCopyImage2DToTensor1DKernel() const;
+  const cl::Kernel& GetCopyBuffer1DToImage2DKernel() const;
+  const cl::Kernel& GetCopyImage2DToBuffer1DKernel() const;
 
   cl::Program program_copy_1d_;
   cl::Kernel kernel_copy_btoi_;

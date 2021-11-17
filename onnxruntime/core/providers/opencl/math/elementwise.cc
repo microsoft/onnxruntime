@@ -51,11 +51,11 @@ namespace opencl {
       size_t n = a->Shape().Size();                                                 \
                                                                                     \
       auto kernel = GetKernel(#CLASS_NAME);                                         \
-      OPENCL_CHECK_ERROR(kernel.setArg(0, CL_BUFFER_FROM_TENSOR(*a)));              \
-      OPENCL_CHECK_ERROR(kernel.setArg(1, CL_BUFFER_FROM_TENSOR(*b)));              \
-      OPENCL_CHECK_ERROR(kernel.setArg(2, CL_BUFFER_FROM_TENSOR(*c)));              \
-      OPENCL_CHECK_ERROR(kernel.setArg<cl_int>(3, n));                              \
-      OPENCL_CHECK_ERROR(GetCommandQueue().enqueueNDRangeKernel(kernel, {0}, {n})); \
+      ORT_RETURN_IF_CL_ERROR(kernel.setArg(0, CL_BUFFER_FROM_TENSOR(*a)));              \
+      ORT_RETURN_IF_CL_ERROR(kernel.setArg(1, CL_BUFFER_FROM_TENSOR(*b)));              \
+      ORT_RETURN_IF_CL_ERROR(kernel.setArg(2, CL_BUFFER_FROM_TENSOR(*c)));              \
+      ORT_RETURN_IF_CL_ERROR(kernel.setArg<cl_int>(3, n));                              \
+      ORT_RETURN_IF_CL_ERROR(GetCommandQueue().enqueueNDRangeKernel(kernel, {0}, {n})); \
       return Status::OK();                                                          \
     }                                                                               \
   };                                                                                \

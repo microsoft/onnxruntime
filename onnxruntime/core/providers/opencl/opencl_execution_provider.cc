@@ -22,9 +22,9 @@ Status RegisterOpenCLKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kOpenCLExecutionProvider, kOnnxDomain, 1, MemcpyFromHost)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kOpenCLExecutionProvider, kOnnxDomain, 1, MemcpyToHost)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kOpenCLExecutionProvider, kOnnxDomain, 7, Add)>,
-      // BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kOpenCLExecutionProvider, kOnnxDomain, 7, Sub)>,
-      // BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kOpenCLExecutionProvider, kOnnxDomain, 7, Mul)>,
-      // BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kOpenCLExecutionProvider, kOnnxDomain, 7, Div)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kOpenCLExecutionProvider, kOnnxDomain, 7, Sub)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kOpenCLExecutionProvider, kOnnxDomain, 7, Mul)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kOpenCLExecutionProvider, kOnnxDomain, 7, Div)>,
   };
 
   for (auto& function_table_entry : function_table) {
@@ -80,7 +80,7 @@ Status OpenCLExecutionProvider::InitOpenCLContext() {
   cl_context_properties properties[] = {CL_CONTEXT_PLATFORM, (cl_context_properties)(selected_platform)(), 0};
   cl_int err{};
   ctx_ = cl::Context(CL_DEVICE_TYPE_GPU, properties, /*notifyFptr=*/nullptr, /*data=*/nullptr, &err);
-  OPENCL_CHECK_ERROR(err);
+  ORT_RETURN_IF_CL_ERROR(err);
   std::cerr << "created cl::Context(" << ctx_() << ")\n";
 
   std::vector<cl::Device> devices = ctx_.getInfo<CL_CONTEXT_DEVICES>();
@@ -90,7 +90,7 @@ Status OpenCLExecutionProvider::InitOpenCLContext() {
   dev_ = std::move(devices[0]);
 
   cmd_queue_ = cl::CommandQueue(ctx_, dev_, /*properties=*/0, &err);
-  OPENCL_CHECK_ERROR(err);
+  ORT_RETURN_IF_CL_ERROR(err);
   std::cerr << "created cl::CommandQueue(" << cmd_queue_() << ") in cl::Context(" << ctx_() << ")\n";
 
   InitKernelsForDataTransfer();
@@ -144,15 +144,15 @@ namespace {
 
 void OpenCLExecutionProvider::InitKernelsForDataTransfer() {
   program_copy_1d_ = ::onnxruntime::opencl::LoadProgram(GetOpenCLContext(), GetOpenCLDevice(), copy1d_kernel_src, copy1d_kernel_src_len);
-  kernel_copy_btoi_ = ::onnxruntime::opencl::LoadKernel(program_copy_1d_, "CopyTensor1DToImage2D");
-  kernel_copy_itob_ = ::onnxruntime::opencl::LoadKernel(program_copy_1d_, "CopyImage2DToTensor1D");
+  kernel_copy_btoi_ = ::onnxruntime::opencl::LoadKernel(program_copy_1d_, "CopyBuffer1DToImage2D");
+  kernel_copy_itob_ = ::onnxruntime::opencl::LoadKernel(program_copy_1d_, "CopyImage2DToBuffer1D");
 }
 
-const cl::Kernel& OpenCLExecutionProvider::GetCopyTensor1DToImage2DKernel() const {
+const cl::Kernel& OpenCLExecutionProvider::GetCopyBuffer1DToImage2DKernel() const {
   return kernel_copy_btoi_;
 }
 
-const cl::Kernel& OpenCLExecutionProvider::GetCopyImage2DToTensor1DKernel() const {
+const cl::Kernel& OpenCLExecutionProvider::GetCopyImage2DToBuffer1DKernel() const {
   return kernel_copy_itob_;
 }
 

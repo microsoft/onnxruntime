@@ -13,24 +13,38 @@ namespace onnxruntime {
 namespace opencl {
 
 class OpenCLDataTransfer : public IDataTransfer {
+  using Status = common::Status;
+  using Buffer = cl::Buffer;
+  using Image2D = cl::Image2D;
+
  public:
   OpenCLDataTransfer(const OpenCLExecutionProvider* exec);
   ~OpenCLDataTransfer();
 
   bool CanCopy(const OrtDevice& src_device, const OrtDevice& dst_device) const override;
 
-  common::Status CopyTensor(const Tensor& src, Tensor& dst, int exec_queue_id) const override;
-  common::Status CopyTensorToBuffer(const Tensor& src, Tensor& dst);
+  Status CopyTensor(const Tensor& src, Tensor& dst, int exec_queue_id) const override;
+  Status CopyTensorToBuffer(const Tensor& src, Tensor& dst);
 
-  common::Status CopyTensor1DToImage2D(const Tensor& src, Tensor& dst) const;
-  common::Status CopyTensor2DToImage2D(const Tensor& src, Tensor& dst) const;
-  common::Status CopyTensorNCHWToImage2D(const Tensor& src, Tensor& dst) const;
-  common::Status CopyTensorNCHWcToImage2D(const Tensor& src, Tensor& dst) const;
+  // Tensor* means ort Tensor holds transparent memory address. Buffer/Image2D
+  // means ort Tensor holds opaque Image2D handle, peal them out of the Tensor
+  // before passing it into the func
+  Status CopyTensor1DToImage2D(const Tensor& src, const Image2D& dst, const Image2DDesc& desc) const;
+  Status CopyTensor2DToImage2D(const Tensor& src, const Image2D& dst, const Image2DDesc& desc) const;
+  Status CopyTensorNCHWcToImage2D(const Tensor& src, const Image2D& dst, const Image2DDesc& desc) const;
+  Status CopyImage2DToTensor1D(const Image2D& src, const Image2DDesc& desc, Tensor& dst) const;
+  Status CopyImage2DToTensor2D(const Image2D& src, const Image2DDesc& desc, Tensor& dst) const;
+  Status CopyImage2DToTensorNCHWc(const Image2D& src, const Image2DDesc& desc, Tensor& dst) const;
 
-  common::Status CopyImage2DToTensor1D(const Tensor& src, Tensor& dst) const;
-  common::Status CopyImage2DToTensor2D(const Tensor& src, Tensor& dst) const;
-  common::Status CopyImage2DToTensorNCHW(const Tensor& src, Tensor& dst) const;
-  common::Status CopyImage2DToTensorNCHWc(const Tensor& src, Tensor& dst) const;
+  // dev to dev copy are all async!
+  Status CopyBuffer1DToImage2D(const Buffer& src, const TensorShape shape, const Image2D& dst, const Image2DDesc& desc) const;
+  Status CopyBuffer2DToImage2D(const Buffer& src, const TensorShape shape, const Image2D& dst, const Image2DDesc& desc) const;
+  Status CopyBufferNCHWcToImage2D(const Buffer& src, const TensorShape shape, const Image2D& dst, const Image2DDesc& desc) const;
+  Status CopyImage2DToBuffer1D(const Image2D& src, const Image2DDesc& desc, const Buffer& dst, const TensorShape shape) const;
+  Status CopyImage2DToBuffer2D(const Image2D& src, const Image2DDesc& desc, const Buffer& dst, const TensorShape shape) const;
+  Status CopyImage2DToBufferNCHWc(const Image2D& src, const Image2DDesc& desc, const Buffer& dst, const TensorShape shape) const;
+
+  Status UnimplementedCopy() const;
 
  private:
   const OpenCLExecutionProvider* exec_;

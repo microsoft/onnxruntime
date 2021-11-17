@@ -160,7 +160,7 @@ cl::Program LoadProgram(const cl::Context& ctx, const cl::Device& dev, const cha
 cl::Kernel LoadKernel(const cl::Program& program, const char* name) {
   cl_int err{};
   auto kernel = cl::Kernel(program, name, &err);
-  OPENCL_CHECK_ERROR(err);
+  ORT_THROW_IF_CL_ERROR(err);
   return kernel;
 }
 

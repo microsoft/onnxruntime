@@ -22,7 +22,16 @@
 #define TO_STRING(T) TO_STRING_(T)
 
 // NOLINTNEXTLINE(cppcoreguidelines-macro-usage)
-#define OPENCL_CHECK_ERROR(error_code)                                                   \
+#define ORT_RETURN_IF_CL_ERROR(error_code)                                               \
+  if ((error_code) != CL_SUCCESS) {                                                      \
+    std::ostringstream oss;                                                              \
+    oss << __FILE__ ":" TO_STRING(__LINE__)                                              \
+        << "\nOpenCL Error Code  : " << (int)(error_code)                                \
+        << "\n       Error String: " << onnxruntime::opencl::GetErrorString(error_code); \
+    return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, oss.str());                             \
+  }
+
+#define ORT_THROW_IF_CL_ERROR(error_code)                                                \
   if ((error_code) != CL_SUCCESS) {                                                      \
     std::ostringstream oss;                                                              \
     oss << __FILE__ ":" TO_STRING(__LINE__)                                              \
@@ -135,23 +144,28 @@ class Image2DDesc : private std::pair<int64_t, int64_t> {
   }
 };
 
+// cl::make_kernel returns typed functor object. The problem is the type
+// signature varys as the kernel signature changes, makes it cannot be stored
+// in a cached kernel registry. So I choose to store cl::Kernel object and wrap
+// it with a simpler form without typing issue.
 class KernelLauncher {
-  cl::Kernel kernel_;
-  cl_uint index_;
-
  public:
-  explicit KernelLauncher(const cl::Kernel& kernel) : kernel_{kernel}, index_{0} {}
+  explicit KernelLauncher(const cl::Kernel& kernel) : kernel_{kernel}, index_{0}, err_{CL_SUCCESS} {}
   const cl::Kernel& Kernel() const { return kernel_; }
 
+#define SKIP_IF_ERRORED(expr) \
+  if (err_ == CL_SUCCESS) {   \
+    err_ = (expr);            \
+  }
   template <typename T>
   KernelLauncher& setArg(T&& arg) {
-    OPENCL_CHECK_ERROR(kernel_.setArg(index_, std::forward<T>(arg)));
+    SKIP_IF_ERRORED(kernel_.setArg(index_, std::forward<T>(arg)));
     index_ += 1;
     return *this;
   }
 
   KernelLauncher& setBuffer(const cl::Buffer& arg) {
-    OPENCL_CHECK_ERROR(kernel_.setArg<cl::Buffer>(index_, arg));
+    SKIP_IF_ERRORED(kernel_.setArg<cl::Buffer>(index_, arg));
     index_ += 1;
     return *this;
   }
@@ -161,7 +175,7 @@ class KernelLauncher {
   }
 
   KernelLauncher& setImage2D(const cl::Image2D& arg) {
-    OPENCL_CHECK_ERROR(kernel_.setArg<cl::Image2D>(index_, arg));
+    SKIP_IF_ERRORED(kernel_.setArg<cl::Image2D>(index_, arg));
     index_ += 1;
     return *this;
   }
@@ -170,9 +184,18 @@ class KernelLauncher {
     return setImage2D(CL_IMAGE2D_FROM_TENSOR(arg));
   }
 
-  void Launch(const cl::CommandQueue& queue, const cl::NDRange& global, const cl::NDRange& local = cl::NullRange) {
-    OPENCL_CHECK_ERROR(queue.enqueueNDRangeKernel(kernel_, cl::NullRange, global, local));
+  Status Launch(const cl::CommandQueue& queue, const cl::NDRange& global, const cl::NDRange& local = cl::NullRange) {
+    SKIP_IF_ERRORED(queue.enqueueNDRangeKernel(kernel_, cl::NullRange, global, local));
+    ORT_RETURN_IF_CL_ERROR(err_);
+    return Status::OK();
   }
+
+#undef SKIP_IF_ERRORED
+
+ private:
+  cl::Kernel kernel_;
+  cl_uint index_;
+  cl_int err_;
 };
 
 }  // namespace opencl
