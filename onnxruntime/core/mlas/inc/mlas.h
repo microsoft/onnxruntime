@@ -758,7 +758,7 @@ struct MLAS_CONV_SYM_PARAMS {
     const int32_t* Bias;
     const float* Scale;
     bool PerChannelScale;
-    uint8_t OutputZeroPoint;
+    int32_t OutputZeroPoint;
     bool InputIsSigned;
 };
 

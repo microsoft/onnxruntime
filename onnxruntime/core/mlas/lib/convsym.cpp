@@ -187,11 +187,14 @@ MLAS_FORCEINLINE
 void
 MlasConvSymSetOutputZeroPoint(
     MLAS_CONV_SYM_POST_PROCESS_PARAMS& PostProcessParams,
-    int32_t OutputZeroPoint
+    int32_t OutputZeroPoint,
+    bool InputIsSigned
     )
 {
-    PostProcessParams.MinimumValue = static_cast<float>(0 - OutputZeroPoint);
-    PostProcessParams.MaximumValue = static_cast<float>(255 - OutputZeroPoint);
+    constexpr int32_t minimum = InputIsSigned ? std::numeric_limits<int8_t>::min() : std::numeric_limits<uint8_t>::min();
+    constexpr int32_t maximum = InputIsSigned ? std::numeric_limits<int8_t>::max() : std::numeric_limits<uint8_t>::max();
+    PostProcessParams.MinimumValue = static_cast<float>(minimum - OutputZeroPoint);
+    PostProcessParams.MaximumValue = static_cast<float>(maximum - OutputZeroPoint);
     PostProcessParams.OutputZeroPoint = OutputZeroPoint;
 }
 
@@ -353,7 +356,7 @@ MlasConvSym(
 
     MLAS_CONV_SYM_POST_PROCESS_PARAMS PostProcessParams = {};
 
-    MlasConvSymSetOutputZeroPoint(PostProcessParams, Params.OutputZeroPoint);
+    MlasConvSymSetOutputZeroPoint(PostProcessParams, Params.OutputZeroPoint, Params.InputIsSigned);
 
     const size_t KernelChannelCount = ConvSymDispatch->KernelChannelCount;
     const size_t KernelOutputCount = ConvSymDispatch->KernelOutputCount;
@@ -423,7 +426,7 @@ MlasConvSymDepthwise(
 
     MLAS_CONV_SYM_POST_PROCESS_PARAMS PostProcessParams = {};
 
-    MlasConvSymSetOutputZeroPoint(PostProcessParams, Params.OutputZeroPoint);
+    MlasConvSymSetOutputZeroPoint(PostProcessParams, Params.OutputZeroPoint, Params.InputIsSigned);
 
     const size_t KernelChannelCount = ConvSymDispatch->KernelDepthwiseChannelCount;
     const size_t KernelOutputCount = ConvSymDispatch->KernelDepthwiseOutputCount;
