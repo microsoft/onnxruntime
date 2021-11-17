@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+﻿/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -59,17 +59,32 @@ class WindowsThread : public EnvThread {
  public:
   WindowsThread(const ORTCHAR_T* name_prefix, int index,
                 unsigned (*start_address)(int id, Eigen::ThreadPoolInterface* param), Eigen::ThreadPoolInterface* param,
-                const ThreadOptions& thread_options)
-      : hThread((HANDLE)_beginthreadex(nullptr, thread_options.stack_size, ThreadMain,
-                                       new Param{name_prefix, index, start_address, param, thread_options}, 0,
-                                       &threadID)) {
+                const ThreadOptions& thread_options) {
+    custom_create_thread_fn = thread_options.custom_create_thread_fn;
+    custom_thread_creation_options = thread_options.custom_thread_creation_options;
+    custom_join_thread_fn = thread_options.custom_join_thread_fn;
+
+    if (custom_create_thread_fn) {
+      custom_thread_handle = custom_create_thread_fn(custom_thread_creation_options, (OrtThreadWorkerFn)CustomThreadMain, new Param{name_prefix, index, start_address, param, thread_options});
+      if (!custom_thread_handle) {
+        ORT_THROW("custom_create_thread_fn returned invalid handle."); 
+      }
+    } else {
+      hThread.reset(reinterpret_cast<HANDLE>(_beginthreadex(nullptr, thread_options.stack_size, ThreadMain,
+                                                            new Param{name_prefix, index, start_address, param, thread_options}, 0,
+                                                            &threadID)));
+    }
   }
 
   ~WindowsThread() {
-    DWORD waitStatus = WaitForSingleObject(hThread.get(), INFINITE);
-    FAIL_FAST_LAST_ERROR_IF(waitStatus == WAIT_FAILED);
+    if (custom_thread_handle) {
+      custom_join_thread_fn(custom_thread_handle);
+      custom_thread_handle = nullptr;
+    } else {
+      DWORD waitStatus = WaitForSingleObject(hThread.get(), INFINITE);
+      FAIL_FAST_LAST_ERROR_IF(waitStatus == WAIT_FAILED);
+    }
   }
-
 
  private:
   typedef HRESULT(WINAPI* SetThreadDescriptionFunc)(HANDLE hThread, PCWSTR lpThreadDescription);
@@ -100,7 +115,6 @@ class WindowsThread : public EnvThread {
       // Ignore the error
       (void)pSetThrDesc(GetCurrentThread(), oss.str().c_str());
     }
-
     unsigned ret = 0;
     ORT_TRY {
       ret = p->start_address(p->index, p->param);
@@ -113,6 +127,15 @@ class WindowsThread : public EnvThread {
   }
 #pragma warning(pop)
 
+  static void __stdcall CustomThreadMain(void* param) {
+    std::unique_ptr<Param> p((Param*)param);
+    ORT_TRY {
+      p->start_address(p->index, p->param);
+    }
+    ORT_CATCH(const std::exception&) {
+      p->param->Cancel();
+    }
+  }
   unsigned threadID = 0;
   wil::unique_handle hThread;
 };

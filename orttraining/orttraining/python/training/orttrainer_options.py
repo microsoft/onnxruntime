@@ -197,7 +197,7 @@ class ORTTrainerOptions(object):
                             'schema': {
                                 'propagate_cast_ops_strategy': {
                                     'type': 'onnxruntime.training.PropagateCastOpsStrategy',
-                                    'default': PropagateCastOpsStrategy.NONE
+                                    'default': PropagateCastOpsStrategy.FLOOD_FILL
                                 },
                                 'propagate_cast_ops_level': {
                                     'type': 'integer',
@@ -374,7 +374,7 @@ class ORTTrainerOptions(object):
         graph_transformer.transformer_layer_recompute(bool, default False)
         graph_transformer.number_recompute_layers(bool, default False)
         graph_transformer.propagate_cast_ops_config (dict):
-            graph_transformer.propagate_cast_ops_config.strategy(PropagateCastOpsStrategy, default NONE)
+            graph_transformer.propagate_cast_ops_config.strategy(PropagateCastOpsStrategy, default FLOOD_FILL)
                 Specify the choice of the cast propagation optimization strategy, either, NONE, INSERT_AND_REDUCE or FLOOD_FILL.
                 NONE strategy does not perform any cast propagation transformation on the graph, although other optimizations
                 locally change cast operations, for example, in order to fuse Transpose and MatMul nodes, the TransposeMatMulFunsion optimization could
@@ -726,12 +726,12 @@ _ORTTRAINER_OPTIONS_SCHEMA = {
                     'strategy': {
                         'type': 'propagate_cast_ops_strategy',
                         'nullable': True,
-                        'default': PropagateCastOpsStrategy.NONE
+                        'default': PropagateCastOpsStrategy.FLOOD_FILL
                     },
                     'level': {
                         'type': 'integer',
                         'min': -1,
-                        'default': -1
+                        'default': 1
                     },
                     'allow': {
                         'type': 'list',

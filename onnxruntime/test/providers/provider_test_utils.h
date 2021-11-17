@@ -822,7 +822,7 @@ class OpTester {
 
  protected:
   template <typename T>
-  void AddData(std::vector<Data>& data, const char* name, const std::vector<int64_t>& dims, const T* values,
+  void AddData(std::vector<Data>& data, const char* name, gsl::span<const int64_t> dims, const T* values,
                int64_t values_count, bool is_initializer = false, bool sort_output = false,
                const std::vector<std::string>* dim_params = nullptr,
                float rel_error = 0.0f, float abs_error = 0.0f, bool is_optional_type_tensor = false) {
@@ -944,9 +944,9 @@ class OpTester {
              optional<float>(), optional<float>()));
   }
 
-  std::vector<int64_t> GetDimsForProto(const std::vector<int64_t>& dims);
+  std::vector<int64_t> GetDimsForProto(gsl::span<const int64_t> dims);
 
-  void AddShapeToTensorData(NodeArg& node_arg, const std::vector<int64_t>& dims, const std::vector<std::string>* dim_params);
+  void AddShapeToTensorData(NodeArg& node_arg, gsl::span<const int64_t> dims, const std::vector<std::string>* dim_params);
 
   void CopyDataToTensor(gsl::span<const gsl::byte> data, Tensor& dst);
 

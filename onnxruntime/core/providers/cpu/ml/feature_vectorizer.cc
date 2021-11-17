@@ -86,7 +86,7 @@ template <typename T>
 static void VectorizeTensor(const Tensor& input_tensor, int64_t feature_size, int64_t sum_input_dimensions,
                             typename gsl::span<float>::iterator out_iter) {
   auto& shape = input_tensor.Shape();
-  auto& input_dims = shape.GetDims();
+  auto input_dims = shape.GetDims();
 
   auto input_size = input_dims.size() == 1 ? input_dims[0] : input_tensor.Shape().SizeFromDimension(1);
   auto N = input_dims.size() == 1 ? 1 : input_dims[0];
