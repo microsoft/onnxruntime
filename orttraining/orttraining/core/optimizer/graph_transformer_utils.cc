@@ -52,6 +52,7 @@
 #include "orttraining/core/optimizer/insert_output_rewriter.h"
 #include "orttraining/core/optimizer/localized_recompute.h"
 #include "orttraining/core/optimizer/loss_rewriter.h"
+#include "orttraining/core/optimizer/graph_transformer_registry.h"
 #include "orttraining/core/optimizer/transformer_layer_recompute.h"
 
 namespace onnxruntime {
@@ -156,6 +157,8 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
   if (rule_transformer != nullptr) {
     transformers.emplace_back(std::move(rule_transformer));
   }
+
+  GenerateExternalTransformers(level, true, compatible_eps, transformers);
 
   if (rules_and_transformers_to_disable.empty()) {
     return transformers;

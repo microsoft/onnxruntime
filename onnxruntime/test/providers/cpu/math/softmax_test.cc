@@ -4,6 +4,7 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
+#include <cmath>
 
 namespace onnxruntime {
 namespace test {
@@ -286,6 +287,30 @@ TEST(SoftmaxOperator, DimWithZero) {
           {kTensorrtExecutionProvider,
            kNnapiExecutionProvider}  // NNAPI softmax does not support empty input
   );
+}
+
+TEST(SoftmaxOperator, 2DInputReduceOnAxis1WithLargeDim) {
+  std::vector<float> x_vals(1025, 0.0f);
+  std::vector<float> expected_vals(1025, 0.0f);
+  float incre_val = 0.01f;
+  for (size_t i = 0; i < x_vals.size(); ++i) {
+    x_vals[i] = incre_val;
+    incre_val += 0.01f;
+  }
+
+  float sum = 0.0f;
+  for (size_t i = 0; i < x_vals.size(); ++i) {
+    expected_vals[i] = std::exp(x_vals[i]);
+    sum += expected_vals[i];
+  }
+
+  for (size_t i = 0; i < x_vals.size(); ++i) {
+    expected_vals[i] = expected_vals[i] / sum;
+  }
+
+  std::vector<int64_t> dimensions = {1, 1025};
+
+  RunTest(x_vals, expected_vals, dimensions);
 }
 
 }  // namespace test
