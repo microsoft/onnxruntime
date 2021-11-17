@@ -2590,13 +2590,13 @@ Example 4:
       .Output(2, "detection_scores", "The detection_scores output tensor.", "T")
       .Output(3, "detection_classes", "The detection_classes output tensor.", "tensor(int32)")
       .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float tensors.")
-      .Attr("background_class", "Background class ID.", AttributeProto::INT, static_cast<int64_t>(-1))
-      .Attr("box_coding", "Encoding type for the boxes or anchors inputs.", AttributeProto::INT, static_cast<int64_t>(0))
-      .Attr("iou_threshold", "Box IOU threshold value.", AttributeProto::FLOAT, 0.f)
-      .Attr("max_output_boxes", "Max detections to output.", AttributeProto::INT, static_cast<int64_t>(1))
-      .Attr("plugin_version", "Version number of the TRT plugin.", AttributeProto::STRING, std::string("1"))
-      .Attr("score_activation", "Activation function to apply to the scores input.", AttributeProto::INT, static_cast<int64_t>(0))
-      .Attr("score_threshold", "Score threshold value.", AttributeProto::FLOAT, 0.f)
+      .Attr("background_class", "Background class ID.", AttributeProto::INT)
+      .Attr("box_coding", "Encoding type for the boxes or anchors inputs.", AttributeProto::INT)
+      .Attr("iou_threshold", "Box IOU threshold value.", AttributeProto::FLOAT)
+      .Attr("max_output_boxes", "Max detections to output.", AttributeProto::INT)
+      .Attr("plugin_version", "Version number of the TRT plugin.", AttributeProto::STRING)
+      .Attr("score_activation", "Activation function to apply to the scores input.", AttributeProto::INT)
+      .Attr("score_threshold", "Score threshold value.", AttributeProto::FLOAT)
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           // Type inference
           using namespace ONNX_NAMESPACE;
@@ -2643,6 +2643,54 @@ Example 4:
           updateOutputShape(ctx, 3, detection_classes_shape);
       });
 
+  static const char* MultilevelCropAndResize_TRT_ver1_doc =
+      R"DOC(Multilevel Crop and Resize TensorRT Plugin.)DOC";
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(MultilevelCropAndResize_TRT)
+      .SetDomain(kOnnxDomain)
+      .SinceVersion(1)
+      .SetDoc(MultilevelCropAndResize_TRT_ver1_doc)
+      .Input(0, "boxes", "The boxes input tensor.", "T")
+      .Input(1, "feature_map_0", "The first feature map input tensor.", "T")
+      .Input(2, "feature_map_1", "The second feature map input tensor.", "T")
+      .Input(3, "feature_map_2", "The third feature map input tensor.", "T")
+      .Input(4, "feature_map_3", "The fourth feature map input tensor.", "T")
+      .Output(0, "patches", "The cropped patches output tensor.", "T")
+      .TypeConstraint("T", {"tensor(float)"}, "Constrain input and output types to float tensors.")
+      .Attr("image_size", "Image size.", AttributeProto::INTS)
+      .Attr("pooled_size", "Pooled size.", AttributeProto::INT)
+      .Attr("plugin_version", "Version number of the TRT plugin.", AttributeProto::STRING)
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          // Type inference
+          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+
+          // Shape Inference
+          if (!hasInputShape(ctx, 0)) {
+            return;
+          }
+          int64_t pooled_size = 1;
+          auto pooled_size_proto = ctx.getAttribute("pooled_size");
+          if (pooled_size_proto) {
+            pooled_size = pooled_size_proto->i();
+          }
+          if (pooled_size < 1) {
+            fail_shape_inference("Attribute 'pooled_size' must be >= 1.")
+          }
+
+          Dim batch_size, number_boxes, channels;
+          unifyInputDim(ctx, 0, 0, batch_size);
+          unifyInputDim(ctx, 0, 1, number_boxes);
+          unifyInputDim(ctx, 1, 1, channels);
+
+          ONNX_NAMESPACE::TensorShapeProto output_shape;
+          *output_shape.add_dim() = batch_size;
+          *output_shape.add_dim() = number_boxes;
+          *output_shape.add_dim() = channels;
+          output_shape.add_dim()->set_dim_value(pooled_size);
+          output_shape.add_dim()->set_dim_value(pooled_size);
+          updateOutputShape(ctx, 0, output_shape);
+      });
+
   static const char* PyramidROIAlign_TRT_ver1_doc =
       R"DOC(Pyramid ROI Align TensorRT Plugin.)DOC";
 
@@ -2657,8 +2705,8 @@ Example 4:
       .Input(4, "feature_map_3", "The fourth feature map input tensor.", "T")
       .Output(0, "patches", "The cropped patches output tensor.", "T")
       .TypeConstraint("T", {"tensor(float)"}, "Constrain input and output types to float tensors.")
-      .Attr("pooled_size", "Pooled size.", AttributeProto::INT, static_cast<int64_t>(1))
-      .Attr("plugin_version", "Version number of the TRT plugin.", AttributeProto::STRING, std::string("1"))
+      .Attr("pooled_size", "Pooled size.", AttributeProto::INT)
+      .Attr("plugin_version", "Version number of the TRT plugin.", AttributeProto::STRING)
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           // Type inference
           propagateElemTypeFromInputToOutput(ctx, 0, 0);
