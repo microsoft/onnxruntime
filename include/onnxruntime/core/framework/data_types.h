@@ -77,13 +77,13 @@ using CreateFunc = void* (*)();
  */
 class DataTypeImpl {
  public:
-  enum GeneralType {
+  enum class GeneralType {
     kInvalid = 0,
-    kNonTensor = 1 << 1,
-    kTensor = 1 << 2,
-    kTensorSequence = 1 << 3,
-    kSparseTensor = 1 << 4,
-    kOptional = 1 << 5
+    kNonTensor = 1,
+    kTensor = 2,
+    kTensorSequence = 3,
+    kSparseTensor = 4,
+    kOptional = 5
   };
 
   GeneralType type_;
@@ -117,19 +117,19 @@ class DataTypeImpl {
   virtual const ONNX_NAMESPACE::TypeProto* GetTypeProto() const = 0;
 
   bool IsTensorType() const {
-    return type_ & GeneralType::kTensor;
+    return type_ == GeneralType::kTensor;
   }
 
   bool IsTensorSequenceType() const {
-    return type_ & GeneralType::kTensorSequence;
+    return type_ == GeneralType::kTensorSequence;
   }
 
   bool IsSparseTensorType() const {
-    return type_ & GeneralType::kSparseTensor;
+    return type_ == GeneralType::kSparseTensor;
   }
 
   bool IsOptionalType() const {
-    return type_ & GeneralType::kOptional;
+    return type_ == GeneralType::kOptional;
   }
 
   // Returns this if this is of tensor-type and null otherwise
@@ -918,11 +918,8 @@ class PrimitiveDataTypeBase : public DataTypeImpl {
   }
 
  protected:
-  PrimitiveDataTypeBase(size_t size) : DataTypeImpl{GeneralType::kNonTensor, size}, data_type_{-1} {}
-
-  void SetDataType(int32_t data_type) {
-    data_type_ = data_type;
-  }
+  PrimitiveDataTypeBase(size_t size, int32_t data_type)
+      : DataTypeImpl{GeneralType::kNonTensor, size}, data_type_{data_type} {}
 
  private:
   int32_t data_type_;
@@ -951,8 +948,9 @@ class PrimitiveDataType : public PrimitiveDataTypeBase {
   }
 
  private:
-  PrimitiveDataType() : PrimitiveDataTypeBase{sizeof(T)} {
-    SetDataType(data_types_internal::TensorElementTypeSetter<T>::GetElementType());
+  PrimitiveDataType()
+      : PrimitiveDataTypeBase{sizeof(T),
+                              data_types_internal::TensorElementTypeSetter<T>::GetElementType()} {
   }
 };
 
