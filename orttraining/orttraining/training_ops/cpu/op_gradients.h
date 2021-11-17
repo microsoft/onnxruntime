@@ -62,8 +62,9 @@ class SoftmaxGrad final : public OpKernel {
  public:
   explicit SoftmaxGrad(const OpKernelInfo& info) : OpKernel(info) {
     const auto& node = info.node();
-    opset_ = (node.OpType() == "SoftmaxGrad_13") ? 13 : 1;
+    opset_ = (node.OpType() == "SoftmaxGrad_13" || node.OpType() == "LogSoftmaxGrad_13") ? 13 : 1;
     axis_ = info.GetAttrOrDefault("axis", static_cast<int64_t>(opset_ < 13 ? 1 : -1));
+    is_logsoftmaxgrad_ = node.OpType() == "LogSoftmaxGrad_13" || node.OpType() == "LogSoftmaxGrad";
   }
 
   Status Compute(OpKernelContext* context) const override;
@@ -72,23 +73,7 @@ class SoftmaxGrad final : public OpKernel {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SoftmaxGrad);
   int64_t axis_;
   int opset_;  // opset_ of the forward Softmax operator
-};
-
-template <typename T>
-class LogSoftmaxGrad final : public OpKernel {
- public:
-  explicit LogSoftmaxGrad(const OpKernelInfo& info) : OpKernel(info) {
-    const auto& node = info.node();
-    opset_ = (node.OpType() == "LogSoftmaxGrad_13") ? 13 : 1;
-    axis_ = info.GetAttrOrDefault("axis", static_cast<int64_t>(opset_ < 13 ? 1 : -1));
-  }
-
-  Status Compute(OpKernelContext* context) const override;
-
- private:
-  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(LogSoftmaxGrad);
-  int64_t axis_;
-  int opset_;  // opset_ of the forward Softmax operator
+  bool is_logsoftmaxgrad_;
 };
 
 }  // namespace contrib
