@@ -1,8 +1,9 @@
-import os
+import time
 import torch
 from torch._C import device
 from .base import BaseModelWrapper
 from transformers import GPT2LMHeadModel
+import myutils
 
 """
 Implement pt version of the model
@@ -16,7 +17,7 @@ class PtModelWrapper(BaseModelWrapper):
         device='cuda:0',
         num_layers = 1,
         head_size = 64,
-        num_heads = 16):
+        num_heads = 12):
         #TODO num_layers are 1 by default, other models need more than 1
         # by passing this as command line argument
         # similarly with head_size and number of heads
@@ -34,11 +35,16 @@ class PtModelWrapper(BaseModelWrapper):
 
     def _get_outputs(self, input_ids, position_ids, attention_mask, *past):
         try:
+            start_time = time.perf_counter()
             outputs = self._model(
                         input_ids = input_ids,
                         position_ids = position_ids,
                         attention_mask = attention_mask,
                         past = past)
+            end_time = time.perf_counter()
+
+            infer_time = (end_time - start_time) * 1000
+            myutils.total_infer_time += infer_time
 
             return outputs
         except Exception as e:

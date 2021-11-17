@@ -4,7 +4,7 @@ This can be used to test beam search on any gpt2 model. Both pytorch and onnx mo
 
 Other kind of models are not supported yet.
 
-Also, currently this tool has been verified to work on GPU. CPU would need additional changes.
+Also, this script defaults to GPU. To test a model on CPU pass --device 'cpu' when running the model.
 
 
 
@@ -53,12 +53,15 @@ the model onnx_gpt2.onnx has to be converted using onnxruntime.transformers.conv
 
 python .\model\main.py -t "onnx" -m "onnx_gpt2.onnx" --num_beams 2 --run_beam_search --length_penalty 1.6 --tokenizer gpt2  --input_file .\1K_queries.tsv --output_file .\1K_queries_onnx_output.tsv
 
-
+ 
 Test pytroch model:
 
 python .\model\main.py -t pt -m "gpt2" --num_beams 2 --run_beam_search --length_penalty 1.6 --tokenizer gpt2  --input_file .\1K_queries.tsv  --output_file .\1K_queries_pt_output.tsv
 
-Note: Provide absolute paths for all the files.
+Note: 
+1. Provide absolute paths for all the files.
+2. --device 'cpu' for CPU.
+
 ```
 
 The following options are required to run the script as provided in the above example:

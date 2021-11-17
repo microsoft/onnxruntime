@@ -3,8 +3,7 @@ import torch
 import argparse
 
 from generator import Generator
-from model.wrapper.base import BaseModelWrapper
-from wrapper.onnx import OnnxModelWrapper
+from wrapper.base import BaseModelWrapper
 from tokenizer import Tokenizer
 
 GPT2_MAX_ENCODING_LENGTH=1024
@@ -68,7 +67,7 @@ class ModelRunner:
             generator = Generator(
                 max_length=input_ids.size(1) + args.num_words, num_return_sequences=args.num_suggestions, num_beams=args.num_beams,
                 pad_token_id=tokenizer.eos_token_id, eos_token_ids=[tokenizer.eos_token_id], length_penalty=args.length_penalty,
-                tokenizer = tokenizer)
+                tokenizer = tokenizer, device = args.device)
 
             #TODO, currently ids and probs are generated in case of beam search
             # need to handle the case of beam search op which probably only gives output_ids

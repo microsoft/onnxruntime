@@ -73,12 +73,6 @@ def parse_arguments():
                         type=str,
                         default='cuda:0')
 
-    parser.add_argument("-g",
-                        "--use_gpu",
-                        required=False,
-                        action="store_true",
-                        help="Run on cuda device")
-
     parser.add_argument('--num_words',
                         type=int,
                         default=8,

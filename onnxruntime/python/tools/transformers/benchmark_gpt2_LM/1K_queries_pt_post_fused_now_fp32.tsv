@@ -1,0 +1,1014 @@
+TotalInferenceTime	Counter	TotalModelTime	TotalSearchTime	Result	TotalQueryTime
+0	4	520.2996000000004	8.452299999999191	["snap", "snake", "snacks", "snack", "snap on", "snakes", "snapped", "snail"]	532.6613
+0	8	23.390399999999367	14.839300000000222	["runoff", "runoff test", "runoff test kit", "runoff test kit/", "runoff test kit/youtube", "runoff test kit/youtube/", "runoff test kit/youtube/h", "runoff test kit/youtube/hc"]	40.88579999999986
+0	5	23.0163000000001	9.213199999999588	["v  mnbvcxcvbnmnbvcxcvbnhgfghjklkjhgfdsdfghjkkjytredfghjuytrewertyuiuytrewertyuiuytrertyuioiuytrewertyuioi8765432234567890-09876543234567890", "v  mnbvcxcvbnmnbvcxcvbnhgfghjklkjhgfdsdfghjkkjytredfghjuytrewertyuiuytrewertyuiuytrertyuioiuytrewertyuioi8765432234567890-098765432345678900", "v  mnbvcxcvbnmnbvcxcvbnhgfghjklkjhgfdsdfghjkkjytredfghjuytrewertyuiuytrewertyuiuytrertyuioiuytrewertyuioi8765432234567890-098765432345678909", "v  mnbvcxcvbnmnbvcxcvbnhgfghjklkjhgfdsdfghjkkjytredfghjuytrewertyuiuytrewertyuiuytrertyuioiuytrewertyuioi8765432234567890-098765432345678901", "v  mnbvcxcvbnmnbvcxcvbnhgfghjklkjhgfdsdfghjkkjytredfghjuytrewertyuiuytrewertyuiuytrertyuioiuytrewertyuioi8765432234567890-098765432345678905", "v  mnbvcxcvbnmnbvcxcvbnhgfghjklkjhgfdsdfghjkkjytredfghjuytrewertyuiuytrewertyuiuytrertyuioiuytrewertyuioi8765432234567890-09876543234567890-", "v  mnbvcxcvbnmnbvcxcvbnhgfghjklkjhgfdsdfghjkkjytredfghjuytrewertyuiuytrewertyuiuytrertyuioiuytrewertyuioi8765432234567890-098765432345678900a", "v  mnbvcxcvbnmnbvcxcvbnhgfghjklkjhgfdsdfghjkkjytredfghjuytrewertyuiuytrewertyuiuytrertyuioiuytrewertyuioi8765432234567890-098765432345678909a"]	41.47370000000006
+0	3	8.140799999999615	6.397100000000044	["mcnamara\"", "mcnamara\"s", "mcnamara\"?", "mcnamara\",\"", "mcnamara\"\u2026", "mcnamara\"-", "mcnamara\",", "mcnamara\"><"]	18.387599999999615
+0	3	11.087999999999099	5.878300000000891	[";lb,ko;,hlg4/je/nh.jytgn.egenj.tnjhooost,;cds\"", ";lb,ko;,hlg4/je/nh.jytgn.egenj.tnjhooost,;cds\"v", ";lb,ko;,hlg4/je/nh.jytgn.egenj.tnjhooost,;cds\",", ";lb,ko;,hlg4/je/nh.jytgn.egenj.tnjhooost,;cds\":[{\"", ";lb,ko;,hlg4/je/nh.jytgn.egenj.tnjhooost,;cds\"?", ";lb,ko;,hlg4/je/nh.jytgn.egenj.tnjhooost,;cds\";", ";lb,ko;,hlg4/je/nh.jytgn.egenj.tnjhooost,;cds\")", ";lb,ko;,hlg4/je/nh.jytgn.egenj.tnjhooost,;cds\"},\""]	22.833199999999998
+0	6	21.201699999999768	10.001899999999786	["real estate", "realtor", "realistic", "realistic house", "reality", "realm", "really good", "really bad"]	33.96639999999973
+0	5	9.563299999999941	5.744599999999878	["forc", "force", "forcible", "forces", "forced", "forcing", "forceps", "forcible entry"]	17.145600000000094
+0	3	5.736900000001377	3.5850999999986755	["va", "model", "94", "ky", "22", "ma", "tn", "oh"]	11.113700000000115
+0	5	9.751600000000415	6.7819999999994	["size", "store", "sale", "stores", "style", "spray", "shoes", "sim"]	18.451100000000054
+0	4	7.977000000000345	4.347099999999493	["test", "testimony", "testing", "tests", "testes", "testament", "testosterone", "testifying"]	14.174999999999827
+0	3	6.040900000000349	3.3205999999994518	["of", "pdf", "definition", "examples", "example", "is", "test"]	11.206100000000774
+0	5	9.07819999999937	5.804100000000645	["...", "..", "....", "...cross", "..in", "...crossword", "...\"", ".............."]	16.458500000000598
+0	4	7.264999999998523	4.72270000000119	["minnesota\"", "minnesota\"s", "minnesota\"?", "minnesota\",", "minnesota\"-", "minnesota\"[", "minnesota\"}", "minnesota\":-"]	14.327999999999896
+0	3	5.505600000000221	3.2849999999999824	["crisi\"", "crisi\"s", "crisi\"?", "crisi\",", "crisi\"(", "crisi\"><", "crisi\"-", "crisi\"),"]	11.472099999999763
+0	5	9.342400000000417	5.547599999998987	["cheap.com", "cheap. youtube", "cheap...", "cheap...youtube", "cheap..", "cheap./", "cheap..com", "cheap...."]	16.996599999999695
+0	7	14.205999999999719	7.604200000000283	["title", "titles", "titled", "title in", "titled the", "title in michigan", "title in mich", "title in maryland"]	23.498299999999972
+0	2	3.869900000001536	2.2165999999987918	["in", "is", "it", "ip", "into", "ic", "if"]	7.956000000000074
+0	5	9.141599999997752	5.425600000002362	["book", "books", "bookstore", "booklet", "book review", "booking", "bookmark", "books in"]	16.15870000000008
+0	3	5.5095000000005	3.2904999999985307	["la\"", "la\"s", "la\"?", "la\":[", "la\"\"\"", "la\"(", "la\"\u2026", "la\"><"]	10.99210000000106
+0	3	5.500799999998307	3.537900000001315	["\"\"mar\"", "\"\"mar\"s", "\"\"mar\"></", "\"\"mar\"},{\"", "\"\"mar\":\"", "\"\"mar\"]=>", "\"\"mar\":", "\"\"mar\"."]	11.106899999999698
+0	4	12.371599999999816	4.389199999998539	["it", "in", "it made", "its purpose", "its", "invented", "is"]	18.36920000000042
+0	3	5.863800000000197	3.352100000000746	["support\"", "support\"s", "support\"?", "support\",", "support\":[", "support\"(", "support\"-", "support\"><"]	11.572799999999717
+0	2	4.20559999999881	2.299000000000717	["gen", "generation", "generations", "gear", "get", "ge", "gem", "general"]	8.242499999999708
+0	3	5.6080000000005015	3.780600000000689	["de", "2019", "se", "2018", "capitulo", "temporada"]	10.99690000000031
+0	8	15.482099999999832	9.394399999999692	["newspapercartoon", "newspapercartoons", "newspapercartoon images", "newspapercartoons for sale", "newspapercartoons for kids", "newspapercartoon images of", "newspapercartoons for sale in", "newspapercartoons for kids'"]	27.366199999999452
+0	8	15.842999999998497	8.91550000000052	["houston", "houston tx", "houston tx 770", "houston tx 77057", "houston tx 77057 us", "houston tx 77057 usa", "houston tx 77057 usa 770", "houston tx 77057 usa 77057"]	27.221499999999565
+0	4	7.851800000000964	4.624299999997916	["bc\"", "bc\"s", "bc\"?", "bc\":\"", "bc\"-", "bc\",", "bc\":[\"", "bc\":["]	15.36349999999942
+0	3	5.901299999999665	3.444699999999301	["2016?", "2016?pdf", "2016?!", "2016?\"", "2016?'", "2016?,", "2016??", "2016?'\""]	11.827099999999646
+0	4	8.066400000000584	4.874999999998408	["roblox", "red", "run", "rainbow", "running", "right", "royal"]	15.314699999999348
+0	3	5.975800000001641	3.389699999999607	["w\"", "w\"s", "w\",", "w\"]=>", "w\";", "w\":\"/", "w\"[", "w\":\""]	12.151399999998702
+0	3	6.5168999999993815	3.4581000000013518	["pro?", "pro?com", "pro?!", "pro?\"", "pro?'", "pro???", "pro?????-", "pro?,"]	12.63950000000058
+0	8	17.079400000001854	10.337399999999164	["\"\"2019\"\"\"", "\"\"2019\"\"\"\"", "\"\"2019\"\"\"\"s", "\"\"2019\"\"\"\"s.", "\"\"2019\"\"\"\"s.a", "\"\"2019\"\"\"\"s.a.", "\"\"2019\"\"\"\"s.a.a", "\"\"2019\"\"\"\"s.a.a."]	29.969100000000637
+0	4	7.935899999997886	4.482900000002843	["names", "name", "nations", "natural", "nature", "national", "narrative", "native"]	14.400500000000704
+0	2	4.05449999999874	2.3428000000009774	["on", "out", "or", "owed", "over", "off", "of", "online"]	8.91529999999996
+0	5	9.575900000001525	5.838799999999367	["kentucky", "kentuck", "kentuckian", "kentucky state", "kentucket", "kentucks", "kentucker", "kentuckian npi"]	17.905700000000024
+0	8	14.986300000002117	9.141599999997752	["pittsburgh", "pittsburg", "pittsburg ca", "pittsburgh pa", "pittsburgh pa 15", "pittsburg ca 94565", "pittsburg ca 940", "pittsburg ca 94558"]	26.859200000000527
+0	8	17.820300000000344	9.692599999999274	["freezing", "freezing up", "freezing up.", "freezing up.com", "freezing up.com.", "freezing up.com.com", "freezing up.com.com.", "freezing up.com.com.com"]	29.4705000000004
+0	2	4.113900000000115	2.306700000000106	["hp", "hi", "hr", "how", "html", "has", "have"]	8.456300000000638
+0	3	5.5965000000011145	3.61449999999941	["download\"", "download\"s", "download\"?", "download\",", "download\"-", "download\":[", "download\":-", "download\">"]	11.456400000000144
+0	2	3.7396000000011753	2.4997999999989418	["university", "park", "of", "college", "farm", "fair", "bank", "un"]	7.886299999999125
+0	8	16.971300000003353	8.992799999996137	["badge", "badges", "badge works", "badge worksheets", "badges for kids", "badges for teachers", "badge workshe", "badge worksheets pdf"]	27.650100000000677
+0	8	16.164200000000406	9.711699999998658	["dogcock", "dogcock's", "dogcock's name", "dogcock's name in", "dogcock's name in the", "dogcock's name in the movie", "dogcock's name in the movie-", "dogcock's name in the movie-s"]	28.612299999998925
+0	5	9.8243999999994	5.734800000000817	["take", "takeoff", "take off", "taking", "takes", "taken", "takedown", "taking off"]	17.319699999999827
+0	8	15.782099999999133	8.780900000001424	["pocket\"\"\"", "pocket\"\"\".com", "pocket\"\"\".", "pocket\"\"\".com.", "pocket\"\"\".com.com", "pocket\"\"\".com.com.", "pocket\"\"\".com.com.com", "pocket\"\"\".com.com.com."]	27.115099999999615
+0	3	6.6765999999987	4.843400000000386	["predicting?", "predicting?a", "predicting?!", "predicting?'", "predicting?\"", "predicting?,", "predicting??", "predicting?????-?????-"]	15.653000000000361
+0	6	12.865799999998373	7.367200000002683	["abortions", "abortion", "aborted", "abort", "aboriginal", "aborted baby", "abortions in"]	22.309999999999164
+0	3	5.727499999998997	3.607200000001143	["c\"", "c\" you", "c\":[\"", "c\":[", "c\"),", "c\"\"\"", "c\":\"\",\"", "c\"("]	11.773400000000933
+0	3	6.218700000001576	3.7121999999971678	["a\"", "a\"e", "a\",", "a\")", "a\"),", "a\".[", "a\"?", "a\"><"]	12.361000000000288
+0	2	3.7666999999999007	2.2538999999994758	["au", "auto", "aunt", "aud", "aug", "audio", "aust", "aut"]	7.9209000000002305
+0	4	7.422399999999385	5.454000000002068	["fonts\"", "fonts\" in", "fonts\"?", "fonts\"><", "fonts\" in word", "fonts\":[\"", "fonts\",\"", "fonts\","]	15.059199999999606
+0	8	14.960299999998483	9.33390000000145	["football", "footballer", "football schedule", "footballer born", "football schedule 2019", "footballer born 18", "footballer born 1847", "football schedule 2019-"]	26.064899999999724
+0	4	7.446000000001618	5.304499999997603	["bank", "basketball", "baseball", "building", "business", "bed", "best", "board"]	14.416499999999388
+0	5	10.160399999998404	5.752600000000996	["seattl\"", "seattl\"s", "seattl\"]=>", "seattl\"(", "seattl\":-", "seattl\"></", "seattl\")", "seattl\"\""]	18.196900000001293
+0	8	15.164000000003952	8.883799999996	["evansville", "evansville in", "evansville in 47715", "evansville in 47601", "evansville in 47711", "evansville in 47715 us", "evansville in 47711 us", "evansville in 47601 us"]	26.262700000000194
+0	4	7.716899999998361	4.380300000001114	["employment", "employee", "employer", "employees", "employers", "employ", "employee benefits", "employed"]	13.899399999999673
+0	3	5.8013999999992905	3.337100000001314	["hig\"", "hig\"s", "hig\"}", "hig\")", "hig\"]", "hig\";", "hig\"?", "hig\",\""]	11.38850000000069
+0	8	15.08860000000034	8.898800000000762	["revelation", "revelations", "revelation verse", "revelations verse", "revelation verse verse", "revelations verse verse", "revelation verse verse 1", "revelations verse verse 1"]	25.646599999999964
+0	6	11.124100000001746	6.498299999998736	["bike", "bikes", "biking", "bikini", "bike ride", "bikes for", "bikes for sale", "bikini island"]	19.240899999999783
+0	5	9.17349999999928	5.538800000000066	["download", "downloads", "downloading", "downloadable", "downloaded", "download for pc", "download for", "downloads for"]	16.29780000000025
+0	8	14.710800000003132	8.702199999996552	["answers", "answers.pdf", "answers.com", "answers.pdf.", "answers.pdf.com", "answers.com.", "answers.com.com", "answers.pdf.com."]	25.301500000001198
+0	8	15.980299999997172	8.61790000000262	["breaks\"\"\"", "breaks\"\"\"io", "breaks\"\"\"ioa", "breaks\"\"\"ioa's", "breaks\"\"\"ioa's law", "breaks\"\"\"ioa's law:", "breaks\"\"\"ioa's law:a", "breaks\"\"\"ioa's law:aa"]	26.79000000000009
+0	2	3.67150000000116	3.227699999998279	["in", "to", "law", "pdf", "us", "as", "time", "is"]	8.724299999999019
+0	7	14.312299999998501	7.629600000001346	["didn't", "did", "didn", "didnt", "didn't know", "didnt know", "did it", "didn't know what"]	23.498800000000486
+0	8	15.383400000002823	8.669399999998717	["iw\"\"\"", "iw\"\"\":", "iw\"\"\"::", "iw\"\"\"::1", "iw\"\"\"::1-", "iw\"\"\"::1-5", "iw\"\"\"::1-5-", "iw\"\"\"::1-5-6"]	26.308199999999005
+0	8	15.679400000001564	8.665799999997503	["chicago", "chicago il", "chicago il 60", "chicago il 606", "chicago il 60611", "chicago il 60611-", "chicago il 60611-18", "chicago il 60611-18-"]	26.456299999999544
+0	3	6.0491000000002515	3.334499999999352	["statement\"", "statement\"s", "statement\"?", "statement\",", "statement\"><", "statement\":-", "statement\"],", "statement\"},{\""]	11.813399999999419
+0	2	3.617300000001933	2.2469999999987778	["report", "reporting", "rating", "risk", "reports", "reduction", "reference", "review"]	7.457099999999883
+0	8	15.247799999995593	8.678500000003808	["ct\"\"\"", "ct\"\"\"a", "ct\"\"\"a1", "ct\"\"\"a1c", "ct\"\"\"a1c1", "ct\"\"\"a1c1c", "ct\"\"\"a1c1c1", "ct\"\"\"a1c1c1c"]	26.208000000000453
+0	8	14.821399999998874	8.87900000000208	["ppa\"\"\"\"alberta\"\"\"", "ppa\"\"\"\"alberta\"\"\"a", "ppa\"\"\"\"alberta\"\"\"aa", "ppa\"\"\"\"alberta\"\"\"aaa", "ppa\"\"\"\"alberta\"\"\"aaaa", "ppa\"\"\"\"alberta\"\"\"aaaaa", "ppa\"\"\"\"alberta\"\"\"aaaaaa", "ppa\"\"\"\"alberta\"\"\"aaaaaa."]	26.068499999999162
+0	8	14.87369999999899	8.754100000000875	["f1974", "f1974 youtube", "f1974 youtube/", "f1974 youtube/youtube", "f1974 youtube/youtube/", "f1974 youtube/youtube/s", "f1974 youtube/youtube/songs", "f1974 youtube/youtube/songs/"]	25.800599999998397
+0	5	9.76379999999999	5.7816000000006085	["openload", "openloading", "openloader", "openloads", "openloaders", "openloaded", "openloading up", "openloader."]	17.804200000000492
+0	5	9.404300000001697	5.456999999998047	["tune\"", "tune\" in", "tune\" in spanish", "tune\" in sp", "tune\"],\"", "tune\")", "tune\"?", "tune\","]	16.95909999999934
+0	2	3.6261999999993577	2.203500000000247	["answers", "date", "questions", "quiz", "review"]	7.372400000001278
+0	5	9.243100000000837	5.4637999999993525	["marico", "maricon", "maricol", "maricons", "maricolor", "maricone", "marico ca", "maricon wi"]	16.896199999999695
+0	8	14.59629999999379	8.647500000005692	["\u5bf9\u6bd4", "\u5bf9\u6bd4a", "\u5bf9\u6bd4aa", "\u5bf9\u6bd4aaa", "\u5bf9\u6bd4aaaa", "\u5bf9\u6bd4aaaaa", "\u5bf9\u6bd4aaaaaa", "\u5bf9\u6bd4aaaaaaa"]	25.344599999998607
+0	6	11.06789999999691	6.450100000002124	["into", "intoxication", "intolerance", "intolerable", "intoxicated", "into a pool", "intolerant", "into a yard"]	19.085399999999808
+0	3	5.502599999999802	3.2626000000011146	["de\"", "de\"s", "de\":", "de\"(", "de\"]", "de\"?", "de\":\"\",\"", "de\":-"]	10.932099999999778
+0	3	5.509300000001716	3.298599999999041	["to", "today", "the", "tv", "theme", "top", "talk", "trial"]	10.602999999999696
+0	8	14.754100000001102	8.48589999999838	["patterns", "patterns free", "patterns free print", "patterns free printable", "patterns free printable free", "patterns free printable free/", "patterns free printable free/free", "patterns free printable free/freeze"]	25.678499999999715
+0	3	6.2232000000008725	3.2973999999992287	["spanish\"", "spanish\"s", "spanish\"><", "spanish\"?", "spanish\".[", "spanish\").", "spanish\"(", "spanish\"},"]	11.715200000001147
+0	3	5.433799999998712	3.3204000000015554	["2000", "2009", "2007", "2008", "2002", "2006", "2005", "2003"]	10.467900000000085
+0	8	14.523799999997422	8.54630000000256	["genre", "genres", "genre of", "genre of music", "genres of", "genres of music", "genre of music video", "genres of music video"]	24.643299999999257
+0	4	7.33090000000125	4.2909999999984905	["in", "images", "is", "in spanish", "include", "ideas", "image"]	13.230599999999981
+0	8	15.21259999999991	9.035000000000792	["performance", "performances", "performance:", "performances:", "performance:a", "performances::", "performance:aa", "performances::1"]	26.06160000000024
+0	3	5.713099999999471	3.4522000000016817	["tx", "texas", "bundle", "and", "and kind", "bible", "love", "is"]	10.711000000000581
+0	4	7.498400000002903	4.397699999996618	["qigong", "qigong lyrics", "qigongs", "qigongo", "qigonga", "qigongh", "qigonghorn", "qigongyang"]	14.54169999999877
+0	8	14.97650000000128	8.763599999998206	["paine\"\"\"", "paine\"\"\"a", "paine\"\"\"a.", "paine\"\"\"a.com", "paine\"\"\"a.com.", "paine\"\"\"a.com.com", "paine\"\"\"a.com.com.", "paine\"\"\"a.com.com.com"]	25.979500000000044
+0	4	7.520900000001163	4.375499999998311	["\"\"componen\"", "\"\"componen\"s", "\"\"componen\",", "\"\"componen\";", "\"\"componen\"\u2014", "\"\"componen\"?", "\"\"componen\":[\"", "\"\"componen\">"]	14.01629999999976
+0	4	7.434299999999894	4.373700000000369	["\"the", "\"theory", "\".", "\"\u2026", "\"(", "\"\"\"", "\"'"]	13.47479999999912
+0	3	7.299600000001405	3.4274999999990285	["je\"", "je\"e", "je\"?", "je\"(", "je\"},", "je\"\u2014", "je\",", "je\"["]	13.107499999998495
+0	3	5.761500000001973	3.538099999996547	["of day", "off", "of year", "office", "official", "offset", "offline", "offer"]	10.85600000000042
+0	8	16.25449999999873	10.512600000001981	["missing", "missing in", "missing in use", "missing in use:", "missing in use:0", "missing in use:0.0", "missing in use:0.1", "missing in use:0.0."]	28.446399999999983
+0	8	14.83970000000312	8.631999999996864	["underwriter", "underwriters", "underwriter's", "underwriters'", "underwriter's law", "underwriters''", "underwriters''s", "underwriter's law'"]	25.86890000000075
+0	3	5.529100000000398	3.407599999999178	["lyrics", "youtube", "song", "bible", "chord", "of", "meaning", "album"]	10.422000000000153
+0	3	5.579099999998505	3.3145000000018854	["fanfiction\"", "fanfiction\"s", "fanfiction\"?", "fanfiction\"-", "fanfiction\",", "fanfiction\":-", "fanfiction\":\"", "fanfiction\":[{\""]	11.472399999998828
+0	5	9.215900000000943	5.486399999998781	["diasbill", "diasbilt", "diasbil", "diasbillion", "diasbilli", "diasbilis", "diasbilti", "diasbilliona"]	16.958000000000695
+0	4	7.411499999999904	4.4972000000012	["mean", "in", "in medical", "stand", "the", "what", "stands"]	13.42619999999961
+0	4	7.406700000002431	4.36239999999799	["for", "fort", "fortnite", "form", "forest", "fore", "forum", "forever"]	13.382599999999911
+0	4	19.242600000001886	4.493199999998865	["out\"", "out\" the", "out\" the way", "out\"],\"", "out\"?", "out\":\"", "out\"!", "out\":\"\"},{\""]	25.70869999999914
+0	4	7.4051999999991125	4.3829000000013	["all", "all the", "alloy", "all the way", "allowed", "allow", "alliance", "ally"]	13.390599999999253
+0	3	5.9516000000030544	3.3172999999955266	["place\"", "place\"s", "place\",", "place\"?", "place\":-", "place\",\"", "place\"'", "place\":["]	11.503599999999281
+0	2	3.759300000000465	2.468399999999704	["minutes\"", "minutes\"?", "minutes\"},", "minutes\":-", "minutes\",\"", "minutes\":[", "minutes\",", "minutes\":[{\""]	8.924800000000843
+0	2	3.7061000000004896	2.230199999999627	["store", "list", "stores", "delivery", "sales", "shopping", "shop", "pickup"]	7.656599999998903
+0	8	15.34100000000116	8.650399999998726	["screws", "screws for", "screws for sale", "screws for sale/", "screws for sale/ebay", "screws for sale/eb", "screws for sale/ebay.com", "screws for sale/ebay."]	25.642300000001228
+0	5	9.791799999998574	5.471600000001686	["\"1", "\"$:/", "\".", "\"@", "\"{", "\"%", "\"+"]	16.953100000000276
+0	8	14.825900000001724	8.616499999998695	["pinterest", "pinteresting", "pinterest in", "pinterested", "pinterest in the", "pinterest in the oven", "pinterested party", "pinterestinge"]	25.65010000000001
+0	3	5.457199999998608	3.349900000001682	["pay", "payment", "payments", "payroll", "payout", "paycheck", "pays", "paying"]	10.465800000000414
+0	2	3.6064000000006757	2.205699999999311	["s'm'y", "s'm'ync", "s'm'ys", "s'm'ype", "s'm'you", "s'm'yg", "s'm'ya", "s'm'youtube"]	7.850599999999375
+0	8	14.576700000000997	8.543399999998869	["wedding", "weddings", "wedding ceremony", "weddings in", "weddings in us", "weddings in usa", "wedding ceremony in", "wedding ceremony in us"]	24.752200000000002
+0	7	12.718899999997646	7.784000000000901	["sale", "sales", "salesman", "sale in", "sale in nc", "sale in n", "sales in", "sales in nc"]	22.034699999998963
+0	3	5.447800000000669	3.3621000000003676	["documentary\"", "documentary\"s", "documentary\"?", "documentary\",", "documentary\"[", "documentary\"],", "documentary\"-", "documentary\"("]	11.033899999999264
+0	4	7.28879999999954	4.334600000001743	["vp\"", "vp\"e", "vp\"?", "vp\"}],\"", "vp\",", "vp\":[", "vp\")", "vp\":{\""]	13.752300000000162
+0	2	3.62570000000062	2.2129999999993544	["engine", "warrant", "group", "case", "of", "system", "and", "company"]	7.409100000000279
+0	2	3.6813999999996128	2.210700000000898	["pin", "pistol", "pill", "picture", "piano", "pitch", "pictures", "pilot"]	7.445999999999842
+0	8	15.05939999999839	9.143400000001023	["\u4e2d\u5199\uff0c", "\u4e2d\u5199\uff0ca", "\u4e2d\u5199\uff0caa", "\u4e2d\u5199\uff0caaa", "\u4e2d\u5199\uff0caaaa", "\u4e2d\u5199\uff0caaaaa", "\u4e2d\u5199\uff0caaaaaa", "\u4e2d\u5199\uff0caaaaaaa"]	26.438199999999412
+0	2	3.7465999999994892	2.248599999999712	["mm", "mean", "ml", "million", "minus", "mg", "min"]	7.742699999999658
+0	2	3.7330999999998227	2.2498999999989167	["is", "in", "it"]	8.08669999999978
+0	3	5.8933999999997155	3.5756000000013444	["for sale", "review", "manual", "parts", "pdf", "reviews", "youtube", "video"]	11.007099999998715
+0	5	9.37940000000026	5.428099999999603	["ma\"", "ma\"s", "ma\"s.", "ma\"?", "ma\"s.a", "ma\",", "ma\":[", "ma\":"]	17.154700000000744
+0	3	5.539399999999972	3.2943000000003053	["that", "the", "they", "theme", "three", "that are", "this", "theater"]	10.35800000000009
+0	5	9.216500000004402	5.4944999999939625	["berna\"", "berna\"s", "berna\"s.", "berna\"?", "berna\"s.c", "berna\",", "berna\">", "berna\".["]	17.01689999999978
+0	3	5.458499999999589	3.366500000000272	["universi\"", "universi\"s", "universi\"?", "universi\",", "universi\"[", "universi\"(", "universi\"\"\"", "universi\"),"]	11.044899999999913
+0	4	7.257799999999648	4.386600000000129	["#NAME?", "#NAME?!", "#NAME? in", "#NAME?\"", "#NAME??", "#NAME?'", "#NAME???", "#NAME?\u300d"]	13.510699999999431
+0	4	7.305000000000561	4.364199999999485	["#NAME?", "#NAME?!", "#NAME? in", "#NAME?\"", "#NAME??", "#NAME?'", "#NAME???", "#NAME?\u300d"]	13.482800000000239
+0	4	7.348499999999092	4.433300000002305	["del", "del c", "delta", "dele", "delete", "delic", "delivery", "delay"]	13.568599999999265
+0	8	14.638099999999099	8.636900000000836	["registratiolocation", "registratiolocations", "registratiolocation kit", "registratiolocations:", "registratiolocations::", "registratiolocation kit-", "registratiolocation kit-s", "registratiolocations::1"]	25.55689999999977
+0	4	7.306800000002056	4.316899999997403	["#NAME?", "#NAME?!", "#NAME? in", "#NAME?\"", "#NAME??", "#NAME?'", "#NAME???", "#NAME?\u300d"]	13.440900000000866
+0	4	7.271800000001605	4.360199999998926	["#NAME?", "#NAME?!", "#NAME? in", "#NAME?\"", "#NAME??", "#NAME?'", "#NAME???", "#NAME?\u300d"]	13.434200000000729
+0	4	7.2776999999994985	4.532300000001044	["#NAME?", "#NAME?!", "#NAME? in", "#NAME?\"", "#NAME??", "#NAME?'", "#NAME???", "#NAME?\u300d"]	13.643800000000539
+0	4	7.61020000000201	4.373599999997424	["#NAME?", "#NAME?!", "#NAME? in", "#NAME?\"", "#NAME??", "#NAME?'", "#NAME???", "#NAME?\u300d"]	13.808199999999715
+0	2	3.6225999999999203	2.252099999999757	["10", "12", "18", "16", "13", "15", "14"]	7.615400000000605
+0	4	7.547399999999982	4.311400000000631	["#NAME?", "#NAME?!", "#NAME? in", "#NAME?\"", "#NAME??", "#NAME?'", "#NAME???", "#NAME?\u300d"]	13.731500000000452
+0	4	7.272699999999688	4.34300000000043	["#NAME?", "#NAME?!", "#NAME? in", "#NAME?\"", "#NAME??", "#NAME?'", "#NAME???", "#NAME?\u300d"]	13.436900000000307
+0	4	7.406800000000047	4.305000000000447	["#NAME?", "#NAME?!", "#NAME? in", "#NAME?\"", "#NAME??", "#NAME?'", "#NAME???", "#NAME?\u300d"]	13.540799999999464
+0	2	3.6293000000000575	2.2084000000006654	["launcher", "pass", "mode", "download", "camera", "time"]	7.374899999998519
+0	8	14.713999999997895	8.722100000001731	["united", "united states", "united states'", "united states''", "united states''s", "united states''s'", "united states''s'a", "united states''s'aime"]	25.190900000000127
+0	3	5.562799999999868	3.3010000000004425	["1800\"", "1800\"s", "1800\"}],\"", "1800\"?", "1800\"(", "1800\",", "1800\":\"\",\"", "1800\"],"]	11.160799999998972
+0	4	7.387000000001365	4.333700000000107	["#NAME?", "#NAME?!", "#NAME? in", "#NAME?\"", "#NAME??", "#NAME?'", "#NAME???", "#NAME?\u300d"]	13.543499999999042
+0	4	7.5784000000016505	4.347699999998511	["#NAME?", "#NAME?!", "#NAME? in", "#NAME?\"", "#NAME??", "#NAME?'", "#NAME???", "#NAME?\u300d"]	13.78389999999996
+0	4	7.3176999999997605	4.33879999999931	["#NAME?", "#NAME?!", "#NAME? in", "#NAME?\"", "#NAME??", "#NAME?'", "#NAME???", "#NAME?\u300d"]	13.493300000000374
+0	4	7.305000000000561	4.450199999999072	["#NAME?", "#NAME?!", "#NAME? in", "#NAME?\"", "#NAME??", "#NAME?'", "#NAME???", "#NAME?\u300d"]	13.601200000000091
+0	4	7.385499999999823	4.347400000000334	["#NAME?", "#NAME?!", "#NAME? in", "#NAME?\"", "#NAME??", "#NAME?'", "#NAME???", "#NAME?\u300d"]	13.605499999998827
+0	8	14.722699999998312	8.582100000001702	["1800", "1800's", "1800's number", "1800's number of", "1800's number of beds", "1800's number of beds'", "1800's number of beds''", "1800's number of beds''s"]	24.994899999999376
+0	2	3.7183000000009514	2.2281999999993474	["is", "it", "in", "up", "song"]	7.516599999998874
+0	4	7.371799999999595	4.33989999999973	["#NAME?", "#NAME?!", "#NAME? in", "#NAME?\"", "#NAME??", "#NAME?'", "#NAME???", "#NAME?\u300d"]	13.552100000000067
+0	2	3.638499999999212	2.225300000000985	["capita", "cup", "cubic", "cu", "credit", "class", "cell"]	7.479500000000527
+0	4	7.35009999999825	7.618500000001305	["#NAME?", "#NAME?!", "#NAME? in", "#NAME?\"", "#NAME??", "#NAME?'", "#NAME???", "#NAME?\u300d"]	16.79050000000082
+0	4	7.56779999999857	4.4679000000016345	["#NAME?", "#NAME?!", "#NAME? in", "#NAME?\"", "#NAME??", "#NAME?'", "#NAME???", "#NAME?\u300d"]	13.908000000000698
+0	2	4.592799999999286	3.5449000000014053	["tv"]	9.834800000000143
+0	4	23.69369999999904	4.64530000000174	["#NAME?", "#NAME?!", "#NAME? in", "#NAME?\"", "#NAME??", "#NAME?'", "#NAME???", "#NAME?\u300d"]	30.298500000000672
+0	4	7.478800000003005	4.535999999996321	["#NAME?", "#NAME?!", "#NAME? in", "#NAME?\"", "#NAME??", "#NAME?'", "#NAME???", "#NAME?\u300d"]	14.284799999998654
+0	3	5.661999999997391	3.353400000001727	["10", "100", "101", "1000", "109", "1080", "1050", "103"]	10.888200000000126
+0	4	21.55689999999666	4.513100000004044	["#NAME?", "#NAME?!", "#NAME? in", "#NAME?\"", "#NAME??", "#NAME?'", "#NAME???", "#NAME?\u300d"]	28.188000000000102
+0	4	7.332800000002138	4.48129999999658	["#NAME?", "#NAME?!", "#NAME? in", "#NAME?\"", "#NAME??", "#NAME?'", "#NAME???", "#NAME?\u300d"]	14.191399999999632
+0	4	7.4816999999995915	4.361300000001123	["#NAME?", "#NAME?!", "#NAME? in", "#NAME?\"", "#NAME??", "#NAME?'", "#NAME???", "#NAME?\u300d"]	13.820199999999616
+0	4	10.079100000000452	4.926700000000395	["#NAME?", "#NAME?!", "#NAME? in", "#NAME?\"", "#NAME??", "#NAME?'", "#NAME???", "#NAME?\u300d"]	16.905299999999457
+0	4	8.622800000001263	4.817799999997874	["#NAME?", "#NAME?!", "#NAME? in", "#NAME?\"", "#NAME??", "#NAME?'", "#NAME???", "#NAME?\u300d"]	15.978200000001053
+0	4	7.67370000000156	11.416999999999788	["#NAME?", "#NAME?!", "#NAME? in", "#NAME?\"", "#NAME??", "#NAME?'", "#NAME???", "#NAME?\u300d"]	21.38880000000043
+0	8	15.139999999998821	8.915600000001689	["0.4ml", "0.4ml solution", "0.4ml solution of", "0.4ml solution of water", "0.4ml solution of water is", "0.4ml solution of water is it", "0.4ml solution of water is it safe", "0.4ml solution of water is it safe to"]	26.59599999999962
+0	3	11.248600000000053	5.871499999999585	["youtube", "tv", "xl", "fire", "sale", "phone", "pc", "computer"]	18.820800000000304
+0	4	8.363300000000962	4.4346999999991255	["#NAME?", "#NAME?!", "#NAME? in", "#NAME?\"", "#NAME??", "#NAME?'", "#NAME???", "#NAME?\u300d"]	18.712299999998905
+0	4	7.480799999999732	6.714200000001114	["#NAME?", "#NAME?!", "#NAME? in", "#NAME?\"", "#NAME??", "#NAME?'", "#NAME???", "#NAME?\u300d"]	16.08300000000007
+0	4	7.448099999999513	4.389300000001484	["#NAME?", "#NAME?!", "#NAME? in", "#NAME?\"", "#NAME??", "#NAME?'", "#NAME???", "#NAME?\u300d"]	13.685000000000613
+0	4	7.366000000001094	4.413599999999462	["#NAME?", "#NAME?!", "#NAME? in", "#NAME?\"", "#NAME??", "#NAME?'", "#NAME???", "#NAME?\u300d"]	13.606199999999902
+0	4	8.490299999998285	4.375300000001303	["#NAME?", "#NAME?!", "#NAME? in", "#NAME?\"", "#NAME??", "#NAME?'", "#NAME???", "#NAME?\u300d"]	14.770999999999646
+0	4	7.431300000002139	4.39919999999816	["#NAME?", "#NAME?!", "#NAME? in", "#NAME?\"", "#NAME??", "#NAME?'", "#NAME???", "#NAME?\u300d"]	13.691600000001358
+0	4	7.444900000001198	4.432799999998238	["#NAME?", "#NAME?!", "#NAME? in", "#NAME?\"", "#NAME??", "#NAME?'", "#NAME???", "#NAME?\u300d"]	13.663899999999174
+0	4	7.4614000000003955	4.362000000000421	["#NAME?", "#NAME?!", "#NAME? in", "#NAME?\"", "#NAME??", "#NAME?'", "#NAME???", "#NAME?\u300d"]	13.666100000000014
+0	8	14.800899999999118	8.653300000000641	["death", "deaths", "death in", "death in n", "death in nc", "deaths in", "deaths in us", "death in ncis"]	25.24800000000127
+0	4	7.328200000001672	4.438199999999171	["#NAME?", "#NAME?!", "#NAME? in", "#NAME?\"", "#NAME??", "#NAME?'", "#NAME???", "#NAME?\u300d"]	13.621800000001016
+0	3	5.52499999999867	3.3724000000017185	["unit", "union", "units", "un", "under", "universal", "unlock", "united"]	10.703099999998855
+0	3	5.684999999997942	3.316300000001604	["iowa\"", "iowa\"e", "iowa\"?", "iowa\"-", "iowa\",", "iowa\"/>", "iowa\"...", "iowa\"}],\""]	11.305099999999513
+0	3	5.572599999997152	3.3711000000025138	["kempen\"", "kempen\" youtube", "kempen\"),", "kempen\">", "kempen\",", "kempen\":\"\",\"", "kempen\"><", "kempen\"["]	11.002500000000026
+0	3	5.5325000000010505	3.3861999999977854	["\"...", "\"{", "\"_", "\"(", "\"%", "\"\"", "\"\u2026"]	10.539099999999024
+0	3	5.6848000000009336	3.313499999999081	["or\"", "or\"(", "or\"[", "or\">", "or\"},{\"", "or\":[", "or\",\"", "or\"s"]	11.093400000000031
+0	3	5.688699999998548	3.57650000000298	["\u0633\u06cc\u0633\u062a\u0627\u0646\"", "\u0633\u06cc\u0633\u062a\u0627\u0646\"a", "\u0633\u06cc\u0633\u062a\u0627\u0646\"?", "\u0633\u06cc\u0633\u062a\u0627\u0646\",", "\u0633\u06cc\u0633\u062a\u0627\u0646\"]=>", "\u0633\u06cc\u0633\u062a\u0627\u0646\"],", "\u0633\u06cc\u0633\u062a\u0627\u0646\"}],\"", "\u0633\u06cc\u0633\u062a\u0627\u0646\":-"]	11.753399999999914
+0	4	7.476800000000949	4.393599999998443	["#NAME?", "#NAME?!", "#NAME? in", "#NAME?\"", "#NAME??", "#NAME?'", "#NAME???", "#NAME?\u300d"]	13.755400000000861
+0	5	9.199599999998753	5.544400000001559	["lowest", "lower", "lowers", "lowest terms", "lowering", "lowered", "lower the", "lower the risk"]	16.348799999999386
+0	2	3.7037000000008646	2.2516999999986353	["fraction", "function", "fractions", "foot", "frame", "form", "ft"]	7.652000000000214
+0	6	11.096000000000217	6.73419999999858	["flooding;", "flooding;s", "flooding;;;;;;;;", "flooding;;;;;;;;;;;;", "flooding;}", "flooding;\"", "flooding;;;;", "flooding;;"]	20.0294999999997
+0	5	9.31059999999917	5.560400000000243	["black", "blackout", "blacks", "black/", "blacks)", "black/white", "blacklist", "blackmail"]	16.525599999999585
+0	3	5.5429999999994095	3.357100000000557	["better.", "better...", "better..", "better./", "better.'", "better....", "better.,", "better.-"]	11.145900000000708
+0	6	11.18370000000013	6.610600000000133	["impact", "impacted", "impacts", "impact on", "impacting", "impact on society", "impacted by", "impacting the"]	19.462000000000756
+0	4	7.411500000003457	4.408999999997221	["^10", "^100", "^1000", "^10000", "^10^", "^1024", "^101", "^105"]	13.89430000000047
+0	8	14.90210000000225	8.844099999999244	["vehicle", "vehicles", "vehicle in", "vehicle in the", "vehicle in the us", "vehicles in", "vehicles in the", "vehicles in the us"]	25.330900000000156
+0	2	3.661499999997986	2.509500000002163	["gut", "guide", "guys", "gum", "guilty", "guided", "gun", "gu"]	7.9112999999999545
+0	2	3.720900000001137	2.2519999999985885	["is", "oil", "pdf", "are", "roots", "frog", "growth", "life"]	7.6534000000005875
+0	7	13.078800000000612	8.008499999998975	["life?\"", "life?\",", "life?\".", "life?\"a", "life?\",a", "life?\".a", "life?\"aa", "life?\",aa"]	23.837600000000236
+0	7	13.072900000000942	7.657299999999978	["clue", "clues", "clue.", "clue.com", "clueless", "clues.com", "clues.", "clue.com."]	22.457300000001013
+0	3	5.632699999999602	3.3568000000006037	["choke", "carb", "case", "carry", "cal", "clip", "can", "cost"]	10.6541
+0	3	5.597800000000319	3.3156000000005292	["bolt", "bullet", "bullets", "barrel", "brass", "bore", "barrels"]	10.450699999999813
+0	4	7.544000000001105	4.480099999998544	["by", "bag", "back", "baked", "bottles", "baby", "bags"]	13.602899999998641
+0	3	5.5504000000006215	3.369100000000458	["inn", "insulation", "install", "installation", "in", "interior", "inspection", "insert"]	10.701100000000352
+0	5	9.36540000000008	5.51060000000092	["unit", "units", "unity", "united", "unite", "unit of", "united states", "units of"]	16.699599999999037
+0	3	5.623399999999279	3.5031000000014245	["before?", "before?a", "before?!", "before?'", "before??", "before?\"", "before?,", "before?)."]	11.549300000000429
+0	3	5.631800000001519	3.3141999999983796	["answer\"", "answer\"s", "answer\"?", "answer\"><", "answer\":-", "answer\"},", "answer\").", "answer\","]	11.687999999999477
+0	8	14.818299999999951	8.737599999999901	["rectangle", "rectangular", "rectangular prism", "rectangle is", "rectangle is a", "rectangular prism is", "rectangle is a square", "rectangular prism is a"]	25.17899999999962
+0	7	16.512200000001087	9.285699999999508	["xml", "xp", "x1", "xenoverse", "xenon", "xx", "xenoverse 2"]	27.353199999998523
+0	8	15.359699999997645	9.682300000003252	["statement", "statements", "statement in", "statement in sql", "statements in", "statements in sql", "statement in sql server", "statements in sql server"]	26.84140000000035
+0	2	4.43429999999978	2.5092000000004333	["some", "source", "so", "sorted", "sound", "sort", "something", "someone"]	8.708600000000288
+0	3	5.623300000001663	3.320799999997348	["user", "used", "use", "using", "uses", "users", "usb", "us"]	10.62150000000095
+0	4	7.424399999999665	4.459200000001218	["32", "365", "30", "360", "31", "37", "34"]	13.454400000000533
+0	5	9.140800000000837	5.5272999999989025	["percent", "percentage", "percentile", "percentages", "percent of", "percentage of", "percent of what", "percentage of increase"]	16.158400000000128
+0	3	5.596600000000507	3.314800000000062	["cause", "can", "called", "can't", "call", "care", "cannot", "carry"]	10.509700000000066
+0	3	5.56989999999935	3.3269000000011317	["hinge", "hinges", "high", "hill", "hidden", "hills", "hitches", "hide"]	10.482699999998957
+0	3	5.571500000000285	3.3039999999999736	["54303\"", "54303\"l", "54303\",\"", "54303\"?", "54303\").", "54303\":-", "54303\"}],\"", "54303\")"]	11.08029999999971
+0	3	5.491700000000321	3.313399999999689	["hills", "hill", "house", "high", "harbor", "hotel", "haw", "hours"]	11.26430000000056
+0	8	14.720199999997519	8.63650000000149	["98685", "98685 us", "98685 usa", "98685 usa 98685", "98685 usa 98665", "98685 usa 98685 us", "98685 usa 98665 us", "98685 usa 98685 usa"]	25.468899999999906
+0	3	5.49460000000046	3.821699999999595	["real\"", "real\"t", "real\"?", "real\"),", "real\",\"", "real\"],\"", "real\",", "real\">"]	11.555800000000005
+0	8	14.793799999996082	8.680100000002966	["sewing", "sewing machine", "sewing machine manual", "sewing machine manual pdf", "sewing machine manual pdf free", "sewing machine manual pdf free.pdf", "sewing machine manual pdf free.com", "sewing machine manual pdf free.pdfs"]	25.04120000000043
+0	8	15.229800000003735	8.606399999997905	["fraction", "fractions", "fraction in", "fraction in simplest", "fraction in simplest form", "fractions fraction", "fraction in simplest form of", "fractions fraction in"]	25.352299999999772
+0	8	14.98889999999875	8.70510000000202	["decimal", "decimal in", "decimal in simplest", "decimal in simplest form", "decimal in simplest form of", "decimal in simplest form of a", "decimal in simplest form of a number", "decimal in simplest form of a number is"]	25.26349999999944
+0	2	3.6997999999996978	2.244200000001584	["lens", "lenses", "led", "level", "leak", "length", "le", "leg"]	7.750400000000823
+0	8	14.878299999999456	8.650200000001718	["288", "288.00", "288.5", "288.00 in", "288.5 cm", "288.00 in us", "288.00 in us dollars", "288.5 cm in"]	25.16360000000084
+0	2	3.7516000000010763	2.2418999999977984	["flm", "flmm", "flms", "flml", "flmb", "flme", "flmo", "flmg"]	8.09149999999903
+0	2	3.7515999999993	2.2999000000005765	["cw120h", "cw120hz", "cw120hd", "cw120hs", "cw120hp", "cw120hr", "cw120ha", "cw120ht"]	8.288600000000201
+0	3	5.580299999998317	3.781100000001203	["number", "decoder", "numbers", "dec", "diesel", "for sale", "location"]	10.844300000000473
+0	4	7.360299999998432	4.364100000001869	["number", "numbers", "no", "not", "no. 5", "new", "name"]	13.344200000000583
+0	2	4.296500000002368	2.238599999998314	["on", "speed", "rpm", "time", "in", "mph", "to", "idle"]	8.078899999999223
+0	8	15.04989999999573	8.627500000004673	["way", "ways", "waya", "waysa", "wayaa", "waysaa", "wayaaa", "waysaaa"]	25.557400000000285
+0	2	3.685199999999611	2.2386999999994828	["module", "mode", "motor", "mount", "mod", "mounts", "mounting", "money"]	7.516000000000744
+0	4	7.465199999998617	4.926700000002171	["com.ttst.ttst\"", "com.ttst.ttst\" /", "com.ttst.ttst\"?", "com.ttst.ttst\" /2", "com.ttst.ttst\"},\"", "com.ttst.ttst\"],", "com.ttst.ttst\"]=>", "com.ttst.ttst\")."]	15.293299999999732
+0	2	3.6629000000001355	2.230199999999627	["location", "low", "lock", "locked", "loose", "located", "locations", "locking"]	7.508700000000701
+0	8	14.728000000003405	8.691699999996416	["installation", "installations", "installation video", "installations manual", "installation video.", "installation video.com", "installations manual pdf", "installation video.com."]	25.195199999998863
+0	3	5.568100000001408	3.318599999998284	["door", "mirror", "side", "seat", "window", "van", "air", "side mirror"]	10.464499999999433
+0	8	15.049199999998208	8.896200000002352	["sensor", "sensors", "sensor location", "sensors location", "sensory", "sensor location on", "sensory issues", "sensors locations"]	25.670699999999158
+0	8	14.813999999997662	8.686100000002028	["adheseperating", "adheseperating chart", "adheseperating chart.pdf", "adheseperating chart.com", "adheseperating chart.pdfs", "adheseperating chart.combo", "adheseperating chart.pdfs.com", "adheseperating chart.pdfs."]	25.787499999999852
+0	8	14.787899999994636	8.682700000004928	["intake", "intakes", "intake/", "intake/s", "intakes.", "intakes.0", "intake/s1", "intake/s1a"]	25.16419999999897
+0	4	7.312399999999997	4.453899999999678	["side", "side mirror", "sides", "sided", "sid", "side mirror replacement", "sideload", "sidewalk"]	13.370699999999403
+0	3	5.535300000000021	3.3612999999999005	["report", "research", "real", "reports", "restaurant", "re", "revere", "recipe"]	10.481399999999752
+0	2	3.796000000001243	2.2437999999986857	["2012", "2016"]	7.667900000001282
+0	4	7.423199999999852	4.364499999999438	["1933?", "1933?com", "1933?como", "1933?!", "1933?\"", "1933?,", "1933?:", "1933??"]	13.88899999999893
+0	3	5.720900000000029	3.369700000000364	["fraction", "fractions", "french", "fresh", "front", "from", "france", "frame"]	10.558299999999576
+0	4	7.33039999999896	4.432400000000669	["pullups", "pullup", "pullup bar", "pullupe", "pulluph", "pullupt", "pullupper", "pullupon"]	13.93500000000003
+0	2	3.662000000000276	2.2228000000001913	["fraction", "fractions", "for", "first", "ft", "feet", "fl"]	7.448799999998812
+0	4	7.387900000001224	4.686199999998308	["gage", "gages", "gager", "gaged", "gage wire", "gagers", "gagent", "gagen"]	14.146499999998952
+0	8	14.690000000003423	8.623799999996962	["galvanized", "galvanized pipe", "galvanized pipe for", "galvanized pipe for sale", "galvanized pipe for sale in", "galvanized pipe for sale in m", "galvanized pipe for sale in mich", "galvanized pipe for sale in michigan"]	25.451100000001503
+0	4	7.404100000000469	4.397400000000218	["cr-ganache", "cr-ganaches", "cr-ganacher", "cr-ganached", "cr-ganachers", "cr-ganachee", "cr-ganachel", "cr-ganachelor"]	14.009399999999061
+0	2	3.713900000001047	2.2343999999989705	["19", "1983", "1920", "1907", "198", "199", "1980", "1943"]	7.559799999999228
+0	6	11.154199999998227	6.523200000000173	["2/3", "2/", "2/-", "2/3 +", "2/-3", "2/.", "2/.5", "2/3 + 1"]	19.630499999999884
+0	3	5.513899999998628	3.2897000000016163	["dimensions", "diameter", "diagram", "die", "divided", "dimension", "dip", "di"]	10.34220000000019
+0	8	14.943699999998117	8.646000000000598	["holder", "holders", "holder for", "holders for", "holder for a", "holder for a 2000", "holders for a", "holder for a 2000 chevy"]	25.157499999998834
+0	4	7.41660000000266	4.416199999997872	["many", "much", "many feet", "much in", "make", "ml", "mg"]	13.446399999999414
+0	6	11.135799999999918	6.706499999999949	["near me", "near", "nearby", "neat", "neatlanta", "nearest", "nearest me", "neatl"]	19.48630000000051
+0	3	5.50729999999966	4.035800000000478	["nlk", "nlkj", "nlking", "nlky", "nlkjv", "nlkc", "nlka", "nlks"]	11.639399999999966
+0	2	3.7453000000002845	2.341999999998734	["soeech", "soeechie", "soeeches", "soeecher", "soeechy", "soeeche", "soeechi", "soeeching"]	8.11850000000014
+0	6	11.207500000001147	6.685499999999678	["valera", "valerate", "valera 1960", "valeral", "valeratec", "valerald", "valerala", "valeratecion"]	20.065900000000525
+0	8	14.72369999999934	8.589800000001091	["calories", "calories in", "calories in a cup", "calories in a", "calories in a cup of", "calories in a cup of cooked", "calories in a cup of cooked rice", "calories in a cup of cooked rice/"]	25.029699999999266
+0	2	3.655800000000653	2.2300000000008424	["uae", "ua", "uab", "uan", "uas", "uap", "uac", "uav"]	7.918400000001213
+0	6	13.512699999999711	6.500700000000137	["houston", "hartford", "hartland", "harrisburg", "highland", "home", "henderson", "hawaii"]	21.68589999999959
+0	5	9.24069999999766	5.820500000004003	["774", "77410", "7740", "7745", "7748", "7747", "77410 us", "7747-"]	17.17459999999882
+0	7	12.931899999998109	7.744100000001808	["calories", "calorie", "caloric", "calorie count", "calories burned", "caloric intake", "calories burned in", "calorie count to 100"]	22.232800000001163
+0	8	14.61529999999911	8.690700000000717	["ether", "ethernet", "ethernet cable", "ethernet cable box", "ethernet cable box to", "ethernet cable box to tv", "ethernet cable box to tv's", "ethernet cable box to tv's guide"]	24.938299999998748
+0	3	5.452500000000526	3.401699999999508	["rack", "ring", "router", "rim", "roof", "roll", "rings", "replacement"]	10.391599999998391
+0	3	5.515300000000778	3.3183000000001073	["app", "application", "apps", "apple", "appeal", "apparel", "approved", "appendix"]	10.338900000000706
+0	8	14.732900000002047	8.767399999998204	["mph", "mph is", "mph is how", "mph is how many", "mph is how many mph", "mph is how many mph/", "mph is how many mph/hour", "mph is how many mph/hour is"]	25.090600000000407
+0	4	7.3158999999982655	4.429600000001699	["is", "in", "irvine", "irving", "id", "il", "indianapolis"]	13.381900000000613
+0	3	5.6737999999967315	3.4724000000032618	["allcounties", "allcounting", "allcountif", "allcountings", "allcounties in", "allcountic", "allcountie", "allcountin"]	11.283600000000504
+0	4	7.35900000000278	4.429799999996931	["la", "un", "mi", "dios", "los", "peso", "par"]	13.34390000000063
+0	8	15.02379999999981	8.666599999999747	["projections", "projection", "projection map", "projections for", "projections for week", "projection map pdf", "projections for week 3", "projection map pdfs"]	25.34850000000155
+0	3	5.52919999999979	3.409400000000673	["timetableamerican", "timetableamerica", "timetableamericus", "timetableamericans", "timetableameric", "timetableamericana", "timetableamericas", "timetableamerico"]	11.12999999999964
+0	7	12.96460000000188	8.022699999999716	["forest", "forests", "forestry", "forests'", "forestry:", "forests''"]	22.7352000000014
+0	3	5.470399999998321	3.3937000000019424	["nutrition", "number", "nut", "nuts", "nursing", "numbers", "nutritional", "nurse"]	10.470500000000271
+0	4	7.543000000000077	4.468200000001588	["pint", "pins", "pine", "pin", "pineapple", "pink", "pinch", "pints"]	13.702000000000325
+0	3	5.574599999999208	3.3951000000005394	["verse", "verses", "version", "ver", "verse 1", "verses 1", "ve", "versions"]	10.568199999999806
+0	8	14.623699999999573	8.626300000001308	["dogs", "dogs are", "dogs are good", "dogs are good for", "dogs are good for you", "dogs are good for you to", "dogs are good for you to me", "dogs are good for you to me lyrics"]	24.923300000001092
+0	6	11.19549999999947	6.527800000000639	["lane", "ln", "loop", "lake", "lan", "landing", "lakes", "lawn"]	19.314600000001292
+0	3	5.609599999999659	3.3105000000013263	["take", "tar", "tarot", "tap", "tart", "taste", "tax", "tag"]	10.553299999999766
+0	8	14.902799999999772	8.622400000000141	["grams", "grams of", "grams of sugar", "grams of sugar in", "grams of sugar in cups", "grams of sugar in cups of", "grams of sugar in cups of water", "grams of sugar in cups of water is"]	25.194799999999518
+0	8	14.69510000000085	8.615499999999443	["ounces", "ounces/", "ounces/s", "ounces/sugar", "ounces/sugar/", "ounces/sugar/s", "ounces/sugar/sugar", "ounces/sugar/sugar/"]	25.042800000001364
+0	8	15.109400000001827	8.772199999997454	["euro", "euros", "europe", "euros in", "european", "eurozone", "euros in us", "european dollar"]	25.41470000000068
+0	4	7.433100000000081	4.431600000000202	["ukraine", "ukrainian", "ukrain", "ukral", "ukrainian time", "ukran", "ukrate", "ukrand"]	14.08220000000071
+0	4	7.791299999999168	4.40870000000082	["river", "ridge", "right", "richmond", "rite", "river nj", "rivers", "river nc"]	13.88050000000085
+0	8	15.173800000003013	8.811599999996034	["tonguboard", "tonguboard boat", "tonguboard boat for sale", "tonguboard boat for", "tonguboard boat for sale in", "tonguboard boat for sale in n", "tonguboard boat for sale in ny", "tonguboard boat for sale in nyc"]	26.101499999999334
+0	4	7.409599999999017	4.458900000001265	["plywood\"", "plywood\" in", "plywood\" in french", "plywood\">", "plywood\":[\"", "plywood\"><", "plywood\",", "plywood\");"]	14.113200000000603
+0	4	7.770100000001889	4.388799999999193	["you", "your", "youtube", "year", "yourself", "years", "ya"]	13.83249999999947
+0	7	13.25770000000226	7.6791999999965554	["jihad", "jihadists", "jihadist", "jihad in", "jihad in the bible", "jihad in the", "jihadists in", "jihadists in spanish"]	22.559600000001012
+0	8	14.836999999999989	8.813399999999305	["times", "times 2", "timestamp", "times 2.5", "times 2.", "timestamp to", "times 2.5 times", "timestamp to hours"]	25.259900000000002
+0	3	5.501200000001205	3.535599999999306	["pipe", "manifold", "fan", "reducer", "hose", "pipes", "duct", "system"]	10.568899999999104
+0	3	8.596499999997675	5.255400000002908	["quiz", "questions", "question", "quick", "quizlet", "quest", "quotes", "quote"]	16.14760000000004
+0	6	11.483399999997701	7.001900000002337	["aud", "audubon", "audub", "audio", "audi", "audubon nj", "audubon nd", "audit"]	20.516599999998775
+0	3	5.638000000001142	3.4624000000000876	["template", "that", "to", "to the", "templates", "the", "tutorial", "taking"]	10.726100000001182
+0	5	9.104499999997628	5.873300000002857	["\"1", "\"_", "\"(", "\"%", "\"-", "\"\"", "\"/"]	16.559700000000177
+0	3	5.776399999996684	3.278500000003959	["crush", "cruise", "crude", "crushing", "crucial", "cruiser", "cruising", "crust"]	10.734300000001085
+0	3	5.539999999999878	3.432899999999961	["template", "test", "texture", "te", "templates", "texas", "team", "ter"]	10.486500000000731
+0	3	5.594999999997796	3.320500000002724	["of", "is", "in", "and", "are", "that", "called"]	10.401599999999789
+0	7	13.18060000000365	8.504099999996129	["story", "story:", "storyline", "storytelling", "storylines", "story:1", "storyline:", "storytelling:"]	23.55159999999934
+0	6	11.277499999998497	6.973500000000854	["fracture", "fractures", "fractured", "fracturing", "fracture:", "fractures.", "fractureda", "fractures.2"]	21.28249999999987
+0	3	5.594000000000321	3.393199999999652	["sensor", "sensors", "se", "sedan", "seat", "service", "seal", "serpentine"]	10.742699999999772
+0	3	5.838999999998151	3.356200000002474	["for sale", "for", "boats", "engine", "parts", "heads", "boat", "specs"]	10.749799999999254
+0	3	5.586300000000932	3.3136999999978656	["craigslist", "cra", "crash", "crane", "crazy", "craft", "crack", "crafts"]	10.592799999999514
+0	4	7.348599999998484	4.438900000002022	["in", "installation", "install", "inn", "inc", "in a", "intake", "inverter"]	13.343899999998854
+0	4	7.5664000000017495	4.424499999997167	["power", "powder", "power steering", "powered", "powers", "pow", "powders", "powersports"]	13.533100000000076
+0	3	5.583700000000746	3.44649999999902	["syst\"", "syst\"s", "syst\"?", "syst\"),", "syst\"><", "syst\",", "syst\"/>", "syst\"},"]	11.568600000000373
+0	8	14.760699999998295	8.628200000000419	["ft", "ft to", "ft to acres", "ft to acres/", "ft to acres/ft", "ft to acres/ft3", "ft to acres/ft3x", "ft to acres/ft3x4"]	25.2675
+0	8	14.80060000000094	8.819499999999536	["antegain", "antegaines", "antegaines/", "antegaines/loss", "antegaines/losses", "antegaines/losses of", "antegaines/losses of electrons", "antegaines/losses of electrons in"]	25.711100000000542
+0	4	7.42699999999985	4.339100000001039	["\"how", "\"how\"", "\"\"", "\"+", "\"(", "\"...", "\"_"]	13.386900000000423
+0	3	5.5571999999983746	3.342100000002901	["wo\"", "wo\"e", "wo\";", "wo\"\u2014", "wo\":[{\"", "wo\":-", "wo\"?", "wo\".["]	10.941700000000054
+0	3	5.422600000001054	3.30149999999918	["us", "dollars", "american", "dollar", "canadian", "is", "can"]	10.228400000000804
+0	7	12.864500000002721	7.697399999997856	["sale", "sales", "sale by owner", "sale by", "sales tax", "salesman", "sales tax rate", "sale by owner's"]	22.171999999999414
+0	5	9.227899999999067	5.458800000001318	["price", "prices", "pricing", "priced", "prickly pear", "price ut", "prickly", "prick"]	16.255900000000878
+0	5	9.934600000001126	5.480099999999766	["ma\"", "ma\"s", "ma\"s.a", "ma\"[", "ma\");", "ma\",", "ma\"?", "ma\":-"]	17.442100000000238
+0	3	6.131400000001008	3.300699999998713	["cam", "camera", "communities", "cameras", "client", "coding", "care", "credit"]	11.054099999999067
+0	6	11.345500000002673	6.492299999996121	["the market", "the", "this", "their", "them", "their own", "that", "thursday"]	19.476600000000843
+0	4	7.305300000000514	4.5557000000009396	["weight", "weights", "weight fast", "weigh", "weighted", "weird", "weights and", "weighs"]	13.428600000001012
+0	4	7.597700000001595	4.395199999997601	["missouri", "minnesota", "mississippi", "minneapolis", "midland", "mississauga", "midwest", "mi"]	13.56270000000137
+0	8	14.677699999996463	8.57020000000297	["wholesale", "wholes", "whole", "wholesalers", "whole house", "wholesal", "wholesale in", "wholesale in bulk"]	24.868800000000135
+0	3	5.706800000000456	3.3572999999993414	["they", "they do", "the", "that", "them", "the difference", "theory", "things"]	10.686999999999003
+0	3	5.498600000001019	3.297999999999135	["age", "ages", "again", "against", "ag", "ago", "agreement", "agenda"]	10.501299999999603
+0	6	10.980600000001672	6.87129999999847	["forecast", "fort worth", "farmington", "fort collins", "fl", "frankfort", "freeport", "flagstaff"]	19.40770000000036
+0	4	7.4208999999996195	4.43150000000081	["wa", "wi", "washington", "wisconsin", "wy", "weather", "west", "wash"]	13.457600000000625
+0	6	11.679700000001958	6.698199999998877	["fitzgerald", "fitzgerald ga", "fitzger", "fitzger mn", "fitzger mich", "fitzgers", "fitzger michigan", "fitzgers ar"]	20.41510000000102
+0	8	14.628699999999384	8.742600000001488	["how", "how to", "however", "how to use", "how to use a computer", "how to use a credit", "however in", "how to use a credit card"]	25.029500000000482
+0	5	9.102499999999125	5.477200000001403	["angeles", "angel", "angles", "angels", "angeles ca", "angola", "ang", "angles ca"]	16.229599999999067
+0	8	15.031300000000414	8.672899999998762	["paragraph", "paragraphs", "paragraph called", "paragraphs paper", "paragraph called a", "paragraphs paper example", "paragraph called a book", "paragraphs paper example ap"]	25.369299999999484
+0	4	7.413299999997847	4.38820000000284	["area", "areas", "are", "arena", "aren", "area/", "ared", "arenas"]	13.697199999999299
+0	7	13.30769999999859	7.749399999999795	["ashland", "ash", "ashes", "ashamed", "ashland ky", "ashore", "ashland ks", "ashamed of"]	22.659100000000265
+0	4	7.483599999996926	4.54350000000403	["install", "installation", "instructions", "installed", "instead", "instagram", "installer", "instant"]	13.695900000000094
+0	3	5.584999999999951	3.3047000000010485	["5th", "5th grade", "5t", "5ths", "5tb", "5them", "5tm", "5ts"]	11.034700000001507
+0	4	7.950199999999796	4.823600000001704	["beer", "blood", "baby", "beef", "baseball", "breast", "box", "bag"]	14.363599999999366
+0	2	4.658499999999677	2.5042000000006226	["negligence", "net", "no", "new", "national", "north", "number"]	8.933899999998829
+0	3	14.683500000000294	8.472399999998714	["answer", "answers", "and", "an", "and 2", "any", "angle", "analysis"]	29.477999999999227
+0	2	6.057300000000154	3.1005000000003946	["access", "accept", "accepted", "accent", "acceptance", "accessories", "accepts", "acceptable"]	11.79190000000041
+0	2	4.761000000002014	2.8244999999991194	["brazos", "brazo", "brazor", "brazoria", "brazon", "brazook", "brazose", "brazors"]	10.101199999999366
+0	5	9.69130000000007	6.285899999999955	["life", "lifestyle", "lifespan", "lifetime", "lifes", "life in", "lifestyles", "lifesaver"]	17.891499999999283
+0	5	9.771699999999939	5.541400000000252	["di\"", "di\"s", "di\"?", "di\",", "di\"],\"", "di\".[", "di\"><", "di\"),"]	17.860100000000045
+0	3	5.642300000001654	3.3338999999976693	["wood", "white", "wall", "window", "wire", "wallpaper", "what", "wheels"]	10.587100000000405
+0	4	7.519300000000229	4.665599999999159	["tomboy", "tomboys", "tomboy movie", "tomboya", "tomboyd", "tomboyer", "tomboyle", "tomboys for"]	14.35840000000077
+0	8	14.91899999999724	8.872600000001896	["outdoor", "outdoors", "outdoor party", "outdoors in car", "outdoor party ideas", "outdoors in the", "outdoors in the car", "outdoors in carrollton"]	25.444999999999496
+0	3	5.59239999999761	3.4518000000023363	["th\"", "th\"x", "th\",", "th\":\"\",\"", "th\":-", "th\"]=>", "th\"))", "th\"},"]	11.299499999999796
+0	3	6.229199999999935	3.5413000000001915	["support", "supervisor", "supply", "suppress", "supplies", "supervisors", "supervisory", "supplier"]	11.539000000000854
+0	4	7.7478000000006375	4.499899999999002	["of\"", "of\"s", "of\"?", "of\",", "of\")", "of\":\"\",\"", "of\":-", "of\"],\""]	14.707800000000049
+0	5	10.417099999997959	6.115400000000548	["stock", "stocking", "stocks", "stocked", "stockpile", "stock for sale", "stock for", "stockpiling"]	18.307300000000026
+0	8	15.2783000000003	9.5641999999998	["get", "get a", "get a job", "getting", "gets", "getting a", "gets paid", "getting a job"]	26.686000000001542
+0	4	7.45990000000063	4.787199999999103	["record", "records", "recording", "recorder", "recorded", "recordings", "record label", "recording studio"]	14.097599999999488
+0	5	10.759600000000091	5.573200000000611	["north", "northampton", "norwalk", "norfolk", "norwalk ct", "norfolk va", "northampton ma", "northeast"]	18.1635
+0	3	5.721000000001197	3.4324999999988393	["rd", "rdp", "rds", "rdr", "rdb", "rdc", "rdt", "rdl"]	11.47610000000121
+0	2	3.736800000002205	2.25469999999639	["swtor", "swt", "swtr", "swta", "swtv", "swth", "swto", "swtch"]	8.320600000001122
+0	4	7.60910000000159	4.5395999999975345	["blvd", "bl", "bloomington", "block", "bluff", "blue", "blooming", "black"]	13.835099999999656
+0	2	3.7125999999982895	2.3263000000017797	["wide", "sided", "hung", "barrel", "crochet", "stack", "tap", "cab"]	7.653200000000027
+0	8	15.402599999999822	9.295800000000298	["definitions", "definitions of", "definitions of a", "definitions of a story", "definitions of a storybook", "definitions of a storybooker", "definitions of a storybooker's", "definitions of a storybooker's book"]	26.48690000000009
+0	3	5.847100000000438	3.3721999999993812	["august", "augusta", "augu", "augus", "augue", "augues", "auguary", "augub"]	11.618799999999041
+0	4	8.343800000000456	4.521999999997917	["one", "of", "once", "online", "occurs", "open", "on", "other"]	14.509600000000233
+0	6	11.413600000002688	6.701799999996538	["texas", "texarkana", "text", "texark", "texarkana tx", "texting", "texas city", "textiles"]	19.937900000000397
+0	4	7.842899999999986	4.46999999999953	["27513", "275133", "275134", "275135", "275130", "275139", "275132", "275131"]	14.517300000001399
+0	8	14.917799999999204	8.89839999999964	["15205", "15205 n", "15205 n.w", "15205 n. main", "15205 n. main st", "15205 n.w. canton", "15205 n.w. atl", "15205 n.w. atlanta"]	26.084900000000744
+0	5	9.136800000002054	5.535799999998758	["play", "play on", "players", "player", "place", "plan", "plays", "plant"]	16.44390000000051
+0	4	7.480799999996179	4.566200000002851	["boulivard", "boulivards", "boulivardo", "boulivardi", "boulivarden", "boulivard la", "boulivarde", "boulivardy"]	14.271800000001278
+0	8	16.33609999999841	8.933500000003036	["shipping", "shipping code", "shipping code for", "shipping code for us", "shipping code for usa", "shipping code for usa.", "shipping code for usa.a", "shipping code for usa.a."]	27.002300000001256
+0	3	5.701399999997747	3.3858000000019928	["mio", "mions", "mion", "mios", "miot", "mious", "miod", "miona"]	11.493799999998444
+0	8	15.05740000000344	8.82649999999785	["pumps", "pumps for", "pumps for sale", "pumps for sale in", "pumps for sale in us", "pumps for sale in usa", "pumps for sale in usaa", "pumps for sale in usaa."]	25.594999999999146
+0	3	5.566399999997529	3.347700000002618	["part", "part 1", "party", "parts", "partner", "parties", "participating", "partners"]	10.840599999999867
+0	5	10.693599999997971	6.332600000002131	["blakeslee", "blakeslee pa", "blakesleesburg", "blakeslees", "blakesleep", "blakeslee pa 18610", "blakeslee pa 18635", "blakesleen"]	19.337399999999505
+0	3	5.6522000000018835	3.3341999999976224	["93\"", "93\"t", "93\",", "93\"}],\"", "93\";", "93\"},\"", "93\":[", "93\"?"]	11.409900000000306
+0	8	15.065300000001614	8.890499999997914	["60628", "60628 us", "60628 usa", "60628 usa 9", "60628 usa 935", "60628 usa 93501", "60628 usa 93501 us", "60628 usa 93501 usa"]	26.343400000000017
+0	8	14.852299999997598	9.036500000002334	["holdings", "holding", "holding n", "holdings.", "holding nj", "holdings.com", "holding nj 0", "holding nj 088"]	25.758899999999585
+0	4	7.409100000000279	4.5450999999996355	["76201", "762015", "762019", "762016", "762011", "76201 us", "762017", "762018"]	14.12380000000013
+0	6	11.750299999999214	6.75950000000114	["peoria", "peoria il", "peorial", "peoris", "peori", "peoring", "peorie", "peorig"]	20.6584000000003
+0	5	10.591000000001571	5.6024999999984	["dr", "drive", "drives", "driver", "dr.", "drum", "driven", "dry"]	17.838899999999214
+0	8	15.098900000001692	8.830399999999017	["60651", "60651-", "60651-a", "60651-a-", "60651-a-a", "60651-a-a-", "60651-a-a-1", "60651-a-a-1a"]	26.25760000000099
+0	4	7.559499999999275	4.493100000001249	["dr", "drive", "dallas", "detroit", "dr.", "dunes", "dri", "de"]	13.73309999999961
+0	5	9.435399999999206	5.655700000000152	["yards", "yard", "yakima", "yardley", "yak", "ya", "yakima wa", "yards/"]	16.654899999998918
+0	3	5.681599999999065	3.4089999999995513	["ms", "al", "nc", "ma", "ct", "pa", "oh", "mi"]	10.705500000000256
+0	5	9.310899999997346	5.559300000001599	["sc\"", "sc\"s", "sc\"},", "sc\":\"/", "sc\");", "sc\")", "sc\"],", "sc\"},\""]	17.20959999999927
+0	4	7.509000000000654	4.8112999999982975	["fl\"", "fl\", fl", "fl\",", "fl\"?", "fl\"))", "fl\";", "fl\"},\"", "fl\"><"]	14.492299999998792
+0	5	10.119499999996506	6.490000000002993	["texas", "texas 79912", "texas 79936", "texas 7", "texass", "texase", "texaser", "texasis"]	19.63420000000049
+0	4	7.882499999999126	4.631200000000391	["12", "120", "125", "1200", "126", "122", "123", "121"]	14.253200000000632
+0	4	8.597299999999919	4.9245999999989465	["to", "to d", "to dfw", "township", "today", "town", "tour", "together"]	16.74670000000056
+0	5	9.491099999998198	5.552800000002023	["sc", "sc 29526", "sc 29527", "school", "schools", "sch", "schedule", "schaumburg"]	16.714800000000807
+0	8	14.787800000002349	8.567099999996941	["nylon", "nylon ny", "nylon nh", "nylon ny 10", "nylon nh 03", "nylon nh 03103", "nylon ny 10573", "nylon nh 03103-"]	25.10929999999867
+0	7	12.836200000002407	7.670299999997354	["ms", "ms 39532", "ms 39531", "msg", "ms 39532 us", "ms 39531 us", "ms 39532 usa", "ms 39531 usa"]	22.196100000000385
+0	5	9.152800000000738	5.396799999997981	["what", "what county", "whale", "whales", "whats", "whatever", "whats in", "whale watching"]	16.23999999999981
+0	6	10.913899999998478	6.500900000000698	["code", "codes", "coded", "code 9", "codec", "codes-", "code 91765", "code 91761"]	19.040199999999174
+0	5	9.04360000000004	6.20969999999943	["villages", "village", "villages fl", "villas", "villa", "village of", "villages florida", "villagers"]	16.830600000000473
+0	5	9.144799999997844	5.444500000002961	["kansa\"", "kansa\"s", "kansa\"s.c", "kansa\"s.a", "kansa\"?", "kansa\">", "kansa\"\"", "kansa\"),"]	16.76660000000041
+0	8	14.514999999995837	8.706800000004122	["louisville", "louisiana", "louisville ky", "louisa", "loudon", "loudoun", "loudon tn", "louisa va"]	24.803399999999698
+0	3	5.4136000000006845	3.2591999999986854	["phoenix", "phx", "park", "power", "print", "public", "post", "peak"]	10.483699999999985
+0	3	6.2019999999982645	3.6274000000009465	["mo", "pa", "ia", "nc", "iowa", "oh", "ga", "il"]	11.624899999999272
+0	3	8.190799999999498	3.397700000000725	["beach", "fl", "springs", "bay", "harbor", "coast", "desert", "city"]	13.138500000000164
+0	3	5.568500000000753	3.284000000000731	["91731\"", "91731\"s", "91731\"\u2014", "91731\">", "91731\"[", "91731\".[", "91731\":[\"", "91731\")"]	11.28820000000097
+0	2	4.104599999999792	2.2879000000006755	["2018", "2017", "2019", "2016", "2015", "2014", "2013", "20"]	7.908399999999816
+0	7	13.22000000000223	8.001599999998277	["printable", "printables", "printable schedule", "printabled", "printables for", "printables for free", "printable schedule c", "printabledable"]	23.28480000000077
+0	8	14.809100000002573	8.70619999999711	["inches", "inch", "inches in", "inch in", "inches in a", "inch in cm", "inches in a yard", "inches in a yard of"]	25.094499999999798
+0	3	6.084700000000609	3.3578999999992476	["nail", "nails", "natural", "nap", "native", "navy", "nano", "napkin"]	11.012199999999694
+0	3	5.550000000001276	3.3117999999987546	["base", "basic", "bases", "basil", "basalt", "bass", "bas", "baseball"]	10.526399999999825
+0	2	3.681799999998958	2.243200000000556	["advanced", "adv", "advance", "adventure", "advisor", "advice", "advantage", "advantages"]	7.593200000000522
+0	3	5.525800000000913	3.349699999999345	["coronav", "coronave", "coronavirus", "coronaval", "coronavis", "coronaver", "coronavy", "coronava"]	11.148399999999725
+0	8	15.287000000000717	8.764100000000496	["anime", "anime girl", "anime girl song", "anime girl song id", "anime girl song id code", "anime girl song id codes", "anime girl song id codes.", "anime girl song id codes.io"]	25.7246999999996
+0	4	7.289400000001223	4.452499999999304	["away", "a car", "a lawn", "accident", "average", "about", "arm", "around"]	13.334400000001523
+0	5	9.102700000001462	5.537999999999599	["boy", "boys", "boyfriend", "boy in", "boycott", "boys on", "boyfriends", "boycotts"]	16.2312
+0	4	7.503700000004443	4.962999999996498	["google", "good", "google maps", "goodbye", "goose", "goodyear", "goods", "goodwill"]	14.085800000000148
+0	8	14.851199999998954	8.531400000000744	["\u0627\u0644\u062f", "\u0627\u0644\u062fa", "\u0627\u0644\u062faa", "\u0627\u0644\u062faaa", "\u0627\u0644\u062faaaa", "\u0627\u0644\u062faaaaa", "\u0627\u0644\u062faaaaaa", "\u0627\u0644\u062faaaaaaa"]	25.59250000000013
+0	8	14.59949999999921	8.700400000000386	["spindle", "spindle nut", "spindle nut size", "spindle nut size:", "spindle nut size:1", "spindle nut size:1.5", "spindle nut size:1.8", "spindle nut size:1.5'"]	25.934300000001187
+0	5	9.223600000000332	5.41289999999961	["p\"", "p\"t", "p\";", "p\"?", "p\"\u2014", "p\"/>", "p\":[{\"", "p\"]=>"]	16.758299999999338
+0	5	11.304600000000775	5.465100000000334	["paso", "paso robles", "pasos", "pasota", "pasoma", "paso robles ca", "pasora", "pasoto"]	18.855800000000755
+0	5	9.16749999999844	5.6605000000011785	["chicago", "tampa", "philadelphia", "houston", "dallas", "los angeles", "phoenix", "tucson"]	16.397500000000065
+0	8	14.796900000002111	8.627199999997615	["tiempo", "tiemann", "tiempo ca", "tiemann's", "tiemann's ny", "tiemann's nc", "tiempo ca 9", "tiempo ca 934"]	25.540400000000574
+0	8	14.717299999999156	8.734000000000464	["37075", "37040", "37075 us", "37040 us", "37075 usa", "37040 usa", "37075 usaa", "37040 usaa"]	25.21420000000063
+0	6	11.111399999998994	6.980600000002113	["fl", "fort worth", "fort myers", "frisco", "ft", "fairfax", "farmington", "fountain"]	19.674999999999443
+0	8	14.67459999999754	8.78770000000273	["street", "streets", "street boston", "street baltimore", "streetsboro", "street baltimore md", "street boston ma", "streetsboro oh"]	25.0742000000006
+0	5	9.206999999999965	5.4288000000006775	["dr", "drive", "dri", "driver", "drives", "dr.", "drill", "draper"]	16.445799999999622
+0	3	5.581400000000514	3.2992999999983397	["fl", "for sale", "falls", "for", "front", "flat", "forest"]	10.449400000000608
+0	3	5.51429999999975	3.2852000000005432	["county", "color", "code", "common", "control", "court", "college", "convert"]	10.431900000000383
+0	6	10.990200000001948	6.561699999997117	["boourbonnaire", "boourbonnaires", "boourbonnai", "boourbonnaissance", "boourbonnaire,", "boourbonnaires disease", "boourbonnaire, id", "boourbonnai india"]	19.637599999999367
+0	3	5.50309999999854	3.2749000000009687	["al", "ky", "pa", "tn", "la", "ga", "ar", "ms"]	10.30229999999932
+0	3	5.538299999997776	3.333000000003139	["iowa", "il", "in", "id", "indiana", "ill", "ind"]	10.462600000000322
+0	5	9.191799999999972	5.572400000000144	["gi\"", "gi\"t", "gi\"?", "gi\":\"\"},{\"", "gi\">", "gi\":[{\"", "gi\"-", "gi\"/>"]	16.845499999998736
+0	8	14.627399999998403	8.681800000001516	["n\"", "n\"s", "n\"s.a", "n\"s.c", "n\"]", "n\",", "n\":\"\",\"", "n\";"]	25.44959999999996
+0	5	9.206499999999451	5.433599999999927	["90049+", "90049++", "90049+ ca", "90049+.", "90049+.9", "90049+++", "90049+,", "90049++++++++++++++++"]	16.95250000000037
+0	3	5.516200000000637	3.347800000000234	["redfin", "redford", "redfield", "redfish", "redfor", "redfern", "redf", "redfire"]	11.047600000001268
+0	2	3.637299999997623	2.280000000000726	["19", "10", "14", "16", "101", "11", "100"]	7.418900000001116
+0	3	5.544099999998053	3.353600000002288	["oh\"", "oh\"s", "oh\"?", "oh\":-", "oh\",", "oh\"}],\"", "oh\"\"", "oh\"-"]	11.016300000001422
+0	5	9.16159999999877	5.552600000001462	["buda\"", "buda\"s", "buda\"s.c", "buda\"\"", "buda\"?", "buda\">", "buda\";", "buda\"s.a"]	16.83030000000052
+0	4	7.416600000000884	4.4395999999977676	["los angeles", "la", "long beach", "las vegas", "lakewood", "lancaster", "lexington", "louisville"]	13.451699999999178
+0	3	5.613300000000265	3.2951000000007724	["wi", "ok", "ct", "tx", "ca", "oh", "mi", "nj"]	10.453599999999952
+0	3	5.5568000000008055	3.2804999999989093	["real", "rent", "reviews", "rental", "redfin", "review", "red", "records"]	10.477800000000315
+0	3	5.56599999999996	3.421200000000013	["cap", "capital", "caps", "cape coral", "cape", "capitol", "capped", "capacity"]	10.533999999999821
+0	5	9.443499999999716	5.535899999999927	["lucie", "lucie fl", "lucier", "lucies", "luciet", "luciers", "lucien", "luciens"]	17.027399999999915
+0	8	14.783599999999453	8.655600000000874	["49461", "49461 us", "49461 usa", "49461 usa 7", "49461 usa 782", "49461 usa 78219", "49461 usa 78219 us", "49461 usa 78219 usa"]	25.678600000000884
+0	3	5.489099999998359	3.295200000001941	["attempt", "angel", "awareness", "alert", "at home", "and", "at", "afghan"]	10.469300000000459
+0	4	7.360900000000115	4.380999999998636	["care", "church", "center", "court", "county", "control", "color", "class"]	13.476300000000663
+0	6	11.361100000002011	6.572899999998327	["apex", "ape", "apes", "apex nc", "aperture", "apex n", "apes for sale"]	19.588899999998688
+0	7	12.793600000001959	7.515599999997846	["sting", "stink", "stingray", "stint", "stink bugs", "stints", "stingray w", "stingray wv"]	21.91619999999972
+0	2	3.644899999999396	2.2391000000006045	["shells", "shot", "shotgun", "shooting", "shell", "shotguns", "shots", "semi"]	7.394600000001361
+0	4	7.258800000000676	4.348799999998931	["bear", "bearing", "bearings", "bears", "beard", "bearer", "bearded"]	13.196599999998782
+0	8	14.575699999998193	8.590100000001044	["memory", "memory foam", "memory foam mattress", "memory foam mattress topper", "memory foam mattress toppers", "memory foam mattress topper for", "memory foam mattress toppers for", "memory foam mattress topper for sale"]	24.757900000000888
+0	6	10.93369999999716	6.431400000003862	["fwheels", "fwheels for sale", "fwheels for", "fwheelson", "fwheelsen", "fwheelsius", "fwheelsh", "fwheelse"]	19.575699999998974
+0	8	14.536000000001437	8.600399999997066	["dick", "dickens", "dickens in", "dickens in inches", "dickens in inches of", "dickens in inches of snow", "dickens in inches of snow boots", "dickens in inches of snow boots/"]	24.804299999999557
+0	7	12.741999999995812	7.509500000004721	["203", "2030", "203.00", "203.5", "2030.00", "2030.50", "203.00 of", "203.5 of"]	21.742899999999565
+0	4	7.2494999999985765	4.30730000000068	["youtube", "you", "year", "york", "your", "youth", "you tube"]	13.157399999998987
+0	7	13.216200000002232	7.6777999999979585	["box", "boxes", "box for sale", "box for", "boxing", "boxed", "boxer", "boxes for sale"]	22.506100000001084
+0	3	5.411700000001574	3.296499999997593	["activities", "and girl", "at", "and baby", "attacked", "are", "alive"]	10.216099999999173
+0	8	14.474600000003335	8.594599999996788	["babies", "babies born", "babies born in", "babies born in the", "babies born in the us", "babies born in the usa", "babies born in the usa 2018", "babies born in the usa 2018-"]	24.623399999999407
+0	3	5.410699999998769	3.3170000000009026	["sac\"", "sac\" wi", "sac\"/>", "sac\").", "sac\"?", "sac\"\u2026", "sac\"[", "sac\"\"\""]	10.739900000000802
+0	2	3.805299999998013	2.493300000002918	["song", "shot", "stadium", "season", "songs", "school", "singing", "square"]	7.8302000000007865
+0	8	14.40939999999813	8.617200000001546	["kg", "kg/", "kg/m", "kg/m3", "kg/m3/", "kg/m3/s", "kg/m3/s3", "kg/m3/s3/"]	24.551499999999393
+0	7	13.515800000002187	8.231599999998451	["street", "street san francisco", "street san jose", "streets", "street san jacinto", "street san francis", "streetsboro", "streetsboro oh"]	23.263200000000595
+0	3	5.594299999998498	3.2509000000011667	["chicken", "beans", "potatoes", "potato", "ham", "in", "fish", "rice"]	10.356399999999155
+0	2	3.6152000000004847	2.1825999999993684	["boxes", "box", "board", "boards", "bottle", "bottles", "boat", "body"]	7.360900000000115
+0	3	5.427800000001426	3.2504999999982687	["lig\"", "lig\"t", "lig\");", "lig\".[", "lig\">", "lig\"}", "lig\"]=>", "lig\";"]	10.927200000001136
+0	4	7.161800000003993	4.342099999995241	["tile\"", "tile\"s", "tile\"sds", "tile\"?", "tile\"}],\"", "tile\"...", "tile\"\u2014", "tile\"]=>"]	13.6624999999988
+0	3	5.443299999999596	3.293700000000399	["manual", "manuals", "man", "mark", "management", "manuel", "market", "make"]	10.320800000000574
+0	8	14.636499999999941	9.002699999999919	["fraction", "fractions", "fraction in", "fraction in simplest", "fractions fraction", "fraction in simplest form", "fractions fractional", "fraction in simplest form/"]	25.17929999999957
+0	3	5.487199999999248	3.2785999999997983	["psi", "pounds", "ph", "pst", "power", "pay", "percent"]	10.554600000000747
+0	5	9.300699999997164	5.438700000002683	["04.13.2019", "04.13.2018", "04.13..2019", "04.13..2018", "04.13...", "04.13./", "04.13.2018 to", "04.13...2019"]	16.74639999999883
+0	8	14.670800000001094	8.564299999999747	["jeffrey", "jeffreys", "jeffrey davis", "jeffrey dahmer", "jeffreysville", "jeffrey dah", "jeffreysville tn", "jeffrey davis hwy"]	25.31409999999923
+0	5	9.153200000000083	5.371099999999629	["home", "homes", "home in", "homepage", "homework", "homes for", "homeowner", "homeless"]	16.143899999999434
+0	6	10.967600000000743	6.478599999999446	["rent\"", "rent\"s", "rent\"sar", "rent\"saras", "rent\"sarasota", "rent\",", "rent\">", "rent\":{\""]	19.598800000000693
+0	5	9.195699999999363	5.370800000001452	["plan", "plans", "planning", "planner", "plan for weight", "plan for women", "plant", "plan for weight loss"]	16.1573999999991
+0	6	11.23839999999987	6.5726000000001505	["street", "street miami", "str", "stret", "street mcallen", "streets", "street miami fl", "stre"]	19.30040000000055
+0	3	5.4978999999999445	3.2784999999986297	["ca", "wa", "oh", "il", "fl", "ga", "tx", "co"]	10.293199999999558
+0	4	7.293300000000613	4.398000000000124	["suite32826", "suite328260", "suite328269", "suite328268", "suite328262", "suite328265", "suite328267", "suite328264"]	13.803499999999858
+0	5	9.15650000000312	5.471199999995235	["fl", "flagstaff", "florence", "flagler", "flowery", "flower mound", "florence sc", "flowood"]	16.186899999999227
+0	5	9.199900000002259	5.461899999996689	["rte", "rte.", "rte. 9", "rtempe", "rtec", "rtes", "rtem", "rtel"]	16.694700000000395
+0	3	6.205400000000694	3.28069999999947	["us", "other", "the", "what", "another", "one"]	11.19149999999891
+0	3	5.470100000000144	3.3417999999993953	["\"youtube", "\"\u2026", "\"<", "\"\"", "\"@", "\"+", "\"/"]	10.46860000000116
+0	4	7.2936999999999585	4.3189999999988515	["34748", "347483", "347486", "347484", "347485", "347482", "347480", "347481"]	13.768599999998798
+0	3	7.452799999999371	3.348800000001262	["ca", "park", "md", "gardens", "county", "cal", "mi", "city"]	12.229099999998994
+0	4	7.310800000000839	4.333099999998424	["fre\"", "fre\"t", "fre\"tte", "fre\");", "fre\"),", "fre\"},", "fre\":\"\"},{\"", "fre\"?"]	13.775900000000618
+0	4	7.270099999999502	4.366400000000326	["level", "lexington", "lee", "lewis", "league", "letter", "lex", "leader"]	13.215500000001157
+0	5	9.122900000003042	5.397799999997233	["hotpads\"", "hotpads\"t", "hotpads\"t-", "hotpads\"t-1", "hotpads\"?", "hotpads\"\"", "hotpads\",\"", "hotpads\"><"]	16.748999999999015
+0	5	9.08920000000002	5.487399999999809	["nj\"", "nj\"s", "nj\"[", "nj\")", "nj\"))", "nj\"-", "nj\"?", "nj\","]	16.664200000001017
+0	4	7.222699999999804	5.274000000001777	["to", "to the future", "together", "to the", "top", "today", "tomorrow", "town"]	14.134000000000313
+0	5	9.157800000002325	5.427099999996798	["maverick", "mavericks", "maven", "mave", "mavericksburg", "mavely", "mavenue", "maves"]	16.639200000000187
+0	3	7.632400000000317	3.2914000000001664	["battalion", "brigade", "base", "bill", "battle", "blvd", "box"]	12.615099999999657
+0	3	5.444199999999455	3.28969999999984	["hwy", "highway", "hill", "heights", "holiday", "home", "high", "hi"]	10.404199999999975
+0	4	7.251499999998856	4.358900000001498	["florida", "florid", "floridian", "floride", "floridas", "floridia", "florida 34293", "florids"]	13.748099999999042
+0	6	10.960199999999531	6.4677000000017415	["61115", "611150", "611152", "611155", "611154", "611151", "611156", "611157"]	19.51700000000045
+0	8	14.81919999999981	9.152300000000224	["conifer", "conifer co", "conifer co 80435", "conifer co 80439", "conifer co 80525", "conifer co 80526", "coniferation", "conifer co 80435 us"]	26.082599999998735
+0	2	3.781400000001156	2.3463999999986385	["wire", "wires", "wiring", "with", "wide", "window", "win", "will"]	7.874599999999177
+0	8	17.805199999997967	8.936200000002614	["mt", "mt 59", "mt 59102", "mt 59102 us", "mt 59102 usa", "mt 59102 usa 9", "mt 59102 usa 926", "mt 59102 usa 92683"]	28.40549999999986
+0	4	7.284399999999636	4.4301000000004365	["3bk-14", "3bk-140", "3bk-144", "3bk-142", "3bk-149", "3bk-141", "3bk-148", "3bk-147"]	13.916100000001208
+0	4	7.346599999999981	4.378600000000787	["valley", "va", "van", "value", "valdosta", "vallejo", "van buren", "valve"]	13.285299999999722
+0	4	7.355699999997967	4.364600000002383	["md", "pa", "oh", "de", "maryland", "nj", "ma", "sc"]	13.308699999999618
+0	4	7.420399999997329	4.46880000000327	["us", "for", "county", "to", "in", "map", "zip"]	13.497100000000373
+0	4	7.327199999998868	4.4130000000013325	["55044", "550448", "550444", "550443", "550441", "550440", "550445", "550446"]	14.058900000000207
+0	2	3.6362000000007555	2.317399999999026	["3c", "3ch", "3co", "3cm", "3ct", "3cv", "3cl", "3cs"]	7.9545000000003085
+0	4	8.711200000000474	4.457799999999068	["for", "forward", "fort", "forever", "form", "force", "for office", "foreign"]	14.851400000001291
+0	2	3.6727000000009724	2.261199999999519	["max", "male", "manual", "maximum", "made", "manufacturer", "marine", "master"]	7.454100000000352
+0	3	5.456399999999917	3.402200000000022	["manual", "for", "replacement", "for sale", "kit", "ri", "instructions"]	10.372099999999662
+0	8	14.623800000002518	8.478399999997777	["pdf", "pdfs", "pdfs-1", "pdfs-", "pdfs-1-", "pdfs-1-2", "pdfs-1-2-", "pdfs-1-2-1"]	24.687799999998816
+0	5	9.574299999998814	5.553400000000153	["planter", "planters", "plantera", "plantern", "planter for sale", "planters for sale", "plantery", "planter for a"]	17.11440000000053
+0	3	5.4637999999993525	3.244399999999814	["range", "raw", "rack", "ratio", "ram", "rate", "ratings", "rated"]	10.304800000000114
+0	8	14.499000000006035	8.883199999992542	["weather", "weatherly", "weatherlyrics", "weatherlyrics and chords", "weatherlyrics and music", "weatherlyrics and music video", "weatherlyrics and chords/", "weatherlyrics and chords/lyrics"]	24.93480000000048
+0	2	3.6274000000009465	2.21139999999842	["is", "the", "cast", "stop", "on", "off"]	7.293900000000519
+0	8	14.650200000000169	8.634600000000603	["clue", "clues", "clue for", "clue for you", "clues for", "clues for kids", "clueless", "clue for you to"]	24.799100000000962
+0	2	3.6214999999995	2.313199999999682	["3/2/2019", "3/2/2018", "3/2/2020", "3/2/2017", "3/2/20", "3/2/2", "3/2/21", "3/2/2016"]	7.908300000000423
+0	4	7.222600000002188	4.367599999998362	["only", "old", "off", "one", "orchard", "out", "over", "outside"]	13.060300000001135
+0	3	5.510900000000873	3.2629999999986836	["barr\"", "barr\"e", "barr\",", "barr\"><", "barr\":", "barr\":[{\"", "barr\";", "barr\":-"]	10.939499999999214
+0	3	5.491799999999714	3.247	["gr\"", "gr\"e", "gr\"?", "gr\"},", "gr\",", "gr\":\"/", "gr\"\u2014", "gr\"]=>"]	10.75460000000028
+0	3	5.505999999998679	3.2486000000027104	["is", "issue", "is what", "isn", "iso", "issues", "island", "issued"]	10.202200000000161
+0	5	9.63029999999776	5.450600000003192	["avenue", "aven", "aver", "avenu", "avenues", "average", "avenue philadelphia", "averill"]	16.591299999999976
+0	4	7.570599999999317	4.5277000000005785	["va", "valley", "van", "va 24153", "value", "vacation", "valle", "vallejo"]	13.837099999999936
+0	4	7.3438999999986265	4.362400000001543	["md", "maryland", "ma", "mi", "mary", "mt", "md 20772", "md 20774"]	13.288600000000983
+0	2	3.645299999998741	2.222600000001407	["pay", "payment", "paid", "parcel", "page", "pa", "payments", "parcels"]	7.617899999999622
+0	2	3.780400000000128	2.3137999999995884	["depot", "value", "for", "sales", "page", "care", "health", "goods"]	7.595399999999586
+0	7	13.124899999999329	7.797699999999352	["hills", "hills ca", "hill", "hill ca", "hills ca 9", "hills ca 91709", "hills ca 91710", "hilar"]	22.516400000000658
+0	4	7.297299999999396	4.317399999999694	["77562", "775625", "775626", "775620", "775629", "775627", "775628", "775623"]	13.757800000000486
+0	7	12.992500000001073	7.5630999999987125	["johnstown", "johnston", "johnstown pa", "johnston ri", "johnston rd", "johnstone", "johnst", "johnstons"]	22.561800000000076
+0	7	12.804599999999056	7.613799999999671	["srpine", "srping", "srpin", "srpinckney", "srpine or", "srpington", "srpins", "srpinck"]	22.501000000000104
+0	8	14.692099999997765	8.585100000001233	["illinois", "illinois 60452", "illinois 60305", "illinois 60452 us", "illinois 60305 us", "illinois 60452 usa", "illinois 60305 usa", "illinois 60452 usaa"]	25.394199999999145
+0	3	5.46459999999982	3.3701999999991017	["8536\"", "8536\"t", "8536\"\u2014", "8536\"}],\"", "8536\"\u2026", "8536\":", "8536\"?", "8536\"\""]	10.940500000000242
+0	4	7.261300000001469	4.319799999999319	["in", "indianapolis", "irving", "independence", "irvine", "inman sc", "imperial", "id"]	13.180500000000706
+0	7	12.79999999999859	7.58210000000048	["worth", "worth tx", "worthy", "worth tx 761", "worth tx 7", "worthless", "worth tx 76119", "worthwhile"]	22.04960000000078
+0	5	9.357899999997699	5.447300000001931	["1001\"", "1001\"2", "1001\"}],\"", "1001\"?", "1001\"[", "1001\"\"\"", "1001\":[\"", "1001\"],\""]	16.916300000000106
+0	5	9.113400000000382	5.383600000000044	["josep\"", "josep\"t", "josep\"t.", "josep\"t.c", "josep\",", "josep\"\"", "josep\"}],\"", "josep\":["]	16.738399999999487
+0	3	5.452199999998797	3.410100000001748	["curtain", "curb", "curve", "current", "curtains", "cure", "curly", "curl"]	10.447599999999113
+0	3	5.463899999998745	3.29980000000063	["zip", "county", "us", "is"]	10.270699999999522
+0	5	9.045500000002704	5.866099999996877	["dr", "drive", "de", "dallas", "dr.", "detroit", "dri"]	16.43490000000014
+0	3	5.463700000001737	3.28069999999947	["by", "bill", "because", "before", "but", "between", "ban", "behind"]	10.2669000000013
+0	5	9.120100000002296	5.413399999998347	["story", "storytelling", "storyline", "storylines", "story of", "storytelling in", "story of the bible", "storytelling in the classroom"]	16.021900000000144
+0	4	7.390900000000755	4.801000000000499	["base", "bases", "baseball", "basement", "based", "baseboard", "baseline", "baseman"]	13.854600000000161
+0	2	3.660699999999295	2.267599999999703	["49", "47", "43", "48", "40", "422", "41"]	7.470499999998381
+0	4	7.33349999999966	4.326700000000017	["concord", "concord nh", "concord nc", "concorde", "concort", "concor", "concords", "concore"]	13.63410000000087
+0	8	14.771400000002544	8.596799999995852	["enclosure", "enclosure for", "enclosure for sale", "enclosure for sale in", "enclosure for sale in n", "enclosure for sale in nc", "enclosure for sale in nc-", "enclosure for sale in nc-e"]	24.982899999999475
+0	3	5.4798999999974285	3.33180000000155	["car", "cat", "catches", "caught", "case", "cartoon", "care", "cast"]	10.32289999999847
+0	3	5.427199999999743	3.3320999999979506	["girl", "girls", "gives birth", "gift", "girl missing", "gifts", "girlfriend", "giving"]	10.23269999999954
+0	2	3.6583999999990624	2.316999999997904	["20", "25", "200", "24", "2018", "23", "2019"]	7.519699999999574
+0	2	3.628499999997814	2.251600000004572	["0.05", "0.08", "0.00", "0.09", "0.07", "0.06", "0.02", "0.01"]	7.8427000000012015
+0	6	11.626099999997308	6.674400000004965	["number", "numbers", "number fraction", "numbered", "numbering", "numbers in", "numbers in simplest", "numbers in simplest form"]	19.941400000000442
+0	3	5.47400000000664	3.2846999999947	["\"10", "\"\"", "\"{", "\"%", "\".", "\"#", "\"_"]	10.399800000001846
+0	3	5.512799999998208	3.2841000000018994	["b90813\"", "b90813\"t", "b90813\"\u2026", "b90813\"\"", "b90813\"\u2014", "b90813\"?", "b90813\"[", "b90813\":[{\""]	11.00500000000082
+0	4	7.257100000000349	4.408499999996707	["se", "sw", "st", "south", "suite", "san diego", "sacramento"]	13.277599999998557
+0	8	14.592200000006272	9.164099999996012	["east", "easton", "easton pa", "eastern", "eastern shore", "eastern shore va", "easton pa 1804", "easton pa 18"]	25.314900000001472
+0	5	9.288200000003854	5.461099999997998	["pa", "plymouth", "pelham", "princeton", "portsmouth", "portland", "parma", "philadelphia"]	16.336100000000187
+0	5	9.792700000001986	5.465999999998417	["marietta\"", "marietta\"s", "marietta\"s.a", "marietta\"s.com", "marietta\"?", "marietta\"-", "marietta\"),", "marietta\">"]	17.407699999999693
+0	6	11.096000000001993	6.490299999995841	["nevada", "nevada 89502", "nevadas", "nevada 89509", "nevadas tx", "nevadan", "nevaday", "nevadal"]	19.677999999998974
+0	5	9.207299999999918	5.4139999999982535	["\"p", "\"(", "\"+", "\"#", "\"\"", "\".", "\"..."]	16.177599999998904
+0	6	10.984499999999287	6.520800000000548	["dr", "drive", "dri", "dr.", "drives", "draper", "drive las vegas", "driven"]	19.109100000001433
+0	5	9.222500000003464	5.6345999999969365	["beach", "beach ca", "bed", "bear", "beverly", "bend", "beaver", "bedford"]	16.44759999999934
+0	7	13.129599999999186	7.943399999998491	["worth", "worth tx", "worthy", "worth tx 76244", "worth tx 76133", "worthless", "worthy n", "worthy nc"]	22.67980000000236
+0	3	5.516499999998814	3.4607999999991534	["p\"", "p\"e", "p\"},\"", "p\"]=>", "p\":[{\"", "p\"(", "p\"?", "p\">"]	11.124500000001092
+0	8	14.784699999999873	8.55370000000022	["chestertown", "chesterton", "chestertown md", "chesterton in", "chess", "chessington", "chestert", "chests"]	24.907299999998855
+0	3	5.684200000001027	3.292499999997034	["small", "smaller", "smoked", "smart", "smoke", "sm", "smith", "smallest"]	10.48150000000092
+0	3	5.535800000000535	3.2922999999982494	["070\"", "070\"s", "070\").", "070\",", "070\"?", "070\"\"", "070\"-", "070\"}],\""]	10.945700000000613
+0	5	9.165399999996993	5.468300000000426	["ny\"", "ny\"s", "ny\"]", "ny\"))", "ny\")", "ny\"[", "ny\":[\"", "ny\":\""]	16.782399999996755
+0	5	9.17259999999942	5.500000000001393	["ly\"", "ly\"e", "ly\"e, wi", "ly\"e, wa", "ly\",", "ly\"-", "ly\":\"/", "ly\"["]	16.74719999999752
+0	4	7.290300000001082	4.488999999995968	["light", "lights", "lighting", "lighter", "lightning", "light on", "lighthouse", "lights on"]	13.525899999997648
+0	3	5.471000000000004	3.3777000000014823	["wellington", "wellingtown", "wellington mi", "wellingtons", "wellingt", "wellingto", "wellingth", "wellingthen"]	13.863400000001747
+0	5	9.206500000001228	5.457699999997345	["fran\"", "fran\"s", "fran\"s.a", "fran\"?", "fran\"\"", "fran\"],\"", "fran\",", "fran\"]=>"]	16.74030000000215
+0	3	5.542800000004178	3.3040999999975895	["oh\"", "oh\"s", "oh\"?", "oh\":-", "oh\",", "oh\"><", "oh\");", "oh\";"]	10.930200000000667
+0	4	7.345400000001945	4.327999999997445	["stafford", "statesville", "staten", "state", "statesboro", "starkville", "stark", "stafford va"]	13.251900000000205
+0	5	9.159099999994424	5.442700000003242	["high", "highway", "highlight", "higgins", "highest", "highways", "highlights"]	16.08839999999745
+0	3	5.422099999996988	3.3664000000044325	["hawaii", "hand", "harris", "half", "have", "ham", "harvey", "hall"]	10.423400000000527
+0	8	14.826000000002892	8.66699999999554	["brooklyn", "brooklyn ny", "brooklyn nj", "brooklyn ny 11201", "brooklyn ny 11212", "brooklynn", "brooklynn ma", "brooklyn nj 07305"]	25.573500000000138
+0	3	5.536500000005162	3.276999999993535	["rv", "rvs", "rvc", "rva", "rvr", "rvu", "rving", "rvt"]	10.865100000000183
+0	4	7.383000000004358	4.410299999996425	["houston", "hours", "henderson", "huntsville", "hartford", "hampton", "hills", "high"]	13.370300000001833
+0	3	5.420000000000869	3.3618000000004145	["calories", "car", "cooler", "chart", "clip", "controller", "control", "camera"]	10.380100000002557
+0	6	10.978999999998962	6.44540000000049	["chart", "change", "changes", "changed", "charts", "charlotte", "charleston", "chase"]	19.368800000002295
+0	7	12.948999999995436	7.6079000000035535	["untcharleston", "untcharleston sc", "untcharlestone", "untcharleston sc 29403", "untcharleston sc 29414", "untcharlestones", "untcharlestone ny", "untcharlestone nc"]	22.670200000000307
+0	8	14.914799999999673	8.66100000000003	["orlando", "orlando fl", "orlando fl 32806", "orlando fl 32805", "orlando fl 32806 us", "orlando fl 32805 us", "orlando fl 32805 usa", "orlando fl 32806 usa"]	25.782100000000696
+0	8	14.65570000000227	8.61049999999608	["schematic", "schematic diagram", "schematic diagram.", "schematic diagram.pdf", "schematic diagram.pdfs", "schematic diagram.pdfs.", "schematic diagram.pdfs.com", "schematic diagram.pdfs.com."]	24.998599999999982
+0	8	14.550799999998532	8.604999999999308	["inches", "inches conversion", "inches conversion to", "inches conversion to inches", "inches conversion to inches/", "inches conversion to inches/feet", "inches conversion to inches/feet and", "inches conversion to inches/feet and inches"]	24.734399999999823
+0	4	7.343099999999936	4.329299999998426	["fl\"", "fl\", fl", "fl\", us", "fl\":-", "fl\"...", "fl\"?", "fl\";", "fl\")"]	13.804400000001493
+0	5	9.198099999998988	5.409800000002463	["plymouth", "pa", "princeton", "portland", "pelham", "port", "plainfield", "palm coast"]	16.22210000000024
+0	4	7.735000000000269	4.379899999999992	["ga", "tx", "texas", "va", "oh", "md", "il", "mo"]	13.657500000000766
+0	3	5.536199999998104	3.2689000000019064	["pictures\"", "pictures\"s", "pictures\"?", "pictures\",", "pictures\":-", "pictures\">", "pictures\"><", "pictures\"},\""]	10.968900000001724
+0	4	7.3699999999981	4.337900000003003	["philadelphia", "phoenix", "milwaukee", "phila", "omaha", "reading", "mcallen", "fort worth"]	13.1799000000008
+0	3	5.45449999999903	3.3313000000028126	["tar\"", "tar\"s", "tar\",", "tar\"\u2014", "tar\"\"\"", "tar\":\"\"},{\"", "tar\");", "tar\">"]	10.91000000000264
+0	4	7.399400000000611	4.411799999999744	["912", "9120", "9123", "9121", "9122", "9125", "9126", "9127"]	14.119099999998497
+0	4	7.296199999998976	4.420200000001984	["clinton", "cleveland", "clark", "clearwater", "clear", "class", "cle", "clinic"]	13.282300000000191
+0	5	9.173400000001664	5.424599999997781	["\"p", "\"+", "\"@", "\"$", "\"/", "\".", "\"\"\""]	16.401799999997024
+0	5	9.114000000003841	5.4917999999943845	["dallas", "north", "houston", "west", "columbus", "al"]	16.18670000000222
+0	3	5.500400000002514	3.5616999999987797	["hz", "hp", "highway", "home", "high", "hr", "ho"]	10.681200000000501
+0	4	7.3232000000018616	4.4088999999978284	["ln", "lane", "loop", "lake", "la", "los angeles", "las vegas", "little"]	13.3498000000003
+0	8	14.716500000005794	8.595599999992487	["wenatchee", "wenatche", "wenatchee wa", "wenatchee wa 98801", "wenatchee wa 98821", "wenatchee wa 98501", "wenatches", "wenatchee wa 98521"]	25.443599999999122
+0	3	5.460100000000523	3.3479999999990184	["00", "000", "01", "03", "02", "08", "04"]	10.397600000001006
+0	2	3.6222999999964145	2.3275000000033685	["county", "co", "cost", "country", "coordinates", "code", "court", "cover"]	7.566499999999365
+0	4	7.294800000000379	4.369700000001586	["plans", "plan", "planner", "plank", "planning", "plant", "plantation", "plants"]	13.180099999999584
+0	5	9.157099999999474	5.538300000001328	["hitler", "hit", "hitchcock", "hitch", "hitting", "hits", "hitchcock tx", "hitler's"]	16.23050000000248
+0	4	8.728199999996633	5.228300000005959	["springs", "la", "ok", "spring", "in", "dioxide", "ar"]	16.551599999999667
+0	5	14.735399999999288	5.695200000001677	["nj", "njer", "njj", "nj 07029", "nj 07026", "njersey", "nj 07712", "nje"]	23.859099999999245
+0	4	8.278000000000674	5.97840000000005	["wheel", "wheels", "white", "what", "wheat", "whiskey", "who", "when"]	15.91099999999912
+0	7	13.625399999991572	7.677300000008103	["dollar", "dollars", "doll", "dolls", "dollar tree", "dolly", "dollywood", "dolls for sale"]	22.951400000000177
+0	5	9.189699999996748	5.526200000002035	["covers", "cover", "covered", "coverage", "covert", "covering", "cover for sale", "cover for"]	16.326899999999256
+0	4	7.442600000000965	4.342599999997532	["me", "memphis", "mesquite", "mesa", "medford", "meridian", "melbourne", "meriden"]	13.395499999997895
+0	7	12.87890000000047	7.611899999997007	["reference", "referenced", "references", "reference list", "referenced test", "references in", "references in ap", "referenced test:"]	22.17730000000273
+0	3	5.460299999999307	3.329900000000663	["fraction", "frame", "from", "free", "front", "french", "fry", "franc"]	10.312600000002448
+0	7	12.947800000006282	7.530399999993165	["liquid", "liquids", "liquid smoke", "liquidity", "liquid smoke detector", "liquids for", "liquids for sale", "liquidity ratio"]	22.106600000000753
+0	8	14.714500000000186	8.75170000000125	["fridge", "fridge to cubic", "fridge to", "fridge to cubic feet", "fridge to cubic feet per", "fridge to cubic feet per second", "fridge to cubic feet per second to", "fridge to cubic feet per second to lit"]	25.053800000002013
+0	8	14.793199999996176	8.578000000003527	["daily", "dairy", "dailymotion", "dairy queen", "dairy queen in", "dailymotion for", "dailymotion for sale", "dairy queen in us"]	24.97370000000032
+0	5	9.2484000000006	5.455200000000104	["id", "idaho", "ideas", "identification", "identity", "idle", "ide", "idea"]	16.37500000000003
+0	5	9.134199999998316	5.398899999999429	["wi\"", "wi\", wi", "wi\", ia", "wi\"/>", "wi\"?", "wi\":", "wi\");", "wi\")"]	16.6864000000011
+0	5	9.181100000006381	5.385199999995649	["avenue", "av", "aven", "aver", "avenu", "avenues", "avenuemiami", "average"]	16.13259999999883
+0	6	11.04620000000267	6.492999999998972	["vermont", "vermont 05403", "vermont 05408", "vermonton", "vermonth", "vermonthly", "vermonths", "vermonton nj"]	19.66669999999837
+0	5	9.281699999995396	5.444100000005392	["what", "what county", "whats", "whale", "whales", "whatever", "whats in", "whale bay"]	16.386499999999415
+0	4	7.448800000002365	4.345999999998185	["masontown", "masood", "masontown pa", "masore", "masor", "maso", "masont", "mason"]	13.829299999997602
+0	5	9.111399999994774	5.451500000006604	["family", "fam", "familia", "family practice", "famous", "familiar", "families", "fame"]	16.169999999998907
+0	8	14.671500000002169	8.555899999997507	["loads", "loads for", "loads for sale", "loads for sale in", "loads for sale in us", "loads for sale in usa", "loads for sale in usaa", "loads for sale in usaa."]	24.84410000000281
+0	3	5.472400000002153	3.2605999999972823	["model", "mode", "modem", "models", "modern", "modeling", "model kit", "modes"]	10.282400000001246
+0	5	9.154400000003449	5.41319999999601	["ca", "cal", "calif", "canada", "california", "camp", "cam", "can"]	16.177599999998904
+0	3	5.646500000000998	3.38469999999802	["district", "dist", "districts", "distance", "dis", "dish", "distribution", "dismissal"]	10.641700000000753
+0	8	14.924500000006446	8.575499999992076	["figures", "figures for", "figures for sale", "figures for sale in", "figures for sale in us", "figures for sale in usa", "figures for sale in usaa", "figures for sale in usaa."]	25.173599999998686
+0	4	7.324099999998168	4.426500000000999	["12", "120", "121", "125", "126", "122", "128", "124"]	13.280800000000426
+0	8	14.762599999997406	8.524800000003552	["woodbridge", "woodbridge nj", "woodbridge ny", "woodbridge nj 07095", "woodbridge nj 08857", "woodbridge nj 07025", "woodbridge ny 11797", "woodbridge nj 08817"]	25.425999999999505
+0	8	15.08029999999394	8.59380000000698	["rims", "rims for", "rims for sale", "rimsy", "rims for sale in", "rimsy box", "rims for sale in n", "rims for sale in nc"]	25.793799999998868
+0	4	7.470000000004973	4.337999999997066	["houston", "harrison", "hampton", "harrisburg", "henderson", "highland", "high point", "hamilton"]	13.441200000002596
+0	4	7.281299999998936	4.315500000000583	["abortion", "about", "abortions", "above", "abort", "aborted", "abolished", "abolition"]	13.150700000000626
+0	2	3.7802999999989595	2.237300000000886	["girl", "boy", "baby", "man", "dog", "woman", "child", "in"]	7.495099999999866
+0	8	14.582300000000714	8.624000000001075	["morristown", "morristown nj", "morristown ny", "morristown nj 07960", "morristown nj 07950", "morristown nj 08060", "morristown nj 08050", "morristown ny 11777"]	25.36879999999897
+0	4	7.2503999999966595	4.441100000001086	["900", "90", "917", "91702", "99", "93", "90019"]	13.230300000000028
+0	4	7.282599999996364	4.373000000004623	["power", "powerball", "powers", "pow", "powder", "powerful", "powered", "powhatan"]	13.161100000001369
+0	5	9.22790000000262	5.465999999998417	["wi", "wi 53959", "wi 53958", "wi 53536", "wi 53534", "winter", "win", "winston"]	16.436799999997476
+0	5	9.12320000000122	5.499699999997887	["texas", "texasa", "texas 78541", "texas 78542", "texash", "texass", "texasc", "texasi"]	16.682199999998204
+0	2	3.64229999999921	2.2103000000015527	["gave", "gay", "gain", "games", "game", "gains", "gained", "ga"]	7.522800000000274
+0	5	9.184800000003435	5.459899999994633	["\"p", "\"<", "\"@", "\"+", "\"\"\"", "\"/", "\"\u2026"]	16.29970000000114
+0	6	11.018400000001094	6.463999999997583	["= how", "= how many", "==", "= how many square", "= how many square feet", "===", "=>"]	19.084200000001772
+0	4	7.266600000004786	4.432699999995293	["mn", "wa", "nd", "park", "co", "city", "kirkland"]	13.193199999999905
+0	5	9.215000000001083	5.486899999997519	["coin", "coins", "coinbase", "coined", "coinsurance", "coincidence", "coincidences", "coinbaseball"]	16.3183999999994
+0	7	12.7927000000021	7.541899999999657	["aspen", "aspen co", "aspend", "aspent", "aspendale", "aspentine", "aspen co 816", "aspenter"]	22.420700000001403
+0	3	5.521999999999139	3.3141999999983796	["henderson", "hendersons", "henderson va", "hendersontown", "hendersown", "hendersock", "hendersonsville", "henderso"]	10.9109000000025
+0	4	7.30259999999916	4.401999999998907	["bar\"", "bar\"e", "bar\":[\"", "bar\"},", "bar\">", "bar\"e,", "bar\"><", "bar\"))"]	13.697900000000374
+0	3	5.417600000001244	3.2740999999987253	["cyxter", "cyxterra", "cyxters", "cyxtera", "cyxte", "cyxtell", "cyxtec", "cyxtermin"]	10.861800000000699
+0	7	12.882599999997524	7.655899999999605	["sonora", "sonoma", "song", "songs", "sonora ca", "sons", "sonic", "sonoma ca"]	22.08079999999768
+0	3	5.527500000003016	3.329999999998279	["for him", "for girls", "ideas", "print", "to", "images", "in", "to make"]	10.438999999998089
+0	4	7.371700000003756	4.359099999998506	["salon", "salons", "salem", "san francisco", "sale", "sales", "san diego", "salem ma"]	13.277699999999726
+0	3	5.495399999997375	3.3497000000011212	["pan", "pans", "panels", "panel", "panic", "pants", "pant", "pand"]	10.506800000001704
+0	7	12.83920000000549	7.619799999993404	["by", "by 2", "bypass", "by 2/3", "by 2/5", "bytes", "bye", "byte"]	22.024500000000558
+0	8	14.660800000001473	8.651499999999146	["reais", "reaisstown", "reaisstown pa", "reaisstown pa.", "reaisstown pa. 1706", "reaisstown pa. 1707", "reaisstown pa. 17063", "reaisstown pa. 17073"]	25.566500000000048
+0	8	14.717900000000839	9.059499999999332	["thickjness", "thickjnesses", "thickjness for sale", "thickjness for", "thickjnesses for sale", "thickjnesses for", "thickjness for sale in", "thickjness for sale in us"]	25.923199999997593
+0	4	7.39160000000183	4.395899999998676	["engine", "engines", "eng", "engage", "english", "engraver", "engraving", "engineering"]	13.415900000001812
+0	4	7.293999999998135	4.3946000000012475	["home", "homes", "homeless", "hometown", "home depot", "homer", "homeland", "homework"]	13.198100000000323
+0	5	9.299899999998473	5.491400000003921	["power", "power of", "powers", "power of the", "powerful", "power of the bible", "powers of", "powered"]	16.34470000000121
+0	3	5.628799999996659	3.364900000004667	["port", "portraits", "por", "portrait", "portable", "porch", "pork", "pores"]	10.651099999996916
+0	4	7.3824999999949625	4.393200000006203	["can", "candy", "canvas", "can't", "cannabis", "canyon", "canoe", "canopy"]	13.28240000000136
+0	8	14.791400000003563	8.952499999995922	["pay:\"", "pay:\"a", "pay:\"a:", "pay:\"a::", "pay:\"a:::", "pay:\"a::::", "pay:\"a:::::", "pay:\"a::::::"]	26.370000000000005
+0	4	7.334300000000127	4.406299999999419	["tu2961\"", "tu2961\"t", "tu2961\"?", "tu2961\"\u2014", "tu2961\":[\"", "tu2961\"[", "tu2961\"],\"", "tu2961\">"]	13.879599999999215
+0	8	14.651300000007694	8.770399999992406	["decimal", "decimal in simplest", "decimal in", "decimal in simplest form", "decimal in simplest form of", "decimal in simplest form of a", "decimal in simplest form of a number", "decimal in simplest form of a number is"]	24.95649999999827
+0	6	11.064900000000932	6.553600000000159	["11/22/19", "11/22/2019", "11/22//", "11/22/19 to", "11/22/2019 to", "11/22/19 to today", "11/22//18", "11/22/2019 to today"]	19.578700000000282
+0	7	12.976900000005287	7.606099999996729	["pictures", "picture", "pict", "picton", "pictured", "pictures of", "picture frames", "pictured rocks"]	22.104699999999866
+0	2	3.648399999999441	2.22400000000178	["300", "301", "350", "302", "310", "305", "303"]	7.490199999999447
+0	4	7.317900000000321	4.424600000000112	["17134.1345", "17134.13456", "17134.13458", "17134.13454", "17134.13452", "17134.13453", "17134.13459", "17134.13451"]	13.78530000000211
+0	4	7.426599999998729	4.402999999999935	["77008", "77009", "77057", "77024", "us", "zip"]	13.266399999999123
+0	3	6.002500000004574	3.409099999995391	["point", "valley", "heights", "lake", "point in", "river", "hills", "hill"]	10.915300000000627
+0	4	7.508200000000187	4.374599999998452	["89060", "890607", "890601", "890606", "890605", "890603", "890600", "890604"]	14.123699999998962
+0	8	15.457299999994234	11.231200000004549	["430", "43035", "43035 for", "43035 for sale", "43035 for sale in", "43035 for sale in texas", "43035 for sale in tex", "43035 for sale in texas 7"]	28.260500000001798
+0	6	11.059000000003039	6.659799999997773	["detroit", "det", "detroit mi", "detox", "detergent", "detail", "detergents", "detective"]	19.35569999999842
+0	3	5.460499999998092	3.31470000000067	["news", "us", "world", "media", "united", "bible", "1960", "civil"]	10.364700000000227
+0	6	10.962199999998035	6.538100000000213	["jefferson", "jeffersonville", "jeffersonville in", "jeferson", "jeffrey", "jefe", "jeford", "jefersonville"]	19.46399999999926
+0	6	11.632400000003429	6.551199999996982	["stream", "stream ny", "stream n", "street", "streams", "streets", "street san francisco", "street san jose"]	19.80869999999868
+0	8	14.661400000001379	9.346300000000696	["secession", "secessionist", "secessionisty", "secessionisty n", "secessionisty nc", "secessionisty nc-", "secessionisty nc-3", "secessionisty nc-3a"]	25.846600000001274
+0	4	8.475799999999367	4.370400000002661	["church", "christ", "children", "college", "city", "closing", "county", "common"]	14.410000000001588
+0	5	9.199300000002353	5.420799999996007	["marietta", "martinez", "marion", "marathon", "margate", "marshfield", "marble", "mars"]	16.190700000002778
+0	8	14.68290000000394	8.971799999997643	["charlottesville", "charlottesville va", "charlottesville va 22903", "charlottesville va 22901", "charlottesville va 22903 us", "charlottesville va 22901 us", "charlottesville va 22903 usa", "charlottesville va 22901 usa"]	25.871500000000935
+0	7	12.7769000000022	7.6438000000003115	["rd<", "rd< tn", "rd< t", "rd< tn 37167", "rd< tn 37686", "rd<<", "rd</", "rd<?"]	22.40409999999926
+0	3	5.478200000002431	3.3394999999991626	["mills", "mill", "mi", "middle", "mine", "miss", "milford", "mile"]	10.50430000000091
+0	3	5.475900000003975	5.2454999999973495	["handle", "handles", "hand", "hardware", "hat", "hard", "hang", "haul"]	12.214400000001291
+0	4	7.239200000004331	4.504099999994793	["mo", "rd", "for sale", "dr", "bag", "ar", "in", "gene"]	13.24029999999965
+0	8	14.541899999997554	8.662500000003348	["tolerance", "tolerance test", "tolerance test kit", "tolerance test kit.", "tolerance test kit.pdf", "tolerance test kit.pdfs", "tolerance test kit.pdfs.", "tolerance test kit.pdfs.com"]	24.98199999999784
+0	2	3.6938999999982514	2.205899999999872	["childhood", "child", "children", "chill", "chief", "chicken", "chip", "childcare"]	7.588200000000711
+0	6	10.988000000001108	6.510099999999852	["square", "squares", "squared", "square feet", "squarespace", "squarely", "squared-", "squared-1"]	19.234299999997262
+0	4	7.258800000006005	4.4612999999955605	["east", "erie", "elizabeth", "elizabethtown", "elk", "evans", "elkton"]	13.27879999999837
+0	3	5.474200000001872	3.250200000000092	["\"p", "\"{", "\"@", "\"\"\"", "\"(", "\"\"", "\"<"]	10.358899999999949
+0	3	5.986899999999906	3.2764000000007343	["for", "holder", "set", "case", "review", "color", "head", "with"]	10.87270000000018
+0	3	5.566400000006411	3.281799999992785	["fl", "city", "wa", "hills", "ok", "miami", "park", "village"]	10.373200000000082
+0	4	7.377200000000528	4.352999999998275	["character", "characters", "characteristics", "characterized", "characteristic", "characterization", "charact", "characterized by"]	13.319599999999099
+0	8	14.629399999993353	8.564200000005684	["nickel", "nickel value", "nickel value chart", "nickel value chart/", "nickel value chart/value", "nickel value chart/value chart", "nickel value chart/value chart/", "nickel value chart/value chart/pdf"]	24.81819999999857
+0	4	7.2013000000019645	4.410100000001194	["building", "built", "business", "bus", "buffalo", "budget", "build", "buy"]	13.160100000000341
+0	3	5.4693000000014536	3.3240999999968324	["and", "and answers", "answers", "about", "answer", "answered", "are"]	10.378299999999285
+0	8	14.676199999993145	8.598100000003939	["starter", "starters", "starter kit", "starters for", "starters for sale", "starter kit.", "starter kit.com", "starters for sale/"]	25.04289999999898
+0	2	3.6439000000001442	2.2093999999981406	["street", "st", "subway", "streets", "suite", "skyline", "state"]	7.3958999999987896
+0	4	7.335900000001061	4.3632999999978495	["skid", "skin", "sketch", "skins", "skirt", "sky", "skyline", "skull"]	13.214600000001298
+0	5	9.098000000005158	5.434799999992634	["midland", "midland mi", "midlands", "midlan", "midlane", "midlander", "midland mi 48642", "midlando"]	16.559499999999616
+0	8	14.611899999991351	8.559900000005172	["axe", "axes", "axe handle", "axespring", "axe handlebar", "axespring tx", "axe handlebar removal", "axespring tx 77379"]	24.94700000000094
+0	8	14.615499999997894	8.53190000000481	["sale", "sales", "sale in", "salesman", "sale in n", "sale in nc", "sales and", "sales and use"]	24.780199999998587
+0	8	14.713199999995652	8.564700000004422	["today", "today's", "today's date", "today's date of birth", "today's date of", "today's date of birth date", "today's date of birth date/", "today's date of birth date/time"]	24.85969999999682
+0	7	12.878299999997012	7.658100000000445	["images", "image", "imagery", "images for", "images for sale", "image for", "image for sale", "imagery for sale"]	22.20960000000005
+0	4	7.38799999999884	4.380000000001161	["uncirculated", "unc", "uncle", "uncirc", "unconstitutional", "uncertainty", "unchained", "unclean"]	13.370599999998234
+0	3	5.488499999998453	3.2871000000014305	["border", "born", "boring", "bore", "borough", "borrow", "borders", "borrowed"]	10.421000000000902
+0	3	5.512400000000639	3.2992999999983397	["direction", "director", "directions", "direct", "directory", "directly", "directional", "dire"]	10.515899999997913
+0	7	12.896200000003688	7.668599999998804	["lake", "lakes", "lake mn", "lake mary", "lakes nc", "lakes nj", "lake mary fl", "lake mn 5"]	22.221200000000607
+0	2	3.66250000000079	2.2114999999978124	["it", "tv", "the", "them"]	9.307700000000807
+0	8	14.686600000000993	8.67359999999806	["something", "something good", "something good to", "something good to me", "something good to mex", "something good to mexico", "something good to mexico mo", "something good to mexico moz"]	25.043499999998886
+0	2	3.6948999999992793	2.278199999999231	["co", "cold", "cow", "cop", "cost", "col", "con", "country"]	7.740600000001763
+0	7	13.052699999999362	7.707200000002246	["chart", "charts", "chart/", "charter", "chart/price", "charts/", "charts/pdf", "charter arms"]	22.431499999999716
+0	8	14.630800000002608	8.747599999999522	["basketball", "basketball roster", "basketball roster for", "basketball roster for 2018", "basketball roster for 2018-", "basketball roster for 2018-19", "basketball roster for 2018-19-", "basketball roster for 2018-19-19"]	25.047199999999492
+0	5	9.398900000004318	5.405199999994892	["sc", "sc 29485", "sc 29708", "school", "sch", "schools", "scarborough", "screen"]	16.473200000000077
+0	8	14.970399999992168	8.593100000009457	["pattern", "patterns", "pattern for", "patterns for", "patterns for free", "pattern for free", "patterns for free print", "pattern for free download"]	25.117899999997917
+0	7	12.93689999999259	7.579500000005623	["jersey", "jerseys", "jerusalem", "jericho", "jersey 0", "jericho ny", "jersey 070", "jerusalem ny"]	22.14700000000036
+0	3	5.526199999998482	3.301100000001611	["clue\"", "clue\"s", "clue\"?", "clue\"-", "clue\"><", "clue\",", "clue\".[", "clue\":-"]	11.050799999999583
+0	8	14.798399999996548	8.752400000002325	["chevy", "chevy c", "chevy c10", "chevy c10.", "chevy c10.3", "chevy c10.3l", "chevy c10.3lv", "chevy c10.3lv6"]	25.799200000001576
+0	3	5.704100000002654	3.314299999999548	["allen", "allens", "allent", "allende", "allendale", "allene", "allenh", "allena"]	11.239599999999683
+0	5	9.190100000001422	5.910300000000035	["booster", "boost", "boosters", "booster kit", "boosted", "boosting", "boost kit", "boosts"]	16.761999999999944
+0	2	3.6643999999981247	2.2572000000025128	["rod", "rods", "rock", "room", "river", "roll", "ridge"]	7.594300000000942
+0	8	14.782600000000201	8.621000000001544	["companies", "companies in", "companies in n", "companies in ny", "companies in nyc", "companies in nyc n", "companies in nyc ny", "companies in nyc nyc"]	25.139499999998094
+0	5	9.23999999999836	5.405499999998398	["stock", "stocks", "stocking", "stock exhaust", "stocked", "stockpile", "stocks for", "stocks for sale"]	16.311300000001694
+0	5	9.217300000003092	5.39269999999803	["junk", "jun", "junction", "juno", "junior", "jungle", "junk yard", "jung"]	16.315099999999916
+0	6	10.954299999994532	6.491800000006265	["sale", "sales", "sal", "sale in", "salem", "salvage", "salt", "sale in miami"]	18.9711999999993
+0	8	14.629700000003965	8.607699999995333	["parts", "parts for", "parts for sale", "parts for sale in", "parts for sale in n", "parts for sale in nc", "parts for sale in nc 28", "parts for sale in nc 28a"]	24.899600000001243
+0	3	6.69960000000458	3.670099999997234	["covers", "cover", "chart", "cushion", "cushions", "control", "ca", "co"]	11.981899999998546
+0	7	12.870100000004214	7.783199999995105	["cylinder", "cyl", "cylinders", "cylinder 1", "cylinders.", "cylinders.com"]	22.31869999999958
+0	8	14.723900000007006	8.60209999999384	["diagram", "diagrams", "diagram for", "diagrams for", "diagram for sale", "diagrams for sale", "diagram for sale-", "diagram for sale-a"]	25.022700000000953
+0	3	5.623899999999793	3.312300000001045	["hood", "dash", "seat", "bed", "load", "door", "window", "the hood"]	10.403000000000162
+0	6	11.177599999999899	6.5224999999990985	["numbers", "number", "numbered", "numbering", "numbers for", "numb", "numbers for sale", "number for"]	19.277999999999906
+0	8	14.657399999997267	8.58880000000184	["fucking", "fucking.com", "fucking.php", "fucking.php.com", "fucking.php.pdf", "fucking.com.com", "fucking.com.pdf", "fucking.php.pdf.com"]	24.83790000000141
+0	3	5.526399999997267	3.2867000000038615	["trim", "for", "for sale", "panel", "mold", "of", "light", "panels"]	10.260099999999994
+0	8	14.729800000001347	8.50989999999996	["lighter", "lighter fluid", "lighter fluid fuse", "lighter fluid fuse box", "lighter fluid fuse box diagram", "lighter fluid fuse box diagram.", "lighter fluid fuse box diagram.pdf", "lighter fluid fuse box diagram.pdfs"]	24.95180000000019
+0	8	14.662300000001238	8.66269999999858	["gasket", "gasket kit", "gasketball", "gasket kit for", "gasket kit for sale", "gasketball engine", "gasket kit for sale in", "gasketball engine diagram"]	25.531600000000765
+0	3	5.687800000000465	3.2847999999994215	["truck", "transmission", "trans", "trucks", "transfer", "trunk", "trailer", "trim"]	10.437100000000754
+0	8	14.790500000003703	8.693399999994966	["gauge", "gauge cluster", "gauge cluster wiring", "gauge cluster wiring diagram", "gauge cluster wiring diagrams", "gauge cluster wiring diagrams-", "gauge cluster wiring diagrams-a", "gauge cluster wiring diagrams-a1"]	25.098800000002086
+0	8	14.745499999992973	8.949400000009433	["results", "results for", "results for the", "results for the week", "results for the week 1", "results for the week 1/2", "results for the week 1/23", "results for the week 1/23/"]	25.284599999999102
+0	4	7.32789999999639	4.414600000004043	["il", "ill", "il 60448", "illinois", "in", "iowa", "is"]	13.39190000000201
+0	8	14.690899999997953	8.62030000000047	["sport", "sports", "sportsman", "sportster", "sporting", "sporting goods", "sportster for", "sportster for sale"]	24.895499999999515
+0	5	9.949099999996491	5.5352000000006285	["bolts", "bolt", "bolt pattern", "bolts for", "bolts for sale", "bol", "bold"]	17.060599999997095
+0	8	16.849100000001727	8.587799999997259	["street", "streets", "street in", "streetcar", "streetside", "street in n", "street in ny", "streetcar map"]	27.139300000001754
+0	8	14.815999999996166	8.60280000000202	["harness", "harness diagram", "harness diagrams", "harness diagrams-", "harness diagrams-10", "harness diagrams-10e", "harness diagrams-10e-", "harness diagrams-10e-1"]	25.139100000000525
+0	3	5.459399999999448	3.3408000000001437	["fuel", "fuse", "front", "for", "fire", "filter", "fender"]	10.382700000000966
+0	5	9.103400000004314	5.516499999995261	["engine", "engines", "engine for sale", "engine for", "engineering", "engineer", "engineers", "engines for sale"]	16.130000000000422
+0	7	13.279100000001876	7.984499999999173	["clue", "clues", "clue clue", "clues for", "clueless", "clues for sale", "clue clue for", "clueless for"]	22.899500000001183
+0	8	14.753799999994044	8.597500000007585	["today", "today in", "today in us", "today in usd", "today in usd in", "today in usd inr", "today in usd inr.", "today in usd inr.d"]	24.949100000000612
+0	4	7.311400000002521	4.35759999999874	["kg", "kilograms", "kil", "kilos", "km", "kilometers", "kill"]	13.133700000000914
+0	3	5.591700000000088	3.2956000000012864	["e0sb-6660220-awa", "e0sb-6660220-aware", "e0sb-6660220-away", "e0sb-6660220-awar", "e0sb-6660220-awatts", "e0sb-6660220-awan", "e0sb-6660220-aways", "e0sb-6660220-awareness"]	11.149400000000753
+0	3	5.442900000002027	3.3050999999986175	["lexus", "leather", "led", "le", "left", "length", "les", "letter"]	10.384899999998254
+0	3	5.4531999999980485	3.273400000001203	["cap", "cam", "center", "crash", "cab", "cover", "caps", "clutch"]	10.41670000000039
+0	7	13.007500000004057	7.589299999995802	["wikipedias", "wikipediasis", "wikipediasm", "wikipediasco", "wikipedias vs", "wikipedias vs.", "wikipediasmata", "wikipediasis'"]	22.797300000000575
+0	4	7.353699999999463	4.362000000000421	["christmas", "chevy", "checklist", "church", "cheer", "chargers", "championship", "check"]	13.33320000000171
+0	7	12.897399999996395	7.593400000001083	["?d", "??", "???", "?)", "?dvd", "??a", "???a"]	22.204599999998464
+0	3	5.546500000001231	3.278800000000359	["mileage", "mixture", "module", "motor", "manifold", "manual", "meter", "map"]	10.405800000000909
+0	2	3.66730000000004	2.2279000000011706	["repair", "replacement", "review", "rebuild", "removal", "replace", "rear", "reviews"]	7.540299999998723
+0	8	14.689100000001787	8.603000000000804	["aluminum", "aluminum boat", "aluminum boat for", "aluminum boat for sale", "aluminum boat for sale in", "aluminum boat for sale in n", "aluminum boat for sale in nj", "aluminum boat for sale in nj 0"]	24.899999999998812
+0	3	5.472199999999816	3.339300000000378	["diagram", "diagrams", "di", "distributor", "dig", "digram", "dip"]	10.366900000001067
+0	3	5.4555000000000575	3.3297999999994943	["sport", "spark", "specs", "snow", "soft", "sedan", "six", "starter"]	10.360900000002005
+0	4	7.333100000000314	4.359099999998506	["texas", "texas tech", "texasc", "texasa", "texass", "texash", "texas tech football", "texast"]	13.612099999999572
+0	2	3.7915999999960093	2.2303000000043482	["numgau", "numgauer", "numgaul", "numgaut", "numgaun", "numgaug", "numgaur", "numgaugh"]	8.234200000000413
+0	3	5.505500000001717	3.3279999999997756	["pendleton", "pendle", "pendley", "pendles", "pendleton ca", "pendler", "pendlet", "pendled"]	11.68310000000261
+0	3	5.5163000000000295	3.289399999999887	["brake", "brakes", "broken", "brush", "brown", "break", "bronco", "breather"]	10.295499999998015
+0	3	5.492799999998965	3.2854000000028805	["kit", "van", "kits", "chart", "to", "specs", "vans", "parts"]	10.297800000000024
+0	3	5.925800000003534	3.3007999999981052	["center", "ce", "central", "cemetery", "century", "ceiling", "celebration", "ceramic"]	10.823399999999594
+0	5	9.227500000001498	5.593600000000976	["texas", "the", "the us", "texarkana", "tn", "tx", "truck"]	16.588999999999743
+0	3	5.589599999996864	3.3320000000038874	["ft", "foot", "hp", "inch", "wheel", "gauge", "speed"]	10.497600000000773
+0	4	7.361400000004181	4.640499999993608	["action", "america", "a new", "american", "air", "a new movie", "atlanta"]	13.701300000001027
+0	4	7.343800000001011	4.483000000000459	["wiring", "wire", "wires", "wiring diagram", "wire diagram", "wired", "wireless", "wires diagram"]	13.673100000001881
+0	3	5.537100000001516	3.343399999998553	["mill", "mo", "mc", "mills", "morgan", "morris", "matt"]	10.491299999998205
+0	2	3.6491999999981317	2.2327000000004205	["2019", "2018", "2017", "2020", "2016", "20", "2015", "2014"]	7.454700000000258
+0	4	7.3968999999998175	4.435799999999546	["trans", "transmission", "transfer", "transfer case", "transaxle", "transmision", "transformer", "transport"]	13.333500000001663
+0	6	11.042899999992528	6.53270000000461	["gold", "golf", "gas", "ground", "gibson", "garden", "green", "garage"]	19.1439000000031
+0	5	9.175099999996661	5.501200000001205	["itimidator", "itimidators", "itimidatory", "itimidator removal", "itimidatorial", "itimidatories", "itimidatorium", "itimidators for sale"]	16.802200000000767
+0	8	15.797100000000341	8.607200000000148	["sale", "sales", "sale in", "sale in texas", "sale in texarkana", "salesman", "sales in", "sales in us"]	25.987600000000555
+0	4	7.330500000001905	4.433399999996368	["ma", "mass", "manchester", "main", "man", "madison", "map", "mark"]	13.453399999999505
+0	8	14.685099999994122	8.631200000003503	["boat", "boats", "boat for", "boat for sale", "boats for sale", "boats for", "boat for sale in", "boats for sale in"]	24.992400000002135
+0	3	5.518199999997364	3.2806000000036306	["coach", "coated", "coat", "coal", "coaster", "coast", "coastal", "coating"]	10.373200000000082
+0	7	12.795100000001725	7.5792999999997335	["save", "saved", "saves", "save the", "save the date", "saved by", "saves the", "saves the day"]	21.913900000001263
+0	8	15.000800000002812	8.649299999994753	["images", "images for", "images for sale", "images for sale in", "images for sale in us", "images for sale in usa", "images for sale in usaa", "images for sale in usaa."]	25.22599999999997
+0	5	9.260699999998678	5.442500000004458	["youtub\"", "youtub\"s", "youtub\"-", "youtub\");", "youtub\"}", "youtub\"'", "youtub\",", "youtub\"},\""]	16.843399999999065
+0	3	5.555499999996272	3.3178000000013697	["game", "games", "gaming", "gas", "gambling", "garage", "ga", "gallery"]	10.39869999999965
+0	4	7.720700000000136	5.431299999997918	["#77", "#775", "#773", "#777", "#772", "#770", "#778", "#771"]	15.165500000001941
+0	8	14.704000000001827	8.622599999998926	["checklist", "checklist pdf", "checklist pdfs", "checklist pdfs-", "checklist pdfs-1", "checklist pdfs-1-", "checklist pdfs-1-2", "checklist pdfs-1-2-"]	25.040499999999355
+0	5	9.199400000003521	5.50339999999494	["replacement", "replace", "replaced", "replacements", "replaces", "replacement/", "replaced/"]	16.3183999999994
+0	2	3.7045999999989476	2.252099999999757	["regulator", "relay", "replacement", "removal", "repair", "replace", "rack", "rubber"]	8.18609999999964
+0	3	5.583099999999064	3.398100000001847	["dash", "dam", "dashboard", "david", "data", "dance", "dark", "day"]	10.570999999998776
+0	2	3.6844000000009203	2.247799999999245	["few", "fence", "feed", "fever", "felony", "fe", "female", "ferry"]	7.654899999998577
+0	4	7.4398000000002185	4.428799999999455	["mounts", "mount", "mounting", "mountain", "mounted", "mount replacement", "mountain bike", "mountains"]	13.371499999998093
+0	3	5.646500000004551	3.316499999996836	["ratio", "removal", "oil", "box", "replacement", "diagram", "ratios", "adjustment"]	10.50689999999932
+0	5	9.220200000005008	5.549599999994825	["window", "windshield", "windows", "window regulator", "wind", "winds", "winding"]	16.346400000003314
+0	3	5.617699999998393	3.346400000001637	["game", "to", "for", "in", "on", "at", "by", "schedule"]	10.563600000001117
+0	2	3.6776000000031672	2.2671999999985815	["parts", "part", "panel", "pack", "park", "pad", "pan", "pads"]	7.643300000001574
+0	6	11.12940000000151	6.582300000001595	["4x4", "4.6", "4.4", "460", "40", "4.6l", "4.4l", "4x6"]	19.237300000000346
+0	8	14.853099999999841	9.421700000000754	["location", "locations", "location diagram", "locations in", "locations in a", "locations in arizona", "locations in ari", "location diagrams"]	25.896899999999334
+0	3	5.5845000000012135	3.335699999997388	["come", "connect", "come on", "control", "cover", "cool", "color", "cold"]	10.62429999999992
+0	3	5.603499999995876	3.309300000001514	["pattern", "patterns", "parts", "problems", "pull", "pin", "package", "pictures"]	10.53489999999968
+0	4	7.349800000000073	4.4149000000004435	["tk", "tko", "tkr", "tkm", "tka", "tks", "tke", "tki"]	13.918600000000225
+0	3	5.510400000002136	3.3712999999977455	["problems", "diagram", "parts", "removal", "for sale", "size", "replacement", "conversion"]	10.308999999999457
+0	4	7.356600000001379	4.436600000001789	["power", "power steering", "powers", "power steering pump", "powder", "pow", "powered", "poway"]	13.41860000000139
+0	2	3.668699999998637	2.221999999999724	["reset", "reverse", "relay", "rear", "repair", "red", "ready", "replace"]	7.494700000002297
+0	2	3.7052999999964698	2.237800000003176	["kit", "diagram", "for", "on", "up"]	7.538600000000173
+0	3	5.757900000002536	3.297599999996237	["specs", "sport", "speed", "spark", "specifications", "spare", "special", "spec"]	10.613300000002823
+0	4	7.383399999998375	4.421799999999365	["roosevelt", "roosevelt dime", "roosevelt dime value", "rooseve", "roosevelle", "roosevel", "roosever", "roosevers"]	13.958099999999973
+0	2	3.691200000002226	2.230599999997196	["autocenter", "autocen", "autocend", "autocent", "autoceng", "autocena", "autocene", "autocents"]	8.16730000000021
+0	8	15.234599999999432	8.630200000002475	["steering", "steering pump", "steering pump diagram", "steering pump diagrams", "steering pump diagrams/", "steering pump diagrams/s", "steering pump diagrams/sdi", "steering pump diagrams/sdi-"]	25.460200000001265
+0	4	7.399199999998274	4.4601000000028534	["cost", "costs", "costume", "costumes", "costly", "costing", "cost to replace", "cost to"]	13.447200000001658
+0	8	14.863199999997079	8.702900000002955	["perched", "perched on", "perched on ebay", "perched on e", "perched on ebay for", "perched on ebay for sale", "perched on ebay for sale.", "perched on ebay for sale.com"]	25.239900000002535
+0	3	6.080500000003042	3.3646999999952243	["bar", "bark", "barn", "barbecue", "bart", "barrel", "bartlett", "bars"]	11.029300000000575
+0	8	14.89029999999758	8.665000000000589	["capacity", "capacity chart", "capacity chart.", "capacity chart.pdf", "capacity chart.pdfs", "capacity chart.pdfs.", "capacity chart.pdfs.com", "capacity chart.pdfs.comt"]	25.28739999999985
+0	4	7.451300000003158	4.498399999999236	["car", "catalytic", "carb", "cabin", "cargo", "cam", "carbon", "catalytic converter"]	13.446199999997077
+0	4	7.538900000003679	4.4109999999975	["specs", "service", "spark", "starter", "steering", "start", "starting", "speed"]	13.526999999999845
+0	2	3.7207999999999686	2.2607999999983974	["starting", "shifting", "shut", "start", "sitting", "spark", "stop", "stopping"]	7.626000000001909
+0	4	7.413700000000745	4.347999999996688	["for sale", "for", "fork", "forum", "fort", "form", "formula", "fort worth"]	13.367399999999918
+0	8	15.8823999999953	8.630800000005934	["shaft", "shaft seal", "shaft seal replacement", "shaft seal replacement video", "shaft seal replacement video youtube", "shaft seal replacement video youtube/", "shaft seal replacement video youtube/s", "shaft seal replacement video youtube/s2"]	26.090999999997422
+0	4	7.39350000000627	4.5021999999939055	["remove", "remote", "remodel", "remotely", "remod", "remove it", "removal", "removed"]	13.57889999999884
+0	3	5.5845000000012135	3.302199999996702	["engine", "end", "eng", "engines", "english", "entry", "enduro", "energy"]	10.416899999999174
+0	8	14.714999999998923	8.725099999999486	["symbols", "symbols for", "symbols for sale", "symbols for sale in", "symbols for sale in us", "symbols for sale in usa", "symbols for sale in usaa", "symbols for sale in usaa."]	25.110200000000304
+0	4	7.330399999997184	4.440100000003611	["paso", "pas", "paso tx", "pass", "past", "pastor", "password", "passport"]	13.434199999998953
+0	3	5.603700000001766	3.3226999999982354	["transmission", "transfer", "trans", "transfer case", "transformer", "transmissions", "transmision", "trans fluid"]	10.455499999999063
+0	2	3.7347999999965964	2.264200000002603	["problems", "parts", "plug", "problem", "pressure", "pin", "pump", "plate"]	7.642100000001761
+0	8	15.3063999999965	8.62160000000145	["1999", "1999-", "1999-2", "1999-2a", "1999-2aa", "1999-2aa1", "1999-2aa1a", "1999-2aa1a1"]	25.701200000000313
+0	3	5.55840000000174	3.3030999999965616	["specs", "spec", "special", "specifications", "specification", "spectra", "specific", "spectrum"]	10.363500000000414
+0	4	7.511700000002008	4.412099999999697	["5x8", "5x80", "5x8 for sale", "5x8 for", "5x85", "5x83", "5x800", "5x81"]	14.037199999997085
+0	3	5.828700000002129	3.3034999999976833	["front", "for sale", "fuel", "fuse", "front bumper", "fog", "factory", "fan"]	10.652600000000234
+0	4	7.404000000001076	4.430799999997959	["open", "opening", "opener", "open door", "opened", "opens", "openings", "openshift"]	13.468700000000666
+0	8	14.924699999994573	8.608400000007066	["englewood", "englewoods", "englewood co", "englewoods n", "englewood co.", "englewoods ny", "englewood co. n", "englewood co. nj"]	25.825000000001097
+0	5	9.256500000002887	5.432699999996515	["face", "facet", "facebook", "faced", "faceplate", "faces", "facets", "faceted"]	16.2627999999998
+0	8	15.776699999999977	8.705499999997812	["92", "92fs", "92fs1", "920", "92fs1-", "92fs1-1", "920.5", "920.9"]	26.146099999998285
+0	3	5.548900000004409	3.3183999999941705	["government", "governing", "govern", "governance", "governed", "governor", "governments", "governs"]	10.543200000000752
+0	8	14.824399999994853	8.638000000004808	["configuration", "configurations", "configuration of", "configurations for", "configuration of h", "configuration of h2", "configurations for h", "configuration of h2o"]	25.09639999999891
+0	4	7.407799999999298	4.365700000001027	["south", "social", "south africa", "social security", "sonic", "socket", "solar", "someone"]	13.34449999999876
+0	6	11.039099999997859	6.552800000005021	["block", "blocks", "blockage", "blocking", "blocked", "blocker", "blockers", "blockade"]	19.185499999998967
+0	8	15.407900000006691	8.57059999999521	["pdf", "pdf free", "pdf free download", "pdf free download pdf", "pdf free download pdfs", "pdf free download pdfs free", "pdf free download pdfs free.", "pdf free download pdfs free.pdf"]	25.608299999998252
+0	8	14.78010000000296	8.625399999999672	["mug", "mug cake", "mug cake recipe", "mug cake recipe/", "mug cake recipe/youtube", "mug cake recipe/youtube/", "mug cake recipe/youtube/youtube", "mug cake recipe/youtube/youtube/"]	25.05209999999991
+0	4	7.374999999999687	4.432300000001277	["2.0", "2.04", "2.00", "2.02", "2.01", "2.03", "2.05", "2.09"]	13.860600000001
+0	8	14.810099999998272	8.666500000000354	["definition", "definitions", "definition in history", "definition in art", "definitions in", "definitions in the", "definitions in the bible", "definition in art history"]	25.014999999999787
+0	8	14.742900000001669	8.85459999999938	["3rd", "3rd floor", "3rd floor new", "3rd floor new york", "3rd floor new y", "3rd floor new york ny", "3rd floor new york n", "3rd floor new york ny 100"]	25.609300000002833
+0	2	3.706400000002219	2.2505999999999915	["st", "state", "start", "street", "stock", "store", "study", "status"]	7.636800000000221
+0	4	7.4573000000022205	4.385699999996717	["more", "mortgage", "more than", "morning", "mortgages", "mortality", "moral", "morphine"]	13.409899999999197
+0	3	5.539200000001188	3.303299999998899	["84", "80", "88", "85", "800", "82", "89"]	10.31889999999791
+0	7	12.942700000007079	7.702799999993459	["desert", "deserts", "desert biome", "deserts are", "deserted", "deserted island", "desert biome in", "deserts are called"]	22.14259999999868
+0	6	10.995600000001104	6.567300000000387	["fly", "flying", "fly a", "fly a butterfly", "flying squirrel", "flyers", "flyer", "flying squirrels"]	19.26170000000127
+0	4	7.330699999997137	4.419800000000862	["ohio", "ohios", "ohio for rent", "ohio for sale", "ohiop", "ohiopolis", "ohior", "ohiot"]	14.184699999997719
+0	5	9.14820000000205	5.89639999999747	["bills", "bill", "billings", "bills in", "billing", "biloxi", "bilateral", "billion"]	16.614000000000573
+0	2	3.6647999999992464	2.2401000000016325	["nj", "njo", "njit", "nja", "njc", "nje", "nju", "njer"]	7.92600000000121
+0	8	14.84339999999662	8.60200000000333	["commentary", "commentary on", "commentary on acts", "commentary on acts 1", "commentary on acts 1-", "commentary on acts 1-9", "commentary on acts 1-9-", "commentary on acts 1-9-11"]	25.038900000001973
+0	8	14.706600000003789	8.63859999999761	["later", "lateral", "later.", "later.5", "lateral men", "later.5 hours", "lateral menop", "lateral menopause"]	24.969500000000977
+0	3	5.5301000000014255	3.314099999997211	["ecosystem", "essay", "air", "animal", "atom", "office", "engine"]	10.261299999999807
+0	3	5.575600000003789	3.3180999999942173	["46135", "47", "46140", "pa", "463", "47135", "us"]	10.551400000000655
+0	8	14.777899999995014	8.651000000003961	["reliability", "reliability and reliability", "reliability and", "reliability and reliability test", "reliability and reliability test 2", "reliability and reliability test 2.4", "reliability and reliability test 2.0", "reliability and reliability test 2.4l"]	25.07310000000018
+0	4	7.34160000000017	4.474899999998172	["year", "cup", "bedroom", "day", "hour"]	13.257299999999361
+0	6	11.280499999998028	6.692500000003321	["box", "boxes", "box set", "boxing", "boxed", "boxes for", "boxer", "boxes for sale"]	19.75209999999805
+0	4	7.3509000000022695	4.468599999999157	["works", "is", "work", "runs", "you", "are", "is not"]	13.386199999999349
+0	5	9.179800000001848	5.49689999999714	["inch", "inches", "in", "impact", "id", "in 1", "is", "iron"]	16.251300000000413
+0	5	9.242099999998032	5.6010999999998035	["base", "basement", "bases", "baseball", "based", "baseboard", "baseline", "based paint"]	16.439900000001728
+0	5	9.943299999996214	5.508400000003633	["gallons", "gallon", "gal", "galaxies", "galaxy", "gallons in", "gall", "gal in"]	17.003000000002544
+0	8	14.918400000002663	8.649599999998259	["many", "many cups", "many cups of", "many cups of water", "many cups of water/", "many cups of water/2", "many cups of water/2 cup", "many cups of water/2 cup of"]	25.232899999998892
+0	4	7.443799999997225	4.389000000003307	["fire", "fires", "firearms", "fireworks", "fireplace", "fired", "firearm", "firewood"]	13.612699999999478
+0	6	11.12839999999693	6.5220000000039136	["collehotties", "collehottiesville", "collehottiest", "collehottiesville pa", "collehottiesel", "collehottiestown", "collehottiesta", "collehottiestown pa"]	19.838099999997638
+0	3	5.537599999996701	3.336300000000847	["set", "sets", "seat", "seats", "se", "seal", "serving", "series"]	10.51869999999866
+0	8	14.7981000000037	8.870599999998063	["downtown", "downtown/", "downtown/ch", "downtown/charl", "downtown/charlotte", "downtown/charlotte nc", "downtown/charlotte n", "downtown/charlotte nc 28"]	25.432099999999735
+0	5	9.21979999999678	5.4625000000037005	["sink", "sinks", "side", "single", "size", "sign", "sizes", "silver"]	16.376600000000963
+0	5	9.229200000000048	5.489300000000696	["ingles", "inglese", "inglesh", "ingless", "ingleshoot", "inglestown", "inglestar", "inglesi"]	16.805200000000298
+0	6	11.159399999996822	6.548100000003387	["bedrooms", "bedroom", "beds", "bed", "bedroom house", "bedrooms in", "beds in"]	19.342600000001653
+0	8	14.805499999994254	8.712400000007392	["remnants", "remnant", "remnants of", "remnants of the", "remnant of", "remnant of the", "remnants of the body", "remnant of the heart"]	25.123300000000626
+0	3	5.608200000001062	3.309200000000345	["heavy", "heat", "head", "helmet", "hex", "heater", "he", "heart"]	10.56339999999878
+0	3	5.930299999999278	3.330100000003	["94947-4\"", "94947-4\"e", "94947-4\"?", "94947-4\",", "94947-4\"></", "94947-4\":[{\"", "94947-4\"}],\"", "94947-4\":"]	11.409400000001568
+0	3	5.550699999997022	3.3530000000006055	["day", "dog", "dose", "drug", "do", "dr", "deer"]	10.46829999999943
+0	7	12.970099999996876	7.698600000001221	["stigma", "stigmatized", "stigmatizing", "stigmatized drugs", "stigma in the workplace", "stigma in the body", "stigmatizing drugs", "stigma in a"]	22.188299999999828
+0	2	3.6786999999982584	2.3297000000006562	["review", "reflection", "reviews", "report", "research", "results", "refers", "real"]	7.60400000000061
+0	7	13.013600000000736	7.6657999999980575	["communication", "communications", "communicating", "communication plan", "communications plan", "communicating with", "communication planer", "communicating with a"]	22.335999999999245
+0	8	14.967200000000958	9.139300000001072	["04/27/2020", "04/27/202", "04/27/2020 to", "04/27/2020 to today", "04/27/202/", "04/27/202/2019", "04/27/2020 to today's", "04/27/2020 to today's date"]	26.126800000000117
+0	8	14.953800000000683	8.639199999997516	["cooked", "cooked in", "cooked in a", "cooked in a cup", "cooked in a cup of", "cooked in a cup of cooked", "cooked in a cup of cooked rice", "cooked in a cup of cooked rice/"]	25.178600000000273
+0	3	5.540800000002122	3.3652999999986832	["old", "olds", "of", "on", "older", "one", "over", "of the"]	10.431999999997998
+0	2	3.7647999999990134	2.258199999999988	[]	7.517700000001071
+0	8	25.733899999995202	13.673500000003003	["winner", "winners", "winning", "winning books", "winner in", "winners in", "winner in 2018", "winners in 2018"]	41.86619999999763
+0	7	21.96679999999418	14.835300000004992	["luxury", "lux", "luxurious", "luxury car", "luxurious homes", "luxury car seat"]	39.5272999999996
+0	8	24.285099999996618	15.983300000002032	["\u0639\u0627\u0645", "\u0639\u0627\u0645a", "\u0639\u0627\u0645aa", "\u0639\u0627\u0645aaa", "\u0639\u0627\u0645aaaa", "\u0639\u0627\u0645aaaaa", "\u0639\u0627\u0645aaaaaa", "\u0639\u0627\u0645aaaaaaa"]	44.579500000001104
+0	3	5.686799999999437	3.3951000000023157	["bar\"", "bar\"s", "bar\"}],\"", "bar\"...", "bar\":[\"", "bar\").", "bar\"]=>", "bar\";"]	11.259200000001357
+0	2	3.692900000000776	2.250799999998776	["warranty", "power", "fee", "contract", "fees", "consent", "notice", "insurance"]	7.54840000000101
+0	7	14.27749999999861	7.6630999999984795	["plate", "plates", "plateau", "platelet", "plates/", "plateau 2", "plates/2", "platelet/"]	23.61630000000048
+0	5	9.170300000000964	5.501999999996343	["poland", "poland in", "polands", "polander", "polanda", "polanders", "polanding", "poland in the"]	16.863999999998214
+0	4	7.369300000004131	4.416799999994225	["helps", "help", "held", "helped", "helps with", "helix", "helpful", "helios"]	13.353599999998522
+0	6	11.071999999998638	6.534000000002038	["pump", "pumps", "pumping", "pump parts", "pumps for", "pumps for sale", "pumped", "pumpkin"]	19.194899999998682
+0	8	14.751900000000262	8.646200000001159	["sale", "sales", "sale in", "sale in n", "sale in nj", "salesman", "sales in", "sales in us"]	24.928800000001416
+0	5	9.220199999997902	5.4730999999996754	["stock", "steel", "stand", "stihl", "steering", "stairs", "stove", "standard"]	16.218299999998465
+0	3	5.517299999997505	4.26400000000271	["lid", "lids", "lock", "lit", "lights", "led", "liner"]	11.507999999999186
+0	4	7.467200000000673	4.388499999997464	["air", "airport", "air fryer", "aid", "aide", "airplane", "airlines", "aids"]	13.460299999998426
+0	7	13.085000000000235	7.695599999998137	["duel", "due", "duel links", "duele", "dues", "duesse", "duele v8", "duele v"]	22.41859999999818
+0	4	7.315700000003034	4.3940999999954045	["conditioner", "conditioners", "conditioner unit", "conditioners for sale", "conditionered", "conditioners for home", "conditionery", "conditionering"]	13.703499999998314
+0	7	12.97909999999547	7.57440000000642	["capacity", "capacities", "capacitor", "capacity chart", "capacities/", "capacitor size", "capacities/youtube", "capacity chart.pdf"]	22.180099999999925
+0	2	3.6498000000015907	2.5282999999980404	["sensor", "sender", "sending", "set", "seal", "sensors", "service", "setting"]	7.8440999999997985
+0	8	14.692600000000056	8.584200000001374	["decimal", "decimal form", "decimal form is", "decimal form is called", "decimal form is called what", "decimal form is called what in", "decimal form is called what in math", "decimal form is called what in mathc"]	24.81480000000147
+0	3	5.525800000004466	3.3052999999938493	["form", "formula", "forms", "format", "formulas", "form form", "formatting", "formal"]	10.540800000001127
+0	3	5.54830000000095	3.3944999999988568	["15378\"", "15378\"3", "15378\"}],\"", "15378\"[", "15378\"},{\"", "15378\"?", "15378\",\"", "15378\"("]	11.097299999999422
+0	3	5.5203999999982045	3.3802999999998917	["us", "the", "the us", "euro", "america", "2019", "2018", "india"]	10.344599999999815
+0	3	5.545000000001465	3.2877999999989527	["popsugar\"", "popsugar\"s", "popsugar\"\"", "popsugar\":[\"", "popsugar\"?", "popsugar\"(", "popsugar\"\u2026", "popsugar\"\"\""]	11.05670000000103
+0	5	9.175699999996567	5.390500000004295	["lit", "liters", "liter", "litres", "little", "litter", "little rock", "lithium"]	16.134600000000887
+0	8	14.98290000000324	8.90659999999599	["rims", "rims for sale", "rims for", "rimsy", "rims for sale in", "rims for sale in nc", "rims for sale in ny", "rimsy ln"]	25.88000000000079
+0	5	9.537900000001542	5.487799999997378	["home", "home depot", "homes", "hom", "homemade", "homelite", "homelink", "homeowner"]	16.563999999998913
+0	4	7.318800000003733	4.455999999997573	["$.60?", "$.60? in", "$.60? in pounds", "$.60?!", "$.60?,", "$.60?\"", "$.60????", "$.60???"]	13.76250000000212
+0	4	7.372499999998894	4.34410000000085	["5411", "54113", "54116", "54111", "54114", "54118", "54115", "54117"]	13.848400000000538
+0	3	5.593299999993917	3.2806000000071833	["hardware", "height", "hard", "handle", "hood", "how", "high", "hand"]	10.42510000000263
+0	5	9.267200000003584	5.4201999999961	["employee", "employer", "employees", "employers", "employee is", "employed", "employer is", "employers ask"]	16.20319999999964
+0	7	12.856999999996788	7.604300000004116	["783", "78310", "7830", "7833", "7830-", "7833-", "78310-", "7830-1"]	22.456899999998114
+0	8	14.725799999997236	8.654300000003445	["grills", "grills for", "grills for sale", "grills for sale in", "grills for sale in us", "grills for sale in usa", "grills for sale in usaa", "grills for sale in usaa ca"]	25.587600000001487
+0	3	5.533099999997404	3.306500000000767	["barn", "bar", "bars", "barrel", "barrels", "barrier", "bark", "barb"]	10.318400000002725
+0	2	3.6668999999989182	2.2633000000027437	["breakup", "break", "breast", "breaking", "breach", "breaks", "bread", "breathing"]	7.566099999998244
+0	3	5.564100000000849	3.5962999999981093	["inches", "inch", "in", "into", "ind", "int", "in inches", "install"]	10.666700000001583
+0	4	7.327899999999943	4.315199999997077	["australia", "australian", "australians", "australian dollars", "australi", "australiana", "australin", "australias"]	13.796299999999206
+0	4	7.263100000002964	4.324399999998008	["degrees", "degree", "deg", "degrees c", "depth", "deep", "definition"]	13.25260000000128
+0	3	5.439600000002542	3.25769999999892	["gas", "gear", "garage", "grill", "grinding", "gauge", "gauges", "generator"]	10.279000000000593
+0	5	9.037800000001539	5.3822999999972865	["to", "to gallons", "today", "ton", "total", "top", "tons", "to gallons per"]	15.888500000002637
+0	4	7.359799999996142	4.323400000004085	["in", "il", "ind", "images", "island", "is", "ill"]	13.144099999998105
+0	8	14.576500000003989	8.42469999999551	["rpm", "rpm sensor", "rpm sensor location", "rpm sensor location on", "rpm sensor location on a", "rpm sensor location on a 4", "rpm sensor location on a 4.3", "rpm sensor location on a 4.6"]	24.566999999997563
+0	4	7.298800000004491	4.286599999993257	["will", "with", "will it", "will it start", "windows", "with a", "without", "wind"]	13.023600000000357
+0	3	5.419099999993904	3.225600000007489	["value", "voted", "vs", "volume", "valid", "video", "vote"]	10.147999999997381
+0	8	14.541100000009521	8.511899999991357	["replacement", "replacements", "replacement.", "replacements.", "replacement.a", "replacements.v", "replacement.aa", "replacements.vw"]	24.598199999999792
+0	3	5.460199999998139	3.2850000000017587	["2.7", "2.75", "2.7l", "2.73", "2.72", "2.70", "2.71", "2.79"]	11.00279999999998
+0	4	7.199400000001077	5.348299999997863	["926", "92683", "9265", "9261", "9268", "9269", "9264", "9262"]	14.67620000000025
+0	3	5.483499999996866	3.2574000000025194	["pressure", "pressure switch", "press", "precision", "pressures", "premium", "presure", "predator"]	10.305800000001142
+0	5	9.166199999999236	5.3548000000027685	["4x4", "4x4 front", "4x4 front bumper", "4x40", "4x42", "4x400", "4x46", "4x44"]	16.466300000001155
+0	5	9.1338000000043	5.38819999999518	["battery", "baton", "bat", "bath", "bathroom", "battle", "batteries", "baton rouge"]	16.018700000000052
+0	8	19.937699999999836	8.605499999998045	["roseville", "roseville ca", "roseville ca 95678", "roseville ca 95661", "roseville ca 95678 us", "roseville ca 95661 us", "roseville ca 95678 usa", "roseville ca 95661 usa"]	30.626800000000287
+0	3	5.517499999999842	3.268799999997185	["recommended", "recon", "record", "recoil", "recommendation", "records", "recovery", "recover"]	10.333800000001503
+0	3	5.509200000002323	3.305299999997402	["dealer", "deck", "dealers", "design", "dead", "delete", "death", "default"]	10.370299999998167
+0	5	9.12739999999701	5.3622000000039804	["shift", "shifting", "shifts", "shift cable", "shifting problems", "shifted", "shifts hard", "shift cable box"]	16.830300000002296
+0	3	5.4933000000012555	3.257900000001257	["gross", "growth", "grade", "gross income", "group", "graph", "grace", "grades"]	10.294300000001755
+0	8	14.535899999998492	8.535700000003033	["transmission", "transmissions", "transmission fluid", "transmissions for", "transmission fluid change", "transmissions for sale", "transmissions for sale in", "transmission fluid change cost"]	24.675599999998354
+0	5	9.002200000004734	5.427199999996191	["guard", "guards", "guardian", "guardians", "guarding", "guarded", "guardrail", "guardsman"]	16.035699999999764
+0	3	5.389199999999761	3.275700000003212	["form", "forms", "for", "for sale", "foreign", "fort", "formula", "forum"]	10.188700000000495
+0	4	7.383399999994822	4.481000000005508	["with garage", "with loft", "without", "windows", "wiring", "window", "without a", "wi"]	13.496699999997475
+0	8	14.751000000000403	8.432100000000275	["600", "6000", "600 for sale", "600 for", "6000 for sale", "6000 for", "600 for sale in", "600 for sale in us"]	24.722600000000483
+0	3	5.455999999998795	3.312200000003429	["of", "brake", "engine", "fuel", "battery", "front", "rear", "light"]	10.239900000001967
+0	8	14.7492999999983	8.43980000000144	["offroad", "offroad parts", "offroads", "offroad parts diagram", "offroads parts", "offroads parts diagram", "offroad parts diagram.pdf", "offroad parts diagram."]	25.33899999999889
+0	3	5.486099999998828	3.357900000001024	["supply", "supplies", "supplier", "suppliers", "supply line", "suppl", "supplement", "supplied"]	10.575500000001625
+0	7	12.760300000000058	7.585899999998702	["cab", "cab 4x4", "cab 4", "cabin", "cab 4x", "cable", "cab 4x4 for", "cab 4x4 for sale"]	22.106999999998322
+0	3	5.620199999999187	3.3712000000001296	["pan", "panel", "pans", "panels", "pant", "pane", "pants", "panhead"]	10.52569999999875
+0	3	5.433599999999927	3.570400000000973	["price", "print", "prices", "prime", "primary", "pricing", "printer", "pri"]	10.700299999999885
+0	3	5.503600000004383	3.2797999999942817	["accessories", "access", "accessory", "accelerator", "acceleration", "accent", "accelerate"]	10.60489999999703
+0	3	5.680500000003974	3.38159999999732	["for sale", "fuel", "for", "foot", "front", "fuse", "ft"]	12.732499999998481
+0	5	9.149100000001908	5.630599999996377	["front", "frontier", "front bumper", "frontal", "fronts", "frontline", "frontrunner", "frontman"]	16.489499999998714
+0	4	8.767199999997644	4.337300000003097	["bed", "engine", "fuel", "for sale", "transmission", "parts", "rear", "door"]	14.544600000000685
+0	8	16.838800000009257	8.717399999991216	["pattern", "patterns", "pattern diagram", "patterns for sale", "patterns for", "pattern diagram for", "pattern diagram for sale", "patterns for sale in"]	27.118200000000314
+0	5	9.051899999999335	6.256399999998052	["1500", "10", "1500 4x4", "15", "14", "12", "150"]	16.722600000001364
+0	4	7.287099999999214	4.303700000001243	["transmttion", "transmttions", "transmttional", "transmttion problems", "transmttione", "transmttioned", "transmttionics", "transmttiona"]	13.690800000002668
+0	8	14.421200000004575	8.532499999997611	["cc", "ccw", "ccw specs", "ccw specs and specs", "ccw specs and reviews", "ccw specs and specs for", "ccw specs and reviews/", "ccw specs and reviews/youtube"]	24.551100000000048
+0	3	5.407900000001575	3.219399999998984	["versus", "vehicle", "vent", "vertical", "version", "ve", "verses", "velocity"]	10.114500000000248
+0	3	5.3909999999994795	3.2294000000021583	["not", "on", "fuse", "not working", "light", "in", "wont", "dont"]	10.187699999999467
+0	2	3.586100000003256	2.246399999997095	["light", "leak", "lift", "location", "lower", "low", "leaking", "left"]	7.379900000000106
+0	8	16.335000000001543	8.929999999999438	["rear", "rear brake", "rear brake pads", "rearrange", "rear brake pads replacement", "rearrangement", "rearrang", "rearrange parts"]	26.80379999999971
+0	4	7.474099999996042	4.335000000004641	["control", "controller", "controls", "contro", "controllers", "controlled", "controversy", "controlling"]	13.442900000001146
+0	4	7.26129999999614	4.41290000000194	["amg", "ac", "a/c", "alternator", "astro", "air", "awd"]	13.215200000001204
+0	6	10.810799999998011	6.360100000001978	["somrtime", "somrtimer", "somrtimeout", "somrtimes", "somrtime/", "somrtimesha", "somrtimer fix", "somrtime/youtube"]	19.546899999998146
+0	8	14.433000000000362	8.427399999998642	["sides", "sidesh", "sideshoes", "sideshoesa", "sideshoesaa", "sideshoesaa1", "sideshoesaa1a", "sideshoesaa1a1"]	24.603700000000117
+0	4	7.212300000002614	4.303199999998952	["owners", "owner", "owners manual", "owner's", "own", "owner's manual", "ow", "owns"]	13.116799999998818
+0	4	7.370300000001606	4.334099999997676	["cold", "color", "colt", "collision", "coloring", "colors", "collection", "collector"]	13.223799999998676
+0	8	14.77260000000058	8.551300000000595	["3500hd", "3500hd 4x4", "3500hd 4.3", "3500hd 4.6", "3500hd 4x", "3500hd 4.3l", "3500hd 4.6l", "3500hd 4x4 for sale"]	25.333199999998612
+0	3	5.408700000000266	3.332199999999119	["specs", "for sale", "wiring", "engine", "parts", "for", "manual", "fuel"]	10.276300000001015
+0	4	7.217999999994618	4.359600000007902	["manual", "manuals", "man", "manual pdf", "manifold", "manager", "management"]	13.223499999998722
+0	2	3.61729999999838	2.1921000000020285	["install", "installation", "in", "inserts", "insert", "inside", "installed", "interchange"]	7.349100000002551
+0	5	9.474299999993718	5.4216000000053555	["kit", "kits", "kitchen", "kit for", "kits for", "kits for sale", "kit for sale", "kitchens"]	16.50460000000109
+0	8	14.509700000004955	8.46859999999694	["lights", "lights on", "lightsaber", "lights on a", "lights on a car", "lightsaber colors", "lights on a car for", "lights on a car ford"]	24.49420000000302
+0	2	3.7169999999946413	2.196900000004831	["weight", "water", "wood", "weather", "well", "white", "wheel"]	9.964899999999943
+0	3	5.642900000001561	3.2520999999974265	["oil", "diesel", "fuel", "engine", "code", "timing", "spark", "v6"]	10.354799999998221
+0	8	14.59000000000188	8.496199999996179	["bumperfront", "bumperfront bumper", "bumperfront bumper cover", "bumperfront bumper cover removal", "bumperfront bumper cover removal/", "bumperfront bumper cover removal/t", "bumperfront bumper cover removal/tac", "bumperfront bumper cover removal/tacoma"]	25.250700000000847
+0	6	11.00640000000297	6.65249999999773	["front", "front bumper", "frontier", "frontal", "fronts", "frontline", "front bumper cover", "frontier 4x4"]	19.18979999999948
+0	8	14.877399999999597	8.491300000002866	["ring", "rings", "ringing", "ring removal", "rings on", "ringing relay", "rings on ebay", "rings on e"]	24.974900000000133
+0	4	7.318699999999012	4.407600000003953	["replacement", "reset", "removal", "replace", "repair", "relay", "recall", "remove"]	13.334000000000401
+0	3	5.4284000000031085	3.4564999999950885	["at", "at idle", "att", "attach", "attack", "atom", "attachment", "attorney"]	10.586400000001106
+0	8	14.641499999999752	8.533800000002145	["spyder", "spy", "spyder for sale", "spyder for", "spying", "spying on", "spyder for sale in", "spying on you"]	24.883300000002606
+0	8	15.00079999999926	8.6233	["parts", "parts diagram", "parts diagram for", "parts diagram for sale", "parts diagram for sale in", "parts diagram for sale in n", "parts diagram for sale in nc", "parts diagram for sale in nc-"]	25.2352000000009
+0	4	7.369699999998147	4.368800000001727	["yakima", "yak", "yuma", "year", "yard", "youtube", "yakima wa"]	13.375399999997484
+0	2	3.664599999996909	2.2270000000013113	["playoffs", "playoff", "players", "player", "play", "played", "placement", "playing"]	7.370699999999175
+0	4	7.548099999997504	4.337300000003097	["emergency", "emission", "empty", "emissions", "emblem", "emblems", "email", "emergency brake"]	13.40889999999817
+0	6	11.109000000008251	6.51429999999209	["worth", "worthy", "worth it", "worthless", "worthwhile", "worthy/", "worth it.", "worthlesse"]	19.201400000000035
+0	4	7.424400000001441	4.3821999999984484	["gps", "gps location", "gpse", "gpsc", "gpsych", "gpsy", "gpsons", "gpson"]	14.070699999997771
+0	8	14.828500000000133	8.726499999998083	["specs", "specs and specs", "specs and", "specs and specs.", "specs and specs.com", "specs and specs.com.com", "specs and specs.com.", "specs and specs.com.com."]	25.16199999999813
+0	5	9.127200000001778	5.429599999999368	["shift", "shifting", "shifts", "shifted", "shift knob", "shifts hard", "shifting out", "shifted to"]	16.436900000002197
+0	3	5.49350000000004	3.343300000000937	["ttansmission", "ttansmissi", "ttansmissing", "ttansmissile", "ttansmissis", "ttansmissibility", "ttansmissister", "ttansmissin"]	10.89099999999732
+0	7	12.792299999993872	7.599200000008466	["650", "65", "655", "650 specs", "65 hp", "655r", "65 hp outboard", "655rls"]	21.93420000000046
+0	8	15.330399999996303	8.465900000000914	["radiator", "radiator hose", "radiator hose/", "radiator hose/di", "radiator hose/diagram", "radiator hose/diagrams", "radiator hose/diagramsa", "radiator hose/diagramsa2"]	25.395400000000734
+0	3	5.543200000001747	3.2789999999991437	["side", "sides", "sided", "sid", "sideby", "sidel", "sidew", "sidewalk"]	10.442999999998648
+0	4	7.4280999999949415	4.348900000007205	["is", "issues", "issue", "island", "is it", "isn't", "iso", "isolator"]	13.405600000002238
+0	5	9.117199999995051	5.978500000004772	["abs", "ac", "air", "a/c", "airbag", "axle", "alternator", "ac compressor"]	16.590600000000677
+0	3	5.532000000002313	3.300899999999274	["exhaust", "engine", "end", "electric", "entry", "edition", "electronic", "electrical"]	10.334999999997763
+0	2	3.6773999999972773	2.2350000000024295	["in", "is", "it", "id", "install", "into", "idle"]	7.507800000002618
+0	7	12.836099999994133	7.573200000006608	["trouble", "troubleshooting", "troubleshoot", "trouble code", "troubleshooter", "troubled", "troubleshoot code", "trouble code p0455"]	21.918600000002897
+0	3	5.796499999998872	3.2841999999995153	["accessories", "acceleration", "access", "accessory", "accelerator", "accident", "accord", "acc"]	10.60770000000133
+0	8	14.716700000001026	8.575700000001518	["replacement", "replacements", "replacement video", "replacements video", "replacement video youtube", "replacements video/", "replacements video/youtube", "replacement video youtube/"]	24.86589999999822
+0	3	5.4588000000030945	3.3568999999964433	["specs", "reviews", "driving", "tire", "review", "oil", "fuel", "for sale"]	10.29789999999764
+0	8	14.780499999996977	8.596500000003005	["convertible", "convertible top", "convertible top end", "convertible top endo", "convertible top endo 4", "convertible top endo 4x", "convertible top endo 4x4", "convertible top endo 4x4s"]	25.02279999999857
+0	8	16.704900000000578	9.583400000000353	["timing", "timing belt", "timing belt or", "timing belt or chain", "timing belt or chain.", "timing belt or chain.s", "timing belt or chain.s1", "timing belt or chain.s1a"]	28.06290000000189
+0	3	5.450299999999686	4.0970999999991875	["removal", "replacement", "assembly", "size", "light", "fuse", "sensor", "bolt"]	11.013999999999413
+0	8	14.572600000001046	8.58649999999983	["chart", "charts", "chart for", "chart for sale", "charter", "charts and", "charts and specs", "charter cable"]	24.819999999998288
+0	8	14.69830000000627	8.53639999999345	["vapor", "vaporizer", "vaporizer location", "vaporizer location location", "vaporizer location location in", "vaporizer location location in a", "vaporizer location location in ari", "vaporizer location location in arizona"]	24.80770000000021
+0	5	9.214100000004777	5.647599999992536	["filter", "filters", "filtering", "filtered", "filthy", "filter location", "filtering system", "filthy r"]	16.43590000000117
+0	3	8.40989999999664	5.37710000000402	["eb\"", "eb\"x", "eb\"?", "eb\";", "eb\"]=>", "eb\");", "eb\">", "eb\":-"]	15.985799999999273
+0	2	3.6802000000015767	2.229100000000983	["up", "stop", "and", "of", "time", "out", "then", "when"]	7.513500000001727
+0	3	7.845199999998442	3.29500000000138	["for sale", "value", "for", "worth", "made", "parts", "good"]	12.641699999999645
+0	3	5.549799999997163	3.293600000002783	["be", "below", "between", "behind", "belt", "before", "being", "beeping"]	10.544400000000564
+0	8	14.69499999999968	8.571899999999744	["oil", "oil capacity", "oils", "oily", "oil capacity chart", "oily water", "oils and gas", "oils and"]	24.847900000001033
+0	3	5.492000000000274	3.3020999999990863	["guard", "gas", "grille", "guards", "grill", "grand", "glass", "glove"]	10.327499999998935
+0	4	9.885600000000494	4.438999999997861	["edition", "edit", "editions", "editor", "editing", "editorial", "edited", "edits"]	16.02240000000066
+0	8	15.591000000000577	9.917599999997861	["comolding", "comolding kit", "comolding kit e", "comolding kit ebay", "comolding kit ebay.", "comolding kit ebay.com", "comolding kit ebay.com.", "comolding kit ebay.com.com"]	27.677499999999355
+0	8	16.546500000004016	9.970899999999006	["ranch", "ranch bed", "ranch bed size", "ranch bed size bed", "ranch bed size bed size", "ranch bed size bed size 4", "ranch bed size bed size 4x", "ranch bed size bed size 4x4"]	28.018799999998123
+0	4	10.595400000003252	6.847399999998061	["laramie", "latch", "large", "lawn", "latitude", "la", "lane", "lamp"]	19.35349999999758
+0	3	7.198600000002386	7.792899999998326	["plug", "plate", "placement", "plates", "plugs", "plastic", "plus", "plugged"]	17.190700000000447
+0	8	14.791100000000057	8.644800000002562	["torque", "torque specs", "torque specs specs", "torque specs specs/", "torque specs specs/spec", "torque specs specs/spec.", "torque specs specs/spec.s", "torque specs specs/spec.s."]	25.011600000002687
+0	8	15.987299999999038	13.955299999999227	["width", "widths", "widths for sale", "widths for", "widths for sale in", "widths for sale in us", "widths for sale in usa", "widths for sale in usaa"]	31.58679999999947
+0	6	20.798700000007386	10.841899999991966	["non", "non-stick", "none", "non-sl", "non-slip", "nonprofit", "nons", "nonton"]	33.32100000000082
+0	4	7.427799999998541	4.369800000002755	["intake", "in", "intakes", "injection", "inside", "inlet", "install", "injector"]	13.414899999997232
+0	8	14.748000000000872	8.638600000001162	["brackets", "brackets for", "brackets for sale", "brackets for sale in", "brackets for sale in n", "brackets for sale in nc", "brackets for sale in nc-", "brackets for sale in nc-a"]	25.03719999999987
+0	3	6.660899999996417	3.5052000000028727	["code", "cylinder", "coolant", "crank", "cyl", "coil", "cooling", "compressor"]	11.747599999999636
+0	5	13.506799999994712	5.536500000005162	["cover", "covers", "covered", "covering", "coverage", "cover gasket", "cover g", "covert"]	20.65759999999983
+0	4	7.311499999996585	4.373500000003361	["amazing", "amaz", "amazfit", "amalg", "amazed", "amalgam", "amazingly", "amateur"]	13.25040000000044
+0	5	9.153600000004758	5.497699999995831	["cross", "crossover", "crossing", "crossed", "crosses", "crossings", "crossword", "crossed out"]	16.353299999998683
+0	5	9.260199999996388	5.877500000003977	["nv", "nv 8", "nvs", "nv 895", "nva", "nv 89521", "nvr", "nvd"]	17.764100000000838
+0	3	5.545599999997819	3.4571000000021	["lights", "light", "length", "lighting", "layout", "led", "lock", "location"]	10.74090000000183
+0	6	11.198400000001385	7.481099999999685	["release", "releasing", "releases", "released", "release date", "releasing noise", "released when", "releases in"]	20.285399999998788
+0	8	21.14700000000269	8.718099999999396	["battery", "battery replacement", "battery replacement cost", "battery replacement costa", "battery replacement costa rica", "battery replacement costa r", "battery replacement costa ricaa", "battery replacement costa ricaa ca"]	31.542699999999257
+0	5	9.857500000002517	5.452899999998095	["to", "to replace", "to replace fuel", "to replace fuel pump", "tall", "the battery", "turn", "the oil"]	16.927200000001363
+0	2	3.6903999999999826	2.2461000000006948	["kit", "specs", "for", "problems", "review"]	7.409199999997895
+0	8	15.472500000008438	8.742499999993214	["and", "and won", "android", "and won't", "and won't start", "android auto", "and won't start up", "android autozone"]	25.88219999999808
+0	8	14.720899999996817	9.529900000003977	["asulations", "asulation", "asulation problems", "asulations on", "asulations on acceleration", "asulation problems in", "asulations on acceleration of", "asulation problems in car"]	26.454199999999872
+0	3	5.510699999998536	3.3114000000011856	["lights", "light", "lighting", "lines", "line", "list", "like", "link"]	10.327100000001366
+0	8	14.969699999991093	8.896700000008195	["components", "component", "components diagram", "component diagram", "components diagrams", "component diagrams", "components diagrams/", "component diagrams/"]	25.385700000001066
+0	4	7.6286000000003185	4.758999999999958	["value", "values", "van", "valve", "vacuum", "va", "variable", "valley"]	13.883200000002205
+0	2	3.882100000001998	2.2648999999965724	["mode", "home", "in", "kit"]	7.669400000001048
+0	8	20.460800000002166	14.360499999998666	["diagram", "diagrams", "diagrams/", "diagrams/s", "diagrams/sdi"]	36.41990000000206
+0	8	14.961799999998249	8.797600000004735	["booster", "boosters", "booster replacement", "boosted", "boosters replacement", "booster replacement cost", "boosted light", "boosters replacement video"]	25.38149999999817
+0	8	14.962799999999277	8.68290000000016	["sliding", "sliding door", "sliding door handle", "sliding door handle removal", "sliding door handle removal video", "sliding door handle removal video/", "sliding door handle removal video/youtube", "sliding door handle removal video/youtube/"]	25.232400000000155
+0	4	7.596999999993415	4.424600000007217	["starter", "starting", "start", "starts", "startup", "starting problems", "started", "starts then"]	13.511199999999945
+0	2	3.7545999999970547	2.2602000000055966	["sale"]	7.40960000000257
+0	8	14.696100000001877	9.03719999999808	["vdc", "vdcj", "vdcj7", "vdcj7v", "vdcj7v1", "vdcj7v1.", "vdcj7v1.8", "vdcj7v1.8l"]	26.045799999998565
+0	4	7.389799999998559	4.369300000004017	["gvw", "gvwr", "gvwb", "gvw specs", "gvws", "gvwd", "gvwn", "gvwh"]	14.041100000000029
+0	3	5.617699999998393	3.2928000000005397	["beam", "beams", "bed", "belt", "beam bulb", "bearing", "bench", "bearings"]	10.495799999997502
+0	2	3.714599999998569	2.2689000000006843	["manual", "guide", "in", "man", "name", "of", "for", "on"]	7.596100000000661
+0	4	7.27810000000062	5.039499999998753	["reading", "reads", "read", "readings", "reader", "ready", "readout", "readers"]	13.929900000000828
+0	4	7.317600000000368	4.327200000002307	["monytoss", "monytossom", "monytossa", "monytossible", "monytossip", "monytossibility", "monytossus", "monytossier"]	13.848899999999276
+0	3	5.541099999998522	3.2678000000032625	["250", "2500", "25", "254", "258", "25 hp", "255", "259"]	10.296600000000211
+0	3	5.499000000000365	3.26300000000046	["compession", "compessions", "compessio", "compessional", "compessious", "compessios", "compessior", "compessione"]	10.805999999998761
+0	2	3.6508000000026186	2.2020999999945445	["bites", "man", "bite", "farm", "bait", "roof", "and", "plugs"]	7.421499999999526
+0	6	11.331200000000763	6.457399999998614	["sterror", "sterr", "sterry", "sterratic", "sterrors", "sterryville", "sterror code", "sterred"]	19.77420000000052
+0	8	14.658099999998342	8.533700000000977	["bushing", "bushing replacement", "bushing replacement cost", "bushing replacement costa", "bushing replacement costa r", "bushing replacement costa rica", "bushing replacement costa ricaa", "bushing replacement costa ricaa ca"]	25.279699999998684
+0	3	5.524299999994042	3.274400000005784	["filter", "filters", "fill", "filler", "filled", "filling", "filer"]	10.419299999998799
+0	3	5.51900000000316	3.255699999996864	["terminal", "terminals", "term", "terms", "terrain", "termination", "terrible"]	10.255299999997192
+0	4	7.3647000000036655	4.402199999994139	["seat", "seating", "seats", "seal", "seat removal", "season", "seating chart", "sea"]	13.398899999998548
+0	8	14.965199999998902	8.738099999998639	["rpm", "rpm 2", "rpm 2.5", "rpm 2.0", "rpm 2.5l", "rpm 2.0l", "rpm 2.5l v", "rpm 2.0l v"]	25.383500000000225

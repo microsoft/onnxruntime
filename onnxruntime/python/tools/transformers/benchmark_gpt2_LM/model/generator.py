@@ -17,7 +17,7 @@ class  Generator(object):
     def __init__(
         self, max_length, num_return_sequences=1, num_beams = 0, pad_token_id=0, eos_token_ids=[],
         length_penalty=1.0, tokenizer: Tokenizer = None, temperature = 1.0,
-        repetition_penalty = 1.0, num_layers = 1):
+        repetition_penalty = 1.0, num_layers = 1, device = 'cuda'):
         self._max_length = max_length
         self._num_return_sequences = num_return_sequences
         self._num_beams = num_beams
@@ -28,6 +28,7 @@ class  Generator(object):
         self._beam_search = num_beams > 0
         self._temperature = temperature
         self._repetition_penalty = repetition_penalty
+        self._device = device
 
     def _update_generator_status(self, generator_status, batch_size):
         last_n_seq = generator_status['last_num_sequences_per_sample']
@@ -35,7 +36,7 @@ class  Generator(object):
         input_seq_index = (
             input_seq_index +
             (last_n_seq *
-                torch.arange(batch_size).unsqueeze(1).to('cuda:0')))
+                torch.arange(batch_size).unsqueeze(1).to(self._device)))
                     
         generator_status['input_seq_index'] = input_seq_index.view(-1)
 
