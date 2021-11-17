@@ -85,7 +85,8 @@ class DataTypeImpl {
     kTensor = 2,
     kTensorSequence = 3,
     kSparseTensor = 4,
-    kOptional = 5
+    kOptional = 5,
+    kPrimitive = 6,
   };
 
   GeneralType type_;
@@ -134,6 +135,14 @@ class DataTypeImpl {
     return type_ == GeneralType::kOptional;
   }
 
+  bool IsNonTensorType() const {
+    return type_ == GeneralType::kNonTensor;
+  }
+
+  bool IsPrimitiveDataType() const {
+    return type_ == GeneralType::kPrimitive;
+  }
+
   // Returns this if this is of tensor-type and null otherwise
   const TensorTypeBase* AsTensorType() const;
 
@@ -148,15 +157,11 @@ class DataTypeImpl {
   const OptionalTypeBase* AsOptionalType() const;
 #endif
 
-  virtual const NonTensorTypeBase* AsNonTensorType() const {
-    return nullptr;
-  }
+  const NonTensorTypeBase* AsNonTensorType() const;
 
   // Returns this if this is one of the primitive data types (specialization of PrimitiveDataTypeBase)
   // and null otherwise
-  virtual const PrimitiveDataTypeBase* AsPrimitiveDataType() const {
-    return nullptr;
-  }
+  const PrimitiveDataTypeBase* AsPrimitiveDataType() const;
 
   // Return the type meta that we are using in the runtime.
   template <typename T>
@@ -706,10 +711,6 @@ class NonTensorTypeBase : public DataTypeImpl {
 
   const ONNX_NAMESPACE::TypeProto* GetTypeProto() const override;
 
-  const NonTensorTypeBase* AsNonTensorType() const override {
-    return this;
-  }
-
   // \brief Override for Non-tensor types to initialize non-tensor CPP
   // data representation from data. The caller of the interface
   // should have a shared definition of the data which is used to initialize
@@ -944,10 +945,6 @@ class PrimitiveDataTypeBase : public DataTypeImpl {
     return false;
   }
 
-  const PrimitiveDataTypeBase* AsPrimitiveDataType() const override final {
-    return this;
-  }
-
   const ONNX_NAMESPACE::TypeProto* GetTypeProto() const final {
     return nullptr;
   }
@@ -958,7 +955,7 @@ class PrimitiveDataTypeBase : public DataTypeImpl {
 
  protected:
   PrimitiveDataTypeBase(size_t size, int32_t data_type)
-      : DataTypeImpl{GeneralType::kNonTensor, size}, data_type_{data_type} {}
+      : DataTypeImpl{GeneralType::kPrimitive, size}, data_type_{data_type} {}
 
  private:
   int32_t data_type_;
@@ -1009,6 +1006,14 @@ inline const SparseTensorTypeBase* DataTypeImpl::AsSparseTensorType() const {
 
 inline const OptionalTypeBase* DataTypeImpl::AsOptionalType() const {
   return IsOptionalType() ? static_cast<const OptionalTypeBase*>(this) : nullptr;
+}
+
+inline const NonTensorTypeBase* DataTypeImpl::AsNonTensorType() const {
+  return IsNonTensorType() ? static_cast<const NonTensorTypeBase*>(this) : nullptr;
+}
+
+inline const PrimitiveDataTypeBase* DataTypeImpl::AsPrimitiveDataType() const {
+  return IsPrimitiveDataType() ? static_cast<const PrimitiveDataTypeBase*>(this) : nullptr;
 }
 
 // Explicit specialization of base class template function
