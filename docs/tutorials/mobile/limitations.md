@@ -5,7 +5,7 @@ grand_parent: Tutorials
 nav_order: 7
 ---
 
-## Limitations
+# Limitations
 
 A minimal build has the following limitations:
   - No support for ONNX format models
