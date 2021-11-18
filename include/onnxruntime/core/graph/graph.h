@@ -1535,7 +1535,7 @@ std::ostream& operator<<(std::ostream& out, const Node& node);
 // Print Graph as, for example,
 // Inputs:
 //    "Input": tensor(float)
-// Nodes: (name, type, domain) : (inputs) -> (outputs)
+// Nodes:
 //    ("add0", Add, "", 7) : ("Input": tensor(float),"Bias": tensor(float),) -> ("add0_out": tensor(float),) 
 //    ("matmul", MatMul, "", 9) : ("add0_out": tensor(float),"matmul_weight": tensor(float),) -> ("matmul_out": tensor(float),) 
 //    ("add1", Add, "", 7) : ("matmul_out": tensor(float),"add_weight": tensor(float),) -> ("add1_out": tensor(float),) 

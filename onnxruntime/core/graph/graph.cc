@@ -4174,7 +4174,7 @@ std::ostream& operator<<(std::ostream& out, const Graph& graph) {
   for (auto* x : graph.GetInputs()) {
     out << "   " << *x << "\n";
   }
-  out << "Nodes: (name, type, domain) : (inputs) -> (outputs)\n";
+  out << "Nodes:\n";
   for (auto& node : graph.Nodes()) {
     out << "   " << node << "\n";
   }
