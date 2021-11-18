@@ -157,6 +157,7 @@ try:
                 to_preload = []
                 to_preload_cuda = []
                 to_preload_tensorrt = []
+                cuda_dependencies = []
                 args = ['patchelf', '--debug']
                 for line in result.stdout.split('\n'):
                     for dependency in dependencies:
@@ -193,7 +194,7 @@ try:
                     tensorrt_dependencies = ['libnvinfer.so', 'libnvinfer_plugin.so', 'libnvonnxparser.so']
                     args = ['patchelf', '--debug']
                     for line in result.stdout.split('\n'):
-                        for dependency in tensorrt_dependencies:
+                        for dependency in (cuda_dependencies + tensorrt_dependencies):
                             if dependency in line:
                                 if dependency not in (to_preload + to_preload_cuda):
                                     to_preload_tensorrt.append(line)
