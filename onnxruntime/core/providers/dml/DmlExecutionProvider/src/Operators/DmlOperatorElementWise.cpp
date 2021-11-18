@@ -469,6 +469,7 @@ public:
 
 // Same operator signature as 11. Only difference is new type support
 using DmlOperatorElementwiseClip12 = DmlOperatorElementwiseClip11;
+using DmlOperatorElementwiseClip13 = DmlOperatorElementwiseClip11;
 
 class DmlOperatorElementwisePow : public DmlOperator
 {
@@ -697,7 +698,7 @@ DML_OP_DEFINE_CREATION_FUNCTION(Ceil,             DmlOperatorElementwiseUnary<DM
 DML_OP_DEFINE_CREATION_FUNCTION(Floor,            DmlOperatorElementwiseUnary<DML_ELEMENT_WISE_FLOOR_OPERATOR_DESC>);
 DML_OP_DEFINE_CREATION_FUNCTION(Not,              DmlOperatorElementwiseUnary<DML_ELEMENT_WISE_LOGICAL_NOT_OPERATOR_DESC>);
 DML_OP_DEFINE_CREATION_FUNCTION(Sign,             DmlOperatorElementwiseUnary<DML_ELEMENT_WISE_SIGN_OPERATOR_DESC>);
-DML_OP_DEFINE_CREATION_FUNCTION(IsNan,            DmlOperatorElementwiseUnary<DML_ELEMENT_WISE_IS_NAN_OPERATOR_DESC>);
+DML_OP_DEFINE_CREATION_FUNCTION(IsNaN,            DmlOperatorElementwiseUnary<DML_ELEMENT_WISE_IS_NAN_OPERATOR_DESC>);
 DML_OP_DEFINE_CREATION_FUNCTION(Sinh,             DmlOperatorElementwiseUnary<DML_ELEMENT_WISE_SINH_OPERATOR_DESC>);
 DML_OP_DEFINE_CREATION_FUNCTION(Cosh,             DmlOperatorElementwiseUnary<DML_ELEMENT_WISE_COSH_OPERATOR_DESC>);
 DML_OP_DEFINE_CREATION_FUNCTION(Asinh,            DmlOperatorElementwiseUnary<DML_ELEMENT_WISE_ASINH_OPERATOR_DESC>);
@@ -729,6 +730,7 @@ DML_OP_DEFINE_CREATION_FUNCTION(Mean,             DmlOperatorElementwiseMean);
 DML_OP_DEFINE_CREATION_FUNCTION(Clip7,            DmlOperatorElementwiseClip7);
 DML_OP_DEFINE_CREATION_FUNCTION(Clip11,           DmlOperatorElementwiseClip11);
 DML_OP_DEFINE_CREATION_FUNCTION(Clip12,           DmlOperatorElementwiseClip12);
+DML_OP_DEFINE_CREATION_FUNCTION(Clip13,           DmlOperatorElementwiseClip13);
 DML_OP_DEFINE_CREATION_FUNCTION(Pow,              DmlOperatorElementwisePow);
 DML_OP_DEFINE_CREATION_FUNCTION(QuantizeLinear,   DmlOperatorElementwiseQLinear<DML_ELEMENT_WISE_QUANTIZE_LINEAR_OPERATOR_DESC>);
 DML_OP_DEFINE_CREATION_FUNCTION(DequantizeLinear, DmlOperatorElementwiseQLinear<DML_ELEMENT_WISE_DEQUANTIZE_LINEAR_OPERATOR_DESC>);
