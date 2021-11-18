@@ -113,7 +113,7 @@ struct TrainingParameters {
   int propagate_cast_ops_level = 1;
   std::vector<std::string> propagate_cast_ops_allow;
   GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy propagate_cast_ops_strategy =
-      GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy::None;
+      GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy::FloodFill;
   bool allow_layer_norm_mod_precision = false;
 
   // graph dumping

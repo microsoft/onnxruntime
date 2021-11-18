@@ -488,7 +488,7 @@ typedef struct OrtTensorRTProviderOptions {
 */
 typedef struct OrtOpenVINOProviderOptions {
 #ifdef __cplusplus
-  OrtOpenVINOProviderOptions() : device_type{}, enable_vpu_fast_compile{}, device_id{}, num_of_threads{}, use_compiled_network{}, blob_dump_path{} {}
+  OrtOpenVINOProviderOptions() : device_type{}, enable_vpu_fast_compile{}, device_id{}, num_of_threads{}, use_compiled_network{}, blob_dump_path{}, context{} {}
 #endif
   /** \brief Device type string
   *
@@ -500,6 +500,7 @@ typedef struct OrtOpenVINOProviderOptions {
   size_t num_of_threads;               ///< 0 = Use default number of threads
   unsigned char use_compiled_network;  ///< 0 = disabled, nonzero = enabled
   const char* blob_dump_path;          // path is set to empty by default
+  void* context;
 } OrtOpenVINOProviderOptions;
 
 struct OrtApi;
