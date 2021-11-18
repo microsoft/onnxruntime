@@ -60,19 +60,6 @@ class QDQQuantizer(ONNXQuantizer):
         # Channel axis when per_channel is True
         self.qdq_channel_axis = 0 if 'QDQChannelAxis' not in extra_options else extra_options['QDQChannelAxis']
 
-        # In TRT, it recommended to add QDQ pair to inputs of Add node followed by ReduceMean node. 
-        # If True and Add node is in op_types_to_quantize, other Add nodes that don't meet the requirement above won't be adding QDQ pair.
-        if "Add" in self.op_types_to_quantize:
-            self.add_qdq_to_add_node_followed_by_redeuce_mean_node = False if 'AddQDQToAddNodeFollowedByReduceMeanNode' not in extra_options \
-                                                                        else extra_options['AddQDQToAddNodeFollowedByReduceMeanNode']
-        else:
-            self.add_qdq_to_add_node_followed_by_redeuce_mean_node = False
-
-        if self.add_qdq_to_add_node_followed_by_redeuce_mean_node:
-            self.reduce_mean_nodes = []
-            self.add_nodes = []
-            self.add_nodes_to_quantize = []
-
     def quantize_tensor(self, tensor_name):
         weight = find_by_name(tensor_name, self.model.initializer())
         if weight is not None:
@@ -112,21 +99,7 @@ class QDQQuantizer(ONNXQuantizer):
     def remove_nodes(self):
         self.model.remove_nodes(self.nodes_to_remove)
 
-    def pre_quantization_setup(self):
-        if self.add_qdq_to_add_node_followed_by_redeuce_mean_node:
-            for node in self.model.nodes():
-                if node.op_type == "Add":
-                    self.add_nodes.append(node)
-                if node.op_type == "ReduceMean":
-                    self.reduce_mean_nodes.append(node)
-
-            for add_node in self.add_nodes:
-                for reduce_mean_node in self.reduce_mean_nodes: 
-                    if add_node.output == reduce_mean_node.input:
-                        self.add_nodes_to_quantize.append(add_node.name)
-                if add_node.name not in self.add_nodes_to_quantize:
-                    self.nodes_to_exclude.append(add_node.name)
-
+    def quantize_model(self):
         if self.dedicated_qdq_pair:
             for node in self.model.nodes():
                 if self.should_quantize(node):
@@ -135,8 +108,6 @@ class QDQQuantizer(ONNXQuantizer):
                             self.tensor_to_its_receiving_nodes[tensor_name] = []
                         self.tensor_to_its_receiving_nodes[tensor_name].append(node)
 
-    def quantize_model(self):
-        self.pre_quantization_setup()
         for node in self.model.nodes():
             if self.should_quantize(node):
                 op_quantizer = CreateQDQQuantizer(self, node)
