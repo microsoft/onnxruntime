@@ -2517,9 +2517,8 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
         }
         ORT_CATCH(const std::exception& ex) {
           ORT_HANDLE_EXCEPTION([&]() {
-            std::ostringstream err_msg;
-            err_msg << "This is an invalid model. In Node, " << node << ", Error ";
-            status = ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH, err_msg.str(), ex.what());
+            status = ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH,
+                                     "This is an invalid model. In Node, ", node, ", Error ", ex.what());
           });
         }
         ORT_RETURN_IF_ERROR(status);
