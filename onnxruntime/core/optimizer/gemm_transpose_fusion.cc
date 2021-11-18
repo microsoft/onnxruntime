@@ -68,8 +68,9 @@ Status GemmTransposeFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& m
     Node& output_node = *graph.GetNode(output_node_ptr->Index());
     // (AB)' = B'A' : reverse the inputs
     std::reverse(new_gemm_input_defs.begin(), new_gemm_input_defs.end());
+    bool new_transB = !transA;
     transA = !transB;
-    transB = !transA;
+    transB = new_transB;
 
     nodes_to_remove.push_back(output_node);
   }
