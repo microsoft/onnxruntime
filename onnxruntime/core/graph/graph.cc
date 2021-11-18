@@ -4134,7 +4134,7 @@ std::ostream& operator<<(std::ostream& out, const NodeArg& node_arg) {
   out << "\"" << node_arg.Name() << "\"";
   if (node_arg.Type()) {
     out << ": " << *node_arg.Type();
-  } 
+  }
   return out;
 }
 
@@ -4153,7 +4153,11 @@ std::ostream& operator<<(std::ostream& out, const Node& node) {
     if (x->Exists()) {
       out << *x << ",";
     } else {
-      out << "" << ",";
+      // Print missing (or optional) inputs
+      // because operator schema uses positional
+      // arguments in ONNX.
+      out << "\"\""
+          << ",";
     }
   }
   out << ") -> (";
@@ -4161,7 +4165,11 @@ std::ostream& operator<<(std::ostream& out, const Node& node) {
     if (x->Exists()) {
       out << *x << ",";
     } else {
-      out << "" << ",";
+      // Print missing (or optional) outputs
+      // because operator schema uses positional
+      // arguments in ONNX.
+      out << "\"\""
+          << ",";
     }
   }
   out << ") ";
@@ -4171,7 +4179,12 @@ std::ostream& operator<<(std::ostream& out, const Node& node) {
 std::ostream& operator<<(std::ostream& out, const Graph& graph) {
   out << "Inputs:\n";
   for (const auto* x : graph.GetInputs()) {
-    out << "   " << *x << "\n";
+    // Unlike we print missing input and output for operator, we don't
+    // print missing input for graph because they are not helpful (we
+    // don't have a fixed schema for graph to match arguments).
+    if (x) {
+      out << "   " << *x << "\n";
+    }
   }
   out << "Nodes:\n";
   for (const auto& node : graph.Nodes()) {
@@ -4179,7 +4192,10 @@ std::ostream& operator<<(std::ostream& out, const Graph& graph) {
   }
   out << "Outputs:\n";
   for (const auto* x : graph.GetOutputs()) {
-    out << "   " << *x << "\n";
+    // Similar to graph input, missing graph output is not printed.
+    if (x) {
+      out << "   " << *x << "\n";
+    }
   }
   return out;
 }
