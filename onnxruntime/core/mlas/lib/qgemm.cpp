@@ -23,14 +23,14 @@ Abstract:
 // threads.
 //
 
-struct MLAS_GEMM_U8X8_WORK_BLOCK {
+struct MLAS_GEMM_QUANT_WORK_BLOCK {
     ptrdiff_t ThreadCountM;
     ptrdiff_t ThreadCountN;
 };
 
 void
-MlasGemmU8X8Threaded(
-    const MLAS_GEMM_U8X8_WORK_BLOCK* WorkBlock,
+MlasGemmQuantThreaded(
+    const MLAS_GEMM_QUANT_WORK_BLOCK* WorkBlock,
     const MLAS_GEMM_QUANT_SHAPE_PARAMS* Shape,
     const MLAS_GEMM_QUANT_DATA_PARAMS* Data,
     ptrdiff_t ThreadId
@@ -97,15 +97,15 @@ Return Value:
     //
 
     const auto* GemmQuantDispatch = MlasGemmQuantGetDispatch(Shape->AIsSigned, Shape->BIsSigned);
-    MLAS_GEMM_U8X8_OPERATION* GemmU8X8Operation;
+    MLAS_GEMM_QUANT_OPERATION* GemmQuantOperation;
 
     if (Data->BIsPacked) {
-        GemmU8X8Operation = GemmQuantDispatch->PackedOperation;
+        GemmQuantOperation = GemmQuantDispatch->PackedOperation;
     } else {
-        GemmU8X8Operation = GemmQuantDispatch->Operation;
+        GemmQuantOperation = GemmQuantDispatch->Operation;
     }
 
-    GemmU8X8Operation(Shape, Data, RangeStartM, RangeCountM, RangeStartN, RangeCountN);
+    GemmQuantOperation(Shape, Data, RangeStartM, RangeCountM, RangeStartN, RangeCountN);
 }
 
 
@@ -203,7 +203,7 @@ MlasGemmBatch(
     // works okay for operations involving skinny matrices.
     //
 
-    MLAS_GEMM_U8X8_WORK_BLOCK WorkBlock;
+    MLAS_GEMM_QUANT_WORK_BLOCK WorkBlock;
 
     if (N > M) {
 
@@ -231,7 +231,7 @@ MlasGemmBatch(
     MlasTrySimpleParallel(ThreadPool, TargetThreadCount, [&](ptrdiff_t tid) {
         const auto gemm_i = tid / ThreadsPerGemm;
         const auto blk_i = tid % ThreadsPerGemm;
-        MlasGemmU8X8Threaded(&WorkBlock, &Shape, &DataParams[gemm_i], blk_i);
+        MlasGemmQuantThreaded(&WorkBlock, &Shape, &DataParams[gemm_i], blk_i);
     });
 }
 

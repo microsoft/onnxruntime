@@ -661,7 +661,7 @@ Return Value:
 
 typedef
 void
-(MLAS_GEMM_U8X8_OPERATION)(
+(MLAS_GEMM_QUANT_OPERATION)(
     const MLAS_GEMM_QUANT_SHAPE_PARAMS* Shape,
     const MLAS_GEMM_QUANT_DATA_PARAMS* Data,
     const size_t RangeStartM,
@@ -672,7 +672,7 @@ void
 
 typedef
 void
-(MLAS_GEMM_U8X8_COPY_PACKB_ROUTINE)(
+(MLAS_GEMM_QUANT_COPY_PACKB_ROUTINE)(
     uint8_t* D,
     const uint8_t* B,
     size_t ldb,
@@ -683,9 +683,9 @@ void
     );
 
 struct MLAS_GEMM_QUANT_DISPATCH {
-    MLAS_GEMM_U8X8_OPERATION* Operation;
-    MLAS_GEMM_U8X8_OPERATION* PackedOperation;
-    MLAS_GEMM_U8X8_COPY_PACKB_ROUTINE* CopyPackBRoutine;
+    MLAS_GEMM_QUANT_OPERATION* Operation;
+    MLAS_GEMM_QUANT_OPERATION* PackedOperation;
+    MLAS_GEMM_QUANT_COPY_PACKB_ROUTINE* CopyPackBRoutine;
     size_t PackedK;
     size_t PackedStrideK;
 };

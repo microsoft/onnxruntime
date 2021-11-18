@@ -191,8 +191,8 @@ MlasConvSymSetOutputZeroPoint(
     bool InputIsSigned
     )
 {
-    constexpr int32_t minimum = InputIsSigned ? std::numeric_limits<int8_t>::min() : std::numeric_limits<uint8_t>::min();
-    constexpr int32_t maximum = InputIsSigned ? std::numeric_limits<int8_t>::max() : std::numeric_limits<uint8_t>::max();
+    int32_t minimum = InputIsSigned ? std::numeric_limits<int8_t>::min() : std::numeric_limits<uint8_t>::min();
+    int32_t maximum = InputIsSigned ? std::numeric_limits<int8_t>::max() : std::numeric_limits<uint8_t>::max();
     PostProcessParams.MinimumValue = static_cast<float>(minimum - OutputZeroPoint);
     PostProcessParams.MaximumValue = static_cast<float>(maximum - OutputZeroPoint);
     PostProcessParams.OutputZeroPoint = OutputZeroPoint;
