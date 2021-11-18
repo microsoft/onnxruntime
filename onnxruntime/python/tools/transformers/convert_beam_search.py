@@ -257,18 +257,21 @@ def convert_model(args):
 
     # graph outputs
     sequences = helper.make_tensor_value_info('sequences', TensorProto.INT32,
-                                              ['batch_size * num_return_sequences', 'max_length'])
+                                              ['batch_size',  'num_return_sequences', 'max_length'])
+    
     sequences_scores = helper.make_tensor_value_info('sequences_scores', TensorProto.FLOAT,
-                                                     ['batch_size * num_return_sequences'])
+                                                     ['batch_size', 'num_return_sequences'])
     scores = helper.make_tensor_value_info(
         'scores', TensorProto.FLOAT,
-        ['max_length - sequence_length', 'batch_size * num_beams * num_return_sequences', vocab_size])
+        ['max_length - sequence_length', 'batch_size', 'num_beams', vocab_size])
 
     initializers = []
 
     graph_outputs = [sequences]
+    
     if args.output_sequences_scores:
         graph_outputs.append(sequences_scores)
+        
     if args.output_token_scores:
         graph_outputs.append(scores)
 
@@ -350,9 +353,13 @@ def test_model(args):
 
     print("inputs", inputs)
     result = ort_session.run(None, inputs)
-    print("outputs", result)
-    #print(tokenizer.decode(result[0][0], skip_special_tokens=True))
-
+    
+    sequences = result[0]
+    print("outputs", sequences)
+    
+    #TODO: print all sequences. Below shows only the first one
+    first_sequence = tokenizer.decode(sequences[0][0], skip_special_tokens=True)
+    print(first_sequence)
 
 def main():
     args = parse_arguments()

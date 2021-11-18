@@ -560,9 +560,9 @@ void BeamSearchShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
 
   // Shape inference
   // input 0 (input_ids) shape: (batch_size, sequence_length)
-  // output 0 (sequences) shape: (batch_size * num_return_sequences, max_length)
-  // output 1 (sequences_scores) shape: (batch_size * num_return_sequences)
-  // output 2 (scores) shape: (max_length-sequence_length, batch_size*num_beams*num_return_sequences, vocab_size)
+  // output 0 (sequences) shape: (batch_size, num_return_sequences, max_length)
+  // output 1 (sequences_scores) shape: (batch_size, num_return_sequences)
+  // output 2 (scores) shape: (max_length - sequence_length, batch_size, num_beams, vocab_size)
   if (!hasInputShape(ctx, 0)) {
     return;
   }
@@ -601,19 +601,22 @@ void BeamSearchShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
   }
 
   ONNX_NAMESPACE::TensorShapeProto sequences_shape;
-  sequences_shape.add_dim()->set_dim_value(batch_size * num_beams_value);
-  sequences_shape.add_dim()->set_dim_value(batch_size * sequence_length);
+  sequences_shape.add_dim()->set_dim_value(batch_size);
+  sequences_shape.add_dim()->set_dim_value(num_return_sequences_value);
+  sequences_shape.add_dim()->set_dim_value(max_length_value);
   updateOutputShape(ctx, 0, sequences_shape);
 
   if (ctx.getNumOutputs() > 1) {
     ONNX_NAMESPACE::TensorShapeProto sequences_scores_shape;
-    sequences_scores_shape.add_dim()->set_dim_value(batch_size * num_beams_value);
+    sequences_shape.add_dim()->set_dim_value(batch_size);
+    sequences_shape.add_dim()->set_dim_value(num_return_sequences_value);
     updateOutputShape(ctx, 1, sequences_scores_shape);
 
     if (ctx.getNumOutputs() > 2) {
       ONNX_NAMESPACE::TensorShapeProto scores_shape;
       scores_shape.add_dim()->set_dim_value(max_length_value - sequence_length);
-      scores_shape.add_dim()->set_dim_value(batch_size * num_beams_value * num_return_sequences_value);
+      scores_shape.add_dim()->set_dim_value(batch_size);
+      scores_shape.add_dim()->set_dim_value(num_beams_value);
       scores_shape.add_dim();  // vocab_size is unknown
       updateOutputShape(ctx, 2, scores_shape);
     }
@@ -646,12 +649,12 @@ void RegisterTextGenerationSchemas() {
               "T", OpSchema::Optional)
         .Input(7, "repetition_penalty", "The parameter for repetition penalty. Default value 1.0 means no penalty. Accepts value > 0.0. Shape is (1)", "T", OpSchema::Optional)
         .Input(8, "vocab_mask", "Mask of vocabulary. Words that masked with 0 are not allowed to be generated, and 1 is allowed. Shape is (vacab_size)", "M", OpSchema::Optional)
-        .Output(0, "sequences", "Word IDs of generated sequences. Shape is (batch_size * num_return_sequences, max_sequence_length)", "I")
-        .Output(1, "sequences_scores", "Final beam score of the generated sequences. Shape is (batch_size*num_return_sequences)", "T", OpSchema::Optional)
+        .Output(0, "sequences", "Word IDs of generated sequences. Shape is (batch_size, num_return_sequences, max_sequence_length)", "I")
+        .Output(1, "sequences_scores", "Final beam score of the generated sequences. Shape is (batch_size, num_return_sequences)", "T", OpSchema::Optional)
         .Output(2, "scores",
                 "Processed beam scores for each vocabulary token at each generation step."
                 "Beam scores consisting of log softmax scores for each vocabulary token and sum of log softmax of previously generated tokens in this beam."
-                "Shape is (max_length - input_ids_sequence_length, batch_size*num_beams*num_return_sequences, vocab_size)",
+                "Shape is (max_length - sequence_length, batch_size, num_beams, vocab_size)",
                 "T", OpSchema::Optional)
         .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float tensors.")
         .TypeConstraint("I", {"tensor(int32)"}, "Constrain to integer types")

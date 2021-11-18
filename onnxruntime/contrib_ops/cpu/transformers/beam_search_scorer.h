@@ -31,18 +31,15 @@ class IBeamScorer {
 
   virtual void Finalize(ISequences* sequences,
                         gsl::span<const float>& final_beam_scores,
-                        gsl::span<const int64_t>& final_beam_tokens,
-                        gsl::span<const int64_t>& final_beam_indices,
-                        AllocatorPtr& allocator,
                         Tensor* output_sequences,
                         Tensor* output_sequence_scores) = 0;
 };
 
 struct HypothesisScore {
-  HypothesisScore(gsl::span<int64_t>& _hypothesis, float _score)
+  HypothesisScore(gsl::span<const int64_t>& _hypothesis, float _score)
       : hypothesis(_hypothesis), score(_score) {}
 
-  gsl::span<int64_t> hypothesis;
+  gsl::span<const int64_t> hypothesis;
   float score;
 };
 
@@ -61,9 +58,15 @@ class BeamHypotheses {
   int Size() { return static_cast<int>(beams_.size()); }
 
   // Add a new hypothesis
-  void Add(gsl::span<int64_t>& hypothesis, float sum_logprobs);
+  void Add(gsl::span<const int64_t>& hypothesis, float sum_logprobs);
 
   bool IsDone(float best_sum_logprobs, int current_length);
+
+  // Output results. Note that it will clear all beams.
+  void Output(int top_k,                           // number of sequences to return
+              int max_length,                      // max sequence length
+              gsl::span<int32_t>& sequences,       // buffer filled with pad token ID, with shape (num_return_sequences, max_length)
+              gsl::span<float>& sequences_scores); // buffer for sequence scores, with shape (num_return_sequences)
 
  private:
   int num_beams_;
@@ -94,9 +97,6 @@ class BeamSearchScorer : public IBeamScorer {
 
   void Finalize(ISequences* sequences,
                 gsl::span<const float>& final_beam_scores,
-                gsl::span<const int64_t>& final_beam_tokens,
-                gsl::span<const int64_t>& final_beam_indices,
-                AllocatorPtr& allocator,
                 Tensor* output_sequences,
                 Tensor* output_sequence_scores) override;
 
@@ -108,8 +108,6 @@ class BeamSearchScorer : public IBeamScorer {
   int batch_size_;
   int num_beams_;
   int max_length_;
-  float length_penalty_;
-  bool early_stopping_;
   int num_beam_hyps_to_keep_;
   int pad_token_id_;
   int eos_token_id_;
@@ -129,7 +127,7 @@ class BeamSearchScorer : public IBeamScorer {
   IAllocatorUniquePtr<int64_t> hypothesis_buffer_ptr_;  // Allocated buffer to hold all hypotheses
   gsl::span<int64_t> hypothesis_buffer_;                // Span of the allocated buffer
   size_t hypothesis_buffer_length_;                     // Total number of elements
-  size_t hypothesis_buffer_offset_;                     // Offset of avaiable buffer, or length of used buffer.
+  int hypothesis_buffer_offset_;                        // Offset of avaiable buffer, or length of used buffer.
 };
 
 }  // namespace contrib
