@@ -220,6 +220,9 @@ struct ProviderHost {
   virtual std::string Status__ToString(const Status* p) = 0;
 
   // TensorShape
+  virtual void TensorShape__operator_assign(TensorShape* p, const TensorShape& other) = 0;
+  virtual void TensorShape__operator_move_assign(TensorShape* p, TensorShape&& other) = 0;
+  virtual void TensorShape__Allocate(TensorShape* p, size_t size) = 0;
   virtual int64_t TensorShape__SizeHelper(const TensorShape* p, size_t start, size_t end) = 0;
   virtual std::string TensorShape__ToString(const TensorShape* p) = 0;
   virtual int64_t TensorShape__SizeToDimension(const TensorShape* p, size_t dimension) = 0;
@@ -249,9 +252,11 @@ struct ProviderHost {
   virtual int int64s__size(const ONNX_NAMESPACE::int64s* p) = 0;
   virtual const int64_t& int64s__Get(const ONNX_NAMESPACE::int64s* p, int index) = 0;
 
+#if !defined(DISABLE_OPTIONAL_TYPE)
   // TypeProto_Optional
   virtual const ONNX_NAMESPACE::TypeProto& TypeProto_Optional__elem_type(const ONNX_NAMESPACE::TypeProto_Optional* p) = 0;
   virtual ONNX_NAMESPACE::TypeProto* TypeProto_Optional__mutable_elem_type(ONNX_NAMESPACE::TypeProto_Optional* p) = 0;
+#endif
 
   // TypeProto_Sequence
   virtual const ONNX_NAMESPACE::TypeProto& TypeProto_Sequence__elem_type(const ONNX_NAMESPACE::TypeProto_Sequence* p) = 0;
@@ -280,8 +285,10 @@ struct ProviderHost {
   virtual ONNX_NAMESPACE::TypeProto_SparseTensor* TypeProto__mutable_sparse_tensor_type(ONNX_NAMESPACE::TypeProto* p) = 0;
 #endif
 
+#if !defined(DISABLE_OPTIONAL_TYPE)
   virtual const ONNX_NAMESPACE::TypeProto_Optional& TypeProto__optional_type(const ONNX_NAMESPACE::TypeProto* p) = 0;
   virtual ONNX_NAMESPACE::TypeProto_Optional* TypeProto__mutable_optional_type(ONNX_NAMESPACE::TypeProto* p) = 0;
+#endif
 
   virtual const ONNX_NAMESPACE::TypeProto_Sequence& TypeProto__sequence_type(const ONNX_NAMESPACE::TypeProto* p) = 0;
   virtual ONNX_NAMESPACE::TypeProto_Sequence* TypeProto__mutable_sequence_type(ONNX_NAMESPACE::TypeProto* p) = 0;

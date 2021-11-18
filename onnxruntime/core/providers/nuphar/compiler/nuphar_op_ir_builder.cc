@@ -91,7 +91,7 @@ bool CreateScalarTensorFromInitializer(const Tensor* tensor,
 
   std::string normalized_name = NormalizeCppName(name);
   auto tvm_tensor = tvm::compute(
-      tvm_codegen::ToTvmArray(tensor->Shape().GetDims()),
+      tvm_codegen::ToTvmArray(tensor->Shape().GetDimsAsVector()),
       [&](const tvm::Array<tvm::Var>&) {
         return constant_scalar;
       },
@@ -120,7 +120,7 @@ const tvm::Tensor& GetOrCreateInitializer(const std::string& name,
   DLDataType dtype = tvm_codegen::ToTvmDLDataType(ONNXRUNTIME_data_type);
   HalideIR::Type halide_type((halideir_type_code_t)dtype.code, dtype.bits, dtype.lanes);
   std::string normalized_name = NormalizeCppName(name);
-  auto tvm_shape = tvm_codegen::ToTvmArray(tensor->Shape().GetDims());
+  auto tvm_shape = tvm_codegen::ToTvmArray(tensor->Shape().GetDimsAsVector());
   auto tvm_tensor = CreateInputPlaceholder(tvm_shape, halide_type, normalized_name, is_sliced);
   // create the layout info
   ctx_codegen.CreateWeightLayoutInfo(name, tvm_tensor);

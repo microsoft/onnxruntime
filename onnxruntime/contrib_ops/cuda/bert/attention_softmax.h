@@ -414,7 +414,7 @@ bool ComputeSoftmaxWithRawMask(cudaStream_t stream, const int all_sequence_lengt
   }
 
   if (use_persistent_softmax) {
-    dispatch_softmax_forward<T, T, float, false>(stream, output, persistent_softmax_workspace, all_sequence_length, all_sequence_length, batch_size * num_heads * sequence_length);
+    dispatch_warpwise_softmax_forward<T, T, float, false>(stream, output, persistent_softmax_workspace, all_sequence_length, all_sequence_length, batch_size * num_heads * sequence_length);
   }
 
   return CUDA_CALL(cudaPeekAtLastError());

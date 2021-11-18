@@ -10,7 +10,7 @@ from onnx import helper
 from onnx import version
 from onnx.checker import check_model
 from onnx.backend.base import Backend
-from onnxruntime import InferenceSession, SessionOptions, get_device
+from onnxruntime import InferenceSession, SessionOptions, get_device, get_available_providers
 from onnxruntime.backend.backend_rep import OnnxRuntimeBackendRep
 import unittest
 import os
@@ -107,7 +107,7 @@ class OnnxRuntimeBackend(Backend):
             for k, v in kwargs.items():
                 if hasattr(options, k):
                     setattr(options, k, v)
-            inf = InferenceSession(model, options)
+            inf = InferenceSession(model, sess_options=options, providers=get_available_providers())
             # backend API is primarily used for ONNX test/validation. As such, we should disable session.run() fallback
             # which may hide test failures.
             inf.disable_fallback()

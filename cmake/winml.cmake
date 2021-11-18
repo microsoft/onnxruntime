@@ -590,8 +590,12 @@ onnxruntime_add_static_library(winml_lib_api_experimental
   ${winml_lib_api_experimental_dir}/LearningModelBuilder.h
   ${winml_lib_api_experimental_dir}/LearningModelDeviceExperimental.cpp
   ${winml_lib_api_experimental_dir}/LearningModelDeviceExperimental.h
+  ${winml_lib_api_experimental_dir}/LearningModelExperimental.cpp
+  ${winml_lib_api_experimental_dir}/LearningModelExperimental.h
   ${winml_lib_api_experimental_dir}/LearningModelInputs.cpp
   ${winml_lib_api_experimental_dir}/LearningModelInputs.h
+  ${winml_lib_api_experimental_dir}/LearningModelJoinOptions.cpp
+  ${winml_lib_api_experimental_dir}/LearningModelJoinOptions.h
   ${winml_lib_api_experimental_dir}/LearningModelOutputs.cpp
   ${winml_lib_api_experimental_dir}/LearningModelOutputs.h
   ${winml_lib_api_experimental_dir}/LearningModelOperator.cpp

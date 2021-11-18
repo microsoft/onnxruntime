@@ -14,6 +14,8 @@
 #include "LearningModelSessionOptionsExperimental.h"
 #include "LearningModelSessionExperimental.h"
 #include "LearningModelDeviceExperimental.h"
+#include "LearningModelExperimental.h"
+#include "LearningModelJoinOptions.h"
 
 #define STRINGIFY(x) #x
 #define XSTRINGIFY(x) STRINGIFY(x)
@@ -124,6 +126,19 @@ STDAPI DllGetExperimentalActivationFactory(void* classId, void** factory) noexce
       return 0;
     }
 
+    std::wostringstream learning_model_experimental_class;
+    learning_model_experimental_class << XSTRINGIFY(WINML_ROOT_NS) << ".AI.MachineLearning.Experimental.LearningModelExperimental";
+    if (requal(name, learning_model_experimental_class.str())) {
+      *factory = winrt::detach_abi(winrt::make<WINML_EXPERIMENTAL::factory_implementation::LearningModelExperimental>());
+      return 0;
+    }
+
+    std::wostringstream learning_model_join_options_class;
+    learning_model_join_options_class << XSTRINGIFY(WINML_ROOT_NS) << ".AI.MachineLearning.Experimental.LearningModelJoinOptions";
+    if (requal(name, learning_model_join_options_class.str())) {
+      *factory = winrt::detach_abi(winrt::make<WINML_EXPERIMENTAL::factory_implementation::LearningModelJoinOptions>());
+      return 0;
+    }
 
     return winrt::hresult_class_not_available(name).to_abi();
   } catch (...) {
