@@ -26,14 +26,14 @@ std::vector<DimensionType> BroadcastTensorShape(
 #endif
 template <typename T>
 void FindValueIndices(gsl::span<const T> values, T value, /*out*/ std::vector<uint32_t>& indices) {
-  indices.clear();
-  for (size_t i = 0, valuesCount = values.size(); i < valuesCount; ++i) {
-    // Work around compiler bug on x86 release by using data() rather than operator [] directly.
-    // cl.exe 19.20.27412.4 for x86
-    if (values.data()[i] == value) {
-      indices.push_back(gsl::narrow_cast<uint32_t>(i));
+    indices.clear();
+    for (size_t i = 0, valuesCount = values.size(); i < valuesCount; ++i) {
+        // Work around compiler bug on x86 release by using data() rather than operator [] directly.
+        // cl.exe 19.20.27412.4 for x86
+        if (values.data()[i] == value) {
+            indices.push_back(gsl::narrow_cast<uint32_t>(i));
+        }
     }
-  }
 }
 #ifndef __clang__
 #pragma optimize("", on)
@@ -54,48 +54,49 @@ void HandleNegativeAxes(gsl::span<int32_t> onnxAxes, uint32_t dimCount);
 //      output values = {2,3,5}
 template <typename T>
 void RemoveValuesByIndex(gsl::span<const uint32_t> indices, bool keepOneValue, /*inout*/ std::vector<T>& values) {
-  assert(std::is_sorted(indices.begin(), indices.end()));
+    assert(std::is_sorted(indices.begin(), indices.end()));
 
-  // Keep the last value at least, if all values would otherwise be removed.
-  if (keepOneValue && !indices.empty() && indices.size() == values.size()) {
-    indices = indices.first(indices.size() - 1);
-  }
-
-  auto indicesIterator = indices.begin();
-  auto indicesEnd = indices.end();
-  size_t oldValuesCount = values.size();
-  size_t newValuesCount = 0;
-  size_t nextIndex = (indicesIterator == indicesEnd) ? SIZE_MAX : *(indicesIterator++);
-
-  // For every value, either skip the entry, or copy it to the output.
-  for (size_t i = 0; i < oldValuesCount; ++i) {
-    if (i == nextIndex)  // Skip and remove entry.
-    {
-      nextIndex = (indicesIterator == indicesEnd) ? SIZE_MAX : *(indicesIterator++);
-    } else  // Keep and copy entry.
-    {
-      values[newValuesCount++] = values[i];
+    // Keep the last value at least, if all values would otherwise be removed.
+    if (keepOneValue && !indices.empty() && indices.size() == values.size()) {
+        indices = indices.first(indices.size() - 1);
     }
-  }
-  values.resize(newValuesCount);
+
+    auto indicesIterator = indices.begin();
+    auto indicesEnd = indices.end();
+    size_t oldValuesCount = values.size();
+    size_t newValuesCount = 0;
+    size_t nextIndex = (indicesIterator == indicesEnd) ? SIZE_MAX : *(indicesIterator++);
+
+    // For every value, either skip the entry, or copy it to the output.
+    for (size_t i = 0; i < oldValuesCount; ++i) {
+        if (i == nextIndex)  // Skip and remove entry.
+        {
+            nextIndex = (indicesIterator == indicesEnd) ? SIZE_MAX : *(indicesIterator++);
+        }
+        else  // Keep and copy entry.
+        {
+            values[newValuesCount++] = values[i];
+        }
+    }
+    values.resize(newValuesCount);
 }
 
 template <typename T>
 void FillWithLeadingValues(/*inout*/ std::vector<T>& values, uint32_t minimumElementCount, T fillValue)
 {
-  // e.g.
-  // input = [6,7]
-  // elementCount = 4
-  // fillValue = 1
-  // output = [1,1,6,7]
+    // e.g.
+    // input = [6,7]
+    // elementCount = 4
+    // fillValue = 1
+    // output = [1,1,6,7]
 
-  const size_t oldElementCount = values.size();
-  const size_t newElementCount = std::max(size_t(minimumElementCount), oldElementCount);
-  const size_t fillCount = newElementCount - oldElementCount;
+    const size_t oldElementCount = values.size();
+    const size_t newElementCount = std::max(size_t(minimumElementCount), oldElementCount);
+    const size_t fillCount = newElementCount - oldElementCount;
 
-  values.resize(newElementCount);
-  std::copy_backward(values.begin(), values.begin() + oldElementCount, values.end());
-  std::fill_n(values.data(), fillCount, fillValue);
+    values.resize(newElementCount);
+    std::copy_backward(values.begin(), values.begin() + oldElementCount, values.end());
+    std::fill_n(values.data(), fillCount, fillValue);
 }
 
 int64_t CastToInt64(MLOperatorTensorDataType tensorDataType, const void* p);
@@ -108,76 +109,76 @@ void ReadCpuLocalTensorIntoInt32(const MLOperatorTensor& tensor, std::vector<int
 void ReadCpuLocalTensorIntoFloat32(const MLOperatorTensor& tensor, std::vector<float>& result);
 
 class EdgeShapes {
- public:
-  EdgeShapes() = default;
-  EdgeShapes(const std::vector<uint32_t>& dim) { m_shapes = dim; }
-  EdgeShapes(const std::initializer_list<uint32_t>& dim) { m_shapes.assign(dim.begin(), dim.end()); }
-  EdgeShapes(const gsl::span<const DimensionType> dim) { m_shapes.assign(dim.begin(), dim.end()); }
+public:
+    EdgeShapes() = default;
+    EdgeShapes(const std::vector<uint32_t>& dim) { m_shapes = dim; }
+    EdgeShapes(const std::initializer_list<uint32_t>& dim) { m_shapes.assign(dim.begin(), dim.end()); }
+    EdgeShapes(const gsl::span<const DimensionType> dim) { m_shapes.assign(dim.begin(), dim.end()); }
 
-  bool IsTensor() { return true; }
-  bool IsUnused() { return m_shapes.empty(); }
+    bool IsTensor() { return true; }
+    bool IsUnused() { return m_shapes.empty(); }
 
-  std::vector<uint32_t>& GetShape() { return m_shapes; }
+    std::vector<uint32_t>& GetShape() { return m_shapes; }
 
- private:
-  std::vector<uint32_t> m_shapes;
+private:
+    std::vector<uint32_t> m_shapes;
 };
 
 struct KernelArgs {
-  // Initialize arrays up to NcdhwSpatialDimensionCount to avoid vector allocations,
-  // but it's important to use .spatialDimensionCount when accessing them because
-  // values beyond that may be bogus.
-  uint32_t strides[NcdhwSpatialDimensionCount];
-  uint32_t dilations[NcdhwSpatialDimensionCount];
-  uint32_t windowSize[NcdhwSpatialDimensionCount]; // The filter kernel dimensions.
-  uint32_t startPadding[NcdhwSpatialDimensionCount];
-  uint32_t endPadding[NcdhwSpatialDimensionCount];
-  uint32_t outputPadding[NcdhwSpatialDimensionCount];
+    // Initialize arrays up to NcdhwSpatialDimensionCount to avoid vector allocations,
+    // but it's important to use .spatialDimensionCount when accessing them because
+    // values beyond that may be bogus.
+    uint32_t strides[NcdhwSpatialDimensionCount];
+    uint32_t dilations[NcdhwSpatialDimensionCount];
+    uint32_t windowSize[NcdhwSpatialDimensionCount]; // The filter kernel dimensions.
+    uint32_t startPadding[NcdhwSpatialDimensionCount];
+    uint32_t endPadding[NcdhwSpatialDimensionCount];
+    uint32_t outputPadding[NcdhwSpatialDimensionCount];
 
-  // This is true if padding must be automatically computed based on input sizes.
-  // ResolveAutoPadding must happen during Compute rather than initialization.
-  // This is temporary until kernel initialization routine once Lotus can provide
-  // sizes at operator initialization.
-  bool autoPad = false;
-  bool autoPadSameUpper = false;
-  bool useCeilingOutputShape = false;
-  uint32_t spatialDimensionCount = 0;
+    // This is true if padding must be automatically computed based on input sizes.
+    // ResolveAutoPadding must happen during Compute rather than initialization.
+    // This is temporary until kernel initialization routine once Lotus can provide
+    // sizes at operator initialization.
+    bool autoPad = false;
+    bool autoPadSameUpper = false;
+    bool useCeilingOutputShape = false;
+    uint32_t spatialDimensionCount = 0;
 
-  KernelArgs(uint32_t spatialDimensionCount) : spatialDimensionCount(spatialDimensionCount)
-  {
-    ML_CHECK_VALID_ARGUMENT(spatialDimensionCount <= NcdhwSpatialDimensionCount);
-  }
+    KernelArgs(uint32_t spatialDimensionCount) : spatialDimensionCount(spatialDimensionCount)
+    {
+        ML_CHECK_VALID_ARGUMENT(spatialDimensionCount <= NcdhwSpatialDimensionCount);
+    }
 
-  void FillWithLeadingValues(gsl::span<const uint32_t> input, gsl::span<uint32_t> output, uint32_t fillCount, uint32_t value) {
-    // e.g.
-    // input = [5,6,7,8]
-    // fillcount = 2
-    // value = 1
-    // output = [1,1,5,6,7,8]
+    void FillWithLeadingValues(gsl::span<const uint32_t> input, gsl::span<uint32_t> output, uint32_t fillCount, uint32_t value) {
+        // e.g.
+        // input = [5,6,7,8]
+        // fillcount = 2
+        // value = 1
+        // output = [1,1,5,6,7,8]
 
-    const size_t inputCount = input.size();
-    const size_t outputCount = output.size();
-    const size_t copyCount = std::min(outputCount - fillCount, inputCount);
+        const size_t inputCount = input.size();
+        const size_t outputCount = output.size();
+        const size_t copyCount = std::min(outputCount - fillCount, inputCount);
 
-    std::fill_n(output.data(), fillCount, value);
-    std::copy_n(input.data(), copyCount, output.data() + fillCount);
-  }
+        std::fill_n(output.data(), fillCount, value);
+        std::copy_n(input.data(), copyCount, output.data() + fillCount);
+    }
 
-  // Create a copy of an existing kernel args with a minimum dimension count,
-  // filling the leading attribute values with 1's or 0's respectively.
-  KernelArgs(KernelArgs const& kernelArgs, uint32_t minimumDimensionCount) : autoPad(kernelArgs.autoPad),
-                                                                             autoPadSameUpper(kernelArgs.autoPadSameUpper),
-                                                                             spatialDimensionCount(std::max(kernelArgs.spatialDimensionCount, minimumDimensionCount)) {
-    ML_CHECK_VALID_ARGUMENT(spatialDimensionCount <= NcdhwSpatialDimensionCount);
+    // Create a copy of an existing kernel args with a minimum dimension count,
+    // filling the leading attribute values with 1's or 0's respectively.
+    KernelArgs(KernelArgs const& kernelArgs, uint32_t minimumDimensionCount) : autoPad(kernelArgs.autoPad),
+        autoPadSameUpper(kernelArgs.autoPadSameUpper),
+        spatialDimensionCount(std::max(kernelArgs.spatialDimensionCount, minimumDimensionCount)) {
+        ML_CHECK_VALID_ARGUMENT(spatialDimensionCount <= NcdhwSpatialDimensionCount);
 
-    uint32_t fillCount = (minimumDimensionCount > kernelArgs.spatialDimensionCount) ? minimumDimensionCount - kernelArgs.spatialDimensionCount : 0;
-    FillWithLeadingValues(kernelArgs.strides, this->strides, fillCount, 1u);
-    FillWithLeadingValues(kernelArgs.dilations, this->dilations, fillCount, 1u);
-    FillWithLeadingValues(kernelArgs.windowSize, this->windowSize, fillCount, 1u);
-    FillWithLeadingValues(kernelArgs.startPadding, this->startPadding, fillCount, 0u);
-    FillWithLeadingValues(kernelArgs.endPadding, this->endPadding, fillCount, 0u);
-    FillWithLeadingValues(kernelArgs.outputPadding, this->outputPadding, fillCount, 0u);
-  }
+        uint32_t fillCount = (minimumDimensionCount > kernelArgs.spatialDimensionCount) ? minimumDimensionCount - kernelArgs.spatialDimensionCount : 0;
+        FillWithLeadingValues(kernelArgs.strides, this->strides, fillCount, 1u);
+        FillWithLeadingValues(kernelArgs.dilations, this->dilations, fillCount, 1u);
+        FillWithLeadingValues(kernelArgs.windowSize, this->windowSize, fillCount, 1u);
+        FillWithLeadingValues(kernelArgs.startPadding, this->startPadding, fillCount, 0u);
+        FillWithLeadingValues(kernelArgs.endPadding, this->endPadding, fillCount, 0u);
+        FillWithLeadingValues(kernelArgs.outputPadding, this->outputPadding, fillCount, 0u);
+    }
 };
 
 std::vector<DimensionType> InitializeKernelOutputDimensions(
@@ -200,130 +201,132 @@ void ResolveAutoPadding(
     gsl::span<const DimensionType> inputDimensions);
 
 void MatMulShapeMapping(
-  std::vector<DimensionType>& inputShape0,
-  std::vector<DimensionType>& inputShape1,
-  std::vector<DimensionType>& outputShape);
+    std::vector<DimensionType>& inputShape0,
+    std::vector<DimensionType>& inputShape1,
+    std::vector<DimensionType>& outputShape);
 
 class GetOutputShapeAsInputShapeHelper {
- public:
-  // Info_t is used to obtain attributes which will be used for calculating the output shape later.
-  // Shape_t is used to obtain input shape which will be used for adjusting attribute value.
-  // Default to first input tensor.
-  template <typename Info_t, typename Shape_t>
-  GetOutputShapeAsInputShapeHelper(const Info_t& info, const Shape_t& shape){
-    ORT_UNUSED_PARAMETER(info);
-    ORT_UNUSED_PARAMETER(shape);
-  };
+public:
+    // Info_t is used to obtain attributes which will be used for calculating the output shape later.
+    // Shape_t is used to obtain input shape which will be used for adjusting attribute value.
+    // Default to first input tensor.
+    template <typename Info_t, typename Shape_t>
+    GetOutputShapeAsInputShapeHelper(const Info_t& info, const Shape_t& shape) {
+        ORT_UNUSED_PARAMETER(info);
+        ORT_UNUSED_PARAMETER(shape);
+    };
 
-  // Info_t is used to obtain attributes which will be used for calculating the output shape later.
-  // Shape_t is used to obtain input shape which will be used for adjusting attribute value.
-  // Pass specific tensor index.
-  template <typename Info_t, typename Shape_t>
-  GetOutputShapeAsInputShapeHelper(const Info_t& info, const Shape_t& shape, uint32_t inputTensorIndex)
-  : m_inputTensorIndex(inputTensorIndex)
-  {
-    ORT_UNUSED_PARAMETER(info);
-    ORT_UNUSED_PARAMETER(shape);
-  };
+    // Info_t is used to obtain attributes which will be used for calculating the output shape later.
+    // Shape_t is used to obtain input shape which will be used for adjusting attribute value.
+    // Pass specific tensor index.
+    template <typename Info_t, typename Shape_t>
+    GetOutputShapeAsInputShapeHelper(const Info_t& info, const Shape_t& shape, uint32_t inputTensorIndex)
+        : m_inputTensorIndex(inputTensorIndex)
+    {
+        ORT_UNUSED_PARAMETER(info);
+        ORT_UNUSED_PARAMETER(shape);
+    };
 
-  std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
+    std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
 
-  uint32_t m_inputTensorIndex = 0;
+    uint32_t m_inputTensorIndex = 0;
 };
 
 template <uint32_t InputTensorIndex>
 class GetOutputShapeAsSpecificInputShapeHelper : public GetOutputShapeAsInputShapeHelper {
 public:
-  // Info_t is used to obtain attributes which will be used for calculating the output shape later.
-  // Shape_t is used to obtain input shape which will be used for adjusting attribute value.
-  template <typename Info_t, typename Shape_t>
-  GetOutputShapeAsSpecificInputShapeHelper(const Info_t& info, const Shape_t& shape)
-  : GetOutputShapeAsInputShapeHelper(info, shape, InputTensorIndex)
-  {}
+    // Info_t is used to obtain attributes which will be used for calculating the output shape later.
+    // Shape_t is used to obtain input shape which will be used for adjusting attribute value.
+    template <typename Info_t, typename Shape_t>
+    GetOutputShapeAsSpecificInputShapeHelper(const Info_t& info, const Shape_t& shape)
+        : GetOutputShapeAsInputShapeHelper(info, shape, InputTensorIndex)
+    {}
 };
 
 class GetBroadcastedOutputShapeHelper {
- public:
-  // Info_t is used to obtain attributes which will be used for calculating the output shape later.
-  // Shape_t is used to obtain input shape which will be used for adjusting attribute value.
-  template <typename Info_t, typename Shape_t>
-  GetBroadcastedOutputShapeHelper(const Info_t& info, const Shape_t& shape){};
+public:
+    // Info_t is used to obtain attributes which will be used for calculating the output shape later.
+    // Shape_t is used to obtain input shape which will be used for adjusting attribute value.
+    template <typename Info_t, typename Shape_t>
+    GetBroadcastedOutputShapeHelper(const Info_t& info, const Shape_t& shape) {};
 
-  std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
+    std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
 };
 
 class RandomUniformHelperBase {
- public:
-  // Info_t is used to obtain attributes which will be used for calculating the output shape later.
-  template <typename Info_t>
-  RandomUniformHelperBase(const Info_t& info) {
-    m_high = info.GetOptionalAttribute<float>(AttrName::High, 1.0f);
-    m_low = info.GetOptionalAttribute<float>(AttrName::Low, 0.0f);
+public:
+    // Info_t is used to obtain attributes which will be used for calculating the output shape later.
+    template <typename Info_t>
+    RandomUniformHelperBase(const Info_t& info) {
+        m_high = info.GetOptionalAttribute<float>(AttrName::High, 1.0f);
+        m_low = info.GetOptionalAttribute<float>(AttrName::Low, 0.0f);
 
-    if (info.HasAttribute(AttrName::Seed, MLOperatorAttributeType::Float)) {
-      m_seed = info.GetAttribute<float>(AttrName::Seed);
-    } else {
-      m_seed = static_cast<float>(std::chrono::high_resolution_clock::now().time_since_epoch().count());
+        if (info.HasAttribute(AttrName::Seed, MLOperatorAttributeType::Float)) {
+            m_seed = info.GetAttribute<float>(AttrName::Seed);
+        }
+        else {
+            m_seed = static_cast<float>(std::chrono::high_resolution_clock::now().time_since_epoch().count());
+        }
     }
-  }
 
- protected:
-  float m_high;
-  float m_low;
-  float m_seed;
+protected:
+    float m_high;
+    float m_low;
+    float m_seed;
 };
 
 class RandomUniformHelper : public RandomUniformHelperBase {
- public:
-  template <typename Info_t, typename Shape_t>
-  RandomUniformHelper(const Info_t& info, const Shape_t& shape) : RandomUniformHelperBase(info) {
-    auto shapeAttribute = info.GetOptionalAttributeVectorInt32(AttrName::Shape);
-    ML_CHECK_VALID_ARGUMENT(!shapeAttribute.empty(), "Attribute shape is missing.");
-    m_tensorShape.assign(shapeAttribute.begin(), shapeAttribute.end());
-  }
+public:
+    template <typename Info_t, typename Shape_t>
+    RandomUniformHelper(const Info_t& info, const Shape_t& shape) : RandomUniformHelperBase(info) {
+        auto shapeAttribute = info.GetOptionalAttributeVectorInt32(AttrName::Shape);
+        ML_CHECK_VALID_ARGUMENT(!shapeAttribute.empty(), "Attribute shape is missing.");
+        m_tensorShape.assign(shapeAttribute.begin(), shapeAttribute.end());
+    }
 
-  std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
+    std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
 
- private:
-  // Returns an empty vector if the optional attribute is missing.
-  std::vector<uint32_t> m_tensorShape;
+private:
+    // Returns an empty vector if the optional attribute is missing.
+    std::vector<uint32_t> m_tensorShape;
 };
 
 class RandomNormalHelperBase {
- public:
-  // Info_t is used to obtain attributes which will be used for calculating the output shape later.
-  template <typename Info_t>
-  RandomNormalHelperBase(const Info_t& info) {
-    m_mean = info.GetOptionalAttribute<float>(AttrName::Mean, 0.0f);
-    m_scale = info.GetOptionalAttribute<float>(AttrName::Scale, 1.0f);
+public:
+    // Info_t is used to obtain attributes which will be used for calculating the output shape later.
+    template <typename Info_t>
+    RandomNormalHelperBase(const Info_t& info) {
+        m_mean = info.GetOptionalAttribute<float>(AttrName::Mean, 0.0f);
+        m_scale = info.GetOptionalAttribute<float>(AttrName::Scale, 1.0f);
 
-    if (info.HasAttribute(AttrName::Seed, MLOperatorAttributeType::Float)) {
-      m_seed = info.GetAttribute<float>(AttrName::Seed);
-    } else {
-      m_seed = static_cast<float>(std::chrono::high_resolution_clock::now().time_since_epoch().count());
+        if (info.HasAttribute(AttrName::Seed, MLOperatorAttributeType::Float)) {
+            m_seed = info.GetAttribute<float>(AttrName::Seed);
+        }
+        else {
+            m_seed = static_cast<float>(std::chrono::high_resolution_clock::now().time_since_epoch().count());
+        }
     }
-  }
 
- protected:
-  float m_mean;
-  float m_scale;
-  float m_seed;
+protected:
+    float m_mean;
+    float m_scale;
+    float m_seed;
 };
 
 class RandomNormalHelper : public RandomNormalHelperBase {
- public:
-  template <typename Info_t, typename Shape_t>
-  RandomNormalHelper(const Info_t& info, const Shape_t& shape) : RandomNormalHelperBase(info) {
-    auto shapeAttribute = info.GetOptionalAttributeVectorInt32(AttrName::Shape);
-    ML_CHECK_VALID_ARGUMENT(!shapeAttribute.empty(), "Attribute shape is missing.");
-    m_tensorShape.assign(shapeAttribute.begin(), shapeAttribute.end());
-  }
+public:
+    template <typename Info_t, typename Shape_t>
+    RandomNormalHelper(const Info_t& info, const Shape_t& shape) : RandomNormalHelperBase(info) {
+        auto shapeAttribute = info.GetOptionalAttributeVectorInt32(AttrName::Shape);
+        ML_CHECK_VALID_ARGUMENT(!shapeAttribute.empty(), "Attribute shape is missing.");
+        m_tensorShape.assign(shapeAttribute.begin(), shapeAttribute.end());
+    }
 
-  std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
+    std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
 
- private:
-  // Returns an empty vector if the optional attribute is missing.
-  std::vector<uint32_t> m_tensorShape;
+private:
+    // Returns an empty vector if the optional attribute is missing.
+    std::vector<uint32_t> m_tensorShape;
 };
 
 class ConvolutionHelperBase
@@ -355,8 +358,8 @@ public:
   void ResolvingPadding(gsl::span<const DimensionType> inputDimensions);
 
   const std::vector<EdgeShapes>& GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const {
-    ORT_UNUSED_PARAMETER(shapeInfo);
-    return m_outputShapes;
+      ORT_UNUSED_PARAMETER(shapeInfo);
+      return m_outputShapes;
   }
 
   template <typename Shape_t>
@@ -460,14 +463,14 @@ public:
                 m_kernel.endPadding[i] = paddings - m_kernel.startPadding[i];
             }
         }
-  }
+    }
 
- protected:
-  uint32_t m_groupCount;
-  uint32_t m_inputTensorIndex;
-  uint32_t m_filterTensorIndex;
-  KernelArgs m_kernel;
-  std::vector<EdgeShapes> m_outputShapes;
+protected:
+    uint32_t m_groupCount;
+    uint32_t m_inputTensorIndex;
+    uint32_t m_filterTensorIndex;
+    KernelArgs m_kernel;
+    std::vector<EdgeShapes> m_outputShapes;
 };
 
 class ConvHelper : public ConvolutionHelperBase
@@ -514,57 +517,59 @@ public:
         m_beta = info.template GetOptionalAttribute<float>(AttrName::Beta, 0.0f);
     }
 
-  std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
+    std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
 
-  enum InputTensors { IN_A,
-                      IN_B,
-                      IN_C };
+    enum InputTensors {
+        IN_A,
+        IN_B,
+        IN_C
+    };
 
- protected:
-  bool m_transA = false;
-  bool m_transB = false;
-  bool m_broadcast = false;
-  float m_alpha = 0.0f;
-  float m_beta = 0.0f;
+protected:
+    bool m_transA = false;
+    bool m_transB = false;
+    bool m_broadcast = false;
+    float m_alpha = 0.0f;
+    float m_beta = 0.0f;
 };
 
 class TransposeHelper {
- public:
-  void Initialize(
-      const MLOperatorAttributes& operatorAttributes,
-      gsl::span<const DimensionType> inputDimensions);
+public:
+    void Initialize(
+        const MLOperatorAttributes& operatorAttributes,
+        gsl::span<const DimensionType> inputDimensions);
 
-  // Info_t is used to obtain attributes which will be used for calculating the output shape later.
-  // Shape_t is used to obtain input shape which will be used for adjusting attribute value.
-  template <typename Info_t, typename Shape_t>
-  TransposeHelper(const Info_t& info, const Shape_t& shape) {
-    Initialize(info, shape.GetInputTensorShape(0));
-  }
+    // Info_t is used to obtain attributes which will be used for calculating the output shape later.
+    // Shape_t is used to obtain input shape which will be used for adjusting attribute value.
+    template <typename Info_t, typename Shape_t>
+    TransposeHelper(const Info_t& info, const Shape_t& shape) {
+        Initialize(info, shape.GetInputTensorShape(0));
+    }
 
-  std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
+    std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
 
- protected:
-  std::vector<int> m_permutations;
+protected:
+    std::vector<int> m_permutations;
 };
 
 class SplitHelper {
- public:
-  void Initialize(
-      const MLOperatorAttributes& operatorAttributes,
-      gsl::span<const DimensionType> inputDimensions);
+public:
+    void Initialize(
+        const MLOperatorAttributes& operatorAttributes,
+        gsl::span<const DimensionType> inputDimensions);
 
-  // Info_t is used to obtain attributes which will be used for calculating the output shape later.
-  // Shape_t is used to obtain input shape which will be used for adjusting attribute value.
-  template <typename Info_t, typename Shape_t>
-  SplitHelper(const Info_t& info, const Shape_t& shape) {
-    Initialize(info, shape.GetInputTensorShape(0));
-  }
+    // Info_t is used to obtain attributes which will be used for calculating the output shape later.
+    // Shape_t is used to obtain input shape which will be used for adjusting attribute value.
+    template <typename Info_t, typename Shape_t>
+    SplitHelper(const Info_t& info, const Shape_t& shape) {
+        Initialize(info, shape.GetInputTensorShape(0));
+    }
 
-  std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
+    std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
 
- protected:
-  int m_axis = 0;
-  std::vector<int> m_split;
+protected:
+    int m_axis = 0;
+    std::vector<int> m_split;
 };
 
 class SliceHelper
@@ -604,17 +609,17 @@ public:
         std::vector<int32_t> axes;
         std::vector<int32_t> steps;
 
-        if (opsetVersion == 7)
+        if (opsetVersion >= 10)
+        {
+            // Read starts, ends, and axes from tensors.
+            ReadIndexTensors(operatorInfo, /*out*/ starts, /*out*/ ends, /*out*/ axes, /*out*/ steps);
+        }
+        else if (opsetVersion >= 7)
         {
             // Read starts, ends, and axes from attributes.
             starts = operatorInfo.GetOptionalAttributeVectorInt32(AttrName::Starts);
             ends = operatorInfo.GetOptionalAttributeVectorInt32(AttrName::Ends);
             axes = operatorInfo.GetOptionalAttributeVectorInt32(AttrName::Axes);
-        }
-        else if (opsetVersion == 10 || opsetVersion == 11)
-        {
-            // Read starts, ends, and axes from tensors.
-            ReadIndexTensors(operatorInfo, /*out*/ starts, /*out*/ ends, /*out*/ axes, /*out*/ steps);
         }
         
         const uint32_t inputDimensionCount = gsl::narrow_cast<int32_t>(inputDimensions.size());
@@ -683,13 +688,13 @@ public:
         Initialize(info, shape.GetInputTensorShape(0), opsetVersion);
     }
 
-  std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
+    std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
 
- protected:
-  std::vector<DimensionType> m_outputDimensions;
-  std::vector<uint32_t> m_offsets;
-  std::vector<uint32_t> m_sizes;
-  std::vector<int32_t> m_strides;
+protected:
+    std::vector<DimensionType> m_outputDimensions;
+    std::vector<uint32_t> m_offsets;
+    std::vector<uint32_t> m_sizes;
+    std::vector<int32_t> m_strides;
 };
 
 class PaddingHelper
@@ -697,29 +702,29 @@ class PaddingHelper
 public:
     void Initialize(const MLOperatorAttributes& operatorAttributes, gsl::span<int32_t> padding, uint32_t opsetVersion);
 
-  // Info_t is used to obtain attributes which will be used for calculating the output shape later.
-  // Shape_t is used to obtain input shape which will be used for adjusting attribute value.
-  template <typename Info_t, typename Shape_t>
-  PaddingHelper(const Info_t& info, const Shape_t& shape, uint32_t opsetVersion) {
-    std::vector<int32_t> padding;
-    if (opsetVersion >= 11)
-    {
-        MLOperatorTensor padsTensor = info.GetConstantInputTensor(1);
-        ReadCpuLocalTensorIntoInt32(padsTensor, /*out*/ padding);
+    // Info_t is used to obtain attributes which will be used for calculating the output shape later.
+    // Shape_t is used to obtain input shape which will be used for adjusting attribute value.
+    template <typename Info_t, typename Shape_t>
+    PaddingHelper(const Info_t& info, const Shape_t& shape, uint32_t opsetVersion) {
+        std::vector<int32_t> padding;
+        if (opsetVersion >= 11)
+        {
+            MLOperatorTensor padsTensor = info.GetConstantInputTensor(1);
+            ReadCpuLocalTensorIntoInt32(padsTensor, /*out*/ padding);
+        }
+        else
+        {
+            padding = info.GetOptionalAttributeVectorInt32(AttrName::Pads);
+        }
+
+        Initialize(info, padding, opsetVersion);
     }
-    else
-    {
-        padding = info.GetOptionalAttributeVectorInt32(AttrName::Pads);
-    }
 
-    Initialize(info, padding, opsetVersion);
-  }
+    std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
 
-  std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
-
- protected:
-  std::vector<uint32_t> m_startPadding;
-  std::vector<uint32_t> m_endPadding;
+protected:
+    std::vector<uint32_t> m_startPadding;
+    std::vector<uint32_t> m_endPadding;
 };
 
 template <typename OpsetHelper, uint32_t OpsetVersion>
@@ -731,48 +736,49 @@ public:
 };
 
 class ReduceHelperBase {
- public:
-  // Info_t is used to obtain attributes which will be used for calculating the output shape later.
-  // Shape_t is used to obtain input shape which will be used for adjusting attribute value.
-  template <typename Info_t, typename Shape_t>
-  ReduceHelperBase(const Info_t& info, const Shape_t& shape, bool usingAxes) {
-    m_keepDims = info.template GetOptionalAttribute<int>(AttrName::KeepDims, 1);
-    m_selectLastIndex = info.template GetOptionalAttribute<int>(AttrName::SelectLastIndex, 0);
-    if (usingAxes) {
-      m_axes = info.GetOptionalAttributeVectorInt32(AttrName::Axes);
-    } else {
-      int axis = info.template GetOptionalAttribute<int>(AttrName::Axis, 0);
-      m_axes.push_back(axis);
+public:
+    // Info_t is used to obtain attributes which will be used for calculating the output shape later.
+    // Shape_t is used to obtain input shape which will be used for adjusting attribute value.
+    template <typename Info_t, typename Shape_t>
+    ReduceHelperBase(const Info_t& info, const Shape_t& shape, bool usingAxes) {
+        m_keepDims = info.template GetOptionalAttribute<int>(AttrName::KeepDims, 1);
+        m_selectLastIndex = info.template GetOptionalAttribute<int>(AttrName::SelectLastIndex, 0);
+        if (usingAxes) {
+            m_axes = info.GetOptionalAttributeVectorInt32(AttrName::Axes);
+        }
+        else {
+            int axis = info.template GetOptionalAttribute<int>(AttrName::Axis, 0);
+            m_axes.push_back(axis);
+        }
+        std::vector<uint32_t> inputShape = shape.GetInputTensorShape(0);
+        HandleNegativeAxes(/*inout*/ m_axes, gsl::narrow_cast<uint32_t>(inputShape.size()));
+        AdjustAxesAndOutputShape(inputShape);
     }
-    std::vector<uint32_t> inputShape = shape.GetInputTensorShape(0);
-    HandleNegativeAxes(/*inout*/ m_axes, gsl::narrow_cast<uint32_t>(inputShape.size()));
-    AdjustAxesAndOutputShape(inputShape);
-  }
-  std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
+    std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
 
- private:
-  void AdjustAxesAndOutputShape(const std::vector<uint32_t>& inputShape);
+private:
+    void AdjustAxesAndOutputShape(const std::vector<uint32_t>& inputShape);
 
- protected:
-  std::vector<int> m_axes;
-  int m_keepDims = 0;
-  int m_selectLastIndex = 0;
+protected:
+    std::vector<int> m_axes;
+    int m_keepDims = 0;
+    int m_selectLastIndex = 0;
 };
 
 class ArgMinArgMaxHelper : public ReduceHelperBase {
- public:
-  // Info_t is used to obtain attributes which will be used for calculating the output shape later.
-  // Shape_t is used to obtain input shape which will be used for adjusting attribute value.
-  template <typename Info_t, typename Shape_t>
-  ArgMinArgMaxHelper(const Info_t& info, const Shape_t& shape) : ReduceHelperBase(info, shape, false) {}
+public:
+    // Info_t is used to obtain attributes which will be used for calculating the output shape later.
+    // Shape_t is used to obtain input shape which will be used for adjusting attribute value.
+    template <typename Info_t, typename Shape_t>
+    ArgMinArgMaxHelper(const Info_t& info, const Shape_t& shape) : ReduceHelperBase(info, shape, false) {}
 };
 
 class ReduceHelper : public ReduceHelperBase {
- public:
-  // Info_t is used to obtain attributes which will be used for calculating the output shape later.
-  // Shape_t is used to obtain input shape which will be used for adjusting attribute value.
-  template <typename Info_t, typename Shape_t>
-  ReduceHelper(const Info_t& info, const Shape_t& shape) : ReduceHelperBase(info, shape, true) {}
+public:
+    // Info_t is used to obtain attributes which will be used for calculating the output shape later.
+    // Shape_t is used to obtain input shape which will be used for adjusting attribute value.
+    template <typename Info_t, typename Shape_t>
+    ReduceHelper(const Info_t& info, const Shape_t& shape) : ReduceHelperBase(info, shape, true) {}
 };
 
 class EinSumHelper
@@ -842,19 +848,19 @@ protected:
 };
 
 class MatMulHelperBase {
- public:
-  // Info_t is used to obtain attributes which will be used for calculating the output shape later.
-  // Shape_t is used to obtain input shape which will be used for adjusting attribute value.
-  template <typename Info_t, typename Shape_t>
-  MatMulHelperBase(const Info_t& info, const Shape_t& shape, uint32_t aTensorIndex, uint32_t bTensorIndex) :
-    m_aTensorIndex(aTensorIndex),
-    m_bTensorIndex(bTensorIndex)
-  {}
+public:
+    // Info_t is used to obtain attributes which will be used for calculating the output shape later.
+    // Shape_t is used to obtain input shape which will be used for adjusting attribute value.
+    template <typename Info_t, typename Shape_t>
+    MatMulHelperBase(const Info_t& info, const Shape_t& shape, uint32_t aTensorIndex, uint32_t bTensorIndex) :
+        m_aTensorIndex(aTensorIndex),
+        m_bTensorIndex(bTensorIndex)
+    {}
 
-  std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
- protected:
-  uint32_t m_aTensorIndex = 0;
-  uint32_t m_bTensorIndex = 1;
+    std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
+protected:
+    uint32_t m_aTensorIndex = 0;
+    uint32_t m_bTensorIndex = 1;
 };
 
 class MatMulHelper : public MatMulHelperBase
@@ -873,230 +879,235 @@ public:
 
 
 class TopKHelper {
- public:
-  // Info_t is used to obtain attributes which will be used for calculating the output shape later.
-  // Shape_t is used to obtain input shape which will be used for adjusting attribute value.
-  template <typename Info_t, typename Shape_t>
-  TopKHelper(const Info_t& info, const Shape_t& shape, uint32_t opsetVersion) {
-    int32_t k;
-    if (opsetVersion >= 10) {
-      MLOperatorTensor kTensor = info.GetConstantInputTensor(1);
-      k = gsl::narrow_cast<int32_t>(ReadScalarTensorCastToInt64(kTensor));
-    } else {
-      k = info.template GetOptionalAttribute<int32_t>(AttrName::K, -1);
+public:
+    // Info_t is used to obtain attributes which will be used for calculating the output shape later.
+    // Shape_t is used to obtain input shape which will be used for adjusting attribute value.
+    template <typename Info_t, typename Shape_t>
+    TopKHelper(const Info_t& info, const Shape_t& shape, uint32_t opsetVersion) {
+        int32_t k;
+        if (opsetVersion >= 10) {
+            MLOperatorTensor kTensor = info.GetConstantInputTensor(1);
+            k = gsl::narrow_cast<int32_t>(ReadScalarTensorCastToInt64(kTensor));
+        }
+        else {
+            k = info.template GetOptionalAttribute<int32_t>(AttrName::K, -1);
+        }
+        ML_CHECK_VALID_ARGUMENT(k >= 0, "Attribute k is missing or negative.");
+        m_k = k;
+
+        auto inputShape = shape.GetInputTensorShape(0);
+        int32_t axis = info.template GetOptionalAttribute<int32_t>(AttrName::Axis, -1);
+        m_axis = HandleNegativeAxis(axis, gsl::narrow_cast<uint32_t>(inputShape.size()));
     }
-    ML_CHECK_VALID_ARGUMENT(k >= 0, "Attribute k is missing or negative.");
-    m_k = k;
 
-    auto inputShape = shape.GetInputTensorShape(0);
-    int32_t axis = info.template GetOptionalAttribute<int32_t>(AttrName::Axis, -1);
-    m_axis = HandleNegativeAxis(axis, gsl::narrow_cast<uint32_t>(inputShape.size()));
-  }
+    std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
 
-  std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
-
- protected:
-  uint32_t m_k;
-  uint32_t m_axis;
+protected:
+    uint32_t m_k;
+    uint32_t m_axis;
 };
 
 class RecurrentHelper {
- public:
-  // Info_t is used to obtain attributes which will be used for calculating the output shape later.
-  // Shape_t is used to obtain input shape which will be used for adjusting attribute value.
-  template <typename Info_t, typename Shape_t>
-  RecurrentHelper(const Info_t& info, const Shape_t& shape) {
-    m_hiddenSize = info.template GetOptionalAttribute<int>(AttrName::HiddenSize, 1);
-  }
+public:
+    // Info_t is used to obtain attributes which will be used for calculating the output shape later.
+    // Shape_t is used to obtain input shape which will be used for adjusting attribute value.
+    template <typename Info_t, typename Shape_t>
+    RecurrentHelper(const Info_t& info, const Shape_t& shape) {
+        m_hiddenSize = info.template GetOptionalAttribute<int>(AttrName::HiddenSize, 1);
+    }
 
-  std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
+    std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
 
- protected:
-  int m_hiddenSize = 0;
+protected:
+    int m_hiddenSize = 0;
 };
 
 class ConcatHelper {
- public:
-  void Initialize(
-      const MLOperatorAttributes& operatorAttributes,
-      gsl::span<const DimensionType> inputDimensions);
+public:
+    void Initialize(
+        const MLOperatorAttributes& operatorAttributes,
+        gsl::span<const DimensionType> inputDimensions);
 
-  // Info_t is used to obtain attributes which will be used for calculating the output shape later.
-  // Shape_t is used to obtain input shape which will be used for adjusting attribute value.
-  template <typename Info_t, typename Shape_t>
-  ConcatHelper(const Info_t& info, const Shape_t& shape) {
-    Initialize(info, shape.GetInputTensorShape(0));
-  }
+    // Info_t is used to obtain attributes which will be used for calculating the output shape later.
+    // Shape_t is used to obtain input shape which will be used for adjusting attribute value.
+    template <typename Info_t, typename Shape_t>
+    ConcatHelper(const Info_t& info, const Shape_t& shape) {
+        Initialize(info, shape.GetInputTensorShape(0));
+    }
 
-  std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
+    std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
 
- protected:
-  int m_axis;
+protected:
+    int m_axis;
 };
 
 class CropHelper {
- public:
-  enum BorderDim { Left,
-                   Top,
-                   Right,
-                   Bottom };
-  enum ScaleDim { Height,
-                  Width };
+public:
+    enum BorderDim {
+        Left,
+        Top,
+        Right,
+        Bottom
+    };
+    enum ScaleDim {
+        Height,
+        Width
+    };
 
-  void Initialize(
-      const MLOperatorAttributes& operatorAttributes,
-      gsl::span<const DimensionType> inputDimensions);
+    void Initialize(
+        const MLOperatorAttributes& operatorAttributes,
+        gsl::span<const DimensionType> inputDimensions);
 
-  // Info_t is used to obtain attributes which will be used for calculating the output shape later.
-  // Shape_t is used to obtain input shape which will be used for adjusting attribute value.
-  template <typename Info_t, typename Shape_t>
-  CropHelper(const Info_t& info, const Shape_t& shape) {
-    Initialize(info, shape.GetInputTensorShape(0));
-  }
+    // Info_t is used to obtain attributes which will be used for calculating the output shape later.
+    // Shape_t is used to obtain input shape which will be used for adjusting attribute value.
+    template <typename Info_t, typename Shape_t>
+    CropHelper(const Info_t& info, const Shape_t& shape) {
+        Initialize(info, shape.GetInputTensorShape(0));
+    }
 
-  std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
+    std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
 
- protected:
-  uint32_t m_offsets[NchwDimensionCount];
-  uint32_t m_sizes[NchwSpatialDimensionCount];
+protected:
+    uint32_t m_offsets[NchwDimensionCount];
+    uint32_t m_sizes[NchwSpatialDimensionCount];
 };
 
 class DepthToSpaceHelper {
- public:
-  // Info_t is used to obtain attributes which will be used for calculating the output shape later.
-  // Shape_t is used to obtain input shape which will be used for adjusting attribute value.
-  template <typename Info_t, typename Shape_t>
-  DepthToSpaceHelper(const Info_t& info, const Shape_t& shape) {
-    m_blockSize = info.template GetOptionalAttribute<int32_t>(AttrName::BlockSize, -1);
-    ML_CHECK_VALID_ARGUMENT(m_blockSize > 0, "Attribute blocksize is missing or equal to zero.");
-  }
+public:
+    // Info_t is used to obtain attributes which will be used for calculating the output shape later.
+    // Shape_t is used to obtain input shape which will be used for adjusting attribute value.
+    template <typename Info_t, typename Shape_t>
+    DepthToSpaceHelper(const Info_t& info, const Shape_t& shape) {
+        m_blockSize = info.template GetOptionalAttribute<int32_t>(AttrName::BlockSize, -1);
+        ML_CHECK_VALID_ARGUMENT(m_blockSize > 0, "Attribute blocksize is missing or equal to zero.");
+    }
 
-  std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
+    std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
 
- protected:
-  int32_t m_blockSize;
+protected:
+    int32_t m_blockSize;
 };
 
 class SpaceToDepthHelper {
- public:
-  // Info_t is used to obtain attributes which will be used for calculating the output shape later.
-  // Shape_t is used to obtain input shape which will be used for adjusting attribute value.
-  template <typename Info_t, typename Shape_t>
-  SpaceToDepthHelper(const Info_t& info, const Shape_t& shape) {
-    m_blockSize = info.template GetOptionalAttribute<int32_t>(AttrName::BlockSize, -1);
-    ML_CHECK_VALID_ARGUMENT(m_blockSize > 0, "Attribute blocksize is missing or equal to zero.");
-  }
+public:
+    // Info_t is used to obtain attributes which will be used for calculating the output shape later.
+    // Shape_t is used to obtain input shape which will be used for adjusting attribute value.
+    template <typename Info_t, typename Shape_t>
+    SpaceToDepthHelper(const Info_t& info, const Shape_t& shape) {
+        m_blockSize = info.template GetOptionalAttribute<int32_t>(AttrName::BlockSize, -1);
+        ML_CHECK_VALID_ARGUMENT(m_blockSize > 0, "Attribute blocksize is missing or equal to zero.");
+    }
 
-  std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
+    std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
 
- protected:
-  int32_t m_blockSize;
+protected:
+    int32_t m_blockSize;
 };
 
 class FlattenHelper {
- public:
-  void Initialize(
-      const MLOperatorAttributes& operatorAttributes,
-      gsl::span<const DimensionType> inputDimensions);
+public:
+    void Initialize(
+        const MLOperatorAttributes& operatorAttributes,
+        gsl::span<const DimensionType> inputDimensions);
 
-  // Info_t is used to obtain attributes which will be used for calculating the output shape later.
-  // Shape_t is used to obtain input shape which will be used for adjusting attribute value.
-  template <typename Info_t, typename Shape_t>
-  FlattenHelper(const Info_t& info, const Shape_t& shape) {
-    Initialize(info, shape.GetInputTensorShape(0));
-  }
+    // Info_t is used to obtain attributes which will be used for calculating the output shape later.
+    // Shape_t is used to obtain input shape which will be used for adjusting attribute value.
+    template <typename Info_t, typename Shape_t>
+    FlattenHelper(const Info_t& info, const Shape_t& shape) {
+        Initialize(info, shape.GetInputTensorShape(0));
+    }
 
-  std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
+    std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
 
- protected:
-  int m_axis = 1;
+protected:
+    int m_axis = 1;
 };
 
 class MultinomialHelper {
- public:
-  // Info_t is used to obtain attributes which will be used for calculating the output shape later.
-  // Shape_t is used to obtain input shape which will be used for adjusting attribute value.
-  template <typename Info_t, typename Shape_t>
-  MultinomialHelper(const Info_t& info, const Shape_t& shape) {}
+public:
+    // Info_t is used to obtain attributes which will be used for calculating the output shape later.
+    // Shape_t is used to obtain input shape which will be used for adjusting attribute value.
+    template <typename Info_t, typename Shape_t>
+    MultinomialHelper(const Info_t& info, const Shape_t& shape) {}
 
-  std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
+    std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
 };
 
 class GatherHelper {
- public:
-  void Initialize(
-      const MLOperatorAttributes& operatorAttributes,
-      gsl::span<const DimensionType> dataDimensions);
+public:
+    void Initialize(
+        const MLOperatorAttributes& operatorAttributes,
+        gsl::span<const DimensionType> dataDimensions);
 
-  // Info_t is used to obtain attributes which will be used for calculating the output shape later.
-  // Shape_t is used to obtain input shape which will be used for adjusting attribute value.
-  template <typename Info_t, typename Shape_t>
-  GatherHelper(const Info_t& info, const Shape_t& shape) {
-    Initialize(info, shape.GetInputTensorShape(0));
-  }
+    // Info_t is used to obtain attributes which will be used for calculating the output shape later.
+    // Shape_t is used to obtain input shape which will be used for adjusting attribute value.
+    template <typename Info_t, typename Shape_t>
+    GatherHelper(const Info_t& info, const Shape_t& shape) {
+        Initialize(info, shape.GetInputTensorShape(0));
+    }
 
-  std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
+    std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
 
- protected:
-  int m_axis = 0;
+protected:
+    int m_axis = 0;
 };
 
 class GatherNdHelper {
- public:
-  // Info_t is used to obtain attributes which will be used for calculating the output shape later.
-  // Shape_t is used to obtain input shape which will be used for adjusting attribute value.
-  template <typename Info_t, typename Shape_t>
-  GatherNdHelper(const Info_t& info, const Shape_t& shape) {
-    m_batchCount = info.template GetOptionalAttribute<int32_t>(AttrName::BatchDimensions, 0);
-  }
+public:
+    // Info_t is used to obtain attributes which will be used for calculating the output shape later.
+    // Shape_t is used to obtain input shape which will be used for adjusting attribute value.
+    template <typename Info_t, typename Shape_t>
+    GatherNdHelper(const Info_t& info, const Shape_t& shape) {
+        m_batchCount = info.template GetOptionalAttribute<int32_t>(AttrName::BatchDimensions, 0);
+    }
 
-  std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
+    std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
 
 protected:
-  int32_t m_batchCount;
+    int32_t m_batchCount;
 };
 
 class PoolingHelperBase {
- public:
-  // Info_t is used to obtain attributes which will be used for calculating the output shape later.
-  // Shape_t is used to obtain input shape which will be used for adjusting attribute value.
-  template <typename Info_t, typename Shape_t>
-  PoolingHelperBase(
-      const Info_t& info,
-      const Shape_t& shape,
-      bool useGlobalPooling) : m_kernel(useGlobalPooling
-                                            ? InitializeGlobalKernel(shape.GetInputTensorShape(0))
-                                            : InitializeKernel(info, static_cast<uint32_t>(shape.GetInputTensorShape(0).size()), gsl::span<uint32_t>())) {
-    if (!useGlobalPooling) {
-      ResolveAutoPadding(m_kernel, shape.GetInputTensorShape(0));
+public:
+    // Info_t is used to obtain attributes which will be used for calculating the output shape later.
+    // Shape_t is used to obtain input shape which will be used for adjusting attribute value.
+    template <typename Info_t, typename Shape_t>
+    PoolingHelperBase(
+        const Info_t& info,
+        const Shape_t& shape,
+        bool useGlobalPooling) : m_kernel(useGlobalPooling
+            ? InitializeGlobalKernel(shape.GetInputTensorShape(0))
+            : InitializeKernel(info, static_cast<uint32_t>(shape.GetInputTensorShape(0).size()), gsl::span<uint32_t>())) {
+        if (!useGlobalPooling) {
+            ResolveAutoPadding(m_kernel, shape.GetInputTensorShape(0));
+        }
     }
-  }
 
-  std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
+    std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
 
- protected:
-  KernelArgs m_kernel;
+protected:
+    KernelArgs m_kernel;
 };
 
 class UnpoolingHelper
 {
 public:
-  // Info_t is used to obtain attributes which will be used for calculating the output shape later. 
-  // Shape_t is used to obtain input shape which will be used for adjusting attribute value. 
-  template<typename Info_t, typename Shape_t>
-  UnpoolingHelper(
-    const Info_t& info,
-    const Shape_t& shape
+    // Info_t is used to obtain attributes which will be used for calculating the output shape later. 
+    // Shape_t is used to obtain input shape which will be used for adjusting attribute value. 
+    template<typename Info_t, typename Shape_t>
+    UnpoolingHelper(
+        const Info_t& info,
+        const Shape_t& shape
     )
-  : m_inputShape(shape.GetInputTensorShape(0)),
-    m_kernel(InitializeKernel(info, static_cast<uint32_t>(m_inputShape.size()), gsl::span<uint32_t>()))
-  {
-      Initialize();
-  }
+        : m_inputShape(shape.GetInputTensorShape(0)),
+        m_kernel(InitializeKernel(info, static_cast<uint32_t>(m_inputShape.size()), gsl::span<uint32_t>()))
+    {
+        Initialize();
+    }
 
-  void Initialize();
+    void Initialize();
 
-  std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
+    std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
 
 protected:
     std::vector<DimensionType> m_inputShape;
@@ -1105,15 +1116,15 @@ protected:
 };
 
 class GlobalPoolingHelper : public PoolingHelperBase {
- public:
-  template <typename Info_t, typename Shape_t>
-  GlobalPoolingHelper(const Info_t& info, const Shape_t& shape) : PoolingHelperBase(info, shape, true) {}
+public:
+    template <typename Info_t, typename Shape_t>
+    GlobalPoolingHelper(const Info_t& info, const Shape_t& shape) : PoolingHelperBase(info, shape, true) {}
 };
 
 class PoolingHelper : public PoolingHelperBase {
- public:
-  template <typename Info_t, typename Shape_t>
-  PoolingHelper(const Info_t& info, const Shape_t& shape) : PoolingHelperBase(info, shape, false) {}
+public:
+    template <typename Info_t, typename Shape_t>
+    PoolingHelper(const Info_t& info, const Shape_t& shape) : PoolingHelperBase(info, shape, false) {}
 };
 
 class RoiPoolingHelperBase
@@ -1164,139 +1175,139 @@ public:
 };
 
 class SqueezeHelper {
- public:
-  void Initialize(
-    gsl::span<const int32_t> axes,
-    gsl::span<const DimensionType> inputDimensions);
+public:
+    void Initialize(
+        gsl::span<const int32_t> axes,
+        gsl::span<const DimensionType> inputDimensions);
 
-  // Info_t is used to obtain attributes which will be used for calculating the output shape later.
-  // Shape_t is used to obtain input shape which will be used for adjusting attribute value.
-  template <typename Info_t, typename Shape_t>
-  SqueezeHelper(const Info_t& info, const Shape_t& shape) {
-    Initialize(
-      info.GetOptionalAttributeVectorInt32(AttrName::Axes),
-      shape.GetInputTensorShape(0));
-  }
+    // Info_t is used to obtain attributes which will be used for calculating the output shape later.
+    // Shape_t is used to obtain input shape which will be used for adjusting attribute value.
+    template <typename Info_t, typename Shape_t>
+    SqueezeHelper(const Info_t& info, const Shape_t& shape) {
+        Initialize(
+            info.GetOptionalAttributeVectorInt32(AttrName::Axes),
+            shape.GetInputTensorShape(0));
+    }
 
-  std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
+    std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
 
- protected:
-  std::vector<int> m_axes;
+protected:
+    std::vector<int> m_axes;
 };
 
 class UnsqueezeHelper {
- public:
-  void Initialize(
-    gsl::span<const int32_t> axes,
-    gsl::span<const DimensionType> inputDimensions);
+public:
+    void Initialize(
+        gsl::span<const int32_t> axes,
+        gsl::span<const DimensionType> inputDimensions);
 
-  // Info_t is used to obtain attributes which will be used for calculating the output shape later.
-  // Shape_t is used to obtain input shape which will be used for adjusting attribute value.
-  template <typename Info_t, typename Shape_t>
-  UnsqueezeHelper(const Info_t& info, const Shape_t& shape) {
-    Initialize(
-      info.GetOptionalAttributeVectorInt32(AttrName::Axes),
-      shape.GetInputTensorShape(0));
-  }
+    // Info_t is used to obtain attributes which will be used for calculating the output shape later.
+    // Shape_t is used to obtain input shape which will be used for adjusting attribute value.
+    template <typename Info_t, typename Shape_t>
+    UnsqueezeHelper(const Info_t& info, const Shape_t& shape) {
+        Initialize(
+            info.GetOptionalAttributeVectorInt32(AttrName::Axes),
+            shape.GetInputTensorShape(0));
+    }
 
-  std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
+    std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
 
- protected:
-  std::vector<int32_t> m_axes;
+protected:
+    std::vector<int32_t> m_axes;
 };
 
 template <typename T>
 void CALLBACK ShapeInferenceFunction(IMLOperatorShapeInferenceContext* inference_context) {
-  MLShapeInferenceContext helperContext(inference_context);
-  T opHelper(helperContext, helperContext);
+    MLShapeInferenceContext helperContext(inference_context);
+    T opHelper(helperContext, helperContext);
 
-  // EdgeInfo to contain whether tensor, whether unused, and what shape is
-  std::vector<EdgeShapes> outputShapes = opHelper.GetOutputShapes(helperContext);
+    // EdgeInfo to contain whether tensor, whether unused, and what shape is
+    std::vector<EdgeShapes> outputShapes = opHelper.GetOutputShapes(helperContext);
 
-  for (uint32_t i = 0; i < outputShapes.size(); ++i) {
-    if (outputShapes[i].IsTensor() && !outputShapes[i].IsUnused()) {
-      helperContext.SetOutputTensorShape(i, outputShapes[i].GetShape());
+    for (uint32_t i = 0; i < outputShapes.size(); ++i) {
+        if (outputShapes[i].IsTensor() && !outputShapes[i].IsUnused()) {
+            helperContext.SetOutputTensorShape(i, outputShapes[i].GetShape());
+        }
     }
-  }
 }
 
 class ReshapeHelper {
- public:
-  template <typename Info_t, typename Shape_t>
-  ReshapeHelper(const Info_t& info, const Shape_t& shape) {
-    ML_CHECK_VALID_ARGUMENT(info.GetInputCount() >= 2);
-    ML_CHECK_VALID_ARGUMENT(info.GetOutputCount() >= 1);
+public:
+    template <typename Info_t, typename Shape_t>
+    ReshapeHelper(const Info_t& info, const Shape_t& shape) {
+        ML_CHECK_VALID_ARGUMENT(info.GetInputCount() >= 2);
+        ML_CHECK_VALID_ARGUMENT(info.GetOutputCount() >= 1);
 
-    // The 'shape' tensor is a 1D tensor holding the new shape to reshape to,
-    // and the first element of its own shape holds how many dimensions there
-    // will be for the output.
-    MLOperatorTensor shapeTensor = info.GetConstantInputTensor(1);
-    ReadCpuLocalTensorIntoInt32(shapeTensor, /*out*/ m_shapeDims);
-  }
+        // The 'shape' tensor is a 1D tensor holding the new shape to reshape to,
+        // and the first element of its own shape holds how many dimensions there
+        // will be for the output.
+        MLOperatorTensor shapeTensor = info.GetConstantInputTensor(1);
+        ReadCpuLocalTensorIntoInt32(shapeTensor, /*out*/ m_shapeDims);
+    }
 
-  std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
+    std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
 
- protected:
-  std::vector<int> m_shapeDims;
+protected:
+    std::vector<int> m_shapeDims;
 };
 
 class ExpandHelper {
- public:
-  template <typename Info_t, typename Shape_t>
-  ExpandHelper(const Info_t& info, const Shape_t& shape) {
-  }
+public:
+    template <typename Info_t, typename Shape_t>
+    ExpandHelper(const Info_t& info, const Shape_t& shape) {
+    }
 
-  std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
+    std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
 
- protected:
+protected:
 };
 
 class ConstantOfShapeHelper {
- public:
-  template <typename Info_t, typename Shape_t>
-  ConstantOfShapeHelper(const Info_t& info, const Shape_t& shape) {
-  }
+public:
+    template <typename Info_t, typename Shape_t>
+    ConstantOfShapeHelper(const Info_t& info, const Shape_t& shape) {
+    }
 
-  std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
+    std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
 
- protected:
+protected:
 };
 
 class TileHelper {
- public:
-  template <typename Info_t, typename Shape_t>
-  TileHelper(const Info_t& info, const Shape_t& shapeInfo) {
-    m_inputDimensions = shapeInfo.GetInputTensorShape(0);
+public:
+    template <typename Info_t, typename Shape_t>
+    TileHelper(const Info_t& info, const Shape_t& shapeInfo) {
+        m_inputDimensions = shapeInfo.GetInputTensorShape(0);
 
-    // Read the repeats tensor.
-    const std::vector<uint32_t> repeatsTensorDimensions = shapeInfo.GetInputTensorShape(1);
-    ML_CHECK_VALID_ARGUMENT(repeatsTensorDimensions.size() == 1, "Tile's repeats tensor must be 1D.");
-    const size_t dimCount = repeatsTensorDimensions[0];
+        // Read the repeats tensor.
+        const std::vector<uint32_t> repeatsTensorDimensions = shapeInfo.GetInputTensorShape(1);
+        ML_CHECK_VALID_ARGUMENT(repeatsTensorDimensions.size() == 1, "Tile's repeats tensor must be 1D.");
+        const size_t dimCount = repeatsTensorDimensions[0];
 
-    MLOperatorTensor repeatsTensor = info.GetConstantInputTensor(1);
-    const int64_t* repeatsData = repeatsTensor.GetData<int64_t>();
-    ML_CHECK_VALID_ARGUMENT(m_inputDimensions.size() == dimCount, "Tile's repeats tensor must be the same dimension count as the input tensor.");
-    ML_CHECK_VALID_ARGUMENT(repeatsTensor.IsCpuData(), "Tile's repeats tensor must be CPU Tensor.");
+        MLOperatorTensor repeatsTensor = info.GetConstantInputTensor(1);
+        const int64_t* repeatsData = repeatsTensor.GetData<int64_t>();
+        ML_CHECK_VALID_ARGUMENT(m_inputDimensions.size() == dimCount, "Tile's repeats tensor must be the same dimension count as the input tensor.");
+        ML_CHECK_VALID_ARGUMENT(repeatsTensor.IsCpuData(), "Tile's repeats tensor must be CPU Tensor.");
 
-    for (size_t i = 0; i < dimCount; ++i) {
-      ML_CHECK_VALID_ARGUMENT(repeatsData[i] >= 0, "Repeat values should be >= 0.");
-      m_repeatsData.push_back(gsl::narrow_cast<uint32_t>(repeatsData[i]));
+        for (size_t i = 0; i < dimCount; ++i) {
+            ML_CHECK_VALID_ARGUMENT(repeatsData[i] >= 0, "Repeat values should be >= 0.");
+            m_repeatsData.push_back(gsl::narrow_cast<uint32_t>(repeatsData[i]));
+        }
+
+        // Update the computed output shape accordingly, repeat every axis's length by the repeat count.
+        m_outputDimensions.assign(m_inputDimensions.begin(), m_inputDimensions.end());
+
+        for (size_t dimIndex = 0; dimIndex < dimCount; ++dimIndex) {
+            m_outputDimensions[dimIndex] *= m_repeatsData[dimIndex];
+        }
     }
 
-    // Update the computed output shape accordingly, repeat every axis's length by the repeat count.
-    m_outputDimensions.assign(m_inputDimensions.begin(), m_inputDimensions.end());
+    std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
 
-    for (size_t dimIndex = 0; dimIndex < dimCount; ++dimIndex) {
-      m_outputDimensions[dimIndex] *= m_repeatsData[dimIndex];
-    }
-  }
-
-  std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
-
- protected:
-  std::vector<uint32_t> m_repeatsData;
-  std::vector<uint32_t> m_inputDimensions;
-  std::vector<uint32_t> m_outputDimensions;
+protected:
+    std::vector<uint32_t> m_repeatsData;
+    std::vector<uint32_t> m_inputDimensions;
+    std::vector<uint32_t> m_outputDimensions;
 };
 
 class ResizeHelper {
@@ -1306,38 +1317,39 @@ class ResizeHelper {
   template <typename Info_t, typename Shape_t>
   ResizeHelper(const Info_t& info, const Shape_t& shape, uint32_t opsetVersion) {
 
-    m_inputDimensions = shape.GetInputTensorShape(0);
-    std::vector<int32_t> outputSizes;
+      m_inputDimensions = shape.GetInputTensorShape(0);
+      std::vector<int32_t> outputSizes;
 
-    if (opsetVersion >= 11) {
-      if (info.IsInputValid(1))
-      {
-          MLOperatorTensor regionOfInterestTensor = info.GetConstantInputTensor(1);
-          ReadCpuLocalTensorIntoFloat32(regionOfInterestTensor, /*out*/ m_regionOfInterest);
+      if (opsetVersion >= 11) {
+          if (info.IsInputValid(1))
+          {
+              MLOperatorTensor regionOfInterestTensor = info.GetConstantInputTensor(1);
+              ReadCpuLocalTensorIntoFloat32(regionOfInterestTensor, /*out*/ m_regionOfInterest);
+          }
+          if (info.IsInputValid(2))
+          {
+              MLOperatorTensor scalesTensor = info.GetConstantInputTensor(2);
+              ReadCpuLocalTensorIntoFloat32(scalesTensor, /*out*/ m_scales);
+          }
+          if (info.IsInputValid(3))
+          {
+              MLOperatorTensor outputSizesTensor = info.GetConstantInputTensor(3);
+              ReadCpuLocalTensorIntoInt32(outputSizesTensor, /*out*/ outputSizes);
+          }
       }
-      if (info.IsInputValid(2))
-      {
-          MLOperatorTensor scalesTensor = info.GetConstantInputTensor(2);
+      else if (opsetVersion >= 9) {
+          // Read the scales from the 2nd tensor.
+          // Compatible with Upsample-9/Upsample-10 and Resize-10.
+          MLOperatorTensor scalesTensor = info.GetConstantInputTensor(1);
           ReadCpuLocalTensorIntoFloat32(scalesTensor, /*out*/ m_scales);
       }
-      if (info.IsInputValid(3))
+      else
       {
-          MLOperatorTensor outputSizesTensor = info.GetConstantInputTensor(3);
-          ReadCpuLocalTensorIntoInt32(outputSizesTensor, /*out*/ outputSizes);
+          // From attribute, compatible with Upsample-7.
+          m_scales = info.template GetOptionalAttribute<std::vector<float>>(AttrName::Scales, std::vector<float>());
       }
-    }
-    else if (opsetVersion >= 9) {
-      // Read the scales from the 2nd tensor.
-      // Compatible with Upsample-9/Upsample-10 and Resize-10.
-      MLOperatorTensor scalesTensor = info.GetConstantInputTensor(1);
-      ReadCpuLocalTensorIntoFloat32(scalesTensor, /*out*/ m_scales);
-    } else
-    {
-      // From attribute, compatible with Upsample-7.
-      m_scales = info.template GetOptionalAttribute<std::vector<float>>(AttrName::Scales, std::vector<float>());
-    }
 
-    Initialize(outputSizes);
+      Initialize(outputSizes);
   }
 
   void Initialize(gsl::span<const int32_t> outputSizes);
@@ -1383,39 +1395,39 @@ protected:
 };
 
 class OneHotHelper {
- public:
-  template <typename Info_t, typename Shape_t>
-  OneHotHelper(const Info_t& info, const Shape_t& shapeInfo) {
-    ML_CHECK_VALID_ARGUMENT(info.GetInputCount() == 3);
-    ML_CHECK_VALID_ARGUMENT(info.GetOutputCount() == 1);
+public:
+    template <typename Info_t, typename Shape_t>
+    OneHotHelper(const Info_t& info, const Shape_t& shapeInfo) {
+        ML_CHECK_VALID_ARGUMENT(info.GetInputCount() == 3);
+        ML_CHECK_VALID_ARGUMENT(info.GetOutputCount() == 1);
 
-    const std::vector<DimensionType> inputDimensions = shapeInfo.GetInputTensorShape(0);
-    std::vector<uint32_t> outputDimensions;
+        const std::vector<DimensionType> inputDimensions = shapeInfo.GetInputTensorShape(0);
+        std::vector<uint32_t> outputDimensions;
 
-    m_onnxAxis = info.template GetOptionalAttribute<int32_t>(AttrName::Axis, -1);
+        m_onnxAxis = info.template GetOptionalAttribute<int32_t>(AttrName::Axis, -1);
 
-    // Get 'depth' tensor, which is really a scalar for the output size along the given axis.
-    MLOperatorTensor shapeTensor = info.GetConstantInputTensor(1);
+        // Get 'depth' tensor, which is really a scalar for the output size along the given axis.
+        MLOperatorTensor shapeTensor = info.GetConstantInputTensor(1);
 
-    auto indicesShape = shapeInfo.GetInputTensorShape(0);
-    m_absoluteAxis = HandleNegativeAxis(m_onnxAxis, gsl::narrow_cast<uint32_t>(indicesShape.size() + 1));
+        auto indicesShape = shapeInfo.GetInputTensorShape(0);
+        m_absoluteAxis = HandleNegativeAxis(m_onnxAxis, gsl::narrow_cast<uint32_t>(indicesShape.size() + 1));
 
-    // The shape tensor ('depth') is a 0D tensor holding the size for the output tensor along the specified axis.
-    // It must be registered as OrtMemType::OrtMemTypeCPUInput for CPU read access.
-    const int64_t depth64 = ReadScalarTensorCastToInt64(shapeTensor);
-    ML_CHECK_VALID_ARGUMENT(depth64 > 0, "Negative or zero 'depth' values for OneHot are illegal.");
-    const uint32_t depth = gsl::narrow_cast<uint32_t>(depth64);
-    m_outputDimensions.assign(indicesShape.begin(), indicesShape.end());
-    m_outputDimensions.insert(m_outputDimensions.begin() + m_absoluteAxis, depth);
-  }
+        // The shape tensor ('depth') is a 0D tensor holding the size for the output tensor along the specified axis.
+        // It must be registered as OrtMemType::OrtMemTypeCPUInput for CPU read access.
+        const int64_t depth64 = ReadScalarTensorCastToInt64(shapeTensor);
+        ML_CHECK_VALID_ARGUMENT(depth64 > 0, "Negative or zero 'depth' values for OneHot are illegal.");
+        const uint32_t depth = gsl::narrow_cast<uint32_t>(depth64);
+        m_outputDimensions.assign(indicesShape.begin(), indicesShape.end());
+        m_outputDimensions.insert(m_outputDimensions.begin() + m_absoluteAxis, depth);
+    }
 
-  std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
+    std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
 
- protected:
-  int32_t m_onnxAxis = 0;       // Original ONNX attribute value, including negative value.
-  uint32_t m_absoluteAxis = 0;  // Absolute index value.
-  std::vector<uint32_t> m_indicesDimensions;
-  std::vector<uint32_t> m_outputDimensions;
+protected:
+    int32_t m_onnxAxis = 0;       // Original ONNX attribute value, including negative value.
+    uint32_t m_absoluteAxis = 0;  // Absolute index value.
+    std::vector<uint32_t> m_indicesDimensions;
+    std::vector<uint32_t> m_outputDimensions;
 };
 
 using ShapeInferenceHelper_Conv = ConvHelper;
@@ -1447,6 +1459,7 @@ using ShapeInferenceHelper_GatherElements = GetOutputShapeAsSpecificInputShapeHe
 using ShapeInferenceHelper_ScatterElements = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_Scatter9 = ShapeInferenceHelper_ScatterElements; // Old deprecated alias for ScatterElements.
 using ShapeInferenceHelper_Scatter11 = ShapeInferenceHelper_ScatterElements; // Old deprecated alias for ScatterElements.
+using ShapeInferenceHelper_Scatter13 = ShapeInferenceHelper_ScatterElements; // Old deprecated alias for ScatterElements.
 using ShapeInferenceHelper_GatherND = GatherNdHelper;
 using ShapeInferenceHelper_ScatterND = GetOutputShapeAsInputShapeHelper;
 
@@ -1457,8 +1470,10 @@ using ShapeInferenceHelper_Concat = ConcatHelper;
 using ShapeInferenceHelper_Slice7 = VersionedOpsetHelper<SliceHelper, 7>;
 using ShapeInferenceHelper_Slice10 = VersionedOpsetHelper<SliceHelper, 10>;
 using ShapeInferenceHelper_Slice11 = VersionedOpsetHelper<SliceHelper, 11>; // Note 11 and 10 are identical - no functional change.
+using ShapeInferenceHelper_Slice13 = VersionedOpsetHelper<SliceHelper, 13>; // Note 13 and 10 are identical - no functional change, just new types.
 using ShapeInferenceHelper_Pad7 = VersionedOpsetHelper<PaddingHelper, 7>;
 using ShapeInferenceHelper_Pad11 = VersionedOpsetHelper<PaddingHelper, 11>;
+using ShapeInferenceHelper_Pad13 = VersionedOpsetHelper<PaddingHelper, 13>;
 
 using ShapeInferenceHelper_SpaceToDepth = SpaceToDepthHelper;
 using ShapeInferenceHelper_DepthToSpace = DepthToSpaceHelper;
@@ -1485,6 +1500,7 @@ using ShapeInferenceHelper_Floor = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_Clip7 = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_Clip11 = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_Clip12 = GetOutputShapeAsInputShapeHelper;
+using ShapeInferenceHelper_Clip13 = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_Greater = GetBroadcastedOutputShapeHelper;
 using ShapeInferenceHelper_Less = GetBroadcastedOutputShapeHelper;
 using ShapeInferenceHelper_GreaterOrEqual = GetBroadcastedOutputShapeHelper;
@@ -1512,7 +1528,7 @@ using ShapeInferenceHelper_Affine = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_QuantizeLinear = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_DequantizeLinear = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_Sign = GetBroadcastedOutputShapeHelper;
-using ShapeInferenceHelper_IsNan = GetBroadcastedOutputShapeHelper;
+using ShapeInferenceHelper_IsNaN = GetBroadcastedOutputShapeHelper;
 using ShapeInferenceHelper_Erf = GetBroadcastedOutputShapeHelper;
 using ShapeInferenceHelper_Sinh = GetBroadcastedOutputShapeHelper;
 using ShapeInferenceHelper_Cosh = GetBroadcastedOutputShapeHelper;
@@ -1546,6 +1562,7 @@ using ShapeInferenceHelper_ImageScaler = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_Upsample7 = VersionedOpsetHelper<ResizeHelper, 7>;
 using ShapeInferenceHelper_Upsample9 = VersionedOpsetHelper<ResizeHelper, 9>;
 using ShapeInferenceHelper_Upsample10 = VersionedOpsetHelper<ResizeHelper, 10>;
+using ShapeInferenceHelper_Upsample13 = VersionedOpsetHelper<ResizeHelper, 13>;
 
 using ShapeInferenceHelper_Sigmoid = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_HardSigmoid = GetOutputShapeAsInputShapeHelper;
