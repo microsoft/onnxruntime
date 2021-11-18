@@ -587,10 +587,14 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
         } else if (option.first == "blob_dump_path") {
           blob_dump_path = option.second;
           params.blob_dump_path = blob_dump_path.c_str();
+        }  else if (option.first == "context") {
+          params.context = (void *)(option.second.c_str());
         } else {
           ORT_THROW("Invalid OpenVINO EP option: ", option.first);
         }
       }
+
+      
     }
     auto p = onnxruntime::CreateExecutionProviderFactory_OpenVINO(&params)->CreateProvider();
     // Reset global variables config to avoid it being accidentally passed on to the next session
@@ -783,12 +787,7 @@ void InitializeSession(InferenceSession* sess,
   ProviderOptionsMap provider_options_map;
   GenerateProviderOptionsMap(provider_types, provider_options, provider_options_map);
 
-  if (provider_types.empty()) {
-    // use default registration priority.
-    ep_registration_fn(sess, GetAllExecutionProviderNames(), provider_options_map);
-  } else {
-    ep_registration_fn(sess, provider_types, provider_options_map);
-  }
+  ep_registration_fn(sess, provider_types, provider_options_map);
 
 #if !defined(ORT_MINIMAL_BUILD)
   if (!disabled_optimizer_names.empty()) {

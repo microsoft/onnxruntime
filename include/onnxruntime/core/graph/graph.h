@@ -47,13 +47,11 @@ class OpSignature;
 class RuntimeOptimizationRecordContainer;
 #endif
 
-namespace experimental {
 namespace fbs {
 struct Graph;
 struct Node;
 struct NodeEdge;
 }  // namespace fbs
-}  // namespace experimental
 
 /**
 @class Node
@@ -429,18 +427,18 @@ class Node {
   void ToProto(ONNX_NAMESPACE::NodeProto& proto, bool update_subgraphs = false) const;
 
   Status SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
-                         flatbuffers::Offset<onnxruntime::experimental::fbs::Node>& fbs_node) const;
+                         flatbuffers::Offset<onnxruntime::fbs::Node>& fbs_node) const;
 
-  flatbuffers::Offset<onnxruntime::experimental::fbs::NodeEdge>
+  flatbuffers::Offset<onnxruntime::fbs::NodeEdge>
   SaveEdgesToOrtFormat(flatbuffers::FlatBufferBuilder& builder) const;
 
 #endif
 
-  static Status LoadFromOrtFormat(const onnxruntime::experimental::fbs::Node& fbs_node, Graph& graph,
+  static Status LoadFromOrtFormat(const onnxruntime::fbs::Node& fbs_node, Graph& graph,
                                   const logging::Logger& logger, std::unique_ptr<Node>& node);
 
-  Status LoadFromOrtFormat(const onnxruntime::experimental::fbs::Node& fbs_node, const logging::Logger& logger);
-  Status LoadEdgesFromOrtFormat(const onnxruntime::experimental::fbs::NodeEdge& fbs_node_edgs, const Graph& graph);
+  Status LoadFromOrtFormat(const onnxruntime::fbs::Node& fbs_node, const logging::Logger& logger);
+  Status LoadEdgesFromOrtFormat(const onnxruntime::fbs::NodeEdge& fbs_node_edgs, const Graph& graph);
 
   /**
   @class Definitions
@@ -1150,7 +1148,7 @@ class Graph {
   }
 
   common::Status SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
-                                 flatbuffers::Offset<onnxruntime::experimental::fbs::Graph>& fbs_graph) const;
+                                 flatbuffers::Offset<onnxruntime::fbs::Graph>& fbs_graph) const;
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
@@ -1180,7 +1178,7 @@ class Graph {
   virtual ~Graph();
 
   static common::Status LoadFromOrtFormat(
-      const onnxruntime::experimental::fbs::Graph& fbs_graph, const Model& owning_model,
+      const onnxruntime::fbs::Graph& fbs_graph, const Model& owning_model,
       const std::unordered_map<std::string, int>& domain_to_version,
 #if !defined(ORT_MINIMAL_BUILD)
       IOnnxRuntimeOpSchemaCollectionPtr schema_registry,
@@ -1188,7 +1186,7 @@ class Graph {
       const logging::Logger& logger, std::unique_ptr<Graph>& graph);
 
   // deserialize a subgraph
-  static Status LoadFromOrtFormat(const onnxruntime::experimental::fbs::Graph& fbs_graph,
+  static Status LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph,
                                   Graph& parent_graph, const Node& parent_node,
                                   const logging::Logger& logger, std::unique_ptr<Graph>& graph);
 
@@ -1221,7 +1219,7 @@ class Graph {
         const logging::Logger& logger);
 
   // Populate Graph instance from ORT format serialized data.
-  common::Status LoadFromOrtFormat(const onnxruntime::experimental::fbs::Graph& fbs_graph);
+  common::Status LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph);
 
 #if !defined(ORT_MINIMAL_BUILD)
   // Constructor: Given a <GraphProto> loaded from model file, construct
