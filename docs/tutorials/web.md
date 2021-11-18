@@ -76,8 +76,8 @@ There are three files in the Utils folder `imageHelper.ts`, `modelHelper.ts` and
 ```javascript
 // Language: typescript
 // Path: react-next\utils\predict.ts
-import getImageTensorFromPath from './imageHelper';
-import {runSqueezenetModel} from './modelHelper';
+import { getImageTensorFromPath } from './imageHelper';
+import { runSqueezenetModel } from './modelHelper';
 
 export async function inferenceSqueezenet(path: string): Promise<[any,number]> {
   // 1. Convert image to tensor
@@ -93,10 +93,10 @@ export async function inferenceSqueezenet(path: string): Promise<[any,number]> {
 First, we need to get our image from path (can be local or url) and convert it to a tensor. The `getImageTensorFromPath` function in the `imageHelper.ts` uses `JIMP` to read the file, resize and return the `imageData`. [JIMP](https://www.npmjs.com/package/jimp) is a JavaScript image manipulation library. It has many built in functions for working with image data such as resizing, grey scale, write, and more. In this example we only need to resize however in your code you may need additional image data processing. 
 
 ```javascript
-import Jimp  from 'jimp/*';
+import * as Jimp from 'jimp';
 import { Tensor } from 'onnxruntime-web';
 
-export default async function getImageTensorFromPath(path: string, dims: number[] =  [1, 3, 224, 224]): Promise<Tensor> {
+export async function getImageTensorFromPath(path: string, dims: number[] =  [1, 3, 224, 224]): Promise<Tensor> {
   // 1. load the image  
   var image = await loadImagefromPath(path, dims[2], dims[3]);
   // 2. convert to tensor
@@ -107,7 +107,7 @@ export default async function getImageTensorFromPath(path: string, dims: number[
 
 async function loadImagefromPath(path: string, width: number = 224, height: number= 224): Promise<Jimp> {
  // Use Jimp to load the image and resize it.
-    var imageData = await jimp.default.read(path).then((imageBuffer: Jimp) => {
+    var imageData = await Jimp.default.read(path).then((imageBuffer: Jimp) => {
         return imageBuffer.resize(width, height)
       });
 
@@ -143,10 +143,9 @@ function imageDataToTensor(image: Jimp, dims: number[]): Tensor {
       float32Data[i] = transposedData[i] / 255.0; // convert to float
     }
     // 5. create the tensor object from onnxruntime-web.
-      const inputTensor = new Tensor("float32", float32Data, dims);
-      return inputTensor;
+    const inputTensor = new Tensor("float32", float32Data, dims);
+    return inputTensor;
   }
-
 ```
 ### modelHelper.ts
 {: .no_toc }
@@ -155,12 +154,9 @@ The inputTensor is ready for inferencing. Let's call the default `modelHelper.ts
 ```javascript
 import * as ort from 'onnxruntime-web';
 import _ from 'lodash';
-import {imagenetClasses} from '../data/imagenet';
-import { InferenceSession } from 'onnxruntime-web';
+import { imagenetClasses } from '../data/imagenet';
 
-const [predictions, inferenceTime] = await runSqueezenetModel(imageTensor);
-
-export async function runSqueezenetModel(preprocessedData: any): Promise<[any, number]> {
+  export async function runSqueezenetModel(preprocessedData: any): Promise<[any, number]> {
     
     // Create session and set options. See the docs here for more options: 
     //https://onnxruntime.ai/docs/api/js/interfaces/InferenceSession.SessionOptions.html#graphOptimizationLevel
@@ -173,7 +169,6 @@ export async function runSqueezenetModel(preprocessedData: any): Promise<[any, n
     // Run inference and get results.
     var [results, inferenceTime] =  await runInference(session, preprocessedData);
     return [results, inferenceTime];
- 
   }
 
 ```
@@ -181,7 +176,7 @@ export async function runSqueezenetModel(preprocessedData: any): Promise<[any, n
 Then let's call the `runInference` function by sending in the `session` and our input tensor `preprocessedData`.
 
 ```javascript
-  async function runInference(session: InferenceSession, preprocessedData: any): Promise<[any, number]> {
+ async function runInference(session: ort.InferenceSession, preprocessedData: any): Promise<[any, number]> {
 
     // Get start time to calculate inference time.
     const start = new Date();
@@ -190,7 +185,7 @@ Then let's call the `runInference` function by sending in the `session` and our 
     const feeds: Record<string, ort.Tensor> = {};
     feeds[session.inputNames[0]] = preprocessedData;
     
-    // run the session inference.
+    // Run the session inference.
     const outputData = await session.run(feeds);
 
     // Get the end time to calculate inference time.
@@ -201,7 +196,6 @@ Then let's call the `runInference` function by sending in the `session` and our 
 
     // Get output results with the output name from the model export.
     const output = outputData[session.outputNames[0]];
-
     //Get the softmax of the output data. The softmax transforms values to be between 0 and 1
     var outputSoftmax = softmax(Array.prototype.slice.call(output.data))
     
@@ -223,11 +217,10 @@ The data folder in this template has `imagenetClasses` that is used to assign th
 The `ImageCanvas.tsx` web component has the button and display elements. Below is the logic for the web component:
 
 ```javascript
-
-import {useRef, useState} from 'react';
-import {IMAGE_URLS} from '../data/sample-image-urls';
-import { inferenceSqueezenet } from '../utils/predict'
-import styles from '../styles/Home.module.css'
+import { useRef, useState } from 'react';
+import { IMAGE_URLS } from '../data/sample-image-urls';
+import { inferenceSqueezenet } from '../utils/predict';
+import styles from '../styles/Home.module.css';
 
 interface Props {
   height: number;
@@ -271,14 +264,14 @@ const ImageCanvas = (props: Props) => {
     // Run the inference
     submitInference();
   };
-//
+
   const submitInference = async () => {
 
     // Get the image data from the canvas and submit inference.
-    var [infernceResult,inferenceTime] = await inferenceSqueezenet(image.src);
+    var [inferenceResult,inferenceTime] = await inferenceSqueezenet(image.src);
 
     // Get the highest confidence.
-    var topResult = infernceResult[0];
+    var topResult = inferenceResult[0];
 
     // Update the label and confidence
     setLabel(topResult.name.toUpperCase());
@@ -304,7 +297,6 @@ const ImageCanvas = (props: Props) => {
 };
 
 export default ImageCanvas;
-
 ```
 This web component element is then imported in the `index.tsx`.
 
