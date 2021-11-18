@@ -73,7 +73,7 @@ void BeamHypotheses::Output(
     // Note that word_ids might be less than max_length.
     // Since the sequences has been filled with pad token ID, so padding is not needed here.
     // Since data type need cast from int64_t to int32_t, we cannot use gsl::copy(word_ids, sequence) here.
-    for (int i = 0; i < source.length(); i++){
+    for (size_t i = 0; i < source.length(); i++){
       target[i] = static_cast<int32_t>(source[i]);
     }
 
