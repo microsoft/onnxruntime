@@ -53,9 +53,9 @@ class QDQSupportHelper {
  public:
   QDQSupportHelper(Selectors&& selectors, const GraphViewer& graph_viewer);
 
-  const bool IsNodeInQDQGroup(const Node& node) const;
+  bool IsNodeInQDQGroup(const Node& node) const;
 
-  const bool IsNodeTargetNode(const Node& node) const;
+  bool IsNodeTargetNode(const Node& node) const;
 
   const QDQ::NodeGroup GetQDQNodeGroupWithTargetNode(const Node& target_node) const;
 

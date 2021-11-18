@@ -49,11 +49,11 @@ void Selectors::RegisterSelector(const Selector::OpVersionsMap& ops_and_versions
   ORT_IGNORE_RETURN_VALUE(selectors_set_.insert(std::move(entry)));
 }
 
-const bool QDQSupportHelper::IsNodeInQDQGroup(const Node& node) const {
+bool QDQSupportHelper::IsNodeInQDQGroup(const Node& node) const {
   return nodes_in_qdq_group_.find(&node) != nodes_in_qdq_group_.end();
 }
 
-const bool QDQSupportHelper::IsNodeTargetNode(const Node& node) const {
+bool QDQSupportHelper::IsNodeTargetNode(const Node& node) const {
   return std::find(target_nodes_.begin(), target_nodes_.end(), &node) != target_nodes_.end();
 }
 
