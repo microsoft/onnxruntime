@@ -1,7 +1,9 @@
 ---
 title: Build for training
-parent: Build ORT
+parent: Build ONNX Runtime
+description: Learn how to build ONNX Runtime for training from source for different hardware targets
 nav_order: 2
+redirect_from: /docs/how-to/build/training
 ---
 
 # Build ONNX Runtime for training

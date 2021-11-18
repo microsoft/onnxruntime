@@ -1,13 +1,15 @@
 ---
-title: Build for Android/iOS
-parent: Build ORT
+title: Build for Android
+parent: Build ONNX Runtime
 nav_order: 5
+redirect_from: /docs/how-to/build/android-ios,/docs/build/android-ios
 ---
-`
-# Build ONNX Runtime for Android and iOS
+
+# Build ONNX Runtime for Android
 {: .no_toc }
 
-Below are general build instructions for Android and iOS. For examples of deploying ONNX Runtime on mobile platforms (includes overall smaller package size and other configurations), see [Mobile Tutorials](../tutorials/mobile).
+Follow the instructions below to build ONNX Runtime for Android. 
+
 
 ## Contents
 {: .no_toc }
@@ -15,9 +17,7 @@ Below are general build instructions for Android and iOS. For examples of deploy
 * TOC placeholder
 {:toc}
 
-## Android
-
-### Prerequisites
+## Prerequisites
 
 The SDK and NDK packages can be installed via Android Studio or the sdkmanager command line tool.
 
@@ -29,7 +29,7 @@ Resources:
 - [Android ABIs](https://developer.android.com/ndk/guides/abis)
 - [System Images](https://developer.android.com/topic/generic-system-image)
 
-#### Android Studio
+### Android Studio
 
 1. [Install](https://developer.android.com/studio) Android Studio
 
@@ -45,7 +45,7 @@ Resources:
   * The NDK path will be the 'ndk/{version}' subdirectory of the SDK path shown
     * e.g. if 21.1.6352462 is installed it will be {SDK path}/ndk/21.1.6352462
 
-#### sdkmanager from command line tools
+### sdkmanager from command line tools
 
 * If necessary install the Java Runtime Environment and set the JAVA_HOME environment variable to point to it
   * https://www.java.com/en/download/
@@ -83,9 +83,9 @@ Resources:
     * NDK path in our example with this install would be `.../Android/ndk/21.1.6352462`
     * NOTE: If you install the ndk-bundle package the path will be `.../Android/ndk-bundle` as there's no version number
 
-### Android Build Instructions
+## Android Build Instructions
 
-#### Cross compiling on Windows
+### Cross compiling on Windows
 
 The [Ninja](https://ninja-build.org/) generator needs to be used to build on Windows as the Visual Studio generator doesn't support Android.
 
@@ -99,13 +99,13 @@ e.g. using the paths from our example
 ./build.bat --android --android_sdk_path .../Android --android_ndk_path .../Android/ndk/21.1.6352462 --android_abi arm64-v8a --android_api 27 --cmake_generator Ninja
 ```
 
-#### Cross compiling on Linux and macOS
+### Cross compiling on Linux and macOS
 
 ```bash
 ./build.sh --android --android_sdk_path <android sdk path> --android_ndk_path <android ndk path> --android_abi <android abi, e.g., arm64-v8a (default) or armeabi-v7a> --android_api <android api level, e.g., 27 (default)>
 ```
 
-#### Build Android Archive (AAR)
+### Build Android Archive (AAR)
 
 Android Archive (AAR) files, which can be imported directly in Android Studio, will be generated in your_build_dir/java/build/android/outputs/aar, by using the above building commands with `--build_java`
 
@@ -119,86 +119,11 @@ To build on Windows with `--build_java` enabled you must also:
 * run the build from an admin window
   * the Java build needs permissions to create a symlink, which requires an admin window
 
-### Android NNAPI Execution Provider
+## Android NNAPI Execution Provider
 
 If you want to use NNAPI Execution Provider on Android, see [NNAPI Execution Provider](../execution-providers/NNAPI-ExecutionProvider).
 
-#### Build Instructions
+### Build Instructions
 
 Android NNAPI Execution Provider can be built using building commands in [Android Build instructions](#android-build-instructions) with `--use_nnapi`
 
----
-
-## iOS
-
-### Prerequisites
-
-* A Mac computer with latest macOS
-* Xcode, https://developer.apple.com/xcode/
-* CMake, https://cmake.org/download/
-* Python 3, https://www.python.org/downloads/mac-osx/
-
-### General Info
-
-* iOS Platforms
-
-  The following two platforms are supported
-  * iOS device (iPhone, iPad) with arm64 architecture
-  * iOS simulator with x86_64 architecture
-
-  The following platforms are *not* supported
-  * armv7
-  * armv7s
-  * i386 architectures
-  * tvOS
-  * watchOS platforms are not currently supported.
-
-* apple_deploy_target
-
-  Specify the minimum version of the target platform (iOS) on which the target binaries are to be deployed.
-
-* Code Signing
-
-  If the code signing development team ID or code signing identity is specified, and has a valid code signing certificate, Xcode will code sign the onnxruntime library in the building process. Otherwise, the onnxruntime will be built without code signing. It may be required or desired to code sign the library for iOS devices. For more information, see [Code Signing](https://developer.apple.com/support/code-signing/).
-
-### Build Instructions
-
-Run one of the following build scripts from the ONNX Runtime repository root:
-
-#### Cross build for iOS simulator
-
-```bash
-./build.sh --config <Release|Debug|RelWithDebInfo|MinSizeRel> --use_xcode \
-           --ios --ios_sysroot iphonesimulator --osx_arch x86_64 --apple_deploy_target <minimal iOS version>
-```
-
-#### Cross build for iOS device
-
-```bash
-./build.sh --config <Release|Debug|RelWithDebInfo|MinSizeRel> --use_xcode \
-           --ios --ios_sysroot iphoneos --osx_arch arm64 --apple_deploy_target <minimal iOS version>
-```
-
-#### Cross build for iOS device and code sign the library using development team ID
-
-```bash
-./build.sh --config <Release|Debug|RelWithDebInfo|MinSizeRel> --use_xcode \
-           --ios --ios_sysroot iphoneos --osx_arch arm64 --apple_deploy_target <minimal iOS version> \
-           --xcode_code_signing_team_id <Your Apple developmemt team ID>
-```
-
-#### Cross build for iOS device and code sign the library using code sign identity
-
-```bash
-./build.sh --config <Release|Debug|RelWithDebInfo|MinSizeRel> --use_xcode \
-           --ios --ios_sysroot iphoneos --osx_arch arm64 --apple_deploy_target <minimal iOS version> \
-           --xcode_code_signing_identity <Your preferred code sign identity>
-```
-
-### CoreML Execution Provider
-
-If you want to use CoreML Execution Provider on iOS or macOS, see [CoreML Execution Provider](../execution-providers/CoreML-ExecutionProvider).
-
-#### Build Instructions
-
-CoreML Execution Provider can be built using building commands in [iOS Build instructions](#build-instructions-1) with `--use_coreml`

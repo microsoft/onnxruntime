@@ -1,17 +1,21 @@
 ---
 title: Intel oneDNN
+description: Instructions to execute ONNX Runtime with the Intel oneDNN execution provider
 parent: Execution Providers
 nav_order: 9
+redirect_from: /docs/reference/execution-providers/oneDNN-ExecutionProvider
 ---
 
 # oneDNN Execution Provider
 {: .no_toc }
 
-*Formerly "DNNL"*
+Accelerate performance of ONNX Runtime using Intel® Math Kernel Library for Deep Neural Networks (Intel® DNNL) optimized primitives with the Intel oneDNN execution provider.
 
 Intel® oneAPI Deep Neural Network Library is an open-source performance library for deep-learning applications. The library accelerates deep-learning applications and frameworks on Intel® architecture and Intel® Processor Graphics Architecture. Intel DNNL contains vectorized and threaded building blocks that you can use to implement deep neural networks (DNN) with C and C++ interfaces. 
 
-Intel and Microsoft have developed the DNNL Execution Provider (EP) for ONNX Runtime to accelerate performance of ONNX Runtime using Intel® Math Kernel Library for Deep Neural Networks (Intel® DNNL) optimized primitives.
+The DNNL Execution Provider (EP) for ONNX Runtime is developed by a partnership between Intel and Microsoft.
+
+*Formerly "DNNL"*
 
 ## Contents
 {: .no_toc }

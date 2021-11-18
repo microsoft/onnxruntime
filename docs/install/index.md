@@ -1,7 +1,9 @@
 ---
-title: Install ORT
+title: Install ONNX Runtime
+description: Instructions to install ONNX Runtime on your target platform in your environment
 has_children: false
 nav_order: 1
+redirect_from: /docs/how-to/install
 ---
 
 # Install ONNX Runtime (ORT)

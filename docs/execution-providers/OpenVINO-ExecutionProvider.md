@@ -1,13 +1,15 @@
 ---
 title: OpenVINO
+description: Instructions to execute ONNX Runtime with the Intel OpenVINO execution provider
 parent: Execution Providers
 nav_order: 10
+redirect_from: /docs/reference/execution-providers/OpenVINO-ExecutionProvider
 ---
 
 # OpenVINO Execution Provider
 {: .no_toc }
 
-OpenVINO Execution Provider enables deep learning inference on Intel CPUs, Intel integrated GPUs and Intel<sup>®</sup> Movidius<sup>TM</sup> Vision Processing Units (VPUs). Please refer to [this](https://software.intel.com/en-us/openvino-toolkit/hardware) page for details on the Intel hardware supported.
+Accelerate ONNX models on Intel CPUs, GPUs and VPUs with ONNX Runtime and the Intel OpenVINO execution provider. Please refer to [this](https://software.intel.com/en-us/openvino-toolkit/hardware) page for details on the Intel hardware supported.
 
 ## Contents
 {: .no_toc }

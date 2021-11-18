@@ -1,7 +1,9 @@
 ---
 title: Build with different EPs
-parent: Build ORT
+parent: Build ONNX Runtime
+description: Learm how to build ONNX Runtime from source for different execution providers
 nav_order: 3
+redirect_from: /docs/how-to/build/eps 
 ---
 
 # Build ONNX Runtime with Execution Providers

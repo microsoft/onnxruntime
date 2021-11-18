@@ -1,15 +1,16 @@
 ---
 title: Build with reduced size
-parent: Build ORT
+parent: Build ONNX Runtime
 nav_order: 6
+redirect_from: /docs/how-to/build/reduced
 ---
 
-# Build ORT with reduced size
+# Reduce the size of the ONNX Runtime build
 {: .no_toc }
 
 For applications where package binary size is important, ONNX Runtime provides options to reduce the build size with some functional trade-offs.
 
-To reduce the compiled binary size of ONNX Runtime, the operator kernels included in the build can be reduced to just the kernels required by your model/s.
+To reduce the compiled binary size of ONNX Runtime, the build can be configured to only include the operator kernels needed by your model(s).
 
 For deployment on mobile devices specifically, please read more detailed guidance on [Deploy ONNX Runtime Mobile](../tutorials/mobile/).
 
