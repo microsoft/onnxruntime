@@ -58,7 +58,11 @@ const bool QDQSupportHelper::IsNodeTargetNode(const Node& node) const {
 }
 
 const QDQ::NodeGroup QDQSupportHelper::GetQDQNodeGroupWithTargetNode(const Node& target_node) const {
-  return target_node_to_qdq_group_.find(&target_node)->second;
+  QDQ::NodeGroup qdq_node_group;
+  if (target_node_to_qdq_group_.find(&target_node) != target_node_to_qdq_group_.end()) {
+    qdq_node_group = target_node_to_qdq_group_.find(&target_node)->second;
+  }
+  return qdq_node_group;
 }
 
 std::optional<QDQ::NodeGroupIndices> QDQSupportHelper::Match(const Node& node) const {
