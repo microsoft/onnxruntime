@@ -3,7 +3,7 @@
 
 #include "attention_impl.h"
 #include "decoder_attention.h"
-#include "transformer_common.h"
+#include "transformer_cuda_common.h"
 #include "core/framework/op_kernel.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
 

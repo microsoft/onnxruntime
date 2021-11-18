@@ -35,6 +35,7 @@ contrib_ops_excluded_files = [
                     'bert/longformer_attention_impl.h',
                     'bert/longformer_global_impl.cu',
                     'bert/longformer_global_impl.h',
+                    'bert/transformer_cuda_common.h',
                     'math/bias_softmax.cc',
                     'math/bias_softmax.h',
                     'math/bias_softmax_impl.cu',

@@ -6,6 +6,7 @@
 #include "longformer_attention.h"
 #include "longformer_global_impl.h"
 #include "longformer_attention_impl.h"
+#include "transformer_cuda_common.h"
 #include "transformer_common.h"
 
 using namespace onnxruntime::cuda;
