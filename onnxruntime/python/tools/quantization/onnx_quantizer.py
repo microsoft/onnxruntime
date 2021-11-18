@@ -548,7 +548,7 @@ class ONNXQuantizer:
 
     def find_quantized_value(self, input_name):
         if input_name in self.quantized_value_map:
-            return self.quantizer.quantized_value_map[input_name]
+            return self.quantized_value_map[input_name]
         if self.parent is not None:
             return self.parent.find_quantized_value(input_name)
         return None
