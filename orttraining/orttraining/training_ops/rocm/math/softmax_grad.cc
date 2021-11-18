@@ -7,6 +7,7 @@
 #include "core/providers/rocm/miopen_common.h"
 #include "core/providers/rocm/math/softmax.h"
 #include "core/providers/rocm/shared_inc/accumulation_type.h"
+#include "core/providers/rocm/tensor/transpose.h"
 
 namespace onnxruntime {
 namespace rocm {
