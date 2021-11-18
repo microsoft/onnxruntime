@@ -14,7 +14,8 @@ void dispatch_softmax_backward(cudaStream_t stream, output_t* grad_input, const 
 template <typename T>
 class SoftmaxGrad final : public CudaKernel {
  public:
-  SoftmaxGrad(const OpKernelInfo& info) : CudaKernel{info}, prop_(info.GetExecutionProvider()->GetDevicePro()) {
+  SoftmaxGrad(const OpKernelInfo& info) : CudaKernel{info},
+                                          prop_(const_cast<CUDAExecutionProvider*>(static_cast<const CUDAExecutionProvider*>(info.GetExecutionProvider()))->GetDeviceProp()) {
     const auto& node = info.node();
     opset_ = (node.OpType() == "SoftmaxGrad_13" || node.OpType() == "LogSoftmaxGrad_13") ? 13 : 1;
     axis_ = info.GetAttrOrDefault("axis", static_cast<int64_t>(opset_ < 13 ? 1 : -1));
@@ -27,7 +28,7 @@ class SoftmaxGrad final : public CudaKernel {
   int64_t axis_;
   bool log_softmax_;
   int opset_;  // opset_ of the forward Softmax/LogSoftmax operator
-const cudaDeviceProp& prop_;
+  const cudaDeviceProp& prop_;
 };
 
 }  // namespace cuda
