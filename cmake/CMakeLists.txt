@@ -108,6 +108,7 @@ option(onnxruntime_USE_ROCM "Build with AMD GPU support" OFF)
 option(onnxruntime_DISABLE_CONTRIB_OPS "Disable contrib ops" OFF)
 option(onnxruntime_DISABLE_ML_OPS "Disable traditional ML ops" OFF)
 option(onnxruntime_DISABLE_SPARSE_TENSORS "Disable sparse tensors data types" OFF)
+option(onnxruntime_DISABLE_OPTIONAL_TYPE "Disable optional type" OFF)
 option(onnxruntime_MINIMAL_BUILD "Exclude as much as possible from the build. Support ORT format models. No support for ONNX format models." OFF)
 cmake_dependent_option(onnxruntime_DISABLE_RTTI "Disable RTTI" ON "NOT onnxruntime_ENABLE_PYTHON" OFF)
 # For now onnxruntime_DISABLE_EXCEPTIONS will only work with onnxruntime_MINIMAL_BUILD, more changes (ONNX, non-CPU EP, ...) are required to run this standalone
@@ -815,6 +816,10 @@ endif()
 
 if (onnxruntime_DISABLE_SPARSE_TENSORS)
   add_compile_definitions(DISABLE_SPARSE_TENSORS)
+endif()
+
+if (onnxruntime_DISABLE_OPTIONAL_TYPE)
+  add_compile_definitions(DISABLE_OPTIONAL_TYPE)
 endif()
 
 if (onnxruntime_USE_CUDA AND "${onnxruntime_CUDNN_HOME}" STREQUAL "")

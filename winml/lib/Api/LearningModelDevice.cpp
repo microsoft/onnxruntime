@@ -123,8 +123,8 @@ HRESULT __stdcall LearningModelDevice::CreateFromD3D12CommandQueue(
     ID3D12CommandQueue* queue,
     IUnknown** device) noexcept {
   try {
-    WINML_THROW_HR_IF_NULL_MSG(E_INVALIDARG, queue, "Failed to create LearningModelDevice. Ivalid argument queue.");
-    WINML_THROW_HR_IF_NULL_MSG(E_INVALIDARG, device, "Failed to create LearningModelDevice. Ivalid argument device.");
+    WINML_THROW_HR_IF_NULL_MSG(E_INVALIDARG, queue, "Failed to create LearningModelDevice. Invalid argument queue.");
+    WINML_THROW_HR_IF_NULL_MSG(E_INVALIDARG, device, "Failed to create LearningModelDevice. Invalid argument device.");
 
     auto machineLearningDevice = make<implementation::LearningModelDevice>(queue);
     *device = machineLearningDevice.as<IUnknown>().detach();
