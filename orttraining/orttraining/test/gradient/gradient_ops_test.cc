@@ -1574,7 +1574,7 @@ TEST(GradientCheckerTest, SigmoidGrad) {
   UnaryOpGradientTest("Sigmoid");
 }
 
-void GradientCheckerSoftmaxGradHelper(bool is_log_softmax, int version = 9) {
+void GradientCheckerSoftmaxGradHelper(bool is_log_softmax, int version = 11) {
   TensorShape shape({3, 4, 5});
   float max_error;
   GradientChecker<float, float, float> gradient_checker;
