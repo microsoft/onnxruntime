@@ -249,7 +249,6 @@ const ImageCanvas = (props: Props) => {
     image.onload = () => {
       ctx!.drawImage(image, 0, 0, props.width, props.height);
     }
-   
     // Run the inference
     submitInference();
   };
@@ -269,20 +268,19 @@ const ImageCanvas = (props: Props) => {
 
   };
 
-    return (
-      <>
-      <button
-        className={styles.grid}
-        onClick={displayImageAndRunInference} >
-        Run Squeezenet inference
-      </button>
-      <br/>
-      <canvas ref={canvasRef} width={props.width} height={props.height} />
-      <span>{topResultLabel} {topResultConfidence}</span>
-      <span>{inferenceTime}</span>
+  return (
+    <>
+    <button
+      className={styles.grid}
+      onClick={displayImageAndRunInference} >
+      Run Squeezenet inference
+    </button>
+    <br/>
+    <canvas ref={canvasRef} width={props.width} height={props.height} />
+    <span>{topResultLabel} {topResultConfidence}</span>
+    <span>{inferenceTime}</span>
     </>
-    )
-
+  )
 };
 
 export default ImageCanvas;
