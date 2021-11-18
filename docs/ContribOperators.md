@@ -720,8 +720,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 ### <a name="com.microsoft.DecoderAttention"></a><a name="com.microsoft.decoderattention">**com.microsoft.DecoderAttention**</a>
 
-  This DecoderAttention supports self attention and cross attention, key and value cache, and key_padding_mask.
-  Some boolean parameters are passed by runtime input for generic attention in decoder
+  This DecoderAttention supports self attention and cross attention, key and value cache, and key_padding_mask. The attention mask is not support at the moment.
+  Some boolean parameters are passed by runtime input for generic purpose
 
 #### Version
 

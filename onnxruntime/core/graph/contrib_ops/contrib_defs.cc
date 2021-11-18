@@ -539,7 +539,33 @@ void DecoderAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx
     ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 2);
   }
   // Shape inference
-  //
+  if (hasInputShape(ctx, 0)) {
+    auto& query_shape = getInputShape(ctx, 0);
+    updateOutputShape(ctx, 0, query_shape);
+  }
+  if (ctx.getNumOutputs() > 1) {
+    if (hasInputShape(ctx, 6) && hasInputShape(ctx, 7)) {
+      auto& cache_shape = getInputShape(ctx, 6);
+      auto& cache_dims = cache_shape.dim();
+      if (cache_dims.size() != 4) {
+        fail_shape_inference("key and value cache shall be 4 dimensions");
+      }
+      if (!cache_dims[0].has_dim_value() ||
+          !cache_dims[1].has_dim_value() ||
+          !cache_dims[2].has_dim_value() ||
+          !cache_dims[3].has_dim_value()) {
+        fail_shape_inference("key and value cache dimensions value shall not be null");
+      }
+      ONNX_NAMESPACE::TensorShapeProto new_cache_shape;
+      *new_cache_shape.add_dim() = cache_shape.dim(0);
+      *new_cache_shape.add_dim() = cache_shape.dim(1);
+      new_cache_shape.add_dim();
+      *new_cache_shape.add_dim() = cache_shape.dim(3);
+
+      updateOutputShape(ctx, 1, new_cache_shape);
+      updateOutputShape(ctx, 2, new_cache_shape);
+    }
+  }
 }
 
 void RegisterBertSchemas() {
