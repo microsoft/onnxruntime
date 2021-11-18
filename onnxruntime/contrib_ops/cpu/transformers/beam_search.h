@@ -21,8 +21,8 @@ struct GptSubgraphInfo {
 
   int num_implicit_inputs;
 
-  int num_subgraph_inputs;  // same as subgraph_input_names.size(), keep it for convenience.
-  int num_subgraph_outputs; // same as subgraph_output_names.size()
+  int num_subgraph_inputs;   // same as subgraph_input_names.size(), keep it for convenience.
+  int num_subgraph_outputs;  // same as subgraph_output_names.size()
 
   std::vector<std::string> subgraph_input_names;
   std::vector<std::string> subgraph_output_names;
@@ -30,8 +30,8 @@ struct GptSubgraphInfo {
 
 // This class keeps track of sequences generated.
 class Sequences : public ISequences {
-public:
-  Sequences(){}
+ public:
+  Sequences() {}
 
   // Initialize the sequence with initial input_ids and related parameters.
   void Init(const OrtValue& input_ids, int batch_beam_size, int sequence_length, int max_length);
@@ -47,10 +47,10 @@ public:
 
   // Select sequences based on beam indices, then append next token to selected sequences.
   void AppendNextTokenToSequences(
-    gsl::span<int64_t>& beam_indices,
-    gsl::span<int64_t>& beam_next_tokens);
+      gsl::span<int64_t>& beam_indices,
+      gsl::span<int64_t>& beam_next_tokens);
 
-private:
+ private:
   // Two buffers of shape (batch_size, num_beams, max_seq_length) to store sequences.
   // At each time, there is only one buffer is active. The other one will be active in next token.
   // Each AppendNextTokenToSequences call will trigger a rotation of active buffer.
@@ -61,31 +61,31 @@ private:
 
   int batch_beam_size_;
   int max_length_;
-  int current_length_;  
+  int current_length_;
 };
 
+template <typename T>
 struct BeamSearchState {
   // TODO: use allocater to allocate a buffer, and point each data to a span of the buffer
   //       so as to reuse related code in CUDA.
-  std::vector<bool> done;                 // shape (batch_size)
-  std::vector<float> beam_scores;         // shape (batch_size, num_beams)
-  
-  std::vector<float> next_token_logits;   // shape (batch_size * num_beams, vocab_size)
-  std::vector<float> next_token_scores;   // shape (batch_size, num_beams * vocab_size)
+  std::vector<bool> done;      // shape (batch_size)
+  std::vector<T> beam_scores;  // shape (batch_size, num_beams)
 
-  std::vector<int64_t> next_tokens;       // shape (batch_size, num_beams)
-  std::vector<int64_t> next_indices;      // shape (batch_size, num_beams)
+  std::vector<T> next_token_logits;  // shape (batch_size * num_beams, vocab_size)
+  std::vector<T> next_token_scores;  // shape (batch_size, num_beams * vocab_size)
+
+  std::vector<int64_t> next_tokens;   // shape (batch_size, num_beams)
+  std::vector<int64_t> next_indices;  // shape (batch_size, num_beams)
 
   Sequences sequences;
 
-  std::vector<float> scores;              // shape (max_length - sequence_length + 1, batch_size, num_beams * vocab_size)
+  std::vector<T> scores;  // shape (max_length - sequence_length + 1, batch_size, num_beams * vocab_size)
 
   void Init(const OrtValue& input_ids, int batch_size, int num_beams, int vocab_size, int sequence_length, int max_length) {
     int batch_beam_size = batch_size * num_beams;
     done.assign(batch_size, 0);
     beam_scores.assign(batch_beam_size, 0.0f);
-    for (int i = 0; i < batch_size; i++)
-    {
+    for (int i = 0; i < batch_size; i++) {
       for (int j = 1; j < num_beams; j++) {
         beam_scores[i * num_beams + j] = -1e9;
       }
@@ -118,13 +118,13 @@ class BeamSearch : public controlflow::IControlFlowKernel {
   static std::unique_ptr<OpKernel> Create(const OpKernelInfo& info, void* stream);
 
  protected:
-   void SetComputeStream(void* stream) { stream_ = stream; }
+  void SetComputeStream(void* stream) { stream_ = stream; }
 
  private:
   // Subgraph info and FeedsFetchesManager re-used for each subgraph execution.
   std::unique_ptr<GptSubgraphInfo> subgraph_info_;
   std::unique_ptr<FeedsFetchesManager> feeds_fetches_manager_;
-  
+
   void* stream_;
 
   BeamSearchParameters parameters_;

@@ -12,7 +12,6 @@ from transformers import GPT2Config
 from gpt2_helper import PRETRAINED_GPT2_MODELS
 from convert_to_onnx import main as convert_gpt2_to_onnx
 from benchmark_helper import Precision
-
 """
 This converts GPT2 model to onnx with beam search operator.
 
@@ -20,9 +19,10 @@ Examples:
    python convert_beam_search.py -m gpt2 --gpt2_onnx .\onnx_models\gpt2_past_fp32.onnx --output .\onnx_models\gpt2_beam_search.onnx --output_sequences_scores
 """
 
-config:GPT2Config = None
+config: GPT2Config = None
 
 logger = logging.getLogger('')
+
 
 def parse_arguments(argv=None):
     parser = argparse.ArgumentParser()
@@ -186,17 +186,18 @@ def gpt2_to_onnx(args):
     from onnxruntime.tools.symbolic_shape_infer import SymbolicShapeInference
     out = SymbolicShapeInference.infer_shapes(onnx.load(args.gpt2_onnx), auto_merge=True, guess_output_rank=False)
     if out:
-       onnx.save(out, args.gpt2_onnx)
+        onnx.save(out, args.gpt2_onnx)
+
 
 def create_ort_session(model_path, use_gpu):
     from onnxruntime import SessionOptions, InferenceSession, __version__ as ort_version, GraphOptimizationLevel
     sess_options = SessionOptions()
     sess_options.graph_optimization_level = GraphOptimizationLevel.ORT_DISABLE_ALL
-    execution_providers = ['CUDAExecutionProvider', 'CPUExecutionProvider'
-                           ] if use_gpu else ['CPUExecutionProvider']
+    execution_providers = ['CUDAExecutionProvider', 'CPUExecutionProvider'] if use_gpu else ['CPUExecutionProvider']
 
     ort_session = InferenceSession(model_path, sess_options, providers=execution_providers)
     return ort_session
+
 
 def convert_model(args):
     if os.path.exists(args.gpt2_onnx):
@@ -217,8 +218,8 @@ def convert_model(args):
     model = onnx.load(args.gpt2_onnx)
     model.graph.name = "gpt2 subgraph"
     inputs = [
-        "input_ids", "max_length", "min_length", "num_beams", "num_return_sequences", "temperature",
-        "length_penalty", "repetition_penalty", "vocab_mask"
+        "input_ids", "max_length", "min_length", "num_beams", "num_return_sequences", "temperature", "length_penalty",
+        "repetition_penalty", "vocab_mask"
     ]
 
     outputs = ["sequences"]
@@ -257,21 +258,20 @@ def convert_model(args):
 
     # graph outputs
     sequences = helper.make_tensor_value_info('sequences', TensorProto.INT32,
-                                              ['batch_size',  'num_return_sequences', 'max_length'])
-    
+                                              ['batch_size', 'num_return_sequences', 'max_length'])
+
     sequences_scores = helper.make_tensor_value_info('sequences_scores', TensorProto.FLOAT,
                                                      ['batch_size', 'num_return_sequences'])
-    scores = helper.make_tensor_value_info(
-        'scores', TensorProto.FLOAT,
-        ['max_length - sequence_length', 'batch_size', 'num_beams', vocab_size])
+    scores = helper.make_tensor_value_info('scores', TensorProto.FLOAT,
+                                           ['max_length - sequence_length', 'batch_size', 'num_beams', vocab_size])
 
     initializers = []
 
     graph_outputs = [sequences]
-    
+
     if args.output_sequences_scores:
         graph_outputs.append(sequences_scores)
-        
+
     if args.output_token_scores:
         graph_outputs.append(scores)
 
@@ -302,17 +302,17 @@ def test_model(args):
         print('-' * 50)
         print("Test PyTorch model and beam search with huggingface transformers...")
         beam_outputs = model.generate(input_ids,
-                                    max_length=args.max_length,
-                                    min_length=args.min_length,
-                                    num_beams=args.num_beams,
-                                    early_stopping=args.early_stopping,
-                                    no_repeat_ngram_size=args.no_repeat_ngram_size,
-                                    eos_token_id=eos_token_id,
-                                    pad_token_id=pad_token_id,
-                                    num_return_sequences=args.num_return_sequences,
-                                    temperature=args.temperature,
-                                    length_penalty=args.length_penalty,
-                                    repetition_penalty=args.repetition_penalty)
+                                      max_length=args.max_length,
+                                      min_length=args.min_length,
+                                      num_beams=args.num_beams,
+                                      early_stopping=args.early_stopping,
+                                      no_repeat_ngram_size=args.no_repeat_ngram_size,
+                                      eos_token_id=eos_token_id,
+                                      pad_token_id=pad_token_id,
+                                      num_return_sequences=args.num_return_sequences,
+                                      temperature=args.temperature,
+                                      length_penalty=args.length_penalty,
+                                      repetition_penalty=args.repetition_penalty)
         print("input_ids", input_ids)
         print("huggingface transformers output:", beam_outputs)
         for i, beam_output in enumerate(beam_outputs):
@@ -325,7 +325,7 @@ def test_model(args):
     import time
     print('You have 15 seconds to attach a debugger.')
     time.sleep(15)
-    
+
     ort_session = create_ort_session(args.output, args.use_gpu)
 
     batch_size = 1
@@ -353,13 +353,14 @@ def test_model(args):
 
     print("inputs", inputs)
     result = ort_session.run(None, inputs)
-    
+
     sequences = result[0]
     print("outputs", sequences)
-    
+
     #TODO: print all sequences. Below shows only the first one
     first_sequence = tokenizer.decode(sequences[0][0], skip_special_tokens=True)
     print(first_sequence)
+
 
 def main():
     args = parse_arguments()
@@ -370,6 +371,7 @@ def main():
         convert_model(args)
 
     test_model(args)
+
 
 if __name__ == '__main__':
     main()

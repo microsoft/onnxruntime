@@ -16,18 +16,21 @@ namespace contrib {
 
 using ::onnxruntime::rnn::detail::Allocate;
 
-BeamHypotheses::BeamHypotheses(int num_beams, float length_penalty, bool early_stopping)
+template <typename T>
+BeamHypotheses<T>::BeamHypotheses(int num_beams, T length_penalty, bool early_stopping)
     : num_beams_(num_beams),
       length_penalty_(length_penalty),
       early_stopping_(early_stopping),
       worst_score_(1e9) {}
 
-void BeamHypotheses::Add(gsl::span<const int64_t>& hypothesis, float sum_logprobs) {
+template <typename T>
+void BeamHypotheses<T>::Add(gsl::span<const int64_t>& hypothesis, T sum_logprobs) {
   auto length = hypothesis.size();
-  float score = sum_logprobs / pow(static_cast<float>(length), length_penalty_);
+  // TODO: may need compute in FP32 when T is FP16
+  T score = sum_logprobs / pow(static_cast<T>(length), length_penalty_);
 
   if (this->Size() < num_beams_ || score > worst_score_) {
-    HypothesisScore item(hypothesis, score);
+    HypothesisScore<T> item(hypothesis, score);
     beams_.push(item);
     if (this->Size() > num_beams_) {
       beams_.pop();
@@ -36,7 +39,8 @@ void BeamHypotheses::Add(gsl::span<const int64_t>& hypothesis, float sum_logprob
   }
 }
 
-bool BeamHypotheses::IsDone(float best_sum_logprobs, int current_length) {
+template <typename T>
+bool BeamHypotheses<T>::IsDone(T best_sum_logprobs, int current_length) {
   // If there are enough hypotheses and that none of the hypotheses being generated can become better
   // than the worst one in the heap, then we are done with this sentence.
 
@@ -46,15 +50,16 @@ bool BeamHypotheses::IsDone(float best_sum_logprobs, int current_length) {
   if (early_stopping_)
     return true;
 
-  float current_score = best_sum_logprobs / pow(static_cast<float>(current_length), length_penalty_);
+  T current_score = best_sum_logprobs / pow(static_cast<T>(current_length), length_penalty_);
   return worst_score_ >= current_score;
 }
 
-void BeamHypotheses::Output(
+template <typename T>
+void BeamHypotheses<T>::Output(
     int top_k,
     int max_length,
-    gsl::span<int32_t>& sequences,       // buffer filled with pad token ID, shape (num_return_sequences, max_length)
-    gsl::span<float>& sequences_scores)  // buffer of shape (num_return_sequences) or empty
+    gsl::span<int32_t>& sequences,   // buffer filled with pad token ID, shape (num_return_sequences, max_length)
+    gsl::span<T>& sequences_scores)  // buffer of shape (num_return_sequences) or empty
 {
   ORT_ENFORCE(top_k <= Size());
   int remove_count = Size() - top_k;
@@ -73,7 +78,7 @@ void BeamHypotheses::Output(
     // Note that word_ids might be less than max_length.
     // Since the sequences has been filled with pad token ID, so padding is not needed here.
     // Since data type need cast from int64_t to int32_t, we cannot use gsl::copy(word_ids, sequence) here.
-    for (size_t i = 0; i < source.length(); i++){
+    for (size_t i = 0; i < source.length(); i++) {
       target[i] = static_cast<int32_t>(source[i]);
     }
 
@@ -85,14 +90,15 @@ void BeamHypotheses::Output(
   }
 }
 
-BeamSearchScorer::BeamSearchScorer(int batch_size,
-                                   int num_beams,
-                                   int max_length,
-                                   float length_penalty,
-                                   bool early_stopping,
-                                   int num_return_sequences,
-                                   int pad_token_id,
-                                   int eos_token_id)
+template <typename T>
+BeamSearchScorer<T>::BeamSearchScorer(int batch_size,
+                                      int num_beams,
+                                      int max_length,
+                                      T length_penalty,
+                                      bool early_stopping,
+                                      int num_return_sequences,
+                                      int pad_token_id,
+                                      int eos_token_id)
     : batch_size_(batch_size),
       num_beams_(num_beams),
       max_length_(max_length),
@@ -110,7 +116,8 @@ BeamSearchScorer::BeamSearchScorer(int batch_size,
   }
 }
 
-bool BeamSearchScorer::IsDone() {
+template <typename T>
+bool BeamSearchScorer<T>::IsDone() {
   for (int batch = 0; batch < batch_size_; batch++) {
     if (!done_[batch])
       return false;
@@ -118,11 +125,12 @@ bool BeamSearchScorer::IsDone() {
   return true;
 }
 
-void BeamSearchScorer::Process(ISequences* sequences,
-                               gsl::span<const float>& next_scores,
-                               gsl::span<const int64_t>& next_tokens,
-                               gsl::span<const int64_t>& next_indices,
-                               AllocatorPtr& allocator) {
+template <typename T>
+void BeamSearchScorer<T>::Process(ISequences* sequences,
+                                  gsl::span<const T>& next_scores,
+                                  gsl::span<const int64_t>& next_tokens,
+                                  gsl::span<const int64_t>& next_indices,
+                                  AllocatorPtr& allocator) {
   // sequences shape is (batch_size * num_beams, total_sequence_length)
   // It contains word ID of whole sequence generated so far.
   // It is different from subgraph input_ids, which only need one word when past state is not empty.
@@ -136,7 +144,7 @@ void BeamSearchScorer::Process(ISequences* sequences,
   if (next_beam_scores_.empty()) {
     size_t batch_beam_size = static_cast<size_t>(batch_size_ * num_beams_);
     const bool fill_zeros = false;
-    next_beam_scores_ = Allocate<float>(allocator, batch_beam_size, next_beam_scores_ptr_, fill_zeros);
+    next_beam_scores_ = Allocate<T>(allocator, batch_beam_size, next_beam_scores_ptr_, fill_zeros);
     next_beam_tokens_ = Allocate<int64_t>(allocator, batch_beam_size, next_beam_tokens_ptr_, fill_zeros);
     next_beam_indices_ = Allocate<int64_t>(allocator, batch_beam_size, next_beam_indices_ptr_, fill_zeros);
 
@@ -147,7 +155,7 @@ void BeamSearchScorer::Process(ISequences* sequences,
   }
 
   for (int batch = 0; batch < batch_size_; batch++) {
-    BeamHypotheses& beam_hyp = beam_hyps[batch];
+    BeamHypotheses<T>& beam_hyp = beam_hyps[batch];
     if (done_[batch]) {
       ORT_ENFORCE(beam_hyp.Size() >= num_beams_, "Batch can only be done if all beams have been generated");
 
@@ -165,7 +173,7 @@ void BeamSearchScorer::Process(ISequences* sequences,
     int top_k = 2 * num_beams_;
     for (int j = 0; j < top_k; j++) {
       int64_t next_token = next_tokens[batch * top_k + j];
-      float next_score = next_scores[batch * top_k + j];
+      T next_score = next_scores[batch * top_k + j];
       int64_t next_index = next_indices[batch * top_k + j];
 
       int batch_beam_idx = batch * num_beams_ + static_cast<int>(next_index);
@@ -201,8 +209,8 @@ void BeamSearchScorer::Process(ISequences* sequences,
 
     //  Check if we are done so that we can save a pad step if all(done)
     if (!done_[batch]) {
-      gsl::span<const float> topk_scores = next_scores.subspan(batch * num_beams_, top_k);
-      const float* best_sum_logprobs = std::max_element(topk_scores.begin(), topk_scores.end());
+      gsl::span<const T> topk_scores = next_scores.subspan(batch * num_beams_, top_k);
+      const T* best_sum_logprobs = std::max_element(topk_scores.begin(), topk_scores.end());
       if (beam_hyp.IsDone(*best_sum_logprobs, sequence_length)) {
         done_[batch] = true;
       }
@@ -210,23 +218,24 @@ void BeamSearchScorer::Process(ISequences* sequences,
   }
 }
 
-void BeamSearchScorer::Finalize(ISequences* sequences,
-                                gsl::span<const float>& final_beam_scores,
-                                Tensor* output_sequences,
-                                Tensor* output_sequence_scores) {
+template <typename T>
+void BeamSearchScorer<T>::Finalize(ISequences* sequences,
+                                   gsl::span<const T>& final_beam_scores,
+                                   Tensor* output_sequences,
+                                   Tensor* output_sequence_scores) {
   ORT_ENFORCE(sequences != nullptr);
   ORT_ENFORCE(output_sequences != nullptr);
 
   // finalize all open beam hypotheses and add to generated hypotheses
   for (int batch_index = 0; batch_index < batch_size_; batch_index++) {
-    BeamHypotheses& beam_hyp = beam_hyps[batch_index];
+    BeamHypotheses<T>& beam_hyp = beam_hyps[batch_index];
     if (done_[batch_index]) {
       continue;
     }
 
     for (int beam_index = 0; beam_index < num_beams_; beam_index++) {
       int batch_beam_index = batch_index * num_beams_ + beam_index;
-      float final_score = final_beam_scores[batch_beam_index];
+      T final_score = final_beam_scores[batch_beam_index];
       auto final_tokens = sequences->GetSequence(batch_beam_index);
       beam_hyp.Add(final_tokens, final_score);
     }
@@ -239,22 +248,22 @@ void BeamSearchScorer::Finalize(ISequences* sequences,
   std::fill_n(output.data(), output.size(), pad_token_id_);
 
   // score of each sequence, with shape (batch_size * num_return_sequences)
-  gsl::span<float> sequence_scores;
-  if (output_sequence_scores != nullptr){
-    sequence_scores = output_sequence_scores->MutableDataAsSpan<float>();
+  gsl::span<T> sequence_scores;
+  if (output_sequence_scores != nullptr) {
+    sequence_scores = output_sequence_scores->MutableDataAsSpan<T>();
   }
 
   // span is empty when output_sequence_scores is NULL.
-  gsl::span<float> batch_sequence_score;
+  gsl::span<T> batch_sequence_score;
 
   // Select the best hypotheses according to number of sequences to return.
   for (int batch_index = 0; batch_index < batch_size_; batch_index++) {
-    BeamHypotheses& beam_hyp = beam_hyps[batch_index];
+    BeamHypotheses<T>& beam_hyp = beam_hyps[batch_index];
 
     const int num_return_sequences = num_beam_hyps_to_keep_;
     auto batch_output = output.subspan(batch_index * num_return_sequences * max_length_, num_return_sequences * max_length_);
 
-    if (output_sequence_scores != nullptr){
+    if (output_sequence_scores != nullptr) {
       batch_sequence_score = sequence_scores.subspan(batch_index * num_return_sequences, num_return_sequences);
     }
 
@@ -265,6 +274,11 @@ void BeamSearchScorer::Finalize(ISequences* sequences,
         batch_sequence_score);
   }
 }
+
+// Instantiation
+template class HypothesisScoreCompare<float>;
+template class BeamHypotheses<float>;
+template class BeamSearchScorer<float>;
 
 }  // namespace contrib
 }  // namespace onnxruntime
