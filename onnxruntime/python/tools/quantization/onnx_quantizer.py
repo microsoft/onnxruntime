@@ -877,8 +877,8 @@ class ONNXQuantizer:
             that can not be found in this graph and its subgraphes
         '''
         requesting_tensor_names = {}
-        requesting_tensor_names.update({input_name: 1 for node in graph.node for input_name in node.input})
-        requesting_tensor_names.update({g_out.name: 1 for g_out in graph.output})
+        requesting_tensor_names.update({input_name: 1 for node in graph.node for input_name in node.input if input_name})
+        requesting_tensor_names.update({g_out.name: 1 for g_out in graph.output if g_out.name})
 
         new_nodes = []
         for node in graph.node:
@@ -909,7 +909,7 @@ class ONNXQuantizer:
         graph.node.extend(new_nodes)
 
         generated_names = {}
-        generated_names.update({output_name: 1 for node in graph.node for output_name in node.output})
+        generated_names.update({output_name: 1 for node in graph.node for output_name in node.output if output_name})
         for gn in generated_names:
             requesting_tensor_names.pop(gn, None)
 
