@@ -11,16 +11,16 @@ struct GraphTransformerConfiguration {
   struct PropagateCastOpsConfiguration {
     // Propagate FP16 Cast operations up and FP32 operations down
     /*
-    * Cast propagation strategy.
-    * One strategy is to insert casts around all the nodes with the allowed opcodes
-    * and reduce, by removing redundent-casts and back-to-back-casts etc., and
-    * the other is to propagate casts using flood-fill approach, expanding float16 regions in the graph
-    * traversing the graph up/down.
-    */
+     * Cast propagation strategy.
+     * One strategy is to insert casts around all the nodes with the allowed opcodes
+     * and reduce, by removing redundent-casts and back-to-back-casts etc., and
+     * the other is to propagate casts using flood-fill approach, expanding float16 regions in the graph
+     * traversing the graph up/down.
+     */
     enum class Strategy {
       None = 0,
       InsertAndReduce = 1,
-      FloodFill = 2,                   /* Propagate FP16 Cast operations up and FP32 operations down */
+      FloodFill = 2, /* Propagate FP16 Cast operations up and FP32 operations down */
     };
     using Strategy_t = std::underlying_type<Strategy>::type;
     friend constexpr Strategy operator|(const Strategy s1, const Strategy s2) {
@@ -54,7 +54,7 @@ struct GraphTransformerConfiguration {
                        1 => use ORT predefined list of level 1 opcodes in addition to the user specified allow opcodes
                        2 => use ORT predefined list of level 2 opcodes in addition to the user specified allow opcodes
                     */
-    Strategy strategy = Strategy::None;
+    Strategy strategy = Strategy::FloodFill;
     // List of allowed opcodes to consider as safe to execute in float16, while moving cast operations
     std::vector<std::string> allow;
   };

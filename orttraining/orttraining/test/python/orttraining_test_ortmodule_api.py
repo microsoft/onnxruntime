@@ -1072,6 +1072,139 @@ def test_gradient_correctness_reducesum(dim, keepdim):
         _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
         _test_helpers.assert_values_are_close(ort_input.grad, pt_input.grad)
 
+@pytest.mark.parametrize("equation", ["s,se->se", "se,sc->sec", "se,se->s", "sec,sm->ecm",
+                                      "sec,ecm->sm", "ks,ksm->sm", "kes,ems->mek", "kes,ksm->ms"])
+def test_gradient_correctness_einsum(equation):
+    class NeuralNetEinsum(torch.nn.Module):
+        def __init__(self, bias_size):
+            super(NeuralNetEinsum, self).__init__()
+            self.register_parameter(name='bias', param=torch.nn.Parameter(torch.randn(bias_size)))
+
+        def forward(self, left, right):
+            left = left + self.bias
+            return torch.einsum(equation, left, right)
+
+    device = 'cuda'
+    K, S, M, E = 16, 1024, 768, 64
+    C = int(S/E*2)
+
+    SIZE_MAP = { 'K': K, 'S': S, 'E': E, 'C': C, 'M': M }
+
+    pos1 = equation.find(',')
+    pos2 = equation.find('->')
+    lhs_op = equation[0:pos1]
+    rhs_op = equation[pos1 + 1:pos2]
+    lhs_shape = []
+    for c in lhs_op:
+        lhs_shape.append(SIZE_MAP[c.upper()])
+    rhs_shape = []
+    for c in rhs_op:
+        rhs_shape.append(SIZE_MAP[c.upper()])
+
+    pt_model = NeuralNetEinsum(lhs_shape[-1]).to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+
+    def run_step(model, input_left, input_right):
+        prediction = model(input_left, input_right)
+        loss = prediction.sum()
+        loss.backward()
+        return prediction
+
+    for _ in range(10):
+        pt_input_left = torch.rand(lhs_shape, device=device)
+        pt_input_right = torch.rand(rhs_shape, device=device)
+        ort_input_left = copy.deepcopy(pt_input_left)
+        ort_input_right = copy.deepcopy(pt_input_right)
+        pt_prediction = run_step(pt_model, pt_input_left, pt_input_right)
+        ort_prediction = run_step(ort_model, ort_input_left, ort_input_right)
+
+        _test_helpers.assert_values_are_close(ort_prediction, pt_prediction, atol=1e-5)
+        _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model)
+
+def test_gradient_correctness_einsum_2():
+    class NeuralNetEinsum(torch.nn.Module):
+        def __init__(self, bias_size):
+            super(NeuralNetEinsum, self).__init__()
+            self.register_parameter(name='bias', param=torch.nn.Parameter(torch.randn(bias_size)))
+
+        def forward(self, left, right):
+            left = left + self.bias
+            return torch.einsum(equation, left, right)
+
+    device = 'cuda'
+    A, B, C, D = 16, 32, 8, 64
+
+    SIZE_MAP = { 'A': A, 'B': B, 'C': C, 'D': D }
+
+    def to_string(perm):
+        result = ''
+        for v in perm:
+            result += chr(ord('a') + v)
+        return result
+
+    lhs_candidates = [[0], [0,1], [0,1,2]]
+    perm = [0,1,2,3]
+    combs = list(itertools.combinations(perm, 1)) + list(itertools.combinations(perm, 2)) + list(itertools.combinations(perm, 3))
+    rhs_candidates = []
+    for comb in combs:
+        rhs_candidates += list(itertools.permutations(comb))
+
+    all_cases = []
+    for lhs_candidate in lhs_candidates:
+        for rhs_candidate in [list(candidate) for candidate in rhs_candidates]:
+            union = list(set(lhs_candidate + rhs_candidate))
+            # Union should contains contiguous numbers from 0, otherwise it's same as another case.
+            if any(v >= len(union) for v in union):
+                continue
+            # Numbers in right but not in left should be sorted, otherwise it's same as another case.
+            only_in_right = [v for v in rhs_candidate if v not in lhs_candidate]
+            if any(only_in_right[i] > only_in_right[i + 1] for i in range(len(only_in_right) - 1)):
+                continue
+            combs = []
+            for i in range(1, len(union) + 1):
+                combs += list(itertools.combinations(union, i))
+            output_candidates = []
+            for comb in combs:
+                output_candidates += list(itertools.permutations(comb))
+            # When output_candidates is too many, it will take long time to run. Sample part of them.
+            random.shuffle(output_candidates)
+            output_candidates = output_candidates[:8]
+            for output_candidate in [list(candidate) for candidate in output_candidates]:
+                all_cases.append((lhs_candidate, rhs_candidate, output_candidate))
+
+    for case in all_cases:
+        equation = to_string(case[0]) + ',' + to_string(case[1]) + '->' + to_string(case[2])
+        pos1 = equation.find(',')
+        pos2 = equation.find('->')
+        lhs_op = equation[0:pos1]
+        rhs_op = equation[pos1 + 1:pos2]
+        lhs_shape = []
+        for c in lhs_op:
+            lhs_shape.append(SIZE_MAP[c.upper()])
+        rhs_shape = []
+        for c in rhs_op:
+            rhs_shape.append(SIZE_MAP[c.upper()])
+
+        pt_model = NeuralNetEinsum(lhs_shape[-1]).to(device)
+        ort_model = ORTModule(copy.deepcopy(pt_model))
+
+        def run_step(model, input_left, input_right):
+            prediction = model(input_left, input_right)
+            loss = prediction.sum()
+            loss.backward()
+            return prediction
+
+        for _ in range(5):
+            pt_input_left = torch.rand(lhs_shape, device=device)
+            pt_input_right = torch.rand(rhs_shape, device=device)
+            ort_input_left = copy.deepcopy(pt_input_left)
+            ort_input_right = copy.deepcopy(pt_input_right)
+            pt_prediction = run_step(pt_model, pt_input_left, pt_input_right)
+            ort_prediction = run_step(ort_model, ort_input_left, ort_input_right)
+
+            _test_helpers.assert_values_are_close(ort_prediction, pt_prediction, atol=1e-4, rtol=1e-5)
+            _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model)
+
 # Since multinomial is a generator function, we do not have to test for gradient
 # Two consecutive calls on the torch.multinomail on a probability distribution with more
 # than one index with non-zero probability(eg, [0, 10, 3, 0]) will not result in
@@ -4457,6 +4590,36 @@ def test_trilu_grad(batch_size, M, N, k, has_upper, upper):
 
     pt_prediction, pt_loss = run_step(pt_model, pt_x, k)
     ort_prediction, ort_loss = run_step(ort_model, ort_x, k)
+    _test_helpers.assert_values_are_close(pt_prediction, ort_prediction)
+    _test_helpers.assert_values_are_close(pt_loss, ort_loss)
+    _test_helpers.assert_values_are_close(pt_x.grad, ort_x.grad)
+
+
+@pytest.mark.parametrize("M, N", [(2400, 128), (2400, 256), (2400, 512), (2400, 1024), (2400, 2048), (2400, 4096), (2400, 12800)])
+def test_softmax(M, N):
+    class NeuralNetSoftmax(torch.nn.Module):
+        def __init__(self):
+            super(NeuralNetSoftmax, self).__init__()
+            self.m = torch.nn.Softmax(dim=1)
+
+        def forward(self, x):
+            return self.m(x)
+
+    def run_step(model, x):
+        prediction = model(x)
+        loss = prediction.sum()
+        loss.backward()
+        return prediction, loss
+
+    device = 'cuda'
+    pt_model = NeuralNetSoftmax().to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+
+    pt_x = torch.rand((M, N), requires_grad=True, device=device)
+    ort_x = copy.deepcopy(pt_x)
+
+    pt_prediction, pt_loss = run_step(pt_model, pt_x)
+    ort_prediction, ort_loss = run_step(ort_model, ort_x)
     _test_helpers.assert_values_are_close(pt_prediction, ort_prediction)
     _test_helpers.assert_values_are_close(pt_loss, ort_loss)
     _test_helpers.assert_values_are_close(pt_x.grad, ort_x.grad)
