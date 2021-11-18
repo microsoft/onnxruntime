@@ -249,6 +249,16 @@ void addOrtValueMethods(pybind11::module& m) {
        }, "Returns a tuple of integers, (device, device index) (part of __dlpack__ protocol).")
 #endif
       ;
+
+#ifdef ENABLE_TRAINING
+  m.def("may_dlpack_bool_tensor", [](py::capsule cap) -> bool {
+    // case ONNX_NAMESPACE::TensorProto_DataType_BOOL:
+    // dtype.code = DLDataTypeCode::kDLUInt;
+    // dtype.bits = sizeof(bool);
+    DLManagedTensor* dlmanaged_tensor = (DLManagedTensor*)cap.get_pointer();
+    return dlmanaged_tensor->dl_tensor.dtype.code == DLDataTypeCode::kDLUInt && dlmanaged_tensor->dl_tensor.dtype.bits == 8;
+  }, "Tells if a DLPack structure is a boolean tensor.");
+#endif
 }
 
 }  // namespace python

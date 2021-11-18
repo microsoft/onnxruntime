@@ -162,7 +162,7 @@ class TrainingManager(GraphExecutionManager):
 
                 # Fast version: all backward_outputs are converted first.
                 # This version only works if backward_outputs is an OrtValueVector.
-                transfered_backward_outputs = _utils._ortvalues_to_torch_tensor(backward_outputs, self._device.type)
+                transfered_backward_outputs = _utils._ortvalues_to_torch_tensor(backward_outputs, self._device)
 
                 # Return input and initializer gradients
                 for input_name in self._graph_info.user_input_names:

@@ -10,6 +10,7 @@ from numpy.testing import assert_almost_equal
 import onnxruntime as onnxrt
 from onnxruntime.capi.onnxruntime_pybind11_state import OrtValue as C_OrtValue, OrtValueVector
 from onnxruntime.training.ortmodule import ORTModule, _utils
+from onnxruntime.capi import _pybind_state as C
 import torch
 from torch._C import _from_dlpack
 from torch.utils.dlpack import from_dlpack
@@ -19,21 +20,46 @@ import _test_helpers
 has_cuda = torch.cuda.is_available()
 
 
+# Revoved code from _utils.
+
+
+def C_ort_from_dlpack(dlpack):
+    if hasattr(C, 'ort_from_dlpack'):
+        return C.ort_from_dlpack(dlpack)
+    return from_dlpack(dlpack)
+
+
+def _torch_tensor_from_dl_pack(dlpack, ortvalue, device):
+    torch_tensor = from_dlpack(dlpack) if device.type != 'ort' else C_ort_from_dlpack(dlpack)
+    return torch_tensor.to(torch.bool) if ortvalue.data_type() == 'tensor(bool)' else torch_tensor
+
+
+def _ortvalue_to_torch_tensor(ortvalue, device):
+    dlpack_tensor = ortvalue.to_dlpack()
+    return _torch_tensor_from_dl_pack(dlpack_tensor, ortvalue, device)
+
+
+def _ortvalues_to_torch_tensor(vect, device):
+    return [_ortvalue_to_torch_tensor(ov, device) for ov in vect]
+
+
 class TestOrtValue(unittest.TestCase):
 
-    def testOrtValueDlPack(self):
+    def testOrtValueDlPack_float32(self):
         numpy_arr_input = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
         ortvalue = onnxrt.OrtValue.ortvalue_from_numpy(numpy_arr_input)
         self.assertEqual(numpy_arr_input.shape, tuple(ortvalue.shape()))
         ptr = ortvalue._ortvalue.data_ptr()
 
         dlp = ortvalue._ortvalue.to_dlpack()
+        self.assertFalse(C.may_dlpack_bool_tensor(dlp))
         ortvalue2 = C_OrtValue.from_dlpack(dlp, False)
         self.assertEqual(ptr, ortvalue2.data_ptr())
         new_array = ortvalue2.numpy()
         assert_almost_equal(numpy_arr_input, new_array)
 
         dlp = ortvalue._ortvalue.__dlpack__()
+        self.assertFalse(C.may_dlpack_bool_tensor(dlp))
         ortvalue2 = C_OrtValue.from_dlpack(dlp, False)
         self.assertEqual(ptr, ortvalue2.data_ptr())
         new_array = ortvalue2.numpy()
@@ -42,7 +68,30 @@ class TestOrtValue(unittest.TestCase):
         device = ortvalue._ortvalue.__dlpack_device__()
         self.assertEqual((1, 0), device)
 
-    def testOrtValueVector(self):
+    def testOrtValueDlPack_bool(self):
+        numpy_arr_input = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.bool)
+        ortvalue = onnxrt.OrtValue.ortvalue_from_numpy(numpy_arr_input)
+        self.assertEqual(numpy_arr_input.shape, tuple(ortvalue.shape()))
+        ptr = ortvalue._ortvalue.data_ptr()
+
+        dlp = ortvalue._ortvalue.to_dlpack()
+        self.assertTrue(C.may_dlpack_bool_tensor(dlp))
+        ortvalue2 = C_OrtValue.from_dlpack(dlp, True)
+        self.assertEqual(ptr, ortvalue2.data_ptr())
+        new_array = ortvalue2.numpy()
+        assert_almost_equal(numpy_arr_input, new_array)
+
+        dlp = ortvalue._ortvalue.__dlpack__()
+        self.assertTrue(C.may_dlpack_bool_tensor(dlp))
+        ortvalue2 = C_OrtValue.from_dlpack(dlp, True)
+        self.assertEqual(ptr, ortvalue2.data_ptr())
+        new_array = ortvalue2.numpy()
+        assert_almost_equal(numpy_arr_input, new_array)
+
+        device = ortvalue._ortvalue.__dlpack_device__()
+        self.assertEqual((1, 0), device)
+
+    def testOrtValueVector_float32(self):
         narrays = [
             np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32),
             np.array([[6.0, 7.0], [8.0, 9.0], [1.0, 6.0]], dtype=np.float32)]
@@ -55,10 +104,23 @@ class TestOrtValue(unittest.TestCase):
             ovar = ov.numpy()
             assert_almost_equal(ar, ovar)
 
-    def OrtValueVectorDlPackOrtValue(self, my_to_tensor, tensor_type, device):
+    def testOrtValueVector_bool(self):
         narrays = [
-            np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32),
-            np.array([[6.0, 7.0], [8.0, 9.0], [1.0, 6.0]], dtype=np.float32)]
+            np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.bool_),
+            np.array([[6.0, 7.0], [8.0, 9.0], [1.0, 6.0]], dtype=np.bool_)]
+        vect = OrtValueVector()
+        for a in narrays:
+            ortvalue = onnxrt.OrtValue.ortvalue_from_numpy(a)
+            vect.push_back(ortvalue._ortvalue)
+        self.assertEqual(len(vect), 2)
+        for ov, ar in zip(vect, narrays):
+            ovar = ov.numpy()
+            assert_almost_equal(ar, ovar)
+
+    def OrtValueVectorDlPackOrtValue(self, my_to_tensor, tensor_type, device, dtype=np.float32):
+        narrays = [
+            np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=dtype),
+            np.array([[6.0, 7.0], [8.0, 9.0], [1.0, 6.0]], dtype=dtype)]
         vect = OrtValueVector()
         ptr = []
         for a in narrays:
@@ -188,34 +250,53 @@ class TestOrtValue(unittest.TestCase):
         assert y1 is not None
         assert y2 is not None and y2.dtype == torch.bool
 
-    def _ortvalues_to_torch_tensor_ortvaluevector(self, device, tensor_type):
+    def _ortvalues_to_torch_tensor_ortvaluevector(self, device, tensor_type, new_impl, dtype=np.float32):
         narrays = [
-            np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32),
-            np.array([[6.0, 7.0], [8.0, 9.0], [1.0, 6.0]], dtype=np.float32)]
+            np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=dtype),
+            np.array([[6.0, 7.0], [8.0, 9.0], [1.0, 6.0]], dtype=dtype)]
         vect = OrtValueVector()
         ptr = []
         for a in narrays:
             ortvalue = onnxrt.OrtValue.ortvalue_from_numpy(
-                a, device if device != 'ort' else 'cpu')
+                a, device.type if device.type != 'ort' else 'cpu')
             vect.push_back(ortvalue._ortvalue)
             ptr.append(ortvalue.data_ptr())
         self.assertEqual(len(vect), 2)
-        tensors = _utils._ortvalues_to_torch_tensor(vect, device)
+        if new_impl:
+            tensors = _utils._ortvalues_to_torch_tensor(vect, device)
+        else:
+            tensors = _ortvalues_to_torch_tensor(vect, device)
         self.assertEqual(len(tensors), len(vect))
         self.assertEqual(ptr, [t.data_ptr() for t in tensors])
         assert all(map(lambda v: isinstance(v, tensor_type), tensors))
 
-    def test_ortvalues_to_torch_tensor_ortvaluevector_cpu(self):
-        self._ortvalues_to_torch_tensor_ortvaluevector('cpu', torch.Tensor)
+    def test_ortvalues_to_torch_tensor_ortvaluevector_cpu_new(self):
+        device = torch.device('cpu')
+        self._ortvalues_to_torch_tensor_ortvaluevector(device, torch.Tensor, True)
 
-    def test_ortvalues_to_torch_tensor_ortvaluevector_ort(self):
-        self._ortvalues_to_torch_tensor_ortvaluevector('ort', C_OrtValue)
+    def test_ortvalues_to_torch_tensor_ortvaluevector_cpu_old(self):
+        device = torch.device('cpu')
+        self._ortvalues_to_torch_tensor_ortvaluevector(device, torch.Tensor, False)
+
+    def test_ortvalues_to_torch_tensor_ortvaluevector_ort_new(self):
+        device = torch.device('ort')
+        self._ortvalues_to_torch_tensor_ortvaluevector(device, torch.Tensor, True)
+
+    def test_ortvalues_to_torch_tensor_ortvaluevector_ort_old(self):
+        device = torch.device('ort')
+        self._ortvalues_to_torch_tensor_ortvaluevector(device, torch.Tensor, False)
 
     @unittest.skipIf(not has_cuda, reason="No CUDA availabled.")
-    def test_ortvalues_to_torch_tensor_ortvaluevector_cuda(self):
-        self._ortvalues_to_torch_tensor_ortvaluevector('cuda', torch.Tensor)
+    def test_ortvalues_to_torch_tensor_ortvaluevector_cuda_new(self):
+        device = torch.device('cuda:0')
+        self._ortvalues_to_torch_tensor_ortvaluevector(device, torch.Tensor, True)
 
-    def _ortvalues_to_torch_tensor_list(self, device):
+    @unittest.skipIf(not has_cuda, reason="No CUDA availabled.")
+    def test_ortvalues_to_torch_tensor_ortvaluevector_cuda_old(self):
+        device = torch.device('cuda:0')
+        self._ortvalues_to_torch_tensor_ortvaluevector(device, torch.Tensor, False)
+
+    def _ortvalues_to_torch_tensor_list(self, device, tensor_type, new_impl):
         narrays = [
             np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32),
             np.array([[6.0, 7.0], [8.0, 9.0], [1.0, 6.0]], dtype=np.float32)]
@@ -223,24 +304,43 @@ class TestOrtValue(unittest.TestCase):
         ptr = []
         for a in narrays:
             ortvalue = onnxrt.OrtValue.ortvalue_from_numpy(
-                a, device=device if device != 'ort' else 'cpu')
+                a, device.type if device.type != 'ort' else 'cpu')
             vect.append(ortvalue._ortvalue)
             ptr.append(ortvalue.data_ptr())
         self.assertEqual(len(vect), 2)
-        tensors = _utils._ortvalues_to_torch_tensor(vect, device)
+        if new_impl:
+            tensors = _utils._ortvalues_to_torch_tensor(vect, device)
+        else:
+            tensors = _ortvalues_to_torch_tensor(vect, device)
         self.assertEqual(len(tensors), len(vect))
         self.assertEqual(ptr, [t.data_ptr() for t in tensors])
-        assert all(lambda v: isinstance(v, tensor_type), tensors)
+        assert all(map(lambda v: isinstance(v, tensor_type), tensors))
 
-    def self_ortvalues_to_torch_tensor_list_cpu(self):
-        self._ortvalues_to_torch_tensor_list('cpu')
+    def test_ortvalues_to_torch_tensor_list_cpu_new(self):
+        device = torch.device('cpu')
+        self._ortvalues_to_torch_tensor_list(device, torch.Tensor, True)
 
-    def self_ortvalues_to_torch_tensor_list_ort(self):
-        self._ortvalues_to_torch_tensor_list('ort')
+    def test_ortvalues_to_torch_tensor_list_cpu_old(self):
+        device = torch.device('cpu')
+        self._ortvalues_to_torch_tensor_list(device, torch.Tensor, False)
+
+    def test_ortvalues_to_torch_tensor_list_ort_new(self):
+        device = torch.device('ort')
+        self._ortvalues_to_torch_tensor_list(device, torch.Tensor, True)
+
+    def test_ortvalues_to_torch_tensor_list_ort_old(self):
+        device = torch.device('ort')
+        self._ortvalues_to_torch_tensor_list(device, torch.Tensor, False)
 
     @unittest.skipIf(not has_cuda, reason="No CUDA availabled.")
-    def self_ortvalues_to_torch_tensor_list_cuda(self):
-        self._ortvalues_to_torch_tensor_list('cuda')
+    def test_ortvalues_to_torch_tensor_list_cuda_new(self):
+        device = torch.device('cuda:0')
+        self._ortvalues_to_torch_tensor_list(device, torch.Tensor, True)
+
+    @unittest.skipIf(not has_cuda, reason="No CUDA availabled.")
+    def test_ortvalues_to_torch_tensor_list_cuda_old(self):
+        device = torch.device('cuda:0')
+        self._ortvalues_to_torch_tensor_list(device, torch.Tensor, False)
 
     def test_type_proto(self):
         values = {

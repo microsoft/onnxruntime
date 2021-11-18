@@ -42,70 +42,41 @@ def _ortvalue_from_torch_tensor(torch_tensor):
 def _ortvalues_to_torch_tensor(ortvalues, device):
     if len(ortvalues) == 0:
         return tuple()
-    if (hasattr(ortvalues, 'to_dlpack') and
-            all(ortvalue.proto_type() != 9 for ortvalue in ortvalues)):
-        if 'ort' == (device if isinstance(device, str) else device.type):
-            return tuple(ortvalues.to_dlpack(
-                lambda dlpack_structure: C.OrtValue.from_dlpack(dlpack_structure, False)))
-        return tuple(ortvalues.to_dlpack(_from_dlpack))
+    if hasattr(ortvalues, 'to_dlpack'):
+        if all(ortvalue.proto_type() != 9 for ortvalue in ortvalues):
+            if 'ort' == device.type and hasattr(C, 'ort_from_dlpack'):
+                return tuple(ortvalues.to_dlpack(C.ort_from_dlpack))
+            return tuple(ortvalues.to_dlpack(_from_dlpack))
 
-    def _to_dlpack1(ortvalues, my_tensor):
-        tensors = []
-        for i in range(len(ortvalues)):
-            ov = ortvalues[i]
-            if hasattr(ov, '_ortvalue'):
-                ov = ov._ortvalue
-            dlp = ov.to_dlpack()
-            te = my_tensor(dlp)
-            tensors.append(te)
-        return tuple(tensors)
+        # DLPack structure does not know for sure if it stores boolean
+        # or uint8. Method to_dlpack cannot be used in that case (yet?).
 
-    def _to_dlpack_at1(ortvalues, my_tensor):
+    if 'ort' == device.type and hasattr(C, 'ort_from_dlpack'):
+        if hasattr(ortvalues, 'dlpack_at'):
+            return tuple(C.ort_from_dlpack(ortvalues.dlpack_at(i)) for i in range(len(ortvalues)))
+        return tuple(C.ort_from_dlpack(ov) for ov in ortvalues)
+
+    if hasattr(ortvalues, 'dlpack_at'):
         tensors = []
         for i in range(len(ortvalues)):
             dlp = ortvalues.dlpack_at(i)
-            te = my_tensor(dlp)
-            tensors.append(te)
-        return tuple(tensors)
-
-    def _to_dlpack2(ortvalues, my_tensor):
-        tensors = []
-        for i in range(len(ortvalues)):
-            ov = ortvalues[i]
-            if hasattr(ov, '_ortvalue'):
-                ov = ov._ortvalue
-            dlp = ov.to_dlpack()
-            te = my_tensor(dlp, ov)
-            tensors.append(te)
-        return tuple(tensors)
-
-    def _to_dlpack_at2(ortvalues, my_tensor):
-        tensors = []
-        for i in range(len(ortvalues)):
-            dlp = ortvalues.dlpack_at(i)
-            te = my_tensor(dlp, ortvalues[i])
-            tensors.append(te)
-        return tuple(tensors)
-
-    if 'ort' == (device if isinstance(device, str) else device.type):
-        if hasattr(C, 'ort_from_dlpack'):
-            fct = _to_dlpack_at1 if hasattr(ortvalues, 'dlpack_at') else _to_dlpack1
-            return fct(ortvalues, C.ort_from_dlpack)
-
-        def my_tensor(dlp, ov):
-            return C.OrtValue.from_dlpack(dlp, ov.proto_type() == 9)
-
-        fct = _to_dlpack_at2 if hasattr(ortvalues, 'dlpack_at') else _to_dlpack2
-        return _to_dlpack2(ortvalues, my_tensor)
-    else:
-        def my_tensor(dlp, ov):
             te = from_dlpack(dlp)
-            if ov.proto_type() == 9:
+            if C.may_dlpack_bool_tensor(dlp) and ortvalues[i].proto_type() == 9:
                 te = te.to(torch.bool)
-            return te
+            tensors.append(te)
+        return tuple(tensors)
 
-        fct = _to_dlpack_at2 if hasattr(ortvalues, 'dlpack_at') else _to_dlpack2
-        return fct(ortvalues, my_tensor)
+    tensors = []
+    for i in range(len(ortvalues)):
+        ov = ortvalues[i]
+        if hasattr(ov, '_ortvalue'):
+            ov = ov._ortvalue
+        dlp = ov.to_dlpack()
+        te = from_dlpack(dlp)
+        if ov.proto_type() == 9:
+            te = te.to(torch.bool)
+        tensors.append(te)
+    return tuple(tensors)
 
 
 def _torch_tensor_to_dlpack(tensor):
