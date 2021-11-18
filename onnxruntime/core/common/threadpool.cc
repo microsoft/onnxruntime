@@ -426,15 +426,17 @@ void ThreadPool::ParallelForFixedBlockSizeScheduling(const std::ptrdiff_t total,
   RunInParallel(run_work, num_work_items, block_size);
   */
   auto d_o_p = DegreeOfParallelism(this);
+  int granularity = d_o_p * 8;
   std::ptrdiff_t B{1};
-  while (B * d_o_p * 4 < total) B <<= 1;
+  while (B * granularity < total) B <<= 1;
   std::atomic<ptrdiff_t> iter{0};
   std::function<void(unsigned)> run_work = [&](unsigned) {
     std::ptrdiff_t start{0};
     std::ptrdiff_t b = B;
     while ((start = iter.fetch_add(b, std::memory_order_relaxed)) < total) {
       fn(start, std::min(start + b, total));
-      while (b > 1 && (b * d_o_p * 4 > (total - start))) b >>= 1;
+      auto residual = total - start;
+      while (b > 1 && (b * granularity > residual)) b >>= 1;
     }
   };
   RunInParallel(run_work, d_o_p, block_size);
