@@ -12,6 +12,7 @@ using Microsoft::WRL::ComPtr;
 
 #include "core/providers/dml/dml_provider_factory.h"
 #include "core/session/abi_session_options_impl.h"
+#include "core/session/allocator_adapters.h"
 #include "core/session/ort_apis.h"
 #include "core/framework/error_code_helper.h"
 #include "DmlExecutionProvider/src/ErrorHandling.h"
@@ -141,6 +142,9 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_DML(in
 
 }  // namespace onnxruntime
 
+// [[deprecated]]
+// This export should be deprecated.
+// The OrtSessionOptionsAppendExecutionProvider_DML export on the OrtDmlApi should be used instead.
 ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_DML, _In_ OrtSessionOptions* options, int device_id) {
 API_IMPL_BEGIN
   options->provider_factories.push_back(onnxruntime::CreateExecutionProviderFactory_DML(device_id));
@@ -148,11 +152,66 @@ API_IMPL_END
   return nullptr;
 }
 
+// [[deprecated]]
+// This export should be deprecated.
+// The OrtSessionOptionsAppendExecutionProvider_DML1 export on the OrtDmlApi should be used instead.
 ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProviderEx_DML, _In_ OrtSessionOptions* options,
                     _In_ IDMLDevice* dml_device, _In_ ID3D12CommandQueue* cmd_queue) {
 API_IMPL_BEGIN
   options->provider_factories.push_back(onnxruntime::CreateExecutionProviderFactory_DML(dml_device,
                                                                                         cmd_queue));
 API_IMPL_END
+  return nullptr;
+}
+
+ORT_API_STATUS_IMPL(CreateGPUAllocationFromD3DResource, _In_ ID3D12Resource* d3d_resource, _Out_ void** dml_resource) {
+  API_IMPL_BEGIN
+#ifdef USE_DML
+  *dml_resource = Dml::CreateGPUAllocationFromD3DResource(d3d_resource);
+#else
+  *dml_resource = nullptr;
+#endif  // USE_DML
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(FreeGPUAllocation, _In_ void* ptr) {
+  API_IMPL_BEGIN
+#ifdef USE_DML
+  Dml::FreeGPUAllocation(ptr);
+#endif  // USE_DML
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(GetD3D12ResourceFromAllocation, _In_ OrtAllocator* ort_allocator, _In_ void* allocation, _Out_ ID3D12Resource** d3d_resource) {
+  API_IMPL_BEGIN
+#ifdef USE_DML
+  auto wrapping_allocator = static_cast<onnxruntime::OrtAllocatorImplWrappingIAllocator*>(ort_allocator);
+  auto allocator = wrapping_allocator->GetWrappedIAllocator();
+  if (!allocator) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "No requested allocator available");
+  }
+  *d3d_resource = Dml::GetD3D12ResourceFromAllocation(allocator.get(), allocation);
+  (*d3d_resource)->AddRef();
+#else
+  *d3d_resource = nullptr;
+#endif  // USE_DML
+  return nullptr;
+  API_IMPL_END
+}
+
+static constexpr OrtDmlApi ort_dml_api_10_to_x = {
+  &OrtSessionOptionsAppendExecutionProvider_DML,
+  &OrtSessionOptionsAppendExecutionProviderEx_DML,
+  &CreateGPUAllocationFromD3DResource,
+  &FreeGPUAllocation,
+  &GetD3D12ResourceFromAllocation
+};
+
+const OrtDmlApi* GetOrtDmlApi(_In_ uint32_t /*version*/) NO_EXCEPTION {
+#ifdef USE_DML
+  return &ort_dml_api_10_to_x;
+#endif  // USE_DML
   return nullptr;
 }

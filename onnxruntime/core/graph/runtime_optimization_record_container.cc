@@ -14,8 +14,6 @@
 
 namespace onnxruntime {
 
-namespace fbs = experimental::fbs;
-
 #if defined(ORT_ENABLE_ADDING_RUNTIME_OPTIMIZATION_RECORDS)
 void RuntimeOptimizationRecordContainer::AddRecord(const std::string& optimizer_key,
                                                    RuntimeOptimizationRecord&& runtime_optimization_record) {
@@ -91,8 +89,8 @@ static Status LoadRuntimeOptimizationRecordFromOrtFormat(
     RuntimeOptimizationRecord& runtime_optimization_record_out) {
   RuntimeOptimizationRecord runtime_optimization_record;
 
-  experimental::utils::LoadStringFromOrtFormat(runtime_optimization_record.action_id,
-                                               fbs_runtime_optimization_record.action_id());
+  fbs::utils::LoadStringFromOrtFormat(runtime_optimization_record.action_id,
+                                      fbs_runtime_optimization_record.action_id());
 
   auto& nodes_to_optimize_indices = runtime_optimization_record.nodes_to_optimize_indices;
   if (const auto* fbs_nodes_to_optimize_indices = fbs_runtime_optimization_record.nodes_to_optimize_indices()) {
@@ -136,7 +134,7 @@ Status RuntimeOptimizationRecordContainer::LoadFromOrtFormat(
     if (!fbs_runtime_optimization) continue;
 
     std::string optimizer_name;
-    experimental::utils::LoadStringFromOrtFormat(optimizer_name, fbs_runtime_optimization->optimizer_name());
+    fbs::utils::LoadStringFromOrtFormat(optimizer_name, fbs_runtime_optimization->optimizer_name());
 
     std::vector<RuntimeOptimizationRecord> records;
     if (const auto* fbs_runtime_optimization_records = fbs_runtime_optimization->runtime_optimization_records()) {

@@ -43,7 +43,7 @@ namespace Dml
         )
         : onnxruntime::IAllocator(
             OrtMemoryInfo(
-                "DML allocator",
+                "DML",
                 OrtAllocatorType::OrtDeviceAllocator,
                 OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0)
             )

@@ -1,4 +1,3 @@
-
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
@@ -109,6 +108,7 @@ option(onnxruntime_USE_ROCM "Build with AMD GPU support" OFF)
 option(onnxruntime_DISABLE_CONTRIB_OPS "Disable contrib ops" OFF)
 option(onnxruntime_DISABLE_ML_OPS "Disable traditional ML ops" OFF)
 option(onnxruntime_DISABLE_SPARSE_TENSORS "Disable sparse tensors data types" OFF)
+option(onnxruntime_DISABLE_OPTIONAL_TYPE "Disable optional type" OFF)
 option(onnxruntime_MINIMAL_BUILD "Exclude as much as possible from the build. Support ORT format models. No support for ONNX format models." OFF)
 cmake_dependent_option(onnxruntime_DISABLE_RTTI "Disable RTTI" ON "NOT onnxruntime_ENABLE_PYTHON" OFF)
 # For now onnxruntime_DISABLE_EXCEPTIONS will only work with onnxruntime_MINIMAL_BUILD, more changes (ONNX, non-CPU EP, ...) are required to run this standalone
@@ -118,8 +118,9 @@ option(onnxruntime_EXTENDED_MINIMAL_BUILD "onnxruntime_MINIMAL_BUILD with suppor
 option(onnxruntime_MINIMAL_BUILD_CUSTOM_OPS "Add custom operator kernels support to a minimal build." OFF)
 option(onnxruntime_REDUCED_OPS_BUILD "Reduced set of kernels are registered in build via modification of the kernel registration source files." OFF)
 option(onnxruntime_DISABLE_EXTERNAL_INITIALIZERS "Don't allow models to load external data" OFF)
-cmake_dependent_option(onnxruntime_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION "Enable runtime graph optimization of ORT format models." ON
-                       "NOT onnxruntime_MINIMAL_BUILD OR onnxruntime_EXTENDED_MINIMAL_BUILD" OFF)
+cmake_dependent_option(onnxruntime_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION
+                       "Enable runtime graph optimization of ORT format models. Warning: Not yet ready for general use."
+                       OFF "NOT onnxruntime_MINIMAL_BUILD OR onnxruntime_EXTENDED_MINIMAL_BUILD" OFF)
 
 #A special option just for debugging and sanitize check. Please do not enable in option in retail builds.
 #The option has no effect on Windows.
@@ -170,6 +171,9 @@ set(ONNX_CUSTOM_PROTOC_EXECUTABLE "" CACHE STRING "Specify custom protoc executa
 
 # pre-build python path
 option(onnxruntime_PREBUILT_PYTORCH_PATH "Path to pytorch installation dir")
+
+# external transformer src path
+option(onnxruntime_EXTERNAL_TRANSFORMER_SRC_PATH "Path to external transformer src dir")
 
 if (onnxruntime_USE_CUDA)
   set(onnxruntime_DISABLE_RTTI OFF)
@@ -332,6 +336,10 @@ if (onnxruntime_BUILD_WEBASSEMBLY)
   if (onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
     string(APPEND CMAKE_CXX_FLAGS " -pthread")
   endif()
+endif()
+
+if (onnxruntime_EXTERNAL_TRANSFORMER_SRC_PATH)
+  add_definitions(-DORT_TRAINING_EXTERNAL_GRAPH_TRANSFORMERS=1)
 endif()
 
 # ORT build with as much excluded as possible. Supports ORT flatbuffers models only.
@@ -640,16 +648,6 @@ if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fstack-protector-strong")
 endif()
 
-if (${CMAKE_SYSTEM_NAME} MATCHES "iOSCross")
-    #For ios compliance
-    message("Adding flags for ios builds")
-    if (CMAKE_OSX_ARCHITECTURES STREQUAL "arm64")
-      set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -target arm64-apple-darwin-macho")
-    elseif (CMAKE_OSX_ARCHITECTURES STREQUAL "arm")
-      set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -target armv7a-apple-darwin-macho")
-    endif()
-endif()
-
 #Dependencies begin
 if (onnxruntime_BUILD_UNIT_TESTS)
   if (onnxruntime_PREFER_SYSTEM_LIB)
@@ -808,6 +806,10 @@ endif()
 
 if (onnxruntime_DISABLE_SPARSE_TENSORS)
   add_compile_definitions(DISABLE_SPARSE_TENSORS)
+endif()
+
+if (onnxruntime_DISABLE_OPTIONAL_TYPE)
+  add_compile_definitions(DISABLE_OPTIONAL_TYPE)
 endif()
 
 if (onnxruntime_USE_CUDA AND "${onnxruntime_CUDNN_HOME}" STREQUAL "")
@@ -1209,7 +1211,7 @@ endfunction()
 
 #For plugins that are not linked into other targets but may be loaded dynamically at runtime using dlopen-like functionality.
 function(onnxruntime_add_shared_library_module target_name)
-  if ((${CMAKE_SYSTEM_NAME} MATCHES "Darwin") OR (${CMAKE_SYSTEM_NAME} MATCHES "iOSCross") OR (${CMAKE_SYSTEM_NAME} MATCHES "iOS"))
+  if ((${CMAKE_SYSTEM_NAME} MATCHES "Darwin") OR (${CMAKE_SYSTEM_NAME} MATCHES "iOS"))
     add_library(${target_name} SHARED ${ARGN})
   else()
     #On Windows, this target shouldn't generate an import lib, but I don't know how to disable it.
@@ -1222,10 +1224,7 @@ function(onnxruntime_add_shared_library_module target_name)
   endif()
 endfunction()
 
-function(onnxruntime_add_executable target_name)
-  if (${CMAKE_SYSTEM_NAME} MATCHES "iOSCross")
-    message(FATAL_ERROR "iOS doesn't support commmand line tool")
-  endif()
+function(onnxruntime_add_executable target_name)  
   add_executable(${target_name} ${ARGN})
   onnxruntime_configure_target(${target_name})
   if (onnxruntime_target_platform STREQUAL "x86" AND NOT onnxruntime_BUILD_WEBASSEMBLY)
@@ -1533,6 +1532,11 @@ if (onnxruntime_USE_OPENVINO)
 
   if (onnxruntime_USE_OPENVINO_MULTI)
     add_definitions(-DOPENVINO_CONFIG_MULTI=1)
+    add_definitions(-DDEVICE_NAME="${onnxruntime_USE_OPENVINO_DEVICE}")
+  endif()
+
+  if(onnxruntime_USE_OPENVINO_AUTO)
+    add_definitions(-DOPENVINO_CONFIG_AUTO=1)
     add_definitions(-DDEVICE_NAME="${onnxruntime_USE_OPENVINO_DEVICE}")
   endif()
 

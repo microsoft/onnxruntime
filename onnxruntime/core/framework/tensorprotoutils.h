@@ -123,6 +123,7 @@ inline bool HasTensorType(const ONNX_NAMESPACE::TypeProto& type_proto) {
   return type_proto.value_case() == ONNX_NAMESPACE::TypeProto::kTensorType;
 }
 
+#if !defined(DISABLE_OPTIONAL_TYPE)
 inline bool HasOptionalTensorType(const ONNX_NAMESPACE::TypeProto& type_proto) {
   return type_proto.value_case() == ONNX_NAMESPACE::TypeProto::kOptionalType &&
          type_proto.optional_type().elem_type().value_case() == ONNX_NAMESPACE::TypeProto::kTensorType;
@@ -155,6 +156,7 @@ inline ONNX_NAMESPACE::TypeProto* GetMutableOptionalTypeProto(ONNX_NAMESPACE::Ty
 inline bool HasElemType(const ONNX_NAMESPACE::TypeProto_Optional& opt_proto) {
   return opt_proto.elem_type().value_case() != ONNX_NAMESPACE::TypeProto::VALUE_NOT_SET;
 }
+#endif
 
 inline bool HasElemType(const ONNX_NAMESPACE::TypeProto_Tensor& ten_proto) {
   return ten_proto.elem_type() != ONNX_NAMESPACE::TensorProto::UNDEFINED;
@@ -191,10 +193,12 @@ inline bool HasElementType(const ONNX_NAMESPACE::TypeProto& type_proto) {
   }
 #endif  // !defined(DISABLE_SPARSE_TENSORS)
 
+#if !defined(DISABLE_OPTIONAL_TYPE)
   if (HasOptionalTensorType(type_proto) &&
       HasShape(GetOptionalTypeProto(type_proto).tensor_type())) {
     return true;
   }
+#endif
 
   return false;
 }
@@ -222,9 +226,11 @@ inline const ONNX_NAMESPACE::TensorShapeProto& GetShape(const ONNX_NAMESPACE::Ty
   }
 #endif
 
+#if !defined(DISABLE_OPTIONAL_TYPE)
   if (HasOptionalTensorType(type_proto) && HasShape(GetOptionalTypeProto(type_proto).tensor_type())) {
     return GetOptionalTypeProto(type_proto).tensor_type().shape();
   }
+#endif
 
   ORT_THROW("TypeProto must have shape for this to run");
 }
