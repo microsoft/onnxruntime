@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#if !defined(DISABLE_OPTIONAL_TYPE)
+
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 
@@ -244,3 +246,5 @@ TEST(OptionalOpTest, OptionalOpsValidateOrtValueReUseForOptionalTensorSequence) 
 }
 }  // namespace test
 }  // namespace onnxruntime
+
+#endif

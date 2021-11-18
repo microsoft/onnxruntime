@@ -308,10 +308,12 @@ class OnnxTestCase : public ITestCase {
                        bool is_input, size_t i,
                        std::unordered_map<std::string, Ort::Value>& out) const;
 
+#if !defined(DISABLE_OPTIONAL_TYPE)
   void ConvertTestData(const ONNX_NAMESPACE::OptionalProto& test_data_pb,
                        onnxruntime::test::HeapBuffer& b,
                        bool is_input, size_t i,
                        std::unordered_map<std::string, Ort::Value>& out) const;
+#endif
 
   std::once_flag model_parsed_;
   std::once_flag config_parsed_;
@@ -445,6 +447,7 @@ static void LoadSequenceTensor(const PATH_STRING_TYPE& pb_file, ONNX_NAMESPACE::
   }
 }
 
+#if !defined(DISABLE_OPTIONAL_TYPE)
 template <typename PATH_STRING_TYPE>
 static void LoadOptional(const PATH_STRING_TYPE& pb_file,
                          ONNX_NAMESPACE::OptionalProto& input_pb) {
@@ -459,6 +462,8 @@ static void LoadOptional(const PATH_STRING_TYPE& pb_file,
     ORT_THROW("parse file '", ToMBString(pb_file), "' failed");
   }
 }
+#endif
+
 void OnnxTestCase::LoadTestData(size_t id, onnxruntime::test::HeapBuffer& b,
                                 std::unordered_map<std::string, Ort::Value>& name_data_map,
                                 bool is_input) const {
@@ -528,11 +533,15 @@ void OnnxTestCase::LoadTestData(size_t id, onnxruntime::test::HeapBuffer& b,
       ONNX_NAMESPACE::SequenceProto test_pb;
       LoadSequenceTensor(test_data_pb_files[i], test_pb);
       ConvertTestData(test_pb, b, is_input, i, name_data_map);
-    } else if (value_info_proto->type().has_optional_type()) {
+    }
+#if !defined(DISABLE_OPTIONAL_TYPE)
+    else if (value_info_proto->type().has_optional_type()) {
       ONNX_NAMESPACE::OptionalProto test_pb;
       LoadOptional(test_data_pb_files[i], test_pb);
       ConvertTestData(test_pb, b, is_input, i, name_data_map);
-    } else {
+    }
+#endif
+    else {
       ORT_THROW("Unsupported type for the ", is_input ? "input " : "output ", i, " in the test runner");
     }
   }
@@ -617,6 +626,7 @@ void OnnxTestCase::ConvertTestData(const ONNX_NAMESPACE::SequenceProto& test_dat
   }
 }
 
+#if !defined(DISABLE_OPTIONAL_TYPE)
 void OnnxTestCase::ConvertTestData(const ONNX_NAMESPACE::OptionalProto& test_data_pb,
                                    onnxruntime::test::HeapBuffer& b,
                                    bool is_input, size_t i,
@@ -673,6 +683,7 @@ void OnnxTestCase::ConvertTestData(const ONNX_NAMESPACE::OptionalProto& test_dat
     }
   }
 }
+#endif
 
 OnnxTestCase::OnnxTestCase(const std::string& test_case_name, _In_ std::unique_ptr<TestModelInfo> model,
                            double default_per_sample_tolerance, double default_relative_per_sample_tolerance)
