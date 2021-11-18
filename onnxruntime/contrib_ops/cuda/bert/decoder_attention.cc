@@ -155,14 +155,6 @@ Status CheckInputs(const TensorShape& query_shape,
     if (value_cache_dims[1] * value_cache_dims[3] != hidden_size) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "value_cache shall have correct hidden size");
     }
-
-    if (key_cache_dims[2] != key_length) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "key_cache shall have correct sequence length");
-    }
-
-    if (value_cache_dims[2] != key_length) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "value_cache shall have correct sequence length");
-    }
   }
 
   return Status::OK();
