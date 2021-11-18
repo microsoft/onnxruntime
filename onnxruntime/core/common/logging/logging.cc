@@ -87,7 +87,16 @@ LoggingManager::LoggingManager(std::unique_ptr<ISink> sink, Severity default_min
     : sink_{std::move(sink)},
       default_min_severity_{default_min_severity},
       default_filter_user_data_{filter_user_data},
-      default_max_vlog_level_{default_max_vlog_level},
+      default_max_vlog_level_{[=]() {
+        if (default_max_vlog_level != -1) return default_max_vlog_level;
+        if (const char* vlog_env = std::getenv("ORT_DEFAULT_MAX_VLOG_LEVEL")) {
+          int vlog = std::atoi(vlog_env);
+          if (vlog != 0 || std::string(vlog_env) == "0") {
+            return vlog;
+          }
+        }
+        return -1;
+      }()},
       owns_default_logger_{false} {
   if (sink_ == nullptr) {
     ORT_THROW("ISink must be provided.");
