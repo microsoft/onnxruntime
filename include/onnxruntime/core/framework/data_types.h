@@ -533,10 +533,6 @@ class DisabledTypeBase : public DataTypeImpl {
     return false;
   }
 
-  size_t Size() const override {
-    ORT_THROW("Type is disabled in this build.");
-  }
-
   DeleteFunc GetDeleteFunc() const override {
     ORT_THROW("Type is disabled in this build.");
   }
@@ -550,7 +546,7 @@ class DisabledTypeBase : public DataTypeImpl {
   // This must work
   ONNX_NAMESPACE::TypeProto& MutableTypeProto();
 
-  DisabledTypeBase();
+  DisabledTypeBase(DataTypeImpl::GeneralType type, size_t size);
   ~DisabledTypeBase() override;
 
  private:
@@ -689,11 +685,16 @@ class OptionalType :
 #endif
 
  private:
-  OptionalType() {
+#if !defined(DISABLE_OPTIONAL_TYPE)
+  OptionalType()
+#else
+  OptionalType() : DisabledTypeBase { DataTypeImpl::GeneralType::kOptional, 0 }
+#endif
+  {
     using namespace data_types_internal;
     OptionalTypeHelper::Set(OptionalTypeHelper::GetElemType<T, elemT>(), MutableTypeProto());
   }
-};
+};  // namespace onnxruntime
 
 /**
  * \brief Provide a specialization for your C++ Non-tensor type

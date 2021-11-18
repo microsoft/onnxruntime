@@ -368,8 +368,8 @@ const ONNX_NAMESPACE::TypeProto* TensorTypeBase::GetTypeProto() const {
   return impl_->GetProto();
 }
 
-TensorTypeBase::TensorTypeBase() 
-    : DataTypeImpl{DataTypeImpl::GeneralType::kTensor, sizeof(Tensor)}, 
+TensorTypeBase::TensorTypeBase()
+    : DataTypeImpl{DataTypeImpl::GeneralType::kTensor, sizeof(Tensor)},
       impl_(new Impl()) {}
 TensorTypeBase::~TensorTypeBase() {
   delete impl_;
@@ -511,7 +511,6 @@ MLDataType SequenceTensorTypeBase::Type() {
 struct OptionalTypeBase::Impl : public data_types_internal::TypeProtoImpl {
 };
 
-
 OptionalTypeBase::OptionalTypeBase() : DataTypeImpl{DataTypeImpl::GeneralType::kOptional, 0},
                                        impl_(new Impl()) {}
 
@@ -554,7 +553,8 @@ MLDataType OptionalTypeBase::Type() {
 struct DisabledTypeBase::Impl : public data_types_internal::TypeProtoImpl {
 };
 
-DisabledTypeBase::DisabledTypeBase() : impl_(new Impl()) {}
+DisabledTypeBase::DisabledTypeBase(DataTypeImpl::GeneralType type, size_t size)
+    : DataTypeImpl{type, size}, impl_(new Impl()) {}
 
 DisabledTypeBase::~DisabledTypeBase() {
   delete impl_;
@@ -569,7 +569,7 @@ ONNX_NAMESPACE::TypeProto& DisabledTypeBase::MutableTypeProto() {
 }
 
 MLDataType DisabledTypeBase::Type() {
-  static DisabledTypeBase disabled_base;
+  static DisabledTypeBase disabled_base{GeneralType::kInvalid, 0};
   return &disabled_base;
 }
 #endif
