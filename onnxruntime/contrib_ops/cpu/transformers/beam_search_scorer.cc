@@ -189,7 +189,7 @@ void BeamSearchScorer<T>::Process(ISequences* sequences,
         auto clone = hypothesis_buffer_.subspan(hypothesis_buffer_offset_, sequence_length);
         gsl::copy(src, clone);
         hypothesis_buffer_offset_ += sequence_length;
-        auto sequence = clone.as_span<const int64_t>();
+        auto sequence = clone.template as_span<const int64_t>();
         beam_hyp.Add(sequence, next_score);
       } else {
         // Add next predicted token since it is not eos_token

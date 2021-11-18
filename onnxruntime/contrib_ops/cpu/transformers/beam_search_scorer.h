@@ -24,6 +24,8 @@ class ISequences {
 template <typename T>
 class IBeamScorer {
  public:
+  virtual ~IBeamScorer() {}
+
   virtual void Process(ISequences* sequences,
                        gsl::span<const T>& next_scores,
                        gsl::span<const int64_t>& next_tokens,
