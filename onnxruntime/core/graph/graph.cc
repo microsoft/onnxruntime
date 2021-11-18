@@ -2517,7 +2517,9 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
         }
         ORT_CATCH(const std::exception& ex) {
           ORT_HANDLE_EXCEPTION([&]() {
-            status = ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH, "This is an invalid model. Error in Node:", node_name, " : ", ex.what());
+            std::ostringstream err_msg;
+            err_msg << "This is an invalid model. In Node, " << node << ", Error ";
+            status = ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH, err_msg.str(), ex.what());
           });
         }
         ORT_RETURN_IF_ERROR(status);
@@ -2799,6 +2801,7 @@ Status Graph::Resolve(const ResolveOptions& options) {
 
   ++num_resolves_;
 
+  std::cout << *this << std::endl;
   return Status::OK();
 }
 
@@ -4128,32 +4131,56 @@ Graph::~Graph() {
 }
 
 #if !defined(ORT_MINIMAL_BUILD)
+std::ostream& operator<<(std::ostream& out, const NodeArg& node_arg) {
+  out << "\"" << node_arg.Name() << "\"";
+  if (node_arg.Type()) {
+    out << ": " << *node_arg.Type();
+  } 
+  return out;
+}
+
+std::ostream& operator<<(std::ostream& out, const Node& node) {
+  out << "(\"" << node.Name() << "\"";
+  out << ", ";
+  out << node.OpType();
+  out << ", ";
+  // Use quote so default ONNX domain is shown as ""
+  // rather than misleading empty string.
+  out << "\"" << node.Domain() << "\"";
+  out << ", ";
+  out << node.SinceVersion();
+  out << ") : (";
+  for (auto* x : node.InputDefs()) {
+    if (x->Exists()) {
+      out << *x << ",";
+    } else {
+      out << "" << ",";
+    }
+  }
+  out << ") -> (";
+  for (auto* x : node.OutputDefs()) {
+    if (x->Exists()) {
+      out << *x << ",";
+    } else {
+      out << "" << ",";
+    }
+  }
+  out << ") ";
+  return out;
+}
+
 std::ostream& operator<<(std::ostream& out, const Graph& graph) {
   out << "Inputs:\n";
   for (auto* x : graph.GetInputs()) {
-    out << "   " << x->Name() << " : " << *x->Type() << "\n";
+    out << "   " << *x << "\n";
   }
-  out << "Nodes:\n";
+  out << "Nodes: (name, type, domain) : (inputs) -> (outputs)\n";
   for (auto& node : graph.Nodes()) {
-    out << "   " << node.Name() << ": " << node.OpType() << " (";
-    for (auto* x : node.InputDefs()) {
-      if (x->Exists()) {
-        out << x->Name() << ": " << *x->Type();
-      }
-      out << ", ";
-    }
-    out << ") -> ";
-    for (auto* x : node.OutputDefs()) {
-      if (x->Exists()) {
-        out << x->Name() << ": " << *x->Type();
-      }
-      out << ", ";
-    }
-    out << "\n";
+    out << "   " << node << "\n";
   }
   out << "Outputs:\n";
   for (auto* x : graph.GetOutputs()) {
-    out << "   " << x->Name() << " : " << *x->Type() << "\n";
+    out << "   " << *x << "\n";
   }
   return out;
 }
