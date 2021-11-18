@@ -4,6 +4,7 @@
 #include "opencl_execution_provider.h"
 #include "opencl_allocator.h"
 #include "opencl_data_transfer.h"
+#include "core/common/logging/logging.h"
 #include "core/framework/kernel_registry.h"
 #include "core/framework/op_kernel.h"
 
@@ -29,9 +30,9 @@ Status RegisterOpenCLKernels(KernelRegistry& kernel_registry) {
 
   for (auto& function_table_entry : function_table) {
     KernelCreateInfo info = function_table_entry();
-    std::cout << "RegisterOpenCLKernels...\n";
+    VLOGS_DEFAULT(1) << "[CL] RegisterOpenCLKernels...";
     if (info.kernel_def != nullptr) {  // filter disabled entries where type is void
-      std::cout << " register kernel name: " << info.kernel_def->OpName() << ", domain: " << info.kernel_def->Domain() << "\n";
+      VLOGS_DEFAULT(0) << "[CL]  register kernel name: " << info.kernel_def->OpName() << ", domain: " << info.kernel_def->Domain();
       ORT_RETURN_IF_ERROR(kernel_registry.Register(std::move(info)));
     }
   }
@@ -50,10 +51,7 @@ std::shared_ptr<KernelRegistry> GetOpenCLKernelRegistry() {
 OpenCLExecutionProvider::OpenCLExecutionProvider(const OpenCLExecutionProviderInfo& info)
     : IExecutionProvider(kOpenCLExecutionProvider) {
   Status status;
-  status = InitOpenCLContext();
-  if (!status.IsOK()) {
-    // FIXME:
-  }
+  ORT_THROW_IF_ERROR(InitOpenCLContext());
 }
 
 OpenCLExecutionProvider::OpenCLExecutionProvider(OpenCLExecutionProvider&& provider) noexcept
@@ -73,25 +71,28 @@ std::shared_ptr<KernelRegistry> OpenCLExecutionProvider::GetKernelRegistry() con
 Status OpenCLExecutionProvider::InitOpenCLContext() {
   std::vector<cl::Platform> platforms;
   cl::Platform::get(&platforms);
-  std::cerr << "num platforms:" << platforms.size() << "\n";
+  VLOGS_DEFAULT(1) << "[CL] num platforms: " << platforms.size();
   ORT_ENFORCE(!platforms.empty());
   // FIXME: add platform selection logic
   auto selected_platform = platforms[0];
   cl_context_properties properties[] = {CL_CONTEXT_PLATFORM, (cl_context_properties)(selected_platform)(), 0};
-  cl_int err{};
-  ctx_ = cl::Context(CL_DEVICE_TYPE_GPU, properties, /*notifyFptr=*/nullptr, /*data=*/nullptr, &err);
-  ORT_RETURN_IF_CL_ERROR(err);
-  std::cerr << "created cl::Context(" << ctx_() << ")\n";
+  {
+    cl_int err{};
+    ctx_ = cl::Context(CL_DEVICE_TYPE_GPU, properties, /*notifyFptr=*/nullptr, /*data=*/nullptr, &err);
+    ORT_RETURN_IF_CL_ERROR(err);
+  }
 
   std::vector<cl::Device> devices = ctx_.getInfo<CL_CONTEXT_DEVICES>();
-  std::cout << "num devices:" << devices.size() << std::endl;
+  VLOGS_DEFAULT(1) << "[CL] num devices: " << devices.size();
   ORT_ENFORCE(!devices.empty());
   // FIXME: add device selection logic
   dev_ = std::move(devices[0]);
 
-  cmd_queue_ = cl::CommandQueue(ctx_, dev_, /*properties=*/0, &err);
-  ORT_RETURN_IF_CL_ERROR(err);
-  std::cerr << "created cl::CommandQueue(" << cmd_queue_() << ") in cl::Context(" << ctx_() << ")\n";
+  {
+    cl_int err{};
+    cmd_queue_ = cl::CommandQueue(ctx_, dev_, /*properties=*/0, &err);
+    ORT_RETURN_IF_CL_ERROR(err);
+  }
 
   InitKernelsForDataTransfer();
 
@@ -107,16 +108,16 @@ void OpenCLExecutionProvider::RegisterAllocator(std::shared_ptr<AllocatorManager
   //
   // See https://stackoverflow.com/a/40951614
   InsertAllocator(CreateAllocator(AllocatorCreationInfo{
-      [ctx = this->ctx_](int) {
-        return std::make_unique<opencl::OpenCLBufferAllocator>(ctx);
+      [=](int) {
+        return std::make_unique<opencl::OpenCLBufferAllocator>(this->ctx_);
       },
       0,
       /*use_arena=*/false,
   }));
 
   InsertAllocator(CreateAllocator(AllocatorCreationInfo{
-      [ctx = this->ctx_](int) {
-        return std::make_unique<opencl::OpenCLImage2DAllocator>(ctx);
+      [=](int) {
+        return std::make_unique<opencl::OpenCLImage2DAllocator>(this->ctx_);
       },
       0,
       /*use_arena=*/false,

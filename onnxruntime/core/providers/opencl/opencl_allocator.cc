@@ -29,13 +29,13 @@ void* OpenCLBufferAllocator::Alloc(size_t size) {
     cl_int err{};
     auto* ptr = new cl::Buffer(ctx_, CL_MEM_READ_WRITE, size, nullptr, &err);
     ORT_THROW_IF_CL_ERROR(err);
-    std::cerr << "OpenCL allocated " << ptr << " --> cl::Buffer(" << ptr->operator()() << ") in cl::Context(" << ctx_() << ")" << std::endl;
+    VLOGF_DEFAULT(0, "[CL] allocated 0x%p(cl::Buffer(0x%p)", ptr, ptr->operator()());
     meta_[ptr] = {size, MemoryKind::Buffer};
     return ptr;
   }
 
   auto* ptr = it->second.front();
-  std::cerr << "OpenCL reused " << ptr << std::endl;
+  VLOGF_DEFAULT(0, "[CL] reused 0x%p", ptr);
   it->second.pop_front();
   return ptr;
 }
@@ -70,7 +70,6 @@ void* OpenCLImage2DAllocator::Alloc(size_t) {
 
 void* OpenCLImage2DAllocator::Alloc(const TensorShape& shape) {
   auto it = cache_.find(shape);
-
   if (it == cache_.end() || it->second.empty()) {
     // TODO: support CL_HALF_FLOAT?
     cl_int err{};
@@ -80,13 +79,13 @@ void* OpenCLImage2DAllocator::Alloc(const TensorShape& shape) {
     ORT_ENFORCE(desc.Width() > 0 && desc.Width() <= 65535, "Image2D width invalid");
     auto ptr = new cl::Image2D(ctx_, CL_MEM_READ_WRITE, cl::ImageFormat{CL_RGBA, CL_FLOAT}, desc.Width(), desc.Height(), /*row_pitch=*/0, nullptr, &err);
     ORT_THROW_IF_CL_ERROR(err);
-    std::cerr << "OpenCL allocated " << ptr << " --> cl::Image2D(" << ptr->operator()() << ") in cl::Context(" << ctx_() << ")" << std::endl;
+    VLOGF_DEFAULT(0, "[CL] allocated 0x%p(cl::Image2D(0x%p)", ptr, ptr->operator()());
     meta_[ptr] = {shape, MemoryKind::Image2D};
     return ptr;
   }
 
   auto* ptr = it->second.front();
-  std::cerr << "OpenCL reused " << ptr << std::endl;
+  VLOGF_DEFAULT(0, "[CL] reused 0x%p", ptr);
   it->second.pop_front();
   return ptr;
 }
