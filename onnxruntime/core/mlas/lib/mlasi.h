@@ -676,6 +676,7 @@ extern const MLAS_CONV_SYM_DISPATCH MlasConvSymDispatchAvx2;
 extern const MLAS_CONV_SYM_DISPATCH MlasConvSymDispatchAvxVnni;
 extern const MLAS_CONV_SYM_DISPATCH MlasConvSymDispatchAvx512Core;
 extern const MLAS_CONV_SYM_DISPATCH MlasConvSymDispatchAvx512Vnni;
+extern const MLAS_CONV_SYM_DISPATCH MlasConvSymDispatchNeon;
 
 //
 // Quantized depthwise convolution kernels.
@@ -707,6 +708,37 @@ MlasConvDepthwiseKernelAvx2(
     size_t Channels,
     size_t OutputCount,
     size_t KernelSize
+    );
+
+//
+// Define the kernel flags for conv sym
+//
+
+#define MLAS_CONV_SYM_FLAG_INPUT_DIRECT             0x00000001
+#define MLAS_CONV_SYM_FLAG_PER_CHANNEL_SCALE        0x00000002
+
+//
+// Define the post-processing parameters for conv sym: bias and re-quant params
+//
+
+struct MLAS_CONV_SYM_POST_PROCESS_PARAMS {
+    const int32_t* Bias;
+    const float* Scale;
+    float MinimumValue;
+    float MaximumValue;
+    int32_t OutputZeroPoint;
+};
+
+typedef
+void
+(MLASCALL MLAS_CONV_SYM_DEPTHWISE_ROUTINE_KERNELSIZE)(
+    uint8_t const* const* InputIndirection,
+    int8_t const* Filter,
+    size_t Channels,
+    uint8_t* Output,
+    size_t OutputCount,
+    MLAS_CONV_SYM_POST_PROCESS_PARAMS const* PostProcessParams,
+    unsigned KernelFlags
     );
 
 //

@@ -12,7 +12,6 @@
 #include "core/flatbuffers/flatbuffers_utils.h"
 #include "core/platform/env.h"
 
-using namespace onnxruntime::experimental;
 using namespace onnxruntime;
 
 OnnxModelInfo::OnnxModelInfo(_In_ const PATH_CHAR_TYPE* model_url, bool is_ort_model)
@@ -121,7 +120,7 @@ void OnnxModelInfo::InitOrtModelInfo(_In_ const PATH_CHAR_TYPE* model_url) {
     ORT_THROW("Missing Graph. Invalid ORT format model.");
 
   std::unordered_map<std::string, int> _opset_import;
-  ORT_THROW_IF_ERROR(experimental::utils::LoadOpsetImportOrtFormat(fbs_model->opset_import(), _opset_import));
+  ORT_THROW_IF_ERROR(fbs::utils::LoadOpsetImportOrtFormat(fbs_model->opset_import(), _opset_import));
   for (const auto& entry : _opset_import)
     domain_to_version_[entry.first] = entry.second;
 
@@ -134,7 +133,7 @@ void OnnxModelInfo::InitOrtModelInfo(_In_ const PATH_CHAR_TYPE* model_url) {
       if (nullptr == fbs_value_info)
         ORT_THROW("NodeArg is missing. Invalid ORT format model.");
       ONNX_NAMESPACE::ValueInfoProto node_arg_info;
-      ORT_THROW_IF_ERROR(experimental::utils::LoadValueInfoOrtFormat(*fbs_value_info, node_arg_info));
+      ORT_THROW_IF_ERROR(fbs::utils::LoadValueInfoOrtFormat(*fbs_value_info, node_arg_info));
       // NodeArg ctor is private, cannot use make_unique
       _node_args[fbs_value_info->name()->str()] = std::move(node_arg_info);
     }

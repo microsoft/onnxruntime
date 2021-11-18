@@ -4,7 +4,6 @@
 
 import argparse
 import contextlib
-import glob
 import os
 import re
 import shlex
@@ -86,12 +85,12 @@ def _openvino_verify_device_type(device_read):
         res = True
     elif (device_read in choices1):
         res = True
-    elif (device_read.startswith("HETERO:") or device_read.startswith("MULTI:")):
+    elif (device_read.startswith("HETERO:") or device_read.startswith("MULTI:") or device_read.startswith("AUTO:")):
         res = True
         comma_separated_devices = device_read.split(":")
         comma_separated_devices = comma_separated_devices[1].split(',')
         if (len(comma_separated_devices) < 2):
-            print("At least two devices required in Hetero Mode")
+            print("At least two devices required in Hetero/Multi/Auto Mode")
             status_hetero = False
         dev_options = ["CPU", "GPU", "MYRIAD", "FPGA", "HDDL"]
         for dev in comma_separated_devices:
@@ -100,13 +99,14 @@ def _openvino_verify_device_type(device_read):
                 break
 
     def invalid_hetero_build():
-        print("\n" + "If trying to build Hetero or Multi, specifiy the supported devices along with it." + + "\n")
-        print("specify the keyword HETERO or MULTI followed by the devices ")
+        print("\n" + "If trying to build Hetero/Multi/Auto, specifiy the supported devices along with it." + + "\n")
+        print("specify the keyword HETERO or MULTI or AUTO followed by the devices ")
         print("in the order of priority you want to build" + "\n")
-        print("The different hardware devices that can be added in HETERO or MULTI")
+        print("The different hardware devices that can be added in HETERO or MULTI or AUTO")
         print("are ['CPU','GPU','MYRIAD','FPGA','HDDL']" + "\n")
         print("An example of how to specify the hetero build type. Ex: HETERO:GPU,CPU" + "\n")
         print("An example of how to specify the MULTI build type. Ex: MULTI:MYRIAD,CPU" + "\n")
+        print("An example of how to specify the AUTO build type. Ex: AUTO:GPU,CPU" + "\n")
         sys.exit("Wrong Build Type selected")
 
     if (res is False):
@@ -114,7 +114,7 @@ def _openvino_verify_device_type(device_read):
         print("pick the build type for specific Hardware Device from following options: ", choices)
         print("(or) from the following options with graph partitioning disabled: ", choices1)
         print("\n")
-        if not (device_read.startswith("HETERO:") or device_read.startswith("MULTI:")):
+        if not (device_read.startswith("HETERO") or device_read.startswith("MULTI") or device_read.startswith("AUTO")):
             invalid_hetero_build()
         sys.exit("Wrong Build Type selected")
 
@@ -319,9 +319,6 @@ def parse_arguments():
         "--ios_sysroot", default="",
         help="Specify the location name of the macOS platform SDK to be used")
     parser.add_argument(
-        "--ios_toolchain_dir", default="",
-        help="Path to ios toolchain binaries")
-    parser.add_argument(
         "--ios_toolchain_file", default="",
         help="Path to ios toolchain file, "
         "or cmake/onnxruntime_ios.toolchain.cmake will be used")
@@ -511,7 +508,7 @@ def parse_arguments():
     # options to reduce binary size
     parser.add_argument("--minimal_build", default=None, nargs='*', type=str.lower,
                         help="Create a build that only supports ORT format models. "
-                        "See /docs/ONNX_Runtime_Format_Model_Usage.md for more information. "
+                        "See https://onnxruntime.ai/docs/tutorials/mobile/ for more information. "
                         "RTTI is automatically disabled in a minimal build. "
                         "To enable execution providers that compile kernels at runtime (e.g. NNAPI) pass 'extended' "
                         "as a parameter. e.g. '--minimal_build extended'. "
@@ -560,7 +557,15 @@ def parse_arguments():
     parser.add_argument(
         "--enable_external_custom_op_schemas", action='store_true',
         help="Enable registering user defined custom operation schemas at shared library load time.\
-              This feature is only supported/available on Ubuntu.")
+            This feature is only supported/available on Ubuntu.")
+
+    parser.add_argument(
+        "--external_graph_transformer_path", type=str,
+        help="path to the external graph transformer dir.")
+
+    parser.add_argument(
+        "--test_external_transformer_example", action='store_true',
+        help="run the example external transformer test, mainly used in CI pipeline.")
 
     return parser.parse_args()
 
@@ -768,7 +773,6 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                                                      args.minimal_build or args.use_extensions))
                                                      else "OFF"),
         "-Donnxruntime_REDUCED_OPS_BUILD=" + ("ON" if is_reduced_ops_build(args) else "OFF"),
-        # enable pyop if it is nightly build
         "-Donnxruntime_ENABLE_LANGUAGE_INTEROP_OPS=" + ("ON" if args.enable_language_interop_ops else "OFF"),
         "-Donnxruntime_USE_DML=" + ("ON" if args.use_dml else "OFF"),
         "-Donnxruntime_USE_WINML=" + ("ON" if args.use_winml else "OFF"),
@@ -814,6 +818,8 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                                                               else "OFF"),
         "-Donnxruntime_NVCC_THREADS=" + str(args.parallel),
     ]
+    if args.external_graph_transformer_path:
+        cmake_args.append("-Donnxruntime_EXTERNAL_TRANSFORMER_SRC_PATH=" + args.external_graph_transformer_path)
     # It should be default ON in CI build pipelines, and OFF in packaging pipelines.
     # And OFF for the people who are not actively developing onnx runtime.
     add_cmake_define_without_override(cmake_extra_defines, "onnxruntime_DEV_MODE", use_dev_mode(args))
@@ -892,7 +898,9 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                            "ON" if args.use_openvino.startswith("HETERO") else "OFF"),
                        "-Donnxruntime_USE_OPENVINO_DEVICE=" + (args.use_openvino),
                        "-Donnxruntime_USE_OPENVINO_MULTI=" + (
-                           "ON" if args.use_openvino.startswith("MULTI") else "OFF")]
+                           "ON" if args.use_openvino.startswith("MULTI") else "OFF"),
+                       "-Donnxruntime_USE_OPENVINO_AUTO=" + (
+                           "ON" if args.use_openvino.startswith("AUTO") else "OFF")]
 
     # TensorRT and OpenVINO providers currently only support
     # full_protobuf option.
@@ -960,77 +968,36 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         cmake_args += ["-Donnxruntime_USE_COREML=ON"]
 
     if args.ios:
-        if is_macOS():
-            needed_args = [
-                args.use_xcode,
-                args.ios_sysroot,
-                args.apple_deploy_target,
-            ]
-            arg_names = [
-                "--use_xcode            " +
-                "<need use xcode to cross build iOS on MacOS>",
-                "--ios_sysroot          " +
-                "<the location or name of the macOS platform SDK>",
-                "--apple_deploy_target  " +
-                "<the minimum version of the target platform>",
-            ]
-            if not all(needed_args):
-                raise BuildError(
-                    "iOS build on MacOS canceled due to missing arguments: " +
-                    ', '.join(
-                        val for val, cond in zip(arg_names, needed_args)
-                        if not cond))
-            cmake_args += [
-                "-DCMAKE_SYSTEM_NAME=iOS",
-                "-Donnxruntime_BUILD_SHARED_LIB=ON",
-                "-DCMAKE_OSX_SYSROOT=" + args.ios_sysroot,
-                "-DCMAKE_OSX_DEPLOYMENT_TARGET=" + args.apple_deploy_target,
-                # we do not need protoc binary for ios cross build
-                "-Dprotobuf_BUILD_PROTOC_BINARIES=OFF",
-                "-DCMAKE_TOOLCHAIN_FILE=" + (
-                    args.ios_toolchain_file if args.ios_toolchain_file
-                    else "../cmake/onnxruntime_ios.toolchain.cmake")
-            ]
-        else:
-            # TODO: the cross compiling on Linux is not officially supported by Apple
-            #   and is already broken with the latest codebase, so it should be removed.
-            # We are cross compiling on Linux
-            needed_args = [
-                args.ios_sysroot,
-                args.arm64 or args.arm,
-                args.ios_toolchain_dir
-            ]
-            arg_names = [
-                "--ios_sysroot <path to sysroot>",
-                "--arm or --arm64",
-                "--ios_toolchain_dir <path to toolchain>"
-            ]
-            if not all(needed_args):
-                raise BuildError(
-                    "iOS build canceled due to missing arguments: " +
-                    ', '.join(
-                        val for val, cond in zip(arg_names, needed_args)
-                        if not cond))
-            compilers = sorted(
-                glob.glob(args.ios_toolchain_dir + "/bin/*-clang*"))
-            os.environ["PATH"] = os.path.join(
-                args.ios_toolchain_dir, "bin") + os.pathsep + os.environ.get(
-                    "PATH", "")
-            os.environ["LD_LIBRARY_PATH"] = os.path.join(
-                args.ios_toolchain_dir, "/lib") + os.pathsep + os.environ.get(
-                    "LD_LIBRARY_PATH", "")
-            if len(compilers) != 2:
-                raise BuildError(
-                    "error identifying compilers in ios_toolchain_dir")
-            cmake_args += [
-                "-DCMAKE_OSX_ARCHITECTURES=" +
-                ("arm64" if args.arm64 else "arm"),
-                "-DCMAKE_SYSTEM_NAME=iOSCross",
-                "-Donnxruntime_BUILD_UNIT_TESTS=OFF",
-                "-DCMAKE_OSX_SYSROOT=" + args.ios_sysroot,
-                "-DCMAKE_C_COMPILER=" + compilers[0],
-                "-DCMAKE_CXX_COMPILER=" + compilers[1]
-            ]
+        needed_args = [
+            args.use_xcode,
+            args.ios_sysroot,
+            args.apple_deploy_target,
+        ]
+        arg_names = [
+            "--use_xcode            " +
+            "<need use xcode to cross build iOS on MacOS>",
+            "--ios_sysroot          " +
+            "<the location or name of the macOS platform SDK>",
+            "--apple_deploy_target  " +
+            "<the minimum version of the target platform>",
+        ]
+        if not all(needed_args):
+            raise BuildError(
+                "iOS build on MacOS canceled due to missing arguments: " +
+                ', '.join(
+                    val for val, cond in zip(arg_names, needed_args)
+                    if not cond))
+        cmake_args += [
+            "-DCMAKE_SYSTEM_NAME=iOS",
+            "-Donnxruntime_BUILD_SHARED_LIB=ON",
+            "-DCMAKE_OSX_SYSROOT=" + args.ios_sysroot,
+            "-DCMAKE_OSX_DEPLOYMENT_TARGET=" + args.apple_deploy_target,
+            # we do not need protoc binary for ios cross build
+            "-Dprotobuf_BUILD_PROTOC_BINARIES=OFF",
+            "-DCMAKE_TOOLCHAIN_FILE=" + (
+                args.ios_toolchain_file if args.ios_toolchain_file
+                else "../cmake/onnxruntime_ios.toolchain.cmake")
+        ]
 
     if args.build_wasm:
         emsdk_dir = os.path.join(cmake_dir, "external", "emsdk")
@@ -1638,6 +1605,15 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                 # run eager mode test
                 args_list = [sys.executable, os.path.join(cwd, 'eager_test')]
                 run_subprocess(args_list, cwd=cwd, dll_path=dll_path, python_path=cwd)
+                if args.test_external_transformer_example:
+                    run_subprocess([sys.executable,
+                                    os.path.join(source_dir,
+                                                 'orttraining',
+                                                 'orttraining',
+                                                 'test',
+                                                 'external_transformer',
+                                                 'test',
+                                                 'external_transformers_test.py')], cwd=cwd, dll_path=dll_path)
 
             try:
                 import onnx  # noqa
@@ -1739,9 +1715,7 @@ def build_python_wheel(
             args.append("--disable_auditwheel_repair")
 
         # The following arguments are mutually exclusive
-        if use_tensorrt:
-            args.append('--use_tensorrt')
-        elif use_cuda:
+        if use_cuda:
             # The following line assumes no other EP is enabled
             args.append('--wheel_name_suffix=gpu')
             if cuda_version:

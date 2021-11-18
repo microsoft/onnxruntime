@@ -3,7 +3,7 @@
 
 #include "core/framework/session_state_flatbuffers_utils.h"
 
-namespace onnxruntime::experimental::utils {
+namespace onnxruntime::fbs::utils {
 
 std::string GetSubgraphId(const NodeIndex node_idx, const std::string& attr_name) {
   return std::to_string(node_idx) + "_" + attr_name;
@@ -74,4 +74,4 @@ Status FbsSessionStateViewer::GetSubgraphSessionState(NodeIndex node_idx, const 
   return Status::OK();
 }
 
-}  // namespace onnxruntime::experimental::utils
+}  // namespace onnxruntime::fbs::utils
