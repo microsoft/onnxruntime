@@ -164,13 +164,13 @@ SPECIALIZED_SOFTMAXGRAD_HELPER_IMPL_BFloat16(true)
     auto temp_input0 = Tensor::Create(Y->DataType(), TensorShape(transposed_input_dims), alloc);
 
     // Perform the transpose
-    ORT_RETURN_IF_ERROR(Transpose::DoTranspose(cuda_ep_->GetDeviceProp(),
+    ORT_RETURN_IF_ERROR(Transpose::DoTranspose(prop_,
                                                Stream(),
                                                CublasHandle(),
                                                permutation, *Y, *temp_input0));
     transposed_Y = std::move(temp_input0);
     auto temp_input1 = Tensor::Create(Y->DataType(), TensorShape(transposed_input_dims), alloc);
-    ORT_RETURN_IF_ERROR(Transpose::DoTranspose(cuda_ep_->GetDeviceProp(),
+    ORT_RETURN_IF_ERROR(Transpose::DoTranspose(prop_,
                                                Stream(),
                                                CublasHandle(),
                                                permutation, *dY, *temp_input1));
@@ -196,7 +196,7 @@ SPECIALIZED_SOFTMAXGRAD_HELPER_IMPL_BFloat16(true)
 
   if (is_transpose_required) {
     // Perform the transpose to get the axes back to the original ordering
-    ORT_RETURN_IF_ERROR(Transpose::DoTranspose(cuda_ep_->GetDeviceProp(),
+    ORT_RETURN_IF_ERROR(Transpose::DoTranspose(prop_,
                                                Stream(),
                                                CublasHandle(),
                                                permutation, *intermediate_output, *dX));
