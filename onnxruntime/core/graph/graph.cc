@@ -4140,17 +4140,17 @@ std::ostream& operator<<(std::ostream& out, const NodeArg& node_arg) {
 }
 
 std::ostream& operator<<(std::ostream& out, const Node& node) {
-  out << "(\"" << node.Name() << "\"";
-  out << ", ";
-  out << node.OpType();
-  out << ", ";
-  // Use quote so default ONNX domain is shown as ""
-  // rather than misleading empty string.
-  out << "\"" << node.Domain() << "\"";
-  out << ", ";
-  out << node.SinceVersion();
-  out << ") : (";
-  for (auto* x : node.InputDefs()) {
+  out << "(\"" << node.Name() << "\""
+      << ", "
+      << node.OpType()
+      << ", "
+      // Use quote so default ONNX domain is shown as ""
+      // rather than misleading empty string.
+      << "\"" << node.Domain() << "\""
+      << ", "
+      << node.SinceVersion()
+      << ") : (";
+  for (const auto* x : node.InputDefs()) {
     if (x->Exists()) {
       out << *x << ",";
     } else {
@@ -4158,7 +4158,7 @@ std::ostream& operator<<(std::ostream& out, const Node& node) {
     }
   }
   out << ") -> (";
-  for (auto* x : node.OutputDefs()) {
+  for (const auto* x : node.OutputDefs()) {
     if (x->Exists()) {
       out << *x << ",";
     } else {
@@ -4171,15 +4171,15 @@ std::ostream& operator<<(std::ostream& out, const Node& node) {
 
 std::ostream& operator<<(std::ostream& out, const Graph& graph) {
   out << "Inputs:\n";
-  for (auto* x : graph.GetInputs()) {
+  for (const auto* x : graph.GetInputs()) {
     out << "   " << *x << "\n";
   }
   out << "Nodes:\n";
-  for (auto& node : graph.Nodes()) {
+  for (const auto& node : graph.Nodes()) {
     out << "   " << node << "\n";
   }
   out << "Outputs:\n";
-  for (auto* x : graph.GetOutputs()) {
+  for (const auto* x : graph.GetOutputs()) {
     out << "   " << *x << "\n";
   }
   return out;
