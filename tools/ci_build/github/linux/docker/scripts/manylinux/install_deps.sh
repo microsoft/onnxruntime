@@ -39,11 +39,6 @@ function GetFile {
   return $?
 }
 
-if [ ! -d "/opt/conda/bin" ]; then
-    PYTHON_EXES=("/opt/python/cp36-cp36m/bin/python3.6" "/opt/python/cp37-cp37m/bin/python3.7" "/opt/python/cp38-cp38/bin/python3.8" "/opt/python/cp39-cp39/bin/python3.9")
-else
-    PYTHON_EXES=("/opt/conda/bin/python")
-fi
 
 os_major_version=$(cat /etc/redhat-release | tr -dc '0-9.'|cut -d \. -f1)
 
@@ -60,12 +55,6 @@ else
 fi
 
 cd /tmp/src
-
-echo "Installing azcopy"
-mkdir -p /tmp/azcopy
-GetFile https://aka.ms/downloadazcopy-v10-linux /tmp/azcopy/azcopy.tar.gz
-tar --strip 1 -xf /tmp/azcopy/azcopy.tar.gz -C /tmp/azcopy
-cp /tmp/azcopy/azcopy /usr/bin
 
 echo "Installing Ninja"
 GetFile https://github.com/ninja-build/ninja/archive/v1.10.0.tar.gz /tmp/src/ninja-linux.tar.gz
@@ -90,19 +79,23 @@ fi
 export ONNX_ML=1
 export CMAKE_ARGS="-DONNX_GEN_PB_TYPE_STUBS=OFF -DONNX_WERROR=OFF"
 
-for PYTHON_EXE in "${PYTHON_EXES[@]}"
-do
-  ${PYTHON_EXE} -m pip install -r ${0/%install_deps\.sh/requirements\.txt}
-  ${PYTHON_EXE} -m pip install -r ${0/%install_deps\.sh/..\/training\/ortmodule\/stage1\/requirements_torch_cpu.txt}
-done
+if [ -d "/opt/python" ]; then
+    for PREFIX in $(find /opt/python/ -mindepth 1 -maxdepth 1 \( -name 'cp*' \)); do
+	PY_VER=$(${PREFIX}/bin/python -c "import sys; print('.'.join(str(v) for v in sys.version_info[:2]))")
+        echo "Install packages for $PY_VER"
+	if [ "$PY_VER" == "3.10" ]; then
+	    ${PREFIX}/bin/python -m pip install -r ${0/%install_deps\.sh/310\/requirements\.txt}
+	else
+	    ${PREFIX}/bin/python -m pip install -r ${0/%install_deps\.sh/requirements\.txt}
+	fi
 
-cd /tmp/src
-GetFile 'https://sourceware.org/pub/valgrind/valgrind-3.16.1.tar.bz2' /tmp/src/valgrind-3.16.1.tar.bz2
-tar -jxvf valgrind-3.16.1.tar.bz2
-cd valgrind-3.16.1
-./configure --prefix=/usr --libdir=/usr/lib64 --enable-only64bit --enable-tls
-make -j$(getconf _NPROCESSORS_ONLN)
-make install
+    done
+
+elif [ -d "/opt/conda/bin" ]; then
+    PYTHON_EXES=("/opt/conda/bin/python")
+    ${PYTHON_EXE} -m pip install -r ${0/%install_deps\.sh/requirements\.txt}
+    ${PYTHON_EXE} -m pip install -r ${0/%install_deps\.sh/..\/training\/ortmodule\/stage1\/requirements_torch_cpu.txt}
+fi
 
 cd /
 rm -rf /tmp/src

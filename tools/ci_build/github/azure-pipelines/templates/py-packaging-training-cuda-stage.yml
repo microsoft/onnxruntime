@@ -56,28 +56,24 @@ stages:
             PythonVersion: '3.6'
             TorchVersion: ${{ parameters.torch_version }}
             CudaVersion: ${{ parameters.cuda_version }}
-            DockerFile: ${{ parameters.docker_file }}
             GccVersion: ${{ parameters.gcc_version }}
             UploadWheel: ${{ parameters.upload_wheel }}
           Python37:
             PythonVersion: '3.7'
             TorchVersion: ${{ parameters.torch_version }}
             CudaVersion: ${{ parameters.cuda_version }}
-            DockerFile: ${{ parameters.docker_file }}
             GccVersion: ${{ parameters.gcc_version }}
             UploadWheel: ${{ parameters.upload_wheel }}
           Python38:
             PythonVersion: '3.8'
             TorchVersion: ${{ parameters.torch_version }}
             CudaVersion: ${{ parameters.cuda_version }}
-            DockerFile: ${{ parameters.docker_file }}
             GccVersion: ${{ parameters.gcc_version }}
             UploadWheel: ${{ parameters.upload_wheel }}
           Python39:
             PythonVersion: '3.9'
             TorchVersion: ${{ parameters.torch_version }}
             CudaVersion: ${{ parameters.cuda_version }}
-            DockerFile: ${{ parameters.docker_file }}
             GccVersion: ${{ parameters.gcc_version }}
             UploadWheel: ${{ parameters.upload_wheel }}
 
@@ -90,7 +86,7 @@ stages:
 
       - template: get-docker-image-steps.yml
         parameters:
-          Dockerfile: tools/ci_build/github/linux/docker/$(DockerFile)
+          Dockerfile: tools/ci_build/github/linux/docker/${{ parameters.docker_file }}
           Context: tools/ci_build/github/linux/docker
           DockerBuildArgs: >-
             --build-arg TORCH_VERSION=$(TorchVersion)

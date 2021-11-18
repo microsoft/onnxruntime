@@ -3,7 +3,7 @@ jobs:
   pool:
     vmImage: 'macOS-11'
   variables:
-    MACOSX_DEPLOYMENT_TARGET: '10.14'
+    MACOSX_DEPLOYMENT_TARGET: '11.0'
   timeoutInMinutes: 150
   steps:
     - script: |
@@ -19,8 +19,7 @@ jobs:
           --build_dir $(Build.BinariesDirectory)/iOS_cpu \
           --ios \
           --ios_sysroot iphonesimulator  \
-          --osx_arch x86_64 \
-          --apple_deploy_target 11.0 \
+          --cmake_extra_defines CMAKE_OSX_ARCHITECTURES=x86_64 IOS_ARCH=x86_64 \
           --use_xcode \
           --config RelWithDebInfo \
           --build_apple_framework \
@@ -35,8 +34,7 @@ jobs:
           --use_coreml \
           --ios \
           --ios_sysroot iphonesimulator  \
-          --osx_arch x86_64 \
-          --apple_deploy_target 11.0 \
+          --cmake_extra_defines CMAKE_OSX_ARCHITECTURES=x86_64 IOS_ARCH=x86_64 \
           --use_xcode \
           --config RelWithDebInfo \
           --build_apple_framework \

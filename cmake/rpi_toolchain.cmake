@@ -1,0 +1,11 @@
+#This is a cmake tool chain file to demonstrate how to do cross-compiling for Raspberry Pi OS 64-bit. However, most Raspberry users are using 32-bit operating systems. If you are the case, please adjust the settings accordingly before use.
+SET(CMAKE_SYSTEM_NAME Linux)
+SET(CMAKE_SYSTEM_PROCESSOR aarch64)
+SET(CMAKE_SYSTEM_VERSION 1)
+SET(CMAKE_C_COMPILER aarch64-linux-gnu-gcc-8)
+SET(CMAKE_CXX_COMPILER aarch64-linux-gnu-g++-8)
+SET(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
+SET(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
+SET(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
+SET(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)
+SET(CMAKE_FIND_ROOT_PATH /data/piroot)
