@@ -108,7 +108,7 @@ export async function getImageTensorFromPath(path: string, dims: number[] =  [1,
 async function loadImagefromPath(path: string, width: number = 224, height: number= 224): Promise<Jimp> {
  // Use Jimp to load the image and resize it.
     var imageData = await Jimp.default.read(path).then((imageBuffer: Jimp) => {
-        return imageBuffer.resize(width, height)
+        return imageBuffer.resize(width, height);
       });
 
     return imageData;
@@ -197,7 +197,7 @@ Then let's call the `runInference` function by sending in the `session` and our 
     // Get output results with the output name from the model export.
     const output = outputData[session.outputNames[0]];
     //Get the softmax of the output data. The softmax transforms values to be between 0 and 1
-    var outputSoftmax = softmax(Array.prototype.slice.call(output.data))
+    var outputSoftmax = softmax(Array.prototype.slice.call(output.data));
     
     //Get the top 5 results.
     var results = imagenetClassesTopK(outputSoftmax, 5);
@@ -238,7 +238,7 @@ const ImageCanvas = (props: Props) => {
   // Load the image from the IMAGE_URLS array
   const getImage = () => {
     var sampleImageUrls: Array<{ text: string; value: string }> = IMAGE_URLS;
-    var random = Math.floor(Math.random() * (9 - 0 + 1) + 0)
+    var random = Math.floor(Math.random() * (9 - 0 + 1) + 0);
     return sampleImageUrls[random];
   }
 
@@ -250,15 +250,15 @@ const ImageCanvas = (props: Props) => {
     image.src = sampleImage.value;
 
     // Clear out previous values.
-    setLabel(`Inferencing...`)
-    setConfidence("")
-    setInferenceTime("")
+    setLabel(`Inferencing...`);
+    setConfidence("");
+    setInferenceTime("");
 
     // Draw the image on the canvas
-    const canvas = canvasRef.current
-    const ctx = canvas!.getContext('2d')
+    const canvas = canvasRef.current;
+    const ctx = canvas!.getContext('2d');
     image.onload = () => {
-      ctx!.drawImage(image, 0, 0, props.width, props.height)
+      ctx!.drawImage(image, 0, 0, props.width, props.height);
     }
    
     // Run the inference
@@ -275,8 +275,8 @@ const ImageCanvas = (props: Props) => {
 
     // Update the label and confidence
     setLabel(topResult.name.toUpperCase());
-    setConfidence(topResult.probability)
-    setInferenceTime(`Inference speed: ${inferenceTime} seconds`)
+    setConfidence(topResult.probability);
+    setInferenceTime(`Inference speed: ${inferenceTime} seconds`);
 
   };
 
