@@ -107,24 +107,24 @@ namespace onnxruntime {
 
 namespace {
 
-template <typename T>
-struct Freer {
-  void operator()(T* p) { ::free(p); }
-};
-
-using MallocdStringPtr = std::unique_ptr<char, Freer<char> >;
+inline std::unique_ptr<char[]> StrDup(const std::string& input) {
+  auto buf = std::make_unique<char[]>(input.size() + 1);
+  strncpy_s(buf, input.size(), input.c_str(), input.size());
+  buf[input.size()] = 0;
+  return buf;
+}
 
 }  // namespace
 
 common::Status GetDirNameFromFilePath(const std::basic_string<ORTCHAR_T>& input,
                                       std::basic_string<ORTCHAR_T>& output) {
-  MallocdStringPtr s{strdup(input.c_str())};
+  auto s = StrDup(input);
   output = dirname(s.get());
   return Status::OK();
 }
 
 std::string GetLastComponent(const std::string& input) {
-  MallocdStringPtr s{strdup(input.c_str())};
+  auto s = StrDup(input);
   std::string ret = basename(s.get());
   return ret;
 }

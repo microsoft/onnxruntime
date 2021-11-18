@@ -16,7 +16,7 @@ HeapBuffer::~HeapBuffer() {
     d.Run();
   }
   for (void* p : buffers_) {
-    free(p);
+    delete[] p;
   }
 }
 }  // namespace test

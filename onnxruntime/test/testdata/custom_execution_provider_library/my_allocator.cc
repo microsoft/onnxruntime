@@ -10,14 +10,12 @@ MyEPAllocator::MyEPAllocator(OrtDevice::DeviceId device_id)
 }
 
 void* MyEPAllocator::Alloc(size_t size) {
-  void* device_address = malloc(size);
+  void* device_address = new (std::nothrow) uint8_t[size];
   return device_address;
 }
 
 void MyEPAllocator::Free(void* p) {
-  if (p) {
-    free(p);
-  }
+  delete[] p;
 }
 
 }  // namespace onnxruntime
