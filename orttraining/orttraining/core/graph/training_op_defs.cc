@@ -573,51 +573,6 @@ OpSchema& RegisterLambOpSchema(OpSchema&& op_schema) {
   return op_schema;
 }
 
-bool SoftMaxGradFunctionBodyBuilder(const FunctionBodyBuildContext& ctx, const OpSchema& schema, FunctionProto& functionProto) {
-  // SoftmaxGrad computes dX = Y * ( dY - dot(Y, dY))
-  // ONNX does not have a dot product, which can be simulated as a pointwise-multiplication ("Mul"),
-  // followed by a "ReduceSum". Unfortunately, the treatment of "axis" is different in "SoftmaxGrad"
-  // and "ReduceSum". If axis=k for SoftmaxGrad, we need to specify [k, ..., n-1] as the axes of
-  // reduction for "ReduceSum", after accounting for negative-axis specification.
-  // An alternative solution would be to Flatten inputs to 2D and then reshape output back to original shape.
-  // Hopefully, many of these ops can be optimized away in the common-case of statically-known shapes.
-
-  auto* axis_attr = ctx.getAttribute("axis");
-  int64_t axis = (axis_attr != nullptr) ? axis_attr->i() : 1;
-
-  // First, convert axis specification k to reduction axes [k, k+1, ..., n-1]
-  FunctionBuilder builder(functionProto);
-  builder
-      .AddOpset("", 13)
-      .Const("one", int64_t(1))
-      .Const("k", axis)
-      .Const("axis_zero", std::vector<int64_t>({0}))  // a 1D tensor constant
-      .Add(R"(
-                    shape = Shape (dY)
-                    n_as_vector = Shape (shape)
-                    n = Squeeze (n_as_vector, axis_zero)
-                )");
-
-  // For negative axis, add n to axis-value k; then use Range(...).
-  if (axis >= 0) {
-    builder.Add("reduction_axes = Range (k, n, one)");
-  } else {
-    builder.Add("n_plus_k = Add (n, k)");
-    builder.Add("reduction_axes = Range (n_plus_k, n, one)");
-  }
-
-  // compute dX = Y * ( dY - dot(Y, dY)) = Y * ( dY - ReduceSum(Y * dY))
-  builder.Add(R"(
-                a = Mul (Y ,dY)
-                b = ReduceSum (a ,reduction_axes)
-                c = Sub (dY ,b)
-                dX = Mul (Y ,c)
-            )");
-
-  schema.BuildFunction(functionProto);
-  return true;
-}
-
 void RegisterTrainingOpSchemas() {
   ONNX_CONTRIB_OPERATOR_SCHEMA(ReluGrad)
       .SetDomain(kMSDomain)
@@ -649,7 +604,51 @@ void RegisterTrainingOpSchemas() {
           {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
           "Constrain input and output types to float tensors.")
       .TypeAndShapeInferenceFunction(propagateShapeAndTypeFromFirstInput)
-      .SetContextDependentFunctionBodyBuilder(SoftMaxGradFunctionBodyBuilder);
+      .SetContextDependentFunctionBodyBuilder(
+          [](const FunctionBodyBuildContext& ctx, const OpSchema& schema, FunctionProto& functionProto) {
+            // SoftmaxGrad computes dX = Y * ( dY - dot(Y, dY))
+            // ONNX does not have a dot product, which can be simulated as a pointwise-multiplication ("Mul"),
+            // followed by a "ReduceSum". Unfortunately, the treatment of "axis" is different in "SoftmaxGrad"
+            // and "ReduceSum". If axis=k for SoftmaxGrad, we need to specify [k, ..., n-1] as the axes of
+            // reduction for "ReduceSum", after accounting for negative-axis specification.
+            // An alternative solution would be to Flatten inputs to 2D and then reshape output back to original shape.
+            // Hopefully, many of these ops can be optimized away in the common-case of statically-known shapes.
+
+            auto* axis_attr = ctx.getAttribute("axis");
+            int64_t axis = (axis_attr != nullptr) ? axis_attr->i() : 1;
+
+            // First, convert axis specification k to reduction axes [k, k+1, ..., n-1]
+            FunctionBuilder builder(functionProto);
+            builder
+                .AddOpset("", 13)
+                .Const("one", int64_t(1))
+                .Const("k", axis)
+                .Const("axis_zero", std::vector<int64_t>({0}))  // a 1D tensor constant
+                .Add(R"(
+                    shape = Shape (dY)
+                    n_as_vector = Shape (shape)
+                    n = Squeeze (n_as_vector, axis_zero)
+                )");
+
+            // For negative axis, add n to axis-value k; then use Range(...).
+            if (axis >= 0) {
+              builder.Add("reduction_axes = Range (k, n, one)");
+            } else {
+              builder.Add("n_plus_k = Add (n, k)");
+              builder.Add("reduction_axes = Range (n_plus_k, n, one)");
+            }
+
+            // compute dX = Y * ( dY - dot(Y, dY)) = Y * ( dY - ReduceSum(Y * dY))
+            builder.Add(R"(
+                a = Mul (Y ,dY)
+                b = ReduceSum (a ,reduction_axes)
+                c = Sub (dY ,b)
+                dX = Mul (Y ,c)
+            )");
+
+            schema.BuildFunction(functionProto);
+            return true;
+          });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(SoftmaxGrad_13)
       .SetDomain(kMSDomain)
@@ -660,16 +659,14 @@ void RegisterTrainingOpSchemas() {
       .Attr(
           "axis",
           "Describes the axis of the inputs when coerced "
-          "to 2D; defaults to one because the 0th axis most likely describes "
-          "the batch_size",
+          "to 2D; defaults to -1. Negative value means counting dimensions from the back.",
           AttributeProto::INT,
-          static_cast<int64_t>(1))
+          static_cast<int64_t>(-1))
       .TypeConstraint(
           "T",
           {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
           "Constrain input and output types to float tensors.")
-      .TypeAndShapeInferenceFunction(propagateShapeAndTypeFromFirstInput)
-      .SetContextDependentFunctionBodyBuilder(SoftMaxGradFunctionBodyBuilder);
+      .TypeAndShapeInferenceFunction(propagateShapeAndTypeFromFirstInput);
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(LogSoftmaxGrad)
       .SetDomain(kMSDomain)
@@ -699,10 +696,9 @@ void RegisterTrainingOpSchemas() {
       .Attr(
           "axis",
           "Describes the axis of the inputs when coerced "
-          "to 2D; defaults to one because the 0th axis most likely describes "
-          "the batch_size",
+          "to 2D; defaults to -1. Negative value means counting dimensions from the back.",
           AttributeProto::INT,
-          static_cast<int64_t>(1))
+          static_cast<int64_t>(-1))
       .TypeConstraint(
           "T",
           {"tensor(float16)", "tensor(float)", "tensor(double)"},
