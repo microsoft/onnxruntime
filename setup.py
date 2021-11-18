@@ -97,7 +97,6 @@ manylinux_tags = [
     'manylinux2014_s390x',
 ]
 is_manylinux = environ.get('AUDITWHEEL_PLAT', None) in manylinux_tags
-is_manylinux = True
 
 
 class build_ext(_build_ext):
