@@ -85,7 +85,6 @@ Return Value:
         PROLOG_SAVE_REG_PAIR      d12, d13, #MlasConvSymDepthwiseKernelSize9_backup_d12_d13
         PROLOG_SAVE_REG_PAIR      d14, d15, #MlasConvSymDepthwiseKernelSize9_backup_d14_d15
 
-        mov     w10, #0x80808080
         ldr     x9, [x5, #ConvSymDepthwisePostProcessParams_Bias]
         ldr     x8, [x5, #ConvSymDepthwisePostProcessParams_Scale]
         add     x5, x5, #ConvSymDepthwisePostProcessParams_ZeroPoint
@@ -93,7 +92,7 @@ Return Value:
         ins     v13.d[0], x9                // Bias
         ins     v13.d[1], x8                // Scale
         ld1r    {v0.8h}, [x5]               // v0.8h <--- vector for output zero point
-        dup     v5.4s, w10
+        movi    v5.16b, #0x80
 
         tbnz    x6, #MLAS_CONV_SYM_FLAG_PER_CHANNEL_SCALE_BIT_INDEX, MlasConvSymDepthwiseKernelSize9_SkipPerTensorScaleInit
         ld1r    {v1.4s}, [x8]               // load and dup scale value

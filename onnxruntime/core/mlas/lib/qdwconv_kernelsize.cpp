@@ -14,7 +14,8 @@ MlasConvSymDepthwiseKernelSize25Arm(
     size_t OutputCount,
     MLAS_CONV_SYM_POST_PROCESS_PARAMS const* PostProcessParams,
     unsigned KernelFlags
-) {
+    )
+{
     const uint8x16_t vu128 = vdupq_n_u8(128);
     const int16x8_t voutput_zero_point = vld1q_dup_s16((int16_t const*)&PostProcessParams->OutputZeroPoint);
     float32x4_t vscale_0123, vscale_4567, vscale_89AB, vscale_CDEF;

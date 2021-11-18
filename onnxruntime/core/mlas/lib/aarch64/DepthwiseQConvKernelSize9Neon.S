@@ -84,7 +84,6 @@ Return Value:
         stp     d12, d13, [sp, #.LMlasConvSymDepthwiseKernelSize9_backup_d12_d13]
         stp     d14, d15, [sp, #.LMlasConvSymDepthwiseKernelSize9_backup_d14_d15]
 
-        mov     w10, #0x80808080
         ldr     x9, [x5, #.LConvSymDepthwisePostProcessParams_Bias]
         ldr     x8, [x5, #.LConvSymDepthwisePostProcessParams_Scale]
         add     x5, x5, #.LConvSymDepthwisePostProcessParams_ZeroPoint
@@ -92,7 +91,7 @@ Return Value:
         ins     v13.d[0], x9                // Bias
         ins     v13.d[1], x8                // Scale
         ld1r    {v0.8h}, [x5]               // zero point
-        dup     v5.4s, w10                  // flip 0x80
+        movi    v5.16b, #0x80                // flip 0x80
 
         tbnz    x6, #.LMLAS_CONV_SYM_FLAG_PER_CHANNEL_SCALE_BIT_INDEX, .LMlasConvSymDepthwiseKernelSize9_SkipPerTensorScaleInit
         ld1r    {v1.4s}, [x8]               // load scale value
