@@ -93,6 +93,11 @@ class GraphExecutionManager(GraphExecutionInterface):
         self._graph_initializer_names_to_train = None
         self._graph_initializers = None
 
+        # Update constant ONNX_OPSET_VERSION with env var ORTMODULE_ONNX_OPSET_VERSION
+        # if defined.
+        ortmodule.ONNX_OPSET_VERSION = ortmodule._defined_from_envvar(
+            'ORTMODULE_ONNX_OPSET_VERSION', ortmodule.ONNX_OPSET_VERSION, warn=True)
+
         # TrainingAgent or InferenceAgent
         self._execution_agent = None
 
@@ -107,8 +112,8 @@ class GraphExecutionManager(GraphExecutionInterface):
 
         # Graph transformer config
         # Specify cast propagation strategy. Currently three strategies are available, NONE, INSERT-AND-REDUCE and FLOOD-FILL
-        # The default is NONE, which implies the transformer does no cast-propagation transformation.
-        self._propagate_cast_ops_strategy = C.PropagateCastOpsStrategy.NONE
+        # The default is FLOOD_FILL, expand FP16 computation regions in the graph using allowed opcodes for the given level.
+        self._propagate_cast_ops_strategy = C.PropagateCastOpsStrategy.FLOOD_FILL
         # Optimize by moving Cast operations if propagate_cast_ops_level is non-negative.
         # - If the _propagate_cast_ops_level is set to zero, then the transformation considers only the opcodes specified by _propagate_cast_ops_allow
         #   as "FP16 safe", in order to insert/(re)move cast operations before/after to perform such operations in reduced (16-bit) precision.

@@ -81,7 +81,7 @@ Status QLinearGlobalAveragePool::Compute(OpKernelContext* context) const {
   int64_t image_size = std::accumulate(x_shape.cbegin() + spatial_dim_start, x_shape.cbegin() + spatial_dim_end,
                                        1LL, std::multiplies<int64_t>());
 
-  std::vector<int64_t> output_dims(x_shape);
+  std::vector<int64_t> output_dims(x_shape.begin(), x_shape.end());
   std::transform(x_shape.cbegin() + spatial_dim_start, x_shape.cbegin() + spatial_dim_end,
                  output_dims.begin() + spatial_dim_start, [](const int64_t&) { return int64_t{1}; });
   Tensor& Y = *context->Output(0, output_dims);

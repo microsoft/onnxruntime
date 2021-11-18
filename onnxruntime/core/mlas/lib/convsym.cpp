@@ -81,6 +81,8 @@ extern "C" {
     MLAS_CONV_SYM_DEPTHWISE_KERNEL MlasConvSymDepthwiseKernelAvx512Core;
     MLAS_CONV_SYM_KERNEL MlasConvSymKernelAvx512Vnni;
     MLAS_CONV_SYM_DEPTHWISE_KERNEL MlasConvSymDepthwiseKernelAvx512Vnni;
+#elif defined(MLAS_TARGET_ARM64)
+    MLAS_CONV_SYM_DEPTHWISE_KERNEL MlasConvSymDepthwiseKernelNeon;
 #endif
 
 }
@@ -165,6 +167,20 @@ const MLAS_CONV_SYM_DISPATCH MlasConvSymDispatchAvx512Vnni = {
 
 #endif // ORT_MINIMAL_BUILD
 
+#elif defined(MLAS_TARGET_ARM64)
+const MLAS_CONV_SYM_DISPATCH MlasConvSymDispatchNeon = {
+    nullptr,
+    MlasConvSymDepthwiseKernelNeon,
+    4,   // FilterInputChannelPackCount
+    16,  // FilterOutputChannelPackCount
+    8,   // KernelChannelCount
+    8,   // KernelOutputCount
+    4,   // KernelInputChannelAlignment
+    8,   // KernelOutputChannelAlignment
+    16,  // KernelDepthwiseChannelCount
+    4,   // KernelDepthwiseOutputCount
+    true
+};
 #endif // MLAS_TARGET_AMD64
 
 MLAS_FORCEINLINE
@@ -197,8 +213,12 @@ MlasConvSymPackWSize(
 
         if (ConvSymDispatch->DepthwiseKernel != nullptr &&
             InputChannels == 1 && OutputChannels == 1) {
-
-            size_t AlignedGroupCount = (GroupCount + 15) & ~15;
+#ifdef MLAS_TARGET_ARM64
+            constexpr size_t GroupAlign = 8;
+#else
+            constexpr size_t GroupAlign = 16;
+#endif
+            size_t AlignedGroupCount = (GroupCount + GroupAlign - 1) & ~(GroupAlign - 1);
 
             if (AlignedGroupCount != GroupCount) {
                 return 0;

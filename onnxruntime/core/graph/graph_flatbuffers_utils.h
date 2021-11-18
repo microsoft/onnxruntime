@@ -25,12 +25,9 @@ namespace logging {
 class Logger;
 }
 
-namespace experimental {
-
 namespace fbs {
 struct Attribute;
 struct Tensor;
-}  // namespace fbs
 
 namespace utils {
 
@@ -64,9 +61,9 @@ onnxruntime::common::Status LoadSparseInitializerOrtFormat(const fbs::SparseTens
 onnxruntime::common::Status LoadAttributeOrtFormat(const fbs::Attribute& fbs_attr,
                                                    ONNX_NAMESPACE::AttributeProto& attr_proto,
                                                    std::unique_ptr<onnxruntime::Graph>& sub_graph,
-                                                   Graph& graph, Node& node,
+                                                   onnxruntime::Graph& graph, onnxruntime::Node& node,
                                                    const logging::Logger& logger);
 
 }  // namespace utils
-}  // namespace experimental
+}  // namespace fbs
 }  // namespace onnxruntime

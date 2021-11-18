@@ -139,7 +139,7 @@ class OptimizerBuilder {
   }
 
   static const ONNX_NAMESPACE::TypeProto* CreateLearningRateTypeProto(GraphAugmenter::GraphDefs& graph_defs) {
-    return graph_defs.CreateTypeProto({1}, ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    return graph_defs.CreateTypeProto(std::array<const int64_t, 1>{1}, ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
   }
 
  private:

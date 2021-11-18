@@ -53,8 +53,8 @@ Status Tile::ComputeInternal(OpKernelContext* ctx) const {
   // Calculate the shape of the output tensor
   auto* repeats = repeats_tensor.template Data<int64_t>();
   const auto& input_shape = input_tensor.Shape();
-  const auto& input_dims = input_shape.GetDims();
-  std::vector<int64_t> output_dims(input_dims);
+  const auto input_dims = input_shape.GetDims();
+  std::vector<int64_t> output_dims(input_shape.GetDimsAsVector());
   for (auto axis = 0; axis < rank; axis++)
     output_dims[axis] *= repeats[axis];
   TensorShape output_shape(output_dims);

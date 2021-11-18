@@ -3,22 +3,53 @@
 
 # This script makes NPM packages for onnxruntime-common and onnxruntime-(node|web)
 #
-# Release Mode:
+# Release Mode (release):
 #   Do not update version number. Version number should be matching $(ORT_ROOT)/VERSION_NUMBER
 #   Always generate packages for onnxruntime-common and onnxruntime-(node|web)
 #
-# Dev Mode:
+# Release Candidate Mode (rc):
+#   Update version number to {VERSION_BASE}-rc.{YYYYMMDD}-{COMMIT}
+#   Always generate packages for onnxruntime-common and onnxruntime-(node|web)
+#
+# Dev Mode (dev):
 #   Compare current content with latest @dev package for onnxruntime-common. If no change, we
 #   don't publish a new version of onnxruntime-common. Instead, we update the dependency version
 #   to use the existing version.
+#   Update version number to {VERSION_BASE}-dev.{YYYYMMDD}-{COMMIT}
+#
+# Custom Mode:
+#   Use first commandline parameter as version number suffix.
+#   Always generate packages for onnxruntime-common and onnxruntime-(node|web)
 #
 
 if ($Args.Count -ne 3) {
     throw "This script requires 3 arguments, but got $($Args.Count)"
 }
-$MODE=$Args[0] # "dev" or "release"
+$MODE=$Args[0] # "dev" or "release" or "rc"; otherwise it is considered as a version number
 $ORT_ROOT=$Args[1] # eg. D:\source\onnxruntime
 $TARGET=$Args[2] # "node" or "web"
+
+Function Generate-Package-Version-Number {
+    pushd $ORT_ROOT
+    $version_base=Get-Content .\VERSION_NUMBER
+    $version_timestamp=git show -s --format=%ct HEAD
+    $version_commit=git rev-parse HEAD
+    $version_commit_short=git rev-parse --short HEAD
+    popd
+    $version_date=[DateTimeOffset]::FromUnixTimeSeconds($version_timestamp).ToString("yyyyMMdd")
+    if ($MODE -eq 'dev') {
+        $version_number="$version_base-dev.$version_date-$version_commit_short"
+    } elseif ($MODE -eq 'rc') {
+        $version_number="$version_base-rc.$version_date-$version_commit_short"
+    } elseif ($MODE -eq 'release')  {
+        $version_number="$version_base"
+    } else {
+        $version_number="$version_base$MODE"
+    }
+
+    Write-Host "Generated version number for '$MODE': $version_number"
+    return @{ version = $version_number; commit = $version_commit }
+}
 
 $JS_COMMON_DIR="$ORT_ROOT\js\common"
 $JS_TARGET_DIR="$ORT_ROOT\js\$TARGET"
@@ -48,19 +79,12 @@ if ($MODE -eq "dev") {
     Write-Host "Tarball downloaded"
 
     # generate @dev version
-    pushd $ORT_ROOT
-    $dev_version_base=Get-Content .\VERSION_NUMBER
-    $dev_version_date=$(Get-Date).ToUniversalTime().ToString("yyyyMMdd")
-    $dev_version_commit=git rev-parse HEAD
-    $dev_version_commit_short=git rev-parse --short HEAD
-    popd
-    $dev_version_number="$dev_version_base-dev.$dev_version_date-$dev_version_commit_short"
-    Write-Host "Generated @dev current version: $dev_version_number"
+    $version_number=Generate-Package-Version-Number
 
     # make package for latest
     pushd $JS_COMMON_DIR
     npm version $ort_common_latest_version
-    echo $dev_version_commit | Out-File -Encoding ascii -NoNewline -FilePath ./__commit.txt
+    echo $($version_number.commit) | Out-File -Encoding ascii -NoNewline -FilePath ./__commit.txt
     npm pack
     popd
 
@@ -115,7 +139,7 @@ if ($MODE -eq "dev") {
         Write-Host "Need update to onnxruntime-common@dev"
         # need to publish a new version for onnxruntime-common
         pushd $JS_COMMON_DIR
-        npm version $dev_version_number
+        npm version $($version_number.version)
         # file __commit.txt is already generated
         npm pack
         popd
@@ -123,16 +147,29 @@ if ($MODE -eq "dev") {
 
     # make package for target
     pushd $JS_TARGET_DIR
-    npm version $dev_version_number
-    echo $dev_version_commit | Out-File -Encoding ascii -NoNewline -FilePath ./__commit.txt
+    npm version $($version_number.version)
+    echo $($version_number.commit) | Out-File -Encoding ascii -NoNewline -FilePath ./__commit.txt
     npm pack
     popd
-} else {
+} elseif ($MODE -eq "release") {
     # release mode. always publish new package
     pushd $JS_COMMON_DIR
     npm pack
     popd
     pushd $JS_TARGET_DIR
+    npm pack
+    popd
+} else {
+    # release candidate mode or custom mode. always publish new package
+    $version_number=Generate-Package-Version-Number
+
+    pushd $JS_COMMON_DIR
+    npm version $($version_number.version)
+    npm pack
+    popd
+
+    pushd $JS_TARGET_DIR
+    npm version $($version_number.version)
     npm pack
     popd
 }
