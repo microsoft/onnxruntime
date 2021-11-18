@@ -26,6 +26,7 @@ onnxruntime_add_static_library(onnxruntime_mlas
   ${MLAS_SRC_DIR}/qlmul.cpp
   ${MLAS_SRC_DIR}/qpostprocessor.cpp
   ${MLAS_SRC_DIR}/qlgavgpool.cpp
+  ${MLAS_SRC_DIR}/qdwconv_kernelsize.cpp
 )
 
 set(ONNXRUNTIME_MLAS_LIBS onnxruntime_mlas)
@@ -46,6 +47,7 @@ function(setup_mlas_source_for_windows)
 
       set(mlas_platform_preprocess_srcs
         ${MLAS_SRC_DIR}/arm64/DepthwiseConvsymKernelNeon.asm
+        ${MLAS_SRC_DIR}/arm64/DepthwiseQConvKernelSize9Neon.asm
         ${MLAS_SRC_DIR}/arm64/QgemmU8X8KernelNeon.asm
         ${MLAS_SRC_DIR}/arm64/QgemmS8S8KernelNeon.asm
         ${MLAS_SRC_DIR}/arm64/QgemmU8X8KernelUdot.asm
@@ -265,6 +267,7 @@ else()
         enable_language(ASM)
         set(mlas_platform_srcs
           ${MLAS_SRC_DIR}/aarch64/DepthwiseConvSymKernelNeon.S
+          ${MLAS_SRC_DIR}/aarch64/DepthwiseQConvKernelSize9Neon.S
           ${MLAS_SRC_DIR}/aarch64/QgemmU8X8KernelNeon.S
           ${MLAS_SRC_DIR}/aarch64/QgemmS8S8KernelNeon.S
           ${MLAS_SRC_DIR}/aarch64/QgemmU8X8KernelUdot.S
