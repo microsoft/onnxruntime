@@ -229,6 +229,7 @@ if platform.system() == 'Linux':
             'mimalloc.so']
     dl_libs = ['libonnxruntime_providers_shared.so']
     dl_libs.append(providers_cuda_or_rocm)
+    dl_libs.append('libonnxruntime_providers_tensorrt.so')
     # DNNL, TensorRT & OpenVINO EPs are built as shared libs
     libs.extend(['libonnxruntime_providers_shared.so'])
     libs.extend(['libonnxruntime_providers_dnnl.so'])
