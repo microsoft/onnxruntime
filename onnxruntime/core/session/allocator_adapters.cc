@@ -31,6 +31,10 @@ const OrtMemoryInfo* OrtAllocatorImplWrappingIAllocator::Info() const {
   return &i_allocator_->Info();
 }
 
+onnxruntime::AllocatorPtr OrtAllocatorImplWrappingIAllocator::GetWrappedIAllocator() {
+  return i_allocator_;
+}
+
 IAllocatorImplWrappingOrtAllocator::IAllocatorImplWrappingOrtAllocator(OrtAllocator* ort_allocator)
     : IAllocator(*ort_allocator->Info(ort_allocator)), ort_allocator_(ort_allocator) {}
 

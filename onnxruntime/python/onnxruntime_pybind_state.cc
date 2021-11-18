@@ -352,151 +352,159 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
         ->CreateProvider();
   } else if (type == kTensorrtExecutionProvider) {
 #ifdef USE_TENSORRT
-    std::string calibration_table, cache_path, lib_path;
-    auto it = provider_options_map.find(type);
-    if (it != provider_options_map.end()) {
-      OrtTensorRTProviderOptions params{
-          0,
-          0,
-          nullptr,
-          1000,
-          1,
-          1 << 30,
-          0,
-          0,
-          nullptr,
-          0,
-          0,
-          0,
-          0,
-          0,
-          nullptr,
-          0,
-          nullptr,
-          0};
-      for (auto option : it->second) {
-        if (option.first == "device_id") {
-          if (!option.second.empty()) {
-            params.device_id = std::stoi(option.second);
-          } else {
-            ORT_THROW("[ERROR] [TensorRT] The value for the key 'device_id' should be a number i.e. '0'.\n");
+    // If the environment variable 'ORT_TENSORRT_UNAVAILABLE' exists, then we do not load TensorRT. This is set by _ld_preload for the manylinux case
+    // as in that case, trying to load the library itself will result in a crash due to the way that auditwheel strips dependencies.
+    if (Env::Default().GetEnvironmentVar("ORT_TENSORRT_UNAVAILABLE").empty()) {
+        std::string calibration_table, cache_path, lib_path;
+        auto it = provider_options_map.find(type);
+        if (it != provider_options_map.end()) {
+          OrtTensorRTProviderOptions params{
+              0,
+              0,
+              nullptr,
+              1000,
+              1,
+              1 << 30,
+              0,
+              0,
+              nullptr,
+              0,
+              0,
+              0,
+              0,
+              0,
+              nullptr,
+              0,
+              nullptr,
+              0};
+          for (auto option : it->second) {
+            if (option.first == "device_id") {
+              if (!option.second.empty()) {
+                params.device_id = std::stoi(option.second);
+              } else {
+                ORT_THROW("[ERROR] [TensorRT] The value for the key 'device_id' should be a number i.e. '0'.\n");
+              }
+            } else if (option.first == "trt_max_partition_iterations") {
+              if (!option.second.empty()) {
+                params.trt_max_partition_iterations = std::stoi(option.second);
+              } else {
+                ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_max_partition_iterations' should be a positive integer number i.e. '1000'.\n");
+              }
+            } else if (option.first == "trt_min_subgraph_size") {
+              if (!option.second.empty()) {
+                params.trt_min_subgraph_size = std::stoi(option.second);
+              } else {
+                ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_min_subgraph_size' should be a positive integer number i.e. '1'.\n");
+              }
+            } else if (option.first == "trt_max_workspace_size") {
+              if (!option.second.empty()) {
+                params.trt_max_workspace_size = std::stoull(option.second);
+              } else {
+                ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_max_workspace_size' should be a number in byte i.e. '1073741824'.\n");
+              }
+            } else if (option.first == "trt_fp16_enable") {
+              if (option.second == "True" || option.second == "true") {
+                params.trt_fp16_enable = true;
+              } else if (option.second == "False" || option.second == "false") {
+                params.trt_fp16_enable = false;
+              } else {
+                ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_fp16_enable' should be a boolean i.e. 'True' or 'False'. Default value is False.\n");
+              }
+            } else if (option.first == "trt_int8_enable") {
+              if (option.second == "True" || option.second == "true") {
+                params.trt_int8_enable = true;
+              } else if (option.second == "False" || option.second == "false") {
+                params.trt_int8_enable = false;
+              } else {
+                ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_int8_enable' should be a boolean i.e. 'True' or 'False'. Default value is False.\n");
+              }
+            } else if (option.first == "trt_int8_calibration_table_name") {
+              if (!option.second.empty()) {
+                calibration_table = option.second;
+                params.trt_int8_calibration_table_name = calibration_table.c_str();
+              } else {
+                ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_int8_calibration_table_name' should be a file name i.e. 'cal_table'.\n");
+              }
+            } else if (option.first == "trt_int8_use_native_calibration_table") {
+              if (option.second == "True" || option.second == "true") {
+                params.trt_int8_use_native_calibration_table = true;
+              } else if (option.second == "False" || option.second == "false") {
+                params.trt_int8_use_native_calibration_table = false;
+              } else {
+                ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_int8_use_native_calibration_table' should be a boolean i.e. 'True' or 'False'. Default value is False.\n");
+              }
+            } else if (option.first == "trt_dla_enable") {
+              if (option.second == "True" || option.second == "true") {
+                params.trt_dla_enable = true;
+              } else if (option.second == "False" || option.second == "false") {
+                params.trt_dla_enable = false;
+              } else {
+                ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_dla_enable' should be a boolean i.e. 'True' or 'False'. Default value is False.\n");
+              }
+            } else if (option.first == "trt_dla_core") {
+              if (!option.second.empty()) {
+                params.trt_dla_core = std::stoi(option.second);
+              } else {
+                ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_dla_core' should be a positive integer number i.e. '0'.\n");
+              }
+            } else if (option.first == "trt_dump_subgraphs") {
+              if (option.second == "True" || option.second == "true") {
+                params.trt_dump_subgraphs = true;
+              } else if (option.second == "False" || option.second == "false") {
+                params.trt_dump_subgraphs = false;
+              } else {
+                ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_dump_subgraphs' should be a boolean i.e. 'True' or 'False'. Default value is False.\n");
+              }
+            } else if (option.first == "trt_engine_cache_enable") {
+              if (option.second == "True" || option.second == "true") {
+                params.trt_engine_cache_enable = true;
+              } else if (option.second == "False" || option.second == "false") {
+                params.trt_engine_cache_enable = false;
+              } else {
+                ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_engine_cache_enable' should be a boolean i.e. 'True' or 'False'. Default value is False.\n");
+              }
+            } else if (option.first == "trt_engine_cache_path") {
+              if (!option.second.empty()) {
+                cache_path = option.second;
+                params.trt_engine_cache_path = cache_path.c_str();
+              } else {
+                ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_engine_cache_path' should be a path string i.e. 'engine_cache'.\n");
+              }
+            } else if (option.first == "trt_engine_decryption_enable") {
+              if (option.second == "True" || option.second == "true") {
+                params.trt_engine_decryption_enable = true;
+              } else if (option.second == "False" || option.second == "false") {
+                params.trt_engine_decryption_enable = false;
+              } else {
+                ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_engine_decryption_enable' should be a boolean i.e. 'True' or 'False'. Default value is False.\n");
+              }
+            } else if (option.first == "trt_engine_decryption_lib_path") {
+              if (!option.second.empty()) {
+                lib_path = option.second;
+                params.trt_engine_decryption_lib_path = lib_path.c_str();
+              } else {
+                ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_engine_decryption_lib_path' should be a path string i.e. 'decryption_lib'.\n");
+              }
+            } else if (option.first == "trt_force_sequential_engine_build") {
+              if (option.second == "True" || option.second == "true") {
+                params.trt_force_sequential_engine_build = true;
+              } else if (option.second == "False" || option.second == "false") {
+                params.trt_force_sequential_engine_build = false;
+              } else {
+                ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_force_sequential_engine_build' should be a boolean i.e. 'True' or 'False'. Default value is False.\n");
+              }
+            } else {
+              ORT_THROW("Invalid TensorRT EP option: ", option.first);
+            }
           }
-        } else if (option.first == "trt_max_partition_iterations") {
-          if (!option.second.empty()) {
-            params.trt_max_partition_iterations = std::stoi(option.second);
-          } else {
-            ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_max_partition_iterations' should be a positive integer number i.e. '1000'.\n");
-          }
-        } else if (option.first == "trt_min_subgraph_size") {
-          if (!option.second.empty()) {
-            params.trt_min_subgraph_size = std::stoi(option.second);
-          } else {
-            ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_min_subgraph_size' should be a positive integer number i.e. '1'.\n");
-          }
-        } else if (option.first == "trt_max_workspace_size") {
-          if (!option.second.empty()) {
-            params.trt_max_workspace_size = std::stoull(option.second);
-          } else {
-            ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_max_workspace_size' should be a number in byte i.e. '1073741824'.\n");
-          }
-        } else if (option.first == "trt_fp16_enable") {
-          if (option.second == "True" || option.second == "true") {
-            params.trt_fp16_enable = true;
-          } else if (option.second == "False" || option.second == "false") {
-            params.trt_fp16_enable = false;
-          } else {
-            ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_fp16_enable' should be a boolean i.e. 'True' or 'False'. Default value is False.\n");
-          }
-        } else if (option.first == "trt_int8_enable") {
-          if (option.second == "True" || option.second == "true") {
-            params.trt_int8_enable = true;
-          } else if (option.second == "False" || option.second == "false") {
-            params.trt_int8_enable = false;
-          } else {
-            ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_int8_enable' should be a boolean i.e. 'True' or 'False'. Default value is False.\n");
-          }
-        } else if (option.first == "trt_int8_calibration_table_name") {
-          if (!option.second.empty()) {
-            calibration_table = option.second;
-            params.trt_int8_calibration_table_name = calibration_table.c_str();
-          } else {
-            ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_int8_calibration_table_name' should be a file name i.e. 'cal_table'.\n");
-          }
-        } else if (option.first == "trt_int8_use_native_calibration_table") {
-          if (option.second == "True" || option.second == "true") {
-            params.trt_int8_use_native_calibration_table = true;
-          } else if (option.second == "False" || option.second == "false") {
-            params.trt_int8_use_native_calibration_table = false;
-          } else {
-            ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_int8_use_native_calibration_table' should be a boolean i.e. 'True' or 'False'. Default value is False.\n");
-          }
-        } else if (option.first == "trt_dla_enable") {
-          if (option.second == "True" || option.second == "true") {
-            params.trt_dla_enable = true;
-          } else if (option.second == "False" || option.second == "false") {
-            params.trt_dla_enable = false;
-          } else {
-            ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_dla_enable' should be a boolean i.e. 'True' or 'False'. Default value is False.\n");
-          }
-        } else if (option.first == "trt_dla_core") {
-          if (!option.second.empty()) {
-            params.trt_dla_core = std::stoi(option.second);
-          } else {
-            ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_dla_core' should be a positive integer number i.e. '0'.\n");
-          }
-        } else if (option.first == "trt_dump_subgraphs") {
-          if (option.second == "True" || option.second == "true") {
-            params.trt_dump_subgraphs = true;
-          } else if (option.second == "False" || option.second == "false") {
-            params.trt_dump_subgraphs = false;
-          } else {
-            ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_dump_subgraphs' should be a boolean i.e. 'True' or 'False'. Default value is False.\n");
-          }
-        } else if (option.first == "trt_engine_cache_enable") {
-          if (option.second == "True" || option.second == "true") {
-            params.trt_engine_cache_enable = true;
-          } else if (option.second == "False" || option.second == "false") {
-            params.trt_engine_cache_enable = false;
-          } else {
-            ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_engine_cache_enable' should be a boolean i.e. 'True' or 'False'. Default value is False.\n");
-          }
-        } else if (option.first == "trt_engine_cache_path") {
-          if (!option.second.empty()) {
-            cache_path = option.second;
-            params.trt_engine_cache_path = cache_path.c_str();
-          } else {
-            ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_engine_cache_path' should be a path string i.e. 'engine_cache'.\n");
-          }
-        } else if (option.first == "trt_engine_decryption_enable") {
-          if (option.second == "True" || option.second == "true") {
-            params.trt_engine_decryption_enable = true;
-          } else if (option.second == "False" || option.second == "false") {
-            params.trt_engine_decryption_enable = false;
-          } else {
-            ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_engine_decryption_enable' should be a boolean i.e. 'True' or 'False'. Default value is False.\n");
-          }
-        } else if (option.first == "trt_engine_decryption_lib_path") {
-          if (!option.second.empty()) {
-            lib_path = option.second;
-            params.trt_engine_decryption_lib_path = lib_path.c_str();
-          } else {
-            ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_engine_decryption_lib_path' should be a path string i.e. 'decryption_lib'.\n");
-          }
-        } else if (option.first == "trt_force_sequential_engine_build") {
-          if (option.second == "True" || option.second == "true") {
-            params.trt_force_sequential_engine_build = true;
-          } else if (option.second == "False" || option.second == "false") {
-            params.trt_force_sequential_engine_build = false;
-          } else {
-            ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_force_sequential_engine_build' should be a boolean i.e. 'True' or 'False'. Default value is False.\n");
-          }
+          return onnxruntime::CreateExecutionProviderFactory_Tensorrt(&params)->CreateProvider();
         } else {
-          ORT_THROW("Invalid TensorRT EP option: ", option.first);
+          return onnxruntime::CreateExecutionProviderFactory_Tensorrt(cuda_device_id)->CreateProvider();
         }
-      }
-      return onnxruntime::CreateExecutionProviderFactory_Tensorrt(&params)->CreateProvider();
     } else {
-      return onnxruntime::CreateExecutionProviderFactory_Tensorrt(cuda_device_id)->CreateProvider();
+      if (!Env::Default().GetEnvironmentVar("CUDA_PATH").empty()) {
+        ORT_THROW("CUDA_PATH is set but CUDA wasn't able to be loaded. Please install the correct version of CUDA and cuDNN as mentioned in the GPU requirements page (https://onnxruntime.ai/docs/reference/execution-providers/CUDA-ExecutionProvider.html#requirements) as well as TensorRT as mentioned in the TensorRT requirements page (https://onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html#requirements), make sure they're in the PATH, and that your GPU is supported.");
+      }
     }
 #endif
   } else if (type == kMIGraphXExecutionProvider) {
@@ -587,10 +595,14 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
         } else if (option.first == "blob_dump_path") {
           blob_dump_path = option.second;
           params.blob_dump_path = blob_dump_path.c_str();
+        }  else if (option.first == "context") {
+          params.context = (void *)(option.second.c_str());
         } else {
           ORT_THROW("Invalid OpenVINO EP option: ", option.first);
         }
       }
+
+      
     }
     auto p = onnxruntime::CreateExecutionProviderFactory_OpenVINO(&params)->CreateProvider();
     // Reset global variables config to avoid it being accidentally passed on to the next session

@@ -526,71 +526,82 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   };
 
   std::set<BrokenTest> broken_tests = {
-      {"BERT_Squad", "test data bug"},
-      {"constantofshape_float_ones", "test data bug", {"onnx141", "onnx150"}},
-      {"constantofshape_int_zeros", "test data bug", {"onnx141", "onnx150"}},
-      {"convtranspose_autopad_same", "Implementation need to be adjusted for ONNX changes"},
-      {"cast_STRING_to_FLOAT", "Linux CI has old ONNX python package with bad test data", {"onnx141"}},
-      // Numpy float to string has unexpected rounding for some results given numpy default precision is meant to be 8.
-      // "e.g. 0.296140194 -> '0.2961402' not '0.29614019'. ORT produces the latter with precision set to 8,
-      // which doesn't match the expected output that was generated with numpy.
-      {"cast_FLOAT_to_STRING", "Numpy float to string has unexpected rounding for some results."},
-      {"tf_nasnet_large", "disable temporarily"},
-      {"tf_nasnet_mobile", "disable temporarily"},
-      {"tf_pnasnet_large", "disable temporarily"},
-      {"shrink", "test case is wrong", {"onnx141"}},
-      {"maxpool_with_argmax_2d_precomputed_strides", "ShapeInferenceError"},
-      {"tf_inception_v2", "result mismatch"},
-      {"tf_resnet_v1_50", "result mismatch when Conv BN Fusion is applied"},
-      {"tf_resnet_v1_101", "result mismatch when Conv BN Fusion is applied"},
-      {"tf_resnet_v1_152", "result mismatch when Conv BN Fusion is applied"},
-      {"mxnet_arcface", "Model is an invalid ONNX model"},
-      {"unique_not_sorted_without_axis", "Expected data for 'Y' is incorrect and in sorted order."},
-      {"cumsum_1d_reverse_exclusive", "only failing linux GPU CI. Likely build error."},
-      {"resize_downsample_scales_cubic_align_corners", "results mismatch with onnx tests"},
-      {"resize_downsample_scales_linear_align_corners", "results mismatch with onnx tests"},
-      {"resize_tf_crop_and_resize", "Bad onnx test output. Needs test fix."},
-      {"resize_upsample_sizes_nearest_ceil_half_pixel", "Bad onnx test output. Needs test fix."},
-      {"resize_upsample_sizes_nearest_floor_align_corners", "Bad onnx test output. Needs test fix."},
-      {"resize_upsample_sizes_nearest_round_prefer_ceil_asymmetric", "Bad onnx test output. Needs test fix."},
-      {"bitshift_right_uint16", "BitShift(11) uint16 support not enabled currently"},
-      {"bitshift_left_uint16", "BitShift(11) uint16 support not enabled currently"},
-      {"maxunpool_export_with_output_shape", "Invalid output in ONNX test. See https://github.com/onnx/onnx/issues/2398"},
-      {"training_dropout", "result differs", {}},                       // Temporary, subsequent PR will remove this.
-      {"training_dropout_default", "result differs", {}},               // Temporary, subsequent PR will remove this.
-      {"training_dropout_default_mask", "result differs", {}},          // Temporary, subsequent PR will remove this.
-      {"training_dropout_mask", "result differs", {}},                  // Temporary, subsequent PR will remove this.
-      {"adagrad", "not a registered function/op", {}},                  // Op not registered.
-      {"adagrad_multiple", "not a registered function/op", {}},         // Op not registered.
-      {"adam", "not a registered function/op", {}},                     // Op not registered.
-      {"adam_multiple", "not a registered function/op", {}},            // Op not registered.
-      {"gradient_of_add", "not a registered function/op", {}},          // Op not registered.
-      {"gradient_of_add_and_mul", "not a registered function/op", {}},  // Op not registered.
-      {"momentum", "not a registered function/op", {}},                 // Op not registered.
-      {"momentum_multiple", "not a registered function/op", {}},        // Op not registered.
-      {"nesterov_momentum", "not a registered function/op", {}},        // Op not registered.
-      {"sequence_insert_at_back", "onnx currently not supporting loading segment", {}},
-      {"sequence_insert_at_front", "onnx currently not supporting loading segment", {}},
-      {"loop13_seq", "ORT api does not currently support creating empty sequences (needed for this test)", {}},
-      {"cast_FLOAT_to_BFLOAT16", "onnx generate bfloat tensor as uint16 type", {}},
-      {"cast_BFLOAT16_to_FLOAT", "onnx generate bfloat tensor as uint16 type", {}},
-      {"castlike_FLOAT_to_BFLOAT16", "Depends on cast.", {}},
-      {"castlike_BFLOAT16_to_FLOAT", "Depends on cast", {}},
-      {"castlike_FLOAT_to_BFLOAT16_expanded", "Depends on cast.", {}},
-      {"castlike_BFLOAT16_to_FLOAT_expanded", "Depends on cast", {}},
-      {"castlike_FLOAT_to_STRING", "Numpy float to string has unexpected rounding for some results.", {}},
-      {"castlike_FLOAT_to_STRING_expanded", "Numpy float to string has unexpected rounding for some results.", {}},
-      {"bernoulli", "By design. Test data is for informational purpose because the generator is non deterministic."},
-      {"bernoulli_double", "By design. Test data is for informational purpose because the generator is non deterministic."},
-      {"bernoulli_double_expanded", "By design. Test data is for informational purpose because the generator is non deterministic."},
-      {"bernoulli_seed", "By design. Test data is for informational purpose because the generator is non deterministic."},
-      {"bernoulli_seed_expanded", "By design. Test data is for informational purpose because the generator is non deterministic."},
-      {"bernoulli_expanded", "By design. Test data is for informational purpose because the generator is non deterministic."},
-      {"test_roialign_aligned_true", "Opset 16 not supported yet."},
-      {"test_roialign_aligned_false", "Opset 16 not supported yet."},
-      {"test_scatternd_add", "Opset 16 not supported yet."},
-      {"test_scatternd_multiply", "Opset 16 not supported yet."},
-      {"test_scatter_elements_with_duplicate_indices", "Opset 16 not supported yet."},
+    {"BERT_Squad", "test data bug"},
+    {"constantofshape_float_ones", "test data bug", {"onnx141", "onnx150"}},
+    {"constantofshape_int_zeros", "test data bug", {"onnx141", "onnx150"}},
+    {"convtranspose_autopad_same", "Implementation need to be adjusted for ONNX changes"},
+    {"cast_STRING_to_FLOAT", "Linux CI has old ONNX python package with bad test data", {"onnx141"}},
+    // Numpy float to string has unexpected rounding for some results given numpy default precision is meant to be 8.
+    // "e.g. 0.296140194 -> '0.2961402' not '0.29614019'. ORT produces the latter with precision set to 8,
+    // which doesn't match the expected output that was generated with numpy.
+    {"cast_FLOAT_to_STRING", "Numpy float to string has unexpected rounding for some results."},
+    {"tf_nasnet_large", "disable temporarily"},
+    {"tf_nasnet_mobile", "disable temporarily"},
+    {"tf_pnasnet_large", "disable temporarily"},
+    {"shrink", "test case is wrong", {"onnx141"}},
+    {"maxpool_with_argmax_2d_precomputed_strides", "ShapeInferenceError"},
+    {"tf_inception_v2", "result mismatch"},
+    {"tf_resnet_v1_50", "result mismatch when Conv BN Fusion is applied"},
+    {"tf_resnet_v1_101", "result mismatch when Conv BN Fusion is applied"},
+    {"tf_resnet_v1_152", "result mismatch when Conv BN Fusion is applied"},
+    {"mxnet_arcface", "Model is an invalid ONNX model"},
+    {"unique_not_sorted_without_axis", "Expected data for 'Y' is incorrect and in sorted order."},
+    {"cumsum_1d_reverse_exclusive", "only failing linux GPU CI. Likely build error."},
+    {"resize_downsample_scales_cubic_align_corners", "results mismatch with onnx tests"},
+    {"resize_downsample_scales_linear_align_corners", "results mismatch with onnx tests"},
+    {"resize_tf_crop_and_resize", "Bad onnx test output. Needs test fix."},
+    {"resize_upsample_sizes_nearest_ceil_half_pixel", "Bad onnx test output. Needs test fix."},
+    {"resize_upsample_sizes_nearest_floor_align_corners", "Bad onnx test output. Needs test fix."},
+    {"resize_upsample_sizes_nearest_round_prefer_ceil_asymmetric", "Bad onnx test output. Needs test fix."},
+    {"bitshift_right_uint16", "BitShift(11) uint16 support not enabled currently"},
+    {"bitshift_left_uint16", "BitShift(11) uint16 support not enabled currently"},
+    {"maxunpool_export_with_output_shape", "Invalid output in ONNX test. See https://github.com/onnx/onnx/issues/2398"},
+    {"training_dropout", "result differs", {}},                       // Temporary, subsequent PR will remove this.
+    {"training_dropout_default", "result differs", {}},               // Temporary, subsequent PR will remove this.
+    {"training_dropout_default_mask", "result differs", {}},          // Temporary, subsequent PR will remove this.
+    {"training_dropout_mask", "result differs", {}},                  // Temporary, subsequent PR will remove this.
+    {"adagrad", "not a registered function/op", {}},                  // Op not registered.
+    {"adagrad_multiple", "not a registered function/op", {}},         // Op not registered.
+    {"adam", "not a registered function/op", {}},                     // Op not registered.
+    {"adam_multiple", "not a registered function/op", {}},            // Op not registered.
+    {"gradient_of_add", "not a registered function/op", {}},          // Op not registered.
+    {"gradient_of_add_and_mul", "not a registered function/op", {}},  // Op not registered.
+    {"momentum", "not a registered function/op", {}},                 // Op not registered.
+    {"momentum_multiple", "not a registered function/op", {}},        // Op not registered.
+    {"nesterov_momentum", "not a registered function/op", {}},        // Op not registered.
+    {"sequence_insert_at_back", "onnx currently not supporting loading segment", {}},
+    {"sequence_insert_at_front", "onnx currently not supporting loading segment", {}},
+    {"loop13_seq", "ORT api does not currently support creating empty sequences (needed for this test)", {}},
+    {"cast_FLOAT_to_BFLOAT16", "onnx generate bfloat tensor as uint16 type", {}},
+    {"cast_BFLOAT16_to_FLOAT", "onnx generate bfloat tensor as uint16 type", {}},
+    {"castlike_FLOAT_to_BFLOAT16", "Depends on cast.", {}},
+    {"castlike_BFLOAT16_to_FLOAT", "Depends on cast", {}},
+    {"castlike_FLOAT_to_BFLOAT16_expanded", "Depends on cast.", {}},
+    {"castlike_BFLOAT16_to_FLOAT_expanded", "Depends on cast", {}},
+    {"castlike_FLOAT_to_STRING", "Numpy float to string has unexpected rounding for some results.", {}},
+    {"castlike_FLOAT_to_STRING_expanded", "Numpy float to string has unexpected rounding for some results.", {}},
+    {"bernoulli", "By design. Test data is for informational purpose because the generator is non deterministic."},
+    {"bernoulli_double", "By design. Test data is for informational purpose because the generator is non deterministic."},
+    {"bernoulli_double_expanded", "By design. Test data is for informational purpose because the generator is non deterministic."},
+    {"bernoulli_seed", "By design. Test data is for informational purpose because the generator is non deterministic."},
+    {"bernoulli_seed_expanded", "By design. Test data is for informational purpose because the generator is non deterministic."},
+    {"bernoulli_expanded", "By design. Test data is for informational purpose because the generator is non deterministic."},
+    {"test_roialign_aligned_true", "Opset 16 not supported yet."},
+    {"test_roialign_aligned_false", "Opset 16 not supported yet."},
+    {"test_scatternd_add", "Opset 16 not supported yet."},
+    {"test_scatternd_multiply", "Opset 16 not supported yet."},
+    {"test_scatter_elements_with_duplicate_indices", "Opset 16 not supported yet."},
+
+#if defined(DISABLE_OPTIONAL_TYPE)
+    {"test_optional_get_element", "Optional type not supported in this build flavor."},
+    {"test_optional_get_element_sequence", "Optional type not supported in this build flavor."},
+    {"test_optional_has_element", "Optional type not supported in this build flavor."},
+    {"test_optional_has_element_empty", "Optional type not supported in this build flavor."},
+    {"test_if_opt", "Optional type not supported in this build flavor."},
+    {"test_loop16_seq_none", "Optional type not supported in this build flavor."},
+    {"test_identity_opt", "Optional type not supported in this build flavor."},
+#endif
+
   };
 
 #ifdef DISABLE_ML_OPS

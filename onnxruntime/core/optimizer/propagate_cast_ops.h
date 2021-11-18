@@ -16,7 +16,7 @@ Propagate FP16 Cast operations up the graph and FP32 Cast operations down the gr
 class PropagateCastOps : public GraphTransformer {
  public:
   PropagateCastOps(GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy strategy =
-                       GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy::InsertAndReduce,
+                       GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy::FloodFill,
                    size_t level = 0, const std::vector<std::string>& allow_list = {},
                    const std::unordered_set<std::string>& compatible_execution_providers = {}) noexcept;
 

@@ -30,6 +30,8 @@ struct OrtAllocatorImplWrappingIAllocator final : public OrtAllocatorImpl {
 
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(OrtAllocatorImplWrappingIAllocator);
 
+  onnxruntime::AllocatorPtr GetWrappedIAllocator();
+
  private:
   onnxruntime::AllocatorPtr i_allocator_;
 };
