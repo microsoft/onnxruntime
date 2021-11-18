@@ -5,7 +5,7 @@ grand_parent: Tutorials
 nav_order: 6
 ---
 
-## Using NNAPI and CoreML with ONNX Runtime Mobile
+# Using NNAPI and CoreML with ONNX Runtime Mobile
 
 - Usage of NNAPI on Android platforms is via the NNAPI Execution Provider (EP). 
   - See the [NNAPI Execution Provider](../../execution-providers/NNAPI-ExecutionProvider.md) documentation for more details.
@@ -19,7 +19,7 @@ If performing a custom build of ONNX Runtime, support for the NNAPI EP or CoreML
 
 ### Create a minimal build with NNAPI EP or CoreML EP support
 
-Please see [the instructions](../../build/android-ios.md) for setting up the Android or iOS environment required to build. The Android build can be cross-compiled on Windows or Linux. The iOS/macOS build must be performed on a mac machine.
+Please see [Build for Android](../../build/android.md) and [Build for iOS](../../build/ios.md) for setting up the Android or iOS environment required to build. The Android build can be cross-compiled on Windows or Linux. The iOS/macOS build must be performed on a mac machine.
 
 Once you have all the necessary components setup, follow the instructions to [create the custom build](./custom-build.md), with the following changes:
   - Replace `--minimal_build` with `--minimal_build extended` to enable support for execution providers that dynamically create kernels at runtime, which is required by the NNAPI EP and CoreML EP.

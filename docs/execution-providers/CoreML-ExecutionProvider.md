@@ -1,7 +1,9 @@
 ---
 title: CoreML
+description: Instructions to execute ONNX Runtime with CoreML
 parent: Execution Providers
 nav_order: 2
+redirect_from: /docs/reference/execution-providers/CoreML-ExecutionProvider
 ---
 {::options toc_levels="2" /}
 
@@ -29,7 +31,7 @@ Pre-built binaries of ONNX Runtime Mobile with CoreML EP for iOS are published t
 
 ## Build
 
-For build instructions for iOS devices, please see [How to: Build for Android/iOS](../build/android-ios.md#coreml-execution-provider).
+For build instructions for iOS devices, please see [Build for iOS](../build/ios.md#coreml-execution-provider).
 
 ## Usage
 

@@ -1,6 +1,8 @@
 ---
-title: ORT Ecosystem
+title: ONNX Runtime Ecosystem
+description: See examples of how ONNX Runtime working end to end within the Azure AI and ML landscape and ecosystem
 nav_order: 11
+redirect_from: /docs/tutorials/ecosystem
 ---
 # ORT Ecosystem
 {: .no_toc }

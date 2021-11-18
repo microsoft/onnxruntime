@@ -8,7 +8,7 @@ nav_order: 3
 * TOC
 {:toc}
 
-## Converting ONNX models to ORT format 
+# Converting ONNX models to ORT format 
 
 Conversion of ONNX format models to ORT format utilizes the ONNX Runtime python package, as the model is loaded into ONNX Runtime and optimized as part of the conversion process. 
 
