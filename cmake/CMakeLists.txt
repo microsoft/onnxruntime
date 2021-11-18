@@ -647,16 +647,6 @@ if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fstack-protector-strong")
 endif()
 
-if (${CMAKE_SYSTEM_NAME} MATCHES "iOSCross")
-    #For ios compliance
-    message("Adding flags for ios builds")
-    if (CMAKE_OSX_ARCHITECTURES STREQUAL "arm64")
-      set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -target arm64-apple-darwin-macho")
-    elseif (CMAKE_OSX_ARCHITECTURES STREQUAL "arm")
-      set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -target armv7a-apple-darwin-macho")
-    endif()
-endif()
-
 #Dependencies begin
 if (onnxruntime_BUILD_UNIT_TESTS)
   if (onnxruntime_PREFER_SYSTEM_LIB)
@@ -1229,10 +1219,7 @@ function(onnxruntime_add_shared_library_module target_name)
   endif()
 endfunction()
 
-function(onnxruntime_add_executable target_name)
-  if (${CMAKE_SYSTEM_NAME} MATCHES "iOSCross")
-    message(FATAL_ERROR "iOS doesn't support commmand line tool")
-  endif()
+function(onnxruntime_add_executable target_name)  
   add_executable(${target_name} ${ARGN})
   onnxruntime_configure_target(${target_name})
   if (onnxruntime_target_platform STREQUAL "x86" AND NOT onnxruntime_BUILD_WEBASSEMBLY)
