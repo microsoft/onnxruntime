@@ -2801,7 +2801,6 @@ Status Graph::Resolve(const ResolveOptions& options) {
 
   ++num_resolves_;
 
-  std::cout << *this << std::endl;
   return Status::OK();
 }
 
