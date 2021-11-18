@@ -2,9 +2,14 @@
 // Licensed under the MIT License.
 
 #include "dump_tensor.h"
+#include "core/platform/env.h"
+#include "core/platform/env_var_utils.h"
 
 namespace onnxruntime {
-#ifdef DEBUG_BEAM_SEARCH
+
+namespace dump_tensor_env_vars {
+constexpr const char* kDumpBeamSearch = "ORT_DUMP_BEAM_SEARCH";
+}
 
 #ifdef NDEBUG
 bool g_enable_tensor_dump = false;
@@ -29,9 +34,34 @@ void DumpOrtValue(const char* name, const OrtValue& value) {
   }
 }
 
-void ConfigureTensorDump(bool enable) {
-  g_enable_tensor_dump = enable;
+void ConfigureTensorDump() {
+  if (ParseEnvironmentVariableWithDefault<bool>(dump_tensor_env_vars::kDumpBeamSearch, false)) {
+    g_enable_tensor_dump = true;
+  }
 }
-#endif
 
+void DisableTensorDump() {
+  g_enable_tensor_dump = false;
+}
+
+void DumpString(const char* name, int index, bool end_line) {
+  if (!g_enable_tensor_dump)
+    return;
+  std::cout << std::string(name) << "[" << index << "]";
+
+  if (end_line) {
+    std::cout << std::endl;
+  }
+}
+
+void DumpString(const char* name, std::string value, bool end_line) {
+  if (!g_enable_tensor_dump)
+    return;
+
+  std::cout << std::string(name) << "=" << value;
+
+  if (end_line) {
+    std::cout << std::endl;
+  }
+}
 }  // namespace onnxruntime

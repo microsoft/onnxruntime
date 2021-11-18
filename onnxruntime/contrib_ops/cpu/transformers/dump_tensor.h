@@ -8,36 +8,28 @@
 
 namespace onnxruntime {
 
-#ifdef NDEBUG
-#define DEBUG_BEAM_SEARCH 1
-#endif
-
-#ifdef DEBUG_BEAM_SEARCH
-
 #define MAX_ROW_OR_COLUMN 8
 
-#define SKIP_IF_MORE_THAN(row_or_column_size, i, max_n, new_line) \
-      if (row_or_column_size > max_n                              \
-          && i >= max_n / 2                                       \
-          && i + max_n / 2 < row_or_column_size){                 \
-        if (i == max_n / 2) {                                     \
-          std::cout << ", ...";                                   \
-          if (new_line)                                           \
-             std::cout << std::endl;                              \
-        }                                                         \
-        continue;                                                 \
-      }
+#define SKIP_IF_MORE_THAN(row_or_column_size, i, max_n, new_line)                           \
+  if (row_or_column_size > max_n && i >= max_n / 2 && i + max_n / 2 < row_or_column_size) { \
+    if (i == max_n / 2) {                                                                   \
+      std::cout << ", ...";                                                                 \
+      if (new_line)                                                                         \
+        std::cout << std::endl;                                                             \
+    }                                                                                       \
+    continue;                                                                               \
+  }
 
 #define SKIP_IF_TOO_MANY(row_or_column_size, i, new_line) SKIP_IF_MORE_THAN(row_or_column_size, i, MAX_ROW_OR_COLUMN, new_line)
 
-extern bool g_enable_tensor_dump; // global variance to turn on/off dump
+extern bool g_enable_tensor_dump;  // global variance to turn on/off dump
 
 template <typename T>
-void PrintValue(const T& value){
+void PrintValue(const T& value) {
   if (std::is_floating_point<T>::value)
-      std::cout << std::setprecision(8) << value;
-    else
-      std::cout << value;
+    std::cout << std::setprecision(8) << value;
+  else
+    std::cout << value;
 }
 
 template <typename T>
@@ -90,7 +82,7 @@ template <typename T>
 void DumpTensor(const char* name, const T* tensor, int dim0, int dim1) {
   if (!g_enable_tensor_dump)
     return;
-  
+
   if (nullptr != name) {
     std::cout << std::string(name) << std::endl;
   }
@@ -109,13 +101,9 @@ void DumpTensor(const char* name, const T* tensor, int dim0, int dim1) {
   }
 }
 
-template <typename T>
-void DumpTensorName(const char* name, T index, bool end_line) {
-  std::cout << std::string(name) << "[" << index << "]";
-  if(end_line){
-    std::cout << std::endl;
-  }
-}
+void DumpString(const char* name, int index, bool end_line);
+
+void DumpString(const char* name, std::string value, bool end_line);
 
 template <typename T>
 void DumpTensor(const char* name, const T* tensor, int dim0, int dim1, int dim2) {
@@ -125,15 +113,15 @@ void DumpTensor(const char* name, const T* tensor, int dim0, int dim1, int dim2)
   if (nullptr != name) {
     std::cout << std::string(name) << std::endl;
   }
-  
+
   for (int i = 0; i < dim0; i++) {
     SKIP_IF_TOO_MANY(dim0, i, true);
     for (int j = 0; j < dim1; j++) {
       SKIP_IF_TOO_MANY(dim1, j, true);
-       std::cout << "[" << i << "][" << j << "]:";
-       for (int k = 0; k < dim2; k++) {
-         SKIP_IF_TOO_MANY(dim2, k, false);
-         if (k > 0)
+      std::cout << "[" << i << "][" << j << "]:";
+      for (int k = 0; k < dim2; k++) {
+        SKIP_IF_TOO_MANY(dim2, k, false);
+        if (k > 0)
           std::cout << ", ";
         T value = tensor[i * dim1 * dim2 + j * dim2 + k];
         PrintValue<T>(value);
@@ -145,7 +133,8 @@ void DumpTensor(const char* name, const T* tensor, int dim0, int dim1, int dim2)
   std::cout << std::endl;
 }
 
-void ConfigureTensorDump(bool enable);
-#endif
+void ConfigureTensorDump();
+
+void DisableTensorDump();
 
 }  // namespace onnxruntime
