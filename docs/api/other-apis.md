@@ -6,23 +6,12 @@ nav_exclude: true
 # Other APIs
 {: .no_toc }
 
-## Contents
-{: .no_toc }
+These are community maintained projects and are not officially supported by the core ONNX Runtime team.
 
-* TOC placeholder
-{:toc}
+## Julia
+
+[https://github.com/jw3126/ONNXRunTime.jl](https://github.com/jw3126/ONNXRunTime.jl){:target="_blank"}
 
 ## Ruby
-This is an community-contributed project and not officially supported by the core ONNX Runtime team.
 
-### Supported Versions
-{: .no_toc }
-2.4 - 2.7
-
-### API Reference
-{: .no_toc }
 [https://github.com/ankane/onnxruntime](https://github.com/ankane/onnxruntime){:target="_blank"}
-
-### Samples
-{: .no_toc }
-[Ruby Samples](https://ankane.org/tensorflow-ruby){:target="_blank"}
