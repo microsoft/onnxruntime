@@ -658,8 +658,8 @@ void RegisterTrainingOpSchemas() {
       .Output(0, "dX", "Gradient of input X", "T")
       .Attr(
           "axis",
-          "Describes the axis of the inputs when coerced "
-          "to 2D; defaults to -1. Negative value means counting dimensions from the back.",
+          "Describes the dimension Softmax will be performed on."
+          "Defaults to -1. Negative value means counting dimensions from the back.",
           AttributeProto::INT,
           static_cast<int64_t>(-1))
       .TypeConstraint(
@@ -695,8 +695,8 @@ void RegisterTrainingOpSchemas() {
       .Output(0, "dX", "Gradient of input X", "T")
       .Attr(
           "axis",
-          "Describes the axis of the inputs when coerced "
-          "to 2D; defaults to -1. Negative value means counting dimensions from the back.",
+          "Describes the dimension LogSoftmax will be performed on."
+          "Defaults to -1. Negative value means counting dimensions from the back.",
           AttributeProto::INT,
           static_cast<int64_t>(-1))
       .TypeConstraint(
