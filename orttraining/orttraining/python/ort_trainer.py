@@ -344,7 +344,8 @@ def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device, inputs, op
     other_export_options['training'] = True
 
     # This option was added after 1.4 release.
-    if LooseVersion(torch.__version__) > LooseVersion('1.4.0'):
+    if (LooseVersion(torch.__version__) > LooseVersion('1.4.0') and
+            LooseVersion(torch.__version__) < LooseVersion('1.10.0')):
         other_export_options['enable_onnx_checker'] = False
     # This option was added after 1.6 release.
     if LooseVersion(torch.__version__) >= LooseVersion('1.6.0'):
