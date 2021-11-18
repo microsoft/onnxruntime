@@ -1715,9 +1715,7 @@ def build_python_wheel(
             args.append("--disable_auditwheel_repair")
 
         # The following arguments are mutually exclusive
-        if use_tensorrt:
-            args.append('--use_tensorrt')
-        elif use_cuda:
+        if use_cuda:
             # The following line assumes no other EP is enabled
             args.append('--wheel_name_suffix=gpu')
             if cuda_version:
