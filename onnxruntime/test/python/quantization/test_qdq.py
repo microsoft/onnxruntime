@@ -78,9 +78,9 @@ class TestQDQExtraOptions(unittest.TestCase):
             QuantType.QInt8, #activation_type
             compute_range,
             [], #nodes_to_quantize
-            [], #nodes_to_exclude
+            ['Add2'], #nodes_to_exclude
             op_types_to_quantize,
-            {'ActivationSymmetric' : True, 'AddQDQPairToWeight' : True, 'AddQDQToAddNodeFollowedByReduceMeanNode': True, 'OpTypesToExcludeOutputQuantizatioin': []}) #extra_options
+            {'ActivationSymmetric' : True, 'AddQDQPairToWeight' : True, 'OpTypesToExcludeOutputQuantizatioin': []}) #extra_options
         quantizer.quantize_model()
         qdq_model_path = './test_qdq_finetune_qdq.onnx'
         quantizer.model.save_model_to_file(qdq_model_path, False)
@@ -170,9 +170,9 @@ class TestQDQExtraOptions(unittest.TestCase):
             QuantType.QInt8, #activation_type
             compute_range,
             [], #nodes_to_quantize
-            [], #nodes_to_exclude
+            ['Add'], #nodes_to_exclude
             op_types_to_quantize,
-            {'ActivationSymmetric' : True, 'AddQDQPairToWeight' : True, 'AddQDQToAddNodeFollowedByReduceMeanNode': True, 'OpTypesToExcludeOutputQuantizatioin': op_types_to_quantize, 'DedicatedQDQPair': True}) #extra_options
+            {'ActivationSymmetric' : True, 'AddQDQPairToWeight' : True, 'OpTypesToExcludeOutputQuantizatioin': op_types_to_quantize, 'DedicatedQDQPair': True}) #extra_options
         quantizer.quantize_model()
         qdq_model_path = './test_qdq_finetune_qdq_2.onnx'
         quantizer.model.save_model_to_file(qdq_model_path, False)
