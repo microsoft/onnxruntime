@@ -4,7 +4,6 @@
 
 import argparse
 import contextlib
-import glob
 import os
 import re
 import shlex
@@ -319,9 +318,6 @@ def parse_arguments():
     parser.add_argument(
         "--ios_sysroot", default="",
         help="Specify the location name of the macOS platform SDK to be used")
-    parser.add_argument(
-        "--ios_toolchain_dir", default="",
-        help="Path to ios toolchain binaries")
     parser.add_argument(
         "--ios_toolchain_file", default="",
         help="Path to ios toolchain file, "
@@ -972,77 +968,36 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         cmake_args += ["-Donnxruntime_USE_COREML=ON"]
 
     if args.ios:
-        if is_macOS():
-            needed_args = [
-                args.use_xcode,
-                args.ios_sysroot,
-                args.apple_deploy_target,
-            ]
-            arg_names = [
-                "--use_xcode            " +
-                "<need use xcode to cross build iOS on MacOS>",
-                "--ios_sysroot          " +
-                "<the location or name of the macOS platform SDK>",
-                "--apple_deploy_target  " +
-                "<the minimum version of the target platform>",
-            ]
-            if not all(needed_args):
-                raise BuildError(
-                    "iOS build on MacOS canceled due to missing arguments: " +
-                    ', '.join(
-                        val for val, cond in zip(arg_names, needed_args)
-                        if not cond))
-            cmake_args += [
-                "-DCMAKE_SYSTEM_NAME=iOS",
-                "-Donnxruntime_BUILD_SHARED_LIB=ON",
-                "-DCMAKE_OSX_SYSROOT=" + args.ios_sysroot,
-                "-DCMAKE_OSX_DEPLOYMENT_TARGET=" + args.apple_deploy_target,
-                # we do not need protoc binary for ios cross build
-                "-Dprotobuf_BUILD_PROTOC_BINARIES=OFF",
-                "-DCMAKE_TOOLCHAIN_FILE=" + (
-                    args.ios_toolchain_file if args.ios_toolchain_file
-                    else "../cmake/onnxruntime_ios.toolchain.cmake")
-            ]
-        else:
-            # TODO: the cross compiling on Linux is not officially supported by Apple
-            #   and is already broken with the latest codebase, so it should be removed.
-            # We are cross compiling on Linux
-            needed_args = [
-                args.ios_sysroot,
-                args.arm64 or args.arm,
-                args.ios_toolchain_dir
-            ]
-            arg_names = [
-                "--ios_sysroot <path to sysroot>",
-                "--arm or --arm64",
-                "--ios_toolchain_dir <path to toolchain>"
-            ]
-            if not all(needed_args):
-                raise BuildError(
-                    "iOS build canceled due to missing arguments: " +
-                    ', '.join(
-                        val for val, cond in zip(arg_names, needed_args)
-                        if not cond))
-            compilers = sorted(
-                glob.glob(args.ios_toolchain_dir + "/bin/*-clang*"))
-            os.environ["PATH"] = os.path.join(
-                args.ios_toolchain_dir, "bin") + os.pathsep + os.environ.get(
-                    "PATH", "")
-            os.environ["LD_LIBRARY_PATH"] = os.path.join(
-                args.ios_toolchain_dir, "/lib") + os.pathsep + os.environ.get(
-                    "LD_LIBRARY_PATH", "")
-            if len(compilers) != 2:
-                raise BuildError(
-                    "error identifying compilers in ios_toolchain_dir")
-            cmake_args += [
-                "-DCMAKE_OSX_ARCHITECTURES=" +
-                ("arm64" if args.arm64 else "arm"),
-                "-DCMAKE_SYSTEM_NAME=iOSCross",
-                "-Donnxruntime_BUILD_UNIT_TESTS=OFF",
-                "-DCMAKE_OSX_SYSROOT=" + args.ios_sysroot,
-                "-DCMAKE_C_COMPILER=" + compilers[0],
-                "-DCMAKE_CXX_COMPILER=" + compilers[1]
-            ]
+        needed_args = [
+            args.use_xcode,
+            args.ios_sysroot,
+            args.apple_deploy_target,
+        ]
+        arg_names = [
+            "--use_xcode            " +
+            "<need use xcode to cross build iOS on MacOS>",
+            "--ios_sysroot          " +
+            "<the location or name of the macOS platform SDK>",
+            "--apple_deploy_target  " +
+            "<the minimum version of the target platform>",
+        ]
+        if not all(needed_args):
+            raise BuildError(
+                "iOS build on MacOS canceled due to missing arguments: " +
+                ', '.join(
+                    val for val, cond in zip(arg_names, needed_args)
+                    if not cond))
+        cmake_args += [
+            "-DCMAKE_SYSTEM_NAME=iOS",
+            "-Donnxruntime_BUILD_SHARED_LIB=ON",
+            "-DCMAKE_OSX_SYSROOT=" + args.ios_sysroot,
+            "-DCMAKE_OSX_DEPLOYMENT_TARGET=" + args.apple_deploy_target,
+            # we do not need protoc binary for ios cross build
+            "-Dprotobuf_BUILD_PROTOC_BINARIES=OFF",
+            "-DCMAKE_TOOLCHAIN_FILE=" + (
+                args.ios_toolchain_file if args.ios_toolchain_file
+                else "../cmake/onnxruntime_ios.toolchain.cmake")
+        ]
 
     if args.build_wasm:
         emsdk_dir = os.path.join(cmake_dir, "external", "emsdk")
@@ -1760,9 +1715,7 @@ def build_python_wheel(
             args.append("--disable_auditwheel_repair")
 
         # The following arguments are mutually exclusive
-        if use_tensorrt:
-            args.append('--use_tensorrt')
-        elif use_cuda:
+        if use_cuda:
             # The following line assumes no other EP is enabled
             args.append('--wheel_name_suffix=gpu')
             if cuda_version:
