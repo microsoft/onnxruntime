@@ -472,6 +472,7 @@ TEST(If, TestIfWithSequencesAsOutput) {
   test.Run();
 }
 
+#if !defined(DISABLE_OPTIONAL_TYPE)
 // This is to test an "If" node with just an "Identity" node in the "then" and "else" conditional branches
 class IfOpTesterWithOptionalTypeAsOutput : public OpTester {
  public:
@@ -587,6 +588,8 @@ TEST(If, TestIfWithOptionalTypeTensorAsOutput) {
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: opset 16 is not supported yet
   }
 }
+
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime
