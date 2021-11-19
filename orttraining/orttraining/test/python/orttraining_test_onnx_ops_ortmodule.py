@@ -49,7 +49,7 @@ class TestOnnxOpsOrtModule(unittest.TestCase):
                 pt_param.grad = None
 
     def gradient_correctness(self, name, device, debug=False):
-        pt_model_cls, op_grad_type, kwargs = self.get_torch_model_name(name)
+        pt_model_cls, op_grad_type, kwargs = self.get_torch_model_name(name, device)
         if kwargs is None:
             kwargs = {}
         N = 32
@@ -89,7 +89,7 @@ class TestOnnxOpsOrtModule(unittest.TestCase):
                 if oimp.domain == '':
                     self.assertEqual(oimp.version, 14)
 
-    def get_torch_model_name(self, name):
+    def get_torch_model_name(self, name, device):
 
         def from_numpy(v, device=None, requires_grad=False):
             v = torch.from_numpy(v)
@@ -127,7 +127,7 @@ class TestOnnxOpsOrtModule(unittest.TestCase):
                         (input_size, hidden_size), dtype=np.int64)
                     for i in range(idx.shape[0]):
                         idx[i, :] = rev_idx
-                    self.indices = from_numpy(idx)
+                    self.indices = from_numpy(idx, device=device)
                     self.fc2 = torch.nn.Linear(hidden_size, num_classes)
 
                 def forward(self, input1):
