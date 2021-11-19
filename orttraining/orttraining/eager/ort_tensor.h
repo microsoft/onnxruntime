@@ -5,6 +5,7 @@
 
 #include <c10/core/TensorImpl.h>
 #include <core/framework/ort_value.h>
+#include <iostream>
 
 namespace torch_ort {
 namespace eager {
@@ -17,6 +18,10 @@ class ORTTensorImpl final : public c10::TensorImpl {
         options.dtype(),
         options.device()) {
     set_tensor(tensor);
+  }
+
+  virtual ~ORTTensorImpl(){
+    std::cout << "Deconstruct tensor" << std::endl;
   }
 
   OrtValue& tensor() {

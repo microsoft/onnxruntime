@@ -253,15 +253,17 @@ class ORTGen:
     # e.g. aten::add(x, y, α) -> onnx::Add(x, onnx::Mul(α, y))
     for onnx_op_index, onnx_op in enumerate(ctx.ops):
       # Torch -> ORT inputs
+      #import pdb
+      #pdb.set_trace()
       for op_input in onnx_op.inputs:
         if isinstance(op_input, Outputs):
           continue
         # See if this input is aliased as an in-place tensor
         cpp_param = cpp_func.get_parameter(op_input)
-        if return_alias_info and cpp_param and \
-          len(cpp_param.torch_param) == 1 and \
-          self._get_alias_info(cpp_param.torch_param[0]) == return_alias_info:
-          in_place_param = cpp_param
+        if return_alias_info and cpp_param:
+          for torch_p in cpp_param.torch_param:
+            if self._get_alias_info(torch_p) == return_alias_info:
+              in_place_param = cpp_param
 
         writer.write(f'auto ort_input_{op_input} = ')
         writer.writeline(f'create_ort_value(invoker, {op_input});')

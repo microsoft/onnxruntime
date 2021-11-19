@@ -3,6 +3,8 @@
 
 #include "ort_aten.h"
 #include "ort_tensor.h"
+#include <c10/core/TensorImpl.h>
+#include <ATen/native/CPUFallback.h>
 
 namespace torch_ort {
 namespace eager {
@@ -186,7 +188,7 @@ at::Tensor empty__memory_format(
     ort_scalar_type_from_aten(*dtype_opt),
     size.vec(),
     &ot);
-
+  
   return aten_tensor_from_ort(
     std::move(ot),
     at::TensorOptions()
@@ -300,6 +302,104 @@ at::Tensor& zero_(at::Tensor& self){
 
   copy(invoker, ort_out[0], ort_in_self);
   return self;
+}
+
+at::Tensor& ne__Scalar_out(
+  const at::Tensor& self, 
+  const at::Scalar& other, 
+  // *, 
+  at::Tensor& out){
+  ORT_LOG_FN(self, other);
+  
+  auto& invoker = GetORTInvoker(self.device());
+  
+  auto ort_input_self = create_ort_value(invoker, self);
+  auto ort_input_other = create_ort_value(invoker, other);
+  
+  std::vector<OrtValue> ort_outputs_0_Equal(1);
+  
+  auto status = invoker.Invoke("Equal", {
+    std::move(ort_input_self),
+    std::move(ort_input_other),
+  }, ort_outputs_0_Equal, nullptr);
+  
+  if (!status.IsOK())
+    throw std::runtime_error(
+      "ORT return failure status:" + status.ErrorMessage());
+  
+  
+  std::vector<OrtValue> ort_outputs_1_Not(1);
+  auto ort_output = create_ort_value(invoker, out);
+  ort_outputs_1_Not[0] = ort_output;
+  
+  status = invoker.Invoke("Not", {
+    std::move(ort_outputs_0_Equal[0]),
+  }, ort_outputs_1_Not, nullptr);
+  
+  if (!status.IsOK())
+    throw std::runtime_error(
+      "ORT return failure status:" + status.ErrorMessage());
+  
+  return out;
+}
+
+
+at::Tensor& ne__Tensor_out(
+  const at::Tensor& self, 
+  const at::Tensor& other, 
+  // *, 
+  at::Tensor& out){
+  ORT_LOG_FN(self, other);
+  
+  auto& invoker = GetORTInvoker(self.device());
+  
+  auto ort_input_self = create_ort_value(invoker, self);
+  auto ort_input_other = create_ort_value(invoker, other);
+  
+  std::vector<OrtValue> ort_outputs_0_Equal(1);
+  
+  auto status = invoker.Invoke("Equal", {
+    std::move(ort_input_self),
+    std::move(ort_input_other),
+  }, ort_outputs_0_Equal, nullptr);
+  
+  if (!status.IsOK())
+    throw std::runtime_error(
+      "ORT return failure status:" + status.ErrorMessage());
+  
+  
+  std::vector<OrtValue> ort_outputs_1_Not(1);
+  auto ort_output = create_ort_value(invoker, out);
+  ort_outputs_1_Not[0] = ort_output;
+  
+  status = invoker.Invoke("Not", {
+    std::move(ort_outputs_0_Equal[0]),
+  }, ort_outputs_1_Not, nullptr);
+  
+  if (!status.IsOK())
+    throw std::runtime_error(
+      "ORT return failure status:" + status.ErrorMessage());
+  
+  return out;
+}
+
+at::Tensor eq__Tensor(
+  const at::Tensor& self, 
+  const at::Tensor& other){
+  std::cout << "Fallback" << std::endl;
+  return at::native::call_fallback_fn<
+        &at::native::cpu_fallback,
+        ATEN_OP(eq_Tensor)>::call(self, other);
+}
+
+at::Tensor& eq__Tensor_out(
+  const at::Tensor& self, 
+  const at::Tensor& other, 
+  // *, 
+  at::Tensor& out){
+  return at::native::call_fallback_fn<
+        &at::native::cpu_fallback,
+        ATEN_OP(eq_Tensor_out)>::call(self, other, out);
 }
 
 } // namespace aten

@@ -48,7 +48,13 @@ ops = {
   'aten::softshrink': Shrink('self', bias='lambd', lambd='lambd'), #yes, bias is set to 'lambd'
   'aten::hardshrink': Shrink('self', bias=0, lambd='lambd'),
   'aten::gelu' : Gelu('self'),
-  'aten::gelu_backward' : GeluGrad('grad', 'self')
+  'aten::gelu_backward' : GeluGrad('grad', 'self'),
+
+  'aten::ne.Scalar':Not(Equal('self', 'other')),
+  'aten::ne.Scalar_out': SignatureOnly(),
+  'aten::ne.Tensor_out': SignatureOnly(),
+  'aten::eq.Tensor': SignatureOnly(),
+  'aten::eq.Tensor_out':SignatureOnly(),
 }
 
 for binary_op, onnx_op in {
