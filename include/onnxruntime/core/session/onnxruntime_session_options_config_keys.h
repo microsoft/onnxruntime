@@ -96,3 +96,5 @@ static const char* const kOrtSessionOptionsConfigSaveRuntimeOptimizations = "opt
 // If not specified, the default set of stop ops is used. To specify an empty stop ops types list and disable stop op
 // exclusion, set the value to "".
 static const char* const kOrtSessionOptionsConfigNnapiEpPartitioningStopOps = "ep.nnapi.partitioning_stop_ops";
+
+static const char* const kOrtSessionOptionsConfigDynamicBlockBase = "session.dynamic_block_base";
