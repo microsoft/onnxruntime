@@ -401,45 +401,46 @@ void ThreadPool::ParallelForFixedBlockSizeScheduling(const std::ptrdiff_t total,
     fn(0, total);
     return;
   }
-  /*
-  // Split the work across threads in the pool.  Each work item will run a loop claiming iterations,
-  // hence we need at most one for each thread, even if the numberof blocks of iterations is larger.
-  auto d_of_p = DegreeOfParallelism(this);
-  auto num_blocks = total / block_size;
-  auto num_threads_inc_main = NumThreads() + 1;
-  int num_work_items = static_cast<int>(std::min(static_cast<std::ptrdiff_t>(num_threads_inc_main), num_blocks));
-  assert(num_work_items > 0);
 
-  LoopCounter lc(total, d_of_p, block_size);
-  std::function<void(unsigned)> run_work = [&](unsigned idx) {
-    unsigned my_home_shard = lc.GetHomeShard(idx);
-    unsigned my_shard = my_home_shard;
-    uint64_t my_iter_start, my_iter_end;
-    while (lc.ClaimIterations(my_home_shard, my_shard, my_iter_start, my_iter_end)) {
-      fn(static_cast<std::ptrdiff_t>(my_iter_start),
-         static_cast<std::ptrdiff_t>(my_iter_end));
-    }
-  };
-  // Run the work in the thread pool (and in the current thread).  Synchronization with helping
-  // threads is handled within RunInParallel, hence we can deallocate lc and other state captured by
-  // run_work.
-  RunInParallel(run_work, num_work_items, block_size);
-  */
-  auto d_o_p = DegreeOfParallelism(this);
-  int granularity = d_o_p * 8;
-  std::ptrdiff_t B{1};
-  while (B * granularity < total) B <<= 1;
-  std::atomic<ptrdiff_t> iter{0};
-  std::function<void(unsigned)> run_work = [&](unsigned) {
-    std::ptrdiff_t start{0};
-    std::ptrdiff_t b = B;
-    while ((start = iter.fetch_add(b, std::memory_order_relaxed)) < total) {
-      fn(start, std::min(start + b, total));
-      auto residual = total - start;
-      while (b > 1 && (b * granularity > residual)) b >>= 1;
-    }
-  };
-  RunInParallel(run_work, d_o_p, block_size);
+  auto d_of_p = DegreeOfParallelism(this);
+  if (thread_options_.dynamic_block_base_ <= 0) {
+    // Split the work across threads in the pool.  Each work item will run a loop claiming iterations,
+    // hence we need at most one for each thread, even if the numberof blocks of iterations is larger.
+    auto num_blocks = total / block_size;
+    auto num_threads_inc_main = NumThreads() + 1;
+    int num_work_items = static_cast<int>(std::min(static_cast<std::ptrdiff_t>(num_threads_inc_main), num_blocks));
+    assert(num_work_items > 0);
+
+    LoopCounter lc(total, d_of_p, block_size);
+    std::function<void(unsigned)> run_work = [&](unsigned idx) {
+      unsigned my_home_shard = lc.GetHomeShard(idx);
+      unsigned my_shard = my_home_shard;
+      uint64_t my_iter_start, my_iter_end;
+      while (lc.ClaimIterations(my_home_shard, my_shard, my_iter_start, my_iter_end)) {
+        fn(static_cast<std::ptrdiff_t>(my_iter_start),
+           static_cast<std::ptrdiff_t>(my_iter_end));
+      }
+    };
+    // Run the work in the thread pool (and in the current thread).  Synchronization with helping
+    // threads is handled within RunInParallel, hence we can deallocate lc and other state captured by
+    // run_work.
+    RunInParallel(run_work, num_work_items, block_size);
+  } else {
+    int granularity = d_of_p * thread_options_.dynamic_block_base_;
+    std::ptrdiff_t B{1};
+    while (B * granularity < total) B <<= 1;
+    std::atomic<ptrdiff_t> iter{0};
+    std::function<void(unsigned)> run_work = [&](unsigned) {
+      std::ptrdiff_t start{0};
+      std::ptrdiff_t b = B;
+      while ((start = iter.fetch_add(b, std::memory_order_relaxed)) < total) {
+        fn(start, std::min(start + b, total));
+        auto residual = total - start;
+        while (b > 1 && (b * granularity > residual)) b >>= 1;
+      }
+    };
+    RunInParallel(run_work, d_of_p, block_size);
+  }
 }
 
 void ThreadPool::SimpleParallelFor(std::ptrdiff_t total, const std::function<void(std::ptrdiff_t)>& fn) {
