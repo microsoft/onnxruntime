@@ -9,7 +9,7 @@ nav_order: 7
 # Deploy and inference ML models on the web
 {: .no_toc }
 
-In this tutorial we will use a template QuickStart to start building out a static web app using ONNX Runtime web. We will do the inference in JavaScript on the browser for a computer vision model.
+In this tutorial we will use a GitHub repository template to build an image classification web app using ONNX Runtime web. We will do the inference in JavaScript on the browser for a computer vision model.
 
 One of the hardest parts when deploying and inferencing in languages that are not commonly used for data science is figuring out how to do the data processing and inferencing. We have done all the hard work for you with [this template](https://github.com/microsoft/onnxruntime-nextjs-template)! 
 
