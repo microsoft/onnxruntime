@@ -55,6 +55,8 @@
 #include "orttraining/core/optimizer/localized_recompute.h"
 #include "orttraining/core/optimizer/loss_rewriter.h"
 #include "orttraining/core/optimizer/transformer_layer_recompute.h"
+#include "core/optimizer/scegrad_add_fusion.h"
+
 
 namespace onnxruntime {
 namespace training {
@@ -203,6 +205,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       transformers.emplace_back(std::make_unique<BiasSoftmaxFusion>(l1_execution_providers));
       InlinedHashSet<std::string> excluded_initializers(weights_to_train.begin(), weights_to_train.end());
       transformers.emplace_back(std::make_unique<MatMulScaleFusion>(l1_execution_providers, excluded_initializers));
+      transformers.emplace_back(std::make_unique<SCEGradWithAdd>(cuda_rocm_execution_providers));
 
       rule_transformer = optimizer_utils::GenerateRuleBasedGraphTransformer(level, rules_and_transformers_to_disable,
                                                                             l1_execution_providers);
