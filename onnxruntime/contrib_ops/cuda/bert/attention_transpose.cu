@@ -182,7 +182,7 @@ __global__ void TransposeQKV(const int H, const bool reversed_bs, const T* input
     const int BNH = NH * batch_size;
     in_offset = n * H + (m + b * chunk_num) * NH + s * BNH * chunk_num;
   } else {
-    in_offset = n * H +  (m + s * chunk_num) * NH + b * NHS * chunk_num;
+    in_offset = n * H + (m + s * chunk_num) * NH + b * NHS * chunk_num;
   }
   const int out_offset = s * H + n * sequence_length * H + b * NHS + m * NHS * batch_size;
 

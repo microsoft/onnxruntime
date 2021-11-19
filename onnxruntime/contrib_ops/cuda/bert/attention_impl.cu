@@ -78,7 +78,7 @@ bool QkvToContext(
   T* scratch2 = scratch1 + (bytes / element_size);
   T* scratch3 = scratch2 + (bytes / element_size);
 
-  const int max_threads_per_block(prop.maxThreadsPerBlock);
+  const int max_threads_per_block = prop.maxThreadsPerBlock;
 
   // input should be BxSx3xNxH => scratch3: 3xBxNxSxH
   if (!LaunchTransQkv(stream, 3, sequence_length, batch_size, head_size, num_heads, max_threads_per_block, false, input, scratch3)) {
@@ -232,7 +232,7 @@ bool DecoderQkvToContext(
   T* new_key_cache,
   T* new_value_cache)
 {
-  const int max_threads_per_block(prop.maxThreadsPerBlock);
+  const int max_threads_per_block = prop.maxThreadsPerBlock;
   const int BN = batch_size * num_heads;
   const int BHN = BN * head_size;
   const int BNS = BN * sequence_length;
