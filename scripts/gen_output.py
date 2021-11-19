@@ -17,9 +17,9 @@
 
 #It only works with TF1.x, because the export_inference_graph.py script depends on tensorflow.contrib.
 #deps: 
-#1. /data/testdata/tf_checkpoints
-#2. /data/tmp
-#3. /data/os/tf_models(https://github.com/tensorflow/models#v1.13.0)
+#1. /mnt/testdata/tf_checkpoints
+#2. /mnt/tmp
+
 
 
 from __future__ import absolute_import
@@ -77,7 +77,7 @@ def read_tensor_from_image_file(preprocessing_fn, file_name,
     return sess.run(normalized)
 
 
-tf_checkpoint_dir = '/data/testdata/tf_checkpoints'
+tf_checkpoint_dir = '/mnt/testdata/tf_checkpoints'
 
 if __name__ == "__main__":
   input_height = 299
@@ -100,28 +100,24 @@ if __name__ == "__main__":
     input_width = args.input_width
 
 
-  TENSORFLOW_ROOT='/home/chasun/os/tensorflow'
-
   input_name=args.input_layer
   output_name=args.output_layer
   model_name=args.model_name
   model_file = os.path.join(tf_checkpoint_dir, model_name+"_frozen.pb")
   if os.path.exists(model_file):
      print("skip freeze step")
-     shutil.copyfile(model_file, '/data/tmp/frozen_graph.pb')
   else:
     graph_only_model_file = os.path.join(tf_checkpoint_dir, model_name+".pbtxt")
     has_text_model_file=False
     if os.path.exists(graph_only_model_file):
        has_text_model_file=True
     else:
-      graph_only_model_file='/data/tmp/graph_only.pb.pb'
-      export_args = [sys.executable, '/data/os/tf_models/research/slim/export_inference_graph.py', '--image_size=%s' % input_height,'--alsologtostderr', '--model_name='+model_name,
+      graph_only_model_file='/mnt/tmp/graph_only.pb.pb'
+      export_args = [sys.executable, 'export_inference_graph.py', '--image_size=%s' % input_height,'--alsologtostderr', '--model_name='+model_name,
                  '--output_file='+graph_only_model_file]
       if model_name.startswith('resnet_v1') or model_name.startswith('vgg'):
         export_args.append('--labels_offset=1')
       subprocess.run(export_args, check=True)
-    model_file = '/data/tmp/frozen_graph.pb'
     freeze_args = [sys.executable,'-m','tensorflow.python.tools.freeze_graph', '--input_graph='+graph_only_model_file,
                   '--input_checkpoint=%s.ckpt' % os.path.join(tf_checkpoint_dir, model_name),    
                   '--output_graph=' + model_file,
@@ -138,13 +134,20 @@ if __name__ == "__main__":
       shutil.rmtree(output_dir)
 
     os.makedirs(output_dir)
-    shutil.copyfile('/data/tmp/frozen_graph.pb',os.path.join(output_dir,'model.tf.pb'))
+    shutil.copyfile(model_file, os.path.join(output_dir,'model.tf.pb'))
+    tflite_converter = tf.lite.TFLiteConverter.from_frozen_graph(model_file,
+                                                                 input_arrays=[input_name],
+                                                                 output_arrays=[output_name])
+    tflite_model = tflite_converter.convert()    
+    with open(os.path.join(output_dir,'model.tflite'), 'wb') as f:
+      f.write(tflite_model)
+    
     with open(os.path.join(output_dir,'model.tf.pb.meta'), "w") as text_file:
       text_file.write("input=%s:0\n" % input_name)
       text_file.write("output=%s:0\n" % output_name)
 
     model_without_raw_data = os.path.join(output_dir,'model.onnx')
-    tf2onnx_cmd = [sys.executable, '-m', 'tf2onnx.convert', '--input', model_file, '--inputs', input_name + ':0',
+    tf2onnx_cmd = [sys.executable, '-m', 'tf2onnx.convert', '--inputs-as-nchw', input_name + ':0', '--input', model_file, '--inputs', input_name + ':0',
                     '--outputs', output_name+':0',  '--opset=%d' % opset, '--verbose', '--output', model_without_raw_data]
     print("running: %s"  % tf2onnx_cmd)
     subprocess.run(tf2onnx_cmd, check=True)
@@ -157,7 +160,7 @@ if __name__ == "__main__":
 
     print('load graph into tensorflow')
     graph = load_tensorflow_graph(model_file)
-    image_folder = '/onnxruntime_src/imagenet'
+    image_folder = '/mnt/imagenet'
     input_operation = graph.get_operation_by_name("import/" + input_name)
     output_operation = graph.get_operation_by_name("import/" + output_name)
     config = tf.ConfigProto()
@@ -188,6 +191,7 @@ if __name__ == "__main__":
         results = sess.run(output_operation.outputs[0], {
             input_operation.outputs[0]: t
         })
+        t = np.transpose(t, (0,3,1,2))
         test_data_set_dir = os.path.join(output_dir,'test_data_set_%s' % data_set_id)
         os.makedirs(test_data_set_dir)
         im = numpy_helper.from_array(t)
