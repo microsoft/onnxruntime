@@ -137,6 +137,40 @@ __global__ void _WeightedSoftmaxCrossEntropyLossGrad(
   }
 }
 
+
+template <typename T, typename TAcc, typename Tin>
+__global__ void _WeightedSoftmaxCrossEntropyLossGradWithAdd(
+    const T* dY,
+    const T* log_prob,
+    const Tin* label,
+    const T* weight,
+    const TAcc* normalize_factor,
+    const T* added_data,
+    T* output_data,
+    CUDA_LONG N_D,
+    CUDA_LONG C) {
+  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(i, N_D * C);
+
+  int row = i / C;
+  int d = i % C;
+  const T ZERO_T = 0;
+  const TAcc ZERO_TAcc = 0;
+  const TAcc ONE_TAcc = 1;
+  CUDA_KERNEL_ASSERT(weight[row] == ZERO_T || (label[row] >= 0 && label[row] < C));
+  T tmp;
+  if (ZERO_TAcc == *normalize_factor) {
+    // normalize_factor is sum of labels' weights. Because zero
+    // sum implies all weights are 0, the loss function should
+    // be constant 0 and its corresponding gradient should be 0 as well.
+    tmp = ZERO_T;
+  } else {
+    tmp = static_cast<T>(static_cast<TAcc>((*dY) * weight[row]) *
+                                    (_Exp(static_cast<TAcc>(log_prob[i])) - ONE_TAcc * (TAcc)(d == label[row])) /
+                                    (*normalize_factor));
+  }
+  output_data[i] = tmp + added_data[i];
+}
+
 template <typename T, typename TAcc, typename Tin>
 __global__ void _WeightedReductionNoneSoftmaxCrossEntropyLossGrad(
     const T* dY,
@@ -175,6 +209,7 @@ void SoftmaxCrossEntropyLossGradImpl(
     const Tin* label,
     const T* weight,
     const TAcc* normalize_factor,
+    const T* added_data,
     size_t count,
     size_t label_depth,
     bool reduction_none,
@@ -182,6 +217,25 @@ void SoftmaxCrossEntropyLossGradImpl(
   CUDA_LONG N_D = static_cast<CUDA_LONG>(count);
   CUDA_LONG C = static_cast<CUDA_LONG>(label_depth);
   int blocksPerGrid = (int)(ceil(static_cast<float>(N_D * C) / GridDim::maxThreadsPerBlock));
+  if (added_data != nullptr) {
+    if (reduction_none){
+      ORT_NOT_IMPLEMENTED("not implment for now");
+    }
+    else{
+      _WeightedSoftmaxCrossEntropyLossGradWithAdd<T, TAcc, Tin><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
+        dY,
+        log_prob,
+        label,
+        weight,
+        normalize_factor,
+        added_data,
+        output_data,
+        N_D,
+        C);
+    }
+    return;
+  }
+
   if (reduction_none) {
     _WeightedReductionNoneSoftmaxCrossEntropyLossGrad<T, TAcc, Tin><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
         dY,
@@ -213,6 +267,7 @@ void SoftmaxCrossEntropyLossGradImpl(
       const Tin* label,                                           \
       const T* weight,                                            \
       const TAcc* normalize_factor,                               \
+      const T* added_data,                                        \
       size_t count,                                               \
       size_t label_depth,                                         \
       bool reducation_none,                                       \
