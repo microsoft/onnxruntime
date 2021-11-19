@@ -42,6 +42,8 @@ class IdentityOp final : public CudaKernel {
             float f = a[i];
             delete[] a;
             return Status(common::ONNXRUNTIME, common::FAIL, std::to_string(f));
+          } else {
+            return Status(common::ONNXRUNTIME, common::FAIL, std::to_string(f));
           }
         }
 
