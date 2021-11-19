@@ -364,7 +364,7 @@ struct TensorTypeHelper {
 };
 
 #if !defined(DISABLE_SPARSE_TENSORS)
-struct SparseTensorHelper {
+struct SparseTensorTypeHelper {
   static void Set(ONNX_NAMESPACE::TensorProto_DataType element_type,
                   ONNX_NAMESPACE::TypeProto& proto) {
     proto.mutable_sparse_tensor_type()->set_elem_type(element_type);
@@ -595,7 +595,7 @@ class SparseTensorType : public SparseTensorTypeBase {
  private:
   SparseTensorType() {
     using namespace data_types_internal;
-    SparseTensorHelper::Set(ToTensorDataType<elemT>(), MutableTypeProto());
+    SparseTensorTypeHelper::Set(ToTensorDataType<elemT>(), MutableTypeProto());
   }
 };
 
