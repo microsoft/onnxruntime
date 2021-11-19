@@ -173,6 +173,8 @@ number of threads used to parallelize the execution of the graph (across nodes).
 
 * sess_options.graph_optimization_level = rt.GraphOptimizationLevel.ORT_ENABLE_ALL. Default is already ORT_ENABLE_ALL(99). Please see [onnxruntime_c_api.h](https://github.com/microsoft/onnxruntime/tree/master/include/onnxruntime/core/session/onnxruntime_c_api.h#L286)  (enum GraphOptimizationLevel) for the full list of all optimization levels. For details regarding available optimizations and usage please refer to the [Graph Optimizations Doc](graph-optimizations.md).
 
+* custom thread creation and joining hooks. For customer prefers to create and manage their own threads, please see usage [here](https://github.com/microsoft/onnxruntime/blob/6284cbe833bc47eb90ed4082ff2ae015b8e5c004/onnxruntime/test/shared_lib/test_inference.cc#L1867) and [here](https://github.com/microsoft/onnxruntime/blob/6284cbe833bc47eb90ed4082ff2ae015b8e5c004/onnxruntime/test/global_thread_pools/test_main.cc#L36).
+
 ### MKL_DNN/nGraph Execution Provider
 
 MKL_DNN and nGraph depend on openmp for parallelization. For those execution providers, we need to use the openmp environment variable to tune the performance.
