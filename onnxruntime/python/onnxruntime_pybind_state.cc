@@ -497,9 +497,13 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
               ORT_THROW("Invalid TensorRT EP option: ", option.first);
             }
           }
-          return onnxruntime::CreateExecutionProviderFactory_Tensorrt(&params)->CreateProvider();
+          if (auto* tensorrt_provider_factory = onnxruntime::CreateExecutionProviderFactory_Tensorrt(&params)) {
+            return tensorrt_provider_factor->CreateProvider();
+          }
         } else {
-          return onnxruntime::CreateExecutionProviderFactory_Tensorrt(cuda_device_id)->CreateProvider();
+          if (auto* tensorrt_provider_factory = onnxruntime::CreateExecutionProviderFactory_Tensorrt(cuda_device_id)) {
+            return tensorrt_provider_factor->CreateProvider();
+          }
         }
     } else {
       if (!Env::Default().GetEnvironmentVar("CUDA_PATH").empty()) {
