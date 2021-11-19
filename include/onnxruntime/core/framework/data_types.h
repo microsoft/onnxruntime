@@ -795,7 +795,7 @@ class MapType : public NonTensorType<CPPType> {
     using namespace data_types_internal;
     MapTypeHelper::Set(ToTensorDataType<typename CPPType::key_type>(),
                        MapTypeHelper::GetValueType<typename CPPType::mapped_type>()->GetTypeProto(),
-                       MutableTypeProto());
+                       this->MutableTypeProto());
   }
 };
 #endif
@@ -822,7 +822,7 @@ class SequenceType : public NonTensorType<CPPType> {
   SequenceType() {
     using namespace data_types_internal;
     SequenceTypeHelper::Set(SequenceTypeHelper::GetElemType<typename CPPType::value_type>()->GetTypeProto(),
-                            MutableTypeProto());
+                            this->MutableTypeProto());
   }
 };
 
@@ -923,7 +923,7 @@ class OpaqueType : public NonTensorType<T> {
 
  private:
   OpaqueType() {
-    data_types_internal::AssignOpaqueDomainName(D, N, MutableTypeProto());
+    data_types_internal::AssignOpaqueDomainName(D, N, this->MutableTypeProto());
   }
 };
 
