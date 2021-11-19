@@ -4,14 +4,13 @@
 #pragma once
 
 #include "opencl_utils.h"
+#include "opencl_forward_decl.h"
 
 #include "core/framework/allocatormgr.h"
 #include "core/framework/execution_provider.h"
 #include "core/providers/providers.h"
 #include "core/graph/constants.h"
 
-#include "opencl_forward_decl.h"
-#include "opencl_data_transfer.h"
 
 namespace onnxruntime {
 
@@ -52,13 +51,8 @@ class OpenCLExecutionProvider : public IExecutionProvider {
   // IDataTransfer is a lightweight interface with std::unique_ptr as its
   // return value. Bind kernels to it directly will cause the kernel being
   // created from time to time. So we move the kernels here.
-  void InitKernelsForDataTransfer();
-  const cl::Kernel& GetCopyBuffer1DToImage2DKernel() const;
-  const cl::Kernel& GetCopyImage2DToBuffer1DKernel() const;
-
-  cl::Program program_copy_1d_;
-  cl::Kernel kernel_copy_btoi_;
-  cl::Kernel kernel_copy_itob_;
+  std::unique_ptr<opencl::OpenCLKernelHolder> copy_kernels_;
+  void InitCopyKernels();
 };
 
 }  // namespace onnxruntime

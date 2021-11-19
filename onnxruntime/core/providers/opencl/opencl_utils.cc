@@ -144,15 +144,14 @@ cl::Program LoadProgram(const cl::Context& ctx, const cl::Device& dev, const cha
   cl_int err{};
   cl::Program program(ctx, {src, src_len}, /*build=*/true, &err);
   if (err != CL_SUCCESS) {
-    std::ostringstream oss;
-    oss << "OpenCL Error Code  : " << static_cast<int>(err)
-        << "\n       Error String: " << onnxruntime::opencl::GetErrorString(err)
-        << "\nKernel Source:\n"
-        << src << "\n";
     auto log = program.getBuildInfo<CL_PROGRAM_BUILD_LOG>(dev);
-    oss << "Build Log:\n"
-        << log;
-    ORT_THROW(oss.str());
+    LOGS_DEFAULT(ERROR) << "\nKernel Source:>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\n"
+                        << std::string(src, src_len)
+                        << "^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n"
+                        << "\nBuild Log:\n"
+                        << log
+                        << "^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n";
+    ORT_THROW("\nOpenCL Error Code  : ", static_cast<int>(err), "\n       Error String: ", onnxruntime::opencl::GetErrorString(err));
   }
   return program;
 }

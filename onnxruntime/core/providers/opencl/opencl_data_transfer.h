@@ -18,7 +18,7 @@ class OpenCLDataTransfer : public IDataTransfer {
   using Image2D = cl::Image2D;
 
  public:
-  OpenCLDataTransfer(const OpenCLExecutionProvider* exec);
+  OpenCLDataTransfer(const OpenCLExecutionProvider* exec, const OpenCLKernelHolder* kernels);
   ~OpenCLDataTransfer();
 
   bool CanCopy(const OrtDevice& src_device, const OrtDevice& dst_device) const override;
@@ -48,6 +48,7 @@ class OpenCLDataTransfer : public IDataTransfer {
 
  private:
   const OpenCLExecutionProvider* exec_;
+  const OpenCLKernelHolder* kernels_;
 };
 
 }  // namespace opencl

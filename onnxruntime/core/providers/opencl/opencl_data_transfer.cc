@@ -1,17 +1,17 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "opencl_utils.h"
+#include "opencl_kernel_holder.h"
 #include "opencl_data_transfer.h"
 
 #include "core/framework/ortdevice.h"
 #include "core/framework/tensor.h"
 
-#include "opencl_utils.h"
-
 namespace onnxruntime {
 namespace opencl {
 
-OpenCLDataTransfer::OpenCLDataTransfer(const OpenCLExecutionProvider* exec) : exec_(exec) {}
+OpenCLDataTransfer::OpenCLDataTransfer(const OpenCLExecutionProvider* exec, const OpenCLKernelHolder* kernels) : exec_(exec), kernels_(kernels) {}
 
 OpenCLDataTransfer::~OpenCLDataTransfer() {}
 
@@ -180,11 +180,15 @@ Status OpenCLDataTransfer::CopyBuffer1DToImage2D(
     const Image2DDesc& desc) const {
   VLOGF_DEFAULT(0, "[CL] copy  Buffer(0x%p) --> Image2D(0x%p), via CopyBuffer1DToImage2D", src(), dst());
   ORT_RETURN_IF_ERROR(
-      KernelLauncher{exec_->GetCopyBuffer1DToImage2DKernel()}
+      KernelLauncher{kernels_->GetKernel("CopyBuffer1DToImage2D")}
+          .setArg<cl_int>(desc.Width())
+          .setArg<cl_int>(desc.Height())
           .setBuffer(src)
           .setArg<cl_int>(CeilDiv(shape.Size(), 4))
           .setImage2D(dst)
-          .Launch(exec_->GetCommandQueue(), cl::NDRange(desc.Width(), desc.Height())));
+          .Launch(exec_->GetCommandQueue(),
+                  cl::NDRange(RoundToMultiple(desc.Width(), 128), desc.Height()),
+                  cl::NDRange(128, 1)));
   return Status::OK();
 }
 
@@ -213,11 +217,15 @@ Status OpenCLDataTransfer::CopyImage2DToBuffer1D(
     const TensorShape shape) const {
   VLOGF_DEFAULT(0, "[CL] copy Image2D(0x%p) ---> Buffer(0x%p), via CopyImage2DToBuffer1D", src(), dst());
   ORT_RETURN_IF_ERROR(
-      KernelLauncher{exec_->GetCopyImage2DToBuffer1DKernel()}
+      KernelLauncher{kernels_->GetKernel("CopyImage2DToBuffer1D")}
+          .setArg<cl_int>(desc.Width())
+          .setArg<cl_int>(desc.Height())
           .setImage2D(src)
           .setBuffer(dst)
           .setArg<cl_int>(CeilDiv(shape.Size(), 4))
-          .Launch(exec_->GetCommandQueue(), cl::NDRange(desc.Width(), desc.Height())));
+          .Launch(exec_->GetCommandQueue(),
+                  cl::NDRange(RoundToMultiple(desc.Width(), 128), desc.Height()),
+                  cl::NDRange(128, 1)));
   return Status::OK();
 }
 

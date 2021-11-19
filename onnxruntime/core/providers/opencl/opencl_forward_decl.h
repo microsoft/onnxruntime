@@ -8,6 +8,8 @@ class OpenCLExecutionProvider;
 
 namespace opencl {
 class OpenCLDataTransfer;
+struct OpenCLKernelHolder;
+class OpenCLKernel;
 class Image2DDesc;
 
 template <typename T>

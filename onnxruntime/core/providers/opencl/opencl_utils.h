@@ -70,6 +70,12 @@ T1 CeilDiv(T1 a, T2 b) {
   return (a - 1) / b + 1;
 }
 
+template <typename T1, typename T2, typename E = std::enable_if_t<std::is_integral_v<T1> && std::is_integral_v<T2>>>
+T1 RoundToMultiple(T1 a, T2 m) {
+  return CeilDiv(a, m) * m;
+}
+
+
 class Image2DDesc : private std::pair<int64_t, int64_t> {
  public:
   using pair::pair;

@@ -3,6 +3,7 @@
 
 #include "opencl_execution_provider.h"
 #include "opencl_allocator.h"
+#include "opencl_kernel_holder.h"
 #include "opencl_data_transfer.h"
 #include "core/common/logging/logging.h"
 #include "core/framework/kernel_registry.h"
@@ -94,7 +95,7 @@ Status OpenCLExecutionProvider::InitOpenCLContext() {
     ORT_RETURN_IF_CL_ERROR(err);
   }
 
-  InitKernelsForDataTransfer();
+  InitCopyKernels();
 
   return Status::OK();
 }
@@ -152,29 +153,31 @@ IAllocatorUniquePtr<cl::Image2D> OpenCLExecutionProvider::GetScratchImage2D(open
 #pragma region IDataTransfer related code
 */
 std::unique_ptr<onnxruntime::IDataTransfer> OpenCLExecutionProvider::GetDataTransfer() const {
-  return std::make_unique<opencl::OpenCLDataTransfer>(this);
+  return std::make_unique<opencl::OpenCLDataTransfer>(this, copy_kernels_.get());
 }
 
 namespace {
 #define CONTENT_NAME copy1d_kernel_src
 #include "opencl_generated/kernels/copy_tensor_1d.cl.inc"
 #undef CONTENT_NAME
+#define CONTENT_NAME copynchw_kernel_src
+#include "opencl_generated/kernels/copy_tensor_nchw.cl.inc"
+#undef CONTENT_NAME
+#define CONTENT_NAME copynchw4_kernel_src
+#include "opencl_generated/kernels/copy_tensor_nchw4.cl.inc"
+#undef CONTENT_NAME
 }  // namespace
 
-void OpenCLExecutionProvider::InitKernelsForDataTransfer() {
-  program_copy_1d_ = ::onnxruntime::opencl::LoadProgram(GetOpenCLContext(), GetOpenCLDevice(), copy1d_kernel_src, copy1d_kernel_src_len);
-  kernel_copy_btoi_ = ::onnxruntime::opencl::LoadKernel(program_copy_1d_, "CopyBuffer1DToImage2D");
-  kernel_copy_itob_ = ::onnxruntime::opencl::LoadKernel(program_copy_1d_, "CopyImage2DToBuffer1D");
+void OpenCLExecutionProvider::InitCopyKernels() {
+  std::ostringstream oss;
+  oss << std::string(copy1d_kernel_src, copy1d_kernel_src_len) << "\n";
+  oss << std::string(copynchw_kernel_src, copynchw_kernel_src_len) << "\n";
+  oss << std::string(copynchw4_kernel_src, copynchw4_kernel_src_len) << "\n";
+  copy_kernels_ = std::make_unique<opencl::OpenCLKernelHolder>();
+  copy_kernels_->LoadProgram(this, oss.str());
+  copy_kernels_->LoadKernel("CopyBuffer1DToImage2D");
+  copy_kernels_->LoadKernel("CopyImage2DToBuffer1D");
 }
-
-const cl::Kernel& OpenCLExecutionProvider::GetCopyBuffer1DToImage2DKernel() const {
-  return kernel_copy_btoi_;
-}
-
-const cl::Kernel& OpenCLExecutionProvider::GetCopyImage2DToBuffer1DKernel() const {
-  return kernel_copy_itob_;
-}
-
 /*
 #pragma endregion
 */
