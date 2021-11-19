@@ -48,11 +48,11 @@ There are benefits to doing on device and in browser inferencing.
 
 ## Get a model from the ONNX Model Zoo or use your own
 
-1. ONNX Model Zoo
+- ONNX Model Zoo
 
   We will be using [SqueezeNet](https://github.com/onnx/models/tree/master/vision/classification/squeezenet) from the [ONNX Model Zoo](https://github.com/onnx/models). SqueezeNet models perform image classification - they take images as input and classify the major object in the image into a set of pre-defined classes. They are trained on the ImageNet dataset which contains images from 1000 different classes. SqueezeNet models are highly efficient in terms of size and speed while providing good accuracies. This makes them ideal for platforms with strict constraints on size, like client side inferencing.
 
-2. Create a model and export to ONNX Format
+- Create a model and export to ONNX Format
 
   There are many ways to create a custom model that is specific to the task you are trying to solve. Use code to build your model or use the low code/no code tools to create the model. Check out the resources below to learn about some different ways to create a customized model. All of these resources have an export to ONNX format functionality so that you can leverage this template and source code. 
 
