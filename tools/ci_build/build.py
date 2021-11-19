@@ -1858,7 +1858,10 @@ def build_nuget_package(source_dir, build_dir, configs, use_cuda, use_openvino, 
                         ort_build_dir, "-restore"]
             run_subprocess(cmd_args, cwd=csharp_build_dir)
 
-        nuget_exe = os.path.normpath(os.path.join(native_dir, config, "nuget_exe", "src", "nuget.exe"))
+        if is_linux() and use_openvino:
+            nuget_exe = "nuget"
+        else:
+            nuget_exe = os.path.normpath(os.path.join(native_dir, config, "nuget_exe", "src", "nuget.exe"))
         nuget_exe_arg = "/p:NugetExe=\"" + nuget_exe + "\""
 
         cmd_args = [
