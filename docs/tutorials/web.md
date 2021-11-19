@@ -17,7 +17,7 @@ Below is what the site looks like from the template. It is looping through a lis
 
 Example template output:
 
-<img src="../../images/ort-web-demo.gif" width="100%" height="100%"/>
+<img src="../../images/ort-web-demo.gif" width="100%" height="100%" alt="Image of browser inferencing on sample images."/>
 
 
 ## Contents
