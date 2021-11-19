@@ -44,15 +44,15 @@ bool LaunchDecoderAttentionKernel(
     cudaStream_t stream,                          // Cuda stream
     cublasHandle_t& cublas,                       // Cublas handle
     const size_t element_size,                    // Element size of input tensor
-    int batch_size,                               // Batch size (B)
-    int sequence_length,                          // Sequence length (S)
-    int kv_sequence_length,                       // Key/Value/Cache sequence length
-    int num_heads,                                // Number of attention heads (N)
-    int head_size,                                // Hidden layer size per head (H)
-    bool static_kv,                               // Whether cross attention or not
-    bool use_past,                                // Whether use cache or not
-    bool has_layer_state,                         // Whether output cache or not
-    bool has_key_padding_mask,                    // Whether use key_padding_mask or not
+    const int batch_size,                         // Batch size (B)
+    const int sequence_length,                    // Sequence length (S)
+    const int kv_sequence_length,                 // Key/Value/Cache sequence length
+    const int num_heads,                          // Number of attention heads (N)
+    const int head_size,                          // Hidden layer size per head (H)
+    const bool static_kv,                         // Whether cross attention or not
+    const bool use_past,                          // Whether use cache or not
+    const bool has_layer_state,                   // Whether output cache or not
+    const bool has_key_padding_mask,              // Whether use key_padding_mask or not
     const void* gemm_query_buffer,                // Query buffer
     const void* gemm_kv_buffer,                   // Key and value buffer
     const bool* key_padding_mask,                 // Key padding mask

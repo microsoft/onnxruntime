@@ -221,7 +221,7 @@ Status DecoderAttention<T>::ComputeInternal(OpKernelContext* context) const {
   // weight: (h1, h2)
   // h = N*H
   cublasHandle_t cublas = CublasHandle();
-  cublasSetStream(cublas, stream);
+  CUBLAS_RETURN_IF_ERROR(cublasSetStream(cublas, stream));
   constexpr size_t element_size = sizeof(T);
 
   typedef typename ToCudaType<T>::MappedType CudaT;
@@ -364,8 +364,8 @@ Status DecoderAttention<T>::ComputeInternal(OpKernelContext* context) const {
           use_past_,
           has_layer_state_,
           has_key_padding_mask_,
-          nullptr == gemm_query_buffer_p? nullptr : reinterpret_cast<const CudaT*>(gemm_query_buffer_p.get()),
-          nullptr == gemm_kv_buffer_p? nullptr : reinterpret_cast<const CudaT*>(gemm_kv_buffer_p.get()),
+          nullptr == gemm_query_buffer_p ? nullptr : reinterpret_cast<const CudaT*>(gemm_query_buffer_p.get()),
+          nullptr == gemm_kv_buffer_p ? nullptr : reinterpret_cast<const CudaT*>(gemm_kv_buffer_p.get()),
           nullptr == key_padding_mask ? nullptr : key_padding_mask->template Data<bool>(),
           nullptr == key_cache ? nullptr : key_cache->template Data<T>(),
           nullptr == value_cache ? nullptr : value_cache->template Data<T>(),
