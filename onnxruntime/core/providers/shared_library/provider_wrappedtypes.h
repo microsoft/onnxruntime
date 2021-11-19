@@ -729,6 +729,11 @@ struct OpKernelContext final {
   bool TryGetInferredOutputShape(int index, TensorShape& shape) const { return g_host->OpKernelContext__TryGetInferredOutputShape(this, index, shape); }
   bool TryGetInferredInputShape(int index, TensorShape& shape) const { return g_host->OpKernelContext__TryGetInferredInputShape(this, index, shape); }
 
+#ifdef ENABLE_TRAINING
+  void SetIsBackward(bool value) { g_host->OpKernelContext__SetIsBackward(this, value); }
+  bool GetIsBackward() const { return g_host->OpKernelContext__GetIsBackward(this); }
+#endif
+
   PROVIDER_DISALLOW_ALL(OpKernelContext)
 };
 

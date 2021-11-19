@@ -683,6 +683,10 @@ struct ProviderHost {
   virtual bool OpKernelContext__GetUseDeterministicCompute(const OpKernelContext* p) = 0;
   virtual bool OpKernelContext__TryGetInferredOutputShape(const OpKernelContext* p, int index, TensorShape& shape) = 0;
   virtual bool OpKernelContext__TryGetInferredInputShape(const OpKernelContext* p, int index, TensorShape& shape) = 0;
+#ifdef ENABLE_TRAINING
+  virtual void OpKernelContext__SetIsBackward(OpKernelContext* p, bool value) = 0;
+  virtual bool OpKernelContext__GetIsBackward(const OpKernelContext* p) = 0;
+#endif
 
   // OpKernelInfo
   virtual std::unique_ptr<OpKernelInfo> CopyOpKernelInfo(const OpKernelInfo& info) = 0;

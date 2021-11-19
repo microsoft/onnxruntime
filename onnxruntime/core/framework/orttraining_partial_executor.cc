@@ -188,7 +188,11 @@ Status PartialExecutor::Execute(const SessionState& session_state, const std::ve
     utils::NodeDumpContext dump_context { session_state.GetGraphExecutionCounter(), 0 };
 #endif
 
-
+  // If we aren't starting at 0, this is the backward pass.
+  // Checking each node.Description() for "Backward pass" is not precise,
+  // for example Reshape operations during forward pass are preparing for backward,
+  // and graph optimization passes fuse and rewrite the description for some nodes.
+  bool is_backward_pass = state_.GetProgramCounterStart() != 0;
   for (size_t program_counter = state_.GetProgramCounterStart();
        program_counter < state_.GetProgramCounterEnd();
        program_counter += 1) {
@@ -238,6 +242,7 @@ Status PartialExecutor::Execute(const SessionState& session_state, const std::ve
     // construct OpKernelContext
     // TODO: log kernel inputs?
     OpKernelContextInternal op_kernel_context(session_state, frame, *p_op_kernel, logger, false);
+    op_kernel_context.SetIsBackward(is_backward_pass);
 
     // Cache lookup. Currently we only cache single-output nodes,
     // to keep memory overhead impact in check. Hence we only look in cache

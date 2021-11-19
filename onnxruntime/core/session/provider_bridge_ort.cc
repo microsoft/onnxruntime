@@ -777,6 +777,10 @@ struct ProviderHostImpl : ProviderHost {
   bool OpKernelContext__GetUseDeterministicCompute(const OpKernelContext* p) override { return p->GetUseDeterministicCompute(); }
   bool OpKernelContext__TryGetInferredOutputShape(const OpKernelContext* p, int index, TensorShape& shape) override { return p->TryGetInferredOutputShape(index, shape); }
   bool OpKernelContext__TryGetInferredInputShape(const OpKernelContext* p, int index, TensorShape& shape) override { return p->TryGetInferredInputShape(index, shape); }
+#ifdef ENABLE_TRAINING
+  void OpKernelContext__SetIsBackward(OpKernelContext* p, bool value) override { p->SetIsBackward(value); }
+  bool OpKernelContext__GetIsBackward(const OpKernelContext* p) override { return p->GetIsBackward(); }
+#endif
 
   // OpKernelInfo (wrapped)
   std::unique_ptr<OpKernelInfo> CopyOpKernelInfo(const OpKernelInfo& info) override { return onnxruntime::CopyOpKernelInfo(info); }

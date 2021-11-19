@@ -34,6 +34,10 @@ OpKernelContext::OpKernelContext(_Inout_ IExecutionFrame* frame, _In_ const OpKe
   node_input_start_index_ = frame->GetNodeOffset(kernel->Node().Index());
   node_implicit_input_start_index_ = node_input_start_index_ + InputCount();
   node_output_start_index_ = node_implicit_input_start_index_ + ImplicitInputCount();
+
+#ifdef ENABLE_TRAINING
+  is_backward_ = false;
+#endif
 }
 
 Tensor* OpKernelContext::Output(int index, const TensorShape& shape) {

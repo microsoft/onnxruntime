@@ -7,6 +7,10 @@
 #include "core/providers/rocm/rocm_execution_provider.h"
 #include "core/providers/rocm/rocm_fwd.h"
 
+#ifdef ENABLE_TRAINING
+#include "orttraining/core/framework/backward_guard.h"
+#endif
+
 namespace onnxruntime {
 namespace rocm {
 
@@ -22,6 +26,9 @@ class RocmKernel : public OpKernel {
   }
 
   Status Compute(OpKernelContext* p_op_kernel_context) const override {
+#ifdef ENABLE_TRAINING
+    onnxruntime::training::BackwardPassGuard guard(p_op_kernel_context->GetIsBackward());
+#endif
     auto s = ComputeInternal(p_op_kernel_context);
     // use this to precisely locate the node where ROCM failure comes from
     //  if (hipSuccess != hipDeviceSynchronize())

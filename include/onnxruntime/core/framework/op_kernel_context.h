@@ -196,6 +196,12 @@ class OpKernelContext {
     return true;
   }
 
+#ifdef ENABLE_TRAINING
+  bool GetIsBackward() const { return is_backward_; }
+
+  void SetIsBackward(bool value) { is_backward_ = value; }
+#endif
+
  protected:
   onnxruntime::NodeIndex GetNodeIndex() const;
 
@@ -228,6 +234,10 @@ class OpKernelContext {
   int node_input_start_index_{-1};
   int node_implicit_input_start_index_{-1};
   int node_output_start_index_{-1};
+
+#ifdef ENABLE_TRAINING
+  bool is_backward_;
+#endif
 };
 
 // Fetching output tensor without shape is not allowed except when it already exists
