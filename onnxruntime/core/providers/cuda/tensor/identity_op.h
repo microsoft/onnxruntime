@@ -41,7 +41,7 @@ class IdentityOp final : public CudaKernel {
           if (a[i] != 1) {
             std::cout << a[i];
             //delete[] a;
-            //return Status(common::ONNXRUNTIME, common::FAIL, "FAIL.");
+            //return Stat us(common::ONNXRUNTIME, common::FAIL, "FAIL.");
           }
         }
 
