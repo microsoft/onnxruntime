@@ -54,6 +54,13 @@ function defaultTerserPluginOptions(target) {
   };
 }
 
+const DEFAULT_BUILD_DEFS = {
+  DISABLE_WEBGL: false,
+  DISABLE_WASM: false,
+  DISABLE_WASM_PROXY: false,
+  DISABLE_WASM_THREAD: false,
+};
+
 // common config for release bundle
 function buildConfig({ filename, format, target, mode, devtool, build_defs }) {
   const config = {
@@ -117,6 +124,32 @@ function buildConfig({ filename, format, target, mode, devtool, build_defs }) {
     const options = defaultTerserPluginOptions(target);
     options.terserOptions.format.preamble = COPYRIGHT_BANNER;
     config.plugins.push(new TerserPlugin(options));
+
+    // add a custom plugin to check whether code contains 'BUILD_DEFS'
+    config.plugins.push({
+      apply: (compiler) => {
+        compiler.hooks.afterCompile.tap(
+          'Check BUILD_DEFS',
+          (compilation) => {
+            for (const filename of compilation.assetsInfo.keys()) {
+              if (filename.endsWith('.js')) {
+                const asset = compilation.assets[filename];
+                if (asset) {
+                  const content = asset.source();
+                  if (typeof content !== 'string') {
+                    throw new Error(`content for target file '${filename}' is not string.`);
+                  } if (content.includes('DISABLE_WEBGL')
+                    || content.includes('DISABLE_WASM')
+                    || content.includes('DISABLE_WASM_PROXY')
+                    || content.includes('DISABLE_WASM_THREAD')) {
+                    throw new Error(`target file '${filename}' contains data fields from "BUILD_DEFS".`);
+                  }
+                }
+              }
+            }
+          });
+      }
+    });
   } else {
     config.plugins.push(new webpack.BannerPlugin({ banner: COPYRIGHT_BANNER, raw: true }));
   }
@@ -130,7 +163,7 @@ function buildOrtConfig({
   target = 'es2017',
   mode = 'production',
   devtool = 'source-map',
-  build_defs = {}
+  build_defs = DEFAULT_BUILD_DEFS
 }) {
   const config = buildConfig({ filename: `ort${suffix}.js`, format: 'umd', target, mode, devtool, build_defs });
   // set global name 'ort'
@@ -145,7 +178,7 @@ function buildOrtWebConfig({
   target = 'es2017',
   mode = 'production',
   devtool = 'source-map',
-  build_defs = {}
+  build_defs = DEFAULT_BUILD_DEFS
 }) {
   const config = buildConfig({ filename: `ort-web${suffix}.js`, format, target, mode, devtool, build_defs });
   // exclude onnxruntime-common from bundle
@@ -252,6 +285,30 @@ module.exports = () => {
         buildOrtConfig({ suffix: '.es6.min', target: 'es6' }),
         // ort.es5.min.js
         buildOrtConfig({ suffix: '.es5.min', target: 'es5' }),
+
+        // ort.wasm.min.js
+        buildOrtConfig({
+          suffix: '.wasm.min', build_defs: {
+            ...DEFAULT_BUILD_DEFS,
+            DISABLE_WEBGL: true,
+          }
+        }),
+        // ort.webgl.min.js
+        buildOrtConfig({
+          suffix: '.webgl.min', build_defs: {
+            ...DEFAULT_BUILD_DEFS,
+            DISABLE_WASM: true,
+          }
+        }),
+        // ort.wasm-core.min.js
+        buildOrtConfig({
+          suffix: '.wasm-core.min', build_defs: {
+            ...DEFAULT_BUILD_DEFS,
+            DISABLE_WEBGL: true,
+            DISABLE_WASM_PROXY: true,
+            DISABLE_WASM_THREAD: true,
+          }
+        }),
 
         // ort-web.min.js
         buildOrtWebConfig({ suffix: '.min' }),
