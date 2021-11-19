@@ -607,11 +607,15 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
 
       
     }
-    if (std::shared_ptr<IExecutionProviderFactory> tensorrt_provider_openvino = onnxruntime::CreateExecutionProviderFactory_OpenVINO(&params)) {
-        auto p = tensorrt_provider_openvino->CreateProvider();
-        // Reset global variables config to avoid it being accidentally passed on to the next session
-        openvino_device_type.clear();
-        return p;
+    if (std::shared_ptr<IExecutionProviderFactory> openvino_provider_factory = onnxruntime::CreateExecutionProviderFactory_OpenVINO(&params)) {
+      auto p = openvino_provider_factory->CreateProvider();
+      // Reset global variables config to avoid it being accidentally passed on to the next session
+      openvino_device_type.clear();
+      return p;
+    } else {
+      if (!Env::Default().GetEnvironmentVar("INTEL_OPENVINO_DIR").empty()) {
+        ORT_THROW("INTEL_OPENVINO_DIR is set but OpenVINO library wasn't able to be loaded. Please install the correct version of OpenVINO as mentioned in the GPU requirements page (https://onnxruntime.ai/docs/execution-providers/OpenVINO-ExecutionProvider.html#requirements), make sure they're in the PATH, and that your GPU is supported.");
+      }
     }
 #endif
   } else if (type == kNupharExecutionProvider) {
