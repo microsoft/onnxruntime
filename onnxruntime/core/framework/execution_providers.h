@@ -39,7 +39,7 @@ class ExecutionProviders {
     exec_provider_options_[provider_id] = p_exec_provider->GetProviderOptions();
 
     exec_provider_ids_.push_back(provider_id);
-    exec_providers_.push_back(std::move(p_exec_provider));
+    exec_providers_.push_back(p_exec_provider);
     return Status::OK();
   }
 

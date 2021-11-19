@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#if !defined(DISABLE_OPTIONAL_TYPE)
+
 #include "optional_ops.h"
 #include "core/framework/ort_value.h"
 #include "core/providers/cpu/tensor/utils.h"
@@ -155,3 +157,5 @@ Status OptionalGetElement::Compute(OpKernelContext* ctx) const {
 }
 
 }  // namespace onnxruntime
+
+#endif

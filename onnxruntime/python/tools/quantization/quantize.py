@@ -188,6 +188,10 @@ def quantize_static(model_input,
                                           Dyanmic mode currently is supported. Will support more in future.
             DisableShapeInference = True/False : in dynamic quantize mode, shape inference is not must have
                                                  and if it cause some issue, you could disable it.
+            ForceQuantizeNoInputCheck = True/False : By default, some latent operators like maxpool, transpose, do not quantize
+                                                     if their input is not quantized already. Setting to True to force such operator
+                                                     always quantize input and so generate quantized output. Also the True behavior
+                                                     could be disabled per node using the nodes_to_exclude.
             MatMulConstBOnly = True/False: Default is False. If enabled, only MatMul with const B will be quantized.
             AddQDQPairToWeight = True/False : Default is False which quantizes floating-point weight and feeds it to 
                                               soley inserted DeQuantizeLinear node. If True, it remains floating-point weight and 
@@ -283,6 +287,10 @@ def quantize_dynamic(model_input: Path,
                                           Dyanmic mode currently is supported. Will support more in future.
             DisableShapeInference = True/False : in dynamic quantize mode, shape inference is not must have
                                                  and if it cause some issue, you could disable it.
+            ForceQuantizeNoInputCheck = True/False : By default, some latent operators like maxpool, transpose, do not quantize
+                                                     if their input is not quantized already. Setting to True to force such operator
+                                                     always quantize input and so generate quantized output. Also the True behavior
+                                                     could be disabled per node using the nodes_to_exclude.
             MatMulConstBOnly = True/False: Default is False. If enabled, only MatMul with const B will be quantized.
     '''
 
