@@ -505,9 +505,8 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
             return tensorrt_provider_factory->CreateProvider();
           }
         }
-    } else {
-      if (!Env::Default().GetEnvironmentVar("CUDA_PATH").empty()) {
-        ORT_THROW("CUDA_PATH is set but CUDA wasn't able to be loaded. Please install the correct version of CUDA and cuDNN as mentioned in the GPU requirements page (https://onnxruntime.ai/docs/reference/execution-providers/CUDA-ExecutionProvider.html#requirements) as well as TensorRT as mentioned in the TensorRT requirements page (https://onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html#requirements), make sure they're in the PATH, and that your GPU is supported.");
+        if (!Env::Default().GetEnvironmentVar("CUDA_PATH").empty()) {
+          ORT_THROW("CUDA_PATH is set but CUDA wasn't able to be loaded. Please install the correct version of CUDA and cuDNN as mentioned in the GPU requirements page (https://onnxruntime.ai/docs/reference/execution-providers/CUDA-ExecutionProvider.html#requirements) as well as TensorRT as mentioned in the TensorRT requirements page (https://onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html#requirements), make sure they're in the PATH, and that your GPU is supported.");
       }
     }
 #endif
