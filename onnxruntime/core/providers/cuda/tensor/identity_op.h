@@ -36,7 +36,7 @@ class IdentityOp final : public CudaKernel {
       if (target != source) {
         size_t s = X->Shape().Size() * X->DataType()->Size();
         for (size_t i = 0; i < s; ++i) {
-          if (reinterpret_cast<float*>(X)[i] != 1) {
+          if (reinterpret_cast<const float*>(X)[i] != 1) {
             return Status(common::ONNXRUNTIME, common::FAIL, "FAIL.");
           }
         }
