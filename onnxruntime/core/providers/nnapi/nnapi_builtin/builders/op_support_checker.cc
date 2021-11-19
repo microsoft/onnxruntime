@@ -304,7 +304,7 @@ bool BinaryOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initi
       return false;
 
     // a/b/y_zero_point
-    if (!HasValidQuantizationZeroPoints(initializers, node, {2, 5, 7}))
+    if (!HasValidQuantizationZeroPoints(initializers, node, {2, 5, 7}, params))
       return false;
   }
 
@@ -591,7 +591,8 @@ bool PoolOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initial
     if (!HasValidQuantizationZeroPoints(initializers, node,
                                         has_output_zp
                                             ? std::vector<size_t>{2}
-                                            : std::vector<size_t>{2, 4})) {
+                                            : std::vector<size_t>{2, 4},
+                                        params)) {
       return false;
     }
 
@@ -824,8 +825,13 @@ bool ConvOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initial
     }
 
     // a/b/y_zero_point
-    if (!HasValidQuantizationZeroPoints(initializers, node, {2, 5, 7}))
-      return false;
+    if (is_qdq_node) {
+      if (!HasValidQuantizationZeroPoints(initializers, node, {1, 1, 1}, params))
+        return false;
+    } else {
+      if (!HasValidQuantizationZeroPoints(initializers, node, {2, 5, 7}, params))
+        return false;
+    }
   }
 
   return true;
@@ -1087,7 +1093,7 @@ bool GemmOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initial
         return false;
 
       // a/b/y_zero_point
-      if (!HasValidQuantizationZeroPoints(initializers, node, {2, 5, 7}))
+      if (!HasValidQuantizationZeroPoints(initializers, node, {2, 5, 7}, params))
         return false;
     }
   } else {
@@ -1200,7 +1206,8 @@ int UnaryOpSupportChecker::GetMinSupportedOpSet(const Node& node) const {
   if (!HasValidQuantizationZeroPoints(initializers, node,
                                       has_output_zp
                                           ? std::vector<size_t>{2}
-                                          : std::vector<size_t>{2, 4}))
+                                          : std::vector<size_t>{2, 4},
+                                      params))
     return false;
 
   // NNAPI requires the scale be 1.f/256 and zero point to be 0
@@ -1357,7 +1364,7 @@ bool QuantizeLinearOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSe
     return false;
 
   if (input_defs.size() == 3) {  // has zero_point input
-    if (!HasValidQuantizationZeroPoints(initializers, node, {2}))
+    if (!HasValidQuantizationZeroPoints(initializers, node, {2}, params))
       return false;
   }
 
@@ -1387,7 +1394,7 @@ bool DequantizeLinearOpSupportChecker::IsOpSupportedImpl(const InitializedTensor
     return false;
 
   if (input_defs.size() == 3) {  // has zero_point input
-    if (!HasValidQuantizationZeroPoints(initializers, node, {2}))
+    if (!HasValidQuantizationZeroPoints(initializers, node, {2}, params))
       return false;
   }
 

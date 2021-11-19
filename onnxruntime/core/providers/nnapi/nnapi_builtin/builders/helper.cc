@@ -188,7 +188,6 @@ bool HasValidQuantizationScales(const InitializedTensorSet& initializers, const 
         scale_name = q_input_defs[idx]->Name();  //q
       }
     }
-
     if (!is_qdq_node) {
       scale_name = input_defs[idx]->Name();
     }
@@ -258,20 +257,46 @@ bool HasValidQuantizationScales(const InitializedTensorSet& initializers, const 
 }
 
 bool HasValidQuantizationZeroPoints(const InitializedTensorSet& initializers, const Node& node,
-                                    const std::vector<size_t>& indices) {
+                                    const std::vector<size_t>& indices, const OpSupportCheckParams& params) {
   const auto& op_type = node.OpType();
   auto qlinear_op_type = GetQLinearOpType(node);
   bool is_qlinear_conv = (qlinear_op_type == QLinearOpType::QLinearConv);
   bool is_qlinear_matmul = (qlinear_op_type == QLinearOpType::QLinearMatMul);
+  const bool is_qdq_node = params.qdq_support_helper.IsNodeInQDQGroup(node);
+  const bool is_target_node = params.qdq_support_helper.IsNodeTargetNode(node);
+
+  QDQ::NodeGroup qdq_group;
+  if (is_qdq_node && is_target_node) {
+    qdq_group = params.qdq_support_helper.GetQDQNodeGroupWithTargetNode(node);
+  }
+
   const auto input_defs(node.InputDefs());
-  for (const auto idx : indices) {
+
+  for (size_t i = 0; i < indices.size(); ++i) {
+    const auto idx = indices[i];
     if (idx >= input_defs.size()) {
       LOGS_DEFAULT(VERBOSE) << "HasValidQuantizationZeroPoints, Input index,  " << idx
                             << " >= input number, " << input_defs.size();
       return false;
     }
 
-    const auto zero_point_name = input_defs[idx]->Name();
+    std::string zero_point_name;
+    if (is_qdq_node && is_target_node) {
+      if (i == 0) {
+        const auto dq_x_input_defs(qdq_group.dq_nodes[0]->InputDefs());
+        zero_point_name = dq_x_input_defs[idx]->Name();  //dq_x
+      } else if (i == 1) {
+        const auto dq_w_input_defs(qdq_group.dq_nodes[1]->InputDefs());
+        zero_point_name = dq_w_input_defs[idx]->Name();  //dq_w
+      } else {
+        const auto q_input_defs(qdq_group.q_nodes[0]->InputDefs());
+        zero_point_name = q_input_defs[idx]->Name();  //q
+      }
+    }
+    if (!is_qdq_node) {
+      zero_point_name = input_defs[idx]->Name();
+    }
+
     if (!Contains(initializers, zero_point_name)) {
       LOGS_DEFAULT(VERBOSE) << "The zero point of " << op_type << " must be an initializer tensor";
       return false;
@@ -281,6 +306,11 @@ bool HasValidQuantizationZeroPoints(const InitializedTensorSet& initializers, co
     bool is_conv_matmul_u8s8_weight = false;
     if (is_conv_matmul_weight) {
       const auto& weight_tensor = *initializers.at(node.InputDefs()[3]->Name());
+      is_conv_matmul_u8s8_weight = weight_tensor.data_type() == ONNX_NAMESPACE::TensorProto_DataType_INT8;
+    }
+    if (is_qdq_node && is_target_node && i == 1) {
+      const auto dq_w_input_defs(qdq_group.dq_nodes[1]->InputDefs());
+      const auto& weight_tensor = *initializers.at(dq_w_input_defs[0]->Name());
       is_conv_matmul_u8s8_weight = weight_tensor.data_type() == ONNX_NAMESPACE::TensorProto_DataType_INT8;
     }
 
@@ -314,7 +344,15 @@ bool HasValidQuantizationZeroPoints(const InitializedTensorSet& initializers, co
       // or a tensor with same channel as weight, for NNAPI we only support it be
       // 0 (scalar) or all 0 (tensor), NNAPI will assume the zero point for per-channel
       // quantization is 0 there is no input for it
-      const auto& weight_tensor = *initializers.at(node.InputDefs()[3]->Name());
+      std::string weight_name;
+      if (is_qdq_node && is_target_node && i == 1) {
+        const auto dq_w_input_defs(qdq_group.dq_nodes[1]->InputDefs());
+        weight_name = dq_w_input_defs[0]->Name();
+      }
+      if (!is_qdq_node) {
+        weight_name = node.InputDefs()[3]->Name();
+      }
+      const auto& weight_tensor = *initializers.at(weight_name);
       if (weight_tensor.dims()[0] != zero_dim && zero_dim != 1) {
         LOGS_DEFAULT(VERBOSE) << op_type << " mismatch int8 per-channel quantization weight,"
                               << " weight dimension[0] " << weight_tensor.dims()[0]
@@ -332,10 +370,10 @@ bool HasValidQuantizationZeroPoints(const InitializedTensorSet& initializers, co
 
       // Verify all onnx weight zero point(s) are 0(s)
       const int8_t* zero_points = reinterpret_cast<const int8_t*>(unpacked_tensor.data());
-      for (size_t i = 0; i < unpacked_tensor.size(); i++) {
-        if (zero_points[i] != 0) {
+      for (size_t j = 0; j < unpacked_tensor.size(); j++) {
+        if (zero_points[j] != 0) {
           LOGS_DEFAULT(VERBOSE) << "u8s8 Qlinear[Conv/MatMul]  only support 0 as zero point, "
-                                << "zero_points[" << i << "] has value: " << zero_points[i];
+                                << "zero_points[" << j << "] has value: " << zero_points[j];
           return false;
         }
       }
