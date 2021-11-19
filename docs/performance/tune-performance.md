@@ -47,6 +47,19 @@ If you are using the onnxruntime_perf_test.exe tool, you can add `-p [profile_fi
 
 In both cases, you will get a JSON file which contains the detailed performance data (threading, latency of each operator, etc). This file is a standard performance tracing file, and to view it in a user friendly way, you can open it by using chrome://tracing:
 
+For Cuda EP, performance numbers from device will be attached to those from host. For example:
+```
+{"cat":"Node", "name":"Add_1234", "dur":17, ...}
+{"cat":"Kernel", "name":"ort_add_cuda_kernel", dur:33, ...}
+```
+Here, "Add" operator from host initiated a Cuda kernel on device named "ort_add_cuda_kernel" which lasted for 33 macroseconds.
+If an operator called multiple Cuda kernels during execution, the performance numbers of those kernels will all be listed following the calling sequence:
+```
+{"cat":"Node", "name":<name of the node>, ...}
+{"cat":"Kernel", "name":<name of the kernel called first>, ...}
+{"cat":"Kernel", "name":<name of the kernel called next>, ...}
+```
+
 * Open chrome browser
 * Type chrome://tracing in the address bar
 * Load the generated JSON file
