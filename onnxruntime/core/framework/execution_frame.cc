@@ -274,6 +274,8 @@ void IExecutionFrame::Init(const std::vector<int>& feed_mlvalue_idxs, const std:
                                                                 cpu_allocator, allocator, has_linear_coo_index,
                                                                 *dest.GetMutable<SparseTensor>()));
       } else {
+#else
+        ORT_UNUSED_PARAMETER(is_initializer_sparse_func);
 #endif  //  !defined(DISABLE_SPARSE_TENSORS)
         if (!dest.IsAllocated()) {
           // NOTE: This doesn't need to support ExecutionFrame custom allocators as they only come into play

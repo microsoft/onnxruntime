@@ -236,6 +236,12 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSparseTensorAsOrtValue, _Inout_ OrtAllocator*
   *out = value.release();
   return nullptr;
 #else
+  ORT_UNUSED_PARAMETER(allocator);
+  ORT_UNUSED_PARAMETER(dense_shape);
+  ORT_UNUSED_PARAMETER(dense_shape_len);
+  ORT_UNUSED_PARAMETER(type);
+  ORT_UNUSED_PARAMETER(out);
+
   return OrtApis::CreateStatus(ORT_FAIL, "SparseTensor is not supported in this build.");
 #endif
   API_IMPL_END
@@ -302,6 +308,14 @@ ORT_API_STATUS_IMPL(OrtApis::FillSparseTensorCoo, _Inout_ OrtValue* ort_value, _
   }
   return nullptr;
 #else
+  ORT_UNUSED_PARAMETER(ort_value);
+  ORT_UNUSED_PARAMETER(data_mem_info);
+  ORT_UNUSED_PARAMETER(values_shape);
+  ORT_UNUSED_PARAMETER(values_shape_len);
+  ORT_UNUSED_PARAMETER(values);
+  ORT_UNUSED_PARAMETER(indices_data);
+  ORT_UNUSED_PARAMETER(indices_num);
+
   return OrtApis::CreateStatus(ORT_FAIL, "SparseTensor is not supported in this build.");
 #endif
   API_IMPL_END
@@ -329,6 +343,15 @@ ORT_API_STATUS_IMPL(OrtApis::FillSparseTensorCsr, _Inout_ OrtValue* ort_value, _
   }
   return nullptr;
 #else
+  ORT_UNUSED_PARAMETER(ort_value);
+  ORT_UNUSED_PARAMETER(data_mem_info);
+  ORT_UNUSED_PARAMETER(values_shape);
+  ORT_UNUSED_PARAMETER(values_shape_len);
+  ORT_UNUSED_PARAMETER(values);
+  ORT_UNUSED_PARAMETER(inner_indices_data);
+  ORT_UNUSED_PARAMETER(inner_indices_num);
+  ORT_UNUSED_PARAMETER(outer_indices_data);
+  ORT_UNUSED_PARAMETER(outer_indices_num);
   return OrtApis::CreateStatus(ORT_FAIL, "SparseTensor is not supported in this build.");
 #endif
   API_IMPL_END
@@ -359,6 +382,15 @@ ORT_API_STATUS_IMPL(OrtApis::FillSparseTensorBlockSparse, _Inout_ OrtValue* ort_
   }
   return nullptr;
 #else
+  ORT_UNUSED_PARAMETER(ort_value);
+  ORT_UNUSED_PARAMETER(data_mem_info);
+  ORT_UNUSED_PARAMETER(values_shape);
+  ORT_UNUSED_PARAMETER(values_shape_len);
+  ORT_UNUSED_PARAMETER(values);
+  ORT_UNUSED_PARAMETER(indices_shape_data);
+  ORT_UNUSED_PARAMETER(indices_shape_len);
+  ORT_UNUSED_PARAMETER(indices_data);
+
   return OrtApis::CreateStatus(ORT_FAIL, "SparseTensor is not supported in this build.");
 #endif
   API_IMPL_END
@@ -389,6 +421,15 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSparseTensorWithValuesAsOrtValue, _In_ const 
   *out = value.release();
   return nullptr;
 #else
+  ORT_UNUSED_PARAMETER(info);
+  ORT_UNUSED_PARAMETER(p_data);
+  ORT_UNUSED_PARAMETER(dense_shape);
+  ORT_UNUSED_PARAMETER(dense_shape_len);
+  ORT_UNUSED_PARAMETER(values_shape);
+  ORT_UNUSED_PARAMETER(values_shape_len);
+  ORT_UNUSED_PARAMETER(type);
+  ORT_UNUSED_PARAMETER(out);
+
   return OrtApis::CreateStatus(ORT_FAIL, "SparseTensor is not supported in this build.");
 #endif
   API_IMPL_END
@@ -406,6 +447,10 @@ ORT_API_STATUS_IMPL(OrtApis::UseCooIndices, _Inout_ OrtValue* ort_value, _Inout_
   ORT_THROW_IF_ERROR(sparse_tensor.UseCooIndices(indices_span));
   return nullptr;
 #else
+  ORT_UNUSED_PARAMETER(ort_value);
+  ORT_UNUSED_PARAMETER(indices_data);
+  ORT_UNUSED_PARAMETER(indices_num);
+
   return OrtApis::CreateStatus(ORT_FAIL, "SparseTensor is not supported in this build.");
 #endif
   API_IMPL_END
@@ -426,13 +471,19 @@ ORT_API_STATUS_IMPL(OrtApis::UseCsrIndices, _Inout_ OrtValue* ort_value,
   ORT_THROW_IF_ERROR(sparse_tensor.UseCsrIndices(inner_span, outer_span));
   return nullptr;
 #else
+  ORT_UNUSED_PARAMETER(ort_value);
+  ORT_UNUSED_PARAMETER(inner_data);
+  ORT_UNUSED_PARAMETER(inner_num);
+  ORT_UNUSED_PARAMETER(outer_data);
+  ORT_UNUSED_PARAMETER(outer_num);
+
   return OrtApis::CreateStatus(ORT_FAIL, "SparseTensor is not supported in this build.");
 #endif
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::UseBlockSparseIndices, _Inout_ OrtValue* ort_value, const int64_t* indices_shape, size_t indices_shape_len,
-                    _Inout_ int32_t* indices_data) {
+ORT_API_STATUS_IMPL(OrtApis::UseBlockSparseIndices, _Inout_ OrtValue* ort_value, const int64_t* indices_shape,
+                    size_t indices_shape_len, _Inout_ int32_t* indices_data) {
   API_IMPL_BEGIN
 #if !defined(DISABLE_SPARSE_TENSORS)
   auto& sparse_tensor = SparseTensor::GetSparseTensorFromOrtValue(*ort_value);
@@ -440,6 +491,11 @@ ORT_API_STATUS_IMPL(OrtApis::UseBlockSparseIndices, _Inout_ OrtValue* ort_value,
   ORT_THROW_IF_ERROR(sparse_tensor.UseBlockSparseIndices(ind_shape, indices_data));
   return nullptr;
 #else
+  ORT_UNUSED_PARAMETER(ort_value);
+  ORT_UNUSED_PARAMETER(indices_shape);
+  ORT_UNUSED_PARAMETER(indices_shape_len);
+  ORT_UNUSED_PARAMETER(indices_data);
+
   return OrtApis::CreateStatus(ORT_FAIL, "SparseTensor is not supported in this build.");
 #endif
   API_IMPL_END
@@ -456,6 +512,9 @@ ORT_API_STATUS_IMPL(OrtApis::GetSparseTensorFormat, _In_ const OrtValue* ort_val
   *out = static_cast<OrtSparseFormat>(sparse_tensor.Format());
   return nullptr;
 #else
+  ORT_UNUSED_PARAMETER(ort_value);
+  ORT_UNUSED_PARAMETER(out);
+
   return OrtApis::CreateStatus(ORT_FAIL, "SparseTensor is not supported in this build.");
 #endif
   API_IMPL_END
@@ -472,6 +531,9 @@ ORT_API_STATUS_IMPL(OrtApis::GetSparseTensorValues, _In_ const OrtValue* ort_val
   *out = values.DataRaw();
   return nullptr;
 #else
+  ORT_UNUSED_PARAMETER(ort_value);
+  ORT_UNUSED_PARAMETER(out);
+
   return OrtApis::CreateStatus(ORT_FAIL, "SparseTensor is not supported in this build.");
 #endif
   API_IMPL_END
@@ -926,6 +988,9 @@ ORT_API_STATUS_IMPL(OrtApis::IsSparseTensor, _In_ const OrtValue* value, _Out_ i
   *out = v->IsSparseTensor() ? 1 : 0;
   return nullptr;
 #else
+  ORT_UNUSED_PARAMETER(value);
+  ORT_UNUSED_PARAMETER(out);
+
   return OrtApis::CreateStatus(ORT_FAIL, "SparseTensor is not supported in this build.");
 #endif
 }
@@ -933,7 +998,7 @@ ORT_API_STATUS_IMPL(OrtApis::IsSparseTensor, _In_ const OrtValue* value, _Out_ i
 ORT_API_STATUS_IMPL(OrtApis::GetTensorMutableData, _Inout_ OrtValue* value, _Outptr_ void** output) {
   TENSOR_READWRITE_API_BEGIN
   // Uncomment when WinML fixed their code
-  //if (tensor->IsDataTypeString()) {
+  // if (tensor->IsDataTypeString()) {
   //  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "this API does not support strings");
   //}
   *output = tensor->MutableDataRaw();
@@ -949,7 +1014,7 @@ ORT_API_STATUS_IMPL(OrtApis::FillStringTensor, _Inout_ OrtValue* value, _In_ con
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "input array doesn't equal tensor size");
   }
   for (size_t i = 0; i != len; ++i) {
-    //allocate and copy
+    // allocate and copy
     dst[i] = s[i];
   }
   return nullptr;
@@ -1875,9 +1940,9 @@ ORT_API_STATUS_IMPL(OrtApis::GetOpaqueValue, _In_ const char* domain_name, _In_ 
 ORT_API_STATUS_IMPL(OrtApis::GetAvailableProviders, _Outptr_ char*** out_ptr,
                     _In_ int* providers_length) {
   API_IMPL_BEGIN
-  //TODO: there is no need to manually malloc/free these memory, it is insecure
-  //and inefficient. Instead, the implementation could scan the array twice,
-  //and use a single string object to hold all the names.
+  // TODO: there is no need to manually malloc/free these memory, it is insecure
+  // and inefficient. Instead, the implementation could scan the array twice,
+  // and use a single string object to hold all the names.
   const size_t MAX_LEN = 30;
   const auto& available_providers = GetAvailableExecutionProviderNames();
   const int available_count = gsl::narrow<int>(available_providers.size());
@@ -1902,7 +1967,7 @@ ORT_API_STATUS_IMPL(OrtApis::GetAvailableProviders, _Outptr_ char*** out_ptr,
   return nullptr;
 }
 
-//TODO: we don't really need the second parameter
+// TODO: we don't really need the second parameter
 ORT_API_STATUS_IMPL(OrtApis::ReleaseAvailableProviders, _In_ char** ptr,
                     _In_ int providers_length) {
   API_IMPL_BEGIN
