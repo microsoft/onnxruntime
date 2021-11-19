@@ -498,11 +498,11 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
             }
           }
           if (auto* tensorrt_provider_factory = onnxruntime::CreateExecutionProviderFactory_Tensorrt(&params)) {
-            return tensorrt_provider_factor->CreateProvider();
+            return tensorrt_provider_factory->CreateProvider();
           }
         } else {
           if (auto* tensorrt_provider_factory = onnxruntime::CreateExecutionProviderFactory_Tensorrt(cuda_device_id)) {
-            return tensorrt_provider_factor->CreateProvider();
+            return tensorrt_provider_factory->CreateProvider();
           }
         }
     } else {
