@@ -49,6 +49,7 @@
 #include "core/optimizer/transpose_optimizer/ort_transpose_optimizer.h"
 #include "core/optimizer/unsqueeze_elimination.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
+#include "core/optimizer/scegrad_add_fusion.h"
 
 
 namespace onnxruntime {
@@ -221,6 +222,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       transformers.emplace_back(std::make_unique<FastGeluFusion>(cpu_cuda_rocm_eps));
 
       transformers.emplace_back(std::make_unique<MatMulScaleFusion>(cpu_cuda_rocm_eps));
+      transformers.emplace_back(std::make_unique<SCEGradWithAdd>(cpu_cuda_rocm_eps));
 
       // GeluApproximation has side effects which may change results. It needs to be manually enabled,
       // or alternatively the model can be updated offline using a model conversion script
