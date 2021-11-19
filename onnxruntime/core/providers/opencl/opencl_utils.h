@@ -86,8 +86,8 @@ class Image2DDesc : private std::pair<int64_t, int64_t> {
         return PackFromTensor1D(shape);
       case 2:
         return PackFromTensor2D(shape);
-      // case 4:
-      //   return PackFromTensorNCHW(shape);
+      case 4:
+        return PackFromTensorNCHW(shape);
       case 5:
         return PackFromTensorNCHWc(shape);
       default:
@@ -106,16 +106,16 @@ class Image2DDesc : private std::pair<int64_t, int64_t> {
     return {CeilDiv(shape[0], 4), shape[1]};
   }
 
-  // static Image2DDesc PackFromTensorNCHW(const TensorShape& shape) {
-  //   ORT_ENFORCE(shape.NumDimensions() == 4);
-  //   int64_t W = shape[0];
-  //   int64_t H = shape[1];
-  //   int64_t C = shape[2];
-  //   int64_t N = shape[3];
-  //   int64_t c = 4;
-  //   int64_t Cc = CeilDiv(C, c);
-  //   return {Cc * W, N * H};
-  // }
+  static Image2DDesc PackFromTensorNCHW(const TensorShape& shape) {
+    ORT_ENFORCE(shape.NumDimensions() == 4);
+    int64_t W = shape[0];
+    int64_t H = shape[1];
+    int64_t C = shape[2];
+    int64_t N = shape[3];
+    int64_t c = 4;
+    int64_t Cc = CeilDiv(C, c);
+    return {Cc * W, N * H};
+  }
 
   // NCHWc is actually Tensor of shape N[C/c]HWc then packed as NH C/cWc
   static Image2DDesc PackFromTensorNCHWc(const TensorShape& shape) {
