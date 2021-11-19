@@ -139,29 +139,6 @@ namespace Dml::GraphDescBuilder
                 &graphNodeInfo
             );
 
-            // Determine the number of valid inputs and outputs of this node.  The graph currently supports opererators
-            // with unused inputs and outputs only at the end of each list.  
-            uint32_t validOpInputCount = 0;
-            uint32_t validOpOutputCount = 0;
-
-            for (uint32_t i = 0; i < graphNodeInfo.kernelInputIndices.size(); ++i)
-            {
-                if (graphNodeInfo.kernelInputIndices[i] != std::numeric_limits<uint32_t>::max())
-                {
-                    assert(i - validOpInputCount == 0);
-                    ++validOpInputCount;
-                }
-            }
-
-            for (uint32_t i = 0; i < graphNodeInfo.kernelOutputIndices.size(); ++i)
-            {
-                if (graphNodeInfo.kernelOutputIndices[i] != std::numeric_limits<uint32_t>::max())
-                {
-                    assert(i - validOpOutputCount == 0);
-                    ++validOpOutputCount;
-                }
-            }
-
             uint32_t nodeIndex = gsl::narrow_cast<uint32_t>(graphNodes.size());
             AbstractOperatorDesc opDesc = *graphNodeInfo.desc; // Make a copy
 
@@ -171,8 +148,13 @@ namespace Dml::GraphDescBuilder
             std::vector<DmlBufferTensorDesc*> outputTensorDescs = opDesc.GetOutputTensors();
 
             // Set connections of the new node
-            for (uint32_t inputIndex = 0; inputIndex < validOpInputCount; ++inputIndex)
+            for (uint32_t inputIndex = 0; inputIndex < graphNodeInfo.kernelInputIndices.size(); ++inputIndex)
             {
+                if (graphNodeInfo.kernelInputIndices[inputIndex] == std::numeric_limits<uint32_t>::max())
+                {
+                    continue;
+                }
+
                 uint32_t kernelInputIndex = graphNodeInfo.kernelInputIndices[inputIndex];
 
                 const onnxruntime::NodeArg* arg = node.InputDefs()[kernelInputIndex];
@@ -224,8 +206,13 @@ namespace Dml::GraphDescBuilder
             
             // Store the new node for lookup when downstream nodes consume it.
 
-            for (uint32_t outputIndex = 0; outputIndex < validOpOutputCount; ++outputIndex) 
+            for (uint32_t outputIndex = 0; outputIndex < graphNodeInfo.kernelOutputIndices.size(); ++outputIndex) 
             {
+                if (graphNodeInfo.kernelOutputIndices[outputIndex] == std::numeric_limits<uint32_t>::max())
+                {
+                    continue;
+                }
+
                 uint32_t kernelOutputIndex = graphNodeInfo.kernelOutputIndices[outputIndex];
                 const onnxruntime::NodeArg* arg = node.OutputDefs()[kernelOutputIndex];
                 if (arg->Exists())
