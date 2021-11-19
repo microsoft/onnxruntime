@@ -34,18 +34,6 @@ class IdentityOp final : public CudaKernel {
       void* target = Y->MutableDataRaw(X_type);
       //If source and target pointers are not equal, we need to copy the data.
       if (target != source) {
-        size_t s = X->Shape().Size() * X->DataType()->Size();
-        float* a = new float[s];
-        cudaMemcpy(a, source, s, cudaMemcpyDeviceToHost);
-        for (size_t i = 0; i < s; ++i) {
-          if (a[i] != 1) {
-            std::cout << a[i];
-            //delete[] a;
-            //return Stat us(common::ONNXRUNTIME, common::FAIL, "FAIL.");
-          }
-        }
-
-        delete[] a;
         CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(target, source, X->Shape().Size() * X->DataType()->Size(), cudaMemcpyDeviceToDevice, Stream()));
       }
 
