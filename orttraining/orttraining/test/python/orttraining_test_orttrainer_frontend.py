@@ -1,6 +1,7 @@
 from functools import partial
 import inspect
 import math
+from distutils.version import StrictVersion
 from numpy.testing import assert_allclose
 import onnx
 import os
@@ -24,6 +25,8 @@ from onnxruntime.training import PropagateCastOpsStrategy
 ###############################################################################
 # Testing starts here #########################################################
 ###############################################################################
+
+pytorch_110 = StrictVersion('.'.join(torch.__version__.split('.')[:2])) >= StrictVersion('1.10.0')
 
 
 @pytest.mark.parametrize("test_input", [
@@ -872,7 +875,7 @@ def testORTTrainerInternalUseContribOps(enable_onnx_contrib_ops):
 
     # Training loop
     data, targets = batcher_fn(train_data, 0)
-    if not enable_onnx_contrib_ops:
+    if not enable_onnx_contrib_ops and not pytorch_110:
         with pytest.raises(Exception) as e_info:
             _, _ = trainer.train_step(data, targets)
     else:
