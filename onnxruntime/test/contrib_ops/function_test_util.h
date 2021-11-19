@@ -5,7 +5,7 @@
 
 #include <vector>
 
-#include "core/framework/data_types.h"
+#include "core/framework/to_tensor_proto_element_type.h"
 #include "core/graph/model.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/session/inference_session.h"

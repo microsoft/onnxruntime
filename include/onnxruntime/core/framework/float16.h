@@ -2,10 +2,13 @@
 // Licensed under the MIT License.
 #pragma once
 
-#include "endian.h"
+#include <cstdint>
+#include <cstring>
 
-namespace onnxruntime
-{
+#include "core/common/common.h"  // for ORT_IF_CONSTEXPR
+#include "core/framework/endian.h"
+
+namespace onnxruntime {
 
 // MLFloat16
 struct MLFloat16 {
@@ -94,4 +97,4 @@ inline bool operator<(const BFloat16& left, const BFloat16& right) {
   return left.val < right.val;
 }
 
-}
+}  // namespace onnxruntime
