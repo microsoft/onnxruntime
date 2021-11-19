@@ -182,11 +182,16 @@ def gpt2_to_onnx(args):
 
     convert_gpt2_to_onnx(arguments)
 
+
+def shape_inference(gpt2_onnx_path):
     # Run symbolic shape inference to walk around ORT shape inference issue for subgraph.
     from onnxruntime.tools.symbolic_shape_infer import SymbolicShapeInference
-    out = SymbolicShapeInference.infer_shapes(onnx.load(args.gpt2_onnx), auto_merge=True, guess_output_rank=False)
+    out = SymbolicShapeInference.infer_shapes(onnx.load(gpt2_onnx_path), auto_merge=True, guess_output_rank=False)
     if out:
-        onnx.save(out, args.gpt2_onnx)
+        # TODO: Use external format if input has extra data.
+        onnx.save(out, gpt2_onnx_path)
+    else:
+        print("Failed to run symbolic shape inference on the model.")
 
 
 def create_ort_session(model_path, use_gpu):
@@ -205,7 +210,8 @@ def convert_model(args):
     else:
         gpt2_to_onnx(args)
 
-    #create_ort_session(args.gpt2_onnx, args.use_gpu)
+    print(f"Run symbolic shape inference on {args.gpt2_onnx}. The file will be overwritten.")
+    shape_inference(args.gpt2_onnx)
 
     global config
     config = GPT2Config.from_pretrained(args.model_name_or_path, cache_dir=args.cache_dir)
