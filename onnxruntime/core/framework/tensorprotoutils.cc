@@ -829,6 +829,8 @@ common::Status ConstantNodeProtoToTensorProto(const ONNX_NAMESPACE::NodeProto& n
       ORT_RETURN_IF_ERROR(SparseTensorProtoToDenseTensorProto(s, model_path, tensor));
       break;
     }
+#else
+  ORT_UNUSED_PARAMETER(model_path);
 #endif
     default:
       ORT_THROW("Unsupported attribute value type of ", constant_attribute.type(),
