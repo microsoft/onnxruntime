@@ -67,6 +67,70 @@ class PrimitiveDataTypeBase;
 class Tensor;
 class TensorSeq;
 
+namespace utils {
+/** Gets the TensorProto_DataType corresponding to the template type `T`. */
+template <typename T>
+constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorProtoElementType() {
+  return ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED;
+}
+template <>
+constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorProtoElementType<float>() {
+  return ONNX_NAMESPACE::TensorProto_DataType_FLOAT;
+}
+template <>
+constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorProtoElementType<uint8_t>() {
+  return ONNX_NAMESPACE::TensorProto_DataType_UINT8;
+}
+template <>
+constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorProtoElementType<int8_t>() {
+  return ONNX_NAMESPACE::TensorProto_DataType_INT8;
+}
+template <>
+constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorProtoElementType<uint16_t>() {
+  return ONNX_NAMESPACE::TensorProto_DataType_UINT16;
+}
+template <>
+constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorProtoElementType<int16_t>() {
+  return ONNX_NAMESPACE::TensorProto_DataType_INT16;
+}
+template <>
+constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorProtoElementType<int32_t>() {
+  return ONNX_NAMESPACE::TensorProto_DataType_INT32;
+}
+template <>
+constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorProtoElementType<int64_t>() {
+  return ONNX_NAMESPACE::TensorProto_DataType_INT64;
+}
+template <>
+constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorProtoElementType<std::string>() {
+  return ONNX_NAMESPACE::TensorProto_DataType_STRING;
+}
+template <>
+constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorProtoElementType<bool>() {
+  return ONNX_NAMESPACE::TensorProto_DataType_BOOL;
+}
+template <>
+constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorProtoElementType<MLFloat16>() {
+  return ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
+}
+template <>
+constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorProtoElementType<double>() {
+  return ONNX_NAMESPACE::TensorProto_DataType_DOUBLE;
+}
+template <>
+constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorProtoElementType<uint32_t>() {
+  return ONNX_NAMESPACE::TensorProto_DataType_UINT32;
+}
+template <>
+constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorProtoElementType<uint64_t>() {
+  return ONNX_NAMESPACE::TensorProto_DataType_UINT64;
+}
+template <>
+constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorProtoElementType<BFloat16>() {
+  return ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16;
+}
+}  // namespace utils
+
 // DataTypeImpl pointer as unique DataTypeImpl identifier.
 using MLDataType = const DataTypeImpl*;
 // be used with class MLValue
@@ -231,66 +295,6 @@ std::ostream& operator<<(std::ostream& out, MLDataType data_type);
 namespace data_types_internal {
 /// TensorType helpers
 ///
-
-template <typename T>
-constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType();
-
-template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<float>() {
-  return ONNX_NAMESPACE::TensorProto_DataType_FLOAT;
-}
-template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<uint8_t>() {
-  return ONNX_NAMESPACE::TensorProto_DataType_UINT8;
-};
-template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<int8_t>() {
-  return ONNX_NAMESPACE::TensorProto_DataType_INT8;
-};
-template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<uint16_t>() {
-  return ONNX_NAMESPACE::TensorProto_DataType_UINT16;
-};
-template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<int16_t>() {
-  return ONNX_NAMESPACE::TensorProto_DataType_INT16;
-};
-template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<int32_t>() {
-  return ONNX_NAMESPACE::TensorProto_DataType_INT32;
-};
-template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<int64_t>() {
-  return ONNX_NAMESPACE::TensorProto_DataType_INT64;
-};
-template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<std::string>() {
-  return ONNX_NAMESPACE::TensorProto_DataType_STRING;
-};
-template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<bool>() {
-  return ONNX_NAMESPACE::TensorProto_DataType_BOOL;
-};
-template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<MLFloat16>() {
-  return ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
-};
-template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<double>() {
-  return ONNX_NAMESPACE::TensorProto_DataType_DOUBLE;
-};
-template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<uint32_t>() {
-  return ONNX_NAMESPACE::TensorProto_DataType_UINT32;
-};
-template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<uint64_t>() {
-  return ONNX_NAMESPACE::TensorProto_DataType_UINT64;
-};
-template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<BFloat16>() {
-  return ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16;
-}
 
 // There is a specialization only for one
 // type argument.

@@ -36,7 +36,7 @@ void CheckLayerNorm(bool compute_mean = true, bool compute_isd = true, std::vect
   testCase.AddOutput("y");
   testCase.AddOutput(compute_mean ? "mean" : "");
   testCase.AddOutput(compute_isd ? "invstddev" : "");
-  testCase.AddAttribute("stash_type", data_types_internal::ToTensorDataType<U>());
+  testCase.AddAttribute("stash_type", utils::ToTensorProtoElementType<U>());
   if (axis != -1)
     testCase.AddAttribute("axis", axis);
   if (RunTest)

@@ -76,7 +76,7 @@ struct FunctionTestCase {
 
   template <typename T, bool GenData = true>
   void AddInput(std::string input_name, std::vector<int64_t> shape) {
-    auto arg_type = TensorType(data_types_internal::ToTensorDataType<T>(), shape);
+    auto arg_type = TensorType(utils::ToTensorProtoElementType<T>(), shape);
     input_args.emplace_back(input_name, &arg_type);
 
     if (GenData) {
