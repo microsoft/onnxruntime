@@ -145,6 +145,8 @@ std::vector<std::vector<const Node*>> CreateSupportedPartitionNodeGroups(
     }
   };
 
+  nnapi::QDQSupportHelper qdq_support_helper = nnapi::QDQSupportHelper(nnapi::CreateSelectors(), graph_viewer);
+
   while (!nodes_to_process.empty() || !nodes_to_process_with_next_group.empty()) {
     if (nodes_to_process.empty()) {
       // we have processed all the nodes that we can while building this partition node group, start a new one
@@ -161,7 +163,6 @@ std::vector<std::vector<const Node*>> CreateSupportedPartitionNodeGroups(
         is_node_supported_fn(node);
 
     // TODO: special handling for a node in a qdq group
-    nnapi::QDQSupportHelper qdq_support_helper = nnapi::QDQSupportHelper(nnapi::CreateSelectors(), graph_viewer);
     const auto is_qdq_node = qdq_support_helper.IsNodeInQDQGroup(node);
 
     if (!is_node_supported && Contains(supported_group_border, &node)) {

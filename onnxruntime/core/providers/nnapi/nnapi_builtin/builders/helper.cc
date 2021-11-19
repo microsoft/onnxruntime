@@ -157,15 +157,42 @@ bool HasValidQuantizationScales(const InitializedTensorSet& initializers, const 
   auto qlinear_op_type = GetQLinearOpType(node);
   bool is_qlinear_conv = (qlinear_op_type == QLinearOpType::QLinearConv);
   bool is_qlinear_matmul = (qlinear_op_type == QLinearOpType::QLinearMatMul);
+  const bool is_qdq_node = params.qdq_support_helper.IsNodeInQDQGroup(node);
+  const bool is_target_node = params.qdq_support_helper.IsNodeTargetNode(node);
+
+  QDQ::NodeGroup qdq_group;
+  if (is_qdq_node && is_target_node) {
+    qdq_group = params.qdq_support_helper.GetQDQNodeGroupWithTargetNode(node);
+  }
+
   const auto input_defs(node.InputDefs());
-  for (const auto idx : indices) {
+
+  for (size_t i = 0; i < indices.size(); ++i) {
+    const auto idx = indices[i];
     if (idx >= input_defs.size()) {
       LOGS_DEFAULT(VERBOSE) << "HasValidQuantizationScales, Input index,  " << idx
                             << " >= input number, " << input_defs.size();
       return false;
     }
 
-    const auto scale_name = input_defs[idx]->Name();
+    std::string scale_name;
+    if (is_qdq_node && is_target_node) {
+      if (i == 0) {
+        const auto dq_x_input_defs(qdq_group.dq_nodes[0]->InputDefs());
+        scale_name = dq_x_input_defs[idx]->Name();  //dq_x
+      } else if (i == 1) {
+        const auto dq_w_input_defs(qdq_group.dq_nodes[1]->InputDefs());
+        scale_name = dq_w_input_defs[idx]->Name();  //dq_w
+      } else {
+        const auto q_input_defs(qdq_group.q_nodes[0]->InputDefs());
+        scale_name = q_input_defs[idx]->Name();  //q
+      }
+    }
+
+    if (!is_qdq_node) {
+      scale_name = input_defs[idx]->Name();
+    }
+
     if (!Contains(initializers, scale_name)) {
       LOGS_DEFAULT(VERBOSE) << "The scale of " << op_type << " must be an initializer tensor";
       return false;
@@ -177,6 +204,12 @@ bool HasValidQuantizationScales(const InitializedTensorSet& initializers, const 
 
     if (is_conv_matmul_weight) {
       const auto& weight_tensor = *initializers.at(node.InputDefs()[3]->Name());
+      is_conv_matmul_u8s8_weight = weight_tensor.data_type() == ONNX_NAMESPACE::TensorProto_DataType_INT8;
+    }
+
+    if (is_qdq_node && is_target_node && i == 1) {
+      const auto dq_w_input_defs(qdq_group.dq_nodes[1]->InputDefs());
+      const auto& weight_tensor = *initializers.at(dq_w_input_defs[0]->Name());
       is_conv_matmul_u8s8_weight = weight_tensor.data_type() == ONNX_NAMESPACE::TensorProto_DataType_INT8;
     }
 
@@ -203,7 +236,15 @@ bool HasValidQuantizationScales(const InitializedTensorSet& initializers, const 
         return false;
       }
 
-      const auto& weight_tensor = *initializers.at(node.InputDefs()[3]->Name());
+      std::string weight_name;
+      if (is_qdq_node && is_target_node && i == 1) {
+        const auto dq_w_input_defs(qdq_group.dq_nodes[1]->InputDefs());
+        weight_name = dq_w_input_defs[0]->Name();
+      }
+      if (!is_qdq_node) {
+        weight_name = node.InputDefs()[3]->Name();
+      }
+      const auto& weight_tensor = *initializers.at(weight_name);
       if (weight_tensor.dims()[0] != scales_dim) {
         LOGS_DEFAULT(VERBOSE) << op_type << " mismatch int8 per-channel quantization weight,"
                               << " weight dimension[0] " << weight_tensor.dims()[0]

@@ -57,7 +57,7 @@ class QDQSupportHelper {
 
   bool IsNodeTargetNode(const Node& node) const;
 
-  const QDQ::NodeGroup GetQDQNodeGroupWithTargetNode(const Node& target_node) const;
+  QDQ::NodeGroup GetQDQNodeGroupWithTargetNode(const Node& target_node) const;
 
  private:
   Selectors selectors_;

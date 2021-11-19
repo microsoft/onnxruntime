@@ -794,22 +794,34 @@ bool ConvOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initial
     std::string bias_name;
     if (is_qdq_node) {
       if (!qdq_group.dq_nodes.empty()) {
-        const auto* dq_b = qdq_group.dq_nodes.at(2);
-        bias_name = dq_b->InputDefs()[0]->Name();
+        if (qdq_group.dq_nodes.size() > 2) {
+          const auto* dq_b = qdq_group.dq_nodes.at(2);
+          bias_name = dq_b->InputDefs()[0]->Name();
+        }
       }
     } else {
       bias_name = input_defs[8]->Name();
+    }
+
+    if (is_qdq_node && !Contains(initializers, bias_name)) {
+      LOGS_DEFAULT(VERBOSE) << "Bias of QDQ Conv must be known";
+      return false;
     }
 
     if (input_defs.size() > 8 && !Contains(initializers, bias_name)) {
       LOGS_DEFAULT(VERBOSE) << "Bias of QLinearConv must be known";
       return false;
     }
-    
+
     // TODO: These two functions needs to update for qdq case
     // a/b/y_scale
-    if (!HasValidQuantizationScales(initializers, node, {1, 4, 6}, params))
-      return false;
+    if (is_qdq_node) {
+      if (!HasValidQuantizationScales(initializers, node, {1, 1, 1}, params))
+        return false;
+    } else {
+      if (!HasValidQuantizationScales(initializers, node, {1, 4, 6}, params))
+        return false;
+    }
 
     // a/b/y_zero_point
     if (!HasValidQuantizationZeroPoints(initializers, node, {2, 5, 7}))
