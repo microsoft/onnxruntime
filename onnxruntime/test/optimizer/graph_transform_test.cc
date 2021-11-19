@@ -1368,6 +1368,35 @@ TEST_F(GraphTransformationTests, GemmTransposeFusionInputOutput) {
   ASSERT_TRUE(new_input_defs[1]->Name() == "A");
 }
 
+//  (A'(B'))' = BA
+TEST_F(GraphTransformationTests, GemmTransposeFusionInputOutput2) {
+  auto model_uri = MODEL_FOLDER "fusion/gemm_transpose_inputs_output_transposed_2.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+  Graph& graph = p_model->MainGraph();
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["Transpose"], 2);
+  ASSERT_EQ(op_to_count["Gemm"], 1);
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
+  ASSERT_STATUS_OK(rule_transformer_L1->Register(std::make_unique<GemmTransposeFusion>()));
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["Transpose"], 0);
+  ASSERT_EQ(op_to_count["Gemm"], 1);
+
+  auto& node = *graph.Nodes().begin();
+  ASSERT_TRUE(node.OpType() == "Gemm");
+  ASSERT_FALSE(static_cast<bool>(node.GetAttributes().at("transA").i()));
+  ASSERT_FALSE(static_cast<bool>(node.GetAttributes().at("transB").i()));
+  auto new_input_defs = node.InputDefs();
+  ASSERT_TRUE(new_input_defs[0]->Name() == "B");
+  ASSERT_TRUE(new_input_defs[1]->Name() == "A");
+}
+
 // Sum(Gemm(A, B, _), C) -> Gemm(A, B, C)
 TEST_F(GraphTransformationTests, GemmSumFusionBasic) {
   auto model_uri = MODEL_FOLDER "fusion/gemm_sum_basic.onnx";
@@ -1939,6 +1968,30 @@ TEST_F(GraphTransformationTests, ReluClip11Fusion) {
       }
     }
   }
+}
+
+TEST_F(GraphTransformationTests, ReluClip11FusionGHIssue9753) {
+  auto model_uri = MODEL_FOLDER "fusion/relu_clip_fusion_gh_issue_9753.onnx";
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
+  Graph& graph = model->MainGraph();
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+
+  // The model contains one Relu and one Clip
+  ASSERT_TRUE(op_to_count["Relu"] == 1);
+  ASSERT_TRUE(op_to_count["Clip"] == 1);
+
+  auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
+  ASSERT_STATUS_OK(rule_transformer_L1->Register(std::make_unique<FuseReluClip>()));
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  op_to_count = CountOpsInGraph(graph);
+
+  // After fusion, the model only contains Clip.
+  ASSERT_TRUE(op_to_count["Relu"] == 0);
+  ASSERT_TRUE(op_to_count["Clip"] == 1);
 }
 
 // Test Reshape Fusion with 2 constant initializers for Concat inputs.

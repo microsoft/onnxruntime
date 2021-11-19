@@ -26,8 +26,8 @@ class TensorShape {
   TensorShape(const TensorShape& other) : TensorShape(other.GetDims()) {}
   TensorShape& operator=(const TensorShape& other);
 
-  TensorShape(TensorShape&& other) { operator=(std::move(other)); }
-  TensorShape& operator=(TensorShape&& other);
+  TensorShape(TensorShape&& other) noexcept { operator=(std::move(other)); }
+  TensorShape& operator=(TensorShape&& other) noexcept;
 
   TensorShape(gsl::span<const int64_t> dims);
   TensorShape(const std::vector<int64_t>& dims) : TensorShape(gsl::make_span(dims)) {}

@@ -26,13 +26,13 @@ LearningModel::LearningModel(
 #if WINVER >= _WIN32_WINNT_WIN8
       CreateFile2(path.c_str(),
                   GENERIC_READ,
-                  0,
+                  FILE_SHARE_READ,
                   OPEN_EXISTING,
                   NULL)};
 #else
       CreateFileW(path.c_str(),
                   GENERIC_READ,
-                  0,
+                  FILE_SHARE_READ,
                   NULL,
                   OPEN_EXISTING,
                   FILE_ATTRIBUTE_READONLY,
