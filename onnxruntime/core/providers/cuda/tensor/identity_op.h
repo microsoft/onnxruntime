@@ -35,9 +35,10 @@ class IdentityOp final : public CudaKernel {
       //If source and target pointers are not equal, we need to copy the data.
       if (target != source) {
         size_t s = X->Shape().Size() * X->DataType()->Size();
+        const float* a = reinterpret_cast<const float*>(source);
         for (size_t i = 0; i < s; ++i) {
-          if (reinterpret_cast<const float*>(source)[i] != 1) {
-            return Status(common::ONNXRUNTIME, common::FAIL, "FAIL.");
+          if (a[i] != 1) {
+            return Status(common::ONNXRUNTIME, common::FAIL, "FAIL.", a[i]);
           }
         }
 
