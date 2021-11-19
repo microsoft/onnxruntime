@@ -40,7 +40,7 @@ class IdentityOp final : public CudaKernel {
         for (size_t i = 0; i < s; ++i) {
           if (a[i] != 1) {
             delete[] a;
-            return ORT_MAKE_STATUS(common::ONNXRUNTIME, common::FAIL, "FAIL.", a[i]);
+            return Status(common::ONNXRUNTIME, common::FAIL, "FAIL.");
           }
         }
 
