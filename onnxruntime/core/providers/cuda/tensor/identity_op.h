@@ -34,10 +34,9 @@ class IdentityOp final : public CudaKernel {
       void* target = Y->MutableDataRaw(X_type);
       //If source and target pointers are not equal, we need to copy the data.
       if (target != source) {
-        cudaDeviceSynchronize();
         size_t s = X->Shape().Size() * X->DataType()->Size();
         for (size_t i = 0; i < s; ++i) {
-          if (reinterpret_cast<const float*>(X)[i] != 1) {
+          if (reinterpret_cast<const float*>(source)[i] != 1) {
             return Status(common::ONNXRUNTIME, common::FAIL, "FAIL.");
           }
         }
