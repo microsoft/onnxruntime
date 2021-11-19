@@ -39,8 +39,9 @@ class IdentityOp final : public CudaKernel {
         cudaMemcpy(a, source, s, cudaMemcpyDeviceToHost);
         for (size_t i = 0; i < s; ++i) {
           if (a[i] != 1) {
-            delete[] a;
-            return Status(common::ONNXRUNTIME, common::FAIL, "FAIL.");
+            std::cout << a[i];
+            //delete[] a;
+            //return Status(common::ONNXRUNTIME, common::FAIL, "FAIL.");
           }
         }
 
