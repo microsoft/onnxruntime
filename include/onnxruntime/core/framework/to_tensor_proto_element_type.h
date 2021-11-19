@@ -6,7 +6,9 @@
 #include <cstdint>
 #include <string>
 
+#ifndef SHARED_PROVIDER
 #include "onnx/onnx_pb.h"
+#endif
 
 #include "core/framework/float16.h"
 
