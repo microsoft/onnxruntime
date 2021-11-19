@@ -13,10 +13,10 @@
 #include "boost/mp11.hpp"
 
 #include "core/common/common.h"
-#include "core/framework/to_tensor_proto_element_type.h"
 #ifndef SHARED_PROVIDER
 #include "core/common/type_list.h"
 #include "core/framework/data_types.h"
+#include "core/framework/to_tensor_proto_element_type.h"
 #if !defined(ORT_MINIMAL_BUILD)
 #include "onnx/defs/schema.h"
 #else
