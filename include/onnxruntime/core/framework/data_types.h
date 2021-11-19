@@ -1000,9 +1000,11 @@ inline const SparseTensorTypeBase* DataTypeImpl::AsSparseTensorType() const {
 }
 #endif
 
+#if !defined(DISABLE_OPTIONAL_TYPE)
 inline const OptionalTypeBase* DataTypeImpl::AsOptionalType() const {
   return IsOptionalType() ? static_cast<const OptionalTypeBase*>(this) : nullptr;
 }
+#endif
 
 inline const NonTensorTypeBase* DataTypeImpl::AsNonTensorType() const {
   return IsNonTensorType() ? static_cast<const NonTensorTypeBase*>(this) : nullptr;
