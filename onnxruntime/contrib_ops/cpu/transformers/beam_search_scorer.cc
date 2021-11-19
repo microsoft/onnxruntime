@@ -26,7 +26,7 @@ BeamHypotheses<T>::BeamHypotheses(int num_beams, T length_penalty, bool early_st
 template <typename T>
 void BeamHypotheses<T>::Add(gsl::span<const int64_t>& hypothesis, T sum_logprobs) {
   auto length = hypothesis.size();
-  // TODO: may need compute in FP32 when T is FP16
+  // TODO: when T is FP16, compute in FP32, then cast result back to FP16. length_penalty_ might also be float.
   T score = sum_logprobs / pow(static_cast<T>(length), length_penalty_);
 
   if (this->Size() < num_beams_ || score > worst_score_) {

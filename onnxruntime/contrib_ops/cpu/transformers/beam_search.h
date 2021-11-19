@@ -81,7 +81,7 @@ struct BeamSearchState {
 
   std::vector<T> scores;  // shape (max_length - sequence_length + 1, batch_size, num_beams * vocab_size)
 
-  void Init(const OrtValue& input_ids, int batch_size, int num_beams, int vocab_size, int sequence_length, int max_length) {
+  void Init(const OrtValue& input_ids, int batch_size, int num_beams, int vocab_size, int sequence_length, int max_length, bool output_scores) {
     int batch_beam_size = batch_size * num_beams;
     done.assign(batch_size, 0);
     beam_scores.assign(batch_beam_size, 0.0f);
@@ -99,7 +99,9 @@ struct BeamSearchState {
 
     sequences.Init(input_ids, batch_beam_size, sequence_length, max_length);
 
-    scores.reserve((max_length - sequence_length + 1) * batch_size * num_beams * vocab_size);
+    if (output_scores) {
+      scores.reserve((max_length - sequence_length) * batch_size * num_beams * vocab_size);
+    }
   }
 };
 

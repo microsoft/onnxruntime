@@ -2,6 +2,8 @@
 // Licensed under the MIT License.
 #include "beam_search_parameters.h"
 
+constexpr int kMaxSequenceLength = 4096;
+
 namespace onnxruntime {
 namespace contrib {
 
@@ -18,41 +20,45 @@ void BeamSearchParameters::ParseFromAttributes(const OpKernelInfo& info) {
   no_repeat_ngram_size = static_cast<int>(info.GetAttrOrDefault<int64_t>("no_repeat_ngram_size", 0));
 }
 
-void BeamSearchParameters::ParseFromInputs(OpKernelContext* context){
+void BeamSearchParameters::ParseFromInputs(OpKernelContext* context) {
   ORT_ENFORCE(context != nullptr);
   const Tensor* input_ids = context->Input<Tensor>(0);
   const auto& dims = input_ids->Shape().GetDims();
-  if (dims.size() == 2) {
-    batch_size = static_cast<int>(dims[0]);
-    sequence_length = static_cast<int>(dims[1]);
-  } else {
-    batch_size = 0;
-    sequence_length = 0;
-  }
-  
+  ORT_ENFORCE(dims.size() == 2, "input_ids shall have 2 dimensions. Got ", dims.size());
+  batch_size = static_cast<int>(dims[0]);
+  sequence_length = static_cast<int>(dims[1]);
+
   auto* max_length_tensor = context->Input<Tensor>(1);
   max_length = max_length_tensor ? static_cast<int>(*max_length_tensor->Data<int32_t>()) : 4096;
+  ORT_ENFORCE(max_length > sequence_length, "max_length (", max_length, ") shall be greater than input sequence length (", sequence_length, ")");
+  ORT_ENFORCE(max_length <= kMaxSequenceLength, "max_length (", max_length, ") shall be no more than ", kMaxSequenceLength);
 
   auto* min_length_tensor = context->Input<Tensor>(2);
   min_length = min_length_tensor ? static_cast<int>(*min_length_tensor->Data<int32_t>()) : 0;
 
   auto* num_beams_tensor = context->Input<Tensor>(3);
   num_beams = num_beams_tensor ? static_cast<int>(*num_beams_tensor->Data<int32_t>()) : 1;
+  // TODO: shall we limit num_beams > 1. When num_beams==1, we can have another operator for greedy search.
+  ORT_ENFORCE(num_beams >= 1, "num_beams shall be a positive integer, got ", num_beams);
 
   auto* num_return_sequences_tensor = context->Input<Tensor>(4);
   num_return_sequences = num_return_sequences_tensor ? static_cast<int>(*num_return_sequences_tensor->Data<int32_t>()) : 1;
+  ORT_ENFORCE(num_return_sequences >= 1, "num_return_sequences shall be a positive integer, got ", num_return_sequences);
+  ORT_ENFORCE(num_beams >= num_return_sequences, "num_return_sequences (", num_return_sequences, ") shall be be no more than num_beams (", num_beams, ")");
 
   auto* temperature_tensor = context->Input<Tensor>(5);
   temperature = temperature_tensor ? static_cast<float>(*temperature_tensor->Data<float>()) : 1;
+  ORT_ENFORCE(temperature > 0.0f, "temperature shall be greater than 0, got ", temperature);
 
   auto* length_penalty_tensor = context->Input<Tensor>(6);
   length_penalty = length_penalty_tensor ? static_cast<float>(*length_penalty_tensor->Data<float>()) : 1;
 
   auto* repetition_penalty_tensor = context->Input<Tensor>(7);
   repetition_penalty = repetition_penalty_tensor ? static_cast<float>(*repetition_penalty_tensor->Data<float>()) : 1.0f;
+  ORT_ENFORCE(repetition_penalty > 0.0f, "repetition_penalty shall be greater than 0, got ", repetition_penalty);
 }
 
-void BeamSearchParameters::SetSubgraphParameters(int heads, int hidden_size_per_head, int vocabulary_size, int layers){
+void BeamSearchParameters::SetSubgraphParameters(int heads, int hidden_size_per_head, int vocabulary_size, int layers) {
   num_heads = heads;
   head_size = hidden_size_per_head;
   vocab_size = vocabulary_size;

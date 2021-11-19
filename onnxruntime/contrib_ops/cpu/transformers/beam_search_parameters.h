@@ -25,6 +25,9 @@ struct BeamSearchParameters {
   float repetition_penalty;
   int batch_size;           // deduce from first dimension of input_ids
   int sequence_length;      // deduce from second dimension of input_ids
+  
+  // from outputs
+  bool output_scores;       // whether scores existed in output
 
   // deduce from subgraph
   int num_heads;

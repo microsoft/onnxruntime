@@ -231,7 +231,9 @@ def convert_model(args):
     outputs = ["sequences"]
     if args.output_sequences_scores:
         outputs.append("sequences_scores")
+        
     if args.output_token_scores:
+        assert args.output_sequences_scores, "--output_token_scores requires --output_sequences_scores"
         outputs.append("scores")
 
     node = helper.make_node('BeamSearch', inputs=inputs, outputs=outputs, name='BeamSearch_GPT2')
@@ -268,6 +270,7 @@ def convert_model(args):
 
     sequences_scores = helper.make_tensor_value_info('sequences_scores', TensorProto.FLOAT,
                                                      ['batch_size', 'num_return_sequences'])
+    
     scores = helper.make_tensor_value_info('scores', TensorProto.FLOAT,
                                            ['max_length - sequence_length', 'batch_size', 'num_beams', vocab_size])
 
@@ -318,11 +321,19 @@ def test_model(args):
                                       num_return_sequences=args.num_return_sequences,
                                       temperature=args.temperature,
                                       length_penalty=args.length_penalty,
-                                      repetition_penalty=args.repetition_penalty)
+                                      repetition_penalty=args.repetition_penalty,
+                                      return_dict_in_generate=True,
+                                      output_scores=True
+                                      )
         print("input_ids", input_ids)
-        print("huggingface transformers output:", beam_outputs)
-        for i, beam_output in enumerate(beam_outputs):
-            print("{}: {}".format(i, tokenizer.decode(beam_output, skip_special_tokens=True)))
+        print("huggingface transformers outputs:")
+        print("sequences", beam_outputs.sequences)
+        if args.output_sequences_scores:
+            print("sequences_scores", beam_outputs.sequences_scores)
+        if args.output_token_scores:
+            print("scores", beam_outputs.scores)
+        for i, sequence in enumerate(beam_outputs.sequences):
+            print("{}: {}".format(i, tokenizer.decode(sequence, skip_special_tokens=True)))
 
     print('-' * 50)
     print("Test ONNX model and bream search with onnxruntime...")
@@ -359,14 +370,19 @@ def test_model(args):
 
     print("inputs", inputs)
     result = ort_session.run(None, inputs)
-
+    print("ORT outputs:")
     sequences = result[0]
-    print("outputs", sequences)
-
-    #TODO: print all sequences. Below shows only the first one
-    first_sequence = tokenizer.decode(sequences[0][0], skip_special_tokens=True)
-    print(first_sequence)
-
+    print("sequences", sequences)
+    if args.output_sequences_scores:
+        print("sequences_scores", result[1])
+    if args.output_token_scores:
+        print("scores", result[2])
+        
+    (batch_size, num_sequences, max_length) =  sequences.shape
+    for i in range(batch_size):
+        for j in range(num_sequences):
+            sequence = tokenizer.decode(sequences[i][j], skip_special_tokens=True)
+            print(f"batch {i} sequence {j}: {sequence}")
 
 def main():
     args = parse_arguments()

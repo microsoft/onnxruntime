@@ -463,6 +463,9 @@ Status BeamSearchImpl<T>::Initialize() {
   // CheckInputs shall be after CheckSubgraph due to its dependency on vocab_size
   ORT_RETURN_IF_ERROR(CheckInputs(context_));
 
+  // This flag will be updated later when the scores output exists.
+  parameters_->output_scores = false;
+
   return status;
 }
 
@@ -658,10 +661,9 @@ Status BeamSearchImpl<T>::ProcessLogits(
     }
   }
 
-  // TODO: Store scores only when required
-  //  if output_scores:
-  //      scores += (next_token_scores,)
-  beam_state.scores.insert(beam_state.scores.end(), next_token_scores.begin(), next_token_scores.end());
+  if (parameters_->output_scores) {
+    beam_state.scores.insert(beam_state.scores.end(), next_token_scores.begin(), next_token_scores.end());
+  }
 
   //next_token_scores = next_token_scores.view(batch_size, num_beams * vocab_size)
   //next_token_scores, next_tokens = torch.topk(next_token_scores, 2 * num_beams, dim=1, largest=True, sorted=True)
@@ -889,6 +891,15 @@ Status BeamSearchImpl<T>::Execute(const FeedsFetchesManager& ffm) {
   TensorShape sequences_scores_shape(sequences_scores_dims);
   Tensor* output_sequences_scores = context_.Output(1, sequences_scores_shape);
 
+  std::vector<int64_t> scores_dims{
+      parameters_->max_length - parameters_->sequence_length,
+      parameters_->batch_size, parameters_->num_beams, parameters_->vocab_size};
+  TensorShape scores_shape(scores_dims);
+  Tensor* output_scores = context_.Output(2, scores_shape);
+
+  // Update the flag to indicate whether scores exists in output
+  parameters_->output_scores = (output_scores != nullptr);
+
   std::vector<OrtValue> feeds;
   std::vector<OrtValue> fetches;
 
@@ -915,7 +926,8 @@ Status BeamSearchImpl<T>::Execute(const FeedsFetchesManager& ffm) {
                    parameters_->num_beams,
                    parameters_->vocab_size,
                    parameters_->sequence_length,
-                   parameters_->max_length);
+                   parameters_->max_length,
+                   parameters_->output_scores);
 
   int current_length = parameters_->sequence_length;
   while (current_length < parameters_->max_length) {
@@ -954,6 +966,19 @@ Status BeamSearchImpl<T>::Execute(const FeedsFetchesManager& ffm) {
                          beam_scores,
                          output_sequences,
                          output_sequences_scores);
+
+  // Output per token scores
+  if (output_scores != nullptr) {
+    gsl::span<T> target = output_scores->MutableDataAsSpan<T>();
+    gsl::span<const T> source = gsl::span<const T>(beam_state_.scores.data(), beam_state_.scores.size());
+    gsl::copy(source, target);
+
+    // Fill zeros for the remaining when beam search stopped early
+    if (target.length() > source.length()) {
+      gsl::span<T> remaining = target.subspan(source.length());
+      memset(remaining.data(), 0, remaining.size_bytes());
+    }
+  }
 
   return status;
 }
