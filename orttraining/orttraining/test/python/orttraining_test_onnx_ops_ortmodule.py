@@ -136,7 +136,7 @@ class TestOnnxOpsOrtModule(unittest.TestCase):
                     out = self.fc2(out)
                     return out
 
-            return TestGatherElement, 'GatherElementsGrad', dict(rtol=1e-05, atol=1e-06)
+            return TestGatherElement, 'GatherElementsGrad', dict(rtol=1e-04, atol=1e-05)
 
         raise AssertionError("Unexpected name=%r." % name)
 
