@@ -1522,6 +1522,28 @@ class Graph {
 };
 
 #if !defined(ORT_MINIMAL_BUILD)
+// Print NodeArg as
+//  name : type
+// For example,
+//  "110": tensor(float)
+std::ostream& operator<<(std::ostream& out, const NodeArg& node_arg);
+// Print Node as,
+//  (operator's name, operator's type, domain, version) : (input0, input1, ...) -> (output0, output1, ...)
+// For example,
+//  ("Add_14", Add, "", 7) : ("110": tensor(float),"109": tensor(float),) -> ("111": tensor(float),) 
+std::ostream& operator<<(std::ostream& out, const Node& node);
+// Print Graph as, for example,
+// Inputs:
+//    "Input": tensor(float)
+// Nodes:
+//    ("add0", Add, "", 7) : ("Input": tensor(float),"Bias": tensor(float),) -> ("add0_out": tensor(float),) 
+//    ("matmul", MatMul, "", 9) : ("add0_out": tensor(float),"matmul_weight": tensor(float),) -> ("matmul_out": tensor(float),) 
+//    ("add1", Add, "", 7) : ("matmul_out": tensor(float),"add_weight": tensor(float),) -> ("add1_out": tensor(float),) 
+//    ("reshape", Reshape, "", 5) : ("add1_out": tensor(float),"concat_out": tensor(int64),) -> ("Result": tensor(float),) 
+// Outputs:
+//    "Result": tensor(float)
+// Inputs' and outputs' format is described in document of NodeArg's operator<< above.
+// Node format is described in Node's operator<< above.
 std::ostream& operator<<(std::ostream& out, const Graph& graph);
 #endif
 

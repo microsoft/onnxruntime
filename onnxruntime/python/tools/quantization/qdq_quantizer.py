@@ -101,7 +101,7 @@ class QDQQuantizer(ONNXQuantizer):
         self.quantize_bias_tensors()
         self.remove_nodes()
         if not self.add_qdq_pair_to_weight:
-            self.remove_quantized_weights()
+            ONNXQuantizer.CleanGraphInitializers(self.model.graph(), self.model.model)
 
         self.model.model.producer_name = __producer__
         self.model.model.producer_version = __version__
