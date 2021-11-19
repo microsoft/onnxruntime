@@ -15,7 +15,7 @@
 #include "core/dlpack/dlpack_converter.h"
 #endif
 
-#include <pybind11/pybind11.h>
+#include "onnxruntime_pybind.h"  // must use this for the include of <pybind11/pybind11.h>
 
 // execution provider factory creator headers
 struct OrtStatus {
@@ -207,7 +207,7 @@ class SparseTensor;
 #endif
 namespace python {
 
-using ExecutionProviderRegistrationFn = std::function<void(InferenceSession*, 
+using ExecutionProviderRegistrationFn = std::function<void(InferenceSession*,
                                                            const std::vector<std::string>&,
                                                            const ProviderOptionsMap&)>;
 
@@ -313,7 +313,7 @@ inline AllocatorPtr& GetAllocator() {
 //   so incoming arrays do not disappear. To this end we create an instance of SparseTensor
 //   on top of the user provided numpy arrays and create a duplicate of py::objects for those
 //   numpy array for ref-counting purposes and store it here.
-// 
+//
 // - to be able to expose SparseTensor returned from run method. We get an OrtValue from run()
 //   and store a copy of it in ort_value_. The OrtValue shared_ptr ref-counting will make sure
 //   the memory stays around.
@@ -375,7 +375,6 @@ class PySparseTensor {
   std::unique_ptr<OrtValue> AsOrtValue() const;
 
  private:
-
   //  instance_ represents data that comes as input. Thus we depend on numpy
   // arrays that own the underlying memory to stay around. We store copies
   // of py::objects for those arrays in backing_storage_ as an extra ref-count.
@@ -480,5 +479,5 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nnapi(
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Rknpu();
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CoreML(uint32_t flags);
 
-constexpr const char* kDefaultExecutionProviderEntry = "GetProvider"; 
+constexpr const char* kDefaultExecutionProviderEntry = "GetProvider";
 }  // namespace onnxruntime
