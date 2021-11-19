@@ -519,4 +519,36 @@ bool DnnlDynamicQuantizeLinearNodeCapability::Supported(const Node* node, const 
   return true;
 }
 
+
+// DnnlSqueezeCapability class
+//-------------------------------------
+bool DnnlSqueezeNodeCapability::Supported(const Node* node, const GraphViewer& graph_viewer) const {
+  ORT_UNUSED_PARAMETER(graph_viewer);
+  if (!IsTypeSupported(node)) return false;
+  if (!IsDimensionSupported(node, graph_viewer)) return false;
+  return true;
+}
+bool DnnlSqueezeNodeCapability::IsDimensionSupported(const Node* node, const GraphViewer& graph_viewer) const {
+  // we don't support scalar output
+  auto node_out = node->OutputDefs()[0];
+  if (node_out->Exists() &&
+      node_out->Shape() != nullptr &&
+      node_out->Shape()->dim_size() == 0) {
+    return false;
+  }
+
+  // Before opset version 13 the axis comes from an attribute. After opset version
+  // 13 we must check that the optional axis (input[1]) is a ConstantInitializer because
+  // we only handle the axis at compile time. If it changes at runtime we can not support
+  // the operator
+  auto opset = node->SinceVersion();
+  auto node_inputs = node->InputDefs();
+  if (opset >= 13 && node_inputs.size() > 1 && node_inputs[1]->Shape() != nullptr) {
+    if (!graph_viewer.IsConstantInitializer(node_inputs[1]->Name(), true)) {
+      return false;
+    }
+  }
+  return true;
+}
+
 }  // namespace onnxruntime
