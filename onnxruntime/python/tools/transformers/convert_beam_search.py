@@ -99,7 +99,7 @@ def parse_arguments(argv=None):
                                    type=int,
                                    required=False,
                                    default=1,
-                                   help='Number of return sequence')
+                                   help='Number of return sequence <= num_beams')
 
     beam_search_group.add_argument('--temperature',
                                    type=float,
@@ -119,33 +119,33 @@ def parse_arguments(argv=None):
                                    default=1,
                                    help='Positive. >1 to penalize and <1 to encorage.')
 
-    mixed_precision_option_grapu = parser.add_argument_group(
+    mixed_precision_option_group = parser.add_argument_group(
         "mixed precision conversion parameters that works when \"--precision fp16\" is specified")
 
-    mixed_precision_option_grapu.add_argument('--io_block_list',
+    mixed_precision_option_group.add_argument('--io_block_list',
                                               nargs='+',
                                               required=False,
                                               default=[],
                                               help='List of inputs or outputs in float32')
 
-    mixed_precision_option_grapu.add_argument(
+    mixed_precision_option_group.add_argument(
         '--op_block_list',
         nargs='+',
         required=False,
         default=[],
         help='List of operators (like Add LayerNormalization FastGelu) to compute in float32.')
 
-    mixed_precision_option_grapu.add_argument('--node_block_list',
+    mixed_precision_option_group.add_argument('--node_block_list',
                                               nargs='+',
                                               required=False,
                                               default=[],
                                               help='List of node names to compute in float32.')
 
-    mixed_precision_option_grapu.add_argument('--force_fp16_initializers',
+    mixed_precision_option_group.add_argument('--force_fp16_initializers',
                                               required=False,
                                               action='store_true',
                                               help='Convert all float initializers to float16.')
-    mixed_precision_option_grapu.set_defaults(force_fp16_initializers=False)
+    mixed_precision_option_group.set_defaults(force_fp16_initializers=False)
 
     args = parser.parse_args(argv)
 
