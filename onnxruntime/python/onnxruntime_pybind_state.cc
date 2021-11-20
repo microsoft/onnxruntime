@@ -614,7 +614,7 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
       return p;
     } else {
       if (!Env::Default().GetEnvironmentVar("INTEL_OPENVINO_DIR").empty()) {
-        ORT_THROW("INTEL_OPENVINO_DIR is set but OpenVINO library wasn't able to be loaded. Please install the correct version of OpenVINO as mentioned in the GPU requirements page (https://onnxruntime.ai/docs/execution-providers/OpenVINO-ExecutionProvider.html#requirements), make sure they're in the PATH, and that your GPU is supported.");
+        ORT_THROW("INTEL_OPENVINO_DIR is set but OpenVINO library wasn't able to be loaded. Please install a supported version of OpenVINO as mentioned in the requirements page (https://onnxruntime.ai/docs/execution-providers/OpenVINO-ExecutionProvider.html#requirements), ensure dependency libraries are in the PATH and your hardware is supported.");
       } else {
         LOGS_DEFAULT(WARNING) << "Failed to register " << type << ". Please reference https://onnxruntime.ai/docs/execution-providers/OpenVINO-ExecutionProvider.html#requirements to ensure all dependencies are met.";
       }
