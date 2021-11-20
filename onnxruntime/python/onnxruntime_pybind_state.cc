@@ -505,7 +505,7 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
             return tensorrt_provider_factory->CreateProvider();
           }
         }
-        LOGS_DEFAULT(WARNING) << "Failed to load TensorRT EP library and will skip TensorRT EP registration. TensorRT EP can only be registered when correct version of TensorRT is installed as mentioned in the TensorRT requirements page (https://onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html#requirements), make sure they're in the PATH, and that your GPU is supported.";
+        LOGS_DEFAULT(WARNING) << "Failed to register " << type << ". Please reference https://onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html#requirements to ensure all dependencies are met.";
     }
 #endif
   } else if (type == kMIGraphXExecutionProvider) {
@@ -530,7 +530,7 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
         if (!Env::Default().GetEnvironmentVar("CUDA_PATH").empty()) {
           ORT_THROW("CUDA_PATH is set but CUDA wasn't able to be loaded. Please install the correct version of CUDA and cuDNN as mentioned in the GPU requirements page (https://onnxruntime.ai/docs/reference/execution-providers/CUDA-ExecutionProvider.html#requirements), make sure they're in the PATH, and that your GPU is supported.");
         } else {
-          LOGS_DEFAULT(WARNING) << "Failed to load CUDA EP library and will skip CUDA EP registration. CUDA EP can only be registered when correct version of CUDA and cuDNN are installed as mentioned in the GPU requirements page (https://onnxruntime.ai/docs/reference/execution-providers/CUDA-ExecutionProvider.html#requirements), make sure they're in the PATH, and that your GPU is supported.";
+          LOGS_DEFAULT(WARNING) << "Failed to register " << type << ". Please reference https://onnxruntime.ai/docs/reference/execution-providers/CUDA-ExecutionProvider.html#requirements to ensure all dependencies are met.";
         }
       }
     }
@@ -616,7 +616,7 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
       if (!Env::Default().GetEnvironmentVar("INTEL_OPENVINO_DIR").empty()) {
         ORT_THROW("INTEL_OPENVINO_DIR is set but OpenVINO library wasn't able to be loaded. Please install the correct version of OpenVINO as mentioned in the GPU requirements page (https://onnxruntime.ai/docs/execution-providers/OpenVINO-ExecutionProvider.html#requirements), make sure they're in the PATH, and that your GPU is supported.");
       } else {
-        LOGS_DEFAULT(WARNING) << "Failed to load OpenVINO EP library and will skip OpenVINO EP registration. OpenVINO EP can only be registered when correct version of OpenVINO is installed as mentioned in the GPU requirements page (https://onnxruntime.ai/docs/execution-providers/OpenVINO-ExecutionProvider.html#requirements), make sure they're in the PATH, and that your GPU is supported.";
+        LOGS_DEFAULT(WARNING) << "Failed to register " << type << ". Please reference https://onnxruntime.ai/docs/execution-providers/OpenVINO-ExecutionProvider.html#requirements to ensure all dependencies are met.";
       }
     }
 #endif
