@@ -100,10 +100,15 @@ Status InstanceNorm<T>::ComputeInternal(OpKernelContext* p_op_kernel_context) co
     CudnnTensor stats_desc;
     ORT_RETURN_IF_ERROR(stats_desc.Set(std::array<int64_t, 4>{1, stats_count, 1, 1}, CudnnTensor::GetDataType<CudaT>()));
 
-    auto mean = GetScratchBuffer<CudaT>(stats_count);
-    auto variance = GetScratchBuffer<CudaT>(stats_count);
-    auto unused_scale = GetScratchBuffer<CudaT>(stats_count);
-    auto unused_bias = GetScratchBuffer<CudaT>(stats_count);
+    auto mean = GetScratchBuffer<CudaT>(stats_count * sizeof(T));
+    auto variance = GetScratchBuffer<CudaT>(stats_count * sizeof(T));
+    auto unused_scale = GetScratchBuffer<CudaT>(stats_count * sizeof(T));
+    auto unused_bias = GetScratchBuffer<CudaT>(stats_count * sizeof(T));
+
+    cudaMemset(mean.get(), 0, stats_count * sizeof(T));
+    cudaMemset(variance.get(), 0, stats_count * sizeof(T));
+    cudaMemset(unused_scale.get(), 0, stats_count * sizeof(T));
+    cudaMemset(unused_bias.get(), 0, stats_count * sizeof(T));
 
     // first, compute mean and variance per-instance per-channel using cudnnBatchNorm training
     CUDNN_RETURN_IF_ERROR(cudnnBatchNormalizationForwardTraining(
