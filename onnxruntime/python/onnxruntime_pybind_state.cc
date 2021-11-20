@@ -497,14 +497,15 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
               ORT_THROW("Invalid TensorRT EP option: ", option.first);
             }
           }
-          return onnxruntime::CreateExecutionProviderFactory_Tensorrt(&params)->CreateProvider();
+          if (std::shared_ptr<IExecutionProviderFactory> tensorrt_provider_factory = onnxruntime::CreateExecutionProviderFactory_Tensorrt(&params)) {
+            return tensorrt_provider_factory->CreateProvider();
+          }
         } else {
-          return onnxruntime::CreateExecutionProviderFactory_Tensorrt(cuda_device_id)->CreateProvider();
+          if (std::shared_ptr<IExecutionProviderFactory> tensorrt_provider_factory = onnxruntime::CreateExecutionProviderFactory_Tensorrt(cuda_device_id)) {
+            return tensorrt_provider_factory->CreateProvider();
+          }
         }
-    } else {
-      if (!Env::Default().GetEnvironmentVar("CUDA_PATH").empty()) {
-        ORT_THROW("CUDA_PATH is set but CUDA wasn't able to be loaded. Please install the correct version of CUDA and cuDNN as mentioned in the GPU requirements page (https://onnxruntime.ai/docs/reference/execution-providers/CUDA-ExecutionProvider.html#requirements) as well as TensorRT as mentioned in the TensorRT requirements page (https://onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html#requirements), make sure they're in the PATH, and that your GPU is supported.");
-      }
+        LOGS_DEFAULT(WARNING) << "Failed to register " << type << ". Please reference https://onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html#requirements to ensure all dependencies are met.";
     }
 #endif
   } else if (type == kMIGraphXExecutionProvider) {
@@ -528,6 +529,8 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
       } else {
         if (!Env::Default().GetEnvironmentVar("CUDA_PATH").empty()) {
           ORT_THROW("CUDA_PATH is set but CUDA wasn't able to be loaded. Please install the correct version of CUDA and cuDNN as mentioned in the GPU requirements page (https://onnxruntime.ai/docs/reference/execution-providers/CUDA-ExecutionProvider.html#requirements), make sure they're in the PATH, and that your GPU is supported.");
+        } else {
+          LOGS_DEFAULT(WARNING) << "Failed to register " << type << ". Please reference https://onnxruntime.ai/docs/reference/execution-providers/CUDA-ExecutionProvider.html#requirements to ensure all dependencies are met.";
         }
       }
     }
@@ -604,10 +607,18 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
 
       
     }
-    auto p = onnxruntime::CreateExecutionProviderFactory_OpenVINO(&params)->CreateProvider();
-    // Reset global variables config to avoid it being accidentally passed on to the next session
-    openvino_device_type.clear();
-    return p;
+    if (std::shared_ptr<IExecutionProviderFactory> openvino_provider_factory = onnxruntime::CreateExecutionProviderFactory_OpenVINO(&params)) {
+      auto p = openvino_provider_factory->CreateProvider();
+      // Reset global variables config to avoid it being accidentally passed on to the next session
+      openvino_device_type.clear();
+      return p;
+    } else {
+      if (!Env::Default().GetEnvironmentVar("INTEL_OPENVINO_DIR").empty()) {
+        ORT_THROW("INTEL_OPENVINO_DIR is set but OpenVINO library wasn't able to be loaded. Please install a supported version of OpenVINO as mentioned in the requirements page (https://onnxruntime.ai/docs/execution-providers/OpenVINO-ExecutionProvider.html#requirements), ensure dependency libraries are in the PATH and your hardware is supported.");
+      } else {
+        LOGS_DEFAULT(WARNING) << "Failed to register " << type << ". Please reference https://onnxruntime.ai/docs/execution-providers/OpenVINO-ExecutionProvider.html#requirements to ensure all dependencies are met.";
+      }
+    }
 #endif
   } else if (type == kNupharExecutionProvider) {
 #if USE_NUPHAR
