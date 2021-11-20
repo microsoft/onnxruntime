@@ -81,6 +81,7 @@ class OpKernelContext {
   SparseTensor* OutputSparse(int index, const TensorShape& shape);
 #endif
 
+#if !defined(DISABLE_OPTIONAL_TYPE)
   // Use this API to output a "None" of a specific type (e.g. Tensor) at specified index
   template <typename T>
   void OutputOptionalWithoutData(int index) {
@@ -92,6 +93,7 @@ class OpKernelContext {
                            type,
                            type->GetDeleteFunc());
   }
+#endif
 
   // Retrieve indexed shape obtained from memory planning before actual
   // computation. If the indexed shape cannot be inferred, this function returns
@@ -157,6 +159,14 @@ class OpKernelContext {
   */
   int GetDeviceId() const {
     return kernel_->Info().GetExecutionProvider()->GetDeviceId();
+  }
+
+  /**
+  Return the compute stream associated with the EP that the kernel is partitioned to.
+  For EPs that do not have a compute stream (e.g. CPU EP), a nullptr is returned.
+  */
+  void* GetComputeStream() const {
+    return kernel_->Info().GetExecutionProvider()->GetComputeStream();
   }
 
   /**

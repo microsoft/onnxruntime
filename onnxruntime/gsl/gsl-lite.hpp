@@ -1838,6 +1838,11 @@ gsl_DISABLE_MSVC_WARNINGS(26410 26415 26418 26472 26439 26440 26473 26481 26482 
       return first_;
     }
 
+    gsl_api gsl_constexpr reference back() const {
+      Expects(size()>0);
+      return last_[-1];
+    }
+
     // 26.7.3.6 Iterator support [span.iterators]
 
     gsl_api gsl_constexpr iterator begin() const gsl_noexcept {

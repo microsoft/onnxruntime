@@ -63,7 +63,7 @@ Status MaxPoolGrad<T>::Compute(OpKernelContext* context) const {
 
 template <typename T>
 Status AveragePoolGrad<T>::Compute3DAveragePoolGrad(OpKernelContext* context) const {
-  const TensorShape& dX_shape = TensorShape::ReinterpretBaseType(output_tensor_shapes_[0]);
+  const TensorShape dX_shape = TensorShape::FromExistingBuffer(output_tensor_shapes_[0]);
   Tensor* dX = context->Output(0, dX_shape);
   T* dX_data = dX->template MutableData<T>();
 
@@ -120,7 +120,7 @@ Status AveragePoolGrad<T>::Compute3DAveragePoolGrad(OpKernelContext* context) co
 
 template <typename T>
 Status AveragePoolGrad<T>::Compute2DAveragePoolGrad(OpKernelContext* context) const {
-  const TensorShape& dX_shape = TensorShape::ReinterpretBaseType(output_tensor_shapes_[0]);
+  const TensorShape dX_shape = TensorShape::FromExistingBuffer(output_tensor_shapes_[0]);
   Tensor* dX = context->Output(0, dX_shape);
   T* dX_data = dX->template MutableData<T>();
 
@@ -169,7 +169,7 @@ Status AveragePoolGrad<T>::Compute2DAveragePoolGrad(OpKernelContext* context) co
 }
 template <typename T>
 Status AveragePoolGrad<T>::Compute1DAveragePoolGrad(OpKernelContext* context) const {
-  const TensorShape& dX_shape = TensorShape::ReinterpretBaseType(output_tensor_shapes_[0]);
+  const TensorShape dX_shape = TensorShape::FromExistingBuffer(output_tensor_shapes_[0]);
   Tensor* dX = context->Output(0, dX_shape);
   T* dX_data = dX->template MutableData<T>();
 
@@ -214,7 +214,7 @@ ONNX_CPU_OPERATOR_KERNEL(
 // only StorageOrder::NCHW supported
 template <typename T>
 Status AveragePoolGrad<T>::Compute(OpKernelContext* context) const {
-  const TensorShape& dX_shape = TensorShape::ReinterpretBaseType(output_tensor_shapes_[0]);
+  const TensorShape dX_shape = TensorShape::FromExistingBuffer(output_tensor_shapes_[0]);
   Tensor* dX = context->Output(0, dX_shape);
   T* dX_data = dX->template MutableData<T>();
   EigenVectorMap<T>(dX_data, dX_shape.Size()).setZero();

@@ -735,8 +735,7 @@ TEST(Loop, SubgraphInputShadowsOuterScopeValue) {
 
   auto& b_out = fetches[0].Get<Tensor>();
   TensorShape expected_shape(scalar);
-  //Use reinterpret_cast to bypass a gcc bug: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=51213
-  ASSERT_EQ(*reinterpret_cast<const std::vector<int64_t>*>(&expected_shape), *reinterpret_cast<const std::vector<int64_t>*>(&b_out.Shape()));
+  ASSERT_EQ(expected_shape, b_out.Shape());
   ASSERT_EQ(b_out.DataAsSpan<float>()[0], expected_value_b);
 
   auto user_defined_vals_out = fetches[1].Get<Tensor>().DataAsSpan<float>();
@@ -1163,6 +1162,8 @@ TEST(Loop, SequenceAsLoopCarriedDependency) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
+#if !defined(DISABLE_OPTIONAL_TYPE)
+
 TEST(Loop, OptionalTypeAsLoopCarriedDependency) {
   auto create_subgraph = [](bool is_optional_tensor_type) {
     std::unordered_map<std::string, int> domain_to_version;
@@ -1334,6 +1335,8 @@ TEST(Loop, OptionalTypeAsLoopCarriedDependency) {
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
   }
 }
+
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime

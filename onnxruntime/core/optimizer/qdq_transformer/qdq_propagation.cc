@@ -19,7 +19,11 @@ static bool CanNodePropagate(const Node& node) {
 }
 
 static bool TryCancelOutDQQPair(Graph& graph, Node& dq_node, Node& q_node) {
-  if (!QDQ::IsQDQPairSupported(graph, q_node, dq_node)) {
+  auto get_const_initializer = [&graph](const std::string& initializer_name) {
+    return graph.GetConstantInitializer(initializer_name, true);
+  };
+
+  if (!QDQ::IsQDQPairSupported(q_node, dq_node, get_const_initializer, graph.ModelPath())) {
     return false;
   }
 
@@ -36,7 +40,8 @@ static bool TryCancelOutDQQPair(Graph& graph, Node& dq_node, Node& q_node) {
   if (dq_input_edge_0) {
     input_edge_info.first = dq_input_edge_0->GetNode().Index();
     input_edge_info.second = dq_input_edge_0->GetSrcArgIndex();
-    graph.RemoveEdge(dq_input_edge_0->GetNode().Index(), dq_node.Index(), dq_input_edge_0->GetSrcArgIndex(), dq_input_edge_0->GetDstArgIndex());
+    graph.RemoveEdge(dq_input_edge_0->GetNode().Index(), dq_node.Index(),
+                     dq_input_edge_0->GetSrcArgIndex(), dq_input_edge_0->GetDstArgIndex());
   }
 
   graph_utils::RemoveNodeOutputEdges(graph, dq_node);  // Remove DQ node output edges
@@ -45,11 +50,13 @@ static bool TryCancelOutDQQPair(Graph& graph, Node& dq_node, Node& q_node) {
   graph_utils::RemoveNodeOutputEdges(graph, q_node);  // Remove Q node output edges
   for (auto& output_edge : output_edges) {
     // set input NodeArg of Q's children to the 1st input of DQ
-    graph.GetNode(output_edge.dst_node)->MutableInputDefs()[output_edge.dst_arg_index] = dq_node.MutableInputDefs()[0];
+    graph.GetNode(output_edge.dst_node)->MutableInputDefs()[output_edge.dst_arg_index] =
+        dq_node.MutableInputDefs()[0];
 
     // add edge between parent of DQ to children of Q
     if (input_edge_info.second != -1) {
-      graph.AddEdge(input_edge_info.first, output_edge.dst_node, input_edge_info.second, output_edge.dst_arg_index);
+      graph.AddEdge(input_edge_info.first, output_edge.dst_node,
+                    input_edge_info.second, output_edge.dst_arg_index);
     }
   }
 
