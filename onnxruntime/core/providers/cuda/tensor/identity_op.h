@@ -51,7 +51,7 @@ class IdentityOp final : public CudaKernel {
                         "IdentityOp cuda: found non-one.");
         }
         */
-        cudaDeviceSynchronize();
+        cudaStreamSynchronize(0);
         CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(target, source, X->Shape().Size() * X->DataType()->Size(), cudaMemcpyDeviceToDevice, Stream()));
       }
 
