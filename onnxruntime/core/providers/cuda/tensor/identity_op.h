@@ -34,20 +34,22 @@ class IdentityOp final : public CudaKernel {
       void* target = Y->MutableDataRaw(X_type);
       //If source and target pointers are not equal, we need to copy the data.
       if (target != source) {
-        cudaDeviceSynchronize();
         size_t s = X->Shape().Size() * X->DataType()->Size();
         float* a = new float[s];
         cudaMemcpy(a, source, s, cudaMemcpyDeviceToHost);
-        for (size_t i = 0; i < s; ++i) {
+        size_t num_count = 0;
+        for (size_t i = 0; i < static_cast<size_t>(X->Shape().Size()); ++i) {
           if (a[i] != 1) {
-            float f = a[i];
-            delete[] a;
-            //return Status(common::ONNXRUNTIME, common::FAIL, std::to_string(f));
-            std::cout << f;
+            ++num_count;
           }
         }
-
         delete[] a;
+
+        if (num_count > 0) {
+          return Status(common::ONNXRUNTIME, common::FAIL,
+                        "IdentityOp cuda: found non-one.");
+        }
+
         CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(target, source, X->Shape().Size() * X->DataType()->Size(), cudaMemcpyDeviceToDevice, Stream()));
       }
 
