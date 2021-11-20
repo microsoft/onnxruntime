@@ -659,6 +659,48 @@ void BeamSearchShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
     }
   }
 }
+
+void RegisterTextGenerationSchemas() {
+  ONNX_CONTRIB_OPERATOR_SCHEMA(BeamSearch)
+        .SetDomain(kMSDomain)
+        .SinceVersion(1)
+        .SetDoc("Beam Search for text generation. Supports GPT-2 decoder.")
+        .Attr("eos_token_id", "The id of the end-of-sequence token", AttributeProto::INT)
+        .Attr("pad_token_id", "The id of the padding token", AttributeProto::INT)
+        .Attr("no_repeat_ngram_size", "no repeat ngrams size", AttributeProto::INT, static_cast<int64_t>(0))
+        .Attr("early_stopping", "early stop or not", AttributeProto::INT, static_cast<int64_t>(0))
+        .Attr(
+            "body",
+            "The GPT-2 subgraph with input_ids, position_ids, attention_mask, past_0, past_1, ... as inputs, and logits, present_0, present_1, ... as output",
+            AttributeProto::GRAPH)
+        .Input(0, "input_ids", "The sequence used as a prompt for the generation. Shape is (batch_size, sequence_length)", "I")
+        .Input(1, "max_length", "The maximum length of the sequence to be generated. Shape is (1)", "I")
+        .Input(2, "min_length", "The minimum length below which the score of eos_token_id is set to -Inf. Shape is (1)", "I", OpSchema::Optional)
+        .Input(3, "num_beams", "Number of beams for beam search. 1 means no beam search. Shape is (1)", "I")
+        .Input(4, "num_return_sequences", "The number of returned sequences in the batch. Shape is (1)", "I")
+        .Input(5, "temperature", "The value used to module the next token probabilities. Accepts value != 0.0. Shape is (1)", "T")
+        .Input(6, "length_penalty",
+              "Exponential penalty to the length. Default value 1.0 means no penalty."
+              "Value > 1.0 encourages longer sequences, while values < 1.0 produces shorter sequences."
+              "Shape is (1,)",
+              "T", OpSchema::Optional)
+        .Input(7, "repetition_penalty", "The parameter for repetition penalty. Default value 1.0 means no penalty. Accepts value > 0.0. Shape is (1)", "T", OpSchema::Optional)
+        .Input(8, "vocab_mask", "Mask of vocabulary. Words that masked with 0 are not allowed to be generated, and 1 is allowed. Shape is (vacab_size)", "M", OpSchema::Optional)
+        .Output(0, "sequences", "Word IDs of generated sequences. Shape is (batch_size, num_return_sequences, max_sequence_length)", "I")
+        .Output(1, "sequences_scores", "Final beam score of the generated sequences. Shape is (batch_size, num_return_sequences)", "T", OpSchema::Optional)
+        .Output(2, "scores",
+                "Processed beam scores for each vocabulary token at each generation step."
+                "Beam scores consisting of log softmax scores for each vocabulary token and sum of log softmax of previously generated tokens in this beam."
+                "Shape is (max_length - sequence_length, batch_size, num_beams, vocab_size)",
+                "T", OpSchema::Optional)
+        .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float tensors.")
+        .TypeConstraint("I", {"tensor(int32)"}, "Constrain to integer types")
+        .TypeConstraint("M", {"tensor(int32)"}, "Constrain mask to integer types")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          BeamSearchShapeInference(ctx);
+        });
+}
+
 void RegisterBertSchemas() {
   static const char* Attention_ver1_doc = R"DOC(
 Multi-Head Self Attention that can be either unidirectional (like GPT-2) or bidirectional (like BERT).
@@ -811,6 +853,37 @@ Global attention flags have value 1 for the tokens attend globally and 0 otherwi
       .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float tensors.")
       .TypeConstraint("G", {"tensor(int32)"}, "Constrain to integer types")
       .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
+
+  static const char* Decoder_Attention_doc = R"DOC(
+This DecoderAttention supports self attention and cross attention, key and value cache, and key_padding_mask. The attention mask is not support at the moment.
+Some boolean parameters are passed by runtime input for generic purpose
+)DOC";
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(DecoderAttention)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(Decoder_Attention_doc)
+      .Attr("num_heads", "Number of attention heads", AttributeProto::INT)
+      .Input(0, "query", "3D input tensor with shape (sequence_length, batch_size, hidden_size), hidden_size = num_heads * head_size", "T")
+      .Input(1, "key", "3D input tensor with shape (total_sequence_length, batch_size, hidden_size)", "T")
+      .Input(2, "q_weight", "2D input tensor with shape (hidden_size, hidden_size)", "T")
+      .Input(3, "kv_weight", "2D input tensor with shape (hidden_size, 2 * hidden_size)", "T")
+      .Input(4, "bias", "1D input tensor with shape (3 * hidden_size)", "T")
+      .Input(5, "key_padding_mask", "2D input tensor with shape (batch_size, total_sequence_length)", "B", OpSchema::Optional)
+      .Input(6, "key_cache", "input tensor with shape (batch_size, num_heads, sequence_length or total_sequence_length, head_size)", "T", OpSchema::Optional)   // self & cross
+      .Input(7, "value_cache", "input tensor with shape (batch_size, num_heads, sequence_length or total_sequence_length, head_size)", "T", OpSchema::Optional)   // self & cross
+      .Input(8, "static_kv", "If static_kv = true, cross-attention; else self-attention", "B")
+      .Input(9, "use_past", "If use_past = true, use cache; else no cache", "B")
+      .Input(10, "has_layer_state", "If has_layer_state = true, layer_state = {} or [a,b]; else layer_state = None", "B")
+      .Input(11, "has_key_padding_mask", "has_key_padding_mask or not", "B")
+      .Output(0, "output", "3D output tensor with shape (sequence_length, batch_size, hidden_size)", "T")
+      .Output(1, "new_key_cache", "output tensor with shape (batch_size, num_heads, new sequence_length, head_size)", "T", OpSchema::Optional) // self & cross
+      .Output(2, "new_value_cache", "output tensor with shape (batch_size, num_heads, new sequence_length, head_size)", "T", OpSchema::Optional) // self & cross
+      .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float and float16 tensors.")
+      .TypeConstraint("B", {"tensor(bool)"}, "Constrain key_padding_mask to bool tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        DecoderAttentionTypeAndShapeInference(ctx);
+      }); 
 
   static const char* EmbedLayerNormalization_ver1_doc = R"DOC(
 EmbedLayerNormalization is the fusion of embedding layer in BERT model, with optional mask processing.
@@ -3205,6 +3278,7 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
 
   RegisterNhwcSchemas();
   RegisterBertSchemas();
+  RegisterTextGenerationSchemas();
 
 #ifdef BUILD_MS_EXPERIMENTAL_OPS
   onnxruntime::signal::RegisterSignalSchemas();
