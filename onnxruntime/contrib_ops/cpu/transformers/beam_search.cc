@@ -162,9 +162,6 @@ class BeamSearchImpl {
  private:
   Status CheckInputs(const OpKernelContextInternal& context);
 
-  Status CheckSubgraph(const std::vector<const NodeArg*>& subgraph_inputs,
-                       const std::vector<const NodeArg*>& subgraph_outputs) const;
-
   OrtValue ExpandInputs(const OrtValue& input_ids, int num_beams) const;
 
   // Prepare the inputs for first inference of subgraph
@@ -188,7 +185,8 @@ class BeamSearchImpl {
                        int top_k,
                        AllocatorPtr& allocator);
 
-  void ProcessNextTokenScores(gsl::span<T>& next_token_scores);
+  // Mask tokens accroding to vocab_mask
+  void ApplyVocabMask(gsl::span<T>& next_token_scores);
 
   // Reorder cache by picking the past state based on beam indices
   void PickPastState(const std::vector<OrtValue>& last_outputs,
@@ -302,6 +300,61 @@ common::Status BeamSearch<T>::SetupSubgraphExecutionInfo(const SessionState& ses
 
   feeds_fetches_manager_ = std::move(ffm);
 
+  // CheckSubgraph is moved here so that it only need called once instead of every inference run.
+  auto& inputs = subgraph_info_->subgraph.GetInputs();
+  auto& outputs = subgraph_info_->subgraph.GetOutputs();
+  ORT_RETURN_IF_ERROR(CheckSubgraph(inputs, outputs));
+
+  return Status::OK();
+}
+
+template <typename T>
+Status BeamSearch<T>::CheckSubgraph(const std::vector<const NodeArg*>& subgraph_inputs,
+                                    const std::vector<const NodeArg*>& subgraph_outputs) {
+  ORT_RETURN_IF(subgraph_inputs[0]->Name() != "input_ids", "subgraph input 0 shall be named as input_ids, got: ",
+                subgraph_inputs[0]->Name());
+  ORT_RETURN_IF(subgraph_inputs[1]->Name() != "position_ids", "subgraph input 1 shall be named as position_ids, got: ",
+                subgraph_inputs[1]->Name());
+  ORT_RETURN_IF(subgraph_inputs[2]->Name() != "attention_mask", "subgraph input 2 shall be named as attention_mask, got: ",
+                subgraph_inputs[2]->Name());
+  ORT_RETURN_IF(subgraph_inputs[3]->Name() != "past_0", "subgraph input 3 shall be named as past_0, got: ",
+                subgraph_inputs[3]->Name());
+
+  // Past state shape is like (2, batch_size, 12, past_seq_len, 64). Here 12 and 64 are constants of num_heads and hidden_size/num_heads.
+  const ONNX_NAMESPACE::TensorShapeProto* past_shape = subgraph_inputs[3]->Shape();
+  ORT_RETURN_IF(past_shape->dim_size() != 5, "subgraph past state is expected to have 5 dimension, got ",
+                past_shape->dim_size());
+
+  ORT_RETURN_IF(!past_shape->dim(0).has_dim_value() || past_shape->dim(0).dim_value() != 2,
+                "subgraph past state dimension 0 shall have length of 2");
+
+  ORT_RETURN_IF(!past_shape->dim(2).has_dim_value() || past_shape->dim(2).dim_value() <= 0,
+                "subgraph past state dimension 2 shall have a positive value for number of heads");
+
+  ORT_RETURN_IF(!past_shape->dim(4).has_dim_value() || past_shape->dim(4).dim_value() <= 0,
+                "subgraph past state dimension 4 shall have a positive value for hidden size per head");
+
+  // check subgraph outputs
+  ORT_RETURN_IF(subgraph_outputs[0]->Name() != "logits", "subgraph output 0 shall be named as logits, got: ",
+                subgraph_outputs[0]->Name());
+
+  ORT_RETURN_IF(subgraph_outputs[1]->Name() != "present_0", "subgraph input 1 shall be named as present_0, got: ",
+                subgraph_outputs[1]->Name());
+
+  // Logits shape is like (batch_size, seq_len, 50257). Here 50257 is the vocabulary size.
+  const ONNX_NAMESPACE::TensorShapeProto* logits_shape = subgraph_outputs[0]->Shape();
+  ORT_RETURN_IF(logits_shape->dim_size() != 3, "subgraph logits output is expected to have 3 dimension, got ",
+                logits_shape->dim_size());
+
+  ORT_RETURN_IF(!logits_shape->dim(2).has_dim_value() || logits_shape->dim(2).dim_value() <= 0,
+                "subgraph past state dimension 2 shall have a positive value for vocabulary size");
+
+  int num_heads = static_cast<int>(past_shape->dim(2).dim_value());
+  int head_size = static_cast<int>(past_shape->dim(4).dim_value());
+  int vocab_size = static_cast<int>(logits_shape->dim(2).dim_value());
+  int num_layers = static_cast<int>(subgraph_outputs.size()) - 1;
+  parameters_.SetSubgraphParameters(num_heads, head_size, vocab_size, num_layers);
+
   return Status::OK();
 }
 
@@ -372,57 +425,10 @@ Status BeamSearchImpl<T>::CheckInputs(const OpKernelContextInternal& context) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'vocab_mask' shape does not match with vocab_size, got ",
                              vocab_mask_dims[0]);
     }
+
+    // store vocab mask in parameters.
+    parameters_->vocab_mask = vocab_mask->DataAsSpan<int32_t>();
   }
-
-  return Status::OK();
-}
-
-template <typename T>
-Status BeamSearchImpl<T>::CheckSubgraph(const std::vector<const NodeArg*>& subgraph_inputs,
-                                        const std::vector<const NodeArg*>& subgraph_outputs) const {
-  ORT_RETURN_IF(subgraph_inputs[0]->Name() != "input_ids", "subgraph input 0 shall be named as input_ids, got: ",
-                subgraph_inputs[0]->Name());
-  ORT_RETURN_IF(subgraph_inputs[1]->Name() != "position_ids", "subgraph input 1 shall be named as position_ids, got: ",
-                subgraph_inputs[1]->Name());
-  ORT_RETURN_IF(subgraph_inputs[2]->Name() != "attention_mask", "subgraph input 2 shall be named as attention_mask, got: ",
-                subgraph_inputs[2]->Name());
-  ORT_RETURN_IF(subgraph_inputs[3]->Name() != "past_0", "subgraph input 3 shall be named as past_0, got: ",
-                subgraph_inputs[3]->Name());
-
-  // Past state shape is like (2, batch_size, 12, past_seq_len, 64). Here 12 and 64 are constants of num_heads and hidden_size/num_heads.
-  const ONNX_NAMESPACE::TensorShapeProto* past_shape = subgraph_inputs[3]->Shape();
-  ORT_RETURN_IF(past_shape->dim_size() != 5, "subgraph past state is expected to have 5 dimension, got ",
-                past_shape->dim_size());
-
-  ORT_RETURN_IF(!past_shape->dim(0).has_dim_value() || past_shape->dim(0).dim_value() != 2,
-                "subgraph past state dimension 0 shall have length of 2");
-
-  ORT_RETURN_IF(!past_shape->dim(2).has_dim_value() || past_shape->dim(2).dim_value() <= 0,
-                "subgraph past state dimension 2 shall have a positive value for number of heads");
-
-  ORT_RETURN_IF(!past_shape->dim(4).has_dim_value() || past_shape->dim(4).dim_value() <= 0,
-                "subgraph past state dimension 4 shall have a positive value for hidden size per head");
-
-  // check subgraph outputs
-  ORT_RETURN_IF(subgraph_outputs[0]->Name() != "logits", "subgraph output 0 shall be named as logits, got: ",
-                subgraph_outputs[0]->Name());
-
-  ORT_RETURN_IF(subgraph_outputs[1]->Name() != "present_0", "subgraph input 1 shall be named as present_0, got: ",
-                subgraph_outputs[1]->Name());
-
-  // Logits shape is like (batch_size, seq_len, 50257). Here 50257 is the vocabulary size.
-  const ONNX_NAMESPACE::TensorShapeProto* logits_shape = subgraph_outputs[0]->Shape();
-  ORT_RETURN_IF(logits_shape->dim_size() != 3, "subgraph logits output is expected to have 3 dimension, got ",
-                logits_shape->dim_size());
-
-  ORT_RETURN_IF(!logits_shape->dim(2).has_dim_value() || logits_shape->dim(2).dim_value() <= 0,
-                "subgraph past state dimension 2 shall have a positive value for vocabulary size");
-
-  int num_heads = static_cast<int>(past_shape->dim(2).dim_value());
-  int head_size = static_cast<int>(past_shape->dim(4).dim_value());
-  int vocab_size = static_cast<int>(logits_shape->dim(2).dim_value());
-  int num_layers = static_cast<int>(subgraph_outputs.size()) - 1;
-  parameters_->SetSubgraphParameters(num_heads, head_size, vocab_size, num_layers);
 
   return Status::OK();
 }
@@ -455,10 +461,6 @@ Status BeamSearchImpl<T>::Initialize() {
   CHECK_SCALAR_INPUT(length_penalty, 6, true);
 
   ORT_RETURN_IF(parameters_->num_return_sequences > parameters_->num_beams, "'num_return_sequences' has to be smaller or equal to 'num_beams'.");
-
-  auto& inputs = subgraph_info_.subgraph.GetInputs();
-  auto& outputs = subgraph_info_.subgraph.GetOutputs();
-  ORT_RETURN_IF_ERROR(CheckSubgraph(inputs, outputs));
 
   // CheckInputs shall be after CheckSubgraph due to its dependency on vocab_size
   ORT_RETURN_IF_ERROR(CheckInputs(context_));
@@ -645,9 +647,9 @@ Status BeamSearchImpl<T>::ProcessLogits(
     return status;
   }
 
-  // Extra processing: next_token_scores = logits_processor(input_ids, next_token_scores)
-  // where input_ids is current sequences in beam_state_
-  ProcessNextTokenScores(next_token_scores);
+  // Apply all logits processors that modify scores
+  ApplyVocabMask(next_token_scores);
+
 
   // next_token_scores = next_token_scores + beam_scores[:, None].expand_as(next_token_scores)
   // TODO: use thread pool to parrellel
@@ -760,7 +762,20 @@ Status BeamSearchImpl<T>::GenerateNextToken(
 }
 
 template <typename T>
-void BeamSearchImpl<T>::ProcessNextTokenScores(gsl::span<T>& /*next_token_scores*/) {
+void BeamSearchImpl<T>::ApplyVocabMask(gsl::span<T>& next_token_scores) {
+  // Process vocabulary mask and set tokens with mask value 0 to -inf.
+  auto& vocab_mask = parameters_->vocab_mask;
+  if (!vocab_mask.empty()) {
+    T* p = next_token_scores.data();
+    // next_token_scores shape (batch_size * num_beams, vocab_size), vocab_mask shape (vocab_size)
+    for (int i = 0; i < parameters_->batch_size * parameters_->num_beams; i++) {
+      for (int j = 0; j < parameters_->vocab_size; j++, p++) {
+        if (vocab_mask[j] == 0) {
+          *p = std::numeric_limits<T>::lowest();
+        }
+      }
+    }
+  }
   return;
 }
 

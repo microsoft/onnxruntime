@@ -120,6 +120,9 @@ class BeamSearch : public controlflow::IControlFlowKernel {
   static std::unique_ptr<OpKernel> Create(const OpKernelInfo& info, void* stream);
 
  protected:
+  Status CheckSubgraph(const std::vector<const NodeArg*>& subgraph_inputs,
+                       const std::vector<const NodeArg*>& subgraph_outputs);
+
   void SetComputeStream(void* stream) { stream_ = stream; }
 
  private:

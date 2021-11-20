@@ -231,7 +231,7 @@ def convert_model(args):
     outputs = ["sequences"]
     if args.output_sequences_scores:
         outputs.append("sequences_scores")
-        
+
     if args.output_token_scores:
         assert args.output_sequences_scores, "--output_token_scores requires --output_sequences_scores"
         outputs.append("scores")
@@ -270,7 +270,7 @@ def convert_model(args):
 
     sequences_scores = helper.make_tensor_value_info('sequences_scores', TensorProto.FLOAT,
                                                      ['batch_size', 'num_return_sequences'])
-    
+
     scores = helper.make_tensor_value_info('scores', TensorProto.FLOAT,
                                            ['max_length - sequence_length', 'batch_size', 'num_beams', vocab_size])
 
@@ -299,6 +299,11 @@ def test_model(args):
                                             pad_token_id=tokenizer.eos_token_id)
     input_ids = tokenizer.encode('I enjoy walking in the park', return_tensors='pt')
 
+    bad_words = "walk in park"
+    bad_words_ids = tokenizer.encode(bad_words, add_prefix_space=True)
+    bad_words_ids = [[word_id] for word_id in bad_words_ids]  # Convert to list of list
+    print("bad_words_ids", bad_words_ids)
+
     global config
     if config is None:
         config = GPT2Config.from_pretrained(args.model_name_or_path, cache_dir=args.cache_dir)
@@ -322,9 +327,9 @@ def test_model(args):
                                       temperature=args.temperature,
                                       length_penalty=args.length_penalty,
                                       repetition_penalty=args.repetition_penalty,
+                                      bad_words_ids=bad_words_ids,
                                       return_dict_in_generate=True,
-                                      output_scores=True
-                                      )
+                                      output_scores=True)
         print("input_ids", input_ids)
         print("huggingface transformers outputs:")
         print("sequences", beam_outputs.sequences)
@@ -348,6 +353,10 @@ def test_model(args):
     batch_size = 1
     input_ids = input_ids.repeat(batch_size, 1)
 
+    vocab_mask = np.ones((vocab_size), dtype=np.int32)
+    for bad_word_id in bad_words_ids:
+        vocab_mask[bad_word_id] = 0
+
     inputs = {
         "input_ids": input_ids.cpu().numpy().astype(np.int32),
         "max_length": np.array([args.max_length], dtype=np.int32),
@@ -357,7 +366,7 @@ def test_model(args):
         "temperature": np.array([args.temperature], dtype=np.float32),
         "length_penalty": np.array([args.length_penalty], dtype=np.float32),
         "repetition_penalty": np.array([args.repetition_penalty], dtype=np.float32),
-        "vocab_mask": np.ones((vocab_size), dtype=np.int32)
+        "vocab_mask": vocab_mask
     }
 
     test_data_dir = Path(args.output).parent.as_posix()
@@ -377,12 +386,13 @@ def test_model(args):
         print("sequences_scores", result[1])
     if args.output_token_scores:
         print("scores", result[2])
-        
-    (batch_size, num_sequences, max_length) =  sequences.shape
+
+    (batch_size, num_sequences, max_length) = sequences.shape
     for i in range(batch_size):
         for j in range(num_sequences):
             sequence = tokenizer.decode(sequences[i][j], skip_special_tokens=True)
             print(f"batch {i} sequence {j}: {sequence}")
+
 
 def main():
     args = parse_arguments()
