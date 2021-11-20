@@ -12,7 +12,8 @@
 
 #include "core/framework/float16.h"
 
-namespace onnxruntime::utils {
+namespace onnxruntime {
+namespace utils {
 /** Gets the TensorProto_DataType corresponding to the template type `T`. */
 template <typename T>
 constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorProtoElementType() {
@@ -74,4 +75,5 @@ template <>
 constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorProtoElementType<BFloat16>() {
   return ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16;
 }
-}  // namespace onnxruntime::utils
+}  // namespace utils
+}  // namespace onnxruntime
