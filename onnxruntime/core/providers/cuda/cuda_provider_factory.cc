@@ -130,7 +130,11 @@ struct ProviderInfo_CUDA_Impl : ProviderInfo_CUDA {
   }
 
   // Used by slice_concatenate_test.cc and onnxruntime_pybind_state.cc
-  void cudaMemcpy_HostToDevice(void* dst, const void* src, size_t count) override { CUDA_CALL_THROW(cudaMemcpy(dst, src, count, cudaMemcpyHostToDevice)); }
+  void cudaMemcpy_HostToDevice(void* dst, const void* src, size_t count) override {
+    CUDA_CALL_THROW(cudaMemcpy(dst, src, count, cudaMemcpyHostToDevice));
+    CUDA_CALL_THROW(cudaStreamSynchronize(0));
+  }
+
   // Used by onnxruntime_pybind_state.cc
   void cudaMemcpy_DeviceToHost(void* dst, const void* src, size_t count) override { CUDA_CALL_THROW(cudaMemcpy(dst, src, count, cudaMemcpyDeviceToHost)); }
 
