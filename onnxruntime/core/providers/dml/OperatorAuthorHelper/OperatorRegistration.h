@@ -142,7 +142,7 @@ namespace OperatorHelper
     namespace OnnxOperatorSet9
     {
         static const int sc_sinceVer_Sign = 9;
-        static const int sc_sinceVer_IsNan = 9;
+        static const int sc_sinceVer_IsNaN = 9;
         static const int sc_sinceVer_Sinh = 9;
         static const int sc_sinceVer_Cosh = 9;
         static const int sc_sinceVer_Asinh = 9;
@@ -233,6 +233,7 @@ namespace OperatorHelper
         static const int sc_sinceVer_ReduceSumSquare = 11;
         static const int sc_sinceVer_Resize = 11;
         static const int sc_sinceVer_Round = 11;
+        static const int sc_sinceVer_DynamicQuantizeLinear = 11;
         static const int sc_sinceVer_Scan = 11;
         static const int sc_sinceVer_Scatter = 11; // Deprecated alias
         static const int sc_sinceVer_ScatterElements = 11;
@@ -263,6 +264,73 @@ namespace OperatorHelper
         static const int sc_sinceVer_ReduceMin = 12;
     } // namespace OnnxOperatorSet12
 
+    namespace OnnxOperatorSet13
+    {
+        static const int sc_sinceVer_Abs = 13;
+        static const int sc_sinceVer_Add = 13;
+        static const int sc_sinceVer_ArgMax = 13;
+        static const int sc_sinceVer_ArgMin = 13;
+        static const int sc_sinceVer_Cast = 13;
+        static const int sc_sinceVer_Ceil = 13;
+        static const int sc_sinceVer_Clip = 13;
+        static const int sc_sinceVer_Concat = 13;
+        static const int sc_sinceVer_Constant = 13;
+        static const int sc_sinceVer_DepthToSpace = 13;
+        static const int sc_sinceVer_Div = 13;
+        static const int sc_sinceVer_Equal = 13;
+        static const int sc_sinceVer_Erf = 13;
+        static const int sc_sinceVer_Exp = 13;
+        static const int sc_sinceVer_Expand = 13;
+        static const int sc_sinceVer_Flatten = 13;
+        static const int sc_sinceVer_Floor = 13;
+        static const int sc_sinceVer_Gather = 13;
+        static const int sc_sinceVer_GatherElements = 13;
+        static const int sc_sinceVer_GatherND = 13;
+        static const int sc_sinceVer_Gemm = 13;
+        static const int sc_sinceVer_Greater = 13;
+        static const int sc_sinceVer_Identity = 13;
+        static const int sc_sinceVer_IsNaN = 13;
+        static const int sc_sinceVer_LRN = 13;
+        static const int sc_sinceVer_Less = 13;
+        static const int sc_sinceVer_Log = 13;
+        static const int sc_sinceVer_MatMul = 13;
+        static const int sc_sinceVer_Max = 13;
+        static const int sc_sinceVer_Mean = 13;
+        static const int sc_sinceVer_MeanVarianceNormalization = 13;
+        static const int sc_sinceVer_Min = 13;
+        static const int sc_sinceVer_Mod = 13;
+        static const int sc_sinceVer_Mul = 13;
+        static const int sc_sinceVer_Neg = 13;
+        static const int sc_sinceVer_Pad = 13;
+        static const int sc_sinceVer_Pow = 13;
+        static const int sc_sinceVer_Reciprocal = 13;
+        static const int sc_sinceVer_ReduceL1 = 13;
+        static const int sc_sinceVer_ReduceL2 = 13;
+        static const int sc_sinceVer_ReduceLogSum = 13;
+        static const int sc_sinceVer_ReduceLogSumExp = 13;
+        static const int sc_sinceVer_ReduceMax = 13;
+        static const int sc_sinceVer_ReduceMean = 13;
+        static const int sc_sinceVer_ReduceMin = 13;
+        static const int sc_sinceVer_ReduceProd = 13;
+        static const int sc_sinceVer_ReduceSumSquare = 13;
+        static const int sc_sinceVer_Relu = 13;
+        static const int sc_sinceVer_Reshape = 13;
+        static const int sc_sinceVer_Scatter = 13;
+        static const int sc_sinceVer_ScatterElements = 13;
+        static const int sc_sinceVer_ScatterND = 13;
+        static const int sc_sinceVer_Sigmoid = 13;
+        static const int sc_sinceVer_Sign = 13;
+        static const int sc_sinceVer_Slice = 13;
+        static const int sc_sinceVer_SpaceToDepth = 13;
+        static const int sc_sinceVer_Sqrt = 13;
+        static const int sc_sinceVer_Sub = 13;
+        static const int sc_sinceVer_Sum = 13;
+        static const int sc_sinceVer_Tanh = 13;
+        static const int sc_sinceVer_Tile = 13;
+        static const int sc_sinceVer_Transpose = 13;
+        static const int sc_sinceVer_Upsample = 13;
+    } // namespace OnnxOperatorSet13
+
     namespace MsftOperatorSet1
     {
         static const int sc_sinceVer_FusedConv = 1;
@@ -277,6 +345,7 @@ namespace OperatorHelper
         static const int sc_sinceVer_QuantizeLinear = 1;
         static const int sc_sinceVer_DequantizeLinear = 1;
         static const int sc_sinceVer_ConvTransposeWithDynamicPads = 1;
+        static const int sc_sinceVer_QLinearAdd = 1;
     } // namespace MsftOperatorSet1
 
 } // namespace OperatorHelper
