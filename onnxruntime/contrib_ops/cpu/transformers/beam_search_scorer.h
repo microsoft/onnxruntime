@@ -16,7 +16,8 @@ namespace contrib {
 
 class ISequences {
  public:
-  virtual gsl::span<const int64_t> GetSequence(int beam_index) = 0;
+  virtual ~ISequences() {}
+  virtual gsl::span<const int64_t> GetSequence(int beam_index) const = 0;
   virtual int GetSequenceLength() = 0;
 };
 

@@ -10,7 +10,7 @@
 #endif
 
 #ifndef NDEBUG
-#define DEBUG_BEAM_SEARCH 1  // TODO: remove this once this operator is ready for production.
+//#define DEBUG_BEAM_SEARCH 1  // uncomment it for debugging
 #endif
 
 #include "core/providers/cpu/controlflow/utils.h"
@@ -51,9 +51,6 @@ namespace contrib {
       BeamSearch<T>);
 
 REGISTER_KERNEL_TYPED(float)
-
-// CPU does not support float16
-// REGISTER_KERNEL_TYPED(MLFloat16)
 
 GptSubgraphInfo::GptSubgraphInfo(const onnxruntime::Node& node, const GraphViewer& subgraph_in)
     : subgraph(subgraph_in) {
@@ -99,9 +96,9 @@ void Sequences::Init(const OrtValue& input_ids, int batch_beam_size, int sequenc
   current_length_ = sequence_length;
 }
 
-gsl::span<const int64_t> Sequences::GetSequence(int beam_index) {
-  gsl::span<int64_t> buffer(sequences[current_sequences_buffer]);
-  gsl::span<int64_t> sequence = buffer.subspan(beam_index * max_length_, current_length_);
+gsl::span<const int64_t> Sequences::GetSequence(int beam_index) const {
+  gsl::span<const int64_t> buffer(sequences[current_sequences_buffer]);
+  gsl::span<const int64_t> sequence = buffer.subspan(beam_index * max_length_, current_length_);
   return sequence;
 }
 
@@ -187,6 +184,9 @@ class BeamSearchImpl {
 
   // Mask tokens accroding to vocab_mask
   void ApplyVocabMask(gsl::span<T>& next_token_scores);
+
+  // Apply repetion penalty
+  void ApplyRepetitionPenalty(const Sequences& sequences, gsl::span<T>& next_token_scores);
 
   // Reorder cache by picking the past state based on beam indices
   void PickPastState(const std::vector<OrtValue>& last_outputs,
@@ -647,8 +647,9 @@ Status BeamSearchImpl<T>::ProcessLogits(
     return status;
   }
 
-  // Apply all logits processors that modify scores
+  // Apply all score processors that updates scores
   ApplyVocabMask(next_token_scores);
+  ApplyRepetitionPenalty(beam_state.sequences, next_token_scores);
 
 
   // next_token_scores = next_token_scores + beam_scores[:, None].expand_as(next_token_scores)
@@ -777,6 +778,25 @@ void BeamSearchImpl<T>::ApplyVocabMask(gsl::span<T>& next_token_scores) {
     }
   }
   return;
+}
+
+template <typename T>
+void BeamSearchImpl<T>::ApplyRepetitionPenalty(const Sequences& sequences, gsl::span<T>& next_token_scores) {
+  if (parameters_->repetition_penalty == 1.0f) {  // no penalty
+    return;
+  }
+
+  int batch_beam_size = parameters_->BatchBeamSize();
+  for (int i = 0; i < batch_beam_size; i++) {
+    gsl::span<T> beam_token_scores = next_token_scores.subspan(i * parameters_->vocab_size, parameters_->vocab_size);
+    gsl::span<const int64_t> sequence = sequences.GetSequence(i);
+    for (const int64_t& word_id : sequence) {
+      T score = beam_token_scores[word_id];
+      // If score < 0, then repetition penalty > 1.0 has to multiplied to reduce the previous token probability,
+      // This assumes that scores are either positive (like ctrl) or negative (like GPT-2), but not a mixture.
+      beam_token_scores[word_id] = (score < 0 ? score * parameters_->repetition_penalty : score / parameters_->repetition_penalty);
+    }
+  }
 }
 
 template <typename T>

@@ -37,7 +37,7 @@ class Sequences : public ISequences {
   void Init(const OrtValue& input_ids, int batch_beam_size, int sequence_length, int max_length);
 
   // Returns a sequence of word IDs for a given beam index ( beam_index < batch_beam_size).
-  gsl::span<const int64_t> GetSequence(int beam_index) override;
+  gsl::span<const int64_t> GetSequence(int beam_index) const override;
 
   // Returns current sequence length.
   int GetSequenceLength() override;

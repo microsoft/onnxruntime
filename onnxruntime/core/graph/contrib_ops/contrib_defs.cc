@@ -678,7 +678,7 @@ void RegisterTextGenerationSchemas() {
         .Input(2, "min_length", "The minimum length below which the score of eos_token_id is set to -Inf. Shape is (1)", "I", OpSchema::Optional)
         .Input(3, "num_beams", "Number of beams for beam search. 1 means no beam search. Shape is (1)", "I")
         .Input(4, "num_return_sequences", "The number of returned sequences in the batch. Shape is (1)", "I")
-        .Input(5, "temperature", "The value used to module the next token probabilities. Accepts value != 0.0. Shape is (1)", "T")
+        .Input(5, "temperature", "The value used to module the next token probabilities. Accepts value > 0.0. Shape is (1)", "T")
         .Input(6, "length_penalty",
               "Exponential penalty to the length. Default value 1.0 means no penalty."
               "Value > 1.0 encourages longer sequences, while values < 1.0 produces shorter sequences."
