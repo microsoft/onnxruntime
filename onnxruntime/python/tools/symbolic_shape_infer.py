@@ -136,7 +136,6 @@ class SymbolicShapeInference:
             'Equal': self._infer_symbolic_compute_ops,
             'Floor': self._infer_symbolic_compute_ops,
             'Gather': self._infer_Gather,
-            'GatherInternal': self._infer_GatherInternal,
             'GatherElements': self._infer_GatherElements,
             'GatherND': self._infer_GatherND,
             'Gelu': self._pass_on_shape_and_type,
@@ -902,33 +901,6 @@ class SymbolicShapeInference:
         vi.CopyFrom(
             helper.make_tensor_value_info(node.output[0], self.known_vi_[node.input[0]].type.tensor_type.elem_type,
                                           data_shape[:axis] + indices_shape + data_shape[axis + 1:]))
-        # for 1D input, do some sympy compute
-        if node.input[0] in self.sympy_data_ and len(data_shape) == 1 and 0 == get_attribute(node, 'axis', 0):
-            idx = self._try_get_value(node, 1)
-            if idx is not None:
-                data = self.sympy_data_[node.input[0]]
-                if type(data) == list:
-                    if type(idx) == np.ndarray and len(idx.shape) == 1:
-                        self.sympy_data_[node.output[0]] = [data[int(i)] for i in idx]
-                    else:
-                        self.sympy_data_[node.output[0]] = data[int(idx)]
-                else:
-                    assert idx == 0 or idx == -1
-                    self.sympy_data_[node.output[0]] = data
-
-    def _infer_GatherInternal(self, node):
-        data_shape = self._get_shape(node, 0)
-        axis = handle_negative_axis(get_attribute(node, 'axis', 0), len(data_shape))
-        indices_shape = self._get_shape(node, 1)
-        vi = self.known_vi_[node.output[0]]
-        vi.CopyFrom(
-            helper.make_tensor_value_info(node.output[0], self.known_vi_[node.input[0]].type.tensor_type.elem_type,
-                                          data_shape[:axis] + indices_shape + data_shape[axis + 1:]))
-
-        for i in [1, 2, 3, 4, 5]:
-            vi = self.known_vi_[node.output[i]]
-            vi.CopyFrom(helper.make_tensor_value_info(node.output[i], onnx.TensorProto.INT32, []))
-
         # for 1D input, do some sympy compute
         if node.input[0] in self.sympy_data_ and len(data_shape) == 1 and 0 == get_attribute(node, 'axis', 0):
             idx = self._try_get_value(node, 1)

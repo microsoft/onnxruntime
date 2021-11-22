@@ -61,37 +61,23 @@ def nll_loss(g, self, target, weight, reduction, ignore_index):
     output.setType(self.type())
     return output
 
-
-# @register_symbolic('embedding')
-# def embedding(g, weight, indices, padding_idx, scale_grad_by_freq, sparse):
-#     output = g.op("com.microsoft::ATenOp", weight, indices, padding_idx, scale_grad_by_freq, sparse,
-#                   name_s='aten::embedding')
-#     indices_shape = _get_tensor_sizes(indices)
-#     if indices_shape is not None and hasattr(weight.type(), 'with_sizes'):
-#         output_type = weight.type().with_sizes(
-#             indices_shape + [_get_tensor_dim_size(weight, 1)])
-#         output.setType(output_type)
-#     return output
-
 @register_symbolic('embedding')
-@parse_args("v", "v", "i", "b", "v")
 def embedding(g, weight, indices, padding_idx, scale_grad_by_freq, sparse):
-    # if scale_grad_by_freq and sym_help._training_mode:
-    #     raise RuntimeError("Unsupported: ONNX export of embedding with scale_grad_by_freq=True "
-    #                        "for training mode. ONNX does not support scaling the gradients.")
-    # if padding_idx >= 0 and sym_help._training_mode:
-    #     warnings.warn("Warning: ONNX export of embedding with padding_idx >= 0 "
-    #                   "for training mode. "
-    #                   "ONNX does not support not updating the embedding vector at padding_idx during training.")
-    output = g.op("com.microsoft::GatherInternal", weight, indices, outputs=6)[0]
+    output = None
+    padding_idx_int, scale_grad_by_freq_bool, sparse_bool = sym_help._maybe_get_const(padding_idx, 'i'), \
+        sym_help._maybe_get_const(scale_grad_by_freq, 'b'), sym_help._maybe_get_const(sparse, 'b')
+    # negative padding_idx_int implies the original padding_idx was None
+    if scale_grad_by_freq_bool or sparse_bool or (padding_idx_int is not None and padding_idx_int >= 0):
+        output = g.op("com.microsoft::ATenOp", weight, indices, padding_idx, scale_grad_by_freq, sparse,
+                    name_s='aten::embedding')
+    else:
+        output = g.op("Gather", weight, indices, outputs=1)
 
-    # indices_shape = _get_tensor_sizes(indices)
-    # if indices_shape is not None and hasattr(weight.type(), 'with_sizes'):
-    #     output_type = weight.type().with_sizes(
-    #         indices_shape + [_get_tensor_dim_size(weight, 1)])
-    #     output.setType(output_type)
-    # num_segments.setType()
-
+    indices_shape = _get_tensor_sizes(indices)
+    if indices_shape is not None and hasattr(weight.type(), 'with_sizes'):
+        output_type = weight.type().with_sizes(
+            indices_shape + [_get_tensor_dim_size(weight, 1)])
+        output.setType(output_type)
     return output
 
 @register_symbolic('bitwise_or')
