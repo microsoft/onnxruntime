@@ -371,6 +371,7 @@ Return Value:
 
     if (HasDotProductInstructions) {
         this->GemmU8X8Dispatch = &MlasGemmU8X8DispatchUdot;
+        this->ConvSymDispatch = &MlasConvSymDispatchDot;
     }
 
 #endif // MLAS_TARGET_ARM64

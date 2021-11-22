@@ -65,6 +65,7 @@ extern "C" {
     MLAS_CONV_SYM_DEPTHWISE_KERNEL MlasConvSymDepthwiseKernelAvx512Vnni;
 #elif defined(MLAS_TARGET_ARM64)
     MLAS_CONV_SYM_KERNEL MlasConvSymKernelNeon;
+    MLAS_CONV_SYM_KERNEL MlasConvSymKernelNeonDot;
     MLAS_CONV_SYM_DEPTHWISE_KERNEL MlasConvSymDepthwiseKernelNeon;
     MLAS_CONV_SYM_DEPTHWISE_ROUTINE_KERNELSIZE MlasConvSymDepthwiseKernelSize9Arm64;
     MLAS_CONV_SYM_DEPTHWISE_ROUTINE_KERNELSIZE MlasConvSymDepthwiseKernelSize25Arm;
@@ -166,6 +167,21 @@ const MLAS_CONV_SYM_DISPATCH MlasConvSymDispatchNeon = {
     4,   // KernelDepthwiseOutputCount
     true
 };
+
+const MLAS_CONV_SYM_DISPATCH MlasConvSymDispatchDot = {
+    MlasConvSymKernelNeonDot,
+    MlasConvSymDepthwiseKernelNeon,
+    4,   // FilterInputChannelPackCount
+    16,  // FilterOutputChannelPackCount
+    0,   // KernelChannelCount
+    4,   // KernelOutputCount
+    4,   // KernelInputChannelAlignment
+    1,   // KernelOutputChannelAlignment
+    16,  // KernelDepthwiseChannelCount
+    4,   // KernelDepthwiseOutputCount
+    true
+};
+
 #endif // MLAS_TARGET_AMD64
 
 MLAS_FORCEINLINE
@@ -231,9 +247,9 @@ MlasConvSymPackWSize(
     } else {
 
 #ifdef MLAS_TARGET_ARM64
-        if (InputChannels < 128) {
-            return 0;
-        }
+//        if (InputChannels < 128) {
+//            return 0;
+//        }
 #endif
 
         size_t OutputChannelPackCount = ConvSymDispatch->FilterOutputChannelPackCount;
@@ -351,7 +367,9 @@ MlasConvSym(
 
     MlasConvSymSetOutputZeroPoint(PostProcessParams, Params.OutputZeroPoint, Params.InputIsSigned);
 
-    const size_t KernelChannelCount = ConvSymDispatch->KernelChannelCount;
+    const size_t KernelChannelCount = (ConvSymDispatch->KernelChannelCount == 0)
+        ? std::numeric_limits<size_t>::max()
+        : ConvSymDispatch->KernelChannelCount;
     const size_t KernelOutputCount = ConvSymDispatch->KernelOutputCount;
 
     const size_t KernelSize = Params.KernelSize;

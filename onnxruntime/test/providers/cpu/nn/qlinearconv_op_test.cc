@@ -289,6 +289,27 @@ class QLinearConvOpTester {
   }
 
   template <typename T>
+  void GenerateRepeatable(QuantizedTensor<T>& tensor,
+                          const std::vector<int64_t>& shape,
+                          float scale,
+                          T zero_point,
+                          int32_t min_value,
+                          int32_t max_value) {
+    size_t shape_size = ShapeSize(shape);
+    tensor.data_.resize(shape_size);
+    int32_t val = min_value;
+    for (size_t n = 0; n < shape_size; n++) {
+      tensor.data_[n] = static_cast<T>(val++);
+      if (val > max_value) {
+        val = min_value;
+      }
+    }
+    tensor.shape_ = shape;
+    tensor.scale_ = {scale};
+    tensor.zero_point_ = {zero_point};
+  }
+
+  template <typename T>
   void GenerateRandom(QuantizedTensor<T>& tensor,
                       const std::vector<int64_t>& shape,
                       float scale,
@@ -533,6 +554,18 @@ class QLinearConvOpTester {
     }
   }
 
+  void GenerateRepeatableInput(const std::vector<int64_t>& shape, float scale, T1 zero_point) {
+    GenerateRepeatable(X_, shape, scale, zero_point, 15, 230);
+  }
+
+  void GenerateRepeatableWeights(const std::vector<int64_t>& shape, float scale, T2 zero_point) {
+    if (std::is_signed<T2>::value) {
+      GenerateRepeatable(W_, shape, scale, zero_point, -122, 122);
+    } else {
+      GenerateRepeatable(W_, shape, scale, zero_point, 0, 255);
+    }
+  }
+
   void SetWeightScales(const std::vector<float>& scales) {
     W_.scale_ = scales;
   }
@@ -630,6 +663,16 @@ TEST(QLinearConvTest, Conv2D_U8S8_Sym_M16_C4) {
   test.GenerateRandomInput({1, 4, 3, 3}, .05f, 4);
   test.GenerateRandomWeights({16, 4, 3, 3}, .125f, 0);
   test.GenerateRandomBias();
+  test.SetPads({0, 0, 0, 0});
+  test.SetOutputScaleAndZeroPoint(.55f, 54);
+  test.Run();
+}
+
+TEST(QLinearConvTest, Conv2D_U8S8_Sym_M16_C4_Fixed) {
+  QLinearConvOpTester<uint8_t, int8_t> test;
+  test.GenerateRepeatableInput({1, 4, 3, 3}, .95f, 4);
+  test.GenerateRepeatableWeights({16, 4, 3, 3}, .825f, 0);
+  //test.GenerateRandomBias();
   test.SetPads({0, 0, 0, 0});
   test.SetOutputScaleAndZeroPoint(.55f, 54);
   test.Run();

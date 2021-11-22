@@ -680,6 +680,7 @@ extern const MLAS_CONV_SYM_DISPATCH MlasConvSymDispatchAvxVnni;
 extern const MLAS_CONV_SYM_DISPATCH MlasConvSymDispatchAvx512Core;
 extern const MLAS_CONV_SYM_DISPATCH MlasConvSymDispatchAvx512Vnni;
 extern const MLAS_CONV_SYM_DISPATCH MlasConvSymDispatchNeon;
+extern const MLAS_CONV_SYM_DISPATCH MlasConvSymDispatchDot;
 
 //
 // Quantized depthwise convolution kernels.
