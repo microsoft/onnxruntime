@@ -639,19 +639,13 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
 #endif
   } else if (type == kStvmExecutionProvider) {
 #if USE_STVM
+    onnxruntime::StvmExecutionProviderInfo info{};
     const auto it = provider_options_map.find(type);
     if (it != provider_options_map.end()) {
-      ORT_THROW_IF_ERROR(
-          ProviderOptionsParser{}
-              .AddAssignmentToReference("stvm_settings", stvm_settings)
-              .Parse(it->second));
+      info = onnxruntime::StvmExecutionProviderInfo::FromProviderOptions(it->second);
     }
 
-    auto p = onnxruntime::CreateExecutionProviderFactory_Stvm(stvm_settings.c_str())->CreateProvider();
-
-    // clear stvm_settings after use to avoid it being accidentally passed on to next session
-    stvm_settings.clear();
-    return p;
+    return onnxruntime::CreateExecutionProviderFactory_Stvm(info)->CreateProvider();
 #endif
   } else if (type == kVitisAIExecutionProvider) {
 #if USE_VITISAI
@@ -912,17 +906,6 @@ void addGlobalMethods(py::module& m, Environment& env) {
   m.def("get_nuphar_settings", []() -> std::string {
     LogDeprecationWarning("get_nuphar_settings");
     return nuphar_settings;
-  });
-#endif
-
-#ifdef USE_STVM
-  // TODO remove deprecated global config
-  m.def("stvm_settings", [](const std::string& str) {
-    stvm_settings = str;
-  });
-  // TODO remove deprecated global config
-  m.def("stvm_settings", []() -> std::string {
-    return stvm_settings;
   });
 #endif
 
