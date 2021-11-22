@@ -113,6 +113,18 @@ OrtMemoryInfo GetMemoryInfoPerDeviceType(const OrtDevice& ort_device) {
   return mem_info;
 }
 
+int32_t GetProtoType(const OrtValue& ort_value) {
+  if (ort_value.IsTensor()) {
+    return ort_value.Get<Tensor>().GetElementType();
+  } else if (ort_value.IsSparseTensor()) {
+    return ort_value.Get<SparseTensor>().GetElementType();
+  } else if (ort_value.IsTensorSequence()) {
+    return ort_value.Get<TensorSeq>().DataType()->AsPrimitiveDataType()->GetDataType();
+  } else {
+    throw std::runtime_error("proto_type is unavailable for this value.");
+  }
+}
+
 #ifdef USE_CUDA
 void CpuToCudaMemCpy(void* dst, const void* src, size_t num_bytes) {
   GetProviderInfo_CUDA().cudaMemcpy_HostToDevice(dst, src, num_bytes);

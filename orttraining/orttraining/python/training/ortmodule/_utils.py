@@ -18,6 +18,7 @@ import os
 import copy
 import functools
 import inspect
+from onnx import TensorProto
 import torch
 from torch.utils.dlpack import from_dlpack, to_dlpack
 from torch._C import _from_dlpack
@@ -42,18 +43,30 @@ def _ortvalue_from_torch_tensor(torch_tensor):
 def _ortvalues_to_torch_tensor(ortvalues, device):
     if len(ortvalues) == 0:
         return tuple()
-    if hasattr(ortvalues, 'to_dlpack'):
-        if all(ortvalue.proto_type() != 9 for ortvalue in ortvalues):
-            if 'ort' == device.type and hasattr(C, 'ort_from_dlpack'):
-                return tuple(ortvalues.to_dlpack(C.ort_from_dlpack))
-            return tuple(ortvalues.to_dlpack(_from_dlpack))
+    if hasattr(ortvalues, 'to_dlpacks'):
+        if all(ortvalue.proto_type() != TensorProto.BOOL for ortvalue in ortvalues):
+            if 'ort' == device.type:
+                if not hasattr(C, 'ort_from_dlpack'):
+                    raise AttributeError("onnxruntime is missing ort_from_dlpack needed to support device == 'ort'.")
+                return tuple(ortvalues.to_dlpacks(C.ort_from_dlpack))
+            return tuple(ortvalues.to_dlpacks(_from_dlpack))
 
         # DLPack structure does not know for sure if it stores boolean
-        # or uint8. Method to_dlpack cannot be used in that case (yet?).
+        # or uint8. Method to_dlpacks cannot be used in that case.
+        # Signature of *dl_packs* is `to_dlpacks(dlp, fct) -> list[torch.Tensor]`.
+        # And fct is a function with signature `fct(dlp) -> torch.Tensor`.
+        # Boolean tensors are converted into uint8 tensor with the DLPack protocol.
+        # Therefore, the function `fct` does not know if the dlpack structure
+        # is a boolean tensor or a uint8 tensor.
+        # We could either consider another function as an input in
+        # `to_dlpacks` or add an argument to `fct(dlp, ortvalue)`.
+        # Second option makes it impossible to directly use `_from_dlpack` or
+        # or `from_dlpack` from torch.
+        # The best option would be to add boolean type in DLDataTypeCode.
 
-    if 'ort' == device.type and hasattr(C, 'ort_from_dlpack'):
-        if hasattr(ortvalues, 'dlpack_at'):
-            return tuple(C.ort_from_dlpack(ortvalues.dlpack_at(i)) for i in range(len(ortvalues)))
+    if 'ort' == device.type:
+        if not hasattr(C, 'ort_from_dlpack'):
+            raise AttributeError("onnxruntime is missing ort_from_dlpack needed to support device == 'ort'.")
         return tuple(C.ort_from_dlpack(ov) for ov in ortvalues)
 
     if hasattr(ortvalues, 'dlpack_at'):
@@ -61,7 +74,7 @@ def _ortvalues_to_torch_tensor(ortvalues, device):
         for i in range(len(ortvalues)):
             dlp = ortvalues.dlpack_at(i)
             te = from_dlpack(dlp)
-            if C.may_dlpack_bool_tensor(dlp) and ortvalues[i].proto_type() == 9:
+            if C.is_dlpack_uint8_tensor(dlp) and ortvalues[i].proto_type() == TensorProto.BOOL:
                 te = te.to(torch.bool)
             tensors.append(te)
         return tuple(tensors)
@@ -73,7 +86,7 @@ def _ortvalues_to_torch_tensor(ortvalues, device):
             ov = ov._ortvalue
         dlp = ov.to_dlpack()
         te = from_dlpack(dlp)
-        if ov.proto_type() == 9:
+        if ov.proto_type() == TensorProto.BOOL:
             te = te.to(torch.bool)
         tensors.append(te)
     return tuple(tensors)

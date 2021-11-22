@@ -367,7 +367,13 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
       .def("dlpack_at", [](std::vector<OrtValue>* v, const size_t idx) {
         return py::reinterpret_steal<py::object>(ToDlpack(v->at(idx)));
       })
-      .def("to_dlpack", [](const std::vector<OrtValue>& v, py::object to_tensor) -> py::list {
+      .def("proto_type_at", [](std::vector<OrtValue>* v, const size_t idx) -> int32_t {
+        return GetProtoType(v->at(idx));
+      }, "Returns an integer equal to the ONNX proto type of the tensor at position i. "
+         "This integer is one type defined by ONNX TensorProto_DataType "
+         "(such as onnx.TensorProto.FLOAT)."
+          "Raises an exception in any other case.")
+      .def("to_dlpacks", [](const std::vector<OrtValue>& v, py::object to_tensor) -> py::list {
 
         if (v.size() == 0)
           return py::list();
@@ -397,7 +403,7 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
             if (capsule == NULL) {
               capsule = PyCapsule_New(dlmanaged_tensor, "dltensor", NULL);
               if (capsule == NULL)
-                throw std::runtime_error("Empty capsule returned.");
+                throw std::runtime_error("Unexpected error: empty capsule returned.");
             } else {
               // The same capsule is reused but FromDLPack rename the capsule into used_dltensor.
               PyCapsule_SetName(capsule, "dltensor");

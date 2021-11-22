@@ -187,16 +187,10 @@ void addOrtValueMethods(pybind11::module& m) {
         return *ONNX_NAMESPACE::Utils::DataTypeUtils::ToType(*type_proto);
       })
       .def("proto_type", [](const OrtValue* ort_value) -> int32_t {
-        if (ort_value->IsTensor()) {
-          return ort_value->Get<Tensor>().GetElementType();
-        } else if (ort_value->IsSparseTensor()) {
-          return ort_value->Get<SparseTensor>().GetElementType();
-        } else if (ort_value->IsTensorSequence()) {
-          return ort_value->Get<TensorSeq>().DataType()->AsPrimitiveDataType()->GetDataType();
-        } else {
-          throw std::runtime_error("proto_type is unavailable for this value.");
-        }
+        return GetProtoType(*ort_value);
       }, "Returns an integer equal to the ONNX proto type of the tensor or sequence. "
+         "This integer is one type defined by ONNX TensorProto_DataType "
+         "(such as onnx.TensorProto.FLOAT)."
          "Raises an exception in any other case.")
       .def("has_value", [](const OrtValue* ort_value) -> bool {
         return ort_value->IsAllocated();
@@ -251,13 +245,15 @@ void addOrtValueMethods(pybind11::module& m) {
       ;
 
 #ifdef ENABLE_TRAINING
-  m.def("may_dlpack_bool_tensor", [](py::capsule cap) -> bool {
+  m.def("is_dlpack_uint8_tensor", [](py::capsule cap) -> bool {
     // case ONNX_NAMESPACE::TensorProto_DataType_BOOL:
     // dtype.code = DLDataTypeCode::kDLUInt;
     // dtype.bits = sizeof(bool);
     DLManagedTensor* dlmanaged_tensor = (DLManagedTensor*)cap.get_pointer();
     return dlmanaged_tensor->dl_tensor.dtype.code == DLDataTypeCode::kDLUInt && dlmanaged_tensor->dl_tensor.dtype.bits == 8;
-  }, "Tells if a DLPack structure is a boolean tensor.");
+  }, "Tells if a DLPack structure is a uint8 tensor.\n"
+     ".. note::\n"
+     "    Boolean tensors are also uint8 tensor once converted with DLPack protocol.");
 #endif
 }
 

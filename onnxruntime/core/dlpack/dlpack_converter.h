@@ -11,11 +11,6 @@
 namespace onnxruntime {
 namespace dlpack {
 
-typedef struct {
-  OrtValue handle;
-  DLManagedTensor tensor;
-} OrtDLManagedTensor;
-
 // This convertor will take an OrtValue and wrap it as a DLPack tensor
 // This may create a new ownership to the underlying tensor in OrtValue,
 // so we do pass-by-value here. We don't use pass-by-reference because
