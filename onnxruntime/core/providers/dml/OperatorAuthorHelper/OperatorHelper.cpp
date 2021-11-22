@@ -32,87 +32,6 @@ namespace OperatorHelper
         }
     }
 
-    void ReadCpuLocalTensorIntoInt32(
-        const MLOperatorTensor& tensor,
-        std::vector<int32_t>& result
-        )
-    {
-        result.clear();
-        ML_CHECK_VALID_ARGUMENT(tensor.IsCpuData(), "Tensor must be CPU Tensor.");
-
-        const std::vector<uint32_t>& tensorDimensions = tensor.GetShape();
-        const uint32_t elementCount = ComputeElementCountFromDimensions(tensorDimensions);
-
-        switch (tensor.GetTensorDataType())
-        {
-        case MLOperatorTensorDataType::Int32:
-            {
-                const int32_t* data = tensor.GetData<int32_t>();
-                result.assign(data, data + elementCount);
-            }
-            break;
-
-        case MLOperatorTensorDataType::Int64:
-            {
-                const int64_t* data = tensor.GetData<int64_t>();
-                result.reserve(elementCount);
-
-                // Use clamped cast rather than static_cast/narrow_cast,
-                // because it's not uncommon for a model to specify a
-                // 64-bit INTMAX constant as a sentinel value to mean
-                // the largest possible value (even though the actual
-                // dimension values come nowhere close to that, far
-                // less than 32-bit INTMAX).
-                for (auto d : gsl::make_span(data, data + elementCount))
-                {
-                    result.push_back(clamp_cast<int32_t>(d));
-                }
-            }
-            break;
-
-        default:
-            ML_INVALID_ARGUMENT("Expecting CPU local tensor of type int32 or int64.");
-            break;
-        }
-    }
-
-    void ReadCpuLocalTensorIntoFloat32(
-        const MLOperatorTensor& tensor,
-        std::vector<float>& result
-        )
-    {
-        result.clear();
-        ML_CHECK_VALID_ARGUMENT(tensor.IsCpuData(), "Tensor must be CPU Tensor.");
-
-        const std::vector<uint32_t>& tensorDimensions = tensor.GetShape();
-        const uint32_t elementCount = ComputeElementCountFromDimensions(tensorDimensions);
-
-        switch (tensor.GetTensorDataType())
-        {
-        case MLOperatorTensorDataType::Float:
-            {
-                const float* data = tensor.GetData<float>();
-                result.assign(data, data + elementCount);
-            }
-            break;
-
-        default:
-            ML_INVALID_ARGUMENT("Expecting CPU local tensor of type float32.");
-            break;
-        }
-    }
-
-    void DowncastDimensions(gsl::span<const int64_t> inputDimensions, std::vector<DimensionType>& outputDimensions)
-    {
-        outputDimensions.reserve(inputDimensions.size());
-        outputDimensions.clear();
-
-        for (int64_t dim : inputDimensions)
-        {
-            outputDimensions.push_back(gsl::narrow_cast<uint32_t>(std::clamp<int64_t>(dim, INT32_MIN, INT32_MAX)));
-        }
-    }
-
     float CastFloat16ToFloat32(uint16_t input)
     {
         // Promote float16m10e5s1 to float32m23e8s1.
@@ -200,6 +119,130 @@ namespace OperatorHelper
         };
     }
     #pragma warning(pop)
+
+    void ReadCpuLocalTensorIntoInt32(
+        const MLOperatorTensor& tensor,
+        std::vector<int32_t>& result
+        )
+    {
+        result.clear();
+        ML_CHECK_VALID_ARGUMENT(tensor.IsCpuData(), "Tensor must be CPU Tensor.");
+
+        const std::vector<uint32_t>& tensorDimensions = tensor.GetShape();
+        const uint32_t elementCount = ComputeElementCountFromDimensions(tensorDimensions);
+
+        switch (tensor.GetTensorDataType())
+        {
+        case MLOperatorTensorDataType::Int32:
+            {
+                const int32_t* data = tensor.GetData<int32_t>();
+                result.assign(data, data + elementCount);
+            }
+            break;
+
+        case MLOperatorTensorDataType::Int64:
+            {
+                const int64_t* data = tensor.GetData<int64_t>();
+                result.reserve(elementCount);
+
+                // Use clamped cast rather than static_cast/narrow_cast,
+                // because it's not uncommon for a model to specify a
+                // 64-bit INTMAX constant as a sentinel value to mean
+                // the largest possible value (even though the actual
+                // dimension values come nowhere close to that, far
+                // less than 32-bit INTMAX).
+                for (auto d : gsl::make_span(data, data + elementCount))
+                {
+                    result.push_back(clamp_cast<int32_t>(d));
+                }
+            }
+            break;
+
+        default:
+            ML_INVALID_ARGUMENT("Expecting CPU local tensor of type int32 or int64.");
+            break;
+        }
+    }
+
+    void ReadCpuLocalTensorIntoFloat32(
+        const MLOperatorTensor& tensor,
+        std::vector<float>& result
+        )
+    {
+        result.clear();
+        ML_CHECK_VALID_ARGUMENT(tensor.IsCpuData(), "Tensor must be CPU Tensor.");
+
+        const std::vector<uint32_t>& tensorDimensions = tensor.GetShape();
+        const uint32_t elementCount = ComputeElementCountFromDimensions(tensorDimensions);
+        result.resize(elementCount);
+
+        switch (tensor.GetTensorDataType())
+        {
+        case MLOperatorTensorDataType::Float16:
+            {
+                const uint16_t* data = reinterpret_cast<const uint16_t*>(tensor.GetByteData());
+                std::transform(data, data + elementCount, result.begin(), CastFloat16ToFloat32);
+            }
+            break;
+
+        case MLOperatorTensorDataType::/*Float32*/Float:
+            {
+                const float* data = tensor.GetData<float>();
+                result.assign(data, data + elementCount);
+            }
+            break;
+
+        case MLOperatorTensorDataType::/*Float64*/Double:
+            {
+                const double* data = tensor.GetData<double>();
+                std::transform(data, data + elementCount, result.begin(), [](auto v) {return static_cast<float>(v); });
+            }
+            break;
+
+        case MLOperatorTensorDataType::Int32:
+            {
+                const int32_t* data = tensor.GetData<int32_t>();
+                std::transform(data, data + elementCount, result.begin(), [](auto v) {return static_cast<float>(v); });
+            }
+            break;
+
+        case MLOperatorTensorDataType::UInt32:
+            {
+                const uint32_t* data = tensor.GetData<uint32_t>();
+                std::transform(data, data + elementCount, result.begin(), [](auto v) {return static_cast<float>(v); });
+            }
+            break;
+
+        case MLOperatorTensorDataType::Int64:
+            {
+                const int64_t* data = tensor.GetData<int64_t>();
+                std::transform(data, data + elementCount, result.begin(), [](auto v) {return static_cast<float>(v); });
+            }
+            break;
+
+        case MLOperatorTensorDataType::UInt64:
+            {
+                const uint64_t* data = tensor.GetData<uint64_t>();
+                std::transform(data, data + elementCount, result.begin(), [](auto v) {return static_cast<float>(v); });
+            }
+            break;
+
+        default:
+            ML_INVALID_ARGUMENT("Expecting CPU local tensor of type float32.");
+            break;
+        }
+    }
+
+    void DowncastDimensions(gsl::span<const int64_t> inputDimensions, std::vector<DimensionType>& outputDimensions)
+    {
+        outputDimensions.reserve(inputDimensions.size());
+        outputDimensions.clear();
+
+        for (int64_t dim : inputDimensions)
+        {
+            outputDimensions.push_back(gsl::narrow_cast<uint32_t>(std::clamp<int64_t>(dim, INT32_MIN, INT32_MAX)));
+        }
+    }
 
     int64_t IsFloatDataType(MLOperatorTensorDataType tensorDataType)
     {
@@ -1089,7 +1132,7 @@ namespace OperatorHelper
         ML_CHECK_VALID_ARGUMENT(inputCount + 1 == m_components.size(), "Mismatch between input tensor count and string equation component count.");
         ML_CHECK_VALID_ARGUMENT(outputCount == 1, "EinSum expects exactly 1 output tensor.");
 
-        std::vector<uint32_t> labelSizes(m_labelIndices.size(), static_cast<uint32_t>(INT_MIN));
+        std::vector<uint32_t> labelSizes(m_labelIndices.size(), UINT_MAX);
 
         // Read every input tensor, comparing labels to ensure consistent sizes from the equation parsed earlier.
         for (uint32_t i = 0; i < inputCount; ++i)
@@ -1110,7 +1153,7 @@ namespace OperatorHelper
                 uint32_t labelIndex = labelIndices[j];
                 assert(labelIndex < labelSizes.size());
 
-                if (labelSizes[labelIndex] == INT_MIN)
+                if (labelSizes[labelIndex] == UINT_MAX)
                 {
                     labelSizes[labelIndex] = dimensionSize;
                 }

@@ -20,6 +20,7 @@ from .operators.concat import QLinearConcat, QDQConcat
 
 CommonOpsRegistry = {
     "Gather": GatherQuant,
+    "Transpose" : Direct8BitOp,
     "EmbedLayerNormalization": EmbedLayerNormalizationQuant,
 }
 
@@ -45,7 +46,6 @@ QLinearOpsRegistry = {
     "Split": QSplit,
     "Pad": QPad,
     "Reshape": Direct8BitOp,
-    "Transpose" : Direct8BitOp,
     "Squeeze" : Direct8BitOp,
     "Unsqueeze" : Direct8BitOp,
     "Resize": QResize,
