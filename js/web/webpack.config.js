@@ -5,9 +5,16 @@
 
 const path = require('path');
 const webpack = require('webpack');
+const BundleAnalyzerPlugin = require('webpack-bundle-analyzer').BundleAnalyzerPlugin;
 const NodePolyfillPlugin = require('node-polyfill-webpack-plugin');
 const TerserPlugin = require("terser-webpack-plugin");
 const minimist = require('minimist');
+
+// commandline args
+const args = minimist(process.argv);
+const bundleMode = args['bundle-mode'] || 'prod';  // 'prod'|'dev'|'perf'|'node'|undefined;
+const useAnalyzer = !!args.a || !!args['use-analyzer'];  // -a, --use-analyzer
+const filter = args.f || args.filter;
 
 const VERSION = require(path.join(__dirname, 'package.json')).version;
 const COPYRIGHT_BANNER = `/*!
@@ -16,10 +23,25 @@ const COPYRIGHT_BANNER = `/*!
 * Licensed under the MIT License.
 */`;
 
-function defaultTerserPluginOptions() {
+function terserEcmaVersionFromWebpackTarget(target) {
+  switch (target) {
+    case 'es5':
+      return 5;
+    case 'es6':
+    case 'es2015':
+      return 2015;
+    case 'es2017':
+      return 2017;
+    default:
+      throw new RangeError(`not supported ECMA version: ${target}`);
+  }
+}
+
+function defaultTerserPluginOptions(target) {
   return {
     extractComments: false,
     terserOptions: {
+      ecma: terserEcmaVersionFromWebpackTarget(target),
       format: {
         comments: false,
       },
@@ -33,8 +55,15 @@ function defaultTerserPluginOptions() {
   };
 }
 
+const DEFAULT_BUILD_DEFS = {
+  DISABLE_WEBGL: false,
+  DISABLE_WASM: false,
+  DISABLE_WASM_PROXY: false,
+  DISABLE_WASM_THREAD: false,
+};
+
 // common config for release bundle
-function buildConfig({ filename, format, target, mode, devtool }) {
+function buildConfig({ filename, format, target, mode, devtool, build_defs }) {
   const config = {
     target: [format === 'commonjs' ? 'node' : 'web', target],
     entry: path.resolve(__dirname, 'lib/index.ts'),
@@ -59,7 +88,10 @@ function buildConfig({ filename, format, target, mode, devtool }) {
         "perf_hooks": false,
       }
     },
-    plugins: [new webpack.WatchIgnorePlugin({ paths: [/\.js$/, /\.d\.ts$/] })],
+    plugins: [
+      new webpack.DefinePlugin({ BUILD_DEFS: build_defs }),
+      new webpack.WatchIgnorePlugin({ paths: [/\.js$/, /\.d\.ts$/] })
+    ],
     module: {
       rules: [{
         test: /\.ts$/,
@@ -80,13 +112,47 @@ function buildConfig({ filename, format, target, mode, devtool }) {
     devtool
   };
 
+  if (useAnalyzer) {
+    config.plugins.unshift(new BundleAnalyzerPlugin({
+      analyzerMode: 'static',
+      reportFilename: `${filename}.report.html`
+    }));
+  }
+
   if (mode === 'production') {
     config.resolve.alias['./binding/ort-wasm-threaded.js'] = './binding/ort-wasm-threaded.min.js';
     config.resolve.alias['./binding/ort-wasm-threaded.worker.js'] = './binding/ort-wasm-threaded.min.worker.js';
 
-    const options = defaultTerserPluginOptions();
+    const options = defaultTerserPluginOptions(target);
     options.terserOptions.format.preamble = COPYRIGHT_BANNER;
     config.plugins.push(new TerserPlugin(options));
+
+    // add a custom plugin to check whether code contains 'BUILD_DEFS'
+    config.plugins.push({
+      apply: (compiler) => {
+        compiler.hooks.afterCompile.tap(
+          'Check BUILD_DEFS',
+          (compilation) => {
+            for (const filename of compilation.assetsInfo.keys()) {
+              if (filename.endsWith('.js')) {
+                const asset = compilation.assets[filename];
+                if (asset) {
+                  const content = asset.source();
+                  if (typeof content !== 'string') {
+                    throw new Error(`content for target file '${filename}' is not string.`);
+                  }
+                  if (content.includes('DISABLE_WEBGL')
+                    || content.includes('DISABLE_WASM')
+                    || content.includes('DISABLE_WASM_PROXY')
+                    || content.includes('DISABLE_WASM_THREAD')) {
+                    throw new Error(`target file '${filename}' contains data fields from "BUILD_DEFS".`);
+                  }
+                }
+              }
+            }
+          });
+      }
+    });
   } else {
     config.plugins.push(new webpack.BannerPlugin({ banner: COPYRIGHT_BANNER, raw: true }));
   }
@@ -97,11 +163,12 @@ function buildConfig({ filename, format, target, mode, devtool }) {
 // "ort{.min}.js" config
 function buildOrtConfig({
   suffix = '',
-  target = 'es5',
+  target = 'es2017',
   mode = 'production',
-  devtool = 'source-map'
+  devtool = 'source-map',
+  build_defs = DEFAULT_BUILD_DEFS
 }) {
-  const config = buildConfig({ filename: `ort${suffix}.js`, format: 'umd', target, mode, devtool });
+  const config = buildConfig({ filename: `ort${suffix}.js`, format: 'umd', target, mode, devtool, build_defs });
   // set global name 'ort'
   config.output.library.name = 'ort';
   return config;
@@ -111,11 +178,12 @@ function buildOrtConfig({
 function buildOrtWebConfig({
   suffix = '',
   format = 'umd',
-  target = 'es5',
+  target = 'es2017',
   mode = 'production',
-  devtool = 'source-map'
+  devtool = 'source-map',
+  build_defs = DEFAULT_BUILD_DEFS
 }) {
-  const config = buildConfig({ filename: `ort-web${suffix}.js`, format, target, mode, devtool });
+  const config = buildConfig({ filename: `ort-web${suffix}.js`, format, target, mode, devtool, build_defs });
   // exclude onnxruntime-common from bundle
   config.externals = {
     'onnxruntime-common': {
@@ -139,7 +207,7 @@ function buildOrtWebConfig({
 function buildTestRunnerConfig({
   suffix = '',
   format = 'umd',
-  target = 'es5',
+  target = 'es2017',
   mode = 'production',
   devtool = 'source-map'
 }) {
@@ -174,6 +242,7 @@ function buildTestRunnerConfig({
       }
     },
     plugins: [
+      new webpack.DefinePlugin({ BUILD_DEFS: DEFAULT_BUILD_DEFS }),
       new webpack.WatchIgnorePlugin({ paths: [/\.js$/, /\.d\.ts$/] }),
       new NodePolyfillPlugin({
         excludeAliases: ["console"]
@@ -186,7 +255,7 @@ function buildTestRunnerConfig({
           {
             loader: 'ts-loader',
             options: {
-              compilerOptions: { target: target }
+              compilerOptions: { target }
             }
           }
         ]
@@ -200,15 +269,13 @@ function buildTestRunnerConfig({
   };
 
   if (mode === 'production') {
-    config.plugins.push(new TerserPlugin(defaultTerserPluginOptions()));
+    config.plugins.push(new TerserPlugin(defaultTerserPluginOptions(target)));
   }
 
   return config;
 }
 
 module.exports = () => {
-  const args = minimist(process.argv);
-  const bundleMode = args['bundle-mode'] || 'prod';  // 'prod'|'dev'|'perf'|'node'|undefined;
   const builds = [];
 
   switch (bundleMode) {
@@ -220,8 +287,32 @@ module.exports = () => {
         buildOrtConfig({ mode: 'development', devtool: 'inline-source-map' }),
         // ort.es6.min.js
         buildOrtConfig({ suffix: '.es6.min', target: 'es6' }),
-        // ort.es6.js
-        buildOrtConfig({ suffix: '.es6', mode: 'development', devtool: 'inline-source-map', target: 'es6' }),
+        // ort.es5.min.js
+        buildOrtConfig({ suffix: '.es5.min', target: 'es5' }),
+
+        // ort.wasm.min.js
+        buildOrtConfig({
+          suffix: '.wasm.min', build_defs: {
+            ...DEFAULT_BUILD_DEFS,
+            DISABLE_WEBGL: true,
+          }
+        }),
+        // ort.webgl.min.js
+        buildOrtConfig({
+          suffix: '.webgl.min', build_defs: {
+            ...DEFAULT_BUILD_DEFS,
+            DISABLE_WASM: true,
+          }
+        }),
+        // ort.wasm-core.min.js
+        buildOrtConfig({
+          suffix: '.wasm-core.min', build_defs: {
+            ...DEFAULT_BUILD_DEFS,
+            DISABLE_WEBGL: true,
+            DISABLE_WASM_PROXY: true,
+            DISABLE_WASM_THREAD: true,
+          }
+        }),
 
         // ort-web.min.js
         buildOrtWebConfig({ suffix: '.min' }),
@@ -229,8 +320,8 @@ module.exports = () => {
         buildOrtWebConfig({ mode: 'development', devtool: 'inline-source-map' }),
         // ort-web.es6.min.js
         buildOrtWebConfig({ suffix: '.es6.min', target: 'es6' }),
-        // ort-web.es6.js
-        buildOrtWebConfig({ suffix: '.es6', mode: 'development', devtool: 'inline-source-map', target: 'es6' }),
+        // ort-web.es5.min.js
+        buildOrtWebConfig({ suffix: '.es5.min', target: 'es5' }),
       );
 
     case 'node':
@@ -247,6 +338,11 @@ module.exports = () => {
       break;
     default:
       throw new Error(`unsupported bundle mode: ${bundleMode}`);
+  }
+
+  if (filter) {
+    const filterRegex = new RegExp(filter);
+    return builds.filter(b => filterRegex.test(b.output.filename));
   }
 
   return builds;
