@@ -424,6 +424,7 @@ TEST(ThreadPoolTest, TestStagedMultiLoopSections_4Thread_10Loop) {
 TEST(ThreadPoolTest, TestStagedMultiLoopSections_4Thread_100Loop) {
   TestStagedMultiLoopSections("TestStagedMultiLoopSections_4Thread_100Loop", 4, 100);
 }
+
 #ifdef _WIN32
 #if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
 #pragma warning(push)
@@ -457,5 +458,15 @@ TEST(ThreadPoolTest, TestStackSize) {
 #pragma warning(pop)
 #endif
 #endif
+
+TEST(ThreadPoolTest, TestDynamicBlockSize) {
+  const int num_tasks = 1024;
+  auto test_data = CreateTestData(num_tasks);
+  onnxruntime::ThreadOptions thread_options;
+  thread_options.dynamic_block_base_ = 4;
+  auto tp = std::make_unique<ThreadPool>(&onnxruntime::Env::Default(), thread_options, nullptr, 4, true);
+  ThreadPool::TrySimpleParallelFor(tp.get(), num_tasks, [&](std::ptrdiff_t i) { IncrementElement(*test_data, i); });
+  ValidateTestData(*test_data);
+}
 
 }  // namespace onnxruntime
