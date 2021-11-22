@@ -1147,6 +1147,13 @@ class Graph {
     return Resolve(default_options);
   }
 
+  /*
+  @returns the ONNX IR version (basically a integer) used in this graph.
+  */
+  Version IrVersion() const noexcept {
+    return ir_version_;
+  }
+
   common::Status SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
                                  flatbuffers::Offset<onnxruntime::fbs::Graph>& fbs_graph) const;
 
@@ -1250,10 +1257,6 @@ class Graph {
                 const ArgNameToTypeMap& name_to_type);
 
 #endif
-
-  Version IrVersion() const noexcept {
-    return ir_version_;
-  }
 
   Graph& GraphResolveNeeded(bool needed) noexcept {
     graph_resolve_needed_ = needed;

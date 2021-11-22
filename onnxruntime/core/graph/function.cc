@@ -7,6 +7,12 @@
 #include "core/graph/model.h"
 #include "onnx/shape_inference/implementation.h"
 
+#if !defined(ORT_MINIMAL_BUILD)
+#include "core/graph/schema_registry.h"
+#include "onnx/checker.h"
+using namespace ONNX_NAMESPACE::checker;
+#endif
+
 namespace ONNX_NAMESPACE {
 // Infer shape for functions. This also supports 
 // nested model local functions.
@@ -279,8 +285,8 @@ static void InitNestedModelLocalFunction(onnxruntime::Graph& graph,
                           << onnx_function_proto.name()
 #ifndef ORT_NO_EXCEPTIONS
                           << "'. Error message " << e.what()
-#endif //ORT_NO_EXCEPTIONS
-                          << ". Execution will fail if ORT does not have a specialized kernel for this op";
+#endif  //ORT_NO_EXCEPTIONS
+                          << ". Execution will fail if ORT does not have a specialized kernel for this node.";
     // Return without using this function op's expansion. No need to fail just yet.
     // If ORT has a specialized kernel for this op then execution will proceed
     return;
@@ -390,6 +396,88 @@ static std::unordered_map<std::string, int> GetFunctionOpsetImports(const ONNX_N
     function_opset_imports.insert({opset_import.domain(), static_cast<int>(opset_import.version())});
   }
   return function_opset_imports;
+}
+
+static void FillOnnxLexicalScopeContext(const ONNX_NAMESPACE::NodeProto& node, ONNX_NAMESPACE::checker::LexicalScopeContext& lsc) {
+  for (const auto& input : node.input()) {
+    // When checking individual node, we don't care
+    // if inputs are created based
+    // on nodes' topologically order. Here we assume
+    // all inputs are valid (aka produced
+    // by upstream nodes), so we just add all of them
+    // to the context.
+    lsc.add(input);
+  }
+  for (const auto& attr : node.attribute()) {
+    if (!attr.has_g()) {
+      continue;
+    }
+    for (const auto& node : attr.g().node()) {
+      FillOnnxLexicalScopeContext(node, lsc);
+    }
+  }
+}
+
+static void FillOnnxCheckerContext(
+    const Version ir_version,
+    const std::unordered_map<std::string, int>& domain_to_version_map,
+    const ONNX_NAMESPACE::ISchemaRegistry* schema_registry,
+    const std::string& model_dir,
+    ONNX_NAMESPACE::checker::CheckerContext& ctx) {
+  // Depending on the state of Graph, bake
+  // correct context to launch ONNX (not ORT)
+  // checker.
+  ctx.set_ir_version(gsl::narrow_cast<int>(ir_version));
+  ctx.set_opset_imports(domain_to_version_map);
+  ctx.set_schema_registry(schema_registry);
+  // Set the parent directory of model path to load external tensors if exist
+  ctx.set_model_dir(model_dir);
+}
+
+static Status CheckNode(
+    const Version onnx_ir_version,                                      // Graph::IrVersion()
+    const std::unordered_map<std::string, int>& domain_to_version_map,  // Graph::DomainToVersionMap()
+    const ONNX_NAMESPACE::ISchemaRegistry* schema_registry,             // Graph::GetSchemaRegistry().get()
+    const std::string& model_dir,                                       // ToMBString(Graph::ModelPath().ParentPath().ToPathString())
+    const Node& node) {
+  // This function checks if the Node matches an operator in ONNX spec.
+  // If found a match, returns OK. Otherwise, return an error.
+  ONNX_NAMESPACE::checker::CheckerContext ctx;
+  FillOnnxCheckerContext(
+      onnx_ir_version,
+      domain_to_version_map,
+      schema_registry,
+      // Provide the parent directory of model path to load external tensors if exist
+      model_dir,
+      ctx);
+
+  ONNX_NAMESPACE::NodeProto node_proto;
+  node.ToProto(node_proto);
+
+  ONNX_NAMESPACE::checker::LexicalScopeContext lsc;
+  // When checking an isolated operator, we need to assume all inputs are available,
+  // and a naive solutiont to just add them all.
+  // Notice that when checking an operator in a graph, avaliable variables should
+  // only be outputs produced by its upstream (topologically before) operators.
+  FillOnnxLexicalScopeContext(node_proto, lsc);
+
+  auto status = Status::OK();
+
+  if (!node.Op()) {
+    ORT_TRY {
+      ONNX_NAMESPACE::checker::check_node(node_proto, ctx, lsc);
+    }
+    ORT_CATCH(const std::exception& ex) {
+      ORT_HANDLE_EXCEPTION([&]() {
+        std::ostringstream err_msg;
+        err_msg << "Invalid node, " << node << ", Error ";
+        status = ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH, err_msg.str(), ex.what());
+      });
+    }
+    ORT_RETURN_IF_ERROR(status);
+  }
+
+  return status;
 }
 
 FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
@@ -711,8 +799,26 @@ FunctionImpl::FunctionImpl(onnxruntime::Graph& graph,
         new_attr_map[(*node_attr).name()] = *node_attr;
       }
     }
-    function_body_graph.AddNode(uniq_identifier, (*node).op_type(),
-                                (*node).doc_string(), inputs, outputs, &new_attr_map, (*node).domain());
+
+    // Create a Node (ORT object) which maps to the "node" (ONNX object).
+    auto& mirror_node = function_body_graph.AddNode(uniq_identifier, (*node).op_type(),
+                                                    (*node).doc_string(), inputs, outputs, &new_attr_map, (*node).domain());
+
+    // Check if the added ORT node has the right schema, can be found in enabled opset's, and so on.
+    auto node_status = CheckNode(
+        function_body_graph.IrVersion(),
+        function_body_graph.DomainToVersionMap(),
+        function_body_graph.GetSchemaRegistry().get(),
+        ToMBString(function_body_graph.ModelPath().ParentPath().ToPathString()),
+        new_node);
+
+    ORT_ENFORCE(node_status.IsOK(),
+                "Fail to create node ",
+                mirror_node,
+                " when expanding ONNX function (name: ",
+                onnx_function_proto.name(),
+                "). Error: ",
+                node_status.ErrorMessage());
   }
 
   function_body_graph.SetInputs(graph_inputs);
@@ -747,9 +853,11 @@ FunctionImpl::FunctionImpl(onnxruntime::Graph& graph,
   if (!is_nested_function) {
     onnxruntime::Graph::ResolveOptions options;
     options.traverse_function_body = true;
+    // CheckNode(...) above has checked nodes in the function individually,
+    // the entired graph structure is checked here.
     auto status = function_body_graph.Resolve(options);
 
-    ORT_ENFORCE(status.IsOK(), "Resolve subgraph failed:", status.ErrorMessage());
+    ORT_ENFORCE(status.IsOK(), "Resolve subgraph failed: ", status.ErrorMessage());
 
     ORT_ENFORCE(node_in_parent_graph->InputDefs().size() == function_body_graph.GetInputsIncludingInitializers().size(),
                 "Node " + node_in_parent_graph->Name() + "'s number of inputs is different from function body graph's number of input.");
