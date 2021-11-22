@@ -14,6 +14,7 @@ const minimist = require('minimist');
 const args = minimist(process.argv);
 const bundleMode = args['bundle-mode'] || 'prod';  // 'prod'|'dev'|'perf'|'node'|undefined;
 const useAnalyzer = !!args.a || !!args['use-analyzer'];  // -a, --use-analyzer
+const filter = args.f || args.filter;
 
 const VERSION = require(path.join(__dirname, 'package.json')).version;
 const COPYRIGHT_BANNER = `/*!
@@ -88,9 +89,7 @@ function buildConfig({ filename, format, target, mode, devtool, build_defs }) {
       }
     },
     plugins: [
-      new webpack.DefinePlugin({
-        BUILD_DEFS: build_defs
-      }),
+      new webpack.DefinePlugin({ BUILD_DEFS: build_defs }),
       new webpack.WatchIgnorePlugin({ paths: [/\.js$/, /\.d\.ts$/] })
     ],
     module: {
@@ -114,7 +113,10 @@ function buildConfig({ filename, format, target, mode, devtool, build_defs }) {
   };
 
   if (useAnalyzer) {
-    config.plugins.unshift(new BundleAnalyzerPlugin());
+    config.plugins.unshift(new BundleAnalyzerPlugin({
+      analyzerMode: 'static',
+      reportFilename: `${filename}.report.html`
+    }));
   }
 
   if (mode === 'production') {
@@ -138,7 +140,8 @@ function buildConfig({ filename, format, target, mode, devtool, build_defs }) {
                   const content = asset.source();
                   if (typeof content !== 'string') {
                     throw new Error(`content for target file '${filename}' is not string.`);
-                  } if (content.includes('DISABLE_WEBGL')
+                  }
+                  if (content.includes('DISABLE_WEBGL')
                     || content.includes('DISABLE_WASM')
                     || content.includes('DISABLE_WASM_PROXY')
                     || content.includes('DISABLE_WASM_THREAD')) {
@@ -239,6 +242,7 @@ function buildTestRunnerConfig({
       }
     },
     plugins: [
+      new webpack.DefinePlugin({ BUILD_DEFS: DEFAULT_BUILD_DEFS }),
       new webpack.WatchIgnorePlugin({ paths: [/\.js$/, /\.d\.ts$/] }),
       new NodePolyfillPlugin({
         excludeAliases: ["console"]
@@ -334,6 +338,11 @@ module.exports = () => {
       break;
     default:
       throw new Error(`unsupported bundle mode: ${bundleMode}`);
+  }
+
+  if (filter) {
+    const filterRegex = new RegExp(filter);
+    return builds.filter(b => filterRegex.test(b.output.filename));
   }
 
   return builds;
