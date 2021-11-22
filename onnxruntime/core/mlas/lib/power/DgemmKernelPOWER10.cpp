@@ -40,10 +40,10 @@ MlasDgemmComputeAElements(
     MLAS_FLOAT64X2 ABroadcast[RowCount]
     )
 {
-        ABroadcast[0] = vec_mergee (AElements[0], AElements[1]);
-        ABroadcast[1] = vec_mergee (AElements[2], AElements[3]);
-        ABroadcast[2] = vec_mergeo (AElements[0], AElements[1]);
-        ABroadcast[3] = vec_mergeo (AElements[2], AElements[3]);
+    ABroadcast[0] = vec_mergee (AElements[0], AElements[1]);
+    ABroadcast[1] = vec_mergee (AElements[2], AElements[3]);
+    ABroadcast[2] = vec_mergeo (AElements[0], AElements[1]);
+    ABroadcast[3] = vec_mergeo (AElements[2], AElements[3]);
 }
 
 template<size_t RowCount>
