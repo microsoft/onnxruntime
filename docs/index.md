@@ -19,10 +19,22 @@ ONNX Runtime is an accelerator for machine learning models with multi platform s
 ## Contribute and Customize
 
 |:----------------------------------------------------------------------------------|:-----------------------------------------------------------------------------------|
-|  <span class="fs-5"> [Build ORT Packages](./build){: .btn  .mr-4 target="_blank"} </span>         | <span class="fs-5">ONNX Runtime GitHub](https://github.com/microsoft/onnxruntime){: .btn target="_blank"} </span>  |
+|  <span class="fs-5"> [Build ORT Packages](./build){: .btn  .mr-4 target="_blank"} </span>         | <span class="fs-5">[ONNX Runtime GitHub](https://github.com/microsoft/onnxruntime){: .btn target="_blank"} </span>  |
 
 
 ---
+
+
+## QuickStart Template
+
+|:----------------------------------------------------------------------------------|:-----------------------------------------------------------------------------------|
+|  <span class="fs-5"> [ORT Web JavaScript Site Template using NextJS](https://github.com/microsoft/onnxruntime-nextjs-template){: .btn  .mr-4 target="_blank"} </span>         | 
+
+
+---
+
+
+
 
 ## ONNX Runtime for Inferencing
 
