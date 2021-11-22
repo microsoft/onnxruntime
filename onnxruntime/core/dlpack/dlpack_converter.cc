@@ -190,6 +190,11 @@ DLDevice GetDlpackDevice(const OrtValue& ort_value, const int64_t& device_id) {
   return device;
 }
 
+struct OrtDLManagedTensor {
+  OrtValue handle;
+  DLManagedTensor tensor;
+};
+
 static void DlpackDeleter(DLManagedTensor* arg) { delete static_cast<OrtDLManagedTensor*>(arg->manager_ctx); }
 
 // This function returns a pointer to DLManagedTensor constructed from an OrtValue
