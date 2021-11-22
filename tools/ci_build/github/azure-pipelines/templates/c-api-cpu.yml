@@ -897,30 +897,6 @@ jobs:
         python.exe $(Build.SourcesDirectory)\tools\ci_build\github\windows\post_binary_sizes_to_dashboard.py --commit_hash=$(Build.SourceVersion) --size_data_file=binary_size_data.txt --build_project=Lotus --build_id=$(Build.BuildId)
       workingDirectory: '$(Build.BinariesDirectory)'
 
-  - task: AzureFileCopy@3
-    displayName: 'Copy Signed Native NuGet Package to Blob Store'
-    condition: ne(variables['IsReleaseBuild'], 'true') # release build has a different package naming scheme
-    inputs:
-      sourcePath: '$(Build.BinariesDirectory)/nuget-artifact/final-package/${{ parameters.OrtNugetPackageId }}.$(NuGetPackageVersionNumber).nupkg'
-      azureSubscription: 'AIInfraBuildOnnxRuntimeOSS'
-      destination: azureBlob
-      storage: ortpackages
-      containerName: ortpackages
-      blobPrefix: '$(CurrentDate)/'
-    continueOnError: true
-
-  - task: AzureFileCopy@3
-    displayName: 'Copy Signed Managed NuGet Package to Blob Store'
-    condition: ne(variables['IsReleaseBuild'], 'true') # release build has a different package naming scheme
-    inputs:
-      sourcePath: '$(Build.BinariesDirectory)/nuget-artifact/final-package/Microsoft.ML.OnnxRuntime.Managed.$(NuGetPackageVersionNumber).nupkg'
-      azureSubscription: 'AIInfraBuildOnnxRuntimeOSS'
-      destination: azureBlob
-      storage: ortpackages
-      containerName: ortpackages
-      blobPrefix: '$(CurrentDate)/'
-    continueOnError: true
-
   - task: DotNetCoreCLI@2
     displayName: 'Copy Signed Native NuGet Package to Internal NuGet Feed'
     condition: ne(variables['IsReleaseBuild'], 'true') # release build has a different package naming scheme
