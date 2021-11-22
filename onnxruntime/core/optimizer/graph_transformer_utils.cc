@@ -54,6 +54,7 @@
 #include "core/optimizer/slice_elimination.h"
 #include "core/optimizer/transpose_optimizer/ort_transpose_optimizer.h"
 #include "core/optimizer/unsqueeze_elimination.h"
+#include "core/optimizer/gather_internal_replacement.h"
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
@@ -100,6 +101,7 @@ std::vector<std::unique_ptr<RewriteRule>> GenerateRewriteRules(
       rules.push_back(std::make_unique<ConvMulFusion>());
       rules.push_back(std::make_unique<ConvBNFusion>());
       rules.push_back(std::make_unique<ReluQuantFusion>());
+      rules.push_back(std::make_unique<GatherInternalReplacement>());
       break;
 
     case TransformerLevel::Level2:
