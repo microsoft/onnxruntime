@@ -211,7 +211,7 @@ class Logger {
         id_{id},
         min_severity_{severity},
         filter_user_data_{filter_user_data},
-        max_vlog_level_{severity > Severity::kVERBOSE ? -1 : vlog_level} {  // disable unless logging VLOG messages
+        max_vlog_level_{vlog_level} {  // disable unless logging VLOG messages
   }
 
   /**
