@@ -20,9 +20,8 @@ MlasConvSymDepthwiseKernelSize25Arm(
     const int16x8_t voutput_zero_point = vld1q_dup_s16((int16_t const*)&PostProcessParams->OutputZeroPoint);
     float32x4_t vscale_0123, vscale_4567, vscale_89AB, vscale_CDEF;
     const bool is_per_channel = ((KernelFlags & MLAS_CONV_SYM_FLAG_PER_CHANNEL_SCALE) != 0);
-    if (!is_per_channel) {
-        vscale_0123 = vscale_4567 = vscale_89AB = vscale_CDEF = vld1q_dup_f32(PostProcessParams->Scale);
-    }
+    // Init them anyway due to some compiler will generate uninitialized warnings.
+    vscale_0123 = vscale_4567 = vscale_89AB = vscale_CDEF = vld1q_dup_f32(PostProcessParams->Scale);
     while (OutputCount-- > 0) {
         const uint8_t* i00 = InputIndirection[0];
         const uint8_t* i01 = InputIndirection[1];
