@@ -768,30 +768,53 @@ void RegisterTrainingOpSchemas() {
       .Input(0, "shape", "Shape of the Gather input X.", "I")
       .Input(1, "indices", "Tensor of int32/int64 indices, of any rank q.", "Tind")
       .Input(2, "dY", "Gradient of output", "T")
-      .Input(3, "num_segments", "Num of Segments", "Int32", OpSchema::Optional)
+      .Input(
+          3,
+          "num_segments",
+          "Number of segments in the sorted input indices.",
+          "Int32",
+          OpSchema::Optional)
       .Input(
           4,
-          "last_segment_partial_segment_offset",
-          "last_segment_partial_segment_offset",
+          "segment_offsets",
+          "Indices where each segment begins in the sorted indices.",
           "Int32",
           OpSchema::Optional)
       .Input(
           5,
           "last_segment_partial_segment_count",
-          "last_segment_partial_segment_count",
+          "Number of partial segments in the last segment.",
           "Int32",
           OpSchema::Optional)
       .Input(
           6,
-          "per_segment_partial_segment_counts",
-          "per_segment_partial_segment_counts",
+          "last_segment_partial_segment_offset",
+          "Partial segment offset of the last segment.",
           "Int32",
           OpSchema::Optional)
       .Input(
           7,
-          "per_segment_partial_segment_offsets",
-          "per_segment_partial_segment_offsets",
+          "per_segment_partial_segment_counts",
+          "Number of partial segments for each segment.",
           "Int32",
+          OpSchema::Optional)
+      .Input(
+          8,
+          "per_segment_partial_segment_offsets",
+          "Partial segment offset for each segment.",
+          "Int32",
+          OpSchema::Optional)
+      .Input(
+          9,
+          "dX_indices_sorted",
+          "Sorted input indices.",
+          "Tind",
+          OpSchema::Optional)
+      .Input(
+          10,
+          "dY_indices_sorted",
+          "Sorted output indices as per dX_indices_sorted.",
+          "Tind",
           OpSchema::Optional)
       .Output(0, "dX", "Gradient of input", "T")
       .Attr(
@@ -847,32 +870,50 @@ void RegisterTrainingOpSchemas() {
       .Output(
           1,
           "num_segments",
-          "Number of segments",
+          "Internal output. Helps with GatherGrad pre-computation. Number of segments in the sorted input indices.",
           "Int32",
           OpSchema::Optional)
       .Output(
           2,
-          "last_segment_partial_segment_offset",
-          "last_segment_partial_segment_offset",
+          "segment_offsets",
+          "Internal output. Helps with GatherGrad pre-computation. Indices where each segment begins in the sorted indices.",
           "Int32",
           OpSchema::Optional)
       .Output(
           3,
           "last_segment_partial_segment_count",
-          "last_segment_partial_segment_count",
+          "Internal output. Helps with GatherGrad pre-computation. Number of partial segments in the last segment.",
           "Int32",
           OpSchema::Optional)
       .Output(
           4,
-          "per_segment_partial_segment_counts",
-          "per_segment_partial_segment_counts",
+          "last_segment_partial_segment_offset",
+          "Internal output. Helps with GatherGrad pre-computation. Partial segment offset of the last segment.",
           "Int32",
           OpSchema::Optional)
       .Output(
           5,
-          "per_segment_partial_segment_offsets",
-          "per_segment_partial_segment_offsets",
+          "per_segment_partial_segment_counts",
+          "Internal output. Helps with GatherGrad pre-computation. Number of partial segments for each segment.",
           "Int32",
+          OpSchema::Optional)
+      .Output(
+          6,
+          "per_segment_partial_segment_offsets",
+          "Internal output. Helps with GatherGrad pre-computation. Partial segment offset for each segment.",
+          "Int32",
+          OpSchema::Optional)
+      .Output(
+          7,
+          "dX_indices_sorted",
+          "Internal output. Helps with GatherGrad pre-computation. Sorted input indices.",
+          "Tind",
+          OpSchema::Optional)
+      .Output(
+          8,
+          "dY_indices_sorted",
+          "Internal output. Helps with GatherGrad pre-computation. Sorted output indices as per dX_indices_sorted.",
+          "Tind",
           OpSchema::Optional)
       .TypeConstraint(
           "T",
@@ -885,43 +926,7 @@ void RegisterTrainingOpSchemas() {
       .TypeConstraint(
           "Int32",
           {"tensor(int32)"},
-          "Constrain to int32") 
-      .TypeAndShapeInferenceFunction([](InferenceContext& /*ctx*/) {
-        // propagateElemTypeFromInputToOutput(ctx, 0, 0);
-        // propagateElemTypeFromInputToOutput(ctx, 1, 1);
-        // if (!hasNInputShapes(ctx, 2)) {
-        //   return;
-        // }
-        // const TensorShapeProto& data_shape =
-        //     ctx.getInputType(0)->tensor_type().shape();
-        // const TensorShapeProto& indices_shape =
-        //     ctx.getInputType(1)->tensor_type().shape();
-        // int r = data_shape.dim_size();
-        // if (r < 1) {
-        //   fail_shape_inference("data tensor must have rank >= 1");
-        // }
-        // int q = indices_shape.dim_size();
-        // int axis = static_cast<int>(getAttribute(ctx, "axis", 0));
-        // if (axis < -r || axis >= r) {
-        //   fail_shape_inference("axis must be in [-r, r-1]");
-        // }
-        // if (axis < 0) {
-        //   axis += r;
-        // }
-        // int out_rank = q + r - 1;
-        // if (out_rank == 0) {
-        //   ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape();
-        // }
-        // for (int i = 0; i < out_rank; ++i) {
-        //   *ctx.getOutputType(0)
-        //         ->mutable_tensor_type()
-        //         ->mutable_shape()
-        //         ->add_dim() = (i < axis) ? data_shape.dim(i) : // i < axis < r
-        //       (i >= axis && i < axis + q) ? indices_shape.dim(i - axis)
-        //                                   : // i - axis < q
-        //           data_shape.dim(i - q + 1); // i < out_rank < q + r - 1
-        // }
-      });
+          "Constrain to int32");
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(GatherElementsGrad)
       .SetDomain(kMSDomain)

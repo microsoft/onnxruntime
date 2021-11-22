@@ -742,7 +742,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetGatherInternalGradient) {
               {I(0)},
               {IA("I0_shape")}),
       NodeDef(OpDef{"GatherGrad", kMSDomain, 1},
-              {IA("I0_shape"), I(1), GO(0), O(1), O(2), O(3), O(4), O(5)},
+              {IA("I0_shape"), I(1), GO(0), O(1), O(2), O(3), O(4), O(5), O(6), O(7), O(8)},
               {GI(0)},
               SrcNodeAttributes())};
 }

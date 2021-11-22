@@ -40,6 +40,9 @@ class CudaScratchBufferAllocator {
 using GatheredIndexIndex_t = int32_t;
 using SegmentIndex_t = GatheredIndexIndex_t;
 
+// GatherGradPrepare precomputes information needed in GatherGrad
+// thereby removing the need to compute this information within
+// GatherGrad and moving all the memcpys to GatherGradPrepare.
 template <typename TIndex>
 void GatherGradPrepare(
     cudaStream_t stream,
@@ -49,10 +52,13 @@ void GatherGradPrepare(
     int64_t gather_dimension_size,
     int64_t num_gathered_per_index,
     SegmentIndex_t& host_num_segments,
-    SegmentIndex_t& last_segment_partial_segment_offset_out,
+    IAllocatorUniquePtr<SegmentIndex_t>& segment_offsets_out,
     SegmentIndex_t& last_segment_partial_segment_count_out,
+    SegmentIndex_t& last_segment_partial_segment_offset_out,
     IAllocatorUniquePtr<SegmentIndex_t>& per_segment_partial_segment_counts_out,
-    IAllocatorUniquePtr<SegmentIndex_t>& per_segment_partial_segment_offsets_out);
+    IAllocatorUniquePtr<SegmentIndex_t>& per_segment_partial_segment_offsets_out,
+    IAllocatorUniquePtr<TIndex>& dX_indices_sorted,
+    IAllocatorUniquePtr<TIndex>& dY_indices_sorted);
 
 }  // namespace cuda
 }  // namespace onnxruntime

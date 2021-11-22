@@ -43,6 +43,7 @@ static std::unordered_map<std::string, std::unordered_set<size_t>>
         {"NonZero", {0}},
         {"Pow", {1}},  // TODO: Pow's input_1 is differentiable, but gradient not yet implemented
         {"Gather", {1}},
+        {"GatherInternal", {1}},
         {"GatherElements", {1}},
         {"GatherND", {1}},
         {"Shape", {0}},
