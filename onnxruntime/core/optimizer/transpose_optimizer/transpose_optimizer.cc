@@ -908,7 +908,7 @@ void PermuteInput(api::GraphRef& graph, api::NodeRef& node, size_t i, const std:
   auto constant = graph.GetConstant(input);
   if (constant != nullptr) {
     auto shape = constant->Shape();
-    if (shape.size() == 1 && shape[0] == rank_int) {
+    if (shape.size() == 1 && (shape[0] == rank_int || shape[0] == 0)) {
       // Create new transposed initializer
       std::vector<uint8_t> data = constant->Data();
       std::vector<uint8_t> new_data(data.size());

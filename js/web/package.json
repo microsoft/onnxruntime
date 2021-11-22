@@ -20,7 +20,7 @@
     "pull:wasm": "node ./script/pull-prebuilt-wasm-artifacts",
     "test": "node ./script/prepare-test-data && node ./script/test-runner-cli",
     "test:e2e": "node ./test/e2e/run",
-    "prepack": "node ./script/prepack"
+    "prepack": "node ./script/build && node ./script/prepack"
   },
   "dependencies": {
     "flatbuffers": "^1.12.0",

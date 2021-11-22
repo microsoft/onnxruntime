@@ -17,7 +17,6 @@ Status SoftMaxComputeHelper(
     const T* X,
     const TensorShape& input_shape,
     T* Y,
-    miopenHandle_t handle,
     int64_t axis) {
   typedef typename ToHipType<T>::MappedType HipT;
 
@@ -26,33 +25,20 @@ Status SoftMaxComputeHelper(
   auto Y_data = reinterpret_cast<HipT*>(Y);
   auto X_data = reinterpret_cast<const HipT*>(X);
 
-  // miopenSoftmaxForward/Backward is not optimal implementation.
-  // TODO: remove miopen path completely in the future.
   if (D <= 1024 && D * sizeof(T) <= 4096) {
-    dispatch_softmax_forward<HipT, HipT, AccumulationType_t<HipT>, is_log_softmax>(stream, Y_data, X_data, gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(N));
-    return Status::OK();
-  }
-
-  std::vector<int64_t> dims({N, 1, 1, D});  // miopen expects 4D shape in NCHW format
-
-  const auto alpha = Consts<HipT>::One;
-  const auto beta = Consts<HipT>::Zero;
-  MiopenTensor input_tensor;
-  MiopenTensor output_tensor;
-  ORT_RETURN_IF_ERROR(input_tensor.Set(dims, MiopenTensor::GetDataType<HipT>()));
-  ORT_RETURN_IF_ERROR(output_tensor.Set(dims, MiopenTensor::GetDataType<HipT>()));
-  if (is_log_softmax) {
-    MIOPEN_RETURN_IF_ERROR(miopenSoftmaxForward_V2(handle, &alpha, input_tensor, X_data, &beta, output_tensor, Y_data, MIOPEN_SOFTMAX_LOG, MIOPEN_SOFTMAX_MODE_INSTANCE));
+    dispatch_warpwise_softmax_forward<HipT, HipT, AccumulationType_t<HipT>, is_log_softmax>(
+      stream, Y_data, X_data, gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(N));
   } else {
-    MIOPEN_RETURN_IF_ERROR(miopenSoftmaxForward_V2(handle, &alpha, input_tensor, X_data, &beta, output_tensor, Y_data, MIOPEN_SOFTMAX_ACCURATE, MIOPEN_SOFTMAX_MODE_INSTANCE));
+    dispatch_blockwise_softmax_forward<HipT, HipT, AccumulationType_t<HipT>, is_log_softmax>(
+      stream, Y_data, X_data, gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(N));
   }
 
   return Status::OK();
 }
 
 #define SPECIALIZED_SOFTMAX_HELPER_IMPL(T)                                                                                                                 \
-  template Status SoftMaxComputeHelper<T, false>(hipStream_t stream, const T* input, const TensorShape& shape, T* Y, miopenHandle_t handle, int64_t axis); \
-  template Status SoftMaxComputeHelper<T, true>(hipStream_t stream, const T* input, const TensorShape& shape, T* Y, miopenHandle_t handle, int64_t axis);
+  template Status SoftMaxComputeHelper<T, false>(hipStream_t stream, const T* input, const TensorShape& shape, T* Y, int64_t axis); \
+  template Status SoftMaxComputeHelper<T, true>(hipStream_t stream, const T* input, const TensorShape& shape, T* Y, int64_t axis);
 
 SPECIALIZED_SOFTMAX_HELPER_IMPL(float)
 // MIOpen double data type not supported
@@ -186,11 +172,11 @@ Status Softmax<T>::ComputeInternal(OpKernelContext* ctx) const {
 
   Status status;
   if (log_softmax_) {
-    status = SoftMaxComputeHelper<T, true>(Stream(), X_data, *compute_input_shape, Y_data, MiopenHandle(),
+    status = SoftMaxComputeHelper<T, true>(Stream(), X_data, *compute_input_shape, Y_data,
                                            is_transpose_required ? static_cast<int64_t>(rank) - 1
                                                                  : static_cast<int64_t>(axis));
   } else {
-    status = SoftMaxComputeHelper<T, false>(Stream(), X_data, *compute_input_shape, Y_data, MiopenHandle(),
+    status = SoftMaxComputeHelper<T, false>(Stream(), X_data, *compute_input_shape, Y_data,
                                             is_transpose_required ? static_cast<int64_t>(rank) - 1
                                                                   : static_cast<int64_t>(axis));
   }

@@ -55,12 +55,18 @@ class DnnlSubgraphPrimitive {
   dnnl::memory GetMemory(const DnnlTensor& tensor);
   dnnl::memory GetMemory(const DnnlTensor& tensor, dnnl::memory::desc mem_desc, dnnl::engine eng);
   //set memory to a tensor (output)
-  // if always_copy_output is true a copy of the memory will be made when the output is leaving the subgraph.
-  void SetMemory(DnnlTensor tensor, dnnl::memory mem, bool always_copy_output = false);
+  //if always_copy_output is true a copy of the memory will be made when the output is leaving the subgraph.
+  //is_scalar is true to indicate a scalar output in order to allocate the correct onnxruntime output buffer
+  void SetMemory(DnnlTensor tensor, dnnl::memory mem, bool always_copy_output = false, bool is_scalar = false);
   void SetMemory(std::string memory_name, dnnl::memory mem);
   void SetInitializer(std::string memory_name, dnnl::memory mem);
   dnnl::memory::desc GetOutputInfo(std::string name);
+  bool IsScalarOutput(const std::string& name);
   bool IsDynamic();
+  // All Scalar inputs are automatically converterted to a one dimentional tensor when used in OneDNN
+  // If the input being a scalar affects the operator this function can be used to determine if the
+  // original input from ORT was a scalar.
+  bool IsScalar(const DnnlTensor& tensor);
   OrtMutex& GetMutex() { return mutex_; }
 
   //GetMemory in OrtFormat if the memory is not in the OrtFormat this will reorder the memory.
@@ -75,6 +81,8 @@ class DnnlSubgraphPrimitive {
 
   std::unordered_map<std::string, dnnl::memory> inputs_;
   std::unordered_map<std::string, dnnl::memory::desc> inputs_md_;
+  std::unordered_set<std::string> input_is_scalar_;
+
 
   std::unordered_map<std::string, dnnl::memory> outputs_;
   std::unordered_map<std::string, dnnl::memory::desc> outputs_md_;
@@ -87,6 +95,7 @@ class DnnlSubgraphPrimitive {
   std::vector<std::unordered_map<int, dnnl::memory>> net_args_;
 
   std::vector<std::pair<dnnl::memory, dnnl::memory>> reshapes_;
+  std::unordered_set<std::string> scalar_outputs_;
 
   ort_dnnl::DnnlSubgraph* subgraph_;
 

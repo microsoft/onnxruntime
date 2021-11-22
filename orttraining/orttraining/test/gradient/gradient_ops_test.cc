@@ -1574,13 +1574,13 @@ TEST(GradientCheckerTest, SigmoidGrad) {
   UnaryOpGradientTest("Sigmoid");
 }
 
-void GradientCheckerSoftmaxGradHelper(bool is_log_softmax) {
+void GradientCheckerSoftmaxGradHelper(bool is_log_softmax, int version = 11) {
   TensorShape shape({3, 4, 5});
   float max_error;
   GradientChecker<float, float, float> gradient_checker;
 
   const std::string op = is_log_softmax ? "LogSoftmax" : "Softmax";
-  OpDef op_def{op};
+  OpDef op_def{op, kOnnxDomain, version};
 
   // default_axis
   {
@@ -1594,6 +1594,12 @@ void GradientCheckerSoftmaxGradHelper(bool is_log_softmax) {
     EXPECT_IS_TINY(max_error);
   }
 
+  // axis=1
+  {
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {shape}, {shape}, &max_error, {MakeAttribute("axis", int64_t(1))}));
+    EXPECT_IS_TINY(max_error);
+  }
+
   // axis=2
   {
     ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {shape}, {shape}, &max_error, {MakeAttribute("axis", int64_t(2))}));
@@ -1603,10 +1609,12 @@ void GradientCheckerSoftmaxGradHelper(bool is_log_softmax) {
 
 TEST(GradientCheckerTest, SoftMaxGrad) {
   GradientCheckerSoftmaxGradHelper(false);
+  GradientCheckerSoftmaxGradHelper(false, 13);
 }
 
 TEST(GradientCheckerTest, LogSoftMaxGrad) {
   GradientCheckerSoftmaxGradHelper(true);
+  GradientCheckerSoftmaxGradHelper(true, 13);
 }
 
 void TestSoftmaxCrossEntropyGrad(const TensorShape& input_shape, const std::string& reduction) {
@@ -2746,6 +2754,61 @@ TEST(GradientCheckerTest, ScatterNDGrad) {
     ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {data_info, indices_info, updates_info},
                                                            {output_info}, &max_error, input_datas));
     EXPECT_IS_TINY(max_error);
+  }
+}
+
+TEST(GradientCheckerTest, TriluGrad) {
+  float max_error;
+  GradientChecker<float, float, float> gradient_checker;
+  OpDef op_def{"Trilu", kMSDomain, 1};
+  const int M = 3;
+  const int N = 4;
+  TensorShape shape = {M, N};
+  TensorInfo x_info(shape);
+  TensorInfo k_info({1}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>());
+  TensorInfo y_info(shape);
+  std::vector<float> x_data = {};
+  // Initialize input data
+  float f = 1.0;
+  for (int i = 0; i < M; i++) {
+    for (int j = 0; j < N; j++, f++) {
+      x_data.push_back(f);
+    }
+  }
+
+  // Test without optional input and without attribute
+  {
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_info}, {y_info}, &max_error, {x_data}));
+    EXPECT_IS_TINY(max_error);
+  }
+  {
+    // Test without optional input and with attribute upper=1
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_info}, {y_info}, &max_error, {x_data}, {MakeAttribute("upper", int64_t(1))}));
+    EXPECT_IS_TINY(max_error);
+  }
+  {
+    // Test without optional input and with attribute upper=0
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_info}, {y_info}, &max_error, {x_data}, {MakeAttribute("upper", int64_t(0))}));
+    EXPECT_IS_TINY(max_error);
+  }
+  for (int64_t k = -M; k <= M; k++) {
+    std::vector<float> k_data = {static_cast<float>(k)};
+
+    // Test with optional input and without attribute
+    {
+      ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_info, k_info}, {y_info}, &max_error, {x_data, k_data}));
+      EXPECT_IS_TINY(max_error);
+    }
+    {
+      // Test with optional input and with attribute upper=1
+      ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_info, k_info}, {y_info}, &max_error, {x_data, k_data}, {MakeAttribute("upper", int64_t(1))}));
+      EXPECT_IS_TINY(max_error);
+    }
+    {
+      // Test with optional input and with attribute upper=0
+      ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_info, k_info}, {y_info}, &max_error, {x_data, k_data}, {MakeAttribute("upper", int64_t(0))}));
+      EXPECT_IS_TINY(max_error);
+    }
   }
 }
 
