@@ -14,6 +14,7 @@
 #include "core/common/exceptions.h"
 #include "core/framework/endian.h"
 #include "core/framework/float16.h"
+#include "core/framework/to_tensor_proto_element_type.h"
 #if !defined(ORT_MINIMAL_BUILD)
 #include "onnx/defs/schema.h"
 #else
@@ -445,7 +446,7 @@ class TensorType : public TensorTypeBase {
  private:
   TensorType() {
     using namespace data_types_internal;
-    TensorTypeHelper::Set(ToTensorDataType<elemT>(), MutableTypeProto());
+    TensorTypeHelper::Set(utils::ToTensorProtoElementType<elemT>(), MutableTypeProto());
   }
 };
 
@@ -534,7 +535,7 @@ class SparseTensorType : public SparseTensorTypeBase {
  private:
   SparseTensorType() {
     using namespace data_types_internal;
-    SparseTensorTypeHelper::Set(ToTensorDataType<elemT>(), MutableTypeProto());
+    SparseTensorTypeHelper::Set(utils::ToTensorProtoElementType<elemT>(), MutableTypeProto());
   }
 };
 
@@ -732,7 +733,7 @@ class MapType : public NonTensorType<CPPType> {
  private:
   MapType() {
     using namespace data_types_internal;
-    MapTypeHelper::Set(ToTensorDataType<typename CPPType::key_type>(),
+    MapTypeHelper::Set(utils::ToTensorProtoElementType<typename CPPType::key_type>(),
                        MapTypeHelper::GetValueType<typename CPPType::mapped_type>()->GetTypeProto(),
                        this->MutableTypeProto());
   }
@@ -921,7 +922,7 @@ class PrimitiveDataType : public PrimitiveDataTypeBase {
  private:
   PrimitiveDataType()
       : PrimitiveDataTypeBase{sizeof(T),
-                              data_types_internal::ToTensorDataType<T>()} {
+                              utils::ToTensorProtoElementType<T>()} {
   }
 };
 
