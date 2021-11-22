@@ -650,7 +650,7 @@ if (onnxruntime_USE_OPENVINO)
   else()
     list(APPEND OPENVINO_LIB_LIST ${InferenceEngine_LIBRARIES} ${NGRAPH_LIBRARIES} ngraph::onnx_importer ${PYTHON_LIBRARIES})
   endif()
-  
+
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_openvino_cc_srcs})
   onnxruntime_add_shared_library_module(onnxruntime_providers_openvino ${onnxruntime_providers_openvino_cc_srcs})
   onnxruntime_add_include_to_target(onnxruntime_providers_openvino onnxruntime_common onnx)
@@ -806,6 +806,8 @@ if (onnxruntime_USE_NNAPI_BUILTIN)
   file(GLOB_RECURSE onnxruntime_providers_shared_utils_cc_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/providers/shared/utils/utils.h"
     "${ONNXRUNTIME_ROOT}/core/providers/shared/utils/utils.cc"
+    "${ONNXRUNTIME_ROOT}/core/providers/shared/node_unit.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/shared/node_unit.cc"
   )
 
   if(CMAKE_SYSTEM_NAME STREQUAL "Android")

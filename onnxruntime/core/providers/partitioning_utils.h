@@ -13,6 +13,7 @@
 namespace onnxruntime {
 struct ComputeCapability;
 class GraphViewer;
+class INodeUnit;
 class NodeArg;
 class Node;
 
@@ -36,6 +37,8 @@ The partition is kept or discarded based on the return value.
 @return Whether to keep the partition.
 */
 using OnGroupClosedFn = std::function<bool(const std::vector<const Node*>& group)>;
+
+using GetNodeUnitFn = std::function<const INodeUnit*(const Node& node)>;
 
 /**
 Called to create a metadef name.
@@ -62,12 +65,13 @@ Create the supported partitions for the execution provider.
 std::vector<std::unique_ptr<ComputeCapability>>
 CreateSupportedPartitions(const GraphViewer& graph_viewer,
                           const IsNodeSupportedFn& is_node_supported_fn,
+                          const GetNodeUnitFn& get_node_unit_fn,
                           const OnGroupClosedFn& on_group_closed_fn,
                           const GenerateMetadefNameFn& generate_metadef_name_fn,
                           const std::string& execution_provider_name,
                           bool debug_output = false);
 
-/** 
+/**
 Create the supported partitions for the execution provider.
 
 @param graph_viewer GraphViewer that IExecutionProvider::GetCapability is called with.

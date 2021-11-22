@@ -155,7 +155,7 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
     return MakeString(NNAPI, "_", model_hash, "_", metadef_id);
   };
 
-  result = utils::CreateSupportedPartitions(graph_viewer, is_node_supported, on_group_closed,
+  result = utils::CreateSupportedPartitions(graph_viewer, is_node_supported, {}, on_group_closed,
                                             gen_metadef_name, NNAPI);
 
   const auto num_of_partitions = result.size();
