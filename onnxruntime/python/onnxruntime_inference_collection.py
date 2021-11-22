@@ -447,6 +447,9 @@ class IOBinding:
         '''
         self._iobinding.bind_ortvalue_input(name, ortvalue._ortvalue)
 
+    def synchronize_inputs(self):
+        self._iobinding.synchronize_inputs()
+
     def bind_output(self, name, device_type='cpu', device_id=0, element_type=None, shape=None, buffer_ptr=None):
         '''
         :param name: output name
@@ -481,6 +484,9 @@ class IOBinding:
         :param ortvalue: OrtValue instance to bind
         '''
         self._iobinding.bind_ortvalue_output(name, ortvalue._ortvalue)
+
+    def synchronize_outputs(self):
+        self._iobinding.synchronize_outputs()
 
     def get_outputs(self):
         '''
