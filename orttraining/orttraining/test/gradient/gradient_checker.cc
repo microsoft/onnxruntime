@@ -257,7 +257,14 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::InitOpTesterWithGraph(
       op_session.AddOutput<int64_t>(name.c_str(),
                                     y_infos[data_index].shape.GetDimsAsVector(),
                                     int64_data);
-    } else {
+    } else if (y_infos[data_index].data_type == DataTypeImpl::GetTensorType<int32_t>()) {
+      std::vector<int32_t> int32_data(data.size());
+      std::transform(data.begin(), data.end(), int32_data.begin(), [](Y_T x) { return static_cast<int32_t>(x); });
+      op_session.AddOutput<int32_t>(name.c_str(),
+                                    y_infos[data_index].shape.GetDimsAsVector(),
+                                    int32_data);
+    }
+    else {
       op_session.AddOutput<Y_T>(name.c_str(), y_infos[data_index].shape.GetDimsAsVector(), data);
     }
   }

@@ -14,6 +14,56 @@ namespace onnxruntime {
 namespace test {
 
 namespace {
+
+template <typename Tind>
+std::pair<std::vector<Tind>, std::vector<Tind>> CalculateSortedIndices(const std::vector<Tind>& indices)
+{
+    std::vector<Tind> dY_indices_sorted(indices.size());
+    std::iota(dY_indices_sorted.begin(), dY_indices_sorted.end(), 0);
+    sort(dY_indices_sorted.begin(), dY_indices_sorted.end(), [&indices](const size_t& i, const size_t& j) { return indices[i] < indices[j]; } );
+    std::vector<Tind> dX_indices_sorted(indices);
+    sort(dX_indices_sorted.begin(), dX_indices_sorted.end());
+
+    return {dX_indices_sorted, dY_indices_sorted};
+}
+
+template <typename Tind>
+std::pair<int32_t, std::vector<int32_t>> CalculateNumberOfSegmentsAndSegmentOffsets(const std::vector<Tind>& sorted_indices)
+{
+    int32_t num_segments = 1;
+    std::vector<int32_t> segment_offsets({0});
+
+    for (size_t i = 1; i < sorted_indices.size(); ++i)
+    {
+        if (sorted_indices[i] != sorted_indices[i-1])
+        {
+            num_segments++;
+            segment_offsets.push_back(i);
+        }
+    }
+
+    return {num_segments, segment_offsets};
+}
+
+std::pair<std::vector<int32_t>, std::vector<int32_t>> CalculatePartialSegmentCountsAndOffsets(const std::vector<int32_t>& segment_offsets, const int number_of_indices)
+{
+    const int MaxPartialSegmentLength = 10;
+
+    std::vector<int32_t> number_of_partial_segments_per_segment;
+    int32_t total_number_of_partial_segments = 0;
+    std::vector<int32_t> partial_segment_offsets;
+
+    for (size_t i = 0; i < segment_offsets.size(); ++i)
+    {
+        int segment_count = (i == segment_offsets.size()-1 ? number_of_indices : segment_offsets[i+1]) - segment_offsets[i];
+        number_of_partial_segments_per_segment.push_back((segment_count + MaxPartialSegmentLength - 1) / MaxPartialSegmentLength);
+        partial_segment_offsets.push_back(total_number_of_partial_segments);
+        total_number_of_partial_segments += number_of_partial_segments_per_segment.back();
+    }
+
+    return {number_of_partial_segments_per_segment, partial_segment_offsets};
+}
+
 template <typename T>
 std::vector<T> CalculateOutput(
     int64_t axis,
@@ -70,6 +120,19 @@ void ConfigureGatherGradRandomDataOpTester(
       "shape", {static_cast<int64_t>(X_shape.NumDimensions())}, X_shape.GetDimsAsVector());
   test.AddInput<int64_t>("indices", indices_shape.GetDimsAsVector(), indices);
   test.AddInput<T>("grad", dY_shape.GetDimsAsVector(), grad);
+
+  const auto sorted_indices = CalculateSortedIndices(indices);
+  const auto number_of_segments_and_segment_offsets = CalculateNumberOfSegmentsAndSegmentOffsets(sorted_indices.first);
+  const auto partial_segment_count_and_offsets = CalculatePartialSegmentCountsAndOffsets(number_of_segments_and_segment_offsets.second, indices_shape.Size());
+  test.AddInput<int32_t>("num_segments", {1LL}, {number_of_segments_and_segment_offsets.first});
+  test.AddInput<int32_t>("segment_offsets", {number_of_segments_and_segment_offsets.first}, number_of_segments_and_segment_offsets.second);
+  test.AddInput<int32_t>("last_segment_partial_segment_count", {1LL}, {partial_segment_count_and_offsets.first.back()});
+  test.AddInput<int32_t>("last_segment_partial_segment_offset", {1LL}, {partial_segment_count_and_offsets.second.back()});
+  test.AddInput<int32_t>("per_segment_partial_segment_counts", {number_of_segments_and_segment_offsets.first}, partial_segment_count_and_offsets.first);
+  test.AddInput<int32_t>("per_segment_partial_segment_offsets", {number_of_segments_and_segment_offsets.first}, partial_segment_count_and_offsets.second);
+  test.AddInput<int64_t>("dX_indices_sorted", indices_shape.GetDimsAsVector(), sorted_indices.first);
+  test.AddInput<int64_t>("dY_indices_sorted", indices_shape.GetDimsAsVector(), sorted_indices.second);
+
   test.AddOutput<T>("output", X_shape.GetDimsAsVector(), output);
 }
 
@@ -135,6 +198,16 @@ TEST(GatherGradOpTest, GatherGrad_axis0_indices2d_half) {
 
   test.AddInput<MLFloat16>("grad", {2, 2, 3},
                            FloatsToMLFloat16s({0, 1, 2, 3, 4, 5, 0, 1, 2, 3, 4, 5}));
+
+  test.AddInput<int32_t>("num_segments", {1LL}, {2});
+  test.AddInput<int32_t>("segment_offsets", {2LL}, {0, 2});
+  test.AddInput<int32_t>("last_segment_partial_segment_count", {1LL}, {1});
+  test.AddInput<int32_t>("last_segment_partial_segment_offset", {1LL}, {1});
+  test.AddInput<int32_t>("per_segment_partial_segment_counts", {2LL}, {1, 1});
+  test.AddInput<int32_t>("per_segment_partial_segment_offsets", {2LL}, {0, 1});
+  test.AddInput<int64_t>("dX_indices_sorted", {4LL}, {0LL, 0LL, 1LL, 1LL});
+  test.AddInput<int64_t>("dY_indices_sorted", {4LL}, {0LL, 2LL, 1LL, 3LL});
+
   test.AddOutput<MLFloat16>("output", {3, 3},
                             FloatsToMLFloat16s({0, 2, 4, 6, 8, 10, 0, 0, 0}));
   test.Run();
@@ -152,6 +225,16 @@ TEST(GatherGradOpTest, GatherGrad_axis0_indices2d_float) {
 
   test.AddInput<float>("grad", {2, 2, 3},
                        {0, 1, 2, 3, 4, 5, 0, 1, 2, 3, 4, 5});
+
+  test.AddInput<int32_t>("num_segments", {1LL}, {2});
+  test.AddInput<int32_t>("segment_offsets", {2LL}, {0, 2});
+  test.AddInput<int32_t>("last_segment_partial_segment_count", {1LL}, {1});
+  test.AddInput<int32_t>("last_segment_partial_segment_offset", {1LL}, {1});
+  test.AddInput<int32_t>("per_segment_partial_segment_counts", {2LL}, {1, 1});
+  test.AddInput<int32_t>("per_segment_partial_segment_offsets", {2LL}, {0, 1});
+  test.AddInput<int64_t>("dX_indices_sorted", {4LL}, {0LL, 0LL, 1LL, 1LL});
+  test.AddInput<int64_t>("dY_indices_sorted", {4LL}, {0LL, 2LL, 1LL, 3LL});
+
   test.AddOutput<float>("output", {3, 3},
                         {0, 2, 4, 6, 8, 10, 0, 0, 0});
   test.Run();
@@ -168,6 +251,16 @@ TEST(GatherGradOpTest, GatherGrad_negative_indices) {
 
   test.AddInput<float>("grad", {2, 2, 3},
                        {0, 1, 2, 3, 4, 5, 0, 1, 2, 3, 4, 5});
+
+  test.AddInput<int32_t>("num_segments", {1LL}, {3});
+  test.AddInput<int32_t>("segment_offsets", {3LL}, {0, 1, 2});
+  test.AddInput<int32_t>("last_segment_partial_segment_count", {1LL}, {1});
+  test.AddInput<int32_t>("last_segment_partial_segment_offset", {1LL}, {2});
+  test.AddInput<int32_t>("per_segment_partial_segment_counts", {3LL}, {1, 1, 1});
+  test.AddInput<int32_t>("per_segment_partial_segment_offsets", {3LL}, {0, 1, 2});
+  test.AddInput<int64_t>("dX_indices_sorted", {4LL}, {-2LL, -1LL, 0LL, 0LL});
+  test.AddInput<int64_t>("dY_indices_sorted", {4LL}, {3LL, 1LL, 0LL, 2LL});
+
   test.AddOutput<float>("output", {3, 3},
                         {0, 2, 4, 3, 4, 5, 3, 4, 5});
   test.Run();

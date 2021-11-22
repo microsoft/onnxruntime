@@ -871,39 +871,48 @@ def test_gradient_correctness_transpose3d(perm, shape):
 def test_gradient_correctness_transpose4d(perm, shape):
     _run_gradient_correctness_transpose(perm, shape)
 
-# @pytest.mark.parametrize("device", ['cuda', 'cpu'])
-# @pytest.mark.parametrize("padding_idx", [None, 1])
 @pytest.mark.parametrize("device", ['cuda'])
-@pytest.mark.parametrize("padding_idx", [None])
+@pytest.mark.parametrize("padding_idx", [None, -1, 0, 1])
 def test_gradient_correctness_embedding(device, padding_idx):
     class NeuralNetEmbedding(torch.nn.Module):
-        def __init__(self, num_embeddings, embedding_dim):
+        def __init__(self, N, num_embeddings, embedding_dim, hidden_size, num_classes):
             super(NeuralNetEmbedding, self).__init__()
             self.embedding = torch.nn.Embedding(num_embeddings, embedding_dim, padding_idx=padding_idx)
+            self.fc1 = torch.nn.Linear(N, hidden_size)
+            self.relu1 = torch.nn.ReLU()
+            self.fc2 = torch.nn.Linear(hidden_size, num_classes)
+            self.index = torch.randint(high=num_embeddings, size=(10, 10), dtype=torch.int64, device='cuda')
 
-        def forward(self, input):
-            return self.embedding(input)
+        def forward(self, x1, x2):
+            gather_out = torch.take(x2, index=self.index)
+            out = self.embedding(x1)
+            out = torch.matmul(out, x2)
+            out = self.fc1(out)
+            out = self.relu1(out)
+            out = self.fc2(out)
+            return out + gather_out.sum(dim=1)
 
     N, num_embeddings, embedding_dim = 8192, 1024, 1024
-    pt_model = NeuralNetEmbedding(num_embeddings, embedding_dim).to(device)
+    pt_model = NeuralNetEmbedding(N, num_embeddings, embedding_dim, 100, 10).to(device)
     ort_model = ORTModule(copy.deepcopy(pt_model), DebugOptions(save_onnx=True, onnx_prefix='gather'))
 
-    def run_step(model, input):
-        prediction = model(input)
+    def run_step(model, x1, x2):
+        prediction = model(x1, x2)
         loss = prediction.sum()
         loss.backward()
         return prediction
 
-    for _ in range(100):
-        input = torch.randint(high=num_embeddings, size=(N,), dtype=torch.int64, device=device)
-        pt_prediction = run_step(pt_model, input)
+    for _ in range(10):
+        x1 = torch.randint(high=num_embeddings, size=(N,), dtype=torch.int64, device=device)
+        x2 = torch.randint(high=num_embeddings, size=(num_embeddings, N), dtype=torch.float32, device=device)
+        pt_prediction = run_step(pt_model, x1, x2)
 
-    for _ in range(100):
-        input = torch.randint(high=num_embeddings, size=(N,), dtype=torch.int64, device=device)
-        ort_prediction = run_step(ort_model, input)
+        x1_2 = copy.deepcopy(x1)
+        x2_2 = copy.deepcopy(x2)
+        ort_prediction = run_step(ort_model, x1_2, x2_2)
 
-        # _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
-        # _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model, atol=1e-5)
+        _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
+        _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model, atol=1e-5)
 
 @pytest.mark.parametrize("use_fp16", [False, True])
 def test_gradient_correctness_cross_entropy_loss(use_fp16):
