@@ -28,6 +28,10 @@
         13114085849278607104
     ],
     [
+        "NhwcMaxPool com.microsoft CPUExecutionProvider",
+        11773579655431087496
+    ],
+    [
         "ParametricSoftplus ai.onnx CPUExecutionProvider",
         17971715260566574960
     ],
@@ -181,7 +185,11 @@
     ],
     [
         "QLinearAveragePool com.microsoft CPUExecutionProvider",
-        9152647959212466896
+        7697522567125769728
+    ],
+    [
+        "QLinearAveragePool com.microsoft CPUExecutionProvider",
+        16087397801315871440
     ],
     [
         "QLinearConv com.microsoft CPUExecutionProvider",
@@ -189,7 +197,11 @@
     ],
     [
         "QLinearGlobalAveragePool com.microsoft CPUExecutionProvider",
-        8729391959357542728
+        2087133060447455992
+    ],
+    [
+        "QLinearGlobalAveragePool com.microsoft CPUExecutionProvider",
+        8306008644377580528
     ],
     [
         "QLinearLeakyRelu com.microsoft CPUExecutionProvider",
