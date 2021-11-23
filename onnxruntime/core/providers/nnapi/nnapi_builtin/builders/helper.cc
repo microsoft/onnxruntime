@@ -187,8 +187,7 @@ bool HasValidQuantizationScales(const InitializedTensorSet& initializers, const 
         const auto q_input_defs(qdq_group.q_nodes[0]->InputDefs());
         scale_name = q_input_defs[idx]->Name();  //q
       }
-    }
-    if (!is_qdq_node) {
+    } else {
       scale_name = input_defs[idx]->Name();
     }
 
@@ -292,8 +291,7 @@ bool HasValidQuantizationZeroPoints(const InitializedTensorSet& initializers, co
         const auto q_input_defs(qdq_group.q_nodes[0]->InputDefs());
         zero_point_name = q_input_defs[idx]->Name();  //q
       }
-    }
-    if (!is_qdq_node) {
+    } else {
       zero_point_name = input_defs[idx]->Name();
     }
 
