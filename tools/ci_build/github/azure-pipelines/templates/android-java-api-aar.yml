@@ -66,7 +66,7 @@ jobs:
     inputs:
       script: |
         set -e -x
-        NDK_HOME=$(realpath $ANDROID_NDK_HOME)
+        NDK_HOME=$(realpath $ANDROID_NDK_LATEST_HOME)
         mkdir $(Build.BinariesDirectory)/.build_settings
         cp ${{parameters.buildSettings}} $(Build.BinariesDirectory)/.build_settings/build_settings.json
         [ -f "${{parameters.includedOpsConfig}}" ] && \

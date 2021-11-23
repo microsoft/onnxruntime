@@ -160,7 +160,7 @@ jobs:
     displayName: 5. Build onnxruntime minimal baseline for Android arm64-v8a and report binary size
     inputs:
       script: |
-        NDK_HOME=$(realpath $ANDROID_NDK_HOME)
+        NDK_HOME=$(realpath $ANDROID_NDK_LATEST_HOME)
         docker run --rm \
           --volume $(Build.SourcesDirectory):/onnxruntime_src \
           --volume $(Build.BinariesDirectory):/build \
