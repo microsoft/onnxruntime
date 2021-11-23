@@ -97,9 +97,9 @@ static const char* const kOrtSessionOptionsConfigSaveRuntimeOptimizations = "opt
 // exclusion, set the value to "".
 static const char* const kOrtSessionOptionsConfigNnapiEpPartitioningStopOps = "ep.nnapi.partitioning_stop_ops";
 
-// Enabling dynamic block-sizing for multithreading
-// with a positive value, thread pool will split a task of N iterations to blocks of size starting from:
+// Enabling dynamic block-sizing for multithreading.
+// With a positive value, thread pool will split a task of N iterations to blocks of size starting from:
 // N / (num_of_threads * dynamic_block_base)
-// as execution progresses, the size will decrease according to the chaning residual.
-// this feature, on some platforms, helps to reduce the variance of E2E inference latency.
+// As execution progresses, the size will decrease according to the diminishing residual of N.
+// This feature, on some platforms, helps to reduce the variance of E2E inference latency.
 static const char* const kOrtSessionOptionsConfigDynamicBlockBase = "session.dynamic_block_base";
