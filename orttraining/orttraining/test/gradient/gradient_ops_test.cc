@@ -1953,6 +1953,7 @@ TEST(GradientCheckerTest, GatherGrad) {
 
     int64_t axis = 0;
     auto x_data_and_y_info = generate_x_data_and_y_info(x_info, indices_info, axis, transformer, generate_x_data);
+    x_data_and_y_info.second.front() = TensorShape({2, 3, 4, 3, 2});
 
     ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_info, indices_info}, x_data_and_y_info.second, &max_error,
                                                            x_data_and_y_info.first, {MakeAttribute("axis", axis)}));

@@ -121,12 +121,13 @@ Status Gather::ComputeInternal(OpKernelContext* context) const {
         IAllocatorUniquePtr<SegmentIndex_t> per_segment_partial_segment_counts_out;
         IAllocatorUniquePtr<SegmentIndex_t> per_segment_partial_segment_offsets_out;
 
-        auto gather_grad_prepare = [&]<typename T>() {
-            IAllocatorUniquePtr<T> dX_indices_sorted_out, dY_indices_sorted_out;
-            GatherGradPrepare<T>(
+        if (p.indices_tensor->IsDataType<int32_t>())
+        {
+            IAllocatorUniquePtr<int32_t> dX_indices_sorted_out, dY_indices_sorted_out;
+            GatherGradPrepare<int32_t>(
                 Stream(),
                 CudaScratchBufferAllocator{*this},
-                reinterpret_cast<const T*>(indices_data),
+                reinterpret_cast<const int32_t*>(indices_data),
                 num_gathered_indices,
                 gather_dimension_size,
                 num_gathered_per_index,
@@ -138,25 +139,42 @@ Status Gather::ComputeInternal(OpKernelContext* context) const {
                 dX_indices_sorted_out,
                 dY_indices_sorted_out);
 
-                auto* dX_indices_sorted = context->Output(7, p.indices_tensor->Shape());
-                T* p_dX_indices_sorted = dX_indices_sorted->MutableData<T>();
-                CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(p_dX_indices_sorted, dX_indices_sorted_out.get(),
+            auto* dX_indices_sorted = context->Output(7, p.indices_tensor->Shape());
+            int32_t* p_dX_indices_sorted = dX_indices_sorted->MutableData<int32_t>();
+            CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(p_dX_indices_sorted, dX_indices_sorted_out.get(),
                                                     dX_indices_sorted->SizeInBytes(), cudaMemcpyDeviceToDevice, Stream()));
 
-                auto* dY_indices_sorted = context->Output(8, p.indices_tensor->Shape());
-                T* p_dY_indices_sorted = dY_indices_sorted->MutableData<T>();
-                CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(p_dY_indices_sorted, dY_indices_sorted_out.get(),
+            auto* dY_indices_sorted = context->Output(8, p.indices_tensor->Shape());
+            int32_t* p_dY_indices_sorted = dY_indices_sorted->MutableData<int32_t>();
+            CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(p_dY_indices_sorted, dY_indices_sorted_out.get(),
                                                     dY_indices_sorted->SizeInBytes(), cudaMemcpyDeviceToDevice, Stream()));
-
-                return Status::OK();
-        };
-
-        if (p.indices_tensor->IsDataType<int32_t>())
-        {
-            ORT_RETURN_IF_ERROR(gather_grad_prepare.operator()<int32_t>());
         } else
         {
-            ORT_RETURN_IF_ERROR(gather_grad_prepare.operator()<int64_t>());
+            IAllocatorUniquePtr<int64_t> dX_indices_sorted_out, dY_indices_sorted_out;
+            GatherGradPrepare<int64_t>(
+                Stream(),
+                CudaScratchBufferAllocator{*this},
+                reinterpret_cast<const int64_t*>(indices_data),
+                num_gathered_indices,
+                gather_dimension_size,
+                num_gathered_per_index,
+                *p_num_segments, segment_offsets_out,
+                last_segment_partial_segment_count_out,
+                last_segment_partial_segment_offset_out,
+                per_segment_partial_segment_counts_out,
+                per_segment_partial_segment_offsets_out,
+                dX_indices_sorted_out,
+                dY_indices_sorted_out);
+
+            auto* dX_indices_sorted = context->Output(7, p.indices_tensor->Shape());
+            int64_t* p_dX_indices_sorted = dX_indices_sorted->MutableData<int64_t>();
+            CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(p_dX_indices_sorted, dX_indices_sorted_out.get(),
+                                                    dX_indices_sorted->SizeInBytes(), cudaMemcpyDeviceToDevice, Stream()));
+
+            auto* dY_indices_sorted = context->Output(8, p.indices_tensor->Shape());
+            int64_t* p_dY_indices_sorted = dY_indices_sorted->MutableData<int64_t>();
+            CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(p_dY_indices_sorted, dY_indices_sorted_out.get(),
+                                                    dY_indices_sorted->SizeInBytes(), cudaMemcpyDeviceToDevice, Stream()));
         }
 
         auto* segment_offsets = context->Output(2, {*p_num_segments});

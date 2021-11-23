@@ -67,6 +67,11 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
     const IExecutionProvider& execution_provider,
     const std::unordered_set<std::string>& rules_and_transformers_to_disable,
     const OrtDevice& device) {
+
+#if !(defined(USE_CUDA) || defined(USE_ROCM))
+  ORT_UNUSED_PARAMETER(device);
+#endif
+
   std::vector<std::unique_ptr<GraphTransformer>> transformers;
   std::unique_ptr<RuleBasedGraphTransformer> rule_transformer = nullptr;
 
@@ -108,7 +113,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
       transformers.emplace_back(std::make_unique<IsInfReduceSumFusion>(compatible_eps));
 
       if (device.Type() == OrtDevice::GPU) {
-        // Execute this graph transformer only for GPU device
+        // Execute this graph transformer only for GPU (CUDA and ROCM) device
         ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<GatherReplacement>()));
       }
 #endif
