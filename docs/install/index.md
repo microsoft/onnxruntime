@@ -100,11 +100,11 @@ npm install onnxruntime-node
 npm install onnxruntime-react-native
 ```
 
-### Install on iOS
+## Install on iOS
 
 In your CocoaPods `Podfile`, add the `onnxruntime-mobile-c` or `onnxruntime-mobile-objc` pod depending on which API you wish to use.
 
-#### C/C++
+### C/C++
 
   ```pod
   use_frameworks!
@@ -112,7 +112,7 @@ In your CocoaPods `Podfile`, add the `onnxruntime-mobile-c` or `onnxruntime-mobi
   pod 'onnxruntime-mobile-c'
   ```
 
-#### Objective-C
+### Objective-C
 
   ```pod
   use_frameworks!
@@ -122,9 +122,9 @@ In your CocoaPods `Podfile`, add the `onnxruntime-mobile-c` or `onnxruntime-mobi
 
 Run `pod install`.
 
-### Install on Android
+## Install on Android
 
-#### Java/Kotlin
+### Java/Kotlin
 
 In your Android Studio Project, make the following changes to:
 
@@ -144,7 +144,7 @@ In your Android Studio Project, make the following changes to:
     }
     ```
 
-#### C/C++
+### C/C++
 
 Download the onnxruntime-mobile AAR hosted at [MavenCentral](https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-mobile), change the file extension from `.aar` to `.zip`, and unzip it. Include the header files from the `headers` folder, and the relevant `libonnxruntime.so` dynamic library from the `jni` folder in your NDK project.
 
