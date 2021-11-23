@@ -141,7 +141,7 @@ struct ProviderInfo_CUDA_Impl : ProviderInfo_CUDA {
     // The function will return once the pageable buffer has been copied to the staging memory for DMA transfer
     // to device memory, but the DMA to final destination may not have completed.
 
-    //CUDA_CALL_THROW(cudaStreamSynchronize(0));
+    CUDA_CALL_THROW(cudaStreamSynchronize(0));
   }
 
   // Used by onnxruntime_pybind_state.cc
