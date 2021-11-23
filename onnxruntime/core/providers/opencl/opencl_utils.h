@@ -22,26 +22,38 @@
 #define TO_STRING(T) TO_STRING_(T)
 
 // NOLINTNEXTLINE(cppcoreguidelines-macro-usage)
-#define ORT_RETURN_IF_CL_ERROR(error_code)                                               \
+#define ORT_RETURN_IF_CL_ERROR(error_code, ...)                                          \
   if ((error_code) != CL_SUCCESS) {                                                      \
     std::ostringstream oss;                                                              \
     oss << __FILE__ ":" TO_STRING(__LINE__)                                              \
         << "\nOpenCL Error Code  : " << (int)(error_code)                                \
         << "\n       Error String: " << onnxruntime::opencl::GetErrorString(error_code); \
-    return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, oss.str());                             \
+    return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, oss.str(),                              \
+                           ::onnxruntime::MakeString(__VA_ARGS__));                      \
   }
 
-#define ORT_THROW_IF_CL_ERROR(error_code)                                                \
+#define ORT_THROW_IF_CL_ERROR(error_code, ...)                                           \
   if ((error_code) != CL_SUCCESS) {                                                      \
     std::ostringstream oss;                                                              \
     oss << __FILE__ ":" TO_STRING(__LINE__)                                              \
         << "\nOpenCL Error Code  : " << (int)(error_code)                                \
         << "\n       Error String: " << onnxruntime::opencl::GetErrorString(error_code); \
-    ORT_THROW(oss.str());                                                                \
+    ORT_THROW(oss.str(), ::onnxruntime::MakeString(__VA_ARGS__));                        \
   }
 
 namespace onnxruntime {
 namespace opencl {
+
+inline std::string ToString(const cl::NDRange& range) {
+  if (range.dimensions() == 0) {
+    return "[<unspecified>]";
+  } else if (range.dimensions() == 1) {
+    return onnxruntime::MakeString("[", range[0], "]");
+  } else if (range.dimensions() == 2) {
+    return onnxruntime::MakeString("[", range[0], ",", range[1], "]");
+  }
+  return onnxruntime::MakeString("[", range[0], ",", range[1], ",", range[2], "]");
+}
 
 const char* GetErrorString(cl_int error_code);
 cl::Program LoadProgram(const cl::Context& ctx, const cl::Device& dev, const std::string& src);
@@ -74,7 +86,6 @@ template <typename T1, typename T2, typename E = std::enable_if_t<std::is_integr
 T1 RoundToMultiple(T1 a, T2 m) {
   return CeilDiv(a, m) * m;
 }
-
 
 class Image2DDesc : private std::pair<int64_t, int64_t> {
  public:
@@ -162,6 +173,7 @@ class KernelLauncher {
 #define SKIP_IF_ERRORED(expr) \
   if (err_ == CL_SUCCESS) {   \
     err_ = (expr);            \
+    err_index_ = index_;      \
   }
   template <typename T>
   KernelLauncher& setArg(T&& arg) {
@@ -191,8 +203,9 @@ class KernelLauncher {
   }
 
   Status Launch(const cl::CommandQueue& queue, const cl::NDRange& global, const cl::NDRange& local = cl::NullRange) {
-    SKIP_IF_ERRORED(queue.enqueueNDRangeKernel(kernel_, cl::NullRange, global, local));
-    ORT_RETURN_IF_CL_ERROR(err_);
+    ORT_RETURN_IF_CL_ERROR(err_, "\n  on setting ", static_cast<int>(err_index_), "-th argument.");
+    VLOGS_DEFAULT(1) << "[CL] Launching with global work size: " << ToString(global) << " local work size: " << ToString(local);
+    ORT_RETURN_IF_CL_ERROR(queue.enqueueNDRangeKernel(kernel_, cl::NullRange, global, local));
     return Status::OK();
   }
 
@@ -202,6 +215,7 @@ class KernelLauncher {
   cl::Kernel kernel_;
   cl_uint index_;
   cl_int err_;
+  cl_uint err_index_;
 };
 
 }  // namespace opencl

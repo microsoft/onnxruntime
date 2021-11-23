@@ -177,6 +177,8 @@ void OpenCLExecutionProvider::InitCopyKernels() {
   copy_kernels_->LoadProgram(this, oss.str());
   copy_kernels_->LoadKernel("CopyBuffer1DToImage2D");
   copy_kernels_->LoadKernel("CopyImage2DToBuffer1D");
+  copy_kernels_->LoadKernel("CopyBufferNCHWToImage2D");
+  copy_kernels_->LoadKernel("CopyImage2DToBufferNCHW");
 }
 /*
 #pragma endregion
