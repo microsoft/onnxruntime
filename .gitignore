@@ -7,3 +7,5 @@ _site
 # direnv, posh-direnv
 .envrc
 .psenvrc
+
+.vscode

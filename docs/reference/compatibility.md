@@ -2,7 +2,7 @@
 title: Compatibility
 parent: Reference
 toc: true
-nav_order: 12
+nav_order: 2
 ---
 
 # ONNX Runtime compatibility

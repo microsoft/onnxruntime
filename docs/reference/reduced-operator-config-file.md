@@ -1,40 +1,23 @@
 ---
-title: Build with reduced size
-parent: Build ORT
+title: Reduced operator config file
+description: Specification of the reduced operator config file, used to reduce the size of the ONNX Runtime
+parent: Reference
 nav_order: 6
 ---
 
-# Build ORT with reduced size
-{: .no_toc }
+# Reduced operator config file
 
-For applications where package binary size is important, ONNX Runtime provides options to reduce the build size with some functional trade-offs.
+The reduced operator config file is an input to the ONNX Runtime build-from-source script. It specifies which operators are included in the runtime. A reduced set of operators in ONNX Runtime permits a smaller build binary size. A smaller runtime is used in constrained environments, such as mobile and web deployments.
 
-To reduce the compiled binary size of ONNX Runtime, the operator kernels included in the build can be reduced to just the kernels required by your model/s.
+This article shows you how to generate the reduced operator config file using the `create_reduced_build_config.py` script. You can also generate the reduced operator config file by [converting ONNX models to ORT format](./ort-format-model-conversion.md).
 
-For deployment on mobile devices and web specifically, please read more detailed guidance on [Deploy on mobile device and web](../tutorials/ort-format-model/).
+## The create_reduced_build_config.py script
 
-## Contents
-{: .no_toc }
+To create a reduced operator configuration file, run the script https://github.com/microsoft/onnxruntime/blob/master/tools/python/create_reduced_build_config.py on your model/s.
 
-* TOC placeholder
-{:toc}
+The kernel configuration file can be manually edited as needed. The configuration can be created from either ONNX or ORT format models.
 
-
-## Feature Summary
-
-A configuration file must be created with details of the kernels that are required.
-
-Following that, ORT must be manually built, providing the configuration file in the `--include_ops_by_config` parameter. The build process will update the ORT kernel registration source files to exclude the unused kernels.
-
-When building ORT with a reduced set of kernel registrations, `--skip_tests` **MUST** be specified as the kernel reduction will render many of the unit tests invalid.
-
-NOTE: The operator exclusion logic when building with an operator reduction configuration file will only disable kernel registrations each time it runs. It will NOT re-enable previously disabled kernels. If you wish to change the list of kernels included, it is best to revert the repository to a clean state (e.g. via `git reset --hard`) before building ORT again.
-
-## Creating a configuration file with the required kernels
-
-The script in `<ORT Root>/tools/python/create_reduced_build_config.py` should be used to create the configuration file. This file can be manually edited as needed. The configuration can be created from either ONNX or ORT format models.
-
-```
+```bash
 create_reduced_build_config.py --help
 usage: Script to create a reduced build config file from ONNX or ORT format model/s. [-h] [-f {ONNX,ORT}] [-t] model_path_or_dir config_path
 
@@ -50,13 +33,6 @@ optional arguments:
                         Enable tracking of the specific types that individual operators require. Operator implementations MAY support limiting the type support included
                         in the build to these types. Only possible with ORT format models. (default: False)
 ```
-
-### Type reduction
-{: .no_toc }
-
-If the configuration file is created using ORT format models, the input/output types that individual operators require can be tracked if `--enable_type_reduction` is specified. This can be used to further reduce the build size if `--enable_reduced_operator_type_support` is specified when building ORT.
-
-ONNX format models are not guaranteed to include the required per-node type information, so cannot be used with this option.
 
 ## Configuration file format
 
@@ -75,8 +51,7 @@ e.g. if a model imports opset 12 of ONNX, all ONNX operators in that model can b
 [Netron](https://netron.app/) can be used to view an ONNX model properties to discover the opset imports.
 Additionally, the ONNX operator specs for [DNN](https://github.com/onnx/onnx/blob/master/docs/Operators.md) and [traditional ML](https://github.com/onnx/onnx/blob/master/docs/Operators-ml.md) operators list the individual operator versions.
 
-### Type reduction format
-{: .no_toc }
+## Type reduction format
 
 If the types an operator implementation supports can be limited to a specific set of types, this is specified in a JSON string immediately after the operator name in the configuration file.
 

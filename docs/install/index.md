@@ -70,6 +70,7 @@ dotnet add package Microsoft.ML.OnnxRuntime.DirectML --version 1.8.1
 # WinML
 dotnet add package Microsoft.AI.MachineLearning --version 1.8.1
 ```
+
 ## JavaScript Installs
 
 ### Install ONNX Runtime Web (browsers)
@@ -98,6 +99,54 @@ npm install onnxruntime-node
 # install latest release version
 npm install onnxruntime-react-native
 ```
+
+### Install on iOS
+
+In your CocoaPods `Podfile`, add the `onnxruntime-mobile-c` or `onnxruntime-mobile-objc` pod depending on which API you wish to use.
+
+#### C/C++
+
+  ```pod
+  use_frameworks!
+
+  pod 'onnxruntime-mobile-c'
+  ```
+
+#### Objective-C
+
+  ```pod
+  use_frameworks!
+
+  pod 'onnxruntime-mobile-objc'
+  ```
+
+Run `pod install`.
+
+### Install on Android
+
+#### Java/Kotlin
+
+In your Android Studio Project, make the following changes to:
+
+1. build.gradle (Project):
+
+   ```gradle
+    repositories {
+        mavenCentral()
+    }
+   ```
+
+2. build.gradle (Module):
+
+    ```gradle
+    dependencies {
+        implementation 'com.microsoft.onnxruntime:onnxruntime-mobile:<onnxruntime mobile version>'
+    }
+    ```
+
+#### C/C++
+
+Download the onnxruntime-mobile AAR hosted at [MavenCentral](https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-mobile), change the file extension from `.aar` to `.zip`, and unzip it. Include the header files from the `headers` folder, and the relevant `libonnxruntime.so` dynamic library from the `jni` folder in your NDK project.
 
 ## ORT Training package
 
