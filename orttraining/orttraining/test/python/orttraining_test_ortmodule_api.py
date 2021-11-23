@@ -1118,8 +1118,8 @@ def test_gradient_correctness_einsum(equation):
         pt_prediction = run_step(pt_model, pt_input_left, pt_input_right)
         ort_prediction = run_step(ort_model, ort_input_left, ort_input_right)
 
-        _test_helpers.assert_values_are_close(ort_prediction, pt_prediction, atol=1e-5)
-        _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model)
+        _test_helpers.assert_values_are_close(ort_prediction, pt_prediction, atol=1e-3, rtol=1e-3)
+        _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model, atol=1e-3, rtol=1e-3)
 
 def test_gradient_correctness_einsum_2():
     class NeuralNetEinsum(torch.nn.Module):
@@ -1202,8 +1202,8 @@ def test_gradient_correctness_einsum_2():
             pt_prediction = run_step(pt_model, pt_input_left, pt_input_right)
             ort_prediction = run_step(ort_model, ort_input_left, ort_input_right)
 
-            _test_helpers.assert_values_are_close(ort_prediction, pt_prediction, atol=1e-4, rtol=1e-5)
-            _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model)
+            _test_helpers.assert_values_are_close(ort_prediction, pt_prediction, atol=1e-3, rtol=1e-3)
+            _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model, atol=1e-3, rtol=1e-3)
 
 # Since multinomial is a generator function, we do not have to test for gradient
 # Two consecutive calls on the torch.multinomail on a probability distribution with more
