@@ -173,16 +173,17 @@ Status SelectorActionTransformer::ApplyDirect(Graph& graph, bool& modified, int 
 
 #if defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
 
-static Status RegisterProducedNodesWithLoadContext(NodeIndex pre_action_max_index, NodeIndex post_action_max_index,
-                                                   const Graph& graph,
-                                                   const RuntimeOptimizationRecord& record,
-                                                   const SatRuntimeOptimizationLoadContext& load_context) {
+static Status RegisterProducedNodesWithGraph(NodeIndex pre_action_max_index, NodeIndex post_action_max_index,
+                                             const RuntimeOptimizationRecord& record,
+                                             Graph& graph) {
   assert(post_action_max_index >= pre_action_max_index);
 
   const auto num_new_node_indices = post_action_max_index - pre_action_max_index;
 
   auto produced_node_it = record.produced_nodes.begin();
   const auto produced_nodes_end = record.produced_nodes.end();
+
+  std::unordered_map<NodeIndex, HashValue> node_index_to_kernel_def_hash{};
 
   for (NodeIndex i = 0; i < num_new_node_indices; ++i) {
     const NodeIndex new_node_idx = pre_action_max_index + 1 + i;
@@ -193,24 +194,21 @@ static Status RegisterProducedNodesWithLoadContext(NodeIndex pre_action_max_inde
     ORT_RETURN_IF(produced_node_it == produced_nodes_end,
                   "Not enough produced nodes in the runtime optimization record.");
 
-    ORT_RETURN_IF_NOT(
-        load_context.actual_node_index_to_kernel_def_hash.get()
-            .emplace(new_node_idx, produced_node_it->kernel_def_hash)
-            .second,
-        "Load context already contains a kernel def hash for the produced node index: ", new_node_idx);
+    node_index_to_kernel_def_hash.emplace(new_node_idx, produced_node_it->kernel_def_hash);
 
     ++produced_node_it;
   }
 
-  ORT_RETURN_IF(produced_node_it != produced_nodes_end,
-                "Too many produced nodes in the runtime optimization record.");
+  ORT_RETURN_IF(produced_node_it != produced_nodes_end, "Too many produced nodes in the runtime optimization record.");
+
+  graph.MutableRuntimeOptimizationReplayCtx().produced_node_index_to_kernel_def_hash.merge(
+      node_index_to_kernel_def_hash);
 
   return Status::OK();
 }
 
 Status SelectorActionTransformer::ApplyFromRuntimeOptimizations(
-    Graph& graph, bool& modified, int graph_level, const logging::Logger& logger,
-    const SatRuntimeOptimizationLoadContext& load_context) const {
+    Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   for (auto& node : graph.Nodes()) {
     ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level, logger));
   }
@@ -237,8 +235,8 @@ Status SelectorActionTransformer::ApplyFromRuntimeOptimizations(
 
     const NodeIndex post_action_max_index = graph.MaxNodeIndex();
 
-    ORT_RETURN_IF_ERROR(RegisterProducedNodesWithLoadContext(pre_action_max_index, post_action_max_index,
-                                                             graph, record, load_context));
+    ORT_RETURN_IF_ERROR(RegisterProducedNodesWithGraph(pre_action_max_index, post_action_max_index,
+                                                       record, graph));
   }
 
   return Status::OK();
@@ -248,9 +246,9 @@ Status SelectorActionTransformer::ApplyFromRuntimeOptimizations(
 
 Status SelectorActionTransformer::ApplyImpl(Graph& graph, bool& modified, int graph_level,
                                             const logging::Logger& logger) const {
-  if (const auto* load_context = std::get_if<SatRuntimeOptimizationLoadContext>(&apply_context_)) {
+  if (std::holds_alternative<SatRuntimeOptimizationLoadContext>(apply_context_)) {
 #if defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
-    return ApplyFromRuntimeOptimizations(graph, modified, graph_level, logger, *load_context);
+    return ApplyFromRuntimeOptimizations(graph, modified, graph_level, logger);
 #else   // defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                            "Loading runtime optimizations is not enabled in this build.");

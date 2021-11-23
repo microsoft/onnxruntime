@@ -995,6 +995,18 @@ Status SessionState::LoadFromOrtFormat(const fbs::SessionState& fbs_session_stat
     ORT_RETURN_IF_ERROR(add_kernel_by_hash(*node, node_kernel_info.kernel_def_hash));
   }
 
+#if defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
+  // process the nodes that were added by replaying any loaded runtime optimizations
+  for (const auto& [node_index, kernel_def_hash] :
+       graph_.RuntimeOptimizationReplayCtx().produced_node_index_to_kernel_def_hash) {
+    const auto* node = graph_.GetNode(node_index);
+    ORT_RETURN_IF(node == nullptr,
+                  "Can't find runtime optimization produced node with index ", node_index);
+
+    ORT_RETURN_IF_ERROR(add_kernel_by_hash(*node, kernel_def_hash));
+  }
+#endif  // defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
+
   // lookup the hashes for any nodes we compiled. the nodes indexes for compiled nodes are not in node_indices
   // as they were created at runtime.
   if (!compiled_kernel_hashes.empty()) {
@@ -1051,7 +1063,7 @@ static void ComputeConstantInitializerUseCount(const Graph& graph, std::unordere
 }
 
 Status SessionState::FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE>& graph_location,
-                                          KernelRegistryManager& kernel_registry_manager,
+                                          const KernelRegistryManager& kernel_registry_manager,
                                           const SessionOptions& session_options,
                                           const onnxruntime::fbs::SessionState* serialized_session_state,
                                           bool remove_initializers,
@@ -1208,7 +1220,7 @@ static void AccumulateAllNestedSubgraphsInfo(
 }
 
 Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_TYPE>& graph_location,
-                                              KernelRegistryManager& kernel_registry_manager,
+                                              const KernelRegistryManager& kernel_registry_manager,
                                               _In_opt_ const Node* parent_node,
                                               const SessionOptions& session_options,
                                               bool remove_initializers,

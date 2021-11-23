@@ -4,11 +4,9 @@
 #pragma once
 
 #include <functional>
-#include <unordered_map>
 #include <variant>
 
 #include "core/framework/kernel_registry_manager.h"
-#include "core/graph/basic_types.h"
 
 namespace onnxruntime {
 
@@ -31,8 +29,6 @@ struct SatRuntimeOptimizationSaveContext {
 
 // Context to load runtime optimizations and replay them.
 struct SatRuntimeOptimizationLoadContext {
-  // Note: This is effectively an output parameter.
-  std::reference_wrapper<std::unordered_map<NodeIndex, HashValue>> actual_node_index_to_kernel_def_hash;
 };
 
 // Union of SAT application contexts for various modes of operation.

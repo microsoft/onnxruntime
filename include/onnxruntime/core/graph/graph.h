@@ -988,7 +988,7 @@ class Graph {
   @remarks As a new Graph instance for the fused nodes is not created, a GraphViewer can be constructed with the
            IndexedSubGraph information to provide a view of the subgraph. The original nodes are left in place
            while this is in use.
-		   Call FinalizeFuseSubGraph to remove them once the fused replacement node is fully created.
+           Call FinalizeFuseSubGraph to remove them once the fused replacement node is fully created.
   */
   Node& BeginFuseSubGraph(const IndexedSubGraph& sub_graph, const std::string& fused_node_name);
 
@@ -1208,7 +1208,20 @@ class Graph {
   RuntimeOptimizationRecordContainer& MutableRuntimeOptimizations() {
     return runtime_optimizations_;
   }
-#endif
+
+  // Stores information collected during the replay of loaded runtime optimizations
+  struct RuntimeOptimizationReplayContext {
+    std::unordered_map<NodeIndex, HashValue> produced_node_index_to_kernel_def_hash;
+  };
+
+  const RuntimeOptimizationReplayContext& RuntimeOptimizationReplayCtx() const {
+    return runtime_optimization_replay_context_;
+  }
+
+  RuntimeOptimizationReplayContext& MutableRuntimeOptimizationReplayCtx() {
+    return runtime_optimization_replay_context_;
+  }
+#endif  // defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Graph);
@@ -1431,6 +1444,8 @@ class Graph {
   // Note: runtime_optimizations_ == *runtime_optimizations_ptr_ and must be initialized
   std::unique_ptr<RuntimeOptimizationRecordContainer> runtime_optimizations_ptr_;
   RuntimeOptimizationRecordContainer& runtime_optimizations_;
+
+  RuntimeOptimizationReplayContext runtime_optimization_replay_context_;
 #endif
 
 #if !defined(ORT_MINIMAL_BUILD)

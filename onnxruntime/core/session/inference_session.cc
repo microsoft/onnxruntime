@@ -1149,15 +1149,13 @@ Status PartitionOrtFormatModel(onnxruntime::Graph& graph,
 
 #if defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
 Status ReplayRuntimeOptimizations(
-    onnxruntime::Graph& graph, const logging::Logger& logger, TransformerLevel max_level,
-    std::unordered_map<NodeIndex, HashValue>& actual_node_index_to_kernel_def_hash) {
-  SatRuntimeOptimizationLoadContext load_context{std::ref(actual_node_index_to_kernel_def_hash)};
+    onnxruntime::Graph& graph, const logging::Logger& logger, TransformerLevel max_level) {
   bool modified = false;
 
   for (int level = static_cast<int>(TransformerLevel::Level2); level <= static_cast<int>(max_level); ++level) {
     // don't need to specify optimizers to disable, optimizers will process whatever runtime optimizations there are
     const auto transformers = optimizer_utils::GenerateTransformersForRuntimeOptimizations(
-        static_cast<TransformerLevel>(level), load_context);
+        static_cast<TransformerLevel>(level), SatRuntimeOptimizationLoadContext{});
     for (const auto& transformer : transformers) {
       ORT_RETURN_IF_ERROR(transformer->Apply(graph, modified, logger));
     }
@@ -1185,17 +1183,32 @@ Status AssignNodesToEpsFromHashesImpl(Graph& graph, const fbs::SessionState& fbs
     }
   }
 
-  for (FbsSessionStateViewer::Index i = 0, end = fbs_session_state_viewer.GetNumNodeKernelInfos(); i < end; ++i) {
-    const auto node_kernel_info = fbs_session_state_viewer.GetNodeKernelInfo(i);
-    Node* node = graph.GetNode(node_kernel_info.node_index);
-    if (!node || !node->GetExecutionProviderType().empty()) continue;
+  const auto set_node_ep = [&](NodeIndex node_idx, HashValue kernel_def_hash) -> Status {
+    Node* node = graph.GetNode(node_idx);
+    if (!node || !node->GetExecutionProviderType().empty()) {
+      return Status::OK();
+    }
 
     const KernelCreateInfo* kci = nullptr;
-    ORT_RETURN_IF_NOT(kernel_registry_manager.SearchKernelRegistriesByHash(node_kernel_info.kernel_def_hash, &kci),
-                      "Failed to find kernel def hash (", node_kernel_info.kernel_def_hash, ") in kernel registries for ",
+    ORT_RETURN_IF_NOT(kernel_registry_manager.SearchKernelRegistriesByHash(kernel_def_hash, &kci),
+                      "Failed to find kernel def hash (", kernel_def_hash, ") in kernel registries for ",
                       node->OpType(), "(", node->SinceVersion(), ") node with name '", node->Name(), "'.");
     node->SetExecutionProviderType(kci->kernel_def->Provider());
+
+    return Status::OK();
+  };
+
+  for (FbsSessionStateViewer::Index i = 0, end = fbs_session_state_viewer.GetNumNodeKernelInfos(); i < end; ++i) {
+    const auto node_kernel_info = fbs_session_state_viewer.GetNodeKernelInfo(i);
+    ORT_RETURN_IF_ERROR(set_node_ep(node_kernel_info.node_index, node_kernel_info.kernel_def_hash));
   }
+
+#if defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
+  for (const auto& [node_index, kernel_def_hash] :
+       graph.RuntimeOptimizationReplayCtx().produced_node_index_to_kernel_def_hash) {
+    ORT_RETURN_IF_ERROR(set_node_ep(node_index, kernel_def_hash));
+  }
+#endif  // defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
 
   return Status::OK();
 }
@@ -1378,18 +1391,13 @@ common::Status InferenceSession::Initialize() {
       }
 
 #if defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
-      std::unordered_map<NodeIndex, HashValue> actual_node_index_to_kernel_def_hash{};
-      {
-        ORT_RETURN_IF_ERROR_SESSIONID_(ReplayRuntimeOptimizations(
-            graph, *session_logger_, session_options_.graph_optimization_level,
-            actual_node_index_to_kernel_def_hash));
-      }
-      // TODO set kernel def hashes for produced nodes
+      ORT_RETURN_IF_ERROR_SESSIONID_(ReplayRuntimeOptimizations(graph, *session_logger_,
+                                                                session_options_.graph_optimization_level));
 #endif  // defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
-      ORT_RETURN_IF_ERROR(AssignNodesToEpsFromHashes(graph, *serialized_session_state,
-                                                     kernel_registry_manager_, *session_logger_));
+      ORT_RETURN_IF_ERROR(AssignNodesToEpsFromHashes(graph, *serialized_session_state, kernel_registry_manager_,
+                                                     *session_logger_));
     }
 
     ORT_RETURN_IF_ERROR_SESSIONID_(

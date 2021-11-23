@@ -135,8 +135,8 @@ class SelectorActionTransformer : public GraphTransformer {
 
 #if defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
   // apply any saved optimizations
-  Status ApplyFromRuntimeOptimizations(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger,
-                                       const SatRuntimeOptimizationLoadContext& load_context) const;
+  Status ApplyFromRuntimeOptimizations(Graph& graph, bool& modified, int graph_level,
+                                       const logging::Logger& logger) const;
 #endif  // defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
 
   SelectorsAndActions selectors_and_actions_;
