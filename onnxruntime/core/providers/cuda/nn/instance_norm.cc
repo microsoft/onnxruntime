@@ -100,7 +100,7 @@ Status InstanceNorm<T>::ComputeInternal(OpKernelContext* p_op_kernel_context) co
     CudnnTensor stats_desc;
     ORT_RETURN_IF_ERROR(stats_desc.Set(std::array<int64_t, 4>{1, stats_count, 1, 1}, CudnnTensor::GetDataType<CudaT>()));
 
-    size_t stats_byte_count = stats_count * sizeof(CudaT);
+    const size_t stats_byte_count = stats_count * sizeof(CudaT);
 
     // Mean & Variance are inputs & outputs and must be initialized to zero to work properly
     auto mean = GetScratchBuffer<CudaT>(stats_count);
