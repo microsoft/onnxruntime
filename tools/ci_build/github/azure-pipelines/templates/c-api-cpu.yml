@@ -464,11 +464,14 @@ jobs:
     inputs:
       versionSpec: 5.7.0
 
-  - task: NuGetCommand@2
-    displayName: Restore NuGet Packages
+  - task: MSBuild@1
+    displayName: 'Restore NuGet Packages'
     inputs:
-      command: "restore"
-      restoreSolution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
+      solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
+      platform: 'Any CPU'
+      configuration: RelWithDebInfo
+      msbuildArguments: '-t:restore -p:OrtPackageId=$(OrtPackageId)'
+      workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
   - task: MSBuild@1
     displayName: 'Build C#'
