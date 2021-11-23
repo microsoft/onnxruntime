@@ -405,7 +405,7 @@ void ThreadPool::ParallelForFixedBlockSizeScheduling(const std::ptrdiff_t total,
   auto d_of_p = DegreeOfParallelism(this);
   if (thread_options_.dynamic_block_base_ <= 0) {
     // Split the work across threads in the pool.  Each work item will run a loop claiming iterations,
-    // hence we need at most one for each thread, even if the numberof blocks of iterations is larger.
+    // hence we need at most one for each thread, even if the number of blocks of iterations is larger.
     auto num_blocks = total / block_size;
     auto num_threads_inc_main = NumThreads() + 1;
     int num_work_items = static_cast<int>(std::min(static_cast<std::ptrdiff_t>(num_threads_inc_main), num_blocks));
