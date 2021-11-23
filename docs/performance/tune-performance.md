@@ -209,12 +209,12 @@ For global thread pool:
     g_ort->SetGlobalCustomCreateThreadFn(tp_options, CreateThreadCustomized);
     g_ort->SetGlobalCustomThreadCreationOptions(tp_options, &custom_thread_creation_options);
     g_ort->SetGlobalCustomJoinThreadFn(tp_options, JoinThreadCustomized);
-    // disabling per session thread pool, create session, and do inferencing
+    // disable per-session thread pool, create a session for inferencing
     g_ort->ReleaseThreadingOptions(tp_options);
   }
 ```
 
-Note that the CreateThreadCustomized and JoinThreadCustomized, once being set, will be applied to both ORT intra op and inter op thread pools uniformly.
+Note that CreateThreadCustomized and JoinThreadCustomized, once being set, will be applied to both ORT intra op and inter op thread pools uniformly.
 
 ### Default CPU Execution Provider (MLAS)
 
