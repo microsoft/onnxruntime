@@ -291,6 +291,7 @@ else()
           ${MLAS_SRC_DIR}/dgemm.cpp
           ${MLAS_SRC_DIR}/power/DgemmKernelPower.cpp
         )
+        set_source_files_properties(${MLAS_SRC_DIR}/power/SgemmKernelPower.cpp PROPERTIES COMPILE_FLAGS "-DSINGLE")
         check_cxx_compiler_flag("-mcpu=power10" HAS_POWER10)
         if(HAS_POWER10)
           set(CMAKE_REQUIRED_FLAGS "-mcpu=power10")
@@ -318,8 +319,10 @@ else()
             endif()
             set(mlas_platform_srcs_power10
               ${MLAS_SRC_DIR}/power/SgemmKernelPOWER10.cpp
+              ${MLAS_SRC_DIR}/power/DgemmKernelPOWER10.cpp
             )
-            set_source_files_properties(${mlas_platform_srcs_power10} PROPERTIES COMPILE_FLAGS "-O2 -mcpu=power10")
+            set_source_files_properties(${MLAS_SRC_DIR}/power/SgemmKernelPOWER10.cpp PROPERTIES COMPILE_FLAGS "-O2 -mcpu=power10 -DSINGLE")
+            set_source_files_properties(${MLAS_SRC_DIR}/power/DgemmKernelPOWER10.cpp PROPERTIES COMPILE_FLAGS "-O2 -mcpu=power10")
             set(mlas_platform_srcs
               ${mlas_platform_srcs}
               ${mlas_platform_srcs_power10}
