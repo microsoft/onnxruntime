@@ -104,6 +104,7 @@ RUN apt update -y && \
     /bin/sh onnxruntime/dockerfiles/scripts/install_common_deps.sh && \
     pip install onnx==1.9 && \
     cd ${MY_ROOT}/onnxruntime && ./build.sh --config Release --update --build --parallel --use_openvino ${DEVICE} --build_nuget --build_shared_lib && \
+    cp ${MY_ROOT}/onnxruntime/build/Linux/Release/Microsoft.ML.OnnxRuntime.Managed* ${MY_ROOT}/onnxruntime/build/Linux/Release/nuget-artifacts && \
     mv ${MY_ROOT}/onnxruntime/build/Linux/Release/nuget-artifacts ${MY_ROOT} && \
 # Clean-up unnecessary files
     rm -rf ${MY_ROOT}/cmake* /opt/cmake ${MY_ROOT}/onnxruntime && \
