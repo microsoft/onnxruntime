@@ -104,7 +104,7 @@ Status InstanceNorm<T>::ComputeInternal(OpKernelContext* p_op_kernel_context) co
 
     // Mean & Variance are inputs & outputs and must be initialized to zero to work properly
     auto mean = GetScratchBuffer<CudaT>(stats_count);
-    CUDA_RETURN_IF_ERROR(cudaMemsetAsync(mean.get(), 0, stats_byte_count, Stream())v;
+    CUDA_RETURN_IF_ERROR(cudaMemsetAsync(mean.get(), 0, stats_byte_count, Stream()));
     auto variance = GetScratchBuffer<CudaT>(stats_count);
     CUDA_RETURN_IF_ERROR(cudaMemsetAsync(variance.get(), 0, stats_byte_count, Stream()));
 
