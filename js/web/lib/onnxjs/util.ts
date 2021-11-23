@@ -1251,9 +1251,5 @@ export const MIN_CLIP = -3.4028234663852886e+38;
 export const MAX_CLIP = 3.4028234663852886e+38;
 
 export function decodeUtf8String(buffer: Uint8Array): string {
-  if (typeof Buffer !== 'undefined' && Buffer.from) {
-    return Buffer.from(buffer.buffer, buffer.byteOffset, buffer.byteLength).toString();
-  } else {
-    return new TextDecoder('utf-8').decode(buffer);
-  }
+  return new TextDecoder().decode(buffer);
 }
