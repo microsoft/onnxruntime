@@ -23,7 +23,7 @@ To build a custom ONNX Runtime package, the [build](./index.md) instructions app
 * TOC placeholder
 {:toc}
 
-## Reduced operator set
+## Reduce operator set
 
 To reduce the compiled binary size of ONNX Runtime, the operator kernels included in the build can be reduced to just those required by your model/s.
 
@@ -34,7 +34,6 @@ The operators that are included are specified at build time, in a [configuration
 **`--include_ops_by_config`**
 
 * Add `--include_ops_by_config <config file produced during model conversion> --skip_tests` to the build parameters.
-* See the documentation on the [Reduced Operator Kernel build](../../build/reduced.md) for more information on how this works.
 * NOTE: Building will edit some of the ONNX Runtime source files to exclude unused kernels. If you wish to go back to creating a full build, or wish to change the operator kernels included, you MUST run `git reset --hard` or `git checkout HEAD -- ./onnxruntime/core/providers` from the root directory of your local ONNX Runtime repository to undo these changes.
 
 ### Option to reduce types supported by the required operators
@@ -97,7 +96,28 @@ TODO
 
 ### iOS
 
-TODO
+To produce pods for an iOS build, the build options are wrapped in the [build_and_assemble_ios_pods.py](https://github.com/microsoft/onnxruntime/blob/master/tools/ci_build/github/apple/build_ios_framework.py) script.
+
+Example usage:
+
+```bash
+python3 tools/ci_build/github/apple/build_and_assemble_ios_pods.py \
+  --staging-dir /path/to/staging/dir \
+  --include-ops-by-config /path/to/custom.config \
+  --build-settings-file tools/ci_build/github/apple/default_mobile_ios_framework_build_settings.json
+```
+
+This will do a custom build and create the pod package files for it in /path/to/staging/dir.
+
+Next, update the Podfile to use the local pods:
+
+```
+-  pod 'onnxruntime-mobile-objc'
++  pod 'onnxruntime-mobile-objc', :path => "/path/to/staging/dir/onnxruntime-mobile-objc"
++  pod 'onnxruntime-mobile-c', :path => "/path/to/staging/dir/onnxruntime-mobile-c"
+```
+
+Note: The onnxruntime-mobile-objc pod depends on the onnxruntime-mobile-c pod. If the released onnxruntime-mobile-objc pod is used, this dependency is automatically handled. However, if a local onnxruntime-mobile-objc pod is used, the local onnxruntime-mobile-c pod that it depends on also needs to be specified in the Podfile.
 
 ### Android
 
