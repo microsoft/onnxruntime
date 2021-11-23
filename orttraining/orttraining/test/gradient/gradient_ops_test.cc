@@ -1846,6 +1846,86 @@ TEST(GradientCheckerTest, BiasGeluGrad) {
 TEST(GradientCheckerTest, GatherGrad) {
   float max_error;
   GradientChecker<float, float, float> gradient_checker;
+  OpDef op_def{"Gather"};
+
+  TensorInfo x_info({5, 4, 3, 2});
+  std::function<float(float)> transformer = [](float x) { return std::fmod(7 * std::fabs(x), 5.0f); };
+
+  // gather_0 without duplicated indices
+  {
+    int num_indices = 2;
+    TensorInfo indices_info({num_indices}, false, &transformer, DataTypeImpl::GetTensorType<int64_t>());
+
+    TensorShape y_shape{x_info.shape};
+    int64_t axis = 0;
+    y_shape[axis] = num_indices;
+
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_info, indices_info}, {y_shape}, &max_error,
+                                                           {MakeAttribute("axis", axis)}));
+    EXPECT_IS_TINY(max_error);
+  }
+
+  // gather_0 with duplicated indices
+  {
+    int num_indices = 10;
+    TensorInfo indices_info({num_indices}, false, &transformer, DataTypeImpl::GetTensorType<int64_t>());
+
+    TensorShape y_shape{x_info.shape};
+    int64_t axis = 0;
+    y_shape[axis] = num_indices;
+
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_info, indices_info}, {y_shape}, &max_error,
+                                                           {MakeAttribute("axis", axis)}));
+    EXPECT_IS_TINY(max_error);
+  }
+
+  // gather_1
+  {
+    int num_indices = 8;
+    std::function<float(float)> transformer2 = [](float x) { return std::fmod(7 * std::fabs(x), 4.0f); };
+    TensorInfo indices_info({num_indices}, false, &transformer2, DataTypeImpl::GetTensorType<int64_t>());
+
+    TensorShape y_shape{x_info.shape};
+    int64_t axis = 1;
+    y_shape[axis] = num_indices;
+
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_info, indices_info}, {y_shape}, &max_error,
+                                                           {MakeAttribute("axis", axis)}));
+    EXPECT_IS_TINY(max_error);
+  }
+
+  // 2D Indices
+  {
+    TensorInfo indices_info({2, 3}, false, &transformer, DataTypeImpl::GetTensorType<int64_t>());
+
+    TensorShape y_shape{2, 3, 4, 3, 2};
+
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_info, indices_info}, {y_shape}, &max_error,
+                                                           {MakeAttribute("axis", int64_t(0))}));
+    EXPECT_IS_TINY(max_error);
+  }
+
+  // negative indices
+  {
+    TensorInfo x_info_2({4, 2});
+    TensorInfo indices_info({3}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>());
+    std::vector<std::vector<float>> x_datas = {{1, 2, 3, 4, 5, 6, 7, 8}, {-1, 0, -2}};
+
+    TensorShape y_shape{x_info_2.shape};
+
+    int64_t axis = 0;
+    y_shape[axis] = 3;
+
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_info_2, indices_info}, {y_shape}, &max_error, x_datas,
+                                                           {MakeAttribute("axis", axis)}));
+    EXPECT_IS_TINY(max_error);
+  }
+}
+
+#if defined(USE_CUDA) || defined(USE_ROCM)
+TEST(GradientCheckerTest, GatherGradGPU) {
+  float max_error;
+  GradientChecker<float, float, float> gradient_checker;
   OpDef op_def{"GatherInternal", kMSDomain, 1};
 
   std::function<float(float)> transformer = [](float x) { return std::fmod(7 * std::fabs(x), 5.0f); };
@@ -1877,7 +1957,8 @@ TEST(GradientCheckerTest, GatherGrad) {
     auto x_data = generate_x_data(x_info, indices_info, transformer);
 
     int32_t number_of_segments = 1;
-    std::vector<int64_t> indices_copy(x_data[1].begin(), x_data[1].end());
+    std::vector<int64_t> indices_copy(x_data[1].size());
+    std::transform(x_data[1].begin(), x_data[1].end(), indices_copy.begin(), [] (auto x) { return static_cast<int64_t>(x); });
     std::sort(indices_copy.begin(), indices_copy.end());
     for (size_t i = 1; i < indices_copy.size(); ++i)
     {
@@ -1977,6 +2058,7 @@ TEST(GradientCheckerTest, GatherGrad) {
     EXPECT_IS_TINY(max_error);
   }
 }
+#endif
 
 void TestDropoutOp(float ratio, TensorShape& x_shape, bool default_ratio = true) {
   OpTester test("Dropout", 12, kOnnxDomain, false);

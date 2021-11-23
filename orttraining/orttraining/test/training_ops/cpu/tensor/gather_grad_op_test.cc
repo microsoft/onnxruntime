@@ -15,20 +15,18 @@ namespace test {
 
 namespace {
 
-template <typename Tind>
-std::pair<std::vector<Tind>, std::vector<Tind>> CalculateSortedIndices(const std::vector<Tind>& indices)
+std::pair<std::vector<int64_t>, std::vector<int64_t>> CalculateSortedIndices(const std::vector<int64_t>& indices)
 {
-    std::vector<Tind> dY_indices_sorted(indices.size());
+    std::vector<int64_t> dY_indices_sorted(indices.size());
     std::iota(dY_indices_sorted.begin(), dY_indices_sorted.end(), 0);
     sort(dY_indices_sorted.begin(), dY_indices_sorted.end(), [&indices](const size_t& i, const size_t& j) { return indices[i] < indices[j]; } );
-    std::vector<Tind> dX_indices_sorted(indices);
+    std::vector<int64_t> dX_indices_sorted(indices);
     sort(dX_indices_sorted.begin(), dX_indices_sorted.end());
 
     return {dX_indices_sorted, dY_indices_sorted};
 }
 
-template <typename Tind>
-std::pair<int32_t, std::vector<int32_t>> CalculateNumberOfSegmentsAndSegmentOffsets(const std::vector<Tind>& sorted_indices)
+std::pair<int32_t, std::vector<int32_t>> CalculateNumberOfSegmentsAndSegmentOffsets(const std::vector<int64_t>& sorted_indices)
 {
     int32_t num_segments = 1;
     std::vector<int32_t> segment_offsets({0});
@@ -38,16 +36,16 @@ std::pair<int32_t, std::vector<int32_t>> CalculateNumberOfSegmentsAndSegmentOffs
         if (sorted_indices[i] != sorted_indices[i-1])
         {
             num_segments++;
-            segment_offsets.push_back(i);
+            segment_offsets.push_back(static_cast<int32_t>(i));
         }
     }
 
     return {num_segments, segment_offsets};
 }
 
-std::pair<std::vector<int32_t>, std::vector<int32_t>> CalculatePartialSegmentCountsAndOffsets(const std::vector<int32_t>& segment_offsets, const int number_of_indices)
+std::pair<std::vector<int32_t>, std::vector<int32_t>> CalculatePartialSegmentCountsAndOffsets(const std::vector<int32_t>& segment_offsets, const int64_t number_of_indices)
 {
-    const int MaxPartialSegmentLength = 10;
+    const int32_t MaxPartialSegmentLength = 10;
 
     std::vector<int32_t> number_of_partial_segments_per_segment;
     int32_t total_number_of_partial_segments = 0;
@@ -55,7 +53,7 @@ std::pair<std::vector<int32_t>, std::vector<int32_t>> CalculatePartialSegmentCou
 
     for (size_t i = 0; i < segment_offsets.size(); ++i)
     {
-        int segment_count = (i == segment_offsets.size()-1 ? number_of_indices : segment_offsets[i+1]) - segment_offsets[i];
+        int32_t segment_count = (i == segment_offsets.size()-1 ? static_cast<int32_t>(number_of_indices) : segment_offsets[i+1]) - segment_offsets[i];
         number_of_partial_segments_per_segment.push_back((segment_count + MaxPartialSegmentLength - 1) / MaxPartialSegmentLength);
         partial_segment_offsets.push_back(total_number_of_partial_segments);
         total_number_of_partial_segments += number_of_partial_segments_per_segment.back();
