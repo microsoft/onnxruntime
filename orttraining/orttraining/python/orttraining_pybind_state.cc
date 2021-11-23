@@ -740,13 +740,14 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
              ORT_THROW_IF_ERROR(ortmodule_graph_builder->Initialize(buffer, config));
            })
       .def("build",
-           [](OrtModuleGraphBuilder* ortmodule_graph_builder) {
-             ORT_THROW_IF_ERROR(ortmodule_graph_builder->Build());
+           [](OrtModuleGraphBuilder* ortmodule_graph_builder, const OrtDevice& device) {
+             ORT_THROW_IF_ERROR(ortmodule_graph_builder->Build(device));
            })
       .def("build",
            [](OrtModuleGraphBuilder* ortmodule_graph_builder,
+              const OrtDevice& device,
               const std::vector<std::vector<int64_t>>& input_shapes) {
-             ORT_THROW_IF_ERROR(ortmodule_graph_builder->Build(&input_shapes));
+             ORT_THROW_IF_ERROR(ortmodule_graph_builder->Build(device, &input_shapes));
            })
       .def("get_model",
            [](OrtModuleGraphBuilder* ortmodule_graph_builder) {

@@ -68,7 +68,7 @@ Status OrtModuleGraphBuilder::Initialize(std::istream& model_istream,
 // shape info to constants, the optimized graph (before gradient graph building) can not be shared.
 // So each time we need to start from the beginning, i.e., 1) replace input shapes, 2) apply graph optimizers,
 // 3) build gradient graph, and finally 4) adjust the graph inputs and outputs.
-Status OrtModuleGraphBuilder::Build(const std::vector<std::vector<int64_t>>* input_shapes_ptr) {
+Status OrtModuleGraphBuilder::Build(const OrtDevice& device, const std::vector<std::vector<int64_t>>* input_shapes_ptr) {
   // Make a copy of the original model.
   auto model_proto = model_->ToProto();
   ORT_RETURN_IF_ERROR(Model::Load(model_proto, gradient_model_, nullptr, *logger_));
@@ -80,7 +80,7 @@ Status OrtModuleGraphBuilder::Build(const std::vector<std::vector<int64_t>>* inp
 
   // Optimize the inference graph, and if needed, build the gradient graph.
   std::unordered_set<std::string> x_node_arg_names;
-  ORT_RETURN_IF_ERROR(OptimizeInferenceGraph(x_node_arg_names));
+  ORT_RETURN_IF_ERROR(OptimizeInferenceGraph(x_node_arg_names, device));
   if (!config_.build_gradient_graph) {
     // This graph will be used only for inferencing, so stop right here.
     // No need to build a gradient graph.
@@ -148,7 +148,8 @@ void OrtModuleGraphBuilder::SetConcreteInputShapes(const std::vector<std::vector
   gradient_graph.SetInputs(input_args);
 }
 
-Status OrtModuleGraphBuilder::OptimizeInferenceGraph(std::unordered_set<std::string>& x_node_arg_names) {
+Status OrtModuleGraphBuilder::OptimizeInferenceGraph(std::unordered_set<std::string>& x_node_arg_names,
+                                                     const OrtDevice& device) {
   // Resolve original graph, register and apply transformers for pre-training.
   Graph& gradient_graph = gradient_model_->MainGraph();
   ORT_RETURN_IF_ERROR(gradient_graph.Resolve());
@@ -162,7 +163,7 @@ Status OrtModuleGraphBuilder::OptimizeInferenceGraph(std::unordered_set<std::str
                  std::inserter(x_node_arg_names, x_node_arg_names.begin()));
   auto add_transformers = [&](TransformerLevel level) {
     auto transformers_to_register = transformer_utils::GeneratePreTrainingTransformers(
-        level, x_node_arg_names, config_.graph_transformer_config, *cpu_execution_provider);
+        level, x_node_arg_names, config_.graph_transformer_config, *cpu_execution_provider, {}, device);
     for (auto& entry : transformers_to_register) {
       ORT_RETURN_IF_ERROR(graph_transformation_mgr.Register(std::move(entry), level));
     }

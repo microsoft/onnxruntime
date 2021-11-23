@@ -84,7 +84,7 @@ class OrtModuleGraphBuilder {
    * @param input_shapes_ptr The pointer to vector of concrete shapes of the user inputs.
    * @return The status of the optimizing and building the gradient graph.
    */
-  Status Build(const std::vector<std::vector<int64_t>>* input_shapes_ptr = nullptr);
+  Status Build(const OrtDevice& device, const std::vector<std::vector<int64_t>>* input_shapes_ptr = nullptr);
 
   /**
    * Get inference/gradient model.
@@ -109,7 +109,7 @@ class OrtModuleGraphBuilder {
   void SetConcreteInputShapes(const std::vector<std::vector<int64_t>>& input_shapes);
 
   // Apply graph transformers
-  Status OptimizeInferenceGraph(std::unordered_set<std::string>& x_node_arg_names);
+  Status OptimizeInferenceGraph(std::unordered_set<std::string>& x_node_arg_names, const OrtDevice& device);
 
   // Build gradient graph.
   Status BuildGradientGraph(const std::unordered_set<std::string>& x_node_arg_names);

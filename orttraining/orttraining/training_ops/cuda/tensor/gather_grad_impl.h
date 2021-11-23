@@ -46,5 +46,17 @@ void GatherGradImpl(
     const TIndex* dY_indices_sorted,
     T* dX_data);
 
+template <typename T, typename TIndex>
+void GatherGradImpl(
+    cudaStream_t stream,
+    const CudaScratchBufferAllocator& allocator,
+    const T* dY_data,
+    const TIndex* dX_indices,
+    const GatheredIndexIndex_t num_gathered_indices,
+    const int64_t gather_dimension_size,
+    const int64_t num_gathered_per_index,
+    const int64_t num_batches,
+    T* dX_data);
+
 }  // namespace cuda
 }  // namespace onnxruntime

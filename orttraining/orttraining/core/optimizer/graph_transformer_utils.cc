@@ -65,7 +65,8 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
     const std::unordered_set<std::string>& weights_to_train,
     const TrainingGraphTransformerConfiguration& config,
     const IExecutionProvider& execution_provider,
-    const std::unordered_set<std::string>& rules_and_transformers_to_disable) {
+    const std::unordered_set<std::string>& rules_and_transformers_to_disable,
+    const OrtDevice& device) {
   std::vector<std::unique_ptr<GraphTransformer>> transformers;
   std::unique_ptr<RuleBasedGraphTransformer> rule_transformer = nullptr;
 
@@ -90,7 +91,6 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
       ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<GemmTransposeFusion>()));
       ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<NotWhereFusion>()));
       ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<InsertSoftmaxCrossEntropyLossOutput>()));
-      ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<GatherReplacement>()));
 
       // Remove duplicate nodes. Must be applied before any recompute transformations.
       transformers.emplace_back(std::make_unique<CommonSubexpressionEliminationApplyOnce>(compatible_eps));
@@ -106,6 +106,11 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
       // as the session is not initialized yet. So using macro for now.
       transformers.emplace_back(std::make_unique<BiasGeluFusion>(compatible_eps));
       transformers.emplace_back(std::make_unique<IsInfReduceSumFusion>(compatible_eps));
+
+      if (device.Type() == OrtDevice::GPU) {
+        // Execute this graph transformer only for GPU device
+        ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<GatherReplacement>()));
+      }
 #endif
 
       if (config.enable_gelu_approximation) {

@@ -23,6 +23,7 @@ from onnxruntime.training import ortmodule
 
 from onnxruntime.capi import _pybind_state as C
 from onnxruntime.tools.symbolic_shape_infer import SymbolicShapeInference
+from onnxruntime.capi.onnxruntime_inference_collection import get_ort_device_type
 from abc import ABC, abstractmethod
 import copy
 from functools import reduce
@@ -233,10 +234,13 @@ class GraphExecutionManager(GraphExecutionInterface):
         pass
 
     def _build_graph(self):
+        ort_device = C.OrtDevice(get_ort_device_type(self._device),
+                                 C.OrtDevice.default_memory(),
+                                 _utils.get_device_index(self._device))
         if self._use_static_shape:
-            self._graph_builder.build(self._input_info.shape)
+            self._graph_builder.build(self._input_info.shape, ort_device)
         else:
-            self._graph_builder.build()
+            self._graph_builder.build(ort_device)
 
         self._onnx_models.optimized_model = onnx.load_model_from_string(
             self._graph_builder.get_model())
