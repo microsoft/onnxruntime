@@ -64,6 +64,12 @@ class NodeArg {
   bool HasTensorOrScalarShape() const;
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+  // FIXME: typing, doc string
+  int8_t MemoryType() const;
+
+  void SetMemoryType(int8_t);
+
+  bool HasMemoryType() const;
 
   /** Sets the shape.
   @remarks Shape can only be set if the TypeProto was provided to the ctor, or #SetType has been called,
@@ -130,5 +136,9 @@ class NodeArg {
 
   // Flag indicates whether <*this> node arg exists or not.
   bool exists_;
+
+  bool has_mem_type_;
+  // FIXME: typing
+  int8_t mem_type_;
 };
 }  // namespace onnxruntime

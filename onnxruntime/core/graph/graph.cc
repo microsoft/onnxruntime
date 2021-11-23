@@ -183,7 +183,8 @@ static TypeProto TypeProtoFromTensorProto(const TensorProto& tensor) {
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
-NodeArg::NodeArg(const std::string& name, const TypeProto* p_node_arg_type) {
+NodeArg::NodeArg(const std::string& name, const TypeProto* p_node_arg_type)
+    : has_mem_type_(false), mem_type_{} {
   node_arg_info_.set_name(name);
   // If the name is empty, it means the arg does not exist.
   exists_ = !(name.empty());
@@ -201,7 +202,8 @@ NodeArg::NodeArg(const std::string& name, const TypeProto* p_node_arg_type) {
 }
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
-NodeArg::NodeArg(NodeArgInfo&& node_arg_info) {
+NodeArg::NodeArg(NodeArgInfo&& node_arg_info)
+    : has_mem_type_(false), mem_type_{} {
   node_arg_info_ = std::move(node_arg_info);
 
   exists_ = !node_arg_info_.name().empty();
@@ -291,6 +293,19 @@ bool NodeArg::HasTensorOrScalarShape() const {
 }
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+int8_t NodeArg::MemoryType() const {
+  return mem_type_;
+}
+
+void NodeArg::SetMemoryType(int8_t memory_type) {
+  has_mem_type_ = true;
+  mem_type_ = memory_type;
+}
+
+bool NodeArg::HasMemoryType() const {
+  return has_mem_type_;
+}
+
 void NodeArg::SetShape(const TensorShapeProto& shape) {
   const auto type_case = node_arg_info_.type().value_case();
   switch (type_case) {
