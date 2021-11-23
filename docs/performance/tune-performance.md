@@ -172,47 +172,45 @@ With C++ API, customers could set thread creation and joining callbacks:
 
   // On thread pool creation, ORT calls CreateThreadCustomized to create a thread
   OrtCustomThreadHandle CreateThreadCustomized(void* custom_thread_creation_options, OrtThreadWorkerFn work_loop, void* param) {
-	threads.push_back(std::thread(work_loop, param));
-	// configure the thread by custom_thread_creation_options
-	return reinterpret_cast<OrtCustomThreadHandle>(threads.back().native_handle());
+    threads.push_back(std::thread(work_loop, param));
+    // configure the thread by custom_thread_creation_options
+    return reinterpret_cast<OrtCustomThreadHandle>(threads.back().native_handle());
   }
 
   // On thread pool destruction, ORT calls JoinThreadCustomized for each created thread
   void JoinThreadCustomized(OrtCustomThreadHandle handle) {
-	for (auto& t : threads) {
-	  if (reinterpret_cast<OrtCustomThreadHandle>(t.native_handle()) == handle) {
-		// recycling resources ... 
-		t.join();
-	  }
-	}
+    for (auto& t : threads) {
+      if (reinterpret_cast<OrtCustomThreadHandle>(t.native_handle()) == handle) {
+        // recycling resources ... 
+        t.join();
+      }
+    }
   }
 
   int main(...) {
-	...
-	Ort::Env ort_env;
-	Ort::SessionOptions session_options;
-	session_options.SetCustomCreateThreadFn(CreateThreadCustomized);
-	session_options.SetCustomThreadCreationOptions(&custom_thread_creation_options);
-	session_options.SetCustomJoinThreadFn(JoinThreadCustomized);
-	Ort::Session session(*ort_env, MODEL_URI, session_options);
-	...
+    ...
+    Ort::Env ort_env;
+    Ort::SessionOptions session_options;
+    session_options.SetCustomCreateThreadFn(CreateThreadCustomized);
+    session_options.SetCustomThreadCreationOptions(&custom_thread_creation_options);
+    session_options.SetCustomJoinThreadFn(JoinThreadCustomized);
+    Ort::Session session(*ort_env, MODEL_URI, session_options);
+    ...
   }
 ```
 
 For global thread pool:
 
-* C++
 ```
   int main() {
-	//...
-	const OrtApi* g_ort = OrtGetApiBase()->GetApi(ORT_API_VERSION);
+    const OrtApi* g_ort = OrtGetApiBase()->GetApi(ORT_API_VERSION);
     OrtThreadingOptions* tp_options = nullptr;
-	g_ort->CreateThreadingOptions(&tp_options);
-	g_ort->SetGlobalCustomCreateThreadFn(tp_options, CreateThreadCustomized);
+    g_ort->CreateThreadingOptions(&tp_options);
+    g_ort->SetGlobalCustomCreateThreadFn(tp_options, CreateThreadCustomized);
     g_ort->SetGlobalCustomThreadCreationOptions(tp_options, &custom_thread_creation_options);
     g_ort->SetGlobalCustomJoinThreadFn(tp_options, JoinThreadCustomized);
-	// disabling per session thread pool, create session, and do inferencing
-	g_ort->ReleaseThreadingOptions(tp_options);
+    // disabling per session thread pool, create session, and do inferencing
+    g_ort->ReleaseThreadingOptions(tp_options);
   }
 ```
 
