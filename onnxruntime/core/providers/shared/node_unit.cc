@@ -72,4 +72,8 @@ class NodeUnit : public INodeUnit {
 //   std::vector<NodeArg*> output_defs_;
 // };
 
+const std::unique_ptr<INodeUnit> CreateNodeUnit(const Node& node) {
+  return std::make_unique<NodeUnit>(node);
+}
+
 }  // namespace onnxruntime
