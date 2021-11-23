@@ -499,6 +499,7 @@ extern "C" {
     MLAS_GEMM_FLOAT_KERNEL MlasSgemmKernel;
     MLAS_GEMM_FLOAT_KERNEL MlasSgemmKernelPOWER10;
     MLAS_GEMM_DOUBLE_KERNEL MlasDgemmKernel;
+    MLAS_GEMM_DOUBLE_KERNEL MlasDgemmKernelPOWER10;
 #else
     MLAS_GEMM_FLOAT_KERNEL MlasSgemmKernelZero;
     MLAS_GEMM_FLOAT_KERNEL MlasSgemmKernelAdd;
@@ -708,6 +709,37 @@ MlasConvDepthwiseKernelAvx2(
     size_t Channels,
     size_t OutputCount,
     size_t KernelSize
+    );
+
+//
+// Define the kernel flags for conv sym
+//
+
+#define MLAS_CONV_SYM_FLAG_INPUT_DIRECT             0x00000001
+#define MLAS_CONV_SYM_FLAG_PER_CHANNEL_SCALE        0x00000002
+
+//
+// Define the post-processing parameters for conv sym: bias and re-quant params
+//
+
+struct MLAS_CONV_SYM_POST_PROCESS_PARAMS {
+    const int32_t* Bias;
+    const float* Scale;
+    float MinimumValue;
+    float MaximumValue;
+    int32_t OutputZeroPoint;
+};
+
+typedef
+void
+(MLASCALL MLAS_CONV_SYM_DEPTHWISE_ROUTINE_KERNELSIZE)(
+    uint8_t const* const* InputIndirection,
+    int8_t const* Filter,
+    size_t Channels,
+    uint8_t* Output,
+    size_t OutputCount,
+    MLAS_CONV_SYM_POST_PROCESS_PARAMS const* PostProcessParams,
+    unsigned KernelFlags
     );
 
 //
@@ -1855,7 +1887,7 @@ MlasStoreAlignedFloat64x2(double* Buffer, MLAS_FLOAT64X2 Vector)
 #if defined(MLAS_SSE2_INTRINSICS)
     _mm_store_pd(Buffer, Vector);
 #elif defined(MLAS_VSX_INTRINSICS)
-    vec_st(Vector, 0, Buffer);
+    *((MLAS_FLOAT64X2*)Buffer) = Vector;
 #endif
 }
 

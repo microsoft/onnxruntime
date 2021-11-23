@@ -274,6 +274,8 @@ void IExecutionFrame::Init(const std::vector<int>& feed_mlvalue_idxs, const std:
                                                                 cpu_allocator, allocator, has_linear_coo_index,
                                                                 *dest.GetMutable<SparseTensor>()));
       } else {
+#else
+        ORT_UNUSED_PARAMETER(is_initializer_sparse_func);
 #endif  //  !defined(DISABLE_SPARSE_TENSORS)
         if (!dest.IsAllocated()) {
           // NOTE: This doesn't need to support ExecutionFrame custom allocators as they only come into play
@@ -687,13 +689,21 @@ Status ExecutionFrame::AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_
       return status;
   }
 
-  if (ml_type->IsTensorType() || utils::IsOptionalTensor(ml_type)) {
+  if (ml_type->IsTensorType()
+#if !defined(DISABLE_OPTIONAL_TYPE)
+      || utils::IsOptionalTensor(ml_type)
+#endif
+  ) {
     ORT_ENFORCE(shape, "Allocation of tensor types requires a shape.");
 
     // tensors / optional tensors
+#if !defined(DISABLE_OPTIONAL_TYPE)
     const auto* ml_data_type = ml_type->IsTensorType()
                                    ? static_cast<const TensorTypeBase*>(ml_type)->GetElementType()
                                    : utils::GetElementTypeFromOptionalTensor(ml_type);
+#else
+    const auto* ml_data_type = static_cast<const TensorTypeBase*>(ml_type)->GetElementType();
+#endif
 
     AllocKind alloc_kind = per_alloc_plan.alloc_kind;
     switch (alloc_kind) {
@@ -741,7 +751,11 @@ Status ExecutionFrame::AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_
     // Model load should have failed so this should be unreachable
     ORT_THROW("SparseTensor is not supported in this build.");
 #endif
-  } else if (ml_type->IsTensorSequenceType() || utils::IsOptionalSeqTensor(ml_type)) {
+  } else if (ml_type->IsTensorSequenceType()
+#if !defined(DISABLE_OPTIONAL_TYPE)
+             || utils::IsOptionalSeqTensor(ml_type)
+#endif
+  ) {
     AllocKind alloc_kind = per_alloc_plan.alloc_kind;
 
     if (alloc_kind == AllocKind::kReuse) {

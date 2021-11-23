@@ -67,6 +67,8 @@ onnxruntime::MLDataType ort_scalar_type_from_aten(
       return onnxruntime::DataTypeImpl::GetType<int16_t>();
     case at::kLong:
       return onnxruntime::DataTypeImpl::GetType<int64_t>();
+    case at::kBool:
+      return onnxruntime::DataTypeImpl::GetType<bool>();
     default:
       ORT_THROW("Unsupport aten scalar type: ", dtype);
   }
@@ -222,15 +224,20 @@ at::Tensor empty_strided(
       .dtype(dtype));
 }
 
-at::Tensor reshape(at::Tensor const& self, at::IntArrayRef shape) {
-  ORT_LOG_FN(self, shape);
-
+at::Tensor _reshape_alias(
+  const at::Tensor& self, 
+  at::IntArrayRef size, 
+  at::IntArrayRef stride){
+  ORT_LOG_FN(self, size, stride);
+  // TODO: support stride
   auto& invoker = GetORTInvoker(self.device());
   return aten_tensor_from_ort(
     reshape_copy(
       invoker,
       create_ort_value(invoker, self),
-      shape.vec()),
+      at::infer_size(
+        size,
+        self.numel())),
     self.options());
 }
 
