@@ -30,6 +30,8 @@ using NodeArgInfo = ONNX_NAMESPACE::ValueInfoProto;
 using InitializedTensorSet = std::unordered_map<std::string, const ONNX_NAMESPACE::TensorProto*>;
 using ArgNameToTypeMap = std::unordered_map<std::string, ONNX_NAMESPACE::TypeProto>;
 using ProviderType = const std::string&;
+using HashValue = uint64_t;  // TODO remove after https://github.com/microsoft/onnxruntime/pull/9710 is merged
+
 // TODO - Evaluate switching the types below to support transparent comparators and enable
 // lookups based on gsl::cstring_span<> and std::string_view.  This would reduces allocations
 // converting to std::string, but requires conversion to std::map<std::string, foo, std::less<>>
