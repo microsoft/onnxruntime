@@ -150,7 +150,7 @@ Status Inverse::ComputeInternal(OpKernelContext* ctx) const {
   }
 
   IAllocatorUniquePtr<int> info = GetScratchBuffer<int>(num_batches);
-  CUDA_RETURN_IF_ERROR(cudaMemsetAsync(info.get(), 0, num_batches, Stream()));
+  CUDA_RETURN_IF_ERROR(cudaMemsetAsync(info.get(), 0, num_batches * sizeof(int), Stream()));
   IAllocatorUniquePtr<int> pivots = GetScratchBuffer<int>(rows * num_batches);
 
   utils::MLTypeCallDispatcher<float, double, MLFloat16> t_disp(input->GetElementType());
