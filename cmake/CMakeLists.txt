@@ -960,7 +960,11 @@ if (WIN32)
         # issued by thrust nonstandard extension used: nameless struct/union
         list(APPEND ORT_WARNING_FLAGS "/wd4201")
         # warning C4800: Implicit conversion from 'X' to bool. Possible information loss
-        list(APPEND ORT_WARNING_FLAGS "/w34800")
+        if (onnxruntime_USE_OPENVINO)
+           list(APPEND ORT_WARNING_FLAGS "/wd4800")
+        else()
+           list(APPEND ORT_WARNING_FLAGS "/w34800")
+        endif()
         if (onnxruntime_USE_OPENMP)
             list(APPEND ORT_WARNING_FLAGS "/wd6993") # Code analysis ignores OpenMP constructs
         endif()
