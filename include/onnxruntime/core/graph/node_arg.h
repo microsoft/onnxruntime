@@ -63,6 +63,13 @@ class NodeArg {
   @returns true if NodeArg is a normal tensor with a non-empty shape or a scalar with an empty shape. Otherwise, returns false. */
   bool HasTensorOrScalarShape() const;
 
+  // FIXME: typing, doc string
+  int8_t MemoryType() const;
+
+  void SetMemoryType(int8_t);
+
+  bool HasMemoryType() const;
+
 #if !defined(ORT_MINIMAL_BUILD)
   /** Sets the shape.
   @remarks Shape can only be set if the TypeProto was provided to the ctor, or #SetType has been called,
@@ -125,5 +132,9 @@ class NodeArg {
 
   // Flag indicates whether <*this> node arg exists or not.
   bool exists_;
+
+  bool has_mem_type_;
+  // FIXME: typing
+  int8_t mem_type_;
 };
 }  // namespace onnxruntime

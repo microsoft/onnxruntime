@@ -619,8 +619,10 @@ class PlannerImpl {
         ProcessDef(index, node_output);
         // Ensures external outputs will not be reused.
         UseCount(index) += (has_external_outputs ? 2 : 1);
-        auto allocator = exec_provider->GetAllocator(0, p_kernel_def->OutputMemoryType(i));
-        ORT_ENFORCE(allocator);
+        OrtMemType mem_type = node_output->HasMemoryType()
+                                  ? static_cast<OrtMemType>(node_output->MemoryType()) // FIXME: typing
+                                  : p_kernel_def->OutputMemoryType(i);
+        auto allocator = exec_provider->GetAllocator(0, mem_type);
         plan_.SetLocation(static_cast<size_t>(index),
                           allocator->Info());
       }
