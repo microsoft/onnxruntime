@@ -51,13 +51,13 @@ In both cases, you will get a JSON file which contains the detailed performance 
 * Type chrome://tracing in the address bar
 * Load the generated JSON file
 
-For Cuda EP, performance numbers from device will be attached to those from host. For example:
+For CUDA EP, performance numbers from device will be attached to those from host. For example:
 ```
 {"cat":"Node", "name":"Add_1234", "dur":17, ...}
 {"cat":"Kernel", "name":"ort_add_cuda_kernel", dur:33, ...}
 ```
-Here, "Add" operator from host initiated a Cuda kernel on device named "ort_add_cuda_kernel" which lasted for 33 macroseconds.
-If an operator called multiple Cuda kernels during execution, the performance numbers of those kernels will all be listed following the calling sequence:
+Here, "Add" operator from host initiated a CUDA kernel on device named "ort_add_cuda_kernel" which lasted for 33 microseconds.
+If an operator called multiple kernels during execution, the performance numbers of those kernels will all be listed following the calling sequence:
 ```
 {"cat":"Node", "name":<name of the node>, ...}
 {"cat":"Kernel", "name":<name of the kernel called first>, ...}
@@ -162,7 +162,59 @@ Memory consumption can be reduced between multiple sessions by configuring the s
 always be set using the ORT APIs.
 
 ### Custom threading hooks
-For customer prefers to create and manage their own threads, please see usage [here](https://github.com/microsoft/onnxruntime/blob/6284cbe833bc47eb90ed4082ff2ae015b8e5c004/onnxruntime/test/shared_lib/test_inference.cc#L1867) and [here](https://github.com/microsoft/onnxruntime/blob/6284cbe833bc47eb90ed4082ff2ae015b8e5c004/onnxruntime/test/global_thread_pools/test_main.cc#L36).
+Occasionally, customers might prefer to create their own fine-tuned threads for ORT to use internally.
+With C++ API, customers could set thread creation and joining functions:
+
+* C++
+```
+  std::vector<std::thread> threads;
+  void* custom_thread_creation_options = nullptr;
+  // initialize custom_thread_creation_options ...
+  OrtCustomThreadHandle CreateThreadCustomized(void* options, OrtThreadWorkerFn work_loop, void* param) {
+	threads.push_back(std::thread(work_loop, param));
+	// configure the thread 
+	return reinterpret_cast<OrtCustomThreadHandle>(threads.back().native_handle());
+  }
+
+  void JoinThreadCustomized(OrtCustomThreadHandle handle) {
+	for (auto& t : threads) {
+	  if (reinterpret_cast<OrtCustomThreadHandle>(t.native_handle()) == handle) {
+		// recycling resources ... 
+		t.join();
+	  }
+	}
+  }
+
+  int main() {
+	//...
+	Ort::Env ort_env;
+	Ort::SessionOptions session_options;
+	session_options.SetCustomCreateThreadFn(CreateThreadCustomized);
+	session_options.SetCustomThreadCreationOptions(&custom_thread_creation_options);
+	session_options.SetCustomJoinThreadFn(JoinThreadCustomized);
+	Ort::Session session(*ort_env, MODEL_URI, session_options);
+	//...
+  }
+```
+
+For global thread pool:
+
+* C++
+```
+  int main() {
+	//...
+	const OrtApi* g_ort = OrtGetApiBase()->GetApi(ORT_API_VERSION);
+    OrtThreadingOptions* tp_options = nullptr;
+	g_ort->CreateThreadingOptions(&tp_options);
+	g_ort->SetGlobalCustomCreateThreadFn(tp_options, CreateThreadCustomized);
+    g_ort->SetGlobalCustomThreadCreationOptions(tp_options, &custom_thread_creation_options);
+    g_ort->SetGlobalCustomJoinThreadFn(tp_options, JoinThreadCustomized);
+	// create session and do inferencing
+	g_ort->ReleaseThreadingOptions(tp_options);
+  }
+```
+
+Note that the CreateThreadCustomized and JoinThreadCustomized, once being set, will be applied to ORT intra op and inter op thread pools uniformly.
 
 ### Default CPU Execution Provider (MLAS)
 
