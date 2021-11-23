@@ -163,6 +163,7 @@ always be set using the ORT APIs.
 
 ### Custom threading hooks
 Occasionally, customers might prefer to create their own fine-tuned threads for ORT to use internally.
+
 With [C++ API](https://github.com/microsoft/onnxruntime/blob/master/include/onnxruntime/core/session/onnxruntime_cxx_api.h), customers could set thread creation and joining callbacks:
 
 ```
