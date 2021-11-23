@@ -102,16 +102,16 @@ Status InstanceNorm<T>::ComputeInternal(OpKernelContext* p_op_kernel_context) co
 
     size_t stats_buffer_size = stats_count * sizeof(T);
 
-    auto mean = GetScratchBuffer<CudaT>(stats_buffer_size);
+    auto mean = GetScratchBuffer<CudaT>(stats_count);
     cudaMemsetAsync(mean.get(), 0, stats_buffer_size, Stream());
 
-    auto variance = GetScratchBuffer<CudaT>(stats_buffer_size);
+    auto variance = GetScratchBuffer<CudaT>(stats_count);
     cudaMemsetAsync(variance.get(), 0, stats_buffer_size, Stream());
 
-    auto unused_scale = GetScratchBuffer<CudaT>(stats_buffer_size);
+    auto unused_scale = GetScratchBuffer<CudaT>(stats_count);
     cudaMemsetAsync(unused_scale.get(), 0, stats_buffer_size, Stream());
 
-    auto unused_bias = GetScratchBuffer<CudaT>(stats_buffer_size);
+    auto unused_bias = GetScratchBuffer<CudaT>(stats_count);
     cudaMemsetAsync(unused_bias.get(), 0, stats_buffer_size, Stream());
 
     // first, compute mean and variance per-instance per-channel using cudnnBatchNorm training
