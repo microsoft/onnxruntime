@@ -7,6 +7,7 @@ redirect_from: /docs/tutorials/mobile/custom-build,/docs/build/reduced
 ---
 
 # Build a custom ONNX Runtime package
+{: .no_toc }
 
 The ONNX Runtime package can be customized when the demands of the target environment require it.
 
@@ -16,6 +17,12 @@ And the most common mechanism to customize the build is to reduce the set of sup
 
 To build a custom ONNX Runtime package, the [build](./index.md) instructions apply, with some extra build options that are specified below.
 
+## Contents
+{: .no_toc }
+
+* TOC placeholder
+{:toc}
+
 ## Reduced operator set
 
 To reduce the compiled binary size of ONNX Runtime, the operator kernels included in the build can be reduced to just those required by your model/s.
@@ -24,7 +31,7 @@ The operators that are included are specified at build time, in a [configuration
 
 ### Build option to reduce build to required operator kernels
 
-**`--include_ops_by_config` [REQUIRED]**
+**`--include_ops_by_config`**
 
 * Add `--include_ops_by_config <config file produced during model conversion> --skip_tests` to the build parameters.
 * See the documentation on the [Reduced Operator Kernel build](../../build/reduced.md) for more information on how this works.
@@ -32,7 +39,7 @@ The operators that are included are specified at build time, in a [configuration
 
 ### Option to reduce types supported by the required operators
 
-** `--enable_reduced_operator_type_support` [OPTIONAL]**
+**`--enable_reduced_operator_type_support`**
 
 * Enables [operator type reduction](./model-conversion.md#enable-type-reduction). Requires ONNX Runtime version 1.7 or higher and for type reduction to have been enabled during model conversion
 
@@ -44,7 +51,7 @@ ONNX format models are not guaranteed to include the required per-node type info
 
 ONNX Runtime can be built to further minimize the binary size, by only including support for loading and executing models in [ORT format](../reference/ort-format-model-conversion.md), and not ONNX format.
 
-**`--minimal_build` [REQUIRED]**
+**`--minimal_build`**
 
 * RTTI is disabled by default in this build, unless the Python bindings (`--build_wheel`) are enabled.
 * If you wish to enable execution providers that compile kernels such as NNAPI or CoreML specify `--minimal_build extended`. See [here](./using-platform-specific-ep.html#using-nnapi-and-coreml-with-onnx-runtime-mobile) for details on using NNAPI and CoreML with ONNX Runtime Mobile
@@ -53,7 +60,7 @@ ONNX Runtime can be built to further minimize the binary size, by only including
 
 ### Disable exceptions
   
-**`--disable_exceptions` [OPTIONAL]**
+**`--disable_exceptions`**
 
 * Any locations that would have thrown an exception will instead log the error message and call abort().
 * Requires `--minimal_build`.
@@ -62,21 +69,21 @@ ONNX Runtime can be built to further minimize the binary size, by only including
 
 ### Disable ML operator support
 
-**`--disable_ml_ops` [OPTIONAL]**
+**`--disable_ml_ops`**
 
 * Whilst the operator kernel reduction script disables all unused ML operator kernels, additional savings can be achieved by removing support for ML specific types. If you know that your model has no ML ops, or no ML ops that use the Map type, this flag can be provided.
 * See the specs for the [ONNX ML Operators](https://github.com/onnx/onnx/blob/master/docs/Operators-ml.md) if unsure.
 
 ### Use shared libc++ on Android
 
-**`--android_cpp_shared` [OPTIONAL]**
+**`--android_cpp_shared`**
 
 * Building using the shared libc++ library instead of the default static libc++ library results in a smaller libonnxruntime.so library.
 * See [Android NDK documentation](https://developer.android.com/ndk/guides/cpp-support) for more information.
 
 ## Build Configuration
 
-**--config** option
+**`--config`**
 
 The `MinSizeRel` configuration will produce the smallest binary size.
 
@@ -115,7 +122,7 @@ pip install -U .\build\Windows\MinSizeRel\MinSizeRel\dist\onnxruntime-1.7.0-cp37
 
 ## Version of ONNX Runtime to build from
 
-Unless there is a specific feature you need, do not use the unreleased 'master' branch.
+Unless there is a specific feature you need, do not use the unreleased `master` branch.
 
 Once you have cloned the ONNX Runtime repo, checkout one of the release branches to build from.
 
