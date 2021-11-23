@@ -887,7 +887,6 @@ class TestInferenceSession(unittest.TestCase):
 
     def testOrtValue_ghIssue9799(self):
         if 'CUDAExecutionProvider' in onnxrt.get_available_providers():
-            np.random.seed(42)
             session = onnxrt.InferenceSession(get_name("identity_9799.onnx"), 
                                               providers=onnxrt.get_available_providers())
 
