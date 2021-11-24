@@ -54,7 +54,8 @@ bool QDQSupportHelper::IsNodeInQDQGroup(const Node& node) const {
 }
 
 bool QDQSupportHelper::IsNodeTargetNode(const Node& node) const {
-  return std::find(target_nodes_.begin(), target_nodes_.end(), &node) != target_nodes_.end();
+  //return std::find(target_nodes_.begin(), target_nodes_.end(), &node) != target_nodes_.end();
+  return target_node_to_qdq_group_.find(&node) != target_node_to_qdq_group_.end();
 }
 
 QDQ::NodeGroup QDQSupportHelper::GetQDQNodeGroupWithTargetNode(const Node& target_node) const {
@@ -102,10 +103,10 @@ std::optional<QDQ::NodeGroupIndices> QDQSupportHelper::Match(const Node& node) c
 
 void QDQSupportHelper::SetQDQNodeGroup(const Node& node) {
   auto qdq_node_group_indices = Match(node);
-  QDQ::NodeGroup qdq_node_group;
 
   // Obtain the qdq node group from the qdq node index group
   if (qdq_node_group_indices.has_value()) {
+    QDQ::NodeGroup qdq_node_group;
     qdq_node_group.target_node = &node;
     nodes_in_qdq_group_.insert(&node);
 
