@@ -26,6 +26,7 @@ Pre-built packages and Docker images are published for  ONNX Runtime with OpenVI
 
 |ONNX Runtime|OpenVINO|Notes|
 |---|---|---|
+|1.10.0|2021.4.2|[Details](https://github.com/intel/onnxruntime/releases/tag/v3.4)|
 |1.9.0|2021.4.1|[Details](https://github.com/intel/onnxruntime/releases/tag/v3.1)|
 |1.8.1|2021.4|[Details](https://github.com/intel/onnxruntime/releases/tag/v3.0)|
 |1.8.0|2021.3|[Details](https://github.com/intel/onnxruntime/releases/tag/2021.3)|
@@ -157,7 +158,7 @@ OrtOpenVINOProviderOptions options;
 options.context = (void *) _context.get() ;
 .....
 //Define the Memory area
-Ort::MemoryInfo info_gpu("IGPU", OrtAllocatorType::OrtDeviceAllocator, 0, OrtMemTypeDefault);
+Ort::MemoryInfo info_gpu("OpenVINO_GPU", OrtAllocatorType::OrtDeviceAllocator, 0, OrtMemTypeDefault);
 //Create a shared buffer , fill in with data
 cl::Buffer shared_buffer(_context, CL_MEM_READ_WRITE, imgSize, NULL, &err);
 ....
