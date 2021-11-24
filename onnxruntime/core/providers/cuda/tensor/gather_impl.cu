@@ -193,9 +193,10 @@ __global__ void ComputePartialSegmentOffsetsKernel(
   if (id < num_of_segments) {
     auto idx = partials_per_segment_offset[id];
     const auto num_partials = partials_per_segment[id];
-    const auto segment_offset = segment_offsets[id];
-    for (SegmentIndex_t i = 0; i < num_partials; ++i) {
-      ret[idx++] = segment_offset + i * kMaxPartialSegmentSize;
+    for (std::pair<int, GatheredIndexIndex_t> segment_offset_idx(0, segment_offsets[id]);
+         segment_offset_idx.first < num_partials;
+         ++segment_offset_idx.first, segment_offset_idx.second += kMaxPartialSegmentSize) {
+      ret[idx++] = segment_offset_idx.second;
     }
   }
 }
