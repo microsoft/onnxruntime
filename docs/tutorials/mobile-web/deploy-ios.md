@@ -82,7 +82,7 @@ This example is heavily based on [Google Tensorflow lite - Object Detection Exam
 
    At the end of this step, you should see a file called `ORTObjectDetection.xcworkspace` in the `mobile/examples/object_detection/ios` directory.
 
-   > This tutorial uses one of the [pre-built](../../install/index.md#install-on-ios) packages for ONNX Runtime mobile. You can also build your own [custom](../../build/custom.md) runtime if the demands of your target environment require it. To include the custom ONNX Runtime build in your iOS app, see [Custom iOS package](../../build/custom.md#iOS)
+   > This tutorial uses one of the [pre-built](../../install/index.md#install-on-ios) packages for ONNX Runtime mobile. You can also build your own [custom](../../build/custom.md) runtime if the demands of your target environment require it. To include the custom ONNX Runtime build in your iOS app, see [Custom iOS package](../../build/custom.md#ios)
 
 3. Build the project
 

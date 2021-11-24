@@ -1,7 +1,7 @@
 ---
 title: Custom build
 description: Customize the ONNX Runtime binaries, including building with a reduced set of operators
-parent: Build ORT
+parent: Build ONNX Runtime
 nav_order: 7
 redirect_from: /docs/tutorials/mobile/custom-build,/docs/build/reduced,,/docs/tutorials/mobile/limitations
 ---
@@ -53,7 +53,7 @@ ONNX Runtime can be built to further minimize the binary size, by only including
 **`--minimal_build`**
 
 * RTTI is disabled by default in this build, unless the Python bindings (`--build_wheel`) are enabled.
-* If you wish to enable execution providers that compile kernels such as NNAPI or CoreML specify `--minimal_build extended`. See [here](./using-platform-specific-ep.html#using-nnapi-and-coreml-with-onnx-runtime-mobile) for details on using NNAPI and CoreML with ONNX Runtime Mobile
+* If you wish to enable execution providers that compile kernels such as NNAPI or CoreML specify `--minimal_build extended`. See [here](../execution-providers/NNAPI-ExecutionProvider.md) and [here](../execution-providers/CoreML-ExecutionProvider.md) for details on using NNAPI and CoreML with ONNX Runtime Mobile
 
 A minimal build has the following limitations:
 
@@ -62,7 +62,6 @@ A minimal build has the following limitations:
 * Limited support for runtime partitioning (assigning nodes in a model to specific execution providers). Execution providers that statically register kernels (e.g. ONNX Runtime CPU Execution Provider) are supported by default. All execution providers that will be used at runtime MUST be registered when creating the ORT format model
     - Execution providers that compile nodes are optionally supported
       - currently this is limited to the NNAPI and CoreML Execution Providers
-        - see [here](./using-platform-specific-ep.html#using-nnapi-and-coreml-with-onnx-runtime-mobile) for details on using the NNAPI or CoreML Execution Providers with ONNX Runtime Mobile.
 
 We do not currently offer backwards compatibility guarantees for ORT format models, as we will be expanding the capabilities in the short term and may need to update the internal format in an incompatible manner to accommodate these changes. You may need to regenerate the ORT format models to use with a future version of ONNX Runtime. Once the feature set stabilizes we will provide backwards compatibility guarantees.
 
