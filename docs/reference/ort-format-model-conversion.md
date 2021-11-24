@@ -8,6 +8,7 @@ redirect_from: /docs/tutorials/mobile/model-conversion
 ---
 
 # Convert ONNX model to ORT format
+{: .no_toc}
 
 ## Contents
 {: .no_toc}
