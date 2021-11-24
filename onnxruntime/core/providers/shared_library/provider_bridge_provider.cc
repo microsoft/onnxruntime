@@ -222,7 +222,7 @@ TensorShape& TensorShape::operator=(const TensorShape& other) {
   return *this;
 }
 
-TensorShape& TensorShape::operator=(TensorShape&& other) {
+TensorShape& TensorShape::operator=(TensorShape&& other) noexcept {
   g_host->TensorShape__operator_move_assign(this, std::move(other));
   return *this;
 }

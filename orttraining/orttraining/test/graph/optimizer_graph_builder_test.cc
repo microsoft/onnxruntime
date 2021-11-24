@@ -196,7 +196,7 @@ static void TestOptimizerGraphBuilderWithInitialStates(OptimizerGraphConfig conf
   std::unordered_map<std::string, std::unordered_map<std::string, std::string>> opt_initializer_names_map;
   ASSERT_STATUS_OK(optimizer_graph_builder.Build(graph, opt_initializer_names_map, opt_graph_outputs));
 
-  const ONNX_NAMESPACE::TensorProto* tensor;
+  const ONNX_NAMESPACE::TensorProto* tensor{};
   for (auto& weight_item : opt_initializer_names_map) {
     for (auto& opt_item : weight_item.second) {
       ASSERT_TRUE(graph.GetInitializedTensor(opt_item.second, tensor));

@@ -63,6 +63,10 @@ class DnnlSubgraphPrimitive {
   dnnl::memory::desc GetOutputInfo(std::string name);
   bool IsScalarOutput(const std::string& name);
   bool IsDynamic();
+  // All Scalar inputs are automatically converterted to a one dimentional tensor when used in OneDNN
+  // If the input being a scalar affects the operator this function can be used to determine if the
+  // original input from ORT was a scalar.
+  bool IsScalar(const DnnlTensor& tensor);
   OrtMutex& GetMutex() { return mutex_; }
 
   //GetMemory in OrtFormat if the memory is not in the OrtFormat this will reorder the memory.
@@ -77,6 +81,8 @@ class DnnlSubgraphPrimitive {
 
   std::unordered_map<std::string, dnnl::memory> inputs_;
   std::unordered_map<std::string, dnnl::memory::desc> inputs_md_;
+  std::unordered_set<std::string> input_is_scalar_;
+
 
   std::unordered_map<std::string, dnnl::memory> outputs_;
   std::unordered_map<std::string, dnnl::memory::desc> outputs_md_;

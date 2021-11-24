@@ -105,6 +105,7 @@ def create_backend_test(testname=None):
                 '^test_softmax_cross_entropy_input_shape_is_NCd1d2d3_none_no_weight_negative_ignore_index_log_prob_cpu',
                 '^test_softmax_cross_entropy_input_shape_is_NCd1d2d3_none_no_weight_negative_ignore_index_log_prob_expanded_cpu',
                 '^test_asin_example_cpu',
+                '^test_dynamicquantizelinear_cpu',
                 '^test_dynamicquantizelinear_expanded_cpu',
                 '^test_resize_downsample_scales_linear_cpu',
                 '^test_resize_downsample_sizes_linear_pytorch_half_pixel_cpu',
@@ -121,6 +122,9 @@ def create_backend_test(testname=None):
 
         backend_test.exclude('(' + '|'.join(filters) + ')')
         print('excluded tests:', filters)
+
+        # exclude TRT EP temporarily and only test CUDA EP to retain previous behavior 
+        os.environ["ORT_ONNX_BACKEND_EXCLUDE_PROVIDERS"] = "TensorrtExecutionProvider"
 
     # import all test cases at global scope to make
     # them visible to python.unittest.
