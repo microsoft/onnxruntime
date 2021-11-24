@@ -1063,6 +1063,56 @@ IMPLEMENT_GRADIENT_BUILDER(GetReduceMeanGradient) {
   return result;
 }
 
+IMPLEMENT_GRADIENT_BUILDER(GetReduceMaxGradient) {
+  std::vector<NodeDef> result;
+  std::vector<int64_t> axes_values;
+  int opset_version = SrcNodeDomain() == kOnnxDomain ? SrcNodeOpsetVersion() : OnnxOpSetVersion();
+  auto attributes = SrcNodeAttributes();
+  bool keepdims = true;
+  if (attributes.find("keepdims") != attributes.end() &&
+      attributes.at("keepdims").has_i()) {
+    keepdims = static_cast<bool>(attributes.at("keepdims").i());
+  }
+  
+  NodeDef zero_constant_node = ZeroConstantNode(IElemType(0));
+  ArgDef ZERO = zero_constant_node.output_args[0];
+  result.push_back(zero_constant_node);
+  NodeDef one_constant_node = OneConstantNode(IElemType(0));
+  ArgDef ONE = one_constant_node.output_args[0];
+  result.push_back(one_constant_node);
+  ArgDef grad = GO(0);
+  if (!keepdims) {
+    if (attributes.find("axes") != attributes.end()) {
+      std::vector<int64_t> axes_values = RetrieveValues<int64_t>(attributes.at("axes"));
+      grad = IA("Unsqueezed_Grad");
+      result.push_back(NodeDef("Unsqueeze", {GO(0)}, {grad}, {MakeAttribute("axes", axes_values)}));
+      result.push_back(NodeDef("Unsqueeze", {O(0)}, {IA("Unsqueezed_Output")}, {MakeAttribute("axes", axes_values)}));
+      result.push_back(NodeDef("Equal", {I(0), IA("Unsqueezed_Output")}, {IA("Mask")}));
+      result.push_back(NodeDef("Where", {IA("Mask"), ONE, ZERO}, {IA("Mask_float")}));
+      AddReduceSumNode(IA("Mask_float"), IA("ReduceSum_Mask"), axes_values, true, result);
+    } else { // axes is not available, O(0) will be a scalar
+      result.push_back(NodeDef("Equal", {I(0), O(0)}, {IA("Mask")}));
+      result.push_back(NodeDef("Where", {IA("Mask"), ONE, ZERO}, {IA("Mask_float")}));
+      result.push_back(NodeDef(opset_version >= 13 ? OpDef{"ReduceSum", kOnnxDomain, opset_version} : OpDef{"ReduceSumTraining", kMSDomain, 1},
+                             {IA("Mask_float")}, {IA("ReduceSum_Mask")},
+                             {{"keepdims", ONNX_NAMESPACE::MakeAttribute("keepdims", int64_t{1})}}));
+    }
+  } else {
+    result.push_back(NodeDef("Equal", {I(0), O(0)}, {IA("Mask")}));
+    result.push_back(NodeDef("Where", {IA("Mask"), ONE, ZERO}, {IA("Mask_float")}));
+    if (attributes.find("axes") != attributes.end()) {
+      AddReduceSumNode(IA("Mask_float"), IA("ReduceSum_Mask"), axes_values, true, result);
+    } else { // axes is not available
+      result.push_back(NodeDef(opset_version >= 13 ? OpDef{"ReduceSum", kOnnxDomain, opset_version} : OpDef{"ReduceSumTraining", kMSDomain, 1},
+                             {IA("Mask_float")}, {IA("ReduceSum_Mask")},
+                             {{"keepdims", ONNX_NAMESPACE::MakeAttribute("keepdims", int64_t{1})}}));
+    }
+  } 
+  result.push_back(NodeDef("Div", {grad, IA("ReduceSum_Mask")}, {IA("Scaled_Grad")}));
+  result.push_back(NodeDef("Mul", {IA("Scaled_Grad"), IA("Mask_float")}, {GI(0)}));
+  return result;
+}
+
 // Reference computation is pytorch's logsumexp_backward
 // dx_i = exp(xi) / reduceSum(exp(xi))
 // O(0) = log(reduceSum(exp(xi)))
