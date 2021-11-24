@@ -610,6 +610,13 @@ TEST(GradientCheckerTest, ReduceMeanGrad) {
   RunReductionTests(op_def);
 }
 
+TEST(GradientCheckerTest, ReduceMaxGrad) {
+  // Attribute axes supports negative values from opset 11.
+  OpDef op_def{"ReduceMax", kOnnxDomain, 11};
+  RunReductionTests(op_def);
+
+}
+
 TEST(GradientCheckerTest, ReduceSumGrad) {
   // Attribute axes supports negative values from opset 11.
   OpDef op_def_11{"ReduceSum", kOnnxDomain, 11};

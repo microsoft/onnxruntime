@@ -109,7 +109,7 @@ void GradientBuilderRegistry::RegisterGradientBuilders() {
   REGISTER_GRADIENT_BUILDER("PythonOp", GetPythonOpGradient);
   REGISTER_GRADIENT_BUILDER("ScatterND", GetScatterNDGradient);
   REGISTER_GRADIENT_BUILDER("Trilu", GetTriluGradient);
-
+  REGISTER_GRADIENT_BUILDER("ReduceMax", GetReduceMaxGradient);
   REGISTER_GRADIENT_BUILDER("ExternalGradient", GetExternalGradient);
 };
 
