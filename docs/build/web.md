@@ -77,7 +77,7 @@ To get all build artifacts of ONNX Runtime WebAssembly, it needs 4 times of buil
 
 ### Minimal Build Support
 
-ONNX Runtime WebAssembly can be built with flag `--minimal_build`. This will generate smaller artifacts and also have a less runtime memory usage. An ORT format model is required. A detailed instruction will come soon. See also [ORT format Conversion](../tutorials/ort-format-model/model-conversion.html).
+ONNX Runtime WebAssembly can be built with flag `--minimal_build`. This will generate smaller artifacts and also have a less runtime memory usage. An ORT format model is required. A detailed instruction will come soon. See also [ORT format Conversion](../referemce/ort-format-model-conversion.md).
 
 ### FAQ
 

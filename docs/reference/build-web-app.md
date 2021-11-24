@@ -90,7 +90,7 @@ Add "@dev" to the package name to use the nightly build (eg. npm install onnxrun
 
    Session run happens each time their is new user input.
 
-Refer to [ONNX Runtime Web API docs](../api/javascript) for more detail.
+Refer to [ONNX Runtime Web API docs](../api/js) for more detail.
   
 ## Pre and post processing
 

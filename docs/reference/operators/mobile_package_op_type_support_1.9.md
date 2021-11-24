@@ -1,6 +1,7 @@
 ---
 title: ORT 1.9 Mobile Package Operators
-parent: Reference
+parent: Operators
+grand_parent: Reference
 redirect_from: /docs/reference/mobile/prebuilt-package/mobile_package_op_type_support_1.9
 ---
 

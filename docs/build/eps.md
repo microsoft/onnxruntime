@@ -618,7 +618,7 @@ Dockerfile instructions are available [here](https://github.com/microsoft/onnxru
 
 Usage of NNAPI on Android platforms is via the NNAPI Execution Provider (EP).
 
-See the [NNAPI Execution Provider](../../execution-providers/NNAPI-ExecutionProvider.md) documentation for more details.
+See the [NNAPI Execution Provider](../execution-providers/NNAPI-ExecutionProvider.md) documentation for more details.
 
 The pre-built ONNX Runtime Mobile package for Android includes the NNAPI EP.
 
@@ -626,7 +626,7 @@ If performing a custom build of ONNX Runtime, support for the NNAPI EP or CoreML
 
 ### Create a minimal build with NNAPI EP support
 
-Please see [the instructions](../../build/android-ios.md) for setting up the Android environment required to build. The Android build can be cross-compiled on Windows or Linux.
+Please see [the instructions](./android.md) for setting up the Android environment required to build. The Android build can be cross-compiled on Windows or Linux.
 
 Once you have all the necessary components setup, follow the instructions to [create the custom build](./custom.md), with the following changes:
 
@@ -651,13 +651,13 @@ Linux example:
 
 Usage of CoreML on iOS and macOS platforms is via the CoreML EP.
 
-See the [CoreML Execution Provider](../../execution-providers/CoreML-ExecutionProvider.md) documentation for more details.
+See the [CoreML Execution Provider](../execution-providers/CoreML-ExecutionProvider.md) documentation for more details.
 
 The pre-built ONNX Runtime Mobile package for iOS includes the CoreML EP.
 
 ### Create a minimal build with CoreML EP support
 
-Please see [the instructions](../../build/android-ios.md) for setting up the iOS environment required to build. The iOS/macOS build must be performed on a mac machine.
+Please see [the instructions](./ios.md) for setting up the iOS environment required to build. The iOS/macOS build must be performed on a mac machine.
 
 Once you have all the necessary components setup, follow the instructions to [create the custom build](./custom.md), with the following changes:
 

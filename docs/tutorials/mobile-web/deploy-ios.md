@@ -59,9 +59,9 @@ This example is heavily based on [Google Tensorflow lite - Object Detection Exam
 
    > Conversion of this model is a two part process. The original model is in tflite format. This is firstly converted to ONNX format using the [tf2onnx converter](https://github.com/onnx/tensorflow-onnx).
    >
-   > The model is then converted into ORT format using the [onnx to ort converter](../reference/ ort-format-model-conversion.md).
+   > The model is then converted into ORT format using the [onnx to ort converter](../../reference/ort-format-model-conversion.md).
    >
-   > As well as generating the model in ORT format, the conversion script also outputs an [operator config file](../reference/reduced-operator-config-file.md)
+   > As well as generating the model in ORT format, the conversion script also outputs an [operator config file](../../reference/reduced-operator-config-file.md)
 
 ## Create iOS application
 
@@ -82,7 +82,7 @@ This example is heavily based on [Google Tensorflow lite - Object Detection Exam
 
    At the end of this step, you should see a file called `ORTObjectDetection.xcworkspace` in the `mobile/examples/object_detection/ios` directory.
 
-   > This tutorial uses one of the [pre-built](../install.md#install-on-ios) packages for ONNX Runtime mobile. You can also build your own [custom](../build/custom.md) runtime if the demands of your target environment require it. To include the custom ONNX Runtime build in your iOS app, see [Custom iOS package](//build/custom.md#iOS).
+   > This tutorial uses one of the [pre-built](../install.md#install-on-ios) packages for ONNX Runtime mobile. You can also build your own [custom](../../build/custom.md) runtime if the demands of your target environment require it. To include the custom ONNX Runtime build in your iOS app, see [Custom iOS package](//build/custom.md#iOS).
 
 3. Build the project
 
