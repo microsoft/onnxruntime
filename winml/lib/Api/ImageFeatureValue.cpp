@@ -407,7 +407,10 @@ std::optional<ImageFeatureValue::ImageResourceMetadata> ImageFeatureValue::GetIn
   // Set up LearningModelPixelRange
   auto pixelRange = std::optional<winml::LearningModelPixelRange>{};
   pixelRange = GetBitmapPixelRangeFromMetadata(context.properties);
-  if (!pixelRange.has_value() && spImageDescriptor) {
+  if (pixelRange.has_value()) {
+    // The pixel range was set by the bind properties, skip all checks and honor
+    // the user provided normalization property. Do nothing.
+  } else if (!pixelRange.has_value() && spImageDescriptor) {
     pixelRange = spImageDescriptor->PixelRange();
   } else if (!pixelRange.has_value() && spTensorDescriptor) {
     pixelRange = winml::LearningModelPixelRange::ZeroTo255;  //default;
