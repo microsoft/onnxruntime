@@ -64,7 +64,6 @@ class QDQSupportHelper {
   const GraphViewer& graph_viewer_;
   std::unordered_map<std::string, const Selector*> op_type_to_selectors_map_;
   std::unordered_set<const Node*> nodes_in_qdq_group_;
-  std::vector<const Node*> target_nodes_;
   std::unordered_map<const Node*, QDQ::NodeGroup> target_node_to_qdq_group_;
 
   std::optional<QDQ::NodeGroupIndices> Match(const Node& node) const;

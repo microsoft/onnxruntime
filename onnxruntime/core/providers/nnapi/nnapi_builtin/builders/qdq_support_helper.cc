@@ -33,11 +33,6 @@ QDQSupportHelper::QDQSupportHelper(Selectors&& selectors, const GraphViewer& gra
     const auto* node = graph_viewer_.GetNode(index);
     SetQDQNodeGroup(*node);
   }
-
-  target_nodes_.reserve(target_node_to_qdq_group_.size());
-  for (const auto kv : target_node_to_qdq_group_) {
-    target_nodes_.push_back(kv.first);
-  }
 }
 
 void Selectors::RegisterSelector(const Selector::OpVersionsMap& ops_and_versions_in,
@@ -54,7 +49,6 @@ bool QDQSupportHelper::IsNodeInQDQGroup(const Node& node) const {
 }
 
 bool QDQSupportHelper::IsNodeTargetNode(const Node& node) const {
-  //return std::find(target_nodes_.begin(), target_nodes_.end(), &node) != target_nodes_.end();
   return target_node_to_qdq_group_.find(&node) != target_node_to_qdq_group_.end();
 }
 
