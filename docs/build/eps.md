@@ -628,7 +628,7 @@ If performing a custom build of ONNX Runtime, support for the NNAPI EP or CoreML
 
 Please see [the instructions](../../build/android-ios.md) for setting up the Android environment required to build. The Android build can be cross-compiled on Windows or Linux.
 
-Once you have all the necessary components setup, follow the instructions to [create the custom build](./custom-build.md), with the following changes:
+Once you have all the necessary components setup, follow the instructions to [create the custom build](./custom.md), with the following changes:
 
 * Replace `--minimal_build` with `--minimal_build extended` to enable support for execution providers that dynamically create kernels at runtime, which is required by the NNAPI EP.
 * Add `--use_nnapi` to include the NNAPI EP in the build
@@ -659,7 +659,7 @@ The pre-built ONNX Runtime Mobile package for iOS includes the CoreML EP.
 
 Please see [the instructions](../../build/android-ios.md) for setting up the iOS environment required to build. The iOS/macOS build must be performed on a mac machine.
 
-Once you have all the necessary components setup, follow the instructions to [create the custom build](./custom-build.md), with the following changes:
+Once you have all the necessary components setup, follow the instructions to [create the custom build](./custom.md), with the following changes:
 
 * Replace `--minimal_build` with `--minimal_build extended` to enable support for execution providers that dynamically create kernels at runtime, which is required by the CoreML EP.
 * Add `--use_coreml` to include the CoreML EP in the build

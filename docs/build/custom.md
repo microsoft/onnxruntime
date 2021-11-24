@@ -27,7 +27,7 @@ To build a custom ONNX Runtime package, the [build from source](./index.md) inst
 
 To reduce the compiled binary size of ONNX Runtime, the operator kernels included in the build can be reduced to just those required by your model/s.
 
-The operators that are included are specified at build time, in a [configuration file](../reference/reduced-operator-config.md) that can be generated from a model or set of models.
+The operators that are included are specified at build time, in a [configuration file](../reference/reduced-operator-config-file.md) that can be generated from a model or set of models.
 
 ### Build option to reduce build to required operator kernels
 
@@ -40,7 +40,7 @@ The operators that are included are specified at build time, in a [configuration
 
 **`--enable_reduced_operator_type_support`**
 
-* Enables [operator type reduction](./model-conversion.md#enable-type-reduction). Requires ONNX Runtime version 1.7 or higher and for type reduction to have been enabled during model conversion
+* Enables [operator type reduction](../reference/ort-format-model-conversion.md#enable-type-reduction). Requires ONNX Runtime version 1.7 or higher and for type reduction to have been enabled during model conversion
 
 If the configuration file is created using ORT format models, the input/output types that individual operators require can be tracked if `--enable_type_reduction` is specified. This can be used to further reduce the build size if `--enable_reduced_operator_type_support` is specified when building ORT.
 
