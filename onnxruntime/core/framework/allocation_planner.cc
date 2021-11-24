@@ -778,7 +778,7 @@ class PlannerImpl {
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
       size_t max_pc = plan_.execution_plan.size();
       std::string node_arg_name;
-      ort_value_name_idx_map_.GetName(static_cast<int>(i), node_arg_name);
+      ORT_RETURN_IF_ERROR(ort_value_name_idx_map_.GetName(static_cast<int>(i), node_arg_name));
       auto node_arg = graph_viewer_.GetNodeArg(node_arg_name);
       plan_.allocation_plan[i].value_type = utils::GetMLDataType(*node_arg);
       plan_.allocation_plan[i].life_interval = std::pair<size_t, size_t>(0, max_pc);
@@ -790,7 +790,7 @@ class PlannerImpl {
   // Should only be used after ProcessDef()
   Status ComputeReusePlan() {
     std::vector<SequentialExecutionPlan::NodeExecutionPlan>& execution_plan(plan_.execution_plan);
-    //copy the use counts to a vector, before computing reuse
+//copy the use counts to a vector, before computing reuse
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
     std::vector<int> ort_value_usecount;
     for (auto ort_value_info : ort_value_info_) {
@@ -929,8 +929,8 @@ class PlannerImpl {
         if (node_input->Exists()) {
           auto& sym = node_input->Name();
           auto original = Buffer(Index(sym));
-          // The index will be -1 if it's an initializer that was removed as part of a temporary workaround.
-          // See comments in the OrtValueInfo definition.
+// The index will be -1 if it's an initializer that was removed as part of a temporary workaround.
+// See comments in the OrtValueInfo definition.
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
           // Compute lifetime
           auto current = Index(sym);
@@ -951,8 +951,8 @@ class PlannerImpl {
         if (node_input->Exists()) {
           auto& sym = node_input->Name();
           auto original = Buffer(Index(sym));
-          // The index will be -1 if it's an initializer that was removed as part of a temporary workaround.
-          // See comments in the OrtValueInfo definition.
+// The index will be -1 if it's an initializer that was removed as part of a temporary workaround.
+// See comments in the OrtValueInfo definition.
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
           // Compute lifetime
           auto current = Index(sym);
@@ -974,8 +974,8 @@ class PlannerImpl {
         if (node_output->Exists()) {
           auto& sym = node_output->Name();
           auto original = Buffer(Index(sym));
-          // The index will be -1 if it's an initializer that was removed as part of a temporary workaround.
-          // See comments in the OrtValueInfo definition.
+// The index will be -1 if it's an initializer that was removed as part of a temporary workaround.
+// See comments in the OrtValueInfo definition.
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
           auto current = Index(sym);
           if ((current != -1) && (0 == --ort_value_usecount[current])) {
@@ -1153,7 +1153,7 @@ class PlannerImpl {
   }
 #endif
 
-  //For in-place reuse tensors, the lifetime is the union of all the tensors that tensors that use that buffer
+//For in-place reuse tensors, the lifetime is the union of all the tensors that tensors that use that buffer
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
   void AdjustInplaceLifeIntervals() {
     std::unordered_map<OrtValueIndex, std::vector<OrtValueIndex>> inplace_reuse_buffer;
