@@ -145,8 +145,6 @@ std::vector<std::vector<const Node*>> CreateSupportedPartitionNodeGroups(
     }
   };
 
-  nnapi::QDQSupportHelper qdq_support_helper = nnapi::QDQSupportHelper(nnapi::CreateSelectors(), graph_viewer);
-
   while (!nodes_to_process.empty() || !nodes_to_process_with_next_group.empty()) {
     if (nodes_to_process.empty()) {
       // we have processed all the nodes that we can while building this partition node group, start a new one
@@ -162,58 +160,24 @@ std::vector<std::vector<const Node*>> CreateSupportedPartitionNodeGroups(
         node.GetExecutionProviderType().empty() &&  // a node that is already assigned to an EP is unsupported
         is_node_supported_fn(node);
 
-    // TODO: special handling for a node in a qdq group
-    const auto is_qdq_node = qdq_support_helper.IsNodeInQDQGroup(node);
-
     if (!is_node_supported && Contains(supported_group_border, &node)) {
       // an unsupported node on the border will be processed after the current partition node group
-      // for an unsupported node in a qdq group, we just don't process it
-      if (!is_qdq_node) {
-        nodes_to_process_with_next_group.push_back(&node);
-        continue;
-      }
+      nodes_to_process_with_next_group.push_back(&node);
+      continue;
     }
 
     if (is_node_supported) {
-      if (is_qdq_node) {
-        if (qdq_support_helper.IsNodeTargetNode(node)) {
-          const auto qdq_node_group = qdq_support_helper.GetQDQNodeGroupWithTargetNode(node);
-          bool is_qdq_group_supported = true;
-          for (const auto* dq_node : qdq_node_group.dq_nodes) {
-            is_qdq_group_supported = is_qdq_group_supported && is_node_supported_fn(*dq_node);
-          }
-          const auto* q_node = qdq_node_group.q_nodes[0];
-          is_qdq_group_supported = is_qdq_group_supported && is_node_supported_fn(*q_node);
+      // add node to the partition node group
+      supported_group.push_back(&node);
 
-          if (is_qdq_group_supported) {
-            // add all nodes in qdq_group to the supported group
-            supported_group.insert(supported_group.end(), qdq_node_group.dq_nodes.begin(), qdq_node_group.dq_nodes.end());
-            supported_group.push_back(&node);
-            supported_group.insert(supported_group.end(), qdq_node_group.q_nodes.begin(), qdq_node_group.q_nodes.end());
+      // remove node from the border and add its outputs to the border
+      supported_group_border.erase(&node);
 
-            // remove target node from the border and add the group outputs to the border
-            supported_group_border.erase(&node);
-
-            std::for_each(
-                q_node->OutputNodesBegin(), q_node->OutputNodesEnd(),
-                [&supported_group_border](const Node& output) {
-                  supported_group_border.insert(&output);
-                });
-          }
-        }
-      } else {
-        // add node to the partition node group
-        supported_group.push_back(&node);
-
-        // remove node from the border and add its outputs to the border
-        supported_group_border.erase(&node);
-
-        std::for_each(
-            node.OutputNodesBegin(), node.OutputNodesEnd(),
-            [&supported_group_border](const Node& output) {
-              supported_group_border.insert(&output);
-            });
-      }
+      std::for_each(
+          node.OutputNodesBegin(), node.OutputNodesEnd(),
+          [&supported_group_border](const Node& output) {
+            supported_group_border.insert(&output);
+          });
     }
 
     // adjust in-degrees of the node outputs and add any new nodes to process

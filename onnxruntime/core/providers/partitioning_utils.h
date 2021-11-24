@@ -9,7 +9,6 @@
 #include <vector>
 
 #include "core/graph/basic_types.h"
-#include "core/providers/nnapi/nnapi_builtin/builders/qdq_support_helper.h"
 
 namespace onnxruntime {
 struct ComputeCapability;
