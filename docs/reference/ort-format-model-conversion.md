@@ -4,7 +4,7 @@ description: Convert an ONNX model to ORT format to run on mobile or web
 parent: Reference
 has_children: false
 nav_order: 4
-redirect_from: /docs/tutorials/mobile/model-conversion
+redirect_from: /docs/tutorials/mobile/model-conversion, /docs/tutorials/mobile/model-execution
 ---
 
 # Convert ONNX model to ORT format
@@ -33,7 +33,7 @@ A [build configuration file](reduced-operator-config-file.md) ('required_operato
 
 If [type reduction](#enable-type-reduction) is enabled (ONNX Runtime version 1.7 or later) the configuration file will also include the required types for each operator, and be called 'required_operators_and_types.config'.
 
-If you are using a pre-built ONNX Runtime [iOS](../install.md#install-on-ios), [Android](../install.md#install-on-android) or [web](../install.md#web) package], the build configuration file is not used and can be ignored.
+If you are using a pre-built ONNX Runtime [iOS](../install/index.md#install-on-ios), [Android](../install/index.md#install-on-android) or [web](../install/index.md#web) package], the build configuration file is not used and can be ignored.
 
 Conversion of ONNX format models to ORT format utilizes the ONNX Runtime python package, as the model is loaded into ONNX Runtime and optimized as part of the conversion process.
 
@@ -132,7 +132,7 @@ For earlier versions, *extended* is recommended, as the *all* level previously i
 
 If the model is to be run with the NNAPI EP or CoreML EP, it is recommended to create an ORT format model using the *basic* optimization level. Performance testing should be done to compare running this model with the NNAPI or CoreML EP enabled vs. running the model optimized to a higher level using the CPU EP to determine the optimal setup.
 
-See the documentation on [performance tuning mobile scenarios](../../performance/mobile-performance-tuning.md) for more information.
+See the documentation on [performance tuning mobile scenarios](../performance/mobile-performance-tuning.md) for more information.
 
 #### Enable type reduction
 
@@ -148,7 +148,7 @@ For example, the ONNX Runtime kernel for Softmax supports both float and double.
 
 #### Custom Operator support
 
-If your ONNX model uses [custom operators](../../reference/operators/add-custom-op.md), the path to the library containing the custom operator kernels must be provided so that the ONNX model can be successfully loaded. The custom operators will be preserved in the ORT format model.
+If your ONNX model uses [custom operators](./operators/add-custom-op.md), the path to the library containing the custom operator kernels must be provided so that the ONNX model can be successfully loaded. The custom operators will be preserved in the ORT format model.
 
 #### Save optimized ONNX model
 
@@ -160,4 +160,95 @@ Prior to ONNX Runtime version 1.7, the model conversion script must be run from 
 
 ```bash
 python <ONNX Runtime repository root>/tools/python/convert_onnx_models_to_ort.py <onnx model file or dir>
+```
+
+## Executing an ORT format model
+
+The API for executing ORT format models is the same as for ONNX models.
+
+See the [ONNX Runtime API documentation](../../api) for details on individual API usage.
+
+### APIs by platform
+
+| Platform | Available APIs |
+|----------|----------------|
+| Android | C, C++, Java, Kotlin |
+| iOS | C, C++, Objective-C (Swift via bridge) |
+| Web | JavaScript |
+
+### ORT format model loading
+
+If you provide a filename for the ORT format model, a file extension of '.ort' will be inferred to be an ORT format model.
+
+If you provide in-memory bytes for the ORT format model, a marker in those bytes will be checked to infer if it's an ORT format model.
+
+If you wish to explicitly say that the InferenceSession input is an ORT format model you can do so via SessionOptions, although this generally should not be necessary.
+
+#### Load ORT format model from a file path
+
+C++ API
+```c++
+Ort::SessionOptions session_options;
+session_options.AddConfigEntry("session.load_model_format", "ORT");
+
+Ort::Env env;
+Ort::Session session(env, <path to model>, session_options);
+```
+
+Java API
+```java
+SessionOptions session_options = new SessionOptions();
+session_options.addConfigEntry("session.load_model_format", "ORT");
+
+OrtEnvironment env = OrtEnvironment.getEnvironment();
+OrtSession session = env.createSession(<path to model>, session_options);
+```
+
+JavaScript API
+```js
+import * as ort from "onnxruntime-web";
+
+const session = await ort.InferenceSession.create("<path to model>");
+```
+
+#### Load ORT format model from an in-memory byte array
+
+If a session is created using an input byte array containing the ORT format model data, by default we will copy the model bytes at the time of session creation to ensure the model bytes buffer is valid.
+
+You may also enable the option to use the model bytes directly by setting the Session Options config `session.use_ort_model_bytes_directly` to `1`, this may reduce the peak memory usage of ONNX Runtime Mobile, you will need to guarantee that the model bytes are valid throughout the lifespan of the ORT session using the model bytes. For ONNX Runtime Web, this option is set by default.
+
+C++ API
+```c++
+Ort::SessionOptions session_options;
+session_options.AddConfigEntry("session.load_model_format", "ORT");
+session_options.AddConfigEntry("session.use_ort_model_bytes_directly", "1");
+
+std::ifstream stream(<path to model>, std::ios::in | std::ios::binary);
+std::vector<uint8_t> model_bytes((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
+
+Ort::Env env;
+Ort::Session session(env, model_bytes.data(), model_bytes.size(), session_options);
+```
+
+Java API
+```java
+SessionOptions session_options = new SessionOptions();
+session_options.addConfigEntry("session.load_model_format", "ORT");
+session_options.addConfigEntry("session.use_ort_model_bytes_directly", "1");
+
+byte[] model_bytes = Files.readAllBytes(Paths.get(<path to model>));
+
+OrtEnvironment env = OrtEnvironment.getEnvironment();
+OrtSession session = env.createSession(model_bytes, session_options);
+```
+
+JavaScript API
+```js
+import * as ort from "onnxruntime-web";
+
+const response = await fetch(modelUrl);
+const arrayBuffer = await response.arrayBuffer();
+model_bytes = new Uint8Array(arrayBuffer);
+
+const session = await ort.InferenceSession.create(model_bytes);
 ```

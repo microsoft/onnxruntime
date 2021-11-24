@@ -26,7 +26,7 @@ The artifacts are published to CocoaPods.
 |-|-|-|
 | onnxruntime-mobile-objc | CPU and CoreML | iOS |
 
-Refer to the [installation instructions](../install.md#install-on-ios).
+Refer to the [installation instructions](../install/index.md#install-on-ios).
 
 ## Swift Usage
 
