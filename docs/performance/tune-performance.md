@@ -161,9 +161,9 @@ Memory consumption can be reduced between multiple sessions by configuring the s
 * Inter op num threads (used only when parallel execution is enabled) is not affected by OpenMP settings and should
 always be set using the ORT APIs.
 
-### Custom threading hooks
-Occasionally, customers might prefer to create their own fine-tuned threads for ORT to use internally.
-With [C++ API](https://github.com/microsoft/onnxruntime/blob/master/include/onnxruntime/core/session/onnxruntime_cxx_api.h), customers could set thread creation and joining callbacks:
+### Custom threading callbacks
+Occasionally, customers might prefer to create their own fine-tuned threads for ORT to use internally,
+hence ORT offers thread creation and joining callbacks by [C++ API](https://github.com/microsoft/onnxruntime/blob/master/include/onnxruntime/core/session/onnxruntime_cxx_api.h):
 
 ```
   std::vector<std::thread> threads;
