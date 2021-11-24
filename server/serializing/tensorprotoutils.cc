@@ -48,7 +48,7 @@ inline std::string MakeString(const char* p_str) {
 
 namespace server {
 #ifdef __GNUC__
-constexpr inline bool IsLittleEndianOrder() noexcept { return __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__; }
+constexpr bool IsLittleEndianOrder() noexcept { return __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__; }
 #else
 // On Windows and Mac, this function should always return true
 GSL_SUPPRESS(type .1)  // allow use of reinterpret_cast for this special case
