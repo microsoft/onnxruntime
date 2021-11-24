@@ -24,10 +24,6 @@ jobs:
     clean: true
   
   - script: |-
-      export
-    displayName: 'List environment variables'
-  
-  - script: |-
       echo "Selecting GPU based on HIP_VISIBLE_DEVICES=$HIP_VISIBLE_DEVICES"
     displayName: 'Initialize environment'
   
@@ -69,6 +65,7 @@ jobs:
   - script: |-
       cd ./build/RelWithDebInfo
       export PYTHONPATH=$PWD
+      export ORTMODULE_ONNX_OPSET_VERSION=12
       python \
         /stage/huggingface-transformers/examples/pytorch/language-modeling/run_mlm.py \
         --model_name_or_path bert-large-uncased \
@@ -93,6 +90,7 @@ jobs:
   - script: |-
       cd ./build/RelWithDebInfo
       export PYTHONPATH=$PWD
+      export ORTMODULE_ONNX_OPSET_VERSION=12
       python \
         /stage/huggingface-transformers/examples/pytorch/language-modeling/run_clm.py \
         --model_name_or_path gpt2 \
@@ -173,6 +171,7 @@ jobs:
   - script: |-
       cd ./build/RelWithDebInfo
       export PYTHONPATH=$PWD
+      export ORTMODULE_ONNX_OPSET_VERSION=12
       python \
         /stage/huggingface-transformers/examples/pytorch/language-modeling/run_mlm.py \
         --model_name_or_path distilbert-base-uncased \
