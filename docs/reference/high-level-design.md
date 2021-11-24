@@ -1,7 +1,7 @@
 ---
 title: Technical design
 parent: Reference
-nav_order: 5
+nav_order: 6
 ---
 
 # ONNX Runtime High Level Design

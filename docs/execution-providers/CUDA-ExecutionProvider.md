@@ -19,10 +19,11 @@ The CUDA Execution Provider enables hardware accelerated computation on Nvidia C
 {:toc}
 
 ## Install
+
 Pre-built binaries of ONNX Runtime with CUDA EP are published for most language bindings. Please reference [Install ORT](../install).
 
-
 ## Requirements
+
 Please reference table below for official GPU packages dependencies for the ONNX Runtime inferencing package. Note that ONNX Runtime Training is aligned with PyTorch CUDA versions; refer to the Training tab on https://onnxruntime.ai/ for supported versions. 
 
 |ONNX Runtime|CUDA|cuDNN|Notes|

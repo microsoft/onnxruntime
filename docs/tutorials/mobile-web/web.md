@@ -1,24 +1,24 @@
 ---
 title: Deploy on web
+description: Classify images in a NextJS web application built from a GitHub template repo
 parent: Tutorials
 has_children: false
-nav_order: 7
+nav_order: 3
 ---
 
 
-# Classify images in a web application
+# Classify images in a web application with ONNX Runtime Web 
 {: .no_toc }
 
 In this tutorial we will use a GitHub repository template to build an image classification web app using ONNX Runtime web. We will do the inference in JavaScript on the browser for a computer vision model.
 
-One of the hardest parts when deploying and inferencing in languages that are not commonly used for data science is figuring out how to do the data processing and inferencing. We have done all the hard work for you with [this template](https://github.com/microsoft/onnxruntime-nextjs-template)! 
+One of the hardest parts when deploying and inferencing in languages that are not commonly used for data science is figuring out how to do the data processing and inferencing. We have done all the hard work for you with [this template](https://github.com/microsoft/onnxruntime-nextjs-template)!
 
 Below is what the site looks like from the template. It is looping through a list of example images, calling the inference session with a SqueezeNet model, then returning the score and label from inference.
 
 Example template output:
 
 <img src="../../images/ort-web-demo.gif" width="100%" height="100%" alt="Image of browser inferencing on sample images."/>
-
 
 ## Contents
 {: .no_toc }
@@ -28,7 +28,7 @@ Example template output:
 
 ## What is ONNX Runtime Web (ORT-Web)?
 
-`ORT-Web` enables JavaScript developers to run and deploy machine learning models client-side. With ORT web you have the option to use a backend of either `webgl` for GPU processing or WebAssembly (`wasm`) for CPU processing. All ONNX operators are supported by the WASM backend but only a subset are currently supported by the WebGL backend. If you want to do JavaScript server side inferencing with node checkout the [onnxruntime-node library](https://onnxruntime.ai/docs/get-started/with-javascript.html#onnx-runtime-nodejs-binding).
+ONNX Runtime Web enables JavaScript developers to run and deploy machine learning models client-side. With ONX Runtime Web, you have the option to use a backend of either `webgl` for GPU processing or WebAssembly (`wasm`) for CPU processing. All ONNX operators are supported by the WASM backend but only a subset are currently supported by the WebGL backend. If you want to do JavaScript server side inferencing with node, check out the [onnxruntime-node library](https://onnxruntime.ai/docs/get-started/with-javascript.html#onnx-runtime-nodejs-binding).
 
 ## Browser inferencing considerations
 
@@ -48,13 +48,13 @@ There are benefits to doing on device and in browser inferencing.
 
 ## Get a model from the ONNX Model Zoo or use your own
 
-- ONNX Model Zoo
+1. ONNX Model Zoo
 
-  We will be using [SqueezeNet](https://github.com/onnx/models/tree/master/vision/classification/squeezenet) from the [ONNX Model Zoo](https://github.com/onnx/models). SqueezeNet models perform image classification - they take images as input and classify the major object in the image into a set of pre-defined classes. They are trained on the ImageNet dataset which contains images from 1000 different classes. SqueezeNet models are highly efficient in terms of size and speed while providing good accuracies. This makes them ideal for platforms with strict constraints on size, like client side inferencing.
+   We will be using [SqueezeNet](https://github.com/onnx/models/tree/master/vision/classification/squeezenet) from the [ONNX Model Zoo](https://github.com/onnx/models). SqueezeNet models perform image classification - they take images as input and classify the major object in the image into a set of pre-defined classes. They are trained on the ImageNet dataset which contains images from 1000 different classes. SqueezeNet models are highly efficient in terms of size and speed while providing good accuracies. This makes them ideal for platforms with strict constraints on size, like client side inferencing.
 
-- Create a model and export to ONNX Format
+2. Create a model and export to ONNX Format
 
-  There are many ways to create a custom model that is specific to the task you are trying to solve. Use code to build your model or use the low code/no code tools to create the model. Check out the resources below to learn about some different ways to create a customized model. All of these resources have an export to ONNX format functionality so that you can leverage this template and source code. 
+   There are many ways to create a custom model that is specific to the task you are trying to solve. Use code to build your model or use the low code/no code tools to create the model. Check out the resources below to learn about some different ways to create a customized model. All of these resources have an export to ONNX format functionality so that you can leverage this template and source code.
 
   - [Use AutoML to create a custom model](https://docs.microsoft.com/azure/machine-learning/concept-automated-ml)
   - [Use Custom Vision Cognitive Services to create a custom model](https://docs.microsoft.com/azure/cognitive-services/custom-vision-service/overview)
