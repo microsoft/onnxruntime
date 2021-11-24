@@ -24,24 +24,6 @@ struct OpSupportCheckerRegistrations {
   std::unordered_map<std::string, const IOpSupportChecker*> op_support_checker_map;
 };
 
-bool HasExternalInitializer(const InitializedTensorSet& initializers, const Node& node) {
-  for (const auto* node_arg : node.InputDefs()) {
-    const auto& input_name(node_arg->Name());
-    if (!Contains(initializers, input_name))
-      continue;
-
-    const auto& tensor = *initializers.at(input_name);
-    if (tensor.has_data_location() &&
-        tensor.data_location() == ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL) {
-      LOGS_DEFAULT(VERBOSE) << "Initializer [" << input_name
-                            << "] with external data location are not currently supported";
-      return true;
-    }
-  }
-
-  return false;
-}
-
 bool HasExternalInitializer(const InitializedTensorSet& initializers, const INodeUnit& node) {
   for (const auto* node_arg : node.InputDefs()) {
     const auto& input_name(node_arg->Name());

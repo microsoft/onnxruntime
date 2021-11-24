@@ -12,6 +12,7 @@
 #include "shaper.h"
 
 namespace onnxruntime {
+
 namespace nnapi {
 
 class IOpBuilder;
@@ -33,7 +34,7 @@ class ModelBuilder {
   };
 
   ModelBuilder(const GraphViewer& graph_viewer);
-  ~ModelBuilder() = default;
+  ~ModelBuilder();
 
   Status Compile(std::unique_ptr<Model>& model) ORT_MUST_USE_RESULT;
 
@@ -151,7 +152,7 @@ class ModelBuilder {
 
   // Contains all quantized operators' input and the node(s) using the input
   // In the form of {input_name, [node(s) using the input]}
-  std::unordered_map<std::string, std::vector<const Node*>> all_quantized_op_inputs_;
+  std::unordered_map<std::string, std::vector<const INodeUnit*>> all_quantized_op_inputs_;
 
   std::unordered_set<std::string> unique_names_;
 
@@ -162,6 +163,8 @@ class ModelBuilder {
   // The number of nnapi operations in this model
   size_t num_nnapi_ops_ = 0;
   uint32_t next_index_ = 0;
+
+  std::unordered_map<const Node*, std::unique_ptr<INodeUnit>> node_unit_map_;
 
   // Convert the onnx model to ANeuralNetworksModel
   Status Prepare() ORT_MUST_USE_RESULT;
@@ -180,6 +183,10 @@ class ModelBuilder {
   // After constructing the NNAPI model, will set the shape inferencing record to the Model
   void RegisterModelShaper();
 
+  void GetAllQuantizedOpInputs();
+  void PreprocessNodeUnits();
+  const INodeUnit& GetNodeUnit(const Node* node) const;
+
   Status SetOperandValue(uint32_t index, Model::NNMemory* memory,
                          size_t size, size_t offset) ORT_MUST_USE_RESULT;
 
@@ -189,7 +196,7 @@ class ModelBuilder {
                        bool is_nhwc,
                        uint32_t& index) ORT_MUST_USE_RESULT;
 
-  static const IOpBuilder* GetOpBuilder(const Node& node);
+  static const IOpBuilder* GetOpBuilder(const INodeUnit& node_unit);
 };
 
 }  // namespace nnapi

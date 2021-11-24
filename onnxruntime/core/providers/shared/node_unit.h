@@ -18,6 +18,11 @@ namespace onnxruntime {
 
 class INodeUnit {
  public:
+  enum class Type : uint8_t {
+    Node,
+    QDQ
+  };
+
   virtual ~INodeUnit() = default;
 
   virtual const ConstPointerContainer<std::vector<NodeArg*>> InputDefs() const noexcept = 0;
@@ -40,6 +45,8 @@ class INodeUnit {
   virtual Node::NodeConstIterator OutputNodesEnd() const noexcept = 0;
 
   virtual const std::vector<const Node*> GetAllNodes() const noexcept = 0;
+
+  virtual Type UnitType() const noexcept = 0;
 };
 
 const std::unique_ptr<INodeUnit> CreateNodeUnit(const Node& node);

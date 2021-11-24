@@ -40,6 +40,8 @@ class NodeUnit : public INodeUnit {
 
   const std::vector<const Node*> GetAllNodes() const noexcept override { return all_nodes_; }
 
+  INodeUnit::Type UnitType() const noexcept override { return INodeUnit::Type::Node; }
+
  private:
   const Node& node_;
   std::vector<const Node*> all_nodes_;

@@ -73,16 +73,33 @@ QLinearOpType GetQLinearOpType(const onnxruntime::Node& node) {
 
 QLinearOpType GetQLinearOpType(const onnxruntime::INodeUnit& node) {
   const auto& op_type = node.OpType();
-  if (op_type == "Conv")
-    return QLinearOpType::QLinearConv;
-  else if (op_type == "MatMul")
-    return QLinearOpType::QLinearMatMul;
-  else if (op_type == "Add")
-    return QLinearOpType::QLinearAdd;
-  else if (op_type == "Sigmoid")
-    return QLinearOpType::QLinearSigmoid;
-  else if (op_type == "AveragePool")
-    return QLinearOpType::QLinearAveragePool;
+  if (node.UnitType() == INodeUnit::Type::Node) {
+    if (op_type == "DequantizeLinear")
+      return QLinearOpType::DequantizeLinear;
+    else if (op_type == "QuantizeLinear")
+      return QLinearOpType::QuantizeLinear;
+    else if (op_type == "QLinearConv")
+      return QLinearOpType::QLinearConv;
+    else if (op_type == "QLinearMatMul")
+      return QLinearOpType::QLinearMatMul;
+    else if (op_type == "QLinearAdd")
+      return QLinearOpType::QLinearAdd;
+    else if (op_type == "QLinearSigmoid")
+      return QLinearOpType::QLinearSigmoid;
+    else if (op_type == "QLinearAveragePool")
+      return QLinearOpType::QLinearAveragePool;
+  } else if (node.UnitType() == INodeUnit::Type::QDQ) {
+    if (op_type == "Conv")
+      return QLinearOpType::QLinearConv;
+    else if (op_type == "MatMul")
+      return QLinearOpType::QLinearMatMul;
+    else if (op_type == "Add")
+      return QLinearOpType::QLinearAdd;
+    else if (op_type == "Sigmoid")
+      return QLinearOpType::QLinearSigmoid;
+    else if (op_type == "AveragePool")
+      return QLinearOpType::QLinearAveragePool;
+  }
 
   return QLinearOpType::Unknown;
 }
