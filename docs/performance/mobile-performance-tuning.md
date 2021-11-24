@@ -1,13 +1,16 @@
 ---
-title: ONNX Runtime Mobile Performance Tuning
+title: Tune Mobile Performance
 parent: Performance
-nav_order: 1
+nav_order: 2
+redirect_from: /docs/how-to/mobile-performance-tuning
 ---
 {::options toc_levels="2" /}
 
-# Performance Tuning 
+# ONNX Runtime Mobile Performance Tuning 
 
-ONNX Runtime Mobile can be used to execute ORT format models using NNAPI (via the NNAPI Execution Provider (EP)) on Android platforms, and CoreML (via the CoreML EP) on iOS platforms. This section explains the details of how different optimizations affect performance, and provides some suggestions for performance testing with ORT format models.
+Learn how different optimizations affect performance, and get suggestions for performance testing with ORT format models.
+
+ONNX Runtime Mobile can be used to execute ORT format models using NNAPI (via the NNAPI Execution Provider (EP)) on Android platforms, and CoreML (via the CoreML EP) on iOS platforms. 
 
 First, please review the introductory details in [using NNAPI and CoreML with ONNX Runtime Mobile](../tutorials/ort-format-model/using-platform-specific-ep.html#using-nnapi-and-coreml-with-onnx-runtime-mobile).
 

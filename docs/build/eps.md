@@ -1,7 +1,9 @@
 ---
 title: Build with different EPs
-parent: Build ORT
+parent: Build ONNX Runtime
+description: Learm how to build ONNX Runtime from source for different execution providers
 nav_order: 3
+redirect_from: /docs/how-to/build/eps 
 ---
 
 # Build ONNX Runtime with Execution Providers
@@ -290,16 +292,17 @@ See more information on the OpenVINO Execution Provider [here](../execution-prov
 | <code>VAD-F_FP32</code> | Intel<sup>®</sup> Vision Accelerator Design with an Intel<sup>®</sup> Arria<sup>®</sup> 10 FPGA |
 | <code>HETERO:DEVICE_TYPE_1,DEVICE_TYPE_2,DEVICE_TYPE_3...</code> | All Intel<sup>®</sup> silicons mentioned above |
 | <code>MULTI:DEVICE_TYPE_1,DEVICE_TYPE_2,DEVICE_TYPE_3...</code> | All Intel<sup>®</sup> silicons mentioned above |
+| <code>AUTO:DEVICE_TYPE_1,DEVICE_TYPE_2,DEVICE_TYPE_3...</code> | All Intel<sup>®</sup> silicons mentioned above |
 
-Specifying Hardware Target for HETERO or Multi-Device Build:
+Specifying Hardware Target for HETERO or Multi or AUTO device Build:
 
 HETERO:DEVICE_TYPE_1,DEVICE_TYPE_2,DEVICE_TYPE_3...
 The DEVICE_TYPE can be any of these devices from this list ['CPU','GPU','MYRIAD','FPGA','HDDL']
 
-A minimum of two device's should be specified for a valid HETERO or Multi-Device Build.
+A minimum of two device's should be specified for a valid HETERO or MULTI or AUTO device build.
 
 ```
-Example's: HETERO:MYRIAD,CPU or HETERO:HDDL,GPU,CPU or MULTI:MYRIAD,GPU,CPU
+Example's: HETERO:MYRIAD,CPU or AUTO:GPU,CPU or MULTI:MYRIAD,GPU,CPU
 ```
 
 #### Disable subgraph partition Feature

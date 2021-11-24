@@ -1,17 +1,19 @@
 ---
 title: Direct ML
+description: Instructions to execute ONNX Runtime with the DirectML execution provider
 parent: Execution Providers
 nav_order: 5
+redirect_from: /docs/reference/execution-providers/DirectML-ExecutionProvider
 ---
 
 # DirectML Execution Provider
 {: .no_toc }
 
+The DirectML Execution Provider is a component of ONNX Runtime that uses DirectML to accelerate inference of ONNX models. The DirectML execution provider is capable of greatly improving evaluation time of models using commodity GPU hardware, without sacrificing broad hardware support or requiring vendor-specific extensions to be installed.
+
 DirectML is a high-performance, hardware-accelerated DirectX 12 library for machine learning on Windows.  DirectML provides GPU acceleration for common machine learning tasks across a broad range of supported hardware and drivers.
 
 When used standalone, the DirectML API is a low-level DirectX 12 library and is suitable for high-performance, low-latency applications such as frameworks, games, and other real-time applications. The seamless interoperability of DirectML with Direct3D 12 as well as its low overhead and conformance across hardware makes DirectML ideal for accelerating machine learning when both high performance is desired, and the reliability and predictability of results across hardware is critical.
-
-The *DirectML Execution Provider* is an optional component of ONNX Runtime that uses DirectML to accelerate inference of ONNX models. The DirectML execution provider is capable of greatly improving evaluation time of models using commodity GPU hardware, without sacrificing broad hardware support or requiring vendor-specific extensions to be installed.
 
 The DirectML Execution Provider currently uses DirectML version 1.4.2.
 
@@ -118,7 +120,7 @@ A complete sample of onnxruntime using the DirectML execution provider can be fo
 ## Support Coverage
 **ONNX Opset**
 
-The DirectML execution provider currently supports ONNX opset 11 ([ONNX v1.6](https://github.com/onnx/onnx/releases/tag/v1.6.0)). Evaluating models which require a higher opset version is not supported, and may produce unexpected results.
+The DirectML execution provider currently supports ONNX opset 12 ([ONNX v1.7](https://github.com/onnx/onnx/releases/tag/v1.7.0)). Evaluating models which require a higher opset version is not supported, and may produce unexpected results.
 
 
 ## Additional Resources

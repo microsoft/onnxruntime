@@ -68,18 +68,20 @@ ONNX Runtime supports all opsets from the latest released version of the [ONNX](
 
 | ONNX Runtime version | [ONNX version](https://github.com/onnx/onnx/blob/master/docs/Versioning.md) | ONNX opset version | ONNX ML opset version | ONNX IR version | [Windows ML Availability](https://docs.microsoft.com/en-us/windows/ai/windows-ml/release-notes/)|
 |------------------------------|--------------------|--------------------|----------------------|------------------|------------------|
-| 1.7.2<br/>1.7.1<br/>1.7.0 | **1.8** | 13 | 2 | 7 | Windows AI 1.7+ |
-| 1.6.0 | **1.8** | 13 | 2 | 7 | Windows AI 1.6+ |
-| 1.5.3<br/>1.5.2<br/>1.5.1 | **1.7** | 12 | 2 | 7 | Windows AI 1.5+ |
-| 1.4.0 | **1.7** | 12 | 2 | 7 | Windows AI 1.4+ |
-| 1.3.1<br/>1.3.0 | **1.7** | 12 | 2 | 7 | Windows AI 1.3+ |
-| 1.2.0<br/>1.1.2<br/>1.1.1<br/>1.1.0 | **1.6** | 11 | 2 | 6 | Windows AI 1.3+ |
-| 1.0.0 | **1.6** | 11 | 2 | 6 | Windows AI 1.3+ |
-| 0.5.0 | **1.5** | 10 | 1 | 5 | Windows AI 1.3+ |
-| 0.4.0 | **1.5** | 10 | 1 | 5 | Windows AI 1.3+ |
-| 0.3.1<br/>0.3.0 | **1.4** | 9 | 1 | 3 | Windows 10 2004+ |
-| 0.2.1<br/>0.2.0 | **1.3** | 8 | 1 | 3 | Windows 10 1903+ |
-| 0.1.5<br/>0.1.4 | **1.3** | 8 | 1 | 3 | Windows 10 1809+ |
+| 1.9 | **1.10** | 15 | 2 | 8 | Windows AI 1.9+ |
+| 1.8 | **1.9** | 14 | 2 | 7 | Windows AI 1.8+ |
+| 1.7 | **1.8** | 13 | 2 | 7 | Windows AI 1.7+ |
+| 1.6 | **1.8** | 13 | 2 | 7 | Windows AI 1.6+ |
+| 1.5 | **1.7** | 12 | 2 | 7 | Windows AI 1.5+ |
+| 1.4 | **1.7** | 12 | 2 | 7 | Windows AI 1.4+ |
+| 1.3 | **1.7** | 12 | 2 | 7 | Windows AI 1.3+ |
+| 1.2<br/>1.1 | **1.6** | 11 | 2 | 6 | Windows AI 1.3+ |
+| 1.0 | **1.6** | 11 | 2 | 6 | Windows AI 1.3+ |
+| 0.5 | **1.5** | 10 | 1 | 5 | Windows AI 1.3+ |
+| 0.4 | **1.5** | 10 | 1 | 5 | Windows AI 1.3+ |
+| 0.3 | **1.4** | 9 | 1 | 3 | Windows 10 2004+ |
+| 0.2 | **1.3** | 8 | 1 | 3 | Windows 10 1903+ |
+| 0.1 | **1.3** | 8 | 1 | 3 | Windows 10 1809+ |
 
 Unless otherwise noted, please use the latest released version of the tools to convert/export the ONNX model. Most tools are backwards compatible and support multiple ONNX versions. Join this with the table above to evaluate ONNX Runtime compatibility.
 

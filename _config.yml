@@ -7,13 +7,13 @@ search.heading_level: 2
 search.button: true
 plugins:
   - jekyll-toc
+  - jekyll-redirect-from
 kramdown:
   parse_block_html: true
   toc_levels: "1,2,3"
 logo: "/images/ONNX-Runtime-logo.svg"
 aux_links:  
-
-  "Onnx Runtime":
+  "ONNX Runtime":
     - "/"
   "Install":
     - "/docs/install/"

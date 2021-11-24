@@ -15,6 +15,7 @@ gem "just-the-docs"
 gem "jekyll-toc"
 gem 'rake'
 gem 'html-proofer'
+gem 'jekyll-redirect-from'
 
 # If you want to use GitHub Pages, remove the "gem "jekyll"" above and
 # uncomment the line below. To upgrade, run `bundle update github-pages`.

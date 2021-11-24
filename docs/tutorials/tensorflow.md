@@ -23,13 +23,9 @@ These examples use the [TensorFlow-ONNX converter](https://github.com/onnx/tenso
 * [TensorFlow: Image classification (efficientnet-edge)](https://github.com/onnx/tensorflow-onnx/blob/master/tutorials/efficientnet-edge.ipynb)
 * [TensorFlow: Image classification (efficientnet-lite)](https://github.com/onnx/tensorflow-onnx/blob/master/tutorials/efficientnet-lite.ipynb)
 * [TensorFlow: Natural Language Processing (BERT)](https://github.com/onnx/tensorflow-onnx/blob/master/tutorials/BertTutorial.ipynb)
+* [TensorFlow: Accelerate BERT model](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/python/tools/transformers/notebooks/Tensorflow_Tf2onnx_Bert-Squad_OnnxRuntime_CPU.ipynb)
 * [Keras: Image classification (Resnet 50)](https://github.com/onnx/tensorflow-onnx/blob/master/tutorials/keras-resnet50.ipynb)
 
 ### TFLite
 {: .no_toc }
 * [TFLite: Image classifciation (mobiledet)](https://github.com/onnx/tensorflow-onnx/blob/master/tutorials/mobiledet-tflite.ipynb)
-
-## Accelerate TensorFlow model inferencing
-{: .no_toc }
-* [Accelerate BERT model on CPU](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/python/tools/transformers/notebooks/PyTorch_Bert-Squad_OnnxRuntime_CPU.ipynb)
-* [Accelerate BERT model on GPU](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/python/tools/transformers/notebooks/PyTorch_Bert-Squad_OnnxRuntime_GPU.ipynb)

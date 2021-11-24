@@ -1,7 +1,9 @@
 ---
 title: Build for web
-parent: Build ORT
+parent: Build ONNX Runtime
+description: Learn how to build ONNX Runtime from source to deploy on the web
 nav_order: 4
+redirect_from: /docs/how-to/build/web
 ---
 
 # Build ONNX Runtime for Web
