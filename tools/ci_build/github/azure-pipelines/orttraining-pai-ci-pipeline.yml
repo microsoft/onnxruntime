@@ -24,6 +24,10 @@ jobs:
     clean: true
   
   - script: |-
+      export
+    displayName: 'List environment variables'
+  
+  - script: |-
       echo "Selecting GPU based on HIP_VISIBLE_DEVICES=$HIP_VISIBLE_DEVICES"
     displayName: 'Initialize environment'
   

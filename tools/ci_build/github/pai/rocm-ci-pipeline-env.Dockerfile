@@ -32,4 +32,4 @@ RUN pip install \
       sentencepiece
 
 RUN pip install torch-ort --no-dependencies
-ENV ORTMODULE_ONNX_OPSET_VERSION 12
+ENV ORTMODULE_ONNX_OPSET_VERSION=12
