@@ -1,7 +1,7 @@
 ---
 title: Deploy on web
 description: Classify images in a NextJS web application built from a GitHub template repo
-parent: Tutorials
+parent: Deploy on Mobile and Web
 has_children: false
 nav_order: 3
 ---
