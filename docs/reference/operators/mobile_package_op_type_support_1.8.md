@@ -1,8 +1,6 @@
 ---
-title: ORT 1.8 Mobile Package Operator and Type Support
-parent: Pre-Built Package
-grand_parent: ONNX Runtime Mobile
-nav_exclude: true
+title: ORT 1.8 Mobile Package Operators
+parent: Reference
 ---
 
 # ONNX Runtime 1.8: Mobile Package Operator and Type Support
