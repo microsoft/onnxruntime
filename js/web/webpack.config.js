@@ -245,7 +245,7 @@ function buildTestRunnerConfig({
       new webpack.DefinePlugin({ BUILD_DEFS: DEFAULT_BUILD_DEFS }),
       new webpack.WatchIgnorePlugin({ paths: [/\.js$/, /\.d\.ts$/] }),
       new NodePolyfillPlugin({
-        excludeAliases: ["console"]
+        excludeAliases: ["console", "Buffer"]
       }),
     ],
     module: {
