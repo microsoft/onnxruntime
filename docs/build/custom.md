@@ -3,7 +3,7 @@ title: Custom build
 description: Customize the ONNX Runtime binaries, including building with a reduced set of operators
 parent: Build ORT
 nav_order: 7
-redirect_from: /docs/tutorials/mobile/custom-build,/docs/build/reduced
+redirect_from: /docs/tutorials/mobile/custom-build,/docs/build/reduced,,/docs/tutorials/mobile/limitations
 ---
 
 # Build a custom ONNX Runtime package
