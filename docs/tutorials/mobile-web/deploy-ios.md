@@ -24,7 +24,7 @@ This example is heavily based on [Google Tensorflow lite - Object Detection Exam
 - A valid Apple Developer ID
 - A real iOS device with a camera (preferably iphone 12/iphone 12 pro)
 - Xcode command line tools `xcode-select --install`
-- Clone the `onnxruntime-inference-examples` source code repo
+- Clone the [onnxruntime-inference-examples](https://github.com/microsoft/onnxruntime-inference-examples) source code repo
 
 ## Prepare the model for mobile deployment
 

@@ -15,7 +15,7 @@ The most common scenario for customizing the ONNX Runtime build is for smaller f
 
 And the most common mechanism to customize the build is to reduce the set of supported operators in the runtime to only those in the model or models that run in the target environment.
 
-To build a custom ONNX Runtime package, the [build](./index.md) instructions apply, with some extra build options that are specified below.
+To build a custom ONNX Runtime package, the [build from source](./index.md) instructions apply, with some extra options that are specified below.
 
 ## Contents
 {: .no_toc }
