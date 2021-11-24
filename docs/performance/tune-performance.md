@@ -162,7 +162,7 @@ Memory consumption can be reduced between multiple sessions by configuring the s
 always be set using the ORT APIs.
 
 ### Custom threading callbacks
-Occasionally, customers might prefer to create their own fine-tuned threads for ORT to use internally,
+Occasionally, customers might prefer to use their own fine-tuned threads for multithreading,
 hence ORT offers thread creation and joining callbacks by [C++ API](https://github.com/microsoft/onnxruntime/blob/master/include/onnxruntime/core/session/onnxruntime_cxx_api.h):
 
 ```
