@@ -302,7 +302,7 @@ OrtValue GptSubgraph::ExpandInputs(const OrtValue& input, int num_beams) const {
   TensorShape expanded_shape(&dims[0], 2);
 
   MLDataType element_type = input.Get<Tensor>().DataType();
-  
+
   OrtValue expanded;
   Tensor::InitOrtValue(element_type, expanded_shape, allocator_, expanded);
 
@@ -316,17 +316,16 @@ OrtValue GptSubgraph::ExpandInputs(const OrtValue& input, int num_beams) const {
         target += sequence_length;
       }
     }
-  }
-  else if (element_type == DataTypeImpl::GetType<float>()) {
-      const float* input_data = input.Get<Tensor>().Data<float>();
-      float* expanded_data = expanded.GetMutable<Tensor>()->MutableData<float>();
-      float* target = expanded_data;
-      for (int i = 0; i < batch_size; i++) {
-        for (int j = 0; j < num_beams; j++) {
-          memcpy(target, input_data + i * sequence_length, sizeof(float) * sequence_length);
-          target += sequence_length;
-        }
+  } else if (element_type == DataTypeImpl::GetType<float>()) {
+    const float* input_data = input.Get<Tensor>().Data<float>();
+    float* expanded_data = expanded.GetMutable<Tensor>()->MutableData<float>();
+    float* target = expanded_data;
+    for (int i = 0; i < batch_size; i++) {
+      for (int j = 0; j < num_beams; j++) {
+        memcpy(target, input_data + i * sequence_length, sizeof(float) * sequence_length);
+        target += sequence_length;
       }
+    }
   }
 
   return expanded;

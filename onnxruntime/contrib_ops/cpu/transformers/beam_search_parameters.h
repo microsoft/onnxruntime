@@ -10,13 +10,13 @@ namespace contrib {
 namespace transformers {
 
 struct BeamSearchParameters {
-  // from node attributes
+  // Parameters from node attributes
   int eos_token_id;
   int pad_token_id;
   int no_repeat_ngram_size;
   bool early_stopping;
 
-  // from inputs
+  // Parameters from inputs
   int min_length;
   int max_length;
   int num_beams;
@@ -29,14 +29,15 @@ struct BeamSearchParameters {
 
   gsl::span<const int32_t> vocab_mask;
 
-  // from outputs
+  // Parameters from outputs.
   bool output_scores;  // whether scores existed in output
 
-  // deduce from subgraph
+  // Parameters from subgraph.
   int vocab_size;
-  int num_heads; // not used
-  int head_size; // not used
-  int num_layers; // not used
+  // Below are used in CPU, reserved for CUDA.
+  int num_heads;
+  int head_size;
+  int num_layers;
 
   Status Validate();
 

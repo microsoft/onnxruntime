@@ -51,6 +51,47 @@ REGISTER_KERNEL_TYPED(float)
 namespace transformers {
 
 template <typename T>
+struct BeamSearchState {
+  // TODO: use allocater to allocate a buffer, and point each data to a span of the buffer
+  //       so as to reuse related code in CUDA.
+  std::vector<bool> done;      // shape (batch_size)
+  std::vector<T> beam_scores;  // shape (batch_size, num_beams)
+
+  std::vector<T> next_token_logits;  // shape (batch_size * num_beams, vocab_size)
+  std::vector<T> next_token_scores;  // shape (batch_size, num_beams * vocab_size)
+
+  std::vector<int64_t> next_tokens;   // shape (batch_size, num_beams)
+  std::vector<int64_t> next_indices;  // shape (batch_size, num_beams)
+
+  Sequences sequences;
+
+  std::vector<T> scores;  // shape (max_length - sequence_length + 1, batch_size, num_beams * vocab_size)
+
+  void Init(const OrtValue& input_ids, int batch_size, int num_beams, int vocab_size, int sequence_length, int max_length, bool output_scores) {
+    int batch_beam_size = batch_size * num_beams;
+    done.assign(batch_size, 0);
+    beam_scores.assign(batch_beam_size, 0.0f);
+    for (int i = 0; i < batch_size; i++) {
+      for (int j = 1; j < num_beams; j++) {
+        beam_scores[i * num_beams + j] = -1e9;
+      }
+    }
+
+    next_token_logits.assign(batch_beam_size * vocab_size, 0.0f);
+    next_token_scores.assign(batch_beam_size * vocab_size, 0.0f);
+
+    next_tokens.assign(batch_beam_size, 0);
+    next_indices.assign(batch_beam_size, 0);
+
+    sequences.Init(input_ids, batch_beam_size, sequence_length, max_length);
+
+    if (output_scores) {
+      scores.reserve((max_length - sequence_length) * batch_size * num_beams * vocab_size);
+    }
+  }
+};
+
+template <typename T>
 class BeamSearchImpl {
  public:
   BeamSearchImpl(OpKernelContextInternal& context,
@@ -60,14 +101,15 @@ class BeamSearchImpl {
                  void* stream,
                  BeamSearchParameters& params);
 
-  // Initialize by validating all the inputs, and allocating the output tensors
+  // Initialize by validating all the inputs, and allocating the output tensors.
   Status Initialize();
 
-  // Execute the batch, by iterating the sequence in each batch entry
-  // and calling the subgraph with each item in the sequence.
+  // Execute beam search in iterations util stopping criteria is reached.
+  // In each iteration, GPT subgraph is called, and next token for each sequence is generated.
   Status Execute(const FeedsFetchesManager& cached_ffm);
 
  private:
+  // Validate inputs.
   Status CheckInputs(const OpKernelContextInternal& context);
 
   // Prepare the inputs for first inference of subgraph
@@ -81,23 +123,25 @@ class BeamSearchImpl {
       gsl::span<const int64_t> beam_next_tokens,
       gsl::span<const int64_t> beam_indices);
 
-  // Process logits and append next tokens to sequences
+  // Process logits and append next tokens to sequences.
   Status GenerateNextToken(const OrtValue& logits,
                            gsl::span<int64_t>& beam_next_tokens,
                            gsl::span<int64_t>& beam_indices);
 
+  // Calculate scores from logits, then apply filtering and select next token for each beam.
   Status ProcessLogits(const OrtValue& logits,
                        BeamSearchState<T>& beam_state,
                        int top_k,
                        AllocatorPtr& allocator);
 
-  // Mask tokens accroding to vocab_mask
+  // Mask tokens according to vocab_mask.
   void ApplyVocabMask(gsl::span<T>& next_token_scores);
 
-  // Apply repetion penalty
+  // Apply repetition penalty.
   void ApplyRepetitionPenalty(const Sequences& sequences, gsl::span<T>& next_token_scores);
 
   OpKernelContextInternal& context_;
+
   const SessionState& session_state_;
 
   GptSubgraph& gpt_subgraph_;
@@ -120,12 +164,11 @@ class BeamSearchImpl {
 
 template <typename T>
 void BeamSearch<T>::Init(const OpKernelInfo& info) {
-  // make sure the attribute was present even though we don't need it here.
+  // Make sure the attribute was present even though we don't need it here.
   // The GraphProto is loaded as a Graph instance by main Graph::Resolve,
   // and a SessionState instance for executing the subgraph is created by InferenceSession.
   // This is available via Info().GetSubgraphSessionState("attribute_name") when Compute is called.
   ONNX_NAMESPACE::GraphProto proto;
-
   ORT_ENFORCE(info.GetAttr<ONNX_NAMESPACE::GraphProto>("body", &proto).IsOK());
   ORT_IGNORE_RETURN_VALUE(proto);
 
@@ -221,6 +264,8 @@ Status BeamSearchImpl<T>::CheckInputs(const OpKernelContextInternal& context) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'vocab_mask' is expected to have 1 dimension, got ",
                              vocab_mask_dims.size());
     }
+
+    // There is dependency on vocab_size parameter, which shall be set before calling this function.
     if (static_cast<int>(vocab_mask_dims[0]) != parameters_->vocab_size) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'vocab_mask' shape does not match with vocab_size, got ",
                              vocab_mask_dims[0]);
@@ -262,7 +307,6 @@ Status BeamSearchImpl<T>::Initialize() {
 
   ORT_RETURN_IF(parameters_->num_return_sequences > parameters_->num_beams, "'num_return_sequences' has to be smaller or equal to 'num_beams'.");
 
-  // CheckInputs shall be after CheckSubgraph due to its dependency on vocab_size
   ORT_RETURN_IF_ERROR(CheckInputs(context_));
 
   // This flag will be updated later when the scores output exists.
@@ -288,7 +332,6 @@ Status BeamSearchImpl<T>::ProcessLogits(
   const int& vocab_size = parameters_->vocab_size;
 
 #ifdef DEBUG_BEAM_SEARCH
-  //DumpOrtValue("input_ids", input_ids);
   DumpOrtValue("logits", logits);
 #endif
 
@@ -298,7 +341,7 @@ Status BeamSearchImpl<T>::ProcessLogits(
   ORT_ENFORCE(logits_shape.NumDimensions() == 3);
 
   // The sequence length of input_ids for the logits.
-  // It equals parameters_->sequence_length for first subgraph call, and 1 for the remaining.
+  // It equals to parameters_->sequence_length for first subgraph call, and 1 for the remaining calls.
   auto input_length = logits_shape[1];
 
   // Get logits for the last token, where logits has shape (batch_size * num_beams, input_length, vocab_size)
@@ -347,8 +390,9 @@ Status BeamSearchImpl<T>::ProcessLogits(
     beam_state.scores.insert(beam_state.scores.end(), next_token_scores.begin(), next_token_scores.end());
   }
 
-  //next_token_scores = next_token_scores.view(batch_size, num_beams * vocab_size)
-  //next_token_scores, next_tokens = torch.topk(next_token_scores, 2 * num_beams, dim=1, largest=True, sorted=True)
+  // Apply top-k selection like the following:
+  //   next_token_scores = next_token_scores.view(batch_size, num_beams * vocab_size)
+  //   next_token_scores, next_tokens = torch.topk(next_token_scores, 2 * num_beams, dim=1, largest=True, sorted=True)
   int64_t next_token_scores_dims[] = {parameters_->batch_size, parameters_->num_beams * vocab_size};
   TensorShape next_token_scores_shape(&next_token_scores_dims[0], 2);
   auto element_type = DataTypeImpl::GetType<T>();
@@ -377,8 +421,9 @@ Status BeamSearchImpl<T>::ProcessLogits(
   DumpTensor<int64_t>("topk_indices", *(topk_indices.get()));
 #endif
 
-  //next_indices = (next_tokens / vocab_size).long()
-  //next_tokens = next_tokens % vocab_size
+  // Convert indices in range [0, num_beams * vocab_size) to token ID of range [0, vocab_size) like the following:
+  //   next_indices = (next_tokens / vocab_size).long()
+  //   next_tokens = next_tokens % vocab_size
   gsl::span<const int64_t> next_token_indices = topk_indices->DataAsSpan<int64_t>();
   beam_state.next_indices.resize(parameters_->batch_size * k);
   beam_state.next_tokens.resize(parameters_->batch_size * k);
@@ -402,7 +447,7 @@ Status BeamSearchImpl<T>::ProcessLogits(
 
   beam_scorer_->Process(
       &(beam_state.sequences),
-      next_scores,  //next_token_scores,
+      next_scores,
       next_tokens,
       next_indices,
       allocator);
