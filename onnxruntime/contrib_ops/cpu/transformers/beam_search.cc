@@ -371,9 +371,9 @@ Status BeamSearchImpl<T>::ProcessLogits(
   }
 
   // Apply all score processors that updates scores
-  ApplyVocabMask(next_token_scores);
   ApplyRepetitionPenalty(beam_state.sequences, next_token_scores);
-
+  ApplyVocabMask(next_token_scores);
+  
   // next_token_scores = next_token_scores + beam_scores[:, None].expand_as(next_token_scores)
   // TODO: use thread pool to parrellel
   int offset = 0;
