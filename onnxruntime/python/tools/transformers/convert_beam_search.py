@@ -8,6 +8,7 @@ import argparse
 from pathlib import Path
 from onnx import helper
 import numpy as np
+import torch
 from transformers import GPT2Config
 from gpt2_helper import PRETRAINED_GPT2_MODELS
 from convert_to_onnx import main as convert_gpt2_to_onnx
@@ -293,11 +294,21 @@ def convert_model(args):
 
 def test_model(args):
     from transformers import GPT2Tokenizer, GPT2LMHeadModel
+
     tokenizer = GPT2Tokenizer.from_pretrained(args.model_name_or_path, cache_dir=args.cache_dir)
+    tokenizer.padding_side = "left"
+    tokenizer.pad_token = tokenizer.eos_token
+
     model = GPT2LMHeadModel.from_pretrained(args.model_name_or_path,
                                             cache_dir=args.cache_dir,
                                             pad_token_id=tokenizer.eos_token_id)
-    input_ids = tokenizer.encode('I enjoy walking in the park', return_tensors='pt')
+
+    # use different length sentences to test batching
+    sentences = ["The product is released", "I enjoy walking in the park"]
+
+    inputs = tokenizer(sentences, return_tensors='pt', padding=True)
+    input_ids = inputs["input_ids"]
+    attention_mask = inputs["attention_mask"]
 
     bad_words = "walk in park"
     bad_words_ids = tokenizer.encode(bad_words, add_prefix_space=True)
@@ -305,9 +316,7 @@ def test_model(args):
     print("bad_words_ids", bad_words_ids)
 
     global config
-    if config is None:
-        config = GPT2Config.from_pretrained(args.model_name_or_path, cache_dir=args.cache_dir)
-
+    config = model.config
     eos_token_id = config.eos_token_id
     pad_token_id = config.eos_token_id
     vocab_size = config.vocab_size
@@ -315,7 +324,8 @@ def test_model(args):
     if args.run_baseline:
         print('-' * 50)
         print("Test PyTorch model and beam search with huggingface transformers...")
-        beam_outputs = model.generate(input_ids,
+        beam_outputs = model.generate(input_ids=input_ids,
+                                      attention_mask=attention_mask,
                                       max_length=args.max_length,
                                       min_length=args.min_length,
                                       num_beams=args.num_beams,
@@ -349,9 +359,6 @@ def test_model(args):
     time.sleep(15)
 
     ort_session = create_ort_session(args.output, args.use_gpu)
-
-    batch_size = 1
-    input_ids = input_ids.repeat(batch_size, 1)
 
     vocab_mask = np.ones((vocab_size), dtype=np.int32)
     for bad_word_id in bad_words_ids:
@@ -392,6 +399,16 @@ def test_model(args):
         for j in range(num_sequences):
             sequence = tokenizer.decode(sequences[i][j], skip_special_tokens=True)
             print(f"batch {i} sequence {j}: {sequence}")
+
+    if args.run_baseline:
+        torch_sequences = beam_outputs.sequences.reshape(sequences.shape)
+        ort_sequences = torch.LongTensor(sequences)
+        print(torch_sequences)
+        print(ort_sequences)
+        is_same = torch.equal(torch_sequences, ort_sequences)
+
+        print("Torch and ORT result is ", "same" if is_same else "different")
+        return is_same
 
 
 def main():
