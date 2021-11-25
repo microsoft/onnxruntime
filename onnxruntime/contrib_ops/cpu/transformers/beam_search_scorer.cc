@@ -13,7 +13,7 @@
 
 namespace onnxruntime {
 namespace contrib {
-
+namespace transformers {
 using ::onnxruntime::rnn::detail::Allocate;
 
 template <typename T>
@@ -280,5 +280,6 @@ template class HypothesisScoreCompare<float>;
 template class BeamHypotheses<float>;
 template class BeamSearchScorer<float>;
 
+}  // namespace transformers
 }  // namespace contrib
 }  // namespace onnxruntime

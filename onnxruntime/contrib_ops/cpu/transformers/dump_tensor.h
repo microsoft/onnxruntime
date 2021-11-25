@@ -6,7 +6,13 @@
 #include <string>
 #include "core/framework/tensorprotoutils.h"
 
+#ifndef NDEBUG
+//#define DEBUG_BEAM_SEARCH 1  // uncomment it for debugging beam search
+#endif
+
 namespace onnxruntime {
+namespace contrib {
+namespace transformers {
 
 #define MAX_ROW_OR_COLUMN 8
 
@@ -137,4 +143,6 @@ void ConfigureTensorDump();
 
 void DisableTensorDump();
 
+}  // namespace transformers
+}  // namespace contrib
 }  // namespace onnxruntime

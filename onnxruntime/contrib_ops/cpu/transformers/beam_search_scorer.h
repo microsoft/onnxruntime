@@ -11,15 +11,11 @@
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/utils.h"
 #include "core/providers/cpu/tensor/utils.h"
+#include "sequences.h"
+
 namespace onnxruntime {
 namespace contrib {
-
-class ISequences {
- public:
-  virtual ~ISequences() {}
-  virtual gsl::span<const int64_t> GetSequence(int beam_index) const = 0;
-  virtual int GetSequenceLength() = 0;
-};
+namespace transformers {
 
 // Interface for all scorers for beam search or beam sample.
 template <typename T>
@@ -138,5 +134,6 @@ class BeamSearchScorer : public IBeamScorer<T> {
   int hypothesis_buffer_offset_;                        // Offset of avaiable buffer, or length of used buffer.
 };
 
+}  // namespace transformers
 }  // namespace contrib
 }  // namespace onnxruntime

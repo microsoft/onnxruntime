@@ -2,10 +2,11 @@
 // Licensed under the MIT License.
 #include "beam_search_parameters.h"
 
-constexpr int kMaxSequenceLength = 4096;
-
 namespace onnxruntime {
 namespace contrib {
+namespace transformers {
+
+constexpr int kMaxSequenceLength = 4096;
 
 Status BeamSearchParameters::Validate() {
   ORT_RETURN_IF(eos_token_id < 0, "eos_token_id is invalid");
@@ -58,12 +59,13 @@ void BeamSearchParameters::ParseFromInputs(OpKernelContext* context) {
   ORT_ENFORCE(repetition_penalty > 0.0f, "repetition_penalty shall be greater than 0, got ", repetition_penalty);
 }
 
-void BeamSearchParameters::SetSubgraphParameters(int heads, int hidden_size_per_head, int vocabulary_size, int layers) {
+void BeamSearchParameters::SetSubgraphParameters(int vocabulary_size, int heads, int hidden_size_per_head, int layers) {
+  vocab_size = vocabulary_size;
   num_heads = heads;
   head_size = hidden_size_per_head;
-  vocab_size = vocabulary_size;
   num_layers = layers;
 }
 
+}  // namespace transformers
 }  // namespace contrib
 }  // namespace onnxruntime
