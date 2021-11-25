@@ -180,7 +180,7 @@ class ONNXQuantizer:
 
         for curr_node in self.model.nodes():
             if curr_node.op_type == 'QuantizeLinear':
-                next_node, prev_node, succ_node = None, None, None
+                next_node, prev_node = None, None
                 for child_node in self.model.get_children(curr_node):
                     if child_node.op_type == 'DequantizeLinear':
                         next_node = child_node
@@ -191,8 +191,16 @@ class ONNXQuantizer:
 
                 prev_node = self.model.get_parent(curr_node, 0)
                 if prev_node is None:
-                    raise ValueError("Remove fake-quantized node pair Error: Parent node is not found for {}.".format(
-                        curr_node.name))
+                    # Check if the parent is in initializer
+                    if len(curr_node.input) <= 0 or curr_node.input[0] is None:
+                        raise ValueError("Remove fake-quantized node pair Error: Parent node is not found for {}.".format(
+                            curr_node.name))
+
+                    prev_tensor_name = curr_node.input[0]
+                    initializer_in = find_by_name(prev_tensor_name, self.model.initializer())
+                    if initializer_in is None:
+                        raise ValueError("Remove fake-quantized node pair Error: Parent node is not found for {}.".format(
+                            curr_node.name))
 
                 succ_nodes = self.model.get_children(next_node)
                 if len(succ_nodes) == 0:
@@ -204,6 +212,20 @@ class ONNXQuantizer:
                 zp_tensor_name = curr_node.input[2]
                 initializer_scale = find_by_name(scale_tensor_name, self.model.initializer())
                 initializer_zp = find_by_name(zp_tensor_name, self.model.initializer())
+                if initializer_scale is None:
+                    # Check if the scale is defined as a constant node
+                    scale_node = self.model.get_parent(curr_node, 1)
+                    if scale_node.op_type == "Constant":
+                        for attr in scale_node.attribute:
+                            if attr.name == "value":
+                                initializer_scale = onnx.helper.get_attribute_value(attr)
+                if initializer_zp is None:
+                    # Check if the zp is defined as a constant node
+                    zp_node = self.model.get_parent(curr_node, 2)
+                    if zp_node.op_type == "Constant":
+                        for attr in zp_node.attribute:
+                            if attr.name == "value":
+                                initializer_zp = onnx.helper.get_attribute_value(attr)
                 zp_and_scale = [
                     onnx.numpy_helper.to_array(initializer_zp),
                     onnx.numpy_helper.to_array(initializer_scale)
@@ -224,6 +246,12 @@ class ONNXQuantizer:
                     self.quantization_params = {}
                 self.quantization_params[param_name] = zp_and_scale
 
+                for succ_node in succ_nodes:
+                    # Weight is transposed sometimes
+                    if succ_node.op_type == 'Transpose':
+                        param_name = succ_node.output[0]
+                        self.quantization_params[param_name] = zp_and_scale
+
                 # remove fake-quantized nodes
                 nodes_to_remove.extend([curr_node])
                 nodes_to_remove.extend([next_node])
@@ -231,6 +259,70 @@ class ONNXQuantizer:
                 # remove unused initializers in graph
                 initializers_to_remove.extend([initializer_scale])
                 initializers_to_remove.extend([initializer_zp])
+
+            # Optimizing the model constant propagates the initializer, removing QuantizeLinear.
+            # Ensure QuantizeLinear is added rather than dynamic quantization.
+            elif curr_node.op_type == 'DequantizeLinear':
+                if curr_node in nodes_to_remove:
+                    continue
+
+                prev_node = None
+
+                prev_node = self.model.get_parent(curr_node, 0)
+                if prev_node is not None:
+                    # If part of QuantizeLinear + DequantizeLinear pair, already handled above
+                    if prev_node.op_type == 'QuantizeLinear':
+                        continue
+
+                if prev_node is None:
+                    # Check if the parent is in initializer
+                    if len(curr_node.input) <= 0 or curr_node.input[0] is None:
+                        raise ValueError("Remove fake-quantized node pair Error: Parent node is not found for {}.".format(
+                            curr_node.name))
+
+                    prev_tensor_name = curr_node.input[0]
+                    initializer_in = find_by_name(prev_tensor_name, self.model.initializer())
+                    if initializer_in is None:
+                        raise ValueError("Remove fake-quantized node pair Error: Parent node is not found for {}.".format(
+                            curr_node.name))
+
+                succ_nodes = self.model.get_children(curr_node)
+                if len(succ_nodes) == 0:
+                    raise ValueError("Remove fake-quantized node pair Error: No successive nodes found for {}.".format(
+                        curr_node.name))
+
+                # TODO: convert it to the specified input_type
+                scale_tensor_name = curr_node.input[1]
+                zp_tensor_name = curr_node.input[2]
+                initializer_scale = find_by_name(scale_tensor_name, self.model.initializer())
+                initializer_zp = find_by_name(zp_tensor_name, self.model.initializer())
+                if initializer_scale is None:
+                    scale_node = self.model.get_parent(curr_node, 1)
+                    if scale_node.op_type == "Constant":
+                        for attr in scale_node.attribute:
+                            if attr.name == "value":
+                                initializer_scale = onnx.helper.get_attribute_value(attr)
+                if initializer_zp is None:
+                    zp_node = self.model.get_parent(curr_node, 2)
+                    if zp_node.op_type == "Constant":
+                        for attr in zp_node.attribute:
+                            if attr.name == "value":
+                                initializer_zp = onnx.helper.get_attribute_value(attr)
+                zp_and_scale = [
+                    onnx.numpy_helper.to_array(initializer_zp),
+                    onnx.numpy_helper.to_array(initializer_scale)
+                ]
+
+                param_name = curr_node.input[0]
+                if self.quantization_params is None:
+                    self.quantization_params = {}
+                self.quantization_params[param_name] = zp_and_scale
+
+                for succ_node in succ_nodes:
+                    # Weight is transposed sometimes
+                    if succ_node.op_type == 'Transpose':
+                        param_name = succ_node.output[0]
+                        self.quantization_params[param_name] = zp_and_scale
 
         self.model.remove_nodes(nodes_to_remove)
         self.model.remove_initializers(initializers_to_remove)
