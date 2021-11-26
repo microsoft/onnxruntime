@@ -373,7 +373,7 @@ Status BeamSearchImpl<T>::ProcessLogits(
   // Apply all score processors that updates scores
   ApplyRepetitionPenalty(beam_state.sequences, next_token_scores);
   ApplyVocabMask(next_token_scores);
-  
+
   // next_token_scores = next_token_scores + beam_scores[:, None].expand_as(next_token_scores)
   // TODO: use thread pool to parrellel
   int offset = 0;
@@ -514,8 +514,16 @@ void BeamSearchImpl<T>::ApplyRepetitionPenalty(const Sequences& sequences, gsl::
   for (int i = 0; i < batch_beam_size; i++) {
     gsl::span<T> beam_token_scores = next_token_scores.subspan(i * parameters_->vocab_size, parameters_->vocab_size);
     gsl::span<const int64_t> sequence = sequences.GetSequence(i);
-    for (const int64_t& word_id : sequence) {
+
+    // Find unique word IDs in sequence.
+    std::unordered_set<int64_t> unique_word_ids;
+    for (const auto& word_id : sequence) {
+      unique_word_ids.insert(word_id);
+    }
+
+    for (const int64_t word_id : unique_word_ids) {
       T score = beam_token_scores[word_id];
+
       // If score < 0, then repetition penalty > 1.0 has to multiplied to reduce the previous token probability,
       // This assumes that scores are either positive (like ctrl) or negative (like GPT-2), but not a mixture.
       beam_token_scores[word_id] = (score < 0 ? score * parameters_->repetition_penalty : score / parameters_->repetition_penalty);

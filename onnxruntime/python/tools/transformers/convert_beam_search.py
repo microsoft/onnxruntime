@@ -403,13 +403,16 @@ def test_model(args):
     if args.run_baseline:
         torch_sequences = beam_outputs.sequences.reshape(sequences.shape)
         ort_sequences = torch.LongTensor(sequences)
+        print("-" * 50)
+        print("Torch Sequences:")
         print(torch_sequences)
+        print("-" * 50)
+        print("ORT Sequences:")
         print(ort_sequences)
+        print("-" * 50)
         is_same = torch.equal(torch_sequences, ort_sequences)
-
         print("Torch and ORT result is ", "same" if is_same else "different")
         return is_same
-
 
 def main():
     args = parse_arguments()
