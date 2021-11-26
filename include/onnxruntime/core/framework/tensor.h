@@ -36,11 +36,14 @@ namespace onnxruntime {
 */
 class Tensor final {
  public:
-  static std::unique_ptr<Tensor> Create(MLDataType p_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator) {
+  static std::unique_ptr<Tensor> Create(MLDataType p_type, const TensorShape& shape,
+                                        std::shared_ptr<IAllocator> allocator) {
     return std::make_unique<Tensor>(p_type, shape, std::move(allocator));
   }
-  static std::unique_ptr<Tensor> Create(MLDataType p_type, const TensorShape& shape, void* p_data, const OrtMemoryInfo& alloc, ptrdiff_t offset = 0) {
-    return std::make_unique<Tensor>(p_type, shape, p_data, alloc, offset);
+  static std::unique_ptr<Tensor> Create(MLDataType p_type, const TensorShape& shape, void* p_data,
+                                        const OrtMemoryInfo& alloc, ptrdiff_t offset = 0,
+                                        const int64_t* p_strides = nullptr) {
+    return std::make_unique<Tensor>(p_type, shape, p_data, alloc, offset, p_strides);
   }
 
   Tensor() = default;  // to allow creating vector<Tensor> to support seq(tensor)
@@ -56,7 +59,7 @@ class Tensor final {
    * \param offset Offset in bytes to start of Tensor within p_data. 
    */
   Tensor(MLDataType p_type, const TensorShape& shape, void* p_data, const OrtMemoryInfo& alloc,
-         ptrdiff_t offset = 0);
+         ptrdiff_t offset = 0, const int64_t* p_strides = nullptr);
 
   /// <summary>
   /// Creates an instance of Tensor on the heap using the appropriate __ctor and
@@ -69,7 +72,7 @@ class Tensor final {
   /// <param name="offset"></param>
   static void InitOrtValue(MLDataType p_type, const TensorShape& shape,
                            void* p_data, const OrtMemoryInfo& location,
-                           OrtValue& ort_value);
+                           OrtValue& ort_value, ptrdiff_t offset = 0, const int64_t* p_strides = nullptr);
 
   /**
    * Deprecated. The orginal design is this Tensor class won't do any allocation / release.
@@ -102,7 +105,7 @@ class Tensor final {
    * \param offset Offset in bytes to start of Tensor within p_data. 
    */
   Tensor(MLDataType p_type, const TensorShape& shape, void* p_data, std::shared_ptr<IAllocator> deleter,
-         ptrdiff_t offset = 0);
+         ptrdiff_t offset = 0, const int64_t* p_strides = nullptr);
 
   ~Tensor();
 
@@ -244,15 +247,24 @@ class Tensor final {
   */
   size_t SizeInBytes() const;
 
+  std::vector<int64_t> Strides() const;
+  const int64_t* StridesPtr() const;
+  bool IsContiguous() const { return is_contiguous_; }
+
+  void SetStrides(const std::vector<int64_t>& new_strides);
+
   // More API methods.
  private:
   void Init(MLDataType p_type,
             const TensorShape& shape,
             void* p_raw_data,
             AllocatorPtr deleter,
-            ptrdiff_t offset = 0);
+            ptrdiff_t offset = 0,
+            const int64_t* p_strides = nullptr);
 
   void ReleaseBuffer();
+
+  bool CheckIsContiguous() const;
 
   void* p_data_;
   /**
@@ -263,6 +275,9 @@ class Tensor final {
   AllocatorPtr buffer_deleter_;
 
   TensorShape shape_;
+  std::vector<int64_t> strides_;
+  bool is_contiguous_ = true;
+
   const PrimitiveDataTypeBase* dtype_;
   OrtMemoryInfo alloc_info_;
   ptrdiff_t byte_offset_;

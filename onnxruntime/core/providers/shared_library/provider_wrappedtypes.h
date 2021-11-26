@@ -463,6 +463,16 @@ struct KernelDefBuilder final {
     return *this;
   }
 
+  KernelDefBuilder& MayStridedInputs() {
+    g_host->KernelDefBuilder__MayStridedInputs(this);
+    return *this;
+  }
+
+  KernelDefBuilder& MayStridedOutputs() {
+    g_host->KernelDefBuilder__MayStridedOutputs(this);
+    return *this;
+  }
+
   std::unique_ptr<KernelDef> Build() {
     return g_host->KernelDefBuilder__Build(this);
   }
@@ -871,6 +881,10 @@ struct Tensor final {
   int32_t GetElementType() const { return g_host->Tensor__GetElementType(this); }
   MLDataType DataType() const { return g_host->Tensor__DataType(this); }
   bool IsDataTypeString() const { return g_host->Tensor__IsDataTypeString(this); }
+
+  std::vector<int64_t> Strides() const noexcept { return g_host->Tensor__Strides(this); }
+  bool IsContiguous() const { return g_host->Tensor__IsContiguous(this); }
+  void SetStrides(const std::vector<int64_t>& new_strides) { return g_host->Tensor__SetStrides(this, new_strides); }
 
   template <class T>
   bool IsDataType() const;

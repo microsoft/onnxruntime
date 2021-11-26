@@ -15,7 +15,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     1, 12,
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
-        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
+        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()).MayStridedOutputs(),
     Transpose);
 
 ONNX_OPERATOR_KERNEL_EX(
@@ -24,7 +24,7 @@ ONNX_OPERATOR_KERNEL_EX(
     13,
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
-        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
+        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()).MayStridedOutputs(),
     Transpose);
 
 // special case acceleration using cublas matrix transpose
@@ -224,23 +224,32 @@ Status Transpose::DoTranspose(const cudaDeviceProp& prop,
 }
 
 Status Transpose::ComputeInternal(OpKernelContext* ctx) const {
-  const Tensor* X_ptr = ctx->Input<Tensor>(0);
-  if (X_ptr == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
-  const Tensor& X = *X_ptr;
-  const TensorShape& input_shape = X.Shape();
-  int32_t rank = gsl::narrow_cast<int32_t>(input_shape.NumDimensions());
-
+  const Tensor* p_X = ctx->Input<Tensor>(0);
+  if (!p_X) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
+  const Tensor& X  = *p_X;
+  const TensorShape& X_shape = X.Shape();
+  size_t rank = X_shape.NumDimensions();
   std::vector<int64_t> output_dims(rank);
   std::vector<size_t> default_perm(rank);
   const std::vector<size_t>* p_perm = nullptr;
   const auto& status = ComputeOutputShape(X, output_dims, default_perm, p_perm);
-  if (!status.IsOK())
-    return status;
+  if (!status.IsOK()) return status;
+  TensorShape Y_shape(output_dims);
+  Tensor* p_Y = ctx->Output(0, Y_shape);
 
-  TensorShape output_shape{output_dims};
-  Tensor* Y = ctx->Output(0, output_shape);
+  if (X.DataRaw() != p_Y->DataRaw()) {
+    return DoTranspose(this->GetDeviceProp(), this->Stream(), this->CublasHandle(), *p_perm, X, *p_Y);
+  }
 
-  return DoTranspose(this->GetDeviceProp(), this->Stream(), this->CublasHandle(), *p_perm, X, *Y);
+  // Set strides.
+  std::vector<int64_t> old_strides = X.Strides();
+  std::vector<int64_t> new_strides(rank);
+  for (size_t i = 0; i < rank; ++i) {
+    new_strides[i] = old_strides[(*p_perm)[i]];
+  }
+
+  p_Y->SetStrides(new_strides);
+  return Status::OK();
 }
 
 }  // namespace cuda

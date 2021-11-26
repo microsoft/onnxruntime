@@ -359,6 +359,43 @@ class PlannerImpl {
     return false;
   }
 
+  // TODO: currently we check this at node level, means if any of the output node that cannot support strided tensor connects
+  // to any of the node output, we will not enable strided output. It's possible that we can do this in single output level
+  // in the future, means we can stride part of the outputs and meterialize the others according to the consumers.
+  bool CanStrided(const onnxruntime::Node& node, OrtValueIndex* reusable_input, const std::vector<const NodeArg*>& graph_outputs) {
+    const KernelCreateInfo& ci = GetKernelCreateInfo(kernel_create_info_map_, node.Index());
+    if (!ci.kernel_def || !ci.kernel_def->MayStridedOutputs()) {
+      return false;
+    }
+
+    // TODO: DLPack can support strided tensor, which means we can pass strided tensors to Torch for OrtModule.
+    const auto& output_defs = node.OutputDefs();
+    for (size_t i = 0, j = output_defs.size(); i < j; ++i) {
+      const auto& node_output = output_defs[i];
+      if (!node_output->Exists()) continue;
+      if (std::find(graph_outputs.begin(), graph_outputs.end(), node_output) != graph_outputs.end()) {
+        return false;
+      }
+    }
+
+    for (auto it = node.OutputNodesBegin(); it != node.OutputNodesEnd(); ++it) {
+      const KernelCreateInfo& output_node_ci = GetKernelCreateInfo(kernel_create_info_map_, it->Index());
+      if (!output_node_ci.kernel_def || !output_node_ci.kernel_def->MayStridedInputs()) {
+        return false;
+      }
+    }
+
+    // TODO: It's possible that the outputs share an input that are not the first one.
+    // Currently we assume the 1st one is shared.
+    auto p_input_arg = node.InputDefs()[0];
+    if (!p_input_arg->Exists()) {
+      return false;
+    }
+
+    *reusable_input = Index(p_input_arg->Name());
+    return true;
+  }
+
   static bool SameShape(const TensorShapeProto& shape1, const TensorShapeProto& shape2) {
     // TODO: This should probably be defined to be the equality operator on TensorShapeProto.
     namespace on = ONNX_NAMESPACE;
@@ -836,6 +873,8 @@ class PlannerImpl {
       const auto& output_defs = pnode->OutputDefs();
       // External outputs flag.
       bool has_external_outputs = HasExternalOutputs(*pnode);
+      OrtValueIndex strided_reused = -1;
+      bool can_strided = CanStrided(*pnode, &strided_reused, graph_outputs);
       // output_arg_def_index is the index of ArgDefs in pnode's output list.
       // At the i-th iteration, we build the allocation plan for the i-th
       // NodeArg in pnode's output list. Allocation plan remains untouched for
@@ -897,6 +936,11 @@ class PlannerImpl {
               }
             }
           }
+        } else if (!context_.IsParallelExecutionEnabled() && can_strided) {
+          Reuse(strided_reused, current, AllocKind::kReuse);
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
+          InplaceReuse(strided_reused, current);
+#endif
         } else if (!context_.IsParallelExecutionEnabled() &&
                    FindReusableInput(*pnode, static_cast<int>(output_arg_def_index), &reused)) {
           // Re-using inputs is applicable for tensors, sequence tensors,

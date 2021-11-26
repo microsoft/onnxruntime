@@ -90,6 +90,9 @@ class KernelDef {
 
   bool HasExternalOutputs() const { return external_outputs_; }
 
+  bool MayStridedInputs() const { return may_strided_inputs; }
+  bool MayStridedOutputs() const { return may_strided_outputs; }
+
   OrtMemType OutputMemoryType(size_t output_index) const {
     auto it = output_memory_type_args_.find(output_index);
     if (it == output_memory_type_args_.end())
@@ -162,6 +165,9 @@ class KernelDef {
 
   // Whether the outputs are from external.
   bool external_outputs_ = false;
+
+  bool may_strided_inputs = false;
+  bool may_strided_outputs = false;
 
   // The memory types of inputs/outputs of this kernel
   MemTypeMap input_memory_type_args_;
@@ -295,6 +301,16 @@ class KernelDefBuilder {
   */
   KernelDefBuilder& ExternalOutputs() {
     kernel_def_->external_outputs_ = true;
+    return *this;
+  }
+
+  KernelDefBuilder& MayStridedInputs() {
+    kernel_def_->may_strided_inputs = true;
+    return *this;
+  }
+
+  KernelDefBuilder& MayStridedOutputs() {
+    kernel_def_->may_strided_outputs = true;
     return *this;
   }
 

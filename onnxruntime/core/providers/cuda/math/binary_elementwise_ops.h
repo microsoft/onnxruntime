@@ -106,6 +106,46 @@ struct BinaryElementwisePreparation {
 
     return Status::OK();
   }
+
+  Status BinaryElementwiseBroadcastPrepareHelperForStridedTensors() {
+    ORT_ENFORCE(lhs_tensor && rhs_tensor && output_tensor);
+    int32_t lhs_rank = gsl::narrow_cast<int32_t>(lhs_tensor->Shape().NumDimensions());
+    int32_t rhs_rank = gsl::narrow_cast<int32_t>(rhs_tensor->Shape().NumDimensions());
+    int32_t out_rank = gsl::narrow_cast<int32_t>(output_tensor->Shape().NumDimensions());
+    output_rank_or_simple_broadcast = out_rank;
+
+    if (!lhs_tensor->IsContiguous() || lhs_tensor->Shape() != output_tensor->Shape()) {
+      std::vector<int64_t> lhs_strides = lhs_tensor->Strides();
+      lhs_padded_strides.SetSize(out_rank);
+      int32_t offset = out_rank - lhs_rank;
+      for (int32_t i = offset; i < out_rank; ++i) {
+        // the stride for broadcast dimension is kept as 0
+        if (lhs_tensor->Shape()[i - offset] != 1) {
+          lhs_padded_strides[i] = lhs_strides[i - offset];
+        }
+      }
+    }
+
+    if (!rhs_tensor->IsContiguous() || rhs_tensor->Shape() != output_tensor->Shape()) {
+      std::vector<int64_t> rhs_strides = rhs_tensor->Strides();
+      rhs_padded_strides.SetSize(out_rank);
+      int32_t offset = out_rank - rhs_rank;
+      for (int32_t i = offset; i < out_rank; ++i) {
+        // the stride for broadcast dimension is kept as 0
+        if (rhs_tensor->Shape()[i - offset] != 1) {
+          rhs_padded_strides[i] = rhs_strides[i - offset];
+        }
+      }
+    }
+
+    std::vector<int64_t> output_strides = output_tensor->Strides();
+    fdm_output_strides.SetSize(out_rank);
+    for (int32_t i = 0; i < out_rank; ++i) {
+      fdm_output_strides[i] = fast_divmod(gsl::narrow_cast<int>(output_strides[i]));
+    }
+
+    return Status::OK();
+  }
 };
 
 Status ComputeOutputShape(
