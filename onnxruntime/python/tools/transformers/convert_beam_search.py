@@ -414,15 +414,15 @@ def test_model(args):
         print("Torch and ORT result is ", "same" if is_same else "different")
         return is_same
 
-def main():
-    args = parse_arguments()
+def main(argv=None):
+    args = parse_arguments(argv)
 
     if os.path.exists(args.output):
         print(f"skip conversion since path existed: {args.output}")
     else:
         convert_model(args)
 
-    test_model(args)
+    return test_model(args)
 
 
 if __name__ == '__main__':
