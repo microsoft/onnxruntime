@@ -3403,6 +3403,111 @@ Return true if all elements are true and false otherwise.
       .SetContextDependentFunctionBodyBuilder(BuildContextDependentFunctionBodyNllLossInternal)
       .TypeAndShapeInferenceFunction([](InferenceContext& ctx) { propagateElemTypeFromInputToOutput(ctx, 0, 0); })
       .SetDoc(R"DOC(NegativeLogLikelihoodLossInternal)DOC");
+
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(AdditiveMaskSoftmaxDropout)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Input(0, "input", "Input tensor", "T")
+      .Input(1, "mask", "Input mask", "T", OpSchema::Optional)
+      .Input(2, "ratio",
+                "The ratio of random dropout, with value in [0, 1). If this input was not set, "
+                "or if it was set to 0, the output would be a simple copy of the input. "
+                "If it's non-zero, output will be a random dropout of the scaled input, which is typically "
+                "the case during training. It is an optional value, if not specified it will default to 0.5.",
+                "T1",
+                OpSchema::Optional,
+                true,
+                1)
+      .Output(0, "softmax_rets", "softmax results", "T")
+      .Output(1, "dropout_rets", "dropout results", "T")
+      .Output(2, "dropout_mask", "dropout output mask", "T2", OpSchema::Optional)
+      .Attr(
+          "seed",
+          "Seed to the random generator, if not specified we will auto generate one. ",
+          AttributeProto::INT,
+          false)
+      .Attr(
+          "do_input_mask",
+          "Mask input according to the input `mask`.",
+          AttributeProto::INT,
+          static_cast<int64_t>(0))
+      .Attr(
+          "do_output_dropout",
+          "Dropout softmax output according to the input `ratio` and `seed`.",
+          AttributeProto::INT,
+          static_cast<int64_t>(0))
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+          "Constrain input and output types to float tensors.")
+      .TypeConstraint(
+          "T1",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain input 'ratio' types to float tensors.")
+      .TypeConstraint(
+          "T2",
+          {"tensor(uint8), tensor(uint16), tensor(uint32), tensor(uint64)"},
+          "Constrain output 'mask' types to boolean tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+        propagateElemTypeFromInputToOutput(ctx, 0, 1);
+        if (hasInputShape(ctx, 0)) {
+          propagateShapeFromInputToOutput(ctx, 0, 0);
+          propagateShapeFromInputToOutput(ctx, 0, 1);
+        }
+
+        // updateOutputElemType(ctx, 0, ONNX_NAMESPACE::TensorProto::INT64);
+        if (ctx.getNumOutputs() == 2) {
+          auto& input_shape = getInputShape(ctx, 0);
+          auto& input_dims = input_shape.dim();
+          if (input_dims.size() >= 3 && input_dims[input_dims.size() - 1].has_dim_value()) {
+            size_t softmax_element_count = input_shape.dim(input_dims.size() - 1).dim_value();
+            if (softmax_element_count > 1024) {
+                updateOutputElemType(ctx, 2, TensorProto::UINT64);
+            } else if (softmax_element_count > 512) {
+                updateOutputElemType(ctx, 2, TensorProto::UINT32);
+            } else if (softmax_element_count > 256) {
+                updateOutputElemType(ctx, 2, TensorProto::UINT16);
+            } else {
+                updateOutputElemType(ctx, 2, TensorProto::UINT8);
+            }
+
+            if (hasInputShape(ctx, 0)) {
+              size_t log2_elements = 0;
+              while ( (static_cast<size_t>(1) << log2_elements) < softmax_element_count) ++log2_elements;
+
+              size_t e = 1 << log2_elements;
+              size_t warp_size = e < 32 ? e : 32;
+              // size_t mask_size = batch_size * warp_size;
+
+              ONNX_NAMESPACE::TensorShapeProto flattened_mask_output_shape;
+
+              for (auto i = 0; i < input_dims.size() - 1; ++i) {
+                if (input_dims[i].has_dim_param()) {
+                  flattened_mask_output_shape.add_dim()->set_dim_param(input_shape.dim(i).dim_param());
+                } else if (input_dims[i].has_dim_value()) {
+                  flattened_mask_output_shape.add_dim()->set_dim_value(input_shape.dim(i).dim_value());
+                }
+              }
+              flattened_mask_output_shape.add_dim()->set_dim_value(warp_size);
+
+              updateOutputShape(ctx, 2, flattened_mask_output_shape);
+              // propagateShapeFromInputToOutput(ctx, 0, 2);
+            }
+          }
+
+            // updateOutputElemType(ctx, 2, TensorProto::BOOL);
+            // if (hasInputShape(ctx, 0)) {
+
+            //   int log2_value = 0;
+            //   while ((1 << log2_value) < value) ++log2_value;
+            //   // propagateShapeFromInputToOutput(ctx, 0, 2);
+            // }
+        }
+
+      });
+
 }
 
 }  // namespace training

@@ -7,6 +7,7 @@
 #include "core/providers/cuda/cudnn_common.h"
 #include "core/providers/cuda/shared_inc/accumulation_type.h"
 #include "core/providers/cuda/tensor/transpose.h"
+#include "core/framework/random_generator.h"
 
 namespace onnxruntime {
 namespace cuda {
@@ -26,7 +27,7 @@ Status SoftMaxComputeHelper(
   auto X_data = reinterpret_cast<const CudaT*>(X);
 
   if (D <= 1024 && D * sizeof(T) <= 4096) {
-    dispatch_warpwise_softmax_forward<CudaT, CudaT, AccumulationType_t<CudaT>, is_log_softmax>(
+    dispatch_warpwise_softmax_forward<CudaT, CudaT, AccumulationType_t<CudaT>, is_log_softmax, false, false>(
       stream, Y_data, X_data, gsl::narrow_cast<int>(D),  gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(N));
   } else {
     dispatch_blockwise_softmax_forward<CudaT, CudaT, AccumulationType_t<CudaT>, is_log_softmax>(
@@ -59,7 +60,7 @@ SPECIALIZED_SOFTMAX_HELPER_IMPL(MLFloat16)
     int64_t D = input_shape.SizeFromDimension(axis);                                                           \
     auto Y_data = reinterpret_cast<CudaT*>(Y);                                                                 \
     auto X_data = reinterpret_cast<const CudaT*>(X);                                                           \
-    dispatch_warpwise_softmax_forward<CudaT, CudaT, AccumulationType_t<CudaT>, is_log_softmax>(                         \
+    dispatch_warpwise_softmax_forward<CudaT, CudaT, AccumulationType_t<CudaT>, is_log_softmax, false, false>(                         \
         stream, Y_data, X_data, gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(N)); \
     return Status::OK();                                                                                       \
   }
@@ -118,8 +119,8 @@ SPECIALIZED_SOFTMAX_HELPER_IMPL_BFloat16(true)
       (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       Softmax<T>);
 
-        template <typename T>
-        Status Softmax<T>::ComputeInternal(OpKernelContext* ctx) const {
+template <typename T>
+Status Softmax<T>::ComputeInternal(OpKernelContext* ctx) const {
   const Tensor* X = ctx->Input<Tensor>(0);
   const TensorShape& input_shape{X->Shape()};
   size_t rank = input_shape.NumDimensions();
@@ -228,6 +229,143 @@ SPECIALIZED_COMPUTE(MLFloat16)
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
 SPECIALIZED_COMPUTE(BFloat16)
 #endif
+
+
+template <typename T, bool is_log_softmax, typename T2>
+Status FusedSoftMaxComputeHelper(
+    cudaStream_t stream,
+    const T* X,
+    const TensorShape& input_shape,
+    T* Y,
+    int64_t axis,
+    PhiloxGenerator* generator,
+    float dropout_ratio,
+    T* dropout_result,
+    T2* dropout_mask) {
+  typedef typename ToCudaType<T>::MappedType CudaT;
+
+  int64_t N = input_shape.SizeToDimension(axis);
+  int64_t D = input_shape.SizeFromDimension(axis);
+  auto Y_data = reinterpret_cast<CudaT*>(Y);
+  auto X_data = reinterpret_cast<const CudaT*>(X);
+
+  if (D <= 1024 && D * sizeof(T) <= 4096) {
+    dispatch_warpwise_softmax_forward<CudaT, CudaT, AccumulationType_t<CudaT>, is_log_softmax, false, true>(
+      stream, Y_data, X_data, gsl::narrow_cast<int>(D),  gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(N),
+      generator, dropout_ratio, reinterpret_cast<CudaT*>(dropout_result), reinterpret_cast<void *>(dropout_mask)
+      );
+  } else {
+    dispatch_blockwise_softmax_forward<CudaT, CudaT, AccumulationType_t<CudaT>, is_log_softmax>(
+      stream, Y_data, X_data, gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(N));
+  }
+
+  return Status::OK();
+}
+
+#define SPECIALIZED_FUSED_SOFTMAX_HELPER_IMPL(T, T2)                                                                                                                 \
+  template Status FusedSoftMaxComputeHelper<T, false, T2>(cudaStream_t stream, const T* input, const TensorShape& shape, T* Y, int64_t axis, PhiloxGenerator* generator, float dropout_ratio, T* dropout_result, T2* dropout_mask); \
+  template Status FusedSoftMaxComputeHelper<T, true, T2>(cudaStream_t stream, const T* input, const TensorShape& shape, T* Y, int64_t axis, PhiloxGenerator* generator, float dropout_ratio, T* dropout_result, T2* dropout_mask);
+
+SPECIALIZED_FUSED_SOFTMAX_HELPER_IMPL(float, uint8_t)
+SPECIALIZED_FUSED_SOFTMAX_HELPER_IMPL(double, uint8_t)
+SPECIALIZED_FUSED_SOFTMAX_HELPER_IMPL(MLFloat16, uint8_t)
+SPECIALIZED_FUSED_SOFTMAX_HELPER_IMPL(float, uint16_t)
+SPECIALIZED_FUSED_SOFTMAX_HELPER_IMPL(double, uint16_t)
+SPECIALIZED_FUSED_SOFTMAX_HELPER_IMPL(MLFloat16, uint16_t)
+SPECIALIZED_FUSED_SOFTMAX_HELPER_IMPL(float, uint32_t)
+SPECIALIZED_FUSED_SOFTMAX_HELPER_IMPL(double, uint32_t)
+SPECIALIZED_FUSED_SOFTMAX_HELPER_IMPL(MLFloat16, uint32_t)
+SPECIALIZED_FUSED_SOFTMAX_HELPER_IMPL(float, uint64_t)
+SPECIALIZED_FUSED_SOFTMAX_HELPER_IMPL(double, uint64_t)
+SPECIALIZED_FUSED_SOFTMAX_HELPER_IMPL(MLFloat16, uint64_t)
+
+template <typename T, typename T1, typename T2>
+Status AdditiveMaskSoftmaxDropout<T, T1, T2>::ComputeInternal(OpKernelContext* ctx) const {
+  const Tensor* X = ctx->Input<Tensor>(0);
+  const TensorShape& input_shape{X->Shape()};
+  const int64_t N = input_shape.Size();
+
+  size_t rank = input_shape.NumDimensions();
+  Tensor* Y = ctx->Output(0, input_shape);
+
+  // special case when there is a dim value of 0 in the shape.
+  if (input_shape.Size() == 0)
+    return Status::OK();
+
+  // handle negative and enforce axis is valid
+  // const size_t axis = static_cast<size_t>(HandleNegativeAxis(axis_, rank));
+
+  const size_t axis = rank - 1;
+
+  const T* X_data = nullptr;
+  T* Y_data = nullptr;
+  const TensorShape* compute_input_shape = nullptr;
+
+  // use the node input/output directly
+  X_data = X->template Data<T>();
+  Y_data = Y->template MutableData<T>();
+  compute_input_shape = &input_shape;
+
+
+  auto mask = ctx->Output(2, input_shape);
+  auto dropout_result = ctx->Output(1, input_shape);
+  ORT_ENFORCE(!mask || mask->Shape().Size() == N);
+  //Get the ratio_data
+  float ratio_data = 1.0f; //default_ratio_;
+  // auto ratio = context->Input<Tensor>(2);
+  // if (ratio) {
+  //   utils::MLTypeCallDispatcher<ALL_IEEE_FLOAT_DATA_TYPES> t_disp(ratio->GetElementType());
+  //   t_disp.Invoke<GetRatioDataImpl>(ratio, ratio_data);
+  // }
+
+
+
+PhiloxGenerator& generator = generator_ ? *generator_ : PhiloxGenerator::Default();
+  Status status;
+  if (log_softmax_) {
+    status = FusedSoftMaxComputeHelper<T, true>(Stream(), X_data, *compute_input_shape, Y_data, static_cast<int64_t>(axis),
+      &generator, ratio_data, dropout_result->template MutableData<T>(), mask->MutableData<T2>());
+  } else {
+    status = FusedSoftMaxComputeHelper<T, false>(Stream(), X_data, *compute_input_shape, Y_data, static_cast<int64_t>(axis),
+    &generator, ratio_data, dropout_result->template MutableData<T>(), mask->MutableData<T2>());
+  }
+
+  if (!status.IsOK())
+    return status;
+
+  return Status::OK();
+}
+
+
+#define REGISTER_FUSED_KERNEL_TYPED(T, T1, T2)                                                           \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                           \
+      AdditiveMaskSoftmaxDropout,                                                                             \
+      kMSDomain,                                                                         \
+      1,                                                                                  \
+      T##_##T1##_##T2,                                              \
+      kCudaExecutionProvider,                                                              \
+      (*KernelDefBuilder::Create()) \
+        .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()) \
+          .TypeConstraint("T1", DataTypeImpl::GetTensorType<T1>())  \
+          .TypeConstraint("T2", DataTypeImpl::GetTensorType<T2>()), \
+      AdditiveMaskSoftmaxDropout<T, T1, T2>);
+
+#define SPECIALIZED_FUSED_COMPUTE(T, T1, T2) \
+  REGISTER_FUSED_KERNEL_TYPED(T, T1, T2)     \
+  template Status AdditiveMaskSoftmaxDropout<T, T1, T2>::ComputeInternal(OpKernelContext* ctx) const;
+
+SPECIALIZED_FUSED_COMPUTE(float, float, uint8_t)
+SPECIALIZED_FUSED_COMPUTE(double, float, uint8_t)
+SPECIALIZED_FUSED_COMPUTE(MLFloat16, float, uint8_t)
+SPECIALIZED_FUSED_COMPUTE(float, float, uint16_t)
+SPECIALIZED_FUSED_COMPUTE(double, float, uint16_t)
+SPECIALIZED_FUSED_COMPUTE(MLFloat16, float, uint16_t)
+SPECIALIZED_FUSED_COMPUTE(float, float, uint32_t)
+SPECIALIZED_FUSED_COMPUTE(double, float, uint32_t)
+SPECIALIZED_FUSED_COMPUTE(MLFloat16, float, uint32_t)
+SPECIALIZED_FUSED_COMPUTE(float, float, uint64_t)
+SPECIALIZED_FUSED_COMPUTE(double, float, uint64_t)
+SPECIALIZED_FUSED_COMPUTE(MLFloat16, float, uint64_t)
 
 }  // namespace cuda
 }  // namespace onnxruntime

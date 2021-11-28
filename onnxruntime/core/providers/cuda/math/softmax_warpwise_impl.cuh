@@ -18,9 +18,12 @@
 
 #pragma once
 #include "core/providers/cuda/cu_inc/common.cuh"
+#include <curand_kernel.h>
 
 namespace onnxruntime {
 namespace cuda {
+
+constexpr int UNROLL = 4;
 
 inline int log2_ceil(int value) {
   int log2_value = 0;
@@ -55,6 +58,14 @@ __device__ __forceinline__ void warp_reduce(acc_t* sum) {
   }
 }
 
+template <int COUNT>
+using IntergerVector = typename std::conditional<COUNT <= 8, uint8_t, 
+    typename std::conditional<COUNT <= 16, uint16_t,
+        typename std::conditional<COUNT <= 32, uint32_t,
+            typename std::conditional<COUNT <= 64, uint64_t, void>::type
+        >::type
+    >::type
+>::type;
 
 // The softmax_warp_* methods perform softmax forward and backward propagation on samples spanning the fast dimension.
 // Each sample contains element_count scalar elements. element_count can be any integer value <= 1024.
@@ -73,13 +84,16 @@ __device__ __forceinline__ void warp_reduce(acc_t* sum) {
 // input_t=half,  acc_t=float, output_t=float => read half tensor, float accumulators, write float tensor.
 // input_t_float, acc_t=float, output_t=half  => read float tensor, float accumulators, write half tensor.
 
-template <typename input_t, typename output_t, typename acc_t, int log2_elements, bool is_log_softmax>
-__global__ void softmax_warp_forward(output_t* dst, const input_t* src, int batch_size, int stride, int element_count) {
+template <typename input_t, typename output_t, typename acc_t, int log2_elements, bool is_log_softmax, bool mask_input, bool dropout_output>
+__global__ void softmax_warp_forward(output_t* softmax_result, const input_t* src, int batch_size, int stride, int element_count,
+  const std::pair<uint64_t, uint64_t> dropout_seeds, const float dropout_ratio, input_t* dropout_result, uint8_t* dropout_mask_raw) {
   // WARP_SIZE and WARP_BATCH must match the return values batches_per_warp and warp_size of method warp_softmax_forward_kernel.
   constexpr int next_power_of_two = 1 << log2_elements;
   constexpr int WARP_SIZE = (next_power_of_two < GPU_WARP_SIZE) ? next_power_of_two : GPU_WARP_SIZE;
   constexpr int WARP_ITERATIONS = next_power_of_two / WARP_SIZE;
   constexpr int WARP_BATCH = (next_power_of_two <= 128) ? 2 : 1;
+
+  IntergerVector<WARP_ITERATIONS>* dropout_mask = reinterpret_cast<IntergerVector<WARP_ITERATIONS>*>(dropout_mask_raw);
 
   int first_batch = (blockDim.y * blockIdx.x + threadIdx.y) * WARP_BATCH;
 
@@ -92,8 +106,18 @@ __global__ void softmax_warp_forward(output_t* dst, const input_t* src, int batc
   // there might be multiple batches per warp. compute the index within the batch
   int local_idx = threadIdx.x;
 
-  src += first_batch * stride + local_idx;
-  dst += first_batch * stride + local_idx;
+  const int thread_offset = first_batch * stride + local_idx;
+
+  src += thread_offset;
+  softmax_result += thread_offset;
+
+  constexpr int mask_stride = WARP_SIZE;
+  curandStatePhilox4_32_10_t state;
+  if (dropout_output) {
+    curand_init(dropout_seeds.first, thread_offset, dropout_seeds.second, &state);
+    dropout_mask += first_batch * mask_stride;
+    dropout_result += thread_offset;
+  }
 
   // The nested loops over WARP_BATCH and then WARP_ITERATIONS can be simplified to one loop,
   // but I think doing so would obfuscate the logic of the algorithm, thus I chose to keep
@@ -142,22 +166,102 @@ __global__ void softmax_warp_forward(output_t* dst, const input_t* src, int batc
   warp_reduce<acc_t, WARP_BATCH, WARP_SIZE, Add>(sum);
 
 // store result
-#pragma unroll
+if (dropout_output) {
+  const float p = 1.0f - dropout_ratio;
+  const float scale = 1.0f / p;
+  using MaskType = IntergerVector<WARP_ITERATIONS>;
+  #pragma unroll
   for (int i = 0; i < WARP_BATCH; ++i) {
     if (i >= local_batches)
       break;
     if (is_log_softmax) sum[i] = max_value[i] + std::log((float)(sum[i]));
-#pragma unroll
-    for (int it = 0; it < WARP_ITERATIONS; ++it) {
-      int element_index = local_idx + it * WARP_SIZE;
-      if (element_index < element_count) {
-        if (is_log_softmax) {
-          dst[i * element_count + it * WARP_SIZE] = elements[i][it] - sum[i];
+
+    MaskType m = 0;
+    if (WARP_ITERATIONS == 1) {
+        float rand = curand_uniform(&state);
+        m = rand < p;
+        dropout_mask[i * mask_stride + local_idx] = m;
+    } else if (WARP_ITERATIONS == 2) {
+        m = curand_uniform(&state) < p;
+        m |= (curand_uniform(&state) < p) << 1;
+        dropout_mask[i * mask_stride + local_idx] = m;
+    } else {
+      #pragma unroll
+      for (int j = 0; j < CeilDiv(WARP_ITERATIONS, 4); ++j) {
+          float4 rand4 = curand_uniform4(&state);
+          m |= (((MaskType)(rand4.x < p)) << (j * 4))
+            | (((MaskType)(rand4.y < p)) << (j * 4 + 1))
+            | (((MaskType)(rand4.z < p)) << (j * 4 + 2))
+            | (((MaskType)(rand4.w < p)) << (j * 4 + 3));
+      }
+      // uint64_t* dropout_mask_ptr = (uint64_t*)dropout_mask[i * mask_stride + local_idx];
+      // *dropout_mask_ptr = m;
+    }
+
+    dropout_mask[i * mask_stride + local_idx] = m;
+    // MaskType* dropout_mask_ptr = (MaskType*)dropout_mask[i * mask_stride + local_idx];
+    // *dropout_mask_ptr = m;
+
+  #pragma unroll
+      for (int it = 0; it < WARP_ITERATIONS; ++it) {
+        int element_index = local_idx + it * WARP_SIZE;
+        if (element_index < element_count) {
+          output_t d;
+          if (is_log_softmax) {
+            d = elements[i][it] - sum[i];
+          } else {
+            d = elements[i][it] / sum[i];
+          }
+          softmax_result[i * element_count + it * WARP_SIZE] = d;
+          dropout_result[i * element_count + it * WARP_SIZE] = (acc_t)d * ((acc_t)((m >> it) & 1) * (acc_t)scale);
         } else {
-          dst[i * element_count + it * WARP_SIZE] = elements[i][it] / sum[i];
+          break;
         }
-      } else {
+      }
+
+// #pragma unroll
+//     for (int j = 0; j < CeilDiv(WARP_ITERATIONS, UNROLL); ++j) {
+//       float4 rand = curand_uniform4(&state);
+//       bool mask[UNROLL];
+// #pragma unroll
+//       for (int jj = 0;  jj < UNROLL; ++jj) {
+//         int it = jj * UNROLL;
+//         int element_index = local_idx + it * WARP_SIZE;
+//         if (it < WARP_ITERATIONS && element_index < element_count) {
+//           mask[jj] = (&rand.x)[jj] < p;
+//           output_t softmax_ret;
+//           if (is_log_softmax) {
+//             softmax_ret = elements[i][it] - sum[i];
+//           } else {
+//             softmax_ret = elements[i][it] / sum[i];
+//           }
+//           softmax_result[i * element_count + it * WARP_SIZE] = softmax_ret;
+//           dropout_result[i * element_count + it * WARP_SIZE] = (acc_t)(softmax_ret) * ((acc_t)(mask[jj]) * (acc_t)scale);
+//           // dropout_mask[i * element_count + it * WARP_SIZE] = mask[jj];
+//         } else {
+//           break;
+//         }
+//       }
+//     }
+  }
+} else {
+  #pragma unroll
+    for (int i = 0; i < WARP_BATCH; ++i) {
+      if (i >= local_batches)
         break;
+      if (is_log_softmax) sum[i] = max_value[i] + std::log((float)(sum[i]));
+  #pragma unroll
+      for (int it = 0; it < WARP_ITERATIONS; ++it) {
+        int element_index = local_idx + it * WARP_SIZE;
+        if (element_index < element_count) {
+          if (is_log_softmax) {
+            softmax_result[i * element_count + it * WARP_SIZE] = elements[i][it] - sum[i];
+          } else {
+            softmax_result[i * element_count + it * WARP_SIZE] = elements[i][it] / sum[i];
+          }
+        } else {
+          break;
+        }
       }
     }
   }
