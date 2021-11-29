@@ -11,8 +11,6 @@
 
 namespace onnxruntime {
 
-constexpr const char* OpenVINO = "OpenVINO";
-
 OpenVINOExecutionProvider::OpenVINOExecutionProvider(const OpenVINOExecutionProviderInfo& info)
     : IExecutionProvider{onnxruntime::kOpenVINOExecutionProvider} {
   openvino_ep::BackendManager::GetGlobalContext().device_type = info.device_type_;
@@ -20,6 +18,7 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(const OpenVINOExecutionProv
   openvino_ep::BackendManager::GetGlobalContext().enable_vpu_fast_compile = info.enable_vpu_fast_compile_;
   openvino_ep::BackendManager::GetGlobalContext().use_compiled_network = info.use_compiled_network_;
   openvino_ep::BackendManager::GetGlobalContext().blob_dump_path = info.blob_dump_path_;
+  openvino_ep::BackendManager::GetGlobalContext().context = info.context_;
 
   if ((int)info.num_of_threads_ <= 0) {
     openvino_ep::BackendManager::GetGlobalContext().num_of_threads = 8;
@@ -47,7 +46,7 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(const OpenVINOExecutionProv
 
   AllocatorCreationInfo device_info(
       [](int) {
-        return CreateCPUAllocator(OrtMemoryInfo(OpenVINO, OrtDeviceAllocator));
+        return CreateCPUAllocator(OrtMemoryInfo(OpenVINO_CPU, OrtDeviceAllocator));
       });
 
   InsertAllocator(CreateAllocator(device_info));
@@ -127,4 +126,5 @@ common::Status OpenVINOExecutionProvider::Compile(
 
   return Status::OK();
 }
+
 }  // namespace onnxruntime

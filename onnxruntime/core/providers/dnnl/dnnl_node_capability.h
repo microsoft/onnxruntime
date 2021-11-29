@@ -301,4 +301,19 @@ class DnnlDynamicQuantizeLinearNodeCapability : public DnnlDefaultNodeCapability
  private:
 };
 
+class DnnlSqueezeNodeCapability : public DnnlDefaultNodeCapability {
+ public:
+  DnnlSqueezeNodeCapability() : DnnlDefaultNodeCapability({type_float32,
+                                                           type_float16,
+                                                           type_bfloat16,
+                                                           type_int32,
+                                                           type_int8,
+                                                           type_uint8}) {}
+
+  bool Supported(const Node* node, const GraphViewer& graph_viewer) const override;
+
+ private:
+  bool IsDimensionSupported(const Node* node, const GraphViewer& graph_viewer) const;
+};
+
 }  // namespace onnxruntime

@@ -151,11 +151,6 @@ COPY build_scripts/ambv-pubkey.txt /build_scripts/cpython-pubkeys.txt
 RUN manylinux-entrypoint /build_scripts/build-cpython.sh 3.9.8
 
 
-FROM build_cpython AS build_cpython310
-COPY build_scripts/cpython-pubkey-310-311.txt /build_scripts/cpython-pubkeys.txt
-RUN manylinux-entrypoint /build_scripts/build-cpython.sh 3.10.0
-
-
 FROM build_cpython AS all_python
 COPY build_scripts/install-pypy.sh /build_scripts/install-pypy.sh
 COPY build_scripts/pypy.sha256 /build_scripts/pypy.sha256
@@ -165,7 +160,6 @@ COPY --from=build_cpython36 /opt/_internal /opt/_internal/
 COPY --from=build_cpython37 /opt/_internal /opt/_internal/
 COPY --from=build_cpython38 /opt/_internal /opt/_internal/
 COPY --from=build_cpython39 /opt/_internal /opt/_internal/
-COPY --from=build_cpython310 /opt/_internal /opt/_internal/
 RUN hardlink -cv /opt/_internal
 
 
@@ -181,7 +175,6 @@ COPY build_scripts/finalize.sh \
      build_scripts/requirements3.7.txt \
      build_scripts/requirements3.8.txt \
      build_scripts/requirements3.9.txt \
-     build_scripts/requirements3.10.txt \
      build_scripts/requirements-base-tools.txt \
      /build_scripts/
 COPY build_scripts/requirements-tools/* /build_scripts/requirements-tools/

@@ -357,6 +357,7 @@ class InferenceSession(Session):
                                                                         provider_options,
                                                                         available_providers)
         if providers == [] and len(available_providers) > 1:
+            self.disable_fallback()
             raise ValueError("This ORT build has {} enabled. ".format(available_providers) +
                              "Since ORT 1.9, you are required to explicitly set " +
                              "the providers parameter when instantiating InferenceSession. For example, "
@@ -447,6 +448,9 @@ class IOBinding:
         '''
         self._iobinding.bind_ortvalue_input(name, ortvalue._ortvalue)
 
+    def synchronize_inputs(self):
+        self._iobinding.synchronize_inputs()
+
     def bind_output(self, name, device_type='cpu', device_id=0, element_type=None, shape=None, buffer_ptr=None):
         '''
         :param name: output name
@@ -481,6 +485,9 @@ class IOBinding:
         :param ortvalue: OrtValue instance to bind
         '''
         self._iobinding.bind_ortvalue_output(name, ortvalue._ortvalue)
+
+    def synchronize_outputs(self):
+        self._iobinding.synchronize_outputs()
 
     def get_outputs(self):
         '''

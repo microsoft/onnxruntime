@@ -18,25 +18,6 @@ Abstract:
 #include "mlasi.h"
 
 //
-// Define the kernel flags
-//
-
-#define MLAS_CONV_SYM_FLAG_INPUT_DIRECT             0x00000001
-#define MLAS_CONV_SYM_FLAG_PER_CHANNEL_SCALE        0x00000002
-
-//
-// Define the post-processing parameters: bias and re-quant params
-//
-
-struct MLAS_CONV_SYM_POST_PROCESS_PARAMS {
-    const int32_t* Bias;
-    const float* Scale;
-    float MinimumValue;
-    float MaximumValue;
-    int32_t OutputZeroPoint;
-};
-
-//
 // Define the prototypes of the platform optimized routines.
 //
 
@@ -70,6 +51,7 @@ void
     unsigned KernelFlags
     );
 
+
 extern "C" {
 
 #if defined(MLAS_TARGET_AMD64)
@@ -81,6 +63,10 @@ extern "C" {
     MLAS_CONV_SYM_DEPTHWISE_KERNEL MlasConvSymDepthwiseKernelAvx512Core;
     MLAS_CONV_SYM_KERNEL MlasConvSymKernelAvx512Vnni;
     MLAS_CONV_SYM_DEPTHWISE_KERNEL MlasConvSymDepthwiseKernelAvx512Vnni;
+#elif defined(MLAS_TARGET_ARM64)
+    MLAS_CONV_SYM_DEPTHWISE_KERNEL MlasConvSymDepthwiseKernelNeon;
+    MLAS_CONV_SYM_DEPTHWISE_ROUTINE_KERNELSIZE MlasConvSymDepthwiseKernelSize9Arm64;
+    MLAS_CONV_SYM_DEPTHWISE_ROUTINE_KERNELSIZE MlasConvSymDepthwiseKernelSize25Arm;
 #endif
 
 }
@@ -165,6 +151,20 @@ const MLAS_CONV_SYM_DISPATCH MlasConvSymDispatchAvx512Vnni = {
 
 #endif // ORT_MINIMAL_BUILD
 
+#elif defined(MLAS_TARGET_ARM64)
+const MLAS_CONV_SYM_DISPATCH MlasConvSymDispatchNeon = {
+    nullptr,
+    MlasConvSymDepthwiseKernelNeon,
+    4,   // FilterInputChannelPackCount
+    16,  // FilterOutputChannelPackCount
+    8,   // KernelChannelCount
+    8,   // KernelOutputCount
+    4,   // KernelInputChannelAlignment
+    8,   // KernelOutputChannelAlignment
+    16,  // KernelDepthwiseChannelCount
+    4,   // KernelDepthwiseOutputCount
+    true
+};
 #endif // MLAS_TARGET_AMD64
 
 MLAS_FORCEINLINE
@@ -197,8 +197,12 @@ MlasConvSymPackWSize(
 
         if (ConvSymDispatch->DepthwiseKernel != nullptr &&
             InputChannels == 1 && OutputChannels == 1) {
-
-            size_t AlignedGroupCount = (GroupCount + 15) & ~15;
+#ifdef MLAS_TARGET_ARM64
+            constexpr size_t GroupAlign = 8;
+#else
+            constexpr size_t GroupAlign = 16;
+#endif
+            size_t AlignedGroupCount = (GroupCount + GroupAlign - 1) & ~(GroupAlign - 1);
 
             if (AlignedGroupCount != GroupCount) {
                 return 0;
@@ -297,7 +301,7 @@ MlasConvSymFixupInputZeroPoint(
 {
     const MLAS_CONV_SYM_DISPATCH* ConvSymDispatch = MlasPlatform.ConvSymDispatch;
 
-    if (ConvSymDispatch != nullptr && ConvSymDispatch->FixupInputZeroPoint) {
+    if (ConvSymDispatch != nullptr && ConvSymDispatch->FixupInputZeroPoint) { 
         return static_cast<int32_t>(zero_point_value) - 128;
     }
     return zero_point_value;
@@ -394,6 +398,27 @@ MlasConvSymDepthwise(
     MLAS_CONV_SYM_POST_PROCESS_PARAMS PostProcessParams = {};
 
     MlasConvSymSetOutputZeroPoint(PostProcessParams, Params.OutputZeroPoint);
+
+#if defined(MLAS_TARGET_ARM64)
+
+    if ((Params.KernelSize == 9 || Params.KernelSize == 25) && (Params.OutputChannels & 15) == 0) {
+        PostProcessParams.Bias = Params.Bias;
+        PostProcessParams.Scale = Params.Scale;
+        if (Params.KernelSize == 9) {
+            MlasConvSymDepthwiseKernelSize9Arm64(
+                Params.InputIndirection, (int8_t const*)Params.Filter, Params.OutputChannels, Params.Output,
+                Params.OutputCount, &PostProcessParams, KernelFlags
+            );
+        } else {
+            MlasConvSymDepthwiseKernelSize25Arm(
+                Params.InputIndirection, (int8_t const*)Params.Filter, Params.OutputChannels, Params.Output,
+                Params.OutputCount, &PostProcessParams, KernelFlags
+            );
+        }
+        return;
+    }
+
+#endif
 
     const size_t KernelChannelCount = ConvSymDispatch->KernelDepthwiseChannelCount;
     const size_t KernelOutputCount = ConvSymDispatch->KernelDepthwiseOutputCount;
