@@ -57,7 +57,7 @@ class TensorShape {
      Copy dims into an array with given size
   */
   void CopyDims(int64_t* dims, size_t num_dims) const {
-    memcpy(dims, values_.begin(), sizeof(int64_t) * std::min(num_dims, NumDimensions()));
+    memcpy(dims, reinterpret_cast<void*>(values_.begin()), sizeof(int64_t) * std::min(num_dims, NumDimensions()));
   }
 
   /**
@@ -66,7 +66,7 @@ class TensorShape {
      and this function does no checks to ensure that
   */
   void CopyDims(int64_t* dims, size_t start_dim, size_t num_dims) const {
-    memcpy(dims, values_.begin() + start_dim, sizeof(int64_t) * std::min(num_dims, NumDimensions() - start_dim));
+    memcpy(dims, reinterpret_cast<void*>(values_.begin() + start_dim), sizeof(int64_t) * std::min(num_dims, NumDimensions() - start_dim));
   }
 
   /**
