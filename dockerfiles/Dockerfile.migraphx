@@ -25,7 +25,7 @@ RUN apt-get update && apt-get install -y gnupg2 --no-install-recommends curl && 
 
 RUN apt-get update &&\
     apt-get install -y sudo git bash build-essential rocm-dev libpython3.6-dev python3-pip miopen-hip \
-    rocblas half aria2
+    rocblas half aria2 libnuma-dev
 
 RUN aria2c -q -d /tmp -o cmake-3.21.0-linux-x86_64.tar.gz \
 https://github.com/Kitware/CMake/releases/download/v3.21.0/cmake-3.21.0-linux-x86_64.tar.gz &&\ 
