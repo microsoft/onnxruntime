@@ -14,8 +14,8 @@ namespace onnxruntime {
 
 namespace {
 
-const char* GatherGradOpType("GatherGrad");
-const char* GatherName("Gather");
+const char* GatherGradOpType = "GatherGrad";
+const char* GatherName = "Gather";
 
 }
 

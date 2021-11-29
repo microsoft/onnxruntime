@@ -41,9 +41,9 @@ namespace gather_grad_internal {
 // num_segments = 3 (Number of distinct segments)
 // segment_offsets = [0, 2, 5] (Index in the sorted indices where a new segment begins)
 // per_segment_partial_segment_counts = [1, 1, 1] (Number of partial segments for each segment)
-// per_segment_partial_segment_offsets = [0, 1, 2] (Index of a partial segment where a new partial
-//                                                  segment begins assuming the index is referring to
-//                                                  an array comprising of elements where each element
+// per_segment_partial_segment_offsets = [0, 1, 2] (Index of a partial segment where a new segment
+//                                                  begins assuming the index is referring to an
+//                                                  array comprising of elements where each element
 //                                                  is a partial segment.)
 
 // unit for handling indexing and counting of segments or partial segments
@@ -314,7 +314,7 @@ __global__ void ComputeSegmentSumsAndScatterKernel(
 // get partial sums of gathered dY values first, then sum the partial sums into
 // the corresponding dX value
 template <typename T, typename TIndex>
-void PartialSumsImpl(
+void PartialSumsPrecomputedImpl(
     cudaStream_t stream,
     const CudaScratchBufferAllocator& allocator,
     const TIndex* dX_indices_sorted,
@@ -498,7 +498,7 @@ void PartialSumsImpl(
 }
 
 template <typename T, typename TIndex>
-void Impl(
+void PrecomputedImpl(
     cudaStream_t stream,
     const CudaScratchBufferAllocator& allocator,
     const T* dY_data,
@@ -517,7 +517,7 @@ void Impl(
     const TIndex* dY_indices_sorted,
     T* dX_data) {
 
-  PartialSumsImpl(
+  PartialSumsPrecomputedImpl(
       stream,
       allocator,
       dX_indices_sorted, dY_indices_sorted,
@@ -617,7 +617,7 @@ void Impl(
 
 // GatherGradImpl for the case where the inputs are precomputed
 template <typename T, typename TIndex>
-void GatherGradImpl(
+void GatherGradPrecomputedImpl(
     cudaStream_t stream,
     const CudaScratchBufferAllocator& allocator,
     const T* dY_data,
@@ -635,7 +635,7 @@ void GatherGradImpl(
     const TIndex* dX_indices_sorted,
     const TIndex* dY_indices_sorted,
     T* dX_data) {
-  gather_grad_internal::Impl(
+  gather_grad_internal::PrecomputedImpl(
       stream,
       allocator,
       dY_data, dX_indices,
@@ -671,7 +671,7 @@ void GatherGradImpl(
 }
 
 #define PRECOMPUTESPECIALIZED(T, TIndex)                            \
-  template void GatherGradImpl<T, TIndex>(                \
+  template void GatherGradPrecomputedImpl<T, TIndex>(                \
       cudaStream_t stream,                                \
       const CudaScratchBufferAllocator& allocator,        \
       const T* dY_data,                                   \

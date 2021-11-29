@@ -19,9 +19,9 @@ std::pair<std::vector<int64_t>, std::vector<int64_t>> CalculateSortedIndices(con
 {
     std::vector<int64_t> dY_indices_sorted(indices.size());
     std::iota(dY_indices_sorted.begin(), dY_indices_sorted.end(), 0);
-    sort(dY_indices_sorted.begin(), dY_indices_sorted.end(), [&indices](const size_t& i, const size_t& j) { return indices[i] < indices[j]; } );
+    std::sort(dY_indices_sorted.begin(), dY_indices_sorted.end(), [&indices](const size_t i, const size_t j) { return indices[i] < indices[j]; } );
     std::vector<int64_t> dX_indices_sorted(indices);
-    sort(dX_indices_sorted.begin(), dX_indices_sorted.end());
+    std::sort(dX_indices_sorted.begin(), dX_indices_sorted.end());
 
     return {dX_indices_sorted, dY_indices_sorted};
 }

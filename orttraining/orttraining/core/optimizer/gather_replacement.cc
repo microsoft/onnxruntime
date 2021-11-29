@@ -22,7 +22,7 @@ const char* PerSegmentPartialSegmentCountsNodeArgName = "per_segment_partial_seg
 const char* PerSegmentPartialSegmentOffsetsNodeArgName = "per_segment_partial_segment_offsets";
 const char* DXIndeicesSortedNorArgName = "dX_indices_sorted";
 const char* DYIndeicesSortedNorArgName = "dY_indices_sorted";
-const char* GatherInternalName("GatherInternal");
+const char* GatherInternalName = "GatherInternal";
 
 
 std::vector<NodeArg*> create_gather_internal_output_node_args(const std::vector<NodeArg*>& gather_inputs,

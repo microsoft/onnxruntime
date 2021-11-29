@@ -14,6 +14,26 @@ namespace onnxruntime {
 Rewrite rule that replaces Gather with GatherInternal, that has additional outputs
 that are precomputed for use in executing GatherGrad more efficiently.
 
+Gather node has only 1 output. Whereas the GatherInternal node has 9 outputs.
+The additional 8 precomputed outputs from GatherInternal are used by GatherGrad
+when it executes.
+
+     data    indices
+       \       /
+        \     /
+         Gather
+           | (single output)
+          ...
+
+is rewritten so that Gather is replaced by GatherInternal (which has 9 outputs)
+
+                             data    indices
+                               \       /
+                                \     /
+      shape indices dY       GatherInternal
+           \    |   |    ////////  |    (nine outputs)
+              GatherGrad          ...         GatherGrad
+
 */
 class GatherReplacement : public RewriteRule {
  public:

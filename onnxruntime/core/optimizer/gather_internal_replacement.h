@@ -12,8 +12,27 @@ namespace onnxruntime {
 @Class GatherInternalReplacement
 
 Rewrite rule that replaces the GatherInternal with Gather when the extra
-outputs computed by GatherInternal are not needed. This happens
-when the GatherInternal node is not connected to a GatherGrad node.
+outputs computed by GatherInternal are not needed.
+
+This happens when the GatherInternal node is not part of the backward graph
+and hence is not connected to a GatherGrad node. So the extra precomputed outputs
+are not needed to be computed.
+
+     data    indices
+       \       /
+        \     /
+     GatherInternal
+       ||||||||| (nine output)
+          ...
+
+is rewritten so that GatherInternal is replaced by Gather (which has a single output)
+
+     data    indices
+       \       /
+        \     /
+         Gather
+           | (single output)
+          ...
 
 */
 class GatherInternalReplacement : public RewriteRule {
