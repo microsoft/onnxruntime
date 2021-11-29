@@ -9,7 +9,6 @@
 namespace onnxruntime {
 namespace contrib {
 
-template<typename T8Bits>
 class QLinearGlobalAveragePool final : public OpKernel {
  public:
   QLinearGlobalAveragePool(const OpKernelInfo& info) : OpKernel(info) {

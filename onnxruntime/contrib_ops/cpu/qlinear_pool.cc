@@ -504,8 +504,16 @@ void dequantize_array(int64_t N, const T8Bits* input, float scale, T8Bits zero_p
   }
 }
 
+Status QLinearAveragePool::Compute(OpKernelContext* context) const {
+  if (is_input_signed_) {
+    return ComputeImpl<int8_t>(context);
+  } else {
+    return ComputeImpl<uint8_t>(context);
+  }
+}
+
 template <typename T8Bits>
-Status QLinearAveragePool<T8Bits>::Compute(OpKernelContext* context) const {
+Status QLinearAveragePool::ComputeImpl(OpKernelContext* context) const {
   const auto tensor_x_scale = context->Input<Tensor>(1);
   const auto tensor_x_zero_point = context->Input<Tensor>(2);
   const auto tensor_y_scale = context->Input<Tensor>(3);
@@ -640,19 +648,12 @@ Status QLinearAveragePool<T8Bits>::Compute(OpKernelContext* context) const {
   return Status::OK();
 }
 
-#define REGISTER_QLINEARAVERAGEPOOL_TYPED_KERNEL(T)               \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
-      QLinearAveragePool,                                         \
-      kMSDomain,                                                  \
-      1,                                                          \
-      T,                                                          \
-      kCpuExecutionProvider,                                      \
-      KernelDefBuilder()                                          \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      QLinearAveragePool<T>);
-
-REGISTER_QLINEARAVERAGEPOOL_TYPED_KERNEL(int8_t);
-REGISTER_QLINEARAVERAGEPOOL_TYPED_KERNEL(uint8_t);
+ONNX_OPERATOR_KERNEL_EX(QLinearAveragePool,
+                        kMSDomain,
+                        1,
+                        kCpuExecutionProvider,
+                        KernelDefBuilder(),
+                        QLinearAveragePool);
 
 }  // namespace contrib
 

@@ -54,8 +54,7 @@ Status ComputeQLinearGlobalAvgPool(
   return Status::OK();
 }
 
-template <typename T8Bits>
-Status QLinearGlobalAveragePool<T8Bits>::Compute(OpKernelContext* context) const {
+Status QLinearGlobalAveragePool::Compute(OpKernelContext* context) const {
   const auto tensor_x_scale = context->Input<Tensor>(1);
   const auto tensor_x_zero_point = context->Input<Tensor>(2);
   const auto tensor_y_scale = context->Input<Tensor>(3);
@@ -90,24 +89,25 @@ Status QLinearGlobalAveragePool<T8Bits>::Compute(OpKernelContext* context) const
 
   const float x_scale = *(tensor_x_scale->Data<float>());
   const float y_scale = *(tensor_y_scale->Data<float>());
-  return ComputeQLinearGlobalAvgPool(X.Data<T8Bits>(), x_scale, *(tensor_x_zero_point->Data<T8Bits>()),
-                                     Y.MutableData<T8Bits>(), y_scale, *(tensor_y_zero_point->Data<T8Bits>()),
-                                     N, C, image_size, channels_last_, tp);
+
+  auto dtype = X.GetElementType();
+  if (dtype == ONNX_NAMESPACE::TensorProto_DataType_UINT8) {
+    return ComputeQLinearGlobalAvgPool(X.Data<uint8_t>(), x_scale, *(tensor_x_zero_point->Data<uint8_t>()),
+                                       Y.MutableData<uint8_t>(), y_scale, *(tensor_y_zero_point->Data<uint8_t>()),
+                                       N, C, image_size, channels_last_, tp);
+  } else {
+    return ComputeQLinearGlobalAvgPool(X.Data<int8_t>(), x_scale, *(tensor_x_zero_point->Data<int8_t>()),
+                                       Y.MutableData<int8_t>(), y_scale, *(tensor_y_zero_point->Data<int8_t>()),
+                                       N, C, image_size, channels_last_, tp);
+  }
 }
 
-#define REGISTER_QLINEARGLOBALAVERAGEPOOL_TYPED_KERNEL(T)         \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
-      QLinearGlobalAveragePool,                                   \
-      kMSDomain,                                                  \
-      1,                                                          \
-      T,                                                          \
-      kCpuExecutionProvider,                                      \
-      KernelDefBuilder()                                          \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      QLinearGlobalAveragePool<T>);
-
-REGISTER_QLINEARGLOBALAVERAGEPOOL_TYPED_KERNEL(int8_t);
-REGISTER_QLINEARGLOBALAVERAGEPOOL_TYPED_KERNEL(uint8_t);
+ONNX_OPERATOR_KERNEL_EX(QLinearGlobalAveragePool,
+                        kMSDomain,
+                        1,
+                        kCpuExecutionProvider,
+                        KernelDefBuilder(),
+                        QLinearGlobalAveragePool);
 
 }  // namespace contrib
 }  // namespace onnxruntime

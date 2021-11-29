@@ -91,7 +91,7 @@ class NhwcMaxPoolOpTester {
       std::vector<int64_t> d_output(kernel_rank, 0);
       std::vector<int64_t> d_kernel(kernel_rank, 0);
       do {
-        std::fill_n(Ydata, channels, std::numeric_limits<T>::min());
+        std::fill_n(Ydata, channels, std::numeric_limits<T>::lowest());
         do {
           int64_t input_offset = 0;
           bool is_padding = false;

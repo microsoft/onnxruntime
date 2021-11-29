@@ -185,11 +185,7 @@
     ],
     [
         "QLinearAveragePool com.microsoft CPUExecutionProvider",
-        7697522567125769728
-    ],
-    [
-        "QLinearAveragePool com.microsoft CPUExecutionProvider",
-        16087397801315871440
+        9152647959212466896
     ],
     [
         "QLinearConv com.microsoft CPUExecutionProvider",
@@ -197,11 +193,7 @@
     ],
     [
         "QLinearGlobalAveragePool com.microsoft CPUExecutionProvider",
-        2087133060447455992
-    ],
-    [
-        "QLinearGlobalAveragePool com.microsoft CPUExecutionProvider",
-        8306008644377580528
+        8729391959357542728
     ],
     [
         "QLinearLeakyRelu com.microsoft CPUExecutionProvider",
