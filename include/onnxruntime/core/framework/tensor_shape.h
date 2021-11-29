@@ -31,7 +31,7 @@ class TensorShape {
 
   TensorShape(gsl::span<const int64_t> dims);
   TensorShape(const std::vector<int64_t>& dims) : TensorShape(gsl::make_span(dims)) {}
-  TensorShape(const std::initializer_list<int64_t>& dims) : TensorShape(gsl::make_span(dims)) {}
+  TensorShape(const std::initializer_list<int64_t>& dims) : TensorShape(gsl::make_span(dims.begin(), dims.end())) {}
   TensorShape(const int64_t* dimension_sizes, size_t dimension_count) : TensorShape(gsl::span<const int64_t>(dimension_sizes, dimension_count)) {}
   TensorShape(const std::vector<int64_t>& dims, size_t start, size_t end) : TensorShape(gsl::span<const int64_t>(&dims[start], end - start)) {}
 
@@ -57,7 +57,7 @@ class TensorShape {
      Copy dims into an array with given size
   */
   void CopyDims(int64_t* dims, size_t num_dims) const {
-    memcpy(dims, reinterpret_cast<void*>(values_.begin()), sizeof(int64_t) * std::min(num_dims, NumDimensions()));
+    memcpy(dims, values_.data(), sizeof(int64_t) * std::min(num_dims, NumDimensions()));
   }
 
   /**
@@ -66,7 +66,7 @@ class TensorShape {
      and this function does no checks to ensure that
   */
   void CopyDims(int64_t* dims, size_t start_dim, size_t num_dims) const {
-    memcpy(dims, reinterpret_cast<void*>(values_.begin() + start_dim), sizeof(int64_t) * std::min(num_dims, NumDimensions() - start_dim));
+    memcpy(dims, values_.data() + start_dim, sizeof(int64_t) * std::min(num_dims, NumDimensions() - start_dim));
   }
 
   /**
@@ -128,7 +128,6 @@ class TensorShape {
   }
 
  private:
-
   struct External {};
   TensorShape(External, gsl::span<int64_t> buffer) : values_{buffer} {}
 
@@ -138,7 +137,7 @@ class TensorShape {
   int64_t small_buffer_[5];
   std::unique_ptr<int64_t[]> allocated_buffer_;
 
-  friend struct ProviderHostImpl; // So that the shared provider interface can access Allocate
+  friend struct ProviderHostImpl;  // So that the shared provider interface can access Allocate
 };
 #ifdef __GNUC__
 #pragma GCC diagnostic pop
