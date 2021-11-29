@@ -128,6 +128,7 @@ class TensorShape {
   }
 
  private:
+
   struct External {};
   TensorShape(External, gsl::span<int64_t> buffer) : values_{buffer} {}
 
@@ -137,7 +138,7 @@ class TensorShape {
   int64_t small_buffer_[5];
   std::unique_ptr<int64_t[]> allocated_buffer_;
 
-  friend struct ProviderHostImpl;  // So that the shared provider interface can access Allocate
+  friend struct ProviderHostImpl; // So that the shared provider interface can access Allocate
 };
 #ifdef __GNUC__
 #pragma GCC diagnostic pop
