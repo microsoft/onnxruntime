@@ -5,15 +5,23 @@ parent: Reference
 nav_order: 3
 ---
 
+
 # Reduced operator config file
+{: .no_toc}
 
 The reduced operator config file is an input to the ONNX Runtime build-from-source script. It specifies which operators are included in the runtime. A reduced set of operators in ONNX Runtime permits a smaller build binary size. A smaller runtime is used in constrained environments, such as mobile and web deployments.
 
 This article shows you how to generate the reduced operator config file using the `create_reduced_build_config.py` script. You can also generate the reduced operator config file by [converting ONNX models to ORT format](./ort-format-model-conversion.md).
 
+## Contents
+{: .no_toc}
+
+* TOC
+{:toc}
+
 ## The create_reduced_build_config.py script
 
-To create a reduced operator configuration file, run the script https://github.com/microsoft/onnxruntime/blob/master/tools/python/create_reduced_build_config.py on your model/s.
+To create a reduced operator configuration file, run the script [create_reduced_build_config.py](https://github.com/microsoft/onnxruntime/blob/master/tools/python/create_reduced_build_config.py) on your model/s.
 
 The kernel configuration file can be manually edited as needed. The configuration can be created from either ONNX or ORT format models.
 
