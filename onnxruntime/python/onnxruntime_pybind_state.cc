@@ -506,6 +506,8 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
           }
         }
         LOGS_DEFAULT(WARNING) << "Failed to register " << type << ". Please reference https://onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html#requirements to ensure all dependencies are met.";
+    } else {
+      LOGS_DEFAULT(WARNING) << "Failed to register " << type << ". Please reference https://onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html#requirements to ensure all dependencies are met.";
     }
 #endif
   } else if (type == kMIGraphXExecutionProvider) {
@@ -533,6 +535,8 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
           LOGS_DEFAULT(WARNING) << "Failed to register " << type << ". Please reference https://onnxruntime.ai/docs/reference/execution-providers/CUDA-ExecutionProvider.html#requirements to ensure all dependencies are met.";
         }
       }
+    } else {
+      LOGS_DEFAULT(WARNING) << "Failed to register " << type << ". Please reference https://onnxruntime.ai/docs/reference/execution-providers/CUDA-ExecutionProvider.html#requirements to ensure all dependencies are met.";
     }
 #endif
   } else if (type == kRocmExecutionProvider) {
