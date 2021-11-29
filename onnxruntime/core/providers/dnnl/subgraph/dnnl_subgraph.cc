@@ -120,8 +120,6 @@ void DnnlTensor::AddConsumer(const DnnlNodeArg& arg) {
 
 void DnnlTensor::RemoveConsumer(const DnnlNodeArg& arg) {
   consumers_.erase(std::remove(consumers_.begin(), consumers_.end(), arg), consumers_.end());
-  //auto pos = std::remove(consumers_.begin(), consumers_.end(), arg);
-  //ORT_UNUSED_PARAMETER(pos);
 }
 
 DnnlNode::DnnlNode(const Node* node) {
@@ -321,7 +319,6 @@ void DnnlSubgraph::Build() {
   for (size_t i = 0; i < node_indices.size(); i++) {
     const auto* node(graph_viewer_.GetNode(node_indices[i]));
     AddNode(std::make_unique<DnnlNode>(node));
-    //dnnl_nodes_.push_back(std::make_unique<DnnlNode>(node));
     auto dnnl_node = dnnl_nodes_.back().get();
     std::vector<DnnlTensor*> inputs;
     size_t index = 0;
@@ -329,7 +326,6 @@ void DnnlSubgraph::Build() {
       if (input && input->Exists() && input->Name() != "") {
         if (!dnnl_tensors_.count(input->Name())) {
           dnnl_tensors_[input->Name()] = std::make_unique<DnnlTensor>(input);
-          //dnnl_tensors_[input->Name()]->GetConsumers().push_back(DnnlNodeArg(dnnl_node, index, false));
         }
         dnnl_tensors_[input->Name()]->AddConsumer(DnnlNodeArg(dnnl_node, index, false));
         inputs.push_back(dnnl_tensors_[input->Name()].get());
@@ -344,7 +340,6 @@ void DnnlSubgraph::Build() {
       if (output && output->Exists() && output->Name() != "") {
         if (!dnnl_tensors_.count(output->Name())) {
           dnnl_tensors_[output->Name()] = std::make_unique<DnnlTensor>(output);
-          //dnnl_tensors_[output->Name()]->GetProducer() = DnnlNodeArg(dnnl_node, index, true);
         }
         dnnl_tensors_[output->Name()]->SetProducer(DnnlNodeArg(dnnl_node, index, true));
         outputs.push_back(dnnl_tensors_[output->Name()].get());
@@ -359,7 +354,7 @@ void DnnlSubgraph::Build() {
 
   //all tensors should have been established in graph
   //establish inputs, outputs and initializers
-  //assumption: graph inputs including initializers and outputs should not be deleted for any graph transformation
+  //graph inputs including initializers and outputs can be deleted by graph transformation (eg, gelu fusion)
   //delete unneeded inputs don't affect onnxruntime passing them as input data handle
   //delete unneeded outputs will cause ep to output to fewer data handles then expected
   for (const auto* node_arg : graph_viewer_.GetInputsIncludingInitializers()) {
