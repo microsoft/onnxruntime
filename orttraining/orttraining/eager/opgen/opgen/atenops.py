@@ -31,7 +31,7 @@ ops = {
   'aten::empty_strided': SignatureOnly(),
   'aten::zero_': SignatureOnly(),
   'aten::copy_': SignatureOnly(),
-  'aten::reshape': SignatureOnly(),
+  'aten::_reshape_alias': SignatureOnly(),
   'aten::view': SignatureOnly(),
 
   'aten::addmm': Gemm('mat1', 'mat2', 'self', alpha='alpha', beta='beta'),

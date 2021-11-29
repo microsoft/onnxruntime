@@ -9,7 +9,7 @@ import {onnxruntime} from './ort-schema/ort-generated';
 
 import ortFbs = onnxruntime.experimental.fbs;
 
-import {ProtoUtil, ShapeUtil} from './util';
+import {decodeUtf8String, ProtoUtil, ShapeUtil} from './util';
 
 export declare namespace Tensor {
   export interface DataTypeMap {
@@ -217,8 +217,7 @@ export class Tensor {
       // When it's STRING type, the value should always be stored in field
       // 'stringData'
       tensorProto.stringData!.forEach((str, i) => {
-        const buf = Buffer.from(str.buffer, str.byteOffset, str.byteLength);
-        value.data[i] = buf.toString();
+        value.data[i] = decodeUtf8String(str);
       });
 
     } else if (

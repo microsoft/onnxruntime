@@ -872,6 +872,8 @@ struct IoBinding : public Base<OrtIoBinding> {
   std::vector<Value> GetOutputValues(Allocator&) const;
   void ClearBoundInputs();
   void ClearBoundOutputs();
+  void SynchronizeInputs();
+  void SynchronizeOutputs();
 
  private:
   std::vector<std::string> GetOutputNamesHelper(OrtAllocator*) const;

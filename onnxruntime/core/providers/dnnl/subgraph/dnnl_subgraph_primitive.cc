@@ -18,8 +18,10 @@
 #include "dnnl_reshape.h"
 #include "dnnl_softmax.h"
 #include "dnnl_softmaxgrad.h"
+#include "dnnl_squeeze.h"
 #include "dnnl_sum.h"
 #include "dnnl_transpose.h"
+#include "dnnl_unsqueeze.h"
 
 #if defined(ENABLE_TRAINING)
 #include "dnnl_convgrad.h"
@@ -75,10 +77,14 @@ void DnnlSubgraphPrimitive::AddKernels() {
       DnnlReshape().CreatePrimitive(*this, node);
     } else if (node.OpType() == "Softmax") {
       DnnlSoftmax().CreatePrimitive(*this, node);
+    } else if (node.OpType() == "Squeeze") {
+      DnnlSqueeze().CreatePrimitive(*this, node);
     } else if (node.OpType() == "Sum") {
       DnnlSum().CreatePrimitive(*this, node);
     } else if (node.OpType() == "Transpose") {
       DnnlTranspose().CreatePrimitive(*this, node);
+    } else if (node.OpType() == "Unsqueeze") {
+      DnnlUnsqueeze().CreatePrimitive(*this, node);
 #if defined(ENABLE_TRAINING)
     } else if (node.OpType() == "AveragePoolGrad" || node.OpType() == "MaxPoolGrad") {
       DnnlPoolGrad().CreatePrimitive(*this, node);
@@ -108,6 +114,10 @@ DnnlSubgraphPrimitive::DnnlSubgraphPrimitive(ort_dnnl::DnnlSubgraph& dnnl_subgra
 
 bool DnnlSubgraphPrimitive::IsDynamic() {
   return subgraph_->IsDynamic();
+}
+
+bool DnnlSubgraphPrimitive::IsScalar(const DnnlTensor& tensor) {
+  return Contains(input_is_scalar_, tensor.Name());
 }
 
 void DnnlSubgraphPrimitive::Compile(const std::unordered_map<std::string, OnnxTensorData>& inputs) {
@@ -157,6 +167,7 @@ void DnnlSubgraphPrimitive::Compile(const std::unordered_map<std::string, OnnxTe
     dnnl::memory::dims dnnl_dims = inputs.at(dnnl_tensor_name).tensor_info.shape;
     if (dnnl_dims.size() == 0) {
       dnnl_dims.push_back(1);
+      input_is_scalar_.insert(dnnl_tensor_name);
     }
     auto dnnl_format = GetDnnlFormat(dnnl_dims.size());
     auto input_md = dnnl::memory::desc(dnnl_dims, dnnl_data_type, dnnl_format);

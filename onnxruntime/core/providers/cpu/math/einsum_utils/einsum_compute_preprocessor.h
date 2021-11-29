@@ -30,11 +30,11 @@ constexpr size_t num_of_letters = 52;
  */
 inline int64_t LetterToIndex(char ch) {
   if (ch >= 'a' && ch <= 'z') {
-    return static_cast<int64_t>(ch - 'a');
+    return static_cast<int64_t>(ch) - 'a';
   }
 
   if (ch >= 'A' && ch <= 'Z') {
-    return 26 + static_cast<int64_t>(ch - 'A');
+    return 26 + static_cast<int64_t>(ch) - 'A';
   }
 
   // invalid character - return error value

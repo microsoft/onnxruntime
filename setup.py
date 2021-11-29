@@ -52,9 +52,7 @@ cuda_version = None
 rocm_version = None
 is_rocm = False
 # The following arguments are mutually exclusive
-if parse_arg_remove_boolean(sys.argv, '--use_tensorrt'):
-    package_name = 'onnxruntime-gpu-tensorrt' if not nightly_build else 'ort-trt-nightly'
-elif wheel_name_suffix == 'gpu':
+if wheel_name_suffix == 'gpu':
     # TODO: how to support multiple CUDA versions?
     cuda_version = parse_arg_remove_string(sys.argv, '--cuda_version=')
 elif parse_arg_remove_boolean(sys.argv, '--use_rocm'):
@@ -135,6 +133,17 @@ try:
                     f.write('    import os\n')
                     f.write('    os.environ["ORT_CUDA_UNAVAILABLE"] = "1"\n')
 
+        def _rewrite_ld_preload_tensorrt(self, to_preload):
+            with open('onnxruntime/capi/_ld_preload.py', 'a') as f:
+                if len(to_preload) > 0:
+                    f.write('from ctypes import CDLL, RTLD_GLOBAL\n')
+                    f.write('try:\n')
+                    for library in to_preload:
+                        f.write('    _{} = CDLL("{}", mode=RTLD_GLOBAL)\n'.format(library.split('.')[0], library))
+                    f.write('except OSError:\n')
+                    f.write('    import os\n')
+                    f.write('    os.environ["ORT_TENSORRT_UNAVAILABLE"] = "1"\n')
+
         def run(self):
             if is_manylinux:
                 source = 'onnxruntime/capi/onnxruntime_pybind11_state.so'
@@ -147,6 +156,8 @@ try:
                                 'libhsa-runtime64.so', 'libhsakmt.so']
                 to_preload = []
                 to_preload_cuda = []
+                to_preload_tensorrt = []
+                cuda_dependencies = []
                 args = ['patchelf', '--debug']
                 for line in result.stdout.split('\n'):
                     for dependency in dependencies:
@@ -157,12 +168,12 @@ try:
                 if len(args) > 3:
                     subprocess.run(args, check=True, stdout=subprocess.PIPE)
 
-                dest = 'onnxruntime/capi/libonnxruntime_providers_' + 'rocm.so' if is_rocm else 'cuda.so'
+                dest = 'onnxruntime/capi/libonnxruntime_providers_' + ('rocm.so' if is_rocm else 'cuda.so')
                 if path.isfile(dest):
                     result = subprocess.run(['patchelf', '--print-needed', dest],
                                             check=True, stdout=subprocess.PIPE, universal_newlines=True)
                     cuda_dependencies = ['libcublas.so', 'libcublasLt.so', 'libcudnn.so', 'libcudart.so',
-                                         'libcurand.so', 'libcufft.so', 'libnvToolsExt.so']
+                                         'libcurand.so', 'libcufft.so', 'libnvToolsExt.so', 'libcupti.so']
                     rocm_dependencies = ['librccl.so', 'libamdhip64.so', 'librocblas.so', 'libMIOpen.so',
                                          'libhsa-runtime64.so', 'libhsakmt.so']
                     args = ['patchelf', '--debug']
@@ -176,8 +187,25 @@ try:
                     if len(args) > 3:
                         subprocess.run(args, check=True, stdout=subprocess.PIPE)
 
+                dest = 'onnxruntime/capi/libonnxruntime_providers_tensorrt.so'
+                if path.isfile(dest):
+                    result = subprocess.run(['patchelf', '--print-needed', dest],
+                                            check=True, stdout=subprocess.PIPE, universal_newlines=True)
+                    tensorrt_dependencies = ['libnvinfer.so', 'libnvinfer_plugin.so', 'libnvonnxparser.so']
+                    args = ['patchelf', '--debug']
+                    for line in result.stdout.split('\n'):
+                        for dependency in (cuda_dependencies + tensorrt_dependencies):
+                            if dependency in line:
+                                if dependency not in (to_preload + to_preload_cuda):
+                                    to_preload_tensorrt.append(line)
+                                args.extend(['--remove-needed', line])
+                    args.append(dest)
+                    if len(args) > 3:
+                        subprocess.run(args, check=True, stdout=subprocess.PIPE)
+
                 self._rewrite_ld_preload(to_preload)
                 self._rewrite_ld_preload_cuda(to_preload_cuda)
+                self._rewrite_ld_preload_tensorrt(to_preload_tensorrt)
             _bdist_wheel.run(self)
             if is_manylinux and not disable_auditwheel_repair:
                 file = glob(path.join(self.dist_dir, '*linux*.whl'))[0]
@@ -202,6 +230,7 @@ if platform.system() == 'Linux':
             'mimalloc.so']
     dl_libs = ['libonnxruntime_providers_shared.so']
     dl_libs.append(providers_cuda_or_rocm)
+    dl_libs.append('libonnxruntime_providers_tensorrt.so')
     # DNNL, TensorRT & OpenVINO EPs are built as shared libs
     libs.extend(['libonnxruntime_providers_shared.so'])
     libs.extend(['libonnxruntime_providers_dnnl.so'])
