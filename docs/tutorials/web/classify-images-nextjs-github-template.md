@@ -1,10 +1,10 @@
 ---
-title: Deploy on web
+title: Classify images with ONNX Runtime and Next.js
 description: Classify images in a NextJS web application built from a GitHub template repo
-parent: Deploy on mobile and web
+parent: Deploy on web
 grand_parent: Tutorials
 has_children: false
-nav_order: 3
+nav_order: 1
 ---
 
 
