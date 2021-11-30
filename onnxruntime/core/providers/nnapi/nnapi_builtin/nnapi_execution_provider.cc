@@ -9,6 +9,7 @@
 #include "core/graph/graph_viewer.h"
 #include "core/platform/env.h"
 #include "core/providers/common.h"
+#include "core/providers/shared/node_unit.h"
 #include "core/providers/nnapi/nnapi_builtin/builders/helper.h"
 #include "core/providers/nnapi/nnapi_builtin/builders/op_support_checker.h"
 #include "core/providers/nnapi/nnapi_builtin/nnapi_lib/nnapi_implementation.h"
@@ -121,10 +122,29 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
 
   std::unordered_set<std::string> node_outputs_in_current_group{};
 
+  std::unordered_map<const Node*, std::unique_ptr<INodeUnit>> node_unit_map;
+  const auto& node_indices = graph_viewer.GetNodesInTopologicalOrder();
+  for (size_t i = 0; i < node_indices.size(); i++) {
+    const auto* node(graph_viewer.GetNode(node_indices[i]));
+    auto node_unit = CreateNodeUnit(*node);
+    node_unit_map.insert({node, std::move(node_unit)});
+  }
+
+  std::unordered_map<const INodeUnit*, bool> node_unit_supported_map;
+
   const auto is_node_supported = [&](const Node& node) -> bool {
+    // TODO, use node_unit's core node for check_excluded_node
     const bool excluded = check_excluded_nodes && Contains(excluded_nodes, &node);
+    const auto& node_unit = node_unit_map.at(&node);
+
+    // Check if this node_unit is already processed to avoid re-check
+    const auto iter = node_unit_supported_map.find(node_unit.get());
+    if (iter != node_unit_supported_map.end()) {
+      return iter->second;
+    }
+
     const bool supported = !excluded &&
-                           nnapi::IsNodeSupportedInGroup(node, graph_viewer, params,
+                           nnapi::IsNodeSupportedInGroup(*node_unit, graph_viewer, params,
                                                          node_outputs_in_current_group);
     LOGS_DEFAULT(VERBOSE) << "Operator type: [" << node.OpType()
                           << "] index: [" << node.Index()
@@ -132,10 +152,12 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
                           << "] supported: [" << supported
                           << "]";
 
+    node_unit_supported_map.insert({node_unit.get(), supported});
+
     if (supported) {
       // We want to save all the output names of nodes in the current group for easy query
       // See nnapi::IsNodeSupportedInGroup()
-      for (const auto* output : node.OutputDefs()) {
+      for (const auto* output : node_unit->OutputDefs()) {
         node_outputs_in_current_group.insert(output->Name());
       }
     }
