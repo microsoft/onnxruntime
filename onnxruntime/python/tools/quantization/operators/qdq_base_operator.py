@@ -1,7 +1,6 @@
 import itertools
 from .base_operator import QuantOperatorBase
 from ..quant_utils import QuantizedValue, QuantizedValueType, attribute_to_kwarg, quantize_nparray
-import logging
 
 
 class QDQOperatorBase:
@@ -24,9 +23,6 @@ class QDQOperatorBase:
                 if node.op_type in self.quantizer.op_types_support_per_channel_quantization :
                     self.quantizer.quantize_tensor_per_channel(tensor_name, self.quantizer.qdq_channel_axis)
                 else:
-                    logging.warning(
-                        "{} doesn't support per channel quantization. Quantize tensor: {} with per-tensor instead.".format(
-                            node.op_type, tensor_name))
                     self.quantizer.quantize_tensor(tensor_name)
             else:
                 self.quantizer.quantize_tensor(tensor_name)
