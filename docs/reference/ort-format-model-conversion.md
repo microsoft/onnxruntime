@@ -35,6 +35,8 @@ If [type reduction](#enable-type-reduction) is enabled (ONNX Runtime version 1.7
 
 If you are using a pre-built ONNX Runtime [iOS](../install/index.md#install-on-ios), [Android](../install/index.md#install-on-android) or [web](../install/index.md#javascript-installs) package], the build configuration file is not used and can be ignored.
 
+ORT format model is supported by version 1.5.2 of ONNX Runtime or later.
+
 Conversion of ONNX format models to ORT format utilizes the ONNX Runtime python package, as the model is loaded into ONNX Runtime and optimized as part of the conversion process.
 
 For ONNX Runtime version 1.8 and later the conversion script is run directly from the ONNX Runtime python package.
