@@ -655,7 +655,9 @@ class PlannerImpl {
     if (utils::IsInputOnCpu(node, &kernel_create_info, input_index))
       // weights are not output from any node, so it's OK to put its location on CPU provider
       return execution_providers_.GetDefaultCpuMemoryInfo();
-    return p_provider->GetAllocator(0, OrtMemTypeDefault)->Info();
+
+    auto mem_type = kernel_create_info.kernel_def->InputMemoryType(input_index);
+    return p_provider->GetAllocator(0, mem_type)->Info();
   }
 
   void GeneratePlanForWeightsHelper(const GraphViewer& graph_viewer,
