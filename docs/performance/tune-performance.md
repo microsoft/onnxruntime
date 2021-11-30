@@ -51,7 +51,7 @@ In both cases, you will get a JSON file which contains the detailed performance 
 * Type chrome://tracing in the address bar
 * Load the generated JSON file
 
-For CUDA EP, performance numbers from device will be attached to those from host. For example:
+To profile CUDA kernels, please use binary built from source with `--enable_cuda_profiling`, performance numbers from device will then be attached to those from host. For example:
 ```
 {"cat":"Node", "name":"Add_1234", "dur":17, ...}
 {"cat":"Kernel", "name":"ort_add_cuda_kernel", dur:33, ...}
