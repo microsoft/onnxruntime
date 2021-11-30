@@ -36,13 +36,13 @@ class INodeUnit {
 
   virtual const Node& GetNode() const noexcept = 0;
 
-  virtual size_t GetInputEdgesCount() const noexcept = 0;
+  // virtual size_t GetInputEdgesCount() const noexcept = 0;
   virtual NodeIndex Index() const noexcept = 0;
 
   virtual ProviderType GetExecutionProviderType() const noexcept = 0;
 
-  virtual Node::NodeConstIterator OutputNodesBegin() const noexcept = 0;
-  virtual Node::NodeConstIterator OutputNodesEnd() const noexcept = 0;
+  // virtual Node::NodeConstIterator OutputNodesBegin() const noexcept = 0;
+  // virtual Node::NodeConstIterator OutputNodesEnd() const noexcept = 0;
 
   virtual const std::vector<const Node*> GetAllNodes() const noexcept = 0;
 
