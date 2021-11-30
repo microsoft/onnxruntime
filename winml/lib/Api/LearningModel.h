@@ -102,6 +102,11 @@ struct LearningModel : LearningModelT<LearningModel> {
   LoadFromStream(
       wss::IRandomAccessStreamReference const stream,
       winml::ILearningModelOperatorProvider const operator_provider);
+	  
+  static winml::LearningModel
+  LoadFromBuffer(
+      wss::IBuffer const buffer,
+      winml::ILearningModelOperatorProvider const operator_provider);
 
  public:
   /* Non-ABI methods */

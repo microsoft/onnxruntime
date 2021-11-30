@@ -121,6 +121,8 @@ namespace ROOT_NS.AI.MachineLearning
         [method_name("LoadFromFilePathWithOperatorProvider")] static LearningModel LoadFromFilePath(String filePath, ILearningModelOperatorProvider operatorProvider);
         //! Loads an ONNX model from a stream.
         [method_name("LoadFromStreamWithOperatorProvider")] static LearningModel LoadFromStream(Windows.Storage.Streams.IRandomAccessStreamReference modelStream, ILearningModelOperatorProvider operatorProvider);
+        //! Loads an ONNX model from a buffer.
+        [method_name("LoadFromBufferWithOperatorProvider")] static LearningModel LoadFromBuffer(Windows.Storage.Streams.IBuffer modelBuffer, ILearningModelOperatorProvider operatorProvider);
 
         //! The name of the model author.
         String Author{ get; };
