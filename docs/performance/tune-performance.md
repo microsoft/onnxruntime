@@ -51,6 +51,19 @@ In both cases, you will get a JSON file which contains the detailed performance 
 * Type chrome://tracing in the address bar
 * Load the generated JSON file
 
+To profile CUDA kernels, please use binary built from source with `--enable_cuda_profiling`, performance numbers from device will then be attached to those from host. For example:
+```
+{"cat":"Node", "name":"Add_1234", "dur":17, ...}
+{"cat":"Kernel", "name":"ort_add_cuda_kernel", dur:33, ...}
+```
+Here, "Add" operator from host initiated a CUDA kernel on device named "ort_add_cuda_kernel" which lasted for 33 microseconds.
+If an operator called multiple kernels during execution, the performance numbers of those kernels will all be listed following the calling sequence:
+```
+{"cat":"Node", "name":<name of the node>, ...}
+{"cat":"Kernel", "name":<name of the kernel called first>, ...}
+{"cat":"Kernel", "name":<name of the kernel called next>, ...}
+```
+
 ## Using different Execution Providers
 
 To learn more about different Execution Providers, see [Reference: Execution Providers](../execution-providers).
@@ -147,6 +160,61 @@ Memory consumption can be reduced between multiple sessions by configuring the s
 * If ORT is not built with OpenMP, use the appropriate ORT API to control intra op num threads.
 * Inter op num threads (used only when parallel execution is enabled) is not affected by OpenMP settings and should
 always be set using the ORT APIs.
+
+### Custom threading callbacks
+Occasionally, customers might prefer to use their own fine-tuned threads for multithreading,
+hence ORT offers thread creation and joining callbacks by [C++ API](https://github.com/microsoft/onnxruntime/blob/master/include/onnxruntime/core/session/onnxruntime_cxx_api.h):
+
+```
+  std::vector<std::thread> threads;
+  void* custom_thread_creation_options = nullptr;
+  // initialize custom_thread_creation_options
+
+  // On thread pool creation, ORT calls CreateThreadCustomized to create a thread
+  OrtCustomThreadHandle CreateThreadCustomized(void* custom_thread_creation_options, OrtThreadWorkerFn work_loop, void* param) {
+    threads.push_back(std::thread(work_loop, param));
+    // configure the thread by custom_thread_creation_options
+    return reinterpret_cast<OrtCustomThreadHandle>(threads.back().native_handle());
+  }
+
+  // On thread pool destruction, ORT calls JoinThreadCustomized for each created thread
+  void JoinThreadCustomized(OrtCustomThreadHandle handle) {
+    for (auto& t : threads) {
+      if (reinterpret_cast<OrtCustomThreadHandle>(t.native_handle()) == handle) {
+        // recycling resources ... 
+        t.join();
+      }
+    }
+  }
+
+  int main(...) {
+    ...
+    Ort::Env ort_env;
+    Ort::SessionOptions session_options;
+    session_options.SetCustomCreateThreadFn(CreateThreadCustomized);
+    session_options.SetCustomThreadCreationOptions(&custom_thread_creation_options);
+    session_options.SetCustomJoinThreadFn(JoinThreadCustomized);
+    Ort::Session session(*ort_env, MODEL_URI, session_options);
+    ...
+  }
+```
+
+For global thread pool:
+
+```
+  int main() {
+    const OrtApi* g_ort = OrtGetApiBase()->GetApi(ORT_API_VERSION);
+    OrtThreadingOptions* tp_options = nullptr;
+    g_ort->CreateThreadingOptions(&tp_options);
+    g_ort->SetGlobalCustomCreateThreadFn(tp_options, CreateThreadCustomized);
+    g_ort->SetGlobalCustomThreadCreationOptions(tp_options, &custom_thread_creation_options);
+    g_ort->SetGlobalCustomJoinThreadFn(tp_options, JoinThreadCustomized);
+    // disable per-session thread pool, create a session for inferencing
+    g_ort->ReleaseThreadingOptions(tp_options);
+  }
+```
+
+Note that CreateThreadCustomized and JoinThreadCustomized, once being set, will be applied to both ORT intra op and inter op thread pools uniformly.
 
 ### Default CPU Execution Provider (MLAS)
 
