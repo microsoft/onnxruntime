@@ -75,8 +75,9 @@ Status InstanceNorm<T>::ComputeInternal(OpKernelContext* p_op_kernel_context) co
     if (X->IsDataType<MLFloat16>()) {  // Batch size == 1 && type == float16
       // Convert the scale, B, mean, var to float
       auto scale_data_fp32 = GetScratchBuffer<float>(C);
-      auto bias_data_fp32 = GetScratchBuffer<float>(C);
       Impl_Cast<CudaT, float>(Stream(), scale_data, scale_data_fp32.get(), C);
+
+      auto bias_data_fp32 = GetScratchBuffer<float>(C);
       Impl_Cast<CudaT, float>(Stream(), bias_data, bias_data_fp32.get(), C);
 
       CUDNN_RETURN_IF_ERROR(cudnnBatchNormalizationForwardTraining(
@@ -176,8 +177,9 @@ Status InstanceNorm<T>::ComputeInternal(OpKernelContext* p_op_kernel_context) co
 
       // The CuDNN computed float mean and variance needs to be casted to half first
       auto mean_fp16 = GetScratchBuffer<CudaT>(stats_count);
-      auto variance_fp16 = GetScratchBuffer<CudaT>(stats_count);
       Impl_Cast<float, CudaT>(Stream(), mean.get(), mean_fp16.get(), stats_count);
+
+      auto variance_fp16 = GetScratchBuffer<CudaT>(stats_count);
       Impl_Cast<float, CudaT>(Stream(), variance.get(), variance_fp16.get(), stats_count);
 
       // Y = scale * (x - mean) / sqrt (variance + epsilon) + B
