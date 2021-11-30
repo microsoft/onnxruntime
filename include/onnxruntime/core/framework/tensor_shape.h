@@ -26,12 +26,12 @@ class TensorShape {
   TensorShape(const TensorShape& other) : TensorShape(other.GetDims()) {}
   TensorShape& operator=(const TensorShape& other);
 
-  TensorShape(TensorShape&& other) { operator=(std::move(other)); }
-  TensorShape& operator=(TensorShape&& other);
+  TensorShape(TensorShape&& other) noexcept { operator=(std::move(other)); }
+  TensorShape& operator=(TensorShape&& other) noexcept;
 
   TensorShape(gsl::span<const int64_t> dims);
   TensorShape(const std::vector<int64_t>& dims) : TensorShape(gsl::make_span(dims)) {}
-  TensorShape(const std::initializer_list<int64_t>& dims);
+  TensorShape(const std::initializer_list<int64_t>& dims) : TensorShape(gsl::make_span(dims.begin(), dims.end())) {}
   TensorShape(const int64_t* dimension_sizes, size_t dimension_count) : TensorShape(gsl::span<const int64_t>(dimension_sizes, dimension_count)) {}
   TensorShape(const std::vector<int64_t>& dims, size_t start, size_t end) : TensorShape(gsl::span<const int64_t>(&dims[start], end - start)) {}
 

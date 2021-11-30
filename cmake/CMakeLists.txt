@@ -175,6 +175,8 @@ option(onnxruntime_PREBUILT_PYTORCH_PATH "Path to pytorch installation dir")
 # external transformer src path
 option(onnxruntime_EXTERNAL_TRANSFORMER_SRC_PATH "Path to external transformer src dir")
 
+option(onnxruntime_ENABLE_CUDA_PROFILING "Enable CUDA kernel profiling" OFF)
+
 if (onnxruntime_USE_CUDA)
   set(onnxruntime_DISABLE_RTTI OFF)
 endif()
@@ -960,7 +962,11 @@ if (WIN32)
         # issued by thrust nonstandard extension used: nameless struct/union
         list(APPEND ORT_WARNING_FLAGS "/wd4201")
         # warning C4800: Implicit conversion from 'X' to bool. Possible information loss
-        list(APPEND ORT_WARNING_FLAGS "/w34800")
+        if (onnxruntime_USE_OPENVINO)
+           list(APPEND ORT_WARNING_FLAGS "/wd4800")
+        else()
+           list(APPEND ORT_WARNING_FLAGS "/w34800")
+        endif()
         if (onnxruntime_USE_OPENMP)
             list(APPEND ORT_WARNING_FLAGS "/wd6993") # Code analysis ignores OpenMP constructs
         endif()
@@ -1694,6 +1700,10 @@ endif()
 
 if (onnxruntime_ENABLE_TRAINING_OPS)
   add_compile_definitions(ENABLE_TRAINING_OPS)
+endif()
+
+if (onnxruntime_ENABLE_CUDA_PROFILING)
+  add_compile_definitions(ENABLE_CUDA_PROFILING)
 endif()
 
 if (onnxruntime_ENABLE_TRAINING)

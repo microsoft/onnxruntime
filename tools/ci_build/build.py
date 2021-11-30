@@ -567,6 +567,10 @@ def parse_arguments():
         "--test_external_transformer_example", action='store_true',
         help="run the example external transformer test, mainly used in CI pipeline.")
 
+    parser.add_argument(
+        "--enable_cuda_profiling", action='store_true', help="enable cuda kernel profiling, \
+        cupti library must be added to PATH beforehand.")
+
     return parser.parse_args()
 
 
@@ -817,6 +821,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_ENABLE_EXTERNAL_CUSTOM_OP_SCHEMAS=" + ("ON" if args.enable_external_custom_op_schemas
                                                               else "OFF"),
         "-Donnxruntime_NVCC_THREADS=" + str(args.parallel),
+        "-Donnxruntime_ENABLE_CUDA_PROFILING=" + ("ON" if args.enable_cuda_profiling else "OFF"),
     ]
     if args.external_graph_transformer_path:
         cmake_args.append("-Donnxruntime_EXTERNAL_TRANSFORMER_SRC_PATH=" + args.external_graph_transformer_path)
@@ -1759,6 +1764,11 @@ def build_nuget_package(source_dir, build_dir, configs, use_cuda, use_openvino, 
     csharp_build_dir = os.path.join(source_dir, 'csharp')
     is_linux_build = derive_linux_build_property()
 
+    # in most cases we don't want/need to include the Xamarin mobile targets, as doing so means the Xamarin
+    # mobile workloads must be installed on the machine.
+    # they are only included in the Microsoft.ML.OnnxRuntime nuget package
+    sln = "OnnxRuntime.DesktopOnly.CSharp.sln"
+
     # derive package name and execution provider based on the build args
     target_name = "/t:CreatePackage"
     execution_provider = "/p:ExecutionProvider=\"None\""
@@ -1780,14 +1790,15 @@ def build_nuget_package(source_dir, build_dir, configs, use_cuda, use_openvino, 
     elif use_nuphar:
         package_name = "/p:OrtPackageId=\"Microsoft.ML.OnnxRuntime.Nuphar\""
     else:
-        pass
+        # use the solution file that includes Xamarin mobile targets
+        sln = "OnnxRuntime.CSharp.sln"
 
     # set build directory based on build_dir arg
     native_dir = os.path.normpath(os.path.join(source_dir, build_dir))
     ort_build_dir = "/p:OnnxRuntimeBuildDirectory=\"" + native_dir + "\""
 
     # dotnet restore
-    cmd_args = ["dotnet", "restore", "OnnxRuntime.CSharp.sln", "--configfile", "Nuget.CSharp.config"]
+    cmd_args = ["dotnet", "restore", sln, "--configfile", "Nuget.CSharp.config"]
     run_subprocess(cmd_args, cwd=csharp_build_dir)
 
     # build csharp bindings and create nuget package for each config
@@ -1800,8 +1811,7 @@ def build_nuget_package(source_dir, build_dir, configs, use_cuda, use_openvino, 
         configuration = "/p:Configuration=\"" + config + "\""
 
         if not use_winml:
-            cmd_args = ["dotnet", "msbuild", "OnnxRuntime.CSharp.sln", configuration, package_name, is_linux_build,
-                        ort_build_dir]
+            cmd_args = ["dotnet", "msbuild", sln, configuration, package_name, is_linux_build, ort_build_dir]
             run_subprocess(cmd_args, cwd=csharp_build_dir)
         else:
             winml_interop_dir = os.path.join(source_dir, "csharp", "src", "Microsoft.AI.MachineLearning.Interop")
@@ -1811,7 +1821,13 @@ def build_nuget_package(source_dir, build_dir, configs, use_cuda, use_openvino, 
                         ort_build_dir, "-restore"]
             run_subprocess(cmd_args, cwd=csharp_build_dir)
 
-        nuget_exe = os.path.normpath(os.path.join(native_dir, config, "nuget_exe", "src", "nuget.exe"))
+        if is_windows():
+            # this path is setup by cmake/nuget_helpers.cmake for MSVC on Windows
+            nuget_exe = os.path.normpath(os.path.join(native_dir, config, "nuget_exe", "src", "nuget.exe"))
+        else:
+            # user needs to make sure nuget is installed and can be found
+            nuget_exe = "nuget"
+
         nuget_exe_arg = "/p:NugetExe=\"" + nuget_exe + "\""
 
         cmd_args = [

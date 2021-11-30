@@ -96,19 +96,24 @@ async function testAllNodejsCases() {
 }
 
 async function testAllBrowserCases({ hostInKarma }) {
-  await runKarma({ hostInKarma, main: './browser-test-webgl.js', browser: 'Chrome_default' });
-  await runKarma({ hostInKarma, main: './browser-test-wasm.js', browser: 'Chrome_default' });
-  await runKarma({ hostInKarma, main: './browser-test-wasm-no-threads.js', browser: 'Chrome_default' });
-  await runKarma({ hostInKarma, main: './browser-test-wasm-proxy.js', browser: 'Chrome_default' });
-  await runKarma({ hostInKarma, main: './browser-test-wasm-no-threads-proxy.js', browser: 'Chrome_default' });
-  await runKarma({ hostInKarma, main: './browser-test-wasm-path-override-filename.js', browser: 'Chrome_default' });
-  await runKarma({ hostInKarma, main: './browser-test-wasm-path-override-prefix.js', browser: 'Chrome_default' });
+  await runKarma({ hostInKarma, main: './browser-test-webgl.js'});
+  await runKarma({ hostInKarma, main: './browser-test-webgl.js', ortMain: 'ort.webgl.min.js'});
+  await runKarma({ hostInKarma, main: './browser-test-wasm.js'});
+  await runKarma({ hostInKarma, main: './browser-test-wasm.js', ortMain: 'ort.wasm.min.js'});
+  await runKarma({ hostInKarma, main: './browser-test-wasm-no-threads.js'});
+  await runKarma({ hostInKarma, main: './browser-test-wasm-no-threads.js', ortMain: 'ort.wasm-core.min.js'});
+  await runKarma({ hostInKarma, main: './browser-test-wasm-proxy.js'});
+  await runKarma({ hostInKarma, main: './browser-test-wasm-proxy-no-threads.js'});
+  await runKarma({ hostInKarma, main: './browser-test-wasm-path-override-filename.js'});
+  await runKarma({ hostInKarma, main: './browser-test-wasm-path-override-filename.js', ortMain: 'ort.wasm.min.js'});
+  await runKarma({ hostInKarma, main: './browser-test-wasm-path-override-prefix.js'});
+  await runKarma({ hostInKarma, main: './browser-test-wasm-path-override-prefix.js', ortMain: 'ort.wasm.min.js'});
 }
 
-async function runKarma({ hostInKarma, main, browser }) {
+async function runKarma({ hostInKarma, main, browser = 'Chrome_default', ortMain = 'ort.min.js' }) {
   const selfHostFlag = hostInKarma ? '--self-host' : '';
   await runInShell(
-    `npx karma start --single-run --browsers ${browser} ${selfHostFlag} --test-main=${main} --user-data=${getNextUserDataDir()}`);
+    `npx karma start --single-run --browsers ${browser} ${selfHostFlag} --ort-main=${ortMain} --test-main=${main} --user-data=${getNextUserDataDir()}`);
 }
 
 async function runInShell(cmd) {

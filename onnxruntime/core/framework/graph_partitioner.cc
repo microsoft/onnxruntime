@@ -359,8 +359,6 @@ static Status InlineNodes(Graph& graph, bool& modified_graph) {
     modified_graph = true;
   }
 
-  ORT_RETURN_IF_ERROR(graph.Resolve());
-
   return Status::OK();
 }
 

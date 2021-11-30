@@ -11,6 +11,7 @@
 namespace onnxruntime {
 namespace contrib {
 
+template <typename T8Bits>
 class NhwcMaxPool : public OpKernel {
  public:
   explicit NhwcMaxPool(const OpKernelInfo& info) : OpKernel(info),
@@ -20,10 +21,11 @@ class NhwcMaxPool : public OpKernel {
   Status Compute(OpKernelContext* context) const override;
 
  private:
-   PoolAttributes pool_attrs_;
+  PoolAttributes pool_attrs_;
 };
 
-Status NhwcMaxPool::Compute(OpKernelContext* context) const {
+template <typename T8Bits>
+Status NhwcMaxPool<T8Bits>::Compute(OpKernelContext* context) const {
   const auto* X = context->Input<Tensor>(0);
   const TensorShape& input_shape = X->Shape();
 
@@ -73,17 +75,17 @@ Status NhwcMaxPool::Compute(OpKernelContext* context) const {
   AllocatorPtr alloc;
   ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
   int64_t col_buffer_batch_count = std::min(output_image_size, output_batch_count);
-  auto* col_data = alloc->Alloc(SafeInt<size_t>(sizeof(const uint8_t*)) * kernel_size * col_buffer_batch_count);
+  auto* col_data = alloc->Alloc(SafeInt<size_t>(sizeof(const T8Bits*)) * kernel_size * col_buffer_batch_count);
   BufferUniquePtr col_buffer(col_data, BufferDeleter(alloc));
-  std::vector<uint8_t> padding_data(static_cast<size_t>(C), 0);
+  std::vector<T8Bits> padding_data(static_cast<size_t>(C), std::numeric_limits<T8Bits>::lowest());
 
-  const auto* Xdata = X->template Data<uint8_t>();
-  auto* Ydata = Y->template MutableData<uint8_t>();
+  const auto* Xdata = X->template Data<T8Bits>();
+  auto* Ydata = Y->template MutableData<T8Bits>();
 
   for (int64_t image_id = 0; image_id < N; ++image_id) {
     for (int64_t output_start = 0; output_start < output_image_size;) {
       int64_t output_count = std::min(output_image_size - output_start, output_batch_count);
-      math::Im2col<uint8_t, StorageOrder::NHWC>()(
+      math::Im2col<T8Bits, StorageOrder::NHWC>()(
           Xdata,
           C,
           input_shape.GetDims().data() + 1,
@@ -95,10 +97,10 @@ Status NhwcMaxPool::Compute(OpKernelContext* context) const {
           static_cast<ptrdiff_t>(spatial_dims),
           output_start,
           output_count,
-          static_cast<uint8_t const**>(col_buffer.get()),
+          static_cast<T8Bits const**>(col_buffer.get()),
           padding_data.data());
       MlasMaximumPool(
-          static_cast<uint8_t const**>(col_buffer.get()),
+          static_cast<T8Bits const**>(col_buffer.get()),
           Ydata,
           static_cast<size_t>(C),
           static_cast<size_t>(output_count),
@@ -114,14 +116,19 @@ Status NhwcMaxPool::Compute(OpKernelContext* context) const {
   return Status::OK();
 }
 
-ONNX_OPERATOR_KERNEL_EX(
-    NhwcMaxPool,
-    kMSDomain,
-    1,
-    kCpuExecutionProvider,
-    KernelDefBuilder()
-        .TypeConstraint("T", DataTypeImpl::GetTensorType<uint8_t>()),
-    NhwcMaxPool);
+#define REGISTER_NHWCMAXPOOL_TYPED_KERNEL(T)                      \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
+      NhwcMaxPool,                                                \
+      kMSDomain,                                                  \
+      1,                                                          \
+      T,                                                          \
+      kCpuExecutionProvider,                                      \
+      KernelDefBuilder()                                          \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      NhwcMaxPool<T>);
+
+REGISTER_NHWCMAXPOOL_TYPED_KERNEL(int8_t);
+REGISTER_NHWCMAXPOOL_TYPED_KERNEL(uint8_t);
 
 }  // namespace contrib
 }  // namespace onnxruntime
