@@ -4,7 +4,6 @@ description: Learn how to deploy an ONNX model on a mobile device or as a web ap
 parent: Tutorials
 has_children: true
 nav_order: 5
-redirect_from: /docs/tutorials/mobile/
 ---
 
 # Deploy on mobile devices and to the web
