@@ -9,16 +9,16 @@ namespace cuda {
 
 template <typename T>
 __global__ void _InstanceNormKernel(
-    const T* input_data,
-    const T* scale,
-    const T* bias,
-    const T* mean,
-    const T* variance,
+    const T* __restrict__ input_data,
+    const T* __restrict__ scale,
+    const T* __restrict__ bias,
+    const T* __restrict__ mean,
+    const T* __restrict__ variance,
     const double variance_correction,
     const double epsilon,
     const fast_divmod fdm_HW,
     const fast_divmod fdm_C,
-    T* output_data,
+    T* __restrict__ output_data,
     const CUDA_LONG N) {
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
   int nc = fdm_HW.div(id);

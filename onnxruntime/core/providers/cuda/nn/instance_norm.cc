@@ -5,6 +5,7 @@
 #include "instance_norm_impl.h"
 #include "core/providers/cpu/nn/instance_norm_helper.h"
 #include "core/providers/cpu/nn/batch_norm_helper.h"
+#include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
 
 namespace onnxruntime {
 namespace cuda {
@@ -68,24 +69,55 @@ Status InstanceNorm<T>::ComputeInternal(OpKernelContext* p_op_kernel_context) co
     CudnnTensor stats_desc;
     ORT_RETURN_IF_ERROR(stats_desc.Set(data_desc, CUDNN_BATCHNORM_SPATIAL));
 
-    CUDNN_RETURN_IF_ERROR(cudnnBatchNormalizationForwardTraining(
-        CudnnHandle(),
-        CUDNN_BATCHNORM_SPATIAL,
-        &one,
-        &zero,
-        data_desc,
-        x_data,
-        data_desc,
-        y_data,
-        stats_desc,
-        scale_data,
-        bias_data,
-        1.0f,
-        nullptr,
-        nullptr,
-        epsilon_,
-        nullptr,
-        nullptr));
+    // For half input data type, alpha, beta, scale, bias need to be float type.
+    // alpha, beta will be of type float as the Consts struct specialization
+    // for MLFloat16 type take care of that.
+    if (X->IsDataType<MLFloat16>()) {  // Batch size == 1 && type == float16
+      // Convert the scale, B, mean, var to float
+      const int64_t C = x_shape.GetDims()[1];
+      auto scale_data_fp16 = GetScratchBuffer<float>(C);
+      auto bias_data_fp16 = GetScratchBuffer<float>(C);
+      Impl_Cast<CudaT, float>(Stream(), scale_data, scale_data_fp16.get(), C);
+      Impl_Cast<CudaT, float>(Stream(), bias_data, bias_data_fp16.get(), C);
+
+      CUDNN_RETURN_IF_ERROR(cudnnBatchNormalizationForwardTraining(
+          CudnnHandle(),
+          CUDNN_BATCHNORM_SPATIAL,
+          &one,
+          &zero,
+          data_desc,
+          x_data,
+          data_desc,
+          y_data,
+          stats_desc,
+          scale_data_fp16.get(),
+          bias_data_fp16.get(),
+          1.0f,
+          nullptr,
+          nullptr,
+          epsilon_,
+          nullptr,
+          nullptr));
+    } else {  // Batch size == 1 && type != float16
+      CUDNN_RETURN_IF_ERROR(cudnnBatchNormalizationForwardTraining(
+          CudnnHandle(),
+          CUDNN_BATCHNORM_SPATIAL,
+          &one,
+          &zero,
+          data_desc,
+          x_data,
+          data_desc,
+          y_data,
+          stats_desc,
+          scale_data,
+          bias_data,
+          1.0f,
+          nullptr,
+          nullptr,
+          epsilon_,
+          nullptr,
+          nullptr));
+    }
   } else {
     // we use cudnnBatchNormalizationForwardTraining to compute mean/variance
     // so collapsing NC into channel
@@ -94,69 +126,142 @@ Status InstanceNorm<T>::ComputeInternal(OpKernelContext* p_op_kernel_context) co
     auto stats_count = x_shape.SizeToDimension(2);  // N * C
     auto image_size = input_count / stats_count;
 
-    CudnnTensor data_desc;
-    ORT_RETURN_IF_ERROR(data_desc.Set(std::array<int64_t, 4>{1, stats_count, image_size, 1}, CudnnTensor::GetDataType<CudaT>()));
-
-    CudnnTensor stats_desc;
-    ORT_RETURN_IF_ERROR(stats_desc.Set(std::array<int64_t, 4>{1, stats_count, 1, 1}, CudnnTensor::GetDataType<CudaT>()));
-
-    const size_t stats_byte_count = stats_count * sizeof(CudaT);
-
-    // Mean & Variance are inputs & outputs and must be initialized to zero to work properly
-    auto mean = GetScratchBuffer<CudaT>(stats_count);
-    CUDA_RETURN_IF_ERROR(cudaMemsetAsync(mean.get(), 0, stats_byte_count, Stream()));
-    auto variance = GetScratchBuffer<CudaT>(stats_count);
-    CUDA_RETURN_IF_ERROR(cudaMemsetAsync(variance.get(), 0, stats_byte_count, Stream()));
-
-    // We must set the scale & bias inputs to zero as they are inputs to the calculation
-    auto unused_scale = GetScratchBuffer<CudaT>(stats_count);
-    CUDA_RETURN_IF_ERROR(cudaMemsetAsync(unused_scale.get(), 0, stats_byte_count, Stream()));
-    auto unused_bias = GetScratchBuffer<CudaT>(stats_count);
-    CUDA_RETURN_IF_ERROR(cudaMemsetAsync(unused_bias.get(), 0, stats_byte_count, Stream()));
-
-    // first, compute mean and variance per-instance per-channel using cudnnBatchNorm training
-    CUDNN_RETURN_IF_ERROR(cudnnBatchNormalizationForwardTraining(
-        CudnnHandle(),
-        CUDNN_BATCHNORM_SPATIAL,
-        &one,
-        &zero,
-        data_desc,
-        x_data,
-        data_desc,
-        y_data,  // use y temporarily, would be rewritten later
-        stats_desc,
-        unused_scale.get(),
-        unused_bias.get(),
-        1.0f,
-        mean.get(),
-        variance.get(),
-        CUDNN_BN_MIN_EPSILON,
-        nullptr,
-        nullptr));
-
-    // Y = scale * (x - mean) / sqrt (variance + epsilon) + B
-    // X/Y is (N,C,H,W)
-    // scale/bias is (1,C,1,1)
-    // mean/stddev is (N,C,1,1)
-    // NOTE cudnnBatchNormalization computes unbiased variance sum((Xi - mean)^2) / (count - 1)
-    // and it needs to be corrected with (count - 1) / count
     fast_divmod fdm_HW(gsl::narrow_cast<int>(image_size));
     fast_divmod fdm_C(gsl::narrow_cast<int>(C));
 
-    InstanceNormImpl<CudaT>(
-        Stream(),
-        x_data,
-        scale_data,
-        bias_data,
-        mean.get(),
-        variance.get(),
-        (image_size - 1.0) / image_size,
-        static_cast<double>(epsilon_),
-        fdm_HW,
-        fdm_C,
-        y_data,
-        input_count);
+    CudnnTensor data_desc;
+    ORT_RETURN_IF_ERROR(data_desc.Set(std::array<int64_t, 4>{1, stats_count, image_size, 1},
+                                      CudnnTensor::GetDataType<CudaT>()));
+
+    // For half input data type, we need to allocate some "intermediate"
+    // float buffers for CuDNN to use.
+    if (X->IsDataType<MLFloat16>()) {  // Batch size > 1 && type == float16
+      const size_t stats_byte_count = stats_count * sizeof(float);
+
+      // Mean & Variance are inputs & outputs and must be initialized to zero to work properly
+      auto mean = GetScratchBuffer<float>(stats_count);
+      CUDA_RETURN_IF_ERROR(cudaMemsetAsync(mean.get(), 0, stats_byte_count, Stream()));
+      auto variance = GetScratchBuffer<float>(stats_count);
+      CUDA_RETURN_IF_ERROR(cudaMemsetAsync(variance.get(), 0, stats_byte_count, Stream()));
+
+      // We must set the scale & bias inputs to zero as they are inputs to the calculation
+      auto unused_scale = GetScratchBuffer<float>(stats_count);
+      CUDA_RETURN_IF_ERROR(cudaMemsetAsync(unused_scale.get(), 0, stats_byte_count, Stream()));
+      auto unused_bias = GetScratchBuffer<float>(stats_count);
+      CUDA_RETURN_IF_ERROR(cudaMemsetAsync(unused_bias.get(), 0, stats_byte_count, Stream()));
+
+      // stats_desc needs to be of 'float' type even for float16 input as the "stats" are of float type
+      CudnnTensor stats_desc;
+      ORT_RETURN_IF_ERROR(stats_desc.Set(std::array<int64_t, 4>{1, stats_count, 1, 1},
+                                         CudnnTensor::GetDataType<float>()));
+
+      // first, compute mean and variance per-instance per-channel using cudnnBatchNorm training
+      CUDNN_RETURN_IF_ERROR(cudnnBatchNormalizationForwardTraining(
+          CudnnHandle(),
+          CUDNN_BATCHNORM_SPATIAL,
+          &one,
+          &zero,
+          data_desc,
+          x_data,
+          data_desc,
+          y_data,  // use y temporarily, would be rewritten later
+          stats_desc,
+          unused_scale.get(),
+          unused_bias.get(),
+          1.0f,
+          mean.get(),
+          variance.get(),
+          CUDNN_BN_MIN_EPSILON,
+          nullptr,
+          nullptr));
+
+      // The CuDNN computed float mean and variance needs to be casted to half first
+      auto mean_casted_to_fp16 = GetScratchBuffer<CudaT>(stats_count);
+      auto variance_casted_to_fp16 = GetScratchBuffer<CudaT>(stats_count);
+      Impl_Cast<float, CudaT>(Stream(), mean.get(), mean_casted_to_fp16.get(), stats_count);
+      Impl_Cast<float, CudaT>(Stream(), variance.get(), variance_casted_to_fp16.get(), stats_count);
+
+      // Y = scale * (x - mean) / sqrt (variance + epsilon) + B
+      // X/Y is (N,C,H,W)
+      // scale/bias is (1,C,1,1)
+      // mean/stddev is (N,C,1,1)
+      // NOTE cudnnBatchNormalization computes unbiased variance sum((Xi - mean)^2) / (count - 1)
+      // and it needs to be corrected with (count - 1) / count
+      InstanceNormImpl<CudaT>(
+          Stream(),
+          x_data,
+          scale_data,
+          bias_data,
+          mean_casted_to_fp16.get(),
+          variance_casted_to_fp16.get(),
+          (image_size - 1.0) / image_size,
+          static_cast<double>(epsilon_),
+          fdm_HW,
+          fdm_C,
+          y_data,
+          input_count);
+
+    } else {  // Batch size > 1 && type != float16
+      const size_t stats_byte_count = stats_count * sizeof(CudaT);
+
+      // Mean & Variance are inputs & outputs and must be initialized to zero to work properly
+      auto mean = GetScratchBuffer<CudaT>(stats_count);
+      CUDA_RETURN_IF_ERROR(cudaMemsetAsync(mean.get(), 0, stats_byte_count, Stream()));
+      auto variance = GetScratchBuffer<CudaT>(stats_count);
+      CUDA_RETURN_IF_ERROR(cudaMemsetAsync(variance.get(), 0, stats_byte_count, Stream()));
+
+      // We must set the scale & bias inputs to zero as they are inputs to the calculation
+      auto unused_scale = GetScratchBuffer<CudaT>(stats_count);
+      CUDA_RETURN_IF_ERROR(cudaMemsetAsync(unused_scale.get(), 0, stats_byte_count, Stream()));
+      auto unused_bias = GetScratchBuffer<CudaT>(stats_count);
+      CUDA_RETURN_IF_ERROR(cudaMemsetAsync(unused_bias.get(), 0, stats_byte_count, Stream()));
+
+      CudnnTensor stats_desc;
+      ORT_RETURN_IF_ERROR(stats_desc.Set(std::array<int64_t, 4>{1, stats_count, 1, 1},
+                                         CudnnTensor::GetDataType<CudaT>()));
+
+      // first, compute mean and variance per-instance per-channel using cudnnBatchNorm training
+      CUDNN_RETURN_IF_ERROR(cudnnBatchNormalizationForwardTraining(
+          CudnnHandle(),
+          CUDNN_BATCHNORM_SPATIAL,
+          &one,
+          &zero,
+          data_desc,
+          x_data,
+          data_desc,
+          y_data,  // use y temporarily, would be rewritten later
+          stats_desc,
+          unused_scale.get(),
+          unused_bias.get(),
+          1.0f,
+          mean.get(),
+          variance.get(),
+          CUDNN_BN_MIN_EPSILON,
+          nullptr,
+          nullptr));
+
+      // Y = scale * (x - mean) / sqrt (variance + epsilon) + B
+      // X/Y is (N,C,H,W)
+      // scale/bias is (1,C,1,1)
+      // mean/stddev is (N,C,1,1)
+      // NOTE cudnnBatchNormalization computes unbiased variance sum((Xi - mean)^2) / (count - 1)
+      // and it needs to be corrected with (count - 1) / count
+      InstanceNormImpl<CudaT>(
+          Stream(),
+          x_data,
+          scale_data,
+          bias_data,
+          mean.get(),
+          variance.get(),
+          (image_size - 1.0) / image_size,
+          static_cast<double>(epsilon_),
+          fdm_HW,
+          fdm_C,
+          y_data,
+          input_count);
+    }
   }
+
   return Status::OK();
 }
 
