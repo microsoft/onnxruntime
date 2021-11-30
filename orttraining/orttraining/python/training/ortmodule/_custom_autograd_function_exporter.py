@@ -170,7 +170,7 @@ try:
     def _export(g, ctx: SymbolicContext, *args, **kwargs):
         n = ctx.cur_node
         return _export_pt_1_10(g, n, *args, **kwargs)
-except:
+except ImportError:
     _export = _export_pt_1_10
 
 def _post_process_after_export(exported_model, enable_custom_autograd_function, log_level):
