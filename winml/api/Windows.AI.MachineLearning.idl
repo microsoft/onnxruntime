@@ -108,6 +108,8 @@ namespace ROOT_NS.AI.MachineLearning
         static LearningModel LoadFromFilePath(String filePath);
         //! Loads an ONNX model from a stream.
         static LearningModel LoadFromStream(Windows.Storage.Streams.IRandomAccessStreamReference modelStream);
+		//! Loads an ONNX model from a buffer.
+        static LearningModel LoadFromBuffer(Windows.Storage.Streams.IBuffer modelBuffer);
 
         //! Loads an ONNX model from a StorageFile asynchronously.
         [remote_async]

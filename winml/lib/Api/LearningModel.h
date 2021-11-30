@@ -24,6 +24,10 @@ struct LearningModel : LearningModelT<LearningModel> {
   LearningModel(
       const wss::IRandomAccessStreamReference stream,
       const winml::ILearningModelOperatorProvider operator_provider);
+	  
+  LearningModel(
+      const wss::IBuffer stream,
+      const winml::ILearningModelOperatorProvider operator_provider);
 
   LearningModel(
       _winml::IEngineFactory* engine_factory,
@@ -89,6 +93,10 @@ struct LearningModel : LearningModelT<LearningModel> {
   static winml::LearningModel
   LoadFromStream(
       wss::IRandomAccessStreamReference const stream);
+	  
+  static winml::LearningModel
+  LoadFromBuffer(
+      wss::IBuffer const buffer);
 
   static winml::LearningModel
   LoadFromStream(
