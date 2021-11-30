@@ -74,10 +74,10 @@ Status InstanceNorm<T>::ComputeInternal(OpKernelContext* p_op_kernel_context) co
     // for MLFloat16 type take care of that.
     if (X->IsDataType<MLFloat16>()) {  // Batch size == 1 && type == float16
       // Convert the scale, B, mean, var to float
-      auto scale_data_fp16 = GetScratchBuffer<float>(C);
-      auto bias_data_fp16 = GetScratchBuffer<float>(C);
-      Impl_Cast<CudaT, float>(Stream(), scale_data, scale_data_fp16.get(), C);
-      Impl_Cast<CudaT, float>(Stream(), bias_data, bias_data_fp16.get(), C);
+      auto scale_data_fp32 = GetScratchBuffer<float>(C);
+      auto bias_data_fp32 = GetScratchBuffer<float>(C);
+      Impl_Cast<CudaT, float>(Stream(), scale_data, scale_data_fp32.get(), C);
+      Impl_Cast<CudaT, float>(Stream(), bias_data, bias_data_fp32.get(), C);
 
       CUDNN_RETURN_IF_ERROR(cudnnBatchNormalizationForwardTraining(
           CudnnHandle(),
@@ -89,8 +89,8 @@ Status InstanceNorm<T>::ComputeInternal(OpKernelContext* p_op_kernel_context) co
           data_desc,
           y_data,
           stats_desc,
-          scale_data_fp16.get(),
-          bias_data_fp16.get(),
+          scale_data_fp32.get(),
+          bias_data_fp32.get(),
           1.0f,
           nullptr,
           nullptr,
@@ -175,10 +175,10 @@ Status InstanceNorm<T>::ComputeInternal(OpKernelContext* p_op_kernel_context) co
           nullptr));
 
       // The CuDNN computed float mean and variance needs to be casted to half first
-      auto mean_casted_to_fp16 = GetScratchBuffer<CudaT>(stats_count);
-      auto variance_casted_to_fp16 = GetScratchBuffer<CudaT>(stats_count);
-      Impl_Cast<float, CudaT>(Stream(), mean.get(), mean_casted_to_fp16.get(), stats_count);
-      Impl_Cast<float, CudaT>(Stream(), variance.get(), variance_casted_to_fp16.get(), stats_count);
+      auto mean_fp16 = GetScratchBuffer<CudaT>(stats_count);
+      auto variance_fp16 = GetScratchBuffer<CudaT>(stats_count);
+      Impl_Cast<float, CudaT>(Stream(), mean.get(), mean_fp16.get(), stats_count);
+      Impl_Cast<float, CudaT>(Stream(), variance.get(), variance_fp16.get(), stats_count);
 
       // Y = scale * (x - mean) / sqrt (variance + epsilon) + B
       // X/Y is (N,C,H,W)
@@ -191,8 +191,8 @@ Status InstanceNorm<T>::ComputeInternal(OpKernelContext* p_op_kernel_context) co
           x_data,
           scale_data,
           bias_data,
-          mean_casted_to_fp16.get(),
-          variance_casted_to_fp16.get(),
+          mean_fp16.get(),
+          variance_fp16.get(),
           (image_size - 1.0) / image_size,
           static_cast<double>(epsilon_),
           fdm_HW,
