@@ -2,7 +2,7 @@
 title: Deploy on IoT and edge
 parent: Tutorials
 has_children: false
-nav_order: 6
+nav_order: 7
 ---
 
 # Deploy ML model on IoT and edge devices
