@@ -755,7 +755,6 @@ stages:
 
       - task: DeleteFiles@1
         displayName: 'Delete files from $(Build.BinariesDirectory)\$(BuildConfig)'
-        condition: and (succeeded(), eq(variables['PythonVersion'], '3.7'))
         inputs:
           SourceFolder: '$(Build.BinariesDirectory)\$(BuildConfig)'
           Contents: |
