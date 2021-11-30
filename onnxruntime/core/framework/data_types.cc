@@ -59,65 +59,12 @@ MLDataType DataTypeImpl::GetType<TensorSeq>() {
   return SequenceTensorTypeBase::Type();
 }
 
-//static bool IsTensorTypeScalar(const ONNX_NAMESPACE::TypeProto_Tensor& tensor_type_proto) {
-//  int sz = tensor_type_proto.shape().dim_size();
-//  return sz == 0 || sz == 1;
-//}
+// static bool IsTensorTypeScalar(const ONNX_NAMESPACE::TypeProto_Tensor& tensor_type_proto) {
+//   int sz = tensor_type_proto.shape().dim_size();
+//   return sz == 0 || sz == 1;
+// }
 
 namespace data_types_internal {
-
-template <typename T>
-struct TensorElementTypeSetter<T> {
-  static void SetTensorElementType(ONNX_NAMESPACE::TypeProto& proto) {
-    proto.mutable_tensor_type()->set_elem_type(utils::ToTensorProtoElementType<T>());
-  }
-
-#if !defined(DISABLE_SPARSE_TENSORS)
-  static void SetSparseTensorElementType(ONNX_NAMESPACE::TypeProto& proto) {
-    proto.mutable_sparse_tensor_type()->set_elem_type(utils::ToTensorProtoElementType<T>());
-  }
-#endif
-
-#if !defined(DISABLE_ML_OPS)
-  static void SetMapKeyType(ONNX_NAMESPACE::TypeProto& proto) {
-    proto.mutable_map_type()->set_key_type(utils::ToTensorProtoElementType<T>());
-  }
-#endif
-
-  constexpr static int32_t GetElementType() {
-    return utils::ToTensorProtoElementType<T>();
-  }
-};
-
-// Pre-instantiate
-template struct
-    TensorElementTypeSetter<float>;
-template struct
-    TensorElementTypeSetter<uint8_t>;
-template struct
-    TensorElementTypeSetter<int8_t>;
-template struct
-    TensorElementTypeSetter<uint16_t>;
-template struct
-    TensorElementTypeSetter<int16_t>;
-template struct
-    TensorElementTypeSetter<int32_t>;
-template struct
-    TensorElementTypeSetter<int64_t>;
-template struct
-    TensorElementTypeSetter<std::string>;
-template struct
-    TensorElementTypeSetter<bool>;
-template struct
-    TensorElementTypeSetter<MLFloat16>;
-template struct
-    TensorElementTypeSetter<double>;
-template struct
-    TensorElementTypeSetter<uint32_t>;
-template struct
-    TensorElementTypeSetter<uint64_t>;
-template struct
-    TensorElementTypeSetter<BFloat16>;
 
 #if !defined(DISABLE_ML_OPS)
 void CopyMutableMapValue(const ONNX_NAMESPACE::TypeProto& value_proto,
@@ -368,13 +315,11 @@ const ONNX_NAMESPACE::TypeProto* TensorTypeBase::GetTypeProto() const {
   return impl_->GetProto();
 }
 
-TensorTypeBase::TensorTypeBase() : impl_(new Impl()) {}
+TensorTypeBase::TensorTypeBase()
+    : DataTypeImpl{DataTypeImpl::GeneralType::kTensor, sizeof(Tensor)},
+      impl_(new Impl()) {}
 TensorTypeBase::~TensorTypeBase() {
   delete impl_;
-}
-
-size_t TensorTypeBase::Size() const {
-  return sizeof(Tensor);
 }
 
 template <typename T>
@@ -417,7 +362,10 @@ MLDataType TensorTypeBase::Type() {
 struct SparseTensorTypeBase::Impl : public data_types_internal::TypeProtoImpl {
 };
 
-SparseTensorTypeBase::SparseTensorTypeBase() : impl_(new Impl()) {}
+SparseTensorTypeBase::SparseTensorTypeBase()
+    : DataTypeImpl{DataTypeImpl::GeneralType::kSparseTensor, sizeof(SparseTensor)},
+      impl_(new Impl()) {}
+
 SparseTensorTypeBase::~SparseTensorTypeBase() {
   delete impl_;
 }
@@ -435,10 +383,6 @@ bool SparseTensorTypeBase::IsCompatible(const ONNX_NAMESPACE::TypeProto& type_pr
   ORT_ENFORCE(utils::HasElemType(thisProto->sparse_tensor_type()));
 
   return data_types_internal::IsCompatible(thisProto->sparse_tensor_type(), type_proto.sparse_tensor_type());
-}
-
-size_t SparseTensorTypeBase::Size() const {
-  return sizeof(SparseTensor);
 }
 
 DeleteFunc SparseTensorTypeBase::GetDeleteFunc() const {
@@ -464,7 +408,9 @@ MLDataType SparseTensorTypeBase::Type() {
 struct SequenceTensorTypeBase::Impl : public data_types_internal::TypeProtoImpl {
 };
 
-SequenceTensorTypeBase::SequenceTensorTypeBase() : impl_(new Impl()) {}
+SequenceTensorTypeBase::SequenceTensorTypeBase()
+    : DataTypeImpl{DataTypeImpl::GeneralType::kTensorSequence, sizeof(TensorSeq)},
+      impl_(new Impl()) {}
 
 SequenceTensorTypeBase::~SequenceTensorTypeBase() {
   delete impl_;
@@ -487,10 +433,6 @@ bool SequenceTensorTypeBase::IsCompatible(const ONNX_NAMESPACE::TypeProto& type_
   }
 
   return data_types_internal::IsCompatible(thisProto->sequence_type(), type_proto.sequence_type());
-}
-
-size_t SequenceTensorTypeBase::Size() const {
-  return sizeof(TensorSeq);
 }
 
 DeleteFunc SequenceTensorTypeBase::GetDeleteFunc() const {
@@ -516,7 +458,8 @@ MLDataType SequenceTensorTypeBase::Type() {
 struct OptionalTypeBase::Impl : public data_types_internal::TypeProtoImpl {
 };
 
-OptionalTypeBase::OptionalTypeBase() : impl_(new Impl()) {}
+OptionalTypeBase::OptionalTypeBase() : DataTypeImpl{DataTypeImpl::GeneralType::kOptional, 0},
+                                       impl_(new Impl()) {}
 
 OptionalTypeBase::~OptionalTypeBase() {
   delete impl_;
@@ -557,7 +500,8 @@ MLDataType OptionalTypeBase::Type() {
 struct DisabledTypeBase::Impl : public data_types_internal::TypeProtoImpl {
 };
 
-DisabledTypeBase::DisabledTypeBase() : impl_(new Impl()) {}
+DisabledTypeBase::DisabledTypeBase(DataTypeImpl::GeneralType type, size_t size)
+    : DataTypeImpl{type, size}, impl_(new Impl()) {}
 
 DisabledTypeBase::~DisabledTypeBase() {
   delete impl_;
@@ -572,7 +516,7 @@ ONNX_NAMESPACE::TypeProto& DisabledTypeBase::MutableTypeProto() {
 }
 
 MLDataType DisabledTypeBase::Type() {
-  static DisabledTypeBase disabled_base;
+  static DisabledTypeBase disabled_base{GeneralType::kInvalid, 0};
   return &disabled_base;
 }
 #endif
@@ -580,7 +524,9 @@ MLDataType DisabledTypeBase::Type() {
 /// NoTensorTypeBase
 struct NonTensorTypeBase::Impl : public data_types_internal::TypeProtoImpl {};
 
-NonTensorTypeBase::NonTensorTypeBase() : impl_(new Impl()) {
+NonTensorTypeBase::NonTensorTypeBase(size_t size)
+    : DataTypeImpl{DataTypeImpl::GeneralType::kNonTensor, size},
+      impl_(new Impl()) {
 }
 
 NonTensorTypeBase::~NonTensorTypeBase() {
@@ -1037,8 +983,8 @@ MLDataType DataTypeImpl::TypeFromProto(const ONNX_NAMESPACE::TypeProto& proto) {
   return type;
 }
 
-//Below are the types the we need to execute the runtime
-//They are not compatible with TypeProto in ONNX.
+// Below are the types the we need to execute the runtime
+// They are not compatible with TypeProto in ONNX.
 ORT_REGISTER_PRIM_TYPE(int32_t);
 ORT_REGISTER_PRIM_TYPE(float);
 ORT_REGISTER_PRIM_TYPE(bool);

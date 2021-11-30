@@ -353,12 +353,17 @@ if (onnxruntime_USE_CUDA)
   endif()
 
   add_dependencies(onnxruntime_providers_cuda onnxruntime_providers_shared ${onnxruntime_EXTERNAL_DEPENDENCIES} ${onnxruntime_tvm_dependencies})
-  target_link_directories(onnxruntime_providers_cuda PRIVATE ${onnxruntime_CUDA_HOME}/extras/CUPTI/lib64)
-  target_link_libraries(onnxruntime_providers_cuda PRIVATE cublas cudnn curand cufft cupti ${ONNXRUNTIME_PROVIDERS_SHARED})
-  target_include_directories(onnxruntime_providers_cuda PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR} ${onnxruntime_CUDNN_HOME}/include ${eigen_INCLUDE_DIRS} ${TVM_INCLUDES} PUBLIC ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES} ${onnxruntime_CUDA_HOME}/extras/CUPTI/include)
+  target_link_libraries(onnxruntime_providers_cuda PRIVATE cublas cudnn curand cufft ${ONNXRUNTIME_PROVIDERS_SHARED})
+  target_include_directories(onnxruntime_providers_cuda PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR} ${onnxruntime_CUDNN_HOME}/include ${eigen_INCLUDE_DIRS} ${TVM_INCLUDES} PUBLIC ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
   # ${CMAKE_CURRENT_BINARY_DIR} is so that #include "onnxruntime_config.h" inside tensor_shape.h is found
   set_target_properties(onnxruntime_providers_cuda PROPERTIES LINKER_LANGUAGE CUDA)
   set_target_properties(onnxruntime_providers_cuda PROPERTIES FOLDER "ONNXRuntime")
+
+  if (onnxruntime_ENABLE_CUDA_PROFILING) # configure cupti for cuda profiling
+    target_include_directories(onnxruntime_providers_cuda PRIVATE ${onnxruntime_CUDA_HOME}/extras/CUPTI/include)
+    target_link_directories(onnxruntime_providers_cuda PRIVATE ${onnxruntime_CUDA_HOME}/extras/CUPTI/lib64)
+    target_link_libraries(onnxruntime_providers_cuda PRIVATE cupti)
+  endif()
 
   if (onnxruntime_ENABLE_NVTX_PROFILE)
     target_link_libraries(onnxruntime_providers_cuda PRIVATE nvToolsExt)
@@ -887,11 +892,7 @@ if (onnxruntime_USE_DML)
     "${ONNXRUNTIME_ROOT}/core/providers/dml/*.cc"
   )
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_dml_cc_srcs})
-  
-  set_msvc_c_cpp_compiler_warning_level(3)
   onnxruntime_add_static_library(onnxruntime_providers_dml ${onnxruntime_providers_dml_cc_srcs})
-  set_msvc_c_cpp_compiler_warning_level(4)
-
   onnxruntime_add_include_to_target(onnxruntime_providers_dml onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers)
   add_dependencies(onnxruntime_providers_dml ${onnxruntime_EXTERNAL_DEPENDENCIES})
   target_include_directories(onnxruntime_providers_dml PRIVATE ${ONNXRUNTIME_ROOT} ${ONNXRUNTIME_ROOT}/../cmake/external/wil/include)
@@ -932,6 +933,7 @@ if (onnxruntime_USE_DML)
   target_compile_definitions(onnxruntime_providers_dml PRIVATE UNICODE _UNICODE NOMINMAX)
   if (MSVC)
     target_compile_definitions(onnxruntime_providers_dml PRIVATE _SILENCE_CXX17_ITERATOR_BASE_CLASS_DEPRECATION_WARNING)
+    target_compile_options(onnxruntime_providers_dml PRIVATE "/W3")
   endif()
 
   install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/dml  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)

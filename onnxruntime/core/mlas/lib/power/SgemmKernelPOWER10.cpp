@@ -188,10 +188,10 @@ MlasSgemmMMAProcessCount(
         //
         while (k >= 4) {
 
-            MlasLoopUnroll<RowCount, MlasSgemmLoadAElements>()(AElements, a, lda);
+            MlasLoopUnroll<RowCount, MlasFgemmLoadAElements>()(AElements, a, lda);
             MlasSgemmComputeAElements<RowCount>(AElements, ABroadcast);
             if (CountM == 8) {
-                MlasLoopUnroll<RowCount, MlasSgemmLoadAElements>()(AElements, a + ( lda * 4), lda);
+                MlasLoopUnroll<RowCount, MlasFgemmLoadAElements>()(AElements, a + ( lda * 4), lda);
                 MlasSgemmComputeAElements<RowCount>(AElements, A2Broadcast);
             }
             MlasSgemmComputeBlockMMA<RowCount>(&acc[0], ABroadcast[0], A2Broadcast[0], B, CountM);
