@@ -46,10 +46,10 @@ Status InstanceNorm<T>::ComputeInternal(OpKernelContext* p_op_kernel_context) co
   const TensorShape& x_shape = X->Shape();
   Tensor* Y = p_op_kernel_context->Output(0, x_shape);
 
-  auto y_data = reinterpret_cast<CudaT*>(Y->template MutableData<T>());
-  auto x_data = reinterpret_cast<const CudaT*>(X->template Data<T>());
-  auto scale_data = reinterpret_cast<const CudaT*>(scale->template Data<T>());
-  auto bias_data = reinterpret_cast<const CudaT*>(bias->template Data<T>());
+  auto* y_data = reinterpret_cast<CudaT*>(Y->template MutableData<T>());
+  const auto* x_data = reinterpret_cast<const CudaT*>(X->template Data<T>());
+  const auto* scale_data = reinterpret_cast<const CudaT*>(scale->template Data<T>());
+  const auto* bias_data = reinterpret_cast<const CudaT*>(bias->template Data<T>());
 
   const auto& x_dims = x_shape.GetDims();
   const int64_t N = x_dims[0];
@@ -104,15 +104,15 @@ Status InstanceNorm<T>::ComputeInternal(OpKernelContext* p_op_kernel_context) co
     const size_t stats_byte_count = stats_count * sizeof(CudaT);
 
     // Mean & Variance are inputs & outputs and must be initialized to zero to work properly
-    auto mean = GetScratchBuffer<CudaT>(stats_count);
+    auto* mean = GetScratchBuffer<CudaT>(stats_count);
     CUDA_RETURN_IF_ERROR(cudaMemsetAsync(mean.get(), 0, stats_byte_count, Stream()));
-    auto variance = GetScratchBuffer<CudaT>(stats_count);
+    auto* variance = GetScratchBuffer<CudaT>(stats_count);
     CUDA_RETURN_IF_ERROR(cudaMemsetAsync(variance.get(), 0, stats_byte_count, Stream()));
 
     // We must set the scale & bias inputs to zero as they are inputs to the calculation
-    auto unused_scale = GetScratchBuffer<CudaT>(stats_count);
+    auto* unused_scale = GetScratchBuffer<CudaT>(stats_count);
     CUDA_RETURN_IF_ERROR(cudaMemsetAsync(unused_scale.get(), 0, stats_byte_count, Stream()));
-    auto unused_bias = GetScratchBuffer<CudaT>(stats_count);
+    auto* unused_bias = GetScratchBuffer<CudaT>(stats_count);
     CUDA_RETURN_IF_ERROR(cudaMemsetAsync(unused_bias.get(), 0, stats_byte_count, Stream()));
 
     // first, compute mean and variance per-instance per-channel using cudnnBatchNorm training
@@ -174,10 +174,10 @@ Status InstanceNorm<MLFloat16>::ComputeInternal(OpKernelContext* p_op_kernel_con
   const TensorShape& x_shape = X->Shape();
   Tensor* Y = p_op_kernel_context->Output(0, x_shape);
 
-  auto y_data = reinterpret_cast<CudaT*>(Y->template MutableData<MLFloat16>());
-  auto x_data = reinterpret_cast<const CudaT*>(X->template Data<MLFloat16>());
-  auto scale_data = reinterpret_cast<const CudaT*>(scale->template Data<MLFloat16>());
-  auto bias_data = reinterpret_cast<const CudaT*>(bias->template Data<MLFloat16>());
+  auto* y_data = reinterpret_cast<CudaT*>(Y->template MutableData<MLFloat16>());
+  const auto* x_data = reinterpret_cast<const CudaT*>(X->template Data<MLFloat16>());
+  const auto* scale_data = reinterpret_cast<const CudaT*>(scale->template Data<MLFloat16>());
+  const auto* bias_data = reinterpret_cast<const CudaT*>(bias->template Data<MLFloat16>());
 
   const auto& x_dims = x_shape.GetDims();
   const int64_t N = x_dims[0];
@@ -201,10 +201,10 @@ Status InstanceNorm<MLFloat16>::ComputeInternal(OpKernelContext* p_op_kernel_con
     // alpha, beta will be of type float as the Consts struct specialization
     // for MLFloat16 type take care of that. Only Convert the scale, bias to float)
 
-    auto scale_data_fp32 = GetScratchBuffer<float>(C);
+    auto* scale_data_fp32 = GetScratchBuffer<float>(C);
     Impl_Cast<CudaT, float>(Stream(), scale_data, scale_data_fp32.get(), C);
 
-    auto bias_data_fp32 = GetScratchBuffer<float>(C);
+    auto* bias_data_fp32 = GetScratchBuffer<float>(C);
     Impl_Cast<CudaT, float>(Stream(), bias_data, bias_data_fp32.get(), C);
 
     CUDNN_RETURN_IF_ERROR(cudnnBatchNormalizationForwardTraining(
@@ -247,15 +247,15 @@ Status InstanceNorm<MLFloat16>::ComputeInternal(OpKernelContext* p_op_kernel_con
     const size_t stats_byte_count = stats_count * sizeof(float);
 
     // Mean & Variance are inputs & outputs and must be initialized to zero to work properly
-    auto mean = GetScratchBuffer<float>(stats_count);
+    auto* mean = GetScratchBuffer<float>(stats_count);
     CUDA_RETURN_IF_ERROR(cudaMemsetAsync(mean.get(), 0, stats_byte_count, Stream()));
-    auto variance = GetScratchBuffer<float>(stats_count);
+    auto* variance = GetScratchBuffer<float>(stats_count);
     CUDA_RETURN_IF_ERROR(cudaMemsetAsync(variance.get(), 0, stats_byte_count, Stream()));
 
     // We must set the scale & bias inputs to zero as they are inputs to the calculation
-    auto unused_scale = GetScratchBuffer<float>(stats_count);
+    auto* unused_scale = GetScratchBuffer<float>(stats_count);
     CUDA_RETURN_IF_ERROR(cudaMemsetAsync(unused_scale.get(), 0, stats_byte_count, Stream()));
-    auto unused_bias = GetScratchBuffer<float>(stats_count);
+    auto* unused_bias = GetScratchBuffer<float>(stats_count);
     CUDA_RETURN_IF_ERROR(cudaMemsetAsync(unused_bias.get(), 0, stats_byte_count, Stream()));
 
     // first, compute mean and variance per-instance per-channel using cudnnBatchNorm training
