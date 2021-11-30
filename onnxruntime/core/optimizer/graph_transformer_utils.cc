@@ -6,6 +6,7 @@
 #include <algorithm>
 
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_selector_action_transformer.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 
 #if !defined(ORT_MINIMAL_BUILD)
 
@@ -53,7 +54,6 @@
 #include "core/optimizer/slice_elimination.h"
 #include "core/optimizer/transpose_optimizer/ort_transpose_optimizer.h"
 #include "core/optimizer/unsqueeze_elimination.h"
-#include "core/session/onnxruntime_session_options_config_keys.h"
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
@@ -154,10 +154,10 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
     const IExecutionProvider& cpu_execution_provider, /*required by constant folding*/
     const std::unordered_set<std::string>& rules_and_transformers_to_disable) {
   std::vector<std::unique_ptr<GraphTransformer>> transformers;
-  bool disable_quant_qdq =
+  const bool disable_quant_qdq =
       session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsDisableQuantQDQ, "0") == "1";
 #ifndef DISABLE_CONTRIB_OPS
-  bool enable_gelu_approximation =
+  const bool enable_gelu_approximation =
       session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsEnableGeluApproximation, "0") == "1";
 #endif
 
@@ -261,15 +261,21 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
 
 std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformersForRuntimeOptimizations(
     TransformerLevel level,
+    const SessionOptions& session_options,
     const SatApplyContextVariant& apply_context,
     const std::unordered_set<std::string>& rules_and_transformers_to_disable) {
+  const bool disable_quant_qdq =
+      session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsDisableQuantQDQ, "0") == "1";
+
   std::vector<std::unique_ptr<GraphTransformer>> transformers;
 
   switch (level) {
     case TransformerLevel::Level1:
       break;
     case TransformerLevel::Level2:
-      transformers.emplace_back(std::make_unique<QDQSelectorActionTransformer>(apply_context));
+      if (!disable_quant_qdq) {
+        transformers.emplace_back(std::make_unique<QDQSelectorActionTransformer>(apply_context));
+      }
       break;
     case TransformerLevel::Level3:
       break;

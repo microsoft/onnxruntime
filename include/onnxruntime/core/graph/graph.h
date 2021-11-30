@@ -789,7 +789,9 @@ class Graph {
     return ConstGraphNodes(nodes_, std::move(filter_func));
   }
 
-  /** Gets the maximum NodeIndex value used in the Graph. */
+  /** Gets the maximum NodeIndex value used in the Graph.
+  WARNING: This actually returns the max index value used + 1.
+  */
   int MaxNodeIndex() const noexcept { return static_cast<int>(nodes_.size()); }  //assume the casting won't overflow
 
   /** Gets the number of valid Nodes in the Graph.

@@ -7,6 +7,7 @@
 #include <unordered_set>
 #include <vector>
 
+#include "core/framework/session_options.h"
 #include "core/optimizer/graph_transformer.h"
 
 #if !defined(ORT_MINIMAL_BUILD)
@@ -61,6 +62,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
     - The set of transformers which support runtime optimizations is different. */
 std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformersForRuntimeOptimizations(
     TransformerLevel level,
+    const SessionOptions& session_options,
     const SatApplyContextVariant& apply_context,
     const std::unordered_set<std::string>& rules_and_transformers_to_disable = {});
 

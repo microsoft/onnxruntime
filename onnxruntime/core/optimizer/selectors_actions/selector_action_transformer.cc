@@ -173,12 +173,12 @@ Status SelectorActionTransformer::ApplyDirect(Graph& graph, bool& modified, int 
 
 #if defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
 
-static Status RegisterProducedNodesWithGraph(NodeIndex pre_action_max_index, NodeIndex post_action_max_index,
+static Status RegisterProducedNodesWithGraph(NodeIndex pre_action_max_num_nodes, NodeIndex post_action_max_num_nodes,
                                              const RuntimeOptimizationRecord& record,
                                              Graph& graph) {
-  assert(post_action_max_index >= pre_action_max_index);
+  assert(post_action_max_num_nodes >= pre_action_max_num_nodes);
 
-  const auto num_new_node_indices = post_action_max_index - pre_action_max_index;
+  const auto num_new_node_indices = post_action_max_num_nodes - pre_action_max_num_nodes;
 
   auto produced_node_it = record.produced_nodes.begin();
   const auto produced_nodes_end = record.produced_nodes.end();
@@ -186,7 +186,7 @@ static Status RegisterProducedNodesWithGraph(NodeIndex pre_action_max_index, Nod
   std::unordered_map<NodeIndex, HashValue> node_index_to_kernel_def_hash{};
 
   for (NodeIndex i = 0; i < num_new_node_indices; ++i) {
-    const NodeIndex new_node_idx = pre_action_max_index + 1 + i;
+    const NodeIndex new_node_idx = pre_action_max_num_nodes + i;
     const auto* new_node = graph.GetNode(new_node_idx);
 
     if (!new_node) continue;
