@@ -6,7 +6,7 @@ grand_parent: Tutorials
 nav_order: 1
 ---
 
-# Mobile object detection iOS application
+# Write a mobile object detection iOS application
 
 Learn how to build an iOS object detection app with ONNX Runtime. This application continuously detect the objects in the frames seen by your iOS device's back camera and display:
 
@@ -17,6 +17,12 @@ Learn how to build an iOS object detection app with ONNX Runtime. This applicati
 The application uses the pre-trained quantized MobileNet SSD V1 model.
 
 This example is heavily based on [Google Tensorflow lite - Object Detection Examples](https://github.com/tensorflow/examples/tree/master/lite/examples/object_detection/ios)
+
+## Contents
+{: .no_toc }
+
+* TOC placeholder
+{:toc}
 
 ## Pre-requisites
 

@@ -8,13 +8,17 @@ nav_order: 2
 
 # Write a mobile image classification Android application
 
-## Overview
-
 This app uses image classification to continuously classify the objects it sees from the device's camera in real-time and displays the most probable inference results on the screen.
 
 This example is loosely based on [Google CodeLabs - Getting Started with CameraX](https://codelabs.developers.google.com/codelabs/camerax-getting-started)
 
 The pre-trained [TorchVision MOBILENET V2](https://pytorch.org/hub/pytorch_vision_mobilenet_v2/) is used in this sample app.
+
+## Contents
+{: .no_toc }
+
+* TOC placeholder
+{:toc}
 
 ## Pre-requisites
 
