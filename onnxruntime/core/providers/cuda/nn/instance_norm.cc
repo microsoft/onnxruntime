@@ -74,7 +74,6 @@ Status InstanceNorm<T>::ComputeInternal(OpKernelContext* p_op_kernel_context) co
     // for MLFloat16 type take care of that.
     if (X->IsDataType<MLFloat16>()) {  // Batch size == 1 && type == float16
       // Convert the scale, B, mean, var to float
-      const int64_t C = x_shape.GetDims()[1];
       auto scale_data_fp16 = GetScratchBuffer<float>(C);
       auto bias_data_fp16 = GetScratchBuffer<float>(C);
       Impl_Cast<CudaT, float>(Stream(), scale_data, scale_data_fp16.get(), C);
