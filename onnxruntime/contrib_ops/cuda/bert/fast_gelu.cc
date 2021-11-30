@@ -43,6 +43,10 @@ Status FastGelu<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* bias = context->Input<Tensor>(1);
   Tensor* output = context->Output(0, input->Shape());
 
+  if (input->SizeInBytes() == 0) {
+    return Status::OK();
+  }
+
   int64_t input_length = input->Shape().Size();
   int64_t bias_length = (nullptr == bias) ? 0 : bias->Shape().Size();
   typedef typename ToCudaType<T>::MappedType CudaT;
