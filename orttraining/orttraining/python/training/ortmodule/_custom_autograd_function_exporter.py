@@ -23,7 +23,7 @@ BANNED_AUTOGRAD_FUNCTION_NAMES = set(
     [torch.utils.checkpoint.CheckpointFunction.__name__])
 
 
-def _export(g, n, *args, **kwargs):
+def _export_pt_1_10(g, n, *args, **kwargs):
     '''
     This function exports PythonOp (input: "n") into a graph
     node in "g". "args" and "kwargs" are inputs to that PythonOp.
@@ -164,6 +164,14 @@ def _export(g, n, *args, **kwargs):
         sys.stderr.flush()
         raise wrap_exception(ORTModuleONNXModelException, e)
 
+
+try:
+    from torch.onnx import SymbolicContext
+    def _export(g, ctx: SymbolicContext, *args, **kwargs):
+        n = ctx.cur_node
+        return _export_pt_1_10(g, n, *args, **kwargs)
+except:
+    _export = _export_pt_1_10
 
 def _post_process_after_export(exported_model, enable_custom_autograd_function, log_level):
     if enable_custom_autograd_function:
