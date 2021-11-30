@@ -104,7 +104,7 @@ Raw input is usually a string (for NLP model) or an image (for image model). The
 
 ### Image input
 
-1. Use a JS/wasm library to pre-process the data, and create tensor as input to fulfill the requirement of the model. See the [image classification using ONNX Runtime Web](../tutorials/mobile-web/web.md) tutorial.
+1. Use a JS/wasm library to pre-process the data, and create tensor as input to fulfill the requirement of the model. See the [image classification using ONNX Runtime Web](../tutorials/web/classify-images-nextjs-github-template.md) tutorial.
 
 2. Modify the model to include the pre-processing inside the model as operators. The model will expect a certain web image format (eg. A bitmap or texture from canvas).
 
