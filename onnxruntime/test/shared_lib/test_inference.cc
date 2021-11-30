@@ -1885,6 +1885,8 @@ TEST(CApiTest, TestPerSessionCustomThreadPoolHooks) {
   ASSERT_TRUE(custom_join_hook_called == (thread_count - 1) << 1);
 }
 
+// Preventing resize tranformer issue:
+// https://github.com/microsoft/onnxruntime/issues/9857
 TEST(CApiTest, crop_and_resize) {
   std::vector<float> input_value_0;
   input_value_0.resize(2 * 36 * 36 * 3);
