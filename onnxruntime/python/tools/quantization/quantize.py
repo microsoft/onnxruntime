@@ -195,9 +195,7 @@ def quantize_static(model_input,
             OpTypesToExcludeOutputQuantizatioin = list of op type : Default is []. If any op type is specified, it won't quantize  
                                                                     the output of ops with this specific op types.
             DedicatedQDQPair = True/False : Default is False. When inserting QDQ pair, multiple nodes can share a single QDQ pair as their inputs.
-                                            If True, it will create identical and dedicated QDQ pair for each node.  
-            OpTypesSupportPerChannelQuantization = list of op type : Default is []. List of op types that has per channel quantization support.
-            QDQChannelAxis = Integer : Default is 0. Channel axis for QDQ pair when per_channel is True.
+                                            If True, it will create identical and dedicated QDQ pair for each node. 
     '''
 
     mode = QuantizationMode.QLinearOps
