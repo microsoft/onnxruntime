@@ -568,7 +568,8 @@ def parse_arguments():
         help="run the example external transformer test, mainly used in CI pipeline.")
 
     parser.add_argument(
-        "--enable_cuda_profiling", action='store_true', help="enable cuda kernel profiling, cupti library must be added to PATH beforehand.")
+        "--enable_cuda_profiling", action='store_true', help="enable cuda kernel profiling, \
+        cupti library must be added to PATH beforehand.")
 
     return parser.parse_args()
 
