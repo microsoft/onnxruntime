@@ -199,9 +199,8 @@ Status InstanceNorm<MLFloat16>::ComputeInternal(OpKernelContext* p_op_kernel_con
 
     // For half input data type, alpha, beta, scale, bias need to be float type.
     // alpha, beta will be of type float as the Consts struct specialization
-    // for MLFloat16 type take care of that.
-    //
-    // Convert the scale, B, mean, var to float
+    // for MLFloat16 type take care of that. Only Convert the scale, bias to float)
+
     auto scale_data_fp32 = GetScratchBuffer<float>(C);
     Impl_Cast<CudaT, float>(Stream(), scale_data, scale_data_fp32.get(), C);
 
