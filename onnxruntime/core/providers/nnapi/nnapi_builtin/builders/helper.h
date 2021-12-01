@@ -95,7 +95,7 @@ QLinearOpType GetQLinearOpType(const onnxruntime::INodeUnit& node);
 
 // Return the type of the conv ops,
 // This function assumes the input is a 2d conv node
-ConvType GetConvType(const onnxruntime::Node& node, const InitializedTensorSet& initializers);
+ConvType GetConvType(const INodeUnit& node_unit, const InitializedTensorSet& initializers);
 
 // This qlinear op is an operator takes 2 inputs and produces 1 output
 // Such as QLinearConv, QLinearMatMul, QLinearAdd, ...

@@ -104,16 +104,17 @@ QLinearOpType GetQLinearOpType(const onnxruntime::INodeUnit& node) {
   return QLinearOpType::Unknown;
 }
 
-ConvType GetConvType(const onnxruntime::Node& node, const InitializedTensorSet& initializers) {
-  const auto& op_type = node.OpType();
-  bool is_qlinear_conv = (op_type == "QLinearConv");
+ConvType GetConvType(const INodeUnit& node_unit, const InitializedTensorSet& initializers) {
+  const auto& op_type = node_unit.OpType();
+  auto qlinear_op_type = GetQLinearOpType(node_unit);
+  bool is_qlinear_conv = (qlinear_op_type == QLinearOpType::QLinearConv);
   ORT_ENFORCE(op_type == "Conv" || is_qlinear_conv);
 
-  NodeAttrHelper helper(node);
+  NodeAttrHelper helper(node_unit.GetNode());
   const auto group = helper.Get("group", 1);
 
   size_t w_idx = is_qlinear_conv ? 3 : 1;
-  const auto& weight = node.InputDefs()[w_idx]->Name();
+  const auto& weight = node_unit.InputDefs()[w_idx]->Name();
   const auto& weight_tensor = *initializers.at(weight);
 
   // For ONNX we only have 1 conv ops
@@ -329,6 +330,7 @@ bool HasValidQuantizationScales(const InitializedTensorSet& initializers, const 
 
     const auto& scale_tensor = *initializers.at(scale_name);
     int64_t scales_dim = scale_tensor.dims().empty() ? 1 : scale_tensor.dims()[0];
+    LOGS_DEFAULT(VERBOSE) << "scale_name:" << scale_name << " scales_dim::" << scales_dim;
     if (!is_conv_matmul_u8s8_weight) {
       if (scales_dim != 1) {
         LOGS_DEFAULT(VERBOSE) << op_type << " does not support per-channel quantization, "

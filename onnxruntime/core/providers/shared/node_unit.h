@@ -49,7 +49,7 @@ class INodeUnit {
   // virtual Node::NodeConstIterator OutputNodesBegin() const noexcept = 0;
   // virtual Node::NodeConstIterator OutputNodesEnd() const noexcept = 0;
 
-  // virtual const std::vector<const Node*> GetAllNodes() const noexcept = 0;
+  virtual const std::vector<const Node*> GetAllNodes() const noexcept = 0;
 
   virtual Type UnitType() const noexcept = 0;
 };

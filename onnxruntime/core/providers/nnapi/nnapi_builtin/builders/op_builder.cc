@@ -1378,16 +1378,27 @@ class ConvOpBuilder : public BaseOpBuilder {
       });
 }
 
-void ConvOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const INodeUnit& node) const {
-  const auto& op = node.OpType();
-  const auto input_defs = node.InputDefs();
+void ConvOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const INodeUnit& node_unit) const {
+  auto qlinear_op_type = GetQLinearOpType(node_unit);
+  const auto input_defs = node_unit.InputDefs();
 
   // skip the weight for conv as we need to transpose
-  if (op == "QLinearConv") {
-    AddBinaryOpQuantizationScaleAndZeroPointToSkip(model_builder, node);
+  if (qlinear_op_type == QLinearOpType::QLinearConv) {
+    AddBinaryOpQuantizationScaleAndZeroPointToSkip(model_builder, node_unit);
     model_builder.AddInitializerToSkip(input_defs[3]->Name());  // w
-    if (input_defs.size() > 8)
+    if (input_defs.size() > 8) {
       model_builder.AddInitializerToSkip(input_defs[8]->Name());  // B
+    }
+
+    // We will need to skip all the scales and zps in a qdq group
+    // TODO, optimize this
+    for (const auto* node : node_unit.GetAllNodes()) {
+      const auto& node_op_type = node->OpType();
+      if (node_op_type == "QuantizeLinear" || node_op_type == "DequantizeLinear") {
+        model_builder.AddInitializerToSkip(node->InputDefs()[1]->Name());
+        model_builder.AddInitializerToSkip(node->InputDefs()[2]->Name());
+      }
+    }
   } else {
     model_builder.AddInitializerToSkip(input_defs[1]->Name());  // w
   }
@@ -1400,8 +1411,8 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const I
   const auto& initializers(model_builder.GetInitializerTensors());
   NodeAttrHelper helper(node.GetNode());
   const auto input_defs = node.InputDefs();
-  const auto& op_type = node.OpType();
-  bool is_qlinear_conv = (op_type == "QLinearConv");
+  auto qlinear_op_type = GetQLinearOpType(node);
+  bool is_qlinear_conv = (qlinear_op_type == QLinearOpType::QLinearConv);
 
   // onnx strides are in the order height, width
   // while nnapi strides are in the order width, height
@@ -1435,7 +1446,7 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const I
 
   const auto& weight = input_defs[w_idx]->Name();
   const auto& weight_tensor = *initializers.at(weight);
-  auto conv_type = GetConvType(node.GetNode(), model_builder.GetGraphViewer().GetAllInitializedTensors());
+  auto conv_type = GetConvType(node, model_builder.GetGraphViewer().GetAllInitializedTensors());
   bool conv_2d = (conv_type == ConvType::Regular),
        depthwise_conv_2d = (conv_type == ConvType::Depthwise),
        grouped_conv_2d = (conv_type == ConvType::Grouped);

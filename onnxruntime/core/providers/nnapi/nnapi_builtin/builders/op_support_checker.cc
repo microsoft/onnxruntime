@@ -712,7 +712,8 @@ class ConvOpSupportChecker : public BaseOpSupportChecker {
 }
 
 bool ConvOpSupportChecker::HasSupportedInputsImpl(const INodeUnit& node) const {
-  if (node.OpType() != "QLinearConv")
+  auto qlinear_op_type = GetQLinearOpType(node);
+  if (qlinear_op_type != QLinearOpType::QLinearConv)
     return BaseOpSupportChecker::HasSupportedInputsImpl(node);
 
   // QLinearConv only supports input of uint8 for now
@@ -725,7 +726,7 @@ bool ConvOpSupportChecker::HasSupportedInputsImpl(const INodeUnit& node) const {
 bool ConvOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initializers, const INodeUnit& node,
                                              const OpSupportCheckParams& params) const {
   const auto& op_type = node.OpType();
-  const bool is_qlinear_conv = (op_type == "QLinearConv");
+  const bool is_qlinear_conv = (GetQLinearOpType(node) == QLinearOpType::QLinearConv);
 
   // We don't support nhwc com.microsoft.QLinearConv for now
   if (is_qlinear_conv && node.Domain() == kMSDomain) {

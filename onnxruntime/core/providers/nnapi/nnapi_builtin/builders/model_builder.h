@@ -164,7 +164,8 @@ class ModelBuilder {
   size_t num_nnapi_ops_ = 0;
   uint32_t next_index_ = 0;
 
-  std::unordered_map<const Node*, std::unique_ptr<INodeUnit>> node_unit_map_;
+  std::vector<std::unique_ptr<INodeUnit>> node_unit_holder_;
+  std::unordered_map<const Node*, const INodeUnit*> node_unit_map_;
 
   // Convert the onnx model to ANeuralNetworksModel
   Status Prepare() ORT_MUST_USE_RESULT;

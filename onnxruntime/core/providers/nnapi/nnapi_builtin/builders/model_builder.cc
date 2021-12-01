@@ -5,6 +5,7 @@
 #include <core/common/safeint.h>
 #include <core/framework/tensorprotoutils.h>
 
+#include "core/optimizer/qdq_transformer/selectors_actions/qdq_selectors.h"
 #include "core/providers/common.h"
 #include "core/providers/shared/node_unit.h"
 #include "core/providers/shared/utils/utils.h"
@@ -122,9 +123,17 @@ void ModelBuilder::PreprocessInitializers() {
   for (size_t i = 0; i < node_indices.size(); i++) {
     const auto* node(graph_viewer_.GetNode(node_indices[i]));
     const auto& node_unit = GetNodeUnit(node);
+    LOGS_DEFAULT(VERBOSE) << "Node unit " << node_unit.Name() << " is processed";
+    for (const auto* sub_node : node_unit.GetAllNodes()) {
+      LOGS_DEFAULT(VERBOSE) << "Sub node " << sub_node->Name() << " is processed";
+    }
     if (const auto* op_builder = GetOpBuilder(node_unit)) {
       op_builder->AddInitializersToSkip(*this, node_unit);
     }
+  }
+
+  for (const auto& initializer : skipped_initializers_) {
+    LOGS_DEFAULT(VERBOSE) << "initializer " << initializer << " is skipped";
   }
 }
 
@@ -151,12 +160,41 @@ void ModelBuilder::PreprocessActivations() {
 }
 
 void ModelBuilder::PreprocessNodeUnits() {
-  // TODO, generate QDQ node units
+  // TODO share this code
+  // TODO make this similar to qdq transformer
+  std::unordered_map<std::string, std::unique_ptr<QDQ::BaseSelector>> qdq_selectors;
+  qdq_selectors.emplace("Conv", std::make_unique<QDQ::ConvSelector>());
+
   const auto& node_indices = graph_viewer_.GetNodesInTopologicalOrder();
+  std::unordered_set<NodeIndex> qdq_node_indices;
   for (size_t i = 0; i < node_indices.size(); i++) {
     const auto* node(graph_viewer_.GetNode(node_indices[i]));
+    const auto iter = qdq_selectors.find(node->OpType());
+    if (iter != qdq_selectors.end()) {
+      auto selection = iter->second->GetQDQSelection(graph_viewer_, *node);
+      if (selection.has_value()) {
+        const auto& qdq_group = *selection;
+        qdq_node_indices.insert(qdq_group.dq_nodes.cbegin(), qdq_group.dq_nodes.cend());
+        qdq_node_indices.insert(qdq_group.q_nodes.cbegin(), qdq_group.q_nodes.cend());
+        qdq_node_indices.insert(qdq_group.target_node);
+        auto node_unit = CreateQDQNodeUnit(graph_viewer_, qdq_group);
+        for (const auto* _node : node_unit->GetAllNodes()) {
+          node_unit_map_.insert({_node, node_unit.get()});
+        }
+        node_unit_holder_.push_back(std::move(node_unit));
+      }
+    }
+  }
+
+  for (size_t i = 0; i < node_indices.size(); i++) {
+    const auto node_idx = node_indices[i];
+    // Already part of a qdq group
+    if (Contains(qdq_node_indices, node_idx))
+      continue;
+    const auto* node(graph_viewer_.GetNode(node_idx));
     auto node_unit = CreateNodeUnit(*node);
-    node_unit_map_.insert({node, std::move(node_unit)});
+    node_unit_map_.insert({node, node_unit.get()});
+    node_unit_holder_.push_back(std::move(node_unit));
   }
 }
 
@@ -188,7 +226,7 @@ void ModelBuilder::GetAllQuantizedOpInputs() {
     }
 
     if (IsQLinearBinaryOp(qlinear_op_type)) {
-      const auto& input_name = node->InputDefs()[3]->Name();
+      const auto& input_name = node_unit.InputDefs()[3]->Name();
       if (Contains(all_quantized_op_inputs_, input_name))
         all_quantized_op_inputs_.at(input_name).push_back(&node_unit);
       else
@@ -503,12 +541,18 @@ Status ModelBuilder::AddOperandFromPersistMemoryBuffer(
 }
 
 Status ModelBuilder::AddOperations() {
+  std::unordered_set<const INodeUnit*> processed_node_units;
   const auto& node_indices = graph_viewer_.GetNodesInTopologicalOrder();
   for (size_t i = 0; i < node_indices.size(); i++) {
     const auto* node(graph_viewer_.GetNode(node_indices[i]));
     const auto& node_unit = GetNodeUnit(node);
+    if (Contains(processed_node_units, &node_unit)) {
+      continue;
+    }
+
     if (const auto* op_builder = GetOpBuilder(node_unit)) {
       ORT_RETURN_IF_ERROR(op_builder->AddToModelBuilder(*this, node_unit));
+      processed_node_units.insert(&node_unit);
     } else {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "Node [", node->Name(), "], type [", node->OpType(), "] is not supported");

@@ -37,7 +37,7 @@ class NodeUnit : public INodeUnit {
 
   // Node::NodeConstIterator OutputNodesEnd() const noexcept override { return node_.OutputNodesEnd(); }
 
-  // const std::vector<const Node*> GetAllNodes() const noexcept override { return all_nodes_; }
+  const std::vector<const Node*> GetAllNodes() const noexcept override { return all_nodes_; }
 
   INodeUnit::Type UnitType() const noexcept override { return INodeUnit::Type::Node; }
 
@@ -68,6 +68,8 @@ class QDQNodeUnit : public INodeUnit {
   NodeIndex Index() const noexcept override { return node_.Index(); }
   ProviderType GetExecutionProviderType() const noexcept override { return node_.GetExecutionProviderType(); }
 
+  const std::vector<const Node*> GetAllNodes() const noexcept override { return all_nodes_; }
+
   INodeUnit::Type UnitType() const noexcept override { return INodeUnit::Type::QDQ; }
 
  private:
@@ -77,6 +79,7 @@ class QDQNodeUnit : public INodeUnit {
   const Node& node_;
   std::vector<NodeArg*> input_defs_;
   std::vector<NodeArg*> output_defs_;
+  std::vector<const Node*> all_nodes_;
 };
 
 // QUESTION/TODO, do we want to embed the graph_viewer into the QDQNodeGroup?
@@ -89,17 +92,44 @@ QDQNodeUnit::QDQNodeUnit(const GraphViewer& graph_viewer, const QDQ::NodeGroup& 
 
 void QDQNodeUnit::init() {
   for (auto node_index : qdq_group_.dq_nodes) {
-    // This is a bit hacky, but seems there is not other way to get a non-const NodeArg* from a const Node
-    auto& node = const_cast<Node&>(*graph_viewer_.GetNode(node_index));
-    for (auto* def : node.MutableInputDefs()) {
-      input_defs_.push_back(def);
-    }
+    all_nodes_.push_back(graph_viewer_.GetNode(node_index));
   }
+
   for (auto node_index : qdq_group_.q_nodes) {
     auto& node = const_cast<Node&>(*graph_viewer_.GetNode(node_index));
     for (auto* def : node.MutableOutputDefs()) {
       output_defs_.push_back(def);
     }
+    all_nodes_.push_back(&node);
+  }
+
+  all_nodes_.push_back(&node_);
+
+  auto get_input = [&](std::vector<NodeArg*>& defs, NodeIndex node_index) {
+    // This is a bit hacky, but seems there is not other way to get a non-const NodeArg* from a const Node
+    auto& node = const_cast<Node&>(*graph_viewer_.GetNode(node_index));
+    defs.push_back(node.MutableInputDefs()[0]);
+  };
+
+  auto get_scale_zp = [&](std::vector<NodeArg*>& defs, NodeIndex node_index) {
+    // This is a bit hacky, but seems there is not other way to get a non-const NodeArg* from a const Node
+    auto& node = const_cast<Node&>(*graph_viewer_.GetNode(node_index));
+    defs.push_back(node.MutableInputDefs()[1]);
+    defs.push_back(node.MutableInputDefs()[2]);
+  };
+
+  auto get_all_input = [&](std::vector<NodeArg*>& defs, NodeIndex node_index) {
+    // This is a bit hacky, but seems there is not other way to get a non-const NodeArg* from a const Node
+    get_input(defs, node_index);
+    get_scale_zp(defs, node_index);
+  };
+
+  // Conv only, other may also need special handling
+  if (node_.OpType() == "Conv") {
+    get_all_input(input_defs_, qdq_group_.dq_nodes[0]);
+    get_all_input(input_defs_, qdq_group_.dq_nodes[1]);
+    get_scale_zp(input_defs_, qdq_group_.q_nodes[0]);
+    get_input(input_defs_, qdq_group_.dq_nodes[2]);
   }
 }
 
