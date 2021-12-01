@@ -287,7 +287,7 @@ static void scatter_with_larger_indices_on_axis_tests(const char* op_name, int o
   test.AddInput<int64_t>("indices", {1, 4}, {0, 0, 0, 0});
   test.AddInput<float>("updates", {1, 4}, {3.0f, 3.0f, 3.0f, 3.0f});
   test.AddOutput<float>("y", {1, 2}, {3.0f, 2.0f});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  test.Run();
 }
 
 TEST(Scatter, LargerIndicesOnAxis) {

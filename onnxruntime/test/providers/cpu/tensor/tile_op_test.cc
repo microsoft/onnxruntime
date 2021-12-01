@@ -19,8 +19,7 @@ void RunTest(std::initializer_list<T> input,
   test.AddInput<int64_t>("repeats", repeat_dims, repeat);
   test.AddOutput<T>("output", output_dims, output);
   // Disable TensorRT for int8 tests. Error: Assertion Error in makePaddedScale: 0 (regionRanges != nullptr)
-  // Disable TensorRT for bool tests. Error: Assertion !n->candidateRequirements.empty() failed
-  if (std::is_same<T, int8_t>::value || std::is_same<T, bool>::value)
+  if (std::is_same<T, int8_t>::value)
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}); 
   else
     test.Run();
