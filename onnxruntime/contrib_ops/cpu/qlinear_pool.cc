@@ -23,19 +23,15 @@ using concurrency::ThreadPool;
 namespace contrib {
 
 template <typename T8Bits>
-static inline float dequantize_value(T8Bits x, float x_scale, T8Bits x_zero_point);
-
-template <typename T8Bits>
-static inline T8Bits quantize_value(float y, float y_scale, T8Bits y_zero_point);
-
-template <>
-inline float dequantize_value<uint8_t>(uint8_t x, float x_scale, uint8_t x_zero_point) {
+static inline float dequantize_value(T8Bits x, float x_scale, T8Bits x_zero_point) {
   return x_scale * (static_cast<int>(x) - x_zero_point);
 }
 
-template <>
-inline uint8_t quantize_value<uint8_t>(float y, float y_scale, uint8_t y_zero_point) {
-  return static_cast<uint8_t>(std::max(0.0f, std::min(std::nearbyintf(y / y_scale + y_zero_point), 255.0f)));
+template <typename T8Bits>
+static inline T8Bits quantize_value(float y, float y_scale, T8Bits y_zero_point) {
+  constexpr int32_t min_8bits = std::numeric_limits<T8Bits>::lowest();
+  constexpr int32_t max_8bits = std::numeric_limits<T8Bits>::max();
+  return static_cast<T8Bits>(std::max(min_8bits, std::min(static_cast<int32_t>(std::nearbyintf(y / y_scale + y_zero_point)), max_8bits)));
 }
 
 static void SwitchDimsNchwNhwc(std::vector<int64_t>& dims, bool from_nchw_to_nhwc) {
@@ -509,6 +505,15 @@ void dequantize_array(int64_t N, const T8Bits* input, float scale, T8Bits zero_p
 }
 
 Status QLinearAveragePool::Compute(OpKernelContext* context) const {
+  if (is_input_signed_) {
+    return ComputeImpl<int8_t>(context);
+  } else {
+    return ComputeImpl<uint8_t>(context);
+  }
+}
+
+template <typename T8Bits>
+Status QLinearAveragePool::ComputeImpl(OpKernelContext* context) const {
   const auto tensor_x_scale = context->Input<Tensor>(1);
   const auto tensor_x_zero_point = context->Input<Tensor>(2);
   const auto tensor_y_scale = context->Input<Tensor>(3);
@@ -524,16 +529,12 @@ Status QLinearAveragePool::Compute(OpKernelContext* context) const {
               "input y_zero_point must be a scalar or 1D tensor of size 1 if given");
 
   const auto* X = context->Input<Tensor>(0);
-  auto dtype = X->GetElementType();
-  if (dtype != ONNX_NAMESPACE::TensorProto_DataType_UINT8) {
-    ORT_THROW("Unsupported 'dtype' in QLinear Pooling:", dtype);
-  }
 
   TensorShape x_shape = X->Shape();
   const float x_scale = *(tensor_x_scale->Data<float>());
   const float y_scale = *(tensor_y_scale->Data<float>());
-  uint8_t x_zero_point = (tensor_x_zero_point ? *(tensor_x_zero_point->Data<uint8_t>()) : (uint8_t)0);
-  uint8_t y_zero_point = (tensor_y_zero_point ? *(tensor_y_zero_point->Data<uint8_t>()) : (uint8_t)0);
+  T8Bits x_zero_point = (tensor_x_zero_point ? *(tensor_x_zero_point->Data<T8Bits>()) : (T8Bits)0);
+  T8Bits y_zero_point = (tensor_y_zero_point ? *(tensor_y_zero_point->Data<T8Bits>()) : (T8Bits)0);
 
   ORT_RETURN_IF_NOT(x_shape.NumDimensions() >= 3, "Input dimension cannot be less than 3.");
   std::vector<int64_t> pads = pool_attrs_.pads;
@@ -564,8 +565,8 @@ Status QLinearAveragePool::Compute(OpKernelContext* context) const {
     SwitchDimsNchwNhwc(output_dims, true);
   }
   Tensor* Y = context->Output(0, output_dims);
-  const auto* X_data = X->Data<uint8_t>();
-  auto* Y_data = Y->MutableData<uint8_t>();
+  const auto* X_data = X->Data<T8Bits>();
+  auto* Y_data = Y->MutableData<T8Bits>();
   ThreadPool* tp = context->GetOperatorThreadPool();
 
   // Check for special case which could fall back to global average pool
@@ -589,12 +590,12 @@ Status QLinearAveragePool::Compute(OpKernelContext* context) const {
   switch (kernel_shape.size()) {
     case 1: {
       if (channels_last_) {
-        QLinearPoolNhwc1DTask<uint8_t, onnxruntime::AveragePool> avg_pool_task_1d = {
+        QLinearPoolNhwc1DTask<T8Bits, onnxruntime::AveragePool> avg_pool_task_1d = {
             x_data_fp32, Y_data, y_scale, y_zero_point, channels,
             pooled_height, strides[0], height, kernel_shape, pads, pool_context_, pool_attrs_};
         ThreadPool::TryParallelFor(tp, y_image_size * batch_count, avg_pool_task_1d.Cost(), avg_pool_task_1d);
       } else {
-        QLinearPool1DTask<uint8_t, onnxruntime::AveragePool> avg_pool_task_1d = {
+        QLinearPool1DTask<T8Bits, onnxruntime::AveragePool> avg_pool_task_1d = {
             x_data_fp32, Y_data, y_scale, y_zero_point, x_image_size, y_image_size,
             pooled_height, strides[0], height, kernel_shape, pads, pool_context_, pool_attrs_};
         ThreadPool::TryParallelFor(tp, total_channels, avg_pool_task_1d.Cost(), avg_pool_task_1d);
@@ -604,13 +605,13 @@ Status QLinearAveragePool::Compute(OpKernelContext* context) const {
 
     case 2: {
       if (channels_last_) {
-        QLinearPoolNhwc2DTask<uint8_t, onnxruntime::AveragePool> avg_pool_task_2d = {
+        QLinearPoolNhwc2DTask<T8Bits, onnxruntime::AveragePool> avg_pool_task_2d = {
             x_data_fp32, Y_data, y_scale, y_zero_point, x_image_size, y_image_size, kernel_size, channels,
             pooled_height, pooled_width, strides[0], strides[1], height, width, kernel_shape, pads, pool_context_, pool_attrs_};
         ThreadPool::TryParallelFor(tp, y_image_size * batch_count, avg_pool_task_2d.Cost(), avg_pool_task_2d);
 
       } else {
-        QLinearPool2DTask<uint8_t, onnxruntime::AveragePool> avg_pool_task_2d = {
+        QLinearPool2DTask<T8Bits, onnxruntime::AveragePool> avg_pool_task_2d = {
             x_data_fp32, Y_data, y_scale, y_zero_point, x_image_size, y_image_size,
             pooled_height, pooled_width, strides[0], strides[1], height, width, kernel_shape, pads, pool_context_, pool_attrs_};
         ThreadPool::TryParallelFor(tp, total_channels, avg_pool_task_2d.Cost(), avg_pool_task_2d);
@@ -620,14 +621,14 @@ Status QLinearAveragePool::Compute(OpKernelContext* context) const {
 
     case 3: {
       if (channels_last_) {
-        QLinearPoolNhwc3DTask<uint8_t, onnxruntime::AveragePool> avg_pool_task_3d = {
+        QLinearPoolNhwc3DTask<T8Bits, onnxruntime::AveragePool> avg_pool_task_3d = {
             x_data_fp32, Y_data, y_scale, y_zero_point, x_image_size, y_image_size, kernel_size, channels,
             pooled_height, pooled_width, pooled_depth, strides[0], strides[1], strides[2], height, width, depth,
             kernel_shape, pads, pool_context_, pool_attrs_};
         ThreadPool::TryParallelFor(tp, y_image_size * batch_count, avg_pool_task_3d.Cost(), avg_pool_task_3d);
 
       } else {
-        QLinearPool3DTask<uint8_t, onnxruntime::AveragePool> avg_pool_task_3d = {
+        QLinearPool3DTask<T8Bits, onnxruntime::AveragePool> avg_pool_task_3d = {
             x_data_fp32, Y_data, y_scale, y_zero_point, x_image_size, y_image_size,
             pooled_height, pooled_width, pooled_depth, strides[0], strides[1], strides[2], height, width, depth,
             kernel_shape, pads, pool_context_, pool_attrs_};
@@ -647,7 +648,12 @@ Status QLinearAveragePool::Compute(OpKernelContext* context) const {
   return Status::OK();
 }
 
-ONNX_OPERATOR_KERNEL_EX(QLinearAveragePool, kMSDomain, 1, kCpuExecutionProvider, KernelDefBuilder(), QLinearAveragePool);
+ONNX_OPERATOR_KERNEL_EX(QLinearAveragePool,
+                        kMSDomain,
+                        1,
+                        kCpuExecutionProvider,
+                        KernelDefBuilder(),
+                        QLinearAveragePool);
 
 }  // namespace contrib
 

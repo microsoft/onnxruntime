@@ -32,7 +32,7 @@
     "@types/minimist": "1.2.1",
     "@types/mocha": "^8.2.2",
     "@types/node": "^14.14.37",
-    "cmake-js": "^6.1.0",
+    "cmake-js": "^6.2.1",
     "fs-extra": "^9.1.0",
     "jsonc": "^2.0.0",
     "minimist": "^1.2.5",

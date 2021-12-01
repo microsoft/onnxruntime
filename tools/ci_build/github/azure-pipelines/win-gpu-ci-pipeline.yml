@@ -13,7 +13,7 @@ stages:
       strategy:
         matrix:
           cuda:
-            additionalBuildFlags: --build_java --build_nodejs --use_cuda --cuda_version=11.4 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.4" --cudnn_home="C:\local\cudnn-11.4-windows-x64-v8.2.2.26\cuda" --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=52 --gen_doc validate
+            additionalBuildFlags: --build_java --build_nodejs --use_cuda --cuda_version=11.4 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.4" --cudnn_home="C:\local\cudnn-11.4-windows-x64-v8.2.2.26\cuda" --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=52 --gen_doc validate --enable_cuda_profiling
             EnvSetupScript: setup_env_cuda_11.bat
             ORT_EP_NAME: CUDA
           dml:
