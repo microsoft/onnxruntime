@@ -115,8 +115,8 @@ void VerifyState(const DataTransferManager& data_transfer_mgr, const NameMLValMa
       // compare "Update_Count" or "Step"
       ASSERT_EQ(actual_tensor.GetElementType(), ONNX_NAMESPACE::TensorProto_DataType_INT64);
       ASSERT_EQ(expected_tensor.Shape(), actual_tensor.Shape());
-      std::vector<int64_t> dims = {1};
-      ASSERT_EQ(expected_tensor.Shape().GetDims(), dims);
+      std::array<int64_t, 1> dims = {1};
+      ASSERT_EQ(expected_tensor.Shape().GetDims(), gsl::make_span(dims));
       auto size = expected_tensor.Shape().Size();
       const std::vector<int64_t> expected(expected_tensor.template Data<int64_t>(), expected_tensor.template Data<int64_t>() + size);
       const std::vector<int64_t> actual(actual_tensor.template Data<int64_t>(), actual_tensor.template Data<int64_t>() + size);
@@ -212,7 +212,7 @@ std::unique_ptr<TrainingSession> BuildAndRunTrainingSessionWithChecks(
 
     float lr = 0.001f;
     OrtValue lrMLValue;
-    TrainingUtil::CreateCpuMLValue({1}, std::vector<float>{lr}, &lrMLValue);
+    TrainingUtil::CreateCpuMLValue(std::array<int64_t, 1>{1}, std::vector<float>{lr}, &lrMLValue);
     fw_feeds.first.push_back(lr_feed_name);
     fw_feeds.second.push_back(lrMLValue);
   }
@@ -222,7 +222,7 @@ std::unique_ptr<TrainingSession> BuildAndRunTrainingSessionWithChecks(
         config_result.mixed_precision_config_result.value().loss_scale_input_name;
     float loss_scale = 2048.0f;
     OrtValue loss_scaleMLValue;
-    TrainingUtil::CreateCpuMLValue({1}, std::vector<float>{loss_scale}, &loss_scaleMLValue);
+    TrainingUtil::CreateCpuMLValue(std::array<int64_t, 1>{1}, std::vector<float>{loss_scale}, &loss_scaleMLValue);
     fw_feeds.first.push_back(loss_scale_input_name);
     fw_feeds.second.push_back(loss_scaleMLValue);
   }

@@ -20,11 +20,9 @@ struct Offset;
 
 namespace onnxruntime {
 
-namespace experimental {
 namespace fbs {
 struct Model;
 }  // namespace fbs
-}  // namespace experimental
 
 typedef std::unordered_map<std::string, std::string> ModelMetaData;
 using IOnnxRuntimeOpSchemaRegistryList = std::list<std::shared_ptr<IOnnxRuntimeOpSchemaCollection>>;
@@ -39,9 +37,10 @@ class Model {
 #if !defined(ORT_MINIMAL_BUILD)
   explicit Model(const std::string& graph_name,
                  bool is_onnx_domain_only,
-                 const logging::Logger& logger)
+                 const logging::Logger& logger,
+                 bool allow_released_opsets_only = true)
       : Model(graph_name, is_onnx_domain_only, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), {},
-              {}, logger) {}
+              {}, logger, allow_released_opsets_only) {}
 
   // Construct model from scratch.
   explicit Model(const std::string& graph_name,
@@ -51,35 +50,36 @@ class Model {
                  const IOnnxRuntimeOpSchemaRegistryList& local_registries,
                  const std::unordered_map<std::string, int>& domain_to_version,
                  const std::vector<ONNX_NAMESPACE::FunctionProto>& model_local_functions,
-                 const logging::Logger& logger);
+                 const logging::Logger& logger,
+                 bool allow_released_opsets_only = true);
 
   // NOTE: after calling this constructor, <*this> model will
   // hold a copy of <model_proto>.
   explicit Model(const ONNX_NAMESPACE::ModelProto& model_proto,
                  const IOnnxRuntimeOpSchemaRegistryList* local_registries,
-                 const logging::Logger& logger)
-      : Model(model_proto, PathString(), local_registries, logger) {}
+                 const logging::Logger& logger, bool allow_released_opsets_only = true)
+      : Model(model_proto, PathString(), local_registries, logger, allow_released_opsets_only) {}
 
   // NOTE: after calling this constructor, <*this> model will
   // hold a copy of <model_proto>.
   explicit Model(const ONNX_NAMESPACE::ModelProto& model_proto,
                  const PathString& model_path,
                  const IOnnxRuntimeOpSchemaRegistryList* local_registries,
-                 const logging::Logger& logger);
+                 const logging::Logger& logger, bool allow_released_opsets_only = true);
 
   // NOTE: after calling this constructor, <*this> model will
   // own the <model_proto>.
   explicit Model(ONNX_NAMESPACE::ModelProto&& model_proto,
                  const IOnnxRuntimeOpSchemaRegistryList* local_registries,
-                 const logging::Logger& logger)
-      : Model(std::move(model_proto), PathString(), local_registries, logger) {}
+                 const logging::Logger& logger, bool allow_released_opsets_only = true)
+      : Model(std::move(model_proto), PathString(), local_registries, logger, allow_released_opsets_only) {}
 
   // NOTE: after calling this constructor, <*this> model will
   // own the <model_proto>.
   explicit Model(ONNX_NAMESPACE::ModelProto&& model_proto,
                  const PathString& model_path,
                  const IOnnxRuntimeOpSchemaRegistryList* local_registries,
-                 const logging::Logger& logger);
+                 const logging::Logger& logger, bool allow_released_opsets_only = true);
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
@@ -250,20 +250,22 @@ class Model {
   static common::Status Load(ONNX_NAMESPACE::ModelProto&& model_proto,
                              /*out*/ std::shared_ptr<Model>& p_model,
                              const IOnnxRuntimeOpSchemaRegistryList* local_registries,
-                             const logging::Logger& logger);
+                             const logging::Logger& logger,
+                             bool allow_released_opsets_only = true);
 
   static common::Status Load(ONNX_NAMESPACE::ModelProto&& model_proto,
                              const PathString& model_path,
                              /*out*/ std::shared_ptr<Model>& p_model,
                              const IOnnxRuntimeOpSchemaRegistryList* local_registries,
-                             const logging::Logger& logger);
+                             const logging::Logger& logger,
+                             bool allow_released_opsets_only = true);
 
   common::Status SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
-                                 flatbuffers::Offset<onnxruntime::experimental::fbs::Model>& model) const;
+                                 flatbuffers::Offset<onnxruntime::fbs::Model>& model) const;
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
-  static common::Status LoadFromOrtFormat(const onnxruntime::experimental::fbs::Model& fbs_model,
+  static common::Status LoadFromOrtFormat(const onnxruntime::fbs::Model& fbs_model,
 #if !defined(ORT_MINIMAL_BUILD)
                                           const IOnnxRuntimeOpSchemaRegistryList* local_registries,
 #endif

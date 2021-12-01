@@ -122,7 +122,7 @@ inline int64_t ComputeOutputShape(const int64_t in_dim,
                                   const int64_t stride, const int64_t kernel, const int64_t dilation,
                                   const int64_t pad_head, const int64_t pad_tail) {
   const int64_t dkernel = dilation * (kernel - 1) + 1;
-  return static_cast<int64_t>(static_cast<float>(in_dim + pad_head + pad_tail - dkernel) / stride + 1);
+  return static_cast<int64_t>(static_cast<double>(in_dim + pad_head + pad_tail - dkernel) / stride + 1);
 }
 
 inline Status ComputePadAndOutputShape(const int64_t in_dim,

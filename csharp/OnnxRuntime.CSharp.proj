@@ -44,7 +44,7 @@ CMake creates a target to this project
     <Message Importance="High" Text="Restoring NuGet packages for CSharp projects..." />
     <MSBuild Projects="src\Microsoft.ML.OnnxRuntime\Microsoft.ML.OnnxRuntime.csproj"
              Targets="Restore" 
-             Properties="Platform=AnyCPU" 
+             Properties="Platform=AnyCPU;OrtPackageId=$(OrtPackageId)" 
              />
     <MSBuild Projects="sample\Microsoft.ML.OnnxRuntime.InferenceSample\Microsoft.ML.OnnxRuntime.InferenceSample.csproj"
              Targets="Restore" 
@@ -65,7 +65,7 @@ CMake creates a target to this project
  
     <MSBuild Projects="src\Microsoft.ML.OnnxRuntime\Microsoft.ML.OnnxRuntime.csproj"
              Targets="ObtainPackageVersion;Build" 
-             Properties="Platform=AnyCPU"/>
+             Properties="Platform=AnyCPU;OrtPackageId=$(OrtPackageId)"/>
     <MSBuild Projects="sample\Microsoft.ML.OnnxRuntime.InferenceSample\Microsoft.ML.OnnxRuntime.InferenceSample.csproj"
              Targets="Build" 
              Properties="Platform=AnyCPU"
@@ -130,7 +130,7 @@ CMake creates a target to this project
     </Exec>
 
     <Message Importance="High" Text="Bundling native shared library artifacts into a NuGet package ..." />
-    <Exec ContinueOnError="False" Command="$(NugetExe) pack -Symbols -SymbolPackageFormat snupkg NativeNuget.nuspec" ConsoleToMSBuild="true" WorkingDirectory="$(NativeBuildOutputDirAbs)" Condition=" '$(OS)' == 'Windows_NT'">
+    <Exec ContinueOnError="False" Command="$(NugetExe) pack NativeNuget.nuspec" ConsoleToMSBuild="true" WorkingDirectory="$(NativeBuildOutputDirAbs)" Condition=" '$(OS)' == 'Windows_NT'">
       <Output TaskParameter="ConsoleOutput" PropertyName="OutputOfExec" />
     </Exec>
 

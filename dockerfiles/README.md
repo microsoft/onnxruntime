@@ -112,18 +112,20 @@ If the `device_type` runtime config option is not explicitly specified, CPU will
   | <code>MYRIAD_FP16</code> | Intel<sup></sup> Movidius<sup>TM</sup> USB sticks |
   | <code>VAD-M_FP16</code> | Intel<sup></sup> Vision Accelerator Design based on Movidius<sup>TM</sup> MyriadX VPUs |
   | <code>HETERO:<DEVICE_TYPE_1>,<DEVICE_TYPE_2>,<DEVICE_TYPE_3>...</code> | All Intel<sup>®</sup> silicons mentioned above |
-  | <code>MULTI:<DEVICE_TYPE_1>,<DEVICE_TYPE_2>,<DEVICE_TYPE_3>...</code> | All Intel<sup>®</sup> silicons mentioned above | 
+  | <code>MULTI:<DEVICE_TYPE_1>,<DEVICE_TYPE_2>,<DEVICE_TYPE_3>...</code> | All Intel<sup>®</sup> silicons mentioned above |
+  | <code>AUTO:<DEVICE_TYPE_1>,<DEVICE_TYPE_2>,<DEVICE_TYPE_3>...</code> | All Intel<sup>®</sup> silicons mentioned above |
 
-  Specifying Hardware Target for HETERO or Multi-Device Build:
+  Specifying Hardware Target for HETERO or MULTI or AUTO Build:
 
   HETERO:<DEVICE_TYPE_1>,<DEVICE_TYPE_2>..
   MULTI:<DEVICE_TYPE_1>,<DEVICE_TYPE_2>..
+  AUTO:<DEVICE_TYPE_1>,<DEVICE_TYPE_2>..
   The <DEVICE_TYPE> can be any of these devices from this list ['CPU','GPU','MYRIAD','HDDL']
 
-  A minimum of two DEVICE_TYPE'S should be specified for a valid HETERO or Multi-Device Build.
+  A minimum of two DEVICE_TYPE'S should be specified for a valid HETERO or MULTI or AUTO Build.
 
   Example:
-  HETERO:MYRIAD,CPU  HETERO:HDDL,GPU,CPU  MULTI:MYRIAD,GPU,CPU
+  HETERO:MYRIAD,CPU  HETERO:HDDL,GPU,CPU  MULTI:MYRIAD,GPU,CPU AUTO:GPU,CPU
 
 *This is the hardware accelerator target that is enabled by **default** in the container image. After building the container image for one default target, the application may explicitly choose a different target at run time with the same container by using the [Dynamic device selction API](https://github.com/microsoft/onnxruntime/blob/master/docs/execution_providers/OpenVINO-ExecutionProvider.md#dynamic-device-selection).*
 
@@ -204,7 +206,12 @@ If the `device_type` runtime config option is not explicitly specified, CPU will
       docker build --rm -t onnxruntime-MULTI --build-arg DEVICE=MULTI:<DEVICE_TYPE_1>,<DEVICE_TYPE_2>,<DEVICE_TYPE_3>... -f <Dockerfile> .
      ```
 
-2. Install the required rules, drivers and other packages as required from the steps above for each of the DEVICE_TYPE accordingly that would be added for the HETERO or MULTI Device build type.
+     for AUTO:
+     ```
+      docker build --rm -t onnxruntime-AUTO --build-arg DEVICE=AUTO:<DEVICE_TYPE_1>,<DEVICE_TYPE_2>,<DEVICE_TYPE_3>... -f <Dockerfile> .
+     ```
+
+2. Install the required rules, drivers and other packages as required from the steps above for each of the DEVICE_TYPE accordingly that would be added for the HETERO or MULTI or AUTO device build type.
 
 3. Run the docker image as mentioned in the above steps
 

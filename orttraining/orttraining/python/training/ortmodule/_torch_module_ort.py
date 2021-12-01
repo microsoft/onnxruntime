@@ -2,13 +2,12 @@
 # Licensed under the MIT License.
 # _torch_module_ort.py
 
-from . import _io
+from . import _io, _utils
 from .debug_options import DebugOptions
 from ._graph_execution_manager_factory import GraphExecutionManagerFactory
 from ._torch_module_interface import TorchModuleInterface
 from ._fallback import _FallbackManager, ORTModuleTorchModelException, wrap_exception
 from collections import OrderedDict
-import functools
 import torch
 from typing import Iterator, Optional, Tuple, TypeVar, Callable
 
@@ -21,21 +20,7 @@ class TorchModuleORT(TorchModuleInterface):
         super().__init__(module)
         self._flattened_module = _io._FlattenedModule(module)
 
-        def _forward(self, *inputs, **kwargs):
-            '''Forward pass starts here and continues at `_ORTModuleFunction.forward`
-
-            ONNX model is exported the first time this method is executed.
-            Next, we build a full training graph with module_gradient_graph_builder.
-            Finally, we instantiate the ONNX Runtime InferenceSession.
-            '''
-
-            return self._execution_manager(self.is_training()).forward(*inputs, **kwargs)
-
-        # Bind the forward method.
-        self.forward = _forward.__get__(self)
-        # Copy the forward signature from the PyTorch module.
-        functools.update_wrapper(
-            self.forward.__func__, self._original_module.forward.__func__)
+        _utils.patch_torch_module_ort_forward_method(self)
 
         self._execution_manager = GraphExecutionManagerFactory(self._flattened_module, debug_options, fallback_manager)
 
@@ -175,3 +160,8 @@ class TorchModuleORT(TorchModuleInterface):
         # to save and load a complete checkpoint
 
         return self._original_module
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+
+        _utils.reinitialize_torch_module_ort(self)

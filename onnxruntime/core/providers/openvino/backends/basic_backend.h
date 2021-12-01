@@ -32,6 +32,10 @@ class BasicBackend : public IBackend {
  private:
   void StartAsyncInference(Ort::CustomOpApi& ort, OrtKernelContext* context, std::shared_ptr<InferenceEngine::InferRequest> infer_request);
 
+#ifdef IO_BUFFER_ENABLED
+  void StartRemoteAsyncInference(Ort::CustomOpApi& ort, OrtKernelContext* context, std::shared_ptr<InferenceEngine::InferRequest> infer_request);
+#endif
+
   void CompleteAsyncInference(Ort::CustomOpApi& ort, OrtKernelContext* context, std::shared_ptr<InferenceEngine::InferRequest> infer_request);
 
   GlobalContext& global_context_;
@@ -41,6 +45,7 @@ class BasicBackend : public IBackend {
   InferenceEngine::ExecutableNetwork exe_network_;
   std::map<std::string, std::shared_ptr<ngraph::Node>> const_outputs_map_;
   std::unique_ptr<InferRequestsQueue> inferRequestsQueue_;
+  InferenceEngine::RemoteContext::Ptr remote_context_;
 };
 
 class InferRequestsQueue {

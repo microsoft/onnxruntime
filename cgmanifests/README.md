@@ -1,21 +1,27 @@
 # CGManifest Files
 This directory contains CGManifest (cgmanifest.json) files.
-See here for details: https://docs.opensource.microsoft.com/tools/cg/cgmanifest.html
+See [here](https://docs.opensource.microsoft.com/tools/cg/cgmanifest.html) for details.
 
-`cgmanifests/cgmanifest.json` contains entries that don't belong in more specific categories (e.g., git submodules).
+## `cgmanifests/generated/cgmanifest.json`
+This file contains generated CGManifest entries.
 
-## Git Submodules
-`cgmanifests/submodules/cgmanifest.json` contains entries for git submodules.
-It can be generated like this:
+It covers these dependencies:
+- git submodules
+- dependencies from the Dockerfile `tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cuda11`
 
+If any of these dependencies change, this file should be updated.
+**When updating, please regenerate instead of editing manually.**
+
+### How to Generate
 1. Change to the repository root directory.
-2. Ensure the submodules are checked out. For example, with:
+2. Ensure the git submodules are checked out and up to date. For example, with:
     ```
     $ git submodule update --init --recursive
     ```
 3. Run the generator script:
     ```
-    $ python cgmanifests/submodules/generate_submodule_cgmanifest.py > cgmanifests/submodules/cgmanifest.json
+    $ python cgmanifests/generate_cgmanifest.py
     ```
 
-Please update this cgmanifest.json file when any git submodules change.
+## `cgmanifests/cgmanifest.json`
+This file contains non-generated CGManifest entries. Please edit directly as needed.

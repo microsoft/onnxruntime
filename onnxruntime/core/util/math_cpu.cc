@@ -650,6 +650,7 @@ void Im2col<T, StorageOrder::NHWC>::operator()(
   }
 }
 
+template struct Im2col<int8_t, StorageOrder::NHWC>;
 template struct Im2col<uint8_t, StorageOrder::NHWC>;
 
 template <>

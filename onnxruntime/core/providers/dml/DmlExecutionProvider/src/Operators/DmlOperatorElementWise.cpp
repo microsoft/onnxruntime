@@ -442,28 +442,34 @@ public:
         std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
         std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
 
-        float minValue = -FLT_MAX;
-        float maxValue = FLT_MAX;
-        if (kernelInfo.IsInputValid(1))
-        {
-          minValue = static_cast<float>(ReadScalarTensorCastToFloat64(kernelInfo.GetConstantInputTensor(1)));
-        }
-        if (kernelInfo.IsInputValid(2)) {
-          maxValue = static_cast<float>(ReadScalarTensorCastToFloat64(kernelInfo.GetConstantInputTensor(2)));
-        }
-
-        DML_ELEMENT_WISE_CLIP_OPERATOR_DESC opDesc = {};
+        DML_ELEMENT_WISE_CLIP1_OPERATOR_DESC opDesc = {};
         opDesc.InputTensor = inputDescs.data();
         opDesc.OutputTensor = outputDescs.data();
-        opDesc.Min = minValue;
-        opDesc.Max = maxValue;
+        // MinMaxDataType will always be equal to inputDataTensorDataType
+        // Assigning minMaxDataType to inputDataTensorDataType because this field
+        // has to be assigned even if program does not go through below conditional 
+        // logic for some corner test case
+        // Same applies to min and max value.
+        opDesc.MinMaxDataType = this->m_inputTensorDescs[0].GetDmlDataType();
+        CastToClampedScalarUnion<double>(opDesc.MinMaxDataType, -DBL_MAX, /*out*/&opDesc.Min);
+        CastToClampedScalarUnion<double>(opDesc.MinMaxDataType, DBL_MAX, /*out*/&opDesc.Max);
 
-        SetDmlOperatorDesc({ DML_OPERATOR_ELEMENT_WISE_CLIP, &opDesc}, kernelInfo);
+        if (kernelInfo.IsInputValid(1))
+        {
+            ReadScalarTensorData(kernelInfo.GetConstantInputTensor(1), /*out*/ &opDesc.Min.Bytes, sizeof(opDesc.Min.Bytes));
+        }
+        if (kernelInfo.IsInputValid(2)) 
+        {
+            ReadScalarTensorData(kernelInfo.GetConstantInputTensor(2), /*out*/ &opDesc.Max.Bytes, sizeof(opDesc.Max.Bytes));
+        }
+
+        SetDmlOperatorDesc({ DML_OPERATOR_ELEMENT_WISE_CLIP1, &opDesc}, kernelInfo);
     }
 };
 
 // Same operator signature as 11. Only difference is new type support
 using DmlOperatorElementwiseClip12 = DmlOperatorElementwiseClip11;
+using DmlOperatorElementwiseClip13 = DmlOperatorElementwiseClip11;
 
 class DmlOperatorElementwisePow : public DmlOperator
 {
@@ -692,7 +698,7 @@ DML_OP_DEFINE_CREATION_FUNCTION(Ceil,             DmlOperatorElementwiseUnary<DM
 DML_OP_DEFINE_CREATION_FUNCTION(Floor,            DmlOperatorElementwiseUnary<DML_ELEMENT_WISE_FLOOR_OPERATOR_DESC>);
 DML_OP_DEFINE_CREATION_FUNCTION(Not,              DmlOperatorElementwiseUnary<DML_ELEMENT_WISE_LOGICAL_NOT_OPERATOR_DESC>);
 DML_OP_DEFINE_CREATION_FUNCTION(Sign,             DmlOperatorElementwiseUnary<DML_ELEMENT_WISE_SIGN_OPERATOR_DESC>);
-DML_OP_DEFINE_CREATION_FUNCTION(IsNan,            DmlOperatorElementwiseUnary<DML_ELEMENT_WISE_IS_NAN_OPERATOR_DESC>);
+DML_OP_DEFINE_CREATION_FUNCTION(IsNaN,            DmlOperatorElementwiseUnary<DML_ELEMENT_WISE_IS_NAN_OPERATOR_DESC>);
 DML_OP_DEFINE_CREATION_FUNCTION(Sinh,             DmlOperatorElementwiseUnary<DML_ELEMENT_WISE_SINH_OPERATOR_DESC>);
 DML_OP_DEFINE_CREATION_FUNCTION(Cosh,             DmlOperatorElementwiseUnary<DML_ELEMENT_WISE_COSH_OPERATOR_DESC>);
 DML_OP_DEFINE_CREATION_FUNCTION(Asinh,            DmlOperatorElementwiseUnary<DML_ELEMENT_WISE_ASINH_OPERATOR_DESC>);
@@ -724,6 +730,7 @@ DML_OP_DEFINE_CREATION_FUNCTION(Mean,             DmlOperatorElementwiseMean);
 DML_OP_DEFINE_CREATION_FUNCTION(Clip7,            DmlOperatorElementwiseClip7);
 DML_OP_DEFINE_CREATION_FUNCTION(Clip11,           DmlOperatorElementwiseClip11);
 DML_OP_DEFINE_CREATION_FUNCTION(Clip12,           DmlOperatorElementwiseClip12);
+DML_OP_DEFINE_CREATION_FUNCTION(Clip13,           DmlOperatorElementwiseClip13);
 DML_OP_DEFINE_CREATION_FUNCTION(Pow,              DmlOperatorElementwisePow);
 DML_OP_DEFINE_CREATION_FUNCTION(QuantizeLinear,   DmlOperatorElementwiseQLinear<DML_ELEMENT_WISE_QUANTIZE_LINEAR_OPERATOR_DESC>);
 DML_OP_DEFINE_CREATION_FUNCTION(DequantizeLinear, DmlOperatorElementwiseQLinear<DML_ELEMENT_WISE_DEQUANTIZE_LINEAR_OPERATOR_DESC>);

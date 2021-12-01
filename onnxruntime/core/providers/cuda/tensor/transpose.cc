@@ -90,16 +90,16 @@ Status Transpose::DoTranspose(const cudaDeviceProp& prop,
   if (output.Shape().Size() == 0)
     return Status::OK();
 
-  const std::vector<int64_t>& input_dims = input_shape_override ? input_shape_override->GetDims() : input.Shape().GetDims();
-  const std::vector<int64_t>& output_dims = output.Shape().GetDims();
+  const auto input_dims = input_shape_override ? input_shape_override->GetDims() : input.Shape().GetDims();
+  const auto output_dims = output.Shape().GetDims();
   auto rank = static_cast<int32_t>(input_dims.size());
 
   // flatten the adjacent dimensions which are contiguous
   // for example: permutations[0, 2, 3, 1] -> [0, 2, 1], permutations[0, 3, 1, 2] -> [0, 2, 1]
   auto new_rank = rank;
   std::vector<size_t> new_permutations(permutations);
-  std::vector<int64_t> new_input_dims(input_dims);
-  std::vector<int64_t> new_output_dims(output_dims);
+  std::vector<int64_t> new_input_dims(input_dims.begin(), input_dims.end());
+  std::vector<int64_t> new_output_dims(output_dims.begin(), output_dims.end());
 
   for (auto i = rank - 1; i > 0; i--) {
     auto curr = new_permutations[i];
@@ -228,8 +228,7 @@ Status Transpose::ComputeInternal(OpKernelContext* ctx) const {
   if (X_ptr == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
   const Tensor& X = *X_ptr;
   const TensorShape& input_shape = X.Shape();
-  const std::vector<int64_t>& input_dims = input_shape.GetDims();
-  int32_t rank = gsl::narrow_cast<int32_t>(input_dims.size());
+  int32_t rank = gsl::narrow_cast<int32_t>(input_shape.NumDimensions());
 
   std::vector<int64_t> output_dims(rank);
   std::vector<size_t> default_perm(rank);
