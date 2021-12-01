@@ -1241,9 +1241,11 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
     CreateGraphInfo();
   }
 
-#if defined(ORT_MINIMAL_BUILD)
+#if defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION) && defined(ORT_MINIMAL_BUILD)
   // remove any unused initializers
-  // not needed in a full build because that should have been done earlier by Graph::Resolve()
+  // not needed in a full build because unused initializers should have been removed earlier by Graph::Resolve()
+  // not needed in a minimal build with runtime optimizations disabled because only runtime optimizations are expected
+  //   to possibly result in unused initializers
   {
     std::vector<std::string> unused_initializer_names;
     for (const auto& [name, tensor_proto] : graph_.GetAllInitializedTensors()) {
@@ -1258,7 +1260,7 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
       graph_.RemoveInitializedTensor(name);
     }
   }
-#endif  // defined(ORT_MINIMAL_BUILD)
+#endif  // defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION) && defined(ORT_MINIMAL_BUILD)
 
   // ignore any outer scope args we don't know about. this can happen if a node contains multiple subgraphs.
   std::vector<const NodeArg*> valid_outer_scope_node_args;
