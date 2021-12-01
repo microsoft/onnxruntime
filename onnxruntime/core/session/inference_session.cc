@@ -2260,12 +2260,17 @@ void InferenceSession::InitLogger(logging::LoggingManager* logging_manager) {
 common::Status InferenceSession::AddPredefinedTransformers(GraphTransformerManager& transformer_manager,
                                                            TransformerLevel graph_optimization_level,
                                                            bool saving_runtime_optimizations) const {
+#if !defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
+  ORT_RETURN_IF(saving_runtime_optimizations, "Saving runtime optimizations is not supported in this build.");
+#endif  // !defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
+
   const auto& cpu_ep = *execution_providers_.Get(onnxruntime::kCpuExecutionProvider);
   for (int i = static_cast<int>(TransformerLevel::Level1); i <= static_cast<int>(TransformerLevel::MaxLevel); i++) {
     TransformerLevel level = static_cast<TransformerLevel>(i);
     if (graph_optimization_level >= level) {
       // Generate and register transformers for level
-      std::vector<std::unique_ptr<GraphTransformer>> transformers_to_register = [&]() {
+#if defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
+      auto transformers_to_register = [&]() {
         if (level != TransformerLevel::Level1 && saving_runtime_optimizations) {
           SatRuntimeOptimizationSaveContext save_context{kernel_registry_manager_};
           return optimizer_utils::GenerateTransformersForRuntimeOptimizations(level, session_options_, save_context,
@@ -2275,6 +2280,10 @@ common::Status InferenceSession::AddPredefinedTransformers(GraphTransformerManag
                                                        optimizers_to_disable_);
         }
       }();
+#else   // defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
+      auto transformers_to_register = optimizer_utils::GenerateTransformers(level, session_options_, cpu_ep,
+                                                                            optimizers_to_disable_);
+#endif  // defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
 
       for (auto& entry : transformers_to_register) {
         ORT_RETURN_IF_ERROR(transformer_manager.Register(std::move(entry), level));
