@@ -231,8 +231,8 @@ OrtValue DlpackToOrtValue(DLManagedTensor* dlpack, bool is_bool_tensor) {
 
   OrtValue ort_value;
   std::function<void(void*)> deleter = [dlpack](void* p) {
-    if (dlpack->deleter != NULL)
-      dlpack->deleter(dlpack);
+    ORT_ENFORCE(dlpack->deleter != NULL, "A dlpack structure must have a deleter.");
+    dlpack->deleter(dlpack);
     auto deleter = DataTypeImpl::GetType<Tensor>()->GetDeleteFunc();
     if (deleter != NULL)
       deleter(p);
