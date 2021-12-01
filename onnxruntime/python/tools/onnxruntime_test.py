@@ -71,7 +71,7 @@ def run_model(model_path,
         sess_options.enable_profiling = True
         sess_options.profile_file_prefix = os.path.basename(model_path)
 
-    sess = onnxrt.InferenceSession(model_path, sess_options)
+    sess = onnxrt.InferenceSession(model_path, sess_options=sess_options, providers=onnxrt.get_available_providers())
     meta = sess.get_modelmeta()
 
     if not feeds:

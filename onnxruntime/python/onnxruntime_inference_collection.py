@@ -357,6 +357,7 @@ class InferenceSession(Session):
                                                                         provider_options,
                                                                         available_providers)
         if providers == [] and len(available_providers) > 1:
+            self.disable_fallback()
             raise ValueError("This ORT build has {} enabled. ".format(available_providers) +
                              "Since ORT 1.9, you are required to explicitly set " +
                              "the providers parameter when instantiating InferenceSession. For example, "

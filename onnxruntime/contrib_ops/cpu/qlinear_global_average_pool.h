@@ -21,13 +21,14 @@ class QLinearGlobalAveragePool final : public OpKernel {
   bool channels_last_;
 };
 
+template<typename T8Bits>
 Status ComputeQLinearGlobalAvgPool(
-    const uint8_t* x,
+    const T8Bits* x,
     float x_scale,
-    uint8_t x_zero_point,
-    uint8_t* y,
+    T8Bits x_zero_point,
+    T8Bits* y,
     float y_scale,
-    uint8_t y_zero_point,
+    T8Bits y_zero_point,
     int64_t N,
     int64_t C,
     int64_t image_size,
