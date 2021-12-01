@@ -1887,6 +1887,7 @@ TEST(CApiTest, TestPerSessionCustomThreadPoolHooks) {
 
 // Preventing resize tranformer issue:
 // https://github.com/microsoft/onnxruntime/issues/9857
+#ifndef REDUCED_OPS_BUILD
 TEST(CApiTest, crop_and_resize) {
   std::vector<float> input_value_0;
   input_value_0.resize(2 * 36 * 36 * 3);
@@ -1921,6 +1922,7 @@ TEST(CApiTest, crop_and_resize) {
   ASSERT_EQ(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, output_type_shape.GetElementType());
   ASSERT_EQ(output_shape, output_type_shape.GetShape());
 }
+#endif
 
 }  // namespace TestPerSessionCustomThreadHooks
 #endif
