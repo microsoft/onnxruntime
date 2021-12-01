@@ -26,9 +26,7 @@ class NodeUnit : public INodeUnit {
   const Path& ModelPath() const noexcept override { return node_.ModelPath(); }
   const std::string& Name() const noexcept override { return node_.Name(); }
 
-  const Node& GetNode() const noexcept override {
-    return node_;
-  }
+  const Node& GetNode() const noexcept override { return node_; }
 
   // size_t GetInputEdgesCount() const noexcept override { return node_.GetInputEdgesCount(); }
   NodeIndex Index() const noexcept override { return node_.Index(); }
@@ -39,7 +37,7 @@ class NodeUnit : public INodeUnit {
 
   // Node::NodeConstIterator OutputNodesEnd() const noexcept override { return node_.OutputNodesEnd(); }
 
-  const std::vector<const Node*> GetAllNodes() const noexcept override { return all_nodes_; }
+  // const std::vector<const Node*> GetAllNodes() const noexcept override { return all_nodes_; }
 
   INodeUnit::Type UnitType() const noexcept override { return INodeUnit::Type::Node; }
 
@@ -65,6 +63,12 @@ class QDQNodeUnit : public INodeUnit {
   const std::string& Domain() const noexcept override { return node_.Domain(); }
   const Path& ModelPath() const noexcept override { return node_.ModelPath(); }
   const std::string& Name() const noexcept override { return node_.Name(); }
+
+  const Node& GetNode() const noexcept override { return node_; }
+  NodeIndex Index() const noexcept override { return node_.Index(); }
+  ProviderType GetExecutionProviderType() const noexcept override { return node_.GetExecutionProviderType(); }
+
+  INodeUnit::Type UnitType() const noexcept override { return INodeUnit::Type::QDQ; }
 
  private:
   void init();
@@ -101,6 +105,10 @@ void QDQNodeUnit::init() {
 
 const std::unique_ptr<INodeUnit> CreateNodeUnit(const Node& node) {
   return std::make_unique<NodeUnit>(node);
+}
+
+const std::unique_ptr<INodeUnit> CreateQDQNodeUnit(const GraphViewer& graph_viewer, const QDQ::NodeGroup& qdq_group) {
+  return std::make_unique<QDQNodeUnit>(graph_viewer, qdq_group);
 }
 
 }  // namespace onnxruntime

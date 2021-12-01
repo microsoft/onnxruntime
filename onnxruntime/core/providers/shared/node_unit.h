@@ -15,6 +15,11 @@ namespace onnxruntime {
 // class Node;
 // class NodeArg;
 // class Path;
+class GraphViewer;
+
+namespace QDQ {
+struct NodeGroup;
+}
 
 class INodeUnit {
  public:
@@ -44,11 +49,11 @@ class INodeUnit {
   // virtual Node::NodeConstIterator OutputNodesBegin() const noexcept = 0;
   // virtual Node::NodeConstIterator OutputNodesEnd() const noexcept = 0;
 
-  virtual const std::vector<const Node*> GetAllNodes() const noexcept = 0;
+  // virtual const std::vector<const Node*> GetAllNodes() const noexcept = 0;
 
   virtual Type UnitType() const noexcept = 0;
 };
 
 const std::unique_ptr<INodeUnit> CreateNodeUnit(const Node& node);
-
+const std::unique_ptr<INodeUnit> CreateQDQNodeUnit(const GraphViewer& graph_viewer, const QDQ::NodeGroup& qdq_group);
 }  // namespace onnxruntime

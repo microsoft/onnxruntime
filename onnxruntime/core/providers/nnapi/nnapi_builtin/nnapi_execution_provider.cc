@@ -123,6 +123,8 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
   std::unordered_set<std::string> node_outputs_in_current_group{};
 
   std::unordered_map<const Node*, std::unique_ptr<INodeUnit>> node_unit_map;
+
+  // TODO, run graph through QDQ selectors and create NodeUnit and QDQNodeUnit
   const auto& node_indices = graph_viewer.GetNodesInTopologicalOrder();
   for (size_t i = 0; i < node_indices.size(); i++) {
     const auto* node(graph_viewer.GetNode(node_indices[i]));
