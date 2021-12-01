@@ -15,6 +15,20 @@
 namespace onnxruntime {
 
 #if defined(ORT_ENABLE_ADDING_RUNTIME_OPTIMIZATION_RECORDS)
+bool RuntimeOptimizationRecordContainer::RecordExists(const std::string& optimizer_name,
+                                                      const std::string& action_id,
+                                                      const NodesToOptimizeIndices& nodes_to_optimize_indices) const {
+  const auto it = optimizer_name_to_records_.find(optimizer_name);
+  if (it == optimizer_name_to_records_.end()) return false;
+
+  const auto& records = it->second;
+  return std::find_if(records.begin(), records.end(),
+                      [&](const RuntimeOptimizationRecord& record) {
+                        return record.action_id == action_id &&
+                               record.nodes_to_optimize_indices == nodes_to_optimize_indices;
+                      }) != records.end();
+}
+
 void RuntimeOptimizationRecordContainer::AddRecord(const std::string& optimizer_name,
                                                    RuntimeOptimizationRecord&& runtime_optimization_record) {
   auto& optimizations = optimizer_name_to_records_[optimizer_name];

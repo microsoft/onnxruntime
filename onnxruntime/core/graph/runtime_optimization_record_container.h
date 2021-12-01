@@ -35,10 +35,13 @@ class RuntimeOptimizationRecordContainer {
   bool IsEmpty() const { return optimizer_name_to_records_.empty(); }
 
 #if defined(ORT_ENABLE_ADDING_RUNTIME_OPTIMIZATION_RECORDS)
+  bool RecordExists(const std::string& optimizer_name,
+                    const std::string& action_id,
+                    const NodesToOptimizeIndices& nodes_to_optimize_indices) const;
+
   void AddRecord(const std::string& optimizer_name, RuntimeOptimizationRecord&& runtime_optimization_record);
 #endif
 
-  // TODO add a way to access and remove them
   std::vector<RuntimeOptimizationRecord> RemoveRecordsForOptimizer(const std::string& optimizer_key);
 
   using FbsRuntimeOptimizationRecordContainer =
