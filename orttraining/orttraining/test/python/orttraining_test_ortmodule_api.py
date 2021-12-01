@@ -658,6 +658,34 @@ def test_gradient_correctness():
         _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
         _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model)
 
+@pytest.mark.parametrize("device", ['cpu', 'cuda'])
+@pytest.mark.parametrize("indices", ([[ 2, 3, -1, -1],[0, 1, -1, -1]], 
+                                     [[ 2, 3, 4, 4],[ 0, 1, 4, 4]]))
+def test_scatternd_correctness(device, indices):
+    class NeuralNetScatterND(torch.nn.Module):
+        def __init__(self):
+            super(NeuralNetScatterND, self).__init__()
+
+        def forward(self, rerouted_output, dispatch_mask, expert_output):
+            rerouted_output[dispatch_mask] = expert_output
+            return rerouted_output
+
+    pt_model = NeuralNetScatterND().to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+
+    def run_step(model, rerouted_output, dispatch_mask, expert_output):
+        prediction = model(rerouted_output, dispatch_mask, expert_output)
+        return prediction
+
+    rerouted_output = torch.tensor([[0.],[0.],[0.],[0.],[0.]], device=device)
+    dispatch_mask = torch.tensor(indices, device=device)
+    expert_output = torch.tensor([[[0.3817],[0.9625],[0.9625],[0.9625]],[[0.3817],[0.9625],[0.9625],[0.9625]]], device=device)
+    
+    pt_prediction = run_step(pt_model, rerouted_output, dispatch_mask, expert_output)
+    ort_prediction = run_step(ort_model, rerouted_output, dispatch_mask, expert_output)
+    _test_helpers.assert_values_are_close(ort_prediction, pt_prediction, atol=1e-5)
+
+
 @pytest.mark.parametrize("use_fp16", [False, True])
 @pytest.mark.parametrize("input_requires_grad", [False, True])
 def test_gradient_correctness_conv1d(use_fp16, input_requires_grad):
