@@ -254,8 +254,13 @@ jobs:
     displayName: Discard local changes to Git repository files
     workingDirectory: $(Build.SourcesDirectory)
 
-  - script: echo -n > /home/onnxruntimedev/.test_data/include_no_operators.config
+  - task: CmdLine@2
     displayName: Create empty config for build with no operators
+    inputs:
+      script: |
+        docker run --rm \
+          onnxruntimecpubuild \
+            echo -n > /home/onnxruntimedev/.test_data/include_no_operators.config
 
   - task: CmdLine@2
     displayName: 7a. Regular build with python and all optional features disabled. 
