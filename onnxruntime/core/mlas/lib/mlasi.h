@@ -499,6 +499,7 @@ extern "C" {
     MLAS_GEMM_FLOAT_KERNEL MlasSgemmKernel;
     MLAS_GEMM_FLOAT_KERNEL MlasSgemmKernelPOWER10;
     MLAS_GEMM_DOUBLE_KERNEL MlasDgemmKernel;
+    MLAS_GEMM_DOUBLE_KERNEL MlasDgemmKernelPOWER10;
 #else
     MLAS_GEMM_FLOAT_KERNEL MlasSgemmKernelZero;
     MLAS_GEMM_FLOAT_KERNEL MlasSgemmKernelAdd;
@@ -1886,7 +1887,7 @@ MlasStoreAlignedFloat64x2(double* Buffer, MLAS_FLOAT64X2 Vector)
 #if defined(MLAS_SSE2_INTRINSICS)
     _mm_store_pd(Buffer, Vector);
 #elif defined(MLAS_VSX_INTRINSICS)
-    vec_st(Vector, 0, Buffer);
+    *((MLAS_FLOAT64X2*)Buffer) = Vector;
 #endif
 }
 

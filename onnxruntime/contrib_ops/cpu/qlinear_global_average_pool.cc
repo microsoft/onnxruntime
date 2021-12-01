@@ -14,13 +14,14 @@ using onnxruntime::concurrency::ThreadPool;
 namespace onnxruntime {
 namespace contrib {
 
+template <typename T8Bits>
 Status ComputeQLinearGlobalAvgPool(
-    const uint8_t* x,
+    const T8Bits* x,
     float x_scale,
-    uint8_t x_zero_point,
-    uint8_t* y,
+    T8Bits x_zero_point,
+    T8Bits* y,
     float y_scale,
-    uint8_t y_zero_point,
+    T8Bits y_zero_point,
     int64_t N,
     int64_t C,
     int64_t image_size,
@@ -28,8 +29,8 @@ Status ComputeQLinearGlobalAvgPool(
     concurrency::ThreadPool* tp) {
   if (!channels_last || C == 1) {
     auto worker = [=](std::ptrdiff_t first, std::ptrdiff_t last) {
-      const uint8_t* input = (const uint8_t*)(x + (first * image_size));
-      uint8_t* output = (uint8_t*)(y + first);
+      const T8Bits* input = (const T8Bits*)(x + (first * image_size));
+      T8Bits* output = (T8Bits*)(y + first);
       std::vector<int32_t> acc_buffer(MlasQLinearSafePaddingElementCount(sizeof(int32_t), last - first));
       MlasQLinearGlobalAveragePoolNchw(input, x_scale, x_zero_point, output, y_scale, y_zero_point, last - first, image_size, acc_buffer.data());
     };
@@ -37,17 +38,17 @@ Status ComputeQLinearGlobalAvgPool(
         tp, static_cast<std::ptrdiff_t>(N * C), {1.0 * image_size, 1.0, 8.0 * image_size}, worker);
   } else {
     auto worker = [=](std::ptrdiff_t first, std::ptrdiff_t last) {
-      const uint8_t* input = x + first * C * image_size;
-      uint8_t* output = y + first * C;
+      const T8Bits* input = x + first * C * image_size;
+      T8Bits* output = y + first * C;
       std::vector<int32_t> acc_buffer(MlasQLinearSafePaddingElementCount(sizeof(int32_t), C));
-      std::vector<uint8_t> zero_buffer(MlasQLinearSafePaddingElementCount(sizeof(uint8_t), C), 0);
+      std::vector<T8Bits> zero_buffer(MlasQLinearSafePaddingElementCount(sizeof(T8Bits), C), 0);
       MlasQLinearGlobalAveragePoolNhwc(
           input, x_scale, x_zero_point, output, y_scale, y_zero_point,
           last - first, image_size, C, C, acc_buffer.data(), zero_buffer.data());
     };
     concurrency::ThreadPool::TryParallelFor(
         tp, static_cast<std::ptrdiff_t>(N),
-        {1.0 * image_size * C, 1.0 * C, 8.0 *image_size * C},
+        {1.0 * image_size * C, 1.0 * C, 8.0 * image_size * C},
         worker);
   }
   return Status::OK();
@@ -88,19 +89,25 @@ Status QLinearGlobalAveragePool::Compute(OpKernelContext* context) const {
 
   const float x_scale = *(tensor_x_scale->Data<float>());
   const float y_scale = *(tensor_y_scale->Data<float>());
+
   auto dtype = X.GetElementType();
-  switch (dtype) {
-    case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
-      return ComputeQLinearGlobalAvgPool(X.Data<uint8_t>(), x_scale, *(tensor_x_zero_point->Data<uint8_t>()),
-                                Y.MutableData<uint8_t>(), y_scale, *(tensor_y_zero_point->Data<uint8_t>()),
-                                N, C, image_size, channels_last_, tp);
-    default:
-      ORT_THROW("Unsupported 'dtype' value: ", dtype);
+  if (dtype == ONNX_NAMESPACE::TensorProto_DataType_UINT8) {
+    return ComputeQLinearGlobalAvgPool(X.Data<uint8_t>(), x_scale, *(tensor_x_zero_point->Data<uint8_t>()),
+                                       Y.MutableData<uint8_t>(), y_scale, *(tensor_y_zero_point->Data<uint8_t>()),
+                                       N, C, image_size, channels_last_, tp);
+  } else {
+    return ComputeQLinearGlobalAvgPool(X.Data<int8_t>(), x_scale, *(tensor_x_zero_point->Data<int8_t>()),
+                                       Y.MutableData<int8_t>(), y_scale, *(tensor_y_zero_point->Data<int8_t>()),
+                                       N, C, image_size, channels_last_, tp);
   }
 }
 
-ONNX_OPERATOR_KERNEL_EX(QLinearGlobalAveragePool, kMSDomain, 1, kCpuExecutionProvider, KernelDefBuilder(), QLinearGlobalAveragePool);
+ONNX_OPERATOR_KERNEL_EX(QLinearGlobalAveragePool,
+                        kMSDomain,
+                        1,
+                        kCpuExecutionProvider,
+                        KernelDefBuilder(),
+                        QLinearGlobalAveragePool);
 
 }  // namespace contrib
-
 }  // namespace onnxruntime

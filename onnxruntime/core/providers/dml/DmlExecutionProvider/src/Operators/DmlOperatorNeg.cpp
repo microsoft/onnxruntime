@@ -22,16 +22,11 @@ public:
         std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
         std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
 
-        DML_SCALE_BIAS scaleBias = {};
-        scaleBias.Scale = -1.0f;
-        scaleBias.Bias = 0.0f;
-
-        DML_ELEMENT_WISE_IDENTITY_OPERATOR_DESC opDesc = {};
+        DML_ELEMENT_WISE_NEGATE_OPERATOR_DESC opDesc = {};
         opDesc.InputTensor = inputDescs.data();
         opDesc.OutputTensor = outputDescs.data();
-        opDesc.ScaleBias = &scaleBias;
 
-        SetDmlOperatorDesc({ DML_OPERATOR_ELEMENT_WISE_IDENTITY, &opDesc}, kernelInfo);
+        SetDmlOperatorDesc({ DML_OPERATOR_ELEMENT_WISE_NEGATE, &opDesc}, kernelInfo);
     }
 };
 
