@@ -40,6 +40,8 @@ jobs:
       script: |
         # Create a folder for all test data
         mkdir -p $(test_data_directory)
+        # create empty config used in some parts
+        touch $(test_data_directory)/include_no_operators.config
       workingDirectory: $(Build.SourcesDirectory)
 
   - template: templates/get-docker-image-steps.yml
@@ -255,20 +257,13 @@ jobs:
     workingDirectory: $(Build.SourcesDirectory)
 
   - task: CmdLine@2
-    displayName: Create empty config for build with no operators
-    inputs:
-      script: |
-        docker run --rm \
-          onnxruntimecpubuild \
-            echo -n > /home/onnxruntimedev/.test_data/include_no_operators.config
-
-  - task: CmdLine@2
     displayName: 7a. Regular build with python and all optional features disabled. 
     inputs:
       script: |
         docker run --rm \
           --volume $(Build.SourcesDirectory):/onnxruntime_src \
           --volume $(Build.BinariesDirectory):/build \
+          --volume $(test_data_directory):/home/onnxruntimedev/.test_data \
           -e ALLOW_RELEASED_ONNX_OPSET_ONLY=1 \
           -e NIGHTLY_BUILD \
           -e BUILD_BUILDNUMBER \
@@ -297,6 +292,7 @@ jobs:
         docker run --rm \
           --volume $(Build.SourcesDirectory):/onnxruntime_src \
           --volume $(Build.BinariesDirectory):/build \
+          --volume $(test_data_directory):/home/onnxruntimedev/.test_data \
           -e ALLOW_RELEASED_ONNX_OPSET_ONLY=1 \
           -e NIGHTLY_BUILD \
           -e BUILD_BUILDNUMBER \
