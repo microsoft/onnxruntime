@@ -28,7 +28,7 @@ from onnxruntime.training.ortmodule import (ORTModule,
                                             LogLevel,
                                             _fallback,
                                             _graph_execution_manager)
-import onnxruntime.training.ortmodule as training_ortmodule
+import onnxruntime.training.ortmodule as ortmodule_module
 
 from onnxruntime.training.optim import FusedAdam
 from transformers import AdamW
@@ -1593,7 +1593,6 @@ def test_mixed_nnmodule_ortmodules_training():
         _test_helpers.assert_gradients_match_and_reset_gradient(ort_model1, pt_model1, atol=2e-6)
         _test_helpers.assert_gradients_match_and_reset_gradient(ort_model2, pt_model2)
         _test_helpers.assert_gradients_match_and_reset_gradient(ort_model3, pt_model3)
-    assert training_ortmodule.ONNX_OPSET_VERSION == DEFAULT_OPSET
 
 def test_identity_elimination():
     class NeuralNetSimpleIdentity(torch.nn.Module):
@@ -1725,7 +1724,6 @@ def test_input_requires_grad_backward_creates_input_grad_as_required0(device):
 
     pt_y2 = run_step1(pt_model, pt_x1, pt_x2)
     ort_y2 = run_step1(ort_model, ort_x1, ort_x2)
-    assert training_ortmodule.ONNX_OPSET_VERSION == DEFAULT_OPSET
 
     _test_helpers.assert_values_are_close(pt_y2, ort_y2, atol=1e-06)
     _test_helpers.assert_values_are_close(ort_x1.grad, pt_x1.grad)
@@ -1768,7 +1766,6 @@ def test_model_output_with_inplace_update(device):
     with pytest.raises(Exception) as ex_info:
         ort_y1 = run_step(ort_model, ort_x1)
     assert "modified by an inplace operation" in str(ex_info.value)
-    assert training_ortmodule.ONNX_OPSET_VERSION == DEFAULT_OPSET
 
 @pytest.mark.parametrize("device", ['cuda'])
 def test_loss_combines_two_outputs_with_dependency(device):
@@ -1791,7 +1788,6 @@ def test_loss_combines_two_outputs_with_dependency(device):
     # Both y1 and y2's gradients are not None.
     pt_y1, pt_y2 = run_step(pt_model, pt_x1, pt_x2)
     ort_y1, ort_y2 = run_step(ort_model, ort_x1, ort_x2)
-    assert training_ortmodule.ONNX_OPSET_VERSION == DEFAULT_OPSET
 
     _test_helpers.assert_values_are_close(pt_y1, ort_y1, atol=1e-06)
     _test_helpers.assert_values_are_close(pt_y2, ort_y2, atol=1e-06)
@@ -1821,7 +1817,6 @@ def test_input_requires_grad_backward_creates_input_grad_as_required1(x1_require
 
     pt_y1, pt_y2 = run_step(pt_model, pt_x1, pt_x2)
     ort_y1, ort_y2 = run_step(ort_model, ort_x1, ort_x2)
-    assert training_ortmodule.ONNX_OPSET_VERSION == DEFAULT_OPSET
 
     _test_helpers.assert_values_are_close(ort_y1, pt_y1, atol=1e-06)
     _test_helpers.assert_values_are_close(ort_y2, pt_y2, atol=1e-06)
@@ -4661,4 +4656,35 @@ def test_softmax(M, N):
     _test_helpers.assert_values_are_close(pt_prediction, ort_prediction)
     _test_helpers.assert_values_are_close(pt_loss, ort_loss)
     _test_helpers.assert_values_are_close(pt_x.grad, ort_x.grad)
-    assert training_ortmodule.ONNX_OPSET_VERSION == DEFAULT_OPSET
+
+
+def test_check_opset_is_default_opset_after_training():
+    M, N = 24, 6
+
+    class NeuralNetSoftmax(torch.nn.Module):
+        def __init__(self):
+            super(NeuralNetSoftmax, self).__init__()
+            self.m = torch.nn.Softmax(dim=1)
+
+        def forward(self, x):
+            return self.m(x)
+
+    def run_step(model, x):
+        prediction = model(x)
+        loss = prediction.sum()
+        loss.backward()
+        return prediction, loss
+
+    device = 'cuda'
+    pt_model = NeuralNetSoftmax().to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+
+    pt_x = torch.rand((M, N), requires_grad=True, device=device)
+    ort_x = copy.deepcopy(pt_x)
+
+    pt_prediction, pt_loss = run_step(pt_model, pt_x)
+    ort_prediction, ort_loss = run_step(ort_model, ort_x)
+    _test_helpers.assert_values_are_close(pt_prediction, ort_prediction)
+    _test_helpers.assert_values_are_close(pt_loss, ort_loss)
+    _test_helpers.assert_values_are_close(pt_x.grad, ort_x.grad)
+    assert ortmodule_module.ONNX_OPSET_VERSION == DEFAULT_OPSET
