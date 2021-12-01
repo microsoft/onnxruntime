@@ -17,7 +17,8 @@ static void RunOnnxOpsetTypedTest(
     const std::vector<T>& output,
     std::string mode = "constant",
     OpTester::ExpectResult expect = OpTester::ExpectResult::kExpectSuccess,
-    const std::string& error_msg = "") {
+    const std::string& error_msg = "",
+    const std::unordered_set<std::string>& excluded_provider_types = {}) {
   // ONNX domain opset
   OpTester test("Pad", opset);
   if (mode != "constant")
@@ -31,15 +32,16 @@ static void RunOnnxOpsetTypedTest(
     test.AddAttribute("value", static_cast<float>(value));
   }
   test.AddOutput<T>("output", output_dims, output);
+  std::unordered_set<std::string> provider_types(excluded_provider_types.begin(), excluded_provider_types.end());
+  if (std::is_same<T, int8_t>::value)
+    provider_types.insert(kTensorrtExecutionProvider);
   if constexpr (opset >= 11) {
-    // TensorRT do not yet support opset-11 and builds break on this test, hence exclude the EP
-    test.Run(expect, error_msg, {kTensorrtExecutionProvider});
+    test.Run(expect, error_msg, provider_types);
   } else {
 #if defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_VAD_M)
-    test.Run(expect, error_msg, {kOpenVINOExecutionProvider});
-#else
-    test.Run(expect, error_msg);
+    provider_types.insert(kOpenVINOExecutionProvider);
 #endif
+    test.Run(expect, error_msg, provider_types);
   }
 }
 
@@ -53,7 +55,8 @@ static void RunAllOpsetAllDomainPadTests(
     const std::vector<T>& output,
     std::string mode = "constant",
     OpTester::ExpectResult expect = OpTester::ExpectResult::kExpectSuccess,
-    const std::string& error_msg = "") {
+    const std::string& error_msg = "",
+    const std::unordered_set<std::string>& excluded_provider_types = {}) {
   // Test opset-11 and opset-13 kernels of Pad
   RunOnnxOpsetTypedTest<T, 11>(input_dims,
                                input,
@@ -61,7 +64,7 @@ static void RunAllOpsetAllDomainPadTests(
                                value,
                                output_dims,
                                output,
-                               mode, expect, error_msg);
+                               mode, expect, error_msg, excluded_provider_types);
 
   RunOnnxOpsetTypedTest<T, 13>(input_dims,
                                input,
@@ -69,7 +72,7 @@ static void RunAllOpsetAllDomainPadTests(
                                value,
                                output_dims,
                                output,
-                               mode, expect, error_msg);
+                               mode, expect, error_msg, excluded_provider_types);
 }
 template <>
 void RunAllOpsetAllDomainPadTests<>(
@@ -81,7 +84,8 @@ void RunAllOpsetAllDomainPadTests<>(
     const std::vector<double>& output,
     std::string mode,
     OpTester::ExpectResult expect,
-    const std::string& error_msg) {
+    const std::string& error_msg,
+    const std::unordered_set<std::string>& excluded_provider_types) {
   // Test opset-10, opset-11 and opset-13 kernels of Pad (for double type)
   RunOnnxOpsetTypedTest<double, 10>(input_dims,
                                     input,
@@ -89,7 +93,7 @@ void RunAllOpsetAllDomainPadTests<>(
                                     value,
                                     output_dims,
                                     output,
-                                    mode, expect, error_msg);
+                                    mode, expect, error_msg, excluded_provider_types);
 
   RunOnnxOpsetTypedTest<double, 11>(input_dims,
                                     input,
@@ -97,7 +101,7 @@ void RunAllOpsetAllDomainPadTests<>(
                                     value,
                                     output_dims,
                                     output,
-                                    mode, expect, error_msg);
+                                    mode, expect, error_msg, excluded_provider_types);
 
   RunOnnxOpsetTypedTest<double, 13>(input_dims,
                                     input,
@@ -105,7 +109,7 @@ void RunAllOpsetAllDomainPadTests<>(
                                     value,
                                     output_dims,
                                     output,
-                                    mode, expect, error_msg);
+                                    mode, expect, error_msg, excluded_provider_types);
 }
 
 // There is only support for float type for MSDomain kernel in ORT
