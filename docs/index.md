@@ -19,11 +19,10 @@ ONNX Runtime is an accelerator for machine learning models with multi platform s
 ## Contribute and Customize
 
 |:----------------------------------------------------------------------------------|:-----------------------------------------------------------------------------------|
-|  <span class="fs-5"> [Build ORT Packages](./build){: .btn  .mr-4 target="_blank"} </span>| <span class="fs-5">[ONNX Runtime GitHub](https://github.com/microsoft/onnxruntime){: .btn target="_blank"} </span>  | <span class="fs-5">[ONNX Runtime YouTube](https://www.youtube.com/channel/UC_SJk17KdRvDulXz-nc1uFg/featured){: .btn target="_blank"} </span>  |
+|  <span class="fs-5"> [Build ORT Packages](./build){: .btn  .mr-4 target="_blank"} </span>| <span class="fs-5">[ONNX Runtime GitHub](https://github.com/microsoft/onnxruntime){: .btn target="_blank"} </span>  | 
 
 
 ---
-
 
 ## QuickStart Template
 
@@ -32,7 +31,10 @@ ONNX Runtime is an accelerator for machine learning models with multi platform s
 
 
 ---
-
+## ONNX Runtime YouTube Channel
+|:----------------------------------------------------------------------------------|
+<span class="fs-5">[ONNX Runtime YouTube](https://www.youtube.com/channel/UC_SJk17KdRvDulXz-nc1uFg/featured){: .btn target="_blank"} </span>  |
+---
 
 
 
