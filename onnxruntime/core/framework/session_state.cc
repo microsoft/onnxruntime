@@ -1241,6 +1241,17 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
     CreateGraphInfo();
   }
 
+  // didn't work, Graph::RemoveInitializedTensor() fails at:
+  //   ORT_ENFORCE(!found, "graph_proto_ is not in sync with name_to_initial_tensor_.");
+  //// remove unused initializers
+  //for (const auto& [name, tensor_proto] : graph_.GetAllInitializedTensors()) {
+  //  ORT_UNUSED_PARAMETER(tensor_proto);
+  //  int idx;
+  //  if (!ort_value_name_idx_map_.GetIdx(name, idx).IsOK()) {
+  //    graph_.RemoveInitializedTensor(name);
+  //  }
+  //}
+
   // ignore any outer scope args we don't know about. this can happen if a node contains multiple subgraphs.
   std::vector<const NodeArg*> valid_outer_scope_node_args;
   if (parent_node) {
