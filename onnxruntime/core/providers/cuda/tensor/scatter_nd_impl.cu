@@ -36,12 +36,17 @@ __global__ void _ScatterNDKernel(
     // in their corresponding GPU backends as well.
     // index >= -dim_value && index < dim_value
 
-    if (index < -dim_value) 
-      index = 0;
-    else if (index < 0)
-      index += dim_value;
-    else if (index >= dim_value)
-      index = dim_value - 1;
+    if (index >= 0) {
+      if (index >= dim_value) {
+        index = dim_value - 1;
+      }
+    } else {
+      if (index < -dim_value) {
+        index = 0;
+      } else {
+        index += dim_value;
+      }
+    }
 
     data_offset += (index * element_count_dim);
   }

@@ -149,12 +149,19 @@ Status ScatterNDBase::PrepareForCompute(OpKernelContext* context, Prepare& p) co
   for (int64_t i = 0; i < offset_count; ++i) {
     for (int64_t j = 0; j < last_indice_dimension; ++j) {
       auto indice = *(indice_offset + i * last_indice_dimension + j);
-      if (indice < -input_shape[j] || indice >= input_shape[j]) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "invalid indice found, indice = ", indice);
+
+      if (indice >= 0) {
+        if (indice >= input_shape[j]) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "invalid indice found, indice = ", indice);
+        }
+      } else {
+        if (indice < -input_shape[j]) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "invalid indice found, indice = ", indice);
+        } else {
+          indice += input_shape[j];
+        }
       }
-      if (indice < 0) {
-        indice += input_shape[j];
-      }
+
       p.element_offsets[i] += indice * element_counts[j];
     }
   }
