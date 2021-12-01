@@ -15,6 +15,8 @@ namespace onnxruntime {
 namespace rocm {
 
 #define MIOPEN_CONVOLUTION_FWD_ALGO_COUNT 6
+#define MIOPEN_CONVOLUTION_BWD_FILTER_ALGO_COUNT 4
+#define MIOPEN_CONVOLUTION_BWD_DATA_ALGO_COUNT 6
 
 class MiopenTensor final {
  public:
@@ -22,7 +24,7 @@ class MiopenTensor final {
   ~MiopenTensor();
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(MiopenTensor);
 
-  Status Set(const std::vector<int64_t>& input_dims, miopenDataType_t dataType);
+  Status Set(gsl::span<const int64_t> input_dims, miopenDataType_t dataType);
   Status Set(const MiopenTensor& x_desc, miopenBatchNormMode_t mode);
 
   operator miopenTensorDescriptor_t() const { return tensor_; }

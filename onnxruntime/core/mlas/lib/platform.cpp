@@ -348,6 +348,7 @@ Return Value:
 #if defined(MLAS_TARGET_ARM64)
 
     this->GemmU8X8Dispatch = &MlasGemmU8X8DispatchNeon;
+    this->ConvSymDispatch = &MlasConvSymDispatchNeon;
 
     //
     // Check if the processor supports ASIMD dot product instructions.
@@ -370,6 +371,7 @@ Return Value:
 #endif // MLAS_TARGET_ARM64
 #if defined(MLAS_TARGET_POWER)
     this->GemmFloatKernel = MlasSgemmKernel;
+    this->GemmDoubleKernel = MlasDgemmKernel;
 #if defined(__linux__)  && defined(POWER10)
 #if (defined(__GNUC__) && ((__GNUC__ > 10) || (__GNUC__== 10 && __GNUC_MINOR__ >= 2))) || \
     (defined(__clang__) && (__clang_major__ >= 12))
@@ -377,6 +379,7 @@ Return Value:
     bool HasP10Instructions = ((hwcap2 & PPC_FEATURE2_MMA) && (hwcap2 & PPC_FEATURE2_ARCH_3_1));
     if (HasP10Instructions) {
         this->GemmFloatKernel = MlasSgemmKernelPOWER10;
+        this->GemmDoubleKernel = MlasDgemmKernelPOWER10;
     }
 #endif
 #endif

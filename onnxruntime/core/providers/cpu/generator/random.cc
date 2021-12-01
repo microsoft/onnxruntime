@@ -292,7 +292,7 @@ Status Multinomial::Compute(OpKernelContext* ctx) const {
   const auto* tensor_pointer = ctx->Input<Tensor>(0);
   if (tensor_pointer == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
   const Tensor& X = *tensor_pointer;
-  auto& X_dims = X.Shape().GetDims();
+  auto X_dims = X.Shape().GetDims();
 
   if (X_dims.empty()) {
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Empty dimensions for input tensor");

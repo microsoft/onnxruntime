@@ -436,3 +436,18 @@ Return Value:
         n -= 1;
     }
 }
+
+void
+MLASCALL
+MlasTranspose(
+    const int8_t* Input,
+    int8_t* Output,
+    size_t M,
+    size_t N)
+{
+    MlasTranspose(
+        reinterpret_cast<const uint8_t*>(Input),
+        reinterpret_cast<uint8_t*>(Output),
+        M,
+        N);
+}

@@ -26,13 +26,13 @@ LearningModel::LearningModel(
 #if WINVER >= _WIN32_WINNT_WIN8
       CreateFile2(path.c_str(),
                   GENERIC_READ,
-                  0,
+                  FILE_SHARE_READ,
                   OPEN_EXISTING,
                   NULL)};
 #else
       CreateFileW(path.c_str(),
                   GENERIC_READ,
-                  0,
+                  FILE_SHARE_READ,
                   NULL,
                   OPEN_EXISTING,
                   FILE_ATTRIBUTE_READONLY,
@@ -307,6 +307,43 @@ LearningModel::CloneModel() {
 _winml::IEngineFactory*
 LearningModel::GetEngineFactory() {
   return engine_factory_.get();
+}
+
+void LearningModel::SaveToFile(const hstring& file_name) {
+  model_->SaveModel(file_name.c_str(), file_name.size());
+}
+
+void LearningModel::JoinModel(
+    winml::LearningModel other,
+    const std::unordered_map<std::string, std::string>& linkages,
+    bool promote_unlinked_outputs,
+    bool close_model_on_join,
+    const winrt::hstring& join_node_prefix) {
+  auto otherp = other.as<winmlp::LearningModel>();
+  winrt::com_ptr<_winml::IModel> other_model;
+  if (close_model_on_join) {
+    other_model.attach(otherp->DetachModel());
+  } else {
+    other_model.attach(otherp->CloneModel());
+  }
+
+  std::vector<const char*> raw_outputs(linkages.size());
+  std::vector<const char*> raw_inputs(linkages.size());
+  std::transform(std::begin(linkages), std::end(linkages), std::begin(raw_outputs),
+                 [](auto& pair) { return pair.first.c_str(); });
+  std::transform(std::begin(linkages), std::end(linkages), std::begin(raw_inputs),
+                 [](auto& pair) { return pair.second.c_str(); });
+
+  auto prefix = winrt::to_string(join_node_prefix);
+  WINML_THROW_IF_FAILED(model_->JoinModel(other_model.get(),
+                                          raw_outputs.data(),
+                                          raw_inputs.data(),
+                                          linkages.size(),
+                                          promote_unlinked_outputs,
+                                          prefix.c_str()));
+
+  model_info_ = nullptr;
+  WINML_THROW_IF_FAILED(model_->GetModelInfo(model_info_.put()));
 }
 
 }  // namespace WINMLP

@@ -4,6 +4,7 @@
 #pragma once
 
 #include "core/common/common.h"
+#include "core/framework/execution_provider.h"
 #include "core/optimizer/graph_transformer.h"
 
 namespace onnxruntime {
@@ -15,8 +16,12 @@ Transformer that optimizes the graph by using NHWC nodes instead of NCHW nodes
 and inserts nodes to transpose tensors as needed.
 */
 class NhwcTransformer : public GraphTransformer {
+ private:
+  AllocatorPtr cpu_allocator_;
+
  public:
-  NhwcTransformer() noexcept : GraphTransformer("NhwcTransformer") {}
+  explicit NhwcTransformer(AllocatorPtr cpu_allocator) noexcept 
+    : GraphTransformer("NhwcTransformer"), cpu_allocator_(std::move(cpu_allocator)){};
 
  private:
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;

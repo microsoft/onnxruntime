@@ -1,4 +1,3 @@
-
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
@@ -18,7 +17,7 @@ cmake_policy(SET CMP0104 OLD)
 # Project
 project(onnxruntime C CXX)
 # Needed for Java
-set (CMAKE_C_STANDARD 99)
+set(CMAKE_C_STANDARD 99)
 
 include(CheckCXXCompilerFlag)
 include(CheckLanguage)
@@ -109,17 +108,19 @@ option(onnxruntime_USE_ROCM "Build with AMD GPU support" OFF)
 option(onnxruntime_DISABLE_CONTRIB_OPS "Disable contrib ops" OFF)
 option(onnxruntime_DISABLE_ML_OPS "Disable traditional ML ops" OFF)
 option(onnxruntime_DISABLE_SPARSE_TENSORS "Disable sparse tensors data types" OFF)
-cmake_dependent_option(onnxruntime_DISABLE_RTTI "Disable RTTI" ON "onnxruntime_MINIMAL_BUILD;NOT onnxruntime_ENABLE_PYTHON" OFF)
-# For now onnxruntime_DISABLE_EXCEPTIONS will only work with onnxruntime_MINIMAL_BUILD, more changes (ONNX, non-CPU EP, ...) are required to run this standalone
-option(onnxruntime_DISABLE_EXCEPTIONS "Disable exception handling. Requires onnxruntime_MINIMAL_BUILD currently." OFF)
+option(onnxruntime_DISABLE_OPTIONAL_TYPE "Disable optional type" OFF)
 option(onnxruntime_MINIMAL_BUILD "Exclude as much as possible from the build. Support ORT format models. No support for ONNX format models." OFF)
+cmake_dependent_option(onnxruntime_DISABLE_RTTI "Disable RTTI" ON "NOT onnxruntime_ENABLE_PYTHON" OFF)
+# For now onnxruntime_DISABLE_EXCEPTIONS will only work with onnxruntime_MINIMAL_BUILD, more changes (ONNX, non-CPU EP, ...) are required to run this standalone
+cmake_dependent_option(onnxruntime_DISABLE_EXCEPTIONS "Disable exception handling. Requires onnxruntime_MINIMAL_BUILD currently." ON "onnxruntime_MINIMAL_BUILD;NOT onnxruntime_ENABLE_PYTHON" OFF)
+
 option(onnxruntime_EXTENDED_MINIMAL_BUILD "onnxruntime_MINIMAL_BUILD with support for execution providers that compile kernels." OFF)
 option(onnxruntime_MINIMAL_BUILD_CUSTOM_OPS "Add custom operator kernels support to a minimal build." OFF)
 option(onnxruntime_REDUCED_OPS_BUILD "Reduced set of kernels are registered in build via modification of the kernel registration source files." OFF)
-option(onnxruntime_DISABLE_ORT_FORMAT_LOAD "Disable loading an ORT format model when onnxruntime_MINIMAL_BUILD=OFF (i.e. in a full build)." OFF)
 option(onnxruntime_DISABLE_EXTERNAL_INITIALIZERS "Don't allow models to load external data" OFF)
-cmake_dependent_option(onnxruntime_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION "Enable runtime graph optimization of ORT format models." ON
-                       "NOT onnxruntime_MINIMAL_BUILD OR onnxruntime_EXTENDED_MINIMAL_BUILD" OFF)
+cmake_dependent_option(onnxruntime_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION
+                       "Enable runtime graph optimization of ORT format models. Warning: Not yet ready for general use."
+                       OFF "NOT onnxruntime_MINIMAL_BUILD OR onnxruntime_EXTENDED_MINIMAL_BUILD" OFF)
 
 #A special option just for debugging and sanitize check. Please do not enable in option in retail builds.
 #The option has no effect on Windows.
@@ -171,6 +172,15 @@ set(ONNX_CUSTOM_PROTOC_EXECUTABLE "" CACHE STRING "Specify custom protoc executa
 # pre-build python path
 option(onnxruntime_PREBUILT_PYTORCH_PATH "Path to pytorch installation dir")
 
+# external transformer src path
+option(onnxruntime_EXTERNAL_TRANSFORMER_SRC_PATH "Path to external transformer src dir")
+
+option(onnxruntime_ENABLE_CUDA_PROFILING "Enable CUDA kernel profiling" OFF)
+
+if (onnxruntime_USE_CUDA)
+  set(onnxruntime_DISABLE_RTTI OFF)
+endif()
+
 if (APPLE)
     if (NOT CMAKE_OSX_ARCHITECTURES)
         message("Building ONNX Runtime for ${CMAKE_HOST_SYSTEM_PROCESSOR}")
@@ -180,7 +190,7 @@ elseif (NOT WIN32 AND NOT APPLE)
 endif()
 
 # Single output director for all binaries
-set (RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin CACHE PATH "Single output directory for all binaries.")
+set(RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin CACHE PATH "Single output directory for all binaries.")
 
 function(set_msvc_c_cpp_compiler_warning_level warning_level)
   if (NOT "${warning_level}" MATCHES "^[0-4]$")
@@ -283,8 +293,8 @@ endif()
 if (onnxruntime_USE_OPENMP)
   find_package(OpenMP)
   if (OPENMP_FOUND)
-    set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}")
-    set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
     include_directories(${OpenMP_CXX_INCLUDE_DIR})
   else()
     message(WARNING "Flag --use_openmp is specified, but OpenMP is not found in current build environment. Setting it to OFF.")
@@ -330,10 +340,13 @@ if (onnxruntime_BUILD_WEBASSEMBLY)
   endif()
 endif()
 
+if (onnxruntime_EXTERNAL_TRANSFORMER_SRC_PATH)
+  add_definitions(-DORT_TRAINING_EXTERNAL_GRAPH_TRANSFORMERS=1)
+endif()
+
 # ORT build with as much excluded as possible. Supports ORT flatbuffers models only.
 if (onnxruntime_MINIMAL_BUILD)
   add_compile_definitions(ORT_MINIMAL_BUILD)
-  add_compile_definitions(ENABLE_ORT_FORMAT_LOAD)
 
   if (onnxruntime_EXTENDED_MINIMAL_BUILD)
     # enable EPs that compile kernels at runtime
@@ -346,15 +359,10 @@ if (onnxruntime_MINIMAL_BUILD)
 
   set(onnxruntime_REDUCED_OPS_BUILD ON)
 
-  if (NOT onnxruntime_ENABLE_PYTHON)
-    # Python bindings use typeid so can't automatically disable RTTI in that case
-    set(onnxruntime_DISABLE_RTTI ON)
-  endif()
-
   if (MSVC)
     # turn on LTO (which adds some compiler flags and turns on LTCG) unless it's a Debug build to minimize binary size
     if (NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
-      set (onnxruntime_ENABLE_LTO ON)
+      set(onnxruntime_ENABLE_LTO ON)
     endif()
 
     # undocumented internal flag to allow analysis of a minimal build binary size
@@ -375,11 +383,6 @@ if (onnxruntime_MINIMAL_BUILD)
       string(APPEND CMAKE_C_FLAGS " -g")
     endif()
   endif()
-else()
-  # support ORT format model loading unless onnxruntime_DISABLE_ORT_FORMAT_LOAD is set
-  if (NOT onnxruntime_DISABLE_ORT_FORMAT_LOAD)
-    add_compile_definitions(ENABLE_ORT_FORMAT_LOAD)
-  endif()
 endif()
 
 if (onnxruntime_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
@@ -393,7 +396,7 @@ if (onnxruntime_ENABLE_LTO)
       message(WARNING "IPO is not supported by this compiler")
       set(onnxruntime_ENABLE_LTO OFF)
     else()
-      set (CMAKE_INTERPROCEDURAL_OPTIMIZATION ON)
+      set(CMAKE_INTERPROCEDURAL_OPTIMIZATION ON)
     endif()
 endif()
 
@@ -406,7 +409,7 @@ if (onnxruntime_DISABLE_EXTERNAL_INITIALIZERS)
 endif()
 
 if (onnxruntime_DISABLE_RTTI)
-  add_compile_definitions(ORT_NO_RTTI GOOGLE_PROTOBUF_NO_RTTI)
+  add_compile_definitions(ORT_NO_RTTI)
   if (MSVC)
     # Disable RTTI and turn usage of dynamic_cast and typeid into errors
     add_compile_options("$<$<COMPILE_LANGUAGE:CXX>:/GR->" "$<$<COMPILE_LANGUAGE:CXX>:/we4541>")
@@ -428,6 +431,10 @@ if (onnxruntime_DISABLE_EXCEPTIONS)
     message(FATAL_ERROR "onnxruntime_MINIMAL_BUILD required for onnxruntime_DISABLE_EXCEPTIONS")
   endif()
 
+  if (onnxruntime_ENABLE_PYTHON)
+    # pybind11 highly depends on C++ exceptions.
+    message(FATAL_ERROR "onnxruntime_ENABLE_PYTHON must be disabled for onnxruntime_DISABLE_EXCEPTIONS")
+  endif()
   add_compile_definitions("ORT_NO_EXCEPTIONS")
   add_compile_definitions("MLAS_NO_EXCEPTION")
   add_compile_definitions("ONNX_NO_EXCEPTIONS")
@@ -562,9 +569,9 @@ if (MSVC)
   endif()
 
   if (onnxruntime_ENABLE_LTO AND NOT onnxruntime_USE_CUDA)
-    SET (CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /Gw /GL")
-    SET (CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} /Gw /GL")
-    SET (CMAKE_CXX_FLAGS_MINSIZEREL "${CMAKE_CXX_FLAGS_MINSIZEREL} /Gw /GL")
+    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /Gw /GL")
+    set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} /Gw /GL")
+    set(CMAKE_CXX_FLAGS_MINSIZEREL "${CMAKE_CXX_FLAGS_MINSIZEREL} /Gw /GL")
   endif()
 
   # The WinML build tool chain builds ARM/ARM64, and the internal tool chain does not have folders for spectre mitigation libs.
@@ -572,20 +579,20 @@ if (MSVC)
   if (NOT DEFINED onnxruntime_DISABLE_QSPECTRE_CHECK)
     check_cxx_compiler_flag(-Qspectre HAS_QSPECTRE)
     if (HAS_QSPECTRE)
-      SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /Qspectre")
-      SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /Qspectre")
+      set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /Qspectre")
+      set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /Qspectre")
     endif()
   endif()
-  SET(CMAKE_EXE_LINKER_FLAGS  "${CMAKE_EXE_LINKER_FLAGS} /DYNAMICBASE")
+  set(CMAKE_EXE_LINKER_FLAGS  "${CMAKE_EXE_LINKER_FLAGS} /DYNAMICBASE")
   check_cxx_compiler_flag(-guard:cf HAS_GUARD_CF)
   if (HAS_GUARD_CF)
-    SET(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} /guard:cf")
-    SET(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /guard:cf")
-    SET(CMAKE_C_FLAGS_RELWITHDEBINFO "${CMAKE_C_FLAGS_RELWITHDEBINFO} /guard:cf")
-    SET(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} /guard:cf")
-    SET(CMAKE_C_FLAGS_MINSIZEREL "${CMAKE_C_FLAGS_MINSIZEREL} /guard:cf")
-    SET(CMAKE_CXX_FLAGS_MINSIZEREL "${CMAKE_CXX_FLAGS_MINSIZEREL} /guard:cf")
-    SET(CMAKE_EXE_LINKER_FLAGS  "${CMAKE_EXE_LINKER_FLAGS} /guard:cf")
+    set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} /guard:cf")
+    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /guard:cf")
+    set(CMAKE_C_FLAGS_RELWITHDEBINFO "${CMAKE_C_FLAGS_RELWITHDEBINFO} /guard:cf")
+    set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} /guard:cf")
+    set(CMAKE_C_FLAGS_MINSIZEREL "${CMAKE_C_FLAGS_MINSIZEREL} /guard:cf")
+    set(CMAKE_CXX_FLAGS_MINSIZEREL "${CMAKE_CXX_FLAGS_MINSIZEREL} /guard:cf")
+    set(CMAKE_EXE_LINKER_FLAGS  "${CMAKE_EXE_LINKER_FLAGS} /guard:cf")
   endif()
 else()
   if (NOT APPLE)
@@ -640,17 +647,7 @@ endif()
 if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
     #For Mac compliance
     message("Adding flags for Mac builds")
-    set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fstack-protector-strong")
-endif()
-
-if (${CMAKE_SYSTEM_NAME} MATCHES "iOSCross")
-    #For ios compliance
-    message("Adding flags for ios builds")
-    if (CMAKE_OSX_ARCHITECTURES STREQUAL "arm64")
-      set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -target arm64-apple-darwin-macho")
-    elseif (CMAKE_OSX_ARCHITECTURES STREQUAL "arm")
-      set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -target armv7a-apple-darwin-macho")
-    endif()
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fstack-protector-strong")
 endif()
 
 #Dependencies begin
@@ -760,7 +757,7 @@ else()
     set(protobuf_WITH_ZLIB OFF CACHE BOOL "Build with zlib support" FORCE)
   endif()
   if (onnxruntime_DISABLE_RTTI)
-    set(protobuf_DISABLE_RTTI OFF CACHE BOOL "Remove runtime type information in the binaries" FORCE)
+    set(protobuf_DISABLE_RTTI ON CACHE BOOL "Remove runtime type information in the binaries" FORCE)
   endif()
   add_subdirectory(${PROJECT_SOURCE_DIR}/external/protobuf/cmake EXCLUDE_FROM_ALL)
 
@@ -811,6 +808,10 @@ endif()
 
 if (onnxruntime_DISABLE_SPARSE_TENSORS)
   add_compile_definitions(DISABLE_SPARSE_TENSORS)
+endif()
+
+if (onnxruntime_DISABLE_OPTIONAL_TYPE)
+  add_compile_definitions(DISABLE_OPTIONAL_TYPE)
 endif()
 
 if (onnxruntime_USE_CUDA AND "${onnxruntime_CUDNN_HOME}" STREQUAL "")
@@ -960,11 +961,19 @@ if (WIN32)
         list(APPEND ORT_WARNING_FLAGS "/wd4251")
         # issued by thrust nonstandard extension used: nameless struct/union
         list(APPEND ORT_WARNING_FLAGS "/wd4201")
+        # warning C4800: Implicit conversion from 'X' to bool. Possible information loss
+        if (onnxruntime_USE_OPENVINO OR onnxruntime_ENABLE_EAGER_MODE)
+           list(APPEND ORT_WARNING_FLAGS "/wd4800")
+        else()
+           list(APPEND ORT_WARNING_FLAGS "/w34800")
+        endif()
         if (onnxruntime_USE_OPENMP)
             list(APPEND ORT_WARNING_FLAGS "/wd6993") # Code analysis ignores OpenMP constructs
         endif()
         # operator 'operator-name': deprecated between enumerations of different types
         list(APPEND ORT_WARNING_FLAGS "/wd5054")
+        # Enable warning: data member 'member' will be initialized after data member 'member2' / base class 'base_class'
+        list(APPEND ORT_WARNING_FLAGS "/w15038")
         # Treat warning as error if onnxruntime_DEV_MODE is ON
         # For cross-compiled ARM64 binaries, there are too many warnings to fix, hence ignore warnings for now
         if (onnxruntime_DEV_MODE AND NOT CMAKE_CROSSCOMPILING)
@@ -1208,7 +1217,7 @@ endfunction()
 
 #For plugins that are not linked into other targets but may be loaded dynamically at runtime using dlopen-like functionality.
 function(onnxruntime_add_shared_library_module target_name)
-  if ((${CMAKE_SYSTEM_NAME} MATCHES "Darwin") OR (${CMAKE_SYSTEM_NAME} MATCHES "iOSCross") OR (${CMAKE_SYSTEM_NAME} MATCHES "iOS"))
+  if ((${CMAKE_SYSTEM_NAME} MATCHES "Darwin") OR (${CMAKE_SYSTEM_NAME} MATCHES "iOS"))
     add_library(${target_name} SHARED ${ARGN})
   else()
     #On Windows, this target shouldn't generate an import lib, but I don't know how to disable it.
@@ -1221,10 +1230,7 @@ function(onnxruntime_add_shared_library_module target_name)
   endif()
 endfunction()
 
-function(onnxruntime_add_executable target_name)
-  if (${CMAKE_SYSTEM_NAME} MATCHES "iOSCross")
-    message(FATAL_ERROR "iOS doesn't support commmand line tool")
-  endif()
+function(onnxruntime_add_executable target_name)  
   add_executable(${target_name} ${ARGN})
   onnxruntime_configure_target(${target_name})
   if (onnxruntime_target_platform STREQUAL "x86" AND NOT onnxruntime_BUILD_WEBASSEMBLY)
@@ -1535,6 +1541,11 @@ if (onnxruntime_USE_OPENVINO)
     add_definitions(-DDEVICE_NAME="${onnxruntime_USE_OPENVINO_DEVICE}")
   endif()
 
+  if(onnxruntime_USE_OPENVINO_AUTO)
+    add_definitions(-DOPENVINO_CONFIG_AUTO=1)
+    add_definitions(-DDEVICE_NAME="${onnxruntime_USE_OPENVINO_DEVICE}")
+  endif()
+
 endif()
 
 if (onnxruntime_USE_VITISAI)
@@ -1689,6 +1700,10 @@ endif()
 
 if (onnxruntime_ENABLE_TRAINING_OPS)
   add_compile_definitions(ENABLE_TRAINING_OPS)
+endif()
+
+if (onnxruntime_ENABLE_CUDA_PROFILING)
+  add_compile_definitions(ENABLE_CUDA_PROFILING)
 endif()
 
 if (onnxruntime_ENABLE_TRAINING)

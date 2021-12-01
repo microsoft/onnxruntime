@@ -408,7 +408,6 @@ target_include_directories(winml_lib_image PRIVATE ${REPO_ROOT}/cmake/external/o
 target_include_directories(winml_lib_image PRIVATE ${REPO_ROOT}/cmake/external/protobuf/src)
 target_include_directories(winml_lib_image PRIVATE ${ONNXRUNTIME_INCLUDE_DIR}/core/platform/windows)
 target_include_directories(winml_lib_image PRIVATE ${REPO_ROOT}/cmake/external/flatbuffers/include)
-target_include_directories(winml_lib_image PRIVATE ${REPO_ROOT}/cmake/external/optional-lite/include)
 target_include_directories(winml_lib_image PRIVATE ${REPO_ROOT}/cmake/external/mp11/include)
 target_include_directories(winml_lib_image PRIVATE ${REPO_ROOT}/winml)
 
@@ -525,7 +524,6 @@ target_include_directories(winml_lib_api PRIVATE ${REPO_ROOT}/cmake/external/pro
 target_include_directories(winml_lib_api PRIVATE ${REPO_ROOT}/cmake/external/gsl/include)
 target_include_directories(winml_lib_api PRIVATE ${REPO_ROOT}/cmake/external/SafeInt)
 target_include_directories(winml_lib_api PRIVATE ${REPO_ROOT}/cmake/external/flatbuffers/include)
-target_include_directories(winml_lib_api PRIVATE ${REPO_ROOT}/cmake/external/optional-lite/include)
 target_include_directories(winml_lib_api PRIVATE ${REPO_ROOT}/cmake/external/mp11/include)
 target_include_directories(winml_lib_api PRIVATE ${REPO_ROOT}/winml)
 
@@ -557,8 +555,12 @@ endif(onnxruntime_USE_DML)
 onnxruntime_add_static_library(winml_lib_api_experimental
   ${winml_lib_api_experimental_dir}/LearningModelBuilder.cpp
   ${winml_lib_api_experimental_dir}/LearningModelBuilder.h
+  ${winml_lib_api_experimental_dir}/LearningModelExperimental.cpp
+  ${winml_lib_api_experimental_dir}/LearningModelExperimental.h
   ${winml_lib_api_experimental_dir}/LearningModelInputs.cpp
   ${winml_lib_api_experimental_dir}/LearningModelInputs.h
+  ${winml_lib_api_experimental_dir}/LearningModelJoinOptions.cpp
+  ${winml_lib_api_experimental_dir}/LearningModelJoinOptions.h
   ${winml_lib_api_experimental_dir}/LearningModelOutputs.cpp
   ${winml_lib_api_experimental_dir}/LearningModelOutputs.h
   ${winml_lib_api_experimental_dir}/LearningModelOperator.cpp
@@ -617,7 +619,6 @@ target_include_directories(winml_lib_api_experimental PRIVATE ${REPO_ROOT}/cmake
 target_include_directories(winml_lib_api_experimental PRIVATE ${REPO_ROOT}/cmake/external/gsl/include)
 target_include_directories(winml_lib_api_experimental PRIVATE ${REPO_ROOT}/cmake/external/SafeInt)
 target_include_directories(winml_lib_api_experimental PRIVATE ${REPO_ROOT}/cmake/external/flatbuffers/include)
-target_include_directories(winml_lib_api_experimental PRIVATE ${REPO_ROOT}/cmake/external/optional-lite/include)
 target_include_directories(winml_lib_api_experimental PRIVATE ${REPO_ROOT}/cmake/external/mp11/include)
 target_include_directories(winml_lib_api_experimental PRIVATE ${REPO_ROOT}/winml)
 
@@ -774,7 +775,6 @@ target_include_directories(winml_dll PRIVATE ${REPO_ROOT}/cmake/external/gsl/inc
 target_include_directories(winml_dll PRIVATE ${REPO_ROOT}/cmake/external/eigen)
 target_include_directories(winml_dll PRIVATE ${REPO_ROOT}/cmake/external/SafeInt)
 target_include_directories(winml_dll PRIVATE ${REPO_ROOT}/cmake/external/flatbuffers/include)
-target_include_directories(winml_dll PRIVATE ${REPO_ROOT}/cmake/external/optional-lite/include)
 target_include_directories(winml_dll PRIVATE ${REPO_ROOT}/cmake/external/mp11/include)
 target_include_directories(winml_dll PRIVATE ${REPO_ROOT}/winml)
 

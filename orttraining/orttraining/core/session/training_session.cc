@@ -317,7 +317,7 @@ static Status AddFakeLossScaling(
     Graph& graph, std::string& loss_scale_name) {
   GraphAugmenter::GraphDefs defs{};
   loss_scale_name = graph.GenerateNodeArgName("loss_scale");
-  const auto* loss_scale_type = defs.CreateTypeProto({1}, ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  const auto* loss_scale_type = defs.CreateTypeProto(std::array<const int64_t, 1>{1}, ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
   graph.GetOrCreateNodeArg(loss_scale_name, loss_scale_type);
   defs.AddGraphInputs({loss_scale_name});
   ORT_RETURN_IF_ERROR(GraphAugmenter::AugmentGraph(graph, defs));
@@ -597,7 +597,7 @@ static Status AddLossScaling(
   GraphAugmenter::GraphDefs defs{};
   *loss_scale_input_name = graph.GenerateNodeArgName("loss_scale");
   const auto* loss_scale_input_type =
-      defs.CreateTypeProto({1}, ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+      defs.CreateTypeProto(std::array<const int64_t, 1>{1}, ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
   scaled_loss_name = graph.GenerateNodeArgName("scaled_loss");
   defs.AddNodeDef(NodeDef{
       "Mul",
@@ -755,7 +755,10 @@ void TrainingSession::AddPreTrainingTransformers(const IExecutionProvider& execu
 
 // Registers all the predefined transformers with transformer manager
 Status TrainingSession::AddPredefinedTransformers(GraphTransformerManager& transformer_manager,
-                                                  TransformerLevel graph_optimization_level) {
+                                                  TransformerLevel graph_optimization_level,
+                                                  bool saving_runtime_optimizations) const {
+  ORT_RETURN_IF(saving_runtime_optimizations, "Saving runtime optimizations is not supported by TrainingSession.");
+
   ORT_RETURN_IF_NOT(graph_optimization_level <= TransformerLevel::MaxLevel,
                     "Exceeded max transformer level. Current level is set to " +
                         std::to_string(static_cast<uint32_t>(graph_optimization_level)));

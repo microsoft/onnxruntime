@@ -189,8 +189,8 @@ void RunDropoutGradTest(float ratio, const std::vector<int64_t>& input_dims, boo
       mask_buffer.get(), mask_buffer.get() + input_shape.Size(), std::back_inserter(dx_data),
       [output_constant](bool mask_value) { return mask_value ? output_constant : 0.0f; });
 
-  test.AddInput<float>("dy", input_shape.GetDims(), dy_data);
-  test.AddInput<bool>("mask", input_shape.GetDims(), mask_buffer.get(), input_shape.Size());
+  test.AddInput<float>("dy", input_shape.GetDimsAsVector(), dy_data);
+  test.AddInput<bool>("mask", input_shape.GetDimsAsVector(), mask_buffer.get(), input_shape.Size());
   if (!default_ratio) {
     test.AddInput<float>("ratio", {1}, ratio_data);
   } else {
@@ -198,7 +198,7 @@ void RunDropoutGradTest(float ratio, const std::vector<int64_t>& input_dims, boo
   }
 
   test.AddInput<bool>("training_mode", {}, {true});
-  test.AddOutput<float>("dx", input_shape.GetDims(), dx_data);
+  test.AddOutput<float>("dx", input_shape.GetDimsAsVector(), dx_data);
   test.Run();
 }
 }  // namespace

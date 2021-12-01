@@ -21,7 +21,7 @@
 #include "orttraining/training_ops/cuda/math/softmax_grad.h"
 
 #include "core/providers/cuda/cu_inc/common.cuh"
-#include "core/providers/cuda/math/softmax_impl.cuh"
+#include "core/providers/cuda/math/softmax_warpwise_impl.cuh"
 
 namespace onnxruntime {
 namespace cuda {

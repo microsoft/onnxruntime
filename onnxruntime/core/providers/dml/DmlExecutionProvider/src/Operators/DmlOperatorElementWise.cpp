@@ -84,7 +84,7 @@ template<typename T>
 void SetFusedActivation(T& opDesc, const DML_OPERATOR_DESC* fusedActivation)
 {
     // Activation is only fused for sum operators, which have a template specialization
-    THROW_HR(E_INVALIDARG);
+    ORT_THROW_HR(E_INVALIDARG);
 }
 
 template<>
@@ -120,7 +120,7 @@ public:
         if (fusedActivation != std::nullopt)
         {    
             // Activation is only fused for two-input sum operators
-            THROW_HR_IF(E_INVALIDARG, opDescDesc.Type != DML_OPERATOR_ELEMENT_WISE_ADD1 || kernelInfo.GetInputCount() > 2);
+            ORT_THROW_HR_IF(E_INVALIDARG, opDescDesc.Type != DML_OPERATOR_ELEMENT_WISE_ADD1 || kernelInfo.GetInputCount() > 2);
 
             SetFusedActivation(opDesc, &fusedActivationDmlDesc);
         }
@@ -138,8 +138,8 @@ ComPtr<IDMLCompiledOperator> CreateSecondaryOperator(
 {
     ComPtr<IDMLOperator> dmlOperator;
     ComPtr<IDMLCompiledOperator> compiledOperator;
-    THROW_IF_FAILED(dmlDevice->CreateOperator(&operatorDesc, IID_PPV_ARGS(&dmlOperator)));
-    THROW_IF_FAILED(dmlDevice->CompileOperator(dmlOperator.Get(), executionFlags, IID_PPV_ARGS(&compiledOperator)));
+    ORT_THROW_IF_FAILED(dmlDevice->CreateOperator(&operatorDesc, IID_PPV_ARGS(&dmlOperator)));
+    ORT_THROW_IF_FAILED(dmlDevice->CompileOperator(dmlOperator.Get(), executionFlags, IID_PPV_ARGS(&compiledOperator)));
     return compiledOperator;
 }
 
@@ -162,7 +162,7 @@ public:
         DML_OPERATOR_DESC fusedActivationDmlDesc = fusedActivation ? fusedActivation->GetDmlDesc() : DML_OPERATOR_DESC();
         
         // Activation is only fused for two-input sum operators
-        THROW_HR_IF(E_INVALIDARG, fusedActivation != std::nullopt && inputCount != 2);
+        ORT_THROW_HR_IF(E_INVALIDARG, fusedActivation != std::nullopt && inputCount != 2);
 
         if (inputCount == 1)
         {
@@ -230,7 +230,7 @@ public:
         gsl::span<IMLOperatorTensor*> outputTensors{ &outputTensor, 1 };
 
         // Combine the first two inputs and store the result in the output tensor.
-        THROW_IF_FAILED(m_executionProvider->ExecuteOperator(
+        ORT_THROW_IF_FAILED(m_executionProvider->ExecuteOperator(
             m_compiledOperator.Get(),
             m_persistentResourceBinding ? &*m_persistentResourceBinding : nullptr,
             gsl::make_span(inputTensors),
@@ -247,7 +247,7 @@ public:
                                                    ? m_compiledOperator.Get()
                                                    : m_compiledOperators[inputIndex - 2].Get();
 
-            THROW_IF_FAILED(m_executionProvider->ExecuteOperator(
+            ORT_THROW_IF_FAILED(m_executionProvider->ExecuteOperator(
                 compiledOperator,
                 m_persistentResourceBinding ? &*m_persistentResourceBinding : nullptr,
                 gsl::make_span(inputTensors),
@@ -338,9 +338,9 @@ public:
             DML_OPERATOR_DESC identityDescDesc = { DML_OPERATOR_ELEMENT_WISE_IDENTITY, &identityDesc };
 
             ComPtr<IDMLOperator> identityOp;
-            THROW_IF_FAILED(m_dmlDevice->CreateOperator(&identityDescDesc, IID_PPV_ARGS(&identityOp)));
+            ORT_THROW_IF_FAILED(m_dmlDevice->CreateOperator(&identityDescDesc, IID_PPV_ARGS(&identityOp)));
 
-            THROW_IF_FAILED(m_dmlDevice->CompileOperator(identityOp.Get(), GetExecutionFlags(), IID_PPV_ARGS(&m_compiledIdentityOp)));
+            ORT_THROW_IF_FAILED(m_dmlDevice->CompileOperator(identityOp.Get(), GetExecutionFlags(), IID_PPV_ARGS(&m_compiledIdentityOp)));
         }
     }
 
@@ -367,7 +367,7 @@ public:
             gsl::span<IMLOperatorTensor*> outputTensors{ &outputTensor, 1 };
 
             // Add the first two inputs and store the result in the output tensor.
-            THROW_IF_FAILED(m_executionProvider->ExecuteOperator(
+            ORT_THROW_IF_FAILED(m_executionProvider->ExecuteOperator(
                 m_compiledOperator.Get(),
                 m_persistentResourceBinding ? &*m_persistentResourceBinding : nullptr,
                 gsl::make_span(inputTensors),
@@ -384,7 +384,7 @@ public:
                     ? m_compiledOperator.Get()
                     : m_compiledOperators[inputIndex - 2].Get();
 
-                THROW_IF_FAILED(m_executionProvider->ExecuteOperator(
+                ORT_THROW_IF_FAILED(m_executionProvider->ExecuteOperator(
                     compiledOperator,
                     m_persistentResourceBinding ? &*m_persistentResourceBinding : nullptr,
                     gsl::make_span(inputTensors),
@@ -392,7 +392,7 @@ public:
             }
 
             // Dispatch the identity w/ scale operator in-place on the output.
-            THROW_IF_FAILED(m_executionProvider->ExecuteOperator(
+            ORT_THROW_IF_FAILED(m_executionProvider->ExecuteOperator(
                 m_compiledIdentityOp.Get(),
                 nullptr, // persistent resoruce binding
                 outputTensors,
@@ -442,28 +442,34 @@ public:
         std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
         std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
 
-        float minValue = -FLT_MAX;
-        float maxValue = FLT_MAX;
-        if (kernelInfo.IsInputValid(1))
-        {
-          minValue = static_cast<float>(ReadScalarTensorCastToFloat64(kernelInfo.GetConstantInputTensor(1)));
-        }
-        if (kernelInfo.IsInputValid(2)) {
-          maxValue = static_cast<float>(ReadScalarTensorCastToFloat64(kernelInfo.GetConstantInputTensor(2)));
-        }
-
-        DML_ELEMENT_WISE_CLIP_OPERATOR_DESC opDesc = {};
+        DML_ELEMENT_WISE_CLIP1_OPERATOR_DESC opDesc = {};
         opDesc.InputTensor = inputDescs.data();
         opDesc.OutputTensor = outputDescs.data();
-        opDesc.Min = minValue;
-        opDesc.Max = maxValue;
+        // MinMaxDataType will always be equal to inputDataTensorDataType
+        // Assigning minMaxDataType to inputDataTensorDataType because this field
+        // has to be assigned even if program does not go through below conditional 
+        // logic for some corner test case
+        // Same applies to min and max value.
+        opDesc.MinMaxDataType = this->m_inputTensorDescs[0].GetDmlDataType();
+        CastToClampedScalarUnion<double>(opDesc.MinMaxDataType, -DBL_MAX, /*out*/&opDesc.Min);
+        CastToClampedScalarUnion<double>(opDesc.MinMaxDataType, DBL_MAX, /*out*/&opDesc.Max);
 
-        SetDmlOperatorDesc({ DML_OPERATOR_ELEMENT_WISE_CLIP, &opDesc}, kernelInfo);
+        if (kernelInfo.IsInputValid(1))
+        {
+            ReadScalarTensorData(kernelInfo.GetConstantInputTensor(1), /*out*/ &opDesc.Min.Bytes, sizeof(opDesc.Min.Bytes));
+        }
+        if (kernelInfo.IsInputValid(2)) 
+        {
+            ReadScalarTensorData(kernelInfo.GetConstantInputTensor(2), /*out*/ &opDesc.Max.Bytes, sizeof(opDesc.Max.Bytes));
+        }
+
+        SetDmlOperatorDesc({ DML_OPERATOR_ELEMENT_WISE_CLIP1, &opDesc}, kernelInfo);
     }
 };
 
 // Same operator signature as 11. Only difference is new type support
 using DmlOperatorElementwiseClip12 = DmlOperatorElementwiseClip11;
+using DmlOperatorElementwiseClip13 = DmlOperatorElementwiseClip11;
 
 class DmlOperatorElementwisePow : public DmlOperator
 {
@@ -692,7 +698,7 @@ DML_OP_DEFINE_CREATION_FUNCTION(Ceil,             DmlOperatorElementwiseUnary<DM
 DML_OP_DEFINE_CREATION_FUNCTION(Floor,            DmlOperatorElementwiseUnary<DML_ELEMENT_WISE_FLOOR_OPERATOR_DESC>);
 DML_OP_DEFINE_CREATION_FUNCTION(Not,              DmlOperatorElementwiseUnary<DML_ELEMENT_WISE_LOGICAL_NOT_OPERATOR_DESC>);
 DML_OP_DEFINE_CREATION_FUNCTION(Sign,             DmlOperatorElementwiseUnary<DML_ELEMENT_WISE_SIGN_OPERATOR_DESC>);
-DML_OP_DEFINE_CREATION_FUNCTION(IsNan,            DmlOperatorElementwiseUnary<DML_ELEMENT_WISE_IS_NAN_OPERATOR_DESC>);
+DML_OP_DEFINE_CREATION_FUNCTION(IsNaN,            DmlOperatorElementwiseUnary<DML_ELEMENT_WISE_IS_NAN_OPERATOR_DESC>);
 DML_OP_DEFINE_CREATION_FUNCTION(Sinh,             DmlOperatorElementwiseUnary<DML_ELEMENT_WISE_SINH_OPERATOR_DESC>);
 DML_OP_DEFINE_CREATION_FUNCTION(Cosh,             DmlOperatorElementwiseUnary<DML_ELEMENT_WISE_COSH_OPERATOR_DESC>);
 DML_OP_DEFINE_CREATION_FUNCTION(Asinh,            DmlOperatorElementwiseUnary<DML_ELEMENT_WISE_ASINH_OPERATOR_DESC>);
@@ -724,6 +730,7 @@ DML_OP_DEFINE_CREATION_FUNCTION(Mean,             DmlOperatorElementwiseMean);
 DML_OP_DEFINE_CREATION_FUNCTION(Clip7,            DmlOperatorElementwiseClip7);
 DML_OP_DEFINE_CREATION_FUNCTION(Clip11,           DmlOperatorElementwiseClip11);
 DML_OP_DEFINE_CREATION_FUNCTION(Clip12,           DmlOperatorElementwiseClip12);
+DML_OP_DEFINE_CREATION_FUNCTION(Clip13,           DmlOperatorElementwiseClip13);
 DML_OP_DEFINE_CREATION_FUNCTION(Pow,              DmlOperatorElementwisePow);
 DML_OP_DEFINE_CREATION_FUNCTION(QuantizeLinear,   DmlOperatorElementwiseQLinear<DML_ELEMENT_WISE_QUANTIZE_LINEAR_OPERATOR_DESC>);
 DML_OP_DEFINE_CREATION_FUNCTION(DequantizeLinear, DmlOperatorElementwiseQLinear<DML_ELEMENT_WISE_DEQUANTIZE_LINEAR_OPERATOR_DESC>);
