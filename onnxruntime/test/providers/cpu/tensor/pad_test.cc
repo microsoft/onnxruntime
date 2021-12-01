@@ -731,7 +731,7 @@ TYPED_TEST(PadOpTest, Pad_Edge_DimWithZeroInput) {
                                   {},
                                   "edge",
                                   OpTester::ExpectResult::kExpectFailure,
-                                  "Cannot use 'edge' mode to pad dimension with a value of 0. Input shape:{0}");
+                                  "Cannot use 'edge' mode to pad dimension with a value of 0. Input shape:{0}", {kTensorrtExecutionProvider});
 
   RunAllOpsetAllDomainPadTests<T>({2, 0},  // 2D
                                   {},
@@ -741,7 +741,7 @@ TYPED_TEST(PadOpTest, Pad_Edge_DimWithZeroInput) {
                                   {},
                                   "edge",
                                   OpTester::ExpectResult::kExpectFailure,
-                                  "Cannot use 'edge' mode to pad dimension with a value of 0. Input shape:{2,0}");
+                                  "Cannot use 'edge' mode to pad dimension with a value of 0. Input shape:{2,0}", {kTensorrtExecutionProvider});
 
   RunAllOpsetAllDomainPadTests<T>({2, 0},  // 2D
                                   {},
@@ -759,7 +759,7 @@ TYPED_TEST(PadOpTest, Pad_Edge_DimWithZeroInput) {
                                   {},
                                   "edge",
                                   OpTester::ExpectResult::kExpectFailure,
-                                  "Cannot use 'edge' mode to pad dimension with a value of 0. Input shape:{2,2,0}");
+                                  "Cannot use 'edge' mode to pad dimension with a value of 0. Input shape:{2,2,0}", {kTensorrtExecutionProvider});
 
   RunAllOpsetAllDomainPadTests<T>({2, 2, 0},  // 3D
                                   {},
@@ -788,7 +788,7 @@ TYPED_TEST(PadOpTest, Pad_Reflect_DimWithZeroInput) {
                                   {},
                                   "reflect",
                                   OpTester::ExpectResult::kExpectFailure,
-                                  "Cannot use 'reflect' mode to pad dimension with a value of 0. Input shape:{0,2,1}");
+                                  "Cannot use 'reflect' mode to pad dimension with a value of 0. Input shape:{0,2,1}", {kTensorrtExecutionProvider});
 }
 
 TEST(PadOpTest, BoolType) {
