@@ -66,59 +66,6 @@ MLDataType DataTypeImpl::GetType<TensorSeq>() {
 
 namespace data_types_internal {
 
-template <typename T>
-struct TensorElementTypeSetter<T> {
-  static void SetTensorElementType(ONNX_NAMESPACE::TypeProto& proto) {
-    proto.mutable_tensor_type()->set_elem_type(utils::ToTensorProtoElementType<T>());
-  }
-
-#if !defined(DISABLE_SPARSE_TENSORS)
-  static void SetSparseTensorElementType(ONNX_NAMESPACE::TypeProto& proto) {
-    proto.mutable_sparse_tensor_type()->set_elem_type(utils::ToTensorProtoElementType<T>());
-  }
-#endif
-
-#if !defined(DISABLE_ML_OPS)
-  static void SetMapKeyType(ONNX_NAMESPACE::TypeProto& proto) {
-    proto.mutable_map_type()->set_key_type(utils::ToTensorProtoElementType<T>());
-  }
-#endif
-
-  constexpr static int32_t GetElementType() {
-    return utils::ToTensorProtoElementType<T>();
-  }
-};
-
-// Pre-instantiate
-template struct
-    TensorElementTypeSetter<float>;
-template struct
-    TensorElementTypeSetter<uint8_t>;
-template struct
-    TensorElementTypeSetter<int8_t>;
-template struct
-    TensorElementTypeSetter<uint16_t>;
-template struct
-    TensorElementTypeSetter<int16_t>;
-template struct
-    TensorElementTypeSetter<int32_t>;
-template struct
-    TensorElementTypeSetter<int64_t>;
-template struct
-    TensorElementTypeSetter<std::string>;
-template struct
-    TensorElementTypeSetter<bool>;
-template struct
-    TensorElementTypeSetter<MLFloat16>;
-template struct
-    TensorElementTypeSetter<double>;
-template struct
-    TensorElementTypeSetter<uint32_t>;
-template struct
-    TensorElementTypeSetter<uint64_t>;
-template struct
-    TensorElementTypeSetter<BFloat16>;
-
 #if !defined(DISABLE_ML_OPS)
 void CopyMutableMapValue(const ONNX_NAMESPACE::TypeProto& value_proto,
                          ONNX_NAMESPACE::TypeProto& map_proto) {
