@@ -1392,11 +1392,13 @@ void ConvOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const INo
 
     // We will need to skip all the scales and zps in a qdq group
     // TODO, optimize this
-    for (const auto* node : node_unit.GetAllNodes()) {
-      const auto& node_op_type = node->OpType();
-      if (node_op_type == "QuantizeLinear" || node_op_type == "DequantizeLinear") {
-        model_builder.AddInitializerToSkip(node->InputDefs()[1]->Name());
-        model_builder.AddInitializerToSkip(node->InputDefs()[2]->Name());
+    if (node_unit.UnitType() == INodeUnit::Type::QDQ) {
+      for (const auto* node : node_unit.GetAllNodes()) {
+        const auto& node_op_type = node->OpType();
+        if (node_op_type == "QuantizeLinear" || node_op_type == "DequantizeLinear") {
+          model_builder.AddInitializerToSkip(node->InputDefs()[1]->Name());
+          model_builder.AddInitializerToSkip(node->InputDefs()[2]->Name());
+        }
       }
     }
   } else {

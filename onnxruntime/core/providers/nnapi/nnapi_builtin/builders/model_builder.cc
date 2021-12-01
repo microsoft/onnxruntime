@@ -119,17 +119,18 @@ Status ModelBuilder::GetTargetDevices() {
 }
 
 void ModelBuilder::PreprocessInitializers() {
+  std::unordered_set<const INodeUnit*> processed_node_units;
   const auto& node_indices = graph_viewer_.GetNodesInTopologicalOrder();
   for (size_t i = 0; i < node_indices.size(); i++) {
     const auto* node(graph_viewer_.GetNode(node_indices[i]));
     const auto& node_unit = GetNodeUnit(node);
-    LOGS_DEFAULT(VERBOSE) << "Node unit " << node_unit.Name() << " is processed";
-    for (const auto* sub_node : node_unit.GetAllNodes()) {
-      LOGS_DEFAULT(VERBOSE) << "Sub node " << sub_node->Name() << " is processed";
+    if (Contains(processed_node_units, &node_unit)) {
+      continue;
     }
     if (const auto* op_builder = GetOpBuilder(node_unit)) {
       op_builder->AddInitializersToSkip(*this, node_unit);
     }
+    processed_node_units.insert(&node_unit);
   }
 
   for (const auto& initializer : skipped_initializers_) {
