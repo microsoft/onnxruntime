@@ -74,6 +74,7 @@ static void RunAllOpsetAllDomainPadTests(
                                output,
                                mode, expect, error_msg, excluded_provider_types);
 }
+
 template <>
 void RunAllOpsetAllDomainPadTests<>(
     const std::vector<int64_t>& input_dims,
@@ -123,7 +124,8 @@ void RunAllOpsetAllDomainPadTests<>(
     const std::vector<float>& output,
     std::string mode,
     OpTester::ExpectResult expect,
-    const std::string& error_msg) {
+    const std::string& error_msg,
+    const std::unordered_set<std::string>& excluded_provider_types) {
   // Test opset-10, opset-11 and opset-13 kernels of Pad (for float type)
   RunOnnxOpsetTypedTest<float, 10>(input_dims,
                                    input,
@@ -131,7 +133,7 @@ void RunAllOpsetAllDomainPadTests<>(
                                    value,
                                    output_dims,
                                    output,
-                                   mode, expect, error_msg);
+                                   mode, expect, error_msg, excluded_provider_types);
 
   RunOnnxOpsetTypedTest<float, 11>(input_dims,
                                    input,
@@ -139,7 +141,7 @@ void RunAllOpsetAllDomainPadTests<>(
                                    value,
                                    output_dims,
                                    output,
-                                   mode, expect, error_msg);
+                                   mode, expect, error_msg, excluded_provider_types);
 
   RunOnnxOpsetTypedTest<float, 13>(input_dims,
                                    input,
@@ -147,7 +149,7 @@ void RunAllOpsetAllDomainPadTests<>(
                                    value,
                                    output_dims,
                                    output,
-                                   mode, expect, error_msg);
+                                   mode, expect, error_msg, excluded_provider_types);
 
 #ifndef DISABLE_CONTRIB_OPS
 
