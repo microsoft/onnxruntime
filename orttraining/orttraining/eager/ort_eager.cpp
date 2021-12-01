@@ -18,17 +18,15 @@ namespace python{
 using namespace onnxruntime::training;
 using namespace torch_ort::eager;
 
-py::object ORTTensor_toDLPack(const at::Tensor& data)
+OrtValue ORTTensor_toORTValue(const at::Tensor& data)
 {
-  OrtValue ort_value = torch_ort::eager::create_ort_value(data);
-  return py::reinterpret_steal<py::object>(onnxruntime::training::framework::torch::ToDlpack(ort_value));
+  return torch_ort::eager::create_ort_value(data);
 }
 
-at::Tensor ORTTensor_FromDLPack(const py::object& dlpack_tensor)
+at::Tensor OrtValue_To_ATen_Tensor(OrtValue& ortvalue)
 {
-  OrtValue ort_value = onnxruntime::training::framework::torch::FromDlpack(dlpack_tensor.ptr(), false);
   return torch_ort::eager::aten_tensor_from_ort(
-    std::move(ort_value),
+    std::move(ortvalue),
     at::TensorOptions()
       .device(at::Device(at::DeviceType::ORT, 0)));
 }
@@ -44,11 +42,11 @@ void addObjectMethodsForEager(py::module& m){
     },
     py::arg("device_index") = 0);
   
-  m.def("ort_to_dlpack", [](at::Tensor data) {
-    return ORTTensor_toDLPack(data);
+  m.def("aten_ort_tensor_to_ort_value", [](at::Tensor data) {
+    return ORTTensor_toORTValue(data);
   });
-  m.def("ort_from_dlpack", [](py::object dlpack_tensor) {
-    return ORTTensor_FromDLPack(dlpack_tensor);
+  m.def("to_aten_ort_device_tensor", [](OrtValue& ortvalue) {
+    return OrtValue_To_ATen_Tensor(ortvalue);
   });
 
   m.def("set_device", [](size_t device_index, 

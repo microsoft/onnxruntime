@@ -348,7 +348,7 @@ std::unordered_map<std::string, std::unordered_map<std::string, py::object>> Con
 void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn ep_registration_fn) {
   py::class_<std::vector<OrtValue>>(m, "OrtValueVector")
       .def(py::init<>())
-      .def("push_back", [](std::vector<OrtValue>* v, const OrtValue& ortvalue) {
+      .def("push_back", [](std::vector<OrtValue>* v, const OrtValue& ortvalue, const bool /*to_make_api_consistant*/) {
         v->push_back(ortvalue);
       })
       .def("push_back", [](std::vector<OrtValue>* v, py::object dlpack_tensor, const bool is_bool_tensor) {
