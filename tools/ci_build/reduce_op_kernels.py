@@ -112,7 +112,8 @@ def _process_provider_registrations(
         old_path = Path(kernel_registration_file)
         reduced_path = Path(old_path.parent, f'{old_path.stem}{REDUCED_KERNEL_DEF_SUFFIX}{old_path.suffix}')
 
-        # read from backup and overwrite original with commented out lines for any kernels that are not required
+        # read from original and create the reduced kernel def file (*_reduced_ops.cc),
+        # with commented out lines for any kernels that are not required
         with open(reduced_path, 'w') as file_to_write:
             processor = _ExcludingRegistrationProcessor(required_ops, op_type_impl_filter, file_to_write)
 
