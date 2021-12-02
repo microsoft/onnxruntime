@@ -55,7 +55,7 @@ class QDQQuantizer(ONNXQuantizer):
         if self.dedicated_qdq_pair:
             self.tensor_to_its_receiving_nodes = {}
 
-        # Let user set channel axis for specific op type if per channel quantization is supported and per_channel is True.
+        # Let user set channel axis for specific op type and it's effective only when per channel quantization is supported and per_channel is True.
         self.qdq_op_type_per_channel_support_to_axis = {} if 'QDQOpTypePerChannelSupportToAxis' not in extra_options else extra_options['QDQOpTypePerChannelSupportToAxis']
 
     def quantize_tensor(self, tensor_name):
