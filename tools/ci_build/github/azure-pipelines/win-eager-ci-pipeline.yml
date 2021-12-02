@@ -10,7 +10,7 @@ jobs:
   strategy:
     matrix:
       x64_release:
-        BuildConfig: 'RelWithDebInfo'
+        BuildConfig: 'Release'
         EnvSetupScript: setup_env.bat
         buildArch: x64
         additionalBuildFlags: --use_dnnl --build_java --build_nodejs
@@ -66,7 +66,7 @@ jobs:
     displayName: 'Build Eager mode'
     inputs:
       scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-      arguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --build_eager_mode --enable_training --enable_pybind --config Release --parallel'
+      arguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --build_eager_mode --enable_training --enable_pybind --parallel'
       workingDirectory: '$(Build.BinariesDirectory)'
 
   - task: PublishTestResults@2
