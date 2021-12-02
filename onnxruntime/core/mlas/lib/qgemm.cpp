@@ -148,24 +148,6 @@ MlasGemmBatch(
     const size_t BatchN,
     MLAS_THREADPOOL* ThreadPool)
 {
-    if (Shape.AIsSigned) {
-        if (!Shape.BIsSigned) {
-#ifdef MLAS_NO_EXCEPTION
-            abort();
-#else
-            throw std::invalid_argument("Only support B is signed if A is signed.");
-#endif
-        }
-
-#if !defined(MLAS_TARGET_ARM64)
-#if defined(MLAS_NO_EXCEPTION)
-        abort();
-#else
-        throw std::invalid_argument("Only ARM64 supports A is signed.");
-#endif
-#endif
-    }
-
     const size_t M = Shape.M;
     const size_t N = Shape.N;
     const size_t K = Shape.K;

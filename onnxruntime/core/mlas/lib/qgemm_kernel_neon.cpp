@@ -59,10 +59,12 @@ constexpr MLAS_GEMM_QUANT_STRIDES MLAS_GEMM_U8X8_KERNEL_NEON::Strides;
 constexpr MLAS_GEMM_QUANT_STRIDES MLAS_GEMM_U8X8_KERNEL_NEON::PackedStrides;
 
 template <>
-MLAS_FORCEINLINE int32_t
+MLAS_FORCEINLINE
+int32_t
 MlasGemmQuantFixupZeroPointA<MLAS_GEMM_U8X8_KERNEL_NEON>(
     int32_t ZeroPointA,
-    bool AIsSigned)
+    bool AIsSigned
+    )
 {
     if(AIsSigned) {
         ZeroPointA = (uint8_t)(ZeroPointA ^ 0x80);
@@ -86,21 +88,27 @@ MlasGemmQuantFixupZeroPointB<MLAS_GEMM_U8X8_KERNEL_NEON>(
     return ZeroPointB;
 }
 
-template<>
+template<bool AIsSigned>
 void
-MlasGemmQuantCopyPackA<MLAS_GEMM_U8X8_KERNEL_NEON>(
+MlasGemmQuantCopyPackAU8X8Neon(
     MLAS_GEMM_U8X8_KERNEL_NEON::PackedAType* D,
     const uint8_t* A,
     size_t lda,
     size_t CountM,
     size_t CountK,
-    int32_t* RowSumBuffer,
-    bool AIsSigned
+    int32_t* RowSumBuffer
     )
 {
-    const uint8_t BitFlipByte = AIsSigned ? 0x80 : 0;
-    const uint32_t BitFlip4Bytes = AIsSigned ? 0x80808080 : 0;
+    const uint8_t BitFlipByte = 0x80;
+    const uint32_t BitFlip4Bytes = 0x80808080;
     const uint32x4_t BitFlipVector = vdupq_n_u32(BitFlip4Bytes);
+
+    if constexpr (!AIsSigned) {
+
+        MLAS_UNREFERENCED_PARAMETER(BitFlipByte);
+        MLAS_UNREFERENCED_PARAMETER(BitFlip4Bytes);
+        MLAS_UNREFERENCED_PARAMETER(BitFlipVector);
+    }
 
     //
     // Process four rows of matrix A in a loop.
@@ -129,14 +137,22 @@ MlasGemmQuantCopyPackA<MLAS_GEMM_U8X8_KERNEL_NEON>(
 
         while (k >= 16) {
 
-            uint32x4_t v0 = veorq_u32(vld1q_u32(reinterpret_cast<const uint32_t*>(a0)), BitFlipVector);
+            uint32x4_t v0 = vld1q_u32(reinterpret_cast<const uint32_t*>(a0));
             a0 += 16;
-            uint32x4_t v1 = veorq_u32(vld1q_u32(reinterpret_cast<const uint32_t*>(a1)), BitFlipVector);
+            uint32x4_t v1 = vld1q_u32(reinterpret_cast<const uint32_t*>(a1));
             a1 += 16;
-            uint32x4_t v2 = veorq_u32(vld1q_u32(reinterpret_cast<const uint32_t*>(a2)), BitFlipVector);
+            uint32x4_t v2 = vld1q_u32(reinterpret_cast<const uint32_t*>(a2));
             a2 += 16;
-            uint32x4_t v3 = veorq_u32(vld1q_u32(reinterpret_cast<const uint32_t*>(a3)), BitFlipVector);
+            uint32x4_t v3 = vld1q_u32(reinterpret_cast<const uint32_t*>(a3));
             a3 += 16;
+
+            if constexpr (AIsSigned) {
+
+                v0 = veorq_u32(v0, BitFlipVector);
+                v1 = veorq_u32(v1, BitFlipVector);
+                v2 = veorq_u32(v2, BitFlipVector);
+                v3 = veorq_u32(v3, BitFlipVector);
+            }
 
 #if defined(MLAS_NEON32_INTRINSICS)
             uint32x4x2_t z0 = vzipq_u32(v0, v2);
@@ -182,14 +198,22 @@ MlasGemmQuantCopyPackA<MLAS_GEMM_U8X8_KERNEL_NEON>(
 
         while (k >= 4) {
 
-            uint32_t v0 = (*reinterpret_cast<const uint32_t*>(a0)) ^ BitFlip4Bytes;
+            uint32_t v0 = *reinterpret_cast<const uint32_t*>(a0);
             a0 += 4;
-            uint32_t v1 = (*reinterpret_cast<const uint32_t*>(a1)) ^ BitFlip4Bytes;
+            uint32_t v1 = *reinterpret_cast<const uint32_t*>(a1);
             a1 += 4;
-            uint32_t v2 = (*reinterpret_cast<const uint32_t*>(a2)) ^ BitFlip4Bytes;
+            uint32_t v2 = *reinterpret_cast<const uint32_t*>(a2);
             a2 += 4;
-            uint32_t v3 = (*reinterpret_cast<const uint32_t*>(a3)) ^ BitFlip4Bytes;
+            uint32_t v3 = *reinterpret_cast<const uint32_t*>(a3);
             a3 += 4;
+
+            if constexpr (AIsSigned) {
+
+                v0 = v0 ^ BitFlip4Bytes;
+                v1 = v1 ^ BitFlip4Bytes;
+                v2 = v2 ^ BitFlip4Bytes;
+                v3 = v3 ^ BitFlip4Bytes;
+            }
 
             *reinterpret_cast<uint32_t*>(&D[0]) = v0;
             *reinterpret_cast<uint32_t*>(&D[4]) = v1;
@@ -214,10 +238,19 @@ MlasGemmQuantCopyPackA<MLAS_GEMM_U8X8_KERNEL_NEON>(
 
             while (k > 0) {
 
-                d[0] = (*a0++) ^ BitFlipByte;
-                d[4] = (*a1++) ^ BitFlipByte;
-                d[8] = (*a2++) ^ BitFlipByte;
-                d[12] = (*a3++) ^ BitFlipByte;
+                if constexpr (AIsSigned) {
+
+                    d[0] = (*a0++) ^ BitFlipByte;
+                    d[4] = (*a1++) ^ BitFlipByte;
+                    d[8] = (*a2++) ^ BitFlipByte;
+                    d[12] = (*a3++) ^ BitFlipByte;
+                } else {
+
+                    d[0] = *a0++;
+                    d[4] = *a1++;
+                    d[8] = *a2++;
+                    d[12] = *a3++;
+                }
 
                 d += 1;
                 k -= 1;
@@ -260,10 +293,16 @@ MlasGemmQuantCopyPackA<MLAS_GEMM_U8X8_KERNEL_NEON>(
 
         while (k >= 4) {
 
-            uint32_t v0 = (*reinterpret_cast<const uint32_t*>(a0))^ BitFlip4Bytes;
+            uint32_t v0 = *reinterpret_cast<const uint32_t*>(a0);
             a0 += 4;
-            uint32_t v1 = (*reinterpret_cast<const uint32_t*>(a1)) ^ BitFlip4Bytes;
+            uint32_t v1 = *reinterpret_cast<const uint32_t*>(a1);
             a1 += 4;
+
+            if constexpr (AIsSigned) {
+
+                v0 = v0 ^ BitFlip4Bytes;
+                v1 = v1 ^ BitFlip4Bytes;
+            }
 
             *reinterpret_cast<uint32_t*>(&D[0]) = v0;
             *reinterpret_cast<uint32_t*>(&D[4]) = v1;
@@ -286,8 +325,15 @@ MlasGemmQuantCopyPackA<MLAS_GEMM_U8X8_KERNEL_NEON>(
 
             while (k > 0) {
 
-                d[0] = (*a0++) ^ BitFlipByte;
-                d[4] = (*a1++) ^ BitFlipByte;
+                if constexpr (AIsSigned) {
+
+                    d[0] = (*a0++) ^ BitFlipByte;
+                    d[4] = (*a1++) ^ BitFlipByte;
+                } else {
+
+                    d[0] = *a0++;
+                    d[4] = *a1++;
+                }
 
                 d += 1;
                 k -= 1;
@@ -326,8 +372,12 @@ MlasGemmQuantCopyPackA<MLAS_GEMM_U8X8_KERNEL_NEON>(
 
         while (k >= 16) {
 
-            uint8x16_t v = veorq_u8(vld1q_u8(a), vreinterpretq_u8_u32(BitFlipVector));
+            uint8x16_t v = vld1q_u8(a);
             a += 16;
+
+            if constexpr (AIsSigned) {
+                v = veorq_u8(v, vreinterpretq_u8_u32(BitFlipVector));
+            }
 
             vst1q_u8(D, v);
 
@@ -367,6 +417,25 @@ MlasGemmQuantCopyPackA<MLAS_GEMM_U8X8_KERNEL_NEON>(
 #else
         * RowSumBuffer = int32_t(vaddvq_u32(RowSums));
 #endif
+    }
+}
+
+template<>
+void
+MlasGemmQuantCopyPackA<MLAS_GEMM_U8X8_KERNEL_NEON>(
+    MLAS_GEMM_U8X8_KERNEL_NEON::PackedAType* D,
+    const uint8_t* A,
+    size_t lda,
+    size_t CountM,
+    size_t CountK,
+    int32_t* RowSumBuffer,
+    bool AIsSigned
+    )
+{
+    if (AIsSigned) {
+        MlasGemmQuantCopyPackAU8X8Neon<true>(D, A, lda, CountM, CountK, RowSumBuffer);
+    } else {
+        MlasGemmQuantCopyPackAU8X8Neon<false>(D, A, lda, CountM, CountK, RowSumBuffer);
     }
 }
 
@@ -557,10 +626,12 @@ constexpr MLAS_GEMM_QUANT_STRIDES MLAS_GEMM_X8S8_KERNEL_NEON::Strides;
 constexpr MLAS_GEMM_QUANT_STRIDES MLAS_GEMM_X8S8_KERNEL_NEON::PackedStrides;
 
 template <>
-MLAS_FORCEINLINE int32_t
+MLAS_FORCEINLINE
+int32_t
 MlasGemmQuantFixupZeroPointA<MLAS_GEMM_X8S8_KERNEL_NEON>(
     int32_t ZeroPointA,
-    bool AIsSigned)
+    bool AIsSigned
+    )
 {
     if(AIsSigned) {
         return ZeroPointA;
@@ -581,7 +652,7 @@ MlasGemmQuantCopyPackAX8S8Neon(
     )
 {
     const uint8x16_t BitFlipVector = vdupq_n_u8(0x80);
-    if constexpr(AIsSigned) {
+    if constexpr (AIsSigned) {
         MLAS_UNREFERENCED_PARAMETER(BitFlipVector);
     }
 
@@ -734,6 +805,7 @@ MlasGemmQuantCopyPackAX8S8Neon(
             RowSums3 = vpadalq_s16(RowSums3, vpaddlq_s8(v3));
 
             if constexpr (!AIsSigned) {
+
                 vst1q_u8(&D[0], vreinterpretq_u8_s8(v0));
                 vst1q_u8(&D[16], vreinterpretq_u8_s8(v1));
                 vst1q_u8(&D[32], vreinterpretq_u8_s8(v2));
@@ -823,9 +895,11 @@ MlasGemmQuantCopyPackAX8S8Neon(
             int8x16_t v1;
 
             if constexpr (AIsSigned) {
+
                 v0 = vreinterpretq_s8_u8(vld1q_u8(&D[0]));
                 v1 = vreinterpretq_s8_u8(vld1q_u8(&D[16]));
             } else {
+
                 v0 = vreinterpretq_s8_u8(veorq_u8(vld1q_u8(&D[0]), BitFlipVector));
                 v1= vreinterpretq_s8_u8(veorq_u8(vld1q_u8(&D[16]), BitFlipVector));
             }
@@ -834,6 +908,7 @@ MlasGemmQuantCopyPackAX8S8Neon(
             RowSums1 = vpadalq_s16(RowSums1, vpaddlq_s8(v1));
 
             if constexpr (!AIsSigned) {
+
                 vst1q_u8(&D[0], vreinterpretq_u8_s8(v0));
                 vst1q_u8(&D[16], vreinterpretq_u8_s8(v1));
             }
@@ -886,7 +961,7 @@ MlasGemmQuantCopyPackAX8S8Neon(
 
             uint8_t* d = D;
 
-            if constexpr (AIsSigned){
+            if constexpr (AIsSigned) {
                 vst1q_u8(&D[0], vmovq_n_u8(0));
             } else{
                 vst1q_u8(&D[0], BitFlipVector);
@@ -901,7 +976,7 @@ MlasGemmQuantCopyPackAX8S8Neon(
             }
 
             int8x16_t v0;
-            if constexpr (AIsSigned){
+            if constexpr (AIsSigned) {
 
                 v0 = vreinterpretq_s8_u8(vld1q_u8(&D[0]));
                 RowSums0 = vpadalq_s16(RowSums0, vpaddlq_s8(v0));

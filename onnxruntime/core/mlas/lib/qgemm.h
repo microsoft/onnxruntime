@@ -32,6 +32,9 @@ Abstract:
 
 #include "mlasi.h"
 
+#include <sstream>
+#include <string>
+
 //
 // Define the default striding parameters used for the quantized integer
 // matrix/matrix multiply operation.
@@ -704,40 +707,47 @@ MlasGemmQuantGetDispatch(
     MLAS_UNREFERENCED_PARAMETER(BIsSigned);
 
 #if defined(MLAS_TARGET_AMD64_IX86)
-    if (AIsSigned) {
-        return GemmQuantDispatch;
-    }
-
-    if (BIsSigned) {
-        GemmQuantDispatch = MlasPlatform.GemmU8S8Dispatch;
-    }
-    else {
-        GemmQuantDispatch = MlasPlatform.GemmU8U8Dispatch;
-    }
-#elif defined(MLAS_TARGET_ARM64)
-    GemmQuantDispatch = MlasPlatform.GemmU8X8Dispatch;
-    if(BIsSigned) {
-        if(GemmQuantDispatch == &MlasGemmU8X8DispatchNeon) {
-            GemmQuantDispatch = &MlasGemmX8S8DispatchNeon;
-        } else if(AIsSigned) {
-            GemmQuantDispatch = &MlasGemmS8S8DispatchSdot;
+    if (!AIsSigned) {
+        if (BIsSigned) {
+            GemmQuantDispatch = MlasPlatform.GemmU8S8Dispatch;
+        }
+        else {
+            GemmQuantDispatch = MlasPlatform.GemmU8U8Dispatch;
         }
     }
+#elif defined(MLAS_TARGET_ARM64)
+    if(BIsSigned) {
+        if(MlasPlatform.GemmU8X8Dispatch == &MlasGemmU8X8DispatchNeon) {
+            GemmQuantDispatch = &MlasGemmX8S8DispatchNeon;
+        } else {
+            GemmQuantDispatch = AIsSigned? &MlasGemmS8S8DispatchSdot : &MlasGemmU8X8DispatchUdot;
+        }
+    } else if(!AIsSigned) {
+        GemmQuantDispatch = MlasPlatform.GemmU8X8Dispatch;
+    }
 #elif defined(MLAS_TARGET_ARM64EC) || (defined(MLAS_TARGET_ARM) && !defined(_MSC_VER))
-    GemmQuantDispatch = &MlasGemmU8X8DispatchNeon;
+    if(BIsSigned || !AIsSigned) {
+        GemmQuantDispatch = &MlasGemmU8X8DispatchNeon;
+    }
 #elif defined(MLAS_TARGET_WASM_SIMD)
-    if (AIsSigned) {
-        return GemmQuantDispatch;
+    if (!AIsSigned) {
+        GemmQuantDispatch = &MlasGemmU8X8DispatchWasmSimd;
     }
-
-    GemmQuantDispatch = &MlasGemmU8X8DispatchWasmSimd;
 #else
-    if (AIsSigned) {
-        return GemmQuantDispatch;
+    if (!AIsSigned) {
+        GemmQuantDispatch = &MlasGemmU8X8DispatchDefault;
     }
-
-    GemmQuantDispatch = &MlasGemmU8X8DispatchDefault;
 #endif
+
+    if (nullptr == GemmQuantDispatch) {
+#if defined(MLAS_NO_EXCEPTION)
+        abort();
+#else
+        std::stringstream ss;
+        ss << "Quant GEMM format: AIsSigned(" << AIsSigned << "), BIsSigned(" << BIsSigned << ") is not supported on this device";
+        throw std::invalid_argument(ss.str());
+#endif
+    }
 
     return GemmQuantDispatch;
 }
