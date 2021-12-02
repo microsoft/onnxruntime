@@ -26,6 +26,7 @@ onnxruntime_add_static_library(onnxruntime_mlas
   ${MLAS_SRC_DIR}/qlmul.cpp
   ${MLAS_SRC_DIR}/qpostprocessor.cpp
   ${MLAS_SRC_DIR}/qlgavgpool.cpp
+  ${MLAS_SRC_DIR}/qdwconv_kernelsize.cpp
 )
 
 set(ONNXRUNTIME_MLAS_LIBS onnxruntime_mlas)
@@ -45,6 +46,8 @@ function(setup_mlas_source_for_windows)
       )
 
       set(mlas_platform_preprocess_srcs
+        ${MLAS_SRC_DIR}/arm64/DepthwiseConvsymKernelNeon.asm
+        ${MLAS_SRC_DIR}/arm64/DepthwiseQConvKernelSize9Neon.asm
         ${MLAS_SRC_DIR}/arm64/QgemmU8X8KernelNeon.asm
         ${MLAS_SRC_DIR}/arm64/QgemmS8S8KernelNeon.asm
         ${MLAS_SRC_DIR}/arm64/QgemmU8X8KernelUdot.asm
@@ -263,6 +266,8 @@ else()
     if(ARM64 AND MLAS_SOURCE_IS_NOT_SET )
         enable_language(ASM)
         set(mlas_platform_srcs
+          ${MLAS_SRC_DIR}/aarch64/DepthwiseConvSymKernelNeon.S
+          ${MLAS_SRC_DIR}/aarch64/DepthwiseQConvKernelSize9Neon.S
           ${MLAS_SRC_DIR}/aarch64/QgemmU8X8KernelNeon.S
           ${MLAS_SRC_DIR}/aarch64/QgemmS8S8KernelNeon.S
           ${MLAS_SRC_DIR}/aarch64/QgemmU8X8KernelUdot.S
@@ -283,7 +288,10 @@ else()
     if(POWER AND MLAS_SOURCE_IS_NOT_SET)
         set(mlas_platform_srcs
           ${MLAS_SRC_DIR}/power/SgemmKernelPower.cpp
+          ${MLAS_SRC_DIR}/dgemm.cpp
+          ${MLAS_SRC_DIR}/power/DgemmKernelPower.cpp
         )
+        set_source_files_properties(${MLAS_SRC_DIR}/power/SgemmKernelPower.cpp PROPERTIES COMPILE_FLAGS "-DSINGLE")
         check_cxx_compiler_flag("-mcpu=power10" HAS_POWER10)
         if(HAS_POWER10)
           set(CMAKE_REQUIRED_FLAGS "-mcpu=power10")
@@ -311,8 +319,10 @@ else()
             endif()
             set(mlas_platform_srcs_power10
               ${MLAS_SRC_DIR}/power/SgemmKernelPOWER10.cpp
+              ${MLAS_SRC_DIR}/power/DgemmKernelPOWER10.cpp
             )
-            set_source_files_properties(${mlas_platform_srcs_power10} PROPERTIES COMPILE_FLAGS "-O2 -mcpu=power10")
+            set_source_files_properties(${MLAS_SRC_DIR}/power/SgemmKernelPOWER10.cpp PROPERTIES COMPILE_FLAGS "-O2 -mcpu=power10 -DSINGLE")
+            set_source_files_properties(${MLAS_SRC_DIR}/power/DgemmKernelPOWER10.cpp PROPERTIES COMPILE_FLAGS "-O2 -mcpu=power10")
             set(mlas_platform_srcs
               ${mlas_platform_srcs}
               ${mlas_platform_srcs_power10}

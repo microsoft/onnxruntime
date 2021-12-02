@@ -49,14 +49,14 @@ class Tensor {
 
  public:
   Tensor(const std::vector<int64_t>& shape) :
-    shape_(shape),
-    data_(create_data<T>(shape, nullptr)) {}
+    data_(create_data<T>(shape, nullptr)),
+    shape_(shape) {}
 
   Tensor(
     const std::vector<int64_t>& shape,
     const wfc::IIterable<wss::IBuffer>& buffers) :
-      shape_(shape),
-      data_(create_data<T>(shape, buffers)) {}
+      data_(create_data<T>(shape, buffers)),
+      shape_(shape) {}
 
   auto size_in_bytes() const {
     return data_->size_in_bytes();

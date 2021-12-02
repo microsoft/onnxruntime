@@ -23,6 +23,12 @@ if (['prod', 'dev', 'perf', 'node'].indexOf(MODE) === -1) {
 // --no-wasm
 const WASM = typeof args.wasm === 'undefined' ? true : !!args.wasm;
 
+// -a; --analyzer
+const ANALYZER = !!args.a || !!args.analyzer;
+
+// -f; --filter=<regex>
+const FILTER = args.f || args.filter;
+
 // Path variables
 const WASM_BINDING_FOLDER = path.join(__dirname, '..', 'lib', 'wasm', 'binding');
 const WASM_BINDING_JS_PATH = path.join(WASM_BINDING_FOLDER, 'ort-wasm.js');
@@ -134,6 +140,12 @@ npmlog.info('Build', 'Building bundle...');
   npmlog.info('Build.Bundle', 'Running webpack to generate bundles...');
   const webpackCommand = path.join(npmBin, 'webpack');
   const webpackArgs = ['--env', `--bundle-mode=${MODE}`];
+  if (ANALYZER) {
+    webpackArgs.push('--env', '-a');
+  }
+  if (FILTER) {
+    webpackArgs.push('--env', `-f=${FILTER}`);
+  }
   npmlog.info('Build.Bundle', `CMD: ${webpackCommand} ${webpackArgs.join(' ')}`);
   const webpack = spawnSync(webpackCommand, webpackArgs, {shell: true, stdio: 'inherit'});
   if (webpack.status !== 0) {

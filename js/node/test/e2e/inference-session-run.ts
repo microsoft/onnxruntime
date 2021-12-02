@@ -21,5 +21,5 @@ describe('E2E Tests - InferenceSession.run()', async () => {
       const result = await session!.run({'data_0': input0}, ['softmaxout_1']);
       assertTensorEqual(result.softmaxout_1, expectedOutput0);
     }
-  }).timeout('120s');
+  }).timeout(process.arch === 'x64' ? '120s' : 0);
 });

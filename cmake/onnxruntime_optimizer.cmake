@@ -34,6 +34,8 @@ else()
     "${ONNXRUNTIME_ROOT}/core/optimizer/qdq_transformer/selectors_actions/*.cc"
     "${ONNXRUNTIME_ROOT}/core/optimizer/selectors_actions/*.h"
     "${ONNXRUNTIME_ROOT}/core/optimizer/selectors_actions/*.cc"
+    "${ONNXRUNTIME_ROOT}/core/optimizer/transpose_optimizer/*.h"
+    "${ONNXRUNTIME_ROOT}/core/optimizer/transpose_optimizer/*.cc"
   )
 
   if (onnxruntime_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
@@ -54,6 +56,16 @@ endif()
 file(GLOB onnxruntime_optimizer_srcs CONFIGURE_DEPENDS ${onnxruntime_optimizer_src_patterns})
 
 source_group(TREE ${REPO_ROOT} FILES ${onnxruntime_optimizer_srcs})
+
+if (onnxruntime_EXTERNAL_TRANSFORMER_SRC_PATH)
+  set(onnxruntime_external_transformer_src_patterns)
+  list(APPEND onnxruntime_external_transformer_src_patterns
+    "${onnxruntime_EXTERNAL_TRANSFORMER_SRC_PATH}/*.cc"
+    "${onnxruntime_EXTERNAL_TRANSFORMER_SRC_PATH}/*.cpp"
+  )
+  file(GLOB onnxruntime_external_transformer_src ${onnxruntime_external_transformer_src_patterns})
+  list(APPEND onnxruntime_optimizer_srcs ${onnxruntime_external_transformer_src})
+endif()
 
 onnxruntime_add_static_library(onnxruntime_optimizer ${onnxruntime_optimizer_srcs})
 

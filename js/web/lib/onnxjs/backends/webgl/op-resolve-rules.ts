@@ -26,7 +26,7 @@ import {reshape} from './ops/reshape';
 import {parseResizeAttributesV10, parseResizeAttributesV11, resize} from './ops/resize-packed';
 import {shape} from './ops/shape';
 import {parseSliceAttributes, slice, sliceV10} from './ops/slice';
-import {parseSoftmaxAttributes, softmax} from './ops/softmax';
+import {parseSoftmaxAttributes, parseSoftmaxAttributesV13, softmax, softmaxV13} from './ops/softmax';
 import {parseSplitAttributes, split} from './ops/split';
 import {parseSqueezeAttributes, squeeze, squeezeV13} from './ops/squeeze';
 import {sum} from './ops/sum';
@@ -61,6 +61,7 @@ export const WEBGL_OP_RESOLVE_RULES: readonly OpSet.ResolveRule[] = [
   ['Exp', '', '6+', unaryOps.exp],
   ['Flatten', '', '1+', flatten, parseFlattenAttributes],
   ['Floor', '', '6+', unaryOps.floor],
+  ['FusedConv', 'com.microsoft', '1+', conv, parseConvAttributes],
   ['Gather', '', '1+', gather, parseGatherAttributes],
   ['Gemm', '', '7-10', gemm, parseGemmAttributesV7],
   ['Gemm', '', '11+', gemm, parseGemmAttributesV11],
@@ -102,6 +103,7 @@ export const WEBGL_OP_RESOLVE_RULES: readonly OpSet.ResolveRule[] = [
   ['Slice', '', '1-9', slice, parseSliceAttributes],
   // The "semantic" meaning of axis has changed in opset-13.
   ['Softmax', '', '1-12', softmax, parseSoftmaxAttributes],
+  ['Softmax', '', '13+', softmaxV13, parseSoftmaxAttributesV13],
   // 'Split' operator has an optional attribute 'split'
   // this attribute determines how the specified axis of input data is split.
   // When the attribute is missing, we need the count of number of outputs

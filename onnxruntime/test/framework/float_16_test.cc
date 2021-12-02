@@ -46,7 +46,7 @@ class MulFP16Kernel final : public OpKernel {
     auto X_Data = X->Data<MLFloat16>();
     auto W_Data = W->Data<MLFloat16>();
 
-    auto& shape = X->Shape().GetDims();
+    auto shape = X->Shape().GetDims();
     auto* Y = p_context->Output(0, shape);
     auto* Y_Data = Y->MutableData<MLFloat16>();
 
@@ -123,8 +123,7 @@ void RunSession(InferenceSession& session_object,
   ASSERT_EQ(1u, fetches.size());
   auto& rtensor = fetches.front().Get<Tensor>();
   TensorShape expected_shape(dims_y);
-  //Use reinterpret_cast to bypass a gcc bug: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=51213
-  EXPECT_EQ(*reinterpret_cast<const std::vector<int64_t>*>(&expected_shape), *reinterpret_cast<const std::vector<int64_t>*>(&rtensor.Shape()));
+  EXPECT_EQ(expected_shape, rtensor.Shape());
   const std::vector<MLFloat16> found(rtensor.template Data<MLFloat16>(), rtensor.template Data<MLFloat16>() + expected_shape.Size());
   ASSERT_EQ(found.size(), values_y.size());
   for (size_t i = 0; i < found.size(); i++)

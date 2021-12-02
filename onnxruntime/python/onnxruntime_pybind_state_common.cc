@@ -80,11 +80,18 @@ OrtValue FromDlpack(PyObject* dlpack_tensor, const bool is_bool_tensor) {
 
 #endif
 
-void PySparseTensor::Init(std::unique_ptr<SparseTensor>&& instance) {
-  auto sparse_tensor(std::move(instance));
-  auto ml_type = DataTypeImpl::GetType<SparseTensor>();
-  ort_value_.Init(sparse_tensor.get(), ml_type, ml_type->GetDeleteFunc());
-  sparse_tensor.release();
+std::unique_ptr<OrtValue> PySparseTensor::AsOrtValue() const {
+  if (instance_) {
+    auto ort_value = std::make_unique<OrtValue>();
+    auto ml_type = DataTypeImpl::GetType<SparseTensor>();
+    py::object this_object = py::cast(*this);
+    // Create an std::function deleter that captures and ref-counts this PySparseTensor
+    ort_value->Init(instance_.get(), ml_type, [object = std::move(this_object)](void*) {});
+    return ort_value;
+  }
+
+  assert(ort_value_.IsAllocated());
+  return std::make_unique<OrtValue>(ort_value_);
 }
 
 PySparseTensor::~PySparseTensor() {

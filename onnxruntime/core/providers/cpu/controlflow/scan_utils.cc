@@ -95,7 +95,7 @@ Status AllocateOutput(OpKernelContextInternal& context, const GraphViewer& subgr
   }
 
   TensorShape output_shape = onnxruntime::utils::GetTensorShapeFromTensorShapeProto(*graph_output_shape);
-  auto& graph_output_dims(output_shape.GetDims());
+  auto graph_output_dims(output_shape.GetDims());
 
   std::vector<int64_t> scan_output_dims;
   scan_output_dims.reserve(graph_output_dims.size() + 2);
