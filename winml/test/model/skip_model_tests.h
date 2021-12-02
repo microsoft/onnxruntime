@@ -8,6 +8,8 @@ static const std::string disabledGpuTestDefaultReason = "Model not working on GP
 // {"model test name", "reason for why it is happening and bug filed for it."}
 std::unordered_map<std::string, std::string> disabledTests(
     {
+     // Disabled cases common to both CPU&GPU (no _CPU/_GPU suffix):
+
      // Tier 3 models
      {"mxnet_arcface_opset8", disabledTestDefaultReason},
      {"XGBoost_XGClassifier_sklearn_load_wine_opset7", disabledTestDefaultReason},
@@ -109,34 +111,41 @@ std::unordered_map<std::string, std::string> disabledTests(
      {"coreml_DecisionTreeClassifier_sklearn_load_breast_cancer_opset7", disabledTestDefaultReason},
      {"coreml_DecisionTreeClassifier_OpenML_312_scene_opset7", disabledTestDefaultReason},
      {"coreml_DecisionTreeClassifier_OpenML_1464_blood_transfusion_opset7", disabledTestDefaultReason},
-     {"coreml_AgeNet_ImageNet_opset7", disabledTestDefaultReason}
-    });
+     {"coreml_AgeNet_ImageNet_opset7", disabledTestDefaultReason},
 
-std::unordered_map<std::string, std::string> disabledGpuTests(
-    {
-     // Onnx zoo models
-     {"mask_rcnn_opset10", "Bug 31005388: mask_rcnn opset 10 onnx zoo model fails to evaluate on DirectML https://microsoft.visualstudio.com/OS/_workitems/edit/31005388"},
-     {"faster_rcnn_opset10", "Bug 31005511: Failed to extract tensor data from evaluate result of faster_rcnn opset 10 model in DirectML https://microsoft.visualstudio.com/OS/_workitems/edit/31005511"},
+     // GPU specific cases:
+
+     // ONNX zoo models
+     {"mask_rcnn_opset10_GPU", "Bug 31005388: mask_rcnn opset 10 onnx zoo model fails to evaluate on DirectML https://microsoft.visualstudio.com/OS/_workitems/edit/31005388"},
+     {"faster_rcnn_opset10_GPU", "Bug 31005511: Failed to extract tensor data from evaluate result of faster_rcnn opset 10 model in DirectML https://microsoft.visualstudio.com/OS/_workitems/edit/31005511"},
 
      // Tier 2 models
-     {"fp16_test_tiny_yolov2_opset7", "Bug 31005780: Result of fp16_test_tiny_yolov2_opset7 and fp16_coreml_FNS_Candy_opset7 models on DirectML aren't as accurate as on CPU https://microsoft.visualstudio.com/OS/_workitems/edit/31005780"},
-     {"fp16_tiny_yolov2_opset8", "Bug 31005780: Result of fp16_test_tiny_yolov2_opset7 and fp16_coreml_FNS_Candy_opset7 models on DirectML aren't as accurate as on CPU https://microsoft.visualstudio.com/OS/_workitems/edit/31005780"},
-     {"fp16_coreml_FNS_Candy_opset7", "Bug 31005780: Result of fp16_test_tiny_yolov2_opset7 and fp16_coreml_FNS_Candy_opset7 models on DirectML aren't as accurate as on CPU https://microsoft.visualstudio.com/OS/_workitems/edit/31005780"},
-     {"mlperf_ssd_mobilenet_300_opset10", "Bug 31005624: mlperf_ssd_mobilenet_300 opset 10 model fails to evaluate in DirectML https://microsoft.visualstudio.com/OS/_workitems/edit/31005624"}
-    });
+     {"fp16_test_tiny_yolov2_opset7_GPU", "Bug 31005780: Result of fp16_test_tiny_yolov2_opset7 and fp16_coreml_FNS_Candy_opset7 models on DirectML aren't as accurate as on CPU https://microsoft.visualstudio.com/OS/_workitems/edit/31005780"},
+     {"fp16_tiny_yolov2_opset8_GPU", "Bug 31005780: Result of fp16_test_tiny_yolov2_opset7 and fp16_coreml_FNS_Candy_opset7 models on DirectML aren't as accurate as on CPU https://microsoft.visualstudio.com/OS/_workitems/edit/31005780"},
+     {"fp16_coreml_FNS_Candy_opset7_GPU", "Bug 31005780: Result of fp16_test_tiny_yolov2_opset7 and fp16_coreml_FNS_Candy_opset7 models on DirectML aren't as accurate as on CPU https://microsoft.visualstudio.com/OS/_workitems/edit/31005780"},
+     {"mlperf_ssd_mobilenet_300_opset10_GPU", "Bug 31005624: mlperf_ssd_mobilenet_300 opset 10 model fails to evaluate in DirectML https://microsoft.visualstudio.com/OS/_workitems/edit/31005624"},
+    }
+);
 
 /*
     model name -> (adapter name regex, skipped test reason)
 */
 std::unordered_map<std::string, std::pair<std::string, std::string>> disabledGpuAdapterTests(
     {
-      {"fp16_inception_v1_opset7", std::make_pair("NVIDIA", "Bug 31144419: Results of fp16_inception_v1 opset7 and opset8 aren't accurate enough on AMD Radeon VII & Intel(R) UHD Graphics 630 & NVIDIA https://microsoft.visualstudio.com/OS/_workitems/edit/31144419")},
-      {"fp16_inception_v1_opset8", std::make_pair("NVIDIA", "Bug 31144419: Results of fp16_inception_v1 opset7 and opset8 aren't accurate enough on AMD Radeon VII & Intel(R) UHD Graphics 630 & NVIDIA https://microsoft.visualstudio.com/OS/_workitems/edit/31144419")},
-      {"candy_opset9", std::make_pair("(Intel\\(R\\) (UHD )?Graphics)|(Adreno)", "Bug 31652854: Results of candy_opset9 aren't accurate enough on Intel Graphics and Qualcomm Adreno 685 https://microsoft.visualstudio.com/OS/_workitems/edit/31652854")},
-    });
+      //{"fp16_inception_v1_opset7_GPU", std::make_pair("NVIDIA", "Bug 31144419: Results of fp16_inception_v1 opset7 and opset8 aren't accurate enough on AMD Radeon VII & Intel(R) UHD Graphics 630 & NVIDIA https://microsoft.visualstudio.com/OS/_workitems/edit/31144419")},
+      //{"fp16_inception_v1_opset8_GPU", std::make_pair("NVIDIA", "Bug 31144419: Results of fp16_inception_v1 opset7 and opset8 aren't accurate enough on AMD Radeon VII & Intel(R) UHD Graphics 630 & NVIDIA https://microsoft.visualstudio.com/OS/_workitems/edit/31144419")},
+    }
+);
 
 /*
-    test name -> sampleTolerance
+    Override the default tolerances for these test cases (can be tailored to only CPU or GPU with suffix).
+    test name -> absolute difference sampleTolerance
 */
-std::unordered_map<std::string, double> gpuSampleTolerancePerTests(
-    {{"fp16_inception_v1", 0.005}});
+std::unordered_map<std::string, double> sampleTolerancePerTests(
+    {
+      {"fp16_inception_v1_opset7_GPU", 0.005},
+      {"fp16_inception_v1_opset8_GPU", 0.005},
+      {"candy_opset9_GPU", 0.00121000}, // Intel(R) UHD Graphics 630 (29.20.100.9020) AP machine has inaccurate GPU results for FNS Candy opset 9 https://microsoft.visualstudio.com/OS/_workitems/edit/30696168/
+      {"fp16_tiny_yolov2_opset8_GPU", 0.109000}, // Intel(R) UHD Graphics 630 (29.20.100.9020) AP machine has inaccurate GPU results for FNS Candy opset 9 https://microsoft.visualstudio.com/OS/_workitems/edit/30696168/
+    }
+);
