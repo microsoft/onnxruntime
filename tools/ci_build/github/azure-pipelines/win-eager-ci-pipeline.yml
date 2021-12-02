@@ -70,8 +70,8 @@ jobs:
       workingDirectory: '$(Build.BinariesDirectory)'
 
   - script: |
-     dir $(Build.BinariesDirectory)\Release
-     dir $(Build.BinariesDirectory)\Release\onnxruntime
+     dir $(Build.BinariesDirectory)\$(BuildConfig)
+     dir $(Build.BinariesDirectory)\$(BuildConfig)\onnxruntime
      python -m onnxruntime.training.ortmodule.torch_cpp_extensions.install
     workingDirectory: '$(Build.BinariesDirectory)\Release'
     displayName: 'Install ORTModule extension' 
