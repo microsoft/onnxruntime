@@ -172,14 +172,6 @@ def _insert_type_control_cpp_code(ort_root: str, cpp_lines: typing.Sequence[str]
         if not inserted:
             raise RuntimeError('Insertion point was not found in {}'.format(target))
 
-    # enable the contents in the op_kernel_type_control_overrides_reduced_types.inc
-    with open(target, 'r+') as file:
-        file_content = file.read().replace(r'#ifndef REDUCED_OP_TYPE_SUPPORT', r'#ifdef REDUCED_OP_TYPE_SUPPORT')
-
-    with open(target, "w") as file_to_write:
-        file_to_write.write(file_content)
-
-
 
 def reduce_ops(config_path: str, enable_type_reduction: bool = False, use_cuda: bool = True):
     '''
