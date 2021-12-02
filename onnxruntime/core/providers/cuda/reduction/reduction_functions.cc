@@ -90,7 +90,7 @@ optional<std::pair<int64_t, int64_t>> GetMinAndMaxContiguousAxes(
 
 ApplicableMatrixReduction get_applicable_matrix_reduction(
     const cudnnReduceTensorOp_t cudnn_reduce_op,
-    const std::vector<int64_t>& dims, const std::vector<int64_t>& original_axes,
+    gsl::span<const int64_t> dims, gsl::span<const int64_t> original_axes,
     int& m_out, int& n_out) {
   if (cudnn_reduce_op != CUDNN_REDUCE_TENSOR_ADD && cudnn_reduce_op != CUDNN_REDUCE_TENSOR_AVG) {
     return ApplicableMatrixReduction::None;
@@ -151,7 +151,7 @@ ApplicableMatrixReduction get_applicable_matrix_reduction(
   // the axis index right after the last flattened into matrix rows
   const int64_t m_end_axis = axes_from_beginning ? max_axis + 1 : min_axis;
 
-  const TensorShape& shape = TensorShape::ReinterpretBaseType(new_dims);
+  const auto shape=TensorShape::FromExistingBuffer(new_dims);
 
   const auto m = shape.SizeToDimension(m_end_axis);
   const auto n = shape.SizeFromDimension(m_end_axis);

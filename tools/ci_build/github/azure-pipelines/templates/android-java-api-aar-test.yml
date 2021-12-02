@@ -51,7 +51,21 @@ jobs:
       mkdir -p app/libs
       cp $(Build.BinariesDirectory)/final-android-aar/onnxruntime-mobile-$(OnnxRuntimeVersion).aar app/libs/onnxruntime-mobile.aar
       $(Build.SourcesDirectory)/java/gradlew --no-daemon clean connectedDebugAndroidTest
-    displayName: Run E2E test for Android
+    displayName: Run E2E test using Emulator
+    workingDirectory: $(Build.BinariesDirectory)
+
+  - script: |
+      set -e -x
+      cd android_test/android
+      appcenter test run espresso \
+        --app "AI-Frameworks/ORT-Mobile-Android" \
+        --devices $(app_center_android_test_devices) \
+        --app-path ./app/build/outputs/apk/debug/app-debug.apk \
+        --test-series "master" \
+        --locale "en_US" \
+        --build-dir ./app/build/outputs/apk/androidTest/debug \
+        --token $(app_center_api_token)
+    displayName: Run E2E tests using App Center
     workingDirectory: $(Build.BinariesDirectory)
 
   - script: |

@@ -20,7 +20,7 @@ DML_TENSOR_DATA_TYPE GetDmlDataTypeFromMlDataTypeNoThrow(MLOperatorTensorDataTyp
     case MLOperatorTensorDataType::String: return DML_TENSOR_DATA_TYPE_UNKNOWN;
     case MLOperatorTensorDataType::Bool: return DML_TENSOR_DATA_TYPE_UINT8;
     case MLOperatorTensorDataType::Float16: return DML_TENSOR_DATA_TYPE_FLOAT16;
-    case MLOperatorTensorDataType::Double: return DML_TENSOR_DATA_TYPE_UNKNOWN;
+    case MLOperatorTensorDataType::Double: return DML_TENSOR_DATA_TYPE_FLOAT64;
     case MLOperatorTensorDataType::UInt32: return DML_TENSOR_DATA_TYPE_UINT32;
     case MLOperatorTensorDataType::UInt64: return DML_TENSOR_DATA_TYPE_UINT64;
     case MLOperatorTensorDataType::Complex64: return DML_TENSOR_DATA_TYPE_UNKNOWN;
@@ -109,7 +109,7 @@ size_t ComputeByteSizeFromTensor(IMLOperatorTensor& tensor)
     ML_CHECK_VALID_ARGUMENT(dimensionCount <= MaximumDimensionCount, "Dimensions are beyond supported count.");
 
     std::array<DimensionType, MaximumDimensionCount> dimensions;
-    THROW_IF_FAILED(tensor.GetShape(dimensionCount, /*out*/ dimensions.data()));
+    ORT_THROW_IF_FAILED(tensor.GetShape(dimensionCount, /*out*/ dimensions.data()));
 
     return ComputeByteSizeFromDimensions(gsl::make_span(dimensions.data(), dimensionCount), tensor.GetTensorDataType());
 }
@@ -119,12 +119,12 @@ uint32_t GetSupportedDeviceDataTypeMask(IDMLDevice* dmlDevice)
     uint32_t deviceTypeMask = 0u;
 
     // Form the bitmask of all supported data types.
-    for (uint32_t i = 0; i <= DML_TENSOR_DATA_TYPE_INT8; ++i)
+    for (uint32_t i = 0; i <= DML_TENSOR_DATA_TYPE_INT64; ++i)
     {
         DML_FEATURE_QUERY_TENSOR_DATA_TYPE_SUPPORT dataTypeQuery = { static_cast<DML_TENSOR_DATA_TYPE>(i) };
         DML_FEATURE_DATA_TENSOR_DATA_TYPE_SUPPORT dataTypeSupport = {};
 
-        THROW_IF_FAILED(dmlDevice->CheckFeatureSupport(
+        ORT_THROW_IF_FAILED(dmlDevice->CheckFeatureSupport(
             DML_FEATURE_TENSOR_DATA_TYPE_SUPPORT,
             sizeof(dataTypeQuery),
             &dataTypeQuery,

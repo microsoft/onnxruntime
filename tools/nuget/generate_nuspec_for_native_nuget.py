@@ -164,7 +164,7 @@ def generate_repo_url(list, repo_url, commit_id):
 
 
 def generate_dependencies(list, package_name, version):
-    dml_dependency = '<dependency id="Microsoft.AI.DirectML" version="1.5.1"/>'
+    dml_dependency = '<dependency id="Microsoft.AI.DirectML" version="1.8.0"/>'
 
     if (package_name == 'Microsoft.AI.MachineLearning'):
         list.append('<dependencies>')
@@ -526,8 +526,11 @@ def generate_files(list, args):
         # Process .net5.0 targets
         if args.target_architecture == 'x64':
             interop_src = 'Microsoft.AI.MachineLearning.Interop'
+            interop_props = 'Microsoft.AI.MachineLearning.props'
             interop_targets = 'Microsoft.AI.MachineLearning.targets'
+            windowsai_net50_props = os.path.join(args.sources_path, 'csharp', 'src', interop_src, interop_props)
             windowsai_net50_targets = os.path.join(args.sources_path, 'csharp', 'src', interop_src, interop_targets)
+            files_list.append('<file src=' + '"' + windowsai_net50_props + '" target="build\\net5.0" />')
             files_list.append('<file src=' + '"' + windowsai_net50_targets + '" target="build\\net5.0" />')
 
     if is_cpu_package or is_cuda_gpu_package or is_dml_package or is_mklml_package:

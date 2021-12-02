@@ -113,7 +113,7 @@ void StridedCopy(concurrency::ThreadPool* thread_pool,
   // Coalesce dimensions
   std::vector<int64_t> dst_strides = dst_strides_in;
   std::vector<int64_t> src_strides = src_strides_in;
-  std::vector<int64_t> copy_shape(copy_shape_in.GetDims());
+  std::vector<int64_t> copy_shape(copy_shape_in.GetDimsAsVector());
 
   CoalesceDimensions({dst_strides, src_strides}, copy_shape);
   ORT_ENFORCE(dst_strides.size() == src_strides.size() &&

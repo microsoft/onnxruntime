@@ -99,8 +99,10 @@ struct TensorProtos;  // RepeatedPtrField
 struct TensorShapeProto_Dimension;
 struct TensorShapeProto_Dimensions;  // RepeatedPtrField
 struct TensorShapeProto;
+struct TypeProto_Optional;
 struct TypeProto_Tensor;
 struct TypeProto_SparseTensor;
+struct TypeProto_Sequence;
 struct TypeProto;
 struct ValueInfoProto;
 struct ValueInfoProtos;  // RepeatedPtrField
@@ -239,7 +241,6 @@ inline OrtStatus* CreateStatus(OrtErrorCode code, _In_ const char* msg) noexcept
 std::unique_ptr<IAllocator> CreateCPUAllocator(const OrtMemoryInfo& memory_info);
 std::unique_ptr<IAllocator> CreateCUDAAllocator(int16_t device_id, const char* name);
 std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const char* name);
-
 std::unique_ptr<IDataTransfer> CreateGPUDataTransfer(void* stream);
 
 std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewer& graph,

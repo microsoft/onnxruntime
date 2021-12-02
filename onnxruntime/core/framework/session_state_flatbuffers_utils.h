@@ -9,7 +9,7 @@
 #include "core/flatbuffers/schema/ort.fbs.h"
 #include "core/graph/basic_types.h"
 
-namespace onnxruntime::experimental::utils {
+namespace onnxruntime::fbs::utils {
 
 /**
  * Gets the key that can be used to look up a fbs::SubGraphSessionState in a fbs::SessionState.
@@ -65,7 +65,7 @@ class FbsSessionStateViewer {
 
   /**
    * Retrieves the subgraph session state from the fbs::SessionState instance.
-   * 
+   *
    * @param node_idx The index of the node containing the subgraph.
    * @param attr_name The name of the attribute containing the subgraph.
    * @param[out] fbs_subgraph_session_state The subgraph session state. Non-null if successful.
@@ -78,4 +78,4 @@ class FbsSessionStateViewer {
   const fbs::SessionState& fbs_session_state_;
 };
 
-}  // namespace onnxruntime::experimental::utils
+}  // namespace onnxruntime::fbs::utils

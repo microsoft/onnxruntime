@@ -41,11 +41,11 @@ TEST(InstanceNormalizationOpTest, InstanceNorm) {
                                    -0.14644464F, -0.82262872F, -0.66852817F, 1.63760153F,
                                    -1.65898662F, 0.27618144F, 0.64840618F, 0.734399F};
   test.AddOutput<float>("Y", input_dims, expected_output);
-#if defined(OPENVINO_CONFIG_MYRIAD) //Disabling this test on MYRIADX temporarily due to a bug
+#if defined(OPENVINO_CONFIG_MYRIAD)  //Disabling this test on MYRIADX temporarily due to a bug
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
 #else
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
-#endif  
+#endif
 }
 
 TEST(InstanceNormalizationOpTest, InstanceNormBatch1) {
@@ -58,12 +58,10 @@ TEST(InstanceNormalizationOpTest, InstanceNormBatch1) {
   vector<int64_t> input_dims = {1, 3, 4};
   test.AddInput<float>("input", input_dims, input);
 
-  // vector<float> scale = {2.1F, 0.1F, 1.F};
   vector<float> scale = {1.0F, 1.0F, 1.F};
   vector<int64_t> scale_dims = {3};
   test.AddInput<float>("scale", scale_dims, scale);
 
-  // vector<float> B = {2.3F, 1.5F, 0.F};
   vector<float> B = {0.0F, 0.0F, 0.F};
   vector<int64_t> B_dims = {3};
   test.AddInput<float>("B", B_dims, B);
@@ -72,13 +70,150 @@ TEST(InstanceNormalizationOpTest, InstanceNormBatch1) {
                                    1.46688162F, -0.98600774F, -0.79911913F, 0.31824524F,
                                    0.57370438F, 0.42193634F, 0.6525492F, -1.64818992F};
   test.AddOutput<float>("Y", input_dims, expected_output);
-#if defined(OPENVINO_CONFIG_MYRIAD) //Disabling this test on MYRIADX temporarily due to a bug
+
+#if defined(OPENVINO_CONFIG_MYRIAD)  //Disabling this test on MYRIADX temporarily due to a bug
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
 #else
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
-#endif  
+#endif
 }
 
+TEST(InstanceNormalizationOpTest, InstanceNormBatch2) {
+  OpTester test("InstanceNormalization");
+  test.AddAttribute("epsilon", 0.3F);
+
+  vector<float> input = {3.1513367F, 9.283596F, 1.4546119F, 5.4617004F,
+                         8.519701F, 1.2382338F, 1.7930176F, 5.1099434F,
+                         7.9195533F, 7.638727F, 8.065445F, 3.8082376F,
+
+                         3.1513367F, 9.283596F, 1.4546119F, 5.4617004F,
+                         8.519701F, 1.2382338F, 1.7930176F, 5.1099434F,
+                         7.9195533F, 7.638727F, 8.065445F, 3.8082376F};
+  vector<int64_t> input_dims = {2, 3, 4};
+  test.AddInput<float>("input", input_dims, input);
+
+  vector<float> scale = {1.0F, 1.0F, 1.F};
+  vector<int64_t> scale_dims = {3};
+  test.AddInput<float>("scale", scale_dims, scale);
+
+  vector<float> B = {0.0F, 0.0F, 0.F};
+  vector<int64_t> B_dims = {3};
+  test.AddInput<float>("B", B_dims, B);
+
+  vector<float> expected_output = {-0.56495477F, 1.48930046F, -1.13334329F, 0.20899761F,
+                                   1.46688162F, -0.98600774F, -0.79911913F, 0.31824524F,
+                                   0.57370438F, 0.42193634F, 0.6525492F, -1.64818992F,
+
+                                   -0.56495477F, 1.48930046F, -1.13334329F, 0.20899761F,
+                                   1.46688162F, -0.98600774F, -0.79911913F, 0.31824524F,
+                                   0.57370438F, 0.42193634F, 0.6525492F, -1.64818992F};
+
+  test.AddOutput<float>("Y", input_dims, expected_output);
+#if defined(OPENVINO_CONFIG_MYRIAD)  //Disabling this test on MYRIADX temporarily due to a bug
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
+#else
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+#endif
+}
+
+// Only CUDA kernel has float 16 support
+#ifdef USE_CUDA
+
+TEST(InstanceNormalizationOpTest, InstanceNormBatch1_fp16) {
+  OpTester test("InstanceNormalization");
+  test.AddAttribute("epsilon", 0.3F);
+
+  vector<float> input = {3.1513367F, 9.283596F, 1.4546119F, 5.4617004F,
+                         8.519701F, 1.2382338F, 1.7930176F, 5.1099434F,
+                         7.9195533F, 7.638727F, 8.065445F, 3.8082376F};
+  vector<int64_t> input_dims = {1, 3, 4};
+
+  vector<float> scale = {1.0F, 1.0F, 1.F};
+  vector<int64_t> scale_dims = {3};
+
+  vector<float> B = {0.0F, 0.0F, 0.F};
+  vector<int64_t> B_dims = {3};
+
+  vector<float> expected_output = {-0.56495477F, 1.48930046F, -1.13334329F, 0.20899761F,
+                                   1.46688162F, -0.98600774F, -0.79911913F, 0.31824524F,
+                                   0.57370438F, 0.42193634F, 0.6525492F, -1.64818992F};
+
+  constexpr size_t input_size = 1 * 3 * 4;
+
+  vector<MLFloat16> input_fp16(input_size);
+  vector<MLFloat16> scale_fp16(3);
+  vector<MLFloat16> B_fp16(3);
+  vector<MLFloat16> expected_output_fp16(input_size);
+
+  ConvertFloatToMLFloat16(input.data(), input_fp16.data(), input_size);
+  ConvertFloatToMLFloat16(scale.data(), scale_fp16.data(), 3);
+  ConvertFloatToMLFloat16(B.data(), B_fp16.data(), 3);
+  ConvertFloatToMLFloat16(expected_output.data(), expected_output_fp16.data(), input_size);
+
+  test.AddInput<MLFloat16>("X", input_dims, input_fp16);
+  test.AddInput<MLFloat16>("scale", {3}, scale_fp16);
+  test.AddInput<MLFloat16>("B", {3}, B_fp16);
+  test.AddOutput<MLFloat16>("Y", input_dims, expected_output_fp16);
+
+#if defined(OPENVINO_CONFIG_MYRIAD)  //Disabling this test on MYRIADX temporarily due to a bug
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
+#else
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+#endif
+}
+
+TEST(InstanceNormalizationOpTest, InstanceNormBatch2_fp16) {
+  OpTester test("InstanceNormalization");
+  test.AddAttribute("epsilon", 0.3F);
+
+  vector<float> input = {3.1513367F, 9.283596F, 1.4546119F, 5.4617004F,
+                         8.519701F, 1.2382338F, 1.7930176F, 5.1099434F,
+                         7.9195533F, 7.638727F, 8.065445F, 3.8082376F,
+
+                         3.1513367F, 9.283596F, 1.4546119F, 5.4617004F,
+                         8.519701F, 1.2382338F, 1.7930176F, 5.1099434F,
+                         7.9195533F, 7.638727F, 8.065445F, 3.8082376F};
+  vector<int64_t> input_dims = {2, 3, 4};
+
+  vector<float> scale = {1.0F, 1.0F, 1.F};
+  vector<int64_t> scale_dims = {3};
+
+  vector<float> B = {0.0F, 0.0F, 0.F};
+  vector<int64_t> B_dims = {3};
+
+  vector<float> expected_output = {-0.56495477F, 1.48930046F, -1.13334329F, 0.20899761F,
+                                   1.46688162F, -0.98600774F, -0.79911913F, 0.31824524F,
+                                   0.57370438F, 0.42193634F, 0.6525492F, -1.64818992F,
+
+                                   -0.56495477F, 1.48930046F, -1.13334329F, 0.20899761F,
+                                   1.46688162F, -0.98600774F, -0.79911913F, 0.31824524F,
+                                   0.57370438F, 0.42193634F, 0.6525492F, -1.64818992F};
+
+  constexpr size_t input_size = 2 * 3 * 4;
+
+  vector<MLFloat16> input_fp16(input_size);
+  vector<MLFloat16> scale_fp16(3);
+  vector<MLFloat16> B_fp16(3);
+  vector<MLFloat16> expected_output_fp16(input_size);
+
+  ConvertFloatToMLFloat16(input.data(), input_fp16.data(), input_size);
+  ConvertFloatToMLFloat16(scale.data(), scale_fp16.data(), 3);
+  ConvertFloatToMLFloat16(B.data(), B_fp16.data(), 3);
+  ConvertFloatToMLFloat16(expected_output.data(), expected_output_fp16.data(), input_size);
+
+  test.AddInput<MLFloat16>("X", input_dims, input_fp16);
+  test.AddInput<MLFloat16>("scale", {3}, scale_fp16);
+  test.AddInput<MLFloat16>("B", {3}, B_fp16);
+  test.AddOutput<MLFloat16>("Y", input_dims, expected_output_fp16);
+
+#if defined(OPENVINO_CONFIG_MYRIAD)  //Disabling this test on MYRIADX temporarily due to a bug
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
+#else
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+#endif
+}
+
+#endif
 TEST(InstanceNormalizationOpTest, InstanceNorm_2) {
   OpTester test("InstanceNormalization");
   test.AddAttribute("epsilon", 0.3F);
@@ -119,7 +254,7 @@ TEST(InstanceNormalizationOpTest, InstanceNorm_2) {
                                    1.88028F, 2.353724F, -0.25549555F,
                                    2.0837004F, 2.8466992F, 2.0773761F};
   test.AddOutput<float>("Y", input_dims, expected_output);
-#if defined(OPENVINO_CONFIG_MYRIAD) //Disabling this test on MYRIADX temporarily due to a bug
+#if defined(OPENVINO_CONFIG_MYRIAD)  //Disabling this test on MYRIADX temporarily due to a bug
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
 #else
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});

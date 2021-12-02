@@ -120,6 +120,13 @@ class OrtEPTests(unittest.TestCase):
         ort_device = torch_ort.device(1)
     assert 'My EP provider created, with device id: 0, some_option: val' in out.capturedtext
 
+  #disable the print test for now as we need to merge a PR to pytorch first.
+  #def test_print(self):
+  #  x = torch.ones(1, 2)
+  #  ort_x = x.to('ort')
+  #  with OutputGrabber() as out:
+  #      print(ort_x)
+  #  assert "tensor([[1., 1.]], device='ort:0')" in out.capturedtext
 
 if __name__ == '__main__':
   unittest.main()
