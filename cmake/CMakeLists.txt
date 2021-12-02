@@ -962,7 +962,7 @@ if (WIN32)
         # issued by thrust nonstandard extension used: nameless struct/union
         list(APPEND ORT_WARNING_FLAGS "/wd4201")
         # warning C4800: Implicit conversion from 'X' to bool. Possible information loss
-        if (onnxruntime_USE_OPENVINO)
+        if (onnxruntime_USE_OPENVINO OR onnxruntime_ENABLE_EAGER_MODE)
            list(APPEND ORT_WARNING_FLAGS "/wd4800")
         else()
            list(APPEND ORT_WARNING_FLAGS "/w34800")
