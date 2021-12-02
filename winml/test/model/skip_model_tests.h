@@ -132,8 +132,7 @@ std::unordered_map<std::string, std::string> disabledTests(
 */
 std::unordered_map<std::string, std::pair<std::string, std::string>> disabledGpuAdapterTests(
     {
-      //{"fp16_inception_v1_opset7_GPU", std::make_pair("NVIDIA", "Bug 31144419: Results of fp16_inception_v1 opset7 and opset8 aren't accurate enough on AMD Radeon VII & Intel(R) UHD Graphics 630 & NVIDIA https://microsoft.visualstudio.com/OS/_workitems/edit/31144419")},
-      //{"fp16_inception_v1_opset8_GPU", std::make_pair("NVIDIA", "Bug 31144419: Results of fp16_inception_v1 opset7 and opset8 aren't accurate enough on AMD Radeon VII & Intel(R) UHD Graphics 630 & NVIDIA https://microsoft.visualstudio.com/OS/_workitems/edit/31144419")},
+      // e.g. {"fp16_inception_v1_opset7_GPU", std::make_pair("NVIDIA", "Bug 31144419: Results of fp16_inception_v1 opset7 and opset8 aren't accurate enough on AMD Radeon VII & Intel(R) UHD Graphics 630 & NVIDIA https://microsoft.visualstudio.com/OS/_workitems/edit/31144419")},
     }
 );
 
