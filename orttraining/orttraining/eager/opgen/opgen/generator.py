@@ -297,6 +297,10 @@ class ORTGen:
       writer.write(f'std::vector<OrtValue> {onnx_op.outputs}')
       writer.writeline(f'({onnx_op.outputs.count});')
 
+      if in_place_param:
+        assert(onnx_op.outputs.count == 1)
+        writer.writeline(f'{onnx_op.outputs}[0] = ort_input_{onnx_op.inputs[0]};')
+
       # Perform the invocation
       writer.writeline()
       if onnx_op_index == 0:
@@ -353,7 +357,6 @@ class ORTGen:
       raise Exception(f'"{cpp_func.torch_func.torch_schema}" ' +
         'has alias info on its return type but no associated parameter')
 
-    writer.writeline(f'copy(invoker, {return_outputs}[0], ort_input_{in_place_param.identifier.value});')
     writer.writeline(f'return {in_place_param.identifier.value};')
 
   def _write_function_registrations(
