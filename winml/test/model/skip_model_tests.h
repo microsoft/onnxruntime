@@ -133,6 +133,7 @@ std::unordered_map<std::string, std::string> disabledTests(
 std::unordered_map<std::string, std::pair<std::string, std::string>> disabledGpuAdapterTests(
     {
       // e.g. {"fp16_inception_v1_opset7_GPU", std::make_pair("NVIDIA", "Bug 31144419: Results of fp16_inception_v1 opset7 and opset8 aren't accurate enough on AMD Radeon VII & Intel(R) UHD Graphics 630 & NVIDIA https://microsoft.visualstudio.com/OS/_workitems/edit/31144419")},
+      //      {"candy_opset9", std::make_pair("(Intel\\(R\\) (UHD )?Graphics)|(Adreno)", "Bug 31652854: Results of candy_opset9 aren't accurate enough on Intel Graphics and Qualcomm Adreno 685 https://microsoft.visualstudio.com/OS/_workitems/edit/31652854")},
     }
 );
 
