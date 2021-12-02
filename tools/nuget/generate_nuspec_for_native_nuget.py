@@ -453,6 +453,7 @@ def generate_files(list, args):
                           runtimes_target + args.target_architecture + '\\native" />')
 
     if args.execution_provider == "openvino":
+        openvino_path = get_env_var('INTEL_OPENVINO_DIR')
         files_list.append('<file src=' + '"' + os.path.join(args.native_build_path,
                           nuget_dependencies['providers_shared_lib']) +
                           runtimes_target + args.target_architecture + '\\native" />')
@@ -460,7 +461,22 @@ def generate_files(list, args):
                           nuget_dependencies['openvino_ep_shared_lib']) +
                           runtimes_target + args.target_architecture + '\\native" />')
 
-    if args.execution_provider == "cuda" or is_cuda_gpu_package and not is_ado_packaging_build:
+        lib_list_path = os.path.join(openvino_path, 'deployment_tools\\inference_engine\\lib\\intel64\\Release\\')
+        for l_element in lib_list_path:
+           files_list.append('<file src=' + '"' + os.path.join(lib_list_path, l_element) + runtimes_target + args.target_architecture + '\\native" />')
+        dll_list_path = os.path.join(openvino_path, 'deployment_tools\\inference_engine\\bin\\intel64\\Release\\')
+        for dll_element in dll_list_path
+           if dll_element.endswith('dll')
+              files_list.append('<file src=' + '"' + os.path.join(dll_list_path, dll_element) + runtimes_target + args.target_architecture + '\\native" />')
+        
+        files_list.append('<file src=' + '"' + os.path.join(dll_list_path, 'plugins.xml') +
+                          runtimes_target + args.target_architecture + '\\native" />')
+        files_list.append('<file src=' + '"' + os.path.join(openvino_path, 'deployment_tools\\ngraph\\lib\\ngraph.dll') +
+                          runtimes_target + args.target_architecture + '\\native" />')
+        files_list.append('<file src=' + '"' + os.path.join(openvino_path, 'deployment_tools\\ngraph\\lib\\onnx_importer.dll') +
+                          runtimes_target + args.target_architecture + '\\native" />')
+        files_list.append('<file src=' + '"' + os.path.join(openvino_path, 'deployment_tools\\inference_engine\\external\\tbb\\bin\\tbb.dll') +
+                          runtimes_target + args.target_architecture + '\\native" />')
         files_list.append('<file src=' + '"' + os.path.join(args.native_build_path,
                           nuget_dependencies['providers_shared_lib']) +
                           runtimes_target + args.target_architecture + '\\native" />')
@@ -468,11 +484,12 @@ def generate_files(list, args):
                           nuget_dependencies['cuda_ep_shared_lib']) +
                           runtimes_target + args.target_architecture + '\\native" />')
 
-    # process all other library dependencies
-    if is_cpu_package or is_cuda_gpu_package or is_dml_package or is_mklml_package:
-        # Process dnnl dependency
-        if os.path.exists(os.path.join(args.native_build_path, nuget_dependencies['dnnl'])):
-            files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, nuget_dependencies['dnnl']) +
+    if args.execution_provider == "cuda" or is_cuda_gpu_package and not is_ado_packaging_build:
+        # process all other library dependencies
+        if is_cpu_package or is_cuda_gpu_package or is_dml_package or is_mklml_package:
+            # Process dnnl dependency
+            if os.path.exists(os.path.join(args.native_build_path, nuget_dependencies['dnnl'])):
+                files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, nuget_dependencies['dnnl']) +
                               runtimes + ' />')
 
         # Process mklml dependency
