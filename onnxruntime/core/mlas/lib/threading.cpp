@@ -33,7 +33,7 @@ MlasExecuteThreaded(
         return;
     }
 
-#if defined(MLAS_NO_ONNXRUNTIME_THREADPOOL)
+#if defined(BUILD_MLAS_NO_ONNXRUNTIME)
     MLAS_UNREFERENCED_PARAMETER(ThreadPool);
 
     //
@@ -75,7 +75,7 @@ MlasTrySimpleParallel(
         return;
     }
 
-#if defined(MLAS_NO_ONNXRUNTIME_THREADPOOL)
+#if defined(BUILD_MLAS_NO_ONNXRUNTIME)
     MLAS_UNREFERENCED_PARAMETER(ThreadPool);
 
     //

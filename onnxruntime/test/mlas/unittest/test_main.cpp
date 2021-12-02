@@ -6,7 +6,7 @@
 #include <list>
 #include <algorithm>
 
-#if !defined(MLAS_NO_ONNXRUNTIME_THREADPOOL)
+#if !defined(BUILD_MLAS_NO_ONNXRUNTIME)
 
 MLAS_THREADPOOL* GetMlasThreadPool(void) {
   static MLAS_THREADPOOL* threadpool = new onnxruntime::concurrency::ThreadPool(

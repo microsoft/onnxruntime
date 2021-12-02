@@ -24,8 +24,7 @@ Abstract:
 // Stack frame layout for the symmetric convolution kernel.
 // d8-d15, x19-x30 need to be preserved if used
 //
-#define     ConvSymFrame_SavedNeonRegisters   (8 * 8)
-#define     ConvSymFrame_SavedRegisters           ConvSymFrame_SavedNeonRegisters
+#define     ConvSymFrame_SavedRegisters       (4 * 8)
 #define     ConvSymFrame_PostProcessParams    0 + ConvSymFrame_SavedRegisters
 #define     ConvSymFrame_KernelFlags          8 + ConvSymFrame_SavedRegisters
 
@@ -77,7 +76,7 @@ Arguments:
 
     PostProcessParams (x8) - Points to the post process parameter block.
 
-    KernelFlags - (w12) Additional flags controlling the operation.
+    KernelFlags - (w10) Additional flags controlling the operation.
 
 Return Value:
 
@@ -86,24 +85,11 @@ Return Value:
 --*/
         NESTED_ENTRY MlasConvSymKernelNeonDot
 
-        PROLOG_SAVE_REG_PAIR  d8,d9,#-64!
+        PROLOG_SAVE_REG_PAIR  x19,x20,#-ConvSymFrame_SavedRegisters!
         PROLOG_NOP    ldr     x8,[sp,#ConvSymFrame_PostProcessParams]
-        PROLOG_NOP    ldr     w12,[sp,#ConvSymFrame_KernelFlags]
-        PROLOG_SAVE_REG_PAIR  d10,d11,#16
-        PROLOG_SAVE_REG_PAIR  d12,d13,#32
-        PROLOG_SAVE_REG_PAIR  x19,x20,#48
+        PROLOG_NOP    ldr     w10,[sp,#ConvSymFrame_KernelFlags]
+        PROLOG_SAVE_REG       d12,#16
 
-// void xnn_qs8_igemm_minmax_rndnu_ukernel_4x16c4__aarch64_neondot_ld64(
-//     size_t mr,                 x7
-//     size_t nc,                 x6
-//     size_t kc,                 x4 / x7
-//     size_t ks,                 x3 / x9
-//     const int8_t**restrict a,  x0
-//     const int8_t* restrict w,  x1
-//     int8_t* restrict c,        x2
-//     size_t cm_stride,          x5
-
-        // compute C pointers: x2, x16, x17, x5
         cmp     x7,2                    // OutputCount < 2 ?
         add     x16,x2,x5               // x16 -> C1
         lsl     x3,x3,#3                // KernelSize * sizeof(int8_t*)
@@ -138,42 +124,42 @@ OutputChannelLoop
         mov     x9,x3                   // restore KernelSize * sizeof(int8_t*)
 
 KernelSizeLoop
-        tst     w12,#MLAS_CONV_SYM_FLAG_INPUT_DIRECT
+        tst     w10,#MLAS_CONV_SYM_FLAG_INPUT_DIRECT
         beq     InputIndirection
 
 InputDirect
         cmp     x16,x2
-        mov     x13,x0                  // x13 -> A0
-        add     x14,x0,x20              // x14 -> A1 = A0 + input channels
-        csel    x14,x0,x14,eq
+        mov     x12,x0                  // x12 -> A0
+        add     x13,x0,x20              // x13 -> A1 = A0 + input channels
+        csel    x13,x0,x13,eq
         cmp     x17,x16
-        add     x15,x0,x20,lsl#1        // x15 -> A2
-        csel    x15,x14,x15,eq
+        add     x14,x0,x20,lsl#1        // x14 -> A2
+        csel    x14,x13,x14,eq
         cmp     x5,x17
-        add     x10,x14,x20,lsl#1       // x10 -> A3
-        csel    x10,x15,x10,eq
+        add     x15,x13,x20,lsl#1       // x15 -> A3
+        csel    x15,x14,x15,eq
         b       FinishLoadAPtr
 
 InputIndirection
-        ldr     x13,[x0]                // x13 -> A0
+        ldr     x12,[x0]                // x12 -> A0
         cmp     x16,x2
         b.eq    SkipLoadA1              // C1==C0 -> A0=A1=A2=A3
         cmp     x17,x16
-        lsl     x15,x3,#1
-        ldr     x14,[x0,x3]             // x14 -> A1
+        lsl     x14,x3,#1
+        ldr     x13,[x0,x3]             // x13 -> A1
         b.eq    SkipLoadA2              // C2==C1 -> A1=A2=A3
         cmp     x5,x17
-        add     x10,x3,x3,lsl#1
-        ldr     x15,[x0,x15]            // x15 -> A2
+        add     x15,x3,x3,lsl#1
+        ldr     x14,[x0,x14]            // x14 -> A2
         b.eq    SkipLoadA3              // C3==C2 -> A2=A3
-        ldr     x10,[x0,x10]            // x10 -> A3
+        ldr     x15,[x0,x15]            // x15 -> A3
         b       FinishLoadAPtr
 SkipLoadA1
-        mov     x14,x13
+        mov     x13,x12
 SkipLoadA2
-        mov     x15,x14
+        mov     x14,x13
 SkipLoadA3
-        mov     x10,x15
+        mov     x15,x14
 FinishLoadAPtr
         subs    x7,x4,16                // Need 16 input channels for main loop
         add     x0,x0,8                 // indirect A advance to next pointer, prepare for kernel size loop
@@ -183,22 +169,22 @@ FinishLoadAPtr
 //                                            B (x1) -> 4x16
 //                        ----------------------------------------------------------------------------
 //                        |v4.b[0]..v4.b[12] v5.b[0]..v5.b[12]  v6.b[0]..v6.b[12]   v7.b[0]..v7.b[12]|
-//                        |  ...      ...     ...       ...       ...       ...       ...     ...            |
+//                        |  ...      ...     ...       ...       ...       ...       ...     ...    |
 //                        |v4.b[3]..v4.b[15] v5.b[3]..v5.b[15]  v6.b[3]..v6.b[15]   v7.b[3]..v7.b[15]|
 //            A 4x4       ----------------------------------------------------------------------------
 //     ------------------ ----------------------------------------------------------------------------
-// x13 |v0.b[0]..v0.b[3]| |v16.s[0]_v16.s[3] v20.s[0]_v20.s[3]  v24.s[0]_v24.s[3]   v28.s[0]_v28.s[3]|  x2
-// x14 |v1.b[0]..v1.b[3]| |v17.s[0]_v17.s[3] v21.s[0]_v21.s[3]  v25.s[0]_v25.s[3]   v29.s[0]_v29.s[3]| x16
-// x15 |v2.b[0]..v2.b[3]| |v18.s[0]_v18.s[3] v22.s[0]_v23.s[3]  v26.s[0]_v26.s[3]   v30.s[0]_v31.s[3]| x17
-// x10 |v3.b[0]..v3.b[3]| |v19.s[0]_v19.s[3] v23.s[0]_v23.s[3]  v27.s[0]_v27.s[3]   v31.s[0]_v31.s[3]|  x5
+// x12 |v0.b[0]..v0.b[3]| |v16.s[0]_v16.s[3] v20.s[0]_v20.s[3]  v24.s[0]_v24.s[3]   v28.s[0]_v28.s[3]|  x2
+// x13 |v1.b[0]..v1.b[3]| |v17.s[0]_v17.s[3] v21.s[0]_v21.s[3]  v25.s[0]_v25.s[3]   v29.s[0]_v29.s[3]| x16
+// x14 |v2.b[0]..v2.b[3]| |v18.s[0]_v18.s[3] v22.s[0]_v23.s[3]  v26.s[0]_v26.s[3]   v30.s[0]_v31.s[3]| x17
+// x15 |v3.b[0]..v3.b[3]| |v19.s[0]_v19.s[3] v23.s[0]_v23.s[3]  v27.s[0]_v27.s[3]   v31.s[0]_v31.s[3]|  x5
 //     ------------------ ----------------------------------------------------------------------------
 
 InputChannelLoop
-        ldr     q0,[x13],16
+        ldr     q0,[x12],16
         ldr     q4,[x1],16
-        ldr     q1,[x14],16
-        ldr     q2,[x15],16
-        ldr     q3,[x10],16
+        ldr     q1,[x13],16
+        ldr     q2,[x14],16
+        ldr     q3,[x15],16
         eor     v0.16b,v0.16b,v12.16b
         ldr     q5,[x1],16
         eor     v1.16b,v1.16b,v12.16b
@@ -279,14 +265,14 @@ InputChannelLoop
         sdot    v31.4s,v7.16b,v3.4b[3]
         b.hs    InputChannelLoop
 
-        TST     x7,15
-        B.NE    InChannels8             // 4 ~ 12 InputChannels
+        tst     x7,15
+        b.ne    InChannels8             // 4 ~ 12 InputChannels
 
         subs    x9,x9,8                 // KernelSize-=1
         b.hi    KernelSizeLoop
 
 Requantize
-        tst     w12,#MLAS_CONV_SYM_FLAG_PER_CHANNEL_SCALE
+        tst     w10,#MLAS_CONV_SYM_FLAG_PER_CHANNEL_SCALE
         ldr     w13,[x8,#ConvSymPostProcessParams_ZeroPoint]
         beq     BroadcastScaleValue
         ldp     q0,q1,[x19],32          // load scale vector
@@ -349,40 +335,40 @@ AccumulatorsToFloat
         fcvtns  v30.4s,v30.4s
         fcvtns  v31.4s,v31.4s
 
-        SQXTN   v16.4h,v16.4s
-        SQXTN   v17.4h,v17.4s
-        SQXTN   v18.4h,v18.4s
-        SQXTN   v19.4h,v19.4s
-        SQXTN   v24.4h,v24.4s
-        SQXTN   v25.4h,v25.4s
-        SQXTN   v26.4h,v26.4s
-        SQXTN   v27.4h,v27.4s
+        sqxtn   v16.4h,v16.4s
+        sqxtn   v17.4h,v17.4s
+        sqxtn   v18.4h,v18.4s
+        sqxtn   v19.4h,v19.4s
+        sqxtn   v24.4h,v24.4s
+        sqxtn   v25.4h,v25.4s
+        sqxtn   v26.4h,v26.4s
+        sqxtn   v27.4h,v27.4s
         dup     v4.8h,w13               // zero point
-        SQXTN2  v16.8h,v20.4s
-        SQXTN2  v17.8h,v21.4s
-        SQXTN2  v18.8h,v22.4s
-        SQXTN2  v19.8h,v23.4s
-        SQXTN2  v24.8h,v28.4s
-        SQXTN2  v25.8h,v29.4s
-        SQXTN2  v26.8h,v30.4s
-        SQXTN2  v27.8h,v31.4s
-        SQADD   v16.8h,v16.8h,v4.8h
-        SQADD   v17.8h,v17.8h,v4.8h
-        SQADD   v18.8h,v18.8h,v4.8h
-        SQADD   v19.8h,v19.8h,v4.8h
-        SQADD   v24.8h,v24.8h,v4.8h
-        SQADD   v25.8h,v25.8h,v4.8h
-        SQADD   v26.8h,v26.8h,v4.8h
-        SQADD   v27.8h,v27.8h,v4.8h
-        SQXTUN   v0.8b,v16.8h
-        SQXTUN   v1.8b,v17.8h
-        SQXTUN   v2.8b,v18.8h
-        SQXTUN   v3.8b,v19.8h
-        SQXTUN2  v0.16b,v24.8h
-        SQXTUN2  v1.16b,v25.8h
+        sqxtn2  v16.8h,v20.4s
+        sqxtn2  v17.8h,v21.4s
+        sqxtn2  v18.8h,v22.4s
+        sqxtn2  v19.8h,v23.4s
+        sqxtn2  v24.8h,v28.4s
+        sqxtn2  v25.8h,v29.4s
+        sqxtn2  v26.8h,v30.4s
+        sqxtn2  v27.8h,v31.4s
+        sqadd   v16.8h,v16.8h,v4.8h
+        sqadd   v17.8h,v17.8h,v4.8h
+        sqadd   v18.8h,v18.8h,v4.8h
+        sqadd   v19.8h,v19.8h,v4.8h
+        sqadd   v24.8h,v24.8h,v4.8h
+        sqadd   v25.8h,v25.8h,v4.8h
+        sqadd   v26.8h,v26.8h,v4.8h
+        sqadd   v27.8h,v27.8h,v4.8h
+        sqxtun  v0.8b,v16.8h
+        sqxtun  v1.8b,v17.8h
+        sqxtun  v2.8b,v18.8h
+        sqxtun  v3.8b,v19.8h
+        sqxtun2 v0.16b,v24.8h
+        sqxtun2 v1.16b,v25.8h
         subs    x6,x6,16            // processed 16 output channels
-        SQXTUN2  v2.16b,v26.8h
-        SQXTUN2  v3.16b,v27.8h
+        sqxtun2 v2.16b,v26.8h
+        sqxtun2 v3.16b,v27.8h
         b.lo    PartialStore
 
         st1     {v3.16b},[x5],16    // Store full 4 x 16
@@ -393,89 +379,87 @@ AccumulatorsToFloat
         b.hi    OutputChannelLoop
 
 ExitKernel
-        EPILOG_RESTORE_REG_PAIR  x19,x20,#48
-        EPILOG_RESTORE_REG_PAIR  d12,d13,#32
-        EPILOG_RESTORE_REG_PAIR  d10,d11,#16
-        EPILOG_RESTORE_REG_PAIR  d8,d9,#64!
+        EPILOG_RESTORE_REG       d12,#16
+        EPILOG_RESTORE_REG_PAIR  x19,x20,#ConvSymFrame_SavedRegisters!
         EPILOG_RETURN
 
 InChannels8
-        TBZ     x7,3,InChannels4
-        LDR     d0,[x13],8
-        LDR     q4,[x1],16
-        LDR     d1,[x14],8
-        LDR     d2,[x15],8
-        LDR     d3,[x10],8
+        tbz     x7,3,InChannels4
+        ldr     d0,[x12],8
+        ldr     q4,[x1],16
+        ldr     d1,[x13],8
+        ldr     d2,[x14],8
+        ldr     d3,[x15],8
         eor     v0.8b,v0.8b,v12.8b
-        LDR     q5,[x1],16
+        ldr     q5,[x1],16
         eor     v1.8b,v1.8b,v12.8b
-        SDOT    v16.4s, v4.16b,  v0.4b[0]
-        SDOT    v17.4s, v4.16b,  v1.4b[0]
+        sdot    v16.4s, v4.16b,  v0.4b[0]
+        sdot    v17.4s, v4.16b,  v1.4b[0]
         eor     v2.8b,v2.8b,v12.8b
-        LDP     q6, q7, [x1], 32
+        ldp     q6, q7, [x1], 32
         eor     v3.8b,v3.8b,v12.8b
-        SDOT    v18.4s, v4.16b,  v2.4b[0]
-        SDOT    v19.4s, v4.16b,  v3.4b[0]
-        SDOT    v20.4s, v5.16b,  v0.4b[0]
-        SDOT    v21.4s, v5.16b,  v1.4b[0]
-        SDOT    v22.4s, v5.16b,  v2.4b[0]
-        SDOT    v23.4s, v5.16b,  v3.4b[0]
-        SDOT    v24.4s, v6.16b, v0.4b[0]
-        SDOT    v25.4s, v6.16b, v1.4b[0]
-        LDP     q4, q5, [x1], 32
-        SDOT    v26.4s, v6.16b, v2.4b[0]
-        SDOT    v27.4s, v6.16b, v3.4b[0]
-        SDOT    v28.4s, v7.16b, v0.4b[0]
-        SDOT    v29.4s, v7.16b, v1.4b[0]
-        SDOT    v30.4s, v7.16b, v2.4b[0]
-        SDOT    v31.4s, v7.16b, v3.4b[0]
-        SDOT    v16.4s, v4.16b,  v0.4b[1]
-        SDOT    v17.4s, v4.16b,  v1.4b[1]
-        LDP     q6, q7, [x1], 32
-        SDOT    v18.4s, v4.16b,  v2.4b[1]
-        SDOT    v19.4s, v4.16b,  v3.4b[1]
-        SDOT    v20.4s, v5.16b,  v0.4b[1]
-        SDOT    v21.4s, v5.16b,  v1.4b[1]
-        SDOT    v22.4s, v5.16b,  v2.4b[1]
-        SDOT    v23.4s, v5.16b,  v3.4b[1]
-        SDOT    v24.4s, v6.16b,  v0.4b[1]
-        SDOT    v25.4s, v6.16b,  v1.4b[1]
-        SDOT    v26.4s, v6.16b,  v2.4b[1]
-        SDOT    v27.4s, v6.16b,  v3.4b[1]
-        SDOT    v28.4s, v7.16b,  v0.4b[1]
-        SDOT    v29.4s, v7.16b,  v1.4b[1]
-        SDOT    v30.4s, v7.16b,  v2.4b[1]
-        SDOT    v31.4s, v7.16b,  v3.4b[1]
-        TBZ     x7,2,SkipInCh4
+        sdot    v18.4s, v4.16b,  v2.4b[0]
+        sdot    v19.4s, v4.16b,  v3.4b[0]
+        sdot    v20.4s, v5.16b,  v0.4b[0]
+        sdot    v21.4s, v5.16b,  v1.4b[0]
+        sdot    v22.4s, v5.16b,  v2.4b[0]
+        sdot    v23.4s, v5.16b,  v3.4b[0]
+        sdot    v24.4s, v6.16b, v0.4b[0]
+        sdot    v25.4s, v6.16b, v1.4b[0]
+        ldp     q4, q5, [x1], 32
+        sdot    v26.4s, v6.16b, v2.4b[0]
+        sdot    v27.4s, v6.16b, v3.4b[0]
+        sdot    v28.4s, v7.16b, v0.4b[0]
+        sdot    v29.4s, v7.16b, v1.4b[0]
+        sdot    v30.4s, v7.16b, v2.4b[0]
+        sdot    v31.4s, v7.16b, v3.4b[0]
+        sdot    v16.4s, v4.16b,  v0.4b[1]
+        sdot    v17.4s, v4.16b,  v1.4b[1]
+        ldp     q6, q7, [x1], 32
+        sdot    v18.4s, v4.16b,  v2.4b[1]
+        sdot    v19.4s, v4.16b,  v3.4b[1]
+        sdot    v20.4s, v5.16b,  v0.4b[1]
+        sdot    v21.4s, v5.16b,  v1.4b[1]
+        sdot    v22.4s, v5.16b,  v2.4b[1]
+        sdot    v23.4s, v5.16b,  v3.4b[1]
+        sdot    v24.4s, v6.16b,  v0.4b[1]
+        sdot    v25.4s, v6.16b,  v1.4b[1]
+        sdot    v26.4s, v6.16b,  v2.4b[1]
+        sdot    v27.4s, v6.16b,  v3.4b[1]
+        sdot    v28.4s, v7.16b,  v0.4b[1]
+        sdot    v29.4s, v7.16b,  v1.4b[1]
+        sdot    v30.4s, v7.16b,  v2.4b[1]
+        sdot    v31.4s, v7.16b,  v3.4b[1]
+        tbz     x7,2,SkipInCh4
 
 InChannels4
-        LDR     s0, [x13], 4
-        LDR     q4, [x1], 16
-        LDR     s1, [x14], 4
-        LDR     s2, [x15], 4
-        LDR     s3, [x10], 4
+        ldr     s0, [x12], 4
+        ldr     q4, [x1], 16
+        ldr     s1, [x13], 4
+        ldr     s2, [x14], 4
+        ldr     s3, [x15], 4
         eor     v0.8b,v0.8b,v12.8b
-        LDR     q5, [x1], 16
+        ldr     q5, [x1], 16
         eor     v1.8b,v1.8b,v12.8b
-        SDOT    v16.4s,v4.16b,v0.4b[0]
-        SDOT    v17.4s,v4.16b,v1.4b[0]
+        sdot    v16.4s,v4.16b,v0.4b[0]
+        sdot    v17.4s,v4.16b,v1.4b[0]
         eor     v2.8b,v2.8b,v12.8b
-        LDP     q6, q7, [x1], 32
+        ldp     q6, q7, [x1], 32
         eor     v3.8b,v3.8b,v12.8b
-        SDOT    v18.4s, v4.16b,  v2.4b[0]
-        SDOT    v19.4s, v4.16b,  v3.4b[0]
-        SDOT    v20.4s, v5.16b,  v0.4b[0]
-        SDOT    v21.4s, v5.16b,  v1.4b[0]
-        SDOT    v22.4s, v5.16b,  v2.4b[0]
-        SDOT    v23.4s, v5.16b,  v3.4b[0]
-        SDOT    v24.4s, v6.16b, v0.4b[0]
-        SDOT    v25.4s, v6.16b, v1.4b[0]
-        SDOT    v26.4s, v6.16b, v2.4b[0]
-        SDOT    v27.4s, v6.16b, v3.4b[0]
-        SDOT    v28.4s, v7.16b, v0.4b[0]
-        SDOT    v29.4s, v7.16b, v1.4b[0]
-        SDOT    v30.4s, v7.16b, v2.4b[0]
-        SDOT    v31.4s, v7.16b, v3.4b[0]
+        sdot    v18.4s, v4.16b,  v2.4b[0]
+        sdot    v19.4s, v4.16b,  v3.4b[0]
+        sdot    v20.4s, v5.16b,  v0.4b[0]
+        sdot    v21.4s, v5.16b,  v1.4b[0]
+        sdot    v22.4s, v5.16b,  v2.4b[0]
+        sdot    v23.4s, v5.16b,  v3.4b[0]
+        sdot    v24.4s, v6.16b, v0.4b[0]
+        sdot    v25.4s, v6.16b, v1.4b[0]
+        sdot    v26.4s, v6.16b, v2.4b[0]
+        sdot    v27.4s, v6.16b, v3.4b[0]
+        sdot    v28.4s, v7.16b, v0.4b[0]
+        sdot    v29.4s, v7.16b, v1.4b[0]
+        sdot    v30.4s, v7.16b, v2.4b[0]
+        sdot    v31.4s, v7.16b, v3.4b[0]
 
 SkipInCh4
         subs    x9,x9,8             // ks -= 1
@@ -483,41 +467,41 @@ SkipInCh4
         b       Requantize
 
 PartialStore
-        TBZ     x6,3,LT8Store
-        STR     d3,[x5],8           // no less than 8 channels
-        STR     d2,[x17],8
-        DUP     d3,v3.d[1]
-        DUP     d2,v2.d[1]
-        STR     d1,[x16],8
-        STR     d0,[x2],8
-        DUP     d1,v1.d[1]
-        DUP     d0,v0.d[1]
+        tbz     x6,3,LT8Store
+        str     d3,[x5],8           // no less than 8 channels
+        str     d2,[x17],8
+        dup     d3,v3.d[1]
+        dup     d2,v2.d[1]
+        str     d1,[x16],8
+        str     d0,[x2],8
+        dup     d1,v1.d[1]
+        dup     d0,v0.d[1]
 LT8Store
-        TBZ     x6, 2, LT4Store
-        STR     s3, [x5], 4
-        STR     s2, [x17], 4
-        DUP     s3, v3.s[1]
-        DUP     s2, v2.s[1]
-        STR     s1, [x16], 4
-        STR     s0, [x2], 4
-        DUP     s1, v1.s[1]
-        DUP     s0, v0.s[1]
+        tbz     x6, 2, LT4Store
+        str     s3, [x5], 4
+        str     s2, [x17], 4
+        dup     s3, v3.s[1]
+        dup     s2, v2.s[1]
+        str     s1, [x16], 4
+        str     s0, [x2], 4
+        dup     s1, v1.s[1]
+        dup     s0, v0.s[1]
 LT4Store
-        TBZ     x6, 1, LT2Store
-        STR     h3, [x5], 2
-        STR     h2, [x17], 2
-        DUP     h3, v3.h[1]
-        DUP     h2, v2.h[1]
-        STR     h1, [x16], 2
-        STR     h0, [x2], 2
-        DUP     h1, v1.h[1]
-        DUP     h0, v0.h[1]
+        tbz     x6, 1, LT2Store
+        str     h3, [x5], 2
+        str     h2, [x17], 2
+        dup     h3, v3.h[1]
+        dup     h2, v2.h[1]
+        str     h1, [x16], 2
+        str     h0, [x2], 2
+        dup     h1, v1.h[1]
+        dup     h0, v0.h[1]
 LT2Store
-        TBZ     x6,0,ExitKernel
-        STR     b3,[x5]
-        STR     b2,[x17]
-        STR     b1,[x16]
-        STR     b0,[x2]
+        tbz     x6,0,ExitKernel
+        str     b3,[x5]
+        str     b2,[x17]
+        str     b1,[x16]
+        str     b0,[x2]
         b       ExitKernel
 
         NESTED_END MlasConvSymKernelNeonDot

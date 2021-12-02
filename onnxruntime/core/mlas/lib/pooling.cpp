@@ -1274,7 +1274,7 @@ Return Value:
         }
     }
 
-#ifdef MLAS_NO_ONNXRUNTIME_THREADPOOL
+#ifdef BUILD_MLAS_NO_ONNXRUNTIME
     MLAS_UNREFERENCED_PARAMETER(ThreadPool);
     //
     // Execute the pooling kernel routine.

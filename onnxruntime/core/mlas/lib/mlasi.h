@@ -96,14 +96,46 @@ Abstract:
 //
 // Select the threading model.
 //
-// N.B. MLAS_NO_ONNXRUNTIME_THREADPOOL is used to build MLAS test code outside
+// N.B. BUILD_MLAS_NO_ONNXRUNTIME is used to build MLAS test code outside
 // of the ONNX Runtime source tree. OpenMP may or may not be enabled in this
 // configuration.
 //
 
-#if !defined(MLAS_NO_ONNXRUNTIME_THREADPOOL)
+#if !defined(BUILD_MLAS_NO_ONNXRUNTIME)
 #include "core/platform/threadpool.h"
-#endif
+
+#if defined(MLAS_TARGET_ARM64) && defined(__linux__)
+
+#include "core/common/cpuid_info.h"
+using MLAS_CPUIDINFO = onnxruntime::CPUIDInfo;
+
+#endif // MLAS_TARGET_ARM64
+
+#else  // BUILD_MLAS_NO_ONNXRUNTIME
+
+#if defined(MLAS_TARGET_ARM64) && defined(__linux__)
+class MLASCPUIDInfo
+{
+   public:
+    static const MLASCPUIDInfo& GetCPUIDInfo()
+    {
+        static MLASCPUIDInfo cpuid_info;
+        return cpuid_info;
+    }
+
+    // ARM
+    bool HasArmNeonDot() const { return has_arm_neon_dot_; }
+
+   private:
+    MLASCPUIDInfo();
+
+    bool has_arm_neon_dot_{false};
+};
+using MLAS_CPUIDINFO = MLASCPUIDInfo;
+
+#endif // MLAS_TARGET_ARM64
+
+#endif // BUILD_MLAS_NO_ONNXRUNTIME
 
 #if defined(_OPENMP)
 #include <omp.h>
@@ -851,7 +883,7 @@ MlasGetMaximumThreadCount(
     MLAS_THREADPOOL* ThreadPool
     )
 {
-#if defined(MLAS_NO_ONNXRUNTIME_THREADPOOL)
+#if defined(BUILD_MLAS_NO_ONNXRUNTIME)
     MLAS_UNREFERENCED_PARAMETER(ThreadPool);
 
 #if defined(_OPENMP)

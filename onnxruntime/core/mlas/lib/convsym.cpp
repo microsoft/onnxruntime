@@ -247,9 +247,12 @@ MlasConvSymPackWSize(
     } else {
 
 #ifdef MLAS_TARGET_ARM64
-//        if (InputChannels < 128) {
-//            return 0;
-//        }
+        // Shallow indirect conv runs slower.
+        // TODO!! remove this for functional testing!
+        // TODO!! is there a way to know whether this is called by tests?
+        if (KernelSize > 1 && InputChannels < 128) {
+            return 0;
+        }
 #endif
 
         size_t OutputChannelPackCount = ConvSymDispatch->FilterOutputChannelPackCount;

@@ -13,7 +13,7 @@ add_executable(onnxruntime_webassembly
 
 if (NOT onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
   add_compile_definitions(
-    MLAS_NO_ONNXRUNTIME_THREADPOOL
+    BUILD_MLAS_NO_ONNXRUNTIME
   )
 
   # Override re2 compiler options to remove -pthread

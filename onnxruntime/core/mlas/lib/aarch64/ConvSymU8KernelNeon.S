@@ -435,17 +435,17 @@ Return Value:
         b       .LConvSym.Requantize
 
 .LConvSym.PartialStore:
-        tbz     x6,2,7f
+        tbz     x6,2,.LConvSym.Store2
         st1     {v0.s}[2],[x5],4
         str     s0,[x2],4
         EXT     v0.16b,v0.16b,v0.16b,4
 
-7:
-        tbz     x6, 1, 8f
+.LConvSym.Store2:
+        tbz     x6, 1, .LConvSym.Store1
         st1     {v0.h}[4], [x5], 2
         str     h0, [x2], 2
         EXT     v0.16b,v0.16b,v0.16b,2
-8:
+.LConvSym.Store1:
         tbz     x6,0,.LConvSym.ExitKernel
         st1     {v0.b}[8],[x5]
         str     b0,[x2]
