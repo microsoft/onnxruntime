@@ -786,11 +786,12 @@ MlasPool(
     MLAS_THREADPOOL* ThreadPool
     );
 
+template<typename T8Bits>
 void
 MLASCALL
 MlasMaximumPool(
-    const uint8_t* const* Input,
-    uint8_t* Output,
+    const T8Bits* const* Input,
+    T8Bits* Output,
     size_t Channels,
     size_t OutputCount,
     size_t KernelSize
@@ -1041,17 +1042,18 @@ MlasQuantizeLinear(
  * @param CountN
  * @return
 */
+template<typename OutputType>
 void
 MLASCALL
 MlasRequantizeOutput(
     const int32_t* Input,
     size_t InputLeadingDimension,
-    uint8_t* Output,
+    OutputType* Output,
     size_t OutputLeadingDimension,
     const int32_t* Bias,
     const float* Scale,
     bool PerColumnScale,
-    uint8_t ZeroPoint,
+    OutputType ZeroPoint,
     size_t StartM,
     size_t StartN,
     size_t CountM,
@@ -1115,13 +1117,14 @@ MlasQLinearSafePaddingElementCount(
     size_t ElementCount
     );
 
+template<typename T8Bits>
 void
 MLASCALL
 MlasQLinearGlobalAveragePoolNchw(
-    const uint8_t* Input,
+    const T8Bits* Input,
     float ScaleInput,
     int32_t ZeroPointInput,
-    uint8_t* Output,
+    T8Bits* Output,
     float ScaleOutput,
     int32_t ZeroPointOutput,
     size_t Channels,
@@ -1129,13 +1132,14 @@ MlasQLinearGlobalAveragePoolNchw(
     int32_t* AccumulateBuffer
     );
 
+template <typename T8Bits>
 void
 MLASCALL
 MlasQLinearGlobalAveragePoolNhwc(
-    const uint8_t* Input,
+    const T8Bits* Input,
     float ScaleInput,
     int32_t ZeroPointInput,
-    uint8_t* Output,
+    T8Bits* Output,
     float ScaleOutput,
     int32_t ZeroPointOutput,
     size_t Batch,
@@ -1143,7 +1147,7 @@ MlasQLinearGlobalAveragePoolNhwc(
     size_t Stride,
     size_t Channels,
     int32_t* AccumulateBuffer,
-    const uint8_t* ZeroBuffer
+    const T8Bits* ZeroBuffer
     );
 
 //
