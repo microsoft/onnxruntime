@@ -42,7 +42,7 @@ class RuntimeOptimizationRecordContainer {
   void AddRecord(const std::string& optimizer_name, RuntimeOptimizationRecord&& runtime_optimization_record);
 #endif
 
-  std::vector<RuntimeOptimizationRecord> RemoveRecordsForOptimizer(const std::string& optimizer_key);
+  std::vector<RuntimeOptimizationRecord> RemoveRecordsForOptimizer(const std::string& optimizer_name);
 
   using FbsRuntimeOptimizationRecordContainer =
       flatbuffers::Vector<flatbuffers::Offset<
