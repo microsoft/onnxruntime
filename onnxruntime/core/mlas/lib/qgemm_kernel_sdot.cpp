@@ -529,7 +529,7 @@ MlasGemmQuantCopyPackA<MLAS_GEMM_S8S8_KERNEL_SDOT>(
 
 MLAS_FORCEINLINE
 void
-MlasGemmU8X8CopyPackBProcessSDot(
+MlasGemmS8S8CopyPackBProcessSDot(
     int8_t* D,
     int8x8_t BytesRow[4],
     int32x4_t ColumnSums[2]
@@ -605,7 +605,7 @@ MlasGemmQuantCopyPackB<MLAS_GEMM_S8S8_KERNEL_SDOT>(
             BytesRow[2] = vld1_s8(&b[ldb * 2]);
             BytesRow[3] = vld1_s8(&b[ldb * 3]);
 
-            MlasGemmU8X8CopyPackBProcessSDot(D, BytesRow, ColumnSums);
+            MlasGemmS8S8CopyPackBProcessSDot(D, BytesRow, ColumnSums);
 
             b += ldb * 4;
             D += 32;
@@ -619,7 +619,7 @@ MlasGemmQuantCopyPackB<MLAS_GEMM_S8S8_KERNEL_SDOT>(
             BytesRow[2] = (k > 2) ? vld1_s8(&b[ldb * 2]) : vget_low_s8(ZeroVector);
             BytesRow[3] = vget_low_s8(ZeroVector);
 
-            MlasGemmU8X8CopyPackBProcessSDot(D, BytesRow, ColumnSums);
+            MlasGemmS8S8CopyPackBProcessSDot(D, BytesRow, ColumnSums);
 
             D += 32;
         }
@@ -706,7 +706,7 @@ MlasGemmQuantCopyPackB<MLAS_GEMM_S8S8_KERNEL_SDOT>(
             BytesRow[2] = vld1_s8(&PaddedMatrixBData[16]);
             BytesRow[3] = vld1_s8(&PaddedMatrixBData[24]);
 
-            MlasGemmU8X8CopyPackBProcessSDot(D, BytesRow, ColumnSums);
+            MlasGemmS8S8CopyPackBProcessSDot(D, BytesRow, ColumnSums);
 
             D += 32;
         }

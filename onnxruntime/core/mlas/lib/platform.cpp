@@ -123,6 +123,11 @@ Return Value:
 --*/
 {
 
+    this->ConvDepthwiseU8S8Kernel = MlasConvDepthwiseKernel<uint8_t, int8_t>;
+    this->ConvDepthwiseU8U8Kernel = MlasConvDepthwiseKernel<uint8_t, uint8_t>;
+    this->ConvDepthwiseS8S8Kernel = MlasConvDepthwiseKernel<int8_t, int8_t>;
+    this->ConvDepthwiseS8U8Kernel = MlasConvDepthwiseKernel<int8_t, uint8_t>;
+
 #if defined(MLAS_TARGET_AMD64_IX86)
 
     //
@@ -157,10 +162,6 @@ Return Value:
     this->QLinearAddU8Kernel = MlasQLinearAddU8Kernel;
     this->QuantizeLinearS8Kernel = MlasQuantizeLinearS8Kernel;
     this->QuantizeLinearU8Kernel = MlasQuantizeLinearU8Kernel;
-    this->ConvDepthwiseU8S8Kernel = MlasConvDepthwiseKernel<uint8_t, int8_t>;
-    this->ConvDepthwiseU8U8Kernel = MlasConvDepthwiseKernel<uint8_t, uint8_t>;
-    this->ConvDepthwiseS8S8Kernel = MlasConvDepthwiseKernel<int8_t, int8_t>;
-    this->ConvDepthwiseS8U8Kernel = MlasConvDepthwiseKernel<int8_t, uint8_t>;
 
     this->NchwcBlockSize = 8;
     this->PreferredBufferAlignment = MLAS_DEFAULT_PREFERRED_BUFFER_ALIGNMENT;

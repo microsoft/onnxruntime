@@ -17,15 +17,18 @@ Abstract:
 #include "mlasi.h"
 
 template <typename InputType, typename FilterType>
-void MLASCALL
-MlasConvDepthwiseKernel(const InputType* const* Input,
-                        InputType InputZeroPoint,
-                        const FilterType* Filter,
-                        FilterType FilterZeroPoint,
-                        int32_t* Output,
-                        size_t Channels,
-                        size_t OutputCount,
-                        size_t KernelSize)
+void
+MLASCALL
+MlasConvDepthwiseKernel(
+    const InputType* const* Input,
+    InputType InputZeroPoint,
+    const FilterType* Filter,
+    FilterType FilterZeroPoint,
+    int32_t* Output,
+    size_t Channels,
+    size_t OutputCount,
+    size_t KernelSize
+    )
 {
 #if defined(MLAS_SSE2_INTRINSICS)
     const __m128i ZeroVector = _mm_setzero_si128();
@@ -163,57 +166,76 @@ MlasConvDepthwiseKernel(const InputType* const* Input,
     }
 }
 
-template void MLASCALL
-MlasConvDepthwiseKernel(const uint8_t* const* Input,
-                        uint8_t InputZeroPoint,
-                        const int8_t* Filter,
-                        int8_t FilterZeroPoint,
-                        int32_t* Output,
-                        size_t Channels,
-                        size_t OutputCount,
-                        size_t KernelSize);
+template
+void
+MLASCALL
+MlasConvDepthwiseKernel(
+    const uint8_t* const* Input,
+    uint8_t InputZeroPoint,
+    const int8_t* Filter,
+    int8_t FilterZeroPoint,
+    int32_t* Output,
+    size_t Channels,
+    size_t OutputCount,
+    size_t KernelSize
+    );
 
-template void MLASCALL
-MlasConvDepthwiseKernel(const uint8_t* const* Input,
-                        uint8_t InputZeroPoint,
-                        const uint8_t* Filter,
-                        uint8_t FilterZeroPoint,
-                        int32_t* Output,
-                        size_t Channels,
-                        size_t OutputCount,
-                        size_t KernelSize);
+template
+void
+MLASCALL
+MlasConvDepthwiseKernel(
+    const uint8_t* const* Input,
+    uint8_t InputZeroPoint,
+    const uint8_t* Filter,
+    uint8_t FilterZeroPoint,
+    int32_t* Output,
+    size_t Channels,
+    size_t OutputCount,
+    size_t KernelSize
+    );
 
-template void MLASCALL
-MlasConvDepthwiseKernel(const int8_t* const* Input,
-                        int8_t InputZeroPoint,
-                        const int8_t* Filter,
-                        int8_t FilterZeroPoint,
-                        int32_t* Output,
-                        size_t Channels,
-                        size_t OutputCount,
-                        size_t KernelSize);
+template
+void
+MLASCALL
+MlasConvDepthwiseKernel(
+    const int8_t* const* Input,
+    int8_t InputZeroPoint,
+    const int8_t* Filter,
+    int8_t FilterZeroPoint,
+    int32_t* Output,
+    size_t Channels,
+    size_t OutputCount,
+    size_t KernelSize
+    );
 
-template void MLASCALL
-MlasConvDepthwiseKernel(const int8_t* const* Input,
-                        int8_t InputZeroPoint,
-                        const uint8_t* Filter,
-                        uint8_t FilterZeroPoint,
-                        int32_t* Output,
-                        size_t Channels,
-                        size_t OutputCount,
-                        size_t KernelSize);
+template
+void
+MLASCALL
+MlasConvDepthwiseKernel(
+    const int8_t* const* Input,
+    int8_t InputZeroPoint,
+    const uint8_t* Filter,
+    uint8_t FilterZeroPoint,
+    int32_t* Output,
+    size_t Channels,
+    size_t OutputCount,
+    size_t KernelSize
+    );
 
-void MLASCALL
-MlasConvDepthwise(const void* const* Input,
-                  uint8_t InputZeroPoint,
-                  bool InputIsSigned,
-                  const void* Filter,
-                  uint8_t FilterZeroPoint,
-                  bool FilterIsSigned,
-                  int32_t* Output,
-                  size_t Channels,
-                  size_t OutputCount,
-                  size_t KernelSize)
+void
+MLASCALL
+MlasConvDepthwise(
+    const void* const* Input,
+    int32_t InputZeroPoint,
+    bool InputIsSigned,
+    const void* Filter,
+    int32_t FilterZeroPoint,
+    bool FilterIsSigned,
+    int32_t* Output,
+    size_t Channels,
+    size_t OutputCount,
+    size_t KernelSize
+    )
 /*++
 
 Routine Description:
@@ -263,57 +285,37 @@ Return Value:
 
 --*/
 {
-#if defined(MLAS_TARGET_AMD64)
     if (InputIsSigned) {
         if (FilterIsSigned) {
+
             MlasPlatform.ConvDepthwiseS8S8Kernel(
                 reinterpret_cast<const int8_t* const*>(Input), static_cast<int8_t>(InputZeroPoint),
                 reinterpret_cast<const int8_t*>(Filter), static_cast<int8_t>(FilterZeroPoint),
-                Output, Channels, OutputCount, KernelSize);
+                Output, Channels, OutputCount, KernelSize
+                );
         } else {
+
             MlasPlatform.ConvDepthwiseS8U8Kernel(
                 reinterpret_cast<const int8_t* const*>(Input), static_cast<int8_t>(InputZeroPoint),
-                reinterpret_cast<const uint8_t*>(Filter), FilterZeroPoint, Output, Channels,
-                OutputCount, KernelSize);
+                reinterpret_cast<const uint8_t*>(Filter), static_cast<uint8_t>(FilterZeroPoint),
+                Output, Channels, OutputCount, KernelSize
+                );
         }
     } else {
         if (FilterIsSigned) {
+
             MlasPlatform.ConvDepthwiseU8S8Kernel(
-                reinterpret_cast<const uint8_t* const*>(Input), InputZeroPoint,
+                reinterpret_cast<const uint8_t* const*>(Input), static_cast<uint8_t>(InputZeroPoint),
                 reinterpret_cast<const int8_t*>(Filter), static_cast<int8_t>(FilterZeroPoint),
-                Output, Channels, OutputCount, KernelSize);
+                Output, Channels, OutputCount, KernelSize
+                );
         } else {
+
             MlasPlatform.ConvDepthwiseU8U8Kernel(
-                reinterpret_cast<const uint8_t* const*>(Input), InputZeroPoint,
-                reinterpret_cast<const uint8_t*>(Filter), FilterZeroPoint, Output, Channels,
-                OutputCount, KernelSize);
+                reinterpret_cast<const uint8_t* const*>(Input), static_cast<uint8_t>(InputZeroPoint),
+                reinterpret_cast<const uint8_t*>(Filter), static_cast<uint8_t>(FilterZeroPoint),
+                Output, Channels, OutputCount, KernelSize
+                );
         }
     }
-#else
-    if (InputIsSigned) {
-        if (FilterIsSigned) {
-            MlasConvDepthwiseKernel<int8_t, int8_t>(
-                reinterpret_cast<const int8_t* const*>(Input), static_cast<int8_t>(InputZeroPoint),
-                reinterpret_cast<const int8_t*>(Filter), static_cast<int8_t>(FilterZeroPoint),
-                Output, Channels, OutputCount, KernelSize);
-        } else {
-            MlasConvDepthwiseKernel<int8_t, uint8_t>(
-                reinterpret_cast<const int8_t* const*>(Input), static_cast<int8_t>(InputZeroPoint),
-                reinterpret_cast<const uint8_t*>(Filter), FilterZeroPoint, Output, Channels,
-                OutputCount, KernelSize);
-        }
-    } else {
-        if (FilterIsSigned) {
-            MlasConvDepthwiseKernel<uint8_t, int8_t>(
-                reinterpret_cast<const uint8_t* const*>(Input), InputZeroPoint,
-                reinterpret_cast<const int8_t*>(Filter), static_cast<int8_t>(FilterZeroPoint),
-                Output, Channels, OutputCount, KernelSize);
-        } else {
-            MlasConvDepthwiseKernel<uint8_t, uint8_t>(
-                reinterpret_cast<const uint8_t* const*>(Input), InputZeroPoint,
-                reinterpret_cast<const uint8_t*>(Filter), FilterZeroPoint, Output, Channels,
-                OutputCount, KernelSize);
-        }
-    }
-#endif
 }

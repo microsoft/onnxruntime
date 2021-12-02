@@ -765,6 +765,12 @@ struct MLAS_PLATFORM {
 
     const MLAS_CONV_SYM_DISPATCH* ConvSymU8S8Dispatch{nullptr};
     const MLAS_CONV_SYM_DISPATCH* ConvSymS8S8Dispatch{nullptr};
+
+    MLAS_QUANT_KERNEL<uint8_t, int8_t>::DepthwiseKernel* ConvDepthwiseU8S8Kernel;
+    MLAS_QUANT_KERNEL<uint8_t, uint8_t>::DepthwiseKernel* ConvDepthwiseU8U8Kernel;
+    MLAS_QUANT_KERNEL<int8_t, int8_t>::DepthwiseKernel* ConvDepthwiseS8S8Kernel;
+    MLAS_QUANT_KERNEL<int8_t, uint8_t>::DepthwiseKernel* ConvDepthwiseS8U8Kernel;
+
 #if defined(MLAS_TARGET_POWER)
     MLAS_GEMM_DOUBLE_KERNEL* GemmDoubleKernel;
 #endif
@@ -784,10 +790,6 @@ struct MLAS_PLATFORM {
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL* ErfKernelRoutine;
     MLAS_QLINEAR_BINARY_OP_S8_KERNEL* QLinearAddS8Kernel;
     MLAS_QLINEAR_BINARY_OP_U8_KERNEL* QLinearAddU8Kernel;
-    MLAS_QUANT_KERNEL<uint8_t, int8_t>::DepthwiseKernel* ConvDepthwiseU8S8Kernel;
-    MLAS_QUANT_KERNEL<uint8_t, uint8_t>::DepthwiseKernel* ConvDepthwiseU8U8Kernel;
-    MLAS_QUANT_KERNEL<int8_t, int8_t>::DepthwiseKernel* ConvDepthwiseS8S8Kernel;
-    MLAS_QUANT_KERNEL<int8_t, uint8_t>::DepthwiseKernel* ConvDepthwiseS8U8Kernel;
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL* ComputeExpF32Kernel;
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL* LogisticKernelRoutine;
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL* TanhKernelRoutine;

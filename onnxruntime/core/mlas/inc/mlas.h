@@ -711,10 +711,10 @@ void
 MLASCALL
 MlasConvDepthwise(
     const void* const* Input,
-    uint8_t InputZeroPoint,
+    int32_t InputZeroPoint,
     bool InputIsSigned,
     const void* Filter,
-    uint8_t FilterZeroPoint,
+    int32_t FilterZeroPoint,
     bool FilterIsSigned,
     int32_t* Output,
     size_t Channels,
