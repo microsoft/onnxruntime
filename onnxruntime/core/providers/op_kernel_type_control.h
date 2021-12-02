@@ -469,4 +469,8 @@ struct EnabledTypes {
 #include "core/framework/data_types.h"  // for types that might be used in type specifications
 
 // all allowed type specifications should be contained in the following file
+#ifndef REDUCED_OP_TYPE_SUPPORT
 #include "core/providers/op_kernel_type_control_overrides.inc"
+#else
+#include "core/providers/op_kernel_type_control_overrides_reduced_types.inc"
+#endif

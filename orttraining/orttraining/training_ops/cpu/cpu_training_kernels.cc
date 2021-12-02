@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#ifndef REDUCED_OPS_BUILD
+
 #include "orttraining/training_ops/cpu/cpu_training_kernels.h"
 #include "core/graph/constants.h"
 
@@ -230,3 +232,5 @@ Status RegisterCpuTrainingKernels(KernelRegistry& kernel_registry) {
 
 }  // namespace contrib
 }  // namespace onnxruntime
+
+#endif  // #ifndef REDUCED_OPS_BUILD

@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#ifndef REDUCED_OPS_BUILD
+
 #include "core/providers/shared_library/provider_api.h"
 #include "core/providers/cuda/cuda_execution_provider.h"
 #include "core/providers/cuda/cuda_common.h"
@@ -2343,3 +2345,5 @@ void CUDAExecutionProvider::RegisterAllocator(std::shared_ptr<AllocatorManager> 
 }
 
 }  // namespace onnxruntime
+
+#endif  // #ifndef REDUCED_OPS_BUILD

@@ -59,3 +59,7 @@ onnxruntime/python/version_info.py
 .envrc
 .psenvrc
 *.csproj.user
+# exclude generated reduced kernel registration and type control
+onnxruntime/**/*_reduced_ops.cc
+orttraining/**/*_training_kernels_reduced_ops.cc
+onnxruntime/core/providers/op_kernel_type_control_overrides_reduced_types.inc

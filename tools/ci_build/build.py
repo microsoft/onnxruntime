@@ -769,6 +769,9 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                                                      args.minimal_build or args.use_extensions))
                                                      else "OFF"),
         "-Donnxruntime_REDUCED_OPS_BUILD=" + ("ON" if is_reduced_ops_build(args) else "OFF"),
+        "-Donnxruntime_REDUCED_OP_TYPE_SUPPORT=" + (
+            "ON" if is_reduced_ops_build(args) and args.enable_reduced_operator_type_support
+            else "OFF"),
         # enable pyop if it is nightly build
         "-Donnxruntime_ENABLE_LANGUAGE_INTEROP_OPS=" + ("ON" if args.enable_language_interop_ops else "OFF"),
         "-Donnxruntime_USE_DML=" + ("ON" if args.use_dml else "OFF"),
