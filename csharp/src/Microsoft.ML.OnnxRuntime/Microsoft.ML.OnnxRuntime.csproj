@@ -4,10 +4,10 @@
     <OrtPackageId Condition="'$(OrtPackageId)' == ''">Microsoft.ML.OnnxRuntime</OrtPackageId>
   </PropertyGroup>
 
-  <!-- only include the Xamarin mobile targets for the main ORT package, 
+  <!-- only include the Xamarin mobile targets if we're building an ORT package, 
        and only if the mobile workloads are installed -->
   <Choose>
-    <When Condition="'$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime' AND Exists('$(MSBuildExtensionsPath)\Xamarin\Android') AND Exists('$(MSBuildExtensionsPath)\Xamarin\iOS')">
+    <When Condition="('$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime' OR '$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.Gpu') AND Exists('$(MSBuildExtensionsPath)\Xamarin\Android') AND Exists('$(MSBuildExtensionsPath)\Xamarin\iOS')">
       <PropertyGroup>
         <TargetFrameworks>netstandard1.1;netstandard2.0;xamarinios10;monoandroid11.0;net5.0;netcoreapp3.1</TargetFrameworks>
       </PropertyGroup>      
