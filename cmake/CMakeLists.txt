@@ -358,8 +358,6 @@ if (onnxruntime_MINIMAL_BUILD)
     add_compile_definitions(ORT_MINIMAL_BUILD_CUSTOM_OPS)
   endif()
 
-  set(onnxruntime_REDUCED_OPS_BUILD ON)
-
   if (MSVC)
     # turn on LTO (which adds some compiler flags and turns on LTCG) unless it's a Debug build to minimize binary size
     if (NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
