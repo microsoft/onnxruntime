@@ -196,7 +196,9 @@ static constexpr PATH_TYPE PYOP_MULTI_MODEL_URI = TSTR("testdata/pyop_2.onnx");
 static constexpr PATH_TYPE PYOP_KWARG_MODEL_URI = TSTR("testdata/pyop_3.onnx");
 #endif
 
+#ifndef REDUCED_OPS_BUILD
 static constexpr PATH_TYPE RESIZE_AND_CROP_MODEL_URI = TSTR("testdata/crop_and_resize.onnx");
+#endif
 
 class CApiTestWithProvider : public testing::Test, public ::testing::WithParamInterface<int> {
 };
@@ -1054,7 +1056,6 @@ TEST(CApiTest, io_binding_cuda) {
   // Create an OrtValue tensor backed by data on CUDA memory
   Ort::Value bound_y = Ort::Value::CreateTensor(info_cuda, reinterpret_cast<float*>(output_data.get()),
                                                 expected_y.size(), expected_y_shape.data(), expected_y_shape.size());
-
 
   Ort::IoBinding binding(session);
   binding.BindInput("X", bound_x);
