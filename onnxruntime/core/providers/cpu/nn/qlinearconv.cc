@@ -215,6 +215,16 @@ class QLinearConv : public OpKernel {
   std::vector<int32_t> column_sums_;
 };
 
+ONNX_CPU_OPERATOR_KERNEL(
+    QLinearConv,
+    10,
+    KernelDefBuilder()
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<uint8_t>())
+        .TypeConstraint("T2", {DataTypeImpl::GetTensorType<uint8_t>(), DataTypeImpl::GetTensorType<int8_t>()})
+        .TypeConstraint("T3", DataTypeImpl::GetTensorType<uint8_t>())
+        .TypeConstraint("T4", DataTypeImpl::GetTensorType<int32_t>()),
+    QLinearConv<uint8_t>);
+
 #define REGISTER_QLINEARCONV_TYPED_KERNEL(domain, version, act_type, weight_type) \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                                  \
       QLinearConv,                                                                \
@@ -232,8 +242,6 @@ class QLinearConv : public OpKernel {
 #if defined(MLAS_TARGET_ARM_ANY)
 REGISTER_QLINEARCONV_TYPED_KERNEL(kOnnxDomain, 10, int8_t, int8_t);
 #endif
-REGISTER_QLINEARCONV_TYPED_KERNEL(kOnnxDomain, 10, uint8_t, uint8_t);
-REGISTER_QLINEARCONV_TYPED_KERNEL(kOnnxDomain, 10, uint8_t, int8_t);
 
 #ifndef DISABLE_CONTRIB_OPS
 
@@ -241,11 +249,21 @@ namespace contrib {
 
 // Register an alternate version of this kernel that supports the channels_last
 // attribute in order to consume and produce NHWC tensors.
+ONNX_OPERATOR_KERNEL_EX(
+    QLinearConv,
+    kMSDomain,
+    1,
+    kCpuExecutionProvider,
+    KernelDefBuilder()
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<uint8_t>())
+        .TypeConstraint("T2", {DataTypeImpl::GetTensorType<uint8_t>(), DataTypeImpl::GetTensorType<int8_t>()})
+        .TypeConstraint("T3", DataTypeImpl::GetTensorType<uint8_t>())
+        .TypeConstraint("T4", DataTypeImpl::GetTensorType<int32_t>()),
+    QLinearConv<uint8_t>);
+
 #if defined(MLAS_TARGET_ARM_ANY)
 REGISTER_QLINEARCONV_TYPED_KERNEL(kMSDomain, 1, int8_t, int8_t);
 #endif
-REGISTER_QLINEARCONV_TYPED_KERNEL(kMSDomain, 1, uint8_t, uint8_t);
-REGISTER_QLINEARCONV_TYPED_KERNEL(kMSDomain, 1, uint8_t, int8_t);
 
 }  // namespace contrib
 

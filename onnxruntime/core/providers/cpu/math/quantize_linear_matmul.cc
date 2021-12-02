@@ -12,6 +12,16 @@
 #include "core/mlas/inc/mlas.h"
 
 namespace onnxruntime {
+ONNX_OPERATOR_KERNEL_EX(
+    QLinearMatMul,
+    kOnnxDomain,
+    10,
+    kCpuExecutionProvider,
+    KernelDefBuilder()
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<uint8_t>())
+        .TypeConstraint("T2", {DataTypeImpl::GetTensorType<uint8_t>(), DataTypeImpl::GetTensorType<int8_t>()})
+        .TypeConstraint("T3", DataTypeImpl::GetTensorType<uint8_t>()),
+    QLinearMatMul);
 
 #define REGISTER_QLINEARMATMUL_TYPED_KERNEL(act_type, weight_type)          \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                            \
@@ -29,8 +39,6 @@ namespace onnxruntime {
 #if defined(MLAS_TARGET_ARM_ANY)
 REGISTER_QLINEARMATMUL_TYPED_KERNEL(int8_t, int8_t);
 #endif
-REGISTER_QLINEARMATMUL_TYPED_KERNEL(uint8_t, uint8_t);
-REGISTER_QLINEARMATMUL_TYPED_KERNEL(uint8_t, int8_t);
 
 Status QLinearMatMul::Compute(OpKernelContext* ctx) const {
   const auto* a = ctx->Input<Tensor>(IN_A);

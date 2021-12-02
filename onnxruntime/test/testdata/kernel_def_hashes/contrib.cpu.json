@@ -189,11 +189,7 @@
     ],
     [
         "QLinearConv com.microsoft CPUExecutionProvider",
-        11232265474041605760
-    ],
-    [
-        "QLinearConv com.microsoft CPUExecutionProvider",
-        11596245951504387848
+        16835965565578160400
     ],
     [
         "QLinearGlobalAveragePool com.microsoft CPUExecutionProvider",

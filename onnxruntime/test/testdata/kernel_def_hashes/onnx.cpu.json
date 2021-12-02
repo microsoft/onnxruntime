@@ -1517,19 +1517,11 @@
     ],
     [
         "QLinearConv ai.onnx CPUExecutionProvider",
-        6684227707397124552
-    ],
-    [
-        "QLinearConv ai.onnx CPUExecutionProvider",
-        14667481778195371632
+        6630340551594954312
     ],
     [
         "QLinearMatMul ai.onnx CPUExecutionProvider",
-        5423869068634665208
-    ],
-    [
-        "QLinearMatMul ai.onnx CPUExecutionProvider",
-        8138822876968303736
+        17071666635484846840
     ],
     [
         "QuantizeLinear ai.onnx CPUExecutionProvider",
