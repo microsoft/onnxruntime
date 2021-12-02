@@ -53,7 +53,14 @@ class STVMRunner {
             const auto& node_name = node->Name();
             if(!graph.IsInitializedTensor(node_name)) {
               TVMTensorShape ishape;
-              getTensorInfo(*node->Shape(), ishape, indx);
+              if(!ep->info_.input_shapes.empty() &&
+                  ep->info_.input_shapes.count(node_name)) {
+                ishape = ep->info_.input_shapes[node_name];
+                inputs_info_[indx] = ishape;
+                update_output_shapes_ = true;
+              } else {
+                getTensorInfo(*node->Shape(), ishape, indx);
+              }
               input_shapes.emplace_back(ishape);
             }
             ++indx;
@@ -62,7 +69,14 @@ class STVMRunner {
           for (const auto* node : all_nodes) {
             const auto& node_name = node->Name();
             TVMTensorShape ishape;
-            getTensorInfo(*node->Shape(), ishape, indx++);
+            if(!ep->info_.input_shapes.empty() &&
+                ep->info_.input_shapes.count(node_name)) {
+              ishape = ep->info_.input_shapes[node_name];
+              inputs_info_[indx++] = ishape;
+              update_output_shapes_ = true;
+            } else {
+              getTensorInfo(*node->Shape(), ishape, indx++);
+            }
             if(!graph.IsInitializedTensor(node_name)) {
               input_shapes.emplace_back(ishape);
             }
@@ -75,22 +89,29 @@ class STVMRunner {
         // Prepare draft for output tvm tensors
         const ORTGraphNodes& ort_outputs_info = graph.GetOutputs();
         size_t num_outputs = ort_outputs_info.size();
-        for (auto i = 0u; i < num_outputs; i++) {
-          TensorShape ort_shape = utils::GetTensorShapeFromTensorShapeProto(*ort_outputs_info[i]->Shape());
-          int dims = ort_shape.NumDimensions();
 
-          TVMTensorShape oshape(dims);
-          for (int j = 0; j < dims; ++j) {
-            oshape[j] = int64_t(ort_shape[j]);
+        if (update_output_shapes_) {
+          stvm::TVMGetOutputShapes(*mod_, num_outputs, output_shapes_);
+        } else {
+          for (auto i = 0u; i < num_outputs; i++) {
+            TensorShape ort_shape = utils::GetTensorShapeFromTensorShapeProto(*ort_outputs_info[i]->Shape());
+            int dims = ort_shape.NumDimensions();
+
+            TVMTensorShape oshape(dims);
+            for (int j = 0; j < dims; ++j) {
+              oshape[j] = int64_t(ort_shape[j]);
+            }
+            output_shapes_.emplace_back(oshape);
           }
-          output_shapes_.emplace_back(oshape);
+        }
 
+        for (auto i = 0u; i < num_outputs; i++) {
           DLTensor t;
           // Data pointer and type are defined during inference
           t.strides = nullptr;
           t.byte_offset = 0;
           t.data = nullptr;
-          t.ndim = dims;
+          t.ndim = output_shapes_[i].size();
           t.shape = output_shapes_[i].data();
           tensors_outputs_.push_back(t);
         }
@@ -111,8 +132,10 @@ class STVMRunner {
         const OrtDevice& device = tensor.Location().device;
         auto tensor_info = ort.GetTensorTypeAndShape(input_tensor);
         auto tensor_type = ort.GetTensorElementType(tensor_info);
-        std::vector<int64_t> ort_shape = ort.GetTensorShape(tensor_info);
-        ORT_ENFORCE(compare_shapes(shape, ort_shape));
+        if (!update_output_shapes_) {
+          std::vector<int64_t> ort_shape = ort.GetTensorShape(tensor_info);
+          ORT_ENFORCE(compare_shapes(shape, ort_shape));
+        }
         ort.ReleaseTensorTypeAndShapeInfo(tensor_info);
 
         DLTensor t;
@@ -128,7 +151,6 @@ class STVMRunner {
       }
       stvm::TVMSetInputs(*mod_, inds, dl_tensors_inputs);
 
-      std::vector<std::vector<int64_t>> output_shapes;
       size_t num_outputs = tensors_outputs_.size();
       for (auto i = 0u; i < num_outputs; i++) {
         //setup output tensor property
@@ -159,7 +181,15 @@ class STVMRunner {
 
       ishape.resize(dims);
       for (int j = 0; j < dims; ++j) {
-        ishape[j] = int64_t(ort_shape[j]);
+        int64_t dim = int64_t(ort_shape[j]);
+        if (dim > 0) {
+          ishape[j] = dim;
+        } else {
+          std::cout << "WARNING: input dimension is not positive value (dim = " << dim << "). ";
+          std::cout << "It is replaced by 1. if it needs another value please use provider options to correct it" << std::endl;
+          ishape[j] = 1;
+          update_output_shapes_ = true;
+        }
       }
       inputs_info_[indx] = ishape;
     }
@@ -182,6 +212,7 @@ class STVMRunner {
   private:
     tvm::runtime::Module* mod_;
     InputsInfoMap inputs_info_;
+    bool update_output_shapes_ = false;
     TVMTensorShapes output_shapes_;
     std::vector<DLTensor> tensors_outputs_;
 };
@@ -353,7 +384,57 @@ bool StvmExecutionProvider::GPUTargetCheck() const {
   return check;
 }
 
+size_t StvmExecutionProvider::split(const std::string &txt, std::vector<std::string> &strs, char ch) const {
+    size_t pos = txt.find( ch );
+    size_t initialPos = 0;
+    strs.clear();
+
+    while( pos != std::string::npos ) {
+        strs.push_back( txt.substr( initialPos, pos - initialPos ) );
+        initialPos = pos + 1;
+
+        pos = txt.find( ch, initialPos );
+    }
+
+    strs.push_back( txt.substr( initialPos, std::min( pos, txt.size() ) - initialPos + 1 ) );
+
+    return strs.size();
+}
+
 void StvmExecutionProvider::ProcessInfo() {
+  if(!info_.input_shapes_str.empty()) {
+    ORT_ENFORCE(!info_.input_names_str.empty(), "Please insert input tensor names. Input shapes only is invalid case");
+    // Parse strings and set to input_shapes map
+    std::vector<std::string> tmp_strs;
+    std::vector<std::string> names_strs;
+
+    std::string names_str = StvmExecutionProviderInfo::whitespace_trimming(info_.input_names_str);
+    std::string shapes_str = StvmExecutionProviderInfo::whitespace_trimming(info_.input_shapes_str);
+
+    ORT_ENFORCE(split(names_str, names_strs, ' '), "There is no any input tensor names!");
+    size_t inp_tensors_num = names_strs.size();
+
+    size_t end_pos = shapes_str.find_last_of(']');
+    ORT_ENFORCE(end_pos != std::string::npos, "Invalid string for input shapes. Symbol ] is not found");
+    ORT_ENFORCE(end_pos == (shapes_str.size() - 1), "Invalid string for input shapes. Symbol ] should be last after whitespace trimming");
+    split(shapes_str, tmp_strs, ']');
+    tmp_strs.pop_back();
+    ORT_ENFORCE( tmp_strs.size() == inp_tensors_num, "Number of shapes is not the same as number of input tensor names");
+    for (size_t i = 0; i < inp_tensors_num; ++i) {
+      size_t pos = tmp_strs[i].find('[');
+      ORT_ENFORCE(pos != std::string::npos, "There is no symbol [ as pair for ]");
+      std::string nums_str = tmp_strs[i].substr(pos + 1);
+      std::vector<std::string> nums_strs;
+      ORT_ENFORCE(split(nums_str, nums_strs, ' '), "There is no any numbers between [ and ] symbols");
+      std::vector<int64_t> dims;
+      for(const auto& num_str : nums_strs) {
+        dims.push_back(std::stoi(num_str));
+      }
+
+      info_.input_shapes[names_strs[i]] = dims;
+    }
+  }
+
   if(info_.target == cpu_target_str ||
      info_.target == llvm_target_str) {
     ProcessCPUTarget();
@@ -412,6 +493,8 @@ void StvmExecutionProvider::PrintInfo() const {
   std::cout << "opt level: " << info_.opt_level << std::endl;
   std::cout << "freeze weights: " << info_.freeze_weights << std::endl;
   std::cout << "tuning file path: " << info_.tuning_file_path << std::endl;
+  std::cout << "input tensor names: " << info_.input_names_str << std::endl;
+  std::cout << "input tensor shapes: " << info_.input_shapes_str << std::endl;
 }
 
 int StvmExecutionProvider::CreateStateFunc(ComputeContext* context, FunctionState* state) {

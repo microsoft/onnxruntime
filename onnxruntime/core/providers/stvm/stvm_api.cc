@@ -57,6 +57,24 @@ void TVMSetInputs(tvm::runtime::Module& mod,
   }
 }
 
+void TVMGetOutputShapes(tvm::runtime::Module& mod,
+                        size_t num_outputs,
+                        std::vector<std::vector<int64_t>>& output_shapes)
+{
+  output_shapes.clear();
+  tvm::PackedFunc get_output = mod.GetFunction("get_output", false);
+  for (size_t i = 0; i < num_outputs; ++i) {
+    tvm::runtime::NDArray output_array = get_output(i);
+    tvm::runtime::ShapeTuple shape_tuple = output_array.Shape();
+    size_t dims_num = shape_tuple.size();
+    std::vector<int64_t> dims;
+    for (size_t j = 0; j < dims_num; ++j) {
+      dims.push_back(int64_t(shape_tuple[j]));
+    }
+    output_shapes.push_back(dims);
+  }
+}
+
 void TVMRun(tvm::runtime::Module& mod,
             std::vector<DLTensor>& outputs,
             [[maybe_unused]] tvm::runtime::TVMRetValue *ret)

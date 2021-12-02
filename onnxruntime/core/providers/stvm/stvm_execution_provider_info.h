@@ -4,6 +4,10 @@
 #ifndef STVM_EXECUTION_PROVIDER_INFO_H
 #define STVM_EXECUTION_PROVIDER_INFO_H
 
+#include <unordered_map>
+#include <vector>
+#include <string>
+
 #include "core/framework/provider_options.h"
 
 namespace onnxruntime {
@@ -24,6 +28,8 @@ const std::string LLVM_TARGET_AVX512 = "llvm -mcpu=skylake-avx512";
 
 constexpr const unsigned int default_opt_level = 3;
 
+using STVMInputShapes = std::unordered_map<std::string, std::vector<int64_t>>;
+
 // Information needed to construct an TVM execution provider.
 struct StvmExecutionProviderInfo {
   std::string target{default_target_str};
@@ -31,7 +37,11 @@ struct StvmExecutionProviderInfo {
   unsigned int opt_level{default_opt_level};
   bool freeze_weights = true;
   std::string tuning_file_path{""};
+  std::string input_names_str{""};
+  std::string input_shapes_str{""};
+  STVMInputShapes input_shapes{};
 
+  static std::string whitespace_trimming(const std::string& str);
   static StvmExecutionProviderInfo FromProviderOptions(const ProviderOptions& options);
   static StvmExecutionProviderInfo FromOptionsString(const char* options);
 };

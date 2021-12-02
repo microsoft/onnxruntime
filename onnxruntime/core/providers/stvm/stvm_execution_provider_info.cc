@@ -17,19 +17,23 @@ constexpr const char* kTargetHost = "target_host";
 constexpr const char* kOptLevel = "opt_level";
 constexpr const char* kFreezeWeights = "freeze_weights";
 constexpr const char* kTuningFilePath = "tuning_file_path";
+constexpr const char* kInputNames = "input_names";
+constexpr const char* kInputShapes = "input_shapes";
 
 static const std::unordered_set<std::string> valid_keys {
   std::string{kTarget},
   std::string{kTargetHost},
   std::string{kOptLevel},
   std::string{kFreezeWeights},
-  std::string{kTuningFilePath}
+  std::string{kTuningFilePath},
+  std::string{kInputNames},
+  std::string{kInputShapes}
 };
 
 }  // namespace provider_option_names
 }  // namespace stvm
 
-static std::string whitespace_trimming(const std::string& str) {
+std::string StvmExecutionProviderInfo::whitespace_trimming(const std::string& str) {
   const std::string WHITESPACE = " \n\r\t\f\v";
   size_t start = str.find_first_not_of(WHITESPACE);
   if (start == std::string::npos) {
@@ -51,6 +55,8 @@ StvmExecutionProviderInfo StvmExecutionProviderInfo::FromProviderOptions(const P
           .AddAssignmentToReference(stvm::provider_option_names::kOptLevel, info.opt_level)
           .AddAssignmentToReference(stvm::provider_option_names::kFreezeWeights, info.freeze_weights)
           .AddAssignmentToReference(stvm::provider_option_names::kTuningFilePath, info.tuning_file_path)
+          .AddAssignmentToReference(stvm::provider_option_names::kInputNames, info.input_names_str)
+          .AddAssignmentToReference(stvm::provider_option_names::kInputShapes, info.input_shapes_str)
           .Parse(options));
 
   return info;

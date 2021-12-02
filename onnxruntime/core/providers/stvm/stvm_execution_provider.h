@@ -47,6 +47,7 @@ class StvmExecutionProvider : public IExecutionProvider {
 
  private:
   bool GPUTargetCheck() const;
+  size_t split(const std::string &txt, std::vector<std::string> &strs, char ch) const;
   void ProcessInfo();
   void ProcessCPUTarget();
   void ProcessGPUTarget();
