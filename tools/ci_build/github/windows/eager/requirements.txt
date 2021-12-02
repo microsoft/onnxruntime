@@ -2,3 +2,4 @@ setuptools
 wheel
 numpy
 typing_extensions
+torch
