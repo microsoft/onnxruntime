@@ -46,21 +46,35 @@ struct MLAS_GEMM_U8X8_KERNEL_NEON
 {
     typedef uint8_t PackedAType;
     typedef uint8_t PackedBType;
+    typedef uint8_t OffsetAType;
     typedef uint8_t OffsetBType;
 
     static constexpr size_t PackedK = 4;
-    static constexpr MLAS_GEMM_U8X8_STRIDES Strides{ 24, 128, 256 };
-    static constexpr MLAS_GEMM_U8X8_STRIDES PackedStrides{ 24, 128, 256 };
+    static constexpr MLAS_GEMM_QUANT_STRIDES Strides{ 24, 128, 256 };
+    static constexpr MLAS_GEMM_QUANT_STRIDES PackedStrides{ 24, 128, 256 };
 };
 
 constexpr size_t MLAS_GEMM_U8X8_KERNEL_NEON::PackedK;
-constexpr MLAS_GEMM_U8X8_STRIDES MLAS_GEMM_U8X8_KERNEL_NEON::Strides;
-constexpr MLAS_GEMM_U8X8_STRIDES MLAS_GEMM_U8X8_KERNEL_NEON::PackedStrides;
+constexpr MLAS_GEMM_QUANT_STRIDES MLAS_GEMM_U8X8_KERNEL_NEON::Strides;
+constexpr MLAS_GEMM_QUANT_STRIDES MLAS_GEMM_U8X8_KERNEL_NEON::PackedStrides;
+
+template <>
+MLAS_FORCEINLINE int32_t
+MlasGemmQuantFixupZeroPointA<MLAS_GEMM_U8X8_KERNEL_NEON>(
+    int32_t ZeroPointA,
+    bool AIsSigned)
+{
+    if(AIsSigned) {
+        ZeroPointA = (uint8_t)(ZeroPointA ^ 0x80);
+    }
+
+    return ZeroPointA;
+}
 
 template<>
 MLAS_FORCEINLINE
 int32_t
-MlasGemmU8X8FixupZeroPointB<MLAS_GEMM_U8X8_KERNEL_NEON>(
+MlasGemmQuantFixupZeroPointB<MLAS_GEMM_U8X8_KERNEL_NEON>(
     int32_t ZeroPointB,
     bool BIsSigned
     )
@@ -74,15 +88,20 @@ MlasGemmU8X8FixupZeroPointB<MLAS_GEMM_U8X8_KERNEL_NEON>(
 
 template<>
 void
-MlasGemmU8X8CopyPackA<MLAS_GEMM_U8X8_KERNEL_NEON>(
+MlasGemmQuantCopyPackA<MLAS_GEMM_U8X8_KERNEL_NEON>(
     MLAS_GEMM_U8X8_KERNEL_NEON::PackedAType* D,
     const uint8_t* A,
     size_t lda,
     size_t CountM,
     size_t CountK,
-    int32_t* RowSumBuffer
+    int32_t* RowSumBuffer,
+    bool AIsSigned
     )
 {
+    const uint8_t BitFlipByte = AIsSigned ? 0x80 : 0;
+    const uint32_t BitFlip4Bytes = AIsSigned ? 0x80808080 : 0;
+    const uint32x4_t BitFlipVector = vdupq_n_u32(BitFlip4Bytes);
+
     //
     // Process four rows of matrix A in a loop.
     //
@@ -110,13 +129,13 @@ MlasGemmU8X8CopyPackA<MLAS_GEMM_U8X8_KERNEL_NEON>(
 
         while (k >= 16) {
 
-            uint32x4_t v0 = vld1q_u32(reinterpret_cast<const uint32_t*>(a0));
+            uint32x4_t v0 = veorq_u32(vld1q_u32(reinterpret_cast<const uint32_t*>(a0)), BitFlipVector);
             a0 += 16;
-            uint32x4_t v1 = vld1q_u32(reinterpret_cast<const uint32_t*>(a1));
+            uint32x4_t v1 = veorq_u32(vld1q_u32(reinterpret_cast<const uint32_t*>(a1)), BitFlipVector);
             a1 += 16;
-            uint32x4_t v2 = vld1q_u32(reinterpret_cast<const uint32_t*>(a2));
+            uint32x4_t v2 = veorq_u32(vld1q_u32(reinterpret_cast<const uint32_t*>(a2)), BitFlipVector);
             a2 += 16;
-            uint32x4_t v3 = vld1q_u32(reinterpret_cast<const uint32_t*>(a3));
+            uint32x4_t v3 = veorq_u32(vld1q_u32(reinterpret_cast<const uint32_t*>(a3)), BitFlipVector);
             a3 += 16;
 
 #if defined(MLAS_NEON32_INTRINSICS)
@@ -163,13 +182,13 @@ MlasGemmU8X8CopyPackA<MLAS_GEMM_U8X8_KERNEL_NEON>(
 
         while (k >= 4) {
 
-            uint32_t v0 = *reinterpret_cast<const uint32_t*>(a0);
+            uint32_t v0 = (*reinterpret_cast<const uint32_t*>(a0)) ^ BitFlip4Bytes;
             a0 += 4;
-            uint32_t v1 = *reinterpret_cast<const uint32_t*>(a1);
+            uint32_t v1 = (*reinterpret_cast<const uint32_t*>(a1)) ^ BitFlip4Bytes;
             a1 += 4;
-            uint32_t v2 = *reinterpret_cast<const uint32_t*>(a2);
+            uint32_t v2 = (*reinterpret_cast<const uint32_t*>(a2)) ^ BitFlip4Bytes;
             a2 += 4;
-            uint32_t v3 = *reinterpret_cast<const uint32_t*>(a3);
+            uint32_t v3 = (*reinterpret_cast<const uint32_t*>(a3)) ^ BitFlip4Bytes;
             a3 += 4;
 
             *reinterpret_cast<uint32_t*>(&D[0]) = v0;
@@ -195,10 +214,10 @@ MlasGemmU8X8CopyPackA<MLAS_GEMM_U8X8_KERNEL_NEON>(
 
             while (k > 0) {
 
-                d[0] = *a0++;
-                d[4] = *a1++;
-                d[8] = *a2++;
-                d[12] = *a3++;
+                d[0] = (*a0++) ^ BitFlipByte;
+                d[4] = (*a1++) ^ BitFlipByte;
+                d[8] = (*a2++) ^ BitFlipByte;
+                d[12] = (*a3++) ^ BitFlipByte;
 
                 d += 1;
                 k -= 1;
@@ -241,9 +260,9 @@ MlasGemmU8X8CopyPackA<MLAS_GEMM_U8X8_KERNEL_NEON>(
 
         while (k >= 4) {
 
-            uint32_t v0 = *reinterpret_cast<const uint32_t*>(a0);
+            uint32_t v0 = (*reinterpret_cast<const uint32_t*>(a0))^ BitFlip4Bytes;
             a0 += 4;
-            uint32_t v1 = *reinterpret_cast<const uint32_t*>(a1);
+            uint32_t v1 = (*reinterpret_cast<const uint32_t*>(a1)) ^ BitFlip4Bytes;
             a1 += 4;
 
             *reinterpret_cast<uint32_t*>(&D[0]) = v0;
@@ -267,8 +286,8 @@ MlasGemmU8X8CopyPackA<MLAS_GEMM_U8X8_KERNEL_NEON>(
 
             while (k > 0) {
 
-                d[0] = *a0++;
-                d[4] = *a1++;
+                d[0] = (*a0++) ^ BitFlipByte;
+                d[4] = (*a1++) ^ BitFlipByte;
 
                 d += 1;
                 k -= 1;
@@ -307,7 +326,7 @@ MlasGemmU8X8CopyPackA<MLAS_GEMM_U8X8_KERNEL_NEON>(
 
         while (k >= 16) {
 
-            uint8x16_t v = vld1q_u8(a);
+            uint8x16_t v = veorq_u8(vld1q_u8(a), vreinterpretq_u8_u32(BitFlipVector));
             a += 16;
 
             vst1q_u8(D, v);
@@ -374,7 +393,7 @@ MlasGemmU8X8CopyPackBProcessNeon(
 
 template<>
 void
-MlasGemmU8X8CopyPackB<MLAS_GEMM_U8X8_KERNEL_NEON>(
+MlasGemmQuantCopyPackB<MLAS_GEMM_U8X8_KERNEL_NEON>(
     MLAS_GEMM_U8X8_KERNEL_NEON::PackedBType* D,
     const uint8_t* B,
     size_t ldb,
@@ -471,7 +490,7 @@ MlasGemmU8X8CopyPackB<MLAS_GEMM_U8X8_KERNEL_NEON>(
 template<>
 MLAS_FORCEINLINE
 size_t
-MlasGemmU8X8Kernel<MLAS_GEMM_U8X8_KERNEL_NEON>(
+MlasGemmQuantKernel<MLAS_GEMM_U8X8_KERNEL_NEON>(
     const MLAS_GEMM_U8X8_KERNEL_NEON::PackedAType* A,
     const MLAS_GEMM_U8X8_KERNEL_NEON::PackedBType* B,
     int32_t* C,
@@ -489,10 +508,10 @@ MlasGemmU8X8Kernel<MLAS_GEMM_U8X8_KERNEL_NEON>(
                                   RowSumBuffer, ColumnSumBuffer, ZeroPointB, ZeroMode);
 }
 
-const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8X8DispatchNeon = {
-    MlasGemmU8X8Operation<MLAS_GEMM_U8X8_KERNEL_NEON>,
-    MlasGemmU8X8PackedOperation<MLAS_GEMM_U8X8_KERNEL_NEON>,
-    MlasGemmU8X8CopyPackB<MLAS_GEMM_U8X8_KERNEL_NEON>,
+const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchNeon = {
+    MlasGemmQuantOperation<MLAS_GEMM_U8X8_KERNEL_NEON>,
+    MlasGemmQuantPackedOperation<MLAS_GEMM_U8X8_KERNEL_NEON>,
+    MlasGemmQuantCopyPackB<MLAS_GEMM_U8X8_KERNEL_NEON>,
     MLAS_GEMM_U8X8_KERNEL_NEON::PackedK,
     MLAS_GEMM_U8X8_KERNEL_NEON::PackedStrides.K,
 };
@@ -522,31 +541,38 @@ extern "C" {
         );
 }
 
-struct MLAS_GEMM_S8S8_KERNEL_NEON {
+struct MLAS_GEMM_X8S8_KERNEL_NEON {
     typedef uint8_t PackedAType;
     typedef uint8_t PackedBType;
+    typedef int8_t OffsetAType;
     typedef int8_t OffsetBType;
 
     static constexpr size_t PackedK = 16;
-    static constexpr MLAS_GEMM_U8X8_STRIDES Strides{24, 128, 256};
-    static constexpr MLAS_GEMM_U8X8_STRIDES PackedStrides{24, 128, 384};
+    static constexpr MLAS_GEMM_QUANT_STRIDES Strides{24, 128, 256};
+    static constexpr MLAS_GEMM_QUANT_STRIDES PackedStrides{24, 128, 384};
 };
 
-constexpr size_t MLAS_GEMM_S8S8_KERNEL_NEON::PackedK;
-constexpr MLAS_GEMM_U8X8_STRIDES MLAS_GEMM_S8S8_KERNEL_NEON::Strides;
-constexpr MLAS_GEMM_U8X8_STRIDES MLAS_GEMM_S8S8_KERNEL_NEON::PackedStrides;
+constexpr size_t MLAS_GEMM_X8S8_KERNEL_NEON::PackedK;
+constexpr MLAS_GEMM_QUANT_STRIDES MLAS_GEMM_X8S8_KERNEL_NEON::Strides;
+constexpr MLAS_GEMM_QUANT_STRIDES MLAS_GEMM_X8S8_KERNEL_NEON::PackedStrides;
 
 template <>
 MLAS_FORCEINLINE int32_t
-MlasGemmU8X8FixupZeroPointA<MLAS_GEMM_S8S8_KERNEL_NEON>(int32_t ZeroPointA)
+MlasGemmQuantFixupZeroPointA<MLAS_GEMM_X8S8_KERNEL_NEON>(
+    int32_t ZeroPointA,
+    bool AIsSigned)
 {
-    return int8_t(ZeroPointA ^ 0x80);
+    if(AIsSigned) {
+        return ZeroPointA;
+    }
+
+    return MLAS_GEMM_X8S8_KERNEL_NEON::OffsetAType(ZeroPointA ^ 0x80);
 }
 
-template<>
+template<bool AIsSigned>
 void
-MlasGemmU8X8CopyPackA<MLAS_GEMM_S8S8_KERNEL_NEON>(
-    MLAS_GEMM_S8S8_KERNEL_NEON::PackedAType* D,
+MlasGemmQuantCopyPackAX8S8Neon(
+    MLAS_GEMM_X8S8_KERNEL_NEON::PackedAType* D,
     const uint8_t* A,
     size_t lda,
     size_t CountM,
@@ -554,8 +580,10 @@ MlasGemmU8X8CopyPackA<MLAS_GEMM_S8S8_KERNEL_NEON>(
     int32_t* RowSumBuffer
     )
 {
-
     const uint8x16_t BitFlipVector = vdupq_n_u8(0x80);
+    if constexpr(AIsSigned) {
+        MLAS_UNREFERENCED_PARAMETER(BitFlipVector);
+    }
 
     //
     // Process four rows of matrix A.
@@ -576,14 +604,32 @@ MlasGemmU8X8CopyPackA<MLAS_GEMM_S8S8_KERNEL_NEON>(
 
         while (k >= 16) {
 
-            int8x16_t v0 = vreinterpretq_s8_u8(veorq_u8(vld1q_u8(a0), BitFlipVector));
-            a0 += 16;
-            int8x16_t v1 = vreinterpretq_s8_u8(veorq_u8(vld1q_u8(a1), BitFlipVector));
-            a1 += 16;
-            int8x16_t v2 = vreinterpretq_s8_u8(veorq_u8(vld1q_u8(a2), BitFlipVector));
-            a2 += 16;
-            int8x16_t v3 = vreinterpretq_s8_u8(veorq_u8(vld1q_u8(a3), BitFlipVector));
-            a3 += 16;
+            int8x16_t v0;
+            int8x16_t v1;
+            int8x16_t v2;
+            int8x16_t v3;
+
+            if constexpr (AIsSigned) {
+
+                v0 = vreinterpretq_s8_u8(vld1q_u8(a0));
+                a0 += 16;
+                v1 = vreinterpretq_s8_u8(vld1q_u8(a1));
+                a1 += 16;
+                v2 = vreinterpretq_s8_u8(vld1q_u8(a2));
+                a2 += 16;
+                v3 = vreinterpretq_s8_u8(vld1q_u8(a3));
+                a3 += 16;
+            } else {
+
+                v0 = vreinterpretq_s8_u8(veorq_u8(vld1q_u8(a0), BitFlipVector));
+                a0 += 16;
+                v1 = vreinterpretq_s8_u8(veorq_u8(vld1q_u8(a1), BitFlipVector));
+                a1 += 16;
+                v2 = vreinterpretq_s8_u8(veorq_u8(vld1q_u8(a2), BitFlipVector));
+                a2 += 16;
+                v3 = vreinterpretq_s8_u8(veorq_u8(vld1q_u8(a3), BitFlipVector));
+                a3 += 16;
+            }
 
             RowSums0 = vpadalq_s16(RowSums0, vpaddlq_s8(v0));
             RowSums1 = vpadalq_s16(RowSums1, vpaddlq_s8(v1));
@@ -603,10 +649,19 @@ MlasGemmU8X8CopyPackA<MLAS_GEMM_S8S8_KERNEL_NEON>(
 
             uint8_t* d = D;
 
-            vst1q_u8(&D[0], BitFlipVector);
-            vst1q_u8(&D[16], BitFlipVector);
-            vst1q_u8(&D[32], BitFlipVector);
-            vst1q_u8(&D[48], BitFlipVector);
+            if constexpr (AIsSigned) {
+
+                vst1q_u8(&D[0], vmovq_n_u8(0));
+                vst1q_u8(&D[16], vmovq_n_u8(0));
+                vst1q_u8(&D[32], vmovq_n_u8(0));
+                vst1q_u8(&D[48], vmovq_n_u8(0));
+            } else {
+
+                vst1q_u8(&D[0], BitFlipVector);
+                vst1q_u8(&D[16], BitFlipVector);
+                vst1q_u8(&D[32], BitFlipVector);
+                vst1q_u8(&D[48], BitFlipVector);
+            }
 
             if (k >= 8) {
 
@@ -654,20 +709,36 @@ MlasGemmU8X8CopyPackA<MLAS_GEMM_S8S8_KERNEL_NEON>(
                 k -= 1;
             }
 
-            int8x16_t v0 = vreinterpretq_s8_u8(veorq_u8(vld1q_u8(&D[0]), BitFlipVector));
-            int8x16_t v1 = vreinterpretq_s8_u8(veorq_u8(vld1q_u8(&D[16]), BitFlipVector));
-            int8x16_t v2 = vreinterpretq_s8_u8(veorq_u8(vld1q_u8(&D[32]), BitFlipVector));
-            int8x16_t v3 = vreinterpretq_s8_u8(veorq_u8(vld1q_u8(&D[48]), BitFlipVector));
+            int8x16_t v0;
+            int8x16_t v1;
+            int8x16_t v2;
+            int8x16_t v3;
+
+            if constexpr (AIsSigned) {
+
+                v0 = vreinterpretq_s8_u8(vld1q_u8(&D[0]));
+                v1 = vreinterpretq_s8_u8(vld1q_u8(&D[16]));
+                v2 = vreinterpretq_s8_u8(vld1q_u8(&D[32]));
+                v3 = vreinterpretq_s8_u8(vld1q_u8(&D[48]));
+            } else {
+
+                v0 = vreinterpretq_s8_u8(veorq_u8(vld1q_u8(&D[0]), BitFlipVector));
+                v1 = vreinterpretq_s8_u8(veorq_u8(vld1q_u8(&D[16]), BitFlipVector));
+                v2 = vreinterpretq_s8_u8(veorq_u8(vld1q_u8(&D[32]), BitFlipVector));
+                v3 = vreinterpretq_s8_u8(veorq_u8(vld1q_u8(&D[48]), BitFlipVector));
+            }
 
             RowSums0 = vpadalq_s16(RowSums0, vpaddlq_s8(v0));
             RowSums1 = vpadalq_s16(RowSums1, vpaddlq_s8(v1));
             RowSums2 = vpadalq_s16(RowSums2, vpaddlq_s8(v2));
             RowSums3 = vpadalq_s16(RowSums3, vpaddlq_s8(v3));
 
-            vst1q_u8(&D[0], vreinterpretq_u8_s8(v0));
-            vst1q_u8(&D[16], vreinterpretq_u8_s8(v1));
-            vst1q_u8(&D[32], vreinterpretq_u8_s8(v2));
-            vst1q_u8(&D[48], vreinterpretq_u8_s8(v3));
+            if constexpr (!AIsSigned) {
+                vst1q_u8(&D[0], vreinterpretq_u8_s8(v0));
+                vst1q_u8(&D[16], vreinterpretq_u8_s8(v1));
+                vst1q_u8(&D[32], vreinterpretq_u8_s8(v2));
+                vst1q_u8(&D[48], vreinterpretq_u8_s8(v3));
+            }
 
             D += 64;
         }
@@ -698,10 +769,22 @@ MlasGemmU8X8CopyPackA<MLAS_GEMM_S8S8_KERNEL_NEON>(
 
         while (k >= 16) {
 
-            int8x16_t v0 = vreinterpretq_s8_u8(veorq_u8(vld1q_u8(a0), BitFlipVector));
-            a0 += 16;
-            int8x16_t v1 = vreinterpretq_s8_u8(veorq_u8(vld1q_u8(a1), BitFlipVector));
-            a1 += 16;
+            int8x16_t v0;
+            int8x16_t v1;
+
+            if constexpr (AIsSigned) {
+
+                v0 = vreinterpretq_s8_u8(vld1q_u8(a0));
+                a0 += 16;
+                v1 = vreinterpretq_s8_u8(vld1q_u8(a1));
+                a1 += 16;
+            } else {
+
+                v0 = vreinterpretq_s8_u8(veorq_u8(vld1q_u8(a0), BitFlipVector));
+                a0 += 16;
+                v1 = vreinterpretq_s8_u8(veorq_u8(vld1q_u8(a1), BitFlipVector));
+                a1 += 16;
+            }
 
             RowSums0 = vpadalq_s16(RowSums0, vpaddlq_s8(v0));
             RowSums1 = vpadalq_s16(RowSums1, vpaddlq_s8(v1));
@@ -717,8 +800,15 @@ MlasGemmU8X8CopyPackA<MLAS_GEMM_S8S8_KERNEL_NEON>(
 
             uint8_t* d = D;
 
-            vst1q_u8(&D[0], BitFlipVector);
-            vst1q_u8(&D[16], BitFlipVector);
+            if constexpr (AIsSigned) {
+
+                vst1q_u8(&D[0], vmovq_n_u8(0));
+                vst1q_u8(&D[16], vmovq_n_u8(0));
+            } else {
+
+                vst1q_u8(&D[0], BitFlipVector);
+                vst1q_u8(&D[16], BitFlipVector);
+            }
 
             while (k > 0) {
 
@@ -729,14 +819,24 @@ MlasGemmU8X8CopyPackA<MLAS_GEMM_S8S8_KERNEL_NEON>(
                 k -= 1;
             }
 
-            int8x16_t v0 = vreinterpretq_s8_u8(veorq_u8(vld1q_u8(&D[0]), BitFlipVector));
-            int8x16_t v1 = vreinterpretq_s8_u8(veorq_u8(vld1q_u8(&D[16]), BitFlipVector));
+            int8x16_t v0;
+            int8x16_t v1;
+
+            if constexpr (AIsSigned) {
+                v0 = vreinterpretq_s8_u8(vld1q_u8(&D[0]));
+                v1 = vreinterpretq_s8_u8(vld1q_u8(&D[16]));
+            } else {
+                v0 = vreinterpretq_s8_u8(veorq_u8(vld1q_u8(&D[0]), BitFlipVector));
+                v1= vreinterpretq_s8_u8(veorq_u8(vld1q_u8(&D[16]), BitFlipVector));
+            }
 
             RowSums0 = vpadalq_s16(RowSums0, vpaddlq_s8(v0));
             RowSums1 = vpadalq_s16(RowSums1, vpaddlq_s8(v1));
 
-            vst1q_u8(&D[0], vreinterpretq_u8_s8(v0));
-            vst1q_u8(&D[16], vreinterpretq_u8_s8(v1));
+            if constexpr (!AIsSigned) {
+                vst1q_u8(&D[0], vreinterpretq_u8_s8(v0));
+                vst1q_u8(&D[16], vreinterpretq_u8_s8(v1));
+            }
 
             D += 32;
         }
@@ -763,8 +863,16 @@ MlasGemmU8X8CopyPackA<MLAS_GEMM_S8S8_KERNEL_NEON>(
 
         while (k >= 16) {
 
-            int8x16_t v0 = vreinterpretq_s8_u8(veorq_u8(vld1q_u8(a0), BitFlipVector));
-            a0 += 16;
+            int8x16_t v0;
+            if constexpr (AIsSigned){
+
+                v0 = vreinterpretq_s8_u8(vld1q_u8(a0));
+                a0 += 16;
+            } else {
+
+                v0 = vreinterpretq_s8_u8(veorq_u8(vld1q_u8(a0), BitFlipVector));
+                a0 += 16;
+            }
 
             RowSums0 = vpadalq_s16(RowSums0, vpaddlq_s8(v0));
 
@@ -778,7 +886,11 @@ MlasGemmU8X8CopyPackA<MLAS_GEMM_S8S8_KERNEL_NEON>(
 
             uint8_t* d = D;
 
-            vst1q_u8(&D[0], BitFlipVector);
+            if constexpr (AIsSigned){
+                vst1q_u8(&D[0], vmovq_n_u8(0));
+            } else{
+                vst1q_u8(&D[0], BitFlipVector);
+            }
 
             while (k > 0) {
 
@@ -788,11 +900,17 @@ MlasGemmU8X8CopyPackA<MLAS_GEMM_S8S8_KERNEL_NEON>(
                 k -= 1;
             }
 
-            int8x16_t v0 = vreinterpretq_s8_u8(veorq_u8(vld1q_u8(&D[0]), BitFlipVector));
+            int8x16_t v0;
+            if constexpr (AIsSigned){
 
-            RowSums0 = vpadalq_s16(RowSums0, vpaddlq_s8(v0));
+                v0 = vreinterpretq_s8_u8(vld1q_u8(&D[0]));
+                RowSums0 = vpadalq_s16(RowSums0, vpaddlq_s8(v0));
+            } else {
 
-            vst1q_u8(&D[0], vreinterpretq_u8_s8(v0));
+                v0 = vreinterpretq_s8_u8(veorq_u8(vld1q_u8(&D[0]), BitFlipVector));
+                RowSums0 = vpadalq_s16(RowSums0, vpaddlq_s8(v0));
+                vst1q_u8(&D[0], vreinterpretq_u8_s8(v0));
+            }
 
             D += 16;
         }
@@ -813,8 +931,27 @@ MlasGemmU8X8CopyPackA<MLAS_GEMM_S8S8_KERNEL_NEON>(
 
 template<>
 void
-MlasGemmU8X8CopyPackB<MLAS_GEMM_S8S8_KERNEL_NEON>(
-    MLAS_GEMM_S8S8_KERNEL_NEON::PackedBType* D,
+MlasGemmQuantCopyPackA<MLAS_GEMM_X8S8_KERNEL_NEON>(
+    MLAS_GEMM_X8S8_KERNEL_NEON::PackedAType* D,
+    const uint8_t* A,
+    size_t lda,
+    size_t CountM,
+    size_t CountK,
+    int32_t* RowSumBuffer,
+    bool AIsSigned
+    )
+{
+    if(AIsSigned) {
+        MlasGemmQuantCopyPackAX8S8Neon<true>(D, A, lda, CountM, CountK, RowSumBuffer);
+    } else {
+        MlasGemmQuantCopyPackAX8S8Neon<false>(D, A, lda, CountM, CountK, RowSumBuffer);
+    }
+}
+
+template<>
+void
+MlasGemmQuantCopyPackB<MLAS_GEMM_X8S8_KERNEL_NEON>(
+    MLAS_GEMM_X8S8_KERNEL_NEON::PackedBType* D,
     const uint8_t* B,
     size_t ldb,
     size_t CountN,
@@ -944,9 +1081,9 @@ MlasGemmU8X8CopyPackB<MLAS_GEMM_S8S8_KERNEL_NEON>(
 template<>
 MLAS_FORCEINLINE
 size_t
-MlasGemmU8X8Kernel<MLAS_GEMM_S8S8_KERNEL_NEON>(
-    const MLAS_GEMM_S8S8_KERNEL_NEON::PackedAType* A,
-    const MLAS_GEMM_S8S8_KERNEL_NEON::PackedBType* B,
+MlasGemmQuantKernel<MLAS_GEMM_X8S8_KERNEL_NEON>(
+    const MLAS_GEMM_X8S8_KERNEL_NEON::PackedAType* A,
+    const MLAS_GEMM_X8S8_KERNEL_NEON::PackedBType* B,
     int32_t* C,
     size_t PackedCountK,
     size_t CountM,
@@ -963,12 +1100,12 @@ MlasGemmU8X8Kernel<MLAS_GEMM_S8S8_KERNEL_NEON>(
 }
 
 
-const MLAS_GEMM_U8X8_DISPATCH MlasGemmS8S8DispatchNeon = {
-    MlasGemmU8X8Operation<MLAS_GEMM_S8S8_KERNEL_NEON>,
-    MlasGemmU8X8PackedOperation<MLAS_GEMM_S8S8_KERNEL_NEON>,
-    MlasGemmU8X8CopyPackB<MLAS_GEMM_S8S8_KERNEL_NEON>,
-    MLAS_GEMM_S8S8_KERNEL_NEON::PackedK,
-    MLAS_GEMM_S8S8_KERNEL_NEON::PackedStrides.K,
+const MLAS_GEMM_QUANT_DISPATCH MlasGemmX8S8DispatchNeon = {
+    MlasGemmQuantOperation<MLAS_GEMM_X8S8_KERNEL_NEON>,
+    MlasGemmQuantPackedOperation<MLAS_GEMM_X8S8_KERNEL_NEON>,
+    MlasGemmQuantCopyPackB<MLAS_GEMM_X8S8_KERNEL_NEON>,
+    MLAS_GEMM_X8S8_KERNEL_NEON::PackedK,
+    MLAS_GEMM_X8S8_KERNEL_NEON::PackedStrides.K,
 };
 
 #endif  //defined(MLAS_TARGET_ARM64)
