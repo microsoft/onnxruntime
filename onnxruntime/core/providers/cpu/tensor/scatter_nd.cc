@@ -131,7 +131,6 @@ Status ScatterNDBase::PrepareForCompute(OpKernelContext* context, Prepare& p) co
     element_counts[i] = input_strides[i];
   }
 
-  int64_t err_indice = 0;
   p.element_bytes = input_tensor->DataType()->Size();
   p.element_to_copy = input_shape.SizeFromDimension(last_indice_dimension);
   p.bytes_to_copy = p.element_bytes * p.element_to_copy;
@@ -150,13 +149,23 @@ Status ScatterNDBase::PrepareForCompute(OpKernelContext* context, Prepare& p) co
   for (int64_t i = 0; i < offset_count; ++i) {
     for (int64_t j = 0; j < last_indice_dimension; ++j) {
       auto indice = *(indice_offset + i * last_indice_dimension + j);
-      if (indice < 0 || indice >= input_shape[j]) {
-        err_indice = indice;
+
+      if (indice >= 0) {
+        if (indice >= input_shape[j]) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "invalid indice found, indice = ", indice);
+        }
+      } else {
+        if (indice < -input_shape[j]) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "invalid indice found, indice = ", indice);
+        } else {
+          indice += input_shape[j];
+        }
       }
+
       p.element_offsets[i] += indice * element_counts[j];
     }
   }
-  return err_indice == 0 ? Status::OK() : ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "invalid indice found, indice = ", err_indice);
+  return Status::OK();
 }
 
 Status ScatterND::Compute(OpKernelContext* context) const {

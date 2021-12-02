@@ -39,6 +39,15 @@ TEST(ScatterNDOpTest, ScatterND_matrice_int64_int64) {
   test.Run();
 }
 
+TEST(ScatterNDOpTest, ScatterND_matrice_int64_int64_neg_indices) {
+  OpTester test("ScatterND", 11);
+  test.AddInput<int64_t> ("data", {2,2}, {1LL,1LL,2LL,2LL});
+  test.AddInput<int64_t> ("indices", {2,2}, {0LL,0LL,-1LL,-1LL});
+  test.AddInput<int64_t>("updates", {2}, {0LL,3LL});
+  test.AddOutput<int64_t>("output", {2,2}, {0LL,1LL,2LL,3LL});
+  test.Run();
+}
+
 TEST(ScatterNDOpTest, ScatterND_matrice_string_int64) {
   OpTester test1("ScatterND", 11);
   test1.AddInput<std::string>("data", {2,2,2}, {"egg","dance","bob","air","smart","terry","laugh","kite"});
@@ -50,6 +59,22 @@ TEST(ScatterNDOpTest, ScatterND_matrice_string_int64) {
   OpTester test2("ScatterND", 11);
   test2.AddInput<std::string>("data", {3,3}, {"egg","","air","","terry","smart","laugh","","hop"});
   test2.AddInput<int64_t>("indices", {3,2}, {2,1,1,0,0,1});
+  test2.AddInput<std::string>("updates", {3}, {"kite","bob","dance"});
+  test2.AddOutput<std::string>("output", {3,3}, {"egg","dance","air","bob","terry","smart","laugh","kite","hop"});
+  test2.Run();
+}
+
+TEST(ScatterNDOpTest, ScatterND_matrice_string_int64_neg_indices) {
+  OpTester test1("ScatterND", 11);
+  test1.AddInput<std::string>("data", {2,2,2}, {"egg","dance","bob","air","smart","terry","laugh","kite"});
+  test1.AddInput<int64_t>("indices", {2,1,2}, {0,-1,-1,0});
+  test1.AddInput<std::string>("updates", {2,1,2}, {"air","bob","terry","smart"});
+  test1.AddOutput<std::string>("output", {2,2,2}, {"egg","dance","air","bob","terry","smart","laugh","kite"});
+  test1.Run();
+
+  OpTester test2("ScatterND", 11);
+  test2.AddInput<std::string>("data", {3,3}, {"egg","","air","","terry","smart","laugh","","hop"});
+  test2.AddInput<int64_t>("indices", {3,2}, {-1,-2,1,0,0,-2});
   test2.AddInput<std::string>("updates", {3}, {"kite","bob","dance"});
   test2.AddOutput<std::string>("output", {3,3}, {"egg","dance","air","bob","terry","smart","laugh","kite","hop"});
   test2.Run();
@@ -76,14 +101,14 @@ TEST(ScatterNDOpTest, ScatterND_slice_double_int64_t) {
 TEST(ScatterNDOpTest, ScatterND_3tensor_int64) {
   OpTester test1("ScatterND", 11);
   test1.AddInput<int64_t>("data", {2,2,2}, {0LL,1LL,1LL,1LL,1LL,1LL,6LL,7LL});
-  test1.AddInput<int64_t>("indices", {2,2}, {0LL,1LL,1LL,0LL});
+  test1.AddInput<int64_t>("indices", {2,2}, {0LL,1LL,-1LL,0LL});
   test1.AddInput<int64_t>("updates", {2,2}, {2LL,3LL,4LL,5LL});
   test1.AddOutput<int64_t>("output", {2,2,2}, {0LL,1LL,2LL,3LL,4LL,5LL,6LL,7LL});
   test1.Run();
 
   OpTester test2("ScatterND", 11);
   test2.AddInput<int8_t>("data", {2,2,2}, {0,0,2,3,4,0,6,7});
-  test2.AddInput<int64_t>("indices", {2,3}, {0,0,1,1,0,1});
+  test2.AddInput<int64_t>("indices", {2,3}, {0,0,1,-1,0,-1});
   test2.AddInput<int8_t>("updates", {2}, {1,5});
   test2.AddOutput<int8_t>("output", {2,2,2}, {0,1,2,3,4,5,6,7});
   test2.Run();
@@ -142,7 +167,7 @@ TEST(ScatterNDOpTest, ScatterND_batched_3tensor_int64) {
 
   OpTester test2("ScatterND", 11);
   test2.AddInput<uint32_t>("data", {2,2,2}, {0,0,2,0,4,0,0,7});
-  test2.AddInput<int64_t>("indices", {2,2,3}, {0,0,1,1,0,1,0,1,1,1,1,0});
+  test2.AddInput<int64_t>("indices", {2,2,3}, {0,0,-1,-1,0,-1,0,1,-1,1,-1,0});
   test2.AddInput<uint32_t>("updates", {2,2}, {1,5,3,6});
   test2.AddOutput<uint32_t>("output", {2,2,2}, {0,1,2,3,4,5,6,7});
   test2.Run();

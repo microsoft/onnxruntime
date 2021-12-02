@@ -1335,7 +1335,7 @@ namespace OperatorHelper
             auto inputShape = shapeInfo.GetInputTensorShape(i);
             for (size_t j = 0; j < outputShape.size(); ++j)
             {
-                if (m_axis == j)
+                if (static_cast<size_t>(m_axis) == j)
                 {
                     outputShape[j] += inputShape[j];
                 }
