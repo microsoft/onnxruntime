@@ -202,7 +202,7 @@ extern onnxruntime::ArenaExtendStrategy arena_extend_strategy;
 #include "core/providers/shared_library/provider_host_api.h"
 
 namespace onnxruntime {
-#ifndef SHARED_PROVIDER
+#if !defined(SHARED_PROVIDER) && !defined(DISABLE_SPARSE_TENSORS)
 class SparseTensor;
 #endif
 namespace python {
@@ -307,6 +307,7 @@ inline AllocatorPtr& GetAllocator() {
   return alloc;
 }
 
+#if !defined(DISABLE_SPARSE_TENSORS)
 // This class exposes SparseTensor to Python
 // The class serves two major purposes
 // - to be able to map numpy arrays memory and use it on input, this serves as a reference holder
@@ -387,6 +388,7 @@ class PySparseTensor {
   // We create a copy of OrtValue when we obtain it from a run method.
   OrtValue ort_value_;
 };
+#endif  // !defined(DISABLE_SPARSE_TENSORS)
 
 class SessionObjectInitializer {
  public:
