@@ -69,11 +69,13 @@ These optimizations include complex node fusions. They are run after graph parti
 | GELU Approximation*             | CUDA               | Disabled by default. Enable with [kOrtSessionOptionsEnableGeluApproximation](https://cs.github.com/microsoft/onnxruntime/blob/175acf08f470db0bb2e4b8eefe55cdeb87c8b132/include/onnxruntime/core/session/onnxruntime_session_options_config_keys.h?q=kOrtSessionOptionsEnableGeluApproximation#L52) |
 
 
-<details>
-  <summary>* Approximations (click to expand)</summary>
-  <p>
+<details markdown="block">
+  <summary>
+    Approximations (click to expand)
+  </summary>
+
   To optimize performance of <a href="https://en.wikipedia.org/wiki/BERT_(language_model)">BERT</a>, approximation is used in GELU Approximation and Attention Fusion for CUDA execution provider. The impact on accuracy is negligible based on our evaluation: F1 score for a BERT model on SQuAD v1.1 is almost same (87.05 vs 87.03).
-  </p>
+
 </details>
 
 ### Layout Optimizations
