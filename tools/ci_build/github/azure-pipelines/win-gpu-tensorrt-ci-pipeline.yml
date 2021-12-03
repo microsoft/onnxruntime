@@ -11,7 +11,7 @@ jobs:
     setVcvars: true
     BuildConfig: 'RelWithDebInfo'
     ALLOW_RELEASED_ONNX_OPSET_ONLY: '1'
-  timeoutInMinutes: 120
+  timeoutInMinutes: 150
   workspace:
     clean: all
   steps:
