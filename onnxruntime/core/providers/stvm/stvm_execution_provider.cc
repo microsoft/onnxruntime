@@ -203,7 +203,7 @@ StvmExecutionProvider::StvmExecutionProvider(const StvmExecutionProviderInfo& in
 
   const std::string dump_subgraphs_env = env_instance.GetEnvironmentVar(stvm_env_vars::kDumpSubgraphs);
   if (!dump_subgraphs_env.empty()) {
-    dump_subgraphs_ = (std::stoi(dump_subgraphs_env) == 0 ? false : true);
+    dump_subgraphs_ = std::stoi(dump_subgraphs_env) != 0;
   }
 }
 
@@ -314,8 +314,10 @@ common::Status StvmExecutionProvider::Compile(const std::vector<Node*>& nodes,
     opsets_[func_name] = int(opset->version());
     model_paths_[func_name] = fused_node->ModelPath().ToPathString();;
 
-    std::fstream dump("/tmp/" + fused_node->Name() + ".onnx", std::ios::out | std::ios::trunc | std::ios::binary);
-    model_proto.SerializeToOstream(&dump);
+    if (dump_subgraphs_) {
+        std::fstream dump("/tmp/" + fused_node->Name() + ".onnx", std::ios::out | std::ios::trunc | std::ios::binary);
+        model_proto.SerializeToOstream(&dump);
+    }
 
     NodeComputeInfo compute_info;
     compute_info.create_state_func = std::bind(&StvmExecutionProvider::CreateStateFunc, this, std::placeholders::_1, std::placeholders::_2);
