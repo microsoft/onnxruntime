@@ -32,7 +32,7 @@ Status Compress::ComputeInternal(OpKernelContext* ctx) const {
   const Tensor* input_tensor = ctx->Input<Tensor>(0);
   ORT_ENFORCE(input_tensor);
   size_t rank = input_tensor->Shape().NumDimensions();
-  auto& input_dimensions = input_tensor->Shape().GetDims();
+  auto input_dimensions = input_tensor->Shape().GetDims();
   int64_t axis = 0;
   if (has_axis_) {
     axis = HandleNegativeAxis(axis_, rank);
@@ -48,14 +48,16 @@ Status Compress::ComputeInternal(OpKernelContext* ctx) const {
   int64_t compress_input_length = has_axis_ ? input_dimensions[axis] : input_size;
   int64_t valid_condition_length = compress_input_length < condition_length ? compress_input_length : condition_length;
 
-  auto condition_cumulative_sum_buffer = GetScratchBuffer<int32_t>(valid_condition_length);
+  auto condition_cumulative_sum_buffer = GetScratchBuffer<int32_t>(gsl::narrow<size_t>(valid_condition_length));
   auto condition_cumulative_sum = condition_cumulative_sum_buffer.get();
+
   size_t temp_storage_bytes = 0;
   CUDA_RETURN_IF_ERROR(CompressCalcPrefixSumTempStorageBytes(Stream(),
                                                              reinterpret_cast<const int8_t*>(condition_data),
                                                              condition_cumulative_sum,
-                                                             static_cast<int>(valid_condition_length),
+                                                             gsl::narrow<int>(valid_condition_length),
                                                              temp_storage_bytes));
+
   auto temp_buffer = GetScratchBuffer<uint8_t>(temp_storage_bytes);
   auto d_temp_storage = temp_buffer.get();
   CUDA_RETURN_IF_ERROR(CompressInclusivePrefixSum(Stream(),
@@ -63,13 +65,13 @@ Status Compress::ComputeInternal(OpKernelContext* ctx) const {
                                                   temp_storage_bytes,
                                                   reinterpret_cast<const int8_t*>(condition_data),
                                                   condition_cumulative_sum,
-                                                  static_cast<int>(valid_condition_length)));
+                                                  gsl::narrow<int>(valid_condition_length)));
 
   // cudaMemcpyAsync from device memory to pageable host memory will return only once the copy has completed.
   int32_t positive_condition_count = 0;
   CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(&positive_condition_count, condition_cumulative_sum + valid_condition_length - 1, sizeof(int32_t), cudaMemcpyDeviceToHost, Stream()));
 
-  std::vector<int64_t> output_dims(input_dimensions);
+  std::vector<int64_t> output_dims(input_dimensions.begin(), input_dimensions.end());
   if (has_axis_) {
     output_dims[axis] = positive_condition_count;
   } else {

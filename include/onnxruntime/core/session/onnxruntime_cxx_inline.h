@@ -284,6 +284,14 @@ inline void IoBinding::ClearBoundOutputs() {
   GetApi().ClearBoundOutputs(p_);
 }
 
+inline void IoBinding::SynchronizeInputs() {
+  ThrowOnError(GetApi().SynchronizeBoundInputs(p_));
+}
+
+inline void IoBinding::SynchronizeOutputs() {
+  ThrowOnError(GetApi().SynchronizeBoundOutputs(p_));
+}
+
 inline ArenaCfg::ArenaCfg(size_t max_mem, int arena_extend_strategy, int initial_chunk_size_bytes, int max_dead_bytes_per_chunk) {
   ThrowOnError(GetApi().CreateArenaCfg(max_mem, arena_extend_strategy, initial_chunk_size_bytes, max_dead_bytes_per_chunk, &p_));
 }
@@ -512,6 +520,20 @@ inline SessionOptions& SessionOptions::AppendExecutionProvider_TensorRT(const Or
 
 inline SessionOptions& SessionOptions::SetSessionThreadPool(OrtThreadPoolBase* thread_pool) {
   ThrowOnError(GetApi().SetSessionThreadPool(p_, thread_pool));
+}
+
+inline SessionOptions& SessionOptions::SetCustomCreateThreadFn(OrtCustomCreateThreadFn ort_custom_create_thread_fn) {
+  ThrowOnError(GetApi().SessionOptionsSetCustomCreateThreadFn(p_, ort_custom_create_thread_fn));
+  return *this;
+}
+
+inline SessionOptions& SessionOptions::SetCustomThreadCreationOptions(void* ort_custom_thread_creation_options) {
+  ThrowOnError(GetApi().SessionOptionsSetCustomThreadCreationOptions(p_, ort_custom_thread_creation_options));
+  return *this;
+}
+
+inline SessionOptions& SessionOptions::SetCustomJoinThreadFn(OrtCustomJoinThreadFn ort_custom_join_thread_fn) {
+  ThrowOnError(GetApi().SessionOptionsSetCustomJoinThreadFn(p_, ort_custom_join_thread_fn));
   return *this;
 }
 
@@ -899,6 +921,12 @@ inline bool Value::IsTensor() const {
   return out != 0;
 }
 
+inline bool Value::HasValue() const {
+  int out;
+  ThrowOnError(GetApi().HasValue(p_, &out));
+  return out != 0;
+}
+
 #if !defined(DISABLE_SPARSE_TENSORS)
 inline bool Value::IsSparseTensor() const {
   int out;
@@ -1101,6 +1129,12 @@ inline T* CustomOpApi::GetTensorMutableData(_Inout_ OrtValue* value) {
   return data;
 }
 
+inline const OrtMemoryInfo* CustomOpApi::GetTensorMemoryInfo(_In_ const OrtValue* value) {
+  const OrtMemoryInfo* mem_info;
+  ThrowOnError(api_.GetTensorMemoryInfo(value, &mem_info)); 
+  return mem_info;
+}
+
 template <typename T>
 inline const T* CustomOpApi::GetTensorData(_Inout_ const OrtValue* value) {
   return GetTensorMutableData<T>(const_cast<OrtValue*>(value));
@@ -1138,6 +1172,12 @@ inline OrtValue* CustomOpApi::KernelContext_GetOutput(OrtKernelContext* context,
                                                       _In_ const int64_t* dim_values, size_t dim_count) {
   OrtValue* out;
   ThrowOnError(api_.KernelContext_GetOutput(context, index, dim_values, dim_count, &out));
+  return out;
+}
+
+inline void* CustomOpApi::KernelContext_GetGPUComputeStream(const OrtKernelContext* context) {
+  void* out;
+  ThrowOnError(api_.KernelContext_GetGPUComputeStream(context, &out));
   return out;
 }
 

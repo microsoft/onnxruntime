@@ -20,6 +20,11 @@ class TrainingSession(InferenceSession):
         else:
             self._sess = C.TrainingSession()
 
+        # providers needs to be passed explicitly as of ORT 1.10
+        # retain the pre-1.10 behavior by setting to the available providers.
+        if providers is None:
+            providers = C.get_available_providers()
+
         providers, provider_options = check_and_normalize_provider_args(providers, provider_options,
                                                                         C.get_available_providers())
 

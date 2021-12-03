@@ -32,8 +32,9 @@ Status SliceGrad::Compute(OpKernelContext* context) const {
   std::vector<int64_t> input_ends;
   std::vector<int64_t> input_axes;
   std::vector<int64_t> input_steps;
-  FillVectorsFromInput(*context->Input<Tensor>(2), *context->Input<Tensor>(3), context->Input<Tensor>(4),
-                       context->Input<Tensor>(5), input_starts, input_ends, input_axes, input_steps);
+  ORT_RETURN_IF_ERROR(FillVectorsFromInput(*context->Input<Tensor>(2), *context->Input<Tensor>(3),
+                                           context->Input<Tensor>(4), context->Input<Tensor>(5),
+                                           input_starts, input_ends, input_axes, input_steps));
 
   SliceOp::PrepareForComputeMetadata compute_metadata(data_shape.GetDims());
   ORT_RETURN_IF_ERROR(PrepareForCompute(input_starts, input_ends, input_axes, input_steps, compute_metadata));
@@ -85,7 +86,7 @@ Status SliceGrad::ComputeImpl(OpKernelContext* ctx,
   if (flattened_output_dims) {
     // if we have flattened output dims we need to also flatten the input dims.
     // as we're combining the innermost dims and keeping all values we can just copy the size of the last dim
-    std::vector<int64_t> flattened_input_dims(output_grad_tensor.Shape().GetDims());
+    std::vector<int64_t> flattened_input_dims(output_grad_tensor.Shape().GetDimsAsVector());
     flattened_input_dims.resize(flattened_output_dims->size());
     flattened_input_dims.back() = flattened_output_dims->back();
     TensorShape input_shape(std::move(flattened_input_dims));

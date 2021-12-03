@@ -91,7 +91,7 @@ bool CreateScalarTensorFromInitializer(const Tensor* tensor,
 
   std::string normalized_name = NormalizeCppName(name);
   auto tvm_tensor = tvm::compute(
-      tvm_codegen::ToTvmArray(tensor->Shape().GetDims()),
+      tvm_codegen::ToTvmArray(tensor->Shape().GetDimsAsVector()),
       [&](const tvm::Array<tvm::Var>&) {
         return constant_scalar;
       },
@@ -120,7 +120,7 @@ const tvm::Tensor& GetOrCreateInitializer(const std::string& name,
   DLDataType dtype = tvm_codegen::ToTvmDLDataType(ONNXRUNTIME_data_type);
   HalideIR::Type halide_type((halideir_type_code_t)dtype.code, dtype.bits, dtype.lanes);
   std::string normalized_name = NormalizeCppName(name);
-  auto tvm_shape = tvm_codegen::ToTvmArray(tensor->Shape().GetDims());
+  auto tvm_shape = tvm_codegen::ToTvmArray(tensor->Shape().GetDimsAsVector());
   auto tvm_tensor = CreateInputPlaceholder(tvm_shape, halide_type, normalized_name, is_sliced);
   // create the layout info
   ctx_codegen.CreateWeightLayoutInfo(name, tvm_tensor);
@@ -175,7 +175,7 @@ Status CreateTVMIR(
 
   for (const auto& node : graph.Nodes()) {
     // initializers
-    node.ForEachWithIndex(
+    ORT_RETURN_IF_ERROR(node.ForEachWithIndex(
         node.InputDefs(),
         [&ctx_codegen, &ctx_tensor](const NodeArg& def, size_t) {
           tvm::Tensor value;
@@ -184,7 +184,7 @@ Status CreateTVMIR(
             ctx_tensor.inputs.emplace(def.Name(), std::move(value));
           }
           return Status::OK();
-        });
+        }));
   }
 
   // iterate through the graph and create op (outputs)
@@ -219,13 +219,13 @@ Status CreateTVMIR(
       ctx_tensor.ops.emplace(&node, std::move(op_outputs));
 
       // input_from_
-      node.ForEachWithIndex(
+      ORT_RETURN_IF_ERROR(node.ForEachWithIndex(
           node.OutputDefs(),
           [&node, &ctx_tensor](const NodeArg& def, size_t index) {
             ORT_ENFORCE(ctx_tensor.input_from.count(def.Name()) == 0);
             ctx_tensor.input_from.emplace(def.Name(), std::make_pair(&node, index));
             return Status::OK();
-          });
+          }));
     }
   }
 
@@ -242,7 +242,7 @@ Status CreateTVMIR(
   bool has_loop = HasLoop(node);
 
   // create real Inputs
-  node.ForEachWithIndex(
+  ORT_RETURN_IF_ERROR(node.ForEachWithIndex(
       node.InputDefs(),
       [&has_loop, &ctx_codegen, &ctx_tensor](const NodeArg& def, size_t) {
         tvm::Tensor value;
@@ -251,15 +251,15 @@ Status CreateTVMIR(
           ctx_tensor.inputs.emplace(def.Name(), std::move(value));
         }
         return Status::OK();
-      });
+      }));
 
   // input_from_
-  node.ForEachWithIndex(
+  ORT_RETURN_IF_ERROR(node.ForEachWithIndex(
       node.OutputDefs(),
       [&node, &ctx_tensor](const NodeArg& def, size_t index) {
         ctx_tensor.input_from.emplace(def.Name(), std::make_pair(&node, index));
         return Status::OK();
-      });
+      }));
 
   tvm::Array<tvm::Tensor> inputs;
   for (const NodeArg* def : node.InputDefs()) {
@@ -328,13 +328,13 @@ Status CreateTVMIR(
     ctx_tensor.ops.emplace(node, std::move(op_outputs));
 
     // input_from_
-    node->ForEachWithIndex(
+    ORT_RETURN_IF_ERROR(node->ForEachWithIndex(
         node->OutputDefs(),
         [&node, &ctx_tensor](const NodeArg& def, size_t index) {
           ORT_ENFORCE(ctx_tensor.input_from.count(def.Name()) == 0);
           ctx_tensor.input_from.emplace(def.Name(), std::make_pair(node, index));
           return Status::OK();
-        });
+        }));
   }
 
   return Status::OK();

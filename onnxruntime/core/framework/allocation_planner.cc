@@ -447,6 +447,16 @@ class PlannerImpl {
         // TODO this should be an error case, needs more investigation
         continue;
       }
+
+#if !defined(DISABLE_OPTIONAL_TYPE)
+      // Make sure optional types are not up for re-use as we aren't quite
+      // sure if the re-used tensor will be a None or otherwise. This cannot
+      // be determined statically.
+      if (IsOptionalType(*p_node_arg)) {
+        continue;
+      }
+#endif
+
       auto& available_memory_info = AllocPlan(p_node_arg->Name()).location;
       if (!(available_memory_info == required_memory_info)) continue;
       auto p_available_buffer_shape = context_.GetShape(*p_node_arg);
@@ -698,6 +708,16 @@ class PlannerImpl {
         }
 
         auto wt_index = Index(def_name);
+        // TODO: Identify error cases where-in an initializer is used on different
+        // devices within the same graph level.
+        // If we ever encounter that, it means that there is a severe bug in Memcpy
+        // transformer and the model will crash while running. The Memcpy transformer
+        // is supposed to duplicate initializers being used on different devices within
+        // the same graph level and hence we should never see an initializer being used
+        // on different devices here.
+        // The same initializer being used on different devices across graph levels
+        // (subgraphs) is okay and utils::CopyInputsAcrossDevices() will take it to
+        // the right device before subgraph execution.
         locations[wt_index].emplace_back(
             GetLocationForNodeInput(node_input_index, node, kernel_create_info_map));
       }
@@ -730,6 +750,20 @@ class PlannerImpl {
   }
 
   Status GeneratePlanForWeights() {
+    // TODO: Move away from usage of vector of `OrtMemoryInfo`s per weight (initializer)
+    // We do not need to maintain a vector of locations that a weight is used in.
+    // We only need to know the location of its first usage because:
+    // (1) If the initializer is used in the graph level it is introduced in, then it can
+    // only be used on one device as the Memcpy transformer will duplicate the initializer
+    // (with a different name) in case it is used on multiple devices.
+    // If the initializer is also additionally used in one of the subgraphs, we rely
+    // on the utils::CopyInputsAcrossDevices() to copy it over to the appropriate device
+    // before the subgraphs are executed.
+    // (2) If the initializer is NOT used in the level it is introduced in and only used
+    // in subgraphs, even then knowing its first usage location is enough as it can't be
+    // used on different devices within the same graph level (see (1) for reason), and for
+    // nested subgraphs, we can rely on the utils::CopyInputsAcrossDevices() to copy it
+    // over to the appropriate device before the subgraphs are executed.
     std::vector<std::vector<OrtMemoryInfo>> locations(plan_.allocation_plan.size());
 
     GeneratePlanForWeightsHelper(graph_viewer_, graph_viewer_.GetAllInitializedTensors(),
@@ -739,6 +773,7 @@ class PlannerImpl {
       const std::vector<OrtMemoryInfo>& loc = locations[i];
       if (loc.empty()) continue;
       plan_.allocation_plan[i].alloc_kind = AllocKind::kAllocateStatically;
+      // The planned location for an initializer is the location of its first usage.
       plan_.allocation_plan[i].location = loc[0];
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
       size_t max_pc = plan_.execution_plan.size();
@@ -748,13 +783,6 @@ class PlannerImpl {
       plan_.allocation_plan[i].value_type = utils::GetMLDataType(*node_arg);
       plan_.allocation_plan[i].life_interval = std::pair<size_t, size_t>(0, max_pc);
 #endif
-      for (size_t j = 0; j != loc.size(); ++j) {
-        if (loc[j] != loc[0]) {
-          // set the location to CPU
-          plan_.allocation_plan[i].location = execution_providers_.GetDefaultCpuMemoryInfo();
-          break;
-        }
-      }
     }
     return Status::OK();
   }
@@ -869,17 +897,18 @@ class PlannerImpl {
               }
             }
           }
-        } else if (IsNonTensor(*node_output)) {
-          // we do not try sharing-optimization for non-tensors
-          AllocPlan(current).alloc_kind = AllocKind::kAllocate;
-          AllocPlan(current).program_counter.AddStart(program_counter);
         } else if (!context_.IsParallelExecutionEnabled() &&
                    FindReusableInput(*pnode, static_cast<int>(output_arg_def_index), &reused)) {
-          // Reuse one of this node's input buffers as the output buffer (for in-place update)
+          // Re-using inputs is applicable for tensors, sequence tensors,
+          // and optional types if the kernel has marked certain inputs as
+          // possible candidates for re-use
           Reuse(reused, current, AllocKind::kReuse);
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
           InplaceReuse(reused, current);
 #endif
+        } else if (IsNonTensor(*node_output)) {
+          AllocPlan(current).alloc_kind = AllocKind::kAllocate;
+          AllocPlan(current).program_counter.AddStart(program_counter);
         } else if (!context_.IsParallelExecutionEnabled() &&
                    FindReusableTensor(*node_output, &reused)) {
           // Reuse an available (dead) buffer for this output, this is only for sequential execution.
@@ -1116,6 +1145,13 @@ class PlannerImpl {
     auto& type_proto = ONNX_NAMESPACE::Utils::DataTypeUtils::ToTypeProto(ptype);
     return !utils::HasTensorType(type_proto);
   }
+
+#if !defined(DISABLE_OPTIONAL_TYPE)
+  static bool IsOptionalType(const onnxruntime::NodeArg& nodearg) {
+    const auto* type_proto = nodearg.TypeAsProto();
+    return type_proto->value_case() == ONNX_NAMESPACE::TypeProto::kOptionalType;
+  }
+#endif
 
   //For in-place reuse tensors, the lifetime is the union of all the tensors that tensors that use that buffer
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)

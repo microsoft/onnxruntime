@@ -287,7 +287,7 @@ QEmbedLayerNorm<T>::QEmbedLayerNorm(const OpKernelInfo& op_kernel_info)
 
 template <typename T>
 Status QEmbedLayerNorm<T>::Compute(OpKernelContext* context) const {
-  ORT_RETURN_IF_ERROR(embed_layer_norm::CheckInputs(context));
+  ORT_RETURN_IF_ERROR(embed_layer_norm::CheckInputs(context, true));
 
   bool is_signed_inputs = false;
   ORT_RETURN_IF_ERROR(CheckQuantizedInputs(context, &is_signed_inputs));

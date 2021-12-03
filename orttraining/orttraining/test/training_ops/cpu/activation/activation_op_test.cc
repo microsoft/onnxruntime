@@ -75,6 +75,14 @@ float GeluApproximationGrad(float dy, float x) {
 float ReluGrad(float dy, float x) {
   return x > 0 ? dy : 0;
 }
+
+float SigmoidGrad(float dy, float y) {
+  return dy * y * (1 - y);
+}
+
+float TanhGrad(float dy, float y) {
+  return dy * (1 - y * y);
+}
 }  // namespace
 
 TEST(GeluGradTest, Basic) {
@@ -159,6 +167,38 @@ TEST(ReluGradTest, Basic) {
       {}, 1, kMSDomain);
 }
 
+TEST(SigmoidGradTest, Basic) {
+  const std::vector<float> y_vals = {-1.0f, 0, 1.0f, 100.0f, -100.0f, 1000.0f, -1000.0f};
+  const std::vector<float> dY(7, 1.0f);
+
+  TestElementwiseGradientOp(
+      "SigmoidGrad",
+      {{"dY", dY}, {"Y", y_vals}},
+      [](const std::vector<float>& params) {
+        ORT_ENFORCE(params.size() == 2);
+        const auto dy = params[0], y = params[1];
+
+        return SigmoidGrad(dy, y);
+      },
+      {}, 1, kMSDomain);
+}
+
+TEST(TanhGradTest, Basic) {
+  const std::vector<float> y_vals = {-1.0f, 0, 1.0f, 100.0f, -100.0f, 1000.0f, -1000.0f};
+  const std::vector<float> dY(7, 1.0f);
+
+  TestElementwiseGradientOp(
+      "TanhGrad",
+      {{"dY", dY}, {"Y", y_vals}},
+      [](const std::vector<float>& params) {
+        ORT_ENFORCE(params.size() == 2);
+        const auto dy = params[0], y = params[1];
+
+        return TanhGrad(dy, y);
+      },
+      {}, 1, kMSDomain);
+}
+
 namespace {
 template <typename TComputeGeluGradScalarFn>
 void TestBiasGeluGradBroadcastBias(const std::string& op, int opset_version, const std::string& domain,
@@ -175,16 +215,16 @@ void TestBiasGeluGradBroadcastBias(const std::string& op, int opset_version, con
   const std::vector<float> dY(input_size, 1.0f);
   const std::vector<float> B = ValueRange(bias_size, 1.0f);
 
-  test.AddInput<float>("dY", input_shape.GetDims(), dY);
-  test.AddInput<float>("X", input_shape.GetDims(), X);
-  test.AddInput<float>("B", bias_shape.GetDims(), B);
+  test.AddInput<float>("dY", input_shape.GetDimsAsVector(), dY);
+  test.AddInput<float>("X", input_shape.GetDimsAsVector(), X);
+  test.AddInput<float>("B", bias_shape.GetDimsAsVector(), B);
 
   std::vector<float> expected_dX{};
   for (int64_t i = 0; i < input_size; ++i) {
     expected_dX.push_back(compute_gelu_grad_scalar_fn(dY[i], X[i] + B[i % bias_size]));
   }
 
-  test.AddOutput("dX", input_shape.GetDims(), expected_dX);
+  test.AddOutput("dX", input_shape.GetDimsAsVector(), expected_dX);
 
   test.Run();
 }

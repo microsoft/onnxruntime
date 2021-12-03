@@ -15,9 +15,6 @@
 #ifdef USE_CUDA
 #include "core/providers/providers.h"
 #endif
-#ifdef USE_ROCM
-#include "core/providers/rocm/rocm_execution_provider.h"
-#endif
 #ifdef USE_NNAPI
 #include "core/providers/nnapi/nnapi_builtin/nnapi_execution_provider.h"
 #endif
@@ -35,9 +32,6 @@ namespace test {
 // Doesn't work with ExecutionProviders class and KernelRegistryManager
 IExecutionProvider* TestCPUExecutionProvider();
 
-#ifdef USE_ROCM
-IExecutionProvider* TestRocmExecutionProvider();
-#endif
 #ifdef USE_NNAPI
 IExecutionProvider* TestNnapiExecutionProvider();
 #endif
@@ -79,7 +73,7 @@ void CreateMLValue(AllocatorPtr alloc, const std::vector<int64_t>& dims, const s
 
 // Lifetime of data_buffer should be managed by the caller.
 template <typename T>
-void CreateMLValue(const std::vector<int64_t>& dims, T* data_buffer, const OrtMemoryInfo& info,
+void CreateMLValue(gsl::span<const int64_t> dims, T* data_buffer, const OrtMemoryInfo& info,
                    OrtValue* p_mlvalue) {
   TensorShape shape(dims);
   auto element_type = DataTypeImpl::GetType<T>();

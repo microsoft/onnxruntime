@@ -132,7 +132,7 @@ Status AdamOptimizerBuilder::Build(
         output_args.push_back(ArgDef());
       }
       if (!opt_configs[i].loss_scale_input_name.empty()) {
-        input_args.emplace_back(ArgDef(opt_configs[i].loss_scale_input_name, graph_defs.CreateTypeProto({1}, ONNX_NAMESPACE::TensorProto_DataType_FLOAT)));
+        input_args.emplace_back(ArgDef(opt_configs[i].loss_scale_input_name, graph_defs.CreateTypeProto(std::array<const int64_t, 1>{1}, ONNX_NAMESPACE::TensorProto_DataType_FLOAT)));
       } else {
         input_args.emplace_back(ArgDef());
       }

@@ -34,7 +34,7 @@ parameters:
 - job: Test_Final_Jar_MacOs
   timeoutInMinutes:  60
   pool: 
-    vmImage: 'macOS-10.14'
+    vmImage: 'macOS-11'
   condition: eq(parameters['RunMacOs'], 'true')
   steps:
       - task: DownloadPipelineArtifact@2

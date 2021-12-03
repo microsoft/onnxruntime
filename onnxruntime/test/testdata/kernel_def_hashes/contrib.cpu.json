@@ -28,6 +28,10 @@
         13114085849278607104
     ],
     [
+        "NhwcMaxPool com.microsoft CPUExecutionProvider",
+        11773579655431087496
+    ],
+    [
         "ParametricSoftplus ai.onnx CPUExecutionProvider",
         17971715260566574960
     ],
@@ -66,6 +70,10 @@
     [
         "BiasGelu com.microsoft CPUExecutionProvider",
         12457646955212583504
+    ],
+    [
+        "BifurcationDetector com.microsoft CPUExecutionProvider",
+        12148442056374193608
     ],
     [
         "CDist com.microsoft CPUExecutionProvider",

@@ -293,7 +293,7 @@ Status TrainingRunner::Initialize() {
 Status TrainingRunner::Run(IDataLoader* training_data_loader, IDataLoader* test_data_loader,
                            const MapStringToString& mapped_dimensions) {
   if (MPIContext::GetInstance().GetWorldRank() == 0 && !params_.model_actual_running_graph_path.empty()) {
-    session_.Save(params_.model_actual_running_graph_path, TrainingSession::SaveOption::NO_RELOAD);
+    ORT_RETURN_IF_ERROR(session_.Save(params_.model_actual_running_graph_path, TrainingSession::SaveOption::NO_RELOAD));
   }
 
   // maybe in the future we can support an evaluation-only run
@@ -346,7 +346,7 @@ Status TrainingRunner::PrepareFeedNamesAndFeeds(const SessionMode mode,
       feed_names.push_back(name);
       const float loss_scale = (mode == EvaluateStep) ? 1.0f : loss_scaler_->GetLossScale();
       OrtValue loss_scale_val;
-      TrainingUtil::CreateCpuMLValue({1}, std::vector<float>{loss_scale}, &loss_scale_val, input_allocator_);
+      TrainingUtil::CreateCpuMLValue(std::array<int64_t, 1>{1}, std::vector<float>{loss_scale}, &loss_scale_val, input_allocator_);
       feeds.push_back(loss_scale_val);
     }
   }
@@ -359,7 +359,7 @@ Status TrainingRunner::PrepareFeedNamesAndFeeds(const SessionMode mode,
       // learning rate is 0 if there is no learning-rate scheduler. Otherwise, learning rate is obtained from the scheduler.
       const float learning_rate = lr_scheduler ? lr_scheduler->GetLearningRate(step_ + 1) : 0.0f;
       OrtValue lr_val;
-      TrainingUtil::CreateCpuMLValue({1}, std::vector<float>{learning_rate}, &lr_val, input_allocator_);
+      TrainingUtil::CreateCpuMLValue(std::array<int64_t, 1>{1}, std::vector<float>{learning_rate}, &lr_val, input_allocator_);
       feeds.push_back(lr_val);
     }
   }
@@ -1135,13 +1135,13 @@ Status TrainingRunner::Evaluate(TrainingSession& session, IDataLoader& data_load
     std::vector<std::string> fetch_names;
     std::vector<OrtValue> fetches;
 
-    PrepareFeedNamesAndFeeds(EvaluateStep,
-                             data_loader,
-                             *test_data,
-                             nullptr,
-                             batch_idx,
-                             feed_names,
-                             feeds);
+    ORT_RETURN_IF_ERROR(PrepareFeedNamesAndFeeds(EvaluateStep,
+                                                 data_loader,
+                                                 *test_data,
+                                                 nullptr,
+                                                 batch_idx,
+                                                 feed_names,
+                                                 feeds));
     if (!session.GetDropoutEvalFeeds().empty()) {
       float eval_ratio = 0.0f;
       for (auto& dropout_ratio : session.GetDropoutEvalFeeds()) {
@@ -1163,9 +1163,9 @@ Status TrainingRunner::Evaluate(TrainingSession& session, IDataLoader& data_load
       }
     }
 
-    PrepareFetchNamesAndFetches(EvaluateStep,
-                                fetch_names,
-                                fetches);
+    ORT_RETURN_IF_ERROR(PrepareFetchNamesAndFetches(EvaluateStep,
+                                                    fetch_names,
+                                                    fetches));
 
     run_options.only_execute_path_to_fetches = true;
     run_options.training_mode = false;

@@ -2,10 +2,11 @@
 // Licensed under the MIT License.
 #include "core/common/profiler_common.h"
 
-#if !(defined(USE_ROCM) || defined(ENABLE_TRAINING))
+#if defined(USE_CUDA) && defined(ENABLE_CUDA_PROFILING)
 
 #include "core/platform/ort_mutex.h"
 #include <cupti.h>
+#include <atomic>
 #include <mutex>
 #include <vector>
 

@@ -17,9 +17,6 @@
 #ifndef DISABLE_CONTRIB_OPS
 #include "core/graph/contrib_ops/contrib_defs.h"
 #endif
-#ifdef ML_FEATURIZERS
-#include "core/graph/featurizers_ops/featurizers_defs.h"
-#endif
 #ifdef USE_DML
 #include "core/graph/dml_ops/dml_defs.h"
 #endif
@@ -39,6 +36,8 @@
 #include "orttraining/core/graph/loss_function_registry.h"
 #include "orttraining/core/graph/optimizer_builder.h"
 #include "orttraining/core/graph/optimizer_graph_builder_registry.h"
+#include "orttraining/core/optimizer/graph_transformer_registry.h"
+
 #endif
 
 namespace onnxruntime {
@@ -219,7 +218,6 @@ Status Environment::Initialize(std::unique_ptr<logging::LoggingManager> logging_
       ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance().AddDomainToVersion(onnxruntime::kMSDomain, 1, 1);
       ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance().AddDomainToVersion(onnxruntime::kMSExperimentalDomain, 1, 1);
       ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance().AddDomainToVersion(onnxruntime::kMSNchwcDomain, 1, 1);
-      ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance().AddDomainToVersion(onnxruntime::kMSFeaturizersDomain, 1, 1);
 #ifdef USE_DML
       ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance().AddDomainToVersion(onnxruntime::kMSDmlDomain, 1, 1);
 #endif
@@ -227,9 +225,6 @@ Status Environment::Initialize(std::unique_ptr<logging::LoggingManager> logging_
 // The corresponding kernels are registered inside the appropriate execution provider.
 #ifndef DISABLE_CONTRIB_OPS
       contrib::RegisterContribSchemas();
-#endif
-#ifdef ML_FEATURIZERS
-      featurizers::RegisterMSFeaturizersSchemas();
 #endif
 #ifdef USE_DML
       dml::RegisterDmlSchemas();
@@ -254,6 +249,7 @@ Status Environment::Initialize(std::unique_ptr<logging::LoggingManager> logging_
       training::OptimizerBuilderRegistry::GetInstance().RegisterBuilders();
       training::OptimizerGraphBuilderRegistry::GetInstance().RegisterGraphBuilders();
       // <training schemas>
+      training::GraphTransformerRegistry::GetInstance().RegisterExternalGraphTransformers();
 #endif
     });
 

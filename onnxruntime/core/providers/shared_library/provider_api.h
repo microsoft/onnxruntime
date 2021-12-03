@@ -7,31 +7,6 @@
 //       switching providers to be runnable as shared libraries. The interfaces will become more tightly integrated into the core code.
 
 #pragma once
-// ROCM uses the CUDA provider's files, which are shared provider files. This 'fakes them out' and makes them be non shared provider files if they're being built as part of ROCM.
-#ifdef USE_ROCM
-#include "core/providers/common.h"
-#include "core/providers/cpu/tensor/onehot.h"
-#include "core/providers/cpu/tensor/gather_elements.h"
-
-namespace onnxruntime {
-// The ROCM version of this just deletes on destruction, but is drop in compatible with the regular DeleteOnUnloadPtr
-template <typename T>
-struct DeleteOnUnloadPtr {
-  DeleteOnUnloadPtr(T* p) : p_(p) {}
-  ~DeleteOnUnloadPtr() { delete p_; }
-
-  T& operator*() { return *p_; }
-  const T& operator*() const { return *p_; }
-
-  operator T*() {
-    return p_;
-  }
-
- private:
-  T* p_;
-};
-}  // namespace onnxruntime
-#else
 #define SHARED_PROVIDER 1
 
 #include <vector>
@@ -124,8 +99,10 @@ struct TensorProtos;  // RepeatedPtrField
 struct TensorShapeProto_Dimension;
 struct TensorShapeProto_Dimensions;  // RepeatedPtrField
 struct TensorShapeProto;
+struct TypeProto_Optional;
 struct TypeProto_Tensor;
 struct TypeProto_SparseTensor;
+struct TypeProto_Sequence;
 struct TypeProto;
 struct ValueInfoProto;
 struct ValueInfoProtos;  // RepeatedPtrField
@@ -253,6 +230,7 @@ constexpr const char* kNGraphDomain = "com.intel.ai";
 constexpr const char* kCudaExecutionProvider = "CUDAExecutionProvider";
 constexpr const char* kDnnlExecutionProvider = "DnnlExecutionProvider";
 constexpr const char* kOpenVINOExecutionProvider = "OpenVINOExecutionProvider";
+constexpr const char* kRocmExecutionProvider = "ROCMExecutionProvider";
 constexpr const char* kTensorrtExecutionProvider = "TensorrtExecutionProvider";
 
 template <typename T>
@@ -263,7 +241,6 @@ inline OrtStatus* CreateStatus(OrtErrorCode code, _In_ const char* msg) noexcept
 std::unique_ptr<IAllocator> CreateCPUAllocator(const OrtMemoryInfo& memory_info);
 std::unique_ptr<IAllocator> CreateCUDAAllocator(int16_t device_id, const char* name);
 std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const char* name);
-
 std::unique_ptr<IDataTransfer> CreateGPUDataTransfer(void* stream);
 
 std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewer& graph,
@@ -332,4 +309,3 @@ constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<uint64_t>() { r
 #define LOGS_DEFAULT(severity) \
   LOGS_DEFAULT_CATEGORY(severity, ::onnxruntime::logging::Category::onnxruntime)
 
-#endif

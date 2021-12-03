@@ -69,7 +69,7 @@ Abstract:
 // Define the support levels for the target architecture.
 //
 
-#if defined(MLAS_TARGET_AMD64)
+#if defined(MLAS_TARGET_AMD64) || defined (MLAS_TARGET_POWER)
 #define MLAS_SUPPORTS_GEMM_DOUBLE
 #endif
 
@@ -332,7 +332,6 @@ MlasGemm(
                   M, N, K, &DataParams, 1, ThreadPool);
 }
 
-
 /**
  * @brief Supply matrices data information to double precision gemm functions
  */
@@ -373,7 +372,6 @@ MlasGemmBatch(
     size_t BatchSize,
     MLAS_THREADPOOL* ThreadPool
     );
-
 
 /**
  * @brief  Double precision matrix/matrix multiply operation (DGEMM)
@@ -552,7 +550,6 @@ struct MLAS_GEMM_U8X8_DATA_PARAMS {
     const MLAS_QGEMM_OUTPUT_PROCESSOR* OutputProcessor = nullptr;
 };
 
-
 void
 MLASCALL
 MlasGemm(
@@ -711,6 +708,59 @@ MlasConvDepthwise(
     );
 
 //
+// Symmetric quantized integer convolution routines.
+//
+
+size_t
+MlasConvSymPackWSize(
+    size_t GroupCount,
+    size_t InputChannels,
+    size_t OutputChannels,
+    size_t KernelSize
+    );
+
+void
+MlasConvSymPackW(
+    size_t GroupCount,
+    size_t InputChannels,
+    size_t OutputChannels,
+    size_t KernelSize,
+    const int8_t* W,
+    int8_t* PackedW,
+    size_t PackedWSize
+    );
+
+int32_t
+MlasConvSymFixupInputZeroPoint(
+    uint8_t zero_point_value
+    );
+
+struct MLAS_CONV_SYM_PARAMS {
+    const uint8_t* InputDirect;
+    const uint8_t* const* InputIndirection;
+    const void* Filter;
+    uint8_t* Output;
+    size_t InputChannels;
+    size_t OutputChannels;
+    size_t OutputCount;
+    size_t KernelSize;
+    const int32_t* Bias;
+    const float* Scale;
+    bool PerChannelScale;
+    uint8_t OutputZeroPoint;
+};
+
+void
+MlasConvSym(
+    const MLAS_CONV_SYM_PARAMS& Params
+    );
+
+void
+MlasConvSymDepthwise(
+    const MLAS_CONV_SYM_PARAMS& Params
+    );
+
+//
 // Pooling routines.
 //
 
@@ -736,11 +786,12 @@ MlasPool(
     MLAS_THREADPOOL* ThreadPool
     );
 
+template<typename T8Bits>
 void
 MLASCALL
 MlasMaximumPool(
-    const uint8_t* const* Input,
-    uint8_t* Output,
+    const T8Bits* const* Input,
+    T8Bits* Output,
     size_t Channels,
     size_t OutputCount,
     size_t KernelSize
@@ -991,17 +1042,18 @@ MlasQuantizeLinear(
  * @param CountN
  * @return
 */
+template<typename OutputType>
 void
 MLASCALL
 MlasRequantizeOutput(
     const int32_t* Input,
     size_t InputLeadingDimension,
-    uint8_t* Output,
+    OutputType* Output,
     size_t OutputLeadingDimension,
     const int32_t* Bias,
     const float* Scale,
     bool PerColumnScale,
-    uint8_t ZeroPoint,
+    OutputType ZeroPoint,
     size_t StartM,
     size_t StartN,
     size_t CountM,
@@ -1065,13 +1117,14 @@ MlasQLinearSafePaddingElementCount(
     size_t ElementCount
     );
 
+template<typename T8Bits>
 void
 MLASCALL
 MlasQLinearGlobalAveragePoolNchw(
-    const uint8_t* Input,
+    const T8Bits* Input,
     float ScaleInput,
     int32_t ZeroPointInput,
-    uint8_t* Output,
+    T8Bits* Output,
     float ScaleOutput,
     int32_t ZeroPointOutput,
     size_t Channels,
@@ -1079,13 +1132,14 @@ MlasQLinearGlobalAveragePoolNchw(
     int32_t* AccumulateBuffer
     );
 
+template <typename T8Bits>
 void
 MLASCALL
 MlasQLinearGlobalAveragePoolNhwc(
-    const uint8_t* Input,
+    const T8Bits* Input,
     float ScaleInput,
     int32_t ZeroPointInput,
-    uint8_t* Output,
+    T8Bits* Output,
     float ScaleOutput,
     int32_t ZeroPointOutput,
     size_t Batch,
@@ -1093,7 +1147,7 @@ MlasQLinearGlobalAveragePoolNhwc(
     size_t Stride,
     size_t Channels,
     int32_t* AccumulateBuffer,
-    const uint8_t* ZeroBuffer
+    const T8Bits* ZeroBuffer
     );
 
 //

@@ -600,7 +600,7 @@ Status TensorProtoToTensor(const Env& env, const ORTCHAR_T* model_path,
                            Tensor& tensor) {
   // Validate tensor compatibility
   std::vector<int64_t> tensor_shape_vec = GetTensorShapeFromTensorProto(tensor_proto);
-  if (tensor_shape_vec != tensor.Shape().GetDims()) {
+  if (gsl::make_span(tensor_shape_vec) != tensor.Shape().GetDims()) {
     return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "TensorProtoToTensor() tensor shape mismatch!");
   }
   const DataTypeImpl* const source_type = DataTypeImpl::TensorTypeFromONNXEnum(tensor_proto.data_type())->GetElementType();
@@ -718,7 +718,7 @@ Status TensorProtoToMLValue(const Env& env, const ORTCHAR_T* model_path,
                            tensorp->SizeInBytes(), ", Got ", m.GetLen());
   }
 
-  TensorProtoToTensor(env, model_path, tensor_proto, *tensorp);
+  ORT_RETURN_IF_ERROR(TensorProtoToTensor(env, model_path, tensor_proto, *tensorp));
 
   auto ml_tensor = DataTypeImpl::GetType<Tensor>();
   value.Init(tensorp.release(), ml_tensor, ml_tensor->GetDeleteFunc());
@@ -829,6 +829,8 @@ common::Status ConstantNodeProtoToTensorProto(const ONNX_NAMESPACE::NodeProto& n
       ORT_RETURN_IF_ERROR(SparseTensorProtoToDenseTensorProto(s, model_path, tensor));
       break;
     }
+#else
+  ORT_UNUSED_PARAMETER(model_path);
 #endif
     default:
       ORT_THROW("Unsupported attribute value type of ", constant_attribute.type(),

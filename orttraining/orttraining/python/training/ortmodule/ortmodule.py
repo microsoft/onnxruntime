@@ -13,13 +13,10 @@ from .debug_options import DebugOptions
 from ._fallback import (_FallbackManager,
                         _FallbackPolicy,
                         ORTModuleFallbackException)
-from . import (_FALLBACK_INIT_EXCEPTION,
-               ORTMODULE_FALLBACK_POLICY,
-               ORTMODULE_FALLBACK_RETRY)
+from onnxruntime.training import ortmodule
 
 from onnxruntime.tools import pytorch_export_contrib_ops
 
-import functools
 import torch
 from typing import Iterator, Optional, Tuple, TypeVar, Callable
 
@@ -59,36 +56,20 @@ class ORTModule(torch.nn.Module):
             debug_options = DebugOptions()
 
         # Fallback settings
-        self._fallback_manager = _FallbackManager(policy=ORTMODULE_FALLBACK_POLICY,
-                                                  retry=ORTMODULE_FALLBACK_RETRY)
+        self._fallback_manager = _FallbackManager(pytorch_module=module,
+                                                  policy=ortmodule.ORTMODULE_FALLBACK_POLICY,
+                                                  retry=ortmodule.ORTMODULE_FALLBACK_RETRY)
 
         try:
             # Read ORTModule module initialization status
-            if _FALLBACK_INIT_EXCEPTION:
-                raise _FALLBACK_INIT_EXCEPTION
+            if ortmodule._FALLBACK_INIT_EXCEPTION:
+                raise ortmodule._FALLBACK_INIT_EXCEPTION
 
             super(ORTModule, self).__init__()
 
             self._torch_module = TorchModuleFactory()(module, debug_options, self._fallback_manager)
 
-            # Create forward dynamically, so each ORTModule instance will have its own copy.
-            # This is needed to be able to copy the forward signatures from the original PyTorch models
-            # and possibly have different signatures for different instances.
-            def _forward(self, *inputs, **kwargs):
-                '''Forward pass starts here and continues at `_ORTModuleFunction.forward`
-
-                ONNX model is exported the first time this method is executed.
-                Next, we build a full training graph with module_gradient_graph_builder.
-                Finally, we instantiate the ONNX Runtime InferenceSession.
-                '''
-
-                return self._torch_module.forward(*inputs, **kwargs)
-
-            # Bind the forward method.
-            self.forward = _forward.__get__(self)
-            # Copy the forward signature from the _torch_module's forward signature.
-            functools.update_wrapper(
-                self.forward.__func__, self._torch_module.forward.__func__)
+            _utils.patch_ortmodule_forward_method(self)
 
             # Support contrib OPs
             pytorch_export_contrib_ops.register()
@@ -101,26 +82,18 @@ class ORTModule(torch.nn.Module):
             _utils.check_for_name_collisions_and_bind_methods_to_ortmodule(self, module)
 
         except ORTModuleFallbackException as e:
-            self._torch_module = TorchModulePytorch(module)
-            # TODO: Rework by implementing the "__getattribute__" method.
-            #       Assigning all default attributes from user's original torch.nn.Module into ORTModule
-            self._backward_hooks = module._backward_hooks
-            self._forward_hooks = module._forward_hooks
-            self._forward_pre_hooks = module._forward_pre_hooks
-            self._parameters = module._parameters
-            self._buffers = module._buffers
-            self._non_persistent_buffers_set = module._non_persistent_buffers_set
-            self._is_full_backward_hook = module._is_full_backward_hook
-            self._state_dict_hooks = module._state_dict_hooks
-            self._load_state_dict_pre_hooks = module._load_state_dict_pre_hooks
-            self._modules = module._modules
-            self.forward = module.forward
+            # Although backend is switched to PyTorch here,
+            # it is up to _FallbackManager to actually terminate execution or fallback
+            _utils.switch_backend_to_pytorch(self, module)
 
             # Exceptions subject to fallback are handled here
             self._fallback_manager.handle_exception(exception=e,
                                                     log_level=debug_options.logging.log_level)
         except Exception as e:
-            self._torch_module = TorchModulePytorch(module)
+            # Although backend is switched to PyTorch here,
+            # it is up to _FallbackManager to actually terminate execution or fallback
+            _utils.switch_backend_to_pytorch(self, module)
+
             # Catch-all FALLBACK_FORCE_TORCH_FORWARD fallback is handled here
             self._fallback_manager.handle_exception(exception=e,
                                                     log_level=debug_options.logging.log_level,
@@ -331,3 +304,12 @@ class ORTModule(torch.nn.Module):
         else:
             # Setting any new attributes should be done on ORTModule only when 'torch_module' is not defined
             self.__dict__[name] = value
+
+    def __getstate__(self):
+        state = _utils.get_state_after_deletion_of_non_ortmodule_methods(self, self.module)
+        return state
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+
+        _utils.reinitialize_ortmodule(self)

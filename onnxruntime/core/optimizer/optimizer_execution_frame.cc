@@ -27,7 +27,7 @@ OptimizerExecutionFrame::Info::Info(const std::vector<const Node*>& nodes,
   allocator_ptr_ = execution_provider_.GetAllocator(device_id_, mem_type_);
   ORT_ENFORCE(allocator_ptr_, "Failed to get allocator for optimizer");
 
-  data_transfer_mgr_.RegisterDataTransfer(std::make_unique<CPUDataTransfer>());
+  ORT_THROW_IF_ERROR(data_transfer_mgr_.RegisterDataTransfer(std::make_unique<CPUDataTransfer>()));
 
   // Create MLValues related maps
   auto initialize_maps = [this, &initialized_tensor_set, &model_path](const NodeArg& arg, size_t /*index*/) -> Status {
@@ -75,7 +75,7 @@ OptimizerExecutionFrame::Info::Info(const std::vector<const Node*>& nodes,
   allocator_ptr_ = execution_provider_.GetAllocator(device_id_, mem_type_);
   ORT_ENFORCE(allocator_ptr_, "Failed to get allocator for optimizer");
 
-  data_transfer_mgr_.RegisterDataTransfer(std::make_unique<CPUDataTransfer>());
+  ORT_THROW_IF_ERROR(data_transfer_mgr_.RegisterDataTransfer(std::make_unique<CPUDataTransfer>()));
 
   // Create MLValues related maps
   auto initialize_maps = [this, &initialized_tensor_set, &model_path](const NodeArg& arg, size_t /*index*/) -> Status {
@@ -155,7 +155,7 @@ Status OptimizerExecutionFrame::CreateNodeOutputMLValueImpl(OrtValue& ort_value,
   }
 
   if (ml_type->IsTensorSequenceType()) {
-    auto element_type = ml_type->AsSequenceTensorBase()->GetElementType();
+    auto element_type = ml_type->AsSequenceTensorType()->GetElementType();
     auto p_sequence = std::make_unique<TensorSeq>(element_type);
     auto ml_tensor_sequence = DataTypeImpl::GetType<TensorSeq>();
     ort_value.Init(p_sequence.release(), ml_tensor_sequence, ml_tensor_sequence->GetDeleteFunc());
@@ -163,7 +163,7 @@ Status OptimizerExecutionFrame::CreateNodeOutputMLValueImpl(OrtValue& ort_value,
   }
 
   if (!ml_type->IsTensorType()) {
-    assert(ml_type->AsNonTensorTypeBase() != nullptr);
+    assert(ml_type->AsNonTensorType() != nullptr);
     const NonTensorTypeBase* non_tensor_type = static_cast<const NonTensorTypeBase*>(ml_type);
     auto creator = non_tensor_type->GetCreateFunc();
     ort_value.Init(creator(), non_tensor_type, non_tensor_type->GetDeleteFunc());

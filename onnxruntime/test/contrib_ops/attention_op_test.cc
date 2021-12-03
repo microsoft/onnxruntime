@@ -335,7 +335,7 @@ TEST(AttentionTest, AttentionBatch1ExtraAdd) {
   RunAttentionTest(input_data, weight_data, bias_data, mask_index_data, output_data,
                    batch_size, sequence_length, hidden_size, number_of_heads,
                    false, false, false, 0, nullptr, nullptr, kMaskIndexEnd, 0,
-                   0, false, true, qkv_sizes, extra_add_qk);
+                   0, true, true, qkv_sizes, extra_add_qk);
 }
 
 TEST(AttentionTest, AttentionBatch2ExtraAdd) {
@@ -377,7 +377,7 @@ TEST(AttentionTest, AttentionBatch2ExtraAdd) {
   RunAttentionTest(input_data, weight_data, bias_data, mask_index_data, output_data,
                    batch_size, sequence_length, hidden_size, number_of_heads,
                    false, false, false, 0, nullptr, nullptr, kMaskIndexEnd, 0,
-                   0, false, true, qkv_sizes, extra_add_qk);
+                   0, true, true, qkv_sizes, extra_add_qk);
 }
 
 TEST(AttentionTest, AttentionBatch1_Float16) {
