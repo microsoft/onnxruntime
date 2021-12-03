@@ -126,8 +126,7 @@ import onnxruntime as rt
 
 so = rt.SessionOptions()
 so.graph_optimization_level = rt.GraphOptimizationLevel.ORT_ENABLE_ALL
-session = rt.InferenceSession(model, sess_options=so)
-session.set_providers(['CUDAExecutionProvider'])
+session = rt.InferenceSession(model, sess_options=so, providers=['CUDAExecutionProvider'])
 ```
 
 ## Which Execution Provider will provide the best performance? 
@@ -282,11 +281,13 @@ https://github.com/microsoft/onnxruntime/blob/master/docs/python/inference/api_s
 https://github.com/microsoft/onnxruntime/blob/master/csharp/test/Microsoft.ML.OnnxRuntime.Tests/OrtIoBindingAllocationTest.cs 
 
 ### Convolution heavy models and the CUDA EP
-ORT leverages CuDNN for convolution operations and the first step in this process is to determine which "optimal" convolution algorithm to use while performing the convolution operation for the given input configuration(input shape, filter shape, etc.) in each `Conv` node . This sub-step involves querying CuDNN for a "workspace" memory size and have this allocated so that CuDNN can use this auxiliary memory while determining the "optimal" convolution algorithm to use. By default, ORT clamps the workspace size to 32 MB which may lead to a sub-optimal convolution algorithm getting picked by CuDNN. To allow ORT to allocate the maximum possible workspace as determined by CuDNN, a provider option needs to get set (as shown below). Keep in mind that using this flag may increase the peak memory usage by a factor (sometimes a few GBs) but this does help CuDNN pick the best convolution algorithm for the given input. We have found that this is an important flag to use while using an fp16 model as this allows CuDNN to pick tensor core algorithms for the convolution operations (if the hardware supports tensor core operations). This flag may or may not result in performance gains for other data types (`float` and `double`).
+ORT leverages CuDNN for convolution operations and the first step in this process is to determine which "optimal" convolution algorithm to use while performing the convolution operation for the given input configuration (input shape, filter shape, etc.) in each `Conv` node . This sub-step involves querying CuDNN for a "workspace" memory size and have this allocated so that CuDNN can use this auxiliary memory while determining the "optimal" convolution algorithm to use. By default, ORT clamps the workspace size to 32 MB which may lead to a sub-optimal convolution algorithm getting picked by CuDNN. To allow ORT to allocate the maximum possible workspace as determined by CuDNN, a provider option needs to get set (as shown below). Keep in mind that using this flag may increase the peak memory usage by a factor (sometimes a few GBs) but this does help CuDNN pick the best convolution algorithm for the given input. We have found that this is an important flag to use while using an fp16 model as this allows CuDNN to pick tensor core algorithms for the convolution operations (if the hardware supports tensor core operations). This flag may or may not result in performance gains for other data types (`float` and `double`).
 
 * Python
 ```
-sess = ort.InferenceSession("my_conv_heavy_fp16_model.onnx",  sess_options = sess_options, providers=['CUDAExecutionProvider'])
+providers = [("CUDAExecutionProvider", {"cudnn_conv_use_max_workspace": '1'})]
+sess_options = ort.SessionOptions()
+sess = ort.InferenceSession("my_conv_heavy_fp16_model.onnx",  sess_options = sess_options, providers=providers)
 options = sess.get_provider_options()
 cuda_options = options['CUDAExecutionProvider']
 cuda_options['cudnn_conv_use_max_workspace'] = '1'
