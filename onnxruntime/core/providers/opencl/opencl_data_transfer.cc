@@ -23,10 +23,23 @@ bool OpenCLDataTransfer::CanCopy(const OrtDevice& src_device, const OrtDevice& d
 
 Status OpenCLDataTransfer::CopyTensor(const Tensor& src, Tensor& dst, int exec_queue_id) const {
   ORT_ENFORCE(exec_queue_id == 0);
-
   // *.Location().mem_type == *.Location().device.MemType() for OpenCL EP
   const auto& src_device = src.Location().device;
   const auto& dst_device = dst.Location().device;
+
+  // Tensors when used as weight, some OPs use special layout optimization,
+  // need to be specially handled.
+  if (dst.Usage() != TensorUsage::Generic) {
+    ORT_ENFORCE(src_device.Type() == OrtDevice::CPU && dst_device.Type() == OrtDevice::GPU);
+    switch (dst.Usage()) {
+      case TensorUsage::ConvWeight:
+        return CopyConvWeight(src, dst);
+      case TensorUsage::DepthwiseConvWeight:
+        return CopyDepthwiseConvWeight(src, dst);
+      default:
+        return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "unhandled tensor copy of special usage");
+    }
+  }
 
   // HOST ==> DEV
   if (src_device.Type() == OrtDevice::CPU && dst_device.Type() == OrtDevice::GPU) {
@@ -138,38 +151,36 @@ Status OpenCLDataTransfer::CopyTensor1DToImage2D(const Tensor& src, const Image2
   //
   // So copy the data to a buffer and then copy it with kernel might be a better
   // solution here...
-  VLOGF_DEFAULT(0, "[CL] copy    host(%p) --> Image2D(%p), via CopyTensor1DToImage2D", src.DataRaw(), dst());
+  VLOGF_DEFAULT(0, "[CL] copy    host(%p) --> Image2D(%p)", src.DataRaw(), dst());
   auto tmp = exec_->GetScratchBuffer(src.SizeInBytes());
   ORT_RETURN_IF_CL_ERROR(exec_->GetCommandQueue().enqueueWriteBuffer(*tmp, /*blocking=*/CL_FALSE, 0, src.SizeInBytes(), src.DataRaw()));
   ORT_RETURN_IF_ERROR(CopyBuffer1DToImage2D(*tmp, src.Shape(), dst, desc));
-  // do sync copy, since we cannot extend the lifetime of src or tmp
-  exec_->GetCommandQueue().finish();
+  exec_->GetCommandQueue().finish();  // do sync copy, since we cannot extend the lifetime of src or tmp
   return Status::OK();
 }
 
 Status OpenCLDataTransfer::CopyTensor2DToImage2D(const Tensor& src, const Image2D& dst, const Image2DDesc& desc) const {
-  VLOGF_DEFAULT(0, "[CL] copy    host(%p) --> Image2D(%p), via CopyTensor2DToImage2D", src.DataRaw(), dst());
+  VLOGF_DEFAULT(0, "[CL] copy    host(%p) --> Image2D(%p)", src.DataRaw(), dst());
   ORT_NOT_IMPLEMENTED("CopyTensor2DToImage2D");
 }
 
 Status OpenCLDataTransfer::CopyTensorNCHWToImage2D(const Tensor& src, const Image2D& dst, const Image2DDesc& desc) const {
-  VLOGF_DEFAULT(0, "[CL] copy    host(%p) --> Image2D(%p), via CopyTensorNCHWToImage2D", src.DataRaw(), dst());
+  VLOGF_DEFAULT(0, "[CL] copy    host(%p) --> Image2D(%p)", src.DataRaw(), dst());
   auto tmp = exec_->GetScratchBuffer(src.SizeInBytes());
   ORT_RETURN_IF_CL_ERROR(exec_->GetCommandQueue().enqueueWriteBuffer(*tmp, /*blocking=*/CL_FALSE, 0, src.SizeInBytes(), src.DataRaw()));
   ORT_RETURN_IF_ERROR(CopyBufferNCHWToImage2D(*tmp, src.Shape(), dst, desc));
-  // do sync copy, since we cannot extend the lifetime of src or tmp
-  exec_->GetCommandQueue().finish();
+  exec_->GetCommandQueue().finish();  // do sync copy, since we cannot extend the lifetime of src or tmp
   return Status::OK();
 }
 
 Status OpenCLDataTransfer::CopyTensorNCHWcToImage2D(const Tensor& src, const Image2D& dst, const Image2DDesc& desc) const {
-  VLOGF_DEFAULT(0, "[CL] copy    host(%p) --> Image2D(%p), via CopyTensorNCHWcToImage2D", src.DataRaw(), dst());
+  VLOGF_DEFAULT(0, "[CL] copy    host(%p) --> Image2D(%p)", src.DataRaw(), dst());
   ORT_NOT_IMPLEMENTED("CopyTensorNCHWcToImage2D");
 }
 
 Status OpenCLDataTransfer::CopyImage2DToTensor1D(const Image2D& src, const Image2DDesc& desc, Tensor& dst) const {
   // NOTE: See CopyTensor1DToImage2D for the underlying issue of using enqueueReadImage
-  VLOGF_DEFAULT(0, "[CL] copy Image2D(%p) -----> host(%p), via CopyImage2DToTensor1D", src(), dst.DataRaw());
+  VLOGF_DEFAULT(0, "[CL] copy Image2D(%p) -----> host(%p)", src(), dst.DataRaw());
   auto tmp = exec_->GetScratchBuffer(dst.SizeInBytes());
   ORT_RETURN_IF_ERROR(CopyImage2DToBuffer1D(src, desc, *tmp, dst.Shape()));
   // do sync copy, since we cannot extend the lifetime of src or tmp
@@ -178,12 +189,12 @@ Status OpenCLDataTransfer::CopyImage2DToTensor1D(const Image2D& src, const Image
 }
 
 Status OpenCLDataTransfer::CopyImage2DToTensor2D(const Image2D& src, const Image2DDesc& desc, Tensor& dst) const {
-  VLOGF_DEFAULT(0, "[CL] copy Image2D(%p) -----> host(%p), via CopyImage2DToTensor2D", src(), dst.DataRaw());
+  VLOGF_DEFAULT(0, "[CL] copy Image2D(%p) -----> host(%p)", src(), dst.DataRaw());
   ORT_NOT_IMPLEMENTED("CopyImage2DToTensor2D");
 }
 
 Status OpenCLDataTransfer::CopyImage2DToTensorNCHW(const Image2D& src, const Image2DDesc& desc, Tensor& dst) const {
-  VLOGF_DEFAULT(0, "[CL] copy Image2D(%p) -----> host(%p), via CopyImage2DToTensorNCHW", src(), dst.DataRaw());
+  VLOGF_DEFAULT(0, "[CL] copy Image2D(%p) -----> host(%p)", src(), dst.DataRaw());
   auto tmp = exec_->GetScratchBuffer(dst.SizeInBytes());
   ORT_RETURN_IF_ERROR(CopyImage2DToBufferNCHW(src, desc, *tmp, dst.Shape()));
   // do sync copy, since we cannot extend the lifetime of src or tmp
@@ -192,7 +203,7 @@ Status OpenCLDataTransfer::CopyImage2DToTensorNCHW(const Image2D& src, const Ima
 }
 
 Status OpenCLDataTransfer::CopyImage2DToTensorNCHWc(const Image2D& src, const Image2DDesc& desc, Tensor& dst) const {
-  VLOGF_DEFAULT(0, "[CL] copy Image2D(%p) -----> host(%p), via CopyImage2DToTensorNCHWc", src(), dst.DataRaw());
+  VLOGF_DEFAULT(0, "[CL] copy Image2D(%p) -----> host(%p)", src(), dst.DataRaw());
   ORT_NOT_IMPLEMENTED("CopyImage2DToTensorNCHWc");
 }
 
@@ -201,16 +212,15 @@ Status OpenCLDataTransfer::CopyBuffer1DToImage2D(
     const TensorShape shape,
     const Image2D& dst,
     const Image2DDesc& desc) const {
-  VLOGF_DEFAULT(0, "[CL] copy  Buffer(%p) --> Image2D(%p), via CopyBuffer1DToImage2D", src(), dst());
+  VLOGF_DEFAULT(0, "[CL] copy  Buffer(%p) --> Image2D(%p)", src(), dst());
   ORT_RETURN_IF_ERROR(
       KernelLauncher{kernels_->GetKernel("CopyBuffer1DToImage2D")}
           .setArg<cl_int>(desc.Width())
           .setArg<cl_int>(desc.Height())
           .setBuffer(src)
-          .setArg<cl_int>(CeilDiv(shape.Size(), 4)) // nelem4
+          .setArg<cl_int>(CeilDiv(shape.Size(), 4))  // nelem4
           .setImage2D(dst)
-          .Launch(exec_->GetCommandQueue(),
-                  cl::NDRange(desc.Width(), desc.Height())));
+          .Launch(exec_->GetCommandQueue(), desc.AsNDRange()));
   return Status::OK();
 }
 
@@ -219,7 +229,7 @@ Status OpenCLDataTransfer::CopyBuffer2DToImage2D(
     const TensorShape shape,
     const Image2D& dst,
     const Image2DDesc& desc) const {
-  VLOGF_DEFAULT(0, "[CL] copy  Buffer(%p) --> Image2D(%p), via CopyBuffer2DToImage2D", src(), dst());
+  VLOGF_DEFAULT(0, "[CL] copy  Buffer(%p) --> Image2D(%p)", src(), dst());
   ORT_NOT_IMPLEMENTED("CopyBuffer2DToImage2D");
 }
 
@@ -228,18 +238,17 @@ Status OpenCLDataTransfer::CopyBufferNCHWToImage2D(
     const TensorShape shape,
     const Image2D& dst,
     const Image2DDesc& desc) const {
-  VLOGF_DEFAULT(0, "[CL] copy  Buffer(%p) --> Image2D(%p), via CopyBufferNCHWToImage2D", src(), dst());
+  VLOGF_DEFAULT(0, "[CL] copy  Buffer(%p) --> Image2D(%p)", src(), dst());
   ORT_RETURN_IF_ERROR(
       KernelLauncher{kernels_->GetKernel("CopyBufferNCHWToImage2D")}
           .setArg<cl_int>(desc.Width())
           .setArg<cl_int>(desc.Height())
           .setBuffer(src)
-          .setArg<cl_int>(shape[2])  // C
-          .setArg<cl_int>(shape[1])  // H
-          .setArg<cl_int>(shape[0])  // W
+          .setArg<cl_int>(shape[1])  // C
+          .setArg<cl_int>(shape[2])  // H
+          .setArg<cl_int>(shape[3])  // W
           .setImage2D(dst)
-          .Launch(exec_->GetCommandQueue(),
-                  cl::NDRange(desc.Width(), desc.Height())));
+          .Launch(exec_->GetCommandQueue(), desc.AsNDRange()));
   return Status::OK();
 }
 
@@ -248,7 +257,7 @@ Status OpenCLDataTransfer::CopyBufferNCHWcToImage2D(
     const TensorShape shape,
     const Image2D& dst,
     const Image2DDesc& desc) const {
-  VLOGF_DEFAULT(0, "[CL] copy  Buffer(%p) --> Image2D(%p), via CopyBufferNCHWcToImage2D", src(), dst());
+  VLOGF_DEFAULT(0, "[CL] copy  Buffer(%p) --> Image2D(%p)", src(), dst());
   ORT_NOT_IMPLEMENTED("CopyBufferNCHWcToImage2D");
 }
 
@@ -257,16 +266,15 @@ Status OpenCLDataTransfer::CopyImage2DToBuffer1D(
     const Image2DDesc& desc,
     const Buffer& dst,
     const TensorShape shape) const {
-  VLOGF_DEFAULT(0, "[CL] copy Image2D(%p) ---> Buffer(%p), via CopyImage2DToBuffer1D", src(), dst());
+  VLOGF_DEFAULT(0, "[CL] copy Image2D(%p) ---> Buffer(%p)", src(), dst());
   ORT_RETURN_IF_ERROR(
       KernelLauncher{kernels_->GetKernel("CopyImage2DToBuffer1D")}
           .setArg<cl_int>(desc.Width())
           .setArg<cl_int>(desc.Height())
           .setImage2D(src)
           .setBuffer(dst)
-          .setArg<cl_int>(CeilDiv(shape.Size(), 4)) // nelem4
-          .Launch(exec_->GetCommandQueue(),
-                  cl::NDRange(desc.Width(), desc.Height())));
+          .setArg<cl_int>(CeilDiv(shape.Size(), 4))  // nelem4
+          .Launch(exec_->GetCommandQueue(), desc.AsNDRange()));
   return Status::OK();
 }
 
@@ -275,7 +283,7 @@ Status OpenCLDataTransfer::CopyImage2DToBuffer2D(
     const Image2DDesc& desc,
     const Buffer& dst,
     const TensorShape shape) const {
-  VLOGF_DEFAULT(0, "[CL] copy Image2D(%p) ---> Buffer(%p), via CopyImage2DToBuffer2D", src(), dst());
+  VLOGF_DEFAULT(0, "[CL] copy Image2D(%p) ---> Buffer(%p)", src(), dst());
   ORT_NOT_IMPLEMENTED("CopyImage2DToBuffer2D");
 }
 
@@ -284,18 +292,17 @@ Status OpenCLDataTransfer::CopyImage2DToBufferNCHW(
     const Image2DDesc& desc,
     const Buffer& dst,
     const TensorShape shape) const {
-  VLOGF_DEFAULT(0, "[CL] copy Image2D(%p) ---> Buffer(%p), via CopyImage2DToBufferNCHW", src(), dst());
+  VLOGF_DEFAULT(0, "[CL] copy Image2D(%p) ---> Buffer(%p)", src(), dst());
   ORT_RETURN_IF_ERROR(
       KernelLauncher{kernels_->GetKernel("CopyImage2DToBufferNCHW")}
           .setArg<cl_int>(desc.Width())
           .setArg<cl_int>(desc.Height())
           .setImage2D(src)
           .setBuffer(dst)
-          .setArg<cl_int>(shape[2])  // C
-          .setArg<cl_int>(shape[1])  // H
-          .setArg<cl_int>(shape[0])  // W
-          .Launch(exec_->GetCommandQueue(),
-                  cl::NDRange(desc.Width(), desc.Height())));
+          .setArg<cl_int>(shape[1])  // C
+          .setArg<cl_int>(shape[2])  // H
+          .setArg<cl_int>(shape[3])  // W
+          .Launch(exec_->GetCommandQueue(), desc.AsNDRange()));
   return Status::OK();
 }
 
@@ -304,13 +311,53 @@ Status OpenCLDataTransfer::CopyImage2DToBufferNCHWc(
     const Image2DDesc& desc,
     const Buffer& dst,
     const TensorShape shape) const {
-  VLOGF_DEFAULT(0, "[CL] copy Image2D(%p) ---> Buffer(%p), via CopyImage2DToBufferNCHWc", src(), dst());
+  VLOGF_DEFAULT(0, "[CL] copy Image2D(%p) ---> Buffer(%p)", src(), dst());
   ORT_NOT_IMPLEMENTED("CopyImage2DToBufferNCHWc");
 }
 
 Status OpenCLDataTransfer::UnimplementedCopy() const {
   ORT_NOT_IMPLEMENTED("Not Implemented Copy");
 };
+
+Status OpenCLDataTransfer::CopyConvWeight(const Tensor& src, Tensor& dst) const {
+  auto dst_image2d = CL_IMAGE2D_FROM_TENSOR(dst);
+  auto desc = Image2DDesc::PackFromConv2DWeight(dst.Shape());
+  VLOGF_DEFAULT(0, "[CL] copy    host(%p) --> Image2D(%p)", src.DataRaw(), dst_image2d());
+
+  auto shape = src.Shape();
+  auto tmp = exec_->GetScratchBuffer(src.SizeInBytes());
+  ORT_RETURN_IF_CL_ERROR(exec_->GetCommandQueue().enqueueWriteBuffer(*tmp, /*blocking=*/CL_FALSE, 0, src.SizeInBytes(), src.DataRaw()));
+  ORT_RETURN_IF_ERROR(KernelLauncher{kernels_->GetKernel("Conv2DWeightBufferToImage")}
+                          .setArg<cl_int>(desc.Width())
+                          .setArg<cl_int>(desc.Height())
+                          .setBuffer(*tmp)
+                          .setInt4(shape[0], shape[1], shape[2], shape[3])
+                          .setArg<cl_int>(desc.Width() * desc.Height())
+                          .setImage2D(dst_image2d)
+                          .Launch(exec_->GetCommandQueue(), desc.AsNDRange()));
+  exec_->GetCommandQueue().finish();  // do sync copy, since we cannot extend the lifetime of src or tmp
+  return Status::OK();
+}
+
+Status OpenCLDataTransfer::CopyDepthwiseConvWeight(const Tensor& src, Tensor& dst) const {
+  auto dst_image2d = CL_IMAGE2D_FROM_TENSOR(dst);
+  auto desc = Image2DDesc::PackFromDepthwiseConv2DWeight(dst.Shape());
+  VLOGF_DEFAULT(0, "[CL] copy    host(%p) --> Image2D(%p)", src.DataRaw(), dst_image2d());
+
+  auto shape = src.Shape();
+  ORT_ENFORCE(dst.Shape()[0] == 1);  // TODO: maybe generalize it
+  auto tmp = exec_->GetScratchBuffer(src.SizeInBytes());
+  ORT_RETURN_IF_CL_ERROR(exec_->GetCommandQueue().enqueueWriteBuffer(*tmp, /*blocking=*/CL_FALSE, 0, src.SizeInBytes(), src.DataRaw()));
+  ORT_RETURN_IF_ERROR(KernelLauncher{kernels_->GetKernel("CopyDepthwiseConvWeightBufferToImage")}
+                          .setArg<cl_int>(desc.Width())
+                          .setArg<cl_int>(desc.Height())
+                          .setBuffer(*tmp)
+                          .setInt4(shape[0], shape[1], shape[2], shape[3])
+                          .setArg<cl_int>(desc.Width() * desc.Height())
+                          .setImage2D(dst_image2d)
+                          .Launch(exec_->GetCommandQueue(), desc.AsNDRange()));
+  return Status::OK();
+}
 
 }  // namespace opencl
 }  // namespace onnxruntime

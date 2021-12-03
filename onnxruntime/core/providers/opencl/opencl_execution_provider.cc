@@ -159,13 +159,14 @@ std::unique_ptr<onnxruntime::IDataTransfer> OpenCLExecutionProvider::GetDataTran
 namespace {
 #define CONTENT_NAME copy1d_kernel_src
 #include "opencl_generated/kernels/copy_tensor_1d.cl.inc"
-#undef CONTENT_NAME
 #define CONTENT_NAME copynchw_kernel_src
 #include "opencl_generated/kernels/copy_tensor_nchw.cl.inc"
-#undef CONTENT_NAME
 #define CONTENT_NAME copynchw4_kernel_src
 #include "opencl_generated/kernels/copy_tensor_nchw4.cl.inc"
-#undef CONTENT_NAME
+#define CONTENT_NAME copyconv2d_kernel_src
+#include "opencl_generated/kernels/copy_conv2d_weight.cl.inc"
+#define CONTENT_NAME copydepthwiseconv2d_kernel_src
+#include "opencl_generated/kernels/copy_depthwise_conv2d_weight.cl.inc"
 }  // namespace
 
 void OpenCLExecutionProvider::InitCopyKernels() {
@@ -173,12 +174,16 @@ void OpenCLExecutionProvider::InitCopyKernels() {
   oss << std::string(copy1d_kernel_src, copy1d_kernel_src_len) << "\n";
   oss << std::string(copynchw_kernel_src, copynchw_kernel_src_len) << "\n";
   oss << std::string(copynchw4_kernel_src, copynchw4_kernel_src_len) << "\n";
+  oss << std::string(copyconv2d_kernel_src, copyconv2d_kernel_src_len) << "\n";
+  oss << std::string(copydepthwiseconv2d_kernel_src, copydepthwiseconv2d_kernel_src_len) << "\n";
   copy_kernels_ = std::make_unique<opencl::OpenCLKernelHolder>();
   copy_kernels_->LoadProgram(this, oss.str());
   copy_kernels_->LoadKernel("CopyBuffer1DToImage2D");
   copy_kernels_->LoadKernel("CopyImage2DToBuffer1D");
   copy_kernels_->LoadKernel("CopyBufferNCHWToImage2D");
   copy_kernels_->LoadKernel("CopyImage2DToBufferNCHW");
+  copy_kernels_->LoadKernel("Conv2DWeightBufferToImage");
+  copy_kernels_->LoadKernel("CopyDepthwiseConvWeightBufferToImage");
 }
 /*
 #pragma endregion

@@ -50,6 +50,10 @@ class OpenCLDataTransfer : public IDataTransfer {
 
   Status UnimplementedCopy() const;
 
+  // tensor that we should specially handled, only support copy from cpu to image2
+  Status CopyConvWeight(const Tensor& src, Tensor& dst) const;
+  Status CopyDepthwiseConvWeight(const Tensor& src, Tensor& dst) const;
+
  private:
   const OpenCLExecutionProvider* exec_;
   const OpenCLKernelHolder* kernels_;

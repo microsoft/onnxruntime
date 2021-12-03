@@ -24,9 +24,13 @@ struct OpenCLKernelHolder {
   }
 
   inline const cl::Kernel& GetKernel(const char* kernel_name) const {
-    return kernels.at(kernel_name);
+    auto it = kernels.find(kernel_name);
+    if (it != kernels.end()) {
+      return it->second;
+    }
+    ORT_THROW("Unable to find kernel ", kernel_name);
   }
 };
 
-}
-}
+}  // namespace opencl
+}  // namespace onnxruntime
