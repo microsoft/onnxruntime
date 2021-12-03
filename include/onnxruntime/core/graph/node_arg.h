@@ -8,6 +8,7 @@
 #include "core/graph/basic_types.h"
 #include "core/common/status.h"
 #include "core/common/logging/logging.h"
+#include "core/framework/tensor_usage.h"
 
 namespace onnxruntime {
 
@@ -69,6 +70,15 @@ class NodeArg {
   void SetMemoryType(int8_t);
 
   bool HasMemoryType() const;
+
+  // this arg is used for conv weight/ depthwise conv weight lstm....
+  // FIXME: doc string
+  TensorUsage Usage() const;
+
+  void SetUsage(TensorUsage);
+
+  bool HasUsage() const;
+
 
 #if !defined(ORT_MINIMAL_BUILD)
   /** Sets the shape.
@@ -136,5 +146,8 @@ class NodeArg {
   bool has_mem_type_;
   // FIXME: typing
   int8_t mem_type_;
+
+  std::optional<TensorUsage> usage_;
+
 };
 }  // namespace onnxruntime

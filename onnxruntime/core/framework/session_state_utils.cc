@@ -58,6 +58,7 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
                                              const ONNX_NAMESPACE::TensorProto& tensor_proto, const MemBuffer* m,
                                              const AllocatorPtr& alloc, const AllocatorPtr& default_cpu_alloc,
                                              OrtValue& ort_value, const DataTransferManager& data_transfer_mgr,
+                                             TensorUsage usage,
                                              bool use_device_allocator_for_initializers = false) {
   if (bool(alloc) == (m != nullptr)) {
     return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
@@ -111,6 +112,7 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
     ORT_RETURN_IF_ERROR(utils::TensorProtoToTensor(env, proto_path.c_str(), tensor_proto, *p_deserialize_tensor));
     // TODO!! Need a temp buffer allocator for non-escape buffers that maybe too big for stack allocation.
 
+    p_tensor->SetUsage(usage);
     Status copy_status = data_transfer_mgr.CopyTensor(*p_deserialize_tensor, *p_tensor);
     if (!copy_status.IsOK()) {
       if (copy_status.ErrorMessage().empty()) {
@@ -172,6 +174,7 @@ common::Status SaveInitializedTensors(
   //1. first plan the memory
   const onnxruntime::InitializedTensorSet& initialized_tensor_set = graph.GetAllInitializedTensors();
   std::unordered_map<int, const ONNX_NAMESPACE::TensorProto*> id_to_initialized_tensor;
+  std::unordered_map<int, TensorUsage> id_to_tensor_usage;
   std::set<int> user_supplied_initializer_ids;  // set containing the ort value ids of all user supplied initializers
   for (const auto& entry : initialized_tensor_set) {
     int ort_value_index;
@@ -180,6 +183,14 @@ common::Status SaveInitializedTensors(
       user_supplied_initializer_ids.insert(ort_value_index);
     }
     id_to_initialized_tensor[ort_value_index] = entry.second;
+
+    const auto* node_arg = graph.GetNodeArg(entry.first);
+    if (node_arg->HasUsage()) {
+      id_to_tensor_usage[ort_value_index] = node_arg->Usage();
+    }
+    else {
+      id_to_tensor_usage[ort_value_index] = TensorUsage::Generic;
+    }
   }
 
   // tensors requiring a specific allocation order are traced first, to ensure they are allocated in order
@@ -242,7 +253,7 @@ common::Status SaveInitializedTensors(
           session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsUseDeviceAllocatorForInitializers, "0") == "1";
 
       Status st = DeserializeTensorProto(env, graph_loc, tensor_proto, m.get(), alloc, default_cpu_alloc, ort_value,
-                                         data_transfer_mgr, use_device_allocator_for_initializers);
+                                         data_transfer_mgr, id_to_tensor_usage[ort_value_index], use_device_allocator_for_initializers);
       if (!st.IsOK()) {
         std::ostringstream oss;
         oss << "Deserialize tensor " << name << " failed." << st.ErrorMessage();

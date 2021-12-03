@@ -308,6 +308,18 @@ bool NodeArg::HasMemoryType() const {
   return has_mem_type_;
 }
 
+TensorUsage NodeArg::Usage() const {
+  return usage_.value();
+}
+
+void NodeArg::SetUsage(TensorUsage usage) {
+  usage_ = usage;
+}
+
+bool NodeArg::HasUsage() const {
+  return usage_.has_value();
+}
+
 #if !defined(ORT_MINIMAL_BUILD)
 void NodeArg::SetShape(const TensorShapeProto& shape) {
   const auto type_case = node_arg_info_.type().value_case();

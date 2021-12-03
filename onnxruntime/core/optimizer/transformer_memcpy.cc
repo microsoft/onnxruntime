@@ -316,7 +316,7 @@ void TransformerMemcpyImpl::AddCopyNode(onnxruntime::NodeArg* arg, bool is_input
       for (auto* node : it->second) {
         const KernelCreateInfo* kci = nullptr;
         ORT_IGNORE_RETURN_VALUE(kernel_registries_.get().SearchKernelRegistry(*node, &kci));
-        if (kci != nullptr) {
+        if (kci != nullptr) { // FIXME: no need to check
           auto arg_it = std::find_if(node->InputDefs().begin(), node->InputDefs().end(), [&](const NodeArg* o) { return o->Name() == arg->Name(); });
           auto arg_index = std::distance(node->InputDefs().begin(), arg_it);
 
