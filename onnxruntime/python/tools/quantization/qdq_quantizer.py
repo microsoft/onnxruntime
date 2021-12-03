@@ -43,10 +43,8 @@ class QDQQuantizer(ONNXQuantizer):
         self.op_types_to_exclude_output_quantization = [] if 'OpTypesToExcludeOutputQuantizatioin' not in extra_options \
                                                         else extra_options['OpTypesToExcludeOutputQuantizatioin']
 
-        # In some cases, for example QDQ BERT model for TensorRT,
-        # QDQ should always appear as a pair. 
-        # For our quantization tool, we do quantization on Dequantizelinear's input 
-        # to remove Quantizelinear as optimization for weight.   
+        # We do quantization on Dequantizelinear's input to remove Quantizelinear for weight as an optimization.
+        # In some cases, for example QDQ BERT model for TensorRT, QDQ should always appear as a pair.
         # Therefore, we need to disable this optimization and add qdq pair to weight.
         self.add_qdq_pair_to_weight = False if 'AddQDQPairToWeight' not in extra_options \
                                         else extra_options['AddQDQPairToWeight'] 
@@ -57,8 +55,8 @@ class QDQQuantizer(ONNXQuantizer):
         if self.dedicated_qdq_pair:
             self.tensor_to_its_receiving_nodes = {}
 
-        # Channel axis when per_channel is True
-        self.qdq_channel_axis = 0 if 'QDQChannelAxis' not in extra_options else extra_options['QDQChannelAxis']
+        # Let user set channel axis for specific op type and it's effective only when per channel quantization is supported and per_channel is True.
+        self.qdq_op_type_per_channel_support_to_axis = {} if 'QDQOpTypePerChannelSupportToAxis' not in extra_options else extra_options['QDQOpTypePerChannelSupportToAxis']
 
     def quantize_tensor(self, tensor_name):
         weight = find_by_name(tensor_name, self.model.initializer())

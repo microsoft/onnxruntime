@@ -1,7 +1,7 @@
 from .quant_utils import QuantizationMode
 from .operators.base_operator import QuantOperatorBase
 from .operators.qdq_base_operator import QDQOperatorBase
-from .operators.matmul import MatMulInteger, QLinearMatMul
+from .operators.matmul import MatMulInteger, QLinearMatMul, QDQMatMul
 from .operators.attention import AttentionQuant
 from .operators.embed_layernorm import EmbedLayerNormalizationQuant
 from .operators.gather import GatherQuant
@@ -66,6 +66,7 @@ QDQRegistry = {
     "MaxPool": QDQMaxPool,
     "AveragePool" : QDQDirect8BitOp,
     "Concat": QDQConcat,
+    "MatMul": QDQMatMul,
 }
 
 
