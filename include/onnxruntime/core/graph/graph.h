@@ -1213,7 +1213,8 @@ class Graph {
 
   // Stores information collected during the replay of loaded runtime optimizations
   struct RuntimeOptimizationReplayContext {
-    std::unordered_map<NodeIndex, HashValue> produced_node_index_to_kernel_def_hash;
+    std::unordered_map<NodeIndex, HashValue> produced_node_index_to_kernel_def_hash{};
+    size_t num_replayed_optimizations{};
   };
 
   const RuntimeOptimizationReplayContext& RuntimeOptimizationReplayCtx() const {

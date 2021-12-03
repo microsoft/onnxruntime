@@ -241,6 +241,8 @@ Status SelectorActionTransformer::ApplyFromRuntimeOptimizations(
 
     ORT_RETURN_IF_ERROR(RegisterProducedNodesWithGraph(pre_action_max_index, post_action_max_index,
                                                        record, graph));
+
+    ++graph.MutableRuntimeOptimizationReplayCtx().num_replayed_optimizations;
   }
 
   return Status::OK();

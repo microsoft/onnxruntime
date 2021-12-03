@@ -985,7 +985,7 @@ Status SessionState::LoadFromOrtFormat(const fbs::SessionState& fbs_session_stat
   const bool original_nodes_should_exist =
       compiled_kernel_hashes.empty()
 #if defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
-      && graph_.RuntimeOptimizationReplayCtx().produced_node_index_to_kernel_def_hash.empty()
+      && graph_.RuntimeOptimizationReplayCtx().num_replayed_optimizations == 0
 #endif  // defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
       ;
 
