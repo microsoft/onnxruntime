@@ -220,7 +220,7 @@ StvmExecutionProvider::GetCapability(const GraphViewer& graph_viewer,
   if (graph_viewer.IsSubgraph()) {
     return result;
   }
-#if 1
+
   // Construct modelproto from graph
   Model model(graph_viewer.Name(), true, ModelMetaData(), PathString{}, IOnnxRuntimeOpSchemaRegistryList(), graph_viewer.DomainToVersionMap(), std::vector<ONNX_NAMESPACE::FunctionProto>(), *GetLogger());
   Graph& graph_build = model.MainGraph();
@@ -247,9 +247,6 @@ StvmExecutionProvider::GetCapability(const GraphViewer& graph_viewer,
   ONNX_NAMESPACE::ModelProto model_proto = model.ToProto();
   model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
   auto status = graph_build.Resolve();
-  std::string onnx_string_buffer;
-  model_proto.SerializeToString(&onnx_string_buffer);
-#endif
 
   std::unordered_set<std::string> required_initializers;
   const std::vector<NodeIndex>& sorted_nodes = graph_viewer.GetNodesInTopologicalOrder();
