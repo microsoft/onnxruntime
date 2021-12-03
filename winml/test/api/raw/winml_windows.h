@@ -4,6 +4,7 @@
 #define WINML_H_
 
 #include "weak_buffer.h"
+#include "buffer_backed_random_access_stream_reference.h"
 #include "weak_single_threaded_iterable.h"
 
 #define RETURN_HR_IF_FAILED(expression)                                                                     \
@@ -209,7 +210,7 @@ public:
 
     WinMLLearningModel(const char* bytes, size_t size)
     {
-        ML_FAIL_FAST_IF(0 != Initialize(bytes, size));
+        ML_FAIL_FAST_IF(0 != Initialize(bytes, size, false /*with_copy*/));
     }
 
 private:
@@ -260,52 +261,63 @@ private:
         }
     };
 
-    int32_t Initialize(const char* bytes, size_t size)
+    int32_t Initialize(const char* bytes, size_t size, bool with_copy = false)
     {
         RoInitialize(RO_INIT_TYPE::RO_INIT_SINGLETHREADED);
 
-        // Create in memory stream
-        Microsoft::WRL::ComPtr<IInspectable> in_memory_random_access_stream_insp;
-        RETURN_HR_IF_FAILED(RoActivateInstance(
-            Microsoft::WRL::Wrappers::HStringReference(RuntimeClass_Windows_Storage_Streams_InMemoryRandomAccessStream).Get(),
-            in_memory_random_access_stream_insp.GetAddressOf()));
-
-        // QI memory stream to output stream
-        Microsoft::WRL::ComPtr<ABI::Windows::Storage::Streams::IOutputStream> output_stream;
-        RETURN_HR_IF_FAILED(in_memory_random_access_stream_insp.As(&output_stream));
-
-        // Create data writer factory
-        Microsoft::WRL::ComPtr<ABI::Windows::Storage::Streams::IDataWriterFactory> activation_factory;
-        RETURN_HR_IF_FAILED(RoGetActivationFactory(
-            Microsoft::WRL::Wrappers::HStringReference(RuntimeClass_Windows_Storage_Streams_DataWriter).Get(),
-            IID_PPV_ARGS(activation_factory.GetAddressOf())));
-
-        // Create data writer object based on the in memory stream
-        Microsoft::WRL::ComPtr<ABI::Windows::Storage::Streams::IDataWriter> data_writer;
-        RETURN_HR_IF_FAILED(activation_factory->CreateDataWriter(
-            output_stream.Get(),
-            data_writer.GetAddressOf()));
-
-        // Write the model to the data writer and thus to the stream
-        RETURN_HR_IF_FAILED(
-            data_writer->WriteBytes(static_cast<uint32_t>(size), reinterpret_cast<BYTE*>(const_cast<char *>(bytes))));
-
-        // QI the in memory stream to a random access stream
-        Microsoft::WRL::ComPtr<ABI::Windows::Storage::Streams::IRandomAccessStream> random_access_stream;
-        RETURN_HR_IF_FAILED(in_memory_random_access_stream_insp.As(&random_access_stream));
-
-        // Create a random access stream reference factory
-        Microsoft::WRL::ComPtr<ABI::Windows::Storage::Streams::IRandomAccessStreamReferenceStatics> random_access_stream_ref_statics;
-        RETURN_HR_IF_FAILED(RoGetActivationFactory(
-            Microsoft::WRL::Wrappers::HStringReference(RuntimeClass_Windows_Storage_Streams_RandomAccessStreamReference).Get(),
-            IID_PPV_ARGS(random_access_stream_ref_statics.GetAddressOf())));
-
-        // Create a random access stream reference from the random access stream view on top of
-        // the in memory stream
         Microsoft::WRL::ComPtr<ABI::Windows::Storage::Streams::IRandomAccessStreamReference> random_access_stream_ref;
-        RETURN_HR_IF_FAILED(random_access_stream_ref_statics->CreateFromStream(
-            random_access_stream.Get(),
-            random_access_stream_ref.GetAddressOf()));
+        if (with_copy) {
+            // Create in memory stream
+            Microsoft::WRL::ComPtr<IInspectable> in_memory_random_access_stream_insp;
+            RETURN_HR_IF_FAILED(RoActivateInstance(
+                Microsoft::WRL::Wrappers::HStringReference(RuntimeClass_Windows_Storage_Streams_InMemoryRandomAccessStream).Get(),
+                in_memory_random_access_stream_insp.GetAddressOf()));
+
+            // QI memory stream to output stream
+            Microsoft::WRL::ComPtr<ABI::Windows::Storage::Streams::IOutputStream> output_stream;
+            RETURN_HR_IF_FAILED(in_memory_random_access_stream_insp.As(&output_stream));
+
+            // Create data writer factory
+            Microsoft::WRL::ComPtr<ABI::Windows::Storage::Streams::IDataWriterFactory> activation_factory;
+            RETURN_HR_IF_FAILED(RoGetActivationFactory(
+                Microsoft::WRL::Wrappers::HStringReference(RuntimeClass_Windows_Storage_Streams_DataWriter).Get(),
+                IID_PPV_ARGS(activation_factory.GetAddressOf())));
+
+            // Create data writer object based on the in memory stream
+            Microsoft::WRL::ComPtr<ABI::Windows::Storage::Streams::IDataWriter> data_writer;
+            RETURN_HR_IF_FAILED(activation_factory->CreateDataWriter(
+                output_stream.Get(),
+                data_writer.GetAddressOf()));
+
+            // Write the model to the data writer and thus to the stream
+            RETURN_HR_IF_FAILED(
+                data_writer->WriteBytes(static_cast<uint32_t>(size), reinterpret_cast<BYTE*>(const_cast<char*>(bytes))));
+
+            // QI the in memory stream to a random access stream
+            Microsoft::WRL::ComPtr<ABI::Windows::Storage::Streams::IRandomAccessStream> random_access_stream;
+            RETURN_HR_IF_FAILED(in_memory_random_access_stream_insp.As(&random_access_stream));
+
+            // Create a random access stream reference factory
+            Microsoft::WRL::ComPtr<ABI::Windows::Storage::Streams::IRandomAccessStreamReferenceStatics> random_access_stream_ref_statics;
+            RETURN_HR_IF_FAILED(RoGetActivationFactory(
+                Microsoft::WRL::Wrappers::HStringReference(RuntimeClass_Windows_Storage_Streams_RandomAccessStreamReference).Get(),
+                IID_PPV_ARGS(random_access_stream_ref_statics.GetAddressOf())));
+
+            // Create a random access stream reference from the random access stream view on top of
+            // the in memory stream
+            RETURN_HR_IF_FAILED(random_access_stream_ref_statics->CreateFromStream(
+                random_access_stream.Get(),
+                random_access_stream_ref.GetAddressOf()));
+        } else {
+            Microsoft::WRL::ComPtr<WinMLTest::WeakBuffer<BYTE>> buffer;
+            RETURN_HR_IF_FAILED(
+                Microsoft::WRL::MakeAndInitialize<WinMLTest::WeakBuffer<BYTE>>(
+                    &buffer, bytes, bytes + size));
+
+            RETURN_HR_IF_FAILED(
+                Microsoft::WRL::MakeAndInitialize<WinMLTest::BufferBackedRandomAccessStreamReference>(
+                    &random_access_stream_ref, buffer.Get()));
+        }
 
         // Create a learning model factory
         Microsoft::WRL::ComPtr<ABI::Windows::AI::MachineLearning::ILearningModelStatics> learning_model;
@@ -450,9 +462,9 @@ public:
                 TensorFactory2IID<T>::IID,
                 &tensor_factory));
 
-        Microsoft::WRL::ComPtr<weak_buffer<T>> buffer;
+        Microsoft::WRL::ComPtr<WinMLTest::WeakBuffer<T>> buffer;
         RETURN_HR_IF_FAILED(
-            Microsoft::WRL::MakeAndInitialize<weak_buffer<T>>(
+            Microsoft::WRL::MakeAndInitialize<WinMLTest::WeakBuffer<T>>(
                 &buffer, p_data, p_data + data_size));
 
         Microsoft::WRL::ComPtr<ITensor> tensor;
@@ -484,7 +496,7 @@ public:
       std::vector<Microsoft::WRL::ComPtr<ABI::Windows::Storage::Streams::IBuffer>> vec_buffers(num_buffers);
       for (size_t i = 0; i < num_buffers; i++) {
         RETURN_HR_IF_FAILED(
-            Microsoft::WRL::MakeAndInitialize<weak_buffer<T>>(
+            Microsoft::WRL::MakeAndInitialize<WinMLTest::WeakBuffer<T>>(
                 &vec_buffers.at(i), p_data[i], p_data[i] + data_sizes[i]));
       }
 
