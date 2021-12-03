@@ -56,6 +56,9 @@ onnxruntime::Status ORTBackendsManager::set_device(size_t device_index, const st
     custom_op_schema_);
 
   backends_[device_index] = std::move(invoker);
+  ProviderInfoMap provider_info;
+  provider_info[provider_type] = provider_options;
+  device_ep_info_[device_index] = provider_info;
   return onnxruntime::Status::OK();
 }
 
@@ -64,6 +67,12 @@ OrtDevice ORTBackendsManager::GetOrtDeviceInfo(size_t torch_device_index){
   ORT_ENFORCE(lookup != backends_.end());
   auto allocator = lookup->second->GetCurrentExecutionProvider().GetAllocator(0, OrtMemTypeDefault);
   return allocator->Info().device;
+}
+
+const ProviderInfoMap& ORTBackendsManager::GetOrtDeviceProviderInfo(size_t torch_device_index) const {
+  auto lookup = device_ep_info_.find(torch_device_index);
+  ORT_ENFORCE(lookup != device_ep_info_.end());
+  return lookup->second;
 }
 
 onnxruntime::ORTInvoker& ORTBackendsManager::GetInvoker(const at::Device device) {

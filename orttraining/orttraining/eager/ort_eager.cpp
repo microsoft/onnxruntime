@@ -61,6 +61,9 @@ void addObjectMethodsForEager(py::module& m){
   m.def("get_ort_device", [](size_t torch_device_index){
     return torch_ort::eager::GetORTBackendsManager().GetOrtDeviceInfo(torch_device_index);
   });
+  m.def("get_ort_device_provider_info", [](size_t torch_device_index){
+    return torch_ort::eager::GetORTBackendsManager().GetOrtDeviceProviderInfo(torch_device_index);
+  });
 
   auto customop_module = m.def_submodule("custom_ops");
   torch_ort::eager::GenerateCustomOpsBindings(customop_module);
