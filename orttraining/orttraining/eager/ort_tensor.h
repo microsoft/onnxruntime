@@ -6,6 +6,7 @@
 #include <c10/core/TensorImpl.h>
 #include <core/framework/ort_value.h>
 #include <iostream>
+#include <ATen/InferSize.h>
 
 namespace torch_ort {
 namespace eager {

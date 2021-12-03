@@ -260,13 +260,14 @@ at::Tensor view(const at::Tensor& self, at::IntArrayRef size) {
   ORT_LOG_FN(self, size);
 
   auto& invoker = GetORTInvoker(self.device());
+  auto shape = at::infer_size_dv(size, self.numel());
+  std::vector<int64_t> shape_vec;
+  shape_vec.insert(shape_vec.begin(), shape.begin(), shape.end());
   return aten_tensor_from_ort(
     reshape_copy(
       invoker,
       create_ort_value(invoker, self),
-      at::infer_size(
-        size,
-        self.numel())),
+      shape_vec),
     self.options());
 }
 
