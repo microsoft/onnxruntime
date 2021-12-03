@@ -66,7 +66,7 @@ jobs:
     displayName: 'Build Eager mode'
     inputs:
       scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-      arguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --build_eager_mode --enable_training --enable_pybind --parallel'
+      arguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --build_eager_mode --enable_training --build_wheel --parallel'
       workingDirectory: '$(Build.BinariesDirectory)'
 
   - task: PublishTestResults@2
