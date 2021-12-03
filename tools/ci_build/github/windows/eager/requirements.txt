@@ -3,3 +3,8 @@ wheel
 numpy
 typing_extensions
 torch
+cerberus
+h5py
+sklearn
+numpy
+pandas
