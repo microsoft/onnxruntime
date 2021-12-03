@@ -54,7 +54,7 @@ class Tensor final {
    * \param p_data A preallocated buffer. Can be NULL if the shape is empty.
    *              Tensor does not own the data and will not delete it
    * \param alloc Where the buffer('p_data') was allocated from
-   * \param offset Offset in bytes to start of Tensor within p_data. 
+   * \param offset Offset in bytes to start of Tensor within p_data.
    */
   Tensor(MLDataType p_type, const TensorShape& shape, void* p_data, const OrtMemoryInfo& alloc,
          ptrdiff_t offset = 0);
@@ -100,7 +100,7 @@ class Tensor final {
    * \param p_data A preallocated buffer. Can be NULL if the shape is empty.
    *              Tensor will own the memory and will delete it when the tensor instance is destructed.
    * \param deleter Allocator used to free the pre-allocated memory
-   * \param offset Offset in bytes to start of Tensor within p_data. 
+   * \param offset Offset in bytes to start of Tensor within p_data.
    */
   Tensor(MLDataType p_type, const TensorShape& shape, void* p_data, std::shared_ptr<IAllocator> deleter,
          ptrdiff_t offset = 0);
@@ -276,7 +276,7 @@ class Tensor final {
   const PrimitiveDataTypeBase* dtype_;
   OrtMemoryInfo alloc_info_;
   ptrdiff_t byte_offset_;
-  TensorUsage usage_;
+  TensorUsage usage_ = TensorUsage::Generic;
 };
 #ifdef __GNUC__
 #pragma GCC diagnostic pop
