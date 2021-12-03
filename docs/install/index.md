@@ -9,7 +9,7 @@ redirect_from: /docs/how-to/install
 # Install ONNX Runtime (ORT)
 {: .no_toc }
 
-See the [installation matrix](https://onnxruntime.ai) for recommended instructions for desired combinations of target operating system, hardware, accelerator, and language. 
+See the [installation matrix](https://onnxruntime.ai) for recommended instructions for desired combinations of target operating system, hardware, accelerator, and language.
 
 Details on OS versions, compilers, language versions, dependent libraries, etc can be found under [Compatibility](../reference/compatibility).
 
@@ -56,21 +56,21 @@ pip install skl2onnx
 {: .no_toc }
 
 ```bash
-# CPU 
-dotnet add package Microsoft.ML.OnnxRuntime --version 1.8.1
+# CPU
+dotnet add package Microsoft.ML.OnnxRuntime
 ```
 ```bash
 # GPU
-dotnet add package Microsoft.ML.OnnxRuntime.Gpu --version 1.8.1
+dotnet add package Microsoft.ML.OnnxRuntime.Gpu
 ```
 ```bash
 # DirectML
-dotnet add package Microsoft.ML.OnnxRuntime.DirectML --version 1.8.1
+dotnet add package Microsoft.ML.OnnxRuntime.DirectML
 ```
 
 ```bash
 # WinML
-dotnet add package Microsoft.AI.MachineLearning --version 1.8.1
+dotnet add package Microsoft.AI.MachineLearning
 ```
 ## JavaScript Installs
 
@@ -165,7 +165,7 @@ by running `locale-gen en_US.UTF-8` and `update-locale LANG=en_US.UTF-8`
 
 ## Training install table for all languages
 
-ONNX Runtime Training packages are available for different versions of PyTorch, CUDA and ROCm versions. 
+ONNX Runtime Training packages are available for different versions of PyTorch, CUDA and ROCm versions.
 
 The install command is:
 ```cmd

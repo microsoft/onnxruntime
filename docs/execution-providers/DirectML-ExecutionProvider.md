@@ -1,5 +1,5 @@
 ---
-title: Direct ML
+title: DirectML
 description: Instructions to execute ONNX Runtime with the DirectML execution provider
 parent: Execution Providers
 nav_order: 5
@@ -9,7 +9,7 @@ redirect_from: /docs/reference/execution-providers/DirectML-ExecutionProvider
 # DirectML Execution Provider
 {: .no_toc }
 
-The DirectML Execution Provider is a component of ONNX Runtime that uses DirectML to accelerate inference of ONNX models. The DirectML execution provider is capable of greatly improving evaluation time of models using commodity GPU hardware, without sacrificing broad hardware support or requiring vendor-specific extensions to be installed.
+The DirectML Execution Provider is a component of ONNX Runtime that uses [DirectML](https://docs.microsoft.com/en-us/windows/ai/directml/dml-intro) to accelerate inference of ONNX models. The DirectML execution provider is capable of greatly improving evaluation time of models using commodity GPU hardware, without sacrificing broad hardware support or requiring vendor-specific extensions to be installed.
 
 DirectML is a high-performance, hardware-accelerated DirectX 12 library for machine learning on Windows.  DirectML provides GPU acceleration for common machine learning tasks across a broad range of supported hardware and drivers.
 
@@ -39,7 +39,7 @@ DirectML is compatible with Windows 10, version 1709 (10.0.16299; RS3, "Fall Cre
 ## Build
 
 Requirements for building the DirectML execution provider:
-1. Visual Studio 2017 toolchain 
+1. Visual Studio 2017 toolchain
 2. [The Windows 10 SDK (10.0.18362.0) for Windows 10, version 1903](https://developer.microsoft.com/en-us/windows/downloads/windows-10-sdk) (or newer)
 
 To build onnxruntime with the DML EP included, supply the `--use_dml` parameter to `build.bat`. e.g.
@@ -126,6 +126,6 @@ The DirectML execution provider currently supports ONNX opset 12 ([ONNX v1.7](ht
 ## Additional Resources
 
 * [DirectML documentation \(docs.microsoft.com\)](https://docs.microsoft.com/en-us/windows/win32/direct3d12/dml)
-* [DMLCreateDevice function](https://docs.microsoft.com/windows/win32/api/directml/nf-directml-dmlcreatedevice)  
-* [ID3D12Device::CreateCommandQueue method](https://docs.microsoft.com/windows/win32/api/d3d12/nf-d3d12-id3d12device-createcommandqueue)  
+* [DMLCreateDevice function](https://docs.microsoft.com/windows/win32/api/directml/nf-directml-dmlcreatedevice)
+* [ID3D12Device::CreateCommandQueue method](https://docs.microsoft.com/windows/win32/api/d3d12/nf-d3d12-id3d12device-createcommandqueue)
 * [Direct3D 12 programming guide](https://docs.microsoft.com/windows/win32/direct3d12/directx-12-programming-guide)
