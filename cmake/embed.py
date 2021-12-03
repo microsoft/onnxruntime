@@ -20,6 +20,8 @@ unsigned char CONCAT(__embed_uchar_, CONTENT_NAME)[{array_length}] = {{
 }};
 char* CONTENT_NAME = (char*)CONCAT(__embed_uchar_, CONTENT_NAME);
 [[maybe_unused]] unsigned int CONCAT(CONTENT_NAME, _len) = {length};
+
+#undef CONTENT_NAME
 """
 
 def batch_iter(iter, batch_size=12):
