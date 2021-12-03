@@ -99,12 +99,16 @@ endif()
 
 onnxruntime_add_include_to_target(onnxruntime_common date_interface wil)
 target_include_directories(onnxruntime_common
-    PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS}
+    PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} 
     # propagate include directories of dependencies that are part of public interface
     PUBLIC
         ${OPTIONAL_LITE_INCLUDE_DIR})
 
 target_link_libraries(onnxruntime_common safeint_interface Boost::mp11)
+
+target_include_directories(onnxruntime_common PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/external/pthreadpool/include")
+add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/external/pthreadpool" EXCLUDE_FROM_ALL)
+target_link_libraries(onnxruntime_common pthreadpool)
 
 if(NOT WIN32)
   target_include_directories(onnxruntime_common PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/external/nsync/public")
@@ -214,3 +218,5 @@ if (ARM64 OR ARM OR X86 OR X64 OR X86_64)
     list(APPEND onnxruntime_EXTERNAL_LIBRARIES cpuinfo clog)
   endif()
 endif()
+
+

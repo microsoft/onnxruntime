@@ -456,7 +456,7 @@ class CustomThreadPool : public ThreadPool {
                    const std::function<void(std::ptrdiff_t first, std::ptrdiff_t last)>& fn) override;
 
   void ParallelFor(std::ptrdiff_t total, const TensorOpCost& cost_per_unit,
-                   const std::function<void(std::ptrdiff_t first, std::ptrdiff_t)>& fn) override;
+                   const std::function<void(std::ptrdiff_t first, std::ptrdiff_t last)>& fn) override;
 
   void SimpleParallelFor(std::ptrdiff_t total, const std::function<void(std::ptrdiff_t)>& fn) override;
 
@@ -467,7 +467,32 @@ class CustomThreadPool : public ThreadPool {
   std::string StopProfiling() override;
 
  private:
-  void* impl_;
+  void* impl_{};
+};
+
+class PThreadPoolWrapper : public ThreadPool {
+ public:
+  PThreadPoolWrapper(size_t thread_count, bool denorms_disabled);
+  ~PThreadPoolWrapper();
+  int NumThreads() const override;
+  void ParallelFor(std::ptrdiff_t total, double cost_per_unit,
+                   const std::function<void(std::ptrdiff_t first, std::ptrdiff_t last)>& fn) override;
+
+  void ParallelFor(std::ptrdiff_t total, const TensorOpCost& cost_per_unit,
+                   const std::function<void(std::ptrdiff_t first, std::ptrdiff_t last)>& fn) override;
+
+  void SimpleParallelFor(std::ptrdiff_t total, const std::function<void(std::ptrdiff_t)>& fn) override;
+
+  void Schedule(std::function<void()> fn) override;
+
+  void StartProfiling() override;
+
+  std::string StopProfiling() override;
+
+ private:
+  size_t thread_count_{};
+  void* pthreadpool_{};
+  uint32_t denorms_disabled_{};
 };
 
 }  // namespace concurrency

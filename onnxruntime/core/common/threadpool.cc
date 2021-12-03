@@ -39,6 +39,8 @@ limitations under the License.
 #endif
 #endif
 
+#include <pthreadpool.h>
+
 namespace onnxruntime {
 
 namespace concurrency {
@@ -744,27 +746,65 @@ void CustomThreadPool::SimpleParallelFor(std::ptrdiff_t total, const std::functi
   auto tp = reinterpret_cast<OrtThreadPoolBase*>(impl_);
   return tp->ParallelFor(tp, total, &fn_wrapper);
 }
-/*
-int CustomThreadPool::NumThreads() const {
-  return 0;
-}
-
-void CustomThreadPool::ParallelFor(std::ptrdiff_t, double,
-                                   const std::function<void(std::ptrdiff_t, std::ptrdiff_t)>&) {
-}
-
-void CustomThreadPool::ParallelFor(std::ptrdiff_t, const TensorOpCost&,
-                                   const std::function<void(std::ptrdiff_t, std::ptrdiff_t)>&) {
-}
-
-void CustomThreadPool::SimpleParallelFor(std::ptrdiff_t, const std::function<void(std::ptrdiff_t)>&) {
-}*/
 
 void CustomThreadPool::Schedule(std::function<void()>) { ORT_ENFORCE(false, "CustomThreadPool::Schedule not implemented"); }
 
 void CustomThreadPool::StartProfiling() {}
 
 std::string CustomThreadPool::StopProfiling() { return {}; }
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+using SimpeFunc = std::function<void(std::ptrdiff_t)>;
+using Func = std::function<void(std::ptrdiff_t, std::ptrdiff_t)>;
+
+static void pthread_1d_func(void* param, size_t i) {
+  SimpeFunc* simple_fn = reinterpret_cast<SimpeFunc*>(param);
+  (*simple_fn)(i);
+}
+
+static void pthread_1d_tile_func(void* param, size_t from, size_t tile) {
+  Func* fn = reinterpret_cast<Func*>(param);
+  (*fn)(from, from + tile);
+}
+
+PThreadPoolWrapper::PThreadPoolWrapper(size_t thread_count_, bool denorms_disabled) : 
+    thread_count_(thread_count_), pthreadpool_(pthreadpool_create(thread_count_)), denorms_disabled_(denorms_disabled) {}
+
+PThreadPoolWrapper::~PThreadPoolWrapper() { delete pthreadpool_; }
+
+int PThreadPoolWrapper::NumThreads() const {
+  return static_cast<int>(pthreadpool_get_threads_count((pthreadpool_t)pthreadpool_));
+}
+
+void PThreadPoolWrapper::ParallelFor(std::ptrdiff_t total, double,
+                                     const std::function<void(std::ptrdiff_t, std::ptrdiff_t)>& fn) {
+  pthreadpool_parallelize_1d_tile_1d((pthreadpool_t)pthreadpool_,
+                                     (pthreadpool_task_1d_tile_1d_t)pthread_1d_tile_func,
+                                     const_cast<Func*>(&fn),
+                                     static_cast<size_t>(total),
+                                     static_cast<size_t>(std::ceil(1.f * total / thread_count_)),
+                                     denorms_disabled_);
+}
+
+void PThreadPoolWrapper::ParallelFor(std::ptrdiff_t total, const TensorOpCost&,
+                                   const std::function<void(std::ptrdiff_t, std::ptrdiff_t)>& fn) {
+  ParallelFor(total, 0.f, fn);
+}
+
+void PThreadPoolWrapper::SimpleParallelFor(std::ptrdiff_t total, const std::function<void(std::ptrdiff_t)>& fn) {
+  pthreadpool_parallelize_1d((pthreadpool_t)pthreadpool_,
+                             (pthreadpool_task_1d_t)pthread_1d_func,
+                             const_cast<SimpeFunc*>(&fn),
+                             static_cast<size_t>(total),
+                             denorms_disabled_);
+}
+
+void PThreadPoolWrapper::Schedule(std::function<void()>) { ORT_ENFORCE(false, "CustomThreadPool::Schedule not implemented"); }
+
+void PThreadPoolWrapper::StartProfiling() {}
+
+std::string PThreadPoolWrapper::StopProfiling() { return {}; }
 
 }  // namespace concurrency
 }  // namespace onnxruntime

@@ -54,8 +54,12 @@ CreateThreadPool(Env* env, OrtThreadPoolParams options, ThreadPoolType tpool_typ
     return CreateThreadPoolHelper(env, options);
   }
 #else
-  ORT_UNUSED_PARAMETER(tpool_type);
-  return CreateThreadPoolHelper(env, options);
+  //ORT_UNUSED_PARAMETER(tpool_type);
+  if (tpool_type == ThreadPoolType::INTRA_OP) {
+    return std::make_unique<PThreadPoolWrapper>(options.thread_pool_size, options.set_denormal_as_zero);
+  } else {
+    return CreateThreadPoolHelper(env, options);
+  }
 #endif
 }
 
