@@ -131,7 +131,6 @@ class BeamSearchImpl {
   // Calculate scores from logits, then apply filtering and select next token for each beam.
   Status ProcessLogits(const OrtValue& logits,
                        BeamSearchState<T>& beam_state,
-                       int top_k,
                        AllocatorPtr& allocator);
 
   // Mask tokens according to vocab_mask.
@@ -139,6 +138,12 @@ class BeamSearchImpl {
 
   // Apply repetition penalty.
   void ApplyRepetitionPenalty(const Sequences& sequences, gsl::span<T>& next_token_scores);
+
+  // Apply constraint of No repeat NGram Size .
+  void ApplyNoRepeatNGram(const Sequences& sequences, gsl::span<T>& next_token_scores);
+
+  // Apply constraint of mininal sequence length
+  void ApplyMinLength(const Sequences& sequences, gsl::span<T>& next_token_scores);
 
   OpKernelContextInternal& context_;
 
@@ -326,7 +331,6 @@ template <typename T>
 Status BeamSearchImpl<T>::ProcessLogits(
     const OrtValue& logits,  // logits output of subgraph
     BeamSearchState<T>& beam_state,
-    int top_k,
     AllocatorPtr& allocator) {
   const int64_t batch_beam_size = static_cast<int64_t>(parameters_->batch_size * parameters_->num_beams);
   const int& vocab_size = parameters_->vocab_size;
@@ -372,8 +376,10 @@ Status BeamSearchImpl<T>::ProcessLogits(
 
   // Apply all score processors that updates scores
   ApplyRepetitionPenalty(beam_state.sequences, next_token_scores);
+  ApplyNoRepeatNGram(beam_state.sequences, next_token_scores);
   ApplyVocabMask(next_token_scores);
-
+  ApplyMinLength(beam_state.sequences, next_token_scores);
+  
   // next_token_scores = next_token_scores + beam_scores[:, None].expand_as(next_token_scores)
   // TODO: use thread pool to parrellel
   int offset = 0;
@@ -405,7 +411,7 @@ Status BeamSearchImpl<T>::ProcessLogits(
 #endif
 
   const int axis = 1;
-  const unsigned k = static_cast<unsigned>(top_k);
+  const unsigned top_k = static_cast<unsigned>(2 * parameters_->num_beams);
   const bool largest = true;
   const bool sorted = true;  // results returned in sorted order.
 
@@ -425,11 +431,11 @@ Status BeamSearchImpl<T>::ProcessLogits(
   //   next_indices = (next_tokens / vocab_size).long()
   //   next_tokens = next_tokens % vocab_size
   gsl::span<const int64_t> next_token_indices = topk_indices->DataAsSpan<int64_t>();
-  beam_state.next_indices.resize(parameters_->batch_size * k);
-  beam_state.next_tokens.resize(parameters_->batch_size * k);
+  beam_state.next_indices.resize(parameters_->batch_size * top_k);
+  beam_state.next_tokens.resize(parameters_->batch_size * top_k);
   offset = 0;
   for (int i = 0; i < parameters_->batch_size; i++) {
-    for (unsigned int j = 0; j < k; j++, offset++) {
+    for (unsigned int j = 0; j < top_k; j++, offset++) {
       beam_state.next_indices[offset] = next_token_indices[offset] / vocab_size;
       beam_state.next_tokens[offset] = next_token_indices[offset] % vocab_size;
     }
@@ -440,9 +446,9 @@ Status BeamSearchImpl<T>::ProcessLogits(
   gsl::span<const int64_t> next_indices(beam_state.next_indices.data(), beam_state.next_indices.size());
 
 #ifdef DEBUG_BEAM_SEARCH
-  DumpTensor<T>("next_scores before scorer", next_scores.data(), parameters_->batch_size, k);
-  DumpTensor<int64_t>("next_tokens before scorer", next_tokens.data(), parameters_->batch_size, k);
-  DumpTensor<int64_t>("next_indices before scorer", next_indices.data(), parameters_->batch_size, k);
+  DumpTensor<T>("next_scores before scorer", next_scores.data(), parameters_->batch_size, top_k);
+  DumpTensor<int64_t>("next_tokens before scorer", next_tokens.data(), parameters_->batch_size, top_k);
+  DumpTensor<int64_t>("next_indices before scorer", next_indices.data(), parameters_->batch_size, top_k);
 #endif
 
   beam_scorer_->Process(
@@ -460,10 +466,8 @@ Status BeamSearchImpl<T>::GenerateNextToken(
     const OrtValue& logits,
     gsl::span<int64_t>& beam_next_tokens,
     gsl::span<int64_t>& beam_indices) {
-  // Process logits to get next token scores, and select top_k = 2 * num_beams
-  // TODO: we might not need 2 * num_beams when logits processors does not update token scores.
-  const int top_k = 2 * parameters_->num_beams;
-  ORT_RETURN_IF_ERROR(ProcessLogits(logits, beam_state_, top_k, allocator_));
+  // Process logits to get next token scores
+  ORT_RETURN_IF_ERROR(ProcessLogits(logits, beam_state_, allocator_));
 
   gsl::span<T>& beam_scores = beam_scorer_->GetNextScores();
   // TODO: may not need clone beam_scores.
@@ -528,6 +532,44 @@ void BeamSearchImpl<T>::ApplyRepetitionPenalty(const Sequences& sequences, gsl::
       // This assumes that scores are either positive (like ctrl) or negative (like GPT-2), but not a mixture.
       beam_token_scores[word_id] = (score < 0 ? score * parameters_->repetition_penalty : score / parameters_->repetition_penalty);
     }
+  }
+}
+
+template <typename T>
+void BeamSearchImpl<T>::ApplyNoRepeatNGram(const Sequences& sequences, gsl::span<T>& next_token_scores) {
+  if (parameters_->no_repeat_ngram_size == 0 || parameters_->no_repeat_ngram_size > sequences.GetSequenceLength()) {
+    return;
+  }
+
+  const gsl::index prefix_length = static_cast<gsl::index>(parameters_->no_repeat_ngram_size - 1);
+  int batch_beam_size = parameters_->BatchBeamSize();
+
+  for (int i = 0; i < batch_beam_size; i++) {
+    gsl::span<T> beam_token_scores = next_token_scores.subspan(i * parameters_->vocab_size, parameters_->vocab_size);
+    gsl::span<const int64_t> sequence = sequences.GetSequence(i);
+
+    gsl::span<const int64_t> prefix = sequence.subspan(sequence.length() - prefix_length);
+    ORT_ENFORCE(prefix.length() == prefix_length);
+
+    std::unordered_set<int64_t> blocked_word_ids;
+    for (int j = 0; j <= sequence.length() - parameters_->no_repeat_ngram_size; j++) {
+      // Here we use naive algorithm for matching. The complexity is O(batch_beam_size * ngram_size * sequence_length)
+      // TODO: build N-Gram index (hash table with prefix of length NGram - 1 as key, and list of last word of NGram as value) for fast matching.
+      if (parameters_->no_repeat_ngram_size == 1 || prefix == sequence.subspan(j, prefix_length)) {
+        blocked_word_ids.insert(sequence[j + prefix_length]);
+      }
+    }
+
+    for (const int64_t word_id : blocked_word_ids) {
+      beam_token_scores[word_id] = std::numeric_limits<T>::lowest();
+    }
+  }
+}
+
+template <typename T>
+void BeamSearchImpl<T>::ApplyMinLength(const Sequences& sequences, gsl::span<T>& next_token_scores) {
+  if (sequences.GetSequenceLength() < parameters_->min_length) {
+    next_token_scores[parameters_->eos_token_id] = std::numeric_limits<T>::lowest();  
   }
 }
 

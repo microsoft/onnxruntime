@@ -30,7 +30,7 @@ gsl::span<const int64_t> Sequences::GetSequence(int beam_index) const {
   return sequence;
 }
 
-int Sequences::GetSequenceLength() {
+int Sequences::GetSequenceLength() const {
   return current_length_;
 }
 

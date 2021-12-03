@@ -11,7 +11,7 @@ class ISequences {
  public:
   virtual ~ISequences() {}
   virtual gsl::span<const int64_t> GetSequence(int beam_index) const = 0;
-  virtual int GetSequenceLength() = 0;
+  virtual int GetSequenceLength() const = 0;
 };
 
 // This class keeps track of sequences generated.
@@ -26,7 +26,7 @@ class Sequences : public ISequences {
   gsl::span<const int64_t> GetSequence(int beam_index) const override;
 
   // Returns current sequence length.
-  int GetSequenceLength() override;
+  int GetSequenceLength() const override;
 
   // Print the sequences to StdOut in debug mode
   void PrintSequences();

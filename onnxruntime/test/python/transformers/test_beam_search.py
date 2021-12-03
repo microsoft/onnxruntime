@@ -22,11 +22,31 @@ class TestBeamSearch(unittest.TestCase):
         return run(arguments.split())
 
     @pytest.mark.slow
-    def test_profiler_cpu(self):
+    def test_cpu(self):
         gpt2_onnx_path = os.path.join('.', 'onnx_models', 'gpt2_past_fp32_shape.onnx')
         beam_search_onnx_path = os.path.join('.', 'onnx_models', 'gpt2_beam_search_v1.onnx')
         result = self.run_beam_search(f'-m gpt2 --gpt2_onnx {gpt2_onnx_path} --output {beam_search_onnx_path} --output_sequences_score --repetition_penalty 2.0 --run_baseline')
+        os.remove(gpt2_onnx_path)
+        os.remove(beam_search_onnx_path)
         self.assertTrue(result, "ORT and PyTorch is expected to have same result, but current result is different")        
+
+    @pytest.mark.slow
+    def test_no_repeat_ngram_1(self):
+        gpt2_onnx_path = os.path.join('.', 'onnx_models', 'gpt2_past_fp32_shape.onnx')
+        beam_search_onnx_path = os.path.join('.', 'onnx_models', 'gpt2_beam_search_v1.onnx')
+        result = self.run_beam_search(f'-m gpt2 --gpt2_onnx {gpt2_onnx_path} --output {beam_search_onnx_path} --output_sequences_score --repetition_penalty 2.0  --no_repeat_ngram_size 1 --run_baseline')
+        os.remove(gpt2_onnx_path)
+        os.remove(beam_search_onnx_path)
+        self.assertTrue(result, "ORT and PyTorch is expected to have same result, but current result is different")
+    
+    @pytest.mark.slow
+    def test_no_repeat_ngram_2(self):
+        gpt2_onnx_path = os.path.join('.', 'onnx_models', 'gpt2_past_fp32_shape.onnx')
+        beam_search_onnx_path = os.path.join('.', 'onnx_models', 'gpt2_beam_search_v1.onnx')
+        result = self.run_beam_search(f'-m gpt2 --gpt2_onnx {gpt2_onnx_path} --output {beam_search_onnx_path} --output_sequences_score --repetition_penalty 2.0  --no_repeat_ngram_size 2 --run_baseline')
+        os.remove(gpt2_onnx_path)
+        os.remove(beam_search_onnx_path)
+        self.assertTrue(result, "ORT and PyTorch is expected to have same result, but current result is different")
 
 if __name__ == '__main__':
     unittest.main()
