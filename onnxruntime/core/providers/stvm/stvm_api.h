@@ -8,6 +8,7 @@
 
 namespace stvm {
     tvm::runtime::Module TVMCompile(const std::string& onnx_txt,
+                                    const std::string& model_path,
                                     const std::string& target,
                                     const std::string& target_host,
                                     int opt_level,

@@ -312,6 +312,7 @@ common::Status StvmExecutionProvider::Compile(const std::vector<Node*>& nodes,
     model_proto.SerializeToString(&string_buf);
     buffers_[func_name] = string_buf;
     opsets_[func_name] = int(opset->version());
+    model_paths_[func_name] = fused_node->ModelPath().ToPathString();;
 
     std::fstream dump("/tmp/" + fused_node->Name() + ".onnx", std::ios::out | std::ios::trunc | std::ios::binary);
     model_proto.SerializeToOstream(&dump);
@@ -431,6 +432,7 @@ tvm::runtime::Module* StvmExecutionProvider::CompileFunc(std::string func_name, 
   }
 
   tvm::runtime::Module mod_f = stvm::TVMCompile(buffers_[func_name],
+                                                model_paths_[func_name],
                                                 info_.target,
                                                 info_.target_host,
                                                 info_.opt_level,

@@ -58,6 +58,7 @@ class StvmExecutionProvider : public IExecutionProvider {
   STVMRunners runners_;
   std::unordered_map<std::string, std::string> buffers_;
   std::unordered_map<std::string, int> opsets_;
+  std::unordered_map<std::string, std::string>  model_paths_;
   bool dump_subgraphs_ = false;
   OrtMutex stvm_mu_;
   AllocatorPtr allocator_;

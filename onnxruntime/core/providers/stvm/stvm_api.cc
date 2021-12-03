@@ -9,6 +9,7 @@
 namespace stvm {
 
 tvm::runtime::Module TVMCompile(const std::string& onnx_txt,
+                                const std::string& model_path,
                                 const std::string& target,
                                 const std::string& target_host,
                                 int opt_level,
@@ -29,7 +30,16 @@ tvm::runtime::Module TVMCompile(const std::string& onnx_txt,
   }
 
   const tvm::PackedFunc* compile = tvm::runtime::Registry::Get("tvm_onnx_import_and_compile");
-  tvm::runtime::Module mod = (*compile)(TVMByteArray{onnx_txt.data(), onnx_txt.size()}, target, target_host, opt_level, opset, freeze_params, shapes, tuning_logfile);
+  tvm::runtime::Module mod = (*compile)(
+          TVMByteArray{onnx_txt.data(), onnx_txt.size()},
+          model_path,
+          target,
+          target_host,
+          opt_level,
+          opset,
+          freeze_params,
+          shapes,
+          tuning_logfile);
   return mod;
 }
 
