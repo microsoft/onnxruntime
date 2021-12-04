@@ -26,6 +26,8 @@ Pre-built packages and Docker images are available for Jetpack in the [Jetson Zo
 
 |ONNX Runtime|TensorRT|CUDA|
 |---|---|---|
+|master|8.2|11.4|
+|1.10|8.0|11.4|
 |1.9|8.0|11.4|
 |1.7-1.8|7.2|11.0.3|
 |1.5-1.6|7.1|10.2|
@@ -58,9 +60,13 @@ If some operators in the model are not supported by TensorRT, ONNX Runtime will 
 
 
 ### Python
-When using the Python wheel from the ONNX Runtime build with TensorRT execution provider, it will be automatically prioritized over the default GPU or CPU execution providers. There is no need to separately register the execution provider.
-*Note that the next release (ORT 1.10) will require explicitly setting the providers parameter if you want to use execution providers other than the default CPU provider when instantiating InferenceSession.*
-
+To use TensorRT execution provider, you must explicitly register TensorRT execution provider when instantiating the InferenceSession.
+Note that it is recommended you also register CUDAExecutionProvider to allow Onnx Runtime to assign nodes to CUDA execution provider that TensorRT does not support.
+```
+import onnxruntime as ort
+# set providers to ['TensorrtExecutionProvider', 'CUDAExecutionProvider'] with TensorrtExecutionProvider having the higher priority.
+sess = ort.InferenceSession('model.onnx', providers=['TensorrtExecutionProvider', 'CUDAExecutionProvider'])
+```
 
 ## Configurations
 There are two ways to configure TensorRT settings, either by environment variables or by execution provider option APIs.
@@ -183,8 +189,8 @@ session_options.AppendExecutionProvider_TensorRT(trt_options);
 #### Python API example
 ```
 sess_opt = ort.SessionOptions()
-sess = ort.InferenceSession('model.onnx', sess_options=sess_opt)
-sess.set_providers(["TensorrtExecutionProvider"],[{'device_id': '1', 'trt_max_workspace_size': '2147483648', 'trt_fp16_enable':'True'}])
+sess = ort.InferenceSession('model.onnx', sess_options=sess_opt, providers=['TensorrtExecutionProvider'],
+                            provider_options=[{'device_id': '1', 'trt_max_workspace_size': '2147483648', 'trt_fp16_enable':'True'}])
 ```
 
 ## Performance Tuning
