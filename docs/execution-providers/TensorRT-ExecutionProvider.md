@@ -188,9 +188,27 @@ session_options.AppendExecutionProvider_TensorRT(trt_options);
 
 #### Python API example
 ```
+import onnxruntime as ort
+
+model_path = '<path to model>'
+
+providers = [
+    ('TensorrtExecutionProvider', {
+        'device_id': 1,
+        'trt_max_workspace_size': 2147483648,
+        'trt_fp16_enable': True,
+    }),
+    ('CUDAExecutionProvider', {
+        'device_id': 1,
+        'arena_extend_strategy': 'kNextPowerOfTwo',
+        'gpu_mem_limit': 2 * 1024 * 1024 * 1024,
+        'cudnn_conv_algo_search': 'EXHAUSTIVE',
+        'do_copy_in_default_stream': True,
+    })
+]
+
 sess_opt = ort.SessionOptions()
-sess = ort.InferenceSession('model.onnx', sess_options=sess_opt, providers=['TensorrtExecutionProvider'],
-                            provider_options=[{'device_id': '1', 'trt_max_workspace_size': '2147483648', 'trt_fp16_enable':'True'}])
+sess = ort.InferenceSession(model_path, sess_options=sess_opt, providers=providers)
 ```
 
 ## Performance Tuning
