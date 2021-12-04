@@ -78,6 +78,11 @@ Whether to do copies in the default stream or use separate streams. The recommen
 
 Default value: true
 
+### cudnn_conv_use_max_workspace
+Check [tuning performance for convolution heavy models](../performance/tune-performance.md#convolution-heavy-models-and-the-cuda-ep) for details on what this flag does.
+
+Default value: 0
+
 ## Samples
 
 ### Python
