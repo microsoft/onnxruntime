@@ -25,6 +25,9 @@ Pre-built binaries of ONNX Runtime with CUDA EP are published for most language 
 ## Requirements
 Please reference table below for official GPU packages dependencies for the ONNX Runtime inferencing package. Note that ONNX Runtime Training is aligned with PyTorch CUDA versions; refer to the Training tab on https://onnxruntime.ai/ for supported versions. 
 
+Note: Because of CUDA Minor Version Compatibility, Onnx Runtime built with CUDA 11.4 should be compatible with any CUDA 11.x version.
+Please reference [Nvidia CUDA Minor Version Compatibility](https://docs.nvidia.com/deploy/cuda-compatibility/#minor-version-compatibility).
+
 |ONNX Runtime|CUDA|cuDNN|Notes|
 |---|---|---|---|
 |1.10|11.4|8.2.4 (Linux)<br/>8.2.2.26 (Windows)|libcudart 11.4.43<br/>libcufft 10.5.2.100<br/>libcurand 10.2.5.120<br/>libcublasLt 11.6.1.51<br/>libcublas 11.6.1.51<br/>libcudnn 8.2.4|

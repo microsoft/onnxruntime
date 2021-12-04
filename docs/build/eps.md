@@ -100,7 +100,7 @@ See more information on the TensorRT Execution Provider [here](../execution-prov
    * The path to the cuDNN installation (path to folder that contains libcudnn.so) must be provided via the cuDNN_PATH environment variable, or `--cudnn_home` parameter.
  * Install [TensorRT](https://developer.nvidia.com/tensorrt)
    * The TensorRT execution provider for ONNX Runtime is built and tested with TensorRT 8.0.3.4.
-   * To use earlier versions of TensorRT, prior to building, change the onnx-tensorrt submodule to a branch corresponding to the TensorRT version. e.g. To use TensorRT 7.2.x,
+   * To use different versions of TensorRT, prior to building, change the onnx-tensorrt submodule to a branch corresponding to the TensorRT version. e.g. To use TensorRT 7.2.x,
      * cd cmake/external/onnx-tensorrt
      * git remote update
      * git checkout 7.2.1
@@ -120,7 +120,7 @@ See more information on the TensorRT Execution Provider [here](../execution-prov
 ```
 # to build with the latest supported TensorRT version
 ./build.sh --cudnn_home <path to cuDNN e.g. /usr/lib/x86_64-linux-gnu/> --cuda_home <path to folder for CUDA e.g. /usr/local/cuda> --use_tensorrt --tensorrt_home <path to TensorRT home>
-# to build with earlier version. e.g. TensorRT 7.2.1
+# to build with different version. e.g. TensorRT 7.2.1
 cd cmake/external/onnx-tensorrt
 git remote update
 git checkout 7.2.1
