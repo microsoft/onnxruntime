@@ -5,7 +5,10 @@ namespace WINML_EXPERIMENTALP
 {
     LearningModelPhaseFilter::LearningModelPhaseFilter()
     {
+        phases_.push_back(winml_experimental::LearningModelPhase::BindInputs);
+        phases_.push_back(winml_experimental::LearningModelPhase::BindOutputs);
         phases_.push_back(winml_experimental::LearningModelPhase::Evaluate);
+        phases_.push_back(winml_experimental::LearningModelPhase::FetchResults);
     }
 
     winml_experimental::LearningModelPhaseFilter LearningModelPhaseFilter::IncludeAll()

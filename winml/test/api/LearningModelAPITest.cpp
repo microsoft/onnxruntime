@@ -7,6 +7,8 @@
 #include "APITest.h"
 #include "NamespaceAliases.h"
 
+#include <inttypes.h>
+
 using namespace winrt;
 using namespace winml;
 using namespace wfc;
@@ -326,14 +328,6 @@ static void EnumerateStrategies() {
   std::wstring fullPath = FileHelpers::GetModulePath() + L"model.onnx";
 
   auto options = winml_experimental::LearningModelEnumerateInferenceStrategiesOptions();
-  //options.DeviceFilter().Clear()
-  //                      .Include(winml::LearningModelDeviceKind::DirectX);
-  //options.InputStrategyFilter().IncludeAll();
-  //options.OutputStrategyFilter().IncludeAll();
-  //options.BindModeFilter().IncludeAll();
-  //options.BatchingStrategyFilter().BatchSizeStart(0);
-  //options.BatchingStrategyFilter().BatchSizeStride(10);
-  //options.BatchingStrategyFilter().BatchSizeTotal(5);
   options.PhaseFilter().Clear()
                        //.Include(winml_experimental::LearningModelPhase::LoadModel)
                        .Include(winml_experimental::LearningModelPhase::BindInputs)
@@ -347,6 +341,27 @@ static void EnumerateStrategies() {
       strategies = winml_experimental::LearningModelInferenceStrategyEnumerator::EnumerateInferenceStrategies(
                         fullPath.c_str(),
                         options));
+
+  options.InputStrategyFilter().IncludeAll();
+  options.OutputStrategyFilter().IncludeAll();
+  options.BindModeFilter().IncludeAll();
+  options.OutputReadModeFilter().IncludeAll();
+  options.BatchingStrategyFilter().BatchSizeStart(0);
+  options.BatchingStrategyFilter().BatchSizeStride(10);
+  options.BatchingStrategyFilter().BatchSizeTotal(5);
+
+  auto async_strats =
+      winml_experimental::LearningModelInferenceStrategyEnumerator::EnumerateInferenceStrategiesAsync(
+        fullPath.c_str(),
+        options);
+
+  async_strats.Progress([](auto /*info*/, const winml_experimental::EnumerateInferenceStrategiesProgress& progress) {
+    printf("%" PRId64 "/ %" PRId64 "\n", progress.StrategiesEvaluated, progress.TotalNumberOfStrategies);
+  });
+
+  strategies = async_strats.get();
+  async_strats.Cancel();
+
 
   const char* device[] = {
       "Default",

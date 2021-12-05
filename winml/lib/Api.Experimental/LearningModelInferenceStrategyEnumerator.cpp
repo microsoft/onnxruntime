@@ -436,6 +436,13 @@ namespace WINML_EXPERIMENTALP
         // Create binding
         winml::LearningModelBinding binding(session);
 
+        if (session.Device().Direct3D11Device() == nullptr &&
+            (input_strategy == winml_experimental::LearningModelBindingStrategy::CreateFromD3D12Resource ||
+             output_strategy == winml_experimental::LearningModelBindingStrategy::CreateFromD3D12Resource)) {
+            // Cannot bind D3D12Resource, when the session does not have a device...
+            return nullptr;
+        }
+
         // Create inputs
         for (const auto& input : session.Model().InputFeatures()) {
             float bind_metric;
@@ -472,7 +479,8 @@ namespace WINML_EXPERIMENTALP
     static wfc::IVectorView<winml_experimental::LearningModelInferenceStrategy> EnumerateStrategies(
         winrt::hstring const& path,
         winml_experimental::LearningModelEnumerateInferenceStrategiesOptions const& options,
-        std::function<void(winml_experimental::EnumerateInferenceStrategiesProgress)> update_progress)
+        std::function<void(winml_experimental::EnumerateInferenceStrategiesProgress)> update_progress,
+        std::function<bool()> is_cancelled)
     {
         uint32_t unused;
         const auto include_model_load = options.PhaseFilter().IndexOf(winml_experimental::LearningModelPhase::LoadModel, unused);
@@ -586,6 +594,11 @@ namespace WINML_EXPERIMENTALP
                                 if (update_progress != nullptr) {
                                     update_progress(strategies_progress);
                                 }
+
+                                if (is_cancelled && is_cancelled()) {
+                                  // return an empty array if cancelled
+                                  return winrt::single_threaded_vector<winml_experimental::LearningModelInferenceStrategy>().GetView();
+                                }
                             }
                         }
                     }
@@ -607,7 +620,7 @@ namespace WINML_EXPERIMENTALP
     wfc::IVectorView<winml_experimental::LearningModelInferenceStrategy> LearningModelInferenceStrategyEnumerator::EnumerateInferenceStrategies(
         winrt::hstring const& path,
         winml_experimental::LearningModelEnumerateInferenceStrategiesOptions const& options) {
-        return EnumerateStrategies(path, options, nullptr);
+        return EnumerateStrategies(path, options, nullptr, nullptr);
     }
 
     wf::IAsyncOperationWithProgress<wfc::IVectorView<winml_experimental::LearningModelInferenceStrategy>, winml_experimental::EnumerateInferenceStrategiesProgress>
@@ -615,6 +628,8 @@ namespace WINML_EXPERIMENTALP
         winrt::hstring path,
         winml_experimental::LearningModelEnumerateInferenceStrategiesOptions options) {
       auto progress{co_await winrt::get_progress_token()};
+      auto cancellation_token{co_await winrt::get_cancellation_token()};
+
       co_await winrt::resume_background();
 
       auto update_progress = std::function<void(winml_experimental::EnumerateInferenceStrategiesProgress)>(
@@ -622,6 +637,12 @@ namespace WINML_EXPERIMENTALP
             progress(strategies_progress);
           });
 
-      co_return EnumerateStrategies(path, options, update_progress);
+      
+      auto is_cancelled = std::function<bool()>(
+          [&]() {
+            return cancellation_token();
+          });
+
+      co_return EnumerateStrategies(path, options, update_progress, is_cancelled);
     }
 }
