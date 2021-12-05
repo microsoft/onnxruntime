@@ -13,7 +13,7 @@ namespace Microsoft.ML.OnnxRuntime.InferenceSample.Forms
             InitializeComponent();
 
             // in general create the inference session (which loads and optimizes the model) once and not per inference
-            // as it can be expensive and time consuming. 
+            // as it can be expensive and time consuming.
             inferenceSampleApi = new InferenceSampleApi();
         }
 
@@ -26,7 +26,7 @@ namespace Microsoft.ML.OnnxRuntime.InferenceSample.Forms
 
         private readonly InferenceSampleApi inferenceSampleApi;
 
-        private async Task ExecuteTests() 
+        private async Task ExecuteTests()
         {
             Action<Label, string> addOutput = (label, text) =>
             {
@@ -36,44 +36,33 @@ namespace Microsoft.ML.OnnxRuntime.InferenceSample.Forms
 
             OutputLabel.Text = "Testing execution\nComplete output is written to Console in this trivial example.\n\n";
 
+            // run the testing in a background thread so updates to the UI aren't blocked
             await Task.Run(() =>
             {
                 addOutput(OutputLabel, "Testing using default platform-specific session options... ");
                 inferenceSampleApi.Execute();
                 addOutput(OutputLabel, "done.\n");
                 Thread.Sleep(1000); // artificial delay so the UI updates gradually
-            });
 
-            // demonstrate a range of usages by recreating the inference session with different session options. 
-            await Task.Run(() =>
-            {
+                // demonstrate a range of usages by recreating the inference session with different session options.
                 addOutput(OutputLabel, "Testing using default platform-specific session options... ");
                 inferenceSampleApi.CreateInferenceSession(SessionOptionsContainer.Create());
                 inferenceSampleApi.Execute();
                 addOutput(OutputLabel, "done.\n");
                 Thread.Sleep(1000);
-            });
 
-            await Task.Run(() =>
-            {
                 addOutput(OutputLabel, "Testing using named platform-specific session options... ");
                 inferenceSampleApi.CreateInferenceSession(SessionOptionsContainer.Create("ort_with_npu"));
                 inferenceSampleApi.Execute();
                 addOutput(OutputLabel, "done.\n");
                 Thread.Sleep(1000);
-            });
 
-            await Task.Run(() =>
-            {
                 addOutput(OutputLabel, "Testing using default platform-specific session options via ApplyConfiguration extension... ");
                 inferenceSampleApi.CreateInferenceSession(new SessionOptions().ApplyConfiguration());
                 inferenceSampleApi.Execute();
                 addOutput(OutputLabel, "done.\n");
                 Thread.Sleep(1000);
-            });
 
-            await Task.Run(() =>
-            {
                 addOutput(OutputLabel, "Testing using named platform-specific session options via ApplyConfiguration extension... ");
                 inferenceSampleApi.CreateInferenceSession(new SessionOptions().ApplyConfiguration("ort_with_npu"));
                 inferenceSampleApi.Execute();
