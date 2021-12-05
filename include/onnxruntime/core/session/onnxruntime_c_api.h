@@ -3267,6 +3267,17 @@ struct OrtCustomOp {
 */
 ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_CUDA, _In_ OrtSessionOptions* options, int device_id);
 
+/*
+ * This is the old way to add the MIGraphX provider to the session, please use 
+ * SessionOptionsAppendExecutionProvider_MIGraphX above to access the latest functionality
+ * This function always exists, but will only succeed if Onnxruntime was built with 
+ * HIP support and the MIGraphX provider shared library exists
+ *
+ * \param device_id HIP device id, starts from zero.
+*/
+ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_MIGraphX, _In_ OrtSessionOptions* options, int device_id);
+
+
 #ifdef __cplusplus
 }
 #endif
