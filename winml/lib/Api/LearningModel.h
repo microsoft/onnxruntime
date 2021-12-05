@@ -109,6 +109,7 @@ struct LearningModel : LearningModelT<LearningModel> {
       bool promote_unlinked_outputs,
       bool close_model_on_join,
       const winrt::hstring& join_node_prefix);
+  bool IsBatchingSupported();
 
  private:
   com_ptr<_winml::IEngineFactory> engine_factory_;

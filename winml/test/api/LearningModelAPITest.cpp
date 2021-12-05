@@ -3,7 +3,9 @@
 
 #include "testPch.h"
 #include "LearningModelAPITest.h"
+
 #include "APITest.h"
+#include "NamespaceAliases.h"
 
 using namespace winrt;
 using namespace winml;
@@ -12,6 +14,12 @@ using namespace wgi;
 using namespace wm;
 using namespace ws;
 using namespace wss;
+
+#ifndef BUILD_INBOX
+// experimental
+using namespace winml_experimental;
+#endif
+
 
 static void LearningModelAPITestsClassSetup() {
   init_apartment();
@@ -313,6 +321,78 @@ static void CheckMetadataCaseInsensitive() {
   WINML_EXPECT_EQUAL(metadata.Lookup(L"tHiSiSaLoNgKeY"), L"thisisalongvalue");
 }
 
+static void EnumerateStrategies() {
+#if !defined(BUILD_INBOX)
+  std::wstring fullPath = FileHelpers::GetModulePath() + L"model.onnx";
+
+  auto options = winml_experimental::LearningModelEnumerateInferenceStrategiesOptions();
+  //options.DeviceFilter().Clear()
+  //                      .Include(winml::LearningModelDeviceKind::DirectX);
+  //options.InputStrategyFilter().IncludeAll();
+  //options.OutputStrategyFilter().IncludeAll();
+  //options.BindModeFilter().IncludeAll();
+  //options.BatchingStrategyFilter().BatchSizeStart(0);
+  //options.BatchingStrategyFilter().BatchSizeStride(10);
+  //options.BatchingStrategyFilter().BatchSizeTotal(5);
+  options.PhaseFilter().Clear()
+                       //.Include(winml_experimental::LearningModelPhase::LoadModel)
+                       .Include(winml_experimental::LearningModelPhase::BindInputs)
+                       .Include(winml_experimental::LearningModelPhase::BindOutputs)
+                       //.Include(winml_experimental::LearningModelPhase::CreateSession)
+                       .Include(winml_experimental::LearningModelPhase::Evaluate)
+                       .Include(winml_experimental::LearningModelPhase::FetchResults);
+
+  wfc::IVectorView<winml_experimental::LearningModelInferenceStrategy> strategies = nullptr;
+  WINML_EXPECT_NO_THROW(
+      strategies = winml_experimental::LearningModelInferenceStrategyEnumerator::EnumerateInferenceStrategies(
+                        fullPath.c_str(),
+                        options));
+
+  const char* device[] = {
+      "Default",
+      "Cpu",
+      "DirectX",
+      "DirectXHighPerformance",
+      "DirectXMinPower"};
+
+  const char* bind_strategy[] = {
+    "CreateWithZeroCopyITensorNative",
+    "CreateWithZeroCopyIMemoryBuffer",
+    "CreateFromShapeIterableAndDataArray",
+    "CreateFromShapeIterableAndDataIterable",
+    "CreateFromShapeIterableAndDataIterableRaw",
+    "CreateFromShapeIterableAndDataIterableRawView",
+    "CreateFromShapeArrayAndDataArray",
+    "CreateFromShapeArrayAndDataBuffer",
+    "CreateFromD3D12Resource"
+  };
+  
+  const char * read_mode[] = {
+    "GetAsVectorView",
+    "GetFromNativeBufferAccess",
+    "GetFromMemoryBufferReferenceAccess",
+    "GetAsD3D12Resource"
+  };
+  
+  const char * bind_mode[] = {
+    "Bound",
+    "Unbound"
+  };
+
+  for (auto strategy : strategies) {
+    printf("(Device=[%s], InputStrategy=[%s], OutputStrategy=[%s], ReadMode=[%s], BindMode=[%s], BatchSize=[%d]) : %f\n",
+        device[static_cast<int>(strategy.DeviceKind())],
+        bind_strategy[ static_cast<int>(strategy.InputStrategy())],
+        bind_strategy[static_cast<int>(strategy.OutputStrategy())],
+        read_mode[ static_cast<int>(strategy.OutputReadMode())],
+        bind_mode[static_cast<int>(strategy.OutputBindMode())],
+        strategy.BatchSize(),
+        strategy.Metric());
+  }
+
+  #endif
+}
+
 const LearningModelApiTestsApi& getapi() {
   static LearningModelApiTestsApi api =
   {
@@ -335,7 +415,8 @@ const LearningModelApiTestsApi& getapi() {
     CloseModelCheckEval,
     CloseModelNoNewSessions,
     CheckMetadataCaseInsensitive,
-    CreateCorruptModel
+    CreateCorruptModel,
+    EnumerateStrategies
   };
 
   if (RuntimeParameterExists(L"noVideoFrameTests")) {

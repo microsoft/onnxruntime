@@ -87,6 +87,10 @@ struct LearningModelSession : LearningModelSessionT<LearningModelSession, ILearn
     return &dml_ep_lock_;
   }
 
+  std::vector<int64_t>
+  GetShapeOfInputOutput(
+      const winrt::hstring& input_output_name);
+
   static winml::LearningModelSession CreateInertSession(_winml::IEngine* engine);
 
  private:

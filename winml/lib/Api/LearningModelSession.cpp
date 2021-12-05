@@ -457,4 +457,8 @@ winml::LearningModelSession LearningModelSession::CreateInertSession(_winml::IEn
   return winrt::make<winmlp::LearningModelSession>(engine);
 }
 
+std::vector<int64_t> LearningModelSession::GetShapeOfInputOutput(const winrt::hstring& /*input_output_name*/) {
+  return {};
+}
+
 }  // namespace WINMLP

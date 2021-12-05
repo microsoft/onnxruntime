@@ -553,20 +553,38 @@ endif(onnxruntime_USE_DML)
 
 # Add static library that will be archived/linked for both static/dynamic library
 onnxruntime_add_static_library(winml_lib_api_experimental
+  ${winml_lib_api_experimental_dir}/LearningModelBatchingStrategyFilter.cpp
+  ${winml_lib_api_experimental_dir}/LearningModelBatchingStrategyFilter.h
+  ${winml_lib_api_experimental_dir}/LearningModelBindModeFilter.cpp
+  ${winml_lib_api_experimental_dir}/LearningModelBindModeFilter.h
+  ${winml_lib_api_experimental_dir}/LearningModelBindingStrategyFilter.cpp
+  ${winml_lib_api_experimental_dir}/LearningModelBindingStrategyFilter.h
   ${winml_lib_api_experimental_dir}/LearningModelBuilder.cpp
   ${winml_lib_api_experimental_dir}/LearningModelBuilder.h
+  ${winml_lib_api_experimental_dir}/LearningModelDeviceFilter.cpp
+  ${winml_lib_api_experimental_dir}/LearningModelDeviceFilter.h
+  ${winml_lib_api_experimental_dir}/LearningModelEnumerateInferenceStrategiesOptions.cpp
+  ${winml_lib_api_experimental_dir}/LearningModelEnumerateInferenceStrategiesOptions.h
   ${winml_lib_api_experimental_dir}/LearningModelExperimental.cpp
   ${winml_lib_api_experimental_dir}/LearningModelExperimental.h
+  ${winml_lib_api_experimental_dir}/LearningModelInferenceStrategy.cpp
+  ${winml_lib_api_experimental_dir}/LearningModelInferenceStrategy.h
+  ${winml_lib_api_experimental_dir}/LearningModelInferenceStrategyEnumerator.cpp
+  ${winml_lib_api_experimental_dir}/LearningModelInferenceStrategyEnumerator.h
   ${winml_lib_api_experimental_dir}/LearningModelInputs.cpp
   ${winml_lib_api_experimental_dir}/LearningModelInputs.h
   ${winml_lib_api_experimental_dir}/LearningModelJoinOptions.cpp
   ${winml_lib_api_experimental_dir}/LearningModelJoinOptions.h
-  ${winml_lib_api_experimental_dir}/LearningModelOutputs.cpp
-  ${winml_lib_api_experimental_dir}/LearningModelOutputs.h
   ${winml_lib_api_experimental_dir}/LearningModelOperator.cpp
   ${winml_lib_api_experimental_dir}/LearningModelOperator.h
   ${winml_lib_api_experimental_dir}/LearningModelOperatorSet.cpp
   ${winml_lib_api_experimental_dir}/LearningModelOperatorSet.h
+  ${winml_lib_api_experimental_dir}/LearningModelOutputs.cpp
+  ${winml_lib_api_experimental_dir}/LearningModelOutputs.h
+  ${winml_lib_api_experimental_dir}/LearningModelPhaseFilter.cpp
+  ${winml_lib_api_experimental_dir}/LearningModelPhaseFilter.h
+  ${winml_lib_api_experimental_dir}/LearningModelReadModeFilter.cpp
+  ${winml_lib_api_experimental_dir}/LearningModelReadModeFilter.h
   ${winml_lib_api_experimental_dir}/LearningModelSessionExperimental.cpp
   ${winml_lib_api_experimental_dir}/LearningModelSessionExperimental.h
   ${winml_lib_api_experimental_dir}/LearningModelSessionOptionsExperimental.cpp

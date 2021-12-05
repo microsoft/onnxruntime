@@ -103,6 +103,165 @@ namespace ROOT_NS.AI.MachineLearning.Experimental {
     void Save(String file_name);
   }
 
+  enum LearningModelOptimizationMode
+  {
+      OptimizeForRuntimePerformance = 0,
+  };
+
+  enum LearningModelBindingStrategy {
+    CreateWithZeroCopyITensorNative = 0,
+    CreateWithZeroCopyIMemoryBuffer,
+    CreateFromShapeIterableAndDataArray,
+    CreateFromShapeIterableAndDataIterable,
+    CreateFromShapeIterableAndDataIterableRaw,
+    CreateFromShapeIterableAndDataIterableRawView,
+    CreateFromShapeArrayAndDataArray,
+    CreateFromShapeArrayAndDataBuffer,
+    CreateFromD3D12Resource
+  };
+
+  enum LearningModelReadMode {
+    GetAsVectorView = 0,
+    GetFromNativeBufferAccess,
+    GetFromMemoryBufferReferenceAccess,
+    GetAsD3D12Resource
+  };
+
+  enum LearningModelPhase {
+    LoadModel = 0,
+    CreateSession,
+    BindInputs,
+    BindOutputs,
+    Evaluate,
+    FetchResults
+  };
+
+  enum LearningModelBindMode {
+    Bound = 0,
+    Unbound
+  };
+
+  //! \class LearningModelBindingStrategyFilter
+  //! \brief
+  [marshaling_behavior(agile)]
+  [dualapipartition(1)]
+  runtimeclass LearningModelBindingStrategyFilter : Windows.Foundation.Collections.IVectorView<LearningModelBindingStrategy> {
+    LearningModelBindingStrategyFilter IncludeAll();
+    LearningModelBindingStrategyFilter Include(LearningModelBindingStrategy strategy);
+    LearningModelBindingStrategyFilter Clear();
+  }
+
+  //! \class LearningModelBindingStrategyFilter
+  //! \brief 
+  [marshaling_behavior(agile)]
+  [dualapipartition(1)]
+  runtimeclass LearningModelReadModeFilter : Windows.Foundation.Collections.IVectorView<LearningModelReadMode> {
+    LearningModelReadModeFilter IncludeAll();
+    LearningModelReadModeFilter Include(LearningModelReadMode mode);
+    LearningModelReadModeFilter Clear();
+  }
+
+  //! \class LearningModelBindingStrategyFilter
+  //! \brief 
+  [marshaling_behavior(agile)]
+  [dualapipartition(1)]
+  runtimeclass LearningModelBindModeFilter : Windows.Foundation.Collections.IVectorView<LearningModelBindMode> {
+    LearningModelBindModeFilter IncludeAll();
+    LearningModelBindModeFilter Include(LearningModelBindMode mode);
+    LearningModelBindModeFilter Clear();
+  }
+
+  //! \class LearningModelBatchingStrategyFilter
+  //! \brief 
+  [marshaling_behavior(agile)]
+  [dualapipartition(1)]
+  runtimeclass LearningModelBatchingStrategyFilter : Windows.Foundation.Collections.IVectorView<UInt32> {
+    UInt32 BatchSizeStart { get; set; };
+    UInt32 BatchSizeStride { get; set; };
+    UInt32 BatchSizeTotal { get; set; };
+  }
+
+  //! \class LearningModelBindingStrategyFilter
+  //! \brief 
+  [marshaling_behavior(agile)]
+  [dualapipartition(1)]
+  runtimeclass LearningModelPhaseFilter : Windows.Foundation.Collections.IVectorView<LearningModelPhase> {
+    LearningModelPhaseFilter IncludeAll();
+    LearningModelPhaseFilter Include(LearningModelPhase phase);
+    LearningModelPhaseFilter Clear();
+  }
+
+  //! \class LearningModelBindingStrategyFilter
+  //! \brief 
+  [marshaling_behavior(agile)]
+  [dualapipartition(1)]
+  runtimeclass LearningModelDeviceFilter : Windows.Foundation.Collections.IVectorView<ROOT_NS.AI.MachineLearning.LearningModelDeviceKind> {
+    LearningModelDeviceFilter IncludeAll();
+    LearningModelDeviceFilter Include(ROOT_NS.AI.MachineLearning.LearningModelDeviceKind kind);
+    LearningModelDeviceFilter Clear();
+  }
+
+  //! \class LearningModelEnumerateInferenceStrategiesOptions
+  //! \brief 
+  [threading(both)]
+  [marshaling_behavior(agile)]
+  [dualapipartition(1)]
+  runtimeclass LearningModelEnumerateInferenceStrategiesOptions {
+    LearningModelEnumerateInferenceStrategiesOptions();
+
+    //! The OverrideNamedDimension method will allow the model compiler to use constant batch size performance optimizations when setting up the LearningModelSession.
+    //! The caller can specify the size of the dimension for a given named dimension.
+    //! dimension = 0 indicates that the dimension present in the model should be honored.
+    //! dimension > 0 indicates the size of the dimension that will be used to override the model "name" dimension and optimize evaluations.
+    void OverrideNamedDimension(String name, UInt32 dimension);
+
+    LearningModelOptimizationMode OptimizationMode { get; set; };
+    LearningModelPhaseFilter PhaseFilter { get; };
+    LearningModelBindingStrategyFilter InputStrategyFilter { get; };
+    LearningModelBindingStrategyFilter OutputStrategyFilter { get; };
+    LearningModelReadModeFilter OutputReadModeFilter { get; };
+    LearningModelBindModeFilter BindModeFilter { get; };
+    LearningModelBatchingStrategyFilter BatchingStrategyFilter { get; };
+    LearningModelDeviceFilter DeviceFilter { get; };
+  }
+
+  //! \class LearningModelInferenceStrategy
+  //! \brief 
+  [marshaling_behavior(agile)]
+  [dualapipartition(1)]
+  runtimeclass LearningModelInferenceStrategy
+  {
+    ROOT_NS.AI.MachineLearning.LearningModelDeviceKind DeviceKind { get; };
+    LearningModelBindingStrategy InputStrategy { get; };
+    LearningModelBindingStrategy OutputStrategy { get; };
+    LearningModelReadMode OutputReadMode { get; };
+    LearningModelBindMode OutputBindMode { get; };
+    UInt32 BatchSize { get; };
+    Single Metric { get; };
+  }
+
+  struct EnumerateInferenceStrategiesProgress
+  {
+      UInt64 StrategiesEvaluated;
+      UInt64 TotalNumberOfStrategies;
+  }; 
+
+  //! \class LearningModelInferenceStrategyEnumerator
+  //! \brief 
+  [threading(both)]
+  [marshaling_behavior(agile)]
+  [dualapipartition(1)]
+  runtimeclass LearningModelInferenceStrategyEnumerator {
+    static Windows.Foundation.Collections.IVectorView<LearningModelInferenceStrategy> EnumerateInferenceStrategies(
+      String path,
+      LearningModelEnumerateInferenceStrategiesOptions options);
+
+    [remote_async]
+    static Windows.Foundation.IAsyncOperationWithProgress< Windows.Foundation.Collections.IVectorView<LearningModelInferenceStrategy>, EnumerateInferenceStrategiesProgress > EnumerateInferenceStrategiesAsync(
+      String path,
+      LearningModelEnumerateInferenceStrategiesOptions options);
+  }
+
   //! \class LearningModelJoinOptions
   //! \brief This class defines Join Options to be used with the JoinModels method
   [dualapipartition(1)]

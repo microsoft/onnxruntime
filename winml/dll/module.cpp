@@ -15,6 +15,8 @@
 #include "LearningModelSessionExperimental.h"
 #include "LearningModelExperimental.h"
 #include "LearningModelJoinOptions.h"
+#include "LearningModelEnumerateInferenceStrategiesOptions.h"
+#include "LearningModelInferenceStrategyEnumerator.h"
 
 #define STRINGIFY(x) #x
 #define XSTRINGIFY(x) STRINGIFY(x)
@@ -129,6 +131,20 @@ STDAPI DllGetExperimentalActivationFactory(void* classId, void** factory) noexce
     learning_model_join_options_class << XSTRINGIFY(WINML_ROOT_NS) << ".AI.MachineLearning.Experimental.LearningModelJoinOptions";
     if (requal(name, learning_model_join_options_class.str())) {
       *factory = winrt::detach_abi(winrt::make<WINML_EXPERIMENTAL::factory_implementation::LearningModelJoinOptions>());
+      return 0;
+    }
+
+    std::wostringstream learning_model_enumerate_inference_strategies_options_class;
+    learning_model_enumerate_inference_strategies_options_class << XSTRINGIFY(WINML_ROOT_NS) << ".AI.MachineLearning.Experimental.LearningModelEnumerateInferenceStrategiesOptions";
+    if (requal(name, learning_model_enumerate_inference_strategies_options_class.str())) {
+      *factory = winrt::detach_abi(winrt::make<WINML_EXPERIMENTAL::factory_implementation::LearningModelEnumerateInferenceStrategiesOptions>());
+      return 0;
+    }
+
+    std::wostringstream learning_model_inference_strategy_enumerator_class;
+    learning_model_inference_strategy_enumerator_class << XSTRINGIFY(WINML_ROOT_NS) << ".AI.MachineLearning.Experimental.LearningModelInferenceStrategyEnumerator";
+    if (requal(name, learning_model_inference_strategy_enumerator_class.str())) {
+      *factory = winrt::detach_abi(winrt::make<WINML_EXPERIMENTAL::factory_implementation::LearningModelInferenceStrategyEnumerator>());
       return 0;
     }
 

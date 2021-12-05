@@ -155,7 +155,7 @@ struct TensorBase : TBase {
           // to be copied directly into a gpu resource.
 
           if (GpuTensor() == nullptr) {
-            GpuTensor() = CreateD3D12Resource(session);
+            GpuTensor() = CreateD3D12Resource(device);
           }
 
           _winml::ConverterResourceDescription descriptor = {};
@@ -179,7 +179,7 @@ struct TensorBase : TBase {
           // into the output buffers without temporary intermediary buffers! No binding here is necessary.
           // If the output produces a cpu buffer (even in the GPU case), we will already have a cpu buffer, and just need
           // to copy back to the output buffers, no binding is necessary.
-          GpuTensor() = CreateD3D12Resource(session);
+          GpuTensor() = CreateD3D12Resource(device);
           return CreateGPUMLValue(GpuTensor().get(), context, out);
         }
       }
@@ -191,12 +191,12 @@ struct TensorBase : TBase {
       CpuTensor() = std::make_shared<_winml::Tensor<T>>(shape_);
       return CreateTensorValueFromExternalBuffer(engine, should_sync_buffer, out);
     } else {
-      GpuTensor() = CreateD3D12Resource(session);
+      GpuTensor() = CreateD3D12Resource(device);
       return CreateGPUMLValue(GpuTensor().get(), context, out);
     }
   }
 
-  winrt::com_ptr<ID3D12Resource> CreateD3D12Resource(winrt::com_ptr<winmlp::LearningModelSession> session) {
+  winrt::com_ptr<ID3D12Resource> CreateD3D12Resource(winrt::com_ptr<winmlp::LearningModelDevice> device) {
     // Try to allocate the backing memory for the caller
     auto bufferSize = std::accumulate(std::begin(shape_), std::end(shape_), static_cast<int64_t>(1), std::multiplies<int64_t>());
     auto bufferByteSize = sizeof(T) * bufferSize;
@@ -223,8 +223,6 @@ struct TensorBase : TBase {
         {1, 0},
         D3D12_TEXTURE_LAYOUT_ROW_MAJOR,
         D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS};
-
-    auto device = session->Device().as<winmlp::LearningModelDevice>();
 
     winrt::com_ptr<ID3D12Resource> gpu_resource = nullptr;
     device->GetD3DDevice()->CreateCommittedResource(

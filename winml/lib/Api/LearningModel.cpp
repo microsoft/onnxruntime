@@ -346,6 +346,10 @@ void LearningModel::JoinModel(
   WINML_THROW_IF_FAILED(model_->GetModelInfo(model_info_.put()));
 }
 
+bool LearningModel::IsBatchingSupported() {
+  return false;
+}
+
 }  // namespace WINMLP
 
 namespace WINML::factory_implementation {
