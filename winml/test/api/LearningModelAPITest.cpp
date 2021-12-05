@@ -355,7 +355,9 @@ static void EnumerateStrategies() {
         fullPath.c_str(),
         options);
 
+  printf("\n");
   async_strats.Progress([](auto /*info*/, const winml_experimental::EnumerateInferenceStrategiesProgress& progress) {
+    printf("%c[0F", 27);
     printf("%" PRId64 "/ %" PRId64 "\n", progress.StrategiesEvaluated, progress.TotalNumberOfStrategies);
   });
 
@@ -394,6 +396,7 @@ static void EnumerateStrategies() {
     "Unbound"
   };
 
+  int count = 10;
   for (auto strategy : strategies) {
     printf("(Device=[%s], InputStrategy=[%s], OutputStrategy=[%s], ReadMode=[%s], BindMode=[%s], BatchSize=[%d]) : %f\n",
         device[static_cast<int>(strategy.DeviceKind())],
@@ -403,6 +406,10 @@ static void EnumerateStrategies() {
         bind_mode[static_cast<int>(strategy.OutputBindMode())],
         strategy.BatchSize(),
         strategy.Metric());
+
+    if (count-- == 0) {
+      break;
+    }
   }
 
   #endif

@@ -337,7 +337,35 @@ namespace WINML_EXPERIMENTALP
                 return nullptr;
         }
     }
+    
+    static void GetAsVectorView(wf::IInspectable inspectable_value)
+    {
+        auto tensor_value = inspectable_value.try_as<winml::ITensor>();
 
+        if (tensor_value == nullptr) {
+            // it must be an vector view directly bound, no need to convert to a vector view...
+            return;
+        }
+
+        // Create input
+        switch (tensor_value.TensorKind())
+        {
+            case winml::TensorKind::Float:   { tensor_value.as<winml::TensorFloat>().GetAsVectorView();      break; }
+            case winml::TensorKind::UInt8:   { tensor_value.as<winml::TensorUInt8Bit>().GetAsVectorView();   break; }
+            case winml::TensorKind::Int8:    { tensor_value.as<winml::TensorInt8Bit>().GetAsVectorView();    break; }
+            case winml::TensorKind::UInt16:  { tensor_value.as<winml::TensorUInt16Bit>().GetAsVectorView();  break; }
+            case winml::TensorKind::Int16:   { tensor_value.as<winml::TensorInt16Bit>().GetAsVectorView();   break; }
+            case winml::TensorKind::Int32:   { tensor_value.as<winml::TensorInt32Bit>().GetAsVectorView();   break; }
+            case winml::TensorKind::Int64:   { tensor_value.as<winml::TensorInt64Bit>().GetAsVectorView();   break; }
+            case winml::TensorKind::String:  { tensor_value.as<winml::TensorString>().GetAsVectorView();     break; }
+            case winml::TensorKind::Boolean: { tensor_value.as<winml::TensorBoolean>().GetAsVectorView();    break; }
+            case winml::TensorKind::Float16: { tensor_value.as<winml::TensorFloat16Bit>().GetAsVectorView(); break; }
+            case winml::TensorKind::Double:  { tensor_value.as<winml::TensorDouble>().GetAsVectorView();     break; }
+            case winml::TensorKind::UInt32:  { tensor_value.as<winml::TensorUInt32Bit>().GetAsVectorView();  break; }
+            case winml::TensorKind::UInt64:  { tensor_value.as<winml::TensorUInt64Bit>().GetAsVectorView();  break; }
+        }
+        return;
+    }
 
     static wf::IInspectable CreateFeatureValue(
         const winml::LearningModelSession& sesison,
@@ -421,17 +449,17 @@ namespace WINML_EXPERIMENTALP
         winml::LearningModelSession session,
         winml_experimental::LearningModelBindingStrategy input_strategy,
         winml_experimental::LearningModelBindingStrategy output_strategy,
-        winml_experimental::LearningModelReadMode /*output_read_mode*/,
+        winml_experimental::LearningModelReadMode read_mode,
         winml_experimental::LearningModelBindMode bind_mode,
         float* bind_inputs_metric,
         float* bind_outputs_metric,
         float* evaluate_metric,
-        float* bind_fetch_results_metric)
+        float* read_outputs_metric)
     {
         *bind_inputs_metric = 0;
         *bind_outputs_metric = 0;
         *evaluate_metric = 0;
-        *bind_fetch_results_metric = 0;
+        *read_outputs_metric = 0;
 
         // Create binding
         winml::LearningModelBinding binding(session);
@@ -472,7 +500,49 @@ namespace WINML_EXPERIMENTALP
         auto learning_model_evaluation_result = MeasureEvaluate(session, binding, evaluate_metric);
 
         // Read
+        for (const auto& pair : learning_model_evaluation_result.Outputs()) {
+            float read_metric = 0;
+            switch (read_mode)
+            {
+                case winml_experimental::LearningModelReadMode::GetAsVectorView:
+                {
+                    GetAsVectorView(pair.Value());
+                    break;
+                }
 
+                case winml_experimental::LearningModelReadMode::GetFromNativeBufferAccess:
+                {
+                    if (auto tensor_value = pair.Value().try_as<winml::ITensor>()) {
+                        // Get as ITensorNative
+                        auto spTensorValueNative = tensor_value.as<ITensorNative>();
+
+                        // Get buffer
+                        uint32_t actual_size_in_bytes;
+                        BYTE* actual_data;
+                        spTensorValueNative->GetBuffer(&actual_data, &actual_size_in_bytes);
+                    }
+                    break;
+                }
+
+                case winml_experimental::LearningModelReadMode::GetFromMemoryBufferReferenceAccess:
+                {
+                    if (auto tensor_value = pair.Value().try_as<winml::ITensor>()) {
+                        // Get as ITensorNative
+                        if (auto memoryBuffer = tensor_value.as<winrt::Windows::Foundation::IMemoryBuffer>())
+                        {
+                            auto memoryBufferReference = memoryBuffer.CreateReference();
+                            auto memoryBufferByteAccess = memoryBufferReference.as<::Windows::Foundation::IMemoryBufferByteAccess>();
+
+                            uint32_t actual_size_in_bytes;
+                            BYTE* actual_data;
+                            memoryBufferByteAccess->GetBuffer(&actual_data, &actual_size_in_bytes);
+                        }
+                    }
+                    break;
+                }
+            }
+            *read_outputs_metric += read_metric;
+        }
         return true;
     }
 
