@@ -122,6 +122,9 @@ class OnnxruntimeEngine : public Microsoft::WRL::RuntimeClass<
   STDMETHOD(GetNamedDimensionOverrides)
   (wfc::IMapView<winrt::hstring, uint32_t>& overrides) override;
 
+  STDMETHOD(GetInputOuputShape)
+  (const char* input_output_name, std::vector<int64_t>& shape) override;
+
   OrtSession* UseOrtSession();
   const OrtApi* UseOrtApi();
   OnnxruntimeEngineFactory* GetEngineFactory();

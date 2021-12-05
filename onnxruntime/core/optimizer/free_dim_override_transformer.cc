@@ -33,7 +33,13 @@ FreeDimensionOverrideTransformer::FreeDimensionOverrideTransformer(gsl::span<con
 }
 
 Status FreeDimensionOverrideTransformer::ApplyImpl(Graph& graph, bool& modified, int /*graph_level*/, const logging::Logger& logger) const {
-  for (const onnxruntime::NodeArg* graph_input : graph.GetInputs()) {
+  std::vector<const onnxruntime::NodeArg*> input_outputs;
+  auto inputs = graph.GetInputs();
+  auto outputs = graph.GetOutputs();
+  input_outputs.insert(input_outputs.end(), inputs.begin(), inputs.end());
+  input_outputs.insert(input_outputs.end(), outputs.begin(), outputs.end());
+
+  for (const onnxruntime::NodeArg* graph_input : input_outputs) {
     // Get the current input's type and shape
     const auto* input_type = graph_input->TypeAsProto();
     const auto* input_shape = graph_input->Shape();

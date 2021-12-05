@@ -1373,6 +1373,79 @@ STDMETHODIMP OnnxruntimeEngineFactory::CreateEngineBuilder(_Outptr_ _winml::IEng
   return S_OK;
 }
 
+STDMETHODIMP OnnxruntimeEngine::GetInputOuputShape(
+  const char* input_output_name,
+  std::vector<int64_t>& shape) {
+  auto ort_api = engine_factory_->UseOrtApi();
+
+  size_t input_count;
+  RETURN_HR_IF_NOT_OK_MSG(ort_api->SessionGetInputCount(session_.get(), &input_count),
+                          ort_api);
+
+  OrtAllocator* allocator; // Do not free
+  RETURN_HR_IF_NOT_OK_MSG(ort_api->GetAllocatorWithDefaultOptions(&allocator),
+                          ort_api);
+  
+  for (int i = 0; i < input_count; i++) {
+    char* name;
+    RETURN_HR_IF_NOT_OK_MSG(ort_api->SessionGetInputName(session_.get(), i, allocator, &name),
+                            ort_api);
+
+    std::string input_name(name);
+    allocator->Free(allocator, name);
+
+    if (strcmp(input_output_name, input_name.c_str()) == 0) {
+      OrtTypeInfo* type_info;
+      RETURN_HR_IF_NOT_OK_MSG(ort_api->SessionGetInputTypeInfo(session_.get(), i, &type_info),
+                              ort_api);
+      auto unique_type_info = UniqueOrtTypeInfo(type_info, ort_api->ReleaseTypeInfo);
+      const OrtTensorTypeAndShapeInfo* tensor_info = nullptr;
+      RETURN_HR_IF_NOT_OK_MSG(ort_api->CastTypeInfoToTensorInfo(unique_type_info.get(), &tensor_info),
+                              ort_api);
+      size_t size;
+      RETURN_HR_IF_NOT_OK_MSG(ort_api->GetDimensionsCount(tensor_info, &size),
+                              ort_api);
+      std::vector<int64_t> dims(size);
+      RETURN_HR_IF_NOT_OK_MSG(ort_api->GetDimensions(tensor_info, dims.data(), size),
+                              ort_api);
+      shape = std::move(dims);
+      return S_OK;
+    }  
+  }
+
+  size_t output_count;
+  RETURN_HR_IF_NOT_OK_MSG(ort_api->SessionGetInputCount(session_.get(), &output_count),
+                          ort_api);
+  for (int i = 0; i < output_count; i++) {
+    char* name;
+    RETURN_HR_IF_NOT_OK_MSG(ort_api->SessionGetOutputName(session_.get(), i, allocator, &name),
+                            ort_api);
+
+    std::string output_name(name);
+    allocator->Free(allocator, name);
+
+    if (strcmp(input_output_name, output_name.c_str()) == 0) {
+      OrtTypeInfo* type_info;
+      RETURN_HR_IF_NOT_OK_MSG(ort_api->SessionGetOutputTypeInfo(session_.get(), i, &type_info),
+                              ort_api);
+      auto unique_type_info = UniqueOrtTypeInfo(type_info, ort_api->ReleaseTypeInfo);
+      const OrtTensorTypeAndShapeInfo* tensor_info = nullptr;
+      RETURN_HR_IF_NOT_OK_MSG(ort_api->CastTypeInfoToTensorInfo(unique_type_info.get(), &tensor_info),
+                              ort_api);
+      size_t size;
+      RETURN_HR_IF_NOT_OK_MSG(ort_api->GetDimensionsCount(tensor_info, &size),
+                              ort_api);
+      std::vector<int64_t> dims(size);
+      RETURN_HR_IF_NOT_OK_MSG(ort_api->GetDimensions(tensor_info, dims.data(), size),
+                              ort_api);
+      shape = std::move(dims);
+      return S_OK;
+    }
+  }
+
+  return E_FAIL;
+}
+
 const OrtApi* OnnxruntimeEngineFactory::UseOrtApi() {
   return ort_api_;
 }

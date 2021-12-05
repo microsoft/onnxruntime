@@ -328,28 +328,24 @@ static void EnumerateStrategies() {
   std::wstring fullPath = FileHelpers::GetModulePath() + L"model.onnx";
 
   auto options = winml_experimental::LearningModelEnumerateInferenceStrategiesOptions();
-  options.PhaseFilter().Clear()
-                       //.Include(winml_experimental::LearningModelPhase::LoadModel)
-                       .Include(winml_experimental::LearningModelPhase::BindInputs)
-                       .Include(winml_experimental::LearningModelPhase::BindOutputs)
-                       //.Include(winml_experimental::LearningModelPhase::CreateSession)
-                       .Include(winml_experimental::LearningModelPhase::Evaluate)
-                       .Include(winml_experimental::LearningModelPhase::FetchResults);
-
   wfc::IVectorView<winml_experimental::LearningModelInferenceStrategy> strategies = nullptr;
-  WINML_EXPECT_NO_THROW(
-      strategies = winml_experimental::LearningModelInferenceStrategyEnumerator::EnumerateInferenceStrategies(
-                        fullPath.c_str(),
-                        options));
-
-  options.InputStrategyFilter().IncludeAll();
-  options.OutputStrategyFilter().IncludeAll();
-  options.BindModeFilter().IncludeAll();
-  options.OutputReadModeFilter().IncludeAll();
-  options.BatchingStrategyFilter().BatchSizeStart(0);
-  options.BatchingStrategyFilter().BatchSizeStride(10);
+  //WINML_EXPECT_NO_THROW(
+  //    strategies = winml_experimental::LearningModelInferenceStrategyEnumerator::EnumerateInferenceStrategies(
+  //                      fullPath.c_str(),
+  //                      options));
+  options.DeviceFilter().Clear()
+      .Include(winml::LearningModelDeviceKind::Cpu)
+      .Include(winml::LearningModelDeviceKind::DirectXHighPerformance)
+      .Include(winml::LearningModelDeviceKind::DirectXMinPower);
+  //options.InputStrategyFilter().IncludeAll();
+  //options.OutputStrategyFilter().IncludeAll();
+  //options.BindModeFilter().IncludeAll();
+  //options.OutputReadModeFilter().IncludeAll();
+  options.BatchingStrategyFilter().BatchSizeStart(1);
+  options.BatchingStrategyFilter().BatchSizeStride(30);
   options.BatchingStrategyFilter().BatchSizeTotal(5);
-
+  
+  fullPath = FileHelpers::GetModulePath() + L"batched_model.onnx";
   auto async_strats =
       winml_experimental::LearningModelInferenceStrategyEnumerator::EnumerateInferenceStrategiesAsync(
         fullPath.c_str(),
@@ -396,14 +392,19 @@ static void EnumerateStrategies() {
     "Unbound"
   };
 
-  int count = 10;
+  int count = 20;
   for (auto strategy : strategies) {
-    printf("(Device=[%s], InputStrategy=[%s], OutputStrategy=[%s], ReadMode=[%s], BindMode=[%s], BatchSize=[%d]) : %f\n",
+    //printf("(Device=[%s], InputStrategy=[%s], OutputStrategy=[%s], ReadMode=[%s], BindMode=[%s], BatchSize=[%d]) : %f\n",
+    //       device[static_cast<int>(strategy.DeviceKind())],
+    //       bind_strategy[static_cast<int>(strategy.InputStrategy())],
+    //       bind_strategy[static_cast<int>(strategy.OutputStrategy())],
+    //       read_mode[static_cast<int>(strategy.OutputReadMode())],
+    //       bind_mode[static_cast<int>(strategy.OutputBindMode())],
+    //       strategy.BatchSize(),
+    //       strategy.Metric());
+
+    printf("(Device=[%s], BatchSize=[%d]) : %f\n",
         device[static_cast<int>(strategy.DeviceKind())],
-        bind_strategy[ static_cast<int>(strategy.InputStrategy())],
-        bind_strategy[static_cast<int>(strategy.OutputStrategy())],
-        read_mode[ static_cast<int>(strategy.OutputReadMode())],
-        bind_mode[static_cast<int>(strategy.OutputBindMode())],
         strategy.BatchSize(),
         strategy.Metric());
 

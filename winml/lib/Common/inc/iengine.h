@@ -115,6 +115,9 @@ IModel : IUnknown {
   STDMETHOD(JoinModel)
   (_In_ IModel* other_model, _In_ const char* const* output_names, _In_ const char* const* input_names,
    size_t num_linkages, bool promote_unlinked_outputs, _In_ const char * const join_node_prefix) PURE;
+
+  STDMETHOD(IsBatchingSupported)
+  (bool* is_batching_supported) PURE;
 };
 
 MIDL_INTERFACE("30c99886-38d2-41cb-a615-203fe7d7daac")
@@ -196,6 +199,9 @@ IEngine : IUnknown {
 
   STDMETHOD(GetNamedDimensionOverrides)
   (wfc::IMapView<winrt::hstring, uint32_t>& overrides) PURE;
+
+  STDMETHOD(GetInputOuputShape)
+  (const char* input_output_name, std::vector<int64_t>& shape) PURE;
 };
 
 MIDL_INTERFACE("8ac0b6b9-4561-492b-b63d-a07bdd8292c6")

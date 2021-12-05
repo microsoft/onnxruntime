@@ -347,7 +347,9 @@ void LearningModel::JoinModel(
 }
 
 bool LearningModel::IsBatchingSupported() {
-  return false;
+  bool is_batching_supported;
+  WINML_THROW_IF_FAILED(model_->IsBatchingSupported(&is_batching_supported));
+  return is_batching_supported;
 }
 
 }  // namespace WINMLP

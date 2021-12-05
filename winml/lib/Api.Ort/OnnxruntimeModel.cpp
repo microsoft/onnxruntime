@@ -373,3 +373,8 @@ STDMETHODIMP OnnruntimeModel::JoinModel(_In_ IModel* other_model,
   info_ = nullptr;
   return S_OK;
 }
+
+STDMETHODIMP OnnruntimeModel::IsBatchingSupported(bool* is_batching_supported) {
+  *is_batching_supported = true;
+  return S_OK;
+}

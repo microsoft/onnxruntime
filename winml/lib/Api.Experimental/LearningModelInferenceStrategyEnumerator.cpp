@@ -187,10 +187,6 @@ namespace WINML_EXPERIMENTALP
       auto session_impl = session.as<winmlp::LearningModelSession>();
       auto shape = session_impl->GetShapeOfInputOutput(descriptor.Name());
 
-      // TODO: Temporary workaround to get shape from model, but adapter api should be added here...
-      auto descriptor_shape = descriptor.Shape();
-      shape = std::vector<int64_t>(begin(descriptor_shape), end(descriptor_shape));
-
       // There should never be free dimensions. If there are they should be overridden with NamedDimensionOverrides
       auto found_freedim_it = std::find(shape.begin(), shape.end(), -1);
       if (found_freedim_it != shape.end()) {
@@ -368,14 +364,14 @@ namespace WINML_EXPERIMENTALP
     }
 
     static wf::IInspectable CreateFeatureValue(
-        const winml::LearningModelSession& sesison,
+        const winml::LearningModelSession& session,
         winml::ILearningModelFeatureDescriptor input,
         winml_experimental::LearningModelBindingStrategy input_strategy,
         float* metric) {
 
         switch (input.Kind()) {
             case winml::LearningModelFeatureKind::Tensor:
-            return CreateTensorInput(sesison, input.as<winml::TensorFeatureDescriptor>(), input_strategy, metric);
+              return CreateTensorInput(session, input.as<winml::TensorFeatureDescriptor>(), input_strategy, metric);
               break;
             case winml::LearningModelFeatureKind::Image:
               break;

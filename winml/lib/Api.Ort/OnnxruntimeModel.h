@@ -87,6 +87,9 @@ class OnnruntimeModel : public Microsoft::WRL::RuntimeClass<
   (_In_ IModel* other_model, _In_ const char* const* output_names, _In_ const char* const* input_names,
    size_t num_linkages, bool promote_unlinked_outputs, _In_ const char* const join_node_prefix);
 
+  STDMETHOD(IsBatchingSupported)
+  (bool* is_batching_supported);
+
  private:
   UniqueOrtModel ort_model_;
 

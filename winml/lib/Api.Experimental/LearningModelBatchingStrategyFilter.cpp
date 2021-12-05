@@ -16,7 +16,7 @@ namespace WINML_EXPERIMENTALP {
     {
         batch_sizes_.clear();
         for (uint32_t i = 0; i < total_; i++) {
-            batch_sizes_.push_back(start_ + stride_* i);
+            batch_sizes_.insert(batch_sizes_.begin(), start_ + stride_* i);
         }
     }
 
