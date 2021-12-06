@@ -224,6 +224,13 @@ if (onnxruntime_USE_VALGRIND AND NOT WIN32)
   add_definitions(-DRE2_ON_VALGRIND=1)
 endif()
 
+if (onnxruntime_USE_MIMALLOC)
+  if(NOT WIN32)
+    message(FATAL_ERROR "Currently support MIMALLOC on Windows only")
+  endif()
+  add_definitions(-DUSE_MIMALLOC)
+endif()
+
 if (onnxruntime_ENABLE_NVTX_PROFILE)
   add_definitions(-DENABLE_NVTX_PROFILE=1)
 endif()
