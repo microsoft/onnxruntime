@@ -350,14 +350,13 @@ static void EnumerateStrategies() {
   printf("\n");
   async_strats.Progress([](auto /*info*/, const winml_experimental::EnumerateInferenceStrategiesProgress& progress) {
     printf("\r");
-    printf("%" PRId64 "/ %" PRId64, progress.StrategiesEvaluated, progress.TotalNumberOfStrategies);
+    printf("%" PRId64 " strategies evaluated out of %" PRId64, progress.StrategiesEvaluated, progress.TotalNumberOfStrategies);
   });
-  printf("\n");
-  printf("\n");
 
   strategies = async_strats.get();
   async_strats.Cancel();
 
+  printf("\n");
 
   const char* device[] = {
       "Default",
@@ -387,18 +386,18 @@ static void EnumerateStrategies() {
 
   int count = 3000;
   for (auto strategy : strategies) {
-    printf("(Device=[%s], InputStrategy=[%s], OutputStrategy=[%s], ReadMode=[%s], BatchSize=[%d]) : %f\n",
+   /* printf("(Device=[%s], InputStrategy=[%s], OutputStrategy=[%s], ReadMode=[%s], BatchSize=[%d]) : %f\n",
            device[static_cast<int>(strategy.DeviceKind())],
            bind_strategy[static_cast<int>(strategy.InputStrategy())],
            bind_strategy[static_cast<int>(strategy.OutputStrategy())],
            read_mode[static_cast<int>(strategy.OutputReadMode())],
            strategy.BatchSize(),
-           strategy.Metric());
+           strategy.Metric());*/
 
-    //printf("(Device=[%s], BatchSize=[%d]) : %f\n",
-    //    device[static_cast<int>(strategy.DeviceKind())],
-    //    strategy.BatchSize(),
-    //    strategy.Metric());
+    printf("(Device=[%s], BatchSize=[%d]) : %f\n",
+        device[static_cast<int>(strategy.DeviceKind())],
+        strategy.BatchSize(),
+        strategy.Metric());
 
     if (count-- == 0) {
       break;
