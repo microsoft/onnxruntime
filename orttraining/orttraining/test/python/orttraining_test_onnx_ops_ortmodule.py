@@ -81,13 +81,19 @@ class TestOnnxOpsOrtModule(unittest.TestCase):
             with open("debug_%s_ortmodule_train.onnx" % name, "wb") as f:
                 f.write(onnx_graph_train.SerializeToString())
         self.assertIn('op_type: "%s"' % name, str(onnx_graph_inf))
-        if op_grad_type is not None:
-            self.assertIn('op_type: "%s"' %
-                          op_grad_type, str(onnx_graph_train))
         for onnx_model in [onnx_graph_inf, onnx_graph_train]:
             for oimp in onnx_model.opset_import:
                 if oimp.domain == '':
                     self.assertEqual(oimp.version, 14)
+        if op_grad_type is not None:
+            if isinstance(op_grad_type, tuple):
+                text = str(onnx_graph_train)
+                if all(map(lambda op: ('op_type: "%s"' % op) not in text, op_grad_type)):
+                    raise AssertionError(
+                        "Operator %s not found in %s." % (" or ".join(op_grad_type), text))
+            else:
+                self.assertIn('op_type: "%s"' %
+                              op_grad_type, str(onnx_graph_train))
 
     def get_torch_model_name(self, name, device):
 
@@ -113,7 +119,7 @@ class TestOnnxOpsOrtModule(unittest.TestCase):
                     out = self.fc2(out)
                     return out
 
-            return TestSoftmax, 'SoftmaxGrad', None
+            return TestSoftmax, ('SoftmaxGrad', 'SoftmaxGrad_13'), None
 
         if name == 'GatherElements':
 
