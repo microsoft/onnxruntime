@@ -32,7 +32,6 @@ class BeamSearch : public controlflow::IControlFlowKernel {
   static std::unique_ptr<OpKernel> Create(const OpKernelInfo& info, void* stream);
 
  protected:
-
   void SetComputeStream(void* stream) { stream_ = stream; }
 
  private:

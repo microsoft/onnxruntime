@@ -8,7 +8,7 @@ namespace transformers {
 
 constexpr int kMaxSequenceLength = 4096;
 
-Status BeamSearchParameters::Validate() {
+Status BeamSearchParameters::Validate() const {
   ORT_RETURN_IF(eos_token_id < 0, "eos_token_id is invalid");
   ORT_RETURN_IF(pad_token_id < 0, "pad_token_id is invalid");
   ORT_RETURN_IF(min_length >= max_length, "min_length shall be smaller than max_length");

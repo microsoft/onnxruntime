@@ -8,6 +8,7 @@ import argparse
 from pathlib import Path
 from onnx import helper
 import numpy as np
+from typing import List
 import torch
 from transformers import GPT2Config
 from gpt2_helper import PRETRAINED_GPT2_MODELS
@@ -292,7 +293,7 @@ def convert_model(args):
     onnx.save(new_model, args.output)
 
 
-def test_model(args):
+def test_model(args, use_vocab_mask: bool = False, sentences: List[str] = None):
     from transformers import GPT2Tokenizer, GPT2LMHeadModel
 
     tokenizer = GPT2Tokenizer.from_pretrained(args.model_name_or_path, cache_dir=args.cache_dir)
@@ -303,8 +304,9 @@ def test_model(args):
                                             cache_dir=args.cache_dir,
                                             pad_token_id=tokenizer.eos_token_id)
 
-    # use different length sentences to test batching
-    sentences = ["The product is released", "I enjoy walking in the park"]
+    # Use different length sentences to test batching
+    if sentences is None:
+        sentences = ["The product is released", "I enjoy walking in the park", "Test best way to invest"]
 
     inputs = tokenizer(sentences, return_tensors='pt', padding=True)
     input_ids = inputs["input_ids"]
@@ -313,7 +315,10 @@ def test_model(args):
     bad_words = "walk in park"
     bad_words_ids = tokenizer.encode(bad_words, add_prefix_space=True)
     bad_words_ids = [[word_id] for word_id in bad_words_ids]  # Convert to list of list
-    print("bad_words_ids", bad_words_ids)
+    if use_vocab_mask:
+        print("bad_words_ids", bad_words_ids)
+    else:
+        bad_words_ids = None
 
     global config
     config = model.config
@@ -321,6 +326,7 @@ def test_model(args):
     pad_token_id = config.eos_token_id
     vocab_size = config.vocab_size
 
+    torch_decoded_sequences = []
     if args.run_baseline:
         print('-' * 50)
         print("Test PyTorch model and beam search with huggingface transformers...")
@@ -348,7 +354,9 @@ def test_model(args):
         if args.output_token_scores:
             print("scores", beam_outputs.scores)
         for i, sequence in enumerate(beam_outputs.sequences):
-            print("{}: {}".format(i, tokenizer.decode(sequence, skip_special_tokens=True)))
+            decoded_sequence = tokenizer.decode(sequence, skip_special_tokens=True)
+            torch_decoded_sequences.append(decoded_sequence)
+            print("{}: {}".format(i, decoded_sequence))
 
     print('-' * 50)
     print("Test ONNX model and bream search with onnxruntime...")
@@ -361,8 +369,9 @@ def test_model(args):
     ort_session = create_ort_session(args.output, args.use_gpu)
 
     vocab_mask = np.ones((vocab_size), dtype=np.int32)
-    for bad_word_id in bad_words_ids:
-        vocab_mask[bad_word_id] = 0
+    if use_vocab_mask:
+        for bad_word_id in bad_words_ids:
+            vocab_mask[bad_word_id] = 0
 
     inputs = {
         "input_ids": input_ids.cpu().numpy().astype(np.int32),
@@ -395,24 +404,30 @@ def test_model(args):
         print("scores", result[2])
 
     (batch_size, num_sequences, max_length) = sequences.shape
+    ort_decoded_sequences = []
     for i in range(batch_size):
         for j in range(num_sequences):
-            sequence = tokenizer.decode(sequences[i][j], skip_special_tokens=True)
-            print(f"batch {i} sequence {j}: {sequence}")
+            decoded_sequence = tokenizer.decode(sequences[i][j], skip_special_tokens=True)
+            ort_decoded_sequences.append(decoded_sequence)
+            print(f"batch {i} sequence {j}: {decoded_sequence}")
 
     if args.run_baseline:
-        torch_sequences = beam_outputs.sequences.reshape(sequences.shape)
+        torch_sequences = beam_outputs.sequences.reshape(batch_size, args.num_return_sequences, -1)
         ort_sequences = torch.LongTensor(sequences)
         print("-" * 50)
         print("Torch Sequences:")
         print(torch_sequences)
+        print(torch_decoded_sequences)
         print("-" * 50)
         print("ORT Sequences:")
         print(ort_sequences)
+        print(ort_decoded_sequences)
         print("-" * 50)
-        is_same = torch.equal(torch_sequences, ort_sequences)
+        # Compare the generated text instead of word IDs since ORT pads to max sequence length but Torch not.
+        is_same = (torch_decoded_sequences == ort_decoded_sequences)
         print("Torch and ORT result is ", "same" if is_same else "different")
         return is_same
+
 
 def main(argv=None):
     args = parse_arguments(argv)
@@ -422,7 +437,7 @@ def main(argv=None):
     else:
         convert_model(args)
 
-    return test_model(args)
+    return test_model(args, use_vocab_mask=True)
 
 
 if __name__ == '__main__':

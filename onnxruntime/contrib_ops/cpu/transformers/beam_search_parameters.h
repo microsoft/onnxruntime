@@ -39,11 +39,14 @@ struct BeamSearchParameters {
   int head_size;
   int num_layers;
 
-  Status Validate();
+  Status Validate() const;
 
-  int BatchBeamSize() { return batch_size * num_beams; }
+  int BatchBeamSize() const { return batch_size * num_beams; }
+  
   void ParseFromAttributes(const OpKernelInfo& info);
+
   void ParseFromInputs(OpKernelContext* context);
+
   void SetSubgraphParameters(int vocab_size, int num_heads, int head_size, int num_layers);
 };
 
