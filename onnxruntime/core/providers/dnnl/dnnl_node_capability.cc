@@ -4,6 +4,11 @@
 #include "dnnl_node_capability.h"
 #include "dnnl.hpp"
 
+#ifndef _USE_MATH_DEFINES
+#define _USE_MATH_DEFINES
+#endif
+#include <cmath>
+
 namespace onnxruntime {
 // DnnlDefaultNodeCapability class
 //-------------------------------------
@@ -443,6 +448,18 @@ bool DnnlElementwiseCapability::IsDimensionSupported(const Node* node) const {
   return true;
 }
 
+bool IsScalar(const NodeArg* node_arg) {
+  if (node_arg->Shape()->dim_size() == 0) {
+    return true;
+  }
+  for (int j = 0; j < node_arg->Shape()->dim_size(); ++j) {
+    if (node_arg->Shape()->dim(j).dim_value() != 1) {
+      return false;
+    }
+  }
+  return true;
+}
+
 // DnnlPowNodeCapability class
 //-------------------------------------
 bool DnnlPowNodeCapability::Supported(const Node* node, const GraphViewer& graph_viewer) const {
@@ -468,13 +485,8 @@ bool DnnlPowNodeCapability::IsDimensionSupported(const Node* node, const GraphVi
     if (!graph_viewer.IsConstantInitializer(node_inputs[1]->Name(), true)) {
       return false;
     }
-    if (node_inputs[1]->Shape()->dim_size() == 0) {
-      return true;
-    }
-    for (int j = 0; j < node_inputs[1]->Shape()->dim_size(); ++j) {
-      if (node_inputs[1]->Shape()->dim(j).dim_value() != 1) {
-        return false;
-      }
+    if (!IsScalar(node_inputs[1])) {
+      return false;
     }
   }
 
@@ -549,6 +561,220 @@ bool DnnlSqueezeNodeCapability::IsDimensionSupported(const Node* node, const Gra
     }
   }
   return true;
+}
+
+
+bool DnnlErfNodeCapability::Supported(const Node* node, const GraphViewer& graph_viewer) const {
+  ORT_UNUSED_PARAMETER(graph_viewer);
+  if (!IsTypeSupported(node)) return false;
+  if (!IsErfPartOfGelu(node, graph_viewer)) return false;
+  return true;
+}
+
+bool DnnlErfNodeCapability::IsInitilizedWithExpectedValue(const GraphViewer& graph_viewer, const NodeArg* node_arg, float expected_value) const {
+  //TypeAsProto()->tensor_type().elem_type()
+  if ((ORT_DataType)node_arg->TypeAsProto()->tensor_type().elem_type() == type_float32) {
+    const ONNX_NAMESPACE::TensorProto* tensor_proto = nullptr;
+    graph_viewer.GetInitializedTensor(node_arg->Name(), tensor_proto);
+    const float* val = reinterpret_cast<const float*>(tensor_proto->raw_data().data());
+
+    // Check for NaN and Inf
+    if (std::isnan(val[0]) || std::isinf(val[0])) {
+      if (std::isinf(val[0]) && std::isinf(expected_value) && (std::signbit(val[0]) == std::signbit(expected_value))) {
+        return true;
+      }
+      return false;
+    }
+
+    const float atol = 1e-8f;
+    const float rtol = 1e-5f;
+    float diff = std::abs(val[0] - expected_value);
+    if (diff > (atol + rtol * std::abs(expected_value))) {
+      return false;
+    }
+    return true;
+  }
+  return false;
+}
+
+const Node* DnnlErfNodeCapability::FirstParentByType(const Node& node, const std::string& parent_type) const {
+  for (auto it = node.InputNodesBegin(); it != node.InputNodesEnd(); ++it) {
+    if ((*it).OpType().compare(parent_type) == 0) {
+      return &(*it);
+    }
+  }
+  return nullptr;
+}
+
+
+bool DnnlErfNodeCapability::IsNodeFusable(const Node* node, const GraphViewer& graph_viewer) const {
+  if (nullptr == node) {
+    return false;
+  }
+  if (1 != node->GetOutputEdgesCount() &&
+      1 != node->OutputDefs().size()) {
+    return false;
+  }
+
+  // Check if the NodeArg outputs to the graph
+  if (std::find(graph_viewer.GetOutputs().begin(), graph_viewer.GetOutputs().end(), node->OutputDefs()[0]) != graph_viewer.GetOutputs().end()) {
+    return false;
+  }
+  return true;
+}
+
+    /*
+  OneDNN only suports Erf if it is part of Gelu.  Gelu is only possible thanks to fusion.
+
+  This code only runs when and Erf node is detected. So we check to see if the Erf is is part
+  a Gelu starting from the Erf.  This means checking the inputs befor and after Erf.  The
+  following pattern and some code were directly referenced from code\optimizer\gelu_fusion.cc
+
+     Subgraphs like the following fuse into Gelu.
+     Subgraph pattern 1:
+                   +-------Mul(0.5)---------------------+
+                   |                                    |
+                   |                                    v
+                [root] --> Div -----> Erf  --> Add --> Mul ==>
+                          (B=1.4142...)        (1)
+
+      Subgraph pattern 2:
+                   +------------------------------------+
+                   |                                    |
+                   |                                    v
+                [root] --> Div -----> Erf  --> Add --> Mul -->Mul ==>
+                          (B=1.4142...)        (1)            (0.5)
+
+       After Fusion:
+                [root]--> Gelu ==>
+*/
+bool DnnlErfNodeCapability::IsErfPartOfGelu(const Node* node, const GraphViewer& graph_viewer) const {
+  // if DNNL fusion is not enabled then Erf is not supported.
+  const std::string fusion_env = onnxruntime::GetEnvironmentVar("ORT_DNNL_ENABLE_FUSION");
+  if (!fusion_env.empty() && std::stoi(fusion_env) == 0) {
+    return false;
+  }
+  if (node->InputDefs().size() != 1) {
+    return false;
+  }
+  if (!IsNodeFusable(node, graph_viewer)) {
+    return false;
+  }
+
+  const Node* div_node = FirstParentByType(*node, "Div");
+
+  if (!IsNodeFusable(div_node, graph_viewer)) {
+    return false;
+  }
+  if (!_binary.Supported(div_node, graph_viewer)) {
+    return false;
+  }
+
+  auto divisor = div_node->InputDefs()[1];
+  if (divisor->Shape() != nullptr) {
+    if (!graph_viewer.IsConstantInitializer(divisor->Name(), true)) {
+      return false;
+    }
+    if (!IsScalar(divisor)) {
+      return false;
+    }
+    // Some Bert models uses this approximation of SQRT2 in the Gelu function
+    float approximated_sqrt_two = 1.4142099618911743f;
+    if (!IsInitilizedWithExpectedValue(graph_viewer, divisor, approximated_sqrt_two) &&
+        !IsInitilizedWithExpectedValue(graph_viewer, divisor, static_cast<float>(M_SQRT2))) {
+      return false;
+    }
+  }
+
+  std::vector<const Node*> add_nodes;
+  for (auto i = node->OutputNodesBegin(); i != node->OutputNodesEnd(); ++i) {
+    add_nodes.push_back(&(*i));
+  }
+  if (add_nodes.size() != 1 && add_nodes[0]->OpType() != "Add") {
+    return false;
+  }
+  if (!_binary.Supported(add_nodes[0], graph_viewer)) {
+    return false;
+  }
+  if (!IsNodeFusable(add_nodes[0], graph_viewer)) {
+    return false;
+  }
+  // check that the Add Op node_arg is 1.0f
+  bool is_add_input0 = node->OutputDefs()[0]->Name() == add_nodes[0]->InputDefs()[0]->Name();
+  auto add_val = add_nodes[0]->InputDefs()[is_add_input0 ? 1 : 0];
+  if (add_val->Shape() != nullptr) {
+    if (!graph_viewer.IsConstantInitializer(add_val->Name(), true)) {
+      return false;
+    }
+    if (!IsScalar(add_val)) {
+      return false;
+    }
+    if (!IsInitilizedWithExpectedValue(graph_viewer, add_val, 1.0f)) {
+      return false;
+    }
+  }
+
+  std::vector<const Node*> mul1_nodes;
+  for (auto i = add_nodes[0]->OutputNodesBegin(); i != add_nodes[0]->OutputNodesEnd(); ++i) {
+    mul1_nodes.push_back(&(*i));
+  }
+  if (mul1_nodes.size() != 1 && mul1_nodes[0]->OpType() != "Mul") {
+    return false;
+  }
+  if (!_binary.Supported(mul1_nodes[0], graph_viewer)) {
+    return false;
+  }
+
+  // Subgraph pattern 1
+  // Don't return if subgraph pattern 1 is not found instead we dropdown and look for pattern 2
+  {
+    auto mul2_node = FirstParentByType(*mul1_nodes[0], "Mul");
+    if (mul2_node != nullptr) {
+      bool is_mul2_input0 = div_node->InputDefs()[0]->Name() == mul2_node->InputDefs()[0]->Name();
+      bool is_mul2_input1 = div_node->InputDefs()[0]->Name() == mul2_node->InputDefs()[1]->Name();
+      if (is_mul2_input0 ^ is_mul2_input1) {
+        auto mul2_val = mul2_node->InputDefs()[is_mul2_input0 ? 1 : 0];
+        if (mul2_val->Shape() != nullptr) {
+          if (IsScalar(mul2_val) &&
+              IsInitilizedWithExpectedValue(graph_viewer, mul2_val, 0.5f) &&
+              IsNodeFusable(mul2_node, graph_viewer)) {
+            return true;
+          }
+        }
+      }
+    }
+  }
+  // Subgraph pattern 2
+  {
+    if (!IsNodeFusable(mul1_nodes[0], graph_viewer)) {
+      return false;
+    }
+    std::vector<const Node*> mul2_nodes;
+    for (auto i = mul1_nodes[0]->OutputNodesBegin(); i != mul1_nodes[0]->OutputNodesEnd(); ++i) {
+      mul2_nodes.push_back(&(*i));
+    }
+
+    if (mul2_nodes.size() != 1 && mul2_nodes[0]->OpType() != "Mul") {
+      return false;
+    }
+
+    //Check that Mul Op node_arg is 0.5f
+    bool is_mul2_input0 = mul1_nodes[0]->OutputDefs()[0]->Name() == mul2_nodes[0]->InputDefs()[0]->Name();
+    auto mul2_val = mul2_nodes[0]->InputDefs()[is_mul2_input0 ? 1 : 0];
+    if (mul2_val->Shape() != nullptr) {
+      if (!graph_viewer.IsConstantInitializer(mul2_val->Name(), true)) {
+        return false;
+      }
+      if (!IsScalar(mul2_val)) {
+        return false;
+      }
+      if (!IsInitilizedWithExpectedValue(graph_viewer, mul2_val, 0.5f)) {
+        return false;
+      }
+    }
+  }
+  return true;
+
 }
 
 }  // namespace onnxruntime

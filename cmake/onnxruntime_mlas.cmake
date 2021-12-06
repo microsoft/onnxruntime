@@ -43,6 +43,7 @@ function(setup_mlas_source_for_windows)
       target_sources(onnxruntime_mlas PRIVATE
         ${MLAS_SRC_DIR}/qgemm_kernel_neon.cpp
         ${MLAS_SRC_DIR}/qgemm_kernel_udot.cpp
+        ${MLAS_SRC_DIR}/qgemm_kernel_sdot.cpp
       )
 
       set(mlas_platform_preprocess_srcs
@@ -51,6 +52,7 @@ function(setup_mlas_source_for_windows)
         ${MLAS_SRC_DIR}/arm64/QgemmU8X8KernelNeon.asm
         ${MLAS_SRC_DIR}/arm64/QgemmS8S8KernelNeon.asm
         ${MLAS_SRC_DIR}/arm64/QgemmU8X8KernelUdot.asm
+        ${MLAS_SRC_DIR}/arm64/QgemmS8S8KernelSdot.asm
         ${MLAS_SRC_DIR}/arm64/SgemmKernelNeon.asm
         ${MLAS_SRC_DIR}/arm64/SgemvKernelNeon.asm
       )
@@ -271,10 +273,12 @@ else()
           ${MLAS_SRC_DIR}/aarch64/QgemmU8X8KernelNeon.S
           ${MLAS_SRC_DIR}/aarch64/QgemmS8S8KernelNeon.S
           ${MLAS_SRC_DIR}/aarch64/QgemmU8X8KernelUdot.S
+          ${MLAS_SRC_DIR}/aarch64/QgemmS8S8KernelSdot.S
           ${MLAS_SRC_DIR}/aarch64/SgemmKernelNeon.S
           ${MLAS_SRC_DIR}/aarch64/SgemvKernelNeon.S
           ${MLAS_SRC_DIR}/qgemm_kernel_neon.cpp
           ${MLAS_SRC_DIR}/qgemm_kernel_udot.cpp
+          ${MLAS_SRC_DIR}/qgemm_kernel_sdot.cpp
         )
         if(ONNXRUNTIME_MLAS_MULTI_ARCH)
             onnxruntime_add_static_library(onnxruntime_mlas_arm64 ${mlas_platform_srcs})

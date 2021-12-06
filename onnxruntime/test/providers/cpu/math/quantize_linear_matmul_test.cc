@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cpu/math/quantize_linear_matmul.h"
+#include "core/mlas/inc/mlas.h"
 
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
@@ -85,6 +86,46 @@ TEST(QuantizeLinearMatmulOpTest, QLinearMatMul3D_U8S8) {
   test.Run();
 }
 
+#if defined(MLAS_TARGET_ARM_ANY)
+TEST(QuantizeLinearMatmulOpTest, QLinearMatMul3D_S8S8) {
+  OpTester test("QLinearMatMul", 10);
+  test.AddInput<int8_t>("T1", {2, 2, 4},
+                        {80, -2, -128, 110,
+                         -125, 86, 127, -99,
+
+                         80, 108, -128, 110,
+                         -125, 86, 127, -99});
+
+  test.AddInput<float>("a_scale", {}, {0.0066f});
+  test.AddInput<int8_t>("a_zero_point", {}, {-15});
+
+  test.AddInput<int8_t>("T2", {2, 4, 3},
+                        {-43, 51, -34,
+                         60, 26, -17,
+                         0, 63, -55,
+                         47, -29, -31,
+
+                         -62, 51, -42,
+                         60, 26, -22,
+                         0, -8, -19,
+                         37, -2, -47});
+
+  test.AddInput<float>("b_scale", {}, {0.00802f});
+  test.AddInput<int8_t>("b_zero_point", {}, {-2});
+
+  test.AddInput<float>("y_scale", {}, {0.0123f});
+  test.AddInput<int8_t>("y_zero_point", {}, {-10});
+  test.AddOutput<int8_t>("T3", {2, 2, 3},
+                         {2, -33, -14,
+                          20, 27, -23,
+
+                          18, 29, -53,
+                          32, -27, 6});
+
+  test.Run();
+}
+#endif
+
 TEST(QuantizeLinearMatmulOpTest, QLinearMatMul2D_U8U8) {
   auto run_test = [](bool only_t1_not_initializer) {
     OpTester test("QLinearMatMul", 10);
@@ -155,6 +196,43 @@ TEST(QuantizeLinearMatmulOpTest, QLinearMatMul2D_U8S8) {
   run_test(true);
 }
 
+#if defined(MLAS_TARGET_ARM_ANY)
+TEST(QuantizeLinearMatmulOpTest, QLinearMatMul2D_S8S8) {
+  auto run_test = [](bool only_t1_not_initializer) {
+    OpTester test("QLinearMatMul", 10);
+    test.AddInput<int8_t>("T1", {2, 4},
+                          {80, -2, -128, 110,
+                           -125, 86, 127, -99});
+
+    test.AddInput<float>("a_scale", {}, {0.0066f}, only_t1_not_initializer);
+    test.AddInput<int8_t>("a_zero_point", {}, {-15}, only_t1_not_initializer);
+
+    test.AddInput<int8_t>("T2", {4, 3},
+                          {-43, 51, -34,
+                           60, 26, -17,
+                           0, 63, -55,
+                           47, -29, -31},
+                          only_t1_not_initializer);
+
+    test.AddInput<float>("b_scale", {}, {0.00802f}, only_t1_not_initializer);
+    test.AddInput<int8_t>("b_zero_point", {}, {0}, only_t1_not_initializer);
+
+    test.AddInput<float>("y_scale", {}, {0.0123f}, only_t1_not_initializer);
+    test.AddInput<int8_t>("y_zero_point", {}, {-10}, only_t1_not_initializer);
+    test.AddOutput<int8_t>("T3", {2, 3},
+                           {1, -34, -15,
+                            19, 26, -24});
+
+    test.Run();
+  };
+
+  run_test(false);
+
+  // NNAPI will require all inputs except T1 to be initializers
+  run_test(true);
+}
+#endif
+
 static void QLinearMatMul2DTest(bool only_t1_not_initializer) {
   // Test non-empty inputs
   OpTester test_non_empty("QLinearMatMul", 10);
@@ -224,6 +302,38 @@ TEST(QuantizeLinearMatmulOpTest, PerColumn_2D) {
   test.Run();
 }
 
+#if defined(MLAS_TARGET_ARM_ANY)
+TEST(QuantizeLinearMatmulOpTest, PerColumn_2D_S8S8) {
+  OpTester test("QLinearMatMul", 10);
+  test.AddInput<int8_t>("a",
+                        {2, 4},
+                        {-3, 7, 5, -6,
+                         4, -5, 8, 7});
+  test.AddInput<float>("a_scale", {}, {0.1f});
+  test.AddInput<int8_t>("a_zero_point", {}, {5});
+  test.AddInput<int8_t>("b",
+                        {4, 4},
+                        {0, -8, 2, 3,
+                         -11, -13, -8, 1,
+                         2, 4, 4, -10,
+                         3, 2, -11, 2});
+  test.AddInput<float>("b_scale", {4},
+                       {0.1f, 0.2f, 0.3f, 0.4f});
+  test.AddInput<int8_t>("b_zero_point",
+                        {1, 4},
+                        {1, -2, 2, -1});
+  test.AddInput<float>("y_scale", {}, {0.2f});
+  test.AddInput<int8_t>("y_zero_point", {}, {2});
+
+  test.AddOutput<int8_t>("y",
+                         {2, 4},
+                         {0, 0, 20, -10,
+                          8, 16, 14, -7});
+
+  test.Run();
+}
+#endif
+
 TEST(QuantizeLinearMatmulOpTest, PerColumn_ND) {
   OpTester test("QLinearMatMul", 10);
   test.AddInput<uint8_t>("a",
@@ -266,6 +376,51 @@ TEST(QuantizeLinearMatmulOpTest, PerColumn_ND) {
 
   test.Run();
 }
+
+#if defined(MLAS_TARGET_ARM_ANY)
+TEST(QuantizeLinearMatmulOpTest, PerColumn_ND_S8S8) {
+  OpTester test("QLinearMatMul", 10);
+  test.AddInput<int8_t>("a",
+                        {2, 2, 4},
+                        {-3, 7, 5, -6,
+                         4, -5, 8, 7,
+
+                         -3, 7, 5, -6,
+                         4, -5, 8, 7});
+  test.AddInput<float>("a_scale", {}, {0.1f});
+  test.AddInput<int8_t>("a_zero_point", {}, {5});
+  test.AddInput<int8_t>("b",
+                        {2, 4, 4},
+                        {0, -8, 2, 3,
+                         -11, -13, -8, 1,
+                         2, 4, 4, -10,
+                         3, 2, -11, 2,
+
+                         0, -8, 2, 3,
+                         -11, -13, -8, 1,
+                         2, 4, 4, -10,
+                         3, 2, -11, 2});
+  test.AddInput<float>("b_scale", {2, 1, 4},
+                       {0.1f, 0.2f, 0.3f, 0.4f,
+                        0.4f, 0.3f, 0.2f, 0.1f});
+  test.AddInput<int8_t>("b_zero_point",
+                        {2, 1, 4},
+                        {1, -2, 2, -1,
+                         2, -4, -1, 0});
+  test.AddInput<float>("y_scale", {}, {0.2f});
+  test.AddInput<int8_t>("y_zero_point", {}, {2});
+
+  test.AddOutput<int8_t>("y",
+                         {2, 2, 4},
+                         {0, 0, 20, -10,
+                          8, 16, 14, -7,
+
+                          -2, -6, 9, 0,
+                          29, 22, 8, 0});
+
+  test.Run();
+}
+#endif
 
 /**
  * @brief Extend QLinearMatMul for verifying prepacking behavior 
