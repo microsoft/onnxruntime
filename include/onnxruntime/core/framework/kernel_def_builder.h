@@ -90,8 +90,8 @@ class KernelDef {
 
   bool HasExternalOutputs() const { return external_outputs_; }
 
-  bool MayStridedInputs() const { return may_strided_inputs; }
-  bool MayStridedOutputs() const { return may_strided_outputs; }
+  const std::vector<int>& MayStridedInput() const { return may_strided_inputs_; }
+  const std::vector<std::pair<int, int>>& MayStridedOutput() const { return may_strided_output_map_; }
 
   OrtMemType OutputMemoryType(size_t output_index) const {
     auto it = output_memory_type_args_.find(output_index);
@@ -166,8 +166,8 @@ class KernelDef {
   // Whether the outputs are from external.
   bool external_outputs_ = false;
 
-  bool may_strided_inputs = false;
-  bool may_strided_outputs = false;
+  std::vector<int> may_strided_inputs_;
+  std::vector<std::pair<int, int>> may_strided_output_map_;
 
   // The memory types of inputs/outputs of this kernel
   MemTypeMap input_memory_type_args_;
@@ -304,15 +304,8 @@ class KernelDefBuilder {
     return *this;
   }
 
-  KernelDefBuilder& MayStridedInputs() {
-    kernel_def_->may_strided_inputs = true;
-    return *this;
-  }
-
-  KernelDefBuilder& MayStridedOutputs() {
-    kernel_def_->may_strided_outputs = true;
-    return *this;
-  }
+  KernelDefBuilder& MayStridedInput(int input_index);
+  KernelDefBuilder& MayStridedOutput(int input_index, int output_index);
 
   /**
      Specify that this kernel requires an input arg

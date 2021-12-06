@@ -547,8 +547,8 @@ struct ProviderHostImpl : ProviderHost {
   void KernelDefBuilder__VariadicAlias(KernelDefBuilder* p, int input_offset, int output_offset) override { p->VariadicAlias(input_offset, output_offset); }
   void KernelDefBuilder__ExternalOutputs(KernelDefBuilder* p) override { p->ExternalOutputs(); }
   void KernelDefBuilder__AllocateInputsContiguously(KernelDefBuilder* p) override { p->AllocateInputsContiguously(); }
-  void KernelDefBuilder__MayStridedInputs(KernelDefBuilder* p) override { p->MayStridedInputs(); }
-  void KernelDefBuilder__MayStridedOutputs(KernelDefBuilder* p) override { p->MayStridedOutputs(); }
+  void KernelDefBuilder__MayStridedInput(KernelDefBuilder* p, int input_index) override { p->MayStridedInput(input_index); }
+  void KernelDefBuilder__MayStridedOutput(KernelDefBuilder* p, int input_index, int output_index) override { p->MayStridedOutput(input_index, output_index); }
 
   std::unique_ptr<KernelDef> KernelDefBuilder__Build(KernelDefBuilder* p) override { return p->Build(); }
 

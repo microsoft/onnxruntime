@@ -15,7 +15,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     1, 12,
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
-        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()).MayStridedOutputs(),
+        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()).MayStridedOutput(0, 0),
     Transpose);
 
 ONNX_OPERATOR_KERNEL_EX(
@@ -24,7 +24,7 @@ ONNX_OPERATOR_KERNEL_EX(
     13,
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
-        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()).MayStridedOutputs(),
+        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()).MayStridedOutput(0, 0),
     Transpose);
 
 // special case acceleration using cublas matrix transpose

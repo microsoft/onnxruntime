@@ -463,13 +463,13 @@ struct KernelDefBuilder final {
     return *this;
   }
 
-  KernelDefBuilder& MayStridedInputs() {
-    g_host->KernelDefBuilder__MayStridedInputs(this);
+  KernelDefBuilder& MayStridedInput(int input_index) {
+    g_host->KernelDefBuilder__MayStridedInput(this, input_index);
     return *this;
   }
 
-  KernelDefBuilder& MayStridedOutputs() {
-    g_host->KernelDefBuilder__MayStridedOutputs(this);
+  KernelDefBuilder& MayStridedOutput(int input_index, int output_index) {
+    g_host->KernelDefBuilder__MayStridedOutput(this, input_index, output_index);
     return *this;
   }
 

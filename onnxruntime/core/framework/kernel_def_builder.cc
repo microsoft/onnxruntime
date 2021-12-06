@@ -262,4 +262,14 @@ KernelDefBuilder& KernelDefBuilder::VariadicAlias(int input_offset, int output_o
   return *this;
 }
 
+KernelDefBuilder& KernelDefBuilder::MayStridedInput(int input_index) {
+  kernel_def_->may_strided_inputs_.emplace_back(input_index);
+  return *this;
+}
+
+KernelDefBuilder& KernelDefBuilder::MayStridedOutput(int input_index, int output_index) {
+  kernel_def_->may_strided_output_map_.emplace_back(input_index, output_index);
+  return *this;
+}
+
 }  // namespace onnxruntime
