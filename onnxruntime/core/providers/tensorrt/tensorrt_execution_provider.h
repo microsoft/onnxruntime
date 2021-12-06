@@ -39,10 +39,16 @@ class TensorrtLogger : public nvinfer1::ILogger {
   void log(Severity severity, const char* msg) noexcept override {
     if (severity <= verbosity_) {
       time_t rawtime = std::time(0);
+      struct tm stm;
+#ifdef _WIN32
+      gmtime_s(&stm, &rawtime);
+#else
+      gmtime_r(&rawtime, &stm);
+#endif
       char buf[256];
       strftime(&buf[0], 256,
                "%Y-%m-%d %H:%M:%S",
-               std::gmtime(&rawtime));
+               &stm);
       const char* sevstr = (severity == Severity::kINTERNAL_ERROR ? "    BUG" : severity == Severity::kERROR ? "  ERROR"
                                                                             : severity == Severity::kWARNING ? "WARNING"
                                                                             : severity == Severity::kINFO    ? "   INFO"
