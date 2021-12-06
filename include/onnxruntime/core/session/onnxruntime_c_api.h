@@ -3259,7 +3259,7 @@ struct OrtThreadPool {
 };*/
 
 struct OrtThreadPoolBase {
-  void(ORT_API_CALL* ParallelFor)(_In_ OrtThreadPoolBase* tp, _In_ ptrdiff_t, _In_ const void* fn);
+  void(ORT_API_CALL* ParallelFor)(_In_ OrtThreadPoolBase* tp, _In_ std::ptrdiff_t, _In_ const void* fn);
   int(ORT_API_CALL* NumThreads)(_In_ OrtThreadPoolBase* tp);
 };
 

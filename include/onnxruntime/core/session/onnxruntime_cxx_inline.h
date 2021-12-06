@@ -520,6 +520,7 @@ inline SessionOptions& SessionOptions::AppendExecutionProvider_TensorRT(const Or
 
 inline SessionOptions& SessionOptions::SetSessionThreadPool(OrtThreadPoolBase* thread_pool) {
   ThrowOnError(GetApi().SetSessionThreadPool(p_, thread_pool));
+  return *this;
 }
 
 inline SessionOptions& SessionOptions::SetCustomCreateThreadFn(OrtCustomCreateThreadFn ort_custom_create_thread_fn) {

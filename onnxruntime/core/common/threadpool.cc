@@ -771,7 +771,10 @@ static void pthread_1d_tile_func(void* param, size_t from, size_t tile) {
 PThreadPoolWrapper::PThreadPoolWrapper(size_t thread_count_, bool denorms_disabled) : 
     thread_count_(thread_count_), pthreadpool_(pthreadpool_create(thread_count_)), denorms_disabled_(denorms_disabled) {}
 
-PThreadPoolWrapper::~PThreadPoolWrapper() { delete pthreadpool_; }
+PThreadPoolWrapper::~PThreadPoolWrapper() {
+  pthreadpool_destroy((pthreadpool_t)pthreadpool_);
+  pthreadpool_ = nullptr;
+}
 
 int PThreadPoolWrapper::NumThreads() const {
   return static_cast<int>(pthreadpool_get_threads_count((pthreadpool_t)pthreadpool_));
