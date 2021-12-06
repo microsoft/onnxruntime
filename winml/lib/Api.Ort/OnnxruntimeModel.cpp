@@ -375,6 +375,10 @@ STDMETHODIMP OnnruntimeModel::JoinModel(_In_ IModel* other_model,
 }
 
 STDMETHODIMP OnnruntimeModel::IsBatchingSupported(bool* is_batching_supported) {
-  *is_batching_supported = true;
+  auto winml_adapter_api = engine_factory_->UseWinmlAdapterApi();
+  auto ort_api = engine_factory_->UseOrtApi();
+  RETURN_HR_IF_NOT_OK_MSG(winml_adapter_api->ModelIsBatchingSupported(ort_model_.get(),
+                                                                      is_batching_supported),
+                          ort_api);
   return S_OK;
 }

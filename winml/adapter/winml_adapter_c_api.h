@@ -464,5 +464,9 @@ struct WinmlAdapterApi {
       bool promote_unlinked_outputs,
       _In_ const char* const join_node_prefix)NO_EXCEPTION;
 
+  OrtStatus*(ORT_API_CALL* ModelIsBatchingSupported)(
+      _In_ OrtModel* model,
+      _In_ bool* is_supported)NO_EXCEPTION;
+
   ORT_CLASS_RELEASE(Model);
 };

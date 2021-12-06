@@ -177,7 +177,7 @@ namespace WINML_EXPERIMENTALP
     template <TensorKind T>
     static wf::IInspectable CreateTensor(
         const winml::LearningModelSession& session,
-        const winml::TensorFeatureDescriptor& descriptor,
+        const winrt::hstring& name,
         const LearningModelBindingStrategy& strategy,
         float* metric) {
       using TensorValue = typename TensorKindToValue<T>::Type;
@@ -185,7 +185,7 @@ namespace WINML_EXPERIMENTALP
       
       // Get the true shape that the session expects...
       auto session_impl = session.as<winmlp::LearningModelSession>();
-      auto shape = session_impl->GetShapeOfInputOutput(descriptor.Name());
+      auto shape = session_impl->GetShapeOfInputOutput(name);
 
       // There should never be free dimensions. If there are they should be overridden with NamedDimensionOverrides
       auto found_freedim_it = std::find(shape.begin(), shape.end(), -1);
@@ -309,26 +309,27 @@ namespace WINML_EXPERIMENTALP
 
     static wf::IInspectable CreateTensorInput(
         const winml::LearningModelSession& session,
-        const winml::TensorFeatureDescriptor& descriptor,
+        const winrt::hstring& name,
+        winml::TensorKind kind,
         const LearningModelBindingStrategy& strategy,
         float* metric)
     {
         // Create input
-        switch (descriptor.TensorKind())
+        switch (kind)
         {
-            case winml::TensorKind::Float:   return CreateTensor<winml::TensorKind::Float>(session, descriptor, strategy, metric);
-            case winml::TensorKind::UInt8:   return CreateTensor<winml::TensorKind::UInt8>(session, descriptor, strategy, metric);
-            case winml::TensorKind::Int8:    return CreateTensor<winml::TensorKind::Int8>(session, descriptor, strategy, metric);
-            case winml::TensorKind::UInt16:  return CreateTensor<winml::TensorKind::UInt16>(session, descriptor, strategy, metric);
-            case winml::TensorKind::Int16:   return CreateTensor<winml::TensorKind::Int16>(session, descriptor, strategy, metric);
-            case winml::TensorKind::Int32:   return CreateTensor<winml::TensorKind::Int32>(session, descriptor, strategy, metric);
-            case winml::TensorKind::Int64:   return CreateTensor<winml::TensorKind::Int64>(session, descriptor, strategy, metric);
-            case winml::TensorKind::String:  return CreateTensor<winml::TensorKind::String>(session, descriptor, strategy, metric);
-            case winml::TensorKind::Boolean: return CreateTensor<winml::TensorKind::Boolean>(session, descriptor, strategy, metric);
-            case winml::TensorKind::Float16: return CreateTensor<winml::TensorKind::Float16>(session, descriptor, strategy, metric);
-            case winml::TensorKind::Double:  return CreateTensor<winml::TensorKind::Double>(session, descriptor, strategy, metric);
-            case winml::TensorKind::UInt32:  return CreateTensor<winml::TensorKind::UInt32>(session, descriptor, strategy, metric);
-            case winml::TensorKind::UInt64:  return CreateTensor<winml::TensorKind::UInt64>(session, descriptor, strategy, metric);
+            case winml::TensorKind::Float:   return CreateTensor<winml::TensorKind::Float>(session, name, strategy, metric);
+            case winml::TensorKind::UInt8:   return CreateTensor<winml::TensorKind::UInt8>(session, name, strategy, metric);
+            case winml::TensorKind::Int8:    return CreateTensor<winml::TensorKind::Int8>(session, name, strategy, metric);
+            case winml::TensorKind::UInt16:  return CreateTensor<winml::TensorKind::UInt16>(session, name, strategy, metric);
+            case winml::TensorKind::Int16:   return CreateTensor<winml::TensorKind::Int16>(session, name, strategy, metric);
+            case winml::TensorKind::Int32:   return CreateTensor<winml::TensorKind::Int32>(session, name, strategy, metric);
+            case winml::TensorKind::Int64:   return CreateTensor<winml::TensorKind::Int64>(session, name, strategy, metric);
+            case winml::TensorKind::String:  return CreateTensor<winml::TensorKind::String>(session, name, strategy, metric);
+            case winml::TensorKind::Boolean: return CreateTensor<winml::TensorKind::Boolean>(session, name, strategy, metric);
+            case winml::TensorKind::Float16: return CreateTensor<winml::TensorKind::Float16>(session, name, strategy, metric);
+            case winml::TensorKind::Double:  return CreateTensor<winml::TensorKind::Double>(session, name, strategy, metric);
+            case winml::TensorKind::UInt32:  return CreateTensor<winml::TensorKind::UInt32>(session, name, strategy, metric);
+            case winml::TensorKind::UInt64:  return CreateTensor<winml::TensorKind::UInt64>(session, name, strategy, metric);
             default:
                 return nullptr;
         }
@@ -371,10 +372,14 @@ namespace WINML_EXPERIMENTALP
 
         switch (input.Kind()) {
             case winml::LearningModelFeatureKind::Tensor:
-              return CreateTensorInput(session, input.as<winml::TensorFeatureDescriptor>(), input_strategy, metric);
-              break;
+            {
+                auto tensor_descriptor = input.as<winml::TensorFeatureDescriptor>();
+                return CreateTensorInput(session, input.Name(), tensor_descriptor.TensorKind(), input_strategy, metric);
+            }
             case winml::LearningModelFeatureKind::Image:
-              break;
+            {
+                return CreateTensorInput(session, input.Name(), winml::TensorKind::Float, input_strategy, metric);
+            }
             case winml::LearningModelFeatureKind::Map:
               break;
             case winml::LearningModelFeatureKind::Sequence:

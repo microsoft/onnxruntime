@@ -132,6 +132,11 @@ ORT_API_STATUS(JoinModels,
                size_t num_linkages,
                bool promote_unlinked_outputs,
                _In_ const char* const join_node_prefix);
+
+ORT_API_STATUS(ModelIsBatchingSupported,
+               _In_ OrtModel* model,
+               _In_ bool* is_supported);
+
 // maps and sequences???
 //ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange().Map().at(ONNX_NAMESPACE::ONNX_DOMAIN).second
 

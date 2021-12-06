@@ -91,6 +91,7 @@ static constexpr WinmlAdapterApi winml_adapter_api_1 = {
     &winmla::OperatorGetNumOutputs,
     &winmla::OperatorGetOutputName,
     &winmla::JoinModels,
+    &winmla::ModelIsBatchingSupported,
 
     // Release
     &winmla::ReleaseModel

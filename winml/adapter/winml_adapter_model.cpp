@@ -728,6 +728,34 @@ ORT_API_STATUS_IMPL(winmla::ModelGetOpsetVersion,
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(winmla::ModelIsBatchingSupported,
+    _In_ OrtModel* model,
+    _In_ bool* is_supported) {
+  API_IMPL_BEGIN
+  auto model_proto = model->UseModelProto();
+  auto& graph = model_proto->graph();
+  auto& inputs = graph.input();
+  *is_supported = false;
+  for (auto& input : inputs) {
+    if (input.has_type() && input.type().has_tensor_type()) {
+      auto shape = input.type().tensor_type().shape();
+      for (int i = 0; i < shape.dim_size(); i++) {
+        if (shape.dim(i).has_denotation()) {
+          bool has_data_batch = (strcmp(shape.dim(i).denotation().c_str(), "DATA_BATCH") == 0); 
+          auto minus_one_free_dim = shape.dim(i).has_dim_value() && shape.dim(i).dim_value() == -1;
+          auto variabl_free_dim = shape.dim(i).has_dim_param();
+          *is_supported |= has_data_batch && (minus_one_free_dim || variabl_free_dim);
+        }
+      }
+    }
+    if (*is_supported) {
+      break;
+    }
+  }
+  return nullptr;
+  API_IMPL_END
+}
+
 ORT_API(void, winmla::ReleaseModel, OrtModel* ptr) {
   delete ptr;
 }
