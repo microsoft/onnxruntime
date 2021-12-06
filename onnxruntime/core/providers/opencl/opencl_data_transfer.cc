@@ -332,7 +332,7 @@ Status OpenCLDataTransfer::CopyConvWeight(const Tensor& src, Tensor& dst) const 
                           .setArg<cl_int>(desc.Height())
                           .setBuffer(*tmp)
                           .setInt4(shape[0], shape[1], shape[2], shape[3])
-                          .setArg<cl_int>(desc.Width() * desc.Height())
+                          .setArg<cl_int>(shape[2] * shape[3])
                           .setImage2D(dst_image2d)
                           .Launch(exec_->GetCommandQueue(), desc.AsNDRange()));
   exec_->GetCommandQueue().finish();  // do sync copy, since we cannot extend the lifetime of src or tmp

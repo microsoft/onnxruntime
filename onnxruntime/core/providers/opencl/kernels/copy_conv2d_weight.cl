@@ -18,7 +18,7 @@ __kernel void Conv2DWeightBufferToImage(
   const int kh = hw / K_w;
   const int kw = hw % K_w;
 
-  const int CiHW = mul24(C_o, HW);
+  const int CiHW = mul24(C_i, HW);
   // (C_i*K_h*K_w)*co + (K_h*K_w)*ci + K_w*kh + kw
   const int base_offset = mad24(CiHW, co, mad24(HW, ci, mad24(K_w, kh, kw)));
 
