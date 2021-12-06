@@ -74,7 +74,7 @@ These optimizations include complex node fusions. They are run after graph parti
     Approximations (click to expand)
   </summary>
 
-  To optimize performance of <a href="https://en.wikipedia.org/wiki/BERT_(language_model)">BERT</a>, approximation is used in GELU Approximation and Attention Fusion for CUDA execution provider. The impact on accuracy is negligible based on our evaluation: F1 score for a BERT model on SQuAD v1.1 is almost same (87.05 vs 87.03).
+  To optimize performance of [BERT](https://en.wikipedia.org/wiki/BERT_(language_model)), approximation is used in GELU Approximation and Attention Fusion for CUDA execution provider. The impact on accuracy is negligible based on our evaluation: F1 score for a BERT model on SQuAD v1.1 is almost same (87.05 vs 87.03).
 
 </details>
 
