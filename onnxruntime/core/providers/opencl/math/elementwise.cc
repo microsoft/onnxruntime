@@ -9,7 +9,6 @@ namespace {
 
 #define CONTENT_NAME elementwise_kernel_src
 #include "opencl_generated/math/kernels/elementwise.cl.inc"
-#undef CONTENT_NAME
 
 std::string GetKernelSrc(const std::string& name_define, const std::string& type_define, const std::string& op_define) {
   std::stringstream oss;
@@ -41,11 +40,11 @@ namespace opencl {
       const auto* a = context->Input<Tensor>(0);                                        \
       const auto* b = context->Input<Tensor>(1);                                        \
       const auto* c = context->Output(0, a->Shape());                                   \
-      VLOGS_DEFAULT(0) << "[CL]  Input[0] shape " << a->Shape() << " " << a             \
+      VLOGS_DEFAULT(0) << "[CL]  Input[0] shape " << a->Shape() << " " << a->DataRaw()  \
                        << "--> cl::Buffer(" << CL_BUFFER_FROM_TENSOR(*a)() << ")";      \
-      VLOGS_DEFAULT(0) << "[CL]  Input[1] shape " << b->Shape() << " " << b             \
+      VLOGS_DEFAULT(0) << "[CL]  Input[1] shape " << b->Shape() << " " << b->DataRaw()  \
                        << "--> cl::Buffer(" << CL_BUFFER_FROM_TENSOR(*b)() << ")";      \
-      VLOGS_DEFAULT(0) << "[CL]  Output[0] shape " << c->Shape() << " " << c            \
+      VLOGS_DEFAULT(0) << "[CL]  Output[0] shape " << c->Shape() << " " << c->DataRaw() \
                        << "--> cl::Buffer(" << CL_BUFFER_FROM_TENSOR(*c)() << ")";      \
                                                                                         \
       size_t n = a->Shape().Size();                                                     \

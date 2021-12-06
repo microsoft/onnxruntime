@@ -9,7 +9,6 @@ namespace {
 
 #define CONTENT_NAME elementwise_kernel_src
 #include "opencl_generated/math/kernels/elementwise_image2d.cl.inc"
-#undef CONTENT_NAME
 
 inline std::string GetKernelSrc(const std::string& name_define, const std::string& op_define) {
   std::stringstream oss;
@@ -40,9 +39,9 @@ namespace opencl {
       const auto* a = context->Input<Tensor>(0);                                                                                         \
       const auto* b = context->Input<Tensor>(1);                                                                                         \
       const auto* c = context->Output(0, a->Shape());                                                                                    \
-      VLOGS_DEFAULT(0) << "[CL]  Input[0] shape " << a->Shape() << " " << a << "--> cl::Image(" << CL_IMAGE2D_FROM_TENSOR(*a)() << ")";  \
-      VLOGS_DEFAULT(0) << "[CL]  Input[1] shape " << b->Shape() << " " << b << "--> cl::Image(" << CL_IMAGE2D_FROM_TENSOR(*b)() << ")";  \
-      VLOGS_DEFAULT(0) << "[CL]  Output[0] shape " << c->Shape() << " " << c << "--> cl::Image(" << CL_IMAGE2D_FROM_TENSOR(*c)() << ")"; \
+      VLOGS_DEFAULT(0) << "[CL]  Input[0] shape " << a->Shape() << " " << a->DataRaw() << "--> cl::Image(" << CL_IMAGE2D_FROM_TENSOR(*a)() << ")";  \
+      VLOGS_DEFAULT(0) << "[CL]  Input[1] shape " << b->Shape() << " " << b->DataRaw() << "--> cl::Image(" << CL_IMAGE2D_FROM_TENSOR(*b)() << ")";  \
+      VLOGS_DEFAULT(0) << "[CL]  Output[0] shape " << c->Shape() << " " << c->DataRaw() << "--> cl::Image(" << CL_IMAGE2D_FROM_TENSOR(*c)() << ")"; \
                                                                                                                                          \
       auto desc = Image2DDesc::PackFromTensor(a->Shape());                                                                               \
                                                                                                                                          \
