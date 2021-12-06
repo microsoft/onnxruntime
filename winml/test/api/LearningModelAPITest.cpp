@@ -334,11 +334,6 @@ static void EnumerateStrategies() {
                         fullPath.c_str(),
                         options));
 
-  options.DeviceFilter().Clear().Include(winml::LearningModelDeviceKind::DirectX);
-  options.BatchingStrategyFilter().BatchSizeStart(1);
-  options.BatchingStrategyFilter().BatchSizeStride(3);
-  options.BatchingStrategyFilter().BatchSizeTotal(100);
-  
   fullPath = FileHelpers::GetModulePath() + L"batched_model.onnx";
   auto async_strats =
       winml_experimental::LearningModelInferenceStrategyEnumerator::EnumerateInferenceStrategiesAsync(
