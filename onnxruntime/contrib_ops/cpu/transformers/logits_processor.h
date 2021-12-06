@@ -11,8 +11,9 @@ struct NextTokenScores {
   gsl::span<T>& scores;
   int batch_beam_size;
   int vocab_size;
+
   gsl::span<T> GetScores(int batch_beam_index);
-  //void SetScore(int batch_beam_index, int token_id, T score);
+
   void SetScore(int token_id, T score);
 };
 

@@ -37,8 +37,9 @@ void DumpOrtValue(const char* name, const OrtValue& value) {
 }
 
 void ConfigureTensorDump() {
-  if (ParseEnvironmentVariableWithDefault<bool>(dump_tensor_env_vars::kDumpBeamSearch, false)) {
-    g_enable_tensor_dump = true;
+  const auto parsed = ParseEnvironmentVariable<bool>(dump_tensor_env_vars::kDumpBeamSearch);
+  if (parsed.has_value()) {
+    g_enable_tensor_dump = *parsed;
   }
 }
 

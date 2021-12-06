@@ -1,5 +1,6 @@
 #include <assert.h>
 #include "logits_processor.h"
+#include "dump_tensor.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -11,13 +12,6 @@ gsl::span<T> NextTokenScores<T>::GetScores(int batch_beam_index) {
   return scores.subspan(batch_beam_index * vocab_size, vocab_size);
 }
 
-// template <typename T>
-// void NextTokenScores<T>::SetScore(int batch_beam_index, int token_id, T score) {
-//   assert(batch_beam_index >= 0 && batch_beam_index < batch_beam_size);
-//   assert(token_id >= 0 && token_id < vocab_size);
-//   scores[batch_beam_index * vocab_size + token_id] = score;
-// }
-
 template <typename T>
 void NextTokenScores<T>::SetScore(int token_id, T score) {
   assert(token_id >= 0 && token_id < vocab_size);
@@ -25,6 +19,14 @@ void NextTokenScores<T>::SetScore(int token_id, T score) {
     scores[i * vocab_size + token_id] = score;
   }
 }
+
+#ifdef DEBUG_BEAM_SEARCH
+template <typename T>
+void DumpScores(const char* name, gsl::span<T>& scores) {
+  DumpString(name, 0, true);
+  ORT_UNUSED_PARAMETER(scores);
+}
+#endif
 
 // Interface for all scorers for beam search or beam sample.
 template <typename T>
@@ -37,6 +39,10 @@ void MinLengthLogitsProcessor<T>::Process(const ISequences* sequences,
   if (sequences->GetSequenceLength() < min_length_) {
     next_token_scores.SetScore(eos_token_id_, std::numeric_limits<T>::lowest());
   }
+
+#ifdef DEBUG_BEAM_SEARCH
+  DumpScores("MinLengthLogitsProcessor", next_token_scores.scores);
+#endif
 }
 
 template <typename T>
@@ -65,6 +71,10 @@ void RepetitionPenaltyLogitsProcessor<T>::Process(const ISequences* sequences,
       beam_token_scores[word_id] = (score < 0 ? score * penalty_ : score / penalty_);
     }
   }
+
+#ifdef DEBUG_BEAM_SEARCH
+  DumpScores("RepetitionPenaltyLogitsProcessor", next_token_scores.scores);
+#endif
 }
 
 template <typename T>
@@ -89,7 +99,7 @@ void NoRepeatNGramLogitsProcessor<T>::Process(const ISequences* sequences,
     ORT_ENFORCE(prefix.length() == prefix_length);
 
     std::unordered_set<int64_t> blocked_word_ids;
-    for (int j = 0; j <= sequence.length() - ngram_size_; j++) {
+    for (int j = 0; j <= static_cast<int>(sequence.length()) - ngram_size_; j++) {
       // Here we use naive algorithm for matching. The complexity is O(batch_beam_size * ngram_size * sequence_length)
       // TODO: build N-Gram index (hash table with prefix of length NGram - 1 as key, and list of last word of NGram as value) for fast matching.
       if (ngram_size_ == 1 || prefix == sequence.subspan(j, prefix_length)) {
@@ -101,6 +111,10 @@ void NoRepeatNGramLogitsProcessor<T>::Process(const ISequences* sequences,
       beam_token_scores[word_id] = std::numeric_limits<T>::lowest();
     }
   }
+
+#ifdef DEBUG_BEAM_SEARCH
+  DumpScores("NoRepeatNGramLogitsProcessor", next_token_scores.scores);
+#endif
 }
 
 template <typename T>
@@ -123,6 +137,10 @@ void VocabMaskLogitsProcessor<T>::Process(const ISequences* /*sequences*/,
       }
     }
   }
+
+#ifdef DEBUG_BEAM_SEARCH
+  DumpScores("VocabMaskLogitsProcessor", next_token_scores.scores);
+#endif
 }
 
 template <typename T>
