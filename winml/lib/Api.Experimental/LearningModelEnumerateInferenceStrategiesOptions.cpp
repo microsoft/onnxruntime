@@ -19,6 +19,17 @@ namespace WINML_EXPERIMENTALP
         device_filter_ = winrt::make<winml_experimentalp::LearningModelDeviceFilter>();
     }
 
+
+    uint32_t LearningModelEnumerateInferenceStrategiesOptions::NumberOfIterations()
+    {
+        return iterations_;
+    }
+
+    void LearningModelEnumerateInferenceStrategiesOptions::NumberOfIterations(uint32_t iterations)
+    {
+        iterations_ = iterations;
+    }
+
     void LearningModelEnumerateInferenceStrategiesOptions::OverrideNamedDimension(const winrt::hstring& name, uint32_t dimension)
     {
         named_dimension_overrides[winrt::to_string(name)] = dimension;

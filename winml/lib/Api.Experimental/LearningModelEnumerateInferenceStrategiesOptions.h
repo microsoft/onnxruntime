@@ -7,6 +7,9 @@ namespace WINML_EXPERIMENTALP
     {
         LearningModelEnumerateInferenceStrategiesOptions();
 
+        uint32_t NumberOfIterations();
+        void NumberOfIterations(uint32_t iterations);
+
         void OverrideNamedDimension(const winrt::hstring& name, uint32_t dimension);
         std::unordered_map<std::string, uint32_t> NamedDimensionOverrides();
 
@@ -20,6 +23,7 @@ namespace WINML_EXPERIMENTALP
         void OptimizationMode(winml_experimental::LearningModelOptimizationMode mode);
 
     private:
+        uint32_t iterations_ = 100;
         winml_experimental::LearningModelBindingStrategyFilter input_strategy_filter_ = nullptr;
         winml_experimental::LearningModelBindingStrategyFilter output_strategy_filter_ = nullptr;
         winml_experimental::LearningModelReadModeFilter output_read_mode_filter_ = nullptr;

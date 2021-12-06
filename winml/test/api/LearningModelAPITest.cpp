@@ -333,13 +333,15 @@ static void EnumerateStrategies() {
       strategies = winml_experimental::LearningModelInferenceStrategyEnumerator::EnumerateInferenceStrategies(
                         fullPath.c_str(),
                         options));
-  options.DeviceFilter().Clear().Include(winml::LearningModelDeviceKind::DirectX);
+
+  options.NumberOfIterations(100);
+  //options.DeviceFilter().Clear().Include(winml::LearningModelDeviceKind::DirectX);
   //options.InputStrategyFilter().IncludeAll();
   //options.OutputStrategyFilter().IncludeAll();
   //options.OutputReadModeFilter().IncludeAll();
   options.BatchingStrategyFilter().BatchSizeStart(1);
-  options.BatchingStrategyFilter().BatchSizeStride(50);
-  options.BatchingStrategyFilter().BatchSizeTotal(10);
+  options.BatchingStrategyFilter().BatchSizeStride(5);
+  options.BatchingStrategyFilter().BatchSizeTotal(20);
   
   fullPath = FileHelpers::GetModulePath() + L"batched_model.onnx";
   auto async_strats =
@@ -350,7 +352,7 @@ static void EnumerateStrategies() {
   printf("\n");
   async_strats.Progress([](auto /*info*/, const winml_experimental::EnumerateInferenceStrategiesProgress& progress) {
     printf("\r");
-    printf("%" PRId64 " strategies evaluated out of %" PRId64, progress.StrategiesEvaluated, progress.TotalNumberOfStrategies);
+    printf("%" PRId64 " evaluations completed out of %" PRId64, progress.EvaluationsCompleted, progress.TotalNumberOfEvaluations);
   });
 
   strategies = async_strats.get();
