@@ -8,7 +8,7 @@ nav_order: 0
 
 ONNX Runtime is an accelerator for machine learning models with multi platform support and a flexible interface to integrate with hardware-specific libraries. ONNX Runtime can be used with models from PyTorch, Tensorflow/Keras, TFLite, scikit-learn, and other frameworks.
 
-<iframe width="400" height="315" class="table-wrapper py px" src="https://www.youtube.com/embed/qy7X2JGLUC4" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+<iframe width="400" height="315" class="table-wrapper py px" src="https://www.youtube.com/embed/_iunh_gVY2k" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
 
 ## How to use ONNX Runtime (ORT)
 
@@ -20,6 +20,7 @@ ONNX Runtime is an accelerator for machine learning models with multi platform s
 
 |:----------------------------------------------------------------------------------|:-----------------------------------------------------------------------------------|
 |  <span class="fs-5"> [Build ORT Packages](./build){: .btn  .mr-4 target="_blank"} </span>| <span class="fs-5">[ONNX Runtime GitHub](https://github.com/microsoft/onnxruntime){: .btn target="_blank"} </span>  | 
+|  <span class="fs-5">[ONNX Runtime YouTube](https://www.youtube.com/channel/UC_SJk17KdRvDulXz-nc1uFg/featured){: .btn  .mr-4 target="_blank"} </span>         | 
 
 
 ---
@@ -28,14 +29,6 @@ ONNX Runtime is an accelerator for machine learning models with multi platform s
 
 |:----------------------------------------------------------------------------------|:-----------------------------------------------------------------------------------|
 |  <span class="fs-5"> [ORT Web JavaScript Site Template](https://github.com/microsoft/onnxruntime-nextjs-template){: .btn  .mr-4 target="_blank"} </span>         |  <span class="fs-5"> [ORT C# Console App Template](https://github.com/microsoft/onnxruntime-csharp-cv-template){: .btn  .mr-4 target="_blank"} </span>         | 
-
-
----
-
-## ONNX Runtime YouTube Channel
-
-|:----------------------------------------------------------------------------------|:-----------------------------------------------------------------------------------|
-|  <span class="fs-5">[ONNX Runtime YouTube](https://www.youtube.com/channel/UC_SJk17KdRvDulXz-nc1uFg/featured){: .btn  .mr-4 target="_blank"} </span>         | 
 
 
 ---
