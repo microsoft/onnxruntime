@@ -39,7 +39,7 @@ def run_ortmodule_api_tests(cwd, log, transformers_cache):
 
 
 def run_ortmodule_ops_tests(cwd, log, transformers_cache):
-    log.debug('Running: ORTModule-API tests')
+    log.debug('Running: ORTModule-OPS tests')
 
     env = get_env_with_transformers_cache(transformers_cache)
 
