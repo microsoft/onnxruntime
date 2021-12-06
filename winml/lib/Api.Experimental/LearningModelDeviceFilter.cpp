@@ -12,8 +12,6 @@ namespace WINML_EXPERIMENTALP
     {
         device_kinds_.push_back(winml::LearningModelDeviceKind::Cpu);
         device_kinds_.push_back(winml::LearningModelDeviceKind::DirectX);
-        device_kinds_.push_back(winml::LearningModelDeviceKind::DirectXHighPerformance);
-        device_kinds_.push_back(winml::LearningModelDeviceKind::DirectXMinPower);
         return *this;
     }
 

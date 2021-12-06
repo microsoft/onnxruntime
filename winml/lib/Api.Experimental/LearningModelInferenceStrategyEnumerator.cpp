@@ -384,9 +384,9 @@ namespace WINML_EXPERIMENTALP
         return nullptr;
     }
 
-    static float MeasureBind(const winml::LearningModelBinding& binding, const winrt::hstring& name, wf::IInspectable value) {
+    static float MeasureBind(const winml::LearningModelBinding& binding, const winrt::hstring& name, wf::IInspectable value, wfc::PropertySet properties) {
       auto start = std::chrono::high_resolution_clock::now();
-      binding.Bind(name, value);
+      binding.Bind(name, value, properties);
       auto end = std::chrono::high_resolution_clock::now();
       std::chrono::duration<float, std::milli> duration_ms = end - start;
       return duration_ms.count();
@@ -446,7 +446,6 @@ namespace WINML_EXPERIMENTALP
         winml_experimental::LearningModelBindingStrategy input_strategy,
         winml_experimental::LearningModelBindingStrategy output_strategy,
         winml_experimental::LearningModelReadMode read_mode,
-        winml_experimental::LearningModelBindMode bind_mode,
         float* bind_inputs_metric,
         float* bind_outputs_metric,
         float* evaluate_metric,
@@ -476,10 +475,11 @@ namespace WINML_EXPERIMENTALP
                 return false;
             }
             *bind_inputs_metric += bind_metric;
-            *bind_inputs_metric += MeasureBind(binding, input.Name(), value);
+            auto properties = wfc::PropertySet();
+            *bind_inputs_metric += MeasureBind(binding, input.Name(), value, properties);
         }
 
-        if (bind_mode == winml_experimental::LearningModelBindMode::Bound) {
+        if (output_strategy != winml_experimental::LearningModelBindingStrategy::Unbound) {
             for (const auto& output : session.Model().OutputFeatures()) {
               float bind_metric;
               auto value = CreateFeatureValue(session, output, output_strategy, &bind_metric);
@@ -488,7 +488,12 @@ namespace WINML_EXPERIMENTALP
                 return false;
               }
               *bind_outputs_metric += bind_metric;
-              *bind_outputs_metric += MeasureBind(binding, output.Name(), value);
+
+              auto properties = wfc::PropertySet();
+              auto disable_tensor_cpu_sync = (read_mode == winml_experimental::LearningModelReadMode::GetAsD3D12Resource);
+              properties.Insert(L"DisableTensorCpuSync", wf::PropertyValue::CreateBoolean(disable_tensor_cpu_sync));
+
+              *bind_outputs_metric += MeasureBind(binding, output.Name(), value, properties);
             }
         }
 
@@ -573,13 +578,22 @@ namespace WINML_EXPERIMENTALP
           batch_size_filter = winrt::make<winml_experimentalp::LearningModelBatchingStrategyFilter>();
         }
 
+        // Sanitize input strategies...
+        winml_experimental::LearningModelBindingStrategyFilter input_strategy_filter = 
+            winrt::make<winml_experimentalp::LearningModelBindingStrategyFilter>();
+        for (const auto& strategy : options.InputStrategyFilter()) {
+            // All inputs need to be bound, so Unbound is an invlaid choice for inputs...
+            if (strategy != winml_experimental::LearningModelBindingStrategy::Unbound) {
+                input_strategy_filter.Include(strategy);
+            }
+        }
+
         // Calculate total number of strategies to evaluate
         auto total_devices = options.DeviceFilter().Size() *
                              batch_size_filter.Size() *
-                             options.InputStrategyFilter().Size() *
+                             input_strategy_filter.Size() *
                              options.OutputStrategyFilter().Size() *
-                             options.OutputReadModeFilter().Size() *
-                             options.BindModeFilter().Size();
+                             options.OutputReadModeFilter().Size();
 
         // If async, notify initial progress
         if (update_progress != nullptr) {
@@ -610,61 +624,57 @@ namespace WINML_EXPERIMENTALP
                     winml_experimental::LearningModelBindingStrategy::CreateFromShapeArrayAndDataArray,
                     winml_experimental::LearningModelBindingStrategy::CreateFromShapeArrayAndDataArray,
                     winml_experimental::LearningModelReadMode::GetAsVectorView,
-                    winml_experimental::LearningModelBindMode::Bound,
                     &bind_inputs_metric,
                     &bind_outputs_metric, 
                     &evaluate_metric, 
                     &fetch_results_metric);
 
-                for (const auto& input_strategy : options.InputStrategyFilter()) {
+                for (const auto& input_strategy : input_strategy_filter) {
                     for (const auto& output_strategy : options.OutputStrategyFilter()) {
                         for (const auto& output_read_mode : options.OutputReadModeFilter()) {
-                            for (const auto& bind_mode : options.BindModeFilter()) {
-                                // Measure evaluation
-                                auto succeeded = MeasureEvaluateOne(learning_model_session,
-                                                                    input_strategy,
-                                                                    output_strategy,
-                                                                    output_read_mode,
-                                                                    bind_mode,
-                                                                    &bind_inputs_metric,
-                                                                    &bind_outputs_metric,
-                                                                    &evaluate_metric,
-                                                                    &fetch_results_metric);
-                                if (succeeded) {
-                                    float total_metric = 0;
-                                    float batch_size_float = (batch_size == 0) ? 1.f : static_cast<float>(batch_size);
-                                    if (include_model_load) {
-                                      total_metric += model_load_metric;
-                                    }
-                                    if (include_evaluate) {
-                                      total_metric += (evaluate_metric / batch_size_float);
-                                    }
-                                    if (include_session_create) {
-                                      total_metric += session_create_metric;
-                                    }
-                                    if (include_bind_inputs) {
-                                      total_metric += (bind_inputs_metric / batch_size_float);
-                                    }
-                                    if (include_bind_outputs) {
-                                      total_metric += (bind_outputs_metric / batch_size_float);
-                                    }
-                                    if (include_fetch_results) {
-                                      total_metric += (fetch_results_metric / batch_size_float);
-                                    }
-
-                                    auto strategy = winrt::make<winml_experimentalp::LearningModelInferenceStrategy>(
-                                        device, input_strategy, output_strategy, output_read_mode, bind_mode, batch_size, total_metric);
-                                    strategies.push_back(std::move(strategy));
+                            // Measure evaluation
+                            auto succeeded = MeasureEvaluateOne(learning_model_session,
+                                                                input_strategy,
+                                                                output_strategy,
+                                                                output_read_mode,
+                                                                &bind_inputs_metric,
+                                                                &bind_outputs_metric,
+                                                                &evaluate_metric,
+                                                                &fetch_results_metric);
+                            if (succeeded) {
+                                float total_metric = 0;
+                                float batch_size_float = (batch_size == 0) ? 1.f : static_cast<float>(batch_size);
+                                if (include_model_load) {
+                                  total_metric += model_load_metric;
                                 }
-                                ++strategies_progress.StrategiesEvaluated;
-                                if (update_progress != nullptr) {
-                                    update_progress(strategies_progress);
+                                if (include_evaluate) {
+                                  total_metric += (evaluate_metric / batch_size_float);
+                                }
+                                if (include_session_create) {
+                                  total_metric += session_create_metric;
+                                }
+                                if (include_bind_inputs) {
+                                  total_metric += (bind_inputs_metric / batch_size_float);
+                                }
+                                if (include_bind_outputs) {
+                                  total_metric += (bind_outputs_metric / batch_size_float);
+                                }
+                                if (include_fetch_results) {
+                                  total_metric += (fetch_results_metric / batch_size_float);
                                 }
 
-                                if (is_cancelled && is_cancelled()) {
-                                  // return an empty array if cancelled
-                                  return winrt::single_threaded_vector<winml_experimental::LearningModelInferenceStrategy>().GetView();
-                                }
+                                auto strategy = winrt::make<winml_experimentalp::LearningModelInferenceStrategy>(
+                                    device, input_strategy, output_strategy, output_read_mode, batch_size, total_metric);
+                                strategies.push_back(std::move(strategy));
+                            }
+                            ++strategies_progress.StrategiesEvaluated;
+                            if (update_progress != nullptr) {
+                                update_progress(strategies_progress);
+                            }
+
+                            if (is_cancelled && is_cancelled()) {
+                              // return an empty array if cancelled
+                              return winrt::single_threaded_vector<winml_experimental::LearningModelInferenceStrategy>().GetView();
                             }
                         }
                     }

@@ -117,7 +117,8 @@ namespace ROOT_NS.AI.MachineLearning.Experimental {
     CreateFromShapeIterableAndDataIterableRawView,
     CreateFromShapeArrayAndDataArray,
     CreateFromShapeArrayAndDataBuffer,
-    CreateFromD3D12Resource
+    CreateFromD3D12Resource,
+    Unbound
   };
 
   enum LearningModelReadMode {
@@ -134,11 +135,6 @@ namespace ROOT_NS.AI.MachineLearning.Experimental {
     BindOutputs,
     Evaluate,
     FetchResults
-  };
-
-  enum LearningModelBindMode {
-    Bound = 0,
-    Unbound
   };
 
   //! \class LearningModelBindingStrategyFilter
@@ -159,16 +155,6 @@ namespace ROOT_NS.AI.MachineLearning.Experimental {
     LearningModelReadModeFilter IncludeAll();
     LearningModelReadModeFilter Include(LearningModelReadMode mode);
     LearningModelReadModeFilter Clear();
-  }
-
-  //! \class LearningModelBindingStrategyFilter
-  //! \brief 
-  [marshaling_behavior(agile)]
-  [dualapipartition(1)]
-  runtimeclass LearningModelBindModeFilter : Windows.Foundation.Collections.IVectorView<LearningModelBindMode> {
-    LearningModelBindModeFilter IncludeAll();
-    LearningModelBindModeFilter Include(LearningModelBindMode mode);
-    LearningModelBindModeFilter Clear();
   }
 
   //! \class LearningModelBatchingStrategyFilter
@@ -220,7 +206,6 @@ namespace ROOT_NS.AI.MachineLearning.Experimental {
     LearningModelBindingStrategyFilter InputStrategyFilter { get; };
     LearningModelBindingStrategyFilter OutputStrategyFilter { get; };
     LearningModelReadModeFilter OutputReadModeFilter { get; };
-    LearningModelBindModeFilter BindModeFilter { get; };
     LearningModelBatchingStrategyFilter BatchingStrategyFilter { get; };
     LearningModelDeviceFilter DeviceFilter { get; };
   }
@@ -235,7 +220,6 @@ namespace ROOT_NS.AI.MachineLearning.Experimental {
     LearningModelBindingStrategy InputStrategy { get; };
     LearningModelBindingStrategy OutputStrategy { get; };
     LearningModelReadMode OutputReadMode { get; };
-    LearningModelBindMode OutputBindMode { get; };
     UInt32 BatchSize { get; };
     Single Metric { get; };
   }

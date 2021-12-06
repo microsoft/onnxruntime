@@ -555,8 +555,6 @@ endif(onnxruntime_USE_DML)
 onnxruntime_add_static_library(winml_lib_api_experimental
   ${winml_lib_api_experimental_dir}/LearningModelBatchingStrategyFilter.cpp
   ${winml_lib_api_experimental_dir}/LearningModelBatchingStrategyFilter.h
-  ${winml_lib_api_experimental_dir}/LearningModelBindModeFilter.cpp
-  ${winml_lib_api_experimental_dir}/LearningModelBindModeFilter.h
   ${winml_lib_api_experimental_dir}/LearningModelBindingStrategyFilter.cpp
   ${winml_lib_api_experimental_dir}/LearningModelBindingStrategyFilter.h
   ${winml_lib_api_experimental_dir}/LearningModelBuilder.cpp

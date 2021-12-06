@@ -13,7 +13,6 @@ namespace WINML_EXPERIMENTALP
         winml_experimental::LearningModelBindingStrategyFilter InputStrategyFilter();
         winml_experimental::LearningModelBindingStrategyFilter OutputStrategyFilter();
         winml_experimental::LearningModelReadModeFilter OutputReadModeFilter();
-        winml_experimental::LearningModelBindModeFilter BindModeFilter();
         winml_experimental::LearningModelBatchingStrategyFilter BatchingStrategyFilter();
         winml_experimental::LearningModelPhaseFilter PhaseFilter();
         winml_experimental::LearningModelDeviceFilter DeviceFilter();
@@ -24,7 +23,6 @@ namespace WINML_EXPERIMENTALP
         winml_experimental::LearningModelBindingStrategyFilter input_strategy_filter_ = nullptr;
         winml_experimental::LearningModelBindingStrategyFilter output_strategy_filter_ = nullptr;
         winml_experimental::LearningModelReadModeFilter output_read_mode_filter_ = nullptr;
-        winml_experimental::LearningModelBindModeFilter bind_mode_filter_ = nullptr;
         winml_experimental::LearningModelBatchingStrategyFilter batching_strategy_filter_ = nullptr;
         winml_experimental::LearningModelPhaseFilter phase_filter_ = nullptr;
         winml_experimental::LearningModelDeviceFilter device_filter_ = nullptr;

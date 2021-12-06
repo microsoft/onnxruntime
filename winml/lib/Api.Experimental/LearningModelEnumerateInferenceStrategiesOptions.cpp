@@ -2,7 +2,6 @@
 #include "LearningModelEnumerateInferenceStrategiesOptions.h"
 #include "LearningModelBindingStrategyFilter.h"
 #include "LearningModelReadModeFilter.h"
-#include "LearningModelBindModeFilter.h"
 #include "LearningModelBatchingStrategyFilter.h"
 #include "LearningModelPhaseFilter.h"
 #include "LearningModelDeviceFilter.h"
@@ -15,7 +14,6 @@ namespace WINML_EXPERIMENTALP
         input_strategy_filter_ = winrt::make<winml_experimentalp::LearningModelBindingStrategyFilter>();
         output_strategy_filter_ = winrt::make<winml_experimentalp::LearningModelBindingStrategyFilter>();
         output_read_mode_filter_ = winrt::make<winml_experimentalp::LearningModelReadModeFilter>();
-        bind_mode_filter_ = winrt::make<winml_experimentalp::LearningModelBindModeFilter>();
         batching_strategy_filter_ = winrt::make<winml_experimentalp::LearningModelBatchingStrategyFilter>();
         phase_filter_ = winrt::make<winml_experimentalp::LearningModelPhaseFilter>();
         device_filter_ = winrt::make<winml_experimentalp::LearningModelDeviceFilter>();
@@ -42,10 +40,6 @@ namespace WINML_EXPERIMENTALP
 
     winml_experimental::LearningModelReadModeFilter LearningModelEnumerateInferenceStrategiesOptions::OutputReadModeFilter() {
       return output_read_mode_filter_;
-    }
-
-    winml_experimental::LearningModelBindModeFilter LearningModelEnumerateInferenceStrategiesOptions::BindModeFilter() {
-      return bind_mode_filter_;
     }
 
     winml_experimental::LearningModelBatchingStrategyFilter LearningModelEnumerateInferenceStrategiesOptions::BatchingStrategyFilter() {

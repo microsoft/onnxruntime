@@ -329,21 +329,17 @@ static void EnumerateStrategies() {
 
   auto options = winml_experimental::LearningModelEnumerateInferenceStrategiesOptions();
   wfc::IVectorView<winml_experimental::LearningModelInferenceStrategy> strategies = nullptr;
-  //WINML_EXPECT_NO_THROW(
-  //    strategies = winml_experimental::LearningModelInferenceStrategyEnumerator::EnumerateInferenceStrategies(
-  //                      fullPath.c_str(),
-  //                      options));
-  options.DeviceFilter().Clear()
-      .Include(winml::LearningModelDeviceKind::Cpu)
-      .Include(winml::LearningModelDeviceKind::DirectXHighPerformance)
-      .Include(winml::LearningModelDeviceKind::DirectXMinPower);
+  WINML_EXPECT_NO_THROW(
+      strategies = winml_experimental::LearningModelInferenceStrategyEnumerator::EnumerateInferenceStrategies(
+                        fullPath.c_str(),
+                        options));
+  options.DeviceFilter().Clear().Include(winml::LearningModelDeviceKind::DirectX);
   //options.InputStrategyFilter().IncludeAll();
   //options.OutputStrategyFilter().IncludeAll();
-  //options.BindModeFilter().IncludeAll();
   //options.OutputReadModeFilter().IncludeAll();
   options.BatchingStrategyFilter().BatchSizeStart(1);
-  options.BatchingStrategyFilter().BatchSizeStride(30);
-  options.BatchingStrategyFilter().BatchSizeTotal(5);
+  options.BatchingStrategyFilter().BatchSizeStride(50);
+  options.BatchingStrategyFilter().BatchSizeTotal(10);
   
   fullPath = FileHelpers::GetModulePath() + L"batched_model.onnx";
   auto async_strats =
@@ -353,9 +349,11 @@ static void EnumerateStrategies() {
 
   printf("\n");
   async_strats.Progress([](auto /*info*/, const winml_experimental::EnumerateInferenceStrategiesProgress& progress) {
-    printf("%c[0F", 27);
-    printf("%" PRId64 "/ %" PRId64 "\n", progress.StrategiesEvaluated, progress.TotalNumberOfStrategies);
+    printf("\r");
+    printf("%" PRId64 "/ %" PRId64, progress.StrategiesEvaluated, progress.TotalNumberOfStrategies);
   });
+  printf("\n");
+  printf("\n");
 
   strategies = async_strats.get();
   async_strats.Cancel();
@@ -386,27 +384,21 @@ static void EnumerateStrategies() {
     "GetFromMemoryBufferReferenceAccess",
     "GetAsD3D12Resource"
   };
-  
-  const char * bind_mode[] = {
-    "Bound",
-    "Unbound"
-  };
 
-  int count = 20;
+  int count = 3000;
   for (auto strategy : strategies) {
-    //printf("(Device=[%s], InputStrategy=[%s], OutputStrategy=[%s], ReadMode=[%s], BindMode=[%s], BatchSize=[%d]) : %f\n",
-    //       device[static_cast<int>(strategy.DeviceKind())],
-    //       bind_strategy[static_cast<int>(strategy.InputStrategy())],
-    //       bind_strategy[static_cast<int>(strategy.OutputStrategy())],
-    //       read_mode[static_cast<int>(strategy.OutputReadMode())],
-    //       bind_mode[static_cast<int>(strategy.OutputBindMode())],
-    //       strategy.BatchSize(),
-    //       strategy.Metric());
+    printf("(Device=[%s], InputStrategy=[%s], OutputStrategy=[%s], ReadMode=[%s], BatchSize=[%d]) : %f\n",
+           device[static_cast<int>(strategy.DeviceKind())],
+           bind_strategy[static_cast<int>(strategy.InputStrategy())],
+           bind_strategy[static_cast<int>(strategy.OutputStrategy())],
+           read_mode[static_cast<int>(strategy.OutputReadMode())],
+           strategy.BatchSize(),
+           strategy.Metric());
 
-    printf("(Device=[%s], BatchSize=[%d]) : %f\n",
-        device[static_cast<int>(strategy.DeviceKind())],
-        strategy.BatchSize(),
-        strategy.Metric());
+    //printf("(Device=[%s], BatchSize=[%d]) : %f\n",
+    //    device[static_cast<int>(strategy.DeviceKind())],
+    //    strategy.BatchSize(),
+    //    strategy.Metric());
 
     if (count-- == 0) {
       break;
