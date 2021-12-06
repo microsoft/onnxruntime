@@ -6,7 +6,7 @@ Licensed under the MIT License.
 
 Module Name:
 
-    QgemmU8X8KernelUdot.asm
+    QgemmS8S8KernelSdot.S
 
 Abstract:
 
@@ -17,22 +17,22 @@ Abstract:
 
 --*/
 
-#include "kxarm64.h"
+#include "asmmacro.h"
 #include "AssembleDotProduct.h"
 
 //
-// Stack frame layout for the U8X8 kernel.
+// Stack frame layout for the S8S8 kernel.
 // Defining spaces for saving 2 vector registers, and pointers to parameters
 // on the stack
 //
 
-#define GemmU8X8KernelFrame_SavedNeonRegisters       (2 * 8)
-#define GemmU8X8KernelFrame_SavedRegisters           GemmU8X8KernelFrame_SavedNeonRegisters
-#define GemmU8X8KernelFrame_ColumnSumBuffer          (0 + GemmU8X8KernelFrame_SavedRegisters)
-#define GemmU8X8KernelFrame_ZeroPointB               (8 + GemmU8X8KernelFrame_SavedRegisters)
-#define GemmU8X8KernelFrame_ZeroMode                 (16 + GemmU8X8KernelFrame_SavedRegisters)
+        .equ    .LGemmS8S8KernelFrame_SavedNeonRegisters, (2 * 8)
+        .equ    .LGemmS8S8KernelFrame_SavedRegisters, .LGemmS8S8KernelFrame_SavedNeonRegisters
+        .equ    .LGemmS8S8KernelFrame_ColumnSumBuffer, 0 + .LGemmS8S8KernelFrame_SavedRegisters
+        .equ    .LGemmS8S8KernelFrame_ZeroPointB, 8 + .LGemmS8S8KernelFrame_SavedRegisters
+        .equ    .LGemmS8S8KernelFrame_ZeroMode, 16 + .LGemmS8S8KernelFrame_SavedRegisters
 
-        TEXTAREA
+        .text
 
 /*++
 
@@ -44,10 +44,10 @@ Routine Description:
 Arguments:
 
     A (x0) - Supplies the address of matrix A. The matrix data has been packed
-        using MlasGemmQuantCopyPackA<MLAS_GEMM_U8X8_KERNEL_UDOT>.
+        using MlasGemmQuantCopyPackA<MLAS_GEMM_S8S8_KERNEL_SDOT>.
 
     B (x1) - Supplies the address of matrix B. The matrix data has been packed
-        using MlasGemmQuantCopyPackB<MLAS_GEMM_U8X8_KERNEL_UDOT>.
+        using MlasGemmQuantCopyPackB<MLAS_GEMM_S8S8_KERNEL_SDOT>.
 
     C (x2) - Supplies the address of matrix C.
 
@@ -85,34 +85,34 @@ Return Value:
 
 --*/
 
-        NESTED_ENTRY MlasGemmU8X8KernelUdot
+        FUNCTION_ENTRY MlasGemmS8S8KernelSDot
 
-        PROLOG_SAVE_REG_PAIR d8,d9,#-16!
-        ldr     x8,[sp,#GemmU8X8KernelFrame_ColumnSumBuffer]
-        ldr     x9,[sp,#GemmU8X8KernelFrame_ZeroPointB]
-        ldrb    w13,[sp,#GemmU8X8KernelFrame_ZeroMode]
+        stp     d8,d9,[sp,#-16]!
+        ldr     x8,[sp,#.LGemmS8S8KernelFrame_ColumnSumBuffer]
+        ldr     x9,[sp,#.LGemmS8S8KernelFrame_ZeroPointB]
+        ldrb    w13,[sp,#.LGemmS8S8KernelFrame_ZeroMode]
         mov     x14,x0
-        ld1     {v8.4s},[x7],#16            // load row sum 0 ~ 4
+        ld1     {v8.4s},[x7],#16            // load row sum 1 ~ 4
         mov     x15,x3
         cmp     x4,#1                       // CountM == 1?
-        beq     ProcessLoopM1
+        beq     .LGemmS8S8.M1.ProcessLoop
         cmp     x4,#4                       // CountM < 4?
-        blo     ProcessLoopM2
+        blo     .LGemmS8S8.M2.ProcessLoop
         cmp     x4,#8                       // CountM < 8?
-        blo     ProcessNextColumnLoopM4
+        blo     .LGemmS8S8.M4.ProcessNextColumnLoop
         ld1     {v9.4s},[x7]                // load row sum 5 ~ 8
 
 //
 // Process 8 rows of the matrices.
-// Row Sums: v8 ~ v9  
-//                                      A  4x8 block
-//                           /-----------------------------------------|
+// Row Sums: v8 ~ v9 
+//                                          B 4x8 block
+//                            -----------------------------------------
 //                           |v0.b[0] ... v0.b[12] v1.b[0] ... v1.b[12]|
 //                           |  ...                              ...   |
 //                           |v0.b[3] ... v0.b[15] v1.b[3] ... v1.b[15]|
-//                           \-----------------------------------------/
-//    B 8x4 block
-//  /---------------------\  /-----------------------------------------|
+//                            -----------------------------------------
+//       A 8x4 block
+//   ---------------------    -----------------------------------------
 //  |v4.b[0]  ... v4.b[3] |  |v16.s[0] .. v16.s[3] v17.s[0] .. v17.s[3]|
 //  |v4.b[4]  ... v4.b[7] |  |v18.s[0] .. v18.s[3] v19.s[0] .. v19.s[3]|
 //  |v4.b[8]  ... v4.b[11]|  |v20.s[0] .. v20.s[3] v21.s[0] .. v21.s[3]|
@@ -121,15 +121,15 @@ Return Value:
 //  |v5.b[4]  ... v5.b[7] |  |v26.s[0] .. v26.s[3] v27.s[0] .. v27.s[3]|
 //  |v5.b[8]  ... v5.b[11]|  |v28.s[0] .. v28.s[3] v29.s[0] .. v29.s[3]|
 //  |v5.b[12] ... v5.b[15]|  |v30.s[0] .. v30.s[3] v31.s[0] .. v31.s[3]|
-//  \---------------------/  \-----------------------------------------/
+//   ---------------------    -----------------------------------------
 //
 //  unroll for the next 4 in k dimension
-//                           /-----------------------------------------|
+//                            -----------------------------------------
 //                           |v2.b[0] ... v2.b[12] v3.b[0] ... v3.b[12]|
 //                           |  ...                              ...   |
 //                           |v2.b[3] ... v2.b[15] v3.b[3] ... v3.b[15]|
-//                           \-----------------------------------------/
-//  /---------------------\  /-----------------------------------------\
+//                            -----------------------------------------
+//   ---------------------    -----------------------------------------
 //  |v6.b[0]  ... v6.b[3] |  |v16.s[0] .. v16.s[3] v17.s[0] .. v17.s[3]|
 //  |v6.b[4]  ... v6.b[7] |  |v18.s[0] .. v18.s[3] v19.s[0] .. v19.s[3]|
 //  |v6.b[8]  ... v6.b[11]|  |v20.s[0] .. v20.s[3] v21.s[0] .. v21.s[3]|
@@ -138,7 +138,7 @@ Return Value:
 //  |v7.b[4]  ... v7.b[7] |  |v26.s[0] .. v26.s[3] v27.s[0] .. v27.s[3]|
 //  |v7.b[8]  ... v7.b[11]|  |v28.s[0] .. v28.s[3] v29.s[0] .. v29.s[3]|
 //  |v7.b[12] ... v7.b[15]|  |v30.s[0] .. v30.s[3] v31.s[0] .. v31.s[3]|
-//  \---------------------/  \-----------------------------------------/
+//   ---------------------    -----------------------------------------
 
 // Starting the loop: initialize accumulators with scaled combination
 //                    of row and column sums
@@ -151,12 +151,12 @@ Return Value:
         dup     v29.4s,v9.s[2]
         dup     v31.4s,v9.s[3]
 
-ProcessNextColumnLoopM8
+.LGemmS8S8.M8.ProcessNextColumnLoop:
         mov     x0,x14                      // reload matrix A
         ld1     {v3.4s},[x8],#16            // load ColumnSumBuffer[0]
         mov     x3,x15                      // reload PackedCountK
         ld1     {v7.4s},[x8],#16            // load ColumnSumBuffer[4]
-        cbz     x9,SkipScaleByZeroPointBM8
+        cbz     x9,.LGemmS8S8.M8.SkipScaleByZeroPointB
 
         // accumulator = zero point B * row sum A + column sum B 
         ld1     {v0.4s},[x9],#16           // load ZeroPointB[0]
@@ -201,9 +201,9 @@ ProcessNextColumnLoopM8
         add     v27.4s,v7.4s,v27.4s
         add     v29.4s,v7.4s,v29.4s
         add     v31.4s,v7.4s,v31.4s
-        b       ComputeBlockLoopM8
+        b       .LGemmS8S8.M8.ComputeBlockLoop
 
-SkipScaleByZeroPointBM8
+.LGemmS8S8.M8.SkipScaleByZeroPointB:
         // accumulator = row sum A + column sum B 
         ld1     {v0.16b},[x1],#16           // load packed B0
         add     v16.4s,v3.4s,v17.4s
@@ -228,53 +228,53 @@ SkipScaleByZeroPointBM8
         add     v29.4s,v7.4s,v29.4s
         add     v31.4s,v7.4s,v31.4s
 
-ComputeBlockLoopM8
+.LGemmS8S8.M8.ComputeBlockLoop:
         sub     x3,x3,#1
         ld1     {v3.16b},[x1],#16           // load packed B1_next4k
-        UdotByElement 16, 0, 4, 0
-        UdotByElement 18, 0, 4, 1
+        SdotByElement 16, 0, 4, 0
+        SdotByElement 18, 0, 4, 1
         ldr     q7,[x0],#16                 // load packed A3
-        UdotByElement 20, 0, 4, 2
-        UdotByElement 22, 0, 4, 3
-        cbz     x3,ComputeBlockLoopFinishM8
-        UdotByElement 17, 1, 4, 0
-        UdotByElement 19, 1, 4, 1
-        UdotByElement 21, 1, 4, 2
-        UdotByElement 23, 1, 4, 3
+        SdotByElement 20, 0, 4, 2
+        SdotByElement 22, 0, 4, 3
+        cbz     x3,.LGemmS8S8.M8.ComputeBlockLoopFinish
+        SdotByElement 17, 1, 4, 0
+        SdotByElement 19, 1, 4, 1
+        SdotByElement 21, 1, 4, 2
+        SdotByElement 23, 1, 4, 3
         ldr     q4,[x0],#16                 // load packed A0 for next iteration
-        UdotByElement 24, 0, 5, 0
-        UdotByElement 26, 0, 5, 1
-        UdotByElement 28, 0, 5, 2
-        UdotByElement 30, 0, 5, 3
+        SdotByElement 24, 0, 5, 0
+        SdotByElement 26, 0, 5, 1
+        SdotByElement 28, 0, 5, 2
+        SdotByElement 30, 0, 5, 3
         ld1     {v0.16b},[x1],#16           // load packed B0 for next iteration
-        UdotByElement 25, 1, 5, 0
-        UdotByElement 27, 1, 5, 1
-        UdotByElement 29, 1, 5, 2
-        UdotByElement 31, 1, 5, 3
+        SdotByElement 25, 1, 5, 0
+        SdotByElement 27, 1, 5, 1
+        SdotByElement 29, 1, 5, 2
+        SdotByElement 31, 1, 5, 3
         ld1     {v1.16b},[x1],#16           // load packed B1 for next iteration
 
-        UdotByElement 16, 2, 6, 0
-        UdotByElement 18, 2, 6, 1
+        SdotByElement 16, 2, 6, 0
+        SdotByElement 18, 2, 6, 1
         ldr     q5,[x0],#16                 // load packed A1 for next iteration
-        UdotByElement 20, 2, 6, 2
-        UdotByElement 22, 2, 6, 3
-        UdotByElement 17, 3, 6, 0
-        UdotByElement 19, 3, 6, 1
-        UdotByElement 21, 3, 6, 2
-        UdotByElement 23, 3, 6, 3
+        SdotByElement 20, 2, 6, 2
+        SdotByElement 22, 2, 6, 3
+        SdotByElement 17, 3, 6, 0
+        SdotByElement 19, 3, 6, 1
+        SdotByElement 21, 3, 6, 2
+        SdotByElement 23, 3, 6, 3
         ldr     q6,[x0],#16                 // load packed A2 for next iteration
-        UdotByElement 24, 2, 7, 0
-        UdotByElement 26, 2, 7, 1
-        UdotByElement 28, 2, 7, 2
-        UdotByElement 30, 2, 7, 3
+        SdotByElement 24, 2, 7, 0
+        SdotByElement 26, 2, 7, 1
+        SdotByElement 28, 2, 7, 2
+        SdotByElement 30, 2, 7, 3
         ld1     {v2.16b},[x1],#16           // load packed B0_next4k for next iteration
-        UdotByElement 25, 3, 7, 0
-        UdotByElement 27, 3, 7, 1
-        UdotByElement 29, 3, 7, 2
-        UdotByElement 31, 3, 7, 3
-        b       ComputeBlockLoopM8
+        SdotByElement 25, 3, 7, 0
+        SdotByElement 27, 3, 7, 1
+        SdotByElement 29, 3, 7, 2
+        SdotByElement 31, 3, 7, 3
+        b       .LGemmS8S8.M8.ComputeBlockLoop
 
-ComputeBlockLoopFinishM8
+.LGemmS8S8.M8.ComputeBlockLoopFinish:
         // postfix, compute tail values and prepare to write results
         // We are either about to go to ProcessNextColumnLoopM8
         // where x0 and x3 are about to be restored, or exit
@@ -282,44 +282,45 @@ ComputeBlockLoopFinishM8
         // x4 x7 has finished their task
         // so we can use x0 x3 x4 x7 as output row pointers
 
-        UdotByElement 17, 1, 4, 0
-        UdotByElement 19, 1, 4, 1
+        SdotByElement 17, 1, 4, 0
+        SdotByElement 19, 1, 4, 1
         add     x10,x2,x6,lsl #2            // compute output row 2
         add     x11,x10,x6,lsl #2           // compute output row 3
-        UdotByElement 21, 1, 4, 2
-        UdotByElement 23, 1, 4, 3
+        SdotByElement 21, 1, 4, 2
+        SdotByElement 23, 1, 4, 3
         add     x12,x11,x6,lsl #2           // compute output row 4
         add     x0,x12,x6,lsl #2            // compute output row 5
-        UdotByElement 24, 0, 5, 0
-        UdotByElement 26, 0, 5, 1
+        SdotByElement 24, 0, 5, 0
+        SdotByElement 26, 0, 5, 1
         add     x3,x0,x6,lsl #2             // compute output row 6
         add     x4,x3,x6,lsl #2             // compute output row 7
-        UdotByElement 28, 0, 5, 2
-        UdotByElement 30, 0, 5, 3
+        SdotByElement 28, 0, 5, 2
+        SdotByElement 30, 0, 5, 3
         add     x7,x4,x6,lsl #2             // compute output row 8
         subs    x5,x5,#8                    // adjust CountN remaining
-        UdotByElement 25, 1, 5, 0
-        UdotByElement 27, 1, 5, 1
-        UdotByElement 29, 1, 5, 2
-        UdotByElement 31, 1, 5, 3
-        UdotByElement 16, 2, 6, 0
-        UdotByElement 18, 2, 6, 1
-        UdotByElement 20, 2, 6, 2
-        UdotByElement 22, 2, 6, 3
-        UdotByElement 17, 3, 6, 0
-        UdotByElement 19, 3, 6, 1
-        UdotByElement 21, 3, 6, 2
-        UdotByElement 23, 3, 6, 3
-        UdotByElement 24, 2, 7, 0
-        UdotByElement 26, 2, 7, 1
-        UdotByElement 28, 2, 7, 2
-        UdotByElement 30, 2, 7, 3
-        UdotByElement 25, 3, 7, 0
-        UdotByElement 27, 3, 7, 1
-        UdotByElement 29, 3, 7, 2
-        UdotByElement 31, 3, 7, 3
-        blo     StoreOutputPartialM8
-        cbnz    x13,SkipAccumulateOutputM8
+        SdotByElement 25, 1, 5, 0
+        SdotByElement 27, 1, 5, 1
+        SdotByElement 29, 1, 5, 2
+        SdotByElement 31, 1, 5, 3
+
+        SdotByElement 16, 2, 6, 0
+        SdotByElement 18, 2, 6, 1
+        SdotByElement 20, 2, 6, 2
+        SdotByElement 22, 2, 6, 3
+        SdotByElement 17, 3, 6, 0
+        SdotByElement 19, 3, 6, 1
+        SdotByElement 21, 3, 6, 2
+        SdotByElement 23, 3, 6, 3
+        SdotByElement 24, 2, 7, 0
+        SdotByElement 26, 2, 7, 1
+        SdotByElement 28, 2, 7, 2
+        SdotByElement 30, 2, 7, 3
+        SdotByElement 25, 3, 7, 0
+        SdotByElement 27, 3, 7, 1
+        SdotByElement 29, 3, 7, 2
+        SdotByElement 31, 3, 7, 3
+        blo     .LGemmS8S8.M8.StoreOutputPartial
+        cbnz    x13,.LGemmS8S8.M8.SkipAccumulateOutput
         ldp     q0,q1,[x2]
         ldp     q2,q3,[x10]
         add     v16.4s,v16.4s,v0.4s
@@ -345,7 +346,7 @@ ComputeBlockLoopFinishM8
         add     v30.4s,v30.4s,v6.4s
         add     v31.4s,v31.4s,v7.4s
 
-SkipAccumulateOutputM8
+.LGemmS8S8.M8.SkipAccumulateOutput:
         stp     q16,q17,[x2],#32
         dup     v17.4s,v8.s[0]              // broadcast row sums
         stp     q18,q19,[x10]
@@ -362,23 +363,24 @@ SkipAccumulateOutputM8
         dup     v29.4s,v9.s[2]
         stp     q30,q31,[x7]
         dup     v31.4s,v9.s[3]
-        cbnz    x5,ProcessNextColumnLoopM8
 
-ExitKernelM8
+        cbnz    x5,.LGemmS8S8.M8.ProcessNextColumnLoop
+
+.LGemmS8S8.M8.ExitKernel:
         mov     x0,#8                       // return number of rows handled
-        EPILOG_RESTORE_REG_PAIR d8,d9,#16!
-        EPILOG_RETURN
+        ldp     d8,d9,[sp],#16
+        ret
 
 //
 // Store the partial 1 to 7 columns either overwriting the output matrix or
 // accumulating into the existing contents of the output matrix.
 //
 
-StoreOutputPartialM8
-        cbz     x13,StoreOutputPartialAddModeM8
+.LGemmS8S8.M8.StoreOutputPartial:
+        cbz     x13,.LGemmS8S8.M8.StoreOutputPartialAddMode
 
-StoreOutputPartialZeroModeM8
-        tbz     x5,#2,StoreOutputPartial2ZeroModeM8
+.LGemmS8S8.M8.StoreOutputPartialZeroMode:
+        tbz     x5,#2,.LGemmS8S8.M8.StoreOutputPartial2ZeroMode
         st1     {v16.4s},[x2],#16
         mov     v16.16b,v17.16b             // shift remaining elements down
         st1     {v18.4s},[x10],#16
@@ -396,8 +398,8 @@ StoreOutputPartialZeroModeM8
         st1     {v30.4s},[x7],#16
         mov     v30.16b,v31.16b
 
-StoreOutputPartial2ZeroModeM8
-        tbz     x5,#1,StoreOutputPartial1ZeroModeM8
+.LGemmS8S8.M8.StoreOutputPartial2ZeroMode:
+        tbz     x5,#1,.LGemmS8S8.M8.StoreOutputPartial1ZeroMode
         st1     {v16.2s},[x2],#8
         dup     v16.4s,v16.s[2]             // shift remaining elements down
         st1     {v18.2s},[x10],#8
@@ -415,8 +417,8 @@ StoreOutputPartial2ZeroModeM8
         st1     {v30.2s},[x7],#8
         dup     v30.4s,v30.s[2]
 
-StoreOutputPartial1ZeroModeM8
-        tbz     x5,#0,ExitKernelM8
+.LGemmS8S8.M8.StoreOutputPartial1ZeroMode:
+        tbz     x5,#0,.LGemmS8S8.M8.ExitKernel
         st1     {v16.s}[0],[x2]
         st1     {v18.s}[0],[x10]
         st1     {v20.s}[0],[x11]
@@ -425,10 +427,10 @@ StoreOutputPartial1ZeroModeM8
         st1     {v26.s}[0],[x3]
         st1     {v28.s}[0],[x4]
         st1     {v30.s}[0],[x7]
-        b       ExitKernelM8
+        b       .LGemmS8S8.M8.ExitKernel
 
-StoreOutputPartialAddModeM8
-        tbz     x5,#2,StoreOutputPartial2AddModeM8
+.LGemmS8S8.M8.StoreOutputPartialAddMode:
+        tbz     x5,#2,.LGemmS8S8.M8.StoreOutputPartial2AddMode
         ld1     {v0.4s},[x2]
         ld1     {v1.4s},[x10]
         ld1     {v2.4s},[x11]
@@ -462,8 +464,8 @@ StoreOutputPartialAddModeM8
         st1     {v30.4s},[x7],#16
         mov     v30.16b,v31.16b
 
-StoreOutputPartial2AddModeM8
-        tbz     x5,#1,StoreOutputPartial1AddModeM8
+.LGemmS8S8.M8.StoreOutputPartial2AddMode:
+        tbz     x5,#1,.LGemmS8S8.M8.StoreOutputPartial1AddMode
         ld1     {v0.2s},[x2]
         ld1     {v1.2s},[x10]
         ld1     {v2.2s},[x11]
@@ -497,8 +499,8 @@ StoreOutputPartial2AddModeM8
         st1     {v30.2s},[x7],#8
         dup     v30.4s,v30.s[2]
 
-StoreOutputPartial1AddModeM8
-        tbz     x5,#0,ExitKernelM8
+.LGemmS8S8.M8.StoreOutputPartial1AddMode:
+        tbz     x5,#0,.LGemmS8S8.M8.ExitKernel
         ld1     {v0.s}[0],[x2]
         ld1     {v1.s}[0],[x10]
         add     v16.4s,v16.4s,v0.4s
@@ -523,7 +525,7 @@ StoreOutputPartial1AddModeM8
         st1     {v28.s}[0],[x4]
         add     v30.4s,v30.4s,v7.4s
         st1     {v30.s}[0],[x7]
-        b       ExitKernelM8
+        b       .LGemmS8S8.M8.ExitKernel
 
 
 //
@@ -544,35 +546,36 @@ StoreOutputPartial1AddModeM8
 //
 // A55-based cores are optimized for 64-bit loads, so use 64-bit loads for
 // packed matrix A. At the time of this implementation, using a wider 128-bit
-// load didn't affect performance for higher end cores.
+// load did not affect performance for higher end cores.
 //
 //                                      B 4x8 block
-//                           /-----------------------------------------|
+//                            -----------------------------------------
 //                           |v0.b[0] ... v0.b[12] v1.b[0] ... v1.b[12]|
 //                           |  ...                              ...   |
 //                           |v0.b[3] ... v0.b[15] v1.b[3] ... v1.b[15]|
-//                           \-----------------------------------------/
-//    A 4x4 block
-//  /---------------------\  /-----------------------------------------|
+//                            -----------------------------------------
+//       A 4x4 block
+//   ---------------------    -----------------------------------------
 //  |d4.b[0]  ... d4.b[3] |  |v16.s[0] .. v16.s[3] v17.s[0] .. v17.s[3]|
 //  |d4.b[4]  ... d4.b[7] |  |v18.s[0] .. v18.s[3] v19.s[0] .. v19.s[3]|
 //  |d5.b[0]  ... d5.b[3] |  |v20.s[0] .. v20.s[3] v21.s[0] .. v21.s[3]|
 //  |d5.b[4]  ... d5.b[7] |  |v22.s[0] .. v22.s[3] v23.s[0] .. v23.s[3]|
-//  \---------------------/  \-----------------------------------------/
+//   ---------------------    -----------------------------------------
+//
 //  unroll for the next 4 in k dimension
-//                           /-----------------------------------------|
+//                            -----------------------------------------
 //                           |v0.b[0] ... v0.b[12] v1.b[0] ... v1.b[12]|
 //                           |  ...                              ...   |
 //                           |v0.b[3] ... v0.b[15] v1.b[3] ... v1.b[15]|
-//                           \-----------------------------------------/
-//  /---------------------\  /-----------------------------------------\
+//                            -----------------------------------------
+//   ---------------------    -----------------------------------------
 //  |d6.b[0]  ... d6.b[3] |  |v24.s[0] .. v24.s[3] v25.s[0] .. v25.s[3]|
 //  |d6.b[4]  ... d6.b[7] |  |v26.s[0] .. v26.s[3] v27.s[0] .. v27.s[3]|
 //  |d7.b[0]  ... d7.b[3] |  |v28.s[0] .. v24.s[3] v29.s[0] .. v29.s[3]|
 //  |d7.b[4]  ... d7.b[7] |  |v30.s[0] .. v24.s[3] v31.s[0] .. v31.s[3]|
-//  \---------------------/  \-----------------------------------------/
+//   ---------------------    -----------------------------------------
 
-ProcessNextColumnLoopM4
+.LGemmS8S8.M4.ProcessNextColumnLoop:
         ld1     {v0.16b},[x1],#16           // load packed B0
         mov     x0,x14                      // reload matrix A
         ld1     {v2.4s},[x8],#16            // load ColumnSumBuffer[0]
@@ -582,7 +585,7 @@ ProcessNextColumnLoopM4
         dup     v19.4s,v8.s[1]
         dup     v21.4s,v8.s[2]
         dup     v23.4s,v8.s[3]
-        cbz     x9,SkipScaleByZeroPointBM4
+        cbz     x9,.LGemmS8S8.M4.SkipScaleByZeroPointB
         ld1     {v30.4s},[x9],#16           // load ZeroPointB[0]
         mul     v16.4s,v30.4s,v17.4s
         mul     v18.4s,v30.4s,v19.4s
@@ -601,9 +604,9 @@ ProcessNextColumnLoopM4
         add     v19.4s,v3.4s,v19.4s
         add     v21.4s,v3.4s,v21.4s
         add     v23.4s,v3.4s,v23.4s
-        b       ComputeBlockLoopStartM4
+        b       .LGemmS8S8.M4.ComputeBlockLoopStart
 
-SkipScaleByZeroPointBM4
+.LGemmS8S8.M4.SkipScaleByZeroPointB:
         add     v16.4s,v2.4s,v17.4s
         add     v18.4s,v2.4s,v19.4s
         add     v20.4s,v2.4s,v21.4s
@@ -613,7 +616,7 @@ SkipScaleByZeroPointBM4
         add     v21.4s,v3.4s,v21.4s
         add     v23.4s,v3.4s,v23.4s
 
-ComputeBlockLoopStartM4
+.LGemmS8S8.M4.ComputeBlockLoopStart:
         ldr     d4,[x0],#32                 // load packed A0.l
         movi    v24.4s,#0
         movi    v25.4s,#0
@@ -626,47 +629,47 @@ ComputeBlockLoopStartM4
         movi    v30.4s,#0
         movi    v31.4s,#0
 
-ComputeBlockLoopM4
+.LGemmS8S8.M4.ComputeBlockLoop:
         ld1     {v1.16b},[x1],#16           // load packed B1
-        UdotByElement 16, 0, 4, 0
-        UdotByElement 18, 0, 4, 1
+        SdotByElement 16, 0, 4, 0
+        SdotByElement 18, 0, 4, 1
         ldur    d7,[x0,#-8]                 // load packed A1.h
-        UdotByElement 20, 0, 5, 0
-        UdotByElement 22, 0, 5, 1
+        SdotByElement 20, 0, 5, 0
+        SdotByElement 22, 0, 5, 1
         ld1     {v0.16b},[x1],#16           // load packed B0_next4k
-        UdotByElement 17, 1, 4, 0
-        UdotByElement 19, 1, 4, 1
+        SdotByElement 17, 1, 4, 0
+        SdotByElement 19, 1, 4, 1
         sub     x3,x3,#1
-        cbz     x3,ComputeBlockLoopFinishM4
+        cbz     x3,.LGemmS8S8.M4.ComputeBlockLoopFinish
         ldr     d4,[x0],#32                 // load packed A0.l for next iteration
-        UdotByElement 21, 1, 5, 0
-        UdotByElement 23, 1, 5, 1
+        SdotByElement 21, 1, 5, 0
+        SdotByElement 23, 1, 5, 1
         ld1     {v1.16b},[x1],#16           // load packed B1_next4k
-        UdotByElement 24, 0, 6, 0
-        UdotByElement 26, 0, 6, 1
+        SdotByElement 24, 0, 6, 0
+        SdotByElement 26, 0, 6, 1
         ldur    d5,[x0,#-24]                // load packed A0.h for next iteration
-        UdotByElement 28, 0, 7, 0
-        UdotByElement 30, 0, 7, 1
+        SdotByElement 28, 0, 7, 0
+        SdotByElement 30, 0, 7, 1
         ld1     {v0.16b},[x1],#16           // load packed B0 for next iteration
-        UdotByElement 25, 1, 6, 0
-        UdotByElement 27, 1, 6, 1
+        SdotByElement 25, 1, 6, 0
+        SdotByElement 27, 1, 6, 1
         ldur    d6,[x0,#-16]                // load packed A1.l for next iteration
-        UdotByElement 29, 1, 7, 0
-        UdotByElement 31, 1, 7, 1
-        b       ComputeBlockLoopM4
+        SdotByElement 29, 1, 7, 0
+        SdotByElement 31, 1, 7, 1
+        b       .LGemmS8S8.M4.ComputeBlockLoop
 
-ComputeBlockLoopFinishM4
-        UdotByElement 21, 1, 5, 0
-        UdotByElement 23, 1, 5, 1
+.LGemmS8S8.M4.ComputeBlockLoopFinish:
+        SdotByElement 21, 1, 5, 0
+        SdotByElement 23, 1, 5, 1
         ld1     {v1.16b},[x1],#16           // load packed B1_next4k
-        UdotByElement 24, 0, 6, 0
-        UdotByElement 26, 0, 6, 1
-        UdotByElement 28, 0, 7, 0
-        UdotByElement 30, 0, 7, 1
-        UdotByElement 25, 1, 6, 0
-        UdotByElement 27, 1, 6, 1
-        UdotByElement 29, 1, 7, 0
-        UdotByElement 31, 1, 7, 1
+        SdotByElement 24, 0, 6, 0
+        SdotByElement 26, 0, 6, 1
+        SdotByElement 28, 0, 7, 0
+        SdotByElement 30, 0, 7, 1
+        SdotByElement 25, 1, 6, 0
+        SdotByElement 27, 1, 6, 1
+        SdotByElement 29, 1, 7, 0
+        SdotByElement 31, 1, 7, 1
         add     x10,x2,x6,lsl #2            // compute output row 2
         add     v16.4s,v16.4s,v24.4s        // fold high results into low results
         add     v18.4s,v18.4s,v26.4s
@@ -679,8 +682,8 @@ ComputeBlockLoopFinishM4
         add     v23.4s,v23.4s,v31.4s
         add     x12,x11,x6,lsl #2           // compute output row 4
         subs    x5,x5,#8                    // adjust CountN remaining
-        blo     StoreOutputPartialM4
-        cbnz    x13,SkipAccumulateOutputM4
+        blo     .LGemmS8S8.M4.StoreOutputPartial
+        cbnz    x13,.LGemmS8S8.M4.SkipAccumulateOutput
         ldp     q0,q1,[x2]
         ldp     q2,q3,[x10]
         add     v16.4s,v16.4s,v0.4s
@@ -694,28 +697,28 @@ ComputeBlockLoopFinishM4
         add     v22.4s,v22.4s,v6.4s
         add     v23.4s,v23.4s,v7.4s
 
-SkipAccumulateOutputM4
+.LGemmS8S8.M4.SkipAccumulateOutput:
         stp     q16,q17,[x2],#32
         stp     q18,q19,[x10]
         stp     q20,q21,[x11]
         stp     q22,q23,[x12]
-        cbnz    x5,ProcessNextColumnLoopM4
+        cbnz    x5,.LGemmS8S8.M4.ProcessNextColumnLoop
 
-ExitKernelM4
+.LGemmS8S8.M4.ExitKernel:
         mov     x0,#4                       // return number of rows handled
-        EPILOG_RESTORE_REG_PAIR d8,d9,#16!
-        EPILOG_RETURN
+        ldp     d8,d9,[sp],#16
+        ret
 
 //
 // Store the partial 1 to 7 columns either overwriting the output matrix or
 // accumulating into the existing contents of the output matrix.
 //
 
-StoreOutputPartialM4
-        cbz     x13,StoreOutputPartialAddModeM4
+.LGemmS8S8.M4.StoreOutputPartial:
+        cbz     x13,.LGemmS8S8.M4.StoreOutputPartial.AddMode
 
-StoreOutputPartialZeroModeM4
-        tbz     x5,#2,StoreOutputPartial2ZeroModeM4
+.LGemmS8S8.M4.StoreOutputPartial.ZeroMode:
+        tbz     x5,#2,.LGemmS8S8.M4.StoreOutputPartial2.ZeroMode
         st1     {v16.4s},[x2],#16
         mov     v16.16b,v17.16b             // shift remaining elements down
         st1     {v18.4s},[x10],#16
@@ -725,8 +728,8 @@ StoreOutputPartialZeroModeM4
         st1     {v22.4s},[x12],#16
         mov     v22.16b,v23.16b
 
-StoreOutputPartial2ZeroModeM4
-        tbz     x5,#1,StoreOutputPartial1ZeroModeM4
+.LGemmS8S8.M4.StoreOutputPartial2.ZeroMode:
+        tbz     x5,#1,.LGemmS8S8.M4.StoreOutputPartial1.ZeroMode
         st1     {v16.2s},[x2],#8
         dup     v16.4s,v16.s[2]             // shift remaining elements down
         st1     {v18.2s},[x10],#8
@@ -736,16 +739,16 @@ StoreOutputPartial2ZeroModeM4
         st1     {v22.2s},[x12],#8
         dup     v22.4s,v22.s[2]
 
-StoreOutputPartial1ZeroModeM4
-        tbz     x5,#0,ExitKernelM4
+.LGemmS8S8.M4.StoreOutputPartial1.ZeroMode:
+        tbz     x5,#0,.LGemmS8S8.M4.ExitKernel
         st1     {v16.s}[0],[x2]
         st1     {v18.s}[0],[x10]
         st1     {v20.s}[0],[x11]
         st1     {v22.s}[0],[x12]
-        b       ExitKernelM4
+        b       .LGemmS8S8.M4.ExitKernel
 
-StoreOutputPartialAddModeM4
-        tbz     x5,#2,StoreOutputPartial2AddModeM4
+.LGemmS8S8.M4.StoreOutputPartial.AddMode:
+        tbz     x5,#2,.LGemmS8S8.M4.StoreOutputPartial2.AddMode
         ld1     {v0.4s},[x2]
         ld1     {v1.4s},[x10]
         ld1     {v2.4s},[x11]
@@ -763,8 +766,8 @@ StoreOutputPartialAddModeM4
         st1     {v22.4s},[x12],#16
         mov     v22.16b,v23.16b
 
-StoreOutputPartial2AddModeM4
-        tbz     x5,#1,StoreOutputPartial1AddModeM4
+.LGemmS8S8.M4.StoreOutputPartial2.AddMode:
+        tbz     x5,#1,.LGemmS8S8.M4.StoreOutputPartial1.AddMode
         ld1     {v0.2s},[x2]
         ld1     {v1.2s},[x10]
         ld1     {v2.2s},[x11]
@@ -782,8 +785,8 @@ StoreOutputPartial2AddModeM4
         st1     {v22.2s},[x12],#8
         dup     v22.4s,v22.s[2]
 
-StoreOutputPartial1AddModeM4
-        tbz     x5,#0,ExitKernelM4
+.LGemmS8S8.M4.StoreOutputPartial1.AddMode:
+        tbz     x5,#0,.LGemmS8S8.M4.ExitKernel
         ld1     {v0.s}[0],[x2]
         ld1     {v1.s}[0],[x10]
         add     v16.4s,v16.4s,v0.4s
@@ -796,23 +799,23 @@ StoreOutputPartial1AddModeM4
         add     v22.4s,v22.4s,v3.4s
         st1     {v20.s}[0],[x11]
         st1     {v22.s}[0],[x12]
-        b       ExitKernelM4
+        b       .LGemmS8S8.M4.ExitKernel
 
 //
 // Process 2 rows of the matrices.
 //
-ProcessLoopM2
+.LGemmS8S8.M2.ProcessLoop:
         dup     v9.4s, v8.s[1]
         dup     v8.4s, v8.s[0]
 
-ProcessNextColumnLoopM2
+.LGemmS8S8.M2.ProcessNextColumnLoop:
         ld1     {v0.16b},[x1],#16           // load packed B0
         ld1     {v1.16b},[x1],#16           // load packed B1
         mov     x0,x14                      // reload matrix A
         ld1     {v2.4s},[x8],#16            // load ColumnSumBuffer[0]
         mov     x3,x15                      // reload PackedCountK
         ld1     {v3.4s},[x8],#16            // load ColumnSumBuffer[4]
-        cbz     x9,SkipScaleByZeroPointBM2
+        cbz     x9,.LGemmS8S8.M2.SkipScaleByZeroPointB
         ld1     {v30.4s},[x9],#16           // load ZeroPointB[0]
         ld1     {v31.4s},[x9],#16           // load ZeroPointB[4]
         mul     v16.4s,v30.4s,v8.4s
@@ -825,9 +828,9 @@ ProcessNextColumnLoopM2
         ldr     d5,[x0],#8                  // load packed A0.h
         add     v17.4s,v3.4s,v17.4s
         add     v19.4s,v3.4s,v19.4s
-        b       ComputeBlockLoopM2
+        b       .LGemmS8S8.M2.ComputeBlockLoop
 
-SkipScaleByZeroPointBM2
+.LGemmS8S8.M2.SkipScaleByZeroPointB:
         ldr     d4,[x0],#8                  // load packed A0.l
         add     v16.4s,v2.4s,v8.4s
         add     v18.4s,v2.4s,v9.4s
@@ -835,34 +838,34 @@ SkipScaleByZeroPointBM2
         add     v17.4s,v3.4s,v8.4s
         add     v19.4s,v3.4s,v9.4s
 
-ComputeBlockLoopM2
+.LGemmS8S8.M2.ComputeBlockLoop:
         sub     x3,x3,#1
         ld1     {v6.16b},[x1],#16           // load packed B0 next 4 k
         ld1     {v7.16b},[x1],#16           // load packed B1 next 4 k
-        UdotByElement 16, 0, 4, 0
-        UdotByElement 17, 1, 4, 0
-        UdotByElement 18, 0, 4, 1
-        UdotByElement 19, 1, 4, 1
-        cbz     x3,ComputeBlockLoopFinishM2
+        SdotByElement 16, 0, 4, 0
+        SdotByElement 17, 1, 4, 0
+        SdotByElement 18, 0, 4, 1
+        SdotByElement 19, 1, 4, 1
+        cbz     x3,.LGemmS8S8.M2.ComputeBlockLoopFinish
         ldr     d4,[x0],#8                  // load packed A0.l for next iter
         ld1     {v0.16b},[x1],#16           // load packed B0 for next iter
         ld1     {v1.16b},[x1],#16           // load packed B1 for next iter
-        UdotByElement 16, 6, 5, 0
-        UdotByElement 17, 7, 5, 0
-        UdotByElement 18, 6, 5, 1
-        UdotByElement 19, 7, 5, 1
+        SdotByElement 16, 6, 5, 0
+        SdotByElement 17, 7, 5, 0
+        SdotByElement 18, 6, 5, 1
+        SdotByElement 19, 7, 5, 1
         ldr     d5,[x0],#8                  // load packed A0.h for next iter
-        b       ComputeBlockLoopM2
+        b       .LGemmS8S8.M2.ComputeBlockLoop
 
-ComputeBlockLoopFinishM2
+.LGemmS8S8.M2.ComputeBlockLoopFinish:
         add     x10,x2,x6,lsl #2            // compute output row 2
         subs    x5,x5,#8                    // adjust CountN remaining
-        UdotByElement 16, 6, 5, 0
-        UdotByElement 17, 7, 5, 0
-        UdotByElement 18, 6, 5, 1
-        UdotByElement 19, 7, 5, 1
-        blo     StoreOutputPartialM2
-        cbnz    x13,SkipAccumulateOutputM2
+        SdotByElement 16, 6, 5, 0
+        SdotByElement 17, 7, 5, 0
+        SdotByElement 18, 6, 5, 1
+        SdotByElement 19, 7, 5, 1
+        blo     .LGemmS8S8.M2.StoreOutputPartial
+        cbnz    x13,.LGemmS8S8.M2.SkipAccumulateOutput
         ldp     q0,q1,[x2]
         ldp     q2,q3,[x10]
         add     v16.4s,v16.4s,v0.4s
@@ -870,46 +873,46 @@ ComputeBlockLoopFinishM2
         add     v18.4s,v18.4s,v2.4s
         add     v19.4s,v19.4s,v3.4s
 
-SkipAccumulateOutputM2
+.LGemmS8S8.M2.SkipAccumulateOutput:
         stp     q16,q17,[x2],#32
         stp     q18,q19,[x10]
-        cbnz    x5,ProcessNextColumnLoopM2
+        cbnz    x5,.LGemmS8S8.M2.ProcessNextColumnLoop
 
-ExitKernelM2
+.LGemmS8S8.M2.ExitKernel:
         mov     x0,#2                       // return number of rows handled
-        EPILOG_RESTORE_REG_PAIR d8,d9,#16!
-        EPILOG_RETURN
+        ldp     d8,d9,[sp],#16
+        ret
 
 //
 // Store the partial 1 to 7 columns either overwriting the output matrix or
 // accumulating into the existing contents of the output matrix.
 //
 
-StoreOutputPartialM2
-        cbz     x13,StoreOutputPartialAddModeM2
+.LGemmS8S8.M2.StoreOutputPartial:
+        cbz     x13,.LGemmS8S8.M2.StoreOutputPartial.AddMode
 
-StoreOutputPartialZeroModeM2
-        tbz     x5,#2,StoreOutputPartial2ZeroModeM2
+.LGemmS8S8.M2.StoreOutputPartial.ZeroMode:
+        tbz     x5,#2,.LGemmS8S8.M2.StoreOutputPartial2.ZeroMode
         st1     {v16.4s},[x2],#16
         mov     v16.16b,v17.16b             // shift remaining elements down
         st1     {v18.4s},[x10],#16
         mov     v18.16b,v19.16b
 
-StoreOutputPartial2ZeroModeM2
-        tbz     x5,#1,StoreOutputPartial1ZeroModeM2
+.LGemmS8S8.M2.StoreOutputPartial2.ZeroMode:
+        tbz     x5,#1,.LGemmS8S8.M2.StoreOutputPartial1.ZeroMode
         st1     {v16.2s},[x2],#8
         dup     v16.4s,v16.s[2]             // shift remaining elements down
         st1     {v18.2s},[x10],#8
         dup     v18.4s,v18.s[2]
 
-StoreOutputPartial1ZeroModeM2
-        tbz     x5,#0,ExitKernelM2
+.LGemmS8S8.M2.StoreOutputPartial1.ZeroMode:
+        tbz     x5,#0,.LGemmS8S8.M2.ExitKernel
         st1     {v16.s}[0],[x2]
         st1     {v18.s}[0],[x10]
-        b       ExitKernelM2
+        b       .LGemmS8S8.M2.ExitKernel
 
-StoreOutputPartialAddModeM2
-        tbz     x5,#2,StoreOutputPartial2AddModeM2
+.LGemmS8S8.M2.StoreOutputPartial.AddMode:
+        tbz     x5,#2,.LGemmS8S8.M2.StoreOutputPartial2.AddMode
         ld1     {v0.4s},[x2]
         ld1     {v1.4s},[x10]
         add     v16.4s,v16.4s,v0.4s
@@ -919,8 +922,8 @@ StoreOutputPartialAddModeM2
         st1     {v18.4s},[x10],#16
         mov     v18.16b,v19.16b
 
-StoreOutputPartial2AddModeM2
-        tbz     x5,#1,StoreOutputPartial1AddModeM2
+.LGemmS8S8.M2.StoreOutputPartial2.AddMode:
+        tbz     x5,#1,.LGemmS8S8.M2.StoreOutputPartial1.AddMode
         ld1     {v0.2s},[x2]
         ld1     {v1.2s},[x10]
         add     v16.4s,v16.4s,v0.4s
@@ -930,30 +933,31 @@ StoreOutputPartial2AddModeM2
         st1     {v18.2s},[x10],#8
         dup     v18.4s,v18.s[2]
 
-StoreOutputPartial1AddModeM2
-        tbz     x5,#0,ExitKernelM2
+.LGemmS8S8.M2.StoreOutputPartial1.AddMode:
+        tbz     x5,#0,.LGemmS8S8.M2.ExitKernel
         ld1     {v0.s}[0],[x2]
         ld1     {v1.s}[0],[x10]
         add     v16.4s,v16.4s,v0.4s
         add     v18.4s,v18.4s,v1.4s
         st1     {v16.s}[0],[x2]
         st1     {v18.s}[0],[x10]
-        b       ExitKernelM2
+        b       .LGemmS8S8.M2.ExitKernel
 
 //
 // Process 1 row of the matrices.
 //
+.LGemmS8S8.M1.ProcessLoop:
 
-ProcessLoopM1
         dup     v8.4s,v8.s[0]
-ProcessNextColumnLoopM1
+
+.LGemmS8S8.M1.ProcessNextColumnLoop:
         ld1     {v0.16b},[x1],#16           // load packed B0
         ld1     {v1.16b},[x1],#16           // load packed B1
         mov     x0,x14                      // reload matrix A
         ld1     {v2.4s},[x8],#16            // load ColumnSumBuffer0
         mov     x3,x15                      // reload PackedCountK
         ld1     {v3.4s},[x8],#16            // load ColumnSumBuffer1
-        cbz     x9,SkipScaleByZeroPointBM1
+        cbz     x9,.LGemmS8S8.M1.SkipScaleByZeroPointB
         ld1     {v30.4s},[x9],#16           // load ZeroPointB0
         ld1     {v31.4s},[x9],#16           // load ZeroPointB1
         mul     v16.4s,v30.4s,v8.4s
@@ -963,92 +967,90 @@ ProcessNextColumnLoopM1
         ld1     {v7.16b},[x1],#16           // load packed B1 next 4 k
         add     v16.4s,v2.4s,v16.4s
         add     v17.4s,v3.4s,v17.4s
-        b       ComputeBlockLoopM1
+        b       .LGemmS8S8.M1.ComputeBlockLoop
 
-SkipScaleByZeroPointBM1
+.LGemmS8S8.M1.SkipScaleByZeroPointB:
         ldr     d4,[x0],#8                  // load packed A0
         ld1     {v6.16b},[x1],#16           // load packed B0 next 4 k
         ld1     {v7.16b},[x1],#16           // load packed B1 next 4 k
         add     v16.4s,v2.4s,v8.4s
         add     v17.4s,v3.4s,v8.4s
 
-ComputeBlockLoopM1
+.LGemmS8S8.M1.ComputeBlockLoop:
         sub     x3,x3,#1
-        UdotByElement 16, 0, 4, 0
-        UdotByElement 17, 1, 4, 0
-        cbz     x3,ComputeBlockLoopFinishM1
+        SdotByElement 16, 0, 4, 0
+        SdotByElement 17, 1, 4, 0
+        cbz     x3,.LGemmS8S8.M1.ComputeBlockLoopFinish
         ld1     {v0.16b},[x1],#16           // load packed B0 for next iter
         ld1     {v1.16b},[x1],#16           // load packed B1 for next iter
-        UdotByElement 16, 6, 4, 1
-        UdotByElement 17, 7, 4, 1
+        SdotByElement 16, 6, 4, 1
+        SdotByElement 17, 7, 4, 1
         ldr     d4,[x0],#8                  // load packed A0 for next iter
         ld1     {v6.16b},[x1],#16           // load packed B0 next 4 k for next iter
         ld1     {v7.16b},[x1],#16           // load packed B1 next 4 k for next iter
-        b       ComputeBlockLoopM1
+        b       .LGemmS8S8.M1.ComputeBlockLoop
 
-ComputeBlockLoopFinishM1
+.LGemmS8S8.M1.ComputeBlockLoopFinish:
         subs    x5,x5,#8                    // adjust CountN remaining
-        UdotByElement 16, 6, 4, 1
-        UdotByElement 17, 7, 4, 1
-        blo     StoreOutputPartialM1
-        cbnz    x13,SkipAccumulateOutputM1
+        SdotByElement 16, 6, 4, 1
+        SdotByElement 17, 7, 4, 1
+        blo     .LGemmS8S8.M1.StoreOutputPartial
+        cbnz    x13,.LGemmS8S8.M1.SkipAccumulateOutput
         ldp     q0,q1,[x2]
         add     v16.4s,v16.4s,v0.4s
         add     v17.4s,v17.4s,v1.4s
 
-SkipAccumulateOutputM1
+.LGemmS8S8.M1.SkipAccumulateOutput:
         stp     q16,q17,[x2],#32
-        cbnz    x5,ProcessNextColumnLoopM1
+        cbnz    x5,.LGemmS8S8.M1.ProcessNextColumnLoop
 
-ExitKernelM1
+.LGemmS8S8.M1.ExitKernel:
         mov     x0,#1                       // return number of rows handled
-        EPILOG_RESTORE_REG_PAIR d8,d9,#16!
-        EPILOG_RETURN
+        ldp     d8,d9,[sp],#16
+        ret
 
 //
 // Store the partial 1 to 7 columns either overwriting the output matrix or
 // accumulating into the existing contents of the output matrix.
 //
 
-StoreOutputPartialM1
-        cbz     x13,StoreOutputPartialAddModeM1
+.LGemmS8S8.M1.StoreOutputPartial:
+        cbz     x13,.LGemmS8S8.M1.StoreOutputPartial.AddMode
 
-StoreOutputPartialZeroModeM1
-        tbz     x5,#2,StoreOutputPartial2ZeroModeM1
+.LGemmS8S8.M1.StoreOutputPartial.ZeroMode:
+        tbz     x5,#2,.LGemmS8S8.M1.StoreOutputPartial2.ZeroMode
         st1     {v16.4s},[x2],#16
         mov     v16.16b,v17.16b             // shift remaining elements down
 
-StoreOutputPartial2ZeroModeM1
-        tbz     x5,#1,StoreOutputPartial1ZeroModeM1
+.LGemmS8S8.M1.StoreOutputPartial2.ZeroMode:
+        tbz     x5,#1,.LGemmS8S8.M1.StoreOutputPartial1.ZeroMode
         st1     {v16.2s},[x2],#8
         dup     v16.4s,v16.s[2]             // shift remaining elements down
 
-StoreOutputPartial1ZeroModeM1
-        tbz     x5,#0,ExitKernelM1
+.LGemmS8S8.M1.StoreOutputPartial1.ZeroMode:
+        tbz     x5,#0,.LGemmS8S8.M1.ExitKernel
         st1     {v16.s}[0],[x2]
-        b       ExitKernelM1
+        b       .LGemmS8S8.M1.ExitKernel
 
-StoreOutputPartialAddModeM1
-        tbz     x5,#2,StoreOutputPartial2AddModeM1
+.LGemmS8S8.M1.StoreOutputPartial.AddMode:
+        tbz     x5,#2,.LGemmS8S8.M1.StoreOutputPartial2.AddMode
         ld1     {v0.4s},[x2]
         add     v16.4s,v16.4s,v0.4s
         st1     {v16.4s},[x2],#16
         mov     v16.16b,v17.16b             // shift remaining elements down
 
-StoreOutputPartial2AddModeM1
-        tbz     x5,#1,StoreOutputPartial1AddModeM1
+.LGemmS8S8.M1.StoreOutputPartial2.AddMode:
+        tbz     x5,#1,.LGemmS8S8.M1.StoreOutputPartial1.AddMode
         ld1     {v0.2s},[x2]
         add     v16.4s,v16.4s,v0.4s
         st1     {v16.2s},[x2],#8
         dup     v16.4s,v16.s[2]             // shift remaining elements down
 
-StoreOutputPartial1AddModeM1
-        tbz     x5,#0,ExitKernelM1
+.LGemmS8S8.M1.StoreOutputPartial1.AddMode:
+        tbz     x5,#0,.LGemmS8S8.M1.ExitKernel
         ld1     {v0.s}[0],[x2]
         add     v16.4s,v16.4s,v0.4s
         st1     {v16.s}[0],[x2]
-        b       ExitKernelM1
+        b       .LGemmS8S8.M1.ExitKernel
 
-        NESTED_END MlasGemmU8X8KernelUdot
-
-        END
+        .end

@@ -10,6 +10,7 @@
 #include "dnnl_execution_provider.h"
 #include "dnnl_fwd.h"
 #include "dnnl_node_capability.h"
+#include "core/providers/dnnl/subgraph/dnnl_subgraph_transformer.h"
 
 #include <iomanip>
 #include <fstream>
@@ -49,6 +50,11 @@ DNNLExecutionProvider::DNNLExecutionProvider(const DNNLExecutionProviderInfo& in
   const std::string debug_log_env = onnxruntime::GetEnvironmentVar("ORT_DNNL_DEBUG_LOG");
   if (!debug_log_env.empty()) {
     debug_log_ = (std::stoi(debug_log_env) == 0 ? false : true);
+  }
+
+  const std::string fusion_env = onnxruntime::GetEnvironmentVar("ORT_DNNL_ENABLE_FUSION");
+  if (!fusion_env.empty()) {
+    enable_fusion_ = (std::stoi(fusion_env) == 0 ? false : true);
   }
 }  // namespace onnxruntime
 
@@ -291,6 +297,11 @@ Status DNNLExecutionProvider::Compile(const std::vector<Node*>& fused_nodes,
     //subgraph
     auto dnnl_subgraph = std::make_unique<ort_dnnl::DnnlSubgraph>(ort_dnnl::DnnlSubgraph(*graph_body_viewer.get()));
     subgraphs_.emplace(fused_node->Name(), std::move(dnnl_subgraph));
+
+    //apply transformation to subgraph
+    if (enable_fusion_) {
+      ort_dnnl::DnnlGraphTransformer().Apply(*subgraphs_[fused_node->Name()].get());
+    }
 
     //subgraph primitive
     auto dnnl_subgraph_primitive = std::make_unique<ort_dnnl::DnnlSubgraphPrimitive>(*subgraphs_[fused_node->Name()].get());
