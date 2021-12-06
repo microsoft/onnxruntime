@@ -7,6 +7,7 @@
 #include "core/framework/fence.h"
 #include "core/framework/allocator_stats.h"
 #include "core/framework/tensor_shape.h"
+#include "core/framework/tensor_usage.h"
 #include "core/session/onnxruntime_c_api.h"
 #include "ortdevice.h"
 #include "ortmemoryinfo.h"
@@ -64,6 +65,9 @@ class IAllocator {
   virtual void* Alloc(const TensorShape&) { return nullptr; }
 
   virtual void Free(void* p) = 0;
+
+  // FIXME: remove this API by switching weight layout opt to transformer
+  virtual TensorShape AdaptWeightShape(const TensorShape& shape, TensorUsage) const { return shape; }
 
   // TODO: Find a better name than Reserve() and update in all places.
   // Reserve() is an interface exposed for an implementation of IAllocator

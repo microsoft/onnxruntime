@@ -84,7 +84,25 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
       // If the provided allocator is an arena-based allocator, the call to Alloc() will tap into memory from the arena
       // (may expand it if there isn't a chunk that can be allotted to the memory request).
       // If the provided allocator is non-arena based, the device specific Alloc() call will be used to allocate the necessary memory.
+
+#if defined(USE_OPENCL)
+      // FIXME: avoid this by moving layout optimization to transformer
+      // NOTE: following is a hack for prototyping only
+      {
+        auto adapted_tensor_shape = alloc->AdaptWeightShape(tensor_shape, usage);
+        auto* p_data = alloc->Alloc(adapted_tensor_shape);
+        if (p_data == nullptr) {
+          SafeInt<size_t> len = 0;
+          if (!alloc->CalcMemSizeForArray(SafeInt<size_t>(adapted_tensor_shape.Size()), type->Size(), &len)){
+            ORT_THROW("tensor failed memory size calculation");
+          }
+          p_data = alloc->Alloc(len);
+        }
+        p_tensor = std::make_unique<Tensor>(type, tensor_shape, p_data, alloc); // the ptr p_data is owned by tensor
+      }
+#else
       p_tensor = std::make_unique<Tensor>(type, tensor_shape, alloc);
+#endif
     }
   }
 

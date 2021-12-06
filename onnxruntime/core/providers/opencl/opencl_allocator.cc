@@ -77,9 +77,9 @@ void* OpenCLImage2DAllocator::Alloc(const TensorShape& shape) {
     // FIXME: range limit is for NVIDIA GPU, adjust it for target gpu!
     ORT_ENFORCE(desc.Height() > 0 && desc.Height() <= 65535, "Image2D height invalid");
     ORT_ENFORCE(desc.Width() > 0 && desc.Width() <= 65535, "Image2D width invalid");
-    auto ptr = new cl::Image2D(ctx_, CL_MEM_READ_WRITE, cl::ImageFormat{CL_RGBA, CL_FLOAT}, desc.Width(), desc.Height(), /*row_pitch=*/0, nullptr, &err);
+    auto* ptr = new cl::Image2D(ctx_, CL_MEM_READ_WRITE, cl::ImageFormat{CL_RGBA, CL_FLOAT}, desc.Width(), desc.Height(), /*row_pitch=*/0, nullptr, &err);
     ORT_THROW_IF_CL_ERROR(err);
-    VLOGF_DEFAULT(0, "[CL] allocated %p(cl::Image2D(%p)", ptr, ptr->operator()());
+    VLOGF_DEFAULT(0, "[CL] allocated %p(cl::Image2D(%p){w=%ld, h=%ld})", ptr, ptr->operator()(), desc.Width(), desc.Height());
     meta_[ptr] = {shape, MemoryKind::Image2D};
     return ptr;
   }
@@ -97,6 +97,24 @@ void OpenCLImage2DAllocator::Free(void* p) {
     it = cache_.insert({meta.shape, {}}).first;
   }
   it->second.push_front(p);
+}
+
+TensorShape OpenCLImage2DAllocator::AdaptWeightShape(const TensorShape& shape, TensorUsage usage) const {
+  Image2DDesc desc;
+  switch (usage) {
+    case TensorUsage::ConvWeight:
+      desc = Image2DDesc::PackFromConv2DWeight(shape);
+      break;
+    case TensorUsage::DepthwiseConvWeight:
+      desc = Image2DDesc::PackFromDepthwiseConv2DWeight(shape);
+      break;
+    case TensorUsage::Generic:
+      desc = Image2DDesc::PackFromTensor(shape);
+      break;
+  }
+  // Image2DDesc::Pack* has implicit RGBA 4 channel, the adapted shape should
+  // make it explicit
+  return {desc.Width() * 4, desc.Height()};
 }
 
 }  // namespace opencl

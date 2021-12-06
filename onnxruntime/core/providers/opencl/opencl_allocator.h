@@ -71,6 +71,8 @@ class OpenCLImage2DAllocator : public IAllocator {
   void* Alloc(const TensorShape& shape) override;
   void Free(void* p) override;
 
+  TensorShape AdaptWeightShape(const TensorShape& shape, TensorUsage usage) const override;
+
  private:
   cl::Context ctx_;
   // FIXME: better caching, cache for kernel benchmark at the moment
