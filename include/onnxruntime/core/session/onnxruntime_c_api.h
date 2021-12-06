@@ -315,7 +315,15 @@ struct OrtKernelContext;
 typedef struct OrtKernelContext OrtKernelContext;
 struct OrtCustomOp;
 typedef struct OrtCustomOp OrtCustomOp;
-struct OrtThreadPoolBase;
+
+struct OrtThreadPoolBase {
+#ifdef _WIN32
+  void(ORT_API_CALL* ParallelFor)(_In_ OrtThreadPoolBase* tp, _In_ ptrdiff_t, _In_ const void* fn);
+#else
+  void(ORT_API_CALL* ParallelFor)(_In_ OrtThreadPoolBase* tp, _In_ std::ptrdiff_t, _In_ const void* fn);
+#endif
+  int(ORT_API_CALL* NumThreads)(_In_ OrtThreadPoolBase* tp);
+};
 
 typedef enum OrtAllocatorType {
   OrtInvalidAllocator = -1,
@@ -3257,11 +3265,6 @@ struct OrtThreadPool {
   void(ORT_API_CALL* ParallelFor)(_In_ OrtThreadPool* tp, _In_ ptrdiff_t, _In_ const OrtThreadPoolTask);
   int(ORT_API_CALL* NumThreads)(_In_ OrtThreadPool* tp);
 };*/
-
-struct OrtThreadPoolBase {
-  void(ORT_API_CALL* ParallelFor)(_In_ OrtThreadPoolBase* tp, _In_ std::ptrdiff_t, _In_ const void* fn);
-  int(ORT_API_CALL* NumThreads)(_In_ OrtThreadPoolBase* tp);
-};
 
 #ifdef __cplusplus
 }
