@@ -9,10 +9,10 @@ To acquire the native build you can:
   - build it yourself
     - [Android](https://onnxruntime.ai/docs/build/android.html) build instructions
     - [iOS](https://onnxruntime.ai/docs/build/ios.html) build instructions
-  - extract if from the Microsoft.ML.OnnxRuntime nuget package using [NuGetPackageExplorer](https://github.com/NuGetPackageExplorer/NuGetPackageExplorer)
+  - extract it from the Microsoft.ML.OnnxRuntime nuget package using [NuGetPackageExplorer](https://github.com/NuGetPackageExplorer/NuGetPackageExplorer)
     - release version is [here](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime/) 
     - integration test version is [here](https://int.nugettest.org/packages/Microsoft.ML.OnnxRuntime/)
-      - this is frequently update and should work if you're currently using the `master` branch of ONNX Runtime
+      - this is frequently updated and should work if you're currently using the `master` branch of ONNX Runtime
   - or if you have access to the internal packaging pipelines
     - the Zip-Nuget-Java-Nodejs Packaging Pipeline produces the native package as an artifact under `drop-signed-nuget-CPU`
       - run a build for your current branch in the pipeline to ensure the native build matches exactly
