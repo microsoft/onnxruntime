@@ -1,13 +1,13 @@
 ---
-title: Convert ONNX model to ORT format
-description: Convert an ONNX model to ORT format to run on mobile or web
+title: ORT format models
+description: Define the ORT model format and show how to convert an ONNX model to ORT format to run on mobile or web
 parent: Reference
 has_children: false
 nav_order: 4
 redirect_from: /docs/tutorials/mobile/model-conversion, /docs/tutorials/mobile/model-execution
 ---
 
-# Convert ONNX model to ORT format
+# ORT format models
 {: .no_toc}
 
 ## Contents
@@ -16,7 +16,11 @@ redirect_from: /docs/tutorials/mobile/model-conversion, /docs/tutorials/mobile/m
 * TOC
 {:toc}
 
-## Overview
+## What is the ORT model format?
+
+The ORT model format is a reduced-size model format used in constrained environments such as mobile and web applications. ONNX Runtime provides tools to convert ONNX models to ORT format.
+
+## Convert ONNX models to ORT format
 
 ONNX models are converted to ORT format using the `convert_onnx_models_to_ort` script.
 
@@ -29,13 +33,18 @@ The conversion script can run on a single ONNX model, or a directory. If run aga
 
 Each '.onnx' file is loaded, optimized, and saved in ORT format as a file with the '.ort' extension in the same location as the original '.onnx' file.
 
-A [build configuration file](reduced-operator-config-file.md) ('required_operators.config') is produced with the operators required by the optimized ONNX models.
+### Outputs of the script
 
-If [type reduction](#enable-type-reduction) is enabled (ONNX Runtime version 1.7 or later) the configuration file will also include the required types for each operator, and be called 'required_operators_and_types.config'.
+1. One ORT format model for each ONNX model
+2. A [build configuration file](reduced-operator-config-file.md) ('required_operators.config') with the operators required by the optimized ONNX models.
 
-If you are using a pre-built ONNX Runtime [iOS](../install/index.md#install-on-ios), [Android](../install/index.md#install-on-android) or [web](../install/index.md#javascript-installs) package], the build configuration file is not used and can be ignored.
+   If [type reduction](#enable-type-reduction) is enabled (ONNX Runtime version 1.7 or later) the configuration file will also include the required types for each operator, and is called 'required_operators_and_types.config'.
 
-ORT format model is supported by version 1.5.2 of ONNX Runtime or later.
+   If you are using a pre-built ONNX Runtime [iOS](../install/index.md#install-on-ios), [Android](../install/index.md#install-on-android) or [web](../install/index.md#javascript-installs) package, the build configuration file is not used and can be ignored.
+
+### Script location
+
+The ORT model format is supported by version 1.5.2 of ONNX Runtime or later.
 
 Conversion of ONNX format models to ORT format utilizes the ONNX Runtime python package, as the model is loaded into ONNX Runtime and optimized as part of the conversion process.
 
@@ -43,17 +52,17 @@ For ONNX Runtime version 1.8 and later the conversion script is run directly fro
 
 For earlier versions, the conversion script is run from the local ONNX Runtime repository.
 
-## Installation
+### Install ONNX Runtime
 
 Install the onnxruntime python package from [https://pypi.org/project/onnxruntime/](https://pypi.org/project/onnxruntime/) in order to convert models from ONNX format to the internal ORT format. Version 1.5.3 or higher is required.
 
-### Install the latest release
+#### Install the latest release
 
 ```bash
 pip install onnxruntime
 ```
 
-### Install a previous release
+#### Install a previous release
 
 If you are building ONNX Runtime from source (custom, reduced or minimal builds), you must match the python package version to the branch of the ONNX Runtime repository you checked out.
 
@@ -70,7 +79,7 @@ If you are using the `master` branch in the git repository you should use the ni
 pip install -U -i https://test.pypi.org/simple/ ort-nightly
 ```
 
-## Script usage
+### Convert ONNX models to ORT format script usage
 
 ONNX Runtime version 1.8 or later:
 
@@ -122,9 +131,9 @@ optional arguments:
                         applied as the ORT format model.
 ```
 
-### Optional script arguments
+#### Optional script arguments
 
-#### Optimization level
+##### Optimization level
 
 Set the optimization level that ONNX Runtime will use to optimize the model prior to saving in ORT format.
 
@@ -136,7 +145,7 @@ If the model is to be run with the NNAPI EP or CoreML EP, it is recommended to c
 
 See the documentation on [performance tuning mobile scenarios](../performance/mobile-performance-tuning.md) for more information.
 
-#### Enable type reduction
+##### Enable type reduction
 
 With ONNX Runtime version 1.7 and later it is possible to limit the data types the required operators support to further reduce the build size. This pruning is referred to as "operator type reduction" in this documentation. As the ONNX model/s are converted, the input and output data types required by each operator are accumulated and included in the configuration file.
 
@@ -148,15 +157,15 @@ pip install flatbuffers
 
 For example, the ONNX Runtime kernel for Softmax supports both float and double. If your model/s uses Softmax but only with float data, we can exclude the implementation that supports double to reduce the kernel's binary size.
 
-#### Custom Operator support
+##### Custom Operator support
 
 If your ONNX model uses [custom operators](./operators/add-custom-op.md), the path to the library containing the custom operator kernels must be provided so that the ONNX model can be successfully loaded. The custom operators will be preserved in the ORT format model.
 
-#### Save optimized ONNX model
+##### Save optimized ONNX model
 
 Add this flag to save the optimized ONNX model. The optimized ONNX model contains the same nodes and initializers as the ORT format model, and can be viewed in [Netron](https://netron.app/) for debugging and performance tuning.
 
-## Previous versions of ONNX Runtime
+### Previous versions of ONNX Runtime
 
 Prior to ONNX Runtime version 1.7, the model conversion script must be run from a cloned source repository:
 
@@ -164,7 +173,7 @@ Prior to ONNX Runtime version 1.7, the model conversion script must be run from 
 python <ONNX Runtime repository root>/tools/python/convert_onnx_models_to_ort.py <onnx model file or dir>
 ```
 
-## Executing an ORT format model
+## Load and execute a model in ORT format
 
 The API for executing ORT format models is the same as for ONNX models.
 

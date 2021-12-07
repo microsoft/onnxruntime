@@ -23,7 +23,7 @@ This document explains the options and considerations for building a web applica
 
    Runtime and model are downloaded to client and inferencing happens inside browser. Use onnxruntime-web in this scenario.
 
-2. Client server
+2. Inference on server
 
    Browser sends user's input to server, server inferences and gets the result and sends back to client.
 
@@ -35,7 +35,7 @@ This document explains the options and considerations for building a web applica
 
    Electron uses a frontend (based on chromium, technically a browser core) and a backend (based on Node.js). Examples are VSCode, Teams before 2021.
 
-   If possible, use onnxruntime-node for inference in the backend, which is faster. Using onnxruntime-web in frontend is also an option (for security and compatibility concerns). 
+   If possible, use onnxruntime-node for inference in the backend, which is faster. Using onnxruntime-web in frontend is also an option (for security and compatibility concerns).
 
 4. React Native
 
@@ -67,7 +67,7 @@ Install onnxruntime-web. These command line will update the application's `packa
 yarn add onnxruntime-web 
 ```
 
-### Wih npm
+### With npm
 
 ```bash
 npm install onnxruntime-web
