@@ -159,7 +159,7 @@ Nuget packages are created under <native_build_dir>\nuget-artifacts
 
 ### Reduced Operator Kernel Build
 
-[Reduced Operator Kernel](./custom.md#reduce-operator-set) builds allow you to customize the kernels in the build to provide smaller binary sizes.
+[Reduced Operator Kernel](./custom.md#reduce-operator-kernels) builds allow you to customize the kernels in the build to provide smaller binary sizes.
 
 ### OpenMP (Deprecated)
 
