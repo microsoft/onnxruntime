@@ -59,3 +59,4 @@ onnxruntime/python/version_info.py
 .envrc
 .psenvrc
 *.csproj.user
+cmake/external/pthreadpool
