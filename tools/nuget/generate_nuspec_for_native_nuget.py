@@ -493,7 +493,7 @@ def generate_files(list, args):
                           nuget_dependencies['cuda_ep_shared_lib']) +
                           runtimes_target + args.target_architecture + '\\native" />')
 
-        # process all other library dependencies
+    # process all other library dependencies
     if is_cpu_package or is_cuda_gpu_package or is_dml_package or is_mklml_package:
         # Process dnnl dependency
         if os.path.exists(os.path.join(args.native_build_path, nuget_dependencies['dnnl'])):
