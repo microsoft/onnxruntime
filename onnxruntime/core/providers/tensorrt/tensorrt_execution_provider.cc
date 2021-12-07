@@ -202,7 +202,8 @@ bool ReadDynamicRange(const std::string file_name, const bool is_trt_calibration
     auto flat_table = flatbuffers::GetRoot<CalTableFlatBuffers::TrtTable>((const uint8_t*)data.get());
     auto flat_dict = flat_table->dict();
     for (size_t i = 0, end = flat_dict->size(); i < end; ++i) {
-      dynamic_range_map[flat_dict->Get(i)->key()->str()] = std::stof(flat_dict->Get(i)->value()->str());
+      flatbuffers::uoffset_t idx = static_cast<flatbuffers::uoffset_t>(i);
+      dynamic_range_map[flat_dict->Get(idx)->key()->str()] = std::stof(flat_dict->Get(idx)->value()->str());
     }
   }
   return true;
@@ -255,7 +256,7 @@ bool SetDynamicRange(nvinfer1::INetworkDefinition& network, std::unordered_map<s
           }
           max_weight = std::max(max_weight, std::abs(weight));
         }
-        if (!trt_layer->getOutput(j)->setDynamicRange(static_cast<float>(-max_weight), static_cast<float>(max_weight)) {
+        if (!trt_layer->getOutput(j)->setDynamicRange(static_cast<float>(-max_weight), static_cast<float>(max_weight))) {
           return false;
         }
       }
@@ -959,8 +960,8 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
         SubGraphCollection_t next_nodes_list;
         const std::vector<NodeIndex>& subgraph_node_index = graph_viewer->GetNodesInTopologicalOrder();
         next_nodes_list = GetSupportedList(parser_nodes_list, iterations, max_iterations, *graph_viewer, early_termination);
-        for (int i = 0, end = next_nodes_list.size(); i < end; ++i) {
-          for (int j = 0, end = next_nodes_list[i].first.size(); j < end; ++j) {
+        for (int i = 0, end = static_cast<int>(next_nodes_list.size()); i < end; ++i) {
+          for (int j = 0, end = static_cast<int>(next_nodes_list[i].first.size()); j < end; ++j) {
             next_nodes_list[i].first[j] = group.first[subgraph_node_index[next_nodes_list[i].first[j]]];
           }
           nodes_list_output.push_back(next_nodes_list[i]);
@@ -1006,7 +1007,7 @@ void TensorrtExecutionProvider::RemoveTensorRTGraphCycles(SubGraphCollection_t& 
 
         // Remove TensorRT nodes from node index list
         for (const auto& index : group.first) {
-          non_trt_node_index.erase(node_index[index]);
+          non_trt_node_index.erase(static_cast<int>(node_index[index]));
         }
       }
     }
@@ -1030,7 +1031,7 @@ void TensorrtExecutionProvider::RemoveTensorRTGraphCycles(SubGraphCollection_t& 
     }
 
     // Create adjacency list
-    int graph_size = node_to_index_map.size();
+    int graph_size = static_cast<int>(node_to_index_map.size());
     std::list<int>* adjacency_map = new std::list<int>[graph_size];
     for (const auto& node : node_to_outputs_map) {
       for (auto iter = node.second.begin(); iter != node.second.end(); ++iter) {
@@ -1104,7 +1105,7 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
 
   // Remove subgraphs if its size is less than the predefined minimal size
   for (auto it = supported_nodes_vector.begin(); it != supported_nodes_vector.end(); ++it) {
-    const int subgraph_size = it->first.size();
+    const int subgraph_size = static_cast<int>(it->first.size());
     if (subgraph_size < min_subgraph_size_) {
       supported_nodes_vector.erase(it--);
     }
@@ -1120,11 +1121,11 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
     if (!group.first.empty()) {
       std::unique_ptr<IndexedSubGraph> sub_graph = GetSubGraph(group, graph);
       result.push_back(ComputeCapability::Create(std::move(sub_graph)));
-      number_of_trt_nodes += group.first.size();
+      number_of_trt_nodes += static_cast<int>(group.first.size());
     }
   }
 
-  const int number_of_subgraphs = supported_nodes_vector.size();
+  const int number_of_subgraphs = static_cast<int>(supported_nodes_vector.size());
   if (number_of_trt_nodes == 0) {
     LOGS_DEFAULT(WARNING) << "[TensorRT EP] No graph will run on TensorRT exeuction provider";
   } else if (number_of_trt_nodes == number_of_ort_nodes) {
@@ -1150,7 +1151,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
     std::unordered_map<std::string, int> input_map;
     const auto& input_defs = fused_node->InputDefs();
     input_map.reserve(input_defs.size());
-    for (int i = 0, end = input_defs.size(); i < end; ++i) {
+    for (int i = 0, end = static_cast<int>(input_defs.size()); i < end; ++i) {
       input_map[input_defs[i]->Name()] = i;
     }
 
@@ -1158,7 +1159,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
     std::unordered_map<std::string, int> output_map;
     const auto& output_defs = fused_node->OutputDefs();
     output_map.reserve(output_defs.size());
-    for (int i = 0, end = output_defs.size(); i < end; ++i) {
+    for (int i = 0, end = static_cast<int>(output_defs.size()); i < end; ++i) {
       output_map[output_defs[i]->Name()] = i;
     }
 
@@ -1432,8 +1433,8 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
       auto trt_context = trt_state->context->get();
       auto trt_profile = &(trt_state->trt_profile);
       auto alloc = trt_state->scratch_allocator;
-      int num_inputs = input_indexes.size();
-      int num_outputs = output_indexes.size();
+      int num_inputs = static_cast<int>(input_indexes.size());
+      int num_outputs = static_cast<int>(output_indexes.size());
       bool engine_update = false;
       std::unordered_set<std::string> input_names;
       std::unordered_map<std::string, std::vector<int32_t>> tensor_shape_values;
@@ -1559,7 +1560,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
 
             // Update shape ranges
             std::vector<int32_t> shapes_min(shape_size), shapes_opt(shape_size), shapes_max(shape_size);
-            int shape_range_size = shape_range.size();
+            int shape_range_size = static_cast<int>(shape_range.size());
             if (shape_size == shape_range_size) {
               // If shape size matches, check/update shape range
               for (int j = 0; j < shape_size; ++j) {
@@ -1608,7 +1609,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
               if (shape_range.find(j) != shape_range.end()) {
                 dims_min.d[j] = static_cast<int32_t>(shape_range[j].first);
                 dims_opt.d[j] = static_cast<int32_t>(shape_range[j].second);
-                dims_max.d[j] = static_cast<int32_t>shape_range[j].second;
+                dims_max.d[j] = static_cast<int32_t>(shape_range[j].second);
 
                 // Update minimum dimension
                 if (tensor_shape < shape_range[j].first) {
@@ -1619,8 +1620,8 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
                 // Update maximum dimension
                 if (tensor_shape > shape_range[j].second) {
                   shape_range[j].second = tensor_shape;
-                  dims_max.d[j] = static_cast<int32_t>tensor_shape;
-                  dims_opt.d[j] = static_cast<int32_t>tensor_shape;
+                  dims_max.d[j] = static_cast<int32_t>(tensor_shape);
+                  dims_opt.d[j] = static_cast<int32_t>(tensor_shape);
                   engine_update = true;
                 }
               }
@@ -1725,7 +1726,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
 
       // Set input shapes and assign input buffers
       std::vector<IAllocatorUniquePtr<void>> scratch_buffers;
-      for (int i = 0, end = input_binding_names.size(); i < end; ++i) {
+      for (int i = 0, end = static_cast<int>(input_binding_names.size()); i < end; ++i) {
         const std::string& input_name = input_binding_names[i];
         int binding_index = trt_engine->getBindingIndex(input_name.c_str());
         if (binding_index == -1) {
@@ -1862,7 +1863,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
       // Set output shapes and assign output buffers
       std::vector<int> output_dim_sizes(num_outputs, 1);
       std::vector<OrtValue*> output_tensor(num_outputs, nullptr);
-      for (int i = 0, end = output_binding_names.size(); i < end; ++i) {
+      for (int i = 0, end = static_cast<int>(output_binding_names.size()); i < end; ++i) {
         // Set dynamic shapes
         const std::string& output_name = output_binding_names[i];
         int binding_index = trt_engine->getBindingIndex(output_name.c_str());
@@ -1998,7 +1999,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
       }
 
       // Cast INT64 input to INT32 because TensorRT doesn't fully support INT64
-      for (int i = 0, end = output_binding_names.size(); i < end; ++i) {
+      for (int i = 0, end = static_cast<int>(output_binding_names.size()); i < end; ++i) {
         const std::string& output_name = output_binding_names[i];
         size_t binding_index = trt_engine->getBindingIndex(output_name.c_str());
         int output_type = 0;
