@@ -752,6 +752,42 @@ Some boolean parameters are passed by runtime input for generic purpose
         DecoderAttentionTypeAndShapeInference(ctx);
       });
 
+  static const char* SequencePooling2_ver1_doc = R"DOC(sequence pooling and padding trial)DOC";
+  ONNX_CONTRIB_OPERATOR_SCHEMA(SequencePooling2)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(SequencePooling2_ver1_doc)
+      .Input(0, "batch_input_tensor", "3D batch_input_tensor with shape (batch_size, sequence_length_for_split, hidden_size)", "T")
+      .Input(1, "batch_sentence_lengthes", "2D batch_sentence_lengthes with shape (batch_size, num_sequences)", "M")
+      .Output(0, "output", "3D output tensor with shape (batch_size, num_sequences, hidden_size)", "T")
+      .Output(1, "mask", "2D output tensor with shape (batch_size, num_sequences)", "T")
+      .TypeConstraint("M", {"tensor(int64)"}, "Constrain input and output integer tensors types")
+      .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output float tensors types.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+        propagateElemTypeFromInputToOutput(ctx, 0, 1);
+        if (!hasInputShape(ctx, 0))
+          return;
+
+        auto& batch_input_tensor_shape = getInputShape(ctx, 0);
+        auto& batch_input_tensor_dims = batch_input_tensor_shape.dim();
+
+        if (batch_input_tensor_dims.size() != 3) {
+          fail_shape_inference("batch_input_tensor should have 3 dimensions");
+        }
+
+        if (!hasInputShape(ctx, 1))
+          return;
+
+        auto& batch_sentence_lengthes_shape = getInputShape(ctx, 1);
+        auto& batch_sentence_lengthes_dims = batch_sentence_lengthes_shape.dim();
+
+        if (batch_sentence_lengthes_dims.size() != 2) {
+          fail_shape_inference("batch_sentence_lengthes should have 2 dimensions");
+        }
+
+      });
+
 
   static const char* EmbedLayerNormalization_ver1_doc = R"DOC(
 EmbedLayerNormalization is the fusion of embedding layer in BERT model, with optional mask processing.

@@ -54,6 +54,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.ReduceSumInteger">com.microsoft.ReduceSumInteger</a>
   * <a href="#com.microsoft.Rfft">com.microsoft.Rfft</a>
   * <a href="#com.microsoft.SampleOp">com.microsoft.SampleOp</a>
+  * <a href="#com.microsoft.SequencePooling2">com.microsoft.SequencePooling2</a>
   * <a href="#com.microsoft.SkipLayerNormalization">com.microsoft.SkipLayerNormalization</a>
   * <a href="#com.microsoft.SparseToDenseMatMul">com.microsoft.SparseToDenseMatMul</a>
   * <a href="#com.microsoft.Tokenizer">com.microsoft.Tokenizer</a>
@@ -2655,6 +2656,42 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>T</tt> : tensor(uint32), tensor(uint64), tensor(int32), tensor(int64), tensor(float16), tensor(float), tensor(double)</dt>
 <dd>Constrain to any tensor type. If the dtype attribute is not provided this must be a valid output type.</dd>
+</dl>
+
+
+### <a name="com.microsoft.SequencePooling2"></a><a name="com.microsoft.sequencepooling2">**com.microsoft.SequencePooling2**</a>
+
+  sequence pooling and padding trial
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Inputs
+
+<dl>
+<dt><tt>batch_input_tensor</tt> : T</dt>
+<dd>3D batch_input_tensor with shape (batch_size, sequence_length_for_split, hidden_size)</dd>
+<dt><tt>batch_sentence_lengthes</tt> : M</dt>
+<dd>2D batch_sentence_lengthes with shape (batch_size, num_sequences)</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>output</tt> : T</dt>
+<dd>3D output tensor with shape (batch_size, num_sequences, hidden_size)</dd>
+<dt><tt>mask</tt> : T</dt>
+<dd>2D output tensor with shape (batch_size, num_sequences)</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>M</tt> : tensor(int64)</dt>
+<dd>Constrain input and output integer tensors types</dd>
+<dt><tt>T</tt> : tensor(float), tensor(float16)</dt>
+<dd>Constrain input and output float tensors types.</dd>
 </dl>
 
 
