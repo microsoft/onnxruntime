@@ -57,6 +57,7 @@ function(setup_mlas_source_for_windows)
         ${MLAS_SRC_DIR}/arm64/QgemmS8S8KernelSdot.asm
         ${MLAS_SRC_DIR}/arm64/SgemmKernelNeon.asm
         ${MLAS_SRC_DIR}/arm64/SgemvKernelNeon.asm
+        ${MLAS_SRC_DIR}/arm64/SymQgemmS8KernelNeon.asm
       )
     else()
       target_sources(onnxruntime_mlas PRIVATE
