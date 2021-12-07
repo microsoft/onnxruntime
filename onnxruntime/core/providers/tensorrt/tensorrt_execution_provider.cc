@@ -981,7 +981,7 @@ void TensorrtExecutionProvider::RemoveTensorRTGraphCycles(SubGraphCollection_t& 
     std::unordered_map<std::string, int> node_to_index_map;
     std::unordered_map<int, std::string> index_to_node_map;
     std::unordered_map<std::string, std::unordered_set<std::string>> input_to_nodes_map, node_to_outputs_map;
-    std::unordered_set<int> non_trt_node_index(node_index.begin(), node_index.end());
+    std::unordered_set<size_t> non_trt_node_index(node_index.begin(), node_index.end());
     int id = 0;
     for (const auto& group : supported_nodes_vector) {
       if (!group.first.empty()) {
@@ -1007,7 +1007,7 @@ void TensorrtExecutionProvider::RemoveTensorRTGraphCycles(SubGraphCollection_t& 
 
         // Remove TensorRT nodes from node index list
         for (const auto& index : group.first) {
-          non_trt_node_index.erase(static_cast<int>(node_index[index]));
+          non_trt_node_index.erase(node_index[index]);
         }
       }
     }
