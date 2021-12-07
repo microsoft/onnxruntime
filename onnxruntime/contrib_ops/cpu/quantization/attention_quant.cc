@@ -82,7 +82,7 @@ Status QAttention<T>::PrePack(const Tensor& weights, int input_idx, AllocatorPtr
   const auto* weights_data = static_cast<const uint8_t*>(weights.DataRaw());
   weights_is_signed_ = weights.IsDataType<int8_t>();
 
-  packed_weights_size_ = MlasGemmPackBSize(head_size, input_hidden_size, weights_is_signed_);
+  packed_weights_size_ = MlasGemmPackBSize(head_size, input_hidden_size, false /*AIsSigned*/, weights_is_signed_);
   if (packed_weights_size_ == 0) {
     return Status::OK();
   }
@@ -99,7 +99,7 @@ Status QAttention<T>::PrePack(const Tensor& weights, int input_idx, AllocatorPtr
   packed_weights_ = BufferUniquePtr(packed_weights_data, BufferDeleter(alloc));
 
   for (size_t i = 0; i < loop_len; i++) {
-    MlasGemmPackB(head_size, input_hidden_size, weights_data, hidden_size_x3, weights_is_signed_, packed_weights_data);
+    MlasGemmPackB(head_size, input_hidden_size, weights_data, hidden_size_x3, false /*AIsSigned*/, weights_is_signed_, packed_weights_data);
     packed_weights_data += packed_weights_size_;
     weights_data += head_size;
   }
@@ -227,13 +227,13 @@ Status QAttention<T>::Compute(OpKernelContext* context) const {
     const auto* weights_data = packed_weights_ ? nullptr : static_cast<const uint8_t*>(weights->DataRaw());
     const bool weights_is_signed = packed_weights_ ? weights_is_signed_ : weights->IsDataType<int8_t>();
 
-    MLAS_GEMM_U8X8_SHAPE_PARAMS gemm_shape;
+    MLAS_GEMM_QUANT_SHAPE_PARAMS gemm_shape;
     gemm_shape.M = sequence_length;
     gemm_shape.N = head_size;
     gemm_shape.K = input_hidden_size;
     gemm_shape.BIsSigned = weights_is_signed;
 
-    std::vector<MLAS_GEMM_U8X8_DATA_PARAMS> gemm_data_vec(loop_len);
+    std::vector<MLAS_GEMM_QUANT_DATA_PARAMS> gemm_data_vec(loop_len);
     std::vector<MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR> scale_bias_procs;
     scale_bias_procs.reserve(loop_len);
 

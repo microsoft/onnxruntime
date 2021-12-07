@@ -1,0 +1,14 @@
+[
+    [
+        "QLinearConv ai.onnx CPUExecutionProvider",
+        1301685544574905024
+    ],
+    [
+        "QLinearConv com.microsoft CPUExecutionProvider",
+        10904143578341560456
+    ],
+    [
+        "QLinearMatMul ai.onnx CPUExecutionProvider",
+        7936962119982759552
+    ]
+]

@@ -18,25 +18,6 @@ Abstract:
 #include "mlasi.h"
 
 //
-// Define the kernel flags
-//
-
-#define MLAS_CONV_SYM_FLAG_INPUT_DIRECT             0x00000001
-#define MLAS_CONV_SYM_FLAG_PER_CHANNEL_SCALE        0x00000002
-
-//
-// Define the post-processing parameters: bias and re-quant params
-//
-
-struct MLAS_CONV_SYM_POST_PROCESS_PARAMS {
-    const int32_t* Bias;
-    const float* Scale;
-    float MinimumValue;
-    float MaximumValue;
-    int32_t OutputZeroPoint;
-};
-
-//
 // Define the prototypes of the platform optimized routines.
 //
 
@@ -45,7 +26,7 @@ void
 (MLASCALL MLAS_CONV_SYM_KERNEL)(
     const void* Input,
     const void* Filter,
-    uint8_t* Output,
+    void* Output,
     size_t KernelSize,
     size_t InputChannels,
     size_t OutputChannels,
@@ -60,7 +41,7 @@ void
 (MLASCALL MLAS_CONV_SYM_DEPTHWISE_KERNEL)(
     const void* Input,
     const void* Filter,
-    uint8_t* Output,
+    void* Output,
     size_t KernelSize,
     size_t Channels,
     size_t ChannelOffset,
@@ -69,6 +50,7 @@ void
     const struct MLAS_CONV_SYM_POST_PROCESS_PARAMS* PostProcessParams,
     unsigned KernelFlags
     );
+
 
 extern "C" {
 
@@ -81,6 +63,10 @@ extern "C" {
     MLAS_CONV_SYM_DEPTHWISE_KERNEL MlasConvSymDepthwiseKernelAvx512Core;
     MLAS_CONV_SYM_KERNEL MlasConvSymKernelAvx512Vnni;
     MLAS_CONV_SYM_DEPTHWISE_KERNEL MlasConvSymDepthwiseKernelAvx512Vnni;
+#elif defined(MLAS_TARGET_ARM64)
+    MLAS_CONV_SYM_DEPTHWISE_KERNEL MlasConvSymDepthwiseKernelNeon;
+    MLAS_CONV_SYM_DEPTHWISE_ROUTINE_KERNELSIZE MlasConvSymDepthwiseKernelSize9Arm64;
+    MLAS_CONV_SYM_DEPTHWISE_ROUTINE_KERNELSIZE MlasConvSymDepthwiseKernelSize25Arm;
 #endif
 
 }
@@ -165,18 +151,44 @@ const MLAS_CONV_SYM_DISPATCH MlasConvSymDispatchAvx512Vnni = {
 
 #endif // ORT_MINIMAL_BUILD
 
+#elif defined(MLAS_TARGET_ARM64)
+const MLAS_CONV_SYM_DISPATCH MlasConvSymDispatchNeon = {
+    nullptr,
+    MlasConvSymDepthwiseKernelNeon,
+    4,   // FilterInputChannelPackCount
+    16,  // FilterOutputChannelPackCount
+    8,   // KernelChannelCount
+    8,   // KernelOutputCount
+    4,   // KernelInputChannelAlignment
+    8,   // KernelOutputChannelAlignment
+    16,  // KernelDepthwiseChannelCount
+    4,   // KernelDepthwiseOutputCount
+    true
+};
 #endif // MLAS_TARGET_AMD64
 
 MLAS_FORCEINLINE
 void
 MlasConvSymSetOutputZeroPoint(
     MLAS_CONV_SYM_POST_PROCESS_PARAMS& PostProcessParams,
-    int32_t OutputZeroPoint
+    int32_t OutputZeroPoint,
+    bool InputIsSigned
     )
 {
-    PostProcessParams.MinimumValue = static_cast<float>(0 - OutputZeroPoint);
-    PostProcessParams.MaximumValue = static_cast<float>(255 - OutputZeroPoint);
+    int32_t minimum = InputIsSigned ? std::numeric_limits<int8_t>::lowest()
+                                    : std::numeric_limits<uint8_t>::lowest();
+    int32_t maximum = InputIsSigned ? std::numeric_limits<int8_t>::max()
+                                    : std::numeric_limits<uint8_t>::max();
+    PostProcessParams.MinimumValue = static_cast<float>(minimum - OutputZeroPoint);
+    PostProcessParams.MaximumValue = static_cast<float>(maximum - OutputZeroPoint);
     PostProcessParams.OutputZeroPoint = OutputZeroPoint;
+}
+
+MLAS_FORCEINLINE
+const
+MLAS_CONV_SYM_DISPATCH*
+GetConvSymDispatch(bool InputIsSigned){
+    return InputIsSigned ? MlasPlatform.ConvSymS8S8Dispatch : MlasPlatform.ConvSymU8S8Dispatch;
 }
 
 size_t
@@ -184,10 +196,11 @@ MlasConvSymPackWSize(
     size_t GroupCount,
     size_t InputChannels,
     size_t OutputChannels,
-    size_t KernelSize
+    size_t KernelSize,
+    bool InputIsSigned
     )
 {
-    const MLAS_CONV_SYM_DISPATCH* ConvSymDispatch = MlasPlatform.ConvSymDispatch;
+    const MLAS_CONV_SYM_DISPATCH* ConvSymDispatch = GetConvSymDispatch(InputIsSigned);
 
     if (ConvSymDispatch == nullptr) {
         return 0;
@@ -197,8 +210,12 @@ MlasConvSymPackWSize(
 
         if (ConvSymDispatch->DepthwiseKernel != nullptr &&
             InputChannels == 1 && OutputChannels == 1) {
-
-            size_t AlignedGroupCount = (GroupCount + 15) & ~15;
+#ifdef MLAS_TARGET_ARM64
+            constexpr size_t GroupAlign = 8;
+#else
+            constexpr size_t GroupAlign = 16;
+#endif
+            size_t AlignedGroupCount = (GroupCount + GroupAlign - 1) & ~(GroupAlign - 1);
 
             if (AlignedGroupCount != GroupCount) {
                 return 0;
@@ -235,7 +252,8 @@ MlasConvSymPackW(
     size_t KernelSize,
     const int8_t* W,
     int8_t* PackedW,
-    size_t PackedWSize
+    size_t PackedWSize,
+    bool InputIsSigned
     )
 {
     memset(PackedW, 0, PackedWSize);
@@ -253,7 +271,7 @@ MlasConvSymPackW(
 
     } else {
 
-        const MLAS_CONV_SYM_DISPATCH* ConvSymDispatch = MlasPlatform.ConvSymDispatch;
+        const MLAS_CONV_SYM_DISPATCH* ConvSymDispatch = GetConvSymDispatch(InputIsSigned);
         size_t InputChannelPackCount = ConvSymDispatch->FilterInputChannelPackCount;
         size_t OutputChannelPackCount = ConvSymDispatch->FilterOutputChannelPackCount;
 
@@ -292,13 +310,14 @@ MlasConvSymPackW(
 
 int32_t
 MlasConvSymFixupInputZeroPoint(
-    uint8_t zero_point_value
+    int32_t zero_point_value,
+    bool InputIsSigned
     )
 {
-    const MLAS_CONV_SYM_DISPATCH* ConvSymDispatch = MlasPlatform.ConvSymDispatch;
+    const MLAS_CONV_SYM_DISPATCH* ConvSymDispatch = GetConvSymDispatch(InputIsSigned);
 
     if (ConvSymDispatch != nullptr && ConvSymDispatch->FixupInputZeroPoint) {
-        return static_cast<int32_t>(zero_point_value) - 128;
+        return zero_point_value - 128;
     }
     return zero_point_value;
 }
@@ -309,7 +328,7 @@ MlasConvSym(
     const MLAS_CONV_SYM_PARAMS& Params
     )
 {
-    const MLAS_CONV_SYM_DISPATCH* ConvSymDispatch = MlasPlatform.ConvSymDispatch;
+    const MLAS_CONV_SYM_DISPATCH* ConvSymDispatch = GetConvSymDispatch(Params.InputIsSigned);
 
     int32_t KernelFlags = 0;
 
@@ -323,7 +342,7 @@ MlasConvSym(
 
     MLAS_CONV_SYM_POST_PROCESS_PARAMS PostProcessParams = {};
 
-    MlasConvSymSetOutputZeroPoint(PostProcessParams, Params.OutputZeroPoint);
+    MlasConvSymSetOutputZeroPoint(PostProcessParams, Params.OutputZeroPoint, Params.InputIsSigned);
 
     const size_t KernelChannelCount = ConvSymDispatch->KernelChannelCount;
     const size_t KernelOutputCount = ConvSymDispatch->KernelOutputCount;
@@ -340,7 +359,7 @@ MlasConvSym(
         for (size_t co = 0; co < OutputChannels;) {
 
             const size_t ChannelCount = std::min<size_t>(OutputChannels - co, KernelChannelCount);
-            auto* conv_out = Params.Output + (oc_outside * OutputChannels) + co;
+            void* conv_out = static_cast<int8_t*>(Params.Output) + (oc_outside * OutputChannels) + co;
 
             PostProcessParams.Bias = Params.Bias + co;
             PostProcessParams.Scale = Params.Scale + (Params.PerChannelScale ? co : 0);
@@ -351,7 +370,7 @@ MlasConvSym(
                 if (Params.InputIndirection) {
                     Input = Params.InputIndirection + (oc_outside + oc) * KernelSize;
                 } else {
-                    Input = Params.InputDirect + (oc_outside + oc) * InputChannels;
+                    Input = static_cast<const int8_t*>(Params.InputDirect) + (oc_outside + oc) * InputChannels;
                 }
                 size_t OutputCount = std::min<size_t>(oc_outside_block_size - oc, KernelOutputCount);
 
@@ -367,7 +386,7 @@ MlasConvSym(
                     &PostProcessParams,
                     KernelFlags);
                 oc += OutputCount;
-                conv_out += OutputCount * OutputChannels;
+                conv_out = static_cast<int8_t*>(conv_out) + OutputCount * OutputChannels;
             }
 
             co += ChannelCount;
@@ -383,7 +402,7 @@ MlasConvSymDepthwise(
     const MLAS_CONV_SYM_PARAMS& Params
     )
 {
-    const MLAS_CONV_SYM_DISPATCH* ConvSymDispatch = MlasPlatform.ConvSymDispatch;
+    const MLAS_CONV_SYM_DISPATCH* ConvSymDispatch = GetConvSymDispatch(Params.InputIsSigned);
 
     unsigned KernelFlags = 0;
 
@@ -393,7 +412,28 @@ MlasConvSymDepthwise(
 
     MLAS_CONV_SYM_POST_PROCESS_PARAMS PostProcessParams = {};
 
-    MlasConvSymSetOutputZeroPoint(PostProcessParams, Params.OutputZeroPoint);
+    MlasConvSymSetOutputZeroPoint(PostProcessParams, Params.OutputZeroPoint, Params.InputIsSigned);
+
+#if defined(MLAS_TARGET_ARM64)
+
+    if ((Params.KernelSize == 9 || Params.KernelSize == 25) && (Params.OutputChannels & 15) == 0) {
+        PostProcessParams.Bias = Params.Bias;
+        PostProcessParams.Scale = Params.Scale;
+        if (Params.KernelSize == 9) {
+            MlasConvSymDepthwiseKernelSize9Arm64(
+                (const uint8_t *const *)Params.InputIndirection, (int8_t const*)Params.Filter, Params.OutputChannels,
+                (uint8_t*)Params.Output, Params.OutputCount, &PostProcessParams, KernelFlags
+            );
+        } else {
+            MlasConvSymDepthwiseKernelSize25Arm(
+                (const uint8_t *const *)Params.InputIndirection, (int8_t const*)Params.Filter, Params.OutputChannels,
+                (uint8_t*)Params.Output, Params.OutputCount, &PostProcessParams, KernelFlags
+            );
+        }
+        return;
+    }
+
+#endif
 
     const size_t KernelChannelCount = ConvSymDispatch->KernelDepthwiseChannelCount;
     const size_t KernelOutputCount = ConvSymDispatch->KernelDepthwiseOutputCount;
@@ -402,7 +442,7 @@ MlasConvSymDepthwise(
     const size_t OutputChannels = Params.OutputChannels;
 
     const auto* InputIndirection = Params.InputIndirection;
-    auto* Output = Params.Output;
+    void* Output = Params.Output;
 
     for (size_t OutputCountRemaining = Params.OutputCount; OutputCountRemaining > 0;) {
 
@@ -418,7 +458,7 @@ MlasConvSymDepthwise(
             ConvSymDispatch->DepthwiseKernel(
                 InputIndirection,
                 static_cast<const uint8_t*>(Params.Filter) + ChannelOffset,
-                Output + ChannelOffset,
+                static_cast<int8_t*>(Output) + ChannelOffset,
                 KernelSize,
                 OutputChannels,
                 ChannelOffset,
@@ -431,7 +471,7 @@ MlasConvSymDepthwise(
         }
 
         InputIndirection += OutputCount * KernelSize;
-        Output += OutputCount * OutputChannels;
+        Output = static_cast<int8_t*>(Output) + OutputCount * OutputChannels;
         OutputCountRemaining -= OutputCount;
     }
 }

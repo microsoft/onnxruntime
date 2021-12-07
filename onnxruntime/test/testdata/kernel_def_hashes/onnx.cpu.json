@@ -1476,18 +1476,6 @@
         15162687909384154912
     ],
     [
-        "Optional ai.onnx CPUExecutionProvider",
-        4007199385789893408
-    ],
-    [
-        "OptionalGetElement ai.onnx CPUExecutionProvider",
-        8727767224223660008
-    ],
-    [
-        "OptionalHasElement ai.onnx CPUExecutionProvider",
-        103583056104706000
-    ],
-    [
         "Or ai.onnx CPUExecutionProvider",
         18295541712828245416
     ],

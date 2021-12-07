@@ -47,16 +47,16 @@ inline std::string MakeString(const char* p_str) {
 
 
 namespace server {
-#ifdef __GNUC__
-constexpr inline bool IsLittleEndianOrder() noexcept { return __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__; }
+constexpr bool IsLittleEndianOrder() noexcept {
+#if defined(_WIN32)
+  return true;
+#elif defined(__GNUC__) || defined(__clang__)
+  return __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__;
 #else
-// On Windows and Mac, this function should always return true
-GSL_SUPPRESS(type .1)  // allow use of reinterpret_cast for this special case
-inline bool IsLittleEndianOrder() noexcept {
-  static int n = 1;
-  return (*reinterpret_cast<char*>(&n) == 1);
-}
+#error server::IsLittleEndianOrder() is not implemented in this environment.
 #endif
+}
+
 std::vector<int64_t> GetTensorShapeFromTensorProto(const onnx::TensorProto& tensor_proto) {
   const auto& dims = tensor_proto.dims();
   std::vector<int64_t> tensor_shape_vec(static_cast<size_t>(dims.size()));
@@ -107,7 +107,7 @@ static void UnpackTensorWithRawData(const void* raw_data, size_t raw_data_length
       throw Ort::Exception(MakeString("UnpackTensor: the pre-allocated size does not match the raw data size, expected ",
                                       expected_size_in_bytes, ", got ", raw_data_length),
                            OrtErrorCode::ORT_FAIL);
-    if (IsLittleEndianOrder()) {
+    if constexpr (IsLittleEndianOrder()) {
       memcpy(p_data, raw_data, raw_data_length);
     } else {
       const size_t type_size = sizeof(T);

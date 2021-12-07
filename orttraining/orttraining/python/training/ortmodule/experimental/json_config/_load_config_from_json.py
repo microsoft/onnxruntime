@@ -213,7 +213,7 @@ def load_from_json(ortmodule, path=None):
     {
         "PropagateCastOps":
         {
-            "Strategy": "FLOOD_FILL", # str representing strategy (like "NONE", "FLOOD_FILL"...)
+            "Strategy": "FLOOD_FILL", # str representing strategy ("NONE", "FLOOD_FILL", or "INSERT_AND_REDUCE")
             "Level": 3, # propagate cast ops level as an int
             "Allow": ["ABC", "DEF"] # propagate cast ops allow as list of strs
         },

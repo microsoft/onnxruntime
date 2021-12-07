@@ -290,10 +290,16 @@ class UpsampleBase {
     if (UpsampleMode::LINEAR == mode) {
       ORT_ENFORCE(scales.size() == 2 ||
                       (scales.size() == 4 && scales[0] == 1 && scales[1] == 1) ||
+                      (scales.size() == 4 && scales[0] == 1 && scales[3] == 1) ||
                       scales.size() == 3 ||
                       (scales.size() == 5 && scales[0] == 1 && scales[1] == 1),
-                  "'Linear' mode only support 2-D inputs or 3-D inputs ('Bilinear', 'Trilinear') "
-                  "or 4-D inputs or 5-D inputs with the corresponding outermost 2 scale values being 1 in the ",
+                  "'Linear' mode only support:\n"
+                  "  * 2-D inputs or\n"
+                  "  * 3-D inputs ('Bilinear', 'Trilinear') or\n"
+                  "  * 4-D inputs with the corresponding outermost 2 scale values being 1"
+                  " or the corresponding outermost and innermost scale values being 1 or\n"
+                  "  * 5-D inputs with the corresponding outermost 2 scale values being 1"
+                  "in the ",
                   is_resize_ ? "Resize operator" : "Upsample operator");
     }
 
