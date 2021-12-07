@@ -49,7 +49,12 @@ file(GLOB_RECURSE onnxruntime_rocm_generated_contrib_ops_cu_srcs CONFIGURE_DEPEN
 file(GLOB onnxruntime_providers_common_srcs CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/core/providers/*.h"
   "${ONNXRUNTIME_ROOT}/core/providers/*.cc"
-  "${ONNXRUNTIME_ROOT}/core/providers/op_kernel_type_control_overrides.inc"
+  # If we are building with reduced number of kernel registration and types,
+  # "core/providers/op_kernel_type_control_overrides_reduced_types.inc"
+  # will be generated with type specifications code.
+  # For simplicity, we inlcude both .inc files,
+  # see onnxruntime/core/providers/op_kernel_type_control.h
+  "${ONNXRUNTIME_ROOT}/core/providers/op_kernel_type_control_overrides*.inc"
 )
 
 if(onnxruntime_USE_NUPHAR)
@@ -655,7 +660,7 @@ if (onnxruntime_USE_OPENVINO)
   else()
     list(APPEND OPENVINO_LIB_LIST ${InferenceEngine_LIBRARIES} ${NGRAPH_LIBRARIES} ngraph::onnx_importer ${PYTHON_LIBRARIES})
   endif()
-  
+
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_openvino_cc_srcs})
   onnxruntime_add_shared_library_module(onnxruntime_providers_openvino ${onnxruntime_providers_openvino_cc_srcs})
   onnxruntime_add_include_to_target(onnxruntime_providers_openvino onnxruntime_common onnx)
