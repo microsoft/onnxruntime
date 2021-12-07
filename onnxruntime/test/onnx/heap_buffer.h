@@ -7,6 +7,7 @@
 
 #include <vector>
 #include <stdlib.h>
+#include <stdint.h>
 
 namespace onnxruntime {
 namespace test {

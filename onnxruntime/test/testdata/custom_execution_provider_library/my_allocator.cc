@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "my_allocator.h"
+#include <stdint.h>
 
 namespace onnxruntime {
 MyEPAllocator::MyEPAllocator(OrtDevice::DeviceId device_id)
