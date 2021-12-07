@@ -5,7 +5,7 @@ grand_parent: Reference
 redirect_from: /docs/reference/mobile/prebuilt-package/mobile_package_op_type_support_1.9
 ---
 
-# ONNX Runtime Mobile Pre-Built Package Operator and Type Support
+# ONNX Runtime Mobile 1.9 Pre-Built Package Operator and Type Support
 
 ## Supported operators and types
 

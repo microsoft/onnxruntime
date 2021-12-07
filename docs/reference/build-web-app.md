@@ -47,7 +47,7 @@ You need to understand your web app's scenario and get an ONNX model that is app
 
 ONNX models can be obtained from the [ONNX model zoo](https://github.com/onnx/models), converted from PyTorch or TensorFlow, and many other places.
 
-You can [convert the ONNX format model to ORT format model](./ort-format-model-conversion.md), for optimized binary size, faster initialization and peak memory usage.
+You can [convert the ONNX format model to ORT format model](./ort-model-format.md), for optimized binary size, faster initialization and peak memory usage.
 
 You can [perform a model-specific custom build](../build/custom.md) to further optimize binary size.
 

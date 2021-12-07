@@ -48,7 +48,7 @@ _Layout_ optimizations may be hardware specific and involve internal conversions
 
 ### Outcome of optimizations when creating an optimized ORT format model
 
-Below is an example of the changes that occur in _basic_ and _extended_ optimizations when applied to the MNIST model with only the CPU EP enabled. The optimization level is specified when [creating the ORT format model](../reference/ort-format-model-conversion.md#optimization-level).
+Below is an example of the changes that occur in _basic_ and _extended_ optimizations when applied to the MNIST model with only the CPU EP enabled. The optimization level is specified when [creating the ORT format model](../reference/ort-model-format.md#optimization-level).
 
   - At the _basic_ level we combine the Conv and Add nodes (the addition is done via the 'B' input to Conv), we combine the MatMul and Add into a single Gemm node (the addition is done via the 'C' input to Gemm), and constant fold to remove one of the Reshape nodes.
     - `python <ORT repository root>/tools/python/convert_onnx_models_to_ort.py --optimization_level basic /dir_with_mnist_onnx_model`
@@ -121,7 +121,7 @@ To create an NNAPI-aware ORT format model please follow these steps.
             pip install -U build\Windows\RelWithDebIfo\RelWithDebIfo\dist\onnxruntime_noopenmp-1.7.0-cp37-cp37m-win_amd64.whl
         ```
 
-3. Create an NNAPI-aware ORT format model by running `convert_onnx_models_to_ort.py` as per the [standard instructions](../reference/ort-format-model-conversion.md), with NNAPI enabled (`--use_nnapi`), and the optimization level set to _extended_ or _all_ (e.g. `--optimization_level extended`). This will allow higher level optimizations to run on any nodes that NNAPI can not handle.
+3. Create an NNAPI-aware ORT format model by running `convert_onnx_models_to_ort.py` as per the [standard instructions](../reference/ort-model-format.md), with NNAPI enabled (`--use_nnapi`), and the optimization level set to _extended_ or _all_ (e.g. `--optimization_level extended`). This will allow higher level optimizations to run on any nodes that NNAPI can not handle.
       ```
       python <ORT repository root>/tools/python/convert_onnx_models_to_ort.py --use_nnapi --optimization_level extended /models
       ```

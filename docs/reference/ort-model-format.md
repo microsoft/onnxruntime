@@ -207,6 +207,7 @@ Ort::Session session(env, <path to model>, session_options);
 ```
 
 Java API
+
 ```java
 SessionOptions session_options = new SessionOptions();
 session_options.addConfigEntry("session.load_model_format", "ORT");
@@ -216,6 +217,7 @@ OrtSession session = env.createSession(<path to model>, session_options);
 ```
 
 JavaScript API
+
 ```js
 import * as ort from "onnxruntime-web";
 
@@ -226,7 +228,7 @@ const session = await ort.InferenceSession.create("<path to model>");
 
 If a session is created using an input byte array containing the ORT format model data, by default we will copy the model bytes at the time of session creation to ensure the model bytes buffer is valid.
 
-You may also enable the option to use the model bytes directly by setting the Session Options config `session.use_ort_model_bytes_directly` to `1`, this may reduce the peak memory usage of ONNX Runtime Mobile, you will need to guarantee that the model bytes are valid throughout the lifespan of the ORT session using the model bytes. For ONNX Runtime Web, this option is set by default.
+You may also enable the option to use the model bytes directly by setting the Session Options config `session.use_ort_model_bytes_directly` to `1`.  This may reduce the peak memory usage of ONNX Runtime Mobile, but you will need to guarantee that the model bytes are valid throughout the lifespan of the ORT session. For ONNX Runtime Web, this option is set by default.
 
 C++ API
 ```c++

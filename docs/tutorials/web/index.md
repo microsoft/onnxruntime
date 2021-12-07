@@ -72,6 +72,6 @@ For more detail on the steps below, see the [build a web application](../../refe
 
    The libraries and models mentioned in the previous steps can be optimized to meet memory and processing demands.
 
-   a. Models in ONNX format can be [converted to ORT format](../../reference/ort-format-model-conversion.md), for optimized model binary size, faster initialization and peak memory usage.
+   a. Models in ONNX format can be [converted to ORT format](../../reference/ort-model-format.md), for optimized model binary size, faster initialization and peak memory usage.
 
    b. The size of the ONNX Runtime itself can reduced by [building a custom package](../../build/custom.md) that only includes support for your specific model/s.

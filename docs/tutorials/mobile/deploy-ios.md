@@ -65,7 +65,7 @@ This example is heavily based on [Google Tensorflow lite - Object Detection Exam
 
    > Conversion of this model is a two part process. The original model is in tflite format. This is firstly converted to ONNX format using the [tf2onnx converter](https://github.com/onnx/tensorflow-onnx).
    >
-   > The model is then converted into ORT format using the [onnx to ort converter](../../reference/ort-format-model-conversion.md).
+   > The model is then converted into ORT format using the [onnx to ort converter](../../reference/ort-model-format.md).
    >
    > As well as generating the model in ORT format, the conversion script also outputs an [operator config file](../../reference/reduced-operator-config-file.md)
 

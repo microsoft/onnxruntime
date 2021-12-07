@@ -23,7 +23,7 @@ To build a custom ONNX Runtime package, the [build from source](./index.md) inst
 * TOC placeholder
 {:toc}
 
-## Reduce operator set
+## Reduce operator kernels
 
 To reduce the compiled binary size of ONNX Runtime, the operator kernels included in the build can be reduced to just those required by your model/s.
 
@@ -40,7 +40,7 @@ The operators that are included are specified at build time, in a [configuration
 
 **`--enable_reduced_operator_type_support`**
 
-* Enables [operator type reduction](../reference/ort-format-model-conversion.md#enable-type-reduction). Requires ONNX Runtime version 1.7 or higher and for type reduction to have been enabled during model conversion
+* Enables [operator type reduction](../reference/ort-model-format.md#enable-type-reduction). Requires ONNX Runtime version 1.7 or higher and for type reduction to have been enabled during model conversion
 
 If the configuration file is created using ORT format models, the input/output types that individual operators require can be tracked if `--enable_type_reduction` is specified. This can be used to further reduce the build size if `--enable_reduced_operator_type_support` is specified when building ORT.
 
@@ -48,7 +48,7 @@ ONNX format models are not guaranteed to include the required per-node type info
 
 ## Minimal build
 
-ONNX Runtime can be built to further minimize the binary size, by only including support for loading and executing models in [ORT format](../reference/ort-format-model-conversion.md), and not ONNX format.
+ONNX Runtime can be built to further minimize the binary size, by only including support for loading and executing models in [ORT format](../reference/ort-model-format.md), and not ONNX format.
 
 **`--minimal_build`**
 
@@ -63,7 +63,6 @@ A minimal build has the following limitations:
     - Execution providers that compile nodes are optionally supported
       - currently this is limited to the NNAPI and CoreML Execution Providers
 
-We do not currently offer backwards compatibility guarantees for ORT format models, as we will be expanding the capabilities in the short term and may need to update the internal format in an incompatible manner to accommodate these changes. You may need to regenerate the ORT format models to use with a future version of ONNX Runtime. Once the feature set stabilizes we will provide backwards compatibility guarantees.
 
 ## Other customizations
 
