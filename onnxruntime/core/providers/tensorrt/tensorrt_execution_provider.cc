@@ -61,7 +61,7 @@ float ConvertSinglePrecisionIEEE754ToFloat(unsigned long input) {
   for (int i = 0; i < 23; ++i) {
     m += ((input >> (23 - i - 1)) & 0x01) * pow(2.0, p--);
   }
-  return (s ? -1 : 1) * pow(2.0, e) * (m + 1.0);
+  return static_cast<float>((s ? -1 : 1) * pow(2.0, e) * (m + 1.0));
 }
 
 /*
@@ -116,7 +116,7 @@ std::unordered_map<std::string, std::unordered_map<int, std::pair<int64_t, int64
     std::unordered_map<int, std::pair<int64_t, int64_t>> inner_map;
     for (size_t j = 0, end = dim_range_vectors.size() / 3; j < end; ++j) {
       size_t idx = 3 * j;
-      inner_map[dim_range_vectors[idx].AsInt64()] = std::make_pair(dim_range_vectors[idx + 1].AsInt64(), dim_range_vectors[idx + 2].AsInt64());
+      inner_map[static_cast<int>(dim_range_vectors[idx].AsInt64())] = std::make_pair(dim_range_vectors[idx + 1].AsInt64(), dim_range_vectors[idx + 2].AsInt64());
     }
     shape_ranges[keys[i].AsString().c_str()] = inner_map;
   }
@@ -184,7 +184,7 @@ bool ReadDynamicRange(const std::string file_name, const bool is_trt_calibration
           std::getline(in_line, str, delim);
           unsigned long scale_int = std::strtoul(str.c_str(), nullptr, 16);
           float scale_float = ConvertSinglePrecisionIEEE754ToFloat(scale_int);
-          float dynamic_range = scale_float * 127.0;
+          float dynamic_range = static_cast<float>(scale_float * 127.0);
           dynamic_range_map[tensor_name] = dynamic_range;
         }
       } else {
@@ -255,7 +255,7 @@ bool SetDynamicRange(nvinfer1::INetworkDefinition& network, std::unordered_map<s
           }
           max_weight = std::max(max_weight, std::abs(weight));
         }
-        if (!trt_layer->getOutput(j)->setDynamicRange(-max_weight, max_weight)) {
+        if (!trt_layer->getOutput(j)->setDynamicRange(static_cast<float>(-max_weight), static_cast<float>(max_weight)) {
           return false;
         }
       }
@@ -1528,7 +1528,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
           if (input->isShapeTensor()) {
             // Get shape values for shape tensor input
             const auto& tensor_type = ort.GetTensorElementType(tensor_info);
-            int shape_size = nb_dims == 0 ? 1 : tensor_shapes[0];
+            int shape_size = nb_dims == 0 ? 1 : static_cast<int>(tensor_shapes[0]);
             tensor_shape_values[input_name].resize(shape_size);
             switch (tensor_type) {
               case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32: {
@@ -1563,9 +1563,9 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
             if (shape_size == shape_range_size) {
               // If shape size matches, check/update shape range
               for (int j = 0; j < shape_size; ++j) {
-                shapes_min[j] = shape_range[j].first;
-                shapes_opt[j] = shape_range[j].second;
-                shapes_max[j] = shape_range[j].second;
+                shapes_min[j] = static_cast<int32_t>(shape_range[j].first);
+                shapes_opt[j] = static_cast<int32_t>(shape_range[j].second);
+                shapes_max[j] = static_cast<int32_t>(shape_range[j].second);
 
                 const auto& tensor_shape_value = tensor_shape_values[input_name][j];
                 // Update shape range lower bound
@@ -1606,21 +1606,21 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
             for (int j = 0, end = nb_dims; j < end; ++j) {
               const auto& tensor_shape = tensor_shapes[j];
               if (shape_range.find(j) != shape_range.end()) {
-                dims_min.d[j] = shape_range[j].first;
-                dims_opt.d[j] = shape_range[j].second;
-                dims_max.d[j] = shape_range[j].second;
+                dims_min.d[j] = static_cast<int32_t>(shape_range[j].first);
+                dims_opt.d[j] = static_cast<int32_t>(shape_range[j].second);
+                dims_max.d[j] = static_cast<int32_t>shape_range[j].second;
 
                 // Update minimum dimension
                 if (tensor_shape < shape_range[j].first) {
                   shape_range[j].first = tensor_shape;
-                  dims_min.d[j] = tensor_shape;
+                  dims_min.d[j] = static_cast<int32_t>(tensor_shape);
                   engine_update = true;
                 }
                 // Update maximum dimension
                 if (tensor_shape > shape_range[j].second) {
                   shape_range[j].second = tensor_shape;
-                  dims_max.d[j] = tensor_shape;
-                  dims_opt.d[j] = tensor_shape;
+                  dims_max.d[j] = static_cast<int32_t>tensor_shape;
+                  dims_opt.d[j] = static_cast<int32_t>tensor_shape;
                   engine_update = true;
                 }
               }
@@ -1749,7 +1749,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
             trt_context->setInputShapeBinding(binding_index, &tensor_shape_values[input_name][0]);
           } else {
             for (int j = 0, end = nb_dims; j < end; ++j) {
-              dimensions.d[j] = tensor_shapes[j];
+              dimensions.d[j] = static_cast<int32_t>(tensor_shapes[j]);
             }
             trt_context->setBindingDimensions(binding_index, dimensions);
           }
