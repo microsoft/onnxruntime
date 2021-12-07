@@ -94,6 +94,35 @@ OrtValue create_ort_value(
 
 OrtValue create_ort_value(
   onnxruntime::ORTInvoker& invoker,
+  const int64_t val) {
+  OrtValue ort_val;
+  CreateMLValue(
+    invoker.GetCurrentExecutionProvider().GetAllocator(0, OrtMemTypeDefault),
+    ort_scalar_type_from_aten(at::kLong),
+    {1,},
+    &ort_val);
+  auto* ort_tensor = ort_val.GetMutable<onnxruntime::Tensor>();
+  CopyVectorToTensor<int64_t>(invoker, {val}, *ort_tensor);
+  return ort_val;
+}
+
+OrtValue create_ort_value(
+  onnxruntime::ORTInvoker& invoker,
+  c10::optional<int64_t> intval) {
+  int64_t val = intval.value();
+  OrtValue ort_val;
+  CreateMLValue(
+    invoker.GetCurrentExecutionProvider().GetAllocator(0, OrtMemTypeDefault),
+    ort_scalar_type_from_aten(at::kLong),
+    {1,},
+    &ort_val);
+  auto* ort_tensor = ort_val.GetMutable<onnxruntime::Tensor>();
+  CopyVectorToTensor<int64_t>(invoker, {val}, *ort_tensor);
+  return ort_val;
+}
+
+OrtValue create_ort_value(
+  onnxruntime::ORTInvoker& invoker,
   const at::Tensor& tensor) {
   assert_tensor_supported(tensor);
 
@@ -237,6 +266,22 @@ at::Tensor empty_strided(
     at::TensorOptions()
       .device(*device_opt)
       .dtype(dtype));
+}
+
+at::Tensor slice_Tensor(
+  const at::Tensor& self,
+  int64_t dim,
+  c10::optional<int64_t> start,
+  c10::optional<int64_t> end,
+  int64_t step) {
+  ORT_LOG_FN(self, dim, start, end, step);
+  auto& invoker = GetORTInvoker(self.device());
+  std::vector<OrtValue> result(1);
+  auto status = invoker.Invoke("Slice", {create_ort_value(invoker, self), create_ort_value(invoker, start), create_ort_value(invoker, end), create_ort_value(invoker, dim), create_ort_value(invoker, step)}, result, nullptr);
+  if (!status.IsOK())
+    throw std::runtime_error(
+      "ORT return failure status:" + status.ErrorMessage());
+  return aten_tensor_from_ort(result, self.options())[0];
 }
 
 at::Tensor _reshape_alias(
