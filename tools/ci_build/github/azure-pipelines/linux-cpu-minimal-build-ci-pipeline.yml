@@ -14,6 +14,11 @@
 # 5. Build baseline minimal ORT for Android arm64-v8a including no kernels and disable exceptions.
 #    This step is to report the baseline binary size for Android.
 # 6. Build full (6a) and extended minimal (6b) ORT with runtime optimizations enabled.
+# 7. Build with all optional features disabled and no kernels.
+#    7a: regular build with python enabled checks that the exclusions don't break code paths in a full build.
+#    7b: minimal build with exceptions and python disabled checks that the exclusions don't break code paths in a 
+#        minimal build.
+
 jobs:
 - job: Linux_CPU_Minimal_Build_E2E
   timeoutInMinutes: 120
@@ -35,6 +40,8 @@ jobs:
       script: |
         # Create a folder for all test data
         mkdir -p $(test_data_directory)
+        # create empty config used in some parts
+        touch $(test_data_directory)/include_no_operators.config
       workingDirectory: $(Build.SourcesDirectory)
 
   - template: templates/get-docker-image-steps.yml
@@ -243,6 +250,70 @@ jobs:
               --parallel \
               --minimal_build extended \
               --cmake_extra_defines onnxruntime_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION=ON
+      workingDirectory: $(Build.SourcesDirectory)
+
+  - script: git checkout -- .
+    displayName: Discard local changes to Git repository files
+    workingDirectory: $(Build.SourcesDirectory)
+
+  - task: CmdLine@2
+    displayName: 7a. Regular build with python and all optional features disabled. 
+    inputs:
+      script: |
+        docker run --rm \
+          --volume $(Build.SourcesDirectory):/onnxruntime_src \
+          --volume $(Build.BinariesDirectory):/build \
+          --volume $(test_data_directory):/home/onnxruntimedev/.test_data \
+          -e ALLOW_RELEASED_ONNX_OPSET_ONLY=1 \
+          -e NIGHTLY_BUILD \
+          -e BUILD_BUILDNUMBER \
+          onnxruntimecpubuild \
+            /opt/python/cp37-cp37m/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
+              --build_dir /build/7a \
+              --cmake_generator Ninja \
+              --config MinSizeRel \
+              --skip_submodule_sync \
+              --build_shared_lib \
+              --build_wheel \
+              --parallel \
+              --skip_tests \
+              --disable_ml_ops \
+              --include_ops_by_config /home/onnxruntimedev/.test_data/include_no_operators.config \
+              --cmake_extra_defines onnxruntime_DISABLE_SPARSE_TENSORS=ON \
+                                    onnxruntime_DISABLE_OPTIONAL_TYPE=ON \
+                                    onnxruntime_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION=OFF \
+                                    onnxruntime_BUILD_UNIT_TESTS=OFF 
+      workingDirectory: $(Build.SourcesDirectory)
+
+  - task: CmdLine@2
+    displayName: 7b. Minimal build with all optional features disabled. 
+    inputs:
+      script: |
+        docker run --rm \
+          --volume $(Build.SourcesDirectory):/onnxruntime_src \
+          --volume $(Build.BinariesDirectory):/build \
+          --volume $(test_data_directory):/home/onnxruntimedev/.test_data \
+          -e ALLOW_RELEASED_ONNX_OPSET_ONLY=1 \
+          -e NIGHTLY_BUILD \
+          -e BUILD_BUILDNUMBER \
+          onnxruntimecpubuild \
+            /opt/python/cp37-cp37m/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
+              --build_dir /build/7b \
+              --cmake_generator Ninja \
+              --config MinSizeRel \
+              --skip_submodule_sync \
+              --build_shared_lib \
+              --parallel \
+              --minimal_build \
+              --disable_exceptions \
+              --disable_ml_ops \
+              --skip_tests \
+              --enable_reduced_operator_type_support \
+              --include_ops_by_config /home/onnxruntimedev/.test_data/include_no_operators.config \
+              --cmake_extra_defines onnxruntime_DISABLE_SPARSE_TENSORS=ON \
+                                    onnxruntime_DISABLE_OPTIONAL_TYPE=ON \
+                                    onnxruntime_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION=OFF \
+                                    onnxruntime_BUILD_UNIT_TESTS=OFF 
       workingDirectory: $(Build.SourcesDirectory)
 
   - task: PublishTestResults@2
