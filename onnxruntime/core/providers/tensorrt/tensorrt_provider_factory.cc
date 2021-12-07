@@ -89,7 +89,7 @@ struct Tensorrt_Provider : Provider {
     } else {
       dest = new char[str_size + 1];
 #ifdef _MSC_VER
-      strncpy_s(dest, str_size, internal_options.int8_calibration_table_name.c_str(), str_size);
+      strncpy_s(dest, str_size + 1, internal_options.int8_calibration_table_name.c_str(), str_size);
 #else
       strncpy(dest, internal_options.int8_calibration_table_name.c_str(), str_size);
 #endif
@@ -109,7 +109,7 @@ struct Tensorrt_Provider : Provider {
     } else {
       dest = new char[str_size + 1];
 #ifdef _MSC_VER
-      strncpy_s(dest, str_size, internal_options.engine_cache_path.c_str(), str_size);
+      strncpy_s(dest, str_size + 1, internal_options.engine_cache_path.c_str(), str_size);
 #else
       strncpy(dest, internal_options.engine_cache_path.c_str(), str_size);
 #endif
@@ -125,7 +125,7 @@ struct Tensorrt_Provider : Provider {
     } else {
       dest = new char[str_size + 1];
 #ifdef _MSC_VER
-      strncpy_s(dest, str_size, internal_options.engine_decryption_lib_path.c_str(), str_size);
+      strncpy_s(dest, str_size + 1, internal_options.engine_decryption_lib_path.c_str(), str_size);
 #else
       strncpy(dest, internal_options.engine_decryption_lib_path.c_str(), str_size);
 #endif
