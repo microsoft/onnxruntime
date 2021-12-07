@@ -6,47 +6,40 @@
 # license information.
 # --------------------------------------------------------------------------
 
-# For live logging, use the command: pytest -o log_cli=true --log-cli-level=DEBUG
-
 import unittest
 import os
 import pytest
 
+from parity_utilities import find_transformers_source
+if find_transformers_source():
+    from convert_beam_search import main as run
+else:
+    from onnxruntime.transformers.convert_beam_search import main as run
+    
 class TestBeamSearch(unittest.TestCase):
     def setUp(self):
-        from onnxruntime import get_available_providers
-        self.test_cuda = 'CUDAExecutionProvider' in get_available_providers()
-
+        self.model_name = "gpt2"
+        self.gpt2_onnx_path = os.path.join('.', 'onnx_models', 'gpt2_past_fp32_shape.onnx')
+        self.beam_search_onnx_path = os.path.join('.', 'onnx_models', 'gpt2_beam_search.onnx')
+        self.cpu_params = f'-m {self.model_name} --gpt2_onnx {self.gpt2_onnx_path} --output {self.beam_search_onnx_path} --output_sequences_score --repetition_penalty 2.0'
+        
     def run_beam_search(self, arguments: str):
-        from onnxruntime.transformers.convert_beam_search import main as run
         return run(arguments.split())
 
     @pytest.mark.slow
     def test_cpu(self):
-        gpt2_onnx_path = os.path.join('.', 'onnx_models', 'gpt2_past_fp32_shape.onnx')
-        beam_search_onnx_path = os.path.join('.', 'onnx_models', 'gpt2_beam_search_v1.onnx')
-        result = self.run_beam_search(f'-m gpt2 --gpt2_onnx {gpt2_onnx_path} --output {beam_search_onnx_path} --output_sequences_score --repetition_penalty 2.0 --run_baseline')
-        os.remove(gpt2_onnx_path)
-        os.remove(beam_search_onnx_path)
-        self.assertTrue(result, "ORT and PyTorch is expected to have same result, but current result is different")        
+        result = self.run_beam_search(self.cpu_params)
+        os.remove(self.gpt2_onnx_path)
+        os.remove(self.beam_search_onnx_path)
+        self.assertTrue(result["parity"], "ORT and PyTorch result is different")        
 
     @pytest.mark.slow
-    def test_no_repeat_ngram_1(self):
-        gpt2_onnx_path = os.path.join('.', 'onnx_models', 'gpt2_past_fp32_shape.onnx')
-        beam_search_onnx_path = os.path.join('.', 'onnx_models', 'gpt2_beam_search_v1.onnx')
-        result = self.run_beam_search(f'-m gpt2 --gpt2_onnx {gpt2_onnx_path} --output {beam_search_onnx_path} --output_sequences_score --repetition_penalty 2.0  --no_repeat_ngram_size 1 --run_baseline')
-        os.remove(gpt2_onnx_path)
-        os.remove(beam_search_onnx_path)
-        self.assertTrue(result, "ORT and PyTorch is expected to have same result, but current result is different")
-    
-    @pytest.mark.slow
-    def test_no_repeat_ngram_2(self):
-        gpt2_onnx_path = os.path.join('.', 'onnx_models', 'gpt2_past_fp32_shape.onnx')
-        beam_search_onnx_path = os.path.join('.', 'onnx_models', 'gpt2_beam_search_v1.onnx')
-        result = self.run_beam_search(f'-m gpt2 --gpt2_onnx {gpt2_onnx_path} --output {beam_search_onnx_path} --output_sequences_score --repetition_penalty 2.0  --no_repeat_ngram_size 2 --run_baseline')
-        os.remove(gpt2_onnx_path)
-        os.remove(beam_search_onnx_path)
-        self.assertTrue(result, "ORT and PyTorch is expected to have same result, but current result is different")
+    def test_cpu_no_repeat_ngram(self):
+        for ngram_size in [1, 2]:
+            result = self.run_beam_search(self.cpu_params + f' --no_repeat_ngram_size {ngram_size}')
+            os.remove(self.gpt2_onnx_path)
+            os.remove(self.beam_search_onnx_path)
+            self.assertTrue(result["parity"], "ORT and PyTorch result is different")
 
 if __name__ == '__main__':
     unittest.main()

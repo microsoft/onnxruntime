@@ -2,6 +2,7 @@
 # Licensed under the MIT License.
 
 import os
+import time
 import onnx
 import logging
 import argparse
@@ -65,8 +66,14 @@ def parse_arguments(argv=None):
     parser.add_argument('-e', '--use_external_data_format', required=False, action='store_true')
     parser.set_defaults(use_external_data_format=False)
 
-    parser.add_argument('--run_baseline', required=False, action='store_true', help="run huggingface beam search")
-    parser.set_defaults(run_baseline=False)
+    parser.add_argument('--disable_parity', required=False, action='store_true', help="do not run parity test")
+    parser.set_defaults(disable_parity=False)
+
+    parser.add_argument('--total_runs',
+                        required=False,
+                        type=int,
+                        default=1,
+                        help='Number of times of inference for latency measurement')
 
     beam_search_group = parser.add_argument_group("beam search options")
 
@@ -327,7 +334,7 @@ def test_model(args, use_vocab_mask: bool = False, sentences: List[str] = None):
     vocab_size = config.vocab_size
 
     torch_decoded_sequences = []
-    if args.run_baseline:
+    if not args.disable_parity:
         print('-' * 50)
         print("Test PyTorch model and beam search with huggingface transformers...")
         beam_outputs = model.generate(input_ids=input_ids,
@@ -361,11 +368,6 @@ def test_model(args, use_vocab_mask: bool = False, sentences: List[str] = None):
     print('-' * 50)
     print("Test ONNX model and bream search with onnxruntime...")
 
-    # TODO: remove debug code
-    import time
-    print('You have 15 seconds to attach a debugger.')
-    time.sleep(15)
-
     ort_session = create_ort_session(args.output, args.use_gpu)
 
     vocab_mask = np.ones((vocab_size), dtype=np.int32)
@@ -394,7 +396,17 @@ def test_model(args, use_vocab_mask: bool = False, sentences: List[str] = None):
         output_test_data(dir, inputs)
 
     print("inputs", inputs)
-    result = ort_session.run(None, inputs)
+
+    # Test performance
+    latency = []
+    for _ in range(args.total_runs):
+        start = time.time()
+        result = ort_session.run(None, inputs)
+        latency.append(time.time() - start)
+    batch_size = input_ids.shape[0]
+    from benchmark_helper import get_latency_result
+    output = get_latency_result(latency, batch_size)
+
     print("ORT outputs:")
     sequences = result[0]
     print("sequences", sequences)
@@ -411,7 +423,7 @@ def test_model(args, use_vocab_mask: bool = False, sentences: List[str] = None):
             ort_decoded_sequences.append(decoded_sequence)
             print(f"batch {i} sequence {j}: {decoded_sequence}")
 
-    if args.run_baseline:
+    if not args.disable_parity:
         torch_sequences = beam_outputs.sequences.reshape(batch_size, args.num_return_sequences, -1)
         ort_sequences = torch.LongTensor(sequences)
         print("-" * 50)
@@ -426,7 +438,10 @@ def test_model(args, use_vocab_mask: bool = False, sentences: List[str] = None):
         # Compare the generated text instead of word IDs since ORT pads to max sequence length but Torch not.
         is_same = (torch_decoded_sequences == ort_decoded_sequences)
         print("Torch and ORT result is ", "same" if is_same else "different")
-        return is_same
+        output["parity"] = is_same
+
+    print(output)
+    return output
 
 
 def main(argv=None):
