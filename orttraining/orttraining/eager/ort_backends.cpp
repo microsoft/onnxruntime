@@ -69,6 +69,16 @@ OrtDevice ORTBackendsManager::GetOrtDeviceInfo(size_t torch_device_index){
   return allocator->Info().device;
 }
 
+size_t ORTBackendsManager::GetOrtDeviceIndex(const OrtMemoryInfo& ort_memory_info){
+  for (auto it = backends_.begin(); it != backends_.end(); ++it){
+    //eager mode currently only operate on EP's default memory type
+    auto allocator = it->second->GetCurrentExecutionProvider().GetAllocator(0, OrtMemTypeDefault);
+    if (allocator->Info() == ort_memory_info)
+      return it->first;
+  }
+  ORT_THROW("Can't find the eager mode ORT device index for target ort tensor");
+}
+
 const ProviderInfoMap& ORTBackendsManager::GetOrtDeviceProviderInfo(size_t torch_device_index) const {
   auto lookup = device_ep_info_.find(torch_device_index);
   ORT_ENFORCE(lookup != device_ep_info_.end());

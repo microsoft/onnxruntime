@@ -11,12 +11,35 @@
 #include "orttraining/core/framework/ortmodule_graph_builder.h"
 #include "ort_customops.h"
 #include "torch/csrc/autograd/python_variable.h"
+#include "core/framework/tensor.h"
 
 namespace onnxruntime{
 namespace python{
 
 using namespace onnxruntime::training;
 using namespace torch_ort::eager;
+
+static at::ScalarType aten_scalar_type_from_ort(
+  onnxruntime::MLDataType dtype) {
+  if (dtype == onnxruntime::DataTypeImpl::GetType<float>())
+      return at::kFloat;
+  else if (dtype == onnxruntime::DataTypeImpl::GetType<double>())
+      return at::kDouble;
+  else if (dtype == onnxruntime::DataTypeImpl::GetType<onnxruntime::MLFloat16>())
+      return at::kHalf;
+  else if (dtype == onnxruntime::DataTypeImpl::GetType<onnxruntime::BFloat16>())
+      return at::kBFloat16;
+  else if (dtype == onnxruntime::DataTypeImpl::GetType<int>())
+      return at::kInt;
+  else if (dtype == onnxruntime::DataTypeImpl::GetType<int16_t>())
+      return at::kShort;
+  else if (dtype == onnxruntime::DataTypeImpl::GetType<int64_t>())
+      return at::kLong;
+  else if (dtype == onnxruntime::DataTypeImpl::GetType<bool>())
+      return at::kBool;
+  else
+      ORT_THROW("Unsupport aten scalar type: ", dtype);
+}
 
 OrtValue ORTTensor_toORTValue(const at::Tensor& data)
 {
@@ -25,10 +48,13 @@ OrtValue ORTTensor_toORTValue(const at::Tensor& data)
 
 at::Tensor OrtValue_To_ATen_Tensor(OrtValue& ortvalue)
 {
+  auto& ort_tensor = ortvalue.Get<Tensor>();
+  size_t ort_device_idx = torch_ort::eager::GetORTBackendsManager().GetOrtDeviceIndex(ort_tensor.Location());
   return torch_ort::eager::aten_tensor_from_ort(
     std::move(ortvalue),
     at::TensorOptions()
-      .device(at::Device(at::DeviceType::ORT, 0)));
+      .device(at::Device(at::DeviceType::ORT, ort_device_idx))
+      .dtype(onnxruntime::python::aten_scalar_type_from_ort(ort_tensor.DataType())));
 }
 
 void addObjectMethodsForEager(py::module& m){

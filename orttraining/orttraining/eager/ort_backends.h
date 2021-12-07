@@ -28,6 +28,8 @@ public:
 
   OrtDevice GetOrtDeviceInfo(size_t torch_device_index);
 
+  size_t GetOrtDeviceIndex(const OrtMemoryInfo& ort_memory_info);
+
   const ProviderInfoMap& GetOrtDeviceProviderInfo(size_t torch_device_index) const;
 
 private:
