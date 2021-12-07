@@ -1,11 +1,6 @@
 set(mimalloc_root_dir ${PROJECT_SOURCE_DIR}/external/mimalloc)
 
-if(onnxruntime_USE_MIMALLOC_STL_ALLOCATOR)
-  add_definitions(-DUSE_MIMALLOC_STL_ALLOCATOR) # used in ONNXRuntime
-endif()
-if(onnxruntime_USE_MIMALLOC_ARENA_ALLOCATOR)
-  add_definitions(-DUSE_MIMALLOC_ARENA_ALLOCATOR) # used in ONNXRuntime
-endif()
+add_definitions(-DUSE_MIMALLOC)
 include_directories(${mimalloc_root_dir}/include)
 
 option(MI_OVERRIDE "" OFF)

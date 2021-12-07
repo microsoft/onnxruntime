@@ -41,13 +41,17 @@ bool IAllocator::CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size, siz
 
 #ifdef USE_MIMALLOC
 void* AllocatorDefaultAlloc(size_t size) {
+  const size_t alignment = MlasGetPreferredBufferAlignment();
   if (size <= 0) return nullptr;
   void* p;
-  const size_t alignment = MlasGetPreferredBufferAlignment();
 #if defined(_MSC_VER)
   p = mi_malloc_aligned(size, alignment);
+  if (p == nullptr)
+    ORT_THROW_EX(std::bad_alloc);
 #elif defined(_LIBCPP_SGX_CONFIG)
   p = mi_memalign(alignment, size);
+  if (p == nullptr)
+    ORT_THROW_EX(std::bad_alloc);
 #else
   int ret = mi_posix_memalign(&p, alignment, size);
   if (ret != 0)
@@ -67,9 +71,9 @@ void AllocatorDefaultFree(void* p) {
 
 #else
 void* AllocatorDefaultAlloc(size_t size) {
+  const size_t alignment = MlasGetPreferredBufferAlignment();
   if (size <= 0) return nullptr;
   void* p;
-  const size_t alignment = MlasGetPreferredBufferAlignment();
 #if _MSC_VER
   p = _aligned_malloc(size, alignment);
   if (p == nullptr)
