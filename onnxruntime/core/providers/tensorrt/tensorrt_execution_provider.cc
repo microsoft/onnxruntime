@@ -1086,7 +1086,7 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
   // Get ModelPath
   const auto& path_string = graph.ModelPath().ToPathString();
 #ifdef _WIN32
-  wcstombs(nullptr, model_path_, sizeof(model_path_), path_string.c_str(), sizeof(model_path_));
+  wcstombs_s(nullptr, model_path_, sizeof(model_path_), path_string.c_str(), sizeof(model_path_));
 #else
   strcpy(model_path_, path_string.c_str());
 #endif
