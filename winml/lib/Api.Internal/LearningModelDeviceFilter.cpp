@@ -1,21 +1,22 @@
-#include "lib/Api.Experimental/pch/pch.h"
+#include "lib/Api.Internal/pch/pch.h"
 #include "LearningModelDeviceFilter.h"
 
-namespace WINML_EXPERIMENTALP
+namespace WINML_INTERNALP
 {
     LearningModelDeviceFilter::LearningModelDeviceFilter()
     {
         IncludeAll();
     }
 
-    winml_experimental::LearningModelDeviceFilter LearningModelDeviceFilter::IncludeAll()
+    winml_internal::LearningModelDeviceFilter LearningModelDeviceFilter::IncludeAll()
     {
+        Clear();
         device_kinds_.push_back(winml::LearningModelDeviceKind::Cpu);
         device_kinds_.push_back(winml::LearningModelDeviceKind::DirectX);
         return *this;
     }
 
-    winml_experimental::LearningModelDeviceFilter LearningModelDeviceFilter::Include(
+    winml_internal::LearningModelDeviceFilter LearningModelDeviceFilter::Include(
         winml::LearningModelDeviceKind const& phase)
     {
         auto found_it = std::find(device_kinds_.begin(), device_kinds_.end(), phase);
@@ -26,7 +27,7 @@ namespace WINML_EXPERIMENTALP
         return *this;
     }
 
-    winml_experimental::LearningModelDeviceFilter LearningModelDeviceFilter::Clear()
+    winml_internal::LearningModelDeviceFilter LearningModelDeviceFilter::Clear()
     {
         device_kinds_.clear();
         return *this;

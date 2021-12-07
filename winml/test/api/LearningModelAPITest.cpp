@@ -20,6 +20,7 @@ using namespace wss;
 #ifndef BUILD_INBOX
 // experimental
 using namespace winml_experimental;
+using namespace winml_internal;
 #endif
 
 
@@ -327,10 +328,10 @@ static void EnumerateStrategies() {
 #if !defined(BUILD_INBOX)
   std::wstring fullPath = FileHelpers::GetModulePath() + L"model.onnx";
 
-  auto options = winml_experimental::LearningModelEnumerateInferenceStrategiesOptions();
-  wfc::IVectorView<winml_experimental::LearningModelInferenceStrategy> strategies = nullptr;
+  auto options = winml_internal::LearningModelEnumerateInferenceStrategiesOptions();
+  wfc::IVectorView<winml_internal::LearningModelInferenceStrategy> strategies = nullptr;
   WINML_EXPECT_NO_THROW(
-      strategies = winml_experimental::LearningModelInferenceStrategyEnumerator::EnumerateInferenceStrategies(
+      strategies = winml_internal::LearningModelInferenceStrategyEnumerator::EnumerateInferenceStrategies(
                         fullPath.c_str(),
                         options));
 
@@ -345,12 +346,12 @@ static void EnumerateStrategies() {
   
   fullPath = FileHelpers::GetModulePath() + L"batched_model.onnx";
   auto async_strats =
-      winml_experimental::LearningModelInferenceStrategyEnumerator::EnumerateInferenceStrategiesAsync(
+      winml_internal::LearningModelInferenceStrategyEnumerator::EnumerateInferenceStrategiesAsync(
         fullPath.c_str(),
         options);
 
   printf("\n");
-  async_strats.Progress([](auto /*info*/, const winml_experimental::EnumerateInferenceStrategiesProgress& progress) {
+  async_strats.Progress([](auto /*info*/, const winml_internal::EnumerateInferenceStrategiesProgress& progress) {
     printf("\r");
     printf("%" PRId64 " evaluations completed out of %" PRId64, progress.EvaluationsCompleted, progress.TotalNumberOfEvaluations);
   });

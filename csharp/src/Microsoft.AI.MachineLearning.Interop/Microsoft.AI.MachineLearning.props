@@ -28,14 +28,18 @@
     <WindowsAIBinary>$(RuntimesDirectory)\$(WindowsAIBinarySubfolder)microsoft.ai.machinelearning.dll</WindowsAIBinary>
     <WindowsAIBinary>$([System.IO.Path]::GetFullPath($(WindowsAIBinary)))</WindowsAIBinary>
 
+    <WindowsAIInternalBinary>$(RuntimesDirectory)\$(WindowsAIBinarySubfolder)microsoft.ai.machinelearning.internal.dll</WindowsAIInternalBinary>
+    <WindowsAIInternalBinary>$([System.IO.Path]::GetFullPath($(WindowsAIInternalBinary)))</WindowsAIInternalBinary>
+
     <OnnxRuntimeBinary>$(RuntimesDirectory)\$(WindowsAIBinarySubfolder)onnxruntime.dll</OnnxRuntimeBinary>
     <OnnxRuntimeBinary>$([System.IO.Path]::GetFullPath($(OnnxRuntimeBinary)))</OnnxRuntimeBinary>
 
     <WindowsAIWinMD>$(MSBuildThisFileDirectory)..\..\winmds\Microsoft.AI.MachineLearning.winmd</WindowsAIWinMD>
     <WindowsAIExperimentalWinMD>$(MSBuildThisFileDirectory)..\..\winmds\Microsoft.AI.MachineLearning.Experimental.winmd</WindowsAIExperimentalWinMD>
+    <WindowsAIInternalWinMD>$(MSBuildThisFileDirectory)..\..\winmds\Microsoft.AI.MachineLearning.Internal.winmd</WindowsAIInternalWinMD>
 
     <WindowsAIWinMD>$([System.IO.Path]::GetFullPath($(WindowsAIWinMD)))</WindowsAIWinMD>
-    <WindowsAIExperimentalWinMD>$([System.IO.Path]::GetFullPath($(WindowsAIExperimentalWinMD)))</WindowsAIExperimentalWinMD>
+    <WindowsAIInternalWinMD>$([System.IO.Path]::GetFullPath($(WindowsAIInternalWinMD)))</WindowsAIInternalWinMD>
 
   </PropertyGroup>
 

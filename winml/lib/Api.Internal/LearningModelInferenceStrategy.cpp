@@ -1,13 +1,13 @@
-#include "lib/Api.Experimental/pch/pch.h"
+#include "lib/Api.Internal/pch/pch.h"
 #include "LearningModelInferenceStrategy.h"
 
-namespace WINML_EXPERIMENTALP
+namespace WINML_INTERNALP
 {
     LearningModelInferenceStrategy::LearningModelInferenceStrategy(
             winml::LearningModelDeviceKind kind,
-            winml_experimental::LearningModelBindingStrategy input_strategy,
-            winml_experimental::LearningModelBindingStrategy output_strategy,
-            winml_experimental::LearningModelReadMode output_read_mode,
+            winml_internal::LearningModelBindingStrategy input_strategy,
+            winml_internal::LearningModelBindingStrategy output_strategy,
+            winml_internal::LearningModelReadMode output_read_mode,
             uint32_t batch_size,
             float metric) :
                 kind_(kind),
@@ -24,12 +24,12 @@ namespace WINML_EXPERIMENTALP
         return kind_;
     }
 
-    winml_experimental::LearningModelBindingStrategy LearningModelInferenceStrategy::InputStrategy()
+    winml_internal::LearningModelBindingStrategy LearningModelInferenceStrategy::InputStrategy()
     {
         return input_strategy_;
     }
 
-    winml_experimental::LearningModelBindingStrategy LearningModelInferenceStrategy::OutputStrategy()
+    winml_internal::LearningModelBindingStrategy LearningModelInferenceStrategy::OutputStrategy()
     {
         return output_strategy_;
     }
@@ -42,7 +42,7 @@ namespace WINML_EXPERIMENTALP
       return batch_size_;
     }
 
-    winml_experimental::LearningModelReadMode
+    winml_internal::LearningModelReadMode
         LearningModelInferenceStrategy::OutputReadMode() {
       return output_read_mode_;
     }

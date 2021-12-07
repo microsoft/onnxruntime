@@ -43,6 +43,14 @@ namespace winml_experimental = WINML_EXPERIMENTAL;
 namespace WINML_EXPERIMENTALP {}
 namespace winml_experimentalp = WINML_EXPERIMENTALP;
 
+#define WINML_INTERNAL winrt::WINML_ROOT_NS::AI::MachineLearning::Internal
+namespace WINML_INTERNAL {}
+namespace winml_internal = WINML_INTERNAL;
+
+#define WINML_INTERNALP winrt::WINML_ROOT_NS::AI::MachineLearning::Internal::implementation
+namespace WINML_INTERNALP {}
+namespace winml_internalp = WINML_INTERNALP;
+
 namespace _winml::Adapter {}
 namespace winmla = ::_winml::Adapter;
 

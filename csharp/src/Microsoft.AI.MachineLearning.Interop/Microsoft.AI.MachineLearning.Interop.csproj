@@ -31,6 +31,8 @@
     <ItemGroup>
       <WindowsAIsWinMDs Include="$(OnnxRuntimeBuildDirectoryAbs)\$(Configuration)\Microsoft.AI.MachineLearning.winmd" />
       <WindowsAIsWinMDs Include="$(OnnxRuntimeBuildDirectoryAbs)\$(Configuration)\Microsoft.AI.MachineLearning.Experimental.winmd" />
+      <WindowsAIsWinMDs Condition="Exists('$(OnnxRuntimeBuildDirectoryAbs)\$(Configuration)\Microsoft.AI.MachineLearning.Internal.winmd')"
+                        Include="$(OnnxRuntimeBuildDirectoryAbs)\$(Configuration)\Microsoft.AI.MachineLearning.Internal.winmd" />
     </ItemGroup>
 
     <PropertyGroup>

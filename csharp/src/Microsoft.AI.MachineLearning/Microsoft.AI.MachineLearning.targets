@@ -7,6 +7,9 @@
     <Reference Include="$(WindowsAIExperimentalWinMD)">
       <Implementation>$(WindowsAIBinary)</Implementation>
     </Reference>
+    <Reference Include="$(WindowsAIInternalWinMD)">
+      <Implementation>$(WindowsAIInternalBinary)</Implementation>
+    </Reference>
   </ItemGroup>
 
   <ItemGroup Condition="'$(NuGetProjectStyle)' != 'PackageReference'">

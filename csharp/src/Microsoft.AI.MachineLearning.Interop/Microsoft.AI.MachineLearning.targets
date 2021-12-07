@@ -2,13 +2,13 @@
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <Target Name="CopyMLBinaries" BeforeTargets="CoreBuild">
     <PropertyGroup>
-      <WindowsAIBinplaceMessage>Binplacing WindowsAI binaries: {0} and {1}.</WindowsAIBinplaceMessage>
+      <WindowsAIBinplaceMessage>Binplacing WindowsAI binaries: {0} {1} and {2}.</WindowsAIBinplaceMessage>
     </PropertyGroup>
-    <Message Text="$([System.String]::Format('$(WindowsAIBinplaceMessage)', '$(WindowsAIBinary)', '$(OnnxRuntimeBinary)'))" />
-    <Copy SkipUnchangedFiles="True" SourceFiles="$(WindowsAIBinary);$(OnnxRuntimeBinary)" DestinationFolder="$(OutDir)" />
+    <Message Text="$([System.String]::Format('$(WindowsAIBinplaceMessage)', '$(WindowsAIBinary)', '$(WindowsAIInternalBinary)', '$(OnnxRuntimeBinary)'))" />
+    <Copy SkipUnchangedFiles="True" SourceFiles="$(WindowsAIBinary);$(WindowsAIInternalBinary);$(OnnxRuntimeBinary)" DestinationFolder="$(OutDir)" />
   </Target>
 
   <ItemGroup>
-    <ReferenceCopyLocalPaths Include="$(WindowsAIBinary);$(OnnxRuntimeBinary)" />
+    <ReferenceCopyLocalPaths Include="$(WindowsAIBinary);$(OnnxRuntimeBinary);$(WindowsAIInternalBinary)" />
   </ItemGroup>
 </Project>

@@ -1,18 +1,18 @@
 #pragma once
 #include "LearningModelDeviceFilter.g.h"
 
-namespace WINML_EXPERIMENTALP
+namespace WINML_INTERNALP
 {
     struct LearningModelDeviceFilter : LearningModelDeviceFilterT<LearningModelDeviceFilter>
     {
         LearningModelDeviceFilter();
 
-        winml_experimental::LearningModelDeviceFilter IncludeAll();
+        winml_internal::LearningModelDeviceFilter IncludeAll();
 
-        winml_experimental::LearningModelDeviceFilter Include(
+        winml_internal::LearningModelDeviceFilter Include(
             winml::LearningModelDeviceKind const& strategy);
 
-        winml_experimental::LearningModelDeviceFilter Clear();
+        winml_internal::LearningModelDeviceFilter Clear();
 
         wfc::IIterator<winml::LearningModelDeviceKind> First();
 

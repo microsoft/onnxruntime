@@ -1,0 +1,166 @@
+﻿// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+import "Windows.Foundation.idl";
+import "dualapipartitionattribute.idl";
+
+#include <sdkddkver.h>
+
+#ifdef BUILD_INBOX
+import "Windows.AI.MachineLearning.idl";
+#define ROOT_NS Windows
+#define INBOX_ONLY(x) x
+#define OTB_ONLY(x)
+#else
+import "Microsoft.AI.MachineLearning.idl";
+#define INBOX_ONLY(x)
+#define OTB_ONLY(x) x
+#endif
+
+#ifndef ROOT_NS
+#define ROOT_NS Microsoft
+#endif
+
+namespace ROOT_NS.AI.MachineLearning.Internal {
+  enum LearningModelOptimizationMode
+  {
+      OptimizeForRuntimePerformance = 0,
+  };
+
+  enum LearningModelBindingStrategy {
+    CreateFromShape = 0,
+    CreateFromArray,
+    CreateFromIterable,
+    CreateFromShapeArrayAndDataArray,
+    CreateFromBuffer,
+    CreateFromD3D12Resource,
+    CreateUnbound
+  };
+
+  enum LearningModelReadMode {
+    GetAsVectorView = 0,
+    GetFromNativeBufferAccess,
+    GetFromMemoryBufferReferenceAccess,
+    GetAsD3D12Resource
+  };
+
+  enum LearningModelPhase {
+    LoadModel = 0,
+    CreateSession,
+    BindInputs,
+    BindOutputs,
+    Evaluate,
+    FetchResults
+  };
+
+  //! \class LearningModelBindingStrategyFilter
+  //! \brief
+  [marshaling_behavior(agile)]
+  [dualapipartition(1)]
+  runtimeclass LearningModelBindingStrategyFilter : Windows.Foundation.Collections.IVectorView<LearningModelBindingStrategy> {
+    LearningModelBindingStrategyFilter IncludeAll();
+    LearningModelBindingStrategyFilter Include(LearningModelBindingStrategy strategy);
+    LearningModelBindingStrategyFilter Clear();
+  }
+
+  //! \class LearningModelBindingStrategyFilter
+  //! \brief 
+  [marshaling_behavior(agile)]
+  [dualapipartition(1)]
+  runtimeclass LearningModelReadModeFilter : Windows.Foundation.Collections.IVectorView<LearningModelReadMode> {
+    LearningModelReadModeFilter IncludeAll();
+    LearningModelReadModeFilter Include(LearningModelReadMode mode);
+    LearningModelReadModeFilter Clear();
+  }
+
+  //! \class LearningModelBatchingStrategyFilter
+  //! \brief 
+  [marshaling_behavior(agile)]
+  [dualapipartition(1)]
+  runtimeclass LearningModelBatchingStrategyFilter : Windows.Foundation.Collections.IVectorView<UInt32> {
+    UInt32 BatchSizeStart { get; set; };
+    UInt32 BatchSizeStride { get; set; };
+    UInt32 BatchSizeTotal { get; set; };
+  }
+
+  //! \class LearningModelBindingStrategyFilter
+  //! \brief 
+  [marshaling_behavior(agile)]
+  [dualapipartition(1)]
+  runtimeclass LearningModelPhaseFilter : Windows.Foundation.Collections.IVectorView<LearningModelPhase> {
+    LearningModelPhaseFilter IncludeAll();
+    LearningModelPhaseFilter Include(LearningModelPhase phase);
+    LearningModelPhaseFilter Clear();
+  }
+
+  //! \class LearningModelBindingStrategyFilter
+  //! \brief 
+  [marshaling_behavior(agile)]
+  [dualapipartition(1)]
+  runtimeclass LearningModelDeviceFilter : Windows.Foundation.Collections.IVectorView<ROOT_NS.AI.MachineLearning.LearningModelDeviceKind> {
+    LearningModelDeviceFilter IncludeAll();
+    LearningModelDeviceFilter Include(ROOT_NS.AI.MachineLearning.LearningModelDeviceKind kind);
+    LearningModelDeviceFilter Clear();
+  }
+
+  //! \class LearningModelEnumerateInferenceStrategiesOptions
+  //! \brief 
+  [threading(both)]
+  [marshaling_behavior(agile)]
+  [dualapipartition(1)]
+  runtimeclass LearningModelEnumerateInferenceStrategiesOptions {
+    LearningModelEnumerateInferenceStrategiesOptions();
+
+    UInt32 NumberOfIterations { get ; set; };
+
+    //! The OverrideNamedDimension method will allow the model compiler to use constant batch size performance optimizations when setting up the LearningModelSession.
+    //! The caller can specify the size of the dimension for a given named dimension.
+    //! dimension = 0 indicates that the dimension present in the model should be honored.
+    //! dimension > 0 indicates the size of the dimension that will be used to override the model "name" dimension and optimize evaluations.
+    void OverrideNamedDimension(String name, UInt32 dimension);
+
+    LearningModelOptimizationMode OptimizationMode { get; set; };
+    LearningModelPhaseFilter PhaseFilter { get; };
+    LearningModelBindingStrategyFilter InputStrategyFilter { get; };
+    LearningModelBindingStrategyFilter OutputStrategyFilter { get; };
+    LearningModelReadModeFilter OutputReadModeFilter { get; };
+    LearningModelBatchingStrategyFilter BatchingStrategyFilter { get; };
+    LearningModelDeviceFilter DeviceFilter { get; };
+  }
+
+  //! \class LearningModelInferenceStrategy
+  //! \brief 
+  [marshaling_behavior(agile)]
+  [dualapipartition(1)]
+  runtimeclass LearningModelInferenceStrategy
+  {
+    ROOT_NS.AI.MachineLearning.LearningModelDeviceKind DeviceKind { get; };
+    LearningModelBindingStrategy InputStrategy { get; };
+    LearningModelBindingStrategy OutputStrategy { get; };
+    LearningModelReadMode OutputReadMode { get; };
+    UInt32 BatchSize { get; };
+    Single Metric { get; };
+  }
+
+  struct EnumerateInferenceStrategiesProgress
+  {
+      UInt64 EvaluationsCompleted;
+      UInt64 TotalNumberOfEvaluations;
+  }; 
+
+  //! \class LearningModelInferenceStrategyEnumerator
+  //! \brief 
+  [threading(both)]
+  [marshaling_behavior(agile)]
+  [dualapipartition(1)]
+  runtimeclass LearningModelInferenceStrategyEnumerator {
+    static Windows.Foundation.Collections.IVectorView<LearningModelInferenceStrategy> EnumerateInferenceStrategies(
+      String path,
+      LearningModelEnumerateInferenceStrategiesOptions options);
+
+    [remote_async]
+    static Windows.Foundation.IAsyncOperationWithProgress< Windows.Foundation.Collections.IVectorView<LearningModelInferenceStrategy>, EnumerateInferenceStrategiesProgress > EnumerateInferenceStrategiesAsync(
+      String path,
+      LearningModelEnumerateInferenceStrategiesOptions options);
+  }
+}  // namespace Microsoft.AI.MachineLearning.Experimental
