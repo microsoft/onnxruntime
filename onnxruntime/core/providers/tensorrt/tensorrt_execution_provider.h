@@ -40,7 +40,7 @@ class TensorrtLogger : public nvinfer1::ILogger {
     if (severity <= verbosity_) {
       time_t rawtime = std::time(0);
       struct tm stm;
-#ifdef _WIN32
+#ifdef _MSC_VER
       gmtime_s(&stm, &rawtime);
 #else
       gmtime_r(&rawtime, &stm);
