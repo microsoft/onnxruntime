@@ -110,10 +110,6 @@ BeamSearchScorer<T>::BeamSearchScorer(int batch_size,
   for (int batch = 0; batch < batch_size; batch++) {
     beam_hyps.push_back(BeamHypotheses(num_beams, length_penalty, early_stopping));
   }
-
-  for (int batch = 0; batch < batch_size; batch++) {
-    done_.push_back(false);
-  }
 }
 
 template <typename T>
@@ -126,11 +122,29 @@ bool BeamSearchScorer<T>::IsDone() {
 }
 
 template <typename T>
+void BeamSearchScorer<T>::Initialize(AllocatorPtr& allocator, int sequence_length){
+  ORT_ENFORCE(next_beam_scores_.empty()); // Make sure this is called only once.
+
+  size_t batch_beam_size = static_cast<size_t>(batch_size_ * num_beams_);
+  const bool no_fill = false; // do not fill values after allocation
+  next_beam_scores_ = Allocate<T>(allocator, batch_beam_size, next_beam_scores_ptr_, no_fill);
+  next_beam_tokens_ = Allocate<int64_t>(allocator, batch_beam_size, next_beam_tokens_ptr_, no_fill);
+  next_beam_indices_ = Allocate<int64_t>(allocator, batch_beam_size, next_beam_indices_ptr_, no_fill);
+
+  // Space to store intermediate sequence with length sequence_length, sequence_length + 1, ..., max_sequence_length.
+  int buffer_per_beam = (max_length_ * (max_length_ + 1) - (sequence_length - 1) * sequence_length) / 2;
+  hypothesis_buffer_length_ = batch_beam_size * static_cast<size_t>(buffer_per_beam);
+  hypothesis_buffer_ = Allocate<int64_t>(allocator, hypothesis_buffer_length_, hypothesis_buffer_ptr_, no_fill);
+
+  done_ = Allocate<bool>(allocator, static_cast<size_t>(batch_size_), done_ptr_, no_fill);
+  std::fill_n(done_.data(), done_.size(), false);
+}
+
+template <typename T>
 void BeamSearchScorer<T>::Process(ISequences* sequences,
                                   gsl::span<const T>& next_scores,
                                   gsl::span<const int64_t>& next_tokens,
-                                  gsl::span<const int64_t>& next_indices,
-                                  AllocatorPtr& allocator) {
+                                  gsl::span<const int64_t>& next_indices) {
   // Sequences shape is (batch_size * num_beams, total_sequence_length)
   // It contains word ID of whole sequence generated so far.
   // It is different from subgraph input_ids, which only need one word when past state is not empty.
@@ -139,20 +153,6 @@ void BeamSearchScorer<T>::Process(ISequences* sequences,
 
   ORT_ENFORCE(next_scores.size() == next_tokens.size());
   ORT_ENFORCE(next_scores.size() == next_indices.size());
-
-  // Allocate buffers only once.
-  if (next_beam_scores_.empty()) {
-    size_t batch_beam_size = static_cast<size_t>(batch_size_ * num_beams_);
-    const bool fill_zeros = false;
-    next_beam_scores_ = Allocate<T>(allocator, batch_beam_size, next_beam_scores_ptr_, fill_zeros);
-    next_beam_tokens_ = Allocate<int64_t>(allocator, batch_beam_size, next_beam_tokens_ptr_, fill_zeros);
-    next_beam_indices_ = Allocate<int64_t>(allocator, batch_beam_size, next_beam_indices_ptr_, fill_zeros);
-
-    // Space to store intermediate sequence with length sequence_length, sequence_length + 1, ..., max_sequence_length.
-    int buffer_per_beam = (max_length_ * (max_length_ + 1) - (sequence_length - 1) * sequence_length) / 2;
-    hypothesis_buffer_length_ = batch_beam_size * static_cast<size_t>(buffer_per_beam);
-    hypothesis_buffer_ = Allocate<int64_t>(allocator, hypothesis_buffer_length_, hypothesis_buffer_ptr_, fill_zeros);
-  }
 
   for (int batch = 0; batch < batch_size_; batch++) {
     BeamHypotheses<T>& beam_hyp = beam_hyps[batch];

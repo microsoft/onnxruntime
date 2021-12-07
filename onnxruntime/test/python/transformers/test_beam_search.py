@@ -15,14 +15,15 @@ if find_transformers_source():
     from convert_beam_search import main as run
 else:
     from onnxruntime.transformers.convert_beam_search import main as run
-    
+
+
 class TestBeamSearch(unittest.TestCase):
     def setUp(self):
         self.model_name = "gpt2"
         self.gpt2_onnx_path = os.path.join('.', 'onnx_models', 'gpt2_past_fp32_shape.onnx')
         self.beam_search_onnx_path = os.path.join('.', 'onnx_models', 'gpt2_beam_search.onnx')
         self.cpu_params = f'-m {self.model_name} --gpt2_onnx {self.gpt2_onnx_path} --output {self.beam_search_onnx_path} --output_sequences_score --repetition_penalty 2.0'
-        
+
     def run_beam_search(self, arguments: str):
         return run(arguments.split())
 
@@ -31,7 +32,7 @@ class TestBeamSearch(unittest.TestCase):
         result = self.run_beam_search(self.cpu_params)
         os.remove(self.gpt2_onnx_path)
         os.remove(self.beam_search_onnx_path)
-        self.assertTrue(result["parity"], "ORT and PyTorch result is different")        
+        self.assertTrue(result["parity"], "ORT and PyTorch result is different")
 
     @pytest.mark.slow
     def test_cpu_no_repeat_ngram(self):
@@ -40,6 +41,7 @@ class TestBeamSearch(unittest.TestCase):
             os.remove(self.gpt2_onnx_path)
             os.remove(self.beam_search_onnx_path)
             self.assertTrue(result["parity"], "ORT and PyTorch result is different")
+
 
 if __name__ == '__main__':
     unittest.main()
