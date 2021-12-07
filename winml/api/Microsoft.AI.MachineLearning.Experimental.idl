@@ -109,16 +109,13 @@ namespace ROOT_NS.AI.MachineLearning.Experimental {
   };
 
   enum LearningModelBindingStrategy {
-    CreateWithZeroCopyITensorNative = 0,
-    CreateWithZeroCopyIMemoryBuffer,
-    CreateFromShapeIterableAndDataArray,
-    CreateFromShapeIterableAndDataIterable,
-    CreateFromShapeIterableAndDataIterableRaw,
-    CreateFromShapeIterableAndDataIterableRawView,
+    CreateFromShape = 0,
+    CreateFromArray,
+    CreateFromIterable,
     CreateFromShapeArrayAndDataArray,
-    CreateFromShapeArrayAndDataBuffer,
+    CreateFromBuffer,
     CreateFromD3D12Resource,
-    Unbound
+    CreateUnbound
   };
 
   enum LearningModelReadMode {

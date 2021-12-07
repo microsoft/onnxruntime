@@ -334,6 +334,15 @@ static void EnumerateStrategies() {
                         fullPath.c_str(),
                         options));
 
+  options.InputStrategyFilter().IncludeAll();
+  options.OutputStrategyFilter().IncludeAll();
+  options.OutputReadModeFilter().IncludeAll();
+  options.DeviceFilter().Clear().Include(winml::LearningModelDeviceKind::DirectX);
+  /*
+  options.BatchingStrategyFilter().BatchSizeStart(1);
+  options.BatchingStrategyFilter().BatchSizeStride(3);
+  options.BatchingStrategyFilter().BatchSizeTotal(100);*/
+  
   fullPath = FileHelpers::GetModulePath() + L"batched_model.onnx";
   auto async_strats =
       winml_experimental::LearningModelInferenceStrategyEnumerator::EnumerateInferenceStrategiesAsync(
@@ -359,15 +368,13 @@ static void EnumerateStrategies() {
       "DirectXMinPower"};
 
   const char* bind_strategy[] = {
-    "CreateWithZeroCopyITensorNative",
-    "CreateWithZeroCopyIMemoryBuffer",
-    "CreateFromShapeIterableAndDataArray",
-    "CreateFromShapeIterableAndDataIterable",
-    "CreateFromShapeIterableAndDataIterableRaw",
-    "CreateFromShapeIterableAndDataIterableRawView",
+    "CreateFromShape",
+    "CreateFromArray",
+    "CreateFromIterable",
     "CreateFromShapeArrayAndDataArray",
-    "CreateFromShapeArrayAndDataBuffer",
-    "CreateFromD3D12Resource"
+    "CreateFromBuffer",
+    "CreateFromD3D12Resource",
+    "CreateUnbound"
   };
   
   const char * read_mode[] = {
@@ -379,18 +386,18 @@ static void EnumerateStrategies() {
 
   int count = 3000;
   for (auto strategy : strategies) {
-   /* printf("(Device=[%s], InputStrategy=[%s], OutputStrategy=[%s], ReadMode=[%s], BatchSize=[%d]) : %f\n",
+   printf("(Device=[%s], InputStrategy=[%s], OutputStrategy=[%s], ReadMode=[%s], BatchSize=[%d]) : %f\n",
            device[static_cast<int>(strategy.DeviceKind())],
            bind_strategy[static_cast<int>(strategy.InputStrategy())],
            bind_strategy[static_cast<int>(strategy.OutputStrategy())],
            read_mode[static_cast<int>(strategy.OutputReadMode())],
            strategy.BatchSize(),
-           strategy.Metric());*/
+           strategy.Metric());
 
-    printf("(Device=[%s], BatchSize=[%d]) : %f\n",
-        device[static_cast<int>(strategy.DeviceKind())],
-        strategy.BatchSize(),
-        strategy.Metric());
+    //printf("(Device=[%s], BatchSize=[%d]) : %f\n",
+    //    device[static_cast<int>(strategy.DeviceKind())],
+    //    strategy.BatchSize(),
+    //    strategy.Metric());
 
     if (count-- == 0) {
       break;

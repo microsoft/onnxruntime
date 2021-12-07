@@ -212,25 +212,7 @@ namespace WINML_EXPERIMENTALP
       wf::IInspectable feature_value = nullptr;
       switch (strategy)
       {
-          case LearningModelBindingStrategy::CreateWithZeroCopyITensorNative:
-          {
-              auto tensorValue = TensorValue::Create(shape);
-
-              winrt::com_ptr<ITensorNative> spTensorValueNative;
-              tensorValue.as(spTensorValueNative);
-
-              BYTE* actualData;
-              uint32_t actualSizeInBytes;
-              spTensorValueNative->GetBuffer(&actualData, &actualSizeInBytes);
-
-              // Copy into the memory buffer
-              memcpy(actualData, reinterpret_cast<BYTE*>(data.data()), data.size() * sizeof(DataType));
-
-              feature_value = tensorValue;
-              break;
-          }
-
-          case LearningModelBindingStrategy::CreateWithZeroCopyIMemoryBuffer:
+          case LearningModelBindingStrategy::CreateFromShape:
           {
               auto tensorValue = TensorValue::Create(shape);
 
@@ -251,37 +233,58 @@ namespace WINML_EXPERIMENTALP
               break;
           }
 
+          // This case is almost identical to CreateFromShape
+          // case LearningModelBindingStrategy::CreateWithZeroCopyITensorNative:
+          // {
+          //     auto tensorValue = TensorValue::Create(shape);
+
+          //     winrt::com_ptr<ITensorNative> spTensorValueNative;
+          //     tensorValue.as(spTensorValueNative);
+
+          //     BYTE* actualData;
+          //     uint32_t actualSizeInBytes;
+          //     spTensorValueNative->GetBuffer(&actualData, &actualSizeInBytes);
+
+          //     // Copy into the memory buffer
+          //     memcpy(actualData, reinterpret_cast<BYTE*>(data.data()), data.size() * sizeof(DataType));
+
+          //     feature_value = tensorValue;
+          //     break;
+          // }
+
           case LearningModelBindingStrategy::CreateFromShapeArrayAndDataArray:
           {
               feature_value = CreateFromShapeArrayAndDataArray<T>(shape, data);
               break;
           }
 
-          case LearningModelBindingStrategy::CreateFromShapeIterableAndDataArray:
+          case LearningModelBindingStrategy::CreateFromArray:
           {
               feature_value = CreateFromArray<T>(shape, data);
               break;
           }
 
-          case LearningModelBindingStrategy::CreateFromShapeIterableAndDataIterable:
+          case LearningModelBindingStrategy::CreateFromIterable:
           {
               feature_value = TensorValue::CreateFromIterable(shape, CreateVectorOverData<T>(data).GetView());
               break;
           }
 
-          case LearningModelBindingStrategy::CreateFromShapeIterableAndDataIterableRaw:
-          {
-              feature_value = CreateVectorOverData<T>(data);
-              break;
-          }
+          // This cases is almost identical to the CreateFromIterableCase
+          // case LearningModelBindingStrategy::CreateFromShapeIterableAndDataIterableRaw:
+          // {
+          //     feature_value = CreateVectorOverData<T>(data);
+          //     break;
+          // }
 
-          case LearningModelBindingStrategy::CreateFromShapeIterableAndDataIterableRawView:
-          {
-              feature_value = CreateVectorOverData<T>(data).GetView();
-              break;
-          }
+          // This cases is almost identical to the CreateFromIterableCase
+          // case LearningModelBindingStrategy::CreateFromShapeIterableAndDataIterableRawView:
+          // {
+          //     feature_value = CreateVectorOverData<T>(data).GetView();
+          //     break;
+          // }
 
-          case LearningModelBindingStrategy::CreateFromShapeArrayAndDataBuffer:
+          case LearningModelBindingStrategy::CreateFromBuffer:
           {
               feature_value = CreateFromShapeArrayAndDataBuffer<T>(shape, data);
               break;
@@ -484,7 +487,7 @@ namespace WINML_EXPERIMENTALP
             *bind_inputs_metric += MeasureBind(binding, input.Name(), value, properties);
         }
 
-        if (output_strategy != winml_experimental::LearningModelBindingStrategy::Unbound) {
+        if (output_strategy != winml_experimental::LearningModelBindingStrategy::CreateUnbound) {
             for (const auto& output : session.Model().OutputFeatures()) {
               float bind_metric;
               auto value = CreateFeatureValue(session, output, output_strategy, &bind_metric);
@@ -588,7 +591,7 @@ namespace WINML_EXPERIMENTALP
             winrt::make<winml_experimentalp::LearningModelBindingStrategyFilter>();
         for (const auto& strategy : options.InputStrategyFilter()) {
             // All inputs need to be bound, so Unbound is an invlaid choice for inputs...
-            if (strategy != winml_experimental::LearningModelBindingStrategy::Unbound) {
+            if (strategy != winml_experimental::LearningModelBindingStrategy::CreateUnbound) {
                 input_strategy_filter.Include(strategy);
             }
         }

@@ -10,15 +10,13 @@ namespace WINML_EXPERIMENTALP
 
     winml_experimental::LearningModelBindingStrategyFilter LearningModelBindingStrategyFilter::IncludeAll()
     {
-        strategies_.push_back(winml_experimental::LearningModelBindingStrategy::CreateWithZeroCopyITensorNative);
-        strategies_.push_back(winml_experimental::LearningModelBindingStrategy::CreateWithZeroCopyIMemoryBuffer);
-        strategies_.push_back(winml_experimental::LearningModelBindingStrategy::CreateFromShapeIterableAndDataArray);
-        strategies_.push_back(winml_experimental::LearningModelBindingStrategy::CreateFromShapeIterableAndDataIterable);
-        strategies_.push_back(winml_experimental::LearningModelBindingStrategy::CreateFromShapeIterableAndDataIterableRaw);
-        strategies_.push_back(winml_experimental::LearningModelBindingStrategy::CreateFromShapeIterableAndDataIterableRawView);
+        strategies_.push_back(winml_experimental::LearningModelBindingStrategy::CreateFromShape);
+        strategies_.push_back(winml_experimental::LearningModelBindingStrategy::CreateFromArray);
+        strategies_.push_back(winml_experimental::LearningModelBindingStrategy::CreateFromIterable);
         strategies_.push_back(winml_experimental::LearningModelBindingStrategy::CreateFromShapeArrayAndDataArray);
-        strategies_.push_back(winml_experimental::LearningModelBindingStrategy::CreateFromShapeArrayAndDataBuffer);
+        strategies_.push_back(winml_experimental::LearningModelBindingStrategy::CreateFromBuffer);
         strategies_.push_back(winml_experimental::LearningModelBindingStrategy::CreateFromD3D12Resource);
+        strategies_.push_back(winml_experimental::LearningModelBindingStrategy::CreateUnbound);
         return *this;
     }
 
