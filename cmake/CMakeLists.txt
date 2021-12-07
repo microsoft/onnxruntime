@@ -117,6 +117,7 @@ cmake_dependent_option(onnxruntime_DISABLE_EXCEPTIONS "Disable exception handlin
 option(onnxruntime_EXTENDED_MINIMAL_BUILD "onnxruntime_MINIMAL_BUILD with support for execution providers that compile kernels." OFF)
 option(onnxruntime_MINIMAL_BUILD_CUSTOM_OPS "Add custom operator kernels support to a minimal build." OFF)
 option(onnxruntime_REDUCED_OPS_BUILD "Reduced set of kernels are registered in build via modification of the kernel registration source files." OFF)
+option(onnxruntime_REDUCED_OP_TYPE_SUPPORT "Limit the types individual operators support where possible to further reduce the build size." OFF)
 option(onnxruntime_DISABLE_EXTERNAL_INITIALIZERS "Don't allow models to load external data" OFF)
 cmake_dependent_option(onnxruntime_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION
                        "Enable runtime graph optimization of ORT format models. Warning: Not yet ready for general use."
@@ -357,8 +358,6 @@ if (onnxruntime_MINIMAL_BUILD)
     add_compile_definitions(ORT_MINIMAL_BUILD_CUSTOM_OPS)
   endif()
 
-  set(onnxruntime_REDUCED_OPS_BUILD ON)
-
   if (MSVC)
     # turn on LTO (which adds some compiler flags and turns on LTCG) unless it's a Debug build to minimize binary size
     if (NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
@@ -402,6 +401,9 @@ endif()
 
 if (onnxruntime_REDUCED_OPS_BUILD)
   add_compile_definitions(REDUCED_OPS_BUILD)
+  if (onnxruntime_REDUCED_OP_TYPE_SUPPORT)
+    add_compile_definitions(REDUCED_OP_TYPE_SUPPORT)
+  endif()
 endif()
 
 if (onnxruntime_DISABLE_EXTERNAL_INITIALIZERS)
@@ -1230,7 +1232,7 @@ function(onnxruntime_add_shared_library_module target_name)
   endif()
 endfunction()
 
-function(onnxruntime_add_executable target_name)  
+function(onnxruntime_add_executable target_name)
   add_executable(${target_name} ${ARGN})
   onnxruntime_configure_target(${target_name})
   if (onnxruntime_target_platform STREQUAL "x86" AND NOT onnxruntime_BUILD_WEBASSEMBLY)
