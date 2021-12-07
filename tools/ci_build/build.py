@@ -1822,8 +1822,12 @@ def build_nuget_package(source_dir, build_dir, configs, use_cuda, use_openvino, 
             run_subprocess(cmd_args, cwd=csharp_build_dir)
 
         if is_windows():
-            # this path is setup by cmake/nuget_helpers.cmake for MSVC on Windows
-            nuget_exe = os.path.normpath(os.path.join(native_dir, config, "nuget_exe", "src", "nuget.exe"))
+            if use_openvino:
+                # user needs to make sure nuget is installed and added to the path variable
+                nuget_exe = "nuget.exe"
+            else:
+                # this path is setup by cmake/nuget_helpers.cmake for MSVC on Windows
+                nuget_exe = os.path.normpath(os.path.join(native_dir, config, "nuget_exe", "src", "nuget.exe"))
         else:
             # user needs to make sure nuget is installed and can be found
             nuget_exe = "nuget"
