@@ -119,7 +119,7 @@ class Allocator;
 class ThreadPoolInterface;
 }  // namespace Eigen
 
-#ifdef ORT_USE_MLAS_SHARED_LIB
+#ifdef MLAS_STANDALONE_LIB
 namespace mlas {
 class IThreadPool;
 }  // namespace mlas
@@ -143,7 +143,7 @@ class ExtendedThreadPoolInterface;
 class LoopCounter;
 class ThreadPoolParallelSection;
 
-#ifdef ORT_USE_MLAS_SHARED_LIB
+#ifdef MLAS_STANDALONE_LIB
 class MlasThreadPoolAdapter;
 #endif
 
@@ -154,7 +154,7 @@ class ThreadPool {
 #else
   using NAME_CHAR_TYPE = char;
 #endif
-#ifdef ORT_USE_MLAS_SHARED_LIB
+#ifdef MLAS_STANDALONE_LIB
   using MLAS_THREADPOOL_TYPE = mlas::IThreadPool;
 #else
   using MLAS_THREADPOOL_TYPE = ThreadPool;
@@ -473,7 +473,7 @@ class ThreadPool {
   // If used, underlying_threadpool_ is instantiated and owned by the ThreadPool.
   std::unique_ptr<ThreadPoolTempl<Env> > extended_eigen_threadpool_;
 
-#ifdef ORT_USE_MLAS_SHARED_LIB
+#ifdef MLAS_STANDALONE_LIB
   std::unique_ptr<MlasThreadPoolAdapter> mlas_threadpool_adapter_;
 #endif
 };

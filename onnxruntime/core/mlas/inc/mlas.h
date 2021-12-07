@@ -91,7 +91,7 @@ typedef enum { CblasNonUnit=131, CblasUnit=132 } CBLAS_DIAG;
 typedef enum { CblasLeft=141, CblasRight=142} CBLAS_SIDE;
 #endif
 
-#ifdef ORT_USE_MLAS_SHARED_LIB
+#ifdef MLAS_STANDALONE_LIB
 //
 // Abstract IThreadPool to remove dependencies for onnxruntime thread pool.
 //

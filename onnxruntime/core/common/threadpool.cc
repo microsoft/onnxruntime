@@ -19,7 +19,7 @@ limitations under the License.
 #include "core/common/common.h"
 #include "core/common/cpuid_info.h"
 #include "core/common/eigen_common_wrapper.h"
-#ifdef ORT_USE_MLAS_SHARED_LIB
+#ifdef MLAS_STANDALONE_LIB
 #include "core/mlas/inc/mlas.h"
 #endif
 #include "core/platform/EigenNonBlockingThreadPool.h"
@@ -368,7 +368,7 @@ class alignas(CACHE_LINE_BYTES) LoopCounter {
 #endif
 
 
-#ifdef ORT_USE_MLAS_SHARED_LIB
+#ifdef MLAS_STANDALONE_LIB
 class MlasThreadPoolAdapter : public ThreadPool::MLAS_THREADPOOL_TYPE
 {
 public:
@@ -417,7 +417,7 @@ ThreadPool::ThreadPool(Env* env,
     underlying_threadpool_ = extended_eigen_threadpool_.get();
   }
 
-#ifdef ORT_USE_MLAS_SHARED_LIB
+#ifdef MLAS_STANDALONE_LIB
   mlas_threadpool_adapter_ = std::make_unique<MlasThreadPoolAdapter>(this);
 #endif
 }
