@@ -13,4 +13,5 @@ nav_order: 5
 | <span class="fs-5"> [WinRT API Docs](https://docs.microsoft.com/en-us/windows/ai/windows-ml/api-reference){: .btn target="_blank"} </span>|
 | <span class="fs-5"> [Objective-C Docs](https://onnxruntime.ai/docs/api/objectivec/index.html){: .btn target="_blank"} </span> |
 | <span class="fs-5"> [JavaScript API Docs](https://onnxruntime.ai/docs/api/js/index.html){: .btn target="_blank"} </span>|
-| <span class="fs-5"> [Other API Docs](./other-apis){: .btn target="_blank"} </span>|
+| <span class="fs-5"> [Ruby API (Community)](https://github.com/ankane/onnxruntime-ruby){: .btn target="_blank"} </span>|
+| <span class="fs-5"> [Julia API (Community)](https://github.com/jw3126/ONNXRunTime.jl){: .btn target="_blank"} </span>|
