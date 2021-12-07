@@ -110,7 +110,7 @@ namespace {
 
 inline std::unique_ptr<char[]> StrDup(const std::string& input) {
   auto buf = std::make_unique<char[]>(input.size() + 1);
-  strncpy(buf, input.c_str(), input.size());
+  strncpy(buf.get(), input.c_str(), input.size());
   buf[input.size()] = 0;
   return buf;
 }
