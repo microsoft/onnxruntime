@@ -777,4 +777,36 @@ bool DnnlErfNodeCapability::IsErfPartOfGelu(const Node* node, const GraphViewer&
 
 }
 
+// DnnlQAttentionNodeCapability class
+//-------------------------------------
+bool DnnlQAttentionNodeCapability::Supported(const Node* node, const GraphViewer& graph_viewer) const {
+  ORT_UNUSED_PARAMETER(graph_viewer);
+  if (!IsTypeSupported(node)) return false;
+  if (!IsDimensionSupported(node)) return false;
+  auto node_inputs = node->InputDefs();
+  auto node_outputs = node->OutputDefs();
+  //if have 9th input (past state) and 9th input Exists
+  if (node_inputs.size() == 9 && node_inputs[8]->Exists()) {
+    return false;
+  }
+  //if have 2nd output (present state) and 2nd output Exists, return false
+  if (node_outputs.size() == 2 && node_outputs[1]->Exists()) {
+    return false;
+  }
+  //qattention is disabled on gpu due to the following onednn bugs
+  //1. flipped zero points in int8 matmul
+  //2. unsupported runtime input source0 scaling in binary
+  //3. f32 matmul on submemory gives wrong result
+  if (dnnl_engine_get_count(dnnl_engine_kind_t::dnnl_gpu)) {
+    return false;
+  }
+  return true;
+}
+
+bool DnnlQAttentionNodeCapability::IsDimensionSupported(const Node* node) const {
+  ORT_UNUSED_PARAMETER(node);
+  return true;
+}
+
+
 }  // namespace onnxruntime

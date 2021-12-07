@@ -30,6 +30,7 @@ DnnlOpManager::DnnlOpManager() {
   dnnl_ops_map_.emplace(std::make_pair("MaxPool", std::unique_ptr<DnnlNodeCapability>(new DnnlPoolNodeCapability())));
   dnnl_ops_map_.emplace(std::make_pair("Mul", std::unique_ptr<DnnlNodeCapability>(new DnnlBinaryNodeCapability())));
   dnnl_ops_map_.emplace(std::make_pair("Pow", std::unique_ptr<DnnlNodeCapability>(new DnnlPowNodeCapability())));
+  dnnl_ops_map_.emplace(std::make_pair("QAttention", std::unique_ptr<DnnlNodeCapability>(new DnnlQAttentionNodeCapability())));
   dnnl_ops_map_.emplace(std::make_pair("ReduceMean", std::unique_ptr<DnnlNodeCapability>(new DnnlReduceMeanNodeCapability())));
   dnnl_ops_map_.emplace(std::make_pair("Relu", std::unique_ptr<DnnlNodeCapability>(new DnnlElementwiseCapability())));
   dnnl_ops_map_.emplace(std::make_pair("Reshape", std::unique_ptr<DnnlNodeCapability>(new DnnlReshapeNodeCapability())));
