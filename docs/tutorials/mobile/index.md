@@ -16,7 +16,7 @@ ONNX Runtime gives you a variety of options to add machine learning to your mobi
 
 ## ONNX Runtime mobile application development flow
 
-![Steps to build for mobile platforms](../../images/mobile.png){:width="60%"}
+![Steps to build for mobile platforms](../../../images/mobile.png){:width="60%"}
 
 1. Which ONNX Runtime mobile library should I use?
 
