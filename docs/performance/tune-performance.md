@@ -288,10 +288,6 @@ ORT leverages CuDNN for convolution operations and the first step in this proces
 providers = [("CUDAExecutionProvider", {"cudnn_conv_use_max_workspace": '1'})]
 sess_options = ort.SessionOptions()
 sess = ort.InferenceSession("my_conv_heavy_fp16_model.onnx",  sess_options = sess_options, providers=providers)
-options = sess.get_provider_options()
-cuda_options = options['CUDAExecutionProvider']
-cuda_options['cudnn_conv_use_max_workspace'] = '1'
-sess.set_providers(['CUDAExecutionProvider'], [cuda_options])
 ```
 * C/C++
 Support for this provider option will be added in upcoming releases.
