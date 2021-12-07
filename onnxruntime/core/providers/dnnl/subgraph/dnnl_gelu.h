@@ -8,19 +8,18 @@
 namespace onnxruntime {
 namespace ort_dnnl {
 
-class DnnlMatMul {
+class DnnlGelu {
  public:
   enum InputTensors : int {
-    IN_A = 0,
-    IN_B = 1,
-    IN_BINARY = 2 // the extra input due to matmulbinary fusion
+    IN_X = 0,
+    IN_BIAS = 1
   };
 
   enum OutputTensors : int {
     OUT_Y = 0
   };
 
-  DnnlMatMul();
+  DnnlGelu();
   void CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node);
 };
 

@@ -6,7 +6,7 @@ Licensed under the MIT License.
 
 Module Name:
 
-    QgemmU8X8KernelUdot.asm
+    QgemmS8S8KernelUdot.asm
 
 Abstract:
 
@@ -21,16 +21,16 @@ Abstract:
 #include "AssembleDotProduct.h"
 
 //
-// Stack frame layout for the U8X8 kernel.
+// Stack frame layout for the S8S8 kernel.
 // Defining spaces for saving 2 vector registers, and pointers to parameters
 // on the stack
 //
 
-#define GemmU8X8KernelFrame_SavedNeonRegisters       (2 * 8)
-#define GemmU8X8KernelFrame_SavedRegisters           GemmU8X8KernelFrame_SavedNeonRegisters
-#define GemmU8X8KernelFrame_ColumnSumBuffer          (0 + GemmU8X8KernelFrame_SavedRegisters)
-#define GemmU8X8KernelFrame_ZeroPointB               (8 + GemmU8X8KernelFrame_SavedRegisters)
-#define GemmU8X8KernelFrame_ZeroMode                 (16 + GemmU8X8KernelFrame_SavedRegisters)
+#define GemmS8S8KernelFrame_SavedNeonRegisters       (2 * 8)
+#define GemmS8S8KernelFrame_SavedRegisters           GemmS8S8KernelFrame_SavedNeonRegisters
+#define GemmS8S8KernelFrame_ColumnSumBuffer          (0 + GemmS8S8KernelFrame_SavedRegisters)
+#define GemmS8S8KernelFrame_ZeroPointB               (8 + GemmS8S8KernelFrame_SavedRegisters)
+#define GemmS8S8KernelFrame_ZeroMode                 (16 + GemmS8S8KernelFrame_SavedRegisters)
 
         TEXTAREA
 
@@ -44,10 +44,10 @@ Routine Description:
 Arguments:
 
     A (x0) - Supplies the address of matrix A. The matrix data has been packed
-        using MlasGemmQuantCopyPackA<MLAS_GEMM_U8X8_KERNEL_UDOT>.
+        using MlasGemmQuantCopyPackA<MLAS_GEMM_S8S8_KERNEL_UDOT>.
 
     B (x1) - Supplies the address of matrix B. The matrix data has been packed
-        using MlasGemmQuantCopyPackB<MLAS_GEMM_U8X8_KERNEL_UDOT>.
+        using MlasGemmQuantCopyPackB<MLAS_GEMM_S8S8_KERNEL_UDOT>.
 
     C (x2) - Supplies the address of matrix C.
 
@@ -85,12 +85,12 @@ Return Value:
 
 --*/
 
-        NESTED_ENTRY MlasGemmU8X8KernelUdot
+        NESTED_ENTRY MlasGemmS8S8KernelSDot
 
         PROLOG_SAVE_REG_PAIR d8,d9,#-16!
-        ldr     x8,[sp,#GemmU8X8KernelFrame_ColumnSumBuffer]
-        ldr     x9,[sp,#GemmU8X8KernelFrame_ZeroPointB]
-        ldrb    w13,[sp,#GemmU8X8KernelFrame_ZeroMode]
+        ldr     x8,[sp,#GemmS8S8KernelFrame_ColumnSumBuffer]
+        ldr     x9,[sp,#GemmS8S8KernelFrame_ZeroPointB]
+        ldrb    w13,[sp,#GemmS8S8KernelFrame_ZeroMode]
         mov     x14,x0
         ld1     {v8.4s},[x7],#16            // load row sum 0 ~ 4
         mov     x15,x3
@@ -231,47 +231,47 @@ SkipScaleByZeroPointBM8
 ComputeBlockLoopM8
         sub     x3,x3,#1
         ld1     {v3.16b},[x1],#16           // load packed B1_next4k
-        UdotByElement 16, 0, 4, 0
-        UdotByElement 18, 0, 4, 1
+        SdotByElement 16, 0, 4, 0
+        SdotByElement 18, 0, 4, 1
         ldr     q7,[x0],#16                 // load packed A3
-        UdotByElement 20, 0, 4, 2
-        UdotByElement 22, 0, 4, 3
+        SdotByElement 20, 0, 4, 2
+        SdotByElement 22, 0, 4, 3
         cbz     x3,ComputeBlockLoopFinishM8
-        UdotByElement 17, 1, 4, 0
-        UdotByElement 19, 1, 4, 1
-        UdotByElement 21, 1, 4, 2
-        UdotByElement 23, 1, 4, 3
+        SdotByElement 17, 1, 4, 0
+        SdotByElement 19, 1, 4, 1
+        SdotByElement 21, 1, 4, 2
+        SdotByElement 23, 1, 4, 3
         ldr     q4,[x0],#16                 // load packed A0 for next iteration
-        UdotByElement 24, 0, 5, 0
-        UdotByElement 26, 0, 5, 1
-        UdotByElement 28, 0, 5, 2
-        UdotByElement 30, 0, 5, 3
+        SdotByElement 24, 0, 5, 0
+        SdotByElement 26, 0, 5, 1
+        SdotByElement 28, 0, 5, 2
+        SdotByElement 30, 0, 5, 3
         ld1     {v0.16b},[x1],#16           // load packed B0 for next iteration
-        UdotByElement 25, 1, 5, 0
-        UdotByElement 27, 1, 5, 1
-        UdotByElement 29, 1, 5, 2
-        UdotByElement 31, 1, 5, 3
+        SdotByElement 25, 1, 5, 0
+        SdotByElement 27, 1, 5, 1
+        SdotByElement 29, 1, 5, 2
+        SdotByElement 31, 1, 5, 3
         ld1     {v1.16b},[x1],#16           // load packed B1 for next iteration
 
-        UdotByElement 16, 2, 6, 0
-        UdotByElement 18, 2, 6, 1
+        SdotByElement 16, 2, 6, 0
+        SdotByElement 18, 2, 6, 1
         ldr     q5,[x0],#16                 // load packed A1 for next iteration
-        UdotByElement 20, 2, 6, 2
-        UdotByElement 22, 2, 6, 3
-        UdotByElement 17, 3, 6, 0
-        UdotByElement 19, 3, 6, 1
-        UdotByElement 21, 3, 6, 2
-        UdotByElement 23, 3, 6, 3
+        SdotByElement 20, 2, 6, 2
+        SdotByElement 22, 2, 6, 3
+        SdotByElement 17, 3, 6, 0
+        SdotByElement 19, 3, 6, 1
+        SdotByElement 21, 3, 6, 2
+        SdotByElement 23, 3, 6, 3
         ldr     q6,[x0],#16                 // load packed A2 for next iteration
-        UdotByElement 24, 2, 7, 0
-        UdotByElement 26, 2, 7, 1
-        UdotByElement 28, 2, 7, 2
-        UdotByElement 30, 2, 7, 3
+        SdotByElement 24, 2, 7, 0
+        SdotByElement 26, 2, 7, 1
+        SdotByElement 28, 2, 7, 2
+        SdotByElement 30, 2, 7, 3
         ld1     {v2.16b},[x1],#16           // load packed B0_next4k for next iteration
-        UdotByElement 25, 3, 7, 0
-        UdotByElement 27, 3, 7, 1
-        UdotByElement 29, 3, 7, 2
-        UdotByElement 31, 3, 7, 3
+        SdotByElement 25, 3, 7, 0
+        SdotByElement 27, 3, 7, 1
+        SdotByElement 29, 3, 7, 2
+        SdotByElement 31, 3, 7, 3
         b       ComputeBlockLoopM8
 
 ComputeBlockLoopFinishM8
@@ -282,42 +282,42 @@ ComputeBlockLoopFinishM8
         // x4 x7 has finished their task
         // so we can use x0 x3 x4 x7 as output row pointers
 
-        UdotByElement 17, 1, 4, 0
-        UdotByElement 19, 1, 4, 1
+        SdotByElement 17, 1, 4, 0
+        SdotByElement 19, 1, 4, 1
         add     x10,x2,x6,lsl #2            // compute output row 2
         add     x11,x10,x6,lsl #2           // compute output row 3
-        UdotByElement 21, 1, 4, 2
-        UdotByElement 23, 1, 4, 3
+        SdotByElement 21, 1, 4, 2
+        SdotByElement 23, 1, 4, 3
         add     x12,x11,x6,lsl #2           // compute output row 4
         add     x0,x12,x6,lsl #2            // compute output row 5
-        UdotByElement 24, 0, 5, 0
-        UdotByElement 26, 0, 5, 1
+        SdotByElement 24, 0, 5, 0
+        SdotByElement 26, 0, 5, 1
         add     x3,x0,x6,lsl #2             // compute output row 6
         add     x4,x3,x6,lsl #2             // compute output row 7
-        UdotByElement 28, 0, 5, 2
-        UdotByElement 30, 0, 5, 3
+        SdotByElement 28, 0, 5, 2
+        SdotByElement 30, 0, 5, 3
         add     x7,x4,x6,lsl #2             // compute output row 8
         subs    x5,x5,#8                    // adjust CountN remaining
-        UdotByElement 25, 1, 5, 0
-        UdotByElement 27, 1, 5, 1
-        UdotByElement 29, 1, 5, 2
-        UdotByElement 31, 1, 5, 3
-        UdotByElement 16, 2, 6, 0
-        UdotByElement 18, 2, 6, 1
-        UdotByElement 20, 2, 6, 2
-        UdotByElement 22, 2, 6, 3
-        UdotByElement 17, 3, 6, 0
-        UdotByElement 19, 3, 6, 1
-        UdotByElement 21, 3, 6, 2
-        UdotByElement 23, 3, 6, 3
-        UdotByElement 24, 2, 7, 0
-        UdotByElement 26, 2, 7, 1
-        UdotByElement 28, 2, 7, 2
-        UdotByElement 30, 2, 7, 3
-        UdotByElement 25, 3, 7, 0
-        UdotByElement 27, 3, 7, 1
-        UdotByElement 29, 3, 7, 2
-        UdotByElement 31, 3, 7, 3
+        SdotByElement 25, 1, 5, 0
+        SdotByElement 27, 1, 5, 1
+        SdotByElement 29, 1, 5, 2
+        SdotByElement 31, 1, 5, 3
+        SdotByElement 16, 2, 6, 0
+        SdotByElement 18, 2, 6, 1
+        SdotByElement 20, 2, 6, 2
+        SdotByElement 22, 2, 6, 3
+        SdotByElement 17, 3, 6, 0
+        SdotByElement 19, 3, 6, 1
+        SdotByElement 21, 3, 6, 2
+        SdotByElement 23, 3, 6, 3
+        SdotByElement 24, 2, 7, 0
+        SdotByElement 26, 2, 7, 1
+        SdotByElement 28, 2, 7, 2
+        SdotByElement 30, 2, 7, 3
+        SdotByElement 25, 3, 7, 0
+        SdotByElement 27, 3, 7, 1
+        SdotByElement 29, 3, 7, 2
+        SdotByElement 31, 3, 7, 3
         blo     StoreOutputPartialM8
         cbnz    x13,SkipAccumulateOutputM8
         ldp     q0,q1,[x2]
@@ -628,45 +628,45 @@ ComputeBlockLoopStartM4
 
 ComputeBlockLoopM4
         ld1     {v1.16b},[x1],#16           // load packed B1
-        UdotByElement 16, 0, 4, 0
-        UdotByElement 18, 0, 4, 1
+        SdotByElement 16, 0, 4, 0
+        SdotByElement 18, 0, 4, 1
         ldur    d7,[x0,#-8]                 // load packed A1.h
-        UdotByElement 20, 0, 5, 0
-        UdotByElement 22, 0, 5, 1
+        SdotByElement 20, 0, 5, 0
+        SdotByElement 22, 0, 5, 1
         ld1     {v0.16b},[x1],#16           // load packed B0_next4k
-        UdotByElement 17, 1, 4, 0
-        UdotByElement 19, 1, 4, 1
+        SdotByElement 17, 1, 4, 0
+        SdotByElement 19, 1, 4, 1
         sub     x3,x3,#1
         cbz     x3,ComputeBlockLoopFinishM4
         ldr     d4,[x0],#32                 // load packed A0.l for next iteration
-        UdotByElement 21, 1, 5, 0
-        UdotByElement 23, 1, 5, 1
+        SdotByElement 21, 1, 5, 0
+        SdotByElement 23, 1, 5, 1
         ld1     {v1.16b},[x1],#16           // load packed B1_next4k
-        UdotByElement 24, 0, 6, 0
-        UdotByElement 26, 0, 6, 1
+        SdotByElement 24, 0, 6, 0
+        SdotByElement 26, 0, 6, 1
         ldur    d5,[x0,#-24]                // load packed A0.h for next iteration
-        UdotByElement 28, 0, 7, 0
-        UdotByElement 30, 0, 7, 1
+        SdotByElement 28, 0, 7, 0
+        SdotByElement 30, 0, 7, 1
         ld1     {v0.16b},[x1],#16           // load packed B0 for next iteration
-        UdotByElement 25, 1, 6, 0
-        UdotByElement 27, 1, 6, 1
+        SdotByElement 25, 1, 6, 0
+        SdotByElement 27, 1, 6, 1
         ldur    d6,[x0,#-16]                // load packed A1.l for next iteration
-        UdotByElement 29, 1, 7, 0
-        UdotByElement 31, 1, 7, 1
+        SdotByElement 29, 1, 7, 0
+        SdotByElement 31, 1, 7, 1
         b       ComputeBlockLoopM4
 
 ComputeBlockLoopFinishM4
-        UdotByElement 21, 1, 5, 0
-        UdotByElement 23, 1, 5, 1
+        SdotByElement 21, 1, 5, 0
+        SdotByElement 23, 1, 5, 1
         ld1     {v1.16b},[x1],#16           // load packed B1_next4k
-        UdotByElement 24, 0, 6, 0
-        UdotByElement 26, 0, 6, 1
-        UdotByElement 28, 0, 7, 0
-        UdotByElement 30, 0, 7, 1
-        UdotByElement 25, 1, 6, 0
-        UdotByElement 27, 1, 6, 1
-        UdotByElement 29, 1, 7, 0
-        UdotByElement 31, 1, 7, 1
+        SdotByElement 24, 0, 6, 0
+        SdotByElement 26, 0, 6, 1
+        SdotByElement 28, 0, 7, 0
+        SdotByElement 30, 0, 7, 1
+        SdotByElement 25, 1, 6, 0
+        SdotByElement 27, 1, 6, 1
+        SdotByElement 29, 1, 7, 0
+        SdotByElement 31, 1, 7, 1
         add     x10,x2,x6,lsl #2            // compute output row 2
         add     v16.4s,v16.4s,v24.4s        // fold high results into low results
         add     v18.4s,v18.4s,v26.4s
@@ -839,28 +839,28 @@ ComputeBlockLoopM2
         sub     x3,x3,#1
         ld1     {v6.16b},[x1],#16           // load packed B0 next 4 k
         ld1     {v7.16b},[x1],#16           // load packed B1 next 4 k
-        UdotByElement 16, 0, 4, 0
-        UdotByElement 17, 1, 4, 0
-        UdotByElement 18, 0, 4, 1
-        UdotByElement 19, 1, 4, 1
+        SdotByElement 16, 0, 4, 0
+        SdotByElement 17, 1, 4, 0
+        SdotByElement 18, 0, 4, 1
+        SdotByElement 19, 1, 4, 1
         cbz     x3,ComputeBlockLoopFinishM2
         ldr     d4,[x0],#8                  // load packed A0.l for next iter
         ld1     {v0.16b},[x1],#16           // load packed B0 for next iter
         ld1     {v1.16b},[x1],#16           // load packed B1 for next iter
-        UdotByElement 16, 6, 5, 0
-        UdotByElement 17, 7, 5, 0
-        UdotByElement 18, 6, 5, 1
-        UdotByElement 19, 7, 5, 1
+        SdotByElement 16, 6, 5, 0
+        SdotByElement 17, 7, 5, 0
+        SdotByElement 18, 6, 5, 1
+        SdotByElement 19, 7, 5, 1
         ldr     d5,[x0],#8                  // load packed A0.h for next iter
         b       ComputeBlockLoopM2
 
 ComputeBlockLoopFinishM2
         add     x10,x2,x6,lsl #2            // compute output row 2
         subs    x5,x5,#8                    // adjust CountN remaining
-        UdotByElement 16, 6, 5, 0
-        UdotByElement 17, 7, 5, 0
-        UdotByElement 18, 6, 5, 1
-        UdotByElement 19, 7, 5, 1
+        SdotByElement 16, 6, 5, 0
+        SdotByElement 17, 7, 5, 0
+        SdotByElement 18, 6, 5, 1
+        SdotByElement 19, 7, 5, 1
         blo     StoreOutputPartialM2
         cbnz    x13,SkipAccumulateOutputM2
         ldp     q0,q1,[x2]
@@ -974,13 +974,13 @@ SkipScaleByZeroPointBM1
 
 ComputeBlockLoopM1
         sub     x3,x3,#1
-        UdotByElement 16, 0, 4, 0
-        UdotByElement 17, 1, 4, 0
+        SdotByElement 16, 0, 4, 0
+        SdotByElement 17, 1, 4, 0
         cbz     x3,ComputeBlockLoopFinishM1
         ld1     {v0.16b},[x1],#16           // load packed B0 for next iter
         ld1     {v1.16b},[x1],#16           // load packed B1 for next iter
-        UdotByElement 16, 6, 4, 1
-        UdotByElement 17, 7, 4, 1
+        SdotByElement 16, 6, 4, 1
+        SdotByElement 17, 7, 4, 1
         ldr     d4,[x0],#8                  // load packed A0 for next iter
         ld1     {v6.16b},[x1],#16           // load packed B0 next 4 k for next iter
         ld1     {v7.16b},[x1],#16           // load packed B1 next 4 k for next iter
@@ -988,8 +988,8 @@ ComputeBlockLoopM1
 
 ComputeBlockLoopFinishM1
         subs    x5,x5,#8                    // adjust CountN remaining
-        UdotByElement 16, 6, 4, 1
-        UdotByElement 17, 7, 4, 1
+        SdotByElement 16, 6, 4, 1
+        SdotByElement 17, 7, 4, 1
         blo     StoreOutputPartialM1
         cbnz    x13,SkipAccumulateOutputM1
         ldp     q0,q1,[x2]
@@ -1049,6 +1049,6 @@ StoreOutputPartial1AddModeM1
         st1     {v16.s}[0],[x2]
         b       ExitKernelM1
 
-        NESTED_END MlasGemmU8X8KernelUdot
+        NESTED_END MlasGemmS8S8KernelSDot
 
         END

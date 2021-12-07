@@ -465,14 +465,14 @@ void
     int8_t ZeroPoint
     );
 
-template<typename FilterType>
-struct MLAS_U8X8_KERNEL
+template<typename InputType, typename FilterType>
+struct MLAS_QUANT_KERNEL
 {
     typedef
     void
     (MLASCALL DepthwiseKernel)(
-        const uint8_t* const* Input,
-        uint8_t InputZeroPoint,
+        const InputType* const* Input,
+        InputType InputZeroPoint,
         const FilterType* Filter,
         FilterType FilterZeroPoint,
         int32_t* Output,
@@ -655,17 +655,19 @@ MlasSgemmOperation(
 // Quantized integer matrix/matrix dispatch structure.
 //
 
-struct MLAS_GEMM_U8X8_DISPATCH;
+struct MLAS_GEMM_QUANT_DISPATCH;
 
-extern const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8X8DispatchSse;
-extern const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8S8DispatchSse41;
-extern const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8S8DispatchAvx2;
-extern const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8U8DispatchAvx2;
-extern const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8X8DispatchNeon;
-extern const MLAS_GEMM_U8X8_DISPATCH MlasGemmS8S8DispatchNeon;
-extern const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8X8DispatchUdot;
-extern const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8X8DispatchWasmSimd;
-extern const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8X8DispatchDefault;
+extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchSse;
+extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8S8DispatchSse41;
+extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8S8DispatchAvx2;
+extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8U8DispatchAvx2;
+extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchNeon;
+extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmX8S8DispatchNeon;
+extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmS8S8DispatchNeon;
+extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchUdot;
+extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmS8S8DispatchSdot;
+extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchWasmSimd;
+extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchDefault;
 
 //
 // Symmetric quantized integer convolution dispatch structure.
@@ -683,12 +685,12 @@ extern const MLAS_CONV_SYM_DISPATCH MlasConvSymDispatchNeon;
 // Quantized depthwise convolution kernels.
 //
 
-template<typename FilterType>
+template<typename InputType, typename FilterType>
 void
 MLASCALL
 MlasConvDepthwiseKernel(
-    const uint8_t* const* Input,
-    uint8_t InputZeroPoint,
+    const InputType* const* Input,
+    InputType InputZeroPoint,
     const FilterType* Filter,
     FilterType FilterZeroPoint,
     int32_t* Output,
@@ -697,12 +699,12 @@ MlasConvDepthwiseKernel(
     size_t KernelSize
     );
 
-template<typename FilterType>
+template <typename InputType, typename FilterType>
 void
 MLASCALL
 MlasConvDepthwiseKernelAvx2(
-    const uint8_t* const* Input,
-    uint8_t InputZeroPoint,
+    const InputType* const* Input,
+    InputType InputZeroPoint,
     const FilterType* Filter,
     FilterType FilterZeroPoint,
     int32_t* Output,
@@ -755,13 +757,20 @@ struct MLAS_PLATFORM {
 #endif
 
 #if defined(MLAS_TARGET_AMD64_IX86)
-    const MLAS_GEMM_U8X8_DISPATCH* GemmU8S8Dispatch;
-    const MLAS_GEMM_U8X8_DISPATCH* GemmU8U8Dispatch;
+    const MLAS_GEMM_QUANT_DISPATCH* GemmU8S8Dispatch;
+    const MLAS_GEMM_QUANT_DISPATCH* GemmU8U8Dispatch;
 #elif defined(MLAS_TARGET_ARM64)
-    const MLAS_GEMM_U8X8_DISPATCH* GemmU8X8Dispatch;
+    const MLAS_GEMM_QUANT_DISPATCH* GemmU8X8Dispatch;
 #endif
 
-    const MLAS_CONV_SYM_DISPATCH* ConvSymDispatch{nullptr};
+    const MLAS_CONV_SYM_DISPATCH* ConvSymU8S8Dispatch{nullptr};
+    const MLAS_CONV_SYM_DISPATCH* ConvSymS8S8Dispatch{nullptr};
+
+    MLAS_QUANT_KERNEL<uint8_t, int8_t>::DepthwiseKernel* ConvDepthwiseU8S8Kernel;
+    MLAS_QUANT_KERNEL<uint8_t, uint8_t>::DepthwiseKernel* ConvDepthwiseU8U8Kernel;
+    MLAS_QUANT_KERNEL<int8_t, int8_t>::DepthwiseKernel* ConvDepthwiseS8S8Kernel;
+    MLAS_QUANT_KERNEL<int8_t, uint8_t>::DepthwiseKernel* ConvDepthwiseS8U8Kernel;
+
 #if defined(MLAS_TARGET_POWER)
     MLAS_GEMM_DOUBLE_KERNEL* GemmDoubleKernel;
 #endif
@@ -781,8 +790,6 @@ struct MLAS_PLATFORM {
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL* ErfKernelRoutine;
     MLAS_QLINEAR_BINARY_OP_S8_KERNEL* QLinearAddS8Kernel;
     MLAS_QLINEAR_BINARY_OP_U8_KERNEL* QLinearAddU8Kernel;
-    MLAS_U8X8_KERNEL<int8_t>::DepthwiseKernel* ConvDepthwiseU8S8Kernel;
-    MLAS_U8X8_KERNEL<uint8_t>::DepthwiseKernel* ConvDepthwiseU8U8Kernel;
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL* ComputeExpF32Kernel;
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL* LogisticKernelRoutine;
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL* TanhKernelRoutine;

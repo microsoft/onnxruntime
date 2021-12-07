@@ -23,16 +23,16 @@ Abstract:
 // threads.
 //
 
-struct MLAS_GEMM_U8X8_WORK_BLOCK {
+struct MLAS_GEMM_QUANT_WORK_BLOCK {
     ptrdiff_t ThreadCountM;
     ptrdiff_t ThreadCountN;
 };
 
 void
-MlasGemmU8X8Threaded(
-    const MLAS_GEMM_U8X8_WORK_BLOCK* WorkBlock,
-    const MLAS_GEMM_U8X8_SHAPE_PARAMS* Shape,
-    const MLAS_GEMM_U8X8_DATA_PARAMS* Data,
+MlasGemmQuantThreaded(
+    const MLAS_GEMM_QUANT_WORK_BLOCK* WorkBlock,
+    const MLAS_GEMM_QUANT_SHAPE_PARAMS* Shape,
+    const MLAS_GEMM_QUANT_DATA_PARAMS* Data,
     ptrdiff_t ThreadId
     )
 /*++
@@ -96,24 +96,24 @@ Return Value:
     // Dispatch the partitioned operation.
     //
 
-    const auto* GemmU8X8Dispatch = MlasGemmU8X8GetDispatch(Shape->BIsSigned);
-    MLAS_GEMM_U8X8_OPERATION* GemmU8X8Operation;
+    const auto* GemmQuantDispatch = MlasGemmQuantGetDispatch(Shape->AIsSigned, Shape->BIsSigned);
+    MLAS_GEMM_QUANT_OPERATION* GemmQuantOperation;
 
     if (Data->BIsPacked) {
-        GemmU8X8Operation = GemmU8X8Dispatch->PackedOperation;
+        GemmQuantOperation = GemmQuantDispatch->PackedOperation;
     } else {
-        GemmU8X8Operation = GemmU8X8Dispatch->Operation;
+        GemmQuantOperation = GemmQuantDispatch->Operation;
     }
 
-    GemmU8X8Operation(Shape, Data, RangeStartM, RangeCountM, RangeStartN, RangeCountN);
+    GemmQuantOperation(Shape, Data, RangeStartM, RangeCountM, RangeStartN, RangeCountN);
 }
 
 
 void
 MLASCALL
 MlasGemm(
-    const MLAS_GEMM_U8X8_SHAPE_PARAMS &Shape,
-    const MLAS_GEMM_U8X8_DATA_PARAMS &DataParams,
+    const MLAS_GEMM_QUANT_SHAPE_PARAMS &Shape,
+    const MLAS_GEMM_QUANT_DATA_PARAMS &DataParams,
     MLAS_THREADPOOL *ThreadPool)
 /*++
 
@@ -143,8 +143,8 @@ Return Value:
 void
 MLASCALL
 MlasGemmBatch(
-    const MLAS_GEMM_U8X8_SHAPE_PARAMS& Shape,
-    const MLAS_GEMM_U8X8_DATA_PARAMS* DataParams,
+    const MLAS_GEMM_QUANT_SHAPE_PARAMS& Shape,
+    const MLAS_GEMM_QUANT_DATA_PARAMS* DataParams,
     const size_t BatchN,
     MLAS_THREADPOOL* ThreadPool)
 {
@@ -185,7 +185,7 @@ MlasGemmBatch(
     // works okay for operations involving skinny matrices.
     //
 
-    MLAS_GEMM_U8X8_WORK_BLOCK WorkBlock;
+    MLAS_GEMM_QUANT_WORK_BLOCK WorkBlock;
 
     if (N > M) {
 
@@ -213,7 +213,7 @@ MlasGemmBatch(
     MlasTrySimpleParallel(ThreadPool, TargetThreadCount, [&](ptrdiff_t tid) {
         const auto gemm_i = tid / ThreadsPerGemm;
         const auto blk_i = tid % ThreadsPerGemm;
-        MlasGemmU8X8Threaded(&WorkBlock, &Shape, &DataParams[gemm_i], blk_i);
+        MlasGemmQuantThreaded(&WorkBlock, &Shape, &DataParams[gemm_i], blk_i);
     });
 }
 
@@ -222,7 +222,8 @@ size_t
 MLASCALL
 MlasGemmPackBSize(
     size_t N,
-    size_t K,
+    size_t K, 
+    bool AIsSigned,
     bool BIsSigned
     )
 /*++
@@ -252,10 +253,10 @@ Return Value:
     // Retrieve the packing parameters.
     //
 
-    const auto* GemmU8X8Dispatch = MlasGemmU8X8GetDispatch(BIsSigned);
+    const auto* GemmQuantDispatch = MlasGemmQuantGetDispatch(AIsSigned, BIsSigned);
 
-    size_t PackedK = GemmU8X8Dispatch->PackedK;
-    size_t PackedStrideK = GemmU8X8Dispatch->PackedStrideK;
+    size_t PackedK = GemmQuantDispatch->PackedK;
+    size_t PackedStrideK = GemmQuantDispatch->PackedStrideK;
 
     if (PackedStrideK == 0) {
         return 0;
@@ -285,6 +286,7 @@ MlasGemmPackB(
     size_t K,
     const uint8_t* B,
     size_t ldb,
+    bool AIsSigned,
     bool BIsSigned,
     void* PackedB
     )
@@ -320,10 +322,10 @@ Return Value:
     // Retrieve the packing parameters.
     //
 
-    const auto* GemmU8X8Dispatch = MlasGemmU8X8GetDispatch(BIsSigned);
+    const auto* GemmQuantDispatch = MlasGemmQuantGetDispatch(AIsSigned, BIsSigned);
 
-    size_t PackedK = GemmU8X8Dispatch->PackedK;
-    size_t PackedStrideK = GemmU8X8Dispatch->PackedStrideK;
+    size_t PackedK = GemmQuantDispatch->PackedK;
+    size_t PackedStrideK = GemmQuantDispatch->PackedStrideK;
 
     //
     // Reserve and initialize storage for the column sum buffer to hold the sums
@@ -362,7 +364,7 @@ Return Value:
 
             CountN = std::min(N - n, BatchedN);
 
-            GemmU8X8Dispatch->CopyPackBRoutine(pb, B + n, ldb, CountN, CountK, ColumnSumBuffer, BIsSigned);
+            GemmQuantDispatch->CopyPackBRoutine(pb, B + n, ldb, CountN, CountK, ColumnSumBuffer, BIsSigned);
 
             //
             // Accumulate this batch of the column sum buffer into the packed

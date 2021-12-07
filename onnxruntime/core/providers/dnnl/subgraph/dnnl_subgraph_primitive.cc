@@ -8,6 +8,7 @@
 #include "dnnl_conv.h"
 #include "dnnl_dynamicquantizelinear.h"
 #include "dnnl_elementwise.h"
+#include "dnnl_gelu.h"
 #include "dnnl_gemm.h"
 #include "dnnl_lrn.h"
 #include "dnnl_matmul.h"
@@ -48,22 +49,29 @@ void DnnlSubgraphPrimitive::AddKernels() {
   std::unordered_set<std::string> binary_ops = {"Add", "Div", "Mul", "Sub"};
   std::unordered_set<std::string> elementwise_ops = {"Abs", "Elu", "Exp", "LeakyRelu", "Log", "Relu", "Round", "Sigmoid", "Softplus", "Sqrt", "Tanh"};
   std::unordered_set<std::string> pool_ops = {"AveragePool", "GlobalAveragePool", "GlobalMaxPool", "MaxPool"};
-  for (auto& node : subgraph_->GetDnnlNodes()) {
+
+  auto indices = subgraph_->GetDnnlNodesInTopologicalOrder();
+  for (auto index : indices) {
+    auto& node = *(subgraph_->GetDnnlNode(index));
     if (node.OpType() == "BatchNormalization") {
       DnnlBatchNorm().CreatePrimitive(*this, node);
     } else if (binary_ops.count(node.OpType())) {
       DnnlBinary().CreatePrimitive(*this, node);
-    } else if (node.OpType() == "Conv") {
+    } else if (node.OpType() == "Conv" || node.OpType() == "ConvRelu") {
       DnnlConv().CreatePrimitive(*this, node);
     } else if (node.OpType() == "DynamicQuantizeLinear") {
       DnnlDynamicQuantizeLinear().CreatePrimitive(*this, node);
     } else if (elementwise_ops.count(node.OpType())) {
       DnnlElementwise().CreatePrimitive(*this, node);
+    } else if (node.OpType() == "FastGelu"){
+      DnnlGelu().CreatePrimitive(*this, node);
+    } else if (node.OpType() == "Gelu" || node.OpType() == "BiasGelu") {
+      DnnlGelu().CreatePrimitive(*this, node);
     } else if (node.OpType() == "Gemm") {
       DnnlGemm().CreatePrimitive(*this, node);
     } else if (node.OpType() == "LRN") {
       DnnlLrn().CreatePrimitive(*this, node);
-    } else if (node.OpType() == "MatMul") {
+    } else if (node.OpType() == "MatMul" || node.OpType() == "MatMulAdd") {
       DnnlMatMul().CreatePrimitive(*this, node);
     } else if (node.OpType() == "MatMulInteger") {
       DnnlMatMulInteger().CreatePrimitive(*this, node);
@@ -161,9 +169,9 @@ void DnnlSubgraphPrimitive::Compile(const std::unordered_map<std::string, OnnxTe
   //initializer should not be cleared upon recompile
   //initializers_.clear();
 
-  for (auto& nodearg : subgraph_->GetDnnlInputs()) {
-    auto dnnl_tensor_name = nodearg.Name();
-    auto dnnl_data_type = nodearg.Type();
+  for (auto nodearg : subgraph_->GetDnnlInputs()) {
+    auto dnnl_tensor_name = nodearg->Name();
+    auto dnnl_data_type = nodearg->Type();
     dnnl::memory::dims dnnl_dims = inputs.at(dnnl_tensor_name).tensor_info.shape;
     if (dnnl_dims.size() == 0) {
       dnnl_dims.push_back(1);
@@ -257,8 +265,8 @@ dnnl::stream DnnlSubgraphPrimitive::GetStream() {
 }
 
 void DnnlSubgraphPrimitive::AddInitializers() {
-  for (auto& nodearg : subgraph_->GetDnnlInitializers()) {
-    auto dnnl_tensor_name = nodearg.Name();
+  for (auto nodearg : subgraph_->GetDnnlInitializers()) {
+    auto dnnl_tensor_name = nodearg->Name();
     if (!Contains(initializers_, dnnl_tensor_name)) {
       initializers_.insert(std::pair<std::string, std::vector<dnnl::memory> >(dnnl_tensor_name, std::vector<dnnl::memory>()));
     }
@@ -266,9 +274,9 @@ void DnnlSubgraphPrimitive::AddInitializers() {
 }
 
 void DnnlSubgraphPrimitive::AddOutputs() {
-  for (auto& tensor : subgraph_->GetDnnlOutputs()) {
-    auto dnnl_data_type = tensor.Type();
-    auto dnnl_tensor_name = tensor.Name();
+  for (auto tensor : subgraph_->GetDnnlOutputs()) {
+    auto dnnl_data_type = tensor->Type();
+    auto dnnl_tensor_name = tensor->Name();
     auto engine = GetCPUEngine();
     auto output_mem_dnnl = GetMemory(dnnl_tensor_name);
     auto output_md = dnnl::memory::desc(output_mem_dnnl.get_desc().dims(), dnnl_data_type, GetDnnlFormat(output_mem_dnnl.get_desc().dims().size()));

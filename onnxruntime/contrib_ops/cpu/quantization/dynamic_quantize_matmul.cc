@@ -113,7 +113,7 @@ Status MatMulIntegerToFloatBase::ComputeCommon(OpKernelContext* ctx,
   }
 
   // batch gemm
-  MLAS_GEMM_U8X8_SHAPE_PARAMS gemm_shape;
+  MLAS_GEMM_QUANT_SHAPE_PARAMS gemm_shape;
   gemm_shape.M = static_cast<size_t>(helper.M());
   gemm_shape.N = static_cast<size_t>(helper.N());
   gemm_shape.K = static_cast<size_t>(helper.K());
@@ -122,7 +122,7 @@ Status MatMulIntegerToFloatBase::ComputeCommon(OpKernelContext* ctx,
   const size_t num_gemms = helper.OutputOffsets().size();
   std::vector<MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR> gemm_scale_procs;
   gemm_scale_procs.reserve(num_gemms);
-  std::vector<MLAS_GEMM_U8X8_DATA_PARAMS> gemm_data_vec(num_gemms);
+  std::vector<MLAS_GEMM_QUANT_DATA_PARAMS> gemm_data_vec(num_gemms);
 
   for (size_t gemm_idx = 0; gemm_idx < num_gemms; gemm_idx++) {
     gemm_scale_procs.emplace_back(y_data + helper.OutputOffsets()[gemm_idx],

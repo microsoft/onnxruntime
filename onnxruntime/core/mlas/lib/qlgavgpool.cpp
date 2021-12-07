@@ -741,7 +741,7 @@ MlasQLinearGlobalAveragePoolNhwc(
     size_t Stride,
     size_t Channels,
     int32_t* AccumulateBuffer,
-    const T8Bits* ZeroBuffer
+    const T8Bits* /*ZeroBuffer*/
     )
 {
     float scale = CheckQLinearGlobalAveragePoolScaleAndSize(ScaleInput, ScaleOutput, ImageSize);
