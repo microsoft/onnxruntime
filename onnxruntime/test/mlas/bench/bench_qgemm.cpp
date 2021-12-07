@@ -12,7 +12,7 @@
 
 static const std::vector<std::string> qgemm_arg_names = {"M", "N", "K", "Batch", "Threads"};
 
-void QGEMM(benchmark::State& state, bool pack_b) {
+void QGEMM(benchmark::State& state, bool pack_b, bool a_is_signed) {
   const bool b_is_signed = true;
   const uint8_t a_zero_point = 29;
   const uint8_t b_zero_point = 179;
@@ -44,19 +44,20 @@ void QGEMM(benchmark::State& state, bool pack_b) {
 
   size_t packed_b_size = 0;
   if (pack_b) {
-    packed_b_size = MlasGemmPackBSize(N, K, b_is_signed);
+    packed_b_size = MlasGemmPackBSize(N, K, a_is_signed, b_is_signed);
     pack_b_holder.resize(packed_b_size * batch);
   }
 
-  MLAS_GEMM_U8X8_SHAPE_PARAMS gemm_shape;
+  MLAS_GEMM_QUANT_SHAPE_PARAMS gemm_shape;
 
   gemm_shape.M = static_cast<size_t>(M);
   gemm_shape.N = static_cast<size_t>(N);
   gemm_shape.K = static_cast<size_t>(K);
+  gemm_shape.AIsSigned = a_is_signed;
   gemm_shape.BIsSigned = b_is_signed;
 
 
-  std::vector<MLAS_GEMM_U8X8_DATA_PARAMS> gemm_data_vec(batch);
+  std::vector<MLAS_GEMM_QUANT_DATA_PARAMS> gemm_data_vec(batch);
   for (size_t i = 0; i < batch; i++) {
     auto& gemm_params = gemm_data_vec[i];
     gemm_params.lda = gemm_shape.K;
@@ -68,7 +69,7 @@ void QGEMM(benchmark::State& state, bool pack_b) {
     gemm_params.ldb = gemm_shape.N;
     gemm_params.C = C_holder.data() + M * N * i;
     if (pack_b) {
-      MlasGemmPackB(N, K, (const uint8_t*)gemm_params.B, N, b_is_signed, (void*)(pack_b_holder.data() + packed_b_size * i));
+      MlasGemmPackB(N, K, (const uint8_t*)gemm_params.B, N, a_is_signed, b_is_signed, (void*)(pack_b_holder.data() + packed_b_size * i));
       gemm_params.BIsPacked = true;
       gemm_params.B = (void*)(pack_b_holder.data() + packed_b_size * i);
     }
@@ -111,7 +112,7 @@ static void QGemmSize(benchmark::internal::Benchmark* b) {
   b->Args({512, 64, 512, 12, 6});
 }
 
-
-
-BENCHMARK_CAPTURE(QGEMM, PackB, true)->Apply(QGemmSize)->UseRealTime();
-BENCHMARK_CAPTURE(QGEMM, NoPackB, false)->Apply(QGemmSize)->UseRealTime();
+BENCHMARK_CAPTURE(QGEMM, PackB, true, false)->Apply(QGemmSize)->UseRealTime();
+BENCHMARK_CAPTURE(QGEMM, NoPackB, false, false)->Apply(QGemmSize)->UseRealTime();
+BENCHMARK_CAPTURE(QGEMM, PackB, true, true)->Apply(QGemmSize)->UseRealTime();
+BENCHMARK_CAPTURE(QGEMM, NoPackB, false, true)->Apply(QGemmSize)->UseRealTime();
