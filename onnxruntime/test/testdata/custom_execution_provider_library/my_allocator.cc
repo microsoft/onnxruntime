@@ -15,7 +15,7 @@ void* MyEPAllocator::Alloc(size_t size) {
 }
 
 void MyEPAllocator::Free(void* p) {
-  delete[] p;
+  delete[] reinterpret_cast<uint8_t*>(p);
 }
 
 }  // namespace onnxruntime

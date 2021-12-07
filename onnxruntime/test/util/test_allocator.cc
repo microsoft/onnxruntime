@@ -33,7 +33,7 @@ void MockedOrtAllocator::Free(void* p) {
   p = (char*)p - extra_len;
   size_t len = *(size_t*)p;
   memory_inuse.fetch_sub(len);
-  delete[] p;
+  delete[] reinterpret_cast<uint8_t*>(p);
 }
 
 const OrtMemoryInfo* MockedOrtAllocator::Info() const {

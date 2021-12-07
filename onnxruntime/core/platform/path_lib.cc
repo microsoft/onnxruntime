@@ -109,7 +109,11 @@ namespace {
 
 inline std::unique_ptr<char[]> StrDup(const std::string& input) {
   auto buf = std::make_unique<char[]>(input.size() + 1);
-  strncpy_s(buf, input.size(), input.c_str(), input.size());
+#if !defined(__i386__) && !defined(_M_IX86) && !defined(__wasm__) && !defined(__ANDROID__)
+  strncpy_s(buf, input.size() + 1, input.c_str(), input.size());
+#else
+  strncpy(buf, input.c_str(), input.size());
+#endif
   buf[input.size()] = 0;
   return buf;
 }
