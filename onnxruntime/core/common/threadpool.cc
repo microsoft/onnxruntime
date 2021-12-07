@@ -741,11 +741,12 @@ int PThreadPoolWrapper::NumThreads() const {
 
 void PThreadPoolWrapper::ParallelFor(std::ptrdiff_t total, double,
                                      const std::function<void(std::ptrdiff_t, std::ptrdiff_t)>& fn) {
+  if (total <= 0) return;
   pthreadpool_parallelize_1d_tile_1d((pthreadpool_t)pthreadpool_,
                                      (pthreadpool_task_1d_tile_1d_t)pthread_1d_tile_func,
                                      const_cast<Func*>(&fn),
                                      static_cast<size_t>(total),
-                                     static_cast<size_t>(std::ceil(1.f * total / thread_count_)),
+				     1, 
                                      denorms_disabled_);
 }
 
@@ -755,6 +756,7 @@ void PThreadPoolWrapper::ParallelFor(std::ptrdiff_t total, const TensorOpCost&,
 }
 
 void PThreadPoolWrapper::SimpleParallelFor(std::ptrdiff_t total, const std::function<void(std::ptrdiff_t)>& fn) {
+  if (total <= 0) return;
   pthreadpool_parallelize_1d((pthreadpool_t)pthreadpool_,
                              (pthreadpool_task_1d_t)pthread_1d_func,
                              const_cast<SimpeFunc*>(&fn),
@@ -762,7 +764,7 @@ void PThreadPoolWrapper::SimpleParallelFor(std::ptrdiff_t total, const std::func
                              denorms_disabled_);
 }
 
-void PThreadPoolWrapper::Schedule(std::function<void()>) { ORT_ENFORCE(false, "CustomThreadPool::Schedule not implemented"); }
+void PThreadPoolWrapper::Schedule(std::function<void()> fn) { fn(); }
 
 void PThreadPoolWrapper::StartProfiling() {}
 
