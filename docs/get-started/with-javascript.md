@@ -19,7 +19,6 @@ ONNX Runtime JavaScript API is the unified interface used by [ONNX Runtime Node.
 ## ONNX Runtime Node.js binding
 
 ### Install
-{: .no_toc }
 
 ```bash
 # install latest release version
@@ -27,7 +26,6 @@ npm install onnxruntime-node
 ```
 
 ### Import
-{: .no_toc }
 
 ```js
 // use ES6 style import syntax (recommended)
@@ -39,19 +37,16 @@ const ort = require('onnxruntime-node');
 ```
 
 ### Examples
-{: .no_toc }
 
 - [Quick Start](https://github.com/microsoft/onnxruntime-inference-examples/tree/main/js/quick-start_onnxruntime-node)
 
 ### Supported Versions
-{: .no_toc }
 
 Node.js v12.x+ or Electron v5.x+
 
 ## ONNX Runtime Web
 
 ### Install
-{: .no_toc }
 
 ```bash
 # install latest release version
@@ -62,7 +57,7 @@ npm install onnxruntime-web@dev
 ```
 
 ### Import
-{: .no_toc }
+
 
 ```js
 // use ES6 style import syntax (recommended)
@@ -75,20 +70,20 @@ const ort = require('onnxruntime-web');
 ONNX Runtime Web can also be imported via a script tag in a HTML file, from a CDN server. See examples below for detail.
 
 ### Examples
-{: .no_toc }
+
 
 - [Quick Start (using bundler)](https://github.com/microsoft/onnxruntime-inference-examples/tree/main/js/quick-start_onnxruntime-web-bundler)
 - [Quick Start (using script tag)](https://github.com/microsoft/onnxruntime-inference-examples/tree/main/js/quick-start_onnxruntime-web-script-tag)
 
 ### Supported Versions
-{: .no_toc }
+
 
 mainstream modern browsers on Windows, macOS, Android and iOS.
 
 ## ONNX Runtime for React Native
 
 ### Install
-{: .no_toc }
+
 
 ```bash
 # install latest release version
@@ -96,7 +91,7 @@ npm install onnxruntime-react-native
 ```
 
 ### Import
-{: .no_toc }
+
 
 ```js
 // use ES6 style import syntax (recommended)
@@ -107,10 +102,6 @@ import * as ort from 'onnxruntime-react-native';
 const ort = require('onnxruntime-react-native');
 ```
 
-### Supported Versions
-{: .no_toc }
-
-same as [ORT Mobile](./with-mobile) (Android/iOS)
 
 ## Builds
 

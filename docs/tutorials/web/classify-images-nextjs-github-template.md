@@ -27,40 +27,15 @@ Example template output:
 * TOC placeholder
 {:toc}
 
-## What is ONNX Runtime Web (ORT-Web)?
+## Inference on device
 
-ONNX Runtime Web enables JavaScript developers to run and deploy machine learning models client-side. With ONX Runtime Web, you have the option to use a backend of either `webgl` for GPU processing or WebAssembly (`wasm`) for CPU processing. All ONNX operators are supported by the WASM backend but only a subset are currently supported by the WebGL backend. If you want to do JavaScript server side inferencing with node, check out the [onnxruntime-node library](https://onnxruntime.ai/docs/get-started/with-javascript.html#onnx-runtime-nodejs-binding).
+This application performs inference on device, in the browser using the onnxruntime-web JavaScript library.
 
-## Browser inferencing considerations
+## SqueezeNet machine learning model
 
-### Why inference in the browser?
-{: .no_toc }
-There are benefits to doing on device and in browser inferencing. 
-- **It's faster.** That's right, you can cut inferencing time way down which inferencing is done right on the client for models that are optimized to work on less powerful hardware. 
-- **It's safer** and helps with privacy. Since the data never leaves the device for inferencing, it is a safer method of doing inferencing.
-- **It works offline.** If you lose internet connection, the model will still be able to inference.
-- **It's cheaper.** You can reduce cloud serving costs by offloading inference to the browser.
+We will be using [SqueezeNet](https://github.com/onnx/models/tree/master/vision/classification/squeezenet) from the [ONNX Model Zoo](https://github.com/onnx/models). SqueezeNet models perform image classification - they take images as input and classify the major object in the image into a set of pre-defined classes. They are trained on the ImageNet dataset which contains images from 1000 different classes. SqueezeNet models are highly efficient in terms of size and speed while providing good accuracies. This makes them ideal for platforms with strict constraints on size, like client side inference.
 
-
-### Why wouldn't you want to inference in the browser?
-{: .no_toc }
-- **The model is too large** and requires higher hardware specs. In order to do inference on the client you need to have a model that is small enough to run efficiently on less powerful hardware. 
-- You don't want the model to be downloaded onto the device.
-
-## Get a model from the ONNX Model Zoo or use your own
-
-1. ONNX Model Zoo
-
-   We will be using [SqueezeNet](https://github.com/onnx/models/tree/master/vision/classification/squeezenet) from the [ONNX Model Zoo](https://github.com/onnx/models). SqueezeNet models perform image classification - they take images as input and classify the major object in the image into a set of pre-defined classes. They are trained on the ImageNet dataset which contains images from 1000 different classes. SqueezeNet models are highly efficient in terms of size and speed while providing good accuracies. This makes them ideal for platforms with strict constraints on size, like client side inferencing.
-
-2. Create a model and export to ONNX Format
-
-   There are many ways to create a custom model that is specific to the task you are trying to solve. Use code to build your model or use the low code/no code tools to create the model. Check out the resources below to learn about some different ways to create a customized model. All of these resources have an export to ONNX format functionality so that you can leverage this template and source code.
-
-  - [Use AutoML to create a custom model](https://docs.microsoft.com/azure/machine-learning/concept-automated-ml)
-  - [Use Custom Vision Cognitive Services to create a custom model](https://docs.microsoft.com/azure/cognitive-services/custom-vision-service/overview)
-  - [Use Azure Machine Learning Designer to create a custom model](https://docs.microsoft.com/en-us/azure/machine-learning/concept-designer)
-  - [Build your own model with PyTorch.](https://docs.microsoft.com/learn/paths/pytorch-fundamentals/)
+  > If you need even more model memory and disk efficiency, you can convert the ONNX model to [ORT format](../../reference/ort-model-format) and use an ORT model in your application instead of the ONNX one. You can also also [reduce the size of the ONNX Runtime](../../build/custom.md) binary itself to only include support for the specific models in your application.
 
 ## Create a Static Site with NextJS (a ReactJS Framework) to deploy models in the browser
 
@@ -73,7 +48,7 @@ The goal of this template is to provide a starting point for your accelerated ML
 There are three files in the Utils folder `imageHelper.ts`, `modelHelper.ts` and `predict.ts`. Predict is the entry point from the web component to start inferencing. Here we import the helpers and call the default functions to get the image tensor and to run our model inference. 
 
 ### predict.ts
-{: .no_toc }
+
 ```javascript
 // Language: typescript
 // Path: react-next\utils\predict.ts
@@ -89,9 +64,10 @@ export async function inferenceSqueezenet(path: string): Promise<[any,number]> {
   return [predictions, inferenceTime];
 }
 ```
+
 ### imageHelper.ts
-{: .no_toc }
-First, we need to get our image from path (can be local or url) and convert it to a tensor. The `getImageTensorFromPath` function in the `imageHelper.ts` uses `JIMP` to read the file, resize and return the `imageData`. [JIMP](https://www.npmjs.com/package/jimp) is a JavaScript image manipulation library. It has many built in functions for working with image data such as resizing, grey scale, write, and more. In this example we only need to resize however in your code you may need additional image data processing. 
+
+First, we need to get our image from a local file or URL and convert it to a tensor. The `getImageTensorFromPath` function in the `imageHelper.ts` uses `JIMP` to read the file, resize and return the `imageData`. [JIMP](https://www.npmjs.com/package/jimp) is a JavaScript image manipulation library. It has many built in functions for working with image data such as resizing, grey scale, write, and more. In this example we only need to resize however in your code you may need additional image data processing. 
 
 ```javascript
 import * as Jimp from 'jimp';
@@ -116,8 +92,7 @@ async function loadImagefromPath(path: string, width: number = 224, height: numb
 }
 ```
 
-Once we have the imageData we will send it into the `imageDataToTensor` function to convert it to an ORT Tensor for inferencing. To convert an image to a tensor in JavaScript we need to get the RGB (Red, Green, Blue) values into arrays. To do this we will loop through the `imageBufferData` by each pixels 4 channels of RGBA. Once we have the RGB pixel channels for the image, then we create the `Float32Array` from the `transposedData` and divide by 
-255 to normalize the value. Why does 255 normalize the pixel value? Well normalization is a technique used to change values to a common scale without distorting the differences. 255 is the max number for an RGB value, so dividing by 255 normalizes our values to between 0 and 1 without losing the statistical differences.  Now that we have the `Float32Array` representation of the image we can create the ORT Tensor by sending in the type, data, and dimensions. Then we return the inputTensor for inferencing.
+Once we have the imageData we will send it into the `imageDataToTensor` function to convert it to an ORT Tensor for inferencing. To convert an image to a tensor in JavaScript we need to get the RGB (Red, Green, Blue) values into arrays. To do this we will loop through the `imageBufferData` by each pixels 4 channels of RGBA. Once we have the RGB pixel channels for the image, then we create the `Float32Array` from the `transposedData` and divide by 255 to normalize the value. Why does 255 normalize the pixel value? Well normalization is a technique used to change values to a common scale without distorting the differences. 255 is the max number for an RGB value, so dividing by 255 normalizes our values to between 0 and 1 without losing the statistical differences.  Now that we have the `Float32Array` representation of the image we can create the ORT Tensor by sending in the type, data, and dimensions. Then we return the inputTensor for inferencing.
 
 ```javascript
 function imageDataToTensor(image: Jimp, dims: number[]): Tensor {
@@ -148,8 +123,9 @@ function imageDataToTensor(image: Jimp, dims: number[]): Tensor {
   return inputTensor;
 }
 ```
+
 ### modelHelper.ts
-{: .no_toc }
+
 The inputTensor is ready for inferencing. Let's call the default `modelHelper.ts` function and walk through the logic. First we create the `ort.InferenceSession` by sending in the path to the model and the `SessionOptions`. For the `executionProviders` you can use either `webgl` to use the GPU or `wasm` to use the CPU. See the documentation to learn more about the `SessionOptions` available for inferencing configuration [here](https://onnxruntime.ai/docs/api/js/interfaces/InferenceSession.SessionOptions.html).
 
 ```javascript
@@ -199,7 +175,7 @@ async function runInference(session: ort.InferenceSession, preprocessedData: any
 Once the inference completes, we return the top 5 results and time it took to run the inference. This is then displayed on the `ImageCanvas` web component.
 
 ## The `data` Folder
-{: .no_toc }
+
 The data folder in this template has `imagenetClasses` that is used to assign the label based on the inferencing result index. Additionally, there is a `sample-image-urls.ts` provided for testing the application.
 
 ## ImageCanvas FSX Element Web Component
@@ -286,13 +262,15 @@ const ImageCanvas = (props: Props) => {
 
 export default ImageCanvas;
 ```
+
 This web component element is then imported in the `index.tsx`.
 
 ```html
 <ImageCanvas width={240} height={240}/>
 ```
+
 ## next.config.js
-{: .no_toc }
+
 We need to add a couple plugins in the `next.config.js`. This is the webpack configuration implemented in the NextJS Framework. The `CopyPlugin` is used to copy the `wasm` files and the model folder files to the `out` folder for deployment. 
 
 ```javascript
@@ -331,8 +309,9 @@ module.exports = {
   } 
 }
 ```
+
 ## package.json
-{: .no_toc }
+
 Since we want to deploy this as a static site. We need to update the build command in the `package.json` to `next build && next export` to generate our static site output. This generates all the assets that are needed to deploy the static site and puts them in the `out` folder.
 
 ```json
@@ -382,24 +361,25 @@ npm run build
 // to run without debugging
 npm run start
 ```
+
 ## Deploy to Azure Static Web Apps
 
 Now that we have built out the site we are ready to deploy it to a [Azure Static Web Apps](https://docs.microsoft.com/en-us/azure/static-web-apps). Check out the docs to learn how to deploy using Azure [here](https://docs.microsoft.com/en-us/azure/static-web-apps/deploy-nextjs).
 
-##  TypeScript Notebook
+## TypeScript Notebook
 
 We have walked through how to use this template, there is a bonus here though! Under the notebook folder in the tempalte there is a [notebook](https://github.com/microsoft/onnxruntime-nextjs-template/blob/main/notebook/inferenceNotebook.ipynb) with this code for you to experiment and try out changes you might need. This way if you have a different model or image you want to try out you can do it quite easily. To use the TypeScript Jupyter notebook download the VS Code Jupyter notebooks extension. 
 
 ## More Resources
 
-- Start using the template now by going to the [GitHub NextJS ORT-Web Template](https://github.com/microsoft/onnxruntime-nextjs-template) repo.
+* Start using the template now by going to the [GitHub NextJS ORT-Web Template](https://github.com/microsoft/onnxruntime-nextjs-template) repo.
 
--  Check out the [release blog here](https://cloudblogs.microsoft.com/opensource/2021/09/02/onnx-runtime-web-running-your-machine-learning-model-in-browser/)
+* Check out the [release blog here](https://cloudblogs.microsoft.com/opensource/2021/09/02/onnx-runtime-web-running-your-machine-learning-model-in-browser/)
 
-- The template is using [NextJS](https://nextjs.org/) a framework for building out applications with ReactJS.
+* The template is using [NextJS](https://nextjs.org/) a framework for building out applications with ReactJS.
 
-- Check out [ONNX Runtime Web Demo for more models](https://github.com/microsoft/onnxruntime-web-demo). ONNX Runtime Web demo is an interactive demo portal showing real use cases running ONNX Runtime Web in VueJS. It currently supports four examples for you to quickly experience the power of ONNX Runtime Web.
+* Check out [ONNX Runtime Web Demo for more models](https://github.com/microsoft/onnxruntime-web-demo). ONNX Runtime Web demo is an interactive demo portal showing real use cases running ONNX Runtime Web in VueJS. It currently supports four examples for you to quickly experience the power of ONNX Runtime Web.
 
-- [This blog](https://hackernoon.com/how-to-run-machine-learning-models-in-the-browser-using-onnx) shows how to use ORT Web with Python for deploying a pre-trained AlexNet model to the browser. 
+* [This blog](https://hackernoon.com/how-to-run-machine-learning-models-in-the-browser-using-onnx) shows how to use ORT Web with Python for deploying a pre-trained AlexNet model to the browser.
 
-- Check out more [ONNX Runtime JS examples](https://github.com/microsoft/onnxruntime-inference-examples/tree/main/js)
+* Check out more [ONNX Runtime JS examples](https://github.com/microsoft/onnxruntime-inference-examples/tree/main/js)
