@@ -342,10 +342,6 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistry::RegisterOperatorKernel(
     bool canAliasFirstInput,
     bool supportsGraph,
     const uint32_t* requiredInputCountForGraph,
-    bool supportedWith64BitTensorsVia32BitStrides,
-    bool supportedWith64BitTensorsVia32BitStridesFromAnyEp,
-    bool prefer64BitTensorsDirectly,
-    bool support64BitTensorsViaEmulation,
     _In_reads_(constantCpuInputCount) const uint32_t* requiredConstantCpuInputs,
     uint32_t constantCpuInputCount) const noexcept
 {
@@ -470,10 +466,6 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistry::RegisterOperatorKernel(
     {
         auto regInfo = std::make_shared<InternalRegistrationInfo>();
         regInfo->requiredConstantCpuInputs = constantCpuInputCapture;
-        regInfo->supportedWith64BitTensorsVia32BitStrides = supportedWith64BitTensorsVia32BitStrides;
-        regInfo->supportedWith64BitTensorsVia32BitStridesFromAnyEp = supportedWith64BitTensorsVia32BitStridesFromAnyEp;
-        regInfo->prefer64BitTensorsDirectly = prefer64BitTensorsDirectly;
-        regInfo->support64BitTensorsViaEmulation = support64BitTensorsViaEmulation;
 
         // Only internal operators support usage in DML graphs
         if (supportsGraph)
@@ -545,11 +537,7 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistry::RegisterOperatorKernel(
         if (canAliasFirstInput ||
             supportsGraph ||
             requiredInputCountForGraph ||
-            requiredConstantCpuInputs ||
-            supportedWith64BitTensorsVia32BitStrides ||
-            supportedWith64BitTensorsVia32BitStridesFromAnyEp ||
-            prefer64BitTensorsDirectly ||
-            support64BitTensorsViaEmulation)
+            requiredConstantCpuInputs)
         {
             ORT_THROW_HR(E_INVALIDARG);
         }

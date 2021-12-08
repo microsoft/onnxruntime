@@ -67,14 +67,6 @@ public:
             argmaxDesc.Axes = dmlAxes.data();
             argmaxDesc.AxisCount = gsl::narrow_cast<uint32_t>(dmlAxes.size());
 
-            // If the 64-bit tensors were remapped to 32-bit, then we need to clear the upper 32-bits
-            // of each element. If the device directly supports 64-bit elements, then no need.
-            DmlOperator::Remap64bitDmlDataTypesTo32bitIfNeeded();
-            if (m_outputTensorDescs[0].WasRemapped64bitTo32bit())
-            {
-                m_zeroOperator = InitializeZeroInt64Tensor(m_outputTensorDescs[0].GetBufferSizeInBytes());
-            }
-            
             DML_OPERATOR_DESC opDesc = { DML_OPERATOR_ARGMAX, &argmaxDesc };
             SetDmlOperatorDesc(opDesc, kernelInfo);
         }
@@ -86,14 +78,6 @@ public:
             argminDesc.OutputTensor = outputDescs.data();
             argminDesc.Axes = dmlAxes.data();
             argminDesc.AxisCount = gsl::narrow_cast<uint32_t>(dmlAxes.size());
-
-            // If the 64-bit tensors were remapped to 32-bit, then we need to clear the upper 32-bits
-            // of each element. If the device directly supports 64-bit elements, then no need.
-            DmlOperator::Remap64bitDmlDataTypesTo32bitIfNeeded();
-            if (m_outputTensorDescs[0].WasRemapped64bitTo32bit())
-            {
-                m_zeroOperator = InitializeZeroInt64Tensor(m_outputTensorDescs[0].GetBufferSizeInBytes());
-            }
 
             DML_OPERATOR_DESC opDesc = { DML_OPERATOR_ARGMIN, &argminDesc };
             SetDmlOperatorDesc(opDesc, kernelInfo);
@@ -117,20 +101,12 @@ public:
         std::vector<IMLOperatorTensor*> inputTensors = GetInputTensorsForExecute(kernelContext);
         std::vector<IMLOperatorTensor*> outputTensors = GetOutputTensorsForExecute(kernelContext);
 
-        if (m_zeroOperator)
-        {
-            ExecuteZeroInt64Tensor(m_zeroOperator.Get(), outputTensors[0]);
-        }
-
         ORT_THROW_IF_FAILED(m_executionProvider->ExecuteOperator(
             m_compiledOperator.Get(),
             m_persistentResourceBinding ? &*m_persistentResourceBinding : nullptr,
             gsl::make_span(inputTensors),
             gsl::make_span(outputTensors)));
     }
-
-private:
-    ComPtr<IDMLCompiledOperator> m_zeroOperator;
 };
 
 // A specific type of operation for registration.

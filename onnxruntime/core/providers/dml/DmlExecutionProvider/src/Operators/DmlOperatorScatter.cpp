@@ -24,13 +24,12 @@ public:
         ML_CHECK_VALID_ARGUMENT(indicesDimensions == updatesDimensions);
         ML_CHECK_VALID_ARGUMENT(dataDimensions.size() == indicesDimensions.size());
 
-        // When the indices tensor is empty, Scatter is basically Identity. But since DML doesn't support empty or null
+        // When the indices tensor is empty, Scatter is basically Identity. But since DML doesn't yet support empty
         // tensors, we have to special-case it outside of DML.
         if (OperatorHelper::ContainsEmptyDimensions(indicesDimensions))
         {
             std::vector<std::optional<uint32_t>> kernelInputIndices(1, 0);
             DmlOperator::Initialize(kernelCreationContext, kernelInputIndices);
-            DmlOperator::Remap64bitDmlDataTypesTo32bitIfNeeded();
 
             std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
             std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
@@ -49,7 +48,6 @@ public:
         else
         {
             DmlOperator::Initialize(kernelCreationContext);
-            DmlOperator::Remap64bitDmlDataTypesTo32bitIfNeeded();
 
             std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
             std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
@@ -91,7 +89,6 @@ public:
 
         size_t dimensionCountMax = std::max({dataDimensions.size(), updatesDimensions.size(), indicesDimensions.size(), outputDimensions.size()});
         DmlOperator::Initialize(kernelCreationContext, gsl::narrow_cast<uint32_t>(dimensionCountMax));
-        DmlOperator::Remap64bitDmlDataTypesTo32bitIfNeeded();
 
         std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
         std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();

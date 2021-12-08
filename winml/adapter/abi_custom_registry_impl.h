@@ -28,10 +28,6 @@ class AbiCustomRegistryImpl : public AbiCustomRegistry {
       bool can_alias_first_input,
       bool supports_graph,
       const uint32_t* required_input_count_for_graph = nullptr,
-      bool supports_64bit_directly = false,
-      bool allows_64bit_via_strides = false,
-      bool allows_64bit_via_strides_from_any_ep = false,
-      bool supports_64bit_tensors_via_emulation = false,
       _In_reads_(constant_cpu_input_count) const uint32_t* required_constant_cpu_inputs = nullptr,
       uint32_t constant_cpu_input_count = 0) const noexcept override;
 

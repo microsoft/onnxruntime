@@ -22,7 +22,6 @@ public:
         std::vector<std::optional<uint32_t>> inputIndices = { 0, 1 }; // The 3rd tensor ('output_shape') is not bound, just 'X' and 'I' indices.
         std::vector<std::optional<uint32_t>> outputIndices = { 0 };
         DmlOperator::Initialize(kernelCreationContext, inputIndices, outputIndices);
-        DmlOperator::Remap64bitDmlDataTypesTo32bit();
         m_inputTensorDescs[1].ForceUnsignedDataType(); // MaxUnpool accepts uint32_t.
 
         std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
