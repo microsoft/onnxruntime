@@ -10,7 +10,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
-      - name: Install doxygen
+        with:
+          ref: rel-1.10.0
+      - name: Install doxygen and dependencies
         run: |
           sudo apt update 
           sudo apt-get install libclang-9-dev
