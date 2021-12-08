@@ -1,8 +1,7 @@
 name: Publish C/C++ API Docs
 on:
-  push:
-    branches:
-      - automate-c-apidocs
+  workflow_dispatch
+
 jobs:
   publish:
     name: Publish API docs
@@ -12,4 +11,12 @@ jobs:
       - uses: mattnotmitt/doxygen-action@v1
         with:
           working-directory: docs/c_cxx
+      - name: Publish
+        uses: JamesIves/github-pages-deploy-action@releases/v3
+        with:
+          ACCESS_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BRANCH: gh-pages # The branch the action should deploy to.
+          FOLDER: docs/c_cxx/html
+          TARGET_FOLDER: docs/api/c
+          CLEAN_EXCLUDE: '["_config.yml"]'    
  
