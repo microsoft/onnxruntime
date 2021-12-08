@@ -124,7 +124,7 @@ std::unordered_map<std::string, std::unordered_map<int, std::pair<int64_t, int64
 }
 
 // Check if cycle exists in the graph after partitioning
-bool FindCycleHelper(int i, const std::list<int>* adjacency_map, bool visited[], bool* st, std::vector<int>& cycles) {
+bool FindCycleHelper(size_t i, const std::list<size_t>* adjacency_map, bool visited[], bool* st, std::vector<size_t>& cycles) {
   if (!visited[i]) {
     visited[i] = true;
     st[i] = true;
@@ -960,8 +960,8 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
         SubGraphCollection_t next_nodes_list;
         const std::vector<NodeIndex>& subgraph_node_index = graph_viewer->GetNodesInTopologicalOrder();
         next_nodes_list = GetSupportedList(parser_nodes_list, iterations, max_iterations, *graph_viewer, early_termination);
-        for (int i = 0, end = static_cast<int>(next_nodes_list.size()); i < end; ++i) {
-          for (int j = 0, end = static_cast<int>(next_nodes_list[i].first.size()); j < end; ++j) {
+        for (size_t i = 0, end = next_nodes_list.size(); i < end; ++i) {
+          for (size_t j = 0, end = next_nodes_list[i].first.size(); j < end; ++j) {
             next_nodes_list[i].first[j] = group.first[subgraph_node_index[next_nodes_list[i].first[j]]];
           }
           nodes_list_output.push_back(next_nodes_list[i]);
@@ -978,11 +978,11 @@ void TensorrtExecutionProvider::RemoveTensorRTGraphCycles(SubGraphCollection_t& 
   bool trt_cycle = true;
   while (trt_cycle) {
     trt_cycle = false;
-    std::unordered_map<std::string, int> node_to_index_map;
-    std::unordered_map<int, std::string> index_to_node_map;
+    std::unordered_map<std::string, size_t> node_to_index_map;
+    std::unordered_map<size_t, std::string> index_to_node_map;
     std::unordered_map<std::string, std::unordered_set<std::string>> input_to_nodes_map, node_to_outputs_map;
     std::unordered_set<size_t> non_trt_node_index(node_index.begin(), node_index.end());
-    int id = 0;
+    size_t id = 0;
     for (const auto& group : supported_nodes_vector) {
       if (!group.first.empty()) {
         // Construct subgraph from node list
@@ -1031,15 +1031,15 @@ void TensorrtExecutionProvider::RemoveTensorRTGraphCycles(SubGraphCollection_t& 
     }
 
     // Create adjacency list
-    int graph_size = static_cast<int>(node_to_index_map.size());
-    std::list<int>* adjacency_map = new std::list<int>[graph_size];
+    size_t graph_size = node_to_index_map.size();
+    std::list<size_t>* adjacency_map = new std::list<size_t>[graph_size];
     for (const auto& node : node_to_outputs_map) {
       for (auto iter = node.second.begin(); iter != node.second.end(); ++iter) {
         const auto& loc = input_to_nodes_map.find(*iter);
         if (loc != input_to_nodes_map.end()) {
-          int parent_node_index = node_to_index_map.find(node.first)->second;
+          size_t parent_node_index = node_to_index_map.find(node.first)->second;
           for (auto child_node : loc->second) {
-            int child_node_index = node_to_index_map.find(child_node)->second;
+            size_t child_node_index = node_to_index_map.find(child_node)->second;
             adjacency_map[parent_node_index].push_back(child_node_index);
           }
         }
@@ -1049,14 +1049,14 @@ void TensorrtExecutionProvider::RemoveTensorRTGraphCycles(SubGraphCollection_t& 
     // Check cycle in the graph
     bool* visited = new bool[graph_size];
     bool* st = new bool[graph_size];
-    for (int i = 0; i < graph_size; ++i) {
+    for (size_t i = 0; i < graph_size; ++i) {
       visited[i] = false;
       st[i] = false;
     }
 
-    std::vector<int> cycles;
+    std::vector<size_t> cycles;
     bool has_cycle = false;
-    for (int i = 0; i < graph_size; ++i) {
+    for (size_t i = 0; i < graph_size; ++i) {
       if (FindCycleHelper(i, adjacency_map, visited, st, cycles)) {
         has_cycle = true;
         break;
@@ -1065,7 +1065,7 @@ void TensorrtExecutionProvider::RemoveTensorRTGraphCycles(SubGraphCollection_t& 
 
     // Remove TensorRT subgraph from the supported node list if it's part of the cycle
     if (has_cycle) {
-      for (int i = 0; i < static_cast<int>(cycles.size()); ++i) {
+      for (size_t i = 0; i < cycles.size(); ++i) {
         auto loc = index_to_node_map.find(cycles[i]);
         if (loc != index_to_node_map.end() && loc->second.find("TRTKernel") != std::string::npos) {
           supported_nodes_vector.erase(supported_nodes_vector.begin() + cycles[i]);
