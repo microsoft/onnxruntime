@@ -174,7 +174,7 @@ class Image2DDesc : private std::pair<int64_t, int64_t> {
     int64_t C_i = shape[1];
     int64_t K_h = shape[2];
     int64_t K_w = shape[3];
-    return {K_h * K_w * C_o, CeilDiv(C_i, 4)};
+    return {K_h * K_w * C_i, CeilDiv(C_o, 4)};
   }
 
   auto Height() const {

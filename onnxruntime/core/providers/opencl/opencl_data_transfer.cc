@@ -345,7 +345,7 @@ Status OpenCLDataTransfer::CopyDepthwiseConvWeight(const Tensor& src, Tensor& ds
   VLOGF_DEFAULT(0, "[CL] copy    host(%p) --> Image2D(%p)", src.DataRaw(), dst_image2d());
 
   auto shape = src.Shape();
-  ORT_ENFORCE(dst.Shape()[0] == 1);  // TODO: maybe generalize it
+  ORT_ENFORCE(shape[1] == 1, "input channel per group must be 1");
   auto tmp = exec_->GetScratchBuffer(src.SizeInBytes());
   ORT_RETURN_IF_CL_ERROR(exec_->GetCommandQueue().enqueueWriteBuffer(*tmp, /*blocking=*/CL_FALSE, 0, src.SizeInBytes(), src.DataRaw()));
   ORT_RETURN_IF_ERROR(KernelLauncher{kernels_->GetKernel("CopyDepthwiseConvWeightBufferToImage")}
@@ -353,7 +353,7 @@ Status OpenCLDataTransfer::CopyDepthwiseConvWeight(const Tensor& src, Tensor& ds
                           .setArg<cl_int>(desc.Height())
                           .setBuffer(*tmp)
                           .setInt4(shape[0], shape[1], shape[2], shape[3])
-                          .setArg<cl_int>(desc.Width() * desc.Height())
+                          .setArg<cl_int>(/*shape[1] * */ shape[2] * shape[3])  // C_i * K_h * K_w, C_i == 1
                           .setImage2D(dst_image2d)
                           .Launch(exec_->GetCommandQueue(), desc.AsNDRange()));
   return Status::OK();
