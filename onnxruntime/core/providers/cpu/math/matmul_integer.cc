@@ -40,6 +40,20 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
         .TypeConstraint("T3", DataTypeImpl::GetTensorType<int32_t>()),
     MatMulInteger);
 
+#if defined(MLAS_TARGET_ARM_ANY)
+ONNX_OPERATOR_TYPED_KERNEL_EX(
+    MatMulInteger,
+    kOnnxDomain,
+    10,
+    int8_t,
+    kCpuExecutionProvider,
+    KernelDefBuilder()
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<int8_t>())
+        .TypeConstraint("T2", DataTypeImpl::GetTensorType<int8_t>())
+        .TypeConstraint("T3", DataTypeImpl::GetTensorType<int32_t>()),
+    MatMulInteger);
+#endif
+
 Status MatMulInteger::Compute(OpKernelContext* ctx) const {
   const auto* a = ctx->Input<Tensor>(IN_A);
   const auto* b = packed_b_ ? nullptr : ctx->Input<Tensor>(IN_B);
@@ -50,7 +64,7 @@ Status MatMulInteger::Compute(OpKernelContext* ctx) const {
   if (a_zero_point != nullptr) {
     ORT_ENFORCE(IsScalarOr1ElementVector(a_zero_point),
                 "MatmulInteger : input1 zero point must be a scalar or 1D tensor of size 1");
-    a_offset = *a_zero_point->template Data<uint8_t>();
+    a_offset = *(static_cast<const uint8_t*>(a_zero_point->DataRaw()));
   }
 
   bool is_b_zp_per_column = false;
@@ -82,13 +96,14 @@ Status MatMulInteger::Compute(OpKernelContext* ctx) const {
   if (y->Shape().Size() == 0)
     return Status::OK();
 
-  const auto* a_data = a->template Data<uint8_t>();
+  const uint8_t* a_data = static_cast<const uint8_t*>(a->DataRaw());
   auto* y_data = y->template MutableData<int32_t>();
 
   MLAS_GEMM_QUANT_SHAPE_PARAMS gemm_shape;
   gemm_shape.M = static_cast<size_t>(helper.M());
   gemm_shape.N = static_cast<size_t>(helper.N());
   gemm_shape.K = static_cast<size_t>(helper.K());
+  gemm_shape.AIsSigned = a->IsDataType<int8_t>();
   gemm_shape.BIsSigned = b_is_signed;
 
   const size_t batch_size = helper.OutputOffsets().size();
