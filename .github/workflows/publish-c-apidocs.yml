@@ -6,18 +6,21 @@ on:
 
 jobs:
   publish:
-    name: Publish API docs
+    name: Publish C/C++ API docs
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
       - name: Install doxygen
-        run:
-          sudo apt-get install -y doxygen
+        run: |
+          sudo apt update 
+          sudo apt-get install libclang-9-dev
+          sudo apt-get install libclang-cpp9
+          wget https://www.doxygen.nl/files/doxygen-1.9.2.linux.bin.tar.gz
+          tar xvzf doxygen-1.9.2.linux.bin.tar.gz
       - name: Run doxygen
         run: |
           cd docs/c_cxx
-          doxygen -v
-          doxygen
+          doxygen-1.9.2/bin/doxygen
       - name: Publish
         uses: JamesIves/github-pages-deploy-action@releases/v3
         with:
