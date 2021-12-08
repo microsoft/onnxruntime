@@ -7,8 +7,6 @@ jobs:
   publish:
     name: Publish API docs
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
     steps:
       - uses: actions/checkout@v2
       - uses: mattnotmitt/doxygen-action@v1
