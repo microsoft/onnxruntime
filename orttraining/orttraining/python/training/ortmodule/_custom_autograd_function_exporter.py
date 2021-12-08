@@ -166,6 +166,10 @@ def _export_pt_1_10(g, n, *args, **kwargs):
 
 
 try:
+    # Starting from PyTorch 1.11, there has been a change to symbolic function signature
+    # in terms of how additional context is accessed. More info at
+    # https://github.com/pytorch/pytorch/blob/6b02648479d3615fa3260961e24f38dd0f22da94/torch/onnx/symbolic_helper.py#L48
+    # This code can be cleaned up once support for PyTorch version < 1.11 is dropped.
     from torch.onnx import SymbolicContext
     def _export(g, ctx: SymbolicContext, *args, **kwargs):
         n = ctx.cur_node
