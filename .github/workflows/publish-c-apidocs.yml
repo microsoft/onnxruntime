@@ -21,6 +21,7 @@ jobs:
           tar xvzf doxygen-1.9.2.linux.bin.tar.gz
       - name: Run doxygen
         run: |
+          mkdir -p build/doxygen
           cd docs/c_cxx
           ../../doxygen-1.9.2/bin/doxygen
       - name: Publish
