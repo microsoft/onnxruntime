@@ -1484,61 +1484,9 @@ including arg name, arg type (contains both type and shape).)pbdoc")
       .export_values();
 }
 
-#if defined(USE_MIMALLOC_ARENA_ALLOCATOR)
-static struct {
-  PyMemAllocatorEx mem;
-  PyMemAllocatorEx raw;
-  PyMemAllocatorEx obj;
-} allocators;
-#endif
-
 void CreateInferencePybindStateModule(py::module& m) {
   m.doc() = "pybind11 stateful interface to ONNX runtime";
   RegisterExceptions(m);
-
-#if defined(USE_MIMALLOC_ARENA_ALLOCATOR)
-  PyMemAllocatorEx alloc;
-  alloc.malloc = [](void* ctx, size_t size) {
-    ORT_UNUSED_PARAMETER(ctx);
-    return mi_malloc(size);
-  };
-
-  alloc.calloc = [](void* ctx, size_t nelem, size_t elsize) {
-    ORT_UNUSED_PARAMETER(ctx);
-    return mi_calloc(nelem, elsize);
-  };
-
-  alloc.realloc = [](void* ctx, void* ptr, size_t new_size) {
-    if (mi_is_in_heap_region(ptr)) {
-      return mi_realloc(ptr, new_size);
-    } else {
-      PyMemAllocatorEx* a = (PyMemAllocatorEx*)ctx;
-      return a->realloc(ctx, ptr, new_size);
-    }
-  };
-
-  alloc.free = [](void* ctx, void* ptr) {
-    if (mi_is_in_heap_region(ptr)) {
-      mi_free(ptr);
-    } else {
-      PyMemAllocatorEx* a = (PyMemAllocatorEx*)ctx;
-      a->free(ctx, ptr);
-    }
-  };
-
-  alloc.ctx = &allocators.raw;
-  PyMem_GetAllocator(PYMEM_DOMAIN_RAW, &allocators.raw);
-  PyMem_SetAllocator(PYMEM_DOMAIN_RAW, &alloc);
-
-  alloc.ctx = &allocators.mem;
-  PyMem_GetAllocator(PYMEM_DOMAIN_MEM, &allocators.mem);
-  PyMem_SetAllocator(PYMEM_DOMAIN_MEM, &alloc);
-
-  alloc.ctx = &allocators.obj;
-  PyMem_GetAllocator(PYMEM_DOMAIN_OBJ, &allocators.obj);
-  PyMem_SetAllocator(PYMEM_DOMAIN_OBJ, &alloc);
-
-#endif
 
   // Initialization of the module
   ([]() -> void {
