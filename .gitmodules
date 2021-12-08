@@ -75,10 +75,12 @@
 [submodule "cmake/external/pytorch_cpuinfo"]
 	path = cmake/external/pytorch_cpuinfo
 	url = https://github.com/pytorch/cpuinfo.git
-
 [submodule "cmake/external/onnx-tensorrt"]
 	path = cmake/external/onnx-tensorrt
 	url = https://github.com/onnx/onnx-tensorrt.git
 [submodule "cmake/external/tvm_update"]
 	path = cmake/external/tvm_update
 	url = https://github.com/apache/tvm
+[submodule "cmake/external/abseil-cpp"]
+	path = cmake/external/abseil-cpp
+	url = https://github.com/abseil/abseil-cpp.git
