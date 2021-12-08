@@ -1,6 +1,8 @@
 name: Publish C/C++ API Docs
 on:
-  workflow_dispatch:
+  push:
+    branches:
+      - automate-c-apidocs
 jobs:
   publish:
     name: Publish API docs
