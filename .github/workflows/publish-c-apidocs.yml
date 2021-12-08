@@ -27,7 +27,7 @@ jobs:
         uses: JamesIves/github-pages-deploy-action@releases/v3
         with:
           ACCESS_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          BRANCH: gh-pages # The branch the action should deploy to.
+          BRANCH: gh-pages
           FOLDER: docs/c_cxx/html
           TARGET_FOLDER: docs/api/c
           CLEAN_EXCLUDE: '["_config.yml"]'    
