@@ -10,6 +10,10 @@ import sys
 import typing
 
 from logger import get_logger
+from pathlib import Path
+
+REDUCED_KERNEL_DEF_SUFFIX = '_reduced_ops'
+REDUCED_TYPE_CONTROL_SUFFIX = '_reduced_types'
 
 # add the path to /tools/python so we can import the config parsing and type reduction processing
 script_path = os.path.dirname(os.path.realpath(__file__))
@@ -105,18 +109,26 @@ def _process_provider_registrations(
 
         log.info("Processing {}".format(kernel_registration_file))
 
-        backup_path = kernel_registration_file + '~'
-        shutil.move(kernel_registration_file, backup_path)
+        old_path = Path(kernel_registration_file)
+        reduced_path = Path(old_path.parent, f'{old_path.stem}{REDUCED_KERNEL_DEF_SUFFIX}{old_path.suffix}')
 
-        # read from backup and overwrite original with commented out lines for any kernels that are not required
-        with open(kernel_registration_file, 'w') as file_to_write:
+        # read from original and create the reduced kernel def file (*_reduced_ops.cc),
+        # with commented out lines for any kernels that are not required
+        with open(reduced_path, 'w') as file_to_write:
             processor = _ExcludingRegistrationProcessor(required_ops, op_type_impl_filter, file_to_write)
 
-            op_registration_utils.process_kernel_registration_file(backup_path, processor)
+            op_registration_utils.process_kernel_registration_file(kernel_registration_file, processor)
 
             if not processor.ok():
                 # error should have already been logged so just exit
                 sys.exit(-1)
+
+        # enable the contents in the *_reduced_ops.cc
+        with open(reduced_path, 'r+') as file:
+            file_content = file.read().replace(r'#ifndef REDUCED_OPS_BUILD', r'#ifdef REDUCED_OPS_BUILD')
+
+        with open(reduced_path, "w") as file_to_write:
+            file_to_write.write(file_content)
 
 
 def _insert_type_control_cpp_code(ort_root: str, cpp_lines: typing.Sequence[str]):
@@ -125,43 +137,40 @@ def _insert_type_control_cpp_code(ort_root: str, cpp_lines: typing.Sequence[str]
     :param ort_root: Root of the ONNX Runtime repository
     :param cpp_lines: The C++ code to insert
     '''
-    if not cpp_lines:
-        return
-
-    target = os.path.join(ort_root, 'onnxruntime', 'core', 'providers', 'op_kernel_type_control_overrides.inc')
-    if not os.path.exists(target) or not os.path.isfile(target):
+    src = os.path.join(ort_root, 'onnxruntime', 'core', 'providers', 'op_kernel_type_control_overrides.inc')
+    if not os.path.exists(src) or not os.path.isfile(src):
         log.warning('Could not find {}. Skipping generation of C++ code to reduce the types supported by operators.'
-                    .format(target))
+                    .format(src))
         return
 
-    # copy existing content to use as input
-    src = target + '.tmp'
-    shutil.copyfile(target, src)
+    # create a copy of the op_kernel_type_control_overrides.inc even the cpp_lines is empty
+    src_path = Path(src)
+    target = Path(src_path.parent, f'{src_path.stem}{REDUCED_TYPE_CONTROL_SUFFIX}{src_path.suffix}')
+    shutil.copyfile(src, target)
 
-    # find the insertion block and replace any existing content in it
-    inserted = False
-    with open(src, 'r') as input, open(target, 'w') as output:
-        inside_insertion_block = False
-        for line in input.readlines():
-            if '@@insertion_point_begin(allowed_types)@@' in line:
-                inside_insertion_block = True
-                output.write(line)
-                [output.write('{}\n'.format(code_line)) for code_line in cpp_lines]
-                inserted = True
-                continue
-            elif inside_insertion_block:
-                if '@@insertion_point_end(allowed_types)@@' in line:
-                    inside_insertion_block = False
-                else:
-                    # we ignore any old lines within the insertion block
+    if cpp_lines:
+        # find the insertion block and replace any existing content in it
+        inserted = False
+        with open(src, 'r') as input, open(target, 'w') as output:
+            inside_insertion_block = False
+            for line in input.readlines():
+                if '@@insertion_point_begin(allowed_types)@@' in line:
+                    inside_insertion_block = True
+                    output.write(line)
+                    [output.write('{}\n'.format(code_line)) for code_line in cpp_lines]
+                    inserted = True
                     continue
+                elif inside_insertion_block:
+                    if '@@insertion_point_end(allowed_types)@@' in line:
+                        inside_insertion_block = False
+                    else:
+                        # we ignore any old lines within the insertion block
+                        continue
 
-            output.write(line)
+                output.write(line)
 
-    os.remove(src)
-
-    if not inserted:
-        raise RuntimeError('Insertion point was not found in {}'.format(target))
+        if not inserted:
+            raise RuntimeError('Insertion point was not found in {}'.format(target))
 
 
 def reduce_ops(config_path: str, enable_type_reduction: bool = False, use_cuda: bool = True):
@@ -175,9 +184,9 @@ def reduce_ops(config_path: str, enable_type_reduction: bool = False, use_cuda: 
 
     _process_provider_registrations(ort_root, use_cuda, required_ops, op_type_impl_filter)
 
-    type_control_cpp_code = op_type_impl_filter.get_cpp_entries() if op_type_impl_filter is not None else []
-
-    _insert_type_control_cpp_code(ort_root, type_control_cpp_code)
+    if enable_type_reduction:
+        type_control_cpp_code = op_type_impl_filter.get_cpp_entries() if op_type_impl_filter is not None else []
+        _insert_type_control_cpp_code(ort_root, type_control_cpp_code)
 
 
 if __name__ == "__main__":

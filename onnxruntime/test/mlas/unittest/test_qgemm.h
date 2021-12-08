@@ -6,19 +6,19 @@
 #include "test_util.h"
 
 template <bool Packed, bool Threaded>
-class MlasQgemmU8X8U8X8TestBase : public MlasTestBase {
+class MlasQgemmTestBase : public MlasTestBase {
  private:
-  void* PackB(size_t N, size_t K, const uint8_t* B, size_t ldb, bool BIsSigned) {
-    size_t PackedBSize = MlasGemmPackBSize(N, K, BIsSigned);
+  void* PackB(size_t N, size_t K, const uint8_t* B, size_t ldb, bool AIsSigned, bool BIsSigned) {
+    size_t PackedBSize = MlasGemmPackBSize(N, K, AIsSigned, BIsSigned);
     void* PackedB = BufferBPacked.GetBuffer(PackedBSize);
-    MlasGemmPackB(N, K, B, ldb, BIsSigned, PackedB);
+    MlasGemmPackB(N, K, B, ldb, AIsSigned, BIsSigned, PackedB);
     return PackedB;
   }
 
  protected:
   MLAS_THREADPOOL* threadpool_;
 
-  MlasQgemmU8X8U8X8TestBase() : threadpool_(Threaded ? GetMlasThreadPool() : nullptr) {}
+  MlasQgemmTestBase() : threadpool_(Threaded ? GetMlasThreadPool() : nullptr) {}
 
   void TestGemm(size_t M,
                 size_t N,
@@ -27,19 +27,21 @@ class MlasQgemmU8X8U8X8TestBase : public MlasTestBase {
                 const uint8_t* A,
                 size_t lda,
                 uint8_t offa,
+                bool AIsSigned,
                 const uint8_t* B,
                 size_t ldb,
                 uint8_t offb,
                 bool BIsSigned,
                 int32_t* C,
                 size_t ldc) {
-    MLAS_GEMM_U8X8_SHAPE_PARAMS GemmShape;
+    MLAS_GEMM_QUANT_SHAPE_PARAMS GemmShape;
     GemmShape.M = M;
     GemmShape.N = N;
     GemmShape.K = K;
+    GemmShape.AIsSigned = AIsSigned;
     GemmShape.BIsSigned = BIsSigned;
 
-    std::vector<MLAS_GEMM_U8X8_DATA_PARAMS> GemmParameters(BatchSize);
+    std::vector<MLAS_GEMM_QUANT_DATA_PARAMS> GemmParameters(BatchSize);
 
     for (size_t i = 0; i < GemmParameters.size(); i++) {
       auto& params = GemmParameters[i];
@@ -52,7 +54,7 @@ class MlasQgemmU8X8U8X8TestBase : public MlasTestBase {
 
       if (Packed) {
         ASSERT_EQ(BatchSize, size_t(1)) << "Packing B not supported in batching yet!";
-        params.B = PackB(N, K, B, ldb, BIsSigned);
+        params.B = PackB(N, K, B, ldb, AIsSigned, BIsSigned);
         params.BIsPacked = true;
       } else {
         params.B = B + (K * N * i);
@@ -70,19 +72,21 @@ class MlasQgemmU8X8U8X8TestBase : public MlasTestBase {
                 const uint8_t* A,
                 size_t lda,
                 uint8_t offa,
+                bool AIsSigned,
                 const uint8_t* B,
                 size_t ldb,
                 const uint8_t* offb,
                 bool BIsSigned,
                 int32_t* C,
                 size_t ldc) {
-    MLAS_GEMM_U8X8_SHAPE_PARAMS GemmShape;
+    MLAS_GEMM_QUANT_SHAPE_PARAMS GemmShape;
     GemmShape.M = M;
     GemmShape.N = N;
     GemmShape.K = K;
+    GemmShape.AIsSigned = AIsSigned;
     GemmShape.BIsSigned = BIsSigned;
 
-    std::vector<MLAS_GEMM_U8X8_DATA_PARAMS> GemmParameters(BatchSize);
+    std::vector<MLAS_GEMM_QUANT_DATA_PARAMS> GemmParameters(BatchSize);
 
     for (size_t i = 0; i < GemmParameters.size(); i++) {
       auto& params = GemmParameters[i];
@@ -96,7 +100,7 @@ class MlasQgemmU8X8U8X8TestBase : public MlasTestBase {
 
       if (Packed) {
         ASSERT_EQ(BatchSize, size_t(1)) << "Packing B not supported in batching yet!";
-        params.B = PackB(N, K, B, ldb, BIsSigned);
+        params.B = PackB(N, K, B, ldb, AIsSigned, BIsSigned);
         params.BIsPacked = true;
       } else {
         params.B = B + K * N * i;
@@ -114,6 +118,7 @@ class MlasQgemmU8X8U8X8TestBase : public MlasTestBase {
                 const uint8_t* A,
                 size_t lda,
                 uint8_t offa,
+                bool AIsSigned,
                 const uint8_t* B,
                 size_t ldb,
                 uint8_t offb,
@@ -122,16 +127,17 @@ class MlasQgemmU8X8U8X8TestBase : public MlasTestBase {
                 size_t ldc,
                 float CScale,
                 const float* Bias) {
-    MLAS_GEMM_U8X8_SHAPE_PARAMS GemmShape;
+    MLAS_GEMM_QUANT_SHAPE_PARAMS GemmShape;
     GemmShape.M = M;
     GemmShape.N = N;
     GemmShape.K = K;
+    GemmShape.AIsSigned = AIsSigned;
     GemmShape.BIsSigned = BIsSigned;
 
     std::vector<MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR> ScaleBiasProcessors;
     ScaleBiasProcessors.reserve(BatchSize);
 
-    std::vector<MLAS_GEMM_U8X8_DATA_PARAMS> GemmParameters(BatchSize);
+    std::vector<MLAS_GEMM_QUANT_DATA_PARAMS> GemmParameters(BatchSize);
 
     for (size_t i = 0; i < BatchSize; i++) {
       auto& params = GemmParameters[i];
@@ -143,8 +149,8 @@ class MlasQgemmU8X8U8X8TestBase : public MlasTestBase {
       params.ldc = ldc;
 
       if (Packed) {
-        // Packed B not supported in batching yet
-        params.B = PackB(N, K, B, ldb, BIsSigned);
+        ASSERT_EQ(BatchSize, size_t(1)) << "Packing B not supported in batching yet!";
+        params.B = PackB(N, K, B, ldb, AIsSigned, BIsSigned);
         params.BIsPacked = true;
       } else {
         params.B = B + K * N * i;
@@ -161,11 +167,11 @@ class MlasQgemmU8X8U8X8TestBase : public MlasTestBase {
   MatrixGuardBuffer<uint8_t> BufferBPacked;
 };
 
-template <typename xint8_t, typename OutputType, bool Packed, bool Threaded>
-class MlasQgemmU8X8Test;
+template <typename AType, typename BType, typename OutputType, bool Packed, bool Threaded>
+class MlasQgemmTest;
 
-template <typename xint8_t, bool Packed, bool Threaded>
-class MlasQgemmU8X8Test<xint8_t, int32_t, Packed, Threaded> : public MlasQgemmU8X8U8X8TestBase<Packed, Threaded> {
+template <typename AType, typename BType, bool Packed, bool Threaded>
+class MlasQgemmTest<AType, BType, int32_t, Packed, Threaded> : public MlasQgemmTestBase<Packed, Threaded> {
  public:
   void Test(size_t M, size_t N, size_t K, size_t BatchSize, uint8_t offa, uint8_t offb) {
     const uint8_t* A = BufferA.GetBuffer(K * M * BatchSize);
@@ -202,8 +208,8 @@ class MlasQgemmU8X8Test<xint8_t, int32_t, Packed, Threaded> : public MlasQgemmU8
     std::fill_n(C, M * N * BatchSize, -1);
     std::fill_n(CReference, M * N * BatchSize, -1);
 
-    this->TestGemm(M, N, K, BatchSize, A, lda, offa, B, ldb, offb, BIsSigned, C, ldc);
-    ReferenceQgemm(M, N, K, BatchSize, A, lda, offa, (const xint8_t*)B, ldb, (xint8_t)offb, CReference, ldc);
+    this->TestGemm(M, N, K, BatchSize, A, lda, offa, AIsSigned, B, ldb, offb, BIsSigned, C, ldc);
+    ReferenceQgemm(M, N, K, BatchSize, (const AType*)A, lda, (AType)offa, (const BType*)B, ldb, (BType)offb, CReference, ldc);
 
     for (size_t batch = 0, f = 0; batch < BatchSize; batch++) {
       for (size_t m = 0; m < M; m++) {
@@ -232,8 +238,8 @@ class MlasQgemmU8X8Test<xint8_t, int32_t, Packed, Threaded> : public MlasQgemmU8
     std::fill_n(C, M * N * BatchSize, -1);
     std::fill_n(CReference, M * N * BatchSize, -1);
 
-    this->TestGemm(M, N, K, BatchSize, A, lda, offa, B, ldb, offb, BIsSigned, C, ldc);
-    ReferenceQgemm(M, N, K, BatchSize, A, lda, offa, (const xint8_t*)B, ldb, (const xint8_t*)offb, CReference, ldc);
+    this->TestGemm(M, N, K, BatchSize, A, lda, offa, AIsSigned, B, ldb, offb, BIsSigned, C, ldc);
+    ReferenceQgemm(M, N, K, BatchSize, (const AType*)A, lda, (AType)offa, (const BType*)B, ldb, (const BType*)offb, CReference, ldc);
 
     for (size_t batch = 0, f = 0; batch < BatchSize; batch++) {
       for (size_t m = 0; m < M; m++) {
@@ -251,19 +257,19 @@ class MlasQgemmU8X8Test<xint8_t, int32_t, Packed, Threaded> : public MlasQgemmU8
                       size_t N,
                       size_t K,
                       size_t BatchSize,
-                      const uint8_t* A,
+                      const AType* A,
                       size_t lda,
-                      uint8_t offa,
-                      const xint8_t* B,
+                      AType offa,
+                      const BType* B,
                       size_t ldb,
-                      xint8_t offb,
+                      BType offb,
                       int32_t* C,
                       size_t ldc) {
     for (size_t batch = 0; batch < BatchSize; batch++) {
       for (size_t m = 0; m < M; m++) {
         for (size_t n = 0; n < N; n++) {
-          const uint8_t* a = A + (M * K * batch) + (m * lda);
-          const xint8_t* b = B + (K * N * batch) + n;
+          const AType* a = A + (M * K * batch) + (m * lda);
+          const BType* b = B + (K * N * batch) + n;
           int32_t* c = C + (M * N * batch) + (m * ldc) + n;
           int32_t sum = 0;
 
@@ -283,19 +289,19 @@ class MlasQgemmU8X8Test<xint8_t, int32_t, Packed, Threaded> : public MlasQgemmU8
                       size_t N,
                       size_t K,
                       size_t BatchSize,
-                      const uint8_t* A,
+                      const AType* A,
                       size_t lda,
-                      uint8_t offa,
-                      const xint8_t* B,
+                      AType offa,
+                      const BType* B,
                       size_t ldb,
-                      const xint8_t* offb,
+                      const BType* offb,
                       int32_t* C,
                       size_t ldc) {
     for (size_t batch = 0; batch < BatchSize; batch++) {
       for (size_t m = 0; m < M; m++) {
         for (size_t n = 0; n < N; n++) {
-          const uint8_t* a = A + (M * K * batch) + (m * lda);
-          const xint8_t* b = B + (K * N * batch) + n;
+          const AType* a = A + (M * K * batch) + (m * lda);
+          const BType* b = B + (K * N * batch) + n;
           int32_t* c = C + (M * N * batch) + (m * ldc) + n;
           int32_t sum = 0;
 
@@ -316,12 +322,14 @@ class MlasQgemmU8X8Test<xint8_t, int32_t, Packed, Threaded> : public MlasQgemmU8
   MatrixGuardBuffer<uint8_t> BufferZeroPointB;
   MatrixGuardBuffer<int32_t> BufferC;
   MatrixGuardBuffer<int32_t> BufferCReference;
-  const bool BIsSigned = std::is_signed<xint8_t>::value;
+  const bool AIsSigned = std::is_signed<AType>::value;
+  const bool BIsSigned = std::is_signed<BType>::value;
 
  public:
   static const char* GetTestSuiteName() {
-    static std::string suite_name = std::string("QGemmU8") +
-                                    (std::is_signed<xint8_t>::value ? "S8" : "U8") +
+    static std::string suite_name = std::string("QGemm") +
+                                    (std::is_signed<AType>::value ? "S8" : "U8") +
+                                    (std::is_signed<BType>::value ? "S8" : "U8") +
                                     (Packed ? "_Int32_Packed" : "_Int32_NoPack") +
                                     (Threaded ? "_Threaded" : "_SingleThread");
     return suite_name.c_str();
@@ -395,8 +403,8 @@ class MlasQgemmU8X8Test<xint8_t, int32_t, Packed, Threaded> : public MlasQgemmU8
   }
 };
 
-template <typename xint8_t, bool Packed, bool Threaded>
-class MlasQgemmU8X8Test<xint8_t, float, Packed, Threaded> : public MlasQgemmU8X8U8X8TestBase<Packed, Threaded> {
+template <typename AType, typename BType, bool Packed, bool Threaded>
+class MlasQgemmTest<AType, BType, float, Packed, Threaded> : public MlasQgemmTestBase<Packed, Threaded> {
  public:
   void Test(size_t M, size_t N, size_t K, size_t BatchSize, uint8_t offa, uint8_t offb) {
     const uint8_t* A = BufferA.GetBuffer(K * M * BatchSize);
@@ -408,13 +416,13 @@ class MlasQgemmU8X8Test<xint8_t, float, Packed, Threaded> : public MlasQgemmU8X8
     const float AScale = 0.5f;
     float* AFloat = BufferAFloat.GetBuffer(K * M * BatchSize);
     for (size_t b = 0; b < BatchSize; b++) {
-      DequantizeLinear(A + K * M * b, AFloat + K * M * b, K * M, AScale, offa);
+      DequantizeLinear((AType*)(A + K * M * b), AFloat + K * M * b, K * M, AScale, (AType)offa);
     }
 
     const float BScale = 0.25f;
     float* BFloat = BufferBFloat.GetBuffer(N * K * BatchSize);
     for (size_t b = 0; b < BatchSize; b++) {
-      DequantizeLinear((xint8_t*)(B + N * K * b), BFloat + N * K * b, N * K, BScale, xint8_t(offb));
+      DequantizeLinear((BType*)(B + N * K * b), BFloat + N * K * b, N * K, BScale, BType(offb));
     }
 
     const float CScale = AScale * BScale;
@@ -445,7 +453,7 @@ class MlasQgemmU8X8Test<xint8_t, float, Packed, Threaded> : public MlasQgemmU8X8
                AFloat + K * M * b, lda,
                BFloat + N * K * b, ldb, 0.0f,
                CReference + N * M * b, ldc,
-          MlasQgemmU8X8U8X8TestBase<Packed, Threaded>::threadpool_);
+          MlasQgemmTestBase<Packed, Threaded>::threadpool_);
     }
 
     if (Bias != nullptr) {
@@ -458,7 +466,7 @@ class MlasQgemmU8X8Test<xint8_t, float, Packed, Threaded> : public MlasQgemmU8X8
       }
     }
 
-    this->TestGemm(M, N, K, BatchSize, A, lda, offa, B, ldb, offb, BIsSigned, C, ldc, CScale, Bias);
+    this->TestGemm(M, N, K, BatchSize, A, lda, offa, AIsSigned, B, ldb, offb, BIsSigned, C, ldc, CScale, Bias);
 
     for (size_t batch = 0, f = 0; batch < BatchSize; batch++) {
       for (size_t m = 0; m < M; m++) {
@@ -491,12 +499,14 @@ class MlasQgemmU8X8Test<xint8_t, float, Packed, Threaded> : public MlasQgemmU8X8
   MatrixGuardBuffer<float> BufferC;
   MatrixGuardBuffer<float> BufferCReference;
   MatrixGuardBuffer<float> BufferBias;
-  const bool BIsSigned = std::is_signed<xint8_t>::value;
+  const bool AIsSigned = std::is_signed<AType>::value;
+  const bool BIsSigned = std::is_signed<BType>::value;
 
  public:
   static const char* GetTestSuiteName() {
-    static std::string suite_name = std::string("QGemmU8") +
-                                    (std::is_signed<xint8_t>::value ? "S8" : "U8") +
+    static std::string suite_name = std::string("QGemm") +
+                                    (std::is_signed<AType>::value ? "S8" : "U8") +
+                                    (std::is_signed<BType>::value ? "S8" : "U8") +
                                     (Packed ? "_Fp32_Packed" : "_Fp32_NoPack") +
                                     (Threaded ? "_Threaded" : "_SingleThread");
     return suite_name.c_str();
