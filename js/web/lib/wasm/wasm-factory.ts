@@ -6,8 +6,10 @@ import * as path from 'path';
 
 import {OrtWasmModule} from './binding/ort-wasm';
 import {OrtWasmThreadedModule} from './binding/ort-wasm-threaded';
-import ortWasmFactoryThreaded from './binding/ort-wasm-threaded.js';
 import ortWasmFactory from './binding/ort-wasm.js';
+const ortWasmFactoryThreaded: EmscriptenModuleFactory<OrtWasmModule> =
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    !BUILD_DEFS.DISABLE_WASM_THREAD ? require('./binding/ort-wasm-threaded.js') : ortWasmFactory;
 
 let wasm: OrtWasmModule|undefined;
 let initialized = false;
@@ -116,7 +118,8 @@ export const initializeWebAssembly = async(flags: Env.WebAssemblyFlags): Promise
     const factory = useThreads ? ortWasmFactoryThreaded : ortWasmFactory;
     const config: Partial<OrtWasmModule> = {
       locateFile: (fileName: string, scriptDirectory: string) => {
-        if (fileName.endsWith('.worker.js') && typeof Blob !== 'undefined') {
+        if (!BUILD_DEFS.DISABLE_WASM_THREAD && useThreads && fileName.endsWith('.worker.js') &&
+            typeof Blob !== 'undefined') {
           return URL.createObjectURL(new Blob(
               [
                 // This require() function is handled by webpack to load file content of the corresponding .worker.js
@@ -135,12 +138,11 @@ export const initializeWebAssembly = async(flags: Env.WebAssemblyFlags): Promise
       }
     };
 
-    if (useThreads) {
+    if (!BUILD_DEFS.DISABLE_WASM_THREAD && useThreads) {
       if (typeof Blob === 'undefined') {
         config.mainScriptUrlOrBlob = path.join(__dirname, 'ort-wasm-threaded.js');
       } else {
-        const scriptSourceCode =
-            `var ortWasmThreaded=(function(){var _scriptDir;return ${ortWasmFactoryThreaded.toString()}})();`;
+        const scriptSourceCode = `var ortWasmThreaded=(function(){var _scriptDir;return ${factory.toString()}})();`;
         config.mainScriptUrlOrBlob = new Blob([scriptSourceCode], {type: 'text/javascript'});
       }
     }

@@ -75,6 +75,14 @@ file(GLOB onnxruntime_common_src CONFIGURE_DEPENDS
     ${onnxruntime_common_src_patterns}
     )
 
+# Remove new/delete intercept. To deal with memory leaks
+# Use either non-mimalloc build OR use mimalloc built-in features.
+if(WIN32 AND onnxruntime_USE_MIMALLOC)
+    list(REMOVE_ITEM onnxruntime_common_src 
+    "${ONNXRUNTIME_ROOT}/core/platform/windows/debug_alloc.cc"
+    "${ONNXRUNTIME_ROOT}/core/platform/windows/debug_alloc.h")
+endif()
+
 source_group(TREE ${REPO_ROOT} FILES ${onnxruntime_common_src})
 
 onnxruntime_add_static_library(onnxruntime_common ${onnxruntime_common_src})
@@ -83,17 +91,20 @@ if (onnxruntime_USE_TELEMETRY)
   set_target_properties(onnxruntime_common PROPERTIES COMPILE_FLAGS "/FI${ONNXRUNTIME_INCLUDE_DIR}/core/platform/windows/TraceLoggingConfigPrivate.h")
 endif()
 
-if (onnxruntime_USE_MIMALLOC_STL_ALLOCATOR OR onnxruntime_USE_MIMALLOC_ARENA_ALLOCATOR)
+if (onnxruntime_USE_MIMALLOC)
+    if(NOT WIN32)
+        message(FATAL "Currently do not support MIMALLOC in GPU builds")
+    endif()
     if(onnxruntime_USE_CUDA OR onnxruntime_USE_OPENVINO)
-        message(WARNING "Ignoring directive to use mimalloc on unimplemented targets")
-    elseif (${CMAKE_CXX_COMPILER_ID} MATCHES "GNU")
-        # Some of the non-windows targets see strange runtime failures
-        message(WARNING "Ignoring request to link to mimalloc - only windows supported")
+        message(WARNING "Currently do not support MIMALLOC in GPU builds")
     else()
         include(external/mimalloc.cmake)
         list(APPEND onnxruntime_EXTERNAL_LIBRARIES mimalloc-static)
         list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES mimalloc-static)
-        target_link_libraries(onnxruntime_common mimalloc-static)
+        set(onnxruntime_mimalloc_shim_src "${ONNXRUNTIME_ROOT}/core/platform/windows/mimalloc/mimalloc_overloads.cc")
+        add_library(onnxruntime_mimalloc_shim ${onnxruntime_mimalloc_shim_src})
+        target_link_libraries(onnxruntime_mimalloc_shim mimalloc-static)
+        target_link_libraries(onnxruntime_common onnxruntime_mimalloc_shim)
     endif()
 endif()
 

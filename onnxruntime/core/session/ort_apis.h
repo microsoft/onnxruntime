@@ -325,5 +325,6 @@ ORT_API_STATUS_IMPL(SessionOptionsSetCustomJoinThreadFn, _Inout_ OrtSessionOptio
 ORT_API_STATUS_IMPL(SetGlobalCustomCreateThreadFn, _Inout_ OrtThreadingOptions* tp_options, _In_ OrtCustomCreateThreadFn ort_custom_create_thread_fn);
 ORT_API_STATUS_IMPL(SetGlobalCustomThreadCreationOptions, _Inout_ OrtThreadingOptions* tp_options, _In_ void* ort_custom_thread_creation_options);
 ORT_API_STATUS_IMPL(SetGlobalCustomJoinThreadFn, _Inout_ OrtThreadingOptions* tp_options, _In_ OrtCustomJoinThreadFn ort_custom_join_thread_fn);
-
+ORT_API_STATUS_IMPL(SynchronizeBoundInputs, _Inout_ OrtIoBinding* binding_ptr);
+ORT_API_STATUS_IMPL(SynchronizeBoundOutputs, _Inout_ OrtIoBinding* binding_ptr);
 }  // namespace OrtApis
