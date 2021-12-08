@@ -19,6 +19,7 @@ class Conv : public OpenCLKernel {
     VLOGS_DEFAULT(0) << "[CL] Init Conv (OpenCLKernel), auto_pad:" << static_cast<int>(attrs_.auto_pad) << ", dilations: " << attrs_.dilations << ", group: " << attrs_.group;
     LoadProgram(conv_kernel_src, conv_kernel_src_len);
     LoadKernel("Conv2D");
+    LoadKernel("DepthwiseConv2D");
   };
 
   Status Compute(OpKernelContext* context) const override {
@@ -31,7 +32,9 @@ class Conv : public OpenCLKernel {
 
     ORT_RETURN_IF_ERROR(attrs_.ValidateInputShape(X, W));
     auto N = X->Shape()[0];
-    auto C_out = W->Shape()[0];
+    auto co_total = W->Shape()[0];
+    auto co_per_group = co_total / attrs_.group;
+    auto ci_per_group = W->Shape()[1];
 
     std::vector<int64_t> K;
     ORT_RETURN_IF_ERROR(attrs_.ComputeKernelShape(W->Shape(), K));
@@ -50,11 +53,15 @@ class Conv : public OpenCLKernel {
       S.resize(rank, 1);
     }
 
+    for (size_t i = 0; i < P.size() / 2; ++i) {
+      ORT_ENFORCE(P[i] == P[2 * i], "padding can only be symmetric");
+    }
+
     std::vector<int64_t> Y_spatial_shape;
     ORT_RETURN_IF_ERROR(attrs_.InferOutputShape(X->Shape().Slice(2), K, S, D, P, Y_spatial_shape));
     std::vector<int64_t> Y_shape;
     Y_shape.reserve(2 + rank);
-    Y_shape.insert(Y_shape.end(), {N, C_out});
+    Y_shape.insert(Y_shape.end(), {N, co_total});
     Y_shape.insert(Y_shape.end(), Y_spatial_shape.begin(), Y_spatial_shape.end());
     Tensor* Y = context->Output(0, Y_shape);
 
@@ -66,7 +73,9 @@ class Conv : public OpenCLKernel {
     VLOGS_DEFAULT(0) << "[CL] Output Y shape " << Y->Shape() << " " << Y->DataRaw() << " --> cl::Image(" << CL_IMAGE2D_FROM_TENSOR(*Y)() << ")";
 
     if (rank == 2) {
-      if ()
+      if (ci_per_group == 1 && co_per_group == 1) {
+        return DepthwiseConv2D(X, W, B, Y, K, S, P, D, attrs_.group);
+      }
       return Conv2D(X, W, B, Y, K, S, P, D, attrs_.group);
     }
 
@@ -74,6 +83,47 @@ class Conv : public OpenCLKernel {
   }
 
  private:
+  Status DepthwiseConv2D(const Tensor* X,
+                         const Tensor* W,
+                         const Tensor* B,
+                         Tensor* Y,
+                         const std::vector<int64_t>& K,
+                         const std::vector<int64_t>& S,
+                         const std::vector<int64_t>& P,
+                         const std::vector<int64_t>& D,
+                         const int group) const {
+    VLOGS_DEFAULT(0) << "[CL] DepthwiseConv2D, X:" << X->Shape() << " W:" << W->Shape()
+                     << " B:" << B->Shape() << " Y:" << Y->Shape()
+                     << " K:" << K << " S:" << S << " P:" << P << " D:" << D << " group:" << group;
+
+    auto C_in = X->Shape()[1];
+    auto H_in = X->Shape()[2];
+    auto W_in = X->Shape()[3];
+    auto shape = Y->Shape();
+    auto N = shape[0];
+    auto C_out = shape[1];
+    auto H_out = shape[2];
+    auto W_out = shape[3];
+    ORT_ENFORCE(C_in == C_out, "depthwise conv2d enforcement failure");
+    uint32_t gsx = CeilDiv(C_out, 4) * CeilDiv(W_out, 4);
+    uint32_t gsy = N * H_out;
+    ORT_RETURN_IF_ERROR(
+        KernelLauncher{GetKernel("DepthwiseConv2D")}
+            .setArg<cl_int>(gsx)
+            .setArg<cl_int>(gsy)
+            .setImage2Ds(*X, *W, *B, *Y)
+            .setInt2(W_in, H_in)
+            .setInt2(W_out, H_out)
+            .setInt2(K[0], K[1])
+            .setInt2(S[0], S[1])
+            .setInt2(P[0], P[1])
+            .setInt2(D[0], D[1])
+            .setArg<cl_int>(0)
+            .Launch(GetCommandQueue(), {gsx, gsy}));
+
+    return Status::OK();
+  }
+
   Status Conv2D(const Tensor* X,
                 const Tensor* W,
                 const Tensor* B,
@@ -83,25 +133,27 @@ class Conv : public OpenCLKernel {
                 const std::vector<int64_t>& P,
                 const std::vector<int64_t>& D,
                 const int group) const {
-    ORT_ENFORCE(group == 1, "group != 1 is not supported currently in Conv2D");
-    for (int i = 0; i < K.size() / 2; ++i) {
-      ORT_ENFORCE(P[i] == P[2 * i], "padding can only be symmetric");
-    }
-
     VLOGS_DEFAULT(0) << "[CL] Conv2D, X:" << X->Shape() << " W:" << W->Shape()
                      << " B:" << B->Shape() << " Y:" << Y->Shape()
-                     << " K:" << K << " S:" << S << " P:" << P << " D:" << D;
+                     << " K:" << K << " S:" << S << " P:" << P << " D:" << D << " group:" << group;
+    ORT_ENFORCE(group == 1, "group != 1 is not supported currently in Conv2D");
 
-    auto C_in = X->Shape()[1];
-    auto H_in = X->Shape()[2];
-    auto W_in = X->Shape()[3];
-    auto H_out = Y->Shape()[2];
-    auto W_out = Y->Shape()[3];
-    auto Y_desc = Image2DDesc::PackFromTensorNCHW(Y->Shape());
+    const auto& xshape = X->Shape();
+    const auto& yshape = Y->Shape();
+
+    auto C_in = xshape[1];
+    auto H_in = xshape[2];
+    auto W_in = xshape[3];
+    auto N = yshape[0];
+    auto C_out = yshape[1];
+    auto H_out = yshape[2];
+    auto W_out = yshape[3];
+    uint32_t gsx = CeilDiv(C_out, 4) * CeilDiv(W_out, 4);
+    uint32_t gsy = N * H_out;
     ORT_RETURN_IF_ERROR(
         KernelLauncher{GetKernel("Conv2D")}
-            .setArg<cl_int>(CeilDiv(Y_desc.Width(), 4))
-            .setArg<cl_int>(Y_desc.Height())
+            .setArg<cl_int>(gsx)
+            .setArg<cl_int>(gsy)
             .setImage2Ds(*X, *W, *B, *Y)
             .setInt2(W_in, H_in)
             .setArg<cl_int>(CeilDiv(C_in, 4))
@@ -112,7 +164,7 @@ class Conv : public OpenCLKernel {
             .setInt2(D[0], D[1])
             .setArg<cl_int>(CeilDiv(W_out, 4))
             .setArg<cl_int>(0)
-            .Launch(GetCommandQueue(), {CeilDiv(Y_desc.UWidth(), 4), Y_desc.UHeight()}));
+            .Launch(GetCommandQueue(), {gsx, gsy}));
 
     return Status::OK();
   }

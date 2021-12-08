@@ -24,18 +24,30 @@ TensorUsage ClassifyTensorUsage(const Node* node, const NodeArg* node_arg, int n
   const KernelCreateInfo* kci;
   ORT_THROW_IF_ERROR(registry_mgr.SearchKernelRegistry(*node, &kci));
   const auto& name = kci->kernel_def->OpName();
-  if ((name == "Conv" /*|| name == "FusedConv"*/) && node_arg_index == 1) {
+  if ((name == "Conv" /*|| name == "FusedConv"*/)) {
+    if (node_arg_index != 1) { // the node_arg is W
+      return TensorUsage::Generic;
+    }
+
     // Get group attribute
     const auto& attrs = node->GetAttributes();
     auto it = attrs.find("group");
     ORT_ENFORCE(it != attrs.end());
     auto group = it->second.i();
 
-    // get number of in channel
-    auto dim_cin = node_arg->Shape()->dim(1);
-    ORT_ENFORCE(utils::HasDimValue(dim_cin));  // at least 1d conv
-    auto ci = dim_cin.dim_value();
-    if (ci == group) {
+    // get number of output channel
+    auto dim_channel_out = node_arg->Shape()->dim(0);
+    ORT_ENFORCE(utils::HasDimValue(dim_channel_out));
+    auto co_total = dim_channel_out.dim_value();
+    auto co_per_group = co_total / group;
+
+    // get number of input channel
+    auto dim_channel_in = node_arg->Shape()->dim(1);
+    ORT_ENFORCE(utils::HasDimValue(dim_channel_in));
+    auto ci_per_group = dim_channel_in.dim_value();
+
+    if (ci_per_group == 1 && co_per_group == 1) {
+      // TODO: relax co_per_group requirement
       return TensorUsage::DepthwiseConvWeight;
     }
     return TensorUsage::ConvWeight;
