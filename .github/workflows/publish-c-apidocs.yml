@@ -10,9 +10,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
-      - uses: mattnotmitt/doxygen-action@v1
-        with:
-          working-directory: docs/c_cxx
+      - name: Install doxygen
+        run:
+          sudo apt-get install -y doxygen
+      - name: Run doxygen
+        run: |
+          cd docs/c_cxx
+          doxygen
       - name: Publish
         uses: JamesIves/github-pages-deploy-action@releases/v3
         with:
