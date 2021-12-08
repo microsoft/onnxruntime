@@ -24,6 +24,7 @@
 #include "core/providers/cpu/math/softmax_shared.h"
 #include "beam_search.h"
 #include "logits_processor.h"
+#include "sequences.h"
 #include "dump_tensor.h"
 
 #ifdef _MSC_VER
@@ -52,25 +53,6 @@ REGISTER_KERNEL_TYPED(float)
 namespace transformers {
 
 template <typename T>
-gsl::span<T> AllocateScratchBuffer(AllocatorPtr allocator,
-                                   BufferUniquePtr& buffer,
-                                   size_t elements,
-                                   bool fill = false,
-                                   T fill_value = T{}) {
-  size_t bytes = SafeInt<size_t>(sizeof(T)) * elements;
-  void* data = allocator->Alloc(bytes);
-  buffer = std::move(BufferUniquePtr(data, BufferDeleter(allocator)));
-  T* first = reinterpret_cast<T*>(buffer.get());
-  auto span = gsl::make_span(first, elements);
-
-  if (fill) {
-    std::fill_n(first, elements, fill_value);
-  }
-
-  return span;
-}
-
-template <typename T>
 struct BeamSearchState {
   gsl::span<T> beam_scores;  // shape (batch_size, num_beams)
 
@@ -82,8 +64,6 @@ struct BeamSearchState {
 
   gsl::span<T> scores;              // shape (max_length - sequence_length + 1, batch_size, num_beams * vocab_size)
   gsl::span<T> remaining_scores;    // subspan of scores that is not used
-
-  // gsl::span<int64_t> sequences_space;  // shape (2, batch_size, num_beams, max_seq_length)
 
   Sequences sequences;
 
@@ -97,7 +77,7 @@ struct BeamSearchState {
             bool output_scores) {
 
     size_t batch_beam_size = SafeInt<size_t>(batch_size) * num_beams;
-    beam_scores = AllocateScratchBuffer<T>(allocator, beam_scores_buffer_, batch_beam_size, true, static_cast<T>(0));
+    beam_scores = AllocateBuffer<T>(allocator, beam_scores_buffer_, batch_beam_size, true, static_cast<T>(0));
     
     // Initialize score of first beam of each group with 0 and the rest with -1e9.
     // This ensures that the beams in the same group don't produce same tokens every time.
@@ -108,23 +88,20 @@ struct BeamSearchState {
     }
 
     size_t next_token_size = SafeInt<size_t>(batch_beam_size) * vocab_size;
-    next_token_logits = AllocateScratchBuffer<T>(allocator, next_token_logits_buffer_, next_token_size, true, static_cast<T>(0));
-    next_token_scores = AllocateScratchBuffer<T>(allocator, next_token_scores_buffer_, next_token_size, true, static_cast<T>(0));
+    next_token_logits = AllocateBuffer<T>(allocator, next_token_logits_buffer_, next_token_size, true, static_cast<T>(0));
+    next_token_scores = AllocateBuffer<T>(allocator, next_token_scores_buffer_, next_token_size, true, static_cast<T>(0));
 
-    next_tokens = AllocateScratchBuffer<int64_t>(allocator, next_tokens_buffer_, SafeInt<size_t>(2) * batch_beam_size, true, static_cast<int64_t>(0));
+    next_tokens = AllocateBuffer<int64_t>(allocator, next_tokens_buffer_, SafeInt<size_t>(2) * batch_beam_size, true, static_cast<int64_t>(0));
 
-    next_indices = AllocateScratchBuffer<int64_t>(allocator, next_indices_buffer_, SafeInt<size_t>(2) * batch_beam_size, true, static_cast<int64_t>(0));
+    next_indices = AllocateBuffer<int64_t>(allocator, next_indices_buffer_, SafeInt<size_t>(2) * batch_beam_size, true, static_cast<int64_t>(0));
 
     if (output_scores) {
       size_t elements = SafeInt<size_t>(max_length - sequence_length) * batch_size * num_beams * vocab_size;
-      scores = AllocateScratchBuffer<T>(allocator, scores_buffer_, elements);
+      scores = AllocateBuffer<T>(allocator, scores_buffer_, elements);
       remaining_scores = scores;
     }
 
-    // size_t sequences_space_size = SafeInt<size_t>(2) * batch_size * num_beams * max_length;
-    // sequences_space = AllocateScratchBuffer<int64_t>(allocator, sequences_space_buffer_, sequences_space_size, true, static_cast<int64_t>(0));
-
-    sequences.Init(input_ids, static_cast<int>(batch_beam_size), sequence_length, max_length);
+    sequences.Init(allocator, input_ids, static_cast<int>(batch_beam_size), sequence_length, max_length);
   }
 
 private:
@@ -133,7 +110,6 @@ private:
   BufferUniquePtr next_token_scores_buffer_;
   BufferUniquePtr next_tokens_buffer_;
   BufferUniquePtr next_indices_buffer_;
-  // BufferUniquePtr sequences_space_buffer_;
   BufferUniquePtr scores_buffer_;
 };
 

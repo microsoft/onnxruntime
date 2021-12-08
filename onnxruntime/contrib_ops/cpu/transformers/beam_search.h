@@ -11,7 +11,6 @@
 #include "beam_search_parameters.h"
 #include "beam_search_scorer.h"
 #include "gpt_subgraph.h"
-#include "sequences.h"
 
 namespace onnxruntime {
 namespace contrib {
