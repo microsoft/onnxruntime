@@ -24,7 +24,7 @@
 */
 var NAVTREE =
 [
-  [ "OnnxRuntime", "index.html", [
+  [ "ONNXRuntime", "index.html", [
     [ "C & C++ APIs", "index.html", null ],
     [ "Deprecated List", "deprecated.html", null ],
     [ "Modules", "modules.html", "modules" ],
