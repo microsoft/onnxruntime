@@ -153,6 +153,17 @@ Below are some suggestions for things to try for various EPs for tuning performa
 ### Shared arena based allocator
 Memory consumption can be reduced between multiple sessions by configuring the shared arena based allocation. See the `Share allocator(s) between sessions` section in the [C API documentation](../get-started/with-c.md).
 
+### MiMalloc allocator usage
+
+Onnxruntime supports overriding memory allocations using Mimalloc allocator.
+MiMalloc allocator is a general-purpose fast allocator. See [mimalloc github](https://github.com/microsoft/mimalloc).
+
+Depending on your model and usage it can deliver single- or double-digits improvements. The GitHub README page describes various scenarios on how mimalloc can be leveraged to support your scenarios.
+
+Mimalloc is a submodule in the Onnxruntime source tree. On Windows one can employ `--use_mimalloc` build flag which would build a static version of mimalloc and link it to Onnxruntime. This would redirect Onnxruntime allocators and all new/delete calls to mimalloc.
+Currently, there are no special provisions to employ Mimalloc on Linux. This can be done via LD_PRELAOD mechanism using pre-built binaries that you can build/obtain separately.
+
+
 ### Thread management
 
 * If ORT is built with OpenMP, use the OpenMP env variable to control the number of intra op num threads.
