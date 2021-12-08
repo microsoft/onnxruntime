@@ -14,5 +14,4 @@ jobs:
       - uses: mattnotmitt/doxygen-action@v1
         with:
           working-directory: docs/c_cxx
-          doxyfile-path: docs/c_cxx/Doxyfile
  
