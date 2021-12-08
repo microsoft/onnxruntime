@@ -388,8 +388,7 @@ def parse_arguments():
         "--use_vstest", action='store_true',
         help="Use use_vstest for running unitests.")
     parser.add_argument(
-        "--use_mimalloc", default=['none'],
-        choices=['none', 'stl', 'arena', 'all'], help="Use mimalloc.")
+        "--use_mimalloc", action='store_true', help="Use mimalloc allocator")
     parser.add_argument(
         "--use_dnnl", action='store_true', help="Build with DNNL.")
     parser.add_argument(
@@ -729,10 +728,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-DPython_EXECUTABLE=" + sys.executable,
         "-DPYTHON_EXECUTABLE=" + sys.executable,
         "-Donnxruntime_ROCM_VERSION=" + (args.rocm_version if args.use_rocm else ""),
-        "-Donnxruntime_USE_MIMALLOC_STL_ALLOCATOR=" + (
-            "ON" if args.use_mimalloc == "stl" or args.use_mimalloc == "all" else "OFF"),
-        "-Donnxruntime_USE_MIMALLOC_ARENA_ALLOCATOR=" + (
-            "ON" if args.use_mimalloc == "arena" or args.use_mimalloc == "all" else "OFF"),
+        "-Donnxruntime_USE_MIMALLOC=" + ("ON" if args.use_mimalloc else "OFF"),
         "-Donnxruntime_ENABLE_PYTHON=" + ("ON" if args.enable_pybind else "OFF"),
         "-Donnxruntime_BUILD_CSHARP=" + ("ON" if args.build_csharp else "OFF"),
         "-Donnxruntime_BUILD_JAVA=" + ("ON" if args.build_java else "OFF"),
@@ -777,6 +773,9 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                                                      args.minimal_build or args.use_extensions))
                                                      else "OFF"),
         "-Donnxruntime_REDUCED_OPS_BUILD=" + ("ON" if is_reduced_ops_build(args) else "OFF"),
+        "-Donnxruntime_REDUCED_OP_TYPE_SUPPORT=" + (
+            "ON" if is_reduced_ops_build(args) and args.enable_reduced_operator_type_support
+            else "OFF"),
         "-Donnxruntime_ENABLE_LANGUAGE_INTEROP_OPS=" + ("ON" if args.enable_language_interop_ops else "OFF"),
         "-Donnxruntime_USE_DML=" + ("ON" if args.use_dml else "OFF"),
         "-Donnxruntime_USE_WINML=" + ("ON" if args.use_winml else "OFF"),
@@ -1822,8 +1821,12 @@ def build_nuget_package(source_dir, build_dir, configs, use_cuda, use_openvino, 
             run_subprocess(cmd_args, cwd=csharp_build_dir)
 
         if is_windows():
-            # this path is setup by cmake/nuget_helpers.cmake for MSVC on Windows
-            nuget_exe = os.path.normpath(os.path.join(native_dir, config, "nuget_exe", "src", "nuget.exe"))
+            if use_openvino:
+                # user needs to make sure nuget is installed and added to the path variable
+                nuget_exe = "nuget.exe"
+            else:
+                # this path is setup by cmake/nuget_helpers.cmake for MSVC on Windows
+                nuget_exe = os.path.normpath(os.path.join(native_dir, config, "nuget_exe", "src", "nuget.exe"))
         else:
             # user needs to make sure nuget is installed and can be found
             nuget_exe = "nuget"

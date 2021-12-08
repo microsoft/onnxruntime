@@ -28,6 +28,8 @@ namespace python {
 namespace py = pybind11;
 using namespace onnxruntime::logging;
 
+#if !defined(DISABLE_SPARSE_TENSORS)
+
 namespace {
 // Create a pybind11:dtype numpy instance using ONNX Tensor Element Type
 template <typename T>
@@ -79,13 +81,17 @@ class PySparseBlockSparseView : public SparseTensor::BlockSparseView {
       : SparseTensor::BlockSparseView(view), parent_(parent) {}
 };
 
+#endif  // !defined(DISABLE_SPARSE_TENSORS)
+
 void addSparseTensorMethods(pybind11::module& m) {
+  // this is exported via __init__.py so has to exist
   py::enum_<OrtSparseFormat>(m, "OrtSparseFormat")
       .value("ORT_SPARSE_UNDEFINED", OrtSparseFormat::ORT_SPARSE_UNDEFINED)
       .value("ORT_SPARSE_COO", OrtSparseFormat::ORT_SPARSE_COO)
       .value("ORT_SPARSE_CSRC", OrtSparseFormat::ORT_SPARSE_CSRC)
       .value("ORT_SPARSE_BLOCK_SPARSE", OrtSparseFormat::ORT_SPARSE_BLOCK_SPARSE);
 
+#if !defined(DISABLE_SPARSE_TENSORS)
   py::class_<PySparseCooView>(m, "SparseCooView")
       // Returns a numpy array of COO indices backed by Sparse Tensor memory
       // be aware that indices may reside on GPU if Sparse Tensor is on GPU
@@ -111,59 +117,63 @@ void addSparseTensorMethods(pybind11::module& m) {
       });
 
   py::class_<PySparseTensor> sparse_bind(m, "SparseTensor");
-      // Factory method to create a COO Sparse Tensor from numpy arrays acting as backing storage.
-      // Numeric arrays memory is used as is with reference count increment. All other supported
-      // types are copied and supported only on CPU.
-      // Use numpy.ascontiguousarray() to obtain contiguous array of values and indices if necessary
-      // py_dense_shape - numpy dense shape of the sparse tensor
-      // py_values - contiguous and homogeneous numpy array of values
-      // py_indices - contiguous numpy array of int64_t indices
-      // ort_device - where the value and indices buffers are allocated. For non-primitive types,
-      //              only cpu device is supported. There is not a way to verify that ort_device
-      //              accurately describes the memory that is backing values and indices.
-      sparse_bind
-      .def_static("sparse_coo_from_numpy", [](const std::vector<int64_t>& py_dense_shape, const py::array& py_values, const py::array_t<int64_t>& py_indices, const OrtDevice& ort_device) -> std::unique_ptr<PySparseTensor> {
-        if (1 != py_values.ndim()) {
-          ORT_THROW("Expecting values 1-D numpy values array for COO format. Got dims: ", py_values.ndim());
-        }
+  // Factory method to create a COO Sparse Tensor from numpy arrays acting as backing storage.
+  // Numeric arrays memory is used as is with reference count increment. All other supported
+  // types are copied and supported only on CPU.
+  // Use numpy.ascontiguousarray() to obtain contiguous array of values and indices if necessary
+  // py_dense_shape - numpy dense shape of the sparse tensor
+  // py_values - contiguous and homogeneous numpy array of values
+  // py_indices - contiguous numpy array of int64_t indices
+  // ort_device - where the value and indices buffers are allocated. For non-primitive types,
+  //              only cpu device is supported. There is not a way to verify that ort_device
+  //              accurately describes the memory that is backing values and indices.
+  sparse_bind
+      .def_static("sparse_coo_from_numpy",
+                  [](const std::vector<int64_t>& py_dense_shape,
+                     const py::array& py_values,
+                     const py::array_t<int64_t>& py_indices,
+                     const OrtDevice& ort_device) -> std::unique_ptr<PySparseTensor> {
+                    if (1 != py_values.ndim()) {
+                      ORT_THROW("Expecting values 1-D numpy values array for COO format. Got dims: ", py_values.ndim());
+                    }
 
-        TensorShape dense_shape(py_dense_shape);
-        auto values_type = GetNumpyArrayType(py_values);
-        auto ml_type = NumpyToOnnxRuntimeTensorType(values_type);
+                    TensorShape dense_shape(py_dense_shape);
+                    auto values_type = GetNumpyArrayType(py_values);
+                    auto ml_type = NumpyToOnnxRuntimeTensorType(values_type);
 
-        std::unique_ptr<PySparseTensor> result;
-        if (IsNumericNumpyType(values_type)) {
-          if (!PyArray_ISCONTIGUOUS(reinterpret_cast<PyArrayObject*>(py_values.ptr()))) {
-            throw std::runtime_error("Require contiguous numpy array of values");
-          }
+                    std::unique_ptr<PySparseTensor> result;
+                    if (IsNumericNumpyType(values_type)) {
+                      if (!PyArray_ISCONTIGUOUS(reinterpret_cast<PyArrayObject*>(py_values.ptr()))) {
+                        throw std::runtime_error("Require contiguous numpy array of values");
+                      }
 
-          if (!PyArray_ISCONTIGUOUS(reinterpret_cast<PyArrayObject*>(py_indices.ptr()))) {
-            throw std::runtime_error("Require contiguous numpy array of indices");
-          }
+                      if (!PyArray_ISCONTIGUOUS(reinterpret_cast<PyArrayObject*>(py_indices.ptr()))) {
+                        throw std::runtime_error("Require contiguous numpy array of indices");
+                      }
 
-          // create references to make sure storage does not disappear
-          std::vector<py::object> reference_holders = {py_values, py_indices};
-          OrtMemoryInfo mem_info = GetMemoryInfoPerDeviceType(ort_device);
-          TensorShape values_shape{py_values.size()};
-          auto sparse_tensor = std::make_unique<SparseTensor>(ml_type, dense_shape, values_shape,
-                                                              const_cast<void*>(py_values.data()), mem_info);
-          auto index_span = gsl::make_span(const_cast<int64_t*>(py_indices.data()), py_indices.size());
-          ORT_THROW_IF_ERROR(sparse_tensor->UseCooIndices(index_span));
-          result = std::make_unique<PySparseTensor>(std::move(sparse_tensor), std::move(reference_holders));
-        } else if (values_type == NPY_UNICODE || values_type == NPY_STRING) {
-          if (ort_device.Type() != OrtDevice::CPU) {
-            throw std::runtime_error("Only CPU based devices are supported for non-numeric datatypes");
-          }
-          auto sparse_tensor = std::make_unique<SparseTensor>(ml_type, dense_shape, GetAllocator());
-          auto mutator = sparse_tensor->MakeCooData(py_values.size(), py_indices.size());
-          CopyDataToTensor(py_values, values_type, mutator.Values());
-          CopyDataToTensor(py_indices, GetNumpyArrayType(py_indices), mutator.Indices());
-          result = std::make_unique<PySparseTensor>(std::move(sparse_tensor));
-        } else {
-          ORT_THROW("Unsupported values data type: ", values_type);
-        }
-        return result;
-      })
+                      // create references to make sure storage does not disappear
+                      std::vector<py::object> reference_holders = {py_values, py_indices};
+                      OrtMemoryInfo mem_info = GetMemoryInfoPerDeviceType(ort_device);
+                      TensorShape values_shape{py_values.size()};
+                      auto sparse_tensor = std::make_unique<SparseTensor>(ml_type, dense_shape, values_shape,
+                                                                          const_cast<void*>(py_values.data()), mem_info);
+                      auto index_span = gsl::make_span(const_cast<int64_t*>(py_indices.data()), py_indices.size());
+                      ORT_THROW_IF_ERROR(sparse_tensor->UseCooIndices(index_span));
+                      result = std::make_unique<PySparseTensor>(std::move(sparse_tensor), std::move(reference_holders));
+                    } else if (values_type == NPY_UNICODE || values_type == NPY_STRING) {
+                      if (ort_device.Type() != OrtDevice::CPU) {
+                        throw std::runtime_error("Only CPU based devices are supported for non-numeric datatypes");
+                      }
+                      auto sparse_tensor = std::make_unique<SparseTensor>(ml_type, dense_shape, GetAllocator());
+                      auto mutator = sparse_tensor->MakeCooData(py_values.size(), py_indices.size());
+                      CopyDataToTensor(py_values, values_type, mutator.Values());
+                      CopyDataToTensor(py_indices, GetNumpyArrayType(py_indices), mutator.Indices());
+                      result = std::make_unique<PySparseTensor>(std::move(sparse_tensor));
+                    } else {
+                      ORT_THROW("Unsupported values data type: ", values_type);
+                    }
+                    return result;
+                  })
       // Factory method to create a CSR Sparse Tensor from numpy arrays acting as backing storage.
       // Numeric arrays memory is used as is with reference count increment. All other supported
       // types are copied and supported only on CPU.
@@ -175,55 +185,61 @@ void addSparseTensorMethods(pybind11::module& m) {
       // ort_device - where the value and indices buffers are allocated. For non-primitive types,
       //              only cpu device is supported. There is not a way to verify that ort_device
       //              accurately describes the memory that is backing values and indices.
-      .def_static("sparse_csr_from_numpy", [](const std::vector<int64_t>& py_dense_shape, const py::array& py_values, const py::array_t<int64_t>& py_inner_indices, const py::array_t<int64_t>& py_outer_indices, const OrtDevice& ort_device) -> std::unique_ptr<PySparseTensor> {
-        if (1 != py_values.ndim() || 1 != py_inner_indices.ndim() || 1 != py_outer_indices.ndim()) {
-          ORT_THROW("Expecting all data to be 1-D numpy arrays for CSR format.");
-        }
+      .def_static(
+          "sparse_csr_from_numpy",
+          [](const std::vector<int64_t>& py_dense_shape,
+             const py::array& py_values,
+             const py::array_t<int64_t>& py_inner_indices,
+             const py::array_t<int64_t>& py_outer_indices,
+             const OrtDevice& ort_device) -> std::unique_ptr<PySparseTensor> {
+            if (1 != py_values.ndim() || 1 != py_inner_indices.ndim() || 1 != py_outer_indices.ndim()) {
+              ORT_THROW("Expecting all data to be 1-D numpy arrays for CSR format.");
+            }
 
-        TensorShape dense_shape(py_dense_shape);
-        auto values_type = GetNumpyArrayType(py_values);
-        auto ml_type = NumpyToOnnxRuntimeTensorType(values_type);
+            TensorShape dense_shape(py_dense_shape);
+            auto values_type = GetNumpyArrayType(py_values);
+            auto ml_type = NumpyToOnnxRuntimeTensorType(values_type);
 
-        std::unique_ptr<PySparseTensor> result;
-        if (IsNumericNumpyType(values_type)) {
-          if (!PyArray_ISCONTIGUOUS(reinterpret_cast<PyArrayObject*>(py_values.ptr()))) {
-            throw std::runtime_error("Require contiguous numpy array of values");
-          }
+            std::unique_ptr<PySparseTensor> result;
+            if (IsNumericNumpyType(values_type)) {
+              if (!PyArray_ISCONTIGUOUS(reinterpret_cast<PyArrayObject*>(py_values.ptr()))) {
+                throw std::runtime_error("Require contiguous numpy array of values");
+              }
 
-          if (!PyArray_ISCONTIGUOUS(reinterpret_cast<PyArrayObject*>(py_inner_indices.ptr()))) {
-            throw std::runtime_error("Require contiguous numpy array of indices");
-          }
+              if (!PyArray_ISCONTIGUOUS(reinterpret_cast<PyArrayObject*>(py_inner_indices.ptr()))) {
+                throw std::runtime_error("Require contiguous numpy array of indices");
+              }
 
-          if (!PyArray_ISCONTIGUOUS(reinterpret_cast<PyArrayObject*>(py_outer_indices.ptr()))) {
-            throw std::runtime_error("Require contiguous numpy array of indices");
-          }
+              if (!PyArray_ISCONTIGUOUS(reinterpret_cast<PyArrayObject*>(py_outer_indices.ptr()))) {
+                throw std::runtime_error("Require contiguous numpy array of indices");
+              }
 
-          // go ahead and create references to make sure storage does not disappear
-          std::vector<py::object> reference_holders = {py_values, py_inner_indices, py_outer_indices};
-          OrtMemoryInfo mem_info = GetMemoryInfoPerDeviceType(ort_device);
-          TensorShape values_shape{py_values.size()};
-          auto sparse_tensor = std::make_unique<SparseTensor>(ml_type, dense_shape, values_shape,
-                                                              const_cast<void*>(py_values.data()), mem_info);
-          auto inner_span = gsl::make_span<int64_t>(const_cast<int64_t*>(py_inner_indices.data()), py_inner_indices.size());
-          auto outer_span = gsl::make_span<int64_t>(const_cast<int64_t*>(py_outer_indices.data()), py_outer_indices.size());
-          ORT_THROW_IF_ERROR(sparse_tensor->UseCsrIndices(inner_span, outer_span));
-          result = std::make_unique<PySparseTensor>(std::move(sparse_tensor), std::move(reference_holders));
-        } else if (values_type == NPY_UNICODE || values_type == NPY_STRING) {
-          if (ort_device.Type() != OrtDevice::CPU) {
-            throw std::runtime_error("Only CPU based devices are supported for non-numeric datatypes");
-          }
-          auto sparse_tensor = std::make_unique<SparseTensor>(ml_type, dense_shape, GetAllocator());
-          auto mutator = sparse_tensor->MakeCsrData(py_values.size(), py_inner_indices.size(), py_outer_indices.size());
-          CopyDataToTensor(py_values, values_type, mutator.Values());
-          CopyDataToTensor(py_inner_indices, GetNumpyArrayType(py_inner_indices), mutator.Inner());
-          CopyDataToTensor(py_outer_indices, GetNumpyArrayType(py_outer_indices), mutator.Outer());
-          result = std::make_unique<PySparseTensor>(std::move(sparse_tensor));
-        } else {
-          ORT_THROW("Unsupported values data type: ", values_type);
-        }
+              // go ahead and create references to make sure storage does not disappear
+              std::vector<py::object> reference_holders = {py_values, py_inner_indices, py_outer_indices};
+              OrtMemoryInfo mem_info = GetMemoryInfoPerDeviceType(ort_device);
+              TensorShape values_shape{py_values.size()};
+              auto sparse_tensor = std::make_unique<SparseTensor>(ml_type, dense_shape, values_shape,
+                                                                  const_cast<void*>(py_values.data()), mem_info);
+              auto inner_span = gsl::make_span<int64_t>(const_cast<int64_t*>(py_inner_indices.data()), py_inner_indices.size());
+              auto outer_span = gsl::make_span<int64_t>(const_cast<int64_t*>(py_outer_indices.data()), py_outer_indices.size());
+              ORT_THROW_IF_ERROR(sparse_tensor->UseCsrIndices(inner_span, outer_span));
+              result = std::make_unique<PySparseTensor>(std::move(sparse_tensor), std::move(reference_holders));
+            } else if (values_type == NPY_UNICODE || values_type == NPY_STRING) {
+              if (ort_device.Type() != OrtDevice::CPU) {
+                throw std::runtime_error("Only CPU based devices are supported for non-numeric datatypes");
+              }
+              auto sparse_tensor = std::make_unique<SparseTensor>(ml_type, dense_shape, GetAllocator());
+              auto mutator = sparse_tensor->MakeCsrData(py_values.size(), py_inner_indices.size(), py_outer_indices.size());
+              CopyDataToTensor(py_values, values_type, mutator.Values());
+              CopyDataToTensor(py_inner_indices, GetNumpyArrayType(py_inner_indices), mutator.Inner());
+              CopyDataToTensor(py_outer_indices, GetNumpyArrayType(py_outer_indices), mutator.Outer());
+              result = std::make_unique<PySparseTensor>(std::move(sparse_tensor));
+            } else {
+              ORT_THROW("Unsupported values data type: ", values_type);
+            }
 
-        return result;
-      })
+            return result;
+          })
       // Factory method to create a BlockSparse Tensor from numpy arrays acting as backing storage.
       // Numeric arrays memory is used as is with reference count increment. All other supported
       // types are copied and supported only on CPU.
@@ -235,44 +251,49 @@ void addSparseTensorMethods(pybind11::module& m) {
       // ort_device - where the value and indices buffers are allocated. For non-primitive types,
       //              only cpu device is supported. There is not a way to verify that ort_device
       //              accurately describes the memory that is backing values and indices.
-      .def_static("blocksparse_from_numpy", [](const std::vector<int64_t>& py_dense_shape, const py::array& py_values, const py::array_t<int32_t>& py_indices, const OrtDevice& ort_device) -> std::unique_ptr<PySparseTensor> {
-        TensorShape dense_shape(py_dense_shape);
-        TensorShape values_shape = GetShape(py_values);
-        TensorShape index_shape = GetShape(py_indices);
-        auto values_type = GetNumpyArrayType(py_values);
-        auto ml_type = NumpyToOnnxRuntimeTensorType(values_type);
+      .def_static(
+          "blocksparse_from_numpy",
+          [](const std::vector<int64_t>& py_dense_shape,
+             const py::array& py_values,
+             const py::array_t<int32_t>& py_indices,
+             const OrtDevice& ort_device) -> std::unique_ptr<PySparseTensor> {
+            TensorShape dense_shape(py_dense_shape);
+            TensorShape values_shape = GetShape(py_values);
+            TensorShape index_shape = GetShape(py_indices);
+            auto values_type = GetNumpyArrayType(py_values);
+            auto ml_type = NumpyToOnnxRuntimeTensorType(values_type);
 
-        std::unique_ptr<PySparseTensor> result;
-        if (IsNumericNumpyType(values_type)) {
-          if (!PyArray_ISCONTIGUOUS(reinterpret_cast<PyArrayObject*>(py_values.ptr()))) {
-            throw std::runtime_error("Require contiguous numpy array of values");
-          }
+            std::unique_ptr<PySparseTensor> result;
+            if (IsNumericNumpyType(values_type)) {
+              if (!PyArray_ISCONTIGUOUS(reinterpret_cast<PyArrayObject*>(py_values.ptr()))) {
+                throw std::runtime_error("Require contiguous numpy array of values");
+              }
 
-          if (!PyArray_ISCONTIGUOUS(reinterpret_cast<PyArrayObject*>(py_indices.ptr()))) {
-            throw std::runtime_error("Require contiguous numpy array of indices");
-          }
+              if (!PyArray_ISCONTIGUOUS(reinterpret_cast<PyArrayObject*>(py_indices.ptr()))) {
+                throw std::runtime_error("Require contiguous numpy array of indices");
+              }
 
-          // create references to make sure storage does not disappear
-          std::vector<py::object> reference_holders = {py_values, py_indices};
-          OrtMemoryInfo mem_info = GetMemoryInfoPerDeviceType(ort_device);
-          auto sparse_tensor = std::make_unique<SparseTensor>(ml_type, dense_shape, values_shape,
-                                                              const_cast<void*>(py_values.data()), mem_info);
-          ORT_THROW_IF_ERROR(sparse_tensor->UseBlockSparseIndices(index_shape, const_cast<int32_t*>(py_indices.data())));
-          result = std::make_unique<PySparseTensor>(std::move(sparse_tensor), std::move(reference_holders));
-        } else if (values_type == NPY_UNICODE || values_type == NPY_STRING) {
-          if (ort_device.Type() != OrtDevice::CPU) {
-            throw std::runtime_error("Only CPU based devices are supported for non-numeric datatypes");
-          }
-          auto sparse_tensor = std::make_unique<SparseTensor>(ml_type, dense_shape, GetAllocator());
-          auto mutator = sparse_tensor->MakeBlockSparseData(values_shape, index_shape);
-          CopyDataToTensor(py_values, values_type, mutator.Values());
-          CopyDataToTensor(py_indices, GetNumpyArrayType(py_indices), mutator.Indices());
-          result = std::make_unique<PySparseTensor>(std::move(sparse_tensor));
-        } else {
-          ORT_THROW("Unsupported values data type: ", values_type);
-        }
-        return result;
-      })
+              // create references to make sure storage does not disappear
+              std::vector<py::object> reference_holders = {py_values, py_indices};
+              OrtMemoryInfo mem_info = GetMemoryInfoPerDeviceType(ort_device);
+              auto sparse_tensor = std::make_unique<SparseTensor>(ml_type, dense_shape, values_shape,
+                                                                  const_cast<void*>(py_values.data()), mem_info);
+              ORT_THROW_IF_ERROR(sparse_tensor->UseBlockSparseIndices(index_shape, const_cast<int32_t*>(py_indices.data())));
+              result = std::make_unique<PySparseTensor>(std::move(sparse_tensor), std::move(reference_holders));
+            } else if (values_type == NPY_UNICODE || values_type == NPY_STRING) {
+              if (ort_device.Type() != OrtDevice::CPU) {
+                throw std::runtime_error("Only CPU based devices are supported for non-numeric datatypes");
+              }
+              auto sparse_tensor = std::make_unique<SparseTensor>(ml_type, dense_shape, GetAllocator());
+              auto mutator = sparse_tensor->MakeBlockSparseData(values_shape, index_shape);
+              CopyDataToTensor(py_values, values_type, mutator.Values());
+              CopyDataToTensor(py_indices, GetNumpyArrayType(py_indices), mutator.Indices());
+              result = std::make_unique<PySparseTensor>(std::move(sparse_tensor));
+            } else {
+              ORT_THROW("Unsupported values data type: ", values_type);
+            }
+            return result;
+          })
       // Returns a numpy array that is backed by SparseTensor values memory
       // be aware that it may be on GPU
       .def("values", [](const PySparseTensor* py_tensor) -> py::array {
@@ -352,7 +373,8 @@ void addSparseTensorMethods(pybind11::module& m) {
         }
         auto cuda_allocator = GetCudaAllocator(ort_device.Id());
         auto gpu_transfer = GetGPUDataTransfer();
-        auto dest_tensor = std::make_unique<SparseTensor>(sparse_tensor.DataType(), sparse_tensor.DenseShape(), std::move(cuda_allocator));
+        auto dest_tensor = std::make_unique<SparseTensor>(sparse_tensor.DataType(), sparse_tensor.DenseShape(),
+                                                          std::move(cuda_allocator));
         ORT_THROW_IF_ERROR(sparse_tensor.Copy(*gpu_transfer, *dest_tensor, 0));
         auto result = std::make_unique<PySparseTensor>(std::move(dest_tensor));
         return result;
@@ -406,6 +428,7 @@ void addSparseTensorMethods(pybind11::module& m) {
             throw std::runtime_error("Can't switch on FormatFlags()");
         }
         return retval; }, [](PySparseTensor*, OrtSparseFormat) -> void { throw std::runtime_error("This is a readonly property"); });
+#endif  // !defined(DISABLED_SPARSE_TENSORS)
 }
 
 }  // namespace python

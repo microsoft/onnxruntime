@@ -196,7 +196,9 @@ static constexpr PATH_TYPE PYOP_MULTI_MODEL_URI = TSTR("testdata/pyop_2.onnx");
 static constexpr PATH_TYPE PYOP_KWARG_MODEL_URI = TSTR("testdata/pyop_3.onnx");
 #endif
 
+#ifndef REDUCED_OPS_BUILD
 static constexpr PATH_TYPE RESIZE_AND_CROP_MODEL_URI = TSTR("testdata/crop_and_resize.onnx");
+#endif
 
 class CApiTestWithProvider : public testing::Test, public ::testing::WithParamInterface<int> {
 };
@@ -1055,7 +1057,6 @@ TEST(CApiTest, io_binding_cuda) {
   Ort::Value bound_y = Ort::Value::CreateTensor(info_cuda, reinterpret_cast<float*>(output_data.get()),
                                                 expected_y.size(), expected_y_shape.data(), expected_y_shape.size());
 
-
   Ort::IoBinding binding(session);
   binding.BindInput("X", bound_x);
   binding.BindOutput("Y", bound_y);
@@ -1887,6 +1888,7 @@ TEST(CApiTest, TestPerSessionCustomThreadPoolHooks) {
 
 // Preventing resize tranformer issue:
 // https://github.com/microsoft/onnxruntime/issues/9857
+#ifndef REDUCED_OPS_BUILD
 TEST(CApiTest, crop_and_resize) {
   std::vector<float> input_value_0;
   input_value_0.resize(2 * 36 * 36 * 3);
@@ -1921,6 +1923,7 @@ TEST(CApiTest, crop_and_resize) {
   ASSERT_EQ(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, output_type_shape.GetElementType());
   ASSERT_EQ(output_shape, output_type_shape.GetShape());
 }
+#endif
 
 }  // namespace TestPerSessionCustomThreadHooks
 #endif

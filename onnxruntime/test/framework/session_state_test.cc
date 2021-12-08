@@ -178,7 +178,7 @@ TEST_P(SessionStateTestP, TestInitializerProcessing) {
 // if the relevant session option config flag is set
 // For this test we need to enable the arena-based allocator which is not supported on x86 builds, so
 // enable this test only on x64 builds
-#if (defined(__amd64__) || defined(_M_AMD64) || defined(__aarch64__) || defined(_M_ARM64))
+#if (defined(__amd64__) || defined(_M_AMD64) || defined(__aarch64__) || defined(_M_ARM64)) && !defined(USE_MIMALLOC)
 TEST(SessionStateTest, TestInitializerMemoryAllocatedUsingNonArenaMemory) {
   // Part 1: Feature turned ON (i.e.) allocate from non-arena memory
   {

@@ -59,3 +59,11 @@ onnxruntime/python/version_info.py
 .envrc
 .psenvrc
 *.csproj.user
+# exclude generated reduced kernel registration and type control
+onnxruntime/contrib_ops/cpu/cpu_contrib_kernels_reduced_ops.cc
+onnxruntime/core/providers/cpu/cpu_execution_provider_reduced_ops.cc
+orttraining/orttraining/training_ops/cpu/cpu_training_kernels_reduced_ops.cc
+onnxruntime/contrib_ops/cuda/cuda_contrib_kernels_reduced_ops.cc
+onnxruntime/core/providers/cuda/cuda_execution_provider_reduced_ops.cc
+orttraining/orttraining/training_ops/cuda/cuda_training_kernels_reduced_ops.cc
+onnxruntime/core/providers/op_kernel_type_control_overrides_reduced_types.inc
