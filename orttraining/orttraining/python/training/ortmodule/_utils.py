@@ -53,21 +53,18 @@ def _ortvalue_to_torch_tensor(ortvalue, device):
     return _torch_tensor_from_dl_pack(dlpack_tensor, ortvalue)
 
 # convert torch tensor to ort accept tensors, could be dlpack or ortvalue
-def _torch_tensor_to_ort_accept_tensors(tensor):
-    if tensor.device.type == 'ort':
-        return C.aten_ort_tensor_to_ort_value(tensor)
-    else:
-        # TODO: Current DLPack doesn't support bool and PyTorch disables converting bool tensor to DLPack in recent commit.
-        # https://github.com/pytorch/pytorch/blob/7e7be526c9d9179f35084e9cca5b5c5ad5172100/aten/src/ATen/DLConvertor.cpp#L41
-        # We need to convert bool tensor to unit8 tensor to workaround this.
-        # DLPack is discussing how to support bool type, we can remove this workaround once both DLPack
-        # and PyTorch support bool type.
-        if not tensor.is_contiguous():
-            raise ORTModuleIOError(
-                "Only contiguous tensors are supported.")
-        if tensor.dtype == torch.bool and LooseVersion(torch.__version__) >= LooseVersion('1.10.0'):
-            tensor = tensor.to(torch.uint8)
-        return to_dlpack(tensor)
+def _torch_tensor_to_dlpack(tensor):
+    # TODO: Current DLPack doesn't support bool and PyTorch disables converting bool tensor to DLPack in recent commit.
+    # https://github.com/pytorch/pytorch/blob/7e7be526c9d9179f35084e9cca5b5c5ad5172100/aten/src/ATen/DLConvertor.cpp#L41
+    # We need to convert bool tensor to unit8 tensor to workaround this.
+    # DLPack is discussing how to support bool type, we can remove this workaround once both DLPack
+    # and PyTorch support bool type.
+    if not tensor.is_contiguous():
+        raise ORTModuleIOError(
+            "Only contiguous tensors are supported.")
+    if tensor.dtype == torch.bool and LooseVersion(torch.__version__) >= LooseVersion('1.10.0'):
+        tensor = tensor.to(torch.uint8)
+    return to_dlpack(tensor)
 
 
 def _check_same_device(device, argument_str, *args):

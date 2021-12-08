@@ -47,8 +47,11 @@ class TrainingManager(GraphExecutionManager):
         forward_inputs = C.OrtValueVector()
         forward_inputs.reserve(len(inputs))
         for input in inputs:
-            valid_ort_tensor = _utils._torch_tensor_to_ort_accept_tensors(input)
-            forward_inputs.push_back(valid_ort_tensor, input.dtype == torch.bool)
+            if input.device.type == 'ort':
+                forward_inputs.push_back(C.aten_ort_tensor_to_ort_value(input))
+            else:
+                valid_ort_tensor = _utils._torch_tensor_to_dlpack(input)
+                forward_inputs.push_back(valid_ort_tensor, input.dtype == torch.bool)
 
         forward_outputs = C.OrtValueVector()
         # Run and return module outputs.
@@ -145,7 +148,10 @@ class TrainingManager(GraphExecutionManager):
                             grad_output = torch.tensor(0., device=device, dtype=dtype)
                     elif not grad_output.is_contiguous():
                         grad_output = grad_output.contiguous()
-                    backward_inputs.push_back(_utils._torch_tensor_to_ort_accept_tensors(grad_output),
+                    if grad_output.device.type == 'ort':
+                        backward_inputs.push_back(C.aten_ort_tensor_to_ort_value(grad_output))
+                    else:
+                        backward_inputs.push_back(_utils._torch_tensor_to_dlpack(grad_output),
                                               grad_output.dtype is torch.bool)
                 backward_inputs.shrink_to_fit()
 
