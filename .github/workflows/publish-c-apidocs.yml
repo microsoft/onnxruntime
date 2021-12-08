@@ -16,6 +16,7 @@ jobs:
       - name: Run doxygen
         run: |
           cd docs/c_cxx
+          doxygen -v
           doxygen
       - name: Publish
         uses: JamesIves/github-pages-deploy-action@releases/v3
