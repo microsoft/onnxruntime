@@ -49,7 +49,7 @@ namespace perftest {
       "\t-F [free_dimension_override]: Specifies a free dimension by denotation to override to a specific value for performance optimization. "
       "Syntax is [dimension_denotation:override_value]. override_value must > 0\n"
       "\t-P: Use parallel executor instead of sequential executor.\n"
-      "\t-o [optimization level]: Default is 1. Valid values are 0 (disable), 1 (basic), 2 (extended), 99 (all).\n"
+      "\t-o [optimization level]: Default is 99 (all). Valid values are 0 (disable), 1 (basic), 2 (extended), 99 (all).\n"
       "\t\tPlease see onnxruntime_c_api.h (enum GraphOptimizationLevel) for the full list of all optimization levels.\n"
       "\t-u [optimized_model_path]: Specify the optimized model path for saving.\n"
       "\t-d [cudnn_conv_algorithm]: Specify CUDNN convolution algothrithms: 0(benchmark), 1(heuristic), 2(default). \n"
