@@ -72,7 +72,7 @@ float ConvertSinglePrecisionIEEE754ToFloat(unsigned long input) {
 * key: tensor_a, value: dim_0 min_shape max_shape dim_2 min_shape max_shape
 * key: tensor_b, value: dim_1 min_shape max_shape
 */
-void SerializeProfile(const std::string& file_name, std::unordered_map<std::string, std::unordered_map<int, std::pair<int64_t, int64_t>>>& shape_ranges) {
+void SerializeProfile(const std::string& file_name, std::unordered_map<std::string, std::unordered_map<size_t, std::pair<int64_t, int64_t>>>& shape_ranges) {
   // Serialize profile
   flexbuffers::Builder builder;
   auto profile_start = builder.StartMap();
@@ -97,7 +97,7 @@ void SerializeProfile(const std::string& file_name, std::unordered_map<std::stri
 }
 
 // Deserialize engine profile
-std::unordered_map<std::string, std::unordered_map<int, std::pair<int64_t, int64_t>>> DeserializeProfile(std::ifstream& infile) {
+std::unordered_map<std::string, std::unordered_map<size_t, std::pair<int64_t, int64_t>>> DeserializeProfile(std::ifstream& infile) {
   // Load flexbuffer
   infile.seekg(0, std::ios::end);
   size_t length = infile.tellg();
@@ -107,16 +107,16 @@ std::unordered_map<std::string, std::unordered_map<int, std::pair<int64_t, int64
   infile.close();
 
   // Deserialize profile
-  std::unordered_map<std::string, std::unordered_map<int, std::pair<int64_t, int64_t>>> shape_ranges;
+  std::unordered_map<std::string, std::unordered_map<size_t, std::pair<int64_t, int64_t>>> shape_ranges;
   auto tensors_range_entries = flexbuffers::GetRoot((const uint8_t*)data.get(), length).AsMap();
   auto keys = tensors_range_entries.Keys();
   auto values = tensors_range_entries.Values();
   for (size_t i = 0, end = keys.size(); i < end; ++i) {
     auto dim_range_vectors = values[i].AsTypedVector();
-    std::unordered_map<int, std::pair<int64_t, int64_t>> inner_map;
+    std::unordered_map<size_t, std::pair<int64_t, int64_t>> inner_map;
     for (size_t j = 0, end = dim_range_vectors.size() / 3; j < end; ++j) {
       size_t idx = 3 * j;
-      inner_map[static_cast<int>(dim_range_vectors[idx].AsInt64())] = std::make_pair(dim_range_vectors[idx + 1].AsInt64(), dim_range_vectors[idx + 2].AsInt64());
+      inner_map[dim_range_vectors[idx].AsInt64()] = std::make_pair(dim_range_vectors[idx + 1].AsInt64(), dim_range_vectors[idx + 2].AsInt64());
     }
     shape_ranges[keys[i].AsString().c_str()] = inner_map;
   }
@@ -1195,7 +1195,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
     int num_inputs = trt_network->getNbInputs();
     int num_outputs = trt_network->getNbOutputs();
     std::unordered_map<std::string, int> input_indexes(num_inputs);
-    std::unordered_map<std::string, std::unordered_map<int, std::pair<int64_t, int64_t>>> input_shape_ranges;
+    std::unordered_map<std::string, std::unordered_map<size_t, std::pair<int64_t, int64_t>>> input_shape_ranges;
     std::unordered_map<std::string, int> output_indexes(num_outputs);
     std::unordered_map<std::string, int> output_types(num_outputs);
 
