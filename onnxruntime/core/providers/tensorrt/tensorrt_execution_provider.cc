@@ -184,7 +184,7 @@ bool ReadDynamicRange(const std::string file_name, const bool is_trt_calibration
           std::getline(in_line, str, delim);
           unsigned long scale_int = std::strtoul(str.c_str(), nullptr, 16);
           float scale_float = ConvertSinglePrecisionIEEE754ToFloat(scale_int);
-          float dynamic_range = static_cast<float>(scale_float * 127.0);
+          float dynamic_range = scale_float * 127.0f;
           dynamic_range_map[tensor_name] = dynamic_range;
         }
       } else {
