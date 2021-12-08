@@ -13,6 +13,5 @@ jobs:
       - uses: actions/checkout@v2
       - uses: mattnotmitt/doxygen-action@v1
         with:
-          working-directory: build/doxygen/html
           doxyfile-path: docs/c_cxx/Doxyfile
  
