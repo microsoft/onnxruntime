@@ -7,6 +7,7 @@
 
 #include <vector>
 #include <stdlib.h>
+#include <stdint.h>
 
 namespace onnxruntime {
 namespace test {
@@ -21,7 +22,7 @@ class HeapBuffer {
    */
   ~HeapBuffer();
   void* AllocMemory(size_t size) {
-    void* p = malloc(size);
+    void* p = new (std::nothrow) uint8_t[size];
     buffers_.push_back(p);
     return p;
   }

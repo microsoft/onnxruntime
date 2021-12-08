@@ -1249,3 +1249,7 @@ export class PoolConvUtil {
 
 export const MIN_CLIP = -3.4028234663852886e+38;
 export const MAX_CLIP = 3.4028234663852886e+38;
+
+export function decodeUtf8String(buffer: Uint8Array): string {
+  return new TextDecoder().decode(buffer);
+}

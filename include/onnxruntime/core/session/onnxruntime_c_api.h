@@ -30,7 +30,7 @@
 *
 * This value is used by some API functions to behave as this version of the header expects.
 */
-#define ORT_API_VERSION 9
+#define ORT_API_VERSION 10
 
 #ifdef __cplusplus
 extern "C" {
@@ -3162,6 +3162,26 @@ struct OrtApi {
   */
   ORT_API2_STATUS(SetGlobalCustomJoinThreadFn, _Inout_ OrtThreadingOptions* tp_options, _In_ OrtCustomJoinThreadFn ort_custom_join_thread_fn);
   /// @}
+
+  /** \brief Synchronize bound inputs. The call may be necessary for some providers, such as cuda,
+  *   in case the system that allocated bound memory operated on a different stream. However, the
+  *   operation is provider specific and could be a no-op.
+  *
+  * \param[inout] binding_ptr
+  * 
+  * * \snippet{doc} snippets.dox OrtStatus Return Value
+  */
+  ORT_API2_STATUS(SynchronizeBoundInputs, _Inout_ OrtIoBinding* binding_ptr);
+
+  /** \brief Synchronize bound outputs. The call may be necessary for some providers, such as cuda,
+  *   in case the system that allocated bound memory operated on a different stream. However, the
+  *   operation is provider specific and could be a no-op.
+  *
+  * \param[inout] binding_ptr
+  * 
+  * * \snippet{doc} snippets.dox OrtStatus Return Value
+  */
+  ORT_API2_STATUS(SynchronizeBoundOutputs, _Inout_ OrtIoBinding* binding_ptr);
 };
 
 /*
