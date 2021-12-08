@@ -15,6 +15,8 @@
 namespace torch_ort {
 namespace eager {
 
+using ProviderInfoMap = std::unordered_map<std::string, onnxruntime::ProviderOptions >;
+
 class ORTBackendsManager {
 public:
   ORTBackendsManager(const onnxruntime::logging::Logger& logger);
@@ -26,12 +28,19 @@ public:
 
   OrtDevice GetOrtDeviceInfo(size_t torch_device_index);
 
+  size_t GetOrtDeviceIndex(const OrtMemoryInfo& ort_memory_info);
+
+  const ProviderInfoMap& GetOrtDeviceProviderInfo(size_t torch_device_index) const;
+
 private:
   std::map<at::DeviceIndex, std::unique_ptr<onnxruntime::ORTInvoker>> backends_;
   const onnxruntime::logging::Logger& logger_;
   //custom op schema registry
   //TODO: we might want to support load custom op schema on the fly
   onnxruntime::IOnnxRuntimeOpSchemaRegistryList custom_op_schema_ = {};
+
+  // record the device associated provider information, so ortmodule can restore the ep
+  std::unordered_map<at::DeviceIndex, ProviderInfoMap> device_ep_info_;
 };
 
 ORTBackendsManager& GetORTBackendsManager();
