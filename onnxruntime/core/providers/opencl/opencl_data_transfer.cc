@@ -218,7 +218,7 @@ Status OpenCLDataTransfer::CopyBuffer1DToImage2D(
           .setArg<cl_int>(desc.Width())
           .setArg<cl_int>(desc.Height())
           .setBuffer(src)
-          .setArg<cl_int>(CeilDiv(shape.Size(), 4))  // nelem4
+          .setArg<cl_int>(shape.Size())  // nelem
           .setImage2D(dst)
           .Launch(exec_->GetCommandQueue(), desc.AsNDRange()));
   return Status::OK();
@@ -273,7 +273,7 @@ Status OpenCLDataTransfer::CopyImage2DToBuffer1D(
           .setArg<cl_int>(desc.Height())
           .setImage2D(src)
           .setBuffer(dst)
-          .setArg<cl_int>(CeilDiv(shape.Size(), 4))  // nelem4
+          .setArg<cl_int>(shape.Size())  // nelem
           .Launch(exec_->GetCommandQueue(), desc.AsNDRange()));
   return Status::OK();
 }
