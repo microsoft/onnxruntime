@@ -728,7 +728,7 @@ static void pthread_1d_tile_func(void* param, size_t from, size_t tile) {
   (*fn)(from, from + tile);
 }
 
-PThreadPoolWrapper::PThreadPoolWrapper(size_t thread_count_, bool denorms_disabled) : thread_count_(thread_count_), pthreadpool_(pthreadpool_create(thread_count_)), denorms_disabled_(denorms_disabled) {}
+PThreadPoolWrapper::PThreadPoolWrapper(size_t thread_count, bool denorms_disabled): pthreadpool_(pthreadpool_create(thread_count)), denorms_disabled_(denorms_disabled) {}
 
 PThreadPoolWrapper::~PThreadPoolWrapper() {
   pthreadpool_destroy((pthreadpool_t)pthreadpool_);
@@ -746,7 +746,7 @@ void PThreadPoolWrapper::ParallelFor(std::ptrdiff_t total, double,
                                      (pthreadpool_task_1d_tile_1d_t)pthread_1d_tile_func,
                                      const_cast<Func*>(&fn),
                                      static_cast<size_t>(total),
-				     1, 
+                                     1,
                                      denorms_disabled_);
 }
 

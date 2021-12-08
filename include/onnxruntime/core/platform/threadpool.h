@@ -467,7 +467,7 @@ class PThreadPoolWrapper : public ThreadPool {
   std::string StopProfiling() override;
 
  private:
-  size_t thread_count_{};
+  // size_t thread_count_{};
   void* pthreadpool_{};
   uint32_t denorms_disabled_{};
 };
