@@ -37,6 +37,7 @@ struct StvmExecutionProviderInfo {
   unsigned int opt_level{default_opt_level};
   bool freeze_weights = true;
   std::string tuning_file_path{""};
+  std::string tuning_type{"Ansor"};
   std::string input_names_str{""};
   std::string input_shapes_str{""};
   STVMInputShapes input_shapes{};

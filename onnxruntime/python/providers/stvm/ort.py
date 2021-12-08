@@ -13,6 +13,10 @@ import onnx
 import tvm
 from tvm import relay, auto_scheduler
 from tvm.contrib import graph_executor
+from tvm import autotvm
+
+ANSOR_TYPE = "Ansor"
+AUTO_TVM_TYPE = "AutoTVM"
 
 @tvm.register_func("tvm_run_with_benchmark")
 def run_with_benchmark(mod):
@@ -34,7 +38,7 @@ def run_without_benchmark(mod):
     run()
 
 @tvm.register_func("tvm_onnx_import_and_compile")
-def onnx_compile(model_string, model_path, target, target_host, opt_level, opset, freeze_params, input_shapes, tuning_logfile=""):
+def onnx_compile(model_string, model_path, target, target_host, opt_level, opset, freeze_params, input_shapes, tuning_logfile="", tuning_type = ANSOR_TYPE):
     model = onnx.load_model_from_string(bytes(model_string))
     if model_path:
         base_dir = os.path.dirname(os.path.abspath(model_path))
@@ -60,14 +64,27 @@ def onnx_compile(model_string, model_path, target, target_host, opt_level, opset
     # Tuning file can be set by client through ep options
     if tuning_logfile == "":
         tuning_logfile = os.getenv("AUTOTVM_TUNING_LOG")
-    if tuning_logfile:
-        print("Use tuning file: ", tuning_logfile)
-        with auto_scheduler.ApplyHistoryBest(tuning_logfile):
-            with tvm.transform.PassContext(opt_level=opt_level, config={"relay.backend.use_auto_scheduler": True}):
-                lib = relay.build(irmod, target=target, target_host=target_host)
+    if tuning_type == ANSOR_TYPE:
+        if tuning_logfile:
+            print("Use tuning file from ", ANSOR_TYPE, ": ", tuning_logfile)
+            with auto_scheduler.ApplyHistoryBest(tuning_logfile):
+                with tvm.transform.PassContext(opt_level=opt_level, config={"relay.backend.use_auto_scheduler": True}):
+                    lib = relay.build(irmod, target=target, target_host=target_host)
+        else:
+            with tvm.transform.PassContext(opt_level=opt_level):
+                lib = relay.build(irmod, target=target, target_host=target_host, params=params)
+    elif tuning_type == AUTO_TVM_TYPE:
+        with relay.build_config(opt_level=opt_level):
+            if tuning_logfile:
+                print("Use tuning file from ", AUTO_TVM_TYPE, ": ", tuning_logfile)
+                with autotvm.apply_history_best(tuning_logfile):
+                    # XXX: do not pass parameters to relay.build otherwise they will be inline into the module
+                    lib = relay.build(irmod, target_host=target_host, target=target)
+            else:
+                lib = relay.build(irmod, target_host=target_host, target=target)
     else:
-        with tvm.transform.PassContext(opt_level=opt_level):
-            lib = relay.build(irmod, target=target, target_host=target_host, params=params)
+        print("ERROR: Tuning log type {} is unsupported. Only {} and {} types are supported".format(ANSOR_TYPE, AUTO_TVM_TYPE, tuning_type))
+        return None
 
     ctx = tvm.device(target, 0)
     m = graph_executor.GraphModule(lib["default"](ctx))

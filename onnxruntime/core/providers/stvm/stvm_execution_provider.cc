@@ -493,6 +493,7 @@ void StvmExecutionProvider::PrintInfo() const {
   std::cout << "opt level: " << info_.opt_level << std::endl;
   std::cout << "freeze weights: " << info_.freeze_weights << std::endl;
   std::cout << "tuning file path: " << info_.tuning_file_path << std::endl;
+  std::cout << "tuning type: " << info_.tuning_type << std::endl;
   std::cout << "input tensor names: " << info_.input_names_str << std::endl;
   std::cout << "input tensor shapes: " << info_.input_shapes_str << std::endl;
 }
@@ -521,7 +522,8 @@ tvm::runtime::Module* StvmExecutionProvider::CompileFunc(std::string func_name, 
                                                 opsets_[func_name],
                                                 info_.freeze_weights,
                                                 input_shapes,
-                                                info_.tuning_file_path);
+                                                info_.tuning_file_path,
+                                                info_.tuning_type);
   auto module_ptr = std::make_shared<tvm::runtime::Module>();
   *module_ptr = mod_f;
   modules_[func_name] = module_ptr;

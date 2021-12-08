@@ -16,7 +16,8 @@ tvm::runtime::Module TVMCompile(const std::string& onnx_txt,
                                 int opset,
                                 bool freeze_params,
                                 const std::vector<std::vector<int64_t>>& input_shapes,
-                                const std::string& tuning_logfile)
+                                const std::string& tuning_logfile,
+                                const std::string& tuning_type)
 {
   tvm::Array<tvm::Array<tvm::Integer>> shapes;
   for (size_t i = 0; i < input_shapes.size(); ++i)
@@ -39,7 +40,8 @@ tvm::runtime::Module TVMCompile(const std::string& onnx_txt,
           opset,
           freeze_params,
           shapes,
-          tuning_logfile);
+          tuning_logfile,
+          tuning_type);
   return mod;
 }
 
