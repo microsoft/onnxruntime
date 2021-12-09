@@ -87,8 +87,8 @@ struct TensorrtFuncState {
   tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext>* context = nullptr;
   tensorrt_ptr::unique_pointer<nvinfer1::IBuilder>* builder = nullptr;
   tensorrt_ptr::unique_pointer<nvinfer1::INetworkDefinition>* network = nullptr;
-  std::vector<std::unordered_map<std::string, int>> input_info;
-  std::vector<std::unordered_map<std::string, int>> output_info;
+  std::vector<std::unordered_map<std::string, size_t>> input_info;
+  std::vector<std::unordered_map<std::string, size_t>> output_info;
   std::unordered_map<std::string, std::unordered_map<size_t, std::pair<int64_t, int64_t>>> input_shape_ranges;
   OrtMutex* tensorrt_mu_ptr = nullptr;
   bool fp16_enable;
@@ -146,7 +146,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   bool external_stream_ = false;
   cudaStream_t stream_ = nullptr;
   int max_partition_iterations_ = 1000;
-  int min_subgraph_size_ = 1;
+  size_t min_subgraph_size_ = 1;
   size_t max_workspace_size_ = 1 << 30;  // 1GB
   bool fp16_enable_ = false;
   bool int8_enable_ = false;
@@ -173,8 +173,8 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   std::unordered_map<std::string, tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext>> contexts_;
   std::unordered_map<std::string, tensorrt_ptr::unique_pointer<nvinfer1::IBuilder>> builders_;
   std::unordered_map<std::string, tensorrt_ptr::unique_pointer<nvinfer1::INetworkDefinition>> networks_;
-  std::unordered_map<std::string, std::vector<std::unordered_map<std::string, int>>> input_info_;
-  std::unordered_map<std::string, std::vector<std::unordered_map<std::string, int>>> output_info_;
+  std::unordered_map<std::string, std::vector<std::unordered_map<std::string, size_t>>> input_info_;
+  std::unordered_map<std::string, std::vector<std::unordered_map<std::string, size_t>>> output_info_;
   std::unordered_map<std::string, std::unordered_map<std::string, std::unordered_map<size_t, std::pair<int64_t, int64_t>>>> input_shape_ranges_;
 
   /**Get IndexedSubGraph based on node list of the subgraph*/

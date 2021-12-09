@@ -1105,7 +1105,7 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
 
   // Remove subgraphs if its size is less than the predefined minimal size
   for (auto it = supported_nodes_vector.begin(); it != supported_nodes_vector.end(); ++it) {
-    const int subgraph_size = static_cast<int>(it->first.size());
+    const size_t subgraph_size = it->first.size();
     if (subgraph_size < min_subgraph_size_) {
       supported_nodes_vector.erase(it--);
     }
@@ -1148,18 +1148,18 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
                                                   std::vector<NodeComputeInfo>& node_compute_funcs) {
   for (const auto* fused_node : fused_nodes) {
     // Build map from input name to its index in input definitions
-    std::unordered_map<std::string, int> input_map;
+    std::unordered_map<std::string, size_t> input_map;
     const auto& input_defs = fused_node->InputDefs();
     input_map.reserve(input_defs.size());
-    for (int i = 0, end = static_cast<int>(input_defs.size()); i < end; ++i) {
+    for (size_t i = 0, end = input_defs.size(); i < end; ++i) {
       input_map[input_defs[i]->Name()] = i;
     }
 
     // Build map from output name to its index in output definitions
-    std::unordered_map<std::string, int> output_map;
+    std::unordered_map<std::string, size_t> output_map;
     const auto& output_defs = fused_node->OutputDefs();
     output_map.reserve(output_defs.size());
-    for (int i = 0, end = static_cast<int>(output_defs.size()); i < end; ++i) {
+    for (size_t i = 0, end = output_defs.size(); i < end; ++i) {
       output_map[output_defs[i]->Name()] = i;
     }
 
@@ -1194,10 +1194,10 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
 
     int num_inputs = trt_network->getNbInputs();
     int num_outputs = trt_network->getNbOutputs();
-    std::unordered_map<std::string, int> input_indexes(num_inputs);
+    std::unordered_map<std::string, size_t> input_indexes(num_inputs);
     std::unordered_map<std::string, std::unordered_map<size_t, std::pair<int64_t, int64_t>>> input_shape_ranges;
-    std::unordered_map<std::string, int> output_indexes(num_outputs);
-    std::unordered_map<std::string, int> output_types(num_outputs);
+    std::unordered_map<std::string, size_t> output_indexes(num_outputs);
+    std::unordered_map<std::string, size_t> output_types(num_outputs);
 
     // Initialize shape range for dynamic shape tensors
     bool has_dynamic_shape = false;
@@ -1424,9 +1424,9 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
       Ort::CustomOpApi ort{*api};
       TensorrtFuncState* trt_state = reinterpret_cast<TensorrtFuncState*>(state);
       std::lock_guard<OrtMutex> lock(*(trt_state->tensorrt_mu_ptr));
-      const std::unordered_map<std::string, int>& input_indexes = (trt_state->input_info)[0];
-      const std::unordered_map<std::string, int>& output_indexes = (trt_state->output_info)[0];
-      const std::unordered_map<std::string, int>& output_types = (trt_state->output_info)[1];
+      const std::unordered_map<std::string, size_t>& input_indexes = (trt_state->input_info)[0];
+      const std::unordered_map<std::string, size_t>& output_indexes = (trt_state->output_info)[0];
+      const std::unordered_map<std::string, size_t>& output_types = (trt_state->output_info)[1];
       auto& shape_ranges = trt_state->input_shape_ranges;
       auto trt_builder = trt_state->builder->get();
       auto trt_engine = trt_state->engine->get();
@@ -1514,7 +1514,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
         // Check and update shape ranges for dynamic shape inputs
         input_names.insert(input_name);
         if (shape_ranges.find(input_name) != shape_ranges.end()) {
-          int input_index = 0;
+          size_t input_index = 0;
           const auto& iter = input_indexes.find(input_name);
           if (iter != input_indexes.end()) {
             input_index = iter->second;
@@ -1733,7 +1733,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
           continue;
         }
 
-        int input_index = 0;
+        size_t input_index = 0;
         const auto& iter = input_indexes.find(input_name);
         if (iter != input_indexes.end()) {
           input_index = iter->second;
@@ -1871,7 +1871,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
           continue;
         }
 
-        int output_index = 0;
+        size_t output_index = 0;
         const auto& index_iter = output_indexes.find(output_name);
         if (index_iter != output_indexes.end()) {
           output_index = index_iter->second;
@@ -1884,7 +1884,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
         }
         output_tensor[i] = ort.KernelContext_GetOutput(context, output_index, output_shapes.data(), output_shapes.size());
 
-        int output_type = 0;
+        size_t output_type = 0;
         const auto& type_iter = output_types.find(output_name);
         if (type_iter != output_types.end()) {
           output_type = type_iter->second;
@@ -2002,7 +2002,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
       for (int i = 0, end = static_cast<int>(output_binding_names.size()); i < end; ++i) {
         const std::string& output_name = output_binding_names[i];
         size_t binding_index = trt_engine->getBindingIndex(output_name.c_str());
-        int output_type = 0;
+        size_t output_type = 0;
         const auto& iter = output_types.find(output_name);
         if (iter != output_types.end()) {
           output_type = iter->second;
