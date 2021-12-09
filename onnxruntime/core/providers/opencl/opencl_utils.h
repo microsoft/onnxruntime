@@ -10,6 +10,12 @@
 #include "opencl_forward_decl.h"
 #include "opencl_execution_provider.h"
 
+#ifdef NDEBUG
+#define USE_CL_CHECKED_CAST 0
+#else
+#define USE_CL_CHECKED_CAST 1
+#endif
+
 #define ONNX_OPENCL_OPERATOR_KERNEL(name, ver, builder, ...) \
   ONNX_OPERATOR_KERNEL_EX(name, kOnnxDomain, ver, kOpenCLExecutionProvider, builder, __VA_ARGS__)
 
@@ -39,7 +45,6 @@
     ORT_THROW(oss.str(), ::onnxruntime::MakeString(__VA_ARGS__));                        \
   }
 
-#define USE_CL_CHECKED_CAST 1
 #if USE_CL_CHECKED_CAST
 #define CL_BUFFER_FROM_TENSOR(TENSOR) [&]() {                                              \
   auto* ptr = const_cast<cl::Buffer*>(static_cast<const cl::Buffer*>((TENSOR).DataRaw())); \
