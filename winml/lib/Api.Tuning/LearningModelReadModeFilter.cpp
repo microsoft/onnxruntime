@@ -1,25 +1,25 @@
-#include "lib/Api.Internal/pch/pch.h"
+#include "lib/Api.Tuning/pch/pch.h"
 #include "LearningModelReadModeFilter.h"
 
-namespace WINML_INTERNALP
+namespace WINML_TUNINGP
 {
     LearningModelReadModeFilter::LearningModelReadModeFilter()
     {
-        modes_.push_back(winml_internal::LearningModelReadMode::GetAsVectorView);
+        modes_.push_back(winml_tuning::LearningModelReadMode::GetAsVectorView);
     }
 
-    winml_internal::LearningModelReadModeFilter LearningModelReadModeFilter::IncludeAll()
+    winml_tuning::LearningModelReadModeFilter LearningModelReadModeFilter::IncludeAll()
     {
         Clear();
-        modes_.push_back(winml_internal::LearningModelReadMode::GetAsVectorView);
-        modes_.push_back(winml_internal::LearningModelReadMode::GetFromNativeBufferAccess);
-        modes_.push_back(winml_internal::LearningModelReadMode::GetFromMemoryBufferReferenceAccess);
-        modes_.push_back(winml_internal::LearningModelReadMode::GetAsD3D12Resource);
+        modes_.push_back(winml_tuning::LearningModelReadMode::GetAsVectorView);
+        modes_.push_back(winml_tuning::LearningModelReadMode::GetFromNativeBufferAccess);
+        modes_.push_back(winml_tuning::LearningModelReadMode::GetFromMemoryBufferReferenceAccess);
+        modes_.push_back(winml_tuning::LearningModelReadMode::GetAsD3D12Resource);
         return *this;
     }
 
-    winml_internal::LearningModelReadModeFilter LearningModelReadModeFilter::Include(
-        winml_internal::LearningModelReadMode const& mode)
+    winml_tuning::LearningModelReadModeFilter LearningModelReadModeFilter::Include(
+        winml_tuning::LearningModelReadMode const& mode)
     {
         auto found_it = std::find(modes_.begin(), modes_.end(), mode);
         if (found_it == modes_.end())
@@ -29,18 +29,18 @@ namespace WINML_INTERNALP
         return *this;
     }
 
-    winml_internal::LearningModelReadModeFilter LearningModelReadModeFilter::Clear()
+    winml_tuning::LearningModelReadModeFilter LearningModelReadModeFilter::Clear()
     {
         modes_.clear();
         return *this;
     }
 
-    wfc::IIterator<winml_internal::LearningModelReadMode> LearningModelReadModeFilter::First()
+    wfc::IIterator<winml_tuning::LearningModelReadMode> LearningModelReadModeFilter::First()
     {
         throw hresult_not_implemented();
     }
 
-    winml_internal::LearningModelReadMode LearningModelReadModeFilter::GetAt(uint32_t index)
+    winml_tuning::LearningModelReadMode LearningModelReadModeFilter::GetAt(uint32_t index)
     {
         return modes_.at(index);
     }
@@ -51,7 +51,7 @@ namespace WINML_INTERNALP
     }
 
     bool LearningModelReadModeFilter::IndexOf(
-        winml_internal::LearningModelReadMode const& value,
+        winml_tuning::LearningModelReadMode const& value,
         uint32_t& index)
     {
         index = 0;
@@ -66,7 +66,7 @@ namespace WINML_INTERNALP
 
     uint32_t LearningModelReadModeFilter::GetMany(
         uint32_t startIndex,
-        array_view<winml_internal::LearningModelReadMode> items)
+        array_view<winml_tuning::LearningModelReadMode> items)
     {
         for (uint32_t i = 0; i < items.size(); i++)
         {

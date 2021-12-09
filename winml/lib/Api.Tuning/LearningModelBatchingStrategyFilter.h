@@ -1,7 +1,7 @@
 #pragma once
 #include "LearningModelBatchingStrategyFilter.g.h"
 
-namespace WINML_INTERNALP
+namespace WINML_TUNINGP
 {
     struct LearningModelBatchingStrategyFilter : LearningModelBatchingStrategyFilterT<LearningModelBatchingStrategyFilter>
     {

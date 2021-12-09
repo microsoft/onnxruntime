@@ -1,7 +1,7 @@
-#include "lib/Api.Internal/pch/pch.h"
+#include "lib/Api.Tuning/pch/pch.h"
 #include "LearningModelBatchingStrategyFilter.h"
 
-namespace WINML_INTERNALP {
+namespace WINML_TUNINGP {
 
     LearningModelBatchingStrategyFilter::LearningModelBatchingStrategyFilter() : batch_sizes_()
     {

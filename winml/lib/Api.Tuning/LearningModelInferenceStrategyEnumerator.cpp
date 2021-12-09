@@ -1,4 +1,4 @@
-#include "lib/Api.Internal/pch/pch.h"
+#include "lib/Api.Tuning/pch/pch.h"
 #include "LearningModelEnumerateInferenceStrategiesOptions.h"
 #include "LearningModelInferenceStrategyEnumerator.h"
 #include "LearningModelBindingStrategyFilter.h"
@@ -17,7 +17,7 @@
 #include <robuffer.h>
 #include <Memorybuffer.h>
 
-namespace WINML_INTERNALP
+namespace WINML_TUNINGP
 {
     //
     // CreateFromShapeArrayAndDataBuffer<T, DataType>
@@ -370,7 +370,7 @@ namespace WINML_INTERNALP
     static wf::IInspectable CreateFeatureValue(
         const winml::LearningModelSession& session,
         winml::ILearningModelFeatureDescriptor input,
-        winml_internal::LearningModelBindingStrategy input_strategy,
+        winml_tuning::LearningModelBindingStrategy input_strategy,
         float* metric) {
 
         switch (input.Kind()) {
@@ -432,13 +432,13 @@ namespace WINML_INTERNALP
     static winml::LearningModelSession MeasureSessionCreate(
         const winml::LearningModel& model,
         const winml::LearningModelDevice& learning_model_device,
-        winml_internal::LearningModelEnumerateInferenceStrategiesOptions const& options,
+        winml_tuning::LearningModelEnumerateInferenceStrategiesOptions const& options,
         uint32_t batch_size,
         float* metric) {
       try {
         *metric = 0;
         auto start = std::chrono::high_resolution_clock::now();
-        auto options_impl = options.as<winml_internalp::LearningModelEnumerateInferenceStrategiesOptions>();
+        auto options_impl = options.as<winml_tuningp::LearningModelEnumerateInferenceStrategiesOptions>();
 
         auto learning_model_session_options = winml::LearningModelSessionOptions();
 
@@ -460,9 +460,9 @@ namespace WINML_INTERNALP
 
     static bool MeasureEvaluateOne(
         winml::LearningModelSession session,
-        winml_internal::LearningModelBindingStrategy input_strategy,
-        winml_internal::LearningModelBindingStrategy output_strategy,
-        winml_internal::LearningModelReadMode read_mode,
+        winml_tuning::LearningModelBindingStrategy input_strategy,
+        winml_tuning::LearningModelBindingStrategy output_strategy,
+        winml_tuning::LearningModelReadMode read_mode,
         float* bind_inputs_metric,
         float* bind_outputs_metric,
         float* evaluate_metric,
@@ -477,8 +477,8 @@ namespace WINML_INTERNALP
         winml::LearningModelBinding binding(session);
 
         if (session.Device().Direct3D11Device() == nullptr &&
-            (input_strategy == winml_internal::LearningModelBindingStrategy::CreateFromD3D12Resource ||
-             output_strategy == winml_internal::LearningModelBindingStrategy::CreateFromD3D12Resource)) {
+            (input_strategy == winml_tuning::LearningModelBindingStrategy::CreateFromD3D12Resource ||
+             output_strategy == winml_tuning::LearningModelBindingStrategy::CreateFromD3D12Resource)) {
             // Cannot bind D3D12Resource, when the session does not have a device...
             return nullptr;
         }
@@ -496,7 +496,7 @@ namespace WINML_INTERNALP
             *bind_inputs_metric += MeasureBind(binding, input.Name(), value, properties);
         }
 
-        if (output_strategy != winml_internal::LearningModelBindingStrategy::CreateUnbound) {
+        if (output_strategy != winml_tuning::LearningModelBindingStrategy::CreateUnbound) {
             for (const auto& output : session.Model().OutputFeatures()) {
               float bind_metric;
               auto value = CreateFeatureValue(session, output, output_strategy, &bind_metric);
@@ -507,7 +507,7 @@ namespace WINML_INTERNALP
               *bind_outputs_metric += bind_metric;
 
               auto properties = wfc::PropertySet();
-              auto disable_tensor_cpu_sync = (read_mode == winml_internal::LearningModelReadMode::GetAsD3D12Resource);
+              auto disable_tensor_cpu_sync = (read_mode == winml_tuning::LearningModelReadMode::GetAsD3D12Resource);
               properties.Insert(L"DisableTensorCpuSync", wf::PropertyValue::CreateBoolean(disable_tensor_cpu_sync));
 
               *bind_outputs_metric += MeasureBind(binding, output.Name(), value, properties);
@@ -525,13 +525,13 @@ namespace WINML_INTERNALP
             float read_metric = 0;
             switch (read_mode)
             {
-                case winml_internal::LearningModelReadMode::GetAsVectorView:
+                case winml_tuning::LearningModelReadMode::GetAsVectorView:
                 {
                     GetAsVectorView(pair.Value());
                     break;
                 }
 
-                case winml_internal::LearningModelReadMode::GetFromNativeBufferAccess:
+                case winml_tuning::LearningModelReadMode::GetFromNativeBufferAccess:
                 {
                     if (auto tensor_value = pair.Value().try_as<winml::ITensor>()) {
                         // Get as ITensorNative
@@ -545,7 +545,7 @@ namespace WINML_INTERNALP
                     break;
                 }
 
-                case winml_internal::LearningModelReadMode::GetFromMemoryBufferReferenceAccess:
+                case winml_tuning::LearningModelReadMode::GetFromMemoryBufferReferenceAccess:
                 {
                     if (auto tensor_value = pair.Value().try_as<winml::ITensor>()) {
                         // Get as ITensorNative
@@ -567,22 +567,22 @@ namespace WINML_INTERNALP
         return true;
     }
 
-    static wfc::IVectorView<winml_internal::LearningModelInferenceStrategy> EnumerateStrategies(
+    static wfc::IVectorView<winml_tuning::LearningModelInferenceStrategy> EnumerateStrategies(
         winrt::hstring const& path,
-        winml_internal::LearningModelEnumerateInferenceStrategiesOptions const& options,
-        std::function<void(winml_internal::EnumerateInferenceStrategiesProgress)> update_progress,
+        winml_tuning::LearningModelEnumerateInferenceStrategiesOptions const& options,
+        std::function<void(winml_tuning::EnumerateInferenceStrategiesProgress)> update_progress,
         std::function<bool()> is_cancelled)
     {
         uint32_t unused;
-        const auto include_model_load = options.PhaseFilter().IndexOf(winml_internal::LearningModelPhase::LoadModel, unused);
-        const auto include_session_create = options.PhaseFilter().IndexOf(winml_internal::LearningModelPhase::CreateSession, unused);
-        const auto include_evaluate = options.PhaseFilter().IndexOf(winml_internal::LearningModelPhase::Evaluate, unused);
-        const auto include_bind_inputs = options.PhaseFilter().IndexOf(winml_internal::LearningModelPhase::BindInputs, unused);
-        const auto include_bind_outputs = options.PhaseFilter().IndexOf(winml_internal::LearningModelPhase::BindOutputs, unused);
-        const auto include_fetch_results = options.PhaseFilter().IndexOf(winml_internal::LearningModelPhase::FetchResults, unused);
+        const auto include_model_load = options.PhaseFilter().IndexOf(winml_tuning::LearningModelPhase::LoadModel, unused);
+        const auto include_session_create = options.PhaseFilter().IndexOf(winml_tuning::LearningModelPhase::CreateSession, unused);
+        const auto include_evaluate = options.PhaseFilter().IndexOf(winml_tuning::LearningModelPhase::Evaluate, unused);
+        const auto include_bind_inputs = options.PhaseFilter().IndexOf(winml_tuning::LearningModelPhase::BindInputs, unused);
+        const auto include_bind_outputs = options.PhaseFilter().IndexOf(winml_tuning::LearningModelPhase::BindOutputs, unused);
+        const auto include_fetch_results = options.PhaseFilter().IndexOf(winml_tuning::LearningModelPhase::FetchResults, unused);
 
         // Create the output strategies
-        auto strategies = std::vector<winml_internal::LearningModelInferenceStrategy>();
+        auto strategies = std::vector<winml_tuning::LearningModelInferenceStrategy>();
 
         // load the model
         float model_load_metric;
@@ -590,20 +590,20 @@ namespace WINML_INTERNALP
         auto learning_model_impl = learning_model.as<winmlp::LearningModel>();
 
         // Define a status struct
-        winml_internal::EnumerateInferenceStrategiesProgress strategies_progress = {};
+        winml_tuning::EnumerateInferenceStrategiesProgress strategies_progress = {};
 
         // Check if batching is supported by the model...
         auto batch_size_filter = options.BatchingStrategyFilter();
         if (learning_model_impl->IsBatchingSupported() == false) {
-          batch_size_filter = winrt::make<winml_internalp::LearningModelBatchingStrategyFilter>();
+          batch_size_filter = winrt::make<winml_tuningp::LearningModelBatchingStrategyFilter>();
         }
 
         // Sanitize input strategies...
-        winml_internal::LearningModelBindingStrategyFilter input_strategy_filter = 
-            winrt::make<winml_internalp::LearningModelBindingStrategyFilter>();
+        winml_tuning::LearningModelBindingStrategyFilter input_strategy_filter = 
+            winrt::make<winml_tuningp::LearningModelBindingStrategyFilter>();
         for (const auto& strategy : options.InputStrategyFilter()) {
             // All inputs need to be bound, so Unbound is an invlaid choice for inputs...
-            if (strategy != winml_internal::LearningModelBindingStrategy::CreateUnbound) {
+            if (strategy != winml_tuning::LearningModelBindingStrategy::CreateUnbound) {
                 input_strategy_filter.Include(strategy);
             }
         }
@@ -649,9 +649,9 @@ namespace WINML_INTERNALP
                 float fetch_results_metric;
                 auto success = MeasureEvaluateOne(
                     learning_model_session,
-                    winml_internal::LearningModelBindingStrategy::CreateFromShapeArrayAndDataArray,
-                    winml_internal::LearningModelBindingStrategy::CreateFromShapeArrayAndDataArray,
-                    winml_internal::LearningModelReadMode::GetAsVectorView,
+                    winml_tuning::LearningModelBindingStrategy::CreateFromShapeArrayAndDataArray,
+                    winml_tuning::LearningModelBindingStrategy::CreateFromShapeArrayAndDataArray,
+                    winml_tuning::LearningModelReadMode::GetAsVectorView,
                     &bind_inputs_metric,
                     &bind_outputs_metric, 
                     &evaluate_metric, 
@@ -709,7 +709,7 @@ namespace WINML_INTERNALP
                             
                                 if (is_cancelled && is_cancelled()) {
                                   // return an empty array if cancelled
-                                  return winrt::single_threaded_vector<winml_internal::LearningModelInferenceStrategy>().GetView();
+                                  return winrt::single_threaded_vector<winml_tuning::LearningModelInferenceStrategy>().GetView();
                                 }
 
                                 ++strategies_progress.EvaluationsCompleted;
@@ -721,7 +721,7 @@ namespace WINML_INTERNALP
                             if (count > 0) {
                               float e_x = duration_in_milliseconds_sum / count;
                               float e_x_2 = duration_in_milliseconds_squared_sum / count;
-                              auto strategy = winrt::make<winml_internalp::LearningModelInferenceStrategy>(
+                              auto strategy = winrt::make<winml_tuningp::LearningModelInferenceStrategy>(
                                   device, input_strategy, output_strategy, output_read_mode, batch_size,
                                   e_x, e_x_2 - e_x * e_x);
                               strategies.push_back(std::move(strategy));
@@ -738,28 +738,28 @@ namespace WINML_INTERNALP
                     return a.Metric() < b.Metric();
                   });
 
-        auto out_strategies = winrt::single_threaded_vector<winml_internal::LearningModelInferenceStrategy>(std::move(strategies));
+        auto out_strategies = winrt::single_threaded_vector<winml_tuning::LearningModelInferenceStrategy>(std::move(strategies));
         return out_strategies.GetView();
     }
 
     
-    wfc::IVectorView<winml_internal::LearningModelInferenceStrategy> LearningModelInferenceStrategyEnumerator::EnumerateInferenceStrategies(
+    wfc::IVectorView<winml_tuning::LearningModelInferenceStrategy> LearningModelInferenceStrategyEnumerator::EnumerateInferenceStrategies(
         winrt::hstring const& path,
-        winml_internal::LearningModelEnumerateInferenceStrategiesOptions const& options) {
+        winml_tuning::LearningModelEnumerateInferenceStrategiesOptions const& options) {
         return EnumerateStrategies(path, options, nullptr, nullptr);
     }
 
-    wf::IAsyncOperationWithProgress<wfc::IVectorView<winml_internal::LearningModelInferenceStrategy>, winml_internal::EnumerateInferenceStrategiesProgress>
+    wf::IAsyncOperationWithProgress<wfc::IVectorView<winml_tuning::LearningModelInferenceStrategy>, winml_tuning::EnumerateInferenceStrategiesProgress>
     LearningModelInferenceStrategyEnumerator::EnumerateInferenceStrategiesAsync(
         winrt::hstring path,
-        winml_internal::LearningModelEnumerateInferenceStrategiesOptions options) {
+        winml_tuning::LearningModelEnumerateInferenceStrategiesOptions options) {
       auto progress{co_await winrt::get_progress_token()};
       auto cancellation_token{co_await winrt::get_cancellation_token()};
 
       co_await winrt::resume_background();
 
-      auto update_progress = std::function<void(winml_internal::EnumerateInferenceStrategiesProgress)>(
-          [&](winml_internal::EnumerateInferenceStrategiesProgress strategies_progress) {
+      auto update_progress = std::function<void(winml_tuning::EnumerateInferenceStrategiesProgress)>(
+          [&](winml_tuning::EnumerateInferenceStrategiesProgress strategies_progress) {
             progress(strategies_progress);
           });
 

@@ -21,7 +21,7 @@ import "Microsoft.AI.MachineLearning.idl";
 #define ROOT_NS Microsoft
 #endif
 
-namespace ROOT_NS.AI.MachineLearning.Internal {
+namespace ROOT_NS.AI.MachineLearning.Tuning {
   enum LearningModelOptimizationMode
   {
       OptimizeForRuntimePerformance = 0,

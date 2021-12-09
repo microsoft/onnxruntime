@@ -28,9 +28,9 @@ BEGIN
         BLOCK "040904E4"
         BEGIN
             VALUE "CompanyName",      "Microsoft Corporation"
-            VALUE "FileDescription",  "Windows Machine Learning Runtime Internal"
+            VALUE "FileDescription",  "Windows Machine Learning Runtime Tuning"
             VALUE "FileVersion",      VER_STRING
-            VALUE "InternalName",     "Windows Machine Learning Runtime Internal"
+            VALUE "InternalName",     "Windows Machine Learning Runtime Tuning"
             VALUE "LegalCopyright",   "\251 Microsoft Corporation. All rights reserved."
             VALUE "OriginalFilename", BINARY_NAME
             VALUE "ProductName",      "Microsoft\256 Windows\256 Operating System"

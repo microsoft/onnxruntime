@@ -393,8 +393,8 @@ def generate_files(list, args):
 
     if includes_winml_internal:
         files_list.append('<file src=' + '"' + os.path.join(args.ort_build_path, args.build_config,
-                                                            'microsoft.ai.machinelearning.internal.winmd') +
-                          '" target="winmds\\Microsoft.AI.MachineLearning.Internal.winmd" />')
+                                                            'microsoft.ai.machinelearning.tuning.winmd') +
+                          '" target="winmds\\Microsoft.AI.MachineLearning.Tuning.winmd" />')
 
     is_ado_packaging_build = False
     # Process runtimes
@@ -442,17 +442,17 @@ def generate_files(list, args):
     if includes_winml_internal:
         # Process microsoft.ai.machinelearning import lib, dll, and pdb
         files_list.append('<file src=' + '"' +
-                          os.path.join(args.native_build_path, 'microsoft.ai.machinelearning.internal.lib') +
+                          os.path.join(args.native_build_path, 'microsoft.ai.machinelearning.tuning.lib') +
                           runtimes_target + args.target_architecture + '\\_native' +
-                          '\\Microsoft.AI.MachineLearning.Internal.lib" />')
+                          '\\Microsoft.AI.MachineLearning.Tuning.lib" />')
         files_list.append('<file src=' + '"' + os.path.join(args.native_build_path,
-                                                            'microsoft.ai.machinelearning.internal.dll') +
+                                                            'microsoft.ai.machinelearning.tuning.dll') +
                           runtimes_target + args.target_architecture + '\\_native' +
-                          '\\Microsoft.AI.MachineLearning.Internal.dll" />')
+                          '\\Microsoft.AI.MachineLearning.Tuning.dll" />')
         files_list.append('<file src=' + '"' + os.path.join(args.native_build_path,
-                                                            'microsoft.ai.machinelearning.internal.pdb') +
+                                                            'microsoft.ai.machinelearning.tuning.pdb') +
                           runtimes_target + args.target_architecture + '\\_native' +
-                          '\\Microsoft.AI.MachineLearning.Internal.pdb" />')   # Process execution providers which are built as shared libs
+                          '\\Microsoft.AI.MachineLearning.Tuning.pdb" />')   # Process execution providers which are built as shared libs
     if args.execution_provider == "tensorrt" and not is_ado_packaging_build:
         files_list.append('<file src=' + '"' + os.path.join(args.native_build_path,
                           nuget_dependencies['providers_shared_lib']) +

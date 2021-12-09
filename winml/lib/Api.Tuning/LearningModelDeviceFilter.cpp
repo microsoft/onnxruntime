@@ -1,14 +1,14 @@
-#include "lib/Api.Internal/pch/pch.h"
+#include "lib/Api.Tuning/pch/pch.h"
 #include "LearningModelDeviceFilter.h"
 
-namespace WINML_INTERNALP
+namespace WINML_TUNINGP
 {
     LearningModelDeviceFilter::LearningModelDeviceFilter()
     {
         IncludeAll();
     }
 
-    winml_internal::LearningModelDeviceFilter LearningModelDeviceFilter::IncludeAll()
+    winml_tuning::LearningModelDeviceFilter LearningModelDeviceFilter::IncludeAll()
     {
         Clear();
         device_kinds_.push_back(winml::LearningModelDeviceKind::Cpu);
@@ -16,7 +16,7 @@ namespace WINML_INTERNALP
         return *this;
     }
 
-    winml_internal::LearningModelDeviceFilter LearningModelDeviceFilter::Include(
+    winml_tuning::LearningModelDeviceFilter LearningModelDeviceFilter::Include(
         winml::LearningModelDeviceKind const& phase)
     {
         auto found_it = std::find(device_kinds_.begin(), device_kinds_.end(), phase);
@@ -27,7 +27,7 @@ namespace WINML_INTERNALP
         return *this;
     }
 
-    winml_internal::LearningModelDeviceFilter LearningModelDeviceFilter::Clear()
+    winml_tuning::LearningModelDeviceFilter LearningModelDeviceFilter::Clear()
     {
         device_kinds_.clear();
         return *this;

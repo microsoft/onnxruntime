@@ -1,13 +1,13 @@
-#include "lib/Api.Internal/pch/pch.h"
+#include "lib/Api.Tuning/pch/pch.h"
 #include "LearningModelInferenceStrategy.h"
 
-namespace WINML_INTERNALP
+namespace WINML_TUNINGP
 {
     LearningModelInferenceStrategy::LearningModelInferenceStrategy(
             winml::LearningModelDeviceKind kind,
-            winml_internal::LearningModelBindingStrategy input_strategy,
-            winml_internal::LearningModelBindingStrategy output_strategy,
-            winml_internal::LearningModelReadMode output_read_mode,
+            winml_tuning::LearningModelBindingStrategy input_strategy,
+            winml_tuning::LearningModelBindingStrategy output_strategy,
+            winml_tuning::LearningModelReadMode output_read_mode,
             uint32_t batch_size,
             float duration_in_milliseconds_mean,
             float duration_in_milliseconds_variance) :
@@ -26,12 +26,12 @@ namespace WINML_INTERNALP
         return kind_;
     }
 
-    winml_internal::LearningModelBindingStrategy LearningModelInferenceStrategy::InputStrategy()
+    winml_tuning::LearningModelBindingStrategy LearningModelInferenceStrategy::InputStrategy()
     {
         return input_strategy_;
     }
 
-    winml_internal::LearningModelBindingStrategy LearningModelInferenceStrategy::OutputStrategy()
+    winml_tuning::LearningModelBindingStrategy LearningModelInferenceStrategy::OutputStrategy()
     {
         return output_strategy_;
     }
@@ -54,7 +54,7 @@ namespace WINML_INTERNALP
       return batch_size_;
     }
 
-    winml_internal::LearningModelReadMode
+    winml_tuning::LearningModelReadMode
         LearningModelInferenceStrategy::OutputReadMode() {
       return output_read_mode_;
     }

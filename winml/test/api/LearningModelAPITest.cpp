@@ -20,7 +20,7 @@ using namespace wss;
 #ifndef BUILD_INBOX
 // experimental
 using namespace winml_experimental;
-using namespace winml_internal;
+using namespace winml_tuning;
 #endif
 
 
@@ -328,10 +328,16 @@ static void EnumerateStrategies() {
 #if !defined(BUILD_INBOX)
   std::wstring fullPath = FileHelpers::GetModulePath() + L"model.onnx";
 
-  auto options = winml_internal::LearningModelEnumerateInferenceStrategiesOptions();
-  wfc::IVectorView<winml_internal::LearningModelInferenceStrategy> strategies = nullptr;
+  auto options = winml_tuning::LearningModelEnumerateInferenceStrategiesOptions();
+
+  options.DeviceFilter().Clear().Include(winml::LearningModelDeviceKind::Cpu);
+  if (!SkipGpuTests()) {
+    options.DeviceFilter().Include(winml::LearningModelDeviceKind::DirectX)
+    options.DeviceFilter().Include(winml::LearningModelDeviceKind::DirectXMinPower);
+  }
+
   WINML_EXPECT_NO_THROW(
-      strategies = winml_internal::LearningModelInferenceStrategyEnumerator::EnumerateInferenceStrategies(
+      winml_tuning::LearningModelInferenceStrategyEnumerator::EnumerateInferenceStrategies(
                         fullPath.c_str(),
                         options));
 
@@ -339,19 +345,16 @@ static void EnumerateStrategies() {
   options.InputStrategyFilter().IncludeAll();
   options.OutputStrategyFilter().IncludeAll();
   options.OutputReadModeFilter().IncludeAll();
-  options.DeviceFilter().Clear().Include(winml::LearningModelDeviceKind::Cpu)
-                                .Include(winml::LearningModelDeviceKind::DirectX)
-                                .Include(winml::LearningModelDeviceKind::DirectXMinPower);
 
   auto enumerate_async =
-      winml_internal::LearningModelInferenceStrategyEnumerator::EnumerateInferenceStrategiesAsync(
+      winml_tuning::LearningModelInferenceStrategyEnumerator::EnumerateInferenceStrategiesAsync(
         fullPath.c_str(),
         options);
 
   printf("\n");
   uint64_t completed;
   uint64_t total;
-  enumerate_async.Progress([&](auto /*info*/, const winml_internal::EnumerateInferenceStrategiesProgress& progress) {
+  enumerate_async.Progress([&](auto /*info*/, const winml_tuning::EnumerateInferenceStrategiesProgress& progress) {
     completed = progress.EvaluationsCompleted;
     total = progress.TotalNumberOfEvaluations;
     printf("\r");
