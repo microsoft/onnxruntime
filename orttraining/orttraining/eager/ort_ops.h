@@ -9,10 +9,11 @@
 namespace torch_ort {
 namespace eager {
 
-OrtValue reshape_copy(
+OrtValue reshape_invoke(
   onnxruntime::ORTInvoker& invoker,
-  const OrtValue& input,
-  std::vector<int64_t> shape);
+  OrtValue& input,
+  std::vector<int64_t> shape,
+  bool in_place);
 
 OrtValue add(onnxruntime::ORTInvoker& invoker,
              const OrtValue& A,
