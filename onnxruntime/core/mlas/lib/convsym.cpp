@@ -247,10 +247,11 @@ MlasConvSymPackWSize(
     } else {
 
 #ifdef MLAS_TARGET_ARM64
-        // Shallow indirect conv runs slower.
         // TODO!! remove this for functional testing!
         // TODO!! is there a way to know whether this is called by tests?
-        if (KernelSize > 1 && InputChannels < 128) {
+        if (InputChannels < 128) {
+            // Shallow indirect conv runs slower.
+            // TODO!! for DOT arch, threshold should be 32 for better perf
             return 0;
         }
 #endif
