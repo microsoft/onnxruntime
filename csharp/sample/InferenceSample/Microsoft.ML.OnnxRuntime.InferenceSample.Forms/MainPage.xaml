@@ -7,7 +7,9 @@
         <Frame BackgroundColor="#2196F3" Padding="24" CornerRadius="0">
             <Label Text="Inference Sample" HorizontalTextAlignment="Center" TextColor="White" FontSize="36"/>
         </Frame>
-        <Label Text="Executing sample api" FontSize="Title" Padding="30,10,30,10"/>
+        <Label Text="ONNX Runtime" FontSize="Title" Padding="30,10,30,10"/>
+        <Button x:Name="Start" Text="Run tests" Clicked="Start_Clicked" FontSize="Large" />
+        <Label x:Name="OutputLabel" Text="Output" FontSize="Small"/>
     </StackLayout>
 
 </ContentPage>
