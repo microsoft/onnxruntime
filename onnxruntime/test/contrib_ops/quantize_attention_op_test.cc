@@ -173,10 +173,6 @@ static void RunQAttentionDNNL(
     weights_quant_params.zero_point = 1;
   }
 
-  if (is_unidirectional) {
-    return;
-  }
-
   RunQAttention<uint8_t, int8_t, EP::DNNL>(
       input_data, weights_data, bias_data, mask_index_data, output_data, input_quant_params, weights_quant_params,
       batch_size, sequence_length, hidden_size, number_of_heads, is_unidirectional, false, input_hidden_size);
@@ -264,6 +260,7 @@ static void RunQAttentionAll(
                     use_special_quantize_parameter, is_unidirectional, input_hidden_size);
 }
 
+//ONEDNN EP only supports 2D raw mask
 #ifdef USE_DNNL
 TEST(QAttentionTest, QAttentionDNNLBatch1) {
   int batch_size = 1;
@@ -389,6 +386,7 @@ TEST(QAttentionTest, QAttentionBatch2) {
                    batch_size, sequence_length, hidden_size, number_of_heads);
 }
 
+//ONEDNN EP only support 2D raw mask
 #ifdef USE_DNNL
 TEST(QAttentionTest, QAttentionDNNLBatch2) {
   int batch_size = 2;
@@ -454,6 +452,7 @@ TEST(QAttentionTest, QAttentionMaskPartialSequence) {
                    batch_size, sequence_length, hidden_size, number_of_heads);
 }
 
+//oneDNN EP only supports 2D raw mask
 #ifdef USE_DNNL
 TEST(QAttentionTest, QAttentionDNNLMaskPartialSequence) {
   int batch_size = 1;
@@ -474,7 +473,6 @@ TEST(QAttentionTest, QAttentionDNNLMaskPartialSequence) {
   std::vector<float> bias_data = {
       -0.5f, 0.6f, 1.2f, 2.1f, 0.5f, 0.7f, 0.2f, 1.2f, 0.5f, 0.4f, 0.3f, 1.2f};
 
-  // Test mask_index < sequence_length
   std::vector<int32_t> mask_index_data = {1L, 0L};
 
   std::vector<float> output_data = {

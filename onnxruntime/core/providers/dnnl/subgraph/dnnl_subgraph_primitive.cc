@@ -506,6 +506,8 @@ dnnl::memory DnnlSubgraphPrimitive::GetMemoryAndReshape(const DnnlTensor& tensor
     auto mem_from_dims = mem_from.get_desc().dims();
     auto mem_to_dims = mem_to.get_desc().dims();
     if (Product(mem_from_dims) != Product(mem_to_dims)) {
+      LOGS_DEFAULT(ERROR) << mem_from_dims;
+      LOGS_DEFAULT(ERROR) << mem_to_dims;
       throw std::invalid_argument("not a valid reshape, inconsistent dim product");
     }
     //keep the same data type from mem_from but reshape the dims with mem_desc

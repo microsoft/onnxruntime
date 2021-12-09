@@ -31,7 +31,9 @@ dnnl::memory DnnlQAttention::ComputeTotalScale(DnnlSubgraphPrimitive& sp, DnnlNo
     auto binary_src1_mem = sp.GetMemoryAndReshape(node.Input(WEIGHTS_SCALE), binary_pd.src1_desc(), eng);
     auto binary_dst_mem = dnnl::memory(binary_pd.dst_desc(), eng);
     auto binary_prim = dnnl::binary(binary_pd);
-    sp.AddPrimitive(binary_prim, {{DNNL_ARG_SRC_0, binary_src0_mem}, {DNNL_ARG_SRC_1, binary_src1_mem}, {DNNL_ARG_DST, binary_dst_mem}});
+    sp.AddPrimitive(binary_prim, {{DNNL_ARG_SRC_0, binary_src0_mem},
+                                  {DNNL_ARG_SRC_1, binary_src1_mem},
+                                  {DNNL_ARG_DST, binary_dst_mem}});
     return binary_dst_mem;
   } else if (input_scale_mem) {
     return sp.GetMemoryAndReshape(node.Input(INPUT_SCALE), input_scale_mem.get_desc().reshape({1}), eng);
@@ -42,17 +44,100 @@ dnnl::memory DnnlQAttention::ComputeTotalScale(DnnlSubgraphPrimitive& sp, DnnlNo
   }
 }
 
-//obtain the number of heads for qattention node
-dnnl::memory::dim DnnlQAttention::GetNumHeads(DnnlNode& node) {
-  auto attr = node.Attributes().find("num_heads");
-  if (attr != node.Attributes().end()) {
-    return attr->second().i();
-  } else {
-    //num_heads should always exists as an attribute in qattention
-    ORT_THROW("NUM_HEADS NOT EXIST");
-  }
-}
+/*
+input_tensor            weight_tensor
 
+         \                       /
+
+          \                     /
+
+           \                   /
+
+            \                 /
+
+               matmulinteger 
+        with input and weight zero point,
+        input and weight scale and bias
+                    |
+
+                    |
+
+                    | QKV
+
+                    |
+
+                  slice
+
+                 /  |  \
+
+                /   |   \
+
+               /    |    \
+
+              /     |     \
+
+            |Q      |K      |V
+
+            |       |       |
+
+         reshape  reshape  reshape
+
+            |       |       |
+
+         permute  permute  permute
+
+            |       |       |
+
+            |    transpose  |
+
+            \       |       |
+
+             \      |       |
+
+              \     |       |
+
+               \    |       |
+
+                  matmul    |
+
+                    |       |
+
+                    |       |
+
+ sqrt(head_dim)     |       |
+
+              \     |       |
+
+               \    |       |
+
+                \   |       |
+
+                   div      |
+
+                    |       | 
+                  
+                  (mask)    |
+                  
+                    |       /
+
+                 softmax   /
+
+                    |    /
+
+                  matmul
+
+                    |
+
+                  permute
+
+                    |
+
+                  reshape
+
+                    |
+
+                  output
+*/
 /*
 limitations
   scalar input zp
@@ -60,6 +145,7 @@ limitations
   scalar input scale
   scalar weight scale
   2D raw mask
+  no past and present input
 */
 void DnnlQAttention::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   auto eng = sp.GetEngine();
@@ -71,7 +157,7 @@ void DnnlQAttention::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) 
     bool has_input_zero_point = node.Input(INPUT_ZP).Exists();
     bool has_weights_zero_point = node.Input(WEIGHTS_ZP).Exists();
 
-    // (i-izp)*(w-wzp)
+    // (input-input_zero_point)*(weight-weight_zero_point)
     {
       //set input zp
       if (has_input_zero_point) {
@@ -134,7 +220,7 @@ void DnnlQAttention::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) 
       mem_map[DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_WEIGHTS] = zp_mem;
     }
 
-    //(i-izp)*(w-wzp)
+    //(input-input_zero_point)*(weight-weight_zero_point)
     sp.AddPrimitive(matmul_prim, mem_map);
   }
 
@@ -201,7 +287,10 @@ void DnnlQAttention::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) 
   auto mask_index_mem = dnnl::memory();  // mask_index will reside in this memory
 
   //prepare mask for calculating attention probs
-  //batch_size, max_sequence_length
+  //mask size has to be 2D batch_size, max_sequence_length
+  //if tensor has values 50,60,70,80 and the mask is 1,1,0,0
+  //mask will be converted to 0,0,-10000,-10000 (10000*x-10000)
+  //the resulted "masked" tensor will be 50,60,-9930,-9920 (softmax will then evalute large magnitude negative number to be 0)
   //need a reorder of data type from s32 to f32 to let mask to have the same data type as QK result
   if (has_mask_index) {
     auto mask_index_mem_desc = sp.GetMemory(node.Input(MASK_INDEX)).get_desc();
@@ -228,7 +317,9 @@ void DnnlQAttention::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) 
       }
       auto mask_index_md_unbroadcasted_f32 = dnnl::memory::desc(dims, dnnl::memory::data_type::f32, strides_vec);
       mask_index_mem_unbroadcasted_f32 = dnnl::memory(mask_index_md_unbroadcasted_f32, eng);
-      sp.AddPrimitive(dnnl::reorder(mask_index_mem_unbroadcasted, mask_index_mem_unbroadcasted_f32), {{DNNL_ARG_FROM, mask_index_mem_unbroadcasted}, {DNNL_ARG_TO, mask_index_mem_unbroadcasted_f32}});
+      sp.AddPrimitive(dnnl::reorder(mask_index_mem_unbroadcasted, mask_index_mem_unbroadcasted_f32),
+                                    {{DNNL_ARG_FROM, mask_index_mem_unbroadcasted},
+                                     {DNNL_ARG_TO, mask_index_mem_unbroadcasted_f32}});
     }
 
     //unsqueeze the mem for broadcasting
@@ -321,6 +412,19 @@ void DnnlQAttention::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) 
     sp.SetMemory(node.Output(OUTPUT), QAttention_dst_mem_correct_shape, true);
   }
 }
+
+
+//obtain the number of heads for qattention node
+dnnl::memory::dim DnnlQAttention::GetNumHeads(DnnlNode& node) {
+  auto attr = node.Attributes().find("num_heads");
+  if (attr != node.Attributes().end()) {
+    return attr->second().i();
+  } else {
+    //num_heads should always exists as an attribute in qattention
+    ORT_THROW("NUM_HEADS NOT EXIST");
+  }
+}
+
 
 }  // namespace ort_dnnl
 }  // namespace onnxruntime

@@ -48,6 +48,8 @@ class DnnlSubgraphPrimitive {
   //obtain a dnnl::memory with specified name, memory descriptor and engine, will perform extra reorder/reshape if necessary before returning
   dnnl::memory GetMemoryAndReshape(const DnnlTensor& tensor, dnnl::memory::desc mem_desc, dnnl::engine eng, bool transpose = false);
   //add dnnl primitive and memory map to subgraph primitive
+  //when you add primitive, you can optionally specify a vector of indexes to be printed in runtime for debug purpose
+  //eg, sp.AddPrimitve(prim,mem_map,{DNNL_ARG_SRC})
   void AddPrimitive(dnnl::primitive prim, std::unordered_map<int, dnnl::memory> mem_map, std::vector<int> items_to_print = {});
   //add a reshape (e.g. squeeze, unsqueeze) to subgraph primitive
   void AddReshape(dnnl::memory src, dnnl::memory dst);
