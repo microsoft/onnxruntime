@@ -1125,13 +1125,13 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
     }
   }
 
-  const int number_of_subgraphs = static_cast<int>(supported_nodes_vector.size());
+  const size_t number_of_subgraphs = supported_nodes_vector.size();
   if (number_of_trt_nodes == 0) {
-    LOGS_DEFAULT(WARNING) << "[TensorRT EP] No graph will run on TensorRT exeuction provider";
+    LOGS_DEFAULT(WARNING) << "[TensorRT EP] No graph will run on TensorRT execution provider";
   } else if (number_of_trt_nodes == number_of_ort_nodes) {
-    LOGS_DEFAULT(INFO) << "[TensorRT EP] Whole graph will run on TensorRT exeuction provider";
+    LOGS_DEFAULT(INFO) << "[TensorRT EP] Whole graph will run on TensorRT execution provider";
   } else {
-    LOGS_DEFAULT(INFO) << "[TensorRT EP] Graph is partitioned and number of subgraphs running on TensorRT exeuction provider is " << number_of_subgraphs;
+    LOGS_DEFAULT(INFO) << "[TensorRT EP] Graph is partitioned and number of subgraphs running on TensorRT execution provider is " << number_of_subgraphs;
   }
 
   return result;
