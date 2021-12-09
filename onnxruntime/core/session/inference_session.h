@@ -328,6 +328,12 @@ class InferenceSession {
                             const OrtValueCachePtr& cache);
 #endif
 
+  void TurnOnCapture();
+
+  void TurnOffCapture();
+
+  void Replay();
+
   /**
     * @return pair.first = OK; FAIL otherwise. pair.second is non-NULL when pair.first = OK.
     * @note lifetime of the returned pointer is valid as long as the Session object is live.
