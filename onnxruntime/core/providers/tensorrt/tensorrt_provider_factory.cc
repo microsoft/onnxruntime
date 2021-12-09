@@ -88,7 +88,11 @@ struct Tensorrt_Provider : Provider {
       trt_options.trt_int8_calibration_table_name = nullptr;
     } else {
       dest = new char[str_size + 1];
+#ifdef _MSC_VER
+      strncpy_s(dest, str_size + 1, internal_options.int8_calibration_table_name.c_str(), str_size);
+#else
       strncpy(dest, internal_options.int8_calibration_table_name.c_str(), str_size);
+#endif
       dest[str_size] = '\0';
       trt_options.trt_int8_calibration_table_name = (const char*)dest;
     }
@@ -104,7 +108,11 @@ struct Tensorrt_Provider : Provider {
       trt_options.trt_engine_cache_path = nullptr;
     } else {
       dest = new char[str_size + 1];
+#ifdef _MSC_VER
+      strncpy_s(dest, str_size + 1, internal_options.engine_cache_path.c_str(), str_size);
+#else
       strncpy(dest, internal_options.engine_cache_path.c_str(), str_size);
+#endif
       dest[str_size] = '\0';
       trt_options.trt_engine_cache_path = (const char*)dest;
     }
@@ -116,7 +124,11 @@ struct Tensorrt_Provider : Provider {
       trt_options.trt_engine_decryption_lib_path = nullptr;
     } else {
       dest = new char[str_size + 1];
+#ifdef _MSC_VER
+      strncpy_s(dest, str_size + 1, internal_options.engine_decryption_lib_path.c_str(), str_size);
+#else
       strncpy(dest, internal_options.engine_decryption_lib_path.c_str(), str_size);
+#endif
       dest[str_size] = '\0';
       trt_options.trt_engine_decryption_lib_path = (const char*)dest;
     }
