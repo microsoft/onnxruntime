@@ -296,7 +296,7 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
                              session_options_.execution_mode == ExecutionMode::ORT_SEQUENTIAL &&
                              to.affinity_vec_len == 0;
       to.allow_spinning = allow_intra_op_spinning;
-      to.dynamic_block_base_ = std::stoi(session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigDynamicBlockBase, "0"));
+      to.dynamic_block_base_ = std::stoi(session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigDynamicBlockBase, "2"));
       LOGS(*session_logger_, INFO) << "Dynamic block base set to " << to.dynamic_block_base_;
 
       // Set custom threading functions
