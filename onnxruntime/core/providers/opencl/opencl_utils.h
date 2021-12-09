@@ -3,6 +3,7 @@
 #include <CL/cl.hpp>
 
 #include <cstdio>
+#include <iomanip>
 #include <sstream>
 #include "core/framework/op_kernel.h"
 #include "core/framework/tensor.h"
@@ -59,6 +60,21 @@
 #define CL_BUFFER_FROM_TENSOR(TENSOR) (*const_cast<cl::Buffer*>(static_cast<const cl::Buffer*>((TENSOR).DataRaw())))
 #define CL_IMAGE2D_FROM_TENSOR(TENSOR) (*const_cast<cl::Image2D*>(static_cast<const cl::Image2D*>((TENSOR).DataRaw())))
 #endif
+
+#define VLOG_CL_NODE()                                          \
+  VLOGS_DEFAULT(0) << "[CL] Node: " << context->GetNodeName()   \
+                   << ", num inputs: " << context->InputCount() \
+                   << ", num outputs: " << context->OutputCount()
+#define VLOG_CL_BUFFER(desc, tensor_ptr)                                      \
+  VLOGS_DEFAULT(0) << "[CL]  " << std::setfill(' ') << std::setw(9) << (desc) \
+                   << " shape " << (tensor_ptr)->Shape()                      \
+                   << " " << (tensor_ptr)->DataRaw() << " --> cl::Buffer("    \
+                   << CL_BUFFER_FROM_TENSOR(*(tensor_ptr))() << ")"
+#define VLOG_CL_IMAGE2D(desc, tensor_ptr)                                     \
+  VLOGS_DEFAULT(0) << "[CL]  " << std::setfill(' ') << std::setw(9) << (desc) \
+                   << " shape " << (tensor_ptr)->Shape()                      \
+                   << " " << (tensor_ptr)->DataRaw() << " --> cl::Image2D("   \
+                   << CL_IMAGE2D_FROM_TENSOR(*(tensor_ptr))() << ")"
 
 namespace onnxruntime {
 namespace opencl {
