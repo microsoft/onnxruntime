@@ -758,7 +758,6 @@ void DnnlGraphTransformer::RemoveMatMulIntegerZP(DnnlSubgraph& subgraph) {
       continue;
     }
 
-    //auto matmulint_node = dnnl_node;
     //if B zero point exists
     if (!(dnnl_node->InputCount() >= 4 && dnnl_node->Input(3).Exists())) {
       continue;
@@ -766,7 +765,6 @@ void DnnlGraphTransformer::RemoveMatMulIntegerZP(DnnlSubgraph& subgraph) {
 
     auto b_zero_point = dnnl_node->Input(3);
     const ONNX_NAMESPACE::TensorProto* tensor_proto = nullptr;
-    //subgraph.GetInitializedTensor(b_zero_point.Name(), tensor_proto);
     if (!subgraph.GetInitializedTensor(b_zero_point.Name(), tensor_proto)) {
       continue;
     }
@@ -775,20 +773,6 @@ void DnnlGraphTransformer::RemoveMatMulIntegerZP(DnnlSubgraph& subgraph) {
       continue;
     }
 
-    //std::vector<uint8_t> unpacked_tensor;
-    //ORT_THROW_IF_ERROR(onnxruntime::utils::UnpackInitializerData(*tensor_proto, unpacked_tensor));
-
-    //if (unpacked_tensor.size() > 0) {
-    //  continue;
-    //}
-
-
-    //auto has_raw_data = tensor_proto->has_raw_data();
-    //if (!has_raw_data) {
-    //  continue;
-    //}
-
-    const auto data_type = b_zero_point.Type();
     const auto& dims = tensor_proto->dims();
     auto dim_size = tensor_proto->dims_size();
     int num_elements = 1;
@@ -796,7 +780,7 @@ void DnnlGraphTransformer::RemoveMatMulIntegerZP(DnnlSubgraph& subgraph) {
       num_elements *= int(dims[i]);
     }
 
-    //check if b_zp is all zeros
+    //check if b_zp is all zeros, assume data is s8 since only s8 weight is supported in onednn
     bool all_zero = true;
     std::vector<int8_t> unpacked_tensor;
     unpacked_tensor.resize(num_elements,1);
