@@ -9,13 +9,15 @@ namespace WINML_INTERNALP
             winml_internal::LearningModelBindingStrategy output_strategy,
             winml_internal::LearningModelReadMode output_read_mode,
             uint32_t batch_size,
-            float metric) :
+            float duration_in_milliseconds_mean,
+            float duration_in_milliseconds_variance) :
                 kind_(kind),
                 input_strategy_(input_strategy),
                 output_strategy_(output_strategy),
                 output_read_mode_(output_read_mode),
                 batch_size_(batch_size),
-                metric_(metric)
+                duration_in_milliseconds_mean_(duration_in_milliseconds_mean),
+                duration_in_milliseconds_variance_(duration_in_milliseconds_variance)
     {
     }
 
@@ -35,8 +37,18 @@ namespace WINML_INTERNALP
     }
 
     float LearningModelInferenceStrategy::Metric() {
-      return metric_;
+      // Currently there is only a single metric...
+      return DurationInMillisecondsMean();
     }
+
+    float LearningModelInferenceStrategy::DurationInMillisecondsMean() {
+      return duration_in_milliseconds_mean_;
+    }
+
+    float LearningModelInferenceStrategy::DurationInMillisecondsVariance() {
+      return duration_in_milliseconds_variance_;
+    }
+
 
     uint32_t LearningModelInferenceStrategy::BatchSize() {
       return batch_size_;

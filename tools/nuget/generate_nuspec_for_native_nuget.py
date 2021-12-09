@@ -273,8 +273,9 @@ def generate_files(list, args):
     is_dml_package = args.package_name == 'Microsoft.ML.OnnxRuntime.DirectML'
     is_windowsai_package = args.package_name == 'Microsoft.AI.MachineLearning'
 
-    includes_winml_internal = True
     includes_winml = is_windowsai_package
+    # This should always be False; only enabled manually for testing.
+    includes_winml_internal = False
     includes_directml = (is_dml_package or is_windowsai_package) and (
         args.target_architecture == 'x64' or args.target_architecture == 'x86')
 

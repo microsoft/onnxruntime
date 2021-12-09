@@ -335,76 +335,44 @@ static void EnumerateStrategies() {
                         fullPath.c_str(),
                         options));
 
+  options.NumberOfIterations(5);
   options.InputStrategyFilter().IncludeAll();
   options.OutputStrategyFilter().IncludeAll();
   options.OutputReadModeFilter().IncludeAll();
-  options.DeviceFilter().Clear().Include(winml::LearningModelDeviceKind::DirectX);
-  /*
-  options.BatchingStrategyFilter().BatchSizeStart(1);
-  options.BatchingStrategyFilter().BatchSizeStride(3);
-  options.BatchingStrategyFilter().BatchSizeTotal(100);*/
+  options.DeviceFilter().Clear().Include(winml::LearningModelDeviceKind::Cpu)
+                                .Include(winml::LearningModelDeviceKind::DirectX)
+                                .Include(winml::LearningModelDeviceKind::DirectXMinPower);
   
   fullPath = FileHelpers::GetModulePath() + L"batched_model.onnx";
-  auto async_strats =
+  auto enumerate_async =
       winml_internal::LearningModelInferenceStrategyEnumerator::EnumerateInferenceStrategiesAsync(
         fullPath.c_str(),
         options);
 
   printf("\n");
-  async_strats.Progress([](auto /*info*/, const winml_internal::EnumerateInferenceStrategiesProgress& progress) {
+  uint64_t completed;
+  uint64_t total;
+  enumerate_async.Progress([&](auto /*info*/, const winml_internal::EnumerateInferenceStrategiesProgress& progress) {
+    completed = progress.EvaluationsCompleted;
+    total = progress.TotalNumberOfEvaluations;
     printf("\r");
-    printf("%" PRId64 " evaluations completed out of %" PRId64, progress.EvaluationsCompleted, progress.TotalNumberOfEvaluations);
+    printf("%" PRId64 " evaluations completed out of %" PRId64, completed, total);
   });
 
-  strategies = async_strats.get();
-  async_strats.Cancel();
-
-  printf("\n");
-
-  const char* device[] = {
-      "Default",
-      "Cpu",
-      "DirectX",
-      "DirectXHighPerformance",
-      "DirectXMinPower"};
-
-  const char* bind_strategy[] = {
-    "CreateFromShape",
-    "CreateFromArray",
-    "CreateFromIterable",
-    "CreateFromShapeArrayAndDataArray",
-    "CreateFromBuffer",
-    "CreateFromD3D12Resource",
-    "CreateUnbound"
-  };
   
-  const char * read_mode[] = {
-    "GetAsVectorView",
-    "GetFromNativeBufferAccess",
-    "GetFromMemoryBufferReferenceAccess",
-    "GetAsD3D12Resource"
-  };
+  winrt::handle signal {::CreateEvent(nullptr, false, false, nullptr)};
+  bool done = false;
+  enumerate_async.Completed(
+    [&](const auto& /*sender*/, wf::AsyncStatus status) {
+      done = status == wf::AsyncStatus::Completed;
+      printf("\n");
+      printf("Done!\n");
+      SetEvent(signal.get());
+    });
 
-  int count = 3000;
-  for (auto strategy : strategies) {
-   printf("(Device=[%s], InputStrategy=[%s], OutputStrategy=[%s], ReadMode=[%s], BatchSize=[%d]) : %f\n",
-           device[static_cast<int>(strategy.DeviceKind())],
-           bind_strategy[static_cast<int>(strategy.InputStrategy())],
-           bind_strategy[static_cast<int>(strategy.OutputStrategy())],
-           read_mode[static_cast<int>(strategy.OutputReadMode())],
-           strategy.BatchSize(),
-           strategy.Metric());
-
-    //printf("(Device=[%s], BatchSize=[%d]) : %f\n",
-    //    device[static_cast<int>(strategy.DeviceKind())],
-    //    strategy.BatchSize(),
-    //    strategy.Metric());
-
-    if (count-- == 0) {
-      break;
-    }
-  }
-
+  WaitForSingleObject(signal.get(), INFINITE);
+  WINML_EXPECT_EQUAL(completed, total);
+  WINML_EXPECT_TRUE(done);
   #endif
 }
 

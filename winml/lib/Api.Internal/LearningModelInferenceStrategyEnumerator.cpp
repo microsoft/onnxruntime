@@ -416,13 +416,17 @@ namespace WINML_INTERNALP
         winml::LearningModelSession& session,
         const winml::LearningModelBinding& binding,
         float* metric) {
-      *metric = 0;
-      auto start = std::chrono::high_resolution_clock::now();
-      auto result = session.Evaluate(binding, L"");
-      auto end = std::chrono::high_resolution_clock::now();
-      std::chrono::duration<float, std::milli> duration_ms = end - start;
-      *metric = duration_ms.count();
-      return result;
+      try {
+          *metric = 0;
+          auto start = std::chrono::high_resolution_clock::now();
+          auto result = session.Evaluate(binding, L"");
+          auto end = std::chrono::high_resolution_clock::now();
+          std::chrono::duration<float, std::milli> duration_ms = end - start;
+          *metric = duration_ms.count();
+          return result;
+      } catch (...) {
+          return nullptr;
+      }
     }
 
     static winml::LearningModelSession MeasureSessionCreate(
@@ -512,6 +516,9 @@ namespace WINML_INTERNALP
 
         // Evaluate
         auto learning_model_evaluation_result = MeasureEvaluate(session, binding, evaluate_metric);
+        if (learning_model_evaluation_result == nullptr) {
+            return false;
+        }
 
         // Read
         for (const auto& pair : learning_model_evaluation_result.Outputs()) {
@@ -640,7 +647,7 @@ namespace WINML_INTERNALP
                 float bind_outputs_metric;
                 float evaluate_metric;
                 float fetch_results_metric;
-                MeasureEvaluateOne(
+                auto success = MeasureEvaluateOne(
                     learning_model_session,
                     winml_internal::LearningModelBindingStrategy::CreateFromShapeArrayAndDataArray,
                     winml_internal::LearningModelBindingStrategy::CreateFromShapeArrayAndDataArray,
@@ -650,11 +657,20 @@ namespace WINML_INTERNALP
                     &evaluate_metric, 
                     &fetch_results_metric);
 
+                if (success == false) {
+                  strategies_progress.EvaluationsCompleted += input_strategy_filter.Size() *
+                                                              options.OutputStrategyFilter().Size() *
+                                                              options.OutputReadModeFilter().Size() *
+                                                              options.NumberOfIterations();
+                  continue;
+                }
+
                 for (const auto& input_strategy : input_strategy_filter) {
                     for (const auto& output_strategy : options.OutputStrategyFilter()) {
                         for (const auto& output_read_mode : options.OutputReadModeFilter()) {
                             uint32_t count = 0;
-                            float total_metric = 0;
+                            float duration_in_milliseconds_sum = 0;
+                            float duration_in_milliseconds_squared_sum = 0;
                             for (uint32_t i = 0; i < options.NumberOfIterations(); i++) {
                                 // Measure evaluation
                                 auto succeeded = MeasureEvaluateOne(learning_model_session,
@@ -668,24 +684,27 @@ namespace WINML_INTERNALP
                                 if (succeeded) {
                                     count++;
                                     float batch_size_float = (batch_size == 0) ? 1.f : static_cast<float>(batch_size);
+                                    float duration_in_milliseconds = 0;
                                     if (include_model_load) {
-                                      total_metric += model_load_metric;
+                                      duration_in_milliseconds += model_load_metric;
                                     }
                                     if (include_evaluate) {
-                                      total_metric += (evaluate_metric / batch_size_float);
+                                      duration_in_milliseconds += (evaluate_metric / batch_size_float);
                                     }
                                     if (include_session_create) {
-                                      total_metric += session_create_metric;
+                                      duration_in_milliseconds += session_create_metric;
                                     }
                                     if (include_bind_inputs) {
-                                      total_metric += (bind_inputs_metric / batch_size_float);
+                                      duration_in_milliseconds += (bind_inputs_metric / batch_size_float);
                                     }
                                     if (include_bind_outputs) {
-                                      total_metric += (bind_outputs_metric / batch_size_float);
+                                      duration_in_milliseconds += (bind_outputs_metric / batch_size_float);
                                     }
                                     if (include_fetch_results) {
-                                      total_metric += (fetch_results_metric / batch_size_float);
+                                      duration_in_milliseconds += (fetch_results_metric / batch_size_float);
                                     }
+                                    duration_in_milliseconds_sum += duration_in_milliseconds;
+                                    duration_in_milliseconds_squared_sum += duration_in_milliseconds * duration_in_milliseconds;
                                 }
                             
                                 if (is_cancelled && is_cancelled()) {
@@ -700,9 +719,11 @@ namespace WINML_INTERNALP
                             }
 
                             if (count > 0) {
+                              float e_x = duration_in_milliseconds_sum / count;
+                              float e_x_2 = duration_in_milliseconds_squared_sum / count;
                               auto strategy = winrt::make<winml_internalp::LearningModelInferenceStrategy>(
                                   device, input_strategy, output_strategy, output_read_mode, batch_size,
-                                  total_metric / count);
+                                  e_x, e_x_2 - e_x * e_x);
                               strategies.push_back(std::move(strategy));
                             }
                         }

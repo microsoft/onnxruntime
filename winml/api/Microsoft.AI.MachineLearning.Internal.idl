@@ -128,6 +128,12 @@ namespace ROOT_NS.AI.MachineLearning.Internal {
     LearningModelDeviceFilter DeviceFilter { get; };
   }
 
+  interface ILearningModelInferenceStrategyDetails
+  {
+      Single DurationInMillisecondsMean { get; };
+      Single DurationInMillisecondsVariance { get; };
+  }
+
   //! \class LearningModelInferenceStrategy
   //! \brief 
   [marshaling_behavior(agile)]
