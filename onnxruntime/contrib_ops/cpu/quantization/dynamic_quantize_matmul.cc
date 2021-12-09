@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/common/safeint.h"
+#include "core/mlas/inc/mlas.h"
 #include "core/providers/cpu/math/element_wise_ops.h"
 #include "core/providers/cpu/math/matmul_helper.h"
 #include "core/providers/cpu/math/matmul_integer_base.h"
@@ -48,6 +49,7 @@ class MatMulIntegerToFloatBase : public MatMulIntegerBase {
                        const TensorShape& a_shape,
                        float a_scale,
                        uint8_t a_zp,
+                       bool a_is_signed,
                        const Tensor* b_tensor,
                        const Tensor* b_scale,
                        const Tensor* b_zp,
@@ -59,6 +61,7 @@ Status MatMulIntegerToFloatBase::ComputeCommon(OpKernelContext* ctx,
                                                const TensorShape& a_shape,
                                                float a_scale,
                                                uint8_t a_zp,
+                                               bool a_is_signed,
                                                const Tensor* b_tensor,
                                                const Tensor* b_scale_tensor,
                                                const Tensor* b_zp_tensor,
@@ -117,6 +120,7 @@ Status MatMulIntegerToFloatBase::ComputeCommon(OpKernelContext* ctx,
   gemm_shape.M = static_cast<size_t>(helper.M());
   gemm_shape.N = static_cast<size_t>(helper.N());
   gemm_shape.K = static_cast<size_t>(helper.K());
+  gemm_shape.AIsSigned = a_is_signed;
   gemm_shape.BIsSigned = b_tensor ? b_tensor->IsDataType<int8_t>() : b_is_signed_;
 
   const size_t num_gemms = helper.OutputOffsets().size();
@@ -222,6 +226,7 @@ Status DynamicQuantizeMatMul::Compute(OpKernelContext* ctx) const {
       a->Shape(),
       a_scale,
       a_zero_point,
+      false /*a_is_signed*/,
       b,
       is_b_scale_supported ? b_scale_tensor : nullptr,
       b_zp_tensor,
@@ -266,16 +271,17 @@ Status MatMulIntegerToFloat::Compute(OpKernelContext* ctx) const {
   if (a_zero_point_tensor != nullptr) {
     ORT_ENFORCE(IsScalarOr1ElementVector(a_zero_point_tensor),
                 "MatMulIntegerToFloat : input a zero point must be a scalar or 1D tensor of size 1. Per-Channel is not supported yet.");
-    a_zero_point = *a_zero_point_tensor->Data<uint8_t>();
+    a_zero_point = *(static_cast<const uint8_t*>(a_zero_point_tensor->DataRaw()));
   }
 
   const Tensor* b_zp_tensor = ctx->Input<Tensor>(IN_B_ZERO_POINT);
   ORT_RETURN_IF_ERROR(ComputeCommon(
       ctx,
-      a->Data<uint8_t>(),
+      static_cast<const uint8_t*>(a->DataRaw()),
       a->Shape(),
       is_a_scale_scalar ? *a_scale_tensor->template Data<float>() : 1.f,
       a_zero_point,
+      a->IsDataType<int8_t>(),
       b,
       is_b_scale_supported ? b_scale_tensor : nullptr,
       b_zp_tensor,
@@ -313,6 +319,20 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
         .TypeConstraint("T2", {DataTypeImpl::GetTensorType<uint8_t>(), DataTypeImpl::GetTensorType<int8_t>()})
         .TypeConstraint("T3", DataTypeImpl::GetTensorType<float>()),
     MatMulIntegerToFloat);
+
+#if defined(MLAS_TARGET_ARM_ANY)
+ONNX_OPERATOR_TYPED_KERNEL_EX(
+    MatMulIntegerToFloat,
+    kMSDomain,
+    1,
+    int8_t,
+    kCpuExecutionProvider,
+    KernelDefBuilder()
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<int8_t>())
+        .TypeConstraint("T2", DataTypeImpl::GetTensorType<int8_t>())
+        .TypeConstraint("T3", DataTypeImpl::GetTensorType<float>()),
+    MatMulIntegerToFloat);
+#endif
 
 }  // namespace contrib
 }  // namespace onnxruntime

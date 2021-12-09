@@ -95,19 +95,28 @@ class VariadicSelector : public BaseSelector {
 // DQ nodes for X, W and optionally B -> node -> Q
 class ConvSelector : public BaseSelector {
  public:
+  ConvSelector(bool int8_allowed = false) : int8_allowed_(int8_allowed) {}
+
   void UpdateBuilder(NodesToOptimizeIndicesBuilder&) const override;
 
  private:
   bool Check(const GraphViewer& graph_viewer, const Node& node,
              const std::vector<const Node*>& dq_nodes,
              const std::vector<const Node*>& q_nodes) const override;
+
+  bool int8_allowed_;
 };
 
 // 2 DQ nodes for input -> node -> optional Q if QLinearMatMul, MatMulIntegerToFloat if not
 class MatMulSelector : public BaseSelector {
+ public:
+  MatMulSelector(bool int8_allowed = false) : int8_allowed_(int8_allowed) {}
+
+ private:
   bool Check(const GraphViewer& graph_viewer, const Node& node,
              const std::vector<const Node*>& dq_nodes,
              const std::vector<const Node*>& q_nodes) const override;
+  bool int8_allowed_;
 };
 }  // namespace QDQ
 }  // namespace onnxruntime
