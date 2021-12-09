@@ -249,7 +249,6 @@ TEST(MatmulIntegerOpTest, MatMulInteger_int8_t_No_Zero_Point) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
-#if defined(MLAS_TARGET_ARM_ANY)
 TEST(MatmulIntegerOpTest, MatMulInteger_int8_t_ARM) {
   OpTester test("MatMulInteger", 10);
   test.AddInput<int8_t>("T1",
@@ -427,7 +426,6 @@ TEST(MatmulIntegerOpTest, MatMulInteger_int8_t_No_Zero_Point_ARM) {
 
   test.Run();
 }
-#endif
 
 TEST(MatmulIntegerOpTest, MatMulInteger_WithZero_ZeroPoint) {
   OpTester test("MatMulInteger", 10);
