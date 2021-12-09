@@ -188,6 +188,7 @@ void GptSubgraph::CreateInitialFeeds(
     const std::vector<const OrtValue*>& implicit_inputs,
     int num_beams,
     int pad_token_id,
+    gsl::span<int64_t>& next_positions,
     std::vector<OrtValue>& feeds) {
   ORT_ENFORCE(session_state_ != nullptr, "Setup must be called before CreateInitialFeeds");
 
@@ -233,7 +234,6 @@ void GptSubgraph::CreateInitialFeeds(
   auto mask_type = DataTypeImpl::GetType<float>();
   Tensor::InitOrtValue(mask_type, input_ids_shape, alloactor, attention_mask);
 
-  next_positions_.resize(batch_size * num_beams);
   // Set attention mask to be 0 for pad tokens, and 1 for all other tokens.
   // Set position id to be 0 for pad tokens, and cumulated sum of mask in a batch for other tokens
   float* mask_data = attention_mask.GetMutable<Tensor>()->MutableData<float>();
@@ -254,7 +254,7 @@ void GptSubgraph::CreateInitialFeeds(
       }
     }
     for (int k = 0; k < num_beams; k++) {
-      next_positions_[i * num_beams + k] = abs_position;
+      next_positions[i * num_beams + k] = abs_position;
     }
   }
 
@@ -289,21 +289,20 @@ void GptSubgraph::CreateInitialFeeds(
 }
 
 OrtValue GptSubgraph::ExpandInputs(const OrtValue& input, int num_beams) const {
+  // Input shape (batch_size, sequence_length)
+  // Output shape (batch_size * num_beams, sequence_length)
   if (num_beams == 1)
     return input;
 
-  // Given input of shape (batch_size, sequence_length), expand the shape to be (batch_size * num_beams, sequence_length)
   const TensorShape& input_shape = input.Get<Tensor>().Shape();
-  //ORT_ENFORCE(input_shape.NumDimensions() == 2 && input_shape[0] == parameters_->batch_size && input_shape[1] == parameters_->sequence_length);
-
   const int64_t& batch_size = input_shape[0];
   const int64_t& sequence_length = input_shape[1];
+
   int64_t dims[] = {batch_size * num_beams, sequence_length};
   TensorShape expanded_shape(&dims[0], 2);
 
-  MLDataType element_type = input.Get<Tensor>().DataType();
-
   OrtValue expanded;
+  MLDataType element_type = input.Get<Tensor>().DataType();
   Tensor::InitOrtValue(element_type, expanded_shape, allocator_, expanded);
 
   if (element_type == DataTypeImpl::GetType<int64_t>()) {
@@ -331,6 +330,7 @@ OrtValue GptSubgraph::ExpandInputs(const OrtValue& input, int num_beams) const {
   return expanded;
 }
 
+// TODO: support float16
 void GptSubgraph::PickPastState(const std::vector<OrtValue>& last_outputs,
                                 std::vector<OrtValue>& next_inputs,
                                 gsl::span<const int64_t>& beam_indices) {
@@ -340,13 +340,12 @@ void GptSubgraph::PickPastState(const std::vector<OrtValue>& last_outputs,
 
     // Create a tensor with same shape.
     OrtValue past;
-    auto past_type = DataTypeImpl::GetType<float>();  //TODO: present.Type()
+    auto past_type = DataTypeImpl::GetType<float>();
     Tensor::InitOrtValue(past_type, past_shape, allocator_, past);
 
     auto block_size_per_beam = past_shape[2] * past_shape[3] * past_shape[4];
     auto past_key_size = past_shape[1] * past_shape[2] * past_shape[3] * past_shape[4];
 
-    // TODO: support float16
     gsl::span<float> past_span = past.GetMutable<Tensor>()->MutableDataAsSpan<float>();
     gsl::span<const float> present_span = present.Get<Tensor>().DataAsSpan<float>();
     for (gsl::index j = 0; j < beam_indices.length(); j++) {
@@ -378,6 +377,7 @@ Status GptSubgraph::UpdateFeeds(
     const std::vector<OrtValue>& last_outputs,
     std::vector<OrtValue>& next_inputs,
     int current_length,
+    gsl::span<int64_t>& next_positions,
     gsl::span<const int64_t> beam_next_tokens,
     gsl::span<const int64_t> beam_indices,
     int num_beams) {
@@ -405,8 +405,8 @@ Status GptSubgraph::UpdateFeeds(
   Tensor::InitOrtValue(element_type, input_ids_shape, allocator_, position_ids);
   int64_t* position_data = position_ids.GetMutable<Tensor>()->MutableData<int64_t>();
   for (int i = 0; i < batch_beam_size; i++) {
-    position_data[i] = next_positions_[i];
-    next_positions_[i]++;
+    position_data[i] = next_positions[i];
+    next_positions[i]++;
   }
   next_inputs[1] = position_ids;
 

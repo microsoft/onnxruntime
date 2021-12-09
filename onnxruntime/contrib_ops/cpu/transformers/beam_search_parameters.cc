@@ -31,7 +31,7 @@ void BeamSearchParameters::ParseFromInputs(OpKernelContext* context) {
   sequence_length = static_cast<int>(dims[1]);
 
   auto* max_length_tensor = context->Input<Tensor>(1);
-  max_length = max_length_tensor ? static_cast<int>(*max_length_tensor->Data<int32_t>()) : 4096;
+  max_length = max_length_tensor ? static_cast<int>(*max_length_tensor->Data<int32_t>()) : kMaxSequenceLength;
   ORT_ENFORCE(max_length > sequence_length, "max_length (", max_length, ") shall be greater than input sequence length (", sequence_length, ")");
   ORT_ENFORCE(max_length <= kMaxSequenceLength, "max_length (", max_length, ") shall be no more than ", kMaxSequenceLength);
 
@@ -40,7 +40,7 @@ void BeamSearchParameters::ParseFromInputs(OpKernelContext* context) {
 
   auto* num_beams_tensor = context->Input<Tensor>(3);
   num_beams = num_beams_tensor ? static_cast<int>(*num_beams_tensor->Data<int32_t>()) : 1;
-  // TODO: shall we limit num_beams > 1. When num_beams==1, we can have another operator for greedy search.
+  // TODO: limit num_beams > 1 when we can have another operator for greedy search.
   ORT_ENFORCE(num_beams >= 1, "num_beams shall be a positive integer, got ", num_beams);
 
   auto* num_return_sequences_tensor = context->Input<Tensor>(4);

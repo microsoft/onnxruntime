@@ -444,7 +444,7 @@ def test_model(args, use_vocab_mask: bool = False, sentences: List[str] = None):
     return output
 
 
-def main(argv=None):
+def main(argv=None, sentences=None):
     args = parse_arguments(argv)
 
     if os.path.exists(args.output):
@@ -452,7 +452,7 @@ def main(argv=None):
     else:
         convert_model(args)
 
-    return test_model(args, use_vocab_mask=True)
+    return test_model(args, use_vocab_mask=True, sentences=sentences)
 
 
 if __name__ == '__main__':

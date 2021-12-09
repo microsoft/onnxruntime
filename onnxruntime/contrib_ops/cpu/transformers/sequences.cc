@@ -12,7 +12,7 @@ void Sequences::Init(AllocatorPtr allocator, const OrtValue& input_ids, int batc
   sequences[0] = buffer.subspan(0, sequences_size);
   sequences[1] = buffer.subspan(sequences_size);
 
-  // copying input_ids to sequences[0]
+  // Copy input_ids to sequences[0].
   gsl::span<const int64_t> input = input_ids.Get<Tensor>().DataAsSpan<int64_t>();
   gsl::span<int64_t> output = sequences[0];
   for (int i = 0; i < batch_beam_size; i++) {
@@ -60,13 +60,15 @@ void Sequences::AppendNextTokenToSequences(
     gsl::copy(source, target);
   }
 
-  // append next token to each beam
+  // Append next token to each beam.
   for (int i = 0; i < batch_beam_size_; i++) {
     output[i * max_length_ + current_length_] = beam_next_tokens[i];
   }
 
   ++current_length_;
-  current_sequences_buffer = 1 - current_sequences_buffer;  // rotate buffer for next round
+
+  // Rotate buffer for next round.
+  current_sequences_buffer = 1 - current_sequences_buffer;
 }
 
 }  // namespace transformers

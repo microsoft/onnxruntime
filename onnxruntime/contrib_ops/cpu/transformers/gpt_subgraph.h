@@ -47,12 +47,14 @@ struct GptSubgraph {
       const std::vector<const OrtValue*>& implicit_inputs,
       int num_beams,
       int pad_token_id,
+      gsl::span<int64_t>& next_positions,
       std::vector<OrtValue>& feeds);
 
   Status UpdateFeeds(
       const std::vector<OrtValue>& last_outputs,
       std::vector<OrtValue>& next_inputs,
       int current_length,
+      gsl::span<int64_t>& next_positions,
       gsl::span<const int64_t> beam_next_tokens,
       gsl::span<const int64_t> beam_indices,
       int num_beams);
@@ -68,9 +70,6 @@ struct GptSubgraph {
   void PickPastState(const std::vector<OrtValue>& last_outputs,
                      std::vector<OrtValue>& next_inputs,
                      gsl::span<const int64_t>& beam_indices);
-
-  // TODO: move it to make this class state less.
-  std::vector<int64_t> next_positions_;
 
   AllocatorPtr allocator_;
   const SessionState* session_state_;

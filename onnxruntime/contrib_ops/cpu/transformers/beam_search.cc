@@ -9,6 +9,7 @@
 #pragma warning(disable : 4996)
 #endif
 
+#include <assert.h>
 #include "core/providers/cpu/controlflow/utils.h"
 #include "core/providers/cpu/math/top_k.h"
 #include "core/framework/allocator.h"
@@ -54,31 +55,28 @@ namespace transformers {
 
 template <typename T>
 struct BeamSearchState {
-  gsl::span<T> beam_scores;  // shape (batch_size, num_beams)
+  gsl::span<T> beam_scores;           // shape (batch_size, num_beams)
+  gsl::span<T> next_token_logits;     // shape (batch_size * num_beams, vocab_size)
+  gsl::span<T> next_token_scores;     // shape (batch_size, num_beams * vocab_size)
+  gsl::span<int64_t> next_tokens;     // shape (batch_size, 2 * num_beams)
+  gsl::span<int64_t> next_indices;    // shape (batch_size, 2 * num_beams)
+  gsl::span<int64_t> next_positions;  // shape (batch_size, num_beams). Next position value for position_ids.
 
-  gsl::span<T> next_token_logits;  // shape (batch_size * num_beams, vocab_size)
-  gsl::span<T> next_token_scores;  // shape (batch_size, num_beams * vocab_size)
-
-  gsl::span<int64_t> next_tokens;   // shape (batch_size, 2 * num_beams)
-  gsl::span<int64_t> next_indices;  // shape (batch_size, 2 * num_beams)
-
-  gsl::span<T> scores;              // shape (max_length - sequence_length + 1, batch_size, num_beams * vocab_size)
-  gsl::span<T> remaining_scores;    // subspan of scores that is not used
+  gsl::span<T> scores;            // shape (max_length - sequence_length + 1, batch_size, num_beams * vocab_size)
+  gsl::span<T> remaining_scores;  // subspan that is avaiable for appending next token scores.
 
   Sequences sequences;
 
   void Init(AllocatorPtr allocator,
-            const OrtValue& input_ids,
             int batch_size,
             int num_beams,
             int vocab_size,
             int sequence_length,
             int max_length,
             bool output_scores) {
-
     size_t batch_beam_size = SafeInt<size_t>(batch_size) * num_beams;
     beam_scores = AllocateBuffer<T>(allocator, beam_scores_buffer_, batch_beam_size, true, static_cast<T>(0));
-    
+
     // Initialize score of first beam of each group with 0 and the rest with -1e9.
     // This ensures that the beams in the same group don't produce same tokens every time.
     for (int i = 0; i < batch_size; i++) {
@@ -95,21 +93,24 @@ struct BeamSearchState {
 
     next_indices = AllocateBuffer<int64_t>(allocator, next_indices_buffer_, SafeInt<size_t>(2) * batch_beam_size, true, static_cast<int64_t>(0));
 
+    next_positions = AllocateBuffer<int64_t>(allocator, next_positions_buffer_, batch_beam_size, true, static_cast<int64_t>(0));
+
     if (output_scores) {
       size_t elements = SafeInt<size_t>(max_length - sequence_length) * batch_size * num_beams * vocab_size;
       scores = AllocateBuffer<T>(allocator, scores_buffer_, elements);
       remaining_scores = scores;
     }
 
-    sequences.Init(allocator, input_ids, static_cast<int>(batch_beam_size), sequence_length, max_length);
+    // sequences will be initialized later since it has dependency on input_ids
   }
 
-private:
+ private:
   BufferUniquePtr beam_scores_buffer_;
   BufferUniquePtr next_token_logits_buffer_;
   BufferUniquePtr next_token_scores_buffer_;
   BufferUniquePtr next_tokens_buffer_;
   BufferUniquePtr next_indices_buffer_;
+  BufferUniquePtr next_positions_buffer_;
   BufferUniquePtr scores_buffer_;
 };
 
@@ -135,13 +136,14 @@ class BeamSearchImpl {
   Status CheckInputs(const OpKernelContextInternal& context);
 
   // Prepare the inputs for first inference of subgraph
-  void CreateInitialFeeds(std::vector<OrtValue>& feeds);
+  void CreateInitialFeeds(gsl::span<int64_t>& next_positions, std::vector<OrtValue>& feeds);
 
   // Update the input for next iteration.
   Status UpdateFeeds(
       const std::vector<OrtValue>& last_outputs,
       std::vector<OrtValue>& next_inputs,
       int current_length,
+      gsl::span<int64_t>& next_positions,
       gsl::span<const int64_t> beam_next_tokens,
       gsl::span<const int64_t> beam_indices);
 
@@ -152,7 +154,7 @@ class BeamSearchImpl {
                            BeamSearchState<T>& beam_state);
 
   // Calculate scores from logits, then apply filtering and select next token for each beam.
-  Status ProcessLogits(const OrtValue& logits,
+  Status ProcessLogits(const OrtValue& logits,  // logits output of subgraph
                        BeamSearchState<T>& beam_state,
                        AllocatorPtr& allocator);
 
@@ -180,10 +182,7 @@ class BeamSearchImpl {
 
 template <typename T>
 void BeamSearch<T>::Init(const OpKernelInfo& info) {
-  // Make sure the attribute was present even though we don't need it here.
-  // The GraphProto is loaded as a Graph instance by main Graph::Resolve,
-  // and a SessionState instance for executing the subgraph is created by InferenceSession.
-  // This is available via Info().GetSubgraphSessionState("attribute_name") when Compute is called.
+  // Make sure the body attribute was present even though we don't need it here.
   ONNX_NAMESPACE::GraphProto proto;
   ORT_ENFORCE(info.GetAttr<ONNX_NAMESPACE::GraphProto>("body", &proto).IsOK());
   ORT_IGNORE_RETURN_VALUE(proto);
@@ -226,7 +225,7 @@ Status BeamSearch<T>::Compute(OpKernelContext* ctx) const {
 
   concurrency::ThreadPool* thread_pool = ctx->GetOperatorThreadPool();
 
-  BeamSearchParameters parameters = parameters_;  // make a copy
+  BeamSearchParameters parameters = parameters_;  // make a copy since we will update the parameters based on inputs later
 
   BeamSearchImpl<T> impl{*ctx_internal, *session_state, *gpt_subgraph_, thread_pool, stream_, parameters};
 
@@ -335,32 +334,31 @@ Status BeamSearchImpl<T>::Initialize() {
 }
 
 template <typename T>
-void BeamSearchImpl<T>::CreateInitialFeeds(std::vector<OrtValue>& feeds) {
+void BeamSearchImpl<T>::CreateInitialFeeds(gsl::span<int64_t>& next_positions, std::vector<OrtValue>& feeds) {
   const OrtValue* input_ids_value = context_.GetInputOrtValue(0);
   const Tensor& input_ids = input_ids_value->Get<Tensor>();
-  gpt_subgraph_.CreateInitialFeeds(input_ids, implicit_inputs_, parameters_->num_beams, parameters_->pad_token_id, feeds);
+  gpt_subgraph_.CreateInitialFeeds(input_ids, implicit_inputs_, parameters_->num_beams, parameters_->pad_token_id, next_positions, feeds);
 }
 
 template <typename T>
 Status BeamSearchImpl<T>::ProcessLogits(
-    const OrtValue& logits,  // logits output of subgraph
+    const OrtValue& logits,
     BeamSearchState<T>& beam_state,
     AllocatorPtr& allocator) {
-  const int64_t batch_beam_size = static_cast<int64_t>(parameters_->batch_size * parameters_->num_beams);
+  const int64_t batch_beam_size = static_cast<int64_t>(parameters_->BatchBeamSize());
   const int& vocab_size = parameters_->vocab_size;
 
   const T* logits_data = logits.Get<Tensor>().Data<T>();
 
+  // Logits has shape (batch_size * num_beams, input_length, vocab_size),
+  // where input_length equals to parameters_->sequence_length for first subgraph call, and 1 for the remaining calls.
   const TensorShape& logits_shape = logits.Get<Tensor>().Shape();
   ORT_ENFORCE(logits_shape.NumDimensions() == 3);
-
-  // The sequence length of input_ids for the logits.
-  // It equals to parameters_->sequence_length for first subgraph call, and 1 for the remaining calls.
   auto input_length = logits_shape[1];
 
-  // Get logits for the last token, where logits has shape (batch_size * num_beams, input_length, vocab_size)
-  //    next_token_logits = logits[:, -1, :], where its shape is (batch_size * num_beams, vocab_size)
-  // When input_length == 1, use logits directly to avoid copy logits to next_token_logits.
+  // Get logits for the last token:
+  //    next_token_logits = logits[:, -1, :], and the result shape is (batch_size * num_beams, vocab_size)
+  // When input_length == 1, use logits directly in SoftmaxCPU below so it only need for input_length > 1.
   gsl::span<T>& next_token_logits = beam_state.next_token_logits;
   if (input_length > 1) {
     const T* current_logits = logits_data + (input_length - 1) * vocab_size;
@@ -400,7 +398,8 @@ Status BeamSearchImpl<T>::ProcessLogits(
   DumpTensor("next_token_scores after logits processor", next_token_scores.data(), parameters_->batch_size, parameters_->num_beams, vocab_size);
 #endif
 
-  // next_token_scores = next_token_scores + beam_scores[:, None].expand_as(next_token_scores)
+  // Add beam score to next token scores. Corresponding python code is like:
+  //    next_token_scores = next_token_scores + beam_scores[:, None].expand_as(next_token_scores)
   // TODO: use thread pool to parrellel
   int offset = 0;
   int batch_beam_index = 0;
@@ -490,7 +489,9 @@ Status BeamSearchImpl<T>::GenerateNextToken(
   ORT_RETURN_IF_ERROR(ProcessLogits(logits, beam_state, allocator_));
 
   gsl::span<T>& beam_scores = beam_scorer_->GetNextScores();
-  // TODO: may not need clone beam_scores.
+  // It is optional to clone beam_scores. Change it to use same buffer also works:
+  //    beam_state.beam_scores = beam_scores
+  // Here we make a copy to reduce the coupling with little cost (the buffer size is small).
   gsl::copy(beam_scores, beam_state.beam_scores);
 
   beam_next_tokens = beam_scorer_->GetNextTokens();
@@ -515,9 +516,10 @@ Status BeamSearchImpl<T>::UpdateFeeds(
     const std::vector<OrtValue>& last_outputs,
     std::vector<OrtValue>& next_inputs,
     int current_length,
+    gsl::span<int64_t>& next_positions,
     gsl::span<const int64_t> beam_next_tokens,
     gsl::span<const int64_t> beam_indices) {
-  return gpt_subgraph_.UpdateFeeds(last_outputs, next_inputs, current_length,
+  return gpt_subgraph_.UpdateFeeds(last_outputs, next_inputs, current_length, next_positions,
                                    beam_next_tokens, beam_indices, parameters_->num_beams);
 }
 
@@ -545,12 +547,19 @@ Status BeamSearchImpl<T>::Execute(const FeedsFetchesManager& ffm) {
   std::vector<OrtValue> feeds;
   std::vector<OrtValue> fetches;
 
-  CreateInitialFeeds(feeds);
-
+  // Initialize resources
   AllocatorPtr temp_space_allocator;
   ORT_RETURN_IF_ERROR(context_.GetTempSpaceAllocator(&temp_space_allocator));
 
-  // Initialize resources
+  BeamSearchState<T> beam_state;
+  beam_state.Init(temp_space_allocator,
+                  parameters_->batch_size,
+                  parameters_->num_beams,
+                  parameters_->vocab_size,
+                  parameters_->sequence_length,
+                  parameters_->max_length,
+                  parameters_->output_scores);
+
   beam_scorer_ = std::make_unique<BeamSearchScorer<T>>(parameters_->batch_size,
                                                        parameters_->num_beams,
                                                        parameters_->max_length,
@@ -559,24 +568,21 @@ Status BeamSearchImpl<T>::Execute(const FeedsFetchesManager& ffm) {
                                                        parameters_->num_return_sequences,
                                                        parameters_->pad_token_id,
                                                        parameters_->eos_token_id);
-  beam_scorer_->Initialize(allocator_, parameters_->sequence_length); // TODO: use temp_space_allocator
+  beam_scorer_->Initialize(allocator_, parameters_->sequence_length);  // TODO: use temp_space_allocator
 
+  CreateInitialFeeds(beam_state.next_positions, feeds);
   const OrtValue& input_ids = feeds[0];
+  beam_state.sequences.Init(temp_space_allocator,
+                            input_ids,
+                            parameters_->BatchBeamSize(),
+                            parameters_->sequence_length,
+                            parameters_->max_length);
+
 #ifdef DEBUG_BEAM_SEARCH
   DumpOrtValue("input_ids", input_ids);
   DumpOrtValue("position_ids", feeds[1]);
   DumpOrtValue("attention_mask", feeds[2]);
 #endif
-
-  BeamSearchState<T> beam_state;
-  beam_state.Init(temp_space_allocator,
-                  input_ids,
-                  parameters_->batch_size,
-                  parameters_->num_beams,
-                  parameters_->vocab_size,
-                  parameters_->sequence_length,
-                  parameters_->max_length,
-                  parameters_->output_scores);
 
   int current_length = parameters_->sequence_length;
   while (current_length < parameters_->max_length) {
@@ -594,21 +600,22 @@ Status BeamSearchImpl<T>::Execute(const FeedsFetchesManager& ffm) {
     gsl::span<int64_t> beam_indices;
     ORT_RETURN_IF_ERROR(GenerateNextToken(logits, beam_next_tokens, beam_indices, beam_state));
 
+    // When all batches are finished, stop earlier to avoid wasting computation.
+    if (beam_scorer_->IsDone()) {
+      break;
+    }
+
     // Increase sequence length after a new token is generated.
     ++current_length;
 
     // Prepare inputs for next round of subgraph call.
     if (current_length < parameters_->max_length) {
       ORT_RETURN_IF_ERROR(UpdateFeeds(fetches, feeds, current_length,
+                                      beam_state.next_positions,
                                       beam_next_tokens.as_span<const int64_t>(),
                                       beam_indices.as_span<const int64_t>()));
     }
     fetches.clear();
-
-    // When all batches are finished, stop earlier (make sure)
-    if (beam_scorer_->IsDone()) {
-      break;
-    }
 
 #ifdef DEBUG_BEAM_SEARCH
     if (current_length - parameters_->sequence_length == 3) {  // only dump a few steps.
@@ -627,13 +634,8 @@ Status BeamSearchImpl<T>::Execute(const FeedsFetchesManager& ffm) {
   if (output_scores != nullptr) {
     gsl::span<T> target = output_scores->MutableDataAsSpan<T>();
     gsl::span<const T> source = gsl::span<const T>(beam_state.scores.data(), beam_state.scores.size());
+    assert(target.length() == source.length());
     gsl::copy(source, target);
-
-    // Fill zeros for the remaining when beam search stopped early
-    if (target.length() > source.length()) {
-      gsl::span<T> remaining = target.subspan(source.length());
-      memset(remaining.data(), 0, remaining.size_bytes());
-    }
   }
 
   return status;
