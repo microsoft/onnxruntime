@@ -1726,7 +1726,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
 
       // Set input shapes and assign input buffers
       std::vector<IAllocatorUniquePtr<void>> scratch_buffers;
-      for (int i = 0, end = static_cast<int>(input_binding_names.size()); i < end; ++i) {
+      for (size_t i = 0, end = input_binding_names.size(); i < end; ++i) {
         const std::string& input_name = input_binding_names[i];
         int binding_index = trt_engine->getBindingIndex(input_name.c_str());
         if (binding_index == -1) {
@@ -1863,7 +1863,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
       // Set output shapes and assign output buffers
       std::vector<int> output_dim_sizes(num_outputs, 1);
       std::vector<OrtValue*> output_tensor(num_outputs, nullptr);
-      for (int i = 0, end = static_cast<int>(output_binding_names.size()); i < end; ++i) {
+      for (size_t i = 0, end = output_binding_names.size(); i < end; ++i) {
         // Set dynamic shapes
         const std::string& output_name = output_binding_names[i];
         int binding_index = trt_engine->getBindingIndex(output_name.c_str());
@@ -1999,7 +1999,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
       }
 
       // Cast INT64 input to INT32 because TensorRT doesn't fully support INT64
-      for (int i = 0, end = static_cast<int>(output_binding_names.size()); i < end; ++i) {
+      for (size_t i = 0, end = output_binding_names.size(); i < end; ++i) {
         const std::string& output_name = output_binding_names[i];
         size_t binding_index = trt_engine->getBindingIndex(output_name.c_str());
         size_t output_type = 0;
