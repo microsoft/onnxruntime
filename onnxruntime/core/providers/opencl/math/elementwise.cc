@@ -34,18 +34,13 @@ namespace opencl {
     };                                                                                  \
                                                                                         \
     Status Compute(OpKernelContext* context) const override {                           \
-      VLOGS_DEFAULT(0) << "[CL] Node: " << context->GetNodeName()                       \
-                       << ", num inputs: " << context->InputCount()                     \
-                       << ", num outputs: " << context->OutputCount() << std::endl;     \
+      VLOG_CL_NODE();                                                                   \
       const auto* a = context->Input<Tensor>(0);                                        \
       const auto* b = context->Input<Tensor>(1);                                        \
       const auto* c = context->Output(0, a->Shape());                                   \
-      VLOGS_DEFAULT(0) << "[CL]  Input[0] shape " << a->Shape() << " " << a->DataRaw()  \
-                       << "--> cl::Buffer(" << CL_BUFFER_FROM_TENSOR(*a)() << ")";      \
-      VLOGS_DEFAULT(0) << "[CL]  Input[1] shape " << b->Shape() << " " << b->DataRaw()  \
-                       << "--> cl::Buffer(" << CL_BUFFER_FROM_TENSOR(*b)() << ")";      \
-      VLOGS_DEFAULT(0) << "[CL]  Output[0] shape " << c->Shape() << " " << c->DataRaw() \
-                       << "--> cl::Buffer(" << CL_BUFFER_FROM_TENSOR(*c)() << ")";      \
+      VLOG_CL_BUFFER("Input[0]", a);                                                    \
+      VLOG_CL_BUFFER("Input[1]", b);                                                    \
+      VLOG_CL_BUFFER("Output[0]", c);                                                   \
                                                                                         \
       size_t n = a->Shape().Size();                                                     \
                                                                                         \

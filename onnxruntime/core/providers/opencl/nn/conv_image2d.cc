@@ -23,9 +23,7 @@ class Conv : public OpenCLKernel {
   };
 
   Status Compute(OpKernelContext* context) const override {
-    VLOGS_DEFAULT(0) << "[CL] Node: " << context->GetNodeName()
-                     << ", num inputs: " << context->InputCount()
-                     << ", num outputs: " << context->OutputCount();
+    VLOG_CL_NODE();
     const Tensor* X = context->Input<Tensor>(0);
     const Tensor* W = context->Input<Tensor>(1);
     const Tensor* B = context->InputCount() >= 2 ? context->Input<Tensor>(2) : nullptr;
@@ -65,12 +63,12 @@ class Conv : public OpenCLKernel {
     Y_shape.insert(Y_shape.end(), Y_spatial_shape.begin(), Y_spatial_shape.end());
     Tensor* Y = context->Output(0, Y_shape);
 
-    VLOGS_DEFAULT(0) << "[CL]  Input X shape " << X->Shape() << " " << X->DataRaw() << " --> cl::Image(" << CL_IMAGE2D_FROM_TENSOR(*X)() << ")";
-    VLOGS_DEFAULT(0) << "[CL]  Input W shape " << W->Shape() << " " << W->DataRaw() << " --> cl::Image(" << CL_IMAGE2D_FROM_TENSOR(*W)() << ")";
+    VLOG_CL_IMAGE2D("Input X", X);
+    VLOG_CL_IMAGE2D("Input W", W);
     if (B != nullptr) {
-      VLOGS_DEFAULT(0) << "[CL]  Input B shape " << B->Shape() << " " << B->DataRaw() << " --> cl::Image(" << CL_IMAGE2D_FROM_TENSOR(*B)() << ")";
+      VLOG_CL_IMAGE2D("Input B", B);
     }
-    VLOGS_DEFAULT(0) << "[CL] Output Y shape " << Y->Shape() << " " << Y->DataRaw() << " --> cl::Image(" << CL_IMAGE2D_FROM_TENSOR(*Y)() << ")";
+    VLOG_CL_IMAGE2D("Output Y", B);
 
     if (rank == 2) {
       if (ci_per_group == 1 && co_per_group == 1) {
