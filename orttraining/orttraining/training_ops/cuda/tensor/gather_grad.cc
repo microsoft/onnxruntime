@@ -26,7 +26,10 @@ ONNX_OPERATOR_KERNEL_EX(
     1,
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
+        // Input 0 is shape which is CPU memory consumed by tihs kernel
         .InputMemoryType(OrtMemTypeCPUInput, 0)
+        // Inputs 3, 5 and 6 are computed the GatherInternal node and are accessible on the CPU
+        // since they are marked as CUDA pinned memory to avoid asynchronous memcpy.
         .InputMemoryType(OrtMemTypeCPU, 3)
         .InputMemoryType(OrtMemTypeCPU, 5)
         .InputMemoryType(OrtMemTypeCPU, 6)
