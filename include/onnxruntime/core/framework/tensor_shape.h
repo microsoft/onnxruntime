@@ -8,6 +8,7 @@
 #include <string>
 #include <cstring>
 #include <gsl/gsl>
+#include <absl/container/inlined_vector.h>
 #include "onnxruntime_config.h"
 
 namespace onnxruntime {
@@ -17,6 +18,11 @@ namespace onnxruntime {
 #pragma GCC diagnostic ignored "-Wnull-dereference"
 #endif
 #endif
+
+constexpr size_t kTensorShapeSmallBufferElementsSize = 5;
+
+using TensorShapeVector = absl::InlinedVector<int64_t, kTensorShapeSmallBufferElementsSize>;
+
 class TensorShape {
   // We use negative numbers for unknown symbolic dimension. Each negative
   // number represents a unique symbolic dimension.
@@ -31,6 +37,7 @@ class TensorShape {
 
   TensorShape(gsl::span<const int64_t> dims);
   TensorShape(const std::vector<int64_t>& dims) : TensorShape(gsl::make_span(dims)) {}
+  TensorShape(const TensorShapeVector& dims) : TensorShape(gsl::make_span(dims)) {}
   TensorShape(const std::initializer_list<int64_t>& dims) : TensorShape(gsl::make_span(dims.begin(), dims.end())) {}
   TensorShape(const int64_t* dimension_sizes, size_t dimension_count) : TensorShape(gsl::span<const int64_t>(dimension_sizes, dimension_count)) {}
   TensorShape(const std::vector<int64_t>& dims, size_t start, size_t end) : TensorShape(gsl::span<const int64_t>(&dims[start], end - start)) {}
@@ -73,7 +80,19 @@ class TensorShape {
      Return underlying vector representation.
   */
   gsl::span<const int64_t> GetDims() const { return values_; }
-  std::vector<int64_t> GetDimsAsVector() const { return std::vector<int64_t>(values_.begin(), values_.end()); }
+  std::vector<int64_t> GetDimsAsVector() const { 
+    std::vector<int64_t> result;
+    result.reserve(values_.size());
+    result.assign(values_.cbegin(), values_.cend());
+    return result;
+  }
+
+  TensorShapeVector AsShapeVector() const {
+    TensorShapeVector result;
+    result.reserve(values_.size());
+    result.assign(values_.cbegin(), values_.cend());
+    return result;
+  }
 
   /**
    * Return the total number of elements. Returns 1 for an empty (rank 0) TensorShape.
@@ -135,7 +154,7 @@ class TensorShape {
   void Allocate(size_t size);
 
   gsl::span<int64_t> values_;
-  int64_t small_buffer_[5];
+  int64_t small_buffer_[kTensorShapeSmallBufferElementsSize];
   std::unique_ptr<int64_t[]> allocated_buffer_;
 
   friend struct ProviderHostImpl; // So that the shared provider interface can access Allocate

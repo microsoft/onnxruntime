@@ -9,6 +9,7 @@
 #include "core/providers/shared/common.h"
 
 #include "core/framework/random_generator.h"
+#include "core/framework/inline_containers.h"
 #include "core/providers/cpu/controlflow/if.h"
 #include "core/providers/cpu/controlflow/loop.h"
 #include "core/providers/cpu/controlflow/scan.h"
@@ -461,25 +462,25 @@ bool TileOp::IsTileMemcpy(const TensorShape& input_shape, const int64_t* repeats
   return g_host_cpu.TileOp__IsTileMemcpy(input_shape, repeats, rank, is_batched_memcpy, num_of_elements_per_batch, num_of_copies_per_batch, num_of_batch_copies);
 }
 
-Status SliceBase::PrepareForCompute(const std::vector<int64_t>& raw_starts,
-                                    const std::vector<int64_t>& raw_ends,
-                                    const std::vector<int64_t>& raw_axes,
+Status SliceBase::PrepareForCompute(const gsl::span<const int64_t>& raw_starts,
+                                    const gsl::span<const int64_t>& raw_ends,
+                                    const gsl::span<const int64_t>& raw_axes,
                                     SliceOp::PrepareForComputeMetadata& compute_metadata) { return g_host_cpu.SliceBase__PrepareForCompute(raw_starts, raw_ends, raw_axes, reinterpret_cast<SliceOp__PrepareForComputeMetadata&>(compute_metadata)); }
 
-Status SliceBase::PrepareForCompute(const std::vector<int64_t>& raw_starts,
-                                    const std::vector<int64_t>& raw_ends,
-                                    const std::vector<int64_t>& raw_axes,
-                                    const std::vector<int64_t>& raw_steps,
+Status SliceBase::PrepareForCompute(const gsl::span<const int64_t>& raw_starts,
+                                    const gsl::span<const int64_t>& raw_ends,
+                                    const gsl::span<const int64_t>& raw_axes,
+                                    const gsl::span<const int64_t>& raw_steps,
                                     SliceOp::PrepareForComputeMetadata& compute_metadata) { return g_host_cpu.SliceBase__PrepareForCompute(raw_starts, raw_ends, raw_axes, raw_steps, reinterpret_cast<SliceOp__PrepareForComputeMetadata&>(compute_metadata)); }
 
 Status SliceBase::FillVectorsFromInput(const Tensor& start_tensor,
                                        const Tensor& ends_tensor,
                                        const Tensor* axes_tensor,
                                        const Tensor* steps_tensor,
-                                       std::vector<int64_t>& input_starts,
-                                       std::vector<int64_t>& input_ends,
-                                       std::vector<int64_t>& input_axes,
-                                       std::vector<int64_t>& input_steps) { return g_host_cpu.SliceBase__FillVectorsFromInput(start_tensor, ends_tensor, axes_tensor, steps_tensor, input_starts, input_ends, input_axes, input_steps); }
+                                       TensorShapeVector& input_starts,
+                                       TensorShapeVector& input_ends,
+                                       TensorShapeVector& input_axes,
+                                       TensorShapeVector& input_steps) { return g_host_cpu.SliceBase__FillVectorsFromInput(start_tensor, ends_tensor, axes_tensor, steps_tensor, input_starts, input_ends, input_axes, input_steps); }
 
 Status SplitBase::PrepareForCompute(const TensorShape& input_shape, int num_outputs, int64_t& axis, int& before_dims,
                                     int& after_dims_including_split_axis, int& after_dims_excluding_split,
