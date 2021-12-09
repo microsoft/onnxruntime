@@ -342,8 +342,7 @@ static void EnumerateStrategies() {
   options.DeviceFilter().Clear().Include(winml::LearningModelDeviceKind::Cpu)
                                 .Include(winml::LearningModelDeviceKind::DirectX)
                                 .Include(winml::LearningModelDeviceKind::DirectXMinPower);
-  
-  fullPath = FileHelpers::GetModulePath() + L"batched_model.onnx";
+
   auto enumerate_async =
       winml_internal::LearningModelInferenceStrategyEnumerator::EnumerateInferenceStrategiesAsync(
         fullPath.c_str(),
