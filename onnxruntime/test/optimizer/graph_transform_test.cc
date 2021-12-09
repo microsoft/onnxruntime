@@ -59,7 +59,7 @@
 #include "core/optimizer/unsqueeze_elimination.h"
 #include "core/optimizer/isinf_reducesum_fusion.h"
 #include "core/optimizer/propagate_cast_ops.h"
-#include "core/optimizer/gather_internal_replacement.h"
+#include "core/optimizer/gather_internal_unused_output_removal.h"
 #include "core/optimizer/utils.h"
 #include "core/platform/env.h"
 #include "core/session/inference_session.h"
@@ -4809,7 +4809,7 @@ TEST_F(GraphTransformationTests, GatherInternalNodeReplacement) {
   ASSERT_FALSE(op_to_count.count("Gather"));
 
   auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
-  EXPECT_STATUS_OK(rule_transformer_L1->Register(std::make_unique<GatherInternalReplacement>()));
+  EXPECT_STATUS_OK(rule_transformer_L1->Register(std::make_unique<GatherInternalUnusedOutputRemoval>()));
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   EXPECT_STATUS_OK(graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1));
 

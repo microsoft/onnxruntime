@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-// gather_internal_replacement.cc
+// gather_internal_unused_output_removal.cc
 
-#include "core/optimizer/gather_internal_replacement.h"
+#include "core/optimizer/gather_internal_unused_output_removal.h"
 
 #include "core/common/logging/logging.h"
 #include "core/optimizer/rewrite_rule.h"
@@ -19,7 +19,9 @@ const char* GatherName = "Gather";
 
 }  // namespace
 
-bool GatherInternalReplacement::SatisfyCondition(const Graph&, const Node& gather_internal_node, const logging::Logger&) const {
+bool GatherInternalUnusedOutputRemoval::SatisfyCondition(const Graph&,
+                                                         const Node& gather_internal_node,
+                                                         const logging::Logger&) const {
   // If the gather_internal_node is not connected to a GatherGrad node, then the extra
   // precomputed GatherInternal outputs are not needed. And the node can be replaced
   // by a simple Gather node.
@@ -36,7 +38,10 @@ bool GatherInternalReplacement::SatisfyCondition(const Graph&, const Node& gathe
   return true;
 }
 
-Status GatherInternalReplacement::Apply(Graph& graph, Node& gather_internal_node, RewriteRuleEffect& rule_effect, const logging::Logger&) const {
+Status GatherInternalUnusedOutputRemoval::Apply(Graph& graph,
+                                                Node& gather_internal_node,
+                                                RewriteRuleEffect& rule_effect,
+                                                const logging::Logger&) const {
   // Prepare the inputs and outputs for the new Gather node to be added.
   const auto& gather_internal_inputs = gather_internal_node.MutableInputDefs();
   const auto& gather_internal_outputs = gather_internal_node.MutableOutputDefs();
