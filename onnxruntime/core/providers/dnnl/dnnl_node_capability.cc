@@ -432,30 +432,8 @@ bool DnnlSumNodeCapability::IsDimensionSupported(const Node* node) const {
 bool DnnlBinaryNodeCapability::Supported(const Node* node, const GraphViewer& graph_viewer) const {
   ORT_UNUSED_PARAMETER(graph_viewer);
   if (!IsTypeSupported(node)) return false;
-  if (!IsDimensionSupported(node)) return false;
   //gpu broadcast for source 0 not supported
   if (dnnl_engine_get_count(dnnl_engine_kind_t::dnnl_gpu)) {
-    return false;
-  }
-  return true;
-}
-
-bool DnnlBinaryNodeCapability::IsDimensionSupported(const Node* node) const {
-  auto node_inputs = node->InputDefs();
-  if (node_inputs[0]->Shape() == nullptr || node_inputs[1]->Shape() == nullptr) {
-    return true;
-  }
-
-  // DNNL binary ops Add and Mul do not work if both inputs are scalar values
-  bool src0_is_scalar = false;
-  bool src1_is_scalar = false;
-  if (node_inputs[0]->Shape() != nullptr && node_inputs[0]->Shape()->dim_size() == 0) {
-    src0_is_scalar = true;
-  }
-  if (node_inputs[1]->Shape() != nullptr && node_inputs[1]->Shape()->dim_size() == 0) {
-    src1_is_scalar = true;
-  }
-  if (src0_is_scalar && src1_is_scalar) {
     return false;
   }
   return true;
