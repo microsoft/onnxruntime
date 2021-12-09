@@ -11,7 +11,7 @@ namespace onnxruntime {
 namespace utils {
 namespace test {
 
-static void TestShapeWithVector(const std::vector<int64_t>& vector) {
+static void TestShapeWithVector(const TensorShapeVector& vector) {
 
   // Test constructing from a vector
   TensorShape shape{vector};
@@ -38,8 +38,8 @@ TEST(TensorShapeTest, VariousSizes) {
   TestShapeWithVector({12, 23, 34, 45, 56, 67, 78, 89, 90});
 
   // Test assigning a shape to a large then a small vector (causing it to switch from small block to large, then back to small)
-  std::vector<int64_t> small{1, 2, 3};
-  std::vector<int64_t> large{1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
+  TensorShapeVector small{1, 2, 3};
+  TensorShapeVector large{1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
 
   TensorShape shape{small};
   EXPECT_EQ(shape.GetDims(), gsl::make_span(small));

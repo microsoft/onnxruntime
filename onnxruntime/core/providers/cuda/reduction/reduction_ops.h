@@ -28,11 +28,11 @@ struct PrepareReduceMetadata {
   int64_t input_count;
   int64_t output_count;
   // This holds the output dims without any reduced dims squeezed (even if keep_dims == 1)
-  std::vector<int64_t> output_dims;
+  TensorShapeVector output_dims;
   // This holds the output dims with with reduced dims squeezed (if keep_dims == 1)
-  std::vector<int64_t> squeezed_output_dims;
-  std::vector<int64_t> input_dims_cudnn;
-  std::vector<int64_t> output_dims_cudnn;
+  TensorShapeVector squeezed_output_dims;
+  TensorShapeVector input_dims_cudnn;
+  TensorShapeVector output_dims_cudnn;
 };
 
 template <bool allow_multi_axes>
@@ -68,7 +68,7 @@ class ReduceKernel : public CudaKernel, public ReduceKernelBase<allow_multi_axes
       OutT* Y,
       const TensorShape& output_shape,
       cudnnReduceTensorOp_t cudnn_reduce_op,
-      std::vector<int64_t>& output_dims) const;
+      TensorShapeVector& output_dims) const;
 
   using ReduceKernelBase<allow_multi_axes>::axes_;
   using ReduceKernelBase<allow_multi_axes>::keepdims_;

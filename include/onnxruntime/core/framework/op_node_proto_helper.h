@@ -74,15 +74,6 @@ class OpNodeProtoHelper {
     return GetAttrs<T>(name, tmp).IsOK() ? tmp : default_value;
   }
 
-  /**
-     Get repeated attributes
-  */
-  template <typename T>
-  MUST_USE_RESULT Status GetAttrs(const std::string& name, std::vector<T>& values) const;
-
-  template <typename T>
-  MUST_USE_RESULT Status GetAttrs(const std::string& name, gsl::span<T> values) const;
-
   /// <summary>
   /// Return a gsl::span that points to an array of primitive types held by AttributeProto
   /// This function allows to avoid copying big attributes locally into a kernel and operate on
@@ -96,6 +87,22 @@ class OpNodeProtoHelper {
   /// <returns>Status</returns>
   template <typename T>
   MUST_USE_RESULT Status GetAttrsAsSpan(const std::string& name, gsl::span<const T>& values) const;
+
+  MUST_USE_RESULT Status GetAttrs(const std::string& name, TensorShapeVector& out) const;
+
+  MUST_USE_RESULT TensorShapeVector GetAttrsOrDefault(const std::string& name, const TensorShapeVector& default_value = TensorShapeVector{}) const {
+    TensorShapeVector tmp;
+    return GetAttrs(name, tmp).IsOK() ? tmp : default_value;
+  }
+
+  /**
+     Get repeated attributes
+  */
+  template <typename T>
+  MUST_USE_RESULT Status GetAttrs(const std::string& name, std::vector<T>& values) const;
+
+  //template <typename T>
+  //MUST_USE_RESULT Status GetAttrs(const std::string& name, gsl::span<T> values) const;
 
   MUST_USE_RESULT Status GetAttrsStringRefs(const std::string& name,
                                             std::vector<std::reference_wrapper<const std::string>>& refs) const;

@@ -11,6 +11,7 @@
 #include "core/framework/data_types.h"
 #include "core/framework/kernel_def_builder.h"
 #include "core/framework/mldata_type_utils.h"
+#include "core/framework/inline_containers.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/session_state.h"
 #include "core/framework/tensorprotoutils.h"
@@ -497,8 +498,14 @@ class PlannerImpl {
 
   Status ComputeUseCounts() {
     // Note: for every ml-value, its definition must appear before all its uses in a topological sort of a valid model
-    std::unordered_set<std::string> graph_inputs;
-    for (auto& graph_input : graph_viewer_.GetInputsIncludingInitializers()) {
+    using GraphInputsSet = pmr::InlinedHashSet<std::string_view>;
+
+    const auto& graph_inputs_nodes = graph_viewer_.GetInputsIncludingInitializers();
+    const size_t buffer_size = EstimateInlinedHashSetMemory<std::string_view>(graph_inputs_nodes.size());
+    OrtDeclareAllignedStackOrAllocatedBuffer(inputs_buffer, buffer_size);
+    SmallBufferResource graph_inputs_resource(inputs_buffer, buffer_size);
+    GraphInputsSet graph_inputs(graph_inputs_nodes.size(), graph_inputs_resource.resource());
+    for (auto& graph_input : graph_inputs_nodes) {
       graph_inputs.insert(graph_input->Name());
     }
 
@@ -522,7 +529,7 @@ class PlannerImpl {
       UseCount(initializer_name)++;
     }
 
-    std::unordered_set<OrtValueIndex> set_node_arg_has_explicit_consumer;
+    InlinedHashSet<OrtValueIndex> set_node_arg_has_explicit_consumer;
 
     for (SequentialExecutionPlan::NodeExecutionPlan& step : plan_.execution_plan) {
       auto pnode = graph_viewer_.GetNode(step.node_index);

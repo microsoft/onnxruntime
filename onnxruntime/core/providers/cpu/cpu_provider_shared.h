@@ -9,6 +9,7 @@ class AttentionBase;
 }  // namespace contrib
 
 class GatherBase__Prepare;
+class ConcatBase_InlinedTensorsVector;
 class SliceOp__PrepareForComputeMetadata;  // Directly maps to SliceOp::PrepareForComputeMetadata
 class UnsqueezeBase__Prepare;              // Directly maps to UnsqueezeBase::Prepare
 
@@ -38,7 +39,7 @@ struct ProviderHostCPU {
                                               int& after_dims_including_split_axis, int& after_dims_excluding_split,
                                               std::vector<int64_t>& split_sizes) = 0;
   // From cpu/tensor/concatbase.h
-  virtual Status ConcatBase__PrepareForCompute(const ConcatBase* p, OpKernelContext* ctx, const std::vector<const Tensor*>& input_tensors, Prepare& prepare) = 0;
+  virtual Status ConcatBase__PrepareForCompute(const ConcatBase* p, OpKernelContext* ctx, const ConcatBase_InlinedTensorsVector& input_tensors, Prepare& prepare) = 0;
 
   // GatherElements
   virtual Status GatherElements__ValidateInputShapes(const TensorShape& input_data_shape, const TensorShape& indices_shape, int64_t axis) = 0;
@@ -53,27 +54,27 @@ struct ProviderHostCPU {
 
   // From onehot.h
   virtual Status ValidateInputs(const Tensor* depth, const Tensor* values) = 0;
-  virtual Status PrepareOutputShape(const Tensor* indices, const int64_t depth_val, const int64_t axis, int64_t& prefix_dim_size, int64_t& suffix_dim_size, std::vector<int64_t>& output_shape) = 0;
+  virtual Status PrepareOutputShape(const Tensor* indices, const int64_t depth_val, const int64_t axis, int64_t& prefix_dim_size, int64_t& suffix_dim_size, TensorShapeVector& output_shape) = 0;
 
   // From cpu/tensor/slice.h
-  virtual Status SliceBase__PrepareForCompute(const std::vector<int64_t>& raw_starts,
-                                              const std::vector<int64_t>& raw_ends,
-                                              const std::vector<int64_t>& raw_axes,
+  virtual Status SliceBase__PrepareForCompute(const gsl::span<const int64_t>& raw_starts,
+                                              const gsl::span<const int64_t>& raw_ends,
+                                              const gsl::span<const int64_t>& raw_axes,
                                               SliceOp__PrepareForComputeMetadata& compute_metadata) = 0;
 
-  virtual Status SliceBase__PrepareForCompute(const std::vector<int64_t>& raw_starts,
-                                              const std::vector<int64_t>& raw_ends,
-                                              const std::vector<int64_t>& raw_axes,
-                                              const std::vector<int64_t>& raw_steps,
+  virtual Status SliceBase__PrepareForCompute(const gsl::span<const int64_t>& raw_starts,
+                                              const gsl::span<const int64_t>& raw_ends,
+                                              const gsl::span<const int64_t>& raw_axes,
+                                              const gsl::span<const int64_t>& raw_steps,
                                               SliceOp__PrepareForComputeMetadata& compute_metadata) = 0;
   virtual Status SliceBase__FillVectorsFromInput(const Tensor& start_tensor,
                                                  const Tensor& ends_tensor,
                                                  const Tensor* axes_tensor,
                                                  const Tensor* steps_tensor,
-                                                 std::vector<int64_t>& input_starts,
-                                                 std::vector<int64_t>& input_ends,
-                                                 std::vector<int64_t>& input_axes,
-                                                 std::vector<int64_t>& input_steps) = 0;
+                                                 TensorShapeVector& input_starts,
+                                                 TensorShapeVector& input_ends,
+                                                 TensorShapeVector& input_axes,
+                                                 TensorShapeVector& input_steps) = 0;
 
   virtual Status Einsum__Compute(const Einsum* p, OpKernelContext* context) = 0;
 
@@ -167,7 +168,7 @@ inline Status CheckROIAlignValidInput(const Tensor* X_ptr, const Tensor* rois_pt
 inline Status ValidateInputs(const Tensor* depth, const Tensor* values) { return g_host_cpu.ValidateInputs(depth, values); }
 inline Status PrepareOutputShape(const Tensor* indices, const int64_t depth_val, const int64_t axis,
                                  int64_t& prefix_dim_size, int64_t& suffix_dim_size,
-                                 std::vector<int64_t>& output_shape) { return g_host_cpu.PrepareOutputShape(indices, depth_val, axis, prefix_dim_size, suffix_dim_size, output_shape); }
+                                 TensorShapeVector& output_shape) { return g_host_cpu.PrepareOutputShape(indices, depth_val, axis, prefix_dim_size, suffix_dim_size, output_shape); }
 
 struct EinsumComputePreprocessor {
   static void operator delete(void* p) { g_host_cpu.EinsumComputePreprocessor__operator_delete(reinterpret_cast<EinsumComputePreprocessor*>(p)); }

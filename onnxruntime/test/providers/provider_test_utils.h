@@ -1092,5 +1092,13 @@ inline CheckParams MakeCheckParams(const OpTester::Data& d) {
   return CheckParams{d.sort_output_, d.absolute_error_, d.relative_error_};
 }
 
+inline std::vector<int64_t> GetShapeVector(const TensorShape& shape) {
+  std::vector<int64_t> result;
+  const auto dims = shape.GetDims();
+  result.resize(dims.size());
+  result.assign(dims.cbegin(), dims.cend());
+  return result;
+}
+
 }  // namespace test
 }  // namespace onnxruntime

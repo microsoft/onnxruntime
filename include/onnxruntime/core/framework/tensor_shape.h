@@ -8,8 +8,12 @@
 #include <string>
 #include <cstring>
 #include <gsl/gsl>
-#include <absl/container/inlined_vector.h>
 #include "onnxruntime_config.h"
+
+#pragma warning(push)
+#pragma warning(disable:4127)
+#include <absl/container/inlined_vector.h>
+#pragma warning(pop)
 
 namespace onnxruntime {
 #ifdef __GNUC__
@@ -22,6 +26,20 @@ namespace onnxruntime {
 constexpr size_t kTensorShapeSmallBufferElementsSize = 5;
 
 using TensorShapeVector = absl::InlinedVector<int64_t, kTensorShapeSmallBufferElementsSize>;
+
+template<typename T>
+using InlinedVectorShapeCap = absl::InlinedVector<T, kTensorShapeSmallBufferElementsSize>;
+
+inline TensorShapeVector ToShapeVector(const gsl::span<const int64_t>& span) {
+  TensorShapeVector out;
+  out.reserve(span.size());
+  out.assign(span.cbegin(), span.cend());
+  return out;
+}
+
+inline gsl::span<const int64_t> ToConstSpan(const TensorShapeVector& vec) {
+  return gsl::make_span(vec);
+}
 
 class TensorShape {
   // We use negative numbers for unknown symbolic dimension. Each negative
@@ -36,7 +54,6 @@ class TensorShape {
   TensorShape& operator=(TensorShape&& other) noexcept;
 
   TensorShape(gsl::span<const int64_t> dims);
-  TensorShape(const std::vector<int64_t>& dims) : TensorShape(gsl::make_span(dims)) {}
   TensorShape(const TensorShapeVector& dims) : TensorShape(gsl::make_span(dims)) {}
   TensorShape(const std::initializer_list<int64_t>& dims) : TensorShape(gsl::make_span(dims.begin(), dims.end())) {}
   TensorShape(const int64_t* dimension_sizes, size_t dimension_count) : TensorShape(gsl::span<const int64_t>(dimension_sizes, dimension_count)) {}
@@ -80,18 +97,9 @@ class TensorShape {
      Return underlying vector representation.
   */
   gsl::span<const int64_t> GetDims() const { return values_; }
-  std::vector<int64_t> GetDimsAsVector() const { 
-    std::vector<int64_t> result;
-    result.reserve(values_.size());
-    result.assign(values_.cbegin(), values_.cend());
-    return result;
-  }
 
   TensorShapeVector AsShapeVector() const {
-    TensorShapeVector result;
-    result.reserve(values_.size());
-    result.assign(values_.cbegin(), values_.cend());
-    return result;
+    return ToShapeVector(values_);
   }
 
   /**

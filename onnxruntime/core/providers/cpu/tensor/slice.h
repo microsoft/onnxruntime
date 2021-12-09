@@ -56,9 +56,9 @@ class SliceBase {
   Status Compute(OpKernelContext* context) const;
 
  protected:
-  //const std::vector<int64_t>& StartsAttribute() const { return attr_starts_; }
-  //const std::vector<int64_t>& EndsAttribute() const { return attr_ends_; }
-  //const std::vector<int64_t>& AxesAttribute() const { return attr_axes_; }
+  gsl::span<const int64_t> StartsAttribute() const { return attr_starts_; }
+  gsl::span<const int64_t> EndsAttribute() const { return attr_ends_; }
+  gsl::span<const int64_t> AxesAttribute() const { return attr_axes_; }
 
  private:
   bool dynamic_;

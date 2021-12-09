@@ -1510,7 +1510,7 @@ TEST(SparseTensorConversionTests, CooConversion) {
   auto* cpu_provider = TestCPUExecutionProvider();
   auto cpu_allocator = cpu_provider->GetAllocator(0, OrtMemTypeDefault);
 
-  const std::vector<int64_t> dense_shape{3, 3};
+  const TensorShapeVector dense_shape{3, 3};
   std::vector<int32_t> dense_data = {
       0, 0, 1,
       1, 0, 1,
