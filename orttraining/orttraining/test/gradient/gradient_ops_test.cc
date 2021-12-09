@@ -1931,8 +1931,7 @@ TEST(GradientCheckerTest, GatherGradGPU) {
   std::function<float(float)> transformer = [](float x) { return std::fmod(7 * std::fabs(x), 5.0f); };
   TensorInfo x_info({5, 4, 3, 2});
 
-  auto generate_x_data = [](auto& x_info, auto& indices_info, auto& transformer)
-  {
+  auto generate_x_data = [](auto& x_info, auto& indices_info, auto& transformer) {
     float scale = 5.f;
     float mean = 0.f;
     const auto seed = GetTestRandomSeed();
@@ -1944,13 +1943,12 @@ TEST(GradientCheckerTest, GatherGradGPU) {
 
     std::vector<float> indices_data(indices_info.shape.Size());
     std::generate(indices_data.begin(), indices_data.end(),
-                    [&] { return transformer(static_cast<float>(distribution(generator))); });
+                  [&] { return transformer(static_cast<float>(distribution(generator))); });
 
     return std::vector<std::vector<float>>({weight_data, indices_data});
   };
 
-  auto generate_x_data_and_y_info = [](auto& x_info, auto& indices_info, int64_t axis, auto& transformer, auto&& generate_x_data)
-  {
+  auto generate_x_data_and_y_info = [](auto& x_info, auto& indices_info, int64_t axis, auto& transformer, auto&& generate_x_data) {
     TensorShape y_shape{x_info.shape};
     y_shape[axis] = indices_info.shape.Size();
 
@@ -1958,34 +1956,33 @@ TEST(GradientCheckerTest, GatherGradGPU) {
 
     int32_t number_of_segments = 1;
     std::vector<int64_t> indices_copy(x_data[1].size());
-    std::transform(x_data[1].begin(), x_data[1].end(), indices_copy.begin(), [] (auto x) { return static_cast<int64_t>(x); });
+    std::transform(x_data[1].begin(), x_data[1].end(), indices_copy.begin(), [](auto x) { return static_cast<int64_t>(x); });
     std::sort(indices_copy.begin(), indices_copy.end());
-    for (size_t i = 1; i < indices_copy.size(); ++i)
-    {
-      if (indices_copy[i] != indices_copy[i-1])
+    for (size_t i = 1; i < indices_copy.size(); ++i) {
+      if (indices_copy[i] != indices_copy[i - 1])
         number_of_segments++;
     }
 
     TensorInfo num_segments({1}, false, nullptr, DataTypeImpl::GetTensorType<int32_t>()),
-               segment_offsets({number_of_segments}, false, nullptr, DataTypeImpl::GetTensorType<int32_t>()),
-               last_segment_partial_segment_count({1}, false, nullptr, DataTypeImpl::GetTensorType<int32_t>()),
-               last_segment_partial_segment_offset({1}, false, nullptr, DataTypeImpl::GetTensorType<int32_t>()),
-               per_segment_partial_segment_counts({number_of_segments}, false, nullptr, DataTypeImpl::GetTensorType<int32_t>()),
-               per_segment_partial_segment_offsets({number_of_segments}, false, nullptr, DataTypeImpl::GetTensorType<int32_t>()),
-               dX_indices_sorted({indices_info.shape}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>()),
-               dY_indices_sorted({indices_info.shape}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>());
+        segment_offsets({number_of_segments}, false, nullptr, DataTypeImpl::GetTensorType<int32_t>()),
+        last_segment_partial_segment_count({1}, false, nullptr, DataTypeImpl::GetTensorType<int32_t>()),
+        last_segment_partial_segment_offset({1}, false, nullptr, DataTypeImpl::GetTensorType<int32_t>()),
+        per_segment_partial_segment_counts({number_of_segments}, false, nullptr, DataTypeImpl::GetTensorType<int32_t>()),
+        per_segment_partial_segment_offsets({number_of_segments}, false, nullptr, DataTypeImpl::GetTensorType<int32_t>()),
+        dX_indices_sorted({indices_info.shape}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>()),
+        dY_indices_sorted({indices_info.shape}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>());
 
     return std::make_pair(
-            x_data,
-            std::vector<TensorInfo>({TensorInfo(y_shape),
-                                    num_segments,
-                                    segment_offsets,
-                                    last_segment_partial_segment_count,
-                                    last_segment_partial_segment_offset,
-                                    per_segment_partial_segment_counts,
-                                    per_segment_partial_segment_offsets,
-                                    dX_indices_sorted,
-                                    dY_indices_sorted}));
+        x_data,
+        std::vector<TensorInfo>({TensorInfo(y_shape),
+                                 num_segments,
+                                 segment_offsets,
+                                 last_segment_partial_segment_count,
+                                 last_segment_partial_segment_offset,
+                                 per_segment_partial_segment_counts,
+                                 per_segment_partial_segment_offsets,
+                                 dX_indices_sorted,
+                                 dY_indices_sorted}));
   };
 
   // gather_0 without duplicated indices
@@ -2051,7 +2048,7 @@ TEST(GradientCheckerTest, GatherGradGPU) {
 
     int64_t axis = 0;
     auto x_data_and_y_info = generate_x_data_and_y_info(x_info_2, indices_info, axis, transformer,
-      [&x_datas](auto&, auto&, auto&){ return x_datas; });
+                                                        [&x_datas](auto&, auto&, auto&) { return x_datas; });
 
     ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_info_2, indices_info}, x_data_and_y_info.second,
                                                            &max_error, x_data_and_y_info.first, {MakeAttribute("axis", axis)}));

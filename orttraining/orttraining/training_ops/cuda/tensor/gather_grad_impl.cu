@@ -331,7 +331,6 @@ void PartialSumsPrecomputedImpl(
     const int32_t last_segment_partial_segment_offset_in,
     const int32_t* per_segment_partial_segment_counts_in,
     const int32_t* per_segment_partial_segment_offsets_in) {
-
   SegmentIndex_t host_num_partial_segments = last_segment_partial_segment_offset_in + last_segment_partial_segment_count_in;
 
   // compute index offsets per partial segment
@@ -516,7 +515,6 @@ void PrecomputedImpl(
     const TIndex* dX_indices_sorted,
     const TIndex* dY_indices_sorted,
     T* dX_data) {
-
   PartialSumsPrecomputedImpl(
       stream,
       allocator,
@@ -670,8 +668,8 @@ void GatherGradImpl(
       dX_data);
 }
 
-#define PRECOMPUTESPECIALIZED(T, TIndex)                            \
-  template void GatherGradPrecomputedImpl<T, TIndex>(                \
+#define PRECOMPUTESPECIALIZED(T, TIndex)                  \
+  template void GatherGradPrecomputedImpl<T, TIndex>(     \
       cudaStream_t stream,                                \
       const CudaScratchBufferAllocator& allocator,        \
       const T* dY_data,                                   \

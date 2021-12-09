@@ -63,7 +63,7 @@ struct GraphInfo {
   std::vector<std::string> module_output_gradient_name{};
   // Names of the frontier tensor corresponding to param
   std::unordered_map<std::string, std::string> frontier_node_arg_map{};
-  // Names of the frontier NodeArgs in the order in which they will 
+  // Names of the frontier NodeArgs in the order in which they will
   // be retrieved in the forward pass
   std::vector<std::string> cached_node_arg_names{};
 };
@@ -114,7 +114,7 @@ class OrtModuleGraphBuilder {
   // Build gradient graph.
   Status BuildGradientGraph(const std::unordered_set<std::string>& x_node_arg_names);
 
-  // Get the "frontier" tensors- the the output of series of operations 
+  // Get the "frontier" tensors- the the output of series of operations
   // that only depend on the param values, eg Casting a param
   void GetFrontierTensors();
 

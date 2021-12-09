@@ -286,7 +286,7 @@ Status GatherGrad::ComputeInternal(OpKernelContext* context) const {
   // to perform those computations.
   const Tensor* num_segments_tensor = context->Input<Tensor>(3);
   if (num_segments_tensor) {
-      const int32_t num_segments = *num_segments_tensor->template Data<int32_t>();
+    const int32_t num_segments = *num_segments_tensor->template Data<int32_t>();
 
     const Tensor* segment_offsets_tensor = context->Input<Tensor>(4);
     const int32_t* segment_offsets = segment_offsets_tensor->template Data<int32_t>();

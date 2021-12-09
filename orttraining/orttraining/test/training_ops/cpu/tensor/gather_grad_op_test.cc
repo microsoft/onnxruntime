@@ -15,51 +15,45 @@ namespace test {
 
 namespace {
 
-std::pair<std::vector<int64_t>, std::vector<int64_t>> CalculateSortedIndices(const std::vector<int64_t>& indices)
-{
-    std::vector<int64_t> dY_indices_sorted(indices.size());
-    std::iota(dY_indices_sorted.begin(), dY_indices_sorted.end(), 0);
-    std::sort(dY_indices_sorted.begin(), dY_indices_sorted.end(), [&indices](const size_t i, const size_t j) { return indices[i] < indices[j]; } );
-    std::vector<int64_t> dX_indices_sorted(indices);
-    std::sort(dX_indices_sorted.begin(), dX_indices_sorted.end());
+std::pair<std::vector<int64_t>, std::vector<int64_t>> CalculateSortedIndices(const std::vector<int64_t>& indices) {
+  std::vector<int64_t> dY_indices_sorted(indices.size());
+  std::iota(dY_indices_sorted.begin(), dY_indices_sorted.end(), 0);
+  std::sort(dY_indices_sorted.begin(), dY_indices_sorted.end(), [&indices](const size_t i, const size_t j) { return indices[i] < indices[j]; });
+  std::vector<int64_t> dX_indices_sorted(indices);
+  std::sort(dX_indices_sorted.begin(), dX_indices_sorted.end());
 
-    return {dX_indices_sorted, dY_indices_sorted};
+  return {dX_indices_sorted, dY_indices_sorted};
 }
 
-std::pair<int32_t, std::vector<int32_t>> CalculateNumberOfSegmentsAndSegmentOffsets(const std::vector<int64_t>& sorted_indices)
-{
-    int32_t num_segments = 1;
-    std::vector<int32_t> segment_offsets({0});
+std::pair<int32_t, std::vector<int32_t>> CalculateNumberOfSegmentsAndSegmentOffsets(const std::vector<int64_t>& sorted_indices) {
+  int32_t num_segments = 1;
+  std::vector<int32_t> segment_offsets({0});
 
-    for (size_t i = 1; i < sorted_indices.size(); ++i)
-    {
-        if (sorted_indices[i] != sorted_indices[i-1])
-        {
-            num_segments++;
-            segment_offsets.push_back(static_cast<int32_t>(i));
-        }
+  for (size_t i = 1; i < sorted_indices.size(); ++i) {
+    if (sorted_indices[i] != sorted_indices[i - 1]) {
+      num_segments++;
+      segment_offsets.push_back(static_cast<int32_t>(i));
     }
+  }
 
-    return {num_segments, segment_offsets};
+  return {num_segments, segment_offsets};
 }
 
-std::pair<std::vector<int32_t>, std::vector<int32_t>> CalculatePartialSegmentCountsAndOffsets(const std::vector<int32_t>& segment_offsets, const int64_t number_of_indices)
-{
-    const int32_t MaxPartialSegmentLength = 10;
+std::pair<std::vector<int32_t>, std::vector<int32_t>> CalculatePartialSegmentCountsAndOffsets(const std::vector<int32_t>& segment_offsets, const int64_t number_of_indices) {
+  const int32_t MaxPartialSegmentLength = 10;
 
-    std::vector<int32_t> number_of_partial_segments_per_segment;
-    int32_t total_number_of_partial_segments = 0;
-    std::vector<int32_t> partial_segment_offsets;
+  std::vector<int32_t> number_of_partial_segments_per_segment;
+  int32_t total_number_of_partial_segments = 0;
+  std::vector<int32_t> partial_segment_offsets;
 
-    for (size_t i = 0; i < segment_offsets.size(); ++i)
-    {
-        int32_t segment_count = (i == segment_offsets.size()-1 ? static_cast<int32_t>(number_of_indices) : segment_offsets[i+1]) - segment_offsets[i];
-        number_of_partial_segments_per_segment.push_back((segment_count + MaxPartialSegmentLength - 1) / MaxPartialSegmentLength);
-        partial_segment_offsets.push_back(total_number_of_partial_segments);
-        total_number_of_partial_segments += number_of_partial_segments_per_segment.back();
-    }
+  for (size_t i = 0; i < segment_offsets.size(); ++i) {
+    int32_t segment_count = (i == segment_offsets.size() - 1 ? static_cast<int32_t>(number_of_indices) : segment_offsets[i + 1]) - segment_offsets[i];
+    number_of_partial_segments_per_segment.push_back((segment_count + MaxPartialSegmentLength - 1) / MaxPartialSegmentLength);
+    partial_segment_offsets.push_back(total_number_of_partial_segments);
+    total_number_of_partial_segments += number_of_partial_segments_per_segment.back();
+  }
 
-    return {number_of_partial_segments_per_segment, partial_segment_offsets};
+  return {number_of_partial_segments_per_segment, partial_segment_offsets};
 }
 
 template <typename T>
@@ -159,7 +153,7 @@ void RunGatherGradTestWithRandomData(
 }  // namespace
 
 #if defined(USE_CUDA) || defined(USE_ROCM)
-//TODO: Currently this cannot pass CI, due to GPU architecture problem
+// TODO: Currently this cannot pass CI, due to GPU architecture problem
 TEST(GatherOpTest, Gather_axis0_indices2d_half) {
 #ifdef USE_CUDA
   if (NeedSkipIfCudaArchLowerThan(700)) {

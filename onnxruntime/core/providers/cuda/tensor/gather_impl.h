@@ -46,15 +46,15 @@ using SegmentIndex_t = GatheredIndexIndex_t;
 // memcpys to GatherGradPrepareGetNumSegments and GatherGradPrepare.
 template <typename TIndex>
 void GatherGradPrepareGetNumSegments(cudaStream_t stream,
-    const CudaScratchBufferAllocator& allocator,
-    const TIndex* dX_indices,
-    const GatheredIndexIndex_t num_gathered_indices,
-    int64_t gather_dimension_size,
-    int64_t num_gathered_per_index,
-    SegmentIndex_t& host_num_segments,
-    IAllocatorUniquePtr<SegmentIndex_t>& segment_counts_out,
-    TIndex& dX_indices_sorted,
-    TIndex& dY_indices_sorted);
+                                     const CudaScratchBufferAllocator& allocator,
+                                     const TIndex* dX_indices,
+                                     const GatheredIndexIndex_t num_gathered_indices,
+                                     int64_t gather_dimension_size,
+                                     int64_t num_gathered_per_index,
+                                     SegmentIndex_t& host_num_segments,
+                                     IAllocatorUniquePtr<SegmentIndex_t>& segment_counts_out,
+                                     TIndex& dX_indices_sorted,
+                                     TIndex& dY_indices_sorted);
 
 template <typename TIndex>
 void GatherGradPrepare(
