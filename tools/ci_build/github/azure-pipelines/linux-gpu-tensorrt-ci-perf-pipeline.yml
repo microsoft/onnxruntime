@@ -23,8 +23,9 @@ parameters:
 - name: TrtVersion
   displayName: TensorRT Version
   type: string
-  default: 8.0.1.6
+  default: 8.2.1.8
   values:
+  - 8.2.1.8
   - 8.0.1.6
   - 7.2.3.4
 
@@ -58,6 +59,8 @@ jobs:
 
   variables:
     - name: trt_dockerfile
+      ${{ if eq(parameters.TrtVersion, '8.2.1.8') }}:
+        value: Dockerfile.ubuntu_cuda11_4_tensorrt8_2
       ${{ if eq(parameters.TrtVersion, '8.0.1.6') }}:
         value: Dockerfile.ubuntu_cuda11_4_tensorrt8_0
       ${{ if eq(parameters.TrtVersion, '7.2.3.4') }}:
