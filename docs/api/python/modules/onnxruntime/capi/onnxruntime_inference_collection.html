@@ -5,15 +5,15 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>onnxruntime.capi.onnxruntime_inference_collection &#8212; ONNX Runtime 1.7.0 documentation</title>
-    <link rel="stylesheet" href="../../../static/pygments.css" type="text/css" />
-    <link rel="stylesheet" href="../../../static/alabaster.css" type="text/css" />
+    <title>onnxruntime.capi.onnxruntime_inference_collection &#8212; ONNX Runtime 1.10.0 documentation</title>
+    <link rel="stylesheet" type="text/css" href="../../../static/pygments.css" />
+    <link rel="stylesheet" type="text/css" href="../../../static/alabaster.css" />
     <link rel="stylesheet" type="text/css" href="../../../static/graphviz.css" />
-    <link rel="stylesheet" type="text/css" href="../../../static/gallery.css" />
-    <link rel="stylesheet" type="text/css" href="../../../static/gallery-binder.css" />
-    <link rel="stylesheet" type="text/css" href="../../../static/gallery-dataframe.css" />
-    <link rel="stylesheet" type="text/css" href="../../../static/gallery-rendered-html.css" />
-    <script id="documentation_options" data-url_root="../../../" src="../../../static/documentation_options.js"></script>
+    <link rel="stylesheet" type="text/css" href="../../../static/sg_gallery.css" />
+    <link rel="stylesheet" type="text/css" href="../../../static/sg_gallery-binder.css" />
+    <link rel="stylesheet" type="text/css" href="../../../static/sg_gallery-dataframe.css" />
+    <link rel="stylesheet" type="text/css" href="../../../static/sg_gallery-rendered-html.css" />
+    <script data-url_root="../../../" id="documentation_options" src="../../../static/documentation_options.js"></script>
     <script src="../../../static/jquery.js"></script>
     <script src="../../../static/underscore.js"></script>
     <script src="../../../static/doctools.js"></script>
@@ -49,13 +49,15 @@
 
 
 <span class="k">def</span> <span class="nf">get_ort_device_type</span><span class="p">(</span><span class="n">device</span><span class="p">):</span>
-    <span class="n">device</span> <span class="o">=</span> <span class="n">device</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
-    <span class="k">if</span> <span class="n">device</span> <span class="o">==</span> <span class="s1">&#39;cuda&#39;</span><span class="p">:</span>
+    <span class="n">device_type</span> <span class="o">=</span> <span class="n">device</span> <span class="k">if</span> <span class="nb">type</span><span class="p">(</span><span class="n">device</span><span class="p">)</span> <span class="ow">is</span> <span class="nb">str</span> <span class="k">else</span> <span class="n">device</span><span class="o">.</span><span class="n">type</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
+    <span class="k">if</span> <span class="n">device_type</span> <span class="o">==</span> <span class="s1">&#39;cuda&#39;</span><span class="p">:</span>
         <span class="k">return</span> <span class="n">C</span><span class="o">.</span><span class="n">OrtDevice</span><span class="o">.</span><span class="n">cuda</span><span class="p">()</span>
-    <span class="k">elif</span> <span class="n">device</span> <span class="o">==</span> <span class="s1">&#39;cpu&#39;</span><span class="p">:</span>
+    <span class="k">elif</span> <span class="n">device_type</span> <span class="o">==</span> <span class="s1">&#39;cpu&#39;</span><span class="p">:</span>
         <span class="k">return</span> <span class="n">C</span><span class="o">.</span><span class="n">OrtDevice</span><span class="o">.</span><span class="n">cpu</span><span class="p">()</span>
+    <span class="k">elif</span> <span class="n">device_type</span> <span class="o">==</span> <span class="s1">&#39;ort&#39;</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">C</span><span class="o">.</span><span class="n">get_ort_device</span><span class="p">(</span><span class="n">device</span><span class="o">.</span><span class="n">index</span><span class="p">)</span><span class="o">.</span><span class="n">device_type</span><span class="p">()</span>
     <span class="k">else</span><span class="p">:</span>
-        <span class="k">raise</span> <span class="ne">Exception</span><span class="p">(</span><span class="s1">&#39;Unsupported device type: &#39;</span> <span class="o">+</span> <span class="n">device</span><span class="p">)</span>
+        <span class="k">raise</span> <span class="ne">Exception</span><span class="p">(</span><span class="s1">&#39;Unsupported device type: &#39;</span> <span class="o">+</span> <span class="n">device_type</span><span class="p">)</span>
 
 
 <span class="k">def</span> <span class="nf">check_and_normalize_provider_args</span><span class="p">(</span><span class="n">providers</span><span class="p">,</span> <span class="n">provider_options</span><span class="p">,</span> <span class="n">available_provider_names</span><span class="p">):</span>
@@ -88,8 +90,8 @@
 
     <span class="k">def</span> <span class="nf">set_provider_options</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">options</span><span class="p">):</span>
         <span class="k">if</span> <span class="n">name</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">available_provider_names</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Specified provider &#39;</span><span class="si">{}</span><span class="s2">&#39; is unavailable. Available providers: &#39;</span><span class="si">{}</span><span class="s2">&#39;&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span>
-                <span class="n">name</span><span class="p">,</span> <span class="s2">&quot;, &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">available_provider_names</span><span class="p">)))</span>
+            <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span><span class="s2">&quot;Specified provider &#39;</span><span class="si">{}</span><span class="s2">&#39; is not in available provider names.&quot;</span>
+                          <span class="s2">&quot;Available providers: &#39;</span><span class="si">{}</span><span class="s2">&#39;&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="s2">&quot;, &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">available_provider_names</span><span class="p">)))</span>
 
         <span class="k">if</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">provider_name_to_options</span><span class="p">:</span>
             <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span><span class="s2">&quot;Duplicate provider &#39;</span><span class="si">{}</span><span class="s2">&#39; encountered, ignoring.&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">name</span><span class="p">))</span>
@@ -176,19 +178,16 @@
 <span class="sd">            precedence. Values can either be provider names or tuples of</span>
 <span class="sd">            (provider name, options dict). If not provided, then all available</span>
 <span class="sd">            providers are used with the default precedence.</span>
-<span class="sd">            The next release (ORT 1.10) will require explicitly setting</span>
-<span class="sd">            this providers parameter if you want to use execution providers</span>
-<span class="sd">            other than the default CPU provider (as opposed to the current</span>
-<span class="sd">            behavior of providers getting set/registered by default based on the</span>
-<span class="sd">            build flags) when instantiating InferenceSession.</span>
 <span class="sd">        :param provider_options: Optional sequence of options dicts corresponding</span>
 <span class="sd">            to the providers listed in &#39;providers&#39;.</span>
 
 <span class="sd">        &#39;providers&#39; can contain either names or names and options. When any options</span>
 <span class="sd">        are given in &#39;providers&#39;, &#39;provider_options&#39; should not be used.</span>
 
-<span class="sd">        The list of providers is ordered by precedence. For example [&#39;CUDAExecutionProvider&#39;, &#39;CPUExecutionProvider&#39;]</span>
-<span class="sd">        means execute a node using CUDAExecutionProvider if capable, otherwise execute using CPUExecutionProvider.</span>
+<span class="sd">        The list of providers is ordered by precedence. For example</span>
+<span class="sd">        `[&#39;CUDAExecutionProvider&#39;, &#39;CPUExecutionProvider&#39;]`</span>
+<span class="sd">        means execute a node using CUDAExecutionProvider if capable,</span>
+<span class="sd">        otherwise execute using CPUExecutionProvider.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="c1"># recreate the underlying C.InferenceSession</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_reset_session</span><span class="p">(</span><span class="n">providers</span><span class="p">,</span> <span class="n">provider_options</span><span class="p">)</span>
@@ -240,6 +239,49 @@
             <span class="k">else</span><span class="p">:</span>
                 <span class="k">raise</span>
 
+    <span class="k">def</span> <span class="nf">run_with_ort_values</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">output_names</span><span class="p">,</span> <span class="n">input_dict_ort_values</span><span class="p">,</span> <span class="n">run_options</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Compute the predictions.</span>
+
+<span class="sd">        :param output_names: name of the outputs</span>
+<span class="sd">        :param input_feed: dictionary ``{ input_name: input_ort_value }``</span>
+<span class="sd">            See ``OrtValue`` class how to create `OrtValue`</span>
+<span class="sd">            from numpy array or `SparseTensor`</span>
+<span class="sd">        :param run_options: See :class:`onnxruntime.RunOptions`.</span>
+<span class="sd">        :return: an array of `OrtValue`</span>
+
+<span class="sd">        ::</span>
+
+<span class="sd">            sess.run([output_name], {input_name: x})</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">def</span> <span class="nf">invoke</span><span class="p">(</span><span class="n">sess</span><span class="p">,</span> <span class="n">output_names</span><span class="p">,</span> <span class="n">input_dict_ort_values</span><span class="p">,</span> <span class="n">run_options</span><span class="p">):</span>
+            <span class="n">input_dict</span> <span class="o">=</span> <span class="p">{}</span>
+            <span class="k">for</span> <span class="n">n</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">input_dict_ort_values</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+                <span class="n">input_dict</span><span class="p">[</span><span class="n">n</span><span class="p">]</span> <span class="o">=</span> <span class="n">v</span><span class="o">.</span><span class="n">_get_c_value</span><span class="p">()</span>
+            <span class="n">result</span> <span class="o">=</span> <span class="n">sess</span><span class="o">.</span><span class="n">run_with_ort_values</span><span class="p">(</span><span class="n">input_dict</span><span class="p">,</span> <span class="n">output_names</span><span class="p">,</span> <span class="n">run_options</span><span class="p">)</span>
+            <span class="n">ort_values</span> <span class="o">=</span> <span class="p">[</span><span class="n">OrtValue</span><span class="p">(</span><span class="n">v</span><span class="p">)</span> <span class="k">for</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">result</span><span class="p">]</span>
+            <span class="k">return</span> <span class="n">ort_values</span>
+
+        <span class="n">num_required_inputs</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_inputs_meta</span><span class="p">)</span>
+        <span class="n">num_inputs</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">input_dict_ort_values</span><span class="p">)</span>
+        <span class="c1"># the graph may have optional inputs used to override initializers. allow for that.</span>
+        <span class="k">if</span> <span class="n">num_inputs</span> <span class="o">&lt;</span> <span class="n">num_required_inputs</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Model requires </span><span class="si">{}</span><span class="s2"> inputs. Input Feed contains </span><span class="si">{}</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">num_required_inputs</span><span class="p">,</span> <span class="n">num_inputs</span><span class="p">))</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">output_names</span><span class="p">:</span>
+            <span class="n">output_names</span> <span class="o">=</span> <span class="p">[</span><span class="n">output</span><span class="o">.</span><span class="n">name</span> <span class="k">for</span> <span class="n">output</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_outputs_meta</span><span class="p">]</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">invoke</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_sess</span><span class="p">,</span> <span class="n">output_names</span><span class="p">,</span> <span class="n">input_dict_ort_values</span><span class="p">,</span> <span class="n">run_options</span><span class="p">)</span>
+        <span class="k">except</span> <span class="n">C</span><span class="o">.</span><span class="n">EPFail</span> <span class="k">as</span> <span class="n">err</span><span class="p">:</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_enable_fallback</span><span class="p">:</span>
+                <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;EP Error: </span><span class="si">{}</span><span class="s2"> using </span><span class="si">{}</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">err</span><span class="p">),</span> <span class="bp">self</span><span class="o">.</span><span class="n">_providers</span><span class="p">))</span>
+                <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Falling back to </span><span class="si">{}</span><span class="s2"> and retrying.&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_fallback_providers</span><span class="p">))</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">set_providers</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_fallback_providers</span><span class="p">)</span>
+                <span class="c1"># Fallback only once.</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">disable_fallback</span><span class="p">()</span>
+                <span class="k">return</span> <span class="n">invoke</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_sess</span><span class="p">,</span> <span class="n">output_names</span><span class="p">,</span> <span class="n">input_dict_ort_values</span><span class="p">,</span> <span class="n">run_options</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">raise</span>
+
     <span class="k">def</span> <span class="nf">end_profiling</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        End profiling and return results in a file.</span>
@@ -276,7 +318,7 @@
     <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    This is the main class used to run a model.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
-    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">path_or_bytes</span><span class="p">,</span> <span class="n">sess_options</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">providers</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">provider_options</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">path_or_bytes</span><span class="p">,</span> <span class="n">sess_options</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">providers</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">provider_options</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        :param path_or_bytes: filename or serialized ONNX or ORT format model in a byte string</span>
 <span class="sd">        :param sess_options: session options</span>
@@ -289,9 +331,12 @@
 
 <span class="sd">        The model type will be inferred unless explicitly set in the SessionOptions.</span>
 <span class="sd">        To explicitly set:</span>
-<span class="sd">          so = onnxruntime.SessionOptions()</span>
-<span class="sd">          so.add_session_config_entry(&#39;session.load_model_format&#39;, &#39;ONNX&#39;) or</span>
-<span class="sd">          so.add_session_config_entry(&#39;session.load_model_format&#39;, &#39;ORT&#39;) or</span>
+
+<span class="sd">        ::</span>
+
+<span class="sd">            so = onnxruntime.SessionOptions()</span>
+<span class="sd">            # so.add_session_config_entry(&#39;session.load_model_format&#39;, &#39;ONNX&#39;) or</span>
+<span class="sd">            so.add_session_config_entry(&#39;session.load_model_format&#39;, &#39;ORT&#39;)</span>
 
 <span class="sd">        A file extension of &#39;.ort&#39; will be inferred as an ORT format model.</span>
 <span class="sd">        All other filenames are assumed to be ONNX format models.</span>
@@ -299,8 +344,10 @@
 <span class="sd">        &#39;providers&#39; can contain either names or names and options. When any options</span>
 <span class="sd">        are given in &#39;providers&#39;, &#39;provider_options&#39; should not be used.</span>
 
-<span class="sd">        The list of providers is ordered by precedence. For example [&#39;CUDAExecutionProvider&#39;, &#39;CPUExecutionProvider&#39;]</span>
-<span class="sd">        means execute a node using CUDAExecutionProvider if capable, otherwise execute using CPUExecutionProvider.</span>
+<span class="sd">        The list of providers is ordered by precedence. For example</span>
+<span class="sd">        `[&#39;CUDAExecutionProvider&#39;, &#39;CPUExecutionProvider&#39;]`</span>
+<span class="sd">        means execute a node using `CUDAExecutionProvider`</span>
+<span class="sd">        if capable, otherwise execute using `CPUExecutionProvider`.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
 
         <span class="n">Session</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span>
@@ -319,11 +366,14 @@
         <span class="bp">self</span><span class="o">.</span><span class="n">_enable_fallback</span> <span class="o">=</span> <span class="kc">True</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_read_config_from_model</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;ORT_LOAD_CONFIG_FROM_MODEL&#39;</span><span class="p">)</span> <span class="o">==</span> <span class="s1">&#39;1&#39;</span>
 
+        <span class="c1"># internal parameters that we don&#39;t expect to be used in general so aren&#39;t documented</span>
+        <span class="n">disabled_optimizers</span> <span class="o">=</span> <span class="n">kwargs</span><span class="p">[</span><span class="s1">&#39;disabled_optimizers&#39;</span><span class="p">]</span> <span class="k">if</span> <span class="s1">&#39;disabled_optimizers&#39;</span> <span class="ow">in</span> <span class="n">kwargs</span> <span class="k">else</span> <span class="kc">None</span>
+
         <span class="k">try</span><span class="p">:</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">_create_inference_session</span><span class="p">(</span><span class="n">providers</span><span class="p">,</span> <span class="n">provider_options</span><span class="p">)</span>
-        <span class="k">except</span> <span class="ne">RuntimeError</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_create_inference_session</span><span class="p">(</span><span class="n">providers</span><span class="p">,</span> <span class="n">provider_options</span><span class="p">,</span> <span class="n">disabled_optimizers</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">ValueError</span><span class="p">:</span>
             <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_enable_fallback</span><span class="p">:</span>
-                <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;EP Error using </span><span class="si">{}</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_providers</span><span class="p">))</span>
+                <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;EP Error using </span><span class="si">{}</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">providers</span><span class="p">))</span>
                 <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Falling back to </span><span class="si">{}</span><span class="s2"> and retrying.&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_fallback_providers</span><span class="p">))</span>
                 <span class="bp">self</span><span class="o">.</span><span class="n">_create_inference_session</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_fallback_providers</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
                 <span class="c1"># Fallback only once.</span>
@@ -331,13 +381,8 @@
             <span class="k">else</span><span class="p">:</span>
                 <span class="k">raise</span>
 
-    <span class="k">def</span> <span class="nf">_create_inference_session</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">providers</span><span class="p">,</span> <span class="n">provider_options</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">_create_inference_session</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">providers</span><span class="p">,</span> <span class="n">provider_options</span><span class="p">,</span> <span class="n">disabled_optimizers</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
         <span class="n">available_providers</span> <span class="o">=</span> <span class="n">C</span><span class="o">.</span><span class="n">get_available_providers</span><span class="p">()</span>
-
-        <span class="c1"># validate providers and provider_options before other initialization</span>
-        <span class="n">providers</span><span class="p">,</span> <span class="n">provider_options</span> <span class="o">=</span> <span class="n">check_and_normalize_provider_args</span><span class="p">(</span><span class="n">providers</span><span class="p">,</span>
-                                                                        <span class="n">provider_options</span><span class="p">,</span>
-                                                                        <span class="n">available_providers</span><span class="p">)</span>
 
         <span class="c1"># Tensorrt can fall back to CUDA. All others fall back to CPU.</span>
         <span class="k">if</span> <span class="s1">&#39;TensorrtExecutionProvider&#39;</span> <span class="ow">in</span> <span class="n">available_providers</span><span class="p">:</span>
@@ -345,14 +390,31 @@
         <span class="k">else</span><span class="p">:</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">_fallback_providers</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;CPUExecutionProvider&#39;</span><span class="p">]</span>
 
+        <span class="c1"># validate providers and provider_options before other initialization</span>
+        <span class="n">providers</span><span class="p">,</span> <span class="n">provider_options</span> <span class="o">=</span> <span class="n">check_and_normalize_provider_args</span><span class="p">(</span><span class="n">providers</span><span class="p">,</span>
+                                                                        <span class="n">provider_options</span><span class="p">,</span>
+                                                                        <span class="n">available_providers</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">providers</span> <span class="o">==</span> <span class="p">[]</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="n">available_providers</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">disable_fallback</span><span class="p">()</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;This ORT build has </span><span class="si">{}</span><span class="s2"> enabled. &quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">available_providers</span><span class="p">)</span> <span class="o">+</span>
+                             <span class="s2">&quot;Since ORT 1.9, you are required to explicitly set &quot;</span> <span class="o">+</span>
+                             <span class="s2">&quot;the providers parameter when instantiating InferenceSession. For example, &quot;</span>
+                             <span class="s2">&quot;onnxruntime.InferenceSession(..., providers=</span><span class="si">{}</span><span class="s2">, ...)&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">available_providers</span><span class="p">))</span>
+
         <span class="n">session_options</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_sess_options</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_sess_options</span> <span class="k">else</span> <span class="n">C</span><span class="o">.</span><span class="n">get_default_session_options</span><span class="p">()</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_model_path</span><span class="p">:</span>
             <span class="n">sess</span> <span class="o">=</span> <span class="n">C</span><span class="o">.</span><span class="n">InferenceSession</span><span class="p">(</span><span class="n">session_options</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_model_path</span><span class="p">,</span> <span class="kc">True</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_read_config_from_model</span><span class="p">)</span>
         <span class="k">else</span><span class="p">:</span>
             <span class="n">sess</span> <span class="o">=</span> <span class="n">C</span><span class="o">.</span><span class="n">InferenceSession</span><span class="p">(</span><span class="n">session_options</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_model_bytes</span><span class="p">,</span> <span class="kc">False</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_read_config_from_model</span><span class="p">)</span>
 
+        <span class="k">if</span> <span class="n">disabled_optimizers</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">disabled_optimizers</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+        <span class="k">elif</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">disabled_optimizers</span><span class="p">,</span> <span class="nb">set</span><span class="p">):</span>
+            <span class="c1"># convert to set. assumes iterable</span>
+            <span class="n">disabled_optimizers</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">disabled_optimizers</span><span class="p">)</span>
+
         <span class="c1"># initialize the C++ InferenceSession</span>
-        <span class="n">sess</span><span class="o">.</span><span class="n">initialize_session</span><span class="p">(</span><span class="n">providers</span><span class="p">,</span> <span class="n">provider_options</span><span class="p">)</span>
+        <span class="n">sess</span><span class="o">.</span><span class="n">initialize_session</span><span class="p">(</span><span class="n">providers</span><span class="p">,</span> <span class="n">provider_options</span><span class="p">,</span> <span class="n">disabled_optimizers</span><span class="p">)</span>
 
         <span class="bp">self</span><span class="o">.</span><span class="n">_sess</span> <span class="o">=</span> <span class="n">sess</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_sess_options</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_sess</span><span class="o">.</span><span class="n">session_options</span>
@@ -383,15 +445,15 @@
         <span class="bp">self</span><span class="o">.</span><span class="n">_create_inference_session</span><span class="p">(</span><span class="n">providers</span><span class="p">,</span> <span class="n">provider_options</span><span class="p">)</span></div>
 
 
-<span class="k">class</span> <span class="nc">IOBinding</span><span class="p">:</span>
+<div class="viewcode-block" id="IOBinding"><a class="viewcode-back" href="../../../api_summary.html#onnxruntime.IOBinding">[docs]</a><span class="k">class</span> <span class="nc">IOBinding</span><span class="p">:</span>
     <span class="sd">&#39;&#39;&#39;</span>
 <span class="sd">    This class provides API to bind input/output to a specified device, e.g. GPU.</span>
 <span class="sd">    &#39;&#39;&#39;</span>
     <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">session</span><span class="p">):</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_iobinding</span> <span class="o">=</span> <span class="n">C</span><span class="o">.</span><span class="n">SessionIOBinding</span><span class="p">(</span><span class="n">session</span><span class="o">.</span><span class="n">_sess</span><span class="p">)</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">_numpy_obj_references</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_numpy_obj_references</span> <span class="o">=</span> <span class="p">{}</span>
 
-    <span class="k">def</span> <span class="nf">bind_cpu_input</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">arr_on_cpu</span><span class="p">):</span>
+<div class="viewcode-block" id="IOBinding.bind_cpu_input"><a class="viewcode-back" href="../../../api_summary.html#onnxruntime.IOBinding.bind_cpu_input">[docs]</a>    <span class="k">def</span> <span class="nf">bind_cpu_input</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">arr_on_cpu</span><span class="p">):</span>
         <span class="sd">&#39;&#39;&#39;</span>
 <span class="sd">        bind an input to array on CPU</span>
 <span class="sd">        :param name: input name</span>
@@ -400,10 +462,10 @@
         <span class="c1"># Hold a reference to the numpy object as the bound OrtValue is backed</span>
         <span class="c1"># directly by the data buffer of the numpy object and so the numpy object</span>
         <span class="c1"># must be around until this IOBinding instance is around</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">_numpy_obj_references</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">arr_on_cpu</span><span class="p">)</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">_iobinding</span><span class="o">.</span><span class="n">bind_input</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">arr_on_cpu</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_numpy_obj_references</span><span class="p">[</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="n">arr_on_cpu</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_iobinding</span><span class="o">.</span><span class="n">bind_input</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">arr_on_cpu</span><span class="p">)</span></div>
 
-    <span class="k">def</span> <span class="nf">bind_input</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">device_type</span><span class="p">,</span> <span class="n">device_id</span><span class="p">,</span> <span class="n">element_type</span><span class="p">,</span> <span class="n">shape</span><span class="p">,</span> <span class="n">buffer_ptr</span><span class="p">):</span>
+<div class="viewcode-block" id="IOBinding.bind_input"><a class="viewcode-back" href="../../../api_summary.html#onnxruntime.IOBinding.bind_input">[docs]</a>    <span class="k">def</span> <span class="nf">bind_input</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">device_type</span><span class="p">,</span> <span class="n">device_id</span><span class="p">,</span> <span class="n">element_type</span><span class="p">,</span> <span class="n">shape</span><span class="p">,</span> <span class="n">buffer_ptr</span><span class="p">):</span>
         <span class="sd">&#39;&#39;&#39;</span>
 <span class="sd">        :param name: input name</span>
 <span class="sd">        :param device_type: e.g. cpu, cuda</span>
@@ -415,16 +477,19 @@
         <span class="bp">self</span><span class="o">.</span><span class="n">_iobinding</span><span class="o">.</span><span class="n">bind_input</span><span class="p">(</span><span class="n">name</span><span class="p">,</span>
                                    <span class="n">C</span><span class="o">.</span><span class="n">OrtDevice</span><span class="p">(</span><span class="n">get_ort_device_type</span><span class="p">(</span><span class="n">device_type</span><span class="p">),</span> <span class="n">C</span><span class="o">.</span><span class="n">OrtDevice</span><span class="o">.</span><span class="n">default_memory</span><span class="p">(),</span>
                                                <span class="n">device_id</span><span class="p">),</span>
-                                   <span class="n">element_type</span><span class="p">,</span> <span class="n">shape</span><span class="p">,</span> <span class="n">buffer_ptr</span><span class="p">)</span>
+                                   <span class="n">element_type</span><span class="p">,</span> <span class="n">shape</span><span class="p">,</span> <span class="n">buffer_ptr</span><span class="p">)</span></div>
 
-    <span class="k">def</span> <span class="nf">bind_ortvalue_input</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">ortvalue</span><span class="p">):</span>
+<div class="viewcode-block" id="IOBinding.bind_ortvalue_input"><a class="viewcode-back" href="../../../api_summary.html#onnxruntime.IOBinding.bind_ortvalue_input">[docs]</a>    <span class="k">def</span> <span class="nf">bind_ortvalue_input</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">ortvalue</span><span class="p">):</span>
         <span class="sd">&#39;&#39;&#39;</span>
 <span class="sd">        :param name: input name</span>
 <span class="sd">        :param ortvalue: OrtValue instance to bind</span>
 <span class="sd">        &#39;&#39;&#39;</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">_iobinding</span><span class="o">.</span><span class="n">bind_ortvalue_input</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">ortvalue</span><span class="o">.</span><span class="n">_ortvalue</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_iobinding</span><span class="o">.</span><span class="n">bind_ortvalue_input</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">ortvalue</span><span class="o">.</span><span class="n">_ortvalue</span><span class="p">)</span></div>
 
-    <span class="k">def</span> <span class="nf">bind_output</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">device_type</span><span class="o">=</span><span class="s1">&#39;cpu&#39;</span><span class="p">,</span> <span class="n">device_id</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">element_type</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">shape</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">buffer_ptr</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">synchronize_inputs</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_iobinding</span><span class="o">.</span><span class="n">synchronize_inputs</span><span class="p">()</span>
+
+<div class="viewcode-block" id="IOBinding.bind_output"><a class="viewcode-back" href="../../../api_summary.html#onnxruntime.IOBinding.bind_output">[docs]</a>    <span class="k">def</span> <span class="nf">bind_output</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">device_type</span><span class="o">=</span><span class="s1">&#39;cpu&#39;</span><span class="p">,</span> <span class="n">device_id</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">element_type</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">shape</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">buffer_ptr</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
         <span class="sd">&#39;&#39;&#39;</span>
 <span class="sd">        :param name: output name</span>
 <span class="sd">        :param device_type: e.g. cpu, cuda, cpu by default</span>
@@ -450,16 +515,19 @@
             <span class="bp">self</span><span class="o">.</span><span class="n">_iobinding</span><span class="o">.</span><span class="n">bind_output</span><span class="p">(</span><span class="n">name</span><span class="p">,</span>
                                         <span class="n">C</span><span class="o">.</span><span class="n">OrtDevice</span><span class="p">(</span><span class="n">get_ort_device_type</span><span class="p">(</span><span class="n">device_type</span><span class="p">),</span> <span class="n">C</span><span class="o">.</span><span class="n">OrtDevice</span><span class="o">.</span><span class="n">default_memory</span><span class="p">(),</span>
                                                     <span class="n">device_id</span><span class="p">),</span>
-                                        <span class="n">element_type</span><span class="p">,</span> <span class="n">shape</span><span class="p">,</span> <span class="n">buffer_ptr</span><span class="p">)</span>
+                                        <span class="n">element_type</span><span class="p">,</span> <span class="n">shape</span><span class="p">,</span> <span class="n">buffer_ptr</span><span class="p">)</span></div>
 
-    <span class="k">def</span> <span class="nf">bind_ortvalue_output</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">ortvalue</span><span class="p">):</span>
+<div class="viewcode-block" id="IOBinding.bind_ortvalue_output"><a class="viewcode-back" href="../../../api_summary.html#onnxruntime.IOBinding.bind_ortvalue_output">[docs]</a>    <span class="k">def</span> <span class="nf">bind_ortvalue_output</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">ortvalue</span><span class="p">):</span>
         <span class="sd">&#39;&#39;&#39;</span>
 <span class="sd">        :param name: output name</span>
 <span class="sd">        :param ortvalue: OrtValue instance to bind</span>
 <span class="sd">        &#39;&#39;&#39;</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">_iobinding</span><span class="o">.</span><span class="n">bind_ortvalue_output</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">ortvalue</span><span class="o">.</span><span class="n">_ortvalue</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_iobinding</span><span class="o">.</span><span class="n">bind_ortvalue_output</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">ortvalue</span><span class="o">.</span><span class="n">_ortvalue</span><span class="p">)</span></div>
 
-    <span class="k">def</span> <span class="nf">get_outputs</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">synchronize_outputs</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_iobinding</span><span class="o">.</span><span class="n">synchronize_outputs</span><span class="p">()</span>
+
+<div class="viewcode-block" id="IOBinding.get_outputs"><a class="viewcode-back" href="../../../api_summary.html#onnxruntime.IOBinding.get_outputs">[docs]</a>    <span class="k">def</span> <span class="nf">get_outputs</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="sd">&#39;&#39;&#39;</span>
 <span class="sd">        Returns the output OrtValues from the Run() that preceded the call.</span>
 <span class="sd">        The data buffer of the obtained OrtValues may not reside on CPU memory</span>
@@ -469,20 +537,20 @@
         <span class="k">for</span> <span class="n">ortvalue</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_iobinding</span><span class="o">.</span><span class="n">get_outputs</span><span class="p">():</span>
             <span class="n">returned_ortvalues</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">OrtValue</span><span class="p">(</span><span class="n">ortvalue</span><span class="p">))</span>
 
-        <span class="k">return</span> <span class="n">returned_ortvalues</span>
+        <span class="k">return</span> <span class="n">returned_ortvalues</span></div>
 
-    <span class="k">def</span> <span class="nf">copy_outputs_to_cpu</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<div class="viewcode-block" id="IOBinding.copy_outputs_to_cpu"><a class="viewcode-back" href="../../../api_summary.html#onnxruntime.IOBinding.copy_outputs_to_cpu">[docs]</a>    <span class="k">def</span> <span class="nf">copy_outputs_to_cpu</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="sd">&#39;&#39;&#39;Copy output contents to CPU (if on another device). No-op if already on the CPU.&#39;&#39;&#39;</span>
-        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_iobinding</span><span class="o">.</span><span class="n">copy_outputs_to_cpu</span><span class="p">()</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_iobinding</span><span class="o">.</span><span class="n">copy_outputs_to_cpu</span><span class="p">()</span></div>
 
     <span class="k">def</span> <span class="nf">clear_binding_inputs</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_iobinding</span><span class="o">.</span><span class="n">clear_binding_inputs</span><span class="p">()</span>
 
     <span class="k">def</span> <span class="nf">clear_binding_outputs</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">_iobinding</span><span class="o">.</span><span class="n">clear_binding_outputs</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_iobinding</span><span class="o">.</span><span class="n">clear_binding_outputs</span><span class="p">()</span></div>
 
 
-<span class="k">class</span> <span class="nc">OrtValue</span><span class="p">:</span>
+<div class="viewcode-block" id="OrtValue"><a class="viewcode-back" href="../../../api_summary.html#onnxruntime.OrtValue">[docs]</a><span class="k">class</span> <span class="nc">OrtValue</span><span class="p">:</span>
     <span class="sd">&#39;&#39;&#39;</span>
 <span class="sd">    A data structure that supports all ONNX data formats (tensors and non-tensors) that allows users</span>
 <span class="sd">    to place the data backing these on a device, for example, on a CUDA supported device.</span>
@@ -499,11 +567,15 @@
             <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;`Provided ortvalue` needs to be of type &quot;</span> <span class="o">+</span>
                              <span class="s2">&quot;`onnxruntime.capi.onnxruntime_pybind11_state.OrtValue`&quot;</span><span class="p">)</span>
 
-    <span class="nd">@staticmethod</span>
+    <span class="k">def</span> <span class="nf">_get_c_value</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ortvalue</span>
+
+<div class="viewcode-block" id="OrtValue.ortvalue_from_numpy"><a class="viewcode-back" href="../../../api_summary.html#onnxruntime.OrtValue.ortvalue_from_numpy">[docs]</a>    <span class="nd">@staticmethod</span>
     <span class="k">def</span> <span class="nf">ortvalue_from_numpy</span><span class="p">(</span><span class="n">numpy_obj</span><span class="p">,</span> <span class="n">device_type</span><span class="o">=</span><span class="s1">&#39;cpu&#39;</span><span class="p">,</span> <span class="n">device_id</span><span class="o">=</span><span class="mi">0</span><span class="p">):</span>
         <span class="sd">&#39;&#39;&#39;</span>
 <span class="sd">        Factory method to construct an OrtValue (which holds a Tensor) from a given Numpy object</span>
 <span class="sd">        A copy of the data in the Numpy object is held by the OrtValue only if the device is NOT cpu</span>
+
 <span class="sd">        :param numpy_obj: The Numpy object to construct the OrtValue from</span>
 <span class="sd">        :param device_type: e.g. cpu, cuda, cpu by default</span>
 <span class="sd">        :param device_id: device id, e.g. 0</span>
@@ -512,12 +584,13 @@
         <span class="c1"># is backed directly by the data buffer of the numpy object and so the numpy object</span>
         <span class="c1"># must be around until this OrtValue instance is around</span>
         <span class="k">return</span> <span class="n">OrtValue</span><span class="p">(</span><span class="n">C</span><span class="o">.</span><span class="n">OrtValue</span><span class="o">.</span><span class="n">ortvalue_from_numpy</span><span class="p">(</span><span class="n">numpy_obj</span><span class="p">,</span> <span class="n">C</span><span class="o">.</span><span class="n">OrtDevice</span><span class="p">(</span><span class="n">get_ort_device_type</span><span class="p">(</span><span class="n">device_type</span><span class="p">),</span>
-                        <span class="n">C</span><span class="o">.</span><span class="n">OrtDevice</span><span class="o">.</span><span class="n">default_memory</span><span class="p">(),</span> <span class="n">device_id</span><span class="p">)),</span> <span class="n">numpy_obj</span> <span class="k">if</span> <span class="n">device_type</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="o">==</span> <span class="s1">&#39;cpu&#39;</span> <span class="k">else</span> <span class="kc">None</span><span class="p">)</span>
+                        <span class="n">C</span><span class="o">.</span><span class="n">OrtDevice</span><span class="o">.</span><span class="n">default_memory</span><span class="p">(),</span> <span class="n">device_id</span><span class="p">)),</span> <span class="n">numpy_obj</span> <span class="k">if</span> <span class="n">device_type</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="o">==</span> <span class="s1">&#39;cpu&#39;</span> <span class="k">else</span> <span class="kc">None</span><span class="p">)</span></div>
 
-    <span class="nd">@staticmethod</span>
+<div class="viewcode-block" id="OrtValue.ortvalue_from_shape_and_type"><a class="viewcode-back" href="../../../api_summary.html#onnxruntime.OrtValue.ortvalue_from_shape_and_type">[docs]</a>    <span class="nd">@staticmethod</span>
     <span class="k">def</span> <span class="nf">ortvalue_from_shape_and_type</span><span class="p">(</span><span class="n">shape</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">element_type</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">device_type</span><span class="o">=</span><span class="s1">&#39;cpu&#39;</span><span class="p">,</span> <span class="n">device_id</span><span class="o">=</span><span class="mi">0</span><span class="p">):</span>
         <span class="sd">&#39;&#39;&#39;</span>
 <span class="sd">        Factory method to construct an OrtValue (which holds a Tensor) from given shape and element_type</span>
+
 <span class="sd">        :param shape: List of integers indicating the shape of the OrtValue</span>
 <span class="sd">        :param element_type: The data type of the elements in the OrtValue (numpy type)</span>
 <span class="sd">        :param device_type: e.g. cpu, cuda, cpu by default</span>
@@ -527,44 +600,272 @@
             <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;`element_type` and `shape` are to be provided if pre-allocated memory is provided&quot;</span><span class="p">)</span>
 
         <span class="k">return</span> <span class="n">OrtValue</span><span class="p">(</span><span class="n">C</span><span class="o">.</span><span class="n">OrtValue</span><span class="o">.</span><span class="n">ortvalue_from_shape_and_type</span><span class="p">(</span><span class="n">shape</span><span class="p">,</span> <span class="n">element_type</span><span class="p">,</span>
-                        <span class="n">C</span><span class="o">.</span><span class="n">OrtDevice</span><span class="p">(</span><span class="n">get_ort_device_type</span><span class="p">(</span><span class="n">device_type</span><span class="p">),</span> <span class="n">C</span><span class="o">.</span><span class="n">OrtDevice</span><span class="o">.</span><span class="n">default_memory</span><span class="p">(),</span> <span class="n">device_id</span><span class="p">)))</span>
+                        <span class="n">C</span><span class="o">.</span><span class="n">OrtDevice</span><span class="p">(</span><span class="n">get_ort_device_type</span><span class="p">(</span><span class="n">device_type</span><span class="p">),</span> <span class="n">C</span><span class="o">.</span><span class="n">OrtDevice</span><span class="o">.</span><span class="n">default_memory</span><span class="p">(),</span> <span class="n">device_id</span><span class="p">)))</span></div>
 
-    <span class="k">def</span> <span class="nf">data_ptr</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<div class="viewcode-block" id="OrtValue.ort_value_from_sparse_tensor"><a class="viewcode-back" href="../../../api_summary.html#onnxruntime.OrtValue.ort_value_from_sparse_tensor">[docs]</a>    <span class="nd">@staticmethod</span>
+    <span class="k">def</span> <span class="nf">ort_value_from_sparse_tensor</span><span class="p">(</span><span class="n">sparse_tensor</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        The function will construct an OrtValue instance from a valid SparseTensor</span>
+<span class="sd">        The new instance of OrtValue will assume the ownership of sparse_tensor</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="k">return</span> <span class="n">OrtValue</span><span class="p">(</span><span class="n">C</span><span class="o">.</span><span class="n">OrtValue</span><span class="o">.</span><span class="n">ort_value_from_sparse_tensor</span><span class="p">(</span><span class="n">sparse_tensor</span><span class="o">.</span><span class="n">_get_c_tensor</span><span class="p">()))</span></div>
+
+<div class="viewcode-block" id="OrtValue.as_sparse_tensor"><a class="viewcode-back" href="../../../api_summary.html#onnxruntime.OrtValue.as_sparse_tensor">[docs]</a>    <span class="k">def</span> <span class="nf">as_sparse_tensor</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        The function will return SparseTensor contained in this OrtValue</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="k">return</span> <span class="n">SparseTensor</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_ortvalue</span><span class="o">.</span><span class="n">as_sparse_tensor</span><span class="p">())</span></div>
+
+<div class="viewcode-block" id="OrtValue.data_ptr"><a class="viewcode-back" href="../../../api_summary.html#onnxruntime.OrtValue.data_ptr">[docs]</a>    <span class="k">def</span> <span class="nf">data_ptr</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="sd">&#39;&#39;&#39;</span>
 <span class="sd">        Returns the address of the first element in the OrtValue&#39;s data buffer</span>
 <span class="sd">        &#39;&#39;&#39;</span>
-        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ortvalue</span><span class="o">.</span><span class="n">data_ptr</span><span class="p">()</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ortvalue</span><span class="o">.</span><span class="n">data_ptr</span><span class="p">()</span></div>
 
-    <span class="k">def</span> <span class="nf">device_name</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<div class="viewcode-block" id="OrtValue.device_name"><a class="viewcode-back" href="../../../api_summary.html#onnxruntime.OrtValue.device_name">[docs]</a>    <span class="k">def</span> <span class="nf">device_name</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="sd">&#39;&#39;&#39;</span>
 <span class="sd">        Returns the name of the device where the OrtValue&#39;s data buffer resides e.g. cpu, cuda</span>
 <span class="sd">        &#39;&#39;&#39;</span>
-        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ortvalue</span><span class="o">.</span><span class="n">device_name</span><span class="p">()</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ortvalue</span><span class="o">.</span><span class="n">device_name</span><span class="p">()</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span></div>
 
-    <span class="k">def</span> <span class="nf">shape</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<div class="viewcode-block" id="OrtValue.shape"><a class="viewcode-back" href="../../../api_summary.html#onnxruntime.OrtValue.shape">[docs]</a>    <span class="k">def</span> <span class="nf">shape</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="sd">&#39;&#39;&#39;</span>
 <span class="sd">        Returns the shape of the data in the OrtValue</span>
 <span class="sd">        &#39;&#39;&#39;</span>
-        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ortvalue</span><span class="o">.</span><span class="n">shape</span><span class="p">()</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ortvalue</span><span class="o">.</span><span class="n">shape</span><span class="p">()</span></div>
 
-    <span class="k">def</span> <span class="nf">data_type</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<div class="viewcode-block" id="OrtValue.data_type"><a class="viewcode-back" href="../../../api_summary.html#onnxruntime.OrtValue.data_type">[docs]</a>    <span class="k">def</span> <span class="nf">data_type</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="sd">&#39;&#39;&#39;</span>
 <span class="sd">        Returns the data type of the data in the OrtValue</span>
 <span class="sd">        &#39;&#39;&#39;</span>
-        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ortvalue</span><span class="o">.</span><span class="n">data_type</span><span class="p">()</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ortvalue</span><span class="o">.</span><span class="n">data_type</span><span class="p">()</span></div>
 
-    <span class="k">def</span> <span class="nf">is_tensor</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<div class="viewcode-block" id="OrtValue.has_value"><a class="viewcode-back" href="../../../api_summary.html#onnxruntime.OrtValue.has_value">[docs]</a>    <span class="k">def</span> <span class="nf">has_value</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="sd">&#39;&#39;&#39;</span>
-<span class="sd">        Returns True if the OrtValue is a Tensor, else returns False</span>
+<span class="sd">        Returns True if the OrtValue corresponding to an</span>
+<span class="sd">        optional type contains data, else returns False</span>
 <span class="sd">        &#39;&#39;&#39;</span>
-        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ortvalue</span><span class="o">.</span><span class="n">is_tensor</span><span class="p">()</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ortvalue</span><span class="o">.</span><span class="n">has_value</span><span class="p">()</span></div>
 
-    <span class="k">def</span> <span class="nf">numpy</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<div class="viewcode-block" id="OrtValue.is_tensor"><a class="viewcode-back" href="../../../api_summary.html#onnxruntime.OrtValue.is_tensor">[docs]</a>    <span class="k">def</span> <span class="nf">is_tensor</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        Returns True if the OrtValue contains a Tensor, else returns False</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ortvalue</span><span class="o">.</span><span class="n">is_tensor</span><span class="p">()</span></div>
+
+<div class="viewcode-block" id="OrtValue.is_sparse_tensor"><a class="viewcode-back" href="../../../api_summary.html#onnxruntime.OrtValue.is_sparse_tensor">[docs]</a>    <span class="k">def</span> <span class="nf">is_sparse_tensor</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        Returns True if the OrtValue contains a SparseTensor, else returns False</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ortvalue</span><span class="o">.</span><span class="n">is_sparse_tensor</span><span class="p">()</span></div>
+
+<div class="viewcode-block" id="OrtValue.is_tensor_sequence"><a class="viewcode-back" href="../../../api_summary.html#onnxruntime.OrtValue.is_tensor_sequence">[docs]</a>    <span class="k">def</span> <span class="nf">is_tensor_sequence</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        Returns True if the OrtValue contains a Tensor Sequence, else returns False</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ortvalue</span><span class="o">.</span><span class="n">is_tensor_sequence</span><span class="p">()</span></div>
+
+<div class="viewcode-block" id="OrtValue.numpy"><a class="viewcode-back" href="../../../api_summary.html#onnxruntime.OrtValue.numpy">[docs]</a>    <span class="k">def</span> <span class="nf">numpy</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="sd">&#39;&#39;&#39;</span>
 <span class="sd">        Returns a Numpy object from the OrtValue.</span>
 <span class="sd">        Valid only for OrtValues holding Tensors. Throws for OrtValues holding non-Tensors.</span>
+<span class="sd">        Use accessors to gain a reference to non-Tensor objects such as SparseTensor</span>
 <span class="sd">        &#39;&#39;&#39;</span>
-        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ortvalue</span><span class="o">.</span><span class="n">numpy</span><span class="p">()</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ortvalue</span><span class="o">.</span><span class="n">numpy</span><span class="p">()</span></div></div>
+
+
+<div class="viewcode-block" id="OrtDevice"><a class="viewcode-back" href="../../../api_summary.html#onnxruntime.OrtDevice">[docs]</a><span class="k">class</span> <span class="nc">OrtDevice</span><span class="p">:</span>
+    <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">    A data structure that exposes the underlying C++ OrtDevice</span>
+<span class="sd">    &#39;&#39;&#39;</span>
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">c_ort_device</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        Internal constructor</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">c_ort_device</span><span class="p">,</span> <span class="n">C</span><span class="o">.</span><span class="n">OrtDevice</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_ort_device</span> <span class="o">=</span> <span class="n">c_ort_device</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;`Provided object` needs to be of type &quot;</span> <span class="o">+</span>
+                             <span class="s2">&quot;`onnxruntime.capi.onnxruntime_pybind11_state.OrtDevice`&quot;</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">_get_c_device</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        Internal accessor to underlying object</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ort_device</span>
+
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span> <span class="nf">make</span><span class="p">(</span><span class="n">ort_device_name</span><span class="p">,</span> <span class="n">device_id</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">OrtDevice</span><span class="p">(</span><span class="n">C</span><span class="o">.</span><span class="n">OrtDevice</span><span class="p">(</span><span class="n">get_ort_device_type</span><span class="p">(</span><span class="n">ort_device_name</span><span class="p">),</span>
+                                     <span class="n">C</span><span class="o">.</span><span class="n">OrtDevice</span><span class="o">.</span><span class="n">default_memory</span><span class="p">(),</span> <span class="n">device_id</span><span class="p">))</span>
+
+    <span class="k">def</span> <span class="nf">device_id</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ort_device</span><span class="o">.</span><span class="n">device_id</span><span class="p">()</span>
+
+    <span class="k">def</span> <span class="nf">device_type</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ort_device</span><span class="o">.</span><span class="n">device_type</span><span class="p">()</span></div>
+
+
+<div class="viewcode-block" id="SparseTensor"><a class="viewcode-back" href="../../../api_summary.html#onnxruntime.SparseTensor">[docs]</a><span class="k">class</span> <span class="nc">SparseTensor</span><span class="p">:</span>
+    <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">    A data structure that project the C++ SparseTensor object</span>
+<span class="sd">    The class provides API to work with the object.</span>
+<span class="sd">    Depending on the format, the class will hold more than one buffer</span>
+<span class="sd">    depending on the format</span>
+<span class="sd">    &#39;&#39;&#39;</span>
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sparse_tensor</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        Internal constructor</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">sparse_tensor</span><span class="p">,</span> <span class="n">C</span><span class="o">.</span><span class="n">SparseTensor</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_tensor</span> <span class="o">=</span> <span class="n">sparse_tensor</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c1"># An end user won&#39;t hit this error</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;`Provided object` needs to be of type &quot;</span> <span class="o">+</span>
+                             <span class="s2">&quot;`onnxruntime.capi.onnxruntime_pybind11_state.SparseTensor`&quot;</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">_get_c_tensor</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_tensor</span>
+
+<div class="viewcode-block" id="SparseTensor.sparse_coo_from_numpy"><a class="viewcode-back" href="../../../api_summary.html#onnxruntime.SparseTensor.sparse_coo_from_numpy">[docs]</a>    <span class="nd">@staticmethod</span>
+    <span class="k">def</span> <span class="nf">sparse_coo_from_numpy</span><span class="p">(</span><span class="n">dense_shape</span><span class="p">,</span> <span class="n">values</span><span class="p">,</span> <span class="n">coo_indices</span><span class="p">,</span> <span class="n">ort_device</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        Factory method to construct a SparseTensor in COO format from given arguments</span>
+
+<span class="sd">        :param dense_shape: 1-D  numpy array(int64) or a python list that contains a dense_shape of the sparse tensor</span>
+<span class="sd">            must be on cpu memory</span>
+<span class="sd">        :param values: a homogeneous, contiguous 1-D numpy array that contains non-zero elements of the tensor</span>
+<span class="sd">            of a type.</span>
+<span class="sd">        :param coo_indices:  contiguous numpy array(int64) that contains COO indices for the tensor. coo_indices may</span>
+<span class="sd">            have a 1-D shape when it contains a linear index of non-zero values and its length must be equal to</span>
+<span class="sd">            that of the values. It can also be of 2-D shape, in which has it contains pairs of coordinates for</span>
+<span class="sd">            each of the nnz values and its length must be exactly twice of the values length.</span>
+<span class="sd">        :param ort_device: - describes the backing memory owned by the supplied nummpy arrays. Only CPU memory is</span>
+<span class="sd">            suppored for non-numeric data types.</span>
+
+<span class="sd">        For primitive types, the method will map values and coo_indices arrays into native memory and will use</span>
+<span class="sd">        them as backing storage. It will increment the reference count for numpy arrays and it will decrement it</span>
+<span class="sd">        on GC. The buffers may reside in any storage either CPU or GPU.</span>
+<span class="sd">        For strings and objects, it will create a copy of the arrays in CPU memory as ORT does not support those</span>
+<span class="sd">        on other devices and their memory can not be mapped.</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="k">return</span> <span class="n">SparseTensor</span><span class="p">(</span><span class="n">C</span><span class="o">.</span><span class="n">SparseTensor</span><span class="o">.</span><span class="n">sparse_coo_from_numpy</span><span class="p">(</span><span class="n">dense_shape</span><span class="p">,</span> <span class="n">values</span><span class="p">,</span> <span class="n">coo_indices</span><span class="p">,</span>
+                            <span class="n">ort_device</span><span class="o">.</span><span class="n">_get_c_device</span><span class="p">()))</span></div>
+
+<div class="viewcode-block" id="SparseTensor.sparse_csr_from_numpy"><a class="viewcode-back" href="../../../api_summary.html#onnxruntime.SparseTensor.sparse_csr_from_numpy">[docs]</a>    <span class="nd">@staticmethod</span>
+    <span class="k">def</span> <span class="nf">sparse_csr_from_numpy</span><span class="p">(</span><span class="n">dense_shape</span><span class="p">,</span> <span class="n">values</span><span class="p">,</span> <span class="n">inner_indices</span><span class="p">,</span> <span class="n">outer_indices</span><span class="p">,</span> <span class="n">ort_device</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        Factory method to construct a SparseTensor in CSR format from given arguments</span>
+
+<span class="sd">        :param dense_shape: 1-D numpy array(int64) or a python list that contains a dense_shape of the</span>
+<span class="sd">            sparse tensor (rows, cols) must be on cpu memory</span>
+<span class="sd">        :param values: a  contiguous, homogeneous 1-D numpy array that contains non-zero elements of the tensor</span>
+<span class="sd">            of a type.</span>
+<span class="sd">        :param inner_indices:  contiguous 1-D numpy array(int64) that contains CSR inner indices for the tensor.</span>
+<span class="sd">            Its length must be equal to that of the values.</span>
+<span class="sd">        :param outer_indices:  contiguous 1-D numpy array(int64) that contains CSR outer indices for the tensor.</span>
+<span class="sd">            Its length must be equal to the number of rows + 1.</span>
+<span class="sd">        :param ort_device: - describes the backing memory owned by the supplied nummpy arrays. Only CPU memory is</span>
+<span class="sd">            suppored for non-numeric data types.</span>
+
+<span class="sd">        For primitive types, the method will map values and indices arrays into native memory and will use them as</span>
+<span class="sd">        backing storage. It will increment the reference count and it will decrement then count when it is GCed.</span>
+<span class="sd">        The buffers may reside in any storage either CPU or GPU.</span>
+<span class="sd">        For strings and objects, it will create a copy of the arrays in CPU memory as ORT does not support those</span>
+<span class="sd">        on other devices and their memory can not be mapped.</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="k">return</span> <span class="n">SparseTensor</span><span class="p">(</span><span class="n">C</span><span class="o">.</span><span class="n">SparseTensor</span><span class="o">.</span><span class="n">sparse_csr_from_numpy</span><span class="p">(</span><span class="n">dense_shape</span><span class="p">,</span> <span class="n">values</span><span class="p">,</span> <span class="n">inner_indices</span><span class="p">,</span> <span class="n">outer_indices</span><span class="p">,</span>
+                            <span class="n">ort_device</span><span class="o">.</span><span class="n">_get_c_device</span><span class="p">()))</span></div>
+
+<div class="viewcode-block" id="SparseTensor.values"><a class="viewcode-back" href="../../../api_summary.html#onnxruntime.SparseTensor.values">[docs]</a>    <span class="k">def</span> <span class="nf">values</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        The method returns a numpy array that is backed by the native memory</span>
+<span class="sd">        if the data type is numeric. Otherwise, the returned numpy array that contains</span>
+<span class="sd">        copies of the strings.</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_tensor</span><span class="o">.</span><span class="n">values</span><span class="p">()</span></div>
+
+<div class="viewcode-block" id="SparseTensor.as_coo_view"><a class="viewcode-back" href="../../../api_summary.html#onnxruntime.SparseTensor.as_coo_view">[docs]</a>    <span class="k">def</span> <span class="nf">as_coo_view</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        The method will return coo representation of the sparse tensor which will enable</span>
+<span class="sd">        querying COO indices. If the instance did not contain COO format, it would throw.</span>
+<span class="sd">        You can query coo indices as:</span>
+
+<span class="sd">        ::</span>
+
+<span class="sd">            coo_indices = sparse_tensor.as_coo_view().indices()</span>
+
+<span class="sd">        which will return a numpy array that is backed by the native memory.</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_tensor</span><span class="o">.</span><span class="n">get_coo_data</span><span class="p">()</span></div>
+
+<div class="viewcode-block" id="SparseTensor.as_csrc_view"><a class="viewcode-back" href="../../../api_summary.html#onnxruntime.SparseTensor.as_csrc_view">[docs]</a>    <span class="k">def</span> <span class="nf">as_csrc_view</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        The method will return CSR(C) representation of the sparse tensor which will enable</span>
+<span class="sd">        querying CRS(C) indices. If the instance dit not contain CSR(C) format, it would throw.</span>
+<span class="sd">        You can query indices as:</span>
+
+<span class="sd">        ::</span>
+
+<span class="sd">            inner_ndices = sparse_tensor.as_csrc_view().inner()</span>
+<span class="sd">            outer_ndices = sparse_tensor.as_csrc_view().outer()</span>
+
+<span class="sd">        returning numpy arrays backed by the native memory.</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_tensor</span><span class="o">.</span><span class="n">get_csrc_data</span><span class="p">()</span></div>
+
+<div class="viewcode-block" id="SparseTensor.as_blocksparse_view"><a class="viewcode-back" href="../../../api_summary.html#onnxruntime.SparseTensor.as_blocksparse_view">[docs]</a>    <span class="k">def</span> <span class="nf">as_blocksparse_view</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        The method will return coo representation of the sparse tensor which will enable</span>
+<span class="sd">        querying BlockSparse indices. If the instance did not contain BlockSparse format, it would throw.</span>
+<span class="sd">        You can query coo indices as:</span>
+
+<span class="sd">        ::</span>
+
+<span class="sd">            block_sparse_indices = sparse_tensor.as_blocksparse_view().indices()</span>
+
+<span class="sd">        which will return a numpy array that is backed by the native memory</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_tensor</span><span class="o">.</span><span class="n">get_blocksparse_data</span><span class="p">()</span></div>
+
+<div class="viewcode-block" id="SparseTensor.to_cuda"><a class="viewcode-back" href="../../../api_summary.html#onnxruntime.SparseTensor.to_cuda">[docs]</a>    <span class="k">def</span> <span class="nf">to_cuda</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">ort_device</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        Returns a copy of this instance on the specified cuda device</span>
+
+<span class="sd">        :param ort_device: with name &#39;cuda&#39; and valid gpu device id</span>
+
+<span class="sd">        The method will throw if:</span>
+
+<span class="sd">        - this instance contains strings</span>
+<span class="sd">        - this instance is already on GPU. Cross GPU copy is not supported</span>
+<span class="sd">        - CUDA is not present in this build</span>
+<span class="sd">        - if the specified device is not valid</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="k">return</span> <span class="n">SparseTensor</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_tensor</span><span class="o">.</span><span class="n">to_cuda</span><span class="p">(</span><span class="n">ort_device</span><span class="o">.</span><span class="n">_get_c_device</span><span class="p">()))</span></div>
+
+<div class="viewcode-block" id="SparseTensor.format"><a class="viewcode-back" href="../../../api_summary.html#onnxruntime.SparseTensor.format">[docs]</a>    <span class="k">def</span> <span class="nf">format</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        Returns a OrtSparseFormat enumeration</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_tensor</span><span class="o">.</span><span class="n">format</span></div>
+
+<div class="viewcode-block" id="SparseTensor.dense_shape"><a class="viewcode-back" href="../../../api_summary.html#onnxruntime.SparseTensor.dense_shape">[docs]</a>    <span class="k">def</span> <span class="nf">dense_shape</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        Returns a numpy array(int64) containing a dense shape of a sparse tensor</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_tensor</span><span class="o">.</span><span class="n">dense_shape</span><span class="p">()</span></div>
+
+<div class="viewcode-block" id="SparseTensor.data_type"><a class="viewcode-back" href="../../../api_summary.html#onnxruntime.SparseTensor.data_type">[docs]</a>    <span class="k">def</span> <span class="nf">data_type</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        Returns a string data type of the data in the OrtValue</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_tensor</span><span class="o">.</span><span class="n">data_type</span><span class="p">()</span></div>
+
+<div class="viewcode-block" id="SparseTensor.device_name"><a class="viewcode-back" href="../../../api_summary.html#onnxruntime.SparseTensor.device_name">[docs]</a>    <span class="k">def</span> <span class="nf">device_name</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        Returns the name of the device where the SparseTensor data buffers reside e.g. cpu, cuda</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_tensor</span><span class="o">.</span><span class="n">device_name</span><span class="p">()</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span></div></div>
 </pre></div>
 
           </div>
@@ -605,7 +906,7 @@
   <h3 id="searchlabel">Quick search</h3>
     <div class="searchformwrapper">
     <form class="search" action="../../../search.html" method="get">
-      <input type="text" name="q" aria-labelledby="searchlabel" />
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"/>
       <input type="submit" value="Go" />
     </form>
     </div>
@@ -627,7 +928,7 @@
       &copy;2018-2021, Microsoft.
       
       |
-      Powered by <a href="http://sphinx-doc.org/">Sphinx 3.5.1</a>
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 4.3.1</a>
       &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.12</a>
       
     </div>

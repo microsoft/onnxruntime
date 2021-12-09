@@ -4,16 +4,17 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>API Summary &#8212; ONNX Runtime 1.7.0 documentation</title>
-    <link rel="stylesheet" href="static/pygments.css" type="text/css" />
-    <link rel="stylesheet" href="static/alabaster.css" type="text/css" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="generator" content="Docutils 0.17.1: http://docutils.sourceforge.net/" />
+
+    <title>API Summary &#8212; ONNX Runtime 1.10.0 documentation</title>
+    <link rel="stylesheet" type="text/css" href="static/pygments.css" />
+    <link rel="stylesheet" type="text/css" href="static/alabaster.css" />
     <link rel="stylesheet" type="text/css" href="static/graphviz.css" />
-    <link rel="stylesheet" type="text/css" href="static/gallery.css" />
-    <link rel="stylesheet" type="text/css" href="static/gallery-binder.css" />
-    <link rel="stylesheet" type="text/css" href="static/gallery-dataframe.css" />
-    <link rel="stylesheet" type="text/css" href="static/gallery-rendered-html.css" />
-    <script id="documentation_options" data-url_root="./" src="static/documentation_options.js"></script>
+    <link rel="stylesheet" type="text/css" href="static/sg_gallery.css" />
+    <link rel="stylesheet" type="text/css" href="static/sg_gallery-binder.css" />
+    <link rel="stylesheet" type="text/css" href="static/sg_gallery-dataframe.css" />
+    <link rel="stylesheet" type="text/css" href="static/sg_gallery-rendered-html.css" />
+    <script data-url_root="./" id="documentation_options" src="static/documentation_options.js"></script>
     <script src="static/jquery.js"></script>
     <script src="static/underscore.js"></script>
     <script src="static/doctools.js"></script>
@@ -37,22 +38,50 @@
 
           <div class="body" role="main">
             
-  <div class="section" id="api-summary">
+  <section id="api-summary">
 <h1>API Summary<a class="headerlink" href="#api-summary" title="Permalink to this headline">¶</a></h1>
 <p>Summary of public functions and classes exposed
 in <em>ONNX Runtime</em>.</p>
 <div class="contents local topic" id="contents">
 <ul class="simple">
-<li><p><a class="reference internal" href="#ortvalue" id="id1">OrtValue</a></p></li>
-<li><p><a class="reference internal" href="#iobinding" id="id2">IOBinding</a></p></li>
-<li><p><a class="reference internal" href="#device" id="id3">Device</a></p></li>
-<li><p><a class="reference internal" href="#examples-and-datasets" id="id4">Examples and datasets</a></p></li>
-<li><p><a class="reference internal" href="#load-and-run-a-model" id="id5">Load and run a model</a></p></li>
-<li><p><a class="reference internal" href="#backend" id="id6">Backend</a></p></li>
+<li><p><a class="reference internal" href="#ortvalue" id="id3">OrtValue</a></p></li>
+<li><p><a class="reference internal" href="#iobinding" id="id4">IOBinding</a></p></li>
+<li><p><a class="reference internal" href="#device" id="id5">Device</a></p></li>
+<li><p><a class="reference internal" href="#examples-and-datasets" id="id6">Examples and datasets</a></p></li>
+<li><p><a class="reference internal" href="#load-and-run-a-model" id="id7">Load and run a model</a></p>
+<ul>
+<li><p><a class="reference internal" href="#main-class" id="id8">Main class</a></p></li>
+<li><p><a class="reference internal" href="#options" id="id9">Options</a></p>
+<ul>
+<li><p><a class="reference internal" href="#runoptions" id="id10">RunOptions</a></p></li>
+<li><p><a class="reference internal" href="#sessionoptions" id="id11">SessionOptions</a></p></li>
+</ul>
+</li>
+<li><p><a class="reference internal" href="#data" id="id12">Data</a></p>
+<ul>
+<li><p><a class="reference internal" href="#id1" id="id13">OrtValue</a></p></li>
+<li><p><a class="reference internal" href="#sparsetensor" id="id14">SparseTensor</a></p></li>
+</ul>
+</li>
+<li><p><a class="reference internal" href="#devices" id="id15">Devices</a></p>
+<ul>
+<li><p><a class="reference internal" href="#id2" id="id16">IOBinding</a></p></li>
+<li><p><a class="reference internal" href="#ortdevice" id="id17">OrtDevice</a></p></li>
+</ul>
+</li>
+<li><p><a class="reference internal" href="#internal-classes" id="id18">Internal classes</a></p>
+<ul>
+<li><p><a class="reference internal" href="#modelmetadata" id="id19">ModelMetadata</a></p></li>
+<li><p><a class="reference internal" href="#nodearg" id="id20">NodeArg</a></p></li>
+</ul>
+</li>
+</ul>
+</li>
+<li><p><a class="reference internal" href="#backend" id="id21">Backend</a></p></li>
 </ul>
 </div>
-<div class="section" id="ortvalue">
-<h2><a class="toc-backref" href="#id1">OrtValue</a><a class="headerlink" href="#ortvalue" title="Permalink to this headline">¶</a></h2>
+<section id="ortvalue">
+<h2><a class="toc-backref" href="#id3">OrtValue</a><a class="headerlink" href="#ortvalue" title="Permalink to this headline">¶</a></h2>
 <p><em>ONNX Runtime</em> works with native Python data structures which are mapped into ONNX data formats :
 Numpy arrays (tensors), dictionaries (maps), and a list of Numpy arrays (sequences).
 The data backing these are on CPU.</p>
@@ -62,7 +91,7 @@ interesting <em>IOBinding</em> scenarios (discussed below). In addition, <em>ONN
 working with <em>OrtValue</em> (s) while inferencing a model if provided as part of the input feed.</p>
 <p>Below is an example showing creation of an <em>OrtValue</em> from a Numpy array while placing its backing memory
 on a CUDA device:</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="c1">#X is numpy array on cpu, create an OrtValue and place it on cuda device id = 0</span>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="c1"># X is numpy array on cpu, create an OrtValue and place it on cuda device id = 0</span>
 <span class="n">ortvalue</span> <span class="o">=</span> <span class="n">onnxruntime</span><span class="o">.</span><span class="n">OrtValue</span><span class="o">.</span><span class="n">ortvalue_from_numpy</span><span class="p">(</span><span class="n">X</span><span class="p">,</span> <span class="s1">&#39;cuda&#39;</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
 <span class="n">ortvalue</span><span class="o">.</span><span class="n">device_name</span><span class="p">()</span>  <span class="c1"># &#39;cuda&#39;</span>
 <span class="n">ortvalue</span><span class="o">.</span><span class="n">shape</span><span class="p">()</span>  <span class="c1"># shape of the numpy array X</span>
@@ -70,14 +99,14 @@ on a CUDA device:</p>
 <span class="n">ortvalue</span><span class="o">.</span><span class="n">is_tensor</span><span class="p">()</span>  <span class="c1"># &#39;True&#39;</span>
 <span class="n">np</span><span class="o">.</span><span class="n">array_equal</span><span class="p">(</span><span class="n">ortvalue</span><span class="o">.</span><span class="n">numpy</span><span class="p">(),</span> <span class="n">X</span><span class="p">)</span>  <span class="c1"># &#39;True&#39;</span>
 
-<span class="c1">#ortvalue can be provided as part of the input feed to a model</span>
+<span class="c1"># ortvalue can be provided as part of the input feed to a model</span>
 <span class="n">ses</span> <span class="o">=</span> <span class="n">onnxruntime</span><span class="o">.</span><span class="n">InferenceSession</span><span class="p">(</span><span class="s1">&#39;model.onnx&#39;</span><span class="p">)</span>
 <span class="n">res</span> <span class="o">=</span> <span class="n">sess</span><span class="o">.</span><span class="n">run</span><span class="p">([</span><span class="s2">&quot;Y&quot;</span><span class="p">],</span> <span class="p">{</span><span class="s2">&quot;X&quot;</span><span class="p">:</span> <span class="n">ortvalue</span><span class="p">})</span>
 </pre></div>
 </div>
-</div>
-<div class="section" id="iobinding">
-<h2><a class="toc-backref" href="#id2">IOBinding</a><a class="headerlink" href="#iobinding" title="Permalink to this headline">¶</a></h2>
+</section>
+<section id="iobinding">
+<h2><a class="toc-backref" href="#id4">IOBinding</a><a class="headerlink" href="#iobinding" title="Permalink to this headline">¶</a></h2>
 <p>By default, <em>ONNX Runtime</em> always places input(s) and output(s) on CPU, which
 is not optimal if the input or output is consumed and produced on a device
 other than CPU because it introduces data copy between CPU and the device.
@@ -89,7 +118,7 @@ Here are scenarios to use this feature.</p>
 <p>Scenario 1:</p>
 <p>A graph is executed on a device other than CPU, for instance CUDA. Users can
 use IOBinding to put input on CUDA as the follows.</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="c1">#X is numpy array on cpu</span>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="c1"># X is numpy array on cpu</span>
 <span class="n">session</span> <span class="o">=</span> <span class="n">onnxruntime</span><span class="o">.</span><span class="n">InferenceSession</span><span class="p">(</span><span class="s1">&#39;model.onnx&#39;</span><span class="p">)</span>
 <span class="n">io_binding</span> <span class="o">=</span> <span class="n">session</span><span class="o">.</span><span class="n">io_binding</span><span class="p">()</span>
 <span class="c1"># OnnxRuntime will copy the data over to the CUDA device if &#39;input&#39; is consumed by nodes on the CUDA device</span>
@@ -101,7 +130,7 @@ use IOBinding to put input on CUDA as the follows.</p>
 </div>
 <p>Scenario 2:</p>
 <p>The input data is on a device, users directly use the input. The output data is on CPU.</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="c1">#X is numpy array on cpu</span>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="c1"># X is numpy array on cpu</span>
 <span class="n">X_ortvalue</span> <span class="o">=</span> <span class="n">onnxruntime</span><span class="o">.</span><span class="n">OrtValue</span><span class="o">.</span><span class="n">ortvalue_from_numpy</span><span class="p">(</span><span class="n">X</span><span class="p">,</span> <span class="s1">&#39;cuda&#39;</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
 <span class="n">session</span> <span class="o">=</span> <span class="n">onnxruntime</span><span class="o">.</span><span class="n">InferenceSession</span><span class="p">(</span><span class="s1">&#39;model.onnx&#39;</span><span class="p">)</span>
 <span class="n">io_binding</span> <span class="o">=</span> <span class="n">session</span><span class="o">.</span><span class="n">io_binding</span><span class="p">()</span>
@@ -152,303 +181,895 @@ Users can thus consume the <em>ONNX Runtime</em> allocated memory for the output
 <span class="n">session</span><span class="o">.</span><span class="n">run_with_iobinding</span><span class="p">(</span><span class="n">io_binding</span><span class="p">)</span>
 </pre></div>
 </div>
-</div>
-<div class="section" id="device">
-<h2><a class="toc-backref" href="#id3">Device</a><a class="headerlink" href="#device" title="Permalink to this headline">¶</a></h2>
+</section>
+<section id="device">
+<h2><a class="toc-backref" href="#id5">Device</a><a class="headerlink" href="#device" title="Permalink to this headline">¶</a></h2>
 <p>The package is compiled for a specific device, GPU or CPU.
 The CPU implementation includes optimizations
 such as MKL (Math Kernel Libary). The following function
 indicates the chosen option:</p>
 <dl class="py function">
-<dt id="onnxruntime.get_device">
-<code class="sig-prename descclassname"><span class="pre">onnxruntime.</span></code><code class="sig-name descname"><span class="pre">get_device</span></code><span class="sig-paren">(</span><span class="sig-paren">)</span> &#x2192; <a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.9)"><span class="pre">str</span></a><a class="headerlink" href="#onnxruntime.get_device" title="Permalink to this definition">¶</a></dt>
+<dt class="sig sig-object py" id="onnxruntime.get_device">
+<span class="sig-prename descclassname"><span class="pre">onnxruntime.</span></span><span class="sig-name descname"><span class="pre">get_device</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.10)"><span class="pre">str</span></a></span></span><a class="headerlink" href="#onnxruntime.get_device" title="Permalink to this definition">¶</a></dt>
 <dd><p>Return the device used to compute the prediction (CPU, MKL, …)</p>
 </dd></dl>
 
-</div>
-<div class="section" id="examples-and-datasets">
-<h2><a class="toc-backref" href="#id4">Examples and datasets</a><a class="headerlink" href="#examples-and-datasets" title="Permalink to this headline">¶</a></h2>
+</section>
+<section id="examples-and-datasets">
+<h2><a class="toc-backref" href="#id6">Examples and datasets</a><a class="headerlink" href="#examples-and-datasets" title="Permalink to this headline">¶</a></h2>
 <p>The package contains a few models stored in ONNX format
 used in the documentation. These don’t need to be downloaded
 as they are installed with the package.</p>
 <dl class="py function">
-<dt id="onnxruntime.datasets.get_example">
-<code class="sig-prename descclassname"><span class="pre">onnxruntime.datasets.</span></code><code class="sig-name descname"><span class="pre">get_example</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="modules/onnxruntime/datasets.html#get_example"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#onnxruntime.datasets.get_example" title="Permalink to this definition">¶</a></dt>
+<dt class="sig sig-object py" id="onnxruntime.datasets.get_example">
+<span class="sig-prename descclassname"><span class="pre">onnxruntime.datasets.</span></span><span class="sig-name descname"><span class="pre">get_example</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="modules/onnxruntime/datasets.html#get_example"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#onnxruntime.datasets.get_example" title="Permalink to this definition">¶</a></dt>
 <dd><p>Retrieves the absolute file name of an example.</p>
 </dd></dl>
 
-</div>
-<div class="section" id="load-and-run-a-model">
-<h2><a class="toc-backref" href="#id5">Load and run a model</a><a class="headerlink" href="#load-and-run-a-model" title="Permalink to this headline">¶</a></h2>
+</section>
+<section id="load-and-run-a-model">
+<h2><a class="toc-backref" href="#id7">Load and run a model</a><a class="headerlink" href="#load-and-run-a-model" title="Permalink to this headline">¶</a></h2>
 <p><em>ONNX Runtime</em> reads a model saved in ONNX format.
 The main class <em>InferenceSession</em> wraps these functionalities
 in a single place.</p>
+<section id="main-class">
+<h3><a class="toc-backref" href="#id8">Main class</a><a class="headerlink" href="#main-class" title="Permalink to this headline">¶</a></h3>
 <dl class="py class">
-<dt id="onnxruntime.ModelMetadata">
-<em class="property"><span class="pre">class</span> </em><code class="sig-prename descclassname"><span class="pre">onnxruntime.</span></code><code class="sig-name descname"><span class="pre">ModelMetadata</span></code><a class="headerlink" href="#onnxruntime.ModelMetadata" title="Permalink to this definition">¶</a></dt>
-<dd><p>Pre-defined and custom metadata about the model.
-It is usually used to identify the model used to run the prediction and
-facilitate the comparison.</p>
+<dt class="sig sig-object py" id="onnxruntime.InferenceSession">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">onnxruntime.</span></span><span class="sig-name descname"><span class="pre">InferenceSession</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">path_or_bytes</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sess_options</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">providers</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">provider_options</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="modules/onnxruntime/capi/onnxruntime_inference_collection.html#InferenceSession"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#onnxruntime.InferenceSession" title="Permalink to this definition">¶</a></dt>
+<dd><p>This is the main class used to run a model.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>path_or_bytes</strong> – filename or serialized ONNX or ORT format model in a byte string</p></li>
+<li><p><strong>sess_options</strong> – session options</p></li>
+<li><p><strong>providers</strong> – Optional sequence of providers in order of decreasing
+precedence. Values can either be provider names or tuples of
+(provider name, options dict). If not provided, then all available
+providers are used with the default precedence.</p></li>
+<li><p><strong>provider_options</strong> – Optional sequence of options dicts corresponding
+to the providers listed in ‘providers’.</p></li>
+</ul>
+</dd>
+</dl>
+<p>The model type will be inferred unless explicitly set in the SessionOptions.
+To explicitly set:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">so</span> <span class="o">=</span> <span class="n">onnxruntime</span><span class="o">.</span><span class="n">SessionOptions</span><span class="p">()</span>
+<span class="c1"># so.add_session_config_entry(&#39;session.load_model_format&#39;, &#39;ONNX&#39;) or</span>
+<span class="n">so</span><span class="o">.</span><span class="n">add_session_config_entry</span><span class="p">(</span><span class="s1">&#39;session.load_model_format&#39;</span><span class="p">,</span> <span class="s1">&#39;ORT&#39;</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>A file extension of ‘.ort’ will be inferred as an ORT format model.
+All other filenames are assumed to be ONNX format models.</p>
+<p>‘providers’ can contain either names or names and options. When any options
+are given in ‘providers’, ‘provider_options’ should not be used.</p>
+<p>The list of providers is ordered by precedence. For example
+<cite>[‘CUDAExecutionProvider’, ‘CPUExecutionProvider’]</cite>
+means execute a node using <cite>CUDAExecutionProvider</cite>
+if capable, otherwise execute using <cite>CPUExecutionProvider</cite>.</p>
 <dl class="py method">
-<dt id="onnxruntime.ModelMetadata.custom_metadata_map">
-<em class="property"><span class="pre">property</span> </em><code class="sig-name descname"><span class="pre">custom_metadata_map</span></code><a class="headerlink" href="#onnxruntime.ModelMetadata.custom_metadata_map" title="Permalink to this definition">¶</a></dt>
-<dd><p>additional metadata</p>
-</dd></dl>
-
-<dl class="py method">
-<dt id="onnxruntime.ModelMetadata.description">
-<em class="property"><span class="pre">property</span> </em><code class="sig-name descname"><span class="pre">description</span></code><a class="headerlink" href="#onnxruntime.ModelMetadata.description" title="Permalink to this definition">¶</a></dt>
-<dd><p>description of the model</p>
-</dd></dl>
-
-<dl class="py method">
-<dt id="onnxruntime.ModelMetadata.domain">
-<em class="property"><span class="pre">property</span> </em><code class="sig-name descname"><span class="pre">domain</span></code><a class="headerlink" href="#onnxruntime.ModelMetadata.domain" title="Permalink to this definition">¶</a></dt>
-<dd><p>ONNX domain</p>
-</dd></dl>
-
-<dl class="py method">
-<dt id="onnxruntime.ModelMetadata.graph_description">
-<em class="property"><span class="pre">property</span> </em><code class="sig-name descname"><span class="pre">graph_description</span></code><a class="headerlink" href="#onnxruntime.ModelMetadata.graph_description" title="Permalink to this definition">¶</a></dt>
-<dd><p>description of the graph hosted in the model</p>
-</dd></dl>
-
-<dl class="py method">
-<dt id="onnxruntime.ModelMetadata.graph_name">
-<em class="property"><span class="pre">property</span> </em><code class="sig-name descname"><span class="pre">graph_name</span></code><a class="headerlink" href="#onnxruntime.ModelMetadata.graph_name" title="Permalink to this definition">¶</a></dt>
-<dd><p>graph name</p>
-</dd></dl>
-
-<dl class="py method">
-<dt id="onnxruntime.ModelMetadata.producer_name">
-<em class="property"><span class="pre">property</span> </em><code class="sig-name descname"><span class="pre">producer_name</span></code><a class="headerlink" href="#onnxruntime.ModelMetadata.producer_name" title="Permalink to this definition">¶</a></dt>
-<dd><p>producer name</p>
+<dt class="sig sig-object py" id="onnxruntime.InferenceSession.disable_fallback">
+<span class="sig-name descname"><span class="pre">disable_fallback</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#onnxruntime.InferenceSession.disable_fallback" title="Permalink to this definition">¶</a></dt>
+<dd><p>Disable session.run() fallback mechanism.</p>
 </dd></dl>
 
 <dl class="py method">
-<dt id="onnxruntime.ModelMetadata.version">
-<em class="property"><span class="pre">property</span> </em><code class="sig-name descname"><span class="pre">version</span></code><a class="headerlink" href="#onnxruntime.ModelMetadata.version" title="Permalink to this definition">¶</a></dt>
-<dd><p>version of the model</p>
+<dt class="sig sig-object py" id="onnxruntime.InferenceSession.enable_fallback">
+<span class="sig-name descname"><span class="pre">enable_fallback</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#onnxruntime.InferenceSession.enable_fallback" title="Permalink to this definition">¶</a></dt>
+<dd><p>Enable session.Run() fallback mechanism. If session.Run() fails due to an internal Execution Provider failure,
+reset the Execution Providers enabled for this session.
+If GPU is enabled, fall back to CUDAExecutionProvider.
+otherwise fall back to CPUExecutionProvider.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="onnxruntime.InferenceSession.end_profiling">
+<span class="sig-name descname"><span class="pre">end_profiling</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#onnxruntime.InferenceSession.end_profiling" title="Permalink to this definition">¶</a></dt>
+<dd><p>End profiling and return results in a file.</p>
+<p>The results are stored in a filename if the option
+<a class="reference internal" href="#onnxruntime.SessionOptions.enable_profiling" title="onnxruntime.SessionOptions.enable_profiling"><code class="xref py py-meth docutils literal notranslate"><span class="pre">onnxruntime.SessionOptions.enable_profiling()</span></code></a>.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="onnxruntime.InferenceSession.get_inputs">
+<span class="sig-name descname"><span class="pre">get_inputs</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#onnxruntime.InferenceSession.get_inputs" title="Permalink to this definition">¶</a></dt>
+<dd><p>Return the inputs metadata as a list of <a class="reference internal" href="#onnxruntime.NodeArg" title="onnxruntime.NodeArg"><code class="xref py py-class docutils literal notranslate"><span class="pre">onnxruntime.NodeArg</span></code></a>.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="onnxruntime.InferenceSession.get_modelmeta">
+<span class="sig-name descname"><span class="pre">get_modelmeta</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#onnxruntime.InferenceSession.get_modelmeta" title="Permalink to this definition">¶</a></dt>
+<dd><p>Return the metadata. See <a class="reference internal" href="#onnxruntime.ModelMetadata" title="onnxruntime.ModelMetadata"><code class="xref py py-class docutils literal notranslate"><span class="pre">onnxruntime.ModelMetadata</span></code></a>.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="onnxruntime.InferenceSession.get_outputs">
+<span class="sig-name descname"><span class="pre">get_outputs</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#onnxruntime.InferenceSession.get_outputs" title="Permalink to this definition">¶</a></dt>
+<dd><p>Return the outputs metadata as a list of <a class="reference internal" href="#onnxruntime.NodeArg" title="onnxruntime.NodeArg"><code class="xref py py-class docutils literal notranslate"><span class="pre">onnxruntime.NodeArg</span></code></a>.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="onnxruntime.InferenceSession.get_overridable_initializers">
+<span class="sig-name descname"><span class="pre">get_overridable_initializers</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#onnxruntime.InferenceSession.get_overridable_initializers" title="Permalink to this definition">¶</a></dt>
+<dd><p>Return the inputs (including initializers) metadata as a list of <a class="reference internal" href="#onnxruntime.NodeArg" title="onnxruntime.NodeArg"><code class="xref py py-class docutils literal notranslate"><span class="pre">onnxruntime.NodeArg</span></code></a>.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="onnxruntime.InferenceSession.get_profiling_start_time_ns">
+<span class="sig-name descname"><span class="pre">get_profiling_start_time_ns</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#onnxruntime.InferenceSession.get_profiling_start_time_ns" title="Permalink to this definition">¶</a></dt>
+<dd><p>Return the nanoseconds of profiling’s start time
+Comparable to time.monotonic_ns() after Python 3.3
+On some platforms, this timer may not be as precise as nanoseconds
+For instance, on Windows and MacOS, the precision will be ~100ns</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="onnxruntime.InferenceSession.get_provider_options">
+<span class="sig-name descname"><span class="pre">get_provider_options</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#onnxruntime.InferenceSession.get_provider_options" title="Permalink to this definition">¶</a></dt>
+<dd><p>Return registered execution providers’ configurations.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="onnxruntime.InferenceSession.get_providers">
+<span class="sig-name descname"><span class="pre">get_providers</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#onnxruntime.InferenceSession.get_providers" title="Permalink to this definition">¶</a></dt>
+<dd><p>Return list of registered execution providers.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="onnxruntime.InferenceSession.get_session_options">
+<span class="sig-name descname"><span class="pre">get_session_options</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#onnxruntime.InferenceSession.get_session_options" title="Permalink to this definition">¶</a></dt>
+<dd><p>Return the session options. See <a class="reference internal" href="#onnxruntime.SessionOptions" title="onnxruntime.SessionOptions"><code class="xref py py-class docutils literal notranslate"><span class="pre">onnxruntime.SessionOptions</span></code></a>.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="onnxruntime.InferenceSession.io_binding">
+<span class="sig-name descname"><span class="pre">io_binding</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#onnxruntime.InferenceSession.io_binding" title="Permalink to this definition">¶</a></dt>
+<dd><p>Return an onnxruntime.IOBinding object`.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="onnxruntime.InferenceSession.run">
+<span class="sig-name descname"><span class="pre">run</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">output_names</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">input_feed</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">run_options</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#onnxruntime.InferenceSession.run" title="Permalink to this definition">¶</a></dt>
+<dd><p>Compute the predictions.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>output_names</strong> – name of the outputs</p></li>
+<li><p><strong>input_feed</strong> – dictionary <code class="docutils literal notranslate"><span class="pre">{</span> <span class="pre">input_name:</span> <span class="pre">input_value</span> <span class="pre">}</span></code></p></li>
+<li><p><strong>run_options</strong> – See <a class="reference internal" href="#onnxruntime.RunOptions" title="onnxruntime.RunOptions"><code class="xref py py-class docutils literal notranslate"><span class="pre">onnxruntime.RunOptions</span></code></a>.</p></li>
+</ul>
+</dd>
+</dl>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">sess</span><span class="o">.</span><span class="n">run</span><span class="p">([</span><span class="n">output_name</span><span class="p">],</span> <span class="p">{</span><span class="n">input_name</span><span class="p">:</span> <span class="n">x</span><span class="p">})</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="onnxruntime.InferenceSession.run_with_iobinding">
+<span class="sig-name descname"><span class="pre">run_with_iobinding</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">iobinding</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">run_options</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#onnxruntime.InferenceSession.run_with_iobinding" title="Permalink to this definition">¶</a></dt>
+<dd><p>Compute the predictions.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>iobinding</strong> – the iobinding object that has graph inputs/outputs bind.</p></li>
+<li><p><strong>run_options</strong> – See <a class="reference internal" href="#onnxruntime.RunOptions" title="onnxruntime.RunOptions"><code class="xref py py-class docutils literal notranslate"><span class="pre">onnxruntime.RunOptions</span></code></a>.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="onnxruntime.InferenceSession.run_with_ort_values">
+<span class="sig-name descname"><span class="pre">run_with_ort_values</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">output_names</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">input_dict_ort_values</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">run_options</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#onnxruntime.InferenceSession.run_with_ort_values" title="Permalink to this definition">¶</a></dt>
+<dd><p>Compute the predictions.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>output_names</strong> – name of the outputs</p></li>
+<li><p><strong>input_feed</strong> – dictionary <code class="docutils literal notranslate"><span class="pre">{</span> <span class="pre">input_name:</span> <span class="pre">input_ort_value</span> <span class="pre">}</span></code>
+See <code class="docutils literal notranslate"><span class="pre">OrtValue</span></code> class how to create <cite>OrtValue</cite>
+from numpy array or <cite>SparseTensor</cite></p></li>
+<li><p><strong>run_options</strong> – See <a class="reference internal" href="#onnxruntime.RunOptions" title="onnxruntime.RunOptions"><code class="xref py py-class docutils literal notranslate"><span class="pre">onnxruntime.RunOptions</span></code></a>.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>an array of <cite>OrtValue</cite></p>
+</dd>
+</dl>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">sess</span><span class="o">.</span><span class="n">run</span><span class="p">([</span><span class="n">output_name</span><span class="p">],</span> <span class="p">{</span><span class="n">input_name</span><span class="p">:</span> <span class="n">x</span><span class="p">})</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="onnxruntime.InferenceSession.set_providers">
+<span class="sig-name descname"><span class="pre">set_providers</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">providers</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">provider_options</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#onnxruntime.InferenceSession.set_providers" title="Permalink to this definition">¶</a></dt>
+<dd><p>Register the input list of execution providers. The underlying session is re-created.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>providers</strong> – Optional sequence of providers in order of decreasing
+precedence. Values can either be provider names or tuples of
+(provider name, options dict). If not provided, then all available
+providers are used with the default precedence.</p></li>
+<li><p><strong>provider_options</strong> – Optional sequence of options dicts corresponding
+to the providers listed in ‘providers’.</p></li>
+</ul>
+</dd>
+</dl>
+<p>‘providers’ can contain either names or names and options. When any options
+are given in ‘providers’, ‘provider_options’ should not be used.</p>
+<p>The list of providers is ordered by precedence. For example
+<cite>[‘CUDAExecutionProvider’, ‘CPUExecutionProvider’]</cite>
+means execute a node using CUDAExecutionProvider if capable,
+otherwise execute using CPUExecutionProvider.</p>
 </dd></dl>
 
 </dd></dl>
 
+</section>
+<section id="options">
+<h3><a class="toc-backref" href="#id9">Options</a><a class="headerlink" href="#options" title="Permalink to this headline">¶</a></h3>
+<section id="runoptions">
+<h4><a class="toc-backref" href="#id10">RunOptions</a><a class="headerlink" href="#runoptions" title="Permalink to this headline">¶</a></h4>
 <dl class="py class">
-<dt id="onnxruntime.InferenceSession">
-<em class="property"><span class="pre">class</span> </em><code class="sig-prename descclassname"><span class="pre">onnxruntime.</span></code><code class="sig-name descname"><span class="pre">InferenceSession</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">path_or_bytes</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sess_options</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">providers</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">provider_options</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="modules/onnxruntime/capi/onnxruntime_inference_collection.html#InferenceSession"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#onnxruntime.InferenceSession" title="Permalink to this definition">¶</a></dt>
-<dd><p>This is the main class used to run a model. The next release (ORT 1.10) will require explicitly setting the providers parameter if you want to use execution providers other than the default CPU provider (as opposed to the current behavior of providers getting set/registered by default based on the build flags) when instantiating InferenceSession.</p>
-</dd></dl>
-
-<dl class="py class">
-<dt id="onnxruntime.NodeArg">
-<em class="property"><span class="pre">class</span> </em><code class="sig-prename descclassname"><span class="pre">onnxruntime.</span></code><code class="sig-name descname"><span class="pre">NodeArg</span></code><a class="headerlink" href="#onnxruntime.NodeArg" title="Permalink to this definition">¶</a></dt>
-<dd><p>Node argument definition, for both input and output,
-including arg name, arg type (contains both type and shape).</p>
-<dl class="py method">
-<dt id="onnxruntime.NodeArg.name">
-<em class="property"><span class="pre">property</span> </em><code class="sig-name descname"><span class="pre">name</span></code><a class="headerlink" href="#onnxruntime.NodeArg.name" title="Permalink to this definition">¶</a></dt>
-<dd><p>node name</p>
-</dd></dl>
-
-<dl class="py method">
-<dt id="onnxruntime.NodeArg.shape">
-<em class="property"><span class="pre">property</span> </em><code class="sig-name descname"><span class="pre">shape</span></code><a class="headerlink" href="#onnxruntime.NodeArg.shape" title="Permalink to this definition">¶</a></dt>
-<dd><p>node shape (assuming the node holds a tensor)</p>
-</dd></dl>
-
-<dl class="py method">
-<dt id="onnxruntime.NodeArg.type">
-<em class="property"><span class="pre">property</span> </em><code class="sig-name descname"><span class="pre">type</span></code><a class="headerlink" href="#onnxruntime.NodeArg.type" title="Permalink to this definition">¶</a></dt>
-<dd><p>node type</p>
-</dd></dl>
-
-</dd></dl>
-
-<dl class="py class">
-<dt id="onnxruntime.RunOptions">
-<em class="property"><span class="pre">class</span> </em><code class="sig-prename descclassname"><span class="pre">onnxruntime.</span></code><code class="sig-name descname"><span class="pre">RunOptions</span></code><a class="headerlink" href="#onnxruntime.RunOptions" title="Permalink to this definition">¶</a></dt>
+<dt class="sig sig-object py" id="onnxruntime.RunOptions">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">onnxruntime.</span></span><span class="sig-name descname"><span class="pre">RunOptions</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#onnxruntime.RunOptions" title="onnxruntime.capi.onnxruntime_pybind11_state.RunOptions"><span class="pre">onnxruntime.capi.onnxruntime_pybind11_state.RunOptions</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.10)"><span class="pre">None</span></a></span></span><a class="headerlink" href="#onnxruntime.RunOptions" title="Permalink to this definition">¶</a></dt>
 <dd><p>Configuration information for a single Run.</p>
-<dl class="py method">
-<dt id="onnxruntime.RunOptions.log_severity_level">
-<em class="property"><span class="pre">property</span> </em><code class="sig-name descname"><span class="pre">log_severity_level</span></code><a class="headerlink" href="#onnxruntime.RunOptions.log_severity_level" title="Permalink to this definition">¶</a></dt>
+<dl class="py property">
+<dt class="sig sig-object py" id="onnxruntime.RunOptions.log_severity_level">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">log_severity_level</span></span><a class="headerlink" href="#onnxruntime.RunOptions.log_severity_level" title="Permalink to this definition">¶</a></dt>
 <dd><p>Log severity level for a particular Run() invocation. 0:Verbose, 1:Info, 2:Warning. 3:Error, 4:Fatal. Default is 2.</p>
 </dd></dl>
 
-<dl class="py method">
-<dt id="onnxruntime.RunOptions.log_verbosity_level">
-<em class="property"><span class="pre">property</span> </em><code class="sig-name descname"><span class="pre">log_verbosity_level</span></code><a class="headerlink" href="#onnxruntime.RunOptions.log_verbosity_level" title="Permalink to this definition">¶</a></dt>
+<dl class="py property">
+<dt class="sig sig-object py" id="onnxruntime.RunOptions.log_verbosity_level">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">log_verbosity_level</span></span><a class="headerlink" href="#onnxruntime.RunOptions.log_verbosity_level" title="Permalink to this definition">¶</a></dt>
 <dd><p>VLOG level if DEBUG build and run_log_severity_level is 0.
 Applies to a particular Run() invocation. Default is 0.</p>
 </dd></dl>
 
-<dl class="py method">
-<dt id="onnxruntime.RunOptions.logid">
-<em class="property"><span class="pre">property</span> </em><code class="sig-name descname"><span class="pre">logid</span></code><a class="headerlink" href="#onnxruntime.RunOptions.logid" title="Permalink to this definition">¶</a></dt>
+<dl class="py property">
+<dt class="sig sig-object py" id="onnxruntime.RunOptions.logid">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">logid</span></span><a class="headerlink" href="#onnxruntime.RunOptions.logid" title="Permalink to this definition">¶</a></dt>
 <dd><p>To identify logs generated by a particular Run() invocation.</p>
 </dd></dl>
 
-<dl class="py method">
-<dt id="onnxruntime.RunOptions.only_execute_path_to_fetches">
-<em class="property"><span class="pre">property</span> </em><code class="sig-name descname"><span class="pre">only_execute_path_to_fetches</span></code><a class="headerlink" href="#onnxruntime.RunOptions.only_execute_path_to_fetches" title="Permalink to this definition">¶</a></dt>
+<dl class="py property">
+<dt class="sig sig-object py" id="onnxruntime.RunOptions.only_execute_path_to_fetches">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">only_execute_path_to_fetches</span></span><a class="headerlink" href="#onnxruntime.RunOptions.only_execute_path_to_fetches" title="Permalink to this definition">¶</a></dt>
 <dd><p>Only execute the nodes needed by fetch list</p>
 </dd></dl>
 
-<dl class="py method">
-<dt id="onnxruntime.RunOptions.terminate">
-<em class="property"><span class="pre">property</span> </em><code class="sig-name descname"><span class="pre">terminate</span></code><a class="headerlink" href="#onnxruntime.RunOptions.terminate" title="Permalink to this definition">¶</a></dt>
+<dl class="py property">
+<dt class="sig sig-object py" id="onnxruntime.RunOptions.terminate">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">terminate</span></span><a class="headerlink" href="#onnxruntime.RunOptions.terminate" title="Permalink to this definition">¶</a></dt>
 <dd><p>Set to True to terminate any currently executing calls that are using this
 RunOptions instance. The individual calls will exit gracefully and return an error status.</p>
 </dd></dl>
 
 </dd></dl>
 
+</section>
+<section id="sessionoptions">
+<h4><a class="toc-backref" href="#id11">SessionOptions</a><a class="headerlink" href="#sessionoptions" title="Permalink to this headline">¶</a></h4>
 <dl class="py class">
-<dt id="onnxruntime.SessionOptions">
-<em class="property"><span class="pre">class</span> </em><code class="sig-prename descclassname"><span class="pre">onnxruntime.</span></code><code class="sig-name descname"><span class="pre">SessionOptions</span></code><a class="headerlink" href="#onnxruntime.SessionOptions" title="Permalink to this definition">¶</a></dt>
+<dt class="sig sig-object py" id="onnxruntime.SessionOptions">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">onnxruntime.</span></span><span class="sig-name descname"><span class="pre">SessionOptions</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#onnxruntime.SessionOptions" title="onnxruntime.capi.onnxruntime_pybind11_state.SessionOptions"><span class="pre">onnxruntime.capi.onnxruntime_pybind11_state.SessionOptions</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.10)"><span class="pre">None</span></a></span></span><a class="headerlink" href="#onnxruntime.SessionOptions" title="Permalink to this definition">¶</a></dt>
 <dd><p>Configuration information for a session.</p>
 <dl class="py method">
-<dt id="onnxruntime.SessionOptions.add_free_dimension_override_by_denotation">
-<code class="sig-name descname"><span class="pre">add_free_dimension_override_by_denotation</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span><span class="p"><span class="pre">:</span></span> <span class="n"><span class="pre">onnxruntime.capi.onnxruntime_pybind11_state.SessionOptions</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">arg0</span></span><span class="p"><span class="pre">:</span></span> <span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.9)"><span class="pre">str</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">arg1</span></span><span class="p"><span class="pre">:</span></span> <span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.9)"><span class="pre">int</span></a></span></em><span class="sig-paren">)</span> &#x2192; <a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.9)"><span class="pre">None</span></a><a class="headerlink" href="#onnxruntime.SessionOptions.add_free_dimension_override_by_denotation" title="Permalink to this definition">¶</a></dt>
+<dt class="sig sig-object py" id="onnxruntime.SessionOptions.add_free_dimension_override_by_denotation">
+<span class="sig-name descname"><span class="pre">add_free_dimension_override_by_denotation</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#onnxruntime.SessionOptions" title="onnxruntime.capi.onnxruntime_pybind11_state.SessionOptions"><span class="pre">onnxruntime.capi.onnxruntime_pybind11_state.SessionOptions</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">arg0</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.10)"><span class="pre">str</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">arg1</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.10)"><span class="pre">int</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.10)"><span class="pre">None</span></a></span></span><a class="headerlink" href="#onnxruntime.SessionOptions.add_free_dimension_override_by_denotation" title="Permalink to this definition">¶</a></dt>
 <dd><p>Specify the dimension size for each denotation associated with an input’s free dimension.</p>
 </dd></dl>
 
 <dl class="py method">
-<dt id="onnxruntime.SessionOptions.add_free_dimension_override_by_name">
-<code class="sig-name descname"><span class="pre">add_free_dimension_override_by_name</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span><span class="p"><span class="pre">:</span></span> <span class="n"><span class="pre">onnxruntime.capi.onnxruntime_pybind11_state.SessionOptions</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">arg0</span></span><span class="p"><span class="pre">:</span></span> <span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.9)"><span class="pre">str</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">arg1</span></span><span class="p"><span class="pre">:</span></span> <span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.9)"><span class="pre">int</span></a></span></em><span class="sig-paren">)</span> &#x2192; <a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.9)"><span class="pre">None</span></a><a class="headerlink" href="#onnxruntime.SessionOptions.add_free_dimension_override_by_name" title="Permalink to this definition">¶</a></dt>
+<dt class="sig sig-object py" id="onnxruntime.SessionOptions.add_free_dimension_override_by_name">
+<span class="sig-name descname"><span class="pre">add_free_dimension_override_by_name</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#onnxruntime.SessionOptions" title="onnxruntime.capi.onnxruntime_pybind11_state.SessionOptions"><span class="pre">onnxruntime.capi.onnxruntime_pybind11_state.SessionOptions</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">arg0</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.10)"><span class="pre">str</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">arg1</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.10)"><span class="pre">int</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.10)"><span class="pre">None</span></a></span></span><a class="headerlink" href="#onnxruntime.SessionOptions.add_free_dimension_override_by_name" title="Permalink to this definition">¶</a></dt>
 <dd><p>Specify values of named dimensions within model inputs.</p>
 </dd></dl>
 
 <dl class="py method">
-<dt id="onnxruntime.SessionOptions.add_initializer">
-<code class="sig-name descname"><span class="pre">add_initializer</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span><span class="p"><span class="pre">:</span></span> <span class="n"><span class="pre">onnxruntime.capi.onnxruntime_pybind11_state.SessionOptions</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">arg0</span></span><span class="p"><span class="pre">:</span></span> <span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.9)"><span class="pre">str</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">arg1</span></span><span class="p"><span class="pre">:</span></span> <span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#object" title="(in Python v3.9)"><span class="pre">object</span></a></span></em><span class="sig-paren">)</span> &#x2192; <a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.9)"><span class="pre">None</span></a><a class="headerlink" href="#onnxruntime.SessionOptions.add_initializer" title="Permalink to this definition">¶</a></dt>
+<dt class="sig sig-object py" id="onnxruntime.SessionOptions.add_initializer">
+<span class="sig-name descname"><span class="pre">add_initializer</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#onnxruntime.SessionOptions" title="onnxruntime.capi.onnxruntime_pybind11_state.SessionOptions"><span class="pre">onnxruntime.capi.onnxruntime_pybind11_state.SessionOptions</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">arg0</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.10)"><span class="pre">str</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">arg1</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#object" title="(in Python v3.10)"><span class="pre">object</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.10)"><span class="pre">None</span></a></span></span><a class="headerlink" href="#onnxruntime.SessionOptions.add_initializer" title="Permalink to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py method">
-<dt id="onnxruntime.SessionOptions.add_session_config_entry">
-<code class="sig-name descname"><span class="pre">add_session_config_entry</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span><span class="p"><span class="pre">:</span></span> <span class="n"><span class="pre">onnxruntime.capi.onnxruntime_pybind11_state.SessionOptions</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">arg0</span></span><span class="p"><span class="pre">:</span></span> <span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.9)"><span class="pre">str</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">arg1</span></span><span class="p"><span class="pre">:</span></span> <span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.9)"><span class="pre">str</span></a></span></em><span class="sig-paren">)</span> &#x2192; <a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.9)"><span class="pre">None</span></a><a class="headerlink" href="#onnxruntime.SessionOptions.add_session_config_entry" title="Permalink to this definition">¶</a></dt>
+<dt class="sig sig-object py" id="onnxruntime.SessionOptions.add_session_config_entry">
+<span class="sig-name descname"><span class="pre">add_session_config_entry</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#onnxruntime.SessionOptions" title="onnxruntime.capi.onnxruntime_pybind11_state.SessionOptions"><span class="pre">onnxruntime.capi.onnxruntime_pybind11_state.SessionOptions</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">arg0</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.10)"><span class="pre">str</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">arg1</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.10)"><span class="pre">str</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.10)"><span class="pre">None</span></a></span></span><a class="headerlink" href="#onnxruntime.SessionOptions.add_session_config_entry" title="Permalink to this definition">¶</a></dt>
 <dd><p>Set a single session configuration entry as a pair of strings.</p>
 </dd></dl>
 
-<dl class="py method">
-<dt id="onnxruntime.SessionOptions.enable_cpu_mem_arena">
-<em class="property"><span class="pre">property</span> </em><code class="sig-name descname"><span class="pre">enable_cpu_mem_arena</span></code><a class="headerlink" href="#onnxruntime.SessionOptions.enable_cpu_mem_arena" title="Permalink to this definition">¶</a></dt>
+<dl class="py property">
+<dt class="sig sig-object py" id="onnxruntime.SessionOptions.enable_cpu_mem_arena">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">enable_cpu_mem_arena</span></span><a class="headerlink" href="#onnxruntime.SessionOptions.enable_cpu_mem_arena" title="Permalink to this definition">¶</a></dt>
 <dd><p>Enables the memory arena on CPU. Arena may pre-allocate memory for future usage.
 Set this option to false if you don’t want it. Default is True.</p>
 </dd></dl>
 
-<dl class="py method">
-<dt id="onnxruntime.SessionOptions.enable_mem_pattern">
-<em class="property"><span class="pre">property</span> </em><code class="sig-name descname"><span class="pre">enable_mem_pattern</span></code><a class="headerlink" href="#onnxruntime.SessionOptions.enable_mem_pattern" title="Permalink to this definition">¶</a></dt>
+<dl class="py property">
+<dt class="sig sig-object py" id="onnxruntime.SessionOptions.enable_mem_pattern">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">enable_mem_pattern</span></span><a class="headerlink" href="#onnxruntime.SessionOptions.enable_mem_pattern" title="Permalink to this definition">¶</a></dt>
 <dd><p>Enable the memory pattern optimization. Default is true.</p>
 </dd></dl>
 
-<dl class="py method">
-<dt id="onnxruntime.SessionOptions.enable_profiling">
-<em class="property"><span class="pre">property</span> </em><code class="sig-name descname"><span class="pre">enable_profiling</span></code><a class="headerlink" href="#onnxruntime.SessionOptions.enable_profiling" title="Permalink to this definition">¶</a></dt>
+<dl class="py property">
+<dt class="sig sig-object py" id="onnxruntime.SessionOptions.enable_mem_reuse">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">enable_mem_reuse</span></span><a class="headerlink" href="#onnxruntime.SessionOptions.enable_mem_reuse" title="Permalink to this definition">¶</a></dt>
+<dd><p>Enable the memory reuse optimization. Default is true.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="onnxruntime.SessionOptions.enable_profiling">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">enable_profiling</span></span><a class="headerlink" href="#onnxruntime.SessionOptions.enable_profiling" title="Permalink to this definition">¶</a></dt>
 <dd><p>Enable profiling for this session. Default is false.</p>
 </dd></dl>
 
-<dl class="py method">
-<dt id="onnxruntime.SessionOptions.execution_mode">
-<em class="property"><span class="pre">property</span> </em><code class="sig-name descname"><span class="pre">execution_mode</span></code><a class="headerlink" href="#onnxruntime.SessionOptions.execution_mode" title="Permalink to this definition">¶</a></dt>
+<dl class="py property">
+<dt class="sig sig-object py" id="onnxruntime.SessionOptions.execution_mode">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">execution_mode</span></span><a class="headerlink" href="#onnxruntime.SessionOptions.execution_mode" title="Permalink to this definition">¶</a></dt>
 <dd><p>Sets the execution mode. Default is sequential.</p>
 </dd></dl>
 
-<dl class="py method">
-<dt id="onnxruntime.SessionOptions.execution_order">
-<em class="property"><span class="pre">property</span> </em><code class="sig-name descname"><span class="pre">execution_order</span></code><a class="headerlink" href="#onnxruntime.SessionOptions.execution_order" title="Permalink to this definition">¶</a></dt>
+<dl class="py property">
+<dt class="sig sig-object py" id="onnxruntime.SessionOptions.execution_order">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">execution_order</span></span><a class="headerlink" href="#onnxruntime.SessionOptions.execution_order" title="Permalink to this definition">¶</a></dt>
 <dd><p>Sets the execution order. Default is basic topological order.</p>
 </dd></dl>
 
 <dl class="py method">
-<dt id="onnxruntime.SessionOptions.get_session_config_entry">
-<code class="sig-name descname"><span class="pre">get_session_config_entry</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span><span class="p"><span class="pre">:</span></span> <span class="n"><span class="pre">onnxruntime.capi.onnxruntime_pybind11_state.SessionOptions</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">arg0</span></span><span class="p"><span class="pre">:</span></span> <span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.9)"><span class="pre">str</span></a></span></em><span class="sig-paren">)</span> &#x2192; <a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.9)"><span class="pre">str</span></a><a class="headerlink" href="#onnxruntime.SessionOptions.get_session_config_entry" title="Permalink to this definition">¶</a></dt>
+<dt class="sig sig-object py" id="onnxruntime.SessionOptions.get_session_config_entry">
+<span class="sig-name descname"><span class="pre">get_session_config_entry</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#onnxruntime.SessionOptions" title="onnxruntime.capi.onnxruntime_pybind11_state.SessionOptions"><span class="pre">onnxruntime.capi.onnxruntime_pybind11_state.SessionOptions</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">arg0</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.10)"><span class="pre">str</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.10)"><span class="pre">str</span></a></span></span><a class="headerlink" href="#onnxruntime.SessionOptions.get_session_config_entry" title="Permalink to this definition">¶</a></dt>
 <dd><p>Get a single session configuration value using the given configuration key.</p>
 </dd></dl>
 
-<dl class="py method">
-<dt id="onnxruntime.SessionOptions.graph_optimization_level">
-<em class="property"><span class="pre">property</span> </em><code class="sig-name descname"><span class="pre">graph_optimization_level</span></code><a class="headerlink" href="#onnxruntime.SessionOptions.graph_optimization_level" title="Permalink to this definition">¶</a></dt>
+<dl class="py property">
+<dt class="sig sig-object py" id="onnxruntime.SessionOptions.graph_optimization_level">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">graph_optimization_level</span></span><a class="headerlink" href="#onnxruntime.SessionOptions.graph_optimization_level" title="Permalink to this definition">¶</a></dt>
 <dd><p>Graph optimization level for this session.</p>
 </dd></dl>
 
-<dl class="py method">
-<dt id="onnxruntime.SessionOptions.inter_op_num_threads">
-<em class="property"><span class="pre">property</span> </em><code class="sig-name descname"><span class="pre">inter_op_num_threads</span></code><a class="headerlink" href="#onnxruntime.SessionOptions.inter_op_num_threads" title="Permalink to this definition">¶</a></dt>
+<dl class="py property">
+<dt class="sig sig-object py" id="onnxruntime.SessionOptions.inter_op_num_threads">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">inter_op_num_threads</span></span><a class="headerlink" href="#onnxruntime.SessionOptions.inter_op_num_threads" title="Permalink to this definition">¶</a></dt>
 <dd><p>Sets the number of threads used to parallelize the execution of the graph (across nodes). Default is 0 to let onnxruntime choose.</p>
 </dd></dl>
 
-<dl class="py method">
-<dt id="onnxruntime.SessionOptions.intra_op_num_threads">
-<em class="property"><span class="pre">property</span> </em><code class="sig-name descname"><span class="pre">intra_op_num_threads</span></code><a class="headerlink" href="#onnxruntime.SessionOptions.intra_op_num_threads" title="Permalink to this definition">¶</a></dt>
+<dl class="py property">
+<dt class="sig sig-object py" id="onnxruntime.SessionOptions.intra_op_num_threads">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">intra_op_num_threads</span></span><a class="headerlink" href="#onnxruntime.SessionOptions.intra_op_num_threads" title="Permalink to this definition">¶</a></dt>
 <dd><p>Sets the number of threads used to parallelize the execution within nodes. Default is 0 to let onnxruntime choose.</p>
 </dd></dl>
 
-<dl class="py method">
-<dt id="onnxruntime.SessionOptions.log_severity_level">
-<em class="property"><span class="pre">property</span> </em><code class="sig-name descname"><span class="pre">log_severity_level</span></code><a class="headerlink" href="#onnxruntime.SessionOptions.log_severity_level" title="Permalink to this definition">¶</a></dt>
+<dl class="py property">
+<dt class="sig sig-object py" id="onnxruntime.SessionOptions.log_severity_level">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">log_severity_level</span></span><a class="headerlink" href="#onnxruntime.SessionOptions.log_severity_level" title="Permalink to this definition">¶</a></dt>
 <dd><p>Log severity level. Applies to session load, initialization, etc.
 0:Verbose, 1:Info, 2:Warning. 3:Error, 4:Fatal. Default is 2.</p>
 </dd></dl>
 
-<dl class="py method">
-<dt id="onnxruntime.SessionOptions.log_verbosity_level">
-<em class="property"><span class="pre">property</span> </em><code class="sig-name descname"><span class="pre">log_verbosity_level</span></code><a class="headerlink" href="#onnxruntime.SessionOptions.log_verbosity_level" title="Permalink to this definition">¶</a></dt>
+<dl class="py property">
+<dt class="sig sig-object py" id="onnxruntime.SessionOptions.log_verbosity_level">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">log_verbosity_level</span></span><a class="headerlink" href="#onnxruntime.SessionOptions.log_verbosity_level" title="Permalink to this definition">¶</a></dt>
 <dd><p>VLOG level if DEBUG build and session_log_severity_level is 0.
 Applies to session load, initialization, etc. Default is 0.</p>
 </dd></dl>
 
-<dl class="py method">
-<dt id="onnxruntime.SessionOptions.logid">
-<em class="property"><span class="pre">property</span> </em><code class="sig-name descname"><span class="pre">logid</span></code><a class="headerlink" href="#onnxruntime.SessionOptions.logid" title="Permalink to this definition">¶</a></dt>
+<dl class="py property">
+<dt class="sig sig-object py" id="onnxruntime.SessionOptions.logid">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">logid</span></span><a class="headerlink" href="#onnxruntime.SessionOptions.logid" title="Permalink to this definition">¶</a></dt>
 <dd><p>Logger id to use for session output.</p>
 </dd></dl>
 
-<dl class="py method">
-<dt id="onnxruntime.SessionOptions.optimized_model_filepath">
-<em class="property"><span class="pre">property</span> </em><code class="sig-name descname"><span class="pre">optimized_model_filepath</span></code><a class="headerlink" href="#onnxruntime.SessionOptions.optimized_model_filepath" title="Permalink to this definition">¶</a></dt>
-<dd><p>File path to serialize optimized model to. 
+<dl class="py property">
+<dt class="sig sig-object py" id="onnxruntime.SessionOptions.optimized_model_filepath">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">optimized_model_filepath</span></span><a class="headerlink" href="#onnxruntime.SessionOptions.optimized_model_filepath" title="Permalink to this definition">¶</a></dt>
+<dd><p>File path to serialize optimized model to.
 Optimized model is not serialized unless optimized_model_filepath is set.
-Serialized model format will default to ONNX unless:</p>
-<blockquote>
-<div><ul class="simple">
-<li><p>add_session_config_entry is used to set ‘session.save_model_format’ to ‘ORT’, or</p></li>
-<li><p>there is no ‘session.save_model_format’ config entry and optimized_model_filepath ends in ‘.ort’ (case insensitive)</p></li>
-</ul>
-</div></blockquote>
+Serialized model format will default to ONNX unless:
+- add_session_config_entry is used to set ‘session.save_model_format’ to ‘ORT’, or
+- there is no ‘session.save_model_format’ config entry and optimized_model_filepath ends in ‘.ort’ (case insensitive)</p>
 </dd></dl>
 
-<dl class="py method">
-<dt id="onnxruntime.SessionOptions.profile_file_prefix">
-<em class="property"><span class="pre">property</span> </em><code class="sig-name descname"><span class="pre">profile_file_prefix</span></code><a class="headerlink" href="#onnxruntime.SessionOptions.profile_file_prefix" title="Permalink to this definition">¶</a></dt>
+<dl class="py property">
+<dt class="sig sig-object py" id="onnxruntime.SessionOptions.profile_file_prefix">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">profile_file_prefix</span></span><a class="headerlink" href="#onnxruntime.SessionOptions.profile_file_prefix" title="Permalink to this definition">¶</a></dt>
 <dd><p>The prefix of the profile file. The current time will be appended to the file name.</p>
 </dd></dl>
 
 <dl class="py method">
-<dt id="onnxruntime.SessionOptions.register_custom_ops_library">
-<code class="sig-name descname"><span class="pre">register_custom_ops_library</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span><span class="p"><span class="pre">:</span></span> <span class="n"><span class="pre">onnxruntime.capi.onnxruntime_pybind11_state.SessionOptions</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">arg0</span></span><span class="p"><span class="pre">:</span></span> <span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.9)"><span class="pre">str</span></a></span></em><span class="sig-paren">)</span> &#x2192; <a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.9)"><span class="pre">None</span></a><a class="headerlink" href="#onnxruntime.SessionOptions.register_custom_ops_library" title="Permalink to this definition">¶</a></dt>
+<dt class="sig sig-object py" id="onnxruntime.SessionOptions.register_custom_ops_library">
+<span class="sig-name descname"><span class="pre">register_custom_ops_library</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#onnxruntime.SessionOptions" title="onnxruntime.capi.onnxruntime_pybind11_state.SessionOptions"><span class="pre">onnxruntime.capi.onnxruntime_pybind11_state.SessionOptions</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">arg0</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.10)"><span class="pre">str</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.10)"><span class="pre">None</span></a></span></span><a class="headerlink" href="#onnxruntime.SessionOptions.register_custom_ops_library" title="Permalink to this definition">¶</a></dt>
 <dd><p>Specify the path to the shared library containing the custom op kernels required to run a model.</p>
 </dd></dl>
 
-<dl class="py method">
-<dt id="onnxruntime.SessionOptions.use_deterministic_compute">
-<em class="property"><span class="pre">property</span> </em><code class="sig-name descname"><span class="pre">use_deterministic_compute</span></code><a class="headerlink" href="#onnxruntime.SessionOptions.use_deterministic_compute" title="Permalink to this definition">¶</a></dt>
+<dl class="py property">
+<dt class="sig sig-object py" id="onnxruntime.SessionOptions.use_deterministic_compute">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">use_deterministic_compute</span></span><a class="headerlink" href="#onnxruntime.SessionOptions.use_deterministic_compute" title="Permalink to this definition">¶</a></dt>
 <dd><p>Whether to use deterministic compute. Default is false.</p>
 </dd></dl>
 
 </dd></dl>
 
+</section>
+</section>
+<section id="data">
+<h3><a class="toc-backref" href="#id12">Data</a><a class="headerlink" href="#data" title="Permalink to this headline">¶</a></h3>
+<section id="id1">
+<h4><a class="toc-backref" href="#id13">OrtValue</a><a class="headerlink" href="#id1" title="Permalink to this headline">¶</a></h4>
+<dl class="py class">
+<dt class="sig sig-object py" id="onnxruntime.OrtValue">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">onnxruntime.</span></span><span class="sig-name descname"><span class="pre">OrtValue</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ortvalue</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">numpy_obj</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="modules/onnxruntime/capi/onnxruntime_inference_collection.html#OrtValue"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#onnxruntime.OrtValue" title="Permalink to this definition">¶</a></dt>
+<dd><p>A data structure that supports all ONNX data formats (tensors and non-tensors) that allows users
+to place the data backing these on a device, for example, on a CUDA supported device.
+This class provides APIs to construct and deal with OrtValues.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="onnxruntime.OrtValue.as_sparse_tensor">
+<span class="sig-name descname"><span class="pre">as_sparse_tensor</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="modules/onnxruntime/capi/onnxruntime_inference_collection.html#OrtValue.as_sparse_tensor"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#onnxruntime.OrtValue.as_sparse_tensor" title="Permalink to this definition">¶</a></dt>
+<dd><p>The function will return SparseTensor contained in this OrtValue</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="onnxruntime.OrtValue.data_ptr">
+<span class="sig-name descname"><span class="pre">data_ptr</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="modules/onnxruntime/capi/onnxruntime_inference_collection.html#OrtValue.data_ptr"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#onnxruntime.OrtValue.data_ptr" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns the address of the first element in the OrtValue’s data buffer</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="onnxruntime.OrtValue.data_type">
+<span class="sig-name descname"><span class="pre">data_type</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="modules/onnxruntime/capi/onnxruntime_inference_collection.html#OrtValue.data_type"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#onnxruntime.OrtValue.data_type" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns the data type of the data in the OrtValue</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="onnxruntime.OrtValue.device_name">
+<span class="sig-name descname"><span class="pre">device_name</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="modules/onnxruntime/capi/onnxruntime_inference_collection.html#OrtValue.device_name"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#onnxruntime.OrtValue.device_name" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns the name of the device where the OrtValue’s data buffer resides e.g. cpu, cuda</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="onnxruntime.OrtValue.has_value">
+<span class="sig-name descname"><span class="pre">has_value</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="modules/onnxruntime/capi/onnxruntime_inference_collection.html#OrtValue.has_value"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#onnxruntime.OrtValue.has_value" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns True if the OrtValue corresponding to an
+optional type contains data, else returns False</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="onnxruntime.OrtValue.is_sparse_tensor">
+<span class="sig-name descname"><span class="pre">is_sparse_tensor</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="modules/onnxruntime/capi/onnxruntime_inference_collection.html#OrtValue.is_sparse_tensor"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#onnxruntime.OrtValue.is_sparse_tensor" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns True if the OrtValue contains a SparseTensor, else returns False</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="onnxruntime.OrtValue.is_tensor">
+<span class="sig-name descname"><span class="pre">is_tensor</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="modules/onnxruntime/capi/onnxruntime_inference_collection.html#OrtValue.is_tensor"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#onnxruntime.OrtValue.is_tensor" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns True if the OrtValue contains a Tensor, else returns False</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="onnxruntime.OrtValue.is_tensor_sequence">
+<span class="sig-name descname"><span class="pre">is_tensor_sequence</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="modules/onnxruntime/capi/onnxruntime_inference_collection.html#OrtValue.is_tensor_sequence"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#onnxruntime.OrtValue.is_tensor_sequence" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns True if the OrtValue contains a Tensor Sequence, else returns False</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="onnxruntime.OrtValue.numpy">
+<span class="sig-name descname"><span class="pre">numpy</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="modules/onnxruntime/capi/onnxruntime_inference_collection.html#OrtValue.numpy"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#onnxruntime.OrtValue.numpy" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns a Numpy object from the OrtValue.
+Valid only for OrtValues holding Tensors. Throws for OrtValues holding non-Tensors.
+Use accessors to gain a reference to non-Tensor objects such as SparseTensor</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="onnxruntime.OrtValue.ort_value_from_sparse_tensor">
+<em class="property"><span class="pre">static</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">ort_value_from_sparse_tensor</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">sparse_tensor</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="modules/onnxruntime/capi/onnxruntime_inference_collection.html#OrtValue.ort_value_from_sparse_tensor"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#onnxruntime.OrtValue.ort_value_from_sparse_tensor" title="Permalink to this definition">¶</a></dt>
+<dd><p>The function will construct an OrtValue instance from a valid SparseTensor
+The new instance of OrtValue will assume the ownership of sparse_tensor</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="onnxruntime.OrtValue.ortvalue_from_numpy">
+<em class="property"><span class="pre">static</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">ortvalue_from_numpy</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">numpy_obj</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">device_type</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'cpu'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">device_id</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="modules/onnxruntime/capi/onnxruntime_inference_collection.html#OrtValue.ortvalue_from_numpy"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#onnxruntime.OrtValue.ortvalue_from_numpy" title="Permalink to this definition">¶</a></dt>
+<dd><p>Factory method to construct an OrtValue (which holds a Tensor) from a given Numpy object
+A copy of the data in the Numpy object is held by the OrtValue only if the device is NOT cpu</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>numpy_obj</strong> – The Numpy object to construct the OrtValue from</p></li>
+<li><p><strong>device_type</strong> – e.g. cpu, cuda, cpu by default</p></li>
+<li><p><strong>device_id</strong> – device id, e.g. 0</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="onnxruntime.OrtValue.ortvalue_from_shape_and_type">
+<em class="property"><span class="pre">static</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">ortvalue_from_shape_and_type</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">shape</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">element_type</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">device_type</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'cpu'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">device_id</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="modules/onnxruntime/capi/onnxruntime_inference_collection.html#OrtValue.ortvalue_from_shape_and_type"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#onnxruntime.OrtValue.ortvalue_from_shape_and_type" title="Permalink to this definition">¶</a></dt>
+<dd><p>Factory method to construct an OrtValue (which holds a Tensor) from given shape and element_type</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>shape</strong> – List of integers indicating the shape of the OrtValue</p></li>
+<li><p><strong>element_type</strong> – The data type of the elements in the OrtValue (numpy type)</p></li>
+<li><p><strong>device_type</strong> – e.g. cpu, cuda, cpu by default</p></li>
+<li><p><strong>device_id</strong> – device id, e.g. 0</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="onnxruntime.OrtValue.shape">
+<span class="sig-name descname"><span class="pre">shape</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="modules/onnxruntime/capi/onnxruntime_inference_collection.html#OrtValue.shape"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#onnxruntime.OrtValue.shape" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns the shape of the data in the OrtValue</p>
+</dd></dl>
+
+</dd></dl>
+
+</section>
+<section id="sparsetensor">
+<h4><a class="toc-backref" href="#id14">SparseTensor</a><a class="headerlink" href="#sparsetensor" title="Permalink to this headline">¶</a></h4>
+<dl class="py class">
+<dt class="sig sig-object py" id="onnxruntime.SparseTensor">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">onnxruntime.</span></span><span class="sig-name descname"><span class="pre">SparseTensor</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">sparse_tensor</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="modules/onnxruntime/capi/onnxruntime_inference_collection.html#SparseTensor"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#onnxruntime.SparseTensor" title="Permalink to this definition">¶</a></dt>
+<dd><p>A data structure that project the C++ SparseTensor object
+The class provides API to work with the object.
+Depending on the format, the class will hold more than one buffer
+depending on the format</p>
+<p>Internal constructor</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="onnxruntime.SparseTensor.as_blocksparse_view">
+<span class="sig-name descname"><span class="pre">as_blocksparse_view</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="modules/onnxruntime/capi/onnxruntime_inference_collection.html#SparseTensor.as_blocksparse_view"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#onnxruntime.SparseTensor.as_blocksparse_view" title="Permalink to this definition">¶</a></dt>
+<dd><p>The method will return coo representation of the sparse tensor which will enable
+querying BlockSparse indices. If the instance did not contain BlockSparse format, it would throw.
+You can query coo indices as:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">block_sparse_indices</span> <span class="o">=</span> <span class="n">sparse_tensor</span><span class="o">.</span><span class="n">as_blocksparse_view</span><span class="p">()</span><span class="o">.</span><span class="n">indices</span><span class="p">()</span>
+</pre></div>
 </div>
-<div class="section" id="backend">
-<h2><a class="toc-backref" href="#id6">Backend</a><a class="headerlink" href="#backend" title="Permalink to this headline">¶</a></h2>
+<p>which will return a numpy array that is backed by the native memory</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="onnxruntime.SparseTensor.as_coo_view">
+<span class="sig-name descname"><span class="pre">as_coo_view</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="modules/onnxruntime/capi/onnxruntime_inference_collection.html#SparseTensor.as_coo_view"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#onnxruntime.SparseTensor.as_coo_view" title="Permalink to this definition">¶</a></dt>
+<dd><p>The method will return coo representation of the sparse tensor which will enable
+querying COO indices. If the instance did not contain COO format, it would throw.
+You can query coo indices as:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">coo_indices</span> <span class="o">=</span> <span class="n">sparse_tensor</span><span class="o">.</span><span class="n">as_coo_view</span><span class="p">()</span><span class="o">.</span><span class="n">indices</span><span class="p">()</span>
+</pre></div>
+</div>
+<p>which will return a numpy array that is backed by the native memory.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="onnxruntime.SparseTensor.as_csrc_view">
+<span class="sig-name descname"><span class="pre">as_csrc_view</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="modules/onnxruntime/capi/onnxruntime_inference_collection.html#SparseTensor.as_csrc_view"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#onnxruntime.SparseTensor.as_csrc_view" title="Permalink to this definition">¶</a></dt>
+<dd><p>The method will return CSR(C) representation of the sparse tensor which will enable
+querying CRS(C) indices. If the instance dit not contain CSR(C) format, it would throw.
+You can query indices as:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">inner_ndices</span> <span class="o">=</span> <span class="n">sparse_tensor</span><span class="o">.</span><span class="n">as_csrc_view</span><span class="p">()</span><span class="o">.</span><span class="n">inner</span><span class="p">()</span>
+<span class="n">outer_ndices</span> <span class="o">=</span> <span class="n">sparse_tensor</span><span class="o">.</span><span class="n">as_csrc_view</span><span class="p">()</span><span class="o">.</span><span class="n">outer</span><span class="p">()</span>
+</pre></div>
+</div>
+<p>returning numpy arrays backed by the native memory.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="onnxruntime.SparseTensor.data_type">
+<span class="sig-name descname"><span class="pre">data_type</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="modules/onnxruntime/capi/onnxruntime_inference_collection.html#SparseTensor.data_type"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#onnxruntime.SparseTensor.data_type" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns a string data type of the data in the OrtValue</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="onnxruntime.SparseTensor.dense_shape">
+<span class="sig-name descname"><span class="pre">dense_shape</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="modules/onnxruntime/capi/onnxruntime_inference_collection.html#SparseTensor.dense_shape"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#onnxruntime.SparseTensor.dense_shape" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns a numpy array(int64) containing a dense shape of a sparse tensor</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="onnxruntime.SparseTensor.device_name">
+<span class="sig-name descname"><span class="pre">device_name</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="modules/onnxruntime/capi/onnxruntime_inference_collection.html#SparseTensor.device_name"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#onnxruntime.SparseTensor.device_name" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns the name of the device where the SparseTensor data buffers reside e.g. cpu, cuda</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="onnxruntime.SparseTensor.format">
+<span class="sig-name descname"><span class="pre">format</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="modules/onnxruntime/capi/onnxruntime_inference_collection.html#SparseTensor.format"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#onnxruntime.SparseTensor.format" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns a OrtSparseFormat enumeration</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="onnxruntime.SparseTensor.sparse_coo_from_numpy">
+<em class="property"><span class="pre">static</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">sparse_coo_from_numpy</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dense_shape</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">values</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">coo_indices</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ort_device</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="modules/onnxruntime/capi/onnxruntime_inference_collection.html#SparseTensor.sparse_coo_from_numpy"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#onnxruntime.SparseTensor.sparse_coo_from_numpy" title="Permalink to this definition">¶</a></dt>
+<dd><p>Factory method to construct a SparseTensor in COO format from given arguments</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>dense_shape</strong> – 1-D  numpy array(int64) or a python list that contains a dense_shape of the sparse tensor
+must be on cpu memory</p></li>
+<li><p><strong>values</strong> – a homogeneous, contiguous 1-D numpy array that contains non-zero elements of the tensor
+of a type.</p></li>
+<li><p><strong>coo_indices</strong> – contiguous numpy array(int64) that contains COO indices for the tensor. coo_indices may
+have a 1-D shape when it contains a linear index of non-zero values and its length must be equal to
+that of the values. It can also be of 2-D shape, in which has it contains pairs of coordinates for
+each of the nnz values and its length must be exactly twice of the values length.</p></li>
+<li><p><strong>ort_device</strong> – <ul>
+<li><p>describes the backing memory owned by the supplied nummpy arrays. Only CPU memory is</p></li>
+</ul>
+<p>suppored for non-numeric data types.</p>
+</p></li>
+</ul>
+</dd>
+</dl>
+<p>For primitive types, the method will map values and coo_indices arrays into native memory and will use
+them as backing storage. It will increment the reference count for numpy arrays and it will decrement it
+on GC. The buffers may reside in any storage either CPU or GPU.
+For strings and objects, it will create a copy of the arrays in CPU memory as ORT does not support those
+on other devices and their memory can not be mapped.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="onnxruntime.SparseTensor.sparse_csr_from_numpy">
+<em class="property"><span class="pre">static</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">sparse_csr_from_numpy</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dense_shape</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">values</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">inner_indices</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">outer_indices</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ort_device</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="modules/onnxruntime/capi/onnxruntime_inference_collection.html#SparseTensor.sparse_csr_from_numpy"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#onnxruntime.SparseTensor.sparse_csr_from_numpy" title="Permalink to this definition">¶</a></dt>
+<dd><p>Factory method to construct a SparseTensor in CSR format from given arguments</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>dense_shape</strong> – 1-D numpy array(int64) or a python list that contains a dense_shape of the
+sparse tensor (rows, cols) must be on cpu memory</p></li>
+<li><p><strong>values</strong> – a  contiguous, homogeneous 1-D numpy array that contains non-zero elements of the tensor
+of a type.</p></li>
+<li><p><strong>inner_indices</strong> – contiguous 1-D numpy array(int64) that contains CSR inner indices for the tensor.
+Its length must be equal to that of the values.</p></li>
+<li><p><strong>outer_indices</strong> – contiguous 1-D numpy array(int64) that contains CSR outer indices for the tensor.
+Its length must be equal to the number of rows + 1.</p></li>
+<li><p><strong>ort_device</strong> – <ul>
+<li><p>describes the backing memory owned by the supplied nummpy arrays. Only CPU memory is</p></li>
+</ul>
+<p>suppored for non-numeric data types.</p>
+</p></li>
+</ul>
+</dd>
+</dl>
+<p>For primitive types, the method will map values and indices arrays into native memory and will use them as
+backing storage. It will increment the reference count and it will decrement then count when it is GCed.
+The buffers may reside in any storage either CPU or GPU.
+For strings and objects, it will create a copy of the arrays in CPU memory as ORT does not support those
+on other devices and their memory can not be mapped.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="onnxruntime.SparseTensor.to_cuda">
+<span class="sig-name descname"><span class="pre">to_cuda</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ort_device</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="modules/onnxruntime/capi/onnxruntime_inference_collection.html#SparseTensor.to_cuda"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#onnxruntime.SparseTensor.to_cuda" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns a copy of this instance on the specified cuda device</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><p><strong>ort_device</strong> – with name ‘cuda’ and valid gpu device id</p>
+</dd>
+</dl>
+<p>The method will throw if:</p>
+<ul class="simple">
+<li><p>this instance contains strings</p></li>
+<li><p>this instance is already on GPU. Cross GPU copy is not supported</p></li>
+<li><p>CUDA is not present in this build</p></li>
+<li><p>if the specified device is not valid</p></li>
+</ul>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="onnxruntime.SparseTensor.values">
+<span class="sig-name descname"><span class="pre">values</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="modules/onnxruntime/capi/onnxruntime_inference_collection.html#SparseTensor.values"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#onnxruntime.SparseTensor.values" title="Permalink to this definition">¶</a></dt>
+<dd><p>The method returns a numpy array that is backed by the native memory
+if the data type is numeric. Otherwise, the returned numpy array that contains
+copies of the strings.</p>
+</dd></dl>
+
+</dd></dl>
+
+</section>
+</section>
+<section id="devices">
+<h3><a class="toc-backref" href="#id15">Devices</a><a class="headerlink" href="#devices" title="Permalink to this headline">¶</a></h3>
+<section id="id2">
+<h4><a class="toc-backref" href="#id16">IOBinding</a><a class="headerlink" href="#id2" title="Permalink to this headline">¶</a></h4>
+<dl class="py class">
+<dt class="sig sig-object py" id="onnxruntime.IOBinding">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">onnxruntime.</span></span><span class="sig-name descname"><span class="pre">IOBinding</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">session</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="modules/onnxruntime/capi/onnxruntime_inference_collection.html#IOBinding"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#onnxruntime.IOBinding" title="Permalink to this definition">¶</a></dt>
+<dd><p>This class provides API to bind input/output to a specified device, e.g. GPU.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="onnxruntime.IOBinding.bind_cpu_input">
+<span class="sig-name descname"><span class="pre">bind_cpu_input</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">arr_on_cpu</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="modules/onnxruntime/capi/onnxruntime_inference_collection.html#IOBinding.bind_cpu_input"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#onnxruntime.IOBinding.bind_cpu_input" title="Permalink to this definition">¶</a></dt>
+<dd><p>bind an input to array on CPU
+:param name: input name
+:param arr_on_cpu: input values as a python array on CPU</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="onnxruntime.IOBinding.bind_input">
+<span class="sig-name descname"><span class="pre">bind_input</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">device_type</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">device_id</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">element_type</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">shape</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">buffer_ptr</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="modules/onnxruntime/capi/onnxruntime_inference_collection.html#IOBinding.bind_input"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#onnxruntime.IOBinding.bind_input" title="Permalink to this definition">¶</a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>name</strong> – input name</p></li>
+<li><p><strong>device_type</strong> – e.g. cpu, cuda</p></li>
+<li><p><strong>device_id</strong> – device id, e.g. 0</p></li>
+<li><p><strong>element_type</strong> – input element type</p></li>
+<li><p><strong>shape</strong> – input shape</p></li>
+<li><p><strong>buffer_ptr</strong> – memory pointer to input data</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="onnxruntime.IOBinding.bind_ortvalue_input">
+<span class="sig-name descname"><span class="pre">bind_ortvalue_input</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ortvalue</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="modules/onnxruntime/capi/onnxruntime_inference_collection.html#IOBinding.bind_ortvalue_input"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#onnxruntime.IOBinding.bind_ortvalue_input" title="Permalink to this definition">¶</a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>name</strong> – input name</p></li>
+<li><p><strong>ortvalue</strong> – OrtValue instance to bind</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="onnxruntime.IOBinding.bind_ortvalue_output">
+<span class="sig-name descname"><span class="pre">bind_ortvalue_output</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ortvalue</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="modules/onnxruntime/capi/onnxruntime_inference_collection.html#IOBinding.bind_ortvalue_output"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#onnxruntime.IOBinding.bind_ortvalue_output" title="Permalink to this definition">¶</a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>name</strong> – output name</p></li>
+<li><p><strong>ortvalue</strong> – OrtValue instance to bind</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="onnxruntime.IOBinding.bind_output">
+<span class="sig-name descname"><span class="pre">bind_output</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">device_type</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'cpu'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">device_id</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">element_type</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">shape</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">buffer_ptr</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="modules/onnxruntime/capi/onnxruntime_inference_collection.html#IOBinding.bind_output"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#onnxruntime.IOBinding.bind_output" title="Permalink to this definition">¶</a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>name</strong> – output name</p></li>
+<li><p><strong>device_type</strong> – e.g. cpu, cuda, cpu by default</p></li>
+<li><p><strong>device_id</strong> – device id, e.g. 0</p></li>
+<li><p><strong>element_type</strong> – output element type</p></li>
+<li><p><strong>shape</strong> – output shape</p></li>
+<li><p><strong>buffer_ptr</strong> – memory pointer to output data</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="onnxruntime.IOBinding.copy_outputs_to_cpu">
+<span class="sig-name descname"><span class="pre">copy_outputs_to_cpu</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="modules/onnxruntime/capi/onnxruntime_inference_collection.html#IOBinding.copy_outputs_to_cpu"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#onnxruntime.IOBinding.copy_outputs_to_cpu" title="Permalink to this definition">¶</a></dt>
+<dd><p>Copy output contents to CPU (if on another device). No-op if already on the CPU.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="onnxruntime.IOBinding.get_outputs">
+<span class="sig-name descname"><span class="pre">get_outputs</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="modules/onnxruntime/capi/onnxruntime_inference_collection.html#IOBinding.get_outputs"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#onnxruntime.IOBinding.get_outputs" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns the output OrtValues from the Run() that preceded the call.
+The data buffer of the obtained OrtValues may not reside on CPU memory</p>
+</dd></dl>
+
+</dd></dl>
+
+</section>
+<section id="ortdevice">
+<h4><a class="toc-backref" href="#id17">OrtDevice</a><a class="headerlink" href="#ortdevice" title="Permalink to this headline">¶</a></h4>
+<dl class="py class">
+<dt class="sig sig-object py" id="onnxruntime.OrtDevice">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">onnxruntime.</span></span><span class="sig-name descname"><span class="pre">OrtDevice</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">c_ort_device</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="modules/onnxruntime/capi/onnxruntime_inference_collection.html#OrtDevice"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#onnxruntime.OrtDevice" title="Permalink to this definition">¶</a></dt>
+<dd><p>A data structure that exposes the underlying C++ OrtDevice</p>
+<p>Internal constructor</p>
+</dd></dl>
+
+</section>
+</section>
+<section id="internal-classes">
+<h3><a class="toc-backref" href="#id18">Internal classes</a><a class="headerlink" href="#internal-classes" title="Permalink to this headline">¶</a></h3>
+<p>These classes cannot be instantiated by users but they are returned
+by methods or functions of this libary.</p>
+<section id="modelmetadata">
+<h4><a class="toc-backref" href="#id19">ModelMetadata</a><a class="headerlink" href="#modelmetadata" title="Permalink to this headline">¶</a></h4>
+<dl class="py class">
+<dt class="sig sig-object py" id="onnxruntime.ModelMetadata">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">onnxruntime.</span></span><span class="sig-name descname"><span class="pre">ModelMetadata</span></span><a class="headerlink" href="#onnxruntime.ModelMetadata" title="Permalink to this definition">¶</a></dt>
+<dd><p>Pre-defined and custom metadata about the model.
+It is usually used to identify the model used to run the prediction and
+facilitate the comparison.</p>
+<dl class="py property">
+<dt class="sig sig-object py" id="onnxruntime.ModelMetadata.custom_metadata_map">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">custom_metadata_map</span></span><a class="headerlink" href="#onnxruntime.ModelMetadata.custom_metadata_map" title="Permalink to this definition">¶</a></dt>
+<dd><p>additional metadata</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="onnxruntime.ModelMetadata.description">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">description</span></span><a class="headerlink" href="#onnxruntime.ModelMetadata.description" title="Permalink to this definition">¶</a></dt>
+<dd><p>description of the model</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="onnxruntime.ModelMetadata.domain">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">domain</span></span><a class="headerlink" href="#onnxruntime.ModelMetadata.domain" title="Permalink to this definition">¶</a></dt>
+<dd><p>ONNX domain</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="onnxruntime.ModelMetadata.graph_description">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">graph_description</span></span><a class="headerlink" href="#onnxruntime.ModelMetadata.graph_description" title="Permalink to this definition">¶</a></dt>
+<dd><p>description of the graph hosted in the model</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="onnxruntime.ModelMetadata.graph_name">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">graph_name</span></span><a class="headerlink" href="#onnxruntime.ModelMetadata.graph_name" title="Permalink to this definition">¶</a></dt>
+<dd><p>graph name</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="onnxruntime.ModelMetadata.producer_name">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">producer_name</span></span><a class="headerlink" href="#onnxruntime.ModelMetadata.producer_name" title="Permalink to this definition">¶</a></dt>
+<dd><p>producer name</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="onnxruntime.ModelMetadata.version">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">version</span></span><a class="headerlink" href="#onnxruntime.ModelMetadata.version" title="Permalink to this definition">¶</a></dt>
+<dd><p>version of the model</p>
+</dd></dl>
+
+</dd></dl>
+
+</section>
+<section id="nodearg">
+<h4><a class="toc-backref" href="#id20">NodeArg</a><a class="headerlink" href="#nodearg" title="Permalink to this headline">¶</a></h4>
+<dl class="py class">
+<dt class="sig sig-object py" id="onnxruntime.NodeArg">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">onnxruntime.</span></span><span class="sig-name descname"><span class="pre">NodeArg</span></span><a class="headerlink" href="#onnxruntime.NodeArg" title="Permalink to this definition">¶</a></dt>
+<dd><p>Node argument definition, for both input and output,
+including arg name, arg type (contains both type and shape).</p>
+<dl class="py property">
+<dt class="sig sig-object py" id="onnxruntime.NodeArg.name">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">name</span></span><a class="headerlink" href="#onnxruntime.NodeArg.name" title="Permalink to this definition">¶</a></dt>
+<dd><p>node name</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="onnxruntime.NodeArg.shape">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">shape</span></span><a class="headerlink" href="#onnxruntime.NodeArg.shape" title="Permalink to this definition">¶</a></dt>
+<dd><p>node shape (assuming the node holds a tensor)</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="onnxruntime.NodeArg.type">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">type</span></span><a class="headerlink" href="#onnxruntime.NodeArg.type" title="Permalink to this definition">¶</a></dt>
+<dd><p>node type</p>
+</dd></dl>
+
+</dd></dl>
+
+</section>
+</section>
+</section>
+<section id="backend">
+<h2><a class="toc-backref" href="#id21">Backend</a><a class="headerlink" href="#backend" title="Permalink to this headline">¶</a></h2>
 <p>In addition to the regular API which is optimized for performance and usability,
 <em>ONNX Runtime</em> also implements the
 <a class="reference external" href="https://github.com/onnx/onnx/blob/master/docs/ImplementingAnOnnxBackend.md">ONNX backend API</a>
 for verification of <em>ONNX</em> specification conformance.
 The following functions are supported:</p>
 <dl class="py function">
-<dt id="onnxruntime.backend.is_compatible">
-<code class="sig-prename descclassname"><span class="pre">onnxruntime.backend.</span></code><code class="sig-name descname"><span class="pre">is_compatible</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">device</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#onnxruntime.backend.is_compatible" title="Permalink to this definition">¶</a></dt>
+<dt class="sig sig-object py" id="onnxruntime.backend.is_compatible">
+<span class="sig-prename descclassname"><span class="pre">onnxruntime.backend.</span></span><span class="sig-name descname"><span class="pre">is_compatible</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">device</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#onnxruntime.backend.is_compatible" title="Permalink to this definition">¶</a></dt>
 <dd><p>Return whether the model is compatible with the backend.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters</dt>
@@ -464,8 +1085,8 @@ The following functions are supported:</p>
 </dd></dl>
 
 <dl class="py function">
-<dt id="onnxruntime.backend.prepare">
-<code class="sig-prename descclassname"><span class="pre">onnxruntime.backend.</span></code><code class="sig-name descname"><span class="pre">prepare</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">device</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#onnxruntime.backend.prepare" title="Permalink to this definition">¶</a></dt>
+<dt class="sig sig-object py" id="onnxruntime.backend.prepare">
+<span class="sig-prename descclassname"><span class="pre">onnxruntime.backend.</span></span><span class="sig-name descname"><span class="pre">prepare</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">device</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#onnxruntime.backend.prepare" title="Permalink to this definition">¶</a></dt>
 <dd><p>Load the model and creates a <a class="reference internal" href="#onnxruntime.InferenceSession" title="onnxruntime.InferenceSession"><code class="xref py py-class docutils literal notranslate"><span class="pre">onnxruntime.InferenceSession</span></code></a>
 ready to be used as a backend.</p>
 <dl class="field-list simple">
@@ -486,8 +1107,8 @@ the compilation settings</p></li>
 </dd></dl>
 
 <dl class="py function">
-<dt id="onnxruntime.backend.run">
-<code class="sig-prename descclassname"><span class="pre">onnxruntime.backend.</span></code><code class="sig-name descname"><span class="pre">run</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">inputs</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">device</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#onnxruntime.backend.run" title="Permalink to this definition">¶</a></dt>
+<dt class="sig sig-object py" id="onnxruntime.backend.run">
+<span class="sig-prename descclassname"><span class="pre">onnxruntime.backend.</span></span><span class="sig-name descname"><span class="pre">run</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">inputs</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">device</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#onnxruntime.backend.run" title="Permalink to this definition">¶</a></dt>
 <dd><p>Compute the prediction.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters</dt>
@@ -508,26 +1129,77 @@ the compilation settings</p></li>
 </dd></dl>
 
 <dl class="py function">
-<dt id="onnxruntime.backend.supports_device">
-<code class="sig-prename descclassname"><span class="pre">onnxruntime.backend.</span></code><code class="sig-name descname"><span class="pre">supports_device</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">device</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#onnxruntime.backend.supports_device" title="Permalink to this definition">¶</a></dt>
+<dt class="sig sig-object py" id="onnxruntime.backend.supports_device">
+<span class="sig-prename descclassname"><span class="pre">onnxruntime.backend.</span></span><span class="sig-name descname"><span class="pre">supports_device</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">device</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#onnxruntime.backend.supports_device" title="Permalink to this definition">¶</a></dt>
 <dd><p>Check whether the backend is compiled with particular device support.
 In particular it’s used in the testing suite.</p>
 </dd></dl>
 
-</div>
-</div>
+</section>
+</section>
 
 
           </div>
           
         </div>
       </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+            <p class="logo"><a href="index.html">
+              <img class="logo" src="static/ONNX_Runtime_icon.png" alt="Logo"/>
+            </a></p>
+<h1 class="logo"><a href="index.html">ONNX Runtime</a></h1>
 
+
+
+
+
+
+
+
+<h3>Navigation</h3>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="tutorial.html">Tutorial</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">API Summary</a></li>
+<li class="toctree-l1"><a class="reference internal" href="auto_examples/index.html">Gallery of examples</a></li>
+</ul>
+
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="index.html">Documentation overview</a><ul>
+      <li>Previous: <a href="tutorial.html" title="previous chapter">Tutorial</a></li>
+      <li>Next: <a href="auto_examples/index.html" title="next chapter">Gallery of examples</a></li>
+  </ul></li>
+</ul>
+</div>
+<div id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</div>
+<script>$('#searchbox').show(0);</script>
+
+
+
+
+
+
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
     <div class="footer">
       &copy;2018-2021, Microsoft.
       
       |
-      Powered by <a href="http://sphinx-doc.org/">Sphinx 3.5.1</a>
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 4.3.1</a>
       &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.12</a>
       
       |

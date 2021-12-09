@@ -18,6 +18,7 @@
 .. _sphx_glr_auto_examples_plot_backend.py:
 
 
+
 .. _l-example-backend-api:
 
 ONNX Runtime Backend for ONNX
@@ -29,7 +30,7 @@ to run predictions using this runtime.
 Let's use the API to compute the prediction
 of a simple logistic regression model.
 
-.. GENERATED FROM PYTHON SOURCE LINES 17-35
+.. GENERATED FROM PYTHON SOURCE LINES 17-23
 
 .. code-block:: default
 
@@ -39,10 +40,29 @@ of a simple logistic regression model.
     import onnxruntime.backend as backend
     from onnx import load
 
+
+
+
+
+
+
+
+.. GENERATED FROM PYTHON SOURCE LINES 24-26
+
+The device depends on how the package was compiled,
+GPU or CPU.
+
+.. GENERATED FROM PYTHON SOURCE LINES 26-41
+
+.. code-block:: default
+
+    from onnxruntime import get_device
+    device = get_device()
+
     name = datasets.get_example("logreg_iris.onnx")
     model = load(name)
 
-    rep = backend.prepare(model, 'CPU')
+    rep = backend.prepare(model, device)
     x = np.array([[-1.0, -2.0]], dtype=np.float32)
     try:
         label, proba = rep.run(x)
@@ -68,33 +88,6 @@ of a simple logistic regression model.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 36-38
-
-The device depends on how the package was compiled,
-GPU or CPU.
-
-.. GENERATED FROM PYTHON SOURCE LINES 38-41
-
-.. code-block:: default
-
-    from onnxruntime import get_device
-    print(get_device())
-
-
-
-
-
-.. rst-class:: sphx-glr-script-out
-
- Out:
-
- .. code-block:: none
-
-    CPU
-
-
-
-
 .. GENERATED FROM PYTHON SOURCE LINES 42-44
 
 The backend can also directly load the model
@@ -105,7 +98,7 @@ without using *onnx*.
 .. code-block:: default
 
 
-    rep = backend.prepare(name, 'CPU')
+    rep = backend.prepare(name, device)
     x = np.array([[-1.0, -2.0]], dtype=np.float32)
     try:
         label, proba = rep.run(x)
@@ -140,7 +133,7 @@ with the same API.
 
 .. rst-class:: sphx-glr-timing
 
-   **Total running time of the script:** ( 0 minutes  0.019 seconds)
+   **Total running time of the script:** ( 0 minutes  0.014 seconds)
 
 
 .. _sphx_glr_download_auto_examples_plot_backend.py:

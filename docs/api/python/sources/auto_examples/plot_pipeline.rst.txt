@@ -218,9 +218,10 @@ Which we display...
 
 
 
-.. image:: /auto_examples/images/sphx_glr_plot_pipeline_001.png
-    :alt: plot pipeline
-    :class: sphx-glr-single-img
+.. image-sg:: /auto_examples/images/sphx_glr_plot_pipeline_001.png
+   :alt: plot pipeline
+   :srcset: /auto_examples/images/sphx_glr_plot_pipeline_001.png
+   :class: sphx-glr-single-img
 
 
 .. rst-class:: sphx-glr-script-out
@@ -230,14 +231,14 @@ Which we display...
  .. code-block:: none
 
 
-    <matplotlib.image.AxesImage object at 0x7fd0a620e860>
+    <matplotlib.image.AxesImage object at 0x7f402407b6a0>
 
 
 
 
 .. rst-class:: sphx-glr-timing
 
-   **Total running time of the script:** ( 0 minutes  0.244 seconds)
+   **Total running time of the script:** ( 0 minutes  0.163 seconds)
 
 
 .. _sphx_glr_download_auto_examples_plot_pipeline.py:

@@ -78,8 +78,8 @@ With *ONNX Runtime*:
 .. code-block:: default
 
 
-    from onnxruntime import InferenceSession
-    sess = InferenceSession(example)
+    import onnxruntime as rt
+    sess = rt.InferenceSession(example, providers=rt.get_available_providers())
     meta = sess.get_modelmeta()
 
     print("custom_metadata_map={}".format(meta.custom_metadata_map))
@@ -111,7 +111,7 @@ With *ONNX Runtime*:
 
 .. rst-class:: sphx-glr-timing
 
-   **Total running time of the script:** ( 0 minutes  0.006 seconds)
+   **Total running time of the script:** ( 0 minutes  0.004 seconds)
 
 
 .. _sphx_glr_download_auto_examples_plot_metadata.py:

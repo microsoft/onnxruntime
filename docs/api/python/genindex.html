@@ -5,15 +5,15 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Index &#8212; ONNX Runtime 1.7.0 documentation</title>
-    <link rel="stylesheet" href="static/pygments.css" type="text/css" />
-    <link rel="stylesheet" href="static/alabaster.css" type="text/css" />
+    <title>Index &#8212; ONNX Runtime 1.10.0 documentation</title>
+    <link rel="stylesheet" type="text/css" href="static/pygments.css" />
+    <link rel="stylesheet" type="text/css" href="static/alabaster.css" />
     <link rel="stylesheet" type="text/css" href="static/graphviz.css" />
-    <link rel="stylesheet" type="text/css" href="static/gallery.css" />
-    <link rel="stylesheet" type="text/css" href="static/gallery-binder.css" />
-    <link rel="stylesheet" type="text/css" href="static/gallery-dataframe.css" />
-    <link rel="stylesheet" type="text/css" href="static/gallery-rendered-html.css" />
-    <script id="documentation_options" data-url_root="./" src="static/documentation_options.js"></script>
+    <link rel="stylesheet" type="text/css" href="static/sg_gallery.css" />
+    <link rel="stylesheet" type="text/css" href="static/sg_gallery-binder.css" />
+    <link rel="stylesheet" type="text/css" href="static/sg_gallery-dataframe.css" />
+    <link rel="stylesheet" type="text/css" href="static/sg_gallery-rendered-html.css" />
+    <script data-url_root="./" id="documentation_options" src="static/documentation_options.js"></script>
     <script src="static/jquery.js"></script>
     <script src="static/underscore.js"></script>
     <script src="static/doctools.js"></script>
@@ -40,10 +40,13 @@
 
 <div class="genindex-jumpbox">
  <a href="#A"><strong>A</strong></a>
+ | <a href="#B"><strong>B</strong></a>
  | <a href="#C"><strong>C</strong></a>
  | <a href="#D"><strong>D</strong></a>
  | <a href="#E"><strong>E</strong></a>
+ | <a href="#F"><strong>F</strong></a>
  | <a href="#G"><strong>G</strong></a>
+ | <a href="#H"><strong>H</strong></a>
  | <a href="#I"><strong>I</strong></a>
  | <a href="#L"><strong>L</strong></a>
  | <a href="#M"><strong>M</strong></a>
@@ -64,11 +67,37 @@
 </li>
       <li><a href="api_summary.html#onnxruntime.SessionOptions.add_free_dimension_override_by_name">add_free_dimension_override_by_name() (onnxruntime.SessionOptions method)</a>
 </li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="api_summary.html#onnxruntime.SessionOptions.add_initializer">add_initializer() (onnxruntime.SessionOptions method)</a>
 </li>
       <li><a href="api_summary.html#onnxruntime.SessionOptions.add_session_config_entry">add_session_config_entry() (onnxruntime.SessionOptions method)</a>
+</li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="api_summary.html#onnxruntime.SparseTensor.as_blocksparse_view">as_blocksparse_view() (onnxruntime.SparseTensor method)</a>
+</li>
+      <li><a href="api_summary.html#onnxruntime.SparseTensor.as_coo_view">as_coo_view() (onnxruntime.SparseTensor method)</a>
+</li>
+      <li><a href="api_summary.html#onnxruntime.SparseTensor.as_csrc_view">as_csrc_view() (onnxruntime.SparseTensor method)</a>
+</li>
+      <li><a href="api_summary.html#onnxruntime.OrtValue.as_sparse_tensor">as_sparse_tensor() (onnxruntime.OrtValue method)</a>
+</li>
+  </ul></td>
+</tr></table>
+
+<h2 id="B">B</h2>
+<table style="width: 100%" class="indextable genindextable"><tr>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="api_summary.html#onnxruntime.IOBinding.bind_cpu_input">bind_cpu_input() (onnxruntime.IOBinding method)</a>
+</li>
+      <li><a href="api_summary.html#onnxruntime.IOBinding.bind_input">bind_input() (onnxruntime.IOBinding method)</a>
+</li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="api_summary.html#onnxruntime.IOBinding.bind_ortvalue_input">bind_ortvalue_input() (onnxruntime.IOBinding method)</a>
+</li>
+      <li><a href="api_summary.html#onnxruntime.IOBinding.bind_ortvalue_output">bind_ortvalue_output() (onnxruntime.IOBinding method)</a>
+</li>
+      <li><a href="api_summary.html#onnxruntime.IOBinding.bind_output">bind_output() (onnxruntime.IOBinding method)</a>
 </li>
   </ul></td>
 </tr></table>
@@ -76,7 +105,11 @@
 <h2 id="C">C</h2>
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
-      <li><a href="api_summary.html#onnxruntime.ModelMetadata.custom_metadata_map">custom_metadata_map() (onnxruntime.ModelMetadata property)</a>
+      <li><a href="api_summary.html#onnxruntime.IOBinding.copy_outputs_to_cpu">copy_outputs_to_cpu() (onnxruntime.IOBinding method)</a>
+</li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="api_summary.html#onnxruntime.ModelMetadata.custom_metadata_map">custom_metadata_map (onnxruntime.ModelMetadata property)</a>
 </li>
   </ul></td>
 </tr></table>
@@ -84,11 +117,29 @@
 <h2 id="D">D</h2>
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
-      <li><a href="api_summary.html#onnxruntime.ModelMetadata.description">description() (onnxruntime.ModelMetadata property)</a>
+      <li><a href="api_summary.html#onnxruntime.OrtValue.data_ptr">data_ptr() (onnxruntime.OrtValue method)</a>
+</li>
+      <li><a href="api_summary.html#onnxruntime.OrtValue.data_type">data_type() (onnxruntime.OrtValue method)</a>
+
+      <ul>
+        <li><a href="api_summary.html#onnxruntime.SparseTensor.data_type">(onnxruntime.SparseTensor method)</a>
+</li>
+      </ul></li>
+      <li><a href="api_summary.html#onnxruntime.SparseTensor.dense_shape">dense_shape() (onnxruntime.SparseTensor method)</a>
 </li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
-      <li><a href="api_summary.html#onnxruntime.ModelMetadata.domain">domain() (onnxruntime.ModelMetadata property)</a>
+      <li><a href="api_summary.html#onnxruntime.ModelMetadata.description">description (onnxruntime.ModelMetadata property)</a>
+</li>
+      <li><a href="api_summary.html#onnxruntime.OrtValue.device_name">device_name() (onnxruntime.OrtValue method)</a>
+
+      <ul>
+        <li><a href="api_summary.html#onnxruntime.SparseTensor.device_name">(onnxruntime.SparseTensor method)</a>
+</li>
+      </ul></li>
+      <li><a href="api_summary.html#onnxruntime.InferenceSession.disable_fallback">disable_fallback() (onnxruntime.InferenceSession method)</a>
+</li>
+      <li><a href="api_summary.html#onnxruntime.ModelMetadata.domain">domain (onnxruntime.ModelMetadata property)</a>
 </li>
   </ul></td>
 </tr></table>
@@ -96,17 +147,31 @@
 <h2 id="E">E</h2>
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
-      <li><a href="api_summary.html#onnxruntime.SessionOptions.enable_cpu_mem_arena">enable_cpu_mem_arena() (onnxruntime.SessionOptions property)</a>
+      <li><a href="api_summary.html#onnxruntime.SessionOptions.enable_cpu_mem_arena">enable_cpu_mem_arena (onnxruntime.SessionOptions property)</a>
 </li>
-      <li><a href="api_summary.html#onnxruntime.SessionOptions.enable_mem_pattern">enable_mem_pattern() (onnxruntime.SessionOptions property)</a>
+      <li><a href="api_summary.html#onnxruntime.InferenceSession.enable_fallback">enable_fallback() (onnxruntime.InferenceSession method)</a>
+</li>
+      <li><a href="api_summary.html#onnxruntime.SessionOptions.enable_mem_pattern">enable_mem_pattern (onnxruntime.SessionOptions property)</a>
+</li>
+      <li><a href="api_summary.html#onnxruntime.SessionOptions.enable_mem_reuse">enable_mem_reuse (onnxruntime.SessionOptions property)</a>
 </li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
-      <li><a href="api_summary.html#onnxruntime.SessionOptions.enable_profiling">enable_profiling() (onnxruntime.SessionOptions property)</a>
+      <li><a href="api_summary.html#onnxruntime.SessionOptions.enable_profiling">enable_profiling (onnxruntime.SessionOptions property)</a>
 </li>
-      <li><a href="api_summary.html#onnxruntime.SessionOptions.execution_mode">execution_mode() (onnxruntime.SessionOptions property)</a>
+      <li><a href="api_summary.html#onnxruntime.InferenceSession.end_profiling">end_profiling() (onnxruntime.InferenceSession method)</a>
 </li>
-      <li><a href="api_summary.html#onnxruntime.SessionOptions.execution_order">execution_order() (onnxruntime.SessionOptions property)</a>
+      <li><a href="api_summary.html#onnxruntime.SessionOptions.execution_mode">execution_mode (onnxruntime.SessionOptions property)</a>
+</li>
+      <li><a href="api_summary.html#onnxruntime.SessionOptions.execution_order">execution_order (onnxruntime.SessionOptions property)</a>
+</li>
+  </ul></td>
+</tr></table>
+
+<h2 id="F">F</h2>
+<table style="width: 100%" class="indextable genindextable"><tr>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="api_summary.html#onnxruntime.SparseTensor.format">format() (onnxruntime.SparseTensor method)</a>
 </li>
   </ul></td>
 </tr></table>
@@ -118,15 +183,43 @@
 </li>
       <li><a href="api_summary.html#onnxruntime.datasets.get_example">get_example() (in module onnxruntime.datasets)</a>
 </li>
-      <li><a href="api_summary.html#onnxruntime.SessionOptions.get_session_config_entry">get_session_config_entry() (onnxruntime.SessionOptions method)</a>
+      <li><a href="api_summary.html#onnxruntime.InferenceSession.get_inputs">get_inputs() (onnxruntime.InferenceSession method)</a>
+</li>
+      <li><a href="api_summary.html#onnxruntime.InferenceSession.get_modelmeta">get_modelmeta() (onnxruntime.InferenceSession method)</a>
+</li>
+      <li><a href="api_summary.html#onnxruntime.InferenceSession.get_outputs">get_outputs() (onnxruntime.InferenceSession method)</a>
+
+      <ul>
+        <li><a href="api_summary.html#onnxruntime.IOBinding.get_outputs">(onnxruntime.IOBinding method)</a>
+</li>
+      </ul></li>
+      <li><a href="api_summary.html#onnxruntime.InferenceSession.get_overridable_initializers">get_overridable_initializers() (onnxruntime.InferenceSession method)</a>
 </li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
-      <li><a href="api_summary.html#onnxruntime.ModelMetadata.graph_description">graph_description() (onnxruntime.ModelMetadata property)</a>
+      <li><a href="api_summary.html#onnxruntime.InferenceSession.get_profiling_start_time_ns">get_profiling_start_time_ns() (onnxruntime.InferenceSession method)</a>
 </li>
-      <li><a href="api_summary.html#onnxruntime.ModelMetadata.graph_name">graph_name() (onnxruntime.ModelMetadata property)</a>
+      <li><a href="api_summary.html#onnxruntime.InferenceSession.get_provider_options">get_provider_options() (onnxruntime.InferenceSession method)</a>
 </li>
-      <li><a href="api_summary.html#onnxruntime.SessionOptions.graph_optimization_level">graph_optimization_level() (onnxruntime.SessionOptions property)</a>
+      <li><a href="api_summary.html#onnxruntime.InferenceSession.get_providers">get_providers() (onnxruntime.InferenceSession method)</a>
+</li>
+      <li><a href="api_summary.html#onnxruntime.SessionOptions.get_session_config_entry">get_session_config_entry() (onnxruntime.SessionOptions method)</a>
+</li>
+      <li><a href="api_summary.html#onnxruntime.InferenceSession.get_session_options">get_session_options() (onnxruntime.InferenceSession method)</a>
+</li>
+      <li><a href="api_summary.html#onnxruntime.ModelMetadata.graph_description">graph_description (onnxruntime.ModelMetadata property)</a>
+</li>
+      <li><a href="api_summary.html#onnxruntime.ModelMetadata.graph_name">graph_name (onnxruntime.ModelMetadata property)</a>
+</li>
+      <li><a href="api_summary.html#onnxruntime.SessionOptions.graph_optimization_level">graph_optimization_level (onnxruntime.SessionOptions property)</a>
+</li>
+  </ul></td>
+</tr></table>
+
+<h2 id="H">H</h2>
+<table style="width: 100%" class="indextable genindextable"><tr>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="api_summary.html#onnxruntime.OrtValue.has_value">has_value() (onnxruntime.OrtValue method)</a>
 </li>
   </ul></td>
 </tr></table>
@@ -136,13 +229,23 @@
   <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="api_summary.html#onnxruntime.InferenceSession">InferenceSession (class in onnxruntime)</a>
 </li>
-      <li><a href="api_summary.html#onnxruntime.SessionOptions.inter_op_num_threads">inter_op_num_threads() (onnxruntime.SessionOptions property)</a>
+      <li><a href="api_summary.html#onnxruntime.SessionOptions.inter_op_num_threads">inter_op_num_threads (onnxruntime.SessionOptions property)</a>
+</li>
+      <li><a href="api_summary.html#onnxruntime.SessionOptions.intra_op_num_threads">intra_op_num_threads (onnxruntime.SessionOptions property)</a>
+</li>
+      <li><a href="api_summary.html#onnxruntime.InferenceSession.io_binding">io_binding() (onnxruntime.InferenceSession method)</a>
 </li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
-      <li><a href="api_summary.html#onnxruntime.SessionOptions.intra_op_num_threads">intra_op_num_threads() (onnxruntime.SessionOptions property)</a>
+      <li><a href="api_summary.html#onnxruntime.IOBinding">IOBinding (class in onnxruntime)</a>
 </li>
       <li><a href="api_summary.html#onnxruntime.backend.is_compatible">is_compatible() (in module onnxruntime.backend)</a>
+</li>
+      <li><a href="api_summary.html#onnxruntime.OrtValue.is_sparse_tensor">is_sparse_tensor() (onnxruntime.OrtValue method)</a>
+</li>
+      <li><a href="api_summary.html#onnxruntime.OrtValue.is_tensor">is_tensor() (onnxruntime.OrtValue method)</a>
+</li>
+      <li><a href="api_summary.html#onnxruntime.OrtValue.is_tensor_sequence">is_tensor_sequence() (onnxruntime.OrtValue method)</a>
 </li>
   </ul></td>
 </tr></table>
@@ -150,13 +253,13 @@
 <h2 id="L">L</h2>
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
-      <li><a href="api_summary.html#onnxruntime.RunOptions.log_severity_level">log_severity_level() (onnxruntime.RunOptions property)</a>
+      <li><a href="api_summary.html#onnxruntime.RunOptions.log_severity_level">log_severity_level (onnxruntime.RunOptions property)</a>
 
       <ul>
         <li><a href="api_summary.html#onnxruntime.SessionOptions.log_severity_level">(onnxruntime.SessionOptions property)</a>
 </li>
       </ul></li>
-      <li><a href="api_summary.html#onnxruntime.RunOptions.log_verbosity_level">log_verbosity_level() (onnxruntime.RunOptions property)</a>
+      <li><a href="api_summary.html#onnxruntime.RunOptions.log_verbosity_level">log_verbosity_level (onnxruntime.RunOptions property)</a>
 
       <ul>
         <li><a href="api_summary.html#onnxruntime.SessionOptions.log_verbosity_level">(onnxruntime.SessionOptions property)</a>
@@ -164,7 +267,7 @@
       </ul></li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
-      <li><a href="api_summary.html#onnxruntime.RunOptions.logid">logid() (onnxruntime.RunOptions property)</a>
+      <li><a href="api_summary.html#onnxruntime.RunOptions.logid">logid (onnxruntime.RunOptions property)</a>
 
       <ul>
         <li><a href="api_summary.html#onnxruntime.SessionOptions.logid">(onnxruntime.SessionOptions property)</a>
@@ -184,11 +287,13 @@
 <h2 id="N">N</h2>
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
-      <li><a href="api_summary.html#onnxruntime.NodeArg.name">name() (onnxruntime.NodeArg property)</a>
+      <li><a href="api_summary.html#onnxruntime.NodeArg.name">name (onnxruntime.NodeArg property)</a>
 </li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="api_summary.html#onnxruntime.NodeArg">NodeArg (class in onnxruntime)</a>
+</li>
+      <li><a href="api_summary.html#onnxruntime.OrtValue.numpy">numpy() (onnxruntime.OrtValue method)</a>
 </li>
   </ul></td>
 </tr></table>
@@ -196,11 +301,21 @@
 <h2 id="O">O</h2>
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
-      <li><a href="api_summary.html#onnxruntime.RunOptions.only_execute_path_to_fetches">only_execute_path_to_fetches() (onnxruntime.RunOptions property)</a>
+      <li><a href="api_summary.html#onnxruntime.RunOptions.only_execute_path_to_fetches">only_execute_path_to_fetches (onnxruntime.RunOptions property)</a>
+</li>
+      <li><a href="api_summary.html#onnxruntime.SessionOptions.optimized_model_filepath">optimized_model_filepath (onnxruntime.SessionOptions property)</a>
+</li>
+      <li><a href="api_summary.html#onnxruntime.OrtValue.ort_value_from_sparse_tensor">ort_value_from_sparse_tensor() (onnxruntime.OrtValue static method)</a>
 </li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
-      <li><a href="api_summary.html#onnxruntime.SessionOptions.optimized_model_filepath">optimized_model_filepath() (onnxruntime.SessionOptions property)</a>
+      <li><a href="api_summary.html#onnxruntime.OrtDevice">OrtDevice (class in onnxruntime)</a>
+</li>
+      <li><a href="api_summary.html#onnxruntime.OrtValue">OrtValue (class in onnxruntime)</a>
+</li>
+      <li><a href="api_summary.html#onnxruntime.OrtValue.ortvalue_from_numpy">ortvalue_from_numpy() (onnxruntime.OrtValue static method)</a>
+</li>
+      <li><a href="api_summary.html#onnxruntime.OrtValue.ortvalue_from_shape_and_type">ortvalue_from_shape_and_type() (onnxruntime.OrtValue static method)</a>
 </li>
   </ul></td>
 </tr></table>
@@ -212,9 +327,9 @@
 </li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
-      <li><a href="api_summary.html#onnxruntime.ModelMetadata.producer_name">producer_name() (onnxruntime.ModelMetadata property)</a>
+      <li><a href="api_summary.html#onnxruntime.ModelMetadata.producer_name">producer_name (onnxruntime.ModelMetadata property)</a>
 </li>
-      <li><a href="api_summary.html#onnxruntime.SessionOptions.profile_file_prefix">profile_file_prefix() (onnxruntime.SessionOptions property)</a>
+      <li><a href="api_summary.html#onnxruntime.SessionOptions.profile_file_prefix">profile_file_prefix (onnxruntime.SessionOptions property)</a>
 </li>
   </ul></td>
 </tr></table>
@@ -224,9 +339,17 @@
   <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="api_summary.html#onnxruntime.SessionOptions.register_custom_ops_library">register_custom_ops_library() (onnxruntime.SessionOptions method)</a>
 </li>
+      <li><a href="api_summary.html#onnxruntime.backend.run">run() (in module onnxruntime.backend)</a>
+
+      <ul>
+        <li><a href="api_summary.html#onnxruntime.InferenceSession.run">(onnxruntime.InferenceSession method)</a>
+</li>
+      </ul></li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
-      <li><a href="api_summary.html#onnxruntime.backend.run">run() (in module onnxruntime.backend)</a>
+      <li><a href="api_summary.html#onnxruntime.InferenceSession.run_with_iobinding">run_with_iobinding() (onnxruntime.InferenceSession method)</a>
+</li>
+      <li><a href="api_summary.html#onnxruntime.InferenceSession.run_with_ort_values">run_with_ort_values() (onnxruntime.InferenceSession method)</a>
 </li>
       <li><a href="api_summary.html#onnxruntime.RunOptions">RunOptions (class in onnxruntime)</a>
 </li>
@@ -238,9 +361,19 @@
   <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="api_summary.html#onnxruntime.SessionOptions">SessionOptions (class in onnxruntime)</a>
 </li>
+      <li><a href="api_summary.html#onnxruntime.InferenceSession.set_providers">set_providers() (onnxruntime.InferenceSession method)</a>
+</li>
+      <li><a href="api_summary.html#onnxruntime.NodeArg.shape">shape (onnxruntime.NodeArg property)</a>
+</li>
+      <li><a href="api_summary.html#onnxruntime.OrtValue.shape">shape() (onnxruntime.OrtValue method)</a>
+</li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
-      <li><a href="api_summary.html#onnxruntime.NodeArg.shape">shape() (onnxruntime.NodeArg property)</a>
+      <li><a href="api_summary.html#onnxruntime.SparseTensor.sparse_coo_from_numpy">sparse_coo_from_numpy() (onnxruntime.SparseTensor static method)</a>
+</li>
+      <li><a href="api_summary.html#onnxruntime.SparseTensor.sparse_csr_from_numpy">sparse_csr_from_numpy() (onnxruntime.SparseTensor static method)</a>
+</li>
+      <li><a href="api_summary.html#onnxruntime.SparseTensor">SparseTensor (class in onnxruntime)</a>
 </li>
       <li><a href="api_summary.html#onnxruntime.backend.supports_device">supports_device() (in module onnxruntime.backend)</a>
 </li>
@@ -250,11 +383,13 @@
 <h2 id="T">T</h2>
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
-      <li><a href="api_summary.html#onnxruntime.RunOptions.terminate">terminate() (onnxruntime.RunOptions property)</a>
+      <li><a href="api_summary.html#onnxruntime.RunOptions.terminate">terminate (onnxruntime.RunOptions property)</a>
 </li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
-      <li><a href="api_summary.html#onnxruntime.NodeArg.type">type() (onnxruntime.NodeArg property)</a>
+      <li><a href="api_summary.html#onnxruntime.SparseTensor.to_cuda">to_cuda() (onnxruntime.SparseTensor method)</a>
+</li>
+      <li><a href="api_summary.html#onnxruntime.NodeArg.type">type (onnxruntime.NodeArg property)</a>
 </li>
   </ul></td>
 </tr></table>
@@ -262,7 +397,7 @@
 <h2 id="U">U</h2>
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
-      <li><a href="api_summary.html#onnxruntime.SessionOptions.use_deterministic_compute">use_deterministic_compute() (onnxruntime.SessionOptions property)</a>
+      <li><a href="api_summary.html#onnxruntime.SessionOptions.use_deterministic_compute">use_deterministic_compute (onnxruntime.SessionOptions property)</a>
 </li>
   </ul></td>
 </tr></table>
@@ -270,7 +405,11 @@
 <h2 id="V">V</h2>
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
-      <li><a href="api_summary.html#onnxruntime.ModelMetadata.version">version() (onnxruntime.ModelMetadata property)</a>
+      <li><a href="api_summary.html#onnxruntime.SparseTensor.values">values() (onnxruntime.SparseTensor method)</a>
+</li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="api_summary.html#onnxruntime.ModelMetadata.version">version (onnxruntime.ModelMetadata property)</a>
 </li>
   </ul></td>
 </tr></table>
@@ -313,7 +452,7 @@
   <h3 id="searchlabel">Quick search</h3>
     <div class="searchformwrapper">
     <form class="search" action="search.html" method="get">
-      <input type="text" name="q" aria-labelledby="searchlabel" />
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"/>
       <input type="submit" value="Go" />
     </form>
     </div>
@@ -335,7 +474,7 @@
       &copy;2018-2021, Microsoft.
       
       |
-      Powered by <a href="http://sphinx-doc.org/">Sphinx 3.5.1</a>
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 4.3.1</a>
       &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.12</a>
       
     </div>

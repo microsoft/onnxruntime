@@ -18,6 +18,7 @@
 .. _sphx_glr_auto_examples_plot_train_convert_predict.py:
 
 
+
 .. _l-logreg-example:
 
 Train, convert and predict with ONNX Runtime
@@ -77,14 +78,6 @@ Then we fit a model.
 
  .. code-block:: none
 
-    /opt/miniconda/lib/python3.7/site-packages/sklearn/linear_model/_logistic.py:765: ConvergenceWarning: lbfgs failed to converge (status=1):
-    STOP: TOTAL NO. of ITERATIONS REACHED LIMIT.
-
-    Increase the number of iterations (max_iter) or scale the data as shown in:
-        https://scikit-learn.org/stable/modules/preprocessing.html
-    Please also refer to the documentation for alternative solver options:
-        https://scikit-learn.org/stable/modules/linear_model.html#logistic-regression
-      extra_warning_msg=_LOGISTIC_SOLVER_CONVERGENCE_MSG)
 
     LogisticRegression()
 
@@ -114,9 +107,9 @@ and we show the confusion matrix.
 
  .. code-block:: none
 
-    [[10  0  0]
+    [[13  0  0]
      [ 0 14  0]
-     [ 0  1 13]]
+     [ 0  0 11]]
 
 
 
@@ -161,7 +154,7 @@ its input and output.
 
 
     import onnxruntime as rt
-    sess = rt.InferenceSession("logreg_iris.onnx")
+    sess = rt.InferenceSession("logreg_iris.onnx", providers=rt.get_available_providers())
 
     print("input name='{}' and shape={}".format(
         sess.get_inputs()[0].name, sess.get_inputs()[0].shape))
@@ -210,9 +203,9 @@ We compute the predictions.
 
  .. code-block:: none
 
-    [[10  0  0]
-     [ 0 15  0]
-     [ 0  0 13]]
+    [[13  0  0]
+     [ 0 14  0]
+     [ 0  0 11]]
 
 
 
@@ -247,9 +240,9 @@ scikit-learn.
 
  .. code-block:: none
 
-    [[4.15987711e-03 8.54898335e-01 1.40941788e-01]
-     [9.44228260e-01 5.57707615e-02 9.78002823e-07]
-     [5.17324282e-02 8.88396143e-01 5.98714288e-02]]
+    [[7.49355536e-04 4.49226200e-01 5.50024445e-01]
+     [8.93978373e-05 5.31068269e-02 9.46803775e-01]
+     [9.75525486e-01 2.44743098e-02 2.04667542e-07]]
 
 
 
@@ -280,9 +273,9 @@ The probabilies appear to be
 
  .. code-block:: none
 
-    [{0: 0.0041598789393901825, 1: 0.8548984527587891, 2: 0.14094172418117523},
-     {0: 0.9442282915115356, 1: 0.055770788341760635, 2: 9.78002844931325e-07},
-     {0: 0.05173242464661598, 1: 0.888396143913269, 2: 0.05987146869301796}]
+    [{0: 0.0007493561715818942, 1: 0.4492264986038208, 2: 0.550024151802063},
+     {0: 8.93979158718139e-05, 1: 0.053106848150491714, 2: 0.9468037486076355},
+     {0: 0.9755254983901978, 1: 0.024474309757351875, 2: 2.0466752914671815e-07}]
 
 
 
@@ -322,11 +315,11 @@ Let's benchmark.
  .. code-block:: none
 
     Execution time for clr.predict
-    Average 8.56e-05 min=7.72e-05 max=0.000101
+    Average 7.24e-05 min=6.85e-05 max=9.32e-05
     Execution time for ONNX Runtime
-    Average 5.02e-05 min=4.61e-05 max=6.17e-05
+    Average 2.62e-05 min=2.44e-05 max=3.5e-05
 
-    5.0215695519000296e-05
+    2.6244688779115677e-05
 
 
 
@@ -369,11 +362,11 @@ as opposed to a batch of prediction.
  .. code-block:: none
 
     Execution time for clr.predict
-    Average 0.00723 min=0.00694 max=0.00837
+    Average 0.00636 min=0.00624 max=0.00661
     Execution time for sess_predict
-    Average 0.00156 min=0.00152 max=0.00166
+    Average 0.00128 min=0.00125 max=0.00131
 
-    0.0015644603711552918
+    0.0012839185819029809
 
 
 
@@ -406,11 +399,11 @@ Let's do the same for the probabilities.
  .. code-block:: none
 
     Execution time for predict_proba
-    Average 0.0108 min=0.0104 max=0.0115
+    Average 0.00952 min=0.00933 max=0.0102
     Execution time for sess_predict_proba
-    Average 0.0017 min=0.00163 max=0.00188
+    Average 0.00132 min=0.00129 max=0.00138
 
-    0.0016972313076257703
+    0.0013224081415683033
 
 
 
@@ -457,7 +450,7 @@ We compare.
 .. code-block:: default
 
 
-    sess = rt.InferenceSession("rf_iris.onnx")
+    sess = rt.InferenceSession("rf_iris.onnx", providers=rt.get_available_providers())
 
     def sess_predict_proba_rf(x):
         return sess.run([prob_name], {input_name: x.astype(numpy.float32)})[0]
@@ -479,11 +472,11 @@ We compare.
  .. code-block:: none
 
     Execution time for predict_proba
-    Average 1.25 min=1.23 max=1.26
+    Average 1.16 min=1.13 max=1.18
     Execution time for sess_predict_proba
-    Average 0.00274 min=0.00245 max=0.00442
+    Average 0.00178 min=0.0017 max=0.00201
 
-    0.0027408220106735826
+    0.001781689990311861
 
 
 
@@ -506,7 +499,7 @@ Let's see with different number of trees.
         onx = convert_sklearn(rf, initial_types=initial_type)
         with open("rf_iris_%d.onnx" % n_trees, "wb") as f:
             f.write(onx.SerializeToString())
-        sess = rt.InferenceSession("rf_iris_%d.onnx" % n_trees)
+        sess = rt.InferenceSession("rf_iris_%d.onnx" % n_trees, providers=rt.get_available_providers())
         def sess_predict_proba_loop(x):
             return sess.run([prob_name], {input_name: x.astype(numpy.float32)})[0]
         tsk = speed("loop(X_test, rf.predict_proba, 100)", number=5, repeat=5)
@@ -525,9 +518,10 @@ Let's see with different number of trees.
 
 
 
-.. image:: /auto_examples/images/sphx_glr_plot_train_convert_predict_001.png
-    :alt: Speed comparison between scikit-learn and ONNX Runtime For a random forest on Iris dataset
-    :class: sphx-glr-single-img
+.. image-sg:: /auto_examples/images/sphx_glr_plot_train_convert_predict_001.png
+   :alt: Speed comparison between scikit-learn and ONNX Runtime For a random forest on Iris dataset
+   :srcset: /auto_examples/images/sphx_glr_plot_train_convert_predict_001.png
+   :class: sphx-glr-single-img
 
 
 .. rst-class:: sphx-glr-script-out
@@ -537,44 +531,44 @@ Let's see with different number of trees.
  .. code-block:: none
 
     5
-    Average 0.11 min=0.107 max=0.118
-    Average 0.00169 min=0.00161 max=0.00177
+    Average 0.101 min=0.0979 max=0.104
+    Average 0.00133 min=0.00131 max=0.00135
     10
-    Average 0.167 min=0.165 max=0.169
-    Average 0.0017 min=0.00165 max=0.00179
+    Average 0.157 min=0.155 max=0.162
+    Average 0.00131 min=0.0013 max=0.00135
     15
-    Average 0.228 min=0.227 max=0.231
-    Average 0.0017 min=0.00167 max=0.00172
+    Average 0.212 min=0.211 max=0.216
+    Average 0.00137 min=0.00133 max=0.0014
     20
-    Average 0.291 min=0.286 max=0.296
-    Average 0.00175 min=0.00173 max=0.00176
+    Average 0.268 min=0.267 max=0.27
+    Average 0.00136 min=0.00133 max=0.00138
     25
-    Average 0.346 min=0.342 max=0.35
-    Average 0.00174 min=0.00172 max=0.00181
+    Average 0.325 min=0.322 max=0.33
+    Average 0.00142 min=0.00138 max=0.00151
     30
-    Average 0.407 min=0.404 max=0.41
-    Average 0.0018 min=0.00174 max=0.0019
+    Average 0.384 min=0.378 max=0.397
+    Average 0.00145 min=0.00143 max=0.00148
     35
-    Average 0.463 min=0.459 max=0.467
-    Average 0.0018 min=0.00176 max=0.00187
+    Average 0.436 min=0.434 max=0.438
+    Average 0.00148 min=0.00145 max=0.00153
     40
-    Average 0.531 min=0.521 max=0.556
-    Average 0.0018 min=0.00179 max=0.00183
+    Average 0.494 min=0.49 max=0.502
+    Average 0.00144 min=0.00142 max=0.00149
     45
-    Average 0.582 min=0.577 max=0.597
-    Average 0.00187 min=0.00185 max=0.00189
+    Average 0.547 min=0.54 max=0.556
+    Average 0.00151 min=0.00147 max=0.00156
     50
-    Average 0.642 min=0.64 max=0.645
-    Average 0.00188 min=0.00185 max=0.00196
+    Average 0.602 min=0.599 max=0.611
+    Average 0.00155 min=0.00153 max=0.00158
 
-    <matplotlib.legend.Legend object at 0x7fca300dcda0>
+    <matplotlib.legend.Legend object at 0x7f2c8f537e48>
 
 
 
 
 .. rst-class:: sphx-glr-timing
 
-   **Total running time of the script:** ( 5 minutes  52.417 seconds)
+   **Total running time of the script:** ( 5 minutes  25.339 seconds)
 
 
 .. _sphx_glr_download_auto_examples_plot_train_convert_predict.py:

@@ -4,16 +4,17 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Profile the execution of a simple model &#8212; ONNX Runtime 1.7.0 documentation</title>
-    <link rel="stylesheet" href="../static/pygments.css" type="text/css" />
-    <link rel="stylesheet" href="../static/alabaster.css" type="text/css" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="generator" content="Docutils 0.17.1: http://docutils.sourceforge.net/" />
+
+    <title>Profile the execution of a simple model &#8212; ONNX Runtime 1.10.0 documentation</title>
+    <link rel="stylesheet" type="text/css" href="../static/pygments.css" />
+    <link rel="stylesheet" type="text/css" href="../static/alabaster.css" />
     <link rel="stylesheet" type="text/css" href="../static/graphviz.css" />
-    <link rel="stylesheet" type="text/css" href="../static/gallery.css" />
-    <link rel="stylesheet" type="text/css" href="../static/gallery-binder.css" />
-    <link rel="stylesheet" type="text/css" href="../static/gallery-dataframe.css" />
-    <link rel="stylesheet" type="text/css" href="../static/gallery-rendered-html.css" />
-    <script id="documentation_options" data-url_root="../" src="../static/documentation_options.js"></script>
+    <link rel="stylesheet" type="text/css" href="../static/sg_gallery.css" />
+    <link rel="stylesheet" type="text/css" href="../static/sg_gallery-binder.css" />
+    <link rel="stylesheet" type="text/css" href="../static/sg_gallery-dataframe.css" />
+    <link rel="stylesheet" type="text/css" href="../static/sg_gallery-rendered-html.css" />
+    <script data-url_root="../" id="documentation_options" src="../static/documentation_options.js"></script>
     <script src="../static/jquery.js"></script>
     <script src="../static/underscore.js"></script>
     <script src="../static/doctools.js"></script>
@@ -42,7 +43,7 @@
 <p>Click <a class="reference internal" href="#sphx-glr-download-auto-examples-plot-profiling-py"><span class="std std-ref">here</span></a>
 to download the full example code</p>
 </div>
-<div class="sphx-glr-example-title section" id="profile-the-execution-of-a-simple-model">
+<section class="sphx-glr-example-title" id="profile-the-execution-of-a-simple-model">
 <span id="l-example-profiling"></span><span id="sphx-glr-auto-examples-plot-profiling-py"></span><h1>Profile the execution of a simple model<a class="headerlink" href="#profile-the-execution-of-a-simple-model" title="Permalink to this headline">¶</a></h1>
 <p><em>ONNX Runtime</em> can profile the execution of the model.
 This example shows how to interpret the results.</p>
@@ -66,7 +67,7 @@ This example shows how to interpret the results.</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">example1</span> <span class="o">=</span> <span class="n">get_example</span><span class="p">(</span><span class="s2">&quot;mul_1.onnx&quot;</span><span class="p">)</span>
 <span class="n">onnx_model</span> <span class="o">=</span> <span class="n">change_ir_version</span><span class="p">(</span><span class="n">example1</span><span class="p">)</span>
 <span class="n">onnx_model_str</span> <span class="o">=</span> <span class="n">onnx_model</span><span class="o">.</span><span class="n">SerializeToString</span><span class="p">()</span>
-<span class="n">sess</span> <span class="o">=</span> <span class="n">rt</span><span class="o">.</span><span class="n">InferenceSession</span><span class="p">(</span><span class="n">onnx_model_str</span><span class="p">)</span>
+<span class="n">sess</span> <span class="o">=</span> <span class="n">rt</span><span class="o">.</span><span class="n">InferenceSession</span><span class="p">(</span><span class="n">onnx_model_str</span><span class="p">,</span> <span class="n">providers</span><span class="o">=</span><span class="n">rt</span><span class="o">.</span><span class="n">get_available_providers</span><span class="p">())</span>
 <span class="n">input_name</span> <span class="o">=</span> <span class="n">sess</span><span class="o">.</span><span class="n">get_inputs</span><span class="p">()[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">name</span>
 
 <span class="n">x</span> <span class="o">=</span> <span class="n">numpy</span><span class="o">.</span><span class="n">array</span><span class="p">([[</span><span class="mf">1.0</span><span class="p">,</span> <span class="mf">2.0</span><span class="p">],</span> <span class="p">[</span><span class="mf">3.0</span><span class="p">,</span> <span class="mf">4.0</span><span class="p">],</span> <span class="p">[</span><span class="mf">5.0</span><span class="p">,</span> <span class="mf">6.0</span><span class="p">]],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">numpy</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span>
@@ -84,7 +85,7 @@ This example shows how to interpret the results.</p>
 before running the predictions.</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">options</span> <span class="o">=</span> <span class="n">rt</span><span class="o">.</span><span class="n">SessionOptions</span><span class="p">()</span>
 <span class="n">options</span><span class="o">.</span><span class="n">enable_profiling</span> <span class="o">=</span> <span class="kc">True</span>
-<span class="n">sess_profile</span> <span class="o">=</span> <span class="n">rt</span><span class="o">.</span><span class="n">InferenceSession</span><span class="p">(</span><span class="n">onnx_model_str</span><span class="p">,</span> <span class="n">options</span><span class="p">)</span>
+<span class="n">sess_profile</span> <span class="o">=</span> <span class="n">rt</span><span class="o">.</span><span class="n">InferenceSession</span><span class="p">(</span><span class="n">onnx_model_str</span><span class="p">,</span> <span class="n">options</span><span class="p">,</span> <span class="n">providers</span><span class="o">=</span><span class="n">rt</span><span class="o">.</span><span class="n">get_available_providers</span><span class="p">())</span>
 <span class="n">input_name</span> <span class="o">=</span> <span class="n">sess</span><span class="o">.</span><span class="n">get_inputs</span><span class="p">()[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">name</span>
 
 <span class="n">x</span> <span class="o">=</span> <span class="n">numpy</span><span class="o">.</span><span class="n">array</span><span class="p">([[</span><span class="mf">1.0</span><span class="p">,</span> <span class="mf">2.0</span><span class="p">],</span> <span class="p">[</span><span class="mf">3.0</span><span class="p">,</span> <span class="mf">4.0</span><span class="p">],</span> <span class="p">[</span><span class="mf">5.0</span><span class="p">,</span> <span class="mf">6.0</span><span class="p">]],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">numpy</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span>
@@ -95,7 +96,7 @@ before running the predictions.</p>
 </pre></div>
 </div>
 <p class="sphx-glr-script-out">Out:</p>
-<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>onnxruntime_profile__2021-03-04_18-40-00.json
+<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>onnxruntime_profile__2021-12-09_01-15-39.json
 </pre></div>
 </div>
 <p>The results are stored un a file in JSON format.
@@ -110,23 +111,23 @@ Let’s see what it contains.</p>
 <p class="sphx-glr-script-out">Out:</p>
 <div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>[{&#39;args&#39;: {},
   &#39;cat&#39;: &#39;Session&#39;,
-  &#39;dur&#39;: 101,
+  &#39;dur&#39;: 54,
   &#39;name&#39;: &#39;model_loading_array&#39;,
   &#39;ph&#39;: &#39;X&#39;,
-  &#39;pid&#39;: 77,
-  &#39;tid&#39;: 77,
-  &#39;ts&#39;: 3},
+  &#39;pid&#39;: 101521,
+  &#39;tid&#39;: 101521,
+  &#39;ts&#39;: 1},
  {&#39;args&#39;: {},
   &#39;cat&#39;: &#39;Session&#39;,
-  &#39;dur&#39;: 227,
+  &#39;dur&#39;: 245,
   &#39;name&#39;: &#39;session_initialization&#39;,
   &#39;ph&#39;: &#39;X&#39;,
-  &#39;pid&#39;: 77,
-  &#39;tid&#39;: 77,
-  &#39;ts&#39;: 134}]
+  &#39;pid&#39;: 101521,
+  &#39;tid&#39;: 101521,
+  &#39;ts&#39;: 75}]
 </pre></div>
 </div>
-<p class="sphx-glr-timing"><strong>Total running time of the script:</strong> ( 0 minutes  0.010 seconds)</p>
+<p class="sphx-glr-timing"><strong>Total running time of the script:</strong> ( 0 minutes  0.007 seconds)</p>
 <div class="sphx-glr-footer class sphx-glr-footer-example docutils container" id="sphx-glr-download-auto-examples-plot-profiling-py">
 <div class="sphx-glr-download sphx-glr-download-python docutils container">
 <p><a class="reference download internal" download="" href="../downloads/cfe61aca1f0a89486c7024466ea500fd/plot_profiling.py"><code class="xref download docutils literal notranslate"><span class="pre">Download</span> <span class="pre">Python</span> <span class="pre">source</span> <span class="pre">code:</span> <span class="pre">plot_profiling.py</span></code></a></p>
@@ -136,7 +137,7 @@ Let’s see what it contains.</p>
 </div>
 </div>
 <p class="sphx-glr-signature"><a class="reference external" href="https://sphinx-gallery.github.io">Gallery generated by Sphinx-Gallery</a></p>
-</div>
+</section>
 
 
           </div>
@@ -179,7 +180,7 @@ Let’s see what it contains.</p>
   <h3 id="searchlabel">Quick search</h3>
     <div class="searchformwrapper">
     <form class="search" action="../search.html" method="get">
-      <input type="text" name="q" aria-labelledby="searchlabel" />
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"/>
       <input type="submit" value="Go" />
     </form>
     </div>
@@ -201,7 +202,7 @@ Let’s see what it contains.</p>
       &copy;2018-2021, Microsoft.
       
       |
-      Powered by <a href="http://sphinx-doc.org/">Sphinx 3.5.1</a>
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 4.3.1</a>
       &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.12</a>
       
       |

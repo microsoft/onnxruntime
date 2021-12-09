@@ -4,16 +4,17 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Train, convert and predict with ONNX Runtime &#8212; ONNX Runtime 1.7.0 documentation</title>
-    <link rel="stylesheet" href="../static/pygments.css" type="text/css" />
-    <link rel="stylesheet" href="../static/alabaster.css" type="text/css" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="generator" content="Docutils 0.17.1: http://docutils.sourceforge.net/" />
+
+    <title>Train, convert and predict with ONNX Runtime &#8212; ONNX Runtime 1.10.0 documentation</title>
+    <link rel="stylesheet" type="text/css" href="../static/pygments.css" />
+    <link rel="stylesheet" type="text/css" href="../static/alabaster.css" />
     <link rel="stylesheet" type="text/css" href="../static/graphviz.css" />
-    <link rel="stylesheet" type="text/css" href="../static/gallery.css" />
-    <link rel="stylesheet" type="text/css" href="../static/gallery-binder.css" />
-    <link rel="stylesheet" type="text/css" href="../static/gallery-dataframe.css" />
-    <link rel="stylesheet" type="text/css" href="../static/gallery-rendered-html.css" />
-    <script id="documentation_options" data-url_root="../" src="../static/documentation_options.js"></script>
+    <link rel="stylesheet" type="text/css" href="../static/sg_gallery.css" />
+    <link rel="stylesheet" type="text/css" href="../static/sg_gallery-binder.css" />
+    <link rel="stylesheet" type="text/css" href="../static/sg_gallery-dataframe.css" />
+    <link rel="stylesheet" type="text/css" href="../static/sg_gallery-rendered-html.css" />
+    <script data-url_root="../" id="documentation_options" src="../static/documentation_options.js"></script>
     <script src="../static/jquery.js"></script>
     <script src="../static/underscore.js"></script>
     <script src="../static/doctools.js"></script>
@@ -42,7 +43,7 @@
 <p>Click <a class="reference internal" href="#sphx-glr-download-auto-examples-plot-convert-pipeline-vectorizer-py"><span class="std std-ref">here</span></a>
 to download the full example code</p>
 </div>
-<div class="sphx-glr-example-title section" id="train-convert-and-predict-with-onnx-runtime">
+<section class="sphx-glr-example-title" id="train-convert-and-predict-with-onnx-runtime">
 <span id="sphx-glr-auto-examples-plot-convert-pipeline-vectorizer-py"></span><h1>Train, convert and predict with ONNX Runtime<a class="headerlink" href="#train-convert-and-predict-with-onnx-runtime" title="Permalink to this headline">¶</a></h1>
 <p>This example demonstrates an end to end scenario
 starting with the training of a scikit-learn pipeline
@@ -55,7 +56,7 @@ dictionary <code class="docutils literal notranslate"><span class="pre">{</span>
 <li><p><a class="reference internal" href="#conversion-to-onnx-format" id="id2">Conversion to ONNX format</a></p></li>
 </ul>
 </div>
-<div class="section" id="train-a-pipeline">
+<section id="train-a-pipeline">
 <h2><a class="toc-backref" href="#id1">Train a pipeline</a><a class="headerlink" href="#train-a-pipeline" title="Permalink to this headline">¶</a></h2>
 <p>The first step consists in retrieving the boston datset.</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">pandas</span>
@@ -94,11 +95,11 @@ and we show the confusion matrix.</p>
 </pre></div>
 </div>
 <p class="sphx-glr-script-out">Out:</p>
-<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>0.848444978558249
+<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>0.883547127148654
 </pre></div>
 </div>
-</div>
-<div class="section" id="conversion-to-onnx-format">
+</section>
+<section id="conversion-to-onnx-format">
 <h2><a class="toc-backref" href="#id2">Conversion to ONNX format</a><a class="headerlink" href="#conversion-to-onnx-format" title="Permalink to this headline">¶</a></h2>
 <p>We use module
 <a class="reference external" href="https://github.com/onnx/sklearn-onnx">sklearn-onnx</a>
@@ -118,7 +119,7 @@ its input and output.</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">onnxruntime</span> <span class="k">as</span> <span class="nn">rt</span>
 <span class="kn">from</span> <span class="nn">onnxruntime.capi.onnxruntime_pybind11_state</span> <span class="kn">import</span> <span class="n">InvalidArgument</span>
 
-<span class="n">sess</span> <span class="o">=</span> <span class="n">rt</span><span class="o">.</span><span class="n">InferenceSession</span><span class="p">(</span><span class="s2">&quot;pipeline_vectorize.onnx&quot;</span><span class="p">)</span>
+<span class="n">sess</span> <span class="o">=</span> <span class="n">rt</span><span class="o">.</span><span class="n">InferenceSession</span><span class="p">(</span><span class="s2">&quot;pipeline_vectorize.onnx&quot;</span><span class="p">,</span> <span class="n">providers</span><span class="o">=</span><span class="n">rt</span><span class="o">.</span><span class="n">get_available_providers</span><span class="p">())</span>
 
 <span class="kn">import</span> <span class="nn">numpy</span>
 <span class="n">inp</span><span class="p">,</span> <span class="n">out</span> <span class="o">=</span> <span class="n">sess</span><span class="o">.</span><span class="n">get_inputs</span><span class="p">()[</span><span class="mi">0</span><span class="p">],</span> <span class="n">sess</span><span class="o">.</span><span class="n">get_outputs</span><span class="p">()[</span><span class="mi">0</span><span class="p">]</span>
@@ -153,12 +154,12 @@ ONNX Runtime expects one observation at a time.</p>
 </pre></div>
 </div>
 <p class="sphx-glr-script-out">Out:</p>
-<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>0.9999999999999528
+<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>0.9999999999999426
 </pre></div>
 </div>
 <p>Very similar. <em>ONNX Runtime</em> uses floats instead of doubles,
 that explains the small discrepencies.</p>
-<p class="sphx-glr-timing"><strong>Total running time of the script:</strong> ( 0 minutes  1.592 seconds)</p>
+<p class="sphx-glr-timing"><strong>Total running time of the script:</strong> ( 0 minutes  1.148 seconds)</p>
 <div class="sphx-glr-footer class sphx-glr-footer-example docutils container" id="sphx-glr-download-auto-examples-plot-convert-pipeline-vectorizer-py">
 <div class="sphx-glr-download sphx-glr-download-python docutils container">
 <p><a class="reference download internal" download="" href="../downloads/982a1f7abbb8ffc5d5e98b671c35e5aa/plot_convert_pipeline_vectorizer.py"><code class="xref download docutils literal notranslate"><span class="pre">Download</span> <span class="pre">Python</span> <span class="pre">source</span> <span class="pre">code:</span> <span class="pre">plot_convert_pipeline_vectorizer.py</span></code></a></p>
@@ -168,8 +169,8 @@ that explains the small discrepencies.</p>
 </div>
 </div>
 <p class="sphx-glr-signature"><a class="reference external" href="https://sphinx-gallery.github.io">Gallery generated by Sphinx-Gallery</a></p>
-</div>
-</div>
+</section>
+</section>
 
 
           </div>
@@ -212,7 +213,7 @@ that explains the small discrepencies.</p>
   <h3 id="searchlabel">Quick search</h3>
     <div class="searchformwrapper">
     <form class="search" action="../search.html" method="get">
-      <input type="text" name="q" aria-labelledby="searchlabel" />
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"/>
       <input type="submit" value="Go" />
     </form>
     </div>
@@ -234,7 +235,7 @@ that explains the small discrepencies.</p>
       &copy;2018-2021, Microsoft.
       
       |
-      Powered by <a href="http://sphinx-doc.org/">Sphinx 3.5.1</a>
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 4.3.1</a>
       &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.12</a>
       
       |

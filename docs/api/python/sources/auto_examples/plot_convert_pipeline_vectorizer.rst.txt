@@ -114,7 +114,7 @@ and we show the confusion matrix.
 
  .. code-block:: none
 
-    0.848444978558249
+    0.883547127148654
 
 
 
@@ -161,7 +161,7 @@ its input and output.
     import onnxruntime as rt
     from onnxruntime.capi.onnxruntime_pybind11_state import InvalidArgument
 
-    sess = rt.InferenceSession("pipeline_vectorize.onnx")
+    sess = rt.InferenceSession("pipeline_vectorize.onnx", providers=rt.get_available_providers())
 
     import numpy
     inp, out = sess.get_inputs()[0], sess.get_outputs()[0]
@@ -252,7 +252,7 @@ We compare them to the model's ones.
 
  .. code-block:: none
 
-    0.9999999999999528
+    0.9999999999999426
 
 
 
@@ -265,7 +265,7 @@ that explains the small discrepencies.
 
 .. rst-class:: sphx-glr-timing
 
-   **Total running time of the script:** ( 0 minutes  1.592 seconds)
+   **Total running time of the script:** ( 0 minutes  1.148 seconds)
 
 
 .. _sphx_glr_download_auto_examples_plot_convert_pipeline_vectorizer.py:

@@ -18,6 +18,7 @@
 .. _sphx_glr_auto_examples_plot_profiling.py:
 
 
+
 .. _l-example-profiling:
 
 Profile the execution of a simple model
@@ -67,7 +68,7 @@ Let's load a very simple model and compute some prediction.
     example1 = get_example("mul_1.onnx")
     onnx_model = change_ir_version(example1)
     onnx_model_str = onnx_model.SerializeToString()
-    sess = rt.InferenceSession(onnx_model_str)
+    sess = rt.InferenceSession(onnx_model_str, providers=rt.get_available_providers())
     input_name = sess.get_inputs()[0].name
 
     x = numpy.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=numpy.float32)
@@ -103,7 +104,7 @@ before running the predictions.
 
     options = rt.SessionOptions()
     options.enable_profiling = True
-    sess_profile = rt.InferenceSession(onnx_model_str, options)
+    sess_profile = rt.InferenceSession(onnx_model_str, options, providers=rt.get_available_providers())
     input_name = sess.get_inputs()[0].name
 
     x = numpy.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=numpy.float32)
@@ -122,7 +123,7 @@ before running the predictions.
 
  .. code-block:: none
 
-    onnxruntime_profile__2021-03-04_18-40-00.json
+    onnxruntime_profile__2021-12-09_01-15-39.json
 
 
 
@@ -156,20 +157,20 @@ Let's see what it contains.
 
     [{'args': {},
       'cat': 'Session',
-      'dur': 101,
+      'dur': 54,
       'name': 'model_loading_array',
       'ph': 'X',
-      'pid': 77,
-      'tid': 77,
-      'ts': 3},
+      'pid': 101521,
+      'tid': 101521,
+      'ts': 1},
      {'args': {},
       'cat': 'Session',
-      'dur': 227,
+      'dur': 245,
       'name': 'session_initialization',
       'ph': 'X',
-      'pid': 77,
-      'tid': 77,
-      'ts': 134}]
+      'pid': 101521,
+      'tid': 101521,
+      'ts': 75}]
 
 
 
@@ -177,7 +178,7 @@ Let's see what it contains.
 
 .. rst-class:: sphx-glr-timing
 
-   **Total running time of the script:** ( 0 minutes  0.010 seconds)
+   **Total running time of the script:** ( 0 minutes  0.007 seconds)
 
 
 .. _sphx_glr_download_auto_examples_plot_profiling.py:
