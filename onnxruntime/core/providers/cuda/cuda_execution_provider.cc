@@ -177,6 +177,10 @@ CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& in
     }
   }
 
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000  
+  graph_ = CUDAGraph(stream_);
+#endif
+
   size_t free = 0;
   size_t total = 0;
   CUDA_CALL_THROW(cudaMemGetInfo(&free, &total));
@@ -358,6 +362,35 @@ Status CUDAExecutionProvider::SetComputeStream(void* stream) {
   }
   return Status::OK();
 }
+
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
+void CUDAExecutionProvider::CaptureBegin()  {
+  ORT_THROW_IF_ERROR(Sync());
+  graph_.CaptureBegin();
+}
+
+void CUDAExecutionProvider::CaptureEnd() {
+  graph_.CaptureEnd();
+}
+
+void CUDAExecutionProvider::Replay() {
+  ORT_THROW_IF_ERROR(OnRunStart());
+  graph_.Replay();
+  ORT_THROW_IF_ERROR(OnRunEnd(true));
+}
+
+void CUDAExecutionProvider::TurnOnCapture() {
+  graph_.TurnOnCapture();
+}
+
+void CUDAExecutionProvider::TurnOffCapture() {
+  graph_.TurnOffCapture();
+}
+
+bool CUDAExecutionProvider::IsCapturing() const {
+  return graph_.IsCapturing();
+}
+#endif
 
 namespace cuda {
 // opset 1 to 9

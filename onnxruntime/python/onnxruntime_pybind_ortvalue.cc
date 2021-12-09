@@ -71,7 +71,48 @@ void addOrtValueMethods(pybind11::module& m) {
 
         return ml_value;
       })
+      .def("update_inplace", [](OrtValue* ml_value, const py::array& py_values) {
+        if (!IsNumericNumpyArray(py_values)) {
+          throw std::runtime_error("Inplace update of OrtValues is currently only supported from non-string numpy arrays");
+        }
 
+        auto values_type = GetNumpyArrayType(py_values);
+        const auto device = ml_value->Get<Tensor>().Location().device;
+        if (device.Type() == OrtDevice::CPU) {
+          onnxruntime::python::CopyDataToTensor(
+            py_values,
+            values_type,
+            *(ml_value->GetMutable<Tensor>()),
+            CpuToCpuMemCpy);
+        } else if (device.Type() == OrtDevice::GPU) {
+#ifdef USE_CUDA
+          if (!IsCudaDeviceIdValid(logging::LoggingManager::DefaultLogger(), device.Id())) {
+            throw std::runtime_error("The provided device id doesn't match any available GPUs on the machine.");
+          }
+
+          onnxruntime::python::CopyDataToTensor(
+            py_values,
+            values_type,
+            *(ml_value->GetMutable<Tensor>()),
+            CpuToCudaMemCpy);
+#elif USE_ROCM
+          if (!IsRocmDeviceIdValid(logging::LoggingManager::DefaultLogger(), device.Id())) {
+            throw std::runtime_error("The provided device id doesn't match any available GPUs on the machine.");
+          }
+
+          onnxruntime::python::CopyDataToTensor(
+            py_values,
+            values_type,
+            *(ml_value->GetMutable<Tensor>()),
+            CpuToCudaMemCpy);
+#else
+        throw std::runtime_error(
+            "Unsupported GPU device: Cannot find the supported GPU device.");
+#endif
+        } else {
+          throw std::runtime_error("Unsupported device: Cannot update the OrtValue on this device");
+        }
+      })
       // Factory method to create an OrtValue (Tensor) from the given shape and element type with memory on the specified device
       // The memory is left uninitialized
       .def_static("ortvalue_from_shape_and_type", [](const std::vector<int64_t>& shape, py::object& element_type, const OrtDevice& device) {

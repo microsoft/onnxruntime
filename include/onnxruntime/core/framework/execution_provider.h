@@ -162,6 +162,18 @@ class IExecutionProvider {
   */
   virtual common::Status OnRunEnd(bool /*sync_stream*/) { return Status::OK(); }
 
+  virtual void CaptureBegin() {}
+
+  virtual void CaptureEnd() {}
+
+  virtual void Replay() {}
+
+  virtual void TurnOnCapture() {}
+
+  virtual void TurnOffCapture() {}
+
+  virtual bool IsCapturing() const { return false; }
+
   /**
      Called when session creation is complete
      This provides an opportunity for execution providers to optionally synchronize and

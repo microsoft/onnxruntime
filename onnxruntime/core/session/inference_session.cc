@@ -1739,6 +1739,30 @@ Status InferenceSession::PartialRun(onnxruntime::RunOptions& run_options,
 }
 #endif
 
+void InferenceSession::TurnOnCapture() {
+  for  (const auto& provider : session_state_->GetExecutionProviders()) {
+    if (provider->Type() == kCudaExecutionProvider) {
+      provider->TurnOnCapture();
+    }
+  }
+}
+
+void InferenceSession::TurnOffCapture() {
+  for  (const auto& provider : session_state_->GetExecutionProviders()) {
+    if (provider->Type() == kCudaExecutionProvider) {
+      provider->TurnOffCapture();
+    }
+  }
+}
+
+void InferenceSession::Replay() {
+  for  (const auto& provider : session_state_->GetExecutionProviders()) {
+    if (provider->Type() == kCudaExecutionProvider) {
+      provider->Replay();
+    }
+  }
+}
+
 Status InferenceSession::Run(const RunOptions& run_options,
                              const std::vector<std::string>& feed_names, const std::vector<OrtValue>& feeds,
                              const std::vector<std::string>& output_names, std::vector<OrtValue>* p_fetches,

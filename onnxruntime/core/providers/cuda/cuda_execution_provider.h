@@ -11,6 +11,7 @@
 #include "core/framework/execution_provider.h"
 #include "core/platform/ort_mutex.h"
 #include "core/providers/cuda/cuda_execution_provider_info.h"
+#include "core/providers/cuda/cuda_graph.h"
 #include "core/providers/cuda/cuda_pch.h"
 #include "core/providers/cuda/shared_inc/cuda_utils.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
@@ -94,12 +95,24 @@ class CUDAExecutionProvider : public IExecutionProvider {
 
   std::unique_ptr<profiling::EpProfiler> GetProfiler() override;
 
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
+  void CaptureBegin() override;
+  void CaptureEnd() override;
+  void Replay() override;
+  void TurnOnCapture() override;
+  void TurnOffCapture() override;
+  bool IsCapturing() const override;
+#endif
+
  private:
   CUDAExecutionProviderInfo info_;
   cudaDeviceProp device_prop_;
   bool external_stream_ = false;
   cudaStream_t stream_ = nullptr;
 
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
+  CUDAGraph graph_ = NULL;
+#endif
   struct DeferredReleaseCPUPtrs {
     bool recorded = false;
     std::vector<void*> cpu_ptrs;

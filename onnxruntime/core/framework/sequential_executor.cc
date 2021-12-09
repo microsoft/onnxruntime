@@ -127,6 +127,12 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
                                    std::vector<OrtValue>& fetches,
                                    const std::unordered_map<size_t, CustomAllocator>& fetch_allocators,
                                    const logging::Logger& logger) {
+  for (auto& provider : session_state.GetExecutionProviders()) {
+    if (provider->IsCapturing()) {
+      provider->CaptureBegin();
+    }
+  }
+
   const bool is_profiler_enabled = session_state.Profiler().IsEnabled();
   TimePoint tp;
   TimePoint sync_time_begin;
@@ -495,6 +501,12 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
                        << i.second << " bytes for " << i.first << std::endl;
   }
 #endif
+
+  for (auto& provider : session_state.GetExecutionProviders()) {
+    if (provider->IsCapturing()) {
+      provider->CaptureEnd();
+    }
+  }
 
   return Status::OK();
 }

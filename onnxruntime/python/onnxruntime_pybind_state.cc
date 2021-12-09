@@ -1397,6 +1397,43 @@ including arg name, arg type (contains both type and shape).)pbdoc")
       .def("end_profiling", [](const PyInferenceSession* sess) -> std::string {
         return sess->GetSessionHandle()->EndProfiling();
       })
+      .def("turn_on_capture", [](const PyInferenceSession* sess) -> void {
+        sess->GetSessionHandle()->TurnOnCapture();
+      })
+      .def("turn_off_capture", [](const PyInferenceSession* sess) -> void {
+        sess->GetSessionHandle()->TurnOffCapture();
+      })
+      .def("run_with_feeds_fetches_ort_values", [](PyInferenceSession* sess, const py::dict& feeds, const py::dict&fetches, RunOptions* run_options = nullptr) -> void {
+        NameMLValMap ort_feeds;
+        // item is always a copy since dict returns a value and not a ref
+        // and Apple XToolChain barks
+        for (const auto item : feeds) {
+          auto name = item.first.cast<std::string>();
+          const OrtValue* ort_value = item.second.cast<const OrtValue*>();
+          ort_feeds.emplace(name, *ort_value);
+        }
+        std::vector<std::string> output_names;
+        std::vector<OrtValue> fetch_ort_values;
+        for (const auto item : fetches) {
+          auto name = item.first.cast<std::string>();
+          const OrtValue* ort_value = item.second.cast<const OrtValue*>();
+          output_names.push_back(name);
+          fetch_ort_values.push_back(*ort_value);
+        }
+
+        {
+          // release GIL to allow multiple python threads to invoke Run() in parallel.
+          py::gil_scoped_release release;
+          if (run_options != nullptr) {
+            OrtPybindThrowIfError(sess->GetSessionHandle()->Run(*run_options, ort_feeds, output_names, &fetch_ort_values));
+          } else {
+            OrtPybindThrowIfError(sess->GetSessionHandle()->Run(ort_feeds, output_names, &fetch_ort_values));
+          }
+        }
+      })
+      .def("replay", [](const PyInferenceSession* sess) -> void {
+        sess->GetSessionHandle()->Replay();
+      })
       .def_property_readonly("get_profiling_start_time_ns", [](const PyInferenceSession* sess) -> uint64_t {
         return sess->GetSessionHandle()->GetProfiling().GetStartTimeNs();
       })
