@@ -4,9 +4,9 @@
 sklearn
 numpy==1.19.5
 transformers==v2.10.0
-torch==1.8.1+cu102
-torchvision==0.9.1+cu102
-torchtext==0.9.1
+torch==1.10.0+cu113
+torchvision==0.11.1+cu113
+torchtext==0.11.0
 tensorboard>=2.2.0,<2.5.0
 h5py
 setuptools>=41.4.0

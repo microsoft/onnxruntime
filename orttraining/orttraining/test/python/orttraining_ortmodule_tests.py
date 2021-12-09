@@ -38,6 +38,16 @@ def run_ortmodule_api_tests(cwd, log, transformers_cache):
     run_subprocess(command, cwd=cwd, log=log, env=env).check_returncode()
 
 
+def run_ortmodule_ops_tests(cwd, log, transformers_cache):
+    log.debug('Running: ORTModule-OPS tests')
+
+    env = get_env_with_transformers_cache(transformers_cache)
+
+    command = [sys.executable, '-m', 'pytest', '-sv', 'orttraining_test_onnx_ops_ortmodule.py']
+
+    run_subprocess(command, cwd=cwd, log=log, env=env).check_returncode()
+
+
 def run_ortmodule_fallback_tests(cwd, log, transformers_cache):
     log.debug('Running: ORTModule-API tests')
 
@@ -118,6 +128,8 @@ def main():
     log.info("Running ortmodule tests pipeline")
 
     run_ortmodule_api_tests(cwd, log, transformers_cache=args.transformers_cache)
+
+    run_ortmodule_ops_tests(cwd, log, transformers_cache=args.transformers_cache)
 
     run_ortmodule_poc_net(cwd, log, no_cuda=False, data_dir=args.mnist)
 
