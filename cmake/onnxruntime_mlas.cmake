@@ -174,7 +174,7 @@ if (onnxruntime_BUILD_WEBASSEMBLY)
     )
   else()
     file(GLOB_RECURSE mlas_platform_srcs
-      "${MLAS_SRC_DIR}/wasm/*.cpp"
+      "${MLAS_SRC_DIR}/scalar/*.cpp"
     )
   endif()
   target_sources(onnxruntime_mlas PRIVATE ${mlas_platform_srcs})
@@ -332,7 +332,7 @@ else()
               ${mlas_platform_srcs_power10}
             )
           endif()
-    endif()
+        endif()
         if(NOT ONNXRUNTIME_MLAS_MULTI_ARCH)
           set(MLAS_SOURCE_IS_NOT_SET 0)
         endif()
@@ -363,7 +363,7 @@ else()
             ${mlas_platform_srcs}
             ${MLAS_SRC_DIR}/x86/x86.get_pc_thunk.S
           )
-	endif()
+	    endif()
 
         if(NOT ONNXRUNTIME_MLAS_MULTI_ARCH)
           set(MLAS_SOURCE_IS_NOT_SET 0)
@@ -460,7 +460,10 @@ else()
         else()
           set(MLAS_SOURCE_IS_NOT_SET 1)
         endif()
-
+    endif()
+    if(MLAS_SOURCE_IS_NOT_SET)
+        file(GLOB_RECURSE mlas_platform_srcs
+          "${MLAS_SRC_DIR}/scalar/*.cpp")
     endif()
     target_sources(onnxruntime_mlas PRIVATE ${mlas_platform_srcs})
 endif()
