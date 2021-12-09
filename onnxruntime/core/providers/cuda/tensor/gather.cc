@@ -115,15 +115,47 @@ Status Gather::ComputeInternal(OpKernelContext* context) const {
         const int64_t& gather_dimension_size = indices_max;
         const int64_t& num_gathered_per_index = block_size;
 
-        IAllocatorUniquePtr<SegmentIndex_t> segment_offsets_out;
-        SegmentIndex_t last_segment_partial_segment_offset_out;
-        SegmentIndex_t last_segment_partial_segment_count_out;
-        IAllocatorUniquePtr<SegmentIndex_t> per_segment_partial_segment_counts_out;
-        IAllocatorUniquePtr<SegmentIndex_t> per_segment_partial_segment_offsets_out;
+        IAllocatorUniquePtr<SegmentIndex_t> segment_counts;
+
+        auto* last_segment_partial_segment_count = context->Output(3, {1});
+        int32_t* p_last_segment_partial_segment_count = last_segment_partial_segment_count->MutableData<int32_t>();
+
+        auto* last_segment_partial_segment_offset = context->Output(4, {1});
+        int32_t* p_last_segment_partial_segment_offset = last_segment_partial_segment_offset->MutableData<int32_t>();
 
         if (p.indices_tensor->IsDataType<int32_t>())
         {
-            IAllocatorUniquePtr<int32_t> dX_indices_sorted_out, dY_indices_sorted_out;
+            auto* dX_indices_sorted = context->Output(7, p.indices_tensor->Shape());
+            int32_t* p_dX_indices_sorted = dX_indices_sorted->MutableData<int32_t>();
+
+            auto* dY_indices_sorted = context->Output(8, p.indices_tensor->Shape());
+            int32_t* p_dY_indices_sorted = dY_indices_sorted->MutableData<int32_t>();
+
+            // Make first call to get number of segments so that
+            // the other outputs that depend on the number of segments
+            // can be instantiated.
+            GatherGradPrepareGetNumSegments<int32_t>(
+                Stream(),
+                CudaScratchBufferAllocator{*this},
+                reinterpret_cast<const int32_t*>(indices_data),
+                num_gathered_indices,
+                gather_dimension_size,
+                num_gathered_per_index,
+                *p_num_segments,
+                segment_counts,
+                *p_dX_indices_sorted,
+                *p_dY_indices_sorted);
+
+            auto* segment_offsets = context->Output(2, {*p_num_segments});
+            int32_t* p_segment_offsets = segment_offsets->MutableData<int32_t>();
+
+            auto* per_segment_partial_segment_counts = context->Output(5, {*p_num_segments});
+            int32_t* p_per_segment_partial_segment_counts = per_segment_partial_segment_counts->MutableData<int32_t>();
+
+            auto* per_segment_partial_segment_offsets = context->Output(6, {*p_num_segments});
+            int32_t* p_per_segment_partial_segment_offsets = per_segment_partial_segment_offsets->MutableData<int32_t>();
+
+            // Compute all the other outputs.
             GatherGradPrepare<int32_t>(
                 Stream(),
                 CudaScratchBufferAllocator{*this},
@@ -131,26 +163,46 @@ Status Gather::ComputeInternal(OpKernelContext* context) const {
                 num_gathered_indices,
                 gather_dimension_size,
                 num_gathered_per_index,
-                *p_num_segments, segment_offsets_out,
-                last_segment_partial_segment_count_out,
-                last_segment_partial_segment_offset_out,
-                per_segment_partial_segment_counts_out,
-                per_segment_partial_segment_offsets_out,
-                dX_indices_sorted_out,
-                dY_indices_sorted_out);
-
-            auto* dX_indices_sorted = context->Output(7, p.indices_tensor->Shape());
-            int32_t* p_dX_indices_sorted = dX_indices_sorted->MutableData<int32_t>();
-            CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(p_dX_indices_sorted, dX_indices_sorted_out.get(),
-                                                    dX_indices_sorted->SizeInBytes(), cudaMemcpyDeviceToDevice, Stream()));
-
-            auto* dY_indices_sorted = context->Output(8, p.indices_tensor->Shape());
-            int32_t* p_dY_indices_sorted = dY_indices_sorted->MutableData<int32_t>();
-            CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(p_dY_indices_sorted, dY_indices_sorted_out.get(),
-                                                    dY_indices_sorted->SizeInBytes(), cudaMemcpyDeviceToDevice, Stream()));
+                *p_num_segments, segment_counts, *p_segment_offsets,
+                *p_last_segment_partial_segment_count,
+                *p_last_segment_partial_segment_offset,
+                *p_per_segment_partial_segment_counts,
+                *p_per_segment_partial_segment_offsets,
+                *p_dX_indices_sorted,
+                *p_dY_indices_sorted);
         } else
         {
-            IAllocatorUniquePtr<int64_t> dX_indices_sorted_out, dY_indices_sorted_out;
+            auto* dX_indices_sorted = context->Output(7, p.indices_tensor->Shape());
+            int64_t* p_dX_indices_sorted = dX_indices_sorted->MutableData<int64_t>();
+
+            auto* dY_indices_sorted = context->Output(8, p.indices_tensor->Shape());
+            int64_t* p_dY_indices_sorted = dY_indices_sorted->MutableData<int64_t>();
+
+            // Make first call to get number of segments so that
+            // the other outputs that depend on the number of segments
+            // can be instantiated.
+            GatherGradPrepareGetNumSegments<int64_t>(
+                Stream(),
+                CudaScratchBufferAllocator{*this},
+                reinterpret_cast<const int64_t*>(indices_data),
+                num_gathered_indices,
+                gather_dimension_size,
+                num_gathered_per_index,
+                *p_num_segments,
+                segment_counts,
+                *p_dX_indices_sorted,
+                *p_dY_indices_sorted);
+
+            auto* segment_offsets = context->Output(2, {*p_num_segments});
+            int32_t* p_segment_offsets = segment_offsets->MutableData<int32_t>();
+
+            auto* per_segment_partial_segment_counts = context->Output(5, {*p_num_segments});
+            int32_t* p_per_segment_partial_segment_counts = per_segment_partial_segment_counts->MutableData<int32_t>();
+
+            auto* per_segment_partial_segment_offsets = context->Output(6, {*p_num_segments});
+            int32_t* p_per_segment_partial_segment_offsets = per_segment_partial_segment_offsets->MutableData<int32_t>();
+
+            // Compute all the other outputs.
             GatherGradPrepare<int64_t>(
                 Stream(),
                 CudaScratchBufferAllocator{*this},
@@ -158,47 +210,14 @@ Status Gather::ComputeInternal(OpKernelContext* context) const {
                 num_gathered_indices,
                 gather_dimension_size,
                 num_gathered_per_index,
-                *p_num_segments, segment_offsets_out,
-                last_segment_partial_segment_count_out,
-                last_segment_partial_segment_offset_out,
-                per_segment_partial_segment_counts_out,
-                per_segment_partial_segment_offsets_out,
-                dX_indices_sorted_out,
-                dY_indices_sorted_out);
-
-            auto* dX_indices_sorted = context->Output(7, p.indices_tensor->Shape());
-            int64_t* p_dX_indices_sorted = dX_indices_sorted->MutableData<int64_t>();
-            CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(p_dX_indices_sorted, dX_indices_sorted_out.get(),
-                                                    dX_indices_sorted->SizeInBytes(), cudaMemcpyDeviceToDevice, Stream()));
-
-            auto* dY_indices_sorted = context->Output(8, p.indices_tensor->Shape());
-            int64_t* p_dY_indices_sorted = dY_indices_sorted->MutableData<int64_t>();
-            CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(p_dY_indices_sorted, dY_indices_sorted_out.get(),
-                                                    dY_indices_sorted->SizeInBytes(), cudaMemcpyDeviceToDevice, Stream()));
+                *p_num_segments, segment_counts, *p_segment_offsets,
+                *p_last_segment_partial_segment_count,
+                *p_last_segment_partial_segment_offset,
+                *p_per_segment_partial_segment_counts,
+                *p_per_segment_partial_segment_offsets,
+                *p_dX_indices_sorted,
+                *p_dY_indices_sorted);
         }
-
-        auto* segment_offsets = context->Output(2, {*p_num_segments});
-        int32_t* p_segment_offsets = segment_offsets->MutableData<int32_t>();
-        CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(p_segment_offsets, segment_offsets_out.get(),
-                                            segment_offsets->SizeInBytes(), cudaMemcpyDeviceToDevice, Stream()));
-
-        auto* last_segment_partial_segment_count = context->Output(3, {1});
-        int32_t* p_last_segment_partial_segment_count = last_segment_partial_segment_count->MutableData<int32_t>();
-        *p_last_segment_partial_segment_count = last_segment_partial_segment_count_out;
-
-        auto* last_segment_partial_segment_offset = context->Output(4, {1});
-        int32_t* p_last_segment_partial_segment_offset = last_segment_partial_segment_offset->MutableData<int32_t>();
-        *p_last_segment_partial_segment_offset = last_segment_partial_segment_offset_out;
-
-        auto* per_segment_partial_segment_counts = context->Output(5, {*p_num_segments});
-        int32_t* p_per_segment_partial_segment_counts = per_segment_partial_segment_counts->MutableData<int32_t>();
-        CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(p_per_segment_partial_segment_counts, per_segment_partial_segment_counts_out.get(),
-                                            per_segment_partial_segment_counts->SizeInBytes(), cudaMemcpyDeviceToDevice, Stream()));
-
-        auto* per_segment_partial_segment_offsets = context->Output(6, {*p_num_segments});
-        int32_t* p_per_segment_partial_segment_offsets = per_segment_partial_segment_offsets->MutableData<int32_t>();
-        CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(p_per_segment_partial_segment_offsets, per_segment_partial_segment_offsets_out.get(),
-                                            per_segment_partial_segment_offsets->SizeInBytes(), cudaMemcpyDeviceToDevice, Stream()));
     }
 
     return Status::OK();
