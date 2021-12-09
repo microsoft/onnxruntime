@@ -20,7 +20,6 @@
 #include "core/session/onnxruntime_session_options_config_keys.h"
 
 using namespace ::onnxruntime::common;
-using namespace ::onnxruntime::experimental;
 
 namespace onnxruntime {
 
@@ -205,6 +204,8 @@ Status SessionState::AddInitializedTensor(int ort_value_index, const OrtValue& o
   if (sparse) {
     sparse_initialized_tensors_.insert(ort_value_index);
   }
+#else
+  ORT_UNUSED_PARAMETER(sparse);
 #endif
 
   return Status::OK();
@@ -688,6 +689,19 @@ void SessionState::ResolveMemoryPatternFlag() {
         break;
       }
     }
+
+    // For subgraphs, the implicit inputs need to meet the same crieria
+    // as the explicit inputs for memory pattern to be enabled
+    if (graph_viewer_->IsSubgraph()) {
+      const auto* parent_node = graph_viewer_->ParentNode();
+
+      for (auto* implicit_input : parent_node->ImplicitInputDefs()) {
+        if (!implicit_input->HasTensorOrScalarShape()) {
+          enable_mem_pattern_ = false;
+          break;
+        }
+      }
+    }
   }
 }
 
@@ -878,7 +892,7 @@ static Status GetSubGraphSessionStatesOrtFormat(
     for (const auto& name_to_subgraph_session_state : session_states) {
       const std::string& attr_name = name_to_subgraph_session_state.first;
       SessionState& subgraph_session_state = *name_to_subgraph_session_state.second;
-      auto graph_id = builder.CreateString(experimental::utils::GetSubgraphId(node_idx, attr_name));
+      auto graph_id = builder.CreateString(fbs::utils::GetSubgraphId(node_idx, attr_name));
       flatbuffers::Offset<fbs::SessionState> session_state;
       ORT_RETURN_IF_ERROR(
           subgraph_session_state.SaveToOrtFormat(builder, session_state));
@@ -949,10 +963,9 @@ Status SessionState::CreateSubgraphSessionState() {
   return Status::OK();
 }
 
-#if defined(ENABLE_ORT_FORMAT_LOAD)
 Status SessionState::LoadFromOrtFormat(const fbs::SessionState& fbs_session_state,
                                        const KernelRegistryManager& kernel_registry_manager) {
-  using experimental::utils::FbsSessionStateViewer;
+  using fbs::utils::FbsSessionStateViewer;
   const FbsSessionStateViewer fbs_session_state_viewer{fbs_session_state};
   ORT_RETURN_IF_ERROR(fbs_session_state_viewer.Validate());
 
@@ -1011,7 +1024,6 @@ Status SessionState::LoadFromOrtFormat(const fbs::SessionState& fbs_session_stat
 
   return Status::OK();
 }
-#endif
 
 // Calculate the use count of a constant initialized tensor, including the use in subgraph.
 // Note: This function doesn't handle the case below:
@@ -1043,7 +1055,7 @@ static void ComputeConstantInitializerUseCount(const Graph& graph, std::unordere
 Status SessionState::FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE>& graph_location,
                                           KernelRegistryManager& kernel_registry_manager,
                                           const SessionOptions& session_options,
-                                          const onnxruntime::experimental::fbs::SessionState* serialized_session_state,
+                                          const onnxruntime::fbs::SessionState* serialized_session_state,
                                           bool remove_initializers,
                                           bool saving_ort_format) {
   // recursively create the subgraph session state instances and populate the kernel create info in them.
@@ -1052,13 +1064,7 @@ Status SessionState::FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE
   ORT_RETURN_IF_ERROR(CreateSubgraphSessionState());
 
   if (serialized_session_state) {
-#if defined(ENABLE_ORT_FORMAT_LOAD)
     ORT_RETURN_IF_ERROR(LoadFromOrtFormat(*serialized_session_state, kernel_registry_manager));
-#else
-    return Status(ONNXRUNTIME, INVALID_ARGUMENT,
-                  "ORT format model is not supported in this build.");
-#endif
-
   } else {
 #if !defined(ORT_MINIMAL_BUILD)
     ORT_RETURN_IF_ERROR(PopulateKernelCreateInfo(kernel_registry_manager, saving_ort_format));

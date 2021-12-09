@@ -212,8 +212,7 @@ template <typename T = float>
 void VerifyOutputs(const Tensor& tensor, const std::vector<int64_t>& expected_dims,
                    const std::vector<T>& expected_values) {
   TensorShape expected_shape(expected_dims);
-  //Use reinterpret_cast to bypass a gcc bug: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=51213
-  ASSERT_EQ(*reinterpret_cast<const std::vector<int64_t>*>(&expected_shape), *reinterpret_cast<const std::vector<int64_t>*>(&tensor.Shape()));
+  ASSERT_EQ(expected_shape, tensor.Shape());
   const std::vector<T> found(tensor.template Data<T>(),
                              tensor.template Data<T>() + expected_values.size());
   ASSERT_EQ(expected_values, found);
@@ -662,7 +661,7 @@ TEST(InferenceSessionTests, CheckRunProfilerWithSessionOptions) {
     }
   }
 
-#if defined(USE_CUDA) && !defined(ENABLE_TRAINING) && defined(CUDA_VERSION) && CUDA_VERSION >= 11000
+#if defined(USE_CUDA) && defined(ENABLE_CUDA_PROFILING)
   ASSERT_TRUE(has_kernel_info);
 #endif
 }
@@ -1773,8 +1772,7 @@ TEST(InferenceSessionTests, TestTruncatedSequence) {
   ASSERT_EQ(1u, fetches.size());
   auto& rtensor = fetches.front().Get<Tensor>();
   TensorShape expected_shape(Y_dims);
-  //Use reinterpret_cast to bypass a gcc bug: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=51213
-  ASSERT_EQ(*reinterpret_cast<const std::vector<int64_t>*>(&expected_shape), *reinterpret_cast<const std::vector<int64_t>*>(&rtensor.Shape()));
+  ASSERT_EQ(expected_shape, rtensor.Shape());
   for (size_t i = 0; i < Y_data.size(); ++i)
     EXPECT_NEAR(Y_data[i], rtensor.template Data<float>()[i], FLT_EPSILON);
 
@@ -1816,8 +1814,7 @@ TEST(InferenceSessionTests, TestTruncatedSequence) {
     std::vector<int64_t> truncated_output_dims = Y_dims;
     truncated_output_dims[0] = truncated_len;
     TensorShape truncated_shape(truncated_output_dims);
-    //Use reinterpret_cast to bypass a gcc bug: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=51213
-    ASSERT_EQ(*reinterpret_cast<const std::vector<int64_t>*>(&truncated_shape), *reinterpret_cast<const std::vector<int64_t>*>(&truncated_rtensor.Shape()));
+    ASSERT_EQ(truncated_shape, truncated_rtensor.Shape());
     auto seq_output_stride = truncated_shape.SizeFromDimension(1);
     for (int i = 0; i < truncated_shape.Size(); ++i)
       EXPECT_NEAR(Y_data[i + seq_start * seq_output_stride], truncated_rtensor.template Data<float>()[i], FLT_EPSILON);
@@ -2547,12 +2544,12 @@ TEST(InferenceSessionTests, AllocatorSharing_EnsureSessionsUseSameOrtCreatedAllo
   ASSERT_TRUE(st.IsOK());
   // create allocator to register with the env
   bool use_arena = true;
-#if !(defined(__amd64__) || defined(_M_AMD64) || defined(__aarch64__) || defined(_M_ARM64))
+#if !(defined(__amd64__) || defined(_M_AMD64) || defined(__aarch64__) || defined(_M_ARM64)) || defined(USE_MIMALLOC)
   use_arena = false;
 #endif
   OrtMemoryInfo mem_info{onnxruntime::CPU, use_arena ? OrtArenaAllocator : OrtDeviceAllocator};
   AllocatorCreationInfo device_info{
-      [mem_info](int) { return std::make_unique<TAllocator>(mem_info); },
+      [mem_info](int) { return std::make_unique<CPUAllocator>(mem_info); },
       0, use_arena};
 
   AllocatorPtr allocator_ptr = CreateAllocator(device_info);
@@ -2592,12 +2589,12 @@ TEST(InferenceSessionTests, AllocatorSharing_EnsureSessionsDontUseSameOrtCreated
   ASSERT_TRUE(st.IsOK());
   // create allocator to register with the env
   bool use_arena = true;
-#if !(defined(__amd64__) || defined(_M_AMD64) || defined(__aarch64__) || defined(_M_ARM64))
+#if !(defined(__amd64__) || defined(_M_AMD64) || defined(__aarch64__) || defined(_M_ARM64)) || defined(USE_MIMALLOC)
   use_arena = false;
 #endif
   OrtMemoryInfo mem_info{onnxruntime::CPU, use_arena ? OrtArenaAllocator : OrtDeviceAllocator};
   AllocatorCreationInfo device_info{
-      [mem_info](int) { return std::make_unique<TAllocator>(mem_info); },
+      [mem_info](int) { return std::make_unique<CPUAllocator>(mem_info); },
       0, use_arena};
 
   AllocatorPtr allocator_ptr = CreateAllocator(device_info);
@@ -2653,7 +2650,7 @@ TEST(InferenceSessionTests, InitializerSharing_EnsureSessionsUseUserAddedInitial
   CreateMLValue<float>(allocator, {3, 2}, input_data_vec, &val_to_share_from_allocator);
 
   OrtMemoryInfo mem_info{CPU, OrtArenaAllocator};
-  CreateMLValue<float>({3, 2}, input_data_vec.data(), mem_info, &val_to_share);
+  CreateMLValue<float>(std::array<int64_t, 2>{3, 2}, input_data_vec.data(), mem_info, &val_to_share);
 
   // create sessions to share the allocator
   SessionOptions so1;

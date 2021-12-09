@@ -186,7 +186,7 @@ class MlasTestFixture : public testing::Test {
   static TMlasTester* mlas_tester;
 };
 
-// Long Execute test. It is too heavy register each single test, treat long execute big groups.
+// Long Execute test. It is too heavy to register each single test, treat long execute big groups.
 template <typename TMlasTester>
 class MlasLongExecuteTests : public MlasTestFixture<TMlasTester> {
  public:

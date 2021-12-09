@@ -33,7 +33,8 @@ def get_package_name(os, cpu_arch, ep):
 
 
 # Currently we take onnxruntime_providers_cuda from CUDA build
-# And onnxruntime, onnxruntime_providers_shared and onnxruntime_providers_tensorrt from tensorrt build
+# And onnxruntime, onnxruntime_providers_shared and
+# onnxruntime_providers_tensorrt from tensorrt build
 def is_this_file_needed(ep, filename):
     return (ep != 'cuda' or 'cuda' in filename) and (ep != 'tensorrt' or 'cuda' not in filename)
 
@@ -54,9 +55,11 @@ def generate_file_list_for_ep(nuget_artifacts_dir, ep, files_list):
                     if child_file.suffix in ['.dll', '.pdb', '.lib'] and is_this_file_needed(ep, child_file.name):
                         files_list.append('<file src="' + str(child_file) +
                                           '" target="runtimes/win-%s/native"/>' % cpu_arch)
-        for cpu_arch in ['x64', 'arm64']:
+        for cpu_arch in ['x86_64', 'arm64']:
             if child.name == get_package_name('osx', cpu_arch, ep):
                 child = child / 'lib'
+                if cpu_arch == 'x86_64':
+                    cpu_arch = 'x64'
                 for child_file in child.iterdir():
                     # Check if the file has digits like onnxruntime.1.8.0.dylib. We can skip such things
                     is_versioned_dylib = re.match(r'.*[\.\d+]+\.dylib$', child_file.name)
@@ -162,7 +165,7 @@ def generate_repo_url(list, repo_url, commit_id):
 
 
 def generate_dependencies(list, package_name, version):
-    dml_dependency = '<dependency id="Microsoft.AI.DirectML" version="1.5.1"/>'
+    dml_dependency = '<dependency id="Microsoft.AI.DirectML" version="1.8.0"/>'
 
     if (package_name == 'Microsoft.AI.MachineLearning'):
         list.append('<dependencies>')
@@ -451,12 +454,36 @@ def generate_files(list, args):
                           runtimes_target + args.target_architecture + '\\native" />')
 
     if args.execution_provider == "openvino":
+        openvino_path = get_env_var('INTEL_OPENVINO_DIR')
         files_list.append('<file src=' + '"' + os.path.join(args.native_build_path,
                           nuget_dependencies['providers_shared_lib']) +
                           runtimes_target + args.target_architecture + '\\native" />')
         files_list.append('<file src=' + '"' + os.path.join(args.native_build_path,
                           nuget_dependencies['openvino_ep_shared_lib']) +
                           runtimes_target + args.target_architecture + '\\native" />')
+
+        if is_windows():
+            dll_list_path = os.path.join(openvino_path, 'deployment_tools\\inference_engine\\bin\\intel64\\Release\\')
+            for dll_element in os.listdir(dll_list_path):
+                if dll_element.endswith('dll'):
+                    files_list.append('<file src=' + '"' + os.path.join(dll_list_path, dll_element) + runtimes_target +
+                                      args.target_architecture + '\\native" />')
+            ngraph_list_path = os.path.join(openvino_path, 'deployment_tools\\ngraph\\lib\\')
+            for ngraph_element in os.listdir(ngraph_list_path):
+                if ngraph_element.endswith('dll'):
+                    files_list.append('<file src=' + '"' + os.path.join(ngraph_list_path, ngraph_element) +
+                                      runtimes_target + args.target_architecture + '\\native" />')
+            # plugins.xml
+            files_list.append('<file src=' + '"' + os.path.join(dll_list_path, 'plugins.xml') +
+                              runtimes_target + args.target_architecture + '\\native" />')
+            # usb-ma2x8x.mvcmd
+            files_list.append('<file src=' + '"' + os.path.join(dll_list_path, 'usb-ma2x8x.mvcmd') +
+                              runtimes_target + args.target_architecture + '\\native" />')
+            tbb_list_path = os.path.join(openvino_path, 'deployment_tools\\inference_engine\\external\\tbb\\bin\\')
+            for tbb_element in os.listdir(tbb_list_path):
+                if tbb_element.endswith('dll'):
+                    files_list.append('<file src=' + '"' + os.path.join(tbb_list_path, tbb_element) +
+                                      runtimes_target + args.target_architecture + '\\native" />')
 
     if args.execution_provider == "cuda" or is_cuda_gpu_package and not is_ado_packaging_build:
         files_list.append('<file src=' + '"' + os.path.join(args.native_build_path,
@@ -524,8 +551,11 @@ def generate_files(list, args):
         # Process .net5.0 targets
         if args.target_architecture == 'x64':
             interop_src = 'Microsoft.AI.MachineLearning.Interop'
+            interop_props = 'Microsoft.AI.MachineLearning.props'
             interop_targets = 'Microsoft.AI.MachineLearning.targets'
+            windowsai_net50_props = os.path.join(args.sources_path, 'csharp', 'src', interop_src, interop_props)
             windowsai_net50_targets = os.path.join(args.sources_path, 'csharp', 'src', interop_src, interop_targets)
+            files_list.append('<file src=' + '"' + windowsai_net50_props + '" target="build\\net5.0" />')
             files_list.append('<file src=' + '"' + windowsai_net50_targets + '" target="build\\net5.0" />')
 
     if is_cpu_package or is_cuda_gpu_package or is_dml_package or is_mklml_package:

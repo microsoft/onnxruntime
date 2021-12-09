@@ -183,7 +183,6 @@ Status ReduceKernel<allow_multi_axes>::ReduceKernelShared(
     }
   }
 
-  const auto& input_dims = input_shape.GetDims();
   int64_t input_count = input_shape.Size();
   IAllocatorUniquePtr<float> temp_X;
   if (ReduceTensorIndices == MIOPEN_REDUCE_TENSOR_FLATTENED_INDICES && std::is_same<T, MLFloat16>::value) {
@@ -194,7 +193,7 @@ Status ReduceKernel<allow_multi_axes>::ReduceKernelShared(
   }
 
   // MIOpen requires at least 3D input, so pad 1s if needed
-  std::vector<int64_t> input_dims_miopen = input_dims;
+  std::vector<int64_t> input_dims_miopen = input_shape.GetDimsAsVector();
   std::vector<int64_t> output_dims_miopen = output_dims;
   if (rank < 3) {
     std::vector<int64_t> pads(3 - rank, 1);
@@ -383,7 +382,7 @@ Status PrepareForReduce(const Tensor* X,
   std::vector<bool> reduced(rank, false);
   prepare_reduce_metadata.output_dims.reserve(input_dims.size());
   if (axes.size() > 0) {
-    prepare_reduce_metadata.output_dims = input_dims;
+    prepare_reduce_metadata.output_dims = input_shape.GetDimsAsVector();
     for (auto axis : axes) {
       axis = HandleNegativeAxis(axis, rank);
       ORT_ENFORCE(input_dims[axis] != 0,
@@ -419,7 +418,7 @@ Status PrepareForReduce(const Tensor* X,
   }
 
   // MIOpen requires at least 3D input, so pad 1s if needed
-  prepare_reduce_metadata.input_dims_miopen = input_dims;
+  prepare_reduce_metadata.input_dims_miopen = input_shape.GetDimsAsVector();
   prepare_reduce_metadata.output_dims_miopen = prepare_reduce_metadata.output_dims;
   if (rank < 3) {
     std::vector<int64_t> pads(3 - rank, 1);

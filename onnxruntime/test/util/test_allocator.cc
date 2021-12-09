@@ -19,7 +19,7 @@ MockedOrtAllocator::~MockedOrtAllocator() {
 void* MockedOrtAllocator::Alloc(size_t size) {
   constexpr size_t extra_len = sizeof(size_t);
   memory_inuse.fetch_add(size += extra_len);
-  void* p = ::malloc(size);
+  void* p = new (std::nothrow) uint8_t[size];
   if (p == nullptr)
     return p;
   num_allocations.fetch_add(1);
@@ -33,7 +33,7 @@ void MockedOrtAllocator::Free(void* p) {
   p = (char*)p - extra_len;
   size_t len = *(size_t*)p;
   memory_inuse.fetch_sub(len);
-  return ::free(p);
+  delete[] reinterpret_cast<uint8_t*>(p);
 }
 
 const OrtMemoryInfo* MockedOrtAllocator::Info() const {

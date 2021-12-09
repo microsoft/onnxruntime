@@ -13,6 +13,8 @@ AbiCustomRegistry::AbiCustomRegistry() :
 {
 }
 
+#pragma warning(push)
+#pragma warning(suppress: 4702)
 onnx::OpSchema::FormalParameterOption AbiCustomRegistry::ConvertFormalParameterOption(MLOperatorParameterOptions options)
 {
     switch (options)
@@ -27,9 +29,11 @@ onnx::OpSchema::FormalParameterOption AbiCustomRegistry::ConvertFormalParameterO
             return onnx::OpSchema::FormalParameterOption::Variadic;
 
         default:
-            THROW_HR(E_NOTIMPL);
+            ORT_THROW_HR(E_NOTIMPL);
+            return onnx::OpSchema::FormalParameterOption::Single;
     }
 }
+#pragma warning(pop)
 
 // Convert edge types from the ABI types to ONNX strings
 std::string AbiCustomRegistry::ConvertFormalParameterType(const MLOperatorSchemaEdgeDescription& formalParameter)
@@ -124,6 +128,7 @@ void AbiCustomRegistry::SetAttributesAndDefaults(onnx::OpSchema& schema, const M
                     break;
                 }
 
+                #pragma warning(suppress:4063)
                 case MLOperatorAttributeTypeTensor:
                     // Tensor is too complex to express a default value. Default checking is done by the operator code.
                     __fallthrough;
@@ -204,18 +209,18 @@ onnx::OpSchema AbiCustomRegistry::ConvertOpSchema(
             gsl::span<const uint32_t> requiredConstantCpuInputs;
 
             onnxruntime::OpNodeProtoHelper<onnx::InferenceContext> nodeInfo(&ctx);
-            ComPtr<MLSchemaInferenceContext> abiContext = wil::MakeOrThrow<MLSchemaInferenceContext>(&nodeInfo, &ctx, requiredConstantCpuInputs);
+            ComPtr<MLSchemaInferenceContext> abiContext = MLSchemaInferenceContext::Create(&nodeInfo, &ctx, requiredConstantCpuInputs);
 
             // Do type inference
             if (typeInferrerCapture)
             {
-                THROW_IF_FAILED(typeInferrerCapture->InferOutputTypes(abiContext.Get()));
+                ORT_THROW_IF_FAILED(typeInferrerCapture->InferOutputTypes(abiContext.Get()));
             }
 
             // Do shape inference if all input tensor shapes are known
             if (shapeInferrerCapture && InputTensorShapesDefinedOnNode(nodeInfo))
             {
-                THROW_IF_FAILED(shapeInferrerCapture->InferOutputShapes(abiContext.Get()));
+                ORT_THROW_IF_FAILED(shapeInferrerCapture->InferOutputShapes(abiContext.Get()));
             }
 
             abiContext->Close();
@@ -231,8 +236,10 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistry::RegisterOperatorSetSchema(
     const MLOperatorSchemaDescription* const* schema,
     uint32_t schemaCount,
     _In_opt_ IMLOperatorTypeInferrer* typeInferrer,
-    _In_opt_ IMLOperatorShapeInferrer* shapeInferrer) const noexcept try
+    _In_opt_ IMLOperatorShapeInferrer* shapeInferrer) const noexcept
 {
+    ORT_TRY
+    {
     std::vector<onnx::OpSchema> schemaVector;
     schemaVector.reserve(schemaCount);
 
@@ -261,8 +268,9 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistry::RegisterOperatorSetSchema(
         opSetId->version));
 
     return S_OK;
+    }
+    ORT_CATCH_RETURN
 }
-CATCH_RETURN();
 
 // Convert the list of attribute defaults in a kernel registration into a 
 // map of AttributeValue entries, which own their own memory
@@ -302,12 +310,13 @@ AttributeMap AbiCustomRegistry::GetDefaultAttributes(
             attr.ints.assign(&apiAttr.ints[0], &apiAttr.ints[apiAttr.valueCount]);
             break;
 
+        #pragma warning(disable:4063)
         case MLOperatorAttributeTypeTensor:
             // Tensor is too complex to express a default value. Default checking is done by the operator code.
             __fallthrough;
 
         default:
-            THROW_HR(E_INVALIDARG);
+            ORT_THROW_HR(E_INVALIDARG);
         }
 
         ret[apiAttr.name] = attr;
@@ -336,9 +345,12 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistry::RegisterOperatorKernel(
     bool supportedWith64BitTensorsVia32BitStrides,
     bool supportedWith64BitTensorsVia32BitStridesFromAnyEp,
     bool prefer64BitTensorsDirectly,
+    bool support64BitTensorsViaEmulation,
     _In_reads_(constantCpuInputCount) const uint32_t* requiredConstantCpuInputs,
-    uint32_t constantCpuInputCount) const noexcept try
+    uint32_t constantCpuInputCount) const noexcept
 {
+    ORT_TRY
+    {
 
     // Verify that invalid flags are not passed
     if ((opKernel->options & ~MLOperatorKernelOptions::AllowDynamicInputShapes) !=
@@ -417,7 +429,7 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistry::RegisterOperatorKernel(
             // TODO - handle non-tensor types
             if (opKernel->typeConstraints[i].allowedTypes[j].edgeType != MLOperatorEdgeType::Tensor)
             {
-                THROW_IF_FAILED(E_NOTIMPL);
+                ORT_THROW_IF_FAILED(E_NOTIMPL);
             }
 
             types.push_back(ToTensorDataType(opKernel->typeConstraints[i].allowedTypes[j].tensorDataType));
@@ -461,6 +473,7 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistry::RegisterOperatorKernel(
         regInfo->supportedWith64BitTensorsVia32BitStrides = supportedWith64BitTensorsVia32BitStrides;
         regInfo->supportedWith64BitTensorsVia32BitStridesFromAnyEp = supportedWith64BitTensorsVia32BitStridesFromAnyEp;
         regInfo->prefer64BitTensorsDirectly = prefer64BitTensorsDirectly;
+        regInfo->support64BitTensorsViaEmulation = support64BitTensorsViaEmulation;
 
         // Only internal operators support usage in DML graphs
         if (supportsGraph)
@@ -468,8 +481,6 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistry::RegisterOperatorKernel(
             GraphNodeFactoryRegistration graphReg;
             graphReg.factory = 
                 [kernelFactoryCapture,
-                requiresInputShapesAtCreation,
-                requiresOutputShapesAtCreation,
                 shapeInferrerCapture,
                 defaultAttributesCapture,
                 constantCpuInputCapture](const onnxruntime::Node& node, MLOperatorTensorGetter& constantInputGetter, const void* executionHandle, DmlGraphNodeCreateInfo* graphNodeCreateInfo)
@@ -493,7 +504,7 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistry::RegisterOperatorKernel(
                             constantInputGetter);
 
                     Microsoft::WRL::ComPtr<IMLOperatorKernel> kernel;
-                    THROW_IF_FAILED(kernelFactoryCapture->CreateKernel(kernelInfoWrapper.Get(), kernel.GetAddressOf()));
+                    ORT_THROW_IF_FAILED(kernelFactoryCapture->CreateKernel(kernelInfoWrapper.Get(), kernel.GetAddressOf()));
                     kernelInfoWrapper->Close();
                 };
 
@@ -515,12 +526,12 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistry::RegisterOperatorKernel(
                 onnxruntime::OpNodeProtoHelper<onnxruntime::ProtoHelperNodeContext> protoHelper(&nodeContext);
                               
                 // Create the kernel while allowing input shape and output shape queries according to options
-                ComPtr<MLSupportQueryContext> supportContext = wil::MakeOrThrow<MLSupportQueryContext>(
+                ComPtr<MLSupportQueryContext> supportContext = MLSupportQueryContext::Create(
                         &protoHelper,
                         &defaultAttributesCapture);
 
                 BOOL bSupported = FALSE;
-                THROW_IF_FAILED(supportQueryCapture->QuerySupport(supportContext.Get(), &bSupported));
+                ORT_THROW_IF_FAILED(supportQueryCapture->QuerySupport(supportContext.Get(), &bSupported));
                 return !!bSupported;
             };
         }
@@ -537,9 +548,10 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistry::RegisterOperatorKernel(
             requiredConstantCpuInputs ||
             supportedWith64BitTensorsVia32BitStrides ||
             supportedWith64BitTensorsVia32BitStridesFromAnyEp ||
-            prefer64BitTensorsDirectly)
+            prefer64BitTensorsDirectly ||
+            support64BitTensorsViaEmulation)
         {
-            THROW_HR(E_INVALIDARG);
+            ORT_THROW_HR(E_INVALIDARG);
         }
 
         //
@@ -548,7 +560,8 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistry::RegisterOperatorKernel(
     }
 
     return S_OK;
+    }
+    ORT_CATCH_RETURN
 }
-CATCH_RETURN();
 
 }

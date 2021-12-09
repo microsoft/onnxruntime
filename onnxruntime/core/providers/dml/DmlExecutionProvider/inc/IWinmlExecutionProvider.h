@@ -122,6 +122,10 @@ namespace Windows::AI::MachineLearning::Adapter
         // Operator supports true 64-bit tensors directly, no strides needed.
         // So fallback to strided 32-bit only occurs when the device lacks 64-bit support.
         bool prefer64BitTensorsDirectly = false;
+
+        // The operator supports emulation for uint64/int64 even if the hardware doesn't
+        // support native uint64/int64 data types.
+        bool support64BitTensorsViaEmulation = false;
     };
 
     using InternalRegistrationInfoMap = std::unordered_map<onnxruntime::KernelDef*, std::shared_ptr<InternalRegistrationInfo>>;

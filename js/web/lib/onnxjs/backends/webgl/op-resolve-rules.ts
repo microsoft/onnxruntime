@@ -61,6 +61,7 @@ export const WEBGL_OP_RESOLVE_RULES: readonly OpSet.ResolveRule[] = [
   ['Exp', '', '6+', unaryOps.exp],
   ['Flatten', '', '1+', flatten, parseFlattenAttributes],
   ['Floor', '', '6+', unaryOps.floor],
+  ['FusedConv', 'com.microsoft', '1+', conv, parseConvAttributes],
   ['Gather', '', '1+', gather, parseGatherAttributes],
   ['Gemm', '', '7-10', gemm, parseGemmAttributesV7],
   ['Gemm', '', '11+', gemm, parseGemmAttributesV11],

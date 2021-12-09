@@ -41,7 +41,7 @@ using MatMul = std::function<Status(const T* input_1_data, const T* input_2_data
 
 // ReduceSum op - Reduces along `reduce_axes`
 template <typename T>
-using ReduceSum = std::function<std::unique_ptr<Tensor>(const Tensor& input, const std::vector<int64_t>& reduce_axes,
+using ReduceSum = std::function<std::unique_ptr<Tensor>(const Tensor& input, gsl::span<const int64_t> reduce_axes,
                                                         bool keep_dims, AllocatorPtr allocator,
                                                         const TensorShape* input_shape_override,
                                                         concurrency::ThreadPool* tp, void* einsum_cuda_assets)>;
@@ -73,7 +73,7 @@ Status MatMul(const T* input_1_data, const T* input_2_data, T* output_data,
               void* einsum_cuda_assets);
 
 template <typename T>
-std::unique_ptr<Tensor> ReduceSum(const Tensor& input, const std::vector<int64_t>& reduce_axes,
+std::unique_ptr<Tensor> ReduceSum(const Tensor& input, gsl::span<const int64_t> reduce_axes,
                                   bool keep_dims, AllocatorPtr allocator,
                                   const TensorShape* input_shape_override,
                                   concurrency::ThreadPool* tp, void* einsum_cuda_assets);
@@ -88,7 +88,7 @@ std::unique_ptr<Tensor> Diagonal(const Tensor& input, int64_t dim_1, int64_t dim
 bool IsTransposeRequired(size_t input_rank, const std::vector<size_t>& permutation);
 
 // Thin wrapper over the Transpose op to be called from Einsum that does some checks and invokes the device specific helper
-std::unique_ptr<Tensor> Transpose(const Tensor& input, const std::vector<int64_t>& input_shape_override,
+std::unique_ptr<Tensor> Transpose(const Tensor& input, const TensorShape& input_shape_override,
                                   const std::vector<size_t>& permutation, AllocatorPtr allocator, void* einsum_cuda_assets,
                                   const DeviceHelpers::Transpose& device_transpose_func);
 
@@ -103,8 +103,8 @@ std::unique_ptr<Tensor> MatMul(const Tensor& input_1, const std::vector<int64_t>
 
 // Thin wrapper over the ReduceSum op
 template <typename T>
-std::unique_ptr<Tensor> ReduceSum(const Tensor& input, const std::vector<int64_t>& input_shape_override,
-                                  const std::vector<int64_t>& reduce_axes, AllocatorPtr allocator,
+std::unique_ptr<Tensor> ReduceSum(const Tensor& input, const TensorShape& input_shape_override,
+                                  gsl::span<const int64_t> reduce_axes, AllocatorPtr allocator,
                                   concurrency::ThreadPool* tp, void* cuda_ep,
                                   const DeviceHelpers::ReduceSum<T>& device_reduce_sum_func);
 

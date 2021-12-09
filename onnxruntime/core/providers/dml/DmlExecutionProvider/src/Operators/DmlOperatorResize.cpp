@@ -213,6 +213,7 @@ public:
         // Find any useless dimensions of size 1 that occur in both input and output.
         for (size_t i = 0, rank = m_outputDimensions.size(); i < rank; ++i)
         {
+	
             if (m_inputDimensions[i] == 1 && m_outputDimensions[i] == 1)
             {
                 squeezableDimensionIndices.push_back(gsl::narrow_cast<uint32_t>(i));
@@ -340,5 +341,6 @@ DML_OP_DEFINE_CREATION_FUNCTION(Resize11, VersionedKernel<DmlOperatorResize, 11>
 DML_OP_DEFINE_CREATION_FUNCTION(Upsample7, VersionedKernel<DmlOperatorResize, 7>);
 DML_OP_DEFINE_CREATION_FUNCTION(Upsample9, VersionedKernel<DmlOperatorResize, 9>);
 DML_OP_DEFINE_CREATION_FUNCTION(Upsample10, VersionedKernel<DmlOperatorResize, 10>);
+DML_OP_DEFINE_CREATION_FUNCTION(Upsample13, VersionedKernel<DmlOperatorResize, 13>);
 
 } // namespace Dml

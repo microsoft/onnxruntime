@@ -101,18 +101,18 @@ Status ValidateCommonRnnInputs(const Tensor& X,
 }  // namespace detail
 
 // map of arg name and whether the alpha and/or beta arguments are required
-static std::unordered_map<std::string, std::pair<bool, bool>>
-    NameToArgUsageMap{{"affine", {1, 1}},
-                      {"relu", {0, 0}},
-                      {"leakyrelu", {1, 0}},
-                      {"thresholdedrelu", {1, 0}},
-                      {"tanh", {0, 0}},
-                      {"scaledtanh", {1, 1}},
-                      {"sigmoid", {0, 0}},
-                      {"hardsigmoid", {1, 1}},
-                      {"elu", {1, 0}},
-                      {"softsign", {0, 0}},
-                      {"softplus", {0, 0}}};
+static std::unordered_map<std::string, std::pair<bool, bool>> NameToArgUsageMap{
+    {"affine", {true, true}},
+    {"relu", {false, false}},
+    {"leakyrelu", {true, false}},
+    {"thresholdedrelu", {true, false}},
+    {"tanh", {false, false}},
+    {"scaledtanh", {true, true}},
+    {"sigmoid", {false, false}},
+    {"hardsigmoid", {true, true}},
+    {"elu", {true, false}},
+    {"softsign", {false, false}},
+    {"softplus", {false, false}}};
 
 // map of alpha/beta defaults
 static std::unordered_map<std::string, std::pair<float, float>>
@@ -288,13 +288,13 @@ void ComputeGemm(const int M,
       beta == 1.0f ? MLAS_QGEMM_OUTPUT_MODE::AccumulateMode : MLAS_QGEMM_OUTPUT_MODE::ZeroMode,
       scale_multiplier.size() == 1 ? MLAS_QUANTIZATION_GRANULARITY::PerMatrix : MLAS_QUANTIZATION_GRANULARITY::PerColumn);
 
-  MLAS_GEMM_U8X8_SHAPE_PARAMS gemm_shape;
+  MLAS_GEMM_QUANT_SHAPE_PARAMS gemm_shape;
   gemm_shape.M = static_cast<size_t>(M);
   gemm_shape.N = static_cast<size_t>(N);
   gemm_shape.K = static_cast<size_t>(K);
   gemm_shape.BIsSigned = b_is_signed;
 
-  MLAS_GEMM_U8X8_DATA_PARAMS gemm_params;
+  MLAS_GEMM_QUANT_DATA_PARAMS gemm_params;
   gemm_params.A = quantized_A_buffer;
   gemm_params.lda = static_cast<size_t>(K);
   gemm_params.ZeroPointA = a_zero_point;

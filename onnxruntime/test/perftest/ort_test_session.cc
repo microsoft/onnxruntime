@@ -29,7 +29,7 @@ std::chrono::duration<double> OnnxRuntimeTestSession::Run() {
 OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device& rd,
                                                const PerformanceTestConfig& performance_test_config,
                                                const TestModelInfo& m)
-    : rand_engine_(rd()), input_names_(m.GetInputCount()), input_length_(m.GetInputCount()) {
+    : rand_engine_(rd()), input_names_(m.GetInputCount()), input_names_str_(m.GetInputCount()), input_length_(m.GetInputCount()) {
   Ort::SessionOptions session_options;
   const std::string& provider_name = performance_test_config.machine_config.provider_type_name;
   if (provider_name == onnxruntime::kDnnlExecutionProvider) {
@@ -275,8 +275,10 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
           device_type = value;
         } else if (value.find("MULTI:") == 0) {
           device_type = value;
+        } else if (value.find("AUTO:") == 0) {
+          device_type = value;
         } else {
-          ORT_THROW("[ERROR] [OpenVINO] You have selcted wrong configuration value for the key 'device_type'. select from 'CPU_FP32', 'GPU_FP32', 'GPU_FP16', 'VAD-M_FP16', 'MYRIAD_FP16', 'VAD-F_FP32' or from HETERO/MULTI options available. \n");
+          ORT_THROW("[ERROR] [OpenVINO] You have selcted wrong configuration value for the key 'device_type'. select from 'CPU_FP32', 'GPU_FP32', 'GPU_FP16', 'VAD-M_FP16', 'MYRIAD_FP16', 'VAD-F_FP32' or from HETERO/MULTI/AUTO options available. \n");
         }
       } else if (key == "device_id") {
         device_id = value;
@@ -436,9 +438,10 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     output_names_raw_ptr[i] = output_names_[i].c_str();
   }
 
-  size_t input_count = static_cast<size_t>(m.GetInputCount());
+  const size_t input_count = static_cast<size_t>(m.GetInputCount());
   for (size_t i = 0; i != input_count; ++i) {
-    input_names_[i] = strdup(m.GetInputName(i).c_str());
+    input_names_str_[i] = m.GetInputName(i);
+    input_names_[i] = input_names_str_[i].c_str();
   }
 }
 

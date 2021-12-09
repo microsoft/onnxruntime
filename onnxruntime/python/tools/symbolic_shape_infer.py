@@ -196,6 +196,7 @@ class SymbolicShapeInference:
             'aten::argmax': self._infer_aten_argmax,
             'aten::avg_pool2d': self._infer_aten_pool2d,
             'aten::_adaptive_avg_pool2d': self._infer_aten_pool2d,
+            'aten::binary_cross_entropy_with_logits': self._infer_aten_bce,
         }
         self.run_ = True
         self.suggested_merge_ = {}
@@ -641,14 +642,18 @@ class SymbolicShapeInference:
         vi.CopyFrom(helper.make_tensor_value_info(node.output[0], output_dtype, new_shape))
 
     def _fuse_tensor_type(self, node, out_idx, dst_type, src_type):
-        ''' 
+        '''
         update dst_tensor_type to be compatible with src_tensor_type when dimension mismatches
         '''
         dst_tensor_type = dst_type.sequence_type.elem_type.tensor_type if is_sequence(
             dst_type) else dst_type.tensor_type
         src_tensor_type = src_type.sequence_type.elem_type.tensor_type if is_sequence(
             src_type) else src_type.tensor_type
-        assert dst_tensor_type.elem_type == src_tensor_type.elem_type
+        if dst_tensor_type.elem_type != src_tensor_type.elem_type:
+            node_id = node.name if node.name else node.op_type
+            raise ValueError(f"For node {node_id}, dst_tensor_type.elem_type != src_tensor_type.elem_type: "
+                             f"{onnx.onnx_pb.TensorProto.DataType.Name(dst_tensor_type.elem_type)} vs "
+                             f"{onnx.onnx_pb.TensorProto.DataType.Name(src_tensor_type.elem_type)}")
         if dst_tensor_type.HasField('shape'):
             for di, ds in enumerate(zip(dst_tensor_type.shape.dim, src_tensor_type.shape.dim)):
                 if ds[0] != ds[1]:
@@ -1173,6 +1178,18 @@ class SymbolicShapeInference:
         if node.output[0] and new_shape is not None:
             vi = self.known_vi_[node.output[0]]
             vi.CopyFrom(helper.make_tensor_value_info(node.output[0], onnx.TensorProto.INT64, new_shape))
+
+    def _infer_aten_bce(self, node):
+        reduction = self._try_get_value(node, 4)
+        if reduction is None:
+            reduction = 1
+        elem_type = self.known_vi_[node.input[0]].type.tensor_type.elem_type
+        vi = self.known_vi_[node.output[0]]
+        if reduction == 0:
+            vi.type.tensor_type.elem_type = elem_type
+            vi.type.tensor_type.shape.CopyFrom(onnx.TensorShapeProto())
+        else:
+            vi.CopyFrom(helper.make_tensor_value_info(vi.name, elem_type, self._get_shape(node, 0)))
 
     def _infer_BatchNormalization(self, node):
         self._propagate_shape_and_type(node)
@@ -1733,6 +1750,12 @@ class SymbolicShapeInference:
         mask_index_shape = [input_ids_shape[0]]
         vi = self.known_vi_[node.output[1]]
         vi.CopyFrom(helper.make_tensor_value_info(node.output[1], onnx.TensorProto.INT32, mask_index_shape))
+
+        if len(node.output) > 2:
+            # Optional output of add before layer nomalization is done
+            # shape is same as the output
+            vi = self.known_vi_[node.output[2]]
+            vi.CopyFrom(helper.make_tensor_value_info(node.output[2], word_embedding_dtype, output_shape))
 
     def _infer_SkipLayerNormalization(self, node):
         self._propagate_shape_and_type(node)

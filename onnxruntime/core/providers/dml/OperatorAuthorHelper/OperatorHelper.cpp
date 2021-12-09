@@ -8,7 +8,7 @@ namespace OperatorHelper
 {
     bool ContainsEmptyDimensions(gsl::span<const DimensionType> dimensions)
     {
-        return std::find(dimensions.begin(), dimensions.end(), 0) != dimensions.end();
+        return std::find(dimensions.begin(), dimensions.end(), 0u) != dimensions.end();
     }
 
     // Convert any negative axis into an absolute axis relative to the back end.
@@ -31,6 +31,94 @@ namespace OperatorHelper
             axis = HandleNegativeAxis(axis, dimCount);
         }
     }
+
+    float CastFloat16ToFloat32(uint16_t input)
+    {
+        // Promote float16m10e5s1 to float32m23e8s1.
+        // Note this works on machines of both ascending and descending byte
+        // endianness, so long as float32 and uint32 endianness match.
+        // It does not work for a few abberant architectures which store
+        // float32 and uint32 with opposite endianness.
+
+        const uint32_t float16unsignedValueMask = 0x7FFF;
+        const uint32_t float16signMask          = 0x8000;
+        const uint32_t float16exponentMask      = 0x7C00;
+        const uint32_t float32exponentMask      = 0x7F800000;
+
+        uint32_t float16unsignedValue = input & float16unsignedValueMask;
+        uint32_t float16sign          = input & float16signMask;
+        uint32_t float16exponent      = input & float16exponentMask;
+
+        // Shift mantissa bits left (23 - 10 = 13).
+        // Adjust exponent bias (127 - 15 = 112, 112 << 23 == 0x38000000).
+        // Move sign bit to float32 MSB (32 - 16 = 16).
+        uint32_t float32unsignedValue = (float16unsignedValue << 13) + 0x38000000;
+        uint32_t float32sign          = float16sign << 16;
+        uint32_t result               = (float16exponent == 0) ? (float32unsignedValue & ~float32exponentMask) : // Denormal
+                                        (float16exponent == float16exponentMask) ? (float32unsignedValue | float32exponentMask) : // Infinity
+                                        float32unsignedValue; // Any other normal value
+        result |= float32sign;
+
+        return reinterpret_cast<float&>(result);
+    }
+
+    #pragma warning(push)
+    #pragma warning(disable:4702)
+    int64_t CastToInt64(MLOperatorTensorDataType tensorDataType, const void* p)
+    {
+        switch (tensorDataType)
+        {
+        case MLOperatorTensorDataType::Float:      return static_cast<int64_t>(*reinterpret_cast<const float*>(p));
+        case MLOperatorTensorDataType::UInt8:      return static_cast<int64_t>(*reinterpret_cast<const uint8_t*>(p));
+        case MLOperatorTensorDataType::Int8:       return static_cast<int64_t>(*reinterpret_cast<const int8_t*>(p));
+        case MLOperatorTensorDataType::UInt16:     return static_cast<int64_t>(*reinterpret_cast<const uint16_t*>(p));
+        case MLOperatorTensorDataType::Int16:      return static_cast<int64_t>(*reinterpret_cast<const int16_t*>(p));
+        case MLOperatorTensorDataType::Int32:      return static_cast<int64_t>(*reinterpret_cast<const int32_t*>(p));
+        case MLOperatorTensorDataType::Int64:      return static_cast<int64_t>(*reinterpret_cast<const int64_t*>(p));
+        case MLOperatorTensorDataType::String:     ML_INVALID_ARGUMENT("MLOperatorTensorDataType::String type is unsupported for reading as an integer.");
+        case MLOperatorTensorDataType::Bool:       return static_cast<int64_t>(*reinterpret_cast<const uint8_t*>(p));
+        case MLOperatorTensorDataType::Float16:    ML_INVALID_ARGUMENT("MLOperatorTensorDataType::Float16 type is unsupported for reading as an integer.");
+        case MLOperatorTensorDataType::Double:     return static_cast<int64_t>(*reinterpret_cast<const double*>(p));
+        case MLOperatorTensorDataType::UInt32:     return static_cast<int64_t>(*reinterpret_cast<const uint32_t*>(p));
+        case MLOperatorTensorDataType::UInt64:     return static_cast<int64_t>(*reinterpret_cast<const uint64_t*>(p));
+        case MLOperatorTensorDataType::Complex64:  return static_cast<int64_t>(*reinterpret_cast<const float*>(p)); // Read the real component.
+        case MLOperatorTensorDataType::Complex128: return static_cast<int64_t>(*reinterpret_cast<const double*>(p)); // Read the real component.
+        case MLOperatorTensorDataType::Undefined:
+        default:
+            ML_INVALID_ARGUMENT("Unknown MLOperatorTensorDataType.");
+            return 0;
+        };
+    }
+    #pragma warning(pop)
+
+    #pragma warning(push)
+    #pragma warning(disable:4702)
+    double CastToFloat64(MLOperatorTensorDataType tensorDataType, const void* p)
+    {
+        switch (tensorDataType)
+        {
+        case MLOperatorTensorDataType::Float:      return static_cast<double>(*reinterpret_cast<const float*>(p));
+        case MLOperatorTensorDataType::UInt8:      return static_cast<double>(*reinterpret_cast<const uint8_t*>(p));
+        case MLOperatorTensorDataType::Int8:       return static_cast<double>(*reinterpret_cast<const int8_t*>(p));
+        case MLOperatorTensorDataType::UInt16:     return static_cast<double>(*reinterpret_cast<const uint16_t*>(p));
+        case MLOperatorTensorDataType::Int16:      return static_cast<double>(*reinterpret_cast<const int16_t*>(p));
+        case MLOperatorTensorDataType::Int32:      return static_cast<double>(*reinterpret_cast<const int32_t*>(p));
+        case MLOperatorTensorDataType::Int64:      return static_cast<double>(*reinterpret_cast<const int64_t*>(p));
+        case MLOperatorTensorDataType::String:     ML_INVALID_ARGUMENT("MLOperatorTensorDataType::String type is unsupported for reading as an integer.");
+        case MLOperatorTensorDataType::Bool:       return static_cast<double>(*reinterpret_cast<const uint8_t*>(p));
+        case MLOperatorTensorDataType::Float16:    return static_cast<double>(CastFloat16ToFloat32(*reinterpret_cast<const uint16_t*>(p)));
+        case MLOperatorTensorDataType::Double:     return static_cast<double>(*reinterpret_cast<const double*>(p));
+        case MLOperatorTensorDataType::UInt32:     return static_cast<double>(*reinterpret_cast<const uint32_t*>(p));
+        case MLOperatorTensorDataType::UInt64:     return static_cast<double>(*reinterpret_cast<const uint64_t*>(p));
+        case MLOperatorTensorDataType::Complex64:  return static_cast<double>(*reinterpret_cast<const float*>(p)); // Read the real component.
+        case MLOperatorTensorDataType::Complex128: return static_cast<double>(*reinterpret_cast<const double*>(p)); // Read the real component.
+        case MLOperatorTensorDataType::Undefined:
+        default:
+            ML_INVALID_ARGUMENT("Unknown MLOperatorTensorDataType.");
+            return 0.0;
+        };
+    }
+    #pragma warning(pop)
 
     void ReadCpuLocalTensorIntoInt32(
         const MLOperatorTensor& tensor,
@@ -86,13 +174,56 @@ namespace OperatorHelper
 
         const std::vector<uint32_t>& tensorDimensions = tensor.GetShape();
         const uint32_t elementCount = ComputeElementCountFromDimensions(tensorDimensions);
+        result.resize(elementCount);
 
         switch (tensor.GetTensorDataType())
         {
-        case MLOperatorTensorDataType::Float:
+        case MLOperatorTensorDataType::Float16:
+            {
+                const uint16_t* data = reinterpret_cast<const uint16_t*>(tensor.GetByteData());
+                std::transform(data, data + elementCount, result.begin(), CastFloat16ToFloat32);
+            }
+            break;
+
+        case MLOperatorTensorDataType::/*Float32*/Float:
             {
                 const float* data = tensor.GetData<float>();
                 result.assign(data, data + elementCount);
+            }
+            break;
+
+        case MLOperatorTensorDataType::/*Float64*/Double:
+            {
+                const double* data = tensor.GetData<double>();
+                std::transform(data, data + elementCount, result.begin(), [](auto v) {return static_cast<float>(v); });
+            }
+            break;
+
+        case MLOperatorTensorDataType::Int32:
+            {
+                const int32_t* data = tensor.GetData<int32_t>();
+                std::transform(data, data + elementCount, result.begin(), [](auto v) {return static_cast<float>(v); });
+            }
+            break;
+
+        case MLOperatorTensorDataType::UInt32:
+            {
+                const uint32_t* data = tensor.GetData<uint32_t>();
+                std::transform(data, data + elementCount, result.begin(), [](auto v) {return static_cast<float>(v); });
+            }
+            break;
+
+        case MLOperatorTensorDataType::Int64:
+            {
+                const int64_t* data = tensor.GetData<int64_t>();
+                std::transform(data, data + elementCount, result.begin(), [](auto v) {return static_cast<float>(v); });
+            }
+            break;
+
+        case MLOperatorTensorDataType::UInt64:
+            {
+                const uint64_t* data = tensor.GetData<uint64_t>();
+                std::transform(data, data + elementCount, result.begin(), [](auto v) {return static_cast<float>(v); });
             }
             break;
 
@@ -111,84 +242,6 @@ namespace OperatorHelper
         {
             outputDimensions.push_back(gsl::narrow_cast<uint32_t>(std::clamp<int64_t>(dim, INT32_MIN, INT32_MAX)));
         }
-    }
-
-    float CastFloat16ToFloat32(uint16_t input)
-    {
-        // Promote float16m10e5s1 to float32m23e8s1.
-        // Note this works on machines of both ascending and descending byte
-        // endianness, so long as float32 and uint32 endianness match.
-        // It does not work for a few abberant architectures which store
-        // float32 and uint32 with opposite endianness.
-
-        const uint32_t float16unsignedValueMask = 0x7FFF;
-        const uint32_t float16signMask          = 0x8000;
-        const uint32_t float16exponentMask      = 0x7C00;
-        const uint32_t float32exponentMask      = 0x7F800000;
-
-        uint32_t float16unsignedValue = input & float16unsignedValueMask;
-        uint32_t float16sign          = input & float16signMask;
-        uint32_t float16exponent      = input & float16exponentMask;
-
-        // Shift mantissa bits left (23 - 10 = 13).
-        // Adjust exponent bias (127 - 15 = 112, 112 << 23 == 0x38000000).
-        // Move sign bit to float32 MSB (32 - 16 = 16).
-        uint32_t float32unsignedValue = (float16unsignedValue << 13) + 0x38000000;
-        uint32_t float32sign          = float16sign << 16;
-        uint32_t result               = (float16exponent == 0) ? (float32unsignedValue & ~float32exponentMask) : // Denormal
-                                        (float16exponent == float16exponentMask) ? (float32unsignedValue | float32exponentMask) : // Infinity
-                                        float32unsignedValue; // Any other normal value
-        result |= float32sign;
-
-        return reinterpret_cast<float&>(result);
-    }
-
-    int64_t CastToInt64(MLOperatorTensorDataType tensorDataType, const void* p)
-    {
-        switch (tensorDataType)
-        {
-        case MLOperatorTensorDataType::Float:      return static_cast<int64_t>(*reinterpret_cast<const float*>(p));
-        case MLOperatorTensorDataType::UInt8:      return static_cast<int64_t>(*reinterpret_cast<const uint8_t*>(p));
-        case MLOperatorTensorDataType::Int8:       return static_cast<int64_t>(*reinterpret_cast<const int8_t*>(p));
-        case MLOperatorTensorDataType::UInt16:     return static_cast<int64_t>(*reinterpret_cast<const uint16_t*>(p));
-        case MLOperatorTensorDataType::Int16:      return static_cast<int64_t>(*reinterpret_cast<const int16_t*>(p));
-        case MLOperatorTensorDataType::Int32:      return static_cast<int64_t>(*reinterpret_cast<const int32_t*>(p));
-        case MLOperatorTensorDataType::Int64:      return static_cast<int64_t>(*reinterpret_cast<const int64_t*>(p));
-        case MLOperatorTensorDataType::String:     ML_INVALID_ARGUMENT("MLOperatorTensorDataType::String type is unsupported for reading as an integer.");
-        case MLOperatorTensorDataType::Bool:       return static_cast<int64_t>(*reinterpret_cast<const uint8_t*>(p));
-        case MLOperatorTensorDataType::Float16:    ML_INVALID_ARGUMENT("MLOperatorTensorDataType::Float16 type is unsupported for reading as an integer.");
-        case MLOperatorTensorDataType::Double:     return static_cast<int64_t>(*reinterpret_cast<const double*>(p));
-        case MLOperatorTensorDataType::UInt32:     return static_cast<int64_t>(*reinterpret_cast<const uint32_t*>(p));
-        case MLOperatorTensorDataType::UInt64:     return static_cast<int64_t>(*reinterpret_cast<const uint64_t*>(p));
-        case MLOperatorTensorDataType::Complex64:  return static_cast<int64_t>(*reinterpret_cast<const float*>(p)); // Read the real component.
-        case MLOperatorTensorDataType::Complex128: return static_cast<int64_t>(*reinterpret_cast<const double*>(p)); // Read the real component.
-        case MLOperatorTensorDataType::Undefined:
-        default: ML_INVALID_ARGUMENT("Unknown MLOperatorTensorDataType.");
-        };
-    }
-
-    double CastToFloat64(MLOperatorTensorDataType tensorDataType, const void* p)
-    {
-        switch (tensorDataType)
-        {
-        case MLOperatorTensorDataType::Float:      return static_cast<double>(*reinterpret_cast<const float*>(p));
-        case MLOperatorTensorDataType::UInt8:      return static_cast<double>(*reinterpret_cast<const uint8_t*>(p));
-        case MLOperatorTensorDataType::Int8:       return static_cast<double>(*reinterpret_cast<const int8_t*>(p));
-        case MLOperatorTensorDataType::UInt16:     return static_cast<double>(*reinterpret_cast<const uint16_t*>(p));
-        case MLOperatorTensorDataType::Int16:      return static_cast<double>(*reinterpret_cast<const int16_t*>(p));
-        case MLOperatorTensorDataType::Int32:      return static_cast<double>(*reinterpret_cast<const int32_t*>(p));
-        case MLOperatorTensorDataType::Int64:      return static_cast<double>(*reinterpret_cast<const int64_t*>(p));
-        case MLOperatorTensorDataType::String:     ML_INVALID_ARGUMENT("MLOperatorTensorDataType::String type is unsupported for reading as an integer.");
-        case MLOperatorTensorDataType::Bool:       return static_cast<double>(*reinterpret_cast<const uint8_t*>(p));
-        case MLOperatorTensorDataType::Float16:    return static_cast<double>(CastFloat16ToFloat32(*reinterpret_cast<const uint16_t*>(p)));
-        case MLOperatorTensorDataType::Double:     return static_cast<double>(*reinterpret_cast<const double*>(p));
-        case MLOperatorTensorDataType::UInt32:     return static_cast<double>(*reinterpret_cast<const uint32_t*>(p));
-        case MLOperatorTensorDataType::UInt64:     return static_cast<double>(*reinterpret_cast<const uint64_t*>(p));
-        case MLOperatorTensorDataType::Complex64:  return static_cast<double>(*reinterpret_cast<const float*>(p)); // Read the real component.
-        case MLOperatorTensorDataType::Complex128: return static_cast<double>(*reinterpret_cast<const double*>(p)); // Read the real component.
-        case MLOperatorTensorDataType::Undefined:
-        default: ML_INVALID_ARGUMENT("Unknown MLOperatorTensorDataType.");
-        };
     }
 
     int64_t IsFloatDataType(MLOperatorTensorDataType tensorDataType)
@@ -990,8 +1043,8 @@ namespace OperatorHelper
         }
         else if (m_components.size() == 2)
         {
-            auto& inputLabels = m_components[0].GetLabels(m_labelIndices);
-            auto& outputLabels = m_components[1].GetLabels(m_labelIndices);
+            auto inputLabels = m_components[0].GetLabels(m_labelIndices);
+            auto outputLabels = m_components[1].GetLabels(m_labelIndices);
             if (inputLabels.size() == outputLabels.size())
             {
                 // Check identity.
@@ -1015,9 +1068,9 @@ namespace OperatorHelper
         else if (m_components.size() == 3)
         {
             // If all components have the same size and label order, then apply elementwise multiplication.
-            auto& inputALabels = m_components[0].GetLabels(m_labelIndices);
-            auto& inputBLabels = m_components[1].GetLabels(m_labelIndices);
-            auto& outputLabels = m_components[2].GetLabels(m_labelIndices);
+            auto inputALabels = m_components[0].GetLabels(m_labelIndices);
+            auto inputBLabels = m_components[1].GetLabels(m_labelIndices);
+            auto outputLabels = m_components[2].GetLabels(m_labelIndices);
             if (equals(inputALabels, outputLabels) && equals(inputBLabels, outputLabels))
             {
                 // Handles: "i,i->i", "ij,ij->ij", "ijk,ijk->ijk", "ijkl,ijkl->ijkl" ...
@@ -1079,7 +1132,7 @@ namespace OperatorHelper
         ML_CHECK_VALID_ARGUMENT(inputCount + 1 == m_components.size(), "Mismatch between input tensor count and string equation component count.");
         ML_CHECK_VALID_ARGUMENT(outputCount == 1, "EinSum expects exactly 1 output tensor.");
 
-        std::vector<uint32_t> labelSizes(m_labelIndices.size(), INT_MIN);
+        std::vector<uint32_t> labelSizes(m_labelIndices.size(), UINT_MAX);
 
         // Read every input tensor, comparing labels to ensure consistent sizes from the equation parsed earlier.
         for (uint32_t i = 0; i < inputCount; ++i)
@@ -1100,7 +1153,7 @@ namespace OperatorHelper
                 uint32_t labelIndex = labelIndices[j];
                 assert(labelIndex < labelSizes.size());
 
-                if (labelSizes[labelIndex] == INT_MIN)
+                if (labelSizes[labelIndex] == UINT_MAX)
                 {
                     labelSizes[labelIndex] = dimensionSize;
                 }
@@ -1120,7 +1173,7 @@ namespace OperatorHelper
             outputDimensions.push_back(labelSizes[labelIndex]);
         }
 
-        return { std::move(EdgeShapes(outputDimensions)) };
+        return { EdgeShapes(outputDimensions) };
     }
 
     bool EinSumHelper::IsMatMulOperatorType() const noexcept
@@ -1220,7 +1273,7 @@ namespace OperatorHelper
         }
         case 1:
         {
-            return { std::move(EdgeShapes(outputDimensionsSequence)) };
+            return { EdgeShapes(outputDimensionsSequence) };
         }
         case 2:
         {
@@ -1229,7 +1282,7 @@ namespace OperatorHelper
                 EdgeShapes(outputDimensionsSingle)
             };
 
-            return std::move(outputShapes);
+            return outputShapes;
         }
         case 3:
         {
@@ -1239,7 +1292,7 @@ namespace OperatorHelper
                 EdgeShapes(cellOutputDimensionsSingle)
             };
 
-            return std::move(outputShapes);
+            return outputShapes;
         }
         default:
         {
@@ -1282,14 +1335,14 @@ namespace OperatorHelper
             auto inputShape = shapeInfo.GetInputTensorShape(i);
             for (size_t j = 0; j < outputShape.size(); ++j)
             {
-                if (m_axis == j)
+                if (static_cast<size_t>(m_axis) == j)
                 {
                     outputShape[j] += inputShape[j];
                 }
             }
         }
 
-        return { std::move(EdgeShapes(outputShape)) };
+        return { EdgeShapes(outputShape) };
     }
 
     void CropHelper::Initialize(
@@ -1332,7 +1385,7 @@ namespace OperatorHelper
             m_sizes[Width]
         };
 
-        return { std::move(EdgeShapes(outputDimensions)) };
+        return { EdgeShapes(outputDimensions) };
     }
 
     std::vector<EdgeShapes> DepthToSpaceHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
@@ -1350,7 +1403,7 @@ namespace OperatorHelper
             inputDimensions[W] * m_blockSize,
         };
 
-        return { std::move(EdgeShapes(outputDimensions)) };
+        return { EdgeShapes(outputDimensions) };
     }
 
     void FlattenHelper::Initialize(
@@ -1382,7 +1435,7 @@ namespace OperatorHelper
         DimensionType elementsFromAxis = ComputeElementCountFromDimensions(outputDimensionsSpan.subspan(m_axis, inputDimensions.size() - m_axis));
         outputDimensions.assign({ elementsToAxis, elementsFromAxis });
 
-        return { std::move(outputDimensions) };
+        return { outputDimensions };
     }
 
     std::vector<EdgeShapes> PoolingHelperBase::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
@@ -1416,7 +1469,7 @@ namespace OperatorHelper
             static_cast<DimensionType>(m_outputSizeW),
         };
 
-        return { std::move(EdgeShapes(outputDimensions)) };
+        return { EdgeShapes(outputDimensions) };
     }
 
     std::vector<EdgeShapes> RoiAlignHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
@@ -1433,7 +1486,7 @@ namespace OperatorHelper
             static_cast<DimensionType>(m_outputSizeW),
         };
 
-        return { std::move(EdgeShapes(outputDimensions)) };
+        return { EdgeShapes(outputDimensions) };
     }
 
     void UnpoolingHelper::Initialize()
@@ -1471,7 +1524,7 @@ namespace OperatorHelper
             outputDimensions = m_inferredOutputDimensions;
         }
 
-        return { std::move(outputDimensions) };
+        return { outputDimensions };
     }
 
     void SqueezeHelper::Initialize(
@@ -1514,7 +1567,7 @@ namespace OperatorHelper
 
         outputDimensions.resize(newOutputDimCount);
 
-        return { std::move(outputDimensions) };
+        return { outputDimensions };
     }
 
     void UnsqueezeHelper::Initialize(
@@ -1542,7 +1595,7 @@ namespace OperatorHelper
             outputDimensions.insert(outputDimensions.begin() + m_axes[i], 1);
         }
 
-        return { std::move(outputDimensions) };
+        return { outputDimensions };
     }
     
     std::vector<EdgeShapes> SpaceToDepthHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
@@ -1560,7 +1613,7 @@ namespace OperatorHelper
             inputDimensions[W] / m_blockSize,
         };
 
-        return { std::move(EdgeShapes(outputDimensions)) };
+        return { EdgeShapes(outputDimensions) };
     }
         
     std::vector<EdgeShapes> ReshapeHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
@@ -1605,7 +1658,7 @@ namespace OperatorHelper
             outElementCount *= outputDimensions[inferDim];
         }
         
-        return { std::move(EdgeShapes(outputDimensions)) };
+        return { EdgeShapes(outputDimensions) };
     }
 
     std::vector<EdgeShapes> ExpandHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
@@ -1631,7 +1684,7 @@ namespace OperatorHelper
         // Determine the broadcasted input shape.
         outputDimensions = OperatorHelper::BroadcastTensorShape(actualInputTensorShape, desiredTensorShape);
         
-        return { std::move(EdgeShapes(outputDimensions)) };
+        return { EdgeShapes(outputDimensions) };
     }
     
     std::vector<EdgeShapes> ConstantOfShapeHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
@@ -1653,12 +1706,12 @@ namespace OperatorHelper
         std::vector<uint32_t> desiredTensorShape;
         DowncastDimensions(gsl::make_span(shapeData, dimCount), /*out*/ desiredTensorShape);
 
-        return { std::move(EdgeShapes(desiredTensorShape)) };
+        return { EdgeShapes(desiredTensorShape) };
     }
 
     std::vector<EdgeShapes> TileHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
     {
-        return { std::move(EdgeShapes(m_outputDimensions)) };
+        return { EdgeShapes(m_outputDimensions) };
     }
 
     void ResizeHelper::Initialize(
@@ -1746,7 +1799,7 @@ namespace OperatorHelper
 
     std::vector<EdgeShapes> OneHotHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
     {
-        return { std::move(EdgeShapes(m_outputDimensions)) };
+        return { EdgeShapes(m_outputDimensions) };
     }
 
 } // namespace OperatorHelper

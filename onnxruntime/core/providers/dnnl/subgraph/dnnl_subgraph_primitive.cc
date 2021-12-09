@@ -6,7 +6,9 @@
 #include "dnnl_batchnorm.h"
 #include "dnnl_binary.h"
 #include "dnnl_conv.h"
+#include "dnnl_dynamicquantizelinear.h"
 #include "dnnl_elementwise.h"
+#include "dnnl_gelu.h"
 #include "dnnl_gemm.h"
 #include "dnnl_lrn.h"
 #include "dnnl_matmul.h"
@@ -17,8 +19,10 @@
 #include "dnnl_reshape.h"
 #include "dnnl_softmax.h"
 #include "dnnl_softmaxgrad.h"
+#include "dnnl_squeeze.h"
 #include "dnnl_sum.h"
 #include "dnnl_transpose.h"
+#include "dnnl_unsqueeze.h"
 
 #if defined(ENABLE_TRAINING)
 #include "dnnl_convgrad.h"
@@ -45,20 +49,29 @@ void DnnlSubgraphPrimitive::AddKernels() {
   std::unordered_set<std::string> binary_ops = {"Add", "Div", "Mul", "Sub"};
   std::unordered_set<std::string> elementwise_ops = {"Abs", "Elu", "Exp", "LeakyRelu", "Log", "Relu", "Round", "Sigmoid", "Softplus", "Sqrt", "Tanh"};
   std::unordered_set<std::string> pool_ops = {"AveragePool", "GlobalAveragePool", "GlobalMaxPool", "MaxPool"};
-  for (auto& node : subgraph_->GetDnnlNodes()) {
+
+  auto indices = subgraph_->GetDnnlNodesInTopologicalOrder();
+  for (auto index : indices) {
+    auto& node = *(subgraph_->GetDnnlNode(index));
     if (node.OpType() == "BatchNormalization") {
       DnnlBatchNorm().CreatePrimitive(*this, node);
     } else if (binary_ops.count(node.OpType())) {
       DnnlBinary().CreatePrimitive(*this, node);
-    } else if (node.OpType() == "Conv") {
+    } else if (node.OpType() == "Conv" || node.OpType() == "ConvRelu") {
       DnnlConv().CreatePrimitive(*this, node);
+    } else if (node.OpType() == "DynamicQuantizeLinear") {
+      DnnlDynamicQuantizeLinear().CreatePrimitive(*this, node);
     } else if (elementwise_ops.count(node.OpType())) {
       DnnlElementwise().CreatePrimitive(*this, node);
+    } else if (node.OpType() == "FastGelu"){
+      DnnlGelu().CreatePrimitive(*this, node);
+    } else if (node.OpType() == "Gelu" || node.OpType() == "BiasGelu") {
+      DnnlGelu().CreatePrimitive(*this, node);
     } else if (node.OpType() == "Gemm") {
       DnnlGemm().CreatePrimitive(*this, node);
     } else if (node.OpType() == "LRN") {
       DnnlLrn().CreatePrimitive(*this, node);
-    } else if (node.OpType() == "MatMul") {
+    } else if (node.OpType() == "MatMul" || node.OpType() == "MatMulAdd") {
       DnnlMatMul().CreatePrimitive(*this, node);
     } else if (node.OpType() == "MatMulInteger") {
       DnnlMatMulInteger().CreatePrimitive(*this, node);
@@ -72,10 +85,14 @@ void DnnlSubgraphPrimitive::AddKernels() {
       DnnlReshape().CreatePrimitive(*this, node);
     } else if (node.OpType() == "Softmax") {
       DnnlSoftmax().CreatePrimitive(*this, node);
+    } else if (node.OpType() == "Squeeze") {
+      DnnlSqueeze().CreatePrimitive(*this, node);
     } else if (node.OpType() == "Sum") {
       DnnlSum().CreatePrimitive(*this, node);
     } else if (node.OpType() == "Transpose") {
       DnnlTranspose().CreatePrimitive(*this, node);
+    } else if (node.OpType() == "Unsqueeze") {
+      DnnlUnsqueeze().CreatePrimitive(*this, node);
 #if defined(ENABLE_TRAINING)
     } else if (node.OpType() == "AveragePoolGrad" || node.OpType() == "MaxPoolGrad") {
       DnnlPoolGrad().CreatePrimitive(*this, node);
@@ -105,6 +122,10 @@ DnnlSubgraphPrimitive::DnnlSubgraphPrimitive(ort_dnnl::DnnlSubgraph& dnnl_subgra
 
 bool DnnlSubgraphPrimitive::IsDynamic() {
   return subgraph_->IsDynamic();
+}
+
+bool DnnlSubgraphPrimitive::IsScalar(const DnnlTensor& tensor) {
+  return Contains(input_is_scalar_, tensor.Name());
 }
 
 void DnnlSubgraphPrimitive::Compile(const std::unordered_map<std::string, OnnxTensorData>& inputs) {
@@ -144,15 +165,17 @@ void DnnlSubgraphPrimitive::Compile(const std::unordered_map<std::string, OnnxTe
   net_.clear();
   net_args_.clear();
   reshapes_.clear();
+  scalar_outputs_.clear();
   //initializer should not be cleared upon recompile
   //initializers_.clear();
 
-  for (auto& nodearg : subgraph_->GetDnnlInputs()) {
-    auto dnnl_tensor_name = nodearg.Name();
-    auto dnnl_data_type = nodearg.Type();
+  for (auto nodearg : subgraph_->GetDnnlInputs()) {
+    auto dnnl_tensor_name = nodearg->Name();
+    auto dnnl_data_type = nodearg->Type();
     dnnl::memory::dims dnnl_dims = inputs.at(dnnl_tensor_name).tensor_info.shape;
     if (dnnl_dims.size() == 0) {
       dnnl_dims.push_back(1);
+      input_is_scalar_.insert(dnnl_tensor_name);
     }
     auto dnnl_format = GetDnnlFormat(dnnl_dims.size());
     auto input_md = dnnl::memory::desc(dnnl_dims, dnnl_data_type, dnnl_format);
@@ -242,8 +265,8 @@ dnnl::stream DnnlSubgraphPrimitive::GetStream() {
 }
 
 void DnnlSubgraphPrimitive::AddInitializers() {
-  for (auto& nodearg : subgraph_->GetDnnlInitializers()) {
-    auto dnnl_tensor_name = nodearg.Name();
+  for (auto nodearg : subgraph_->GetDnnlInitializers()) {
+    auto dnnl_tensor_name = nodearg->Name();
     if (!Contains(initializers_, dnnl_tensor_name)) {
       initializers_.insert(std::pair<std::string, std::vector<dnnl::memory> >(dnnl_tensor_name, std::vector<dnnl::memory>()));
     }
@@ -251,9 +274,9 @@ void DnnlSubgraphPrimitive::AddInitializers() {
 }
 
 void DnnlSubgraphPrimitive::AddOutputs() {
-  for (auto& tensor : subgraph_->GetDnnlOutputs()) {
-    auto dnnl_data_type = tensor.Type();
-    auto dnnl_tensor_name = tensor.Name();
+  for (auto tensor : subgraph_->GetDnnlOutputs()) {
+    auto dnnl_data_type = tensor->Type();
+    auto dnnl_tensor_name = tensor->Name();
     auto engine = GetCPUEngine();
     auto output_mem_dnnl = GetMemory(dnnl_tensor_name);
     auto output_md = dnnl::memory::desc(output_mem_dnnl.get_desc().dims(), dnnl_data_type, GetDnnlFormat(output_mem_dnnl.get_desc().dims().size()));
@@ -297,9 +320,12 @@ bool DnnlSubgraphPrimitive::HasMemory(std::string memory_name, dnnl::memory::des
   return false;
 }
 
-void DnnlSubgraphPrimitive::SetMemory(DnnlTensor tensor, dnnl::memory mem, bool always_copy_output) {
+void DnnlSubgraphPrimitive::SetMemory(DnnlTensor tensor, dnnl::memory mem, bool always_copy_output, bool is_scalar) {
   if (always_copy_output) {
     outputs_are_always_copied_.insert(tensor.Name());
+  }
+  if (is_scalar) {
+    scalar_outputs_.insert(tensor.Name());
   }
   SetMemory(tensor.Name(), mem);
 }
@@ -511,6 +537,10 @@ onnxruntime::common::Status DnnlSubgraphPrimitive::Predict(const std::unordered_
   }
 
   return Status::OK();
+}
+
+bool DnnlSubgraphPrimitive::IsScalarOutput(const std::string& name) {
+  return Contains(scalar_outputs_,name);
 }
 
 dnnl::memory::desc DnnlSubgraphPrimitive::GetOutputInfo(std::string name) {

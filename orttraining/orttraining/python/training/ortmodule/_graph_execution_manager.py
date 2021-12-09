@@ -87,12 +87,16 @@ class GraphExecutionManager(GraphExecutionInterface):
         self._onnx_models = _onnx_models.ONNXModels()
 
         # Model after inference optimization or gradient building.
-        self._optimized_onnx_model = None
         self._graph_builder = None
         self._graph_info = None
         self._graph_initializer_names = None
         self._graph_initializer_names_to_train = None
         self._graph_initializers = None
+
+        # Update constant ONNX_OPSET_VERSION with env var ORTMODULE_ONNX_OPSET_VERSION
+        # if defined.
+        ortmodule.ONNX_OPSET_VERSION = ortmodule._defined_from_envvar(
+            'ORTMODULE_ONNX_OPSET_VERSION', ortmodule.ONNX_OPSET_VERSION, warn=True)
 
         # TrainingAgent or InferenceAgent
         self._execution_agent = None
@@ -108,8 +112,8 @@ class GraphExecutionManager(GraphExecutionInterface):
 
         # Graph transformer config
         # Specify cast propagation strategy. Currently three strategies are available, NONE, INSERT-AND-REDUCE and FLOOD-FILL
-        # The default is NONE, which implies the transformer does no cast-propagation transformation.
-        self._propagate_cast_ops_strategy = C.PropagateCastOpsStrategy.NONE
+        # The default is FLOOD_FILL, expand FP16 computation regions in the graph using allowed opcodes for the given level.
+        self._propagate_cast_ops_strategy = C.PropagateCastOpsStrategy.FLOOD_FILL
         # Optimize by moving Cast operations if propagate_cast_ops_level is non-negative.
         # - If the _propagate_cast_ops_level is set to zero, then the transformation considers only the opcodes specified by _propagate_cast_ops_allow
         #   as "FP16 safe", in order to insert/(re)move cast operations before/after to perform such operations in reduced (16-bit) precision.
@@ -147,8 +151,8 @@ class GraphExecutionManager(GraphExecutionInterface):
         self._module_output_schema = None
         self._device = _utils.get_device_from_module(module)
 
-        self._module_parameters = inspect.signature(
-            self._original_module.forward).parameters.values()
+        self._module_parameters = list(inspect.signature(
+            self._original_module.forward).parameters.values())
 
         # TODO: remove after PyTorch ONNX exporter supports VAR_KEYWORD parameters.
         for input_parameter in self._module_parameters:
@@ -270,6 +274,11 @@ class GraphExecutionManager(GraphExecutionInterface):
         elif self._device.type == 'cpu':
             providers = ["CPUExecutionProvider"]
             provider_options = [{}]
+        elif self._device.type == 'ort':
+            provider_info = C.get_ort_device_provider_info(self._device.index)
+            assert len(provider_info.keys()) == 1
+            providers = list(provider_info.keys())
+            provider_options = [provider_info[providers[0]]]
 
         session_options = onnxruntime.SessionOptions()
         session_options.enable_mem_pattern = False
@@ -455,3 +464,25 @@ class GraphExecutionManager(GraphExecutionInterface):
     def signal_model_changed(self):
         """Signals the execution manager to re-export the model on the next forward call"""
         self._original_model_has_changed = True
+
+    def __getstate__(self):
+        state = copy.copy(self.__dict__)
+        # Remove any re-contructible/pybound object from the state
+        serialization_deny_list = [
+            "_onnx_models",
+            "_graph_builder",
+            "_graph_info",
+            "_execution_agent",
+            "_torch_alloc",
+            "_torch_free",
+            "_torch_empty_cache"
+        ]
+        for attribute_name in serialization_deny_list:
+            del state[attribute_name]
+
+        return state
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+
+        _utils.reinitialize_graph_execution_manager(self)
