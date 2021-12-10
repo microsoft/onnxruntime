@@ -196,7 +196,7 @@ def get_qmin_qmax_for_qType(qType, reduce_range=False, for_weight=False):
         if for_weight:
             (qmin, qmax) = (-64,64) if reduce_range else (-127,127)
         else:
-            (qmin, qmax) = (-65,64) if reduce_range else (-128,127)
+            (qmin, qmax) = (-64,64) if reduce_range else (-128,127)
     else:
         raise ValueError("Unexpected data type {} requested. Only INT8 and UINT8 are supported.".format(qType))
     return qmin, qmax
