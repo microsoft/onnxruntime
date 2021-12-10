@@ -2544,12 +2544,12 @@ TEST(InferenceSessionTests, AllocatorSharing_EnsureSessionsUseSameOrtCreatedAllo
   ASSERT_TRUE(st.IsOK());
   // create allocator to register with the env
   bool use_arena = true;
-#if !(defined(__amd64__) || defined(_M_AMD64) || defined(__aarch64__) || defined(_M_ARM64))
+#if !(defined(__amd64__) || defined(_M_AMD64) || defined(__aarch64__) || defined(_M_ARM64)) || defined(USE_MIMALLOC)
   use_arena = false;
 #endif
   OrtMemoryInfo mem_info{onnxruntime::CPU, use_arena ? OrtArenaAllocator : OrtDeviceAllocator};
   AllocatorCreationInfo device_info{
-      [mem_info](int) { return std::make_unique<TAllocator>(mem_info); },
+      [mem_info](int) { return std::make_unique<CPUAllocator>(mem_info); },
       0, use_arena};
 
   AllocatorPtr allocator_ptr = CreateAllocator(device_info);
@@ -2589,12 +2589,12 @@ TEST(InferenceSessionTests, AllocatorSharing_EnsureSessionsDontUseSameOrtCreated
   ASSERT_TRUE(st.IsOK());
   // create allocator to register with the env
   bool use_arena = true;
-#if !(defined(__amd64__) || defined(_M_AMD64) || defined(__aarch64__) || defined(_M_ARM64))
+#if !(defined(__amd64__) || defined(_M_AMD64) || defined(__aarch64__) || defined(_M_ARM64)) || defined(USE_MIMALLOC)
   use_arena = false;
 #endif
   OrtMemoryInfo mem_info{onnxruntime::CPU, use_arena ? OrtArenaAllocator : OrtDeviceAllocator};
   AllocatorCreationInfo device_info{
-      [mem_info](int) { return std::make_unique<TAllocator>(mem_info); },
+      [mem_info](int) { return std::make_unique<CPUAllocator>(mem_info); },
       0, use_arena};
 
   AllocatorPtr allocator_ptr = CreateAllocator(device_info);

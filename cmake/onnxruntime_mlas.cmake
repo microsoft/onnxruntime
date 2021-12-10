@@ -355,6 +355,16 @@ else()
           ${mlas_platform_srcs_sse2}
           ${mlas_platform_srcs_avx}
         )
+
+        # In r23, NDK remove __x86.get_pc_thunk.* from libatomic. Add our own
+        # implementation to avoid external dependency.
+        if(ANDROID)
+          set(mlas_platform_srcs
+            ${mlas_platform_srcs}
+            ${MLAS_SRC_DIR}/x86/x86.get_pc_thunk.S
+          )
+	endif()
+
         if(NOT ONNXRUNTIME_MLAS_MULTI_ARCH)
           set(MLAS_SOURCE_IS_NOT_SET 0)
         endif()
