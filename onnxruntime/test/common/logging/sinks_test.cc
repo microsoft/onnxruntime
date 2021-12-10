@@ -121,7 +121,10 @@ TEST(LoggingTests, TestFileSink) {
   CheckStringInFile(filename, message);
   DeleteFile(filename);
 }
-
+//TODO: fix the warnings
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(disable : 26400)
+#endif
 /// <summary>
 /// Tests that a composite_sink works correctly.
 /// </summary>
