@@ -350,6 +350,8 @@ class ORTGen:
 
       if in_place_param:
         assert(onnx_op.outputs.count == 1)
+        # TODO: This assumes that the first output corresponds to the first input.
+        # This may not work for more complicated ops.
         writer.writeline(f'{onnx_op.outputs}[0] = ort_input_{onnx_op.inputs[0]};')
 
       # Perform the invocation
