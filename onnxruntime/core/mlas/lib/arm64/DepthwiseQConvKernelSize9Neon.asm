@@ -49,7 +49,7 @@ Abstract:
 Routine Description:
 
     This routine is the inner kernel to compute a depthwise quantized convolution
-    on kernel size 9.
+    on kernel size 9 for U8S8.
 
 Arguments:
 
@@ -367,7 +367,7 @@ MlasConvSymDepthwiseKernelSize9_Exit
 Routine Description:
 
     This routine is the inner kernel to compute a depthwise quantized convolution
-    on kernel size 9.
+    on kernel size 9 for S8S8.
 
 Arguments:
 
