@@ -532,7 +532,6 @@ class ONNXQuantizer:
                 return None
             # dynamic mode
             # Scale and Zero Points not available for this input. Add nodes to dynamically compute it
-            # TODO: Support DynamicQuantizeLinear for s8 after onnxruntime have it.
             if self.fuse_dynamic_quant and qType == onnx_proto.TensorProto.UINT8:
                 scale_name = input_name + "_scale"
                 zp_name = input_name + "_zero_point"
