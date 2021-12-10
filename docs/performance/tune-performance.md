@@ -25,9 +25,9 @@ This document covers basic tools and knobs that can be leveraged to find the bes
 ### ONNX GO Live Tool
 {: .no_toc }
 
-The [ONNX Go Live "OLive" tool](https://github.com/microsoft/OLive) is an easy-to-use pipeline for converting models to ONNX and optimizing performance with ONNX Runtime. The tool can help identify the optimal runtime configuration to get the best performance on the target hardware for the model.
+The [ONNX Go Live "OLive" tool](https://github.com/microsoft/OLive) is a Python package that automates the process of accelerating models with ONNX Runtime(ORT). It contains two parts: (1) model conversion to ONNX with correctness checking (2) auto performance tuning with ORT. Users can run these two together through a single pipeline or run them independently as needed.
 
-As a quickstart, please see the notebooks: [Python](https://github.com/microsoft/OLive/blob/master/notebook/Convert_Models_and_Tune_Performance_with_OLive_Python_SDK.ipynb), [Docker images](https://github.com/microsoft/OLive/blob/master/notebook/Convert_Models_and_Tune_Performance_with_OLive_Docker_Images.ipynb)
+As a quickstart, please see the [notebook tutorials](https://github.com/microsoft/OLive/tree/master/notebook-tutorial) and [command line examples](https://github.com/microsoft/OLive/tree/master/cmd-example) 
 
 ### Profiling and Performance Report
 {: .no_toc }
