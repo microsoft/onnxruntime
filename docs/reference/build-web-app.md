@@ -33,7 +33,7 @@ This document explains the options and considerations for building a web applica
 
 3. Electron
 
-   Electron uses a frontend (based on chromium, technically a browser core) and a backend (based on Node.js). Examples are VSCode, Teams before 2021.
+   Electron uses a frontend (based on chromium, technically a browser core) and a backend (based on Node.js).
 
    If possible, use onnxruntime-node for inference in the backend, which is faster. Using onnxruntime-web in frontend is also an option (for security and compatibility concerns).
 
