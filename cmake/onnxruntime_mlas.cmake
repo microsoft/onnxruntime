@@ -363,7 +363,7 @@ else()
             ${mlas_platform_srcs}
             ${MLAS_SRC_DIR}/x86/x86.get_pc_thunk.S
           )
-	    endif()
+        endif()
 
         if(NOT ONNXRUNTIME_MLAS_MULTI_ARCH)
           set(MLAS_SOURCE_IS_NOT_SET 0)
@@ -458,10 +458,10 @@ else()
           list(APPEND ONNXRUNTIME_MLAS_LIBS onnxruntime_mlas_x86_64)
           set(mlas_platform_srcs )
         else()
-          set(MLAS_SOURCE_IS_NOT_SET 1)
+          set(MLAS_SOURCE_IS_NOT_SET 0)
         endif()
     endif()
-    if(MLAS_SOURCE_IS_NOT_SET)
+    if(NOT ONNXRUNTIME_MLAS_MULTI_ARCH AND MLAS_SOURCE_IS_NOT_SET)
         file(GLOB_RECURSE mlas_platform_srcs
           "${MLAS_SRC_DIR}/scalar/*.cpp")
     endif()
