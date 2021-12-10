@@ -11,32 +11,23 @@ namespace onnxruntime {
 IOBinding::IOBinding(const SessionState& session_state) : session_state_(session_state) {
 }
 
-static std::pair<bool, size_t> Contains(const std::vector<std::string>& names, const std::string& name) {
-  auto it = std::find(std::begin(names), std::end(names), name);
-  if (it == std::end(names)) {
-    return {false, 0};
-  }
-  return {true, it - std::begin(names)};
-}
-
 common::Status IOBinding::BindInput(const std::string& name, const OrtValue& ml_value) {
-  auto rc = Contains(feed_names_, name);
-
-  auto add_or_replace = [this, &name](const bool exists, size_t index, const OrtValue& value) {
-    if (exists) {
-      feeds_[index] = value;
-    } else {
-      feed_names_.push_back(name);
-      feeds_.push_back(value);
-    }
-  };
+  auto it = mapped_feed_names_.find(name);
+  size_t index;
+  if (it == mapped_feed_names_.end()) {
+    index = feed_names_.size();
+    mapped_feed_names_[name] = index;
+    feed_names_.push_back(name);
+    OrtValue new_mlvalue;
+    feeds_.push_back(new_mlvalue);
+  } else {
+    index = it->second;
+  }
 
   if (ml_value.IsTensor() || ml_value.IsSparseTensor()) {
-    OrtValue new_mlvalue;
-    ORT_RETURN_IF_ERROR(utils::CopyOneInputAcrossDevices(session_state_, name, ml_value, new_mlvalue));
-    add_or_replace(rc.first, rc.second, new_mlvalue);
+    ORT_RETURN_IF_ERROR(utils::CopyOneInputAcrossDevices(session_state_, name, ml_value, feeds_[index]));
   } else {
-    add_or_replace(rc.first, rc.second, ml_value);
+    feeds_[index] = ml_value;
   }
 
   return Status::OK();
@@ -45,6 +36,7 @@ common::Status IOBinding::BindInput(const std::string& name, const OrtValue& ml_
 void IOBinding::ClearInputs() {
   feed_names_.clear();
   feeds_.clear();
+  mapped_feed_names_.clear();
 }
 
 static common::Status SyncProviders(const SessionState::NameNodeInfoMapType& node_info_map,
@@ -88,11 +80,13 @@ common::Status IOBinding::BindOutput(const std::string& name, OrtDevice device) 
 }
 
 common::Status IOBinding::BindOutputImpl(const std::string& name, const OrtValue& ml_value, OrtDevice device) {
-  auto rc = Contains(output_names_, name);
-  if (rc.first) {
-    outputs_[rc.second] = ml_value;
-    outputs_device_info_[rc.second] = device;
+  auto it = mapped_output_names_.find(name);
+  if (it != mapped_output_names_.end()) {
+    outputs_[it->second] = ml_value;
+    outputs_device_info_[it->second] = device;
   } else {
+    size_t index = output_names_.size();
+    mapped_output_names_[name] = index;
     output_names_.push_back(name);
     outputs_.push_back(ml_value);
     outputs_device_info_.push_back(device);
@@ -105,6 +99,7 @@ void IOBinding::ClearOutputs() {
   output_names_.clear();
   outputs_.clear();
   outputs_device_info_.clear();
+  mapped_feed_names_.clear();
 }
 
 const std::vector<std::string>& IOBinding::GetOutputNames() const { return output_names_; }
