@@ -239,9 +239,7 @@ ONNX_CPU_OPERATOR_KERNEL(
           .TypeConstraint("T4", DataTypeImpl::GetTensorType<int32_t>()),          \
       QLinearConv<act_type>);
 
-#if defined(MLAS_TARGET_ARM_ANY)
 REGISTER_QLINEARCONV_TYPED_KERNEL(kOnnxDomain, 10, int8_t, int8_t);
-#endif
 
 #ifndef DISABLE_CONTRIB_OPS
 
@@ -261,9 +259,7 @@ ONNX_OPERATOR_KERNEL_EX(
         .TypeConstraint("T4", DataTypeImpl::GetTensorType<int32_t>()),
     QLinearConv<uint8_t>);
 
-#if defined(MLAS_TARGET_ARM_ANY)
 REGISTER_QLINEARCONV_TYPED_KERNEL(kMSDomain, 1, int8_t, int8_t);
-#endif
 
 }  // namespace contrib
 

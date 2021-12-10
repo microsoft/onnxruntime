@@ -36,9 +36,7 @@ ONNX_OPERATOR_KERNEL_EX(
           .TypeConstraint("T3", DataTypeImpl::GetTensorType<act_type>()),   \
       QLinearMatMul);
 
-#if defined(MLAS_TARGET_ARM_ANY)
 REGISTER_QLINEARMATMUL_TYPED_KERNEL(int8_t, int8_t);
-#endif
 
 Status QLinearMatMul::Compute(OpKernelContext* ctx) const {
   const auto* a = ctx->Input<Tensor>(IN_A);
