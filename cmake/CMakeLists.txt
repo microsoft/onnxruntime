@@ -97,6 +97,7 @@ option(onnxruntime_ARMNN_RELU_USE_CPU "Use the CPU implementation for the Relu o
 option(onnxruntime_ARMNN_BN_USE_CPU "Use the CPU implementation for the Batch Normalization operator for the ArmNN EP" ON)
 option(onnxruntime_ENABLE_INSTRUMENT "Enable Instrument with Event Tracing for Windows (ETW)" OFF)
 option(onnxruntime_USE_TELEMETRY "Build with Telemetry" OFF)
+option(onnxruntime_USE_MIMALLOC "Override new/delete and arena allocator with mimalloc" OFF)
 #The onnxruntime_PREFER_SYSTEM_LIB is mainly designed for package managers like apt/yum/vcpkg.
 #Please note, by default Protobuf_USE_STATIC_LIBS is OFF but it's recommended to turn it ON on Windows. You should set it properly when onnxruntime_PREFER_SYSTEM_LIB is ON otherwise you'll hit linkage errors.
 #If you have already installed protobuf(or the others) in your system at the default system paths(like /usr/include), then it's better to set onnxruntime_PREFER_SYSTEM_LIB ON. Otherwise onnxruntime may see two different protobuf versions and we won't know which one will be used, the worst case could be onnxruntime picked up header files from one of them but the binaries from the other one.
@@ -117,6 +118,7 @@ cmake_dependent_option(onnxruntime_DISABLE_EXCEPTIONS "Disable exception handlin
 option(onnxruntime_EXTENDED_MINIMAL_BUILD "onnxruntime_MINIMAL_BUILD with support for execution providers that compile kernels." OFF)
 option(onnxruntime_MINIMAL_BUILD_CUSTOM_OPS "Add custom operator kernels support to a minimal build." OFF)
 option(onnxruntime_REDUCED_OPS_BUILD "Reduced set of kernels are registered in build via modification of the kernel registration source files." OFF)
+option(onnxruntime_REDUCED_OP_TYPE_SUPPORT "Limit the types individual operators support where possible to further reduce the build size." OFF)
 option(onnxruntime_DISABLE_EXTERNAL_INITIALIZERS "Don't allow models to load external data" OFF)
 cmake_dependent_option(onnxruntime_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION
                        "Enable runtime graph optimization of ORT format models. Warning: Not yet ready for general use."
@@ -357,8 +359,6 @@ if (onnxruntime_MINIMAL_BUILD)
     add_compile_definitions(ORT_MINIMAL_BUILD_CUSTOM_OPS)
   endif()
 
-  set(onnxruntime_REDUCED_OPS_BUILD ON)
-
   if (MSVC)
     # turn on LTO (which adds some compiler flags and turns on LTCG) unless it's a Debug build to minimize binary size
     if (NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
@@ -402,6 +402,9 @@ endif()
 
 if (onnxruntime_REDUCED_OPS_BUILD)
   add_compile_definitions(REDUCED_OPS_BUILD)
+  if (onnxruntime_REDUCED_OP_TYPE_SUPPORT)
+    add_compile_definitions(REDUCED_OP_TYPE_SUPPORT)
+  endif()
 endif()
 
 if (onnxruntime_DISABLE_EXTERNAL_INITIALIZERS)
@@ -1225,15 +1228,15 @@ function(onnxruntime_add_shared_library_module target_name)
   endif()
 
   onnxruntime_configure_target(${target_name})
-  if (onnxruntime_target_platform STREQUAL "x86" AND NOT onnxruntime_BUILD_WEBASSEMBLY)
+  if (MSVC AND onnxruntime_target_platform STREQUAL "x86" AND NOT onnxruntime_BUILD_WEBASSEMBLY)
     target_link_options(${target_name} PRIVATE /SAFESEH)
   endif()
 endfunction()
 
-function(onnxruntime_add_executable target_name)  
+function(onnxruntime_add_executable target_name)
   add_executable(${target_name} ${ARGN})
   onnxruntime_configure_target(${target_name})
-  if (onnxruntime_target_platform STREQUAL "x86" AND NOT onnxruntime_BUILD_WEBASSEMBLY)
+  if (MSVC AND onnxruntime_target_platform STREQUAL "x86" AND NOT onnxruntime_BUILD_WEBASSEMBLY)
     target_link_options(${target_name} PRIVATE /SAFESEH)
   endif()
 endfunction()

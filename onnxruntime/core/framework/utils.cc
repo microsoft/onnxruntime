@@ -71,31 +71,11 @@ std::ostream& operator<<(std::ostream& out, const TensorProto& tensor_proto) {
 namespace onnxruntime {
 namespace utils {
 void* DefaultAlloc(size_t size) {
-  if (size <= 0) return nullptr;
-  void* p;
-  size_t alignment = MlasGetPreferredBufferAlignment();
-#if _MSC_VER
-  p = _aligned_malloc(size, alignment);
-  if (p == nullptr)
-    ORT_THROW_EX(std::bad_alloc);
-#elif defined(_LIBCPP_SGX_CONFIG)
-  p = memalign(alignment, size);
-  if (p == nullptr)
-    ORT_THROW_EX(std::bad_alloc);
-#else
-  int ret = posix_memalign(&p, alignment, size);
-  if (ret != 0)
-    ORT_THROW_EX(std::bad_alloc);
-#endif
-  return p;
+  return onnxruntime::AllocatorDefaultAlloc(size);
 }
 
 void DefaultFree(void* p) {
-#if _MSC_VER
-  _aligned_free(p);
-#else
-  free(p);
-#endif
+  onnxruntime::AllocatorDefaultFree(p);
 }
 
 void ConstructStrings(void* p_data, int64_t elements) {
