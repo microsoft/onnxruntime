@@ -56,10 +56,9 @@ void RunQAttention(const std::vector<float>& input_data,
   std::vector<int64_t> mask_index_dims = {batch_size};
   if constexpr (ep == EP::DNNL) {
     //onednn only supports raw mask
-    if (mask_index_data.size() != 0 && mask_index_data.size() != batch_size * sequence_length) {
-      return;
+    if (mask_index_data.size() == batch_size * sequence_length) {
+      mask_index_dims = {batch_size, sequence_length};
     }
-    mask_index_dims = {batch_size, sequence_length};
   }
   std::vector<int64_t> output_dims = {batch_size, sequence_length, hidden_size};
 
