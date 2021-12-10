@@ -8,8 +8,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
-        with:
-          ref: rel-1.10.0
       - name: Install doxygen and dependencies
         run: |
           sudo apt update 
