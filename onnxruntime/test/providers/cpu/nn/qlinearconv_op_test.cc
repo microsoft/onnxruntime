@@ -1007,7 +1007,6 @@ TEST(QLinearConvTest, Conv2D_U8S8_Requantize_Bias_PerChannel) {
   }
 }
 
-#if defined(MLAS_TARGET_ARM_ANY)
 TEST(QLinearConvTest, Conv1D_S8S8) {
   QLinearConvOpTester<int8_t, int8_t> test;
   test.GenerateRandomInput({3, 24, 15}, .05f, 4);
@@ -1394,7 +1393,6 @@ TEST(QLinearConvTest, Conv2D_S8S8_Requantize_Bias_PerChannel) {
     test.Run();
   }
 }
-#endif
 
 #ifndef ENABLE_TRAINING  // Prepacking is enabled only on non-training builds
 TEST(QLinearConvTest, SharedPrepackedWeights) {
