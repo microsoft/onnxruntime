@@ -421,13 +421,13 @@ MlasConvSymDepthwise(
         PostProcessParams.Scale = Params.Scale;
         if (Params.KernelSize == 9) {
             MlasConvSymDepthwiseKernelSize9Arm64(
-                (const uint8_t *const *)Params.InputIndirection, (int8_t const*)Params.Filter, Params.OutputChannels,
-                (uint8_t*)Params.Output, Params.OutputCount, &PostProcessParams, KernelFlags
+                Params.InputIndirection, (int8_t const*)Params.Filter, Params.OutputChannels,
+                Params.Output, Params.OutputCount, &PostProcessParams, KernelFlags, Params.InputIsSigned
             );
         } else {
             MlasConvSymDepthwiseKernelSize25Arm(
-                (const uint8_t *const *)Params.InputIndirection, (int8_t const*)Params.Filter, Params.OutputChannels,
-                (uint8_t*)Params.Output, Params.OutputCount, &PostProcessParams, KernelFlags
+                Params.InputIndirection, (int8_t const*)Params.Filter, Params.OutputChannels,
+                Params.Output, Params.OutputCount, &PostProcessParams, KernelFlags, Params.InputIsSigned
             );
         }
         return;
