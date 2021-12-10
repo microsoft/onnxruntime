@@ -23,7 +23,6 @@ jobs:
       - name: Publish
         uses: JamesIves/github-pages-deploy-action@releases/v3
         with:
-          ACCESS_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           BRANCH: gh-pages
           FOLDER: build/doxygen/html
           TARGET_FOLDER: docs/api/c
