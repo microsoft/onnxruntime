@@ -478,7 +478,7 @@ void ImplDivGrad(
           *fdm_output_strides,
           db_output_data,
           N);
-  } else if (a_padded_strides && a_padded_strides->Size()) {
+  } else if (a_padded_strides && b_padded_strides && a_padded_strides->Size()) {
     if (da_output_data && db_output_data)
       _DivGrad<T, true, false><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
           output_rank,
@@ -491,7 +491,7 @@ void ImplDivGrad(
           da_output_data,
           db_output_data,
           N);
-    else if (da_output_data)
+    else if (da_output_data && b_padded_strides)
       _DivGrad_A<T, false><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
           output_rank,
           *b_padded_strides,
@@ -500,7 +500,7 @@ void ImplDivGrad(
           *fdm_output_strides,
           da_output_data,
           N);
-    else
+    else if (a_padded_strides && b_padded_strides)
       _DivGrad_B<T, true, false><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
           output_rank,
           *a_padded_strides,
@@ -512,7 +512,7 @@ void ImplDivGrad(
           db_output_data,
           N);
   } else {
-    if (da_output_data && db_output_data)
+    if (da_output_data && db_output_data && a_padded_strides && b_padded_strides)
       _DivGrad<T, false, true><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
           output_rank,
           *a_padded_strides,
@@ -524,7 +524,7 @@ void ImplDivGrad(
           da_output_data,
           db_output_data,
           N);
-    else if (da_output_data)
+    else if (da_output_data && b_padded_strides)
       _DivGrad_A<T, true><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
           output_rank,
           *b_padded_strides,
@@ -533,7 +533,7 @@ void ImplDivGrad(
           *fdm_output_strides,
           da_output_data,
           N);
-    else
+    else if (a_padded_strides && b_padded_strides)
       _DivGrad_B<T, false, true><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
           output_rank,
           *a_padded_strides,
