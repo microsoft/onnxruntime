@@ -297,8 +297,8 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
                              to.affinity_vec_len == 0;
       to.allow_spinning = allow_intra_op_spinning;
       to.dynamic_block_base_ = std::stoi(session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigDynamicBlockBase, "0"));
+      ORT_ENFORCE(to.dynamic_block_base_ == 0, "to.dynamic_block_base_ is not zero!");
       LOGS(*session_logger_, INFO) << "Dynamic block base set to " << to.dynamic_block_base_;
-
       // Set custom threading functions
       to.custom_create_thread_fn = session_options_.custom_create_thread_fn;
       to.custom_thread_creation_options = session_options.custom_thread_creation_options;
