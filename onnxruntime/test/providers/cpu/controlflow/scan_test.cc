@@ -30,7 +30,7 @@ struct RunOptions {
 
 static common::Status CreateSubgraph(Graph& graph, RunOptions& options, const std::string& failure_message = "");
 
-static const float kOuterNodeAddValue = 42.f;
+static constexpr float kOuterNodeAddValue = 42.f;
 
 class ScanOpTester : public OpTester {
  public:
@@ -420,9 +420,9 @@ static void RunTest_v9(const std::string test_name, int64_t sequence_len, int64_
 }
 
 static void ShortSequenceOneInBatchOneLoopStateVar(const RunOptions& options, const std::string& expected_error = "") {
-  const int64_t batch_size = 1;
-  const int64_t sequence_len = 2;
-  const int64_t input_size = 2;
+  constexpr int64_t batch_size = 1;
+  constexpr int64_t sequence_len = 2;
+  constexpr int64_t input_size = 2;
 
   std::vector<float> iteration_count_in{0.f};
 
@@ -581,9 +581,9 @@ TEST(Scan9, DISABLED_BadShape) {
 }
 
 TEST(Scan8, ShortSequenceTwoInBatchOneLoopStateVar) {
-  const int64_t batch_size = 2;
-  const int64_t sequence_len = 2;
-  const int64_t input_size = 2;
+  constexpr int64_t batch_size = 2;
+  constexpr int64_t sequence_len = 2;
+  constexpr int64_t input_size = 2;
 
   std::vector<float> iteration_count_in{0.f, 10.f};  // start at 0 for first item in batch, and 10 for second
 
@@ -615,9 +615,9 @@ TEST(Scan8, ShortSequenceTwoInBatchOneLoopStateVar) {
 }
 
 TEST(Scan8, MixedSequenceLens) {
-  const int64_t batch_size = 3;
-  const int64_t max_sequence_len = 2;
-  const int64_t input_size = 2;
+  constexpr int64_t batch_size = 3;
+  constexpr int64_t max_sequence_len = 2;
+  constexpr int64_t input_size = 2;
 
   std::vector<int64_t> sequence_lens{1, 2, 2};
 
@@ -662,9 +662,9 @@ TEST(Scan8, MixedSequenceLens) {
 }
 
 TEST(Scan8, MixedSequenceLensReverse) {
-  const int64_t batch_size = 2;
-  const int64_t max_sequence_len = 2;
-  const int64_t input_size = 2;
+  constexpr int64_t batch_size = 2;
+  constexpr int64_t max_sequence_len = 2;
+  constexpr int64_t input_size = 2;
 
   std::vector<int64_t> sequence_lens{1, 2};
   std::vector<int64_t> directions{1, 1};  // reverse both inputs
@@ -706,9 +706,9 @@ TEST(Scan8, MixedSequenceLensReverse) {
 }
 
 TEST(Scan8, ShortSequenceTwoInBatchOneLoopStateVarReverseFirstInput) {
-  const int64_t batch_size = 2;
-  const int64_t sequence_len = 2;
-  const int64_t input_size = 2;
+  constexpr int64_t batch_size = 2;
+  constexpr int64_t sequence_len = 2;
+  constexpr int64_t input_size = 2;
 
   std::vector<float> iteration_count_in{0.f, 10.f};  // start at 0 for first item in batch, and 10 for second
 
@@ -744,8 +744,8 @@ TEST(Scan8, ShortSequenceTwoInBatchOneLoopStateVarReverseFirstInput) {
 }
 
 TEST(Scan9, ReversedInput) {
-  const int64_t sequence_len = 2;
-  const int64_t input_size = 2;
+  constexpr int64_t sequence_len = 2;
+  constexpr int64_t input_size = 2;
 
   std::vector<float> iteration_count_in{0.f};
 
@@ -773,8 +773,8 @@ TEST(Scan9, ReversedInput) {
 }
 
 TEST(Scan9, ReversedOutput) {
-  const int64_t sequence_len = 2;
-  const int64_t input_size = 2;
+  constexpr int64_t sequence_len = 2;
+  constexpr int64_t input_size = 2;
 
   std::vector<float> iteration_count_in{0.f};
 
@@ -802,8 +802,8 @@ TEST(Scan9, ReversedOutput) {
 }
 
 TEST(Scan9, TransposeInput) {
-  const int64_t sequence_len = 2;
-  const int64_t input_size = 2;
+  constexpr int64_t sequence_len = 2;
+  constexpr int64_t input_size = 2;
 
   std::vector<float> iteration_count_in{0.f};
 
@@ -833,8 +833,8 @@ TEST(Scan9, TransposeInput) {
 }
 
 TEST(Scan9, TransposeOutput) {
-  const int64_t sequence_len = 2;
-  const int64_t input_size = 2;
+  constexpr int64_t sequence_len = 2;
+  constexpr int64_t input_size = 2;
 
   std::vector<float> iteration_count_in{0.f};
 
@@ -904,9 +904,9 @@ TEST(Scan9, TransposeOutputDim2) {
 }
 
 static void InvalidInput(bool is_v8) {
-  const int64_t batch_size = 1;
-  const int64_t sequence_len = 2;
-  const int64_t input_size = 2;
+  constexpr int64_t batch_size = 1;
+  constexpr int64_t sequence_len = 2;
+  constexpr int64_t input_size = 2;
 
   std::vector<float> iteration_count_in{0.f};
 

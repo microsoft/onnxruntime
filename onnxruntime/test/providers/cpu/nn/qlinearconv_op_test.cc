@@ -25,8 +25,8 @@ struct QuantizedTensor {
     min = std::min(min, 0.f);
     max = std::max(max, 0.f);
 
-    float qmin = std::numeric_limits<uint8_t>::min();
-    float qmax = std::numeric_limits<uint8_t>::max();
+    constexpr float qmin = std::numeric_limits<uint8_t>::min();
+    constexpr float qmax = std::numeric_limits<uint8_t>::max();
 
     // compute scale and zero point
     scale_ = (max - min) / (qmax - qmin);

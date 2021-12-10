@@ -824,9 +824,9 @@ static void TestThreaded(int64_t k, int64_t n, int64_t batch_size) {
 // and sufficient items to process given this calculation:
 //   int64_t threads_needed = static_cast<int64_t>(std::floor(input_shape.Size() * k / (128 * 1024)));
 TEST(TopKOperator, PriorityQueueThreaded) {
-  const int64_t k = 200;
-  const int64_t n = 2;
-  const int64_t batch_size = 1000;
+  constexpr int64_t k = 200;
+  constexpr int64_t n = 2;
+  constexpr int64_t batch_size = 1000;
   TestThreaded<float>(k, n, batch_size);
   TestThreaded<double>(k, n, batch_size);
 }
@@ -835,9 +835,9 @@ TEST(TopKOperator, PriorityQueueThreaded) {
 // and sufficient items to process given this calculation:
 //   int64_t threads_needed = static_cast<int64_t>(std::floor(input_shape.Size() * k / (128 * 1024)));
 TEST(TopKOperator, SelectTopKThreaded) {
-  const int64_t k = 400;
-  const int64_t n = 2;
-  const int64_t batch_size = 500;
+  constexpr int64_t k = 400;
+  constexpr int64_t n = 2;
+  constexpr int64_t batch_size = 500;
   TestThreaded<float>(k, n, batch_size);
   TestThreaded<double>(k, n, batch_size);
 }

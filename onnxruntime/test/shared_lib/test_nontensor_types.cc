@@ -36,8 +36,8 @@ TEST(CApiTest, CreateGetVectorOfMapsInt64Float) {  // support zipmap output type
   auto default_allocator = std::make_unique<MockedOrtAllocator>();
   Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
 
-  const size_t N = 3;
-  const int NUM_KV_PAIRS = 4;
+  constexpr size_t N = 3;
+  constexpr int NUM_KV_PAIRS = 4;
   std::vector<Ort::Value> in;
   std::vector<int64_t> keys{3, 1, 2, 0};
   std::vector<int64_t> dims = {4};
@@ -100,8 +100,8 @@ TEST(CApiTest, CreateGetVectorOfMapsStringFloat) {  // support zipmap output typ
   auto default_allocator = std::make_unique<MockedOrtAllocator>();
   Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
 
-  const size_t N = 3;
-  const int64_t NUM_KV_PAIRS = 4;
+  constexpr size_t N = 3;
+  constexpr int64_t NUM_KV_PAIRS = 4;
   std::vector<Ort::Value> in;
   const char* keys_arr[NUM_KV_PAIRS] = {"abc", "def", "ghi", "jkl"};
   std::vector<std::string> keys{keys_arr, keys_arr + NUM_KV_PAIRS};
@@ -166,7 +166,7 @@ TEST(CApiTest, TypeInfoMap) {
   auto default_allocator = std::make_unique<MockedOrtAllocator>();
   Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
 
-  const int64_t NUM_KV_PAIRS = 4;
+  constexpr int64_t NUM_KV_PAIRS = 4;
   std::vector<int64_t> keys{0, 1, 2, 3};
   std::vector<int64_t> dims = {NUM_KV_PAIRS};
   std::vector<float> values{3.0f, 1.0f, 2.f, 0.f};
@@ -220,7 +220,7 @@ TEST(CApiTest, CreateGetSeqTensors) {
   std::vector<Ort::Value> in;
   std::vector<int64_t> vals{3, 1, 2, 0};
   std::vector<int64_t> dims{1, 4};
-  const int N = 2;
+  constexpr int N = 2;
   for (int i = 0; i < N; ++i) {
     // create tensor
     Ort::Value tensor = Ort::Value::CreateTensor(info, vals.data(), vals.size() * sizeof(int64_t),
@@ -246,7 +246,7 @@ TEST(CApiTest, CreateGetSeqStringTensors) {
 
   std::vector<Ort::Value> in;
   const char* string_input_data[] = {"abs", "def"};
-  const int N = 2;
+  constexpr int N = 2;
   for (int i = 0; i < N; ++i) {
     // create tensor
     std::vector<int64_t> shape{2};
@@ -287,7 +287,7 @@ TEST(CApiTest, TypeInfoSequence) {
   std::vector<Ort::Value> in;
   std::vector<int64_t> vals{3, 1, 2, 0};
   std::vector<int64_t> dims{1, 4};
-  const int N = 2;
+  constexpr int N = 2;
   for (int i = 0; i < N; ++i) {
     // create tensor
     Ort::Value tensor = Ort::Value::CreateTensor(info, vals.data(), vals.size() * sizeof(int64_t),

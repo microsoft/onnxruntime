@@ -34,7 +34,7 @@ TEST(MLOpTest, TreeEnsembleClassifier) {
   std::vector<float> log_probs = {};
 
   //define the context of the operator call
-  const int N = 8;
+  constexpr int N = 8;
   test.AddAttribute("nodes_truenodeids", lefts);
   test.AddAttribute("nodes_falsenodeids", rights);
   test.AddAttribute("nodes_treeids", treeids);
@@ -79,7 +79,7 @@ TEST(MLOpTest, TreeEnsembleClassifier_N1) {
   std::vector<float> log_probs = {};
 
   //define the context of the operator call
-  const int N = 1;
+  constexpr int N = 1;
   test.AddAttribute("nodes_truenodeids", lefts);
   test.AddAttribute("nodes_falsenodeids", rights);
   test.AddAttribute("nodes_treeids", treeids);
@@ -126,7 +126,7 @@ TEST(MLOpTest, TreeEnsembleClassifierLabels) {
   std::vector<float> scores{-5, 5, 1, -1, 1, -1, 1, -1, 1, -1, -1, 1, 1, -1, 3, -3};
 
   //define the context of the operator call
-  const int N = 8;
+  constexpr int N = 8;
   test.AddAttribute("nodes_truenodeids", lefts);
   test.AddAttribute("nodes_falsenodeids", rights);
   test.AddAttribute("nodes_treeids", treeids);
@@ -175,7 +175,7 @@ TEST(MLOpTest, TreeEnsembleClassifierBinary) {
   std::vector<float> scores{5, -1, -1, -1, -1, 1, -1, -3};
 
   //define the context of the operator call
-  const int N = 8;
+  constexpr int N = 8;
   test.AddAttribute("nodes_truenodeids", lefts);
   test.AddAttribute("nodes_falsenodeids", rights);
   test.AddAttribute("nodes_treeids", treeids);
@@ -232,7 +232,7 @@ TEST(MLOpTest, TreeEnsembleClassifierBinaryProbabilities) {
       0.5f, 0.04742586f};
 
   //define the context of the operator call
-  const int N = 8;
+  constexpr int N = 8;
   test.AddAttribute("nodes_truenodeids", lefts);
   test.AddAttribute("nodes_falsenodeids", rights);
   test.AddAttribute("nodes_treeids", treeids);

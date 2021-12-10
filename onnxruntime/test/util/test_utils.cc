@@ -36,7 +36,7 @@ static void VerifyOutputs(const std::vector<std::string>& output_names,
             << " mismatch for " << output_names[i];
         break;
       case ONNX_NAMESPACE::TensorProto_DataType_FLOAT: {
-        const float abs_err = float(1e-5);
+        constexpr float abs_err = 1e-5f;
 
         EXPECT_THAT(ltensor.DataAsSpan<float>(),
                     ::testing::Pointwise(::testing::FloatNear(abs_err), rtensor.DataAsSpan<float>()));

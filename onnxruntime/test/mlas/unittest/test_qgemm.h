@@ -413,19 +413,19 @@ class MlasQgemmTest<AType, BType, float, Packed, Threaded> : public MlasQgemmTes
     float* CReference = BufferCReference.GetBuffer(N * M * BatchSize);
     const float* Bias = BufferBias.GetBuffer(N);
 
-    const float AScale = 0.5f;
+    constexpr float AScale = 0.5f;
     float* AFloat = BufferAFloat.GetBuffer(K * M * BatchSize);
     for (size_t b = 0; b < BatchSize; b++) {
       DequantizeLinear((AType*)(A + K * M * b), AFloat + K * M * b, K * M, AScale, (AType)offa);
     }
 
-    const float BScale = 0.25f;
+    constexpr float BScale = 0.25f;
     float* BFloat = BufferBFloat.GetBuffer(N * K * BatchSize);
     for (size_t b = 0; b < BatchSize; b++) {
       DequantizeLinear((BType*)(B + N * K * b), BFloat + N * K * b, N * K, BScale, BType(offb));
     }
 
-    const float CScale = AScale * BScale;
+    constexpr float CScale = AScale * BScale;
 
     Test(M, N, K, BatchSize, A, AFloat, K, offa, B, BFloat, N, offb, C, CReference, N, CScale, nullptr);
     Test(M, N, K, BatchSize, A, AFloat, K, offa, B, BFloat, N, offb, C, CReference, N, CScale, Bias);

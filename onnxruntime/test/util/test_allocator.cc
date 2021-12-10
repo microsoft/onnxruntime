@@ -15,7 +15,9 @@ MockedOrtAllocator::MockedOrtAllocator() {
 MockedOrtAllocator::~MockedOrtAllocator() {
   Ort::GetApi().ReleaseMemoryInfo(cpu_memory_info);
 }
-
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(disable : 26400)
+#endif
 void* MockedOrtAllocator::Alloc(size_t size) {
   constexpr size_t extra_len = sizeof(size_t);
   memory_inuse.fetch_add(size += extra_len);

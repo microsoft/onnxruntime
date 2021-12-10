@@ -14,10 +14,10 @@ TEST(RoiAlignTest, AvgModePositive) {
   test.AddAttribute<int64_t>("sampling_ratio", 2);
   test.AddAttribute<float>("spatial_scale", 1.0f / 16.0f);
 
-  const int N = 1;
-  const int C = 3;
-  const int H = 5;
-  const int W = 5;
+  constexpr int N = 1;
+  constexpr int C = 3;
+  constexpr int H = 5;
+  constexpr int W = 5;
 
  std::vector<float> rois{0.,7.,5.,7.,5.,0.,-15.,-15.,-15.,-15.,0.,-10.,21.,-10.,21.,0.,13.,8.,13.,8.,0.,-14.,19.,-14.,19.};
   test.AddInput<float>("X", {N, C, H, W}, {0.,1.,2.,3.,4.,5.,6.,7.,8.,9.,10.,11.,12.,13.,14.,15.,16.,17.,18.,19.,20.,21.,22.,23.,24.,
@@ -56,10 +56,10 @@ TEST(RoiAlignTest, OnnxTest) {
   test.AddAttribute<int64_t>("sampling_ratio", 2);
   test.AddAttribute<float>("spatial_scale", 1.0f);
 
-  const int N = 1;
-  const int C = 1;
-  const int H = 10;
-  const int W = 10;
+  constexpr int N = 1;
+  constexpr int C = 1;
+  constexpr int H = 10;
+  constexpr int W = 10;
 
   test.AddInput<float>("X", {N, C, H, W}, {
                     0.2764f, 0.7150f, 0.1958f, 0.3416f, 0.4638f, 0.0259f, 0.2963f, 0.6518f, 0.4856f, 0.7250f,
@@ -105,10 +105,10 @@ TEST(RoiAlignTest, MaxModePositive) {
   test.AddAttribute<int64_t>("sampling_ratio", 2);
   test.AddAttribute<float>("spatial_scale", 1.0f / 16.0f);
 
-  const int N = 1;
-  const int C = 3;
-  const int H = 5;
-  const int W = 5;
+  constexpr int N = 1;
+  constexpr int C = 3;
+  constexpr int H = 5;
+  constexpr int W = 5;
 
  std::vector<float> rois{0.,7.,5.,7.,5.,0.,-15.,-15.,-15.,-15.,0.,-10.,21.,-10.,21.,0.,13.,8.,13.,8.,0.,-14.,19.,-14.,19.};
   test.AddInput<float>("X", {N, C, H, W}, {0.,1.,2.,3.,4.,5.,6.,7.,8.,9.,10.,11.,12.,13.,14.,15.,16.,17.,18.,19.,20.,21.,22.,23.,24.,
@@ -143,10 +143,10 @@ TEST(RoiAlignTest, AvgModeNegativeInvalidMode) {
   test.AddAttribute<int64_t>("sampling_ratio", -2);
   test.AddAttribute<float>("spatial_scale", 1.0f / 16.0f);
 
-  const int N = 1;
-  const int C = 3;
-  const int H = 5;
-  const int W = 5;
+  constexpr int N = 1;
+  constexpr int C = 3;
+  constexpr int H = 5;
+  constexpr int W = 5;
 
  std::vector<float> rois{0.,7.,5.,7.,5.,0.,-15.,-15.,-15.,-15.,0.,-10.,21.,-10.,21.,0.,13.,8.,13.,8.,0.,-14.,19.,-14.,19.};
   test.AddInput<float>("X", {N, C, H, W}, {0.,1.,2.,3.,4.,5.,6.,7.,8.,9.,10.,11.,12.,13.,14.,15.,16.,17.,18.,19.,20.,21.,22.,23.,24.,
@@ -185,10 +185,10 @@ TEST(RoiAlignTest, AvgModeNegativeSamplingRatio) {
   test.AddAttribute<int64_t>("sampling_ratio", -2); // <-- failure condition
   test.AddAttribute<float>("spatial_scale", 1.0f / 16.0f);
 
-  const int N = 1;
-  const int C = 3;
-  const int H = 5;
-  const int W = 5;
+  constexpr int N = 1;
+  constexpr int C = 3;
+  constexpr int H = 5;
+  constexpr int W = 5;
 
   test.AddInput<float>("X", {N, C, H, W}, {0.,1.,2.,3.,4.,5.,6.,7.,8.,9.,10.,11.,12.,13.,14.,15.,16.,17.,18.,19.,20.,21.,22.,23.,24.,
                                            25.,26.,27.,28.,29.,30.,31.,32.,33.,34.,35.,36.,37.,38.,39.,40.,41.,42.,43.,44.,45.,46.,
@@ -226,10 +226,10 @@ TEST(RoiAlignTest, AvgModeNegativeInvalidNumRoiDims) {
   test.AddAttribute<int64_t>("sampling_ratio", 2);
   test.AddAttribute<float>("spatial_scale", 1.0f / 16.0f);
 
-  const int N = 1;
-  const int C = 3;
-  const int H = 5;
-  const int W = 5;
+  constexpr int N = 1;
+  constexpr int C = 3;
+  constexpr int H = 5;
+  constexpr int W = 5;
 
   std::vector<float> rois{0.,7.,5.,7.,5.,0.,-15.,-15.,-15.,-15.,0.,-10.,21.,-10.,21.,0.,13.,8.,13.,8.,0.,-14.,19.,-14.,19.};
   test.AddInput<float>("X", {N, C, H, W}, {0.,1.,2.,3.,4.,5.,6.,7.,8.,9.,10.,11.,12.,13.,14.,15.,16.,17.,18.,19.,20.,21.,22.,23.,24.,
@@ -268,10 +268,10 @@ TEST(RoiAlignTest, AvgModeNegativeInvalidSecondRoiDims) {
   test.AddAttribute<int64_t>("sampling_ratio", 2);
   test.AddAttribute<float>("spatial_scale", 1.0f / 16.0f);
 
-  const int N = 1;
-  const int C = 3;
-  const int H = 5;
-  const int W = 5;
+  constexpr int N = 1;
+  constexpr int C = 3;
+  constexpr int H = 5;
+  constexpr int W = 5;
 
  test.AddInput<float>("X", {N, C, H, W}, {0.,1.,2.,3.,4.,5.,6.,7.,8.,9.,10.,11.,12.,13.,14.,15.,16.,17.,18.,19.,20.,21.,22.,23.,24.,
                                           25.,26.,27.,28.,29.,30.,31.,32.,33.,34.,35.,36.,37.,38.,39.,40.,41.,42.,43.,44.,45.,46.,
@@ -309,10 +309,10 @@ TEST(RoiAlignTest, MismatchNumRois) {
   test.AddAttribute<int64_t>("sampling_ratio", 2);
   test.AddAttribute<float>("spatial_scale", 1.0f / 16.0f);
 
-  const int N = 1;
-  const int C = 3;
-  const int H = 5;
-  const int W = 5;
+  constexpr int N = 1;
+  constexpr int C = 3;
+  constexpr int H = 5;
+  constexpr int W = 5;
 
  std::vector<float> rois{0.,7.,5.,7.,5.,0.,-15.,-15.,-15.,-15.,0.,-10.,21.,-10.,21.,0.,13.,8.,13.,8.,0.,-14.,19.,-14.,19.};
   test.AddInput<float>("X", {N, C, H, W}, {0.,1.,2.,3.,4.,5.,6.,7.,8.,9.,10.,11.,12.,13.,14.,15.,16.,17.,18.,19.,20.,21.,22.,23.,24.,

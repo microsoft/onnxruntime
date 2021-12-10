@@ -18,7 +18,7 @@ TEST(UpsampleOpTest, UpsampleOpNearestTest) {
   test.AddAttribute("mode", "nearest");
   test.AddAttribute("scales", scales);
 
-  const int64_t N = 1, C = 2, H = 2, W = 2;
+  constexpr int64_t N = 1, C = 2, H = 2, W = 2;
   std::vector<float> X = {1.0f, 3.0f,
                           3.0f, 5.0f,
 
@@ -49,7 +49,7 @@ TEST(UpsampleOpTest, UpsampleOpNearestTest_int32) {
   test.AddAttribute("mode", "nearest");
   test.AddAttribute("scales", scales);
 
-  const int64_t N = 1, C = 2, H = 2, W = 2;
+  constexpr int64_t N = 1, C = 2, H = 2, W = 2;
   std::vector<int32_t> X = {1, 3,
                             3, 5,
 
@@ -80,7 +80,7 @@ TEST(UpsampleOpTest, UpsampleOpNearestTest_uint8) {
   test.AddAttribute("mode", "nearest");
   test.AddAttribute("scales", scales);
 
-  const int64_t N = 1, C = 2, H = 2, W = 2;
+  constexpr int64_t N = 1, C = 2, H = 2, W = 2;
   std::vector<uint8_t> X = {1, 3,
                             3, 5,
 
@@ -111,7 +111,7 @@ TEST(UpsampleOpTest, UpsampleOpNearest2XTest) {
   test.AddAttribute("mode", "nearest");
   test.AddAttribute("scales", scales);
 
-  const int64_t N = 1, C = 2, H = 2, W = 2;
+  constexpr int64_t N = 1, C = 2, H = 2, W = 2;
   std::vector<float> X = {1.0f, 3.0f,
                           3.0f, 5.0f,
 
@@ -142,7 +142,7 @@ TEST(UpsampleOpTest, UpsampleOpNearest222XTest) {
   test.AddAttribute("mode", "nearest");
   test.AddAttribute("scales", scales);
 
-  const int64_t N = 1, C = 2, H = 2, W = 2;
+  constexpr int64_t N = 1, C = 2, H = 2, W = 2;
   std::vector<float> X = {1.0f, 3.0f,
                           3.0f, 5.0f,
 
@@ -183,7 +183,7 @@ TEST(UpsampleOpTest, UpsampleOpNearest15XTest) {
   test.AddAttribute("mode", "nearest");
   test.AddAttribute("scales", scales);
 
-  const int64_t N = 1, C = 2, H = 2, W = 2;
+  constexpr int64_t N = 1, C = 2, H = 2, W = 2;
   std::vector<float> X = {1.0f, 3.0f,
                           3.0f, 5.0f,
 
@@ -214,7 +214,7 @@ TEST(UpsampleOpTest, UpsampleOpNearestTest_NoScale) {
   test.AddAttribute("mode", "nearest");
   test.AddAttribute("scales", scales);
 
-  const int64_t N = 1, C = 2, H = 2, W = 2;
+  constexpr int64_t N = 1, C = 2, H = 2, W = 2;
   std::vector<float> X = {1.0f, 3.0f,
                           3.0f, 5.0f,
 
@@ -240,7 +240,7 @@ TEST(UpsampleOpTest, UpsampleOpNearest2XTest_int32) {
   test.AddAttribute("mode", "nearest");
   test.AddAttribute("scales", scales);
 
-  const int64_t N = 1, C = 2, H = 2, W = 2;
+  constexpr int64_t N = 1, C = 2, H = 2, W = 2;
   std::vector<int32_t> X = {1, 3,
                             3, 5,
 
@@ -271,7 +271,7 @@ TEST(UpsampleOpTest, UpsampleOp4DBilinearTest) {
   test.AddAttribute("mode", "linear");
   test.AddAttribute("scales", scales);
 
-  const int64_t N = 2, C = 1, H = 2, W = 2;
+  constexpr int64_t N = 2, C = 1, H = 2, W = 2;
   std::vector<float> X = {1.0f, 3.0f,
                           3.0f, 5.0f,
 
@@ -302,7 +302,7 @@ TEST(UpsampleOpTest, UpsampleOp2DBilinearTest) {
   test.AddAttribute("mode", "linear");
   test.AddAttribute("scales", scales);
 
-  const int64_t H = 2, W = 2;
+  constexpr int64_t H = 2, W = 2;
   std::vector<float> X = {1.0f, 3.0f,
                           3.0f, 5.0f};
 
@@ -325,7 +325,7 @@ TEST(UpsampleOpTest, UpsampleOp4DBilinearTest_ScalesNoOp) {
   test.AddAttribute("mode", "linear");
   test.AddAttribute("scales", scales);
 
-  const int64_t N = 2, C = 1, H = 2, W = 2;
+  constexpr int64_t N = 2, C = 1, H = 2, W = 2;
   std::vector<float> X = {1.0f, 3.0f,
                           3.0f, 5.0f,
 
@@ -351,7 +351,7 @@ TEST(UpsampleOpTest, UpsampleOp4DBilinearTest_int32) {
   test.AddAttribute("mode", "linear");
   test.AddAttribute("scales", scales);
 
-  const int64_t N = 2, C = 1, H = 2, W = 2;
+  constexpr int64_t N = 2, C = 1, H = 2, W = 2;
   std::vector<int32_t> X = {1, 3,
                             3, 5,
 
@@ -403,7 +403,7 @@ TEST(UpsampleOpTest, UpsampleOpNearest2XTest_opset9) {
   std::vector<float> scales{1.0f, 1.0f, 2.0f, 2.0f};
   test.AddAttribute("mode", "nearest");
 
-  const int64_t N = 1, C = 2, H = 2, W = 2;
+  constexpr int64_t N = 1, C = 2, H = 2, W = 2;
   std::vector<int32_t> X = {1, 3,
                             3, 5,
 

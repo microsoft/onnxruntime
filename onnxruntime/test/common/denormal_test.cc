@@ -16,8 +16,8 @@ namespace test {
 
 TEST(DenormalTest, DenormalAsZeroTest) {
   auto test_denormal = [&](bool set_denormal_as_zero) {
-    const float denormal_float = 1e-38f;
-    const double denormal_double = 1e-308;
+    constexpr float denormal_float = 1e-38f;
+    constexpr double denormal_double = 1e-308;
 
     volatile float input_float = denormal_float;
     volatile double input_double = denormal_double;

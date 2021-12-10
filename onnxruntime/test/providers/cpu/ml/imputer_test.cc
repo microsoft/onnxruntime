@@ -9,7 +9,7 @@ namespace test {
 
 TEST(MLOpTest, ImputerOpFloat) {
   OpTester test("Imputer", 1, onnxruntime::kMLDomain);
-  const int N = 5;
+  constexpr int N = 5;
   std::vector<float> impute = {10.0f};
   float replace = 1.f;
   test.AddAttribute("imputed_value_floats", impute);

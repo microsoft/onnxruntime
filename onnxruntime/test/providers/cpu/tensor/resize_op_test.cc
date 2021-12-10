@@ -16,7 +16,7 @@ TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_tf_crop_and_resize) {
   test.AddAttribute("mode", "linear");
   test.AddAttribute("coordinate_transformation_mode", "tf_crop_and_resize");
 
-  const int64_t H = 4, W = 4;
+  constexpr int64_t H = 4, W = 4;
 
   std::vector<float> X = {
       1.0f, 2.0f, 3.0f, 4.0f,
@@ -46,7 +46,7 @@ TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_tf_crop_and_resize_with_extrapol
   test.AddAttribute("coordinate_transformation_mode", "tf_crop_and_resize");
   test.AddAttribute("extrapolation_value", 10.0f);
 
-  const int64_t N = 1, C = 1, H = 4, W = 4;
+  constexpr int64_t N = 1, C = 1, H = 4, W = 4;
   std::vector<float> X = {
       1.0f, 2.0f, 3.0f, 4.0f,
       5.0f, 6.0f, 7.0f, 8.0f,
@@ -72,7 +72,7 @@ TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_4DBilinear) {
 
   test.AddAttribute("mode", "linear");
 
-  const int64_t N = 1, C = 1, H = 2, W = 4;
+  constexpr int64_t N = 1, C = 1, H = 2, W = 4;
   std::vector<float> X = {
       1.0f, 2.0f, 3.0f, 4.0f,
       5.0f, 6.0f, 7.0f, 8.0f};
@@ -104,7 +104,7 @@ TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_4DBilinear1) {
 
     test.AddAttribute("mode", "linear");
 
-    const int64_t N = 1, C = 1, H = 2, W = 4;
+    constexpr int64_t N = 1, C = 1, H = 2, W = 4;
     std::vector<float> X = {
         1.0f, 2.0f, 3.0f, 4.0f,
         5.0f, 6.0f, 7.0f, 8.0f};
@@ -129,7 +129,7 @@ TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_4DBilinear1_WithSizes) {
     OpTester test("Resize", 13);
     std::vector<float> roi{};
     std::vector<float> scales{};
-    const int64_t N = 1, C = 1, H = 2, W = 4;
+    constexpr int64_t N = 1, C = 1, H = 2, W = 4;
     std::vector<int64_t> sizes{N, C, 1, 2};
     test.AddAttribute("mode", "linear");
 
@@ -162,7 +162,7 @@ TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_4DBilinear_align_corners) {
     test.AddAttribute("mode", "linear");
     test.AddAttribute("coordinate_transformation_mode", "align_corners");
 
-    const int64_t N = 1, C = 1, H = 2, W = 4;
+    constexpr int64_t N = 1, C = 1, H = 2, W = 4;
     std::vector<float> X = {
         1.0f, 2.0f, 3.0f, 4.0f,
         5.0f, 6.0f, 7.0f, 8.0f};
@@ -195,7 +195,7 @@ TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_2DBilinear_pytorch_half_pixel) {
   test.AddAttribute("mode", "linear");
   test.AddAttribute("coordinate_transformation_mode", "pytorch_half_pixel");
 
-  const int64_t H = 4, W = 4;
+  constexpr int64_t H = 4, W = 4;
 
   std::vector<float> X = {
       1.0f, 2.0f, 3.0f, 4.0f,
@@ -224,7 +224,7 @@ TEST(ResizeOpTest, ResizeOpLinearUpSampleTest_4DBilinear_asymmetric) {
     test.AddAttribute("mode", "linear");
     test.AddAttribute("coordinate_transformation_mode", "asymmetric");
 
-    const int64_t N = 2, C = 1, H = 2, W = 2;
+    constexpr int64_t N = 2, C = 1, H = 2, W = 2;
     std::vector<float> X = {1.0f, 3.0f,
                             4.0f, 8.0f,
 
@@ -261,7 +261,7 @@ TEST(ResizeOpTest, ResizeOpLinearUpSampleTest_2DBilinear_align_corners) {
   test.AddAttribute("mode", "linear");
   test.AddAttribute("coordinate_transformation_mode", "align_corners");
 
-  const int64_t H = 2, W = 2;
+  constexpr int64_t H = 2, W = 2;
   std::vector<float> X = {1.0f, 3.0f,
                           4.0f, 8.0f};
 
@@ -288,7 +288,7 @@ TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_3DTrilinear_pytorch_half_pixel) 
   test.AddAttribute("mode", "linear");
   test.AddAttribute("coordinate_transformation_mode", "pytorch_half_pixel");
 
-  const int64_t D = 2, H = 4, W = 4;
+  constexpr int64_t D = 2, H = 4, W = 4;
 
   std::vector<float> X = {
       1.0f, 2.0f, 3.0f, 4.0f,
@@ -320,7 +320,7 @@ TEST(ResizeOpTest, ResizeOpLinearUpSampleTest_5DTrilinear_pytorch_half_pixel) {
   test.AddAttribute("mode", "linear");
   test.AddAttribute("coordinate_transformation_mode", "pytorch_half_pixel");
 
-  const int64_t N = 1, C = 2, D = 2, H = 1, W = 2;
+  constexpr int64_t N = 1, C = 2, D = 2, H = 1, W = 2;
 
   std::vector<float> X = {
       1.0f, 2.0f, 1.0f, 2.0f, 1.0f, 2.0f, 1.0f, 2.0f};
@@ -346,7 +346,7 @@ TEST(ResizeOpTest, ResizeOpLinearScalesNoOpTest) {
     std::vector<float> scales{1.0f, 1.0f, 1.0f, 1.0f};
     test.AddAttribute("mode", "linear");
 
-    const int64_t N = 2, C = 1, H = 2, W = 2;
+    constexpr int64_t N = 2, C = 1, H = 2, W = 2;
     std::vector<float> X = {1.0f, 3.0f,
                             4.0f, 8.0f,
 
@@ -378,7 +378,7 @@ TEST(ResizeOpTest, ResizeOpNearestDownSampleTest) {
 
   test.AddAttribute("mode", "nearest");
 
-  const int64_t N = 1, C = 1, H = 2, W = 4;
+  constexpr int64_t N = 1, C = 1, H = 2, W = 4;
   std::vector<float> X = {
       1.0f, 2.0f, 3.0f, 4.0f,
       5.0f, 6.0f, 7.0f, 8.0f};
@@ -400,7 +400,7 @@ TEST(ResizeOpTest, ResizeOpNearestDownSampleTest_Opset12) {
 
   test.AddAttribute("mode", "nearest");
 
-  const int64_t N = 1, C = 1, H = 2, W = 4;
+  constexpr int64_t N = 1, C = 1, H = 2, W = 4;
   std::vector<float> X = {
       1.0f, 2.0f, 3.0f, 4.0f,
       5.0f, 6.0f, 7.0f, 8.0f};
@@ -423,7 +423,7 @@ TEST(ResizeOpTest, ResizeOpNearestDownSampleTest_WithSizes) {
 
   test.AddAttribute("mode", "nearest");
 
-  const int64_t N = 1, C = 1, H = 2, W = 4;
+  constexpr int64_t N = 1, C = 1, H = 2, W = 4;
   std::vector<float> X = {
       1.0f, 2.0f, 3.0f, 4.0f,
       5.0f, 6.0f, 7.0f, 8.0f};
@@ -448,7 +448,7 @@ TEST(ResizeOpTest, ResizeOpNearestDownSampleTest_tf_half_pixel) {
   test.AddAttribute("coordinate_transformation_mode", "tf_half_pixel_for_nn");
   test.AddAttribute("mode", "nearest");
 
-  const int64_t N = 1, C = 1, H = 4, W = 4;
+  constexpr int64_t N = 1, C = 1, H = 4, W = 4;
   std::vector<float> X = {
       1.0f, 2.0f, 3.0f, 4.0f,
       5.0f, 6.0f, 7.0f, 8.0f,
@@ -477,7 +477,7 @@ TEST(ResizeOpTest, ResizeOpNearestDownSampleTest_tf_crop_and_resize_with_extrapo
   test.AddAttribute("coordinate_transformation_mode", "tf_crop_and_resize");
   test.AddAttribute("extrapolation_value", 10.0f);
 
-  const int64_t N = 1, C = 1, H = 4, W = 4;
+  constexpr int64_t N = 1, C = 1, H = 4, W = 4;
   std::vector<float> X = {
       1.0f, 2.0f, 3.0f, 4.0f,
       5.0f, 6.0f, 7.0f, 8.0f,
@@ -505,7 +505,7 @@ TEST(ResizeOpTest, ResizeOpNearestDownSample5dTest_tf_crop_and_resize_with_extra
   test.AddAttribute("coordinate_transformation_mode", "tf_crop_and_resize");
   test.AddAttribute("extrapolation_value", 10.0f);
 
-  const int64_t N = 1, C = 1, H = 4, W = 4;
+  constexpr int64_t N = 1, C = 1, H = 4, W = 4;
   std::vector<float> X = {
       1.0f, 2.0f, 3.0f, 4.0f,
       5.0f, 6.0f, 7.0f, 8.0f,
@@ -532,7 +532,7 @@ TEST(ResizeOpTest, ResizeOpNearestUpSampleTest) {
 
   test.AddAttribute("mode", "nearest");
 
-  const int64_t N = 1, C = 1, H = 2, W = 2;
+  constexpr int64_t N = 1, C = 1, H = 2, W = 2;
   std::vector<float> X = {1.0f, 2.0f, 3.0f, 4.0f};
 
   test.AddInput<float>("X", {N, C, H, W}, X);
@@ -557,7 +557,7 @@ TEST(ResizeOpTest, ResizeOpNearestUpSampleTest_WithSizes_CeilMode) {
   test.AddAttribute("mode", "nearest");
   test.AddAttribute("nearest_mode", "ceil");
 
-  const int64_t N = 1, C = 1, H = 2, W = 2;
+  constexpr int64_t N = 1, C = 1, H = 2, W = 2;
   std::vector<float> X = {1.0f, 2.0f, 3.0f, 4.0f};
 
   test.AddInput<float>("X", {N, C, H, W}, X);
@@ -586,7 +586,7 @@ TEST(ResizeOpTest, ResizeOpNearestUpSample5dTest_WithSizes_CeilMode) {
   test.AddAttribute("mode", "nearest");
   test.AddAttribute("nearest_mode", "ceil");
 
-  const int64_t N = 1, C = 1, H = 2, W = 2;
+  constexpr int64_t N = 1, C = 1, H = 2, W = 2;
   std::vector<float> X = {1.0f, 2.0f, 3.0f, 4.0f};
 
   test.AddInput<float>("X", {1, N, C, H, W}, X);
@@ -617,7 +617,7 @@ TEST(ResizeOpTest, ResizeOpNearestUpSample_Floor_Align_Corners) {
   test.AddAttribute("coordinate_transformation_mode", "align_corners");
   test.AddAttribute("nearest_mode", "floor");
 
-  const int64_t N = 1, C = 1, H = 4, W = 4;
+  constexpr int64_t N = 1, C = 1, H = 4, W = 4;
   std::vector<float> X = {
       1.0f, 2.0f, 3.0f, 4.0f,
       5.0f, 6.0f, 7.0f, 8.0f,
@@ -655,7 +655,7 @@ TEST(ResizeOpTest, ResizeOpNearest_OneToOneMappingBetweenInputAndOutputDataDims)
   test.AddAttribute("coordinate_transformation_mode", "tf_half_pixel_for_nn");
   test.AddAttribute("nearest_mode", "ceil");
 
-  const int64_t C = 2, D = 3;
+  constexpr int64_t C = 2, D = 3;
   std::vector<float> X = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
 
   test.AddInput<float>("X", {C, D}, X);
@@ -720,7 +720,7 @@ TEST(ResizeOpTest, ResizeOpNearestUpSample_Nearest2xOptimization_Scales) {
     test.AddAttribute("coordinate_transformation_mode", "asymmetric");
     test.AddAttribute("nearest_mode", "floor");
 
-    const int64_t N = 1, C = 1, H = 2, W = 2;
+    constexpr int64_t N = 1, C = 1, H = 2, W = 2;
     std::vector<float> X = {
         1.0f, 2.0f,
         3.0f, 4.0f};
@@ -753,7 +753,7 @@ TEST(ResizeOpTest, ResizeOpNearestUpSample_Nearest2xOptimization_Sizes) {
     test.AddAttribute("coordinate_transformation_mode", "asymmetric");
     test.AddAttribute("nearest_mode", "floor");
 
-    const int64_t N = 1, C = 1, H = 2, W = 2;
+    constexpr int64_t N = 1, C = 1, H = 2, W = 2;
     std::vector<float> X = {
         1.0f, 2.0f,
         3.0f, 4.0f};
@@ -783,7 +783,7 @@ TEST(ResizeOpTest, ResizeOpCubicDownSampleTest) {
 
   test.AddAttribute("mode", "cubic");
 
-  const int64_t N = 1, C = 1, H = 4, W = 4;
+  constexpr int64_t N = 1, C = 1, H = 4, W = 4;
   std::vector<float> X = {
       1.0f, 2.0f, 3.0f, 4.0f,
       5.0f, 6.0f, 7.0f, 8.0f,
@@ -812,7 +812,7 @@ TEST(ResizeOpTest, ResizeOpCubicDownSampleTest_exclude_outside) {
   test.AddAttribute("exclude_outside", static_cast<int64_t>(1));
   test.AddAttribute("cubic_coeff_a", -0.5f);
 
-  const int64_t H = 4, W = 4;
+  constexpr int64_t H = 4, W = 4;
 
   std::vector<float> X = {
       1.0f, 2.0f, 3.0f, 4.0f,
@@ -840,7 +840,7 @@ TEST(ResizeOpTest, ResizeOpCubicDownSampleTest_coeff) {
   test.AddAttribute("mode", "cubic");
   test.AddAttribute("cubic_coeff_a", -0.5f);
 
-  const int64_t N = 1, C = 1, H = 4, W = 4;
+  constexpr int64_t N = 1, C = 1, H = 4, W = 4;
   std::vector<float> X = {
       1.0f, 2.0f, 3.0f, 4.0f,
       5.0f, 6.0f, 7.0f, 8.0f,
@@ -867,7 +867,7 @@ TEST(ResizeOpTest, ResizeOpCubicDownSampleTest_with_roi) {
   test.AddAttribute("mode", "cubic");
   test.AddAttribute("coordinate_transformation_mode", "tf_crop_and_resize");
 
-  const int64_t N = 1, C = 1, H = 4, W = 4;
+  constexpr int64_t N = 1, C = 1, H = 4, W = 4;
   std::vector<float> X = {
       1.0f, 2.0f, 3.0f, 4.0f,
       5.0f, 6.0f, 7.0f, 8.0f,
@@ -894,7 +894,7 @@ TEST(ResizeOpTest, ResizeOpCubicDownSampleTest_asymmetric) {
   test.AddAttribute("mode", "cubic");
   test.AddAttribute("coordinate_transformation_mode", "asymmetric");
 
-  const int64_t N = 1, C = 1, H = 4, W = 4;
+  constexpr int64_t N = 1, C = 1, H = 4, W = 4;
   std::vector<float> X = {
       1.0f, 2.0f, 3.0f, 4.0f,
       5.0f, 6.0f, 7.0f, 8.0f,
@@ -921,7 +921,7 @@ TEST(ResizeOpTest, ResizeOpCubicUpSampleTest) {
   test.AddAttribute("mode", "cubic");
   test.AddAttribute("coordinate_transformation_mode", "asymmetric");
 
-  const int64_t N = 1, C = 1, H = 4, W = 4;
+  constexpr int64_t N = 1, C = 1, H = 4, W = 4;
   std::vector<float> X = {
       1.0f, 2.0f, 3.0f, 4.0f,
       5.0f, 6.0f, 7.0f, 8.0f,
@@ -953,7 +953,7 @@ TEST(ResizeOpTest, ResizeOpCubicUpSampleTest_MultiChannel) {
 
   test.AddAttribute("mode", "cubic");
 
-  const int64_t N = 1, C = 2, H = 4, W = 4;
+  constexpr int64_t N = 1, C = 2, H = 4, W = 4;
   std::vector<float> X = {
       0.0f, 1.0f, 2.0f, 3.0f,
       4.0f, 5.0f, 6.0f, 7.0f,
@@ -1002,7 +1002,7 @@ TEST(ResizeOpTest, ResizeOpCubicUpSampleTest_tf_half_pixel_for_nn) {
   test.AddAttribute("mode", "cubic");
   test.AddAttribute("coordinate_transformation_mode", "tf_half_pixel_for_nn");
 
-  const int64_t N = 1, C = 1, H = 4, W = 4;
+  constexpr int64_t N = 1, C = 1, H = 4, W = 4;
   std::vector<float> X = {
       1.0f, 2.0f, 3.0f, 4.0f,
       5.0f, 6.0f, 7.0f, 8.0f,
@@ -1032,7 +1032,7 @@ TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_4DBilinear_Ver10) {
 
   test.AddAttribute("mode", "linear");
 
-  const int64_t N = 1, C = 1, H = 2, W = 4;
+  constexpr int64_t N = 1, C = 1, H = 2, W = 4;
   std::vector<float> X = {
       1.0f, 2.0f, 3.0f, 4.0f,
       5.0f, 6.0f, 7.0f, 8.0f};
@@ -1052,7 +1052,7 @@ TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_2DBilinear_Ver10) {
 
   test.AddAttribute("mode", "linear");
 
-  const int64_t H = 2, W = 4;
+  constexpr int64_t H = 2, W = 4;
   std::vector<float> X = {
       1.0f, 2.0f, 3.0f, 4.0f,
       5.0f, 6.0f, 7.0f, 8.0f};
@@ -1071,7 +1071,7 @@ TEST(ResizeOpTest, ResizeOpLinearUpSampleTest_4DBilinear_Ver10) {
   std::vector<float> scales{1.0f, 1.0f, 2.0f, 4.0f};
   test.AddAttribute("mode", "linear");
 
-  const int64_t N = 2, C = 1, H = 2, W = 2;
+  constexpr int64_t N = 2, C = 1, H = 2, W = 2;
   std::vector<float> X = {1.0f, 3.0f,
                           4.0f, 8.0f,
 
@@ -1101,7 +1101,7 @@ TEST(ResizeOpTest, ResizeOpLinearUpSampleTest_2DBilinear_Ver10) {
   std::vector<float> scales{2.0f, 4.0f};
   test.AddAttribute("mode", "linear");
 
-  const int64_t H = 2, W = 2;
+  constexpr int64_t H = 2, W = 2;
   std::vector<float> X = {1.0f, 3.0f,
                           4.0f, 8.0f};
 
@@ -1123,7 +1123,7 @@ TEST(ResizeOpTest, ResizeOpLinearScalesNoOpTest_Ver10) {
   std::vector<float> scales{1.0f, 1.0f, 1.0f, 1.0f};
   test.AddAttribute("mode", "linear");
 
-  const int64_t N = 2, C = 1, H = 2, W = 2;
+  constexpr int64_t N = 2, C = 1, H = 2, W = 2;
   std::vector<float> X = {1.0f, 3.0f,
                           4.0f, 8.0f,
 
@@ -1149,7 +1149,7 @@ TEST(ResizeOpTest, ResizeOpNearestDownSampleTest_Ver10) {
 
   test.AddAttribute("mode", "nearest");
 
-  const int64_t N = 1, C = 1, H = 2, W = 4;
+  constexpr int64_t N = 1, C = 1, H = 2, W = 4;
   std::vector<float> X = {
       1.0f, 2.0f, 3.0f, 4.0f,
       5.0f, 6.0f, 7.0f, 8.0f};
@@ -1169,7 +1169,7 @@ TEST(ResizeOpTest, ResizeOpNearestUpSampleTest_Ver10) {
 
   test.AddAttribute("mode", "nearest");
 
-  const int64_t N = 1, C = 1, H = 2, W = 2;
+  constexpr int64_t N = 1, C = 1, H = 2, W = 2;
   std::vector<float> X = {1.0f, 2.0f, 3.0f, 4.0f};
 
   test.AddInput<float>("X", {N, C, H, W}, X);
@@ -1190,7 +1190,7 @@ TEST(UpsampleOpTest, ResizeOpNearestNoScaleTest_Ver10) {
 
   test.AddAttribute("mode", "nearest");
 
-  const int64_t N = 1, C = 1, H = 2, W = 2;
+  constexpr int64_t N = 1, C = 1, H = 2, W = 2;
   std::vector<float> X = {1.0f, 2.0f, 3.0f, 4.0f};
 
   test.AddInput<float>("X", {N, C, H, W}, X);
@@ -1208,7 +1208,7 @@ TEST(ResizeOpTest, ResizeOp_MissingRoiAndMissingScalesOptionalInputs) {
   test.AddAttribute("mode", "linear");
   test.AddAttribute("coordinate_transformation_mode", "tf_crop_and_resize");
 
-  const int64_t H = 4, W = 4;
+  constexpr int64_t H = 4, W = 4;
 
   std::vector<float> X = {
       1.0f, 1.0f, 1.0f, 1.0f,

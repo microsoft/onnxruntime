@@ -1234,8 +1234,8 @@ TEST(NchwcOptimizerTests, UpsampleNearest) {
         std::vector<int64_t> sizes_shape(4);
         sizes_shape[0] = 3;
         sizes_shape[1] = 42;
-        sizes_shape[2] = static_cast<int64_t>(scale_h * 27);
-        sizes_shape[3] = static_cast<int64_t>(scale_w * 15);
+        sizes_shape[2] = static_cast<int64_t>(scale_h) * 27;
+        sizes_shape[3] = static_cast<int64_t>(scale_w) * 15;
         input_args.push_back(helper.Make1DInitializer<float>({}));
         input_args.push_back(helper.Make1DInitializer<int64_t>(sizes_shape));
       } else {

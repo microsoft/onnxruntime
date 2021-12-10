@@ -15,9 +15,6 @@ HeapBuffer::~HeapBuffer() {
   for (auto d : deleters_) {
     d.Run();
   }
-  for (void* p : buffers_) {
-    delete[] reinterpret_cast<uint8_t*>(p);
-  }
 }
 }  // namespace test
 }  // namespace onnxruntime

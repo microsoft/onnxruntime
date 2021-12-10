@@ -204,6 +204,7 @@ void TestCaseRequestContext::CalculateAndLogStats() const {
         break;
       case EXECUTE_RESULT::MODEL_TYPE_MISMATCH:
         LOGF_DEFAULT(ERROR, "%s: type in model file mismatch. Dataset:%s\n", test_case_name.c_str(), s.c_str());
+        break;
       default:
         //nothing to do
         break;
