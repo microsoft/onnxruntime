@@ -238,25 +238,25 @@ class KernelLauncher {
     err_index_ = index_;      \
   }
 
-  template <typename T, typename E = std::is_convertible<T, int32_t>>
+  template <typename T, typename E = std::is_convertible<T, cl_int>>
   KernelLauncher& setInt2(T v1, T v2) {
-    cl_int tmp[2] = {v1, v2};
+    cl_int tmp[2] = {static_cast<cl_int>(v1), static_cast<cl_int>(v2)};
     SKIP_IF_ERRORED(kernel_.setArg(index_, sizeof(tmp), tmp));
     index_ += 1;
     return *this;
   }
 
-  template <typename T, typename E = std::is_convertible<T, int32_t>>
+  template <typename T, typename E = std::is_convertible<T, cl_int>>
   KernelLauncher& setInt3(T v1, T v2, T v3) {
-    cl_int tmp[3] = {v1, v2, v3};
+    cl_int tmp[3] = {static_cast<cl_int>(v1), static_cast<cl_int>(v2), static_cast<cl_int>(v3)};
     SKIP_IF_ERRORED(kernel_.setArg(index_, sizeof(tmp), tmp));
     index_ += 1;
     return *this;
   }
 
-  template <typename T, typename E = std::is_convertible<T, int32_t>>
+  template <typename T, typename E = std::is_convertible<T, cl_int>>
   KernelLauncher& setInt4(T v1, T v2, T v3, T v4) {
-    cl_int tmp[4] = {v1, v2, v3, v4};
+    cl_int tmp[4] = {static_cast<cl_int>(v1), static_cast<cl_int>(v2), static_cast<cl_int>(v3), static_cast<cl_int>(v4)};
     SKIP_IF_ERRORED(kernel_.setArg(index_, sizeof(tmp), tmp));
     index_ += 1;
     return *this;
