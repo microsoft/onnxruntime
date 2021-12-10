@@ -38,7 +38,7 @@ def run_without_benchmark(mod):
     run()
 
 @tvm.register_func("tvm_onnx_import_and_compile")
-def onnx_compile(model_string, model_path, target, target_host, opt_level, opset, freeze_params, input_shapes, tuning_logfile="", tuning_type = ANSOR_TYPE):
+def onnx_compile(model_string, model_path, target, target_host, opt_level, opset, freeze_params, input_shapes, nhwc = False, tuning_logfile="", tuning_type = ANSOR_TYPE):
     model = onnx.load_model_from_string(bytes(model_string))
     if model_path:
         base_dir = os.path.dirname(os.path.abspath(model_path))
@@ -66,9 +66,20 @@ def onnx_compile(model_string, model_path, target, target_host, opt_level, opset
         tuning_logfile = os.getenv("AUTOTVM_TUNING_LOG")
     if tuning_type == ANSOR_TYPE:
         if tuning_logfile:
+            desired_layouts = {
+                "nn.conv2d": ["NHWC", "default"],
+                "nn.conv2d_transpose": ["NHWC", "default"],
+                "nn.upsampling": ["NHWC", "default"],
+                "vision.roi_align": ["NHWC", "default"],
+            }
             print("Use tuning file from ", ANSOR_TYPE, ": ", tuning_logfile)
             with auto_scheduler.ApplyHistoryBest(tuning_logfile):
                 with tvm.transform.PassContext(opt_level=opt_level, config={"relay.backend.use_auto_scheduler": True}):
+                    if nhwc:
+                        irmod = relay.transform.InferType()(irmod)
+                        model_nhwc = relay.transform.ConvertLayout(desired_layouts)(irmod)
+                        model_nhwc = tvm.relay.transform.EliminateCommonSubexpr()(model_nhwc)
+                        irmod = tvm.relay.transform.FoldConstant()(model_nhwc)
                     lib = relay.build(irmod, target=target, target_host=target_host)
         else:
             with tvm.transform.PassContext(opt_level=opt_level):

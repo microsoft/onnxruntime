@@ -16,6 +16,7 @@ tvm::runtime::Module TVMCompile(const std::string& onnx_txt,
                                 int opset,
                                 bool freeze_params,
                                 const std::vector<std::vector<int64_t>>& input_shapes,
+                                bool nhwc,
                                 const std::string& tuning_logfile,
                                 const std::string& tuning_type)
 {
@@ -40,6 +41,7 @@ tvm::runtime::Module TVMCompile(const std::string& onnx_txt,
           opset,
           freeze_params,
           shapes,
+          nhwc,
           tuning_logfile,
           tuning_type);
   return mod;

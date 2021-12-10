@@ -36,6 +36,7 @@ struct StvmExecutionProviderInfo {
   std::string target_host{default_target_str};
   unsigned int opt_level{default_opt_level};
   bool freeze_weights = true;
+  bool to_nhwc = false;
   std::string tuning_file_path{""};
   std::string tuning_type{"Ansor"};
   std::string input_names_str{""};

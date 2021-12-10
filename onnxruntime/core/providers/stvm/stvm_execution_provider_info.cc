@@ -16,6 +16,7 @@ constexpr const char* kTarget = "target";
 constexpr const char* kTargetHost = "target_host";
 constexpr const char* kOptLevel = "opt_level";
 constexpr const char* kFreezeWeights = "freeze_weights";
+constexpr const char* kToNHWC = "to_nhwc";
 constexpr const char* kTuningFilePath = "tuning_file_path";
 constexpr const char* kTuningType = "tuning_type";
 constexpr const char* kInputNames = "input_names";
@@ -26,6 +27,7 @@ static const std::unordered_set<std::string> valid_keys {
   std::string{kTargetHost},
   std::string{kOptLevel},
   std::string{kFreezeWeights},
+  std::string{kToNHWC},
   std::string{kTuningFilePath},
   std::string{kTuningType},
   std::string{kInputNames},
@@ -56,6 +58,7 @@ StvmExecutionProviderInfo StvmExecutionProviderInfo::FromProviderOptions(const P
           .AddAssignmentToReference(stvm::provider_option_names::kTargetHost, info.target_host)
           .AddAssignmentToReference(stvm::provider_option_names::kOptLevel, info.opt_level)
           .AddAssignmentToReference(stvm::provider_option_names::kFreezeWeights, info.freeze_weights)
+          .AddAssignmentToReference(stvm::provider_option_names::kToNHWC, info.to_nhwc)
           .AddAssignmentToReference(stvm::provider_option_names::kTuningFilePath, info.tuning_file_path)
           .AddAssignmentToReference(stvm::provider_option_names::kTuningType, info.tuning_type)
           .AddAssignmentToReference(stvm::provider_option_names::kInputNames, info.input_names_str)

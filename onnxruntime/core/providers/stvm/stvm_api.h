@@ -15,6 +15,7 @@ namespace stvm {
                                     int opset,
                                     bool freeze_params,
                                     const std::vector<std::vector<int64_t>>& input_shapes,
+                                    bool nhwc = false,
                                     const std::string& tuning_logfile = "",
                                     const std::string& tuning_type = "Ansor");
     void TVMSetInputs(tvm::runtime::Module& mod, std::vector<size_t>& inds, std::vector<DLTensor>& inputs);
