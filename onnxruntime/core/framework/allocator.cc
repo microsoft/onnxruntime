@@ -4,10 +4,15 @@
 #include "core/common/safeint.h"
 #include "core/framework/allocator.h"
 #include "core/framework/allocatormgr.h"
+#include "core/mlas/inc/mlas.h"
 #include "core/framework/utils.h"
 #include "core/session/ort_apis.h"
 #include <cstdlib>
 #include <sstream>
+
+#if defined(USE_MIMALLOC)
+#include <mimalloc.h>
+#endif
 
 namespace onnxruntime {
 
@@ -34,22 +39,73 @@ bool IAllocator::CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size, siz
   return ok;
 }
 
-#if defined(USE_MIMALLOC_ARENA_ALLOCATOR)
-void* MiMallocAllocator::Alloc(size_t size) {
-  return mi_malloc(size);
+#ifdef USE_MIMALLOC
+void* AllocatorDefaultAlloc(size_t size) {
+  const size_t alignment = MlasGetPreferredBufferAlignment();
+  if (size <= 0) return nullptr;
+  void* p;
+#if defined(_MSC_VER)
+  p = mi_malloc_aligned(size, alignment);
+  if (p == nullptr)
+    ORT_THROW_EX(std::bad_alloc);
+#elif defined(_LIBCPP_SGX_CONFIG)
+  p = mi_memalign(alignment, size);
+  if (p == nullptr)
+    ORT_THROW_EX(std::bad_alloc);
+#else
+  int ret = mi_posix_memalign(&p, alignment, size);
+  if (ret != 0)
+    ORT_THROW_EX(std::bad_alloc);
+#endif
+  return p;
 }
 
-void MiMallocAllocator::Free(void* p) {
+void AllocatorDefaultFree(void* p) {
+#if defined(_MSC_VER)
+  const size_t alignment = MlasGetPreferredBufferAlignment();
+  mi_free_aligned(p, alignment);
+#else
   mi_free(p);
-}
 #endif
+}
+
+#else
+void* AllocatorDefaultAlloc(size_t size) {
+  const size_t alignment = MlasGetPreferredBufferAlignment();
+  if (size <= 0) return nullptr;
+  void* p;
+#if _MSC_VER
+  p = _aligned_malloc(size, alignment);
+  if (p == nullptr)
+    ORT_THROW_EX(std::bad_alloc);
+#elif defined(_LIBCPP_SGX_CONFIG)
+  p = memalign(alignment, size);
+  if (p == nullptr)
+    ORT_THROW_EX(std::bad_alloc);
+#else
+  int ret = posix_memalign(&p, alignment, size);
+  if (ret != 0)
+    ORT_THROW_EX(std::bad_alloc);
+#endif
+  return p;
+}
+
+void AllocatorDefaultFree(void* p) {
+#if _MSC_VER
+  _aligned_free(p);
+#else
+  free(p);
+#endif
+}
+
+#endif  // USE_MIMALLOC
 
 void* CPUAllocator::Alloc(size_t size) {
-  return utils::DefaultAlloc(size);
+  return AllocatorDefaultAlloc(size);
 }
 
 void CPUAllocator::Free(void* p) {
-  utils::DefaultFree(p);
+  AllocatorDefaultFree(p);
 }
 }  // namespace onnxruntime
 
@@ -108,3 +164,4 @@ ORT_API_STATUS_IMPL(OrtApis::CompareMemoryInfo, _In_ const OrtMemoryInfo* info1,
   *out = (*info1 == *info2) ? 0 : -1;
   return nullptr;
 }
+

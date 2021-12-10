@@ -1,5 +1,13 @@
 [
     [
+        "MatMulInteger ai.onnx CPUExecutionProvider",
+        10315437332566125928
+    ],
+    [
+        "MatMulIntegerToFloat com.microsoft CPUExecutionProvider",
+        1363870470731747600
+    ],
+    [
         "QLinearConv ai.onnx CPUExecutionProvider",
         1301685544574905024
     ],

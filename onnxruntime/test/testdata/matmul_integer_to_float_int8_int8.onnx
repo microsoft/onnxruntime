@@ -1,7 +1,9 @@
-:Ä
-9
+:Ì
+U
 A
-Bmatmul_output_int32MatMulInteger"MatMulInteger
+B
+a_zero_point
+b_zero_pointmatmul_output_int32MatMulInteger"MatMulInteger
 .
 a_scale
 b_scale
@@ -9,16 +11,13 @@ multiplier	mul_right"Mul
 A
 matmul_output_int32matmul_output_floatcast"Cast*	
 to 
-E
+5
 matmul_output_float
 
-multipliermul_bottom_output
-mul_bottom"Mul
-&
-mul_bottom_output
-biasYadd"AddDynamicQuantizeMatMul_fusionZ
+multiplierY
+mul_bottom"MulDynamicQuantizeMatMul_fusionZ
 A
-
+
 
 M
 KZ
@@ -33,10 +32,14 @@ mul_bottom"Mul
 Z
 b_scale
 	
-CZ
-bias
-	
-Nb
+CZ
+a_zero_point
+
+
+Z
+b_zero_point
+	
+Cb
 Y
 
 
