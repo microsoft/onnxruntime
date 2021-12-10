@@ -7,7 +7,10 @@
 #include "core/framework/op_kernel.h"
 #endif
 #include <cmath>
-
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(push)
+#pragma warning(disable : 26451)
+#endif
 namespace onnxruntime {
 
 constexpr const char* UpsampleModeNN = "nearest";
@@ -16,7 +19,7 @@ constexpr const char* UpsampleModeCubic = "cubic";
 
 // In case of cubic mode the grid used to calculate the interpolation value
 // is a 4x4 matrix
-const size_t CubicModeGridLength = 4;
+constexpr size_t CubicModeGridLength = 4;
 
 using GetNearestPixelFunc = int64_t(*)(float, bool);
 using GetOriginalCoordinateFunc = float (*)(float, float, float, float, float, float);
@@ -375,3 +378,6 @@ class Upsample : public UpsampleBase, public OpKernel {
 };
 
 }  // namespace onnxruntime
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(pop)
+#endif

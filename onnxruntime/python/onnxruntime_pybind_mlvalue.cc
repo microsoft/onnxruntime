@@ -41,7 +41,7 @@ bool IsNumpyArray(py::object& obj) {
   return PyObjectCheck_NumpyArray(obj.ptr());
 }
 
-bool IsNumericNumpyType(int npy_type) {
+constexpr bool IsNumericNumpyType(int npy_type) {
   return npy_type < NPY_OBJECT || npy_type == NPY_HALF;
 }
 

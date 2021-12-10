@@ -334,14 +334,14 @@ class ThreadPool {
   }
 
   struct WorkInfo {
-    std::ptrdiff_t start;
-    std::ptrdiff_t end;
+    std::ptrdiff_t start{0};
+    std::ptrdiff_t end{0};
   };
 
   /** Calculate the start and end offsets for a batch.
       @remarks Based on MlasPartitionWork
   */
-  static WorkInfo PartitionWork(std::ptrdiff_t batch_idx, std::ptrdiff_t num_batches, std::ptrdiff_t total_work) {
+  constexpr static WorkInfo PartitionWork(std::ptrdiff_t batch_idx, std::ptrdiff_t num_batches, std::ptrdiff_t total_work) {
     const std::ptrdiff_t work_per_batch = total_work / num_batches;
     const std::ptrdiff_t work_per_batch_extra = total_work % num_batches;
 

@@ -1216,7 +1216,11 @@ static void ResolveMemoryPatternFlags(SessionState& session_state) {
     }
   }
 }
-
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(push)
+//VC++ reports: "Releasing unheld lock 'l' in function 'onnxruntime::InferenceSession::Initialize'". But I don't see anything wrong.
+#pragma warning(disable : 26117)
+#endif
 common::Status InferenceSession::Initialize() {
   Status status = Status::OK();
   TimePoint tp;
@@ -1468,7 +1472,9 @@ common::Status InferenceSession::Initialize() {
 
   return status;
 }
-
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(pop)
+#endif
 // This method should be called from within Initialize() only and before the creation of the session state.
 // This ensures all providers have been registered in the session and the session state is consistent with the providers.
 void InferenceSession::UpdateProvidersWithSharedAllocators() {

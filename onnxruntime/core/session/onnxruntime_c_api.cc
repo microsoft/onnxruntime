@@ -53,7 +53,11 @@ const OrtDmlApi* GetOrtDmlApi(_In_ uint32_t version) NO_EXCEPTION;
 #ifdef ENABLE_EXTENSION_CUSTOM_OPS
 #include "onnxruntime_extensions.h"
 #endif
-
+#if defined(_MSC_VER) && !defined(__clang__)
+//The warning is: "Do not assign the result of an allocation or a function call with an owner<T> return value to a raw pointer, use owner<T> instead(i .11)."
+//But this file is for C API. It can't use unique_ptr/shared_ptr in function signature.
+#pragma warning(disable : 26400)
+#endif
 using namespace onnxruntime::logging;
 using onnxruntime::BFloat16;
 using onnxruntime::DataTypeImpl;
@@ -745,7 +749,7 @@ ORT_API_STATUS_IMPL(OrtApis::Run, _Inout_ OrtSession* sess, _In_opt_ const OrtRu
                     _Inout_updates_all_(output_names_len) OrtValue** output) {
   API_IMPL_BEGIN
   auto session = reinterpret_cast<::onnxruntime::InferenceSession*>(sess);
-  const int queue_id = 0;
+  constexpr int queue_id = 0;
 
   std::vector<std::string> feed_names(input_len);
   std::vector<OrtValue> feeds(input_len);
@@ -1455,7 +1459,7 @@ ORT_STATUS_PTR OrtGetNumSequenceElements(const OrtValue* p_ml_value, size_t* out
 }
 
 #if !defined(DISABLE_ML_OPS)
-static const int NUM_MAP_INDICES = 2;
+static constexpr int NUM_MAP_INDICES = 2;
 #endif
 
 static ORT_STATUS_PTR OrtGetValueCountImpl(const OrtValue* value, size_t* out) {
@@ -1963,7 +1967,7 @@ ORT_API_STATUS_IMPL(OrtApis::GetAvailableProviders, _Outptr_ char*** out_ptr,
   // TODO: there is no need to manually malloc/free these memory, it is insecure
   // and inefficient. Instead, the implementation could scan the array twice,
   // and use a single string object to hold all the names.
-  const size_t MAX_LEN = 30;
+  constexpr size_t MAX_LEN = 30;
   const auto& available_providers = GetAvailableExecutionProviderNames();
   const int available_count = gsl::narrow<int>(available_providers.size());
   char** const out = new char*[available_count];

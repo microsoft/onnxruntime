@@ -14,7 +14,10 @@
 #ifdef _MSC_VER
 #pragma warning(pop)
 #endif
-
+//TODO: fix the warnings
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(disable : 26451)
+#endif
 /*
 ONNX_OPERATOR_SCHEMA(GRU)
     .SetDoc(R"DOC(

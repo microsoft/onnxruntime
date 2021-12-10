@@ -337,10 +337,10 @@ class alignas(CACHE_LINE_BYTES) LoopCounter {
   // - The number of shards is <= the number of threads (d_of_p).
   //   Hence, at low thread counts, each of N threads will get its own
   //   shard representing 1/N of the work.
-  static unsigned GetNumShards(uint64_t num_iterations,
+  constexpr static unsigned GetNumShards(uint64_t num_iterations,
                                uint64_t d_of_p,
                                uint64_t block_size) {
-    unsigned num_shards;
+    unsigned num_shards = 0;
     auto num_blocks = num_iterations / block_size;
     if (num_blocks == 0) {
       num_shards = 1;
@@ -531,7 +531,7 @@ using CostModel = Eigen::TensorCostModel<Eigen::ThreadPoolDevice>;
 static ptrdiff_t CalculateParallelForBlock(const ptrdiff_t n, const Eigen::TensorOpCost& cost,
                                            std::function<ptrdiff_t(ptrdiff_t)> block_align, int num_threads) {
   const double block_size_f = 1.0 / CostModel::taskSize(1, cost);
-  const ptrdiff_t max_oversharding_factor = 4;
+  constexpr ptrdiff_t max_oversharding_factor = 4;
   ptrdiff_t block_size = Eigen::numext::mini(
       n,
       Eigen::numext::maxi<ptrdiff_t>(Eigen::divup<ptrdiff_t>(n, max_oversharding_factor * num_threads), static_cast<ptrdiff_t>(block_size_f)));
