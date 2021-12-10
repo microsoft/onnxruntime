@@ -93,13 +93,6 @@ using OpCountMap = std::map<std::string, int>;
 // Helper function to check that the graph transformations have been successfully applied.
 OpCountMap CountOpsInGraph(const Graph& graph, bool recurse_into_subgraphs = true);
 
-// Gets the count of `op_name` in `op_counts`.
-// Like op_counts[op_name] but works with const `op_counts`.
-inline OpCountMap::mapped_type GetOpCount(const OpCountMap& op_counts, const std::string& op_name) {
-  const auto it = op_counts.find(op_name);
-  return it != op_counts.end() ? it->second : OpCountMap::mapped_type{0};
-}
-
 #if !defined(DISABLE_SPARSE_TENSORS)
 void SparseIndicesChecker(const ONNX_NAMESPACE::TensorProto& indices_proto, gsl::span<const int64_t> expected_indicies);
 #endif // DISABLE_SPARSE_TENSORS

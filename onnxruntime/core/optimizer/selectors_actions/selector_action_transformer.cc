@@ -117,6 +117,10 @@ Status SelectorActionTransformer::MatchAndProcess(
 
     if (save_context) {
 #if defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
+      if (graph.RuntimeOptimizations().RecordExists(Name(), selector_and_action.name, node_selection)) {
+        break;
+      }
+
       const auto& action = *selector_and_action.action;
 
       Action::SavedState action_saved_state{};
@@ -237,6 +241,8 @@ Status SelectorActionTransformer::ApplyFromRuntimeOptimizations(
 
     ORT_RETURN_IF_ERROR(RegisterProducedNodesWithGraph(pre_action_max_index, post_action_max_index,
                                                        record, graph));
+
+    ++graph.MutableRuntimeOptimizationReplayCtx().num_replayed_optimizations;
   }
 
   return Status::OK();
