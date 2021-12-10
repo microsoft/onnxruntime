@@ -652,7 +652,13 @@ if (onnxruntime_USE_OPENCL)
   set_source_files_properties(opencl_generated_cl_includes PROPERTIES GENERATED TRUE)
   add_custom_target(gen_opencl_embed_hdrs DEPENDS ${opencl_generated_cl_includes})
 
-  find_package(OpenCL REQUIRED)
+  # FIXME: opencl stub have some problem due to target_include_directories set to private, improper compiling definition, etc.
+  # So we create a library for it to avoid patching towward upstream, for now.
+  add_library(onnxruntime_external_openclstub STATIC ${PROJECT_SOURCE_DIR}/external/libopencl-stub/src/libopencl.c)
+  set_target_properties(onnxruntime_external_openclstub PROPERTIES POSITION_INDEPENDENT_CODE ON)
+  target_include_directories(onnxruntime_external_openclstub PUBLIC ${PROJECT_SOURCE_DIR}/external/libopencl-stub/include)
+  target_compile_definitions(onnxruntime_external_openclstub PUBLIC "CL_HPP_TARGET_OPENCL_VERSION=120" "CL_HPP_MINIMUM_OPENCL_VERSION=120")
+
   file(GLOB_RECURSE opencl_cc_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/providers/opencl/*.h"
     "${ONNXRUNTIME_ROOT}/core/providers/opencl/*.cc"
@@ -660,7 +666,8 @@ if (onnxruntime_USE_OPENCL)
 
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${opencl_cc_srcs})
   onnxruntime_add_static_library(onnxruntime_providers_opencl ${opencl_cc_srcs})
-  target_link_libraries(onnxruntime_providers_opencl PUBLIC OpenCL::OpenCL)
+  # target_link_libraries(onnxruntime_providers_opencl PUBLIC OpenCL::OpenCL)
+  target_link_libraries(onnxruntime_providers_opencl PUBLIC onnxruntime_external_openclstub)
   target_include_directories(onnxruntime_providers_opencl PRIVATE ${ONNXRUNTIME_ROOT} INTERFACE ${opencl_target_dir})
   set_target_properties(onnxruntime_providers_opencl PROPERTIES
     LINKER_LANGUAGE CXX
