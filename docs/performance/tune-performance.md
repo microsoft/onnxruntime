@@ -24,7 +24,7 @@ This document covers basic tools and knobs that can be leveraged to find the bes
 ### ONNX GO Live Tool
 {: .no_toc }
 
-The [ONNX Go Live "OLive" tool](https://github.com/microsoft/OLive) is a python package that automates the process of accelerating models with ONNX Runtime(ORT). It contains two parts including model conversion to ONNX with correctness checking and auto performance tuning with ORT. Users can run these two together through a single pipeline or run them independently as needed.
+The [ONNX Go Live "OLive" tool](https://github.com/microsoft/OLive) is a Python package that automates the process of accelerating models with ONNX Runtime(ORT). It contains two parts: (1) model conversion to ONNX with correctness checking (2) auto performance tuning with ORT. Users can run these two together through a single pipeline or run them independently as needed.
 
 As a quickstart, please see the [notebook tutorials](https://github.com/microsoft/OLive/tree/master/notebook-tutorial) and [command line examples](https://github.com/microsoft/OLive/tree/master/cmd-example) 
 
