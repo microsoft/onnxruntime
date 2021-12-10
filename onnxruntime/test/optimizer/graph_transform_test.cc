@@ -3005,19 +3005,20 @@ TEST_F(GraphTransformationTests, BiasGeluSwitchedInputOrder) {
     session_options.graph_optimization_level = level;
     session_options.session_logid = "OptimizerTests";
     InferenceSession session{session_options, GetEnvironment()};
-    ASSERT_STATUS_OK(session.Load(model_uri));
-    ASSERT_STATUS_OK(session.Initialize());
+    ORT_RETURN_IF_ERROR(session.Load(model_uri));
+    ORT_RETURN_IF_ERROR(session.Initialize());
 
     RunOptions run_options;
-    ASSERT_STATUS_OK(session.Run(run_options, feeds, output_names, &fetches));
+    ORT_RETURN_IF_ERROR(session.Run(run_options, feeds, output_names, &fetches));
+    return Status::OK();
   };
 
   // run model with and w/o optimizations and compare the results
   std::vector<OrtValue> unoptimized_fetches;
-  run_model_test(TransformerLevel::Default, unoptimized_fetches);
+  ASSERT_STATUS_OK(run_model_test(TransformerLevel::Default, unoptimized_fetches));
 
   std::vector<OrtValue> optimized_fetches;
-  run_model_test(TransformerLevel::MaxLevel, optimized_fetches);
+  ASSERT_STATUS_OK(run_model_test(TransformerLevel::MaxLevel, optimized_fetches));
 
   // Compare results
   double per_sample_tolerance = 1e-3;
@@ -3305,7 +3306,7 @@ struct BiasSoftmaxFusionTester {
       const PathString& model_uri,
       onnxruntime::logging::Logger* logger,
       const char* execution_provider = kCudaExecutionProvider) : logger_(logger), graph_transformation_mgr_{5} {
-    model_load_ = Model::Load(model_uri, p_model_, nullptr, *logger_);
+    ORT_THROW_IF_ERROR(model_load_ = Model::Load(model_uri, p_model_, nullptr, *logger_));
 
     // move to cuda since fusion only takes place in that case
     SetExecutionProvider(execution_provider);
