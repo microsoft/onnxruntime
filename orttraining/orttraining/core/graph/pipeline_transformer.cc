@@ -1581,7 +1581,7 @@ Status ApplyPipelinePartitionToMainGraph(Graph& graph,
   ORT_ENFORCE(rank_ids.size() == num_stages);
   std::vector<std::pair<int, int>> messages;
   for (size_t s = 0; s < num_stages - 1; ++s) {
-    messages.emplace_back(s, static_cast<int>(s + 1));
+    messages.emplace_back(static_cast<int>(s), static_cast<int>(s + 1));
     stage_to_rank.at(s) = rank_ids.at(s);
   }
   stage_to_rank.at(num_stages - 1) = rank_ids.at(num_stages - 1);
