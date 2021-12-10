@@ -100,7 +100,7 @@ Raw input is usually a string (for NLP model) or an image (for image model). The
 
 1. Use a tokenizer in JS/wasm to pre-process it to number data, create tensors from the data and feed to ORT for model inferencing.
 
-2. [example: OWA inline file suggestions]: use one or more custom ops to deal with strings. Build with the custom ops. The model can directly process string tensor inputs. Refer to the[onnxruntime-extensions](https://github.com/microsoft/onnxruntime-extensions) library, which contain a set of possible custom operators.
+2. Use one or more custom ops to deal with strings. Build with the custom ops. The model can directly process string tensor inputs. Refer to the[onnxruntime-extensions](https://github.com/microsoft/onnxruntime-extensions) library, which contain a set of possible custom operators.
 
 ### Image input
 
