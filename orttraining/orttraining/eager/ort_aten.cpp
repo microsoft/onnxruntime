@@ -5,6 +5,7 @@
 #include "ort_tensor.h"
 #include <c10/core/TensorImpl.h>
 #include <ATen/native/CPUFallback.h>
+#include <ATen/InferSize.h>
 
 namespace torch_ort {
 namespace eager {
@@ -94,35 +95,6 @@ OrtValue create_ort_value(
 
 OrtValue create_ort_value(
   onnxruntime::ORTInvoker& invoker,
-  const int64_t val) {
-  OrtValue ort_val;
-  CreateMLValue(
-    invoker.GetCurrentExecutionProvider().GetAllocator(0, OrtMemTypeDefault),
-    ort_scalar_type_from_aten(at::kLong),
-    {1,},
-    &ort_val);
-  auto* ort_tensor = ort_val.GetMutable<onnxruntime::Tensor>();
-  CopyVectorToTensor<int64_t>(invoker, {val}, *ort_tensor);
-  return ort_val;
-}
-
-OrtValue create_ort_value(
-  onnxruntime::ORTInvoker& invoker,
-  c10::optional<int64_t> intval) {
-  int64_t val = intval.value();
-  OrtValue ort_val;
-  CreateMLValue(
-    invoker.GetCurrentExecutionProvider().GetAllocator(0, OrtMemTypeDefault),
-    ort_scalar_type_from_aten(at::kLong),
-    {1,},
-    &ort_val);
-  auto* ort_tensor = ort_val.GetMutable<onnxruntime::Tensor>();
-  CopyVectorToTensor<int64_t>(invoker, {val}, *ort_tensor);
-  return ort_val;
-}
-
-OrtValue create_ort_value(
-  onnxruntime::ORTInvoker& invoker,
   const at::Tensor& tensor) {
   assert_tensor_supported(tensor);
 
@@ -202,6 +174,14 @@ bool IsSupportedType(at::IntArrayRef arrary, const std::vector<at::ScalarType>& 
          std::find(valid_types.begin(), valid_types.end(), at::kLong) != valid_types.end();
 }
 
+bool IsSupportedType(int64_t val, const std::vector<at::ScalarType>& valid_types){
+  return std::find(valid_types.begin(), valid_types.end(), at::kLong) != valid_types.end();
+}
+
+bool IsSupportedType(c10::optional<int64_t> val, const std::vector<at::ScalarType>& valid_types){
+  return IsSupportedType(val.value(), valid_types);
+}
+
 //#pragma endregion
 
 //#pragma region Hand-Implemented ATen Ops
@@ -268,22 +248,6 @@ at::Tensor empty_strided(
       .dtype(dtype));
 }
 
-at::Tensor slice_Tensor(
-  const at::Tensor& self,
-  int64_t dim,
-  c10::optional<int64_t> start,
-  c10::optional<int64_t> end,
-  int64_t step) {
-  ORT_LOG_FN(self, dim, start, end, step);
-  auto& invoker = GetORTInvoker(self.device());
-  std::vector<OrtValue> result(1);
-  auto status = invoker.Invoke("Slice", {create_ort_value(invoker, self), create_ort_value(invoker, start), create_ort_value(invoker, end), create_ort_value(invoker, dim), create_ort_value(invoker, step)}, result, nullptr);
-  if (!status.IsOK())
-    throw std::runtime_error(
-      "ORT return failure status:" + status.ErrorMessage());
-  return aten_tensor_from_ort(result, self.options())[0];
-}
-
 at::Tensor _reshape_alias(
   const at::Tensor& self, 
   at::IntArrayRef size, 
@@ -295,24 +259,18 @@ at::Tensor _reshape_alias(
     reshape_copy(
       invoker,
       create_ort_value(invoker, self),
-      at::infer_size(
-        size,
-        self.numel())),
+      size),
     self.options());
 }
 
 at::Tensor view(const at::Tensor& self, at::IntArrayRef size) {
   ORT_LOG_FN(self, size);
-
   auto& invoker = GetORTInvoker(self.device());
-  auto shape = at::infer_size_dv(size, self.numel());
-  std::vector<int64_t> shape_vec;
-  shape_vec.insert(shape_vec.begin(), shape.begin(), shape.end());
   return aten_tensor_from_ort(
     reshape_copy(
       invoker,
       create_ort_value(invoker, self),
-      shape_vec),
+      size),
     self.options());
 }
 
