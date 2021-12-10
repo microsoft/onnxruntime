@@ -1578,7 +1578,7 @@ Status ApplyPipelinePartitionToMainGraph(Graph& graph,
   // partition of training graphs, we need to let tensors be copied from s+1 to
   // s, as well.
   std::vector<int> stage_to_rank(num_stages);
-  ORT_ENFORCE(static_cast<int>(rank_ids.size()) == num_stages);
+  ORT_ENFORCE(rank_ids.size() == num_stages);
   std::vector<std::pair<int, int>> messages;
   for (int s = 0; s < num_stages - 1; ++s) {
     messages.emplace_back(s, s + 1);
