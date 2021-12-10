@@ -25,7 +25,7 @@ jobs:
         with:
           ACCESS_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           BRANCH: gh-pages
-          FOLDER: docs/c_cxx/html
+          FOLDER: build/doxygen/html
           TARGET_FOLDER: docs/api/c
           CLEAN_EXCLUDE: '["_config.yml"]'    
  
