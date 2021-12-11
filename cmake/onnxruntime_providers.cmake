@@ -381,7 +381,7 @@ if (onnxruntime_USE_CUDA)
 
   if (onnxruntime_ENABLE_DEEP_SPEED_CUDA_KERNELS) # build with DeepSpeed CUDA kernel support
     target_link_directories(onnxruntime_providers_cuda PRIVATE ${ONNXRUNTIME_ROOT}/core/providers/cuda/deep_speed/deps/lib64)
-    # target_link_libraries(onnxruntime_providers_cuda PRIVATE deepspeed)
+    target_link_libraries(onnxruntime_providers_cuda PRIVATE deepspeed)
   endif()
 
   if (onnxruntime_ENABLE_NVTX_PROFILE)

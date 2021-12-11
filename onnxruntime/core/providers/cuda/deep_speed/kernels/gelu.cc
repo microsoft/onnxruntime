@@ -40,15 +40,33 @@ Status BiasGelu<T>::ComputeInternal(OpKernelContext* context) const {
   auto* output_buffer = output_tensor->MutableData<T>();
 
   const size_t num_elements = input_shape.Size();
-
   auto stream = Stream();
 
   if (input_buffer != output_buffer) {
-    CUDA_RETURN_IF_ERROR(cudaMemcpy(output_buffer, input_buffer,
-                                    num_elements * sizeof(CudaT), cudaMemcpyDeviceToDevice));
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output_buffer, input_buffer,
+                                         num_elements * sizeof(CudaT), cudaMemcpyDeviceToDevice, stream));
   }
 
-  // TODO: Call DeepSpeed here
+  size_t input_rank = input_shape.NumDimensions();
+
+  unsigned batch_size = 1;  // Assume input is scalar initially
+  unsigned hidden_dim = 1;  // Assume input is scalar initially
+
+  if (input_rank > 0) {  // Input is not a scalar
+    hidden_dim = static_cast<unsigned>(input_shape[input_rank - 1]);
+    batch_size = static_cast<unsigned>(num_elements) / hidden_dim;
+  }
+
+  const auto* bias_buffer = context->Input<Tensor>(1)->Data<T>();
+
+  // TODO: Add more shape schecks for input and bias inputs
+
+  DeepSpeedAPI::bias_gelu(output_buffer,
+                          bias_buffer,
+                          batch_size,
+                          hidden_dim,
+                          true,  // Currently this kernel only supports float
+                          stream);
 
   return Status::OK();
 }
