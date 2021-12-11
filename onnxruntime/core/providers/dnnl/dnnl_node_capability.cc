@@ -282,7 +282,7 @@ bool DnnlMatMulNodeCapability::IsDimensionSupported(const Node* node) const {
 bool DnnlMatMulIntegerNodeCapability::Supported(const Node* node, const GraphViewer& graph_viewer) const {
   ORT_UNUSED_PARAMETER(graph_viewer);
   if (!IsTypeSupported(node)) return false;
-  if (!IsDimensionSupported(node)) return false;
+  if (!IsDimensionSupported(node,graph_viewer)) return false;
 
   // if weight is u8, onednn doesn't support
   auto node_inputs = node->InputDefs();
@@ -297,14 +297,77 @@ bool DnnlMatMulIntegerNodeCapability::Supported(const Node* node, const GraphVie
   return true;
 }
 
-bool DnnlMatMulIntegerNodeCapability::IsDimensionSupported(const Node* node) const {
+//assume weight zp is s8 since u8 will get rejected and weight zp matches weight data type
+bool DnnlMatMulIntegerNodeCapability::IsWeightZeroPointConstantZero(const NodeArg* node_arg, const GraphViewer& graph_viewer) const {
+  const ONNX_NAMESPACE::TensorProto* tensor_proto = nullptr;
+  // if node_arg is not initializer
+  if (!graph_viewer.GetInitializedTensor(node_arg->Name(), tensor_proto)) {
+    return false;
+  }
+  // if node_arg is not initializer
+  if (tensor_proto == nullptr) {
+    return false;
+  }
+
+  const auto& dims = tensor_proto->dims();
+  auto dim_size = tensor_proto->dims_size();
+  int num_elements = 1;
+  for (int i = 0; i < dim_size; i++) {
+    num_elements *= int(dims[i]);
+  }
+
+  //check if weight zp is all zeros
+  bool all_zero = true;
+  std::vector<int8_t> unpacked_tensor;
+  //delibrately make a vector of 1s instead of 0s
+  unpacked_tensor.resize(num_elements, 1);
+  ORT_THROW_IF_ERROR(onnxruntime::utils::UnpackTensor(*tensor_proto, tensor_proto->has_raw_data() ? tensor_proto->raw_data().data() : nullptr, tensor_proto->has_raw_data() ? tensor_proto->raw_data().size() : 0, reinterpret_cast<int8_t*>(unpacked_tensor.data()), num_elements));
+
+  //check if the initializer zero point contains all zeros
+  for (const auto& val : unpacked_tensor) {
+    if (val != 0) {
+      all_zero = false;
+      break;
+    }
+  }
+
+  //if initializer zero point is not all zeros, reject it
+  //TODO: if initializer zero point is a vector of a unique value, we can still compute it
+  if (!all_zero) {
+    return false;
+  }
+  return true;
+}
+
+bool DnnlMatMulIntegerNodeCapability::IsDimensionSupported(const Node* node, const GraphViewer& graph_viewer) const {
   auto node_inputs = node->InputDefs();
 
-  //if shape nullptr, attempt to run it (no gaurantee)
+  //do not support other than single zero point (not per column)
+  if (node_inputs.size() > 2) {
+    if (node_inputs.size() >= 3 && node_inputs[2] && node_inputs[2]->Exists()) {
+      if (node_inputs[2]->Shape() != nullptr && node_inputs[2]->Shape()->dim_size() >= 1) {
+        return false;
+      }
+    }
+
+    if (node_inputs.size() >= 4 && node_inputs[3] && node_inputs[3]->Exists()) {
+      if (node_inputs[3]->Shape() != nullptr) {
+        auto dim_size = node_inputs[3]->Shape()->dim_size();
+        if (dim_size >= 1) {
+          // non scalar zero point, but if the weight zp is constant of 0s, still accept it and let the fusion rule remove the zero point
+          if (!IsWeightZeroPointConstantZero(node_inputs[3], graph_viewer)) {
+            return false;
+          }
+        }
+      }
+    }
+  }
+
+  //if shape nullptr, not enough information to reject it. attempt to run it (no gaurantee)
   if (node_inputs[0]->Shape() == nullptr || node_inputs[1]->Shape() == nullptr) {
     return true;
   }
-
+  // if matmul src and weight have shape but have dim value of 0, reject it
   if ((node_inputs[0]->Shape() != nullptr && node_inputs[0]->Shape()->dim_size() >= 2) &&
       (node_inputs[1]->Shape() != nullptr && node_inputs[1]->Shape()->dim_size() >= 2)) {
     for (const auto& dim : node_inputs[0]->Shape()->dim()) {
@@ -319,21 +382,6 @@ bool DnnlMatMulIntegerNodeCapability::IsDimensionSupported(const Node* node) con
     }
   } else {
     return false;
-  }
-
-  //do not support other than single zero point (not per column)
-  if (node_inputs.size() > 2) {
-    if (node_inputs.size() >= 3 && node_inputs[2] && node_inputs[2]->Exists()) {
-      if (node_inputs[2]->Shape() != nullptr && node_inputs[2]->Shape()->dim_size() >= 1) {
-        return false;
-      }
-    }
-
-    if (node_inputs.size() >= 4 && node_inputs[3] && node_inputs[3]->Exists()) {
-      if (node_inputs[3]->Shape() != nullptr && node_inputs[3]->Shape()->dim_size() >= 1) {
-        return false;
-      }
-    }
   }
 
   return true;
@@ -776,5 +824,62 @@ bool DnnlErfNodeCapability::IsErfPartOfGelu(const Node* node, const GraphViewer&
   return true;
 
 }
+
+// DnnlQAttentionNodeCapability class
+//-------------------------------------
+bool DnnlQAttentionNodeCapability::Supported(const Node* node, const GraphViewer& graph_viewer) const {
+  ORT_UNUSED_PARAMETER(graph_viewer);
+  if (!IsTypeSupported(node)) return false;
+  if (!IsDimensionSupported(node)) return false;
+  auto node_inputs = node->InputDefs();
+  auto node_outputs = node->OutputDefs();
+  //if have 9th input (past state) and 9th input Exists
+  if (node_inputs.size() == 9 && node_inputs[8]->Exists()) {
+    return false;
+  }
+  //if have 2nd output (present state) and 2nd output Exists, return false
+  if (node_outputs.size() == 2 && node_outputs[1]->Exists()) {
+    return false;
+  }
+  //qattention doesn't support unidriectional
+  const NodeAttributes& attributes = node->GetAttributes();
+  auto attr = attributes.find("unidirectional");
+  if (attr != attributes.end()) {
+    if (attr->second().i() == 1) {
+      return false;
+    }
+  }
+  //only support scalar input scale and weight scale
+  if(!IsScalar(node_inputs[3]) || !IsScalar(node_inputs[4])){
+    return false;
+  }
+  //only support 2D raw mask
+  if(node_inputs.size() >= 6 && node_inputs[5]->Exists() && node_inputs[5]->Shape() != nullptr && node_inputs[5]->Shape()->dim_size() != 2){
+    return false;
+  }
+  //only support scalar input zero point
+  if(node_inputs.size() >= 7 && node_inputs[6]->Exists() && !IsScalar(node_inputs[6])){
+    return false;
+  }
+  //only support scalar weight zero point
+  if(node_inputs.size() >= 8 && node_inputs[7]->Exists() && !IsScalar(node_inputs[7])){
+    return false;
+  }
+
+  //qattention is disabled on gpu due to the following onednn bugs
+  //1. flipped zero points in int8 matmul
+  //2. unsupported runtime input source0 scaling in binary
+  //3. f32 matmul on submemory gives wrong result
+  if (dnnl_engine_get_count(dnnl_engine_kind_t::dnnl_gpu)) {
+    return false;
+  }
+  return true;
+}
+
+bool DnnlQAttentionNodeCapability::IsDimensionSupported(const Node* node) const {
+  ORT_UNUSED_PARAMETER(node);
+  return true;
+}
+
 
 }  // namespace onnxruntime
