@@ -735,13 +735,14 @@ struct MLAS_CONV_SYM_POST_PROCESS_PARAMS {
 typedef
 void
 (MLASCALL MLAS_CONV_SYM_DEPTHWISE_ROUTINE_KERNELSIZE)(
-    uint8_t const* const* InputIndirection,
+    void const* const* InputIndirection,
     int8_t const* Filter,
     size_t Channels,
-    uint8_t* Output,
+    void* Output,
     size_t OutputCount,
     MLAS_CONV_SYM_POST_PROCESS_PARAMS const* PostProcessParams,
-    unsigned KernelFlags
+    unsigned KernelFlags,
+    bool InputIsSigned
     );
 
 //

@@ -885,11 +885,12 @@ TEST(QLinearConvTest, Conv2D_U8S8_Depthwise_NoBias) {
   }
 }
 
-TEST(QLinearConvTest, Conv2D_U8S8_Depthwise_Kernelsize) {
+template <typename ActType, typename FilterType>
+void TestQLinearConv2dDepthwiseKernelsize() {
   for (int64_t channels : std::initializer_list<int64_t>{16, 64}) {
     for (const auto& kd : std::initializer_list<std::pair<int64_t, int64_t>>{{3LL, 3LL}, {1LL, 9LL}, {5LL, 5LL}}) {
       for (int with_bias : std::initializer_list<int>{0, 1}) {
-        QLinearConvOpTester<uint8_t, int8_t> test;
+        QLinearConvOpTester<ActType, FilterType> test;
         test.GenerateRandomInput({1, channels, 17, 17}, .03f, 12);
         test.GenerateRandomWeights({channels, 1, kd.first, kd.second}, .10f, 0);
         if (with_bias) {
@@ -904,11 +905,16 @@ TEST(QLinearConvTest, Conv2D_U8S8_Depthwise_Kernelsize) {
   }
 }
 
-TEST(QLinearConvTest, Conv2D_U8S8_Depthwise_Kernelsize_PerChannel) {
+TEST(QLinearConvTest, Conv2D_U8S8_Depthwise_Kernelsize) {
+  TestQLinearConv2dDepthwiseKernelsize<uint8_t, int8_t>();
+}
+
+template <typename ActType, typename FilterType>
+void TestQLinearConv2dDepthwiseKernelsizePerChannel() {
   for (int64_t channels : std::initializer_list<int64_t>{32, 96}) {
     for (const auto& kd : std::initializer_list<std::pair<int64_t, int64_t>>{{3LL, 3LL}, {5LL, 5LL}, {25LL, 1LL}}) {
       for (int with_bias : std::initializer_list<int>{0, 1}) {
-        QLinearConvOpTester<uint8_t, int8_t> test;
+        QLinearConvOpTester<ActType, FilterType> test;
         test.GenerateRandomInput({1, channels, 37, 37}, .03f, 12);
         test.GenerateRandomWeights({channels, 1, kd.first, kd.second}, .10f, 0);
         std::vector<float> weight_scales;
@@ -926,6 +932,10 @@ TEST(QLinearConvTest, Conv2D_U8S8_Depthwise_Kernelsize_PerChannel) {
       }
     }
   }
+}
+
+TEST(QLinearConvTest, Conv2D_U8S8_Depthwise_Kernelsize_PerChannel) {
+  TestQLinearConv2dDepthwiseKernelsizePerChannel<uint8_t, int8_t>();
 }
 
 TEST(QLinearConvTest, Conv2D_U8U8_Depthwise) {
@@ -1392,6 +1402,14 @@ TEST(QLinearConvTest, Conv2D_S8S8_Requantize_Bias_PerChannel) {
     test.SetOutputScaleAndZeroPoint(.55f, -64);
     test.Run();
   }
+}
+
+TEST(QLinearConvTest, Conv2D_S8S8_Depthwise_Kernelsize) {
+  TestQLinearConv2dDepthwiseKernelsize<int8_t, int8_t>();
+}
+
+TEST(QLinearConvTest, Conv2D_S8S8_Depthwise_Kernelsize_PerChannel) {
+  TestQLinearConv2dDepthwiseKernelsizePerChannel<int8_t, int8_t>();
 }
 
 #ifndef ENABLE_TRAINING  // Prepacking is enabled only on non-training builds
