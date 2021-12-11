@@ -18,6 +18,10 @@ The application uses the pre-trained quantized MobileNet SSD V1 model.
 
 This example is heavily based on [Google Tensorflow lite - Object Detection Examples](https://github.com/tensorflow/examples/tree/master/lite/examples/object_detection/ios)
 
+Here's an example screenshot of the app:
+
+![Screenshot showing iOS objection detection app](../../../images/ios_screenshot_objdetect.jpg)
+
 ## Contents
 {: .no_toc }
 
@@ -110,13 +114,9 @@ This example is heavily based on [Google Tensorflow lite - Object Detection Exam
 
   It is written entirely in Swift and uses a bridgingheader file for the framework to be used in a Swift app.
 
-* The original TensorFlow tutorial and mode are [here])(https://www.tensorflow.org/lite/examples/object_detection/overview#get_started)
+* The original TensorFlow tutorial and model are [here](https://www.tensorflow.org/lite/examples/object_detection/overview#get_started)
 
 * For more information on converting tflite models to ONNX [Converting TFlite models to ONNX](https://github.com/onnx/tensorflow-onnx#getting-started)
 
-* [Convert ONNX models to ORT format](https://onnxruntime.ai/docs/tutorials/mobile/model-conversion.html)
+* [Convert ONNX models to ORT format](../../reference/ort-model-format.md)
 
-#
-Here's an example screenshot of the app:
-
-<img width=25% src="images/ios_screenshot_objdetect.jpg" alt="App Screenshot" />
