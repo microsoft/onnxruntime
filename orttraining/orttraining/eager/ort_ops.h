@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include "ort_log.h"
+#include "ort_util.h"
 #include <core/framework/ort_value.h>
 #include <core/eager/ort_kernel_invoker.h>
 
