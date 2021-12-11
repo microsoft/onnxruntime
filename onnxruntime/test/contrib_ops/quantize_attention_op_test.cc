@@ -56,7 +56,7 @@ void RunQAttention(const std::vector<float>& input_data,
   std::vector<int64_t> mask_index_dims = {batch_size};
   if constexpr (ep == EP::DNNL) {
     //onednn only supports raw mask
-    if (mask_index_data.size() == batch_size * sequence_length) {
+    if (mask_index_data.size() == static_cast<size_t>(batch_size * sequence_length)) {
       mask_index_dims = {batch_size, sequence_length};
     }
   }
@@ -163,6 +163,8 @@ static void RunQAttentionDNNL(
     bool use_special_quantize_parameter = true,
     bool is_unidirectional = false,
     int input_hidden_size = 0) {
+  // Return without running code if USE_DNNL is not defined
+#ifdef USE_DNNL
   quantization::Params<uint8_t> input_quant_params(/*scale=*/0.0f, /*zero_point=*/0);
   quantization::Params<int8_t> weights_quant_params(/*scale=*/0.0f, /*zero_point=*/0);
   if (use_special_quantize_parameter) {
@@ -175,6 +177,20 @@ static void RunQAttentionDNNL(
   RunQAttention<uint8_t, int8_t, EP::DNNL>(
       input_data, weights_data, bias_data, mask_index_data, output_data, input_quant_params, weights_quant_params,
       batch_size, sequence_length, hidden_size, number_of_heads, is_unidirectional, false, input_hidden_size);
+#else
+  ORT_UNUSED_PARAMETER(input_data);
+  ORT_UNUSED_PARAMETER(weights_data);
+  ORT_UNUSED_PARAMETER(bias_data);
+  ORT_UNUSED_PARAMETER(mask_index_data);
+  ORT_UNUSED_PARAMETER(output_data);
+  ORT_UNUSED_PARAMETER(batch_size);
+  ORT_UNUSED_PARAMETER(sequence_length);
+  ORT_UNUSED_PARAMETER(hidden_size);
+  ORT_UNUSED_PARAMETER(number_of_heads);
+  ORT_UNUSED_PARAMETER(use_special_quantize_parameter);
+  ORT_UNUSED_PARAMETER(is_unidirectional);
+  ORT_UNUSED_PARAMETER(input_hidden_size);
+#endif
 }
 
 static void RunQAttentionU8U8(
