@@ -2,23 +2,13 @@
 // Licensed under the MIT License.
 
 #include "gelu.h"
+#include "common.h"
+
 #include "core/providers/cuda/cuda_common.h"
-#include "core/providers/cuda/cudnn_common.h"
 
 namespace onnxruntime {
 namespace cuda {
 namespace deep_speed {
-
-#define REGISTER_GELU_KERNEL_TYPED(T)                             \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
-      FastGelu,                                                   \
-      kMSDomain,                                                  \
-      1,                                                          \
-      T,                                                          \
-      kCudaExecutionProvider,                                     \
-      (*KernelDefBuilder::Create())                               \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      Gelu<T>);
 
 #define REGISTER_BIAS_GELU_KERNEL_TYPED(T)                        \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
@@ -28,48 +18,38 @@ namespace deep_speed {
       T,                                                          \
       kCudaExecutionProvider,                                     \
       (*KernelDefBuilder::Create())                               \
+          .MayInplace(0, 0)                                       \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       BiasGelu<T>);
 
-#define REGISTER_FAST_GELU_KERNEL_TYPED(T)                        \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
-      Gelu,                                                       \
-      kMSDomain,                                                  \
-      1,                                                          \
-      T,                                                          \
-      kCudaExecutionProvider,                                     \
-      (*KernelDefBuilder::Create())                               \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      FastGelu<T>);
-
-REGISTER_GELU_KERNEL_TYPED(float)
 REGISTER_BIAS_GELU_KERNEL_TYPED(float)
-REGISTER_FAST_GELU_KERNEL_TYPED(float)
-
-template <typename T>
-Gelu<T>::Gelu(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info) {
-}
-
-template <typename T>
-Status Gelu<T>::ComputeInternal(OpKernelContext* /*context*/) const {
-  return Status::OK();
-}
 
 template <typename T>
 BiasGelu<T>::BiasGelu(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info) {
 }
 
 template <typename T>
-Status BiasGelu<T>::ComputeInternal(OpKernelContext* /*context*/) const {
-  return Status::OK();
-}
+Status BiasGelu<T>::ComputeInternal(OpKernelContext* context) const {
+  typedef typename ToCudaType<T>::MappedType CudaT;
 
-template <typename T>
-FastGelu<T>::FastGelu(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info) {
-}
+  const auto* input_tensor = context->Input<Tensor>(0);
+  const auto* input_buffer = input_tensor->Data<T>();
+  const auto& input_shape = input_tensor->Shape();
 
-template <typename T>
-Status FastGelu<T>::ComputeInternal(OpKernelContext* /*context*/) const {
+  auto* output_tensor = context->Output(0, input_shape);
+  auto* output_buffer = output_tensor->MutableData<T>();
+
+  const size_t num_elements = input_shape.Size();
+
+  auto stream = Stream();
+
+  if (input_buffer != output_buffer) {
+    CUDA_RETURN_IF_ERROR(cudaMemcpy(output_buffer, input_buffer,
+                                    num_elements * sizeof(CudaT), cudaMemcpyDeviceToDevice));
+  }
+
+  // TODO: Call DeepSpeed here
+
   return Status::OK();
 }
 

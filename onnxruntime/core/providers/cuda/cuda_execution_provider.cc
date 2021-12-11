@@ -2108,7 +2108,7 @@ std::shared_ptr<KernelRegistry> CUDAExecutionProvider::GetKernelRegistry() const
   return s_kernel_registry;
 }
 
-std::shared_ptr<KernelRegistry> CUDAExecutionProvider::GetDeepSpeedKernelRegistry() const {
+std::shared_ptr<KernelRegistry> CUDAExecutionProvider::GetSpecialKernelRegistry() const {
 #ifdef ENABLE_DEEP_SPEED_CUDA_KERNELS
   if (!deep_speed_kernel_registry) {
     deep_speed_kernel_registry = KernelRegistry::Create();

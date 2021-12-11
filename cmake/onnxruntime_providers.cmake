@@ -290,10 +290,8 @@ if (onnxruntime_USE_CUDA)
     list(APPEND onnxruntime_providers_cuda_src ${onnxruntime_cuda_contrib_ops_cc_srcs} ${onnxruntime_cuda_contrib_ops_cu_srcs})
   endif()
 
-  # enable deep speed conditionally
-  if(onnxruntime_ENABLE_DEEP_SPEED_CUDA_KERNELS)
-    source_group(TREE ${ONNXRUNTIME_ROOT} FILES ${onnxruntime_cuda_deep_speed_cc_srcs})
-    list(APPEND onnxruntime_providers_cuda_src ${onnxruntime_cuda_deep_speed_cc_srcs})
+  if(NOT onnxruntime_ENABLE_DEEP_SPEED_CUDA_KERNELS)
+    list(REMOVE_ITEM onnxruntime_providers_cuda_src ${onnxruntime_cuda_deep_speed_cc_srcs})
   endif()
 
   if (onnxruntime_ENABLE_TRAINING OR onnxruntime_ENABLE_TRAINING_OPS)
@@ -379,6 +377,11 @@ if (onnxruntime_USE_CUDA)
     target_include_directories(onnxruntime_providers_cuda PRIVATE ${onnxruntime_CUDA_HOME}/extras/CUPTI/include)
     target_link_directories(onnxruntime_providers_cuda PRIVATE ${onnxruntime_CUDA_HOME}/extras/CUPTI/lib64)
     target_link_libraries(onnxruntime_providers_cuda PRIVATE cupti)
+  endif()
+
+  if (onnxruntime_ENABLE_DEEP_SPEED_CUDA_KERNELS) # build with DeepSpeed CUDA kernel support
+    target_link_directories(onnxruntime_providers_cuda PRIVATE ${ONNXRUNTIME_ROOT}/core/providers/cuda/deep_speed/deps/lib64)
+    # target_link_libraries(onnxruntime_providers_cuda PRIVATE deepspeed)
   endif()
 
   if (onnxruntime_ENABLE_NVTX_PROFILE)

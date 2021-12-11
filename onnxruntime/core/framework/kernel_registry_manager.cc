@@ -59,6 +59,7 @@ Status KernelRegistryManager::RegisterSpecialKernelRegistry(const std::string& t
   }
 
   special_provider_registries_.insert(std::make_pair(type, kernel_registry));
+  return Status::OK();
 }
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)

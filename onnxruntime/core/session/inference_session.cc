@@ -1325,7 +1325,10 @@ common::Status InferenceSession::Initialize() {
       auto cuda_ep = execution_providers_.Get(onnxruntime::kCudaExecutionProvider);
 
       if (cuda_ep != nullptr) {
-        auto deep_speed_kernel_registry = reinterpret_cast<CUDAExecutionProvider*>(cuda_ep)->GetDeepSpeedKernelRegistry();
+        auto deep_speed_kernel_registry = cuda_ep->GetSpecialKernelRegistry();
+        ORT_ENFORCE(deep_speed_kernel_registry != nullptr, "The CUDA EP returned null for the DeepSpeed kernel registry");
+        ORT_RETURN_IF_ERROR_SESSIONID_(kernel_registry_manager_.RegisterSpecialKernelRegistry(onnxruntime::kCudaExecutionProvider,
+                                                                                              deep_speed_kernel_registry));
       } else {
         LOGS(*session_logger_, WARNING) << "No CUDA EP registered for this session and hence DeepSpeed CUDA kernels cannot be used";
       }

@@ -901,6 +901,11 @@ void OpTester::Run(
   so.execution_mode = execution_mode;
   so.use_deterministic_compute = use_determinism_;
   so.graph_optimization_level = TransformerLevel::Default;  // 'Default' == off
+
+  if (prefer_deep_speed_kernels_) {
+    so.prefer_deep_speed_cuda_kernels = true;
+  }
+
   Run(so, expect_result, expected_failure_string, excluded_provider_types,
       run_options, execution_providers, options);
 }
