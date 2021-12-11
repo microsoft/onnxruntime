@@ -8,8 +8,7 @@ redirect_from: /docs/how-to/build/android-ios,/docs/build/android-ios
 # Build ONNX Runtime for Android
 {: .no_toc }
 
-Follow the instructions below to build ONNX Runtime for Android. 
-
+Follow the instructions below to build ONNX Runtime for Android.
 
 ## Contents
 {: .no_toc }
@@ -25,25 +24,28 @@ Android Studio is more convenient but a larger installation.
 The command line tools are smaller and usage can be scripted, but are  a little more complicated to setup. They also require a Java runtime environment to be available.
 
 Resources:
-- [API levels](https://developer.android.com/guide/topics/manifest/uses-sdk-element.html)
-- [Android ABIs](https://developer.android.com/ndk/guides/abis)
-- [System Images](https://developer.android.com/topic/generic-system-image)
+
+* [API levels](https://developer.android.com/guide/topics/manifest/uses-sdk-element.html)
+* [Android ABIs](https://developer.android.com/ndk/guides/abis)
+* [System Images](https://developer.android.com/topic/generic-system-image)
 
 ### Android Studio
 
 1. [Install](https://developer.android.com/studio) Android Studio
 
 2. Install any additional SDK Platforms if necessary
-  * File->Settings->Appearance & Behavior->System Settings->Android SDK to see what is currently installed
-  * Note that the SDK path you need to use as --android_sdk_path when building ORT is also on this configuration page
-  * Most likely you don't require additional SDK Platform packages as the latest platform can target earlier API levels.
+
+   * File->Settings->Appearance & Behavior->System Settings->Android SDK to see what is currently installed
+   * Note that the SDK path you need to use as --android_sdk_path when building ORT is also on this configuration page
+   * Most likely you don't require additional SDK Platform packages as the latest platform can target earlier API levels.
 
 3. Install an NDK version
-  * File->Settings->Appearance & Behavior->System Settings->Android SDK
-  * 'SDK Tools' tab
-    * Select 'Show package details' checkbox at the bottom to see specific versions. By default the latest will be installed which should be fine.
-  * The NDK path will be the 'ndk/{version}' subdirectory of the SDK path shown
-    * e.g. if 21.1.6352462 is installed it will be {SDK path}/ndk/21.1.6352462
+
+   * File->Settings->Appearance & Behavior->System Settings->Android SDK
+   * 'SDK Tools' tab
+      * Select 'Show package details' checkbox at the bottom to see specific versions. By default the latest will be installed which should be fine.
+   * The NDK path will be the 'ndk/{version}' subdirectory of the SDK path shown
+      * e.g. if 21.1.6352462 is installed it will be {SDK path}/ndk/21.1.6352462
 
 ### sdkmanager from command line tools
 
@@ -69,7 +71,7 @@ Resources:
 * Install the SDK Platform
   * Generally installing the latest is fine. You pick an API level when compiling the code and the latest platform will support many recent API levels e.g.
 
-    ```
+    ```bash
     sdkmanager --install "platforms;android-29"
     ```
 

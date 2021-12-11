@@ -35,10 +35,6 @@ Follow the instructions below to build ONNX Runtime for iOS.
 
   Specify the minimum version of the target platform (iOS) on which the target binaries are to be deployed.
 
-* Code Signing
-
-  If the code signing development team ID or code signing identity is specified, and has a valid code signing certificate, Xcode will code sign the onnxruntime library in the building process. Otherwise, the onnxruntime will be built without code signing. It may be required or desired to code sign the library for iOS devices. For more information, see [Code Signing](https://developer.apple.com/support/code-signing/).
-
 
 ## Prerequisites
 
@@ -63,22 +59,6 @@ Run one of the following build scripts from the ONNX Runtime repository root:
 ```bash
 ./build.sh --config <Release|Debug|RelWithDebInfo|MinSizeRel> --use_xcode \
            --ios --ios_sysroot iphoneos --osx_arch arm64 --apple_deploy_target <minimal iOS version>
-```
-
-### Cross compile for iOS device and code sign the library using development team ID
-
-```bash
-./build.sh --config <Release|Debug|RelWithDebInfo|MinSizeRel> --use_xcode \
-           --ios --ios_sysroot iphoneos --osx_arch arm64 --apple_deploy_target <minimal iOS version> \
-           --xcode_code_signing_team_id <Your Apple developmemt team ID>
-```
-
-### Cross compile for iOS device and code sign the library using code sign identity
-
-```bash
-./build.sh --config <Release|Debug|RelWithDebInfo|MinSizeRel> --use_xcode \
-           --ios --ios_sysroot iphoneos --osx_arch arm64 --apple_deploy_target <minimal iOS version> \
-           --xcode_code_signing_identity <Your preferred code sign identity>
 ```
 
 ### CoreML Execution Provider
