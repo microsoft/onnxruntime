@@ -9,7 +9,7 @@ nav_order: 6
 
 ONNX Runtime Web enables you to run and deploy machine learning models in your web application using JavaScript APIs and libraries. This page outlines the general flow through the development process.
 
-You can also integrate machine learning into the server side of your web application with ONNX Runtime using other language language libraries, depending on your application development environment.
+You can also integrate machine learning into the server side of your web application with ONNX Runtime using other language libraries, depending on your application development environment.
 
 To see an example of the web development flow in practice, you can follow the steps in the following tutorial to [build a web application to classify images using Next.js](classify-images-nextjs-github-template.md).
 
@@ -68,9 +68,9 @@ For more detail on the steps below, see the [build a web application](../../refe
 
    1. [Add the ONNX Runtime dependency](../../reference/build-web-app.md#add-onnx-runtime-web-as-dependency)
 
-   1. Consume the onnxruntime-web API in your application
+   1. [Consume the onnxruntime-web API in your application](../../reference/build-web-app.md#consume-onnxruntime-web-in-your-code)
 
-   1. Add pre and post processing appropriate to your application and model
+   1. [Add pre and post processing](../../reference/build-web-app.md#pre-and-post-processing) appropriate to your application and model
 
 4. How do I optimize my application?
 
