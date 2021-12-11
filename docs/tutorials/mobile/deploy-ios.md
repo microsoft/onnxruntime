@@ -114,7 +114,7 @@ Here's an example screenshot of the app:
 
   It is written entirely in Swift and uses a bridgingheader file for the framework to be used in a Swift app.
 
-* The original TensorFlow tutorial and model are [here])(https://www.tensorflow.org/lite/examples/object_detection/overview#get_started)
+* The original TensorFlow tutorial and model are [here](https://www.tensorflow.org/lite/examples/object_detection/overview#get_started)
 
 * For more information on converting tflite models to ONNX [Converting TFlite models to ONNX](https://github.com/onnx/tensorflow-onnx#getting-started)
 
