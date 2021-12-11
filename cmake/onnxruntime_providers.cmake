@@ -1,6 +1,42 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
+# In a reduced ops build, the reduction is performed by updating source files.
+# Rather than modifying the source files directly, updated versions will be
+# saved to another location in the build directory.
+# This helper function replaces the relevant original source files with their
+# updated versions in `all_srcs`.
+function(substitute_op_reduction_srcs all_srcs)
+  set(op_reduction_root "${CMAKE_BINARY_DIR}/op_reduction")
+
+  # files that are potentially updated in a reduced ops build
+  set(original_srcs
+    "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/cpu_contrib_kernels.cc"
+    "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/cuda_contrib_kernels.cc"
+    "${ONNXRUNTIME_ROOT}/core/providers/cpu/cpu_execution_provider.cc"
+    "${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_execution_provider.cc"
+    "${ONNXRUNTIME_ROOT}/core/providers/op_kernel_type_control_overrides.inc"
+    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/cpu_training_kernels.cc"
+    "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/cuda_training_kernels.cc"
+    )
+
+  foreach(original_src ${original_srcs})
+    string(FIND "${${all_srcs}}" "${original_src}" idx)
+    if(idx EQUAL "-1")
+      continue()
+    endif()
+
+    file(RELATIVE_PATH src_relative_path "${ONNXRUNTIME_ROOT}" "${original_src}")
+    set(replacement_src "${op_reduction_root}/${src_relative_path}")
+
+    message("File '${original_src}' substituted with reduced op version '${replacement_src}'.")
+
+    string(REPLACE "${original_src}" "${replacement_src}" ${all_srcs} "${${all_srcs}}")
+  endforeach()
+
+  set(${all_srcs} "${${all_srcs}}" PARENT_SCOPE)
+endfunction()
+
 file(GLOB_RECURSE onnxruntime_providers_srcs CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/core/providers/cpu/*.h"
   "${ONNXRUNTIME_ROOT}/core/providers/cpu/*.cc"
@@ -49,12 +85,6 @@ file(GLOB_RECURSE onnxruntime_rocm_generated_contrib_ops_cu_srcs CONFIGURE_DEPEN
 file(GLOB onnxruntime_providers_common_srcs CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/core/providers/*.h"
   "${ONNXRUNTIME_ROOT}/core/providers/*.cc"
-  # If we are building with reduced number of kernel registration and types,
-  # "core/providers/op_kernel_type_control_overrides_reduced_types.inc"
-  # will be generated with type specifications code.
-  # For simplicity, we inlcude both .inc files,
-  # see onnxruntime/core/providers/op_kernel_type_control.h
-  "${ONNXRUNTIME_ROOT}/core/providers/op_kernel_type_control_overrides*.inc"
 )
 
 if(onnxruntime_USE_NUPHAR)
@@ -172,6 +202,9 @@ if (onnxruntime_ENABLE_TRAINING)
   list(APPEND onnxruntime_providers_src ${onnxruntime_providers_dlpack_srcs})
 endif()
 
+if (onnxruntime_REDUCED_OPS_BUILD)
+  substitute_op_reduction_srcs(onnxruntime_providers_src)
+endif()
 onnxruntime_add_static_library(onnxruntime_providers ${onnxruntime_providers_src})
 
 if (MSVC)
@@ -319,6 +352,9 @@ if (onnxruntime_USE_CUDA)
     list(APPEND onnxruntime_providers_cuda_src ${onnxruntime_cuda_training_ops_cc_srcs} ${onnxruntime_cuda_training_ops_cu_srcs})
   endif()
 
+  if (onnxruntime_REDUCED_OPS_BUILD)
+    substitute_op_reduction_srcs(onnxruntime_providers_cuda_src)
+  endif()
   onnxruntime_add_shared_library_module(onnxruntime_providers_cuda ${onnxruntime_providers_cuda_src})
 
   #target_compile_options(onnxruntime_providers_cuda PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler \"/analyze:stacksize 131072\">")
