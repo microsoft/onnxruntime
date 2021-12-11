@@ -62,7 +62,8 @@ Status BiasGelu<T>::ComputeInternal(OpKernelContext* context) const {
   // TODO: Add more shape schecks for input and bias inputs
 
   DeepSpeedAPI::bias_gelu(output_buffer,
-                          bias_buffer,
+                          // TODO: DeepSpeed lib only takes non-const buffers. Can we ask them to take const pointers ?
+                          const_cast<T*>(bias_buffer),
                           batch_size,
                           hidden_dim,
                           true,  // Currently this kernel only supports float
