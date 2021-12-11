@@ -650,7 +650,11 @@ class SymbolicShapeInference:
             dst_type) else dst_type.tensor_type
         src_tensor_type = src_type.sequence_type.elem_type.tensor_type if is_sequence(
             src_type) else src_type.tensor_type
-        assert dst_tensor_type.elem_type == src_tensor_type.elem_type
+        if dst_tensor_type.elem_type != src_tensor_type.elem_type:
+            node_id = node.name if node.name else node.op_type
+            raise ValueError(f"For node {node_id}, dst_tensor_type.elem_type != src_tensor_type.elem_type: "
+                             f"{onnx.onnx_pb.TensorProto.DataType.Name(dst_tensor_type.elem_type)} vs "
+                             f"{onnx.onnx_pb.TensorProto.DataType.Name(src_tensor_type.elem_type)}")
         if dst_tensor_type.HasField('shape'):
             for di, ds in enumerate(zip(dst_tensor_type.shape.dim, src_tensor_type.shape.dim)):
                 if ds[0] != ds[1]:

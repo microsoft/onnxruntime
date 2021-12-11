@@ -182,7 +182,7 @@ class GraphAugmenter {
     }
 
     TypeProto* CopyTypeProto(const NodeArg* node_arg) {
-      ORT_ENFORCE(node_arg != nullptr, "During CopyTypeProto, ", node_arg->Name(), "'s node_arg is null.");
+      ORT_ENFORCE(node_arg != nullptr, "During CopyTypeProto, node_arg is null.");
       TypeProto* type_proto = CreateTypeProto();
       type_proto->CopyFrom(*(node_arg->TypeAsProto()));
       return type_proto;

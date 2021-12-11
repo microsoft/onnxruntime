@@ -37,8 +37,12 @@ namespace onnxruntime {
 constexpr const char* CPU = "Cpu";
 constexpr const char* CUDA = "Cuda";
 constexpr const char* CUDA_PINNED = "CudaPinned";
+constexpr const char* DML = "DML";
 constexpr const char* MIGRAPHX = "MIGraphX";
 constexpr const char* MIGRAPHX_PINNED = "MIGraphXPinned";
+constexpr const char* OpenVINO_CPU = "OpenVINO_CPU";
+constexpr const char* OpenVINO_GPU = "OpenVINO_GPU";
+
 
 constexpr size_t kAllocAlignment = 256;
 
@@ -179,24 +183,9 @@ class CPUAllocator : public IAllocator {
   void Free(void* p) override;
 };
 
-#if defined(USE_MIMALLOC_ARENA_ALLOCATOR)
-class MiMallocAllocator : public IAllocator {
- public:
-  explicit MiMallocAllocator(const OrtMemoryInfo& memory_info) : IAllocator(memory_info) {}
-  MiMallocAllocator() : IAllocator(OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator)) {}
-
-  void* Alloc(size_t size) override;
-  void Free(void* p) override;
-};
-
-#endif
-
-#if defined(USE_MIMALLOC_ARENA_ALLOCATOR)
-using TAllocator = MiMallocAllocator;
-#else
-using TAllocator = CPUAllocator;
-#endif
-
 using AllocatorPtr = std::shared_ptr<IAllocator>;
+
+void* AllocatorDefaultAlloc(size_t size);
+void AllocatorDefaultFree(void* p);
 
 }  // namespace onnxruntime

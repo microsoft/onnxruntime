@@ -141,7 +141,7 @@ TEST(Quantization, CreateQuantizationParamsFromTensors) {
 //
 
 TEST(Quantization, QuantizeFloat_Int8) {
-  const float x = 2.34f;
+  constexpr float x = 2.34f;
   quantization::Params<int8_t> params(/*scale=*/0.0872204f, /*zero_point=*/0);
   EXPECT_EQ(quantization::Quantize(x, params), 27);
 }
@@ -155,8 +155,8 @@ TEST(Quantization, QuantizeFloatValues_Int8) {
 
 TEST(Quantization, QuantizeLinear_Int8) {
   std::vector<float> values = {-3.412f, -12.42f, 1.032f, 2.32f, 9.8212f};
-  const float expected_scale = 0.0872204f;
-  const int8_t expected_zero_point = 15;
+  constexpr float expected_scale = 0.0872204f;
+  constexpr int8_t expected_zero_point = 15;
   std::vector<int8_t> expected_values = {-24, -127, 27, 41, 127};
 
   TestQuantizeLinearVectorAndValues(values,
@@ -166,7 +166,7 @@ TEST(Quantization, QuantizeLinear_Int8) {
 }
 
 TEST(Quantization, Dequantize_Int8) {
-  const int8_t x_i8 = 12;
+  constexpr int8_t x_i8 = 12;
   quantization::Params<int8_t> params(/*scale=*/0.0124f, /*zero_point=*/-1);
   EXPECT_NEAR(quantization::Dequantize(x_i8, params), 0.1612f, kEpsilon);
 }
@@ -185,7 +185,7 @@ TEST(Quantization, DequantizeValues_Int8) {
 //
 
 TEST(Quantization, QuantizeFloat_UInt8) {
-  const float x = 1.25f;
+  constexpr float x = 1.25f;
   quantization::Params<uint8_t> params(/*scale=*/0.0117647f, /*zero_point=*/85);
   EXPECT_EQ(quantization::Quantize(x, params), 191);
 }
@@ -200,8 +200,8 @@ TEST(Quantization, QuantizeFloatValues_UInt8) {
 
 TEST(Quantization, QuantizeLinear_UInt8) {
   std::vector<float> values = {-3.412f, -12.42f, 1.032f, 2.32f, 9.8212f};
-  const float expected_scale = 0.0872203931f;
-  const uint8_t expected_zero_point = 142;
+  constexpr float expected_scale = 0.0872203931f;
+  constexpr uint8_t expected_zero_point = 142;
   std::vector<uint8_t> expected_values = {103, 0, 154, 169, 255};
 
   TestQuantizeLinearVectorAndValues(values,
@@ -211,7 +211,7 @@ TEST(Quantization, QuantizeLinear_UInt8) {
 }
 
 TEST(Quantization, Dequantize_UInt8) {
-  const uint8_t x_u8 = 200;
+  constexpr uint8_t x_u8 = 200;
   quantization::Params<uint8_t> params(/*scale=*/0.0124f, /*zero_point=*/127);
   EXPECT_NEAR(quantization::Dequantize(x_u8, params), 0.9052f, kEpsilon);
 }

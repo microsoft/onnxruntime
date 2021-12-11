@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-namespace onnxruntime.experimental.fbs;
+namespace onnxruntime.fbs;
 
 // Attribute
 enum AttributeType : int32 {
@@ -70,11 +70,11 @@ table TensorTypeAndShape{
 
 table MapType{
   key_type:TensorDataType;
-  value_type:onnxruntime.experimental.fbs.TypeInfo;
+  value_type:onnxruntime.fbs.TypeInfo;
 }
 
 table SequenceType{
-  elem_type:onnxruntime.experimental.fbs.TypeInfo;
+  elem_type:onnxruntime.fbs.TypeInfo;
 }
 
 // Node
@@ -108,7 +108,7 @@ table Node {
 
   inputs:[string];
   outputs:[string];
-  attributes:[onnxruntime.experimental.fbs.Attribute];
+  attributes:[onnxruntime.fbs.Attribute];
 
   input_arg_counts:[int32];
   implicit_inputs:[string];

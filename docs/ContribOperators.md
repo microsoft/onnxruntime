@@ -14,6 +14,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.ComplexMulConj">com.microsoft.ComplexMulConj</a>
   * <a href="#com.microsoft.ConvTransposeWithDynamicPads">com.microsoft.ConvTransposeWithDynamicPads</a>
   * <a href="#com.microsoft.CropAndResize">com.microsoft.CropAndResize</a>
+  * <a href="#com.microsoft.DecoderAttention">com.microsoft.DecoderAttention</a>
   * <a href="#com.microsoft.DequantizeLinear">com.microsoft.DequantizeLinear</a>
   * <a href="#com.microsoft.DynamicQuantizeLSTM">com.microsoft.DynamicQuantizeLSTM</a>
   * <a href="#com.microsoft.DynamicQuantizeMatMul">com.microsoft.DynamicQuantizeMatMul</a>
@@ -714,6 +715,72 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Constrain types to float tensors.</dd>
 <dt><tt>T2</tt> : tensor(int32)</dt>
 <dd>Constrain types to int tensors.</dd>
+</dl>
+
+
+### <a name="com.microsoft.DecoderAttention"></a><a name="com.microsoft.decoderattention">**com.microsoft.DecoderAttention**</a>
+
+  This DecoderAttention supports self attention and cross attention, key and value cache, and key_padding_mask. The attention mask is not support at the moment.
+  Some boolean parameters are passed by runtime input for generic purpose
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>num_heads</tt> : int (required)</dt>
+<dd>Number of attention heads</dd>
+</dl>
+
+#### Inputs
+
+<dl>
+<dt><tt>query</tt> : T</dt>
+<dd>3D input tensor with shape (sequence_length, batch_size, hidden_size), hidden_size = num_heads * head_size</dd>
+<dt><tt>key</tt> : T</dt>
+<dd>3D input tensor with shape (total_sequence_length, batch_size, hidden_size)</dd>
+<dt><tt>q_weight</tt> : T</dt>
+<dd>2D input tensor with shape (hidden_size, hidden_size)</dd>
+<dt><tt>kv_weight</tt> : T</dt>
+<dd>2D input tensor with shape (hidden_size, 2 * hidden_size)</dd>
+<dt><tt>bias</tt> : T</dt>
+<dd>1D input tensor with shape (3 * hidden_size)</dd>
+<dt><tt>key_padding_mask</tt> (optional) : B</dt>
+<dd>2D input tensor with shape (batch_size, total_sequence_length)</dd>
+<dt><tt>key_cache</tt> (optional) : T</dt>
+<dd>input tensor with shape (batch_size, num_heads, sequence_length or total_sequence_length, head_size)</dd>
+<dt><tt>value_cache</tt> (optional) : T</dt>
+<dd>input tensor with shape (batch_size, num_heads, sequence_length or total_sequence_length, head_size)</dd>
+<dt><tt>static_kv</tt> : B</dt>
+<dd>If static_kv = true, cross-attention; else self-attention</dd>
+<dt><tt>use_past</tt> : B</dt>
+<dd>If use_past = true, use cache; else no cache</dd>
+<dt><tt>has_layer_state</tt> : B</dt>
+<dd>If has_layer_state = true, layer_state = {} or [a,b]; else layer_state = None</dd>
+<dt><tt>has_key_padding_mask</tt> : B</dt>
+<dd>has_key_padding_mask or not</dd>
+</dl>
+
+#### Outputs (1 - 3)
+
+<dl>
+<dt><tt>output</tt> : T</dt>
+<dd>3D output tensor with shape (sequence_length, batch_size, hidden_size)</dd>
+<dt><tt>new_key_cache</tt> (optional) : T</dt>
+<dd>output tensor with shape (batch_size, num_heads, new sequence_length, head_size)</dd>
+<dt><tt>new_value_cache</tt> (optional) : T</dt>
+<dd>output tensor with shape (batch_size, num_heads, new sequence_length, head_size)</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float), tensor(float16)</dt>
+<dd>Constrain input and output types to float and float16 tensors.</dd>
+<dt><tt>B</tt> : tensor(bool)</dt>
+<dd>Constrain key_padding_mask to bool tensors.</dd>
 </dl>
 
 

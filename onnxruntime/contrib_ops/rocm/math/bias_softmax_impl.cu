@@ -13,7 +13,7 @@
 #include "core/providers/rocm/miopen_common.h"
 #include "core/providers/rocm/shared_inc/accumulation_type.h"
 #include "core/providers/rocm/math/binary_elementwise_ops_impl_functors.cuh"
-#include "core/providers/rocm/math/softmax_impl.cuh"
+#include "core/providers/rocm/math/softmax_warpwise_impl.cuh"
 
 using namespace onnxruntime;
 using namespace onnxruntime::rocm;

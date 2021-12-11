@@ -28,6 +28,7 @@ limitations under the License.
 #include "core/framework/callback.h"
 #include "core/platform/env_time.h"
 #include "core/platform/telemetry.h"
+#include "core/session/onnxruntime_c_api.h"
 
 #ifndef _WIN32
 #include <sys/types.h>
@@ -49,6 +50,12 @@ using FileOffsetType = off_t;
 class EnvThread {
  public:
   virtual ~EnvThread() = default;
+
+ protected:
+  OrtCustomCreateThreadFn custom_create_thread_fn = nullptr;
+  void* custom_thread_creation_options = nullptr;
+  OrtCustomJoinThreadFn custom_join_thread_fn = nullptr;
+  OrtCustomThreadHandle custom_thread_handle = nullptr;
 };
 
 // Parameters that are required to create a set of threads for a thread pool
@@ -67,6 +74,10 @@ struct ThreadOptions {
 
   // Set or unset denormal as zero.
   bool set_denormal_as_zero = false;
+
+  OrtCustomCreateThreadFn custom_create_thread_fn = nullptr;
+  void* custom_thread_creation_options = nullptr;
+  OrtCustomJoinThreadFn custom_join_thread_fn = nullptr;
 };
 /// \brief An interface used by the onnxruntime implementation to
 /// access operating system functionality like the filesystem etc.

@@ -44,11 +44,9 @@ struct Offset;
 
 namespace onnxruntime {
 
-namespace experimental {
 namespace fbs {
 struct SessionState;
 }  // namespace fbs
-}  // namespace experimental
 
 class ExecutionProviders;
 class KernelDef;
@@ -294,20 +292,20 @@ class SessionState {
   void UpdateToBeExecutedNodes(const std::vector<int>& fetch_mlvalue_idxs);
   const std::unordered_set<NodeIndex>* GetToBeExecutedNodes(const std::vector<int>& fetch_mlvalue_idxs) const;
   Status SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
-                         flatbuffers::Offset<onnxruntime::experimental::fbs::SessionState>& fbs_session_state) const;
+                         flatbuffers::Offset<onnxruntime::fbs::SessionState>& fbs_session_state) const;
 #endif
 
   void SetCompiledKernelHashes(std::unordered_map<std::string, uint64_t>&& compiled_kernel_hashes) {
     compiled_kernel_hashes_ = std::move(compiled_kernel_hashes);
   }
 
-  Status LoadFromOrtFormat(const onnxruntime::experimental::fbs::SessionState& fbs_session_state,
+  Status LoadFromOrtFormat(const onnxruntime::fbs::SessionState& fbs_session_state,
                            const KernelRegistryManager& kernel_registry_manager);
 
   Status FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE>& graph_loc,
                               KernelRegistryManager& kernel_registry_manager,
                               const SessionOptions& session_options = {},
-                              const onnxruntime::experimental::fbs::SessionState* serialized_session_state = nullptr,
+                              const onnxruntime::fbs::SessionState* serialized_session_state = nullptr,
                               bool remove_initializers = true,
                               bool saving_ort_format = false);
 

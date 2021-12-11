@@ -57,6 +57,16 @@ file(GLOB onnxruntime_optimizer_srcs CONFIGURE_DEPENDS ${onnxruntime_optimizer_s
 
 source_group(TREE ${REPO_ROOT} FILES ${onnxruntime_optimizer_srcs})
 
+if (onnxruntime_EXTERNAL_TRANSFORMER_SRC_PATH)
+  set(onnxruntime_external_transformer_src_patterns)
+  list(APPEND onnxruntime_external_transformer_src_patterns
+    "${onnxruntime_EXTERNAL_TRANSFORMER_SRC_PATH}/*.cc"
+    "${onnxruntime_EXTERNAL_TRANSFORMER_SRC_PATH}/*.cpp"
+  )
+  file(GLOB onnxruntime_external_transformer_src ${onnxruntime_external_transformer_src_patterns})
+  list(APPEND onnxruntime_optimizer_srcs ${onnxruntime_external_transformer_src})
+endif()
+
 onnxruntime_add_static_library(onnxruntime_optimizer ${onnxruntime_optimizer_srcs})
 
 install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/optimizer  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core)

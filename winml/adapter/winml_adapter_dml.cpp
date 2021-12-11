@@ -126,42 +126,6 @@ ORT_API_STATUS_IMPL(winmla::DmlExecutionProviderReleaseCompletedReferences, _In_
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(winmla::DmlCreateGPUAllocationFromD3DResource, _In_ ID3D12Resource* pResource, _Out_ void** dml_resource) {
-  API_IMPL_BEGIN
-#ifdef USE_DML
-  *dml_resource = Dml::CreateGPUAllocationFromD3DResource(pResource);
-#else
-  *dml_resource = nullptr;
-#endif  // USE_DML USE_DML
-  return nullptr;
-  API_IMPL_END
-}
-
-ORT_API_STATUS_IMPL(winmla::DmlGetD3D12ResourceFromAllocation, _In_ OrtExecutionProvider* dml_provider, _In_ void* allocation, _Out_ ID3D12Resource** d3d_resource) {
-  API_IMPL_BEGIN
-#ifdef USE_DML
-  auto dml_provider_internal = reinterpret_cast<::onnxruntime::IExecutionProvider*>(dml_provider);
-  *d3d_resource =
-      Dml::GetD3D12ResourceFromAllocation(
-          dml_provider_internal->GetAllocator(0, ::OrtMemType::OrtMemTypeDefault).get(),
-          allocation);
-  (*d3d_resource)->AddRef();
-#else
-  *d3d_resource = nullptr;
-#endif  // USE_DML USE_DML
-  return nullptr;
-  API_IMPL_END
-}
-
-ORT_API_STATUS_IMPL(winmla::DmlFreeGPUAllocation, _In_ void* ptr) {
-  API_IMPL_BEGIN
-#ifdef USE_DML
-  Dml::FreeGPUAllocation(ptr);
-#endif  // USE_DML USE_DML
-  return nullptr;
-  API_IMPL_END
-}
-
 ORT_API_STATUS_IMPL(winmla::DmlCopyTensor, _In_ OrtExecutionProvider* dml_provider, _In_ OrtValue* src, _In_ OrtValue* dst) {
   API_IMPL_BEGIN
 #ifdef USE_DML

@@ -20,11 +20,9 @@ struct Offset;
 
 namespace onnxruntime {
 
-namespace experimental {
 namespace fbs {
 struct Model;
 }  // namespace fbs
-}  // namespace experimental
 
 typedef std::unordered_map<std::string, std::string> ModelMetaData;
 using IOnnxRuntimeOpSchemaRegistryList = std::list<std::shared_ptr<IOnnxRuntimeOpSchemaCollection>>;
@@ -263,11 +261,11 @@ class Model {
                              bool allow_released_opsets_only = true);
 
   common::Status SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
-                                 flatbuffers::Offset<onnxruntime::experimental::fbs::Model>& model) const;
+                                 flatbuffers::Offset<onnxruntime::fbs::Model>& model) const;
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
-  static common::Status LoadFromOrtFormat(const onnxruntime::experimental::fbs::Model& fbs_model,
+  static common::Status LoadFromOrtFormat(const onnxruntime::fbs::Model& fbs_model,
 #if !defined(ORT_MINIMAL_BUILD)
                                           const IOnnxRuntimeOpSchemaRegistryList* local_registries,
 #endif

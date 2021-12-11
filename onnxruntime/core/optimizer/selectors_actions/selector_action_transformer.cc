@@ -104,7 +104,7 @@ Status SelectorActionTransformer::MatchAndProcess(Graph& graph, const GraphViewe
                                     node_selection,
                                     action_saved_state.produced_nodes});
 #else
-      status = ORT_MAKE_STATUS(ONNXRUNTIME, FAILED,
+      status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                                "Saving runtime optimizations is not enabled in this build.");
       break;
 #endif

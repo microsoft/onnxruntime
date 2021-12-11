@@ -19,7 +19,7 @@ def update_namespace(schema_path: pathlib.Path, updated_schema_path: pathlib.Pat
             # convert any line with the namespace to use ort_flatbuffers_py instead of onnxruntime as the top level
             # namespace. this doesn't change how anything works - it just avoids a naming clash with the 'real'
             # onnxruntime python package
-            output.write(line.replace('onnxruntime.experimental.fbs', 'ort_flatbuffers_py.experimental.fbs'))
+            output.write(line.replace('onnxruntime.fbs', 'ort_flatbuffers_py.fbs'))
 
 
 def generate_python(flatc: pathlib.Path, schema_path: pathlib.Path):
@@ -29,9 +29,9 @@ def generate_python(flatc: pathlib.Path, schema_path: pathlib.Path):
 
 
 def create_init_py():
-    # create an __init__.py that imports all the py files so we can just 'import ort_flatbuffers_py.experimental.fbs'
+    # create an __init__.py that imports all the py files so we can just 'import ort_flatbuffers_py.fbs'
     # in a script that wants to process an ORT format model
-    init_py_path = SCRIPT_DIR.parent / 'ort_flatbuffers_py/experimental/fbs/__init__.py'
+    init_py_path = SCRIPT_DIR.parent / 'ort_flatbuffers_py/fbs/__init__.py'
     with open(init_py_path, 'w') as init_py:
         init_py.write('''from os.path import dirname, basename, isfile, join, splitext
 import glob

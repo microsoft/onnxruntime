@@ -7,7 +7,7 @@
 #include <array>
 #include <string_view>
 
-namespace onnxruntime::experimental {
+namespace onnxruntime {
 
 // The current model versions for saving the ort format models
 // This version is NOT onnxruntime version
@@ -33,4 +33,4 @@ inline bool IsOrtModelVersionSupported(std::string_view ort_model_version) {
   return it != kSupportedOrtModelVersions.cend();
 }
 
-}  // namespace onnxruntime::experimental
+}  // namespace onnxruntime

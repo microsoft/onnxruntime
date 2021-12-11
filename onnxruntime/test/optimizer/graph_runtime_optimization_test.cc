@@ -114,7 +114,6 @@ TEST(GraphRuntimeOptimizationTest, TestTransformerSavesRuntimeOptimization) {
     EXPECT_EQ(ops, original_ops);
   }
 
-  namespace fbs = experimental::fbs;
   flatbuffers::FlatBufferBuilder builder;
 
   // write graph to ORT format buffer
@@ -124,7 +123,7 @@ TEST(GraphRuntimeOptimizationTest, TestTransformerSavesRuntimeOptimization) {
 
     flatbuffers::Offset<fbs::InferenceSession> fbs_session_offset =
         fbs::CreateInferenceSessionDirect(builder,
-                                          experimental::kOrtModelVersion,
+                                          kOrtModelVersion,
                                           fbs_model_offset,
                                           0);
 
