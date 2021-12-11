@@ -20,7 +20,7 @@ This example is heavily based on [Google Tensorflow lite - Object Detection Exam
 
 Here's an example screenshot of the app:
 
-<img width=25% src="../../../images/ios_screenshot_objdetect.jpg" alt="App Screenshot" />
+![Screenshot showing iOS objection detection app](../../../images/ios_screenshot_objdetect.jpg)
 
 ## Contents
 {: .no_toc }
