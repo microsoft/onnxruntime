@@ -80,31 +80,33 @@ struct MLAS_GEMM_U8S8_KERNEL_AVX2
 {
     typedef uint8_t PackedAType;
     typedef uint8_t PackedBType;
+    typedef uint8_t OffsetAType;
     typedef int8_t OffsetBType;
 
     static constexpr size_t PackedK = 4;
-    static constexpr MLAS_GEMM_U8X8_STRIDES Strides{ 24, 256, 128 };
-    static constexpr MLAS_GEMM_U8X8_STRIDES PackedStrides{ 48, 256, 384 };
+    static constexpr MLAS_GEMM_QUANT_STRIDES Strides{ 24, 256, 128 };
+    static constexpr MLAS_GEMM_QUANT_STRIDES PackedStrides{ 48, 256, 384 };
 };
 
 constexpr size_t MLAS_GEMM_U8S8_KERNEL_AVX2::PackedK;
-constexpr MLAS_GEMM_U8X8_STRIDES MLAS_GEMM_U8S8_KERNEL_AVX2::Strides;
-constexpr MLAS_GEMM_U8X8_STRIDES MLAS_GEMM_U8S8_KERNEL_AVX2::PackedStrides;
+constexpr MLAS_GEMM_QUANT_STRIDES MLAS_GEMM_U8S8_KERNEL_AVX2::Strides;
+constexpr MLAS_GEMM_QUANT_STRIDES MLAS_GEMM_U8S8_KERNEL_AVX2::PackedStrides;
 
 template<>
 MLAS_FORCEINLINE
 bool
-MlasGemmU8X8TryGemvKernel<MLAS_GEMM_U8S8_KERNEL_AVX2>(
+MlasGemmQuantTryGemvKernel<MLAS_GEMM_U8S8_KERNEL_AVX2>(
     const uint8_t* A,
     const uint8_t* B,
     size_t ldb,
     int32_t* C,
     size_t CountK,
     size_t CountN,
+    bool AIsSigned,
     bool BIsSigned
     )
 {
-    if (BIsSigned) {
+    if (!AIsSigned && BIsSigned) {
         MlasPlatform.GemvU8S8Kernel(A, B, C, CountK, CountN, ldb);
         return true;
     }
@@ -115,7 +117,7 @@ MlasGemmU8X8TryGemvKernel<MLAS_GEMM_U8S8_KERNEL_AVX2>(
 template<>
 MLAS_FORCEINLINE
 int32_t
-MlasGemmU8X8FixupZeroPointB<MLAS_GEMM_U8S8_KERNEL_AVX2>(
+MlasGemmQuantFixupZeroPointB<MLAS_GEMM_U8S8_KERNEL_AVX2>(
     int32_t ZeroPointB,
     bool BIsSigned
     )
@@ -130,22 +132,24 @@ MlasGemmU8X8FixupZeroPointB<MLAS_GEMM_U8S8_KERNEL_AVX2>(
 template<>
 MLAS_FORCEINLINE
 void
-MlasGemmU8X8CopyPackA<MLAS_GEMM_U8S8_KERNEL_AVX2>(
+MlasGemmQuantCopyPackA<MLAS_GEMM_U8S8_KERNEL_AVX2>(
     MLAS_GEMM_U8S8_KERNEL_AVX2::PackedAType* D,
     const uint8_t* A,
     size_t lda,
     size_t CountM,
     size_t CountK,
-    int32_t* RowSumBuffer
+    int32_t* RowSumBuffer,
+    bool AIsSigned
     )
 {
+    MLAS_UNREFERENCED_PARAMETER(AIsSigned);
     MlasGemmU8S8CopyPackAAvx2(D, A, lda, CountM, CountK, RowSumBuffer);
 }
 
 template<>
 MLAS_FORCEINLINE
 void
-MlasGemmU8X8CopyPackB<MLAS_GEMM_U8S8_KERNEL_AVX2>(
+MlasGemmQuantCopyPackB<MLAS_GEMM_U8S8_KERNEL_AVX2>(
     MLAS_GEMM_U8S8_KERNEL_AVX2::PackedBType* D,
     const uint8_t* B,
     size_t ldb,
@@ -161,7 +165,7 @@ MlasGemmU8X8CopyPackB<MLAS_GEMM_U8S8_KERNEL_AVX2>(
 template<>
 MLAS_FORCEINLINE
 size_t
-MlasGemmU8X8Kernel<MLAS_GEMM_U8S8_KERNEL_AVX2>(
+MlasGemmQuantKernel<MLAS_GEMM_U8S8_KERNEL_AVX2>(
     const MLAS_GEMM_U8S8_KERNEL_AVX2::PackedAType* A,
     const MLAS_GEMM_U8S8_KERNEL_AVX2::PackedBType* B,
     int32_t* C,
@@ -179,10 +183,10 @@ MlasGemmU8X8Kernel<MLAS_GEMM_U8S8_KERNEL_AVX2>(
                                        RowSumBuffer, ColumnSumBuffer, ZeroPointB, ZeroMode);
 }
 
-const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8S8DispatchAvx2 = {
-    MlasGemmU8X8Operation<MLAS_GEMM_U8S8_KERNEL_AVX2>,
-    MlasGemmU8X8PackedOperation<MLAS_GEMM_U8S8_KERNEL_AVX2>,
-    MlasGemmU8X8CopyPackB<MLAS_GEMM_U8S8_KERNEL_AVX2>,
+const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8S8DispatchAvx2 = {
+    MlasGemmQuantOperation<MLAS_GEMM_U8S8_KERNEL_AVX2>,
+    MlasGemmQuantPackedOperation<MLAS_GEMM_U8S8_KERNEL_AVX2>,
+    MlasGemmQuantCopyPackB<MLAS_GEMM_U8S8_KERNEL_AVX2>,
     MLAS_GEMM_U8S8_KERNEL_AVX2::PackedK,
     MLAS_GEMM_U8S8_KERNEL_AVX2::PackedStrides.K,
 };
@@ -191,37 +195,40 @@ struct MLAS_GEMM_U8U8_KERNEL_AVX2
 {
     typedef int16_t PackedAType;
     typedef uint8_t PackedBType;
+    typedef uint8_t OffsetAType;
     typedef uint8_t OffsetBType;
 
     static constexpr size_t PackedK = 2;
-    static constexpr MLAS_GEMM_U8X8_STRIDES Strides{ 24, 256, 128 };
-    static constexpr MLAS_GEMM_U8X8_STRIDES PackedStrides{ 48, 256, 384 };
+    static constexpr MLAS_GEMM_QUANT_STRIDES Strides{ 24, 256, 128 };
+    static constexpr MLAS_GEMM_QUANT_STRIDES PackedStrides{ 48, 256, 384 };
 };
 
 constexpr size_t MLAS_GEMM_U8U8_KERNEL_AVX2::PackedK;
-constexpr MLAS_GEMM_U8X8_STRIDES MLAS_GEMM_U8U8_KERNEL_AVX2::Strides;
-constexpr MLAS_GEMM_U8X8_STRIDES MLAS_GEMM_U8U8_KERNEL_AVX2::PackedStrides;
+constexpr MLAS_GEMM_QUANT_STRIDES MLAS_GEMM_U8U8_KERNEL_AVX2::Strides;
+constexpr MLAS_GEMM_QUANT_STRIDES MLAS_GEMM_U8U8_KERNEL_AVX2::PackedStrides;
 
 
 template<>
 MLAS_FORCEINLINE
 void
-MlasGemmU8X8CopyPackA<MLAS_GEMM_U8U8_KERNEL_AVX2>(
+MlasGemmQuantCopyPackA<MLAS_GEMM_U8U8_KERNEL_AVX2>(
     MLAS_GEMM_U8U8_KERNEL_AVX2::PackedAType* D,
     const uint8_t* A,
     size_t lda,
     size_t CountM,
     size_t CountK,
-    int32_t* RowSumBuffer
+    int32_t* RowSumBuffer,
+    bool AIsSigned
     )
 {
+    MLAS_UNREFERENCED_PARAMETER(AIsSigned);
     MlasGemmU8U8CopyPackAAvx2(D, A, lda, CountM, CountK, RowSumBuffer);
 }
 
 template<>
 MLAS_FORCEINLINE
 void
-MlasGemmU8X8CopyPackB<MLAS_GEMM_U8U8_KERNEL_AVX2>(
+MlasGemmQuantCopyPackB<MLAS_GEMM_U8U8_KERNEL_AVX2>(
     MLAS_GEMM_U8U8_KERNEL_AVX2::PackedBType* D,
     const uint8_t* B,
     size_t ldb,
@@ -239,7 +246,7 @@ MlasGemmU8X8CopyPackB<MLAS_GEMM_U8U8_KERNEL_AVX2>(
 template<>
 MLAS_FORCEINLINE
 size_t
-MlasGemmU8X8Kernel<MLAS_GEMM_U8U8_KERNEL_AVX2>(
+MlasGemmQuantKernel<MLAS_GEMM_U8U8_KERNEL_AVX2>(
     const MLAS_GEMM_U8U8_KERNEL_AVX2::PackedAType* A,
     const MLAS_GEMM_U8U8_KERNEL_AVX2::PackedBType* B,
     int32_t* C,
@@ -257,10 +264,10 @@ MlasGemmU8X8Kernel<MLAS_GEMM_U8U8_KERNEL_AVX2>(
                                        RowSumBuffer, ColumnSumBuffer, ZeroPointB, ZeroMode);
 }
 
-const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8U8DispatchAvx2 = {
-    MlasGemmU8X8Operation<MLAS_GEMM_U8U8_KERNEL_AVX2>,
-    MlasGemmU8X8PackedOperation<MLAS_GEMM_U8U8_KERNEL_AVX2>,
-    MlasGemmU8X8CopyPackB<MLAS_GEMM_U8U8_KERNEL_AVX2>,
+const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8U8DispatchAvx2 = {
+    MlasGemmQuantOperation<MLAS_GEMM_U8U8_KERNEL_AVX2>,
+    MlasGemmQuantPackedOperation<MLAS_GEMM_U8U8_KERNEL_AVX2>,
+    MlasGemmQuantCopyPackB<MLAS_GEMM_U8U8_KERNEL_AVX2>,
     MLAS_GEMM_U8U8_KERNEL_AVX2::PackedK,
     MLAS_GEMM_U8U8_KERNEL_AVX2::PackedStrides.K,
 };

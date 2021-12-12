@@ -73,5 +73,11 @@ onnx::AttributeProto create_ort_attribute(
   const char* name,
   const char* value);
 
+bool IsSupportedType(at::Scalar scalar, const std::vector<at::ScalarType>& valid_types);
+
+bool IsSupportedType(at::Tensor tensor, const std::vector<at::ScalarType>& valid_types);
+
+bool IsSupportedType(at::IntArrayRef arrary, const std::vector<at::ScalarType>& valid_types);
+
 } // namespace eager
 } // namespace torch_ort

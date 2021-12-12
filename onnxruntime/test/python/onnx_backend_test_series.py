@@ -105,6 +105,7 @@ def create_backend_test(testname=None):
                 '^test_softmax_cross_entropy_input_shape_is_NCd1d2d3_none_no_weight_negative_ignore_index_log_prob_cpu',
                 '^test_softmax_cross_entropy_input_shape_is_NCd1d2d3_none_no_weight_negative_ignore_index_log_prob_expanded_cpu',
                 '^test_asin_example_cpu',
+                '^test_dynamicquantizelinear_cpu',
                 '^test_dynamicquantizelinear_expanded_cpu',
                 '^test_resize_downsample_scales_linear_cpu',
                 '^test_resize_downsample_sizes_linear_pytorch_half_pixel_cpu',

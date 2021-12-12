@@ -11,24 +11,24 @@
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/utils.h"
 #include "core/providers/cpu/tensor/utils.h"
+#include "sequences.h"
+
 namespace onnxruntime {
 namespace contrib {
-
-class ISequences {
- public:
-  virtual gsl::span<const int64_t> GetSequence(int beam_index) = 0;
-  virtual int GetSequenceLength() = 0;
-};
+namespace transformers {
 
 // Interface for all scorers for beam search or beam sample.
 template <typename T>
 class IBeamScorer {
  public:
+  virtual ~IBeamScorer() {}
+
+  virtual void Initialize(AllocatorPtr& allocator, int sequence_length) = 0;
+
   virtual void Process(ISequences* sequences,
                        gsl::span<const T>& next_scores,
                        gsl::span<const int64_t>& next_tokens,
-                       gsl::span<const int64_t>& next_indices,
-                       AllocatorPtr& allocator) = 0;
+                       gsl::span<const int64_t>& next_indices) = 0;
 
   virtual void Finalize(ISequences* sequences,
                         gsl::span<const T>& final_beam_scores,
@@ -92,18 +92,19 @@ class BeamSearchScorer : public IBeamScorer<T> {
                    int pad_token_id,
                    int eos_token_id);
 
-  bool IsDone();
+  void Initialize(AllocatorPtr& allocator, int sequence_length) override;
 
   void Process(ISequences* sequences,
                gsl::span<const T>& next_scores,
                gsl::span<const int64_t>& next_tokens,
-               gsl::span<const int64_t>& next_indices,
-               AllocatorPtr& allocator) override;
+               gsl::span<const int64_t>& next_indices) override;
 
   void Finalize(ISequences* sequences,
                 gsl::span<const T>& final_beam_scores,
                 Tensor* output_sequences,
                 Tensor* output_sequence_scores) override;
+
+  bool IsDone();
 
   gsl::span<T>& GetNextScores() { return next_beam_scores_; }
   gsl::span<int64_t>& GetNextTokens() { return next_beam_tokens_; }
@@ -117,8 +118,11 @@ class BeamSearchScorer : public IBeamScorer<T> {
   int pad_token_id_;
   int eos_token_id_;
 
+  // TODO: use ORT allocator to avoid allocating from heap directly
   std::vector<BeamHypotheses<T>> beam_hyps;  // List of batch result of beam search. Its shape is (batch_size)
-  std::vector<bool> done_;                   // List of flags indicates whether each batch is finished or not. Its shape is (batch_size).
+
+  IAllocatorUniquePtr<bool> done_ptr_;       // List of flags indicates whether each batch is finished or not. Its shape is (batch_size).
+  gsl::span<bool> done_;
 
   IAllocatorUniquePtr<T> next_beam_scores_ptr_;
   gsl::span<T> next_beam_scores_;
@@ -135,5 +139,6 @@ class BeamSearchScorer : public IBeamScorer<T> {
   int hypothesis_buffer_offset_;                        // Offset of avaiable buffer, or length of used buffer.
 };
 
+}  // namespace transformers
 }  // namespace contrib
 }  // namespace onnxruntime

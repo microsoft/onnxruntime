@@ -8,7 +8,7 @@ using System.Text;
 namespace Microsoft.ML.OnnxRuntime
 {
     /// <summary>
-    /// This class enable to bind inputs and outputs to pre-allocated
+    /// This class enables binding of inputs and/or outputs to pre-allocated
     /// memory. This enables interesting scenarios. For example, if your input
     /// already resides in some pre-allocated memory like GPU, you can bind
     /// that piece of memory to an input name and shape and onnxruntime will use that as input.
@@ -88,6 +88,15 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         /// <summary>
+        /// Blocks until device completes all preceding requested tasks.
+        /// Useful for memory synchronization.
+        /// </summary>
+        public void SynchronizeBoundInputs()
+        {
+            NativeMethods.OrtSynchronizeBoundInputs(handle);
+        }
+
+        /// <summary>
         /// Bind model output to an OrtValue as Tensor with a given type and shape. An instance of OrtMemoryAllocaiton
         /// owns the memory and should be alive for the time of execution.The size of the allocation can not be less than required
         /// by the Tensor of the given size.
@@ -131,6 +140,15 @@ namespace Microsoft.ML.OnnxRuntime
             var utf8NamePinned = GCHandle.Alloc(NativeOnnxValueHelper.StringToZeroTerminatedUtf8(name), GCHandleType.Pinned);
             using (var pinnedName = new PinnedGCHandle(utf8NamePinned))
             NativeApiStatus.VerifySuccess(NativeMethods.OrtBindOutputToDevice(handle, pinnedName.Pointer, memInfo.Pointer));
+        }
+
+        /// <summary>
+        /// Blocks until device completes all preceding requested tasks.
+        /// Useful for memory synchronization.
+        /// </summary>
+        public void SynchronizeBoundOutputs()
+        {
+            NativeMethods.OrtSynchronizeBoundOutputs(handle);
         }
 
         /// <summary>

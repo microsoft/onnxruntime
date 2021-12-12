@@ -13,16 +13,16 @@ Abstract:
     This module defines the set of template functions to implement a kernel of
     quantized integer matrix/matrix multiply operation (QGEMM).
 
-    To implement a new kernel, there needs to specialize template functions below:
-        MlasGemmU8X8FixupZeroPointA
-        MlasGemmU8X8FixupZeroPointB
-        MlasGemmU8X8CopyPackA
-        MlasGemmU8X8CopyPackB
-        MlasGemmU8X8Kernel
-    Specialization of MlasGemmU8X8TryGemvKernel is optional.
+    To implement a new kernel, template functions below need to be specialized:
+        MlasGemmQuantFixupZeroPointA
+        MlasGemmQuantFixupZeroPointB
+        MlasGemmQuantCopyPackA
+        MlasGemmQuantCopyPackB
+        MlasGemmQuantKernel
+    Specialization of MlasGemmQuantTryGemvKernel is optional.
 
-    MlasGemmU8X8Operation and MlasGemmU8X8PackedOperation are shared kernel drivers.
-    MlasGemmU8X8ScaleSumBuffer is a helper function.
+    MlasGemmQuantOperation and MlasGemmQuantPackedOperation are shared kernel drivers.
+    MlasGemmQuantScaleSumBuffer is a helper function.
 
     It also includes the dispatcher logics.
 
@@ -32,12 +32,15 @@ Abstract:
 
 #include "mlasi.h"
 
+#include <sstream>
+#include <string>
+
 //
 // Define the default striding parameters used for the quantized integer
 // matrix/matrix multiply operation.
 //
 
-struct MLAS_GEMM_U8X8_STRIDES {
+struct MLAS_GEMM_QUANT_STRIDES {
     size_t M;
     size_t N;
     size_t K;
@@ -46,13 +49,14 @@ struct MLAS_GEMM_U8X8_STRIDES {
 template<typename KernelType>
 MLAS_FORCEINLINE
 bool
-MlasGemmU8X8TryGemvKernel(
+MlasGemmQuantTryGemvKernel(
     const uint8_t* A,
     const uint8_t* B,
     size_t ldb,
     int32_t* C,
     size_t CountK,
     size_t CountN,
+    bool AIsSigned,
     bool BIsSigned
 )
 {
@@ -62,21 +66,26 @@ MlasGemmU8X8TryGemvKernel(
     MLAS_UNREFERENCED_PARAMETER(C);
     MLAS_UNREFERENCED_PARAMETER(CountK);
     MLAS_UNREFERENCED_PARAMETER(CountN);
+    MLAS_UNREFERENCED_PARAMETER(AIsSigned);
     MLAS_UNREFERENCED_PARAMETER(BIsSigned);
 
     return false;
 }
 
 template <typename KernelType>
-MLAS_FORCEINLINE int32_t
-MlasGemmU8X8FixupZeroPointA(int32_t ZeroPointA)
+MLAS_FORCEINLINE
+int32_t
+MlasGemmQuantFixupZeroPointA(
+    int32_t ZeroPointA,
+    bool AIsSigned)
 {
+    MLAS_UNREFERENCED_PARAMETER(AIsSigned);
     return ZeroPointA;
 }
 
 template<typename KernelType>
 int32_t
-MlasGemmU8X8FixupZeroPointB(
+MlasGemmQuantFixupZeroPointB(
     int32_t ZeroPointB,
     bool BIsSigned
 )
@@ -89,7 +98,7 @@ MlasGemmU8X8FixupZeroPointB(
 template<typename KernelType>
 MLAS_FORCEINLINE
 void
-MlasGemmU8X8FixupZeroPointB(
+MlasGemmQuantFixupZeroPointB(
     const uint8_t* PackedZeroPointB,
     int32_t* ZeroPointBBuffer,
     size_t N,
@@ -101,13 +110,13 @@ MlasGemmU8X8FixupZeroPointB(
     for (size_t n = 0; n < N; n++) {
 
         ZeroPointB = typename KernelType::OffsetBType(PackedZeroPointB[n]);
-        ZeroPointB = MlasGemmU8X8FixupZeroPointB<KernelType>(ZeroPointB, BIsSigned);
+        ZeroPointB = MlasGemmQuantFixupZeroPointB<KernelType>(ZeroPointB, BIsSigned);
 
         ZeroPointBBuffer[n] = -ZeroPointB;
     }
 
     //
-    // Fill the misaligned slots of the zero point buffer with zeroes to guard
+    // Fill the misaligned slots of the zero point buffer with zeros to guard
     // against tools that check for uninitialized data usage.
     //
 
@@ -120,18 +129,19 @@ MlasGemmU8X8FixupZeroPointB(
 
 template<typename KernelType>
 void
-MlasGemmU8X8CopyPackA(
+MlasGemmQuantCopyPackA(
     typename KernelType::PackedAType* D,
     const uint8_t* A,
     size_t lda,
     size_t CountM,
     size_t CountK,
-    int32_t* RowSumBuffer
+    int32_t* RowSumBuffer,
+    bool AIsSigned
 );
 
 template<typename KernelType>
 void
-MlasGemmU8X8CopyPackB(
+MlasGemmQuantCopyPackB(
     typename KernelType::PackedBType* D,
     const uint8_t* B,
     size_t ldb,
@@ -143,7 +153,7 @@ MlasGemmU8X8CopyPackB(
 
 template<typename KernelType>
 size_t
-MlasGemmU8X8Kernel(
+MlasGemmQuantKernel(
     const typename KernelType::PackedAType* A,
     const typename KernelType::PackedBType* B,
     int32_t* C,
@@ -160,7 +170,7 @@ MlasGemmU8X8Kernel(
 
 inline
 void
-MlasGemmU8X8ScaleSumBuffer(
+MlasGemmQuantScaleSumBuffer(
     int32_t* Output,
     const int32_t* Input,
     size_t N,
@@ -175,21 +185,21 @@ MlasGemmU8X8ScaleSumBuffer(
 
 MLAS_FORCEINLINE
 void
-MlasGemmU8X8ScaleSumBuffer(
+MlasGemmQuantScaleSumBuffer(
     int32_t* SumBuffer,
     size_t N,
     int32_t Scale
 )
 {
-    return MlasGemmU8X8ScaleSumBuffer(SumBuffer, SumBuffer, N, Scale);
+    return MlasGemmQuantScaleSumBuffer(SumBuffer, SumBuffer, N, Scale);
 }
 
 
 template<typename KernelType>
 void
-MlasGemmU8X8Operation(
-    const MLAS_GEMM_U8X8_SHAPE_PARAMS* Shape,
-    const MLAS_GEMM_U8X8_DATA_PARAMS* Data,
+MlasGemmQuantOperation(
+    const MLAS_GEMM_QUANT_SHAPE_PARAMS* Shape,
+    const MLAS_GEMM_QUANT_DATA_PARAMS* Data,
     const size_t RangeStartM,
     const size_t RangeCountM,
     const size_t RangeStartN,
@@ -222,7 +232,7 @@ Return Value:
 
 --*/
 {
-    constexpr MLAS_GEMM_U8X8_STRIDES Strides = KernelType::Strides;
+    constexpr MLAS_GEMM_QUANT_STRIDES Strides = KernelType::Strides;
 
     MLAS_DECLSPEC_ALIGN(typename KernelType::PackedAType PanelA[Strides.M * Strides.K], 64);
     MLAS_DECLSPEC_ALIGN(typename KernelType::PackedBType PanelB[Strides.N * Strides.K], 64);
@@ -244,7 +254,7 @@ Return Value:
         Data->ZeroPointB + RangeStartN : nullptr;
     bool IsAccumulateMode = Shape->IsAccumulateMode;
 
-    int32_t ZeroPointA = Data->ZeroPointA;
+    int32_t ZeroPointA = typename KernelType::OffsetAType(Data->ZeroPointA);
     int32_t ZeroPointB = typename KernelType::OffsetBType(*Data->ZeroPointB);
 
     //
@@ -254,7 +264,7 @@ Return Value:
     if ((RangeCountM == 1) &&
         (ZeroPointA == 0) && (PackedZeroPointB == nullptr) && (ZeroPointB == 0) &&
         (Data->OutputProcessor == nullptr)) {
-        if (MlasGemmU8X8TryGemvKernel<KernelType>(A, B, ldb, C, K, RangeCountN, Shape->BIsSigned)) {
+        if (MlasGemmQuantTryGemvKernel<KernelType>(A, B, ldb, C, K, RangeCountN, Shape->AIsSigned, Shape->BIsSigned)) {
             return;
         }
     }
@@ -264,7 +274,7 @@ Return Value:
     // kernel requires signed data.
     //
 
-    ZeroPointA = MlasGemmU8X8FixupZeroPointA<KernelType>(ZeroPointA);
+    ZeroPointA = MlasGemmQuantFixupZeroPointA<KernelType>(ZeroPointA, Shape->AIsSigned);
 
     //
     // Fixup the sign bit of the per-matrix zero point offset of matrix B if the
@@ -272,7 +282,7 @@ Return Value:
     // ignored if per-column zero point offsets are used instead.
     //
 
-    ZeroPointB = MlasGemmU8X8FixupZeroPointB<KernelType>(ZeroPointB, Shape->BIsSigned);
+    ZeroPointB = MlasGemmQuantFixupZeroPointB<KernelType>(ZeroPointB, Shape->BIsSigned);
 
     //
     // Step through each slice of matrix B along the K dimension.
@@ -302,7 +312,7 @@ Return Value:
             //
 
             if (PackedZeroPointB != nullptr) {
-                MlasGemmU8X8FixupZeroPointB<KernelType>(
+                MlasGemmQuantFixupZeroPointB<KernelType>(
                     PackedZeroPointB + n,
                     ZeroPointBBuffer,
                     CountN,
@@ -313,7 +323,7 @@ Return Value:
             // Copy a panel of matrix B to a local packed buffer.
             //
 
-            MlasGemmU8X8CopyPackB<KernelType>(
+            MlasGemmQuantCopyPackB<KernelType>(
                 PanelB,
                 B + n,
                 ldb,
@@ -322,7 +332,7 @@ Return Value:
                 ColumnSumBuffer,
                 Shape->BIsSigned);
 
-            MlasGemmU8X8ScaleSumBuffer(ColumnSumBuffer, CountN, -ZeroPointA);
+            MlasGemmQuantScaleSumBuffer(ColumnSumBuffer, CountN, -ZeroPointA);
 
             //
             // Step through each slice of matrix A along the M dimension.
@@ -339,13 +349,14 @@ Return Value:
                 // Copy a panel of matrix A to a local packed buffer.
                 //
 
-                MlasGemmU8X8CopyPackA<KernelType>(
+                MlasGemmQuantCopyPackA<KernelType>(
                     PanelA,
                     A + m * lda,
                     lda,
                     CountM,
                     CountK,
-                    RowSumBuffer);
+                    RowSumBuffer,
+                    Shape->AIsSigned);
 
                 //
                 // Apply the global depth value constant without the ZeroPointB scaling from:
@@ -367,7 +378,7 @@ Return Value:
                 //
 
                 if (PackedZeroPointB == nullptr) {
-                    MlasGemmU8X8ScaleSumBuffer(RowSumBuffer, CountM, -ZeroPointB);
+                    MlasGemmQuantScaleSumBuffer(RowSumBuffer, CountM, -ZeroPointB);
                 }
 
                 //
@@ -383,7 +394,7 @@ Return Value:
 
                 while (RowsRemaining > 0) {
 
-                    size_t RowsHandled = MlasGemmU8X8Kernel<KernelType>(
+                    size_t RowsHandled = MlasGemmQuantKernel<KernelType>(
                         pa,
                         PanelB,
                         c,
@@ -422,9 +433,9 @@ Return Value:
 
 template<typename KernelType>
 void
-MlasGemmU8X8PackedOperation(
-    const MLAS_GEMM_U8X8_SHAPE_PARAMS* Shape,
-    const MLAS_GEMM_U8X8_DATA_PARAMS* Data,
+MlasGemmQuantPackedOperation(
+    const MLAS_GEMM_QUANT_SHAPE_PARAMS* Shape,
+    const MLAS_GEMM_QUANT_DATA_PARAMS* Data,
     const size_t RangeStartM,
     const size_t RangeCountM,
     const size_t RangeStartN,
@@ -457,7 +468,7 @@ Return Value:
 
 --*/
 {
-    constexpr MLAS_GEMM_U8X8_STRIDES Strides = KernelType::PackedStrides;
+    constexpr MLAS_GEMM_QUANT_STRIDES Strides = KernelType::PackedStrides;
 
     MLAS_DECLSPEC_ALIGN(typename KernelType::PackedAType PanelA[Strides.M * Strides.K], 64);
 
@@ -477,7 +488,7 @@ Return Value:
         Data->ZeroPointB + RangeStartN : nullptr;
     bool IsAccumulateMode = Shape->IsAccumulateMode;
 
-    int32_t ZeroPointA = Data->ZeroPointA;
+    int32_t ZeroPointA = typename KernelType::OffsetAType(Data->ZeroPointA);
     int32_t ZeroPointB = typename KernelType::OffsetBType(*Data->ZeroPointB);
 
     //
@@ -485,7 +496,7 @@ Return Value:
     // kernel requires signed data.
     //
 
-    ZeroPointA = MlasGemmU8X8FixupZeroPointA<KernelType>(ZeroPointA);
+    ZeroPointA = MlasGemmQuantFixupZeroPointA<KernelType>(ZeroPointA, Shape->AIsSigned);
 
     //
     // Fixup the sign bit of the per-matrix zero point offset of matrix B if the
@@ -493,7 +504,7 @@ Return Value:
     // ignored if per-column zero point offsets are used instead.
     //
 
-    ZeroPointB = MlasGemmU8X8FixupZeroPointB<KernelType>(ZeroPointB, Shape->BIsSigned);
+    ZeroPointB = MlasGemmQuantFixupZeroPointB<KernelType>(ZeroPointB, Shape->BIsSigned);
 
     //
     // Extract the pointer to the column sum buffer from the packed matrix.
@@ -532,7 +543,7 @@ Return Value:
             CountN = std::min(RangeCountN - n, Strides.N);
 
             if (k == 0) {
-                MlasGemmU8X8ScaleSumBuffer(ColumnSumBuffer, PackedColumnSumBuffer + n,
+                MlasGemmQuantScaleSumBuffer(ColumnSumBuffer, PackedColumnSumBuffer + n,
                     CountN, -ZeroPointA);
             }
 
@@ -542,7 +553,7 @@ Return Value:
             //
 
             if (PackedZeroPointB != nullptr) {
-                MlasGemmU8X8FixupZeroPointB<KernelType>(
+                MlasGemmQuantFixupZeroPointB<KernelType>(
                     PackedZeroPointB + n,
                     ZeroPointBBuffer,
                     CountN,
@@ -566,13 +577,14 @@ Return Value:
                 // Copy a panel of matrix A to a local packed buffer.
                 //
 
-                MlasGemmU8X8CopyPackA<KernelType>(
+                MlasGemmQuantCopyPackA<KernelType>(
                     PanelA,
                     A + m * lda,
                     lda,
                     CountM,
                     CountK,
-                    RowSumBuffer);
+                    RowSumBuffer,
+                    Shape->AIsSigned);
 
                 //
                 // Apply the global depth value constant without the ZeroPointB scaling from:
@@ -594,7 +606,7 @@ Return Value:
                 //
 
                 if (PackedZeroPointB == nullptr) {
-                    MlasGemmU8X8ScaleSumBuffer(RowSumBuffer, CountM, -ZeroPointB);
+                    MlasGemmQuantScaleSumBuffer(RowSumBuffer, CountM, -ZeroPointB);
                 }
 
                 //
@@ -610,7 +622,7 @@ Return Value:
 
                 while (RowsRemaining > 0) {
 
-                    size_t RowsHandled = MlasGemmU8X8Kernel<KernelType>(
+                    size_t RowsHandled = MlasGemmQuantKernel<KernelType>(
                         pa,
                         b,
                         c,
@@ -652,9 +664,9 @@ Return Value:
 
 typedef
 void
-(MLAS_GEMM_U8X8_OPERATION)(
-    const MLAS_GEMM_U8X8_SHAPE_PARAMS* Shape,
-    const MLAS_GEMM_U8X8_DATA_PARAMS* Data,
+(MLAS_GEMM_QUANT_OPERATION)(
+    const MLAS_GEMM_QUANT_SHAPE_PARAMS* Shape,
+    const MLAS_GEMM_QUANT_DATA_PARAMS* Data,
     const size_t RangeStartM,
     const size_t RangeCountM,
     const size_t RangeStartN,
@@ -663,7 +675,7 @@ void
 
 typedef
 void
-(MLAS_GEMM_U8X8_COPY_PACKB_ROUTINE)(
+(MLAS_GEMM_QUANT_COPY_PACKB_ROUTINE)(
     uint8_t* D,
     const uint8_t* B,
     size_t ldb,
@@ -673,45 +685,69 @@ void
     bool BIsSigned
     );
 
-struct MLAS_GEMM_U8X8_DISPATCH {
-    MLAS_GEMM_U8X8_OPERATION* Operation;
-    MLAS_GEMM_U8X8_OPERATION* PackedOperation;
-    MLAS_GEMM_U8X8_COPY_PACKB_ROUTINE* CopyPackBRoutine;
+struct MLAS_GEMM_QUANT_DISPATCH {
+    MLAS_GEMM_QUANT_OPERATION* Operation;
+    MLAS_GEMM_QUANT_OPERATION* PackedOperation;
+    MLAS_GEMM_QUANT_COPY_PACKB_ROUTINE* CopyPackBRoutine;
     size_t PackedK;
     size_t PackedStrideK;
 };
 
-#define USE_NEONS8_KERNEL true
 
 MLAS_FORCEINLINE
-const MLAS_GEMM_U8X8_DISPATCH*
-MlasGemmU8X8GetDispatch(
+const MLAS_GEMM_QUANT_DISPATCH*
+MlasGemmQuantGetDispatch(
+    bool AIsSigned,
     bool BIsSigned
 )
 {
-    const MLAS_GEMM_U8X8_DISPATCH* GemmU8X8Dispatch;
+    const MLAS_GEMM_QUANT_DISPATCH* GemmQuantDispatch = nullptr;
 
+    MLAS_UNREFERENCED_PARAMETER(AIsSigned);
     MLAS_UNREFERENCED_PARAMETER(BIsSigned);
 
 #if defined(MLAS_TARGET_AMD64_IX86)
-    if (BIsSigned) {
-        GemmU8X8Dispatch = MlasPlatform.GemmU8S8Dispatch;
-    }
-    else {
-        GemmU8X8Dispatch = MlasPlatform.GemmU8U8Dispatch;
+    if (!AIsSigned) {
+        if (BIsSigned) {
+            GemmQuantDispatch = MlasPlatform.GemmU8S8Dispatch;
+        }
+        else {
+            GemmQuantDispatch = MlasPlatform.GemmU8U8Dispatch;
+        }
     }
 #elif defined(MLAS_TARGET_ARM64)
-    GemmU8X8Dispatch = MlasPlatform.GemmU8X8Dispatch;
-    if (USE_NEONS8_KERNEL && BIsSigned && GemmU8X8Dispatch == &MlasGemmU8X8DispatchNeon) {
-        GemmU8X8Dispatch = &MlasGemmS8S8DispatchNeon;
+    if(BIsSigned) {
+        if(MlasPlatform.GemmU8X8Dispatch == &MlasGemmU8X8DispatchNeon) {
+            GemmQuantDispatch = &MlasGemmX8S8DispatchNeon;
+        } else {
+            GemmQuantDispatch = AIsSigned? &MlasGemmS8S8DispatchSdot : &MlasGemmU8X8DispatchUdot;
+        }
+    } else if(!AIsSigned) {
+        GemmQuantDispatch = MlasPlatform.GemmU8X8Dispatch;
     }
 #elif defined(MLAS_TARGET_ARM64EC) || (defined(MLAS_TARGET_ARM) && !defined(_MSC_VER))
-    GemmU8X8Dispatch = &MlasGemmU8X8DispatchNeon;
+    if(BIsSigned || !AIsSigned) {
+        GemmQuantDispatch = &MlasGemmU8X8DispatchNeon;
+    }
 #elif defined(MLAS_TARGET_WASM_SIMD)
-    GemmU8X8Dispatch = &MlasGemmU8X8DispatchWasmSimd;
+    if (!AIsSigned) {
+        GemmQuantDispatch = &MlasGemmU8X8DispatchWasmSimd;
+    }
 #else
-    GemmU8X8Dispatch = &MlasGemmU8X8DispatchDefault;
+    if (!AIsSigned) {
+        GemmQuantDispatch = &MlasGemmU8X8DispatchDefault;
+    }
 #endif
 
-    return GemmU8X8Dispatch;
+    if (nullptr == GemmQuantDispatch) {
+#if defined(MLAS_NO_EXCEPTION)
+        abort();
+#else
+        std::stringstream ss;
+        ss << "Quant GEMM format: AIsSigned(" << AIsSigned << "), BIsSigned(" << BIsSigned << ") is not supported on this device";
+        throw std::invalid_argument(ss.str());
+#endif
+    }
+
+    return GemmQuantDispatch;
 }

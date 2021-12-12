@@ -301,4 +301,32 @@ class DnnlDynamicQuantizeLinearNodeCapability : public DnnlDefaultNodeCapability
  private:
 };
 
+class DnnlSqueezeNodeCapability : public DnnlDefaultNodeCapability {
+ public:
+  DnnlSqueezeNodeCapability() : DnnlDefaultNodeCapability({type_float32,
+                                                           type_float16,
+                                                           type_bfloat16,
+                                                           type_int32,
+                                                           type_int8,
+                                                           type_uint8}) {}
+
+  bool Supported(const Node* node, const GraphViewer& graph_viewer) const override;
+
+ private:
+  bool IsDimensionSupported(const Node* node, const GraphViewer& graph_viewer) const;
+};
+
+class DnnlErfNodeCapability : public DnnlDefaultNodeCapability {
+ public:
+  DnnlErfNodeCapability() : DnnlDefaultNodeCapability({type_float32}) {}
+  bool Supported(const Node* node, const GraphViewer& graph_viewer) const override;
+
+ private:
+  bool IsErfPartOfGelu(const Node* node, const GraphViewer& graph_viewer) const;
+  bool IsInitilizedWithExpectedValue(const GraphViewer& graph_viewer, const NodeArg* node_arg, float expected_value) const;
+  const Node* FirstParentByType(const Node& node, const std::string& parent_type) const;
+  bool IsNodeFusable(const Node* node, const GraphViewer& graph_viewer) const;
+  DnnlBinaryNodeCapability _binary;
+};
+
 }  // namespace onnxruntime

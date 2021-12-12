@@ -26,6 +26,9 @@ class MatMulIntegerBase : public OpKernel {
         return Status::OK();
       }
 
+      auto a_elem_type = Node().InputDefs()[GetAIdx()]->TypeAsProto()->tensor_type().elem_type();
+      bool a_is_signed = ONNX_NAMESPACE::TensorProto_DataType_INT8 == a_elem_type;
+
       b_is_signed_ = tensor.IsDataType<int8_t>();
 
       size_t K = static_cast<size_t>(b_shape_[0]);
@@ -38,7 +41,7 @@ class MatMulIntegerBase : public OpKernel {
         std::swap(K, N);
         b_data = quantization::TransPoseInputData(b_data, b_trans_buffer, alloc, N, K);
       }
-      const size_t packed_b_size = MlasGemmPackBSize(N, K, b_is_signed_);
+      const size_t packed_b_size = MlasGemmPackBSize(N, K, a_is_signed, b_is_signed_);
       if (packed_b_size == 0) {
         return Status::OK();
       }
@@ -51,7 +54,7 @@ class MatMulIntegerBase : public OpKernel {
       memset(packed_b_data, 0, packed_b_size);
 
       packed_b_ = BufferUniquePtr(packed_b_data, BufferDeleter(alloc));
-      MlasGemmPackB(N, K, b_data, N, b_is_signed_, packed_b_data);
+      MlasGemmPackB(N, K, b_data, N, a_is_signed, b_is_signed_, packed_b_data);
 
       bool share_prepacked_weights = (prepacked_weights != nullptr);
       if (share_prepacked_weights) {
@@ -81,6 +84,7 @@ class MatMulIntegerBase : public OpKernel {
   /**
    * @return input index of Matrix B, the weight tensor 
   */
+  virtual int GetAIdx() const { return 0; }
   virtual int GetBIdx() const = 0;
 
   virtual bool IsBTransposed() const {

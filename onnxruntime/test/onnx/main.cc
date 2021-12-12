@@ -835,6 +835,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     broken_tests.insert({"resize_upsample_linear", "ORT 0.4 uses asymmetric but will conform to half_pixel in the next ONNX version."});
 
     // These tests are temporarily disabled pending investigation
+    broken_tests.insert({"dynamicquantizelinear", "Temporarily disabled pending investigation"});
     broken_tests.insert({"dynamicquantizelinear_expanded", "Temporarily disabled pending investigation"});
     broken_tests.insert({"dynamicquantizelinear_max_adjusted_expanded", "Temporarily disabled pending investigation"});
     broken_tests.insert({"dynamicquantizelinear_min_adjusted_expanded", "Temporarily disabled pending investigation"});

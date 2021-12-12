@@ -1,6 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-#if !(defined(USE_ROCM) || defined(ENABLE_TRAINING))
+#if defined(USE_CUDA) && defined(ENABLE_CUDA_PROFILING)
 
 #include "cuda_profiler.h"
 #include <map>

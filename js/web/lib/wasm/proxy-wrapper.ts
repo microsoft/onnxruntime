@@ -82,7 +82,7 @@ const onProxyWorkerMessage = (ev: MessageEvent<OrtWasmMessage>): void => {
 const scriptSrc = typeof document !== 'undefined' ? (document?.currentScript as HTMLScriptElement)?.src : undefined;
 
 export const initWasm = async(): Promise<void> => {
-  if (isProxy()) {
+  if (!BUILD_DEFS.DISABLE_WASM_PROXY && isProxy()) {
     if (initialized) {
       return;
     }
@@ -118,7 +118,7 @@ export const initWasm = async(): Promise<void> => {
 };
 
 export const initOrt = async(numThreads: number, loggingLevel: number): Promise<void> => {
-  if (isProxy()) {
+  if (!BUILD_DEFS.DISABLE_WASM_PROXY && isProxy()) {
     ensureWorker();
     return new Promise<void>((resolve, reject) => {
       initOrtCallbacks = [resolve, reject];
@@ -132,7 +132,7 @@ export const initOrt = async(numThreads: number, loggingLevel: number): Promise<
 
 export const createSession =
     async(model: Uint8Array, options?: InferenceSession.SessionOptions): Promise<SerializableSessionMetadata> => {
-  if (isProxy()) {
+  if (!BUILD_DEFS.DISABLE_WASM_PROXY && isProxy()) {
     ensureWorker();
     return new Promise<SerializableSessionMetadata>((resolve, reject) => {
       createSessionCallbacks.push([resolve, reject]);
@@ -145,7 +145,7 @@ export const createSession =
 };
 
 export const releaseSession = async(sessionId: number): Promise<void> => {
-  if (isProxy()) {
+  if (!BUILD_DEFS.DISABLE_WASM_PROXY && isProxy()) {
     ensureWorker();
     return new Promise<void>((resolve, reject) => {
       releaseSessionCallbacks.push([resolve, reject]);
@@ -160,7 +160,7 @@ export const releaseSession = async(sessionId: number): Promise<void> => {
 export const run = async(
     sessionId: number, inputIndices: number[], inputs: SerializableTensor[], outputIndices: number[],
     options: InferenceSession.RunOptions): Promise<SerializableTensor[]> => {
-  if (isProxy()) {
+  if (!BUILD_DEFS.DISABLE_WASM_PROXY && isProxy()) {
     ensureWorker();
     return new Promise<SerializableTensor[]>((resolve, reject) => {
       runCallbacks.push([resolve, reject]);
@@ -173,7 +173,7 @@ export const run = async(
 };
 
 export const endProfiling = async(sessionId: number): Promise<void> => {
-  if (isProxy()) {
+  if (!BUILD_DEFS.DISABLE_WASM_PROXY && isProxy()) {
     ensureWorker();
     return new Promise<void>((resolve, reject) => {
       endProfilingCallbacks.push([resolve, reject]);

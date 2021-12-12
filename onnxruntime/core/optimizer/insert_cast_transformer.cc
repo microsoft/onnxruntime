@@ -176,19 +176,17 @@ enum TypeGroup {
 };
 
 TypeGroup GetTypeGroup(DataType type) {
-  if (type != nullptr) {
-    if (*type == "tensor(bool)") {
-      return Bool;
-    }
+  if (*type == "tensor(bool)") {
+    return Bool;
+  }
 
-    if (*type == "tensor(int16)" || *type == "tensor(int32)" || *type == "tensor(int64)" || *type == "tensor(int8)" ||
-        *type == "tensor(uint16)" || *type == "tensor(uint32)" || *type == "tensor(uint64)" || *type == "tensor(uint8)") {
-      return Integer;
-    }
+  if (*type == "tensor(int16)" || *type == "tensor(int32)" || *type == "tensor(int64)" || *type == "tensor(int8)" ||
+      *type == "tensor(uint16)" || *type == "tensor(uint32)" || *type == "tensor(uint64)" || *type == "tensor(uint8)") {
+    return Integer;
+  }
 
-    if (*type == "tensor(bfloat16)" || *type == "tensor(double)" || *type == "tensor(float)" || *type == "tensor(float16)") {
-      return Float;
-    }
+  if (*type == "tensor(bfloat16)" || *type == "tensor(double)" || *type == "tensor(float)" || *type == "tensor(float16)") {
+    return Float;
   }
 
   return Unknown;

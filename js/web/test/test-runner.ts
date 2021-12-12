@@ -43,20 +43,20 @@ function fromInternalTensor(tensor: Tensor): ort.Tensor {
   return new ort.Tensor(tensor.type, tensor.data as ort.Tensor.DataType, tensor.dims);
 }
 
-async function loadFile(uri: string): Promise<Uint8Array|ArrayBuffer> {
+async function loadFile(uri: string): Promise<Uint8Array> {
   if (typeof fetch === 'undefined') {
     // node
     return promisify(readFile)(uri);
   } else {
     // browser
     const response = await fetch(uri);
-    return response.arrayBuffer();
+    return new Uint8Array(await response.arrayBuffer());
   }
 }
 
 async function loadTensorProto(uriOrData: string|Uint8Array): Promise<Test.NamedTensor> {
   const buf = (typeof uriOrData === 'string') ? await loadFile(uriOrData) : uriOrData;
-  const tensorProto = onnxProto.TensorProto.decode(Buffer.from(buf));
+  const tensorProto = onnxProto.TensorProto.decode(buf);
   const tensor = Tensor.fromProto(tensorProto);
   // add property 'name' to the tensor object.
   const namedTensor = fromInternalTensor(tensor) as unknown as Test.NamedTensor;

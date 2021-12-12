@@ -15,7 +15,7 @@ ARG MY_ROOT=/code
 ENV PATH /opt/miniconda/bin:/code/cmake-3.21.0-linux-x86_64/bin:$PATH
 ENV LD_LIBRARY_PATH=/opt/miniconda/lib:/usr/lib:/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH
 
-ENV INTEL_OPENVINO_DIR=/opt/intel/openvino_2021.4.689
+ENV INTEL_OPENVINO_DIR=/opt/intel/openvino_2021.4.752
 ENV InferenceEngine_DIR=${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/share
 ENV IE_PLUGINS_PATH=${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/lib/intel64
 ENV LD_LIBRARY_PATH=/opt/intel/opencl:${INTEL_OPENVINO_DIR}/inference_engine/external/gna/lib:${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/mkltiny_lnx/lib:$INTEL_OPENVINO_DIR/deployment_tools/ngraph/lib:${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/omp/lib:${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/tbb/lib:${IE_PLUGINS_PATH}:${LD_LIBRARY_PATH}
@@ -54,7 +54,7 @@ RUN apt update -y && \
     cd /etc/apt/sources.list.d && \
     echo "deb https://apt.repos.intel.com/openvino/2021 all main">intel-openvino-2021.list && \ 
     apt update -y && \
-    apt -y install intel-openvino-dev-ubuntu18-2021.4.689 && \
+    apt -y install intel-openvino-dev-ubuntu18-2021.4.752 && \
     cd ${INTEL_OPENVINO_DIR}/install_dependencies && ./install_openvino_dependencies.sh -y && \
     cd ${INTEL_OPENVINO_DIR} && rm -rf documentation data_processing && \
     cd deployment_tools/ && rm -rf model_optimizer open_model_zoo demo tools && \
@@ -82,7 +82,7 @@ RUN apt update -y && \
     cd ${MY_ROOT} && \
     apt install -y gnupg ca-certificates && \
     #apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys 3FA7E0328081BFF6A14DA29AA6A19B38D3D831EF && \
-    curl http://download.mono-project.com/repo/xamarin.gpg | apt-key add - && \
+    curl https://download.mono-project.com/repo/xamarin.gpg | apt-key add - && \
     echo "deb https://download.mono-project.com/repo/ubuntu stable-bionic main" | sudo tee /etc/apt/sources.list.d/mono-official-stable.list && \
     apt update -y && \
     apt install -y mono-devel && \
@@ -97,13 +97,14 @@ RUN apt update -y && \
     apt-get update -y &&\
     apt-get install -y apt-transport-https && \
     apt-get update -y && \
-    apt-get install -y dotnet-sdk-3.1 && \
+    apt-get install -y dotnet-sdk-5.0 && \
 # Download and build ONNX Runtime
     cd ${MY_ROOT} && \
     git clone --recursive -b ${ONNXRUNTIME_BRANCH} ${ONNXRUNTIME_REPO} && \
     /bin/sh onnxruntime/dockerfiles/scripts/install_common_deps.sh && \
     pip install onnx==1.9 && \
     cd ${MY_ROOT}/onnxruntime && ./build.sh --config Release --update --build --parallel --use_openvino ${DEVICE} --build_nuget --build_shared_lib && \
+    cp ${MY_ROOT}/onnxruntime/build/Linux/Release/Microsoft.ML.OnnxRuntime.Managed* ${MY_ROOT}/onnxruntime/build/Linux/Release/nuget-artifacts && \
     mv ${MY_ROOT}/onnxruntime/build/Linux/Release/nuget-artifacts ${MY_ROOT} && \
 # Clean-up unnecessary files
     rm -rf ${MY_ROOT}/cmake* /opt/cmake ${MY_ROOT}/onnxruntime && \

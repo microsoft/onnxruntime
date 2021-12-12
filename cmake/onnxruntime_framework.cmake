@@ -63,6 +63,11 @@ if (onnxruntime_ENABLE_TRAINING)
   target_include_directories(onnxruntime_framework PRIVATE ${DLPACK_INCLUDE_DIR})
 endif()
 onnxruntime_add_include_to_target(onnxruntime_framework onnxruntime_common onnx onnx_proto ${PROTOBUF_LIB} flatbuffers)
+
+if (onnxruntime_USE_MIMALLOC)
+    target_link_libraries(onnxruntime_framework mimalloc-static)
+endif()
+
 set_target_properties(onnxruntime_framework PROPERTIES FOLDER "ONNXRuntime")
 # need onnx to build to create headers that this project includes
 add_dependencies(onnxruntime_framework ${onnxruntime_EXTERNAL_DEPENDENCIES})

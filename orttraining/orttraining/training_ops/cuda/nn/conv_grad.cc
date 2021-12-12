@@ -222,8 +222,8 @@ class AlgoIterator {
 
   Status TryAll(const CUDAExecutionProvider* provider, std::function<Status(const T_Perf& perf)> f) {
     auto& cache = AlgoSearch<T_Perf>::Cache();
-    T_Perf algo_perf;
-    if (cache.Find(args_.params, &algo_perf) && f(algo_perf) == Status::OK()) {
+    
+    if (T_Perf algo_perf; cache.Find(args_.params, &algo_perf) && f(algo_perf) == Status::OK()) {
       return Status::OK();
     }
 

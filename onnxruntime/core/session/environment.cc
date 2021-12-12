@@ -115,11 +115,8 @@ Status Environment::CreateAndRegisterAllocator(const OrtMemoryInfo& mem_info, co
   // determine if arena should be used
   bool create_arena = mem_info.alloc_type == OrtArenaAllocator;
 
-#ifdef USE_JEMALLOC
-#if defined(USE_MIMALLOC_ARENA_ALLOCATOR) || defined(USE_MIMALLOC_STL_ALLOCATOR)
-#error jemalloc and mimalloc should not both be enabled
-#endif
-  //JEMalloc already has memory pool, so just use device allocator.
+#if defined(USE_JEMALLOC) || defined(USE_MIMALLOC)
+  // We use these allocators instead of the arena
   create_arena = false;
 #elif !(defined(__amd64__) || defined(_M_AMD64))
   //Disable Arena allocator for x86_32 build because it may run into infinite loop when integer overflow happens
@@ -156,13 +153,13 @@ Status Environment::CreateAndRegisterAllocator(const OrtMemoryInfo& mem_info, co
     OrtArenaCfg l_arena_cfg{max_mem, arena_extend_strategy, initial_chunk_size_bytes, max_dead_bytes_per_chunk,
                             initial_growth_chunk_size_bytes};
     AllocatorCreationInfo alloc_creation_info{
-        [mem_info](int) { return std::make_unique<TAllocator>(mem_info); },
+        [mem_info](int) { return std::make_unique<CPUAllocator>(mem_info); },
         0,
         create_arena,
         l_arena_cfg};
     allocator_ptr = CreateAllocator(alloc_creation_info);
   } else {
-    AllocatorCreationInfo alloc_creation_info{[](int) { return std::make_unique<TAllocator>(); },
+    AllocatorCreationInfo alloc_creation_info{[](int) { return std::make_unique<CPUAllocator>(); },
                                               0, create_arena};
     allocator_ptr = CreateAllocator(alloc_creation_info);
   }

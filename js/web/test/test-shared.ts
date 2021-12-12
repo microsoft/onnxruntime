@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+import * as base64 from 'base64-js';
 import * as fs from 'fs';
 import {promisify} from 'util';
 
@@ -8,11 +9,11 @@ import {Attribute} from '../lib/onnxjs/attribute';
 import {Graph} from '../lib/onnxjs/graph';
 
 export function base64toBuffer(data: string): Uint8Array {
-  return Buffer.from(data, 'base64');
+  return base64.toByteArray(data);
 }
 
 export function bufferToBase64(buffer: Uint8Array): string {
-  return Buffer.from(buffer).toString('base64');
+  return base64.fromByteArray(buffer);
 }
 
 async function readFile(file: string) {
@@ -22,14 +23,13 @@ async function readFile(file: string) {
   } else {
     // browser
     const response = await fetch(file);
-    const buffer = await response.arrayBuffer();
-    return Buffer.from(buffer);
+    return new Uint8Array(await response.arrayBuffer());
   }
 }
 
 export async function readJsonFile(file: string): Promise<any> {
   const content = await readFile(file);
-  return JSON.parse(content.toString());
+  return JSON.parse(new TextDecoder().decode(content));
 }
 
 /**

@@ -2,12 +2,15 @@
 # Licensed under the MIT License.
 
 import os
+import time
 import onnx
 import logging
 import argparse
 from pathlib import Path
 from onnx import helper
 import numpy as np
+from typing import List
+import torch
 from transformers import GPT2Config
 from gpt2_helper import PRETRAINED_GPT2_MODELS
 from convert_to_onnx import main as convert_gpt2_to_onnx
@@ -63,8 +66,14 @@ def parse_arguments(argv=None):
     parser.add_argument('-e', '--use_external_data_format', required=False, action='store_true')
     parser.set_defaults(use_external_data_format=False)
 
-    parser.add_argument('--run_baseline', required=False, action='store_true', help="run huggingface beam search")
-    parser.set_defaults(run_baseline=False)
+    parser.add_argument('--disable_parity', required=False, action='store_true', help="do not run parity test")
+    parser.set_defaults(disable_parity=False)
+
+    parser.add_argument('--total_runs',
+                        required=False,
+                        type=int,
+                        default=1,
+                        help='Number of times of inference for latency measurement')
 
     beam_search_group = parser.add_argument_group("beam search options")
 
@@ -99,7 +108,7 @@ def parse_arguments(argv=None):
                                    type=int,
                                    required=False,
                                    default=1,
-                                   help='Number of return sequence')
+                                   help='Number of return sequence <= num_beams')
 
     beam_search_group.add_argument('--temperature',
                                    type=float,
@@ -119,33 +128,33 @@ def parse_arguments(argv=None):
                                    default=1,
                                    help='Positive. >1 to penalize and <1 to encorage.')
 
-    mixed_precision_option_grapu = parser.add_argument_group(
+    mixed_precision_option_group = parser.add_argument_group(
         "mixed precision conversion parameters that works when \"--precision fp16\" is specified")
 
-    mixed_precision_option_grapu.add_argument('--io_block_list',
+    mixed_precision_option_group.add_argument('--io_block_list',
                                               nargs='+',
                                               required=False,
                                               default=[],
                                               help='List of inputs or outputs in float32')
 
-    mixed_precision_option_grapu.add_argument(
+    mixed_precision_option_group.add_argument(
         '--op_block_list',
         nargs='+',
         required=False,
         default=[],
         help='List of operators (like Add LayerNormalization FastGelu) to compute in float32.')
 
-    mixed_precision_option_grapu.add_argument('--node_block_list',
+    mixed_precision_option_group.add_argument('--node_block_list',
                                               nargs='+',
                                               required=False,
                                               default=[],
                                               help='List of node names to compute in float32.')
 
-    mixed_precision_option_grapu.add_argument('--force_fp16_initializers',
+    mixed_precision_option_group.add_argument('--force_fp16_initializers',
                                               required=False,
                                               action='store_true',
                                               help='Convert all float initializers to float16.')
-    mixed_precision_option_grapu.set_defaults(force_fp16_initializers=False)
+    mixed_precision_option_group.set_defaults(force_fp16_initializers=False)
 
     args = parser.parse_args(argv)
 
@@ -182,11 +191,16 @@ def gpt2_to_onnx(args):
 
     convert_gpt2_to_onnx(arguments)
 
+
+def shape_inference(gpt2_onnx_path):
     # Run symbolic shape inference to walk around ORT shape inference issue for subgraph.
     from onnxruntime.tools.symbolic_shape_infer import SymbolicShapeInference
-    out = SymbolicShapeInference.infer_shapes(onnx.load(args.gpt2_onnx), auto_merge=True, guess_output_rank=False)
+    out = SymbolicShapeInference.infer_shapes(onnx.load(gpt2_onnx_path), auto_merge=True, guess_output_rank=False)
     if out:
-        onnx.save(out, args.gpt2_onnx)
+        # TODO: Use external format if input has extra data.
+        onnx.save(out, gpt2_onnx_path)
+    else:
+        print("Failed to run symbolic shape inference on the model.")
 
 
 def create_ort_session(model_path, use_gpu):
@@ -205,7 +219,8 @@ def convert_model(args):
     else:
         gpt2_to_onnx(args)
 
-    #create_ort_session(args.gpt2_onnx, args.use_gpu)
+    print(f"Run symbolic shape inference on {args.gpt2_onnx}. The file will be overwritten.")
+    shape_inference(args.gpt2_onnx)
 
     global config
     config = GPT2Config.from_pretrained(args.model_name_or_path, cache_dir=args.cache_dir)
@@ -225,7 +240,9 @@ def convert_model(args):
     outputs = ["sequences"]
     if args.output_sequences_scores:
         outputs.append("sequences_scores")
+
     if args.output_token_scores:
+        assert args.output_sequences_scores, "--output_token_scores requires --output_sequences_scores"
         outputs.append("scores")
 
     node = helper.make_node('BeamSearch', inputs=inputs, outputs=outputs, name='BeamSearch_GPT2')
@@ -262,6 +279,7 @@ def convert_model(args):
 
     sequences_scores = helper.make_tensor_value_info('sequences_scores', TensorProto.FLOAT,
                                                      ['batch_size', 'num_return_sequences'])
+
     scores = helper.make_tensor_value_info('scores', TensorProto.FLOAT,
                                            ['max_length - sequence_length', 'batch_size', 'num_beams', vocab_size])
 
@@ -282,26 +300,45 @@ def convert_model(args):
     onnx.save(new_model, args.output)
 
 
-def test_model(args):
+def test_model(args, use_vocab_mask: bool = False, sentences: List[str] = None):
     from transformers import GPT2Tokenizer, GPT2LMHeadModel
+
     tokenizer = GPT2Tokenizer.from_pretrained(args.model_name_or_path, cache_dir=args.cache_dir)
+    tokenizer.padding_side = "left"
+    tokenizer.pad_token = tokenizer.eos_token
+
     model = GPT2LMHeadModel.from_pretrained(args.model_name_or_path,
                                             cache_dir=args.cache_dir,
                                             pad_token_id=tokenizer.eos_token_id)
-    input_ids = tokenizer.encode('I enjoy walking in the park', return_tensors='pt')
+
+    # Use different length sentences to test batching
+    if sentences is None:
+        sentences = ["The product is released", "I enjoy walking in the park", "Test best way to invest"]
+
+    inputs = tokenizer(sentences, return_tensors='pt', padding=True)
+    input_ids = inputs["input_ids"]
+    attention_mask = inputs["attention_mask"]
+
+    bad_words = "walk in park"
+    bad_words_ids = tokenizer.encode(bad_words, add_prefix_space=True)
+    bad_words_ids = [[word_id] for word_id in bad_words_ids]  # Convert to list of list
+    if use_vocab_mask:
+        print("bad_words_ids", bad_words_ids)
+    else:
+        bad_words_ids = None
 
     global config
-    if config is None:
-        config = GPT2Config.from_pretrained(args.model_name_or_path, cache_dir=args.cache_dir)
-
+    config = model.config
     eos_token_id = config.eos_token_id
     pad_token_id = config.eos_token_id
     vocab_size = config.vocab_size
 
-    if args.run_baseline:
+    torch_decoded_sequences = []
+    if not args.disable_parity:
         print('-' * 50)
         print("Test PyTorch model and beam search with huggingface transformers...")
-        beam_outputs = model.generate(input_ids,
+        beam_outputs = model.generate(input_ids=input_ids,
+                                      attention_mask=attention_mask,
                                       max_length=args.max_length,
                                       min_length=args.min_length,
                                       num_beams=args.num_beams,
@@ -312,24 +349,31 @@ def test_model(args):
                                       num_return_sequences=args.num_return_sequences,
                                       temperature=args.temperature,
                                       length_penalty=args.length_penalty,
-                                      repetition_penalty=args.repetition_penalty)
+                                      repetition_penalty=args.repetition_penalty,
+                                      bad_words_ids=bad_words_ids,
+                                      return_dict_in_generate=True,
+                                      output_scores=True)
         print("input_ids", input_ids)
-        print("huggingface transformers output:", beam_outputs)
-        for i, beam_output in enumerate(beam_outputs):
-            print("{}: {}".format(i, tokenizer.decode(beam_output, skip_special_tokens=True)))
+        print("huggingface transformers outputs:")
+        print("sequences", beam_outputs.sequences)
+        if args.output_sequences_scores:
+            print("sequences_scores", beam_outputs.sequences_scores)
+        if args.output_token_scores:
+            print("scores", beam_outputs.scores)
+        for i, sequence in enumerate(beam_outputs.sequences):
+            decoded_sequence = tokenizer.decode(sequence, skip_special_tokens=True)
+            torch_decoded_sequences.append(decoded_sequence)
+            print("{}: {}".format(i, decoded_sequence))
 
     print('-' * 50)
     print("Test ONNX model and bream search with onnxruntime...")
 
-    # TODO: remove debug code
-    import time
-    print('You have 15 seconds to attach a debugger.')
-    time.sleep(15)
-
     ort_session = create_ort_session(args.output, args.use_gpu)
 
-    batch_size = 1
-    input_ids = input_ids.repeat(batch_size, 1)
+    vocab_mask = np.ones((vocab_size), dtype=np.int32)
+    if use_vocab_mask:
+        for bad_word_id in bad_words_ids:
+            vocab_mask[bad_word_id] = 0
 
     inputs = {
         "input_ids": input_ids.cpu().numpy().astype(np.int32),
@@ -340,7 +384,7 @@ def test_model(args):
         "temperature": np.array([args.temperature], dtype=np.float32),
         "length_penalty": np.array([args.length_penalty], dtype=np.float32),
         "repetition_penalty": np.array([args.repetition_penalty], dtype=np.float32),
-        "vocab_mask": np.ones((vocab_size), dtype=np.int32)
+        "vocab_mask": vocab_mask
     }
 
     test_data_dir = Path(args.output).parent.as_posix()
@@ -352,25 +396,63 @@ def test_model(args):
         output_test_data(dir, inputs)
 
     print("inputs", inputs)
-    result = ort_session.run(None, inputs)
 
+    # Test performance
+    latency = []
+    for _ in range(args.total_runs):
+        start = time.time()
+        result = ort_session.run(None, inputs)
+        latency.append(time.time() - start)
+    batch_size = input_ids.shape[0]
+    from benchmark_helper import get_latency_result
+    output = get_latency_result(latency, batch_size)
+
+    print("ORT outputs:")
     sequences = result[0]
-    print("outputs", sequences)
+    print("sequences", sequences)
+    if args.output_sequences_scores:
+        print("sequences_scores", result[1])
+    if args.output_token_scores:
+        print("scores", result[2])
 
-    #TODO: print all sequences. Below shows only the first one
-    first_sequence = tokenizer.decode(sequences[0][0], skip_special_tokens=True)
-    print(first_sequence)
+    (batch_size, num_sequences, max_length) = sequences.shape
+    ort_decoded_sequences = []
+    for i in range(batch_size):
+        for j in range(num_sequences):
+            decoded_sequence = tokenizer.decode(sequences[i][j], skip_special_tokens=True)
+            ort_decoded_sequences.append(decoded_sequence)
+            print(f"batch {i} sequence {j}: {decoded_sequence}")
+
+    if not args.disable_parity:
+        torch_sequences = beam_outputs.sequences.reshape(batch_size, args.num_return_sequences, -1)
+        ort_sequences = torch.LongTensor(sequences)
+        print("-" * 50)
+        print("Torch Sequences:")
+        print(torch_sequences)
+        print(torch_decoded_sequences)
+        print("-" * 50)
+        print("ORT Sequences:")
+        print(ort_sequences)
+        print(ort_decoded_sequences)
+        print("-" * 50)
+        # Compare the generated text instead of word IDs since ORT pads to max sequence length but Torch not.
+        is_same = (torch_decoded_sequences == ort_decoded_sequences)
+        print("Torch and ORT result is ", "same" if is_same else "different")
+        output["parity"] = is_same
+
+    print(output)
+    return output
 
 
-def main():
-    args = parse_arguments()
+def main(argv=None, sentences=None):
+    args = parse_arguments(argv)
 
     if os.path.exists(args.output):
         print(f"skip conversion since path existed: {args.output}")
     else:
         convert_model(args)
 
-    test_model(args)
+    return test_model(args, use_vocab_mask=True, sentences=sentences)
 
 
 if __name__ == '__main__':

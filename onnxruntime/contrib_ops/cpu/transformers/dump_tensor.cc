@@ -6,6 +6,8 @@
 #include "core/platform/env_var_utils.h"
 
 namespace onnxruntime {
+namespace contrib {
+namespace transformers {
 
 namespace dump_tensor_env_vars {
 constexpr const char* kDumpBeamSearch = "ORT_DUMP_BEAM_SEARCH";
@@ -35,8 +37,9 @@ void DumpOrtValue(const char* name, const OrtValue& value) {
 }
 
 void ConfigureTensorDump() {
-  if (ParseEnvironmentVariableWithDefault<bool>(dump_tensor_env_vars::kDumpBeamSearch, false)) {
-    g_enable_tensor_dump = true;
+  const auto parsed = ParseEnvironmentVariable<bool>(dump_tensor_env_vars::kDumpBeamSearch);
+  if (parsed.has_value()) {
+    g_enable_tensor_dump = *parsed;
   }
 }
 
@@ -64,4 +67,7 @@ void DumpString(const char* name, std::string value, bool end_line) {
     std::cout << std::endl;
   }
 }
+
+}  // namespace transformers
+}  // namespace contrib
 }  // namespace onnxruntime
