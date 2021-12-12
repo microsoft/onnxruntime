@@ -104,7 +104,7 @@ class TestQDQExtraOptions(unittest.TestCase):
             # This QuantizeLinear node should be followed by Add1
             if node.name == 'P_QuantizeLinear':
                 qdq_added_to_node_output_flag = True
-                self.assertTrue(node.input[0] is 'P')
+                self.assertTrue(node.input[0] == 'P')
 
         self.assertTrue(qdq_added_to_node_output_flag)
 

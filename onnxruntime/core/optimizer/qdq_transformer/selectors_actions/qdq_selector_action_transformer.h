@@ -4,8 +4,19 @@
 #pragma once
 
 #include "core/optimizer/selectors_actions/selector_action_transformer.h"
+#include "core/mlas/inc/mlas.h"
 
 namespace onnxruntime {
+
+inline constexpr bool QDQIsInt8Allowed(){
+#if !defined(MLAS_TARGET_ARM_ANY)
+  return false;
+#else
+  return true;
+#endif
+}
+
+
 /**
 Transformer that fuses QDQ and fp32 ops into quantized ops. 
 */
