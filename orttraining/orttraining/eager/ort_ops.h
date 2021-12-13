@@ -10,11 +10,11 @@
 namespace torch_ort {
 namespace eager {
 
-template <typename T>
+template <template<class> class V>
 OrtValue reshape_copy(
   onnxruntime::ORTInvoker& invoker,
   const OrtValue& input,
-  T shape) {
+  V<int64_t> shape) {
   // TODO: actual reshape on buffer
   const onnxruntime::Tensor& input_tensor = input.Get<onnxruntime::Tensor>();
   auto new_shape = at::infer_size(shape, input_tensor.Shape().Size());

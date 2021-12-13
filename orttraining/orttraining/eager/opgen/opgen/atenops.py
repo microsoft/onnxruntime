@@ -34,7 +34,6 @@ ops = {
   'aten::_reshape_alias': SignatureOnly(),
   'aten::view': SignatureOnly(),
   'aten::_copy_from_and_resize' : SignatureOnly(),
-  
   'aten::addmm': Gemm('mat1', 'mat2', 'self', alpha='alpha', beta='beta'),
   'aten::t': Transpose('self'),
   'aten::mm': MatMul('self', 'mat2'),
