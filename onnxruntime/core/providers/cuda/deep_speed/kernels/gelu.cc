@@ -47,7 +47,6 @@ Status BiasGelu<T>::ComputeInternal(OpKernelContext* context) const {
                                          num_elements * sizeof(CudaT), cudaMemcpyDeviceToDevice, stream));
   }
 
-  /*
   size_t input_rank = input_shape.NumDimensions();
 
   unsigned batch_size = 1;  // Assume input is scalar initially
@@ -62,7 +61,6 @@ Status BiasGelu<T>::ComputeInternal(OpKernelContext* context) const {
 
   // TODO: Add more shape checks for input and bias inputs
 
-
   DeepSpeedAPI::bias_gelu(output_buffer,
                           // TODO: DeepSpeed lib only takes non-const buffers. Can we ask them to take const pointers ?
                           const_cast<T*>(bias_buffer),
@@ -70,7 +68,6 @@ Status BiasGelu<T>::ComputeInternal(OpKernelContext* context) const {
                           hidden_dim,
                           true,  // Currently this kernel only supports float
                           stream);
-*/
   return Status::OK();
 }
 
