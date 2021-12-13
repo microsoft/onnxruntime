@@ -12,23 +12,9 @@ namespace deep_speed {
 using namespace onnxruntime::cuda;
 
 template <typename T>
-class Gelu final : public CudaKernel {
- public:
-  explicit Gelu(const OpKernelInfo& op_kernel_info);
-  Status ComputeInternal(OpKernelContext* ctx) const override;
-};
-
-template <typename T>
 class BiasGelu final : public CudaKernel {
  public:
   explicit BiasGelu(const OpKernelInfo& op_kernel_info);
-  Status ComputeInternal(OpKernelContext* ctx) const override;
-};
-
-template <typename T>
-class FastGelu final : public CudaKernel {
- public:
-  explicit FastGelu(const OpKernelInfo& op_kernel_info);
   Status ComputeInternal(OpKernelContext* ctx) const override;
 };
 
