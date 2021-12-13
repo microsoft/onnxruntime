@@ -160,7 +160,7 @@ bool MegatronTransformer::PartitionWeightByColumn(const Graph& graph, const Node
     return false;
   }
 
-  if (column_count % (horizontal_parallel_size_ * stride) != 0) {
+  if (column_count % (static_cast<int64_t>(horizontal_parallel_size_) * stride) != 0) {
     LOGS_DEFAULT(WARNING) << "last dim " << column_count
                           << " is not divisible by horizontal_parallel_size_ times stride "
                           << (horizontal_parallel_size_ * stride) << ", not supported currently.";

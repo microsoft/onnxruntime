@@ -463,8 +463,8 @@ OpSchema& RegisterLambOpSchema(OpSchema&& op_schema) {
           "Constrain update count to 64-bit integer")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         // Handle update count, the first output.
-        const size_t step_input_index = 4;
-        const size_t step_output_index = 0;
+        constexpr size_t step_input_index = 4;
+        constexpr size_t step_output_index = 0;
         auto input_type = ctx.getInputType(step_input_index);
         if (input_type != nullptr) {
           propagateElemTypeFromInputToOutput(ctx, step_input_index, step_output_index);

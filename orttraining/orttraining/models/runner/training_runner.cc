@@ -758,7 +758,7 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
   const size_t stabilized_perf_total_step_count = std::min(static_cast<size_t>(128), params_.num_train_steps);
   const size_t stabilized_perf_start_step = params_.num_train_steps - stabilized_perf_total_step_count;
   double stabilized_total_time{0};
-  const size_t end_to_end_perf_start_step = 128;
+  constexpr size_t end_to_end_perf_start_step = 128;
   auto end_to_end_start = std::chrono::high_resolution_clock::now();
   bool end_to_end_measurement_started = false;
 
