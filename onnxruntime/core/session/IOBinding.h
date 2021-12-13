@@ -107,8 +107,8 @@ class IOBinding {
 
   class TreeVariableNameMapper : public std::map<VariableNameWrapper, size_t, std::less<VariableNameWrapper>> {
    public:
-    std::pair<TreeVariableNameMapper::_Nodeptr, bool> emplace_ptr(const std::string& name, size_t value) {
-      std::pair<TreeVariableNameMapper::_Nodeptr, bool> _Result = _Emplace(VariableNameWrapper(name.c_str()), value);
+    std::pair<typename TreeVariableNameMapper::_Nodeptr, bool> emplace_ptr(const std::string& name, size_t value) {
+      std::pair<typename TreeVariableNameMapper::_Nodeptr, bool> _Result = _Emplace(VariableNameWrapper(name.c_str()), value);
       return _Result;
     }
   };
