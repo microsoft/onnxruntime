@@ -114,14 +114,13 @@ void unregister_grad_fn(size_t ctx_address)
   PyNodeSharedPointerPool::GetInstance().UnRegisterGradFunc(ctx_address);
 }
 
-// Supposed to be cleared only on python program exit to resolve following bug:
+// Supposed to be cleared before every forward run to resolve following bug:
 // When training program exits, PyNodeSharedPointerPool destructor is called, if grad_fns_ is not empty,
 // PyNode::release_variables() will be called.
 // (https://github.com/pytorch/pytorch/blob/15532595209d2daf34d35e10f8d3d3b64966aea2/torch/csrc/autograd/python_function.cpp#L168)
 // The other hand, there is known issue when acquiring GIL in pybind11 destructors, there will be probabbly deadlock issue.
 // (https://github.com/pybind/pybind11/issues/1446)
-// The resolution here, we remove all maintained states before ~PyNodeSharedPointerPool happens (e.g. the python program exits)
-// to avoid the deadlock issue.
+// The resolution here, we remove all maintained states before every forward run.
 void clear_all_grad_fns(){
   PyNodeSharedPointerPool::GetInstance().ClearAll();
 }
