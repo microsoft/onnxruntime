@@ -1082,15 +1082,14 @@ class SymbolicShapeInference:
                                               get_shape_from_sympy_shape(sympy_shape)))
 
     def _infer_aten_bitwise_or(self, node):
-        sympy_shape = self._get_sympy_shape(node, 0)
-        other = self._try_get_value(node, 1)
-        assert other is not None
-
-        if node.output[0]:
-            vi = self.known_vi_[node.output[0]]
-            vi.CopyFrom(
-                helper.make_tensor_value_info(node.output[0], onnx.TensorProto.BOOL,
-                                              get_shape_from_sympy_shape(sympy_shape)))
+        shape0 = self._get_shape(node, 0)
+        shape1 = self._get_shape(node, 1)
+        new_shape = self._broadcast_shapes(shape0, shape1)
+        t0 = self.known_vi_[node.input[0]]
+        vi = self.known_vi_[node.output[0]]
+        vi.CopyFrom(
+            helper.make_tensor_value_info(node.output[0], t0.type.tensor_type.elem_type,
+                                            new_shape))
 
     def _infer_aten_diagonal(self, node):
         sympy_shape = self._get_sympy_shape(node, 0)
