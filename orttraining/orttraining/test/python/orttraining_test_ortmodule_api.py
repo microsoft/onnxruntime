@@ -1046,7 +1046,7 @@ def test_correctness_argmax_bitwise_or(high):
             self.other = torch.randint(0, high, (N, D, H), device=device)
 
         def forward(self, input):
-            return torch.bitwise_or(input, self.other)
+            return torch.bitwise_or(self.other, input)
 
     pt_model = NeuralNetBitwiseOr(high).to(device)
     ort_model = ORTModule(copy.deepcopy(pt_model))
@@ -1057,7 +1057,7 @@ def test_correctness_argmax_bitwise_or(high):
 
     for _ in range(10):
         # this also tests broadcasting
-        pt_input = torch.randint(-10, 10, (N, D, H, M), device=device)
+        pt_input = torch.randint(-10, 10, (M, N, D, H), device=device)
         ort_input = copy.deepcopy(pt_input)
         pt_prediction = run_step(pt_model, pt_input)
         ort_prediction = run_step(ort_model, ort_input)
