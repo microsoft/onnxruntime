@@ -1,14 +1,16 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
+# Reduced ops build helpers
+
 # In a reduced ops build, the reduction is performed by updating source files.
 # Rather than modifying the source files directly, updated versions will be
-# saved to another location in the build directory.
-# This helper function replaces the relevant original source files with their
-# updated versions in `all_srcs`.
-function(substitute_op_reduction_srcs all_srcs)
-  set(op_reduction_root "${CMAKE_BINARY_DIR}/op_reduction")
+# saved to another location in the build directory: ${op_reduction_root}.
+set(op_reduction_root "${CMAKE_BINARY_DIR}/op_reduction.generated")
 
+# This helper function replaces the relevant original source files with their
+# updated, reduced ops versions in `all_srcs`.
+function(substitute_op_reduction_srcs all_srcs)
   # files that are potentially updated in a reduced ops build
   set(original_srcs
     "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/cpu_contrib_kernels.cc"
@@ -26,7 +28,7 @@ function(substitute_op_reduction_srcs all_srcs)
       continue()
     endif()
 
-    file(RELATIVE_PATH src_relative_path "${ONNXRUNTIME_ROOT}" "${original_src}")
+    file(RELATIVE_PATH src_relative_path "${REPO_ROOT}" "${original_src}")
     set(replacement_src "${op_reduction_root}/${src_relative_path}")
 
     message("File '${original_src}' substituted with reduced op version '${replacement_src}'.")
@@ -36,6 +38,17 @@ function(substitute_op_reduction_srcs all_srcs)
 
   set(${all_srcs} "${${all_srcs}}" PARENT_SCOPE)
 endfunction()
+
+# This helper function adds reduced ops build-specific include directories to
+# `target`.
+function(add_op_reduction_include_dirs target)
+  set(op_reduction_include_dirs "${op_reduction_root}/onnxruntime")
+  if (onnxruntime_ENABLE_TRAINING OR onnxruntime_ENABLE_TRAINING_OPS)
+    list(APPEND op_reduction_include_dirs "${op_reduction_root}/orttraining")
+  endif()
+  target_include_directories(${target} PRIVATE ${op_reduction_include_dirs})
+endfunction()
+
 
 file(GLOB_RECURSE onnxruntime_providers_srcs CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/core/providers/cpu/*.h"
@@ -80,7 +93,6 @@ file(GLOB_RECURSE onnxruntime_rocm_generated_contrib_ops_cu_srcs CONFIGURE_DEPEN
   "${CMAKE_CURRENT_BINARY_DIR}/amdgpu/onnxruntime/contrib_ops/rocm/*.cu"
   "${CMAKE_CURRENT_BINARY_DIR}/amdgpu/onnxruntime/contrib_ops/rocm/*.cuh"
 )
-
 
 file(GLOB onnxruntime_providers_common_srcs CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/core/providers/*.h"
@@ -206,6 +218,9 @@ if (onnxruntime_REDUCED_OPS_BUILD)
   substitute_op_reduction_srcs(onnxruntime_providers_src)
 endif()
 onnxruntime_add_static_library(onnxruntime_providers ${onnxruntime_providers_src})
+if (onnxruntime_REDUCED_OPS_BUILD)
+  add_op_reduction_include_dirs(onnxruntime_providers)
+endif()
 
 if (MSVC)
    target_compile_options(onnxruntime_providers PRIVATE "/bigobj")
@@ -356,6 +371,9 @@ if (onnxruntime_USE_CUDA)
     substitute_op_reduction_srcs(onnxruntime_providers_cuda_src)
   endif()
   onnxruntime_add_shared_library_module(onnxruntime_providers_cuda ${onnxruntime_providers_cuda_src})
+  if (onnxruntime_REDUCED_OPS_BUILD)
+    add_op_reduction_include_dirs(onnxruntime_providers_cuda)
+  endif()
 
   #target_compile_options(onnxruntime_providers_cuda PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler \"/analyze:stacksize 131072\">")
   if (HAS_GUARD_CF)
