@@ -455,40 +455,40 @@ AccumulatorsToFloat
         fcvtns  v30.4s,v30.4s
         fcvtns  v31.4s,v31.4s
 
-        SQXTN   v16.4h,v16.4s
-        SQXTN   v17.4h,v17.4s
-        SQXTN   v18.4h,v18.4s
-        SQXTN   v19.4h,v19.4s
-        SQXTN   v24.4h,v24.4s
-        SQXTN   v25.4h,v25.4s
-        SQXTN   v26.4h,v26.4s
-        SQXTN   v27.4h,v27.4s
+        sqxtn   v16.4h,v16.4s
+        sqxtn   v17.4h,v17.4s
+        sqxtn   v18.4h,v18.4s
+        sqxtn   v19.4h,v19.4s
+        sqxtn   v24.4h,v24.4s
+        sqxtn   v25.4h,v25.4s
+        sqxtn   v26.4h,v26.4s
+        sqxtn   v27.4h,v27.4s
         dup     v4.8h,w13               // zero point
-        SQXTN2  v16.8h,v20.4s
-        SQXTN2  v17.8h,v21.4s
-        SQXTN2  v18.8h,v22.4s
-        SQXTN2  v19.8h,v23.4s
-        SQXTN2  v24.8h,v28.4s
-        SQXTN2  v25.8h,v29.4s
-        SQXTN2  v26.8h,v30.4s
-        SQXTN2  v27.8h,v31.4s
-        SQADD   v16.8h,v16.8h,v4.8h
-        SQADD   v17.8h,v17.8h,v4.8h
-        SQADD   v18.8h,v18.8h,v4.8h
-        SQADD   v19.8h,v19.8h,v4.8h
-        SQADD   v24.8h,v24.8h,v4.8h
-        SQADD   v25.8h,v25.8h,v4.8h
-        SQADD   v26.8h,v26.8h,v4.8h
-        SQADD   v27.8h,v27.8h,v4.8h
-        SQXTUN   v0.8b,v16.8h
-        SQXTUN   v1.8b,v17.8h
-        SQXTUN   v2.8b,v18.8h
-        SQXTUN   v3.8b,v19.8h
-        SQXTUN2  v0.16b,v24.8h
-        SQXTUN2  v1.16b,v25.8h
+        sqxtn2  v16.8h,v20.4s
+        sqxtn2  v17.8h,v21.4s
+        sqxtn2  v18.8h,v22.4s
+        sqxtn2  v19.8h,v23.4s
+        sqxtn2  v24.8h,v28.4s
+        sqxtn2  v25.8h,v29.4s
+        sqxtn2  v26.8h,v30.4s
+        sqxtn2  v27.8h,v31.4s
+        sqadd   v16.8h,v16.8h,v4.8h
+        sqadd   v17.8h,v17.8h,v4.8h
+        sqadd   v18.8h,v18.8h,v4.8h
+        sqadd   v19.8h,v19.8h,v4.8h
+        sqadd   v24.8h,v24.8h,v4.8h
+        sqadd   v25.8h,v25.8h,v4.8h
+        sqadd   v26.8h,v26.8h,v4.8h
+        sqadd   v27.8h,v27.8h,v4.8h
+        sqxtun   v0.8b,v16.8h
+        sqxtun   v1.8b,v17.8h
+        sqxtun   v2.8b,v18.8h
+        sqxtun   v3.8b,v19.8h
+        sqxtun2  v0.16b,v24.8h
+        sqxtun2  v1.16b,v25.8h
         subs    x6,x6,16            // processed 16 output channels
-        SQXTUN2  v2.16b,v26.8h
-        SQXTUN2  v3.16b,v27.8h
+        sqxtun2  v2.16b,v26.8h
+        sqxtun2  v3.16b,v27.8h
         b.lo    PartialStore
 
         st1     {v3.16b},[x5],16    // Store full 4 x 16
@@ -506,82 +506,82 @@ ExitKernel
         EPILOG_RETURN
 
 InChannels8
-        TBZ     x7,3,InChannels4
-        LDR     d0,[x12],8
-        LDR     q4,[x1],16
-        LDR     d1,[x13],8
-        LDR     d2,[x14],8
-        LDR     d3,[x15],8
+        tbz     x7,3,InChannels4
+        ldr     d0,[x12],8
+        ldr     q4,[x1],16
+        ldr     d1,[x13],8
+        ldr     d2,[x14],8
+        ldr     d3,[x15],8
         eor     v0.8b,v0.8b,v12.8b
-        LDR     q5,[x1],16
+        ldr     q5,[x1],16
         eor     v1.8b,v1.8b,v12.8b
-        SDOT    v16.4s, v4.16b,  v0.4b[0]
-        SDOT    v17.4s, v4.16b,  v1.4b[0]
+        sdot    v16.4s,v4.16b,v0.4b[0]
+        sdot    v17.4s,v4.16b,v1.4b[0]
         eor     v2.8b,v2.8b,v12.8b
-        LDP     q6, q7, [x1], 32
+        ldp     q6,q7,[x1],32
         eor     v3.8b,v3.8b,v12.8b
-        SDOT    v18.4s, v4.16b,  v2.4b[0]
-        SDOT    v19.4s, v4.16b,  v3.4b[0]
-        SDOT    v20.4s, v5.16b,  v0.4b[0]
-        SDOT    v21.4s, v5.16b,  v1.4b[0]
-        SDOT    v22.4s, v5.16b,  v2.4b[0]
-        SDOT    v23.4s, v5.16b,  v3.4b[0]
-        SDOT    v24.4s, v6.16b, v0.4b[0]
-        SDOT    v25.4s, v6.16b, v1.4b[0]
-        LDP     q4, q5, [x1], 32
-        SDOT    v26.4s, v6.16b, v2.4b[0]
-        SDOT    v27.4s, v6.16b, v3.4b[0]
-        SDOT    v28.4s, v7.16b, v0.4b[0]
-        SDOT    v29.4s, v7.16b, v1.4b[0]
-        SDOT    v30.4s, v7.16b, v2.4b[0]
-        SDOT    v31.4s, v7.16b, v3.4b[0]
-        SDOT    v16.4s, v4.16b,  v0.4b[1]
-        SDOT    v17.4s, v4.16b,  v1.4b[1]
-        LDP     q6, q7, [x1], 32
-        SDOT    v18.4s, v4.16b,  v2.4b[1]
-        SDOT    v19.4s, v4.16b,  v3.4b[1]
-        SDOT    v20.4s, v5.16b,  v0.4b[1]
-        SDOT    v21.4s, v5.16b,  v1.4b[1]
-        SDOT    v22.4s, v5.16b,  v2.4b[1]
-        SDOT    v23.4s, v5.16b,  v3.4b[1]
-        SDOT    v24.4s, v6.16b,  v0.4b[1]
-        SDOT    v25.4s, v6.16b,  v1.4b[1]
-        SDOT    v26.4s, v6.16b,  v2.4b[1]
-        SDOT    v27.4s, v6.16b,  v3.4b[1]
-        SDOT    v28.4s, v7.16b,  v0.4b[1]
-        SDOT    v29.4s, v7.16b,  v1.4b[1]
-        SDOT    v30.4s, v7.16b,  v2.4b[1]
-        SDOT    v31.4s, v7.16b,  v3.4b[1]
-        TBZ     x7,2,SkipInCh4
+        sdot    v18.4s,v4.16b,v2.4b[0]
+        sdot    v19.4s,v4.16b,v3.4b[0]
+        sdot    v20.4s,v5.16b,v0.4b[0]
+        sdot    v21.4s,v5.16b,v1.4b[0]
+        sdot    v22.4s,v5.16b,v2.4b[0]
+        sdot    v23.4s,v5.16b,v3.4b[0]
+        sdot    v24.4s,v6.16b,v0.4b[0]
+        sdot    v25.4s,v6.16b,v1.4b[0]
+        ldp     q4,q5,[x1],32
+        sdot    v26.4s,v6.16b,v2.4b[0]
+        sdot    v27.4s,v6.16b,v3.4b[0]
+        sdot    v28.4s,v7.16b,v0.4b[0]
+        sdot    v29.4s,v7.16b,v1.4b[0]
+        sdot    v30.4s,v7.16b,v2.4b[0]
+        sdot    v31.4s,v7.16b,v3.4b[0]
+        sdot    v16.4s,v4.16b,v0.4b[1]
+        sdot    v17.4s,v4.16b,v1.4b[1]
+        ldp     q6,q7,[x1],32
+        sdot    v18.4s,v4.16b,v2.4b[1]
+        sdot    v19.4s,v4.16b,v3.4b[1]
+        sdot    v20.4s,v5.16b,v0.4b[1]
+        sdot    v21.4s,v5.16b,v1.4b[1]
+        sdot    v22.4s,v5.16b,v2.4b[1]
+        sdot    v23.4s,v5.16b,v3.4b[1]
+        sdot    v24.4s,v6.16b,v0.4b[1]
+        sdot    v25.4s,v6.16b,v1.4b[1]
+        sdot    v26.4s,v6.16b,v2.4b[1]
+        sdot    v27.4s,v6.16b,v3.4b[1]
+        sdot    v28.4s,v7.16b,v0.4b[1]
+        sdot    v29.4s,v7.16b,v1.4b[1]
+        sdot    v30.4s,v7.16b,v2.4b[1]
+        sdot    v31.4s,v7.16b,v3.4b[1]
+        tbz     x7,2,SkipInCh4
 
 InChannels4
-        LDR     s0, [x12], 4
-        LDR     q4, [x1], 16
-        LDR     s1, [x13], 4
-        LDR     s2, [x14], 4
-        LDR     s3, [x15], 4
+        ldr     s0,[x12],4
+        ldr     q4,[x1],16
+        ldr     s1,[x13],4
+        ldr     s2,[x14],4
+        ldr     s3,[x15],4
         eor     v0.8b,v0.8b,v12.8b
-        LDR     q5, [x1], 16
+        ldr     q5,[x1],16
         eor     v1.8b,v1.8b,v12.8b
-        SDOT    v16.4s,v4.16b,v0.4b[0]
-        SDOT    v17.4s,v4.16b,v1.4b[0]
+        sdot    v16.4s,v4.16b,v0.4b[0]
+        sdot    v17.4s,v4.16b,v1.4b[0]
         eor     v2.8b,v2.8b,v12.8b
-        LDP     q6, q7, [x1], 32
+        ldp     q6,q7,[x1],32
         eor     v3.8b,v3.8b,v12.8b
-        SDOT    v18.4s, v4.16b,  v2.4b[0]
-        SDOT    v19.4s, v4.16b,  v3.4b[0]
-        SDOT    v20.4s, v5.16b,  v0.4b[0]
-        SDOT    v21.4s, v5.16b,  v1.4b[0]
-        SDOT    v22.4s, v5.16b,  v2.4b[0]
-        SDOT    v23.4s, v5.16b,  v3.4b[0]
-        SDOT    v24.4s, v6.16b, v0.4b[0]
-        SDOT    v25.4s, v6.16b, v1.4b[0]
-        SDOT    v26.4s, v6.16b, v2.4b[0]
-        SDOT    v27.4s, v6.16b, v3.4b[0]
-        SDOT    v28.4s, v7.16b, v0.4b[0]
-        SDOT    v29.4s, v7.16b, v1.4b[0]
-        SDOT    v30.4s, v7.16b, v2.4b[0]
-        SDOT    v31.4s, v7.16b, v3.4b[0]
+        sdot    v18.4s,v4.16b,v2.4b[0]
+        sdot    v19.4s,v4.16b,v3.4b[0]
+        sdot    v20.4s,v5.16b,v0.4b[0]
+        sdot    v21.4s,v5.16b,v1.4b[0]
+        sdot    v22.4s,v5.16b,v2.4b[0]
+        sdot    v23.4s,v5.16b,v3.4b[0]
+        sdot    v24.4s,v6.16b,v0.4b[0]
+        sdot    v25.4s,v6.16b,v1.4b[0]
+        sdot    v26.4s,v6.16b,v2.4b[0]
+        sdot    v27.4s,v6.16b,v3.4b[0]
+        sdot    v28.4s,v7.16b,v0.4b[0]
+        sdot    v29.4s,v7.16b,v1.4b[0]
+        sdot    v30.4s,v7.16b,v2.4b[0]
+        sdot    v31.4s,v7.16b,v3.4b[0]
 
 SkipInCh4
         subs    x9,x9,8             // ks -= 1
@@ -589,41 +589,41 @@ SkipInCh4
         b       Requantize
 
 PartialStore
-        TBZ     x6,3,LT8Store
-        STR     d3,[x5],8           // no less than 8 channels
-        STR     d2,[x17],8
-        DUP     d3,v3.d[1]
-        DUP     d2,v2.d[1]
-        STR     d1,[x16],8
-        STR     d0,[x2],8
-        DUP     d1,v1.d[1]
-        DUP     d0,v0.d[1]
+        tbz     x6,3,LT8Store
+        str     d3,[x5],8           // no less than 8 channels
+        str     d2,[x17],8
+        dup     d3,v3.d[1]
+        dup     d2,v2.d[1]
+        str     d1,[x16],8
+        str     d0,[x2],8
+        dup     d1,v1.d[1]
+        dup     d0,v0.d[1]
 LT8Store
-        TBZ     x6, 2, LT4Store
-        STR     s3, [x5], 4
-        STR     s2, [x17], 4
-        DUP     s3, v3.s[1]
-        DUP     s2, v2.s[1]
-        STR     s1, [x16], 4
-        STR     s0, [x2], 4
-        DUP     s1, v1.s[1]
-        DUP     s0, v0.s[1]
+        tbz     x6,2,LT4Store
+        str     s3,[x5],4
+        str     s2,[x17],4
+        dup     s3,v3.s[1]
+        dup     s2,v2.s[1]
+        str     s1,[x16],4
+        str     s0,[x2],4
+        dup     s1,v1.s[1]
+        dup     s0,v0.s[1]
 LT4Store
-        TBZ     x6, 1, LT2Store
-        STR     h3, [x5], 2
-        STR     h2, [x17], 2
-        DUP     h3, v3.h[1]
-        DUP     h2, v2.h[1]
-        STR     h1, [x16], 2
-        STR     h0, [x2], 2
-        DUP     h1, v1.h[1]
-        DUP     h0, v0.h[1]
+        tbz     x6,1, LT2Store
+        str     h3,[x5],2
+        str     h2,[x17],2
+        dup     h3,v3.h[1]
+        dup     h2,v2.h[1]
+        str     h1,[x16],2
+        str     h0,[x2],2
+        dup     h1,v1.h[1]
+        dup     h0,v0.h[1]
 LT2Store
-        TBZ     x6,0,ExitKernel
-        STR     b3,[x5]
-        STR     b2,[x17]
-        STR     b1,[x16]
-        STR     b0,[x2]
+        tbz     x6,0,ExitKernel
+        str     b3,[x5]
+        str     b2,[x17]
+        str     b1,[x16]
+        str     b0,[x2]
         b       ExitKernel
 
         NESTED_END MlasConvSymKernelNeonDot
