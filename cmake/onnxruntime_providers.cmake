@@ -380,8 +380,8 @@ if (onnxruntime_USE_CUDA)
   endif()
 
   if (onnxruntime_ENABLE_DEEP_SPEED_CUDA_KERNELS) # build with DeepSpeed CUDA kernel support
-     if (NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
-        message(FATAL_ERROR "Building with DeepSpeed CUDA kernel support is only supported on Linux")
+    if (NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
+       message(FATAL_ERROR "Building with DeepSpeed CUDA kernel support is only supported on Linux")
     endif()
     set(DEEP_SPEED_SHARED_LIB libdeepspeed.so)
     set(DEEP_SPEED_SHARED_LIB_PATH ${ONNXRUNTIME_ROOT}/core/providers/cuda/deep_speed/deps/lib64/${DEEP_SPEED_SHARED_LIB})
