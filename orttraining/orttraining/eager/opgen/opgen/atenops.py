@@ -77,7 +77,10 @@ hand_implemented = {
   'aten::max' : ReduceMax('self', keepdims=1),
   'aten::min' : ReduceMin('self', keepdims=1),
   'aten::slice.Tensor' : Slice('self', 'start', 'end', 'dim', 'step'),
+<<<<<<< HEAD
   'aten::_cat': Concat('tensors', 'dim'),
+=======
+>>>>>>> 777a80fbc (Abjindal/eager onnx operators fix (#9968))
 
   'aten::ne.Scalar':MakeTorchFallback(),
   'aten::ne.Scalar_out': MakeTorchFallback(),

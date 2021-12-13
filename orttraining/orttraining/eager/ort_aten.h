@@ -116,7 +116,10 @@ bool IsSupportedType(int64_t val, const std::vector<at::ScalarType>& valid_types
 
 bool IsSupportedType(c10::optional<int64_t> val, const std::vector<at::ScalarType>& valid_types);
 
+<<<<<<< HEAD
 bool IsSupportedType(at::TensorList tensors, const std::vector<at::ScalarType>& valid_types);
 
+=======
+>>>>>>> 777a80fbc (Abjindal/eager onnx operators fix (#9968))
 } // namespace eager
 } // namespace torch_ort
