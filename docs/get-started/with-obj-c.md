@@ -1,7 +1,7 @@
 ---
 title: Objective-C
 parent: Get Started
-nav_order: 8
+nav_order: 7
 ---
 # Get started with ORT for Objective-C
 {: .no_toc }
