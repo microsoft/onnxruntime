@@ -17,9 +17,6 @@
 #ifndef DISABLE_CONTRIB_OPS
 #include "core/graph/contrib_ops/contrib_defs.h"
 #endif
-#ifdef ML_FEATURIZERS
-#include "core/graph/featurizers_ops/featurizers_defs.h"
-#endif
 #ifdef USE_DML
 #include "core/graph/dml_ops/dml_defs.h"
 #endif
@@ -39,6 +36,8 @@
 #include "orttraining/core/graph/loss_function_registry.h"
 #include "orttraining/core/graph/optimizer_builder.h"
 #include "orttraining/core/graph/optimizer_graph_builder_registry.h"
+#include "orttraining/core/optimizer/graph_transformer_registry.h"
+
 #endif
 
 namespace onnxruntime {
@@ -116,11 +115,8 @@ Status Environment::CreateAndRegisterAllocator(const OrtMemoryInfo& mem_info, co
   // determine if arena should be used
   bool create_arena = mem_info.alloc_type == OrtArenaAllocator;
 
-#ifdef USE_JEMALLOC
-#if defined(USE_MIMALLOC_ARENA_ALLOCATOR) || defined(USE_MIMALLOC_STL_ALLOCATOR)
-#error jemalloc and mimalloc should not both be enabled
-#endif
-  //JEMalloc already has memory pool, so just use device allocator.
+#if defined(USE_JEMALLOC) || defined(USE_MIMALLOC)
+  // We use these allocators instead of the arena
   create_arena = false;
 #elif !(defined(__amd64__) || defined(_M_AMD64))
   //Disable Arena allocator for x86_32 build because it may run into infinite loop when integer overflow happens
@@ -157,13 +153,13 @@ Status Environment::CreateAndRegisterAllocator(const OrtMemoryInfo& mem_info, co
     OrtArenaCfg l_arena_cfg{max_mem, arena_extend_strategy, initial_chunk_size_bytes, max_dead_bytes_per_chunk,
                             initial_growth_chunk_size_bytes};
     AllocatorCreationInfo alloc_creation_info{
-        [mem_info](int) { return std::make_unique<TAllocator>(mem_info); },
+        [mem_info](int) { return std::make_unique<CPUAllocator>(mem_info); },
         0,
         create_arena,
         l_arena_cfg};
     allocator_ptr = CreateAllocator(alloc_creation_info);
   } else {
-    AllocatorCreationInfo alloc_creation_info{[](int) { return std::make_unique<TAllocator>(); },
+    AllocatorCreationInfo alloc_creation_info{[](int) { return std::make_unique<CPUAllocator>(); },
                                               0, create_arena};
     allocator_ptr = CreateAllocator(alloc_creation_info);
   }
@@ -219,7 +215,6 @@ Status Environment::Initialize(std::unique_ptr<logging::LoggingManager> logging_
       ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance().AddDomainToVersion(onnxruntime::kMSDomain, 1, 1);
       ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance().AddDomainToVersion(onnxruntime::kMSExperimentalDomain, 1, 1);
       ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance().AddDomainToVersion(onnxruntime::kMSNchwcDomain, 1, 1);
-      ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance().AddDomainToVersion(onnxruntime::kMSFeaturizersDomain, 1, 1);
 #ifdef USE_DML
       ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance().AddDomainToVersion(onnxruntime::kMSDmlDomain, 1, 1);
 #endif
@@ -227,9 +222,6 @@ Status Environment::Initialize(std::unique_ptr<logging::LoggingManager> logging_
 // The corresponding kernels are registered inside the appropriate execution provider.
 #ifndef DISABLE_CONTRIB_OPS
       contrib::RegisterContribSchemas();
-#endif
-#ifdef ML_FEATURIZERS
-      featurizers::RegisterMSFeaturizersSchemas();
 #endif
 #ifdef USE_DML
       dml::RegisterDmlSchemas();
@@ -254,6 +246,7 @@ Status Environment::Initialize(std::unique_ptr<logging::LoggingManager> logging_
       training::OptimizerBuilderRegistry::GetInstance().RegisterBuilders();
       training::OptimizerGraphBuilderRegistry::GetInstance().RegisterGraphBuilders();
       // <training schemas>
+      training::GraphTransformerRegistry::GetInstance().RegisterExternalGraphTransformers();
 #endif
     });
 

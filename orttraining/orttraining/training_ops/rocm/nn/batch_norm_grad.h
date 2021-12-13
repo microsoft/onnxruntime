@@ -4,6 +4,7 @@
 #pragma once
 
 #include "gsl/gsl"
+
 #include "core/providers/rocm/rocm_kernel.h"
 #include "core/providers/rocm/miopen_common.h"
 

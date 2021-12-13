@@ -425,7 +425,7 @@ Status Scan8Impl::Execute(const FeedsFetchesManager& ffm) {
     for (int64_t i = sequence_len; i < max_sequence_len_; ++i) {
       for (int output = info_.num_loop_state_variables; output < info_.num_outputs; ++output) {
         auto& iterator = *output_iterators_[output];
-        iterator.ZeroOutCurrent();
+        ORT_RETURN_IF_ERROR(iterator.ZeroOutCurrent());
         ++iterator;
       }
     }

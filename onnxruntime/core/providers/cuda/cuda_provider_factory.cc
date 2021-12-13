@@ -130,9 +130,26 @@ struct ProviderInfo_CUDA_Impl : ProviderInfo_CUDA {
   }
 
   // Used by slice_concatenate_test.cc and onnxruntime_pybind_state.cc
-  void cudaMemcpy_HostToDevice(void* dst, const void* src, size_t count) override { CUDA_CALL_THROW(cudaMemcpy(dst, src, count, cudaMemcpyHostToDevice)); }
+
+  void cudaMemcpy_HostToDevice(void* dst, const void* src, size_t count) override {
+    // cudaMemcpy() operates on the default stream
+    CUDA_CALL_THROW(cudaMemcpy(dst, src, count, cudaMemcpyHostToDevice));
+
+    // To ensure that the copy has completed, invoke a stream sync for the default stream.
+    // https://docs.nvidia.com/cuda/cuda-runtime-api/api-sync-behavior.html#api-sync-behavior__memcpy-sync
+    // For transfers from pageable host memory to device memory, a stream sync is performed before the copy is initiated.
+    // The function will return once the pageable buffer has been copied to the staging memory for DMA transfer
+    // to device memory, but the DMA to final destination may not have completed.
+
+    CUDA_CALL_THROW(cudaStreamSynchronize(0));
+  }
+
   // Used by onnxruntime_pybind_state.cc
-  void cudaMemcpy_DeviceToHost(void* dst, const void* src, size_t count) override { CUDA_CALL_THROW(cudaMemcpy(dst, src, count, cudaMemcpyDeviceToHost)); }
+  void cudaMemcpy_DeviceToHost(void* dst, const void* src, size_t count) override {
+    // https://docs.nvidia.com/cuda/cuda-runtime-api/api-sync-behavior.html#api-sync-behavior__memcpy-sync
+    // For transfers from device to either pageable or pinned host memory, the function returns only once the copy has completed.
+    CUDA_CALL_THROW(cudaMemcpy(dst, src, count, cudaMemcpyDeviceToHost));
+  }
 
   int cudaGetDeviceCount() override {
     int num_devices = 0;
@@ -176,8 +193,8 @@ struct CUDA_Provider : Provider {
     info.gpu_mem_limit = params->gpu_mem_limit;
     info.arena_extend_strategy = static_cast<onnxruntime::ArenaExtendStrategy>(params->arena_extend_strategy);
     info.cudnn_conv_algo_search = params->cudnn_conv_algo_search;
-    info.do_copy_in_default_stream = params->do_copy_in_default_stream;
-    info.has_user_compute_stream = params->has_user_compute_stream;
+    info.do_copy_in_default_stream = params->do_copy_in_default_stream != 0;
+    info.has_user_compute_stream = params->has_user_compute_stream != 0;
     info.user_compute_stream = params->user_compute_stream;
     info.default_memory_arena_cfg = params->default_memory_arena_cfg;
 

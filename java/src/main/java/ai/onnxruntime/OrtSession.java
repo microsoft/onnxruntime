@@ -771,6 +771,31 @@ public class OrtSession implements AutoCloseable {
     }
 
     /**
+     * Add ROCM as an execution backend, using device 0.
+     *
+     * @throws OrtException If there was an error in native code.
+     */
+    public void addROCM() throws OrtException {
+      addROCM(0);
+    }
+
+    /**
+     * Add ROCM as an execution backend, using the specified ROCM device id.
+     *
+     * @param deviceNum The ROCM device id.
+     * @throws OrtException If there was an error in native code.
+     */
+    public void addROCM(int deviceNum) throws OrtException {
+      checkClosed();
+      if (OnnxRuntime.extractROCM()) {
+        addROCM(OnnxRuntime.ortApiHandle, nativeHandle, deviceNum);
+      } else {
+        throw new OrtException(
+            OrtException.OrtErrorCode.ORT_EP_FAIL, "Failed to find ROCM shared provider");
+      }
+    }
+
+    /**
      * Adds the CPU as an execution backend, using the arena allocator if desired.
      *
      * <p>By default this backend is used, but if other backends are requested, it should be
@@ -898,18 +923,6 @@ public class OrtSession implements AutoCloseable {
     }
 
     /**
-     * Adds ROCM as an execution backend.
-     *
-     * @param deviceID The ROCM device ID.
-     * @param memLimit The maximum amount of memory available.
-     * @throws OrtException If there was an error in native code.
-     */
-    public void addROCM(int deviceID, long memLimit) throws OrtException {
-      checkClosed();
-      addROCM(OnnxRuntime.ortApiHandle, nativeHandle, deviceID, memLimit);
-    }
-
-    /**
      * Adds Apple's CoreML as an execution backend. Uses the default empty flag.
      *
      * @throws OrtException If there was an error in native code.
@@ -989,6 +1002,7 @@ public class OrtSession implements AutoCloseable {
      * functions to enable them in the session:
      *   OrtSessionOptionsAppendExecutionProvider_CPU
      *   OrtSessionOptionsAppendExecutionProvider_CUDA
+     *   OrtSessionOptionsAppendExecutionProvider_ROCM
      *   OrtSessionOptionsAppendExecutionProvider_<remaining providers...>
      * The order they care called indicates the preference order as well. In other words call this method
      * on your most preferred execution provider first followed by the less preferred ones.
@@ -999,6 +1013,9 @@ public class OrtSession implements AutoCloseable {
     private native void addCPU(long apiHandle, long nativeHandle, int useArena) throws OrtException;
 
     private native void addCUDA(long apiHandle, long nativeHandle, int deviceNum)
+        throws OrtException;
+
+    private native void addROCM(long apiHandle, long nativeHandle, int deviceNum)
         throws OrtException;
 
     private native void addDnnl(long apiHandle, long nativeHandle, int useArena)
@@ -1023,9 +1040,6 @@ public class OrtSession implements AutoCloseable {
     private native void addACL(long apiHandle, long nativeHandle, int useArena) throws OrtException;
 
     private native void addArmNN(long apiHandle, long nativeHandle, int useArena)
-        throws OrtException;
-
-    private native void addROCM(long apiHandle, long nativeHandle, int deviceID, long memLimit)
         throws OrtException;
 
     private native void addCoreML(long apiHandle, long nativeHandle, int coreMLFlags)

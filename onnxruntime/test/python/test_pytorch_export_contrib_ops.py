@@ -80,7 +80,8 @@ class ONNXExporterTest(unittest.TestCase):
                               custom_opsets=custom_opsets)
 
             # compute onnxruntime output prediction
-            ort_sess = onnxruntime.InferenceSession(f.getvalue())
+            ort_sess = onnxruntime.InferenceSession(f.getvalue(),
+                                                    providers=onnxruntime.get_available_providers())
             input_copy = copy.deepcopy(input)
             ort_test_with_input(ort_sess, input_copy, output, rtol, atol)
 

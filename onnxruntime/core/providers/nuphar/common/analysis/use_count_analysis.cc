@@ -73,12 +73,12 @@ void CountRecurrentOp(const onnxruntime::Node& node,
                       std::unordered_map<NodeKey, int>& node_use_counts) {
   int use_count = PRESET_USE_COUNT_FOR_UNKNOWN;
 
-  node.ForEachWithIndex(
+  ORT_THROW_IF_ERROR(node.ForEachWithIndex(
       node.InputDefs(),
       [&node, &graph_inputs, &node_use_counts, &use_count](const NodeArg& def, size_t) {
         CountNodeArg(&def, node, graph_inputs, node_use_counts, use_count);
         return Status::OK();
-      });
+      }));
 }
 
 static bool IsSoftmaxOp(const std::string& op) {
@@ -92,12 +92,12 @@ void CountSoftmaxOp(const onnxruntime::Node& node,
   // Use preset use count for Softmax/LogSoftmax input
   int use_count = PRESET_USE_COUNT_FOR_SOFTMAX;
 
-  node.ForEachWithIndex(
+  ORT_THROW_IF_ERROR(node.ForEachWithIndex(
       node.InputDefs(),
       [&node, &graph_inputs, &node_use_counts, &use_count](const NodeArg& def, size_t) {
         CountNodeArg(&def, node, graph_inputs, node_use_counts, use_count);
         return Status::OK();
-      });
+      }));
 }
 
 void CountMatrixArgs(const onnxruntime::NodeArg* A,
@@ -165,12 +165,12 @@ void InternalUseCountAnalysis::Traverse(
       auto subgraph = node->GetGraphAttribute("body");
       Evaluate(GraphViewer(*subgraph));
       int use_count = PRESET_USE_COUNT_FOR_UNKNOWN;
-      node->ForEachWithIndex(
+      ORT_THROW_IF_ERROR(node->ForEachWithIndex(
           node->InputDefs(),
           [this, &node, &graph_inputs, &use_count](const NodeArg& def, size_t) {
             CountNodeArg(&def, *node, graph_inputs, node_use_counts_, use_count);
             return Status::OK();
-          });
+          }));
     } else if (IsRecurrentNode(*node)) {
       CountRecurrentOp(*node, graph_inputs, shape_func_, node_use_counts_);
     } else if (node->NodeType() == Node::Type::Fused) {
@@ -181,25 +181,25 @@ void InternalUseCountAnalysis::Traverse(
       CountSoftmaxOp(*node, graph_inputs, shape_func_, node_use_counts_);
     } else if (op_type != "Shape") {  //don't count on Shape node input, because of no data dependency
       int use_count = 1;
-      node->ForEachWithIndex(
+      ORT_THROW_IF_ERROR(node->ForEachWithIndex(
           node->InputDefs(),
           [this, &node, &graph_inputs, &use_count](const NodeArg& def, size_t) {
             CountNodeArg(&def, *node, graph_inputs, node_use_counts_, use_count);
             return Status::OK();
-          });
+          }));
     }
 
     NodeKey key = GetKey(node);
     // For any output_def of the node that is part of graph's outputs but not from graph.Nodes(),
     // we need to increase the node's use cnt accordingly. Otherwise, we would lose those uses.
-    node->ForEachWithIndex(
+    ORT_THROW_IF_ERROR(node->ForEachWithIndex(
         node->OutputDefs(),
         [this, &graph_outputs, &key](const NodeArg& def, size_t) {
           if (std::find(graph_outputs.begin(), graph_outputs.end(), &def) != graph_outputs.end()) {
             node_use_counts_[key]++;
           }
           return Status::OK();
-        });
+        }));
   }
 }
 

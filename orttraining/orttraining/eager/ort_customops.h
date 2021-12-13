@@ -1,4 +1,9 @@
-#include <torch/extension.h>
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#pragma once
+
+#include "ort_eager_common.h"
 
 namespace torch_ort {
 namespace eager {

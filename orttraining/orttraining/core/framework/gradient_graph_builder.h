@@ -138,6 +138,8 @@ class GradientGraphBuilder {
   // Tracks tensors that are stashed in the forward pass for later use in backward pass.
   std::unordered_set<std::string> stashed_tensors_;
 
+  const std::unordered_set<size_t>* GetStopGradientEdges(const Node& node) const;
+
   /**
   Performs a BFS on the graph with STOP_GRADIENT_EDGES constrain
   It will skip traversing over the edges defined in STOP_GRADIENT_EDGES map.

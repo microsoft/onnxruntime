@@ -1,41 +1,25 @@
-# Docker Containers for ONNX Runtime
-
-**Dockerfiles**
-
-
-- CPU [Dockerfile](Dockerfile.source), [Instructions](#cpu)
-- CUDA + CUDNN: [Dockerfile](Dockerfile.cuda), [Instructions](#cuda)
-- TensorRT: [Dockerfile](Dockerfile.tensorrt), [Instructions](#tensorrt)
-- OpenVINO: [Dockerfile](Dockerfile.openvino), [Instructions](#openvino)
-- Nuphar: [Dockerfile](Dockerfile.nuphar), [Instructions](#nuphar)
-- ARM 32v7: [Dockerfile](Dockerfile.arm32v7), [Instructions](#arm-32v7)
-- NVIDIA Jetson TX1/TX2/Nano/Xavier: [Dockerfile](Dockerfile.jetson), [Instructions](#nvidia-jetson-tx1tx2nanoxavier)
-- ONNX-Ecosystem (CPU + Converters): [Dockerfile](https://github.com/onnx/onnx-docker/blob/master/onnx-ecosystem/Dockerfile), [Instructions](https://github.com/onnx/onnx-docker/tree/master/onnx-ecosystem)
-- ONNX Runtime Server: [Dockerfile](Dockerfile.server), [Instructions](#onnx-runtime-server)
+# Dockerfiles
+**Execution Providers**
+- CPU: [Dockerfile](Dockerfile.source), [Instructions](#cpu)
+- CUDA/cuDNN: [Dockerfile](Dockerfile.cuda), [Instructions](#cuda)
 - MIGraphX: [Dockerfile](Dockerfile.migraphx), [Instructions](#migraphx)
+- NUPHAR: [Dockerfile](Dockerfile.nuphar), [Instructions](#nuphar)
+- OpenVINO: [Dockerfile](Dockerfile.openvino), [Instructions](#openvino)
+- TensorRT: [Dockerfile](Dockerfile.tensorrt), [Instructions](#tensorrt)
+- VitisAI: [Dockerfile](Dockerfile.vitisai)
 
-**Published Microsoft Container Registry (MCR) Images**
+**Platforms**
+- ARM 32v7: [Dockerfile](Dockerfile.arm32v7), [Instructions](#arm-3264)
+- ARM 64: [Dockerfile](Dockerfile.arm64), [Instructions](#arm-3264) 
+- NVIDIA Jetson TX1/TX2/Nano/Xavier: [Dockerfile](Dockerfile.jetson), [Instructions](#nvidia-jetson-tx1tx2nanoxavier)
 
-Use `docker pull` with any of the images and tags below to pull an image and try for yourself. Note that the CPU and CUDA images include additional dependencies like miniconda for compatibility with AzureML image deployment.
+**Other**
+- ORT Training (torch-ort): [Dockerfiles](https://github.com/pytorch/ort/tree/main/docker)
+- ONNX-Ecosystem (CPU + Converters): [Dockerfile](https://github.com/onnx/onnx-docker/blob/master/onnx-ecosystem/Dockerfile), [Instructions](https://github.com/onnx/onnx-docker/tree/master/onnx-ecosystem)
 
-**Example**: Run `docker pull mcr.microsoft.com/azureml/onnxruntime:latest-cuda` to pull the latest released docker image with ONNX Runtime GPU, CUDA, and CUDNN support.
 
-| Build Flavor      | Base Image                            | ONNX Runtime Docker Image tags        | Latest                  |
-|-------------------|---------------------------------------|---------------------------------------|-------------------------|
-| Source (CPU)      | mcr.microsoft.com/azureml/onnxruntime | :v0.4.0, :v0.5.0, v0.5.1, :v1.0.0, :v1.2.0, :v1.3.0, :v1.4.0, :v1.5.2 | :latest |
-| CUDA (GPU)        | mcr.microsoft.com/azureml/onnxruntime | :v0.4.0-cuda10.0-cudnn7, :v0.5.0-cuda10.1-cudnn7, :v0.5.1-cuda10.1-cudnn7, :v1.0.0-cuda10.1-cudnn7, :v1.2.0-cuda10.1-cudnn7, :v1.3.0-cuda10.1-cudnn7, :v1.4.0-cuda10.1-cudnn7, :v1.5.2-cuda10.2-cudnn8 | :latest-cuda            |
-| OpenVino          | hub.docker.com/repository/docker/openvino/onnxruntime_ep_ubuntu18 | :2021.3, :2021.4 | :latest |
-| OpenVino (VAD-M)  | mcr.microsoft.com/azureml/onnxruntime | :v0.5.0-openvino-r1.1-vadm, :v1.0.0-openvino-r1.1-vadm, :v1.4.0-openvino-2020.3.194-vadm, :v1.5.2-openvino-2020.4.287-vadm | :latest-openvino-vadm |
-| OpenVino (MYRIAD) | mcr.microsoft.com/azureml/onnxruntime | :v0.5.0-openvino-r1.1-myriad, :v1.0.0-openvino-r1.1-myriad, :v1.3.0-openvino-2020.2.120-myriad, :v1.4.0-openvino-2020.3.194-myriad, :v1.5.2-openvino-2020.4.287-myriad | :latest-openvino-myriad |
-| OpenVino (CPU)    | mcr.microsoft.com/azureml/onnxruntime | :v1.0.0-openvino-r1.1-cpu, :v1.3.0-openvino-2020.2.120-cpu, :v1.4.0-openvino-2020.3.194-cpu, :v1.5.2-openvino-2020.4.287-cpu | :latest-openvino-cpu    |
-| OpenVINO (GPU)    | mcr.microsoft.com/azureml/onnxruntime | :v1.3.0-openvino-2020.2.120-gpu, :v1.4.0-openvino-2020.3.194-gpu, :v1.5.2-openvino-2020.4.287-gpu | :latest-openvino-gpu|
-| Nuphar            | mcr.microsoft.com/azureml/onnxruntime |                                       | :latest-nuphar |
-| Server            | mcr.microsoft.com/onnxruntime/server  | :v0.4.0, :v0.5.0, :v0.5.1, :v1.0.0      | :latest |
-| MIGraphX (GPU)    | mcr.microsoft.com/azureml/onnxruntime | :v0.6                                 | :latest |
-| Training ([usage](https://github.com/microsoft/onnxruntime-training-examples))| mcr.microsoft.com/azureml/onnxruntime-training | :0.1-rc1-openmpi4.0-cuda10.1-cudnn7.6-nccl2.4.8, :0.1-rc2-openmpi4.0-cuda10.2-cudnn7.6-nccl2.7.6, :0.1-rc3.1-openmpi4.0-cuda10.2-cudnn8.0-nccl2.7 | :latest |
----
 
-# Building and using Docker images
+# Instructions
 
 ## CPU
 **Ubuntu 18.04, CPU, Python Bindings**
@@ -128,18 +112,20 @@ If the `device_type` runtime config option is not explicitly specified, CPU will
   | <code>MYRIAD_FP16</code> | Intel<sup></sup> Movidius<sup>TM</sup> USB sticks |
   | <code>VAD-M_FP16</code> | Intel<sup></sup> Vision Accelerator Design based on Movidius<sup>TM</sup> MyriadX VPUs |
   | <code>HETERO:<DEVICE_TYPE_1>,<DEVICE_TYPE_2>,<DEVICE_TYPE_3>...</code> | All Intel<sup>®</sup> silicons mentioned above |
-  | <code>MULTI:<DEVICE_TYPE_1>,<DEVICE_TYPE_2>,<DEVICE_TYPE_3>...</code> | All Intel<sup>®</sup> silicons mentioned above | 
+  | <code>MULTI:<DEVICE_TYPE_1>,<DEVICE_TYPE_2>,<DEVICE_TYPE_3>...</code> | All Intel<sup>®</sup> silicons mentioned above |
+  | <code>AUTO:<DEVICE_TYPE_1>,<DEVICE_TYPE_2>,<DEVICE_TYPE_3>...</code> | All Intel<sup>®</sup> silicons mentioned above |
 
-  Specifying Hardware Target for HETERO or Multi-Device Build:
+  Specifying Hardware Target for HETERO or MULTI or AUTO Build:
 
   HETERO:<DEVICE_TYPE_1>,<DEVICE_TYPE_2>..
   MULTI:<DEVICE_TYPE_1>,<DEVICE_TYPE_2>..
+  AUTO:<DEVICE_TYPE_1>,<DEVICE_TYPE_2>..
   The <DEVICE_TYPE> can be any of these devices from this list ['CPU','GPU','MYRIAD','HDDL']
 
-  A minimum of two DEVICE_TYPE'S should be specified for a valid HETERO or Multi-Device Build.
+  A minimum of two DEVICE_TYPE'S should be specified for a valid HETERO or MULTI or AUTO Build.
 
   Example:
-  HETERO:MYRIAD,CPU  HETERO:HDDL,GPU,CPU  MULTI:MYRIAD,GPU,CPU
+  HETERO:MYRIAD,CPU  HETERO:HDDL,GPU,CPU  MULTI:MYRIAD,GPU,CPU AUTO:GPU,CPU
 
 *This is the hardware accelerator target that is enabled by **default** in the container image. After building the container image for one default target, the application may explicitly choose a different target at run time with the same container by using the [Dynamic device selction API](https://github.com/microsoft/onnxruntime/blob/master/docs/execution_providers/OpenVINO-ExecutionProvider.md#dynamic-device-selection).*
 
@@ -220,7 +206,12 @@ If the `device_type` runtime config option is not explicitly specified, CPU will
       docker build --rm -t onnxruntime-MULTI --build-arg DEVICE=MULTI:<DEVICE_TYPE_1>,<DEVICE_TYPE_2>,<DEVICE_TYPE_3>... -f <Dockerfile> .
      ```
 
-2. Install the required rules, drivers and other packages as required from the steps above for each of the DEVICE_TYPE accordingly that would be added for the HETERO or MULTI Device build type.
+     for AUTO:
+     ```
+      docker build --rm -t onnxruntime-AUTO --build-arg DEVICE=AUTO:<DEVICE_TYPE_1>,<DEVICE_TYPE_2>,<DEVICE_TYPE_3>... -f <Dockerfile> .
+     ```
+
+2. Install the required rules, drivers and other packages as required from the steps above for each of the DEVICE_TYPE accordingly that would be added for the HETERO or MULTI or AUTO device build type.
 
 3. Run the docker image as mentioned in the above steps
 
@@ -282,7 +273,7 @@ Nothing else from ONNX Runtime source tree will be copied/installed to the image
 
 Note: When running the container you built in Docker, please either use 'nvidia-docker' command instead of 'docker', or use Docker command-line options to make sure NVIDIA runtime will be used and appropiate files mounted from host. Otherwise, CUDA libraries won't be found. You can also [set NVIDIA runtime as default in Docker](https://github.com/dusty-nv/jetson-containers#docker-default-runtime).
 
-## Nuphar
+## NUPHAR
 *Public Preview*
 
 **Ubuntu 16.04, Python Bindings**
@@ -315,26 +306,4 @@ git submodule update --init
 
   ```
   docker run -it --device=/dev/kfd --device=/dev/dri --group-add video onnxruntime-migraphx
-  ```
-
-## ONNX Runtime Server
-*Public Preview*
-
-**Ubuntu 16.04**
-
-1. Build the docker image from the Dockerfile in this repository
-  ```
-  docker build -t {docker_image_name} -f Dockerfile.server .
-  ```
-
-2. Run the ONNXRuntime server with the image created in step 1
-
-  ```
-  docker run -v {localModelAbsoluteFolder}:{dockerModelAbsoluteFolder} -p {your_local_port}:8001 {imageName} --model_path {dockerModelAbsolutePath}
-  ```
-3. Send HTTP requests to the container running ONNX Runtime Server
-
-  Send HTTP requests to the docker container through the binding local port. Here is the full [usage document](../docs/ONNX_Runtime_Server_Usage.md).
-  ```
-  curl  -X POST -d "@request.json" -H "Content-Type: application/json" http://0.0.0.0:{your_local_port}/v1/models/mymodel/versions/3:predict  
   ```

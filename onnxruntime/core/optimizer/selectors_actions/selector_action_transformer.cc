@@ -3,15 +3,17 @@
 
 #include "core/optimizer/selectors_actions/selector_action_transformer.h"
 
+#include "core/graph/runtime_optimization_record_container.h"
+
 namespace onnxruntime {
 
 #if !defined(ORT_MINIMAL_BUILD)
 SelectorActionTransformer::SelectorActionTransformer(const std::string& name,
                                                      SelectorsAndActions&& selectors_and_actions,
-                                                     bool save)
+                                                     std::optional<RuntimeOptimizationSaveContext> save_context)
     : GraphTransformer{name},
       selectors_and_actions_{std::move(selectors_and_actions)},
-      save_{save} {
+      runtime_optimization_save_context_{std::move(save_context)} {
   // setup a map so we lookup by operator type efficiently
   for (const auto& map_entry : selectors_and_actions_.SelectorsAndActionsMap()) {
     for (const auto& op_info : map_entry.second->ops_and_versions) {
@@ -24,9 +26,11 @@ SelectorActionTransformer::SelectorActionTransformer(const std::string& name,
 #else
 SelectorActionTransformer::SelectorActionTransformer(const std::string& name,
                                                      SelectorsAndActions&& selectors_and_actions,
-                                                     bool /*save*/)
+                                                     std::optional<RuntimeOptimizationSaveContext> save_context)
     : GraphTransformer{name},
-      selectors_and_actions_{std::move(selectors_and_actions)} {}
+      selectors_and_actions_{std::move(selectors_and_actions)} {
+  ORT_ENFORCE(!save_context.has_value(), "Saving runtime optimizations is not supported in a minimal build.");
+}
 #endif
 
 #if !defined(ORT_MINIMAL_BUILD)
@@ -47,13 +51,10 @@ void SelectorsAndActions::RegisterSelectorAndAction(const std::string& name,
   ORT_IGNORE_RETURN_VALUE(selectors_and_actions_map_.emplace(name, std::move(entry)));
 }
 
-// check if the node matches any of the registered operators.
-// if it does, run the Selector.
-// if that selects nodes, run the Action.
-Status SelectorActionTransformer::MatchAndProcess(Graph& graph, Node& node, bool& modified,
+Status SelectorActionTransformer::MatchAndProcess(Graph& graph, const GraphViewer& graph_viewer,
+                                                  Node& node, bool& modified,
                                                   const logging::Logger& logger) const {
   Status status = Status::OK();
-
   do {
     // TODO: for now this just needs to support ONNX ops. If we ever had a transformer that was going to
     // target non-ONNX ops we'd need to rework a few things to include the op domain in the matches
@@ -66,30 +67,49 @@ Status SelectorActionTransformer::MatchAndProcess(Graph& graph, Node& node, bool
       break;
     }
 
-    const auto& selector_and_actions = *op_rule->second;
+    const auto& selector_and_action = *op_rule->second;
 
     // check the supported versions if specified
-    const auto& versions = selector_and_actions.ops_and_versions.find(node.OpType())->second;
+    const auto& versions = selector_and_action.ops_and_versions.find(node.OpType())->second;
     if (!versions.empty()) {
       if (std::find(versions.cbegin(), versions.cend(), node.SinceVersion()) == versions.cend()) {
         break;
       }
     }
 
-    std::unique_ptr<NodesToOptimize> node_group;
-    if (!selector_and_actions.selector->Select(graph, node, node_group)) {
+    const auto node_selection_opt = selector_and_action.selector->Select(graph_viewer, node);
+    if (!node_selection_opt.has_value()) {
       break;
     }
+    const auto& node_selection = *node_selection_opt;
 
     LOGS(logger, VERBOSE) << "Matched " << node.OpType();
 
-    if (save_) {
-      // TODO: save to Graph using transformer and action name so the node groups and actions are scoped to a
-      // specific transformer.
-      // e.g. map<transformer name, map<action name, vector<NodesToOptimizeIndexes>>>
-      ORT_NOT_IMPLEMENTED("TODO: Save the selected nodes into the Graph.");
+    NodesToOptimize node_group(graph, node_selection);
+
+    if (runtime_optimization_save_context_.has_value()) {
+#if defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
+      const auto& action = *selector_and_action.action;
+
+      Action::SavedState action_saved_state{};
+      status = action.RunForSave(graph, node_group, *runtime_optimization_save_context_, action_saved_state,
+                                 modified);
+      if (!status.IsOK()) {
+        break;
+      }
+
+      graph.MutableRuntimeOptimizations().AddRecord(
+          Name(),
+          RuntimeOptimizationRecord{selector_and_action.name,
+                                    node_selection,
+                                    action_saved_state.produced_nodes});
+#else
+      status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                               "Saving runtime optimizations is not enabled in this build.");
+      break;
+#endif
     } else {
-      status = selector_and_actions.action->Run(graph, *node_group);
+      status = selector_and_action.action->Run(graph, node_group);
       if (!status.IsOK()) {
         break;
       }
@@ -115,7 +135,7 @@ void SelectorsAndActions::RegisterAction(const std::string& name,
 // as well as handling subgraphs (values are stored in the current graph, be that the main graph or the subgraph).
 struct ActionReplay {
   const std::string action_name;
-  std::vector<NodesToOptimizeIndexes> node_groups;
+  std::vector<NodesToOptimizeIndices> node_groups;
 };
 
 Status SelectorActionTransformer::ApplySaved(Graph& graph, bool& modified, const logging::Logger& /*logger*/) const {
@@ -139,7 +159,7 @@ Status SelectorActionTransformer::ApplySaved(Graph& graph, bool& modified, const
 
     const std::unique_ptr<Action>& action = action_iter->second;
 
-    for (const NodesToOptimizeIndexes& node_group : entry.node_groups) {
+    for (const NodesToOptimizeIndices& node_group : entry.node_groups) {
       NodesToOptimize nodes_to_optimize{graph, node_group};
 
       // all nodes in the group are still available if IsValid returns true
@@ -172,7 +192,7 @@ Status SelectorActionTransformer::ApplyImpl(Graph& graph, bool& modified, int gr
 #if !defined(ORT_MINIMAL_BUILD)
     // TODO: use GraphTransformer::GetCompatibleExecutionProviders if we need something more flexible
     if (node->GetExecutionProviderType() == kCpuExecutionProvider) {
-      ORT_RETURN_IF_ERROR(MatchAndProcess(graph, *node, modified, logger));
+      ORT_RETURN_IF_ERROR(MatchAndProcess(graph, graph_viewer, *node, modified, logger));
     }
 #else
     ORT_RETURN_IF_ERROR(ApplySaved(graph, modified, logger));

@@ -56,8 +56,8 @@ OneDNN algorithm:
 void DnnlGemm::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   auto eng = sp.GetEngine();
 
-  auto a_dims = sp.GetMemory(node.Input(IN_A).Name()).get_desc().dims();
-  auto b_dims = sp.GetMemory(node.Input(IN_B).Name()).get_desc().dims();
+  auto a_dims = sp.GetMemory(node.Input(IN_A)).get_desc().dims();
+  auto b_dims = sp.GetMemory(node.Input(IN_B)).get_desc().dims();
 
   bool input_c_exists = node.Input(IN_C).Exists();
 
@@ -115,7 +115,7 @@ void DnnlGemm::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   sp.AddPrimitive(matmul_op, args);
 
   if (input_c_exists) {
-    auto c_original_md = sp.GetMemory(node.Input(IN_C).Name()).get_desc();
+    auto c_original_md = sp.GetMemory(node.Input(IN_C)).get_desc();
     auto c_dims = c_original_md.dims();
     if (c_dims.size() != a_dims.size()) {
       while (c_dims.size() < a_dims.size()) {

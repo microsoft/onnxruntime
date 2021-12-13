@@ -6,6 +6,16 @@
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 #pragma GCC diagnostic ignored "-Wunused-result"
 #pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
+#elif defined(_MSC_VER)
+// build\windows\debug\external\eigen3\unsupported\eigen\cxx11\src/Tensor/Tensor.h(76):
+// warning C4554: '&': check operator precedence for possible error; use parentheses to clarify precedence
+
+// unsupported\eigen\cxx11\src\Tensor\TensorUInt128.h(150,0): Warning C4245: 'initializing': conversion from '__int64'
+// to 'uint64_t', signed/unsigned mismatch
+#pragma warning(push)
+#pragma warning(disable : 4554)
+#pragma warning(disable : 4245)
+#pragma warning(disable : 4127)
 #endif
 
 #ifndef EIGEN_USE_THREADS
@@ -17,6 +27,8 @@
 #include <unsupported/Eigen/CXX11/src/Tensor/TensorDeviceThreadPool.h>
 #if defined(__GNUC__)
 #pragma GCC diagnostic pop
+#elif defined(_MSC_VER)
+#pragma warning(pop)
 #endif
 
 #include <benchmark/benchmark.h>

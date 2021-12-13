@@ -12,7 +12,7 @@ namespace training {
 
 // Return the shape of a tensor slice.
 std::vector<int64_t> GetSliceShape(
-    const std::vector<int64_t>& shape,  // before-slicing tensor shape
+    gsl::span<const int64_t> shape,  // before-slicing tensor shape
     const size_t slice_axis,            // axis to slice along
     const size_t num_slices) {          // number of slices along the slicing axis
   ORT_ENFORCE(shape.size() > 0);
@@ -34,7 +34,7 @@ std::vector<int64_t> GetSliceShape(
 // Given tensor's element type and shape, this function creates a tensor in the passed-in session.
 OrtValue CreateCpuTensorValue(
     const MLDataType elem_type,
-    std::vector<int64_t> shape,
+    gsl::span<const int64_t> shape,
     onnxruntime::InferenceSession& session_state) {
   ORT_ENFORCE(elem_type->AsPrimitiveDataType(), "Tensor's element type must be a scalar type.");
   ORT_ENFORCE(shape.size() > 0, "Shape vector must be non-empty.");
@@ -255,7 +255,7 @@ OrtValue ConcatenateTensors(
   // Concatenated tensors in CPU buffers.
   std::vector<OrtValue> cpu_values;
   // Result tensor's shape.
-  std::vector<int64_t> new_shape = orig_values.front().Get<Tensor>().Shape().GetDims();
+  std::vector<int64_t> new_shape = orig_values.front().Get<Tensor>().Shape().GetDimsAsVector();
   // Tensor elements' type.
   MLDataType elem_type = orig_values.front().Get<Tensor>().DataType();
   int64_t new_dim = 0;

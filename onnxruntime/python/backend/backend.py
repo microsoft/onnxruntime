@@ -7,9 +7,10 @@ Implements ONNX's backend API.
 """
 from onnx import ModelProto
 from onnx import helper
+from onnx import version
 from onnx.checker import check_model
 from onnx.backend.base import Backend
-from onnxruntime import InferenceSession, SessionOptions, get_device
+from onnxruntime import InferenceSession, SessionOptions, get_device, get_available_providers
 from onnxruntime.backend.backend_rep import OnnxRuntimeBackendRep
 import unittest
 import os
@@ -106,7 +107,11 @@ class OnnxRuntimeBackend(Backend):
             for k, v in kwargs.items():
                 if hasattr(options, k):
                     setattr(options, k, v)
-            inf = InferenceSession(model, options)
+
+            excluded_providers = os.getenv('ORT_ONNX_BACKEND_EXCLUDE_PROVIDERS', default="").split(',')
+            providers = [x for x in get_available_providers() if (x not in excluded_providers)]
+
+            inf = InferenceSession(model, sess_options=options, providers=providers)
             # backend API is primarily used for ONNX test/validation. As such, we should disable session.run() fallback
             # which may hide test failures.
             inf.disable_fallback()
@@ -115,11 +120,21 @@ class OnnxRuntimeBackend(Backend):
             return cls.prepare(inf, device, **kwargs)
         else:
             # type: ModelProto
-            check_model(model)
+            # check_model serializes the model anyways, so serialize the model once here
+            # and reuse it below in the cls.prepare call to avoid an additional serialization
+            # only works with onnx >= 1.10.0 hence the version check
+            onnx_version = tuple(map(int, (version.version.split(".")[:3])))
+            onnx_supports_serialized_model_check = onnx_version >= (1, 10, 0)
+            bin_or_model = model.SerializeToString() if onnx_supports_serialized_model_check else model
+            check_model(bin_or_model)
             opset_supported, error_message = cls.is_opset_supported(model)
             if not opset_supported:
                 raise unittest.SkipTest(error_message)
-            bin = model.SerializeToString()
+            # Now bin might be serialized, if it's not we need to serialize it otherwise we'll have
+            # an infinite recursive call
+            bin = bin_or_model
+            if not isinstance(bin, (str, bytes)):
+                bin = bin.SerializeToString()
             return cls.prepare(bin, device, **kwargs)
 
     @classmethod

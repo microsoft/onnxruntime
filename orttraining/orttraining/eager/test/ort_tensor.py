@@ -19,6 +19,13 @@ class OrtTensorTests(unittest.TestCase):
     ort_ones = cpu_ones.to('ort')
     assert ort_ones.is_ort
     assert torch.allclose(cpu_ones, ort_ones.cpu())
+  
+  def test_reshape(self):
+    cpu_ones = torch.ones(10, 10)
+    ort_ones = cpu_ones.to('ort')
+    y = ort_ones.reshape(-1)
+    assert len(y.size()) == 1
+    assert y.size()[0] == 100
 
 if __name__ == '__main__':
   unittest.main()

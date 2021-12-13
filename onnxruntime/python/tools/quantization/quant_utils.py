@@ -148,31 +148,43 @@ def compute_scale_zp(rmin, rmax, qmin, qmax, symmetric=False):
 
 def quantize_data(data, qType, symmetric, reduce_range=False):
     '''
-        :parameter data: data to quantize
-        :parameter qType: data type to quantize to. Supported types UINT8 and INT8
-        :parameter symmetric: whether symmetric quantization is used or not. This is applied to INT8.
-        :return: minimum, maximum, zero point, scale, and quantized weights
-        To pack weights, we compute a linear transformation
-            - when data type == uint8 mode, from [rmin, rmax] -> [0, 2^{b-1}] and
-            - when data type == int8, from [-m , m] -> [-(2^{b-1}-1), 2^{b-1}-1] where
-                m = max(abs(rmin), abs(rmax))
-        and add necessary intermediate nodes to trasnform quantized weight to full weight using the equation
-        r = S(q-z), where
-            r: real original value
-            q: quantized value
-            S: scale
-            z: zero point
-    '''
-    rmin = min(data)
-    rmax = max(data)
-    qmin, qmax = get_qmin_qmax_for_qType(qType, reduce_range)
+    :param data: data to quantize
+    :param qType: data type to quantize to. Supported types UINT8 and INT8
+    :param symmetric: whether symmetric quantization is used or not. This is applied to INT8.
+    :return: minimum, maximum, zero point, scale, and quantized weights
 
-    zero_point, scale = compute_scale_zp(rmin, rmax, qmin, qmax, symmetric)
+    To pack weights, we compute a linear transformation
+    
+    - when data `type == uint8` mode, from `[rmin, rmax]` -> :math:`[0, 2^{b-1}]` and
+    - when data `type == int8`, from `[-m , m]` -> :math:`[-(2^{b-1}-1), 2^{b-1}-1]` where
+        `m = max(abs(rmin), abs(rmax))`
+
+    and add necessary intermediate nodes to trasnform quantized weight to full weight using the equation
+
+    :math:`r = S(q-z)`, where
+    
+    - *r*: real original value
+    - *q*: quantized value
+    - *S*: scale
+    - *z*: zero point
+    '''
+
+    rmin = 0
+    rmax = 0
+    zero_point = 0
+    scale = 1.0
+    if len(data):
+        rmin = min(data)
+        rmax = max(data)
+        qmin, qmax = get_qmin_qmax_for_qType(qType, reduce_range, for_weight=True)
+
+        zero_point, scale = compute_scale_zp(rmin, rmax, qmin, qmax, symmetric)
+
     quantized_data = quantize_nparray(qType, numpy.asarray(data), scale, zero_point)
 
     return rmin, rmax, zero_point, scale, quantized_data
 
-def get_qmin_qmax_for_qType(qType, reduce_range=False):
+def get_qmin_qmax_for_qType(qType, reduce_range=False, for_weight=False):
     '''
     Return qmin and qmax, the minimum and maximum value representable by the given qType
     :parameter qType: onnx.onnx_pb.TensorProto.UINT8 or onnx.onnx_pb.TensorProto.UINT8
@@ -181,18 +193,21 @@ def get_qmin_qmax_for_qType(qType, reduce_range=False):
     if qType == onnx_proto.TensorProto.UINT8:
         (qmin, qmax) = (0,127) if reduce_range else (0,255)
     elif qType == onnx_proto.TensorProto.INT8:
-        (qmin, qmax) = (-64,64) if reduce_range else (-127,127)
+        if for_weight:
+            (qmin, qmax) = (-64,64) if reduce_range else (-127,127)
+        else:
+            (qmin, qmax) = (-64,64) if reduce_range else (-128,127)
     else:
         raise ValueError("Unexpected data type {} requested. Only INT8 and UINT8 are supported.".format(qType))
     return qmin, qmax
 
-def get_qrange_for_qType(qType, reduce_range=False):
+def get_qrange_for_qType(qType, reduce_range=False, for_weight=False):
     '''
     Helper function to get the quantization range for a type.
         parameter qType: quantization type.
         return: quantization range.
     '''
-    qmin, qmax = get_qmin_qmax_for_qType(qType, reduce_range)
+    qmin, qmax = get_qmin_qmax_for_qType(qType, reduce_range, for_weight=for_weight)
     return  qmax - qmin
 
 class QuantizedInitializer:

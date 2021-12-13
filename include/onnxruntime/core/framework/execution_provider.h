@@ -19,6 +19,7 @@ class Node;
 struct ComputeCapability;
 class KernelRegistry;
 class KernelRegistryManager;
+
 }  // namespace onnxruntime
 #else
 #include <memory>
@@ -27,6 +28,7 @@ class KernelRegistryManager;
 #include "core/framework/provider_options.h"
 #include "core/framework/func_api.h"
 #include "core/framework/allocatormgr.h"
+#include "core/common/profiler_common.h"
 
 namespace onnxruntime {
 
@@ -158,7 +160,7 @@ class IExecutionProvider {
      may not be finished on device This function should be regarded as the point
      that all commands of current Run has been submmited by CPU
   */
-  virtual common::Status OnRunEnd() { return Status::OK(); }
+  virtual common::Status OnRunEnd(bool /*sync_stream*/) { return Status::OK(); }
 
   /**
      Called when session creation is complete
@@ -265,6 +267,10 @@ class IExecutionProvider {
      EPs will have a shared pointer to allocator_manager, allocator_managerall will be the only place for allocators
   */
   virtual void RegisterAllocator(std::shared_ptr<AllocatorManager> allocator_manager);
+
+  virtual std::unique_ptr<profiling::EpProfiler> GetProfiler() {
+    return {};
+  }
 
  private:
   const std::string type_;

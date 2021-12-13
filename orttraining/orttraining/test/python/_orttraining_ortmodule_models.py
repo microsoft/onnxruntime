@@ -5,10 +5,10 @@
 import torch
 
 
-class MyStrNet(torch.nn.Module):
-    def forward(self, x, my_str):
-        if my_str.lower() == 'hello':
-            print('hi')
+class MyCustomClassInputNet(torch.nn.Module):
+    def forward(self, x, custom_class_obj):
+        if custom_class_obj.x == 1:
+            return x+1
         return x
 
 

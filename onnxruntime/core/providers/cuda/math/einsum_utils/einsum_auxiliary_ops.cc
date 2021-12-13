@@ -78,7 +78,7 @@ Status MatMul(const T* input_1_data, const T* input_2_data, T* output_data,
 
 // CUDA EP specific ReduceSum helper
 template <typename T>
-std::unique_ptr<Tensor> ReduceSum(const Tensor& input, const std::vector<int64_t>& reduce_axes,
+std::unique_ptr<Tensor> ReduceSum(const Tensor& input, gsl::span<const int64_t> reduce_axes,
                                   bool keep_dims, AllocatorPtr allocator,
                                   const TensorShape* input_shape_override,
                                   concurrency::ThreadPool* /*tp*/, void* einsum_cuda_assets) {
@@ -108,7 +108,7 @@ std::unique_ptr<Tensor> Diagonal(const Tensor& input, int64_t dim_1, int64_t dim
   }
 
   // Make a copy - we are going to mutate the dims
-  std::vector<int64_t> output_dims = input_dims;
+  std::vector<int64_t> output_dims = input_shape.GetDimsAsVector();
 
   // Remove the dim value in `second_dim` -
   // The diagonal values are stored along `first_dim`
@@ -155,7 +155,7 @@ template Status DeviceHelpers::CudaDeviceHelpers::MatMul<float>(
     void* einsum_cuda_assets);
 
 template std::unique_ptr<Tensor> DeviceHelpers::CudaDeviceHelpers::ReduceSum<float>(
-    const Tensor& input, const std::vector<int64_t>& reduce_axes,
+    const Tensor& input, gsl::span<const int64_t> reduce_axes,
     bool keep_dims, AllocatorPtr allocator,
     const TensorShape* input_shape_override,
     concurrency::ThreadPool* tp, void* einsum_cuda_assets);
@@ -168,7 +168,7 @@ template Status DeviceHelpers::CudaDeviceHelpers::MatMul<double>(
     void* einsum_cuda_assets);
 
 template std::unique_ptr<Tensor> DeviceHelpers::CudaDeviceHelpers::ReduceSum<double>(
-    const Tensor& input, const std::vector<int64_t>& reduce_axes,
+    const Tensor& input, gsl::span<const int64_t> reduce_axes,
     bool keep_dims, AllocatorPtr allocator,
     const TensorShape* input_shape_override,
     concurrency::ThreadPool* tp, void* einsum_cuda_assets);
@@ -181,7 +181,7 @@ template Status DeviceHelpers::CudaDeviceHelpers::MatMul<MLFloat16>(
     void* einsum_cuda_assets);
 
 template std::unique_ptr<Tensor> DeviceHelpers::CudaDeviceHelpers::ReduceSum<MLFloat16>(
-    const Tensor& input, const std::vector<int64_t>& reduce_axes,
+    const Tensor& input, gsl::span<const int64_t> reduce_axes,
     bool keep_dims, AllocatorPtr allocator,
     const TensorShape* input_shape_override,
     concurrency::ThreadPool* tp, void* einsum_cuda_assets);

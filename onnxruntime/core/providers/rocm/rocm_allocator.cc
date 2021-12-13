@@ -4,8 +4,7 @@
 #include "rocm_allocator.h"
 #include "rocm_common.h"
 #include "core/framework/allocatormgr.h"
-#include "core/framework/session_state.h"
-#include "rocm_fence.h"
+#include "core/providers/rocm/rocm_fence.h"
 #include "gpu_data_transfer.h"
 
 namespace onnxruntime {
@@ -32,7 +31,23 @@ void ROCMAllocator::CheckDevice(bool throw_when_fail) const {
 #endif
 }
 
+void ROCMAllocator::SetDevice(bool throw_when_fail) const {
+  int current_device;
+  auto hip_err = hipGetDevice(&current_device);
+  if (hip_err == hipSuccess) {
+    int allocator_device_id = Info().id;
+    if (current_device != allocator_device_id) {
+      hip_err = hipSetDevice(allocator_device_id);
+    }
+  }
+
+  if (hip_err != hipSuccess && throw_when_fail) {
+    HIP_CALL_THROW(hip_err);
+  }
+}
+
 void* ROCMAllocator::Alloc(size_t size) {
+  SetDevice(true);
   CheckDevice(true);
   void* p = nullptr;
   if (size > 0) {
@@ -43,12 +58,10 @@ void* ROCMAllocator::Alloc(size_t size) {
 }
 
 void ROCMAllocator::Free(void* p) {
-  CheckDevice(false);  // ignore HIP failure when free
-  hipFree(p);         // do not throw error since it's OK for hipFree to fail during shutdown
-}
-
-FencePtr ROCMAllocator::CreateFence(const SessionState* session_state) {
-  return std::make_shared<ROCMFence>(GetGPUDataTransfer(session_state));
+  SetDevice(false);
+  CheckDevice(false);  // ignore ROCM failure when free
+  // do not throw error since it's OK for hipFree to fail during shutdown; void to silence nodiscard
+  (void)hipFree(p);
 }
 
 void* ROCMExternalAllocator::Alloc(size_t size) {
@@ -58,7 +71,6 @@ void* ROCMExternalAllocator::Alloc(size_t size) {
 
     // review(codemzs): ORT_ENFORCE does not seem appropiate.
     ORT_ENFORCE(p != nullptr);
-
   }
 
   return p;
@@ -81,6 +93,10 @@ void* ROCMExternalAllocator::Reserve(size_t size) {
   ORT_ENFORCE(reserved_.find(p) == reserved_.end());
   reserved_.insert(p);
   return p;
+}
+
+FencePtr ROCMAllocator::CreateFence(const SessionState* session_state) {
+  return std::make_shared<ROCMFence>(GetGPUDataTransfer(session_state));
 }
 
 void* ROCMPinnedAllocator::Alloc(size_t size) {

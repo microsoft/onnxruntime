@@ -420,14 +420,14 @@ common::Status SplitGraph(Graph& graph,
       // once we find out the producer node for id.node_arg_name, find which output index that leads
       // to id.node_arg_name
       int upstream_nodes_output_index{-1};
-      producer_node->ForEachWithIndex(
+      ORT_RETURN_IF_ERROR(producer_node->ForEachWithIndex(
           producer_node->OutputDefs(),
           [&](const NodeArg& def, size_t index) {
             if (def.Name() == id.node_arg_name) {
               upstream_nodes_output_index = static_cast<int>(index);
             }
             return Status::OK();
-          });
+          }));
 
       if (upstream_nodes_output_index < 0) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Node with name: ", producer_node->Name(),

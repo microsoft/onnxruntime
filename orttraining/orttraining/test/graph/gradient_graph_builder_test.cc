@@ -18,9 +18,6 @@
 
 #if defined(USE_CUDA) || defined(USE_ROCM)
 #include "bert_toy_fetches.h"
-#ifdef USE_ROCM
-#include "core/providers/rocm/rocm_execution_provider.h"
-#endif
 #endif
 
 using namespace onnxruntime::logging;
@@ -406,8 +403,7 @@ static void RunBertTrainingWithChecks(
 #ifdef USE_CUDA
   ASSERT_STATUS_OK(training_session->RegisterExecutionProvider(DefaultCudaExecutionProvider()));
 #elif USE_ROCM
-  ROCMExecutionProviderInfo xp_info;
-  ASSERT_STATUS_OK(training_session->RegisterExecutionProvider(std::make_unique<ROCMExecutionProvider>(xp_info)));
+  ASSERT_STATUS_OK(training_session->RegisterExecutionProvider(DefaultRocmExecutionProvider()));
 #endif
   ASSERT_STATUS_OK(training_session->Initialize());
 

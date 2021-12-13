@@ -71,7 +71,7 @@ struct MultiIndex {
 * be transposed, if source_dims is the shape, stride[i] = source_dims[i+1] * source_dims[i+2] * ... * 1.
 * element_size is the size of the tensor element (sizeof(float), sizeof(double)).
 */
-static void IncrementIndexAndComputeOffsetSetup(MultiIndex& mindex, size_t num_axes, const std::vector<int64_t>& target_dims,
+static void IncrementIndexAndComputeOffsetSetup(MultiIndex& mindex, size_t num_axes, gsl::span<const int64_t> target_dims,
                                                 const std::vector<size_t>& stride, size_t element_size) {
   mindex.Init(num_axes);
   size_t naxes = 0;
@@ -132,7 +132,7 @@ static inline void DoTransposeSingleBlock(size_t num_elts_in_block, const std::s
 
 // DoTranspose: copies source tensor to target, transposing elements.
 // The stride vector indicates the transposition.
-static void DoTransposeImpl(int64_t num_axes, const std::vector<int64_t>& target_dims,
+static void DoTransposeImpl(int64_t num_axes, gsl::span<const int64_t> target_dims,
                             size_t num_blocks, size_t num_elts_in_block, const std::vector<size_t>& stride,
                             const uint8_t* source, uint8_t* target, size_t element_size) {
   size_t blocksize = num_elts_in_block * element_size;
@@ -148,7 +148,7 @@ static void DoTransposeImpl(int64_t num_axes, const std::vector<int64_t>& target
   }
 }
 
-static void DoTransposeImpl(int64_t num_axes, const std::vector<int64_t>& target_dims,
+static void DoTransposeImpl(int64_t num_axes, gsl::span<const int64_t> target_dims,
                             size_t num_blocks, size_t num_elts_in_block, const std::vector<size_t>& stride,
                             const std::string* source, std::string* target) {
   ORT_ENFORCE(num_axes > 0, "Transpose not implemented for empty tensors.");
@@ -171,7 +171,7 @@ inline void CopyPrim(uint8_t* target, const uint8_t* source) {
 
 // The function does not check num_axes > 0 but this is expected.
 template <class T>
-static bool TypedDoTransposeEltWise(int64_t num_axes, const std::vector<int64_t>& target_dims, size_t num_blocks,
+static bool TypedDoTransposeEltWise(int64_t num_axes, gsl::span<const int64_t> target_dims, size_t num_blocks,
                                     const std::vector<size_t>& stride, const uint8_t* source, uint8_t* target) {
   constexpr bool enabled = utils::HasTypeWithSameSize<EnabledDataTypes, T>();
 
@@ -194,7 +194,7 @@ static bool TypedDoTransposeEltWise(int64_t num_axes, const std::vector<int64_t>
 // DoTransposeEltWise: specialization of DoTranspose for the num_elts_in_block=1 case.
 // copies source tensor to target, transposing elements.
 // The stride vector indicates the transposition.
-Status DoTransposeEltWise(int64_t num_axes, const std::vector<int64_t>& target_dims, size_t num_blocks,
+Status DoTransposeEltWise(int64_t num_axes, gsl::span<const int64_t> target_dims, size_t num_blocks,
                           const std::vector<size_t>& stride, const uint8_t* source, uint8_t* target,
                           size_t element_size) {
   bool enabled = false;
@@ -221,7 +221,7 @@ Status DoTransposeEltWise(int64_t num_axes, const std::vector<int64_t>& target_d
                                    element_size);
 }
 
-static void DoTransposeEltWise(int64_t num_axes, const std::vector<int64_t>& target_dims, size_t num_blocks,
+static void DoTransposeEltWise(int64_t num_axes, gsl::span<const int64_t> target_dims, size_t num_blocks,
                                const std::vector<size_t>& stride, const std::string* source, std::string* target) {
   ORT_ENFORCE(num_axes > 0, "Transpose not implemented for empty tensors.");
   MultiIndex mindex;
@@ -652,7 +652,7 @@ bool IsMovingSingleAxis(const std::vector<size_t>& permutations, size_t& from, s
 
 }  // namespace
 
-bool IsTransposeReshape(const std::vector<size_t>& perm, const std::vector<int64_t>& input_dims) {
+bool IsTransposeReshape(const std::vector<size_t>& perm, gsl::span<const int64_t> input_dims) {
   // As long as the dims with values > 1 stay in the same order, it's a reshape.
   // Example: Shape=(1,1,1024,4096) -> perm=(2,0,3,1).
   size_t last_permuted_axis = 0;
@@ -705,7 +705,7 @@ Status Transpose::Compute(OpKernelContext* ctx) const {
   ORT_ENFORCE(input_tensor_ptr != nullptr);
   const Tensor& X = *input_tensor_ptr;
   const TensorShape& input_shape = X.Shape();
-  const std::vector<int64_t>& input_dims = input_shape.GetDims();
+  auto input_dims = input_shape.GetDims();
   size_t rank = input_dims.size();
 
   std::vector<int64_t> output_dims(rank);

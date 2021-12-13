@@ -160,11 +160,6 @@ template <typename T>
 KernelCreateInfo BuildKernelCreateInfo();
 }  // namespace contrib
 
-namespace featurizers {
-template <typename T>
-KernelCreateInfo BuildKernelCreateInfo();
-}  // namespace featurizers
-
 namespace contrib {
 namespace cuda {
 template <typename T>

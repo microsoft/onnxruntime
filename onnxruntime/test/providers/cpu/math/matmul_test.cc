@@ -107,11 +107,11 @@ void RunMatMulTest(int32_t opset_version, bool is_a_constant, bool is_b_constant
   for (auto t : GenerateTestCases<T>()) {
     OpTester test("MatMul", opset_version);
 
-    int64_t size0 = TensorShape::ReinterpretBaseType(t.input0_dims).SizeHelper(0, t.input0_dims.size());
+    int64_t size0 = TensorShape::FromExistingBuffer(t.input0_dims).SizeHelper(0, t.input0_dims.size());
     std::vector<T> input0_vals(common_input_vals.cbegin(), common_input_vals.cbegin() + size0);
     test.AddInput<T>("A", t.input0_dims, input0_vals, is_a_constant);
 
-    int64_t size1 = TensorShape::ReinterpretBaseType(t.input1_dims).SizeHelper(0, t.input1_dims.size());
+    int64_t size1 = TensorShape::FromExistingBuffer(t.input1_dims).SizeHelper(0, t.input1_dims.size());
     std::vector<T> input1_vals(common_input_vals.cbegin(), common_input_vals.cbegin() + size1);
     test.AddInput<T>("B", t.input1_dims, input1_vals, is_b_constant);
 

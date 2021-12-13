@@ -4,8 +4,8 @@
 #pragma once
 #define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
 
+#include "onnxruntime_pybind.h"  // must use this for the include of <pybind11/pybind11.h>
 #include <pybind11/iostream.h>
-#include <pybind11/pybind11.h>
 #include <pybind11/numpy.h>
 #include <pybind11/stl.h>
 

@@ -225,6 +225,20 @@ struct TypeProto_SparseTensor final {
 };
 #endif
 
+#if !defined(DISABLE_OPTIONAL_TYPE)
+struct TypeProto_Optional final {
+  const TypeProto& elem_type() const { return g_host->TypeProto_Optional__elem_type(this); }
+  TypeProto* mutable_elem_type() { return g_host->TypeProto_Optional__mutable_elem_type(this); }
+  PROVIDER_DISALLOW_ALL(TypeProto_Optional)
+};
+#endif
+
+struct TypeProto_Sequence final {
+  const TypeProto& elem_type() const { return g_host->TypeProto_Sequence__elem_type(this); }
+  TypeProto* mutable_elem_type() { return g_host->TypeProto_Sequence__mutable_elem_type(this); }
+  PROVIDER_DISALLOW_ALL(TypeProto_Sequence)
+};
+
 struct TypeProto final {
   const TypeProto_Tensor& tensor_type() const { return g_host->TypeProto__tensor_type(this); }
   TypeProto_Tensor* mutable_tensor_type() { return g_host->TypeProto__mutable_tensor_type(this); }
@@ -234,10 +248,19 @@ struct TypeProto final {
   TypeProto_SparseTensor* mutable_sparse_tensor_type() { return g_host->TypeProto__mutable_sparse_tensor_type(this); }
 #endif
 
+#if !defined(DISABLE_OPTIONAL_TYPE)
+  const TypeProto_Optional& optional_type() const { return g_host->TypeProto__optional_type(this); }
+  TypeProto_Optional* mutable_optional_type() { return g_host->TypeProto__mutable_optional_type(this); }
+#endif
+
+  const TypeProto_Sequence& sequence_type() const { return g_host->TypeProto__sequence_type(this); }
+  TypeProto_Sequence* mutable_sequence_type() { return g_host->TypeProto__mutable_sequence_type(this); }
+
   enum ValueCase {
     kTensorType = 1,
     kSequenceType = 4,
     kMapType = 5,
+    kOptionalType = 9,
     kSparseTensorType = 8,
     kOpaqueType = 7,
     VALUE_NOT_SET = 0,
@@ -881,6 +904,8 @@ template <>
 inline bool Tensor::IsDataType<double>() const { return g_host->Tensor__IsDataType_double(this); }
 template <>
 inline bool Tensor::IsDataType<MLFloat16>() const { return g_host->Tensor__IsDataType_MLFloat16(this); }
+template <>
+inline bool Tensor::IsDataType<BFloat16>() const { return g_host->Tensor__IsDataType_BFloat16(this); }
 
 template <>
 inline bool* Tensor::MutableData<bool>() { return g_host->Tensor__MutableData_bool(this); }

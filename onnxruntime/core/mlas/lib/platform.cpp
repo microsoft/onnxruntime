@@ -123,6 +123,11 @@ Return Value:
 --*/
 {
 
+    this->ConvDepthwiseU8S8Kernel = MlasConvDepthwiseKernel<uint8_t, int8_t>;
+    this->ConvDepthwiseU8U8Kernel = MlasConvDepthwiseKernel<uint8_t, uint8_t>;
+    this->ConvDepthwiseS8S8Kernel = MlasConvDepthwiseKernel<int8_t, int8_t>;
+    this->ConvDepthwiseS8U8Kernel = MlasConvDepthwiseKernel<int8_t, uint8_t>;
+
 #if defined(MLAS_TARGET_AMD64_IX86)
 
     //
@@ -157,8 +162,6 @@ Return Value:
     this->QLinearAddU8Kernel = MlasQLinearAddU8Kernel;
     this->QuantizeLinearS8Kernel = MlasQuantizeLinearS8Kernel;
     this->QuantizeLinearU8Kernel = MlasQuantizeLinearU8Kernel;
-    this->ConvDepthwiseU8S8Kernel = MlasConvDepthwiseKernel<int8_t>;
-    this->ConvDepthwiseU8U8Kernel = MlasConvDepthwiseKernel<uint8_t>;
 
     this->NchwcBlockSize = 8;
     this->PreferredBufferAlignment = MLAS_DEFAULT_PREFERRED_BUFFER_ALIGNMENT;
@@ -238,6 +241,7 @@ Return Value:
                 this->GemvU8S8Kernel = MlasGemvU8S8KernelAvx2;
                 this->GemmU8U8Dispatch = &MlasGemmU8U8DispatchAvx2;
                 this->GemmU8U8Kernel = MlasGemmU8U8KernelAvx2;
+                this->ConvSymU8S8Dispatch = &MlasConvSymDispatchAvx2;
 
                 this->GemmFloatKernel = MlasGemmFloatKernelFma3;
                 this->GemmDoubleKernel = MlasGemmDoubleKernelFma3;
@@ -251,8 +255,10 @@ Return Value:
                 this->ErfKernelRoutine = MlasErfKernelFma3;
                 this->QLinearAddS8Kernel = MlasQLinearAddS8KernelAvx2;
                 this->QLinearAddU8Kernel = MlasQLinearAddU8KernelAvx2;
-                this->ConvDepthwiseU8S8Kernel = MlasConvDepthwiseKernelAvx2<int8_t>;
-                this->ConvDepthwiseU8U8Kernel = MlasConvDepthwiseKernelAvx2<uint8_t>;
+                this->ConvDepthwiseU8S8Kernel = MlasConvDepthwiseKernelAvx2<uint8_t, int8_t>;
+                this->ConvDepthwiseU8U8Kernel = MlasConvDepthwiseKernelAvx2<uint8_t, uint8_t>;
+                this->ConvDepthwiseS8S8Kernel = MlasConvDepthwiseKernelAvx2<int8_t, int8_t>;
+                this->ConvDepthwiseS8U8Kernel = MlasConvDepthwiseKernelAvx2<int8_t, uint8_t>;
                 this->ComputeSumExpF32Kernel = MlasComputeSumExpF32KernelFma3;
 
                 //
@@ -279,6 +285,7 @@ Return Value:
                     this->GemmU8U8Dispatch = &MlasGemmU8S8DispatchAvx2;
                     this->GemmU8S8Kernel = MlasGemmU8S8KernelAvxVnni;
                     this->GemvU8S8Kernel = MlasGemvU8S8KernelAvxVnni;
+                    this->ConvSymU8S8Dispatch = &MlasConvSymDispatchAvxVnni;
                 }
 
 #if !defined(ORT_MINIMAL_BUILD)
@@ -316,6 +323,7 @@ Return Value:
                         this->GemmU8S8Kernel = MlasGemmU8S8KernelAvx512Core;
                         this->GemvU8S8Kernel = MlasGemvU8S8KernelAvx512Core;
                         this->GemmU8U8Kernel = MlasGemmU8U8KernelAvx512Core;
+                        this->ConvSymU8S8Dispatch = &MlasConvSymDispatchAvx512Core;
 
                         //
                         // Check if the processor supports AVX512VNNI.
@@ -326,6 +334,7 @@ Return Value:
                             this->GemmU8U8Dispatch = &MlasGemmU8S8DispatchAvx2;
                             this->GemmU8S8Kernel = MlasGemmU8S8KernelAvx512Vnni;
                             this->GemvU8S8Kernel = MlasGemvU8S8KernelAvx512Vnni;
+                            this->ConvSymU8S8Dispatch = &MlasConvSymDispatchAvx512Vnni;
                         }
                     }
                 }
@@ -344,6 +353,7 @@ Return Value:
 #if defined(MLAS_TARGET_ARM64)
 
     this->GemmU8X8Dispatch = &MlasGemmU8X8DispatchNeon;
+    this->ConvSymU8S8Dispatch = &MlasConvSymDispatchNeon;
 
     //
     // Check if the processor supports ASIMD dot product instructions.
@@ -365,15 +375,17 @@ Return Value:
 
 #endif // MLAS_TARGET_ARM64
 #if defined(MLAS_TARGET_POWER)
-  this->GemmFloatKernel = MlasSgemmKernel;
+    this->GemmFloatKernel = MlasSgemmKernel;
+    this->GemmDoubleKernel = MlasDgemmKernel;
 #if defined(__linux__)  && defined(POWER10)
 #if (defined(__GNUC__) && ((__GNUC__ > 10) || (__GNUC__== 10 && __GNUC_MINOR__ >= 2))) || \
     (defined(__clang__) && (__clang_major__ >= 12))
-  unsigned long hwcap2 = getauxval(AT_HWCAP2);
-  bool HasP10Instructions = ((hwcap2 & PPC_FEATURE2_MMA) && (hwcap2 & PPC_FEATURE2_ARCH_3_1));
-  if (HasP10Instructions) {
-    this->GemmFloatKernel = MlasSgemmKernelPOWER10;
-  }
+    unsigned long hwcap2 = getauxval(AT_HWCAP2);
+    bool HasP10Instructions = ((hwcap2 & PPC_FEATURE2_MMA) && (hwcap2 & PPC_FEATURE2_ARCH_3_1));
+    if (HasP10Instructions) {
+        this->GemmFloatKernel = MlasSgemmKernelPOWER10;
+        this->GemmDoubleKernel = MlasDgemmKernelPOWER10;
+    }
 #endif
 #endif
 #endif

@@ -431,7 +431,7 @@ static Status ComputeImplOpset1011(OpKernelContext* p_op_kernel_context, int axi
                            "the tensor to be processed and a tensor containing k value");
   }
 
-  const vector<int64_t>& y_shape = Y->Shape().GetDims();
+  auto y_shape = Y->Shape().GetDims();
   if (y_shape.size() != 1 || y_shape[0] != 1) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "k tensor should be a 1D tensor of size 1");
   }

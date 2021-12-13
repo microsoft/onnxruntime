@@ -33,6 +33,7 @@
             <Functions>
               <Include>
                 <Function>^onnxruntime.*</Function> <!-- all code in the onnxruntime namespace -->
+                <Function>.*onnx_layout_transformation.*</Function>
               </Include>
               <Exclude>
                 <Function>^onnxruntime\:\:test.*</Function> <!-- exclude all code in the onnxruntime::test* namespaces -->

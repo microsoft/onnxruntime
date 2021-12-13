@@ -1,0 +1,15 @@
+---
+# clang-format settings for the C# code
+BasedOnStyle:  Microsoft
+
+BreakBeforeBraces: Custom
+BraceWrapping:
+  AfterCaseLabel:  true
+  BeforeWhile:     true
+  SplitEmptyFunction: false
+  SplitEmptyRecord: false
+  # unfortunately there's no config option for handling the 'get' or 'set' of properties 
+
+IndentCaseLabels: true
+KeepEmptyLinesAtTheStartOfBlocks: false
+SpacesInContainerLiterals: false

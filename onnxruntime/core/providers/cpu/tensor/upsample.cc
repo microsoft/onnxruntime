@@ -1028,7 +1028,7 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
                                 const std::vector<int64_t>& output_dims) const {
   const auto* X = context->Input<Tensor>(0);
   ORT_ENFORCE(X != nullptr);
-  const std::vector<int64_t>& dims = X->Shape().GetDims();
+  auto dims = X->Shape().GetDims();
   ORT_ENFORCE(output_dims.size() == dims.size(), "Rank of input and output tensor should be same.");
 
   Tensor* Y = context->Output(0, output_dims);

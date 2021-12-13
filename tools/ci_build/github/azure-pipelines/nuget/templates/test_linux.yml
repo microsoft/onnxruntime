@@ -11,6 +11,8 @@ jobs:
   pool: ${{ parameters.AgentPool }}
   dependsOn:
   - NuGet_Packaging_${{ parameters.ArtifactSuffix }}
+  # For downloading Linux CustomOp TestData
+  - Linux_C_API_Packaging_CPU_x64
   condition: succeeded()
   variables:
   - name: OnnxRuntimeBuildDirectory
@@ -26,7 +28,7 @@ jobs:
   - task: DownloadPipelineArtifact@0
     displayName: 'Download Linux CustomOp TestData'
     inputs:
-      artifactName: 'drop-linux'
+      artifactName: 'onnxruntime-linux-x64'
       targetPath: '$(Build.BinariesDirectory)/testdata'
 
   - template: get-nuget-package-version-as-variable.yml

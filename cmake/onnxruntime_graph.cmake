@@ -42,13 +42,6 @@ if (onnxruntime_DISABLE_CONTRIB_OPS)
     )
 endif()
 
-if(NOT onnxruntime_USE_FEATURIZERS)
-  list(APPEND onnxruntime_graph_src_exclude_patterns
-    "${ONNXRUNTIME_ROOT}/core/graph/featurizers_ops/*.h"
-    "${ONNXRUNTIME_ROOT}/core/graph/featurizers_ops/*.cc"
-  )
-endif()
-
 if(NOT onnxruntime_USE_DML)
   list(APPEND onnxruntime_graph_src_exclude_patterns
     "${ONNXRUNTIME_ROOT}/core/graph/dml_ops/*.h"

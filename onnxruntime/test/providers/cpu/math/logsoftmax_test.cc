@@ -262,5 +262,29 @@ TEST(LogSoftmaxOperator, InvalidAxis) {
   //", 1]. Its actual value is: -7");
 }
 
+TEST(LogSoftmaxOperator, 2DInputReduceOnAxis1WithLargeDim) {
+  std::vector<float> x_vals(1025, 0.0f);
+  std::vector<float> expected_vals(1025, 0.0f);
+  float incre_val = 0.01f;
+  for (size_t i = 0; i < x_vals.size(); ++i) {
+    x_vals[i] = incre_val;
+    incre_val += 0.01f;
+  }
+
+  float sum = 0.0f;
+  for (size_t i = 0; i < x_vals.size(); ++i) {
+    expected_vals[i] = std::exp(x_vals[i]);
+    sum += expected_vals[i];
+  }
+
+  for (size_t i = 0; i < x_vals.size(); ++i) {
+    expected_vals[i] = std::log(expected_vals[i] / sum);
+  }
+
+  std::vector<int64_t> dimensions = {1, 1025};
+
+  RunTest(x_vals, expected_vals, dimensions);
+}
+
 }  // namespace test
 }  // namespace onnxruntime

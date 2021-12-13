@@ -1,14 +1,14 @@
 # Python frontend owners
-orttraining/*.py @thiagocrepaldi @tlh20 @BowenBao @liqunfu @baijumeswani @SherlockNoMad
-orttraining/orttraining/python/** @thiagocrepaldi @tlh20 @BowenBao @liqunfu @baijumeswani @SherlockNoMad
-orttraining/orttraining/test/python/** @thiagocrepaldi @tlh20 @BowenBao @liqunfu @baijumeswani @SherlockNoMad
-orttraining/pytorch_frontend_examples/** @thiagocrepaldi @tlh20 @BowenBao @liqunfu @baijumeswani @SherlockNoMad
-onnxruntime/python/training/** @thiagocrepaldi @tlh20 @BowenBao @liqunfu @baijumeswani @SherlockNoMad
-onnxruntime/test/python/onnxruntime_test_ort_trainer.py @thiagocrepaldi @tlh20 @BowenBao @liqunfu @baijumeswani @SherlockNoMad
-onnxruntime/test/python/onnxruntime_test_ort_trainer_with_mixed_precision.py @thiagocrepaldi @tlh20 @BowenBao @liqunfu @baijumeswani @SherlockNoMad
-onnxruntime/test/python/onnxruntime_test_training_unit_tests.py @thiagocrepaldi @tlh20 @BowenBao @liqunfu @baijumeswani @SherlockNoMad
-onnxruntime/test/python/onnxruntime_test_training_unittest_utils.py @thiagocrepaldi @tlh20 @BowenBao @liqunfu @baijumeswani @SherlockNoMad
-samples/python/training/** @thiagocrepaldi @tlh20 @BowenBao @liqunfu @baijumeswani @SherlockNoMad
+orttraining/*.py @thiagocrepaldi @tlh20 @liqunfu @baijumeswani @SherlockNoMad @xadupre
+orttraining/orttraining/python/** @thiagocrepaldi @tlh20 @liqunfu @baijumeswani @SherlockNoMad @xadupre
+orttraining/orttraining/test/python/** @thiagocrepaldi @tlh20 @liqunfu @baijumeswani @SherlockNoMad @xadupre
+orttraining/pytorch_frontend_examples/** @thiagocrepaldi @tlh20 @liqunfu @baijumeswani @SherlockNoMad @xadupre
+onnxruntime/python/training/** @thiagocrepaldi @tlh20 @liqunfu @baijumeswani @SherlockNoMad @xadupre
+onnxruntime/test/python/onnxruntime_test_ort_trainer.py @thiagocrepaldi @tlh20 @liqunfu @baijumeswani @SherlockNoMad @xadupre
+onnxruntime/test/python/onnxruntime_test_ort_trainer_with_mixed_precision.py @thiagocrepaldi @tlh20 @liqunfu @baijumeswani @SherlockNoMad @xadupre
+onnxruntime/test/python/onnxruntime_test_training_unit_tests.py @thiagocrepaldi @tlh20 @liqunfu @baijumeswani @SherlockNoMad @xadupre
+onnxruntime/test/python/onnxruntime_test_training_unittest_utils.py @thiagocrepaldi @tlh20 @liqunfu @baijumeswani @SherlockNoMad @xadupre
+samples/python/training/** @thiagocrepaldi @tlh20 @liqunfu @baijumeswani @SherlockNoMad @xadupre
 
 # Mobile
 /onnxruntime/test/testdata/kernel_def_hashes/ @skottmckay @gwang-msft @YUNQIUGUO @edgchen1

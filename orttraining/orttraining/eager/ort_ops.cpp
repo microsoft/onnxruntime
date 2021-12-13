@@ -24,9 +24,7 @@ OrtValue reshape_copy(
   auto* ort_shape_tensor = shape_tensor.GetMutable<onnxruntime::Tensor>();
   CopyVectorToTensor<int64_t>(invoker, new_shape, *ort_shape_tensor);
   std::vector<OrtValue> result(1);
-  auto status = invoker.Invoke("Reshape", {input, shape_tensor}, result, nullptr);
-  if (!status.IsOK())
-    throw std::runtime_error("ORT return failure status: " + status.ErrorMessage());
+  ORT_THROW_IF_ERROR(invoker.Invoke("Reshape", {input, shape_tensor}, result, nullptr));
   return result[0];
 }
 
@@ -38,7 +36,7 @@ void copy(onnxruntime::ORTInvoker& invoker,
   auto* dst_tensor = dst.GetMutable<onnxruntime::Tensor>();
   if (!dst_tensor)
     throw std::runtime_error("ORT copy: dst is not a tensor");
-  ort_ep.GetDataTransfer()->CopyTensor(src_tensor, *dst_tensor);
+  ORT_THROW_IF_ERROR(ort_ep.GetDataTransfer()->CopyTensor(src_tensor, *dst_tensor));
 }
 
 } // namespace eager

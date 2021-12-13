@@ -15,7 +15,7 @@ namespace Dml
         : m_queue(std::make_shared<CommandQueue>(queue))
         , m_dmlRecorder(d3d12Device, dmlDevice, m_queue)
     {
-        THROW_IF_FAILED(dmlDevice->GetParentDevice(IID_PPV_ARGS(m_d3dDevice.GetAddressOf())));        
+        ORT_THROW_IF_FAILED(dmlDevice->GetParentDevice(IID_PPV_ARGS(m_d3dDevice.GetAddressOf())));        
     }
 
     void ExecutionContext::SetAllocator(std::weak_ptr<BucketizedBufferAllocator> allocator)

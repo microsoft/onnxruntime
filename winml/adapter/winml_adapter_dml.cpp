@@ -22,30 +22,25 @@ namespace winmla = Windows::AI::MachineLearning::Adapter;
 
 EXTERN_C IMAGE_DOS_HEADER __ImageBase;
 
-static std::string CurrentModulePath() {
-  char path[MAX_PATH];
-  FAIL_FAST_IF(0 == GetModuleFileNameA((HINSTANCE)&__ImageBase, path, _countof(path)));
+static std::wstring CurrentModulePath() {
+    WCHAR path[MAX_PATH];
+    FAIL_FAST_IF(0 == GetModuleFileNameW((HINSTANCE)&__ImageBase, path, _countof(path)));
 
-  char absolute_path[MAX_PATH];
-  char* name;
-  FAIL_FAST_IF(0 == GetFullPathNameA(path, _countof(path), absolute_path, &name));
+    WCHAR absolute_path[MAX_PATH];
+    WCHAR* name;
+    FAIL_FAST_IF(0 == GetFullPathNameW(path, _countof(path), absolute_path, &name));
 
-  auto idx = std::distance(absolute_path, name);
-  auto out_path = std::string(absolute_path);
-  out_path.resize(idx);
+    auto idx = std::distance(absolute_path, name);
+    auto out_path = std::wstring(absolute_path);
+    out_path.resize(idx);
 
-  return out_path;
+    return out_path;
 }
 
 Microsoft::WRL::ComPtr<IDMLDevice> CreateDmlDevice(ID3D12Device* d3d12Device) {
-#if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
   // Dynamically load DML to avoid WinML taking a static dependency on DirectML.dll
-  auto directml_dll = CurrentModulePath() + "\\DirectML.dll";
-  wil::unique_hmodule dmlDll(LoadLibraryExA(directml_dll.c_str(), nullptr, 0));
-#elif WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_PC_APP)
-  wil::unique_hmodule dmlDll(LoadPackagedLibrary(L"DirectML.dll", 0));
-#endif
-
+  auto directml_dll = CurrentModulePath() + L"DirectML.dll";
+  wil::unique_hmodule dmlDll(LoadLibraryExW(directml_dll.c_str(), nullptr, 0));
   THROW_LAST_ERROR_IF(!dmlDll);
 
   auto dmlCreateDevice1Fn = reinterpret_cast<decltype(&DMLCreateDevice1)>(
@@ -127,42 +122,6 @@ ORT_API_STATUS_IMPL(winmla::DmlExecutionProviderReleaseCompletedReferences, _In_
   auto dml_provider_internal = reinterpret_cast<::onnxruntime::IExecutionProvider*>(dml_provider);
   Dml::ReleaseCompletedReferences(dml_provider_internal);
 #endif  // USE_DML
-  return nullptr;
-  API_IMPL_END
-}
-
-ORT_API_STATUS_IMPL(winmla::DmlCreateGPUAllocationFromD3DResource, _In_ ID3D12Resource* pResource, _Out_ void** dml_resource) {
-  API_IMPL_BEGIN
-#ifdef USE_DML
-  *dml_resource = Dml::CreateGPUAllocationFromD3DResource(pResource);
-#else
-  *dml_resource = nullptr;
-#endif  // USE_DML USE_DML
-  return nullptr;
-  API_IMPL_END
-}
-
-ORT_API_STATUS_IMPL(winmla::DmlGetD3D12ResourceFromAllocation, _In_ OrtExecutionProvider* dml_provider, _In_ void* allocation, _Out_ ID3D12Resource** d3d_resource) {
-  API_IMPL_BEGIN
-#ifdef USE_DML
-  auto dml_provider_internal = reinterpret_cast<::onnxruntime::IExecutionProvider*>(dml_provider);
-  *d3d_resource =
-      Dml::GetD3D12ResourceFromAllocation(
-          dml_provider_internal->GetAllocator(0, ::OrtMemType::OrtMemTypeDefault).get(),
-          allocation);
-  (*d3d_resource)->AddRef();
-#else
-  *d3d_resource = nullptr;
-#endif  // USE_DML USE_DML
-  return nullptr;
-  API_IMPL_END
-}
-
-ORT_API_STATUS_IMPL(winmla::DmlFreeGPUAllocation, _In_ void* ptr) {
-  API_IMPL_BEGIN
-#ifdef USE_DML
-  Dml::FreeGPUAllocation(ptr);
-#endif  // USE_DML USE_DML
   return nullptr;
   API_IMPL_END
 }

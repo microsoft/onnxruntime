@@ -36,10 +36,6 @@
 #include "core/common/make_string.h"
 #include "core/common/status.h"
 
-#ifdef USE_MIMALLOC_ARENA_ALLOCATOR
-#include <mimalloc.h>
-#endif
-
 namespace onnxruntime {
 
 using TimePoint = std::chrono::high_resolution_clock::time_point;
@@ -258,7 +254,7 @@ void LogRuntimeError(uint32_t session_id, const common::Status& status, const ch
   } while (0)
 
 // C++ Core Guideline check suppression.
-#if defined(_MSC_VER) && !defined(__NVCC__)
+#if defined(_MSC_VER) && !defined(__NVCC__) && !defined(__clang__)
 #define GSL_SUPPRESS(tag) [[gsl::suppress(tag)]]
 #else
 #define GSL_SUPPRESS(tag)

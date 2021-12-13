@@ -1210,7 +1210,7 @@ void RunInParallelSection(ThreadPoolParallelSection &ps,
   // loops to execute from the current parallel section.
   std::function<void(unsigned)> worker_fn = [&ps](unsigned par_idx) {
     while (ps.active) {
-      if (!ps.current_loop) {
+      if (ps.current_loop.load() == nullptr) {
         onnxruntime::concurrency::SpinPause();
       } else {
         ps.workers_in_loop++;

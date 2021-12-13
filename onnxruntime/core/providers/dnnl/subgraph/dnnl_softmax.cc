@@ -20,7 +20,7 @@ void DnnlSoftmax::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
 
   auto axis = ReadAxis(node);
   
-  auto softmax_src_mem = sp.GetMemory(node.Input(IN_X).Name());
+  auto softmax_src_mem = sp.GetMemory(node.Input(IN_X));
   auto softmax_src_md = softmax_src_mem.get_desc();
 
   if (axis < 0)

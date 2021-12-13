@@ -56,14 +56,15 @@ struct NumericLimits<MLFloat16> {
 
 template <typename T>
 __global__ void BitonicTopK(const T* X, T* V, int64_t* I, const TArray<int64_t> elem_nums, size_t size, int32_t axis, int64_t K, int64_t aligned_K, int64_t largest, int64_t sorted, int64_t dimension, int64_t aligned_dimension, T type_min, T type_max) {
-  auto tid = threadIdx.x;
-  auto bid = blockIdx.x;
+  int64_t tid = threadIdx.x;
+  int64_t bid = blockIdx.x;
+  int64_t bdim = blockDim.x;
   extern __shared__ char shared_mem[];
   auto S = (KV<T>*)(shared_mem);
   auto mid_dim = axis == size - 1 ? 1 : elem_nums[axis + 1];
   auto left_dim = bid / mid_dim * elem_nums[axis];
   auto right_dim = axis == size - 1 ? 0 : bid % elem_nums[axis + 1];
-  for (auto i = tid; i < aligned_dimension; i += blockDim.x) {
+  for (auto i = tid; i < aligned_dimension; i += bdim) {
     S[i].key = i < dimension ? X[FROM(i)] : TRIVIAL;
     S[i].val = i;
   }

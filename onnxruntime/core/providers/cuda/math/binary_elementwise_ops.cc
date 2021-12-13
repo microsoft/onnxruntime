@@ -485,43 +485,33 @@ Status CompareFunction<T, CudaT>::CompareMethod(OpKernelContext* context, ImplCo
 //for other elementwise ops
 template <typename T>
 Status Greater<T>::ComputeInternal(OpKernelContext* context) const {
-  this->CompareMethod(context, &ImplT2_Greater);
-
-  return Status::OK();
+  return this->CompareMethod(context, &ImplT2_Greater);
 }
 
 template <typename T>
 Status Equal<T>::ComputeInternal(OpKernelContext* context) const {
-  this->CompareMethod(context, &ImplT2_Equal);
-
-  return Status::OK();
+  return this->CompareMethod(context, &ImplT2_Equal);
 }
 
 //Less op output tensor type is bool, so it cannot directly fit in the macros
 //for other elementwise ops
 template <typename T>
 Status Less<T>::ComputeInternal(OpKernelContext* context) const {
-  this->CompareMethod(context, &ImplT2_Less);
-
-  return Status::OK();
+  return this->CompareMethod(context, &ImplT2_Less);
 }
 
 //GreaterOrEqual op output tensor type is bool, so it cannot directly fit in the macros
 //for other elementwise ops
 template <typename T>
 Status GreaterOrEqual<T>::ComputeInternal(OpKernelContext* context) const {
-  this->CompareMethod(context, &ImplT2_GreaterOrEqual);
-
-  return Status::OK();
+  return this->CompareMethod(context, &ImplT2_GreaterOrEqual);
 }
 
 //LessOrEqual op output tensor type is bool, so it cannot directly fit in the macros
 //for other elementwise ops
 template <typename T>
 Status LessOrEqual<T>::ComputeInternal(OpKernelContext* context) const {
-  this->CompareMethod(context, &ImplT2_LessOrEqual);
-
-  return Status::OK();
+  return this->CompareMethod(context, &ImplT2_LessOrEqual);
 }
 
 BINARY_LOGICALOP_REGISTER_UZILHFD(Equal, 13)

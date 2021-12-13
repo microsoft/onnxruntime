@@ -16,12 +16,12 @@ Abstract:
 
 #include "mlasi.h"
 
-template<typename FilterType>
+template <typename InputType, typename FilterType>
 void
 MLASCALL
 MlasConvDepthwiseKernel(
-    const uint8_t* const* Input,
-    uint8_t InputZeroPoint,
+    const InputType* const* Input,
+    InputType InputZeroPoint,
     const FilterType* Filter,
     FilterType FilterZeroPoint,
     int32_t* Output,
@@ -35,29 +35,31 @@ MlasConvDepthwiseKernel(
     const __m128i InputZeroPointVector = _mm_set1_epi16(InputZeroPoint);
     const __m128i FilterZeroPointVector = _mm_set1_epi16(FilterZeroPoint);
 #elif defined(MLAS_NEON_INTRINSICS)
-    const uint8x8_t InputZeroPointVector = vdup_n_u8(InputZeroPoint);
+    const uint8x8_t InputZeroPointVector = vdup_n_u8(uint8_t(InputZeroPoint));
     const uint8x8_t FilterZeroPointVector = vdup_n_u8(uint8_t(FilterZeroPoint));
 #endif
 
     while (OutputCount > 0) {
-
         size_t ChannelOffset = 0;
         size_t c = Channels;
 
 #if defined(MLAS_SSE2_INTRINSICS)
 
         while (c >= 8) {
-
             __m128i Accumulator0 = _mm_setzero_si128();
             __m128i Accumulator1 = _mm_setzero_si128();
             size_t ChannelKernelOffset = ChannelOffset;
 
             for (size_t k = 0; k < KernelSize; k++) {
-
                 __m128i InputVector = _mm_loadl_epi64((const __m128i*)&Input[k][ChannelOffset]);
-                __m128i FilterVector = _mm_loadl_epi64((const __m128i*)&Filter[ChannelKernelOffset]);
+                __m128i FilterVector =
+                    _mm_loadl_epi64((const __m128i*)&Filter[ChannelKernelOffset]);
 
-                InputVector = _mm_unpacklo_epi8(InputVector, ZeroVector);
+                if (std::is_signed<InputType>::value) {
+                    InputVector = _mm_srai_epi16(_mm_unpacklo_epi8(ZeroVector, InputVector), 8);
+                } else {
+                    InputVector = _mm_unpacklo_epi8(InputVector, ZeroVector);
+                }
 
                 if (std::is_signed<FilterType>::value) {
                     FilterVector = _mm_srai_epi16(_mm_unpacklo_epi8(ZeroVector, FilterVector), 8);
@@ -91,30 +93,41 @@ MlasConvDepthwiseKernel(
 #elif defined(MLAS_NEON_INTRINSICS)
 
         while (c >= 8) {
-
             int32x4_t Accumulator0 = vdupq_n_s32(0);
             int32x4_t Accumulator1 = vdupq_n_s32(0);
             size_t ChannelKernelOffset = ChannelOffset;
 
             for (size_t k = 0; k < KernelSize; k++) {
+                uint8x8_t InputVector =
+                    vld1_u8(reinterpret_cast<const uint8_t*>(&Input[k][ChannelOffset]));
+                uint8x8_t FilterVector =
+                    vld1_u8(reinterpret_cast<const uint8_t*>(&Filter[ChannelKernelOffset]));
 
-                uint8x8_t InputVector = vld1_u8(&Input[k][ChannelOffset]);
-                uint8x8_t FilterVector = vld1_u8(reinterpret_cast<const uint8_t*>(&Filter[ChannelKernelOffset]));
-
-                int16x8_t InputVector16 = vreinterpretq_s16_u16(vsubl_u8(InputVector, InputZeroPointVector));
-                int16x8_t FilterVector16;
-
-                if (std::is_signed<FilterType>::value) {
-                    FilterVector16 = vsubl_s8(vreinterpret_s8_u8(FilterVector), vreinterpret_s8_u8(FilterZeroPointVector));
+                int16x8_t InputVector16;
+                if (std::is_signed<InputType>::value) {
+                    InputVector16 = vsubl_s8(vreinterpret_s8_u8(InputVector),
+                                             vreinterpret_s8_u8(InputZeroPointVector));
                 } else {
-                    FilterVector16 = vreinterpretq_s16_u16(vsubl_u8(FilterVector, FilterZeroPointVector));
+                    InputVector16 =
+                        vreinterpretq_s16_u16(vsubl_u8(InputVector, InputZeroPointVector));
                 }
 
-                Accumulator0 = vmlal_s16(Accumulator0, vget_low_s16(InputVector16), vget_low_s16(FilterVector16));
+                int16x8_t FilterVector16;
+                if (std::is_signed<FilterType>::value) {
+                    FilterVector16 = vsubl_s8(vreinterpret_s8_u8(FilterVector),
+                                              vreinterpret_s8_u8(FilterZeroPointVector));
+                } else {
+                    FilterVector16 =
+                        vreinterpretq_s16_u16(vsubl_u8(FilterVector, FilterZeroPointVector));
+                }
+
+                Accumulator0 = vmlal_s16(Accumulator0, vget_low_s16(InputVector16),
+                                         vget_low_s16(FilterVector16));
 #if defined(MLAS_NEON64_INTRINSICS)
                 Accumulator1 = vmlal_high_s16(Accumulator1, InputVector16, FilterVector16);
 #else
-                Accumulator1 = vmlal_s16(Accumulator1, vget_high_s16(InputVector16), vget_high_s16(FilterVector16));
+                Accumulator1 = vmlal_s16(Accumulator1, vget_high_s16(InputVector16),
+                                         vget_high_s16(FilterVector16));
 #endif
 
                 ChannelKernelOffset += Channels;
@@ -131,12 +144,10 @@ MlasConvDepthwiseKernel(
 #endif
 
         while (c > 0) {
-
             int32_t Accumulator = 0;
             size_t ChannelKernelOffset = ChannelOffset;
 
             for (size_t k = 0; k < KernelSize; k++) {
-
                 int32_t InputValue = int32_t(Input[k][ChannelOffset]) - InputZeroPoint;
                 int32_t FilterValue = int32_t(Filter[ChannelKernelOffset]) - FilterZeroPoint;
 
@@ -183,13 +194,42 @@ MlasConvDepthwiseKernel(
     size_t KernelSize
     );
 
+template
+void
+MLASCALL
+MlasConvDepthwiseKernel(
+    const int8_t* const* Input,
+    int8_t InputZeroPoint,
+    const int8_t* Filter,
+    int8_t FilterZeroPoint,
+    int32_t* Output,
+    size_t Channels,
+    size_t OutputCount,
+    size_t KernelSize
+    );
+
+template
+void
+MLASCALL
+MlasConvDepthwiseKernel(
+    const int8_t* const* Input,
+    int8_t InputZeroPoint,
+    const uint8_t* Filter,
+    uint8_t FilterZeroPoint,
+    int32_t* Output,
+    size_t Channels,
+    size_t OutputCount,
+    size_t KernelSize
+    );
+
 void
 MLASCALL
 MlasConvDepthwise(
-    const uint8_t* const* Input,
-    uint8_t InputZeroPoint,
-    const uint8_t* Filter,
-    uint8_t FilterZeroPoint,
+    const void* const* Input,
+    int32_t InputZeroPoint,
+    bool InputIsSigned,
+    const void* Filter,
+    int32_t FilterZeroPoint,
     bool FilterIsSigned,
     int32_t* Output,
     size_t Channels,
@@ -219,6 +259,9 @@ Arguments:
 
     InputZeroPoint - Supplies the zero point offset of the input tensor.
 
+    InputIsSigned - Supplies true if the input tensor is signed data, else
+        false if the input tensor is unsigned data.
+
     Filter - Supplies the filter tensor.
 
     FilterZeroPoint - Supplies the zero point offset of the filter tensor.
@@ -242,36 +285,37 @@ Return Value:
 
 --*/
 {
-    if (FilterIsSigned) {
+    if (InputIsSigned) {
+        if (FilterIsSigned) {
 
-#if defined(MLAS_TARGET_AMD64)
-        MlasPlatform.ConvDepthwiseU8S8Kernel(
-#else
-        MlasConvDepthwiseKernel<int8_t>(
-#endif
-            Input,
-            InputZeroPoint,
-            reinterpret_cast<const int8_t*>(Filter),
-            static_cast<int8_t>(FilterZeroPoint),
-            Output,
-            Channels,
-            OutputCount,
-            KernelSize);
+            MlasPlatform.ConvDepthwiseS8S8Kernel(
+                reinterpret_cast<const int8_t* const*>(Input), static_cast<int8_t>(InputZeroPoint),
+                reinterpret_cast<const int8_t*>(Filter), static_cast<int8_t>(FilterZeroPoint),
+                Output, Channels, OutputCount, KernelSize
+                );
+        } else {
 
+            MlasPlatform.ConvDepthwiseS8U8Kernel(
+                reinterpret_cast<const int8_t* const*>(Input), static_cast<int8_t>(InputZeroPoint),
+                reinterpret_cast<const uint8_t*>(Filter), static_cast<uint8_t>(FilterZeroPoint),
+                Output, Channels, OutputCount, KernelSize
+                );
+        }
     } else {
+        if (FilterIsSigned) {
 
-#if defined(MLAS_TARGET_AMD64)
-        MlasPlatform.ConvDepthwiseU8U8Kernel(
-#else
-        MlasConvDepthwiseKernel<uint8_t>(
-#endif
-            Input,
-            InputZeroPoint,
-            Filter,
-            FilterZeroPoint,
-            Output,
-            Channels,
-            OutputCount,
-            KernelSize);
+            MlasPlatform.ConvDepthwiseU8S8Kernel(
+                reinterpret_cast<const uint8_t* const*>(Input), static_cast<uint8_t>(InputZeroPoint),
+                reinterpret_cast<const int8_t*>(Filter), static_cast<int8_t>(FilterZeroPoint),
+                Output, Channels, OutputCount, KernelSize
+                );
+        } else {
+
+            MlasPlatform.ConvDepthwiseU8U8Kernel(
+                reinterpret_cast<const uint8_t* const*>(Input), static_cast<uint8_t>(InputZeroPoint),
+                reinterpret_cast<const uint8_t*>(Filter), static_cast<uint8_t>(FilterZeroPoint),
+                Output, Channels, OutputCount, KernelSize
+                );
+        }
     }
 }

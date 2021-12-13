@@ -31,7 +31,7 @@ public:
 
         // The below attributes are temporarily not supported:
         int storageOrder = kernelInfo.GetOptionalAttribute<int>(AttrName::StorageOrder, 0);
-        THROW_HR_IF(E_NOTIMPL, storageOrder != 0);
+        ORT_THROW_HR_IF(E_NOTIMPL, storageOrder != 0);
 
         const bool hasDilations =
             std::any_of(

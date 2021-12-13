@@ -924,6 +924,10 @@
         16515685968327103576
     ],
     [
+        "Identity ai.onnx CPUExecutionProvider",
+        17661628575887109792
+    ],
+    [
         "If ai.onnx CPUExecutionProvider",
         2236645891232685176
     ],
@@ -934,6 +938,10 @@
     [
         "If ai.onnx CPUExecutionProvider",
         17525337343748410800
+    ],
+    [
+        "If ai.onnx CPUExecutionProvider",
+        14605093928914589528
     ],
     [
         "InstanceNormalization ai.onnx CPUExecutionProvider",
@@ -1072,6 +1080,10 @@
         18226282479886582688
     ],
     [
+        "Loop ai.onnx CPUExecutionProvider",
+        3437102755395866648
+    ],
+    [
         "LpNormalization ai.onnx CPUExecutionProvider",
         5940113166682524360
     ],
@@ -1142,6 +1154,10 @@
     [
         "MatMul ai.onnx CPUExecutionProvider",
         16997422825780227992
+    ],
+    [
+        "MatMulInteger ai.onnx CPUExecutionProvider",
+        10315437332566125928
     ],
     [
         "MatMulInteger ai.onnx CPUExecutionProvider",
@@ -1505,11 +1521,19 @@
     ],
     [
         "QLinearConv ai.onnx CPUExecutionProvider",
+        1301685544574905024
+    ],
+    [
+        "QLinearConv ai.onnx CPUExecutionProvider",
         6630340551594954312
     ],
     [
         "QLinearMatMul ai.onnx CPUExecutionProvider",
         17071666635484846840
+    ],
+    [
+        "QLinearMatMul ai.onnx CPUExecutionProvider",
+        7936962119982759552
     ],
     [
         "QuantizeLinear ai.onnx CPUExecutionProvider",

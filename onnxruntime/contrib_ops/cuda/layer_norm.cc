@@ -61,6 +61,12 @@ Status LayerNorm<T, U, simplified>::ComputeInternal(OpKernelContext* ctx) const 
   auto bias_data = (simplified || (nullptr == bias)) ? nullptr : reinterpret_cast<const CudaT*>(bias->template Data<T>());
 
   const TensorShape& x_shape = X->Shape();
+  // Sometimes due to conversion issue, the input 'X' has no data which is a case that cuda kernel cannot handle.
+  // Provide more error infomation here instead of CUDA errors.
+  if (X->SizeInBytes() == 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Inputs 'X' has no data from upstream nodes");
+  }
+
   const int64_t axis = HandleNegativeAxis(axis_, x_shape.NumDimensions());
 
   int n1 = gsl::narrow<int>(x_shape.SizeToDimension(axis));

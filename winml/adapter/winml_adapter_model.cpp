@@ -213,6 +213,19 @@ std::unique_ptr<ONNX_NAMESPACE::ModelProto> OrtModel::DetachModelProto() {
   return std::move(model_proto_);
 }
 
+void OrtModel::RefreshModelInfo() {
+  auto new_info = std::make_unique<ModelInfo>(model_proto_.get());
+  model_info_->author_ = std::move(new_info->author_);
+  model_info_->description_ = std::move(new_info->description_);
+  model_info_->domain_= std::move(new_info->domain_);
+  model_info_->input_features_ = std::move(new_info->input_features_);
+  model_info_->model_metadata_ = std::move(new_info->model_metadata_);
+  model_info_->name_ = std::move(new_info->name_);
+  model_info_->output_features_ = std::move(new_info->output_features_);
+  model_info_->requires_float16_support_ = std::move(new_info->requires_float16_support_);
+  model_info_->version_ = std::move(new_info->version_);
+}
+
 ORT_API_STATUS_IMPL(winmla::CreateModelFromPath, _In_ const char* model_path, _In_ size_t size, _Outptr_ OrtModel** out) {
   API_IMPL_BEGIN
   if (auto status = OrtModel::CreateOrtModelFromPath(model_path, size, out)) {
@@ -777,6 +790,137 @@ ORT_API_STATUS_IMPL(winmla::OperatorGetOutputName, _In_ const char* const op_typ
   API_IMPL_BEGIN
   auto schema = GetSchema(op_type, opset, op_domain);
   *name = schema->outputs().at(index).GetName().c_str();
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(winmla::JoinModels,
+  _In_ OrtModel* first_model,
+  _In_ OrtModel* second_model,
+  _In_ const char* const* output_names,
+  _In_ const char* const* input_names,
+  size_t num_linkages,
+  bool promote_unlinked_outputs,
+  _In_ const char* const join_node_prefix) {
+  API_IMPL_BEGIN
+
+  std::string second_model_prefix = join_node_prefix;
+  auto first_model_proto = first_model->UseModelProto();
+  auto second_model_proto = second_model->DetachModelProto();
+
+  // Remove old outputs
+  if (promote_unlinked_outputs) {
+    // Copy the output of the first model
+    auto first_outputs = first_model_proto->graph().output();
+    
+    // Clear all outputs
+    first_model_proto->mutable_graph()->mutable_output()->Clear();
+
+    // Add back output
+    for (int i = first_outputs.size() - 1; i >= 0 ; i--) {
+      auto& output = first_outputs.at(i);
+      auto output_name = output.name();
+
+      auto found_it = std::find_if(output_names, output_names + num_linkages,
+                        [output_name](auto& name) { return std::strcmp(name, output_name.c_str()) == 0; });
+      if (found_it == (output_names + num_linkages)) {
+        // if output.name() is not found in the linkages, it is unlinked, and it should be promoted
+        auto& promoted_output = *first_model_proto->mutable_graph()->add_output();
+        promoted_output = std::move(output);
+      }
+    }
+  } else {
+    // remove all first model outputs
+    first_model_proto->mutable_graph()->mutable_output()->Clear();
+  }
+
+  // add all model outputs from the second model
+  for (int i = 0; i < second_model_proto->graph().output_size(); i++) {
+    auto& other_output = *second_model_proto->mutable_graph()->mutable_output(i);
+    *other_output.mutable_name() = second_model_prefix + other_output.name();
+    auto& output = *first_model_proto->mutable_graph()->add_output();
+    output = std::move(other_output);
+  }
+
+  // loop through second model inputs and promote the unlinked ones to the main model inputs
+  for (int i = 0; i < second_model_proto->graph().input_size(); i++) {
+    auto& other_input = *second_model_proto->mutable_graph()->mutable_input(i);
+    auto old_name = other_input.name();
+    *other_input.mutable_name() = second_model_prefix + old_name;
+
+    auto found_it = std::find_if(input_names, input_names + num_linkages,
+                                 [old_name](auto& name) { return std::strcmp(name, old_name.c_str()) == 0; });
+    bool is_linked = found_it != (input_names + num_linkages);  // figure out if other_input.name() exists in the output_names mapped
+    if (!is_linked) {
+      auto& input = *first_model_proto->mutable_graph()->add_input();
+      input = std::move(other_input);
+    }
+  }
+
+  // add all initializers
+  for (int i = 0; i < second_model_proto->graph().initializer_size(); i++) {
+    auto& other_initializer = *second_model_proto->mutable_graph()->mutable_initializer(i);
+    *other_initializer.mutable_name() = second_model_prefix + other_initializer.name();
+    auto& initializer = *first_model_proto->mutable_graph()->add_initializer();
+    initializer = std::move(other_initializer);
+  }
+
+  // add all nodes
+  for (int i = 0; i < second_model_proto->graph().node_size(); i++) {
+    auto& other_node = *second_model_proto->mutable_graph()->mutable_node(i);
+    if (0 != strcmp(other_node.name().c_str(), "")) {
+      *other_node.mutable_name() = second_model_prefix + other_node.name();
+    }
+    for (int j = 0; j < other_node.input_size(); j++) {
+      *other_node.mutable_input(j) = second_model_prefix + other_node.input(j);
+    }
+    for (int j = 0; j < other_node.output_size(); j++) {
+      *other_node.mutable_output(j) = second_model_prefix + other_node.output(j);
+    }
+    auto& node = *first_model_proto->mutable_graph()->add_node();
+    node = std::move(other_node);
+  }
+
+  // WinML+RT API only supports opset 7 and above models.
+  // In practice this number is always overwritten by the for loop below which will find the actual opset version.
+  int64_t opset = 7;
+  for (int i = 0; i < second_model_proto->opset_import_size(); i++) {
+    auto mutable_opset_import = second_model_proto->mutable_opset_import(i);
+    auto domain = mutable_opset_import->has_domain() ? mutable_opset_import->domain() : std::string("");
+    auto version = mutable_opset_import->version();
+
+    // does the domain exist in the first model?
+    auto found_it = std::find_if(first_model_proto->mutable_opset_import()->begin(), first_model_proto->mutable_opset_import()->end(),
+                                 [&domain](auto& mutable_opset_import) {
+                                    
+                                    auto first_model_domain = mutable_opset_import.has_domain() ? mutable_opset_import.domain() : std::string("");
+                                    return 0 == strcmp(first_model_domain.c_str(), domain.c_str());
+                                 });
+    if (found_it != first_model_proto->mutable_opset_import()->end()) {
+      found_it->set_version(std::max(found_it->version(), version));
+      if (0 == strcmp(domain.c_str(), "")) {
+        opset = found_it->version();
+      }
+    }
+  }
+
+  // add identity ops to rename all of the first model outputs to secondmodel inputs with prefix for each linkage
+  for (int i = 0; i < num_linkages; i++) {    
+    auto op_output_name = second_model_prefix + *(input_names + i);
+    const char* const op_output_name_const_str = op_output_name.c_str();
+    std::string name = "IdentityTo";
+    name += second_model_prefix + *(input_names + i);
+    ModelAddOperator(first_model,
+                     "Identity",
+                     name.c_str(),
+                     opset,
+                     "",
+                     (output_names + i), 1,
+                     &op_output_name_const_str, 1,
+                     nullptr, nullptr, 0);
+  }
+  first_model->RefreshModelInfo();
+
   return nullptr;
   API_IMPL_END
 }

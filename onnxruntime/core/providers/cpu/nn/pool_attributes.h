@@ -109,7 +109,7 @@ struct PoolAttributes {
     return output_dims;
   }
 
-  void InferOutputSize(const std::vector<int64_t>& input_dims,
+  void InferOutputSize(gsl::span<const int64_t> input_dims,
                        std::vector<int64_t>* output_dims,
                        std::vector<int64_t>* actual_pads) const {
     ORT_ENFORCE(input_dims.size() >= 2);

@@ -47,9 +47,6 @@
 	path = server/external/spdlog
 	url = https://github.com/gabime/spdlog.git
 	branch = master
-[submodule "cmake/external/FeaturizersLibrary"]
-	path = cmake/external/FeaturizersLibrary
-	url = https://github.com/microsoft/FeaturizersLibrary.git
 [submodule "cmake/external/libprotobuf-mutator"]
 	path = cmake/external/libprotobuf-mutator
 	url = https://github.com/google/libprotobuf-mutator.git
@@ -59,9 +56,6 @@
 [submodule "cmake/external/SafeInt/safeint"]
 	path = cmake/external/SafeInt/safeint
 	url = https://github.com/dcleblanc/SafeInt.git
-[submodule "cmake/external/optional-lite"]
-	path = cmake/external/optional-lite
-	url = https://github.com/martinmoene/optional-lite.git
 [submodule "cmake/external/mp11"]
 	path = cmake/external/mp11
 	url = https://github.com/boostorg/mp11.git

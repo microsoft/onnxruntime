@@ -77,7 +77,7 @@ enum class ApplicableMatrixReduction {
  */
 ApplicableMatrixReduction get_applicable_matrix_reduction(
     const cudnnReduceTensorOp_t cudnn_reduce_op,
-    const std::vector<int64_t>& dims, const std::vector<int64_t>& axes,
+    gsl::span<const int64_t> dims, gsl::span<const int64_t> axes,
     int& m, int& n);
 
 /**

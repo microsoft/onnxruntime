@@ -9,9 +9,9 @@ Changes
 -------
 
 1.10.0
-^^^^^
+^^^^^^
 
-Release Notes : TODO
+Release Notes : TBD
 
 1.9.0
 ^^^^^

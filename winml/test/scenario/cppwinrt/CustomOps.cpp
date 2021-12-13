@@ -14,6 +14,7 @@
 
 // For custom operator and shape inferencing support
 #include "core/providers/dml/DmlExecutionProvider/inc/MLOperatorAuthor.h"
+#include "core/providers/dml/DmlExecutionProvider/src/ErrorHandling.h"
 #include "core/providers/dml/OperatorAuthorHelper/MLOperatorAuthorHelper.h"
 #include "core/providers/dml/OperatorAuthorHelper/OperatorHelper.h"
 #include "core/providers/dml/OperatorAuthorHelper/OperatorRegistration.h"

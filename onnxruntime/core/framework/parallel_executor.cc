@@ -35,7 +35,7 @@ Status ParallelExecutor::Execute(const SessionState& session_state, const std::v
   TimePoint tp;
   const bool is_profiler_enabled = session_state.Profiler().IsEnabled();
   if (is_profiler_enabled) {
-    tp = session_state.Profiler().StartTime();
+    tp = session_state.Profiler().Start();
   }
 
   root_frame_ = std::make_unique<ExecutionFrame>(feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches,
@@ -142,7 +142,7 @@ Status ParallelExecutor::RunNodeAsync(size_t p_node_index,
     OpKernelContextInternal op_kernel_context(session_state, *root_frame_, *p_op_kernel, logger, terminate_flag_);
 
     if (f_profiler_enabled) {
-      sync_time_begin = session_state.Profiler().StartTime();
+      sync_time_begin = session_state.Profiler().Start();
     }
     // sync before compute
     int queue_id = p_op_kernel->KernelDef().ExecQueueId();
@@ -183,7 +183,7 @@ Status ParallelExecutor::RunNodeAsync(size_t p_node_index,
                                                      sync_time_begin,
                                                      {{"op_name", p_op_kernel->KernelDef().OpName()}});
       concurrency::ThreadPool::StartProfiling(session_state.GetThreadPool());
-      kernel_begin_time = session_state.Profiler().StartTime();
+      kernel_begin_time = session_state.Profiler().Start();
     }
 
     // call compute on the kernel
@@ -223,7 +223,7 @@ Status ParallelExecutor::RunNodeAsync(size_t p_node_index,
                                                       {"provider", p_op_kernel->KernelDef().Provider()},
                                                       {"thread_scheduling_stats", concurrency::ThreadPool::StopProfiling(session_state.GetThreadPool())}});
 
-      sync_time_begin = session_state.Profiler().StartTime();
+      sync_time_begin = session_state.Profiler().Start();
     }
     // sync after compute for outputs
     if (exec_plan.NodeHasFence(node_index)) {

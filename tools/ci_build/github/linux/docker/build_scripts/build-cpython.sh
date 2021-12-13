@@ -58,9 +58,6 @@ rm -rf Python-${CPYTHON_VERSION} Python-${CPYTHON_VERSION}.tgz Python-${CPYTHON_
 # we don't need libpython*.a, and they're many megabytes
 find ${PREFIX} -name '*.a' -print0 | xargs -0 rm -f
 
-# We do not need the Python test suites
-find ${PREFIX} -depth \( -type d -a -name test -o -name tests \) | xargs rm -rf
-
 # We do not need precompiled .pyc and .pyo files.
 clean_pyc ${PREFIX}
 

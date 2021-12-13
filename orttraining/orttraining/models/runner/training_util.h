@@ -115,7 +115,7 @@ class RandomDataSet : public DataSet {
 class TrainingUtil {
  public:
   template <typename T>
-  static void CreateCpuMLValue(const std::vector<int64_t>& dims,
+  static void CreateCpuMLValue(gsl::span<const int64_t> dims,
                                const std::vector<T>& value,
                                OrtValue* p_mlvalue,
                                AllocatorPtr alloc = nullptr) {

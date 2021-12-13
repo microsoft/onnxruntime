@@ -11,8 +11,8 @@ void DnnlSoftmaxGrad::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node)
   auto eng = sp.GetEngine();
 
   //get what's available as input
-  auto src_mem = sp.GetMemory(node.Input(IN_X).Name());
-  auto diff_dst_mem = sp.GetMemory(node.Input(IN_dY).Name());
+  auto src_mem = sp.GetMemory(node.Input(IN_X));
+  auto diff_dst_mem = sp.GetMemory(node.Input(IN_dY));
 
   //reorder if needed (gpu)
   auto softmax_bwd_src_mem = sp.GetMemoryAndReshape(node.Input(IN_X), src_mem.get_desc(), eng);

@@ -58,9 +58,7 @@ const OrtApi* _winml::GetVersionedOrtApi() {
   }
 
   const auto ort_api_base = ort_get_api_base_fn();
-
-  static const uint32_t ort_version = 2;
-  return ort_api_base->GetApi(ort_version);
+  return ort_api_base->GetApi(ORT_API_VERSION);
 }
 
 static const WinmlAdapterApi* GetVersionedWinmlAdapterApi(const OrtApi* ort_api) {
@@ -73,7 +71,7 @@ static const WinmlAdapterApi* GetVersionedWinmlAdapterApi(const OrtApi* ort_api)
     FAIL_FAST_HR(HRESULT_FROM_WIN32(GetLastError()));
   }
 
-  return ort_get_winml_adapter_fn(ort_api);
+  return ort_get_winml_adapter_fn(ORT_API_VERSION);
 }
 
 const WinmlAdapterApi* _winml::GetVersionedWinmlAdapterApi() {

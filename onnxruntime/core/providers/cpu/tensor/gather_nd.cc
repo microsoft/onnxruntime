@@ -166,9 +166,9 @@ Status GatherND::Compute(OpKernelContext* context) const {
   auto bytes_per_value = input_tensor->DataType()->Size();
 
   if (indices_tensor->IsDataType<int32_t>()) {
-    PrepareForCompute<int32_t>(input_shape, indices_tensor, bytes_per_value, p, tp);
+    ORT_RETURN_IF_ERROR(PrepareForCompute<int32_t>(input_shape, indices_tensor, bytes_per_value, p, tp));
   } else if (indices_tensor->IsDataType<int64_t>()) {
-    PrepareForCompute<int64_t>(input_shape, indices_tensor, bytes_per_value, p, tp);
+    ORT_RETURN_IF_ERROR(PrepareForCompute<int64_t>(input_shape, indices_tensor, bytes_per_value, p, tp));
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "indices tensor data type not supported");
   }

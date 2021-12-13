@@ -81,7 +81,7 @@ Status ConcatBase::PrepareForCompute(OpKernelContext* ctx,
     const auto& shape = input->Shape();
     const auto num_elements = shape.Size();
     if (num_elements > 0) {
-      reference_dims = shape.GetDims();
+      reference_dims = shape.GetDimsAsVector();
       reference_rank = reference_dims.size();
       reference_tensor_index = index;
       input_tensor_sizes.push_back(num_elements);
@@ -97,7 +97,7 @@ Status ConcatBase::PrepareForCompute(OpKernelContext* ctx,
     // No shape/rank validations will be done (as all inputs are empty).
     // But the rest of the execution flow (filling in the Prepare instance - p)
     // can use this info.
-    reference_dims = input_tensors[0]->Shape().GetDims();
+    reference_dims = input_tensors[0]->Shape().GetDimsAsVector();
     reference_rank = reference_dims.size();
   }
 
@@ -116,7 +116,7 @@ Status ConcatBase::PrepareForCompute(OpKernelContext* ctx,
     const auto* input = input_tensors[index];
     ORT_ENFORCE(input != nullptr, "input count mismatch");
     const auto& input_shape = input->Shape();
-    const auto& input_dims = input_shape.GetDims();
+    const auto input_dims = input_shape.GetDims();
 
     // Skip shape/rank validation for inputs that are empty.
     // The ONNX spec states that all dim values along axes not concatentated on

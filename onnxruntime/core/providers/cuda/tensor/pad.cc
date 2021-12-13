@@ -91,7 +91,7 @@ Status Pad<T>::ComputeInternal(OpKernelContext* ctx) const {
   std::vector<int64_t> slices;
   if (is_dynamic_) {
     const Tensor& pads_tensor = *ctx->Input<Tensor>(1);
-    const std::vector<int64_t>& pads_tensor_dims = pads_tensor.Shape().GetDims();
+    const auto pads_tensor_dims = pads_tensor.Shape().GetDims();
     ORT_ENFORCE(utils::IsPrimitiveDataType<int64_t>(pads_tensor.DataType()),
                 "Pads tensor should be an INT64 tensor");
     ORT_ENFORCE(pads_tensor_dims.size() == 1 || (pads_tensor_dims.size() == 2 && pads_tensor_dims[0] == 1),
@@ -132,7 +132,7 @@ Status Pad<T>::ComputeInternal(OpKernelContext* ctx) const {
   TArray<int64_t> input_dims(input_shape.GetDims());
   TArray<int64_t> input_strides(input_pitches);
 
-  std::vector<int64_t> output_dims(input_shape.GetDims());
+  std::vector<int64_t> output_dims(input_shape.GetDimsAsVector());
   ORT_ENFORCE(dimension_count * 2 == p_pads->size(), "'pads' attribute has wrong number of values");
 
   // Calculate output dimensions, and handle any negative padding

@@ -22,7 +22,7 @@ void DnnlLrn::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   auto bias = ReadBias(node);
   auto size = ReadSize(node);
 
-  auto lrn_src_mem = sp.GetMemory(node.Input(IN_X).Name());
+  auto lrn_src_mem = sp.GetMemory(node.Input(IN_X));
   auto lrn_src_md = lrn_src_mem.get_desc();
 
   auto lrn_desc = dnnl::lrn_forward::desc(dnnl::prop_kind::forward_scoring, dnnl::algorithm::lrn_across_channels, lrn_src_md, size, alpha, beta, bias);

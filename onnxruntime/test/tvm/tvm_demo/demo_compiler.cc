@@ -70,7 +70,7 @@ DemoTVMTensorCtx BuildTVMIR(const onnxruntime::Graph& graph) {
     }
 
     // call OpIBuilder's Evaluate to build tvm IR
-    op_ir_builder->Evaluate(inputs, node, demo_codegen_ctx, outputs);
+    ORT_THROW_IF_ERROR(op_ir_builder->Evaluate(inputs, node, demo_codegen_ctx, outputs));
 
     // Store outputs
     for (size_t def_id = 0; def_id < node.OutputDefs().size(); ++def_id) {
@@ -151,7 +151,7 @@ static void TraverseAndSchedule(
     std::shared_ptr<tvm_codegen::TVMScheduleBuilder>& schedule_builder,
     const tvm::Tensor& tensor,
     tvm_codegen::ScheduleContext& ctx_schedule) {
-  schedule_builder->Evaluate(tensor, nullptr, demo_codegen_ctx, ctx_schedule);
+  ORT_THROW_IF_ERROR(schedule_builder->Evaluate(tensor, nullptr, demo_codegen_ctx, ctx_schedule));
 
   // Traverse tensor's children (inputs)
   for (auto& t : tensor->op->InputTensors()) {

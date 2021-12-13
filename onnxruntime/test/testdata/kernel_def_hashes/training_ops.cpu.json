@@ -100,6 +100,10 @@
         2657523710083167200
     ],
     [
+        "LogSoftmaxGrad_13 com.microsoft CPUExecutionProvider",
+        1917456134240183096
+    ],
+    [
         "MaxPoolGrad ai.onnx CPUExecutionProvider",
         17526822836083413768
     ],
@@ -166,6 +170,10 @@
     [
         "Scale com.microsoft CPUExecutionProvider",
         17615601449933173216
+    ],
+    [
+        "SigmoidGrad com.microsoft CPUExecutionProvider",
+        13197741041840309432
     ],
     [
         "SimplifiedLayerNormalizationGrad com.microsoft CPUExecutionProvider",
@@ -236,6 +244,10 @@
         4483165757863027152
     ],
     [
+        "SoftmaxGrad_13 com.microsoft CPUExecutionProvider",
+        8375491041422269560
+    ],
+    [
         "SparseSoftmaxCrossEntropy ai.onnx CPUExecutionProvider",
         10638058507241762520
     ],
@@ -246,6 +258,10 @@
     [
         "SplitTraining com.microsoft CPUExecutionProvider",
         12689204749897364688
+    ],
+    [
+        "TanhGrad com.microsoft CPUExecutionProvider",
+        7147744030478490408
     ],
     [
         "ZeroGradient com.microsoft CPUExecutionProvider",

@@ -315,7 +315,7 @@ class ORTTrainer(object):
             training_mode_node.attribute[0].name = "value"
             ratio_node.attribute[0].name = "value"
 
-        _inference_sess = ort.InferenceSession(onnx_model_copy.SerializeToString())
+        _inference_sess = ort.InferenceSession(onnx_model_copy.SerializeToString(), providers=ort.get_available_providers())
         inf_inputs = {}
         for i, input_elem in enumerate(input):
             inf_inputs[_inference_sess.get_inputs()[i].name] = input_elem.cpu().numpy()
@@ -540,12 +540,11 @@ class ORTTrainer(object):
             pytorch_export_contrib_ops.unregister()
 
         # Export torch.nn.Module to ONNX
-        torch.onnx._export(model, tuple(sample_inputs_copy), f,
+        torch.onnx.export(model, tuple(sample_inputs_copy), f,
                            input_names=[input.name for input in self.model_desc.inputs],
                            output_names=[output.name for output in self.model_desc.outputs],
                            opset_version=self.options._internal_use.onnx_opset_version,
                            dynamic_axes=dynamic_axes,
-                           _retain_param_name=True,
                            example_outputs=tuple(sample_outputs),
                            do_constant_folding=False,
                            training=torch.onnx.TrainingMode.TRAINING)

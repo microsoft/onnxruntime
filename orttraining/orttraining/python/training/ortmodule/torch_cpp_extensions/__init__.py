@@ -5,16 +5,31 @@
 
 """Support for PyTorch C++ extensions within ORTModule
 
+Pytorch C++ extensions must be added to this (ORTMODULE_TORCH_CPP_DIR) folder to be automatically
+detected and installed by `python -m torch_ort.configure`
 
-TODO: Implement mechanism to register extensions and prevent issues with incorrect/missing flags
-      for each :meth:`torch.utils.cpp_extension.*` call
+Each extension must be within a folder and contain a setup.py file
+
+CUDA extensions must be stored within 'cuda' folders
+CPU extensions must be stored within 'cpu' subfolder
+
+Extensions are lexicographically ordered for compilation.
+e.g. '001_my_extension' is compiled before '002_my_other_extension'
+
+The following environment variables are available for the extensions setup.py
+
+    - ORTMODULE_TORCH_CPP_DIR: ORTModule's internal
+    - ONNXRUNTIME_ROCM_VERSION: ROCM version used to build ONNX Runtime package
+    - ONNXRUNTIME_CUDA_VERSION: CUDA version used to build ONNX Runtime package
+
+TODO: Create a generic mechanism to pass arguments from ORTModule into each extension setup.py
+TODO: Create environment variables to allow extensions to be hosted outside ONNX runtime installation folder
+      (e.g. ORTMODULE_EXTERNAL_TORCH_CPP_EXTENSION_DIR, ORTMODULE_EXTERNAL_TORCH_CUDA_EXTENSION_DIR)
+
 """
 
 import os
-import threading
-from functools import wraps
 from glob import glob
-from onnxruntime.capi import _pybind_state as C
 
 
 def is_installed(torch_cpp_extension_path):
@@ -22,35 +37,3 @@ def is_installed(torch_cpp_extension_path):
     torch_cpp_exts.extend(glob(os.path.join(torch_cpp_extension_path, '*.dll')))
     torch_cpp_exts.extend(glob(os.path.join(torch_cpp_extension_path, '*.dylib')))
     return len(torch_cpp_exts) > 0
-
-def run_once_aten_op_executor(f):
-    """
-    Decorator to run a function only once.
-    :param f: function to be run only once during execution time despite the number of calls
-    :return: The original function with the params passed to it if it hasn't already been run before
-    """
-    @wraps(f)
-    def aten_op_executor_wrapper(*args, **kwargs):
-        if not aten_op_executor_wrapper.has_run:
-            with aten_op_executor_wrapper.lock:
-                if not aten_op_executor_wrapper.has_run:
-                    aten_op_executor_wrapper.has_run = True
-                    return f(*args, **kwargs)
-
-    aten_op_executor_wrapper.lock = threading.Lock()
-    aten_op_executor_wrapper.has_run = False
-    return aten_op_executor_wrapper
-
-
-@run_once_aten_op_executor
-def _load_aten_op_executor_cpp_extension():
-    from onnxruntime.training.ortmodule.torch_cpp_extensions import aten_op_executor
-    C.register_aten_op_executor(str(aten_op_executor.is_tensor_argument_address()),
-                                str(aten_op_executor.execute_aten_operator_address()))
-
-
-def _load_aten_op_executor_cpp_extension_if_needed(onnx_model):
-    for node in onnx_model.graph.node:
-        if node.op_type == 'ATenOp' and node.domain == 'com.microsoft':
-            _load_aten_op_executor_cpp_extension()
-            break

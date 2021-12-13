@@ -8,6 +8,9 @@
 #include "core/providers/cuda/math/binary_elementwise_ops_impl.h"
 #include "core/providers/cuda/math/binary_elementwise_ops.h"
 #include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
+#ifdef ENABLE_TRAINING
+#include "orttraining/training_ops/cpu/aten_ops/aten_op.h"
+#endif
 
 using namespace onnxruntime::common;
 namespace onnxruntime {
@@ -183,7 +186,6 @@ Status ReduceKernel<allow_multi_axes>::ReduceKernelShared(
     }
   }
 
-  const auto& input_dims = input_shape.GetDims();
   int64_t input_count = input_shape.Size();
   IAllocatorUniquePtr<float> temp_X;
   if (ReduceTensorIndices == CUDNN_REDUCE_TENSOR_FLATTENED_INDICES && std::is_same<T, MLFloat16>::value) {
@@ -194,7 +196,7 @@ Status ReduceKernel<allow_multi_axes>::ReduceKernelShared(
   }
 
   // CUDNN requires at least 3D input, so pad 1s if needed
-  std::vector<int64_t> input_dims_cudnn = input_dims;
+  std::vector<int64_t> input_dims_cudnn = input_shape.GetDimsAsVector();
   std::vector<int64_t> output_dims_cudnn = output_dims;
   if (rank < 3) {
     std::vector<int64_t> pads(3 - rank, 1);
@@ -364,7 +366,7 @@ template Status ReduceKernel<true>::ReduceKernelShared<MLFloat16, MLFloat16, CUD
 // `input_shape_override` (if provided) is the input shape for compute purposes
 Status PrepareForReduce(const Tensor* X,
                         bool keepdims,
-                        const std::vector<int64_t>& axes,
+                        gsl::span<const int64_t> axes,
                         PrepareReduceMetadata& prepare_reduce_metadata,
                         const TensorShape* input_shape_override) {
   ORT_ENFORCE(nullptr != X);
@@ -379,9 +381,8 @@ Status PrepareForReduce(const Tensor* X,
 
   const auto& input_dims = input_shape.GetDims();
   std::vector<bool> reduced(rank, false);
-  prepare_reduce_metadata.output_dims.reserve(input_dims.size());
   if (axes.size() > 0) {
-    prepare_reduce_metadata.output_dims = input_dims;
+    prepare_reduce_metadata.output_dims = input_shape.GetDimsAsVector();
     for (auto axis : axes) {
       axis = HandleNegativeAxis(axis, rank);
       ORT_ENFORCE(input_dims[axis] != 0,
@@ -393,6 +394,7 @@ Status PrepareForReduce(const Tensor* X,
     }
   } else {
     // no axes provided (i.e.) default axes  => reduce on all dims
+    prepare_reduce_metadata.output_dims.reserve(input_dims.size());
     for (auto dim : input_dims) {
       ORT_ENFORCE(keepdims || dim != 0,
                   "Can't reduce on dim with value of 0 if 'keepdims' is false. "
@@ -417,7 +419,7 @@ Status PrepareForReduce(const Tensor* X,
   }
 
   // CUDNN requires at least 3D input, so pad 1s if needed
-  prepare_reduce_metadata.input_dims_cudnn = input_dims;
+  prepare_reduce_metadata.input_dims_cudnn = input_shape.GetDimsAsVector();
   prepare_reduce_metadata.output_dims_cudnn = prepare_reduce_metadata.output_dims;
   if (rank < 3) {
     std::vector<int64_t> pads(3 - rank, 1);
@@ -434,7 +436,7 @@ Status PrepareForReduce(const Tensor* X,
 template <typename T, cudnnReduceTensorIndices_t ReduceTensorIndices>
 Status ReduceComputeCore(CUDAExecutionProvider& cuda_ep, const Tensor& input, PrepareReduceMetadata& prepare_reduce_metadata,
                          /*out*/ Tensor& output, cudnnReduceTensorOp_t cudnn_reduce_op,
-                         const std::vector<int64_t>& axes,
+                         gsl::span<const int64_t> axes,
                          bool calculate_log, bool calculate_sqt, bool log_sum_exp, bool fast_reduction,
                          const TensorShape* input_shape_override) {
   typedef typename ToCudaType<T>::MappedType CudaT;
@@ -703,7 +705,7 @@ Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, cudnnRe
 
   size_t num_inputs = ctx->InputCount();
   if (num_inputs == 2) {
-    //override the attribute value with the input value for reduction_axes
+    // override the attribute value with the input value for reduction_axes
     const Tensor* axes_tensor = ctx->Input<Tensor>(1);
     ORT_ENFORCE(axes_tensor != nullptr, "Axes input is null");
     ORT_ENFORCE(axes_tensor->Shape().NumDimensions() == 1, "An axes tensor must be a vector tensor.");
@@ -717,18 +719,29 @@ Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, cudnnRe
   // empty axes and no-op
   if (axes.empty() && noop_with_empty_axes_) {
     auto* Y = ctx->Output(0, X->Shape());
-    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(Y->template MutableData<T>(), X->template Data<T>(), X->SizeInBytes(), cudaMemcpyDeviceToDevice, Stream()));
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(Y->template MutableData<T>(), X->template Data<T>(), X->SizeInBytes(),
+                                         cudaMemcpyDeviceToDevice, Stream()));
     return Status::OK();
   }
 
+#ifdef ENABLE_TRAINING
+  // Use ATenOp for ReduceSum if possible.
+  const TensorShape& input_shape = X->Shape();
+  if (contrib::IsATenOperatorExecutorInitialized() && cudnn_reduce_op == CUDNN_REDUCE_TENSOR_ADD && !calculate_log_ &&
+      !calculate_sqt_ && !log_sum_exp_ && input_shape.Size() > 0) {
+    if (axes.empty()) {
+      axes.resize(input_shape.NumDimensions());
+      std::iota(axes.begin(), axes.end(), 0);
+    }
+    ORT_RETURN_IF_ERROR(contrib::ExecuteReduceSumATenOp(ctx, axes, keepdims_));
+    return Status::OK();
+  }
+#endif
+
   PrepareReduceMetadata prepare_reduce_metadata;
-  ORT_RETURN_IF_ERROR(PrepareForReduce(X,
-                                       keepdims_,
-                                       axes,
-                                       prepare_reduce_metadata));
+  ORT_RETURN_IF_ERROR(PrepareForReduce(X, keepdims_, axes, prepare_reduce_metadata));
   Tensor* Y = ctx->Output(0, prepare_reduce_metadata.squeezed_output_dims);
   const bool fast_reduction = fast_reduction_ && !ctx->GetUseDeterministicCompute();
-
   return ReduceComputeCore<T, ReduceTensorIndices>(*cuda_ep_, *X, prepare_reduce_metadata, *Y, cudnn_reduce_op, axes,
                                                    calculate_log_, calculate_sqt_, log_sum_exp_, fast_reduction);
 }
@@ -933,7 +946,7 @@ namespace ReductionOps {
 
 template <typename T, cudnnReduceTensorIndices_t ReduceTensorIndices>
 std::unique_ptr<Tensor> ReduceCompute(CUDAExecutionProvider& cuda_ep, cudnnReduceTensorOp_t cudnn_reduce_op, AllocatorPtr allocator,
-                                      const Tensor& input, const std::vector<int64_t>& axes,
+                                      const Tensor& input, gsl::span<const int64_t> axes,
                                       bool keep_dims, bool calculate_log, bool calculate_sqt, bool log_sum_exp,
                                       bool fast_reduction, const TensorShape* input_shape_override) {
   PrepareReduceMetadata prepare_reduce_metadata;
@@ -964,21 +977,21 @@ std::unique_ptr<Tensor> ReduceCompute(CUDAExecutionProvider& cuda_ep, cudnnReduc
 template std::unique_ptr<Tensor> ReduceCompute<float, CUDNN_REDUCE_TENSOR_NO_INDICES>(
     CUDAExecutionProvider& cuda_ep, cudnnReduceTensorOp_t cudnn_reduce_op,
     AllocatorPtr allocator,
-    const Tensor& input, const std::vector<int64_t>& axes,
+    const Tensor& input, gsl::span<const int64_t> axes,
     bool keep_dims, bool calculate_log, bool calculate_sqt, bool log_sum_exp,
     bool fast_reduction, const TensorShape* input_shape_override);
 
 template std::unique_ptr<Tensor> ReduceCompute<double, CUDNN_REDUCE_TENSOR_NO_INDICES>(
     CUDAExecutionProvider& cuda_ep, cudnnReduceTensorOp_t cudnn_reduce_op,
     AllocatorPtr allocator,
-    const Tensor& input, const std::vector<int64_t>& axes,
+    const Tensor& input, gsl::span<const int64_t> axes,
     bool keep_dims, bool calculate_log, bool calculate_sqt, bool log_sum_exp,
     bool fast_reduction, const TensorShape* input_shape_override);
 
 template std::unique_ptr<Tensor> ReduceCompute<MLFloat16, CUDNN_REDUCE_TENSOR_NO_INDICES>(
     CUDAExecutionProvider& cuda_ep, cudnnReduceTensorOp_t cudnn_reduce_op,
     AllocatorPtr allocator,
-    const Tensor& input, const std::vector<int64_t>& axes,
+    const Tensor& input, gsl::span<const int64_t> axes,
     bool keep_dims, bool calculate_log, bool calculate_sqt, bool log_sum_exp,
     bool fast_reduction, const TensorShape* input_shape_override);
 

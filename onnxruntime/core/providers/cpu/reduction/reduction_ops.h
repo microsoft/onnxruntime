@@ -54,8 +54,8 @@ TensorOpCost ParallelReduceFastCost(int64_t n_row, int64_t n_col, int64_t elemen
   with vectors operations. Method WhichFastReduce() returns which case
   case be optimized for which aggregator.
 */
-FastReduceKind OptimizeShapeForFastReduce(const std::vector<int64_t>& input_shape,
-                                          const std::vector<int64_t>& reduced_axes,
+FastReduceKind OptimizeShapeForFastReduce(gsl::span<const int64_t> input_shape,
+                                          gsl::span<const int64_t> reduced_axes,
                                           std::vector<int64_t>& fast_shape,
                                           std::vector<int64_t>& fast_output_shape,
                                           std::vector<int64_t>& fast_axes,
@@ -79,7 +79,7 @@ class ResultsNoTransposePrepareForReduce {
     last_loop_inc = 0;
   }
 
-  bool equal(const std::vector<int64_t>& local_input_shape, const std::vector<int64_t>& local_reduced_axes);
+  bool equal(gsl::span<const int64_t> local_input_shape, gsl::span<const int64_t> local_reduced_axes);
   void ValidateNotEmpty();
 };
 
@@ -598,13 +598,13 @@ void NoTransposePrepareForReduce(const TensorShape& new_input_shape,
 
 template <typename AGG>
 void NoTransposeReduce1Loop(Tensor* output, const TensorShape& new_input_shape, const Tensor& input,
-                            const std::vector<int64_t>& reduced_axes, concurrency::ThreadPool* tp,
+                            gsl::span<const int64_t> reduced_axes, concurrency::ThreadPool* tp,
                             ResultsNoTransposePrepareForReduce& last_results);
 
 // Specific case for ReduceLogSumExp.
 template <typename AGG>
 void NoTransposeReduce2Loops(Tensor* output, const TensorShape& new_input_shape, const Tensor& input,
-                             const std::vector<int64_t>& reduced_axes, concurrency::ThreadPool* tp,
+                             gsl::span<const int64_t> reduced_axes, concurrency::ThreadPool* tp,
                              ResultsNoTransposePrepareForReduce& last_results);
 
 template <typename AGG>
@@ -735,7 +735,7 @@ class ReduceSum final : public ReduceKernel<true> {
 
   // For external calls requiring ReduceSum implementation - will return the reduced output.
   //`input_shape_override` overrides the shape of `input` for compute purposes.
-  static std::unique_ptr<Tensor> Impl(const Tensor& input, const std::vector<int64_t>& reduce_axes,
+  static std::unique_ptr<Tensor> Impl(const Tensor& input, gsl::span<const int64_t> reduce_axes,
                                       AllocatorPtr allocator, concurrency::ThreadPool* tp, bool keep_dims,
                                       const TensorShape* input_shape_override = nullptr);
 };

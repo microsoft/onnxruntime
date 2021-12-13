@@ -592,8 +592,7 @@ TEST(AllreduceTest, GPUHierarchicalAdasumAllreduceOptimizerTest) {
   // Verify tensor data
   auto& actual_output_tensor = fetches[0].Get<Tensor>();
   TensorShape expected_shape(expected_dims_allreduce);
-  ASSERT_EQ(*reinterpret_cast<const std::vector<int64_t>*>(&expected_shape),
-            *reinterpret_cast<const std::vector<int64_t>*>(&actual_output_tensor.Shape()));
+  ASSERT_EQ(expected_shape, actual_output_tensor.Shape());
 
   const std::vector<float> found(actual_output_tensor.template Data<float>(),
                                  actual_output_tensor.template Data<float>() + expected_values_allreduce.size());
@@ -773,8 +772,7 @@ TEST(AllreduceTest, GPUHierarchicalAdasumAllreduceOptimizerFP16Test) {
   // Verify tensor data
   auto& actual_output_tensor = fetches[0].Get<Tensor>();
   TensorShape expected_shape(expected_dims_allreduce);
-  ASSERT_EQ(*reinterpret_cast<const std::vector<int64_t>*>(&expected_shape),
-            *reinterpret_cast<const std::vector<int64_t>*>(&actual_output_tensor.Shape()));
+  ASSERT_EQ(expected_shape, actual_output_tensor.Shape());
 
   const std::vector<float> found(actual_output_tensor.template Data<float>(),
                                  actual_output_tensor.template Data<float>() + expected_values_allreduce.size());
@@ -872,8 +870,7 @@ TEST(AllreduceTest, GPUHierarchicalAdasumAllreduceTest) {
   // Verify tensor data
   auto& actual_output_tensor = fetches[0].Get<Tensor>();
   TensorShape expected_shape(expected_dims_allreduce);
-  ASSERT_EQ(*reinterpret_cast<const std::vector<int64_t>*>(&expected_shape),
-            *reinterpret_cast<const std::vector<int64_t>*>(&actual_output_tensor.Shape()));
+  ASSERT_EQ(expected_shape, actual_output_tensor.Shape());
 
   const std::vector<float> found(actual_output_tensor.template Data<float>(),
                                  actual_output_tensor.template Data<float>() + expected_values_allreduce.size());
@@ -983,8 +980,7 @@ TEST(AllreduceTest, GPUHierarchicalAdasumFP16AllreduceTest) {
   // Verify tensor data
   auto& actual_output_tensor = fetches[0].Get<Tensor>();
   TensorShape expected_shape(expected_dims_allreduce);
-  ASSERT_EQ(*reinterpret_cast<const std::vector<int64_t>*>(&expected_shape),
-            *reinterpret_cast<const std::vector<int64_t>*>(&actual_output_tensor.Shape()));
+  ASSERT_EQ(expected_shape, actual_output_tensor.Shape());
 
   const std::vector<MLFloat16> found_half(actual_output_tensor.template Data<MLFloat16>(),
                                           actual_output_tensor.template Data<MLFloat16>() + expected_values_allreduce_half.size());
@@ -1089,8 +1085,7 @@ TEST(AllreduceTest, GPUAdasumAllreduceTest) {
   // Verify tensor data
   auto& actual_output_tensor = fetches[0].Get<Tensor>();
   TensorShape expected_shape(expected_dims_allreduce);
-  ASSERT_EQ(*reinterpret_cast<const std::vector<int64_t>*>(&expected_shape),
-            *reinterpret_cast<const std::vector<int64_t>*>(&actual_output_tensor.Shape()));
+  ASSERT_EQ(expected_shape, actual_output_tensor.Shape());
 
   const std::vector<float> found(actual_output_tensor.template Data<float>(),
                                  actual_output_tensor.template Data<float>() + expected_values_allreduce.size());
@@ -1199,8 +1194,7 @@ TEST(AllreduceTest, GPUAdasumFP16AllreduceTest) {
   // Verify tensor data
   auto& actual_output_tensor = fetches[0].Get<Tensor>();
   TensorShape expected_shape(expected_dims_allreduce);
-  ASSERT_EQ(*reinterpret_cast<const std::vector<int64_t>*>(&expected_shape),
-            *reinterpret_cast<const std::vector<int64_t>*>(&actual_output_tensor.Shape()));
+  ASSERT_EQ(expected_shape, actual_output_tensor.Shape());
 
   const std::vector<MLFloat16> found_half(actual_output_tensor.template Data<MLFloat16>(),
                                           actual_output_tensor.template Data<MLFloat16>() + expected_values_allreduce_half.size());

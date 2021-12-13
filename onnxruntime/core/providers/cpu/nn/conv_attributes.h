@@ -81,7 +81,7 @@ struct ConvAttributes {
         }
       }
     } else {
-      auto& weight_dims = weight_shape.GetDims();
+      auto weight_dims = weight_shape.GetDims();
       kernel_shape = std::vector<int64_t>(weight_dims.begin() + 2, weight_dims.end());
     }
 

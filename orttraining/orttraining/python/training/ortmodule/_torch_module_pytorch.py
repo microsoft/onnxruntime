@@ -2,14 +2,9 @@
 # Licensed under the MIT License.
 # _torch_module_pytorch.py
 
-from . import _io
-from .debug_options import DebugOptions
-from ._graph_execution_manager_factory import GraphExecutionManagerFactory
 from ._torch_module_interface import TorchModuleInterface
-from ._fallback import _FallbackManager
 
 from collections import OrderedDict
-import functools
 import torch
 from typing import Iterator, Optional, Tuple, TypeVar, Callable
 

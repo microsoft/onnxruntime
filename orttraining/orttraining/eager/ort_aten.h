@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include <torch/extension.h>
+#include "ort_eager_common.h"
 #include <core/framework/ort_value.h>
 
 #include "ort_util.h"
@@ -72,6 +72,12 @@ onnx::AttributeProto create_ort_attribute(
 onnx::AttributeProto create_ort_attribute(
   const char* name,
   const char* value);
+
+bool IsSupportedType(at::Scalar scalar, const std::vector<at::ScalarType>& valid_types);
+
+bool IsSupportedType(at::Tensor tensor, const std::vector<at::ScalarType>& valid_types);
+
+bool IsSupportedType(at::IntArrayRef arrary, const std::vector<at::ScalarType>& valid_types);
 
 } // namespace eager
 } // namespace torch_ort

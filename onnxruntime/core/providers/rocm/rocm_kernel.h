@@ -3,9 +3,6 @@
 
 #pragma once
 
-#include "core/common/status.h"
-#include "core/framework/data_transfer_manager.h"
-#include "core/framework/op_kernel.h"
 #include "core/providers/rocm/rocm_common.h"
 #include "core/providers/rocm/rocm_execution_provider.h"
 #include "core/providers/rocm/rocm_fwd.h"
@@ -26,6 +23,9 @@ class RocmKernel : public OpKernel {
 
   Status Compute(OpKernelContext* p_op_kernel_context) const override {
     auto s = ComputeInternal(p_op_kernel_context);
+    // use this to precisely locate the node where ROCM failure comes from
+    //  if (hipSuccess != hipDeviceSynchronize())
+    //    __debugbreak();
 
     if (s.IsOK()) {
       auto err = hipGetLastError();
@@ -52,11 +52,21 @@ class RocmKernel : public OpKernel {
     return provider_->GetScratchBuffer<T>(count_or_bytes);
   }
 
+  // Different from GetScratchBuffer which use IAllocator::Alloc() to allocate memory,
+  // this GetTransientScratchBuffer will call IAllocator::Reserve() to allocate memory.
+  // IAllocator::Reserve() optionally implement some allocation logic that by-passes any arena-based
+  // logic (or similar for different allocator) that may be housed in the Alloc() implementation.
+  template <typename T>
+  inline IAllocatorUniquePtr<T> GetTransientScratchBuffer(size_t count_or_bytes) const {
+    return provider_->GetTransientScratchBuffer<T>(count_or_bytes);
+  }
+
+
   inline void AddDeferredReleaseCPUPtr(void* p) const {
     provider_->AddDeferredReleaseCPUPtr(p);
   }
 
-  const hipDeviceProp_t& GetDeviceProp() const { return provider_->GetDeviceProp(); };
+  const hipDeviceProp_t& GetDeviceProp() const { return provider_->GetDeviceProp(); }
 
   inline hipStream_t Stream() const { return static_cast<hipStream_t>(provider_->GetComputeStream()); }
 

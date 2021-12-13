@@ -111,7 +111,7 @@ void ProcessInputs(const std::vector<int64_t>& input_dims, const std::vector<T>&
                    std::vector<int64_t>& modified_input_dims, std::vector<T>& input_vals) {
   auto rank = input_dims.size();
   ORT_ENFORCE(rank >= 1);
-  int64_t size0 = TensorShape::ReinterpretBaseType(input_dims).SizeHelper(0, rank);
+  int64_t size0 = TensorShape::FromExistingBuffer(input_dims).SizeHelper(0, rank);
   std::vector<T> input_vals_raw(common_input_vals.cbegin(), common_input_vals.cbegin() + size0);
   input_vals.resize(size0);
 
@@ -123,7 +123,7 @@ void ProcessInputs(const std::vector<int64_t>& input_dims, const std::vector<T>&
   if (trans_flag) {
     modified_input_dims[rank - 1] = input_dims[rank - 2];
     modified_input_dims[rank - 2] = input_dims[rank - 1];
-    auto batch_size = TensorShape::ReinterpretBaseType(input_dims).SizeHelper(0, rank - 2);
+    auto batch_size = TensorShape::FromExistingBuffer(input_dims).SizeHelper(0, rank - 2);
     Transpose<T>(input_vals_raw, input_vals, batch_size, input_dims[rank - 2], input_dims[rank - 1]);
   } else {
     input_vals = input_vals_raw;

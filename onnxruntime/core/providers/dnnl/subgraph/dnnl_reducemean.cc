@@ -20,7 +20,7 @@ void DnnlReduceMean::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) 
 
   auto axes = ReadAxes(node);
   
-  auto reducemean_src_mem = sp.GetMemory(node.Input(IN_X).Name());
+  auto reducemean_src_mem = sp.GetMemory(node.Input(IN_X));
   auto src_md = reducemean_src_mem.get_desc();
 
   //We need to calculate output tensor shape

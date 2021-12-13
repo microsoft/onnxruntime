@@ -73,7 +73,7 @@ common::Status OneHotEncoderOp<T>::Compute(OpKernelContext* context) const {
   const auto* X = context->Input<Tensor>(0);
   const TensorShape& input_shape = X->Shape();
 
-  std::vector<int64_t> output_shape(input_shape.GetDims());
+  auto output_shape=input_shape.GetDimsAsVector();
   output_shape.push_back(num_categories_);
 
   Tensor* Y = context->Output(0, TensorShape(output_shape));
@@ -98,7 +98,7 @@ common::Status OneHotEncoderOp<std::string>::Compute(OpKernelContext* context) c
   const auto* X = context->Input<Tensor>(0);
   const TensorShape& input_shape = X->Shape();
 
-  std::vector<int64_t> output_shape(input_shape.GetDims());
+  std::vector<int64_t> output_shape(input_shape.GetDims().begin(), input_shape.GetDims().end());
   output_shape.push_back(num_categories_);
 
   Tensor* Y = context->Output(0, TensorShape(output_shape));

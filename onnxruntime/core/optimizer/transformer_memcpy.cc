@@ -153,6 +153,35 @@ bool TransformerMemcpyImpl::ModifyGraph(const KernelRegistryManager& kernel_regi
       modified = true;
     }
 
+  // Process implicit inputs in subgraphs that is explicitly consumed
+  // on both provider and non-provider nodes. This is mimicking
+  // logic for explicit graph inputs.
+  if (graph_.IsSubgraph()) {
+    for (auto arg : graph_.ParentNode()->ImplicitInputDefs()) {
+      // Looking into `provider_input_defs_` and `non_provider_input_defs_`
+      // using NodeArg pointers from the outer scope is okay because the
+      // comparator is only name based (and doesn't compare raw pointers)
+      if (provider_input_defs_.count(arg) && non_provider_input_defs_.count(arg)) {
+        // There should be at-least one explicit consumer of the NodeArg
+        // in both the provider node list and the non-provider node list.
+        // If there are no explicit consumers in both lists, we don't want
+        // to get into the business of adding copy nodes at this
+        // level.
+        // If there are explicit consumers in only one list (either provider
+        // or non-provider node consumers), there isn't any point in adding
+        // copy nodes in that case either as subgraph copy logic will take
+        // it to the required device (i.e.) we don't need to care about it here.
+
+        // Be sure to use the NodeArg* relevant to the current graph level
+        // (the name will be the same as the parent node's implicit input)
+        const auto* node_arg_in_current_graph_level = *provider_input_defs_.find(arg);
+
+        AddCopyNode(const_cast<onnxruntime::NodeArg*>(node_arg_in_current_graph_level), true);
+        modified = true;
+      }
+    }
+  }
+
   return modified;
 }
 
@@ -164,7 +193,7 @@ void TransformerMemcpyImpl::ProcessDefs(onnxruntime::Node& node, const KernelReg
     provider_nodes_.insert(&node);
     // note KernelCreateInfo might be nullptr for custom kernel
     const KernelCreateInfo* kci = nullptr;
-    kernel_registries.SearchKernelRegistry(node, &kci);
+    ORT_IGNORE_RETURN_VALUE(kernel_registries.SearchKernelRegistry(node, &kci));
 
     bool is_implicit_input = false;
     auto process_inputs =
@@ -176,7 +205,7 @@ void TransformerMemcpyImpl::ProcessDefs(onnxruntime::Node& node, const KernelReg
           }
 
           // implicit inputs have no location info in the kernel def, so do nothing to them here, leaving the control
-          //   flow op (Loop, Scan, If) to do the necessary copy if the input crosses different provider.
+          // flow op (Loop, Scan, If) to do the necessary copy if the input crosses different provider.
           // PlannerImpl::ComputeUseCounts has matching logic so the allocation plan does the same thing
           if (!is_implicit_input) {
             if (utils::IsInputOnCpu(node, kci, index)) {
@@ -220,10 +249,14 @@ void TransformerMemcpyImpl::ProcessDefs(onnxruntime::Node& node, const KernelReg
         non_provider_input_defs_.insert(arg);
     }
 
-    for (const auto* arg : node.ImplicitInputDefs()) {
-      if (arg->Exists())
-        non_provider_input_defs_.insert(arg);
-    }
+    // Never add an implicit def to provider_input_defs_ or non_provider_input_defs_.
+    // This is because we don't want to add copy nodes on account of implicit
+    // inputs to nodes.
+    // We will rely on utils::CopyInputsAcrossDevices() to do the job.
+    //for (const auto* arg : node.ImplicitInputDefs()) {
+    //  if (arg->Exists())
+    //    non_provider_input_defs_.insert(arg);
+    //}
 
     for (auto* arg : node.MutableOutputDefs()) {
       if (arg->Exists())
@@ -249,7 +282,7 @@ void TransformerMemcpyImpl::BuildDefsMapping(const onnxruntime::NodeArg* arg, co
     auto node_provider_type = it.GetExecutionProviderType();
     if ((node_provider_type == provider_) || (node_provider_type == kCudaExecutionProvider && kTensorrtExecutionProvider == provider_)) {
       const KernelCreateInfo* kci = nullptr;
-      kernel_registries.SearchKernelRegistry(it, &kci);
+      ORT_IGNORE_RETURN_VALUE(kernel_registries.SearchKernelRegistry(it, &kci));
       if (arg_input_index != -1) {
         if (!kci || !utils::IsInputOnCpu(it, kci, arg_input_index)) provider_input_nodes_[arg].insert(&it);
       }
@@ -337,20 +370,22 @@ bool TransformerMemcpyImpl::ProcessInitializers(const KernelRegistryManager& ker
     ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
     if (kci == nullptr) continue;
     if (kci->kernel_def == nullptr) continue;
-    onnxruntime::Node::ForEachWithIndex(p_node->InputDefs(),
-                                        [kci, &p_node, &dup_replacements](const onnxruntime::NodeArg& arg, size_t index) {
-                                          if (utils::IsInputOnCpu(*p_node, kci, index)) dup_replacements.erase(&arg);
-                                          return Status::OK();
-                                        });
+    ORT_THROW_IF_ERROR(Node::ForEachWithIndex(
+        p_node->InputDefs(),
+        [kci, &p_node, &dup_replacements](const onnxruntime::NodeArg& arg, size_t index) {
+          if (utils::IsInputOnCpu(*p_node, kci, index)) dup_replacements.erase(&arg);
+          return Status::OK();
+        }));
 
     // normally initializers are only inputs, but things may change with ops like assign
-    onnxruntime::Node::ForEachWithIndex(p_node->OutputDefs(),
-                                        [kci, &dup_replacements](const onnxruntime::NodeArg& arg, size_t index) {
-                                          if (kci->kernel_def->IsOutputOnCpu(index)) {
-                                            ORT_ENFORCE(dup_replacements.find(&arg) == dup_replacements.end());
-                                          }
-                                          return Status::OK();
-                                        });
+    ORT_THROW_IF_ERROR(Node::ForEachWithIndex(
+        p_node->OutputDefs(),
+        [kci, &dup_replacements](const onnxruntime::NodeArg& arg, size_t index) {
+          if (kci->kernel_def->IsOutputOnCpu(index)) {
+            ORT_ENFORCE(dup_replacements.find(&arg) == dup_replacements.end());
+          }
+          return Status::OK();
+        }));
 
     p_node->ReplaceDefs(dup_replacements);
   }

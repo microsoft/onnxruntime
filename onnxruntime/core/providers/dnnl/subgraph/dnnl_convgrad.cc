@@ -47,15 +47,15 @@ To acheive Everything specified in the OnnxRuntime ConvGrad we must use both:
 void DnnlConvGrad::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   auto dnnl_engine = sp.GetEngine();
 
-  auto dy_mem = sp.GetMemory(node.Input(IN_DY).Name());
+  auto dy_mem = sp.GetMemory(node.Input(IN_DY));
   auto dy_md = dy_mem.get_desc();
   auto dy_dims = dy_mem.get_desc().dims();
 
-  auto x_mem = sp.GetMemory(node.Input(IN_X).Name());
+  auto x_mem = sp.GetMemory(node.Input(IN_X));
   auto x_md = x_mem.get_desc();
   auto x_dims = x_mem.get_desc().dims();
 
-  auto w_mem = sp.GetMemory(node.Input(IN_W).Name());
+  auto w_mem = sp.GetMemory(node.Input(IN_W));
   auto w_md = w_mem.get_desc();
   auto w_dims_original = w_mem.get_desc().dims();
   auto w_dims = w_dims_original;

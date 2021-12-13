@@ -367,7 +367,7 @@ Status DeepCpuGruOp::ComputeImpl(OpKernelContext& context) const {
                                                          hidden_output_size_per_direction);
 
     detail::UniDirectionalGru<T> fw(alloc, seq_length, batch_size, input_size, hidden_size_,
-                                    linear_before_reset_, Direction::kForward, bias_1, initial_hidden_1,
+                                    linear_before_reset_ != 0, Direction::kForward, bias_1, initial_hidden_1,
                                     activation_funcs_.Entries()[0],
                                     activation_funcs_.Entries()[1],
                                     clip_, thread_pool);
@@ -375,7 +375,7 @@ Status DeepCpuGruOp::ComputeImpl(OpKernelContext& context) const {
                output_1, hidden_output_1);
 
     detail::UniDirectionalGru<T> bw(alloc, seq_length, batch_size, input_size, hidden_size_,
-                                    linear_before_reset_, Direction::kReverse, bias_2, initial_hidden_2,
+                                    linear_before_reset_ != 0, Direction::kReverse, bias_2, initial_hidden_2,
                                     activation_funcs_.Entries()[2],
                                     activation_funcs_.Entries()[3],
                                     clip_, thread_pool);
@@ -383,7 +383,7 @@ Status DeepCpuGruOp::ComputeImpl(OpKernelContext& context) const {
                output_2, hidden_output_2);
   } else {
     detail::UniDirectionalGru<T> gru_p(alloc, seq_length, batch_size, input_size, hidden_size_,
-                                       linear_before_reset_, direction_, bias_1, initial_hidden_1,
+                                       linear_before_reset_ != 0, direction_, bias_1, initial_hidden_1,
                                        activation_funcs_.Entries()[0],
                                        activation_funcs_.Entries()[1],
                                        clip_, thread_pool);

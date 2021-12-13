@@ -52,7 +52,7 @@ inline void CopyVectorToTensor<bool>(onnxruntime::ORTInvoker& /*invoker*/,
   }
 }
 
-std::vector<int64_t> GetStrides(const std::vector<int64_t>& shape);
+std::vector<int64_t> GetStrides(gsl::span<const int64_t> shape);
 
 } // namespace eager
 } // namespace torch_ort

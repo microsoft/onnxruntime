@@ -180,12 +180,8 @@ Status Softmax<T>::ComputeImplOpset13(const Tensor& input, Tensor& output, size_
                                     log_softmax_, thread_pool));
 
   if (is_transpose_required) {
-    std::vector<size_t> reverse_permutation(rank);
-    for (size_t i = 0, end = permutation.size(); i < end; ++i) {
-      reverse_permutation[permutation[i]] = i;
-    }
     // Perform the transpose to get the axes back to the original ordering
-    ORT_RETURN_IF_ERROR(TransposeBase::DoTranspose(reverse_permutation, intermediate_output, output));
+    ORT_RETURN_IF_ERROR(TransposeBase::DoTranspose(permutation, intermediate_output, output));
   }
 
   return Status::OK();

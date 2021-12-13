@@ -150,6 +150,20 @@ struct ProviderHost {
   virtual bool CudaCall_true(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) = 0;
 #endif
 
+#ifdef USE_ROCM
+  virtual std::unique_ptr<IAllocator> CreateROCMAllocator(int16_t device_id, const char* name) = 0;
+  virtual std::unique_ptr<IAllocator> CreateROCMPinnedAllocator(int16_t device_id, const char* name) = 0;
+  virtual std::unique_ptr<IDataTransfer> CreateGPUDataTransfer(void* stream) = 0;
+
+  virtual void rocm__Impl_Cast(void* stream, const int64_t* input_data, int32_t* output_data, size_t count) = 0;
+  virtual void rocm__Impl_Cast(void* stream, const int32_t* input_data, int64_t* output_data, size_t count) = 0;
+  virtual void rocm__Impl_Cast(void* stream, const double* input_data, float* output_data, size_t count) = 0;
+  virtual void rocm__Impl_Cast(void* stream, const float* input_data, double* output_data, size_t count) = 0;
+
+  virtual bool RocmCall_false(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) = 0;
+  virtual bool RocmCall_true(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) = 0;
+#endif
+
   virtual std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewer& graph,
                                                              const std::string& provider_type,
                                                              const std::vector<const KernelRegistry*>& kernel_registries,
@@ -206,6 +220,9 @@ struct ProviderHost {
   virtual std::string Status__ToString(const Status* p) = 0;
 
   // TensorShape
+  virtual void TensorShape__operator_assign(TensorShape* p, const TensorShape& other) = 0;
+  virtual void TensorShape__operator_move_assign(TensorShape* p, TensorShape&& other) noexcept = 0;
+  virtual void TensorShape__Allocate(TensorShape* p, size_t size) = 0;
   virtual int64_t TensorShape__SizeHelper(const TensorShape* p, size_t start, size_t end) = 0;
   virtual std::string TensorShape__ToString(const TensorShape* p) = 0;
   virtual int64_t TensorShape__SizeToDimension(const TensorShape* p, size_t dimension) = 0;
@@ -235,6 +252,16 @@ struct ProviderHost {
   virtual int int64s__size(const ONNX_NAMESPACE::int64s* p) = 0;
   virtual const int64_t& int64s__Get(const ONNX_NAMESPACE::int64s* p, int index) = 0;
 
+#if !defined(DISABLE_OPTIONAL_TYPE)
+  // TypeProto_Optional
+  virtual const ONNX_NAMESPACE::TypeProto& TypeProto_Optional__elem_type(const ONNX_NAMESPACE::TypeProto_Optional* p) = 0;
+  virtual ONNX_NAMESPACE::TypeProto* TypeProto_Optional__mutable_elem_type(ONNX_NAMESPACE::TypeProto_Optional* p) = 0;
+#endif
+
+  // TypeProto_Sequence
+  virtual const ONNX_NAMESPACE::TypeProto& TypeProto_Sequence__elem_type(const ONNX_NAMESPACE::TypeProto_Sequence* p) = 0;
+  virtual ONNX_NAMESPACE::TypeProto* TypeProto_Sequence__mutable_elem_type(ONNX_NAMESPACE::TypeProto_Sequence* p) = 0;
+
   // TypeProto_Tensor
   virtual bool TypeProto_Tensor__has_shape(const ONNX_NAMESPACE::TypeProto_Tensor* p) = 0;
   virtual const ONNX_NAMESPACE::TensorShapeProto& TypeProto_Tensor__shape(const ONNX_NAMESPACE::TypeProto_Tensor* p) = 0;
@@ -257,6 +284,15 @@ struct ProviderHost {
   virtual const ONNX_NAMESPACE::TypeProto_SparseTensor& TypeProto__sparse_tensor_type(const ONNX_NAMESPACE::TypeProto* p) = 0;
   virtual ONNX_NAMESPACE::TypeProto_SparseTensor* TypeProto__mutable_sparse_tensor_type(ONNX_NAMESPACE::TypeProto* p) = 0;
 #endif
+
+#if !defined(DISABLE_OPTIONAL_TYPE)
+  virtual const ONNX_NAMESPACE::TypeProto_Optional& TypeProto__optional_type(const ONNX_NAMESPACE::TypeProto* p) = 0;
+  virtual ONNX_NAMESPACE::TypeProto_Optional* TypeProto__mutable_optional_type(ONNX_NAMESPACE::TypeProto* p) = 0;
+#endif
+
+  virtual const ONNX_NAMESPACE::TypeProto_Sequence& TypeProto__sequence_type(const ONNX_NAMESPACE::TypeProto* p) = 0;
+  virtual ONNX_NAMESPACE::TypeProto_Sequence* TypeProto__mutable_sequence_type(ONNX_NAMESPACE::TypeProto* p) = 0;
+
   virtual int TypeProto__value_case(const ONNX_NAMESPACE::TypeProto* p) = 0;
 
   // AttributeProto
@@ -727,6 +763,7 @@ struct ProviderHost {
   virtual bool Tensor__IsDataType_float(const Tensor* p) noexcept = 0;
   virtual bool Tensor__IsDataType_double(const Tensor* p) noexcept = 0;
   virtual bool Tensor__IsDataType_MLFloat16(const Tensor* p) noexcept = 0;
+  virtual bool Tensor__IsDataType_BFloat16(const Tensor* p) noexcept = 0;
   virtual bool Tensor__IsDataTypeString(const Tensor* p) noexcept = 0;
 
   virtual const TensorShape& Tensor__Shape(const Tensor* p) = 0;
@@ -760,7 +797,7 @@ struct ProviderHost {
   virtual training::DistributedRunContext& GetDistributedRunContextInstance() = 0;
 #endif
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_ROCM)
 
   virtual PhiloxGenerator& PhiloxGenerator__Default() = 0;
 
