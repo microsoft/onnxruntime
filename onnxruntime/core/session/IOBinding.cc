@@ -13,16 +13,17 @@ IOBinding::IOBinding(const SessionState& session_state) : session_state_(session
 
 common::Status IOBinding::BindInput(const std::string& name, const OrtValue& ml_value) {
   ORT_ENFORCE(mapped_feed_names_.size() == feed_names_.size(), "Size mismatch.");
-  auto it = mapped_feed_names_.emplace_ptr(name, feed_names_.size());
-  size_t index = it.second;
-  if (it.first) {
+  auto it = mapped_feed_names_.emplace(name, feed_names_.size());
+  size_t index = it.first->second;
+  if (it.second) {
     feed_names_.push_back(name);
     OrtValue new_mlvalue;
     feeds_.push_back(new_mlvalue);
     // The inserted pointer points to name.c_str(), a pointer the class
     // does not own. It needs to be replaced by a pointer the class owns
     // pointing to the same string.
-    it.first->p_name = feed_names_[index].c_str();
+    mapped_feed_names_.extract(it.first);
+    mapped_feed_names_[VariableNameWrapper(feed_names_[index])] = index;
   }
 
   if (ml_value.IsTensor() || ml_value.IsSparseTensor()) {
@@ -82,16 +83,17 @@ common::Status IOBinding::BindOutput(const std::string& name, OrtDevice device) 
 
 common::Status IOBinding::BindOutputImpl(const std::string& name, const OrtValue& ml_value, OrtDevice device) {
   ORT_ENFORCE(mapped_output_names_.size() == output_names_.size(), "Size mismatch.");
-  auto it = mapped_output_names_.emplace_ptr(name, output_names_.size());
-  size_t index = it.second;
-  if (it.first) {
+  auto it = mapped_output_names_.emplace(name, output_names_.size());
+  size_t index = it.first->second;
+  if (it.second) {
     output_names_.push_back(name);
     outputs_.push_back(ml_value);
     outputs_device_info_.push_back(device);
     // The inserted pointer points to name.c_str(), a pointer the class
     // does not own. It needs to be replaced by a pointer the class owns
     // pointing to the same string.
-    it.first->p_name = output_names_[index].c_str();
+    mapped_output_names_.extract(it.first);
+    mapped_output_names_[VariableNameWrapper(output_names_[index])] = index;
   } else {
     outputs_[index] = ml_value;
     outputs_device_info_[index] = device;

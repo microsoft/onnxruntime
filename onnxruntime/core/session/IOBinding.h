@@ -105,23 +105,13 @@ class IOBinding {
     }
   };
 
-  class TreeVariableNameMapper : public std::map<VariableNameWrapper, size_t, std::less<VariableNameWrapper>> {
-   public:
-    using parent_type = typename std::map<VariableNameWrapper, size_t, std::less<VariableNameWrapper>>;
-    std::pair<VariableNameWrapper*, size_t> emplace_ptr(const std::string& name, size_t value) {
-      auto it = parent_type::_Emplace(VariableNameWrapper(name.c_str()), value);
-      VariableNameWrapper* ptr = const_cast<VariableNameWrapper*>(&it.first->_Myval.first);
-      return std::pair<VariableNameWrapper*, size_t>(it.second ? ptr : nullptr, it.first->_Myval.second);
-    }
-  };
-
   IOBinding(const SessionState& session_state);
   const SessionState& session_state_;
   std::vector<std::string> feed_names_;
-  TreeVariableNameMapper mapped_feed_names_;
+  std::map<VariableNameWrapper, size_t, std::less<VariableNameWrapper>> mapped_feed_names_;
   std::vector<OrtValue> feeds_;
   std::vector<std::string> output_names_;
-  TreeVariableNameMapper mapped_output_names_;
+  std::map<VariableNameWrapper, size_t, std::less<VariableNameWrapper>> mapped_output_names_;
   std::vector<OrtValue> outputs_;
   std::vector<OrtDevice> outputs_device_info_;
 
