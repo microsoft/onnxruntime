@@ -107,8 +107,9 @@ class IOBinding {
 
   class TreeVariableNameMapper : public std::map<VariableNameWrapper, size_t, std::less<VariableNameWrapper>> {
    public:
+    using parent_type = typename std::map<VariableNameWrapper, size_t, std::less<VariableNameWrapper>>;
     std::pair<VariableNameWrapper*, size_t> emplace_ptr(const std::string& name, size_t value) {
-      auto it = _Emplace(VariableNameWrapper(name.c_str()), value);
+      auto it = parent_type::_Emplace(VariableNameWrapper(name.c_str()), value);
       VariableNameWrapper* ptr = const_cast<VariableNameWrapper*>(&it.first->_Myval.first);
       return std::pair<VariableNameWrapper*, size_t>(it.second ? ptr : nullptr, it.first->_Myval.second);
     }
