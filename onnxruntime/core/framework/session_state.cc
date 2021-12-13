@@ -204,6 +204,8 @@ Status SessionState::AddInitializedTensor(int ort_value_index, const OrtValue& o
   if (sparse) {
     sparse_initialized_tensors_.insert(ort_value_index);
   }
+#else
+  ORT_UNUSED_PARAMETER(sparse);
 #endif
 
   return Status::OK();

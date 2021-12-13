@@ -7,6 +7,7 @@
 namespace onnxruntime {
 namespace utils {
 
+#if !defined(DISABLE_OPTIONAL_TYPE)
 common::Status OutputOptionalWithoutDataHelper(const ONNX_NAMESPACE::TypeProto& input_type_proto,
                                                OpKernelContext* context, int output_index) {
   if (utils::HasOptionalTensorType(input_type_proto)) {
@@ -21,6 +22,7 @@ common::Status OutputOptionalWithoutDataHelper(const ONNX_NAMESPACE::TypeProto& 
 
   return Status::OK();
 }
+#endif
 
 }  // namespace utils
 }  // namespace onnxruntime

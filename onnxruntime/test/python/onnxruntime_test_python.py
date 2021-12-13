@@ -884,7 +884,19 @@ class TestInferenceSession(unittest.TestCase):
 
             # The constructed OrtValue should still be valid after being used in a session
             self.assertTrue(np.array_equal(ortvalue2.numpy(), numpy_arr_input))
-            
+
+    def testOrtValue_ghIssue9799(self):
+        if 'CUDAExecutionProvider' in onnxrt.get_available_providers():
+            session = onnxrt.InferenceSession(get_name("identity_9799.onnx"), 
+                                              providers=onnxrt.get_available_providers())
+
+            for seq_length in range(40, 200):
+                inps = np.ones((seq_length, 16, 7, 5, 3, 3)).astype(np.float32)
+                ort_val = onnxrt.OrtValue.ortvalue_from_numpy(inps, 'cuda', 0)
+                upstreams_onnxrt = {'input': ort_val}
+                outs = session.run(output_names=['output'], input_feed=upstreams_onnxrt)[0]
+                self.assertTrue(np.allclose(inps, outs))
+
     def testSparseTensorCooFormat(self):
         cpu_device = onnxrt.OrtDevice.make('cpu', 0)
         shape = [9,9]

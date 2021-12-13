@@ -171,7 +171,7 @@ void TestPoolCreation(const std::string&, int iter) {
 // Test multi-loop parallel sections, with a series of fixed-size loops
 void TestMultiLoopSections(const std::string& name, int num_threads, int num_loops) {
   for (int rep = 0; rep < 5; rep++) {
-    const int num_tasks = 1024;
+    constexpr int num_tasks = 1024;
     auto test_data = CreateTestData(num_tasks);
     CreateThreadPoolAndTest(name, num_threads, [&](ThreadPool* tp) {
 	ThreadPool::ParallelSection ps(tp);

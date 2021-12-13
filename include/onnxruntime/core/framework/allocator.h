@@ -183,24 +183,9 @@ class CPUAllocator : public IAllocator {
   void Free(void* p) override;
 };
 
-#if defined(USE_MIMALLOC_ARENA_ALLOCATOR)
-class MiMallocAllocator : public IAllocator {
- public:
-  explicit MiMallocAllocator(const OrtMemoryInfo& memory_info) : IAllocator(memory_info) {}
-  MiMallocAllocator() : IAllocator(OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator)) {}
-
-  void* Alloc(size_t size) override;
-  void Free(void* p) override;
-};
-
-#endif
-
-#if defined(USE_MIMALLOC_ARENA_ALLOCATOR)
-using TAllocator = MiMallocAllocator;
-#else
-using TAllocator = CPUAllocator;
-#endif
-
 using AllocatorPtr = std::shared_ptr<IAllocator>;
+
+void* AllocatorDefaultAlloc(size_t size);
+void AllocatorDefaultFree(void* p);
 
 }  // namespace onnxruntime

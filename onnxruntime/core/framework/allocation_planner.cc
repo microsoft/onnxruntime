@@ -447,12 +447,16 @@ class PlannerImpl {
         // TODO this should be an error case, needs more investigation
         continue;
       }
+
+#if !defined(DISABLE_OPTIONAL_TYPE)
       // Make sure optional types are not up for re-use as we aren't quite
       // sure if the re-used tensor will be a None or otherwise. This cannot
       // be determined statically.
       if (IsOptionalType(*p_node_arg)) {
         continue;
       }
+#endif
+
       auto& available_memory_info = AllocPlan(p_node_arg->Name()).location;
       if (!(available_memory_info == required_memory_info)) continue;
       auto p_available_buffer_shape = context_.GetShape(*p_node_arg);
@@ -1142,10 +1146,12 @@ class PlannerImpl {
     return !utils::HasTensorType(type_proto);
   }
 
+#if !defined(DISABLE_OPTIONAL_TYPE)
   static bool IsOptionalType(const onnxruntime::NodeArg& nodearg) {
     const auto* type_proto = nodearg.TypeAsProto();
     return type_proto->value_case() == ONNX_NAMESPACE::TypeProto::kOptionalType;
   }
+#endif
 
   //For in-place reuse tensors, the lifetime is the union of all the tensors that tensors that use that buffer
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)

@@ -94,8 +94,8 @@ void MultiTensorReduce(cudaStream_t stream, ChunkGroup<1> chunk_group, TOut* out
   const int shared_memory_size = thread_count / GPU_WARP_SIZE * sizeof(TBuf);
 
   // Enforce assumptions used inside this reduction CUDA kernel.
-  ORT_ENFORCE(thread_count % GPU_WARP_SIZE == 0);
-  ORT_ENFORCE((thread_count & (thread_count - 1)) == 0);
+  static_assert(thread_count % GPU_WARP_SIZE == 0, "thread_count must be a multiple of GPU_WARP_SIZE");
+  static_assert((thread_count & (thread_count - 1)) == 0, "thread_count must be a power of two");
 
   MultiTensorReduceKernel<TIn, TOut, TBuf, TInOp, TOutOp><<<chunk_group.chunk_count, thread_count, shared_memory_size, stream>>>(chunk_group, output);
 }

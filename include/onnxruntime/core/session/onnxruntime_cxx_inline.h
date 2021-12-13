@@ -284,6 +284,14 @@ inline void IoBinding::ClearBoundOutputs() {
   GetApi().ClearBoundOutputs(p_);
 }
 
+inline void IoBinding::SynchronizeInputs() {
+  ThrowOnError(GetApi().SynchronizeBoundInputs(p_));
+}
+
+inline void IoBinding::SynchronizeOutputs() {
+  ThrowOnError(GetApi().SynchronizeBoundOutputs(p_));
+}
+
 inline ArenaCfg::ArenaCfg(size_t max_mem, int arena_extend_strategy, int initial_chunk_size_bytes, int max_dead_bytes_per_chunk) {
   ThrowOnError(GetApi().CreateArenaCfg(max_mem, arena_extend_strategy, initial_chunk_size_bytes, max_dead_bytes_per_chunk, &p_));
 }

@@ -21,19 +21,20 @@ struct MLAS_GEMM_U8X8_KERNEL_SSE
 {
     typedef int16_t PackedAType;
     typedef int16_t PackedBType;
+    typedef uint8_t OffsetAType;
     typedef int8_t OffsetBType;
 
     static constexpr size_t PackedK = 2;
-    static constexpr MLAS_GEMM_U8X8_STRIDES Strides{ 12, 128, 128 };
+    static constexpr MLAS_GEMM_QUANT_STRIDES Strides{ 12, 128, 128 };
 };
 
 constexpr size_t MLAS_GEMM_U8X8_KERNEL_SSE::PackedK;
-constexpr MLAS_GEMM_U8X8_STRIDES MLAS_GEMM_U8X8_KERNEL_SSE::Strides;
+constexpr MLAS_GEMM_QUANT_STRIDES MLAS_GEMM_U8X8_KERNEL_SSE::Strides;
 
 template<>
 MLAS_FORCEINLINE
 int32_t
-MlasGemmU8X8FixupZeroPointB<MLAS_GEMM_U8X8_KERNEL_SSE>(
+MlasGemmQuantFixupZeroPointB<MLAS_GEMM_U8X8_KERNEL_SSE>(
     int32_t ZeroPointB,
     bool BIsSigned
     )
@@ -47,15 +48,17 @@ MlasGemmU8X8FixupZeroPointB<MLAS_GEMM_U8X8_KERNEL_SSE>(
 
 template<>
 void
-MlasGemmU8X8CopyPackA<MLAS_GEMM_U8X8_KERNEL_SSE>(
+MlasGemmQuantCopyPackA<MLAS_GEMM_U8X8_KERNEL_SSE>(
     MLAS_GEMM_U8X8_KERNEL_SSE::PackedAType* D,
     const uint8_t* A,
     size_t lda,
     size_t CountM,
     size_t CountK,
-    int32_t* RowSumBuffer
+    int32_t* RowSumBuffer,
+    bool AIsSigned
     )
 {
+    MLAS_UNREFERENCED_PARAMETER(AIsSigned);
     const __m128i ZeroVector = _mm_setzero_si128();
     const __m128i OnesWordBroadcast = _mm_set1_epi16(1);
     uint8_t PaddedMatrixAData[8] = { 0 };
@@ -172,7 +175,7 @@ MlasGemmU8X8CopyPackBProcessSse(
 
 template<>
 void
-MlasGemmU8X8CopyPackB<MLAS_GEMM_U8X8_KERNEL_SSE>(
+MlasGemmQuantCopyPackB<MLAS_GEMM_U8X8_KERNEL_SSE>(
     MLAS_GEMM_U8X8_KERNEL_SSE::PackedBType* D,
     const uint8_t* B,
     size_t ldb,
@@ -324,7 +327,7 @@ MlasGemmU8X8MultiplyAccumulateRowSse(
 
 template<>
 size_t
-MlasGemmU8X8Kernel<MLAS_GEMM_U8X8_KERNEL_SSE>(
+MlasGemmQuantKernel<MLAS_GEMM_U8X8_KERNEL_SSE>(
     const MLAS_GEMM_U8X8_KERNEL_SSE::PackedAType* A,
     const MLAS_GEMM_U8X8_KERNEL_SSE::PackedBType* B,
     int32_t* C,
@@ -483,8 +486,8 @@ MlasGemmU8X8Kernel<MLAS_GEMM_U8X8_KERNEL_SSE>(
     return 1;
 }
 
-const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8X8DispatchSse = {
-    MlasGemmU8X8Operation<MLAS_GEMM_U8X8_KERNEL_SSE>,
+const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchSse = {
+    MlasGemmQuantOperation<MLAS_GEMM_U8X8_KERNEL_SSE>,
     nullptr,
     nullptr,
     MLAS_GEMM_U8X8_KERNEL_SSE::PackedK,

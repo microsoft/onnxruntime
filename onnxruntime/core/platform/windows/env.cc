@@ -600,5 +600,4 @@ class WindowsEnv : public Env {
 Env& Env::Default() {
   return WindowsEnv::Instance();
 }
-
 }  // namespace onnxruntime

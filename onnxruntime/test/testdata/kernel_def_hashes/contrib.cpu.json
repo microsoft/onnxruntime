@@ -28,6 +28,10 @@
         13114085849278607104
     ],
     [
+        "NhwcMaxPool com.microsoft CPUExecutionProvider",
+        11773579655431087496
+    ],
+    [
         "ParametricSoftplus ai.onnx CPUExecutionProvider",
         17971715260566574960
     ],
@@ -145,6 +149,10 @@
     ],
     [
         "MatMulIntegerToFloat com.microsoft CPUExecutionProvider",
+        1363870470731747600
+    ],
+    [
+        "MatMulIntegerToFloat com.microsoft CPUExecutionProvider",
         7172777464471435800
     ],
     [
@@ -182,6 +190,10 @@
     [
         "QLinearAveragePool com.microsoft CPUExecutionProvider",
         9152647959212466896
+    ],
+    [
+        "QLinearConv com.microsoft CPUExecutionProvider",
+        10904143578341560456
     ],
     [
         "QLinearConv com.microsoft CPUExecutionProvider",

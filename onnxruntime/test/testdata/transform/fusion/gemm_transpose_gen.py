@@ -85,3 +85,23 @@ gen_gemm_2inputs_transposed("gemm_transpose_2inputs_transposed.onnx")
 gen_gemm_output_transposed("gemm_transpose_output_transposed.onnx")
 gen_gemm_inputs_output_transposed("gemm_transpose_inputs_output_transposed.onnx")
 
+# (A'(B')) = BA
+def gen_gemm_inputs_output_transposed_2(model_path):
+    nodes = [
+        helper.make_node("Transpose", ["A"], ["tp0"], "TransposeA"),
+        helper.make_node("Gemm", ["tp0", "B"], ["out"], "Gemm", alpha=3.0, transB=1),
+        helper.make_node("Transpose", ["out"], ["output"], "TransposeOut"),
+    ]
+
+    inputs = [
+        helper.make_tensor_value_info("A", TensorProto.FLOAT, ['K', 'M']),
+        helper.make_tensor_value_info("B", TensorProto.FLOAT, ['N', 'K'])
+    ]
+
+    outputs = [
+        helper.make_tensor_value_info("output", TensorProto.FLOAT, ['N', 'M'])
+    ]
+
+    save(model_path, nodes, inputs, outputs, [])
+
+gen_gemm_inputs_output_transposed_2("gemm_transpose_inputs_output_transposed_2.onnx")

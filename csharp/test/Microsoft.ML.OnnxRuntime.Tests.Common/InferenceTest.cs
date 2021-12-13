@@ -1670,8 +1670,10 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 {
                     ioBinding.BindInput(inputName, fixeInputBuffer);
                     ioBinding.BindOutput(outputName, fixedOutputBuffer);
+                    ioBinding.SynchronizeBoundInputs();
                     using (var outputs = session.RunWithBindingAndNames(runOptions, ioBinding))
                     {
+                        ioBinding.SynchronizeBoundOutputs();
                         Assert.Equal(1, outputs.Count);
                         var output = outputs.First();
                         Assert.Equal(outputName, output.Name);
@@ -1687,9 +1689,10 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 {
                     ioBinding.BindInput(inputName, fixedInputBuffer);
                     ioBinding.BindOutputToDevice(outputName, allocator.Info);
-
+                    ioBinding.SynchronizeBoundInputs();
                     using (var outputs = session.RunWithBindingAndNames(runOptions, ioBinding))
                     {
+                        ioBinding.SynchronizeBoundOutputs();
                         Assert.Equal(1, outputs.Count);
                         var output = outputs.First();
                         Assert.Equal(outputName, output.Name);

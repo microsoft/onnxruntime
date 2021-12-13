@@ -63,7 +63,7 @@ export class Session {
         if (typeof fetch === 'undefined') {
           // node
           const buf = await promisify(readFile)(arg);
-          this.initialize(Buffer.from(buf), isOrtFormat);
+          this.initialize(buf, isOrtFormat);
         } else {
           // browser
           const response = await fetch(arg);

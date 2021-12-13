@@ -196,6 +196,10 @@ static constexpr PATH_TYPE PYOP_MULTI_MODEL_URI = TSTR("testdata/pyop_2.onnx");
 static constexpr PATH_TYPE PYOP_KWARG_MODEL_URI = TSTR("testdata/pyop_3.onnx");
 #endif
 
+#ifndef REDUCED_OPS_BUILD
+static constexpr PATH_TYPE RESIZE_AND_CROP_MODEL_URI = TSTR("testdata/crop_and_resize.onnx");
+#endif
+
 class CApiTestWithProvider : public testing::Test, public ::testing::WithParamInterface<int> {
 };
 
@@ -1053,14 +1057,15 @@ TEST(CApiTest, io_binding_cuda) {
   Ort::Value bound_y = Ort::Value::CreateTensor(info_cuda, reinterpret_cast<float*>(output_data.get()),
                                                 expected_y.size(), expected_y_shape.data(), expected_y_shape.size());
 
-  // Sychronize to make sure the copy on default stream is done since TensorRT isn't using default stream.
-  cudaStreamSynchronize(nullptr);
-
   Ort::IoBinding binding(session);
   binding.BindInput("X", bound_x);
   binding.BindOutput("Y", bound_y);
+  // Sychronize to make sure the copy on default stream is done since TensorRT isn't using default stream.
+  binding.SynchronizeInputs();
 
   session.Run(Ort::RunOptions(), binding);
+
+  binding.SynchronizeOutputs();
 
   // Check the values against the bound raw memory (needs copying from device to host first)
   std::array<float, 3 * 2> y_values_0;
@@ -1628,9 +1633,9 @@ TEST(CApiTest, TestSharingOfInitializerAndItsPrepackedVersion) {
   Ort::MemoryInfo mem_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
   // These values are different from the actual initializer values in the model
   float data[] = {2.0f, 1.0f};
-  const int data_len = sizeof(data) / sizeof(data[0]);
+  constexpr int data_len = sizeof(data) / sizeof(data[0]);
   const int64_t shape[] = {2, 1};
-  const size_t shape_len = sizeof(shape) / sizeof(shape[0]);
+  constexpr size_t shape_len = sizeof(shape) / sizeof(shape[0]);
   Ort::Value val = Ort::Value::CreateTensor<float>(mem_info, data, data_len, shape, shape_len);
   session_options.AddInitializer("W", val);
 
@@ -1671,9 +1676,9 @@ TEST(CApiTest, TestIncorrectInputTypeToModel_Tensors) {
   Ort::MemoryInfo mem_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
 
   double data[] = {2., 1., 4., 3., 6., 5.};
-  const int data_len = sizeof(data) / sizeof(data[0]);
+  constexpr int data_len = sizeof(data) / sizeof(data[0]);
   const int64_t shape[] = {3, 2};
-  const size_t shape_len = sizeof(shape) / sizeof(shape[0]);
+  constexpr size_t shape_len = sizeof(shape) / sizeof(shape[0]);
   Ort::Value val = Ort::Value::CreateTensor<double>(mem_info, data, data_len, shape, shape_len);
 
   std::vector<const char*> input_names{"X"};
@@ -1698,9 +1703,9 @@ TEST(CApiTest, TestIncorrectInputTypeToModel_SequenceTensors) {
   Ort::MemoryInfo mem_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
 
   double data[] = {2., 1., 4., 3., 6., 5.};
-  const int data_len = sizeof(data) / sizeof(data[0]);
+  constexpr int data_len = sizeof(data) / sizeof(data[0]);
   const int64_t shape[] = {2, 3};
-  const size_t shape_len = sizeof(shape) / sizeof(shape[0]);
+  constexpr size_t shape_len = sizeof(shape) / sizeof(shape[0]);
   Ort::Value val = Ort::Value::CreateTensor<double>(mem_info, data, data_len, shape, shape_len);
 
   std::vector<Ort::Value> seq;
@@ -1865,7 +1870,7 @@ void JoinThreadCustomized(OrtCustomThreadHandle handle) {
 }
 
 TEST(CApiTest, TestPerSessionCustomThreadPoolHooks) {
-  const int32_t thread_count = 3;
+  constexpr int32_t thread_count = 3;
   Ort::SessionOptions session_options;
   // test both intra and inter op thread pool
   session_options.SetExecutionMode(ExecutionMode::ORT_PARALLEL);
@@ -1880,6 +1885,45 @@ TEST(CApiTest, TestPerSessionCustomThreadPoolHooks) {
   ASSERT_TRUE(custom_creation_hook_called == (thread_count - 1) << 1);
   ASSERT_TRUE(custom_join_hook_called == (thread_count - 1) << 1);
 }
+
+// Preventing resize tranformer issue:
+// https://github.com/microsoft/onnxruntime/issues/9857
+#ifndef REDUCED_OPS_BUILD
+TEST(CApiTest, crop_and_resize) {
+  std::vector<float> input_value_0;
+  input_value_0.resize(2 * 36 * 36 * 3);
+  for (ptrdiff_t i = 0; i < 36 * 36 * 3; ++i) {
+    input_value_0[i] = 1.f;
+    input_value_0[i + 36 * 36 * 3] = 2.f;
+  }
+  std::vector<int64_t> input_shape_0{2, 36, 36, 3};
+
+  std::vector<int32_t> input_value_1{1, 0};
+  std::vector<int64_t> input_shape_1{2};
+
+  std::vector<const char*> input_names{"input:0", "input2:0"};
+  Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+
+  std::vector<Ort::Value> ort_inputs;
+  ort_inputs.emplace_back(Ort::Value::CreateTensor<float>(info, input_value_0.data(), input_value_0.size(), input_shape_0.data(), input_shape_0.size()));
+  ort_inputs.emplace_back(Ort::Value::CreateTensor<int32_t>(info, input_value_1.data(), input_value_1.size(), input_shape_1.data(), input_shape_1.size()));
+
+  Ort::SessionOptions session_options;
+  Ort::Session session(*ort_env, RESIZE_AND_CROP_MODEL_URI, session_options);
+
+  const char* output_names[] = {"output:0"};
+  std::vector<int64_t> output_shape{2, 20, 20, 3};
+
+  std::vector<Ort::Value> ort_outputs = session.Run(Ort::RunOptions{}, input_names.data(), ort_inputs.data(), ort_inputs.size(), output_names, countof(output_names));
+  ASSERT_EQ(ort_outputs.size(), 1U);
+  const auto& output_0 = ort_outputs[0];
+  ASSERT_TRUE(output_0.IsTensor());
+
+  auto output_type_shape = output_0.GetTensorTypeAndShapeInfo();
+  ASSERT_EQ(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, output_type_shape.GetElementType());
+  ASSERT_EQ(output_shape, output_type_shape.GetShape());
+}
+#endif
 
 }  // namespace TestPerSessionCustomThreadHooks
 #endif
