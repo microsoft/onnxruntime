@@ -1,0 +1,30 @@
+name: Publish C/C++ API Docs
+on:
+  workflow_dispatch
+
+jobs:
+  publish:
+    name: Publish C/C++ API docs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Install doxygen and dependencies
+        run: |
+          sudo apt update 
+          sudo apt-get install libclang-9-dev
+          sudo apt-get install libclang-cpp9
+          wget https://www.doxygen.nl/files/doxygen-1.9.2.linux.bin.tar.gz
+          tar xvzf doxygen-1.9.2.linux.bin.tar.gz
+      - name: Run doxygen
+        run: |
+          mkdir -p build/doxygen
+          cd docs/c_cxx
+          ../../doxygen-1.9.2/bin/doxygen
+      - name: Publish
+        uses: JamesIves/github-pages-deploy-action@releases/v3
+        with:
+          BRANCH: gh-pages
+          FOLDER: build/doxygen/html
+          TARGET_FOLDER: docs/api/c
+          CLEAN_EXCLUDE: '["_config.yml"]'    
+ 
