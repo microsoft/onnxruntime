@@ -25,9 +25,9 @@ This document covers basic tools and knobs that can be leveraged to find the bes
 ### ONNX GO Live Tool
 {: .no_toc }
 
-The [ONNX Go Live "OLive" tool](https://github.com/microsoft/OLive) is an easy-to-use pipeline for converting models to ONNX and optimizing performance with ONNX Runtime. The tool can help identify the optimal runtime configuration to get the best performance on the target hardware for the model.
+The [ONNX Go Live "OLive" tool](https://github.com/microsoft/OLive) is a Python package that automates the process of accelerating models with ONNX Runtime(ORT). It contains two parts: (1) model conversion to ONNX with correctness checking (2) auto performance tuning with ORT. Users can run these two together through a single pipeline or run them independently as needed.
 
-As a quickstart, please see the notebooks: [Python](https://github.com/microsoft/OLive/blob/master/notebook/Convert_Models_and_Tune_Performance_with_OLive_Python_SDK.ipynb), [Docker images](https://github.com/microsoft/OLive/blob/master/notebook/Convert_Models_and_Tune_Performance_with_OLive_Docker_Images.ipynb)
+As a quickstart, please see the [notebook tutorials](https://github.com/microsoft/OLive/tree/master/notebook-tutorial) and [command line examples](https://github.com/microsoft/OLive/tree/master/cmd-example) 
 
 ### Profiling and Performance Report
 {: .no_toc }
@@ -50,6 +50,19 @@ In both cases, you will get a JSON file which contains the detailed performance 
 * Open chrome browser
 * Type chrome://tracing in the address bar
 * Load the generated JSON file
+
+To profile CUDA kernels, please add cupti library to PATH and use onnxruntime binary built from source with `--enable_cuda_profiling`, performance numbers from device will then be attached to those from host. For example:
+```
+{"cat":"Node", "name":"Add_1234", "dur":17, ...}
+{"cat":"Kernel", "name":"ort_add_cuda_kernel", dur:33, ...}
+```
+Here, "Add" operator from host initiated a CUDA kernel on device named "ort_add_cuda_kernel" which lasted for 33 microseconds.
+If an operator called multiple kernels during execution, the performance numbers of those kernels will all be listed following the calling sequence:
+```
+{"cat":"Node", "name":<name of the node>, ...}
+{"cat":"Kernel", "name":<name of the kernel called first>, ...}
+{"cat":"Kernel", "name":<name of the kernel called next>, ...}
+```
 
 ## Using different Execution Providers
 
@@ -113,8 +126,7 @@ import onnxruntime as rt
 
 so = rt.SessionOptions()
 so.graph_optimization_level = rt.GraphOptimizationLevel.ORT_ENABLE_ALL
-session = rt.InferenceSession(model, sess_options=so)
-session.set_providers(['CUDAExecutionProvider'])
+session = rt.InferenceSession(model, sess_options=so, providers=['CUDAExecutionProvider'])
 ```
 
 ## Which Execution Provider will provide the best performance? 
@@ -141,12 +153,78 @@ Below are some suggestions for things to try for various EPs for tuning performa
 ### Shared arena based allocator
 Memory consumption can be reduced between multiple sessions by configuring the shared arena based allocation. See the `Share allocator(s) between sessions` section in the [C API documentation](../get-started/with-c.md).
 
+### MiMalloc allocator usage
+
+Onnxruntime supports overriding memory allocations using Mimalloc allocator.
+MiMalloc allocator is a general-purpose fast allocator. See [mimalloc github](https://github.com/microsoft/mimalloc).
+
+Depending on your model and usage it can deliver single- or double-digits improvements. The GitHub README page describes various scenarios on how mimalloc can be leveraged to support your scenarios.
+
+Mimalloc is a submodule in the Onnxruntime source tree. On Windows one can employ `--use_mimalloc` build flag which would build a static version of mimalloc and link it to Onnxruntime. This would redirect Onnxruntime allocators and all new/delete calls to mimalloc.
+Currently, there are no special provisions to employ Mimalloc on Linux. This can be done via LD_PRELAOD mechanism using pre-built binaries that you can build/obtain separately.
+
+
 ### Thread management
 
 * If ORT is built with OpenMP, use the OpenMP env variable to control the number of intra op num threads.
 * If ORT is not built with OpenMP, use the appropriate ORT API to control intra op num threads.
 * Inter op num threads (used only when parallel execution is enabled) is not affected by OpenMP settings and should
 always be set using the ORT APIs.
+
+### Custom threading callbacks
+Occasionally, customers might prefer to use their own fine-tuned threads for multithreading,
+hence ORT offers thread creation and joining callbacks by [C++ API](https://github.com/microsoft/onnxruntime/blob/master/include/onnxruntime/core/session/onnxruntime_cxx_api.h):
+
+```
+  std::vector<std::thread> threads;
+  void* custom_thread_creation_options = nullptr;
+  // initialize custom_thread_creation_options
+
+  // On thread pool creation, ORT calls CreateThreadCustomized to create a thread
+  OrtCustomThreadHandle CreateThreadCustomized(void* custom_thread_creation_options, OrtThreadWorkerFn work_loop, void* param) {
+    threads.push_back(std::thread(work_loop, param));
+    // configure the thread by custom_thread_creation_options
+    return reinterpret_cast<OrtCustomThreadHandle>(threads.back().native_handle());
+  }
+
+  // On thread pool destruction, ORT calls JoinThreadCustomized for each created thread
+  void JoinThreadCustomized(OrtCustomThreadHandle handle) {
+    for (auto& t : threads) {
+      if (reinterpret_cast<OrtCustomThreadHandle>(t.native_handle()) == handle) {
+        // recycling resources ... 
+        t.join();
+      }
+    }
+  }
+
+  int main(...) {
+    ...
+    Ort::Env ort_env;
+    Ort::SessionOptions session_options;
+    session_options.SetCustomCreateThreadFn(CreateThreadCustomized);
+    session_options.SetCustomThreadCreationOptions(&custom_thread_creation_options);
+    session_options.SetCustomJoinThreadFn(JoinThreadCustomized);
+    Ort::Session session(*ort_env, MODEL_URI, session_options);
+    ...
+  }
+```
+
+For global thread pool:
+
+```
+  int main() {
+    const OrtApi* g_ort = OrtGetApiBase()->GetApi(ORT_API_VERSION);
+    OrtThreadingOptions* tp_options = nullptr;
+    g_ort->CreateThreadingOptions(&tp_options);
+    g_ort->SetGlobalCustomCreateThreadFn(tp_options, CreateThreadCustomized);
+    g_ort->SetGlobalCustomThreadCreationOptions(tp_options, &custom_thread_creation_options);
+    g_ort->SetGlobalCustomJoinThreadFn(tp_options, JoinThreadCustomized);
+    // disable per-session thread pool, create a session for inferencing
+    g_ort->ReleaseThreadingOptions(tp_options);
+  }
+```
+
+Note that CreateThreadCustomized and JoinThreadCustomized, once being set, will be applied to both ORT intra op and inter op thread pools uniformly.
 
 ### Default CPU Execution Provider (MLAS)
 
@@ -213,6 +291,20 @@ https://github.com/microsoft/onnxruntime/blob/master/docs/python/inference/api_s
 * C#
 https://github.com/microsoft/onnxruntime/blob/master/csharp/test/Microsoft.ML.OnnxRuntime.Tests/OrtIoBindingAllocationTest.cs 
 
+### Convolution heavy models and the CUDA EP
+ORT leverages CuDNN for convolution operations and the first step in this process is to determine which "optimal" convolution algorithm to use while performing the convolution operation for the given input configuration (input shape, filter shape, etc.) in each `Conv` node . This sub-step involves querying CuDNN for a "workspace" memory size and have this allocated so that CuDNN can use this auxiliary memory while determining the "optimal" convolution algorithm to use. By default, ORT clamps the workspace size to 32 MB which may lead to a sub-optimal convolution algorithm getting picked by CuDNN. To allow ORT to allocate the maximum possible workspace as determined by CuDNN, a provider option needs to get set (as shown below). Keep in mind that using this flag may increase the peak memory usage by a factor (sometimes a few GBs) but this does help CuDNN pick the best convolution algorithm for the given input. We have found that this is an important flag to use while using an fp16 model as this allows CuDNN to pick tensor core algorithms for the convolution operations (if the hardware supports tensor core operations). This flag may or may not result in performance gains for other data types (`float` and `double`).
+
+* Python
+```
+providers = [("CUDAExecutionProvider", {"cudnn_conv_use_max_workspace": '1'})]
+sess_options = ort.SessionOptions()
+sess = ort.InferenceSession("my_conv_heavy_fp16_model.onnx",  sess_options = sess_options, providers=providers)
+```
+* C/C++
+Support for this provider option will be added in upcoming releases.
+
+* C#
+Support for this provider option will be added in upcoming releases.
 
 ## Troubleshooting performance issues
 

@@ -10,7 +10,7 @@ plugins:
   - jekyll-redirect-from
 kramdown:
   parse_block_html: true
-  toc_levels: "1,2,3"
+  toc_levels: "2"
 logo: "/images/ONNX-Runtime-logo.svg"
 aux_links:  
   "ONNX Runtime":
