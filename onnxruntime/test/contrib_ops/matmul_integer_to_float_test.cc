@@ -144,7 +144,6 @@ TEST(MatMulIntegerToFloat, NoZeroPoint_HasBias_test_U8X8) {
   RunMatMulIntegerToFloatTest<uint8_t, uint8_t, false, true>("testdata/matmul_integer_to_float_uint8_bias.onnx");
 }
 
-#if defined(MLAS_TARGET_ARM_ANY)
 TEST(MatMulIntegerToFloat, HasZeroPoint_NoBias_test_S8S8) {
   RunMatMulIntegerToFloatTest<int8_t, int8_t, true, false>("testdata/matmul_integer_to_float_int8_int8.onnx");
 }
@@ -152,7 +151,6 @@ TEST(MatMulIntegerToFloat, HasZeroPoint_NoBias_test_S8S8) {
 TEST(MatMulIntegerToFloat, NoZeroPoint_HasBias_test_S8S8) {
   RunMatMulIntegerToFloatTest<int8_t, int8_t, false, true>("testdata/matmul_integer_to_float_int8_int8_bias.onnx");
 }
-#endif
 
 TEST(MatMulIntegerToFloat, MatMulInteger_Nuphar) {
   auto test_case = [&](const std::vector<int64_t>& input_shape,

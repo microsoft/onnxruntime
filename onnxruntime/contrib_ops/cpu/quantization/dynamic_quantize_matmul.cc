@@ -320,7 +320,6 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
         .TypeConstraint("T3", DataTypeImpl::GetTensorType<float>()),
     MatMulIntegerToFloat);
 
-#if defined(MLAS_TARGET_ARM_ANY)
 ONNX_OPERATOR_TYPED_KERNEL_EX(
     MatMulIntegerToFloat,
     kMSDomain,
@@ -332,7 +331,6 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
         .TypeConstraint("T2", DataTypeImpl::GetTensorType<int8_t>())
         .TypeConstraint("T3", DataTypeImpl::GetTensorType<float>()),
     MatMulIntegerToFloat);
-#endif
 
 }  // namespace contrib
 }  // namespace onnxruntime
