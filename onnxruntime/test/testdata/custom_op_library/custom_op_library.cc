@@ -123,6 +123,10 @@ struct CustomOpOne : Ort::CustomOpBase<CustomOpOne, KernelOne> {
 
   const char* GetName() const { return "CustomOpOne"; };
 
+#ifdef USE_CUDA
+  const char* GetExecutionProviderType() const { return "CUDAExecutionProvider"; };
+#endif
+
   size_t GetInputTypeCount() const { return 2; };
   ONNXTensorElementDataType GetInputType(size_t /*index*/) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT; };
 
