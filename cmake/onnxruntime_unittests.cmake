@@ -768,6 +768,13 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
   endif()
 endif()
 
+if (onnxruntime_ENABLE_DEEP_SPEED_CUDA_KERNELS)
+  list(APPEND onnx_test_libs deepspeed)
+  add_custom_command(
+    TARGET ${test_data_target} POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy ${DEEP_SPEED_SHARED_LIB_PATH} $<TARGET_FILE_DIR:${test_data_target}>
+    )
+endif()
 
 set(onnx_test_libs
   onnxruntime_test_utils

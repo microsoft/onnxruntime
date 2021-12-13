@@ -59,7 +59,7 @@ Status BiasGelu<T>::ComputeInternal(OpKernelContext* context) const {
 
   const auto* bias_buffer = context->Input<Tensor>(1)->Data<T>();
 
-  // TODO: Add more shape schecks for input and bias inputs
+  // TODO: Add more shape checks for input and bias inputs
 
   DeepSpeedAPI::bias_gelu(output_buffer,
                           // TODO: DeepSpeed lib only takes non-const buffers. Can we ask them to take const pointers ?
