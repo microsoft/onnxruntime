@@ -7,14 +7,16 @@
 #include <core/graph/graph.h>
 
 #include "core/providers/common.h"
+#include "core/providers/shared/node_unit/node_unit.h"
 #include "core/providers/shared/utils/utils.h"
 #include "helper.h"
 #include "op_support_checker.h"
 
+using onnxruntime::NodeUnit;
+using std::vector;
+
 namespace onnxruntime {
 namespace nnapi {
-
-using std::vector;
 
 #pragma region helpers
 
@@ -62,7 +64,7 @@ void CreateSharedOpSupportCheckerImpl(const std::string& op_type,
 class BaseOpSupportChecker : public IOpSupportChecker {
  public:
   virtual ~BaseOpSupportChecker() = default;
-  bool IsOpSupported(const InitializedTensorSet& initializers, const Node& node,
+  bool IsOpSupported(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
                      const OpSupportCheckParams& params) const override;
 
   // This is for ops which are by default supported and do not have their own impl of OpSupportChecker
@@ -71,7 +73,7 @@ class BaseOpSupportChecker : public IOpSupportChecker {
       const std::string& op_type, OpSupportCheckerRegistrations& op_registrations);
 
  protected:
-  virtual bool IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const Node& /* node */,
+  virtual bool IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const NodeUnit& /* node_unit */,
                                  const OpSupportCheckParams& /* params */) const {
     return true;
   }
@@ -103,8 +105,9 @@ class BaseOpSupportChecker : public IOpSupportChecker {
       });
 }
 
-bool BaseOpSupportChecker::IsOpSupported(const InitializedTensorSet& initializers, const Node& node,
+bool BaseOpSupportChecker::IsOpSupported(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
                                          const OpSupportCheckParams& params) const {
+  const auto& node = node_unit.GetNode();
   int32_t required_feature_level = GetMinSupportedNNAPIFeatureLevel(node, params);
   if (required_feature_level > params.android_feature_level) {
     LOGS_DEFAULT(VERBOSE) << "Current Android API level [" << params.android_feature_level
@@ -123,7 +126,7 @@ bool BaseOpSupportChecker::IsOpSupported(const InitializedTensorSet& initializer
   if (!HasSupportedOpSet(node))
     return false;
 
-  return IsOpSupportedImpl(initializers, node, params);
+  return IsOpSupportedImpl(initializers, node_unit, params);
 }
 
 bool BaseOpSupportChecker::HasSupportedInputs(const Node& node) const {
@@ -182,7 +185,7 @@ class BinaryOpSupportChecker : public BaseOpSupportChecker {
 
  private:
   int32_t GetMinSupportedNNAPIFeatureLevel(const Node& node, const OpSupportCheckParams& params) const override;
-  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
+  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
                          const OpSupportCheckParams& params) const override;
   bool HasSupportedInputsImpl(const Node& node) const override;
   int GetMinSupportedOpSet(const Node& node) const override;
@@ -262,8 +265,10 @@ bool BinaryOpSupportChecker::HasSupportedInputsImpl(const Node& node) const {
   return true;
 }
 
-bool BinaryOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
+bool BinaryOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
                                                const OpSupportCheckParams& params) const {
+  const auto& node = node_unit.GetNode();
+
   const auto& op_type(node.OpType());
   const auto input_defs(node.InputDefs());
   bool op_is_qlinear = op_type == "QLinearAdd";
@@ -317,7 +322,7 @@ bool BinaryOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initi
 
 class TransposeOpSupportChecker : public BaseOpSupportChecker {
  private:
-  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
+  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
                          const OpSupportCheckParams& params) const override;
 
   int32_t GetMinSupportedNNAPIFeatureLevel(const Node& /* node */,
@@ -328,8 +333,9 @@ class TransposeOpSupportChecker : public BaseOpSupportChecker {
   bool HasSupportedInputsImpl(const Node& node) const override;
 };
 
-bool TransposeOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+bool TransposeOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const NodeUnit& node_unit,
                                                   const OpSupportCheckParams& /* params */) const {
+  const auto& node = node_unit.GetNode();
   Shape input_shape;
   if (!GetShape(*node.InputDefs()[0], input_shape))
     return false;
@@ -366,15 +372,16 @@ bool TransposeOpSupportChecker::HasSupportedInputsImpl(const Node& node) const {
 
 class ReshapeOpSupportChecker : public BaseOpSupportChecker {
  private:
-  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
+  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
                          const OpSupportCheckParams& params) const override;
 
   // Reshape opset 4- uses attributes for new shape which we do not support for now
   int GetMinSupportedOpSet(const Node& /* node */) const override { return 5; }
 };
 
-bool ReshapeOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
+bool ReshapeOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
                                                 const OpSupportCheckParams& /* params */) const {
+  const auto& node = node_unit.GetNode();
   const auto& perm_name = node.InputDefs()[1]->Name();
   if (!Contains(initializers, perm_name)) {
     LOGS_DEFAULT(VERBOSE) << "New shape of reshape must be known";
@@ -427,15 +434,16 @@ bool ReshapeOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& init
 
 class BatchNormalizationOpSupportChecker : public BaseOpSupportChecker {
  private:
-  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
+  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
                          const OpSupportCheckParams& params) const override;
 
   // BatchNormalization opset 6- has unsupported attributes
   int GetMinSupportedOpSet(const Node& /* node */) const override { return 7; }
 };
 
-bool BatchNormalizationOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
+bool BatchNormalizationOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
                                                            const OpSupportCheckParams& /* params */) const {
+  const auto& node = node_unit.GetNode();
   if (node.OutputDefs().size() != 1) {
     LOGS_DEFAULT(VERBOSE) << "Your onnx model may be in training mode, please export "
                              "it in test mode.";
@@ -495,7 +503,7 @@ class PoolOpSupportChecker : public BaseOpSupportChecker {
       const std::string& op_type, OpSupportCheckerRegistrations& op_registrations);
 
  private:
-  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
+  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
                          const OpSupportCheckParams& params) const override;
 
   int32_t GetMinSupportedNNAPIFeatureLevel(const Node& /* node */,
@@ -519,8 +527,9 @@ class PoolOpSupportChecker : public BaseOpSupportChecker {
       });
 }
 
-bool PoolOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
+bool PoolOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
                                              const OpSupportCheckParams& params) const {
+  const auto& node = node_unit.GetNode();
   const auto& op_name = node.Name();
   const auto& op_type = node.OpType();
   const auto& input_defs = node.InputDefs();
@@ -689,7 +698,7 @@ class ConvOpSupportChecker : public BaseOpSupportChecker {
       const std::string& op_type, OpSupportCheckerRegistrations& op_registrations);
 
  private:
-  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
+  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
                          const OpSupportCheckParams& params) const override;
 
   int32_t GetMinSupportedNNAPIFeatureLevel(const Node& /* node */,
@@ -721,8 +730,9 @@ bool ConvOpSupportChecker::HasSupportedInputsImpl(const Node& node) const {
   return true;
 }
 
-bool ConvOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
+bool ConvOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
                                              const OpSupportCheckParams& params) const {
+  const auto& node = node_unit.GetNode();
   const auto& op_type = node.OpType();
   const bool is_qlinear_conv = (op_type == "QLinearConv");
 
@@ -798,7 +808,7 @@ bool ConvOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initial
 
 class CastOpSupportChecker : public BaseOpSupportChecker {
  private:
-  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
+  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
                          const OpSupportCheckParams& params) const override;
 
   int32_t GetMinSupportedNNAPIFeatureLevel(const Node& /* node */,
@@ -810,8 +820,9 @@ class CastOpSupportChecker : public BaseOpSupportChecker {
   int GetMinSupportedOpSet(const Node& /* node */) const override { return 6; }
 };
 
-bool CastOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+bool CastOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const NodeUnit& node_unit,
                                              const OpSupportCheckParams& /* params */) const {
+  const auto& node = node_unit.GetNode();
   NodeAttrHelper helper(node);
   const auto to = helper.Get("to", 0);
   if (to != ONNX_NAMESPACE::TensorProto::FLOAT &&
@@ -829,7 +840,7 @@ bool CastOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& /* init
 
 class SoftMaxOpSupportChecker : public BaseOpSupportChecker {
  private:
-  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
+  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
                          const OpSupportCheckParams& params) const override;
 
   int32_t GetMinSupportedNNAPIFeatureLevel(const Node& /* node */,
@@ -838,8 +849,9 @@ class SoftMaxOpSupportChecker : public BaseOpSupportChecker {
   }
 };
 
-bool SoftMaxOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+bool SoftMaxOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const NodeUnit& node_unit,
                                                 const OpSupportCheckParams& params) const {
+  const auto& node = node_unit.GetNode();
   Shape input_shape;
   if (!GetShape(*node.InputDefs()[0], input_shape))
     return false;
@@ -875,7 +887,7 @@ class GemmOpSupportChecker : public BaseOpSupportChecker {
       const std::string& op_type, OpSupportCheckerRegistrations& op_registrations);
 
  private:
-  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
+  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
                          const OpSupportCheckParams& params) const override;
   bool HasSupportedInputsImpl(const Node& node) const override;
   int GetMinSupportedOpSet(const Node& node) const override;
@@ -946,8 +958,9 @@ int GemmOpSupportChecker::GetMinSupportedOpSet(const Node& node) const {
   return 1;
 }
 
-bool GemmOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
+bool GemmOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
                                              const OpSupportCheckParams& params) const {
+  const auto& node = node_unit.GetNode();
   const auto& op_type = node.OpType();
   const auto input_defs(node.InputDefs());
   size_t a_idx = 0, b_idx = 1, c_idx = 2;  // A*B+C
@@ -1068,7 +1081,7 @@ class UnaryOpSupportChecker : public BaseOpSupportChecker {
       const std::string& op_type, OpSupportCheckerRegistrations& op_registrations);
 
  private:
-  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
+  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
                          const OpSupportCheckParams& params) const override;
 
   int32_t GetMinSupportedNNAPIFeatureLevel(const Node& node,
@@ -1100,8 +1113,9 @@ class UnaryOpSupportChecker : public BaseOpSupportChecker {
       });
 }
 
-bool UnaryOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
+bool UnaryOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
                                               const OpSupportCheckParams& params) const {
+  const auto& node = node_unit.GetNode();
   if (node.OpType() == "QLinearSigmoid")
     return IsQuantizedOpSupported(initializers, node, params);
   else  // Everything except "QLinearSigmoid" are by default supported
@@ -1205,14 +1219,15 @@ int UnaryOpSupportChecker::GetMinSupportedOpSet(const Node& node) const {
 
 class ConcatOpSupportChecker : public BaseOpSupportChecker {
  private:
-  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
+  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
                          const OpSupportCheckParams& params) const override;
 
   bool HasSupportedInputsImpl(const Node& node) const override;
 };
 
-bool ConcatOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+bool ConcatOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const NodeUnit& node_unit,
                                                const OpSupportCheckParams& /* params */) const {
+  const auto& node = node_unit.GetNode();
   Shape input_shape;
   if (!GetShape(*node.InputDefs()[0], input_shape))
     return false;
@@ -1249,7 +1264,7 @@ bool ConcatOpSupportChecker::HasSupportedInputsImpl(const Node& node) const {
 
 class SqueezeOpSupportChecker : public BaseOpSupportChecker {
  private:
-  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
+  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
                          const OpSupportCheckParams& params) const override;
 
   int32_t GetMinSupportedNNAPIFeatureLevel(const Node& /* node */,
@@ -1258,8 +1273,9 @@ class SqueezeOpSupportChecker : public BaseOpSupportChecker {
   }
 };
 
-bool SqueezeOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
+bool SqueezeOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
                                                 const OpSupportCheckParams& /* params */) const {
+  const auto& node = node_unit.GetNode();
   Shape input_shape;
   if (!GetShape(*node.InputDefs()[0], input_shape))
     return false;
@@ -1289,7 +1305,7 @@ bool SqueezeOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& init
 
 class QuantizeLinearOpSupportChecker : public BaseOpSupportChecker {
  private:
-  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
+  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
                          const OpSupportCheckParams& params) const override;
 
   int32_t GetMinSupportedNNAPIFeatureLevel(const Node& /* node */,
@@ -1298,8 +1314,9 @@ class QuantizeLinearOpSupportChecker : public BaseOpSupportChecker {
   }
 };
 
-bool QuantizeLinearOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
+bool QuantizeLinearOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
                                                        const OpSupportCheckParams& params) const {
+  const auto& node = node_unit.GetNode();
   const auto input_defs(node.InputDefs());
   const auto output_defs(node.OutputDefs());
 
@@ -1331,7 +1348,7 @@ bool QuantizeLinearOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSe
 
 class DequantizeLinearOpSupportChecker : public BaseOpSupportChecker {
  private:
-  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
+  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
                          const OpSupportCheckParams& params) const override;
 
   int32_t GetMinSupportedNNAPIFeatureLevel(const Node& /* node */,
@@ -1341,8 +1358,9 @@ class DequantizeLinearOpSupportChecker : public BaseOpSupportChecker {
   bool HasSupportedInputsImpl(const Node& node) const override;
 };
 
-bool DequantizeLinearOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
+bool DequantizeLinearOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
                                                          const OpSupportCheckParams& params) const {
+  const auto& node = node_unit.GetNode();
   const auto input_defs(node.InputDefs());
   if (!HasValidQuantizationScales(initializers, node, {1}, params))
     return false;
@@ -1376,7 +1394,7 @@ bool DequantizeLinearOpSupportChecker::HasSupportedInputsImpl(const Node& node) 
 
 class LRNOpSupportChecker : public BaseOpSupportChecker {
  private:
-  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
+  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
                          const OpSupportCheckParams& params) const override;
 
   int32_t GetMinSupportedNNAPIFeatureLevel(const Node& /* node */,
@@ -1385,8 +1403,9 @@ class LRNOpSupportChecker : public BaseOpSupportChecker {
   }
 };
 
-bool LRNOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+bool LRNOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const NodeUnit& node_unit,
                                             const OpSupportCheckParams& /* params */) const {
+  const auto& node = node_unit.GetNode();
   Shape input_shape;
   if (!GetShape(*node.InputDefs()[0], input_shape))
     return false;
@@ -1407,12 +1426,13 @@ bool LRNOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& /* initi
 
 class ClipOpSupportChecker : public BaseOpSupportChecker {
  private:
-  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
+  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
                          const OpSupportCheckParams& params) const override;
 };
 
-bool ClipOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
+bool ClipOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
                                              const OpSupportCheckParams& /* params */) const {
+  const auto& node = node_unit.GetNode();
   float min, max;
   if (!GetClipMinMax(initializers, node, min, max, logging::LoggingManager::DefaultLogger()))
     return false;
@@ -1434,7 +1454,7 @@ bool ClipOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initial
 
 class ResizeOpSupportChecker : public BaseOpSupportChecker {
  private:
-  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
+  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
                          const OpSupportCheckParams& params) const override;
 
   int32_t GetMinSupportedNNAPIFeatureLevel(const Node& /* node */,
@@ -1447,8 +1467,9 @@ class ResizeOpSupportChecker : public BaseOpSupportChecker {
   bool HasSupportedInputsImpl(const Node& node) const override;
 };
 
-bool ResizeOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
+bool ResizeOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
                                                const OpSupportCheckParams& params) const {
+  const auto& node = node_unit.GetNode();
   Shape input_shape;
   if (!GetShape(*node.InputDefs()[0], input_shape))
     return false;
@@ -1605,12 +1626,13 @@ bool ResizeOpSupportChecker::HasSupportedInputsImpl(const Node& node) const {
 
 class FlattenOpSupportChecker : public BaseOpSupportChecker {
  private:
-  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
+  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
                          const OpSupportCheckParams& params) const override;
 };
 
-bool FlattenOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+bool FlattenOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const NodeUnit& node_unit,
                                                 const OpSupportCheckParams& /* params */) const {
+  const auto& node = node_unit.GetNode();
   Shape input_shape;
   if (!GetShape(*node.InputDefs()[0], input_shape))
     return false;
@@ -1652,7 +1674,7 @@ class MinMaxOpSupportChecker : public BaseOpSupportChecker {
   // Min/Max opset 5- uses consumed_inputs attribute which is not supported for now
   int GetMinSupportedOpSet(const Node& /* node */) const override { return 6; }
 
-  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
+  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
                          const OpSupportCheckParams& params) const override;
 };
 
@@ -1666,8 +1688,9 @@ class MinMaxOpSupportChecker : public BaseOpSupportChecker {
       });
 }
 
-bool MinMaxOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+bool MinMaxOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const NodeUnit& node_unit,
                                                const OpSupportCheckParams& /* params */) const {
+  const auto& node = node_unit.GetNode();
   // TODO support 2+ inputs for Min/Max op
   if (node.InputDefs().size() != 2) {
     LOGS_DEFAULT(VERBOSE) << "[" << node.OpType() << "] only supports 2 inputs, "
@@ -1707,12 +1730,13 @@ class SliceOpSupportChecker : public BaseOpSupportChecker {
   // We only support slice from opset 10
   int GetMinSupportedOpSet(const Node& /* node */) const override { return 10; }
 
-  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
+  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
                          const OpSupportCheckParams& params) const override;
 };
 
-bool SliceOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
+bool SliceOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
                                               const OpSupportCheckParams& /* params */) const {
+  const auto& node = node_unit.GetNode();
   Shape input_shape;
   if (!GetShape(*node.InputDefs()[0], input_shape))
     return false;
