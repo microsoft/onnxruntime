@@ -40,7 +40,6 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
         .TypeConstraint("T3", DataTypeImpl::GetTensorType<int32_t>()),
     MatMulInteger);
 
-#if defined(MLAS_TARGET_ARM_ANY)
 ONNX_OPERATOR_TYPED_KERNEL_EX(
     MatMulInteger,
     kOnnxDomain,
@@ -52,7 +51,6 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
         .TypeConstraint("T2", DataTypeImpl::GetTensorType<int8_t>())
         .TypeConstraint("T3", DataTypeImpl::GetTensorType<int32_t>()),
     MatMulInteger);
-#endif
 
 Status MatMulInteger::Compute(OpKernelContext* ctx) const {
   const auto* a = ctx->Input<Tensor>(IN_A);

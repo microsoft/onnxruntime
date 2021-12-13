@@ -8,32 +8,6 @@
 namespace torch_ort {
 namespace eager {
 
-OrtValue reshape_invoke(
-  onnxruntime::ORTInvoker& invoker,
-  OrtValue& input,
-  std::vector<int64_t> shape,
-  bool in_place) {
-  
-  // TODO: actual reshape on buffer
-  const onnxruntime::Tensor& input_tensor = input.Get<onnxruntime::Tensor>();
-  auto new_shape = at::infer_size(shape, input_tensor.Shape().Size());
-  OrtValue shape_tensor;
-  //todo: avoid the copy on this small shape vector;
-  auto element_type = onnxruntime::DataTypeImpl::GetType<int64_t>();
-  CreateMLValue(invoker.GetCurrentExecutionProvider().GetAllocator(0, OrtMemTypeDefault),
-                element_type, {(int64_t)new_shape.size(),}, &shape_tensor);
-  auto* ort_shape_tensor = shape_tensor.GetMutable<onnxruntime::Tensor>();
-  CopyVectorToTensor<int64_t>(invoker, new_shape, *ort_shape_tensor);
-  std::vector<OrtValue> result(1);
-  if (in_place){
-    auto* input_ort_tensor = input.GetMutable<onnxruntime::Tensor>();
-    CreateMLValue(input_ort_tensor->MutableDataRaw(),
-                element_type, new_shape, &result[0]);
-  }
-  ORT_THROW_IF_ERROR(invoker.Invoke("Reshape", {input, shape_tensor}, result, nullptr));
-  return result[0];
-}
-
 void copy(onnxruntime::ORTInvoker& invoker, 
           const OrtValue& src, OrtValue& dst){
   auto& ort_ep = invoker.GetCurrentExecutionProvider();

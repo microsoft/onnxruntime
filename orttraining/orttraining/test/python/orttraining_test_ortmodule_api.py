@@ -28,6 +28,7 @@ from onnxruntime.training.ortmodule import (ORTModule,
                                             LogLevel,
                                             _fallback,
                                             _graph_execution_manager)
+import onnxruntime.training.ortmodule as ortmodule_module
 
 from onnxruntime.training.optim import FusedAdam
 from transformers import AdamW
@@ -36,6 +37,10 @@ import _test_helpers
 
 # Import autocasting libs
 from torch.cuda import amp
+
+
+DEFAULT_OPSET = 14
+
 
 # PyTorch model definitions for tests
 
@@ -4501,7 +4506,7 @@ def test_sigmoid_grad_opset13():
     old_opst_cst = ortmodule.ONNX_OPSET_VERSION
     old_opset = os.getenv("ORTMODULE_ONNX_OPSET_VERSION", None)
     os.environ["ORTMODULE_ONNX_OPSET_VERSION"] = '13'
-    assert ortmodule.ONNX_OPSET_VERSION == 12
+    assert ortmodule.ONNX_OPSET_VERSION == 14
 
     ort_model = ORTModule(copy.deepcopy(pt_model))
 
@@ -4530,7 +4535,7 @@ def test_sigmoid_grad_opset13():
     assert ortmodule.ONNX_OPSET_VERSION == 13
     ortmodule.ONNX_OPSET_VERSION = old_opst_cst
  
-@pytest.mark.parametrize("opset_version", [12, 13])
+@pytest.mark.parametrize("opset_version", [12, 13, 14])
 def test_opset_version_change(opset_version):
     device = 'cuda'
 
@@ -4651,3 +4656,35 @@ def test_softmax(M, N):
     _test_helpers.assert_values_are_close(pt_prediction, ort_prediction)
     _test_helpers.assert_values_are_close(pt_loss, ort_loss)
     _test_helpers.assert_values_are_close(pt_x.grad, ort_x.grad)
+
+
+def test_check_opset_is_default_opset_after_training():
+    M, N = 24, 6
+
+    class NeuralNetSoftmax(torch.nn.Module):
+        def __init__(self):
+            super(NeuralNetSoftmax, self).__init__()
+            self.m = torch.nn.Softmax(dim=1)
+
+        def forward(self, x):
+            return self.m(x)
+
+    def run_step(model, x):
+        prediction = model(x)
+        loss = prediction.sum()
+        loss.backward()
+        return prediction, loss
+
+    device = 'cuda'
+    pt_model = NeuralNetSoftmax().to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+
+    pt_x = torch.rand((M, N), requires_grad=True, device=device)
+    ort_x = copy.deepcopy(pt_x)
+
+    pt_prediction, pt_loss = run_step(pt_model, pt_x)
+    ort_prediction, ort_loss = run_step(ort_model, ort_x)
+    _test_helpers.assert_values_are_close(pt_prediction, ort_prediction)
+    _test_helpers.assert_values_are_close(pt_loss, ort_loss)
+    _test_helpers.assert_values_are_close(pt_x.grad, ort_x.grad)
+    assert ortmodule_module.ONNX_OPSET_VERSION == DEFAULT_OPSET
