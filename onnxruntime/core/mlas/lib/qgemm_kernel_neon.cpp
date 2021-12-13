@@ -1204,7 +1204,8 @@ size_t MlasSymmQGemmKernel<MLAS_GEMM_X8S8_KERNEL_NEON>(
     const int32_t* ColumnSumVector
 )
 {
-    MlasSymQgemmS8KernelNeon(A, B, C, PackedCountK, CountM, CountN, ldc, lda, ColumnSumVector);
+    return MlasSymQgemmS8KernelNeon(A, B, C, PackedCountK, CountM, CountN, ldc, lda,
+                                    ColumnSumVector);
 }
 
 const MLAS_GEMM_QUANT_DISPATCH MlasGemmX8S8DispatchNeon = {
@@ -1213,6 +1214,13 @@ const MLAS_GEMM_QUANT_DISPATCH MlasGemmX8S8DispatchNeon = {
     MlasGemmQuantCopyPackB<MLAS_GEMM_X8S8_KERNEL_NEON>,
     MLAS_GEMM_X8S8_KERNEL_NEON::PackedK,
     MLAS_GEMM_X8S8_KERNEL_NEON::PackedStrides.K,
+};
+
+const MLAS_SYMM_QGEMM_DISPATCH MlasSymmQgemmS8DispatchNeon = {
+    MlasSymmQGemmPackedOperation<MLAS_GEMM_X8S8_KERNEL_NEON>,
+    MlasGemmQuantCopyPackB<MLAS_GEMM_X8S8_KERNEL_NEON>,
+    4,   // StrideM
+    MLAS_GEMM_X8S8_KERNEL_NEON::PackedK
 };
 
 #endif  //defined(MLAS_TARGET_ARM64)

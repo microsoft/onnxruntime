@@ -590,6 +590,65 @@ MlasGemmBatch(
     MLAS_THREADPOOL* ThreadPool
     );
 
+/**
+ * @brief Supply data parameters for symmetric quantized GEMM.
+ *        B matrix zero point must be zero, and it must be
+ *        pre-packed, with column sums scaled by (-ZeroPointA)
+*/
+struct MLAS_SYMM_QGEMM_DATA_PARAMS {
+    const void* A = nullptr;
+    size_t lda = 0;
+    const void* B = 0;
+    void* C = nullptr;
+    size_t ldc = 0;
+    // TODO!! add re-quantization parameters
+};
+
+/**
+ * @brief Whether symmetric quant gemm is supported.
+ * @param AIsSigned 
+ * @return 
+*/
+inline
+bool
+MLASCALL
+MlasSymmQgemmSupported(bool AIsSigned)
+{
+#ifndef MLAS_TARGET_ARM64
+
+    // Only have arm64 impl for now
+    return false;
+
+#else
+
+    // Only support s8s8 for now
+    return AIsSigned;
+
+#endif  // !MLAS_TARGET_ARM64
+}
+
+/**
+ * @brief   Batched QGEMM. Similar to MlasGemmBatch, but right hand side matrix
+ *          must be symmetrically quantized and prepacked.
+ *
+ * @param [IN] Shape        A single shape descriptor for all multiplicatons.
+                            Currently A and B must be signed, and accumulation
+                            mode not supported
+ * @param [IN] DataParams   Array of data descriptors, one for each mutliplication
+ *                          B must be prepacked
+ * @param [IN] BatchN       Number of multiplications
+ * @param [IN] ThreadPool 
+*/
+void
+MLASCALL
+MlasSymmQgemmBatch(
+    const MLAS_GEMM_QUANT_SHAPE_PARAMS& Shape,
+    const MLAS_SYMM_QGEMM_DATA_PARAMS* DataParams,
+    const size_t BatchN,
+    MLAS_THREADPOOL* ThreadPool
+    );
+
+
 //
 // Buffer packing routines.
 //
@@ -630,6 +689,18 @@ MlasGemmPackB(
     size_t ldb,
     bool AIsSigned,
     bool BIsSigned,
+    void* PackedB
+    );
+
+void
+MLASCALL
+MlasSymmQgemmPackB(
+    size_t N,
+    size_t K,
+    const int8_t* B,
+    size_t ldb,
+    bool AIsSigned,
+    int32_t ZeroPointA,
     void* PackedB
     );
 

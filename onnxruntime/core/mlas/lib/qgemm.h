@@ -167,6 +167,21 @@ MlasGemmQuantKernel(
     bool ZeroMode
 );
 
+/**
+ * @brief Usually a wrapper of assembly/intrinsic kernel
+ *        of symmetric quant gemm 
+ * @tparam KernelType 
+ * @param A                   Left hand side matrix
+ * @param B                   Prepacked right hand side matrix
+ * @param C                   Result matrix
+ * @param PackedCountK        Number of packed rows from B
+ * @param CountM              Number of rows to process
+ * @param CountN              Number of columns to process
+ * @param ldc                 Row stride of C
+ * @param lda                 Row stride of A
+ * @param ColumnSumVector     Column sum of B scaled by zero point A
+ * @return                    Number of rows processed
+*/
 template<typename KernelType>
 size_t
 MlasSymmQGemmKernel(
@@ -685,7 +700,7 @@ template<typename KernelType>
 void
 MlasSymmQGemmPackedOperation(
     const MLAS_GEMM_QUANT_SHAPE_PARAMS* Shape,
-    const MLAS_GEMM_QUANT_DATA_PARAMS* Data,
+    const MLAS_SYMM_QGEMM_DATA_PARAMS* Data,
     const size_t RangeStartM,
     const size_t RangeCountM,
     const size_t RangeStartN,
@@ -698,11 +713,9 @@ MlasSymmQGemmPackedOperation(
     const size_t lda = Data->lda;
     const size_t ldc = Data->ldc;
 
-    const int8_t* PanelA = (const int8_t*)(Data->A + RangeStartM * lda);
+    const int8_t* PanelA = (const int8_t*)(Data->A) + RangeStartM * lda;
     const int8_t* PackedB = (const int8_t*)Data->B;
-    int32_t* C = Data->C + RangeStartM * ldc + RangeStartN;
-
-    const int32_t ZeroPointA = Data->ZeroPointA;
+    int32_t* C = (int32_t*)(Data->C) + RangeStartM * ldc + RangeStartN;
 
     //
     // Extract the pointer to the column sum buffer from the packed matrix.
@@ -722,40 +735,25 @@ MlasSymmQGemmPackedOperation(
     //              ==>
     //     A[i] * B[i] - A[i] * ZeroPointB - B[i] * ZeroPointA + ZeroPointA * ZeroPointB
     //
-    // The ZeroPointB term is zero, which makes this much simpler
+    // ZeroPointB is zero, which makes this much simpler
     //
-    MLAS_DECLSPEC_ALIGN(int32_t ColumnSumBuffer[1024], 64);
 
-    size_t CountN;
-    for (size_t n = 0; n < RangeCountN; n += CountN) {
-        CountN = std::min(RangeCountN - n, (size_t)1024);
+    const int8_t* b = PackedB + RangeStartN * KernelType::PackedK * PackedCountK;
+    int32_t* c = C;
 
-        // TODO!! move this operation to prepack
-        MlasGemmQuantScaleSumBuffer(ColumnSumBuffer, PackedColumnSumBuffer + n, CountN,
-                                    -ZeroPointA);
+    auto pa = PanelA;
+    size_t RowsRemaining = RangeCountM;
 
-        const int8_t* b = PackedB + (RangeStartN + n) * 16 * PackedCountK;
-        int32_t* c = C + n;
+    while (RowsRemaining > 0) {
+        size_t RowsHandled = MlasSymmQGemmKernel<KernelType>(
+            pa, b, c, PackedCountK, RowsRemaining, RangeCountN, ldc, lda, PackedColumnSumBuffer);
 
-        auto pa = PanelA;
-        size_t RowsRemaining = RangeCountM;
-
-        bool PostProcess = true;
-
-        while (RowsRemaining > 0) {
-            size_t RowsHandled = MlasSymmQGemmKernel<KernelType>(
-                pa, b, c, PackedCountK, RowsRemaining, CountN, ldc, lda, PackedColumnSumBuffer + n);
-
-            if (PostProcess && Data->OutputProcessor != nullptr) {
-                Data->OutputProcessor->Process(Data->C, RangeStartM + RangeCountM - RowsRemaining,
-                                               RangeStartN + n, RowsHandled, CountN, Data->ldc);
-            }
-            c += ldc * RowsHandled;
-            pa += KernelType::PackedK * PackedCountK * RowsHandled;
-            RowsRemaining -= RowsHandled;
-        }
+        c += ldc * RowsHandled;
+        pa += KernelType::PackedK * PackedCountK * RowsHandled;
+        RowsRemaining -= RowsHandled;
     }
 }
+
 
 //
 // Quantized integer matrix/matrix dispatch structure.
@@ -766,6 +764,17 @@ void
 (MLAS_GEMM_QUANT_OPERATION)(
     const MLAS_GEMM_QUANT_SHAPE_PARAMS* Shape,
     const MLAS_GEMM_QUANT_DATA_PARAMS* Data,
+    const size_t RangeStartM,
+    const size_t RangeCountM,
+    const size_t RangeStartN,
+    const size_t RangeCountN
+    );
+
+typedef
+void
+(MLAS_SYMM_QGEMM_OPERATION)(
+    const MLAS_GEMM_QUANT_SHAPE_PARAMS* Shape,
+    const MLAS_SYMM_QGEMM_DATA_PARAMS* Data,
     const size_t RangeStartM,
     const size_t RangeCountM,
     const size_t RangeStartN,
@@ -792,6 +801,12 @@ struct MLAS_GEMM_QUANT_DISPATCH {
     size_t PackedStrideK;
 };
 
+struct MLAS_SYMM_QGEMM_DISPATCH {
+    MLAS_SYMM_QGEMM_OPERATION* Operation;
+    MLAS_GEMM_QUANT_COPY_PACKB_ROUTINE* CopyPackBRoutine;
+    size_t StrideM; /**< num of rows processed by kernel at a time */
+    size_t PackedK;
+};
 
 MLAS_FORCEINLINE
 const MLAS_GEMM_QUANT_DISPATCH*

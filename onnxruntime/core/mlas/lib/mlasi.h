@@ -698,6 +698,12 @@ extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchWasmSimd;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmQuantDispatchDefault;
 
 //
+// Symmetric quantized qgemm dispatch structure
+//
+struct MLAS_SYMM_QGEMM_DISPATCH;
+extern const MLAS_SYMM_QGEMM_DISPATCH MlasSymmQgemmS8DispatchNeon;
+ 
+//
 // Symmetric quantized integer convolution dispatch structure.
 //
 
@@ -792,6 +798,7 @@ struct MLAS_PLATFORM {
 #elif defined(MLAS_TARGET_ARM64)
     const MLAS_GEMM_QUANT_DISPATCH* GemmU8X8Dispatch;
 #endif
+    const MLAS_SYMM_QGEMM_DISPATCH* SymmQgemmDispatch{nullptr};
 
     const MLAS_CONV_SYM_DISPATCH* ConvSymU8S8Dispatch{nullptr};
     const MLAS_CONV_SYM_DISPATCH* ConvSymS8S8Dispatch{nullptr};
@@ -861,6 +868,13 @@ MlasExecuteThreaded(
     ptrdiff_t Iterations,
     MLAS_THREADPOOL* ThreadPool
     );
+
+inline
+size_t
+MlasDivRoundup(size_t up, size_t down)
+{
+    return (up + down - 1) / down;
+}
 
 /**
  * @brief Distribute multiple iterations of work over a thread pool if supported

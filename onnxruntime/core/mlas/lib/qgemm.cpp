@@ -139,11 +139,13 @@ Return Value:
 {
     MlasGemmBatch(Shape, &DataParams, 1, ThreadPool);
 }
+
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(push)
 // VC++ suggests we can attempt to make 'MlasBitsOfFp32' constexpr, but it is not valid.
 #pragma warning(disable : 26451)
 #endif
+
 void
 MLASCALL
 MlasGemmBatch(
@@ -220,6 +222,84 @@ MlasGemmBatch(
         MlasGemmQuantThreaded(&WorkBlock, &Shape, &DataParams[gemm_i], blk_i);
     });
 }
+
+void
+MLASCALL
+MlasSymmQgemmBatch(
+    const MLAS_GEMM_QUANT_SHAPE_PARAMS& Shape,
+    const MLAS_SYMM_QGEMM_DATA_PARAMS* DataParams,
+    const size_t BatchN,
+    MLAS_THREADPOOL* ThreadPool
+    )
+{
+#ifdef MLAS_TARGET_ARM64
+
+    const size_t M = Shape.M;
+    const size_t N = Shape.N;
+    const size_t K = Shape.K;
+
+    //
+    // Compute the number of target threads given the complexity of the SGEMM
+    // operation. Small requests should run using the single threaded path.
+    //
+
+    const double Complexity = double(M) * double(N) * double(K) * double(BatchN);
+
+    ptrdiff_t TargetThreadCount = ptrdiff_t(Complexity / double(MLAS_QGEMM_THREAD_COMPLEXITY)) + 1;
+
+    ptrdiff_t MaximumThreadCount = MlasGetMaximumThreadCount(ThreadPool);
+
+    if (TargetThreadCount >= MaximumThreadCount) {
+        TargetThreadCount = MaximumThreadCount;
+    }
+
+    ptrdiff_t ThreadsPerGemm = TargetThreadCount / BatchN;
+    if (ThreadsPerGemm < 1) {
+        ThreadsPerGemm = 1;
+    }
+
+    const MLAS_SYMM_QGEMM_DISPATCH* dispatch = MlasPlatform.SymmQgemmDispatch;
+    const size_t StrideM = dispatch->StrideM;
+
+    size_t nc = N;
+    if (MlasGetMaximumThreadCount(ThreadPool) > BatchN) {
+        // more than one thread per GEMM
+
+        const size_t BlockedM = MlasDivRoundup(M, StrideM);
+        const size_t max_nc = MlasDivRoundup(N * BlockedM, ThreadsPerGemm);
+        if (max_nc < nc) {
+            nc = std::min(nc, MlasDivRoundup(nc, max_nc * MLAS_QGEMM_STRIDEN_THREAD_ALIGN) *
+                                  MLAS_QGEMM_STRIDEN_THREAD_ALIGN);
+        }
+    }
+    const size_t StrideN = nc;
+
+    const size_t ThreadCountM = MlasDivRoundup(M, StrideM);
+    const size_t ThreadCountN = MlasDivRoundup(N, StrideN);
+    ThreadsPerGemm = ThreadCountM * ThreadCountN;
+
+    const MLAS_SYMM_QGEMM_OPERATION* operation = dispatch->Operation;
+
+    MlasTrySimpleParallel(ThreadPool, ThreadsPerGemm * BatchN, [&](ptrdiff_t tid) {
+        const auto gemm_i = tid / ThreadsPerGemm;
+        const auto blk_i = tid % ThreadsPerGemm;
+        auto Data = &DataParams[gemm_i];
+
+        const ptrdiff_t ThreadIdN = blk_i / ThreadCountM;
+        const ptrdiff_t ThreadIdM = blk_i % ThreadCountM;
+
+        const size_t RangeStartM = ThreadIdM * StrideM;
+        const size_t RangeCountM = std::min(Shape.M - RangeStartM, (size_t)StrideM);
+
+        const size_t RangeStartN = ThreadIdN * StrideN;
+        const size_t RangeCountN = std::min(Shape.N - RangeStartN, (size_t)StrideN);
+
+        operation(&Shape, Data, RangeStartM, RangeCountM, RangeStartN, RangeCountN);
+    });
+
+#endif
+}
+
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(pop)
 #endif
@@ -386,5 +466,41 @@ Return Value:
 
         PackedB = (uint8_t*)PackedB + AlignedN * AlignedK;
         B += ldb * CountK;
+    }
+}
+
+void
+MLASCALL
+MlasSymmQgemmPackB(
+    size_t N,
+    size_t K,
+    const int8_t* B,
+    size_t ldb,
+    bool AIsSigned,
+    int32_t ZeroPointA,
+    void* PackedB
+    )
+{
+    const MLAS_SYMM_QGEMM_DISPATCH* SymmQgemmDispatch = MlasPlatform.SymmQgemmDispatch;
+
+    size_t PackedK = SymmQgemmDispatch->PackedK;
+
+    //
+    // Reserve and initialize storage for the column sum buffer to hold the sums
+    // of the elements along each of the columns.
+    //
+
+    const size_t AlignedN =
+        (N + MLAS_QGEMM_STRIDEN_THREAD_ALIGN - 1) & ~(MLAS_QGEMM_STRIDEN_THREAD_ALIGN - 1);
+
+    int32_t* PackedColumnSumBuffer = (int32_t*)PackedB;
+    PackedB = PackedColumnSumBuffer + AlignedN;
+
+    const size_t AlignedK = (K + PackedK - 1) & ~(PackedK - 1);
+
+    SymmQgemmDispatch->CopyPackBRoutine((uint8_t*)PackedB, (const uint8_t*)B, ldb, N, K,
+                                        PackedColumnSumBuffer, true);
+    for (size_t n = 0; n < AlignedN; n++) {
+        PackedColumnSumBuffer[n] *= -ZeroPointA;
     }
 }
