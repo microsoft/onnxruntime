@@ -119,11 +119,9 @@ class Allocator;
 class ThreadPoolInterface;
 }  // namespace Eigen
 
-#ifdef MLAS_STANDALONE_LIB
 namespace mlas {
 class IThreadPool;
 }  // namespace mlas
-#endif
 
 namespace onnxruntime {
 
@@ -143,9 +141,7 @@ class ExtendedThreadPoolInterface;
 class LoopCounter;
 class ThreadPoolParallelSection;
 
-#ifdef MLAS_STANDALONE_LIB
 class MlasThreadPoolAdapter;
-#endif
 
 class ThreadPool {
  public:
@@ -154,11 +150,8 @@ class ThreadPool {
 #else
   using NAME_CHAR_TYPE = char;
 #endif
-#ifdef MLAS_STANDALONE_LIB
   using MLAS_THREADPOOL_TYPE = mlas::IThreadPool;
-#else
-  using MLAS_THREADPOOL_TYPE = ThreadPool;
-#endif
+
   // Constructs a pool for running with with "degree_of_parallelism" threads with
   // specified "name". env->StartThread() is used to create individual threads
   // with the given ThreadOptions. If "low_latency_hint" is true the thread pool
@@ -402,15 +395,11 @@ class ThreadPool {
   // convert to MLAS ThreadPool
   inline static MLAS_THREADPOOL_TYPE* AsMlasThreadPool(concurrency::ThreadPool* tp)
   {
-#ifdef MLAS_STANDALONE_LIB
     if (tp != nullptr) {
       return reinterpret_cast<MLAS_THREADPOOL_TYPE*>(tp->mlas_threadpool_adapter_.get());
     } else {
       return nullptr;
     }
-#else
-    return tp;
-#endif
   }
 
  private:
@@ -473,9 +462,7 @@ class ThreadPool {
   // If used, underlying_threadpool_ is instantiated and owned by the ThreadPool.
   std::unique_ptr<ThreadPoolTempl<Env> > extended_eigen_threadpool_;
 
-#ifdef MLAS_STANDALONE_LIB
   std::unique_ptr<MlasThreadPoolAdapter> mlas_threadpool_adapter_;
-#endif
 };
 
 }  // namespace concurrency

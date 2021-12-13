@@ -69,7 +69,6 @@ option(onnxruntime_USE_AVX512 "Use AVX512 instructions" OFF)
 
 option(onnxruntime_USE_OPENMP "Build with OpenMP support" OFF)
 option(onnxruntime_BUILD_SHARED_LIB "Build a shared library" OFF)
-option(onnxruntime_BUILD_STANDALONE_MLAS_LIB "Build MLAS as a standalone library" OFF)
 option(onnxruntime_BUILD_APPLE_FRAMEWORK "Build a macOS/iOS framework" OFF)
 option(onnxruntime_ENABLE_MICROSOFT_INTERNAL "Use this option to enable/disable microsoft internal only code" OFF)
 option(onnxruntime_USE_NUPHAR "Build with Nuphar" OFF)
@@ -452,10 +451,6 @@ if (onnxruntime_DISABLE_EXCEPTIONS)
   else()
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-exceptions -fno-unwind-tables -fno-asynchronous-unwind-tables")
   endif()
-endif()
-
-if (onnxruntime_BUILD_STANDALONE_MLAS_LIB)
-  add_compile_definitions(MLAS_STANDALONE_LIB)
 endif()
 
 # We need to link with libatomic on systems that do not have built-in atomics, or
