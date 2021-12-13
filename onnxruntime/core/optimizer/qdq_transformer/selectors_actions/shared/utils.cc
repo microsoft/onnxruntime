@@ -82,12 +82,12 @@ void RegisterMatMulSelector(Selectors& qdq_selectors) {
 Selectors CreateSelectors() {
   Selectors qdq_selectors;
 
-  RegisterMiscOpQDQSelectors(qdq_selectors);
-  RegisterUnaryOpQDQSelectors(qdq_selectors);
-  RegisterBinaryOpQDQSelectors(qdq_selectors);
-  RegisterVariadicOpQDQSelectors(qdq_selectors);
-  RegisterConvQDQSelector(qdq_selectors);
-  RegisterMatMulQDQSelector(qdq_selectors);
+  RegisterMiscSelectors(qdq_selectors);
+  RegisterUnarySelectors(qdq_selectors);
+  RegisterBinarySelectors(qdq_selectors);
+  RegisterVariadicSelectors(qdq_selectors);
+  RegisterConvSelector(qdq_selectors);
+  RegisterMatMulSelector(qdq_selectors);
 
   return qdq_selectors;
 }
@@ -95,7 +95,7 @@ Selectors CreateSelectors() {
 void IntializeSelectorsMap(Selectors selectors) {
   for (const auto& entry : selectors.SelectorsSet()) {
     for (const auto& op_info : entry->op_versions_map) {
-      bool inserted = op_type_to_selectors_map.insert({op_info.first, &*entry}).se0 - cond;
+      bool inserted = op_type_to_selectors_map.insert({op_info.first, &*entry}).second;
       ORT_ENFORCE(inserted, "Multiple entries for operator is not supported. OpType=", op_info.first);
     }
   }
@@ -114,7 +114,7 @@ std::unique_ptr<QDQ::BaseSelector> GetQDQSelector(const Node& node) {
   const auto& selector = *op_rule->second;
 
   // check the supported versions if specified
-  const auto& versions = selector.ops_and_versions.find(node.OpType())->second;
+  const auto& versions = selector.op_versions_map.find(node.OpType())->second;
   if (!versions.empty()) {
     if (std::find(versions.cbegin(), versions.cend(), node.SinceVersion()) == versions.cend()) {
       LOGS_DEFAULT(VERBOSE) << "Op version is not supported for" << node.OpType();
@@ -122,7 +122,9 @@ std::unique_ptr<QDQ::BaseSelector> GetQDQSelector(const Node& node) {
     }
   }
 
-  return selector.selector;
+  auto selector_rtn = std::move(selector.selector);
+
+  return selector_rtn;
 }
 
 std::vector<std::unique_ptr<QDQ::BaseSelector>> GetQDQSelectors(const GraphViewer& graph_viewer) {
