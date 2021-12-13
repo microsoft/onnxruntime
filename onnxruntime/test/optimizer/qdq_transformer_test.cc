@@ -7,6 +7,7 @@
 #include "core/mlas/inc/mlas.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_selectors.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_selector_action_transformer.h"
+#include "core/optimizer/qdq_transformer/selectors_actions/shared/utils.h"
 #include "core/providers/partitioning_utils.h"
 #include "core/session/environment.h"
 #include "core/session/inference_session.h"
@@ -1687,5 +1688,35 @@ TEST(QDQTransformerTests, QDQ_Selector_Test) {
     ASSERT_FALSE(result.has_value());
   }
 }
+
+TEST(QDQTransformerTests, QDQ_GetSelectors_Test) {
+  const ORTCHAR_T* model_file_name = ORT_TSTR("testdata/qdq_conv_model_basic.onnx");
+
+  SessionOptions so;
+  // We want to keep the graph un-optimized to prevent QDQ transformer to kick in
+  so.graph_optimization_level = TransformerLevel::Default;
+  InferenceSessionWrapper session_object{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session_object.Load(model_file_name));
+  ASSERT_STATUS_OK(session_object.Initialize());
+  const Graph& graph = session_object.GetGraph();
+  const auto* conv_node = graph.GetNode(3);
+
+  // Make sure node 3 is the conv node
+  ASSERT_TRUE(nullptr != conv_node);
+  ASSERT_EQ("Conv", conv_node->OpType());
+
+  const GraphViewer graph_viewer(graph);
+
+  QDQ::InitializeSelectorsMap(QDQ::CreateSelectors());
+
+  // Make sure we get the convselector
+  {
+    auto result = QDQ::GetQDQSelectors(graph_viewer);
+    // TODO: how to ASSERT_TRUE() check ConvSelector
+  }
+
+  
+}
+
 }  // namespace test
 }  // namespace onnxruntime
