@@ -102,4 +102,5 @@ static const char* const kOrtSessionOptionsConfigNnapiEpPartitioningStopOps = "e
 // N / (num_of_threads * dynamic_block_base)
 // As execution progresses, the size will decrease according to the diminishing residual of N.
 // This feature, on some platforms, helps to reduce the variance of E2E inference latency.
+// Default value is 4
 static const char* const kOrtSessionOptionsConfigDynamicBlockBase = "session.dynamic_block_base";
