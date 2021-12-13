@@ -12,16 +12,18 @@ IOBinding::IOBinding(const SessionState& session_state) : session_state_(session
 }
 
 common::Status IOBinding::BindInput(const std::string& name, const OrtValue& ml_value) {
-  auto it = mapped_feed_names_.find(name);
-  size_t index;
-  if (it == mapped_feed_names_.end()) {
-    index = feed_names_.size();
-    mapped_feed_names_[name] = index;
+  ORT_ENFORCE(mapped_feed_names_.size() == feed_names_.size(), "Size mismatch.");
+  auto it = mapped_feed_names_.emplace_ptr(name, feed_names_.size());
+  size_t index = it.first->_Myval.second;
+  if (it.second) {
     feed_names_.push_back(name);
     OrtValue new_mlvalue;
     feeds_.push_back(new_mlvalue);
-  } else {
-    index = it->second;
+    // The inserted pointer points to name.c_str(), a pointer the class
+    // does not own. It needs to be replaced by a pointer the class owns
+    // pointing to the same string.
+    VariableNameWrapper* ptr = const_cast<VariableNameWrapper*>(&it.first->_Myval.first);
+    ptr->p_name = feed_names_[index].c_str();
   }
 
   if (ml_value.IsTensor() || ml_value.IsSparseTensor()) {
@@ -34,9 +36,9 @@ common::Status IOBinding::BindInput(const std::string& name, const OrtValue& ml_
 }
 
 void IOBinding::ClearInputs() {
+  mapped_feed_names_.clear();
   feed_names_.clear();
   feeds_.clear();
-  mapped_feed_names_.clear();
 }
 
 static common::Status SyncProviders(const SessionState::NameNodeInfoMapType& node_info_map,
@@ -80,26 +82,31 @@ common::Status IOBinding::BindOutput(const std::string& name, OrtDevice device) 
 }
 
 common::Status IOBinding::BindOutputImpl(const std::string& name, const OrtValue& ml_value, OrtDevice device) {
-  auto it = mapped_output_names_.find(name);
-  if (it != mapped_output_names_.end()) {
-    outputs_[it->second] = ml_value;
-    outputs_device_info_[it->second] = device;
-  } else {
-    size_t index = output_names_.size();
-    mapped_output_names_[name] = index;
+  ORT_ENFORCE(mapped_output_names_.size() == output_names_.size(), "Size mismatch.");
+  auto it = mapped_output_names_.emplace_ptr(name, output_names_.size());
+  size_t index = it.first->_Myval.second;
+  if (it.second) {
     output_names_.push_back(name);
     outputs_.push_back(ml_value);
     outputs_device_info_.push_back(device);
+    // The inserted pointer points to name.c_str(), a pointer the class
+    // does not own. It needs to be replaced by a pointer the class owns
+    // pointing to the same string.
+    VariableNameWrapper* ptr = const_cast<VariableNameWrapper*>(&it.first->_Myval.first);
+    ptr->p_name = output_names_[index].c_str();
+  } else {
+    outputs_[index] = ml_value;
+    outputs_device_info_[index] = device;
   }
 
   return Status::OK();
 }
 
 void IOBinding::ClearOutputs() {
+  mapped_output_names_.clear();
   output_names_.clear();
   outputs_.clear();
   outputs_device_info_.clear();
-  mapped_feed_names_.clear();
 }
 
 const std::vector<std::string>& IOBinding::GetOutputNames() const { return output_names_; }
