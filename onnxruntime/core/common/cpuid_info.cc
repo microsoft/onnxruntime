@@ -95,12 +95,16 @@ CPUIDInfo::CPUIDInfo() {
     }
 #endif
 
-#if defined(CPUIDINFO_ARCH_ARM) && defined(CPUINFO_SUPPORTED)
+#if defined(CPUIDINFO_ARCH_ARM)
+#ifdef CPUINFO_SUPPORTED
 
     // only works on ARM linux or android, does not work on Windows
     is_hybrid_ = cpuinfo_get_uarchs_count() > 1;
     has_arm_neon_dot_ = cpuinfo_has_arm_neon_dot();
-
+#elif defined(_WIN32)
+    // TODO implement hardware feature detection in windows.
+    is_hybrid_ = true;
+#endif
 #endif
 
 }
