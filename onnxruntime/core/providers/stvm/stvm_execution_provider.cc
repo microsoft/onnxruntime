@@ -120,8 +120,10 @@ class STVMRunner {
     common::Status operator()(FunctionState state, const OrtCustomOpApi* api, OrtKernelContext* context) {
       Ort::CustomOpApi ort{*api};
 
-      std::vector<size_t> inds;
-      std::vector<DLTensor> dl_tensors_inputs;
+      size_t num = inputs_info_.size();
+      std::vector<size_t> inds(num);
+      std::vector<DLTensor> dl_tensors_inputs(num);
+      size_t counter = 0u;
       for (auto& info : inputs_info_) {
         // TODO(vvchernov): decomposition declaration only available with -std=c++1z or -std=gnu++1z
         auto& i = info.first;
@@ -146,8 +148,8 @@ class STVMRunner {
         t.data = const_cast<void*>(ort.GetTensorData<void>(input_tensor));
         t.ndim = shape.size();
         t.shape = shape.data();
-        dl_tensors_inputs.push_back(t);
-        inds.push_back(i);
+        dl_tensors_inputs[counter] = t;
+        inds[counter++] = i;
       }
       stvm::TVMSetInputs(*mod_, inds, dl_tensors_inputs);
 
@@ -211,7 +213,7 @@ class STVMRunner {
 
   private:
     tvm::runtime::Module* mod_;
-    InputsInfoMap inputs_info_;
+    InputsInfoMap inputs_info_{};
     bool update_output_shapes_ = false;
     TVMTensorShapes output_shapes_;
     std::vector<DLTensor> tensors_outputs_;
