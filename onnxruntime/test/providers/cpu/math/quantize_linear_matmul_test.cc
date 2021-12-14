@@ -86,7 +86,6 @@ TEST(QuantizeLinearMatmulOpTest, QLinearMatMul3D_U8S8) {
   test.Run();
 }
 
-#if defined(MLAS_TARGET_ARM_ANY)
 TEST(QuantizeLinearMatmulOpTest, QLinearMatMul3D_S8S8) {
   OpTester test("QLinearMatMul", 10);
   test.AddInput<int8_t>("T1", {2, 2, 4},
@@ -124,7 +123,6 @@ TEST(QuantizeLinearMatmulOpTest, QLinearMatMul3D_S8S8) {
 
   test.Run();
 }
-#endif
 
 TEST(QuantizeLinearMatmulOpTest, QLinearMatMul2D_U8U8) {
   auto run_test = [](bool only_t1_not_initializer) {
@@ -196,7 +194,6 @@ TEST(QuantizeLinearMatmulOpTest, QLinearMatMul2D_U8S8) {
   run_test(true);
 }
 
-#if defined(MLAS_TARGET_ARM_ANY)
 TEST(QuantizeLinearMatmulOpTest, QLinearMatMul2D_S8S8) {
   auto run_test = [](bool only_t1_not_initializer) {
     OpTester test("QLinearMatMul", 10);
@@ -231,7 +228,6 @@ TEST(QuantizeLinearMatmulOpTest, QLinearMatMul2D_S8S8) {
   // NNAPI will require all inputs except T1 to be initializers
   run_test(true);
 }
-#endif
 
 static void QLinearMatMul2DTest(bool only_t1_not_initializer) {
   // Test non-empty inputs
@@ -302,7 +298,6 @@ TEST(QuantizeLinearMatmulOpTest, PerColumn_2D) {
   test.Run();
 }
 
-#if defined(MLAS_TARGET_ARM_ANY)
 TEST(QuantizeLinearMatmulOpTest, PerColumn_2D_S8S8) {
   OpTester test("QLinearMatMul", 10);
   test.AddInput<int8_t>("a",
@@ -332,7 +327,6 @@ TEST(QuantizeLinearMatmulOpTest, PerColumn_2D_S8S8) {
 
   test.Run();
 }
-#endif
 
 TEST(QuantizeLinearMatmulOpTest, PerColumn_ND) {
   OpTester test("QLinearMatMul", 10);
@@ -377,7 +371,6 @@ TEST(QuantizeLinearMatmulOpTest, PerColumn_ND) {
   test.Run();
 }
 
-#if defined(MLAS_TARGET_ARM_ANY)
 TEST(QuantizeLinearMatmulOpTest, PerColumn_ND_S8S8) {
   OpTester test("QLinearMatMul", 10);
   test.AddInput<int8_t>("a",
@@ -420,7 +413,6 @@ TEST(QuantizeLinearMatmulOpTest, PerColumn_ND_S8S8) {
 
   test.Run();
 }
-#endif
 
 /**
  * @brief Extend QLinearMatMul for verifying prepacking behavior 

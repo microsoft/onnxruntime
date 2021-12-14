@@ -89,8 +89,8 @@ void CheckDataSetValue(DataSet* data_set, uint32_t expected_value) {
 }  // namespace
 
 TEST(TrainingDataLoaderTest, SingleDataLoader_RandomDataSet) {
-  const int batch_size = 2;
-  const int num_of_batch = 1;
+  constexpr int batch_size = 2;
+  constexpr int num_of_batch = 1;
   std::vector<std::string> tensor_names = {"input1",
                                            "input2",
                                            "input3"};
@@ -101,7 +101,7 @@ TEST(TrainingDataLoaderTest, SingleDataLoader_RandomDataSet) {
                                                           onnx::TensorProto_DataType_FLOAT,
                                                           onnx::TensorProto_DataType_INT64};
 
-  const size_t num_of_perf_samples = num_of_batch * batch_size;
+  constexpr size_t num_of_perf_samples = num_of_batch * batch_size;
   auto random_data = std::make_shared<RandomDataSet>(num_of_perf_samples, tensor_names, tensor_shapes, tensor_types);
   SingleDataLoader data_loader(random_data, tensor_names);
   ASSERT_EQ(1, data_loader.NumShards());
@@ -110,7 +110,7 @@ TEST(TrainingDataLoaderTest, SingleDataLoader_RandomDataSet) {
 }
 
 TEST(TrainingDataLoaderTest, DataLoader_OneSingleFile) {
-  const size_t max_num_files_preload = 3;
+  constexpr size_t max_num_files_preload = 3;
   const MapStringToString input_name_map = {{"a", "a"}, {"b", "b"}, {"c", "c"}};
   TemporaryDirectory tmp_dir{ORT_TSTR("training_data_loader_test_dir")};
   const PathString& train_data_dir = ConcatPathComponent<PathChar>(tmp_dir.Path(), ORT_TSTR("single_file"));
@@ -128,7 +128,7 @@ TEST(TrainingDataLoaderTest, DataLoader_OneSingleFile) {
 }
 
 TEST(TrainingDataLoaderTest, DataLoader_OneSingleFileFailParsing) {
-  const size_t max_num_files_preload = 3;
+  constexpr size_t max_num_files_preload = 3;
   const MapStringToString input_name_map = {{"a_invalid", "a"}, {"b", "b"}, {"c", "c"}};
   TemporaryDirectory tmp_dir{ORT_TSTR("training_data_loader_test_dir")};
   const PathString& train_data_dir = ConcatPathComponent<PathChar>(tmp_dir.Path(), ORT_TSTR("single_file"));
@@ -178,7 +178,7 @@ void TestDataLoaderWithMultipleFiles(
 }  // namespace
 
 TEST(TrainingDataLoaderTest, DataLoader_MultipleFiles_InitializeDataSetIndex) {
-  const size_t start_index = 2;
+  constexpr size_t start_index = 2;
   TestDataLoaderWithMultipleFiles(3, 2, &start_index);
 }
 

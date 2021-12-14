@@ -623,7 +623,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetTransposeGradient) {
   if (attributes.empty()) {
     const TensorShapeProto& input_shape = I(0).type_proto->tensor_type().shape();
     if (input_shape.dim_size() > 0) {  // input_shape is available
-      int n = input_shape.dim_size() - 1;
+      size_t n = static_cast<size_t>(input_shape.dim_size()) - 1;
       bw_perm.resize(n + 1);
       std::generate(bw_perm.begin(), bw_perm.end(), [&n] { return n--; });
       new_attributes.push_back(MakeAttribute("perm", bw_perm));

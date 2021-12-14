@@ -319,7 +319,7 @@ TEST(InternalTestingEP, DISABLED_TestNnapiPartitioningMlPerfModels) {
       }
       std::cout << std::endl;
 
-      const bool debug_output = false;
+      constexpr bool debug_output = false;
       PartitionStats stats{}, stop_at_nms_stats{}, slice_stats{};
 
       // arbitrary examples of running different combinations to test what partitioning results

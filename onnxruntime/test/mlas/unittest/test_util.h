@@ -110,8 +110,8 @@ class MatrixGuardBuffer {
       std::fill_n(buffer, Elements, T(0));
 
     } else {
-      const int MinimumFillValue = -23;
-      const int MaximumFillValue = 23;
+      constexpr int MinimumFillValue = -23;
+      constexpr int MaximumFillValue = 23;
 
       int FillValue = MinimumFillValue;
       T* FillAddress = buffer;

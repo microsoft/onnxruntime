@@ -47,8 +47,11 @@ class TrainingManager(GraphExecutionManager):
         forward_inputs = C.OrtValueVector()
         forward_inputs.reserve(len(inputs))
         for input in inputs:
-            dlp = _utils._torch_tensor_to_dlpack(input)
-            forward_inputs.push_back(dlp, input.dtype == torch.bool)
+            if input.device.type == 'ort':
+                forward_inputs.push_back(C.aten_ort_tensor_to_ort_value(input))
+            else:
+                valid_ort_tensor = _utils._torch_tensor_to_dlpack(input)
+                forward_inputs.push_back(valid_ort_tensor, input.dtype == torch.bool)
 
         forward_outputs = C.OrtValueVector()
         # Run and return module outputs.
@@ -145,7 +148,10 @@ class TrainingManager(GraphExecutionManager):
                             grad_output = torch.tensor(0., device=device, dtype=dtype)
                     elif not grad_output.is_contiguous():
                         grad_output = grad_output.contiguous()
-                    backward_inputs.push_back(_utils._torch_tensor_to_dlpack(grad_output),
+                    if grad_output.device.type == 'ort':
+                        backward_inputs.push_back(C.aten_ort_tensor_to_ort_value(grad_output))
+                    else:
+                        backward_inputs.push_back(_utils._torch_tensor_to_dlpack(grad_output),
                                               grad_output.dtype is torch.bool)
                 backward_inputs.shrink_to_fit()
 
@@ -163,8 +169,7 @@ class TrainingManager(GraphExecutionManager):
                 for input_name in self._graph_info.user_input_names:
                     # Append to the results the backward output for each input that required grad
                     if input_name in require_grad_names_set:
-                        results.append(_utils._torch_tensor_from_dl_pack(
-                            backward_outputs.dlpack_at(require_grad_names_index),
+                        results.append(_utils._ortvalue_to_torch_tensor(
                             backward_outputs[require_grad_names_index], self._device))
                         require_grad_names_index += 1
                     else:
@@ -177,8 +182,7 @@ class TrainingManager(GraphExecutionManager):
                 initializer_index = num_user_input_grads
                 for initializer_name in self._graph_info.initializer_names:
                     if initializer_name in self._graph_initializer_names_to_train:
-                        results.append(_utils._torch_tensor_from_dl_pack(
-                            backward_outputs.dlpack_at(initializer_index),
+                        results.append(_utils._ortvalue_to_torch_tensor(
                             backward_outputs[initializer_index], self._device))
                         initializer_index += 1
                     else:

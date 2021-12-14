@@ -32,7 +32,7 @@ class GistEncodeDecode : public RewriteRule {
       {"MatMul", {"Shape"}},
       {"Relu", {"ReluGrad", "Shape", "Reshape"}}};
 
-  GistEncodeDecode() noexcept : RewriteRule("GistEncodeDecode") {}
+  GistEncodeDecode() noexcept : RewriteRule("GistEncodeDecode"), compression_type_() {}
   GistEncodeDecode(int op_type, std::string compr_type) noexcept : RewriteRule("GistEncodeDecode"), operator_type(op_type), compression_type_(std::move(compr_type)) {}
 
  private:
