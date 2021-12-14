@@ -22,6 +22,8 @@ function(substitute_op_reduction_srcs all_srcs)
     "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/cuda_training_kernels.cc"
     )
 
+  set(replacement_srcs)
+
   foreach(original_src ${original_srcs})
     string(FIND "${${all_srcs}}" "${original_src}" idx)
     if(idx EQUAL "-1")
@@ -34,7 +36,13 @@ function(substitute_op_reduction_srcs all_srcs)
     message("File '${original_src}' substituted with reduced op version '${replacement_src}'.")
 
     string(REPLACE "${original_src}" "${replacement_src}" ${all_srcs} "${${all_srcs}}")
+
+    list(APPEND replacement_srcs "${replacement_src}")
   endforeach()
+
+  if(replacement_srcs)
+    source_group(TREE "${op_reduction_root}" PREFIX "op_reduction.generated" FILES ${replacement_srcs})
+  endif()
 
   set(${all_srcs} "${${all_srcs}}" PARENT_SCOPE)
 endfunction()
@@ -46,7 +54,8 @@ function(add_op_reduction_include_dirs target)
   if (onnxruntime_ENABLE_TRAINING OR onnxruntime_ENABLE_TRAINING_OPS)
     list(APPEND op_reduction_include_dirs "${op_reduction_root}/orttraining")
   endif()
-  target_include_directories(${target} PRIVATE ${op_reduction_include_dirs})
+  # add include directories BEFORE so they are searched first, giving op reduction file paths precedence
+  target_include_directories(${target} BEFORE PRIVATE ${op_reduction_include_dirs})
 endfunction()
 
 
@@ -97,6 +106,7 @@ file(GLOB_RECURSE onnxruntime_rocm_generated_contrib_ops_cu_srcs CONFIGURE_DEPEN
 file(GLOB onnxruntime_providers_common_srcs CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/core/providers/*.h"
   "${ONNXRUNTIME_ROOT}/core/providers/*.cc"
+  "${ONNXRUNTIME_ROOT}/core/providers/op_kernel_type_control_overrides.inc"
 )
 
 if(onnxruntime_USE_NUPHAR)
