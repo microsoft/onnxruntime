@@ -170,7 +170,7 @@ static Node* ReorderCastAndTranspose(Graph& graph, Node* cast,
 }
 
 // Check whether the element_type is an allowed FusedMatMul data type or not.
-static bool IsAllowedFusedMatMulDataType(ONNX_NAMESPACE::TensorProto_DataType element_type) {
+constexpr static bool IsAllowedFusedMatMulDataType(ONNX_NAMESPACE::TensorProto_DataType element_type) {
   return element_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT ||
          element_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 ||
          element_type == ONNX_NAMESPACE::TensorProto_DataType_DOUBLE ||

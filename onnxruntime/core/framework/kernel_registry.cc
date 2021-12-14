@@ -41,7 +41,7 @@ void TraverseFormalParametersWithTypeProto(const Node& node,
     if (param_filter_fn(param)) {
       // get type of any corresponding actual parameter, if present
       for (int i = 0, end = node.InputArgCount()[formal_index]; i < end; ++i) {
-        const NodeArg* arg = node.InputDefs()[actual_index + i];
+        const NodeArg* arg = node.InputDefs()[static_cast<size_t>(actual_index) + i];
         if (!arg->Exists()) continue;  // a missing optional argument
         if (!traverse_fn(param, arg->TypeAsProto())) return;
       }

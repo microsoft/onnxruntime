@@ -67,7 +67,7 @@ optional<std::pair<float, int>> GetScaleFromNode(
     const auto div_inputs = scale_node.InputDefs();
     ORT_ENFORCE(div_inputs.size() == 2);
 
-    const int scale_reciprocal_arg_index = 1;
+    constexpr int scale_reciprocal_arg_index = 1;
     const NodeArg& scale_reciprocal_node_arg = *div_inputs[scale_reciprocal_arg_index];
 
     if (is_excluded_initializer(scale_reciprocal_node_arg)) return {};
@@ -156,7 +156,7 @@ std::vector<ScaleMergeInfo> GetOutputNodeMerges(
     if (!scale_and_index.has_value()) continue;
 
     ORT_ENFORCE(output_node.OutputDefs().size() == 1);
-    const int scaled_index = 0;
+    constexpr int scaled_index = 0;
 
     output_node_merges.push_back(
         {output_edge,
