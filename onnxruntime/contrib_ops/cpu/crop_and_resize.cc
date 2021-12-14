@@ -22,7 +22,10 @@ limitations under the License.
 #include "core/framework/tensor.h"
 #include "core/platform/threadpool.h"
 #include "core/providers/cpu/object_detection/roialign.h"
-
+//TODO: fix the warnings
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(disable : 26451)
+#endif
 using namespace onnxruntime::concurrency;
 
 namespace onnxruntime {

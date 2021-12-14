@@ -49,8 +49,8 @@ ONNX_CPU_OPERATOR_TYPED_MS_KERNEL(
     contrib::Tokenizer);
 
 namespace tokenizer_details {
-const char start_text = 0x2;
-const char end_text = 0x3;
+constexpr char start_text = 0x2;
+constexpr char end_text = 0x3;
 }  // namespace tokenizer_details
 
 using namespace tokenizer_details;
@@ -180,8 +180,8 @@ Status Tokenizer::CharTokenize(OpKernelContext* ctx, size_t N, size_t C,
       ++output_index;
     }
     // Padding strings
-    assert(tokens + (mark_ * 2) <= max_tokens);
-    const size_t pads = max_tokens - (mark_ * 2) - tokens;
+    assert(tokens + (static_cast<size_t>(mark_) * 2) <= max_tokens);
+    const size_t pads = max_tokens - (static_cast<size_t>(mark_) * 2) - tokens;
     for (size_t p = 0; p < pads; ++p) {
       *(output_data + output_index) = pad_value_;
       ++output_index;
@@ -318,7 +318,7 @@ Status Tokenizer::SeparatorExpressionTokenizer(OpKernelContext* ctx,
       (output_data + output_index)->assign(&end_text, 1);
       ++output_index;
     }
-    const size_t pads = max_tokens - (mark_ * 2) - row.size();
+    const size_t pads = max_tokens - (static_cast<size_t>(mark_) * 2) - row.size();
     for (size_t p = 0; p < pads; ++p) {
       *(output_data + output_index) = pad_value_;
       ++output_index;
@@ -443,7 +443,7 @@ Status Tokenizer::TokenExpression(OpKernelContext* ctx,
       (output_data + output_index)->assign(&end_text, 1);
       ++output_index;
     }
-    const size_t pads = max_tokens - (mark_ * 2) - row.size();
+    const size_t pads = max_tokens - (static_cast<size_t>(mark_) * 2) - row.size();
     for (size_t p = 0; p < pads; ++p) {
       *(output_data + output_index) = pad_value_;
       ++output_index;
