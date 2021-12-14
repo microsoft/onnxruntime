@@ -336,7 +336,7 @@ class ThreadPoolParallelSection {
 
   // Current degree of parallelism, including work in the main thread
   // and in the dispatcher.
-  unsigned current_dop;
+  unsigned current_dop{0};
 
   // State shared between the main thread and worker threads
   // -------------------------------------------------------

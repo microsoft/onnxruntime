@@ -250,9 +250,7 @@ std::string ThreadPoolProfiler::DumpChildThreadStat() {
 static constexpr int CACHE_LINE_BYTES = 64;
 static constexpr unsigned MAX_SHARDS = 8;
 
-#ifndef _OPENMP
 static constexpr int TaskGranularityFactor = 4;
-#endif
 
 struct alignas(CACHE_LINE_BYTES) LoopCounterShard {
   ::std::atomic<uint64_t> _next{0};
@@ -460,10 +458,6 @@ std::string ThreadPool::StopProfiling() {
 thread_local ThreadPool::ParallelSection* ThreadPool::ParallelSection::current_parallel_section{nullptr};
 
 ThreadPool::ParallelSection::ParallelSection(ThreadPool* tp) {
-#ifdef _OPENMP
-  // Nothing
-  ORT_UNUSED_PARAMETER(tp);
-#else
   ORT_ENFORCE(!current_parallel_section, "Nested parallelism not supported");
   ORT_ENFORCE(!ps_.get());
   tp_ = tp;
@@ -472,19 +466,14 @@ ThreadPool::ParallelSection::ParallelSection(ThreadPool* tp) {
     tp_->underlying_threadpool_->StartParallelSection(*ps_.get());
     current_parallel_section = this;
   }
-#endif
 }
 
 ThreadPool::ParallelSection::~ParallelSection() {
-#ifdef _OPENMP
-  // Nothing
-#else
   if (current_parallel_section) {
     tp_->underlying_threadpool_->EndParallelSection(*ps_.get());
     ps_.reset();
     current_parallel_section = nullptr;
   }
-#endif
 }
 
 void ThreadPool::RunInParallel(std::function<void(unsigned idx)> fn, unsigned n, std::ptrdiff_t block_size) {
@@ -608,14 +597,6 @@ bool ThreadPool::ShouldParallelize(const concurrency::ThreadPool* tp) {
 }
 
 int ThreadPool::DegreeOfParallelism(const concurrency::ThreadPool* tp) {
-#ifdef _OPENMP
-  // When using OpenMP, omp_get_num_threads() returns the number of threads in the
-  // current parallel region.  Hence if this is 1 then we aim to parallelise
-  // across the number of threads configured.  Otherwise, given that we do not
-  // use nested parallelism, we do not parallelise further.
-  ORT_UNUSED_PARAMETER(tp);
-  return (omp_get_num_threads() == 1) ? omp_get_max_threads() : 1;
-#else
   // When not using OpenMP, we parallelise over the N threads created by the pool
   // tp, plus 1 for the thread entering a loop.
   if (tp) {
@@ -627,7 +608,6 @@ int ThreadPool::DegreeOfParallelism(const concurrency::ThreadPool* tp) {
   } else {
     return 1;
   }
-#endif
 }
 
 void ThreadPool::StartProfiling(concurrency::ThreadPool* tp) {
@@ -665,50 +645,11 @@ int ThreadPool::CurrentThreadId() const {
 
 void ThreadPool::TryParallelFor(concurrency::ThreadPool* tp, std::ptrdiff_t total, const TensorOpCost& cost_per_unit,
                                 const std::function<void(std::ptrdiff_t first, std::ptrdiff_t last)>& fn) {
-#ifdef _OPENMP
-  ORT_ENFORCE(total >= 0);
-  if (total == 0) {
-    return;
-  }
-
-  if (total == 1) {
-    fn(0, 1);
-    return;
-  }
-
-  Eigen::TensorOpCost cost{cost_per_unit.bytes_loaded, cost_per_unit.bytes_stored, cost_per_unit.compute_cycles};
-  auto d_of_p = DegreeOfParallelism(tp);
-  std::ptrdiff_t num_threads = CostModel::numThreads(static_cast<double>(total), cost, d_of_p);
-
-  if (total < num_threads) {
-    num_threads = total;
-  }
-
-  if (num_threads == 1) {
-    fn(0, total);
-    return;
-  }
-
-  ptrdiff_t block_size = CalculateParallelForBlock(total, cost, nullptr, d_of_p);
-  ptrdiff_t block_count = Eigen::divup(total, block_size);
-
-  if (block_count == 1) {
-    fn(0, total);
-    return;
-  }
-
-#pragma omp parallel for schedule(dynamic, 1)
-  for (std::ptrdiff_t i = 0; i < block_count; i++) {
-    const auto start = i * block_size;
-    fn(start, std::min(start + block_size, total));
-  }
-#else  //!_OPENMP
   if (tp == nullptr) {
     fn(0, total);
     return;
   }
   tp->ParallelFor(total, cost_per_unit, fn);
-#endif
 }
 
 }  // namespace concurrency

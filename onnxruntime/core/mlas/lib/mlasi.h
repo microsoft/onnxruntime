@@ -105,10 +105,6 @@ Abstract:
 #include "core/platform/threadpool.h"
 #endif
 
-#if defined(_OPENMP)
-#include <omp.h>
-#endif
-
 //
 // Define the maximum number of threads supported by this implementation.
 //
@@ -853,12 +849,7 @@ MlasGetMaximumThreadCount(
 {
 #if defined(MLAS_NO_ONNXRUNTIME_THREADPOOL)
     MLAS_UNREFERENCED_PARAMETER(ThreadPool);
-
-#if defined(_OPENMP)
-    return (omp_get_num_threads() == 1) ? omp_get_max_threads() : 1;
-#else
     return 1;
-#endif
 #else
     return onnxruntime::concurrency::ThreadPool::DegreeOfParallelism(ThreadPool);
 #endif

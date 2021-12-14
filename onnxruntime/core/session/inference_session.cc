@@ -265,9 +265,6 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
     static std::once_flag once;
 
     std::call_once(once, [&] {
-#ifdef _OPENMP
-      InitializeWithDenormalAsZero(set_denormal_as_zero);
-#endif
       SetDenormalAsZero(set_denormal_as_zero);
 
       LOGS(*session_logger_, INFO) << "Flush-to-zero and denormal-as-zero are " << ((set_denormal_as_zero) ? "on" : "off");

@@ -25,9 +25,6 @@ struct Pool1DTask final {
   }
 
   void operator()(std::ptrdiff_t begin, std::ptrdiff_t end) const {
-#ifdef _OPENMP
-#pragma omp parallel for
-#endif
     for (int64_t c = begin; c < end; ++c) {
       operator()(c);
     }
@@ -77,9 +74,6 @@ struct Pool2DTask final {
   }
 
   void operator()(std::ptrdiff_t begin, std::ptrdiff_t end) const {
-#ifdef _OPENMP
-#pragma omp parallel for
-#endif
     for (int64_t c = begin; c < end; ++c) {
       operator()(c);
     }
@@ -143,9 +137,6 @@ struct Pool3DTask final {
   }
 
   void operator()(std::ptrdiff_t begin, std::ptrdiff_t end) const {
-#ifdef _OPENMP
-#pragma omp parallel for
-#endif
     for (int64_t c = begin; c < end; ++c) {
       operator()(c);
     }
@@ -208,9 +199,6 @@ struct MaxPool1DTask final {
   }
 
   void operator()(std::ptrdiff_t begin, std::ptrdiff_t end) const {
-#ifdef _OPENMP
-#pragma omp parallel for
-#endif
     for (int64_t c = begin; c < end; ++c) {
       operator()(c);
     }
@@ -264,9 +252,6 @@ struct MaxPool2DTask final {
   }
 
   void operator()(std::ptrdiff_t begin, std::ptrdiff_t end) const {
-#ifdef _OPENMP
-#pragma omp parallel for
-#endif
     for (int64_t c = begin; c < end; ++c) {
       operator()(c);
     }
@@ -333,9 +318,6 @@ struct MaxPool3DTask {
   int64_t storage_order;
 
   void operator()(std::ptrdiff_t begin, std::ptrdiff_t end) const {
-#ifdef _OPENMP
-#pragma omp parallel for
-#endif
     for (int64_t c = begin; c < end; ++c) {
       operator()(c);
     }
