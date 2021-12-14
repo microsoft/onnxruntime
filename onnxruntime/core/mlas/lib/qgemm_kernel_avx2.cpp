@@ -115,7 +115,7 @@ MlasGemmQuantTryGemvKernel<MLAS_GEMM_U8S8_KERNEL_AVX2>(
 }
 
 template<>
-MLAS_FORCEINLINE
+MLAS_FORCEINLINE constexpr
 int32_t
 MlasGemmQuantFixupZeroPointB<MLAS_GEMM_U8S8_KERNEL_AVX2>(
     int32_t ZeroPointB,

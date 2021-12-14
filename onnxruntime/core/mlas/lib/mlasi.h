@@ -933,6 +933,11 @@ MlasPartitionWork(
 //
 // Helpers to cast a floating point type to and from an integer bit format.
 //
+#if defined(_MSC_VER) && !defined(__clang__)
+  #pragma warning(push)
+  // VC++ suggests we can attempt to make 'MlasBitsOfFp32' constexpr, but it is not valid.
+  #pragma warning(disable:26497) 
+#endif
 
 MLAS_FORCEINLINE
 uint32_t
@@ -961,7 +966,9 @@ MlasFp32FromBits(
     u.IntegerValue = IntegerValue;
     return u.FloatValue;
 }
-
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(pop)
+#endif
 
 #if defined(MLAS_TARGET_WASM_SCALAR)
 
