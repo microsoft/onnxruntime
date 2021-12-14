@@ -185,8 +185,8 @@ class STVMRunner {
         if (dim > 0) {
           ishape[j] = dim;
         } else {
-          std::cout << "WARNING: input dimension is not positive value (dim = " << dim << "). ";
-          std::cout << "It is replaced by 1. if it needs another value please use provider options to correct it" << std::endl;
+          LOGS_DEFAULT(WARNING) << "input dimension is not positive value (dim = " << dim << "). " <<
+          "It is replaced by 1. if it needs another value please use provider options to correct it";
           ishape[j] = 1;
           update_output_shapes_ = true;
         }
@@ -277,7 +277,6 @@ StvmExecutionProvider::GetCapability(const GraphViewer& graph_viewer,
 
   ONNX_NAMESPACE::ModelProto model_proto = model.ToProto();
   model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
-  auto status = graph_build.Resolve();
 
   std::unordered_set<std::string> required_initializers;
   const std::vector<NodeIndex>& sorted_nodes = graph_viewer.GetNodesInTopologicalOrder();
@@ -487,16 +486,16 @@ void StvmExecutionProvider::ProcessGPUTarget() {
 }
 
 void StvmExecutionProvider::PrintInfo() const {
-  std::cout << "STVM ep options:" << std::endl;
-  std::cout << "target: " << info_.target << std::endl;
-  std::cout << "target_host: " << info_.target_host << std::endl;
-  std::cout << "opt level: " << info_.opt_level << std::endl;
-  std::cout << "freeze weights: " << info_.freeze_weights << std::endl;
-  std::cout << "tuning file path: " << info_.tuning_file_path << std::endl;
-  std::cout << "tuning type: " << info_.tuning_type << std::endl;
-  std::cout << "convert layout to NHWC: " << info_.to_nhwc << std::endl;
-  std::cout << "input tensor names: " << info_.input_names_str << std::endl;
-  std::cout << "input tensor shapes: " << info_.input_shapes_str << std::endl;
+  LOG(INFO) << "STVM ep options:\n" <<
+  "target: " << info_.target << "\n" <<
+  "target_host: " << info_.target_host << "\n" <<
+  "opt level: " << info_.opt_level << "\n" <<
+  "freeze weights: " << info_.freeze_weights << "\n" <<
+  "tuning file path: " << info_.tuning_file_path << "\n" <<
+  "tuning type: " << info_.tuning_type << "\n" <<
+  "convert layout to NHWC: " << info_.to_nhwc << "\n" <<
+  "input tensor names: " << info_.input_names_str << "\n" <<
+  "input tensor shapes: " << info_.input_shapes_str;
 }
 
 int StvmExecutionProvider::CreateStateFunc(ComputeContext* context, FunctionState* state) {
