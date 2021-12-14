@@ -55,15 +55,15 @@ void ThreadPoolLite::ParallelFor(std::ptrdiff_t total, double c, const Fn& fn) {
   ParallelFor(total, cost, fn);
 }
 
-void ThreadPoolLite::ParallelFor(std::ptrdiff_t total, const TensorOpCost& /*cost*/, const Fn& fn) {
+void ThreadPoolLite::ParallelFor(std::ptrdiff_t total, const TensorOpCost&, const Fn& fn) {
   if (0 == total) {
     return;
   }
-  //std::ptrdiff_t block_size = GetBlockSize(total, cost, num_sub_threads_ + 1);
 
   std::ptrdiff_t block_size = 1;
   auto d_o_p = NumThreads() + 1;
-  while (block_size * d_o_p * 4 < total) block_size <<= 1;
+  auto num_of_blocks = d_o_p * 4;
+  while (block_size * num_of_blocks < total) block_size <<= 1;
 
   ORT_ALIGN_TO_AVOID_FALSE_SHARING std::atomic<std::ptrdiff_t> iter{0};
 
@@ -72,7 +72,7 @@ void ThreadPoolLite::ParallelFor(std::ptrdiff_t total, const TensorOpCost& /*cos
     std::ptrdiff_t b = block_size;
     while ((i = iter.fetch_add(b, std::memory_order_relaxed)) < total) {
       fn(i, std::min(total, i + b));
-      if ((b > 1) && (b * d_o_p * 4 > (total - i))) b >>= 1;
+      while ((b > 1) && (b * num_of_blocks > (total - i))) b >>= 1;
     }
   };
 
@@ -84,20 +84,20 @@ void ThreadPoolLite::SimpleParallelFor(std::ptrdiff_t total, const SimpleFn& fn)
 
   std::ptrdiff_t block_size = 1;
   auto d_o_p = NumThreads() + 1;
-  while (block_size * d_o_p * 4 < total) block_size <<= 1;
+  auto num_of_blocks = d_o_p * 4;
+
+  while (block_size * num_of_blocks < total) block_size <<= 1;
 
   SchdFn schd_fn = [&]() {
     std::ptrdiff_t i{0};
     std::ptrdiff_t b = block_size;
     while ((i = iter.fetch_add(b, std::memory_order_relaxed)) < total) {
-      // fn(i);
       for (auto ii = i; ii < std::min(i + b, total); ++ii) fn(ii);
-      if ((b > 1) && (b * d_o_p * 4 > (total - i))) b >>= 1;
+      while ((b > 1) && (b * num_of_blocks > (total - i))) b >>= 1;
     }
   };
 
   ParallelForImpl(schd_fn, block_size);
-  //ParallelForImpl(schd_fn, 1);
 }
 
 void ThreadPoolLite::ParallelForImpl(const SchdFn& schd_fn, std::ptrdiff_t block_size) {
