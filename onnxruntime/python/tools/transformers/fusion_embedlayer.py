@@ -116,7 +116,7 @@ class FusionEmbedLayerNoMask(Fusion):
             if path1 is None:
                 return False
 
-        expand, shape = path1
+        expand, shape = path1[0], path1[-1]
         if shape.input[0] != input_ids:
             return False
 
