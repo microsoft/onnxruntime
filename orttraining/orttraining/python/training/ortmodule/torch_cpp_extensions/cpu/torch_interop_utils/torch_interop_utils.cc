@@ -114,7 +114,7 @@ void unregister_grad_fn(size_t ctx_address)
   PyNodeSharedPointerPool::GetInstance().UnRegisterGradFunc(ctx_address);
 }
 
-// Supposed to be cleared before every forward run to resolve following bug:
+// Supposed to be cleared on python program exit or before every forward run to resolve following bug:
 // When training program exits, PyNodeSharedPointerPool destructor is called, if grad_fns_ is not empty,
 // PyNode::release_variables() will be called.
 // (https://github.com/pytorch/pytorch/blob/15532595209d2daf34d35e10f8d3d3b64966aea2/torch/csrc/autograd/python_function.cpp#L168)
