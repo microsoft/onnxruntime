@@ -34,7 +34,6 @@ def InputFeedsNegOneZeroOne(n, name2shape):
     dr = TestDataFeeds(input_data_list)
     return dr
 
-
 def check_op_type_order(testcase, model_to_check, ops):
     if isinstance(model_to_check, string_types):
         model = onnx.load(model_to_check)
@@ -78,3 +77,28 @@ def check_op_nodes(testcase, model_path, node_checker):
     model = onnx.load(Path(model_path))
     for node in model.graph.node:
         testcase.assertTrue(node_checker(node))
+
+def check_qtype_by_node_type(testcase, model_to_check, check_list):
+    if isinstance(model_to_check, string_types):
+        model = onnx.load(model_to_check)
+    elif isinstance(model_to_check, onnx.ModelProto):
+        model = model_to_check
+    model = onnx.shape_inference.infer_shapes(model)
+    value_infos = {vi.name: vi for vi in model.graph.value_info}
+    value_infos.update({ot.name: ot for ot in model.graph.output})
+    value_infos.update({it.name: it for it in model.graph.input})
+    initializers = {init.name : init for init in model.graph.initializer}
+
+    for node in model.graph.node:
+        if node.op_type in check_list:
+            input_output_check_list = check_list[node.op_type]
+            for check_item in input_output_check_list:
+                tensor_name = node.input[check_item[1]] if check_item[0] == 'i' else node.output[check_item[1]]
+                testcase.assertTrue((tensor_name in value_infos) or (tensor_name in initializers))
+                if tensor_name in value_infos:
+                    vi = value_infos[tensor_name]
+                    testcase.assertTrue(vi.type.HasField('tensor_type'))
+                    testcase.assertTrue(vi.type.tensor_type.elem_type == check_item[2])
+                else: #if (tensor_name in initializers):
+                    init = initializers[tensor_name]
+                    testcase.assertTrue(init.data_type == check_item[2])

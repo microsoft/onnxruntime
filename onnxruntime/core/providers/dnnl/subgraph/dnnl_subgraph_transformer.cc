@@ -2,6 +2,7 @@
 // Licensed under the MIT License
 
 #include "dnnl_subgraph_transformer.h"
+#include "core/providers/shared_library/provider_api.h"
 #ifndef _USE_MATH_DEFINES
 #define _USE_MATH_DEFINES
 #endif
@@ -16,6 +17,7 @@ void DnnlGraphTransformer::Apply(DnnlSubgraph& subgraph) {
   MatMulAdd(subgraph);
   Gelu(subgraph);
   FastGelu(subgraph);
+  RemoveMatMulIntegerZP(subgraph);
 }
 
 //resolve a fusion by replacing old_indices nodes with a new_node
@@ -743,6 +745,65 @@ void DnnlGraphTransformer::MatMulAdd(DnnlSubgraph& subgraph) {
       LOGS_DEFAULT(ERROR) << "MatMulAdd fusion of [" << matmul_node->Name() << "] and [" << add_node->Name() << "]";
     }
     ResolveFusion(subgraph, {matmul_node->Index(), add_node->Index()}, std::move(fused_node));
+  }
+}
+
+void DnnlGraphTransformer::RemoveMatMulIntegerZP(DnnlSubgraph& subgraph) {
+  size_t max_index = subgraph.GetMaxNodeIndex();
+  for (size_t index = 0; index < max_index; index++) {
+    auto dnnl_node = subgraph.GetDnnlNode(index);
+
+    //look for matmulint
+    if (dnnl_node == nullptr || dnnl_node->OpType() != "MatMulInteger") {
+      continue;
+    }
+
+    //if B zero point exists
+    if (!(dnnl_node->InputCount() >= 4 && dnnl_node->Input(3).Exists())) {
+      continue;
+    }
+
+    auto b_zero_point = dnnl_node->Input(3);
+    const ONNX_NAMESPACE::TensorProto* tensor_proto = nullptr;
+    if (!subgraph.GetInitializedTensor(b_zero_point.Name(), tensor_proto)) {
+      continue;
+    }
+
+    if (tensor_proto == nullptr) {
+      continue;
+    }
+
+    const auto& dims = tensor_proto->dims();
+    auto dim_size = tensor_proto->dims_size();
+    int num_elements = 1;
+    for (int i = 0; i < dim_size; i++) {
+      num_elements *= int(dims[i]);
+    }
+
+    //check if b_zp is all zeros, assume data is s8 since only s8 weight is supported in onednn
+    bool all_zero = true;
+    std::vector<int8_t> unpacked_tensor;
+    unpacked_tensor.resize(num_elements,1);
+    ORT_THROW_IF_ERROR(onnxruntime::utils::UnpackTensor(*tensor_proto, tensor_proto->has_raw_data() ? tensor_proto->raw_data().data() : nullptr, tensor_proto->has_raw_data() ? tensor_proto->raw_data().size() : 0, reinterpret_cast<int8_t*>(unpacked_tensor.data()), num_elements));
+    for (const auto& val : unpacked_tensor) {
+      if (val != 0) {
+        all_zero = false;
+        break;
+      }
+    }
+    
+
+    if (!all_zero) {
+      continue;
+    }
+
+    if (debug_log_) {
+      LOGS_DEFAULT(ERROR) << "Remove weight ZP of [" << dnnl_node->Name() << "]";
+    }
+    //remove b_zero_point's consumer matmulint
+    b_zero_point.RemoveConsumer(DnnlNodeArg(dnnl_node, 3, false));
+    //detach b_zero_point from matmulint node
+    dnnl_node->Inputs()[3] = nullptr;
   }
 }
 

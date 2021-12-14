@@ -25,7 +25,7 @@ void TestUnpackFloatTensor(TensorProto_DataType type, const Path& model_path) {
   TensorProto float_tensor_proto;
   float_tensor_proto.set_data_type(type);
   T f[4] = {1.1f, 2.2f, 3.3f, 4.4f};
-  const size_t len = sizeof(T) * 4;
+  constexpr size_t len = sizeof(T) * 4;
   char rawdata[len];
   for (int i = 0; i < 4; ++i) {
     memcpy(rawdata + i * sizeof(T), &(f[i]), sizeof(T));
