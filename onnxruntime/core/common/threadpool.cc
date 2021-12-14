@@ -427,19 +427,19 @@ void ThreadPool::ParallelForFixedBlockSizeScheduling(const std::ptrdiff_t total,
     RunInParallel(run_work, num_work_items, block_size);
   } else {
     int num_of_blocks = d_of_p * thread_options_.dynamic_block_base_;
-    std::ptrdiff_t B{1};
-    while (B * num_of_blocks < total) B <<= 1;
+    std::ptrdiff_t block_size_base{1};
+    while (block_size_base * num_of_blocks < total) block_size_base <<= 1;
     std::atomic<ptrdiff_t> iter{0};
     std::function<void(unsigned)> run_work = [&](unsigned) {
       std::ptrdiff_t start{0};
-      std::ptrdiff_t b = B;
+      std::ptrdiff_t b = block_size_base;
       while ((start = iter.fetch_add(b, std::memory_order_relaxed)) < total) {
         fn(start, std::min(start + b, total));
         auto residual = total - start;
         while (b > 1 && (b * num_of_blocks > residual)) b >>= 1;
       }
     };
-    RunInParallel(run_work, d_of_p, B);
+    RunInParallel(run_work, d_of_p, block_size_base);
   }
 }
 
