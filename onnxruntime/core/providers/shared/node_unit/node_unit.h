@@ -29,7 +29,7 @@ class NodeUnit {
 
   struct IODef {
     struct QuantParam {
-      const NodeArg* scale{nullptr};
+      const NodeArg& scale;
       const NodeArg* zero_point{nullptr};
     };
 
@@ -43,8 +43,8 @@ class NodeUnit {
 
   Type UnitType() const noexcept { return type_; }
 
-  const std::vector<IODef>& InputDefs() const noexcept { return input_defs_; }
-  const std::vector<IODef>& OutputDefs() const noexcept { return output_defs_; }
+  const std::vector<IODef>& Inputs() const noexcept { return input_defs_; }
+  const std::vector<IODef>& Outputs() const noexcept { return output_defs_; }
 
   const std::string& Domain() const noexcept;
   const std::string& OpType() const noexcept;
