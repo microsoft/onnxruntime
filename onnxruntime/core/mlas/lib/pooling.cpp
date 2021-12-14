@@ -66,7 +66,7 @@ void
 
 struct MLAS_MAXIMUM_POOLING
 {
-    static float InitialValue()
+    static constexpr float InitialValue()
     {
         return std::numeric_limits<float>::lowest();
     }
@@ -76,7 +76,7 @@ struct MLAS_MAXIMUM_POOLING
         return MlasBroadcastFloat32x4(InitialValue());
     }
 
-    static float Reduce(float Reduction, float Value)
+    static constexpr float Reduce(float Reduction, float Value)
     {
         return std::max(Reduction, Value);
     }
@@ -91,7 +91,7 @@ struct MLAS_MAXIMUM_POOLING
         return MlasReduceMaximumFloat32x4(Reduction);
     }
 
-    static float AveragePool(float Reduction, float Size)
+    static constexpr float AveragePool(float Reduction, float Size)
     {
         MLAS_UNREFERENCED_PARAMETER(Size);
 
@@ -147,7 +147,7 @@ struct MLAS_AVERAGE_POOLING
         return MlasZeroFloat32x4();
     }
 
-    static float Reduce(float Reduction, float Value)
+    static constexpr float Reduce(float Reduction, float Value)
     {
         return Reduction + Value;
     }
@@ -162,7 +162,7 @@ struct MLAS_AVERAGE_POOLING
         return MlasReduceAddFloat32x4(Reduction);
     }
 
-    static float AveragePool(float Reduction, float Size)
+    static constexpr float AveragePool(float Reduction, float Size)
     {
         return Reduction / Size;
     }
