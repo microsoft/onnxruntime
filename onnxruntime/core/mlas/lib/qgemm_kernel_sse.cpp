@@ -32,7 +32,7 @@ constexpr size_t MLAS_GEMM_U8X8_KERNEL_SSE::PackedK;
 constexpr MLAS_GEMM_QUANT_STRIDES MLAS_GEMM_U8X8_KERNEL_SSE::Strides;
 
 template<>
-MLAS_FORCEINLINE
+MLAS_FORCEINLINE constexpr
 int32_t
 MlasGemmQuantFixupZeroPointB<MLAS_GEMM_U8X8_KERNEL_SSE>(
     int32_t ZeroPointB,
