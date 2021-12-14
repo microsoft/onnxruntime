@@ -64,7 +64,7 @@ class OpenCLImage2DAllocator : public IAllocator {
     MemoryKind kind;
   };
 
-  explicit OpenCLImage2DAllocator(const cl::Context& ctx);
+  explicit OpenCLImage2DAllocator(const cl::Context& ctx, bool use_fp16);
   ~OpenCLImage2DAllocator() override;
 
   void* Alloc(size_t size) override;
@@ -75,6 +75,8 @@ class OpenCLImage2DAllocator : public IAllocator {
 
  private:
   cl::Context ctx_;
+  bool use_fp16_;
+
   // FIXME: better caching, cache for kernel benchmark at the moment
   std::unordered_map<void*, Metadata> meta_;
   std::unordered_map<TensorShape, std::list<void*>> cache_;

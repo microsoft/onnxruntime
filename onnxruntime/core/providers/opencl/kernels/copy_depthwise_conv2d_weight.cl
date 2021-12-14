@@ -51,7 +51,7 @@ __kernel void CopyDepthwiseConvWeightBufferToImage(
     v.x = data[offset];
   }
 
-  write_imagef(output, (int2)(x, y), v);
+  WI_F(output, (int2)(x, y), CONVERT_FLOAT4(v));
 #undef K_w
 #undef K_h
 #undef C_i

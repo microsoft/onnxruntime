@@ -1,5 +1,6 @@
 // FIXME: LICENSE NOTICE:
 // adapted from TNN original BSD3.
+#include <kernels/utils.h>
 
 // launch a grid with total [X = RoundToMultiple(width, k), Y = height] threads,
 // height is not rounded up because threads only continuous in x dimension.
@@ -23,31 +24,9 @@ __kernel void CopyBufferNCHWToImage2D(
 
     // channel is not consecutive in memory
     const int remain_channel = C - c;
-    int i = base_index;
-    float4 v = 0;
-    if (remain_channel >= 4) {
-      v.x = data[i];
-      i += HW;
-      v.y = data[i];
-      i += HW;
-      v.z = data[i];
-      i += HW;
-      v.w = data[i];
-    } else if (remain_channel == 3) {
-      v.x = data[i];
-      i += HW;
-      v.y = data[i];
-      i += HW;
-      v.z = data[i];
-    } else if (remain_channel == 2) {
-      v.x = data[i];
-      i += HW;
-      v.y = data[i];
-    } else if (remain_channel == 1) {
-      v.x = data[i];
-    }
-
-    write_imagef(output, (int2)(x, y), v);
+    float4 v = 0;  // NOTE: buffer r/w always assume fp32
+    SAFE_GATHER_LDG_VEC4(v, data, base_index, HW, remain_channel);
+    WI_F(output, (int2)(x, y), CONVERT_FLOAT4(v));
   }
 }
 
@@ -69,30 +48,10 @@ __kernel void CopyImage2DToBufferNCHW(
     // indexing into the NCHW data
     const int HW = H * W;
     const int base_index = (C * n + c) * HW + W * h + w;
+    const float4 v = convert_float4(RI_F(data, (int2)(x, y)));
 
-    const float4 v = read_imagef(data, (int2)(x, y));
     const int remain_channel = C - c;
-    int i = base_index;
-    if (remain_channel >= 4) {
-      output[i] = v.x;
-      i += HW;
-      output[i] = v.y;
-      i += HW;
-      output[i] = v.z;
-      i += HW;
-      output[i] = v.w;
-    } else if (remain_channel == 3) {
-      output[i] = v.x;
-      i += HW;
-      output[i] = v.y;
-      i += HW;
-      output[i] = v.z;
-    } else if (remain_channel == 2) {
-      output[i] = v.x;
-      i += HW;
-      output[i] = v.y;
-    } else if (remain_channel == 1) {
-      output[i] = v.x;
-    }
+    // NOTE: buffer r/w always assume fp32
+    SAFE_SCATTER_STG_VEC4(output, base_index, HW, remain_channel, v);
   }
 }

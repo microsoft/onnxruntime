@@ -96,8 +96,8 @@ inline std::string ToString(const cl::NDRange& range) {
 }
 
 const char* GetErrorString(cl_int error_code);
-cl::Program LoadProgram(const cl::Context& ctx, const cl::Device& dev, const std::string& src);
-cl::Program LoadProgram(const cl::Context& ctx, const cl::Device& dev, const char* src, size_t src_len);
+cl::Program LoadProgram(const cl::Context& ctx, const cl::Device& dev, const std::string& src, bool use_fp16);
+cl::Program LoadProgram(const cl::Context& ctx, const cl::Device& dev, const char* src, size_t src_len, bool use_fp16);
 cl::Kernel LoadKernel(const cl::Program& program, const char* name);
 
 // NOTE: for OrtDevice ctor

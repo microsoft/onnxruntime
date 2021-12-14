@@ -635,15 +635,18 @@ if (onnxruntime_USE_OPENCL)
   file(GLOB_RECURSE opencl_cl_srcs CONFIGURE_DEPENDS
     "${opencl_cl_path_prefix}*.cl"
   )
+  file(GLOB_RECURSE opencl_cl_hdrs CONFIGURE_DEPENDS
+    "${opencl_cl_path_prefix}*.cl.h"
+  )
 
   set(opencl_target_dir ${CMAKE_CURRENT_BINARY_DIR}/opencl_generated)
   set(opencl_generated_cl_includes)
-  foreach(f ${opencl_cl_srcs})
+  foreach(f ${opencl_cl_hdrs} ${opencl_cl_srcs})
     string(REPLACE ${opencl_cl_path_prefix} "" suffix ${f})
     set(output "${opencl_target_dir}/${suffix}.inc")
     add_custom_command(
       OUTPUT ${output}
-      COMMAND Python3::Interpreter ${PROJECT_SOURCE_DIR}/embed.py ${f} -o ${output}
+      COMMAND Python3::Interpreter ${PROJECT_SOURCE_DIR}/embed.py -x cl -I "${ONNXRUNTIME_ROOT}/core/providers/opencl" ${f} -o ${output}
       DEPENDS ${PROJECT_SOURCE_DIR}/embed.py ${f}
     )
     list(APPEND opencl_generated_cl_includes "${output}")

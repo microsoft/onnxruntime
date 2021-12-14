@@ -49,12 +49,12 @@ void OpenCLBufferAllocator::Free(void* p) {
   it->second.push_front(p);
 }
 
-OpenCLImage2DAllocator::OpenCLImage2DAllocator(const cl::Context& ctx)
+OpenCLImage2DAllocator::OpenCLImage2DAllocator(const cl::Context& ctx, bool use_fp16)
     : IAllocator(OrtMemoryInfo(Image2DAllocatorName, OrtAllocatorType::OrtDeviceAllocator,
                                OrtDevice(OrtDevice::GPU, CLMemType::OPENCL_IMAGE_2D, /*device_id_=*/0),
                                /*id_*/ 0,
                                /*mem_type_=*/(OrtMemType)CLMemType::OPENCL_IMAGE_2D)),
-      ctx_(ctx) {
+      ctx_(ctx), use_fp16_{use_fp16} {
 }
 
 OpenCLImage2DAllocator::~OpenCLImage2DAllocator() {
@@ -77,7 +77,8 @@ void* OpenCLImage2DAllocator::Alloc(const TensorShape& shape) {
     // FIXME: range limit is for NVIDIA GPU, adjust it for target gpu!
     ORT_ENFORCE(desc.Height() > 0 && desc.Height() <= 65535, "Image2D height invalid");
     ORT_ENFORCE(desc.Width() > 0 && desc.Width() <= 65535, "Image2D width invalid");
-    auto* ptr = new cl::Image2D(ctx_, CL_MEM_READ_WRITE, cl::ImageFormat{CL_RGBA, CL_FLOAT}, desc.Width(), desc.Height(), /*row_pitch=*/0, nullptr, &err);
+    cl_channel_type channel_type = use_fp16_ ? CL_HALF_FLOAT : CL_FLOAT;
+    auto* ptr = new cl::Image2D(ctx_, CL_MEM_READ_WRITE, cl::ImageFormat{CL_RGBA, channel_type}, desc.Width(), desc.Height(), /*row_pitch=*/0, nullptr, &err);
     ORT_THROW_IF_CL_ERROR(err);
     VLOGF_DEFAULT(0, "[CL] allocated %p(cl::Image2D(%p){w=%ld, h=%ld})", ptr, ptr->operator()(), desc.Width(), desc.Height());
     meta_[ptr] = {shape, MemoryKind::Image2D};

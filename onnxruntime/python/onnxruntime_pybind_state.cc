@@ -639,7 +639,18 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
 #endif
   } else if (type == kOpenCLExecutionProvider) {
 #if USE_OPENCL
-    auto p = onnxruntime::CreateExecutionProviderFactory_OpenCL()->CreateProvider();
+    bool use_fp16 = false;
+    const auto it = provider_options_map.find(type);
+    if (it != provider_options_map.end()) {
+      const auto& options = it->second;
+      for (const auto& [key, value] : options) {
+        if(key == "use_fp16" && value == "True") {
+          use_fp16 = true;
+        }
+      }
+    }
+
+    auto p = onnxruntime::CreateExecutionProviderFactory_OpenCL(use_fp16)->CreateProvider();
     return p;
 #endif
   } else if (type == kVitisAIExecutionProvider) {

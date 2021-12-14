@@ -10,22 +10,25 @@
 
 namespace onnxruntime {
 struct OpenCLExecutionProviderFactory final : IExecutionProviderFactory {
+  OpenCLExecutionProviderInfo info;
+
   OpenCLExecutionProviderFactory() = default;
   ~OpenCLExecutionProviderFactory() final = default ;
   std::unique_ptr<IExecutionProvider> CreateProvider() override;
 };
 
 std::unique_ptr<IExecutionProvider> OpenCLExecutionProviderFactory::CreateProvider() {
-  OpenCLExecutionProviderInfo info{};
   return std::make_unique<OpenCLExecutionProvider>(info);
 }
 
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenCL() {
-  return std::make_shared<onnxruntime::OpenCLExecutionProviderFactory>();
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenCL(bool use_fp16) {
+  auto factory = std::make_shared<onnxruntime::OpenCLExecutionProviderFactory>();
+  factory->info.use_fp16 = use_fp16;
+  return factory;
 }
 }  // namespace onnxruntime
 
-ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_OpenCL, _In_ OrtSessionOptions* options) {
-  options->provider_factories.push_back(onnxruntime::CreateExecutionProviderFactory_OpenCL());
+ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_OpenCL, _In_ OrtSessionOptions* options, int use_fp16) {
+  options->provider_factories.push_back(onnxruntime::CreateExecutionProviderFactory_OpenCL(bool(use_fp16)));
   return nullptr;
 }

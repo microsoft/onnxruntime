@@ -10,11 +10,11 @@ struct OpenCLKernelHolder {
   std::unordered_map<std::string, cl::Kernel> kernels;
 
   inline void LoadProgram(const OpenCLExecutionProvider* exec, const std::string& src) {
-    program = onnxruntime::opencl::LoadProgram(exec->GetOpenCLContext(), exec->GetOpenCLDevice(), src);
+    program = onnxruntime::opencl::LoadProgram(exec->GetOpenCLContext(), exec->GetOpenCLDevice(), src, exec->UseFp16());
   }
 
   inline void LoadProgram(const OpenCLExecutionProvider* exec, const char* src, size_t src_len) {
-    program = onnxruntime::opencl::LoadProgram(exec->GetOpenCLContext(), exec->GetOpenCLDevice(), src, src_len);
+    program = onnxruntime::opencl::LoadProgram(exec->GetOpenCLContext(), exec->GetOpenCLDevice(), src, src_len, exec->UseFp16());
   }
 
   inline bool LoadKernel(const char* kernel_name) {

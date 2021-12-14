@@ -1,12 +1,5 @@
 // FIXME: LICENSE NOTICE:  adapted from TNN original BSD3.
 
-__constant sampler_t SAMPLER = CLK_NORMALIZED_COORDS_FALSE | CLK_ADDRESS_CLAMP | CLK_FILTER_NEAREST;
-
-#define RI_F(image, coord) read_imagef((image), (SAMPLER), (coord))
-#define WI_F(image, coord, value) write_imagef((image), (coord), (value))
-#define FLOAT4 float4
-#define CONVERT_FLOAT4 convert_float4
-
 #define READ_INPUT_IMAGE(i, base)                                                                         \
   int in_width_value##i = in_width##i + base;                                                             \
   in_width_value##i =                                                                                     \
@@ -26,13 +19,16 @@ enum ActivationType {
 };
 
 inline FLOAT4 Act(FLOAT4 out0, enum ActivationType activation_type) {
-  if (activation_type == ActivationType_ReLU) {
-    return fmax(out0, (FLOAT4)0);
-  } else if (activation_type == ActivationType_ReLU6) {
-    return clamp(out0, (FLOAT4)0, (FLOAT4)6);
-  } else {
+  if (activation_type == ActivationType_None) {
     return out0;
   }
+  if (activation_type == ActivationType_ReLU) {
+    return fmax(out0, (FLOAT4)0);
+  }
+  if (activation_type == ActivationType_ReLU6) {
+    return clamp(out0, (FLOAT4)0, (FLOAT4)6);
+  }
+  return (FLOAT4)NAN;
 }
 
 inline void SafeWriteOutput(__write_only image2d_t output, FLOAT4 out0, FLOAT4 out1, FLOAT4 out2, FLOAT4 out3, const int output_w_idx, const int output_h_idx, const int remain) {

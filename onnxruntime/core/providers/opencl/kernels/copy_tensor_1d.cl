@@ -8,7 +8,7 @@ __kernel void CopyBuffer1DToImage2D(
 
   int idx = mad24(width, y, x) * 4;
   int remain = nelem - idx;
-  float4 v = 0;
+  float4 v = 0;  // NOTE: buffer r/w always assume fp32
   if (idx < nelem) {
     if (remain >= 4) {
       __global const float4* data4 = (__global const float4*)data;
@@ -23,7 +23,7 @@ __kernel void CopyBuffer1DToImage2D(
     } else if (remain == 1) {
       v.x = data[idx];
     }
-    write_imagef(output, (int2)(x, y), v);
+    WI_F(output, (int2)(x, y), CONVERT_FLOAT4(v));
   }
 }
 
@@ -39,7 +39,7 @@ __kernel void CopyImage2DToBuffer1D(
   int idx = mad24(width, y, x) * 4;
   int remain = nelem - idx;
   if (idx < nelem) {
-    float4 v = read_imagef(data, (int2)(x, y));
+    float4 v = convert_float4(RI_F(data, (int2)(x, y)));  // NOTE: buffer r/w always assume fp32
     if (remain >= 4) {
       __global float4* output4 = (__global float4*)output;
       output4[idx / 4] = v;

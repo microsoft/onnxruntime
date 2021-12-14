@@ -54,13 +54,13 @@ std::shared_ptr<KernelRegistry> GetOpenCLKernelRegistry() {
 }  // namespace opencl
 
 OpenCLExecutionProvider::OpenCLExecutionProvider(const OpenCLExecutionProviderInfo& info)
-    : IExecutionProvider(kOpenCLExecutionProvider) {
+    : IExecutionProvider(kOpenCLExecutionProvider), use_fp16_(info.use_fp16) {
   Status status;
   ORT_THROW_IF_ERROR(InitOpenCLContext());
 }
 
 OpenCLExecutionProvider::OpenCLExecutionProvider(OpenCLExecutionProvider&& provider) noexcept
-    : IExecutionProvider(kOpenCLExecutionProvider) {
+    : IExecutionProvider(kOpenCLExecutionProvider), use_fp16_(provider.use_fp16_) {
   std::swap(dev_, provider.dev_);
   std::swap(ctx_, provider.ctx_);
   std::swap(cmd_queue_, provider.cmd_queue_);
@@ -79,7 +79,15 @@ Status OpenCLExecutionProvider::InitOpenCLContext() {
   VLOGS_DEFAULT(1) << "[CL] num platforms: " << platforms.size();
   ORT_ENFORCE(!platforms.empty());
   // FIXME: add platform selection logic
-  auto selected_platform = platforms[0];
+  cl::Platform selected_platform = platforms[0];
+  for (const auto& plat : platforms) {
+    auto vendor = plat.getInfo<CL_PLATFORM_VENDOR>();
+    std::cout << "[CL] platform vendor: " << vendor << "\n";
+    if (vendor == "Oclgrind") {
+      selected_platform = plat;
+      break;
+    }
+  }
   cl_context_properties properties[] = {CL_CONTEXT_PLATFORM, (cl_context_properties)(selected_platform)(), 0};
   {
     cl_int err{};
@@ -92,6 +100,19 @@ Status OpenCLExecutionProvider::InitOpenCLContext() {
   ORT_ENFORCE(!devices.empty());
   // FIXME: add device selection logic
   dev_ = std::move(devices[0]);
+
+  // NOTE: use stdout for mobile
+  std::cout << "[CL] device name: " << dev_.getInfo<CL_DEVICE_NAME>() << "\n";
+  std::cout << "[CL] device vendor: " << dev_.getInfo<CL_DEVICE_VENDOR>() << "\n";
+  std::cout << "[CL] device version: " << dev_.getInfo<CL_DEVICE_VERSION>() << "\n";
+  auto exts = dev_.getInfo<CL_DEVICE_EXTENSIONS>();
+  std::cout << "[CL] device extensions: " << exts << std::endl;
+  bool has_fp16 = exts.find("cl_khr_fp16") != std::string::npos;
+  if (!has_fp16 && UseFp16()) {
+    LOGS_DEFAULT(ERROR) << "[CL] FP16 is requested, but is not supported by the device!";
+    DisableFp16();
+  }
+  LOGS_DEFAULT(INFO) << "[CL] FP16: " << UseFp16();
 
   {
     cl_int err{};
@@ -122,7 +143,7 @@ void OpenCLExecutionProvider::RegisterAllocator(std::shared_ptr<AllocatorManager
 
   InsertAllocator(CreateAllocator(AllocatorCreationInfo{
       [=](int) {
-        return std::make_unique<opencl::OpenCLImage2DAllocator>(this->ctx_);
+        return std::make_unique<opencl::OpenCLImage2DAllocator>(this->ctx_, this->UseFp16());
       },
       0,
       /*use_arena=*/false,

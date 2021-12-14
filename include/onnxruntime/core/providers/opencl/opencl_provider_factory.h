@@ -8,9 +8,9 @@ extern "C" {
 #endif
 
 /**
- * \param use_arena zero: false. non-zero: true.
+ * \param use_fp16 zero: false. non-zero: true.
  */
-ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_OpenCL, _In_ OrtSessionOptions* options)
+ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_OpenCL, _In_ OrtSessionOptions* options, int use_fp16)
 ORT_ALL_ARGS_NONNULL;
 
 #ifdef __cplusplus

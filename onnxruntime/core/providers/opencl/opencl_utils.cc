@@ -136,17 +136,34 @@ const char* GetErrorString(cl_int error_code) {
   }
 }
 
-cl::Program LoadProgram(const cl::Context& ctx, const cl::Device& dev, const std::string& src) {
-  return LoadProgram(ctx, dev, src.data(), src.size());
+namespace {
+#define CONTENT_NAME prelude_f16_src
+#include "opencl_generated/kernels/prelude_f16.cl.h.inc"
+#define CONTENT_NAME prelude_f32_src
+#include "opencl_generated/kernels/prelude_f32.cl.h.inc"
+}  // namespace
+
+cl::Program LoadProgram(const cl::Context& ctx, const cl::Device& dev, const std::string& src, bool use_fp16) {
+  return LoadProgram(ctx, dev, src.data(), src.size(), use_fp16);
 }
 
-cl::Program LoadProgram(const cl::Context& ctx, const cl::Device& dev, const char* src, size_t src_len) {
+cl::Program LoadProgram(const cl::Context& ctx, const cl::Device& dev, const char* src, size_t src_len, bool use_fp16) {
   cl_int err{};
-  cl::Program program(ctx, {src, src_len}, /*build=*/true, &err);
+  std::ostringstream oss;
+  if (use_fp16) {
+    oss << std::string(prelude_f16_src, prelude_f16_src_len) << "\n";
+  } else {
+    oss << std::string(prelude_f32_src, prelude_f32_src_len) << "\n";
+  }
+  oss << std::string(src, src_len);
+  auto full_src = oss.str();
+
+  cl::Program program(ctx, {full_src.data(), full_src.length()}, /*build=*/true, &err);
   if (err != CL_SUCCESS) {
     auto log = program.getBuildInfo<CL_PROGRAM_BUILD_LOG>(dev);
-    LOGS_DEFAULT(ERROR) << "\nKernel Source:>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\n"
-                        << std::string(src, src_len)
+    // LOGS_DEFAULT(ERROR) << "\nKernel Source:>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\n"
+    std::cout << "\nKernel Source:>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\n"
+                        << full_src
                         << "^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n"
                         << "\nBuild Log:\n"
                         << log

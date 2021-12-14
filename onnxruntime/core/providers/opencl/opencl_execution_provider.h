@@ -11,12 +11,11 @@
 #include "core/providers/providers.h"
 #include "core/graph/constants.h"
 
-
 namespace onnxruntime {
 
 // Information needed to construct OpenCL execution providers.
 struct OpenCLExecutionProviderInfo {
-  OpenCLExecutionProviderInfo() = default;
+  bool use_fp16;
 };
 
 // Logical device representation.
@@ -40,12 +39,16 @@ class OpenCLExecutionProvider : public IExecutionProvider {
   IAllocatorUniquePtr<cl::Buffer> GetScratchBuffer(size_t nbytes) const;
   IAllocatorUniquePtr<cl::Image2D> GetScratchImage2D(opencl::Image2DDesc desc) const;
 
+  bool UseFp16() const { return use_fp16_; }
+
  private:
   Status InitOpenCLContext();
+  void DisableFp16() { use_fp16_ = false; }
 
   cl::Device dev_;
   cl::Context ctx_;
   cl::CommandQueue cmd_queue_;
+  bool use_fp16_;
 
  private:
   // IDataTransfer is a lightweight interface with std::unique_ptr as its
