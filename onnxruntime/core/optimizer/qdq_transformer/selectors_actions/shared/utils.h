@@ -20,12 +20,12 @@ struct Selector {
   using OpVersionsMap = std::unordered_map<std::string, std::vector<ONNX_NAMESPACE::OperatorSetVersion>>;
 
   Selector(const OpVersionsMap& ops_and_versions_in,
-           std::unique_ptr<QDQ::BaseSelector> selector_in)
+           std::unique_ptr<BaseSelector> selector_in)
       : op_versions_map{ops_and_versions_in},
         selector{std::move(selector_in)} {}
 
   OpVersionsMap op_versions_map;
-  std::unique_ptr<QDQ::BaseSelector> selector;
+  std::unique_ptr<BaseSelector> selector;
 
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(Selector);
 };
@@ -38,7 +38,7 @@ class Selectors {
       : selectors_set_{std::move(rhs.selectors_set_)} {}
 
   void RegisterSelector(const Selector::OpVersionsMap& ops_and_versions_in,
-                        std::unique_ptr<QDQ::BaseSelector> selector_in);
+                        std::unique_ptr<BaseSelector> selector_in);
 
   const std::unordered_set<std::unique_ptr<Selector>>& SelectorsSet() const {
     return selectors_set_;
@@ -55,9 +55,9 @@ Selectors CreateSelectors();
 
 void InitializeSelectorsMap(Selectors selectors);
 
-std::unique_ptr<QDQ::BaseSelector> GetQDQSelector(const Node& node);
+std::unique_ptr<BaseSelector> GetQDQSelector(const Node& node);
 
-std::vector<std::unique_ptr<QDQ::BaseSelector>> GetQDQSelectors(const GraphViewer& graph_viewer);
+std::vector<std::unique_ptr<BaseSelector>> GetQDQSelectors(const GraphViewer& graph_viewer);
 
 }  // namespace QDQ
 }  // namespace onnxruntime

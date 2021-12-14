@@ -101,7 +101,7 @@ void IntializeSelectorsMap(Selectors selectors) {
   }
 }
 
-std::unique_ptr<QDQ::BaseSelector> GetQDQSelector(const Node& node) {
+std::unique_ptr<BaseSelector> GetQDQSelector(const Node& node) {
   if (node.Domain() != kOnnxDomain) {
     return nullptr;
   }
@@ -111,7 +111,7 @@ std::unique_ptr<QDQ::BaseSelector> GetQDQSelector(const Node& node) {
     return nullptr;
   }
 
-  const auto& selector = *op_rule->second;
+  const auto& selector = std::move(*op_rule->second);
 
   // check the supported versions if specified
   const auto& versions = selector.op_versions_map.find(node.OpType())->second;
@@ -122,16 +122,15 @@ std::unique_ptr<QDQ::BaseSelector> GetQDQSelector(const Node& node) {
     }
   }
 
-  auto selector_rtn = std::move(selector.selector);
-
-  return selector_rtn;
+  return selector.selector;
 }
 
-std::vector<std::unique_ptr<QDQ::BaseSelector>> GetQDQSelectors(const GraphViewer& graph_viewer) {
-  std::vector<std::unique_ptr<QDQ::BaseSelector>> qdq_selectors;
+std::vector<std::unique_ptr<BaseSelector>> GetQDQSelectors(const GraphViewer& graph_viewer) {
+  std::vector<std::unique_ptr<BaseSelector>> qdq_selectors;
   for (auto index : graph_viewer.GetNodesInTopologicalOrder()) {
     const auto* node = graph_viewer.GetNode(index);
-    qdq_selectors.push_back(GetQDQSelector(*node));
+    auto qdq_selector = GetQDQSelector(*node);
+    qdq_selectors.push_back(std::move(qdq_selector));
   }
   return qdq_selectors;
 }
