@@ -276,7 +276,6 @@ StvmExecutionProvider::GetCapability(const GraphViewer& graph_viewer,
   ORT_ENFORCE(graph_build.Resolve().IsOK());
 
   ONNX_NAMESPACE::ModelProto model_proto = model.ToProto();
-  model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
 
   std::unordered_set<std::string> required_initializers;
   const std::vector<NodeIndex>& sorted_nodes = graph_viewer.GetNodesInTopologicalOrder();
@@ -329,7 +328,6 @@ common::Status StvmExecutionProvider::Compile(const std::vector<Node*>& nodes,
                              std::vector<ONNX_NAMESPACE::FunctionProto>(), *GetLogger());
     ONNX_NAMESPACE::ModelProto model_proto = model.ToProto();
 
-    model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
     *(model_proto.mutable_graph()) = node_graph.ToGraphProto();
     auto opset = model_proto.add_opset_import();
     opset->set_domain(kOnnxDomain);
