@@ -939,7 +939,7 @@ MlasPartitionWork(
   #pragma warning(disable:26497) 
 #endif
 
-        MLAS_FORCEINLINE
+MLAS_FORCEINLINE
 uint32_t
 MlasBitsOfFp32(
     float FloatValue
