@@ -18,9 +18,11 @@ from tvm import autotvm
 ANSOR_TYPE = "Ansor"
 AUTO_TVM_TYPE = "AutoTVM"
 
+
 @tvm.register_func("tvm_run_with_benchmark")
 def run_with_benchmark(mod):
     run = mod.get_function('run')
+
     def benchmark(name):
         t = timeit.Timer(lambda: run()).repeat(repeat=5, number=5)
         ts = np.array(t) * 1000
@@ -32,13 +34,25 @@ def run_with_benchmark(mod):
     else:
         benchmark("Baseline")
 
+
 @tvm.register_func("tvm_run")
 def run_without_benchmark(mod):
     run = mod.get_function('run')
     run()
 
+
 @tvm.register_func("tvm_onnx_import_and_compile")
-def onnx_compile(model_string, model_path, target, target_host, opt_level, opset, freeze_params, input_shapes, nhwc = False, tuning_logfile="", tuning_type = ANSOR_TYPE):
+def onnx_compile(model_string,
+                 model_path,
+                 target,
+                 target_host,
+                 opt_level,
+                 opset,
+                 freeze_params,
+                 input_shapes,
+                 nhwc=False,
+                 tuning_logfile="",
+                 tuning_type=ANSOR_TYPE):
     model = onnx.load_model_from_string(bytes(model_string))
     if model_path:
         base_dir = os.path.dirname(os.path.abspath(model_path))
@@ -94,7 +108,8 @@ def onnx_compile(model_string, model_path, target, target_host, opt_level, opset
             else:
                 lib = relay.build(irmod, target_host=target_host, target=target)
     else:
-        print("ERROR: Tuning log type {} is unsupported. Only {} and {} types are supported".format(ANSOR_TYPE, AUTO_TVM_TYPE, tuning_type))
+        print("ERROR: Tuning log type {} is unsupported. ".format(tuning_type),
+              "Only {} and {} types are supported".format(ANSOR_TYPE, AUTO_TVM_TYPE))
         return None
 
     ctx = tvm.device(target, 0)
