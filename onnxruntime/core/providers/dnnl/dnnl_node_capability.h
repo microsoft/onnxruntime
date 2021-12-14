@@ -199,7 +199,8 @@ class DnnlMatMulIntegerNodeCapability : public DnnlDefaultNodeCapability {
   bool Supported(const Node* node, const GraphViewer& graph_viewer) const override;
 
  private:
-  bool IsDimensionSupported(const Node* node) const;
+  bool IsDimensionSupported(const Node* node, const GraphViewer& graph_viewer) const;
+  bool IsWeightZeroPointConstantZero(const NodeArg* node, const GraphViewer& graph_viewer) const;
 };
 
 /**
@@ -329,4 +330,16 @@ class DnnlErfNodeCapability : public DnnlDefaultNodeCapability {
   DnnlBinaryNodeCapability _binary;
 };
 
+
+class DnnlQAttentionNodeCapability : public DnnlDefaultNodeCapability {
+ public:
+  DnnlQAttentionNodeCapability() : DnnlDefaultNodeCapability({type_float32,
+                                                              type_int8,
+                                                              type_uint8}) {}
+  bool Supported(const Node* node, const GraphViewer& graph_viewer) const override;
+
+ private:
+  bool IsDimensionSupported(const Node* node) const;
+};
+                                 
 }  // namespace onnxruntime

@@ -32,7 +32,9 @@ TEST(AllocatorTest, CPUAllocatorTest) {
   cpu_arena->Free(bytes);
   //todo: test the used / max api.
 }
-
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(disable : 26400)
+#endif
 // helper class to validate values in Alloc and Free calls made via IAllocator::MakeUniquePtr
 class TestAllocator : public IAllocator {
  public:

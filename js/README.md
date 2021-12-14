@@ -379,17 +379,17 @@ By default, ONNX Runtime React Native leverages ONNX Runtime Mobile package with
       python tools/ci_build/github/apple/build_ios_framework.py tools/ci_build/github/apple/default_mobile_ios_framework_build_settings.json --config MinSizeRel --include_ops_by_config tools/ci_build/github/android/mobile_package.required_operators.config
       ```
 
-      It creates `onnxruntime.framework` in `build/iOS_framework/framework_out` directory. Create an archive file of `onnxruntime.framework` directory as follows and copy to `<ORT_ROOT>/js/react_native/local_pods` directory.
+      It creates `Headers`, `LICENSE`, and `onnxruntime.xcframework` in `build/iOS_framework/framework_out` directory. From `framework_out` directory, create an archive file named `onnxruntime-mobile-c.zip` as follows and copy to `<ORT_ROOT>/js/react_native/local_pods` directory.
 
       ```sh
-      zip -r onnxruntime-mobile-c.zip onnxruntime.framework
+      zip -r onnxruntime-mobile-c.zip .
       ```
 
    4. To verify, open iOS Simulator and run this command from `<ORT_ROOT>/js/react_native/ios`. Change a destination to specify a running iOS Simulator.
 
       ```sh
       pod install
-      xcodebuild test -workspace OnnxruntimeModule.xcworkspace -scheme OnnxruntimeModuleTest -destination 'platform=iOS Simulator,name=iPhone 11,OS=14.5'
+      xcodebuild test -workspace OnnxruntimeModule.xcworkspace -scheme OnnxruntimeModuleTest -destination 'platform=iOS Simulator,name=iPhone 11,OS=15.0'
       ```
 
 4. Test an example for Android and iOS. In Windows, open Android Emulator first.
