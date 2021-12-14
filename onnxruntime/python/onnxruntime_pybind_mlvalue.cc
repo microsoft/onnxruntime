@@ -9,6 +9,7 @@
 #define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
 #define PY_ARRAY_UNIQUE_SYMBOL onnxruntime_python_ARRAY_API
 #include <numpy/arrayobject.h>
+#include "numpy_helper.h"
 
 #include "core/graph/graph.h"
 #include "core/framework/tensor_shape.h"
@@ -41,9 +42,6 @@ bool IsNumpyArray(py::object& obj) {
   return PyObjectCheck_NumpyArray(obj.ptr());
 }
 
-constexpr bool IsNumericNumpyType(int npy_type) {
-  return npy_type < NPY_OBJECT || npy_type == NPY_HALF;
-}
 
 int GetNumpyArrayType(const py::object& obj) {
   return PyArray_TYPE(reinterpret_cast<PyArrayObject*>(obj.ptr()));
