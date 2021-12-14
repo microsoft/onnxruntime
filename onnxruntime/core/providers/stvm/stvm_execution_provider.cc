@@ -252,30 +252,7 @@ StvmExecutionProvider::GetCapability(const GraphViewer& graph_viewer,
     return result;
   }
 
-  // Construct modelproto from graph
-  Model model(graph_viewer.Name(), true, ModelMetaData(), PathString{}, IOnnxRuntimeOpSchemaRegistryList(), graph_viewer.DomainToVersionMap(), std::vector<ONNX_NAMESPACE::FunctionProto>(), *GetLogger());
-  Graph& graph_build = model.MainGraph();
-
-  for (const auto& node : graph_viewer.Nodes()) {
-    std::vector<NodeArg*> inputs, outputs;
-    for (auto input : node.InputDefs()) {
-      auto& n_input = graph_build.GetOrCreateNodeArg(input->Name(), input->TypeAsProto());
-      inputs.push_back(&n_input);
-    }
-    for (auto output : node.OutputDefs()) {
-      auto& n_output = graph_build.GetOrCreateNodeArg(output->Name(), output->TypeAsProto());
-      outputs.push_back(&n_output);
-    }
-    graph_build.AddNode(node.Name(), node.OpType(), node.Description(), inputs, outputs, &node.GetAttributes(), node.Domain());
-  }
-
   const auto& init_tensors = graph_viewer.GetAllInitializedTensors();
-  for (const auto& tensor : init_tensors) {
-    graph_build.AddInitializedTensor(*(tensor.second));
-  }
-  ORT_ENFORCE(graph_build.Resolve().IsOK());
-
-  ONNX_NAMESPACE::ModelProto model_proto = model.ToProto();
 
   std::unordered_set<std::string> required_initializers;
   const std::vector<NodeIndex>& sorted_nodes = graph_viewer.GetNodesInTopologicalOrder();
