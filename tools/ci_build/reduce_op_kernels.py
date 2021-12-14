@@ -4,7 +4,6 @@
 
 import argparse
 import op_registration_utils
-import os
 import shutil
 import sys
 import typing
@@ -221,6 +220,15 @@ if __name__ == "__main__":
                         help="Path to the build directory. "
                              "The op reduction files will be generated under the build directory.")
 
+    parser.add_argument("--enable_type_reduction", action="store_true",
+                        help="Whether per operator type reduction is enabled.")
+
+    parser.add_argument("--use_cuda", action="store_true",
+                        help="Whether to reduce op kernels for the CUDA provider.")
+
     args = parser.parse_args()
-    config_path = os.path.abspath(args.config_path)
-    reduce_ops(config_path, enable_type_reduction=True, use_cuda=True)
+
+    reduce_ops(config_path=args.config_path,
+               build_dir=args.build_dir,
+               enable_type_reduction=args.enable_type_reduction,
+               use_cuda=args.use_cuda)
