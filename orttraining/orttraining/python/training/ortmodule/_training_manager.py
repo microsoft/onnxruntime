@@ -16,10 +16,10 @@ from .debug_options import DebugOptions
 from ._fallback import (ORTModuleFallbackException,
                         _FallbackPolicy,
                         _FallbackManager)
+from .torch_cpp_extensions.cpu.torch_interop_utils import clear_all_grad_fns
 
 from onnxruntime.capi import _pybind_state as C
 from onnxruntime.capi.onnxruntime_inference_collection import get_ort_device_type
-from onnxruntime.training.ortmodule.torch_cpp_extensions import torch_interop_utils
 
 import torch
 import warnings
@@ -42,7 +42,7 @@ class TrainingManager(GraphExecutionManager):
 
         # Clear all gradient functions, to avoid a deadlock issue.
         # Check the called function for more detailed comments.
-        torch_interop_utils.clear_all_grad_fns()
+        clear_all_grad_fns()
 
         # TODO: Try to reuse the output buffers as some of the output tensors are same sizes,
         #   especially the backward graph outputs.
