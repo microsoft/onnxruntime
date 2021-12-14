@@ -38,7 +38,7 @@ struct StvmExecutionProviderInfo {
   bool freeze_weights = true;
   bool to_nhwc = false;
   std::string tuning_file_path{""};
-  std::string tuning_type{"Ansor"};
+  std::string tuning_type{"AutoTVM"};
   std::string input_names_str{""};
   std::string input_shapes_str{""};
   STVMInputShapes input_shapes{};
