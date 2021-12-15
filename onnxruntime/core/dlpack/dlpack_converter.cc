@@ -208,16 +208,15 @@ bool IsContiguousTensor(const DLTensor& tensor) {
 
 }  // namespace
 
-
 // This function returns a pointer to DLManagedTensor constructed from an OrtValue
 // The OrtValue inside OrtDLManagedTensor will increase its own buffer's ref count by one
 // When the consumer of DLManagedTensor is done with the tensor, it should invoke the deleter.
 DLManagedTensor* OrtValueToDlpack(OrtValue& ort_value) {
   ORT_ENFORCE(ort_value.IsTensor(), "Only tensor type OrtValues are supported");
-  std::unique_ptr<OrtDLManagedTensor> ort_dlmanaged_tensor = std::make_unique<OrtDLManagedTensor>();
+  OrtDLManagedTensor* ort_dlmanaged_tensor(new OrtDLManagedTensor);
   Tensor& tensor = *ort_value.GetMutable<Tensor>();
   ort_dlmanaged_tensor->handle = ort_value;
-  ort_dlmanaged_tensor->tensor.manager_ctx = ort_dlmanaged_tensor.get();
+  ort_dlmanaged_tensor->tensor.manager_ctx = ort_dlmanaged_tensor;
   ort_dlmanaged_tensor->tensor.deleter = &DlpackDeleter;
   ort_dlmanaged_tensor->tensor.dl_tensor.data = (tensor.MutableDataRaw());
   ort_dlmanaged_tensor->tensor.dl_tensor.device = GetDlpackDevice(ort_value, tensor.Location().device.Id());
@@ -227,7 +226,6 @@ DLManagedTensor* OrtValueToDlpack(OrtValue& ort_value) {
       tensor.Shape().NumDimensions() > 0 ? &const_cast<TensorShape&>(tensor.Shape())[0] : nullptr;
   ort_dlmanaged_tensor->tensor.dl_tensor.strides = nullptr;
   ort_dlmanaged_tensor->tensor.dl_tensor.byte_offset = 0;
-  ort_dlmanaged_tensor.release();
   return &(ort_dlmanaged_tensor->tensor);
 }
 

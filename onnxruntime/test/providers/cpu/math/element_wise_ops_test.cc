@@ -2247,7 +2247,7 @@ TEST(MathOpTest, ErfMoreData) {
   test.Run();
 }
 
-const int ModOp_ver = 10;
+constexpr int ModOp_ver = 10;
 
 TEST(ModOpTest, Fmod_float_mixed_sign) {
   OpTester test("Mod", ModOp_ver);

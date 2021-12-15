@@ -384,6 +384,12 @@ class PySparseTensor {
 };
 #endif  // !defined(DISABLE_SPARSE_TENSORS)
 
+
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(push)
+//You can attempt to make 'onnxruntime::python::SessionObjectInitializer::Get' constexpr
+#pragma warning(disable : 26497)
+#endif
 class SessionObjectInitializer {
  public:
   typedef const PySessionOptions& Arg1;
@@ -404,7 +410,9 @@ class SessionObjectInitializer {
     return SessionObjectInitializer();
   }
 };
-
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(pop)
+#endif
 Environment& GetEnv();
 
 // Initialize an InferenceSession.

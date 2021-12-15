@@ -217,9 +217,9 @@ TEST_F(ActivationOpTest, PRelu_MultiChannel) {
   std::vector<float> inputs{1.0f, 2.0f, -4.0f, 3.0f, 0.0f, 5.0f, -9.0f, 8.0f};
   std::vector<float> slopes{1.0f, -2.0f};
   std::vector<float> outputs;
-  const int64_t num_images = 2;
-  const int64_t num_channels = 2;
-  const int64_t num_pixels = 2;
+  constexpr int64_t num_images = 2;
+  constexpr int64_t num_channels = 2;
+  constexpr int64_t num_pixels = 2;
   for (unsigned i = 0; i < inputs.size(); i++)
     outputs.push_back(formula(inputs[i], slopes[i / num_pixels % num_channels]));
 
