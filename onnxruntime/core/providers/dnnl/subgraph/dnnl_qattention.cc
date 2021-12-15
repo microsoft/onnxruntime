@@ -45,97 +45,53 @@ dnnl::memory DnnlQAttention::ComputeTotalScale(DnnlSubgraphPrimitive& sp, DnnlNo
 }
 
 /*
-input_tensor            weight_tensor
-
+   input_tensor            weight_tensor
          \                       /
-
           \                     /
-
            \                   /
-
             \                 /
-
-               matmulinteger 
+               matmulinteger
         with input and weight zero point,
         input and weight scale and bias
                     |
-
                     |
-
                     | QKV
-
                     |
-
                   slice
-
-                 /  |  \
-
                 /   |   \
-
                /    |    \
-
               /     |     \
-
+             /      |      \
             |Q      |K      |V
-
             |       |       |
-
          reshape  reshape  reshape
-
             |       |       |
-
          permute  permute  permute
-
             |       |       |
-
             |    transpose  |
-
-            \       |       |
-
              \      |       |
-
               \     |       |
-
                \    |       |
-
-                  matmul    |
-
-                    |       |
-
-                    |       |
-
- sqrt(head_dim)     |       |
-
-              \     |       |
-
-               \    |       |
-
                 \   |       |
-
+                  matmul    |
+                    |       |
+                    |       |
+   sqrt(head_dim)   |       |
+                \   |       |
+                 \  |       |
+                  \ |       |
                    div      |
-
-                    |       | 
-                  
-                  (mask)    |
-                  
-                    |       /
-
-                 softmax   /
-
-                    |    /
-
+                    |       |
+                  (mask)   /
+                    |     /
+                 softmax /
+                    |   /
                   matmul
-
                     |
-
                   permute
-
                     |
-
                   reshape
-
                     |
-
                   output
 */
 /*
