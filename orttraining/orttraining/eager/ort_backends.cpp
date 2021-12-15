@@ -43,6 +43,10 @@ ORTBackendsManager::ORTBackendsManager(const onnxruntime::logging::Logger& logge
   }
 }
 
+ORTBackendsManager::~ORTBackendsManager(){
+  backends_.clear();
+}
+
 onnxruntime::Status ORTBackendsManager::set_device(size_t device_index, const std::string& provider_type,
                                  const ProviderOptions& provider_options){
   auto ep = onnxruntime::python::GetOrCreateExecutionProvider(provider_type, 
