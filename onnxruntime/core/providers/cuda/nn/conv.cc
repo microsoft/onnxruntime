@@ -252,7 +252,7 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
           // Use GetTransientScratchBuffer() so the workspace can be freed instead of cached.
           // Because the benchmarking uses a huge amount of memory, e.g. a few GBs.
           IAllocatorUniquePtr<void> algo_search_workspace = GetTransientScratchBuffer<void>(max_ws_size);
-          auto result=cudnnFindConvolutionForwardAlgorithmEx(
+          CUDNN_RETURN_IF_ERROR(cudnnFindConvolutionForwardAlgorithmEx(
               s_.handle,
               s_.x_tensor,
               s_.x_data,
@@ -265,10 +265,7 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
               &algo_count,  // returnedAlgoCount
               &perf,
               algo_search_workspace.get(),
-              max_ws_size);
-          if (result != CUDNN_STATUS_SUCCESS) {
-    int j; j=5;          
-}
+              max_ws_size));
           break;
         }
         case 1:
