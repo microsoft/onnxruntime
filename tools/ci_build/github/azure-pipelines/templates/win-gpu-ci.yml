@@ -230,7 +230,7 @@ jobs:
           msBuildCommandline: '"C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\MSBuild\Current\Bin\amd64\msbuild.exe" "$(Build.SourcesDirectory)\b\RelWithDebInfo\onnxruntime.sln" /p:RunCodeAnalysis=true /p:platform=${{ parameters.msbuildPlatform }} /p:configuration=RelWithDebInfo /p:VisualStudioVersion="16.0" /m /p:PreferredToolArchitecture=x64'
           excludedPaths: '$(Build.SourcesDirectory)\b#$(Build.SourcesDirectory)\cmake#C:\program files (x86)'
           rulesetName: Custom
-          customRuleset: $(Build.SourcesDirectory)\tools\ci_build\Sdl.ruleset
+          customRuleset: $(Build.SourcesDirectory)\cmake\Sdl.ruleset
           publishXML: true
           
       - task: SdtReport@2

@@ -667,7 +667,9 @@ AddTest(
     onnx_test_data_proto nlohmann_json::nlohmann_json
   DEPENDS ${all_dependencies}
 )
-if(NOT MSVC)
+if (MSVC)
+  target_compile_options(onnxruntime_test_all PRIVATE "/wd26451")
+else()
   target_compile_options(onnxruntime_test_all PRIVATE "-Wno-parentheses")
 endif()
 # the default logger tests conflict with the need to have an overall default logger
