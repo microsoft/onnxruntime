@@ -81,4 +81,4 @@
 	url = https://github.com/onnx/onnx-tensorrt.git
 [submodule "cmake/external/tvm_update"]
 	path = cmake/external/tvm_update
-	url = https://github.com/jroesch/tvm
+	url = https://github.com/apache/tvm
