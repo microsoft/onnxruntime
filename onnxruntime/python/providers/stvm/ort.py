@@ -52,7 +52,7 @@ def onnx_compile(model_string,
                  input_shapes,
                  nhwc=False,
                  tuning_logfile="",
-                 tuning_type=ANSOR_TYPE):
+                 tuning_type=AUTO_TVM_TYPE):
     model = onnx.load_model_from_string(bytes(model_string))
     if model_path:
         base_dir = os.path.dirname(os.path.abspath(model_path))
