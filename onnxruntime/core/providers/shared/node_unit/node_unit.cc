@@ -34,7 +34,7 @@ void NodeUnit::InitForNode() {
   // auto qlinear_type = GetQLinearOpType(node_);
   // if (qlinear_type == QLinearOpType::Unknown) {
   // Not a Qlinear op, add all inputs/outputs
-  auto add_all_io = [](std::vector<IODef> defs,
+  auto add_all_io = [](std::vector<IODef>& defs,
                        const ConstPointerContainer<std::vector<NodeArg*>>& node_defs) {
     defs.reserve(node_defs.size());
 
