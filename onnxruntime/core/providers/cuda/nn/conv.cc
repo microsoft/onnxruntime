@@ -123,7 +123,6 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
     if (w_dims_changed) {
       s_.last_w_dims = w_dims;
       s_.cached_benchmark_results.clear();
-      ORT_RETURN_IF_ERROR(s_.w_desc.Set(w_dims, CudnnTensor::GetDataType<CudaT>()));
     }
 
     const int64_t N = X->Shape()[0];
@@ -177,9 +176,6 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
     s_.slice_axes = slice_axes;
 
     s_.Y = context->Output(0, TensorShape(s_.y_dims));
-    if (s_.Y->Shape().Size() == 0) {
-      return Status::OK();
-    }
     if (post_slicing_required) {
       // Post slicing needed. Create and fill in the Conv results in an intermediate buffer.
       s_.memory_for_cudnn_conv_results = GetScratchBuffer<void>(TensorShape(y_dims_with_adjusted_pads).Size() * s_.element_size);
@@ -205,6 +201,13 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
       kernel_shape.push_back(1);
       strides.push_back(1);
       dilations.push_back(1);
+    }
+
+    if (w_dims_changed)
+      ORT_RETURN_IF_ERROR(s_.w_desc.Set(w_dims, CudnnTensor::GetDataType<CudaT>()));
+
+    if (s_.Y->Shape().Size() == 0) {
+      return Status::OK();
     }
 
     ORT_RETURN_IF_ERROR(s_.x_tensor.Set(x_dims_cudnn, CudnnTensor::GetDataType<CudaT>()));
