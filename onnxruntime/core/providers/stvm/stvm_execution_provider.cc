@@ -28,7 +28,8 @@ struct STVMFuncState {
   DestroyFunc release_func = nullptr;
   AllocatorHandle allocator = nullptr;
   tvm::runtime::Module* module = nullptr;
-  std::function<tvm::runtime::Module*(std::string func_name, const std::vector<std::vector<int64_t>>& input_shapes)> compiler = nullptr;
+  std::function<tvm::runtime::Module*(std::string func_name,
+                const std::vector<std::vector<int64_t>>& input_shapes)> compiler = nullptr;
 };
 
 class STVMRunner {
@@ -156,7 +157,10 @@ class STVMRunner {
       size_t num_outputs = tensors_outputs_.size();
       for (auto i = 0u; i < num_outputs; i++) {
         //setup output tensor property
-        OrtValue* output_tensor = ort.KernelContext_GetOutput(context, i, output_shapes_[i].data(), output_shapes_[i].size());
+        OrtValue* output_tensor = ort.KernelContext_GetOutput(context,
+                                                              i,
+                                                              output_shapes_[i].data(),
+                                                              output_shapes_[i].size());
         ORT_ENFORCE(output_tensor->IsTensor());
         const Tensor& tensor = output_tensor->Get<Tensor>();
         const OrtDevice& device = tensor.Location().device;
@@ -260,7 +264,8 @@ StvmExecutionProvider::GetCapability(const GraphViewer& graph_viewer,
   const std::vector<NodeIndex>& sorted_nodes = graph_viewer.GetNodesInTopologicalOrder();
   std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
   for (auto& node_idx : sorted_nodes) {
-    graph_viewer.GetNode(node_idx)->ForEachDef([&required_initializers, &init_tensors](const NodeArg& node_arg, bool is_input) {
+    graph_viewer.GetNode(node_idx)->ForEachDef([&required_initializers, &init_tensors]
+                                               (const NodeArg& node_arg, bool is_input) {
               if(is_input && init_tensors.count(node_arg.Name())) {
                   required_initializers.insert(node_arg.Name());
               } }, true);
@@ -319,12 +324,16 @@ common::Status StvmExecutionProvider::Compile(const std::vector<Node*>& nodes,
     model_paths_[func_name] = fused_node->ModelPath().ToPathString();;
 
     if (dump_subgraphs_) {
-        std::fstream dump("/tmp/" + fused_node->Name() + ".onnx", std::ios::out | std::ios::trunc | std::ios::binary);
+        std::fstream dump("/tmp/" + fused_node->Name() + ".onnx",
+                          std::ios::out | std::ios::trunc | std::ios::binary);
         model_proto.SerializeToOstream(&dump);
     }
 
     NodeComputeInfo compute_info;
-    compute_info.create_state_func = std::bind(&StvmExecutionProvider::CreateStateFunc, this, std::placeholders::_1, std::placeholders::_2);
+    compute_info.create_state_func = std::bind(&StvmExecutionProvider::CreateStateFunc,
+                                               this,
+                                               std::placeholders::_1,
+                                               std::placeholders::_2);
 
     compute_info.release_state_func = [](FunctionState state) {
       if (state)
@@ -380,7 +389,8 @@ size_t StvmExecutionProvider::split(const std::string &txt, std::vector<std::str
 
 void StvmExecutionProvider::ProcessInfo() {
   if(!info_.input_shapes_str.empty()) {
-    ORT_ENFORCE(!info_.input_names_str.empty(), "Please insert input tensor names. Input shapes only is invalid case");
+    ORT_ENFORCE(!info_.input_names_str.empty(),
+                "Please insert input tensor names. Input shapes only is invalid case");
     // Parse strings and set to input_shapes map
     std::vector<std::string> tmp_strs;
     std::vector<std::string> names_strs;
@@ -393,10 +403,12 @@ void StvmExecutionProvider::ProcessInfo() {
 
     size_t end_pos = shapes_str.find_last_of(']');
     ORT_ENFORCE(end_pos != std::string::npos, "Invalid string for input shapes. Symbol ] is not found");
-    ORT_ENFORCE(end_pos == (shapes_str.size() - 1), "Invalid string for input shapes. Symbol ] should be last after whitespace trimming");
+    ORT_ENFORCE(end_pos == (shapes_str.size() - 1),
+                "Invalid string for input shapes. Symbol ] should be last after whitespace trimming");
     split(shapes_str, tmp_strs, ']');
     tmp_strs.pop_back();
-    ORT_ENFORCE( tmp_strs.size() == inp_tensors_num, "Number of shapes is not the same as number of input tensor names");
+    ORT_ENFORCE( tmp_strs.size() == inp_tensors_num,
+                "Number of shapes is not the same as number of input tensor names");
     for (size_t i = 0; i < inp_tensors_num; ++i) {
       size_t pos = tmp_strs[i].find('[');
       ORT_ENFORCE(pos != std::string::npos, "There is no symbol [ as pair for ]");
@@ -482,12 +494,16 @@ int StvmExecutionProvider::CreateStateFunc(ComputeContext* context, FunctionStat
                  context->release_func,
                  context->allocator_handle,
                  nullptr,
-                 std::bind(&StvmExecutionProvider::CompileFunc, this, std::placeholders::_1, std::placeholders::_2)};
+                 std::bind(&StvmExecutionProvider::CompileFunc,
+                           this,
+                           std::placeholders::_1,
+                           std::placeholders::_2)};
   *state = state_ptr;
   return 0;
 }
 
-tvm::runtime::Module* StvmExecutionProvider::CompileFunc(std::string func_name, const TVMTensorShapes& input_shapes) {
+tvm::runtime::Module* StvmExecutionProvider::CompileFunc(std::string func_name,
+                                                         const TVMTensorShapes& input_shapes) {
   if (modules_.count(func_name)) {
     return modules_[func_name].get();
   }
