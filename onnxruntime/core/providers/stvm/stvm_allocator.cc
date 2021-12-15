@@ -11,14 +11,11 @@ namespace onnxruntime {
 
 
 void* STVMAllocator::Alloc(size_t size) {
-  //LOG(INFO) << "allocating " << size;
-
   void* p = nullptr;
   if (size > 0) {
     DLDataType dl_type{kDLInt, 8, 1};
     int err = TVMDeviceAllocDataSpace(ctx, size, 128, dl_type, (void**)&p);
     CHECK_EQ(err, 0);
-    //LOG(INFO) << "allocated " << p;
     return p;
   }
   return p;

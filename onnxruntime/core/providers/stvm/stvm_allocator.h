@@ -13,7 +13,11 @@ namespace onnxruntime {
 
 class STVMAllocator : public IAllocator {
  public:
-   STVMAllocator() : STVMAllocator(OrtMemoryInfo("TVM", OrtAllocatorType::OrtDeviceAllocator, OrtDevice(OrtDevice::CPU, OrtDevice::MemType::DEFAULT, 0), 0, OrtMemTypeDefault)) {}
+   STVMAllocator() : STVMAllocator(OrtMemoryInfo("TVM",
+                                                 OrtAllocatorType::OrtDeviceAllocator,
+                                                 OrtDevice(OrtDevice::CPU, OrtDevice::MemType::DEFAULT, 0),
+                                                 0,
+                                                 OrtMemTypeDefault)) {}
   explicit STVMAllocator(const OrtMemoryInfo& info)
     : IAllocator(info) {
       switch (info.device.Type()) {

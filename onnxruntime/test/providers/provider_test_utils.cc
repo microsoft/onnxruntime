@@ -996,7 +996,6 @@ void OpTester::Run(
         kCudaExecutionProvider,
         kDnnlExecutionProvider,
         kNupharExecutionProvider,
-        // kStvmExecutionProvider,
         kTensorrtExecutionProvider,
         kOpenVINOExecutionProvider,
         kDmlExecutionProvider,
@@ -1083,8 +1082,6 @@ void OpTester::Run(
           execution_provider = DefaultOpenVINOExecutionProvider();
         else if (provider_type == onnxruntime::kNupharExecutionProvider)
           execution_provider = DefaultNupharExecutionProvider();
-        // else if (provider_type == onnxruntime::kStvmExecutionProvider)
-        //   execution_provider = DefaultStvmExecutionProvider();
         else if (provider_type == onnxruntime::kTensorrtExecutionProvider)
           execution_provider = DefaultTensorrtExecutionProvider();
         else if (provider_type == onnxruntime::kNnapiExecutionProvider)

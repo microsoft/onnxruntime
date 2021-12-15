@@ -24,7 +24,6 @@ namespace stvm_env_vars {
 
 class STVMRunner;
 
-// Logical device representation.
 class StvmExecutionProvider : public IExecutionProvider {
   friend STVMRunner;
 
