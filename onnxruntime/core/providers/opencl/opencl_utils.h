@@ -263,8 +263,8 @@ class KernelLauncher {
   }
 
   template <typename T>
-  KernelLauncher& setArg(T&& arg) {
-    SKIP_IF_ERRORED(kernel_.setArg(index_, std::forward<T>(arg)));
+  KernelLauncher& setArg(const T& arg) {
+    SKIP_IF_ERRORED(kernel_.setArg(index_, arg));
     index_ += 1;
     return *this;
   }
