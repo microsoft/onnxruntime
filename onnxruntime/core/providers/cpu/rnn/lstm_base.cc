@@ -3,10 +3,7 @@
 
 #include "lstm_base.h"
 #include "uni_directional_lstm.h"
-//TODO: fix the warnings
-#if defined(_MSC_VER) && !defined(__clang__)
-#pragma warning(disable : 26451)
-#endif
+
 namespace onnxruntime {
 
 using namespace rnn::detail;

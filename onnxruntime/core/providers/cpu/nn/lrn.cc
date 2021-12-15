@@ -21,10 +21,7 @@
 #include "core/common/safeint.h"
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
-//TODO: fix the warnings
-#if defined(_MSC_VER) && !defined(__clang__)
-#pragma warning(disable : 26451)
-#endif
+
 namespace onnxruntime {
 
 namespace functors {
@@ -77,7 +74,7 @@ Status LRN<float>::Compute(OpKernelContext* context) const {
   auto* scale_data = static_cast<float*>(scale_buffer.get());
   math::Set<float, CPUMathUtil>(Xsize, bias_, scale_data, &CPUMathUtil::Instance());
 
-  const size_t padded_square_size = (static_cast<size_t>(C) + size_ - 1) * H * W;
+  const size_t padded_square_size = (C + size_ - 1) * H * W;
   auto psdata = alloc->Alloc(SafeInt<size_t>(sizeof(float)) * padded_square_size);
   BufferUniquePtr padded_square_buffer(psdata, BufferDeleter(alloc));
   auto* padded_square_data = static_cast<float*>(padded_square_buffer.get());
