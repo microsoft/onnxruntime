@@ -81,12 +81,11 @@ TEST_F(CopyTest, Transpose4D) {
 
 TEST_F(CopyTest, Concat2D) {
   // test performing a concat using a strided copy
-  double* src = new double[6 * 2];
+  std::unique_ptr<double[]> src = std::make_unique<double[]>(6 * 2);
   for (int i = 0; i < 6 * 2; i++) {
     src[i] = static_cast<double>(i);
   }
-
-  double* dst = new double[10 * 5];
+  std::unique_ptr<double[]> dst = std::make_unique<double[]>(10 * 5);
   for (int i = 0; i < 10 * 5; i++) {
     dst[i] = 0;
   }
@@ -94,7 +93,7 @@ TEST_F(CopyTest, Concat2D) {
   std::vector<int64_t> dst_strides = {5, 1};
   std::vector<int64_t> src_strides = {2, 1};
   std::ptrdiff_t offset = 3;
-  StridedCopy<double>(tp.get(), dst + offset, dst_strides, {6, 2}, src, src_strides);
+  StridedCopy<double>(tp.get(), dst.get() + offset, dst_strides, {6, 2}, src.get(), src_strides);
 
   for (int i0 = 0; i0 < 10; i0++) {
     for (int i1 = 0; i1 < 5; i1++) {
@@ -107,8 +106,6 @@ TEST_F(CopyTest, Concat2D) {
       }
     }
   }
-  delete[] src;
-  delete[] dst;
 }
 
 TEST_F(CopyTest, CoalesceTensorsTest) {
