@@ -187,10 +187,8 @@ def reduce_ops(config_path: str, build_dir: str, enable_type_reduction: bool = F
     :param enable_type_reduction: Whether per operator type reduction is enabled
     :param use_cuda: Whether to reduce op kernels for the CUDA provider
     '''
-    # convert build_dir to pathlib.Path and validate
     build_dir = Path(build_dir).resolve()
-    if not build_dir.is_dir():
-        raise ValueError(f"Build directory does not exist: {build_dir}")
+    build_dir.mkdir(parents=True, exist_ok=True)
 
     required_ops, op_type_impl_filter = parse_config(config_path, enable_type_reduction)
 
@@ -216,7 +214,7 @@ if __name__ == "__main__":
                              "Create with <ORT root>/tools/python/create_reduced_build_config.py and edit if needed. "
                              "See /docs/ONNX_Runtime_Format_Model_Usage.md for more information.")
 
-    parser.add_argument("--build_dir", type=str, required=True,
+    parser.add_argument("--cmake_build_dir", type=str, required=True,
                         help="Path to the build directory. "
                              "The op reduction files will be generated under the build directory.")
 
@@ -229,6 +227,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     reduce_ops(config_path=args.config_path,
-               build_dir=args.build_dir,
+               build_dir=args.cmake_build_dir,
                enable_type_reduction=args.enable_type_reduction,
                use_cuda=args.use_cuda)

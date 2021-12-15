@@ -5,16 +5,18 @@ In order to reduce the compiled binary size of ONNX Runtime (ORT), the operator 
 A configuration file must be created with details of the kernels that are required.
 
 Following that, ORT must be manually built, providing the configuration file in the [build.py](../tools/ci_build/build.py) `--include_ops_by_config` argument.
+
+See the [build instructions](https://www.onnxruntime.ai/docs/how-to/build.html#build-instructions) for more details on building ORT.
+
 The build process will generate updated ORT kernel registration and type reduction source files to exclude unused kernel implementations.
 The generated files will be under the build directory and the original source files that they are based on are not directly modified.
 When building, the generated files will be used instead of the original files.
 
 The operator exclusion logic only runs during the build file generation (or "update") phase of the build process, i.e., when invoking build.py with no build phase arguments or explicitly with `--update`.
 
-It is also possible to run the operator exclusion logic independently with [reduce_op_kernels.py](../tools/ci_build/reduce_op_kernels.py).
-As the generated files will go into a build directory, the `--build_dir` argument must be provided.
-
-See the [build instructions](https://www.onnxruntime.ai/docs/how-to/build.html#build-instructions) for more details on building ORT.
+Note: It is also possible to run the operator exclusion logic independently with [reduce_op_kernels.py](../tools/ci_build/reduce_op_kernels.py). This may be useful when building ORT without using build.py.
+As the generated files will go into a build directory, the build directory must be provided with the reduce_op_kernels.py `--cmake_build_dir` argument.
+Note that this argument is slightly different from the build.py `--build_dir` argument - build.py will append an additional directory for the build configuration to its `--build_dir` value to get the equivalent of `--cmake_build_dir`.
 
 ## Creating a configuration file with the required kernels
 
