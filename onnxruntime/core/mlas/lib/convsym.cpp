@@ -64,18 +64,70 @@ extern "C" {
     MLAS_CONV_SYM_KERNEL MlasConvSymKernelAvx512Vnni;
     MLAS_CONV_SYM_DEPTHWISE_KERNEL MlasConvSymDepthwiseKernelAvx512Vnni;
 #elif defined(MLAS_TARGET_ARM64)
-    MLAS_CONV_SYM_KERNEL MlasConvSymKernelNeon;
-    MLAS_CONV_SYM_KERNEL MlasConvSymKernelNeonDot;
-    MLAS_CONV_SYM_DEPTHWISE_KERNEL MlasConvSymDepthwiseKernelNeon;
-    MLAS_CONV_SYM_DEPTHWISE_ROUTINE_KERNELSIZE MlasConvSymDepthwiseKernelSize9Arm64;
-    MLAS_CONV_SYM_DEPTHWISE_ROUTINE_KERNELSIZE MlasConvSymDepthwiseKernelSize25Arm;
-#endif
+    MLAS_CONV_SYM_KERNEL MlasConvSymS8KernelNeon;
+    MLAS_CONV_SYM_KERNEL MlasConvSymU8KernelNeon;
+    MLAS_CONV_SYM_KERNEL MlasConvSymS8KernelDot;
+    MLAS_CONV_SYM_KERNEL MlasConvSymU8KernelDot;
+    MLAS_CONV_SYM_DEPTHWISE_KERNEL MlasConvSymDepthwiseU8KernelNeon;
+    MLAS_CONV_SYM_DEPTHWISE_KERNEL MlasConvSymDepthwiseS8KernelNeon;
 
+//
+// Specialized depthwise conv kernels for 3x3 and 5x5 filters
+//
+
+void
+MLASCALL
+MlasConvSymDepthwiseKernelSize9Arm64U8S8(
+    uint8_t const* const* InputIndirection,
+    int8_t const* Filter,
+    size_t Channels,
+    uint8_t* Output,
+    size_t OutputCount,
+    MLAS_CONV_SYM_POST_PROCESS_PARAMS const* PostProcessParams,
+    unsigned KernelFlags
+    );
+
+void
+MLASCALL
+MlasConvSymDepthwiseKernelSize9Arm64S8S8(
+    int8_t const* const* InputIndirection,
+    int8_t const* Filter,
+    size_t Channels,
+    int8_t* Output,
+    size_t OutputCount,
+    MLAS_CONV_SYM_POST_PROCESS_PARAMS const* PostProcessParams,
+    unsigned KernelFlags
+    );
+
+
+#endif
 }
 
-//
-//
-//
+#if defined(MLAS_TARGET_ARM64)
+void
+MLASCALL
+MlasConvSymDepthwiseKernelSize25ArmS8S8(
+    int8_t const* const* InputIndirection,
+    int8_t const* Filter,
+    size_t Channels,
+    int8_t* Output,
+    size_t OutputCount,
+    MLAS_CONV_SYM_POST_PROCESS_PARAMS const* PostProcessParams,
+    unsigned KernelFlags
+    );
+
+void
+MLASCALL
+MlasConvSymDepthwiseKernelSize25ArmU8S8(
+    uint8_t const* const* InputIndirection,
+    int8_t const* Filter,
+    size_t Channels,
+    uint8_t* Output,
+    size_t OutputCount,
+    MLAS_CONV_SYM_POST_PROCESS_PARAMS const* PostProcessParams,
+    unsigned KernelFlags
+    );
+#endif
 
 struct MLAS_CONV_SYM_DISPATCH {
     MLAS_CONV_SYM_KERNEL* Kernel;
@@ -154,9 +206,9 @@ const MLAS_CONV_SYM_DISPATCH MlasConvSymDispatchAvx512Vnni = {
 #endif // ORT_MINIMAL_BUILD
 
 #elif defined(MLAS_TARGET_ARM64)
-const MLAS_CONV_SYM_DISPATCH MlasConvSymDispatchNeon = {
-    MlasConvSymKernelNeon,
-    MlasConvSymDepthwiseKernelNeon,
+const MLAS_CONV_SYM_DISPATCH MlasConvSymU8DispatchNeon = {
+    MlasConvSymU8KernelNeon,
+    MlasConvSymDepthwiseU8KernelNeon,
     8,   // FilterInputChannelPackCount
     8,   // FilterOutputChannelPackCount
     8,   // KernelChannelCount
@@ -168,20 +220,47 @@ const MLAS_CONV_SYM_DISPATCH MlasConvSymDispatchNeon = {
     true
 };
 
-const MLAS_CONV_SYM_DISPATCH MlasConvSymDispatchDot = {
-    MlasConvSymKernelNeonDot,
-    MlasConvSymDepthwiseKernelNeon,
+const MLAS_CONV_SYM_DISPATCH MlasConvSymS8DispatchNeon = {
+    MlasConvSymS8KernelNeon,
+    MlasConvSymDepthwiseS8KernelNeon,
+    8,   // FilterInputChannelPackCount
+    8,   // FilterOutputChannelPackCount
+    8,   // KernelChannelCount
+    2,   // KernelOutputCount
+    8,   // KernelInputChannelAlignment
+    8,   // KernelOutputChannelAlignment
+    16,  // KernelDepthwiseChannelCount
+    4,   // KernelDepthwiseOutputCount
+    false
+};
+
+const MLAS_CONV_SYM_DISPATCH MlasConvSymU8DispatchDot = {
+    MlasConvSymU8KernelDot,
+    MlasConvSymDepthwiseU8KernelNeon,
     4,   // FilterInputChannelPackCount
     16,  // FilterOutputChannelPackCount
     0,   // KernelChannelCount
     4,   // KernelOutputCount
     4,   // KernelInputChannelAlignment
-    1,   // KernelOutputChannelAlignment
+    16,  // KernelOutputChannelAlignment
     16,  // KernelDepthwiseChannelCount
     4,   // KernelDepthwiseOutputCount
     true
 };
 
+const MLAS_CONV_SYM_DISPATCH MlasConvSymS8DispatchDot = {
+    MlasConvSymS8KernelDot,
+    MlasConvSymDepthwiseS8KernelNeon,
+    4,   // FilterInputChannelPackCount
+    16,  // FilterOutputChannelPackCount
+    0,   // KernelChannelCount
+    4,   // KernelOutputCount
+    4,   // KernelInputChannelAlignment
+    16,  // KernelOutputChannelAlignment
+    16,  // KernelDepthwiseChannelCount
+    4,   // KernelDepthwiseOutputCount
+    false
+};
 #endif // MLAS_TARGET_AMD64
 
 MLAS_FORCEINLINE
@@ -449,15 +528,29 @@ MlasConvSymDepthwise(
         PostProcessParams.Bias = Params.Bias;
         PostProcessParams.Scale = Params.Scale;
         if (Params.KernelSize == 9) {
-            MlasConvSymDepthwiseKernelSize9Arm64(
-                Params.InputIndirection, (int8_t const*)Params.Filter, Params.OutputChannels,
-                Params.Output, Params.OutputCount, &PostProcessParams, KernelFlags, Params.InputIsSigned
-            );
+            if (Params.InputIsSigned) {
+                MlasConvSymDepthwiseKernelSize9Arm64S8S8(
+                    (int8_t const* const*)Params.InputIndirection, (int8_t const*)Params.Filter,
+                    Params.OutputChannels, (int8_t*)Params.Output, Params.OutputCount,
+                    &PostProcessParams, KernelFlags);
+            } else {
+                MlasConvSymDepthwiseKernelSize9Arm64U8S8(
+                    (uint8_t const* const*)Params.InputIndirection, (int8_t const*)Params.Filter,
+                    Params.OutputChannels, (uint8_t*)Params.Output, Params.OutputCount,
+                    &PostProcessParams, KernelFlags);
+            }
         } else {
-            MlasConvSymDepthwiseKernelSize25Arm(
-                Params.InputIndirection, (int8_t const*)Params.Filter, Params.OutputChannels,
-                Params.Output, Params.OutputCount, &PostProcessParams, KernelFlags, Params.InputIsSigned
-            );
+            if (Params.InputIsSigned) {
+                MlasConvSymDepthwiseKernelSize25ArmS8S8(
+                    (int8_t const* const*)Params.InputIndirection, (int8_t const*)Params.Filter,
+                    Params.OutputChannels, (int8_t*)Params.Output, Params.OutputCount,
+                    &PostProcessParams, KernelFlags);
+            } else {
+                MlasConvSymDepthwiseKernelSize25ArmU8S8(
+                    (uint8_t const* const*)Params.InputIndirection, (int8_t const*)Params.Filter,
+                    Params.OutputChannels, (uint8_t*)Params.Output, Params.OutputCount,
+                    &PostProcessParams, KernelFlags);
+            }
         }
         return;
     }

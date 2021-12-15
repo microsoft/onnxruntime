@@ -6,7 +6,7 @@ Licensed under the MIT License.
 
 Module Name:
 
-    ConvSymKernelNeonDot.asm
+    ConvSymS8KernelDot.asm
 
 Abstract:
 
@@ -24,8 +24,7 @@ Abstract:
 // Stack frame layout for the symmetric convolution kernel.
 // d8-d15, x19-x30 need to be preserved if used
 //
-#define     ConvSymFrame_SavedNeonRegisters   (8 * 8)
-#define     ConvSymFrame_SavedRegisters           ConvSymFrame_SavedNeonRegisters
+#define     ConvSymFrame_SavedRegisters       (6 * 8)
 #define     ConvSymFrame_PostProcessParams    0 + ConvSymFrame_SavedRegisters
 #define     ConvSymFrame_KernelFlags          8 + ConvSymFrame_SavedRegisters
 
@@ -84,14 +83,13 @@ Return Value:
     None.
 
 --*/
-        NESTED_ENTRY MlasConvSymU8KernelDot
+        NESTED_ENTRY MlasConvSymS8KernelDot
 
-        PROLOG_SAVE_REG_PAIR  d8,d9,#-64!
+        PROLOG_SAVE_REG_PAIR  d8,d9,#-ConvSymFrame_SavedRegisters!
         PROLOG_NOP    ldr     x8,[sp,#ConvSymFrame_PostProcessParams]
         PROLOG_NOP    ldr     w10,[sp,#ConvSymFrame_KernelFlags]
         PROLOG_SAVE_REG_PAIR  d10,d11,#16
-        PROLOG_SAVE_REG_PAIR  d12,d13,#32
-        PROLOG_SAVE_REG_PAIR  x19,x20,#48
+        PROLOG_SAVE_REG_PAIR  x19,x20,#32
 
         // compute C pointers: x2, x16, x17, x5
         cmp     x7,2                    // OutputCount < 2 ?
@@ -108,8 +106,9 @@ Return Value:
         add     x5,x17,x5               // x5 -> C3
         ldr     x19,[x8,#ConvSymPostProcessParams_Scale]
         csel    x5,x17,x5,lo            // if OutputCount < 4  x5/C3 -> C2
-        movi    v12.16b,128             // for top bit flipping
 
+        // TODO!! tiptoe around loading biases if we need to support
+        // output channels none divisible by 16
 OutputChannelLoop
         ldp     q16,q20,[x11],32        // Init accumulators with biases
         mov     v17.16b,v16.16b
@@ -196,12 +195,8 @@ FinishLoadAPtr
         b.lo    InChLoopEpilogue        // Need 32 input channels for main loop
 
 InputChannelLoop
-        eor     v0.8b,v0.8b,v12.8b
-        eor     v1.8b,v1.8b,v12.8b
         sdot    v16.4s,v4.16b,v0.4b[0]
-        eor     v2.8b,v2.8b,v12.8b
         sdot    v17.4s,v4.16b,v1.4b[0]
-        eor     v3.8b,v3.8b,v12.8b
         ldr     d8,[x12],8
         sdot    v18.4s,v4.16b,v2.4b[0]
         sdot    v19.4s,v4.16b,v3.4b[0]
@@ -243,14 +238,10 @@ InputChannelLoop
         sdot    v29.4s,v7.16b,v1.4b[1]
         sdot    v30.4s,v7.16b,v2.4b[1]
         sdot    v31.4s,v7.16b,v3.4b[1]
-        eor     v8.8b,v8.8b,v12.8b
         ldr     q7,[x1],16
-        eor     v9.8b,v9.8b,v12.8b
         sdot    v16.4s,v4.16b,v8.4b[0]
-        eor     v10.8b,v10.8b,v12.8b
         sdot    v17.4s,v4.16b,v9.4b[0]
         ldr     d0,[x12],8
-        eor     v11.8b,v11.8b,v12.8b
         sdot    v18.4s,v4.16b,v10.4b[0]
         sdot    v19.4s,v4.16b,v11.4b[0]
         ldr     q4,[x1],16
@@ -296,12 +287,8 @@ InputChannelLoop
         b.hs    InputChannelLoop
 
 InChLoopEpilogue
-        eor     v0.8b,v0.8b,v12.8b
-        eor     v1.8b,v1.8b,v12.8b
         sdot    v16.4s,v4.16b,v0.4b[0]
-        eor     v2.8b,v2.8b,v12.8b
         sdot    v17.4s,v4.16b,v1.4b[0]
-        eor     v3.8b,v3.8b,v12.8b
         ldr     d8,[x12],8
         sdot    v18.4s,v4.16b,v2.4b[0]
         sdot    v19.4s,v4.16b,v3.4b[0]
@@ -343,13 +330,9 @@ InChLoopEpilogue
         sdot    v29.4s,v7.16b,v1.4b[1]
         sdot    v30.4s,v7.16b,v2.4b[1]
         sdot    v31.4s,v7.16b,v3.4b[1]
-        eor     v8.8b,v8.8b,v12.8b
         ldr     q7,[x1],16
-        eor     v9.8b,v9.8b,v12.8b
         sdot    v16.4s,v4.16b,v8.4b[0]
-        eor     v10.8b,v10.8b,v12.8b
         sdot    v17.4s,v4.16b,v9.4b[0]
-        eor     v11.8b,v11.8b,v12.8b
         sdot    v18.4s,v4.16b,v10.4b[0]
         sdot    v19.4s,v4.16b,v11.4b[0]
         ldr     q4,[x1],16
@@ -480,15 +463,15 @@ AccumulatorsToFloat
         sqadd   v25.8h,v25.8h,v4.8h
         sqadd   v26.8h,v26.8h,v4.8h
         sqadd   v27.8h,v27.8h,v4.8h
-        sqxtun   v0.8b,v16.8h
-        sqxtun   v1.8b,v17.8h
-        sqxtun   v2.8b,v18.8h
-        sqxtun   v3.8b,v19.8h
-        sqxtun2  v0.16b,v24.8h
-        sqxtun2  v1.16b,v25.8h
+        sqxtn   v0.8b,v16.8h
+        sqxtn   v1.8b,v17.8h
+        sqxtn   v2.8b,v18.8h
+        sqxtn   v3.8b,v19.8h
+        sqxtn2  v0.16b,v24.8h
+        sqxtn2  v1.16b,v25.8h
         subs    x6,x6,16            // processed 16 output channels
-        sqxtun2  v2.16b,v26.8h
-        sqxtun2  v3.16b,v27.8h
+        sqxtn2  v2.16b,v26.8h
+        sqxtn2  v3.16b,v27.8h
         b.lo    PartialStore
 
         st1     {v3.16b},[x5],16    // Store full 4 x 16
@@ -499,10 +482,9 @@ AccumulatorsToFloat
         b.hi    OutputChannelLoop
 
 ExitKernel
-        EPILOG_RESTORE_REG_PAIR  x19,x20,#48
-        EPILOG_RESTORE_REG_PAIR  d12,d13,#32
+        EPILOG_RESTORE_REG_PAIR  x19,x20,#32
         EPILOG_RESTORE_REG_PAIR  d10,d11,#16
-        EPILOG_RESTORE_REG_PAIR  d8,d9,#64!
+        EPILOG_RESTORE_REG_PAIR  d8,d9,#ConvSymFrame_SavedRegisters!
         EPILOG_RETURN
 
 InChannels8
@@ -512,14 +494,10 @@ InChannels8
         ldr     d1,[x13],8
         ldr     d2,[x14],8
         ldr     d3,[x15],8
-        eor     v0.8b,v0.8b,v12.8b
         ldr     q5,[x1],16
-        eor     v1.8b,v1.8b,v12.8b
         sdot    v16.4s,v4.16b,v0.4b[0]
         sdot    v17.4s,v4.16b,v1.4b[0]
-        eor     v2.8b,v2.8b,v12.8b
         ldp     q6,q7,[x1],32
-        eor     v3.8b,v3.8b,v12.8b
         sdot    v18.4s,v4.16b,v2.4b[0]
         sdot    v19.4s,v4.16b,v3.4b[0]
         sdot    v20.4s,v5.16b,v0.4b[0]
@@ -560,14 +538,10 @@ InChannels4
         ldr     s1,[x13],4
         ldr     s2,[x14],4
         ldr     s3,[x15],4
-        eor     v0.8b,v0.8b,v12.8b
         ldr     q5,[x1],16
-        eor     v1.8b,v1.8b,v12.8b
         sdot    v16.4s,v4.16b,v0.4b[0]
         sdot    v17.4s,v4.16b,v1.4b[0]
-        eor     v2.8b,v2.8b,v12.8b
         ldp     q6,q7,[x1],32
-        eor     v3.8b,v3.8b,v12.8b
         sdot    v18.4s,v4.16b,v2.4b[0]
         sdot    v19.4s,v4.16b,v3.4b[0]
         sdot    v20.4s,v5.16b,v0.4b[0]
@@ -626,6 +600,6 @@ LT2Store
         str     b0,[x2]
         b       ExitKernel
 
-        NESTED_END MlasConvSymU8KernelDot
+        NESTED_END MlasConvSymS8KernelDot
 
         END

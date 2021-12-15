@@ -45,8 +45,8 @@ Abstract:
 
 #if defined(MLAS_TARGET_ARM64)
 
-static
 void
+MLASCALL
 MlasConvSymDepthwiseKernelSize25ArmU8S8(
     uint8_t const* const* InputIndirection,
     int8_t const* Filter,
@@ -608,86 +608,6 @@ MlasConvSymDepthwiseKernelSize25ArmS8S8(
             Output += 16;
         }
     }
-}
-
-extern "C" {
-
-void
-MLASCALL
-MlasConvSymDepthwiseKernelSize25Arm(
-    void const* const* InputIndirection,
-    int8_t const* Filter,
-    size_t Channels,
-    void* Output,
-    size_t OutputCount,
-    MLAS_CONV_SYM_POST_PROCESS_PARAMS const* PostProcessParams,
-    unsigned KernelFlags,
-    bool IsInputSigned
-    )
-{
-    if (IsInputSigned) {
-        MlasConvSymDepthwiseKernelSize25ArmS8S8(
-            (int8_t const* const*)InputIndirection, Filter,  Channels, (int8_t*)Output, OutputCount,
-            PostProcessParams, KernelFlags
-        );
-    } else {
-        MlasConvSymDepthwiseKernelSize25ArmU8S8(
-            (uint8_t const* const*)InputIndirection, Filter,  Channels, (uint8_t*)Output, OutputCount,
-            PostProcessParams, KernelFlags
-        );
-    }
-}
-
-void
-MLASCALL
-MlasConvSymDepthwiseKernelSize9Arm64U8S8(
-    uint8_t const* const* InputIndirection,
-    int8_t const* Filter,
-    size_t Channels,
-    uint8_t* Output,
-    size_t OutputCount,
-    MLAS_CONV_SYM_POST_PROCESS_PARAMS const* PostProcessParams,
-    unsigned KernelFlags
-    );
-
-void
-MLASCALL
-MlasConvSymDepthwiseKernelSize9Arm64S8S8(
-    int8_t const* const* InputIndirection,
-    int8_t const* Filter,
-    size_t Channels,
-    int8_t* Output,
-    size_t OutputCount,
-    MLAS_CONV_SYM_POST_PROCESS_PARAMS const* PostProcessParams,
-    unsigned KernelFlags
-    );
-
-void
-MLASCALL
-MlasConvSymDepthwiseKernelSize9Arm64(
-    void const* const* InputIndirection,
-    int8_t const* Filter,
-    size_t Channels,
-    void* Output,
-    size_t OutputCount,
-    MLAS_CONV_SYM_POST_PROCESS_PARAMS const* PostProcessParams,
-    unsigned KernelFlags,
-    bool IsInputSigned
-    )
-{
-    if (IsInputSigned) {
-        MlasConvSymDepthwiseKernelSize9Arm64S8S8(
-            (int8_t const* const*)InputIndirection, Filter,  Channels, (int8_t*)Output, OutputCount,
-            PostProcessParams, KernelFlags
-        );
-    } else {
-        MlasConvSymDepthwiseKernelSize9Arm64U8S8(
-            (uint8_t const* const*)InputIndirection, Filter,  Channels, (uint8_t*)Output, OutputCount,
-            PostProcessParams, KernelFlags
-        );
-    }
-}
-
 }
 
 #endif
