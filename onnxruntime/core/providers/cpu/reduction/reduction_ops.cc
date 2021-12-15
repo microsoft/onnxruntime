@@ -3,7 +3,10 @@
 
 #include "core/providers/cpu/reduction/reduction_ops.h"
 #include "core/providers/common.h"
-
+//TODO: fix the warnings
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(disable : 26451)
+#endif
 using namespace std;
 namespace onnxruntime {
 
@@ -269,18 +272,15 @@ void NoTransposePrepareForReduce(const TensorShape& new_input_shape,
   // Common initialisation for the indices.
   auto cumulative_shape = new_input_shape.GetDimsAsVector();
   cumulative_shape[cumulative_shape.size() - 1] = 1;
-  if (cumulative_shape.size() >= 2) {
-    for (size_t i = cumulative_shape.size() - 2; ; --i) {
-      cumulative_shape[i] = cumulative_shape[i + 1] * new_input_shape[i + 1];
-      if (i == 0) break;
-    }
+  for (int i = static_cast<int>(cumulative_shape.size()) - 2; i >= 0; --i) {
+    cumulative_shape[i] = cumulative_shape[i + 1] * new_input_shape[i + 1];
   }
   int64_t projection_size = 1;
   for (auto a : reduced_axes) {
     projection_size *= new_input_shape[a];
   }
 
-  gsl::index last_reduced_axis = reduced_axes.size() - 1;
+  int last_reduced_axis = static_cast<int>(reduced_axes.size()) - 1;
   int loop_reduced_axis = 1;
   results.last_loop_red_size = new_input_shape[reduced_axes[last_reduced_axis]];
   results.last_loop_red_inc = cumulative_shape[reduced_axes[last_reduced_axis]];
@@ -296,7 +296,7 @@ void NoTransposePrepareForReduce(const TensorShape& new_input_shape,
   }
 
   // Builds the list of indices projected into the same sum.
-  gsl::index reduced_axes_size = reduced_axes.size() - loop_reduced_axis;
+  int reduced_axes_size = static_cast<int>(reduced_axes.size()) - loop_reduced_axis;
   if (reduced_axes_size == 0) {
     results.projected_index.resize(1, 0);
   } else {
@@ -304,12 +304,11 @@ void NoTransposePrepareForReduce(const TensorShape& new_input_shape,
     std::vector<int64_t> projected_indices(reduced_axes_size, 0);
     int64_t current_index = 0;
     size_t current_pos = 0;
-    gsl::index j;
+    int j;
     for (current_pos = 0; current_pos < results.projected_index.size(); ++current_pos) {
       results.projected_index[current_pos] = current_index;
       ++projected_indices[projected_indices.size() - 1];
       current_index += cumulative_shape[reduced_axes[reduced_axes_size - 1]];
-      if (reduced_axes_size <= 1) continue;
       for (j = reduced_axes_size - 1; j > 0; --j) {
         if (projected_indices[j] < new_input_shape[reduced_axes[j]])
           break;
@@ -347,13 +346,12 @@ void NoTransposePrepareForReduce(const TensorShape& new_input_shape,
     results.unprojected_index.push_back(0);
   } else {
     int64_t current_index = 0;
-    size_t j;
+    int j;
     for (int64_t pos = 0; pos < unprojection_size_before_last; ++pos) {
       results.unprojected_index.push_back(current_index);
       ++unprojected_indices[unprojected_indices.size() - 2];
       current_index += cumulative_shape[unreduced_axes[unreduced_axes.size() - 2]];
-      if (unreduced_axes.size() <= 2) continue;
-      for (j = unreduced_axes.size() - 2; j > 0; --j) {
+      for (j = static_cast<int>(unreduced_axes.size()) - 2; j > 0; --j) {
         if (unprojected_indices[j] < new_input_shape[unreduced_axes[j]])
           break;
         unprojected_indices[j] -= new_input_shape[unreduced_axes[j]];
@@ -690,9 +688,9 @@ bool CommonFastReduceSwitch(OpKernelContext* ctx,
         }
         case FastReduceKind::kRK: {
           ValidateFastReduceRK(fast_shape, *output);
-          if ((fast_shape[0] > concurrency::ThreadPool::DegreeOfParallelism(ctx->GetOperatorThreadPool()) * static_cast<int64_t>(16)) &&
+          if ((fast_shape[0] > concurrency::ThreadPool::DegreeOfParallelism(ctx->GetOperatorThreadPool()) * 16) &&
               (std::max(fast_shape[0], fast_shape[1]) >
-               concurrency::ThreadPool::DegreeOfParallelism(ctx->GetOperatorThreadPool()) * static_cast<int64_t>(256))) {
+               concurrency::ThreadPool::DegreeOfParallelism(ctx->GetOperatorThreadPool()) * 256)) {
             // See benchmarks in PR #7719.
             case_rk(*input, fast_shape, *output, ctx->GetOperatorThreadPool());
             return true;
@@ -903,7 +901,7 @@ std::unique_ptr<Tensor> ReduceSum<T>::Impl(const Tensor& input, gsl::span<const 
       case FastReduceKind::kRK:
         ValidateFastReduceRK(fast_shape, *output);
         if (std::max(fast_shape[0], fast_shape[1]) >
-            concurrency::ThreadPool::DegreeOfParallelism(tp) * static_cast<int64_t>(256)) {
+            concurrency::ThreadPool::DegreeOfParallelism(tp) * 256) {
           // See benchmarks in PR #7719.
           ReduceAggregatorSum<T>::FastReduceRK(input, fast_shape, *output, tp);
           return output;
