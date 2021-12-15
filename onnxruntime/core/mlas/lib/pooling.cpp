@@ -1280,19 +1280,8 @@ Return Value:
     // Execute the pooling kernel routine.
     //
 
-#if defined(_OPENMP)
-
-#pragma omp parallel for
-    for (int64_t c = 0; c < int64_t(TotalChannelCount); c++) {
-      PoolKernelRoutine(&WorkBlock, 1, Input + c * InputSize, Output + c * OutputSize);
-    }
-
-#else
-
     MLAS_UNREFERENCED_PARAMETER(OutputSize);
     PoolKernelRoutine(&WorkBlock, TotalChannelCount, Input, Output);
-
-#endif
 #else
     //
     // Use an external thread pool if one is provided.

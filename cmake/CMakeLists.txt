@@ -67,7 +67,6 @@ option(onnxruntime_USE_AVX "Use AVX instructions" OFF)
 option(onnxruntime_USE_AVX2 "Use AVX2 instructions" OFF)
 option(onnxruntime_USE_AVX512 "Use AVX512 instructions" OFF)
 
-option(onnxruntime_USE_OPENMP "Build with OpenMP support" OFF)
 option(onnxruntime_BUILD_SHARED_LIB "Build a shared library" OFF)
 option(onnxruntime_BUILD_APPLE_FRAMEWORK "Build a macOS/iOS framework" OFF)
 option(onnxruntime_ENABLE_MICROSOFT_INTERNAL "Use this option to enable/disable microsoft internal only code" OFF)
@@ -292,18 +291,6 @@ if (NOT WIN32)
   endif()
 endif()
 
-if (onnxruntime_USE_OPENMP)
-  find_package(OpenMP)
-  if (OPENMP_FOUND)
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
-    include_directories(${OpenMP_CXX_INCLUDE_DIR})
-  else()
-    message(WARNING "Flag --use_openmp is specified, but OpenMP is not found in current build environment. Setting it to OFF.")
-    set(onnxruntime_USE_OPENMP OFF)
-  endif()
-endif()
-
 # 'extended' implies minimal.
 if (onnxruntime_EXTENDED_MINIMAL_BUILD AND NOT onnxruntime_MINIMAL_BUILD)
   set(onnxruntime_MINIMAL_BUILD ON)
@@ -509,7 +496,6 @@ if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin|iOS")
   endforeach()
 endif()
 
-#must after OpenMP settings
 find_package(Threads)
 
 macro(check_nvcc_compiler_flag _FLAG _RESULT)
@@ -970,9 +956,6 @@ if (WIN32)
         else()
            list(APPEND ORT_WARNING_FLAGS "/w34800")
         endif()
-        if (onnxruntime_USE_OPENMP)
-            list(APPEND ORT_WARNING_FLAGS "/wd6993") # Code analysis ignores OpenMP constructs
-        endif()
         # operator 'operator-name': deprecated between enumerations of different types
         list(APPEND ORT_WARNING_FLAGS "/wd5054")
         # Enable warning: data member 'member' will be initialized after data member 'member2' / base class 'base_class'
@@ -1142,6 +1125,7 @@ if (onnxruntime_USE_COREML)
     list(APPEND ONNXRUNTIME_PROVIDER_NAMES coreml)
 endif()
 function(onnxruntime_set_compile_flags target_name)
+    target_compile_definitions(${target_name} PUBLIC EIGEN_USE_THREADS)
     if (MSVC)
       target_compile_definitions(${target_name} PUBLIC -DPLATFORM_WINDOWS -DNOGDI -DNOMINMAX -D_USE_MATH_DEFINES -D_SILENCE_ALL_CXX17_DEPRECATION_WARNINGS)
       if (onnxruntime_ENABLE_MEMLEAK_CHECKER)
@@ -1336,9 +1320,6 @@ if (onnxruntime_USE_TVM)
   if (onnxruntime_USE_LLVM)
     set(USE_LLVM ON)
     add_definitions(-DUSE_TVM_WITH_LLVM)
-  endif()
-  if (onnxruntime_USE_OPENMP)
-    set(USE_OPENMP "gnu")
   endif()
 
   add_subdirectory(${PROJECT_SOURCE_DIR}/external/tvm EXCLUDE_FROM_ALL)
@@ -1823,10 +1804,6 @@ endforeach()
 
 if (CMAKE_SYSTEM_NAME STREQUAL "Android")
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES log)
-endif()
-
-if (onnxruntime_USE_OPENMP)
-  list(APPEND onnxruntime_EXTERNAL_LIBRARIES OpenMP::OpenMP_CXX)
 endif()
 
 if (WIN32)

@@ -33,7 +33,15 @@ parameters:
 - name: RunStaticCodeAnalysis
   displayName: Run Static Code Analysis
   type: boolean
-  default: true
+  default: true  
+  
+- name: ORT_EP_NAME
+  type: string
+
+- name: DocUpdateNeeded
+  displayName: Run Tests?
+  type: boolean
+  default: false
 
 jobs:
 - job: build_${{ parameters.job_name_suffix }}
@@ -43,9 +51,10 @@ jobs:
     DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true    
     setVcvars: true
     ALLOW_RELEASED_ONNX_OPSET_ONLY: '0'
+    DocUpdateNeeded: ${{ parameters.DocUpdateNeeded }}    
   workspace:
     clean: all
-  pool: 'Win-CPU-2019'
+  pool: 'Win-GPU-2019'
   timeoutInMinutes:  300  
   steps:
   - task: UsePythonVersion@0
@@ -157,7 +166,7 @@ jobs:
       solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
       configuration: '${{ parameters.BuildConfig }}'
       platform: 'Any CPU'
-      msbuildArguments: '-p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId)'
+      msbuildArguments: '-p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId) -p:DefineConstants=USE_${{ parameters.ORT_EP_NAME }}'
       workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
 
@@ -168,7 +177,7 @@ jobs:
           command: test
           projects: '$(Build.SourcesDirectory)\csharp\test\Microsoft.ML.OnnxRuntime.Tests.NetCoreApp\Microsoft.ML.OnnxRuntime.Tests.NetCoreApp.csproj'
           configuration: '${{ parameters.BuildConfig }}'          
-          arguments: '--configuration ${{ parameters.BuildConfig }} -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId) --blame'
+          arguments: '--configuration ${{ parameters.BuildConfig }} -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId) -p:DefineConstants=USE_${{ parameters.ORT_EP_NAME }} --blame'
           workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
   - ${{ if eq(parameters.EnablePython, true) }}:
@@ -200,7 +209,7 @@ jobs:
         displayName: 'Generate cmake config'
         inputs:
           scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-          arguments: '--config RelWithDebInfo --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 16 2019" --build_shared_lib --enable_onnx_tests ${{ parameters.additionalBuildFlags }} --cmake_extra_defines onnxruntime_ENABLE_STATIC_ANALYSIS=ON'
+          arguments: '--config Debug --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 16 2019" --build_shared_lib --enable_onnx_tests ${{ parameters.additionalBuildFlags }} onnxruntime_ENABLE_STATIC_ANALYSIS=ON'
           workingDirectory: '$(Build.BinariesDirectory)'
 
 
@@ -226,6 +235,22 @@ jobs:
           searchFolder: '$(Build.BinariesDirectory)/${{ parameters.BuildConfig }}'
           testRunTitle: 'Unit Test Run'
         condition: succeededOrFailed()
+
+  # if the validation from --gen_doc failed it sets a variable so we can publish the latest version of the docs
+  # as an artifact, allowing a developer to download this and replace the current version instead of having to build
+  # and generate the docs locally themselves. handle each of the two md files separately - simpler than copying
+  # them to another location and publishing from there in a single task.
+  - task: PublishBuildArtifacts@1
+    condition: and(failed(), eq(variables['DocUpdateNeeded'], 'true'))
+    inputs:
+      pathtoPublish: '$(Build.SourcesDirectory)/docs/OperatorKernels.md'
+      artifactName: 'OperatorKernels.md'
+
+  - task: PublishBuildArtifacts@1
+    condition: and(failed(), eq(variables['DocUpdateNeeded'], 'true'))
+    inputs:
+      pathtoPublish: '$(Build.SourcesDirectory)/docs/ContribOperators.md'
+      artifactName: 'ContribOperators.md'
 
   - template: component-governance-component-detection-steps.yml
     parameters :
