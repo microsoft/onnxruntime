@@ -79,7 +79,7 @@ TEST(Random, RandomNormalLike3DDouble) {
 }
 
 TEST(Random, RandomNormalLikeInferDType) {
-  const bool infer_dtype = true;
+  constexpr bool infer_dtype = true;
   RunRandomNormalLike3DFloat(infer_dtype);
 }
 

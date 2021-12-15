@@ -83,7 +83,7 @@ stages:
         isX86: true
         job_name_suffix: x86_release
         RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
-        RunStaticCodeAnalysis: true
+        RunStaticCodeAnalysis: false
 
 - stage: training_x64_debug
   dependsOn: []

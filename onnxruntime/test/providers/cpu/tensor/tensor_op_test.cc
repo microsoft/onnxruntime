@@ -146,7 +146,7 @@ TEST(TensorOpTest, ShapeTest3D) {
 }
 
 void MeanVarianceNormalizationFunctionDefaultPerChannel() {
-  const int64_t N = 2, C = 2, H = 2, W = 3;
+  constexpr int64_t N = 2, C = 2, H = 2, W = 3;
 
   std::vector<float> N1C1 = {3.0f, -3.0f, -1.0f,
                              1.0f, 2.0f, -1.0f};

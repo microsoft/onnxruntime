@@ -14,7 +14,7 @@ namespace test {
 using ExpectResult = OpTester::ExpectResult;
 
 TEST(CropContribOpTest, CropBorderOnly) {
-  const int N = 2, C = 1, H = 3, W = 4;
+  constexpr int N = 2, C = 1, H = 3, W = 4;
   std::vector<float> X = {1.0f, 2.0f, 3.0f, 4.0f,
                           2.0f, 3.0f, 4.0f, 5.0f,
                           3.0f, 4.0f, 5.0f, 6.0f,
