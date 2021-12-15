@@ -9,7 +9,11 @@
 #include "core/common/common.h"
 #include "core/common/safeint.h"
 #include "core/framework/op_kernel.h"
-
+//TODO: fix the warnings
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(push)
+#pragma warning(disable : 26451)
+#endif
 namespace onnxruntime {
 namespace contrib {
 
@@ -242,3 +246,6 @@ class AttentionCPUBase : public AttentionBase {
 
 }  // namespace contrib
 }  // namespace onnxruntime
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(pop)
+#endif

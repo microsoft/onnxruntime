@@ -93,7 +93,7 @@ endif()
 
 if (onnxruntime_USE_MIMALLOC)
     if(NOT WIN32)
-        message(FATAL "Currently do not support MIMALLOC in GPU builds")
+        message(FATAL_ERROR "Currently do not support MIMALLOC in GPU builds")
     endif()
     if(onnxruntime_USE_CUDA OR onnxruntime_USE_OPENVINO)
         message(WARNING "Currently do not support MIMALLOC in GPU builds")

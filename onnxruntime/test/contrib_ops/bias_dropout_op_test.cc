@@ -33,7 +33,7 @@ void RunBiasDropoutTest(const bool use_mask, const std::vector<int64_t>& input_s
                         TrainingMode training_mode = TrainingTrue, bool use_float16_ratio = false,
                         bool has_residual = true, bool has_same_shape_bias = false) {
   OpTester t{"BiasDropout", 1, kMSDomain};
-  const int64_t seed = 42;
+  constexpr int64_t seed = 42;
   t.AddAttribute("seed", seed);
 
   const auto input_size = std::accumulate(

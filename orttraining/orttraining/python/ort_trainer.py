@@ -18,7 +18,7 @@ import onnxruntime.capi.pt_patch
 
 from onnxruntime.tools.symbolic_shape_infer import SymbolicShapeInference
 
-DEFAULT_OPSET_VERSION = 12
+DEFAULT_OPSET_VERSION = 14
 
 class IODescription():
     def __init__(self, name, shape, dtype=None, num_classes=None):
@@ -344,7 +344,8 @@ def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device, inputs, op
     other_export_options['training'] = True
 
     # This option was added after 1.4 release.
-    if LooseVersion(torch.__version__) > LooseVersion('1.4.0'):
+    if (LooseVersion(torch.__version__) > LooseVersion('1.4.0') and
+            LooseVersion(torch.__version__) < LooseVersion('1.10.0')):
         other_export_options['enable_onnx_checker'] = False
     # This option was added after 1.6 release.
     if LooseVersion(torch.__version__) >= LooseVersion('1.6.0'):
@@ -363,7 +364,6 @@ def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device, inputs, op
                        output_names=output_names,
                        opset_version=opset_version,
                        dynamic_axes=dynamic_axes,
-                       _retain_param_name=True,
                        example_outputs=tuple(sample_outputs),
                        do_constant_folding=False,
                        **other_export_options)
