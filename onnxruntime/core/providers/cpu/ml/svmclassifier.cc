@@ -3,6 +3,10 @@
 
 #include "core/providers/cpu/ml/svmclassifier.h"
 #include "core/platform/threadpool.h"
+//TODO: fix the warnings
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(disable : 26451)
+#endif
 
 namespace onnxruntime {
 namespace ml {

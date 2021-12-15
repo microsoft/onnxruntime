@@ -59,7 +59,7 @@ class MaxPool;
 template <>
 class MaxPool<1 /*START_VERSION*/> {
  public:
-  static float Initialize() {
+  constexpr static float Initialize() {
     return std::numeric_limits<float>::lowest();
   }
 

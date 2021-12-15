@@ -9,7 +9,10 @@
 #include "core/providers/cpu/rnn/rnn_helpers.h"
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
-
+//TODO: fix the warnings
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(disable : 26451)
+#endif
 namespace onnxruntime {
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     RNN,

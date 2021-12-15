@@ -4339,8 +4339,8 @@ TEST_F(GraphTransformationTests, ComputationReductionTransformer_GatherND_E2E) {
                         values_unsqueezed_masked_lm_positions);
 
     ASSERT_TRUE(expected_ort_values.size() == actual_ort_values.size());
-    const double per_sample_tolerance = 1e-4;
-    const double relative_per_sample_tolerance = 1e-4;
+    constexpr double per_sample_tolerance = 1e-4;
+    constexpr double relative_per_sample_tolerance = 1e-4;
     for (size_t i = 0; i < expected_ort_values.size(); i++) {
       auto ret = CompareOrtValue(actual_ort_values[i], expected_ort_values[i],
                                  per_sample_tolerance, relative_per_sample_tolerance, false);
@@ -4411,7 +4411,7 @@ TEST_F(GraphTransformationTests, MatMulScaleFusionFusableModels) {
           EXPECT_EQ(transformed_op_counts["com.microsoft.FusedMatMul"], 1);
 
           // check combined scale, individual scales should all have the same value
-          const float scale_value = 3.0f;
+          constexpr float scale_value = 3.0f;
 
           const int num_scales =
               original_op_counts["Mul"] + original_op_counts["Div"] + original_op_counts["com.microsoft.FusedMatMul"];

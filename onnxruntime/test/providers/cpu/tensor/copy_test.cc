@@ -51,17 +51,16 @@ TEST_F(CopyTest, Contiguous3D) {
 
 TEST_F(CopyTest, Transpose4D) {
   // Test performing a transpose using a strided copy
-  int64_t numel = 2 * 3 * 4 * 5;
-  double* src = new double[numel];
+  constexpr int64_t numel = 2 * 3 * 4 * 5;
+  std::unique_ptr<double[]> src = std::make_unique<double[]>(numel);
   for (int i = 0; i < numel; i++) {
     src[i] = static_cast<double>(i);
   }
-
-  double* dst = new double[numel];
+  std::unique_ptr<double[]> dst = std::make_unique<double[]>(numel);
 
   std::vector<int64_t> dst_strides = {60, 5, 15, 1};
   std::vector<int64_t> src_strides = {60, 20, 5, 1};
-  StridedCopy<double>(tp.get(), dst, dst_strides, {2, 3, 4, 5}, src, src_strides);
+  StridedCopy<double>(tp.get(), dst.get(), dst_strides, {2, 3, 4, 5}, src.get(), src_strides);
 
   // stride to access the dst tensor as if it were contiguous
   std::vector<int64_t> contig_dst_strides = {60, 15, 5, 1};
@@ -78,8 +77,6 @@ TEST_F(CopyTest, Transpose4D) {
       }
     }
   }
-  delete[] src;
-  delete[] dst;
 }
 
 TEST_F(CopyTest, Concat2D) {

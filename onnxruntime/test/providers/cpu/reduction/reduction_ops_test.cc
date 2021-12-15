@@ -13,10 +13,10 @@
 namespace onnxruntime {
 namespace test {
 
-const float FLOAT_INF = std::numeric_limits<float>::infinity();
-const float FLOAT_NINF = -std::numeric_limits<float>::infinity();
-const double DOUBLE_INF = std::numeric_limits<double>::infinity();
-const double DOUBLE_NINF = -std::numeric_limits<double>::infinity();
+constexpr float FLOAT_INF = std::numeric_limits<float>::infinity();
+constexpr float FLOAT_NINF = -std::numeric_limits<float>::infinity();
+constexpr double DOUBLE_INF = std::numeric_limits<double>::infinity();
+constexpr double DOUBLE_NINF = -std::numeric_limits<double>::infinity();
 
 // Disable TensorRT on some of the tests because the limit in its parser: axis >=0 && axis < nbDims
 template <typename OutT>
