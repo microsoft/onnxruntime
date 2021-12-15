@@ -565,9 +565,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 string libFullPath = Path.Combine(Directory.GetCurrentDirectory(), libName);
                 Assert.True(File.Exists(libFullPath), $"Expected lib {libFullPath} does not exist.");
 
-#if USE_CUDA
                 option.AppendExecutionProvider_CUDA(0);
-#endif
 
                 IntPtr libraryHandle = IntPtr.Zero;
                 try
