@@ -74,7 +74,9 @@ def onnx_compile(model_string,
 
     irmod, params = relay.frontend.from_onnx(model, feed_shape_dict, opset=opset, freeze_params=freeze_params)
 
-    print("Build TVM graph executor")
+    # TODO(vvchernov): replace prints by logger, but investigate ORT logging system for python before
+    # Also see lines 91, 106
+    # print("Build TVM graph executor")
     # Tuning file can be set by client through ep options
     if tuning_logfile == "":
         tuning_logfile = os.getenv("AUTOTVM_TUNING_LOG")
@@ -86,7 +88,7 @@ def onnx_compile(model_string,
                 "nn.upsampling": ["NHWC", "default"],
                 "vision.roi_align": ["NHWC", "default"],
             }
-            print("Use tuning file from ", ANSOR_TYPE, ": ", tuning_logfile)
+            # print("Use tuning file from ", ANSOR_TYPE, ": ", tuning_logfile)
             with auto_scheduler.ApplyHistoryBest(tuning_logfile):
                 with tvm.transform.PassContext(opt_level=opt_level, config={"relay.backend.use_auto_scheduler": True}):
                     if nhwc:
@@ -101,13 +103,15 @@ def onnx_compile(model_string,
     elif tuning_type == AUTO_TVM_TYPE:
         with relay.build_config(opt_level=opt_level):
             if tuning_logfile:
-                print("Use tuning file from ", AUTO_TVM_TYPE, ": ", tuning_logfile)
+                # print("Use tuning file from ", AUTO_TVM_TYPE, ": ", tuning_logfile)
                 with autotvm.apply_history_best(tuning_logfile):
                     # XXX: do not pass parameters to relay.build otherwise they will be inline into the module
                     lib = relay.build(irmod, target_host=target_host, target=target)
             else:
                 lib = relay.build(irmod, target_host=target_host, target=target)
     else:
+        # TODO(vvchernov): replace prints by logger, but investigate ORT logging system for python before
+        # print is not commented out while it declares error
         print("ERROR: Tuning log type {} is unsupported. ".format(tuning_type),
               "Only {} and {} types are supported".format(ANSOR_TYPE, AUTO_TVM_TYPE))
         return None

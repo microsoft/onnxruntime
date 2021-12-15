@@ -330,7 +330,8 @@ common::Status StvmExecutionProvider::Compile(const std::vector<Node*>& nodes,
       if (state)
         delete static_cast<STVMFuncState*>(state);
     };
-
+    // TODO(vvchernov): implement ops checking and mechanism of gracefully passing the responsibility to other EPs
+    // if the checking fails due to unsupported op(s)
     runners_[func_name] = std::make_shared<STVMRunner>(this, func_name, node_graph);
     compute_info.compute_func = *runners_[func_name].get();
 
