@@ -49,9 +49,14 @@ class OpenCLPreprocessor(Preprocessor):
     """"A preprocessor that expand #include"""
     def __init__(self, includes):
         super().__init__()
-        self.line_directive = None
         for i in includes:
             self.add_path(i)
+
+        self.line_directive = None
+        # this will compress consecutive whitespaces into one, it will result
+        # much better opencl debug experence, and smaller executable
+        self.compress = 2
+
 
     def on_comment(self, tok):
         return ""

@@ -647,7 +647,7 @@ if (onnxruntime_USE_OPENCL)
     add_custom_command(
       OUTPUT ${output}
       COMMAND Python3::Interpreter ${PROJECT_SOURCE_DIR}/embed.py -x cl -I "${ONNXRUNTIME_ROOT}/core/providers/opencl" ${f} -o ${output}
-      DEPENDS ${PROJECT_SOURCE_DIR}/embed.py ${f}
+      DEPENDS ${PROJECT_SOURCE_DIR}/embed.py ${f} ${opencl_cl_hdrs}
     )
     list(APPEND opencl_generated_cl_includes "${output}")
   endforeach()
