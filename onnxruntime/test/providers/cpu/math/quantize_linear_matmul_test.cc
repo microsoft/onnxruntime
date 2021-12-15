@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/cpu/math/quantize_linear_matmul.h"
+#include "core/providers/cpu/quantization/quantize_linear_matmul.h"
 #include "core/mlas/inc/mlas.h"
 
 #include "gtest/gtest.h"
