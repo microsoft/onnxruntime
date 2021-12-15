@@ -187,7 +187,7 @@ stages:
 
   - ${{ if eq(parameters.enable_linux_gpu, true) }}:
     - job: Linux_py_GPU_Wheels
-      timeoutInMinutes: 120
+      timeoutInMinutes: 180
       workspace:
         clean: all
       pool: Onnxruntime-Linux-GPU
@@ -804,7 +804,7 @@ stages:
       workspace:
         clean: all
       pool: 'onnxruntime-gpu-winbuild'
-      timeoutInMinutes:  240
+      timeoutInMinutes:  300
       variables:
         CUDA_VERSION: '11.4'
         buildArch: x64
@@ -1066,7 +1066,7 @@ stages:
 
   - ${{ if eq(parameters.enable_linux_arm, true) }}:
     - job: Linux_py_Wheels
-      timeoutInMinutes: 180
+      timeoutInMinutes: 240
       workspace:
         clean: all
       pool: 'Linux-CPU'
