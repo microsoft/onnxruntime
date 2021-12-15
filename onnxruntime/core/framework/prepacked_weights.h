@@ -5,7 +5,7 @@
 
 #include <vector>
 
-#include "core/common/hash_value.h"
+#include "core/common/basic_types.h"
 #include "core/framework/buffer_deleter.h"
 #include "core/framework/tensor_shape.h"
 

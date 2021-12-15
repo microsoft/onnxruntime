@@ -10,7 +10,7 @@
 #include <memory>
 #include <functional>
 
-#include "core/common/hash_value.h"  // for onnxruntime::HashValue
+#include "core/common/basic_types.h"
 
 namespace ONNX_NAMESPACE {
 class ValueInfoProto;

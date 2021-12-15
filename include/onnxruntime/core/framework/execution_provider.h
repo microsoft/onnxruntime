@@ -26,7 +26,7 @@ class KernelRegistryManager;
 #include <memory>
 #endif
 
-#include "core/common/hash_value.h"
+#include "core/common/basic_types.h"
 #include "core/common/profiler_common.h"
 #include "core/framework/allocatormgr.h"
 #include "core/framework/func_api.h"
