@@ -111,7 +111,7 @@ TEST(ScatterNDOpTest, ScatterND_3tensor_int64) {
   test2.AddInput<int64_t>("indices", {2,3}, {0,0,1,-1,0,-1});
   test2.AddInput<int8_t>("updates", {2}, {1,5});
   test2.AddOutput<int8_t>("output", {2,2,2}, {0,1,2,3,4,5,6,7});
-  test2.Run();
+  test2.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}); // Exclude TensorRT from INT8 tests
 
   OpTester test3("ScatterND", 11);
   test3.AddInput<int16_t>("data", {2,2,2}, {0,1,2,3,0,1,2,3});
