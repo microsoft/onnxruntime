@@ -123,6 +123,7 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
     if (w_dims_changed) {
       s_.last_w_dims = w_dims;
       s_.cached_benchmark_results.clear();
+      ORT_RETURN_IF_ERROR(s_.w_desc.Set(w_dims, CudnnTensor::GetDataType<CudaT>()));
     }
 
     const int64_t N = X->Shape()[0];
@@ -206,9 +207,6 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
       dilations.push_back(1);
     }
 
-    if (w_dims_changed) {
-      ORT_RETURN_IF_ERROR(s_.w_desc.Set(w_dims, CudnnTensor::GetDataType<CudaT>()));
-    }
     ORT_RETURN_IF_ERROR(s_.x_tensor.Set(x_dims_cudnn, CudnnTensor::GetDataType<CudaT>()));
     ORT_RETURN_IF_ERROR(s_.y_tensor.Set(y_dims_cudnn, CudnnTensor::GetDataType<CudaT>()));
     ORT_RETURN_IF_ERROR(s_.conv_desc.Set(kernel_shape.size(), pads, strides, dilations,
@@ -254,7 +252,7 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
           // Use GetTransientScratchBuffer() so the workspace can be freed instead of cached.
           // Because the benchmarking uses a huge amount of memory, e.g. a few GBs.
           IAllocatorUniquePtr<void> algo_search_workspace = GetTransientScratchBuffer<void>(max_ws_size);
-          CUDNN_RETURN_IF_ERROR(cudnnFindConvolutionForwardAlgorithmEx(
+          auto result=cudnnFindConvolutionForwardAlgorithmEx(
               s_.handle,
               s_.x_tensor,
               s_.x_data,
@@ -267,7 +265,10 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
               &algo_count,  // returnedAlgoCount
               &perf,
               algo_search_workspace.get(),
-              max_ws_size));
+              max_ws_size);
+          if (result != CUDNN_STATUS_SUCCESS) {
+    int j; j=5;          
+}
           break;
         }
         case 1:
