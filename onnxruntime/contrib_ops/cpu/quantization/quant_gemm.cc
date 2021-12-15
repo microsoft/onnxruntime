@@ -4,7 +4,7 @@
 #include "core/common/safeint.h"
 #include "core/providers/cpu/math/gemm_base.h"
 #include "core/providers/cpu/math/gemm_helper.h"
-#include "core/providers/cpu/math/matmul_integer_base.h"
+#include "core/providers/cpu/quantization/matmul_integer_base.h"
 #include "core/quantization/quantization.h"
 #include "core/util/math_cpuonly.h"
 

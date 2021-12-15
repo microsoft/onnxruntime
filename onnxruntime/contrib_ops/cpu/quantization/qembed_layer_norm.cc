@@ -5,7 +5,7 @@
 
 #include <cmath>
 
-#include "embed_layer_norm_helper.h"
+#include "contrib_ops/cpu/bert/embed_layer_norm_helper.h"
 #include "core/framework/op_kernel.h"
 #include "core/providers/common.h"
 #include "core/quantization/quantization.h"

@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/cpu/tensor/quantize_linear.h"
+#include "core/providers/cpu/quantization/quantize_linear.h"
 #include "core/providers/common.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/util/qmath.h"
