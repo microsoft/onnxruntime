@@ -5,10 +5,10 @@ ARG DEVTOOLSET_ROOTPATH=
 ARG LD_LIBRARY_PATH_ARG=
 ARG PREPEND_PATH=
 
-#We need both CUDA and manylinux. But the CUDA Toolkit End User License Agreement says NVIDIA CUDA Driver Libraries(libcuda.so, libnvidia-ptxjitcompiler.so) are only distributable in applications that meet this criteria:
+#We need CUDA, TensorRT and manylinux. But the CUDA Toolkit End User License Agreement says NVIDIA CUDA Driver Libraries(libcuda.so, libnvidia-ptxjitcompiler.so) are only distributable in applications that meet this criteria:
 #1. The application was developed starting from a NVIDIA CUDA container obtained from Docker Hub or the NVIDIA GPU Cloud, and
 #2. The resulting application is packaged as a Docker container and distributed to users on Docker Hub or the NVIDIA GPU Cloud only.
-#So we use CUDA as the base image then add manylinux on top of it.
+#So we use CUDA as the base image then add manylinux and TensorRT on top of it.
 
 #Build manylinux2014 docker image begin
 FROM $BASEIMAGE AS runtime_base
@@ -181,6 +181,13 @@ ENV SSL_CERT_FILE=/opt/_internal/certs.pem
 CMD ["/bin/bash"]
 
 #Build manylinux2014 docker image end
+
+#Install TensorRT 8.2.1.8
+#RUN yum install -y wget
+RUN v="8.2.1-1.cuda11.4" &&\
+    yum-config-manager --add-repo https://developer.download.nvidia.com/compute/cuda/repos/rhel7/x86_64/cuda-rhel7.repo &&\
+    yum -y install libnvinfer8-${v} libnvparsers8-${v} libnvonnxparsers8-${v} libnvinfer-plugin8-${v} \
+        libnvinfer-devel-${v} libnvparsers-devel-${v} libnvonnxparsers-devel-${v} libnvinfer-plugin-devel-${v}
 
 #Add our own dependencies
 ADD scripts /tmp/scripts
