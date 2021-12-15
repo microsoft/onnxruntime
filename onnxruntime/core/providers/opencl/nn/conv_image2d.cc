@@ -13,10 +13,55 @@ namespace {
 namespace onnxruntime {
 namespace opencl {
 
+// TODO: This is shared across C++ code and opencl kernel code
+// unify them in a shared header
+enum ActivationKind {
+  ActivationKind_None = 0,
+  ActivationKind_ReLU = 1,
+  ActivationKind_Clip = 5,
+};
+
+struct FusedConvAct {
+  ActivationKind kind;
+  float param0;
+  float param1;
+
+  FusedConvAct() : kind{ActivationKind_None}, param0{std::numeric_limits<float>::quiet_NaN()}, param1{std::numeric_limits<float>::quiet_NaN()} {}
+
+  Status LoadInfo(const OpKernelInfo& info) {
+    std::string activation_type;
+    info.GetAttrOrDefault<std::string>("activation", &activation_type, "None");
+    size_t activation_params_count = 0;
+    if (activation_type == "None") {
+      kind = ActivationKind_None;
+    } else if (activation_type == "Relu") {
+      kind = ActivationKind_ReLU;
+    } else if (activation_type == "Clip") {
+      kind = ActivationKind_Clip;
+      activation_params_count = 2;
+    } else {
+      return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "unimplemented activation: " + activation_type);
+    }
+
+    std::vector<float> activation_params = info.GetAttrsOrDefault<float>("activation_params");
+    ORT_RETURN_IF(activation_params.size() < activation_params_count, "insufficient size of activation_params");
+    if (activation_params_count >= 1) {
+      param0 = activation_params[0];
+    }
+    if (activation_params_count >= 2) {
+      param1 = activation_params[1];
+    }
+
+    return Status::OK();
+  }
+};
+
 class Conv : public OpenCLKernel {
  public:
   explicit Conv(const OpKernelInfo& info) : OpenCLKernel(info), attrs_{info} {
+    ORT_THROW_IF_ERROR(act_info_.LoadInfo(info));
     VLOGS_DEFAULT(0) << "[CL] Init Conv (OpenCLKernel), auto_pad:" << static_cast<int>(attrs_.auto_pad) << ", dilations: " << attrs_.dilations << ", group: " << attrs_.group;
+
     LoadProgram(conv_kernel_src, conv_kernel_src_len);
     LoadKernel("Conv2D");
     LoadKernel("DepthwiseConv2D");
@@ -116,7 +161,9 @@ class Conv : public OpenCLKernel {
             .setInt2(S[0], S[1])
             .setInt2(P[0], P[1])
             .setInt2(D[0], D[1])
-            .setArg<cl_int>(0)
+            .setArg<cl_int>(act_info_.kind)
+            .setArg<cl_float>(act_info_.param0)
+            .setArg<cl_float>(act_info_.param1)
             .Launch(GetCommandQueue(), {gsx, gsy}));
 
     return Status::OK();
@@ -161,13 +208,16 @@ class Conv : public OpenCLKernel {
             .setInt2(P[0], P[1])
             .setInt2(D[0], D[1])
             .setArg<cl_int>(CeilDiv(W_out, 4))
-            .setArg<cl_int>(0)
+            .setArg<cl_int>(act_info_.kind)
+            .setArg<cl_float>(act_info_.param0)
+            .setArg<cl_float>(act_info_.param1)
             .Launch(GetCommandQueue(), {gsx, gsy}));
 
     return Status::OK();
   }
 
   ConvAttributes attrs_;
+  FusedConvAct act_info_;
 };
 
 ONNX_OPENCL_OPERATOR_KERNEL(
@@ -179,7 +229,21 @@ ONNX_OPENCL_OPERATOR_KERNEL(
         .InputMemoryType((OrtMemType)CLMemType::OPENCL_IMAGE_2D, 1)   /* W */
         .InputMemoryType((OrtMemType)CLMemType::OPENCL_IMAGE_2D, 2)   /* B */
         .OutputMemoryType((OrtMemType)CLMemType::OPENCL_IMAGE_2D, 0), /* Y */
-    Conv)
+    Conv);
+
+ONNX_OPERATOR_KERNEL_EX(
+    FusedConv,
+    kMSDomain,
+    1,
+    kOpenCLExecutionProvider,
+    KernelDefBuilder()
+        .TypeConstraint("T", DataTypeImpl::GetTensorType<float>())
+        .InputMemoryType((OrtMemType)CLMemType::OPENCL_IMAGE_2D, 0)   /* X */
+        .InputMemoryType((OrtMemType)CLMemType::OPENCL_IMAGE_2D, 1)   /* W */
+        .InputMemoryType((OrtMemType)CLMemType::OPENCL_IMAGE_2D, 2)   /* B */
+        .OutputMemoryType((OrtMemType)CLMemType::OPENCL_IMAGE_2D, 0), /* Y */
+    Conv                                                              // register the Conv OpKernel as the FusedConv impl
+);
 
 }  // namespace opencl
 }  // namespace onnxruntime

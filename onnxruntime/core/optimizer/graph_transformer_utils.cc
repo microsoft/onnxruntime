@@ -202,7 +202,11 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       transformers.emplace_back(std::make_unique<MatMulIntegerToFloatFusion>(cpu_ep));
       transformers.emplace_back(std::make_unique<DynamicQuantizeMatMulFusion>(cpu_ep));
 
+#if defined(USE_OPENCL)
+      transformers.emplace_back(std::make_unique<ConvActivationFusion>(std::unordered_set<std::string>{onnxruntime::kOpenCLExecutionProvider}));
+#else
       transformers.emplace_back(std::make_unique<ConvActivationFusion>(cpu_cuda_rocm_acl_armnn_eps));
+#endif
 
       transformers.emplace_back(std::make_unique<GeluFusion>(cpu_cuda_rocm_eps));
       transformers.emplace_back(std::make_unique<LayerNormFusion>(cpu_cuda_rocm_eps));

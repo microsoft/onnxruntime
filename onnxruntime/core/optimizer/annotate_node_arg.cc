@@ -24,7 +24,7 @@ TensorUsage ClassifyTensorUsage(const Node* node, const NodeArg* node_arg, int n
   const KernelCreateInfo* kci;
   ORT_THROW_IF_ERROR(registry_mgr.SearchKernelRegistry(*node, &kci));
   const auto& name = kci->kernel_def->OpName();
-  if ((name == "Conv" /*|| name == "FusedConv"*/)) {
+  if ((name == "Conv" || name == "FusedConv")) {
     if (node_arg_index != 1) { // the node_arg is W
       return TensorUsage::Generic;
     }

@@ -6,6 +6,7 @@ namespace onnxruntime {
 namespace opencl {
 
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kOpenCLExecutionProvider, kOnnxDomain, 1, Conv);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kOpenCLExecutionProvider, kMSDomain, 1, FusedConv);
 
 }  // namespace opencl
 }  // namespace onnxruntime

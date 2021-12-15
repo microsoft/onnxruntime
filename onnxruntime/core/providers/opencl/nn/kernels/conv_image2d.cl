@@ -12,23 +12,24 @@
   out##i = mad(in##i.z, weights2, out##i); \
   out##i = mad(in##i.w, weights3, out##i);
 
-enum ActivationType {
-  ActivationType_None = 0,
-  ActivationType_ReLU = 1,
-  ActivationType_ReLU6 = 2,
+enum ActivationKind {
+  ActivationKind_None = 0,
+  ActivationKind_ReLU = 1,
+  ActivationKind_Clip = 5,
 };
 
-inline FLOAT4 Act(FLOAT4 out0, enum ActivationType activation_type) {
-  if (activation_type == ActivationType_None) {
-    return out0;
+inline FLOAT4 Act(FLOAT4 v, enum ActivationKind activation_type) {
+  if (activation_type == ActivationKind_None) {
+    return v;
   }
-  if (activation_type == ActivationType_ReLU) {
-    return fmax(out0, (FLOAT4)0);
-  }
-  if (activation_type == ActivationType_ReLU6) {
-    return clamp(out0, (FLOAT4)0, (FLOAT4)6);
+  if (activation_type == ActivationKind_ReLU) {
+    return fmax(v, (FLOAT4)0);
   }
   return (FLOAT4)NAN;
+}
+
+inline FLOAT4 Clip(FLOAT4 v, float clip_min, float clip_max) {
+  return clamp(v, (FLOAT4)clip_min, (FLOAT4)clip_max);
 }
 
 inline void SafeWriteOutput(__write_only image2d_t output, FLOAT4 out0, FLOAT4 out1, FLOAT4 out2, FLOAT4 out3, const int output_w_idx, const int output_h_idx, const int remain) {
@@ -64,7 +65,10 @@ __kernel void Conv2D(
     __private const int2 padding_wh,
     __private const int2 dilation_wh,
     __private const int out_width_blocks,
-    __private const int act_type) {
+    __private const int act_type,
+    __private const float act_param0,  // only for act_type != ActivationType_None
+    __private const float act_param1   // only for act_type != ActivationType_None
+) {
   const int output_cw_idx = get_global_id(0);
   const int output_bh_idx = get_global_id(1);
   if (output_cw_idx >= gs_dim0 || output_bh_idx >= gs_dim1) return;
@@ -125,10 +129,17 @@ __kernel void Conv2D(
     }
   }
 
-  out0 = Act(out0, act_type);
-  out1 = Act(out1, act_type);
-  out2 = Act(out2, act_type);
-  out3 = Act(out3, act_type);
+  if (act_type == ActivationKind_Clip) {
+    out0 = Clip(out0, act_param0, act_param1);
+    out1 = Clip(out1, act_param0, act_param1);
+    out2 = Clip(out2, act_param0, act_param1);
+    out3 = Clip(out3, act_param0, act_param1);
+  } else {
+    out0 = Act(out0, act_type);
+    out1 = Act(out1, act_type);
+    out2 = Act(out2, act_type);
+    out3 = Act(out3, act_type);
+  }
 
   const int out_x_base = mul24(out_channel_block_idx, output_wh.x);
   int out_x_idx = out_width_block_idx * 4;
@@ -151,7 +162,10 @@ __kernel void DepthwiseConv2D(
     __private const int2 stride_wh,
     __private const int2 padding_wh,
     __private const int2 dilation_wh,
-    __private const int act_type) {
+    __private const int act_type,
+    __private const float act_param0,  // only for act_type != ActivationType_None
+    __private const float act_param1   // only for act_type != ActivationType_None
+) {
   const int output_cw_idx = get_global_id(0);
   const int output_bh_idx = get_global_id(1);
   if (output_cw_idx >= gs_dim0 || output_bh_idx >= gs_dim1) return;
@@ -201,10 +215,17 @@ __kernel void DepthwiseConv2D(
     }
   }
 
-  out0 = Act(out0, act_type);
-  out1 = Act(out1, act_type);
-  out2 = Act(out2, act_type);
-  out3 = Act(out3, act_type);
+  if (act_type == ActivationKind_Clip) {
+    out0 = Clip(out0, act_param0, act_param1);
+    out1 = Clip(out1, act_param0, act_param1);
+    out2 = Clip(out2, act_param0, act_param1);
+    out3 = Clip(out3, act_param0, act_param1);
+  } else {
+    out0 = Act(out0, act_type);
+    out1 = Act(out1, act_type);
+    out2 = Act(out2, act_type);
+    out3 = Act(out3, act_type);
+  }
 
   const int out_wb_idx4 = out_width_block_idx * 4;
   const int remain = output_wh.x - out_wb_idx4;
