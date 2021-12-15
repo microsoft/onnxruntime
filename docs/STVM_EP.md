@@ -13,6 +13,7 @@
 ## Introduction
 
 STVM is an execution provider for ONNX Runtime that is built on top of Apache TVM. It enables ONNX Runtime users to leverage Apache TVM model optimizations.
+STVM EP is currently in "Preview". It's been tested to work on a handful of models on Linux, but not on Windows or MacOS.
 
 ## Build
 
