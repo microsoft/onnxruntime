@@ -1,4 +1,4 @@
-# Singleton TVM (STVM) Execution Provider
+# Standalone TVM (STVM) Execution Provider
 
 ## Contents
 
