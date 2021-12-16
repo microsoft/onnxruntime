@@ -14,6 +14,7 @@ import sys
 import onnxruntime
 from onnx import numpy_helper
 from perf_utils import *
+from names import *
 import pprint
 import time
 import pandas as pd
@@ -24,12 +25,12 @@ sys.path.append('.')
 logger = logging.getLogger('')
 
 # global ep variables 
-cpu = "CPUExecutionProvider"
+cpu_ep = "CPUExecutionProvider"
 acl = "ACLExecutionProvider"
-cuda = "CUDAExecutionProvider"
-cuda_fp16 = "CUDAExecutionProvider_fp16"
-trt = "TensorrtExecutionProvider"
-trt_fp16 = "TensorrtExecutionProvider_fp16"
+cuda_ep = "CUDAExecutionProvider"
+cuda_fp16_ep = "CUDAExecutionProvider_fp16"
+trt_ep = "TensorrtExecutionProvider"
+trt_fp16_ep = "TensorrtExecutionProvider_fp16"
 standalone_trt = "Standalone_TRT"
 standalone_trt_fp16 = "Standalone_TRT_fp16"
 
