@@ -145,7 +145,7 @@ struct TfIdfVectorizer::Impl {
     assert(ngram_id != 0);
     --ngram_id;
     assert(ngram_id < ngram_indexes_.size());
-    auto output_idx = row_num * output_size_ + ngram_indexes_[ngram_id];
+    auto output_idx = static_cast<int64_t>(row_num) * output_size_ + ngram_indexes_[ngram_id];
     assert(static_cast<size_t>(output_idx) < frequencies.size());
     ++frequencies[output_idx];
   }

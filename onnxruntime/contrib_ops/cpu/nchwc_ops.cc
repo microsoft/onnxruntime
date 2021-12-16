@@ -68,7 +68,7 @@ Status ReorderInput::Compute(OpKernelContext* context) const {
 
     if (channels_last_) {
       int64_t work_index = static_cast<int64_t>(work.start);
-      int64_t work_remaining = static_cast<int64_t>(work.end - work.start);
+      int64_t work_remaining = static_cast<int64_t>(work.end) - work.start;
 
       while (work_remaining > 0) {
         const int64_t batch_index = work_index / spatial_size;
@@ -87,7 +87,7 @@ Status ReorderInput::Compute(OpKernelContext* context) const {
       }
     } else {
       int64_t work_index = static_cast<int64_t>(work.start) * nchwc_block_size;
-      int64_t work_remaining = static_cast<int64_t>(work.end - work.start) * nchwc_block_size;
+      int64_t work_remaining = (static_cast<int64_t>(work.end) - work.start) * nchwc_block_size;
 
       while (work_remaining > 0) {
         const int64_t batch_index = work_index / nchwc_channels;
@@ -331,7 +331,7 @@ Status NchwcUpsample::Compute(OpKernelContext* context) const {
     auto upsample_worker = [&](ptrdiff_t batch) {
       auto work = concurrency::ThreadPool::PartitionWork(batch, worker_count, total_work);
       int64_t work_index = static_cast<int64_t>(work.start);
-      int64_t work_remaining = static_cast<int64_t>(work.end - work.start);
+      int64_t work_remaining = static_cast<int64_t>(work.end) - work.start;
 
       while (work_remaining > 0) {
         // Limit the current loop iteration to the same source image.

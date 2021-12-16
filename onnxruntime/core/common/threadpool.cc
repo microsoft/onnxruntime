@@ -36,7 +36,9 @@ limitations under the License.
 #include <sched.h>
 #endif
 #endif
-
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(disable : 26451)
+#endif
 namespace onnxruntime {
 
 namespace concurrency {

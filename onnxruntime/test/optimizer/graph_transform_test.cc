@@ -4694,7 +4694,7 @@ TEST_F(GraphTransformationTests, PropagateCastOpsTests) {
   // Create a temporary directory, which will be deleted automatically, to save/load the transformed models.
   TemporaryDirectory temp_dir{ORT_TSTR("propagate_casts_test_output_dir")};
   for (PropagateCastOpsTestSpecs test_case : test_cases) {
-    for (auto scenario : test_case.casts_count_map) {
+    for (auto& scenario : test_case.casts_count_map) {
       Strategy strategy = scenario.first.first;
       int level = scenario.first.second;
       int expected_casts_count = scenario.second;
