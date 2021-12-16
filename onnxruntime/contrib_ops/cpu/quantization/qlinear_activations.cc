@@ -2,8 +2,8 @@
 // Licensed under the MIT License.
 
 #include "qlinear_activations.h"
-
 #include "qlinear_lookup_table.h"
+
 #include "core/mlas/inc/mlas.h"
 #include "core/platform/threadpool.h"
 
