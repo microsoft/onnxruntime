@@ -1,3 +1,10 @@
+---
+title: Standalone TVM (STVM)
+description: Instructions to execute ONNX Runtime with the Standalone TVM (STVM) execution provider
+parent: Execution Providers
+nav_order: 15
+---
+
 # Standalone TVM (STVM) Execution Provider
 {: .no_toc }
 
