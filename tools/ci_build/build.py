@@ -125,9 +125,14 @@ def _openvino_verify_device_type(device_read):
 
 
 def parse_arguments():
-    parser = argparse.ArgumentParser(
+    class Parser(argparse.ArgumentParser):
+        # override argument file line parsing behavior - allow multiple arguments per line and handle quotes
+        def convert_arg_line_to_args(self, arg_line):
+            return shlex.split(arg_line)
+
+    parser = Parser(
         description="ONNXRuntime CI build driver.",
-        usage="""  # noqa
+        usage="""
         Default behavior is --update --build --test for native architecture builds.
         Default behavior is --update --build for cross-compiled builds.
 
@@ -136,7 +141,10 @@ def parse_arguments():
         The Test phase will run all unit tests, and optionally the ONNX tests.
 
         Use the individual flags to only run the specified stages.
-        """)
+        """,
+        # files containing arguments can be specified on the command line with "@<filename>" and the arguments within
+        # will be included at that point
+        fromfile_prefix_chars="@")
     # Main arguments
     parser.add_argument(
         "--build_dir", required=True, help="Path to the build directory.")
@@ -428,6 +436,10 @@ def parse_arguments():
         "--use_vitisai", action='store_true', help="Build with Vitis-AI")
     parser.add_argument(
         "--use_nuphar", action='store_true', help="Build with nuphar")
+    parser.add_argument(
+        "--use_stvm", action='store_true', help="Build with standalone TVM")
+    parser.add_argument(
+        "--stvm_home", help="Path to TVM installation for the standalone TVM execution provider.")
     parser.add_argument(
         "--use_tensorrt", action='store_true', help="Build with TensorRT")
     parser.add_argument(
@@ -757,6 +769,9 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_USE_NUPHAR=" + ("ON" if args.use_nuphar else "OFF"),
         "-Donnxruntime_USE_TENSORRT=" + ("ON" if args.use_tensorrt else "OFF"),
         "-Donnxruntime_TENSORRT_HOME=" + (tensorrt_home if args.use_tensorrt else ""),
+        # set vars for standalone TVM
+        "-Donnxruntime_USE_STVM=" + ("ON" if args.use_stvm else "OFF"),
+        "-Donnxruntime_STVM_HOME=" + (os.path.join(source_dir, "cmake", "external", "tvm_update")),
         # set vars for migraphx
         "-Donnxruntime_USE_MIGRAPHX=" + ("ON" if args.use_migraphx else "OFF"),
         "-Donnxruntime_MIGRAPHX_HOME=" + (migraphx_home if args.use_migraphx else ""),
@@ -1691,7 +1706,7 @@ def nuphar_run_python_tests(build_dir, configs):
 
 
 def run_nodejs_tests(nodejs_binding_dir):
-    args = ['npm', 'test', '--', '--timeout=10000']
+    args = ['npm', 'test', '--', '--timeout=30000']
     if is_windows():
         args = ['cmd', '/c'] + args
     run_subprocess(args, cwd=nodejs_binding_dir)
@@ -1699,7 +1714,7 @@ def run_nodejs_tests(nodejs_binding_dir):
 
 def build_python_wheel(
         source_dir, build_dir, configs, use_cuda, cuda_version, use_rocm, rocm_version, use_dnnl,
-        use_tensorrt, use_openvino, use_nuphar, use_vitisai, use_acl, use_armnn, use_dml,
+        use_tensorrt, use_openvino, use_nuphar, use_stvm, use_vitisai, use_acl, use_armnn, use_dml,
         wheel_name_suffix, enable_training, nightly_build=False, default_training_package_device=False,
         use_ninja=False, build_eager_mode=False):
     for config in configs:
@@ -1738,6 +1753,8 @@ def build_python_wheel(
             args.append('--use_dnnl')
         elif use_nuphar:
             args.append('--use_nuphar')
+        elif use_stvm:
+            args.append('--use_stvm')
         elif use_vitisai:
             args.append('--use_vitisai')
         elif use_acl:
@@ -1758,7 +1775,7 @@ def derive_linux_build_property():
 
 
 def build_nuget_package(source_dir, build_dir, configs, use_cuda, use_openvino, use_tensorrt, use_dnnl, use_nuphar,
-                        use_winml):
+                        use_stvm, use_winml):
     if not (is_windows() or is_linux()):
         raise BuildError(
             'Currently csharp builds and nuget package creation is only supportted '
@@ -1792,6 +1809,8 @@ def build_nuget_package(source_dir, build_dir, configs, use_cuda, use_openvino, 
         package_name = "/p:OrtPackageId=\"Microsoft.ML.OnnxRuntime.Gpu\""
     elif use_nuphar:
         package_name = "/p:OrtPackageId=\"Microsoft.ML.OnnxRuntime.Nuphar\""
+    elif use_stvm:
+        package_name = "/p:OrtPackageId=\"Microsoft.ML.OnnxRuntime.Stvm\""
     else:
         # use the solution file that includes Xamarin mobile targets
         sln = "OnnxRuntime.CSharp.sln"
@@ -2319,6 +2338,7 @@ def main():
                 args.use_tensorrt,
                 args.use_openvino,
                 args.use_nuphar,
+                args.use_stvm,
                 args.use_vitisai,
                 args.use_acl,
                 args.use_armnn,
@@ -2340,6 +2360,7 @@ def main():
                 args.use_tensorrt,
                 args.use_dnnl,
                 args.use_nuphar,
+                args.use_stvm,
                 args.use_winml,
             )
 

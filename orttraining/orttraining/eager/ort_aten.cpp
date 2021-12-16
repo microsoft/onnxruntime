@@ -366,8 +366,8 @@ at::Tensor& zero_(at::Tensor& self){
   int64_t one = 1;
   CopyVectorToTensor<int64_t>(invoker, &one, 1, *ort_flag_tensor);
 
-  std::vector<OrtValue> ort_out(1);
-
+  std::vector<OrtValue> ort_out = {ort_in_self};
+  
   auto status = invoker.Invoke(
     "ZeroGradient", {
       std::move(ort_in_self),
@@ -378,7 +378,6 @@ at::Tensor& zero_(at::Tensor& self){
     throw std::runtime_error(
       "ORT return failure status:" + status.ErrorMessage());
 
-  copy(invoker, ort_out[0], ort_in_self);
   return self;
 }
 

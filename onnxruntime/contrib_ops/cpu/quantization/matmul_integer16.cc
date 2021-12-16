@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "contrib_ops/cpu/matmul_integer16.h"
+#include "matmul_integer16.h"
 #include "core/providers/cpu/math/matmul_helper.h"
 
 namespace onnxruntime {

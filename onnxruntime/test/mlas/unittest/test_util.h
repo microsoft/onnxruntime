@@ -18,7 +18,7 @@
 #else
 #include <sys/mman.h>
 #endif
-#if !defined(MLAS_NO_ONNXRUNTIME_THREADPOOL)
+#if !defined(BUILD_MLAS_NO_ONNXRUNTIME)
 #include "core/platform/threadpool.h"
 #endif
 

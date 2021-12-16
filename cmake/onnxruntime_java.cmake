@@ -62,7 +62,6 @@ file(GLOB onnxruntime4j_native_src
 onnxruntime_add_shared_library_module(onnxruntime4j_jni ${onnxruntime4j_native_src})
 set_property(TARGET onnxruntime4j_jni PROPERTY CXX_STANDARD 11)
 
-
 # depend on java sources. if they change, the JNI should recompile
 add_dependencies(onnxruntime4j_jni onnxruntime4j)
 onnxruntime_add_include_to_target(onnxruntime4j_jni onnxruntime_session)

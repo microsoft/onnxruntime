@@ -65,13 +65,14 @@ elif parse_arg_remove_boolean(sys.argv, '--use_dnnl'):
     package_name = 'onnxruntime-dnnl'
 elif parse_arg_remove_boolean(sys.argv, '--use_nuphar'):
     package_name = 'onnxruntime-nuphar'
+elif parse_arg_remove_boolean(sys.argv, '--use_stvm'):
+    package_name = 'onnxruntime-stvm'
 elif parse_arg_remove_boolean(sys.argv, '--use_vitisai'):
     package_name = 'onnxruntime-vitisai'
 elif parse_arg_remove_boolean(sys.argv, '--use_acl'):
     package_name = 'onnxruntime-acl'
 elif parse_arg_remove_boolean(sys.argv, '--use_armnn'):
     package_name = 'onnxruntime-armnn'
-
 
 # PEP 513 defined manylinux1_x86_64 and manylinux1_i686
 # PEP 571 defined manylinux2010_x86_64 and manylinux2010_i686
@@ -397,6 +398,9 @@ if enable_training:
 if package_name == 'onnxruntime-nuphar':
     packages += ["onnxruntime.nuphar"]
     extra += [path.join('nuphar', 'NUPHAR_CACHE_VERSION')]
+
+if package_name == 'onnxruntime-stvm':
+    packages += ['onnxruntime.providers.stvm']
 
 package_data["onnxruntime"] = data + examples + extra
 
