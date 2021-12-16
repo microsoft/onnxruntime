@@ -1133,7 +1133,7 @@ Status PartitionOrtFormatModel(onnxruntime::Graph& graph,
                                const ExecutionProviders& providers,
                                KernelRegistryManager& kernel_registry_manager,
                                SessionState& session_state) {
-  std::unordered_map<std::string, uint64_t> compiled_kernel_hashes;
+  std::unordered_map<std::string, HashValue> compiled_kernel_hashes;
 
   GraphPartitioner partitioner(kernel_registry_manager, providers);
   ORT_RETURN_IF_ERROR(partitioner.Partition(graph, session_state.ExportDll(),

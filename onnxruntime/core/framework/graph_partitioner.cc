@@ -393,7 +393,7 @@ static Status PartitionOrtFormatModelImpl(Graph& graph, FuncManager& func_mgr,
                                           KernelRegistryManager& kernel_registry_mgr,
                                           KernelRegistry& fused_kernel_registry,
                                           IExecutionProvider& current_ep,
-                                          std::unordered_map<std::string, uint64_t>& compiled_kernel_hashes,
+                                          std::unordered_map<std::string, HashValue>& compiled_kernel_hashes,
                                           int& fused_node_unique_id) {
   // recurse into nested graphs first to partition bottom up.
   for (auto& node : graph.Nodes()) {
@@ -496,7 +496,7 @@ static Status PartitionOrtFormatModelImpl(Graph& graph, FuncManager& func_mgr,
 Status GraphPartitioner::PartitionOrtFormatModel(
     Graph& graph, FuncManager& func_mgr,
     KernelRegistry& fused_kernel_registry,
-    std::unordered_map<std::string, uint64_t>& compiled_kernel_hashes,
+    std::unordered_map<std::string, HashValue>& compiled_kernel_hashes,
     int& fused_node_unique_id) const {
   // process full graph with each EP
   for (const auto& ep : providers_) {
@@ -514,7 +514,7 @@ Status GraphPartitioner::PartitionOrtFormatModel(
 }
 
 Status GraphPartitioner::Partition(Graph& graph, bool export_dll, FuncManager& func_mgr, Mode mode,
-                                   std::unordered_map<std::string, uint64_t>* compiled_kernel_hashes) const {
+                                   std::unordered_map<std::string, HashValue>* compiled_kernel_hashes) const {
   // It is a greedy partitioning algorithm per provider preferences user provided when calling ONNX RUNTIME right now.
   // 1. Execution providers' capabilities are checked one by one.
   // 2. All sub-graphs that an execution provider returns will be assigned to it if it's not assigned yet.
