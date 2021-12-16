@@ -16,6 +16,7 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_MIGrap
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nnapi(
     uint32_t flags, const optional<std::string>& partitioning_stop_ops_list);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nuphar(bool, const char*);
+//std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Stvm(const char*);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO(
     const char* device_type, bool enable_vpu_fast_compile, const char* device_id, size_t num_of_threads, bool use_compiled_network, const char* blob_dump_path);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO(const OrtOpenVINOProviderOptions* params);
@@ -33,6 +34,7 @@ std::unique_ptr<IExecutionProvider> DefaultCpuExecutionProvider(bool enable_aren
 std::unique_ptr<IExecutionProvider> DefaultCudaExecutionProvider();
 std::unique_ptr<IExecutionProvider> DefaultDnnlExecutionProvider(bool enable_arena = true);
 std::unique_ptr<IExecutionProvider> DefaultNupharExecutionProvider(bool allow_unaligned_buffers = true);
+//std::unique_ptr<IExecutionProvider> DefaultStvmExecutionProvider();
 std::unique_ptr<IExecutionProvider> DefaultTensorrtExecutionProvider();
 std::unique_ptr<IExecutionProvider> TensorrtExecutionProviderWithOptions(const OrtTensorRTProviderOptions* params);
 std::unique_ptr<IExecutionProvider> DefaultMIGraphXExecutionProvider();

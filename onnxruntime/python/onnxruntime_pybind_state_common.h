@@ -23,7 +23,7 @@ struct OrtStatus {
   char msg[1];  // a null-terminated string
 };
 
-#define BACKEND_DEVICE BACKEND_PROC BACKEND_DNNL BACKEND_OPENVINO BACKEND_NUPHAR BACKEND_OPENBLAS BACKEND_MIGRAPHX BACKEND_ACL BACKEND_ARMNN BACKEND_DML
+#define BACKEND_DEVICE BACKEND_PROC BACKEND_DNNL BACKEND_OPENVINO BACKEND_NUPHAR BACKEND_STVM BACKEND_OPENBLAS BACKEND_MIGRAPHX BACKEND_ACL BACKEND_ARMNN BACKEND_DML
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/providers/providers.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
@@ -83,6 +83,12 @@ struct OrtStatus {
 #define BACKEND_NUPHAR "-NUPHAR"
 #else
 #define BACKEND_NUPHAR ""
+#endif
+
+#ifdef USE_STVM
+#define BACKEND_STVM "-STVM"
+#else
+#define BACKEND_STVM ""
 #endif
 
 #if USE_VITISAI
@@ -148,6 +154,9 @@ namespace python {
 extern std::string nuphar_settings;
 }
 }  // namespace onnxruntime
+#endif
+#ifdef USE_STVM
+#include "core/providers/stvm/stvm_execution_provider_info.h"
 #endif
 #ifdef USE_VITISAI
 #include "core/providers/vitisai/vitisai_provider_factory.h"
@@ -464,6 +473,10 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Cuda(c
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(int use_arena);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO(const OrtOpenVINOProviderOptions* params);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nuphar(bool, const char*);
+#ifdef USE_STVM
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Stvm(const StvmExecutionProviderInfo& info);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Stvm(const char* params);
+#endif
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_VITISAI(const char* backend_type, int device_id,
                                                                                   const char* export_runtime_module,
                                                                                   const char* load_runtime_module);
