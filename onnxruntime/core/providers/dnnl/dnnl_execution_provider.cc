@@ -200,6 +200,9 @@ std::vector<std::unique_ptr<ComputeCapability>> DNNLExecutionProvider::GetCapabi
 
       for (const auto* input : node->InputDefs()) {
         // if the node input was not produced by this subgraph, add it to the subgraph inputs.
+        if (!input->Exists()) {
+          continue;
+        }
         if (node_outputs.count(input) == 0) {
           if (subgraph_inputs.count(input) == 0) {
             subgraph_inputs.insert(input);
@@ -210,6 +213,9 @@ std::vector<std::unique_ptr<ComputeCapability>> DNNLExecutionProvider::GetCapabi
 
       const auto& output_defs = node->OutputDefs();
       for (const auto* output_def : output_defs) {
+        if (!output_def->Exists()) {
+          continue;
+        }
         node_outputs.insert(output_def);
         // if output is overall graph output we need to produce it.
         if (graph_outputs.count(output_def) != 0) {
@@ -230,7 +236,7 @@ std::vector<std::unique_ptr<ComputeCapability>> DNNLExecutionProvider::GetCapabi
     }
 
     // Assign inputs and outputs to subgraph's meta_def
-    uint64_t model_hash;
+    HashValue model_hash;
     int metadef_id = GenerateMetaDefId(graph_viewer, model_hash);
     auto meta_def = ::onnxruntime::IndexedSubGraph_MetaDef::Create();
     meta_def->name() = "DNNL_" + std::to_string(model_hash) + "_" + std::to_string(metadef_id);
@@ -265,7 +271,7 @@ std::vector<std::unique_ptr<ComputeCapability>> DNNLExecutionProvider::GetCapabi
     auto model_proto = model->ToProto();
     ToGraphProtoInternal(graph_viewer, *model_proto->mutable_graph());
     model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
-    uint64_t model_hash;
+    HashValue model_hash;
     int metadef_id = GenerateMetaDefId(graph_viewer, model_hash);
     std::fstream dump("DNNL_" + std::to_string(model_hash) + "_" + std::to_string(metadef_id) + ".onnx", std::ios::out | std::ios::trunc | std::ios::binary);
     model_proto->SerializeToOstream(dump);

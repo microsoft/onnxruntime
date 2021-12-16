@@ -1016,7 +1016,10 @@ Return Value:
         }
     }
 }
-
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(push)
+#pragma warning(disable : 26451)
+#endif
 void
 MLASCALL
 MlasConvPrepare(
@@ -1289,3 +1292,6 @@ Return Value:
         *WorkingBufferSize = TargetThreadCount * MLAS_CONV_WORKING_BUFFER_SIZE_PER_THREAD;
     }
 }
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(pop)
+#endif

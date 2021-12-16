@@ -1,10 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "qlinear_global_average_pool.h"
+#include "qlinear_lookup_table.h"
 #include "qlinear_pool.h"
 
-#include "contrib_ops/cpu/qlinear_lookup_table.h"
-#include "contrib_ops/cpu/qlinear_global_average_pool.h"
 #include "core/common/safeint.h"
 #include "core/util/math_cpuonly.h"
 #include "core/providers/common.h"

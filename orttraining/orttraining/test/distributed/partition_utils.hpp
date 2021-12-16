@@ -491,7 +491,7 @@ common::Status SplitGraph(Graph& graph,
         }
       }
     }
-    const int num_attributes = 2;  // two attributes: tag and element_types
+    constexpr int num_attributes = 2;  // two attributes: tag and element_types
     NodeAttributes attributes;
     attributes.reserve(num_attributes);
     attributes[tag.name()] = tag;

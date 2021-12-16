@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include "embed_layer_norm.h"
+#include "contrib_ops/cpu/bert/embed_layer_norm.h"
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
 

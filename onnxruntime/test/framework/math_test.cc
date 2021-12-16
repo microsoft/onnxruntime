@@ -28,7 +28,7 @@ namespace onnxruntime {
 //parameter is thread pool size
 class MathGemmTest : public testing::TestWithParam<int> {
  protected:
-  static OrtThreadPoolParams CreateThreadPoolOptions(int size) {
+  constexpr static OrtThreadPoolParams CreateThreadPoolOptions(int size) {
     OrtThreadPoolParams option;
     option.thread_pool_size = size;
     return option;
@@ -51,9 +51,9 @@ TEST_P(MathGemmTest, GemmNoTransNoTrans) {
     EXPECT_EQ(W[i], 1);
   }
 
-  const float kOne = 1.0;
-  const float kPointFive = 0.5;
-  const float kZero = 0.0;
+  constexpr float kOne = 1.0;
+  constexpr float kPointFive = 0.5;
+  constexpr float kZero = 0.0;
   math::Gemm<float>(CblasNoTrans, CblasNoTrans, 5, 6, 10, kOne,
                     VECTOR_HEAD(X), VECTOR_HEAD(W), kZero, VECTOR_HEAD(Y),
                     tp.get());
@@ -96,9 +96,9 @@ TEST_P(MathGemmTest, GemmNoTransTrans) {
     EXPECT_EQ(W[i], 1);
   }
 
-  const float kOne = 1.0;
-  const float kPointFive = 0.5;
-  const float kZero = 0.0;
+  constexpr float kOne = 1.0;
+  constexpr float kPointFive = 0.5;
+  constexpr float kZero = 0.0;
   math::Gemm<float>(CblasNoTrans, CblasTrans, 5, 6, 10, kOne,
                     VECTOR_HEAD(X), VECTOR_HEAD(W), kZero, VECTOR_HEAD(Y),
                     tp.get());
@@ -141,9 +141,9 @@ TEST(MathTest, GemvNoTrans) {
     EXPECT_EQ(X[i], 1);
   }
 
-  const float kOne = 1.0;
-  const float kPointFive = 0.5;
-  const float kZero = 0.0;
+  constexpr float kOne = 1.0;
+  constexpr float kPointFive = 0.5;
+  constexpr float kZero = 0.0;
   math::Gemv<float, CPUMathUtil>(CblasNoTrans, 5, 10, kOne, VECTOR_HEAD(A), VECTOR_HEAD(X),
                                  kZero, VECTOR_HEAD(Y), &provider);
   for (size_t i = 0; i < Y.size(); ++i) {
@@ -179,9 +179,9 @@ TEST(MathTest, GemvTrans) {
     EXPECT_EQ(X[i], 1);
   }
 
-  const float kOne = 1.0;
-  const float kPointFive = 0.5;
-  const float kZero = 0.0;
+  constexpr float kOne = 1.0;
+  constexpr float kPointFive = 0.5;
+  constexpr float kZero = 0.0;
   math::Gemv<float, CPUMathUtil>(CblasTrans, 6, 10, kOne, VECTOR_HEAD(A), VECTOR_HEAD(X),
                                  kZero, VECTOR_HEAD(Y), &provider);
   for (size_t i = 0; i < Y.size(); ++i) {

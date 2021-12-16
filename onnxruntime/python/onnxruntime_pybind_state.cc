@@ -637,6 +637,16 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
     nuphar_settings.clear();
     return p;
 #endif
+  } else if (type == kStvmExecutionProvider) {
+#if USE_STVM
+    onnxruntime::StvmExecutionProviderInfo info{};
+    const auto it = provider_options_map.find(type);
+    if (it != provider_options_map.end()) {
+      info = onnxruntime::StvmExecutionProviderInfo::FromProviderOptions(it->second);
+    }
+
+    return onnxruntime::CreateExecutionProviderFactory_Stvm(info)->CreateProvider();
+#endif
   } else if (type == kVitisAIExecutionProvider) {
 #if USE_VITISAI
     // Retrieve Vitis AI provider options
@@ -1502,9 +1512,7 @@ void CreateInferencePybindStateModule(py::module& m) {
   addSparseTensorMethods(m);
   addIoBindingMethods(m);
 
-#if !defined(__APPLE__) && \
-    (!defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS))
-  Ort::SessionOptions tmp_options;
+#if !defined(__APPLE__) && !defined(ORT_MINIMAL_BUILD)
   if (!InitProvidersSharedLibrary()) {
     const logging::Logger& default_logger = logging::LoggingManager::DefaultLogger();
     LOGS(default_logger, WARNING) << "Init provider bridge failed.";

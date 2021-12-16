@@ -93,7 +93,7 @@ endif()
 
 if (onnxruntime_USE_MIMALLOC)
     if(NOT WIN32)
-        message(FATAL "Currently do not support MIMALLOC in GPU builds")
+        message(FATAL_ERROR "Currently do not support MIMALLOC in GPU builds")
     endif()
     if(onnxruntime_USE_CUDA OR onnxruntime_USE_OPENVINO)
         message(WARNING "Currently do not support MIMALLOC in GPU builds")
@@ -121,9 +121,6 @@ if(NOT WIN32)
   target_include_directories(onnxruntime_common PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/external/nsync/public")
 endif()
 
-if(NOT onnxruntime_USE_OPENMP)
-  target_compile_definitions(onnxruntime_common PUBLIC EIGEN_USE_THREADS)
-endif()
 add_dependencies(onnxruntime_common ${onnxruntime_EXTERNAL_DEPENDENCIES})
 
 install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/common  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core)
