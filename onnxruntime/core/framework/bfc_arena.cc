@@ -161,10 +161,15 @@ Status BFCArena::Extend(size_t rounded_bytes) {
   // Try allocating.
   void* mem_addr = safe_alloc(bytes);
 
+#if defined(_M_AMD64) || defined(__x86_64__)
+  static constexpr double kBackpedalFactor = 0.9f;
+#else
   static constexpr float kBackpedalFactor = 0.9f;
+#endif
+
   // Try allocating less memory.
   while (mem_addr == nullptr) {
-    bytes = RoundedBytes(static_cast<size_t>(bytes) * static_cast<size_t>(kBackpedalFactor));
+    bytes = RoundedBytes(static_cast<size_t>(bytes * kBackpedalFactor));
 
     // give up if we can't satisfy the requested size, or we're attempting an allocation of less than 8K.
     //
