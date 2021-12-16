@@ -315,7 +315,9 @@ class KernelLauncher {
 
   Status Launch(const cl::CommandQueue& queue, const cl::NDRange& global, const cl::NDRange& local = cl::NullRange) {
     ORT_RETURN_IF_CL_ERROR(err_, " on setting argument ", static_cast<int>(err_index_));
-    VLOGS_DEFAULT(1) << "[CL] Launching with global work size: " << ToString(global) << " local work size: " << ToString(local);
+    VLOGS_DEFAULT(1) << "[CL] Launching " << kernel_.getInfo<CL_KERNEL_FUNCTION_NAME>()
+                     << " with global work size: " << ToString(global)
+                     << " local work size: " << ToString(local);
     ORT_RETURN_IF_CL_ERROR(queue.enqueueNDRangeKernel(kernel_, cl::NullRange, global, local));
     return Status::OK();
   }
