@@ -57,6 +57,10 @@ class OpenCLPreprocessor(Preprocessor):
         # much better opencl debug experence, and smaller executable
         self.compress = 2
 
+    def on_error(self, file, line, msg):
+        super().on_error(file, line, msg)
+        if(self.return_code != 0):
+            sys.exit(self.return_code)
 
     def on_comment(self, tok):
         return ""
@@ -69,10 +73,12 @@ class OpenCLPreprocessor(Preprocessor):
         else:
             self.on_error(self.lastdirective.source, self.lastdirective.lineno,
                           "Include file '%s' not found" % includepath)
+        print(self.return_code)
 
     def on_directive_handle(self, directive, toks, ifpassthru, precedingtoks):
         """only expand include"""
         if directive.value == "include" or directive.value == "pragma":
+            self.lastdirective = directive
             return True
 
         raise OutputDirective(Action.IgnoreAndPassThrough)
@@ -100,9 +106,7 @@ if __name__ == "__main__":
     # handling opencl preprocessing
     if args.x == "cl":
         clpp = OpenCLPreprocessor(args.I)
-        clpp.parse(file_content.decode("utf8"))
-        if clpp.return_code != 0:
-            sys.exit()
+        clpp.parse(file_content.decode("utf8"), filename_relative_to_ort)
         out = io.StringIO()
         clpp.write(out)
         file_content = out.getvalue()

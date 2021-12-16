@@ -138,9 +138,9 @@ const char* GetErrorString(cl_int error_code) {
 
 namespace {
 #define CONTENT_NAME prelude_f16_src
-#include "opencl_generated/kernels/prelude_f16.cl.h.inc"
+#include "opencl_generated/kernels/prelude_f16.cl.inc"
 #define CONTENT_NAME prelude_f32_src
-#include "opencl_generated/kernels/prelude_f32.cl.h.inc"
+#include "opencl_generated/kernels/prelude_f32.cl.inc"
 }  // namespace
 
 cl::Program LoadProgram(const cl::Context& ctx, const cl::Device& dev, const std::string& src, bool use_fp16) {
