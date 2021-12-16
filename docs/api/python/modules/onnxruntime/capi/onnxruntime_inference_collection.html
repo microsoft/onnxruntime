@@ -1,0 +1,639 @@
+
+<!DOCTYPE html>
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>onnxruntime.capi.onnxruntime_inference_collection &#8212; ONNX Runtime 1.7.0 documentation</title>
+    <link rel="stylesheet" href="../../../static/pygments.css" type="text/css" />
+    <link rel="stylesheet" href="../../../static/alabaster.css" type="text/css" />
+    <link rel="stylesheet" type="text/css" href="../../../static/graphviz.css" />
+    <link rel="stylesheet" type="text/css" href="../../../static/gallery.css" />
+    <link rel="stylesheet" type="text/css" href="../../../static/gallery-binder.css" />
+    <link rel="stylesheet" type="text/css" href="../../../static/gallery-dataframe.css" />
+    <link rel="stylesheet" type="text/css" href="../../../static/gallery-rendered-html.css" />
+    <script id="documentation_options" data-url_root="../../../" src="../../../static/documentation_options.js"></script>
+    <script src="../../../static/jquery.js"></script>
+    <script src="../../../static/underscore.js"></script>
+    <script src="../../../static/doctools.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+   
+  <link rel="stylesheet" href="../../../static/custom.css" type="text/css" />
+  
+  
+  <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9" />
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <h1>Source code for onnxruntime.capi.onnxruntime_inference_collection</h1><div class="highlight"><pre>
+<span></span><span class="c1"># -------------------------------------------------------------------------</span>
+<span class="c1"># Copyright (c) Microsoft Corporation. All rights reserved.</span>
+<span class="c1"># Licensed under the MIT License.</span>
+<span class="c1"># --------------------------------------------------------------------------</span>
+<span class="kn">import</span> <span class="nn">collections</span>
+<span class="kn">import</span> <span class="nn">collections.abc</span>
+<span class="kn">import</span> <span class="nn">os</span>
+<span class="kn">import</span> <span class="nn">warnings</span>
+
+<span class="kn">from</span> <span class="nn">onnxruntime.capi</span> <span class="kn">import</span> <span class="n">_pybind_state</span> <span class="k">as</span> <span class="n">C</span>
+
+
+<span class="k">def</span> <span class="nf">get_ort_device_type</span><span class="p">(</span><span class="n">device</span><span class="p">):</span>
+    <span class="n">device</span> <span class="o">=</span> <span class="n">device</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
+    <span class="k">if</span> <span class="n">device</span> <span class="o">==</span> <span class="s1">&#39;cuda&#39;</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">C</span><span class="o">.</span><span class="n">OrtDevice</span><span class="o">.</span><span class="n">cuda</span><span class="p">()</span>
+    <span class="k">elif</span> <span class="n">device</span> <span class="o">==</span> <span class="s1">&#39;cpu&#39;</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">C</span><span class="o">.</span><span class="n">OrtDevice</span><span class="o">.</span><span class="n">cpu</span><span class="p">()</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">Exception</span><span class="p">(</span><span class="s1">&#39;Unsupported device type: &#39;</span> <span class="o">+</span> <span class="n">device</span><span class="p">)</span>
+
+
+<span class="k">def</span> <span class="nf">check_and_normalize_provider_args</span><span class="p">(</span><span class="n">providers</span><span class="p">,</span> <span class="n">provider_options</span><span class="p">,</span> <span class="n">available_provider_names</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Validates the &#39;providers&#39; and &#39;provider_options&#39; arguments and returns a</span>
+<span class="sd">        normalized version.</span>
+
+<span class="sd">    :param providers: Optional sequence of providers in order of decreasing</span>
+<span class="sd">        precedence. Values can either be provider names or tuples of</span>
+<span class="sd">        (provider name, options dict).</span>
+<span class="sd">    :param provider_options: Optional sequence of options dicts corresponding</span>
+<span class="sd">        to the providers listed in &#39;providers&#39;.</span>
+<span class="sd">    :param available_provider_names: The available provider names.</span>
+
+<span class="sd">    :return: Tuple of (normalized &#39;providers&#39; sequence, normalized</span>
+<span class="sd">        &#39;provider_options&#39; sequence).</span>
+
+<span class="sd">    &#39;providers&#39; can contain either names or names and options. When any options</span>
+<span class="sd">        are given in &#39;providers&#39;, &#39;provider_options&#39; should not be used.</span>
+
+<span class="sd">    The normalized result is a tuple of:</span>
+<span class="sd">    1. Sequence of provider names in the same order as &#39;providers&#39;.</span>
+<span class="sd">    2. Sequence of corresponding provider options dicts with string keys and</span>
+<span class="sd">        values. Unspecified provider options yield empty dicts.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">providers</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">return</span> <span class="p">[],</span> <span class="p">[]</span>
+
+    <span class="n">provider_name_to_options</span> <span class="o">=</span> <span class="n">collections</span><span class="o">.</span><span class="n">OrderedDict</span><span class="p">()</span>
+
+    <span class="k">def</span> <span class="nf">set_provider_options</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">options</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">name</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">available_provider_names</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Specified provider &#39;</span><span class="si">{}</span><span class="s2">&#39; is unavailable. Available providers: &#39;</span><span class="si">{}</span><span class="s2">&#39;&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span>
+                <span class="n">name</span><span class="p">,</span> <span class="s2">&quot;, &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">available_provider_names</span><span class="p">)))</span>
+
+        <span class="k">if</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">provider_name_to_options</span><span class="p">:</span>
+            <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span><span class="s2">&quot;Duplicate provider &#39;</span><span class="si">{}</span><span class="s2">&#39; encountered, ignoring.&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">name</span><span class="p">))</span>
+            <span class="k">return</span>
+
+        <span class="n">normalized_options</span> <span class="o">=</span> <span class="p">{</span><span class="nb">str</span><span class="p">(</span><span class="n">key</span><span class="p">):</span> <span class="nb">str</span><span class="p">(</span><span class="n">value</span><span class="p">)</span> <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">options</span><span class="o">.</span><span class="n">items</span><span class="p">()}</span>
+        <span class="n">provider_name_to_options</span><span class="p">[</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="n">normalized_options</span>
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">providers</span><span class="p">,</span> <span class="n">collections</span><span class="o">.</span><span class="n">abc</span><span class="o">.</span><span class="n">Sequence</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;&#39;providers&#39; should be a sequence.&quot;</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">provider_options</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">provider_options</span><span class="p">,</span> <span class="n">collections</span><span class="o">.</span><span class="n">abc</span><span class="o">.</span><span class="n">Sequence</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;&#39;provider_options&#39; should be a sequence.&quot;</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">providers</span><span class="p">)</span> <span class="o">!=</span> <span class="nb">len</span><span class="p">(</span><span class="n">provider_options</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;&#39;providers&#39; and &#39;provider_options&#39; should be the same length if both are given.&quot;</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">all</span><span class="p">([</span><span class="nb">isinstance</span><span class="p">(</span><span class="n">provider</span><span class="p">,</span> <span class="nb">str</span><span class="p">)</span> <span class="k">for</span> <span class="n">provider</span> <span class="ow">in</span> <span class="n">providers</span><span class="p">]):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Only string values for &#39;providers&#39; are supported if &#39;provider_options&#39; is given.&quot;</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">all</span><span class="p">([</span><span class="nb">isinstance</span><span class="p">(</span><span class="n">options_for_provider</span><span class="p">,</span> <span class="nb">dict</span><span class="p">)</span> <span class="k">for</span> <span class="n">options_for_provider</span> <span class="ow">in</span> <span class="n">provider_options</span><span class="p">]):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;&#39;provider_options&#39; values must be dicts.&quot;</span><span class="p">)</span>
+
+        <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">options</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">providers</span><span class="p">,</span> <span class="n">provider_options</span><span class="p">):</span>
+            <span class="n">set_provider_options</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">options</span><span class="p">)</span>
+
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">provider</span> <span class="ow">in</span> <span class="n">providers</span><span class="p">:</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">provider</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+                <span class="n">set_provider_options</span><span class="p">(</span><span class="n">provider</span><span class="p">,</span> <span class="nb">dict</span><span class="p">())</span>
+            <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">provider</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">)</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="n">provider</span><span class="p">)</span> <span class="o">==</span> <span class="mi">2</span> <span class="ow">and</span> \
+                    <span class="nb">isinstance</span><span class="p">(</span><span class="n">provider</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="nb">str</span><span class="p">)</span> <span class="ow">and</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">provider</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="nb">dict</span><span class="p">):</span>
+                <span class="n">set_provider_options</span><span class="p">(</span><span class="n">provider</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">provider</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;&#39;providers&#39; values must be either strings or (string, dict) tuples.&quot;</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="nb">list</span><span class="p">(</span><span class="n">provider_name_to_options</span><span class="o">.</span><span class="n">keys</span><span class="p">()),</span> <span class="nb">list</span><span class="p">(</span><span class="n">provider_name_to_options</span><span class="o">.</span><span class="n">values</span><span class="p">())</span>
+
+
+<span class="k">class</span> <span class="nc">Session</span><span class="p">:</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    This is the main class used to run a model.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+
+        <span class="c1"># self._sess is managed by the derived class and relies on bindings from C.InferenceSession</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_sess</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_enable_fallback</span> <span class="o">=</span> <span class="kc">True</span>
+
+    <span class="k">def</span> <span class="nf">get_session_options</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="s2">&quot;Return the session options. See :class:`onnxruntime.SessionOptions`.&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_sess_options</span>
+
+    <span class="k">def</span> <span class="nf">get_inputs</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="s2">&quot;Return the inputs metadata as a list of :class:`onnxruntime.NodeArg`.&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_inputs_meta</span>
+
+    <span class="k">def</span> <span class="nf">get_outputs</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="s2">&quot;Return the outputs metadata as a list of :class:`onnxruntime.NodeArg`.&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_outputs_meta</span>
+
+    <span class="k">def</span> <span class="nf">get_overridable_initializers</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="s2">&quot;Return the inputs (including initializers) metadata as a list of :class:`onnxruntime.NodeArg`.&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_overridable_initializers</span>
+
+    <span class="k">def</span> <span class="nf">get_modelmeta</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="s2">&quot;Return the metadata. See :class:`onnxruntime.ModelMetadata`.&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_model_meta</span>
+
+    <span class="k">def</span> <span class="nf">get_providers</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="s2">&quot;Return list of registered execution providers.&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_providers</span>
+
+    <span class="k">def</span> <span class="nf">get_provider_options</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="s2">&quot;Return registered execution providers&#39; configurations.&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_provider_options</span>
+
+    <span class="k">def</span> <span class="nf">set_providers</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">providers</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">provider_options</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Register the input list of execution providers. The underlying session is re-created.</span>
+
+<span class="sd">        :param providers: Optional sequence of providers in order of decreasing</span>
+<span class="sd">            precedence. Values can either be provider names or tuples of</span>
+<span class="sd">            (provider name, options dict). If not provided, then all available</span>
+<span class="sd">            providers are used with the default precedence.</span>
+<span class="sd">            The next release (ORT 1.10) will require explicitly setting</span>
+<span class="sd">            this providers parameter if you want to use execution providers</span>
+<span class="sd">            other than the default CPU provider (as opposed to the current</span>
+<span class="sd">            behavior of providers getting set/registered by default based on the</span>
+<span class="sd">            build flags) when instantiating InferenceSession.</span>
+<span class="sd">        :param provider_options: Optional sequence of options dicts corresponding</span>
+<span class="sd">            to the providers listed in &#39;providers&#39;.</span>
+
+<span class="sd">        &#39;providers&#39; can contain either names or names and options. When any options</span>
+<span class="sd">        are given in &#39;providers&#39;, &#39;provider_options&#39; should not be used.</span>
+
+<span class="sd">        The list of providers is ordered by precedence. For example [&#39;CUDAExecutionProvider&#39;, &#39;CPUExecutionProvider&#39;]</span>
+<span class="sd">        means execute a node using CUDAExecutionProvider if capable, otherwise execute using CPUExecutionProvider.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># recreate the underlying C.InferenceSession</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_reset_session</span><span class="p">(</span><span class="n">providers</span><span class="p">,</span> <span class="n">provider_options</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">disable_fallback</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Disable session.run() fallback mechanism.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_enable_fallback</span> <span class="o">=</span> <span class="kc">False</span>
+
+    <span class="k">def</span> <span class="nf">enable_fallback</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Enable session.Run() fallback mechanism. If session.Run() fails due to an internal Execution Provider failure,</span>
+<span class="sd">        reset the Execution Providers enabled for this session.</span>
+<span class="sd">        If GPU is enabled, fall back to CUDAExecutionProvider.</span>
+<span class="sd">        otherwise fall back to CPUExecutionProvider.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_enable_fallback</span> <span class="o">=</span> <span class="kc">True</span>
+
+    <span class="k">def</span> <span class="nf">run</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">output_names</span><span class="p">,</span> <span class="n">input_feed</span><span class="p">,</span> <span class="n">run_options</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Compute the predictions.</span>
+
+<span class="sd">        :param output_names: name of the outputs</span>
+<span class="sd">        :param input_feed: dictionary ``{ input_name: input_value }``</span>
+<span class="sd">        :param run_options: See :class:`onnxruntime.RunOptions`.</span>
+
+<span class="sd">        ::</span>
+
+<span class="sd">            sess.run([output_name], {input_name: x})</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">num_required_inputs</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_inputs_meta</span><span class="p">)</span>
+        <span class="n">num_inputs</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">input_feed</span><span class="p">)</span>
+        <span class="c1"># the graph may have optional inputs used to override initializers. allow for that.</span>
+        <span class="k">if</span> <span class="n">num_inputs</span> <span class="o">&lt;</span> <span class="n">num_required_inputs</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Model requires </span><span class="si">{}</span><span class="s2"> inputs. Input Feed contains </span><span class="si">{}</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">num_required_inputs</span><span class="p">,</span> <span class="n">num_inputs</span><span class="p">))</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">output_names</span><span class="p">:</span>
+            <span class="n">output_names</span> <span class="o">=</span> <span class="p">[</span><span class="n">output</span><span class="o">.</span><span class="n">name</span> <span class="k">for</span> <span class="n">output</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_outputs_meta</span><span class="p">]</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_sess</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">output_names</span><span class="p">,</span> <span class="n">input_feed</span><span class="p">,</span> <span class="n">run_options</span><span class="p">)</span>
+        <span class="k">except</span> <span class="n">C</span><span class="o">.</span><span class="n">EPFail</span> <span class="k">as</span> <span class="n">err</span><span class="p">:</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_enable_fallback</span><span class="p">:</span>
+                <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;EP Error: </span><span class="si">{}</span><span class="s2"> using </span><span class="si">{}</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">err</span><span class="p">),</span> <span class="bp">self</span><span class="o">.</span><span class="n">_providers</span><span class="p">))</span>
+                <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Falling back to </span><span class="si">{}</span><span class="s2"> and retrying.&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_fallback_providers</span><span class="p">))</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">set_providers</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_fallback_providers</span><span class="p">)</span>
+                <span class="c1"># Fallback only once.</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">disable_fallback</span><span class="p">()</span>
+                <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_sess</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">output_names</span><span class="p">,</span> <span class="n">input_feed</span><span class="p">,</span> <span class="n">run_options</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">raise</span>
+
+    <span class="k">def</span> <span class="nf">end_profiling</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        End profiling and return results in a file.</span>
+
+<span class="sd">        The results are stored in a filename if the option</span>
+<span class="sd">        :meth:`onnxruntime.SessionOptions.enable_profiling`.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_sess</span><span class="o">.</span><span class="n">end_profiling</span><span class="p">()</span>
+
+    <span class="k">def</span> <span class="nf">get_profiling_start_time_ns</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return the nanoseconds of profiling&#39;s start time</span>
+<span class="sd">        Comparable to time.monotonic_ns() after Python 3.3</span>
+<span class="sd">        On some platforms, this timer may not be as precise as nanoseconds</span>
+<span class="sd">        For instance, on Windows and MacOS, the precision will be ~100ns</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_sess</span><span class="o">.</span><span class="n">get_profiling_start_time_ns</span>
+
+    <span class="k">def</span> <span class="nf">io_binding</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="s2">&quot;Return an onnxruntime.IOBinding object`.&quot;</span>
+        <span class="k">return</span> <span class="n">IOBinding</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">run_with_iobinding</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">iobinding</span><span class="p">,</span> <span class="n">run_options</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">         Compute the predictions.</span>
+
+<span class="sd">         :param iobinding: the iobinding object that has graph inputs/outputs bind.</span>
+<span class="sd">         :param run_options: See :class:`onnxruntime.RunOptions`.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_sess</span><span class="o">.</span><span class="n">run_with_iobinding</span><span class="p">(</span><span class="n">iobinding</span><span class="o">.</span><span class="n">_iobinding</span><span class="p">,</span> <span class="n">run_options</span><span class="p">)</span>
+
+
+<div class="viewcode-block" id="InferenceSession"><a class="viewcode-back" href="../../../api_summary.html#onnxruntime.InferenceSession">[docs]</a><span class="k">class</span> <span class="nc">InferenceSession</span><span class="p">(</span><span class="n">Session</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    This is the main class used to run a model.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">path_or_bytes</span><span class="p">,</span> <span class="n">sess_options</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">providers</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">provider_options</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        :param path_or_bytes: filename or serialized ONNX or ORT format model in a byte string</span>
+<span class="sd">        :param sess_options: session options</span>
+<span class="sd">        :param providers: Optional sequence of providers in order of decreasing</span>
+<span class="sd">            precedence. Values can either be provider names or tuples of</span>
+<span class="sd">            (provider name, options dict). If not provided, then all available</span>
+<span class="sd">            providers are used with the default precedence.</span>
+<span class="sd">        :param provider_options: Optional sequence of options dicts corresponding</span>
+<span class="sd">            to the providers listed in &#39;providers&#39;.</span>
+
+<span class="sd">        The model type will be inferred unless explicitly set in the SessionOptions.</span>
+<span class="sd">        To explicitly set:</span>
+<span class="sd">          so = onnxruntime.SessionOptions()</span>
+<span class="sd">          so.add_session_config_entry(&#39;session.load_model_format&#39;, &#39;ONNX&#39;) or</span>
+<span class="sd">          so.add_session_config_entry(&#39;session.load_model_format&#39;, &#39;ORT&#39;) or</span>
+
+<span class="sd">        A file extension of &#39;.ort&#39; will be inferred as an ORT format model.</span>
+<span class="sd">        All other filenames are assumed to be ONNX format models.</span>
+
+<span class="sd">        &#39;providers&#39; can contain either names or names and options. When any options</span>
+<span class="sd">        are given in &#39;providers&#39;, &#39;provider_options&#39; should not be used.</span>
+
+<span class="sd">        The list of providers is ordered by precedence. For example [&#39;CUDAExecutionProvider&#39;, &#39;CPUExecutionProvider&#39;]</span>
+<span class="sd">        means execute a node using CUDAExecutionProvider if capable, otherwise execute using CPUExecutionProvider.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="n">Session</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">path_or_bytes</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_model_path</span> <span class="o">=</span> <span class="n">path_or_bytes</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_model_bytes</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">path_or_bytes</span><span class="p">,</span> <span class="nb">bytes</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_model_path</span> <span class="o">=</span> <span class="kc">None</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_model_bytes</span> <span class="o">=</span> <span class="n">path_or_bytes</span>  <span class="c1"># TODO: This is bad as we&#39;re holding the memory indefinitely</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s2">&quot;Unable to load from type &#39;</span><span class="si">{0}</span><span class="s2">&#39;&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="nb">type</span><span class="p">(</span><span class="n">path_or_bytes</span><span class="p">)))</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">_sess_options</span> <span class="o">=</span> <span class="n">sess_options</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_sess_options_initial</span> <span class="o">=</span> <span class="n">sess_options</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_enable_fallback</span> <span class="o">=</span> <span class="kc">True</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_read_config_from_model</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;ORT_LOAD_CONFIG_FROM_MODEL&#39;</span><span class="p">)</span> <span class="o">==</span> <span class="s1">&#39;1&#39;</span>
+
+        <span class="k">try</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_create_inference_session</span><span class="p">(</span><span class="n">providers</span><span class="p">,</span> <span class="n">provider_options</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">RuntimeError</span><span class="p">:</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_enable_fallback</span><span class="p">:</span>
+                <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;EP Error using </span><span class="si">{}</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_providers</span><span class="p">))</span>
+                <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Falling back to </span><span class="si">{}</span><span class="s2"> and retrying.&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_fallback_providers</span><span class="p">))</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_create_inference_session</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_fallback_providers</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+                <span class="c1"># Fallback only once.</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">disable_fallback</span><span class="p">()</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">raise</span>
+
+    <span class="k">def</span> <span class="nf">_create_inference_session</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">providers</span><span class="p">,</span> <span class="n">provider_options</span><span class="p">):</span>
+        <span class="n">available_providers</span> <span class="o">=</span> <span class="n">C</span><span class="o">.</span><span class="n">get_available_providers</span><span class="p">()</span>
+
+        <span class="c1"># validate providers and provider_options before other initialization</span>
+        <span class="n">providers</span><span class="p">,</span> <span class="n">provider_options</span> <span class="o">=</span> <span class="n">check_and_normalize_provider_args</span><span class="p">(</span><span class="n">providers</span><span class="p">,</span>
+                                                                        <span class="n">provider_options</span><span class="p">,</span>
+                                                                        <span class="n">available_providers</span><span class="p">)</span>
+
+        <span class="c1"># Tensorrt can fall back to CUDA. All others fall back to CPU.</span>
+        <span class="k">if</span> <span class="s1">&#39;TensorrtExecutionProvider&#39;</span> <span class="ow">in</span> <span class="n">available_providers</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_fallback_providers</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;CUDAExecutionProvider&#39;</span><span class="p">,</span> <span class="s1">&#39;CPUExecutionProvider&#39;</span><span class="p">]</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_fallback_providers</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;CPUExecutionProvider&#39;</span><span class="p">]</span>
+
+        <span class="n">session_options</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_sess_options</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_sess_options</span> <span class="k">else</span> <span class="n">C</span><span class="o">.</span><span class="n">get_default_session_options</span><span class="p">()</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_model_path</span><span class="p">:</span>
+            <span class="n">sess</span> <span class="o">=</span> <span class="n">C</span><span class="o">.</span><span class="n">InferenceSession</span><span class="p">(</span><span class="n">session_options</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_model_path</span><span class="p">,</span> <span class="kc">True</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_read_config_from_model</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">sess</span> <span class="o">=</span> <span class="n">C</span><span class="o">.</span><span class="n">InferenceSession</span><span class="p">(</span><span class="n">session_options</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_model_bytes</span><span class="p">,</span> <span class="kc">False</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_read_config_from_model</span><span class="p">)</span>
+
+        <span class="c1"># initialize the C++ InferenceSession</span>
+        <span class="n">sess</span><span class="o">.</span><span class="n">initialize_session</span><span class="p">(</span><span class="n">providers</span><span class="p">,</span> <span class="n">provider_options</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">_sess</span> <span class="o">=</span> <span class="n">sess</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_sess_options</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_sess</span><span class="o">.</span><span class="n">session_options</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_inputs_meta</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_sess</span><span class="o">.</span><span class="n">inputs_meta</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_outputs_meta</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_sess</span><span class="o">.</span><span class="n">outputs_meta</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_overridable_initializers</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_sess</span><span class="o">.</span><span class="n">overridable_initializers</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_model_meta</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_sess</span><span class="o">.</span><span class="n">model_meta</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_providers</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_sess</span><span class="o">.</span><span class="n">get_providers</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_provider_options</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_sess</span><span class="o">.</span><span class="n">get_provider_options</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_profiling_start_time_ns</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_sess</span><span class="o">.</span><span class="n">get_profiling_start_time_ns</span>
+
+    <span class="k">def</span> <span class="nf">_reset_session</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">providers</span><span class="p">,</span> <span class="n">provider_options</span><span class="p">):</span>
+        <span class="s2">&quot;release underlying session object.&quot;</span>
+        <span class="c1"># meta data references session internal structures</span>
+        <span class="c1"># so they must be set to None to decrement _sess reference count.</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_sess_options</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_inputs_meta</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_outputs_meta</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_overridable_initializers</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_model_meta</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_providers</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_provider_options</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_profiling_start_time_ns</span> <span class="o">=</span> <span class="kc">None</span>
+
+        <span class="c1"># create a new C.InferenceSession</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_sess</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_sess_options</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_sess_options_initial</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_create_inference_session</span><span class="p">(</span><span class="n">providers</span><span class="p">,</span> <span class="n">provider_options</span><span class="p">)</span></div>
+
+
+<span class="k">class</span> <span class="nc">IOBinding</span><span class="p">:</span>
+    <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">    This class provides API to bind input/output to a specified device, e.g. GPU.</span>
+<span class="sd">    &#39;&#39;&#39;</span>
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">session</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_iobinding</span> <span class="o">=</span> <span class="n">C</span><span class="o">.</span><span class="n">SessionIOBinding</span><span class="p">(</span><span class="n">session</span><span class="o">.</span><span class="n">_sess</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_numpy_obj_references</span> <span class="o">=</span> <span class="p">[]</span>
+
+    <span class="k">def</span> <span class="nf">bind_cpu_input</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">arr_on_cpu</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        bind an input to array on CPU</span>
+<span class="sd">        :param name: input name</span>
+<span class="sd">        :param arr_on_cpu: input values as a python array on CPU</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="c1"># Hold a reference to the numpy object as the bound OrtValue is backed</span>
+        <span class="c1"># directly by the data buffer of the numpy object and so the numpy object</span>
+        <span class="c1"># must be around until this IOBinding instance is around</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_numpy_obj_references</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">arr_on_cpu</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_iobinding</span><span class="o">.</span><span class="n">bind_input</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">arr_on_cpu</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">bind_input</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">device_type</span><span class="p">,</span> <span class="n">device_id</span><span class="p">,</span> <span class="n">element_type</span><span class="p">,</span> <span class="n">shape</span><span class="p">,</span> <span class="n">buffer_ptr</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        :param name: input name</span>
+<span class="sd">        :param device_type: e.g. cpu, cuda</span>
+<span class="sd">        :param device_id: device id, e.g. 0</span>
+<span class="sd">        :param element_type: input element type</span>
+<span class="sd">        :param shape: input shape</span>
+<span class="sd">        :param buffer_ptr: memory pointer to input data</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_iobinding</span><span class="o">.</span><span class="n">bind_input</span><span class="p">(</span><span class="n">name</span><span class="p">,</span>
+                                   <span class="n">C</span><span class="o">.</span><span class="n">OrtDevice</span><span class="p">(</span><span class="n">get_ort_device_type</span><span class="p">(</span><span class="n">device_type</span><span class="p">),</span> <span class="n">C</span><span class="o">.</span><span class="n">OrtDevice</span><span class="o">.</span><span class="n">default_memory</span><span class="p">(),</span>
+                                               <span class="n">device_id</span><span class="p">),</span>
+                                   <span class="n">element_type</span><span class="p">,</span> <span class="n">shape</span><span class="p">,</span> <span class="n">buffer_ptr</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">bind_ortvalue_input</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">ortvalue</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        :param name: input name</span>
+<span class="sd">        :param ortvalue: OrtValue instance to bind</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_iobinding</span><span class="o">.</span><span class="n">bind_ortvalue_input</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">ortvalue</span><span class="o">.</span><span class="n">_ortvalue</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">bind_output</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">device_type</span><span class="o">=</span><span class="s1">&#39;cpu&#39;</span><span class="p">,</span> <span class="n">device_id</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">element_type</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">shape</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">buffer_ptr</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        :param name: output name</span>
+<span class="sd">        :param device_type: e.g. cpu, cuda, cpu by default</span>
+<span class="sd">        :param device_id: device id, e.g. 0</span>
+<span class="sd">        :param element_type: output element type</span>
+<span class="sd">        :param shape: output shape</span>
+<span class="sd">        :param buffer_ptr: memory pointer to output data</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+
+        <span class="c1"># Follow the `if` path when the user has not provided any pre-allocated buffer but still</span>
+        <span class="c1"># would like to bind an output to a specific device (e.g. cuda).</span>
+        <span class="c1"># Pre-allocating an output buffer may not be an option for the user as :</span>
+        <span class="c1"># (1) They may not want to use a custom allocator specific to the device they want to bind the output to,</span>
+        <span class="c1"># in which case ORT will allocate the memory for the user</span>
+        <span class="c1"># (2) The output has a dynamic shape and hence the size of the buffer may not be fixed across runs</span>
+        <span class="k">if</span> <span class="n">buffer_ptr</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_iobinding</span><span class="o">.</span><span class="n">bind_output</span><span class="p">(</span><span class="n">name</span><span class="p">,</span>
+                                        <span class="n">C</span><span class="o">.</span><span class="n">OrtDevice</span><span class="p">(</span><span class="n">get_ort_device_type</span><span class="p">(</span><span class="n">device_type</span><span class="p">),</span> <span class="n">C</span><span class="o">.</span><span class="n">OrtDevice</span><span class="o">.</span><span class="n">default_memory</span><span class="p">(),</span>
+                                                    <span class="n">device_id</span><span class="p">))</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">element_type</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">shape</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;`element_type` and `shape` are to be provided if pre-allocated memory is provided&quot;</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_iobinding</span><span class="o">.</span><span class="n">bind_output</span><span class="p">(</span><span class="n">name</span><span class="p">,</span>
+                                        <span class="n">C</span><span class="o">.</span><span class="n">OrtDevice</span><span class="p">(</span><span class="n">get_ort_device_type</span><span class="p">(</span><span class="n">device_type</span><span class="p">),</span> <span class="n">C</span><span class="o">.</span><span class="n">OrtDevice</span><span class="o">.</span><span class="n">default_memory</span><span class="p">(),</span>
+                                                    <span class="n">device_id</span><span class="p">),</span>
+                                        <span class="n">element_type</span><span class="p">,</span> <span class="n">shape</span><span class="p">,</span> <span class="n">buffer_ptr</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">bind_ortvalue_output</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">ortvalue</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        :param name: output name</span>
+<span class="sd">        :param ortvalue: OrtValue instance to bind</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_iobinding</span><span class="o">.</span><span class="n">bind_ortvalue_output</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">ortvalue</span><span class="o">.</span><span class="n">_ortvalue</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">get_outputs</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        Returns the output OrtValues from the Run() that preceded the call.</span>
+<span class="sd">        The data buffer of the obtained OrtValues may not reside on CPU memory</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="n">returned_ortvalues</span> <span class="o">=</span> <span class="p">[]</span>
+
+        <span class="k">for</span> <span class="n">ortvalue</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_iobinding</span><span class="o">.</span><span class="n">get_outputs</span><span class="p">():</span>
+            <span class="n">returned_ortvalues</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">OrtValue</span><span class="p">(</span><span class="n">ortvalue</span><span class="p">))</span>
+
+        <span class="k">return</span> <span class="n">returned_ortvalues</span>
+
+    <span class="k">def</span> <span class="nf">copy_outputs_to_cpu</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;Copy output contents to CPU (if on another device). No-op if already on the CPU.&#39;&#39;&#39;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_iobinding</span><span class="o">.</span><span class="n">copy_outputs_to_cpu</span><span class="p">()</span>
+
+    <span class="k">def</span> <span class="nf">clear_binding_inputs</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_iobinding</span><span class="o">.</span><span class="n">clear_binding_inputs</span><span class="p">()</span>
+
+    <span class="k">def</span> <span class="nf">clear_binding_outputs</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_iobinding</span><span class="o">.</span><span class="n">clear_binding_outputs</span><span class="p">()</span>
+
+
+<span class="k">class</span> <span class="nc">OrtValue</span><span class="p">:</span>
+    <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">    A data structure that supports all ONNX data formats (tensors and non-tensors) that allows users</span>
+<span class="sd">    to place the data backing these on a device, for example, on a CUDA supported device.</span>
+<span class="sd">    This class provides APIs to construct and deal with OrtValues.</span>
+<span class="sd">    &#39;&#39;&#39;</span>
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">ortvalue</span><span class="p">,</span> <span class="n">numpy_obj</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">ortvalue</span><span class="p">,</span> <span class="n">C</span><span class="o">.</span><span class="n">OrtValue</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_ortvalue</span> <span class="o">=</span> <span class="n">ortvalue</span>
+            <span class="c1"># Hold a ref count to the numpy object if the OrtValue is backed directly</span>
+            <span class="c1"># by its data buffer so that it isn&#39;t destroyed when the OrtValue is in use</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_numpy_obj</span> <span class="o">=</span> <span class="n">numpy_obj</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c1"># An end user won&#39;t hit this error</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;`Provided ortvalue` needs to be of type &quot;</span> <span class="o">+</span>
+                             <span class="s2">&quot;`onnxruntime.capi.onnxruntime_pybind11_state.OrtValue`&quot;</span><span class="p">)</span>
+
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span> <span class="nf">ortvalue_from_numpy</span><span class="p">(</span><span class="n">numpy_obj</span><span class="p">,</span> <span class="n">device_type</span><span class="o">=</span><span class="s1">&#39;cpu&#39;</span><span class="p">,</span> <span class="n">device_id</span><span class="o">=</span><span class="mi">0</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        Factory method to construct an OrtValue (which holds a Tensor) from a given Numpy object</span>
+<span class="sd">        A copy of the data in the Numpy object is held by the OrtValue only if the device is NOT cpu</span>
+<span class="sd">        :param numpy_obj: The Numpy object to construct the OrtValue from</span>
+<span class="sd">        :param device_type: e.g. cpu, cuda, cpu by default</span>
+<span class="sd">        :param device_id: device id, e.g. 0</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="c1"># Hold a reference to the numpy object (if device_type is &#39;cpu&#39;) as the OrtValue</span>
+        <span class="c1"># is backed directly by the data buffer of the numpy object and so the numpy object</span>
+        <span class="c1"># must be around until this OrtValue instance is around</span>
+        <span class="k">return</span> <span class="n">OrtValue</span><span class="p">(</span><span class="n">C</span><span class="o">.</span><span class="n">OrtValue</span><span class="o">.</span><span class="n">ortvalue_from_numpy</span><span class="p">(</span><span class="n">numpy_obj</span><span class="p">,</span> <span class="n">C</span><span class="o">.</span><span class="n">OrtDevice</span><span class="p">(</span><span class="n">get_ort_device_type</span><span class="p">(</span><span class="n">device_type</span><span class="p">),</span>
+                        <span class="n">C</span><span class="o">.</span><span class="n">OrtDevice</span><span class="o">.</span><span class="n">default_memory</span><span class="p">(),</span> <span class="n">device_id</span><span class="p">)),</span> <span class="n">numpy_obj</span> <span class="k">if</span> <span class="n">device_type</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="o">==</span> <span class="s1">&#39;cpu&#39;</span> <span class="k">else</span> <span class="kc">None</span><span class="p">)</span>
+
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span> <span class="nf">ortvalue_from_shape_and_type</span><span class="p">(</span><span class="n">shape</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">element_type</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">device_type</span><span class="o">=</span><span class="s1">&#39;cpu&#39;</span><span class="p">,</span> <span class="n">device_id</span><span class="o">=</span><span class="mi">0</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        Factory method to construct an OrtValue (which holds a Tensor) from given shape and element_type</span>
+<span class="sd">        :param shape: List of integers indicating the shape of the OrtValue</span>
+<span class="sd">        :param element_type: The data type of the elements in the OrtValue (numpy type)</span>
+<span class="sd">        :param device_type: e.g. cpu, cuda, cpu by default</span>
+<span class="sd">        :param device_id: device id, e.g. 0</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="k">if</span> <span class="n">shape</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">element_type</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;`element_type` and `shape` are to be provided if pre-allocated memory is provided&quot;</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">OrtValue</span><span class="p">(</span><span class="n">C</span><span class="o">.</span><span class="n">OrtValue</span><span class="o">.</span><span class="n">ortvalue_from_shape_and_type</span><span class="p">(</span><span class="n">shape</span><span class="p">,</span> <span class="n">element_type</span><span class="p">,</span>
+                        <span class="n">C</span><span class="o">.</span><span class="n">OrtDevice</span><span class="p">(</span><span class="n">get_ort_device_type</span><span class="p">(</span><span class="n">device_type</span><span class="p">),</span> <span class="n">C</span><span class="o">.</span><span class="n">OrtDevice</span><span class="o">.</span><span class="n">default_memory</span><span class="p">(),</span> <span class="n">device_id</span><span class="p">)))</span>
+
+    <span class="k">def</span> <span class="nf">data_ptr</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        Returns the address of the first element in the OrtValue&#39;s data buffer</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ortvalue</span><span class="o">.</span><span class="n">data_ptr</span><span class="p">()</span>
+
+    <span class="k">def</span> <span class="nf">device_name</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        Returns the name of the device where the OrtValue&#39;s data buffer resides e.g. cpu, cuda</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ortvalue</span><span class="o">.</span><span class="n">device_name</span><span class="p">()</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
+
+    <span class="k">def</span> <span class="nf">shape</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        Returns the shape of the data in the OrtValue</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ortvalue</span><span class="o">.</span><span class="n">shape</span><span class="p">()</span>
+
+    <span class="k">def</span> <span class="nf">data_type</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        Returns the data type of the data in the OrtValue</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ortvalue</span><span class="o">.</span><span class="n">data_type</span><span class="p">()</span>
+
+    <span class="k">def</span> <span class="nf">is_tensor</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        Returns True if the OrtValue is a Tensor, else returns False</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ortvalue</span><span class="o">.</span><span class="n">is_tensor</span><span class="p">()</span>
+
+    <span class="k">def</span> <span class="nf">numpy</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        Returns a Numpy object from the OrtValue.</span>
+<span class="sd">        Valid only for OrtValues holding Tensors. Throws for OrtValues holding non-Tensors.</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ortvalue</span><span class="o">.</span><span class="n">numpy</span><span class="p">()</span>
+</pre></div>
+
+          </div>
+          
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+            <p class="logo"><a href="../../../index.html">
+              <img class="logo" src="../../../static/ONNX_Runtime_icon.png" alt="Logo"/>
+            </a></p>
+<h1 class="logo"><a href="../../../index.html">ONNX Runtime</a></h1>
+
+
+
+
+
+
+
+
+<h3>Navigation</h3>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../tutorial.html">Tutorial</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../api_summary.html">API Summary</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../auto_examples/index.html">Gallery of examples</a></li>
+</ul>
+
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="../../../index.html">Documentation overview</a><ul>
+  <li><a href="../../index.html">Module code</a><ul>
+  </ul></li>
+  </ul></li>
+</ul>
+</div>
+<div id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="../../../search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" />
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</div>
+<script>$('#searchbox').show(0);</script>
+
+
+
+
+
+
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &copy;2018-2021, Microsoft.
+      
+      |
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 3.5.1</a>
+      &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.12</a>
+      
+    </div>
+
+    
+
+    
+  </body>
+</html>

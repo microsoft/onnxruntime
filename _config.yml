@@ -7,19 +7,22 @@ search.heading_level: 2
 search.button: true
 plugins:
   - jekyll-toc
+  - jekyll-redirect-from
 kramdown:
   parse_block_html: true
-  toc_levels: "1,2,3"
+  toc_levels: "2"
 logo: "/images/ONNX-Runtime-logo.svg"
-aux_links:
+aux_links:  
+  "ONNX Runtime":
+    - "/"
+  "Install":
+    - "/docs/install/"
+  "Get Started":
+    - "/docs/get-started/"
   "Tutorials":
     - "/docs/tutorials/"
-  "How to":
-    - "/docs/how-to/"
-  "Reference":
-    - "/docs/reference/"
-  "Resources":
-    - "/docs/resources/"
+  "API Docs":
+    - "/docs/api/"
   "GitHub":
     - "https://github.com/microsoft/onnxruntime"
 ga_tracking: UA-156955408-1    
