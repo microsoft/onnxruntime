@@ -142,7 +142,7 @@ TEST(Unique, Axis0_Unsorted) {
                              0.f, 1.f,
                              1.f, 0.f};
 
-  const int64_t axis = 0;
+  constexpr int64_t axis = 0;
   bool sorted = false;
   const std::vector<int64_t> Y_dims{3, 2};
   const std::vector<float> Y{0.f, 1.f,
