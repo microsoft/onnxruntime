@@ -164,7 +164,7 @@ Status BFCArena::Extend(size_t rounded_bytes) {
   static constexpr float kBackpedalFactor = 0.9f;
   // Try allocating less memory.
   while (mem_addr == nullptr) {
-    bytes = RoundedBytes(static_cast<size_t>(bytes) * static_cast<size_t>(kBackpedalFactor));
+    bytes = RoundedBytes(static_cast<size_t>(bytes * kBackpedalFactor));
 
     // give up if we can't satisfy the requested size, or we're attempting an allocation of less than 8K.
     //
