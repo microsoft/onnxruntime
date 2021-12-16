@@ -32,7 +32,7 @@ apt-get install -y python3 python3-dev python3-pip python3-setuptools gcc libtin
 pip3 install numpy decorator attrs
 ```
 
-Clone this repo using the `--recursive` flag to pull all associated dependencies
+Clone this [repo](https://github.com/microsoft/onnxruntime) using the `--recursive` flag to pull all associated dependencies
 
 
 Build TVM from the tvm_update folder:
