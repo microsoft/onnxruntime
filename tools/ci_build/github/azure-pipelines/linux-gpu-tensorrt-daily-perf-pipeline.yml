@@ -25,7 +25,7 @@ parameters:
   type: string
   default: 8.0.1.6
   values:
-  - 8.2.1.6
+  - 8.2.1.8
   - 8.0.1.6
   - 7.2.3.4
 
