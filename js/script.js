@@ -766,13 +766,13 @@ var validCombos = {
     "linux,Python,X86,STVM":
         "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-stvm' target='_blank'>here</a>",
 
-    "linux,Python,AMD32,STVM":
+    "linux,Python,ARM32,STVM":
         "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-stvm' target='_blank'>here</a>",
         
-    "linux,Python,AMD64,STVM":
+    "linux,Python,ARM64,STVM":
         "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-stvm' target='_blank'>here</a>",
         
-    "linux,Python,ARM,STVM":
+    "linux,Python,AMD,STVM":
         "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-stvm' target='_blank'>here</a>",
         
     "linux,C-API,X64,OpenVINO":
