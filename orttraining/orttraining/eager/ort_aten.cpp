@@ -255,22 +255,28 @@ at::Tensor _reshape_alias(
   ORT_LOG_FN(self, size, stride);
   // TODO: support stride
   auto& invoker = GetORTInvoker(self.device());
+  auto ort_input = create_ort_value(invoker, self);
   return aten_tensor_from_ort(
-    reshape_copy(
+    reshape_invoke(
       invoker,
-      create_ort_value(invoker, self),
-      size),
+      ort_input,
+      size,
+      // invoke reshape kernel inplace
+      true),
     self.options());
 }
 
 at::Tensor view(const at::Tensor& self, at::IntArrayRef size) {
   ORT_LOG_FN(self, size);
   auto& invoker = GetORTInvoker(self.device());
+  auto ort_input = create_ort_value(invoker, self);
   return aten_tensor_from_ort(
-    reshape_copy(
+    reshape_invoke(
       invoker,
-      create_ort_value(invoker, self),
-      size),
+      ort_input,
+      size,
+      // invoke reshape kernel inplace
+      true),
     self.options());
 }
 
