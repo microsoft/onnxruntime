@@ -760,30 +760,21 @@ var validCombos = {
     "linux,Python,X64,DNNL": 
         "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-mkldnn' target='_blank'>here</a>",
 
-    "windows,C-API,X64,NUPHAR":
-        "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-nuphar' target='_blank'>here</a>",
+    "linux,Python,X64,STVM":
+        "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-stvm' target='_blank'>here</a>",
 
-    "windows,C++,X64,NUPHAR":
-        "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-nuphar' target='_blank'>here</a>",
+    "linux,Python,X86,STVM":
+        "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-stvm' target='_blank'>here</a>",
 
-    "windows,C#,X64,NUPHAR":
-        "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-nuphar' target='_blank'>here</a>",
-
-    "windows,Python,X64,NUPHAR":
-        "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-nuphar' target='_blank'>here</a>",
-
-    "linux,C-API,X64,NUPHAR":
-        "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-nuphar' target='_blank'>here</a>",
-
-    "linux,C++,X64,NUPHAR":
-        "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-nuphar' target='_blank'>here</a>",
-
-    "linux,C#,X64,NUPHAR":
-        "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-nuphar' target='_blank'>here</a>",
-
-    "linux,Python,X64,NUPHAR":
-        "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-nuphar' target='_blank'>here</a>",
-
+    "linux,Python,AMD32,STVM":
+        "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-stvm' target='_blank'>here</a>",
+        
+    "linux,Python,AMD64,STVM":
+        "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-stvm' target='_blank'>here</a>",
+        
+    "linux,Python,ARM,STVM":
+        "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-stvm' target='_blank'>here</a>",
+        
     "linux,C-API,X64,OpenVINO":
         "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-openvino' target='_blank'>here</a>",
 
