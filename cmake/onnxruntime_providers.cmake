@@ -97,6 +97,10 @@ endif()
 if(onnxruntime_USE_ROCM)
   set(PROVIDERS_ROCM onnxruntime_providers_rocm)
 endif()
+if (onnxruntime_USE_STVM)
+  set(PROVIDERS_STVM onnxruntime_providers_stvm)
+endif()
+
 
 source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_common_srcs} ${onnxruntime_providers_srcs})
 
@@ -1167,4 +1171,47 @@ if (onnxruntime_USE_ROCM)
           LIBRARY  DESTINATION ${CMAKE_INSTALL_LIBDIR}
           RUNTIME  DESTINATION ${CMAKE_INSTALL_BINDIR})
 
+endif()
+
+if (onnxruntime_USE_STVM)
+  add_definitions(-DUSE_STVM=1)
+
+  file (GLOB_RECURSE onnxruntime_providers_stvm_cc_srcs CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/core/providers/stvm/*.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/stvm/*.cc"
+    )
+  source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_stvm_cc_srcs})
+  onnxruntime_add_static_library(onnxruntime_providers_stvm ${onnxruntime_providers_stvm_cc_srcs})
+
+  if ( CMAKE_COMPILER_IS_GNUCC )
+    target_compile_options(onnxruntime_providers_stvm PRIVATE -Wno-unused-parameter -Wno-missing-field-initializers)
+  endif()
+
+  target_include_directories(onnxruntime_providers_stvm PRIVATE
+          ${onnxruntime_STVM_HOME}/include
+          ${onnxruntime_STVM_HOME}/3rdparty/dlpack/include
+          ${onnxruntime_STVM_HOME}/3rdparty/dmlc-core/include
+          ${PYTHON_INLCUDE_DIRS})
+  onnxruntime_add_include_to_target(onnxruntime_providers_stvm onnxruntime_common onnx)
+
+  add_dependencies(onnxruntime_providers_stvm ${onnxruntime_EXTERNAL_DEPENDENCIES})
+
+  target_link_libraries(onnxruntime_providers_stvm PRIVATE
+      onnx
+      onnxruntime_common
+      onnxruntime_framework
+  )
+  if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+    target_link_libraries(onnxruntime_providers_stvm PRIVATE ${onnxruntime_STVM_HOME}/build/libtvm.dylib)
+  else()
+    target_link_libraries(onnxruntime_providers_stvm PRIVATE ${onnxruntime_STVM_HOME}/build/libtvm.so)
+  endif()
+
+  set_target_properties(onnxruntime_providers_stvm PROPERTIES FOLDER "ONNXRuntime")
+  set_target_properties(onnxruntime_providers_stvm PROPERTIES LINKER_LANGUAGE CXX)
+
+  target_compile_options(onnxruntime_providers_stvm PRIVATE -Wno-error=type-limits)
+  target_compile_definitions(onnxruntime_providers_stvm PUBLIC DMLC_USE_LOGGING_LIBRARY=<tvm/runtime/logging.h>)
+
+  install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/stvm  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
 endif()

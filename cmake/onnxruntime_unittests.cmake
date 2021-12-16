@@ -483,6 +483,7 @@ set(ONNXRUNTIME_TEST_LIBS
     ${PROVIDERS_ACL}
     ${PROVIDERS_ARMNN}
     ${PROVIDERS_COREML}
+    # ${PROVIDERS_STVM}
     onnxruntime_optimizer
     onnxruntime_providers
     onnxruntime_util
@@ -537,6 +538,14 @@ if(onnxruntime_USE_COREML)
   endif()
 endif()
 
+if (onnxruntime_USE_STVM)
+  file (GLOB_RECURSE onnxruntime_test_stvm_src CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/test/stvm/*.h"
+    "${ONNXRUNTIME_ROOT}/test/stvm/*.cc"
+  )
+
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_stvm)
+endif()
 
 if(WIN32)
   if (onnxruntime_USE_TVM)
@@ -626,6 +635,11 @@ endif()
 if (onnxruntime_USE_TVM)
   list(APPEND all_tests ${onnxruntime_test_tvm_src})
 endif()
+
+if (onnxruntime_USE_STVM)
+    list(APPEND all_tests ${onnxruntime_test_stvm_src})
+endif()
+
 if (onnxruntime_USE_OPENVINO)
   list(APPEND all_tests ${onnxruntime_test_openvino_src})
 endif()
@@ -1200,6 +1214,14 @@ if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_EXTENDED_MINIMAL_BUILD
   else()
     message(FATAL_ERROR "test_execution_provider unknown platform, need to specify shared library exports for it")
   endif()
+endif()
+
+if (onnxruntime_USE_STVM)
+  # find_library(STVM_LIBS NAMES libtvm.so PATHS ${onnxruntime_STVM_HOME}/lib)
+  # link_directories(onnxruntime_test_all ${STVM_LIBS})
+  find_library(PYTHON_LIBS NAMES libpython PATHS /usr/local/lib)
+  #target_link_libraries(onnxruntime_test_all PRIVATE ${PYTHON_LIBRARIES} -lutil)
+  # set(CMAKE_SHARED_LINKER_FLAGS "-Wl,-rpath,${STVM_LIBS}")
 endif()
 
 include(onnxruntime_fuzz_test.cmake)

@@ -59,8 +59,8 @@ option(onnxruntime_BUILD_OBJC "Build Objective-C library" OFF)
 option(onnxruntime_USE_PREINSTALLED_EIGEN "Use pre-installed EIGEN. Need to provide eigen_SOURCE_PATH if turn this on." OFF)
 option(onnxruntime_BUILD_BENCHMARKS "Build ONNXRuntime micro-benchmarks" OFF)
 
-option(onnxruntime_USE_TVM "Build tvm for code-gen" OFF)
-option(onnxruntime_USE_LLVM "Build tvm with LLVM" OFF)
+option(onnxruntime_USE_TVM "Build TVM for code generation." OFF)
+option(onnxruntime_USE_LLVM "Build TVM with LLVM" OFF)
 
 option(onnxruntime_BUILD_FOR_NATIVE_MACHINE "Enable this option for turning on optimization specific to this machine" OFF)
 option(onnxruntime_USE_AVX "Use AVX instructions" OFF)
@@ -103,6 +103,7 @@ option(onnxruntime_USE_MIMALLOC "Override new/delete and arena allocator with mi
 #It's default OFF because it's experimental now.
 option(onnxruntime_PREFER_SYSTEM_LIB "Experimental: Build with the preinstalled libraries in your system" OFF)
 option(onnxruntime_USE_ROCM "Build with AMD GPU support" OFF)
+option(onnxruntime_USE_STVM "Build with standalone TVM support" OFF)
 
 # Options related to reducing the binary size produced by the build
 option(onnxruntime_DISABLE_CONTRIB_OPS "Disable contrib ops" OFF)
@@ -1087,6 +1088,11 @@ if (onnxruntime_USE_NUPHAR)
     list(APPEND ORT_PROVIDER_FLAGS  -DUSE_NUPHAR=1)
     list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_NUPHAR=1)
     list(APPEND ONNXRUNTIME_PROVIDER_NAMES nuphar)
+endif()
+if (onnxruntime_USE_STVM)
+    list(APPEND ORT_PROVIDER_FLAGS  -DUSE_STVM=1)
+    list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_STVM=1)
+    list(APPEND ONNXRUNTIME_PROVIDER_NAMES stvm)
 endif()
 if (onnxruntime_USE_WINML)
   list(APPEND ORT_PROVIDER_FLAGS  -DUSE_WINML=1)
