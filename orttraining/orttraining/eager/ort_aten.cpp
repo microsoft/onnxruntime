@@ -117,6 +117,16 @@ OrtValue create_ort_value(const at::Tensor& tensor){
   return create_ort_value(invoker, tensor);
 }
 
+std::vector<OrtValue> create_ort_value(
+  onnxruntime::ORTInvoker& invoker,
+  at::TensorList values) {
+    auto output = std::vector<OrtValue>{};
+    for (auto element: values){
+      output.push_back(create_ort_value(element));
+    }
+    return output;
+}
+
 onnx::AttributeProto create_ort_attribute(
   const char* name,
   at::Scalar value) {
@@ -272,6 +282,29 @@ at::Tensor view(const at::Tensor& self, at::IntArrayRef size) {
       create_ort_value(invoker, self),
       size),
     self.options());
+}
+
+at::Tensor _cat(at::TensorList tensors, int64_t dim) {
+  ORT_LOG_FN(tensors, dim);
+  auto& invoker = GetORTInvoker(tensors[0].device());
+  auto ort_input_dim = create_ort_value(invoker, tensors);
+  onnxruntime::NodeAttributes attrs(1);
+  attrs["axis"] = create_ort_attribute(
+    "axis", dim, at::ScalarType::Int);
+
+  std::vector<OrtValue> ort_outputs_0_Concat(1);
+
+  auto status = invoker.Invoke("Concat", {
+  std::move(ort_input_dim),
+  }, ort_outputs_0_Concat, &attrs);
+
+  if (!status.IsOK())
+    throw std::runtime_error(
+      "ORT return failure status:" + status.ErrorMessage());
+  return aten_tensor_from_ort(
+    std::move(ort_outputs_0_Concat[0]),
+    tensors[0].options());
+
 }
 
 ONNX_NAMESPACE::TensorProto_DataType GetONNXTensorProtoDataType(at::ScalarType dtype){

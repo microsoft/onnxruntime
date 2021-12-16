@@ -32,6 +32,10 @@ OrtValue create_ort_value(
   onnxruntime::ORTInvoker& invoker,
   const at::Tensor& tensor);
 
+std::vector<OrtValue> create_ort_value(
+  onnxruntime::ORTInvoker& invoker,
+  at::TensorList tensors);
+
 OrtValue create_ort_value(const at::Tensor& tensor);
 
 // Create 1-dimensional ORT tensor from a given value
