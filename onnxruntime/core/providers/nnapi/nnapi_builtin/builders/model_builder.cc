@@ -208,8 +208,8 @@ static Status GetInputDataType(
       }
 
       // TODO, verify the scale and zero point match if there are multiple op using same input
-      const auto* _node = all_quantized_op_inputs.at(name)[0];
-      const NodeUnit node_unit(*_node);
+      const auto* node = all_quantized_op_inputs.at(name)[0];
+      const NodeUnit node_unit(*node);
       ORT_RETURN_IF_ERROR(GetQuantizedInputScaleAndZeroPoint(
           initializers, node_unit, name, scale, zero_point));
       break;

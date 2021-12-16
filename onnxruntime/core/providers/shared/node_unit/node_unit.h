@@ -5,6 +5,7 @@
 
 #include <string>
 #include <optional>
+#include <vector>
 
 #include "core/graph/basic_types.h"
 
@@ -20,14 +21,23 @@ namespace QDQ {
 struct NodeGroup;
 }
 
+/**
+@class NodeUnit
+Class to represent a single node or a QDQ group of nodes, which will be used as a single unit.
+*/
 class NodeUnit {
  public:
+  // NodeUnit type
   enum class Type : uint8_t {
-    Node,
-    QDQ
+    SingleNode,  // The NodeUnit contains a single node
+    QDQGroup,    // The NodeUnit contain a QDQ group of nodes, such as "DQ->Sigmoid->Q"
   };
 
+  // Definition of one input or output
+  // If the optional quant_param is present, then this is a quantized input,
+  // otherwise this is a regular input
   struct IODef {
+    // The quantization parmeter, scale is manadatory, and zero_point is optional
     struct QuantParam {
       const NodeArg& scale;
       const NodeArg* zero_point{nullptr};
@@ -39,7 +49,6 @@ class NodeUnit {
 
  public:
   explicit NodeUnit(const Node& node);
-  ~NodeUnit();
 
   Type UnitType() const noexcept { return type_; }
 

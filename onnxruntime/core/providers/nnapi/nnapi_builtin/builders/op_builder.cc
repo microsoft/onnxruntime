@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "op_builder.h"
+
 #include <core/common/logging/logging.h>
 #include <core/common/safeint.h>
 #include <core/framework/tensorprotoutils.h>
@@ -12,7 +14,6 @@
 #include "core/providers/cpu/tensor/slice_helper.h"
 #include "helper.h"
 #include "model_builder.h"
-#include "op_builder.h"
 #include "op_support_checker.h"
 
 using onnxruntime::NodeUnit;
@@ -653,16 +654,6 @@ static Status IsValidConvWeightQuantizedType(const ModelBuilder& model_builder,
   }
 
   return Status::OK();
-}
-
-static void AddBinaryOpQuantizationScaleAndZeroPointToSkip(ModelBuilder& model_builder, const Node& node) {
-  const auto input_defs(node.InputDefs());
-  model_builder.AddInitializerToSkip(input_defs[1]->Name());  // a_scale
-  model_builder.AddInitializerToSkip(input_defs[2]->Name());  // a_zero_point
-  model_builder.AddInitializerToSkip(input_defs[4]->Name());  // b_scale
-  model_builder.AddInitializerToSkip(input_defs[5]->Name());  // b_zero_point
-  model_builder.AddInitializerToSkip(input_defs[6]->Name());  // y_scale
-  model_builder.AddInitializerToSkip(input_defs[7]->Name());  // y_zero_point
 }
 
 static void AddBinaryOpQuantizationScaleAndZeroPointToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) {
@@ -1390,7 +1381,7 @@ void ConvOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Nod
 
   // skip the weight for conv as we need to transpose
   if (op == "QLinearConv") {
-    AddBinaryOpQuantizationScaleAndZeroPointToSkip(model_builder, node);
+    AddBinaryOpQuantizationScaleAndZeroPointToSkip(model_builder, node_unit);
     model_builder.AddInitializerToSkip(input_defs[3]->Name());  // w
     if (input_defs.size() > 8)
       model_builder.AddInitializerToSkip(input_defs[8]->Name());  // B
@@ -1792,7 +1783,7 @@ void GemmOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Nod
     if (transB == 0)
       model_builder.AddInitializerToSkip(input_defs[1]->Name());
   } else if (op == "QLinearMatMul") {
-    AddBinaryOpQuantizationScaleAndZeroPointToSkip(model_builder, node);
+    AddBinaryOpQuantizationScaleAndZeroPointToSkip(model_builder, node_unit);
     model_builder.AddInitializerToSkip(input_defs[3]->Name());  // b
   }
 }

@@ -1,21 +1,17 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/graph/graph.h"
-// #include "core/graph/graph_viewer.h"
-
 #include "node_unit.h"
+#include "core/graph/graph.h"
 
 namespace onnxruntime {
 
 NodeUnit::NodeUnit(const Node& node)
     : nodes_{&node},
       node_(node),
-      type_(Type::Node) {
+      type_(Type::SingleNode) {
   InitForNode();
 }
-
-NodeUnit::~NodeUnit() = default;
 
 const std::string& NodeUnit::Domain() const noexcept { return node_.Domain(); }
 const std::string& NodeUnit::OpType() const noexcept { return node_.OpType(); }
