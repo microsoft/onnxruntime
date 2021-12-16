@@ -1,3 +1,4 @@
+#pragma once
 
 // C_i == input_channel_per_group, since it is depthwise, it is always 1
 // C_o == total_output_channel == group * output_channel_per_group, currently,

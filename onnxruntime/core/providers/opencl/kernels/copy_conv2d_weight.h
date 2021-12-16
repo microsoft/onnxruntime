@@ -1,3 +1,5 @@
+#pragma once
+
 __kernel void Conv2DWeightBufferToImage(
     const int width, const int height,  // image, width = C_i, height = CeilDiv(C_o, 4)*K_h*K_w
     __global const float* data,

@@ -1,3 +1,5 @@
+#pragma once
+
 __kernel void CopyBuffer1DToImage2D(
     int width, int height,
     __global const float* data,

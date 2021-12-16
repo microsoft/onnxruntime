@@ -1,6 +1,5 @@
-// FIXME: LICENSE NOTICE:
-// adapted from TNN original BSD3.
-#include <kernels/utils.h>
+#pragma once
+#include "./utils.h"
 
 // launch a grid with total [X = RoundToMultiple(width, k), Y = height] threads,
 // height is not rounded up because threads only continuous in x dimension.
