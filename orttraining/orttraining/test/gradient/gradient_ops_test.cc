@@ -443,7 +443,7 @@ TEST(GradientCheckerTest, LogGrad) {
 
   float max_error;
 #ifdef USE_DNNL
-  float error_tolerance = 3e-3f;
+  float error_tolerance = 4e-3f;
 #else
   float error_tolerance = 1e-3f;
 #endif
