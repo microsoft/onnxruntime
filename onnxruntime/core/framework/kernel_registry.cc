@@ -268,7 +268,7 @@ Status KernelRegistry::TryFindKernel(const Node& node,
 }
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
-bool KernelRegistry::TryFindKernelByHash(uint64_t kernel_def_hash, const KernelCreateInfo** out) const {
+bool KernelRegistry::TryFindKernelByHash(HashValue kernel_def_hash, const KernelCreateInfo** out) const {
   const auto hash_lookup_it = kernel_def_hash_lookup_.find(kernel_def_hash);
   if (hash_lookup_it == kernel_def_hash_lookup_.end()) {
     if (out) *out = nullptr;

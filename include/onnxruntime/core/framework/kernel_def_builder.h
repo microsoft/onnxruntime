@@ -103,7 +103,7 @@ class KernelDef {
 
   bool IsConflict(const KernelDef& other) const;
 
-  uint64_t GetHash() const noexcept {
+  HashValue GetHash() const noexcept {
     // if we need to support different hash versions we can update CalculateHash to take a version number
     // and calculate any non-default versions dynamically. we only use this during kernel lookup so
     // it's not performance critical
@@ -175,7 +175,7 @@ class KernelDef {
   OrtMemType default_outputs_mem_type_{OrtMemTypeDefault};
 
   // hash of kernel definition for lookup in minimal build
-  uint64_t hash_ = 0;
+  HashValue hash_ = 0;
 };
 
 class KernelDefBuilder {

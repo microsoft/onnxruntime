@@ -74,7 +74,7 @@ class KernelRegistryManager {
   /**
    * Search the kernel registries given a kernel def hash.
    */
-  bool SearchKernelRegistriesByHash(uint64_t kernel_def_hash,
+  bool SearchKernelRegistriesByHash(HashValue kernel_def_hash,
                                     const KernelCreateInfo** kernel_create_info) const;
 
   std::unique_ptr<OpKernel> CreateKernel(const onnxruntime::Node& node,
