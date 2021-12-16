@@ -1,0 +1,16 @@
+cff-version: 1.2.0
+title: ONNX Runtime
+message: "Please use this information to cite ONNX Runtime in
+  research or other publications."
+type: software
+authors:
+  - affiliation: Microsoft Corporation
+    given-names: ONNX Runtime developers
+title: "ONNX Runtime"
+url: "https://gonnxruntime.ai"
+repository-code: "https://github.com/microsoft/onnxruntime"
+license: "MIT License"
+date-released: 2018-11-29
+keywords:
+  - deep learning
+  - machine learning
