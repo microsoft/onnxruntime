@@ -493,6 +493,16 @@
                "DownloadUrl": "http://security.ubuntu.com/ubuntu/pool/main/s/sqlite3/libsqlite3-dev_3.22.0-1ubuntu0.4_amd64.deb"
             }
          }
+      },
+      {
+         "component": {
+            "type": "git",
+            "git": {
+               "commitHash": "512d44b9aa22690fd7d7e665fcab9bdcb590f118",
+               "repositoryUrl": "https://github.com/google/XNNPACK.git"
+            },
+            "comments": "xnnpack"
+         }
       }
    ],
    "Version": 1

@@ -26,6 +26,7 @@ class DnnlGraphTransformer {
   bool IsInitilizedWithExpectedValue(DnnlSubgraph& subgraph, DnnlTensor& input_arg, float expected_value);
   void ConvRelu(DnnlSubgraph& subgraph);
   void MatMulAdd(DnnlSubgraph& subgraph);
+  void RemoveMatMulIntegerZP(DnnlSubgraph& subgraph);
   // This function checks a few things
   //   - the node in question has a single output
   //   - The output of the node is only consumed by a one other node

@@ -14,9 +14,6 @@ Abstract:
 
 --*/
 
-
-#include "asmmacro.h"
-
         .intel_syntax noprefix
 
 /*++
@@ -28,7 +25,9 @@ Routine Description:
 
 --*/
 
-        FUNCTION_ENTRY __x86.get_pc_thunk.bx
-
+        .p2align 4
+        .weak  __x86.get_pc_thunk.bx
+        .type   __x86.get_pc_thunk.bx,@function
+__x86.get_pc_thunk.bx:
         mov ebx, [esp]
         ret
