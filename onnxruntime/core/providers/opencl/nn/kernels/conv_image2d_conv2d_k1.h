@@ -1,7 +1,8 @@
+// FIXME: LICENSE NOTICE:  adapted from TNN original BSD3.
 #include "./conv_image2d_shared.h"
 
-// this kerenl only support kernel == 1x1
-__kernel void Conv2D_K1(
+// this kerenl only support kernel == 1x1 and padding == 0x0
+__kernel void Conv2DK1(
     __private const int gs_dim0,
     __private const int gs_dim1,
     __read_only image2d_t input,
@@ -14,8 +15,8 @@ __kernel void Conv2D_K1(
     __private const int2 stride_wh,
     __private const int output_w_updiv_4,
     __private const int act_type,
-    __private const int act_param0,
-    __private const int act_param1) {
+    __private const float act_param0,
+    __private const float act_param1) {
   const int output_cw_idx = get_global_id(0);
   const int output_bh_idx = get_global_id(1);
   if (output_cw_idx >= gs_dim0 || output_bh_idx >= gs_dim1) return;

@@ -64,7 +64,10 @@ class Conv : public OpenCLKernel {
 
     LoadProgram(conv_kernel_src, conv_kernel_src_len);
     LoadKernel("Conv2D");
+    LoadKernel("Conv2DK1");
+    LoadKernel("Conv2DK1S1");
     LoadKernel("DepthwiseConv2D");
+    LoadKernel("DepthwiseConv2DS1");
   };
 
   Status Compute(OpKernelContext* context) const override {
@@ -150,21 +153,40 @@ class Conv : public OpenCLKernel {
     ORT_ENFORCE(C_in == C_out, "depthwise conv2d enforcement failure");
     uint32_t gsx = CeilDiv(C_out, 4) * CeilDiv(W_out, 4);
     uint32_t gsy = N * H_out;
-    ORT_RETURN_IF_ERROR(
-        KernelLauncher{GetKernel("DepthwiseConv2D")}
-            .setArg<cl_int>(gsx)
-            .setArg<cl_int>(gsy)
-            .setImage2Ds(*X, *W, *B, *Y)
-            .setInt2(W_in, H_in)
-            .setInt2(W_out, H_out)
-            .setInt2(K[0], K[1])
-            .setInt2(S[0], S[1])
-            .setInt2(P[0], P[1])
-            .setInt2(D[0], D[1])
-            .setArg<cl_int>(act_info_.kind)
-            .setArg<cl_float>(act_info_.param0)
-            .setArg<cl_float>(act_info_.param1)
-            .Launch(GetCommandQueue(), {gsx, gsy}));
+
+    bool S1 = S[0] == 1 && S[1] == 1 && D[0] == 1 && D[1] == 1;
+
+    if (S1) {
+      ORT_RETURN_IF_ERROR(
+          KernelLauncher{GetKernel("DepthwiseConv2DS1")}
+              .setArg<cl_int>(gsx)
+              .setArg<cl_int>(gsy)
+              .setImage2Ds(*X, *W, *B, *Y)
+              .setInt2(W_in, H_in)
+              .setInt2(W_out, H_out)
+              .setInt2(K[0], K[1])
+              .setInt2(P[0], P[1])
+              .setArg<cl_int>(act_info_.kind)
+              .setArg<cl_float>(act_info_.param0)
+              .setArg<cl_float>(act_info_.param1)
+              .Launch(GetCommandQueue(), {gsx, gsy}));
+    } else {
+      ORT_RETURN_IF_ERROR(
+          KernelLauncher{GetKernel("DepthwiseConv2D")}
+              .setArg<cl_int>(gsx)
+              .setArg<cl_int>(gsy)
+              .setImage2Ds(*X, *W, *B, *Y)
+              .setInt2(W_in, H_in)
+              .setInt2(W_out, H_out)
+              .setInt2(K[0], K[1])
+              .setInt2(S[0], S[1])
+              .setInt2(P[0], P[1])
+              .setInt2(D[0], D[1])
+              .setArg<cl_int>(act_info_.kind)
+              .setArg<cl_float>(act_info_.param0)
+              .setArg<cl_float>(act_info_.param1)
+              .Launch(GetCommandQueue(), {gsx, gsy}));
+    }
 
     return Status::OK();
   }
@@ -195,24 +217,58 @@ class Conv : public OpenCLKernel {
     auto W_out = yshape[3];
     uint32_t gsx = CeilDiv(C_out, 4) * CeilDiv(W_out, 4);
     uint32_t gsy = N * H_out;
-    ORT_RETURN_IF_ERROR(
-        KernelLauncher{GetKernel("Conv2D")}
-            .setArg<cl_int>(gsx)
-            .setArg<cl_int>(gsy)
-            .setImage2Ds(*X, *W, *B, *Y)
-            .setInt2(W_in, H_in)
-            .setArg<cl_int>(CeilDiv(C_in, 4))
-            .setInt2(W_out, H_out)
-            .setInt2(K[0], K[1])
-            .setInt2(S[0], S[1])
-            .setInt2(P[0], P[1])
-            .setInt2(D[0], D[1])
-            .setArg<cl_int>(CeilDiv(W_out, 4))
-            .setArg<cl_int>(act_info_.kind)
-            .setArg<cl_float>(act_info_.param0)
-            .setArg<cl_float>(act_info_.param1)
-            .Launch(GetCommandQueue(), {gsx, gsy}));
 
+    bool K1 = K[0] == 1 && K[1] == 1 && P[0] == 0 && P[1] == 0;
+    bool S1 = S[0] == 1 && S[1] == 1 && D[0] == 1 && D[1] == 1;
+
+    if (K1 && S1) {
+      ORT_RETURN_IF_ERROR(
+          KernelLauncher{GetKernel("Conv2DK1S1")}
+              .setArg<cl_int>(gsx)
+              .setArg<cl_int>(gsy)
+              .setImage2Ds(*X, *W, *B, *Y)
+              .setInt2(W_in, H_in)
+              .setArg<cl_int>(CeilDiv(C_in, 4))
+              .setArg<cl_int>(CeilDiv(W_out, 4))
+              .setArg<cl_int>(act_info_.kind)
+              .setArg<cl_float>(act_info_.param0)
+              .setArg<cl_float>(act_info_.param1)
+              .Launch(GetCommandQueue(), {gsx, gsy}));
+    } else if (K1) {
+      ORT_RETURN_IF_ERROR(
+          KernelLauncher{GetKernel("Conv2DK1")}
+              .setArg<cl_int>(gsx)
+              .setArg<cl_int>(gsy)
+              .setImage2Ds(*X, *W, *B, *Y)
+              .setInt2(W_in, H_in)
+              .setArg<cl_int>(CeilDiv(C_in, 4))
+              .setInt2(W_out, H_out)
+              .setInt2(S[0], S[1])
+              .setInt2(D[0], D[1])
+              .setArg<cl_int>(CeilDiv(W_out, 4))
+              .setArg<cl_int>(act_info_.kind)
+              .setArg<cl_float>(act_info_.param0)
+              .setArg<cl_float>(act_info_.param1)
+              .Launch(GetCommandQueue(), {gsx, gsy}));
+    } else {
+      ORT_RETURN_IF_ERROR(
+          KernelLauncher{GetKernel("Conv2D")}
+              .setArg<cl_int>(gsx)
+              .setArg<cl_int>(gsy)
+              .setImage2Ds(*X, *W, *B, *Y)
+              .setInt2(W_in, H_in)
+              .setArg<cl_int>(CeilDiv(C_in, 4))
+              .setInt2(W_out, H_out)
+              .setInt2(K[0], K[1])
+              .setInt2(S[0], S[1])
+              .setInt2(P[0], P[1])
+              .setInt2(D[0], D[1])
+              .setArg<cl_int>(CeilDiv(W_out, 4))
+              .setArg<cl_int>(act_info_.kind)
+              .setArg<cl_float>(act_info_.param0)
+              .setArg<cl_float>(act_info_.param1)
+              .Launch(GetCommandQueue(), {gsx, gsy}));
+    }
     return Status::OK();
   }
 

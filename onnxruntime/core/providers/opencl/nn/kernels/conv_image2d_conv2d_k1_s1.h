@@ -1,18 +1,20 @@
+// FIXME: LICENSE NOTICE:  adapted from TNN original BSD3.
 #include "./conv_image2d_shared.h"
 
-// this kerenl only support kernel == 1x1 and stride == 1x1
-__kernel void Conv2D_K1_S1(
+// this kerenl only support kernel == 1x1 and padding == 0x0 and stride == 1x1
+__kernel void Conv2DK1S1(
     __private const int gs_dim0,
     __private const int gs_dim1,
     __read_only image2d_t input,
     __read_only image2d_t weights,
     __read_only image2d_t bias,
-    __write_only image2d_t output, __private const int2 wh,
+    __write_only image2d_t output,
+    __private const int2 input_wh, // output_wh == input_wh
     __private const int input_c_blocks,
     __private const int output_w_updiv_4,
     __private const int act_type,
-    __private const int act_param0,
-    __private const int act_param1) {
+    __private const float act_param0,
+    __private const float act_param1) {
   const int output_cw_idx = get_global_id(0);
   const int bh_idx = get_global_id(1);
   if (output_cw_idx >= gs_dim0 || bh_idx >= gs_dim1) return;
@@ -30,10 +32,10 @@ __kernel void Conv2D_K1_S1(
   int input_w_idx2 = input_w_idx0 + 2;
   int input_w_idx3 = input_w_idx0 + 3;
 
-  input_w_idx0 = select(input_w_idx0, INT_MIN, input_w_idx0 >= wh.x);
-  input_w_idx1 = select(input_w_idx1, INT_MIN, input_w_idx1 >= wh.x);
-  input_w_idx2 = select(input_w_idx2, INT_MIN, input_w_idx2 >= wh.x);
-  input_w_idx3 = select(input_w_idx3, INT_MIN, input_w_idx3 >= wh.x);
+  input_w_idx0 = select(input_w_idx0, INT_MIN, input_w_idx0 >= input_wh.x);
+  input_w_idx1 = select(input_w_idx1, INT_MIN, input_w_idx1 >= input_wh.x);
+  input_w_idx2 = select(input_w_idx2, INT_MIN, input_w_idx2 >= input_wh.x);
+  input_w_idx3 = select(input_w_idx3, INT_MIN, input_w_idx3 >= input_wh.x);
 
   FLOAT4 in0;
   FLOAT4 in1;
@@ -61,7 +63,7 @@ __kernel void Conv2D_K1_S1(
     CALCULATE_OUTPUT(2);
     CALCULATE_OUTPUT(3);
 
-    input_w_base += wh.x;
+    input_w_base += input_wh.x;
     weights_w_base += 4;
   }
 
@@ -77,10 +79,10 @@ __kernel void Conv2D_K1_S1(
     out3 = Act(out3, act_type);
   }
 
-  const int out_x_base = mul24(output_c_block_idx, wh.x);
+  const int out_x_base = mul24(output_c_block_idx, input_wh.x);
   int out_x_idx = output_w_block_idx << 2;
 
-  const int remain = wh.x - out_x_idx;
+  const int remain = input_wh.x - out_x_idx;
   int output_w_idx = out_x_base + out_x_idx;
   SafeWriteOutput(output, out0, out1, out2, out3, output_w_idx, bh_idx, remain);
 }

@@ -32,7 +32,12 @@ inline FLOAT4 Clip(FLOAT4 v, float clip_min, float clip_max) {
   return clamp(v, (FLOAT4)clip_min, (FLOAT4)clip_max);
 }
 
-inline void SafeWriteOutput(__write_only image2d_t output, FLOAT4 out0, FLOAT4 out1, FLOAT4 out2, FLOAT4 out3, const int output_w_idx, const int output_h_idx, const int remain) {
+inline void SafeWriteOutput(
+    __write_only image2d_t output,
+    FLOAT4 out0, FLOAT4 out1, FLOAT4 out2, FLOAT4 out3,
+    const int output_w_idx,
+    const int output_h_idx,
+    const int remain) {
   if (remain >= 4) {
     WI_F(output, (int2)(output_w_idx, output_h_idx), out0);
     WI_F(output, (int2)(output_w_idx + 1, output_h_idx), out1);
