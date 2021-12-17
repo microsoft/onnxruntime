@@ -106,6 +106,7 @@ struct Relu : public ElementWiseRangedTransform<T> {
   Status Init(const onnxruntime::NodeAttributes&) {
     return Status::OK();
   }
+  GSL_SUPPRESS(r .11)
   ElementWiseRangedTransform<T>* Copy() const {  // replace it with a macro. why this?
     using T1 = typename std::remove_pointer<decltype(this)>::type;
     using T2 = typename std::remove_const<T1>::type;  //redundant?

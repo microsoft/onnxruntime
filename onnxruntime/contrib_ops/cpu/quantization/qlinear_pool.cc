@@ -119,7 +119,7 @@ struct QLinearPoolNhwc1DTask final {
     int64_t batch = begin / y_image_size;
     int64_t offset = begin % y_image_size;
 
-    for (int64_t remains = end - begin; remains > 0; offset = 0, batch++) {
+    for (std::ptrdiff_t remains = end - begin; remains > 0; offset = 0, batch++) {
       if (offset + remains <= y_image_size) {
         operator()(std::ptrdiff_t(batch), std::ptrdiff_t(offset), std::ptrdiff_t(offset + remains));
         remains = 0;
@@ -268,7 +268,7 @@ struct QLinearPoolNhwc2DTask final {
     start_pw -= (start_ph * pooled_width);
 
     int64_t pool_index = channels * begin;
-    int64_t remains = end - begin;
+    std::ptrdiff_t remains = end - begin;
     std::vector<float> Yh(channels);
 
     for (int64_t ph = start_ph; remains > 0 && ph < pooled_height; ++ph) {
