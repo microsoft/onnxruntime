@@ -63,15 +63,15 @@ class NodeArg {
   @returns true if NodeArg is a normal tensor with a non-empty shape or a scalar with an empty shape. Otherwise, returns false. */
   bool HasTensorOrScalarShape() const;
 
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   /** Sets the shape.
   @remarks Shape can only be set if the TypeProto was provided to the ctor, or #SetType has been called,
   as the shape information is stored as part of TypeProto. */
-  void SetShape(const ONNX_NAMESPACE::TensorShapeProto& shape);
+  void SetShape(const ONNX_NAMESPACE::TensorShapeProto& shape);  // api_impl.cc needs this
 
   /** Clears shape info.
   @remarks If there is a mismatch during shape inferencing that can't be resolved the shape info may be removed. */
-  void ClearShape();
+  void ClearShape();  // api_impl.cc needs this
 
   /** Override current type from input_type if override_types is set to true, return failure status otherwise.
   @param input_tensor_elem_type Tensor element type parsed input_type
@@ -95,9 +95,9 @@ class NodeArg {
                 If false, will be lenient and merge only shape info that can be validly processed.
   @param override_types If true, resolve the two inputs or two outputs type when different
   @returns Success unless there is existing type or shape info that can't be successfully updated. */
-  common::Status UpdateTypeAndShape(const NodeArg& node_arg, bool strict, bool override_types, const logging::Logger& logger);
+  common::Status UpdateTypeAndShape(const NodeArg& node_arg, bool strict, bool override_types, const logging::Logger& logger);  // api_impl.cc needs this, depends on onnx::mergeShapeInfo
 
-#endif  // !defined(ORT_MINIMAL_BUILD)
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
   /** Gets this NodeArg as a NodeArgInfo, AKA ValueInfoProto. */
   const NodeArgInfo& ToProto() const noexcept { return node_arg_info_; }
@@ -112,7 +112,7 @@ class NodeArg {
 
   NodeArg(NodeArgInfo&& node_arg_info);
 
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   void SetType(const std::string* p_type);
   void SetType(const ONNX_NAMESPACE::TypeProto& type_proto);
 #endif

@@ -36,6 +36,10 @@
 using namespace ONNX_NAMESPACE::checker;
 #endif
 
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+#include "onnx/defs/shape_inference.h"
+#endif
+
 using namespace ONNX_NAMESPACE;
 using namespace ONNX_NAMESPACE::Utils;
 using namespace ::onnxruntime::common;
@@ -66,6 +70,43 @@ static bool UsingLatestOnnxOpset(const DomainToVersionMap& opset_versions) {
   return is_latest_opset;
 }
 
+static bool GraphLoadedFromModelFile(const GraphProto* graph_proto) {
+  return graph_proto && (graph_proto->node_size() != 0 ||
+                         graph_proto->output_size() != 0);
+}
+
+// there are some known invalid usages of dim_param and dim_value. remove them from the TypeProto so that
+// they don't affect shape inferencing or the allocation planner
+static void RemoveInvalidValues(ONNX_NAMESPACE::TypeProto& type) {
+  if (utils::HasTensorType(type) && utils::HasShape(type.tensor_type())) {
+    auto* shape = type.mutable_tensor_type()->mutable_shape();
+    for (int i = 0, end = shape->dim_size(); i < end; ++i) {
+      auto& dim = *shape->mutable_dim(i);
+      if (utils::HasDimParam(dim)) {
+        if (dim.dim_param().empty()) {
+          dim.clear_dim_param();
+        }
+      } else if (utils::HasDimValue(dim)) {
+        if (dim.dim_value() < 0) {
+          dim.clear_dim_value();
+        }
+      }
+    }
+  }
+}
+
+static TypeProto TypeProtoFromTensorProto(const TensorProto& tensor) {
+  TypeProto t;
+  t.mutable_tensor_type()->set_elem_type(tensor.data_type());
+  auto shape = t.mutable_tensor_type()->mutable_shape();
+  for (auto dim : tensor.dims())
+    shape->add_dim()->set_dim_value(dim);
+
+  return t;
+}
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 static Status MergeShapeInfo(const std::string& output_name,
                              const TypeProto& source, TypeProto& target,
                              bool strict, const logging::Logger& logger) {
@@ -149,43 +190,6 @@ static Status MergeShapeInfo(const std::string& output_name,
   return status;
 }
 
-static bool GraphLoadedFromModelFile(const GraphProto* graph_proto) {
-  return graph_proto && (graph_proto->node_size() != 0 ||
-                         graph_proto->output_size() != 0);
-}
-
-// there are some known invalid usages of dim_param and dim_value. remove them from the TypeProto so that
-// they don't affect shape inferencing or the allocation planner
-static void RemoveInvalidValues(ONNX_NAMESPACE::TypeProto& type) {
-  if (utils::HasTensorType(type) && utils::HasShape(type.tensor_type())) {
-    auto* shape = type.mutable_tensor_type()->mutable_shape();
-    for (int i = 0, end = shape->dim_size(); i < end; ++i) {
-      auto& dim = *shape->mutable_dim(i);
-      if (utils::HasDimParam(dim)) {
-        if (dim.dim_param().empty()) {
-          dim.clear_dim_param();
-        }
-      } else if (utils::HasDimValue(dim)) {
-        if (dim.dim_value() < 0) {
-          dim.clear_dim_value();
-        }
-      }
-    }
-  }
-}
-
-static TypeProto TypeProtoFromTensorProto(const TensorProto& tensor) {
-  TypeProto t;
-  t.mutable_tensor_type()->set_elem_type(tensor.data_type());
-  auto shape = t.mutable_tensor_type()->mutable_shape();
-  for (auto dim : tensor.dims())
-    shape->add_dim()->set_dim_value(dim);
-
-  return t;
-}
-#endif  // !defined(ORT_MINIMAL_BUILD)
-
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 NodeArg::NodeArg(const std::string& name, const TypeProto* p_node_arg_type) {
   node_arg_info_.set_name(name);
   // If the name is empty, it means the arg does not exist.
@@ -293,7 +297,7 @@ bool NodeArg::HasTensorOrScalarShape() const {
   }
 }
 
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 void NodeArg::SetShape(const TensorShapeProto& shape) {
   const auto type_case = node_arg_info_.type().value_case();
   switch (type_case) {
@@ -512,7 +516,7 @@ void NodeArg::SetType(const TypeProto& type_proto) {
   *(node_arg_info_.mutable_type()) = type_proto;
 }
 
-#endif  // !defined(ORT_MINIMAL_BUILD)
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 bool NodeArg::Exists() const noexcept {
   return exists_;
@@ -941,13 +945,15 @@ ADD_ATTR_IMPL(SparseTensorProto, AttributeProto_AttributeType::AttributeProto_At
 ADD_LIST_ATTR_IMPL(SparseTensorProto, AttributeProto_AttributeType::AttributeProto_AttributeType_SPARSE_TENSORS, sparse_tensors)
 #endif
 
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 bool Node::ClearAttribute(const std::string& attr_name) {
   graph_->SetGraphResolveNeeded();
   graph_->SetGraphProtoSyncNeeded();
   return attributes_.erase(attr_name) > 0;
 }
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
+#if !defined(ORT_MINIMAL_BUILD)
 Status Node::UpdateInputArgCount() {
   // The node refers to a primitive operator.
   // Infer and verify node input arg type information.
@@ -3073,23 +3079,6 @@ Node& Graph::AddNode(const NodeProto& node_proto,
                  node_proto.domain());
 }
 
-std::string Graph::GenerateNodeArgName(const std::string& base_name) {
-  std::string new_name = base_name;
-  // Check if new_name has been used in as any of node_args_' names.
-  // Check if new_name has been generated by this function.
-  // If both are not, add new_name into name set and return the new_name
-  // as the generated name. Otherwise, keep generating new names.
-  while (node_args_.find(new_name) != node_args_.end() ||
-         generated_node_arg_names_.find(new_name) != generated_node_arg_names_.end()) {
-    std::ostringstream str;
-    str << base_name << "_token_" << name_generator_++;
-    new_name = str.str();
-  }
-
-  generated_node_arg_names_.insert(new_name);
-  return new_name;
-}
-
 static flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>>
 SaveInputsOutputsToOrtFormat(flatbuffers::FlatBufferBuilder& builder, const std::vector<const NodeArg*>& src) {
   std::vector<flatbuffers::Offset<flatbuffers::String>> vec(src.size());
@@ -3194,6 +3183,25 @@ common::Status Graph::SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
   fbs_graph = gb.Finish();
   return Status::OK();
 }
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+std::string Graph::GenerateNodeArgName(const std::string& base_name) {
+  std::string new_name = base_name;
+  // Check if new_name has been used in as any of node_args_' names.
+  // Check if new_name has been generated by this function.
+  // If both are not, add new_name into name set and return the new_name
+  // as the generated name. Otherwise, keep generating new names.
+  while (node_args_.find(new_name) != node_args_.end() ||
+         generated_node_arg_names_.find(new_name) != generated_node_arg_names_.end()) {
+    std::ostringstream str;
+    str << base_name << "_token_" << name_generator_++;
+    new_name = str.str();
+  }
+
+  generated_node_arg_names_.insert(new_name);
+  return new_name;
+}
 
 std::string Graph::GenerateNodeName(const std::string& base_name) {
   // Define name-checking function for node name.
@@ -3233,9 +3241,7 @@ std::string Graph::GenerateNodeName(const std::string& base_name) {
 
   return new_name;
 }
-#endif  // !defined(ORT_MINIMAL_BUILD)
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 Node& Graph::AddNode(const std::string& name,
                      const std::string& op_type,
                      const std::string& description,

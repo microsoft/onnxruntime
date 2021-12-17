@@ -347,10 +347,12 @@ class Node {
   /** Gets the Node's attributes. */
   const NodeAttributes& GetAttributes() const noexcept { return attributes_; }
 
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   /** Remove the specified attribute from this Node */
   bool ClearAttribute(const std::string& attr_name);
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
+#if !defined(ORT_MINIMAL_BUILD)
   /** Gets the Node's mutable attributes. */
   NodeAttributes& GetMutableAttributes() noexcept { return attributes_; }
 
@@ -820,13 +822,15 @@ class Graph {
     return *(result.first->second);
   }
 
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   /** Generate a unique name in this Graph for a NodeArg */
   std::string GenerateNodeArgName(const std::string& base_name);
 
   /** Generate a unique name in this Graph for a Node */
   std::string GenerateNodeName(const std::string& base_name);
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
+#if !defined(ORT_MINIMAL_BUILD)
   /** Copy a Node and add it to this Graph.
   @param other Node to copy
   @returns Reference to the Node that was created and added to this Graph.
@@ -1063,6 +1067,9 @@ class Graph {
   /** Sets the type of a NodeArg, replacing existing type/shape if any */
   void SetNodeArgType(NodeArg& arg, const ONNX_NAMESPACE::TypeProto& type_proto);
 
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   const Node* GetProducerNode(const std::string& node_arg_name) const {
     return GetProducerNodeImpl(*this, node_arg_name);
   }
@@ -1085,6 +1092,18 @@ class Graph {
     return GetConsumerNodesImpl(*this, node_arg_name);
   }
 
+  // Without removing the existing consumers, add a consumer to the give node arg name.
+  void AddConsumerNode(const std::string& node_arg_name, Node* consumer) {
+    node_arg_to_consumer_nodes_[node_arg_name].insert(consumer->Index());
+  }
+
+  // Remove a consumer from the set
+  void RemoveConsumerNode(const std::string& node_arg_name, Node* consumer) {
+    node_arg_to_consumer_nodes_[node_arg_name].erase(consumer->Index());
+  }
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+
+#if !defined(ORT_MINIMAL_BUILD)
   std::vector<Node*> GetMutableConsumerNodes(const std::string& node_arg_name) {
     return GetConsumerNodesImpl(*this, node_arg_name);
   }
@@ -1097,16 +1116,6 @@ class Graph {
     for (Node* node : nodes) {
       node_arg_to_consumer_nodes_[node_arg_name].insert(node->Index());
     }
-  }
-
-  // Without removing the existing consumers, add a consumer to the give node arg name.
-  void AddConsumerNode(const std::string& node_arg_name, Node* consumer) {
-    node_arg_to_consumer_nodes_[node_arg_name].insert(consumer->Index());
-  }
-
-  // Remove a consumer from the set
-  void RemoveConsumerNode(const std::string& node_arg_name, Node* consumer) {
-    node_arg_to_consumer_nodes_[node_arg_name].erase(consumer->Index());
   }
 
   /** During constant folding it may become possible to infer the shape for a node.
@@ -1351,17 +1360,9 @@ class Graph {
 
   void ToGraphProtoInternal(ONNX_NAMESPACE::GraphProto& graph_proto) const;
 
-  template <typename TInstance>
-  static auto GetProducerNodeImpl(
-      TInstance& instance, const std::string& node_arg_name) -> decltype(instance.GetNode(0)) {
-    auto iter = instance.node_arg_to_producer_node_.find(node_arg_name);
-    if (iter != instance.node_arg_to_producer_node_.end()) {
-      auto node_index = iter->second;
-      return instance.GetNode(node_index);
-    }
-    return nullptr;
-  }
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   template <typename TInstance>
   static auto GetConsumerNodesImpl(
       TInstance& instance, const std::string& node_arg_name) -> std::vector<decltype(instance.GetNode(0))> {
@@ -1376,9 +1377,17 @@ class Graph {
     return results;
   }
 
-#endif  // !defined(ORT_MINIMAL_BUILD)
+  template <typename TInstance>
+  static auto GetProducerNodeImpl(
+      TInstance& instance, const std::string& node_arg_name) -> decltype(instance.GetNode(0)) {
+    auto iter = instance.node_arg_to_producer_node_.find(node_arg_name);
+    if (iter != instance.node_arg_to_producer_node_.end()) {
+      auto node_index = iter->second;
+      return instance.GetNode(node_index);
+    }
+    return nullptr;
+  }
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   gsl::not_null<Node*> AllocateNode();
 
   // Release the node.
@@ -1474,7 +1483,7 @@ class Graph {
   // All node args owned by <*this> graph. Key is node arg name.
   std::unordered_map<std::string, std::unique_ptr<NodeArg>> node_args_;
 
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   int name_generator_ = 0;
 
   // Strings which have been used as node names.
@@ -1490,8 +1499,7 @@ class Graph {
 
   // node arg to its consumer nodes
   std::unordered_map<std::string, std::unordered_set<NodeIndex>> node_arg_to_consumer_nodes_;
-
-#endif  // !defined(ORT_MINIMAL_BUILD)
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
   const std::unordered_map<std::string, int> domain_to_version_;
 
