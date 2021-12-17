@@ -3,10 +3,10 @@
 #pragma once
 
 #ifndef GSL_SUPPRESS
-#if defined(__clang__)
+#if defined(__clang__) && !defined(__NVCC__)
 #define GSL_SUPPRESS(x) [[gsl::suppress("x")]]
 #else
-#if defined(_MSC_VER) && !defined(__INTEL_COMPILER)
+#if defined(_MSC_VER) && !defined(__INTEL_COMPILER) && !defined(__NVCC__)
 #define GSL_SUPPRESS(x) [[gsl::suppress(x)]]
 #else
 #define GSL_SUPPRESS(x)
