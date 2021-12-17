@@ -79,3 +79,6 @@
 [submodule "cmake/external/onnx-tensorrt"]
 	path = cmake/external/onnx-tensorrt
 	url = https://github.com/onnx/onnx-tensorrt.git
+[submodule "cmake/external/tvm_update"]
+	path = cmake/external/tvm_update
+	url = https://github.com/apache/tvm

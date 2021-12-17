@@ -17,7 +17,6 @@ This converts GPT2 model to onnx. Examples:
 
 import os
 import argparse
-import coloredlogs
 import logging
 import torch
 import numpy

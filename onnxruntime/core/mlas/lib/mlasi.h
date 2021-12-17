@@ -137,10 +137,6 @@ using MLAS_CPUIDINFO = MLASCPUIDInfo;
 
 #endif // BUILD_MLAS_NO_ONNXRUNTIME
 
-#if defined(_OPENMP)
-#include <omp.h>
-#endif
-
 //
 // Define the maximum number of threads supported by this implementation.
 //
@@ -888,12 +884,7 @@ MlasGetMaximumThreadCount(
 {
 #if defined(BUILD_MLAS_NO_ONNXRUNTIME)
     MLAS_UNREFERENCED_PARAMETER(ThreadPool);
-
-#if defined(_OPENMP)
-    return (omp_get_num_threads() == 1) ? omp_get_max_threads() : 1;
-#else
     return 1;
-#endif
 #else
     return onnxruntime::concurrency::ThreadPool::DegreeOfParallelism(ThreadPool);
 #endif
@@ -933,6 +924,11 @@ MlasPartitionWork(
 //
 // Helpers to cast a floating point type to and from an integer bit format.
 //
+#if defined(_MSC_VER) && !defined(__clang__)
+  #pragma warning(push)
+  // VC++ suggests we can attempt to make 'MlasBitsOfFp32' constexpr, but it is not valid.
+  #pragma warning(disable:26497) 
+#endif
 
 MLAS_FORCEINLINE
 uint32_t
@@ -961,7 +957,9 @@ MlasFp32FromBits(
     u.IntegerValue = IntegerValue;
     return u.FloatValue;
 }
-
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(pop)
+#endif
 
 #if defined(MLAS_TARGET_WASM_SCALAR)
 

@@ -10,6 +10,8 @@
 #include <memory>
 #include <functional>
 
+#include "core/common/basic_types.h"
+
 namespace ONNX_NAMESPACE {
 class ValueInfoProto;
 class TensorProto;
@@ -30,7 +32,6 @@ using NodeArgInfo = ONNX_NAMESPACE::ValueInfoProto;
 using InitializedTensorSet = std::unordered_map<std::string, const ONNX_NAMESPACE::TensorProto*>;
 using ArgNameToTypeMap = std::unordered_map<std::string, ONNX_NAMESPACE::TypeProto>;
 using ProviderType = const std::string&;
-using HashValue = uint64_t;  // TODO remove after https://github.com/microsoft/onnxruntime/pull/9710 is merged
 
 // TODO - Evaluate switching the types below to support transparent comparators and enable
 // lookups based on gsl::cstring_span<> and std::string_view.  This would reduces allocations
@@ -40,9 +41,7 @@ using HashValue = uint64_t;  // TODO remove after https://github.com/microsoft/o
 using NodeAttributes = std::unordered_map<std::string, ONNX_NAMESPACE::AttributeProto>;
 class IOnnxRuntimeOpSchemaCollection;
 using IOnnxRuntimeOpSchemaCollectionPtr = std::shared_ptr<IOnnxRuntimeOpSchemaCollection>;
-}  // namespace onnxruntime
 
-namespace onnxruntime {
 class OpKernel;
 class OpKernelInfo;
 

@@ -970,7 +970,7 @@ Status SessionState::LoadFromOrtFormat(const fbs::SessionState& fbs_session_stat
   ORT_RETURN_IF_ERROR(fbs_session_state_viewer.Validate());
 
   auto add_kernel_by_hash =
-      [&kernel_registry_manager, this](const Node& node, uint64_t hash) {
+      [&kernel_registry_manager, this](const Node& node, HashValue hash) {
         const KernelCreateInfo* kci = nullptr;
         ORT_RETURN_IF_NOT(kernel_registry_manager.SearchKernelRegistriesByHash(hash, &kci),
                           "Failed to find kernel def hash (", hash, ") in kernel registries for ",
