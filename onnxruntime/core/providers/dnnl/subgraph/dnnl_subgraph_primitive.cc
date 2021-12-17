@@ -8,18 +8,22 @@
 #include "dnnl_conv.h"
 #include "dnnl_dynamicquantizelinear.h"
 #include "dnnl_elementwise.h"
+#include "dnnl_gelu.h"
 #include "dnnl_gemm.h"
 #include "dnnl_lrn.h"
 #include "dnnl_matmul.h"
 #include "dnnl_matmul_integer.h"
 #include "dnnl_pool.h"
 #include "dnnl_pow.h"
-#include "dnnl_reducemean.h"
+#include "dnnl_qattention.h"
+#include "dnnl_reduce.h"
 #include "dnnl_reshape.h"
 #include "dnnl_softmax.h"
 #include "dnnl_softmaxgrad.h"
+#include "dnnl_squeeze.h"
 #include "dnnl_sum.h"
 #include "dnnl_transpose.h"
+#include "dnnl_unsqueeze.h"
 
 #if defined(ENABLE_TRAINING)
 #include "dnnl_convgrad.h"
@@ -27,12 +31,88 @@
 #include "dnnl_relugrad.h"
 #endif
 
+#include <inttypes.h>
+#include <stdio.h>
+
+
 namespace onnxruntime {
 namespace ort_dnnl {
 
 template <class Map, class Key>
 inline bool Contains(const Map& map, const Key& key) {
   return map.find(key) != map.end();
+}
+
+
+void DnnlSubgraphPrimitive::PrintMemory(const dnnl::memory& mem) {
+  auto md = mem.get_desc();
+  auto dt = md.data_type();
+  auto dims = md.dims();
+  if (Product(dims) > 50) {
+    printf("tensor too long ignore printing \n");
+    return;
+  }
+  dnnl::memory to_mem;
+  if (!IsMemoryInExpectedOrtFormat(md)|| mem.get_engine().get_kind() != dnnl::engine::kind::cpu) {
+    printf("\n print memory reorder started \n");
+    dnnl::memory::desc to_md = dnnl::memory::desc(md.dims(), md.data_type(), GetDnnlFormat(md.dims().size()));
+    to_mem = dnnl::memory(to_md, GetCPUEngine());
+    auto stream = dnnl::stream(mem.get_engine());
+    dnnl::reorder(mem, to_mem).execute(stream, {{DNNL_ARG_FROM, mem}, {DNNL_ARG_TO, to_mem}});
+    stream.wait();
+    printf("\n print memory reorder ended \n");
+  } else {
+    to_mem = mem;
+  }
+
+  if (dt == dnnl::memory::data_type::f32) {
+    std::vector<float> data_vec(Product(dims));
+    auto dh = to_mem.get_data_handle();
+    for (size_t i = 0; i < to_mem.get_desc().get_size(); ++i) {
+      ((char*)data_vec.data())[i] = ((char*)dh)[i];
+    }
+
+    for (auto& data : data_vec) {
+      printf("%.6f \n", data);
+    }
+    printf("\n");
+  }
+  else if (dt == dnnl::memory::data_type::u8) {
+    std::vector<uint8_t> data_vec(Product(dims));
+    auto dh = to_mem.get_data_handle();
+    for (size_t i = 0; i < to_mem.get_desc().get_size(); ++i) {
+      ((char*)data_vec.data())[i] = ((char*)dh)[i];
+    }
+
+    for (auto& data : data_vec) {
+      printf("%" PRIu8 "\n", data);
+    }
+    printf("\n");
+  } else if (dt == dnnl::memory::data_type::s8) {
+    std::vector<int8_t> data_vec(Product(dims));
+    auto dh = to_mem.get_data_handle();
+    for (size_t i = 0; i < to_mem.get_desc().get_size(); ++i) {
+      ((char*)data_vec.data())[i] = ((char*)dh)[i];
+    }
+
+    for (auto& data : data_vec) {
+      printf("%" PRIi8 "\n", data);
+    }
+    printf("\n");
+  } else if (dt == dnnl::memory::data_type::s32) {
+    std::vector<int32_t> data_vec(Product(dims));
+    auto dh = to_mem.get_data_handle();
+    for (size_t i = 0; i < to_mem.get_desc().get_size(); ++i) {
+    ((char*)data_vec.data())[i] = ((char*)dh)[i];
+    }
+
+    for (auto& data : data_vec) {
+      printf("%" PRIi32 "\n", data);
+    }
+    printf("\n");
+  } else {
+    ORT_THROW("Cannot print such data type");
+  }
 }
 
 int Product(dnnl::memory::dims d) {
@@ -46,22 +126,30 @@ void DnnlSubgraphPrimitive::AddKernels() {
   std::unordered_set<std::string> binary_ops = {"Add", "Div", "Mul", "Sub"};
   std::unordered_set<std::string> elementwise_ops = {"Abs", "Elu", "Exp", "LeakyRelu", "Log", "Relu", "Round", "Sigmoid", "Softplus", "Sqrt", "Tanh"};
   std::unordered_set<std::string> pool_ops = {"AveragePool", "GlobalAveragePool", "GlobalMaxPool", "MaxPool"};
-  for (auto& node : subgraph_->GetDnnlNodes()) {
+  std::unordered_set<std::string> reduce_ops = {"ReduceL1", "ReduceL2", "ReduceLogSum", "ReduceLogSumExp", "ReduceMax", "ReduceMean", "ReduceMin", "ReduceProd", "ReduceSum", "ReduceSumSquare"};
+
+  auto indices = subgraph_->GetDnnlNodesInTopologicalOrder();
+  for (auto index : indices) {
+    auto& node = *(subgraph_->GetDnnlNode(index));
     if (node.OpType() == "BatchNormalization") {
       DnnlBatchNorm().CreatePrimitive(*this, node);
     } else if (binary_ops.count(node.OpType())) {
       DnnlBinary().CreatePrimitive(*this, node);
-    } else if (node.OpType() == "Conv") {
+    } else if (node.OpType() == "Conv" || node.OpType() == "ConvRelu") {
       DnnlConv().CreatePrimitive(*this, node);
     } else if (node.OpType() == "DynamicQuantizeLinear") {
       DnnlDynamicQuantizeLinear().CreatePrimitive(*this, node);
     } else if (elementwise_ops.count(node.OpType())) {
       DnnlElementwise().CreatePrimitive(*this, node);
+    } else if (node.OpType() == "FastGelu"){
+      DnnlGelu().CreatePrimitive(*this, node);
+    } else if (node.OpType() == "Gelu" || node.OpType() == "BiasGelu") {
+      DnnlGelu().CreatePrimitive(*this, node);
     } else if (node.OpType() == "Gemm") {
       DnnlGemm().CreatePrimitive(*this, node);
     } else if (node.OpType() == "LRN") {
       DnnlLrn().CreatePrimitive(*this, node);
-    } else if (node.OpType() == "MatMul") {
+    } else if (node.OpType() == "MatMul" || node.OpType() == "MatMulAdd") {
       DnnlMatMul().CreatePrimitive(*this, node);
     } else if (node.OpType() == "MatMulInteger") {
       DnnlMatMulInteger().CreatePrimitive(*this, node);
@@ -69,16 +157,22 @@ void DnnlSubgraphPrimitive::AddKernels() {
       DnnlPool().CreatePrimitive(*this, node);
     } else if (node.OpType() == "Pow") {
       DnnlPow().CreatePrimitive(*this, node);
-    } else if (node.OpType() == "ReduceMean") {
-      DnnlReduceMean().CreatePrimitive(*this, node);
+    } else if (node.OpType() == "QAttention") {
+      DnnlQAttention().CreatePrimitive(*this, node);
+    } else if (reduce_ops.count(node.OpType())) {
+      DnnlReduce().CreatePrimitive(*this, node);
     } else if (node.OpType() == "Reshape") {
       DnnlReshape().CreatePrimitive(*this, node);
     } else if (node.OpType() == "Softmax") {
       DnnlSoftmax().CreatePrimitive(*this, node);
+    } else if (node.OpType() == "Squeeze") {
+      DnnlSqueeze().CreatePrimitive(*this, node);
     } else if (node.OpType() == "Sum") {
       DnnlSum().CreatePrimitive(*this, node);
     } else if (node.OpType() == "Transpose") {
       DnnlTranspose().CreatePrimitive(*this, node);
+    } else if (node.OpType() == "Unsqueeze") {
+      DnnlUnsqueeze().CreatePrimitive(*this, node);
 #if defined(ENABLE_TRAINING)
     } else if (node.OpType() == "AveragePoolGrad" || node.OpType() == "MaxPoolGrad") {
       DnnlPoolGrad().CreatePrimitive(*this, node);
@@ -108,6 +202,10 @@ DnnlSubgraphPrimitive::DnnlSubgraphPrimitive(ort_dnnl::DnnlSubgraph& dnnl_subgra
 
 bool DnnlSubgraphPrimitive::IsDynamic() {
   return subgraph_->IsDynamic();
+}
+
+bool DnnlSubgraphPrimitive::IsScalar(const DnnlTensor& tensor) {
+  return Contains(input_is_scalar_, tensor.Name());
 }
 
 void DnnlSubgraphPrimitive::Compile(const std::unordered_map<std::string, OnnxTensorData>& inputs) {
@@ -151,12 +249,13 @@ void DnnlSubgraphPrimitive::Compile(const std::unordered_map<std::string, OnnxTe
   //initializer should not be cleared upon recompile
   //initializers_.clear();
 
-  for (auto& nodearg : subgraph_->GetDnnlInputs()) {
-    auto dnnl_tensor_name = nodearg.Name();
-    auto dnnl_data_type = nodearg.Type();
+  for (auto nodearg : subgraph_->GetDnnlInputs()) {
+    auto dnnl_tensor_name = nodearg->Name();
+    auto dnnl_data_type = nodearg->Type();
     dnnl::memory::dims dnnl_dims = inputs.at(dnnl_tensor_name).tensor_info.shape;
     if (dnnl_dims.size() == 0) {
       dnnl_dims.push_back(1);
+      input_is_scalar_.insert(dnnl_tensor_name);
     }
     auto dnnl_format = GetDnnlFormat(dnnl_dims.size());
     auto input_md = dnnl::memory::desc(dnnl_dims, dnnl_data_type, dnnl_format);
@@ -246,8 +345,8 @@ dnnl::stream DnnlSubgraphPrimitive::GetStream() {
 }
 
 void DnnlSubgraphPrimitive::AddInitializers() {
-  for (auto& nodearg : subgraph_->GetDnnlInitializers()) {
-    auto dnnl_tensor_name = nodearg.Name();
+  for (auto nodearg : subgraph_->GetDnnlInitializers()) {
+    auto dnnl_tensor_name = nodearg->Name();
     if (!Contains(initializers_, dnnl_tensor_name)) {
       initializers_.insert(std::pair<std::string, std::vector<dnnl::memory> >(dnnl_tensor_name, std::vector<dnnl::memory>()));
     }
@@ -255,9 +354,9 @@ void DnnlSubgraphPrimitive::AddInitializers() {
 }
 
 void DnnlSubgraphPrimitive::AddOutputs() {
-  for (auto& tensor : subgraph_->GetDnnlOutputs()) {
-    auto dnnl_data_type = tensor.Type();
-    auto dnnl_tensor_name = tensor.Name();
+  for (auto tensor : subgraph_->GetDnnlOutputs()) {
+    auto dnnl_data_type = tensor->Type();
+    auto dnnl_tensor_name = tensor->Name();
     auto engine = GetCPUEngine();
     auto output_mem_dnnl = GetMemory(dnnl_tensor_name);
     auto output_md = dnnl::memory::desc(output_mem_dnnl.get_desc().dims(), dnnl_data_type, GetDnnlFormat(output_mem_dnnl.get_desc().dims().size()));
@@ -408,12 +507,25 @@ dnnl::memory DnnlSubgraphPrimitive::GetMemoryAndReshape(const DnnlTensor& tensor
     auto mem_from_dims = mem_from.get_desc().dims();
     auto mem_to_dims = mem_to.get_desc().dims();
     if (Product(mem_from_dims) != Product(mem_to_dims)) {
+      LOGS_DEFAULT(ERROR) << mem_from_dims;
+      LOGS_DEFAULT(ERROR) << mem_to_dims;
       throw std::invalid_argument("not a valid reshape, inconsistent dim product");
     }
-    auto mem_from_reshape = dnnl::memory(mem_desc, mem_from.get_engine(), nullptr);
+    //keep the same data type from mem_from but reshape the dims with mem_desc
+    auto mem_from_reshape_md = mem_from.get_desc();
+    if (transpose) {  
+      //hard coded to transpose 2 dimensional matrix
+      //TODO: expand to arbitrary permutation or transpose on given 2 dims for higher dimensional tensors
+      mem_from_reshape_md = mem_from_reshape_md.permute_axes({1, 0});
+    }
+    mem_from_reshape_md = mem_from_reshape_md.reshape(mem_desc.dims());
+    auto mem_from_reshape = dnnl::memory(mem_from_reshape_md, mem_from.get_engine(), nullptr);
     if (is_constant) {  // if constant, do reshape now
       LOGS_DEFAULT(INFO) << "reshaped now";
-      mem_from_reshape.set_data_handle(mem_from.get_data_handle());
+      //use the stream as a hint to make sure data handle gets set
+      dnnl::stream s{eng};
+      mem_from_reshape.set_data_handle(mem_from.get_data_handle(),s);
+      s.wait();
     } else {
       AddReshape(mem_from, mem_from_reshape);
     }
@@ -487,34 +599,55 @@ void DnnlSubgraphPrimitive::AddReshape(dnnl::memory src, dnnl::memory dst) {
   reshapes_.push_back({src, dst});
 }
 
-void DnnlSubgraphPrimitive::AddPrimitive(dnnl::primitive prim, std::unordered_map<int, dnnl::memory> mem_map) {
+void DnnlSubgraphPrimitive::AddPrimitive(dnnl::primitive prim, std::unordered_map<int, dnnl::memory> mem_map, std::vector<int> items_to_print) {
   net_.push_back(prim);
   net_args_.push_back(mem_map);
+  for (auto e : items_to_print) {
+    items_to_print_.push_back({int(net_.size() - 1), e});
+  }
 }
 
 onnxruntime::common::Status DnnlSubgraphPrimitive::Predict(const std::unordered_map<std::string, OnnxTensorData>& inputs, const std::unordered_map<std::string, OnnxTensorData>& outputs) {
+
+  auto stream = GetStream();
+
   for (auto& input : inputs) {
     if (Contains(inputs_, input.first)) {
-      inputs_.at(input.first).set_data_handle(input.second.buffer);
+      inputs_.at(input.first).set_data_handle(input.second.buffer, stream);
+      stream.wait();
     }
   }
 
   for (auto& output : outputs) {
     if (Contains(outputs_, output.first)) {
-      outputs_.at(output.first).set_data_handle(output.second.buffer);
+      outputs_.at(output.first).set_data_handle(output.second.buffer, stream);
+      stream.wait();
     }
   }
 
   // reshapes (eg, unsqueeze)
   // it is safe to set data handle because all external data handles have been set and onednn managed memory data handles will not change
   for (auto& reshape_pair : reshapes_) {
-    reshape_pair.second.set_data_handle(reshape_pair.first.get_data_handle());
+    reshape_pair.second.set_data_handle(reshape_pair.first.get_data_handle(),stream);
+    stream.wait();
   }
 
-  auto stream = GetStream();
+  
   for (size_t i = 0; i < net_.size(); ++i) {
     net_.at(i).execute(stream, net_args_.at(i));
     stream.wait();
+    
+    //for debug memory purpose
+    /*
+    for (auto e : items_to_print_) {
+      auto net_index = e.first;
+      auto net_arg_index = e.second;
+      if (net_index == i) {
+        PrintMemory(net_args_.at(i)[net_arg_index]);
+      }
+    }
+    */
+    
   }
 
   return Status::OK();

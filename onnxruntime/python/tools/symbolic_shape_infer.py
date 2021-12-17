@@ -189,6 +189,7 @@ class SymbolicShapeInference:
         }
         self.aten_op_dispatcher_ = {
             'aten::embedding': self._infer_Gather,
+            'aten::bitwise_or': self._infer_aten_bitwise_or,
             'aten::diagonal': self._infer_aten_diagonal,
             'aten::max_pool2d_with_indices': self._infer_aten_pool2d,
             'aten::multinomial': self._infer_aten_multinomial,
@@ -642,14 +643,18 @@ class SymbolicShapeInference:
         vi.CopyFrom(helper.make_tensor_value_info(node.output[0], output_dtype, new_shape))
 
     def _fuse_tensor_type(self, node, out_idx, dst_type, src_type):
-        ''' 
+        '''
         update dst_tensor_type to be compatible with src_tensor_type when dimension mismatches
         '''
         dst_tensor_type = dst_type.sequence_type.elem_type.tensor_type if is_sequence(
             dst_type) else dst_type.tensor_type
         src_tensor_type = src_type.sequence_type.elem_type.tensor_type if is_sequence(
             src_type) else src_type.tensor_type
-        assert dst_tensor_type.elem_type == src_tensor_type.elem_type
+        if dst_tensor_type.elem_type != src_tensor_type.elem_type:
+            node_id = node.name if node.name else node.op_type
+            raise ValueError(f"For node {node_id}, dst_tensor_type.elem_type != src_tensor_type.elem_type: "
+                             f"{onnx.onnx_pb.TensorProto.DataType.Name(dst_tensor_type.elem_type)} vs "
+                             f"{onnx.onnx_pb.TensorProto.DataType.Name(src_tensor_type.elem_type)}")
         if dst_tensor_type.HasField('shape'):
             for di, ds in enumerate(zip(dst_tensor_type.shape.dim, src_tensor_type.shape.dim)):
                 if ds[0] != ds[1]:
@@ -1075,6 +1080,16 @@ class SymbolicShapeInference:
             vi.CopyFrom(
                 helper.make_tensor_value_info(o, vi.type.tensor_type.elem_type,
                                               get_shape_from_sympy_shape(sympy_shape)))
+
+    def _infer_aten_bitwise_or(self, node):
+        shape0 = self._get_shape(node, 0)
+        shape1 = self._get_shape(node, 1)
+        new_shape = self._broadcast_shapes(shape0, shape1)
+        t0 = self.known_vi_[node.input[0]]
+        vi = self.known_vi_[node.output[0]]
+        vi.CopyFrom(
+            helper.make_tensor_value_info(node.output[0], t0.type.tensor_type.elem_type,
+                                            new_shape))
 
     def _infer_aten_diagonal(self, node):
         sympy_shape = self._get_sympy_shape(node, 0)

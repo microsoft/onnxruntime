@@ -82,6 +82,7 @@ struct TensorShapeProto_Dimension_Iterator {
   virtual const ONNX_NAMESPACE::TensorShapeProto_Dimension& operator*() = 0;
 };
 
+using HashValue = uint64_t;
 using NodeIndex = size_t;
 // We can't just reinterpret_cast this one, since it's an unordered_map of object BY VALUE (can't do anything by value on the real types)
 // using NodeAttributes = std::unordered_map<std::string, ONNX_NAMESPACE::AttributeProto_Copyable>;
@@ -213,7 +214,7 @@ struct ProviderHost {
   virtual common::Status IExecutionProvider__Compile(IExecutionProvider* p, const std::vector<onnxruntime::Node*>& fused_nodes, std::string& dll_path) = 0;
   virtual common::Status IExecutionProvider__Compile(IExecutionProvider* p, const std::vector<IExecutionProvider::FusedNodeAndGraph>& fused_nodes_and_graphs, std::vector<NodeComputeInfo>& node_compute_funcs) = 0;
 
-  virtual int IExecutionProvider__GenerateMetaDefId(const IExecutionProvider* p, const onnxruntime::GraphViewer& graph_viewer, uint64_t& model_hash) = 0;
+  virtual int IExecutionProvider__GenerateMetaDefId(const IExecutionProvider* p, const onnxruntime::GraphViewer& graph_viewer, HashValue& model_hash) = 0;
 
   virtual void IExecutionProvider__RegisterAllocator(IExecutionProvider* p, std::shared_ptr<AllocatorManager> allocator_manager) = 0;
   // Status
@@ -221,7 +222,7 @@ struct ProviderHost {
 
   // TensorShape
   virtual void TensorShape__operator_assign(TensorShape* p, const TensorShape& other) = 0;
-  virtual void TensorShape__operator_move_assign(TensorShape* p, TensorShape&& other) = 0;
+  virtual void TensorShape__operator_move_assign(TensorShape* p, TensorShape&& other) noexcept = 0;
   virtual void TensorShape__Allocate(TensorShape* p, size_t size) = 0;
   virtual int64_t TensorShape__SizeHelper(const TensorShape* p, size_t start, size_t end) = 0;
   virtual std::string TensorShape__ToString(const TensorShape* p) = 0;
@@ -252,9 +253,11 @@ struct ProviderHost {
   virtual int int64s__size(const ONNX_NAMESPACE::int64s* p) = 0;
   virtual const int64_t& int64s__Get(const ONNX_NAMESPACE::int64s* p, int index) = 0;
 
+#if !defined(DISABLE_OPTIONAL_TYPE)
   // TypeProto_Optional
   virtual const ONNX_NAMESPACE::TypeProto& TypeProto_Optional__elem_type(const ONNX_NAMESPACE::TypeProto_Optional* p) = 0;
   virtual ONNX_NAMESPACE::TypeProto* TypeProto_Optional__mutable_elem_type(ONNX_NAMESPACE::TypeProto_Optional* p) = 0;
+#endif
 
   // TypeProto_Sequence
   virtual const ONNX_NAMESPACE::TypeProto& TypeProto_Sequence__elem_type(const ONNX_NAMESPACE::TypeProto_Sequence* p) = 0;
@@ -283,8 +286,10 @@ struct ProviderHost {
   virtual ONNX_NAMESPACE::TypeProto_SparseTensor* TypeProto__mutable_sparse_tensor_type(ONNX_NAMESPACE::TypeProto* p) = 0;
 #endif
 
+#if !defined(DISABLE_OPTIONAL_TYPE)
   virtual const ONNX_NAMESPACE::TypeProto_Optional& TypeProto__optional_type(const ONNX_NAMESPACE::TypeProto* p) = 0;
   virtual ONNX_NAMESPACE::TypeProto_Optional* TypeProto__mutable_optional_type(ONNX_NAMESPACE::TypeProto* p) = 0;
+#endif
 
   virtual const ONNX_NAMESPACE::TypeProto_Sequence& TypeProto__sequence_type(const ONNX_NAMESPACE::TypeProto* p) = 0;
   virtual ONNX_NAMESPACE::TypeProto_Sequence* TypeProto__mutable_sequence_type(ONNX_NAMESPACE::TypeProto* p) = 0;

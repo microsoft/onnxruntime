@@ -623,7 +623,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetTransposeGradient) {
   if (attributes.empty()) {
     const TensorShapeProto& input_shape = I(0).type_proto->tensor_type().shape();
     if (input_shape.dim_size() > 0) {  // input_shape is available
-      int n = input_shape.dim_size() - 1;
+      size_t n = static_cast<size_t>(input_shape.dim_size()) - 1;
       bw_perm.resize(n + 1);
       std::generate(bw_perm.begin(), bw_perm.end(), [&n] { return n--; });
       new_attributes.push_back(MakeAttribute("perm", bw_perm));
@@ -707,7 +707,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetSigmoidGradient) {
 
 IMPLEMENT_GRADIENT_BUILDER(GetSoftmaxGradient) {
   return std::vector<NodeDef>{
-      NodeDef(OpDef{"SoftmaxGrad", kMSDomain, 1},
+      NodeDef(OpDef{SrcNodeOpsetVersion() < 13 ? "SoftmaxGrad" : "SoftmaxGrad_13", kMSDomain, 1},
               {GO(0), O(0)},
               {GI(0)},
               SrcNodeAttributes())};
@@ -715,7 +715,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetSoftmaxGradient) {
 
 IMPLEMENT_GRADIENT_BUILDER(GetLogSoftmaxGradient) {
   return std::vector<NodeDef>{
-      NodeDef(OpDef{"LogSoftmaxGrad", kMSDomain, 1},
+      NodeDef(OpDef{SrcNodeOpsetVersion() < 13 ? "LogSoftmaxGrad" : "LogSoftmaxGrad_13", kMSDomain, 1},
               {GO(0), O(0)},
               {GI(0)},
               SrcNodeAttributes())};

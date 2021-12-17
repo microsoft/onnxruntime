@@ -34,8 +34,8 @@ struct RunOptions {
 
 static const ONNX_NAMESPACE::GraphProto CreateSubgraph(const RunOptions& options);
 
-static const float kOuterNodeAddValue = 3.f;
-static const float kSumMax = 8.f;
+static constexpr float kOuterNodeAddValue = 3.f;
+static constexpr float kSumMax = 8.f;
 
 class LoopOpTester : public OpTester {
  public:
@@ -371,7 +371,7 @@ void RunTest(int64_t max_iterations,
 // this should take 3 iterations as we add 3 each time.
 void ExitDueToCond(const RunOptions& options) {
   int64_t max_iterations = 5;
-  const int64_t expected_num_iterations = 3;
+  constexpr int64_t expected_num_iterations = 3;
 
   float loop_var_0_final = kOuterNodeAddValue * expected_num_iterations;
 
@@ -438,7 +438,7 @@ TEST(Loop, LoopSubgraphRankMismatch) {
 
 TEST(Loop, ExitDueToMaxIterations) {
   int64_t max_iterations = 2;
-  const int64_t expected_num_iterations = 2;
+  constexpr int64_t expected_num_iterations = 2;
 
   float loop_var_0_final = kOuterNodeAddValue * expected_num_iterations;
 
@@ -1162,6 +1162,8 @@ TEST(Loop, SequenceAsLoopCarriedDependency) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
+#if !defined(DISABLE_OPTIONAL_TYPE)
+
 TEST(Loop, OptionalTypeAsLoopCarriedDependency) {
   auto create_subgraph = [](bool is_optional_tensor_type) {
     std::unordered_map<std::string, int> domain_to_version;
@@ -1333,6 +1335,8 @@ TEST(Loop, OptionalTypeAsLoopCarriedDependency) {
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
   }
 }
+
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime

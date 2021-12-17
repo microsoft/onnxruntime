@@ -29,6 +29,7 @@ class IdentityOp final : public OpKernel {
 
     const auto* input_ort_value = context->GetInputOrtValue(0);
 
+#if !defined(DISABLE_OPTIONAL_TYPE)
     // Only Optional type can be None (i.e.) not have data
     if (input_type_proto->has_optional_type() && !input_ort_value->IsAllocated()) {
       // We can't rely on the input OrtValue containing type information
@@ -38,6 +39,9 @@ class IdentityOp final : public OpKernel {
       ORT_RETURN_IF_ERROR(utils::OutputOptionalWithoutDataHelper(*input_type_proto, context, 0));
       return Status::OK();
     }
+#else
+    ORT_UNUSED_PARAMETER(input_type_proto);
+#endif
 
     if (input_ort_value->IsTensor()) {
       const auto* X = &input_ort_value->Get<Tensor>();

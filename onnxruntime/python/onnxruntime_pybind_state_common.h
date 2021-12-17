@@ -15,7 +15,7 @@
 #include "core/dlpack/dlpack_converter.h"
 #endif
 
-#include <pybind11/pybind11.h>
+#include "onnxruntime_pybind.h"  // must use this for the include of <pybind11/pybind11.h>
 
 // execution provider factory creator headers
 struct OrtStatus {
@@ -23,7 +23,7 @@ struct OrtStatus {
   char msg[1];  // a null-terminated string
 };
 
-#define BACKEND_DEVICE BACKEND_PROC BACKEND_DNNL BACKEND_OPENVINO BACKEND_NUPHAR BACKEND_OPENBLAS BACKEND_MIGRAPHX BACKEND_ACL BACKEND_ARMNN BACKEND_DML
+#define BACKEND_DEVICE BACKEND_PROC BACKEND_DNNL BACKEND_OPENVINO BACKEND_NUPHAR BACKEND_STVM BACKEND_OPENBLAS BACKEND_MIGRAPHX BACKEND_ACL BACKEND_ARMNN BACKEND_DML
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/providers/providers.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
@@ -33,12 +33,6 @@ struct OrtStatus {
 #define BACKEND_PROC "GPU"
 #else
 #define BACKEND_PROC "CPU"
-#endif
-
-#if _OPENMP
-#define BACKEND_OPENMP "-OPENMP"
-#else
-#define BACKEND_OPENMP ""
 #endif
 
 #if USE_DNNL
@@ -89,6 +83,12 @@ struct OrtStatus {
 #define BACKEND_NUPHAR "-NUPHAR"
 #else
 #define BACKEND_NUPHAR ""
+#endif
+
+#ifdef USE_STVM
+#define BACKEND_STVM "-STVM"
+#else
+#define BACKEND_STVM ""
 #endif
 
 #if USE_VITISAI
@@ -155,6 +155,9 @@ extern std::string nuphar_settings;
 }
 }  // namespace onnxruntime
 #endif
+#ifdef USE_STVM
+#include "core/providers/stvm/stvm_execution_provider_info.h"
+#endif
 #ifdef USE_VITISAI
 #include "core/providers/vitisai/vitisai_provider_factory.h"
 #endif
@@ -202,12 +205,12 @@ extern onnxruntime::ArenaExtendStrategy arena_extend_strategy;
 #include "core/providers/shared_library/provider_host_api.h"
 
 namespace onnxruntime {
-#ifndef SHARED_PROVIDER
+#if !defined(SHARED_PROVIDER) && !defined(DISABLE_SPARSE_TENSORS)
 class SparseTensor;
 #endif
 namespace python {
 
-using ExecutionProviderRegistrationFn = std::function<void(InferenceSession*, 
+using ExecutionProviderRegistrationFn = std::function<void(InferenceSession*,
                                                            const std::vector<std::string>&,
                                                            const ProviderOptionsMap&)>;
 
@@ -303,17 +306,18 @@ inline const PySessionOptions& GetDefaultCPUSessionOptions() {
 }
 
 inline AllocatorPtr& GetAllocator() {
-  static AllocatorPtr alloc = std::make_shared<TAllocator>();
+  static AllocatorPtr alloc = std::make_shared<CPUAllocator>();
   return alloc;
 }
 
+#if !defined(DISABLE_SPARSE_TENSORS)
 // This class exposes SparseTensor to Python
 // The class serves two major purposes
 // - to be able to map numpy arrays memory and use it on input, this serves as a reference holder
 //   so incoming arrays do not disappear. To this end we create an instance of SparseTensor
 //   on top of the user provided numpy arrays and create a duplicate of py::objects for those
 //   numpy array for ref-counting purposes and store it here.
-// 
+//
 // - to be able to expose SparseTensor returned from run method. We get an OrtValue from run()
 //   and store a copy of it in ort_value_. The OrtValue shared_ptr ref-counting will make sure
 //   the memory stays around.
@@ -375,7 +379,6 @@ class PySparseTensor {
   std::unique_ptr<OrtValue> AsOrtValue() const;
 
  private:
-
   //  instance_ represents data that comes as input. Thus we depend on numpy
   // arrays that own the underlying memory to stay around. We store copies
   // of py::objects for those arrays in backing_storage_ as an extra ref-count.
@@ -388,6 +391,7 @@ class PySparseTensor {
   // We create a copy of OrtValue when we obtain it from a run method.
   OrtValue ort_value_;
 };
+#endif  // !defined(DISABLE_SPARSE_TENSORS)
 
 class SessionObjectInitializer {
  public:
@@ -469,6 +473,10 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Cuda(c
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(int use_arena);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO(const OrtOpenVINOProviderOptions* params);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nuphar(bool, const char*);
+#ifdef USE_STVM
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Stvm(const StvmExecutionProviderInfo& info);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Stvm(const char* params);
+#endif
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_VITISAI(const char* backend_type, int device_id,
                                                                                   const char* export_runtime_module,
                                                                                   const char* load_runtime_module);
@@ -480,5 +488,5 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nnapi(
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Rknpu();
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CoreML(uint32_t flags);
 
-constexpr const char* kDefaultExecutionProviderEntry = "GetProvider"; 
+constexpr const char* kDefaultExecutionProviderEntry = "GetProvider";
 }  // namespace onnxruntime

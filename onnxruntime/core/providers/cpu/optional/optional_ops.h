@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#if !defined(DISABLE_OPTIONAL_TYPE)
+
 #pragma once
 
 #include "core/common/common.h"
@@ -40,3 +42,5 @@ class OptionalGetElement final : public OpKernel {
 };
 
 }  // namespace onnxruntime
+
+#endif

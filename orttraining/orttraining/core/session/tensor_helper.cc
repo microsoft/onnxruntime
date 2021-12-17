@@ -103,7 +103,7 @@ void CopyToCpuTensor(Tensor& dst, const Tensor& src) {
 // For a tensor with shape [D1, D2, D3], the linear index of element at (x, y, z) is
 // i = x * (D2 * D3) + y * D3 + z. If we append one dimension to form a new shape [D1, D2, D3, D4],
 // the new linear index at (x, y, z, u) can be computed using i * D4 + u.
-size_t UpdateLinearIndex(const size_t linear_index, const size_t new_axis_index, const size_t new_axis_dim) {
+constexpr size_t UpdateLinearIndex(const size_t linear_index, const size_t new_axis_index, const size_t new_axis_dim) {
   return linear_index * new_axis_dim + new_axis_index;
 }
 

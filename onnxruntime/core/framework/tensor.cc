@@ -29,7 +29,7 @@ Tensor::Tensor(MLDataType p_type, const TensorShape& shape, std::shared_ptr<IAll
   void* p_data = nullptr;
   if (shape_size > 0) {
     SafeInt<size_t> len = 0;
-    if (!allocator->CalcMemSizeForArray(SafeInt<size_t>(shape_size), p_type->Size(), &len))
+    if (!IAllocator::CalcMemSizeForArray(SafeInt<size_t>(shape_size), p_type->Size(), &len))
       ORT_THROW("tensor failed memory size calculation");
 
     p_data = allocator->Alloc(len);

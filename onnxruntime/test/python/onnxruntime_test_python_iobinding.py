@@ -39,6 +39,9 @@ class TestIOBinding(unittest.TestCase):
         # Invoke Run
         session.run_with_iobinding(io_binding)
         
+        # Sync if different CUDA streams
+        io_binding.synchronize_outputs()
+
         # Get outputs over to CPU (the outputs which were bound to CUDA will get copied over to the host here)
         ort_output = io_binding.copy_outputs_to_cpu()[0]
 
@@ -54,11 +57,17 @@ class TestIOBinding(unittest.TestCase):
         # Bind input to CUDA
         io_binding.bind_input('X', 'cuda', 0, np.float32, [3, 2], input.data_ptr())
 
+        # Sync if different CUDA streams
+        io_binding.synchronize_inputs()
+
         # Bind output to CPU
         io_binding.bind_output('Y')
         
         # Invoke Run
         session.run_with_iobinding(io_binding)
+
+        # Sync if different CUDA streams
+        io_binding.synchronize_outputs()
         
         # Get outputs over to CPU (the outputs which were bound to CUDA will get copied over to the host here)
         ort_output = io_binding.copy_outputs_to_cpu()[0]
@@ -79,8 +88,14 @@ class TestIOBinding(unittest.TestCase):
         output = self.create_uninitialized_ortvalue_input_on_gpu()
         io_binding.bind_output('Y', 'cuda', 0, np.float32, [3, 2], output.data_ptr())
 
+        # Sync if different CUDA streams
+        io_binding.synchronize_inputs()
+
         # Invoke Run
         session.run_with_iobinding(io_binding)
+
+        # Sync if different CUDA streams
+        io_binding.synchronize_outputs()
         
         # Get outputs over to CPU (the outputs which were bound to CUDA will get copied over to the host here)
         ort_output_vals = io_binding.copy_outputs_to_cpu()[0]
@@ -104,8 +119,14 @@ class TestIOBinding(unittest.TestCase):
         # Bind output to CUDA
         io_binding.bind_output('Y', 'cuda')
 
+        # Sync if different CUDA streams
+        io_binding.synchronize_inputs()
+
         # Invoke Run
         session.run_with_iobinding(io_binding)
+
+        # Sync if different CUDA streams
+        io_binding.synchronize_outputs()
 
         # This call returns an OrtValue which has data allocated by ORT on CUDA
         ort_outputs = io_binding.get_outputs()
@@ -124,9 +145,15 @@ class TestIOBinding(unittest.TestCase):
         # Change the bound input and validate the results in the same bound OrtValue
         # Bind alternate input to CUDA
         io_binding.bind_input('X', 'cuda', 0, np.float32, [3, 2], self.create_ortvalue_alternate_input_on_gpu().data_ptr())
-        
+
+        # Sync if different CUDA streams
+        io_binding.synchronize_inputs()
+
         # Invoke Run
         session.run_with_iobinding(io_binding)
+
+        # Sync if different CUDA streams
+        io_binding.synchronize_outputs()
 
         # This call returns an OrtValue which has data allocated by ORT on CUDA
         ort_outputs = io_binding.get_outputs()
@@ -147,8 +174,14 @@ class TestIOBinding(unittest.TestCase):
         output_ortvalue = self.create_uninitialized_ortvalue_input_on_gpu()
         io_binding.bind_ortvalue_output('Y', output_ortvalue)
 
+        # Sync if different CUDA streams
+        io_binding.synchronize_inputs()
+
         # Invoke Run
         session.run_with_iobinding(io_binding)
+
+        # Sync if different CUDA streams
+        io_binding.synchronize_outputs()
 
         # Inspect contents of output_ortvalue and make sure that it has the right contents
         self.assertTrue(np.array_equal(self.create_expected_output(), output_ortvalue.numpy()))
@@ -157,8 +190,14 @@ class TestIOBinding(unittest.TestCase):
         input_ortvalue_2 = self.create_ortvalue_alternate_input_on_gpu()
         io_binding.bind_ortvalue_input('X', input_ortvalue_2)
 
+        # Sync if different CUDA streams
+        io_binding.synchronize_inputs()
+
         # Invoke Run
         session.run_with_iobinding(io_binding)
+
+        # Sync if different CUDA streams
+        io_binding.synchronize_outputs()
 
         # Inspect contents of output_ortvalue and make sure that it has the right contents
         self.assertTrue(np.array_equal(self.create_expected_output_alternate(), output_ortvalue.numpy()))

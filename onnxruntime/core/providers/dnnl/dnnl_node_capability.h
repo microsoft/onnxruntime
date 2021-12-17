@@ -146,22 +146,6 @@ class DnnlBatchNormalizationNodeCapability : public DnnlDefaultNodeCapability {
 };
 
 /**
- * Decide if a ReduceMean op is supported by DnnlExecutionProvider
- *
- * Dnnl does not support the "keepdims" attribute when it is `0`
- */
-class DnnlReduceMeanNodeCapability : public DnnlDefaultNodeCapability {
- public:
-  DnnlReduceMeanNodeCapability() : DnnlDefaultNodeCapability({type_float32}) {}
-
-  bool Supported(const Node* node, const GraphViewer& graph_viewer) const override;
-
- private:
-  bool IsAttributeSupported(const Node* node) const;
-  bool IsDimensionSupported(const Node* node) const;
-};
-
-/**
  * Decide if a Softmax op is supported by DnnlExecutionProvider
  *
  * Dnnl Softmax doesnt support few attribute values for opset < 13 with axis values anything other than 2
@@ -199,7 +183,8 @@ class DnnlMatMulIntegerNodeCapability : public DnnlDefaultNodeCapability {
   bool Supported(const Node* node, const GraphViewer& graph_viewer) const override;
 
  private:
-  bool IsDimensionSupported(const Node* node) const;
+  bool IsDimensionSupported(const Node* node, const GraphViewer& graph_viewer) const;
+  bool IsWeightZeroPointConstantZero(const NodeArg* node, const GraphViewer& graph_viewer) const;
 };
 
 /**
@@ -246,6 +231,21 @@ class DnnlElementwiseCapability : public DnnlDefaultNodeCapability {
 
  private:
   bool IsDimensionSupported(const Node* node) const;
+};
+
+/**
+ * Decide if a Reduce op is supported by DnnlExecutionProvider
+ */
+class DnnlReduceNodeCapability : public DnnlDefaultNodeCapability {
+ public:
+  DnnlReduceNodeCapability() : DnnlDefaultNodeCapability({type_float32}) {}
+
+  bool Supported(const Node* node, const GraphViewer& graph_viewer) const override;
+
+ private:
+  bool IsDimensionSupported(const Node* node) const;
+  DnnlElementwiseCapability _eltwise;
+
 };
 
 class DnnlPowNodeCapability : public DnnlDefaultMultiInputNodeCapability {
@@ -301,4 +301,44 @@ class DnnlDynamicQuantizeLinearNodeCapability : public DnnlDefaultNodeCapability
  private:
 };
 
+class DnnlSqueezeNodeCapability : public DnnlDefaultNodeCapability {
+ public:
+  DnnlSqueezeNodeCapability() : DnnlDefaultNodeCapability({type_float32,
+                                                           type_float16,
+                                                           type_bfloat16,
+                                                           type_int32,
+                                                           type_int8,
+                                                           type_uint8}) {}
+
+  bool Supported(const Node* node, const GraphViewer& graph_viewer) const override;
+
+ private:
+  bool IsDimensionSupported(const Node* node, const GraphViewer& graph_viewer) const;
+};
+
+class DnnlErfNodeCapability : public DnnlDefaultNodeCapability {
+ public:
+  DnnlErfNodeCapability() : DnnlDefaultNodeCapability({type_float32}) {}
+  bool Supported(const Node* node, const GraphViewer& graph_viewer) const override;
+
+ private:
+  bool IsErfPartOfGelu(const Node* node, const GraphViewer& graph_viewer) const;
+  bool IsInitilizedWithExpectedValue(const GraphViewer& graph_viewer, const NodeArg* node_arg, float expected_value) const;
+  const Node* FirstParentByType(const Node& node, const std::string& parent_type) const;
+  bool IsNodeFusable(const Node* node, const GraphViewer& graph_viewer) const;
+  DnnlBinaryNodeCapability _binary;
+};
+
+
+class DnnlQAttentionNodeCapability : public DnnlDefaultNodeCapability {
+ public:
+  DnnlQAttentionNodeCapability() : DnnlDefaultNodeCapability({type_float32,
+                                                              type_int8,
+                                                              type_uint8}) {}
+  bool Supported(const Node* node, const GraphViewer& graph_viewer) const override;
+
+ private:
+  bool IsDimensionSupported(const Node* node) const;
+};
+                                 
 }  // namespace onnxruntime

@@ -59,15 +59,14 @@ option(onnxruntime_BUILD_OBJC "Build Objective-C library" OFF)
 option(onnxruntime_USE_PREINSTALLED_EIGEN "Use pre-installed EIGEN. Need to provide eigen_SOURCE_PATH if turn this on." OFF)
 option(onnxruntime_BUILD_BENCHMARKS "Build ONNXRuntime micro-benchmarks" OFF)
 
-option(onnxruntime_USE_TVM "Build tvm for code-gen" OFF)
-option(onnxruntime_USE_LLVM "Build tvm with LLVM" OFF)
+option(onnxruntime_USE_TVM "Build TVM for code generation." OFF)
+option(onnxruntime_USE_LLVM "Build TVM with LLVM" OFF)
 
 option(onnxruntime_BUILD_FOR_NATIVE_MACHINE "Enable this option for turning on optimization specific to this machine" OFF)
 option(onnxruntime_USE_AVX "Use AVX instructions" OFF)
 option(onnxruntime_USE_AVX2 "Use AVX2 instructions" OFF)
 option(onnxruntime_USE_AVX512 "Use AVX512 instructions" OFF)
 
-option(onnxruntime_USE_OPENMP "Build with OpenMP support" OFF)
 option(onnxruntime_BUILD_SHARED_LIB "Build a shared library" OFF)
 option(onnxruntime_BUILD_APPLE_FRAMEWORK "Build a macOS/iOS framework" OFF)
 option(onnxruntime_ENABLE_MICROSOFT_INTERNAL "Use this option to enable/disable microsoft internal only code" OFF)
@@ -97,17 +96,20 @@ option(onnxruntime_ARMNN_RELU_USE_CPU "Use the CPU implementation for the Relu o
 option(onnxruntime_ARMNN_BN_USE_CPU "Use the CPU implementation for the Batch Normalization operator for the ArmNN EP" ON)
 option(onnxruntime_ENABLE_INSTRUMENT "Enable Instrument with Event Tracing for Windows (ETW)" OFF)
 option(onnxruntime_USE_TELEMETRY "Build with Telemetry" OFF)
+option(onnxruntime_USE_MIMALLOC "Override new/delete and arena allocator with mimalloc" OFF)
 #The onnxruntime_PREFER_SYSTEM_LIB is mainly designed for package managers like apt/yum/vcpkg.
 #Please note, by default Protobuf_USE_STATIC_LIBS is OFF but it's recommended to turn it ON on Windows. You should set it properly when onnxruntime_PREFER_SYSTEM_LIB is ON otherwise you'll hit linkage errors.
 #If you have already installed protobuf(or the others) in your system at the default system paths(like /usr/include), then it's better to set onnxruntime_PREFER_SYSTEM_LIB ON. Otherwise onnxruntime may see two different protobuf versions and we won't know which one will be used, the worst case could be onnxruntime picked up header files from one of them but the binaries from the other one.
 #It's default OFF because it's experimental now.
 option(onnxruntime_PREFER_SYSTEM_LIB "Experimental: Build with the preinstalled libraries in your system" OFF)
 option(onnxruntime_USE_ROCM "Build with AMD GPU support" OFF)
+option(onnxruntime_USE_STVM "Build with standalone TVM support" OFF)
 
 # Options related to reducing the binary size produced by the build
 option(onnxruntime_DISABLE_CONTRIB_OPS "Disable contrib ops" OFF)
 option(onnxruntime_DISABLE_ML_OPS "Disable traditional ML ops" OFF)
 option(onnxruntime_DISABLE_SPARSE_TENSORS "Disable sparse tensors data types" OFF)
+option(onnxruntime_DISABLE_OPTIONAL_TYPE "Disable optional type" OFF)
 option(onnxruntime_MINIMAL_BUILD "Exclude as much as possible from the build. Support ORT format models. No support for ONNX format models." OFF)
 cmake_dependent_option(onnxruntime_DISABLE_RTTI "Disable RTTI" ON "NOT onnxruntime_ENABLE_PYTHON" OFF)
 # For now onnxruntime_DISABLE_EXCEPTIONS will only work with onnxruntime_MINIMAL_BUILD, more changes (ONNX, non-CPU EP, ...) are required to run this standalone
@@ -116,6 +118,7 @@ cmake_dependent_option(onnxruntime_DISABLE_EXCEPTIONS "Disable exception handlin
 option(onnxruntime_EXTENDED_MINIMAL_BUILD "onnxruntime_MINIMAL_BUILD with support for execution providers that compile kernels." OFF)
 option(onnxruntime_MINIMAL_BUILD_CUSTOM_OPS "Add custom operator kernels support to a minimal build." OFF)
 option(onnxruntime_REDUCED_OPS_BUILD "Reduced set of kernels are registered in build via modification of the kernel registration source files." OFF)
+option(onnxruntime_REDUCED_OP_TYPE_SUPPORT "Limit the types individual operators support where possible to further reduce the build size." OFF)
 option(onnxruntime_DISABLE_EXTERNAL_INITIALIZERS "Don't allow models to load external data" OFF)
 cmake_dependent_option(onnxruntime_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION
                        "Enable runtime graph optimization of ORT format models. Warning: Not yet ready for general use."
@@ -173,6 +176,8 @@ option(onnxruntime_PREBUILT_PYTORCH_PATH "Path to pytorch installation dir")
 
 # external transformer src path
 option(onnxruntime_EXTERNAL_TRANSFORMER_SRC_PATH "Path to external transformer src dir")
+
+option(onnxruntime_ENABLE_CUDA_PROFILING "Enable CUDA kernel profiling" OFF)
 
 if (onnxruntime_USE_CUDA)
   set(onnxruntime_DISABLE_RTTI OFF)
@@ -287,18 +292,6 @@ if (NOT WIN32)
   endif()
 endif()
 
-if (onnxruntime_USE_OPENMP)
-  find_package(OpenMP)
-  if (OPENMP_FOUND)
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
-    include_directories(${OpenMP_CXX_INCLUDE_DIR})
-  else()
-    message(WARNING "Flag --use_openmp is specified, but OpenMP is not found in current build environment. Setting it to OFF.")
-    set(onnxruntime_USE_OPENMP OFF)
-  endif()
-endif()
-
 # 'extended' implies minimal.
 if (onnxruntime_EXTENDED_MINIMAL_BUILD AND NOT onnxruntime_MINIMAL_BUILD)
   set(onnxruntime_MINIMAL_BUILD ON)
@@ -354,8 +347,6 @@ if (onnxruntime_MINIMAL_BUILD)
     add_compile_definitions(ORT_MINIMAL_BUILD_CUSTOM_OPS)
   endif()
 
-  set(onnxruntime_REDUCED_OPS_BUILD ON)
-
   if (MSVC)
     # turn on LTO (which adds some compiler flags and turns on LTCG) unless it's a Debug build to minimize binary size
     if (NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
@@ -399,6 +390,9 @@ endif()
 
 if (onnxruntime_REDUCED_OPS_BUILD)
   add_compile_definitions(REDUCED_OPS_BUILD)
+  if (onnxruntime_REDUCED_OP_TYPE_SUPPORT)
+    add_compile_definitions(REDUCED_OP_TYPE_SUPPORT)
+  endif()
 endif()
 
 if (onnxruntime_DISABLE_EXTERNAL_INITIALIZERS)
@@ -503,7 +497,6 @@ if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin|iOS")
   endforeach()
 endif()
 
-#must after OpenMP settings
 find_package(Threads)
 
 macro(check_nvcc_compiler_flag _FLAG _RESULT)
@@ -645,16 +638,6 @@ if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
     #For Mac compliance
     message("Adding flags for Mac builds")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fstack-protector-strong")
-endif()
-
-if (${CMAKE_SYSTEM_NAME} MATCHES "iOSCross")
-    #For ios compliance
-    message("Adding flags for ios builds")
-    if (CMAKE_OSX_ARCHITECTURES STREQUAL "arm64")
-      set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -target arm64-apple-darwin-macho")
-    elseif (CMAKE_OSX_ARCHITECTURES STREQUAL "arm")
-      set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -target armv7a-apple-darwin-macho")
-    endif()
 endif()
 
 #Dependencies begin
@@ -817,6 +800,10 @@ if (onnxruntime_DISABLE_SPARSE_TENSORS)
   add_compile_definitions(DISABLE_SPARSE_TENSORS)
 endif()
 
+if (onnxruntime_DISABLE_OPTIONAL_TYPE)
+  add_compile_definitions(DISABLE_OPTIONAL_TYPE)
+endif()
+
 if (onnxruntime_USE_CUDA AND "${onnxruntime_CUDNN_HOME}" STREQUAL "")
   message(FATAL_ERROR "onnxruntime_CUDNN_HOME required for onnxruntime_USE_CUDA")
 endif()
@@ -965,9 +952,10 @@ if (WIN32)
         # issued by thrust nonstandard extension used: nameless struct/union
         list(APPEND ORT_WARNING_FLAGS "/wd4201")
         # warning C4800: Implicit conversion from 'X' to bool. Possible information loss
-        list(APPEND ORT_WARNING_FLAGS "/w34800")
-        if (onnxruntime_USE_OPENMP)
-            list(APPEND ORT_WARNING_FLAGS "/wd6993") # Code analysis ignores OpenMP constructs
+        if (onnxruntime_USE_OPENVINO OR onnxruntime_ENABLE_EAGER_MODE)
+           list(APPEND ORT_WARNING_FLAGS "/wd4800")
+        else()
+           list(APPEND ORT_WARNING_FLAGS "/w34800")
         endif()
         # operator 'operator-name': deprecated between enumerations of different types
         list(APPEND ORT_WARNING_FLAGS "/wd5054")
@@ -1101,6 +1089,11 @@ if (onnxruntime_USE_NUPHAR)
     list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_NUPHAR=1)
     list(APPEND ONNXRUNTIME_PROVIDER_NAMES nuphar)
 endif()
+if (onnxruntime_USE_STVM)
+    list(APPEND ORT_PROVIDER_FLAGS  -DUSE_STVM=1)
+    list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_STVM=1)
+    list(APPEND ONNXRUNTIME_PROVIDER_NAMES stvm)
+endif()
 if (onnxruntime_USE_WINML)
   list(APPEND ORT_PROVIDER_FLAGS  -DUSE_WINML=1)
   list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_WINML=1)
@@ -1138,6 +1131,7 @@ if (onnxruntime_USE_COREML)
     list(APPEND ONNXRUNTIME_PROVIDER_NAMES coreml)
 endif()
 function(onnxruntime_set_compile_flags target_name)
+    target_compile_definitions(${target_name} PUBLIC EIGEN_USE_THREADS)
     if (MSVC)
       target_compile_definitions(${target_name} PUBLIC -DPLATFORM_WINDOWS -DNOGDI -DNOMINMAX -D_USE_MATH_DEFINES -D_SILENCE_ALL_CXX17_DEPRECATION_WARNINGS)
       if (onnxruntime_ENABLE_MEMLEAK_CHECKER)
@@ -1216,7 +1210,7 @@ endfunction()
 
 #For plugins that are not linked into other targets but may be loaded dynamically at runtime using dlopen-like functionality.
 function(onnxruntime_add_shared_library_module target_name)
-  if ((${CMAKE_SYSTEM_NAME} MATCHES "Darwin") OR (${CMAKE_SYSTEM_NAME} MATCHES "iOSCross") OR (${CMAKE_SYSTEM_NAME} MATCHES "iOS"))
+  if ((${CMAKE_SYSTEM_NAME} MATCHES "Darwin") OR (${CMAKE_SYSTEM_NAME} MATCHES "iOS"))
     add_library(${target_name} SHARED ${ARGN})
   else()
     #On Windows, this target shouldn't generate an import lib, but I don't know how to disable it.
@@ -1224,18 +1218,15 @@ function(onnxruntime_add_shared_library_module target_name)
   endif()
 
   onnxruntime_configure_target(${target_name})
-  if (onnxruntime_target_platform STREQUAL "x86" AND NOT onnxruntime_BUILD_WEBASSEMBLY)
+  if (MSVC AND onnxruntime_target_platform STREQUAL "x86" AND NOT onnxruntime_BUILD_WEBASSEMBLY)
     target_link_options(${target_name} PRIVATE /SAFESEH)
   endif()
 endfunction()
 
 function(onnxruntime_add_executable target_name)
-  if (${CMAKE_SYSTEM_NAME} MATCHES "iOSCross")
-    message(FATAL_ERROR "iOS doesn't support commmand line tool")
-  endif()
   add_executable(${target_name} ${ARGN})
   onnxruntime_configure_target(${target_name})
-  if (onnxruntime_target_platform STREQUAL "x86" AND NOT onnxruntime_BUILD_WEBASSEMBLY)
+  if (MSVC AND onnxruntime_target_platform STREQUAL "x86" AND NOT onnxruntime_BUILD_WEBASSEMBLY)
     target_link_options(${target_name} PRIVATE /SAFESEH)
   endif()
 endfunction()
@@ -1335,9 +1326,6 @@ if (onnxruntime_USE_TVM)
   if (onnxruntime_USE_LLVM)
     set(USE_LLVM ON)
     add_definitions(-DUSE_TVM_WITH_LLVM)
-  endif()
-  if (onnxruntime_USE_OPENMP)
-    set(USE_OPENMP "gnu")
   endif()
 
   add_subdirectory(${PROJECT_SOURCE_DIR}/external/tvm EXCLUDE_FROM_ALL)
@@ -1704,6 +1692,10 @@ if (onnxruntime_ENABLE_TRAINING_OPS)
   add_compile_definitions(ENABLE_TRAINING_OPS)
 endif()
 
+if (onnxruntime_ENABLE_CUDA_PROFILING)
+  add_compile_definitions(ENABLE_CUDA_PROFILING)
+endif()
+
 if (onnxruntime_ENABLE_TRAINING)
   add_compile_definitions(ENABLE_TRAINING)
   add_compile_definitions(ENABLE_TRAINING_OPS)
@@ -1818,10 +1810,6 @@ endforeach()
 
 if (CMAKE_SYSTEM_NAME STREQUAL "Android")
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES log)
-endif()
-
-if (onnxruntime_USE_OPENMP)
-  list(APPEND onnxruntime_EXTERNAL_LIBRARIES OpenMP::OpenMP_CXX)
 endif()
 
 if (WIN32)

@@ -222,7 +222,7 @@ TensorShape& TensorShape::operator=(const TensorShape& other) {
   return *this;
 }
 
-TensorShape& TensorShape::operator=(TensorShape&& other) {
+TensorShape& TensorShape::operator=(TensorShape&& other) noexcept {
   g_host->TensorShape__operator_move_assign(this, std::move(other));
   return *this;
 }
@@ -299,7 +299,7 @@ common::Status IExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>&
   return g_host->IExecutionProvider__Compile(this, fused_nodes_and_graphs, node_compute_funcs);
 }
 
-int IExecutionProvider::GenerateMetaDefId(const onnxruntime::GraphViewer& graph_viewer, uint64_t& model_hash) const {
+int IExecutionProvider::GenerateMetaDefId(const onnxruntime::GraphViewer& graph_viewer, HashValue& model_hash) const {
   return g_host->IExecutionProvider__GenerateMetaDefId(this, graph_viewer, model_hash);
 }
 

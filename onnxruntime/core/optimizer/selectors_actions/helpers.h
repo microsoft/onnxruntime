@@ -101,16 +101,16 @@ class NodesToOptimize {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(NodesToOptimize);
 
  private:
-  Node* GetNode(int index, bool required) const {
+  Node* GetNode(size_t index, bool required) const {
     Node* node = nullptr;
-    ORT_ENFORCE(static_cast<size_t>(index) < nodes_.size() &&
+    ORT_ENFORCE(index < nodes_.size() &&
                 ((node = nodes_[index]) != nullptr || !required));
 
     return node;
   }
 
-  int NumInputEntries() const;
-  int NumOutputEntries() const;
+  size_t NumInputEntries() const;
+  size_t NumOutputEntries() const;
 
   bool variadic_input_{false};  // is last input variadic
   bool variadic_output_{false};

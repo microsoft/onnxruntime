@@ -73,8 +73,10 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 {
                     ioBinding.BindInput(inputName, fixedInputBuffer);
                     ioBinding.BindOutput(outputName, Tensors.TensorElementType.Float, outputShape, ortAllocationOutput);
+                    ioBinding.SynchronizeBoundInputs();
                     using (var outputs = session.RunWithBindingAndNames(runOptions, ioBinding))
                     {
+                        ioBinding.SynchronizeBoundOutputs();
                         Assert.Equal(1, outputs.Count);
                         var output = outputs.ElementAt(0);
                         Assert.Equal(outputName, output.Name);
@@ -88,8 +90,10 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 {
                     ioBinding.BindInput(inputName, Tensors.TensorElementType.Float, inputShape, ortAllocationInput);
                     ioBinding.BindOutput(outputName, Tensors.TensorElementType.Float, outputShape, ortAllocationOutput);
+                    ioBinding.SynchronizeBoundInputs();
                     using (var outputs = session.RunWithBindingAndNames(runOptions, ioBinding))
                     {
+                        ioBinding.SynchronizeBoundOutputs();
                         Assert.Equal(1, outputs.Count);
                         var output = outputs.ElementAt(0);
                         Assert.Equal(outputName, output.Name);

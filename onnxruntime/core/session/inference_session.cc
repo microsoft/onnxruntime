@@ -265,9 +265,6 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
     static std::once_flag once;
 
     std::call_once(once, [&] {
-#ifdef _OPENMP
-      InitializeWithDenormalAsZero(set_denormal_as_zero);
-#endif
       SetDenormalAsZero(set_denormal_as_zero);
 
       LOGS(*session_logger_, INFO) << "Flush-to-zero and denormal-as-zero are " << ((set_denormal_as_zero) ? "on" : "off");
@@ -526,7 +523,7 @@ common::Status InferenceSession::RegisterExecutionProvider(const std::shared_ptr
 
   p_exec_provider->SetLogger(session_logger_);
   session_profiler_.AddEpProfilers(p_exec_provider->GetProfiler());
-  return execution_providers_.Add(provider_type, std::move(p_exec_provider));
+  return execution_providers_.Add(provider_type, p_exec_provider);
 }
 
 // Custom Op support
@@ -1136,7 +1133,7 @@ Status PartitionOrtFormatModel(onnxruntime::Graph& graph,
                                const ExecutionProviders& providers,
                                KernelRegistryManager& kernel_registry_manager,
                                SessionState& session_state) {
-  std::unordered_map<std::string, uint64_t> compiled_kernel_hashes;
+  std::unordered_map<std::string, HashValue> compiled_kernel_hashes;
 
   GraphPartitioner partitioner(kernel_registry_manager, providers);
   ORT_RETURN_IF_ERROR(partitioner.Partition(graph, session_state.ExportDll(),
@@ -1216,7 +1213,11 @@ static void ResolveMemoryPatternFlags(SessionState& session_state) {
     }
   }
 }
-
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(push)
+//VC++ reports: "Releasing unheld lock 'l' in function 'onnxruntime::InferenceSession::Initialize'". But I don't see anything wrong.
+#pragma warning(disable : 26117)
+#endif
 common::Status InferenceSession::Initialize() {
   Status status = Status::OK();
   TimePoint tp;
@@ -1468,7 +1469,9 @@ common::Status InferenceSession::Initialize() {
 
   return status;
 }
-
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(pop)
+#endif
 // This method should be called from within Initialize() only and before the creation of the session state.
 // This ensures all providers have been registered in the session and the session state is consistent with the providers.
 void InferenceSession::UpdateProvidersWithSharedAllocators() {
@@ -1572,18 +1575,26 @@ common::Status InferenceSession::ValidateInputs(const std::vector<std::string>& 
     auto expected_type = iter->second.ml_data_type;
     auto& input_ml_value = feeds.at(i);
     if (input_ml_value.IsTensor()) {
-      if (!expected_type->IsTensorType() &&
-          !utils::IsOptionalTensor(expected_type)) {
+      if (!expected_type->IsTensorType()
+#if !defined(DISABLE_OPTIONAL_TYPE)
+          && !utils::IsOptionalTensor(expected_type)
+#endif
+      ) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input with name: ", feed_name,
                                " is not expected to be of type tensor.");
       }
 
       // check for type
+#if !defined(DISABLE_OPTIONAL_TYPE)
       auto expected_element_type = expected_type->IsTensorType()
                                        ? expected_type
                                              ->AsTensorType()
                                              ->GetElementType()
                                        : utils::GetElementTypeFromOptionalTensor(expected_type);
+#else
+      auto expected_element_type = expected_type->AsTensorType()->GetElementType();
+#endif
+
       auto input_element_type = input_ml_value.Get<Tensor>().DataType();
       ORT_RETURN_IF_ERROR_SESSIONID_(CheckTypes(input_element_type, expected_element_type, "tensor"));
 
@@ -1615,17 +1626,24 @@ common::Status InferenceSession::ValidateInputs(const std::vector<std::string>& 
 #endif
 
     } else if (input_ml_value.IsTensorSequence()) {
-      if (!expected_type->IsTensorSequenceType() &&
-          !utils::IsOptionalSeqTensor(expected_type)) {
+      if (!expected_type->IsTensorSequenceType()
+#if !defined(DISABLE_OPTIONAL_TYPE)
+          && !utils::IsOptionalSeqTensor(expected_type)
+#endif
+      ) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input with name: ", feed_name,
                                " is not expected to be of type tensor sequence.");
       }
 
+#if !defined(DISABLE_OPTIONAL_TYPE)
       auto expected_element_type = expected_type->IsTensorSequenceType()
                                        ? expected_type
                                              ->AsSequenceTensorType()
                                              ->GetElementType()
                                        : utils::GetElementTypeFromOptionalSeqTensor(expected_type);
+#else
+      auto expected_element_type = expected_type->AsSequenceTensorType()->GetElementType();
+#endif
 
       auto input_element_type = input_ml_value.Get<TensorSeq>().DataType();
       ORT_RETURN_IF_ERROR_SESSIONID_(CheckTypes(input_element_type, expected_element_type, "seq"));

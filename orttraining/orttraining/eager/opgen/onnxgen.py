@@ -21,6 +21,24 @@ for schema in defs.get_all_schemas_with_history():
     onnx_ops[key].since_version < schema.since_version:
     onnx_ops[key] = schema
 
+def convert_to_aten_type(onnx_type_strs):
+  type_map = {'tensor(float16)' : 'at::kHalf',
+              'tensor(float)' : 'at::kFloat',
+              'tensor(double)' : 'at::kDouble',
+              'tensor(bfloat16)' : 'at::kBFloat16',
+              'tensor(int32)' : 'at::kInt',
+              'tensor(int16)' : 'at::kShort',
+              'tensor(int8)' : 'at::kByte',
+              'tensor(int64)' : 'at::kLong',
+              'tensor(bool)' : 'at::kBool',
+             }
+  result = set({})
+  for onnx_type in onnx_type_strs:
+    # ONNX has more types, like tensor(string), ignore those types at this momemnt
+    if onnx_type in type_map:
+      result.add(type_map[onnx_type])
+  return result
+
 with open(out_file, 'wt') as fp:
   def write(s): fp.write(s)
   def writeline(s = ''): fp.write(s + '\n')
@@ -54,9 +72,17 @@ with open(out_file, 'wt') as fp:
 
     writeline('):')
     write(f'    super().__init__(\'{schema.name}\', {len(schema.outputs)}')
-
+    writeline(',')
+    write('      ')
+    input_types = []
     for input in schema.inputs:
-      write(f', {input.name}')
+      input_types.append(convert_to_aten_type(input.types))
+    write(str(input_types))
+    if len(schema.inputs) > 0:
+      writeline(',')
+      input_names = ','.join([input.name for input in schema.inputs])
+      write(f'      {input_names}')
+    
 
     if len(schema.attributes) > 0:
       writeline(',')

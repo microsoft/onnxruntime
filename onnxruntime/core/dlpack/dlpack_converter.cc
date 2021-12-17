@@ -67,6 +67,10 @@ DLDataType GetDlpackDataType(const OrtValue& ort_value) {
       dtype.code = DLDataTypeCode::kDLUInt;
       dtype.bits = sizeof(uint64_t);
       break;
+    case ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16:
+      dtype.code = DLDataTypeCode::kDLBfloat;
+      dtype.bits = sizeof(BFloat16);
+      break;
     default:
       ORT_THROW("Unexpected data type of ", tensor.GetElementType());
   }
@@ -157,6 +161,13 @@ MLDataType GetOrtValueDataType(const DLDataType& dtype, bool is_bool_tensor) {
           return DataTypeImpl::GetType<double>();
         default:
           ORT_THROW("Unsupported kFloat bits " + std::to_string(dtype.bits));
+      }
+    case DLDataTypeCode::kDLBfloat:
+      switch (dtype.bits) {
+        case 16:
+          return DataTypeImpl::GetType<BFloat16>();
+        default:
+          ORT_THROW("Unsupported kBFloat bits " + std::to_string(dtype.bits));
       }
     default:
       ORT_THROW("Unsupported code " + std::to_string(dtype.code));

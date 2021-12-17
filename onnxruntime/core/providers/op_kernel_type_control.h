@@ -469,4 +469,17 @@ struct EnabledTypes {
 #include "core/framework/data_types.h"  // for types that might be used in type specifications
 
 // all allowed type specifications should be contained in the following file
+
+// If we are building with reduced number of kernel registration and types
+// <op_kernel_type_control_overrides.inc> will be copied to
+// <core/providers/op_kernel_type_control_overrides_reduced_types.inc>,
+// where the type specifications code will be inserted,
+// This will prevent,
+// 1. Accidental commit of the modified <op_kernel_type_control_overrides.inc>
+// 2. If the required ops and types config has changed, user has to revert the changes to
+//    <op_kernel_type_control_overrides.inc>
+#ifndef REDUCED_OP_TYPE_SUPPORT
 #include "core/providers/op_kernel_type_control_overrides.inc"
+#else
+#include "core/providers/op_kernel_type_control_overrides_reduced_types.inc"
+#endif

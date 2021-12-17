@@ -225,6 +225,8 @@ struct SequenceTensorType {
 template <typename ElemType>
 const SequenceTensorTypeProto<ElemType> SequenceTensorType<ElemType>::s_sequence_tensor_type_proto;
 
+#if !defined(DISABLE_OPTIONAL_TYPE)
+
 template <typename ElemType>
 struct OptionalTypeProto {
   OptionalTypeProto(const ONNX_NAMESPACE::TypeProto& type_proto) {
@@ -232,6 +234,8 @@ struct OptionalTypeProto {
   }
   ONNX_NAMESPACE::TypeProto proto;
 };
+
+#endif
 
 struct CheckParams {
   bool sort_output_ = false;
@@ -442,6 +446,8 @@ class OpTester {
     AddSeqData<T>(output_data_, name, &seq_tensors);
   }
 
+#if !defined(DISABLE_OPTIONAL_TYPE)
+
   template <typename T>
   void AddOptionalTypeTensorInput(const char* name, const std::vector<int64_t>& dims,
                                   const std::initializer_list<T>* values = nullptr,
@@ -470,6 +476,8 @@ class OpTester {
                                 const SeqTensors<T>* seq_tensors) {
     AddSeqData<T>(output_data_, name, seq_tensors, true);
   }
+
+#endif
 
   template <typename TKey, typename TVal>
   void AddInput(const char* name, const std::map<TKey, TVal>& val) {
@@ -826,6 +834,12 @@ class OpTester {
                int64_t values_count, bool is_initializer = false, bool sort_output = false,
                const std::vector<std::string>* dim_params = nullptr,
                float rel_error = 0.0f, float abs_error = 0.0f, bool is_optional_type_tensor = false) {
+#if defined(DISABLE_OPTIONAL_TYPE)
+    if (is_optional_type_tensor) {
+      ORT_THROW("Optional type is not supported in this build");
+    }
+#endif
+
     ORT_TRY {
       TensorShape shape{dims};
 
@@ -861,8 +875,13 @@ class OpTester {
 
       std::vector<int64_t> dims_for_proto = GetDimsForProto(dims);
       TTypeProto<T> tensor_type_proto(add_shape_to_tensor_data_ ? &dims_for_proto : nullptr);
+
+#if !defined(DISABLE_OPTIONAL_TYPE)
       OptionalTypeProto<T> optional_type_proto(tensor_type_proto.proto);
       auto node_arg = NodeArg(name, !is_optional_type_tensor ? &tensor_type_proto.proto : &optional_type_proto.proto);
+#else
+      auto node_arg = NodeArg(name, &tensor_type_proto.proto);
+#endif
 
       AddShapeToTensorData(node_arg, dims, dim_params);
 
@@ -897,6 +916,12 @@ class OpTester {
   void AddSeqData(std::vector<Data>& data, const char* name,
                   const SeqTensors<T>* seq_tensors,
                   bool is_optional_sequence_tensor_type = false) {
+#if defined(DISABLE_OPTIONAL_TYPE)
+    if (is_optional_sequence_tensor_type) {
+      ORT_THROW("Optional type is not supported in this build");
+    }
+#endif
+
     std::unique_ptr<TensorSeq> ptr;
 
     if (seq_tensors) {
@@ -934,14 +959,16 @@ class OpTester {
     value.Init(ptr ? ptr.release() : nullptr, mltype, mltype->GetDeleteFunc());
 
     SequenceTensorTypeProto<T> sequence_tensor_proto;
+#if !defined(DISABLE_OPTIONAL_TYPE)
     OptionalTypeProto<T> optional_type_proto(sequence_tensor_proto.proto);
+    auto node_arg = NodeArg(name, !is_optional_sequence_tensor_type
+                                      ? &sequence_tensor_proto.proto
+                                      : &optional_type_proto.proto);
+#else
+    auto node_arg = NodeArg(name, &sequence_tensor_proto.proto);
+#endif
 
-    data.push_back(
-        Data(NodeArg(name, !is_optional_sequence_tensor_type
-                               ? &sequence_tensor_proto.proto
-                               : &optional_type_proto.proto),
-             std::move(value),
-             optional<float>(), optional<float>()));
+    data.push_back(Data(std::move(node_arg), std::move(value), optional<float>(), optional<float>()));
   }
 
   std::vector<int64_t> GetDimsForProto(gsl::span<const int64_t> dims);

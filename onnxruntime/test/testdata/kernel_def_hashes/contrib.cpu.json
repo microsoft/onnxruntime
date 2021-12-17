@@ -4,6 +4,10 @@
         7811918192248490408
     ],
     [
+        "BeamSearch com.microsoft CPUExecutionProvider",
+        6968087233460196528
+    ],
+    [
         "Crop ai.onnx CPUExecutionProvider",
         6914973556202621376
     ],
@@ -26,6 +30,10 @@
     [
         "MeanVarianceNormalization ai.onnx CPUExecutionProvider",
         13114085849278607104
+    ],
+    [
+        "NhwcMaxPool com.microsoft CPUExecutionProvider",
+        11773579655431087496
     ],
     [
         "ParametricSoftplus ai.onnx CPUExecutionProvider",
@@ -145,6 +153,10 @@
     ],
     [
         "MatMulIntegerToFloat com.microsoft CPUExecutionProvider",
+        1363870470731747600
+    ],
+    [
+        "MatMulIntegerToFloat com.microsoft CPUExecutionProvider",
         7172777464471435800
     ],
     [
@@ -182,6 +194,10 @@
     [
         "QLinearAveragePool com.microsoft CPUExecutionProvider",
         9152647959212466896
+    ],
+    [
+        "QLinearConv com.microsoft CPUExecutionProvider",
+        10904143578341560456
     ],
     [
         "QLinearConv com.microsoft CPUExecutionProvider",

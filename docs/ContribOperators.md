@@ -5,6 +5,7 @@ Do not modify directly.*
 * com.microsoft
   * <a href="#com.microsoft.Attention">com.microsoft.Attention</a>
   * <a href="#com.microsoft.AttnLSTM">com.microsoft.AttnLSTM</a>
+  * <a href="#com.microsoft.BeamSearch">com.microsoft.BeamSearch</a>
   * <a href="#com.microsoft.BiasDropout">com.microsoft.BiasDropout</a>
   * <a href="#com.microsoft.BiasGelu">com.microsoft.BiasGelu</a>
   * <a href="#com.microsoft.BiasSoftmax">com.microsoft.BiasSoftmax</a>
@@ -14,6 +15,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.ComplexMulConj">com.microsoft.ComplexMulConj</a>
   * <a href="#com.microsoft.ConvTransposeWithDynamicPads">com.microsoft.ConvTransposeWithDynamicPads</a>
   * <a href="#com.microsoft.CropAndResize">com.microsoft.CropAndResize</a>
+  * <a href="#com.microsoft.DecoderAttention">com.microsoft.DecoderAttention</a>
   * <a href="#com.microsoft.DequantizeLinear">com.microsoft.DequantizeLinear</a>
   * <a href="#com.microsoft.DynamicQuantizeLSTM">com.microsoft.DynamicQuantizeLSTM</a>
   * <a href="#com.microsoft.DynamicQuantizeMatMul">com.microsoft.DynamicQuantizeMatMul</a>
@@ -333,6 +335,75 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Constrain input and output types to float tensors.</dd>
 <dt><tt>T1</tt> : tensor(int32)</dt>
 <dd>Constrain seq_lens to integral tensors.</dd>
+</dl>
+
+
+### <a name="com.microsoft.BeamSearch"></a><a name="com.microsoft.beamsearch">**com.microsoft.BeamSearch**</a>
+
+  Beam Search for text generation. Supports GPT-2 decoder.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>body</tt> : graph (required)</dt>
+<dd>The GPT-2 subgraph with input_ids, position_ids, attention_mask, past_0, past_1, ... as inputs, and logits, present_0, present_1, ... as output</dd>
+<dt><tt>early_stopping</tt> : int</dt>
+<dd>early stop or not</dd>
+<dt><tt>eos_token_id</tt> : int (required)</dt>
+<dd>The id of the end-of-sequence token</dd>
+<dt><tt>no_repeat_ngram_size</tt> : int</dt>
+<dd>no repeat ngrams size</dd>
+<dt><tt>pad_token_id</tt> : int (required)</dt>
+<dd>The id of the padding token</dd>
+</dl>
+
+#### Inputs (6 - 9)
+
+<dl>
+<dt><tt>input_ids</tt> : I</dt>
+<dd>The sequence used as a prompt for the generation. Shape is (batch_size, sequence_length)</dd>
+<dt><tt>max_length</tt> : I</dt>
+<dd>The maximum length of the sequence to be generated. Shape is (1)</dd>
+<dt><tt>min_length</tt> (optional) : I</dt>
+<dd>The minimum length below which the score of eos_token_id is set to -Inf. Shape is (1)</dd>
+<dt><tt>num_beams</tt> : I</dt>
+<dd>Number of beams for beam search. 1 means no beam search. Shape is (1)</dd>
+<dt><tt>num_return_sequences</tt> : I</dt>
+<dd>The number of returned sequences in the batch. Shape is (1)</dd>
+<dt><tt>temperature</tt> : T</dt>
+<dd>The value used to module the next token probabilities. Accepts value > 0.0. Shape is (1)</dd>
+<dt><tt>length_penalty</tt> (optional) : T</dt>
+<dd>Exponential penalty to the length. Default value 1.0 means no penalty.Value > 1.0 encourages longer sequences, while values < 1.0 produces shorter sequences.Shape is (1,)</dd>
+<dt><tt>repetition_penalty</tt> (optional) : T</dt>
+<dd>The parameter for repetition penalty. Default value 1.0 means no penalty. Accepts value > 0.0. Shape is (1)</dd>
+<dt><tt>vocab_mask</tt> (optional) : M</dt>
+<dd>Mask of vocabulary. Words that masked with 0 are not allowed to be generated, and 1 is allowed. Shape is (vacab_size)</dd>
+</dl>
+
+#### Outputs (1 - 3)
+
+<dl>
+<dt><tt>sequences</tt> : I</dt>
+<dd>Word IDs of generated sequences. Shape is (batch_size, num_return_sequences, max_sequence_length)</dd>
+<dt><tt>sequences_scores</tt> (optional) : T</dt>
+<dd>Final beam score of the generated sequences. Shape is (batch_size, num_return_sequences)</dd>
+<dt><tt>scores</tt> (optional) : T</dt>
+<dd>Processed beam scores for each vocabulary token at each generation step.Beam scores consisting of log softmax scores for each vocabulary token and sum of log softmax of previously generated tokens in this beam.Shape is (max_length - sequence_length, batch_size, num_beams, vocab_size)</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float), tensor(float16)</dt>
+<dd>Constrain input and output types to float tensors.</dd>
+<dt><tt>I</tt> : tensor(int32)</dt>
+<dd>Constrain to integer types</dd>
+<dt><tt>M</tt> : tensor(int32)</dt>
+<dd>Constrain mask to integer types</dd>
 </dl>
 
 
@@ -714,6 +785,72 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Constrain types to float tensors.</dd>
 <dt><tt>T2</tt> : tensor(int32)</dt>
 <dd>Constrain types to int tensors.</dd>
+</dl>
+
+
+### <a name="com.microsoft.DecoderAttention"></a><a name="com.microsoft.decoderattention">**com.microsoft.DecoderAttention**</a>
+
+  This DecoderAttention supports self attention and cross attention, key and value cache, and key_padding_mask. The attention mask is not support at the moment.
+  Some boolean parameters are passed by runtime input for generic purpose
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>num_heads</tt> : int (required)</dt>
+<dd>Number of attention heads</dd>
+</dl>
+
+#### Inputs
+
+<dl>
+<dt><tt>query</tt> : T</dt>
+<dd>3D input tensor with shape (sequence_length, batch_size, hidden_size), hidden_size = num_heads * head_size</dd>
+<dt><tt>key</tt> : T</dt>
+<dd>3D input tensor with shape (total_sequence_length, batch_size, hidden_size)</dd>
+<dt><tt>q_weight</tt> : T</dt>
+<dd>2D input tensor with shape (hidden_size, hidden_size)</dd>
+<dt><tt>kv_weight</tt> : T</dt>
+<dd>2D input tensor with shape (hidden_size, 2 * hidden_size)</dd>
+<dt><tt>bias</tt> : T</dt>
+<dd>1D input tensor with shape (3 * hidden_size)</dd>
+<dt><tt>key_padding_mask</tt> (optional) : B</dt>
+<dd>2D input tensor with shape (batch_size, total_sequence_length)</dd>
+<dt><tt>key_cache</tt> (optional) : T</dt>
+<dd>input tensor with shape (batch_size, num_heads, sequence_length or total_sequence_length, head_size)</dd>
+<dt><tt>value_cache</tt> (optional) : T</dt>
+<dd>input tensor with shape (batch_size, num_heads, sequence_length or total_sequence_length, head_size)</dd>
+<dt><tt>static_kv</tt> : B</dt>
+<dd>If static_kv = true, cross-attention; else self-attention</dd>
+<dt><tt>use_past</tt> : B</dt>
+<dd>If use_past = true, use cache; else no cache</dd>
+<dt><tt>has_layer_state</tt> : B</dt>
+<dd>If has_layer_state = true, layer_state = {} or [a,b]; else layer_state = None</dd>
+<dt><tt>has_key_padding_mask</tt> : B</dt>
+<dd>has_key_padding_mask or not</dd>
+</dl>
+
+#### Outputs (1 - 3)
+
+<dl>
+<dt><tt>output</tt> : T</dt>
+<dd>3D output tensor with shape (sequence_length, batch_size, hidden_size)</dd>
+<dt><tt>new_key_cache</tt> (optional) : T</dt>
+<dd>output tensor with shape (batch_size, num_heads, new sequence_length, head_size)</dd>
+<dt><tt>new_value_cache</tt> (optional) : T</dt>
+<dd>output tensor with shape (batch_size, num_heads, new sequence_length, head_size)</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float), tensor(float16)</dt>
+<dd>Constrain input and output types to float and float16 tensors.</dd>
+<dt><tt>B</tt> : tensor(bool)</dt>
+<dd>Constrain key_padding_mask to bool tensors.</dd>
 </dl>
 
 

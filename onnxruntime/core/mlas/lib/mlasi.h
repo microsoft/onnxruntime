@@ -96,18 +96,46 @@ Abstract:
 //
 // Select the threading model.
 //
-// N.B. MLAS_NO_ONNXRUNTIME_THREADPOOL is used to build MLAS test code outside
+// N.B. BUILD_MLAS_NO_ONNXRUNTIME is used to build MLAS test code outside
 // of the ONNX Runtime source tree. OpenMP may or may not be enabled in this
 // configuration.
 //
 
-#if !defined(MLAS_NO_ONNXRUNTIME_THREADPOOL)
+#if !defined(BUILD_MLAS_NO_ONNXRUNTIME)
 #include "core/platform/threadpool.h"
-#endif
 
-#if defined(_OPENMP)
-#include <omp.h>
-#endif
+#if defined(MLAS_TARGET_ARM64) && defined(__linux__)
+
+#include "core/common/cpuid_info.h"
+using MLAS_CPUIDINFO = onnxruntime::CPUIDInfo;
+
+#endif // MLAS_TARGET_ARM64
+
+#else  // BUILD_MLAS_NO_ONNXRUNTIME
+
+#if defined(MLAS_TARGET_ARM64) && defined(__linux__)
+class MLASCPUIDInfo
+{
+   public:
+    static const MLASCPUIDInfo& GetCPUIDInfo()
+    {
+        static MLASCPUIDInfo cpuid_info;
+        return cpuid_info;
+    }
+
+    // ARM
+    bool HasArmNeonDot() const { return has_arm_neon_dot_; }
+
+   private:
+    MLASCPUIDInfo();
+
+    bool has_arm_neon_dot_{false};
+};
+using MLAS_CPUIDINFO = MLASCPUIDInfo;
+
+#endif // MLAS_TARGET_ARM64
+
+#endif // BUILD_MLAS_NO_ONNXRUNTIME
 
 //
 // Define the maximum number of threads supported by this implementation.
@@ -465,14 +493,14 @@ void
     int8_t ZeroPoint
     );
 
-template<typename FilterType>
-struct MLAS_U8X8_KERNEL
+template<typename InputType, typename FilterType>
+struct MLAS_QUANT_KERNEL
 {
     typedef
     void
     (MLASCALL DepthwiseKernel)(
-        const uint8_t* const* Input,
-        uint8_t InputZeroPoint,
+        const InputType* const* Input,
+        InputType InputZeroPoint,
         const FilterType* Filter,
         FilterType FilterZeroPoint,
         int32_t* Output,
@@ -499,6 +527,7 @@ extern "C" {
     MLAS_GEMM_FLOAT_KERNEL MlasSgemmKernel;
     MLAS_GEMM_FLOAT_KERNEL MlasSgemmKernelPOWER10;
     MLAS_GEMM_DOUBLE_KERNEL MlasDgemmKernel;
+    MLAS_GEMM_DOUBLE_KERNEL MlasDgemmKernelPOWER10;
 #else
     MLAS_GEMM_FLOAT_KERNEL MlasSgemmKernelZero;
     MLAS_GEMM_FLOAT_KERNEL MlasSgemmKernelAdd;
@@ -654,17 +683,19 @@ MlasSgemmOperation(
 // Quantized integer matrix/matrix dispatch structure.
 //
 
-struct MLAS_GEMM_U8X8_DISPATCH;
+struct MLAS_GEMM_QUANT_DISPATCH;
 
-extern const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8X8DispatchSse;
-extern const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8S8DispatchSse41;
-extern const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8S8DispatchAvx2;
-extern const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8U8DispatchAvx2;
-extern const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8X8DispatchNeon;
-extern const MLAS_GEMM_U8X8_DISPATCH MlasGemmS8S8DispatchNeon;
-extern const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8X8DispatchUdot;
-extern const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8X8DispatchWasmSimd;
-extern const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8X8DispatchDefault;
+extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchSse;
+extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8S8DispatchSse41;
+extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8S8DispatchAvx2;
+extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8U8DispatchAvx2;
+extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchNeon;
+extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmX8S8DispatchNeon;
+extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmS8S8DispatchNeon;
+extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchUdot;
+extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmS8S8DispatchSdot;
+extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchWasmSimd;
+extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmQuantDispatchDefault;
 
 //
 // Symmetric quantized integer convolution dispatch structure.
@@ -677,17 +708,18 @@ extern const MLAS_CONV_SYM_DISPATCH MlasConvSymDispatchAvxVnni;
 extern const MLAS_CONV_SYM_DISPATCH MlasConvSymDispatchAvx512Core;
 extern const MLAS_CONV_SYM_DISPATCH MlasConvSymDispatchAvx512Vnni;
 extern const MLAS_CONV_SYM_DISPATCH MlasConvSymDispatchNeon;
+extern const MLAS_CONV_SYM_DISPATCH MlasConvSymDispatchDot;
 
 //
 // Quantized depthwise convolution kernels.
 //
 
-template<typename FilterType>
+template<typename InputType, typename FilterType>
 void
 MLASCALL
 MlasConvDepthwiseKernel(
-    const uint8_t* const* Input,
-    uint8_t InputZeroPoint,
+    const InputType* const* Input,
+    InputType InputZeroPoint,
     const FilterType* Filter,
     FilterType FilterZeroPoint,
     int32_t* Output,
@@ -696,18 +728,50 @@ MlasConvDepthwiseKernel(
     size_t KernelSize
     );
 
-template<typename FilterType>
+template <typename InputType, typename FilterType>
 void
 MLASCALL
 MlasConvDepthwiseKernelAvx2(
-    const uint8_t* const* Input,
-    uint8_t InputZeroPoint,
+    const InputType* const* Input,
+    InputType InputZeroPoint,
     const FilterType* Filter,
     FilterType FilterZeroPoint,
     int32_t* Output,
     size_t Channels,
     size_t OutputCount,
     size_t KernelSize
+    );
+
+//
+// Define the kernel flags for conv sym
+//
+
+#define MLAS_CONV_SYM_FLAG_INPUT_DIRECT             0x00000001
+#define MLAS_CONV_SYM_FLAG_PER_CHANNEL_SCALE        0x00000002
+
+//
+// Define the post-processing parameters for conv sym: bias and re-quant params
+//
+
+struct MLAS_CONV_SYM_POST_PROCESS_PARAMS {
+    const int32_t* Bias;
+    const float* Scale;
+    float MinimumValue;
+    float MaximumValue;
+    int32_t OutputZeroPoint;
+};
+
+typedef
+void
+(MLASCALL MLAS_CONV_SYM_DEPTHWISE_ROUTINE_KERNELSIZE)(
+    void const* const* InputIndirection,
+    int8_t const* Filter,
+    size_t Channels,
+    void* Output,
+    size_t OutputCount,
+    MLAS_CONV_SYM_POST_PROCESS_PARAMS const* PostProcessParams,
+    unsigned KernelFlags,
+    bool InputIsSigned
     );
 
 //
@@ -723,13 +787,20 @@ struct MLAS_PLATFORM {
 #endif
 
 #if defined(MLAS_TARGET_AMD64_IX86)
-    const MLAS_GEMM_U8X8_DISPATCH* GemmU8S8Dispatch;
-    const MLAS_GEMM_U8X8_DISPATCH* GemmU8U8Dispatch;
+    const MLAS_GEMM_QUANT_DISPATCH* GemmU8S8Dispatch;
+    const MLAS_GEMM_QUANT_DISPATCH* GemmU8U8Dispatch;
 #elif defined(MLAS_TARGET_ARM64)
-    const MLAS_GEMM_U8X8_DISPATCH* GemmU8X8Dispatch;
+    const MLAS_GEMM_QUANT_DISPATCH* GemmU8X8Dispatch;
 #endif
 
-    const MLAS_CONV_SYM_DISPATCH* ConvSymDispatch{nullptr};
+    const MLAS_CONV_SYM_DISPATCH* ConvSymU8S8Dispatch{nullptr};
+    const MLAS_CONV_SYM_DISPATCH* ConvSymS8S8Dispatch{nullptr};
+
+    MLAS_QUANT_KERNEL<uint8_t, int8_t>::DepthwiseKernel* ConvDepthwiseU8S8Kernel;
+    MLAS_QUANT_KERNEL<uint8_t, uint8_t>::DepthwiseKernel* ConvDepthwiseU8U8Kernel;
+    MLAS_QUANT_KERNEL<int8_t, int8_t>::DepthwiseKernel* ConvDepthwiseS8S8Kernel;
+    MLAS_QUANT_KERNEL<int8_t, uint8_t>::DepthwiseKernel* ConvDepthwiseS8U8Kernel;
+
 #if defined(MLAS_TARGET_POWER)
     MLAS_GEMM_DOUBLE_KERNEL* GemmDoubleKernel;
 #endif
@@ -749,8 +820,6 @@ struct MLAS_PLATFORM {
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL* ErfKernelRoutine;
     MLAS_QLINEAR_BINARY_OP_S8_KERNEL* QLinearAddS8Kernel;
     MLAS_QLINEAR_BINARY_OP_U8_KERNEL* QLinearAddU8Kernel;
-    MLAS_U8X8_KERNEL<int8_t>::DepthwiseKernel* ConvDepthwiseU8S8Kernel;
-    MLAS_U8X8_KERNEL<uint8_t>::DepthwiseKernel* ConvDepthwiseU8U8Kernel;
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL* ComputeExpF32Kernel;
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL* LogisticKernelRoutine;
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL* TanhKernelRoutine;
@@ -764,6 +833,8 @@ struct MLAS_PLATFORM {
     uint32_t NchwcBlockSize;
     uint32_t PreferredBufferAlignment;
     int32_t MaximumThreadCount;
+#elif defined(MLAS_TARGET_ARM64)
+    static constexpr int32_t MaximumThreadCount = MLAS_MAXIMUM_THREAD_COUNT * 4;
 #else
     static constexpr int32_t MaximumThreadCount = MLAS_MAXIMUM_THREAD_COUNT;
 #endif
@@ -811,14 +882,9 @@ MlasGetMaximumThreadCount(
     MLAS_THREADPOOL* ThreadPool
     )
 {
-#if defined(MLAS_NO_ONNXRUNTIME_THREADPOOL)
+#if defined(BUILD_MLAS_NO_ONNXRUNTIME)
     MLAS_UNREFERENCED_PARAMETER(ThreadPool);
-
-#if defined(_OPENMP)
-    return (omp_get_num_threads() == 1) ? omp_get_max_threads() : 1;
-#else
     return 1;
-#endif
 #else
     return onnxruntime::concurrency::ThreadPool::DegreeOfParallelism(ThreadPool);
 #endif
@@ -858,6 +924,11 @@ MlasPartitionWork(
 //
 // Helpers to cast a floating point type to and from an integer bit format.
 //
+#if defined(_MSC_VER) && !defined(__clang__)
+  #pragma warning(push)
+  // VC++ suggests we can attempt to make 'MlasBitsOfFp32' constexpr, but it is not valid.
+  #pragma warning(disable:26497) 
+#endif
 
 MLAS_FORCEINLINE
 uint32_t
@@ -886,7 +957,9 @@ MlasFp32FromBits(
     u.IntegerValue = IntegerValue;
     return u.FloatValue;
 }
-
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(pop)
+#endif
 
 #if defined(MLAS_TARGET_WASM_SCALAR)
 
@@ -1855,7 +1928,7 @@ MlasStoreAlignedFloat64x2(double* Buffer, MLAS_FLOAT64X2 Vector)
 #if defined(MLAS_SSE2_INTRINSICS)
     _mm_store_pd(Buffer, Vector);
 #elif defined(MLAS_VSX_INTRINSICS)
-    vec_st(Vector, 0, Buffer);
+    *((MLAS_FLOAT64X2*)Buffer) = Vector;
 #endif
 }
 

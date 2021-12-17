@@ -355,7 +355,7 @@ TEST(GradientCheckerTest, PowGrad) {
 
 void RunMatMulGradTests(const OpDef& op_def) {
   float max_error;
-  const float error_tolerance = 1e-1f;
+  constexpr float error_tolerance = 1e-1f;
   GradientChecker<float, float, float> gradient_checker;
   const std::vector<ONNX_NAMESPACE::AttributeProto> attributes = {};
 
@@ -443,7 +443,7 @@ TEST(GradientCheckerTest, LogGrad) {
 
   float max_error;
 #ifdef USE_DNNL
-  float error_tolerance = 3e-3f;
+  float error_tolerance = 4e-3f;
 #else
   float error_tolerance = 1e-3f;
 #endif
@@ -508,7 +508,7 @@ TEST(GradientCheckerTest, TanhGrad) {
 // failing random seed with error_tolerance of 1.5e-2f: 322298223
 void RunGemmGradTests(const OpDef& op_def) {
   float max_error;
-  const float error_tolerance = 2e-2f;
+  constexpr float error_tolerance = 2e-2f;
   GradientChecker<float, float, float> gradient_checker;
   const std::vector<ONNX_NAMESPACE::AttributeProto> attributes = {};
 
@@ -729,7 +729,7 @@ TEST(GradientCheckerTest, MaxPoolGrad) {
   float max_error;
   GradientChecker<float, float, float> gradient_checker;
   OpDef op_def{"MaxPool"};
-  const float error_tolerance = 1e-3f;
+  constexpr float error_tolerance = 1e-3f;
   //maxpool_1d_default
   {
     ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {{2, 2, 9}}, {{2, 2, 8}}, &max_error,
@@ -778,7 +778,7 @@ TEST(GradientCheckerTest, GlobalAveragePoolGrad) {
   float max_error;
   GradientChecker<float, float, float> gradient_checker;
   OpDef op_def{"GlobalAveragePool"};
-  const float error_tolerance = 1e-3f;
+  constexpr float error_tolerance = 1e-3f;
 
   //globalaveragepool
   {
@@ -1574,13 +1574,13 @@ TEST(GradientCheckerTest, SigmoidGrad) {
   UnaryOpGradientTest("Sigmoid");
 }
 
-void GradientCheckerSoftmaxGradHelper(bool is_log_softmax) {
+void GradientCheckerSoftmaxGradHelper(bool is_log_softmax, int version = 11) {
   TensorShape shape({3, 4, 5});
   float max_error;
   GradientChecker<float, float, float> gradient_checker;
 
   const std::string op = is_log_softmax ? "LogSoftmax" : "Softmax";
-  OpDef op_def{op};
+  OpDef op_def{op, kOnnxDomain, version};
 
   // default_axis
   {
@@ -1594,6 +1594,12 @@ void GradientCheckerSoftmaxGradHelper(bool is_log_softmax) {
     EXPECT_IS_TINY(max_error);
   }
 
+  // axis=1
+  {
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {shape}, {shape}, &max_error, {MakeAttribute("axis", int64_t(1))}));
+    EXPECT_IS_TINY(max_error);
+  }
+
   // axis=2
   {
     ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {shape}, {shape}, &max_error, {MakeAttribute("axis", int64_t(2))}));
@@ -1603,10 +1609,12 @@ void GradientCheckerSoftmaxGradHelper(bool is_log_softmax) {
 
 TEST(GradientCheckerTest, SoftMaxGrad) {
   GradientCheckerSoftmaxGradHelper(false);
+  GradientCheckerSoftmaxGradHelper(false, 13);
 }
 
 TEST(GradientCheckerTest, LogSoftMaxGrad) {
   GradientCheckerSoftmaxGradHelper(true);
+  GradientCheckerSoftmaxGradHelper(true, 13);
 }
 
 void TestSoftmaxCrossEntropyGrad(const TensorShape& input_shape, const std::string& reduction) {
@@ -1634,7 +1642,7 @@ void TestSparseSoftmaxCrossEntropyGrad(const TensorShape& index_shape, const std
   GradientChecker<float, float, float> gradient_checker;
   OpDef op_def{"SparseSoftmaxCrossEntropy"};
 
-  const int64_t D = 7;
+  constexpr int64_t D = 7;
   std::function<float(float)> transformer_index = [](float x) { return std::fmod(std::fabs(x) * 5.0f, 7.0f); };
   std::function<float(float)> transformer_weight = [](float x) { return std::fmod(std::fabs(x), 2.0f); };
 
@@ -2753,8 +2761,8 @@ TEST(GradientCheckerTest, TriluGrad) {
   float max_error;
   GradientChecker<float, float, float> gradient_checker;
   OpDef op_def{"Trilu", kMSDomain, 1};
-  const int M = 3;
-  const int N = 4;
+  constexpr int M = 3;
+  constexpr int N = 4;
   TensorShape shape = {M, N};
   TensorInfo x_info(shape);
   TensorInfo k_info({1}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>());
