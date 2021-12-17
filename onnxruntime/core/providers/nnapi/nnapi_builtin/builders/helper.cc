@@ -17,10 +17,6 @@
 #include "helper.h"
 #include "op_support_checker.h"
 
-using onnxruntime::NodeUnit;
-using std::string;
-using std::vector;
-
 namespace onnxruntime {
 namespace nnapi {
 

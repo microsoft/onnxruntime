@@ -14,9 +14,7 @@
 #include "op_builder.h"
 #include "op_support_checker.h"
 
-using onnxruntime::NodeUnit;
 using namespace android::nn::wrapper;
-using std::vector;
 
 namespace onnxruntime {
 namespace nnapi {
@@ -31,7 +29,7 @@ int32_t ModelBuilder::GetNNAPIFeatureLevel() const {
 // Scalar operand is copied into the model, no need to persist
 #define DEFINE_ADD_OPERAND_FROM_SCALAR(scalar_type, op_type)                      \
   Status ModelBuilder::AddOperandFromScalar(scalar_type value, uint32_t& index) { \
-    OperandType operandType(Type::op_type, vector<uint32_t>{});                   \
+    OperandType operandType(Type::op_type, std::vector<uint32_t>{});              \
     ORT_RETURN_IF_ERROR(AddNewNNAPIOperand(operandType, index));                  \
     RETURN_STATUS_ON_ERROR_WITH_NOTE(                                             \
         nnapi_->ANeuralNetworksModel_setOperandValue(                             \
@@ -50,7 +48,7 @@ void ModelBuilder::AddInitializerToSkip(const std::string& tensor_name) {
   skipped_initializers_.insert(tensor_name);
 }
 
-static std::unordered_map<std::string, vector<const Node*>> GetAllQuantizedOpInputs(const GraphViewer& graph_viewer);
+static std::unordered_map<std::string, std::vector<const Node*>> GetAllQuantizedOpInputs(const GraphViewer& graph_viewer);
 
 Status ModelBuilder::Prepare() {
   nnapi_model_ = std::unique_ptr<Model>(new Model());
@@ -151,8 +149,8 @@ void ModelBuilder::PreprocessActivations() {
 }
 
 // Help to get all quantized operators' input and the node(s) using the input
-static std::unordered_map<std::string, vector<const Node*>> GetAllQuantizedOpInputs(const GraphViewer& graph_viewer) {
-  std::unordered_map<std::string, vector<const Node*>> all_quantized_op_inputs;
+static std::unordered_map<std::string, std::vector<const Node*>> GetAllQuantizedOpInputs(const GraphViewer& graph_viewer) {
+  std::unordered_map<std::string, std::vector<const Node*>> all_quantized_op_inputs;
   const auto& node_indices = graph_viewer.GetNodesInTopologicalOrder();
   for (const auto& node_idx : node_indices) {
     const auto* node(graph_viewer.GetNode(node_idx));
@@ -168,7 +166,7 @@ static std::unordered_map<std::string, vector<const Node*>> GetAllQuantizedOpInp
       if (Contains(all_quantized_op_inputs, input_name))
         all_quantized_op_inputs.at(input_name).push_back(node);
       else
-        all_quantized_op_inputs.emplace(input_name, vector<const Node*>{node});
+        all_quantized_op_inputs.emplace(input_name, std::vector<const Node*>{node});
     }
 
     if (IsQLinearBinaryOp(qlinear_op_type)) {
@@ -176,7 +174,7 @@ static std::unordered_map<std::string, vector<const Node*>> GetAllQuantizedOpInp
       if (Contains(all_quantized_op_inputs, input_name))
         all_quantized_op_inputs.at(input_name).push_back(node);
       else
-        all_quantized_op_inputs.emplace(input_name, vector<const Node*>{node});
+        all_quantized_op_inputs.emplace(input_name, std::vector<const Node*>{node});
     }
   }
 

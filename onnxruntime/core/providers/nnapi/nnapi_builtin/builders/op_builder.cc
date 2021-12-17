@@ -16,9 +16,7 @@
 #include "model_builder.h"
 #include "op_support_checker.h"
 
-using onnxruntime::NodeUnit;
 using namespace android::nn::wrapper;
-using std::vector;
 
 namespace onnxruntime {
 namespace nnapi {
@@ -40,13 +38,13 @@ struct OpBuilderRegistrations {
 Status AddTransposeOperator(ModelBuilder& model_builder,
                             const std::string& input,
                             const std::string& perm_name,
-                            vector<int32_t> perm,
+                            std::vector<int32_t> perm,
                             const std::string& output,
                             bool output_is_nhwc) ORT_MUST_USE_RESULT;
 Status AddTransposeOperator(ModelBuilder& model_builder,
                             const std::string& input,
                             const std::string& perm_name,
-                            vector<int32_t> perm,
+                            std::vector<int32_t> perm,
                             const std::string& output,
                             bool output_is_nhwc) {
   auto& shaper(model_builder.GetShaper());
@@ -83,7 +81,7 @@ Status TransposeBetweenNCHWAndNHWC(ModelBuilder& model_builder,
                     "TransposeBetweenNCHWAndNHWC input has to be a 4d tensor, actual dimensions: ", shaper[input].size());
 
   std::string perm_name;
-  vector<int32_t> perm;
+  std::vector<int32_t> perm;
   if (nchw_to_nhwc) {
     perm_name = model_builder.GetUniqueName(input + "nchw_to_nhwc_perm");
     perm = {0, 2, 3, 1};
@@ -222,11 +220,11 @@ static Status AddBinaryOperator(int32_t op_type,
 static Status AddSqueezeOp(ModelBuilder& model_builder,
                            const std::string& node_name,
                            const std::string& input, const std::string& output,
-                           vector<int32_t> axes) ORT_MUST_USE_RESULT;
+                           std::vector<int32_t> axes) ORT_MUST_USE_RESULT;
 static Status AddSqueezeOp(ModelBuilder& model_builder,
                            const std::string& node_name,
                            const std::string& input, const std::string& output,
-                           vector<int32_t> axes) {
+                           std::vector<int32_t> axes) {
   if (model_builder.GetNNAPIFeatureLevel() < ANEURALNETWORKS_FEATURE_LEVEL_2) {
     return ORT_MAKE_STATUS(
         ONNXRUNTIME, FAIL, "Squeeze is not supported on API level ", model_builder.GetNNAPIFeatureLevel());
@@ -430,13 +428,13 @@ static Status ComputeConvPads(
     const uint32_t weight_size_y, const uint32_t weight_size_x,
     const std::vector<int32_t>& onnx_pads, const std::vector<int32_t>& onnx_strides, const std::vector<int32_t>& onnx_dilations,
     AutoPadType auto_pad_type, bool nchw,
-    vector<int32_t>& pads_out) ORT_MUST_USE_RESULT;
+    std::vector<int32_t>& pads_out) ORT_MUST_USE_RESULT;
 static Status ComputeConvPads(
     const Shape& input_dimen,
     const uint32_t weight_size_y, const uint32_t weight_size_x,
     const std::vector<int32_t>& onnx_pads, const std::vector<int32_t>& onnx_strides, const std::vector<int32_t>& onnx_dilations,
     AutoPadType auto_pad_type, bool nchw,
-    vector<int32_t>& pads_out) {
+    std::vector<int32_t>& pads_out) {
   const int32_t input_size_y = nchw ? input_dimen[2] : input_dimen[1];
   const int32_t input_size_x = nchw ? input_dimen[3] : input_dimen[2];
   const int32_t stride_y = onnx_strides[0];
@@ -467,21 +465,21 @@ static Status ComputeConvPads(
 static Status HandleAutoPad(const Shape& input_shape,
                             const uint32_t weight_size_y,
                             const uint32_t weight_size_x,
-                            const vector<int32_t>& onnx_strides,
-                            const vector<int32_t>& onnx_dilations,
+                            const std::vector<int32_t>& onnx_strides,
+                            const std::vector<int32_t>& onnx_dilations,
                             AutoPadType auto_pad_type,
                             bool use_nchw,
-                            vector<int32_t>& onnx_pads,
+                            std::vector<int32_t>& onnx_pads,
                             int32_t& nnapi_padding_code,
                             bool& use_auto_pad) ORT_MUST_USE_RESULT;
 static Status HandleAutoPad(const Shape& input_shape,
                             const uint32_t weight_size_y,
                             const uint32_t weight_size_x,
-                            const vector<int32_t>& onnx_strides,
-                            const vector<int32_t>& onnx_dilations,
+                            const std::vector<int32_t>& onnx_strides,
+                            const std::vector<int32_t>& onnx_dilations,
                             AutoPadType auto_pad_type,
                             bool use_nchw,
-                            vector<int32_t>& onnx_pads,
+                            std::vector<int32_t>& onnx_pads,
                             int32_t& nnapi_padding_code,
                             bool& use_auto_pad) {
   use_auto_pad = false;
@@ -498,7 +496,7 @@ static Status HandleAutoPad(const Shape& input_shape,
     }
   } else if (onnx_dilations == std::vector<int32_t>{1, 1}) {
     // Since NNAPI runs more efficiently using auto_pad, we try to map the NOTSET padding to auto_pad
-    vector<int32_t> same_upper_pads;
+    std::vector<int32_t> same_upper_pads;
     ORT_RETURN_IF_ERROR(ComputeConvPads(input_shape, weight_size_y, weight_size_x,
                                         onnx_pads, onnx_strides, onnx_dilations,
                                         AutoPadType::SAME_UPPER, use_nchw,
@@ -547,12 +545,12 @@ static Status GetConvMatMulOpQuantizationScaleAndZeroPoint(
     const ModelBuilder& model_builder, const Node& node,
     float& a_scale, float& w_scale, float& y_scale,
     int32_t& a_zero_point, int32_t& w_zero_point, int32_t& y_zero_point,
-    optional<vector<float>>& w_scales, bool& is_per_tensor_u8s8) ORT_MUST_USE_RESULT;
+    optional<std::vector<float>>& w_scales, bool& is_per_tensor_u8s8) ORT_MUST_USE_RESULT;
 static Status GetConvMatMulOpQuantizationScaleAndZeroPoint(
     const ModelBuilder& model_builder, const Node& node,
     float& a_scale, float& w_scale, float& y_scale,
     int32_t& a_zero_point, int32_t& w_zero_point, int32_t& y_zero_point,
-    optional<vector<float>>& w_scales, bool& is_per_tensor_u8s8) {
+    optional<std::vector<float>>& w_scales, bool& is_per_tensor_u8s8) {
   is_per_tensor_u8s8 = false;
   // Get scale and zero points
   // We will handle per-channel weight scale and zero point later
@@ -593,7 +591,7 @@ static Status GetConvMatMulOpQuantizationScaleAndZeroPoint(
   ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(scale_tensor, unpacked_tensor));
   const float* scales = reinterpret_cast<const float*>(unpacked_tensor.data());
   const size_t scales_size = scale_tensor.dims().empty() ? 1 : scale_tensor.dims()[0];
-  vector<float> scales_vec(scales, scales + scales_size);
+  std::vector<float> scales_vec(scales, scales + scales_size);
   w_scales = onnxruntime::make_optional(std::move(scales_vec));
   return Status::OK();
 }
@@ -631,12 +629,12 @@ static Status IsValidConvWeightQuantizedType(const ModelBuilder& model_builder,
                                              const std::string& input_name,
                                              float scale,
                                              int32_t zero_point,
-                                             const optional<vector<float>>& scales) ORT_MUST_USE_RESULT;
+                                             const optional<std::vector<float>>& scales) ORT_MUST_USE_RESULT;
 static Status IsValidConvWeightQuantizedType(const ModelBuilder& model_builder,
                                              const std::string& input_name,
                                              float scale,
                                              int32_t zero_point,
-                                             const optional<vector<float>>& scales) {
+                                             const optional<std::vector<float>>& scales) {
   // first verify as the weight has no per-channel quantization
   ORT_RETURN_IF_ERROR(IsValidInputQuantizedType(model_builder, input_name, scale, zero_point));
 
@@ -902,7 +900,7 @@ Status TransposeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, co
   auto input = node.InputDefs()[0]->Name();
   const auto& output = node.OutputDefs()[0]->Name();
   NodeAttrHelper helper(node);
-  vector<int32_t> perm = helper.Get("perm", vector<int32_t>());
+  std::vector<int32_t> perm = helper.Get("perm", std::vector<int32_t>());
   auto input_dims = shaper[input].size();
   if (perm.empty()) {
     for (int32_t i = input_dims - 1; i >= 0; i--)
@@ -1118,7 +1116,7 @@ Status BatchNormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_bu
   const auto eps = helper.Get("epsilon", 1e-5f);
 
   const auto size = SafeInt<uint32_t>(scale_tensor.dims()[0]);
-  vector<float> a, b;
+  std::vector<float> a, b;
   a.reserve(size);
   b.reserve(size);
 
@@ -1267,15 +1265,15 @@ Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   else  // (op_type == "MaxPool" || op_type == "GlobalMaxPool")
     op_code = ANEURALNETWORKS_MAX_POOL_2D;
 
-  vector<int32_t> onnx_pads, onnx_strides, kernel_shape;
+  std::vector<int32_t> onnx_pads, onnx_strides, kernel_shape;
   bool use_auto_pad = false;
   int32_t nnapi_padding_code = ANEURALNETWORKS_PADDING_VALID;
   const auto& input_shape = shaper[input];
   if (is_average_pool || op_type == "MaxPool") {
     const auto auto_pad_type = StringToAutoPadType(helper.Get("auto_pad", "NOTSET"));
-    kernel_shape = helper.Get("kernel_shape", vector<int32_t>{0, 0});
-    onnx_strides = helper.Get("strides", vector<int>{1, 1});
-    onnx_pads = helper.Get("pads", vector<int>{0, 0, 0, 0});
+    kernel_shape = helper.Get("kernel_shape", std::vector<int32_t>{0, 0});
+    onnx_strides = helper.Get("strides", std::vector<int>{1, 1});
+    onnx_pads = helper.Get("pads", std::vector<int>{0, 0, 0, 0});
     const auto weight_size_y = static_cast<uint32_t>(kernel_shape[0]);
     const auto weight_size_x = static_cast<uint32_t>(kernel_shape[1]);
     ORT_RETURN_IF_ERROR(
@@ -1286,14 +1284,14 @@ Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   } else {  // (op_type == "GlobalAveragePool" || op_type == "GlobalMaxPool")
     use_auto_pad = true;
     nnapi_padding_code = ANEURALNETWORKS_PADDING_VALID;
-    onnx_strides = vector<int32_t>{1, 1};
-    onnx_pads = vector<int32_t>{0, 0, 0, 0};
+    onnx_strides = std::vector<int32_t>{1, 1};
+    onnx_pads = std::vector<int32_t>{0, 0, 0, 0};
     if (use_nchw) {
-      kernel_shape = vector<int32_t>{static_cast<int32_t>(input_shape[2]),
-                                     static_cast<int32_t>(input_shape[3])};
+      kernel_shape = std::vector<int32_t>{static_cast<int32_t>(input_shape[2]),
+                                          static_cast<int32_t>(input_shape[3])};
     } else {
-      kernel_shape = vector<int32_t>{static_cast<int32_t>(input_shape[1]),
-                                     static_cast<int32_t>(input_shape[2])};
+      kernel_shape = std::vector<int32_t>{static_cast<int32_t>(input_shape[1]),
+                                          static_cast<int32_t>(input_shape[2])};
     }
   }
 
@@ -1403,15 +1401,15 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
 
   // onnx strides are in the order height, width
   // while nnapi strides are in the order width, height
-  const auto onnx_strides = helper.Get("strides", vector<int>{1, 1});
+  const auto onnx_strides = helper.Get("strides", std::vector<int>{1, 1});
 
   // onnx pads are in the order top, left, bottom, right
   // while nnapi pads is in the order left, right, top, bottom
-  auto onnx_pads = helper.Get("pads", vector<int>{0, 0, 0, 0});
+  auto onnx_pads = helper.Get("pads", std::vector<int>{0, 0, 0, 0});
 
   // onnx dilations is in the order height, width
   // while nnapi dilations are in the order width, height
-  const auto onnx_dilations = helper.Get("dilations", vector<int>{1, 1});
+  const auto onnx_dilations = helper.Get("dilations", std::vector<int>{1, 1});
   const auto group = helper.Get("group", 1);
 
   size_t x_idx = 0,
@@ -1446,7 +1444,7 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
           y_zero_point = 0;
 
   // this is for per-channel quantization weights
-  optional<vector<float>> w_scales;
+  optional<std::vector<float>> w_scales;
   bool is_per_tensor_u8s8 = false;
   if (is_qlinear_conv) {
     ORT_RETURN_IF_ERROR(GetConvMatMulOpQuantizationScaleAndZeroPoint(model_builder, node,
@@ -1517,11 +1515,11 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
 
     const auto& weight_type = operand_types.at(weight).type;
     if (weight_type == Type::TENSOR_FLOAT32) {
-      vector<float> buffer(bias_dimen[0], 0.0f);
+      std::vector<float> buffer(bias_dimen[0], 0.0f);
       OperandType bias_operand_type(Type::TENSOR_FLOAT32, bias_dimen, x_scale * w_scale);
       ORT_RETURN_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(bias, buffer.data(), bias_operand_type));
     } else if (weight_type == Type::TENSOR_QUANT8_ASYMM || weight_type == Type::TENSOR_QUANT8_SYMM_PER_CHANNEL) {
-      vector<int32_t> buffer(bias_dimen[0], 0);
+      std::vector<int32_t> buffer(bias_dimen[0], 0);
       OperandType bias_operand_type(Type::TENSOR_INT32, bias_dimen, x_scale * w_scale);
       ORT_RETURN_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(bias, buffer.data(), bias_operand_type));
     } else {
@@ -1819,7 +1817,7 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
 
   bool is_per_tensor_u8s8 = false;
   if (is_qlinear_matmul) {
-    optional<vector<float>> w_scales;
+    optional<std::vector<float>> w_scales;
     ORT_RETURN_IF_ERROR(
         GetConvMatMulOpQuantizationScaleAndZeroPoint(model_builder, node,
                                                      a_scale, b_scale, y_scale,
@@ -2118,7 +2116,7 @@ class SqueezeOpBuilder : public BaseOpBuilder {
 
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override ORT_MUST_USE_RESULT;
-  static Status GetAxes(ModelBuilder& model_builder, const Node& node, vector<int32_t>& axes);
+  static Status GetAxes(ModelBuilder& model_builder, const Node& node, std::vector<int32_t>& axes);
 };
 
 void SqueezeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
@@ -2129,7 +2127,7 @@ void SqueezeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const 
 }
 
 /* static */ Status SqueezeOpBuilder::GetAxes(ModelBuilder& model_builder,
-                                              const Node& node, vector<int32_t>& axes) {
+                                              const Node& node, std::vector<int32_t>& axes) {
   // Squeeze opset 13 use input as axes
   if (node.SinceVersion() > 12) {
     // If axes is not supplied, return an empty axes as default to squeeze all
@@ -2148,7 +2146,7 @@ void SqueezeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const 
     }
   } else {
     NodeAttrHelper helper(node);
-    axes = helper.Get("axes", vector<int32_t>());
+    axes = helper.Get("axes", std::vector<int32_t>());
   }
 
   return Status::OK();
@@ -2163,7 +2161,7 @@ Status SqueezeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, cons
     ORT_RETURN_IF_ERROR(GetNCHWInput(model_builder, node, 0, input));
   }
 
-  vector<int32_t> axes;
+  std::vector<int32_t> axes;
   ORT_RETURN_IF_ERROR(GetAxes(model_builder, node, axes));
   return AddSqueezeOp(model_builder, node.Name(), input, node.OutputDefs()[0]->Name(), axes);
 }

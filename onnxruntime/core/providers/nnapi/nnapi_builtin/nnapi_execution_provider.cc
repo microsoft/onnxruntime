@@ -21,8 +21,6 @@
 #include "core/providers/nnapi/nnapi_builtin/model.h"
 #endif
 
-using onnxruntime::NodeUnit;
-
 namespace onnxruntime {
 
 namespace {

@@ -12,9 +12,6 @@
 #include "helper.h"
 #include "op_support_checker.h"
 
-using onnxruntime::NodeUnit;
-using std::vector;
-
 namespace onnxruntime {
 namespace nnapi {
 
@@ -777,8 +774,8 @@ bool ConvOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initial
       return false;
     }
 
-    const auto onnx_dilations = helper.Get("dilations", vector<int>{1, 1});
-    if (onnx_dilations != vector<int>{1, 1}) {
+    const auto onnx_dilations = helper.Get("dilations", std::vector<int>{1, 1});
+    if (onnx_dilations != std::vector<int>{1, 1}) {
       if (group != 1 && tensor.dims()[1] != 1) {
         LOGS_DEFAULT(VERBOSE) << "dilation is not supported on grouped conv";
         return false;
