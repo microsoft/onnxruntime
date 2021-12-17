@@ -890,6 +890,17 @@ public class OrtSession implements AutoCloseable {
     }
 
     /**
+     * Adds Stvm as an execution backend.
+     *
+     * @param settings See the documentation for valid settings strings.
+     * @throws OrtException If there was an error in native code.
+     */
+    public void addStvm(String settings) throws OrtException {
+      checkClosed();
+      addStvm(OnnxRuntime.ortApiHandle, nativeHandle, settings);
+    }
+
+    /**
      * Adds DirectML as an execution backend.
      *
      * @param deviceId The id of the DirectML device.
@@ -1032,6 +1043,10 @@ public class OrtSession implements AutoCloseable {
 
     private native void addNuphar(
         long apiHandle, long nativeHandle, int allowUnalignedBuffers, String settings)
+        throws OrtException;
+
+    private native void addStvm(
+        long apiHandle, long nativeHandle, String settings)
         throws OrtException;
 
     private native void addDirectML(long apiHandle, long nativeHandle, int deviceId)
