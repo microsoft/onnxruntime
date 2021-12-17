@@ -78,10 +78,7 @@ struct LeakyRelu : public ElementWiseRangedTransform<T> {
     ym = (xm >= 0).select(xm, (T)alpha * xm);
   }
 };
-#if defined(_MSC_VER) && !defined(__clang__)
-#pragma warning(push)
-#pragma warning(disable : 26409)
-#endif
+
 template <typename T>
 struct Softplus : public ElementWiseRangedTransform<T> {
   Status Init(const onnxruntime::NodeAttributes&) {
@@ -131,6 +128,7 @@ struct Sigmoid : public ElementWiseRangedTransform<T> {
   Status Init(const onnxruntime::NodeAttributes&) {
     return Status::OK();
   }
+  GSL_SUPPRESS(r .11)
   ElementWiseRangedTransform<T>* Copy() const {
     using T1 = typename std::remove_pointer<decltype(this)>::type;
     using T2 = typename std::remove_const<T1>::type;
@@ -178,6 +176,7 @@ struct Tanh : public ElementWiseRangedTransform<T> {
   Status Init(const onnxruntime::NodeAttributes&) {
     return Status::OK();
   }
+  GSL_SUPPRESS(r .11)
   ElementWiseRangedTransform<T>* Copy() const {
     using T1 = typename std::remove_pointer<decltype(this)>::type;
     using T2 = typename std::remove_const<T1>::type;
@@ -230,9 +229,6 @@ struct Selu : public ElementWiseRangedTransform<T> {
     ym = (T)gamma * (xm.cwiseMax(0.0f) + ((T)alpha * (xm.array().exp() - 1.0f)).cwiseMin(0.0f));
   }
 };
-#if defined(_MSC_VER) && !defined(__clang__)
-#pragma warning(pop)
-#endif
 }  // namespace functors
 
 DEFINE_ELE_KERNEL(Celu);
