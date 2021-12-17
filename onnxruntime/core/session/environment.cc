@@ -212,16 +212,16 @@ Status Environment::Initialize(std::unique_ptr<logging::LoggingManager> logging_
 #if !defined(ORT_MINIMAL_BUILD)
     // Register Microsoft domain with min/max op_set version as 1/1.
     std::call_once(schemaRegistrationOnceFlag, []() {
-      auto& d = ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance();
-      if (d.Map().find(onnxruntime::kMSDomain) == d.Map().end())
+      auto& domainToVersionRangeInstance = ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance();
+      if (domainToVersionRangeInstance.Map().find(onnxruntime::kMSDomain) == domainToVersionRangeInstance.Map().end())
       {
         // External shared providers may have already added kMSDomain 
-        d.AddDomainToVersion(onnxruntime::kMSDomain, 1, 1);
+        domainToVersionRangeInstance.AddDomainToVersion(onnxruntime::kMSDomain, 1, 1);
       }
-      d.AddDomainToVersion(onnxruntime::kMSExperimentalDomain, 1, 1);
-      d.AddDomainToVersion(onnxruntime::kMSNchwcDomain, 1, 1);
+      domainToVersionRangeInstance.AddDomainToVersion(onnxruntime::kMSExperimentalDomain, 1, 1);
+      domainToVersionRangeInstance.AddDomainToVersion(onnxruntime::kMSNchwcDomain, 1, 1);
 #ifdef USE_DML
-      d.AddDomainToVersion(onnxruntime::kMSDmlDomain, 1, 1);
+      domainToVersionRangeInstance.AddDomainToVersion(onnxruntime::kMSDmlDomain, 1, 1);
 #endif
 // Register contributed schemas.
 // The corresponding kernels are registered inside the appropriate execution provider.
