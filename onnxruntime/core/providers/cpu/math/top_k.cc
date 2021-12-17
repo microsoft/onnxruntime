@@ -370,6 +370,56 @@ static Status TopKImpl(OpKernelContext* p_op_kernel_context, const Tensor* input
   return Status::OK();
 }
 
+// Wrapper over core TopK implementation
+template <typename T>
+Status GetTopK(const Tensor* input, const int axis, const unsigned k, bool largest, bool sorted,
+               AllocatorPtr allocator,
+               onnxruntime::concurrency::ThreadPool* threadpool,
+               std::unique_ptr<Tensor>& output_values,
+               std::unique_ptr<Tensor>& output_indices) {
+  const TensorShape& input_shape = input->Shape();
+  
+  // Will return axis_ as is if positive or fixes it in case it is negative
+  const auto axis_parsed = HandleNegativeAxis(axis, static_cast<int64_t>(input_shape.NumDimensions()));
+
+  // Check to ensure k is within the bounds of what is available in that specific axis
+  if (input_shape[axis_parsed] < k) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "k argument [", k,
+                           "] should not be greater than specified axis dim value [", input_shape[axis_parsed], "]");
+  }
+
+  // Resize output tensors to be the same shape as the input except
+  // for the specified dimension ((i.e.) axis_parsed), which will be of size k. E.x. for an input tensor
+  // of shape [3, 4, 5] and k=2 with axis_parsed=1, both of the outputs will be shape [3, 2, 5]
+  TensorShape output_shape = input_shape;
+  output_shape[axis_parsed] = k;
+
+  output_values = Tensor::Create(input->DataType(), output_shape, allocator);
+  output_indices = Tensor::Create(DataTypeImpl::GetType<int64_t>(), output_shape, allocator);
+
+  // no-op - no output buffers to fill - return silently
+  if (k == 0) {
+    return Status::OK();
+  }
+
+  if (largest) {
+    FindTopKElements<GreaterValueCmp<T>>(input, input_shape, output_values.get(), output_indices.get(), output_shape, k, sorted,
+                                         gsl::narrow_cast<unsigned>(axis_parsed), threadpool);
+  } else {
+    FindTopKElements<LesserValueCmp<T>>(input, input_shape, output_values.get(), output_indices.get(), output_shape, k, sorted,
+                                        gsl::narrow_cast<unsigned>(axis_parsed), threadpool);
+  }
+
+  return Status::OK();
+}
+
+// explicit instantiation
+template Status GetTopK<float>(const Tensor* input, const int axis, const unsigned k, bool largest, bool sorted,
+                               AllocatorPtr allocator,
+                               onnxruntime::concurrency::ThreadPool* threadpool,
+                               std::unique_ptr<Tensor>& output_values,
+                               std::unique_ptr<Tensor>& output_indices);
+
 // Opset ver - 1 to 9
 
 static void TopkOpset9ConstructorCommon(const OpKernelInfo& op_kernel_info, int& axis, unsigned int& k) {

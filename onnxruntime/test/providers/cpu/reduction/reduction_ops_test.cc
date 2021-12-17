@@ -562,8 +562,8 @@ TEST(ReductionOpTest, ReduceLogSumExp_float_no_reduction) {
   test.AddAttribute("axes", std::vector<int64_t>{0});
   test.AddAttribute("keepdims", (int64_t)0);
   test.AddInput<float>("data", {1, 2, 2},
-                       {1.0f, 2.0f,
-                        3.0f, 4.0f});
+                        {1.0f, 2.0f,
+                         3.0f, 4.0f});
   test.AddOutput<float>("reduced", {2, 2}, {1.f, 2.f, 3.f, 4.f});
   test.Run();
 }
