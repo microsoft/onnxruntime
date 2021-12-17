@@ -11,10 +11,11 @@ namespace torch_ort {
 namespace eager {
 
 template <template<class> class V>
-OrtValue reshape_copy(
+OrtValue reshape_invoke(
   onnxruntime::ORTInvoker& invoker,
   const OrtValue& input,
-  V<int64_t> shape) {
+  V<int64_t> shape,
+  bool in_place) {
   // the ort reshape kernel already handle the -1 in target shape
   // don't need to invoke at::infer_size here.
   OrtValue shape_tensor;
@@ -25,6 +26,11 @@ OrtValue reshape_copy(
   auto* ort_shape_tensor = shape_tensor.GetMutable<onnxruntime::Tensor>();
   CopyVectorToTensor<int64_t>(invoker, shape.data(), shape.size(), *ort_shape_tensor);
   std::vector<OrtValue> result(1);
+  if (in_place){
+    auto* input_ort_tensor = input.GetMutable<onnxruntime::Tensor>();
+    CreateMLValue(input_ort_tensor->MutableDataRaw(),
+                element_type, new_shape, &result[0]);
+  }
   ORT_THROW_IF_ERROR(invoker.Invoke("Reshape", {input, shape_tensor}, result, nullptr));
   return result[0];
 }

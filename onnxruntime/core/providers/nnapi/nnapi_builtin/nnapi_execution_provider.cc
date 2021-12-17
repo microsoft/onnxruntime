@@ -13,12 +13,15 @@
 #include "core/providers/nnapi/nnapi_builtin/builders/op_support_checker.h"
 #include "core/providers/nnapi/nnapi_builtin/nnapi_lib/nnapi_implementation.h"
 #include "core/providers/partitioning_utils.h"
+#include "core/providers/shared/node_unit/node_unit.h"
 #include "core/session/onnxruntime_cxx_api.h"
 
 #ifdef __ANDROID__
 #include "core/providers/nnapi/nnapi_builtin/builders/model_builder.h"
 #include "core/providers/nnapi/nnapi_builtin/model.h"
 #endif
+
+using onnxruntime::NodeUnit;
 
 namespace onnxruntime {
 
@@ -123,12 +126,14 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
 
   const auto is_node_supported = [&](const Node& node) -> bool {
     const bool excluded = check_excluded_nodes && Contains(excluded_nodes, &node);
+    // TODO, cache NodeUnit(s) and not generate new instance every time
+    const NodeUnit node_unit(node);
     const bool supported = !excluded &&
-                           nnapi::IsNodeSupportedInGroup(node, graph_viewer, params,
+                           nnapi::IsNodeSupportedInGroup(node_unit, graph_viewer, params,
                                                          node_outputs_in_current_group);
-    LOGS_DEFAULT(VERBOSE) << "Operator type: [" << node.OpType()
-                          << "] index: [" << node.Index()
-                          << "] name: [" << node.Name()
+    LOGS_DEFAULT(VERBOSE) << "Operator type: [" << node_unit.OpType()
+                          << "] index: [" << node_unit.Index()
+                          << "] name: [" << node_unit.Name()
                           << "] supported: [" << supported
                           << "]";
 
