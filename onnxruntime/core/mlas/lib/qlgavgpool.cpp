@@ -624,28 +624,37 @@ MlasQLinearGlobalAveragePoolNhwcSingleBatch(
 #if defined(MLAS_TARGET_IX86)
         switch (ImageSize) {
             case 1:
-                i1 = ZeroBuffer; /* fall through */
+                i1 = ZeroBuffer;
+                [[fallthrough]];
             case 2:
-                i2 = ZeroBuffer; /* fall through */
+                i2 = ZeroBuffer;
+                [[fallthrough]];
             case 3:
-                i3 = ZeroBuffer; /* fall through */
+                i3 = ZeroBuffer;
+                [[fallthrough]];
             default:
                 break;
         }
 #else
         switch (ImageSize) {
             case 1:
-                i1 = ZeroBuffer; /* fall through */
+                i1 = ZeroBuffer;
+                [[fallthrough]];
             case 2:
-                i2 = ZeroBuffer; /* fall through */
+                i2 = ZeroBuffer;
+                [[fallthrough]];
             case 3:
-                i3 = ZeroBuffer; /* fall through */
+                i3 = ZeroBuffer;
+                [[fallthrough]];
             case 4:
-                i4 = ZeroBuffer; /* fall through */
+                i4 = ZeroBuffer;
+                [[fallthrough]];
             case 5:
-                i5 = ZeroBuffer; /* fall through */
+                i5 = ZeroBuffer;
+                [[fallthrough]];
             case 6:
-                i6 = ZeroBuffer; /* fall through */
+                i6 = ZeroBuffer;
+                [[fallthrough]];
             default:
                 break;
         }
@@ -741,7 +750,7 @@ MlasQLinearGlobalAveragePoolNhwc(
     size_t Stride,
     size_t Channels,
     int32_t* AccumulateBuffer,
-    const T8Bits* ZeroBuffer
+    const T8Bits* /*ZeroBuffer*/
     )
 {
     float scale = CheckQLinearGlobalAveragePoolScaleAndSize(ScaleInput, ScaleOutput, ImageSize);

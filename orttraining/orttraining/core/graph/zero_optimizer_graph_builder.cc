@@ -329,7 +329,7 @@ static Status ModifyParametersForOptimizerPartitioning(
   // Note: the alignment here needs to be kept in-sync with the alignment in nccl_kernels.cc
   const int data_parallel_group_rank = opt_graph_config.data_parallel_group_rank;
   const int data_parallel_group_size = opt_graph_config.data_parallel_group_size;
-  const int64_t alignment = data_parallel_group_size * 32;
+  const int64_t alignment = static_cast<int64_t>(data_parallel_group_size) * 32;
   const int64_t padded_count = total_count + alignment - (total_count % alignment);
   const int64_t rank_count = padded_count / data_parallel_group_size;
   const int64_t rank_start = data_parallel_group_rank * rank_count;

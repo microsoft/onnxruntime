@@ -41,7 +41,7 @@ parameters:
 
 - name: BuildVariant
   type: string
-  default: 'openmp'
+  default: 'default'
 
 jobs:
 - job: Linux_C_API_Packaging_CPU_x64

@@ -51,7 +51,7 @@ inline uint64_t rotl64(uint64_t x, int8_t r) {
 #define BIG_CONSTANT(x) (x##LLU)
 
 #endif  // !defined(_MSC_VER)
-
+#include <cstddef>
 //-----------------------------------------------------------------------------
 // Block read - if your platform needs to do endian-swapping or can only
 // handle aligned reads, do the conversion here
@@ -67,7 +67,7 @@ FORCE_INLINE uint64_t getblock64(const uint64_t* p, int i) {
 //-----------------------------------------------------------------------------
 // Finalization mix - force all bits of a hash block to avalanche
 
-FORCE_INLINE uint32_t fmix32(uint32_t h) {
+FORCE_INLINE constexpr uint32_t fmix32(uint32_t h) {
   h ^= h >> 16;
   h *= 0x85ebca6b;
   h ^= h >> 13;
@@ -79,7 +79,7 @@ FORCE_INLINE uint32_t fmix32(uint32_t h) {
 
 //----------
 
-FORCE_INLINE uint64_t fmix64(uint64_t k) {
+FORCE_INLINE constexpr uint64_t fmix64(uint64_t k) {
   k ^= k >> 33;
   k *= BIG_CONSTANT(0xff51afd7ed558ccd);
   k ^= k >> 33;
@@ -99,13 +99,13 @@ void MurmurHash3::x86_32(const void* key, int len,
 
   uint32_t h1 = seed;
 
-  const uint32_t c1 = 0xcc9e2d51;
-  const uint32_t c2 = 0x1b873593;
+  constexpr uint32_t c1 = 0xcc9e2d51;
+  constexpr uint32_t c2 = 0x1b873593;
 
   //----------
   // body
 
-  const uint32_t* blocks = (const uint32_t*)(data + nblocks * 4);
+  const uint32_t* blocks = (const uint32_t*)(data + static_cast<ptrdiff_t>(nblocks) * 4);
 
   for (int i = -nblocks; i; i++) {
     uint32_t k1 = getblock32(blocks, i);
@@ -122,15 +122,17 @@ void MurmurHash3::x86_32(const void* key, int len,
   //----------
   // tail
 
-  const uint8_t* tail = (const uint8_t*)(data + nblocks * 4);
+  const uint8_t* tail = (const uint8_t*)(data + static_cast<ptrdiff_t>(nblocks) * 4);
 
   uint32_t k1 = 0;
 
   switch (len & 3) {
     case 3:
-      k1 ^= tail[2] << 16;  // Fallthrough.
+      k1 ^= tail[2] << 16; 
+      [[fallthrough]];
     case 2:
-      k1 ^= tail[1] << 8;  // Fallthrough.
+      k1 ^= tail[1] << 8; 
+      [[fallthrough]];
     case 1:
       k1 ^= tail[0];
       k1 *= c1;
@@ -160,15 +162,15 @@ void MurmurHash3::x86_128(const void* key, int len, uint32_t seed, void* out) {
   uint32_t h3 = seed;
   uint32_t h4 = seed;
 
-  const uint32_t c1 = 0x239b961b;
-  const uint32_t c2 = 0xab0e9789;
-  const uint32_t c3 = 0x38b34ae5;
-  const uint32_t c4 = 0xa1e38b93;
+  constexpr uint32_t c1 = 0x239b961b;
+  constexpr uint32_t c2 = 0xab0e9789;
+  constexpr uint32_t c3 = 0x38b34ae5;
+  constexpr uint32_t c4 = 0xa1e38b93;
 
   //----------
   // body
 
-  const uint32_t* blocks = (const uint32_t*)(data + nblocks * 16);
+  const uint32_t* blocks = (const uint32_t*)(data + static_cast<ptrdiff_t>(nblocks) * 16);
 
   for (int i = -nblocks; i; i++) {
     uint32_t k1 = getblock32(blocks, i * 4 + 0);
@@ -216,7 +218,7 @@ void MurmurHash3::x86_128(const void* key, int len, uint32_t seed, void* out) {
   //----------
   // tail
 
-  const uint8_t* tail = (const uint8_t*)(data + nblocks * 16);
+  const uint8_t* tail = (const uint8_t*)(data + static_cast<ptrdiff_t>(nblocks) * 16);
 
   uint32_t k1 = 0;
   uint32_t k2 = 0;
@@ -225,48 +227,59 @@ void MurmurHash3::x86_128(const void* key, int len, uint32_t seed, void* out) {
 
   switch (len & 15) {
     case 15:
-      k4 ^= tail[14] << 16;  // Fallthrough.
+      k4 ^= tail[14] << 16;
+      [[fallthrough]];
     case 14:
-      k4 ^= tail[13] << 8;  // Fallthrough.
+      k4 ^= tail[13] << 8;
+      [[fallthrough]];
     case 13:
       k4 ^= tail[12] << 0;
       k4 *= c4;
       k4 = ROTL32(k4, 18);
       k4 *= c1;
-      h4 ^= k4;  // Fallthrough.
-
+      h4 ^= k4;  
+      [[fallthrough]];
     case 12:
-      k3 ^= tail[11] << 24;  // Fallthrough.
+      k3 ^= tail[11] << 24;
+      [[fallthrough]];
     case 11:
-      k3 ^= tail[10] << 16;  // Fallthrough.
+      k3 ^= tail[10] << 16;
+      [[fallthrough]];
     case 10:
-      k3 ^= tail[9] << 8;  // Fallthrough.
+      k3 ^= tail[9] << 8;
+      [[fallthrough]];
     case 9:
       k3 ^= tail[8] << 0;
       k3 *= c3;
       k3 = ROTL32(k3, 17);
       k3 *= c4;
-      h3 ^= k3;  // Fallthrough.
-
+      h3 ^= k3; 
+      [[fallthrough]];
     case 8:
-      k2 ^= tail[7] << 24;  // Fallthrough.
+      k2 ^= tail[7] << 24;
+      [[fallthrough]];
     case 7:
-      k2 ^= tail[6] << 16;  // Fallthrough.
+      k2 ^= tail[6] << 16;
+      [[fallthrough]];
     case 6:
-      k2 ^= tail[5] << 8;  // Fallthrough.
+      k2 ^= tail[5] << 8;
+      [[fallthrough]];
     case 5:
       k2 ^= tail[4] << 0;
       k2 *= c2;
       k2 = ROTL32(k2, 16);
       k2 *= c3;
-      h2 ^= k2;  // Fallthrough.
-
+      h2 ^= k2;  
+      [[fallthrough]];
     case 4:
-      k1 ^= tail[3] << 24;  // Fallthrough.
+      k1 ^= tail[3] << 24; 
+      [[fallthrough]];
     case 3:
-      k1 ^= tail[2] << 16;  // Fallthrough.
+      k1 ^= tail[2] << 16; 
+      [[fallthrough]];
     case 2:
-      k1 ^= tail[1] << 8;  // Fallthrough.
+      k1 ^= tail[1] << 8; 
+      [[fallthrough]];
     case 1:
       k1 ^= tail[0] << 0;
       k1 *= c1;

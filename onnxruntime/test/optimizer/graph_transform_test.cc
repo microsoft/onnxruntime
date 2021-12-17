@@ -3005,8 +3005,8 @@ TEST_F(GraphTransformationTests, BiasGeluSwitchedInputOrder) {
     session_options.graph_optimization_level = level;
     session_options.session_logid = "OptimizerTests";
     InferenceSession session{session_options, GetEnvironment()};
-    ASSERT_TRUE(session.Load(model_uri).IsOK());
-    ASSERT_TRUE(session.Initialize().IsOK());
+    ASSERT_STATUS_OK(session.Load(model_uri));
+    ASSERT_STATUS_OK(session.Initialize());
 
     RunOptions run_options;
     ASSERT_STATUS_OK(session.Run(run_options, feeds, output_names, &fetches));

@@ -568,6 +568,139 @@ void DecoderAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx
   }
 }
 
+bool ParseScalar(const TensorProto* initializer, int& value) {
+  std::vector<int32_t> parsed_data;
+  if (initializer->data_type() == TensorProto::INT32) {
+    const auto& data = ParseData<int32_t>(initializer);
+    parsed_data.insert(parsed_data.end(), data.begin(), data.end());
+
+    if (parsed_data.size() == 1) {
+      value = parsed_data[0];
+      return true;
+    }
+  }
+
+  return false;
+}
+
+void BeamSearchShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
+  // Type inference
+  ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
+
+  if (ctx.getNumOutputs() > 1) {
+    // Here we assume that the third output exist only if second output exists.
+    ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 5, 1);
+    if (ctx.getNumOutputs() > 2) {
+      ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 5, 2);
+    }
+  }
+
+  // Shape inference
+  // input 0 (input_ids) shape: (batch_size, sequence_length)
+  // output 0 (sequences) shape: (batch_size, num_return_sequences, max_length)
+  // output 1 (sequences_scores) shape: (batch_size, num_return_sequences)
+  // output 2 (scores) shape: (max_length - sequence_length, batch_size, num_beams, vocab_size)
+  if (!hasInputShape(ctx, 0)) {
+    return;
+  }
+  auto& input_ids_shape = getInputShape(ctx, 0);
+  auto& input_ids_dims = input_ids_shape.dim();
+  if (input_ids_dims.size() != 2) {
+    fail_shape_inference("Inputs 0 shall be 2 dimensions");
+  }
+  if (!(input_ids_dims[0].has_dim_value() && input_ids_dims[1].has_dim_value())) {
+    return;
+  }
+  
+  int64_t batch_size = input_ids_dims[0].dim_value();
+  int64_t sequence_length = input_ids_dims[1].dim_value();
+
+  const auto max_length = ctx.getInputData(1);
+  const auto num_beams = ctx.getInputData(3);
+  const auto num_return_sequences = ctx.getInputData(4);
+  if (num_beams == nullptr || max_length == nullptr || num_return_sequences == nullptr) {  // not initializer
+    return;
+  }
+
+  int max_length_value = 0;
+  if (!ParseScalar(max_length, max_length_value) || max_length_value <= 0) {
+    fail_shape_inference("Failed to parse max_length or it is not positive integer scalar");
+  }
+
+  int num_beams_value = 0;
+  if (!ParseScalar(num_beams, num_beams_value) || num_beams_value <= 0) {
+    fail_shape_inference("Failed to parse num_beams or it is not positive integer scalar");
+  }
+
+  int num_return_sequences_value = 0;
+  if (!ParseScalar(num_return_sequences, num_return_sequences_value) || num_return_sequences_value <= 0) {
+    fail_shape_inference("Failed to parse num_return_sequences or it is not positive integer scalar");
+  }
+
+  ONNX_NAMESPACE::TensorShapeProto sequences_shape;
+  sequences_shape.add_dim()->set_dim_value(batch_size);
+  sequences_shape.add_dim()->set_dim_value(num_return_sequences_value);
+  sequences_shape.add_dim()->set_dim_value(max_length_value);
+  updateOutputShape(ctx, 0, sequences_shape);
+
+  if (ctx.getNumOutputs() > 1) {
+    ONNX_NAMESPACE::TensorShapeProto sequences_scores_shape;
+    sequences_shape.add_dim()->set_dim_value(batch_size);
+    sequences_shape.add_dim()->set_dim_value(num_return_sequences_value);
+    updateOutputShape(ctx, 1, sequences_scores_shape);
+
+    if (ctx.getNumOutputs() > 2) {
+      ONNX_NAMESPACE::TensorShapeProto scores_shape;
+      scores_shape.add_dim()->set_dim_value(max_length_value - sequence_length);
+      scores_shape.add_dim()->set_dim_value(batch_size);
+      scores_shape.add_dim()->set_dim_value(num_beams_value);
+      scores_shape.add_dim();  // vocab_size is unknown
+      updateOutputShape(ctx, 2, scores_shape);
+    }
+  }
+}
+
+void RegisterTextGenerationSchemas() {
+  ONNX_CONTRIB_OPERATOR_SCHEMA(BeamSearch)
+        .SetDomain(kMSDomain)
+        .SinceVersion(1)
+        .SetDoc("Beam Search for text generation. Supports GPT-2 decoder.")
+        .Attr("eos_token_id", "The id of the end-of-sequence token", AttributeProto::INT)
+        .Attr("pad_token_id", "The id of the padding token", AttributeProto::INT)
+        .Attr("no_repeat_ngram_size", "no repeat ngrams size", AttributeProto::INT, static_cast<int64_t>(0))
+        .Attr("early_stopping", "early stop or not", AttributeProto::INT, static_cast<int64_t>(0))
+        .Attr(
+            "body",
+            "The GPT-2 subgraph with input_ids, position_ids, attention_mask, past_0, past_1, ... as inputs, and logits, present_0, present_1, ... as output",
+            AttributeProto::GRAPH)
+        .Input(0, "input_ids", "The sequence used as a prompt for the generation. Shape is (batch_size, sequence_length)", "I")
+        .Input(1, "max_length", "The maximum length of the sequence to be generated. Shape is (1)", "I")
+        .Input(2, "min_length", "The minimum length below which the score of eos_token_id is set to -Inf. Shape is (1)", "I", OpSchema::Optional)
+        .Input(3, "num_beams", "Number of beams for beam search. 1 means no beam search. Shape is (1)", "I")
+        .Input(4, "num_return_sequences", "The number of returned sequences in the batch. Shape is (1)", "I")
+        .Input(5, "temperature", "The value used to module the next token probabilities. Accepts value > 0.0. Shape is (1)", "T")
+        .Input(6, "length_penalty",
+              "Exponential penalty to the length. Default value 1.0 means no penalty."
+              "Value > 1.0 encourages longer sequences, while values < 1.0 produces shorter sequences."
+              "Shape is (1,)",
+              "T", OpSchema::Optional)
+        .Input(7, "repetition_penalty", "The parameter for repetition penalty. Default value 1.0 means no penalty. Accepts value > 0.0. Shape is (1)", "T", OpSchema::Optional)
+        .Input(8, "vocab_mask", "Mask of vocabulary. Words that masked with 0 are not allowed to be generated, and 1 is allowed. Shape is (vacab_size)", "M", OpSchema::Optional)
+        .Output(0, "sequences", "Word IDs of generated sequences. Shape is (batch_size, num_return_sequences, max_sequence_length)", "I")
+        .Output(1, "sequences_scores", "Final beam score of the generated sequences. Shape is (batch_size, num_return_sequences)", "T", OpSchema::Optional)
+        .Output(2, "scores",
+                "Processed beam scores for each vocabulary token at each generation step."
+                "Beam scores consisting of log softmax scores for each vocabulary token and sum of log softmax of previously generated tokens in this beam."
+                "Shape is (max_length - sequence_length, batch_size, num_beams, vocab_size)",
+                "T", OpSchema::Optional)
+        .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float tensors.")
+        .TypeConstraint("I", {"tensor(int32)"}, "Constrain to integer types")
+        .TypeConstraint("M", {"tensor(int32)"}, "Constrain mask to integer types")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          BeamSearchShapeInference(ctx);
+        });
+}
+
 void RegisterBertSchemas() {
   static const char* Attention_ver1_doc = R"DOC(
 Multi-Head Self Attention that can be either unidirectional (like GPT-2) or bidirectional (like BERT).
@@ -750,8 +883,7 @@ Some boolean parameters are passed by runtime input for generic purpose
       .TypeConstraint("B", {"tensor(bool)"}, "Constrain key_padding_mask to bool tensors.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         DecoderAttentionTypeAndShapeInference(ctx);
-      });
-
+      }); 
 
   static const char* EmbedLayerNormalization_ver1_doc = R"DOC(
 EmbedLayerNormalization is the fusion of embedding layer in BERT model, with optional mask processing.
@@ -3146,6 +3278,7 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
 
   RegisterNhwcSchemas();
   RegisterBertSchemas();
+  RegisterTextGenerationSchemas();
 
 #ifdef BUILD_MS_EXPERIMENTAL_OPS
   onnxruntime::signal::RegisterSignalSchemas();

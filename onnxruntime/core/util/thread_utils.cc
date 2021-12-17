@@ -45,18 +45,8 @@ CreateThreadPool(Env* env, OrtThreadPoolParams options, ThreadPoolType tpool_typ
 // If openmp is enabled we don't want to create any additional threadpools for sequential execution.
 // However, parallel execution relies on the existence of a separate threadpool. Hence we allow eigen threadpools
 // to be created for parallel execution.
-#ifdef _OPENMP
-  ORT_UNUSED_PARAMETER(env);
-  ORT_UNUSED_PARAMETER(options);
-  if (tpool_type != ThreadPoolType::INTER_OP) {
-    return nullptr;
-  } else {
-    return CreateThreadPoolHelper(env, options);
-  }
-#else
   ORT_UNUSED_PARAMETER(tpool_type);
   return CreateThreadPoolHelper(env, options);
-#endif
 }
 
 }  // namespace concurrency
