@@ -128,6 +128,20 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         /// <summary>
+        /// A helper method to construct a SessionOptions object for Stvm execution.
+        /// Use only if you have the onnxruntime package specific to this Execution Provider.
+        /// </summary>
+        /// <param name="settings">settings string, comprises of comma separated key:value pairs. default is empty</param>
+        /// <returns>A SessionsOptions() object configured for execution with Stvm</returns>
+        public static SessionOptions MakeSessionOptionWithStvmProvider(String settings = "")
+        {
+            SessionOptions options = new SessionOptions();
+            options.AppendExecutionProvider_Stvm(settings);
+
+            return options;
+        }
+
+        /// <summary>
         /// A helper method to construct a SessionOptions object for ROCM execution.
         /// Use only if ROCM is installed and you have the onnxruntime package specific to this Execution Provider.
         /// </summary>
@@ -303,6 +317,23 @@ namespace Microsoft.ML.OnnxRuntime
             using (var pinnedSettingsName = new PinnedGCHandle(settingsPinned))
             {
                 NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_Nuphar(handle, 1, pinnedSettingsName.Pointer));
+            }
+#endif
+        }
+
+        /// <summary>
+        /// Use only if you have the onnxruntime package specific to this Execution Provider.
+        /// </summary>
+        /// <param name="settings">string with Stvm specific settings</param>
+        public void AppendExecutionProvider_Stvm(string settings = "")
+        {
+#if __MOBILE__
+            throw new NotSupportedException("The Stvm Execution Provider is not supported in this build");
+#else
+            var settingsPinned = GCHandle.Alloc(NativeOnnxValueHelper.StringToZeroTerminatedUtf8(settings), GCHandleType.Pinned);
+            using (var pinnedSettingsName = new PinnedGCHandle(settingsPinned))
+            {
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_Stvm(handle, pinnedSettingsName.Pointer));
             }
 #endif
         }

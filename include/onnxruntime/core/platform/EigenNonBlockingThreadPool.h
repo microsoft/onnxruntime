@@ -332,11 +332,11 @@ class ThreadPoolParallelSection {
   // Number of tasks revoked (i.e., removed from the queues prior to
   // execution).  We count this at various points, and omit waiting
   // for them at the end of a loop.
-  unsigned tasks_revoked;
+  unsigned tasks_revoked{0};
 
   // Current degree of parallelism, including work in the main thread
   // and in the dispatcher.
-  unsigned current_dop;
+  unsigned current_dop{0};
 
   // State shared between the main thread and worker threads
   // -------------------------------------------------------
@@ -1447,7 +1447,7 @@ int CurrentThreadId() const final {
 
     assert(td.GetStatus() == WorkerData::ThreadStatus::Spinning);
 
-    const int log2_spin = 20;
+    constexpr int log2_spin = 20;
     const int spin_count = allow_spinning_ ? (1ull<<log2_spin) : 0;
     const int steal_count = spin_count/100;
 

@@ -139,7 +139,11 @@ Return Value:
 {
     MlasGemmBatch(Shape, &DataParams, 1, ThreadPool);
 }
-
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(push)
+// VC++ suggests we can attempt to make 'MlasBitsOfFp32' constexpr, but it is not valid.
+#pragma warning(disable : 26451)
+#endif
 void
 MLASCALL
 MlasGemmBatch(
@@ -216,7 +220,9 @@ MlasGemmBatch(
         MlasGemmQuantThreaded(&WorkBlock, &Shape, &DataParams[gemm_i], blk_i);
     });
 }
-
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(pop)
+#endif
 
 size_t
 MLASCALL

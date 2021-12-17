@@ -463,8 +463,8 @@ OpSchema& RegisterLambOpSchema(OpSchema&& op_schema) {
           "Constrain update count to 64-bit integer")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         // Handle update count, the first output.
-        const size_t step_input_index = 4;
-        const size_t step_output_index = 0;
+        constexpr size_t step_input_index = 4;
+        constexpr size_t step_output_index = 0;
         auto input_type = ctx.getInputType(step_input_index);
         if (input_type != nullptr) {
           propagateElemTypeFromInputToOutput(ctx, step_input_index, step_output_index);
@@ -2955,7 +2955,7 @@ Return true if all elements are true and false otherwise.
               /*min_arity*/ 0)
       .Attr("non_differentiable_outputs", "The indices of the module outputs that doesn't have a gradient.", AttributeProto::INTS, OPTIONAL_VALUE)
       .Attr("full_shape_outputs", "The indices of the module outputs that must have full shape.", AttributeProto::INTS)
-      .TypeConstraint("T", OpSchema::all_tensor_types(), "Allow inputs and outputs to be any kind of tensor.")
+      .TypeConstraint("T", OpSchema::all_tensor_types_with_bfloat(), "Allow inputs and outputs to be any kind of tensor.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         auto non_differentiable_outputs = ctx.getAttribute("non_differentiable_outputs");
         std::unordered_set<size_t> non_differentiable_outputs_indices{};

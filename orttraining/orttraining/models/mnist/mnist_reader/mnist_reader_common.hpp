@@ -43,7 +43,7 @@ inline std::unique_ptr<char[]> read_mnist_file(const std::string& path, uint32_t
     return {};
   }
 
-  auto size = file.tellg();
+  std::streampos size = file.tellg();
   std::unique_ptr<char[]> buffer(new char[size]);
 
   //Read the entire file at once
@@ -58,18 +58,18 @@ inline std::unique_ptr<char[]> read_mnist_file(const std::string& path, uint32_t
     return {};
   }
 
-  auto count = read_header(buffer, 1);
+  uint32_t count = read_header(buffer, 1);
 
   if (magic == 0x803) {
     auto rows = read_header(buffer, 2);
     auto columns = read_header(buffer, 3);
 
-    if (size < count * rows * columns + 16) {
+    if (size < static_cast<std::streampos>(count) * rows * columns + 16) {
       std::cout << "The file is not large enough to hold all the data, probably corrupted" << std::endl;
       return {};
     }
   } else if (magic == 0x801) {
-    if (size < count + 8) {
+    if (size < static_cast<std::streampos>(count) + static_cast<std::streampos>(8)) {
       std::cout << "The file is not large enough to hold all the data, probably corrupted" << std::endl;
       return {};
     }

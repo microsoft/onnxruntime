@@ -442,7 +442,7 @@ static Status RunPerformanceTest(const GPT2Parameters& params, const Environment
 }
 
 static Status RunTraining(const GPT2Parameters& params, const Environment& env) {
-  const size_t max_num_files_preload = 2;
+  constexpr size_t max_num_files_preload = 2;
 
   auto runner = std::make_unique<TrainingRunner>(params, env);
   ORT_RETURN_IF_ERROR(runner->Initialize());

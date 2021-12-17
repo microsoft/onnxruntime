@@ -4,13 +4,14 @@
 #pragma once
 
 #ifndef SHARED_PROVIDER
+#include <memory>
 #include <unordered_map>
 #include <unordered_set>
-#include <memory>
-#include "core/common/status.h"
+
 #include "core/common/logging/logging.h"
-#include "core/framework/tensor.h"
+#include "core/common/status.h"
 #include "core/framework/data_transfer.h"
+#include "core/framework/tensor.h"
 
 namespace onnxruntime {
 
@@ -25,10 +26,11 @@ class KernelRegistryManager;
 #include <memory>
 #endif
 
-#include "core/framework/provider_options.h"
-#include "core/framework/func_api.h"
-#include "core/framework/allocatormgr.h"
+#include "core/common/basic_types.h"
 #include "core/common/profiler_common.h"
+#include "core/framework/allocatormgr.h"
+#include "core/framework/func_api.h"
+#include "core/framework/provider_options.h"
 
 namespace onnxruntime {
 
@@ -259,7 +261,7 @@ class IExecutionProvider {
             NOTE: Ideally this would be a protected method, but to work across the EP bridge it has to be public and 
                   virtual, and ModelMetadefIdGenerator but be defined in the header as well.
    */
-  virtual int GenerateMetaDefId(const onnxruntime::GraphViewer& graph_viewer, uint64_t& model_hash) const;
+  virtual int GenerateMetaDefId(const onnxruntime::GraphViewer& graph_viewer, HashValue& model_hash) const;
 
   /**
      Register allocators used for EP
@@ -286,11 +288,11 @@ class IExecutionProvider {
   // multiple sessions.
   class ModelMetadefIdGenerator {
    public:
-    int GenerateId(const onnxruntime::GraphViewer& graph_viewer, uint64_t& model_hash);
+    int GenerateId(const onnxruntime::GraphViewer& graph_viewer, HashValue& model_hash);
 
    private:
-    std::unordered_map<uint64_t, int64_t> main_graph_hash_;  // map graph instance hash to model contents hash
-    std::unordered_map<int64_t, int> model_metadef_id_;      // current unique id for model
+    std::unordered_map<HashValue, HashValue> main_graph_hash_;  // map graph instance hash to model contents hash
+    std::unordered_map<HashValue, int> model_metadef_id_;       // current unique id for model
   };
 
   std::unique_ptr<ModelMetadefIdGenerator> metadef_id_generator_;

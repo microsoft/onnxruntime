@@ -189,6 +189,7 @@ class SymbolicShapeInference:
         }
         self.aten_op_dispatcher_ = {
             'aten::embedding': self._infer_Gather,
+            'aten::bitwise_or': self._infer_aten_bitwise_or,
             'aten::diagonal': self._infer_aten_diagonal,
             'aten::max_pool2d_with_indices': self._infer_aten_pool2d,
             'aten::multinomial': self._infer_aten_multinomial,
@@ -1079,6 +1080,16 @@ class SymbolicShapeInference:
             vi.CopyFrom(
                 helper.make_tensor_value_info(o, vi.type.tensor_type.elem_type,
                                               get_shape_from_sympy_shape(sympy_shape)))
+
+    def _infer_aten_bitwise_or(self, node):
+        shape0 = self._get_shape(node, 0)
+        shape1 = self._get_shape(node, 1)
+        new_shape = self._broadcast_shapes(shape0, shape1)
+        t0 = self.known_vi_[node.input[0]]
+        vi = self.known_vi_[node.output[0]]
+        vi.CopyFrom(
+            helper.make_tensor_value_info(node.output[0], t0.type.tensor_type.elem_type,
+                                            new_shape))
 
     def _infer_aten_diagonal(self, node):
         sympy_shape = self._get_sympy_shape(node, 0)

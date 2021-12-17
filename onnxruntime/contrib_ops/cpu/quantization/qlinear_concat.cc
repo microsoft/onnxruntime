@@ -2,7 +2,8 @@
 // Licensed under the MIT License.
 
 #include "qlinear_concat.h"
-#include "contrib_ops/cpu/qlinear_lookup_table.h"
+#include "qlinear_lookup_table.h"
+
 #include "core/providers/common.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/platform/threadpool.h"
