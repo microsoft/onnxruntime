@@ -68,7 +68,9 @@ Status ReorderInput::Compute(OpKernelContext* context) const {
 
     if (channels_last_) {
       int64_t work_index = static_cast<int64_t>(work.start);
-      int64_t work_remaining = static_cast<int64_t>(work.end) - work.start;
+      assert(work.end >= work.start);
+
+      int64_t work_remaining = work.end - work.start;
 
       while (work_remaining > 0) {
         const int64_t batch_index = work_index / spatial_size;

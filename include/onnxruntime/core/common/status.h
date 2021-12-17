@@ -19,7 +19,7 @@ limitations under the License.
 #ifdef _WIN32
 #include <winerror.h>
 #endif
-
+#include "core/common/gsl_suppress.h"
 namespace onnxruntime {
 namespace common {
 
@@ -120,13 +120,11 @@ class [[nodiscard]] Status {
   Status(StatusCategory category, int code, const char* msg);
 
   Status(StatusCategory category, int code);
-#if defined(_MSC_VER) && !defined(__clang__)
-#pragma warning(push)
-#pragma warning(disable : 26409)
-#endif
+
+  GSL_SUPPRESS(r.11)
   Status(const Status& other)
       : state_((other.state_ == nullptr) ? nullptr : new State(*other.state_)) {}
-
+  GSL_SUPPRESS(r.11)
   Status& operator=(const Status& other) {
     if (state_ != other.state_) {
       if (other.state_ == nullptr) {
@@ -137,9 +135,7 @@ class [[nodiscard]] Status {
     }
     return *this;
   }
-#if defined(_MSC_VER) && !defined(__clang__)
-#pragma warning(pop)
-#endif
+
   Status(Status&&) = default;
   Status& operator=(Status&&) = default;
   ~Status() = default;

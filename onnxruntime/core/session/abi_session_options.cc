@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/graph/onnx_protobuf.h"
+#include "core/common/gsl_suppress.h"
 #include "core/session/onnxruntime_c_api.h"
 #include "core/session/ort_apis.h"
 #include "core/framework/error_code_helper.h"
@@ -18,9 +19,7 @@ OrtSessionOptions& OrtSessionOptions::operator=(const OrtSessionOptions&) {
 OrtSessionOptions::OrtSessionOptions(const OrtSessionOptions& other)
     : value(other.value), provider_factories(other.provider_factories) {
 }
-#if defined(_MSC_VER) && !defined(__clang__)
-#pragma warning(disable : 26409)
-#endif
+
 ORT_API_STATUS_IMPL(OrtApis::CreateSessionOptions, OrtSessionOptions** out) {
   API_IMPL_BEGIN
   *out = new OrtSessionOptions();

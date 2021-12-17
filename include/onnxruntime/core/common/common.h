@@ -35,6 +35,7 @@
 #include "core/common/exceptions.h"
 #include "core/common/make_string.h"
 #include "core/common/status.h"
+#include "core/common/gsl_suppress.h"
 
 namespace onnxruntime {
 

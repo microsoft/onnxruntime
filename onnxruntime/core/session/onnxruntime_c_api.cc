@@ -57,7 +57,6 @@ const OrtDmlApi* GetOrtDmlApi(_In_ uint32_t version) NO_EXCEPTION;
 //The warning is: "Do not assign the result of an allocation or a function call with an owner<T> return value to a raw pointer, use owner<T> instead(i .11)."
 //But this file is for C API. It can't use unique_ptr/shared_ptr in function signature.
 #pragma warning(disable : 26400)
-#pragma warning(disable : 26409)
 #endif
 using namespace onnxruntime::logging;
 using onnxruntime::BFloat16;
@@ -2132,6 +2131,8 @@ ORT_API_STATUS_IMPL(OrtApis::CreateArenaCfgV2, _In_reads_(num_keys) const char* 
   API_IMPL_END
 }
 
+//Allow using raw new/delete because this is for C.
+GSL_SUPPRESS(r .11)
 ORT_API(void, OrtApis::ReleaseArenaCfg, _Frees_ptr_opt_ OrtArenaCfg* ptr) {
   delete ptr;
 }
