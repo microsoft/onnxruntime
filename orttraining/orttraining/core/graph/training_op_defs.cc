@@ -3450,7 +3450,6 @@ void RegisterOrtOpSchemas() {
     // External shared providers may have already added kMSDomain 
     domainToVersionRangeInstance.AddDomainToVersion(onnxruntime::kMSDomain, 1, 1);
   }
-  domainToVersionRangeInstance.AddDomainToVersion(onnxruntime::kMSDomain, 1, 1);
   domainToVersionRangeInstance.AddDomainToVersion(onnxruntime::kMSExperimentalDomain, 1, 1);
   domainToVersionRangeInstance.AddDomainToVersion(onnxruntime::kMSNchwcDomain, 1, 1);
 
