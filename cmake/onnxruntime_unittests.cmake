@@ -685,6 +685,9 @@ AddTest(
   DEPENDS ${all_dependencies}
 )
 if (MSVC)
+  # The warning means the type of two integral values around a binary operator is narrow than their result.
+  # If we promote the two input values first, it could be more tolerant to integer overflow.
+  # However, this is test code. We are less concerned. 
   target_compile_options(onnxruntime_test_all PRIVATE "/wd26451")
 else()
   target_compile_options(onnxruntime_test_all PRIVATE "-Wno-parentheses")
@@ -851,6 +854,15 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
     if(WIN32)
       target_compile_options(onnxruntime_benchmark PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler /wd4141>"
                         "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd4141>")
+      # Avoid using new and delete. But this is a benchmark program, it's ok if it has a chance to leak.
+      target_compile_options(onnxruntime_benchmark PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler /wd26409>"
+                        "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd26409>")
+      target_compile_options(onnxruntime_benchmark PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler /wd26400>"
+                        "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd26400>")
+      target_compile_options(onnxruntime_benchmark PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler /wd26814>"
+                        "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd26814>")
+      target_compile_options(onnxruntime_benchmark PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler /wd26814>"
+                        "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd26497>")
       target_compile_options(onnxruntime_benchmark PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>"
               "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
     endif()
@@ -863,7 +875,11 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
     onnxruntime_add_executable(onnxruntime_mlas_benchmark ${MLAS_BENCH_SOURCE_FILES})
     target_include_directories(onnxruntime_mlas_benchmark PRIVATE ${ONNXRUNTIME_ROOT}/core/mlas/inc)
     target_link_libraries(onnxruntime_mlas_benchmark PRIVATE benchmark::benchmark onnxruntime_util onnxruntime_framework ${ONNXRUNTIME_MLAS_LIBS} onnxruntime_common ${CMAKE_DL_LIBS})
-    if(NOT WIN32)
+    if(WIN32)
+      target_link_libraries(onnxruntime_mlas_benchmark PRIVATE debug Dbghelp)
+      # Avoid using new and delete. But this is a benchmark program, it's ok if it has a chance to leak.
+      target_compile_options(onnxruntime_mlas_benchmark PRIVATE /wd26409)
+    else()
       target_link_libraries(onnxruntime_mlas_benchmark PRIVATE nsync_cpp ${CMAKE_DL_LIBS})
     endif()
     set_target_properties(onnxruntime_mlas_benchmark PROPERTIES FOLDER "ONNXRuntimeTest")
