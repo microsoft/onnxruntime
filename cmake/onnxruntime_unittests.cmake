@@ -1166,10 +1166,9 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
 endif()
 
 if (onnxruntime_USE_CUDA)
-  find_package(CUDA REQUIRED)
-  include_directories("${CUDA_INCLUDE_DIRS}")
   onnxruntime_add_shared_library_module(custom_op_library ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/cuda_ops.cu
                                                           ${TEST_SRC_DIR}/testdata/custom_op_library/custom_op_library.cc)
+  target_include_directories(custom_op_library PRIVATE ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
 else()
   onnxruntime_add_shared_library_module(custom_op_library ${TEST_SRC_DIR}/testdata/custom_op_library/custom_op_library.cc)
 endif()
