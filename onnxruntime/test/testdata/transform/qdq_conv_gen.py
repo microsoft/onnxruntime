@@ -3,14 +3,14 @@ from onnx import helper
 from onnx import TensorProto
 
 
-# Generate a basic QDQ Conv model
-def GenerateModel(model_name):
+# Generate a basic QDQ Conv model with `num_convs` Conv nodes and their surrounding DQ/Q nodes
+def GenerateModel(model_path, num_convs):
     nodes = []
     initializers = []
     inputs = []
     outputs = []
 
-    for i in range(3):
+    for i in range(num_convs):
         def name(base):
             return f"{base}_{i}"
 
@@ -40,15 +40,16 @@ def GenerateModel(model_name):
 
     graph = helper.make_graph(
         nodes,
-        "QDQ_Convs",
+        f"QDQ_Conv_x_{num_convs}",
         inputs,
         outputs,
         initializers
     )
 
     model = helper.make_model(graph)
-    onnx.save(model, model_name)
+    onnx.save(model, model_path)
 
 
 if __name__ == "__main__":
-    GenerateModel('qdq_convs.onnx')
+    GenerateModel('qdq_conv.onnx', 1)
+    GenerateModel('runtime_optimization/qdq_convs.onnx', 3)
