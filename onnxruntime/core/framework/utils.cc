@@ -268,9 +268,12 @@ const OrtMemoryInfo& FindMemoryInfoForValue(const SessionState& session_state,
 static common::Status CalculateStaticCopyInfoForFeed(const SessionState& session_state,
                                                      const std::string& input_name,
                                                      MLValueCopyInfo& copy_info) {
-#ifdef ENABLE_TRAINING
   std::vector<SessionState::NodeInfo> node_info_vec;
+#ifdef ENABLE_TRAINING
   if (session_state.GetInputNodeInfo(input_name, node_info_vec) == Status::OK()) {
+#else
+  ORT_RETURN_IF_ERROR(session_state.GetInputNodeInfo(input_name, node_info_vec));
+#endif
     const auto& node_info = node_info_vec.front();  // all consumers of a feed have the same device so first entry is fine
 
     if (node_info.p_node == nullptr) {
@@ -280,6 +283,7 @@ static common::Status CalculateStaticCopyInfoForFeed(const SessionState& session
 
     copy_info.target_device = *node_info.device;
 
+#ifdef ENABLE_TRAINING
   } else {
     // This input might be for an intermediate tensor for partial graph execution.
     const auto* exec_plan = session_state.GetExecutionPlan();
@@ -289,22 +293,9 @@ static common::Status CalculateStaticCopyInfoForFeed(const SessionState& session
     const auto& device = exec_plan->GetLocation(index).device;
     copy_info.target_device = device;
   }
-
-  return Status::OK();
-#else
-  std::vector<SessionState::NodeInfo> node_info_vec;
-  ORT_RETURN_IF_ERROR(session_state.GetInputNodeInfo(input_name, node_info_vec));
-  const auto& node_info = node_info_vec.front();  // all consumers of a feed have the same device so first entry is fine
-
-  if (node_info.p_node == nullptr) {
-    // ignore dummy entry for an input that we didn't find a use of in the graph.
-    return Status::OK();
-  }
-
-  copy_info.target_device = *node_info.device;
-
-  return Status::OK();
 #endif
+
+  return Status::OK();
 }
 
 static common::Status CalculateStaticCopyInfoForFeeds(const SessionState& session_state,
@@ -508,6 +499,7 @@ common::Status CopyOneInputAcrossDevices(const SessionState& session_state, cons
   }
 
   MLValueCopyInfo copy_info;
+  // Sets copy_info.target_device.
   ORT_RETURN_IF_ERROR(CalculateStaticCopyInfoForFeed(session_state, input_name, copy_info));
 #if !defined(DISABLE_SPARSE_TENSORS)
   copy_info.source_device = (orig_mlvalue.IsTensor())
@@ -517,6 +509,7 @@ common::Status CopyOneInputAcrossDevices(const SessionState& session_state, cons
   copy_info.source_device = orig_mlvalue.Get<Tensor>().Location().device;
 #endif
 
+  // copy_info.target_device is not set leaving to be equal to CPU.
   return BatchOrCopyMLValue(session_state, copy_info, orig_mlvalue, new_mlvalue);
 }
 

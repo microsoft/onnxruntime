@@ -27,7 +27,11 @@ common::Status IOBinding::BindInput(const std::string& name, const OrtValue& ml_
   }
 
   if (ml_value.IsTensor() || ml_value.IsSparseTensor()) {
-    ORT_RETURN_IF_ERROR(utils::CopyOneInputAcrossDevices(session_state_, name, ml_value, feeds_[index]));
+    OrtValue new_mlvalue;
+    // Do not replace new_mlvalue by feeds_[index] in the following line.
+    // It may copy the data instead of copying the pointer.
+    ORT_RETURN_IF_ERROR(utils::CopyOneInputAcrossDevices(session_state_, name, ml_value, new_mlvalue));
+    feeds_[index] = new_mlvalue;
   } else {
     feeds_[index] = ml_value;
   }
