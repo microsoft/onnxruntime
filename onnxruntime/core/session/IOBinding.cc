@@ -17,7 +17,7 @@ common::Status IOBinding::BindInput(const std::string& name, const OrtValue& ml_
   size_t index = it.first->second;
   if (it.second) {
     feed_names_.push_back(name);
-    ORT_ENFORCE(mapped_feed_names_.size() == feed_names_.size(), "Size mismatch(1):", mapped_feed_names_.size(), "!=", feed_names_.size(), "index=", index);
+    ORT_ENFORCE(mapped_feed_names_.size() == feed_names_.size(), "Size mismatch(1):", mapped_feed_names_.size(), "!=", feed_names_.size(), " index=", index, " it.second=", it.second);
     OrtValue new_mlvalue;
     feeds_.push_back(new_mlvalue);
     // The inserted pointer points to name.c_str(), a pointer the class
@@ -25,8 +25,9 @@ common::Status IOBinding::BindInput(const std::string& name, const OrtValue& ml_
     // pointing to the same string.
     mapped_feed_names_.extract(it.first);
     mapped_feed_names_[VariableNameWrapper(feed_names_[index])] = index;
+    ORT_ENFORCE(mapped_feed_names_.size() == feed_names_.size(), "Size mismatch(2):", mapped_feed_names_.size(), "!=", feed_names_.size(), " index=", index, " it.second=", it.second);
   }
-  ORT_ENFORCE(mapped_feed_names_.size() == feed_names_.size(), "Size mismatch(3):", mapped_feed_names_.size(), "!=", feed_names_.size(), "index=", index);
+  ORT_ENFORCE(mapped_feed_names_.size() == feed_names_.size(), "Size mismatch(3):", mapped_feed_names_.size(), "!=", feed_names_.size(), " index=", index, " it.second=", it.second);
 
   if (ml_value.IsTensor() || ml_value.IsSparseTensor()) {
     OrtValue new_mlvalue;
