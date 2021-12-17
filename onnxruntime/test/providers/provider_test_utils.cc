@@ -329,6 +329,9 @@ struct TensorCheck<BFloat16> {
 
     /// XXX: May need to adjust threshold as BFloat is coarse
     float threshold = 0.001f;
+#if defined(USE_TENSORRT) || defined(ENABLE_TRAINING) || defined(USE_CUDA) || defined(USE_ROCM)
+    threshold = 0.008f;
+#endif
     for (int i = 0; i < size; ++i) {
       if (std::isnan(f_expected[i])) {
         EXPECT_TRUE(std::isnan(f_expected[i])) << "Expected NaN. i:" << i << ", provider_type: " << provider_type;

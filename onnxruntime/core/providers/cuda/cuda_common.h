@@ -6,6 +6,7 @@
 #include "core/providers/shared_library/provider_api.h"
 #include "core/common/status.h"
 #include "core/framework/float16.h"
+#include "core/framework/bfloat16.h"
 #include "core/providers/cuda/cuda_pch.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
 #include "core/providers/cuda/shared_inc/fast_divmod.h"
@@ -68,18 +69,6 @@ class ToCudaType<MLFloat16> {
     return *reinterpret_cast<MappedType*>(&h);
   }
 };
-
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
-template <>
-class ToCudaType<BFloat16> {
- public:
-  typedef nv_bfloat16 MappedType;
-  static MappedType FromFloat(float f) {
-    uint16_t h = BFloat16(f).val;
-    return *reinterpret_cast<MappedType*>(&h);
-  }
-};
-#endif
 
 inline bool CalculateFdmStrides(gsl::span<fast_divmod> p, const std::vector<int64_t>& dims) {
   int stride = 1;

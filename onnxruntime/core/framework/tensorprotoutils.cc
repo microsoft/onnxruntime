@@ -389,7 +389,7 @@ Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_d
     if (v < 0 || v > max_value) {
       return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "data overflow");
     }
-    p_data[i] = BFloat16(static_cast<uint16_t>(v));
+    p_data[i] = BFloat16(static_cast<uint16_t>(v), BFloat16::FromBits());
   }
 
   return Status::OK();

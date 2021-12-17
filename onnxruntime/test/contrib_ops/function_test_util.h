@@ -10,6 +10,7 @@
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/session/inference_session.h"
 #include "core/framework/float16.h"
+#include "core/framework/bfloat16.h"
 
 #include "test/common/tensor_op_test_utils.h"
 #include "test/framework/test_utils.h"

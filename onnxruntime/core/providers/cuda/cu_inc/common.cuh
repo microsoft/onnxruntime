@@ -268,19 +268,19 @@ __device__ __inline__ T _Gelu(T a) {
   return a * _Normcdf(a);
 }
 
+template <>
+__device__ __inline__ BFloat16 _Sqrt(BFloat16 a) { return sqrtf(static_cast<float>(a)); }
+
+template <>
+__device__ __inline__ BFloat16 _Exp(BFloat16 a) { return expf(static_cast<float>(a)); }
+
+template <>
+__device__ __inline__ BFloat16 _Log(BFloat16 a) { return logf(static_cast<float>(a)); }
+
+template <>
+__device__ __inline__ BFloat16 _Tanh(BFloat16 a) { return tanhf(static_cast<float>(a)); }
+
 #if CUDA_VERSION >= 11000 && (__CUDA_ARCH__ >= 800 || !defined(__CUDA_ARCH__))
-template <>
-__device__ __inline__ nv_bfloat16 _Sqrt(nv_bfloat16 a) { return nv_bfloat16(sqrtf(static_cast<float>(a))); }
-
-template <>
-__device__ __inline__ nv_bfloat16 _Exp(nv_bfloat16 a) { return nv_bfloat16(expf(static_cast<float>(a))); }
-
-template <>
-__device__ __inline__ nv_bfloat16 _Log(nv_bfloat16 a) { return nv_bfloat16(logf(static_cast<float>(a))); }
-
-template <>
-__device__ __inline__ nv_bfloat16 _Tanh(nv_bfloat16 a) { return nv_bfloat16(tanhf(static_cast<float>(a))); }
-
 template <>
 __device__ __inline__ nv_bfloat162 _Tanh(nv_bfloat162 a) {
   float2 tmp = (__bfloat1622float2(a));
@@ -288,10 +288,10 @@ __device__ __inline__ nv_bfloat162 _Tanh(nv_bfloat162 a) {
   tmp.y = tanhf(tmp.y);
   return __float22bfloat162_rn(tmp);
 }
+#endif
 
 template <>
-__device__ __inline__ nv_bfloat16 _Normcdf(nv_bfloat16 a) { return nv_bfloat16(normcdff(static_cast<float>(a))); }
-#endif
+__device__ __inline__ BFloat16 _Normcdf(BFloat16 a) { return normcdff(static_cast<float>(a)); }
 
 // We would like to use 64-bit integer to support large matrices. However, CUDA seems to support only 32-bit integer
 // For now, use int32_t to ensure that both Linux and Windows see this as 32 bit integer type.

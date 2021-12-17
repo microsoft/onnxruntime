@@ -23,6 +23,7 @@
 #include "core/framework/allocator.h"
 #include "core/framework/allocatormgr.h"
 #include "core/framework/float16.h"
+#include "core/framework/bfloat16.h"
 #include "core/framework/tensor_shape.h"
 #include "core/providers/providers.h"
 #include "core/common/path_string.h"

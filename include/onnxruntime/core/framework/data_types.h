@@ -14,6 +14,7 @@
 #include "core/common/exceptions.h"
 #include "core/framework/endian.h"
 #include "core/framework/float16.h"
+#include "core/framework/bfloat16.h"
 #if !defined(ORT_MINIMAL_BUILD)
 #include "onnx/defs/schema.h"
 #else
