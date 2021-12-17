@@ -322,9 +322,6 @@ For more information on OpenVINO Execution Provider&#39;s ONNX Layer support, To
 
 ---
 
-## NUPHAR
-See more information on the Nuphar Execution Provider [here](../execution-providers/Nuphar-ExecutionProvider.md).
-
 ### Prerequisites
 {: .no_toc }
 
