@@ -59,7 +59,6 @@ void UnaryOpQDQRules(SelectorsAndActions& qdq_selectors_and_actions) {
                                                       std::move(selector),
                                                       std::move(action));
 #else
-  ORT_UNUSED_PARAMETER(is_int8_allowed);
   qdq_selectors_and_actions.RegisterAction(action_name, std::move(action));
 #endif
 }
