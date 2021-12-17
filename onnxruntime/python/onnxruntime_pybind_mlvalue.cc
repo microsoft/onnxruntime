@@ -42,7 +42,6 @@ bool IsNumpyArray(py::object& obj) {
   return PyObjectCheck_NumpyArray(obj.ptr());
 }
 
-
 int GetNumpyArrayType(const py::object& obj) {
   return PyArray_TYPE(reinterpret_cast<PyArrayObject*>(obj.ptr()));
 }
@@ -251,8 +250,7 @@ MLDataType NumpyTypeToOnnxRuntimeType(int numpy_type) {
       {NPY_UINT, DataTypeImpl::GetType<uint32_t>()},
       {NPY_LONGLONG, DataTypeImpl::GetType<int64_t>()},
       {NPY_ULONGLONG, DataTypeImpl::GetType<uint64_t>()},
-      {NPY_OBJECT, DataTypeImpl::GetType<std::string>()}
-  };
+      {NPY_OBJECT, DataTypeImpl::GetType<std::string>()}};
   const auto it = type_map.find(numpy_type);
   if (it == type_map.end()) {
     throw std::runtime_error("No corresponding Numpy type for Tensor Type.");

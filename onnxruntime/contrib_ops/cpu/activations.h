@@ -13,7 +13,10 @@
 
 namespace onnxruntime {
 namespace functors {
-
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(push)
+#pragma warning(disable : 26409)
+#endif
 template <typename T>
 struct ScaledTanh : public ElementWiseRangedTransform<T> {
   ORT_GET_FLOAT_ATTR_AND_RETURN_2(alpha, beta);
@@ -46,6 +49,9 @@ struct ParametricSoftplus : public ElementWiseRangedTransform<T> {
              .select(xm * (T)beta + ((-xm * (T)beta).exp() + 1.0f).log(), ((xm * (T)beta).exp() + 1.0f).log());
   }
 };
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(pop)
+#endif
 }  // namespace functors
 
 namespace contrib {

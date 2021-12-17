@@ -125,7 +125,7 @@ struct TfIdfVectorizer::Impl {
   // Contains output indexes
   // represents ngram_indexes output
   gsl::span<const int64_t> ngram_indexes_;
-  gsl::span<const float>   weights_;
+  gsl::span<const float> weights_;
 
   // This map contains references to pool_string_ entries
   // of pool_strings attribute
@@ -151,7 +151,7 @@ struct TfIdfVectorizer::Impl {
   }
 };
 
-TfIdfVectorizer::TfIdfVectorizer(const OpKernelInfo& info) : OpKernel(info), impl_(new Impl) {
+TfIdfVectorizer::TfIdfVectorizer(const OpKernelInfo& info) : OpKernel(info), impl_(std::make_unique<Impl>()) {
   std::string mode;
   Status status = info.GetAttr("mode", &mode);
   ORT_ENFORCE(status.IsOK(), "mode is required");

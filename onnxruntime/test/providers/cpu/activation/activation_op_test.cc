@@ -105,17 +105,19 @@ TEST_F(ActivationOpTest, Relu) {
   TestActivationOp<float>("Relu",
                           input_values,
                           [](float x) { return std::max(x, 0.0f); });
-  TestActivationOp<double>("Relu",
-                           input_values_double,
-                           [](double x) { return std::max(x, 0.0); },
-                           {},
-                           /*is_tensorrt_supported=*/ false);
-  TestActivationOp<int8_t>("Relu",
-                           input_values_int8,
-                           [](int8_t x) { return std::max(x, static_cast<int8_t>(0)); },
-                           {},
-                           /*is_tensorrt_supported=*/ false,
-                           /*opset_version= */ 14);
+  TestActivationOp<double>(
+      "Relu",
+      input_values_double,
+      [](double x) { return std::max(x, 0.0); },
+      {},
+      /*is_tensorrt_supported=*/false);
+  TestActivationOp<int8_t>(
+      "Relu",
+      input_values_int8,
+      [](int8_t x) { return std::max(x, static_cast<int8_t>(0)); },
+      {},
+      /*is_tensorrt_supported=*/false,
+      /*opset_version= */ 14);
 }
 
 TEST_F(ActivationOpTest, Elu) {

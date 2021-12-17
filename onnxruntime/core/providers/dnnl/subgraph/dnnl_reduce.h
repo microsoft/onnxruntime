@@ -8,18 +8,21 @@
 namespace onnxruntime {
 namespace ort_dnnl {
 
-class DnnlReduceMean {
+class DnnlReduce {
  public:
   enum InputTensors : int {
-    IN_X = 0
+    IN_DATA = 0,
+    IN_AXES = 1
   };
 
   enum OutputTensors : int {
-    OUT_Y = 0
+    OUT_REDUCED = 0
   };
-  DnnlReduceMean();
+  DnnlReduce();
   void CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node);
   std::vector<int64_t> ReadAxes(DnnlNode& node);
+  bool Keepdims(DnnlNode& node);
+  bool NoOpWithEmptyAxes(DnnlNode& node);
 };
 
 }  // namespace ort_dnnl

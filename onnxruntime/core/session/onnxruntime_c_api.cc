@@ -57,6 +57,7 @@ const OrtDmlApi* GetOrtDmlApi(_In_ uint32_t version) NO_EXCEPTION;
 //The warning is: "Do not assign the result of an allocation or a function call with an owner<T> return value to a raw pointer, use owner<T> instead(i .11)."
 //But this file is for C API. It can't use unique_ptr/shared_ptr in function signature.
 #pragma warning(disable : 26400)
+#pragma warning(disable : 26409)
 #endif
 using namespace onnxruntime::logging;
 using onnxruntime::BFloat16;

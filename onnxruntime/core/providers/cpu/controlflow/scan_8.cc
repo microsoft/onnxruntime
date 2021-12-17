@@ -161,7 +161,7 @@ Status Scan<8>::SetupSubgraphExecutionInfo(const SessionState& session_state,
 
   const auto& node = Node();
   info_ = std::make_unique<Scan<8>::Info>(node, subgraph_session_state.GetGraphViewer(),
-                                                  static_cast<int>(num_scan_inputs_));
+                                          static_cast<int>(num_scan_inputs_));
 
   auto status = scan::detail::CreateFeedsFetchesManager(node, *info_, session_state, subgraph_session_state,
                                                         /* is_v8 */ true, feeds_fetches_manager_);

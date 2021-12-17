@@ -1339,7 +1339,7 @@ TEST_F(GraphTransformationTests, GemmTransposeFusionOutput) {
   ASSERT_TRUE(new_input_defs[1]->Name() == "A");
 }
 
-//  ((A')'B')' = BA'
+// ((A')'B')' = BA'
 TEST_F(GraphTransformationTests, GemmTransposeFusionInputOutput) {
   auto model_uri = MODEL_FOLDER "fusion/gemm_transpose_inputs_output_transposed.onnx";
   std::shared_ptr<Model> p_model;
@@ -1368,7 +1368,7 @@ TEST_F(GraphTransformationTests, GemmTransposeFusionInputOutput) {
   ASSERT_TRUE(new_input_defs[1]->Name() == "A");
 }
 
-//  (A'(B'))' = BA
+// (A'(B'))' = BA
 TEST_F(GraphTransformationTests, GemmTransposeFusionInputOutput2) {
   auto model_uri = MODEL_FOLDER "fusion/gemm_transpose_inputs_output_transposed_2.onnx";
   std::shared_ptr<Model> p_model;
@@ -1497,8 +1497,8 @@ TEST_F(GraphTransformationTests, GemmSumFusionInternalNodes) {
   ASSERT_EQ(op_to_count["Identity"], 4);
   ASSERT_EQ(graph.NumberOfNodes(), 5);
 
-  for(Node &node : graph.Nodes()) {
-    if(node.OpType() == "Gemm") {
+  for (Node& node : graph.Nodes()) {
+    if (node.OpType() == "Gemm") {
       ASSERT_FALSE(static_cast<bool>(node.GetAttributes().at("transA").i()));
       ASSERT_FALSE(static_cast<bool>(node.GetAttributes().at("transB").i()));
       ASSERT_EQ(node.GetAttributes().at("alpha").f(), 1.0);

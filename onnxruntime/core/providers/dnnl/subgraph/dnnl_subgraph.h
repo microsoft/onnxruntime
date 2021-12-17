@@ -76,6 +76,7 @@ class DnnlNode {
   NodeAttributes& Attributes();
   std::vector<DnnlTensor*>& Inputs();
   std::vector<DnnlTensor*>& Outputs();
+  int SinceVersion();
 
  private:
   const Node* onnx_node_ = nullptr;

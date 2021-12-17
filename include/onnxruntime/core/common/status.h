@@ -80,35 +80,34 @@ constexpr const char* StatusCodeToString(StatusCode status) noexcept {
 
 #ifdef _WIN32
 constexpr HRESULT StatusCodeToHRESULT(StatusCode status) noexcept {
-    switch (status)
-    {
+  switch (status) {
     case StatusCode::OK:
-        return S_OK;
+      return S_OK;
     case StatusCode::FAIL:
-        return E_FAIL;
+      return E_FAIL;
     case StatusCode::INVALID_ARGUMENT:
-        return E_INVALIDARG;
+      return E_INVALIDARG;
     case StatusCode::NO_SUCHFILE:
-        return HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND);
+      return HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND);
     case StatusCode::NO_MODEL:
-        return HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND);
+      return HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND);
     case StatusCode::ENGINE_ERROR:
-        return E_FAIL;
+      return E_FAIL;
     case StatusCode::RUNTIME_EXCEPTION:
-        return E_FAIL;
+      return E_FAIL;
     case StatusCode::INVALID_PROTOBUF:
-        return HRESULT_FROM_WIN32(ERROR_FILE_CORRUPT);
+      return HRESULT_FROM_WIN32(ERROR_FILE_CORRUPT);
     case StatusCode::MODEL_LOADED:
-        return HRESULT_FROM_WIN32(ERROR_INTERNAL_ERROR);
+      return HRESULT_FROM_WIN32(ERROR_INTERNAL_ERROR);
     case StatusCode::NOT_IMPLEMENTED:
-        return E_NOTIMPL;
+      return E_NOTIMPL;
     case StatusCode::INVALID_GRAPH:
-        return HRESULT_FROM_WIN32(ERROR_FILE_CORRUPT);
+      return HRESULT_FROM_WIN32(ERROR_FILE_CORRUPT);
     case StatusCode::EP_FAIL:
-        return HRESULT_FROM_WIN32(ERROR_INTERNAL_ERROR);
+      return HRESULT_FROM_WIN32(ERROR_INTERNAL_ERROR);
     default:
-        return E_FAIL;
-    }
+      return E_FAIL;
+  }
 }
 #endif
 
@@ -121,7 +120,10 @@ class [[nodiscard]] Status {
   Status(StatusCategory category, int code, const char* msg);
 
   Status(StatusCategory category, int code);
-
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(push)
+#pragma warning(disable : 26409)
+#endif
   Status(const Status& other)
       : state_((other.state_ == nullptr) ? nullptr : new State(*other.state_)) {}
 
@@ -135,7 +137,9 @@ class [[nodiscard]] Status {
     }
     return *this;
   }
-
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(pop)
+#endif
   Status(Status&&) = default;
   Status& operator=(Status&&) = default;
   ~Status() = default;

@@ -10,7 +10,12 @@
 
 namespace onnxruntime {
 namespace functors {
-
+// TODO: fix the warnings
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(push)
+// Do not use raw new/delete.
+#pragma warning(disable : 26409)
+#endif
 template <typename T>
 struct Log final : public ElementWiseRangedTransform<T> {
   Status Init(const onnxruntime::NodeAttributes) {
@@ -982,4 +987,7 @@ struct TensorAllocator {
  private:
   AllocatorPtr allocator_;
 };
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(pop)
+#endif
 }  // namespace onnxruntime

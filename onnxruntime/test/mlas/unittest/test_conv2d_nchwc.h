@@ -149,7 +149,7 @@ class MlasNchwcConv2DTest : public MlasConv2DTest<Threaded> {
 
  public:
   static const char* GetTestSuiteName(void) {
-    static const std::string suite_name(Threaded? "Conv2dNchwc_Threaded" : "Conv2dNchwc_SingleThread");
+    static const std::string suite_name(Threaded ? "Conv2dNchwc_Threaded" : "Conv2dNchwc_SingleThread");
     return suite_name.c_str();
   }
 

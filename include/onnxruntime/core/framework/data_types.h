@@ -745,7 +745,10 @@ class NonTensorTypeBase : public DataTypeImpl {
   struct Impl;
   Impl* impl_;
 };
-
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(push)
+#pragma warning(disable : 26409)
+#endif
 // This is where T is the actual CPPRuntimeType
 template <typename T>
 class NonTensorType : public NonTensorTypeBase {
@@ -766,7 +769,9 @@ class NonTensorType : public NonTensorTypeBase {
  protected:
   NonTensorType() : NonTensorTypeBase(sizeof(T)) {}
 };
-
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(pop)
+#endif
 #if !defined(DISABLE_ML_OPS)
 /**
  * \brief MapType. Use this type to register

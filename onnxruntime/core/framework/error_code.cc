@@ -66,5 +66,7 @@ ORT_API(OrtErrorCode, OrtApis::GetErrorCode, _In_ const OrtStatus* status) {
 ORT_API(const char*, OrtApis::GetErrorMessage, _In_ const OrtStatus* status) {
   return status->msg;
 }
-
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(disable : 26409)
+#endif
 ORT_API(void, OrtApis::ReleaseStatus, _Frees_ptr_opt_ OrtStatus* value) { delete[] reinterpret_cast<uint8_t*>(value); }

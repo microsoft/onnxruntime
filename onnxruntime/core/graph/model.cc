@@ -347,7 +347,7 @@ Status Model::Load(const ModelProto& model_proto,
 
   auto status = Status::OK();
   ORT_TRY {
-    model.reset(new Model(model_proto, model_path, local_registries, logger));
+    model = std::make_unique<Model>(model_proto, model_path, local_registries, logger);
   }
   ORT_CATCH(const std::exception& ex) {
     ORT_HANDLE_EXCEPTION([&]() {
@@ -386,7 +386,7 @@ Status Model::Load(ModelProto&& model_proto,
   GSL_SUPPRESS(r .11)
   auto status = Status::OK();
   ORT_TRY {
-    model.reset(new Model(std::move(model_proto), model_path, local_registries, logger, allow_released_opsets_only));
+    model = std::make_unique<Model>(std::move(model_proto), model_path, local_registries, logger, allow_released_opsets_only);
   }
   ORT_CATCH(const std::exception& ex) {
     ORT_HANDLE_EXCEPTION([&]() {
@@ -730,7 +730,7 @@ common::Status Model::LoadFromOrtFormat(const fbs::Model& fbs_model,
 #endif
                                         const logging::Logger& logger,
                                         std::unique_ptr<Model>& model) {
-  model.reset(new Model());
+  model = std::make_unique<Model>();
 
   // Load the model metadata
   if (const auto* fbs_metadata_props = fbs_model.metadata_props()) {

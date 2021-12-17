@@ -265,22 +265,22 @@ void LoopDataFile(int test_data_pb_fd, bool is_input, const TestModelInfo& model
 
 #if !defined(ORT_MINIMAL_BUILD)
 std::unique_ptr<TestModelInfo> TestModelInfo::LoadOnnxModel(_In_ const PATH_CHAR_TYPE* model_url) {
-  return std::unique_ptr<TestModelInfo>(new OnnxModelInfo(model_url));
+  return std::make_unique<OnnxModelInfo>(model_url);
 }
 #endif
 
 std::unique_ptr<TestModelInfo> TestModelInfo::LoadOrtModel(_In_ const PATH_CHAR_TYPE* model_url) {
-  return std::unique_ptr<TestModelInfo>(new OnnxModelInfo(model_url, true));
+  return std::make_unique<OnnxModelInfo>(model_url, true);
 }
 
 /**
-   * test_case_dir must have contents of:
-   * model.onnx
-   * ???/input_??.pb
-   * ???/output_??.pb
-   * ???/input_??.pb
-   * ???/output_??.pb
-   */
+ * test_case_dir must have contents of:
+ * model.onnx
+ * ???/input_??.pb
+ * ???/output_??.pb
+ * ???/input_??.pb
+ * ???/output_??.pb
+ */
 class OnnxTestCase : public ITestCase {
  private:
   std::string test_case_name_;
@@ -352,9 +352,9 @@ std::unique_ptr<ITestCase> CreateOnnxTestCase(const std::string& test_case_name,
                                               std::unique_ptr<TestModelInfo> model,
                                               double default_per_sample_tolerance,
                                               double default_relative_per_sample_tolerance) {
-  return std::unique_ptr<ITestCase>(new OnnxTestCase(test_case_name, std::move(model),
-                                                     default_per_sample_tolerance,
-                                                     default_relative_per_sample_tolerance));
+  return std::make_unique<OnnxTestCase>(test_case_name, std::move(model),
+                                        default_per_sample_tolerance,
+                                        default_relative_per_sample_tolerance);
 }
 
 void OnnxTestCase::GetPerSampleTolerance(double* value) const {

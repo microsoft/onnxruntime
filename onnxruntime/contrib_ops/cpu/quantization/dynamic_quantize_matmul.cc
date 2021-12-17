@@ -175,7 +175,7 @@ class DynamicQuantizeMatMul final : public MatMulIntegerToFloatBase {
 class MatMulIntegerToFloat final : public MatMulIntegerToFloatBase {
  public:
   MatMulIntegerToFloat(const OpKernelInfo& info) : MatMulIntegerToFloatBase(info) {}
-
+  ~MatMulIntegerToFloat() = default;
   Status Compute(OpKernelContext* context) const override;
 
   enum InputTensors : int {

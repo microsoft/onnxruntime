@@ -50,7 +50,7 @@ Status Environment::Create(std::unique_ptr<logging::LoggingManager> logging_mana
                            std::unique_ptr<Environment>& environment,
                            const OrtThreadingOptions* tp_options,
                            bool create_global_thread_pools) {
-  environment = std::unique_ptr<Environment>(new Environment());
+  environment = std::make_unique<Environment>();
   auto status = environment->Initialize(std::move(logging_manager), tp_options, create_global_thread_pools);
   return status;
 }

@@ -59,7 +59,7 @@ void GetQuantizationParameter(const float* data, int64_t num_of_elements, float&
     block_size = num_of_elements;
   }
 
-  for (int i = 0; i < num_blocks;  i++) {
+  for (int i = 0; i < num_blocks; i++) {
     aggregate[i].min = std::numeric_limits<float>::max();
     aggregate[i].max = std::numeric_limits<float>::lowest();
   }
@@ -105,8 +105,8 @@ void GetQuantizationParameter(const float* data, int64_t num_of_elements, float&
 }
 
 /**
- * @brief Run MlasQuantizeLinear in parallel, with provided thread pool 
-*/
+ * @brief Run MlasQuantizeLinear in parallel, with provided thread pool
+ */
 template <typename OutputType>
 void ParQuantizeLinear(const float* Input,
                        OutputType* Output,

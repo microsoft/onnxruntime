@@ -647,7 +647,7 @@ void UniDirectionalGru<T>::Compute(const gsl::span<const T>& inputs_arg,
       for (int r = 0; r < batch_size_; r++) {
         const T* p_bias_r = use_bias_ ? SafeRawConstPointer<T>(batched_bias_WRr_local + r * hidden_size_,
                                                                batched_bias_WRr_local_end, hidden_size_)
-          : nullptr;
+                                      : nullptr;
 
         // initialize p_rt with input to calculate rt. outputZRH_ has Xt*(Wr^T) + Ht-1*(Rr^T).
         T* p_rt = SafeRawPointer(outputZRH_, out_added_offset + r * hidden_size_x3 + hidden_size_, hidden_size_);
@@ -741,7 +741,7 @@ void UniDirectionalGru<T>::Compute(const gsl::span<const T>& inputs_arg,
 
         const T* p_bias_z = use_bias_ ? SafeRawConstPointer<T>(batched_bias_WRz_local,
                                                                batched_bias_WRz_local_end, hidden_size_)
-          : nullptr;
+                                      : nullptr;
 
         // initialize p_zt with Xt*(Wz^T) + Ht-1*(Rz^T), which is most of the input to calculate zt:
         T* p_zt = SafeRawPointer<T>(outputZRH_, out_added_offset + r * hidden_size_x3, hidden_size_);
@@ -791,7 +791,7 @@ void UniDirectionalGru<T>::Compute(const gsl::span<const T>& inputs_arg,
       prev_Ht = output;
       prev_Ht_end = output_end;
     }
-  } // End parallel section
+  }  // End parallel section
 
   // copy last output to final_hidden_state
   for (int i = 0; i < batch_size_; i++) {

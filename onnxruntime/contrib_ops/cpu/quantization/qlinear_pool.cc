@@ -119,7 +119,7 @@ struct QLinearPoolNhwc1DTask final {
     int64_t batch = begin / y_image_size;
     int64_t offset = begin % y_image_size;
 
-    for (int64_t remains = static_cast<int64_t>(end) - begin; remains> 0; offset = 0, batch++) {
+    for (int64_t remains = static_cast<int64_t>(end) - begin; remains > 0; offset = 0, batch++) {
       if (offset + remains <= y_image_size) {
         operator()(std::ptrdiff_t(batch), std::ptrdiff_t(offset), std::ptrdiff_t(offset + remains));
         remains = 0;

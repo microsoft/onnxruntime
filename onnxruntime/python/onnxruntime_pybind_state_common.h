@@ -379,9 +379,9 @@ class PySparseTensor {
   std::unique_ptr<OrtValue> AsOrtValue() const;
 
  private:
-  //  instance_ represents data that comes as input. Thus we depend on numpy
-  // arrays that own the underlying memory to stay around. We store copies
-  // of py::objects for those arrays in backing_storage_ as an extra ref-count.
+  // instance_ represents data that comes as input. Thus we depend on numpy
+  //arrays that own the underlying memory to stay around. We store copies
+  //of py::objects for those arrays in backing_storage_ as an extra ref-count.
 
   // If we have and are able to copy from the OrtValue returned by run() to CPU, then this owns the data
   // and backing_storage_ is empty.
@@ -392,7 +392,6 @@ class PySparseTensor {
   OrtValue ort_value_;
 };
 #endif  // !defined(DISABLE_SPARSE_TENSORS)
-
 
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(push)

@@ -78,7 +78,10 @@ struct LeakyRelu : public ElementWiseRangedTransform<T> {
     ym = (xm >= 0).select(xm, (T)alpha * xm);
   }
 };
-
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(push)
+#pragma warning(disable : 26409)
+#endif
 template <typename T>
 struct Softplus : public ElementWiseRangedTransform<T> {
   Status Init(const onnxruntime::NodeAttributes&) {
@@ -192,6 +195,7 @@ struct Tanh : public ElementWiseRangedTransform<T> {
     ym = xm.tanh();
   }
 };
+
 template <>
 void Tanh<float>::operator()(std::ptrdiff_t first, std::ptrdiff_t last) const;
 
@@ -226,7 +230,9 @@ struct Selu : public ElementWiseRangedTransform<T> {
     ym = (T)gamma * (xm.cwiseMax(0.0f) + ((T)alpha * (xm.array().exp() - 1.0f)).cwiseMin(0.0f));
   }
 };
-
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(pop)
+#endif
 }  // namespace functors
 
 DEFINE_ELE_KERNEL(Celu);
