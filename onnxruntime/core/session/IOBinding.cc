@@ -12,11 +12,12 @@ IOBinding::IOBinding(const SessionState& session_state) : session_state_(session
 }
 
 common::Status IOBinding::BindInput(const std::string& name, const OrtValue& ml_value) {
-  ORT_ENFORCE(mapped_feed_names_.size() == feed_names_.size(), "Size mismatch.");
+  ORT_ENFORCE(mapped_feed_names_.size() == feed_names_.size(), "Size mismatch(0):", mapped_feed_names_.size(), "!=", feed_names_.size());
   auto it = mapped_feed_names_.emplace(name, feed_names_.size());
   size_t index = it.first->second;
   if (it.second) {
     feed_names_.push_back(name);
+    ORT_ENFORCE(mapped_feed_names_.size() == feed_names_.size(), "Size mismatch(1):", mapped_feed_names_.size(), "!=", feed_names_.size(), "index=", index);
     OrtValue new_mlvalue;
     feeds_.push_back(new_mlvalue);
     // The inserted pointer points to name.c_str(), a pointer the class
@@ -25,6 +26,7 @@ common::Status IOBinding::BindInput(const std::string& name, const OrtValue& ml_
     mapped_feed_names_.extract(it.first);
     mapped_feed_names_[VariableNameWrapper(feed_names_[index])] = index;
   }
+  ORT_ENFORCE(mapped_feed_names_.size() == feed_names_.size(), "Size mismatch(3):", mapped_feed_names_.size(), "!=", feed_names_.size(), "index=", index);
 
   if (ml_value.IsTensor() || ml_value.IsSparseTensor()) {
     OrtValue new_mlvalue;
@@ -86,7 +88,7 @@ common::Status IOBinding::BindOutput(const std::string& name, OrtDevice device) 
 }
 
 common::Status IOBinding::BindOutputImpl(const std::string& name, const OrtValue& ml_value, OrtDevice device) {
-  ORT_ENFORCE(mapped_output_names_.size() == output_names_.size(), "Size mismatch.");
+  ORT_ENFORCE(mapped_output_names_.size() == output_names_.size(), "Size mismatch.", mapped_output_names_.size(), "!=", output_names_.size());
   auto it = mapped_output_names_.emplace(name, output_names_.size());
   size_t index = it.first->second;
   if (it.second) {
