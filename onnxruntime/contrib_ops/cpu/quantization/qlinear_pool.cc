@@ -281,7 +281,7 @@ struct QLinearPoolNhwc2DTask final {
         wstart = std::max(wstart, static_cast<int64_t>(0));
 
         // do the pooling here
-        float pool_init_value = PoolType::Initialize();
+        constexpr float pool_init_value = PoolType::Initialize();
         std::fill(Yh.data(), Yh.data() + channels, pool_init_value);
         for (int64_t h = hstart; h < hend; ++h) {
           int64_t input_index = channels * (h * width + wstart);

@@ -36,7 +36,7 @@ class PoolProcessContext {
 
 class AveragePool {
  public:
-  static float Initialize() {
+  constexpr static float Initialize() {
     return 0.0;
   }
 
@@ -84,7 +84,7 @@ class MaxPool<8 /*START_VERSION*/> {
 
 class LpPool {
  public:
-  static float Initialize() {
+  constexpr static float Initialize() {
     return 0.0f;
   }
 

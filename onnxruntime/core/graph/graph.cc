@@ -3999,7 +3999,7 @@ Status Graph::InlineFunction(Node& node) {
   // main graph.
   const Graph& subgraph = node.GetFunctionBody()->Body();
   auto output_edges = node.GetRelationships().output_edges;
-  for (auto& output_edge : output_edges) {
+  for (const auto& output_edge : output_edges) {
     RemoveEdge(node.Index(), output_edge.GetNode().Index(), output_edge.GetSrcArgIndex(), output_edge.GetDstArgIndex());
   }
 
