@@ -23,7 +23,7 @@ inline void TensorShapeCopyDims(const TensorShape& shape, int64_t* dims, size_t 
 class MatMulComputeHelper {
  public:
   // fill_offsets is to control if to fill offsets here.
-  // For CUDA/AMD kernel when we can use GemmStridedBatched, we don't need to fill the offsets.
+  // For CUDA/ROCM kernel when we can use GemmStridedBatched, we don't need to fill the offsets.
   Status Compute(const TensorShape& orig_left_shape, const TensorShape& orig_right_shape,
                  bool transa = false, bool transb = false,
                  bool trans_batch_a = false, bool trans_batch_b = false,
@@ -56,7 +56,7 @@ class MatMulComputeHelper {
       output_offsets_ = {0};
       left_offsets_ = {0};
       right_offsets_ = {0};
-      ORT_RETURN_IF_NOT(K_ == orig_right_shape[right_num_dims - 2] ||
+      ORT_RETURN_IF_NOT((!transb && K_ == orig_right_shape[right_num_dims - 2]) ||
                             (transb && K_ == orig_right_shape[right_num_dims - 1]),
                         "MatMul dimension mismatch");
       return Status::OK();
@@ -70,24 +70,29 @@ class MatMulComputeHelper {
     left_ld_factor_ = right_ld_factor_ = 1;
 
     if (trans_batch_a || trans_batch_b) {
-      ORT_ENFORCE(left_num_dims > 2 && left_num_dims == right_num_dims, "Two input should have same rank and rank >= 3 if transBatchA or transBatchB is true");
+      ORT_ENFORCE(left_num_dims > 2 && left_num_dims == right_num_dims,
+                  "Two inputs should have same rank and rank >= 3 if transBatchA or transBatchB is true");
+      // trans_batch_a means the input tensor is either [M,b0,...,bn,K] or [K,b0,...,bn,M].
+      // Switch the dim[0] and batch dims here.
       if (trans_batch_a) {
-        int64_t tmp = dims_left[0];
+        int64_t leading_dim = dims_left[0];
         for (size_t i = 0; i < left_num_dims - 2; ++i) {
           dims_left[i] = dims_left[i + 1];
           left_ld_factor_ *= static_cast<int>(dims_left[i]);
         }
-        dims_left[left_num_dims - 2] = tmp;
-        left_stride_factor_ = static_cast<size_t>(tmp);
+        dims_left[left_num_dims - 2] = leading_dim;
+        left_stride_factor_ = static_cast<size_t>(leading_dim);
       }
+      // trans_batch_b means the input tensor is either [K,b0,...,bn,N] or [N,b0,...,bn,K].
+      // Switch the dim[0] and batch dims here.
       if (trans_batch_b) {
-        int64_t tmp = dims_right[0];
+        int64_t leading_dim = dims_right[0];
         for (size_t i = 0; i < right_num_dims - 2; ++i) {
           dims_right[i] = dims_right[i + 1];
           right_ld_factor_ *= static_cast<int>(dims_right[i]);
         }
-        dims_right[right_num_dims - 2] = tmp;
-        right_stride_factor_ = static_cast<size_t>(tmp);
+        dims_right[right_num_dims - 2] = leading_dim;
+        right_stride_factor_ = static_cast<size_t>(leading_dim);
       }
     }
 

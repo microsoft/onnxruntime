@@ -33,12 +33,18 @@ static bool GetTransposePerms(const Node& transpose_node, std::vector<int64_t>& 
 }
 
 // is_trans is whether to transpose the 2 dims used to MatMul.
-// is_trans_batch is whether to transpose 1st dim and batch dims (dim-1 to dim-rank-2).
-// For example:
-// is_trans=False, is_trans_batch=False: [0,1,2,3]
-// is_trans=False, is_trans_batch=True : [1,2,0,3]
-// is_trans=True , is_trans_batch=False: [0,1,3,2]
-// is_trans=True , is_trans_batch=True : [1,2,3,0]
+// is_trans_batch is whether to transpose 1st dim and batch dims.
+// Batch here has the same meaning in CUDA's GemmStridedBatched (other than the training batch concept),
+// i.e., all dims except the 2 dims used to MatMul, including from dim[0] to dim[rank-3].
+// For example (take lhs input as example):
+// is_trans=False, is_trans_batch=False:
+//   the input tensor is in shape [b0,...,bn,M,K], no Transpose (no fuse for this case)
+// is_trans=False, is_trans_batch=True:
+//   the input tensor is in shape [M,b0,...,bn,K], Transpose perm=[1,...,rank-2,0,rank-1]
+// is_trans=True , is_trans_batch=False:
+//   the input tensor is in shape [b0,...,bn,K,M], Transpose perm=[0,...,rank-3,rank-1,rank-2]
+// is_trans=True , is_trans_batch=True:
+//   the input tensor is in shape [K,b0,...,bn,M], Transpose perm=[1,...,rank-2,rank-1,0]
 static Node* GetTransposeNodeFromOutput(Graph& graph, NodeArg& node_arg, bool& is_trans, bool& is_trans_batch) {
   is_trans = is_trans_batch = false;
 
@@ -65,7 +71,7 @@ static Node* GetTransposeNodeFromOutput(Graph& graph, NodeArg& node_arg, bool& i
     return nullptr;
   }
 
-  // Transpose node can be fused to MatMul when the batch dimensions have same order before and after transpose.
+  // Transpose node can be fused to MatMul when the batch dims keep same relative orders before and after transpose.
   // But if they are not contiguous, after the fusion, we can only use GemmBatched instead of GemmStridedBatched,
   // which may have perf issue. To keep it simple, we will fuse only when batch dimensions are contiguous.
   if (rank >= 3) {
