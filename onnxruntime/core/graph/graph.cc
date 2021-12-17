@@ -2587,6 +2587,15 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
     }
   }
 
+  // verify subgraphs
+  for (auto node_index : nodes_in_topological_order_) {
+    auto& node = *GetNode(node_index);
+    for (auto& entry : node.GetAttributeNameToMutableSubgraphMap()) {
+      Graph* subgraph = entry.second;
+      ORT_RETURN_IF_ERROR(subgraph->VerifyNodeAndOpMatch(options));
+    }
+  }
+
   return Status::OK();
 }
 
