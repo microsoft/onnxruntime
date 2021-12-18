@@ -20,16 +20,16 @@ jobs:
           mkdir -p build/doxygen
           cd docs/c_cxx
           ../../doxygen-1.9.2/bin/doxygen
-      - name: Debug 1
+      - name: Debug
         run:
           git status    
       - uses: actions/checkout@v2
         with:
           ref: gh-pages
           clean: false    
-      - name: Debug 2
+      - name: Move API docs into target area
         run:
-          git status    
+          mv build/doxygen/html/* docs/api/c   
       - name: Commit changes
         uses: EndBug/add-and-commit@v7
         with:
