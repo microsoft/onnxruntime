@@ -25,7 +25,8 @@ jobs:
           git status    
       - uses: actions/checkout@v2
         with:
-          ref: gh-pages    
+          ref: gh-pages
+          clean: false    
       - name: Debug 2
         run:
           git status    
