@@ -240,7 +240,7 @@ Status InstanceNorm<MLFloat16>::ComputeInternal(OpKernelContext* p_op_kernel_con
     // stats_desc needs to be of 'float' type even for float16 input as the "stats" are of float type
     CudnnTensor stats_desc;
     ORT_RETURN_IF_ERROR(stats_desc.Set(std::array<int64_t, 4>{1, stats_count, 1, 1},
-                                       CudnnTensor::GetDataType<float>()));
+                                       CudnnTensor::GetDataType<CudaT>()));
 
     // For half input data type, we need to allocate some "intermediate"
     // float buffers for CuDNN to use.
