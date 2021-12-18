@@ -185,7 +185,7 @@ MlasQLinearAddKernelAvx2Helper(
         if (k > 0) {
             const __m256i mask = _mm256_cmpgt_epi32(_mm256_set1_epi32(k), _mm256_set_epi32(7, 6, 5, 4, 3, 2, 1, 0));
             _mm256_maskstore_epi32((int*)OutputC, mask, vc);
-            OutputC += k * 4;
+            OutputC += static_cast<ptrdiff_t>(k) * 4;
         }
 
         int r = static_cast<int>(n % 4);

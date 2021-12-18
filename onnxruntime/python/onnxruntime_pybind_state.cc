@@ -637,6 +637,16 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
     nuphar_settings.clear();
     return p;
 #endif
+  } else if (type == kStvmExecutionProvider) {
+#if USE_STVM
+    onnxruntime::StvmExecutionProviderInfo info{};
+    const auto it = provider_options_map.find(type);
+    if (it != provider_options_map.end()) {
+      info = onnxruntime::StvmExecutionProviderInfo::FromProviderOptions(it->second);
+    }
+
+    return onnxruntime::CreateExecutionProviderFactory_Stvm(info)->CreateProvider();
+#endif
   } else if (type == kVitisAIExecutionProvider) {
 #if USE_VITISAI
     // Retrieve Vitis AI provider options

@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "op_builder.h"
+
 #include <core/common/logging/logging.h>
 #include <core/common/safeint.h>
 #include <core/framework/tensorprotoutils.h>
@@ -8,17 +10,18 @@
 #include <onnx/onnx_pb.h>
 
 #include "core/providers/shared/utils/utils.h"
+#include "core/providers/shared/node_unit/node_unit.h"
 #include "core/providers/cpu/tensor/slice_helper.h"
 #include "helper.h"
 #include "model_builder.h"
-#include "op_builder.h"
 #include "op_support_checker.h"
+
+using onnxruntime::NodeUnit;
+using namespace android::nn::wrapper;
+using std::vector;
 
 namespace onnxruntime {
 namespace nnapi {
-
-using namespace android::nn::wrapper;
-using std::vector;
 
 #pragma region helpers
 
@@ -653,7 +656,8 @@ static Status IsValidConvWeightQuantizedType(const ModelBuilder& model_builder,
   return Status::OK();
 }
 
-static void AddBinaryOpQuantizationScaleAndZeroPointToSkip(ModelBuilder& model_builder, const Node& node) {
+static void AddBinaryOpQuantizationScaleAndZeroPointToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) {
+  const auto& node = node_unit.GetNode();
   const auto input_defs(node.InputDefs());
   model_builder.AddInitializerToSkip(input_defs[1]->Name());  // a_scale
   model_builder.AddInitializerToSkip(input_defs[2]->Name());  // a_zero_point
@@ -664,10 +668,11 @@ static void AddBinaryOpQuantizationScaleAndZeroPointToSkip(ModelBuilder& model_b
 }
 
 Status GetQuantizedInputScaleAndZeroPoint(const InitializedTensorSet& initializers,
-                                          const Node& node,
+                                          const NodeUnit& node_unit,
                                           const std::string& input_name,
                                           float& scale,
                                           int32_t& zero_point) {
+  const auto& node = node_unit.GetNode();
   const auto& op_type = node.OpType();
   auto qlinear_op_type = GetQLinearOpType(node);
   assert(qlinear_op_type != QLinearOpType::Unknown &&
@@ -725,23 +730,24 @@ void CreateSharedOpBuilderImpl(const std::string& op_type,
 class BaseOpBuilder : public IOpBuilder {
  public:
   virtual ~BaseOpBuilder() = default;
-  virtual void AddInitializersToSkip(ModelBuilder& /* model_builder */, const Node& /* node */) const override {}
-  Status AddToModelBuilder(ModelBuilder& model_builder, const Node& node) const override final ORT_MUST_USE_RESULT;
+  virtual void AddInitializersToSkip(ModelBuilder& /* model_builder */, const NodeUnit& /* node_unit */) const override {}
+  Status AddToModelBuilder(ModelBuilder& model_builder, const NodeUnit& node_unit) const override final ORT_MUST_USE_RESULT;
 
  protected:
-  virtual Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const ORT_MUST_USE_RESULT = 0;
+  virtual Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const ORT_MUST_USE_RESULT = 0;
 };
 
-Status BaseOpBuilder::AddToModelBuilder(ModelBuilder& model_builder, const Node& node) const {
+Status BaseOpBuilder::AddToModelBuilder(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
   OpSupportCheckParams params{
       model_builder.GetNNAPIFeatureLevel(),
       model_builder.UseNCHW(),
   };
 
-  ORT_RETURN_IF_NOT(IsNodeSupported(node, model_builder.GetGraphViewer(), params), "Unsupported operator ", node.OpType());
-  ORT_RETURN_IF_ERROR(AddToModelBuilderImpl(model_builder, node));
-  LOGS_DEFAULT(VERBOSE) << "Operator name: [" << node.Name()
-                        << "] type: [" << node.OpType() << "] was added";
+  ORT_RETURN_IF_NOT(IsNodeSupported(node_unit, model_builder.GetGraphViewer(), params),
+                    "Unsupported operator ", node_unit.OpType());
+  ORT_RETURN_IF_ERROR(AddToModelBuilderImpl(model_builder, node_unit));
+  LOGS_DEFAULT(VERBOSE) << "Operator name: [" << node_unit.Name()
+                        << "] type: [" << node_unit.OpType() << "] was added";
   return Status::OK();
 }
 
@@ -751,17 +757,17 @@ Status BaseOpBuilder::AddToModelBuilder(ModelBuilder& model_builder, const Node&
 
 class BinaryOpBuilder : public BaseOpBuilder {
  public:
-  void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const override;
+  void AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
   static void CreateSharedOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
  private:
-  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const override ORT_MUST_USE_RESULT;
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override ORT_MUST_USE_RESULT;
 };
 
-void BinaryOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {
-  const auto& op = node.OpType();
+void BinaryOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
+  const auto& op = node_unit.OpType();
   if (op == "QLinearAdd") {
-    AddBinaryOpQuantizationScaleAndZeroPointToSkip(model_builder, node);
+    AddBinaryOpQuantizationScaleAndZeroPointToSkip(model_builder, node_unit);
   }
 }
 
@@ -779,7 +785,8 @@ void BinaryOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const N
       });
 }
 
-Status BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const {
+Status BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
+  const auto& node = node_unit.GetNode();
   const auto& op_type(node.OpType());
   const auto input_defs(node.InputDefs());
 
@@ -850,10 +857,11 @@ Status BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
 
 class ReluOpBuilder : public BaseOpBuilder {
  private:
-  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const override ORT_MUST_USE_RESULT;
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override ORT_MUST_USE_RESULT;
 };
 
-Status ReluOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const {
+Status ReluOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
+  const auto& node = node_unit.GetNode();
   auto& shaper(model_builder.GetShaper());
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());
@@ -884,10 +892,11 @@ Status ReluOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
 
 class TransposeOpBuilder : public BaseOpBuilder {
  private:
-  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const override ORT_MUST_USE_RESULT;
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override ORT_MUST_USE_RESULT;
 };
 
-Status TransposeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const {
+Status TransposeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
+  const auto& node = node_unit.GetNode();
   auto& shaper(model_builder.GetShaper());
 
   auto input = node.InputDefs()[0]->Name();
@@ -928,16 +937,17 @@ Status TransposeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, co
 
 class ReshapeOpBuilder : public BaseOpBuilder {
  public:
-  void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const override;
+  void AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
   static Status AddReshapeOperator(ModelBuilder& model_builder, const Node& node,
                                    const std::string& input, const std::vector<int32_t>& shape) ORT_MUST_USE_RESULT;
 
  private:
-  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const override ORT_MUST_USE_RESULT;
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override ORT_MUST_USE_RESULT;
   static bool CanSkipReshape(const ModelBuilder& model_builder, const Node& node, size_t input_rank, size_t output_rank);
 };
 
-void ReshapeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {
+void ReshapeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
+  const auto& node = node_unit.GetNode();
   model_builder.AddInitializerToSkip(node.InputDefs()[1]->Name());
 }
 
@@ -1040,7 +1050,8 @@ void ReshapeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const 
   return Status::OK();
 }
 
-Status ReshapeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const {
+Status ReshapeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
+  const auto& node = node_unit.GetNode();
   auto& shaper(model_builder.GetShaper());
   const auto& initializers(model_builder.GetInitializerTensors());
 
@@ -1073,13 +1084,14 @@ Status ReshapeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, cons
 
 class BatchNormalizationOpBuilder : public BaseOpBuilder {
  public:
-  void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const override;
+  void AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
 
  private:
-  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const override ORT_MUST_USE_RESULT;
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override ORT_MUST_USE_RESULT;
 };
 
-void BatchNormalizationOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {
+void BatchNormalizationOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
+  const auto& node = node_unit.GetNode();
   // skip everything except input0 for BatchNormalization
   model_builder.AddInitializerToSkip(node.InputDefs()[1]->Name());  // scale
   model_builder.AddInitializerToSkip(node.InputDefs()[2]->Name());  // B
@@ -1087,7 +1099,8 @@ void BatchNormalizationOpBuilder::AddInitializersToSkip(ModelBuilder& model_buil
   model_builder.AddInitializerToSkip(node.InputDefs()[4]->Name());  //var
 }
 
-Status BatchNormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const {
+Status BatchNormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
+  const auto& node = node_unit.GetNode();
   auto& shaper(model_builder.GetShaper());
   const auto& operand_types(model_builder.GetOperandTypes());
   const auto& initializers(model_builder.GetInitializerTensors());
@@ -1184,14 +1197,15 @@ Status BatchNormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_bu
 
 class PoolOpBuilder : public BaseOpBuilder {
  public:
-  void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const override;
+  void AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
   static void CreateSharedOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
  private:
-  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const override ORT_MUST_USE_RESULT;
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override ORT_MUST_USE_RESULT;
 };
 
-void PoolOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {
+void PoolOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
+  const auto& node = node_unit.GetNode();
   const auto& op = node.OpType();
   if (op != "QLinearAveragePool")
     return;
@@ -1220,7 +1234,9 @@ void PoolOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Nod
       });
 }
 
-Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const {
+Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
+  const auto& node = node_unit.GetNode();
+
   auto& shaper(model_builder.GetShaper());
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());
@@ -1341,11 +1357,11 @@ Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
 
 class ConvOpBuilder : public BaseOpBuilder {
  public:
-  void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const override;
+  void AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
   static void CreateSharedOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
  private:
-  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const override ORT_MUST_USE_RESULT;
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override ORT_MUST_USE_RESULT;
 };
 
 /* static */ void ConvOpBuilder::CreateSharedOpBuilder(
@@ -1358,13 +1374,14 @@ class ConvOpBuilder : public BaseOpBuilder {
       });
 }
 
-void ConvOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {
+void ConvOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
+  const auto& node = node_unit.GetNode();
   const auto& op = node.OpType();
   const auto input_defs = node.InputDefs();
 
   // skip the weight for conv as we need to transpose
   if (op == "QLinearConv") {
-    AddBinaryOpQuantizationScaleAndZeroPointToSkip(model_builder, node);
+    AddBinaryOpQuantizationScaleAndZeroPointToSkip(model_builder, node_unit);
     model_builder.AddInitializerToSkip(input_defs[3]->Name());  // w
     if (input_defs.size() > 8)
       model_builder.AddInitializerToSkip(input_defs[8]->Name());  // B
@@ -1373,7 +1390,8 @@ void ConvOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Nod
   }
 }
 
-Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const {
+Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
+  const auto& node = node_unit.GetNode();
   auto& shaper(model_builder.GetShaper());
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());
@@ -1610,10 +1628,11 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
 
 class CastOpBuilder : public BaseOpBuilder {
  private:
-  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const override ORT_MUST_USE_RESULT;
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override ORT_MUST_USE_RESULT;
 };
 
-Status CastOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const {
+Status CastOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
+  const auto& node = node_unit.GetNode();
   auto& shaper(model_builder.GetShaper());
   const auto& operand_indices(model_builder.GetOperandIndices());
   NodeAttrHelper helper(node);
@@ -1650,10 +1669,11 @@ Status CastOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
 
 class SoftMaxOpBuilder : public BaseOpBuilder {
  private:
-  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const override ORT_MUST_USE_RESULT;
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override ORT_MUST_USE_RESULT;
 };
 
-Status SoftMaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const {
+Status SoftMaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
+  const auto& node = node_unit.GetNode();
   auto& shaper(model_builder.GetShaper());
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());
@@ -1701,10 +1721,12 @@ Status SoftMaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, cons
 
 class IdentityOpBuilder : public BaseOpBuilder {
  private:
-  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const override ORT_MUST_USE_RESULT;
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override ORT_MUST_USE_RESULT;
 };
 
-Status IdentityOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const {
+Status IdentityOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
+  const auto& node = node_unit.GetNode();
+
   // Identity is not really going to do anything
   // Just register the dimension and type, with same index and new name
   auto& shaper(model_builder.GetShaper());
@@ -1730,11 +1752,11 @@ Status IdentityOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, con
 
 class GemmOpBuilder : public BaseOpBuilder {
  public:
-  void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const override;
+  void AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
   static void CreateSharedOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
  private:
-  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const override ORT_MUST_USE_RESULT;
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override ORT_MUST_USE_RESULT;
 };
 
 /* static */ void GemmOpBuilder::CreateSharedOpBuilder(
@@ -1748,7 +1770,9 @@ class GemmOpBuilder : public BaseOpBuilder {
       });
 }
 
-void GemmOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {
+void GemmOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
+  const auto& node = node_unit.GetNode();
+
   const auto& op = node.OpType();
   const auto input_defs(node.InputDefs());
   if (op == "MatMul") {
@@ -1759,12 +1783,14 @@ void GemmOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Nod
     if (transB == 0)
       model_builder.AddInitializerToSkip(input_defs[1]->Name());
   } else if (op == "QLinearMatMul") {
-    AddBinaryOpQuantizationScaleAndZeroPointToSkip(model_builder, node);
+    AddBinaryOpQuantizationScaleAndZeroPointToSkip(model_builder, node_unit);
     model_builder.AddInitializerToSkip(input_defs[3]->Name());  // b
   }
 }
 
-Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const {
+Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
+  const auto& node = node_unit.GetNode();
+
   auto& shaper(model_builder.GetShaper());
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());
@@ -1885,14 +1911,15 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
 
 class UnaryOpBuilder : public BaseOpBuilder {
  public:
-  void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const override;
+  void AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
   static void CreateSharedOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
  private:
-  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const override ORT_MUST_USE_RESULT;
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override ORT_MUST_USE_RESULT;
 };
 
-void UnaryOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {
+void UnaryOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
+  const auto& node = node_unit.GetNode();
   const auto& op = node.OpType();
   if (op != "QLinearSigmoid")
     return;
@@ -1926,7 +1953,8 @@ void UnaryOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const No
       });
 }
 
-Status UnaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const {
+Status UnaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
+  const auto& node = node_unit.GetNode();
   auto& shaper(model_builder.GetShaper());
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());
@@ -1993,10 +2021,11 @@ Status UnaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
 
 class ConcatOpBuilder : public BaseOpBuilder {
  private:
-  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const override ORT_MUST_USE_RESULT;
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override ORT_MUST_USE_RESULT;
 };
 
-Status ConcatOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const {
+Status ConcatOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
+  const auto& node = node_unit.GetNode();
   auto& shaper(model_builder.GetShaper());
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());
@@ -2085,14 +2114,15 @@ Status ConcatOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
 
 class SqueezeOpBuilder : public BaseOpBuilder {
  public:
-  void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const override;
+  void AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
 
  private:
-  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const override ORT_MUST_USE_RESULT;
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override ORT_MUST_USE_RESULT;
   static Status GetAxes(ModelBuilder& model_builder, const Node& node, vector<int32_t>& axes);
 };
 
-void SqueezeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {
+void SqueezeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
+  const auto& node = node_unit.GetNode();
   if (node.SinceVersion() > 12 && node.InputDefs().size() > 1) {
     model_builder.AddInitializerToSkip(node.InputDefs()[1]->Name());
   }
@@ -2124,7 +2154,9 @@ void SqueezeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const 
   return Status::OK();
 }
 
-Status SqueezeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const {
+Status SqueezeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
+  const auto& node = node_unit.GetNode();
+
   auto input = node.InputDefs()[0]->Name();
   if (model_builder.IsOperandNHWC(input)) {
     // We want to transpose nhwc operand back to nchw before squeeze
@@ -2142,13 +2174,14 @@ Status SqueezeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, cons
 
 class QuantizeLinearOpBuilder : public BaseOpBuilder {
  public:
-  void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const override;
+  void AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
 
  private:
-  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const override ORT_MUST_USE_RESULT;
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override ORT_MUST_USE_RESULT;
 };
 
-void QuantizeLinearOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {
+void QuantizeLinearOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
+  const auto& node = node_unit.GetNode();
   const auto input_defs(node.InputDefs());
 
   model_builder.AddInitializerToSkip(input_defs[1]->Name());
@@ -2157,7 +2190,8 @@ void QuantizeLinearOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder,
     model_builder.AddInitializerToSkip(input_defs[2]->Name());
 }
 
-Status QuantizeLinearOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const {
+Status QuantizeLinearOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
+  const auto& node = node_unit.GetNode();
   auto& shaper(model_builder.GetShaper());
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto input_defs(node.InputDefs());
@@ -2190,13 +2224,14 @@ Status QuantizeLinearOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builde
 
 class DequantizeLinearOpBuilder : public BaseOpBuilder {
  public:
-  void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const override;
+  void AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
 
  private:
-  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const override ORT_MUST_USE_RESULT;
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override ORT_MUST_USE_RESULT;
 };
 
-void DequantizeLinearOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {
+void DequantizeLinearOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
+  const auto& node = node_unit.GetNode();
   const auto input_defs(node.InputDefs());
 
   model_builder.AddInitializerToSkip(input_defs[1]->Name());
@@ -2205,7 +2240,9 @@ void DequantizeLinearOpBuilder::AddInitializersToSkip(ModelBuilder& model_builde
     model_builder.AddInitializerToSkip(input_defs[2]->Name());
 }
 
-Status DequantizeLinearOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const {
+Status DequantizeLinearOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
+  const auto& node = node_unit.GetNode();
+
   auto& shaper(model_builder.GetShaper());
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto input_defs(node.InputDefs());
@@ -2239,10 +2276,11 @@ Status DequantizeLinearOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_buil
 
 class LRNOpBuilder : public BaseOpBuilder {
  private:
-  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const override ORT_MUST_USE_RESULT;
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override ORT_MUST_USE_RESULT;
 };
 
-Status LRNOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const {
+Status LRNOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
+  const auto& node = node_unit.GetNode();
   auto& shaper(model_builder.GetShaper());
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());
@@ -2297,13 +2335,14 @@ Status LRNOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const No
 
 class ClipOpBuilder : public BaseOpBuilder {
  public:
-  void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const override;
+  void AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
 
  private:
-  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const override ORT_MUST_USE_RESULT;
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override ORT_MUST_USE_RESULT;
 };
 
-void ClipOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {
+void ClipOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
+  const auto& node = node_unit.GetNode();
   if (node.InputDefs().size() > 1)
     model_builder.AddInitializerToSkip(node.InputDefs()[1]->Name());  // min
 
@@ -2311,7 +2350,9 @@ void ClipOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Nod
     model_builder.AddInitializerToSkip(node.InputDefs()[2]->Name());  // max
 }
 
-Status ClipOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const {
+Status ClipOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
+  const auto& node = node_unit.GetNode();
+
   auto& shaper(model_builder.GetShaper());
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());
@@ -2354,13 +2395,14 @@ Status ClipOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
 
 class ResizeOpBuilder : public BaseOpBuilder {
  public:
-  void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const override;
+  void AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
 
  private:
-  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const override ORT_MUST_USE_RESULT;
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override ORT_MUST_USE_RESULT;
 };
 
-void ResizeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {
+void ResizeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
+  const auto& node = node_unit.GetNode();
   // We don't really use ROI here, so add them to skipped list
   model_builder.AddInitializerToSkip(node.InputDefs()[1]->Name());  // ROI
 
@@ -2372,7 +2414,8 @@ void ResizeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const N
     model_builder.AddInitializerToSkip(node.InputDefs()[3]->Name());  // sizes
 }
 
-Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const {
+Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
+  const auto& node = node_unit.GetNode();
   auto& shaper(model_builder.GetShaper());
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());
@@ -2462,10 +2505,12 @@ Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
 
 class FlattenOpBuilder : public BaseOpBuilder {
  private:
-  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const override ORT_MUST_USE_RESULT;
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override ORT_MUST_USE_RESULT;
 };
 
-Status FlattenOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const {
+Status FlattenOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
+  const auto& node = node_unit.GetNode();
+
   auto input = node.InputDefs()[0]->Name();
   if (model_builder.IsOperandNHWC(input)) {
     // We want to transpose nhwc operand back to nchw before reshape
@@ -2499,7 +2544,7 @@ class MinMaxOpBuilder : public BaseOpBuilder {
                                   bool output_is_nhwc) ORT_MUST_USE_RESULT;
 
  private:
-  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const override ORT_MUST_USE_RESULT;
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override ORT_MUST_USE_RESULT;
 };
 
 /* static */ void MinMaxOpBuilder::CreateSharedOpBuilder(
@@ -2542,7 +2587,8 @@ class MinMaxOpBuilder : public BaseOpBuilder {
   return Status::OK();
 }
 
-Status MinMaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const {
+Status MinMaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
+  const auto& node = node_unit.GetNode();
   const auto input_defs(node.InputDefs());
   std::string input1 = input_defs[0]->Name();
   std::string input2 = input_defs[1]->Name();
@@ -2561,10 +2607,12 @@ Status MinMaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
 
 class EluOpBuilder : public BaseOpBuilder {
  private:
-  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const override ORT_MUST_USE_RESULT;
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override ORT_MUST_USE_RESULT;
 };
 
-Status EluOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const {
+Status EluOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
+  const auto& node = node_unit.GetNode();
+
   auto& shaper(model_builder.GetShaper());
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());
@@ -2588,13 +2636,15 @@ Status EluOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const No
 
 class SliceOpBuilder : public BaseOpBuilder {
  public:
-  void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const override;
+  void AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
 
  private:
-  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const override ORT_MUST_USE_RESULT;
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override ORT_MUST_USE_RESULT;
 };
 
-void SliceOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {
+void SliceOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
+  const auto& node = node_unit.GetNode();
+
   // Skip everything except input0 for Slice
   const auto input_defs = node.InputDefs();
   model_builder.AddInitializerToSkip(input_defs[1]->Name());  // starts
@@ -2607,7 +2657,9 @@ void SliceOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const No
   }
 }
 
-Status SliceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const {
+Status SliceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
+  const auto& node = node_unit.GetNode();
+
   auto& shaper(model_builder.GetShaper());
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());

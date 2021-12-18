@@ -1,53 +1,21 @@
 {
-  "name": "onnxruntime-react-native",
-  "version": "1.10.0",
-  "description": "Onnxruntime bridge for react native",
-  "main": "dist/commonjs/index",
-  "module": "dist/module/index",
-  "types": "dist/typescript/index.d.ts",
-  "react-native": "lib/index",
-  "source": "lib/index",
-  "files": [
-    "lib",
-    "dist",
-    "android",
-    "ios/*.h",
-    "ios/*.mm",
-    "onnxruntime-react-native.podspec",
-    "!dist/commonjs/*.js.map",
-    "!dist/module/*.js.map",
-    "!android/.gitignore",
-    "!android/.idea",
-    "!android/build"
-  ],
-  "scripts": {
-    "test": "jest",
-    "typescript": "tsc --noEmit",
-    "prepare": "bob build",
-    "release": "release-it",
-    "example": "yarn --cwd example",
-    "pods": "cd example && pod-install --quiet",
-    "bootstrap": "yarn example && yarn && yarn pods",
-    "prepack": "tsc --build ./tsconfig.scripts.json && node ./scripts/prepack"
-  },
+  "react-native": "lib/index", 
+  "module": "dist/module/index", 
+  "jest": {
+    "modulePathIgnorePatterns": [
+      "<rootDir>/example/node_modules", 
+      "<rootDir>/dist/"
+    ], 
+    "preset": "react-native"
+  }, 
   "keywords": [
-    "react-native",
-    "ios",
-    "android",
-    "ONNX",
-    "ONNXRuntime",
+    "react-native", 
+    "ios", 
+    "android", 
+    "ONNX", 
+    "ONNXRuntime", 
     "ONNX Runtime"
-  ],
-  "repository": "https://github.com/Microsoft/onnxruntime.git",
-  "author": "ONNX Runtime",
-  "license": "MIT",
-  "bugs": {
-    "url": "https://github.com/Microsoft/onnxruntime/issues"
-  },
-  "homepage": "https://github.com/Microsoft/onnxruntime/js/react_native#readme",
-  "publishConfig": {
-    "registry": "https://registry.npmjs.org/"
-  },
+  ], 
   "devDependencies": {
     "@release-it/conventional-changelog": "^3.3.0",
     "@types/fs-extra": "^9.0.11",
@@ -64,49 +32,81 @@
     "typescript": "^4.1.3"
   },
   "peerDependencies": {
-    "react": "*",
+    "react": "*", 
     "react-native": "*"
-  },
-  "jest": {
-    "preset": "react-native",
-    "modulePathIgnorePatterns": [
-      "<rootDir>/example/node_modules",
-      "<rootDir>/dist/"
-    ]
-  },
+  }, 
+  "author": "ONNX Runtime", 
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/"
+  }, 
+  "source": "lib/index", 
+  "version": "1.11.0", 
   "release-it": {
-    "git": {
-      "commitMessage": "chore: release ${version}",
-      "tagName": "v${version}"
-    },
     "npm": {
       "publish": true
-    },
-    "github": {
-      "release": true
-    },
+    }, 
+    "git": {
+      "commitMessage": "chore: release ${version}", 
+      "tagName": "v${version}"
+    }, 
     "plugins": {
       "@release-it/conventional-changelog": {
         "preset": "angular"
       }
+    }, 
+    "github": {
+      "release": true
     }
-  },
+  }, 
+  "main": "dist/commonjs/index", 
+  "homepage": "https://github.com/Microsoft/onnxruntime/js/react_native#readme", 
+  "files": [
+    "lib", 
+    "dist", 
+    "android", 
+    "ios/*.h", 
+    "ios/*.mm", 
+    "onnxruntime-react-native.podspec", 
+    "!dist/commonjs/*.js.map", 
+    "!dist/module/*.js.map", 
+    "!android/.gitignore", 
+    "!android/.idea", 
+    "!android/build"
+  ], 
+  "description": "Onnxruntime bridge for react native", 
+  "repository": "https://github.com/Microsoft/onnxruntime.git", 
   "react-native-builder-bob": {
-    "source": "lib",
-    "output": "dist",
+    "source": "lib", 
     "targets": [
-      "commonjs",
-      "module",
+      "commonjs", 
+      "module", 
       [
-        "typescript",
+        "typescript", 
         {
           "project": "tsconfig.build.json"
         }
       ]
-    ]
-  },
+    ], 
+    "output": "dist"
+  }, 
   "dependencies": {
-    "buffer": "^6.0.3",
+    "buffer": "^6.0.3", 
     "onnxruntime-common": "file:../common"
+  }, 
+  "scripts": {
+    "typescript": "tsc --noEmit", 
+    "prepare": "bob build", 
+    "bootstrap": "yarn example && yarn && yarn pods", 
+    "release": "release-it", 
+    "test": "jest", 
+    "prepack": "tsc --build ./tsconfig.scripts.json && node ./scripts/prepack", 
+    "pods": "cd example && pod-install --quiet", 
+    "example": "yarn --cwd example"
+  }, 
+  "types": "dist/typescript/index.d.ts", 
+  "name": "onnxruntime-react-native", 
+  "license": "MIT", 
+  "bugs": {
+    "url": "https://github.com/Microsoft/onnxruntime/issues"
   }
 }

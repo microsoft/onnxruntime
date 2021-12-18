@@ -15,6 +15,7 @@ gen
 *~
 .vs
 .DS_Store
+*.DS_Store
 TestResults/
 .idea/
 onnxruntime.egg-info
