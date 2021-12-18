@@ -166,7 +166,7 @@ Status BFCArena::Extend(size_t rounded_bytes) {
   while (mem_addr == nullptr) {
   // kBackpedalFactor is float, bytes is size_t. The result of bytes * kBackpedalFactor is float. When we cast it to
   // size_t, which is a smaller type, it could loss data. This is what C4244 complains. The "static_cast<size_t>" here 
-  // actually hides the issue. C26451 suggest we may change kBackpedalFactor to double to get better accuary. But if
+  // is to suppress the warning. C26451 suggest we may change kBackpedalFactor to double to get better accuary. But if
   // we do that, AMD GPU CI build pipeline will have an "out-of-memory" error. So I choose to keep this piece of code
   // untouched and disable the warning first.
 #if defined(_MSC_VER) && !defined(__clang__)

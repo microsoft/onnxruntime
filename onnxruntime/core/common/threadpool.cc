@@ -37,6 +37,7 @@ limitations under the License.
 #endif
 #endif
 #if defined(_MSC_VER) && !defined(__clang__)
+// Chance of arithmetic overflow could be reduced
 #pragma warning(disable : 26451)
 #endif
 namespace onnxruntime {

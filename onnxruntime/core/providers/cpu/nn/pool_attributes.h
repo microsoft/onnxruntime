@@ -170,6 +170,7 @@ struct PoolAttributes {
   }
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(push)
+// Chance of arithmetic overflow could be reduced
 #pragma warning(disable : 26451)
 #endif
   int64_t ComputeOutputSize(int64_t in_size,

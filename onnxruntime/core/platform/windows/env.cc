@@ -74,7 +74,7 @@ class WindowsThread : public EnvThread {
       if (!custom_thread_handle) {
         ORT_THROW("custom_create_thread_fn returned invalid handle.");
       }
-    } else {      
+    } else {
       hThread.reset(reinterpret_cast<HANDLE>(_beginthreadex(nullptr, thread_options.stack_size, ThreadMain,
                                                             local_param.release(), 0,
                                                             &threadID)));
@@ -539,7 +539,7 @@ class WindowsEnv : public Env {
 #if WINAPI_FAMILY == WINAPI_FAMILY_PC_APP
     *handle = ::LoadPackagedLibrary(wlibrary_filename.c_str(), 0);
 #else
-    //TODO: in most cases, the path name is a relative path and the behavior of the following line of code is undefined.
+    // TODO: in most cases, the path name is a relative path and the behavior of the following line of code is undefined.
     *handle = ::LoadLibraryExW(wlibrary_filename.c_str(), nullptr, LOAD_WITH_ALTERED_SEARCH_PATH);
 #endif
     if (!*handle) {
@@ -557,6 +557,7 @@ class WindowsEnv : public Env {
       std::wostringstream oss;
       oss << L"LoadLibrary failed with error " << error_code << L" \"" << (LPWSTR)lpMsgBuf << L"\" when trying to load \"" << wlibrary_filename << L"\"";
       std::wstring errmsg = oss.str();
+      // TODO: errmsg should be converted to UTF-8 as it will be passed out to the C interface.
       common::Status status(common::ONNXRUNTIME, common::FAIL, ToMBString(errmsg));
       LocalFree(lpMsgBuf);
       return status;
@@ -589,7 +590,10 @@ class WindowsEnv : public Env {
       std::wostringstream oss;
       oss << L"Failed to find symbol " << ToWideString(symbol_name) << L" in library, error code: " << error_code << L" \"" << (LPWSTR)lpMsgBuf << L"\"";
       std::wstring errmsg = oss.str();
-      return common::Status(common::ONNXRUNTIME, common::FAIL, ToMBString(errmsg));
+      // TODO: errmsg should be converted to UTF-8 as it will be passed out to the C interface.
+      common::Status status(common::ONNXRUNTIME, common::FAIL, ToMBString(errmsg));
+      LocalFree(lpMsgBuf);
+      return status;
     }
     return Status::OK();
   }
@@ -617,9 +621,9 @@ class WindowsEnv : public Env {
     // Create buffer to hold the result
     std::string buffer(kBufferSize, '\0');
 
-    //The last argument is the size of the buffer pointed to by the lpBuffer parameter, including the null-terminating character, in characters.
-    //If the function succeeds, the return value is the number of characters stored in the buffer pointed to by lpBuffer, not including the terminating null character.
-    //Therefore, If the function succeeds, kBufferSize should be larger than char_count.
+    // The last argument is the size of the buffer pointed to by the lpBuffer parameter, including the null-terminating character, in characters.
+    // If the function succeeds, the return value is the number of characters stored in the buffer pointed to by lpBuffer, not including the terminating null character.
+    // Therefore, If the function succeeds, kBufferSize should be larger than char_count.
     auto char_count = GetEnvironmentVariableA(var_name.c_str(), buffer.data(), kBufferSize);
 
     if (kBufferSize > char_count) {
