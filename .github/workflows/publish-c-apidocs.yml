@@ -28,8 +28,9 @@ jobs:
           ref: gh-pages
           clean: false    
       - name: Move API docs into target area
-        run:
-          mv build/doxygen/html/* docs/api/c   
+        run: |
+          rm -rf docs/api/c
+          mv build/doxygen/html docs/api/c   
       - name: Commit changes
         uses: EndBug/add-and-commit@v7
         with:
