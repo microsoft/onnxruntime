@@ -287,14 +287,20 @@ Status InstanceNorm<MLFloat16>::ComputeInternal(OpKernelContext* p_op_kernel_con
     fast_divmod fdm_HW(gsl::narrow_cast<int>(image_size));
     fast_divmod fdm_C(gsl::narrow_cast<int>(C));
 
-    // The InstanceNormImpl kernel handles the mean/variance in float32, so no casting required here
-    InstanceNormImpl<CudaT, float>(
+    // Cast mean/variance
+    auto mean_casted = GetScratchBuffer<CudaT>(stats_count);
+    Impl_Cast<float, CudaT>(Stream(), mean.get(), mean_casted.get(), C);
+
+    auto variance_casted = GetScratchBuffer<CudaT>(stats_count);
+    Impl_Cast<float, CudaT>(Stream(), variance.get(), variance_casted.get(), C);
+
+    InstanceNormImpl<CudaT>(
         Stream(),
         x_data,
         scale_data,
         bias_data,
-        mean.get(),
-        variance.get(),
+        mean_casted.get(),
+        variance_casted.get(),
         (image_size - 1.0) / image_size,
         static_cast<double>(epsilon_),
         fdm_HW,
