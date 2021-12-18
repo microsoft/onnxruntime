@@ -119,7 +119,7 @@ Status Environment::CreateAndRegisterAllocator(const OrtMemoryInfo& mem_info, co
   // We use these allocators instead of the arena
   create_arena = false;
 #elif !(defined(__amd64__) || defined(_M_AMD64))
-  //Disable Arena allocator for x86_32 build because it may run into infinite loop when integer overflow happens
+  // Disable Arena allocator for x86_32 build because it may run into infinite loop when integer overflow happens
   create_arena = false;
 #endif
 
@@ -213,9 +213,8 @@ Status Environment::Initialize(std::unique_ptr<logging::LoggingManager> logging_
     // Register Microsoft domain with min/max op_set version as 1/1.
     std::call_once(schemaRegistrationOnceFlag, []() {
       auto& domainToVersionRangeInstance = ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance();
-      if (domainToVersionRangeInstance.Map().find(onnxruntime::kMSDomain) == domainToVersionRangeInstance.Map().end())
-      {
-        // External shared providers may have already added kMSDomain 
+      if (domainToVersionRangeInstance.Map().find(onnxruntime::kMSDomain) == domainToVersionRangeInstance.Map().end()) {
+        // External shared providers may have already added kMSDomain
         domainToVersionRangeInstance.AddDomainToVersion(onnxruntime::kMSDomain, 1, 1);
       }
       domainToVersionRangeInstance.AddDomainToVersion(onnxruntime::kMSExperimentalDomain, 1, 1);

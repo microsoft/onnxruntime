@@ -3445,9 +3445,8 @@ Return true if all elements are true and false otherwise.
 
 void RegisterOrtOpSchemas() {
   auto& domainToVersionRangeInstance = ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance();
-  if (domainToVersionRangeInstance.Map().find(onnxruntime::kMSDomain) == domainToVersionRangeInstance.Map().end())
-  {
-    // External shared providers may have already added kMSDomain 
+  if (domainToVersionRangeInstance.Map().find(onnxruntime::kMSDomain) == domainToVersionRangeInstance.Map().end()) {
+    // External shared providers may have already added kMSDomain
     domainToVersionRangeInstance.AddDomainToVersion(onnxruntime::kMSDomain, 1, 1);
   }
   domainToVersionRangeInstance.AddDomainToVersion(onnxruntime::kMSExperimentalDomain, 1, 1);
