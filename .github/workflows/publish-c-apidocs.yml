@@ -26,6 +26,7 @@ jobs:
           author_name: Nat Kershaw
           author_email: nakersha@microsoft.com
           branch: gh-pages-pr
+          branch-mode: create
           message: 'Update C++ docs to commit ${GITHUB_SHA}'
           add: '*.html'          
 #      OLD
