@@ -20,11 +20,20 @@ jobs:
           mkdir -p build/doxygen
           cd docs/c_cxx
           ../../doxygen-1.9.2/bin/doxygen
-      - name: Publish
-        uses: JamesIves/github-pages-deploy-action@releases/v3
+      - name: Commit changes
+        uses: EndBug/add-and-commit@v7
         with:
-          BRANCH: gh-pages
-          FOLDER: build/doxygen/html
-          TARGET_FOLDER: docs/api/c
-          CLEAN_EXCLUDE: '["_config.yml"]'    
+          author_name: Nat Kershaw
+          author_email: nakersha@microsoft.com
+          branch: gh-pages-pr
+          message: 'Update C++ docs to commit ${GITHUB_SHA}'
+          add: '*.html'          
+#      OLD
+#      - name: Publish
+#        uses: JamesIves/github-pages-deploy-action@releases/v3
+#        with:
+#          BRANCH: gh-pages
+#          FOLDER: build/doxygen/html
+#          TARGET_FOLDER: docs/api/c
+#          CLEAN_EXCLUDE: '["_config.yml"]'    
  
