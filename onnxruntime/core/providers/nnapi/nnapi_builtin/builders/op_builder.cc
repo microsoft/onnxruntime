@@ -654,15 +654,17 @@ static Status IsValidConvWeightQuantizedType(const ModelBuilder& model_builder,
   return Status::OK();
 }
 
-static void AddBinaryOpQuantizationScaleAndZeroPointToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) {
-  const auto& node = node_unit.GetNode();
-  const auto input_defs(node.InputDefs());
-  model_builder.AddInitializerToSkip(input_defs[1]->Name());  // a_scale
-  model_builder.AddInitializerToSkip(input_defs[2]->Name());  // a_zero_point
-  model_builder.AddInitializerToSkip(input_defs[4]->Name());  // b_scale
-  model_builder.AddInitializerToSkip(input_defs[5]->Name());  // b_zero_point
-  model_builder.AddInitializerToSkip(input_defs[6]->Name());  // y_scale
-  model_builder.AddInitializerToSkip(input_defs[7]->Name());  // y_zero_point
+static void AddQuantizationScaleAndZeroPointToSkip(ModelBuilder& model_builder, const NodeUnitIODef& io_def) {
+  // If we reach here, we assume the io_def has quant_param
+  model_builder.AddInitializerToSkip(io_def.quant_param->scale.Name());  // scale
+  if (io_def.quant_param->zero_point) {
+    model_builder.AddInitializerToSkip(io_def.quant_param->zero_point->Name());  // zero_point
+  }
+}
+
+static void AddInputToSkip(ModelBuilder& model_builder, const NodeUnitIODef& io_def) {
+  model_builder.AddInitializerToSkip(io_def.node_arg.Name());  // main input
+  AddQuantizationScaleAndZeroPointToSkip(model_builder, io_def);
 }
 
 Status GetQuantizedInputScaleAndZeroPoint(const InitializedTensorSet& initializers,
@@ -759,14 +761,23 @@ class BinaryOpBuilder : public BaseOpBuilder {
   static void CreateSharedOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
  private:
+  static bool IsQuantizedOp(const NodeUnit& node_unit);  // TODO, see if we want to move this to BaseOpBuilder
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override ORT_MUST_USE_RESULT;
 };
 
+/* static */ bool BinaryOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) {
+  // TODO, add support for QDQ NodeUnit
+  return node_unit.OpType() == "QLinearAdd";
+}
+
 void BinaryOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
-  const auto& op = node_unit.OpType();
-  if (op == "QLinearAdd") {
-    AddBinaryOpQuantizationScaleAndZeroPointToSkip(model_builder, node_unit);
-  }
+  if (!IsQuantizedOp(node_unit))
+    return;
+
+  const auto& inputs = node_unit.Inputs();
+  AddQuantizationScaleAndZeroPointToSkip(model_builder, inputs[0]);               // a_scale, a_zp
+  AddQuantizationScaleAndZeroPointToSkip(model_builder, inputs[1]);               // b_scale, b_zp
+  AddQuantizationScaleAndZeroPointToSkip(model_builder, node_unit.Outputs()[0]);  // y_scale, y_zp
 }
 
 /* static */ void BinaryOpBuilder::CreateSharedOpBuilder(
@@ -945,8 +956,7 @@ class ReshapeOpBuilder : public BaseOpBuilder {
 };
 
 void ReshapeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
-  const auto& node = node_unit.GetNode();
-  model_builder.AddInitializerToSkip(node.InputDefs()[1]->Name());
+  model_builder.AddInitializerToSkip(node_unit.Inputs()[1].node_arg.Name());
 }
 
 // We can skip the Reshape if all the output edges satisfies both the following conditions
@@ -1089,12 +1099,11 @@ class BatchNormalizationOpBuilder : public BaseOpBuilder {
 };
 
 void BatchNormalizationOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
-  const auto& node = node_unit.GetNode();
   // skip everything except input0 for BatchNormalization
-  model_builder.AddInitializerToSkip(node.InputDefs()[1]->Name());  // scale
-  model_builder.AddInitializerToSkip(node.InputDefs()[2]->Name());  // B
-  model_builder.AddInitializerToSkip(node.InputDefs()[3]->Name());  // mean
-  model_builder.AddInitializerToSkip(node.InputDefs()[4]->Name());  //var
+  model_builder.AddInitializerToSkip(node_unit.Inputs()[1].node_arg.Name());  // scale
+  model_builder.AddInitializerToSkip(node_unit.Inputs()[2].node_arg.Name());  // B
+  model_builder.AddInitializerToSkip(node_unit.Inputs()[3].node_arg.Name());  // mean
+  model_builder.AddInitializerToSkip(node_unit.Inputs()[4].node_arg.Name());  //var
 }
 
 Status BatchNormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
@@ -1199,24 +1208,22 @@ class PoolOpBuilder : public BaseOpBuilder {
   static void CreateSharedOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
  private:
+  static bool IsQuantizedOp(const NodeUnit& node_unit);  // TODO, see if we want to move this to BaseOpBuilder
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override ORT_MUST_USE_RESULT;
 };
 
+/* static */ bool PoolOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) {
+  // TODO, add support for QDQ NodeUnit
+  return node_unit.OpType() == "QLinearAveragePool";
+}
+
 void PoolOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
-  const auto& node = node_unit.GetNode();
-  const auto& op = node.OpType();
-  if (op != "QLinearAveragePool")
+  if (!IsQuantizedOp(node_unit))
     return;
 
-  const auto input_defs = node.InputDefs();
-
   // skip input/output scales and zeropoints
-  model_builder.AddInitializerToSkip(input_defs[1]->Name());  // X_scale
-  model_builder.AddInitializerToSkip(input_defs[2]->Name());  // X_zero_point
-  model_builder.AddInitializerToSkip(input_defs[3]->Name());  // Y_scale
-
-  if (input_defs.size() == 5)                                   // has Y_zero_point input
-    model_builder.AddInitializerToSkip(input_defs[4]->Name());  // Y_zero_point
+  AddQuantizationScaleAndZeroPointToSkip(model_builder, node_unit.Inputs()[0]);   // x_scale, x_zp
+  AddQuantizationScaleAndZeroPointToSkip(model_builder, node_unit.Outputs()[0]);  // y_scale, y_zp
 }
 
 /* static */ void PoolOpBuilder::CreateSharedOpBuilder(
@@ -1359,10 +1366,17 @@ class ConvOpBuilder : public BaseOpBuilder {
   static void CreateSharedOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
  private:
+  static bool IsQuantizedOp(const NodeUnit& node_unit);  // TODO, see if we want to move this to BaseOpBuilder
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override ORT_MUST_USE_RESULT;
 };
 
-/* static */ void ConvOpBuilder::CreateSharedOpBuilder(
+/* static */ bool ConvOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) {
+  // TODO, add support for QDQ NodeUnit
+  return node_unit.OpType() == "QLinearConv";
+}
+
+/* static */ void
+ConvOpBuilder::CreateSharedOpBuilder(
     const std::string& op_type, OpBuilderRegistrations& op_registrations) {
   CreateSharedOpBuilderImpl<ConvOpBuilder>(
       op_type, op_registrations,
@@ -1373,18 +1387,16 @@ class ConvOpBuilder : public BaseOpBuilder {
 }
 
 void ConvOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
-  const auto& node = node_unit.GetNode();
-  const auto& op = node.OpType();
-  const auto input_defs = node.InputDefs();
-
+  const auto& inputs = node_unit.Inputs();
   // skip the weight for conv as we need to transpose
-  if (op == "QLinearConv") {
-    AddBinaryOpQuantizationScaleAndZeroPointToSkip(model_builder, node_unit);
-    model_builder.AddInitializerToSkip(input_defs[3]->Name());  // w
-    if (input_defs.size() > 8)
-      model_builder.AddInitializerToSkip(input_defs[8]->Name());  // B
+  if (IsQuantizedOp(node_unit)) {
+    AddQuantizationScaleAndZeroPointToSkip(model_builder, inputs[0]);               // x_scale, x_zp
+    AddInputToSkip(model_builder, inputs[1]);                                       // w, w_scale, w_zp
+    AddQuantizationScaleAndZeroPointToSkip(model_builder, node_unit.Outputs()[0]);  // y_scale, y_zp
+    if (inputs.size() > 2)
+      AddInputToSkip(model_builder, inputs[2]);  // B, B_scale, B_zp
   } else {
-    model_builder.AddInitializerToSkip(input_defs[1]->Name());  // w
+    model_builder.AddInitializerToSkip(inputs[1].node_arg.Name());  // w
   }
 }
 
@@ -1396,8 +1408,7 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   const auto& initializers(model_builder.GetInitializerTensors());
   NodeAttrHelper helper(node);
   const auto input_defs = node.InputDefs();
-  const auto& op_type = node.OpType();
-  bool is_qlinear_conv = (op_type == "QLinearConv");
+  bool is_qlinear_conv = IsQuantizedOp(node_unit);
 
   // onnx strides are in the order height, width
   // while nnapi strides are in the order width, height
@@ -1754,8 +1765,14 @@ class GemmOpBuilder : public BaseOpBuilder {
   static void CreateSharedOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
  private:
+  static bool IsQuantizedOp(const NodeUnit& node_unit);  // TODO, see if we want to move this to BaseOpBuilder
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override ORT_MUST_USE_RESULT;
 };
+
+/* static */ bool GemmOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) {
+  // TODO, add support for QDQ NodeUnit
+  return node_unit.OpType() == "QLinearMatMul";
+}
 
 /* static */ void GemmOpBuilder::CreateSharedOpBuilder(
     const std::string& op_type, OpBuilderRegistrations& op_registrations) {
@@ -1769,20 +1786,22 @@ class GemmOpBuilder : public BaseOpBuilder {
 }
 
 void GemmOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
-  const auto& node = node_unit.GetNode();
-
-  const auto& op = node.OpType();
-  const auto input_defs(node.InputDefs());
-  if (op == "MatMul") {
-    model_builder.AddInitializerToSkip(input_defs[1]->Name());
-  } else if (op == "Gemm") {
-    NodeAttrHelper helper(node);
-    const auto transB = helper.Get("transB", 0);
-    if (transB == 0)
-      model_builder.AddInitializerToSkip(input_defs[1]->Name());
-  } else if (op == "QLinearMatMul") {
-    AddBinaryOpQuantizationScaleAndZeroPointToSkip(model_builder, node_unit);
-    model_builder.AddInitializerToSkip(input_defs[3]->Name());  // b
+  const auto& inputs = node_unit.Inputs();
+  if (IsQuantizedOp(node_unit)) {
+    AddQuantizationScaleAndZeroPointToSkip(model_builder, inputs[0]);               // b_scale, b_zp
+    AddInputToSkip(model_builder, inputs[1]);                                       // b, b_scale, b_zp
+    AddQuantizationScaleAndZeroPointToSkip(model_builder, node_unit.Outputs()[0]);  // y_scale, y_zp
+  } else {
+    const auto& op = node_unit.OpType();
+    const auto& inputs = node_unit.Inputs();
+    if (op == "MatMul") {
+      model_builder.AddInitializerToSkip(inputs[1].node_arg.Name());
+    } else if (op == "Gemm") {
+      NodeAttrHelper helper(node_unit.GetNode());
+      const auto transB = helper.Get("transB", 0);
+      if (transB == 0)
+        model_builder.AddInitializerToSkip(inputs[1].node_arg.Name());
+    }
   }
 }
 
@@ -1913,24 +1932,21 @@ class UnaryOpBuilder : public BaseOpBuilder {
   static void CreateSharedOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
  private:
+  static bool IsQuantizedOp(const NodeUnit& node_unit);  // TODO, see if we want to move this to BaseOpBuilder
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override ORT_MUST_USE_RESULT;
 };
 
+/* static */ bool UnaryOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) {
+  // TODO, add support for QDQ NodeUnit
+  return node_unit.OpType() == "QLinearSigmoid";
+}
+
 void UnaryOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
-  const auto& node = node_unit.GetNode();
-  const auto& op = node.OpType();
-  if (op != "QLinearSigmoid")
+  if (!IsQuantizedOp(node_unit))
     return;
 
-  const auto input_defs = node.InputDefs();
-
-  // skip input/output scales and zeropoints
-  model_builder.AddInitializerToSkip(input_defs[1]->Name());  // X_scale
-  model_builder.AddInitializerToSkip(input_defs[2]->Name());  // X_zero_point
-  model_builder.AddInitializerToSkip(input_defs[3]->Name());  // Y_scale
-
-  if (input_defs.size() == 5)                                   // has Y_zero_point input
-    model_builder.AddInitializerToSkip(input_defs[4]->Name());  // Y_zero_point
+  AddQuantizationScaleAndZeroPointToSkip(model_builder, node_unit.Inputs()[0]);   // x_scale, x_zp
+  AddQuantizationScaleAndZeroPointToSkip(model_builder, node_unit.Outputs()[0]);  // y_scale, y_zp
 }
 
 /* static */ void UnaryOpBuilder::CreateSharedOpBuilder(
@@ -2120,9 +2136,8 @@ class SqueezeOpBuilder : public BaseOpBuilder {
 };
 
 void SqueezeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
-  const auto& node = node_unit.GetNode();
-  if (node.SinceVersion() > 12 && node.InputDefs().size() > 1) {
-    model_builder.AddInitializerToSkip(node.InputDefs()[1]->Name());
+  if (node_unit.SinceVersion() > 12 && node_unit.Inputs().size() > 1) {
+    model_builder.AddInitializerToSkip(node_unit.Inputs()[1].node_arg.Name());
   }
 }
 
@@ -2179,13 +2194,7 @@ class QuantizeLinearOpBuilder : public BaseOpBuilder {
 };
 
 void QuantizeLinearOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
-  const auto& node = node_unit.GetNode();
-  const auto input_defs(node.InputDefs());
-
-  model_builder.AddInitializerToSkip(input_defs[1]->Name());
-
-  if (input_defs.size() == 3)  // has zero_point input
-    model_builder.AddInitializerToSkip(input_defs[2]->Name());
+  AddQuantizationScaleAndZeroPointToSkip(model_builder, node_unit.Outputs()[0]);  // y_scale, y_zp
 }
 
 Status QuantizeLinearOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
@@ -2229,13 +2238,7 @@ class DequantizeLinearOpBuilder : public BaseOpBuilder {
 };
 
 void DequantizeLinearOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
-  const auto& node = node_unit.GetNode();
-  const auto input_defs(node.InputDefs());
-
-  model_builder.AddInitializerToSkip(input_defs[1]->Name());
-
-  if (input_defs.size() == 3)  // has zero_point input
-    model_builder.AddInitializerToSkip(input_defs[2]->Name());
+  AddQuantizationScaleAndZeroPointToSkip(model_builder, node_unit.Inputs()[0]);  // x_scale, x_zp
 }
 
 Status DequantizeLinearOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
@@ -2340,12 +2343,12 @@ class ClipOpBuilder : public BaseOpBuilder {
 };
 
 void ClipOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
-  const auto& node = node_unit.GetNode();
-  if (node.InputDefs().size() > 1)
-    model_builder.AddInitializerToSkip(node.InputDefs()[1]->Name());  // min
+  const auto& inputs = node_unit.Inputs();
+  if (inputs.size() > 1)
+    model_builder.AddInitializerToSkip(inputs[1].node_arg.Name());  // min
 
-  if (node.InputDefs().size() > 2)
-    model_builder.AddInitializerToSkip(node.InputDefs()[2]->Name());  // max
+  if (inputs.size() > 2)
+    model_builder.AddInitializerToSkip(inputs[2].node_arg.Name());  // max
 }
 
 Status ClipOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
@@ -2400,16 +2403,16 @@ class ResizeOpBuilder : public BaseOpBuilder {
 };
 
 void ResizeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
-  const auto& node = node_unit.GetNode();
+  const auto& inputs = node_unit.Inputs();
   // We don't really use ROI here, so add them to skipped list
-  model_builder.AddInitializerToSkip(node.InputDefs()[1]->Name());  // ROI
+  model_builder.AddInitializerToSkip(inputs[1].node_arg.Name());  // ROI
 
   // We will still add scales to the skipped list even sizes are present
   // since there is no use of it, we will not process it later
-  model_builder.AddInitializerToSkip(node.InputDefs()[2]->Name());  // scales
+  model_builder.AddInitializerToSkip(inputs[2].node_arg.Name());  // scales
 
-  if (node.InputDefs().size() > 3)
-    model_builder.AddInitializerToSkip(node.InputDefs()[3]->Name());  // sizes
+  if (inputs.size() > 3)
+    model_builder.AddInitializerToSkip(inputs[3].node_arg.Name());  // sizes
 }
 
 Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
@@ -2641,16 +2644,14 @@ class SliceOpBuilder : public BaseOpBuilder {
 };
 
 void SliceOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
-  const auto& node = node_unit.GetNode();
-
   // Skip everything except input0 for Slice
-  const auto input_defs = node.InputDefs();
-  model_builder.AddInitializerToSkip(input_defs[1]->Name());  // starts
-  model_builder.AddInitializerToSkip(input_defs[2]->Name());  // ends
-  if (input_defs.size() > 3) {
-    model_builder.AddInitializerToSkip(input_defs[3]->Name());  // axes
-    if (input_defs.size() > 4) {
-      model_builder.AddInitializerToSkip(input_defs[4]->Name());  // steps
+  const auto& inputs = node_unit.Inputs();
+  model_builder.AddInitializerToSkip(inputs[1].node_arg.Name());  // starts
+  model_builder.AddInitializerToSkip(inputs[2].node_arg.Name());  // ends
+  if (inputs.size() > 3) {
+    model_builder.AddInitializerToSkip(inputs[3].node_arg.Name());  // axes
+    if (inputs.size() > 4) {
+      model_builder.AddInitializerToSkip(inputs[4].node_arg.Name());  // steps
     }
   }
 }
