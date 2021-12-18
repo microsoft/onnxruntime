@@ -499,6 +499,9 @@ class Node {
    private:
     ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Relationships);
   };
+
+  // NOTE: This friendship relationship should ONLY be used for calling methods of the Node class and not accessing
+  // the data members directly, so that the Node can maintain its internal invariants.
   friend class Graph;
   Node(NodeIndex index, Graph& graph) : index_(index), graph_(&graph) {}
 
