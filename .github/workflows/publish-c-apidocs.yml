@@ -20,12 +20,15 @@ jobs:
           mkdir -p build/doxygen
           cd docs/c_cxx
           ../../doxygen-1.9.2/bin/doxygen
-      - name: Debug
+      - name: Debug 1
         run:
           git status    
       - uses: actions/checkout@v2
         with:
           ref: gh-pages    
+      - name: Debug 2
+        run:
+          git status    
       - name: Commit changes
         uses: EndBug/add-and-commit@v7
         with:
