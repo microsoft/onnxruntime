@@ -185,7 +185,7 @@ Status InstanceNorm<MLFloat16>::ComputeInternal(OpKernelContext* p_op_kernel_con
   const auto one = Consts<CudaT>::One;
   const auto zero = Consts<CudaT>::Zero;
 
-  if (N == 1) {
+  if (N == 0) {
     // when N == 1, we can treat it as spatial batch normalization in training
     // as the mean/variance would be computed from input
 
@@ -235,12 +235,12 @@ Status InstanceNorm<MLFloat16>::ComputeInternal(OpKernelContext* p_op_kernel_con
 
     CudnnTensor data_desc;
     ORT_RETURN_IF_ERROR(data_desc.Set(std::array<int64_t, 4>{1, stats_count, image_size, 1},
-                                      CudnnTensor::GetDataType<CudaT>()));
+                                      CudnnTensor::GetDataType<float>()));
 
     // stats_desc needs to be of 'float' type even for float16 input as the "stats" are of float type
     CudnnTensor stats_desc;
     ORT_RETURN_IF_ERROR(stats_desc.Set(std::array<int64_t, 4>{1, stats_count, 1, 1},
-                                       CudnnTensor::GetDataType<CudaT>()));
+                                       CudnnTensor::GetDataType<float>()));
 
     // For half input data type, we need to allocate some "intermediate"
     // float buffers for CuDNN to use.
