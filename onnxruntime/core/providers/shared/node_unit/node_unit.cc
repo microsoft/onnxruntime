@@ -102,8 +102,9 @@ void NodeUnit::InitForNode() {
   // The 1st step is to hookup the NodeUnit with the NNAPI builder interface
   // So we are not handling quantization here now
   auto qlinear_type = GetQLinearOpType(node_);
-  if (qlinear_type == QLinearOpType::Unknown) {
-    //Not a Qlinear op, add all inputs / outputs
+  if (qlinear_type == QLinearOpType::Unknown ||
+      IsVariadicQLinearOp(qlinear_type)) {  // TODO, add variadic support
+    // Not a Qlinear op, add all inputs / outputs
     auto add_all_io = [](std::vector<NodeUnitIODef>& defs,
                          const ConstPointerContainer<std::vector<NodeArg*>>& node_defs) {
       defs.reserve(node_defs.size());
@@ -112,63 +113,60 @@ void NodeUnit::InitForNode() {
         defs.push_back(NodeUnitIODef{*def, std::nullopt});
       }
     };
-    add_all_io(input_defs_, input_defs);
-    add_all_io(output_defs_, output_defs);
+    add_all_io(inputs_, input_defs);
+    add_all_io(outputs_, output_defs);
   } else if (IsUnaryQLinearOp(qlinear_type)) {
     // Unary QLinear Op has 5 inputs
     // x, x_scale, x_zp, y_scale, y_zp (optional)
-    input_defs_.push_back(NodeUnitIODef{
+    inputs_.push_back(NodeUnitIODef{
         *input_defs[0],
         NodeUnitIODef::QuantParam{*input_defs[1], input_defs[2]}});
 
-    output_defs_.push_back(NodeUnitIODef{
+    outputs_.push_back(NodeUnitIODef{
         *output_defs[0],
         NodeUnitIODef::QuantParam{*input_defs[3],
-                                  input_defs_.size() > 4
+                                  input_defs.size() > 4
                                       ? input_defs[4]
                                       : nullptr}});
   } else if (IsBinaryQLinearOp(qlinear_type)) {
     // Binary QLinear Op has 9 inputs
     // x1, x1_scale, x1_zp, x2/w, x2_scale, x2_zp, y_scale , y_zp, B
-    input_defs_.push_back(NodeUnitIODef{
+    inputs_.push_back(NodeUnitIODef{
         *input_defs[0],
         NodeUnitIODef::QuantParam{*input_defs[1], input_defs[2]}});
-    input_defs_.push_back(NodeUnitIODef{
+    inputs_.push_back(NodeUnitIODef{
         *input_defs[3],
         NodeUnitIODef::QuantParam{*input_defs[4], input_defs[5]}});
 
-    if (input_defs_.size() == 9) {  // has Bias
-      input_defs_.push_back(NodeUnitIODef{
+    if (input_defs.size() == 9) {  // has Bias
+      inputs_.push_back(NodeUnitIODef{
           *input_defs[8],
           std::nullopt});  // for Bias the scale and zp are optional
     }
 
-    output_defs_.push_back(NodeUnitIODef{
+    outputs_.push_back(NodeUnitIODef{
         *output_defs[0],
         NodeUnitIODef::QuantParam{*input_defs[6], input_defs[7]}});
-  } else if (IsVariadicQLinearOp(qlinear_type)) {
-    // TODO, add variadic support
-    ORT_NOT_IMPLEMENTED();
   } else if (qlinear_type == QLinearOpType::DequantizeLinear) {
     // DequantizeLinear has 3 inputs
     // x, x_scale, x_zp
     // output is not quantized
-    input_defs_.push_back(NodeUnitIODef{
+    inputs_.push_back(NodeUnitIODef{
         *input_defs[0],
         NodeUnitIODef::QuantParam{*input_defs[1],
-                                  input_defs_.size() == 3
+                                  input_defs.size() == 3
                                       ? input_defs[2]
                                       : nullptr}});
-    output_defs_.push_back(NodeUnitIODef{*output_defs[0], std::nullopt});
+    outputs_.push_back(NodeUnitIODef{*output_defs[0], std::nullopt});
   } else if (qlinear_type == QLinearOpType::QuantizeLinear) {
     // QuantizeLinear the input is not quantized and has 3 inputs
     // x, y_scale, y_zp (optional)
     // The output is quantized
-    input_defs_.push_back(NodeUnitIODef{*input_defs[0], std::nullopt});
-    output_defs_.push_back(NodeUnitIODef{
+    inputs_.push_back(NodeUnitIODef{*input_defs[0], std::nullopt});
+    outputs_.push_back(NodeUnitIODef{
         *output_defs[0],
         NodeUnitIODef::QuantParam{*input_defs[1],
-                                  input_defs_.size() == 3
+                                  input_defs.size() == 3
                                       ? input_defs[2]
                                       : nullptr}});
   } else {

@@ -52,8 +52,8 @@ class NodeUnit {
 
   Type UnitType() const noexcept { return type_; }
 
-  const std::vector<NodeUnitIODef>& Inputs() const noexcept { return input_defs_; }
-  const std::vector<NodeUnitIODef>& Outputs() const noexcept { return output_defs_; }
+  const std::vector<NodeUnitIODef>& Inputs() const noexcept { return inputs_; }
+  const std::vector<NodeUnitIODef>& Outputs() const noexcept { return outputs_; }
 
   const std::string& Domain() const noexcept;
   const std::string& OpType() const noexcept;
@@ -68,8 +68,8 @@ class NodeUnit {
   const std::vector<const Node*> GetAllNodes() const noexcept { return nodes_; }
 
  private:
-  std::vector<NodeUnitIODef> input_defs_;
-  std::vector<NodeUnitIODef> output_defs_;
+  std::vector<NodeUnitIODef> inputs_;
+  std::vector<NodeUnitIODef> outputs_;
 
   const std::vector<const Node*> nodes_;  // all nodes in this NodeUnit
   const Node& node_;                      // target Node

@@ -657,14 +657,17 @@ static Status IsValidConvWeightQuantizedType(const ModelBuilder& model_builder,
 static void AddQuantizationScaleAndZeroPointToSkip(ModelBuilder& model_builder, const NodeUnitIODef& io_def) {
   // If we reach here, we assume the io_def has quant_param
   model_builder.AddInitializerToSkip(io_def.quant_param->scale.Name());  // scale
+  LOGS_DEFAULT(VERBOSE) << io_def.quant_param->scale.Name() << "is skipped";
   if (io_def.quant_param->zero_point) {
     model_builder.AddInitializerToSkip(io_def.quant_param->zero_point->Name());  // zero_point
+    LOGS_DEFAULT(VERBOSE) << io_def.quant_param->zero_point->Name() << "is skipped";
   }
 }
 
 static void AddInputToSkip(ModelBuilder& model_builder, const NodeUnitIODef& io_def) {
   model_builder.AddInitializerToSkip(io_def.node_arg.Name());  // main input
-  AddQuantizationScaleAndZeroPointToSkip(model_builder, io_def);
+  if (io_def.quant_param)
+    AddQuantizationScaleAndZeroPointToSkip(model_builder, io_def);
 }
 
 Status GetQuantizedInputScaleAndZeroPoint(const InitializedTensorSet& initializers,
