@@ -53,7 +53,7 @@ Status InstanceNorm<T>::ComputeInternal(OpKernelContext* p_op_kernel_context) co
 
   const auto& x_dims = x_shape.GetDims();
   const int64_t N = x_dims[0];
-  //const int64_t C = x_dims[1];
+  const int64_t C = x_dims[1];
   const auto one = Consts<CudaT>::One;
   const auto zero = Consts<CudaT>::Zero;
 
