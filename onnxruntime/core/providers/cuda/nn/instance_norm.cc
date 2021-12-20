@@ -290,10 +290,10 @@ Status InstanceNorm<MLFloat16>::ComputeInternal(OpKernelContext* p_op_kernel_con
 
     // Cast mean/variance
     auto mean_casted = GetScratchBuffer<CudaT>(stats_count);
-    Impl_Cast<float, CudaT>(Stream(), mean.get(), mean_casted.get(), C);
+    Impl_Cast<float, CudaT>(Stream(), mean.get(), mean_casted.get(), stats_count);
 
     auto variance_casted = GetScratchBuffer<CudaT>(stats_count);
-    Impl_Cast<float, CudaT>(Stream(), variance.get(), variance_casted.get(), C);
+    Impl_Cast<float, CudaT>(Stream(), variance.get(), variance_casted.get(), stats_count);
 
     InstanceNormImpl<CudaT>(
         Stream(),
