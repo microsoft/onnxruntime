@@ -53,7 +53,11 @@ const OrtDmlApi* GetOrtDmlApi(_In_ uint32_t version) NO_EXCEPTION;
 #ifdef ENABLE_EXTENSION_CUSTOM_OPS
 #include "onnxruntime_extensions.h"
 #endif
-
+#if defined(_MSC_VER) && !defined(__clang__)
+//The warning is: "Do not assign the result of an allocation or a function call with an owner<T> return value to a raw pointer, use owner<T> instead(i .11)."
+//But this file is for C API. It can't use unique_ptr/shared_ptr in function signature.
+#pragma warning(disable : 26400)
+#endif
 using namespace onnxruntime::logging;
 using onnxruntime::BFloat16;
 using onnxruntime::DataTypeImpl;
@@ -745,7 +749,7 @@ ORT_API_STATUS_IMPL(OrtApis::Run, _Inout_ OrtSession* sess, _In_opt_ const OrtRu
                     _Inout_updates_all_(output_names_len) OrtValue** output) {
   API_IMPL_BEGIN
   auto session = reinterpret_cast<::onnxruntime::InferenceSession*>(sess);
-  const int queue_id = 0;
+  constexpr int queue_id = 0;
 
   std::vector<std::string> feed_names(input_len);
   std::vector<OrtValue> feeds(input_len);
@@ -1455,7 +1459,7 @@ ORT_STATUS_PTR OrtGetNumSequenceElements(const OrtValue* p_ml_value, size_t* out
 }
 
 #if !defined(DISABLE_ML_OPS)
-static const int NUM_MAP_INDICES = 2;
+static constexpr int NUM_MAP_INDICES = 2;
 #endif
 
 static ORT_STATUS_PTR OrtGetValueCountImpl(const OrtValue* value, size_t* out) {
@@ -1963,7 +1967,7 @@ ORT_API_STATUS_IMPL(OrtApis::GetAvailableProviders, _Outptr_ char*** out_ptr,
   // TODO: there is no need to manually malloc/free these memory, it is insecure
   // and inefficient. Instead, the implementation could scan the array twice,
   // and use a single string object to hold all the names.
-  const size_t MAX_LEN = 30;
+  constexpr size_t MAX_LEN = 30;
   const auto& available_providers = GetAvailableExecutionProviderNames();
   const int available_count = gsl::narrow<int>(available_providers.size());
   char** const out = new char*[available_count];
@@ -2127,6 +2131,8 @@ ORT_API_STATUS_IMPL(OrtApis::CreateArenaCfgV2, _In_reads_(num_keys) const char* 
   API_IMPL_END
 }
 
+//Allow using raw new/delete because this is for C.
+GSL_SUPPRESS(r .11)
 ORT_API(void, OrtApis::ReleaseArenaCfg, _Frees_ptr_opt_ OrtArenaCfg* ptr) {
   delete ptr;
 }
@@ -2494,7 +2500,6 @@ static constexpr OrtApi ort_api_1_to_10 = {
     &OrtApis::GetSparseTensorIndices,
     // End of Version 9 - DO NOT MODIFY ABOVE (see above text for more information)
 
-    // Version 10 - In development, feel free to add/remove/rearrange here
     &OrtApis::HasValue,
     &OrtApis::KernelContext_GetGPUComputeStream,
     &OrtApis::GetTensorMemoryInfo,
@@ -2507,6 +2512,9 @@ static constexpr OrtApi ort_api_1_to_10 = {
     &OrtApis::SetGlobalCustomJoinThreadFn,
     &OrtApis::SynchronizeBoundInputs,
     &OrtApis::SynchronizeBoundOutputs
+    // End of Version 10 - DO NOT MODIFY ABOVE (see above text for more information)
+
+    // Version 11 - In development, feel free to add/remove/rearrange here
 };
 
 // Asserts to do a some checks to ensure older Versions of the OrtApi never change (will detect an addition or deletion but not if they cancel out each other)
@@ -2521,7 +2529,7 @@ static_assert(offsetof(OrtApi, GetCurrentGpuDeviceId) / sizeof(void*) == 161, "S
 static_assert(offsetof(OrtApi, CreateSessionFromArrayWithPrepackedWeightsContainer) / sizeof(void*) == 169, "Size of version 8 API cannot change");
 
 // So that nobody forgets to finish an API version, this check will serve as a reminder:
-static_assert(std::string_view(ORT_VERSION) == "1.10.0", "ORT_Version change detected, please follow below steps to ensure OrtApi is updated properly");
+static_assert(std::string_view(ORT_VERSION) == "1.11.0", "ORT_Version change detected, please follow below steps to ensure OrtApi is updated properly");
 // 1. Update the hardcoded version string in above static_assert to silence it
 // 2. If there were any APIs added to ort_api_1_to_10 above:
 //    a. Add the 'End of version #' markers (pattern above should be obvious)

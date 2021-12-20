@@ -64,7 +64,7 @@ an ORT format model. This also means that non-empty node indices here must be in
 
 struct NodeIndexAndKernelDefHash {
   NodeIndex node_index;
-  uint64_t kernel_def_hash;
+  HashValue kernel_def_hash;
 };
 
 /** Information for a single runtime optimization.

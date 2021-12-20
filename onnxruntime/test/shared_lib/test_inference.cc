@@ -1844,7 +1844,6 @@ TEST(CApiTest, TestConfigureTensorRTProviderOptions) {
 }
 #endif
 
-#ifndef _OPENMP
 namespace TestPerSessionCustomThreadHooks {
 
 std::vector<std::thread> threads;
@@ -1926,4 +1925,4 @@ TEST(CApiTest, crop_and_resize) {
 #endif
 
 }  // namespace TestPerSessionCustomThreadHooks
-#endif
+

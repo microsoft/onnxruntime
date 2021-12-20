@@ -265,9 +265,6 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
     static std::once_flag once;
 
     std::call_once(once, [&] {
-#ifdef _OPENMP
-      InitializeWithDenormalAsZero(set_denormal_as_zero);
-#endif
       SetDenormalAsZero(set_denormal_as_zero);
 
       LOGS(*session_logger_, INFO) << "Flush-to-zero and denormal-as-zero are " << ((set_denormal_as_zero) ? "on" : "off");
@@ -1136,7 +1133,7 @@ Status PartitionOrtFormatModel(onnxruntime::Graph& graph,
                                const ExecutionProviders& providers,
                                KernelRegistryManager& kernel_registry_manager,
                                SessionState& session_state) {
-  std::unordered_map<std::string, uint64_t> compiled_kernel_hashes;
+  std::unordered_map<std::string, HashValue> compiled_kernel_hashes;
 
   GraphPartitioner partitioner(kernel_registry_manager, providers);
   ORT_RETURN_IF_ERROR(partitioner.Partition(graph, session_state.ExportDll(),
@@ -1216,7 +1213,11 @@ static void ResolveMemoryPatternFlags(SessionState& session_state) {
     }
   }
 }
-
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(push)
+//VC++ reports: "Releasing unheld lock 'l' in function 'onnxruntime::InferenceSession::Initialize'". But I don't see anything wrong.
+#pragma warning(disable : 26117)
+#endif
 common::Status InferenceSession::Initialize() {
   Status status = Status::OK();
   TimePoint tp;
@@ -1468,7 +1469,9 @@ common::Status InferenceSession::Initialize() {
 
   return status;
 }
-
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(pop)
+#endif
 // This method should be called from within Initialize() only and before the creation of the session state.
 // This ensures all providers have been registered in the session and the session state is consistent with the providers.
 void InferenceSession::UpdateProvidersWithSharedAllocators() {
@@ -1979,8 +1982,7 @@ common::Status InferenceSession::NewIOBinding(std::unique_ptr<IOBinding>* io_bin
     }
   }
 
-  // private constructor, can't use make_unique
-  *io_binding = std::unique_ptr<IOBinding>(new IOBinding(*session_state_));
+  *io_binding = std::make_unique<IOBinding>(*session_state_);
   return Status::OK();
 }
 

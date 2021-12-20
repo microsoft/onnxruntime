@@ -60,13 +60,13 @@
 #endif
 
 #ifdef ORT_NO_EXCEPTIONS
-#define ORT_THROW_HR_IF(hr, condition) ORT_ENFORCE(condition, hr)
+#define ORT_THROW_HR_IF(hr, condition) ORT_ENFORCE(!(condition), hr)
 #else
 #define ORT_THROW_HR_IF(hr, condition) THROW_HR_IF(hr, condition)
 #endif
 
 #ifdef ORT_NO_EXCEPTIONS
-#define ORT_THROW_LAST_ERROR_IF(condition) ORT_ENFORCE(condition)
+#define ORT_THROW_LAST_ERROR_IF(condition) ORT_ENFORCE(!(condition))
 #else
 #define ORT_THROW_LAST_ERROR_IF(condition) THROW_LAST_ERROR_IF(condition) 
 #endif

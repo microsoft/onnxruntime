@@ -78,7 +78,7 @@ static void IncrementIndexAndComputeOffsetSetup(MultiIndex& mindex, size_t num_a
   for (size_t i = 0; i < num_axes; ++i) {
     if (target_dims[i] == 1)
       continue;
-    mindex.InitAxis(naxes, 0, static_cast<size_t>(target_dims[i]), stride[i] * element_size);
+    mindex.InitAxis(naxes, 0, static_cast<size_t>(target_dims[i]), stride[i] * static_cast<int64_t>(element_size));
     ++naxes;
   }
   ORT_ENFORCE(naxes > 0, "Method IncrementIndexAndComputeOffset assumes this value is strictly positive.");

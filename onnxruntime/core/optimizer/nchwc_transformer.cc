@@ -244,7 +244,7 @@ void NchwcTransformerImpl::ConvPoolShapeInference(const Node& node,
                                                   NchwcArgument::Shape& output_shape,
                                                   const ONNX_NAMESPACE::TensorProto* filter_shape) {
   // Skip the leading batch and channel counts.
-  const int kernel_size = kNchwcSpatialDims;
+  constexpr int kernel_size = kNchwcSpatialDims;
 
   // Maintain the batch count dimension from the NCHWc input.
   output_shape.dims_[0] = input_shape.dims_[0];

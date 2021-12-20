@@ -401,8 +401,8 @@ class Node {
   }
 
   /** Sets initialized function body for node. This is called right after function body initialization for a node.
-  * or during function inlining when a nested function is encountered.
-  */
+   * or during function inlining when a nested function is encountered.
+   */
   void SetFunctionBody(Function& func);
 
   /** Call the provided function for all explicit inputs, implicit inputs, and outputs of this Node.
@@ -500,14 +500,13 @@ class Node {
     ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Relationships);
   };
 
- private:
-  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Node);
-
   // NOTE: This friendship relationship should ONLY be used for calling methods of the Node class and not accessing
   // the data members directly, so that the Node can maintain its internal invariants.
   friend class Graph;
-
   Node(NodeIndex index, Graph& graph) : index_(index), graph_(&graph) {}
+
+ private:
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Node);
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   void Init(const std::string& name,
@@ -648,7 +647,7 @@ class Graph {
   /** Check if a given name is a sparse initializer's name in the model
    * we currently convert sparse_initializer field in the model into dense Tensor instances.
    * However, we sometimes want to check if this initializer was stored as sparse in the model.
-  */
+   */
   bool IsSparseInitializer(const std::string& name) const;
 #endif
 
@@ -978,7 +977,7 @@ class Graph {
   @remarks As a new Graph instance for the fused nodes is not created, a GraphViewer can be constructed with the
            IndexedSubGraph information to provide a view of the subgraph. The original nodes are left in place
            while this is in use.
-		   Call FinalizeFuseSubGraph to remove them once the fused replacement node is fully created.
+                   Call FinalizeFuseSubGraph to remove them once the fused replacement node is fully created.
   */
   Node& BeginFuseSubGraph(const IndexedSubGraph& sub_graph, const std::string& fused_node_name);
 
@@ -1200,9 +1199,6 @@ class Graph {
   }
 #endif
 
- private:
-  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Graph);
-
   // This friendship relationship should only be used to call Graph::Graph and
   // Graph::LoadGraph All other access should be via the public API.
   friend class Model;
@@ -1243,6 +1239,8 @@ class Graph {
         const std::vector<const ONNX_NAMESPACE::FunctionProto*>& model_functions,
         const logging::Logger& logger);
 
+ private:
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Graph);
   void InitializeStateFromModelFileGraphProto();
 
   // Add node with specified <node_proto>.
@@ -1530,16 +1528,16 @@ std::ostream& operator<<(std::ostream& out, const NodeArg& node_arg);
 // Print Node as,
 //  (operator's name, operator's type, domain, version) : (input0, input1, ...) -> (output0, output1, ...)
 // For example,
-//  ("Add_14", Add, "", 7) : ("110": tensor(float),"109": tensor(float),) -> ("111": tensor(float),) 
+//  ("Add_14", Add, "", 7) : ("110": tensor(float),"109": tensor(float),) -> ("111": tensor(float),)
 std::ostream& operator<<(std::ostream& out, const Node& node);
 // Print Graph as, for example,
 // Inputs:
 //    "Input": tensor(float)
 // Nodes:
-//    ("add0", Add, "", 7) : ("Input": tensor(float),"Bias": tensor(float),) -> ("add0_out": tensor(float),) 
-//    ("matmul", MatMul, "", 9) : ("add0_out": tensor(float),"matmul_weight": tensor(float),) -> ("matmul_out": tensor(float),) 
-//    ("add1", Add, "", 7) : ("matmul_out": tensor(float),"add_weight": tensor(float),) -> ("add1_out": tensor(float),) 
-//    ("reshape", Reshape, "", 5) : ("add1_out": tensor(float),"concat_out": tensor(int64),) -> ("Result": tensor(float),) 
+//    ("add0", Add, "", 7) : ("Input": tensor(float),"Bias": tensor(float),) -> ("add0_out": tensor(float),)
+//    ("matmul", MatMul, "", 9) : ("add0_out": tensor(float),"matmul_weight": tensor(float),) -> ("matmul_out": tensor(float),)
+//    ("add1", Add, "", 7) : ("matmul_out": tensor(float),"add_weight": tensor(float),) -> ("add1_out": tensor(float),)
+//    ("reshape", Reshape, "", 5) : ("add1_out": tensor(float),"concat_out": tensor(int64),) -> ("Result": tensor(float),)
 // Outputs:
 //    "Result": tensor(float)
 // Inputs' and outputs' format is described in document of NodeArg's operator<< above.

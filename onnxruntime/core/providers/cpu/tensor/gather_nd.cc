@@ -100,7 +100,7 @@ Status GatherNDBase::PrepareForCompute(const TensorShape& input_shape, const Ten
       relative_slice_offset += index * sizes_from_slice_dims[dim_idx];
     }
 
-    p.slice_offsets[slice_idx] = input_base_offset + relative_slice_offset;
+    p.slice_offsets[slice_idx] = static_cast<uint64_t>(input_base_offset) + relative_slice_offset;
   };
 
   concurrency::ThreadPool::TryParallelFor(

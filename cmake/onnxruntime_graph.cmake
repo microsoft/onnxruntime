@@ -120,8 +120,5 @@ if (WIN32)
     target_compile_options(onnxruntime_graph PRIVATE
         /EHsc   # exception handling - C++ may throw, extern "C" will not
     )
-  endif()
-
-  # Add Code Analysis properties to enable C++ Core checks. Have to do it via a props file include.
-  set_target_properties(onnxruntime_graph PROPERTIES VS_USER_PROPS ${PROJECT_SOURCE_DIR}/EnableVisualStudioCodeAnalysis.props)
+  endif()  
 endif()

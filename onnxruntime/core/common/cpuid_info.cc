@@ -71,8 +71,8 @@ CPUIDInfo::CPUIDInfo() {
     if (num_IDs >= 1) {
       GetCPUID(1, data);
       if (data[2] & (1 << 27)) {
-        const int AVX_MASK = 0x6;
-        const int AVX512_MASK = 0xE6;
+        constexpr int AVX_MASK = 0x6;
+        constexpr int AVX512_MASK = 0xE6;
         int value = XGETBV();
         bool has_sse2 = (data[3] & (1 << 26));
         has_sse3_ = (data[2] & 0x1);
