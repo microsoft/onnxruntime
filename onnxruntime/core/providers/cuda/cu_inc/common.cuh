@@ -263,11 +263,6 @@ __device__ __inline__ double _Normcdf(double a) { return normcdf(a); }
 template <>
 __device__ __inline__ half _Normcdf(half a) { return half(normcdff((float)a)); }
 
-template <typename T>
-__device__ __inline__ T _Gelu(T a) {
-  return a * _Normcdf(a);
-}
-
 template <>
 __device__ __inline__ BFloat16 _Sqrt(BFloat16 a) { return sqrtf(static_cast<float>(a)); }
 
@@ -292,6 +287,11 @@ __device__ __inline__ nv_bfloat162 _Tanh(nv_bfloat162 a) {
 
 template <>
 __device__ __inline__ BFloat16 _Normcdf(BFloat16 a) { return normcdff(static_cast<float>(a)); }
+
+template <typename T>
+__device__ __inline__ T _Gelu(T a) {
+  return a * _Normcdf(a);
+}
 
 // We would like to use 64-bit integer to support large matrices. However, CUDA seems to support only 32-bit integer
 // For now, use int32_t to ensure that both Linux and Windows see this as 32 bit integer type.
