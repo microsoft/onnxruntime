@@ -95,8 +95,8 @@ This operator constructs a sparse tensor from three tensors that provide a COO
   }
 
   /**
- *  @brief An implementation of the SparseFromCOO op.
- */
+   *  @brief An implementation of the SparseFromCOO op.
+   */
   class OpKernelImpl final : public OpKernel {
    public:
     OpKernelImpl(const OpKernelInfo& info) : OpKernel{info} {}
@@ -264,7 +264,7 @@ struct SparseToValues {
     return schema;
   }
 
-  //  A kernel implementation of SparseToValues
+  // A kernel implementation of SparseToValues
   class OpKernelImpl final : public OpKernel {
    public:
     OpKernelImpl(const OpKernelInfo& info) : OpKernel{info} {}
@@ -333,7 +333,7 @@ class SparseTensorTests : public testing::Test {
           .SetDomain(onnxruntime::kMLDomain)
           .SinceVersion(10)
           .Provider(onnxruntime::kCpuExecutionProvider);
-      KernelCreateFn kernel_create_fn = [](const OpKernelInfo& info) { return new typename Op::OpKernelImpl(info); };
+      KernelCreateFn kernel_create_fn = [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) { out = std::make_unique<typename Op::OpKernelImpl>(info); return Status::OK(); };
       EXPECT_TRUE(registry2->RegisterCustomKernel(kernel_def_builder, kernel_create_fn).IsOK());
     };
     register_actions.push_back(register_kernel);
@@ -698,9 +698,10 @@ struct InsertIndices {
     std::vector<int8_t> indices_data;
     insert_indices_data(indices_1D, values_size, shape_size, indices_data, indices_tp);
     indices_tp.set_data_type(utils::ToTensorProtoElementType<T>());
-    ORT_IF_CONSTEXPR (sizeof(T) == sizeof(int8_t)) {
+    ORT_IF_CONSTEXPR(sizeof(T) == sizeof(int8_t)) {
       indices_tp.mutable_raw_data()->assign(reinterpret_cast<const char*>(indices_data.data()), indices_data.size());
-    } else {
+    }
+    else {
       // Conversion on the fly to the target data type
       std::vector<T> indices(indices_data.cbegin(), indices_data.cend());
       indices_tp.mutable_raw_data()->assign(reinterpret_cast<const char*>(indices.data()), indices.size() * sizeof(T));
@@ -823,8 +824,7 @@ static void TestConversion(
       TensorProto_DataType_INT8,
       TensorProto_DataType_INT16,
       TensorProto_DataType_INT32,
-      TensorProto_DataType_INT64
-  };
+      TensorProto_DataType_INT64};
 
   for (auto dt : indices_types) {
     TestConversion(true, dt, inserter, checker);
@@ -1037,7 +1037,7 @@ TensorProto CreateDenseTensor(size_t indices_start,
                               std::vector<T>& expected_values, std::vector<int64_t>& expected_indicies) {
   TensorProto result;
   std::vector<T> values = CreateSparseValues<T>(indices_start);
-  auto ind_start = static_cast<int64_t>(indices_start); 
+  auto ind_start = static_cast<int64_t>(indices_start);
   expected_indicies = {ind_start, ind_start + 1};
   for (const auto& ind : expected_indicies) {
     expected_values.push_back(values[ind]);
@@ -1110,11 +1110,11 @@ void RawSparseDataChecker<MLFloat16>(gsl::span<const MLFloat16> expected_bfloat,
 
 template <typename T>
 static void TestDenseToSparseConversionValues(size_t indices_start,
-    std::function<void(const std::vector<T>& values, TensorProto& tp)> inserter,
-    std::function<void(gsl::span<const T> expected,
-                       gsl::span<const int64_t> expected_indicies,
-                       const SparseTensorProto& actual)>
-        checker) {
+                                              std::function<void(const std::vector<T>& values, TensorProto& tp)> inserter,
+                                              std::function<void(gsl::span<const T> expected,
+                                                                 gsl::span<const int64_t> expected_indicies,
+                                                                 const SparseTensorProto& actual)>
+                                                  checker) {
   std::vector<T> expected_values;
   std::vector<int64_t> expected_indicies;
   // Path is required for loading external data
@@ -1862,7 +1862,7 @@ TEST(SparseTensorConversionTests, BlockSparse) {
                            indices_span.cbegin(), indices_span.cend()));
   }
 }
-#endif  //  !defined(DISABLE_SPARSE_TENSORS)
+#endif  // !defined(DISABLE_SPARSE_TENSORS)
 
 }  // namespace test
 }  // namespace onnxruntime

@@ -76,7 +76,7 @@ TEST_P(SessionStateAddGetKernelTest, AddGetKernelTest) {
   auto kernel_def = KernelDefBuilder().SetName("Variable").Provider(kCpuExecutionProvider).SinceVersion(1, 10).Build();
 
   OpKernelInfo p_info(node, *kernel_def, *cpu_execution_provider, s.GetConstantInitializedTensors(),
-                      s.GetOrtValueNameIdxMap(), s.GetFuncMgr(), s.GetDataTransferMgr());
+                      s.GetOrtValueNameIdxMap(), s.GetDataTransferMgr());
   unique_ptr<TestOpKernel> p_kernel;
   p_kernel.reset(new TestOpKernel(p_info));
   size_t orig_num_outputs = p_kernel->Node().OutputDefs().size();
@@ -88,7 +88,7 @@ TEST_P(SessionStateAddGetKernelTest, AddGetKernelTest) {
   node.SetExecutionProviderType(kCpuExecutionProvider);
   std::shared_ptr<KernelRegistry> kernel_registry = std::make_shared<KernelRegistry>();
   ASSERT_STATUS_OK(kernel_registry->Register(KernelCreateInfo(
-      std::move(kernel_def), [](const OpKernelInfo& info) -> OpKernel* { return new TestOpKernel(info); })));
+      std::move(kernel_def), [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status { out = std::make_unique<TestOpKernel>(info); return Status::OK(); })));
   kernel_registry_manager.RegisterKernelRegistry(kernel_registry);
   ASSERT_STATUS_OK(s.FinalizeSessionState(ORT_TSTR(""), kernel_registry_manager));
 
@@ -511,7 +511,7 @@ TEST_P(SessionStatePrepackingTest, PrePackingTest) {
   auto kernel_def = KernelDefBuilder().SetName("PrePackingTest").Provider(kCpuExecutionProvider).SinceVersion(1).Build();
   ASSERT_STATUS_OK(kernel_registry->Register(
       KernelCreateInfo(std::move(kernel_def),
-                       [](const OpKernelInfo& info) -> OpKernel* { return new PrePackingTestOpKernel(info); })));
+                       [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status { out = std::make_unique<PrePackingTestOpKernel>(info); return Status::OK(); })));
   kernel_registry_manager.RegisterKernelRegistry(kernel_registry);
 
   PlaceAllNodesToCPUEP(model.MainGraph());
@@ -553,7 +553,7 @@ TEST(SessionStateTest, SharedInitalizersWithPrePackingTest) {
   auto kernel_def = KernelDefBuilder().SetName("PrePackingTest").Provider(kCpuExecutionProvider).SinceVersion(1).Build();
   ASSERT_STATUS_OK(kernel_registry->Register(
       KernelCreateInfo(std::move(kernel_def),
-                       [](const OpKernelInfo& info) -> OpKernel* { return new PrePackingTestOpKernel(info); })));
+                       [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status { out =  std::make_unique<PrePackingTestOpKernel>(info); return Status::OK(); })));
   kernel_registry_manager.RegisterKernelRegistry(kernel_registry);
 
   // Part 1: Pre-packing enabled + no shared initializers = no pre-packed weights caching

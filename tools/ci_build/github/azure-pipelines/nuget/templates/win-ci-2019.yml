@@ -197,14 +197,14 @@ jobs:
           arguments: ${{ parameters.BuildArch }}
           modifyEnvironment: true
       # Esrp signing
-      - template: win-esrp-dll.yml
+      - template: ../../templates/win-esrp-dll.yml
         parameters:
           FolderPath: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'
           DisplayName: 'ESRP - Sign Native dlls'
           DoEsrp: ${{ parameters.DoEsrp }}
           Pattern: 'onnx_test_runner.exe, onnxruntime_perf_test.exe,*.dll' #keep sync with src/Microsoft.ML.OnnxRuntime/Microsoft.ML.OnnxRuntime.csproj
 
-      - template: win-esrp-dll.yml
+      - template: ../../templates/win-esrp-dll.yml
         parameters:
           FolderPath: '$(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\$(BuildConfig)'
           DisplayName: 'ESRP - Sign C# dlls'
@@ -238,7 +238,7 @@ jobs:
           filename: 'C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Auxiliary\Build\vcvarsall.bat'
           arguments: ${{ parameters.BuildArch }}
           modifyEnvironment: true
-      - template: win-esrp-dll.yml
+      - template: ../../templates/win-esrp-dll.yml
         parameters:
           FolderPath: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\win32\x64'
           DisplayName: 'ESRP - Sign Node.js binding binaries'
@@ -267,11 +267,11 @@ jobs:
         workingDirectory: '$(Build.ArtifactStagingDirectory)'
 
     - ${{ if eq(parameters['DoCompliance'], 'true') }}:
-      - template: compliance.yml
+      - template: ../../templates/compliance.yml
         parameters :
           msbuildPlatform: ${{ parameters.sln_platform }}
 
-    - template: component-governance-component-detection-steps.yml
+    - template: ../../templates/component-governance-component-detection-steps.yml
       parameters :
         condition : 'succeeded'
 

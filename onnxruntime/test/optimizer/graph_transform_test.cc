@@ -1339,7 +1339,7 @@ TEST_F(GraphTransformationTests, GemmTransposeFusionOutput) {
   ASSERT_TRUE(new_input_defs[1]->Name() == "A");
 }
 
-//  ((A')'B')' = BA'
+// ((A')'B')' = BA'
 TEST_F(GraphTransformationTests, GemmTransposeFusionInputOutput) {
   auto model_uri = MODEL_FOLDER "fusion/gemm_transpose_inputs_output_transposed.onnx";
   std::shared_ptr<Model> p_model;
@@ -1368,7 +1368,7 @@ TEST_F(GraphTransformationTests, GemmTransposeFusionInputOutput) {
   ASSERT_TRUE(new_input_defs[1]->Name() == "A");
 }
 
-//  (A'(B'))' = BA
+// (A'(B'))' = BA
 TEST_F(GraphTransformationTests, GemmTransposeFusionInputOutput2) {
   auto model_uri = MODEL_FOLDER "fusion/gemm_transpose_inputs_output_transposed_2.onnx";
   std::shared_ptr<Model> p_model;
@@ -1497,8 +1497,8 @@ TEST_F(GraphTransformationTests, GemmSumFusionInternalNodes) {
   ASSERT_EQ(op_to_count["Identity"], 4);
   ASSERT_EQ(graph.NumberOfNodes(), 5);
 
-  for(Node &node : graph.Nodes()) {
-    if(node.OpType() == "Gemm") {
+  for (Node& node : graph.Nodes()) {
+    if (node.OpType() == "Gemm") {
       ASSERT_FALSE(static_cast<bool>(node.GetAttributes().at("transA").i()));
       ASSERT_FALSE(static_cast<bool>(node.GetAttributes().at("transB").i()));
       ASSERT_EQ(node.GetAttributes().at("alpha").f(), 1.0);
@@ -4339,8 +4339,8 @@ TEST_F(GraphTransformationTests, ComputationReductionTransformer_GatherND_E2E) {
                         values_unsqueezed_masked_lm_positions);
 
     ASSERT_TRUE(expected_ort_values.size() == actual_ort_values.size());
-    const double per_sample_tolerance = 1e-4;
-    const double relative_per_sample_tolerance = 1e-4;
+    constexpr double per_sample_tolerance = 1e-4;
+    constexpr double relative_per_sample_tolerance = 1e-4;
     for (size_t i = 0; i < expected_ort_values.size(); i++) {
       auto ret = CompareOrtValue(actual_ort_values[i], expected_ort_values[i],
                                  per_sample_tolerance, relative_per_sample_tolerance, false);
@@ -4411,7 +4411,7 @@ TEST_F(GraphTransformationTests, MatMulScaleFusionFusableModels) {
           EXPECT_EQ(transformed_op_counts["com.microsoft.FusedMatMul"], 1);
 
           // check combined scale, individual scales should all have the same value
-          const float scale_value = 3.0f;
+          constexpr float scale_value = 3.0f;
 
           const int num_scales =
               original_op_counts["Mul"] + original_op_counts["Div"] + original_op_counts["com.microsoft.FusedMatMul"];
@@ -4694,7 +4694,7 @@ TEST_F(GraphTransformationTests, PropagateCastOpsTests) {
   // Create a temporary directory, which will be deleted automatically, to save/load the transformed models.
   TemporaryDirectory temp_dir{ORT_TSTR("propagate_casts_test_output_dir")};
   for (PropagateCastOpsTestSpecs test_case : test_cases) {
-    for (auto scenario : test_case.casts_count_map) {
+    for (const auto& scenario : test_case.casts_count_map) {
       Strategy strategy = scenario.first.first;
       int level = scenario.first.second;
       int expected_casts_count = scenario.second;

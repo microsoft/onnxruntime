@@ -54,6 +54,11 @@ class WindowsThread : public EnvThread {
     unsigned (*start_address)(int id, Eigen::ThreadPoolInterface* param);
     Eigen::ThreadPoolInterface* param;
     const ThreadOptions& thread_options;
+    Param(const ORTCHAR_T* name_prefix1,
+          int index1,
+          unsigned (*start_address1)(int id, Eigen::ThreadPoolInterface* param),
+          Eigen::ThreadPoolInterface* param1,
+          const ThreadOptions& thread_options1) : name_prefix(name_prefix1), index(index1), start_address(start_address1), param(param1), thread_options(thread_options1) {}
   };
 
  public:
@@ -63,15 +68,15 @@ class WindowsThread : public EnvThread {
     custom_create_thread_fn = thread_options.custom_create_thread_fn;
     custom_thread_creation_options = thread_options.custom_thread_creation_options;
     custom_join_thread_fn = thread_options.custom_join_thread_fn;
-
+    std::unique_ptr<Param> local_param = std::make_unique<Param>(name_prefix, index, start_address, param, thread_options);
     if (custom_create_thread_fn) {
-      custom_thread_handle = custom_create_thread_fn(custom_thread_creation_options, (OrtThreadWorkerFn)CustomThreadMain, new Param{name_prefix, index, start_address, param, thread_options});
+      custom_thread_handle = custom_create_thread_fn(custom_thread_creation_options, (OrtThreadWorkerFn)CustomThreadMain, local_param.release());
       if (!custom_thread_handle) {
-        ORT_THROW("custom_create_thread_fn returned invalid handle."); 
+        ORT_THROW("custom_create_thread_fn returned invalid handle.");
       }
     } else {
       hThread.reset(reinterpret_cast<HANDLE>(_beginthreadex(nullptr, thread_options.stack_size, ThreadMain,
-                                                            new Param{name_prefix, index, start_address, param, thread_options}, 0,
+                                                            local_param.release(), 0,
                                                             &threadID)));
     }
   }
@@ -142,12 +147,18 @@ class WindowsThread : public EnvThread {
 
 class WindowsEnv : public Env {
  public:
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(push)
+#pragma warning(disable : 26409)
+#endif
   EnvThread* CreateThread(_In_opt_z_ const ORTCHAR_T* name_prefix, int index,
                           unsigned (*start_address)(int id, Eigen::ThreadPoolInterface* param),
                           Eigen::ThreadPoolInterface* param, const ThreadOptions& thread_options) {
     return new WindowsThread(name_prefix, index, start_address, param, thread_options);
   }
-
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(pop)
+#endif
   void SleepForMicroseconds(int64_t micros) const override {
     Sleep(static_cast<DWORD>(micros) / 1000);
   }
@@ -524,14 +535,32 @@ class WindowsEnv : public Env {
   }
 
   virtual Status LoadDynamicLibrary(const std::string& library_filename, bool /*global_symbols*/, void** handle) const override {
+    const std::wstring& wlibrary_filename = ToWideString(library_filename);
 #if WINAPI_FAMILY == WINAPI_FAMILY_PC_APP
-    *handle = ::LoadPackagedLibrary(ToWideString(library_filename).c_str(), 0);
+    *handle = ::LoadPackagedLibrary(wlibrary_filename.c_str(), 0);
 #else
-    *handle = ::LoadLibraryExA(library_filename.c_str(), nullptr, LOAD_WITH_ALTERED_SEARCH_PATH);
+    // TODO: in most cases, the path name is a relative path and the behavior of the following line of code is undefined.
+    *handle = ::LoadLibraryExW(wlibrary_filename.c_str(), nullptr, LOAD_WITH_ALTERED_SEARCH_PATH);
 #endif
     if (!*handle) {
       const auto error_code = GetLastError();
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "LoadLibrary failed with error ", error_code, " \"", std::system_category().message(error_code), "\" when trying to load \"", library_filename, "\"");
+      LPVOID lpMsgBuf;
+      FormatMessageW(
+          FORMAT_MESSAGE_ALLOCATE_BUFFER |
+              FORMAT_MESSAGE_FROM_SYSTEM |
+              FORMAT_MESSAGE_IGNORE_INSERTS,
+          NULL,
+          error_code,
+          MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+          (LPWSTR)&lpMsgBuf,
+          0, NULL);
+      std::wostringstream oss;
+      oss << L"LoadLibrary failed with error " << error_code << L" \"" << (LPWSTR)lpMsgBuf << L"\" when trying to load \"" << wlibrary_filename << L"\"";
+      std::wstring errmsg = oss.str();
+      // TODO: errmsg should be converted to UTF-8 as it will be passed out to the C interface.
+      common::Status status(common::ONNXRUNTIME, common::FAIL, ToMBString(errmsg));
+      LocalFree(lpMsgBuf);
+      return status;
     }
     return Status::OK();
   }
@@ -548,7 +577,23 @@ class WindowsEnv : public Env {
     *symbol = ::GetProcAddress(reinterpret_cast<HMODULE>(handle), symbol_name.c_str());
     if (!*symbol) {
       const auto error_code = GetLastError();
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to find symbol in library, error code: ", error_code, " - ", std::system_category().message(error_code));
+      LPVOID lpMsgBuf;
+      FormatMessageW(
+          FORMAT_MESSAGE_ALLOCATE_BUFFER |
+              FORMAT_MESSAGE_FROM_SYSTEM |
+              FORMAT_MESSAGE_IGNORE_INSERTS,
+          NULL,
+          error_code,
+          MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+          (LPWSTR)&lpMsgBuf,
+          0, NULL);
+      std::wostringstream oss;
+      oss << L"Failed to find symbol " << ToWideString(symbol_name) << L" in library, error code: " << error_code << L" \"" << (LPWSTR)lpMsgBuf << L"\"";
+      std::wstring errmsg = oss.str();
+      // TODO: errmsg should be converted to UTF-8 as it will be passed out to the C interface.
+      common::Status status(common::ONNXRUNTIME, common::FAIL, ToMBString(errmsg));
+      LocalFree(lpMsgBuf);
+      return status;
     }
     return Status::OK();
   }
@@ -576,11 +621,11 @@ class WindowsEnv : public Env {
     // Create buffer to hold the result
     std::string buffer(kBufferSize, '\0');
 
-    //The last argument is the size of the buffer pointed to by the lpBuffer parameter, including the null-terminating character, in characters.
-    //If the function succeeds, the return value is the number of characters stored in the buffer pointed to by lpBuffer, not including the terminating null character.
-    //Therefore, If the function succeeds, kBufferSize should be larger than char_count.
+    // The last argument is the size of the buffer pointed to by the lpBuffer parameter, including the null-terminating character, in characters.
+    // If the function succeeds, the return value is the number of characters stored in the buffer pointed to by lpBuffer, not including the terminating null character.
+    // Therefore, If the function succeeds, kBufferSize should be larger than char_count.
     auto char_count = GetEnvironmentVariableA(var_name.c_str(), buffer.data(), kBufferSize);
-    
+
     if (kBufferSize > char_count) {
       buffer.resize(char_count);
       return buffer;
