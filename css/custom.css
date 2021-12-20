@@ -208,17 +208,14 @@ a.link:active .link-arrow{
 }
 .sponsor-logo img{
    max-width: 100%;
-   max-height: 100px;
-   padding-top:5px;
+   padding-right:20px;
+   padding-left:20px;
 }
+
 
  div.sponsor-logo:hover{
     background-color: #e8e8e8;
     transition: .4s;
- }
-
-.hw-logo img{
-    max-width:150px;
  }
 
 .blue-text{
@@ -484,11 +481,13 @@ a .abbr[data-original-title], a abbr[title]{
     margin-right: 0;
   }
 
- 
-
   div.quotebox {
     border: 1px solid #cccccc;
     background-color: #e8e8e8;
+  }
+
+  .quotebox img{
+      max-height:180px;
   }
   .r-wrap .r-content .r-option,
   .r-wrap .r-content .col-disable {
@@ -689,7 +688,7 @@ a .abbr[data-original-title], a abbr[title]{
     font-size: 18px;
 }
 .row.blue-title-columns{
-    margin-bottom:30px;
+    margin-bottom:5px;
 }
 .blue-title-columns div.quote-attribution{
     font-size: 18px;
