@@ -20,6 +20,10 @@ parameters:
 - name: isX86
   type: boolean
   default: false
+  
+- name: isTraining
+  type: boolean
+  default: false
 
 - name: EnablePython
   type: boolean
@@ -109,6 +113,13 @@ jobs:
         workingDirectory: '$(Build.SourcesDirectory)\cmake\external\onnx'
         displayName: 'Install ONNX'
 
+      - ${{ if eq(parameters.isTraining, true) }}:
+          - script: |
+             python -m pip install -r $(Build.SourcesDirectory)\tools\ci_build\github\linux\docker\scripts\training\ortmodule\stage1\requirements_torch1.9.0_cu11.1.txt
+             python -m pip install -r $(Build.SourcesDirectory)\tools\ci_build\github\linux\docker\scripts\training\requirements.txt
+            workingDirectory: '$(Build.BinariesDirectory)'
+            displayName: 'Install python modules'
+
   - task: NuGetToolInstaller@0
     displayName: Use Nuget 5.7.0
     inputs:
@@ -182,6 +193,7 @@ jobs:
 
   - ${{ if eq(parameters.EnablePython, true) }}:
       - powershell: |
+         python3 -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu -qq
          Get-ChildItem -Path dist/*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname}
        
         workingDirectory: '$(Build.BinariesDirectory)\${{ parameters.BuildConfig }}\${{ parameters.BuildConfig }}'
@@ -205,26 +217,35 @@ jobs:
            **/*.pdb
            **/*.dll
 
-      - task: PythonScript@0
-        displayName: 'Generate cmake config'
-        inputs:
-          scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-          arguments: '--config Debug --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 16 2019" --build_shared_lib --enable_onnx_tests ${{ parameters.additionalBuildFlags }} onnxruntime_ENABLE_STATIC_ANALYSIS=ON'
-          workingDirectory: '$(Build.BinariesDirectory)'
 
-
-      - task: VSBuild@1
-        displayName: 'Build'
+      #Manually set msBuildCommandline so that we can also set CAExcludePath
+      #build_dir must be a sub folder of $(Build.SourcesDirectory)
+      #TODO: move this step to a CPU-only machine to save GPU resources.
+      - task: SDLNativeRules@3
+        displayName: 'Run the PREfast SDL Native Rules for MSBuild'
         inputs:
-          solution: '$(Build.BinariesDirectory)\${{ parameters.BuildConfig }}\onnxruntime.sln'
-          platform: ${{ parameters.msbuildPlatform }}
-          configuration: ${{ parameters.BuildConfig }}
-          msbuildArgs: /m /p:CAExcludePath="$(Build.BinariesDirectory);$(Build.SourcesDirectory)\cmake;C:\program files (x86)" /p:PreferredToolArchitecture=x64
-          msbuildArchitecture: ${{ parameters.buildArch }}
-          maximumCpuCount: true
-          logProjectEvents: false
-          workingFolder: '$(Build.BinariesDirectory)\${{ parameters.BuildConfig }}'
-          createLogFile: true
+          msBuildArchitecture: amd64
+          setupCommandlines: 'python $(Build.SourcesDirectory)\tools\ci_build\build.py --config RelWithDebInfo --build_dir $(Build.SourcesDirectory)\b --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 16 2019" --build_shared_lib --enable_onnx_tests ${{ parameters.additionalBuildFlags }} onnxruntime_ENABLE_STATIC_ANALYSIS=ON'
+          msBuildCommandline: '"C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\MSBuild\Current\Bin\amd64\msbuild.exe" "$(Build.SourcesDirectory)\b\RelWithDebInfo\onnxruntime.sln" /p:RunCodeAnalysis=true /p:platform=${{ parameters.msbuildPlatform }} /p:configuration=RelWithDebInfo /p:VisualStudioVersion="16.0" /m /p:PreferredToolArchitecture=x64'
+          excludedPaths: '$(Build.SourcesDirectory)\b#$(Build.SourcesDirectory)\cmake#C:\program files (x86)'
+          rulesetName: Custom
+          customRuleset: $(Build.SourcesDirectory)\cmake\Sdl.ruleset
+          publishXML: true
+          
+      - task: SdtReport@2
+        displayName: 'Create Security Analysis Report'
+        inputs:
+          SDLNativeRules: true
+    
+      - task: PublishSecurityAnalysisLogs@3
+        displayName: 'Publish Security Analysis Logs'
+        continueOnError: true
+   
+      - task: PostAnalysis@2
+        displayName: 'Guardian Break v2'
+        inputs:
+          GdnBreakGdnToolSDLNativeRulesSeverity: Warning
+          GdnBreakGdnToolSDLNativeRules: true
 
 
   - ${{ if eq(parameters.RunOnnxRuntimeTests, true) }}:

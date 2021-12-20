@@ -805,6 +805,7 @@ Return Value:
 
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(push)
+// Chance of arithmetic overflow could be reduced
 #pragma warning(disable : 26451)
 #endif
 void

@@ -93,7 +93,7 @@ Tokenizer::Tokenizer(const OpKernelInfo& info) : OpKernel(info) {
       re2::RE2::Options options;
       options.set_longest_match(true);
       for (const auto& sep : separators) {
-        std::unique_ptr<re2::RE2> regex(new re2::RE2(sep, options));
+        std::unique_ptr<re2::RE2> regex = std::make_unique<re2::RE2>(sep, options);
         if (!regex->ok()) {
           ORT_THROW("Can not digest separators: ", sep, " ", regex->error());
         }
@@ -104,7 +104,7 @@ Tokenizer::Tokenizer(const OpKernelInfo& info) : OpKernel(info) {
       assert(!tokenexp.empty());
       re2::RE2::Options options;
       options.set_longest_match(true);
-      std::unique_ptr<re2::RE2> regex(new re2::RE2(tokenexp, options));
+      std::unique_ptr<re2::RE2> regex = std::make_unique<re2::RE2>(tokenexp, options);
       if (!regex->ok()) {
         ORT_THROW("Can not digest tokenexp: ", regex->error());
       }

@@ -34,7 +34,7 @@ constexpr MLAS_GEMM_QUANT_STRIDES MLAS_GEMM_QUANT_KERNEL_DEFAULT::Strides;
 constexpr MLAS_GEMM_QUANT_STRIDES MLAS_GEMM_QUANT_KERNEL_DEFAULT::PackedStrides;
 
 template<>
-MLAS_FORCEINLINE constexpr 
+MLAS_FORCEINLINE constexpr
 int32_t
 MlasGemmQuantFixupZeroPointA<MLAS_GEMM_QUANT_KERNEL_DEFAULT>(
     int32_t ZeroPointA,
@@ -49,7 +49,7 @@ MlasGemmQuantFixupZeroPointA<MLAS_GEMM_QUANT_KERNEL_DEFAULT>(
 }
 
 template<>
-MLAS_FORCEINLINE
+MLAS_FORCEINLINE constexpr
 int32_t
 MlasGemmQuantFixupZeroPointB<MLAS_GEMM_QUANT_KERNEL_DEFAULT>(
     int32_t ZeroPointB,

@@ -36,7 +36,10 @@ limitations under the License.
 #include <sched.h>
 #endif
 #endif
-
+#if defined(_MSC_VER) && !defined(__clang__)
+// Chance of arithmetic overflow could be reduced
+#pragma warning(disable : 26451)
+#endif
 namespace onnxruntime {
 
 namespace concurrency {
@@ -66,7 +69,7 @@ void ThreadPoolProfiler::Start() {
 ThreadPoolProfiler::MainThreadStat& ThreadPoolProfiler::GetMainThreadStat() {
   static thread_local std::unique_ptr<MainThreadStat> stat;
   if (!stat) {
-    stat.reset(new MainThreadStat());
+    stat = std::make_unique<MainThreadStat>();
   }
   return *stat;
 }
@@ -336,8 +339,8 @@ class alignas(CACHE_LINE_BYTES) LoopCounter {
   //   Hence, at low thread counts, each of N threads will get its own
   //   shard representing 1/N of the work.
   constexpr static unsigned GetNumShards(uint64_t num_iterations,
-                               uint64_t d_of_p,
-                               uint64_t block_size) {
+                                         uint64_t d_of_p,
+                                         uint64_t block_size) {
     unsigned num_shards = 0;
     auto num_blocks = num_iterations / block_size;
     if (num_blocks == 0) {
@@ -376,10 +379,10 @@ ThreadPool::ThreadPool(Env* env,
     int threads_to_create = degree_of_parallelism - 1;
     extended_eigen_threadpool_ =
         std::make_unique<ThreadPoolTempl<Env> >(name,
-                                                        threads_to_create,
-                                                        low_latency_hint,
-                                                        *env,
-                                                        thread_options_);
+                                                threads_to_create,
+                                                low_latency_hint,
+                                                *env,
+                                                thread_options_);
     underlying_threadpool_ = extended_eigen_threadpool_.get();
   }
 }
