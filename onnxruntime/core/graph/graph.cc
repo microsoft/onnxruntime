@@ -705,7 +705,7 @@ flatbuffers::Offset<fbs::NodeEdge> Node::SaveEdgesToOrtFormat(flatbuffers::FlatB
 
 Status Node::LoadFromOrtFormat(const onnxruntime::fbs::Node& fbs_node, Graph& graph,
                                const logging::Logger& logger, std::unique_ptr<Node>& node) {
-  node.reset(new Node(fbs_node.index(), graph));
+  node = std::make_unique<Node>(fbs_node.index(), graph);
   return node->LoadFromOrtFormat(fbs_node, logger);
 }
 
@@ -860,9 +860,9 @@ void Node::CreateSubgraph(const std::string& attr_name) {
 
   if (attr != attributes_.cend() && utils::HasGraph(attr->second)) {
     GraphProto& mutable_graph = *attr->second.mutable_g();
-    std::unique_ptr<Graph> subgraph{new Graph(*graph_, *this, mutable_graph)};
+    std::unique_ptr<Graph> subgraph = std::make_unique<Graph>(*graph_, *this, mutable_graph);
     attr_to_subgraph_map_.insert({std::string(attr_name), gsl::not_null<Graph*>{subgraph.get()}});
-    subgraphs_.push_back(std::move(subgraph));
+    subgraphs_.emplace_back(std::move(subgraph));
   }
 }
 
@@ -3999,7 +3999,7 @@ Status Graph::InlineFunction(Node& node) {
   // main graph.
   const Graph& subgraph = node.GetFunctionBody()->Body();
   auto output_edges = node.GetRelationships().output_edges;
-  for (auto output_edge : output_edges) {
+  for (const auto& output_edge : output_edges) {
     RemoveEdge(node.Index(), output_edge.GetNode().Index(), output_edge.GetSrcArgIndex(), output_edge.GetDstArgIndex());
   }
 
@@ -4130,7 +4130,7 @@ void Graph::SetNodeArgType(NodeArg& arg, const ONNX_NAMESPACE::TypeProto& type_p
   GraphResolveNeeded(true);
 }
 
-#endif  //  !defined(ORT_MINIMAL_BUILD)
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
 Graph::~Graph() {
   // nothing to do, but we put it here so we don't need to fully define types in Graph that are held in unique_ptr
@@ -4216,12 +4216,11 @@ Status Graph::LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph,
                                 IOnnxRuntimeOpSchemaCollectionPtr schema_registry,
 #endif
                                 const logging::Logger& logger, std::unique_ptr<Graph>& graph) {
-  // can't use make_unique as we're calling a private ctor
-  graph.reset(new Graph(owning_model, domain_to_version,
+  graph = std::make_unique<Graph>(owning_model, domain_to_version,
 #if !defined(ORT_MINIMAL_BUILD)
-                        schema_registry,
+                                  schema_registry,
 #endif
-                        nullptr, nullptr, logger));
+                                  nullptr, nullptr, logger);
 
   ORT_RETURN_IF_ERROR(graph->LoadFromOrtFormat(fbs_graph));
 
@@ -4240,14 +4239,13 @@ Status Graph::LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph,
 Status Graph::LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph,
                                 Graph& parent_graph, const Node& parent_node,
                                 const logging::Logger& logger, std::unique_ptr<Graph>& graph) {
-  // can't use make_unique as we're calling a private ctor
-  graph.reset(new Graph(parent_graph.owning_model_,
-                        parent_graph.domain_to_version_,
+  graph = std::make_unique<Graph>(parent_graph.owning_model_,
+                                  parent_graph.domain_to_version_,
 #if !defined(ORT_MINIMAL_BUILD)
-                        parent_graph.schema_registry_,
+                                  parent_graph.schema_registry_,
 #endif
-                        &parent_graph, &parent_node,
-                        logger));
+                                  &parent_graph, &parent_node,
+                                  logger);
 
   return graph->LoadFromOrtFormat(fbs_graph);
 }
@@ -4348,8 +4346,7 @@ common::Status Graph::LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph
       ORT_RETURN_IF(nullptr == fbs_value_info, "NodeArg is missing. Invalid ORT format model.");
       NodeArgInfo node_arg_info;
       ORT_RETURN_IF_ERROR(fbs::utils::LoadValueInfoOrtFormat(*fbs_value_info, node_arg_info));
-      // NodeArg ctor is private, cannot use make_unique
-      node_args_[fbs_value_info->name()->str()] = std::unique_ptr<NodeArg>(new NodeArg(std::move(node_arg_info)));
+      node_args_[fbs_value_info->name()->str()] = std::make_unique<NodeArg>(std::move(node_arg_info));
     }
   }
 

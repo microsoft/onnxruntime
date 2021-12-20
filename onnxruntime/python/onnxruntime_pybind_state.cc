@@ -202,15 +202,15 @@ py::object GetPyObjectFromSparseTensor(size_t pos, const OrtValue& ort_value, co
     if (!data_transfer_manager) {
       LOGS(logger, WARNING) << "Returned OrtValue with sparse tensor at position: " << pos << " is on GPU but no data_transfer_manager provided."
                             << " Returned it will have its data on GPU, you can copy it using numpy_array_to_cpu()";
-      py_sparse_tensor.reset(new PySparseTensor(ort_value));
+      py_sparse_tensor = std::make_unique<PySparseTensor>(ort_value);
     } else {
       auto dst_sparse_tensor = std::make_unique<SparseTensor>(src_sparse_tensor.DataType(), src_sparse_tensor.DenseShape(), GetAllocator());
       auto status = src_sparse_tensor.Copy(*data_transfer_manager, 0, *dst_sparse_tensor);
       OrtPybindThrowIfError(status);
-      py_sparse_tensor.reset(new PySparseTensor(std::move(dst_sparse_tensor)));
+      py_sparse_tensor = std::make_unique<PySparseTensor>(std::move(dst_sparse_tensor));
     }
   } else {
-    py_sparse_tensor.reset(new PySparseTensor(ort_value));
+    py_sparse_tensor = std::make_unique<PySparseTensor>(ort_value);
   }
 
   py::object result = py::cast(py_sparse_tensor.get(), py::return_value_policy::take_ownership);
@@ -1301,7 +1301,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
           },
           "node shape (assuming the node holds a tensor)");
 
-  py::class_<SessionObjectInitializer>(m, "SessionObjectInitializer");
+  py::class_<SessionObjectInitializer> sessionObjectInitializer(m, "SessionObjectInitializer");
   py::class_<PyInferenceSession>(m, "InferenceSession", R"pbdoc(This is the main class used to run a model.)pbdoc")
       // In Python3, a Python bytes object will be passed to C++ functions that accept std::string or char*
       // without any conversion. So this init method can be used for model file path (string) and model content (bytes)
@@ -1542,7 +1542,7 @@ void InitializeEnv() {
     InitArray();
     Env::Default().GetTelemetryProvider().SetLanguageProjection(OrtLanguageProjection::ORT_PROJECTION_PYTHON);
     OrtPybindThrowIfError(Environment::Create(std::make_unique<LoggingManager>(
-                                                  std::unique_ptr<ISink>{new CLogSink{}},
+                                                  std::make_unique<CLogSink>(),
                                                   Severity::kWARNING, false, LoggingManager::InstanceType::Default,
                                                   &SessionObjectInitializer::default_logger_id),
                                               session_env));

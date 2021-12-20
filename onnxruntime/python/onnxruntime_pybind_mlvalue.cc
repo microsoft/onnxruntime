@@ -9,6 +9,7 @@
 #define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
 #define PY_ARRAY_UNIQUE_SYMBOL onnxruntime_python_ARRAY_API
 #include <numpy/arrayobject.h>
+#include "python/numpy_helper.h"
 
 #include "core/graph/graph.h"
 #include "core/framework/tensor_shape.h"
@@ -39,10 +40,6 @@ static bool PyObjectCheck_NumpyArray(PyObject* o) {
 
 bool IsNumpyArray(py::object& obj) {
   return PyObjectCheck_NumpyArray(obj.ptr());
-}
-
-bool IsNumericNumpyType(int npy_type) {
-  return npy_type < NPY_OBJECT || npy_type == NPY_HALF;
 }
 
 int GetNumpyArrayType(const py::object& obj) {
@@ -253,8 +250,7 @@ MLDataType NumpyTypeToOnnxRuntimeType(int numpy_type) {
       {NPY_UINT, DataTypeImpl::GetType<uint32_t>()},
       {NPY_LONGLONG, DataTypeImpl::GetType<int64_t>()},
       {NPY_ULONGLONG, DataTypeImpl::GetType<uint64_t>()},
-      {NPY_OBJECT, DataTypeImpl::GetType<std::string>()}
-  };
+      {NPY_OBJECT, DataTypeImpl::GetType<std::string>()}};
   const auto it = type_map.find(numpy_type);
   if (it == type_map.end()) {
     throw std::runtime_error("No corresponding Numpy type for Tensor Type.");

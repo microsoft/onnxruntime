@@ -39,7 +39,7 @@ void DataTaskRequestContext::Request(const Callback& cb, concurrency::ThreadPool
                                      const ITestCase& c, Ort::Session& session,
                                      OrtAllocator* allocator, size_t task_id) {
   assert(cb);
-  std::unique_ptr<DataTaskRequestContext> self(new DataTaskRequestContext(cb, c, session, allocator, task_id));
+  std::unique_ptr<DataTaskRequestContext> self = std::make_unique<DataTaskRequestContext>(cb, c, session, allocator, task_id);
   CallableFactory<DataTaskRequestContext, void> f(self.get());
   auto runnable = f.GetCallable<&DataTaskRequestContext::RunAsync>();
   onnxruntime::concurrency::ThreadPool::Schedule(tp, [runnable]() { runnable.Invoke(); });

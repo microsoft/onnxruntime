@@ -78,9 +78,9 @@ Status Expand<T>::Compute(OpKernelContext* context) const {
     return Status::OK();
   }
 
-  std::unique_ptr<int64_t[]> input_dim_group{new int64_t[max_dims_size]};
-  std::unique_ptr<int64_t[]> output_dim_group{new int64_t[max_dims_size]};
-  std::unique_ptr<int64_t[]> expand_dim_size{new int64_t[max_dims_size]};
+  std::unique_ptr<int64_t[]> input_dim_group = std::make_unique<int64_t[]>(max_dims_size);
+  std::unique_ptr<int64_t[]> output_dim_group = std::make_unique<int64_t[]>(max_dims_size);
+  std::unique_ptr<int64_t[]> expand_dim_size = std::make_unique<int64_t[]>(max_dims_size);
   auto dim_group_start = max_dims_size;
 
   for (int64_t input_dims_iter = input_dims_size - 1,
