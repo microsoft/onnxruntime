@@ -98,20 +98,12 @@ class IOBinding {
  private:
   friend InferenceSession;
 
-  struct VariableNameWrapper {
-    const char* p_name;
-    VariableNameWrapper(const std::string& name) : p_name(name.c_str()) {}
-    bool operator<(const VariableNameWrapper& right) const {
-      return std::strcmp(p_name, right.p_name) < 0;
-    }
-  };
-
   const SessionState& session_state_;
   std::vector<std::string> feed_names_;
-  std::map<VariableNameWrapper, size_t, std::less<VariableNameWrapper>> mapped_feed_names_;
+  std::map<std::string, size_t> mapped_feed_names_;
   std::vector<OrtValue> feeds_;
   std::vector<std::string> output_names_;
-  std::map<VariableNameWrapper, size_t, std::less<VariableNameWrapper>> mapped_output_names_;
+  std::map<std::string, size_t> mapped_output_names_;
   std::vector<OrtValue> outputs_;
   std::vector<OrtDevice> outputs_device_info_;
 

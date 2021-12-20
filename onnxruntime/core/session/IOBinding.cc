@@ -17,17 +17,10 @@ common::Status IOBinding::BindInput(const std::string& name, const OrtValue& ml_
   size_t index = it.first->second;
   if (it.second) {
     feed_names_.push_back(name);
-    ORT_ENFORCE(index < feed_names_.size(), "index cannot be negative, index=", index, " it.second=", it.second);
-    ORT_ENFORCE(mapped_feed_names_.size() == feed_names_.size(), "Size mismatch(1):", mapped_feed_names_.size(), "!=", feed_names_.size(), " index=", index, " it.second=", it.second);
     OrtValue new_mlvalue;
     feeds_.push_back(new_mlvalue);
-    // The inserted pointer points to name.c_str(), a pointer the class
-    // does not own. It needs to be replaced by a pointer the class owns
-    // pointing to the same string.
-    ORT_ENFORCE(mapped_feed_names_.size() == feed_names_.size(), "Size mismatch(A):", mapped_feed_names_.size(), "!=", feed_names_.size(), " index=", index, " it.second=", it.second);
-    ORT_ENFORCE(mapped_feed_names_.erase(name) == 1, "Key '", name, "' was not removed.");
-    mapped_feed_names_[VariableNameWrapper(feed_names_[index])] = index;
-    ORT_ENFORCE(mapped_feed_names_.size() == feed_names_.size(), "Size mismatch(2):", mapped_feed_names_.size(), "!=", feed_names_.size(), " index=", index, " it.second=", it.second);
+    ORT_ENFORCE(mapped_feed_names_.size() == feed_names_.size(), "Size mismatch(1):", mapped_feed_names_.size(), "!=", feed_names_.size(), " index=", index, " it.second=", it.second);
+    ORT_ENFORCE(mapped_feed_names_.size() == feeds_.size(), "Size mismatch(2):", mapped_feed_names_.size(), "!=", feeds_.size(), " index=", index, " it.second=", it.second);
   }
   ORT_ENFORCE(mapped_feed_names_.size() == feed_names_.size(), "Size mismatch(3):", mapped_feed_names_.size(), "!=", feed_names_.size(), " index=", index, " it.second=", it.second);
 
@@ -91,22 +84,19 @@ common::Status IOBinding::BindOutput(const std::string& name, OrtDevice device) 
 }
 
 common::Status IOBinding::BindOutputImpl(const std::string& name, const OrtValue& ml_value, OrtDevice device) {
-  ORT_ENFORCE(mapped_output_names_.size() == output_names_.size(), "Size mismatch.", mapped_output_names_.size(), "!=", output_names_.size());
+  ORT_ENFORCE(mapped_output_names_.size() == output_names_.size(), "Size mismatch(1):", mapped_output_names_.size(), "!=", output_names_.size());
   auto it = mapped_output_names_.emplace(name, output_names_.size());
   size_t index = it.first->second;
   if (it.second) {
     output_names_.push_back(name);
     outputs_.push_back(ml_value);
     outputs_device_info_.push_back(device);
-    // The inserted pointer points to name.c_str(), a pointer the class
-    // does not own. It needs to be replaced by a pointer the class owns
-    // pointing to the same string.
-    mapped_output_names_.extract(it.first);
-    mapped_output_names_[VariableNameWrapper(output_names_[index])] = index;
   } else {
     outputs_[index] = ml_value;
     outputs_device_info_[index] = device;
   }
+  ORT_ENFORCE(mapped_output_names_.size() == output_names_.size(), "Size mismatch(2)", mapped_output_names_.size(), "!=", output_names_.size());
+  ORT_ENFORCE(mapped_output_names_.size() == outputs_device_info_.size(), "Size mismatch(3)", mapped_output_names_.size(), "!=", outputs_device_info_.size());
 
   return Status::OK();
 }
