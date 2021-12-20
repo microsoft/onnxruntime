@@ -17,6 +17,7 @@ namespace opencl {
 constexpr auto BufferAllocatorName = "OpenCL";
 constexpr auto Image2DAllocatorName = "OpenCL_Image2D";
 constexpr auto CPUAllocatorName = "OpenCL_CPU";
+constexpr auto CPUInputAllocatorName = "OpenCL_CPU_Input";
 
 class OpenCLBufferAllocator : public IAllocator {
  public:
