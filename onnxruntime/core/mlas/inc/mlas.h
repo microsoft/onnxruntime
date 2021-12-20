@@ -562,14 +562,6 @@ struct MLAS_GEMM_QUANT_DATA_PARAMS {
     const MLAS_QGEMM_OUTPUT_PROCESSOR* OutputProcessor = nullptr;
 };
 
-void
-MLASCALL
-MlasGemm(
-    const MLAS_GEMM_QUANT_SHAPE_PARAMS& Shape,
-    const MLAS_GEMM_QUANT_DATA_PARAMS& DataParams,
-    MLAS_THREADPOOL* ThreadPool
-    );
-
 /**
  * @brief Batched GEMM, for multiplying multiple pairs of matrices.
  * Note:  We only support uniform batching, so shapes and types of the
@@ -589,6 +581,16 @@ MlasGemmBatch(
     const size_t BatchN,
     MLAS_THREADPOOL* ThreadPool
     );
+
+inline
+void
+MlasGemm(
+    const MLAS_GEMM_QUANT_SHAPE_PARAMS &Shape,
+    const MLAS_GEMM_QUANT_DATA_PARAMS &DataParams,
+    MLAS_THREADPOOL *ThreadPool)
+{
+    MlasGemmBatch(Shape, &DataParams, 1, ThreadPool);
+}
 
 /**
  * @brief Supply data parameters for symmetric quantized GEMM.

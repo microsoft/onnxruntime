@@ -109,37 +109,6 @@ Return Value:
 }
 
 
-void
-MLASCALL
-MlasGemm(
-    const MLAS_GEMM_QUANT_SHAPE_PARAMS &Shape,
-    const MLAS_GEMM_QUANT_DATA_PARAMS &DataParams,
-    MLAS_THREADPOOL *ThreadPool)
-/*++
-
-Routine Description:
-
-    This routine implements the quantized integer matrix/matrix multiply
-    operation (QGEMM).
-
-Arguments:
-
-    Shape - Supplies the structure containing the GEMM input and output shapes.
-
-    Data  - Supplies the structure containing the GEMM input and output data layout
-
-    ThreadPool - Supplies the thread pool object to use, else nullptr if the
-        base library threading support should be used.
-
-Return Value:
-
-    None.
-
---*/
-{
-    MlasGemmBatch(Shape, &DataParams, 1, ThreadPool);
-}
-
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(push)
 // VC++ suggests we can attempt to make 'MlasBitsOfFp32' constexpr, but it is not valid.
@@ -262,7 +231,7 @@ MlasSymmQgemmBatch(
     const size_t StrideM = dispatch->StrideM;
 
     size_t nc = N;
-    if (MlasGetMaximumThreadCount(ThreadPool) > BatchN) {
+    if ((size_t)MlasGetMaximumThreadCount(ThreadPool) > BatchN) {
         // more than one thread per GEMM
 
         const size_t BlockedM = MlasDivRoundup(M, StrideM);
@@ -278,7 +247,7 @@ MlasSymmQgemmBatch(
     const size_t ThreadCountN = MlasDivRoundup(N, StrideN);
     ThreadsPerGemm = ThreadCountM * ThreadCountN;
 
-    const MLAS_SYMM_QGEMM_OPERATION* operation = dispatch->Operation;
+    MLAS_SYMM_QGEMM_OPERATION* operation = dispatch->Operation;
 
     MlasTrySimpleParallel(ThreadPool, ThreadsPerGemm * BatchN, [&](ptrdiff_t tid) {
         const auto gemm_i = tid / ThreadsPerGemm;
@@ -483,8 +452,6 @@ MlasSymmQgemmPackB(
 {
     const MLAS_SYMM_QGEMM_DISPATCH* SymmQgemmDispatch = MlasPlatform.SymmQgemmDispatch;
 
-    size_t PackedK = SymmQgemmDispatch->PackedK;
-
     //
     // Reserve and initialize storage for the column sum buffer to hold the sums
     // of the elements along each of the columns.
@@ -495,8 +462,6 @@ MlasSymmQgemmPackB(
 
     int32_t* PackedColumnSumBuffer = (int32_t*)PackedB;
     PackedB = PackedColumnSumBuffer + AlignedN;
-
-    const size_t AlignedK = (K + PackedK - 1) & ~(PackedK - 1);
 
     SymmQgemmDispatch->CopyPackBRoutine((uint8_t*)PackedB, (const uint8_t*)B, ldb, N, K,
                                         PackedColumnSumBuffer, true);

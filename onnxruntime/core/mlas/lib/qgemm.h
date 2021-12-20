@@ -749,7 +749,7 @@ MlasSymmQGemmPackedOperation(
             pa, b, c, PackedCountK, RowsRemaining, RangeCountN, ldc, lda, PackedColumnSumBuffer);
 
         c += ldc * RowsHandled;
-        pa += KernelType::PackedK * PackedCountK * RowsHandled;
+        pa += lda * RowsHandled;
         RowsRemaining -= RowsHandled;
     }
 }

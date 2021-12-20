@@ -6,7 +6,7 @@ Licensed under the MIT License.
 
 Module Name:
 
-    SymQgemmS8KernelNeon.asm
+    SymQgemmS8KernelNeon.S
 
 Abstract:
 
@@ -20,17 +20,17 @@ Abstract:
 
 --*/
 
-#include "kxarm64.h"
+#include "asmmacro.h"
 
 //
 // Stack frame layout for the S8S8 kernel.
+// d8-d15, x19-x30 need to be preserved if used
 //
 
-#define  SQGemmS8Frame_SavedNeonRegisters     (8 * 8)
-#define  SQGemmS8Frame_SavedRegisters         SQGemmS8Frame_SavedNeonRegisters
-#define  SQGemmS8Frame_ColumnSumBuffer        0 + SQGemmS8Frame_SavedRegisters
+        .equ    .LSQGemmS8Frame_SavedRegisters,     (8 * 8)
+        .equ    .LSQGemmS8Frame_ColumnSumBuffer,    0 + .LSQGemmS8Frame_SavedRegisters
 
-        TEXTAREA
+        .text
 
 /*++
 
@@ -73,13 +73,13 @@ Return Value:
 
 --*/
 
-        NESTED_ENTRY MlasSymQgemmS8KernelNeon
+        FUNCTION_ENTRY MlasSymQgemmS8KernelNeon
 
-        PROLOG_SAVE_REG_PAIR d8,d9,#-SQGemmS8Frame_SavedRegisters!
-        PROLOG_SAVE_REG_PAIR d10,d11,#16
-        PROLOG_SAVE_REG_PAIR d12,d13,#32
-        PROLOG_SAVE_REG_PAIR d14,d15,#48
-        ldr     x13,[sp,#SQGemmS8Frame_ColumnSumBuffer]
+        stp     d8,d9,[sp,#-.LSQGemmS8Frame_SavedRegisters]!
+        stp     d10,d11,[sp,#16]
+        stp     d12,d13,[sp,#32]
+        stp     d14,d15,[sp,#48]
+        ldr     x13,[sp,#.LSQGemmS8Frame_ColumnSumBuffer]
         mov     x14,x0
         mov     x15,x3
         cmp     x4,#1                       // CountM == 1?
@@ -109,7 +109,7 @@ Return Value:
 // for each row. e.g. (v16.s[0], v16.s[1], v16.s[2], v16.s[3]) <- (v16, v17, v18, v19)
 //
 
-M4_ProcessNextColumnLoop
+M4_ProcessNextColumnLoop:
         mov     x0,x14                      // reload matrix A0
         mov     x3,x15                      // reload PackedCountK
         ldr     d0,[x0],#8                  // Load A0
@@ -139,7 +139,7 @@ M4_ProcessNextColumnLoop
         movi    v31.4s,#0
         add     x11,x10,x7                  // A3
 
-M4_ComputeBlockLoop
+M4_ComputeBlockLoop:
         smull   v12.8h,v0.8b,v4.8b
         smull   v13.8h,v0.8b,v5.8b
         smull   v14.8h,v0.8b,v6.8b
@@ -200,7 +200,7 @@ M4_ComputeBlockLoop
         sadalp  v31.4s,v15.8h
         b       M4_ComputeBlockLoop
 
-M4_ComputeBlockLoopFinish
+M4_ComputeBlockLoopFinish:
         smull   v12.8h,v0.8b,v4.8b
         smull   v13.8h,v0.8b,v5.8b
         smull   v14.8h,v0.8b,v6.8b
@@ -245,7 +245,7 @@ M4_ComputeBlockLoopFinish
         add     v24.4s,v24.4s,v2.4s
         add     v28.4s,v28.4s,v2.4s
 
-M4_StoreOutput
+M4_StoreOutput:
         add     x10,x2,x6,lsl #2
         add     x11,x10,x6,lsl #2
         add     x12,x11,x6,lsl #2
@@ -257,17 +257,17 @@ M4_StoreOutput
         st1     {v28.4s},[x12]
         cbnz    x5,M4_ProcessNextColumnLoop
 
-M4_ExitKernel
+M4_ExitKernel:
         mov     x0,#4                       // return number of rows handled
-        EPILOG_RESTORE_REG_PAIR d14,d15,#48
-        EPILOG_RESTORE_REG_PAIR d12,d13,#32
-        EPILOG_RESTORE_REG_PAIR d10,d11,#16
-        EPILOG_RESTORE_REG_PAIR d8,d9,#64!
-        EPILOG_RETURN
+        ldp     d14,d15,[sp,#48]
+        ldp     d12,d13,[sp,#32]
+        ldp     d10,d11,[sp,#16]
+        ldp     d8,d9,[sp],#.LSQGemmS8Frame_SavedRegisters
+        ret
 
-M4_StoreOutputPartial
+M4_StoreOutputPartial:
 
-M4_StoreOutputPartial_ZeroMode
+M4_StoreOutputPartial_ZeroMode:
         tbz     x5,#1,M4_StoreOutputPartial1_ZeroMode
         st1     {v16.2s},[x2],#8
         dup     v16.4s,v16.s[2]             // shift remaining elements down
@@ -278,7 +278,7 @@ M4_StoreOutputPartial_ZeroMode
         st1     {v28.2s},[x12],#8
         dup     v28.4s,v28.s[2]
 
-M4_StoreOutputPartial1_ZeroMode
+M4_StoreOutputPartial1_ZeroMode:
         tbz     x5,#0,M4_ExitKernel
         st1     {v16.s}[0],[x2]
         st1     {v20.s}[0],[x10]
@@ -309,9 +309,9 @@ M4_StoreOutputPartial1_ZeroMode
 // Accumulators are horizontally aggregated to the left most register
 // for each row. e.g. (v16.s[0], v16.s[1], v16.s[2], v16.s[3]) <- (v16, v17, v18, v19)
 
-M2_ProcessLoop
+M2_ProcessLoop:
 
-M2_ProcessNextColumnLoop
+M2_ProcessNextColumnLoop:
         ldp     d4,d24,[x1],#16             // B
         mov     x0,x14                      // reload matrix A
         mov     x3,x15                      // reload PackedCountK
@@ -330,7 +330,7 @@ M2_ProcessNextColumnLoop
         movi    v23.4s,#0
         ldp     d1,d3,[x9],#16              // Load A1
 
-M2_ComputeBlockLoop
+M2_ComputeBlockLoop:
         sub     x3,x3,#1
         smull   v28.8h,v0.8b,v4.8b
         smull   v29.8h,v0.8b,v5.8b
@@ -365,7 +365,7 @@ M2_ComputeBlockLoop
         sadalp  v23.4s,v31.8h
         b       M2_ComputeBlockLoop
 
-M2_ComputeBlockLoopFinish
+M2_ComputeBlockLoopFinish:
         ld1     {v0.4s},[x13],#16           // load ColumnSumBuffer[0]
         smlal   v28.8h,v2.8b,v24.8b
         smlal   v29.8h,v2.8b,v25.8b
@@ -398,7 +398,7 @@ M2_ComputeBlockLoopFinish
         add     v16.4s,v16.4s,v0.4s
         add     v20.4s,v20.4s,v0.4s
 
-M2_StoreOutput
+M2_StoreOutput:
         add     x10,x2,x6,lsl #2
         subs    x5,x5,#4                    // adjust CountN remaining
         blo     M2_StoreOutputPartial
@@ -406,24 +406,24 @@ M2_StoreOutput
         st1     {v20.4s},[x10]
         cbnz    x5,M2_ProcessNextColumnLoop
 
-M2_ExitKernel
+M2_ExitKernel:
         mov     x0,#2                       // return number of rows handled
-        EPILOG_RESTORE_REG_PAIR d14,d15,#48
-        EPILOG_RESTORE_REG_PAIR d12,d13,#32
-        EPILOG_RESTORE_REG_PAIR d10,d11,#16
-        EPILOG_RESTORE_REG_PAIR d8,d9,#64!
-        EPILOG_RETURN
+        ldp     d14,d15,[sp,#48]
+        ldp     d12,d13,[sp,#32]
+        ldp     d10,d11,[sp,#16]
+        ldp     d8,d9,[sp],#.LSQGemmS8Frame_SavedRegisters
+        ret
 
-M2_StoreOutputPartial
+M2_StoreOutputPartial:
 
-M2_StoreOutputPartial_ZeroMode
+M2_StoreOutputPartial_ZeroMode:
         tbz     x5,#1,M2_StoreOutputPartial1_ZeroMode
         st1     {v16.2s},[x2],#8
         dup     v16.4s,v16.s[2]             // shift remaining elements down
         st1     {v20.2s},[x10],#8
         dup     v20.4s,v20.s[2]
 
-M2_StoreOutputPartial1_ZeroMode
+M2_StoreOutputPartial1_ZeroMode:
         tbz     x5,#0,M2_ExitKernel
         st1     {v16.s}[0],[x2]
         st1     {v20.s}[0],[x10]
@@ -451,9 +451,9 @@ M2_StoreOutputPartial1_ZeroMode
 // Accumulators are horizontally aggregated to the left most register
 // for each row. e.g. (v16.s[0], v16.s[1], v16.s[2], v16.s[3]) <- (v16, v17, v18, v19)
 //
-M1_ProcessLoop
+M1_ProcessLoop:
 
-M1_ProcessNextColumnLoop
+M1_ProcessNextColumnLoop:
         ldp     d4,d24,[x1],#16             // B
         ldp     d5,d25,[x1],#16
         ldp     d6,d26,[x1],#16
@@ -466,7 +466,7 @@ M1_ProcessNextColumnLoop
         movi    v18.4s,#0
         movi    v19.4s,#0
 
-M1_ComputeBlockLoop
+M1_ComputeBlockLoop:
         sub     x3,x3,#1
         smull   v20.8h,v0.8b,v4.8b
         smull   v21.8h,v0.8b,v5.8b
@@ -488,7 +488,7 @@ M1_ComputeBlockLoop
         sadalp  v19.4s,v23.8h
         b       M1_ComputeBlockLoop
 
-M1_ComputeBlockLoopFinish
+M1_ComputeBlockLoopFinish:
         ld1     {v4.4s},[x13],#16           // load ColumnSumBuffer[0]
         smull   v22.8h,v0.8b,v6.8b
         smull   v23.8h,v0.8b,v7.8b
@@ -507,32 +507,30 @@ M1_ComputeBlockLoopFinish
         // accumulator += column sum B
         add     v16.4s,v16.4s,v4.4s
 
-M1_StoreOutput
+M1_StoreOutput:
         subs    x5,x5,#4                    // adjust CountN remaining
         blo     M1_StoreOutputPartial
         st1     {v16.4s},[x2],#16
         cbnz    x5,M1_ProcessNextColumnLoop
 
-M1_ExitKernel
+M1_ExitKernel:
         mov     x0,#1                       // return number of rows handled
-        EPILOG_RESTORE_REG_PAIR d14,d15,#48
-        EPILOG_RESTORE_REG_PAIR d12,d13,#32
-        EPILOG_RESTORE_REG_PAIR d10,d11,#16
-        EPILOG_RESTORE_REG_PAIR d8,d9,#64!
-        EPILOG_RETURN
+        ldp     d14,d15,[sp,#48]
+        ldp     d12,d13,[sp,#32]
+        ldp     d10,d11,[sp,#16]
+        ldp     d8,d9,[sp],#.LSQGemmS8Frame_SavedRegisters
+        ret
 
-M1_StoreOutputPartial
+M1_StoreOutputPartial:
 
-M1_StoreOutputPartial_ZeroMode
+M1_StoreOutputPartial_ZeroMode:
         tbz     x5,#1,M1_StoreOutputPartial1_ZeroMode
         st1     {v16.2s},[x2],#8
         dup     v16.4s,v16.s[2]             // shift remaining elements down
 
-M1_StoreOutputPartial1_ZeroMode
+M1_StoreOutputPartial1_ZeroMode:
         tbz     x5,#0,M1_ExitKernel
         st1     {v16.s}[0],[x2]
         b       M1_ExitKernel
 
-        NESTED_END MlasSymQgemmS8KernelNeon
-
-        END
+        .end
