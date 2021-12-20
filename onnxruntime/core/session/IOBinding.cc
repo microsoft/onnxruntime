@@ -23,7 +23,7 @@ common::Status IOBinding::BindInput(const std::string& name, const OrtValue& ml_
     // The inserted pointer points to name.c_str(), a pointer the class
     // does not own. It needs to be replaced by a pointer the class owns
     // pointing to the same string.
-    mapped_feed_names_.extract(it.first);
+    mapped_feed_names_.erase(it.first);
     mapped_feed_names_[VariableNameWrapper(feed_names_[index])] = index;
     ORT_ENFORCE(mapped_feed_names_.size() == feed_names_.size(), "Size mismatch(2):", mapped_feed_names_.size(), "!=", feed_names_.size(), " index=", index, " it.second=", it.second);
   }
