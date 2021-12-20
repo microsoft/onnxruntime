@@ -135,7 +135,6 @@ Status InstanceNorm<T>::ComputeInternal(OpKernelContext* p_op_kernel_context) co
         nullptr,
         nullptr));
 
-    /*
     // Y = scale * (x - mean) / sqrt (variance + epsilon) + B
     // X/Y is (N,C,H,W)
     // scale/bias is (1,C,1,1)
@@ -158,8 +157,6 @@ Status InstanceNorm<T>::ComputeInternal(OpKernelContext* p_op_kernel_context) co
         fdm_C,
         y_data,
         input_count);
-
-  */
   }
 
   return Status::OK();
@@ -282,7 +279,6 @@ Status InstanceNorm<MLFloat16>::ComputeInternal(OpKernelContext* p_op_kernel_con
         nullptr,
         nullptr));
 
-    /*
     // Y = scale * (x - mean) / sqrt (variance + epsilon) + B
     // X/Y is (N,C,H,W)
     // scale/bias is (1,C,1,1)
@@ -312,7 +308,6 @@ Status InstanceNorm<MLFloat16>::ComputeInternal(OpKernelContext* p_op_kernel_con
         fdm_C,
         y_data,
         input_count);
-         */
   }
 
   return Status::OK();
