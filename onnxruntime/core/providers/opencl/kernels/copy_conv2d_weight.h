@@ -1,5 +1,7 @@
 #pragma once
 
+#include "./utils.h"
+
 __kernel void Conv2DWeightBufferToImage(
     const int width, const int height,  // image, width = C_i, height = CeilDiv(C_o, 4)*K_h*K_w
     __global const float* data,
@@ -24,32 +26,8 @@ __kernel void Conv2DWeightBufferToImage(
   // (C_i*K_h*K_w)*co + (K_h*K_w)*ci + K_w*kh + kw
   const int base_offset = mad24(CiHW, co, mad24(HW, ci, mad24(K_w, kh, kw)));
 
-  // FIXME: factor this into a SAFE_GATHER_LOAD_VEC4
   float4 v = 0;
-  const int num_remain = C_o - co;
-  int offset = base_offset;
-  if (num_remain >= 4) {
-    v.x = data[offset];
-    offset += CiHW;
-    v.y = data[offset];
-    offset += CiHW;
-    v.z = data[offset];
-    offset += CiHW;
-    v.w = data[offset];
-  } else if (num_remain == 3) {
-    v.x = data[offset];
-    offset += CiHW;
-    v.y = data[offset];
-    offset += CiHW;
-    v.z = data[offset];
-  } else if (num_remain == 2) {
-    v.x = data[offset];
-    offset += CiHW;
-    v.y = data[offset];
-  } else if (num_remain == 1) {
-    v.x = data[offset];
-  }
-
+  SAFE_GATHER_LDG_VEC4(v, data, base_offset, CiHW, C_o - co);
   WI_F(output, (int2)(x, y), CONVERT_FLOAT4(v));
 #undef K_w
 #undef K_h

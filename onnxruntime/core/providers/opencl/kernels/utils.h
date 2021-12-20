@@ -12,60 +12,66 @@
 
 // Safely gather load a 4-element vector from global memory
 #define SAFE_GATHER_LDG_VEC4(v, input, base_offset, stride, remain) \
-  if ((remain) > 0) {                                               \
-    int i = (base_offset);                                          \
-    if ((remain) >= 4) {                                            \
-      (v).s0 = (input)[i];                                          \
-      i += (stride);                                                \
-      (v).s1 = (input)[i];                                          \
-      i += (stride);                                                \
-      (v).s2 = (input)[i];                                          \
-      i += (stride);                                                \
-      (v).s3 = (input)[i];                                          \
-    } else if ((remain) == 3) {                                     \
-      (v).s0 = (input)[i];                                          \
-      i += (stride);                                                \
-      (v).s1 = (input)[i];                                          \
-      i += (stride);                                                \
-      (v).s2 = (input)[i];                                          \
-    } else if ((remain) == 2) {                                     \
-      (v).s0 = (input)[i];                                          \
-      i += (stride);                                                \
-      (v).s1 = (input)[i];                                          \
-    } else if ((remain) == 1) {                                     \
-      (v).s0 = (input)[i];                                          \
+  {                                                                 \
+    int r = (remain);                                               \
+    if (r > 0) {                                                    \
+      int i = (base_offset);                                        \
+      if (r >= 4) {                                                 \
+        (v).s0 = (input)[i];                                        \
+        i += (stride);                                              \
+        (v).s1 = (input)[i];                                        \
+        i += (stride);                                              \
+        (v).s2 = (input)[i];                                        \
+        i += (stride);                                              \
+        (v).s3 = (input)[i];                                        \
+      } else if (r == 3) {                                          \
+        (v).s0 = (input)[i];                                        \
+        i += (stride);                                              \
+        (v).s1 = (input)[i];                                        \
+        i += (stride);                                              \
+        (v).s2 = (input)[i];                                        \
+      } else if (r == 2) {                                          \
+        (v).s0 = (input)[i];                                        \
+        i += (stride);                                              \
+        (v).s1 = (input)[i];                                        \
+      } else if (r == 1) {                                          \
+        (v).s0 = (input)[i];                                        \
+      }                                                             \
     }                                                               \
   }
 
 // Safely scatter store a 4-element vector to global memory
 #define SAFE_SCATTER_STG_VEC4(output, base_offset, stride, remain, v) \
-  if ((remain) > 0) {                                                 \
-    int i = base_offset;                                              \
-    if ((remain) >= 4) {                                              \
-      (output)[i] = (v).s0;                                           \
-      i += HW;                                                        \
-      (output)[i] = (v).s1;                                           \
-      i += HW;                                                        \
-      (output)[i] = (v).s2;                                           \
-      i += HW;                                                        \
-      (output)[i] = (v).s3;                                           \
-    } else if ((remain) == 3) {                                       \
-      (output)[i] = (v).s0;                                           \
-      i += HW;                                                        \
-      (output)[i] = (v).s1;                                           \
-      i += HW;                                                        \
-      (output)[i] = (v).s2;                                           \
-    } else if ((remain) == 2) {                                       \
-      (output)[i] = (v).s0;                                           \
-      i += HW;                                                        \
-      (output)[i] = (v).s1;                                           \
-    } else if ((remain) == 1) {                                       \
-      (output)[i] = (v).s0;                                           \
+  {                                                                   \
+    int r = (remain);                                                 \
+    if (r > 0) {                                                      \
+      int i = base_offset;                                            \
+      if (r >= 4) {                                                   \
+        (output)[i] = (v).s0;                                         \
+        i += HW;                                                      \
+        (output)[i] = (v).s1;                                         \
+        i += HW;                                                      \
+        (output)[i] = (v).s2;                                         \
+        i += HW;                                                      \
+        (output)[i] = (v).s3;                                         \
+      } else if (r == 3) {                                            \
+        (output)[i] = (v).s0;                                         \
+        i += HW;                                                      \
+        (output)[i] = (v).s1;                                         \
+        i += HW;                                                      \
+        (output)[i] = (v).s2;                                         \
+      } else if (r == 2) {                                            \
+        (output)[i] = (v).s0;                                         \
+        i += HW;                                                      \
+        (output)[i] = (v).s1;                                         \
+      } else if (r == 1) {                                            \
+        (output)[i] = (v).s0;                                         \
+      }                                                               \
     }                                                                 \
   }
 
 // Safely load a 4-element vector from consecutive global memory
-#define SAFE_VECTOR_LDG_VEC4(v, input, base_offset, remain)
+// #define SAFE_VECTOR_LDG_VEC4(v, input, base_offset, remain)
 
 // Safely store a 4-element vector to consecutive global memory
-#define SAFE_VECTOR_STG_VEC4(output, base_offset, remain, v)
+// #define SAFE_VECTOR_STG_VEC4(output, base_offset, remain, v)

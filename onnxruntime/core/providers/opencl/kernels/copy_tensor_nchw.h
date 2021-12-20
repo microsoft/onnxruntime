@@ -21,10 +21,8 @@ __kernel void CopyBufferNCHWToImage2D(
     const int HW = H * W;
     const int base_index = (C * n + c) * HW + W * h + w;
 
-    // channel is not consecutive in memory
-    const int remain_channel = C - c;
     float4 v = 0;  // NOTE: buffer r/w always assume fp32
-    SAFE_GATHER_LDG_VEC4(v, data, base_index, HW, remain_channel);
+    SAFE_GATHER_LDG_VEC4(v, data, base_index, HW, C - c);
     WI_F(output, (int2)(x, y), CONVERT_FLOAT4(v));
   }
 }
@@ -47,10 +45,8 @@ __kernel void CopyImage2DToBufferNCHW(
     // indexing into the NCHW data
     const int HW = H * W;
     const int base_index = (C * n + c) * HW + W * h + w;
-    const float4 v = convert_float4(RI_F(data, (int2)(x, y)));
-
-    const int remain_channel = C - c;
     // NOTE: buffer r/w always assume fp32
-    SAFE_SCATTER_STG_VEC4(output, base_index, HW, remain_channel, v);
+    const float4 v = convert_float4(RI_F(data, (int2)(x, y)));
+    SAFE_SCATTER_STG_VEC4(output, base_index, HW, C - c, v);
   }
 }

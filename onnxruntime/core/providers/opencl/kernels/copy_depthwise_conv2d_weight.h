@@ -1,5 +1,7 @@
 #pragma once
 
+#include "./utils.h"
+
 // C_i == input_channel_per_group, since it is depthwise, it is always 1
 // C_o == total_output_channel == group * output_channel_per_group, currently,
 //     we are limiting output_channel_per_group == 1
@@ -26,32 +28,8 @@ __kernel void CopyDepthwiseConvWeightBufferToImage(
   // (K_h*K_w)*co + K_w*kh + kw ==> (K_h*co + kh)*K_w + kw
   const int base_offset = mad24(mad24(co, K_h, kh), K_w, kw);
 
-  // FIXME: factor this into a SAFE_GATHER_LOAD_VEC4
   float4 v = 0;
-  const int num_remain = C_o - co;
-  int offset = base_offset;
-  if (num_remain >= 4) {
-    v.x = data[offset];
-    offset += CiHW;
-    v.y = data[offset];
-    offset += CiHW;
-    v.z = data[offset];
-    offset += CiHW;
-    v.w = data[offset];
-  } else if (num_remain == 3) {
-    v.x = data[offset];
-    offset += CiHW;
-    v.y = data[offset];
-    offset += CiHW;
-    v.z = data[offset];
-  } else if (num_remain == 2) {
-    v.x = data[offset];
-    offset += CiHW;
-    v.y = data[offset];
-  } else if (num_remain == 1) {
-    v.x = data[offset];
-  }
-
+  SAFE_GATHER_LDG_VEC4(v, data, base_offset, CiHW, C_o - co);
   WI_F(output, (int2)(x, y), CONVERT_FLOAT4(v));
 #undef K_w
 #undef K_h
