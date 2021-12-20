@@ -17,13 +17,15 @@ common::Status IOBinding::BindInput(const std::string& name, const OrtValue& ml_
   size_t index = it.first->second;
   if (it.second) {
     feed_names_.push_back(name);
+    ORT_ENFORCE(index >= 0, "index cannot be negative, index=", index, " it.second=", it.second);
     ORT_ENFORCE(mapped_feed_names_.size() == feed_names_.size(), "Size mismatch(1):", mapped_feed_names_.size(), "!=", feed_names_.size(), " index=", index, " it.second=", it.second);
     OrtValue new_mlvalue;
     feeds_.push_back(new_mlvalue);
     // The inserted pointer points to name.c_str(), a pointer the class
     // does not own. It needs to be replaced by a pointer the class owns
     // pointing to the same string.
-    mapped_feed_names_.erase(it.first);
+    ORT_ENFORCE(mapped_feed_names_.size() == feed_names_.size(), "Size mismatch(A):", mapped_feed_names_.size(), "!=", feed_names_.size(), " index=", index, " it.second=", it.second);
+    ORT_ENFORCE(mapped_feed_names_.erase(name) == 1, "Key '", name, "' was not removed.");
     mapped_feed_names_[VariableNameWrapper(feed_names_[index])] = index;
     ORT_ENFORCE(mapped_feed_names_.size() == feed_names_.size(), "Size mismatch(2):", mapped_feed_names_.size(), "!=", feed_names_.size(), " index=", index, " it.second=", it.second);
   }
