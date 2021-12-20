@@ -12,15 +12,17 @@
 #include <core/graph/graph_viewer.h>
 #include <core/providers/common.h>
 
+#include "core/providers/shared/node_unit/node_unit.h"
 #include "core/providers/shared/utils/utils.h"
 #include "helper.h"
 #include "op_support_checker.h"
 
-namespace onnxruntime {
-namespace nnapi {
-
+using onnxruntime::NodeUnit;
 using std::string;
 using std::vector;
+
+namespace onnxruntime {
+namespace nnapi {
 
 std::string GetErrorCause(int error_code) {
   switch (error_code) {
@@ -434,22 +436,24 @@ bool IsInternalQuantizationSupported(const Node& node, const std::unordered_set<
   return true;
 }
 
-bool IsNodeSupported(const Node& node, const GraphViewer& graph_viewer, const OpSupportCheckParams& params) {
+bool IsNodeSupported(const NodeUnit& node_unit, const GraphViewer& graph_viewer, const OpSupportCheckParams& params) {
   const auto& op_support_checkers = GetOpSupportCheckers();
-  if (!Contains(op_support_checkers, node.OpType()))
+  if (!Contains(op_support_checkers, node_unit.OpType()))
     return false;
 
-  const auto* op_support_checker = op_support_checkers.at(node.OpType());
-  return op_support_checker->IsOpSupported(graph_viewer.GetAllInitializedTensors(), node, params);
+  const auto* op_support_checker = op_support_checkers.at(node_unit.OpType());
+  return op_support_checker->IsOpSupported(graph_viewer.GetAllInitializedTensors(), node_unit, params);
 }
 
-bool IsNodeSupportedInGroup(const Node& node, const GraphViewer& graph_viewer,
+bool IsNodeSupportedInGroup(const NodeUnit& node_unit, const GraphViewer& graph_viewer,
                             const OpSupportCheckParams& params,
                             const std::unordered_set<std::string>& node_outputs_in_group) {
-  if (!IsNodeSupported(node, graph_viewer, params))
+  if (!IsNodeSupported(node_unit, graph_viewer, params))
     return false;
 
+  // TODO, ignore this step if the node_unit is qdq node_unit
   // We also want to check if the node is supported as an internal quantized node
+  const auto& node = node_unit.GetNode();
   if (IsInternalQuantizedNode(node))
     return IsInternalQuantizationSupported(node, node_outputs_in_group);
   else  // This is not a internal quantized node, it is supported

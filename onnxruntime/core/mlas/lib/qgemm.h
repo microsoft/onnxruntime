@@ -73,7 +73,7 @@ MlasGemmQuantTryGemvKernel(
 }
 
 template <typename KernelType>
-MLAS_FORCEINLINE
+MLAS_FORCEINLINE constexpr
 int32_t
 MlasGemmQuantFixupZeroPointA(
     int32_t ZeroPointA,
@@ -84,7 +84,7 @@ MlasGemmQuantFixupZeroPointA(
 }
 
 template<typename KernelType>
-int32_t
+int32_t constexpr
 MlasGemmQuantFixupZeroPointB(
     int32_t ZeroPointB,
     bool BIsSigned
@@ -703,8 +703,9 @@ MlasGemmQuantGetDispatch(
 {
     const MLAS_GEMM_QUANT_DISPATCH* GemmQuantDispatch = nullptr;
 
-    MLAS_UNREFERENCED_PARAMETER(AIsSigned);
-    MLAS_UNREFERENCED_PARAMETER(BIsSigned);
+    if (!AIsSigned || BIsSigned) {
+        GemmQuantDispatch = &MlasGemmQuantDispatchDefault;
+    }
 
 #if defined(MLAS_TARGET_AMD64_IX86)
     if (!AIsSigned) {
@@ -732,10 +733,6 @@ MlasGemmQuantGetDispatch(
 #elif defined(MLAS_TARGET_WASM_SIMD)
     if (!AIsSigned) {
         GemmQuantDispatch = &MlasGemmU8X8DispatchWasmSimd;
-    }
-#else
-    if (!AIsSigned) {
-        GemmQuantDispatch = &MlasGemmU8X8DispatchDefault;
     }
 #endif
 

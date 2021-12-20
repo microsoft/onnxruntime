@@ -47,6 +47,8 @@ function(setup_mlas_source_for_windows)
       )
 
       set(mlas_platform_preprocess_srcs
+        ${MLAS_SRC_DIR}/arm64/ConvSymU8KernelDot.asm
+        ${MLAS_SRC_DIR}/arm64/ConvSymU8KernelNeon.asm
         ${MLAS_SRC_DIR}/arm64/DepthwiseConvsymKernelNeon.asm
         ${MLAS_SRC_DIR}/arm64/DepthwiseQConvKernelSize9Neon.asm
         ${MLAS_SRC_DIR}/arm64/QgemmU8X8KernelNeon.asm
@@ -268,6 +270,8 @@ else()
     if(ARM64 AND MLAS_SOURCE_IS_NOT_SET )
         enable_language(ASM)
         set(mlas_platform_srcs
+          ${MLAS_SRC_DIR}/aarch64/ConvSymU8KernelDot.S
+          ${MLAS_SRC_DIR}/aarch64/ConvSymU8KernelNeon.S
           ${MLAS_SRC_DIR}/aarch64/DepthwiseConvSymKernelNeon.S
           ${MLAS_SRC_DIR}/aarch64/DepthwiseQConvKernelSize9Neon.S
           ${MLAS_SRC_DIR}/aarch64/QgemmU8X8KernelNeon.S
@@ -355,6 +359,16 @@ else()
           ${mlas_platform_srcs_sse2}
           ${mlas_platform_srcs_avx}
         )
+
+        # In r23, NDK remove __x86.get_pc_thunk.* from libatomic. Add our own
+        # implementation to avoid external dependency.
+        if(ANDROID)
+          set(mlas_platform_srcs
+            ${mlas_platform_srcs}
+            ${MLAS_SRC_DIR}/x86/x86.get_pc_thunk.S
+          )
+	endif()
+
         if(NOT ONNXRUNTIME_MLAS_MULTI_ARCH)
           set(MLAS_SOURCE_IS_NOT_SET 0)
         endif()
@@ -461,4 +475,7 @@ endforeach()
 set_target_properties(onnxruntime_mlas PROPERTIES FOLDER "ONNXRuntime")
 if (WIN32)
   target_compile_options(onnxruntime_mlas PRIVATE "/wd6385" "/wd4127")
+  if (onnxruntime_ENABLE_STATIC_ANALYSIS)
+    target_compile_options(onnxruntime_mlas PRIVATE  "/analyze:stacksize 131072")
+  endif()
 endif()

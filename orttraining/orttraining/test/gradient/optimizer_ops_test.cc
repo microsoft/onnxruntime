@@ -917,20 +917,20 @@ void run_lamb_mix_precision_test(
 TEST(OptimizerTest, LambOptimizerTestVector) {
   // Input tensors and attributes.
   const std::vector<int64_t> shape = {2};
-  const float eta = 0.5f;
+  constexpr float eta = 0.5f;
   const std::vector<float> w = {1.0f, 2.0f};
   const std::vector<float> g = {3.0f, 4.0f};
   const std::vector<float> m = {-1.0f, -2.0f};
   const std::vector<float> v = {2.0f, 1.0f};
-  const float lambda = 0.5f;
-  const float alpha = 0.2f;
-  const float beta = 0.8f;
-  const float epsilon = 1e-6f;
-  const float max_norm = 1.0f;
+  constexpr float lambda = 0.5f;
+  constexpr float alpha = 0.2f;
+  constexpr float beta = 0.8f;
+  constexpr float epsilon = 1e-6f;
+  constexpr float max_norm = 1.0f;
 
-  const int64_t step = 0;
-  const float loss_scale = 1.f;
-  const float scaled_g_norm = 1.f;
+  constexpr int64_t step = 0;
+  constexpr float loss_scale = 1.f;
+  constexpr float scaled_g_norm = 1.f;
   run_multi_tensor_lamb_test(
       {shape},
       eta,
@@ -951,19 +951,19 @@ TEST(OptimizerTest, LambOptimizerTestVector) {
 TEST(OptimizerTest, LambOptimizerTestVectorWithZeroWeight) {
   // Input tensors and attributes.
   const std::vector<int64_t> shape = {2};
-  const float eta = 0.5f;
+  constexpr float eta = 0.5f;
   const std::vector<float> w = {0.0f, 0.0f};
   const std::vector<float> g = {1.0f, -1.0f};
   const std::vector<float> m = {-1.0f, -2.0f};
   const std::vector<float> v = {2.0f, 1.0f};
-  const float lambda = 0.5f;
-  const float alpha = 0.2f;
-  const float beta = 0.8f;
-  const float epsilon = 1e-6f;
-  const float max_norm = 1.0f;
-  const int64_t step = 0;
-  const float loss_scale = 1.f;
-  const float scaled_g_norm = 1.f;
+  constexpr float lambda = 0.5f;
+  constexpr float alpha = 0.2f;
+  constexpr float beta = 0.8f;
+  constexpr float epsilon = 1e-6f;
+  constexpr float max_norm = 1.0f;
+  constexpr int64_t step = 0;
+  constexpr float loss_scale = 1.f;
+  constexpr float scaled_g_norm = 1.f;
   run_multi_tensor_lamb_test(
       {shape},
       eta,
@@ -984,21 +984,21 @@ TEST(OptimizerTest, LambOptimizerTestVectorWithZeroWeight) {
 TEST(OptimizerTest, LambOptimizerRatioMin) {
   // Input tensors and attributes.
   const std::vector<int64_t> shape = {2};
-  const float eta = 0.5f;
+  constexpr float eta = 0.5f;
   const std::vector<float> w = {-1.0f, 1.0f};
   const std::vector<float> g = {1.0f, -1.0f};
   const std::vector<float> m = {-1.0f, -2.0f};
   const std::vector<float> v = {2.0f, 1.0f};
-  const float lambda = 0.5f;
-  const float alpha = 0.2f;
-  const float beta = 0.8f;
-  const float epsilon = 1e-6f;
-  const float max_norm = 1.0f;
-  const int64_t step = 0;
-  const float loss_scale = 1.f;
-  const float scaled_g_norm = 1.f;
-  const float ratio_min = -std::numeric_limits<float>::infinity();
-  const float ratio_max = 0.1f;
+  constexpr float lambda = 0.5f;
+  constexpr float alpha = 0.2f;
+  constexpr float beta = 0.8f;
+  constexpr float epsilon = 1e-6f;
+  constexpr float max_norm = 1.0f;
+  constexpr int64_t step = 0;
+  constexpr float loss_scale = 1.f;
+  constexpr float scaled_g_norm = 1.f;
+  constexpr float ratio_min = -std::numeric_limits<float>::infinity();
+  constexpr float ratio_max = 0.1f;
 
   run_multi_tensor_lamb_test(
       {shape},
@@ -1022,21 +1022,21 @@ TEST(OptimizerTest, LambOptimizerRatioMin) {
 TEST(OptimizerTest, LambOptimizerRatioMax) {
   // Input tensors and attributes.
   const std::vector<int64_t> shape = {2};
-  const float eta = 0.5f;
+  constexpr float eta = 0.5f;
   const std::vector<float> w = {0.0001f, -0.0001f};
   const std::vector<float> g = {1.0f, -1.0f};
   const std::vector<float> m = {-1.0f, -2.0f};
   const std::vector<float> v = {2.0f, 1.0f};
-  const float lambda = 0.5f;
-  const float alpha = 0.2f;
-  const float beta = 0.8f;
-  const float epsilon = 1e-6f;
-  const float max_norm = 1.0f;
-  const int64_t step = 0;
-  const float loss_scale = 1.f;
-  const float scaled_g_norm = 1.f;
-  const float ratio_min = 1.0f;
-  const float ratio_max = std::numeric_limits<float>::infinity();
+  constexpr float lambda = 0.5f;
+  constexpr float alpha = 0.2f;
+  constexpr float beta = 0.8f;
+  constexpr float epsilon = 1e-6f;
+  constexpr float max_norm = 1.0f;
+  constexpr int64_t step = 0;
+  constexpr float loss_scale = 1.f;
+  constexpr float scaled_g_norm = 1.f;
+  constexpr float ratio_min = 1.0f;
+  constexpr float ratio_max = std::numeric_limits<float>::infinity();
 
   run_multi_tensor_lamb_test(
       {shape},
@@ -1060,20 +1060,20 @@ TEST(OptimizerTest, LambOptimizerRatioMax) {
 TEST(OptimizerTest, LambOptimizerTestBiasCorrectionFirst) {
   // Input tensors and attributes.
   const std::vector<int64_t> shape = {2};
-  const float eta = 0.5f;
+  constexpr float eta = 0.5f;
   const std::vector<float> w = {1.0f, 2.0f};
   const std::vector<float> g = {3.0f, 4.0f};
   const std::vector<float> m = {-1.0f, -2.0f};
   const std::vector<float> v = {2.0f, 1.0f};
-  const float lambda = 0.5f;
-  const float alpha = 0.2f;
-  const float beta = 0.8f;
-  const float epsilon = 1e-6f;
-  const float max_norm = 1.0f;
+  constexpr float lambda = 0.5f;
+  constexpr float alpha = 0.2f;
+  constexpr float beta = 0.8f;
+  constexpr float epsilon = 1e-6f;
+  constexpr float max_norm = 1.0f;
 
-  const int64_t step = 1;
-  const float loss_scale = 1.f;
-  const float scaled_g_norm = 1.f;
+  constexpr int64_t step = 1;
+  constexpr float loss_scale = 1.f;
+  constexpr float scaled_g_norm = 1.f;
   run_multi_tensor_lamb_test(
       {shape},
       eta,
@@ -1094,20 +1094,20 @@ TEST(OptimizerTest, LambOptimizerTestBiasCorrectionFirst) {
 TEST(OptimizerTest, LambOptimizerTestBiasCorrectionThird) {
   // Input tensors and attributes.
   const std::vector<int64_t> shape = {2};
-  const float eta = 0.5f;
+  constexpr float eta = 0.5f;
   const std::vector<float> w = {1.0f, 2.0f};
   const std::vector<float> g = {3.0f, 4.0f};
   const std::vector<float> m = {-1.0f, -2.0f};
   const std::vector<float> v = {2.0f, 1.0f};
-  const float lambda = 0.5f;
-  const float alpha = 0.2f;
-  const float beta = 0.8f;
-  const float epsilon = 1e-6f;
-  const float max_norm = 1.0f;
+  constexpr float lambda = 0.5f;
+  constexpr float alpha = 0.2f;
+  constexpr float beta = 0.8f;
+  constexpr float epsilon = 1e-6f;
+  constexpr float max_norm = 1.0f;
 
-  const int64_t step = 3;
-  const float loss_scale = 1.f;
-  const float scaled_g_norm = 1.f;
+  constexpr int64_t step = 3;
+  constexpr float loss_scale = 1.f;
+  constexpr float scaled_g_norm = 1.f;
   run_multi_tensor_lamb_test(
       {shape},
       eta,
@@ -1129,20 +1129,20 @@ TEST(OptimizerTest, LambOptimizerTestBiasCorrectionThird) {
 TEST(OptimizerTest, LambOptimizerTest4DTensor) {
   // Input tensors and attributes.
   const std::vector<int64_t> shape = {2, 1, 1, 1};
-  const float eta = 0.5f;
+  constexpr float eta = 0.5f;
   const std::vector<float> w = {1.0f, 2.0f};
   const std::vector<float> g = {3.0f, 4.0f};
   const std::vector<float> m = {-1.0f, -2.0f};
   const std::vector<float> v = {2.0f, 1.0f};
-  const float lambda = 0.5f;
-  const float alpha = 0.2f;
-  const float beta = 0.8f;
-  const float epsilon = 1e-6f;
-  const float max_norm = 1.0f;
+  constexpr float lambda = 0.5f;
+  constexpr float alpha = 0.2f;
+  constexpr float beta = 0.8f;
+  constexpr float epsilon = 1e-6f;
+  constexpr float max_norm = 1.0f;
 
-  const int64_t step = 0;
-  const float loss_scale = 1.f;
-  const float scaled_g_norm = 1.f;
+  constexpr int64_t step = 0;
+  constexpr float loss_scale = 1.f;
+  constexpr float scaled_g_norm = 1.f;
   run_multi_tensor_lamb_test(
       {shape},
       eta,
@@ -1164,20 +1164,20 @@ TEST(OptimizerTest, LambOptimizerTest4DTensor) {
 TEST(OptimizerTest, LambOptimizerTest2by3Tensor) {
   // Input tensors and attributes.
   const std::vector<int64_t> shape = {2, 3};
-  const float eta = 0.5f;
+  constexpr float eta = 0.5f;
   const std::vector<float> w = {1.0f, 2.0f, 1.0f, 1.0f, 2.0f, 2.0f};
   const std::vector<float> g = {3.0f, 4.0f, 3.0f, 3.0f, 4.0f, 4.0f};
   const std::vector<float> m = {-1.0f, -2.0f, 2.0f, 1.0f, 1.0f, -2.0f};
   const std::vector<float> v = {1.0f, 1.0f, 5.0f, 5.0f, 6.0f, 6.0f};
-  const float lambda = 0.5f;
-  const float alpha = 0.2f;
-  const float beta = 0.8f;
-  const float epsilon = 1e-6f;
-  const float max_norm = 1.0f;
+  constexpr float lambda = 0.5f;
+  constexpr float alpha = 0.2f;
+  constexpr float beta = 0.8f;
+  constexpr float epsilon = 1e-6f;
+  constexpr float max_norm = 1.0f;
 
-  const int64_t step = 0;
-  const float loss_scale = 1.f;
-  const float scaled_g_norm = 1.f;
+  constexpr int64_t step = 0;
+  constexpr float loss_scale = 1.f;
+  constexpr float scaled_g_norm = 1.f;
   run_multi_tensor_lamb_test(
       {shape},
       eta,
@@ -1199,19 +1199,19 @@ TEST(OptimizerTest, LambOptimizerTest2by3Tensor) {
 TEST(OptimizerTest, LambOptimizerTestScalar) {
   // Input tensors and attributes.
   const std::vector<int64_t> shape = {(int64_t)1};
-  const float eta = 0.5f;
+  constexpr float eta = 0.5f;
   const std::vector<float> w = {1.0f};
   const std::vector<float> g = {3.0f};
   const std::vector<float> m = {-10.0f};
   const std::vector<float> v = {1.0f};
-  const float lambda = 0.5f;
-  const float alpha = 0.2f;
-  const float beta = 0.8f;
-  const float epsilon = 1e-6f;
-  const float max_norm = 1.0f;
-  const int64_t step = 0;
-  const float loss_scale = 1.f;
-  const float scaled_g_norm = 1.f;
+  constexpr float lambda = 0.5f;
+  constexpr float alpha = 0.2f;
+  constexpr float beta = 0.8f;
+  constexpr float epsilon = 1e-6f;
+  constexpr float max_norm = 1.0f;
+  constexpr int64_t step = 0;
+  constexpr float loss_scale = 1.f;
+  constexpr float scaled_g_norm = 1.f;
 
   // Intermediate and output buffers of the optimizer.
   std::vector<float> m_new = {0.0f};
@@ -1239,24 +1239,24 @@ TEST(OptimizerTest, LambOptimizerTestScalar) {
 TEST(OptimizerTest, LambOptimizerTestScalar_NonDefaultMaxNormClipping) {
   // Input tensors and attributes.
   const std::vector<int64_t> shape = {(int64_t)1};
-  const float eta = 0.5f;
+  constexpr float eta = 0.5f;
   const std::vector<float> w = {1.0f};
   const std::vector<float> g = {3.0f};
   const std::vector<float> m = {-10.0f};
   const std::vector<float> v = {1.0f};
-  const float lambda = 0.5f;
-  const float alpha = 0.2f;
-  const float beta = 0.8f;
-  const float epsilon = 1e-6f;
-  const float max_norm = 0.1f;
+  constexpr float lambda = 0.5f;
+  constexpr float alpha = 0.2f;
+  constexpr float beta = 0.8f;
+  constexpr float epsilon = 1e-6f;
+  constexpr float max_norm = 0.1f;
 
   // Intermediate and output buffers of the optimizer.
   std::vector<float> m_new = {0.0f};
   std::vector<float> v_new = {0.0f};
   std::vector<float> w_new = {0.0f};
 
-  const int64_t step = 0;
-  const float loss_scale = 1.0f;
+  constexpr int64_t step = 0;
+  constexpr float loss_scale = 1.0f;
   const float scaled_g_norm = g[0];
   run_multi_tensor_lamb_test(
       {shape},
@@ -1278,19 +1278,19 @@ TEST(OptimizerTest, LambOptimizerTestScalar_NonDefaultMaxNormClipping) {
 TEST(OptimizerTest, LambOptimizerTestScalarScaling) {
   // Input tensors and attributes.
   const std::vector<int64_t> shape = {(int64_t)1};
-  const float eta = 0.5f;
+  constexpr float eta = 0.5f;
   const std::vector<float> w = {1.0f};
   const std::vector<float> g = {3.0f};
   const std::vector<float> m = {-10.0f};
   const std::vector<float> v = {1.0f};
-  const float lambda = 0.5f;
-  const float alpha = 0.2f;
-  const float beta = 0.8f;
-  const float epsilon = 1e-6f;
-  const float max_norm = 1.0f;
-  const int64_t step = 0;
-  const float loss_scale = 8.f;
-  const float scaled_g_norm = 4.f;
+  constexpr float lambda = 0.5f;
+  constexpr float alpha = 0.2f;
+  constexpr float beta = 0.8f;
+  constexpr float epsilon = 1e-6f;
+  constexpr float max_norm = 1.0f;
+  constexpr int64_t step = 0;
+  constexpr float loss_scale = 8.f;
+  constexpr float scaled_g_norm = 4.f;
 
   // Intermediate and output buffers of the optimizer.
   std::vector<float> m_new = {0.0f};
@@ -1331,11 +1331,11 @@ TEST(OptimizerTest, LambOptimizerTestExternalBaseline) {
       4.2659229e+01f, 1.1438165e+02f, 9.3179581e+01f, 4.7399229e-01f, 3.4129276e+01f,
       9.0019435e-02f, 1.4493006e+01f, 3.9455612e+01f, 9.3025581e+01f, 1.6000764e+0f};
 
-  const float lambda = 0.1f;
-  const float alpha = 0.1f;
-  const float beta = 0.01f;
-  const float epsilon = 0.1f;
-  const float max_norm = 1.0f;
+  constexpr float lambda = 0.1f;
+  constexpr float alpha = 0.1f;
+  constexpr float beta = 0.01f;
+  constexpr float epsilon = 0.1f;
+  constexpr float max_norm = 1.0f;
 
   std::vector<float> w_new = {
       0.02979828f, 0.13677707f, -0.22708717f, -0.20361158f, -0.15338624f, 0.1081504f,
@@ -1376,11 +1376,11 @@ TEST(OptimizerTest, LambOptimizerTestExternalBaselineDouble) {
       4.2659229e+01, 1.1438165e+02, 9.3179581e+01, 4.7399229e-01, 3.4129276e+01,
       9.0019435e-02, 1.4493006e+01, 3.9455612e+01, 9.3025581e+01, 1.6000764e+0};
 
-  const float lambda = 0.1f;
-  const float alpha = 0.1f;
-  const float beta = 0.01f;
-  const float epsilon = 0.1f;
-  const float max_norm = 1.0f;
+  constexpr float lambda = 0.1f;
+  constexpr float alpha = 0.1f;
+  constexpr float beta = 0.01f;
+  constexpr float epsilon = 0.1f;
+  constexpr float max_norm = 1.0f;
 
   std::vector<double> w_new = {
       0.02979828, 0.13677707, -0.22708717, -0.20361158, -0.15338624, 0.1081504,
@@ -1412,12 +1412,12 @@ TEST(OptimizerTest, LambOptimizerTest5DTensorMixPrecision32_16) {
   const std::vector<float> m = {1.0f, 2.0f, -0.25f, 1.1f, 1.0f, 2.0f, -0.21f, 1.1f};
   const std::vector<float> v = {1.5f, 1.0f, 1.1f, 0.76f, 1.5f, 1.0f, 1.5f, 0.76f};
 
-  const float lambda = 1.5f;
-  const float alpha = 1.5f;
-  const float beta = 1.5f;
-  const float epsilon = 1.0f;
-  const float max_norm = 1.0f;
-  const float loss_scale = 1.0f;
+  constexpr float lambda = 1.5f;
+  constexpr float alpha = 1.5f;
+  constexpr float beta = 1.5f;
+  constexpr float epsilon = 1.0f;
+  constexpr float max_norm = 1.0f;
+  constexpr float loss_scale = 1.0f;
   run_lamb_mix_precision_test(
       shape, eta, w, g, m, v, lambda, alpha, beta, epsilon, max_norm);
 
@@ -1436,12 +1436,12 @@ TEST(OptimizerTest, LambOptimizerTestSimpleBaselineMixPrecision32_16) {
   const std::vector<float> m = {1.0f, 1.0f};
   const std::vector<float> v = {0.0f, 0.0f};
 
-  const float lambda = 0.0f;
-  const float alpha = 1.0f;
-  const float beta = 1.0f;
-  const float epsilon = 1.0f;
-  const float max_norm = 1.0f;
-  const float loss_scale = 1.0f;
+  constexpr float lambda = 0.0f;
+  constexpr float alpha = 1.0f;
+  constexpr float beta = 1.0f;
+  constexpr float epsilon = 1.0f;
+  constexpr float max_norm = 1.0f;
+  constexpr float loss_scale = 1.0f;
   run_lamb_mix_precision_test(
       shape, eta, w, g, m, v,
       lambda, alpha, beta, epsilon, max_norm);
@@ -1461,12 +1461,12 @@ TEST(OptimizerTest, LambOptimizerTestBaselineMixPrecision32_16) {
   const std::vector<float> m = {0.87f, -0.94f};
   const std::vector<float> v = {0.12f, 0.28f};
 
-  const float lambda = 0.25f;
-  const float alpha = 0.9f;
-  const float beta = 0.95f;
-  const float epsilon = 0.33f;
-  const float max_norm = 1.0f;
-  const float loss_scale = 1.0f;
+  constexpr float lambda = 0.25f;
+  constexpr float alpha = 0.9f;
+  constexpr float beta = 0.95f;
+  constexpr float epsilon = 0.33f;
+  constexpr float max_norm = 1.0f;
+  constexpr float loss_scale = 1.0f;
 
   run_lamb_mix_precision_test(
       shape, eta, w, g, m, v,
@@ -1487,12 +1487,12 @@ TEST(OptimizerTest, LambOptimizerTestScalarMixPrecision32_16) {
   const std::vector<float> m = {0.87f};
   const std::vector<float> v = {0.12f};
 
-  const float lambda = 0.25f;
-  const float alpha = 0.9f;
-  const float beta = 0.95f;
-  const float epsilon = 0.33f;
-  const float max_norm = 1.0f;
-  const float loss_scale = 1.0f;
+  constexpr float lambda = 0.25f;
+  constexpr float alpha = 0.9f;
+  constexpr float beta = 0.95f;
+  constexpr float epsilon = 0.33f;
+  constexpr float max_norm = 1.0f;
+  constexpr float loss_scale = 1.0f;
 
   run_lamb_mix_precision_test(
       shape, eta, w, g, m, v,
@@ -1513,12 +1513,12 @@ TEST(OptimizerTest, LambOptimizerTestScalarMixPrecision32_16_NoDefaultMaxNormCli
   const std::vector<float> m = {0.87f};
   const std::vector<float> v = {0.12f};
 
-  const float lambda = 0.25f;
-  const float alpha = 0.9f;
-  const float beta = 0.95f;
-  const float epsilon = 0.33f;
-  const float max_norm = 0.1f;
-  const float loss_scale = 1.0f;
+  constexpr float lambda = 0.25f;
+  constexpr float alpha = 0.9f;
+  constexpr float beta = 0.95f;
+  constexpr float epsilon = 0.33f;
+  constexpr float max_norm = 0.1f;
+  constexpr float loss_scale = 1.0f;
 
   run_lamb_mix_precision_test(
       shape, eta, w, g, m, v,
@@ -1535,7 +1535,7 @@ TEST(OptimizerTest, LambOptimizerTestLarge) {
   // Input tensors and attributes.
   for (const auto& size : {55667, 1944006, 3907584}) {
     const std::vector<int64_t> shape = {static_cast<int64_t>(size)};
-    const float eta = 0.5f;
+    constexpr float eta = 0.5f;
     std::vector<float> w(size);
     std::vector<float> g(size);
     std::vector<float> m(size);
@@ -1551,14 +1551,14 @@ TEST(OptimizerTest, LambOptimizerTestLarge) {
       v[i] = dist(random_engine);
     }
 
-    const float lambda = 0.5f;
-    const float alpha = 0.2f;
-    const float beta = 0.8f;
-    const float epsilon = 1e-6f;
-    const float max_norm = 1.0f;
-    const int64_t step = 0;
-    const float loss_scale = 1.f;
-    const float scaled_g_norm = 1.f;
+    constexpr float lambda = 0.5f;
+    constexpr float alpha = 0.2f;
+    constexpr float beta = 0.8f;
+    constexpr float epsilon = 1e-6f;
+    constexpr float max_norm = 1.0f;
+    constexpr int64_t step = 0;
+    constexpr float loss_scale = 1.f;
+    constexpr float scaled_g_norm = 1.f;
 
     run_multi_tensor_lamb_test(
         {shape},
@@ -1579,7 +1579,7 @@ TEST(OptimizerTest, LambOptimizerTestLarge) {
 }
 
 TEST(OptimizerTest, LambOptimizerMultiTensorRatio) {
-  const int group_count = 127;
+  constexpr int group_count = 127;
   std::random_device random_device;
   std::mt19937 random_engine(0);
   std::uniform_real_distribution<float> dist(0.1f, 1.0f);
@@ -1624,9 +1624,9 @@ TEST(OptimizerTest, LambOptimizerMultiTensorRatio) {
     max_norms[i] = dist(random_engine);
   }
 
-  const int64_t step = 0;
+  constexpr int64_t step = 0;
   float loss_scale = 1.f;
-  const float scaled_g_norm = 1.f;
+  constexpr float scaled_g_norm = 1.f;
 
   run_multi_tensor_lamb_test(
       shapes, eta,

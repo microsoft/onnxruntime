@@ -173,7 +173,7 @@ Status SoftmaxCrossEntropyLoss<T1, T2>::Compute(OpKernelContext* context) const 
 
     // Compute weighed loss for each sample while summing weights for unignored target/label values.
     if (reduction_ == ReductionType::MEAN) {
-      for (int i = 0; i < n_d; i++) {
+      for (ptrdiff_t i = 0; i < n_d; i++) {
         if (ignore_index == label_data[i]) {
           loss_sample[i] = 0;
         } else {
@@ -182,7 +182,7 @@ Status SoftmaxCrossEntropyLoss<T1, T2>::Compute(OpKernelContext* context) const 
         }
       }
     } else {
-      for (int i = 0; i < n_d; i++) {
+      for (ptrdiff_t i = 0; i < n_d; i++) {
         if (ignore_index == label_data[i]) {
           loss_sample[i] = 0;
         } else {
@@ -203,7 +203,7 @@ Status SoftmaxCrossEntropyLoss<T1, T2>::Compute(OpKernelContext* context) const 
   } else {
     // Compute loss for each sample while counting unignored target/label values.
     int unignored_samples = 0;
-    for (int i = 0; i < n_d; i++) {
+    for (ptrdiff_t i = 0; i < n_d; i++) {
       if (ignore_index == label_data[i]) {
         loss_sample[i] = 0;
       } else {

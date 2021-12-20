@@ -69,7 +69,7 @@ static int64_t GetSeqIdx(const Tensor& idx_tensor) {
   return seq_idx;
 }
 
-bool ValidateSeqIdx(int64_t input_seq_idx, int64_t seq_size) {
+constexpr bool ValidateSeqIdx(int64_t input_seq_idx, int64_t seq_size) {
   bool retval = false;
   if (input_seq_idx < 0) {
     retval = input_seq_idx <= -1 && input_seq_idx >= -seq_size;
@@ -536,7 +536,7 @@ Status SplitToSequence::ComputeImpl(OpKernelContext& context, const Tensor& inpu
           copy_data<T>(src, dst, count);
         });
 
-    input_offset += split_size * after_dims_excluding_split;  // offset by the N data we used in this iteration
+    input_offset += static_cast<int64_t>(split_size) * after_dims_excluding_split;  // offset by the N data we used in this iteration
 
     // if keep_dims = 0, reshape the tensor by dropping the dimension corresponding to 'axis'
     if (use_keep_dims && keepdims_ == 0) {

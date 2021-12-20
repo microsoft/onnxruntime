@@ -49,8 +49,8 @@ TEST(InternalTestingEP, TestSortResultsInSinglePartition) {
 
     ASSERT_STATUS_OK(session->Initialize());
 
-    const auto& func_mgr = session->GetSessionState().GetFuncMgr();
-    NodeComputeInfo* compute_func = nullptr;
+    auto& func_mgr = const_cast<SessionState&>(session->GetSessionState()).GetMutableFuncMgr();
+    const NodeComputeInfo* compute_func = nullptr;
 
     int num_partitions{0}, num_other_nodes{0};
 
@@ -94,8 +94,8 @@ TEST(InternalTestingEP, TestDependenciesCorrectlyHandled) {
 
   ASSERT_STATUS_OK(session->Initialize());  // this should fail if we don't process dependencies correctly
 
-  const auto& func_mgr = session->GetSessionState().GetFuncMgr();
-  NodeComputeInfo* compute_func = nullptr;
+  auto& func_mgr = const_cast<SessionState&>(session->GetSessionState()).GetMutableFuncMgr();
+  const NodeComputeInfo* compute_func = nullptr;
 
   int num_partitions{0};
   int num_other_nodes{0};
@@ -235,8 +235,8 @@ static void TestNnapiPartitioning(const std::string& test_name, const std::strin
     unsupported_op_str = oss.str();
   }
 
-  const auto& func_mgr = session->GetSessionState().GetFuncMgr();
-  NodeComputeInfo* compute_func = nullptr;
+  auto& func_mgr = const_cast<SessionState&>(session->GetSessionState()).GetMutableFuncMgr();
+  const NodeComputeInfo* compute_func = nullptr;
 
   stats.num_nodes_not_handled = 0;
   stats.num_compiled_nodes = 0;
@@ -319,7 +319,7 @@ TEST(InternalTestingEP, DISABLED_TestNnapiPartitioningMlPerfModels) {
       }
       std::cout << std::endl;
 
-      const bool debug_output = false;
+      constexpr bool debug_output = false;
       PartitionStats stats{}, stop_at_nms_stats{}, slice_stats{};
 
       // arbitrary examples of running different combinations to test what partitioning results
