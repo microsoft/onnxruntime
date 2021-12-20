@@ -30,6 +30,11 @@ OrtValue create_ort_value(
 
 OrtValue create_ort_value(
   onnxruntime::ORTInvoker& invoker,
+  const at::Scalar& scalar,
+  at::ScalarType type);
+
+OrtValue create_ort_value(
+  onnxruntime::ORTInvoker& invoker,
   const at::Tensor& tensor);
 
 OrtValue create_ort_value(const at::Tensor& tensor);
