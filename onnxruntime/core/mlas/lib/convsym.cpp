@@ -51,6 +51,21 @@ void
     unsigned KernelFlags
     );
 
+//
+// Processor for common kernel sized (e.g. 3x3, 5x5)
+//
+typedef
+void
+(MLASCALL MLAS_SYMM_QCONV_DEPTHWISE_FIXFILTER_PROC)(
+    void const* const* InputIndirection,
+    int8_t const* Filter,
+    size_t Channels,
+    void* Output,
+    size_t OutputCount,
+    MLAS_CONV_SYM_POST_PROCESS_PARAMS const* PostProcessParams,
+    unsigned KernelFlags
+    );
+
 
 extern "C" {
 
@@ -78,10 +93,10 @@ extern "C" {
 void
 MLASCALL
 MlasConvSymDepthwiseKernelSize9Arm64U8S8(
-    uint8_t const* const* InputIndirection,
+    void const* const* InputIndirection,
     int8_t const* Filter,
     size_t Channels,
-    uint8_t* Output,
+    void* Output,
     size_t OutputCount,
     MLAS_CONV_SYM_POST_PROCESS_PARAMS const* PostProcessParams,
     unsigned KernelFlags
@@ -90,27 +105,22 @@ MlasConvSymDepthwiseKernelSize9Arm64U8S8(
 void
 MLASCALL
 MlasConvSymDepthwiseKernelSize9Arm64S8S8(
-    int8_t const* const* InputIndirection,
+    void const* const* InputIndirection,
     int8_t const* Filter,
     size_t Channels,
-    int8_t* Output,
+    void* Output,
     size_t OutputCount,
     MLAS_CONV_SYM_POST_PROCESS_PARAMS const* PostProcessParams,
     unsigned KernelFlags
     );
 
-
-#endif
-}
-
-#if defined(MLAS_TARGET_ARM64)
 void
 MLASCALL
 MlasConvSymDepthwiseKernelSize25ArmS8S8(
-    int8_t const* const* InputIndirection,
+    void const* const* InputIndirection,
     int8_t const* Filter,
     size_t Channels,
-    int8_t* Output,
+    void* Output,
     size_t OutputCount,
     MLAS_CONV_SYM_POST_PROCESS_PARAMS const* PostProcessParams,
     unsigned KernelFlags
@@ -119,19 +129,23 @@ MlasConvSymDepthwiseKernelSize25ArmS8S8(
 void
 MLASCALL
 MlasConvSymDepthwiseKernelSize25ArmU8S8(
-    uint8_t const* const* InputIndirection,
+    void const* const* InputIndirection,
     int8_t const* Filter,
     size_t Channels,
-    uint8_t* Output,
+    void* Output,
     size_t OutputCount,
     MLAS_CONV_SYM_POST_PROCESS_PARAMS const* PostProcessParams,
     unsigned KernelFlags
     );
+
 #endif
+}
 
 struct MLAS_CONV_SYM_DISPATCH {
     MLAS_CONV_SYM_KERNEL* Kernel;
     MLAS_CONV_SYM_DEPTHWISE_KERNEL* DepthwiseKernel;
+    MLAS_SYMM_QCONV_DEPTHWISE_FIXFILTER_PROC* Depthwise3x3Proc;
+    MLAS_SYMM_QCONV_DEPTHWISE_FIXFILTER_PROC* Depthwise5x5Proc;
     uint8_t FilterInputChannelPackCount;
     uint8_t FilterOutputChannelPackCount;
     uint8_t KernelChannelCount;
@@ -148,6 +162,8 @@ struct MLAS_CONV_SYM_DISPATCH {
 const MLAS_CONV_SYM_DISPATCH MlasConvSymDispatchAvx2 = {
     MlasConvSymKernelAvx2,
     MlasConvSymDepthwiseKernelAvx2,
+    nullptr,
+    nullptr,
     4,                                      // FilterInputChannelPackCount
     16,                                     // FilterOutputChannelPackCount
     16,                                     // KernelChannelCount
@@ -162,6 +178,8 @@ const MLAS_CONV_SYM_DISPATCH MlasConvSymDispatchAvx2 = {
 const MLAS_CONV_SYM_DISPATCH MlasConvSymDispatchAvxVnni = {
     MlasConvSymKernelAvxVnni,
     MlasConvSymDepthwiseKernelAvxVnni,
+    nullptr,
+    nullptr,
     4,                                      // FilterInputChannelPackCount
     16,                                     // FilterOutputChannelPackCount
     16,                                     // KernelChannelCount
@@ -178,6 +196,8 @@ const MLAS_CONV_SYM_DISPATCH MlasConvSymDispatchAvxVnni = {
 const MLAS_CONV_SYM_DISPATCH MlasConvSymDispatchAvx512Core = {
     MlasConvSymKernelAvx512Core,
     MlasConvSymDepthwiseKernelAvx512Core,
+    nullptr,
+    nullptr,
     4,                                      // FilterInputChannelPackCount
     16,                                     // FilterOutputChannelPackCount
     64,                                     // KernelChannelCount
@@ -192,6 +212,8 @@ const MLAS_CONV_SYM_DISPATCH MlasConvSymDispatchAvx512Core = {
 const MLAS_CONV_SYM_DISPATCH MlasConvSymDispatchAvx512Vnni = {
     MlasConvSymKernelAvx512Vnni,
     MlasConvSymDepthwiseKernelAvx512Vnni,
+    nullptr,
+    nullptr,
     4,                                      // FilterInputChannelPackCount
     16,                                     // FilterOutputChannelPackCount
     64,                                     // KernelChannelCount
@@ -209,6 +231,8 @@ const MLAS_CONV_SYM_DISPATCH MlasConvSymDispatchAvx512Vnni = {
 const MLAS_CONV_SYM_DISPATCH MlasConvSymU8DispatchNeon = {
     MlasConvSymU8KernelNeon,
     MlasConvSymDepthwiseU8KernelNeon,
+    MlasConvSymDepthwiseKernelSize9Arm64U8S8,
+    MlasConvSymDepthwiseKernelSize25ArmU8S8,
     8,   // FilterInputChannelPackCount
     8,   // FilterOutputChannelPackCount
     8,   // KernelChannelCount
@@ -223,6 +247,8 @@ const MLAS_CONV_SYM_DISPATCH MlasConvSymU8DispatchNeon = {
 const MLAS_CONV_SYM_DISPATCH MlasConvSymS8DispatchNeon = {
     MlasConvSymS8KernelNeon,
     MlasConvSymDepthwiseS8KernelNeon,
+    MlasConvSymDepthwiseKernelSize9Arm64S8S8,
+    MlasConvSymDepthwiseKernelSize25ArmS8S8,
     8,   // FilterInputChannelPackCount
     8,   // FilterOutputChannelPackCount
     8,   // KernelChannelCount
@@ -237,6 +263,8 @@ const MLAS_CONV_SYM_DISPATCH MlasConvSymS8DispatchNeon = {
 const MLAS_CONV_SYM_DISPATCH MlasConvSymU8DispatchDot = {
     MlasConvSymU8KernelDot,
     MlasConvSymDepthwiseU8KernelNeon,
+    MlasConvSymDepthwiseKernelSize9Arm64U8S8,
+    MlasConvSymDepthwiseKernelSize25ArmU8S8,
     4,   // FilterInputChannelPackCount
     16,  // FilterOutputChannelPackCount
     0,   // KernelChannelCount
@@ -251,6 +279,8 @@ const MLAS_CONV_SYM_DISPATCH MlasConvSymU8DispatchDot = {
 const MLAS_CONV_SYM_DISPATCH MlasConvSymS8DispatchDot = {
     MlasConvSymS8KernelDot,
     MlasConvSymDepthwiseS8KernelNeon,
+    MlasConvSymDepthwiseKernelSize9Arm64S8S8,
+    MlasConvSymDepthwiseKernelSize25ArmS8S8,
     4,   // FilterInputChannelPackCount
     16,  // FilterOutputChannelPackCount
     0,   // KernelChannelCount
@@ -328,7 +358,8 @@ MlasConvSymPackWSize(
 #ifdef MLAS_TARGET_ARM64
         // TODO!! remove this for functional testing!
         // TODO!! is there a way to know whether this is called by tests?
-        if (InputChannels < 128) {
+        if (KernelSize <= 1) return 0;
+        if (InputChannels < 64) {
             // Shallow indirect conv runs slower.
             // TODO!! for DOT arch, threshold should be 32 for better perf
             return 0;
@@ -522,40 +553,22 @@ MlasConvSymDepthwise(
 
     MlasConvSymSetOutputZeroPoint(PostProcessParams, Params.OutputZeroPoint, Params.InputIsSigned);
 
-#if defined(MLAS_TARGET_ARM64)
-
-    if ((Params.KernelSize == 9 || Params.KernelSize == 25) && (Params.OutputChannels & 15) == 0) {
+    if ((Params.OutputChannels & 15) == 0) {
         PostProcessParams.Bias = Params.Bias;
         PostProcessParams.Scale = Params.Scale;
-        if (Params.KernelSize == 9) {
-            if (Params.InputIsSigned) {
-                MlasConvSymDepthwiseKernelSize9Arm64S8S8(
-                    (int8_t const* const*)Params.InputIndirection, (int8_t const*)Params.Filter,
-                    Params.OutputChannels, (int8_t*)Params.Output, Params.OutputCount,
-                    &PostProcessParams, KernelFlags);
-            } else {
-                MlasConvSymDepthwiseKernelSize9Arm64U8S8(
-                    (uint8_t const* const*)Params.InputIndirection, (int8_t const*)Params.Filter,
-                    Params.OutputChannels, (uint8_t*)Params.Output, Params.OutputCount,
-                    &PostProcessParams, KernelFlags);
-            }
-        } else {
-            if (Params.InputIsSigned) {
-                MlasConvSymDepthwiseKernelSize25ArmS8S8(
-                    (int8_t const* const*)Params.InputIndirection, (int8_t const*)Params.Filter,
-                    Params.OutputChannels, (int8_t*)Params.Output, Params.OutputCount,
-                    &PostProcessParams, KernelFlags);
-            } else {
-                MlasConvSymDepthwiseKernelSize25ArmU8S8(
-                    (uint8_t const* const*)Params.InputIndirection, (int8_t const*)Params.Filter,
-                    Params.OutputChannels, (uint8_t*)Params.Output, Params.OutputCount,
-                    &PostProcessParams, KernelFlags);
-            }
+        if (ConvSymDispatch->Depthwise3x3Proc && Params.KernelSize == 9) {
+            ConvSymDispatch->Depthwise3x3Proc(Params.InputIndirection, (int8_t const*)Params.Filter,
+                                              Params.OutputChannels, Params.Output,
+                                              Params.OutputCount, &PostProcessParams, KernelFlags);
+            return;
         }
-        return;
+        if (ConvSymDispatch->Depthwise5x5Proc && Params.KernelSize == 25) {
+            ConvSymDispatch->Depthwise5x5Proc(Params.InputIndirection, (int8_t const*)Params.Filter,
+                                              Params.OutputChannels, Params.Output,
+                                              Params.OutputCount, &PostProcessParams, KernelFlags);
+            return;
+        }
     }
-
-#endif
 
     const size_t KernelChannelCount = ConvSymDispatch->KernelDepthwiseChannelCount;
     const size_t KernelOutputCount = ConvSymDispatch->KernelDepthwiseOutputCount;
