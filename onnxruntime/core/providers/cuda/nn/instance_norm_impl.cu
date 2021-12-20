@@ -26,8 +26,8 @@ __global__ void _InstanceNormKernel(
   fdm_C.divmod(nc, n, c);
 
   // Y = scale * (x - mean) / sqrt (std * std + epsilon) + B
-  //output_data[id] = scale[c] * (input_data[id] - mean[nc]) / _Sqrt(variance[nc] * (T)variance_correction + (T)epsilon) + bias[c];
-  output_data[id] = scale[c] * (input_data[id] - mean[nc]) / input_data[id] + bias[c];
+  output_data[id] = scale[c] * (input_data[id] - mean[nc]) / _Sqrt(variance[nc] * (T)variance_correction + (T)epsilon) + bias[c];
+  output_data[id] = (input_data[id] - mean[nc]) / input_data[id] + bias[c];
 }
 
 template <typename T>
