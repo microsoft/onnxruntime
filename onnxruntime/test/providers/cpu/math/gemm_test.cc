@@ -84,15 +84,15 @@ TEST(GemmOpTest, GemmNoTrans_f16) {
   test.AddOutput<MLFloat16>("Y", {2, 3}, f_Y);
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: fp16 is not supported
 }
+#endif
 
-TEST(GemmOpTest, GemmNoTrans_bfloat16) {
 #ifdef USE_CUDA
+TEST(GemmOpTest, GemmNoTrans_bfloat16) {
   int min_cuda_architecture = 530;
   if (!HasCudaEnvironment(min_cuda_architecture)) {
     LOGS_DEFAULT(WARNING) << "Hardware NOT support FP16";
     return;
   }
-#endif
   OpTester test("Gemm", 14);
   test.AddAttribute("transA", (int64_t)0);
   test.AddAttribute("transB", (int64_t)0);
