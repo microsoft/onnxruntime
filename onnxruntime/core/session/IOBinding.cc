@@ -17,7 +17,7 @@ common::Status IOBinding::BindInput(const std::string& name, const OrtValue& ml_
   size_t index = it.first->second;
   if (it.second) {
     feed_names_.push_back(name);
-    ORT_ENFORCE(index >= 0, "index cannot be negative, index=", index, " it.second=", it.second);
+    ORT_ENFORCE(index < feed_names_.size(), "index cannot be negative, index=", index, " it.second=", it.second);
     ORT_ENFORCE(mapped_feed_names_.size() == feed_names_.size(), "Size mismatch(1):", mapped_feed_names_.size(), "!=", feed_names_.size(), " index=", index, " it.second=", it.second);
     OrtValue new_mlvalue;
     feeds_.push_back(new_mlvalue);
