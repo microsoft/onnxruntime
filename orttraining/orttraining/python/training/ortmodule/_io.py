@@ -10,6 +10,8 @@ import torch
 import warnings
 import gc
 
+from collections import OrderedDict
+
 from ._fallback import _FallbackManager, ORTModuleIOError, ORTModuleONNXModelException, wrap_exception
 from ._utils import warn_of_constant_inputs
 
@@ -86,7 +88,8 @@ class _InputInfo(object):
                  schema=None,
                  num_positionals=0,
                  num_expanded_positionals_non_none=0,
-                 keyword_names=None):
+                 keyword_names=None,
+                 default_values_of_keyword_parameters=None):
         self.names = names
         self.shape = shape
         self.require_grad_names = require_grad_names if require_grad_names else []
@@ -95,6 +98,7 @@ class _InputInfo(object):
         self.num_positionals = num_positionals
         self.num_expanded_positionals_non_none = num_expanded_positionals_non_none
         self.keyword_names = keyword_names
+        self.default_values_of_keyword_parameters = default_values_of_keyword_parameters
 
     def __repr__(self) -> str:
         return f'''_InputInfo class:
@@ -105,14 +109,27 @@ class _InputInfo(object):
             \tSchema:                           {self.schema}
             \t#Positionals (total):             {self.num_positionals}
             \t#Expanded Positionals (non-None): {self.num_expanded_positionals_non_none}
-            \tKeyword names:                    {self.keyword_names}'''
+            \tKeyword names:                    {self.keyword_names}
+            \tdefault_values_of_keyword_parameters:{self.default_values_of_keyword_parameters}'''
 
     def flatten(self, args, kwargs, device):
         '''Flatten args and kwargs in a single tuple of tensors with strict ordering'''
 
         ret = [_PrimitiveType.get_tensor(arg, device) if _PrimitiveType.is_primitive_type(arg) else arg for arg in args]
-        ret += [_PrimitiveType.get_tensor(kwargs[name], device) if _PrimitiveType.is_primitive_type(kwargs[name])
-            else kwargs[name] for name in self.names if name in kwargs]
+
+        # keyword_argument = {name: _PrimitiveType.get_tensor(kwargs[name], device) if _PrimitiveType.is_primitive_type(kwargs[name])
+        #     else kwargs[name] for name in self.names if name in kwargs}
+
+        # if keyword_argument:
+        #     ret.append(keyword_argument)
+        # ret += [_PrimitiveType.get_tensor(kwargs[name], device) if _PrimitiveType.is_primitive_type(kwargs[name])
+        #     else kwargs[name] for name in self.names if name in kwargs]
+
+        for name in self.default_values_of_keyword_parameters:
+            if name in kwargs:
+                ret.append(kwargs[name])
+            else:
+                ret.append(self.default_values_of_keyword_parameters[name])
 
         # if kwargs is empty, append an empty dictionary at the end of the sample inputs to make exporter
         # happy. This is because the exporter is confused with kwargs and dictionary inputs otherwise.
@@ -125,8 +142,21 @@ class _InputInfo(object):
         '''Unflatten tuple of tensors into args and kwargs'''
 
         args = tuple(flat_args[:self.num_positionals])
-        kwargs = {name: arg for name, arg in zip(self.names[self.num_expanded_positionals_non_none:], flat_args[self.num_positionals:]) \
-            if name in self.keyword_names}
+        kwargs = {}
+        for i, arg in enumerate(flat_args[self.num_positionals:]):
+            name = list(self.default_values_of_keyword_parameters.keys())[i]
+            # value = list(self.default_values_of_keyword_parameters.values())[i]
+            #print(name, arg, value)
+            if name in self.keyword_names:
+                if torch.is_tensor(arg) and arg.dtype == torch.bool:
+                    arg = bool(arg)
+                    print('converting input param of type tensor(bool) to bool, ', name)
+                kwargs[name] = arg
+
+        # kwargs = {name: arg for name, arg in zip(self.names[self.num_expanded_positionals_non_none:], flat_args[self.num_positionals:]) \
+        #     if name in self.keyword_names}
+
+        # kwargs = {name: value for name, value in flat_args[-1].items()}
         return args, kwargs
 
 def _combine_input_buffers_initializers(params, onnx_input_names, input_info, buffer_names, inputs, kwargs, device):
@@ -494,6 +524,7 @@ def parse_inputs_for_onnx_export(all_input_parameters, onnx_graph, schema, input
     input_shape = []
     var_positional_idx = 0
     num_expanded_non_none_positional_inputs = 0
+    default_values_of_keyword_parameters = OrderedDict()
 
     for input_idx, input_parameter in enumerate(all_input_parameters):
         if input_parameter.kind == inspect.Parameter.VAR_POSITIONAL:
@@ -522,11 +553,14 @@ def parse_inputs_for_onnx_export(all_input_parameters, onnx_graph, schema, input
                 _add_input(name, inp, onnx_graph, onnx_graph_input_names)
             if is_positional:
                 num_expanded_non_none_positional_inputs += num_expanded_non_none_inputs_local
+            else:
+                default_values_of_keyword_parameters[name] = input_parameter.default
         elif input_parameter.kind == inspect.Parameter.VAR_KEYWORD:
             # **kwargs is always the last argument of forward()
             for name,inp in kwargs.items():
                 if name not in input_names:
                     _add_input(name, inp, onnx_graph, onnx_graph_input_names)
+                    default_values_of_keyword_parameters[name] = input_parameter.default
 
 
     # input_names have been expanded so to get the correct number of non none
@@ -538,7 +572,8 @@ def parse_inputs_for_onnx_export(all_input_parameters, onnx_graph, schema, input
                       schema=schema,
                       num_positionals=len(inputs),
                       num_expanded_positionals_non_none=num_expanded_non_none_positional_inputs,
-                      keyword_names=list(kwargs.keys()))
+                      keyword_names=list(kwargs.keys()),
+                      default_values_of_keyword_parameters=default_values_of_keyword_parameters)
 
 
 def parse_outputs_for_onnx_export_and_extract_schema(module, inputs, kwargs):

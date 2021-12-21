@@ -357,6 +357,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         # NOTE: Flattening the input will change the 'input schema', resulting in a re-export
         sample_inputs_as_tuple = tuple(self._input_info.flatten(
             sample_inputs_copy, sample_kwargs_copy, self._device))
+        
         # Ops behaving differently under train/eval mode need to exported with the
         # correct training flag to reflect the expected behavior.
         # For example, the Dropout node in a model is dropped under eval mode.
