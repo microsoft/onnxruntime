@@ -21,7 +21,6 @@
 #include <memory>
 #include "flatbuffers/idl.h"
 #include "ort_trt_int8_cal_table.fbs.h"
-#include <iostream>
 
 #ifdef _WIN32
 #include <windows.h>
@@ -722,7 +721,6 @@ std::unique_ptr<IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph
     for (const auto& input : node->InputDefs()) {
       if (graph.IsConstantInitializer(input->Name(), true)) {
         initializers.push_back(input->Name());
-        std::cout << "node->InputDefs(): constant initializer: " << input->Name() << std::endl;
         continue;
       }
       const auto& it = fused_outputs.find(input);
@@ -738,7 +736,6 @@ std::unique_ptr<IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph
     for (const auto& input : node->ImplicitInputDefs()) {
       if (graph.IsConstantInitializer(input->Name(), true)) {
         initializers.push_back(input->Name());
-        std::cout << "node->ImplicitInputDefs: constant initializer: " << input->Name() << std::endl;
         continue;
       }
       const auto& it = fused_outputs.find(input);
@@ -816,14 +813,11 @@ std::unique_ptr<IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph
   meta_def->name() = "TRTKernel_" + graph_type + "_" + graph.Name() + "_" + subgraph_id;
 
   // Assign inputs and outputs to subgraph's meta_def
-  std::cout << "TRT GetSubGraph inputs: " << std::endl;
   for (const auto& input : inputs) {
     if (input.second->Exists()) {
-      std::cout << input.second->Name() << ",";
       meta_def->inputs().push_back(input.second->Name());
     }
   }
-  std::cout << std::endl;
 
   for (const auto& initializer : initializers) {
     meta_def->constant_initializers().push_back(initializer);
