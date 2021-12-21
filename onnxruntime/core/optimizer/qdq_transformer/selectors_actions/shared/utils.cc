@@ -111,7 +111,7 @@ std::unique_ptr<BaseSelector> GetQDQSelector(const Node& node) {
     return nullptr;
   }
 
-  const auto& selector = std::move(*op_rule->second);
+  const auto& selector = *op_rule->second;
 
   // check the supported versions if specified
   const auto& versions = selector.op_versions_map.find(node.OpType())->second;
@@ -122,7 +122,7 @@ std::unique_ptr<BaseSelector> GetQDQSelector(const Node& node) {
     }
   }
 
-  return selector.selector;
+  return std::move(selector.selector);
 }
 
 std::vector<std::unique_ptr<BaseSelector>> GetQDQSelectors(const GraphViewer& graph_viewer) {
