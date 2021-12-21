@@ -1,5 +1,6 @@
 #!/bin/bash 
 
+echo "$1"
 if [ ! "$1" = "8.2" ]
 then
     CUR_PWD=$(pwd)
