@@ -550,20 +550,21 @@ void DecoderAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx
       if (cache_dims.size() != 4) {
         fail_shape_inference("key and value cache shall be 4 dimensions");
       }
-      if (!cache_dims[0].has_dim_value() ||
-          !cache_dims[1].has_dim_value() ||
-          !cache_dims[2].has_dim_value() ||
-          !cache_dims[3].has_dim_value()) {
-        fail_shape_inference("key and value cache dimensions value shall not be null");
-      }
-      ONNX_NAMESPACE::TensorShapeProto new_cache_shape;
-      *new_cache_shape.add_dim() = cache_shape.dim(0);
-      *new_cache_shape.add_dim() = cache_shape.dim(1);
-      new_cache_shape.add_dim();
-      *new_cache_shape.add_dim() = cache_shape.dim(3);
+      // has_dim_value() will return false if value is dynamic
+      if (cache_dims[0].has_dim_value() &&
+          cache_dims[1].has_dim_value() &&
+          cache_dims[2].has_dim_value() &&
+          cache_dims[3].has_dim_value()) {
 
-      updateOutputShape(ctx, 1, new_cache_shape);
-      updateOutputShape(ctx, 2, new_cache_shape);
+        ONNX_NAMESPACE::TensorShapeProto new_cache_shape;
+        *new_cache_shape.add_dim() = cache_shape.dim(0);
+        *new_cache_shape.add_dim() = cache_shape.dim(1);
+        new_cache_shape.add_dim();
+        *new_cache_shape.add_dim() = cache_shape.dim(3);
+
+        updateOutputShape(ctx, 1, new_cache_shape);
+        updateOutputShape(ctx, 2, new_cache_shape);
+      }
     }
   }
 }
@@ -611,7 +612,7 @@ void BeamSearchShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
   if (!(input_ids_dims[0].has_dim_value() && input_ids_dims[1].has_dim_value())) {
     return;
   }
-  
+
   int64_t batch_size = input_ids_dims[0].dim_value();
   int64_t sequence_length = input_ids_dims[1].dim_value();
 
@@ -883,7 +884,7 @@ Some boolean parameters are passed by runtime input for generic purpose
       .TypeConstraint("B", {"tensor(bool)"}, "Constrain key_padding_mask to bool tensors.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         DecoderAttentionTypeAndShapeInference(ctx);
-      }); 
+      });
 
   static const char* EmbedLayerNormalization_ver1_doc = R"DOC(
 EmbedLayerNormalization is the fusion of embedding layer in BERT model, with optional mask processing.
