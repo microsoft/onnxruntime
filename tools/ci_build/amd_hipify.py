@@ -3,6 +3,7 @@
 
 import concurrent.futures
 import os
+import shutil
 import subprocess
 from logger import get_logger
 
@@ -173,7 +174,11 @@ training_ops_excluded_files = [
                     'cuda_training_kernels.h',
 ]
 
-HIPIFY_PERL = '/opt/rocm/bin/hipify-perl'
+HIPIFY_PERL = shutil.which('hipify-perl')
+if HIPIFY_PERL is None:
+    raise RuntimeError('Could not locate hipify-perl script')
+else:
+    print('Using %s' % HIPIFY_PERL)
 
 
 def hipify(src_file_path, dst_file_path):
