@@ -120,11 +120,11 @@ def write_table(ingest_client, table, table_name, trt_version, upload_time):
     table = table.assign(UploadTime=upload_time) # add UploadTime
     print(table.head())
     #ingestion_props = IngestionProperties(
-      database=database,
-      table=table_name,
-      data_format=DataFormat.CSV,
-      report_level=ReportLevel.FailuresAndSuccesses
-    )
+    #  database=database,
+    #  table=table_name,
+    #  data_format=DataFormat.CSV,
+    #  report_level=ReportLevel.FailuresAndSuccesses
+    #)
     # append rows
     #ingest_client.ingest_from_dataframe(table, ingestion_properties=ingestion_props)
 
