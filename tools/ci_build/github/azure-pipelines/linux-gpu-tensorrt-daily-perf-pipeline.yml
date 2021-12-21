@@ -23,7 +23,7 @@ parameters:
 - name: TrtVersion
   displayName: TensorRT Version
   type: string
-  default: 8..1.6
+  default: 8.2.1.8
   values:
   - 8.2.1.8
   - 8.0.1.6
