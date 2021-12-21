@@ -1,0 +1,19 @@
+If:
+  PathMatch: (.*\.cl)|((.*\/)?kernels\/.*\.h)
+CompileFlags:
+  Add:
+  - -xcl
+  - -DSELECT_PREDICATE=int
+  - -DFLOAT=float
+  - -DFLOAT4=float4
+  - -DCONVERT_FLOAT=convert_float
+  - -DCONVERT_FLOAT4=convert_float4
+  - -DRI_F=read_imagef
+  - -DWI_F=write_imagef
+  - -DMASK3=(int4)0
+  - -DMASK2=(int4)0
+  - -DMASK1=(int4)0
+  Remove:
+  - -x*
+  - c++-header
+  - -std*
