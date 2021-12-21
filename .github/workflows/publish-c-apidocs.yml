@@ -44,13 +44,11 @@ jobs:
           branch: gh-pages-pr
           branch_mode: create
           message: 'Update C++ docs to commit ${{ steps.vars.outputs.sha_short }}'
-          add: '*.html'          
-#      OLD
-#      - name: Publish
-#        uses: JamesIves/github-pages-deploy-action@releases/v3
-#        with:
-#          BRANCH: gh-pages
-#          FOLDER: build/doxygen/html
-#          TARGET_FOLDER: docs/api/c
-#          CLEAN_EXCLUDE: '["_config.yml"]'    
+          add: '*.html'
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v3
+        with:
+          branch: gh-pages-pr
+          base: gh-pages     
+
  
