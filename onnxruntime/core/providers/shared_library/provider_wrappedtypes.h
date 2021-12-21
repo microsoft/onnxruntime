@@ -348,6 +348,8 @@ struct IndexedSubGraph_MetaDef final {
   const std::vector<std::string>& inputs() const { return g_host->IndexedSubGraph_MetaDef__inputs(const_cast<IndexedSubGraph_MetaDef*>(this)); }
   std::vector<std::string>& inputs() { return g_host->IndexedSubGraph_MetaDef__inputs(this); }
   const std::vector<std::string>& outputs() const { return g_host->IndexedSubGraph_MetaDef__outputs(const_cast<IndexedSubGraph_MetaDef*>(this)); }
+  const std::vector<std::string>& constant_initializers() const { return g_host->IndexedSubGraph_MetaDef__constant_initializers(const_cast<IndexedSubGraph_MetaDef*>(this)); }
+  std::vector<std::string>& constant_initializers() { return g_host->IndexedSubGraph_MetaDef__constant_initializers(this); }
   std::vector<std::string>& outputs() { return g_host->IndexedSubGraph_MetaDef__outputs(this); }
   NodeAttributes& attributes() { return g_host->IndexedSubGraph_MetaDef__attributes(this); }
 
