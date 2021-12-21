@@ -38,7 +38,7 @@ jobs:
           author_email: nakersha@microsoft.com
           branch: gh-pages-pr
           branch_mode: create
-          message: 'Update C++ docs to commit ${{GITHUB_SHA::7}}'
+          message: 'Update C++ docs to commit ${{GITHUB_SHA}}'
           add: '*.html'          
 #      OLD
 #      - name: Publish
