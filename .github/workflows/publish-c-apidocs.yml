@@ -15,6 +15,11 @@ jobs:
           sudo apt-get install libclang-cpp9
           wget https://www.doxygen.nl/files/doxygen-1.9.2.linux.bin.tar.gz
           tar xvzf doxygen-1.9.2.linux.bin.tar.gz
+      - name: Set vars
+        id: vars
+        run: echo "::set-output name=sha_short::$(git rev-parse --short HEAD)"
+      - name: Check outputs
+        run: echo ${{ steps.vars.outputs.sha_short }}
       - name: Run doxygen
         run: |
           mkdir -p build/doxygen
@@ -38,7 +43,7 @@ jobs:
           author_email: nakersha@microsoft.com
           branch: gh-pages-pr
           branch_mode: create
-          message: 'Update C++ docs to commit ${{GITHUB_SHA}}'
+          message: 'Update C++ docs to commit ${{ steps.vars.outputs.sha_short }}'
           add: '*.html'          
 #      OLD
 #      - name: Publish
