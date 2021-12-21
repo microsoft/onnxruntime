@@ -25,10 +25,6 @@ latency = 'latency'
 status = 'status'
 latency_over_time = 'latency_over_time'
 
-# column names 
-model = 'Model'
-group = 'Group'
-
 time_string_format = '%Y-%m-%d %H:%M:%S'
 
 def parse_arguments():
@@ -57,58 +53,63 @@ def adjust_columns(table, columns, db_columns, model_group):
 
 def get_latency_over_time(commit_hash, report_url, branch, latency_table):
     if not latency_table.empty:
-        to_drop = ['TrtGain_CudaFp32', 'EpGain_TrtFp32', 'TrtGain_CudaFp16', 'EpGain_TrtFp16']
         over_time = latency_table.drop(to_drop, axis='columns')
         over_time = over_time.melt(id_vars=[model, group], var_name='Ep', value_name='Latency')
         over_time = over_time.assign(CommitId=commit_hash)
         over_time = over_time.assign(ReportUrl=report_url)
         over_time = over_time.assign(Branch=branch)
-        over_time = over_time[['CommitId', model, 'Ep', 'Latency', 'ReportUrl', group, 'Branch']]
-        over_time.rename(columns={group:"ModelGroup"}, inplace=True) # TODO: Change to group
+        over_time = over_time[['CommitId', model_title, 'Ep', 'Latency', 'ReportUrl', group_title, 'Branch']]
+        #over_time.rename(columns={group:"ModelGroup"}, inplace=True) # TODO: Change to group
         over_time.fillna('', inplace=True)
         return over_time
     
 def get_failures(fail, model_group):
     fail_columns = fail.keys()
-    fail_db_columns = [model, 'Ep', 'ErrorType', 'ErrorMessage']
+    fail_db_columns = [model_title, 'Ep', 'ErrorType', 'ErrorMessage']
     fail = adjust_columns(fail, fail_columns, fail_db_columns, model_group)
     return fail
 
 def get_memory(memory, model_group): 
-    memory_columns = [model, \
-                      'CUDA EP fp32 \npeak memory usage (MiB)', \
-                      'TRT EP fp32 \npeak memory usage (MiB)', \
-                      'Standalone TRT fp32 \npeak memory usage (MiB)', \
-                      'CUDA EP fp16 \npeak memory usage (MiB)', \
-                      'TRT EP fp16 \npeak memory usage (MiB)', \
-                      'Standalone TRT fp16 \npeak memory usage (MiB)' \
-                      ]
-    memory_db_columns = [model, ort_cuda_fp32, ort_trt_fp32, trt_fp32, ort_cuda_fp16, ort_trt_fp32, trt_fp16]
+    #val + ' \npeak memory usage (MiB)'
+    memory_columns = [model_title]
+    for provider in provider_list: 
+        if cpu not in provider:
+            memory_columns.append(provider + memory_ending)
+    # memory_columns = [model, \
+    #                   'CUDA EP fp32 \npeak memory usage (MiB)', \
+    #                   'TRT EP fp32 \npeak memory usage (MiB)', \
+    #                   'Standalone TRT fp32 \npeak memory usage (MiB)', \
+    #                   'CUDA EP fp16 \npeak memory usage (MiB)', \
+    #                   'TRT EP fp16 \npeak memory usage (MiB)', \
+    #                   'Standalone TRT fp16 \npeak memory usage (MiB)' \
+    #                   ]
+    memory_db_columns = table_headers
     memory = adjust_columns(memory, memory_columns, memory_db_columns, model_group)
     return memory
 
 def get_latency(latency, model_group):
-    latency_columns = [model, \
-                        'CPU fp32 \nmean (ms)', \
-                        'CUDA fp32 \nmean (ms)', \
-                        'TRT EP fp32 \nmean (ms)', \
-                        'Standalone TRT fp32 \nmean (ms)', \
-                        'TRT v CUDA EP fp32 \ngain (mean) (%)', \
-                        'EP v Standalone TRT fp32 \ngain (mean) (%)',     
-                        'CUDA fp16 \nmean (ms)', \
-                        'TRT EP fp16 \nmean (ms)', \
-                        'Standalone TRT fp16 \nmean (ms)', \
-                        'TRT v CUDA EP fp16 \ngain (mean) (%)', \
-                        'EP v Standalone TRT fp16 \ngain (mean) (%)' \
-                        ]
-    latency_db_columns = [model, ort_cpu, ort_cuda_fp32, ort_trt_fp32, trt_fp32, gain, gain, ort_cuda_fp16, ort_trt_fp32, \
-        trt_fp16,  gain, gain #TODO: Fill in gain]
+    latency_columns = [model_title]
+    for provider in provider_list: 
+        latency_columns.append(provider + avg_ending)
+    # val + ' \nmean (ms)'
+    # latency_columns = [model, \
+    #                     'CPU fp32 \nmean (ms)', \
+    #                     'CUDA fp32 \nmean (ms)', \
+    #                     'TRT EP fp32 \nmean (ms)', \
+    #                     'Standalone TRT fp32 \nmean (ms)', \
+    #                     'TRT v CUDA EP fp32 \ngain (mean) (%)', \
+    #                     'EP v Standalone TRT fp32 \ngain (mean) (%)',     
+    #                     'CUDA fp16 \nmean (ms)', \
+    #                     'TRT EP fp16 \nmean (ms)', \
+    #                     'Standalone TRT fp16 \nmean (ms)'
+    #                     ]
+    latency_db_columns = table_headers
     latency = adjust_columns(latency, latency_columns, latency_db_columns, model_group)
     return latency
     
 def get_status(status, model_group):
     status_columns = status.keys()
-    status_db_columns = [model, ort_cuda_fp32, ort_trt_fp32, trt_fp32, ort_cuda_fp16, ort_trt_fp32, trt_fp16]
+    status_db_columns = table_headers
     status = adjust_columns(status, status_columns, status_db_columns, model_group)
     return status
     

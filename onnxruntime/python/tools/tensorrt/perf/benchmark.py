@@ -24,23 +24,28 @@ debug = False
 sys.path.append('.')
 logger = logging.getLogger('')
 
-# global ep variables 
+# # global ep variables 
+# cpu = "CPUExecutionProvider"
+
+# cuda = "CUDAExecutionProvider"
+# cuda_fp16 = "CUDAExecutionProvider_fp16"
+# trt = "TensorrtExecutionProvider"
+# trt_fp16 = "TensorrtExecutionProvider_fp16"
+# standalone_trt = "Standalone_TRT"
+# standalone_trt_fp16 = "Standalone_TRT_fp16"
+
 cpu_ep = "CPUExecutionProvider"
-acl = "ACLExecutionProvider"
 cuda_ep = "CUDAExecutionProvider"
-cuda_fp16_ep = "CUDAExecutionProvider_fp16"
 trt_ep = "TensorrtExecutionProvider"
-trt_fp16_ep = "TensorrtExecutionProvider_fp16"
-standalone_trt = "Standalone_TRT"
-standalone_trt_fp16 = "Standalone_TRT_fp16"
+acl_ep = "ACLExecutionProvider"
 
 ep_to_provider_list = {
-    cpu: [cpu],
-    acl: [acl], 
-    cuda: [cuda],
-    cuda_fp16: [cuda],
-    trt: [trt, cuda],
-    trt_fp16: [trt, cuda]
+    cpu: [cpu_ep],
+    acl: [acl_ep], 
+    cuda: [cuda_ep],
+    cuda_fp16: [cuda_ep],
+    trt: [trt_ep, cuda_ep],
+    trt_fp16: [trt_ep, cuda_ep]
 }
 
 # latency gain headers 
@@ -1303,15 +1308,16 @@ def output_status(results, csv_filename):
         need_write_header = False 
 
     with open(csv_filename, mode="a", newline='') as csv_file:
-        column_names = ["Model",
-                        cpu,
-                        cuda + " fp32",
-                        trt + " fp32",
-                        standalone_trt + " fp32",
-                        cuda + " fp16",
-                        trt + " fp16",
-                        standalone_trt + " fp16"
-                        ]
+        # column_names = ["Model",
+        #                 cpu,
+        #                 cuda + " fp32",
+        #                 trt + " fp32",
+        #                 standalone_trt + " fp32",
+        #                 cuda + " fp16",
+        #                 trt + " fp16",
+        #                 standalone_trt + " fp16"
+        #                 ]
+        column_names = table_headers
 
         csv_writer = csv.writer(csv_file)
 
@@ -1362,31 +1368,38 @@ def output_latency(results, csv_filename):
         need_write_header = False 
 
     with open(csv_filename, mode="a", newline='') as csv_file:
-        column_names = ["Model",
-                        "CPU fp32 \nmean (ms)",
-                        "CPU fp32 \n 90th percentile (ms)",
-                        "CUDA fp32 \nmean (ms)",
-                        "CUDA fp32 \n90th percentile (ms)",
-                        "CUDA EP fp32 \npeak memory usage (MiB)",
-                        "TRT EP fp32 \nmean (ms)",
-                        "TRT EP fp32 \n90th percentile (ms)",
-                        "TRT EP fp32 \npeak memory usage (MiB)",
-                        "Standalone TRT fp32 \nmean (ms)",
-                        "Standalone TRT fp32 \n90th percentile (ms)",
-                        "Standalone TRT fp32 \npeak memory usage (MiB)",
-                        "TRT v CUDA EP fp32 \ngain (mean) (%)",
-                        "EP v Standalone TRT fp32 \ngain (mean) (%)",
-                        "CUDA fp16 \nmean (ms)",
-                        "CUDA fp16 \n90th percentile (ms)",
-                        "CUDA EP fp16 \npeak memory usage (MiB)",
-                        "TRT EP fp16 \nmean (ms)",
-                        "TRT EP fp16 \n90th percentile (ms)",
-                        "TRT EP fp16 \npeak memory usage (MiB)",
-                        "Standalone TRT fp16 \nmean (ms)",
-                        "Standalone TRT fp16 \n90th percentile (ms)",
-                        "Standalone TRT fp16 \npeak memory usage (MiB)",
-                        "TRT v CUDA EP fp16 \ngain (mean) (%)", 
-                        "EP v Standalone TRT fp16 \ngain (mean) (%)"]
+        column_names = [model_title]
+        for provider in provider_list: 
+            column_names.append(provider + avg_ending)
+            column_names.append(provider + percentile_ending)
+            if cpu not in provider:
+                column_names.append(provider + memory_ending)
+
+        # column_names = ["Model",
+        #                 "CPU fp32",
+        #                 "CPU fp32 ",
+        #                 "CUDA fp32 \nmean (ms)",
+        #                 "CUDA fp32 \n90th percentile (ms)",
+        #                 "CUDA EP fp32",
+        #                 "TRT EP fp32 \nmean (ms)",
+        #                 "TRT EP fp32 \n90th percentile (ms)",
+        #                 "TRT EP fp32 \npeak memory usage (MiB)",
+        #                 "Standalone TRT fp32 \nmean (ms)",
+        #                 "Standalone TRT fp32 \n90th percentile (ms)",
+        #                 "Standalone TRT fp32 \npeak memory usage (MiB)",
+        #                 "TRT v CUDA EP fp32 \ngain (mean) (%)",
+        #                 "EP v Standalone TRT fp32 \ngain (mean) (%)",
+        #                 "CUDA fp16 \nmean (ms)",
+        #                 "CUDA fp16 \n90th percentile (ms)",
+        #                 "CUDA EP fp16 \npeak memory usage (MiB)",
+        #                 "TRT EP fp16 \nmean (ms)",
+        #                 "TRT EP fp16 \n90th percentile (ms)",
+        #                 "TRT EP fp16 \npeak memory usage (MiB)",
+        #                 "Standalone TRT fp16 \nmean (ms)",
+        #                 "Standalone TRT fp16 \n90th percentile (ms)",
+        #                 "Standalone TRT fp16 \npeak memory usage (MiB)",
+        #                 "TRT v CUDA EP fp16 \ngain (mean) (%)", 
+        #                 "EP v Standalone TRT fp16 \ngain (mean) (%)"]
         csv_writer = csv.writer(csv_file)
 
         if need_write_header:
@@ -1485,8 +1498,6 @@ def output_latency(results, csv_filename):
                    standalone_trt_average,
                    standalone_trt_90_percentile,
                    standalone_trt_memory,
-                   value[trt_cuda_gain] if trt_cuda_gain in value else "  ",
-                   value[trt_native_gain] if trt_native_gain in value else "  ",
                    cuda_fp16_average,
                    cuda_fp16_90_percentile,
                    cuda_fp16_memory,
@@ -1496,9 +1507,7 @@ def output_latency(results, csv_filename):
                    standalone_trt_fp16_average,
                    standalone_trt_fp16_90_percentile,
                    standalone_trt_fp16_memory,
-                   value[trt_cuda_fp16_gain] if trt_cuda_fp16_gain in value else "  ",
-                   value[trt_native_fp16_gain] if trt_native_fp16_gain in value else "  "
-                   ]
+                ]
             csv_writer.writerow(row)
 
     logger.info(f"CUDA/TRT latency comparison are saved to csv file: {csv_filename}")

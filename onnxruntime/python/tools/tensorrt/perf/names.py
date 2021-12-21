@@ -1,8 +1,20 @@
 # provider names 
-ort_cpu = "ORT-CPUFp32"
-ort_cuda_fp32 = "ORT-CUDAFp32"
-ort_cuda_fp16 = "ORT-CUDAFp16"
-ort_trt_fp32 = "ORT-TRTFp32"
-ort_trt_fp16 = "ORT-TRTFp16"
-trt_fp32 = "TRTFp32"
-trt_fp16 = "TRTFp16"
+cpu = "ORT-CPUFp32"
+cuda = "ORT-CUDAFp32"
+cuda_fp16 = "ORT-CUDAFp16"
+trt = "ORT-TRTFp32"
+trt_fp16 = "ORT-TRTFp16"
+standalone_trt = "TRTFp32"
+standalone_trt_fp16 = "TRTFp16"
+
+# column names 
+model_title = 'Model'
+group_title = 'Group'
+
+# endings 
+avg_ending =  ' \nmean (ms)'
+percentile_ending = ' \n90th percentile (ms)'
+memory_ending = ' \npeak memory usage (MiB)'
+
+provider_list = [cpu, cuda, trt, standalone_trt, cuda_fp16, trt_fp16, standalone_trt_fp16]
+table_headers = [model_title] + provider_list
