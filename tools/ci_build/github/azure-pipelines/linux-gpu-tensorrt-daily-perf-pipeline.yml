@@ -76,7 +76,7 @@ jobs:
         
     - name: build_args
       ${{ if eq(parameters.RunNvidiaContainer, true) }}:
-        value: Dockerfile.tensorrt-perf -t $(trtContainer) -o $(Build.SourcesDirectory)/dockerfiles/Dockerfile.tensorrt
+        value: Dockerfile.tensorrt-perf -t $(trtContainer) -v ${{parameters.TrtVersion}} -o $(Build.SourcesDirectory)/dockerfiles/Dockerfile.tensorrt
       ${{ if ne(parameters.RunNvidiaContainer, true) }}:
         value: Dockerfile.custom-trt-perf -t ${{ parameters.TrtVersion }} -o $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/$(trt_dockerfile)
 
