@@ -20,9 +20,9 @@ jobs:
           mkdir -p build/doxygen
           cd docs/c_cxx
           ../../doxygen-1.9.2/bin/doxygen
-      - name: Debug
+      - name: Clean up
         run:
-          git status    
+          rm -rf doxygen-1.9.2
       - uses: actions/checkout@v2
         with:
           ref: gh-pages
@@ -38,7 +38,7 @@ jobs:
           author_email: nakersha@microsoft.com
           branch: gh-pages-pr
           branch_mode: create
-          message: 'Update C++ docs to commit ${GITHUB_SHA::7}'
+          message: 'Update C++ docs to commit ${{GITHUB_SHA::7}}'
           add: '*.html'          
 #      OLD
 #      - name: Publish
