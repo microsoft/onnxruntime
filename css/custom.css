@@ -484,6 +484,7 @@ a .abbr[data-original-title], a abbr[title]{
   div.quotebox {
     border: 1px solid #cccccc;
     background-color: #e8e8e8;
+    padding-top:15px;
   }
 
   .quotebox img{
