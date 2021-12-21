@@ -20,7 +20,7 @@
 #include "cuda.h"
 #include "cuda_fp16.h"
 #include "cuda_runtime.h"
-#include "core/framework/bfloat16.h"
+#include "core/framework/float16.h"
 
 namespace onnxruntime {
 namespace cuda {

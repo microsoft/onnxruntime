@@ -6,7 +6,6 @@
 #include "core/providers/shared_library/provider_api.h"
 #include "core/common/status.h"
 #include "core/framework/float16.h"
-#include "core/framework/bfloat16.h"
 #include "core/providers/cuda/cuda_pch.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
 #include "core/providers/cuda/shared_inc/fast_divmod.h"
