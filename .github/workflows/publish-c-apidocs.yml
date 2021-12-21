@@ -28,6 +28,7 @@ jobs:
       - name: Clean up
         run:
           rm -rf doxygen-1.9.2
+          rm doxygen-1.9.2.linux.bin.tar.gz
       - uses: actions/checkout@v2
         with:
           ref: gh-pages
@@ -42,6 +43,7 @@ jobs:
           branch: gh-pages-pr
           base: gh-pages
           title: '[Automated]: Update C/C++ API docs'
-          commit-message: 'Update C/C++ API docs to commit ${{ steps.vars.outputs.sha_short }}'      
+          commit-message: 'Update C/C++ API docs to commit ${{ steps.vars.outputs.sha_short }}'   
+          add-paths: docs/api/c   
 
  
