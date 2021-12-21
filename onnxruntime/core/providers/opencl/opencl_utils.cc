@@ -143,12 +143,11 @@ namespace {
 #include "opencl_generated/kernels/prelude_f32.cl.inc"
 }  // namespace
 
-cl::Program LoadProgram(const cl::Context& ctx, const cl::Device& dev, const std::string& src, bool use_fp16) {
+cl_program LoadProgram(cl_context ctx, cl_device_id dev, const std::string& src, bool use_fp16) {
   return LoadProgram(ctx, dev, src.data(), src.size(), use_fp16);
 }
 
-cl::Program LoadProgram(const cl::Context& ctx, const cl::Device& dev, const char* src, size_t src_len, bool use_fp16) {
-  cl_int err{};
+cl_program LoadProgram(cl_context ctx, cl_device_id dev, const char* src, size_t src_len, bool use_fp16) {
   std::ostringstream oss;
   if (use_fp16) {
     oss << std::string(prelude_f16_src, prelude_f16_src_len) << "\n";
@@ -157,10 +156,20 @@ cl::Program LoadProgram(const cl::Context& ctx, const cl::Device& dev, const cha
   }
   oss << std::string(src, src_len);
   auto full_src = oss.str();
+  const auto* full_src_c = full_src.c_str();
+  auto full_src_size = full_src.size();
 
-  cl::Program program(ctx, {full_src.data(), full_src.length()}, /*build=*/true, &err);
+  cl_int err{};
+  auto* program = clCreateProgramWithSource(ctx, 1, &full_src_c, &full_src_size, &err);
+  ORT_THROW_IF_CL_ERROR(err);
+
+  // Specially handle this error, we need compiler error message here.
+  err = clBuildProgram(program, 1, &dev, "", nullptr, nullptr);
   if (err != CL_SUCCESS) {
-    auto log = program.getBuildInfo<CL_PROGRAM_BUILD_LOG>(dev);
+    size_t ret_size;
+    clGetProgramBuildInfo(program, dev, CL_PROGRAM_BUILD_LOG, 0, nullptr, &ret_size);
+    std::string log(ret_size + 1, '\0');
+    clGetProgramBuildInfo(program, dev, CL_PROGRAM_BUILD_LOG, log.size(), log.data(), nullptr);
     // LOGS_DEFAULT(ERROR) << "\nKernel Source:>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\n"
     std::cout << "\nKernel Source:>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\n"
                         << full_src
@@ -173,10 +182,10 @@ cl::Program LoadProgram(const cl::Context& ctx, const cl::Device& dev, const cha
   return program;
 }
 
-cl::Kernel LoadKernel(const cl::Program& program, const char* name) {
+cl_kernel LoadKernel(cl_program program, const char* name) {
   LOGS_DEFAULT(INFO) << "[CL] Loading kernel " << name;
   cl_int err{};
-  auto kernel = cl::Kernel(program, name, &err);
+  auto* kernel = clCreateKernel(program, name, &err);
   ORT_THROW_IF_CL_ERROR(err);
   return kernel;
 }

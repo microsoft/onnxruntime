@@ -14,8 +14,8 @@ namespace opencl {
 
 class OpenCLDataTransfer : public IDataTransfer {
   using Status = common::Status;
-  using Buffer = cl::Buffer;
-  using Image2D = cl::Image2D;
+  using Buffer = cl_mem;
+  using Image2D = cl_mem;
 
  public:
   OpenCLDataTransfer(const OpenCLExecutionProvider* exec, const OpenCLKernelHolder* kernels);

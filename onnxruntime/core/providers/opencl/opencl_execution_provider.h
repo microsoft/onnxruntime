@@ -32,12 +32,12 @@ class OpenCLExecutionProvider : public IExecutionProvider {
   std::unique_ptr<onnxruntime::IDataTransfer> GetDataTransfer() const override;
   void RegisterAllocator(std::shared_ptr<AllocatorManager> allocator_manager) override;
 
-  cl::Device GetOpenCLDevice() const { return dev_; }
-  cl::Context GetOpenCLContext() const { return ctx_; }
-  cl::CommandQueue GetCommandQueue() const { return cmd_queue_; }
+  cl_device_id GetOpenCLDevice() const { return dev_; }
+  cl_context GetOpenCLContext() const { return ctx_; }
+  cl_command_queue GetCommandQueue() const { return cmd_queue_; }
 
-  IAllocatorUniquePtr<cl::Buffer> GetScratchBuffer(size_t nbytes) const;
-  IAllocatorUniquePtr<cl::Image2D> GetScratchImage2D(opencl::Image2DDesc desc) const;
+  IAllocatorUniquePtr<std::remove_pointer_t<cl_mem>> GetScratchBuffer(size_t nbytes) const;
+  IAllocatorUniquePtr<std::remove_pointer_t<cl_mem>> GetScratchImage2D(opencl::Image2DDesc desc) const;
 
   bool UseFp16() const { return use_fp16_; }
 
@@ -45,9 +45,9 @@ class OpenCLExecutionProvider : public IExecutionProvider {
   Status InitOpenCLContext();
   void DisableFp16() { use_fp16_ = false; }
 
-  cl::Device dev_;
-  cl::Context ctx_;
-  cl::CommandQueue cmd_queue_;
+  cl_device_id dev_;
+  cl_context ctx_;
+  cl_command_queue cmd_queue_;
   bool use_fp16_;
 
  private:

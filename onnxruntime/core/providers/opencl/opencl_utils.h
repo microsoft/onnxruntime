@@ -1,6 +1,6 @@
 #pragma once
 
-#include <CL/opencl.hpp>
+#include <CL/opencl.h>
 
 #include <cstdio>
 #include <iomanip>
@@ -46,24 +46,24 @@
   }
 
 #if USE_CL_CHECKED_CAST
-#define CL_BUFFER_FROM_TENSOR(TENSOR) [&]() {                                              \
-  auto* ptr = const_cast<cl::Buffer*>(static_cast<const cl::Buffer*>((TENSOR).DataRaw())); \
-  cl_mem_object_type ret;                                                                  \
-  ORT_THROW_IF_CL_ERROR(ptr->getInfo(CL_MEM_TYPE, &ret));                                  \
-  ORT_ENFORCE(ret == CL_MEM_OBJECT_BUFFER, ptr, " is not cl::Buffer");                     \
-  return *ptr;                                                                             \
+#define CL_BUFFER_FROM_TENSOR(TENSOR) [&]() {                                                             \
+  cl_mem ptr = const_cast<cl_mem>(static_cast<const std::remove_pointer_t<cl_mem>*>((TENSOR).DataRaw())); \
+  cl_mem_object_type ret;                                                                                 \
+  ORT_THROW_IF_CL_ERROR(clGetMemObjectInfo(ptr, CL_MEM_TYPE, sizeof(cl_mem_object_type), &ret, nullptr)); \
+  ORT_ENFORCE(ret == CL_MEM_OBJECT_BUFFER, ptr, " is not Buffer");                                        \
+  return ptr;                                                                                             \
 }()
 
-#define CL_IMAGE2D_FROM_TENSOR(TENSOR) [&]() {                                               \
-  auto* ptr = const_cast<cl::Image2D*>(static_cast<const cl::Image2D*>((TENSOR).DataRaw())); \
-  cl_mem_object_type ret;                                                                    \
-  ORT_THROW_IF_CL_ERROR(ptr->getInfo(CL_MEM_TYPE, &ret));                                    \
-  ORT_ENFORCE(ret == CL_MEM_OBJECT_IMAGE2D, ptr, " is not cl::Image2D");                     \
-  return *ptr;                                                                               \
+#define CL_IMAGE2D_FROM_TENSOR(TENSOR) [&]() {                                                            \
+  cl_mem ptr = const_cast<cl_mem>(static_cast<const std::remove_pointer_t<cl_mem>*>((TENSOR).DataRaw())); \
+  cl_mem_object_type ret;                                                                                 \
+  ORT_THROW_IF_CL_ERROR(clGetMemObjectInfo(ptr, CL_MEM_TYPE, sizeof(cl_mem_object_type), &ret, nullptr)); \
+  ORT_ENFORCE(ret == CL_MEM_OBJECT_IMAGE2D, ptr, " is not Image2D");                                      \
+  return ptr;                                                                                             \
 }()
 #else
-#define CL_BUFFER_FROM_TENSOR(TENSOR) (*const_cast<cl::Buffer*>(static_cast<const cl::Buffer*>((TENSOR).DataRaw())))
-#define CL_IMAGE2D_FROM_TENSOR(TENSOR) (*const_cast<cl::Image2D*>(static_cast<const cl::Image2D*>((TENSOR).DataRaw())))
+#define CL_BUFFER_FROM_TENSOR(TENSOR) const_cast<cl_mem>(static_cast<const std::remove_pointer_t<cl_mem>*>((TENSOR).DataRaw()))
+#define CL_IMAGE2D_FROM_TENSOR(TENSOR) const_cast<cl_mem>(static_cast<const std::remove_pointer_t<cl_mem>*>((TENSOR).DataRaw()))
 #endif
 
 #define VLOG_CL_NODE()                                          \
@@ -73,32 +73,52 @@
 #define VLOG_CL_BUFFER(desc, tensor_ptr)                                      \
   VLOGS_DEFAULT(0) << "[CL]  " << std::setfill(' ') << std::setw(9) << (desc) \
                    << " shape " << (tensor_ptr)->Shape()                      \
-                   << " " << (tensor_ptr)->DataRaw() << " --> cl::Buffer("    \
-                   << CL_BUFFER_FROM_TENSOR(*(tensor_ptr))() << ")"
+                   << "Buffer(" << CL_BUFFER_FROM_TENSOR(*(tensor_ptr)) << ")"
 #define VLOG_CL_IMAGE2D(desc, tensor_ptr)                                     \
   VLOGS_DEFAULT(0) << "[CL]  " << std::setfill(' ') << std::setw(9) << (desc) \
                    << " shape " << (tensor_ptr)->Shape()                      \
-                   << " " << (tensor_ptr)->DataRaw() << " --> cl::Image2D("   \
-                   << CL_IMAGE2D_FROM_TENSOR(*(tensor_ptr))() << ")"
+                   << "Image2D(" << CL_IMAGE2D_FROM_TENSOR(*(tensor_ptr)) << ")"
 
 namespace onnxruntime {
 namespace opencl {
 
-inline std::string ToString(const cl::NDRange& range) {
-  if (range.dimensions() == 0) {
-    return "[<unspecified>]";
-  } else if (range.dimensions() == 1) {
-    return onnxruntime::MakeString("[", range[0], "]");
-  } else if (range.dimensions() == 2) {
-    return onnxruntime::MakeString("[", range[0], ",", range[1], "]");
+class NDRange {
+  uint8_t size;
+  size_t values[3];
+
+ public:
+  NDRange() : size(0), values{0, 0, 0} {}
+  explicit NDRange(size_t x) : size(1), values{x, 0, 0} {}
+  NDRange(size_t x, size_t y) : size(2), values{x, y, 0} {}
+  NDRange(size_t x, size_t y, size_t z) : size(3), values{x, y, z} {}
+
+  uint8_t Size() const { return size; }
+
+  const size_t* Data() const {
+    if (size != 0) {
+      return values;
+    }
+    return nullptr;
   }
-  return onnxruntime::MakeString("[", range[0], ",", range[1], ",", range[2], "]");
-}
+
+  inline std::string ToString() const {
+    if (size == 0) {
+      return "[<unspecified>]";
+    }
+    if (size == 1) {
+      return onnxruntime::MakeString("[", values[0], "]");
+    }
+    if (size == 2) {
+      return onnxruntime::MakeString("[", values[0], ",", values[1], "]");
+    }
+    return onnxruntime::MakeString("[", values[0], ",", values[1], ",", values[2], "]");
+  }
+};
 
 const char* GetErrorString(cl_int error_code);
-cl::Program LoadProgram(const cl::Context& ctx, const cl::Device& dev, const std::string& src, bool use_fp16);
-cl::Program LoadProgram(const cl::Context& ctx, const cl::Device& dev, const char* src, size_t src_len, bool use_fp16);
-cl::Kernel LoadKernel(const cl::Program& program, const char* name);
+cl_program LoadProgram(cl_context ctx, cl_device_id dev, const std::string& src, bool use_fp16);
+cl_program LoadProgram(cl_context ctx, cl_device_id dev, const char* src, size_t src_len, bool use_fp16);
+cl_kernel LoadKernel(cl_program program, const char* name);
 
 // NOTE: for OrtDevice ctor
 struct CLMemType {
@@ -218,19 +238,15 @@ class Image2DDesc : private std::pair<int64_t, int64_t> {
     return {Width(), Height()};
   }
 
-  cl::NDRange AsNDRange() const {
+  NDRange AsNDRange() const {
     return {UWidth(), UHeight()};
   }
 };
 
-// cl::make_kernel returns typed functor object. The problem is the type
-// signature varys as the kernel signature changes, makes it cannot be stored
-// in a cached kernel registry. So I choose to store cl::Kernel object and wrap
-// it with a simpler form without typing issue.
 class KernelLauncher {
  public:
-  explicit KernelLauncher(const cl::Kernel& kernel) : kernel_{kernel}, index_{0}, err_{CL_SUCCESS} {}
-  const cl::Kernel& Kernel() const { return kernel_; }
+  explicit KernelLauncher(cl_kernel kernel) : kernel_{kernel}, index_{0}, err_{CL_SUCCESS} {}
+  cl_kernel Kernel() const { return kernel_; }
 
 #define SKIP_IF_ERRORED(expr) \
   if (err_ == CL_SUCCESS) {   \
@@ -241,7 +257,7 @@ class KernelLauncher {
   template <typename T, typename E = std::is_convertible<T, cl_int>>
   KernelLauncher& setInt2(T v1, T v2) {
     cl_int tmp[2] = {static_cast<cl_int>(v1), static_cast<cl_int>(v2)};
-    SKIP_IF_ERRORED(kernel_.setArg(index_, sizeof(tmp), tmp));
+    SKIP_IF_ERRORED(clSetKernelArg(kernel_, index_, sizeof(tmp), tmp));
     index_ += 1;
     return *this;
   }
@@ -249,7 +265,7 @@ class KernelLauncher {
   template <typename T, typename E = std::is_convertible<T, cl_int>>
   KernelLauncher& setInt3(T v1, T v2, T v3) {
     cl_int tmp[3] = {static_cast<cl_int>(v1), static_cast<cl_int>(v2), static_cast<cl_int>(v3)};
-    SKIP_IF_ERRORED(kernel_.setArg(index_, sizeof(tmp), tmp));
+    SKIP_IF_ERRORED(clSetKernelArg(kernel_, index_, sizeof(tmp), tmp));
     index_ += 1;
     return *this;
   }
@@ -257,20 +273,20 @@ class KernelLauncher {
   template <typename T, typename E = std::is_convertible<T, cl_int>>
   KernelLauncher& setInt4(T v1, T v2, T v3, T v4) {
     cl_int tmp[4] = {static_cast<cl_int>(v1), static_cast<cl_int>(v2), static_cast<cl_int>(v3), static_cast<cl_int>(v4)};
-    SKIP_IF_ERRORED(kernel_.setArg(index_, sizeof(tmp), tmp));
+    SKIP_IF_ERRORED(clSetKernelArg(kernel_, index_, sizeof(tmp), tmp));
     index_ += 1;
     return *this;
   }
 
   template <typename T>
   KernelLauncher& setArg(const T& arg) {
-    SKIP_IF_ERRORED(kernel_.setArg(index_, arg));
+    SKIP_IF_ERRORED(clSetKernelArg(kernel_, index_, sizeof(T), &arg));
     index_ += 1;
     return *this;
   }
 
-  KernelLauncher& setBuffer(const cl::Buffer& arg) {
-    SKIP_IF_ERRORED(kernel_.setArg<cl::Buffer>(index_, arg));
+  KernelLauncher& setBuffer(cl_mem arg) {
+    SKIP_IF_ERRORED(clSetKernelArg(kernel_, index_, sizeof(cl_mem), &arg));
     index_ += 1;
     return *this;
   }
@@ -291,8 +307,8 @@ class KernelLauncher {
     return setBuffers(std::forward<Ts>(args)...);
   }
 
-  KernelLauncher& setImage2D(const cl::Image2D& arg) {
-    SKIP_IF_ERRORED(kernel_.setArg<cl::Image2D>(index_, arg));
+  KernelLauncher& setImage2D(cl_mem arg) {
+    SKIP_IF_ERRORED(clSetKernelArg(kernel_, index_, sizeof(cl_mem), &arg));
     index_ += 1;
     return *this;
   }
@@ -313,19 +329,26 @@ class KernelLauncher {
     return setImage2Ds(std::forward<Ts>(args)...);
   }
 
-  Status Launch(const cl::CommandQueue& queue, const cl::NDRange& global, const cl::NDRange& local = cl::NullRange) {
+  Status Launch(cl_command_queue queue, const NDRange& global, const NDRange& local = {}) {
     ORT_RETURN_IF_CL_ERROR(err_, " on setting argument ", static_cast<int>(err_index_));
-    VLOGS_DEFAULT(1) << "[CL] Launching " << kernel_.getInfo<CL_KERNEL_FUNCTION_NAME>()
-                     << " with global work size: " << ToString(global)
-                     << " local work size: " << ToString(local);
-    ORT_RETURN_IF_CL_ERROR(queue.enqueueNDRangeKernel(kernel_, cl::NullRange, global, local));
+    VLOGS_DEFAULT(1) << "[CL] Launching " << GetKernelFunctionName()
+                     << " with global work size: " << global.ToString()
+                     << " local work size: " << local.ToString();
+    ORT_RETURN_IF_CL_ERROR(clEnqueueNDRangeKernel(queue, kernel_, global.Size(), nullptr, global.Data(), local.Data(), 0, nullptr, nullptr));
     return Status::OK();
   }
 
-#undef SKIP_IF_ERRORED
-
  private:
-  cl::Kernel kernel_;
+  inline std::string GetKernelFunctionName() {
+    size_t ret_size;
+    clGetKernelInfo(kernel_, CL_KERNEL_FUNCTION_NAME, 0, nullptr, &ret_size);
+    std::string ret(ret_size, '\0');
+    clGetKernelInfo(kernel_, CL_KERNEL_FUNCTION_NAME, ret.size(), ret.data(), nullptr);
+    return ret;
+  }
+
+#undef SKIP_IF_ERRORED
+  cl_kernel kernel_;
   cl_uint index_;
   cl_int err_;
   cl_uint err_index_;

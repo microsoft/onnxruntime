@@ -24,7 +24,7 @@ class OpenCLKernel : public OpKernel, protected OpenCLKernelHolder {
     OpenCLKernelHolder::LoadProgram(exec_, src, src_len);
   }
 
-  cl::CommandQueue GetCommandQueue() const {
+  cl_command_queue GetCommandQueue() const {
     return exec_->GetCommandQueue();
   }
 

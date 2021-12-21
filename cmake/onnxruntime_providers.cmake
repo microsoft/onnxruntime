@@ -666,7 +666,7 @@ if (onnxruntime_USE_OPENCL)
   add_library(onnxruntime_external_openclstub STATIC ${PROJECT_SOURCE_DIR}/external/libopencl-stub/src/libopencl.c)
   set_target_properties(onnxruntime_external_openclstub PROPERTIES POSITION_INDEPENDENT_CODE ON)
   target_include_directories(onnxruntime_external_openclstub PUBLIC ${PROJECT_SOURCE_DIR}/external/libopencl-stub/include)
-  target_compile_definitions(onnxruntime_external_openclstub PUBLIC "CL_HPP_TARGET_OPENCL_VERSION=120" "CL_HPP_MINIMUM_OPENCL_VERSION=120")
+  target_compile_definitions(onnxruntime_external_openclstub PUBLIC "CL_TARGET_OPENCL_VERSION=120" "CL_HPP_TARGET_OPENCL_VERSION=120" "CL_HPP_MINIMUM_OPENCL_VERSION=120")
 
   file(GLOB_RECURSE opencl_cc_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/providers/opencl/*.h"

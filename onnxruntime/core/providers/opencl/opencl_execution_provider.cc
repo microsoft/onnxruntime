@@ -81,38 +81,60 @@ std::shared_ptr<KernelRegistry> OpenCLExecutionProvider::GetKernelRegistry() con
 }
 
 Status OpenCLExecutionProvider::InitOpenCLContext() {
-  std::vector<cl::Platform> platforms;
-  cl::Platform::get(&platforms);
-  VLOGS_DEFAULT(1) << "[CL] num platforms: " << platforms.size();
-  ORT_ENFORCE(!platforms.empty());
+  cl_uint num_platforms;
+  ORT_RETURN_IF_CL_ERROR(clGetPlatformIDs(0, nullptr, &num_platforms));
+  VLOGS_DEFAULT(1) << "[CL] num platforms: " << num_platforms;
+  ORT_ENFORCE(num_platforms > 0);
+
+  std::vector<cl_platform_id> platforms(num_platforms);
+  ORT_RETURN_IF_CL_ERROR(clGetPlatformIDs(platforms.size(), platforms.data(), nullptr));
+  int selected_platform_idx = -1;
   // FIXME: add platform selection logic
-  cl::Platform selected_platform = platforms[0];
-  for (const auto& plat : platforms) {
-    auto vendor = plat.getInfo<CL_PLATFORM_VENDOR>();
+  for (int i = 0; i < platforms.size(); i++) {
+    size_t ret_size;
+    ORT_RETURN_IF_CL_ERROR(clGetPlatformInfo(platforms[i], CL_PLATFORM_VENDOR, 0, nullptr, &ret_size));
+    std::string vendor(ret_size, '\0');
+    ORT_RETURN_IF_CL_ERROR(clGetPlatformInfo(platforms[i], CL_PLATFORM_VENDOR, vendor.size(), vendor.data(), nullptr));
     std::cout << "[CL] platform vendor: " << vendor << "\n";
     if (vendor == "Oclgrind") {
-      selected_platform = plat;
+      std::cout << "[CL] platform " << vendor << " selected" << "\n";
+      selected_platform_idx = 1;
       break;
     }
   }
-  cl_context_properties properties[] = {CL_CONTEXT_PLATFORM, (cl_context_properties)(selected_platform)(), 0};
-  {
-    cl_int err{};
-    ctx_ = cl::Context(CL_DEVICE_TYPE_GPU, properties, /*notifyFptr=*/nullptr, /*data=*/nullptr, &err);
-    ORT_RETURN_IF_CL_ERROR(err);
+  if (selected_platform_idx == -1) {
+    std::cout << "[CL] default platform selected"
+              << "\n";
+    selected_platform_idx = 0;
   }
+  auto* selected_platform = platforms[selected_platform_idx];
 
-  std::vector<cl::Device> devices = ctx_.getInfo<CL_CONTEXT_DEVICES>();
+  cl_int err{};
+  cl_context_properties properties[] = {CL_CONTEXT_PLATFORM, (cl_context_properties)selected_platform, 0};
+  ctx_ = clCreateContextFromType(properties, CL_DEVICE_TYPE_GPU, /*pfn_notify=*/nullptr, /*user_data=*/nullptr, &err);
+  ORT_RETURN_IF_CL_ERROR(err);
+
+  size_t ret_size;
+  ORT_RETURN_IF_CL_ERROR(clGetContextInfo(ctx_, CL_CONTEXT_DEVICES, 0, nullptr, &ret_size));
+  std::vector<cl_device_id> devices(ret_size);
+  ORT_RETURN_IF_CL_ERROR(clGetContextInfo(ctx_, CL_CONTEXT_DEVICES, devices.size(), devices.data(), nullptr));
   VLOGS_DEFAULT(1) << "[CL] num devices: " << devices.size();
   ORT_ENFORCE(!devices.empty());
-  // FIXME: add device selection logic
-  dev_ = std::move(devices[0]);
+  dev_ = devices[0];
+
+  auto GetDeviceInfo = [=](cl_device_info info_name) -> std::string {
+    size_t ret_size;
+    ORT_THROW_IF_CL_ERROR(clGetDeviceInfo(dev_, info_name, 0, nullptr, &ret_size));
+    std::string ret(ret_size, '\0');
+    ORT_THROW_IF_CL_ERROR(clGetDeviceInfo(dev_, info_name, ret.size(), ret.data(), nullptr));
+    return ret;
+  };
 
   // NOTE: use stdout for mobile
-  std::cout << "[CL] device name: " << dev_.getInfo<CL_DEVICE_NAME>() << "\n";
-  std::cout << "[CL] device vendor: " << dev_.getInfo<CL_DEVICE_VENDOR>() << "\n";
-  std::cout << "[CL] device version: " << dev_.getInfo<CL_DEVICE_VERSION>() << "\n";
-  auto exts = dev_.getInfo<CL_DEVICE_EXTENSIONS>();
+  std::cout << "[CL] device name: " << GetDeviceInfo(CL_DEVICE_NAME) << "\n";
+  std::cout << "[CL] device vendor: " << GetDeviceInfo(CL_DEVICE_VENDOR) << "\n";
+  std::cout << "[CL] device version: " << GetDeviceInfo(CL_DEVICE_VERSION) << "\n";
+  auto exts = GetDeviceInfo(CL_DEVICE_EXTENSIONS);
   std::cout << "[CL] device extensions: " << exts << std::endl;
   bool has_fp16 = exts.find("cl_khr_fp16") != std::string::npos;
   if (!has_fp16 && UseFp16()) {
@@ -121,11 +143,8 @@ Status OpenCLExecutionProvider::InitOpenCLContext() {
   }
   LOGS_DEFAULT(INFO) << "[CL] FP16: " << UseFp16();
 
-  {
-    cl_int err{};
-    cmd_queue_ = cl::CommandQueue(ctx_, dev_, /*properties=*/0, &err);
-    ORT_RETURN_IF_CL_ERROR(err);
-  }
+  cmd_queue_ = clCreateCommandQueue(ctx_, dev_, /*properties=*/0, &err);
+  ORT_RETURN_IF_CL_ERROR(err);
 
   InitCopyKernels();
 
@@ -169,19 +188,19 @@ void OpenCLExecutionProvider::RegisterAllocator(std::shared_ptr<AllocatorManager
       }}));
 }
 
-IAllocatorUniquePtr<cl::Buffer> OpenCLExecutionProvider::GetScratchBuffer(size_t nbytes) const {
+IAllocatorUniquePtr<std::remove_pointer_t<cl_mem>> OpenCLExecutionProvider::GetScratchBuffer(size_t nbytes) const {
   auto alloc = GetAllocator(0, (OrtMemType)opencl::CLMemType::OPENCL_BUFFER);
-  return IAllocatorUniquePtr<cl::Buffer>{
-      static_cast<cl::Buffer*>(alloc->Alloc(nbytes)),
+  return IAllocatorUniquePtr<std::remove_pointer_t<cl_mem>>{
+      static_cast<cl_mem>(alloc->Alloc(nbytes)),
       [=](void* ptr) {
         alloc->Free(ptr);
       }};
 }
 
-IAllocatorUniquePtr<cl::Image2D> OpenCLExecutionProvider::GetScratchImage2D(opencl::Image2DDesc desc) const {
+IAllocatorUniquePtr<std::remove_pointer_t<cl_mem>> OpenCLExecutionProvider::GetScratchImage2D(opencl::Image2DDesc desc) const {
   auto alloc = GetAllocator(0, (OrtMemType)opencl::CLMemType::OPENCL_IMAGE_2D);
-  return IAllocatorUniquePtr<cl::Image2D>{
-      static_cast<cl::Image2D*>(alloc->Alloc(desc.AsTensorShape())),
+  return IAllocatorUniquePtr<std::remove_pointer_t<cl_mem>>{
+      static_cast<cl_mem>(alloc->Alloc(desc.AsTensorShape())),
       [=](void* ptr) {
         alloc->Free(ptr);
       }};

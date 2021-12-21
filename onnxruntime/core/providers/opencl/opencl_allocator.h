@@ -26,14 +26,14 @@ class OpenCLBufferAllocator : public IAllocator {
     MemoryKind kind;
   };
 
-  explicit OpenCLBufferAllocator(const cl::Context& ctx);
+  explicit OpenCLBufferAllocator(cl_context ctx);
   ~OpenCLBufferAllocator() override;
 
   void* Alloc(size_t size) override;
   void Free(void* p) override;
 
  private:
-  cl::Context ctx_;
+  cl_context ctx_;
   // FIXME: better caching, cache for kernel benchmark at the moment
   std::unordered_map<void*, Metadata> meta_;
   std::unordered_map<size_t, std::list<void*>> cache_;
@@ -65,7 +65,7 @@ class OpenCLImage2DAllocator : public IAllocator {
     MemoryKind kind;
   };
 
-  explicit OpenCLImage2DAllocator(const cl::Context& ctx, bool use_fp16);
+  explicit OpenCLImage2DAllocator(cl_context ctx, bool use_fp16);
   ~OpenCLImage2DAllocator() override;
 
   void* Alloc(size_t size) override;
@@ -75,7 +75,7 @@ class OpenCLImage2DAllocator : public IAllocator {
   TensorShape AdaptWeightShape(const TensorShape& shape, TensorUsage usage) const override;
 
  private:
-  cl::Context ctx_;
+  cl_context ctx_;
   bool use_fp16_;
 
   // FIXME: better caching, cache for kernel benchmark at the moment
