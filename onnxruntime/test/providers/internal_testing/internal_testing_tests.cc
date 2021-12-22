@@ -174,8 +174,8 @@ TEST(InternalTestingEP, TestLoadOrtModelWithReducedOpCoverage) {
   // Conv+Add gets fused by level 1 optimizer into single node. The 'Conv'/'Add'/'Relu' nodes should be compiled and
   // handled by the custom EP. fallback to CPU for MaxPool.
   ASSERT_EQ(graph.NumberOfNodes(), 6);
-  const auto& func_mgr = session->GetSessionState().GetFuncMgr();
-  NodeComputeInfo* compute_func = nullptr;
+  auto& func_mgr = const_cast<SessionState&>(session->GetSessionState()).GetMutableFuncMgr();
+  const NodeComputeInfo* compute_func = nullptr;
 
   // the generated op type should have a hash for the model based on the model path
   const std::string expected_op_type_prefix = "InternalTestingEP_9611636968429821767_";
@@ -197,14 +197,14 @@ TEST(InternalTestingEP, TestLoadOrtModelWithReducedOpCoverage) {
 // count nodes assigned to the test EP and make sure they all have valid compute funcs
 static int CountAndValidateAssignedNodes(const Graph& current_graph,
                                          const std::unordered_set<std::string>& supported_ops,
-                                         const FuncManager& func_mgr) {
+                                         FuncManager& func_mgr) {
   int count = 0;
 
   for (const auto& node : current_graph.Nodes()) {
     EXPECT_EQ(supported_ops.count(node.OpType()), size_t(0))
         << "Nodes with supported op types should have been replaced. Node with type " << node.OpType() << " was not.";
     if (node.GetExecutionProviderType() == utils::kInternalTestingExecutionProvider) {
-      NodeComputeInfo* compute_func = nullptr;
+      const NodeComputeInfo* compute_func = nullptr;
       EXPECT_STATUS_OK(func_mgr.GetFuncs(node.Name(), compute_func));
       EXPECT_NE(compute_func, nullptr);
       ++count;
@@ -232,7 +232,7 @@ TEST(InternalTestingEP, TestModelWithSubgraph) {
   CreateSession(SessionOptions{}, session, ort_model_path, enable_custom_ep, &supported_ops);
 
   const auto& graph = session->GetGraph();
-  const auto& func_mgr = session->GetSessionState().GetFuncMgr();
+  auto& func_mgr = const_cast<SessionState&>(session->GetSessionState()).GetMutableFuncMgr();
 
   int num_replaced_nodes = CountAndValidateAssignedNodes(graph, supported_ops, func_mgr);
 
@@ -317,7 +317,7 @@ TEST(InternalTestingEP, TestOrtModelWithCompileFailure) {
     ASSERT_STATUS_OK(session.Initialize());
 
     int num_replaced_nodes = CountAndValidateAssignedNodes(
-        session.GetGraph(), supported_ops, session.GetSessionState().GetFuncMgr());
+        session.GetGraph(), supported_ops, const_cast<SessionState&>(session.GetSessionState()).GetMutableFuncMgr());
 
     ASSERT_EQ(num_replaced_nodes, 3);
   }
@@ -335,7 +335,7 @@ TEST(InternalTestingEP, TestOrtModelWithCompileFailure) {
     // 2 Conv nodes shoule be replaced with fused nodes
     const auto& graph = session.GetGraph();
     int num_replaced_nodes = CountAndValidateAssignedNodes(
-        session.GetGraph(), {"Conv"}, session.GetSessionState().GetFuncMgr());
+        session.GetGraph(), {"Conv"}, const_cast<SessionState&>(session.GetSessionState()).GetMutableFuncMgr());
 
     ASSERT_EQ(num_replaced_nodes, 2);
 

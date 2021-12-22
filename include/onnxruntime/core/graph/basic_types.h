@@ -11,6 +11,7 @@
 #include <functional>
 
 #include "core/common/basic_types.h"
+#include "core/common/status.h"
 
 namespace ONNX_NAMESPACE {
 class ValueInfoProto;
@@ -44,6 +45,6 @@ using IOnnxRuntimeOpSchemaCollectionPtr = std::shared_ptr<IOnnxRuntimeOpSchemaCo
 
 class OpKernel;
 class OpKernelInfo;
-
-using KernelCreateFn = std::function<OpKernel*(const OpKernelInfo& info)>;
+class FuncManager;
+using KernelCreateFn = std::function<onnxruntime::common::Status(FuncManager& func_mgr, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out)>;
 }  // namespace onnxruntime

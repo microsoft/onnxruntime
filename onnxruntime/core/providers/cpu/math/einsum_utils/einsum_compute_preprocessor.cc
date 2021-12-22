@@ -114,7 +114,7 @@ Status EinsumComputePreprocessor::ProcessSubscripts() {
           // Example for the following line of code
           // Subscript "...ij" for an input of rank 6
           // num_of_ellipsis_dims = 6 - 5 + 3 = 4
-          int64_t current_num_of_ellipsis_dims = rank - subscript.length() + 3;
+          int64_t current_num_of_ellipsis_dims = static_cast<int64_t>(rank) - subscript.length() + 3;
           if (current_num_of_ellipsis_dims < 0) {
             return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                                    "Einsum subscripts string contains too many subscript labels when compared to the rank of the input");

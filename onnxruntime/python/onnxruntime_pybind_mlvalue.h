@@ -23,8 +23,6 @@ namespace python {
 extern const char* PYTHON_ORTVALUE_OBJECT_NAME;
 extern const char* PYTHON_ORTVALUE_NATIVE_OBJECT_ATTR;
 
-bool IsNumericNumpyType(int npy_type);
-
 bool IsNumericNumpyArray(const pybind11::object& py_object);
 
 bool IsNumpyArray(pybind11::object& obj);

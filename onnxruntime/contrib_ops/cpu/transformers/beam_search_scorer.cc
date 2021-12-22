@@ -10,7 +10,10 @@
 #include "core/providers/cpu/tensor/utils.h"
 #include "core/providers/cpu/rnn/rnn_helpers.h"
 #include "beam_search_scorer.h"
-
+#ifdef _MSC_VER
+// Could reduce the chance of arithmetic overflow. TODO: fix it
+#pragma warning(disable : 26451)
+#endif
 namespace onnxruntime {
 namespace contrib {
 namespace transformers {
@@ -126,7 +129,7 @@ void BeamSearchScorer<T>::Initialize(AllocatorPtr& allocator, int sequence_lengt
   ORT_ENFORCE(next_beam_scores_.empty()); // Make sure this is called only once.
 
   size_t batch_beam_size = static_cast<size_t>(batch_size_ * num_beams_);
-  const bool no_fill = false; // do not fill values after allocation
+  constexpr bool no_fill = false;  // do not fill values after allocation
   next_beam_scores_ = Allocate<T>(allocator, batch_beam_size, next_beam_scores_ptr_, no_fill);
   next_beam_tokens_ = Allocate<int64_t>(allocator, batch_beam_size, next_beam_tokens_ptr_, no_fill);
   next_beam_indices_ = Allocate<int64_t>(allocator, batch_beam_size, next_beam_indices_ptr_, no_fill);

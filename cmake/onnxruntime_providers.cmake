@@ -454,6 +454,10 @@ if (onnxruntime_USE_DNNL)
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_dnnl_cc_srcs})
   onnxruntime_add_shared_library_module(onnxruntime_providers_dnnl ${onnxruntime_providers_dnnl_cc_srcs})
   target_link_directories(onnxruntime_providers_dnnl PRIVATE ${DNNL_LIB_DIR})
+  if (MSVC AND onnxruntime_ENABLE_STATIC_ANALYSIS)
+    # dnnl_convgrad.cc(47,0): Warning C6262: Function uses '38816' bytes of stack:  exceeds /analyze:stacksize '16384'.  Consider moving some data to heap.
+    target_compile_options(onnxruntime_providers_dnnl PRIVATE  "/analyze:stacksize 131072")
+  endif()
 
   add_dependencies(onnxruntime_providers_dnnl onnxruntime_providers_shared project_dnnl ${onnxruntime_EXTERNAL_DEPENDENCIES})
   target_include_directories(onnxruntime_providers_dnnl PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${DNNL_INCLUDE_DIR} ${DNNL_OCL_INCLUDE_DIR})

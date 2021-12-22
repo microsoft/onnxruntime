@@ -1982,8 +1982,7 @@ common::Status InferenceSession::NewIOBinding(std::unique_ptr<IOBinding>* io_bin
     }
   }
 
-  // private constructor, can't use make_unique
-  *io_binding = std::unique_ptr<IOBinding>(new IOBinding(*session_state_));
+  *io_binding = std::make_unique<IOBinding>(*session_state_);
   return Status::OK();
 }
 
