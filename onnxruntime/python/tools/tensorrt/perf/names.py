@@ -1,3 +1,9 @@
+# ORT ep names 
+cpu_ep = "CPUExecutionProvider"
+cuda_ep = "CUDAExecutionProvider"
+trt_ep = "TensorrtExecutionProvider"
+acl_ep = "ACLExecutionProvider"
+
 # provider names 
 cpu = "ORT-CPUFp32"
 cuda = "ORT-CUDAFp32"
@@ -6,6 +12,7 @@ trt = "ORT-TRTFp32"
 trt_fp16 = "ORT-TRTFp16"
 standalone_trt = "TRTFp32"
 standalone_trt_fp16 = "TRTFp16"
+acl = "ORT-ACLFp32"
 
 # column names 
 model_title = 'Model'

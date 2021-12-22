@@ -34,11 +34,6 @@ logger = logging.getLogger('')
 # standalone_trt = "Standalone_TRT"
 # standalone_trt_fp16 = "Standalone_TRT_fp16"
 
-cpu_ep = "CPUExecutionProvider"
-cuda_ep = "CUDAExecutionProvider"
-trt_ep = "TensorrtExecutionProvider"
-acl_ep = "ACLExecutionProvider"
-
 ep_to_provider_list = {
     cpu: [cpu_ep],
     acl: [acl_ep], 

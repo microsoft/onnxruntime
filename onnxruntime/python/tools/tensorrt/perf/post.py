@@ -54,7 +54,7 @@ def adjust_columns(table, columns, db_columns, model_group):
 def get_latency_over_time(commit_hash, report_url, branch, latency_table):
     if not latency_table.empty:
         over_time = latency_table.drop(to_drop, axis='columns')
-        over_time = over_time.melt(id_vars=[model, group], var_name='Ep', value_name='Latency')
+        over_time = over_time.melt(id_vars=[model_title, group_title, var_name='Ep', value_name='Latency')
         over_time = over_time.assign(CommitId=commit_hash)
         over_time = over_time.assign(ReportUrl=report_url)
         over_time = over_time.assign(Branch=branch)
