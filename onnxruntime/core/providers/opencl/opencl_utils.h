@@ -329,14 +329,7 @@ class KernelLauncher {
     return setImage2Ds(std::forward<Ts>(args)...);
   }
 
-  Status Launch(cl_command_queue queue, const NDRange& global, const NDRange& local = {}) {
-    ORT_RETURN_IF_CL_ERROR(err_, " on setting argument ", static_cast<int>(err_index_));
-    VLOGS_DEFAULT(1) << "[CL] Launching " << GetKernelFunctionName()
-                     << " with global work size: " << global.ToString()
-                     << " local work size: " << local.ToString();
-    ORT_RETURN_IF_CL_ERROR(clEnqueueNDRangeKernel(queue, kernel_, global.Size(), nullptr, global.Data(), local.Data(), 0, nullptr, nullptr));
-    return Status::OK();
-  }
+  Status Launch(const OpenCLExecutionProvider& exec, const NDRange& global, const NDRange& local = {});
 
  private:
   inline std::string GetKernelFunctionName() {

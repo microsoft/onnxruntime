@@ -45,7 +45,7 @@ class Clip6 : public OpenCLKernel {
             .setArg(W)
             .setArg(lower_bound_)
             .setArg(upper_bound_)
-            .Launch(exec_->GetCommandQueue(), desc.AsNDRange()));
+            .Launch(*exec_, desc.AsNDRange()));
 
     return Status::OK();
   }

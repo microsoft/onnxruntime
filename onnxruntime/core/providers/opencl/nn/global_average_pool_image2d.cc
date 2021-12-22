@@ -43,7 +43,7 @@ class GlobalAveragePool : public OpenCLKernel {
             .setImage2Ds(*X, *Y)
             .setInt2(W, H)
             .setArg<cl_float>(invHW)
-            .Launch(GetCommandQueue(), {static_cast<uint32_t>(C), static_cast<uint32_t>(N)}));
+            .Launch(*exec_, {static_cast<uint32_t>(C), static_cast<uint32_t>(N)}));
 
     return Status::OK();
   }

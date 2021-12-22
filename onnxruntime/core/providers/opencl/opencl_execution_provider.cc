@@ -131,17 +131,21 @@ Status OpenCLExecutionProvider::InitOpenCLContext() {
   };
 
   // NOTE: use stdout for mobile
-  std::cout << "[CL] device name: " << GetDeviceInfo(CL_DEVICE_NAME) << "\n";
+  // FIXME: use logger latter
+  auto device_name = GetDeviceInfo(CL_DEVICE_NAME);
+  std::cout << "[CL] device name: " << device_name << "\n";
   std::cout << "[CL] device vendor: " << GetDeviceInfo(CL_DEVICE_VENDOR) << "\n";
   std::cout << "[CL] device version: " << GetDeviceInfo(CL_DEVICE_VERSION) << "\n";
   auto exts = GetDeviceInfo(CL_DEVICE_EXTENSIONS);
   std::cout << "[CL] device extensions: " << exts << std::endl;
   bool has_fp16 = exts.find("cl_khr_fp16") != std::string::npos;
   if (!has_fp16 && UseFp16()) {
-    LOGS_DEFAULT(ERROR) << "[CL] FP16 is requested, but is not supported by the device!";
+    std::cout << "[CL] FP16 is requested, but is not supported by the device!";
     DisableFp16();
   }
-  LOGS_DEFAULT(INFO) << "[CL] FP16: " << UseFp16();
+  flush_after_launch_ = ShouldFlushAfterLaunch(device_name);
+  std::cout << "[CL] FP16: " << UseFp16() << "\n";
+  std::cout << "[CL] clFlush after launch: " << flush_after_launch_ << "\n";
 
   cmd_queue_ = clCreateCommandQueue(ctx_, dev_, /*properties=*/0, &err);
   ORT_RETURN_IF_CL_ERROR(err);
@@ -206,6 +210,13 @@ IAllocatorUniquePtr<std::remove_pointer_t<cl_mem>> OpenCLExecutionProvider::GetS
       }};
 }
 
+Status OpenCLExecutionProvider::AfterCLLaunch() const {
+  if (flush_after_launch_) {
+    ORT_RETURN_IF_CL_ERROR(clFlush(cmd_queue_), "command queue flush failure.");
+  }
+  return Status::OK();
+}
+
 /*
 #pragma region IDataTransfer related code
 */
@@ -231,5 +242,9 @@ void OpenCLExecutionProvider::InitCopyKernels() {
 /*
 #pragma endregion
 */
+
+bool OpenCLExecutionProvider::ShouldFlushAfterLaunch(const std::string& device_name) {
+  return device_name.find("Mali") != std::string::npos;
+}
 
 }  // namespace onnxruntime

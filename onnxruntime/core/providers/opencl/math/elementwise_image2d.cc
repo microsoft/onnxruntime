@@ -48,7 +48,7 @@ namespace opencl {
               .setImage2D(*a)                                               \
               .setImage2D(*b)                                               \
               .setImage2D(*c)                                               \
-              .Launch(GetCommandQueue(), {desc.UWidth(), desc.UHeight()})); \
+              .Launch(*exec_, {desc.UWidth(), desc.UHeight()}));            \
                                                                             \
       return Status::OK();                                                  \
     }                                                                       \

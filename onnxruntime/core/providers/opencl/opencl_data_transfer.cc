@@ -220,7 +220,7 @@ Status OpenCLDataTransfer::CopyBuffer1DToImage2D(
           .setBuffer(src)
           .setArg<cl_int>(shape.Size())  // nelem
           .setImage2D(dst)
-          .Launch(exec_->GetCommandQueue(), desc.AsNDRange()));
+          .Launch(*exec_, desc.AsNDRange()));
   return Status::OK();
 }
 
@@ -248,7 +248,7 @@ Status OpenCLDataTransfer::CopyBufferNCHWToImage2D(
           .setArg<cl_int>(shape[2])  // H
           .setArg<cl_int>(shape[3])  // W
           .setImage2D(dst)
-          .Launch(exec_->GetCommandQueue(), desc.AsNDRange()));
+          .Launch(*exec_, desc.AsNDRange()));
   return Status::OK();
 }
 
@@ -274,7 +274,7 @@ Status OpenCLDataTransfer::CopyImage2DToBuffer1D(
           .setImage2D(src)
           .setBuffer(dst)
           .setArg<cl_int>(shape.Size())  // nelem
-          .Launch(exec_->GetCommandQueue(), desc.AsNDRange()));
+          .Launch(*exec_, desc.AsNDRange()));
   return Status::OK();
 }
 
@@ -302,7 +302,7 @@ Status OpenCLDataTransfer::CopyImage2DToBufferNCHW(
           .setArg<cl_int>(shape[1])  // C
           .setArg<cl_int>(shape[2])  // H
           .setArg<cl_int>(shape[3])  // W
-          .Launch(exec_->GetCommandQueue(), desc.AsNDRange()));
+          .Launch(*exec_, desc.AsNDRange()));
   return Status::OK();
 }
 
@@ -334,7 +334,7 @@ Status OpenCLDataTransfer::CopyConvWeight(const Tensor& src, Tensor& dst) const 
                           .setInt4(shape[0], shape[1], shape[2], shape[3])
                           .setArg<cl_int>(shape[2] * shape[3])
                           .setImage2D(dst_image2d)
-                          .Launch(exec_->GetCommandQueue(), desc.AsNDRange()));
+                          .Launch(*exec_, desc.AsNDRange()));
   ORT_RETURN_IF_CL_ERROR(clFinish(exec_->GetCommandQueue())); // do sync copy, since we cannot extend the lifetime of src or tmp
   return Status::OK();
 }
@@ -355,7 +355,7 @@ Status OpenCLDataTransfer::CopyDepthwiseConvWeight(const Tensor& src, Tensor& ds
                           .setInt4(shape[0], shape[1], shape[2], shape[3])
                           .setArg<cl_int>(/*shape[1] * */ shape[2] * shape[3])  // C_i * K_h * K_w, C_i == 1
                           .setImage2D(dst_image2d)
-                          .Launch(exec_->GetCommandQueue(), desc.AsNDRange()));
+                          .Launch(*exec_, desc.AsNDRange()));
   ORT_RETURN_IF_CL_ERROR(clFinish(exec_->GetCommandQueue())); // do sync copy, since we cannot extend the lifetime of src or tmp
   return Status::OK();
 }

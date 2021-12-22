@@ -169,7 +169,7 @@ class Conv : public OpenCLKernel {
               .setArg<cl_int>(act_info_.kind)
               .setArg<cl_float>(act_info_.param0)
               .setArg<cl_float>(act_info_.param1)
-              .Launch(GetCommandQueue(), {gsx, gsy}));
+              .Launch(*exec_, {gsx, gsy}));
     } else {
       ORT_RETURN_IF_ERROR(
           KernelLauncher{GetKernel("DepthwiseConv2D")}
@@ -185,7 +185,7 @@ class Conv : public OpenCLKernel {
               .setArg<cl_int>(act_info_.kind)
               .setArg<cl_float>(act_info_.param0)
               .setArg<cl_float>(act_info_.param1)
-              .Launch(GetCommandQueue(), {gsx, gsy}));
+              .Launch(*exec_, {gsx, gsy}));
     }
 
     return Status::OK();
@@ -233,7 +233,7 @@ class Conv : public OpenCLKernel {
               .setArg<cl_int>(act_info_.kind)
               .setArg<cl_float>(act_info_.param0)
               .setArg<cl_float>(act_info_.param1)
-              .Launch(GetCommandQueue(), {gsx, gsy}));
+              .Launch(*exec_, {gsx, gsy}));
     } else if (K1) {
       ORT_RETURN_IF_ERROR(
           KernelLauncher{GetKernel("Conv2DK1")}
@@ -249,7 +249,7 @@ class Conv : public OpenCLKernel {
               .setArg<cl_int>(act_info_.kind)
               .setArg<cl_float>(act_info_.param0)
               .setArg<cl_float>(act_info_.param1)
-              .Launch(GetCommandQueue(), {gsx, gsy}));
+              .Launch(*exec_, {gsx, gsy}));
     } else {
       ORT_RETURN_IF_ERROR(
           KernelLauncher{GetKernel("Conv2D")}
@@ -267,7 +267,7 @@ class Conv : public OpenCLKernel {
               .setArg<cl_int>(act_info_.kind)
               .setArg<cl_float>(act_info_.param0)
               .setArg<cl_float>(act_info_.param1)
-              .Launch(GetCommandQueue(), {gsx, gsy}));
+              .Launch(*exec_, {gsx, gsy}));
     }
     return Status::OK();
   }

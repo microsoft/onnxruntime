@@ -41,14 +41,18 @@ class OpenCLExecutionProvider : public IExecutionProvider {
 
   bool UseFp16() const { return use_fp16_; }
 
+  Status AfterCLLaunch() const;
+
  private:
   Status InitOpenCLContext();
   void DisableFp16() { use_fp16_ = false; }
+  static bool ShouldFlushAfterLaunch(const std::string& device_name);
 
   cl_device_id dev_;
   cl_context ctx_;
   cl_command_queue cmd_queue_;
   bool use_fp16_;
+  bool flush_after_launch_;
 
  private:
   // IDataTransfer is a lightweight interface with std::unique_ptr as its
