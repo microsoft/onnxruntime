@@ -7,6 +7,7 @@ import copy
 import json
 import re
 import pprint
+from perf_utils import *
 from benchmark import *
 
 def write_model_info_to_file(model, path):
@@ -72,7 +73,7 @@ def main():
                         "--ep", ep,
                         "--write_test_result", "false"]
             
-            if "Standalone" in ep: 
+            if ep == standalone_trt or ep == standalone_trt_fp16: 
                 if args.running_mode == "validate": 
                     continue 
                 else:

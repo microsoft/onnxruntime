@@ -14,7 +14,6 @@ import sys
 import onnxruntime
 from onnx import numpy_helper
 from perf_utils import *
-from names import *
 import pprint
 import time
 import pandas as pd
@@ -203,7 +202,7 @@ def get_ort_session_inputs_and_outputs(name, session, ort_input):
     return (sess_inputs, sess_outputs)
 
 def track_ep_memory(ep): 
-     return trt in ep or cuda in ep or standalone_trt in ep
+     return cpu != ep 
 
 def get_trtexec_pid(df, python_pid): 
     for pid in df['pid'].tolist(): 
@@ -1039,7 +1038,7 @@ def run_onnxruntime(args, models):
                 logger.info("\n----------------------------- benchmark -------------------------------------")
 
                 # resolve providers to create session
-                if standalone_trt in ep: 
+                if is_standalone(ep): 
                     providers = ep_to_provider_list[trt]
                 else: 
                     providers = ep_to_provider_list[ep]
@@ -1063,7 +1062,7 @@ def run_onnxruntime(args, models):
                 result = None
 
                 # get standalone TensorRT perf
-                if standalone_trt in ep and args.trtexec: 
+                if is_standalone(ep) and args.trtexec: 
                     trtexec = True 
                     try: 
                         result = run_trt_standalone(args.trtexec, name, model_path, sess.get_inputs(), all_inputs_shape, fp16, args.track_memory)
@@ -1214,13 +1213,13 @@ def calculate_gain(value, ep1, ep2):
 
 def add_improvement_information(model_to_latency):
     for key, value in model_to_latency.items():
-        if trt in value and cuda in value:
+        if "ORT-TRT" in value and "ORT-CUDA" in value:
             gain = calculate_gain(value, trt, cuda)
             value[trt_cuda_gain] = "{:.2f} %".format(gain)
             if trt_fp16 in value and cuda_fp16 in value:
                 gain = calculate_gain(value, trt_fp16, cuda_fp16)
                 value[trt_cuda_fp16_gain] = "{:.2f} %".format(gain)
-        if trt in value and standalone_trt in value:
+        if "ORT-TRT" in value and is_standalone(value):
             gain = calculate_gain(value, trt, standalone_trt)
             value[trt_native_gain] = "{:.2f} %".format(gain)
             if trt_fp16 in value and standalone_trt_fp16 in value:
