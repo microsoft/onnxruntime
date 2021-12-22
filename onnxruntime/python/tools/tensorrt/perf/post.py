@@ -118,7 +118,9 @@ def write_table(ingest_client, table, table_name, trt_version, upload_time):
         return
     table = table.assign(TrtVersion=trt_version) # add TrtVersion
     table = table.assign(UploadTime=upload_time) # add UploadTime
-    print(table.head())
+    table.set_option('display.max_columns', None)
+    print(table.keys())
+    print(table.head(1))
     #ingestion_props = IngestionProperties(
     #  database=database,
     #  table=table_name,

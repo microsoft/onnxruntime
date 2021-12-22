@@ -399,7 +399,7 @@ def load_onnx_model_zoo_test_data(path, all_inputs_shape, fp16):
 
                     tensor_to_array = numpy_helper.to_array(tensor)
 
-                    if data_type == "fp16" and tensor_to_array.dtype == np.dtype(np.float32):
+                    if fp16 and tensor_to_array.dtype == np.dtype(np.float32):
                         tensor_to_array = tensor_to_array.astype(np.float16)
                     output_data_pb.append(tensor_to_array)
 
@@ -998,7 +998,7 @@ def run_onnxruntime(args, models):
             logger.info("[Initialize]  model = {}, ep = {} ...".format(name, ep))
            
             # use float16.py for cuda fp16 only
-            if cuda_fp16 in ep: 
+            if cuda_fp16 == ep: 
                 
                 # handle model
                 if "model_path_fp16" in model_info:
@@ -1018,7 +1018,7 @@ def run_onnxruntime(args, models):
                     test_data_dir = model_info["test_data_path_fp16"]
                     fp16 = False 
             
-            if standalone_trt_fp16 in ep: 
+            if standalone_trt_fp16 == ep: 
                 fp16 = True
             
             print(fp16)
