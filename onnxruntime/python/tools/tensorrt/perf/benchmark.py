@@ -87,8 +87,9 @@ def run_trt_standalone(trtexec, model_name, model_path, ort_inputs, all_inputs_s
     shapes_arg = '--optShapes=' + ','.join(input_shape)
     inputs_arg = '--loadInputs=' + ','.join(loaded_inputs)
     result = {}
-    command = [trtexec, onnx_model_path, "--duration=50", "--percentile=90", "--explicitBatch", "--workspace=4096"]
-    command.extend([inputs_arg])
+    # "--explicitBatch" only 8.0.1.6
+    command = [trtexec, onnx_model_path, "--duration=50", "--percentile=90", "--workspace=4096"]
+    #command.extend([inputs_arg])
     
     # add benchmarking flags
     model = onnx.load(model_path)
@@ -989,7 +990,7 @@ def run_onnxruntime(args, models):
             if skip_ep(name, ep, model_to_fail_ep):
                 continue
             
-            if standalone_trt not in ep:
+            if not is_standalone(ep):
                 ep_ = ep_to_provider_list[ep][0]
                 if (ep_ not in onnxruntime.get_available_providers()):
                     logger.error("No {} support".format(ep_))
@@ -999,7 +1000,7 @@ def run_onnxruntime(args, models):
             test_data_dir = model_info["test_data_path"]
 
             fp16 = False
-            os.environ["ORT_TENSORRT_FP16_ENABLE"] = "1" if "fp16" in ep else "0"
+            os.environ["ORT_TENSORRT_FP16_ENABLE"] = "1" if "Fp16" in ep else "0"
             logger.info("[Initialize]  model = {}, ep = {} ...".format(name, ep))
            
             # use float16.py for cuda fp16 only
