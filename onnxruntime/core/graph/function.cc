@@ -458,9 +458,9 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
   }
 
   for (const auto& constant_initializer : meta_def->constant_initializers) {
-    const ONNX_NAMESPACE::TensorProto* initializer = nullptr;
-    if (graph.GetInitializedTensor(constant_initializer, initializer)) {
-      // meta_def->constant_initializer could have duplicates so make sure we only add once
+    const ONNX_NAMESPACE::TensorProto* initializer = graph.GetConstantInitializer(constant_initializer, true);
+    if (initializer) {
+       // meta_def->constant_initializers could have duplicates so make sure we only add once
       const ONNX_NAMESPACE::TensorProto* subgraph_initializer = nullptr;
       if (!function_body_graph.GetInitializedTensor(constant_initializer, subgraph_initializer)) {
         function_body_graph.AddInitializedTensor(*initializer);
