@@ -344,7 +344,7 @@ def get_acl_version():
 # inputs: [[test_data_0_input_0.pb, test_data_0_input_1.pb ...], [test_data_1_input_0.pb, test_data_1_input_1.pb ...] ...]
 # outputs: [[test_data_0_output_0.pb, test_data_0_output_1.pb ...], [test_data_1_output_0.pb, test_data_1_output_1.pb ...] ...]
 #######################################################################################################################################
-def load_onnx_model_zoo_test_data(path, all_inputs_shape, data_type="fp32"):
+def load_onnx_model_zoo_test_data(path, all_inputs_shape, fp16):
     logger.info("Parsing test data in {} ...".format(path))
     output = get_output(["find", path, "-name", "test_data*", "-type", "d"])
     test_data_set_dir = split_and_sort_output(output)
@@ -375,7 +375,7 @@ def load_onnx_model_zoo_test_data(path, all_inputs_shape, data_type="fp32"):
             with open(data, 'rb') as f:
                 tensor.ParseFromString(f.read())
                 tensor_to_array = numpy_helper.to_array(tensor)
-                if data_type == "fp16" and tensor_to_array.dtype == np.dtype(np.float32):
+                if fp16 and tensor_to_array.dtype == np.dtype(np.float32):
                     tensor_to_array = tensor_to_array.astype(np.float16)
                 tensor_to_array.tofile(str(i) + ".bin")
                 input_data_pb.append(tensor_to_array)
@@ -896,13 +896,7 @@ def convert_model_from_float_to_float16(model_path):
 def get_test_data(fp16, test_data_dir, all_inputs_shape):
     inputs = []
     ref_outputs = []
-
-    # read input/output of test data
-    if fp16:
-        inputs, ref_outputs = load_onnx_model_zoo_test_data(test_data_dir, all_inputs_shape, "fp16")
-    else:
-        inputs, ref_outputs = load_onnx_model_zoo_test_data(test_data_dir, all_inputs_shape)
-
+    inputs, ref_outputs = load_onnx_model_zoo_test_data(test_data_dir, all_inputs_shape, fp16)
     return inputs, ref_outputs
 
 def run_symbolic_shape_inference(model_path, new_model_path): 
@@ -1027,6 +1021,7 @@ def run_onnxruntime(args, models):
             if standalone_trt_fp16 in ep: 
                 fp16 = True
             
+            print(fp16)
             inputs, ref_outputs = get_test_data(fp16, test_data_dir, all_inputs_shape)
             # generate random input data
             if args.input_data == "random":

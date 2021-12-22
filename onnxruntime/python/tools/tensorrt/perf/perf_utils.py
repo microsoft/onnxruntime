@@ -2,7 +2,7 @@ import subprocess
 import json
 import pprint
 import logging
-import coloredlogs
+#import coloredlogs
 import re
 import sys
 
