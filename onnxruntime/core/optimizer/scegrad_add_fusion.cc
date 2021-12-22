@@ -28,7 +28,7 @@ Status SCEGradWithAdd::ApplyImpl(Graph& graph, bool& modified, int graph_level, 
     if ((reshape_ptr->OpType() != "Reshape") or (reshape_ptr->GetOutputEdgesCount() != 1))
       continue;
     auto sum_ptr = graph.GetNode(reshape_ptr->OutputNodesBegin()->Index());
-    if ((sum_ptr->OpType() != "Sum") and (sum_ptr->GetInputEdgesCount() != 2))
+    if ((sum_ptr->OpType() != "Sum") or (sum_ptr->GetInputEdgesCount() != 2))
       continue;
     if ((graph.NodeProducesGraphOutput(*scegrad_ptr) or graph.NodeProducesGraphOutput(*reshape_ptr)))
       continue;
