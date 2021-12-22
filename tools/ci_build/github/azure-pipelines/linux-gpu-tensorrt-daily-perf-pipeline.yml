@@ -161,7 +161,7 @@ jobs:
         
     - ${{ if eq(parameters.PostToDashboard, true) }}:
 
-      - script: 'python3 -m pip install pandas azure-kusto-data[pandas] azure-kusto-ingest[pandas]'
+      - script: 'python3 -m pip install pandas azure-kusto-data[pandas] azure-kusto-ingest[pandas] coloredlogs'
         displayName: 'Install dashboard dependencies'
 
       - task: AzureCLI@2
