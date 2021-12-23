@@ -98,9 +98,10 @@ class WindowsThread : public EnvThread {
 #pragma warning(disable : 6387)
   static unsigned __stdcall ThreadMain(void* param) {
     std::unique_ptr<Param> p((Param*)param);
-    // TODO: should I try to use SetThreadSelectedCpuSets?
-    if (!p->thread_options.affinity.empty())
-      SetThreadAffinityMask(GetCurrentThread(), p->thread_options.affinity[p->index]);
+    if (!p->thread_options.affinity.empty()) {
+      DWORD_PTR mask = static_cast<DWORD_PTR>(1) << p->thread_options.affinity[p->index];
+      SetThreadAffinityMask(GetCurrentThread(), mask);
+    }
 #if WINVER >= _WIN32_WINNT_WIN10
     constexpr SetThreadDescriptionFunc pSetThrDesc = SetThreadDescription;
 #elif WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
