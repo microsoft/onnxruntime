@@ -113,8 +113,10 @@ OrtMemoryInfo GetMemoryInfoPerDeviceType(const OrtDevice& ort_device) {
 int32_t GetProtoType(const OrtValue& ort_value) {
   if (ort_value.IsTensor()) {
     return ort_value.Get<Tensor>().GetElementType();
+#if !defined(ORT_MINIMAL_BUILD)
   } else if (ort_value.IsSparseTensor()) {
     return ort_value.Get<SparseTensor>().GetElementType();
+#endif
   } else if (ort_value.IsTensorSequence()) {
     return ort_value.Get<TensorSeq>().DataType()->AsPrimitiveDataType()->GetDataType();
   } else {
