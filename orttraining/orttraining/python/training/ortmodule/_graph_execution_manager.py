@@ -279,8 +279,12 @@ class GraphExecutionManager(GraphExecutionInterface):
         session_options.enable_mem_pattern = False
         session_options.enable_mem_reuse = False
         session_options.use_deterministic_compute = _are_deterministic_algorithms_enabled()
-        # default to PRIORITY_BASED execution order
-        session_options.execution_order = onnxruntime.ExecutionOrder.PRIORITY_BASED
+
+        # Use default typo sort for execution order, in case some operations in backward also runs in forward.
+        session_options.execution_order = onnxruntime.ExecutionOrder.DEFAULT
+        # # default to PRIORITY_BASED execution order
+        # session_options.execution_order = onnxruntime.ExecutionOrder.PRIORITY_BASED
+
         # 0:Verbose, 1:Info, 2:Warning. 3:Error, 4:Fatal. Default is 2.
         session_options.log_severity_level = int(
             self._debug_options.logging.log_level)
