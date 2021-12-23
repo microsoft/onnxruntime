@@ -108,7 +108,43 @@ def write_table(ingest_client, table, table_name, trt_version, upload_time):
 def get_time():   
     date_time = time.strftime(time_string_format)
     return date_time
-            
+
+def get_cuda_cudnn_version(trt_version): 
+    if trt_version == '8.2.1.8': 
+        cuda = '11.5.0'
+        cudnn = '8.3.1.22' 
+    elif trt_version == '8.0.1.6': 
+        cuda = '11.4.0'
+        cudnn = '8.2.2.26' 
+    else:  # trt_version == '7.2.3.4'
+        cuda = '11.1.1'
+        cudnn = '8.0.5'
+    return cuda, cudnn
+
+def publish_specs(ingest_client, trt_version, branch, upload_time):
+    
+    table_name = 'hardware_specs'
+    
+    cpu_version = 'AMD EPYC 7V12(Rome)'
+    gpu_version = 'Nvidia Tesla T4'
+    tensorrt_version = trt_version + ' , *All ORT-TRT and TRT are run in Mixed Precision mode (Fp16 and Fp32).'
+    cuda_version, cudnn_version = get_cuda_cudnn_version(trt_version)
+
+    table = pd.DataFrame({'.': [1, 2, 3, 4, 5, 6],
+                        'Spec': ['CPU', 'GPU', 'TensorRT', 'CUDA', 'CuDNN', 'Branch'], 
+                        'Version': [cpu_version, gpu_version, tensorrt_version, cuda_version, cudnn_version, branch]})
+
+    table = table.assign(UploadTime=upload_time) # add UploadTime
+
+    ingestion_props = IngestionProperties(
+      database=database,
+      table=table_name,
+      data_format=DataFormat.CSV,
+      report_level=ReportLevel.FailuresAndSuccesses
+    )
+    # append rows
+    ingest_client.ingest_from_dataframe(table, ingestion_properties=ingestion_props)
+
 def main():
     
     args = parse_arguments()
@@ -118,6 +154,8 @@ def main():
     ingest_client = QueuedIngestClient(kcsb_ingest)
     date_time = get_time()
 
+    publish_specs(ingest_client, args.trt_version, args.branch, date_time)
+    
     try:
         result_file = args.report_folder
 
