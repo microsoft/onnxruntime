@@ -22,7 +22,7 @@ jobs:
       - name: Generate Python docs with Sphinx
         run: |
           cd tools/doc
-          ./builddoc.sh /usr/bin ../../docs/python/inference ../../build     
+          ./builddoc.sh /usr/bin ../.. ../../build     
       - name: Set vars
         id: vars
         run: echo "::set-output name=sha_short::$(git rev-parse --short HEAD)"
