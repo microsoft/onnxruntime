@@ -19,6 +19,7 @@ jobs:
           pip install -r requirements.txt
           pip install flatbuffers
           pip install -i https://test.pypi.org/simple/ ort-nightly
+          pip list
       - name: Generate Python docs with Sphinx
         run: |
           cd tools/doc
