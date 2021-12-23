@@ -121,7 +121,7 @@ def get_cuda_cudnn_version(trt_version):
         cudnn = '8.0.5'
     return cuda, cudnn
 
-def publish_specs(ingest_client, trt_version, branch, upload_time):
+def publish_specs(ingest_client, trt_version, branch, commit_id, upload_time):
     
     table_name = 'hardware_specs'
     
@@ -130,9 +130,9 @@ def publish_specs(ingest_client, trt_version, branch, upload_time):
     tensorrt_version = trt_version + ' , *All ORT-TRT and TRT are run in Mixed Precision mode (Fp16 and Fp32).'
     cuda_version, cudnn_version = get_cuda_cudnn_version(trt_version)
 
-    table = pd.DataFrame({'.': [1, 2, 3, 4, 5, 6],
-                        'Spec': ['CPU', 'GPU', 'TensorRT', 'CUDA', 'CuDNN', 'Branch'], 
-                        'Version': [cpu_version, gpu_version, tensorrt_version, cuda_version, cudnn_version, branch]})
+    table = pd.DataFrame({'.': [1, 2, 3, 4, 5, 6, 7],
+                        'Spec': ['CPU', 'GPU', 'TensorRT', 'CUDA', 'CuDNN', 'Branch', 'CommitId'], 
+                        'Version': [cpu_version, gpu_version, tensorrt_version, cuda_version, cudnn_version, branch, commit_id]})
 
     table = table.assign(UploadTime=upload_time) # add UploadTime
 
@@ -154,7 +154,7 @@ def main():
     ingest_client = QueuedIngestClient(kcsb_ingest)
     date_time = get_time()
 
-    publish_specs(ingest_client, args.trt_version, args.branch, date_time)
+    publish_specs(ingest_client, args.trt_version, args.branch, args.commit_hash, date_time)
     
     try:
         result_file = args.report_folder
