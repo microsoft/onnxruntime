@@ -21,8 +21,8 @@ jobs:
           pip install -i https://test.pypi.org/simple/ ort-nightly
       - name: Generate Python docs with Sphinx
         run: |
-          cd docs/python
-          ./build_docs.sh user/bin inference ../../build     
+          cd tools/doc
+          ./builddoc.sh /usr/bin ../../docs/python/inference ../../build     
       - name: Set vars
         id: vars
         run: echo "::set-output name=sha_short::$(git rev-parse --short HEAD)"
