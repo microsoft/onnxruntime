@@ -48,7 +48,14 @@ def _ortvalues_to_torch_tensor(ortvalues, device):
             if 'ort' == device.type:
                 if not hasattr(C, 'to_aten_ort_device_tensor'):
                     raise AttributeError("onnxruntime is missing to_aten_ort_device_tensor needed to support device == 'ort'.")
-                return tuple(ortvalues.to_dlpacks(C.to_aten_ort_device_tensor))
+                # The below expression could be used as well but it fails.
+                # return tuple(ortvalues.to_dlpacks(C.to_aten_ort_device_tensor))
+                # The following expressions fails too:
+                # tensors = tuple(C.to_aten_ort_device_tensor(ov) for ov in ortvalues);print(tensors[0])
+                # due to: NotImplementedError: Could not run 'aten::_cat' with arguments from the 'ORT' backend.
+                # C.to_aten_ort_device_tensor returns a torch tensor with device 'ort:0'
+                # instead of one of the allowed backend (cpu, cuda:0, ...).
+                return tuple(C.to_aten_ort_device_tensor(ov) for ov in ortvalues)
             return tuple(ortvalues.to_dlpacks(_from_dlpack))
 
         # DLPack structure does not know for sure if it stores boolean
