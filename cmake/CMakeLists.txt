@@ -304,7 +304,9 @@ if (NOT MSVC AND NOT onnxruntime_ENABLE_BITCODE)
   string(APPEND CMAKE_C_FLAGS " -ffunction-sections -fdata-sections")
 endif()
 
-string(APPEND CMAKE_CXX_FLAGS " -D_GLIBCXX_USE_CXX11_ABI=${_GLIBCXX_USE_CXX11_ABI}")
+if (onnxruntime_ENABLE_EAGER_MODE)
+  string(APPEND CMAKE_CXX_FLAGS " -D_GLIBCXX_USE_CXX11_ABI=${_GLIBCXX_USE_CXX11_ABI}")
+endif()
 
 if (onnxruntime_BUILD_WEBASSEMBLY)
   # Enable LTO for release single-thread build
