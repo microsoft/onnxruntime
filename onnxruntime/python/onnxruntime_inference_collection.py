@@ -323,6 +323,9 @@ class InferenceSession(Session):
         else:
             raise TypeError("Unable to load from type '{0}'".format(type(path_or_bytes)))
 
+        if providers is None:
+            providers = C.get_available_providers()
+
         self._sess_options = sess_options
         self._sess_options_initial = sess_options
         self._enable_fallback = True
