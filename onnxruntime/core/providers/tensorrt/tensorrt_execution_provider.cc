@@ -19,6 +19,9 @@
 #include <limits>
 #include <map>
 #include <memory>
+#include <chrono>
+#include <unistd.h>
+#include <iostream>
 #include "flatbuffers/idl.h"
 #include "ort_trt_int8_cal_table.fbs.h"
 
@@ -263,6 +266,36 @@ bool SetDynamicRange(nvinfer1::INetworkDefinition& network, std::unordered_map<s
     }
   }
   return true;
+}
+
+inline std::vector<char> loadTimingCacheFile(const std::string inFileName)
+{
+    std::ifstream iFile(inFileName, std::ios::in | std::ios::binary);
+    if (!iFile)
+    {
+        LOGS_DEFAULT(WARNING) << "[TensorRT EP] Could not read timing cache from: " << inFileName
+                              << ". A new timing cache will be generated and written.";
+        return std::vector<char>();
+    }
+    iFile.seekg(0, std::ifstream::end);
+    size_t fsize = iFile.tellg();
+    iFile.seekg(0, std::ifstream::beg);
+    std::vector<char> content(fsize);
+    iFile.read(content.data(), fsize);
+    iFile.close();
+    return content;
+}
+
+inline void saveTimingCacheFile(const std::string outFileName, const nvinfer1::IHostMemory* blob)
+{
+    std::ofstream oFile(outFileName, std::ios::out | std::ios::binary);
+    if (!oFile)
+    {
+        LOGS_DEFAULT(WARNING) << "[TensorRT EP] Could not write timing cache to: " << outFileName;
+        return;
+    }
+    oFile.write((char*) blob->data(), blob->size());
+    oFile.close();
 }
 }  // namespace
 
@@ -518,6 +551,11 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     const std::string force_sequential_engine_build_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kForceSequentialEngineBuild);
     if (!force_sequential_engine_build_env.empty()) {
       force_sequential_engine_build_ = (std::stoi(force_sequential_engine_build_env) == 0 ? false : true);
+    }
+
+    const std::string timing_cache_enable_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kTimingCacheEnable);
+    if (!timing_cache_enable_env.empty()) {
+      timing_cache_enable_ = (std::stoi(timing_cache_enable_env) == 0 ? false : true);
     }
   }
 
@@ -1289,6 +1327,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
     if (!has_dynamic_shape) {
       const std::string cache_path = GetCachePath(cache_path_, trt_node_name_with_precision);
       const std::string engine_cache_path = cache_path + ".engine";
+      const std::string timing_cache_path = cache_path + ".timing";
       std::ifstream engine_file(engine_cache_path, std::ios::binary | std::ios::in);
       if (engine_cache_enable_ && engine_file) {
         engine_file.seekg(0, std::ios::end);
@@ -1331,10 +1370,29 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
           }
         }
 
+        LOGS_DEFAULT(WARNING) << timing_cache_enable_;
+        LOGS_DEFAULT(WARNING) << timing_cache_path;
+
+        // Load timing cache from file. Create a fresh cache if the file doesn't exist
+        std::unique_ptr<nvinfer1::ITimingCache> timing_cache = nullptr;
+        if (timing_cache_enable_) {
+            std::vector<char> loaded_timing_cache = loadTimingCacheFile(timing_cache_path);
+            timing_cache.reset(trt_config->createTimingCache(static_cast<const void*>(loaded_timing_cache.data()), loaded_timing_cache.size()));
+            if (timing_cache == nullptr) {
+              return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                                     "TensorRT EP could not create timing cache: " + timing_cache_path);
+            }
+            trt_config->setTimingCache(*timing_cache, false);
+        }
+
         // Build engine
         {
           auto lock = GetEngineBuildLock();
+          auto start = std::chrono::high_resolution_clock::now();
           trt_engine = tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine>(trt_builder->buildEngineWithConfig(*trt_network, *trt_config));
+          auto end = std::chrono::high_resolution_clock::now();
+          std::chrono::duration<double> duration = end - start;
+          LOGS_DEFAULT(WARNING) << "Elapsed time (in Compile) in milliseconds: " << duration.count();
         }
         if (trt_engine == nullptr) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
@@ -1355,6 +1413,18 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
           }
           serializedModel->destroy();
           LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Serialized " + engine_cache_path;
+        }
+
+        // serialize and save timing cache
+        if (timing_cache_enable_)
+        {
+            auto timing_cache = trt_config->getTimingCache();
+            std::unique_ptr<nvinfer1::IHostMemory> timingCacheHostData{timing_cache->serialize()};
+            if (timingCacheHostData == nullptr) {
+              return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                                     "TensorRT EP could not serialize timing cache: " + timing_cache_path);
+            }
+            saveTimingCacheFile(timing_cache_path, timingCacheHostData.get());
         }
       }
 
@@ -1409,7 +1479,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
             &networks_[context->node_name], input_info_[context->node_name], output_info_[context->node_name],
             input_shape_ranges_[context->node_name], &tensorrt_mu_, fp16_enable_, int8_enable_, int8_calibration_cache_available_,
             dla_enable_, dla_core_, &max_workspace_size_, trt_node_name_with_precision, engine_cache_enable_, cache_path_,
-            runtime_.get(), nullptr, allocator_, dynamic_range_map, engine_decryption_enable_, engine_decryption_, engine_encryption_};
+            runtime_.get(), nullptr, allocator_, dynamic_range_map, engine_decryption_enable_, engine_decryption_, engine_encryption_, timing_cache_enable_};
       *state = p.release();
       return 0;
     };
@@ -1445,6 +1515,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
       const std::string cache_path = GetCachePath(trt_state->engine_cache_path, trt_state->trt_node_name_with_precision);
       const std::string engine_cache_path = cache_path + ".engine";
       const std::string profile_cache_path = cache_path + ".profile";
+      const std::string timing_cache_path = cache_path + ".timing";
       if (trt_state->engine_cache_enable && trt_engine == nullptr) {
         std::ifstream engine_file(engine_cache_path, std::ios::binary | std::ios::in);
         std::ifstream profile_file(profile_cache_path, std::ios::binary | std::ios::in);
@@ -1672,11 +1743,29 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
           trt_config->setDLACore(trt_state->dla_core);
         }
 
+        LOGS_DEFAULT(WARNING) << timing_cache_enable_;
+        LOGS_DEFAULT(WARNING) << timing_cache_path;
+        // Load timing cache from file. Create a fresh cache if the file doesn't exist
+        std::unique_ptr<nvinfer1::ITimingCache> timing_cache = nullptr;
+        if (trt_state->timing_cache_enable) {
+            std::vector<char> loaded_timing_cache = loadTimingCacheFile(timing_cache_path);
+            timing_cache.reset(trt_config->createTimingCache(static_cast<const void*>(loaded_timing_cache.data()), loaded_timing_cache.size()));
+            if (timing_cache == nullptr) {
+              return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                                     "TensorRT EP could not create timing cache: " + timing_cache_path);
+            }
+            trt_config->setTimingCache(*timing_cache, false);
+        }
+
         // Build engine
         {
           auto lock = GetEngineBuildLock();
+          auto start = std::chrono::high_resolution_clock::now();
           *(trt_state->engine) = tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine>(
               trt_builder->buildEngineWithConfig(*trt_state->network->get(), *trt_config));
+          auto end = std::chrono::high_resolution_clock::now();
+          std::chrono::duration<double> duration = end - start;
+          LOGS_DEFAULT(WARNING) << "Elapsed time (in compute_func) in milliseconds: " << duration.count();
         }
         if (trt_state->engine == nullptr) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP Failed to Build Engine.");
@@ -1701,6 +1790,18 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
             file.write(reinterpret_cast<char*>(serializedModel->data()), engine_size);
           }
           serializedModel->destroy();
+        }
+
+        // serialize and save timing cache
+        if (trt_state->timing_cache_enable)
+        {
+            auto timing_cache = trt_config->getTimingCache();
+            std::unique_ptr<nvinfer1::IHostMemory> timingCacheHostData{timing_cache->serialize()};
+            if (timingCacheHostData == nullptr) {
+              return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                                     "TensorRT EP could not serialize timing cache: " + timing_cache_path);
+            }
+            saveTimingCacheFile(timing_cache_path, timingCacheHostData.get());
         }
 
         // Build context
