@@ -53,13 +53,12 @@ def adjust_columns(table, columns, db_columns, model_group):
 
 def get_latency_over_time(commit_hash, report_url, branch, latency_table):
     if not latency_table.empty:
-        over_time = latency_table.drop(to_drop, axis='columns')
+        over_time = latency_table
         over_time = over_time.melt(id_vars=[model_title, group_title], var_name='Ep', value_name='Latency')
         over_time = over_time.assign(CommitId=commit_hash)
         over_time = over_time.assign(ReportUrl=report_url)
         over_time = over_time.assign(Branch=branch)
         over_time = over_time[['CommitId', model_title, 'Ep', 'Latency', 'ReportUrl', group_title, 'Branch']]
-        #over_time.rename(columns={group:"ModelGroup"}, inplace=True) # TODO: Change to group
         over_time.fillna('', inplace=True)
         return over_time
     
@@ -70,20 +69,11 @@ def get_failures(fail, model_group):
     return fail
 
 def get_memory(memory, model_group): 
-    #val + ' \npeak memory usage (MiB)'
     memory_columns = [model_title]
     for provider in provider_list: 
         if cpu not in provider:
             memory_columns.append(provider + memory_ending)
-    # memory_columns = [model, \
-    #                   'CUDA EP fp32 \npeak memory usage (MiB)', \
-    #                   'TRT EP fp32 \npeak memory usage (MiB)', \
-    #                   'Standalone TRT fp32 \npeak memory usage (MiB)', \
-    #                   'CUDA EP fp16 \npeak memory usage (MiB)', \
-    #                   'TRT EP fp16 \npeak memory usage (MiB)', \
-    #                   'Standalone TRT fp16 \npeak memory usage (MiB)' \
-    #                   ]
-    memory_db_columns = table_headers
+    memory_db_columns = [model_title, cuda, trt, standalone_trt, cuda_fp16, trt_fp16, standalone_trt_fp16]
     memory = adjust_columns(memory, memory_columns, memory_db_columns, model_group)
     return memory
 
@@ -91,18 +81,6 @@ def get_latency(latency, model_group):
     latency_columns = [model_title]
     for provider in provider_list: 
         latency_columns.append(provider + avg_ending)
-    # val + ' \nmean (ms)'
-    # latency_columns = [model, \
-    #                     'CPU fp32 \nmean (ms)', \
-    #                     'CUDA fp32 \nmean (ms)', \
-    #                     'TRT EP fp32 \nmean (ms)', \
-    #                     'Standalone TRT fp32 \nmean (ms)', \
-    #                     'TRT v CUDA EP fp32 \ngain (mean) (%)', \
-    #                     'EP v Standalone TRT fp32 \ngain (mean) (%)',     
-    #                     'CUDA fp16 \nmean (ms)', \
-    #                     'TRT EP fp16 \nmean (ms)', \
-    #                     'Standalone TRT fp16 \nmean (ms)'
-    #                     ]
     latency_db_columns = table_headers
     latency = adjust_columns(latency, latency_columns, latency_db_columns, model_group)
     return latency
@@ -118,17 +96,14 @@ def write_table(ingest_client, table, table_name, trt_version, upload_time):
         return
     table = table.assign(TrtVersion=trt_version) # add TrtVersion
     table = table.assign(UploadTime=upload_time) # add UploadTime
-    table.set_option('display.max_columns', None)
-    print(table.keys())
-    print(table.head(1))
-    #ingestion_props = IngestionProperties(
-    #  database=database,
-    #  table=table_name,
-    #  data_format=DataFormat.CSV,
-    #  report_level=ReportLevel.FailuresAndSuccesses
-    #)
+    ingestion_props = IngestionProperties(
+      database=database,
+      table=table_name,
+      data_format=DataFormat.CSV,
+      report_level=ReportLevel.FailuresAndSuccesses
+    )
     # append rows
-    #ingest_client.ingest_from_dataframe(table, ingestion_properties=ingestion_props)
+    ingest_client.ingest_from_dataframe(table, ingestion_properties=ingestion_props)
 
 def get_time():   
     date_time = time.strftime(time_string_format)
@@ -169,7 +144,7 @@ def main():
                     table_results[status] = table_results[status].append(get_status(table, model_group), ignore_index=True)
             os.chdir(result_file)
         for table in tables: 
-            print('writing ' + table + ' over time to database')
+            print('writing ' + table + ' to database')
             db_table_name = 'ep_model_' + table
             write_table(ingest_client, table_results[table], db_table_name, args.trt_version, date_time)
 

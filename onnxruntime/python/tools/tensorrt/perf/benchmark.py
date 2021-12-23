@@ -23,16 +23,6 @@ debug = False
 sys.path.append('.')
 logger = logging.getLogger('')
 
-# # global ep variables 
-# cpu = "CPUExecutionProvider"
-
-# cuda = "CUDAExecutionProvider"
-# cuda_fp16 = "CUDAExecutionProvider_fp16"
-# trt = "TensorrtExecutionProvider"
-# trt_fp16 = "TensorrtExecutionProvider_fp16"
-# standalone_trt = "Standalone_TRT"
-# standalone_trt_fp16 = "Standalone_TRT_fp16"
-
 ep_to_provider_list = {
     cpu: [cpu_ep],
     acl: [acl_ep], 
@@ -1298,15 +1288,6 @@ def output_status(results, csv_filename):
         need_write_header = False 
 
     with open(csv_filename, mode="a", newline='') as csv_file:
-        # column_names = ["Model",
-        #                 cpu,
-        #                 cuda + " fp32",
-        #                 trt + " fp32",
-        #                 standalone_trt + " fp32",
-        #                 cuda + " fp16",
-        #                 trt + " fp16",
-        #                 standalone_trt + " fp16"
-        #                 ]
         column_names = table_headers
 
         csv_writer = csv.writer(csv_file)
@@ -1365,31 +1346,6 @@ def output_latency(results, csv_filename):
             if cpu not in provider:
                 column_names.append(provider + memory_ending)
 
-        # column_names = ["Model",
-        #                 "CPU fp32",
-        #                 "CPU fp32 ",
-        #                 "CUDA fp32 \nmean (ms)",
-        #                 "CUDA fp32 \n90th percentile (ms)",
-        #                 "CUDA EP fp32",
-        #                 "TRT EP fp32 \nmean (ms)",
-        #                 "TRT EP fp32 \n90th percentile (ms)",
-        #                 "TRT EP fp32 \npeak memory usage (MiB)",
-        #                 "Standalone TRT fp32 \nmean (ms)",
-        #                 "Standalone TRT fp32 \n90th percentile (ms)",
-        #                 "Standalone TRT fp32 \npeak memory usage (MiB)",
-        #                 "TRT v CUDA EP fp32 \ngain (mean) (%)",
-        #                 "EP v Standalone TRT fp32 \ngain (mean) (%)",
-        #                 "CUDA fp16 \nmean (ms)",
-        #                 "CUDA fp16 \n90th percentile (ms)",
-        #                 "CUDA EP fp16 \npeak memory usage (MiB)",
-        #                 "TRT EP fp16 \nmean (ms)",
-        #                 "TRT EP fp16 \n90th percentile (ms)",
-        #                 "TRT EP fp16 \npeak memory usage (MiB)",
-        #                 "Standalone TRT fp16 \nmean (ms)",
-        #                 "Standalone TRT fp16 \n90th percentile (ms)",
-        #                 "Standalone TRT fp16 \npeak memory usage (MiB)",
-        #                 "TRT v CUDA EP fp16 \ngain (mean) (%)", 
-        #                 "EP v Standalone TRT fp16 \ngain (mean) (%)"]
         csv_writer = csv.writer(csv_file)
 
         if need_write_header:
