@@ -284,7 +284,7 @@ if (onnxruntime_BUILD_CSHARP)
 endif()
 
 if (NOT WIN32)
-  #TODO: On Linux we may try https://github.com/microsoft/TraceLogging
+  #TODO: On Linux we may try https://github.com/microsoft/TraceLogging.git
   if (onnxruntime_ENABLE_INSTRUMENT)
     message(WARNING "Instrument is only supported on Windows now")
     set(onnxruntime_ENABLE_INSTRUMENT OFF)
