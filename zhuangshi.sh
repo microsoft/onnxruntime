@@ -10,7 +10,7 @@ pip uninstall onnxruntime_training onnxruntime_training_gpu --yes
 rm -rf /opt/conda/lib/python3.8/site-packages/onnxruntime
 flavor=Debug
 flavor=RelWithDebInfo
-root=/bert_ort/pengwa/onnxruntime
+root=/home/pengwa/onnxruntime
 
 rm -rf $root/build/Linux/$flavor/dist/*.whl
 
