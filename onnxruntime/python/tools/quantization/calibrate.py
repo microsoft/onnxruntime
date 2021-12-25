@@ -490,7 +490,7 @@ class HistogramCollector(CalibrationDataCollector):
                 old_histogram = self.histogram_dict[tensor]
                 self.histogram_dict[tensor] = self.merge_histogram(old_histogram, data_arr, min_value, max_value, threshold)
             else:
-                hist, hist_edges = np.histogram(data_arr, self.num_quantized_bins, range=(-threshold, threshold))
+                hist, hist_edges = np.histogram(data_arr, 8192, range=(-threshold, threshold))
                 self.histogram_dict[tensor] = (hist, hist_edges, min_value, max_value, threshold)
 
     def merge_histogram(self, old_histogram, data_arr, new_min, new_max, new_threshold):
@@ -565,19 +565,19 @@ class HistogramCollector(CalibrationDataCollector):
         from scipy.stats import entropy
         import copy
 
-        hist, hist_edges, _, _, _ = histogram
+        hist, hist_edges, min_data, _, _ = histogram
         num_bins = hist.size
         zero_bin_index = num_bins // 2
         num_half_quantized_bin = num_quantized_bins // 2
         
-        kl_divergence = np.zeros(zero_bin_index - num_half_quantized_bin + 1)
+        kl_divergence = np.zeros((zero_bin_index - num_half_quantized_bin + 1) // num_half_quantized_bin + 1)
         thresholds = [(0, 0) for i in range(kl_divergence.size)]
 
-        for i in range(num_half_quantized_bin, zero_bin_index + 1, 1):
+        for i in range(num_half_quantized_bin, zero_bin_index + 1, num_half_quantized_bin):
             start_index = zero_bin_index - i
             end_index = zero_bin_index + i + 1 if (zero_bin_index + i + 1) <= num_bins else num_bins
 
-            thresholds[i - num_half_quantized_bin] = (float(hist_edges[start_index]), float(hist_edges[end_index]))
+            thresholds[i // num_half_quantized_bin - 1] = (float(hist_edges[start_index]), float(hist_edges[end_index]))
 
             sliced_distribution = copy.deepcopy(hist[start_index:end_index])
 
@@ -617,13 +617,14 @@ class HistogramCollector(CalibrationDataCollector):
             q = smooth_distribution(q)
 
             if isinstance(q, np.ndarray):
-                kl_divergence[i - num_half_quantized_bin] = entropy(p, q)
+                kl_divergence[i // num_half_quantized_bin - 1] = entropy(p, q)
             else:
-                kl_divergence[i - num_half_quantized_bin] = float('inf')
+                kl_divergence[i // num_half_quantized_bin - 1] = float('inf')
 
         min_kl_divergence_idx = np.argmin(kl_divergence)
-        optimal_threshold = thresholds[min_kl_divergence_idx] 
-
+        optimal_threshold = thresholds[min_kl_divergence_idx]
+        if min_data >= 0.0:
+            optimal_threshold = (0, optimal_threshold[1])
         return optimal_threshold
 
 
