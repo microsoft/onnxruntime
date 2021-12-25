@@ -583,7 +583,7 @@ class ONNXQuantizer:
         inputscale_initializer = find_by_name(input_scale_name, self.model.initializer())
         input_scale = self.tensor_proto_to_array(inputscale_initializer)
 
-        # calcuate scale for bias
+        # calculate scale for bias
         bias_scale = input_scale * weight_scale
 
         # quantize bias

@@ -159,7 +159,7 @@ def quantize_data(data, qType, symmetric, reduce_range=False):
     - when data `type == int8`, from `[-m , m]` -> :math:`[-(2^{b-1}-1), 2^{b-1}-1]` where
         `m = max(abs(rmin), abs(rmax))`
 
-    and add necessary intermediate nodes to trasnform quantized weight to full weight using the equation
+    and add necessary intermediate nodes to tranrform quantized weight to full weight using the equation
 
     :math:`r = S(q-z)`, where
     

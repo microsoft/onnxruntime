@@ -6,6 +6,7 @@
 # license information.
 # --------------------------------------------------------------------------
 
+from logging import exception
 import os
 import numpy as np
 import onnx
@@ -34,7 +35,7 @@ class CalibrationDataReader(metaclass=abc.ABCMeta):
 
     @abc.abstractmethod
     def get_next(self) -> dict:
-        """generate the input data dict for ONNXinferenceSession run"""
+        """generate the input data dict for ONNXInferenceSession run"""
         raise NotImplementedError
 
 
@@ -439,7 +440,7 @@ class HistogramCollector(CalibrationDataCollector):
         return self.histogram_dict
 
     def collect(self, name_to_arr):
-        # TODO: Currently we have different collect() for percentile and percentile method respectively.
+        # TODO: Currently we have different collect() for entropy and percentile method respectively.
         #       Need unified collect in the future.
         if self.method == 'entropy':
             return self.collect_for_entropy(name_to_arr)
@@ -450,8 +451,7 @@ class HistogramCollector(CalibrationDataCollector):
 
     def collect_for_percentile(self, name_to_arr):
         for tensor, data_arr in name_to_arr.items():
-            data_arr = np.asarray(data_arr)
-            data_arr = data_arr.flatten()
+            data_arr = flatten(data_arr)
             data_arr = np.absolute(data_arr) # only consider absolute value
 
             if tensor not in self.histogram_dict:
@@ -475,8 +475,7 @@ class HistogramCollector(CalibrationDataCollector):
 
     def collect_for_entropy(self, name_to_arr):
         for tensor, data_arr in name_to_arr.items():
-            data_arr = np.asarray(data_arr)
-            data_arr = data_arr.flatten()
+            data_arr = flatten(data_arr)
 
             if data_arr.size > 0:
                 min_value = np.min(data_arr)
@@ -572,10 +571,10 @@ class HistogramCollector(CalibrationDataCollector):
         num_half_quantized_bin = num_quantized_bins // 2
         
         kl_divergence = np.zeros(zero_bin_index - num_half_quantized_bin + 1)
-        thresholds = [(0, 0) for i in range(kl_divergence.size)] 
+        thresholds = [(0, 0) for i in range(kl_divergence.size)]
 
         for i in range(num_half_quantized_bin, zero_bin_index + 1, 1):
-            start_index = zero_bin_index - i 
+            start_index = zero_bin_index - i
             end_index = zero_bin_index + i + 1 if (zero_bin_index + i + 1) <= num_bins else num_bins
 
             thresholds[i - num_half_quantized_bin] = (float(hist_edges[start_index]), float(hist_edges[end_index]))
@@ -589,7 +588,7 @@ class HistogramCollector(CalibrationDataCollector):
             p[0] += left_outliers_count
             p[-1] += right_outliers_count
 
-            # nonzeros[i] incidates whether p[i] is non-zero
+            # nonzeros[i] indicates whether p[i] is non-zero
             nonzeros = (p != 0).astype(np.int64)
             
             # quantize p.size bins into quantized bins (default 128 bins) 
@@ -640,3 +639,14 @@ def create_calibrator(model,
         return PercentileCalibrater(model, op_types_to_calibrate, augmented_model_path)
 
     raise ValueError('Unsupported calibration method {}'.format(calibrate_method))
+
+
+def flatten(array):
+    """
+    flatten() use to deal with array contains different shape of np.ndarray elements, which 
+    will caused a ValueError.
+    """
+    try:
+        return np.asarray(array).flatten()
+    except ValueError:
+        return np.concatenate(array, axis=None)

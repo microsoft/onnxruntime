@@ -185,7 +185,7 @@ def quantize_static(model_input,
             ActivationSymmetric = True/False: symmetrize calibration data for activations (default is False).
             WeightSymmetric = True/False: symmetrize calibration data for weights (default is True).
             EnableSubgraph = True/False : Default is False. If enabled, subgraph will be quantized.
-                                          Dyanmic mode currently is supported. Will support more in future.
+                                          Dynamic mode currently is supported. Will support more in future.
             DisableShapeInference = True/False : in dynamic quantize mode, shape inference is not must have
                                                  and if it cause some issue, you could disable it.
             ForceQuantizeNoInputCheck = True/False : By default, some latent operators like maxpool, transpose, do not quantize
@@ -196,7 +196,7 @@ def quantize_static(model_input,
             AddQDQPairToWeight = True/False : Default is False which quantizes floating-point weight and feeds it to 
                                               soley inserted DeQuantizeLinear node. If True, it remains floating-point weight and 
                                               inserts both QuantizeLinear/DeQuantizeLinear nodes to weight.
-            OpTypesToExcludeOutputQuantizatioin = list of op type : Default is []. If any op type is specified, it won't quantize  
+            OpTypesToExcludeOutputQuantization = list of op type : Default is []. If any op type is specified, it won't quantize  
                                                                     the output of ops with this specific op types.
             DedicatedQDQPair = True/False : Default is False. When inserting QDQ pair, multiple nodes can share a single QDQ pair as their inputs.
                                             If True, it will create identical and dedicated QDQ pair for each node. 
