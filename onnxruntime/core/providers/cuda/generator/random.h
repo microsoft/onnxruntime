@@ -50,6 +50,9 @@ class RandomBase : public CudaKernel {
 };
 
 class RandomNormalBase : public RandomBase {
+ public:
+  using RandomBase::Compute;
+
  protected:
   RandomNormalBase(const OpKernelInfo& info) : RandomBase(info) {
     ORT_ENFORCE(info.GetAttr<float>("scale", &scale_).IsOK());
@@ -87,6 +90,9 @@ class RandomNormalLike final : public RandomNormalBase {
 };
 
 class RandomUniformBase : public RandomBase {
+ public:
+  using RandomBase::Compute;
+
  protected:
   RandomUniformBase(const OpKernelInfo& info) : RandomBase(info) {
     float low, high;
