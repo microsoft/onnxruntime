@@ -1272,6 +1272,10 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Whether A should be transposed on the last two dimensions before doing multiplication</dd>
 <dt><tt>transB</tt> : int</dt>
 <dd>Whether B should be transposed on the last two dimensions before doing multiplication</dd>
+<dt><tt>transBatchA</tt> : int</dt>
+<dd>Whether A should be transposed on the 1st dimension and batch dimensions (dim-1 to dim-rank-2) before doing multiplication</dd>
+<dt><tt>transBatchB</tt> : int</dt>
+<dd>Whether B should be transposed on the 1st dimension and batch dimensions (dim-1 to dim-rank-2) before doing multiplication</dd>
 </dl>
 
 #### Inputs
