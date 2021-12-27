@@ -282,6 +282,10 @@ void FusedMatMulShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
   bool transa = transAAttr ? static_cast<int>(transAAttr->i()) != 0 : false;
   auto transBAttr = ctx.getAttribute("transB");
   bool transb = transBAttr ? static_cast<int>(transBAttr->i()) != 0 : false;
+  auto trans_batch_a_attr = ctx.getAttribute("transBatchA");
+  bool trans_batch_a = trans_batch_a_attr ? static_cast<int>(trans_batch_a_attr->i()) != 0 : false;
+  auto trans_batch_b_attr = ctx.getAttribute("transBatchB");
+  bool trans_batch_b = trans_batch_b_attr ? static_cast<int>(trans_batch_b_attr->i()) != 0 : false;
   int input1Idx = 0;
   int input2Idx = 1;
   if (!hasInputShape(ctx, input1Idx) || !hasInputShape(ctx, input2Idx)) {
@@ -309,11 +313,13 @@ void FusedMatMulShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
     // for vector input, transa does not make impact on the dim.
     shape0 = shape0_raw;
   } else {
-    for (int i = 0; i < rank0 - 2; ++i) {
+    int start = trans_batch_a ? 1 : 0;
+    int end = trans_batch_a ? rank0 - 1 : rank0 - 2;
+    for (int i = start; i < end; ++i) {
       *shape0.add_dim() = shape0_raw.dim(i);
     }
-    *shape0.add_dim() = shape0_raw.dim(transa ? rank0 - 1 : rank0 - 2);
-    *shape0.add_dim() = shape0_raw.dim(transa ? rank0 - 2 : rank0 - 1);
+    *shape0.add_dim() = shape0_raw.dim(transa ? rank0 - 1 : (trans_batch_a ? 0 : rank0 - 2));
+    *shape0.add_dim() = shape0_raw.dim(transa ? (trans_batch_a ? 0 : rank0 - 2) : rank0 - 1);
   }
 
   auto rank1 = shape1_raw.dim_size();
@@ -321,11 +327,13 @@ void FusedMatMulShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
     // for vector input, transb does not make impact on the dim.
     shape1 = shape1_raw;
   } else {
-    for (int i = 0; i < rank1 - 2; ++i) {
+    int start = trans_batch_b ? 1 : 0;
+    int end = trans_batch_b ? rank1 - 1 : rank1 - 2;
+    for (int i = start; i < end; ++i) {
       *shape1.add_dim() = shape1_raw.dim(i);
     }
-    *shape1.add_dim() = shape1_raw.dim(transb ? rank1 - 1 : rank1 - 2);
-    *shape1.add_dim() = shape1_raw.dim(transb ? rank1 - 2 : rank1 - 1);
+    *shape1.add_dim() = shape1_raw.dim(transb ? rank1 - 1 : (trans_batch_b ? 0 : rank1 - 2));
+    *shape1.add_dim() = shape1_raw.dim(transb ? (trans_batch_b ? 0 : rank1 - 2) : rank1 - 1);
   }
 
   ONNX_NAMESPACE::TensorShapeProto shapeL, shapeR;
@@ -2138,30 +2146,24 @@ Matrix product that behaves like numpy.matmul: https://docs.scipy.org/doc/numpy-
       .SinceVersion(1)
       .Input(0, "A", "N-dimensional matrix A", "T")
       .Input(1, "B", "N-dimensional matrix B", "T")
-      .Attr(
-          "alpha",
-          "Scalar multiplier for the product of the input tensors.",
-          AttributeProto::FLOAT,
-          1.0f)
-      .Attr(
-          "transA",
-          "Whether A should be transposed on the last two dimensions before doing multiplication",
-          AttributeProto::INT,
-          static_cast<int64_t>(0))
-      .Attr(
-          "transB",
-          "Whether B should be transposed on the last two dimensions before doing multiplication",
-          AttributeProto::INT,
-          static_cast<int64_t>(0))
+      .Attr("alpha", "Scalar multiplier for the product of the input tensors.", AttributeProto::FLOAT, 1.0f)
+      .Attr("transA", "Whether A should be transposed on the last two dimensions before doing multiplication",
+            AttributeProto::INT, static_cast<int64_t>(0))
+      .Attr("transB", "Whether B should be transposed on the last two dimensions before doing multiplication",
+            AttributeProto::INT, static_cast<int64_t>(0))
+      .Attr("transBatchA",
+            "Whether A should be transposed on the 1st dimension and batch dimensions (dim-1 to dim-rank-2) before "
+            "doing multiplication",
+            AttributeProto::INT, static_cast<int64_t>(0))
+      .Attr("transBatchB",
+            "Whether B should be transposed on the 1st dimension and batch dimensions (dim-1 to dim-rank-2) before "
+            "doing multiplication",
+            AttributeProto::INT, static_cast<int64_t>(0))
       .Output(0, "Y", "Matrix multiply results", "T")
-      .TypeConstraint(
-          "T",
-          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
-          "Constrain input and output types to float tensors.")
+      .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+                      "Constrain input and output types to float tensors.")
       .SetDoc(FusedMatMul_doc)
-      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        FusedMatMulShapeInference(ctx);
-      });
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) { FusedMatMulShapeInference(ctx); });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(SparseToDenseMatMul)
       .SetDomain(kMSDomain)
