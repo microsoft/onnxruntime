@@ -61,8 +61,8 @@ struct SelectorAndAction {
 // class to manage a set of selector and associated actions
 class SelectorsAndActions {
  public:
-  SelectorsAndActions() = default;
-  SelectorsAndActions(SelectorsAndActions&&) = default;
+  SelectorsAndActions() noexcept = default;
+  SelectorsAndActions(SelectorsAndActions&&) noexcept = default;
 
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(SelectorsAndActions);
 
