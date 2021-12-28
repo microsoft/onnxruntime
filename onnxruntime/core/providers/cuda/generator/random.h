@@ -26,6 +26,7 @@ RANDOM_COMPUTE_IMPL(RandomUniform)
 
 #undef RANDOM_COMPUTE_IMPL
 
+template <typename RandomType>
 class RandomBase : public CudaKernel {
  protected:
   RandomBase(const OpKernelInfo& info) : CudaKernel(info) {
@@ -43,23 +44,26 @@ class RandomBase : public CudaKernel {
     }
   }
 
+  Status ComputeBase(OpKernelContext* p_ctx, const TensorShape& shape, int dtype) const {
+    // CRTP: `ComputeBaseImpl` needs to be implemented.
+    return static_cast<RandomType&>(*this).ComputeBaseImpl(p_ctx, shape, dtype);
+  }
+
  protected:
   std::unique_ptr<PhiloxGenerator> generator_;
   ONNX_NAMESPACE::TensorProto::DataType dtype_ =
       ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED;  // optional and may be inferred
 };
 
-class RandomNormalBase : public RandomBase {
- public:
-  using RandomBase::Compute;
-
+class RandomNormalBase : public RandomBase<RandomNormalBase> {
  protected:
   RandomNormalBase(const OpKernelInfo& info) : RandomBase(info) {
     ORT_ENFORCE(info.GetAttr<float>("scale", &scale_).IsOK());
     ORT_ENFORCE(info.GetAttr<float>("mean", &mean_).IsOK());
   }
 
-  Status Compute(OpKernelContext* p_ctx, const TensorShape& shape, int dtype) const;
+ private:
+  Status ComputeBaseImpl(OpKernelContext* p_ctx, const TensorShape& shape, int dtype) const;
 
  protected:
   float scale_;
@@ -89,10 +93,7 @@ class RandomNormalLike final : public RandomNormalBase {
   Status ComputeInternal(OpKernelContext* p_ctx) const override;
 };
 
-class RandomUniformBase : public RandomBase {
- public:
-  using RandomBase::Compute;
-
+class RandomUniformBase : public RandomBase<RandomUniformBase> {
  protected:
   RandomUniformBase(const OpKernelInfo& info) : RandomBase(info) {
     float low, high;
@@ -102,7 +103,8 @@ class RandomUniformBase : public RandomBase {
     range_ = high - low;
   }
 
-  Status Compute(OpKernelContext* p_ctx, const TensorShape& shape, int dtype) const;
+ private:
+  Status ComputeBaseImpl(OpKernelContext* p_ctx, const TensorShape& shape, int dtype) const;
 
  protected:
   float range_;

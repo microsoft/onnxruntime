@@ -28,7 +28,7 @@ ONNX_OPERATOR_KERNEL_EX(RandomUniformLike, kOnnxDomain, 1, kCudaExecutionProvide
                             .TypeConstraint("T2", DataTypeImpl::AllIEEEFloatTensorTypes()),
                         RandomUniformLike);
 
-Status RandomNormalBase::Compute(OpKernelContext* p_ctx, const TensorShape& shape, int dtype) const {
+Status RandomNormalBase::ComputeBaseImpl(OpKernelContext* p_ctx, const TensorShape& shape, int dtype) const {
   Tensor& Y = *p_ctx->Output(0, shape);
   const int64_t N = shape.Size();
   PhiloxGenerator& generator = generator_ ? *generator_ : PhiloxGenerator::Default();
@@ -37,7 +37,7 @@ Status RandomNormalBase::Compute(OpKernelContext* p_ctx, const TensorShape& shap
   return Status::OK();
 }
 
-Status RandomNormal::ComputeInternal(OpKernelContext* p_ctx) const { return Compute(p_ctx, shape_, dtype_); }
+Status RandomNormal::ComputeInternal(OpKernelContext* p_ctx) const { return ComputeBase(p_ctx, shape_, dtype_); }
 
 Status RandomNormalLike::ComputeInternal(OpKernelContext* p_ctx) const {
   const Tensor* p_X = p_ctx->Input<Tensor>(0);
@@ -48,10 +48,10 @@ Status RandomNormalLike::ComputeInternal(OpKernelContext* p_ctx) const {
                            "Output data type is required to be one of float types, but got incompatible data type ",
                            p_X->DataType(), " from input tensor.");
   }
-  return Compute(p_ctx, p_X->Shape(), dtype_ != TensorProto_DataType_UNDEFINED ? dtype_ : p_X->GetElementType());
+  return ComputeBase(p_ctx, p_X->Shape(), dtype_ != TensorProto_DataType_UNDEFINED ? dtype_ : p_X->GetElementType());
 }
 
-Status RandomUniformBase::Compute(OpKernelContext* p_ctx, const TensorShape& shape, int dtype) const {
+Status RandomUniformBase::ComputeBaseImpl(OpKernelContext* p_ctx, const TensorShape& shape, int dtype) const {
   Tensor& Y = *p_ctx->Output(0, shape);
   const int64_t N = shape.Size();
   PhiloxGenerator& generator = generator_ ? *generator_ : PhiloxGenerator::Default();
@@ -60,7 +60,7 @@ Status RandomUniformBase::Compute(OpKernelContext* p_ctx, const TensorShape& sha
   return Status::OK();
 }
 
-Status RandomUniform::ComputeInternal(OpKernelContext* p_ctx) const { return Compute(p_ctx, shape_, dtype_); }
+Status RandomUniform::ComputeInternal(OpKernelContext* p_ctx) const { return ComputeBase(p_ctx, shape_, dtype_); }
 
 Status RandomUniformLike::ComputeInternal(OpKernelContext* p_ctx) const {
   const Tensor* p_X = p_ctx->Input<Tensor>(0);
@@ -71,7 +71,7 @@ Status RandomUniformLike::ComputeInternal(OpKernelContext* p_ctx) const {
                            "Output data type is required to be one of float types, but got incompatible data type ",
                            p_X->DataType(), " from input tensor.");
   }
-  return Compute(p_ctx, p_X->Shape(), dtype_ != TensorProto_DataType_UNDEFINED ? dtype_ : p_X->GetElementType());
+  return ComputeBase(p_ctx, p_X->Shape(), dtype_ != TensorProto_DataType_UNDEFINED ? dtype_ : p_X->GetElementType());
 }
 
 }  // namespace cuda
