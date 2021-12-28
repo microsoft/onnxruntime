@@ -233,7 +233,7 @@ else()  # minimal and/or reduced ops build
   endif()
 endif()
 
-if(NOT onnxruntime_MINIMAL_BUILD OR onnxruntime_EXTENDED_MINIMAL_BUILD)
+if(onnxruntime_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
   list(APPEND onnxruntime_test_optimizer_src
        "${TEST_SRC_DIR}/optimizer/runtime_optimization/graph_runtime_optimization_test.cc")
 endif()
@@ -692,7 +692,7 @@ AddTest(
 if (MSVC)
   # The warning means the type of two integral values around a binary operator is narrow than their result.
   # If we promote the two input values first, it could be more tolerant to integer overflow.
-  # However, this is test code. We are less concerned. 
+  # However, this is test code. We are less concerned.
   target_compile_options(onnxruntime_test_all PRIVATE "/wd26451")
 else()
   target_compile_options(onnxruntime_test_all PRIVATE "-Wno-parentheses")
