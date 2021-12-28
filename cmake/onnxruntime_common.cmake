@@ -127,11 +127,6 @@ install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/common  DEST
 set_target_properties(onnxruntime_common PROPERTIES LINKER_LANGUAGE CXX)
 set_target_properties(onnxruntime_common PROPERTIES FOLDER "ONNXRuntime")
 
-if(WIN32)
-    # Add Code Analysis properties to enable C++ Core checks. Have to do it via a props file include.
-    set_target_properties(onnxruntime_common PROPERTIES VS_USER_PROPS ${PROJECT_SOURCE_DIR}/EnableVisualStudioCodeAnalysis.props)
-endif()
-
 # check if we need to link against librt on Linux
 include(CheckLibraryExists)
 include(CheckFunctionExists)

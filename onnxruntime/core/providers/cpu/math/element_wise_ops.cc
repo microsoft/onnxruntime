@@ -1794,8 +1794,8 @@ void UntypedBroadcastTwo(OpKernelContext& context, const ProcessBroadcastSpanFun
 
     concurrency::ThreadPool::TryParallelFor(
         tp, output_size / span_size,
-        TensorOpCost{static_cast<float>(input_broadcaster.Input0ElementSize() * span_size),
-                     static_cast<float>(output_tensor.DataType()->Size() * span_size),
+        TensorOpCost{static_cast<double>(input_broadcaster.Input0ElementSize()) * span_size,
+                     static_cast<double>(output_tensor.DataType()->Size()) * span_size,
                      unit_cost * span_size},
         [span_size, &const_input_broadcaster, &output_tensor, &funcs, user_data](std::ptrdiff_t first_span,
                                                                                  std::ptrdiff_t last_span) {

@@ -109,9 +109,6 @@ class SessionState {
   }
 
   ~SessionState() {
-    for (auto* p : session_kernels_) {
-      delete p;
-    }
     for (auto& kvp : deleter_for_initialized_tensors_) {
       kvp.second.f(kvp.second.param);
     }
@@ -124,11 +121,11 @@ class SessionState {
   // Get kernel for specified node.
   // It should called right before graph execution only.
   const OpKernel* GetKernel(size_t node_id) const {
-    return (node_id < session_kernels_.size()) ? session_kernels_[node_id] : nullptr;
+    return (node_id < session_kernels_.size()) ? session_kernels_[node_id].get() : nullptr;
   }
 
   OpKernel* GetMutableKernel(size_t node_id) {
-    return (node_id < session_kernels_.size()) ? session_kernels_[node_id] : nullptr;
+    return (node_id < session_kernels_.size()) ? session_kernels_[node_id].get() : nullptr;
   }
 
   const ExecutionProviders& GetExecutionProviders() const noexcept { return execution_providers_; }
@@ -144,27 +141,27 @@ class SessionState {
   const OrtValueNameIdxMap& GetOrtValueNameIdxMap() const noexcept { return ort_value_name_idx_map_; }
 
   /**
-     * Adds an initialized tensor (weight) so that it can be used by the
-     * execution frame to setup the appropriate OrtValue vectors.
-     * This function will take a shallow copy of d if d is not NULL.
-     * If 'constant' is true the tensor value cannot be overridden by an input at runtime.
-     * If 'sparse' is true the tensor value represents a densified weight that was initially stored in the model
-     * as sparse tensor.
-     */
+   * Adds an initialized tensor (weight) so that it can be used by the
+   * execution frame to setup the appropriate OrtValue vectors.
+   * This function will take a shallow copy of d if d is not NULL.
+   * If 'constant' is true the tensor value cannot be overridden by an input at runtime.
+   * If 'sparse' is true the tensor value represents a densified weight that was initially stored in the model
+   * as sparse tensor.
+   */
   Status AddInitializedTensor(int ort_value_index, const OrtValue& ort_value, const OrtCallback* d, bool constant, bool sparse);
 
   /**
-     * Gets the map of ort_value_index to initialized tensors (weights) so that it can be used by the
-     * execution frame to setup the appropriate OrtValue vectors.
-     * The lifetime of returned OrtValues are limited by this SessionState object.
-     */
+   * Gets the map of ort_value_index to initialized tensors (weights) so that it can be used by the
+   * execution frame to setup the appropriate OrtValue vectors.
+   * The lifetime of returned OrtValues are limited by this SessionState object.
+   */
   const std::unordered_map<int, OrtValue>& GetInitializedTensors() const;
 
   /**
-     * Gets the map of ort_value_index to initialized tensors (e.g. weights) that are constant
-     * and cannot be overridden at runtime.
-     * The lifetime of returned OrtValues are limited by this SessionState object.
-     */
+   * Gets the map of ort_value_index to initialized tensors (e.g. weights) that are constant
+   * and cannot be overridden at runtime.
+   * The lifetime of returned OrtValues are limited by this SessionState object.
+   */
   const std::unordered_map<int, OrtValue>& GetConstantInitializedTensors() const;
 
 #if !defined(DISABLE_SPARSE_TENSORS)
@@ -355,9 +352,9 @@ class SessionState {
   void CleanInitializedTensorsFromGraph();
 
   /**
-  * Prepack the constant initialized tensors for better performance.
-  * The original constant initialized tensors will be removed to save memory.
-  */
+   * Prepack the constant initialized tensors for better performance.
+   * The original constant initialized tensors will be removed to save memory.
+   */
   Status PrepackConstantInitializedTensors(std::unordered_map<std::string, size_t>& constant_initializers_use_count,
                                            const std::unordered_map<std::string, const OrtValue*>& initializers_to_share_map);
 
@@ -402,7 +399,7 @@ class SessionState {
   std::unordered_map<std::string, HashValue> compiled_kernel_hashes_;
 
   // cache of the constructed kernels to avoid spending construction time per executor
-  std::vector<OpKernel*> session_kernels_;
+  std::vector<std::unique_ptr<OpKernel>> session_kernels_;
   Graph& graph_;
   std::unique_ptr<GraphViewer> graph_viewer_;  // GraphViewer for const access to Graph
 

@@ -241,7 +241,7 @@ static inline void multiclass_probability(int64_t classcount,
   }
 }
 
-static const float ml_sqrt2 = 1.41421356f;
+static constexpr float ml_sqrt2 = 1.41421356f;
 
 static inline float ComputeLogistic(float val) {
   float v = 1 / (1 + std::exp(-std::abs(val)));

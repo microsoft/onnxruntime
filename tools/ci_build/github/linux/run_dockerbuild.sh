@@ -100,8 +100,8 @@ elif [[ $BUILD_DEVICE = "tensorrt"* ]]; then
             IMAGE="$BUILD_OS-cuda11.0-cudnn8.0-tensorrt7.1"
             DOCKER_FILE=Dockerfile.ubuntu_tensorrt7_1
         else
-            # TensorRT container release 21.07
-            IMAGE="$BUILD_OS-cuda11.4-cudnn8.2-tensorrt8.0"
+            # TensorRT container release 21.12
+            IMAGE="$BUILD_OS-cuda11.5-cudnn8.3-tensorrt8.2"
             DOCKER_FILE=Dockerfile.ubuntu_tensorrt
         fi
         $GET_DOCKER_IMAGE_CMD --repository "onnxruntime-$IMAGE" \

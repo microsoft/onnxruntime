@@ -164,7 +164,7 @@ Status SessionState::CreateKernels(const KernelRegistryManager& kernel_registry_
       max_nodeid = std::max(max_nodeid, node.Index());
     }
     session_kernels_.clear();
-    session_kernels_.resize(max_nodeid + 1, nullptr);
+    session_kernels_.resize(max_nodeid + 1);
     for (const auto& node : nodes) {
       // construct and save the kernels
       const KernelCreateInfo& kci = GetNodeKernelCreateInfo(node.Index());
@@ -173,10 +173,8 @@ Status SessionState::CreateKernels(const KernelRegistryManager& kernel_registry_
       onnxruntime::ProviderType exec_provider_name = node.GetExecutionProviderType();
       const IExecutionProvider& exec_provider = *execution_providers_.Get(exec_provider_name);
 
-      auto op_kernel = kernel_registry_manager.CreateKernel(node, exec_provider, *this, kci);
-
       // assumes vector is already resize()'ed to the number of nodes in the graph
-      session_kernels_[node.Index()] = op_kernel.release();
+      ORT_RETURN_IF_ERROR(kernel_registry_manager.CreateKernel(node, exec_provider, *this, kci, session_kernels_[node.Index()]));
     }
   }
   node_index_info_ = std::make_unique<NodeIndexInfo>(*graph_viewer_, ort_value_name_idx_map_);
