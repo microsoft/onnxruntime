@@ -12,6 +12,7 @@ from azure.kusto.ingest import (
     ReportLevel,
     QueuedIngestClient,
 )
+from perf_utils import *
 
 # database connection strings 
 cluster_ingest = "https://ingest-onnxruntimedashboarddb.southcentralus.kusto.windows.net"
@@ -23,7 +24,9 @@ memory = 'memory'
 latency = 'latency'
 status = 'status'
 latency_over_time = 'latency_over_time'
-        
+
+time_string_format = '%Y-%m-%d %H:%M:%S'
+
 def parse_arguments():
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -42,66 +45,49 @@ def parse_csv(report_file):
     table = pd.read_csv(report_file)
     return table
 
-def get_latency_over_time(commit_hash, report_url, branch, latency_table):
-    if not latency_table.empty:
-        to_drop = ['TrtGain_CudaFp32', 'EpGain_TrtFp32', 'TrtGain_CudaFp16', 'EpGain_TrtFp16']
-        over_time = latency_table.drop(to_drop, axis='columns')
-        over_time = over_time.melt(id_vars=['Model', 'Group'], var_name='Ep', value_name='Latency')
-        over_time = over_time.assign(CommitId=commit_hash)
-        over_time = over_time.assign(ReportUrl=report_url)
-        over_time = over_time.assign(Branch=branch)
-        over_time = over_time[['CommitId', 'Model', 'Ep', 'Latency', 'ReportUrl', 'Group', 'Branch']]
-        over_time.rename(columns={"Group":"ModelGroup"}, inplace=True)
-        over_time.fillna('', inplace=True)
-        return over_time
-    
 def adjust_columns(table, columns, db_columns, model_group): 
     table = table[columns]
     table = table.set_axis(db_columns, axis=1)
     table = table.assign(Group=model_group)
     return table 
 
+def get_latency_over_time(commit_hash, report_url, branch, latency_table):
+    if not latency_table.empty:
+        over_time = latency_table
+        over_time = over_time.melt(id_vars=[model_title, group_title], var_name='Ep', value_name='Latency')
+        over_time = over_time.assign(CommitId=commit_hash)
+        over_time = over_time.assign(ReportUrl=report_url)
+        over_time = over_time.assign(Branch=branch)
+        over_time = over_time[['CommitId', model_title, 'Ep', 'Latency', 'ReportUrl', group_title, 'Branch']]
+        over_time.fillna('', inplace=True)
+        return over_time
+    
 def get_failures(fail, model_group):
     fail_columns = fail.keys()
-    fail_db_columns = ['Model', 'Ep', 'ErrorType', 'ErrorMessage']
+    fail_db_columns = [model_title, 'Ep', 'ErrorType', 'ErrorMessage']
     fail = adjust_columns(fail, fail_columns, fail_db_columns, model_group)
     return fail
 
 def get_memory(memory, model_group): 
-    memory_columns = ['Model', \
-                      'CUDA EP fp32 \npeak memory usage (MiB)', \
-                      'TRT EP fp32 \npeak memory usage (MiB)', \
-                      'Standalone TRT fp32 \npeak memory usage (MiB)', \
-                      'CUDA EP fp16 \npeak memory usage (MiB)', \
-                      'TRT EP fp16 \npeak memory usage (MiB)', \
-                      'Standalone TRT fp16 \npeak memory usage (MiB)' \
-                      ]
-    memory_db_columns = ['Model', 'CudaFp32', 'TrtFp32', 'StandaloneFp32', 'CudaFp16', 'TrtFp16', 'StandaloneFp16']
+    memory_columns = [model_title]
+    for provider in provider_list: 
+        if cpu not in provider:
+            memory_columns.append(provider + memory_ending)
+    memory_db_columns = [model_title, cuda, trt, standalone_trt, cuda_fp16, trt_fp16, standalone_trt_fp16]
     memory = adjust_columns(memory, memory_columns, memory_db_columns, model_group)
     return memory
 
 def get_latency(latency, model_group):
-    latency_columns = ['Model', \
-                        'CPU fp32 \nmean (ms)', \
-                        'CUDA fp32 \nmean (ms)', \
-                        'TRT EP fp32 \nmean (ms)', \
-                        'Standalone TRT fp32 \nmean (ms)', \
-                        'TRT v CUDA EP fp32 \ngain (mean) (%)', \
-                        'EP v Standalone TRT fp32 \ngain (mean) (%)',     
-                        'CUDA fp16 \nmean (ms)', \
-                        'TRT EP fp16 \nmean (ms)', \
-                        'Standalone TRT fp16 \nmean (ms)', \
-                        'TRT v CUDA EP fp16 \ngain (mean) (%)', \
-                        'EP v Standalone TRT fp16 \ngain (mean) (%)' \
-                        ]
-    latency_db_columns = ['Model', 'CpuFp32', 'CudaEpFp32', 'TrtEpFp32', 'StandaloneFp32', 'TrtGain_CudaFp32', 'EpGain_TrtFp32', \
-                        'CudaEpFp16', 'TrtEpFp16', 'StandaloneFp16', 'TrtGain_CudaFp16', 'EpGain_TrtFp16']
+    latency_columns = [model_title]
+    for provider in provider_list: 
+        latency_columns.append(provider + avg_ending)
+    latency_db_columns = table_headers
     latency = adjust_columns(latency, latency_columns, latency_db_columns, model_group)
     return latency
     
 def get_status(status, model_group):
     status_columns = status.keys()
-    status_db_columns = ['Model', 'CpuFp32', 'CudaEpFp32', 'TrtEpFp32', 'StandaloneFp32', 'CudaEpFp16', 'TrtEpFp16', 'StandaloneFp16']
+    status_db_columns = table_headers
     status = adjust_columns(status, status_columns, status_db_columns, model_group)
     return status
     
@@ -119,10 +105,46 @@ def write_table(ingest_client, table, table_name, trt_version, upload_time):
     # append rows
     ingest_client.ingest_from_dataframe(table, ingestion_properties=ingestion_props)
 
-def get_time():
+def get_time():   
     date_time = time.strftime(time_string_format)
     return date_time
-            
+
+def get_cuda_cudnn_version(trt_version): 
+    if trt_version == '8.2.1.8': 
+        cuda = '11.5.0'
+        cudnn = '8.3.1.22' 
+    elif trt_version == '8.0.1.6': 
+        cuda = '11.4.0'
+        cudnn = '8.2.2.26' 
+    else:  # trt_version == '7.2.3.4'
+        cuda = '11.1.1'
+        cudnn = '8.0.5'
+    return cuda, cudnn
+
+def publish_specs(ingest_client, trt_version, branch, commit_id, upload_time):
+    
+    table_name = 'hardware_specs'
+    
+    cpu_version = 'AMD EPYC 7V12(Rome)'
+    gpu_version = 'Nvidia Tesla T4'
+    tensorrt_version = trt_version + ' , *All ORT-TRT and TRT are run in Mixed Precision mode (Fp16 and Fp32).'
+    cuda_version, cudnn_version = get_cuda_cudnn_version(trt_version)
+
+    table = pd.DataFrame({'.': [1, 2, 3, 4, 5, 6, 7],
+                        'Spec': ['CPU', 'GPU', 'TensorRT', 'CUDA', 'CuDNN', 'Branch', 'CommitId'], 
+                        'Version': [cpu_version, gpu_version, tensorrt_version, cuda_version, cudnn_version, branch, commit_id]})
+
+    table = table.assign(UploadTime=upload_time) # add UploadTime
+
+    ingestion_props = IngestionProperties(
+      database=database,
+      table=table_name,
+      data_format=DataFormat.CSV,
+      report_level=ReportLevel.FailuresAndSuccesses
+    )
+    # append rows
+    ingest_client.ingest_from_dataframe(table, ingestion_properties=ingestion_props)
+
 def main():
     
     args = parse_arguments()
@@ -132,6 +154,8 @@ def main():
     ingest_client = QueuedIngestClient(kcsb_ingest)
     date_time = get_time()
 
+    publish_specs(ingest_client, args.trt_version, args.branch, args.commit_hash, date_time)
+    
     try:
         result_file = args.report_folder
 
@@ -158,9 +182,9 @@ def main():
                     table_results[status] = table_results[status].append(get_status(table, model_group), ignore_index=True)
             os.chdir(result_file)
         for table in tables: 
-            print('writing ' + table + ' over time to database')
+            print('writing ' + table + ' to database')
             db_table_name = 'ep_model_' + table
-            write_table(ingest_client, table_results[table], db_table_name, args.trt_version, datetime)
+            write_table(ingest_client, table_results[table], db_table_name, args.trt_version, date_time)
 
     except BaseException as e: 
         print(str(e))

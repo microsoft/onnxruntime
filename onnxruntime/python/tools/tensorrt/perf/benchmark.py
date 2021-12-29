@@ -23,23 +23,13 @@ debug = False
 sys.path.append('.')
 logger = logging.getLogger('')
 
-# global ep variables 
-cpu = "CPUExecutionProvider"
-acl = "ACLExecutionProvider"
-cuda = "CUDAExecutionProvider"
-cuda_fp16 = "CUDAExecutionProvider_fp16"
-trt = "TensorrtExecutionProvider"
-trt_fp16 = "TensorrtExecutionProvider_fp16"
-standalone_trt = "Standalone_TRT"
-standalone_trt_fp16 = "Standalone_TRT_fp16"
-
 ep_to_provider_list = {
-    cpu: [cpu],
-    acl: [acl], 
-    cuda: [cuda],
-    cuda_fp16: [cuda],
-    trt: [trt, cuda],
-    trt_fp16: [trt, cuda]
+    cpu: [cpu_ep],
+    acl: [acl_ep], 
+    cuda: [cuda_ep],
+    cuda_fp16: [cuda_ep],
+    trt: [trt_ep, cuda_ep],
+    trt_fp16: [trt_ep, cuda_ep]
 }
 
 # latency gain headers 
