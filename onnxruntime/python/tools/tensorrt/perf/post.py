@@ -1,16 +1,21 @@
 import argparse
-import mysql.connector
 import sys
 import os
 import pandas as pd
-from sqlalchemy import create_engine
+import time
+from datetime import datetime, timedelta
+from azure.kusto.data import KustoConnectionStringBuilder
+from azure.kusto.data.helpers import dataframe_from_result_table 
+from azure.kusto.ingest import (
+    IngestionProperties,
+    DataFormat,
+    ReportLevel,
+    QueuedIngestClient,
+)
 
 # database connection strings 
-sql_connector = 'mysql+mysqlconnector://'
-user='ort@onnxruntimedashboard'
-password=os.environ.get('DASHBOARD_MYSQL_ORT_PASSWORD')
-host='onnxruntimedashboard.mysql.database.azure.com'
-database='onnxruntime'
+cluster_ingest = "https://ingest-onnxruntimedashboarddb.southcentralus.kusto.windows.net"
+database = "ep_perf_dashboard"
 
 # table names
 fail = 'fail'
@@ -99,44 +104,33 @@ def get_status(status, model_group):
     status_db_columns = ['Model', 'CpuFp32', 'CudaEpFp32', 'TrtEpFp32', 'StandaloneFp32', 'CudaEpFp16', 'TrtEpFp16', 'StandaloneFp16']
     status = adjust_columns(status, status_columns, status_db_columns, model_group)
     return status
-
-def delete_old_records(engine, table_name):
-
-    # delete using cursor for large table
-    conn = engine.raw_connection()
-    cursor = conn.cursor()
-    delete_query = ('DELETE FROM onnxruntime.' + table_name + ' '
-                    'WHERE UploadTime < DATE_SUB(Now(), INTERVAL 100 DAY);'
-                    )
-    cursor.execute(delete_query)
-    conn.commit()
-    cursor.close()
-    conn.close()
     
-def write_table(engine, table, table_name, trt_version, upload_time):
-    delete_old_records(engine, table_name)
+def write_table(ingest_client, table, table_name, trt_version, upload_time):
     if table.empty:
         return
     table = table.assign(TrtVersion=trt_version) # add TrtVersion
     table = table.assign(UploadTime=upload_time) # add UploadTime
-    table.to_sql(table_name, con=engine, if_exists='append', index=False, chunksize=1)
+    ingestion_props = IngestionProperties(
+      database=database,
+      table=table_name,
+      data_format=DataFormat.CSV,
+      report_level=ReportLevel.FailuresAndSuccesses
+    )
+    # append rows
+    ingest_client.ingest_from_dataframe(table, ingestion_properties=ingestion_props)
 
 def get_time():
-    import time   
-    datetime = time.strftime('%Y-%m-%d %H:%M:%S')
-    return datetime
+    date_time = time.strftime(time_string_format)
+    return date_time
             
 def main():
     
-    # connect to database
     args = parse_arguments()
-    connection_string = sql_connector + \
-                        user + ':' + \
-                        password + \
-                        '@' + host + '/' + \
-                        database
-    engine = create_engine(connection_string)
-    datetime = get_time()
+    
+    # connect to database
+    kcsb_ingest = KustoConnectionStringBuilder.with_az_cli_authentication(cluster_ingest)
+    ingest_client = QueuedIngestClient(kcsb_ingest)
+    date_time = get_time()
 
     try:
         result_file = args.report_folder
@@ -166,7 +160,7 @@ def main():
         for table in tables: 
             print('writing ' + table + ' over time to database')
             db_table_name = 'ep_model_' + table
-            write_table(engine, table_results[table], db_table_name, args.trt_version, datetime)
+            write_table(ingest_client, table_results[table], db_table_name, args.trt_version, datetime)
 
     except BaseException as e: 
         print(str(e))
