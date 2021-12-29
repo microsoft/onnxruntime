@@ -1535,7 +1535,6 @@ void Graph::RemoveEdge(NodeIndex src_node_index, NodeIndex dst_node_index, int s
 GSL_SUPPRESS(es .84)  // ignoring return value from unordered_map::insert causes noisy complaint
 Status Graph::BuildConnections(std::unordered_set<std::string>& outer_scope_node_args_consumed) {
   const std::unordered_set<std::string>& outer_scope_node_args = resolve_context_.outer_scope_node_args;
-  std::unordered_set<Node*> inner_nodes;
 
   std::unordered_set<std::string> node_args_consumed_by_subgraphs;
 
@@ -1597,8 +1596,6 @@ Status Graph::BuildConnections(std::unordered_set<std::string>& outer_scope_node
             Node& output_node = *entry->second.first;
             AddEdge(output_node.Index(), node->Index(), entry->second.second, input_slot_index);
 
-            inner_nodes.insert(&output_node);
-
             // If this Graph was built manually, remove the implicit input from the graph outputs
             // if it is present there and not explicitly listed in the ordered graph outputs
             // (as that implies we should leave it as an output).
@@ -1614,20 +1611,8 @@ Status Graph::BuildConnections(std::unordered_set<std::string>& outer_scope_node
   }
 
   // now build connections within this Graph instance
-  node_arg_to_producer_node_.clear();
-  node_arg_to_consumer_nodes_.clear();
   for (auto& node : Nodes()) {
-    // Need mutable input defs to be able to set any outer scope NodeArg implicit inputs
-    auto& input_args = node.MutableInputDefs();
-    auto& output_args = node.MutableOutputDefs();
-
-    if (!output_args.empty()) {
-      for (const auto* output_arg : output_args) {
-        if (output_arg->Exists()) {
-          node_arg_to_producer_node_.insert({output_arg->Name(), node.Index()});
-        }
-      }
-    }
+    const auto input_args = node.InputDefs();
 
     if (!input_args.empty()) {
       // This node needs inputs.
@@ -1640,7 +1625,6 @@ Status Graph::BuildConnections(std::unordered_set<std::string>& outer_scope_node
           continue;
         }
 
-        node_arg_to_consumer_nodes_[input_arg->Name()].insert(node.Index());
         const auto& input_arg_name = input_arg->Name();
         auto output_arg_iter = resolve_context_.output_args.find(input_arg_name);
         if (resolve_context_.output_args.end() != output_arg_iter) {
@@ -1648,8 +1632,6 @@ Status Graph::BuildConnections(std::unordered_set<std::string>& outer_scope_node
           // Create relationship between this node (node), and the node providing the output (output_node).
           Node& output_node = *output_arg_iter->second.first;
           AddEdge(output_node.Index(), node.Index(), output_arg_iter->second.second, input_slot_index);
-
-          inner_nodes.insert(&output_node);
         } else {
           // the value is either an input, an initializer, or coming from outer scope. we only need to take action
           // if coming from outer scope, so first check if this is a subgraph (otherwise there is no outer scope).
@@ -1693,10 +1675,12 @@ Status Graph::BuildConnections(std::unordered_set<std::string>& outer_scope_node
     }
   }
 
+  ORT_RETURN_IF_ERROR(PopulateNodeArgToProducerConsumerLookupsFromNodes());
+
   // finally check any node args consumed by subgraphs to see if they're available locally.
   // if not we add them to the list of outer scope values consumed.
   for (const auto& name : node_args_consumed_by_subgraphs) {
-    if (node_arg_to_producer_node_.count(name) == 0 &&
+    if (node_arg_to_producer_node_.find(name) == node_arg_to_producer_node_.cend() &&
         resolve_context_.inputs_and_initializers.find(name) == resolve_context_.inputs_and_initializers.cend()) {
       ORT_IGNORE_RETURN_VALUE(outer_scope_node_args_consumed.insert(name));
     }
@@ -2152,7 +2136,7 @@ Status Graph::InferAndVerifySubgraphTypes(const Node& node, Graph& subgraph,
   // The NodeArg's that implicit_input_defs point to would have any type/shape inferencing applied to them
   // by now. As the subgraph is referring to the outer scope NodeArg, we simply replace any information in
   // the subgraph with the details from the outer scope NodeArg.
-  auto implicit_input_defs = node.GetDefinitions().implicit_input_defs;
+  const auto& implicit_input_defs = node.GetDefinitions().implicit_input_defs;
   for (const auto* implicit_node_arg : implicit_input_defs) {
     auto subgraph_nodearg = subgraph.GetNodeArg(implicit_node_arg->Name());
 
@@ -3798,6 +3782,23 @@ bool Graph::SetOpSchemaFromRegistryForNode(Node& node) {
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+Status Graph::PopulateNodeArgToProducerConsumerLookupsFromNodes() {
+  node_arg_to_producer_node_.clear();
+  node_arg_to_consumer_nodes_.clear();
+
+  for (const auto& node : Nodes()) {
+    node.ForEachDef([&](const NodeArg& node_arg, bool is_input) {
+      if (is_input) {
+        node_arg_to_consumer_nodes_[node_arg.Name()].insert(node.Index());
+      } else {
+        node_arg_to_producer_node_.insert({node_arg.Name(), node.Index()});
+      }
+    });
+  }
+
+  return Status::OK();
+}
+
 // calling private ctor
 GSL_SUPPRESS(r .11)
 gsl::not_null<Node*> Graph::AllocateNode() {
@@ -4405,6 +4406,9 @@ common::Status Graph::LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph
   ComputeOverridableInitializers();
 
   ORT_RETURN_IF_ERROR(add_node_args(fbs_graph.outputs(), graph_outputs_));
+
+  // populate NodeArg lookups after loading Nodes and NodeArgs
+  ORT_RETURN_IF_ERROR(PopulateNodeArgToProducerConsumerLookupsFromNodes());
 
 #if defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
   // runtime optimizations

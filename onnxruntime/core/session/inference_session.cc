@@ -124,11 +124,13 @@ Status VerifyEachNodeIsAssignedToAnEpImpl(const Graph& graph, bool is_verbose,
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
     // recurse into subgraphs
-    const auto subgraphs = node.GetSubgraphs();
-    for (const auto& subgraph : subgraphs) {
-      const auto status = VerifyEachNodeIsAssignedToAnEpImpl(*subgraph, is_verbose, node_placements);
-      if (!status.IsOK()) {
-        return status;
+    if (node.ContainsSubgraph()) {
+      const auto subgraphs = node.GetSubgraphs();
+      for (const auto& subgraph : subgraphs) {
+        const auto status = VerifyEachNodeIsAssignedToAnEpImpl(*subgraph, is_verbose, node_placements);
+        if (!status.IsOK()) {
+          return status;
+        }
       }
     }
   }

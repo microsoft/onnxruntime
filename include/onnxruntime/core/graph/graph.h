@@ -1363,6 +1363,8 @@ class Graph {
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+  Status PopulateNodeArgToProducerConsumerLookupsFromNodes();
+
   template <typename TInstance>
   static auto GetConsumerNodesImpl(
       TInstance& instance, const std::string& node_arg_name) -> std::vector<decltype(instance.GetNode(0))> {
