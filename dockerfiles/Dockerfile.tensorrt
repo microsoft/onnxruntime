@@ -26,7 +26,6 @@ RUN git clone --single-branch --branch ${ONNXRUNTIME_BRANCH} --recursive ${ONNXR
 
 # Checkout appropriate TRT_VERSION and build
 RUN cd onnxruntime &&\
-    git checkout ce1a9ca6186c713b8962d1bf7cd6178cab21f64b &&\
     trt_v=${TRT%.*.*} &&\
     ./onnxruntime/python/tools/tensorrt/perf/build/checkout_trt.sh ${trt_v} &&\
     /bin/sh build.sh --parallel --build_shared_lib --skip_submodule_sync --cuda_home /usr/local/cuda --cudnn_home /usr/lib/x86_64-linux-gnu/ --use_tensorrt --tensorrt_home /usr/lib/x86_64-linux-gnu/ --config Release --build_wheel --skip_tests --skip_submodule_sync --cmake_extra_defines '"CMAKE_CUDA_ARCHITECTURES='${CMAKE_CUDA_ARCHITECTURES}'"' &&\
