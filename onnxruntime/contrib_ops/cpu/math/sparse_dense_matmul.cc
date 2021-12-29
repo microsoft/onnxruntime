@@ -104,7 +104,7 @@ T Mul(T a_value, float, T b_value) {
 }
 
 template <> inline
-float Mul<float>(float a_value, float alpha, float b_value) {
+constexpr float Mul<float>(float a_value, float alpha, float b_value) {
   return a_value * alpha * b_value;
 }
 

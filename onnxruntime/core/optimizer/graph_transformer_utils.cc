@@ -193,7 +193,9 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
                                                                            onnxruntime::kArmNNExecutionProvider};
 
       if (!disable_quant_qdq) {
-        transformers.emplace_back(std::make_unique<QDQS8ToU8Transformer>(cpu_ep));
+        if (!QDQIsInt8Allowed()) {
+          transformers.emplace_back(std::make_unique<QDQS8ToU8Transformer>(cpu_ep));
+        }
         transformers.emplace_back(std::make_unique<QDQPropagationTransformer>(cpu_ep));
         transformers.emplace_back(std::make_unique<QDQSelectorActionTransformer>());
       }

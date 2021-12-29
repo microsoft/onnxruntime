@@ -803,7 +803,11 @@ Return Value:
         Data->alpha, A, lda, B, ldb, Data->beta, C, ldc);
 }
 
-
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(push)
+// Chance of arithmetic overflow could be reduced
+#pragma warning(disable : 26451)
+#endif
 void
 MLASCALL
 MlasGemmBatch(
@@ -880,5 +884,7 @@ MlasGemmBatch(
     });
 
 }
-
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(pop)
+#endif
 #endif

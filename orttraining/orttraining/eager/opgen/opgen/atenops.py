@@ -34,7 +34,6 @@ ops = {
   'aten::_reshape_alias': SignatureOnly(),
   'aten::view': SignatureOnly(),
   'aten::_copy_from_and_resize' : SignatureOnly(),
-
   'aten::addmm': Gemm('mat1', 'mat2', 'self', alpha='alpha', beta='beta'),
   'aten::t': Transpose('self'),
   'aten::mm': MatMul('self', 'mat2'),
@@ -52,6 +51,7 @@ ops = {
   'aten::gelu_backward' : GeluGrad('grad', 'self'),
   'aten::max' : ReduceMax('self', keepdims=1),
   'aten::min' : ReduceMin('self', keepdims=1),
+  'aten::slice.Tensor' : Slice('self', 'start', 'end', 'dim', 'step'),
 
   'aten::ne.Scalar':MakeTorchFallback(),
   'aten::ne.Scalar_out': MakeTorchFallback(),

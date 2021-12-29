@@ -26,7 +26,6 @@ class OpKernelInfo : public OpNodeProtoHelper<ProtoHelperNodeContext> {
                         const IExecutionProvider& execution_provider,
                         const std::unordered_map<int, OrtValue>& constant_initialized_tensors,
                         const OrtValueNameIdxMap& mlvalue_name_idx_map,
-                        const FuncManager& funcs_mgr,
                         const DataTransferManager& data_transfer_mgr);
 
   OpKernelInfo(const OpKernelInfo& other);
@@ -45,8 +44,6 @@ class OpKernelInfo : public OpNodeProtoHelper<ProtoHelperNodeContext> {
 
   bool TryGetConstantInput(int input_index, const Tensor** constant_input_value) const;
 
-  common::Status GetFusedFuncs(NodeComputeInfo*& compute_info) const;
-
  private:
   ORT_DISALLOW_MOVE(OpKernelInfo);
   ORT_DISALLOW_ASSIGNMENT(OpKernelInfo);
@@ -58,7 +55,6 @@ class OpKernelInfo : public OpNodeProtoHelper<ProtoHelperNodeContext> {
   gsl::not_null<const ::onnxruntime::IExecutionProvider*> execution_provider_;
   const std::unordered_map<int, OrtValue>& constant_initialized_tensors_;
   const OrtValueNameIdxMap& ort_value_name_idx_map_;
-  const FuncManager& funcs_mgr_;
   const DataTransferManager& data_transfer_mgr_;
   ProtoHelperNodeContext proto_helper_context_;
 };

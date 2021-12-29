@@ -129,6 +129,7 @@ extern "C" {
 
 // Used in *.cc files. Almost as same as ORT_API_STATUS, except without ORT_MUST_USE_RESULT and ORT_EXPORT
 #define ORT_API_STATUS_IMPL(NAME, ...) \
+  GSL_SUPPRESS(r .11)                  \
   _Success_(return == 0) _Check_return_ _Ret_maybenull_ OrtStatusPtr ORT_API_CALL NAME(__VA_ARGS__) NO_EXCEPTION
 
 #define ORT_CLASS_RELEASE(X) void(ORT_API_CALL * Release##X)(_Frees_ptr_opt_ Ort##X * input)
@@ -3066,12 +3067,14 @@ struct OrtApi {
   /// @{
   /** \brief Used for custom operators, gets the GPU compute stream to use to launch the custom a GPU kernel     
   *   \see ::OrtCustomOp
-  * \param[context] OrtKernelContext instance
-  * \param[out] Returns pointer to a GPU compute stream that can be used to launch the custom GPU kernel.
+  * \param[in]  context OrtKernelContext instance
+  * \param[out] out Returns pointer to a GPU compute stream that can be used to launch the custom GPU kernel.
   *             If retrieving the GPU compute stream is not relevant (GPU not enabled in the build, kernel partitioned to
   *             some other EP), then a nullptr is returned as the output param.
   *             Do not free or mutate the returned pointer as it refers to internal data owned by the underlying session.
   *             Only use it for custom kernel launching.
+  *
+  * \snippet{doc} snippets.dox OrtStatus Return Value 
   */
   ORT_API2_STATUS(KernelContext_GetGPUComputeStream, _In_ const OrtKernelContext* context, _Outptr_ void** out);
 
@@ -3079,7 +3082,7 @@ struct OrtApi {
   /// \name GetTensorMemoryInfo
   /// @{
   /** \brief Returns a pointer to the ::OrtMemoryInfo of a Tensor
-   * \param[in] ort_value ::OrtValue containing tensor.
+   * \param[in] value ::OrtValue containing tensor.
    * \param[out] mem_info ::OrtMemoryInfo of the tensor. Do NOT free the returned pointer. It is valid for the lifetime of the ::OrtValue
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
@@ -3107,28 +3110,28 @@ struct OrtApi {
   /// @{
   /** \brief Set custom thread creation function
   *
-  * \param[in] session options
-  * \param[in] custom thread creation function
+  * \param[in] options Session options
+  * \param[in] ort_custom_create_thread_fn Custom thread creation function
   * 
-  * * \snippet{doc} snippets.dox OrtStatus Return Value
+  * \snippet{doc} snippets.dox OrtStatus Return Value
   */
   ORT_API2_STATUS(SessionOptionsSetCustomCreateThreadFn, _Inout_ OrtSessionOptions* options, _In_ OrtCustomCreateThreadFn ort_custom_create_thread_fn);
 
   /** \brief Set creation options for custom thread 
   *
-  * \param[in] session options
-  * \param[in] custom thread creation options (can be nullptr)
+  * \param[in] options Session options
+  * \param[in] ort_custom_thread_creation_options Custom thread creation options (can be nullptr)
   * 
-  * * \snippet{doc} snippets.dox OrtStatus Return Value
+  * \snippet{doc} snippets.dox OrtStatus Return Value
   */
   ORT_API2_STATUS(SessionOptionsSetCustomThreadCreationOptions, _Inout_ OrtSessionOptions* options, _In_ void* ort_custom_thread_creation_options);
 
   /** \brief Set custom thread join function
   *
-  * \param[in] session options
-  * \param[in] custom join thread function, must not be nullptr when ort_custom_create_thread_fn is set
+  * \param[in] options Session options
+  * \param[in] ort_custom_join_thread_fn Custom join thread function, must not be nullptr when ort_custom_create_thread_fn is set
   * 
-  * * \snippet{doc} snippets.dox OrtStatus Return Value
+  * \snippet{doc} snippets.dox OrtStatus Return Value
   */
   ORT_API2_STATUS(SessionOptionsSetCustomJoinThreadFn, _Inout_ OrtSessionOptions* options, _In_ OrtCustomJoinThreadFn ort_custom_join_thread_fn);
   /// @}
@@ -3138,27 +3141,27 @@ struct OrtApi {
   /** \brief Set custom thread creation function for global thread pools
   *
   * \param[inout] tp_options
-  * \param[in] custom thread creation function
+  * \param[in] ort_custom_create_thread_fn Custom thread creation function
   * 
-  * * \snippet{doc} snippets.dox OrtStatus Return Value
+  * \snippet{doc} snippets.dox OrtStatus Return Value
   */
   ORT_API2_STATUS(SetGlobalCustomCreateThreadFn, _Inout_ OrtThreadingOptions* tp_options, _In_ OrtCustomCreateThreadFn ort_custom_create_thread_fn);
 
   /** \brief Set custom thread creation options for global thread pools
   *
   * \param[inout] tp_options
-  * \param[in] custom thread creation options (can be nullptr)
+  * \param[in] ort_custom_thread_creation_options Custom thread creation options (can be nullptr)
   * 
-  * * \snippet{doc} snippets.dox OrtStatus Return Value
+  * \snippet{doc} snippets.dox OrtStatus Return Value
   */
   ORT_API2_STATUS(SetGlobalCustomThreadCreationOptions, _Inout_ OrtThreadingOptions* tp_options, _In_ void* ort_custom_thread_creation_options);
 
   /** \brief Set custom thread join function for global thread pools
   *
   * \param[inout] tp_options
-  * \param[in] custom thread join function, must not be nullptr when global ort_custom_create_thread_fn is set
+  * \param[in] ort_custom_join_thread_fn Custom thread join function, must not be nullptr when global ort_custom_create_thread_fn is set
   * 
-  * * \snippet{doc} snippets.dox OrtStatus Return Value
+  * \snippet{doc} snippets.dox OrtStatus Return Value
   */
   ORT_API2_STATUS(SetGlobalCustomJoinThreadFn, _Inout_ OrtThreadingOptions* tp_options, _In_ OrtCustomJoinThreadFn ort_custom_join_thread_fn);
   /// @}
@@ -3169,7 +3172,7 @@ struct OrtApi {
   *
   * \param[inout] binding_ptr
   * 
-  * * \snippet{doc} snippets.dox OrtStatus Return Value
+  * \snippet{doc} snippets.dox OrtStatus Return Value
   */
   ORT_API2_STATUS(SynchronizeBoundInputs, _Inout_ OrtIoBinding* binding_ptr);
 
@@ -3179,7 +3182,7 @@ struct OrtApi {
   *
   * \param[inout] binding_ptr
   * 
-  * * \snippet{doc} snippets.dox OrtStatus Return Value
+  * \snippet{doc} snippets.dox OrtStatus Return Value
   */
   ORT_API2_STATUS(SynchronizeBoundOutputs, _Inout_ OrtIoBinding* binding_ptr);
 };

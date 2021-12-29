@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_selector_action_transformer.h"
+#include "core/mlas/inc/mlas.h"
 
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_actions.h"
 #if !defined(ORT_MINIMAL_BUILD)
@@ -27,10 +28,10 @@ void DropQDQNodesRules(SelectorsAndActions& qdq_selectors_and_actions) {
       MoveToSlot(dq, ArgType::kInput, 0, ArgType::kInput, 0),
       MoveToSlot(q, ArgType::kOutput, 0, ArgType::kOutput, 0)};
 
-  std::unique_ptr<Action> action(new MergeIntoTarget(std::move(moves)));
+  std::unique_ptr<Action> action = std::make_unique<MergeIntoTarget>(std::move(moves));
 
 #if !defined(ORT_MINIMAL_BUILD)
-  std::unique_ptr<NodeSelector> selector(new QDQ::DropDQDNodesSelector());
+  std::unique_ptr<NodeSelector> selector = std::make_unique<QDQ::DropDQDNodesSelector>();
   qdq_selectors_and_actions.RegisterSelectorAndAction(action_name,
                                                       SelectorAndAction::OpVersionsMap{{"Gather", {}},
                                                                                        {"Reshape", {}},
@@ -44,19 +45,20 @@ void DropQDQNodesRules(SelectorsAndActions& qdq_selectors_and_actions) {
 #endif
 }
 
-void UnaryOpQDQRules(SelectorsAndActions& qdq_selectors_and_actions) {
+void UnaryOpQDQRules(SelectorsAndActions& qdq_selectors_and_actions, bool is_int8_allowed = false) {
   // 3 nodes. DQ, target, Q
   // Replace with internal QLinear version of operator. Delete all original nodes.
   const std::string action_name{"1DQ"};
-  std::unique_ptr<Action> action(new QDQ::UnaryReplaceWithQLinear(kMSDomain));
+  std::unique_ptr<Action> action = std::make_unique<QDQ::UnaryReplaceWithQLinear>(kMSDomain);
 
 #if !defined(ORT_MINIMAL_BUILD)
-  std::unique_ptr<NodeSelector> selector(new QDQ::UnarySelector());
+  std::unique_ptr<NodeSelector> selector = std::make_unique<QDQ::UnarySelector>(is_int8_allowed);
   qdq_selectors_and_actions.RegisterSelectorAndAction(action_name,
                                                       SelectorAndAction::OpVersionsMap{{"AveragePool", {}}},
                                                       std::move(selector),
                                                       std::move(action));
 #else
+  ORT_UNUSED_PARAMETER(is_int8_allowed);
   qdq_selectors_and_actions.RegisterAction(action_name, std::move(action));
 #endif
 }
@@ -65,10 +67,10 @@ void BinaryOpQDQRules(SelectorsAndActions& qdq_selectors_and_actions) {
   // 4 nodes. 2 x DQ for inputs, target, Q
   // Replace with internal QLinear version of operator. Delete all original nodes.
   const std::string action_name{"2DQ"};
-  std::unique_ptr<Action> action(new QDQ::BinaryReplaceWithQLinear(kMSDomain));
+  std::unique_ptr<Action> action = std::make_unique<QDQ::BinaryReplaceWithQLinear>(kMSDomain);
 
 #if !defined(ORT_MINIMAL_BUILD)
-  std::unique_ptr<NodeSelector> selector(new QDQ::BinarySelector());
+  std::unique_ptr<NodeSelector> selector = std::make_unique<QDQ::BinarySelector>();
   qdq_selectors_and_actions.RegisterSelectorAndAction(action_name,
                                                       SelectorAndAction::OpVersionsMap{{"Add", {}},
                                                                                        {"Mul", {}}},
@@ -84,10 +86,10 @@ void VariadicOpQDQRules(SelectorsAndActions& qdq_selectors_and_actions) {
   // 0=variadic DQ nodes 2=target, 3=Q
   // Replace with QLinear version of operator. Delete all original nodes.
   const std::string action_name{"*DQ"};
-  std::unique_ptr<Action> action(new QDQ::VariadicReplaceWithQLinear(kMSDomain));
+  std::unique_ptr<Action> action = std::make_unique<QDQ::VariadicReplaceWithQLinear>(kMSDomain);
 
 #if !defined(ORT_MINIMAL_BUILD)
-  std::unique_ptr<NodeSelector> selector(new QDQ::VariadicSelector());
+  std::unique_ptr<NodeSelector> selector = std::make_unique<QDQ::VariadicSelector>();
 
   qdq_selectors_and_actions.RegisterSelectorAndAction(action_name,
                                                       SelectorAndAction::OpVersionsMap{{"Concat", {}}},
@@ -99,16 +101,16 @@ void VariadicOpQDQRules(SelectorsAndActions& qdq_selectors_and_actions) {
 #endif
 }
 
-void ConvQDQRules(SelectorsAndActions& qdq_selectors_and_actions) {
+void ConvQDQRules(SelectorsAndActions& qdq_selectors_and_actions, bool is_int8_allowed = false) {
   // 4 or 5 Nodes. 0=DQ X, 1=DQ W, 2=DQ B (optional), 3=Conv, 4=Q
   // Handle the DQ input for the Bias being optional.
   // Replace Conv with QLinearConv
   // Delete all original nodes
   const std::string action_name{"Conv"};
-  std::unique_ptr<Action> action(new QDQ::ConvReplaceWithQLinear());
+  std::unique_ptr<Action> action = std::make_unique<QDQ::ConvReplaceWithQLinear>();
 
 #if !defined(ORT_MINIMAL_BUILD)
-  std::unique_ptr<NodeSelector> selector(new QDQ::ConvSelector());
+  std::unique_ptr<NodeSelector> selector = std::make_unique<QDQ::ConvSelector>(is_int8_allowed);
 
   qdq_selectors_and_actions.RegisterSelectorAndAction(action_name,
                                                       SelectorAndAction::OpVersionsMap{{"Conv", {}}},
@@ -116,39 +118,41 @@ void ConvQDQRules(SelectorsAndActions& qdq_selectors_and_actions) {
                                                       std::move(action));
 
 #else
+  ORT_UNUSED_PARAMETER(is_int8_allowed);
   qdq_selectors_and_actions.RegisterAction(action_name, std::move(action));
 #endif
 }
 
-void MatMulQDQRules(SelectorsAndActions& qdq_selectors_and_actions) {
+void MatMulQDQRules(SelectorsAndActions& qdq_selectors_and_actions, bool is_int8_allowed = false) {
   // 3 or 4 nodes. 2 x DQ for inputs, target, optional Q
   // Replace with QLinearMatMul if Q found, or MatMulIntegerToFloat if not.
   // Delete all original nodes.
   const std::string action_name{"MatMul"};
 
-  std::unique_ptr<Action> action(new QDQ::MatMulReplaceWithQLinear());
+  std::unique_ptr<Action> action = std::make_unique<QDQ::MatMulReplaceWithQLinear>();
 
 #if !defined(ORT_MINIMAL_BUILD)
-  std::unique_ptr<NodeSelector> selector(new QDQ::MatMulSelector());
+  std::unique_ptr<NodeSelector> selector = std::make_unique<QDQ::MatMulSelector>(is_int8_allowed);
   qdq_selectors_and_actions.RegisterSelectorAndAction(action_name,
                                                       SelectorAndAction::OpVersionsMap{{"MatMul", {}}},
                                                       std::move(selector),
                                                       std::move(action));
 
 #else
+  ORT_UNUSED_PARAMETER(is_int8_allowed);
   qdq_selectors_and_actions.RegisterAction(action_name, std::move(action));
 #endif
 }
 
-SelectorsAndActions CreateSelectorsAndActions() {
+SelectorsAndActions CreateSelectorsAndActions(bool is_int8_allowed) {
   SelectorsAndActions qdq_selectors_and_actions;
 
   DropQDQNodesRules(qdq_selectors_and_actions);
-  UnaryOpQDQRules(qdq_selectors_and_actions);
+  UnaryOpQDQRules(qdq_selectors_and_actions, is_int8_allowed);
   BinaryOpQDQRules(qdq_selectors_and_actions);
   VariadicOpQDQRules(qdq_selectors_and_actions);
-  ConvQDQRules(qdq_selectors_and_actions);
-  MatMulQDQRules(qdq_selectors_and_actions);
+  ConvQDQRules(qdq_selectors_and_actions, is_int8_allowed);
+  MatMulQDQRules(qdq_selectors_and_actions, is_int8_allowed);
 
   return qdq_selectors_and_actions;
 }
@@ -158,7 +162,7 @@ SelectorsAndActions CreateSelectorsAndActions() {
 QDQSelectorActionTransformer::QDQSelectorActionTransformer(std::optional<RuntimeOptimizationSaveContext> save_context)
     : SelectorActionTransformer{
           "QDQSelectorActionTransformer",
-          CreateSelectorsAndActions(),
+          CreateSelectorsAndActions(QDQIsInt8Allowed()),
           std::move(save_context)} {
 }
 

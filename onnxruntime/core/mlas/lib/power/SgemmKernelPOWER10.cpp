@@ -68,15 +68,15 @@ MlasSgemmComputeBlockMMA(
     BElements[1] = MlasLoadFloat32x4(B + 4);
     BElements[2] = MlasLoadFloat32x4(B + 8);
     BElements[3] = MlasLoadFloat32x4(B + 12);
-   __builtin_mma_xvf32gerpp (&acc[0], (vec_t) ABroadcast, (vec_t )BElements[0]);
-   __builtin_mma_xvf32gerpp (&acc[1], (vec_t) ABroadcast, (vec_t )BElements[1]);
-   __builtin_mma_xvf32gerpp (&acc[2], (vec_t) ABroadcast, (vec_t )BElements[2]);
-   __builtin_mma_xvf32gerpp (&acc[3], (vec_t) ABroadcast, (vec_t )BElements[3]);
+   __builtin_mma_xvf32gerpp (&acc[0], reinterpret_cast<vec_t>(ABroadcast), reinterpret_cast<vec_t>(BElements[0]));
+   __builtin_mma_xvf32gerpp (&acc[1], reinterpret_cast<vec_t>(ABroadcast), reinterpret_cast<vec_t>(BElements[1]));
+   __builtin_mma_xvf32gerpp (&acc[2], reinterpret_cast<vec_t>(ABroadcast), reinterpret_cast<vec_t>(BElements[2]));
+   __builtin_mma_xvf32gerpp (&acc[3], reinterpret_cast<vec_t>(ABroadcast), reinterpret_cast<vec_t>(BElements[3]));
    if (CountM == 8) {
-       __builtin_mma_xvf32gerpp (&acc[4], (vec_t) A2Broadcast, (vec_t )BElements[0]);
-       __builtin_mma_xvf32gerpp (&acc[5], (vec_t) A2Broadcast, (vec_t )BElements[1]);
-       __builtin_mma_xvf32gerpp (&acc[6], (vec_t) A2Broadcast, (vec_t )BElements[2]);
-       __builtin_mma_xvf32gerpp (&acc[7], (vec_t) A2Broadcast, (vec_t )BElements[3]);
+       __builtin_mma_xvf32gerpp (&acc[4], reinterpret_cast<vec_t>(A2Broadcast), reinterpret_cast<vec_t>(BElements[0]));
+       __builtin_mma_xvf32gerpp (&acc[5], reinterpret_cast<vec_t>(A2Broadcast), reinterpret_cast<vec_t>(BElements[1]));
+       __builtin_mma_xvf32gerpp (&acc[6], reinterpret_cast<vec_t>(A2Broadcast), reinterpret_cast<vec_t>(BElements[2]));
+       __builtin_mma_xvf32gerpp (&acc[7], reinterpret_cast<vec_t>(A2Broadcast), reinterpret_cast<vec_t>(BElements[3]));
    }
 }
 template<size_t VectorCount>
@@ -96,10 +96,10 @@ struct MlasSgemmStoreVectorMMA
     {
         MLAS_FLOAT32X4 *rowC;
         if (ZeroMode) {
-            rowC = (MLAS_FLOAT32X4 *) &C[Row * ldc + VectorCount];
+            rowC = reinterpret_cast<MLAS_FLOAT32X4 *>(&C[Row * ldc + VectorCount]);
             rowC[0] = Result[Row] * AlphaBroadcast;
         } else {
-            rowC = (MLAS_FLOAT32X4 *) &C[Row * ldc + VectorCount];
+            rowC = reinterpret_cast<MLAS_FLOAT32X4 *>(&C[Row * ldc + VectorCount]);
             rowC[0] += Result[Row] * AlphaBroadcast;
         }
     }
@@ -218,22 +218,22 @@ MlasSgemmMMAProcessCount(
             //
             // Store the entire output block.
             //
-            __builtin_mma_disassemble_acc ((void *)Result, &acc[0]);
+            __builtin_mma_disassemble_acc (Result, &acc[0]);
             MlasLoopUnroll<RowCount, MlasSgemmStoreVectorMMA<0>>()(Result, C, ldc, AlphaBroadcast, ZeroMode);
-            __builtin_mma_disassemble_acc ((void *)Result, &acc[1]);
+            __builtin_mma_disassemble_acc (Result, &acc[1]);
             MlasLoopUnroll<RowCount, MlasSgemmStoreVectorMMA<4>>()(Result, C, ldc, AlphaBroadcast, ZeroMode);
-            __builtin_mma_disassemble_acc ((void *)Result, &acc[2]);
+            __builtin_mma_disassemble_acc (Result, &acc[2]);
             MlasLoopUnroll<RowCount, MlasSgemmStoreVectorMMA<8>>()(Result, C, ldc, AlphaBroadcast, ZeroMode);
-            __builtin_mma_disassemble_acc ((void *)Result, &acc[3]);
+            __builtin_mma_disassemble_acc (Result, &acc[3]);
             MlasLoopUnroll<RowCount, MlasSgemmStoreVectorMMA<12>>()(Result, C, ldc, AlphaBroadcast, ZeroMode);
             if (CountM == 8) {
-                __builtin_mma_disassemble_acc ((void *)Result, &acc[4]);
+                __builtin_mma_disassemble_acc (Result, &acc[4]);
                 MlasLoopUnroll<RowCount, MlasSgemmStoreVectorMMA<0>>()(Result, C + (ldc*4), ldc, AlphaBroadcast, ZeroMode);
-                __builtin_mma_disassemble_acc ((void *)Result, &acc[5]);
+                __builtin_mma_disassemble_acc (Result, &acc[5]);
                 MlasLoopUnroll<RowCount, MlasSgemmStoreVectorMMA<4>>()(Result, C + (ldc*4), ldc, AlphaBroadcast, ZeroMode);
-                __builtin_mma_disassemble_acc ((void *)Result, &acc[6]);
+                __builtin_mma_disassemble_acc (Result, &acc[6]);
                 MlasLoopUnroll<RowCount, MlasSgemmStoreVectorMMA<8>>()(Result, C + (ldc*4), ldc, AlphaBroadcast, ZeroMode);
-                __builtin_mma_disassemble_acc ((void *)Result, &acc[7]);
+                __builtin_mma_disassemble_acc (Result, &acc[7]);
                 MlasLoopUnroll<RowCount, MlasSgemmStoreVectorMMA<12>>()(Result, C + (ldc*4), ldc, AlphaBroadcast, ZeroMode);
             }
         } else {
@@ -243,60 +243,60 @@ MlasSgemmMMAProcessCount(
             //
 
             if (CountN >= 12) {
-                __builtin_mma_disassemble_acc ((void *)Result, &acc[0]);
+                __builtin_mma_disassemble_acc (Result, &acc[0]);
                 MlasLoopUnroll<RowCount, MlasSgemmStoreVectorMMA<0>>()(Result, C, ldc, AlphaBroadcast, ZeroMode);
-                __builtin_mma_disassemble_acc ((void *)Result, &acc[1]);
+                __builtin_mma_disassemble_acc (Result, &acc[1]);
                 MlasLoopUnroll<RowCount, MlasSgemmStoreVectorMMA<4>>()(Result, C, ldc, AlphaBroadcast, ZeroMode);
-                __builtin_mma_disassemble_acc ((void *)Result, &acc[2]);
+                __builtin_mma_disassemble_acc (Result, &acc[2]);
                 MlasLoopUnroll<RowCount, MlasSgemmStoreVectorMMA<8>>()(Result, C, ldc, AlphaBroadcast, ZeroMode);
                 if (CountM == 8) {
-                    __builtin_mma_disassemble_acc ((void *)Result, &acc[4]);
+                    __builtin_mma_disassemble_acc (Result, &acc[4]);
                     MlasLoopUnroll<RowCount, MlasSgemmStoreVectorMMA<0>>()(Result, C + (ldc*4), ldc, AlphaBroadcast, ZeroMode);
-                    __builtin_mma_disassemble_acc ((void *)Result, &acc[5]);
+                    __builtin_mma_disassemble_acc (Result, &acc[5]);
                     MlasLoopUnroll<RowCount, MlasSgemmStoreVectorMMA<4>>()(Result, C + (ldc*4), ldc, AlphaBroadcast, ZeroMode);
-                    __builtin_mma_disassemble_acc ((void *)Result, &acc[6]);
+                    __builtin_mma_disassemble_acc (Result, &acc[6]);
                     MlasLoopUnroll<RowCount, MlasSgemmStoreVectorMMA<8>>()(Result, C + (ldc*4), ldc, AlphaBroadcast, ZeroMode);
                     if (CountN - 12 > 0) {
-                        __builtin_mma_disassemble_acc ((void *)Accumulators[1], &acc[7]);
+                        __builtin_mma_disassemble_acc (Accumulators[1], &acc[7]);
                     }
                 }
                 if (CountN - 12 > 0) {
-                    __builtin_mma_disassemble_acc ((void *)Accumulators[0], &acc[3]);
+                    __builtin_mma_disassemble_acc (Accumulators[0], &acc[3]);
                 }
             } else if (CountN >= 8) {
-                __builtin_mma_disassemble_acc ((void *)Result, &acc[0]);
+                __builtin_mma_disassemble_acc (Result, &acc[0]);
                 MlasLoopUnroll<RowCount, MlasSgemmStoreVectorMMA<0>>()(Result, C, ldc, AlphaBroadcast, ZeroMode);
-                __builtin_mma_disassemble_acc ((void *)Result, &acc[1]);
+                __builtin_mma_disassemble_acc (Result, &acc[1]);
                 MlasLoopUnroll<RowCount, MlasSgemmStoreVectorMMA<4>>()(Result, C, ldc, AlphaBroadcast, ZeroMode);
                 if (CountM == 8) {
-                    __builtin_mma_disassemble_acc ((void *)Result, &acc[4]);
+                    __builtin_mma_disassemble_acc (Result, &acc[4]);
                     MlasLoopUnroll<RowCount, MlasSgemmStoreVectorMMA<0>>()(Result, C + (ldc*4), ldc, AlphaBroadcast, ZeroMode);
-                    __builtin_mma_disassemble_acc ((void *)Result, &acc[5]);
+                    __builtin_mma_disassemble_acc (Result, &acc[5]);
                     MlasLoopUnroll<RowCount, MlasSgemmStoreVectorMMA<4>>()(Result, C + (ldc*4), ldc, AlphaBroadcast, ZeroMode);
                     if (CountN - 8 > 0) {
-                        __builtin_mma_disassemble_acc ((void *)Accumulators[1], &acc[6]);
+                        __builtin_mma_disassemble_acc (Accumulators[1], &acc[6]);
                     }
                 }
                 if (CountN - 8 > 0) {
-                    __builtin_mma_disassemble_acc ((void *)Accumulators[0], &acc[2]);
+                    __builtin_mma_disassemble_acc (Accumulators[0], &acc[2]);
                 }
             } else if (CountN >= 4) {
-                __builtin_mma_disassemble_acc ((void *)Result, &acc[0]);
+                __builtin_mma_disassemble_acc (Result, &acc[0]);
                 MlasLoopUnroll<RowCount, MlasSgemmStoreVectorMMA<0>>()(Result, C, ldc, AlphaBroadcast, ZeroMode);
                 if (CountM == 8) {
-                    __builtin_mma_disassemble_acc ((void *)Result, &acc[4]);
+                    __builtin_mma_disassemble_acc (Result, &acc[4]);
                     MlasLoopUnroll<RowCount, MlasSgemmStoreVectorMMA<0>>()(Result, C + (ldc*4), ldc, AlphaBroadcast, ZeroMode);
                     if (CountN - 4 > 0) {
-                        __builtin_mma_disassemble_acc ((void *)Accumulators[1], &acc[5]);
+                        __builtin_mma_disassemble_acc (Accumulators[1], &acc[5]);
                     }
                 }
                 if (CountN - 4 > 0) {
-                    __builtin_mma_disassemble_acc ((void *)Accumulators[0], &acc[1]);
+                    __builtin_mma_disassemble_acc (Accumulators[0], &acc[1]);
                 }
             } else {
-                __builtin_mma_disassemble_acc ((void *)Accumulators[0], &acc[0]);
+                __builtin_mma_disassemble_acc (Accumulators[0], &acc[0]);
                 if (CountM == 8) {
-                    __builtin_mma_disassemble_acc ((void *)Accumulators[1], &acc[4]);
+                    __builtin_mma_disassemble_acc (Accumulators[1], &acc[4]);
                 }
            }
 
