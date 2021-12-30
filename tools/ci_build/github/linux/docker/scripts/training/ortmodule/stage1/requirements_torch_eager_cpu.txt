@@ -1,8 +1,7 @@
-torch
 setuptools>=41.4.0
 cerberus
 h5py
 sklearn
 numpy
 pandas
-
+torch==1.10.0+cpu
