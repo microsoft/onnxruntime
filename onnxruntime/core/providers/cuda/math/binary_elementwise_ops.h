@@ -26,8 +26,7 @@ struct BinaryElementwisePreparation {
 
   BinaryElementwisePreparation() {}
 
-  Status BinaryElementwiseBroadcastPrepareHelper(const TensorShape& lhs_shape,
-                                                 const TensorShape& rhs_shape,
+  Status BinaryElementwiseBroadcastPrepareHelper(const TensorShape& lhs_shape, const TensorShape& rhs_shape,
                                                  const TensorShape& output_shape) {
     int32_t lhs_rank = gsl::narrow_cast<int32_t>(lhs_shape.NumDimensions());
     int32_t rhs_rank = gsl::narrow_cast<int32_t>(rhs_shape.NumDimensions());
@@ -41,25 +40,60 @@ struct BinaryElementwisePreparation {
 
     // early return if one operand is scalar
     if (lhs_shape.Size() == 1 || rhs_shape.Size() == 1) {
-      output_rank_or_simple_broadcast = static_cast<int32_t>(lhs_shape.Size() == 1
-                                                                 ? SimpleBroadcast::LeftScalar
-                                                                 : SimpleBroadcast::RightScalar);
+      output_rank_or_simple_broadcast =
+          static_cast<int32_t>(lhs_shape.Size() == 1 ? SimpleBroadcast::LeftScalar : SimpleBroadcast::RightScalar);
       return Status::OK();
     }
+
+    // Coalesce dimensions.
+    std::vector<int64_t> out_shape_vec = output_shape.GetDimsAsVector();
+    std::vector<int64_t> lhs_shape_vec(static_cast<size_t>(out_rank), 1);
+    std::vector<int64_t> rhs_shape_vec(static_cast<size_t>(out_rank), 1);
+    int lhs_offset = out_rank - lhs_rank;
+    int rhs_offset = out_rank - rhs_rank;
+    for (int i = 0; i < lhs_rank; ++i) {
+      lhs_shape_vec[i + lhs_offset] = lhs_shape[i];
+    }
+    for (int i = 0; i < rhs_rank; ++i) {
+      rhs_shape_vec[i + rhs_offset] = rhs_shape[i];
+    }
+
+    int prev_dim = 0;
+    for (int dim = 1; dim < out_rank; ++dim) {
+      if (lhs_shape_vec[prev_dim] == out_shape_vec[prev_dim] && rhs_shape_vec[prev_dim] == out_shape_vec[prev_dim] &&
+          lhs_shape_vec[dim] == out_shape_vec[dim] && rhs_shape_vec[dim] == out_shape_vec[dim]) {
+        lhs_shape_vec[prev_dim] *= lhs_shape_vec[dim];
+        rhs_shape_vec[prev_dim] *= rhs_shape_vec[dim];
+        out_shape_vec[prev_dim] *= out_shape_vec[dim];
+      } else {
+        ++prev_dim;
+        if (prev_dim != dim) {
+          lhs_shape_vec[prev_dim] = lhs_shape_vec[dim];
+          rhs_shape_vec[prev_dim] = rhs_shape_vec[dim];
+          out_shape_vec[prev_dim] = out_shape_vec[dim];
+        }
+      }
+    }
+
+    int new_rank = prev_dim + 1;
+    lhs_shape_vec.resize(new_rank);
+    rhs_shape_vec.resize(new_rank);
+    out_shape_vec.resize(new_rank);
 
     // special case for lhs(N,C,H) and rhs (C,1) which is used in conv bias
     // when N == 1: out[id] = op(lhs[id], rhs[id / H])
     // When N > 1:  out[id] = op(lhs[id], rhs[id / H % C])
     if (lhs_shape == output_shape) {
-      const auto& rhs_dims = rhs_shape.GetDims();
       int64_t C = 0;
-      if (1 == std::count_if(rhs_dims.begin(), rhs_dims.end(),
-                             [&C](int64_t dim) { if (dim != 1) C = dim; return (dim != 1); })) {
-        int32_t dim_C = gsl::narrow_cast<int32_t>(std::find(rhs_dims.begin(), rhs_dims.end(), C) - rhs_dims.begin() + output_shape.NumDimensions() - rhs_shape.NumDimensions());
-        int64_t N = output_shape.SizeToDimension(dim_C);
-        int64_t H = (dim_C < out_rank - 1 ? output_shape.SizeFromDimension(dim_C + 1) : 1);
-
-        std::vector<int64_t> new_output_dims;
+      if (1 == std::count_if(rhs_shape_vec.begin(), rhs_shape_vec.end(), [&C](int64_t dim) {
+            if (dim != 1) C = dim;
+            return (dim != 1);
+          })) {
+        int32_t dim_C = gsl::narrow_cast<int32_t>(std::find(rhs_shape_vec.begin(), rhs_shape_vec.end(), C) -
+                                                  rhs_shape_vec.begin() + out_shape_vec.size() - rhs_shape_vec.size());
+        TensorShape new_out_shape(out_shape_vec);
+        int64_t N = new_out_shape.SizeToDimension(dim_C);
+        int64_t H = (dim_C < new_rank - 1 ? new_out_shape.SizeFromDimension(dim_C + 1) : 1);
         if (N == 1) {
           output_rank_or_simple_broadcast = static_cast<int32_t>(SimpleBroadcast::RightPerChannelBatch1);
           fdm_H = fast_divmod(gsl::narrow_cast<int>(H));
@@ -72,35 +106,26 @@ struct BinaryElementwisePreparation {
       }
     }
 
-    output_rank_or_simple_broadcast = out_rank;
-
+    output_rank_or_simple_broadcast = new_rank;
     if (lhs_shape != output_shape) {
-      TensorPitches original_lhs_padded_strides(lhs_shape.GetDims(), out_rank);
-      lhs_padded_strides.SetSize(out_rank);
-      auto offset = out_rank - lhs_rank;
-      for (auto i = offset; i < out_rank; ++i) {
-        // the stride for broadcast dimension is kept as 0
-        if (lhs_shape.GetDims()[i - offset] != 1) {
-          lhs_padded_strides[i] = original_lhs_padded_strides[i];
-        }
+      TensorPitches original_lhs_padded_strides(lhs_shape_vec);
+      lhs_padded_strides.SetSize(new_rank);
+      for (int i = 0; i < new_rank; ++i) {
+        lhs_padded_strides[i] = lhs_shape_vec[i] == out_shape_vec[i] ? original_lhs_padded_strides[i] : 0;
       }
     }
 
     if (rhs_shape != output_shape) {
-      TensorPitches original_rhs_padded_strides(rhs_shape.GetDims(), out_rank);
-      rhs_padded_strides.SetSize(out_rank);
-      auto offset = out_rank - rhs_rank;
-      for (auto i = offset; i < out_rank; ++i) {
-        // the stride for broadcast dimension is kept as 0
-        if (rhs_shape.GetDims()[i - offset] != 1) {
-          rhs_padded_strides[i] = original_rhs_padded_strides[i];
-        }
+      TensorPitches original_rhs_padded_strides(rhs_shape_vec);
+      rhs_padded_strides.SetSize(new_rank);
+      for (int i = 0; i < new_rank; ++i) {
+        rhs_padded_strides[i] = rhs_shape_vec[i] == out_shape_vec[i] ? original_rhs_padded_strides[i] : 0;
       }
     }
 
-    TensorPitches original_output_strides(output_shape.GetDims());
-    fdm_output_strides.SetSize(out_rank);
-    for (auto i = 0; i < out_rank; ++i) {
+    TensorPitches original_output_strides(out_shape_vec);
+    fdm_output_strides.SetSize(new_rank);
+    for (int i = 0; i < new_rank; ++i) {
       fdm_output_strides[i] = fast_divmod(gsl::narrow_cast<int>(original_output_strides[i]));
     }
 

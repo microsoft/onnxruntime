@@ -168,19 +168,26 @@ Status ReduceKernel<allow_multi_axes>::ReduceKernelShared(
 
   // Block of fast matrix reduction.
   if (fast_reduction_) {
+    ORT_ENFORCE(input_shape.NumDimensions() == output_dims.size());
+    std::vector<int64_t> axes;
+    for (size_t i = 0; i < output_dims.size(); ++i) {
+      if (input_shape[i] != output_dims[i]) {
+        axes.emplace_back(static_cast<int64_t>(i));
+      }
+    }
     int m{}, n{};
-    const auto applicable_matrix_reduction = get_applicable_matrix_reduction(
-        cudnn_reduce_op, input_shape.GetDims(), axes_, m, n);
+    const auto applicable_matrix_reduction =
+        get_applicable_matrix_reduction(cudnn_reduce_op, input_shape.GetDims(), axes, m, n);
     switch (applicable_matrix_reduction) {
       case ApplicableMatrixReduction::Rows: {
-        return reduce_matrix_rows(
-            Stream(),
-            reinterpret_cast<const CudaT*>(X),
-            reinterpret_cast<CudaOutT*>(Y),
-            m, n, false);
+        return reduce_matrix_rows(Stream(), reinterpret_cast<const CudaT*>(X), reinterpret_cast<CudaOutT*>(Y), m, n);
       }
-      case ApplicableMatrixReduction::Columns:
-      // don't call reduce_matrix_columns() since it will reset initial output data
+      case ApplicableMatrixReduction::Columns: {
+        const auto buffer_size_bytes = compute_reduce_matrix_columns_buffer_size<CudaT>(m, n);
+        auto buffer = GetScratchBuffer<void>(buffer_size_bytes);
+        return reduce_matrix_columns(Stream(), reinterpret_cast<const CudaT*>(X), reinterpret_cast<CudaOutT*>(Y), m, n,
+                                     buffer.get(), buffer_size_bytes);
+      }
       default:
         break;
     }
