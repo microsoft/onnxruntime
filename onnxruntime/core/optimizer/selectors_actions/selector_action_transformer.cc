@@ -71,9 +71,19 @@ SelectorActionTransformer::SelectorActionTransformer(const std::string& name,
 
 #if !defined(ORT_MINIMAL_BUILD)
 
-Status SelectorActionTransformer::MatchAndProcess(
+// check if the node matches any of the registered operators.
+// if it does, run the Selector.
+// if that selects nodes, run or save the Action.
+//
+// Some part of the MatchAndProcess use a GraphViewer of the given graph,
+// we choose to supply both the graph and the graph_viewer to avoid expensive
+// and repeatedly construction of the graph_viewer.
+// NOTE, the graph must be the same as the graph_viewer's underlying graph
+static Status MatchAndProcess(
     Graph& graph, const GraphViewer& graph_viewer, Node& node, bool& modified, const logging::Logger& logger,
-    const SatRuntimeOptimizationSaveContext* save_context) const {
+    const std::string& transformer_name,
+    const SelectorActionRegistry& selector_action_registry,
+    const SatRuntimeOptimizationSaveContext* save_context) {
   Status status = Status::OK();
 
   do {
@@ -83,7 +93,7 @@ Status SelectorActionTransformer::MatchAndProcess(
       break;
     }
 
-    const auto* selector_action_entry = selector_action_registry_.LookUpByOpType(node.OpType());
+    const auto* selector_action_entry = selector_action_registry.LookUpByOpType(node.OpType());
 
     if (!selector_action_entry) {
       break;
@@ -110,7 +120,10 @@ Status SelectorActionTransformer::MatchAndProcess(
 
     if (save_context) {
 #if defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
-      if (graph.RuntimeOptimizations().RecordExists(Name(), selector_action_entry->name, node_selection)) {
+      // don't save a runtime optimization again if it already exists
+      // this might happen if the transformer is run multiple times, e.g., from a graph transformer manager which may
+      //   run its transformers in multiple passes
+      if (graph.RuntimeOptimizations().RecordExists(transformer_name, selector_action_entry->name, node_selection)) {
         break;
       }
 
@@ -121,7 +134,7 @@ Status SelectorActionTransformer::MatchAndProcess(
       }
 
       graph.MutableRuntimeOptimizations().AddRecord(
-          Name(),
+          transformer_name,
           RuntimeOptimizationRecord{selector_action_entry->name,
                                     node_selection,
                                     action_saved_state.produced_nodes});
@@ -143,8 +156,10 @@ Status SelectorActionTransformer::MatchAndProcess(
   return status;
 }
 
-Status SelectorActionTransformer::ApplyDirect(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger,
-                                              const SatRuntimeOptimizationSaveContext* save_context) const {
+Status SelectorActionTransformer::ApplySelectorsAndActions(
+    Graph& graph, bool& modified, int graph_level,
+    const logging::Logger& logger,
+    const SatRuntimeOptimizationSaveContext* save_context) const {
   GraphViewer graph_viewer(graph);
 
   for (auto index : graph_viewer.GetNodesInTopologicalOrder()) {
@@ -157,7 +172,8 @@ Status SelectorActionTransformer::ApplyDirect(Graph& graph, bool& modified, int 
 
     // TODO: use GraphTransformer::GetCompatibleExecutionProviders if we need something more flexible
     if (node->GetExecutionProviderType() == kCpuExecutionProvider) {
-      ORT_RETURN_IF_ERROR(MatchAndProcess(graph, graph_viewer, *node, modified, logger, save_context));
+      ORT_RETURN_IF_ERROR(MatchAndProcess(graph, graph_viewer, *node, modified, logger,
+                                          Name(), selector_action_registry_, save_context));
     }
   }
 
@@ -184,7 +200,9 @@ static Status RegisterProducedNodesWithGraph(NodeIndex pre_action_max_num_nodes,
     const NodeIndex new_node_idx = pre_action_max_num_nodes + i;
     const auto* new_node = graph.GetNode(new_node_idx);
 
-    if (!new_node) continue;
+    if (!new_node) {
+      continue;
+    }
 
     ORT_RETURN_IF(produced_node_it == produced_nodes_end,
                   "Not enough produced nodes in the runtime optimization record.");
@@ -202,7 +220,7 @@ static Status RegisterProducedNodesWithGraph(NodeIndex pre_action_max_num_nodes,
   return Status::OK();
 }
 
-Status SelectorActionTransformer::ApplyFromRuntimeOptimizations(
+Status SelectorActionTransformer::ApplySavedRuntimeOptimizations(
     Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   for (auto& node : graph.Nodes()) {
     ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level, logger));
@@ -245,7 +263,7 @@ Status SelectorActionTransformer::ApplyImpl(Graph& graph, bool& modified, int gr
                                             const logging::Logger& logger) const {
   if (std::holds_alternative<SatRuntimeOptimizationLoadContext>(apply_context_)) {
 #if defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
-    return ApplyFromRuntimeOptimizations(graph, modified, graph_level, logger);
+    return ApplySavedRuntimeOptimizations(graph, modified, graph_level, logger);
 #else   // defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                            "Loading runtime optimizations is not enabled in this build.");
@@ -257,7 +275,7 @@ Status SelectorActionTransformer::ApplyImpl(Graph& graph, bool& modified, int gr
 
 #if !defined(ORT_MINIMAL_BUILD)
   const auto* save_context = std::get_if<SatRuntimeOptimizationSaveContext>(&apply_context_);
-  return ApplyDirect(graph, modified, graph_level, logger, save_context);
+  return ApplySelectorsAndActions(graph, modified, graph_level, logger, save_context);
 #else   // !defined(ORT_MINIMAL_BUILD)
   return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                          "Only loading runtime optimizations is supported in a minimal build.");

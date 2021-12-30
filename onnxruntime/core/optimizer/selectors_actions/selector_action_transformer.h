@@ -124,26 +124,15 @@ class SelectorActionTransformer : public GraphTransformer {
 
 #if !defined(ORT_MINIMAL_BUILD)
 
-  Status ApplyDirect(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger,
-                     const SatRuntimeOptimizationSaveContext* save_context) const;
-
-  // check if the node matches any of the registered operators.
-  // if it does, run the Selector.
-  // if that selects nodes, run the Action.
-  //
-  // Some part of the MatchAndProcess use a GraphViewer of the given graph,
-  // we choose to supply both the graph and the graph_viewer to avoid expensive
-  // and repeatedly construction of the graph_viewer.
-  // NOTE, the graph must be the same as the graph_viewer's underlying graph
-  Status MatchAndProcess(Graph& graph, const GraphViewer& graph_viewer, Node& node,
-                         bool& modified, const logging::Logger& logger,
-                         const SatRuntimeOptimizationSaveContext* save_context) const;
+  // apply optimizations by selecting nodes from graph and running or saving the associated actions
+  Status ApplySelectorsAndActions(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger,
+                                  const SatRuntimeOptimizationSaveContext* save_context) const;
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
 #if defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
-  // apply any saved optimizations
-  Status ApplyFromRuntimeOptimizations(Graph& graph, bool& modified, int graph_level,
+  // apply optimizations by replaying saved runtime optimizations
+  Status ApplySavedRuntimeOptimizations(Graph& graph, bool& modified, int graph_level,
                                        const logging::Logger& logger) const;
 #endif  // defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
 

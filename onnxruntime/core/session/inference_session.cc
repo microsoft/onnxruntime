@@ -1145,7 +1145,7 @@ Status PartitionOrtFormatModel(onnxruntime::Graph& graph,
 }
 
 #if defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
-Status ReplayRuntimeOptimizations(
+Status ReplaySavedRuntimeOptimizations(
     onnxruntime::Graph& graph, const logging::Logger& logger, const SessionOptions& session_options) {
   bool modified = false;
 
@@ -1394,7 +1394,7 @@ common::Status InferenceSession::Initialize() {
       }
 
 #if defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
-      ORT_RETURN_IF_ERROR_SESSIONID_(ReplayRuntimeOptimizations(graph, *session_logger_, session_options_));
+      ORT_RETURN_IF_ERROR_SESSIONID_(ReplaySavedRuntimeOptimizations(graph, *session_logger_, session_options_));
 #endif  // defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
