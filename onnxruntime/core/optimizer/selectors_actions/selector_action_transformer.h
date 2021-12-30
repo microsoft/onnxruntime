@@ -7,7 +7,6 @@
 #if !defined(ORT_MINIMAL_BUILD)
 #include <optional>
 #endif  // !defined(ORT_MINIMAL_BUILD)
-#include <variant>
 
 #include "core/framework/kernel_registry_manager.h"
 #include "core/optimizer/graph_transformer.h"
@@ -34,52 +33,55 @@ struct NodeSelector {
   NodeSelector() = default;
 };
 
-struct SelectorAndAction {
-  using OpVersionsMap = std::unordered_map<std::string, std::vector<ONNX_NAMESPACE::OperatorSetVersion>>;
-
-  // ctor so we can use make_unique to construct this class
-  SelectorAndAction(const std::string& name_in,
-                    const OpVersionsMap& ops_and_versions_in,
-                    std::unique_ptr<NodeSelector> selector_in,
-                    std::unique_ptr<Action> action_in)
-      : name{name_in},
-        ops_and_versions{ops_and_versions_in},
-        selector{std::move(selector_in)},
-        action{std::move(action_in)} {}
-
-  const std::string name;
-  OpVersionsMap ops_and_versions;
-  std::unique_ptr<NodeSelector> selector;
-  std::unique_ptr<Action> action;
-
-  // can't copy/assign our unique_ptr members
-  ORT_DISALLOW_COPY_AND_ASSIGNMENT(SelectorAndAction);
-};
-
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
 // class to manage a set of selector and associated actions
-class SelectorsAndActions {
+class SelectorActionRegistry {
  public:
-  SelectorsAndActions() noexcept = default;
-  SelectorsAndActions(SelectorsAndActions&&) noexcept = default;
+  using OpVersionsMap = std::unordered_map<std::string, std::vector<ONNX_NAMESPACE::OperatorSetVersion>>;
 
-  ORT_DISALLOW_COPY_AND_ASSIGNMENT(SelectorsAndActions);
+  struct Entry {
+    Entry(const std::string& name_in,
+#if !defined(ORT_MINIMAL_BUILD)
+          const OpVersionsMap& ops_and_versions_in,
+          std::unique_ptr<NodeSelector> selector_in,
+#endif  // !defined(ORT_MINIMAL_BUILD)
+          std::unique_ptr<Action> action_in)
+        : name{name_in},
+#if !defined(ORT_MINIMAL_BUILD)
+          ops_and_versions{ops_and_versions_in},
+          selector{std::move(selector_in)},
+#endif  // !defined(ORT_MINIMAL_BUILD)
+          action{std::move(action_in)} {
+    }
+
+    std::string name;
+
+#if !defined(ORT_MINIMAL_BUILD)
+    OpVersionsMap ops_and_versions;
+    std::unique_ptr<NodeSelector> selector;
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
+    std::unique_ptr<Action> action;
+  };
+
+  SelectorActionRegistry() noexcept = default;
+
+  SelectorActionRegistry(SelectorActionRegistry&&) noexcept = default;
+  SelectorActionRegistry& operator=(SelectorActionRegistry&&) noexcept = default;
+
+  ORT_DISALLOW_COPY_AND_ASSIGNMENT(SelectorActionRegistry);
 
 #if !defined(ORT_MINIMAL_BUILD)
 
   // register a selector and action for the specified ops.
   // the name used in the registration is for matching the action when replaying the optimizations in a minimal build.
-  // as it's stored in the ORT format model a shorter name is better. the name is scoped to this SelectorsAndActions
+  // as it's stored in the ORT format model a shorter name is better. the name is scoped to this SelectorActionRegistry
   // instance (which is scoped to a single SelectorActionTransformer instance).
   void RegisterSelectorAndAction(const std::string& name,
-                                 const SelectorAndAction::OpVersionsMap& ops_and_versions,
+                                 const OpVersionsMap& ops_and_versions,
                                  std::unique_ptr<NodeSelector> selector,
                                  std::unique_ptr<Action> action);
-
-  const std::unordered_map<std::string, std::unique_ptr<SelectorAndAction>>& SelectorsAndActionsMap() const {
-    return selectors_and_actions_map_;
-  }
 
 #else  // !defined(ORT_MINIMAL_BUILD)
 
@@ -88,14 +90,20 @@ class SelectorsAndActions {
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
-  // return registered Action or nullptr if not found
-  const Action* LookUpAction(const std::string& name) const;
+  // return registered Entry or nullptr if not found
+  const Entry* LookUp(const std::string& name) const;
+
+#if !defined(ORT_MINIMAL_BUILD)
+  // return registered Entry or nullptr if not found
+  const Entry* LookUpByOpType(const std::string& op_type) const;
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
  private:
+  std::unordered_map<std::string, const Entry> name_to_entry_;
+
 #if !defined(ORT_MINIMAL_BUILD)
-  std::unordered_map<std::string, std::unique_ptr<SelectorAndAction>> selectors_and_actions_map_;
-#else   // !defined(ORT_MINIMAL_BUILD)
-  std::unordered_map<std::string, std::unique_ptr<Action>> actions_map_;
+  // auxiliary mapping to enable lookup by op type
+  std::unordered_map<std::string, const Entry*> op_type_to_entry_;
 #endif  // !defined(ORT_MINIMAL_BUILD)
 };
 
@@ -105,10 +113,10 @@ This setup allows optimizations to be captured and applied at runtime in a minim
 */
 class SelectorActionTransformer : public GraphTransformer {
  protected:
-  SelectorActionTransformer(const std::string& name, SelectorsAndActions&& selectors_and_actions,
+  SelectorActionTransformer(const std::string& name, SelectorActionRegistry&& selector_action_registry,
                             const SatApplyContextVariant& apply_context);
 
-  // can't copy/assign selectors_and_actions_
+  // can't copy/assign selector_action_registry_
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(SelectorActionTransformer);
 
  private:
@@ -139,13 +147,9 @@ class SelectorActionTransformer : public GraphTransformer {
                                        const logging::Logger& logger) const;
 #endif  // defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
 
-  SelectorsAndActions selectors_and_actions_;
+  SelectorActionRegistry selector_action_registry_;
 
   SatApplyContextVariant apply_context_;
-
-#if !defined(ORT_MINIMAL_BUILD)
-  std::unordered_map<std::string, const SelectorAndAction*> op_type_to_selector_and_action_;
-#endif  // !defined(ORT_MINIMAL_BUILD)
 };
 
 }  // namespace onnxruntime

@@ -11,70 +11,63 @@ namespace onnxruntime {
 
 #if !defined(ORT_MINIMAL_BUILD)
 
-void SelectorsAndActions::RegisterSelectorAndAction(const std::string& name,
-                                                    const SelectorAndAction::OpVersionsMap& ops_and_versions_in,
-                                                    std::unique_ptr<NodeSelector> selector_in,
-                                                    std::unique_ptr<Action> action_in) {
+void SelectorActionRegistry::RegisterSelectorAndAction(const std::string& name,
+                                                       const OpVersionsMap& ops_and_versions_in,
+                                                       std::unique_ptr<NodeSelector> selector_in,
+                                                       std::unique_ptr<Action> action_in) {
   // currently all registrations are done from internal code with no external inputs,
   // so throw for invalid usage as it should only happen during development.
-  ORT_ENFORCE(selectors_and_actions_map_.find(name) == selectors_and_actions_map_.cend(),
-              "Existing registration with name ", name);
+  const auto [name_to_entry_it, inserted_in_name_to_entry] =
+      name_to_entry_.emplace(name,
+                             Entry{name,
+                                   ops_and_versions_in,
+                                   std::move(selector_in),
+                                   std::move(action_in)});
+  ORT_ENFORCE(inserted_in_name_to_entry, "Existing registration with name ", name);
 
-  auto entry = std::make_unique<SelectorAndAction>(name,
-                                                   ops_and_versions_in,
-                                                   std::move(selector_in),
-                                                   std::move(action_in));
-
-  ORT_IGNORE_RETURN_VALUE(selectors_and_actions_map_.emplace(name, std::move(entry)));
+  const Entry& entry = name_to_entry_it->second;
+  for (const auto& [op_type, versions] : entry.ops_and_versions) {
+    ORT_UNUSED_PARAMETER(versions);
+    const bool inserted_in_op_type_to_entry = op_type_to_entry_.emplace(op_type, &entry).second;
+    ORT_ENFORCE(inserted_in_op_type_to_entry,
+                "Multiple entries for operator is not supported. OpType=", op_type);
+  }
 }
 
 #else  // !defined(ORT_MINIMAL_BUILD)
 
-void SelectorsAndActions::RegisterAction(const std::string& name,
-                                         std::unique_ptr<Action> action) {
-  ORT_ENFORCE(actions_map_.find(name) == actions_map_.cend(), "Existing registration with name ", name);
-
-  ORT_IGNORE_RETURN_VALUE(actions_map_.emplace(name, std::move(action)));
+void SelectorActionRegistry::RegisterAction(const std::string& name,
+                                            std::unique_ptr<Action> action) {
+  // currently all registrations are done from internal code with no external inputs,
+  // so throw for invalid usage as it should only happen during development.
+  const bool inserted_in_name_to_entry = name_to_entry_.emplace(name, Entry{name, std::move(action)}).second;
+  ORT_ENFORCE(inserted_in_name_to_entry, "Existing registration with name ", name);
 }
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
-const Action* SelectorsAndActions::LookUpAction(const std::string& name) const {
+const SelectorActionRegistry::Entry* SelectorActionRegistry::LookUp(const std::string& name) const {
+  if (const auto it = name_to_entry_.find(name); it != name_to_entry_.end()) {
+    return &it->second;
+  }
+  return nullptr;
+}
+
 #if !defined(ORT_MINIMAL_BUILD)
-
-  if (const auto it = selectors_and_actions_map_.find(name);
-      it != selectors_and_actions_map_.end() && it->second != nullptr) {
-    return &*it->second->action;
+const SelectorActionRegistry::Entry* SelectorActionRegistry::LookUpByOpType(const std::string& op_type) const {
+  if (const auto it = op_type_to_entry_.find(op_type); it != op_type_to_entry_.end()) {
+    return it->second;
   }
   return nullptr;
-
-#else  // !defined(ORT_MINIMAL_BUILD)
-
-  if (const auto it = actions_map_.find(name); it != actions_map_.end()) {
-    return &*it->second;
-  }
-  return nullptr;
-
-#endif  // !defined(ORT_MINIMAL_BUILD)
 }
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
 SelectorActionTransformer::SelectorActionTransformer(const std::string& name,
-                                                     SelectorsAndActions&& selectors_and_actions,
+                                                     SelectorActionRegistry&& selector_action_registry,
                                                      const SatApplyContextVariant& apply_context)
     : GraphTransformer{name},
-      selectors_and_actions_{std::move(selectors_and_actions)},
-      apply_context_{apply_context} {
-#if !defined(ORT_MINIMAL_BUILD)
-  // setup a map so we lookup by operator type efficiently
-  for (const auto& map_entry : selectors_and_actions_.SelectorsAndActionsMap()) {
-    for (const auto& op_info : map_entry.second->ops_and_versions) {
-      bool inserted = op_type_to_selector_and_action_.insert({op_info.first, &*map_entry.second}).second;
-
-      ORT_ENFORCE(inserted, "Multiple entries for operator is not supported. OpType=", op_info.first);
-    }
-  }
-#endif  // !defined(ORT_MINIMAL_BUILD)
-}
+      selector_action_registry_{std::move(selector_action_registry)},
+      apply_context_{apply_context} {}
 
 #if !defined(ORT_MINIMAL_BUILD)
 
@@ -90,22 +83,21 @@ Status SelectorActionTransformer::MatchAndProcess(
       break;
     }
 
-    auto op_rule = op_type_to_selector_and_action_.find(node.OpType());
-    if (op_rule == op_type_to_selector_and_action_.cend()) {
+    const auto* selector_action_entry = selector_action_registry_.LookUpByOpType(node.OpType());
+
+    if (!selector_action_entry) {
       break;
     }
 
-    const auto& selector_and_action = *op_rule->second;
-
     // check the supported versions if specified
-    const auto& versions = selector_and_action.ops_and_versions.find(node.OpType())->second;
+    const auto& versions = selector_action_entry->ops_and_versions.find(node.OpType())->second;
     if (!versions.empty()) {
       if (std::find(versions.cbegin(), versions.cend(), node.SinceVersion()) == versions.cend()) {
         break;
       }
     }
 
-    const auto node_selection_opt = selector_and_action.selector->Select(graph_viewer, node);
+    const auto node_selection_opt = selector_action_entry->selector->Select(graph_viewer, node);
     if (!node_selection_opt.has_value()) {
       break;
     }
@@ -113,15 +105,14 @@ Status SelectorActionTransformer::MatchAndProcess(
 
     LOGS(logger, VERBOSE) << "Matched " << node.OpType();
 
+    const auto& action = *selector_action_entry->action;
     NodesToOptimize node_group(graph, node_selection);
 
     if (save_context) {
 #if defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
-      if (graph.RuntimeOptimizations().RecordExists(Name(), selector_and_action.name, node_selection)) {
+      if (graph.RuntimeOptimizations().RecordExists(Name(), selector_action_entry->name, node_selection)) {
         break;
       }
-
-      const auto& action = *selector_and_action.action;
 
       Action::SavedState action_saved_state{};
       status = action.RunForSave(graph, node_group, *save_context, action_saved_state, modified);
@@ -131,7 +122,7 @@ Status SelectorActionTransformer::MatchAndProcess(
 
       graph.MutableRuntimeOptimizations().AddRecord(
           Name(),
-          RuntimeOptimizationRecord{selector_and_action.name,
+          RuntimeOptimizationRecord{selector_action_entry->name,
                                     node_selection,
                                     action_saved_state.produced_nodes});
 #else   // defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
@@ -140,7 +131,7 @@ Status SelectorActionTransformer::MatchAndProcess(
       break;
 #endif  // defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
     } else {
-      status = selector_and_action.action->Run(graph, node_group);
+      status = action.Run(graph, node_group);
       if (!status.IsOK()) {
         break;
       }
@@ -219,8 +210,8 @@ Status SelectorActionTransformer::ApplyFromRuntimeOptimizations(
 
   const auto records = graph.MutableRuntimeOptimizations().RemoveRecordsForOptimizer(Name());
   for (const auto& record : records) {
-    const auto* action = selectors_and_actions_.LookUpAction(record.action_id);
-    if (!action) {
+    const auto* selector_action_entry = selector_action_registry_.LookUp(record.action_id);
+    if (!selector_action_entry) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Missing action ", record.action_id, " for transformer ", Name());
     }
 
@@ -234,7 +225,7 @@ Status SelectorActionTransformer::ApplyFromRuntimeOptimizations(
 
     const NodeIndex pre_action_max_index = graph.MaxNodeIndex();
 
-    ORT_RETURN_IF_ERROR(action->Run(graph, nodes_to_optimize));
+    ORT_RETURN_IF_ERROR(selector_action_entry->action->Run(graph, nodes_to_optimize));
     modified = true;
 
     const NodeIndex post_action_max_index = graph.MaxNodeIndex();

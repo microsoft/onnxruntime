@@ -34,7 +34,7 @@ class TestTransformer : public SelectorActionTransformer {
   static constexpr const char* kSelectorActionId = "remove_identity";
 
   TestTransformer(const SatApplyContextVariant& apply_context)
-      : SelectorActionTransformer{kTransformerName, GetSelectorsAndActions(), apply_context} {
+      : SelectorActionTransformer{kTransformerName, CreateSelectorActionRegistry(), apply_context} {
   }
 
  private:
@@ -76,8 +76,8 @@ class TestTransformer : public SelectorActionTransformer {
     };
   }
 
-  static SelectorsAndActions GetSelectorsAndActions() {
-    SelectorsAndActions result{};
+  static SelectorActionRegistry CreateSelectorActionRegistry() {
+    SelectorActionRegistry result{};
     auto selector = std::make_unique<SurroundingIdentitySelector>();
     auto action = std::make_unique<ReplaceWithNew>(kOnnxDomain, "Add", GetBinaryMoves());
     result.RegisterSelectorAndAction(kSelectorActionId, {{"Add", {}}}, std::move(selector), std::move(action));
