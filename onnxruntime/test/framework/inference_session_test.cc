@@ -32,6 +32,7 @@
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/providers/cpu/math/element_wise_ops.h"
 #ifdef USE_CUDA
+#include "core/providers/cuda/cuda_provider_options.h"
 #include "core/providers/cuda/cuda_provider_factory.h"
 #include "core/providers/cuda/gpu_data_transfer.h"
 #endif
@@ -2012,7 +2013,7 @@ TEST(InferenceSessionTests, TestArenaShrinkageAfterRun) {
 
   SessionOptions so;
   InferenceSession session_object{so, GetEnvironment()};
-  OrtCUDAProviderOptions provider_options{};
+  OrtCUDAProviderOptionsV2 provider_options{};
   provider_options.default_memory_arena_cfg = &arena_cfg;
   provider_options.device_id = 0;
   auto factory = CreateExecutionProviderFactory_Cuda(&provider_options);

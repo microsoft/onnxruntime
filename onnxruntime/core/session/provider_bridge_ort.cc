@@ -1077,6 +1077,32 @@ std::unique_ptr<IAllocator> CreateROCMPinnedAllocator(int16_t device_id, const c
   return nullptr;
 }
 
+// Adapter to convert the legacy OrtCUDAProviderOptions to the latest OrtCUDAProviderOptionsV2
+OrtCUDAProviderOptionsV2 OrtCUDAProviderOptionsToOrtCUDAProviderOptionsV2(const OrtCUDAProviderOptions* legacy_cuda_options) {
+  OrtCUDAProviderOptionsV2 cuda_options_converted;
+
+  cuda_options_converted.device_id = legacy_cuda_options->device_id;
+  cuda_options_converted.cudnn_conv_algo_search = legacy_cuda_options->cudnn_conv_algo_search;
+  cuda_options_converted.gpu_mem_limit = legacy_cuda_options->gpu_mem_limit;
+  cuda_options_converted.arena_extend_strategy = legacy_cuda_options->arena_extend_strategy;
+  cuda_options_converted.do_copy_in_default_stream = legacy_cuda_options->do_copy_in_default_stream;
+  cuda_options_converted.has_user_compute_stream = legacy_cuda_options->has_user_compute_stream;
+  cuda_options_converted.user_compute_stream = legacy_cuda_options->user_compute_stream;
+  cuda_options_converted.default_memory_arena_cfg = legacy_cuda_options->default_memory_arena_cfg;
+  // Use default value as this field is not available in OrtCUDAProviderOptions
+  cuda_options_converted.cudnn_conv_use_max_workspace = 0;
+
+  return cuda_options_converted;
+}
+
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Cuda(const OrtCUDAProviderOptions* provider_options) {
+  OrtCUDAProviderOptionsV2 cuda_options_converted = onnxruntime::OrtCUDAProviderOptionsToOrtCUDAProviderOptionsV2(provider_options);
+  if (auto* provider = s_library_cuda.Get())
+    return provider->CreateExecutionProviderFactory(provider_options);
+
+  return nullptr;
+}
+
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Cuda(const OrtCUDAProviderOptionsV2* provider_options) {
   if (auto* provider = s_library_cuda.Get())
     return provider->CreateExecutionProviderFactory(provider_options);
@@ -1230,24 +1256,6 @@ ProviderOptions GetProviderInfo_Cuda(const OrtCUDAProviderOptionsV2* provider_op
   return {};
 }
 
-// Adapter to convert the legacy OrtCUDAProviderOptions to the latest OrtCUDAProviderOptionsV2
-OrtCUDAProviderOptionsV2 OrtCUDAProviderOptionsToOrtCUDAProviderOptionsV2(const OrtCUDAProviderOptions* legacy_cuda_options) {
-  OrtCUDAProviderOptionsV2 cuda_options_converted;
-
-  cuda_options_converted.device_id = legacy_cuda_options->device_id;
-  cuda_options_converted.cudnn_conv_algo_search = legacy_cuda_options->cudnn_conv_algo_search;
-  cuda_options_converted.gpu_mem_limit = legacy_cuda_options->gpu_mem_limit;
-  cuda_options_converted.arena_extend_strategy = legacy_cuda_options->arena_extend_strategy;
-  cuda_options_converted.do_copy_in_default_stream = legacy_cuda_options->do_copy_in_default_stream;
-  cuda_options_converted.has_user_compute_stream = legacy_cuda_options->has_user_compute_stream;
-  cuda_options_converted.user_compute_stream = legacy_cuda_options->user_compute_stream;
-  cuda_options_converted.default_memory_arena_cfg = legacy_cuda_options->default_memory_arena_cfg;
-  // Use default value as this field is not available in OrtCUDAProviderOptions
-  cuda_options_converted.cudnn_conv_use_max_workspace = 0;
-
-  return cuda_options_converted;
-}
-
 }  // namespace onnxruntime
 
 ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Dnnl, _In_ OrtSessionOptions* options, int use_arena) {
@@ -1334,8 +1342,7 @@ ORT_API_STATUS_IMPL(OrtApis::GetCurrentGpuDeviceId, _In_ int* device_id) {
 
 ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_CUDA, _In_ OrtSessionOptions* options, _In_ const OrtCUDAProviderOptions* cuda_options) {
   API_IMPL_BEGIN
-  OrtCUDAProviderOptionsV2 cuda_options_converted = onnxruntime::OrtCUDAProviderOptionsToOrtCUDAProviderOptionsV2(cuda_options);
-  auto factory = onnxruntime::CreateExecutionProviderFactory_Cuda(&cuda_options_converted);
+  auto factory = onnxruntime::CreateExecutionProviderFactory_Cuda(cuda_options);
   if (!factory) {
     return OrtApis::CreateStatus(ORT_FAIL, "OrtSessionOptionsAppendExecutionProvider_Cuda: Failed to load shared library");
   }
