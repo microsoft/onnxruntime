@@ -853,7 +853,7 @@ int main(int argc, char* argv[]) {
 
   // setup logger, be noted: LOGS_DEFAULT must be after logging manager initialization.
   string default_logger_id{"Default"};
-  logging::LoggingManager default_logging_manager{unique_ptr<logging::ISink>{new logging::CLogSink{}},
+  logging::LoggingManager default_logging_manager{std::make_unique<logging::CLogSink>(),
                                                   ort_params.log_severity,
                                                   false,
                                                   logging::LoggingManager::InstanceType::Default,

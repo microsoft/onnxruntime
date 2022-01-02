@@ -73,7 +73,16 @@ template <typename T>
 const OrtApi* Global<T>::api_{};
 inline void InitApi() { Global<void>::api_ = OrtGetApiBase()->GetApi(ORT_API_VERSION); }
 #else
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(push)
+// "Global initializer calls a non-constexpr function." Therefore you can't use ORT APIs in the other global initializers.
+// Please define ORT_API_MANUAL_INIT if it conerns you.
+#pragma warning(disable : 26426)
+#endif
 const OrtApi* Global<T>::api_ = OrtGetApiBase()->GetApi(ORT_API_VERSION);
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(pop)
+#endif
 #endif
 
 /// This returns a reference to the OrtApi interface in use

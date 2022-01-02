@@ -273,7 +273,7 @@ void setup_training_params(MnistParameters& params) {
 int main(int argc, char* args[]) {
   // setup logger
   string default_logger_id{"Default"};
-  logging::LoggingManager default_logging_manager{unique_ptr<logging::ISink>{new logging::CLogSink{}},
+  logging::LoggingManager default_logging_manager{std::make_unique<logging::CLogSink>(),
                                                   logging::Severity::kWARNING,
                                                   false,
                                                   logging::LoggingManager::InstanceType::Default,

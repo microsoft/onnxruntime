@@ -267,8 +267,7 @@ struct null_type {};
 inline std::string ToMBString(const std::string& s) { return s; }
 #ifdef _WIN32
 /**
- * Convert a wide character string into a narrow one, with local ANSI code page(like CP936)
- * DO NOT assume the result string is encoded in UTF-8
+ * Convert a wide character string to a UTF-8 string
  */
 std::string ToMBString(const std::wstring& s);
 
