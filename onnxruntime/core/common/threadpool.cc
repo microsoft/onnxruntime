@@ -260,13 +260,12 @@ struct alignas(CACHE_LINE_BYTES) LoopCounterShard {
 };
 
 static_assert(sizeof(LoopCounterShard) == CACHE_LINE_BYTES, "Expected loop counter shards to match cache-line size");
-
+ 
 class alignas(CACHE_LINE_BYTES) LoopCounter {
  public:
   LoopCounter(uint64_t num_iterations,
               uint64_t d_of_p,
-              uint64_t block_size = 1) : _block_size(block_size),
-                                         _num_shards(GetNumShards(num_iterations,
+              uint64_t block_size = 1) : _num_shards(GetNumShards(num_iterations,
                                                                   d_of_p,
                                                                   block_size)) {
     // Divide the iteration space between the shards.  If the iteration
@@ -307,14 +306,14 @@ class alignas(CACHE_LINE_BYTES) LoopCounter {
   bool ClaimIterations(unsigned my_home_shard,
                        unsigned& my_shard,
                        uint64_t& my_start,
-                       uint64_t& my_end) {
+                       uint64_t& my_end, uint64_t block_size) {
     do {
       if (_shards[my_shard]._next < _shards[my_shard]._end) {
         // Appears to be work in the current shard, try to claim with atomic fetch-and-add
-        uint64_t temp_start = _shards[my_shard]._next.fetch_add(_block_size);
+        uint64_t temp_start = _shards[my_shard]._next.fetch_add(block_size);
         if (temp_start < _shards[my_shard]._end) {
           my_start = temp_start;
-          my_end = std::min(_shards[my_shard]._end, temp_start + _block_size);
+          my_end = std::min(_shards[my_shard]._end, temp_start + block_size);
           return true;
         }
       }
@@ -356,7 +355,7 @@ class alignas(CACHE_LINE_BYTES) LoopCounter {
   }
 
   alignas(CACHE_LINE_BYTES) LoopCounterShard _shards[MAX_SHARDS];
-  const uint64_t _block_size;
+  //const uint64_t _block_size;
   const unsigned _num_shards;
 };
 
@@ -416,7 +415,7 @@ void ThreadPool::ParallelForFixedBlockSizeScheduling(const std::ptrdiff_t total,
       unsigned my_home_shard = lc.GetHomeShard(idx);
       unsigned my_shard = my_home_shard;
       uint64_t my_iter_start, my_iter_end;
-      while (lc.ClaimIterations(my_home_shard, my_shard, my_iter_start, my_iter_end)) {
+      while (lc.ClaimIterations(my_home_shard, my_shard, my_iter_start, my_iter_end, block_size)) {
         fn(static_cast<std::ptrdiff_t>(my_iter_start),
            static_cast<std::ptrdiff_t>(my_iter_end));
       }
@@ -427,19 +426,22 @@ void ThreadPool::ParallelForFixedBlockSizeScheduling(const std::ptrdiff_t total,
     RunInParallel(run_work, num_work_items, block_size);
   } else {
     int num_of_blocks = d_of_p * thread_options_.dynamic_block_base_;
-    std::ptrdiff_t block_size_base{1};
-    while (block_size_base * num_of_blocks < total) block_size_base <<= 1;
-    std::atomic<ptrdiff_t> iter{0};
-    std::function<void(unsigned)> run_work = [&](unsigned) {
-      std::ptrdiff_t start{0};
-      std::ptrdiff_t b = block_size_base;
-      while ((start = iter.fetch_add(b, std::memory_order_relaxed)) < total) {
-        fn(start, std::min(start + b, total));
-        auto residual = total - start;
-        while (b > 1 && (b * num_of_blocks > residual)) b >>= 1;
+    std::ptrdiff_t base_block_size = std::max(1LL, std::llroundl(static_cast<long double>(total) / num_of_blocks));
+    alignas(CACHE_LINE_BYTES) std::atomic<ptrdiff_t> left{total};
+    LoopCounter lc(total, d_of_p, base_block_size);
+    std::function<void(unsigned)> run_work = [&](unsigned idx) {
+      std::ptrdiff_t b = base_block_size;
+      unsigned my_home_shard = lc.GetHomeShard(idx);
+      unsigned my_shard = my_home_shard;
+      uint64_t my_iter_start, my_iter_end;
+      while (lc.ClaimIterations(my_home_shard, my_shard, my_iter_start, my_iter_end, b)) {
+        fn(static_cast<std::ptrdiff_t>(my_iter_start),
+           static_cast<std::ptrdiff_t>(my_iter_end));
+        auto todo = left.fetch_sub(my_iter_end - my_iter_start, std::memory_order_relaxed);
+        if (b > 1) b = std::max(1LL, std::llroundl(static_cast<long double>(todo) / num_of_blocks));
       }
     };
-    RunInParallel(run_work, d_of_p, block_size_base);
+    RunInParallel(run_work, d_of_p, base_block_size);
   }
 }
 
