@@ -140,7 +140,9 @@ struct Node__EdgeIterator_Impl : Node__EdgeIterator {
 
   Node::EdgeConstIterator v_;
 };
-
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(disable : 26409)
+#endif
 // wrapped = The internal object is exposed as an opaque pointer, so we wrap it in a class that forwards every call to the real calls. No members are ever directly accessed
 // direct = Same implementation is used for shared providers & core code, but some of the methods need to be routed through here to make the linker happy
 struct ProviderHostImpl : ProviderHost {
@@ -507,6 +509,7 @@ struct ProviderHostImpl : ProviderHost {
   ONNX_NAMESPACE::OperatorStatus& IndexedSubGraph_MetaDef__status(IndexedSubGraph_MetaDef* p) override { return p->status; }
   std::vector<std::string>& IndexedSubGraph_MetaDef__inputs(IndexedSubGraph_MetaDef* p) override { return p->inputs; }
   std::vector<std::string>& IndexedSubGraph_MetaDef__outputs(IndexedSubGraph_MetaDef* p) override { return p->outputs; }
+  std::vector<std::string>& IndexedSubGraph_MetaDef__constant_initializers(IndexedSubGraph_MetaDef* p) override { return p->constant_initializers; }
   NodeAttributes& IndexedSubGraph_MetaDef__attributes(IndexedSubGraph_MetaDef* p) override { return p->attributes; }
   std::string& IndexedSubGraph_MetaDef__doc_string(IndexedSubGraph_MetaDef* p) override { return p->doc_string; }
 

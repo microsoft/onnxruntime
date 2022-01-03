@@ -379,9 +379,9 @@ class PySparseTensor {
   std::unique_ptr<OrtValue> AsOrtValue() const;
 
  private:
-  //  instance_ represents data that comes as input. Thus we depend on numpy
-  // arrays that own the underlying memory to stay around. We store copies
-  // of py::objects for those arrays in backing_storage_ as an extra ref-count.
+  // instance_ represents data that comes as input. Thus we depend on numpy
+  //arrays that own the underlying memory to stay around. We store copies
+  //of py::objects for those arrays in backing_storage_ as an extra ref-count.
 
   // If we have and are able to copy from the OrtValue returned by run() to CPU, then this owns the data
   // and backing_storage_ is empty.
@@ -393,6 +393,11 @@ class PySparseTensor {
 };
 #endif  // !defined(DISABLE_SPARSE_TENSORS)
 
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(push)
+//You can attempt to make 'onnxruntime::python::SessionObjectInitializer::Get' constexpr
+#pragma warning(disable : 26497)
+#endif
 class SessionObjectInitializer {
  public:
   typedef const PySessionOptions& Arg1;
@@ -413,7 +418,9 @@ class SessionObjectInitializer {
     return SessionObjectInitializer();
   }
 };
-
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(pop)
+#endif
 Environment& GetEnv();
 
 // Initialize an InferenceSession.

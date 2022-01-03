@@ -314,7 +314,10 @@ struct TensorTypeBase::Impl : public data_types_internal::TypeProtoImpl {
 const ONNX_NAMESPACE::TypeProto* TensorTypeBase::GetTypeProto() const {
   return impl_->GetProto();
 }
-
+//TODO: Fix the warning
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(disable : 26409)
+#endif
 TensorTypeBase::TensorTypeBase()
     : DataTypeImpl{DataTypeImpl::GeneralType::kTensor, sizeof(Tensor)},
       impl_(new Impl()) {}

@@ -2096,6 +2096,18 @@
         16654410418270805888
     ],
     [
+        "Resize ai.onnx CPUExecutionProvider",
+        11612050915202267528
+    ],
+    [
+        "Resize ai.onnx CPUExecutionProvider",
+        17391179092212899176
+    ],
+    [
+        "Resize ai.onnx CPUExecutionProvider",
+        18197536715869401872
+    ],
+    [
         "ReverseSequence ai.onnx CPUExecutionProvider",
         777686786711298232
     ],
@@ -2542,6 +2554,14 @@
     [
         "Upsample ai.onnx CPUExecutionProvider",
         17854969343220970496
+    ],
+    [
+        "Upsample ai.onnx CPUExecutionProvider",
+        4881414272874428968
+    ],
+    [
+        "Upsample ai.onnx CPUExecutionProvider",
+        7886741677344006832
     ],
     [
         "Where ai.onnx CPUExecutionProvider",

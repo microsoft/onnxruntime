@@ -619,7 +619,7 @@ Status QLinearConv<ActType>::Compute(OpKernelContext* context) const {
     auto conv_worker = [&](ptrdiff_t batch) {
       auto work = concurrency::ThreadPool::PartitionWork(batch, thread_count, static_cast<ptrdiff_t>(output_image_size));
       int64_t output_start = static_cast<int64_t>(work.start);
-      int64_t output_count = static_cast<int64_t>(work.end - work.start);
+      int64_t output_count = static_cast<int64_t>(work.end) - work.start;
 
       ActType const** worker_indirection_buffer = nullptr;
       if (indirection_buffer) {

@@ -21,7 +21,10 @@
 #ifdef _MSC_VER
 #pragma warning(pop)
 #endif
-
+#ifdef _MSC_VER
+// Could reduce the chance of arithmetic overflow. TODO: fix it
+#pragma warning(disable : 26451)
+#endif
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;
 

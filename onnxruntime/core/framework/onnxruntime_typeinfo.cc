@@ -27,7 +27,9 @@ using onnxruntime::Tensor;
 using onnxruntime::TensorShape;
 
 namespace on = ONNX_NAMESPACE;
-
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(disable : 26409)
+#endif
 OrtTypeInfo::OrtTypeInfo(ONNXType type1) noexcept : type(type1) {
 }
 

@@ -82,7 +82,7 @@ TEST(ParallelExecutor, TestStatusPropagation) {
   std::vector<OpSchema> schemas{TestOp::OpSchema()};
   Status status;
   ASSERT_TRUE((status = registry->RegisterOpSet(schemas, TestOp::OpDomain, 10, 11)).IsOK()) << status;
-  KernelCreateFn kernel_create_fn = [](const OpKernelInfo& info) { return new typename TestOp::OpKernelImpl(info); };
+  KernelCreateFn kernel_create_fn = [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) { out = std::make_unique<typename TestOp::OpKernelImpl>(info); return Status::OK(); };
   auto kernel_def = TestOp::KernelDef();
   ASSERT_TRUE((status = registry->RegisterCustomKernel(kernel_def, kernel_create_fn)).IsOK()) << status;
 
@@ -125,7 +125,7 @@ TEST_P(ParallelExecutorThreadPoolTest, TestNullInterOpThreadPool) {
   std::vector<OpSchema> schemas{TestOp::OpSchema()};
   Status status;
   ASSERT_TRUE((status = registry->RegisterOpSet(schemas, TestOp::OpDomain, 10, 11)).IsOK()) << status;
-  KernelCreateFn kernel_create_fn = [](const OpKernelInfo& info) { return new typename TestOp::OpKernelImpl(info); };
+  KernelCreateFn kernel_create_fn = [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) { out = std::make_unique<typename TestOp::OpKernelImpl>(info); return Status::OK(); };
   auto kernel_def = TestOp::KernelDef();
   ASSERT_TRUE((status = registry->RegisterCustomKernel(kernel_def, kernel_create_fn)).IsOK()) << status;
 
@@ -144,6 +144,6 @@ TEST_P(ParallelExecutorThreadPoolTest, TestNullInterOpThreadPool) {
 }
 
 INSTANTIATE_TEST_SUITE_P(ParallelExecutorThreadPoolTests, ParallelExecutorThreadPoolTest,
-                        testing::Values(1, 0));
+                         testing::Values(1, 0));
 }  // namespace test
 }  // namespace onnxruntime

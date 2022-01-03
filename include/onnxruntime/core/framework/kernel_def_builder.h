@@ -183,7 +183,7 @@ class KernelDefBuilder {
   static std::unique_ptr<KernelDefBuilder> Create() { return std::make_unique<KernelDefBuilder>(); }
 
   explicit KernelDefBuilder()
-      : kernel_def_(new KernelDef()) {}
+      : kernel_def_(std::make_unique<KernelDef>()) {}
 
   KernelDefBuilder& SetName(const std::string& op_name);
   KernelDefBuilder& SetName(const char* op_name);
@@ -274,7 +274,7 @@ class KernelDefBuilder {
   KernelDefBuilder& Alias(int input_index, int output_index);
 
   /**
-     Apply variadic number of alias mapping from inputs to outputs. 
+     Apply variadic number of alias mapping from inputs to outputs.
      This is effectively applying Alias(i + input_offset, i + output_offset) for i >= 0
   */
   KernelDefBuilder& VariadicAlias(int input_offset, int output_offset);
@@ -290,7 +290,7 @@ class KernelDefBuilder {
   }
 
   /**
-     Specify that this kernel's output buffers are passed from external, 
+     Specify that this kernel's output buffers are passed from external,
      i.e. not created or managed by ORT's memory allocator.
   */
   KernelDefBuilder& ExternalOutputs() {

@@ -24,6 +24,7 @@ limitations under the License.
 #include "core/providers/cpu/object_detection/roialign.h"
 //TODO: fix the warnings
 #if defined(_MSC_VER) && !defined(__clang__)
+// Chance of arithmetic overflow could be reduced
 #pragma warning(disable : 26451)
 #endif
 using namespace onnxruntime::concurrency;
