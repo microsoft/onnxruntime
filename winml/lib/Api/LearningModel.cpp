@@ -274,6 +274,20 @@ LearningModel::LoadFromStreamAsync(
   return make<LearningModel>(model_stream, provider);
 }
 
+wf::IAsyncOperation<winml::LearningModel>
+LearningModel::LoadFromBufferAsync(
+    wss::IBuffer const model_buffer) {
+  return LoadFromBufferAsync(model_buffer, nullptr);
+}
+
+wf::IAsyncOperation<winml::LearningModel>
+LearningModel::LoadFromBufferAsync(
+    wss::IBuffer const model_buffer,
+    winml::ILearningModelOperatorProvider const provider) {
+  co_await resume_background();
+  return make<LearningModel>(model_buffer, provider);
+}
+
 winml::LearningModel
 LearningModel::LoadFromFilePath(
     hstring const& path) try {

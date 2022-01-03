@@ -81,6 +81,15 @@ struct LearningModel : LearningModelT<LearningModel> {
       wss::IRandomAccessStreamReference const stream,
       winml::ILearningModelOperatorProvider const operator_provider);
 
+  static wf::IAsyncOperation<winml::LearningModel>
+  LoadFromBufferAsync(
+      wss::IBuffer const buffer);
+
+  static wf::IAsyncOperation<winml::LearningModel>
+  LoadFromBufferAsync(
+      wss::IBuffer const buffer,
+      winml::ILearningModelOperatorProvider const operator_provider);
+
   static winml::LearningModel
   LoadFromFilePath(
       hstring const& path);
