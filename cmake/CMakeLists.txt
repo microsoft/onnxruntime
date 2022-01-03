@@ -120,9 +120,9 @@ option(onnxruntime_MINIMAL_BUILD_CUSTOM_OPS "Add custom operator kernels support
 option(onnxruntime_REDUCED_OPS_BUILD "Reduced set of kernels are registered in build via modification of the kernel registration source files." OFF)
 option(onnxruntime_REDUCED_OP_TYPE_SUPPORT "Limit the types individual operators support where possible to further reduce the build size." OFF)
 option(onnxruntime_DISABLE_EXTERNAL_INITIALIZERS "Don't allow models to load external data" OFF)
-cmake_dependent_option(onnxruntime_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION
-                       "Enable runtime graph optimization of ORT format models. Warning: Not yet ready for general use."
-                       OFF "NOT onnxruntime_MINIMAL_BUILD OR onnxruntime_EXTENDED_MINIMAL_BUILD" OFF)
+cmake_dependent_option(onnxruntime_ENABLE_RUNTIME_OPTIMIZATION_REPLAY_IN_MINIMAL_BUILD
+                       "Enable runtime graph optimization replay for ORT format models in an extended minimal build."
+                       OFF "onnxruntime_EXTENDED_MINIMAL_BUILD" OFF)
 
 #A special option just for debugging and sanitize check. Please do not enable in option in retail builds.
 #The option has no effect on Windows.
@@ -341,6 +341,10 @@ if (onnxruntime_MINIMAL_BUILD)
   if (onnxruntime_EXTENDED_MINIMAL_BUILD)
     # enable EPs that compile kernels at runtime
     add_compile_definitions(ORT_EXTENDED_MINIMAL_BUILD)
+
+    if (onnxruntime_ENABLE_RUNTIME_OPTIMIZATION_REPLAY_IN_MINIMAL_BUILD)
+      add_compile_definitions(ORT_ENABLE_RUNTIME_OPTIMIZATION_REPLAY_IN_MINIMAL_BUILD)
+    endif()
   endif()
 
   if (onnxruntime_MINIMAL_BUILD_CUSTOM_OPS)
@@ -371,10 +375,6 @@ if (onnxruntime_MINIMAL_BUILD)
       string(APPEND CMAKE_C_FLAGS " -g")
     endif()
   endif()
-endif()
-
-if (onnxruntime_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
-  add_compile_definitions(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
 endif()
 
 if (onnxruntime_ENABLE_LTO)

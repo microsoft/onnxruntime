@@ -233,7 +233,7 @@ else()  # minimal and/or reduced ops build
   endif()
 endif()
 
-if(onnxruntime_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
+if(NOT onnxruntime_MINIMAL_BUILD OR onnxruntime_ENABLE_RUNTIME_OPTIMIZATION_REPLAY_IN_MINIMAL_BUILD)
   list(APPEND onnxruntime_test_optimizer_src
        "${TEST_SRC_DIR}/optimizer/runtime_optimization/graph_runtime_optimization_test.cc")
 endif()

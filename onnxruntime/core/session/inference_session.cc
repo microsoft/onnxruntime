@@ -1144,7 +1144,7 @@ Status PartitionOrtFormatModel(onnxruntime::Graph& graph,
   return Status::OK();
 }
 
-#if defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_REPLAY_IN_MINIMAL_BUILD)
 Status ReplaySavedRuntimeOptimizations(
     onnxruntime::Graph& graph, const logging::Logger& logger, const SessionOptions& session_options) {
   bool modified = false;
@@ -1162,7 +1162,7 @@ Status ReplaySavedRuntimeOptimizations(
 
   return Status::OK();
 }
-#endif  // defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_REPLAY_IN_MINIMAL_BUILD)
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 Status AssignNodesToEpsFromHashesImpl(Graph& graph, const fbs::SessionState& fbs_session_state,
@@ -1202,12 +1202,12 @@ Status AssignNodesToEpsFromHashesImpl(Graph& graph, const fbs::SessionState& fbs
     ORT_RETURN_IF_ERROR(set_node_ep(node_kernel_info.node_index, node_kernel_info.kernel_def_hash));
   }
 
-#if defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_REPLAY_IN_MINIMAL_BUILD)
   for (const auto& [node_index, kernel_def_hash] :
        graph.RuntimeOptimizationReplayCtx().produced_node_index_to_kernel_def_hash) {
     ORT_RETURN_IF_ERROR(set_node_ep(node_index, kernel_def_hash));
   }
-#endif  // defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_REPLAY_IN_MINIMAL_BUILD)
 
   return Status::OK();
 }
@@ -1393,9 +1393,9 @@ common::Status InferenceSession::Initialize() {
                                                     *session_state_));
       }
 
-#if defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_REPLAY_IN_MINIMAL_BUILD)
       ORT_RETURN_IF_ERROR_SESSIONID_(ReplaySavedRuntimeOptimizations(graph, *session_logger_, session_options_));
-#endif  // defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_REPLAY_IN_MINIMAL_BUILD)
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
       ORT_RETURN_IF_ERROR(AssignNodesToEpsFromHashes(graph, *serialized_session_state, kernel_registry_manager_,
@@ -2262,30 +2262,21 @@ void InferenceSession::InitLogger(logging::LoggingManager* logging_manager) {
 common::Status InferenceSession::AddPredefinedTransformers(GraphTransformerManager& transformer_manager,
                                                            TransformerLevel graph_optimization_level,
                                                            bool saving_runtime_optimizations) const {
-#if !defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
-  ORT_RETURN_IF(saving_runtime_optimizations, "Saving runtime optimizations is not supported in this build.");
-#endif  // !defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
-
   const auto& cpu_ep = *execution_providers_.Get(onnxruntime::kCpuExecutionProvider);
   for (int i = static_cast<int>(TransformerLevel::Level1); i <= static_cast<int>(TransformerLevel::MaxLevel); i++) {
     TransformerLevel level = static_cast<TransformerLevel>(i);
     if (graph_optimization_level >= level) {
       // Generate and register transformers for level
-#if defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
       auto transformers_to_register = [&]() {
-        if (level != TransformerLevel::Level1 && saving_runtime_optimizations) {
+        if (!saving_runtime_optimizations || level == TransformerLevel::Level1) {
+          return optimizer_utils::GenerateTransformers(level, session_options_, cpu_ep,
+                                                       optimizers_to_disable_);
+        } else {
           SatRuntimeOptimizationSaveContext save_context{kernel_registry_manager_};
           return optimizer_utils::GenerateTransformersForRuntimeOptimizations(level, session_options_, save_context,
                                                                               optimizers_to_disable_);
-        } else {
-          return optimizer_utils::GenerateTransformers(level, session_options_, cpu_ep,
-                                                       optimizers_to_disable_);
         }
       }();
-#else   // defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
-      auto transformers_to_register = optimizer_utils::GenerateTransformers(level, session_options_, cpu_ep,
-                                                                            optimizers_to_disable_);
-#endif  // defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
 
       for (auto& entry : transformers_to_register) {
         ORT_RETURN_IF_ERROR(transformer_manager.Register(std::move(entry), level));

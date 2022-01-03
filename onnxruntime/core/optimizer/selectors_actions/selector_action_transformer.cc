@@ -119,7 +119,6 @@ static Status MatchAndProcess(
     NodesToOptimize node_group(graph, node_selection);
 
     if (save_context) {
-#if defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
       // don't save a runtime optimization again if it already exists
       // this might happen if the transformer is run multiple times, e.g., from a graph transformer manager which may
       //   run its transformers in multiple passes
@@ -138,12 +137,6 @@ static Status MatchAndProcess(
           RuntimeOptimizationRecord{selector_action_entry->name,
                                     node_selection,
                                     action_saved_state.produced_nodes});
-#else   // defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
-      ORT_UNUSED_PARAMETER(transformer_name);
-      status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                               "Saving runtime optimizations is not enabled in this build.");
-      break;
-#endif  // defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
     } else {
       status = action.Run(graph, node_group);
       if (!status.IsOK()) {
@@ -183,7 +176,7 @@ Status SelectorActionTransformer::ApplySelectorsAndActions(
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
-#if defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_REPLAY_IN_MINIMAL_BUILD)
 
 static Status RegisterProducedNodesWithGraph(NodeIndex pre_action_max_num_nodes, NodeIndex post_action_max_num_nodes,
                                              const RuntimeOptimizationRecord& record,
@@ -260,17 +253,17 @@ Status SelectorActionTransformer::ApplySavedRuntimeOptimizations(
   return Status::OK();
 }
 
-#endif  // defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_REPLAY_IN_MINIMAL_BUILD)
 
 Status SelectorActionTransformer::ApplyImpl(Graph& graph, bool& modified, int graph_level,
                                             const logging::Logger& logger) const {
   if (std::holds_alternative<SatRuntimeOptimizationLoadContext>(apply_context_)) {
-#if defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_REPLAY_IN_MINIMAL_BUILD)
     return ApplySavedRuntimeOptimizations(graph, modified, graph_level, logger);
-#else   // defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
+#else   // !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_REPLAY_IN_MINIMAL_BUILD)
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                            "Loading runtime optimizations is not enabled in this build.");
-#endif  // defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_REPLAY_IN_MINIMAL_BUILD)
   }
 
   assert(std::holds_alternative<SatRuntimeOptimizationSaveContext>(apply_context_) ||
@@ -281,7 +274,7 @@ Status SelectorActionTransformer::ApplyImpl(Graph& graph, bool& modified, int gr
   return ApplySelectorsAndActions(graph, modified, graph_level, logger, save_context);
 #else   // !defined(ORT_MINIMAL_BUILD)
   return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                         "Only loading runtime optimizations is supported in a minimal build.");
+                         "Running both selectors and actions is not enabled in this build.");
 #endif  // !defined(ORT_MINIMAL_BUILD)
 }
 
