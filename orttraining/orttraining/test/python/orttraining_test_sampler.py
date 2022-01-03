@@ -126,7 +126,7 @@ def test_load_balancing_data_sampler_sorts_and_shuffles_in_groups():
         len(samples_and_complexities)+group_size-1) // group_size,
         generator=torch.Generator().manual_seed(0)).tolist()
     end = 0
-    for original_group_index, group_index in enumerate(shuffled_group_order):
+    for group_index in shuffled_group_order:
         original_begin = group_index*group_size
         original_end = min(original_begin+group_size, len(samples_and_complexities))
         begin = end

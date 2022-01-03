@@ -586,7 +586,7 @@ if (onnxruntime_ENABLE_TRAINING)
         $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/torch_cpp_extensions/cuda/fused_ops/
     COMMAND ${CMAKE_COMMAND} -E copy
         ${onnxruntime_python_utils_data_srcs}
-        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/torch_cpp_extensions/cuda/fused_ops/
+        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/utils/data/
   )
 endif()
 
