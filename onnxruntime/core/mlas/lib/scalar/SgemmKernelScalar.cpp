@@ -6,7 +6,7 @@ Licensed under the MIT License.
 
 Module Name:
 
-    SgemmKernelWasmScalar.cpp
+    SgemmKernelScalar.cpp
 
 Abstract:
 
@@ -41,7 +41,7 @@ Arguments:
     A - Supplies the address of matrix A.
 
     B - Supplies the address of matrix B. The matrix data has been packed using
-        MlasSgemmCopyPackB or MlasSgemmTransposePackB. Note that in WASM scalar,
+        MlasSgemmCopyPackB or MlasSgemmTransposePackB. Note that in scalar,
         the packing wide is 4.
 
     C - Supplies the address of matrix C.
