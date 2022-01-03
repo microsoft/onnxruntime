@@ -258,10 +258,9 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, bool export_dll, FuncMa
         KernelDefBuilder builder;
         BuildFusedKernelDef(builder, *node);
         ORT_RETURN_IF_ERROR(fused_kernel_registry.Register(builder,
-                                                           static_cast<KernelCreatePtrFn>(
-                                                               [](const OpKernelInfo& info) -> OpKernel* {
-                                                                 return new FunctionKernel(info);
-                                                               })));
+                                                           [](FuncManager& func_mgr, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
+                                                             return FunctionKernel::Create(func_mgr, info, out);
+                                                           }));
       }
 
     } else {
@@ -298,10 +297,9 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, bool export_dll, FuncMa
         KernelDefBuilder builder;
         BuildFusedKernelDef(builder, metadef, type);
         ORT_RETURN_IF_ERROR(fused_kernel_registry.Register(builder,
-                                                           static_cast<KernelCreatePtrFn>(
-                                                               [](const OpKernelInfo& info) -> OpKernel* {
-                                                                 return new FunctionKernel(info);
-                                                               })));
+                                                           [](FuncManager& func_mgr, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
+                                                             return FunctionKernel::Create(func_mgr, info, out);
+                                                           }));
 
         // now that we're done compiling we can remove the original nodes from the Graph and wire in the new one
         graph.FinalizeFuseSubGraph(indexed_sub_graph, *node);
@@ -477,10 +475,10 @@ static Status PartitionOrtFormatModelImpl(Graph& graph, FuncManager& func_mgr,
       }
 
       ORT_RETURN_IF_ERROR(fused_kernel_registry.Register(
-          KernelCreateInfo(std::move(kernel_def), static_cast<KernelCreatePtrFn>(
-                                                      [](const OpKernelInfo& info) -> OpKernel* {
-                                                        return new FunctionKernel(info);
-                                                      }))));
+          KernelCreateInfo(std::move(kernel_def),
+                           [](FuncManager& func_mgr, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
+                             return FunctionKernel::Create(func_mgr, info, out);
+                           })));
 
       // now that we're done compiling we can remove the original nodes from the Graph and wire in the new one
       graph.FinalizeFuseSubGraph(indexed_sub_graph, node);

@@ -118,7 +118,6 @@ cmake_dependent_option(onnxruntime_DISABLE_EXCEPTIONS "Disable exception handlin
 option(onnxruntime_EXTENDED_MINIMAL_BUILD "onnxruntime_MINIMAL_BUILD with support for execution providers that compile kernels." OFF)
 option(onnxruntime_MINIMAL_BUILD_CUSTOM_OPS "Add custom operator kernels support to a minimal build." OFF)
 option(onnxruntime_REDUCED_OPS_BUILD "Reduced set of kernels are registered in build via modification of the kernel registration source files." OFF)
-option(onnxruntime_REDUCED_OP_TYPE_SUPPORT "Limit the types individual operators support where possible to further reduce the build size." OFF)
 option(onnxruntime_DISABLE_EXTERNAL_INITIALIZERS "Don't allow models to load external data" OFF)
 cmake_dependent_option(onnxruntime_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION
                        "Enable runtime graph optimization of ORT format models. Warning: Not yet ready for general use."
@@ -390,9 +389,6 @@ endif()
 
 if (onnxruntime_REDUCED_OPS_BUILD)
   add_compile_definitions(REDUCED_OPS_BUILD)
-  if (onnxruntime_REDUCED_OP_TYPE_SUPPORT)
-    add_compile_definitions(REDUCED_OP_TYPE_SUPPORT)
-  endif()
 endif()
 
 if (onnxruntime_DISABLE_EXTERNAL_INITIALIZERS)
@@ -1114,7 +1110,6 @@ if (onnxruntime_USE_MIGRAPHX)
     list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_MIGRAPHX=1)
     list(APPEND ONNXRUNTIME_PROVIDER_NAMES migraphx)
 endif()
-
 if (onnxruntime_USE_ARMNN)
     list(APPEND ORT_PROVIDER_FLAGS  -DUSE_ARMNN=1)
     list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_ARMNN=1)
@@ -1142,8 +1137,8 @@ function(onnxruntime_set_compile_flags target_name)
       set_target_properties(${target_name}
                       PROPERTIES VS_GLOBAL_CAExcludePath "${ORT_BINARY_DIR};${ORT_SOURCE_DIR}")
       if (onnxruntime_ENABLE_STATIC_ANALYSIS)
-        target_compile_options(${target_name} PRIVATE  "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/analyze:stacksize 131072>")
-        target_compile_options(${target_name} PRIVATE  "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/analyze:external->")
+        target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /analyze>" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/analyze>")
+        target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /analyze:external->" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/analyze:external->")
       endif()
     else()
       # Enable warning
@@ -1190,6 +1185,10 @@ function(onnxruntime_configure_target target_name)
   target_link_directories(${target_name} PRIVATE ${onnxruntime_LINK_DIRS})
   onnxruntime_set_compile_flags(${target_name})
   onnxruntime_set_source_file_properties(${target_name})
+  #Uncomment the following three lines to reproduce static analysis errors locally
+  #if(WIN32 AND onnxruntime_ENABLE_STATIC_ANALYSIS)
+  #  set_target_properties(${target_name} PROPERTIES VS_USER_PROPS ${PROJECT_SOURCE_DIR}/EnableVisualStudioCodeAnalysis.props)
+  #endif()
   target_include_directories(${target_name} PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT})
   if (onnxruntime_ENABLE_LTO)
     set_target_properties(${target_name} PROPERTIES INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)

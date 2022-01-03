@@ -1126,7 +1126,9 @@ static void TestConcatOpGrad(const std::string& op_type,
 }
 
 TEST(GradientCheckerTest, ConcatGrad) {
+  // Concat's gradient uses Split, and Split Op move "split" attribute to input since OpSet13.
   TestConcatOpGrad("Concat");
+  TestConcatOpGrad("Concat", kOnnxDomain, 13);
 }
 
 TEST(GradientCheckerTest, ConcatTrainingGrad) { /*also test w/o shape inferencing */

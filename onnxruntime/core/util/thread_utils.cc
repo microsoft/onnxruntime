@@ -37,20 +37,23 @@ CreateThreadPoolHelper(Env* env, OrtThreadPoolParams options) {
   }
 
   return std::make_unique<ThreadPool>(env, to, options.name, options.thread_pool_size,
-                                              options.allow_spinning);
+                                      options.allow_spinning);
 }
 
 std::unique_ptr<ThreadPool>
 CreateThreadPool(Env* env, OrtThreadPoolParams options, ThreadPoolType tpool_type) {
-// If openmp is enabled we don't want to create any additional threadpools for sequential execution.
-// However, parallel execution relies on the existence of a separate threadpool. Hence we allow eigen threadpools
-// to be created for parallel execution.
+  // If openmp is enabled we don't want to create any additional threadpools for sequential execution.
+  // However, parallel execution relies on the existence of a separate threadpool. Hence we allow eigen threadpools
+  // to be created for parallel execution.
   ORT_UNUSED_PARAMETER(tpool_type);
   return CreateThreadPoolHelper(env, options);
 }
 
 }  // namespace concurrency
 }  // namespace onnxruntime
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(disable : 26409)
+#endif
 namespace OrtApis {
 ORT_API_STATUS_IMPL(CreateThreadingOptions, _Outptr_ OrtThreadingOptions** out) {
   *out = new OrtThreadingOptions();

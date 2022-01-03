@@ -1224,5 +1224,73 @@ TEST(ResizeOpTest, ResizeOp_MissingRoiAndMissingScalesOptionalInputs) {
   test.AddOutput<float>("Y", {H, W}, X);
   test.Run();
 }
+
+template <typename T>
+void ResizeOpTypeCheck_Ver_10() {
+  OpTester test("Resize", 10);
+  std::vector<float> scales{1.0f, 1.0f, 2.0f, 3.0f};
+
+  test.AddAttribute("mode", "nearest");
+
+  constexpr int64_t N = 1, C = 1, H = 2, W = 2;
+  std::vector<T> X = {1, 2, 3, 4};
+
+  test.AddInput<T>("X", {N, C, H, W}, X);
+  test.AddInput<float>("scales", {4}, scales);
+
+  std::vector<T> Y = {1, 1, 1, 2, 2, 2,
+                      1, 1, 1, 2, 2, 2,
+                      3, 3, 3, 4, 4, 4,
+                      3, 3, 3, 4, 4, 4};
+
+  test.AddOutput<T>("Y", {N, C, static_cast<int64_t>(H * scales[2]), static_cast<int64_t>(W * scales[3])}, Y);
+  test.Run();
+}
+
+TEST(ResizeOpTest, ResizeOpTypeCheck_Ver_10) {
+  ResizeOpTypeCheck_Ver_10<float>();
+  ResizeOpTypeCheck_Ver_10<int32_t>();
+  ResizeOpTypeCheck_Ver_10<int8_t>();
+  ResizeOpTypeCheck_Ver_10<uint8_t>();
+}
+
+template <typename T>
+void ResizeOpTypeCheck_Ver_11_13(int opset_version) {
+  OpTester test("Resize", opset_version);
+  std::vector<float> roi{};
+  std::vector<float> scales{1.0f, 1.0f, 2.0f, 3.0f};
+
+  test.AddAttribute("mode", "nearest");
+
+  constexpr int64_t N = 1, C = 1, H = 2, W = 2;
+  std::vector<T> X = {1, 2, 3, 4};
+
+  test.AddInput<T>("X", {N, C, H, W}, X);
+  test.AddInput<float>("roi", {0}, roi);
+  test.AddInput<float>("scales", {4}, scales);
+
+  std::vector<T> Y = {1, 1, 1, 2, 2, 2,
+                      1, 1, 1, 2, 2, 2,
+                      3, 3, 3, 4, 4, 4,
+                      3, 3, 3, 4, 4, 4};
+
+  test.AddOutput<T>("Y", {N, C, static_cast<int64_t>(H * scales[2]), static_cast<int64_t>(W * scales[3])}, Y);
+  test.Run();
+}
+
+TEST(ResizeOpTest, ResizeOpTypeCheck_Ver11) {
+  ResizeOpTypeCheck_Ver_11_13<float>(11);
+  ResizeOpTypeCheck_Ver_11_13<int32_t>(11);
+  ResizeOpTypeCheck_Ver_11_13<int8_t>(11);
+  ResizeOpTypeCheck_Ver_11_13<uint8_t>(11);
+}
+
+TEST(ResizeOpTest, ResizeOpTypeCheck_Ver13) {
+  ResizeOpTypeCheck_Ver_11_13<float>(13);
+  ResizeOpTypeCheck_Ver_11_13<int32_t>(13);
+  ResizeOpTypeCheck_Ver_11_13<int8_t>(13);
+  ResizeOpTypeCheck_Ver_11_13<uint8_t>(13);
+}
+
 }  // namespace test
 }  // namespace onnxruntime

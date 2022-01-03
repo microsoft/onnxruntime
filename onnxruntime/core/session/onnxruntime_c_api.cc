@@ -2131,6 +2131,8 @@ ORT_API_STATUS_IMPL(OrtApis::CreateArenaCfgV2, _In_reads_(num_keys) const char* 
   API_IMPL_END
 }
 
+//Allow using raw new/delete because this is for C.
+GSL_SUPPRESS(r .11)
 ORT_API(void, OrtApis::ReleaseArenaCfg, _Frees_ptr_opt_ OrtArenaCfg* ptr) {
   delete ptr;
 }

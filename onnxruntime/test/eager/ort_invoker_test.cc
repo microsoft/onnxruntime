@@ -87,8 +87,9 @@ class TestKernel final : public OpKernel {
   }
 };
 
-OpKernel* CreateTestKernel(const OpKernelInfo& info) {
-  return new TestKernel(info);
+Status CreateTestKernel(FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) {
+  out = std::make_unique<TestKernel>(info);
+  return Status::OK();
 }
 
 TEST(InvokerTest, CustomOp) {
