@@ -93,45 +93,59 @@ Selectors CreateSelectors() {
 }
 
 void IntializeSelectorsMap(Selectors selectors) {
+  SelectorManager selector_mgr;
   for (const auto& entry : selectors.SelectorsSet()) {
     for (const auto& op_info : entry->op_versions_map) {
-      bool inserted = op_type_to_selectors_map.insert({op_info.first, &*entry}).second;
+      bool inserted = selector_mgr.op_type_to_selectors_map_.insert({op_info.first, &*entry}).second;
       ORT_ENFORCE(inserted, "Multiple entries for operator is not supported. OpType=", op_info.first);
     }
   }
 }
 
-std::unique_ptr<BaseSelector> GetQDQSelector(const Node& node) {
-  if (node.Domain() != kOnnxDomain) {
-    return nullptr;
-  }
+const std::unordered_map<const Node*, std::unique_ptr<BaseSelector>> SelectorManager::GetQDQSelectors(const GraphViewer& graph_viewer) const {
+  std::unordered_map<const Node*, std::unique_ptr<BaseSelector>> qdq_selectors;
+  for (auto index : graph_viewer.GetNodesInTopologicalOrder()) {
+    const auto* node = graph_viewer.GetNode(index);
+    if (node->Domain() != kOnnxDomain) {
+      break;
+    }
 
-  auto op_rule = op_type_to_selectors_map.find(node.OpType());
-  if (op_rule == op_type_to_selectors_map.cend()) {
-    return nullptr;
-  }
+    auto op_rule = op_type_to_selectors_map_.find(node->OpType());
+    if (op_rule == op_type_to_selectors_map_.cend()) {
+      break;
+    }
 
-  const auto& selector = *op_rule->second;
+    const auto& selector = *op_rule->second;
 
-  // check the supported versions if specified
-  const auto& versions = selector.op_versions_map.find(node.OpType())->second;
-  if (!versions.empty()) {
-    if (std::find(versions.cbegin(), versions.cend(), node.SinceVersion()) == versions.cend()) {
-      LOGS_DEFAULT(VERBOSE) << "Op version is not supported for" << node.OpType();
-      return nullptr;
+    // check the supported versions if specified
+    const auto& versions = selector.op_versions_map.find(node->OpType())->second;
+    if (!versions.empty()) {
+      if (std::find(versions.cbegin(), versions.cend(), node->SinceVersion()) == versions.cend()) {
+        LOGS_DEFAULT(VERBOSE) << "Op version is not supported for" << node->OpType();
+        break;
+      }
+    }
+
+    // identify the op_type
+    const auto& op_type = op_rule->first;
+
+    if (op_type == "AveragePool")
+      qdq_selectors.emplace(node, std::make_unique<QDQ::UnarySelector>());
+    else if (op_type == "Add" || op_type == "Mul")
+      qdq_selectors.emplace(node, std::make_unique<QDQ::BinarySelector>());
+    else if (op_type == "Concat")
+      qdq_selectors.emplace(node, std::make_unique<QDQ::VariadicSelector>());
+    else if (op_type == "Conv")
+      qdq_selectors.emplace(node, std::make_unique<QDQ::ConvSelector>());
+    else if (op_type == "MatMul")
+      qdq_selectors.emplace(node, std::make_unique<QDQ::MatMulSelector>());
+    else if (op_type == "Gather" || op_type == "Reshape" || op_type == "Transpose" || op_type == "MaxPool" || op_type == "Resize") {
+      qdq_selectors.emplace(node, std::make_unique<QDQ::DropDQDNodesSelector>());
+    } else {
+      LOGS_DEFAULT(VERBOSE) << "Selector type is not supported.";
     }
   }
 
-  return std::move(selector.selector);
-}
-
-std::vector<std::unique_ptr<BaseSelector>> GetQDQSelectors(const GraphViewer& graph_viewer) {
-  std::vector<std::unique_ptr<BaseSelector>> qdq_selectors;
-  for (auto index : graph_viewer.GetNodesInTopologicalOrder()) {
-    const auto* node = graph_viewer.GetNode(index);
-    auto qdq_selector = GetQDQSelector(*node);
-    qdq_selectors.push_back(std::move(qdq_selector));
-  }
   return qdq_selectors;
 }
 

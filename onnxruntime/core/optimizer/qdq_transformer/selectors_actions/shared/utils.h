@@ -46,18 +46,24 @@ class Selectors {
 
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(Selectors);
 
+ private:
   std::unordered_set<std::unique_ptr<Selector>> selectors_set_;
 };
 
-std::unordered_map<std::string, const Selector*> op_type_to_selectors_map;
+class SelectorManager {
+ public:
+  SelectorManager() = default;
+
+  std::unordered_map<std::string, const Selector*> op_type_to_selectors_map_;
+
+  const std::unordered_map<const Node*, std::unique_ptr<BaseSelector>> GetQDQSelectors(const GraphViewer& graph_viewer) const;
+
+  ORT_DISALLOW_COPY_AND_ASSIGNMENT(SelectorManager);
+};
 
 Selectors CreateSelectors();
 
 void InitializeSelectorsMap(Selectors selectors);
-
-std::unique_ptr<BaseSelector> GetQDQSelector(const Node& node);
-
-std::vector<std::unique_ptr<BaseSelector>> GetQDQSelectors(const GraphViewer& graph_viewer);
 
 }  // namespace QDQ
 }  // namespace onnxruntime
