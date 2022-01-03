@@ -201,6 +201,8 @@ static Status RegisterProducedNodesWithGraph(NodeIndex pre_action_max_num_nodes,
     const NodeIndex new_node_idx = pre_action_max_num_nodes + i;
     const auto* new_node = graph.GetNode(new_node_idx);
 
+    // only account for new nodes that still exist
+    // an action could add a temporary node and then remove it
     if (!new_node) {
       continue;
     }
