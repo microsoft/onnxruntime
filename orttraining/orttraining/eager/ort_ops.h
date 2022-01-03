@@ -11,6 +11,9 @@ namespace torch_ort {
 namespace eager {
 
 template <template<class> class V>
+void createInplaceOutputValue(OrtValue& input, V<int64_t> shape, OrtValue* p_mlvalue);
+
+template <template<class> class V>
 OrtValue reshape_invoke(
   onnxruntime::ORTInvoker& invoker,
   OrtValue& input,
@@ -27,9 +30,7 @@ OrtValue reshape_invoke(
   CopyVectorToTensor<int64_t>(invoker, shape.data(), shape.size(), *ort_shape_tensor);
   std::vector<OrtValue> result(1);
   if (in_place){
-    auto* input_ort_tensor = input.GetMutable<onnxruntime::Tensor>();
-    CreateMLValue(input_ort_tensor->MutableDataRaw(),
-                element_type, shape, &result[0]);
+    createInplaceOutputValue(input, shape, &result[0]);
   }
   ORT_THROW_IF_ERROR(invoker.Invoke("Reshape", {input, shape_tensor}, result, nullptr));
   return result[0];
