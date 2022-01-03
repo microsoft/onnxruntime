@@ -45,7 +45,7 @@ void DropQDQNodesRules(SelectorActionRegistry& qdq_selector_action_registry) {
 #endif
 }
 
-void UnaryOpQDQRules(SelectorsAndActions& qdq_selectors_and_actions) {
+void UnaryOpQDQRules(SelectorActionRegistry& qdq_selector_action_registry) {
   // 3 nodes. DQ, target, Q
   // Replace with internal QLinear version of operator. Delete all original nodes.
   const std::string action_name{"1DQ"};
@@ -147,21 +147,12 @@ void MatMulQDQRules(SelectorActionRegistry& qdq_selector_action_registry, bool i
 SelectorActionRegistry CreateSelectorActionRegistry(bool is_int8_allowed) {
   SelectorActionRegistry qdq_selector_action_registry;
 
-<<<<<<< HEAD
   DropQDQNodesRules(qdq_selector_action_registry);
-  UnaryOpQDQRules(qdq_selector_action_registry, is_int8_allowed);
+  UnaryOpQDQRules(qdq_selector_action_registry);
   BinaryOpQDQRules(qdq_selector_action_registry);
   VariadicOpQDQRules(qdq_selector_action_registry);
   ConvQDQRules(qdq_selector_action_registry, is_int8_allowed);
   MatMulQDQRules(qdq_selector_action_registry, is_int8_allowed);
-  == == == =
-               DropQDQNodesRules(qdq_selectors_and_actions);
-  UnaryOpQDQRules(qdq_selectors_and_actions);
-  BinaryOpQDQRules(qdq_selectors_and_actions);
-  VariadicOpQDQRules(qdq_selectors_and_actions);
-  ConvQDQRules(qdq_selectors_and_actions, is_int8_allowed);
-  MatMulQDQRules(qdq_selectors_and_actions, is_int8_allowed);
->>>>>>> origin/master
 
   return qdq_selector_action_registry;
 }
