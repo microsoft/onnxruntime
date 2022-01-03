@@ -45,20 +45,20 @@ void DropQDQNodesRules(SelectorActionRegistry& qdq_selector_action_registry) {
 #endif
 }
 
-void UnaryOpQDQRules(SelectorActionRegistry& qdq_selector_action_registry, bool is_int8_allowed = false) {
+void UnaryOpQDQRules(SelectorsAndActions& qdq_selectors_and_actions) {
   // 3 nodes. DQ, target, Q
   // Replace with internal QLinear version of operator. Delete all original nodes.
   const std::string action_name{"1DQ"};
   std::unique_ptr<Action> action = std::make_unique<QDQ::UnaryReplaceWithQLinear>(kMSDomain);
 
 #if !defined(ORT_MINIMAL_BUILD)
-  std::unique_ptr<NodeSelector> selector = std::make_unique<QDQ::UnarySelector>(is_int8_allowed);
+  std::unique_ptr<NodeSelector> selector = std::make_unique<QDQ::UnarySelector>();
   qdq_selector_action_registry.RegisterSelectorAndAction(action_name,
-                                                         {{"AveragePool", {}}},
+                                                         {{"AveragePool", {}},
+                                                          {"LeakyRelu", {}}},
                                                          std::move(selector),
                                                          std::move(action));
 #else
-  ORT_UNUSED_PARAMETER(is_int8_allowed);
   qdq_selector_action_registry.RegisterAction(action_name, std::move(action));
 #endif
 }
@@ -147,12 +147,21 @@ void MatMulQDQRules(SelectorActionRegistry& qdq_selector_action_registry, bool i
 SelectorActionRegistry CreateSelectorActionRegistry(bool is_int8_allowed) {
   SelectorActionRegistry qdq_selector_action_registry;
 
+<<<<<<< HEAD
   DropQDQNodesRules(qdq_selector_action_registry);
   UnaryOpQDQRules(qdq_selector_action_registry, is_int8_allowed);
   BinaryOpQDQRules(qdq_selector_action_registry);
   VariadicOpQDQRules(qdq_selector_action_registry);
   ConvQDQRules(qdq_selector_action_registry, is_int8_allowed);
   MatMulQDQRules(qdq_selector_action_registry, is_int8_allowed);
+  == == == =
+               DropQDQNodesRules(qdq_selectors_and_actions);
+  UnaryOpQDQRules(qdq_selectors_and_actions);
+  BinaryOpQDQRules(qdq_selectors_and_actions);
+  VariadicOpQDQRules(qdq_selectors_and_actions);
+  ConvQDQRules(qdq_selectors_and_actions, is_int8_allowed);
+  MatMulQDQRules(qdq_selectors_and_actions, is_int8_allowed);
+>>>>>>> origin/master
 
   return qdq_selector_action_registry;
 }

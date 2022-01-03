@@ -17,7 +17,7 @@ python3 /onnxruntime_src/tools/ci_build/op_registration_validator.py
 # Run a full build of ORT.
 # We need the ORT python package to generate the ORT format files and the required ops config files.
 # We do not run tests in this command since those are covered by other CIs.
-# We run two full builds here. One for enabling nnapi and the other for enabling coreml.
+# Both the NNAPI and CoreML EPs are enabled.
 python3 /onnxruntime_src/tools/ci_build/build.py \
     --build_dir ${BUILD_DIR} --cmake_generator Ninja \
     --config Debug \
@@ -27,7 +27,7 @@ python3 /onnxruntime_src/tools/ci_build/build.py \
     --skip_tests \
     --enable_training_ops \
     --enable_pybind --cmake_extra_defines PYTHON_INCLUDE_DIR=/opt/python/cp37-cp37m/include/python3.7m PYTHON_LIBRARY=/usr/lib64/librt.so \
-    --use_nnapi\
+    --use_nnapi \
     --use_coreml
 
 # Run kernel def hash verification test

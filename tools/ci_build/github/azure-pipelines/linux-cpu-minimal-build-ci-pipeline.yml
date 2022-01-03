@@ -112,10 +112,6 @@ jobs:
               --enable-custom-ops
       workingDirectory: $(Build.SourcesDirectory)
 
-  - script: git checkout -- .
-    displayName: Discard local changes to Git repository files
-    workingDirectory: $(Build.SourcesDirectory)
-
   - task: CmdLine@2
     displayName: 3b. Build minimal onnxruntime [exceptions ENABLED, type reduction ENABLED] and run tests
     inputs:
@@ -133,10 +129,6 @@ jobs:
               --reduced-ops-config /home/onnxruntimedev/.test_data/required_ops_and_types.ort_models.config \
               --enable-type-reduction
       workingDirectory: $(Build.SourcesDirectory)
-
-  - script: git checkout -- .
-    displayName: Discard local changes to Git repository files
-    workingDirectory: $(Build.SourcesDirectory)
 
   - task: CmdLine@2
     displayName: 4. Build minimal onnxruntime [exceptions ENABLED, type reduction ENABLED (globally allowed types)] and run tests
@@ -160,10 +152,6 @@ jobs:
               --enable-type-reduction \
               --skip-model-tests
       workingDirectory: $(Build.SourcesDirectory)
-
-  - script: git checkout -- .
-    displayName: Discard local changes to Git repository files
-    workingDirectory: $(Build.SourcesDirectory)
 
   - task: CmdLine@2
     displayName: 5. Build onnxruntime minimal baseline for Android arm64-v8a and report binary size
@@ -208,10 +196,6 @@ jobs:
           --build_project=onnxruntime \
           --build_id=$(Build.BuildId)
       workingDirectory: '$(Build.BinariesDirectory)'
-
-  - script: git checkout -- .
-    displayName: Discard local changes to Git repository files
-    workingDirectory: $(Build.SourcesDirectory)
 
   - task: CmdLine@2
     displayName: 6. Build extended minimal onnxruntime with runtime optimization replay enabled
