@@ -397,7 +397,8 @@ if enable_training:
                      'onnxruntime.training.ortmodule.torch_cpp_extensions.cpu.aten_op_executor',
                      'onnxruntime.training.ortmodule.torch_cpp_extensions.cpu.torch_interop_utils',
                      'onnxruntime.training.ortmodule.torch_cpp_extensions.cuda.torch_gpu_allocator',
-                     'onnxruntime.training.ortmodule.torch_cpp_extensions.cuda.fused_ops'])
+                     'onnxruntime.training.ortmodule.torch_cpp_extensions.cuda.fused_ops',
+                     'onnxruntime.training.utils.data'])
     package_data['onnxruntime.training.ortmodule.torch_cpp_extensions.cpu.aten_op_executor'] = ['*.cc']
     package_data['onnxruntime.training.ortmodule.torch_cpp_extensions.cpu.torch_interop_utils'] = ['*.cc']
     package_data['onnxruntime.training.ortmodule.torch_cpp_extensions.cuda.torch_gpu_allocator'] = ['*.cc']
