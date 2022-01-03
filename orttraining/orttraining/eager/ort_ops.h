@@ -13,7 +13,7 @@ namespace eager {
 template <template<class> class V>
 OrtValue reshape_invoke(
   onnxruntime::ORTInvoker& invoker,
-  const OrtValue& input,
+  OrtValue& input,
   V<int64_t> shape,
   bool in_place) {
   // the ort reshape kernel already handle the -1 in target shape
@@ -29,7 +29,7 @@ OrtValue reshape_invoke(
   if (in_place){
     auto* input_ort_tensor = input.GetMutable<onnxruntime::Tensor>();
     CreateMLValue(input_ort_tensor->MutableDataRaw(),
-                element_type, new_shape, &result[0]);
+                element_type, shape, &result[0]);
   }
   ORT_THROW_IF_ERROR(invoker.Invoke("Reshape", {input, shape_tensor}, result, nullptr));
   return result[0];
