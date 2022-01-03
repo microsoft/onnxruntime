@@ -29,6 +29,7 @@ class OStreamSink : public ISink {
   std::ostream* stream_;
   const bool flush_;
 };
+#ifdef _WIN32
 /// <summary>
 /// A std::wostream based ISink
 /// </summary>
@@ -46,5 +47,6 @@ class WOStreamSink : public ISink {
   std::wostream* stream_;
   const bool flush_;
 };
+#endif
 }  // namespace logging
 }  // namespace onnxruntime

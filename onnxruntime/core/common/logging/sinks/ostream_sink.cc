@@ -29,6 +29,7 @@ void OStreamSink::SendImpl(const Timestamp& timestamp, const std::string& logger
     stream_->flush();
   }
 }
+#ifdef _WIN32
 void WOStreamSink::SendImpl(const Timestamp& timestamp, const std::string& logger_id, const Capture& message) {
   // operator for formatting of timestamp in ISO8601 format including microseconds
   using date::operator<<;
@@ -42,8 +43,8 @@ void WOStreamSink::SendImpl(const Timestamp& timestamp, const std::string& logge
 
   std::wostringstream msg;
 
-  msg << timestamp << " [" << message.SeverityPrefix() << ":" << message.Category() << ":" << ToWideString(logger_id) << ", "
-      << ToWideString(message.Location().ToString()) << "] " << ToWideString(message.Message()) << "\n";
+  msg << timestamp << L" [" << message.SeverityPrefix() << L":" << message.Category() << L":" << ToWideString(logger_id) << L", "
+      << ToWideString(message.Location().ToString()) << L"] " << ToWideString(message.Message()) << L"\n";
 
   (*stream_) << msg.str();
 
@@ -51,5 +52,6 @@ void WOStreamSink::SendImpl(const Timestamp& timestamp, const std::string& logge
     stream_->flush();
   }
 }
+#endif
 }  // namespace logging
 }  // namespace onnxruntime
