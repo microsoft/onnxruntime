@@ -331,6 +331,63 @@ common::Status GetQuantizationZeroPoint(const InitializedTensorSet& initializers
   return Status::OK();
 }
 
+common::Status GetQuantizationScaleAndZeroPoint(
+    const InitializedTensorSet& initializers, const NodeUnitIODef& io_def, const Path& model_path,
+    float& scale, int32_t& zero_point) {
+  scale = 0.0f;
+  zero_point = 0;
+
+  if (!io_def.quant_param) {  // Not a quantized IO
+    return Status::OK();
+  }
+
+  const auto unpack_tensor = [&model_path](const InitializedTensorSet& initializers,
+                                           const std::string& name, std::vector<uint8_t>& unpacked_tensor) {
+    unpacked_tensor.clear();
+    const auto& tensor = *initializers.at(name);
+    ORT_RETURN_IF_ERROR(
+        onnxruntime::utils::UnpackInitializerData(tensor, model_path, unpacked_tensor));
+    return Status::OK();
+  };
+
+  const auto& quant_param = *io_def.quant_param;
+  {  // get the scale
+    std::vector<uint8_t> unpacked_tensor;
+    const auto& name = quant_param.scale.Name();
+    ORT_RETURN_IF_ERROR(unpack_tensor(initializers, name, unpacked_tensor));
+    // The scale should be one or more floats
+    ORT_RETURN_IF(unpacked_tensor.size() < 4,
+                  "The initializer [", name, "] should have one or more floats ",
+                  "with size no less than 4, actual size: ", unpacked_tensor.size());
+    scale = reinterpret_cast<const float*>(unpacked_tensor.data())[0];
+  }
+
+  if (quant_param.zero_point) {  // get the zero point if it's there
+    std::vector<uint8_t> unpacked_tensor;
+    const auto& name = quant_param.zero_point->Name();
+    ORT_RETURN_IF_ERROR(unpack_tensor(initializers, name, unpacked_tensor));
+    ORT_RETURN_IF(unpacked_tensor.empty(), "The initializer [", name, "] is empty");
+    // Onnx quantization uses uint8 [int8 not yet supported], need to cast to int32_t used by NNAPI
+    zero_point = static_cast<int32_t>(unpacked_tensor[0]);
+  }
+
+  return Status::OK();
+}
+
+common::Status GetQuantizationScaleAndZeroPoint(
+    const InitializedTensorSet& initializers, const NodeUnit& node_unit, const std::string& name,
+    float& scale, int32_t& zero_point, bool is_input) {
+  const auto& io_defs = is_input ? node_unit.Inputs() : node_unit.Outputs();
+  for (const auto& io_def : io_defs) {
+    if (io_def.node_arg.Name() == name)
+      return GetQuantizationScaleAndZeroPoint(initializers, io_def, node_unit.GetNode().ModelPath(),
+                                              scale, zero_point);
+  }
+
+  return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                         "Unknown input: ", name, ", for NodeUnit with node index: ", node_unit.Index());
+}
+
 bool GetShape(const NodeArg& node_arg, Shape& shape) {
   shape.clear();
   const auto* shape_proto = node_arg.Shape();

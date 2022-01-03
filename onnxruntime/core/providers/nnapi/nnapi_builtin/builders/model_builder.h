@@ -12,6 +12,9 @@
 #include "shaper.h"
 
 namespace onnxruntime {
+
+class NodeUnit;
+
 namespace nnapi {
 
 class IOpBuilder;
@@ -33,7 +36,6 @@ class ModelBuilder {
   };
 
   ModelBuilder(const GraphViewer& graph_viewer);
-  ~ModelBuilder() = default;
 
   Status Compile(std::unique_ptr<Model>& model) ORT_MUST_USE_RESULT;
 
@@ -149,9 +151,14 @@ class ModelBuilder {
   std::vector<uint32_t> input_index_vec_;
   std::vector<uint32_t> output_index_vec_;
 
-  // Contains all quantized operators' input and the node(s) using the input
-  // In the form of {input_name, [node(s) using the input]}
-  std::unordered_map<std::string, std::vector<const Node*>> all_quantized_op_inputs_;
+  // Contains all quantized operators' input and the NodeUnit(s) using the input
+  // In the form of {input_name, [NodeUnit(s) using the input]}
+  std::unordered_map<std::string, std::vector<const NodeUnit*>> all_quantized_op_inputs_;
+
+  // Holder for the NodeUnits in the graph, this will guarantee the NodeUnits is
+  // valid throughout the lifetime of the ModelBuilder
+  std::vector<std::unique_ptr<NodeUnit>> node_unit_holder_;
+  std::unordered_map<const Node*, const NodeUnit*> node_unit_map_;
 
   std::unordered_set<std::string> unique_names_;
 
@@ -179,6 +186,13 @@ class ModelBuilder {
   Status RegisterModelOutputs() ORT_MUST_USE_RESULT;
   // After constructing the NNAPI model, will set the shape inferencing record to the Model
   void RegisterModelShaper();
+
+  // Get all quantized inputs in the underlying graph_viewer
+  void GetAllQuantizedOpInputs();
+  // Go through the underlying graph_viewer, and generate NodeUnits
+  void PreprocessNodeUnits();
+  // Get the NodeUnit which contains the given node
+  const NodeUnit& GetNodeUnit(const Node* node) const;
 
   Status SetOperandValue(uint32_t index, Model::NNMemory* memory,
                          size_t size, size_t offset) ORT_MUST_USE_RESULT;

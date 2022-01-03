@@ -26,10 +26,13 @@ namespace onnxruntime {
 using Shape = std::vector<uint32_t>;
 using InitializerMap = std::unordered_map<std::string, const ONNX_NAMESPACE::TensorProto&>;
 
+class GraphViewer;
 class Node;
 class NodeArg;
 class NodeUnit;
-class GraphViewer;
+class Path;
+
+struct NodeUnitIODef;
 
 namespace nnapi {
 
@@ -116,6 +119,14 @@ common::Status GetQuantizationScale(const InitializedTensorSet& initializers, co
 
 common::Status GetQuantizationZeroPoint(const InitializedTensorSet& initializers,
                                         const Node& node, size_t idx, int32_t& zero_point) ORT_MUST_USE_RESULT;
+
+common::Status GetQuantizationScaleAndZeroPoint(
+    const InitializedTensorSet& initializers, const NodeUnitIODef& io_def, const Path& model_path,
+    float& scale, int32_t& zero_point);
+
+common::Status GetQuantizationScaleAndZeroPoint(
+    const InitializedTensorSet& initializers, const NodeUnit& node_unit, const std::string& name,
+    float& scale, int32_t& zero_point, bool is_input = true);
 
 // Get Shape/Type of a NodeArg
 // TODO, move to shared_utils
