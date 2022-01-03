@@ -49,7 +49,11 @@ struct PreCalc {
   T w3;
   T w4;
 };
-
+//TODO: fix the warnings
+#if defined(_MSC_VER) && !defined(__clang__)
+// Chance of arithmetic overflow could be reduced
+#pragma warning(disable : 26451)
+#endif
 template <typename T>
 static void PreCalcForBilinearInterpolate(const int64_t height, const int64_t width, const int64_t pooled_height,
                                           const int64_t pooled_width, const int64_t iy_upper, const int64_t ix_upper,
@@ -235,8 +239,8 @@ void RoiAlignForward(const TensorShape& output_shape, const T* bottom_data, floa
 }  // namespace
 
 Status CheckROIAlignValidInput(const Tensor* X_ptr, const Tensor* rois_ptr, const Tensor* batch_indices_ptr) {
-  const int64_t EXPECTED_NUM_ROI_DIMS = 2;
-  const int64_t EXPECTED_SECOND_ROI_DIM = 4;
+  constexpr int64_t EXPECTED_NUM_ROI_DIMS = 2;
+  constexpr int64_t EXPECTED_SECOND_ROI_DIM = 4;
   if (!X_ptr) {
     return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Null input X ptr");
   }

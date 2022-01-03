@@ -161,7 +161,7 @@ Status Scan<8>::SetupSubgraphExecutionInfo(const SessionState& session_state,
 
   const auto& node = Node();
   info_ = std::make_unique<Scan<8>::Info>(node, subgraph_session_state.GetGraphViewer(),
-                                                  static_cast<int>(num_scan_inputs_));
+                                          static_cast<int>(num_scan_inputs_));
 
   auto status = scan::detail::CreateFeedsFetchesManager(node, *info_, session_state, subgraph_session_state,
                                                         /* is_v8 */ true, feeds_fetches_manager_);
@@ -396,13 +396,13 @@ Status Scan8Impl::Execute(const FeedsFetchesManager& ffm) {
 
     // Setup input OrtValue streams
     std::vector<OrtValueTensorSlicer<const OrtValue>::Iterator> scan_input_stream_iterators;
-    scan_input_stream_iterators.reserve(info_.num_variadic_inputs - info_.num_loop_state_variables);
+    scan_input_stream_iterators.reserve(static_cast<size_t>(info_.num_variadic_inputs) - info_.num_loop_state_variables);
 
     for (int i = info_.num_loop_state_variables, end = info_.num_variadic_inputs; i < end; ++i) {
       const auto& ort_value = GetSubgraphInputMLValue(context_, i);
 
       // forward
-      if (directions_[i - info_.num_loop_state_variables] == static_cast<int64_t>(ScanDirection::kForward)) {
+      if (directions_[static_cast<ptrdiff_t>(i) - info_.num_loop_state_variables] == static_cast<int64_t>(ScanDirection::kForward)) {
         // the iterator is self contained, so we don't need to keep the OrtValueTensorSlicer instance around
         scan_input_stream_iterators.push_back(device_helpers_.create_const_slicer_func(ort_value, 1, b).begin());
       } else {  // reverse

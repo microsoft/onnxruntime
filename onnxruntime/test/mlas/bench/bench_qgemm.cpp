@@ -13,9 +13,9 @@
 static const std::vector<std::string> qgemm_arg_names = {"M", "N", "K", "Batch", "Threads"};
 
 void QGEMM(benchmark::State& state, bool pack_b, bool a_is_signed) {
-  const bool b_is_signed = true;
-  const uint8_t a_zero_point = 29;
-  const uint8_t b_zero_point = 179;
+  constexpr bool b_is_signed = true;
+  constexpr uint8_t a_zero_point = 29;
+  constexpr uint8_t b_zero_point = 179;
 
   if (state.range(0) <= 0) throw std::invalid_argument("M must greater than 0!");
   if (state.range(1) <= 0) throw std::invalid_argument("N must greater than 0!");

@@ -2792,9 +2792,6 @@ TEST(InferenceSessionTests, GlobalThreadPoolWithDenormalAsZero) {
 
   // Since only the first session option for flush-to-zero and denormal-as-zero are effective,
   // set them manually here for a test.
-#ifdef _OPENMP
-  InitializeWithDenormalAsZero(true);
-#endif
   SetDenormalAsZero(true);
 
   InferenceSessionTestGlobalThreadPools session{so, *env};
@@ -2806,15 +2803,10 @@ TEST(InferenceSessionTests, GlobalThreadPoolWithDenormalAsZero) {
   run_options.run_log_severity_level = static_cast<int>(Severity::kVERBOSE);
   RunModelWithDenormalAsZero(session, run_options, true);
 
-#ifndef _OPENMP
   VerifyThreadPoolWithDenormalAsZero(env->GetIntraOpThreadPool(), true);
-#endif
   VerifyThreadPoolWithDenormalAsZero(env->GetInterOpThreadPool(), true);
 
   // Set back to default.
-#ifdef _OPENMP
-  InitializeWithDenormalAsZero(false);
-#endif
   SetDenormalAsZero(false);
 }
 
@@ -2842,9 +2834,6 @@ TEST(InferenceSessionTests, InterThreadPoolWithDenormalAsZero) {
 
   // Since only the first session option for flush-to-zero and denormal-as-zero are effective,
   // set them manually here for a test.
-#ifdef _OPENMP
-  InitializeWithDenormalAsZero(true);
-#endif
   SetDenormalAsZero(true);
 
   InferenceSessionTestGlobalThreadPools session1{so, *env};
@@ -2856,9 +2845,7 @@ TEST(InferenceSessionTests, InterThreadPoolWithDenormalAsZero) {
   run_options.run_log_severity_level = static_cast<int>(Severity::kVERBOSE);
   RunModelWithDenormalAsZero(session1, run_options, true);
 
-#ifndef _OPENMP
   VerifyThreadPoolWithDenormalAsZero(session1.GetIntraOpThreadPoolToUse(), true);
-#endif
   VerifyThreadPoolWithDenormalAsZero(session1.GetInterOpThreadPoolToUse(), true);
 
   // inference session without denormal as zero.
@@ -2866,9 +2853,6 @@ TEST(InferenceSessionTests, InterThreadPoolWithDenormalAsZero) {
 
   // Since only the first session option for flush-to-zero and denormal-as-zero are effective,
   // set them manually here for a test.
-#ifdef _OPENMP
-  InitializeWithDenormalAsZero(false);
-#endif
   SetDenormalAsZero(false);
 
   InferenceSessionTestGlobalThreadPools session2{so, *env};
@@ -2878,9 +2862,7 @@ TEST(InferenceSessionTests, InterThreadPoolWithDenormalAsZero) {
   // Since it's parallel, it runs on threads.
   RunModelWithDenormalAsZero(session2, run_options, false);
 
-#ifndef _OPENMP
   VerifyThreadPoolWithDenormalAsZero(session2.GetIntraOpThreadPoolToUse(), false);
-#endif
   VerifyThreadPoolWithDenormalAsZero(session2.GetInterOpThreadPoolToUse(), false);
 }
 

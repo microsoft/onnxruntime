@@ -258,10 +258,9 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, bool export_dll, FuncMa
         KernelDefBuilder builder;
         BuildFusedKernelDef(builder, *node);
         ORT_RETURN_IF_ERROR(fused_kernel_registry.Register(builder,
-                                                           static_cast<KernelCreatePtrFn>(
-                                                               [](const OpKernelInfo& info) -> OpKernel* {
-                                                                 return new FunctionKernel(info);
-                                                               })));
+                                                           [](FuncManager& func_mgr, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
+                                                             return FunctionKernel::Create(func_mgr, info, out);
+                                                           }));
       }
 
     } else {
@@ -298,10 +297,9 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, bool export_dll, FuncMa
         KernelDefBuilder builder;
         BuildFusedKernelDef(builder, metadef, type);
         ORT_RETURN_IF_ERROR(fused_kernel_registry.Register(builder,
-                                                           static_cast<KernelCreatePtrFn>(
-                                                               [](const OpKernelInfo& info) -> OpKernel* {
-                                                                 return new FunctionKernel(info);
-                                                               })));
+                                                           [](FuncManager& func_mgr, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
+                                                             return FunctionKernel::Create(func_mgr, info, out);
+                                                           }));
 
         // now that we're done compiling we can remove the original nodes from the Graph and wire in the new one
         graph.FinalizeFuseSubGraph(indexed_sub_graph, *node);
@@ -393,7 +391,7 @@ static Status PartitionOrtFormatModelImpl(Graph& graph, FuncManager& func_mgr,
                                           KernelRegistryManager& kernel_registry_mgr,
                                           KernelRegistry& fused_kernel_registry,
                                           IExecutionProvider& current_ep,
-                                          std::unordered_map<std::string, uint64_t>& compiled_kernel_hashes,
+                                          std::unordered_map<std::string, HashValue>& compiled_kernel_hashes,
                                           int& fused_node_unique_id) {
   // recurse into nested graphs first to partition bottom up.
   for (auto& node : graph.Nodes()) {
@@ -477,10 +475,10 @@ static Status PartitionOrtFormatModelImpl(Graph& graph, FuncManager& func_mgr,
       }
 
       ORT_RETURN_IF_ERROR(fused_kernel_registry.Register(
-          KernelCreateInfo(std::move(kernel_def), static_cast<KernelCreatePtrFn>(
-                                                      [](const OpKernelInfo& info) -> OpKernel* {
-                                                        return new FunctionKernel(info);
-                                                      }))));
+          KernelCreateInfo(std::move(kernel_def),
+                           [](FuncManager& func_mgr, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
+                             return FunctionKernel::Create(func_mgr, info, out);
+                           })));
 
       // now that we're done compiling we can remove the original nodes from the Graph and wire in the new one
       graph.FinalizeFuseSubGraph(indexed_sub_graph, node);
@@ -496,7 +494,7 @@ static Status PartitionOrtFormatModelImpl(Graph& graph, FuncManager& func_mgr,
 Status GraphPartitioner::PartitionOrtFormatModel(
     Graph& graph, FuncManager& func_mgr,
     KernelRegistry& fused_kernel_registry,
-    std::unordered_map<std::string, uint64_t>& compiled_kernel_hashes,
+    std::unordered_map<std::string, HashValue>& compiled_kernel_hashes,
     int& fused_node_unique_id) const {
   // process full graph with each EP
   for (const auto& ep : providers_) {
@@ -514,7 +512,7 @@ Status GraphPartitioner::PartitionOrtFormatModel(
 }
 
 Status GraphPartitioner::Partition(Graph& graph, bool export_dll, FuncManager& func_mgr, Mode mode,
-                                   std::unordered_map<std::string, uint64_t>* compiled_kernel_hashes) const {
+                                   std::unordered_map<std::string, HashValue>* compiled_kernel_hashes) const {
   // It is a greedy partitioning algorithm per provider preferences user provided when calling ONNX RUNTIME right now.
   // 1. Execution providers' capabilities are checked one by one.
   // 2. All sub-graphs that an execution provider returns will be assigned to it if it's not assigned yet.

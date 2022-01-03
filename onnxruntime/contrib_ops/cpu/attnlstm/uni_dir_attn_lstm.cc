@@ -14,7 +14,11 @@
 #ifdef _MSC_VER
 #pragma warning(pop)
 #endif
-
+//TODO: fix the warnings
+#if defined(_MSC_VER) && !defined(__clang__)
+// Chance of arithmetic overflow could be reduced
+#pragma warning(disable : 26451)
+#endif
 using namespace onnxruntime::rnn::detail;
 
 namespace onnxruntime {
@@ -91,7 +95,7 @@ UniDirectionalAttnLstm<T>::UniDirectionalAttnLstm(AllocatorPtr allocator,
 template <typename T>
 void UniDirectionalAttnLstm<T>::AllocateBuffers() {
   // allocate and fill with 0's.
-  const bool fill = true;
+  constexpr bool fill = true;
   hidden0_ = Allocate(allocator_, hidden_size_, hidden0_ptr_, fill);
   internal_memory_prev_ = Allocate(allocator_, hidden_size_, internal_memory_prev_ptr_, fill);
   internal_memory_cur_ = Allocate(allocator_, hidden_size_, internal_memory_cur_ptr_, fill);

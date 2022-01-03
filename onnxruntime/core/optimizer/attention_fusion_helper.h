@@ -16,9 +16,9 @@ namespace onnxruntime {
 namespace AttentionFusionHelper {
 
 struct MatchGemmResult {
-  const Node* gemm;                     // the Gemm node.
-  const Node* input_node;               // one node in the subgraph that accept the input.
-  const Node* output_node;              // the node that have output of the subgraph.
+  const Node* gemm = nullptr;                     // the Gemm node.
+  const Node* input_node = nullptr;     // one node in the subgraph that accept the input.
+  const Node* output_node = nullptr;              // the node that have output of the subgraph.
   std::vector<NodeIndex> node_indices;  // id of all nodes.
 };
 
@@ -264,8 +264,8 @@ bool ValidateGemmInitializer(const Graph& graph, const Node& gemm, int64_t hidde
 }
 
 struct MatchUnidirMaskResult {
-  const Node* div_node;                 // the root node (Div) of the subgraph
-  bool is_unidirectional;               // whether the mask is unidirectional.
+  const Node* div_node = nullptr;       // the root node (Div) of the subgraph
+  bool is_unidirectional = false;               // whether the mask is unidirectional.
   std::vector<NodeIndex> node_indices;  // id of all nodes in the subgraph for removing later.
 };
 
@@ -394,7 +394,7 @@ bool MatchUnidirMaskSubgraph(const Graph& graph, const Node& add_node, MatchUnid
   const Node& where_node = edges[0]->GetNode();
   const Node& div_node = edges[1]->GetNode();
 
-  const float expected_value = -10000.0f;
+  constexpr float expected_value = -10000.0f;
   if (!optimizer_utils::IsInitializerWithExpectedValue(graph, *(where_node.InputDefs()[2]), expected_value, true)) {
     return false;
   }
@@ -877,8 +877,8 @@ bool MatchInputMaskSubgraph(const Graph& graph, const Node& layer_norm, const No
 }
 
 struct MatchPastResult {
-  NodeArg* past;
-  NodeArg* present;
+  NodeArg* past = nullptr;
+  NodeArg* present = nullptr;
   std::vector<NodeIndex> node_indices;
 };
 
