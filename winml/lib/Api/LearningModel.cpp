@@ -315,7 +315,7 @@ winml::LearningModel
 LearningModel::LoadFromBuffer(
     wss::IBuffer const model_buffer,
     winml::ILearningModelOperatorProvider const provider) try {
-  return make<LearningModel>(model_stream, model_buffer);
+  return make<LearningModel>(model_buffer, provider);
 }
 WINML_CATCH_ALL
 
