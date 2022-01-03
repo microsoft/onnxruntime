@@ -80,6 +80,7 @@ OrtValue FromDlpack(PyObject* dlpack_tensor, const bool is_bool_tensor) {
 
 #endif
 
+#if !defined(DISABLE_SPARSE_TENSORS)
 std::unique_ptr<OrtValue> PySparseTensor::AsOrtValue() const {
   if (instance_) {
     auto ort_value = std::make_unique<OrtValue>();
@@ -108,6 +109,7 @@ PySparseTensor::~PySparseTensor() {
     }
   }
 }
+#endif  // !defined(DISABLE_SPARSE_TENSORS)
 
 }  // namespace python
 }  // namespace onnxruntime

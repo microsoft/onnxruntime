@@ -110,7 +110,9 @@ void ComplexMul_Impl(
   int blocksPerGrid = static_cast<int>(CeilDiv(count, GridDim::maxThreadsPerBlock * GridDim::maxElementsPerThread));
   CUDA_LONG N = static_cast<CUDA_LONG>(count);
 
-  if (lhs_padded_strides && rhs_padded_strides && lhs_padded_strides->Size() && rhs_padded_strides->Size())
+  if (!lhs_padded_strides || !rhs_padded_strides || !fdm_output_strides) return;
+
+  if (lhs_padded_strides->Size() && rhs_padded_strides->Size())
     _ElementWiseWithStrideTwo<T, true, true, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
         output_rank_or_simple_broadcast,
         *lhs_padded_strides,
@@ -123,7 +125,7 @@ void ComplexMul_Impl(
         lhs_size,
         rhs_size,
         is_conj);
-  else if (lhs_padded_strides && lhs_padded_strides->Size())
+  else if (lhs_padded_strides->Size())
     _ElementWiseWithStrideTwo<T, true, false, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
         output_rank_or_simple_broadcast,
         *lhs_padded_strides,

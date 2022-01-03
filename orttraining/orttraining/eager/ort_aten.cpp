@@ -5,6 +5,7 @@
 #include "ort_tensor.h"
 #include <c10/core/TensorImpl.h>
 #include <ATen/native/CPUFallback.h>
+#include <ATen/InferSize.h>
 
 namespace torch_ort {
 namespace eager {
@@ -173,6 +174,14 @@ bool IsSupportedType(at::IntArrayRef arrary, const std::vector<at::ScalarType>& 
          std::find(valid_types.begin(), valid_types.end(), at::kLong) != valid_types.end();
 }
 
+bool IsSupportedType(int64_t val, const std::vector<at::ScalarType>& valid_types){
+  return std::find(valid_types.begin(), valid_types.end(), at::kLong) != valid_types.end();
+}
+
+bool IsSupportedType(c10::optional<int64_t> val, const std::vector<at::ScalarType>& valid_types){
+  return IsSupportedType(val.value(), valid_types);
+}
+
 //#pragma endregion
 
 //#pragma region Hand-Implemented ATen Ops
@@ -246,27 +255,28 @@ at::Tensor _reshape_alias(
   ORT_LOG_FN(self, size, stride);
   // TODO: support stride
   auto& invoker = GetORTInvoker(self.device());
+  auto ort_input = create_ort_value(invoker, self);
   return aten_tensor_from_ort(
-    reshape_copy(
+    reshape_invoke(
       invoker,
-      create_ort_value(invoker, self),
-      at::infer_size(
-        size,
-        self.numel())),
+      ort_input,
+      size,
+      // invoke reshape kernel inplace
+      true),
     self.options());
 }
 
 at::Tensor view(const at::Tensor& self, at::IntArrayRef size) {
   ORT_LOG_FN(self, size);
-
   auto& invoker = GetORTInvoker(self.device());
+  auto ort_input = create_ort_value(invoker, self);
   return aten_tensor_from_ort(
-    reshape_copy(
+    reshape_invoke(
       invoker,
-      create_ort_value(invoker, self),
-      at::infer_size(
-        size,
-        self.numel())),
+      ort_input,
+      size,
+      // invoke reshape kernel inplace
+      true),
     self.options());
 }
 
@@ -361,8 +371,8 @@ at::Tensor& zero_(at::Tensor& self){
   auto* ort_flag_tensor = flag_val.GetMutable<onnxruntime::Tensor>();
   CopyVectorToTensor<int64_t>(invoker, {1}, *ort_flag_tensor);
 
-  std::vector<OrtValue> ort_out(1);
-
+  std::vector<OrtValue> ort_out = {ort_in_self};
+  
   auto status = invoker.Invoke(
     "ZeroGradient", {
       std::move(ort_in_self),
@@ -373,7 +383,6 @@ at::Tensor& zero_(at::Tensor& self){
     throw std::runtime_error(
       "ORT return failure status:" + status.ErrorMessage());
 
-  copy(invoker, ort_out[0], ort_in_self);
   return self;
 }
 

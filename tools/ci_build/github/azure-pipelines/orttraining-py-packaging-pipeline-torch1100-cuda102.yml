@@ -5,6 +5,7 @@ stages:
   parameters:
     build_py_parameters: --enable_training --update --build
     torch_version: '1.10.0'
+    opset_version: '14'
     cuda_version: '10.2'
     gcc_version: 8
     cmake_cuda_architectures: 37;50;52;60;61;70;75;80;86

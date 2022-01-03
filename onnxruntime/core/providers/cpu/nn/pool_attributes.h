@@ -168,7 +168,11 @@ struct PoolAttributes {
       *out_size = ComputeOutputSize(in_size, stride, kernel, *pad_head + *pad_tail, dilation);
     }
   }
-
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(push)
+// Chance of arithmetic overflow could be reduced
+#pragma warning(disable : 26451)
+#endif
   int64_t ComputeOutputSize(int64_t in_size,
                             int64_t stride,
                             int64_t kernel,
@@ -180,6 +184,9 @@ struct PoolAttributes {
     return static_cast<int64_t>(
         std::ceil(static_cast<float>(in_size + pad_needed - dilation * (kernel - 1) - 1) / stride + 1));
   }
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(pop)
+#endif
 };
 
 }  // namespace onnxruntime

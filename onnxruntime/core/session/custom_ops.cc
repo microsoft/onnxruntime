@@ -258,8 +258,9 @@ common::Status CreateCustomRegistry(const std::vector<OrtCustomOpDomain*>& op_do
         def_builder.Provider(onnxruntime::kCpuExecutionProvider);
       }
 
-      KernelCreateFn kernel_create_fn = [op](const OpKernelInfo& info) -> OpKernel* {
-        return new CustomOpKernel(info, *op);
+      KernelCreateFn kernel_create_fn = [op](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
+        out = std::make_unique<CustomOpKernel>(info, *op);
+        return Status::OK();
       };
 
       KernelCreateInfo create_info(def_builder.Build(), kernel_create_fn);

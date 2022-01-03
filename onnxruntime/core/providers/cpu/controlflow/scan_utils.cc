@@ -142,7 +142,7 @@ Status CreateFeedsFetchesManager(const Node& node,
   // we need the names of the Scan inputs to determine what device they are available on,
   // so first create a list using those value
   std::vector<std::string> feed_names;
-  feed_names.reserve(info.num_variadic_inputs + info.num_implicit_inputs);
+  feed_names.reserve(static_cast<size_t>(info.num_variadic_inputs) + info.num_implicit_inputs);
 
   const auto& scan_inputs = node.InputDefs();
   int start = is_v8 ? 1 : 0;  // skip sequence_lens for v8
@@ -217,7 +217,7 @@ Status IterateSequence(OpKernelContextInternal& context, const SessionState& ses
         feeds[input] = loop_state_variables[input].Input();
       } else {
         // add sliced input
-        auto& iterator = scan_input_stream_iterators[input - num_loop_state_variables];
+        auto& iterator = scan_input_stream_iterators[static_cast<ptrdiff_t>(input) - num_loop_state_variables];
         feeds[input] = *iterator;
 
         ++iterator;

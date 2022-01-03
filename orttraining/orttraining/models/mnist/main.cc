@@ -34,7 +34,7 @@ using namespace onnxruntime::training;
 using namespace onnxruntime::training::tensorboard;
 using namespace std;
 
-const static int NUM_CLASS = 10;
+constexpr static int NUM_CLASS = 10;
 const static vector<int64_t> IMAGE_DIMS_GEMM = {784};        // for mnist_gemm models
 const static vector<int64_t> IMAGE_DIMS_CONV = {1, 28, 28};  // for mnist_conv models
 const static vector<int64_t> LABEL_DIMS = {10};

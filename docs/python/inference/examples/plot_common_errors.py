@@ -21,7 +21,7 @@ import numpy
 from onnxruntime.datasets import get_example
 
 example2 = get_example("logreg_iris.onnx")
-sess = rt.InferenceSession(example2)
+sess = rt.InferenceSession(example2, providers=rt.get_available_providers())
 
 input_name = sess.get_inputs()[0].name
 output_name = sess.get_outputs()[0].name

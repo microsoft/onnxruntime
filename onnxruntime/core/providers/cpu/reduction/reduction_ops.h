@@ -34,10 +34,15 @@ bool operator==(FastReduceKind a, FastReduceKind b);
 
 bool operator!=(FastReduceKind a, FastReduceKind b);
 
-bool IsFastReduceKindAvailable(FastReduceKind scenario, FastReduceKind available);
-
+constexpr bool IsFastReduceKindAvailable(FastReduceKind scenario, FastReduceKind available) {
+  return (static_cast<uint8_t>(scenario) & static_cast<uint8_t>(available)) > 0;
+}
 /* Evaluate the cost of parallelized FastReduce implementations. */
-TensorOpCost ParallelReduceFastCost(int64_t n_row, int64_t n_col, int64_t element_size, int n_ops);
+constexpr TensorOpCost ParallelReduceFastCost(int64_t n_row, int64_t n_col, int64_t element_size, int n_ops) {
+  return TensorOpCost{static_cast<double>(n_row * n_col * element_size),
+                      static_cast<double>(n_row * element_size),
+                      static_cast<double>(n_row * n_col * element_size * n_ops)};
+}
 
 /**
   This only improves reduce function when reduced axes are contiguous:
