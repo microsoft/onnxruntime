@@ -1067,19 +1067,7 @@ var validCombos = {
     "windows,Python,X86,VitisAI":
         "Follow build instructions from <a href='https://aka.ms/build-ort-vitisai' target='_blank'>here</a>",
     
-    "windows,C-API,X86,VitisAI":
-        "Follow build instructions from <a href='https://aka.ms/build-ort-vitisai' target='_blank'>here</a>",
-    
-    "windows,C++,X86,VitisAI":
-        "Follow build instructions from <a href='https://aka.ms/build-ort-vitisai' target='_blank'>here</a>",
-    
     "linux,Python,X86,VitisAI":
-        "Follow build instructions from <a href='https://aka.ms/build-ort-vitisai' target='_blank'>here</a>",
-    
-    "linux,C-API,X86,VitisAI":
-        "Follow build instructions from <a href='https://aka.ms/build-ort-vitisai' target='_blank'>here</a>",
-    
-    "linux,C++,X86,VitisAI":
         "Follow build instructions from <a href='https://aka.ms/build-ort-vitisai' target='_blank'>here</a>",
     
     "linux,Python,X86,MIGraphX":
