@@ -681,9 +681,10 @@ namespace Dml
             printf("\n");
 #endif
 
-            auto fused_kernel_func = [partitionNodePropsMap, transferredInitializerMap](const onnxruntime::OpKernelInfo& info) mutable ->onnxruntime::OpKernel*
+            auto fused_kernel_func = [partitionNodePropsMap, transferredInitializerMap](onnxruntime::FuncManager& func_mgr, const onnxruntime::OpKernelInfo& info, std::unique_ptr<onnxruntime::OpKernel>& out) mutable ->onnxruntime::Status
             {
-                return CreateFusedGraphKernel(info, partitionNodePropsMap, *transferredInitializerMap);
+                out.reset(CreateFusedGraphKernel(info, partitionNodePropsMap, *transferredInitializerMap));
+				return Status::OK();
             };
 
             // build the kernel definition on the fly, and register it to the fused_kernel_regisitry.

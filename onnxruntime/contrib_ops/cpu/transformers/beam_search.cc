@@ -30,6 +30,8 @@
 
 #ifdef _MSC_VER
 #pragma warning(pop)
+// Could reduce the chance of arithmetic overflow. TODO: fix it
+#pragma warning(disable : 26451)
 #endif
 
 using namespace ONNX_NAMESPACE;
@@ -431,10 +433,10 @@ Status BeamSearchImpl<T>::ProcessLogits(
   Tensor::InitOrtValue(element_type, next_token_scores_shape, next_token_scores.data(), allocator->Info(), next_token_scores_value);
   const Tensor& input = next_token_scores_value.Get<Tensor>();
 
-  const int axis = 1;
+  constexpr int axis = 1;
   const unsigned top_k = static_cast<unsigned>(2 * parameters_->num_beams);
-  const bool largest = true;
-  const bool sorted = true;  // results returned in sorted order.
+  constexpr bool largest = true;
+  constexpr bool sorted = true;  // results returned in sorted order.
 
   std::unique_ptr<Tensor> topk_scores;
   std::unique_ptr<Tensor> topk_indices;

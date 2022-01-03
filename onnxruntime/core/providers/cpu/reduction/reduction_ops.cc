@@ -3,7 +3,10 @@
 
 #include "core/providers/cpu/reduction/reduction_ops.h"
 #include "core/providers/common.h"
-
+//TODO: fix the warnings
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(disable : 26451)
+#endif
 using namespace std;
 namespace onnxruntime {
 
@@ -219,10 +222,6 @@ bool operator!=(FastReduceKind a, FastReduceKind b) {
   return static_cast<uint8_t>(a) != static_cast<uint8_t>(b);
 }
 
-bool IsFastReduceKindAvailable(FastReduceKind scenario, FastReduceKind available) {
-  return (static_cast<uint8_t>(scenario) & static_cast<uint8_t>(available)) > 0;
-}
-
 bool ResultsNoTransposePrepareForReduce::equal(gsl::span<const int64_t> local_input_shape,
                                                gsl::span<const int64_t> local_reduced_axes) {
   if (gsl::make_span(input_shape) != local_input_shape)
@@ -265,12 +264,6 @@ void ReduceAggregatorBase::FastReduceRK(const Tensor&, const std::vector<int64_t
 }
 void ReduceAggregatorBase::FastReduceKRK(const Tensor&, const std::vector<int64_t>&, Tensor&, concurrency::ThreadPool*) {
   ValidateMustBeOverloaded();
-}
-
-TensorOpCost ParallelReduceFastCost(int64_t n_row, int64_t n_col, int64_t element_size, int n_ops) {
-  return TensorOpCost{static_cast<double>(n_row * n_col * element_size),
-                      static_cast<double>(n_row * element_size),
-                      static_cast<double>(n_row * n_col * element_size * n_ops)};
 }
 
 void NoTransposePrepareForReduce(const TensorShape& new_input_shape,

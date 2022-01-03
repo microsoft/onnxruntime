@@ -81,6 +81,9 @@ function(AddTest)
       # Lot of such things came from gtest
       target_compile_options(${_UT_TARGET} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler /wd6326>"
                 "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd6326>")
+      # Raw new and delete. A lot of such things came from googletest.
+      target_compile_options(${_UT_TARGET} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler /wd26409>"
+                "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd26409>")
     endif()
     target_compile_options(${_UT_TARGET} PRIVATE ${disabled_warnings})
   else()
@@ -681,7 +684,12 @@ AddTest(
     onnx_test_data_proto nlohmann_json::nlohmann_json
   DEPENDS ${all_dependencies}
 )
-if(NOT MSVC)
+if (MSVC)
+  # The warning means the type of two integral values around a binary operator is narrow than their result.
+  # If we promote the two input values first, it could be more tolerant to integer overflow.
+  # However, this is test code. We are less concerned. 
+  target_compile_options(onnxruntime_test_all PRIVATE "/wd26451")
+else()
   target_compile_options(onnxruntime_test_all PRIVATE "-Wno-parentheses")
 endif()
 # the default logger tests conflict with the need to have an overall default logger
@@ -846,6 +854,15 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
     if(WIN32)
       target_compile_options(onnxruntime_benchmark PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler /wd4141>"
                         "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd4141>")
+      # Avoid using new and delete. But this is a benchmark program, it's ok if it has a chance to leak.
+      target_compile_options(onnxruntime_benchmark PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler /wd26409>"
+                        "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd26409>")
+      target_compile_options(onnxruntime_benchmark PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler /wd26400>"
+                        "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd26400>")
+      target_compile_options(onnxruntime_benchmark PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler /wd26814>"
+                        "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd26814>")
+      target_compile_options(onnxruntime_benchmark PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler /wd26814>"
+                        "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd26497>")
       target_compile_options(onnxruntime_benchmark PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>"
               "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
     endif()
@@ -858,7 +875,11 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
     onnxruntime_add_executable(onnxruntime_mlas_benchmark ${MLAS_BENCH_SOURCE_FILES})
     target_include_directories(onnxruntime_mlas_benchmark PRIVATE ${ONNXRUNTIME_ROOT}/core/mlas/inc)
     target_link_libraries(onnxruntime_mlas_benchmark PRIVATE benchmark::benchmark onnxruntime_util onnxruntime_framework ${ONNXRUNTIME_MLAS_LIBS} onnxruntime_common ${CMAKE_DL_LIBS})
-    if(NOT WIN32)
+    if(WIN32)
+      target_link_libraries(onnxruntime_mlas_benchmark PRIVATE debug Dbghelp)
+      # Avoid using new and delete. But this is a benchmark program, it's ok if it has a chance to leak.
+      target_compile_options(onnxruntime_mlas_benchmark PRIVATE /wd26409)
+    else()
       target_link_libraries(onnxruntime_mlas_benchmark PRIVATE nsync_cpp ${CMAKE_DL_LIBS})
     endif()
     set_target_properties(onnxruntime_mlas_benchmark PROPERTIES FOLDER "ONNXRuntimeTest")
@@ -1100,6 +1121,8 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
   )
   onnxruntime_add_executable(onnxruntime_mlas_test ${onnxruntime_mlas_test_src})
   if(MSVC)
+    target_compile_options(onnxruntime_mlas_test PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler /wd26409>"
+                "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd26409>")
     target_compile_options(onnxruntime_mlas_test PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>"
             "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
     target_compile_options(onnxruntime_mlas_test PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler /wd6326>"
@@ -1147,6 +1170,8 @@ if(UNIX)
   endif()
 else()
   set(ONNXRUNTIME_CUSTOM_OP_LIB_LINK_FLAG "-DEF:${TEST_SRC_DIR}/testdata/custom_op_library/custom_op_library.def")
+  target_compile_options(custom_op_library PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler /wd26409>"
+                "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd26409>")
 endif()
 set_property(TARGET custom_op_library APPEND_STRING PROPERTY LINK_FLAGS ${ONNXRUNTIME_CUSTOM_OP_LIB_LINK_FLAG})
 

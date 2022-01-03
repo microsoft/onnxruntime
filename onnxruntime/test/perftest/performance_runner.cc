@@ -35,7 +35,7 @@ static std::once_flag default_pool_init;
 Eigen::ThreadPoolInterface* GetDefaultThreadPool(const onnxruntime::Env& env) {
   std::call_once(default_pool_init, [&env] {
     int core_num = env.GetNumCpuCores();
-    default_pool.reset(new DefaultThreadPoolType(core_num));
+    default_pool = std::make_unique<DefaultThreadPoolType>(core_num);
   });
   return default_pool.get();
 }
@@ -258,8 +258,7 @@ static std::unique_ptr<TestSession> CreateSession(Ort::Env& env, std::random_dev
                                                   const PerformanceTestConfig& performance_test_config_,
                                                   const TestModelInfo& test_model_info) {
   if (CompareCString(performance_test_config_.backend.c_str(), ORT_TSTR("ort")) == 0) {
-    return std::unique_ptr<TestSession>(
-        new OnnxRuntimeTestSession(env, rd, performance_test_config_, test_model_info));
+    return std::make_unique<OnnxRuntimeTestSession>(env, rd, performance_test_config_, test_model_info);
   }
 #ifdef HAVE_TENSORFLOW
   if (CompareCString(performance_test_config_.backend.c_str(), ORT_TSTR("tf")) == 0) {
