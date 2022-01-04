@@ -25,7 +25,7 @@ To create a reduced operator configuration file, run the script [create_reduced_
 
 The kernel configuration file can be manually edited as needed. The configuration can be created from either ONNX or ORT format models.
 
-```bash
+```
 create_reduced_build_config.py --help
 usage: Script to create a reduced build config file from ONNX or ORT format model/s. [-h] [-f {ONNX,ORT}] [-t] model_path_or_dir config_path
 
