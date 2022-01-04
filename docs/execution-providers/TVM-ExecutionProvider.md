@@ -76,7 +76,7 @@ sudo apt-get install cmake
 
 Build ONNX Runtime:
 ```bash
-./build.sh --config Release --enable_pybind --build_wheel --skip_tests --parallel --use_TVM --skip_onnx_tests
+./build.sh --config Release --enable_pybind --build_wheel --skip_tests --parallel --use_stvm --skip_onnx_tests
 ```
 
 Build the python API for ONNX Runtime instead of using the standard package:
