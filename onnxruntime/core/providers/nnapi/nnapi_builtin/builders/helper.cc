@@ -214,40 +214,41 @@ bool HasValidQuantizationScales(const InitializedTensorSet& initializers, const 
   return true;
 }
 
-bool HasValidQuantizationZeroPoint(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
-                                   const std::vector<size_t>& indices) {
+bool HasValidQuantizationZeroPoints(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
+                                    const std::vector<size_t>& indices, bool is_input) {
   const auto& op_type = node_unit.OpType();
   auto qlinear_op_type = GetQLinearOpType(node_unit.GetNode());
   bool is_qlinear_conv = (qlinear_op_type == QLinearOpType::QLinearConv);
   bool is_qlinear_matmul = (qlinear_op_type == QLinearOpType::QLinearMatMul);
 
-  const auto& inputs = node_unit.Inputs();
+  const auto& io_defs = is_input ? node_unit.Inputs() : node_unit.Outputs();
   for (const auto idx : indices) {
-    if (idx >= inputs.size()) {
-      LOGS_DEFAULT(VERBOSE) << "HasValidQuantizationZeroPoints, Input index,  " << idx
-                            << " >= input number, " << inputs.size();
+    if (idx >= io_defs.size()) {
+      LOGS_DEFAULT(VERBOSE) << "HasValidQuantizationZeroPoints, "
+                            << (is_input ? "Input" : "Output") << " index,  " << idx
+                            << " >= input number, " << io_defs.size();
       return false;
     }
 
-    const auto& input = inputs[idx];
-    if (!input.quant_param.has_value()) {
+    const auto& io_def = io_defs[idx];
+    if (!io_def.quant_param.has_value()) {
       LOGS_DEFAULT(VERBOSE) << "HasValidQuantizationZeroPoints, Input index,  " << idx
                             << " has no quant_param";
       return false;
     }
 
     // zero point is optional here
-    if (!input.quant_param->zero_point)
+    if (!io_def.quant_param->zero_point)
       return true;
 
-    const auto& zero_point_name = input.quant_param->zero_point->Name();
-    const auto& weight_tensor = *initializers.at(input.node_arg.Name());
+    const auto& zero_point_name = io_def.quant_param->zero_point->Name();
+    const auto& weight_tensor = *initializers.at(io_def.node_arg.Name());
     if (!Contains(initializers, zero_point_name)) {
       LOGS_DEFAULT(VERBOSE) << "The zero point of " << op_type << " must be an initializer tensor";
       return false;
     }
 
-    bool is_conv_matmul_weight = (is_qlinear_conv || is_qlinear_matmul) && idx == 2;
+    bool is_conv_matmul_weight = is_input && (is_qlinear_conv || is_qlinear_matmul) && idx == 2;
     bool is_conv_matmul_u8s8_weight = false;
 
     if (is_conv_matmul_weight) {
