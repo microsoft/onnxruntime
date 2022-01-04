@@ -23,7 +23,7 @@ struct QDQReplaceWithNew : public ReplaceWithNew {
 
 #if !defined(ORT_MINIMAL_BUILD)
   Status RunForSave(Graph& graph, const NodesToOptimize& selected_nodes,
-                    const RuntimeOptimizationSaveContext& save_context,
+                    const SatRuntimeOptimizationSaveContext& save_context,
                     SavedState& saved_state, bool& graph_modified) const override;
 #endif  // !defined(ORT_MINIMAL_BUILD)
 };
