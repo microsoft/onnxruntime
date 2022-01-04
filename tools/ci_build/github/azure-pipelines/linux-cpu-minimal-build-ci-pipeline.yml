@@ -218,10 +218,6 @@ jobs:
               --cmake_extra_defines onnxruntime_ENABLE_RUNTIME_OPTIMIZATION_REPLAY_IN_MINIMAL_BUILD=ON
       workingDirectory: $(Build.SourcesDirectory)
 
-  - script: git checkout -- .
-    displayName: Discard local changes to Git repository files
-    workingDirectory: $(Build.SourcesDirectory)
-
   - task: CmdLine@2
     displayName: 7a. Regular build with python and all optional features disabled.
     inputs:
