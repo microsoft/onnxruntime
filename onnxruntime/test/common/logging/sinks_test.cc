@@ -28,6 +28,12 @@ void DeleteFile(const std::string& filename) {
 }
 }  // namespace
 
+#ifdef _WIN32
+#define ONNXRUNTIME_CLOG_STREAM std::wclog
+#else
+#define ONNXRUNTIME_CLOG_STREAM std::clog
+#endif
+
 /// <summary>
 /// Tests that the std::clog sink produces the expected output.
 /// </summary>
@@ -38,10 +44,14 @@ TEST(LoggingTests, TestCLogSink) {
   const Severity min_log_level = Severity::kWARNING;
 
   // redirect clog to a file so we can check the output
+#ifdef _WIN32
+  std::wofstream ofs(filename);
+#else
   std::ofstream ofs(filename);
+#endif
 
-  auto old_rdbuf = std::clog.rdbuf();
-  std::clog.rdbuf(ofs.rdbuf());
+  auto old_rdbuf = ONNXRUNTIME_CLOG_STREAM.rdbuf();
+  ONNXRUNTIME_CLOG_STREAM.rdbuf(ofs.rdbuf());
 
   // create scoped manager so sink gets destroyed once done
   {
@@ -57,7 +67,7 @@ TEST(LoggingTests, TestCLogSink) {
   CheckStringInFile(filename, message);
 
   // revert redirection
-  std::clog.rdbuf(old_rdbuf);
+  ONNXRUNTIME_CLOG_STREAM.rdbuf(old_rdbuf);
   ofs.close();
 
   DeleteFile(filename);
