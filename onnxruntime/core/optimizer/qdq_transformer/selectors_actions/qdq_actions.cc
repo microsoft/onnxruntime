@@ -94,28 +94,32 @@ struct SetOptionalZeroPoint {
   static void UpdateNodes(Graph&, const NodesToOptimize& selected_nodes);
 
  private:
-  //We assume this function won't fail
+  // We assume this function won't fail
   static const ONNX_NAMESPACE::TensorProto init_optional_zero_point_int8() {
-    const char* const name = "b33fd0fa-cd7b-4b10-ae5a-df64cabfe1f8";  // guid as arbitrary name to provide a unique value
+    // guid as arbitrary name to provide a unique value
+    const char* const name = "init_optional_zero_point_int8_b33fd0fa-cd7b-4b10-ae5a-df64cabfe1f8";
+    std::array<uint8_t, 1> a{0};
     ONNX_NAMESPACE::TensorProto tensor_proto;
     tensor_proto.set_name(name);
     tensor_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT8);
-    tensor_proto.set_raw_data(std::vector<int8_t>{0}.data(), sizeof(int8_t));
+    tensor_proto.set_raw_data(a.data(), sizeof(int8_t));
 
     return tensor_proto;
   };
 
-  //We assume this function won't fail
+  // We assume this function won't fail
   static const ONNX_NAMESPACE::TensorProto init_optional_zero_point_uint8() {
-    const char* const name = "b33f88f7-c464-43e3-8692-97ac832bb14a";  // guid as arbitrary name to provide a unique value
+    // guid as arbitrary name to provide a unique value
+    const char* const name = "init_optional_zero_point_uint8_b33f88f7-c464-43e3-8692-97ac832bb14a";
+    std::array<uint8_t, 1> a{0};
     ONNX_NAMESPACE::TensorProto tensor_proto;
     tensor_proto.set_name(name);
     tensor_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_UINT8);
-    tensor_proto.set_raw_data(std::vector<uint8_t>{0}.data(), sizeof(uint8_t));
+    tensor_proto.set_raw_data(a.data(), sizeof(uint8_t));
 
     return tensor_proto;
   };
-  static  ONNX_NAMESPACE::TensorProto GetOptionalZeroPointInt8() {
+  static ONNX_NAMESPACE::TensorProto GetOptionalZeroPointInt8() {
     static ONNX_NAMESPACE::TensorProto proto = init_optional_zero_point_int8();
     return proto;
   }
@@ -169,7 +173,6 @@ void SetOptionalZeroPoint::UpdateNodes(Graph& graph, const NodesToOptimize& sele
     }
   }
 }
-
 
 }  // namespace
 
