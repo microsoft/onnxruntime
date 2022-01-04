@@ -4,6 +4,7 @@
 #pragma once
 
 #include "onnxruntime_c_api.h"
+#include "core/framework/arena_extend_strategy.h"
 
 /// <summary>
 /// Options for the CUDA provider that are passed to SessionOptionsAppendExecutionProvider_Cuda_V2.
@@ -13,13 +14,13 @@
 /// User can only get the instance of OrtCUDAProviderOptionsV2 via CreateCUDAProviderOptions.
 /// </summary>
 struct OrtCUDAProviderOptionsV2 {
-  int device_id;                                // cuda device id.
-  int has_user_compute_stream;                  // indicator of user specified CUDA compute stream.
-  void* user_compute_stream;                    // user specified CUDA compute stream.
+  int device_id;                // cuda device id.
+  int has_user_compute_stream;  // indicator of user specified CUDA compute stream.
+  void* user_compute_stream;    // user specified CUDA compute stream.
   int do_copy_in_default_stream;
   OrtCudnnConvAlgoSearch cudnn_conv_algo_search;
   size_t gpu_mem_limit;
-  int arena_extend_strategy;
+  onnxruntime::ArenaExtendStrategy arena_extend_strategy;
   OrtArenaCfg* default_memory_arena_cfg;
   int cudnn_conv_use_max_workspace;
 };

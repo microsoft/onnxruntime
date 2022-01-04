@@ -1084,7 +1084,7 @@ OrtCUDAProviderOptionsV2 OrtCUDAProviderOptionsToOrtCUDAProviderOptionsV2(const 
   cuda_options_converted.device_id = legacy_cuda_options->device_id;
   cuda_options_converted.cudnn_conv_algo_search = legacy_cuda_options->cudnn_conv_algo_search;
   cuda_options_converted.gpu_mem_limit = legacy_cuda_options->gpu_mem_limit;
-  cuda_options_converted.arena_extend_strategy = legacy_cuda_options->arena_extend_strategy;
+  cuda_options_converted.arena_extend_strategy = static_cast<onnxruntime::ArenaExtendStrategy>(legacy_cuda_options->arena_extend_strategy);
   cuda_options_converted.do_copy_in_default_stream = legacy_cuda_options->do_copy_in_default_stream;
   cuda_options_converted.has_user_compute_stream = legacy_cuda_options->has_user_compute_stream;
   cuda_options_converted.user_compute_stream = legacy_cuda_options->user_compute_stream;
@@ -1509,7 +1509,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateCUDAProviderOptions, _Outptr_ OrtCUDAProvider
   (*out)->device_id = 0;
   (*out)->cudnn_conv_algo_search = OrtCudnnConvAlgoSearch::OrtCudnnConvAlgoSearchExhaustive;
   (*out)->gpu_mem_limit = std::numeric_limits<size_t>::max();
-  (*out)->arena_extend_strategy = 0;
+  (*out)->arena_extend_strategy = static_cast<onnxruntime::ArenaExtendStrategy>(0);
   (*out)->do_copy_in_default_stream = 0;
   (*out)->has_user_compute_stream = 0;
   (*out)->user_compute_stream = nullptr;
