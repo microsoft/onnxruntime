@@ -3,7 +3,6 @@
 
 #include "ort_aten.h"
 #include "ort_tensor.h"
-#include "core/framework/endian.h"
 #include <c10/core/TensorImpl.h>
 #include <ATen/native/CPUFallback.h>
 #include <ATen/InferSize.h>
@@ -89,7 +88,8 @@ OrtValue create_ort_value(
   const at::Scalar& scalar,
   at::ScalarType type) {
   float val = scalar.toFloat();
-  uint16_t temp16{};
+  at::BFloat16 valBFloat16 = scalar.toBFloat16();
+  Ort::BFloat16_t *valOrtBFloat16 = reinterpret_cast<Ort::BFloat16_t *>(&valBFloat16);
   OrtValue ort_val;
   CreateMLValue(
     invoker.GetCurrentExecutionProvider().GetAllocator(0, OrtMemTypeDefault),
@@ -102,13 +102,8 @@ OrtValue create_ort_value(
       CopyVectorToTensor<float>(invoker, {val}, *ort_tensor);
       break;
     case at::ScalarType::BFloat16:
-      ORT_IF_CONSTEXPR(onnxruntime::endian::native == onnxruntime::endian::little) {
-        std::memcpy(&temp16, reinterpret_cast<char*>(&val) + sizeof(uint16_t), sizeof(uint16_t));
-      } else {
-        std::memcpy(&temp16, &val, sizeof(uint16_t));
-      }
-      CopyVectorToTensor<Ort::BFloat16_t>(invoker, {Ort::BFloat16_t{temp16}}, *ort_tensor);
-      break;
+      CopyVectorToTensor<Ort::BFloat16_t>(invoker, {*valOrtBFloat16}, *ort_tensor);
+      break;      
     default:
       // TODO: support more types
       // For most at::ScalarType, it should be safe to just call value.to<>
@@ -412,6 +407,7 @@ at::Tensor& zero_(at::Tensor& self){
   return self;
 }
 
+// TODO: enhance opgen.py to support inplace binary operations.
 // aten::add_.Tensor(Tensor(a!) self, Tensor other, *, Scalar alpha=1) -> Tensor(a!)
 at::Tensor& add__Tensor(
   at::Tensor& self, 
