@@ -1830,7 +1830,7 @@ TEST(QDQTransformerTests, QDQ_Selector_Test) {
 }
 
 TEST(QDQTransformerTests, QDQ_Shared_GetSelectors_Test) {
-  const ORTCHAR_T* model_file_name = ORT_TSTR("testdata/qdq_conv_model_basic.onnx");
+  const ORTCHAR_T* model_file_name = ORT_TSTR("testdata/transform/qdq_conv.onnx");
 
   SessionOptions so;
   so.graph_optimization_level = TransformerLevel::Default;
