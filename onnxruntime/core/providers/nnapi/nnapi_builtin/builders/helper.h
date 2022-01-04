@@ -120,6 +120,9 @@ common::Status GetQuantizationScale(const InitializedTensorSet& initializers, co
 common::Status GetQuantizationZeroPoint(const InitializedTensorSet& initializers,
                                         const Node& node, size_t idx, int32_t& zero_point) ORT_MUST_USE_RESULT;
 
+bool HasValidQuantizationZeroPoint(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
+                                   const std::vector<size_t>& indices);
+
 common::Status GetQuantizationScaleAndZeroPoint(
     const InitializedTensorSet& initializers, const NodeUnitIODef& io_def, const Path& model_path,
     float& scale, int32_t& zero_point);

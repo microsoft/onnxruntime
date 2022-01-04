@@ -109,6 +109,9 @@ class ModelBuilder {
   bool GetNCHWOperand(const std::string& nhwc_name, std::string& nchw_name);
   bool GetNHWCOperand(const std::string& nchw_name, std::string& nhwc_name);
 
+  // Get the NodeUnit which contains the given node
+  const NodeUnit& GetNodeUnit(const Node* node) const;
+
   Status SetNHWCToNCHWOperandMap(const std::string& nhwc_name,
                                  const std::string& nchw_name) ORT_MUST_USE_RESULT;
   Status SetNCHWToNHWCOperandMap(const std::string& nchw_name,
@@ -191,8 +194,6 @@ class ModelBuilder {
   void GetAllQuantizedOpInputs();
   // Go through the underlying graph_viewer, and generate NodeUnits
   void PreprocessNodeUnits();
-  // Get the NodeUnit which contains the given node
-  const NodeUnit& GetNodeUnit(const Node* node) const;
 
   Status SetOperandValue(uint32_t index, Model::NNMemory* memory,
                          size_t size, size_t offset) ORT_MUST_USE_RESULT;
@@ -203,7 +204,7 @@ class ModelBuilder {
                        bool is_nhwc,
                        uint32_t& index) ORT_MUST_USE_RESULT;
 
-  static const IOpBuilder* GetOpBuilder(const Node& node);
+  static const IOpBuilder* GetOpBuilder(const NodeUnit& node_unit);
 };
 
 }  // namespace nnapi

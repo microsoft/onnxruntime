@@ -118,8 +118,8 @@ void ModelBuilder::PreprocessInitializers() {
   const auto& node_indices = graph_viewer_.GetNodesInTopologicalOrder();
   for (size_t i = 0; i < node_indices.size(); i++) {
     const auto* node(graph_viewer_.GetNode(node_indices[i]));
-    if (const auto* op_builder = GetOpBuilder(*node)) {
-      const NodeUnit node_unit(*node);
+    const auto& node_unit = GetNodeUnit(node);
+    if (const auto* op_builder = GetOpBuilder(node_unit)) {
       op_builder->AddInitializersToSkip(*this, node_unit);
     }
   }
@@ -513,12 +513,12 @@ Status ModelBuilder::AddOperations() {
   const auto& node_indices = graph_viewer_.GetNodesInTopologicalOrder();
   for (size_t i = 0; i < node_indices.size(); i++) {
     const auto* node(graph_viewer_.GetNode(node_indices[i]));
-    if (const auto* op_builder = GetOpBuilder(*node)) {
-      const NodeUnit node_unit(*node);
+    const NodeUnit& node_unit = GetNodeUnit(node);
+    if (const auto* op_builder = GetOpBuilder(node_unit)) {
       ORT_RETURN_IF_ERROR(op_builder->AddToModelBuilder(*this, node_unit));
     } else {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Node [", node->Name(), "], type [", node->OpType(), "] is not supported");
+                             "Node [", node_unit.Name(), "], type [", node_unit.OpType(), "] is not supported");
     }
   }
 
@@ -664,12 +664,13 @@ int32_t ModelBuilder::FindActivation(const Node& node, const NodeArg& output) {
   return fuse_code;
 }
 
-/* static */ const IOpBuilder* ModelBuilder::GetOpBuilder(const Node& node) {
+/* static */ const IOpBuilder* ModelBuilder::GetOpBuilder(const NodeUnit& node_unit) {
   const auto& op_builders = GetOpBuilders();
-  if (!Contains(op_builders, node.OpType()))
+  const auto& op_type = node_unit.GetNode().OpType();
+  if (!Contains(op_builders, op_type))
     return nullptr;
 
-  return op_builders.at(node.OpType());
+  return op_builders.at(op_type);
 }
 
 std::string ModelBuilder::GetUniqueName(const std::string& base_name) {

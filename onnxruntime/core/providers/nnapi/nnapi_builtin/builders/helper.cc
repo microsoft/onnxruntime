@@ -214,6 +214,106 @@ bool HasValidQuantizationScales(const InitializedTensorSet& initializers, const 
   return true;
 }
 
+bool HasValidQuantizationZeroPoint(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
+                                   const std::vector<size_t>& indices) {
+  const auto& op_type = node_unit.OpType();
+  auto qlinear_op_type = GetQLinearOpType(node_unit.GetNode());
+  bool is_qlinear_conv = (qlinear_op_type == QLinearOpType::QLinearConv);
+  bool is_qlinear_matmul = (qlinear_op_type == QLinearOpType::QLinearMatMul);
+
+  const auto& inputs = node_unit.Inputs();
+  for (const auto idx : indices) {
+    if (idx >= inputs.size()) {
+      LOGS_DEFAULT(VERBOSE) << "HasValidQuantizationZeroPoints, Input index,  " << idx
+                            << " >= input number, " << inputs.size();
+      return false;
+    }
+
+    const auto& input = inputs[idx];
+    if (!input.quant_param.has_value()) {
+      LOGS_DEFAULT(VERBOSE) << "HasValidQuantizationZeroPoints, Input index,  " << idx
+                            << " has no quant_param";
+      return false;
+    }
+
+    // zero point is optional here
+    if (!input.quant_param->zero_point)
+      return true;
+
+    const auto& zero_point_name = input.quant_param->zero_point->Name();
+    const auto& weight_tensor = *initializers.at(input.node_arg.Name());
+    if (!Contains(initializers, zero_point_name)) {
+      LOGS_DEFAULT(VERBOSE) << "The zero point of " << op_type << " must be an initializer tensor";
+      return false;
+    }
+
+    bool is_conv_matmul_weight = (is_qlinear_conv || is_qlinear_matmul) && idx == 2;
+    bool is_conv_matmul_u8s8_weight = false;
+
+    if (is_conv_matmul_weight) {
+      is_conv_matmul_u8s8_weight = weight_tensor.data_type() == ONNX_NAMESPACE::TensorProto_DataType_INT8;
+    }
+
+    const auto& zero_tensor = *initializers.at(zero_point_name);
+    int64_t zero_dim = zero_tensor.dims().empty() ? 1 : zero_tensor.dims()[0];
+
+    if (!is_conv_matmul_u8s8_weight) {
+      if (zero_dim != 1) {
+        LOGS_DEFAULT(VERBOSE) << op_type << " does not support per-channel quantization, "
+                              << " for now, only u8s8 QlinearConv supports per-channel quantization on API 29+";
+        return false;
+      }
+    } else {
+      // For u8s8 Qlinear[Conv/MatMul], we support
+      // 1. Per-tensor, the weight will be transformed to uint8 later
+      // 2. Per-channel, only from Android API level 29
+      if (zero_tensor.data_type() != ONNX_NAMESPACE::TensorProto_DataType_INT8) {
+        LOGS_DEFAULT(VERBOSE) << "u8s8 Qlinear[Conv/MatMul] only supports int8 zero point for weight, "
+                              << "actual zero point type: [" << zero_tensor.data_type() << "]";
+        return false;
+      }
+
+      if (zero_dim != 1) {
+        if (is_qlinear_matmul) {
+          LOGS_DEFAULT(VERBOSE) << "QLinearMatMul does not support per-channel quantization";
+          return false;
+        }
+      }
+
+      // For onnx, u8s8 QlinearConv, the weight zero point can be a scalar,
+      // or a tensor with same channel as weight, for NNAPI we only support it be
+      // 0 (scalar) or all 0 (tensor), NNAPI will assume the zero point for per-channel
+      // quantization is 0 there is no input for it
+      if (weight_tensor.dims()[0] != zero_dim && zero_dim != 1) {
+        LOGS_DEFAULT(VERBOSE) << op_type << " mismatch int8 per-channel quantization weight,"
+                              << " weight dimension[0] " << weight_tensor.dims()[0]
+                              << " zero point dimension " << zero_dim;
+        return false;
+      }
+
+      std::vector<uint8_t> unpacked_tensor;
+      auto status = onnxruntime::utils::UnpackInitializerData(zero_tensor, node_unit.ModelPath(), unpacked_tensor);
+      if (!status.IsOK()) {
+        LOGS_DEFAULT(ERROR) << "Qlinear[Conv/MatMul] error when unpack zero tensor: " << zero_point_name
+                            << ", error msg: " << status.ErrorMessage();
+        return false;
+      }
+
+      // Verify all onnx weight zero point(s) are 0(s)
+      const int8_t* zero_points = reinterpret_cast<const int8_t*>(unpacked_tensor.data());
+      for (size_t i = 0; i < unpacked_tensor.size(); i++) {
+        if (zero_points[i] != 0) {
+          LOGS_DEFAULT(VERBOSE) << "u8s8 Qlinear[Conv/MatMul]  only support 0 as zero point, "
+                                << "zero_points[" << i << "] has value: " << zero_points[i];
+          return false;
+        }
+      }
+    }
+  }
+
+  return true;
+}
+
 bool HasValidQuantizationZeroPoints(const InitializedTensorSet& initializers, const Node& node,
                                     const std::vector<size_t>& indices) {
   const auto& op_type = node.OpType();
