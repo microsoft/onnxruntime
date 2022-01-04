@@ -123,7 +123,7 @@ namespace ROOT_NS.AI.MachineLearning
         //! Loads an ONNX model from a buffer asynchronously.
         [remote_async]
         [method_name("LoadFromBufferWithOperatorProviderAsync")] static Windows.Foundation.IAsyncOperation<LearningModel> LoadFromBufferAsync(Windows.Storage.Streams.IBuffer modelBuffer, ILearningModelOperatorProvider operatorProvider);
-		//! Loads an ONNX model from a file on disk.
+        //! Loads an ONNX model from a file on disk.
         [method_name("LoadFromFilePathWithOperatorProvider")] static LearningModel LoadFromFilePath(String filePath, ILearningModelOperatorProvider operatorProvider);
         //! Loads an ONNX model from a stream.
         [method_name("LoadFromStreamWithOperatorProvider")] static LearningModel LoadFromStream(Windows.Storage.Streams.IRandomAccessStreamReference modelStream, ILearningModelOperatorProvider operatorProvider);

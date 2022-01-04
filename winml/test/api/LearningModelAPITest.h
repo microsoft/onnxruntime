@@ -11,6 +11,7 @@ struct LearningModelApiTestsApi
   VoidTest CreateModelFromIStorage;
   VoidTest CreateModelFromIStorageOutsideCwd;
   VoidTest CreateModelFromIStream;
+  VoidTest CreateModelFromIBuffer;
   VoidTest ModelGetAuthor;
   VoidTest ModelGetName;
   VoidTest ModelGetDomain;

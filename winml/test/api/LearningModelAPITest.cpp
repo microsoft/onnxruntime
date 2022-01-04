@@ -337,7 +337,7 @@ const LearningModelApiTestsApi& getapi() {
     CreateModelFromIStorage,
     CreateModelFromIStorageOutsideCwd,
     CreateModelFromIStream,
-	CreateModelFromIBuffer,
+    CreateModelFromIBuffer,
     ModelGetAuthor,
     ModelGetName,
     ModelGetDomain,
