@@ -20,7 +20,7 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
 namespace op_kernel_type_control {
 ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES(
     kCpuExecutionProvider, kOnnxDomain, Clip, 11, Input, 0,
-    float);
+    float, double);
 ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES(
     kCpuExecutionProvider, kOnnxDomain, Clip, 12, Input, 0,
     float, double, int8_t, uint8_t, int64_t, uint64_t);
