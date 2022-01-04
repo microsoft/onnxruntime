@@ -54,16 +54,21 @@ class SelectorManager {
  public:
   SelectorManager() = default;
 
-  std::unordered_map<std::string, const Selector*> op_type_to_selectors_map_;
+  virtual ~SelectorManager() = default;
+
+  void InitializeSelectorsMap();
+
+  void CreateSelectors();
 
   const std::unordered_map<const Node*, std::unique_ptr<BaseSelector>> GetQDQSelectors(const GraphViewer& graph_viewer) const;
 
+ private:
+  Selectors qdq_selectors_;
+
+  std::unordered_map<std::string, const Selector*> op_type_to_selectors_map_;
+
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(SelectorManager);
 };
-
-Selectors CreateSelectors();
-
-void InitializeSelectorsMap(Selectors selectors);
 
 }  // namespace QDQ
 }  // namespace onnxruntime

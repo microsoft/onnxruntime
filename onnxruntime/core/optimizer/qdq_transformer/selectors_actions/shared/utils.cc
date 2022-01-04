@@ -79,24 +79,19 @@ void RegisterMatMulSelector(Selectors& qdq_selectors) {
                                  std::move(selector));
 }
 
-Selectors CreateSelectors() {
-  Selectors qdq_selectors;
-
-  RegisterMiscSelectors(qdq_selectors);
-  RegisterUnarySelectors(qdq_selectors);
-  RegisterBinarySelectors(qdq_selectors);
-  RegisterVariadicSelectors(qdq_selectors);
-  RegisterConvSelector(qdq_selectors);
-  RegisterMatMulSelector(qdq_selectors);
-
-  return qdq_selectors;
+void SelectorManager::CreateSelectors() {
+  RegisterMiscSelectors(qdq_selectors_);
+  RegisterUnarySelectors(qdq_selectors_);
+  RegisterBinarySelectors(qdq_selectors_);
+  RegisterVariadicSelectors(qdq_selectors_);
+  RegisterConvSelector(qdq_selectors_);
+  RegisterMatMulSelector(qdq_selectors_);
 }
 
-void IntializeSelectorsMap(Selectors selectors) {
-  SelectorManager selector_mgr;
-  for (const auto& entry : selectors.SelectorsSet()) {
+void SelectorManager::InitializeSelectorsMap() {
+  for (const auto& entry : qdq_selectors_.SelectorsSet()) {
     for (const auto& op_info : entry->op_versions_map) {
-      bool inserted = selector_mgr.op_type_to_selectors_map_.insert({op_info.first, &*entry}).second;
+      bool inserted = op_type_to_selectors_map_.insert({op_info.first, &*entry}).second;
       ORT_ENFORCE(inserted, "Multiple entries for operator is not supported. OpType=", op_info.first);
     }
   }
@@ -112,34 +107,40 @@ const std::unordered_map<const Node*, std::unique_ptr<BaseSelector>> SelectorMan
 
     auto op_rule = op_type_to_selectors_map_.find(node->OpType());
     if (op_rule == op_type_to_selectors_map_.cend()) {
-      break;
-    }
-
-    const auto& selector = *op_rule->second;
-
-    // check the supported versions if specified
-    const auto& versions = selector.op_versions_map.find(node->OpType())->second;
-    if (!versions.empty()) {
-      if (std::find(versions.cbegin(), versions.cend(), node->SinceVersion()) == versions.cend()) {
-        LOGS_DEFAULT(VERBOSE) << "Op version is not supported for" << node->OpType();
+      if (node->OpType() != "DequantizeLinear" && node->OpType() != "QuantizeLinear") {
         break;
       }
     }
 
-    // identify the op_type
-    const auto& op_type = op_rule->first;
+    std::string op_type = "";
 
-    if (op_type == "AveragePool")
+    if (node->OpType() != "DequantizeLinear" && node->OpType() != "QuantizeLinear") {
+      const auto& selector = *op_rule->second;
+
+      // check the supported versions if specified
+      const auto& versions = selector.op_versions_map.find(node->OpType())->second;
+      if (!versions.empty()) {
+        if (std::find(versions.cbegin(), versions.cend(), node->SinceVersion()) == versions.cend()) {
+          LOGS_DEFAULT(VERBOSE) << "Op version is not supported for" << node->OpType();
+          break;
+        }
+      }
+
+      op_type = op_rule->first;
+    }
+
+    // identify the op_type and add corresponding selector into the result
+    if (op_type == "AveragePool") {
       qdq_selectors.emplace(node, std::make_unique<QDQ::UnarySelector>());
-    else if (op_type == "Add" || op_type == "Mul")
+    } else if (op_type == "Add" || op_type == "Mul") {
       qdq_selectors.emplace(node, std::make_unique<QDQ::BinarySelector>());
-    else if (op_type == "Concat")
+    } else if (op_type == "Concat") {
       qdq_selectors.emplace(node, std::make_unique<QDQ::VariadicSelector>());
-    else if (op_type == "Conv")
+    } else if (op_type == "Conv") {
       qdq_selectors.emplace(node, std::make_unique<QDQ::ConvSelector>());
-    else if (op_type == "MatMul")
+    } else if (op_type == "MatMul") {
       qdq_selectors.emplace(node, std::make_unique<QDQ::MatMulSelector>());
-    else if (op_type == "Gather" || op_type == "Reshape" || op_type == "Transpose" || op_type == "MaxPool" || op_type == "Resize") {
+    } else if (op_type == "Gather" || op_type == "Reshape" || op_type == "Transpose" || op_type == "MaxPool" || op_type == "Resize") {
       qdq_selectors.emplace(node, std::make_unique<QDQ::DropDQDNodesSelector>());
     } else {
       LOGS_DEFAULT(VERBOSE) << "Selector type is not supported.";

@@ -8,6 +8,7 @@
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_selectors.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_selector_action_transformer.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/shared/utils.h"
+#include "core/optimizer/qdq_transformer/selectors_actions/shared/utils.cc"
 #include "core/providers/partitioning_utils.h"
 #include "core/session/environment.h"
 #include "core/session/inference_session.h"
@@ -159,7 +160,7 @@ TEST(QDQTransformerTests, Conv_S8X8U8) {
 TEST(QDQTransformerTests, Conv_S8X8S8) {
   // input not uint8_t and output not uint8_t
   QDQTransformerConvTests<int8_t, uint8_t, int32_t, int8_t>();
-    QDQTransformerConvTests<int8_t, int8_t, int32_t, int8_t>();
+  QDQTransformerConvTests<int8_t, int8_t, int32_t, int8_t>();
 }
 
 TEST(QDQTransformerTests, ConvMaxPoolReshape_UInt8) {
@@ -1166,14 +1167,13 @@ TEST(QDQTransformerTests, ConvAveragePoolReshape_Int8_Fail) {
 
       // add Q + DQ
       auto* q_output = builder.MakeIntermediate();
-      if(QDQIsInt8Allowed()){
+      if (QDQIsInt8Allowed()) {
         builder.AddQuantizeLinearNode<int8_t>(reshape_output, .0035f, 7, q_output);
         builder.AddDequantizeLinearNode<int8_t>(q_output, .0035f, 7, output_arg);
       } else {
         builder.AddQuantizeLinearNode<uint8_t>(reshape_output, .0035f, 135, q_output);
         builder.AddDequantizeLinearNode<uint8_t>(q_output, .0035f, 135, output_arg);
       }
-
     };
 
     auto check_mp_reshape_graph = [&](InferenceSessionWrapper& session) {
@@ -1764,7 +1764,6 @@ TEST(QDQTransformerTests, QDQ_GetSelectors_Test) {
   const ORTCHAR_T* model_file_name = ORT_TSTR("testdata/qdq_conv_model_basic.onnx");
 
   SessionOptions so;
-  // We want to keep the graph un-optimized to prevent QDQ transformer to kick in
   so.graph_optimization_level = TransformerLevel::Default;
   InferenceSessionWrapper session_object{so, GetEnvironment()};
   ASSERT_STATUS_OK(session_object.Load(model_file_name));
@@ -1778,15 +1777,27 @@ TEST(QDQTransformerTests, QDQ_GetSelectors_Test) {
 
   const GraphViewer graph_viewer(graph);
 
-  QDQ::InitializeSelectorsMap(QDQ::CreateSelectors());
+  QDQ::SelectorManager selector_mgr;
+  selector_mgr.CreateSelectors();
+  selector_mgr.InitializeSelectorsMap();
 
-  // Make sure we get the convselector
+  // Check if selectormanager get QDQ::ConvSelector
   {
-    auto result = QDQ::GetQDQSelectors(graph_viewer);
-    // TODO: how to ASSERT_TRUE() check ConvSelector
-  }
+    const auto result = selector_mgr.GetQDQSelectors(graph_viewer);
+    ASSERT_EQ(1, result.size());
+    const auto it = result.find(conv_node);
+    ASSERT_TRUE(it != result.cend());
+    const auto* node = it->first;
+    ASSERT_EQ("Conv", node->OpType());
 
-  
+    // check if selector returned can get the expected qdq group selection
+    const auto node_selection = it->second->GetQDQSelection(graph_viewer, *node);
+    ASSERT_TRUE(node_selection.has_value());
+    const auto& qdq_group = *node_selection;
+    ASSERT_EQ(std::vector<NodeIndex>({0, 1, 2}), qdq_group.dq_nodes);
+    ASSERT_EQ(NodeIndex(3), qdq_group.target_node);
+    ASSERT_EQ(std::vector<NodeIndex>({4}), qdq_group.q_nodes);
+  }
 }
 
 }  // namespace test
