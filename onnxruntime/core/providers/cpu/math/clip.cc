@@ -65,7 +65,18 @@ using AllEnabledClipTypes =
                           BuildKernelDefConstraintsFromTypeList<ENABLED_TYPE_LIST>()), \
       KERNEL_CLASS);
 
-REG_KERNEL_VERSIONED_NONTEMPL(Clip, 11, 11, Clip, Clip11Types, EnabledClip11Types);
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
+    Clip,
+    11,
+    11,
+    KernelDefBuilder()
+        .MayInplace(0, 0)
+        .TypeConstraint("T",
+                        BuildKernelDefConstraintsFromTypeList<Clip11Types>(),
+                        BuildKernelDefConstraintsFromTypeList<EnabledClip11Types>())
+        .FixedTypeConstraintForHash("T",
+                                    BuildKernelDefConstraints<float>()),  // keep old hash
+    Clip);
 REG_KERNEL_VERSIONED_NONTEMPL(Clip, 12, 12, Clip, Clip12Types, EnabledClip12Types);
 REG_KERNEL_NONTEMPL(Clip, 13, Clip, Clip12Types, EnabledClip12Types);
 
