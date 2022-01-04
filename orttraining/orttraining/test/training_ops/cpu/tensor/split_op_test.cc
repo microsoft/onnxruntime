@@ -118,7 +118,7 @@ TEST(SplitTrainingOpTest, Axis0UnequalSplitFloat) {
 
 
 TEST(SplitTrainingOpTest, Axis0EqualSplitFloat_not_initializer) {
-  const int64_t axis = 0;
+  constexpr int64_t axis = 0;
   std::vector<ShapeAndFloatData> outputs;
 
   // input shape and data
