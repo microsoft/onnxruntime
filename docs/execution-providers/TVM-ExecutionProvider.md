@@ -1,15 +1,17 @@
 ---
-title: Standalone TVM (STVM)
-description: Instructions to execute ONNX Runtime with the Standalone TVM (STVM) execution provider
+title: TVM
+description: Instructions to execute ONNX Runtime with the Apache TVM execution provider
 parent: Execution Providers
 nav_order: 8
 ---
 
-# Standalone TVM (STVM) Execution Provider
+# TVM (TVM) Execution Provider
 {: .no_toc }
 
-STVM is an execution provider for ONNX Runtime that is built on top of Apache TVM. It enables ONNX Runtime users to leverage Apache TVM model optimizations.
-STVM EP is currently in "Preview". It's been tested to work on a handful of models on Linux, but not on Windows or MacOS.
+TVM is an execution provider for ONNX Runtime that is built on top of Apache TVM. It enables ONNX Runtime users to leverage Apache TVM model optimizations.
+The TVM EP is currently in "Preview". It's been tested to work on a limited set of ONNX models on Linux. Future enhancements will include support on Windows and MacOS.
+
+__NOTE__: This TVM execution provider was developed as a _standalone_ TVM execution provider. The code repo has references to _stvm_ as the name for this EP.  
 
 ## Contents
 {: .no_toc }
@@ -19,9 +21,9 @@ STVM EP is currently in "Preview". It's been tested to work on a handful of mode
 
 ## Build
 
-To use the STVM EP in ONNX Runtime (ORT), users first need to build Apache TVM and ONNX Runtime.
+To use the TVM EP in ONNX Runtime (ORT), users first need to build Apache TVM and ONNX Runtime.
 
-Note: some python packages may need to be upgraded/downgraded because both TVM and ORT with the STVM EP use the Python API. Alternatively, use modify PYTHONPATH to solve these conflicts. 
+Note: some python packages may need to be upgraded/downgraded because both TVM and ORT with the TVM EP use the Python API. Alternatively, use modify PYTHONPATH to solve these conflicts. 
 
 ### Build and configure TVM
 
@@ -53,7 +55,7 @@ export PYTHONPATH=$TVM_HOME/python:${PYTHONPATH}
 
 For more details on installing Apache TVM click [here](https://tvm.apache.org/docs/install/from_source.html)
 
-### Build ONNX Runtime with the STVM Execution Provider
+### Build ONNX Runtime with the TVM Execution Provider
 
 In order to build ONNXRT you will need to have CMake 3.18 or higher. In Ubuntu 20.04 you can use the following commands to install the latest version of CMake:
 
@@ -74,7 +76,7 @@ sudo apt-get install cmake
 
 Build ONNX Runtime:
 ```bash
-./build.sh --config Release --enable_pybind --build_wheel --skip_tests --parallel --use_stvm --skip_onnx_tests
+./build.sh --config Release --enable_pybind --build_wheel --skip_tests --parallel --use_TVM --skip_onnx_tests
 ```
 
 Build the python API for ONNX Runtime instead of using the standard package:
@@ -91,7 +93,7 @@ export PYTHONPATH=$ORT_PYTHON_HOME:${PYTHONPATH}
 ```
 
 ## Configuration options
-STVM Executor Provider can be configured with the following provider options:
+TVM Executor Provider can be configured with the following provider options:
 ```python
 po = [dict(target=client_target,
            target_host=client_target_host,
@@ -100,7 +102,7 @@ po = [dict(target=client_target,
            tuning_file_path=client_tuning_logfile,
            input_names = input_names_str,
            input_shapes = input_shapes_str)]
-stvm_session = onnxruntime.InferenceSession(model_path, providers=["StvmExecutionProvider"], provider_options=po)
+tvm_session = onnxruntime.InferenceSession(model_path, providers=["StvmExecutionProvider"], provider_options=po)
 ```
 <br>
 
@@ -117,7 +119,7 @@ input_shapes = "[1 3 224 224] [1 2]"
 ```
 
 ## Performance Tuning
-TVM optimizes machine learning models through an automated tuning process that produces model variants specific to targeted hardware architectures.  This process also generates 'tuning logs' that the STVM EP relies on to maximize model performance. These logs can be acquired for your model by either using TVM as described here:
+TVM optimizes machine learning models through an automated tuning process that produces model variants specific to targeted hardware architectures.  This process also generates 'tuning logs' that the TVM EP relies on to maximize model performance. These logs can be acquired for your model by either using TVM as described here:
 
 AutoTVM:
 https://tvm.apache.org/docs/how_to/tune_with_autotvm/index.html
@@ -127,19 +129,19 @@ https://tvm.apache.org/docs/how_to/tune_with_autoscheduler/index.html
 
 or by using logs generated through the OctoML platform (https://onnx.octoml.ai) using instructions [here](https://help.octoml.ai/en/articles/5814452-using-octoml-platform-logs-with-onnx-rt-tvm-ep)
 
-Using the STVM EP with TVM tuning logs also requires users to turn off ONNX Runtime preprocessing.  To do this, the following `SessionOptions()` can be used:
+Using the TVM EP with TVM tuning logs also requires users to turn off ONNX Runtime preprocessing.  To do this, the following `SessionOptions()` can be used:
 ```python
 so = onnxruntime.SessionOptions()
 so.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
 
-stvm_session = onnxruntime.InferenceSession(model_path, sess_options=so, providers=["StvmExecutionProvider"], provider_options=po)
+tvm_session = onnxruntime.InferenceSession(model_path, sess_options=so, providers=["StvmExecutionProvider"], provider_options=po)
 ```
 
 ## Samples
-- [Sample notebook for ResNet50 inference with STVM EP](https://github.com/octoml/onnxruntime/blob/STVM_EP_PR/docs/python/inference/notebooks/onnxruntime-stvm-tutorial.ipynb)
+- [Sample notebook for ResNet50 inference with TVM EP](https://github.com/octoml/onnxruntime/blob/STVM_EP_PR/docs/python/inference/notebooks/onnxruntime-stvm-tutorial.ipynb)
 
 ## Known issues
-- At this moment, the STVM EP has only been verified on UNIX/Linux systems.
+- At this moment, the TVM EP has only been verified on UNIX/Linux systems.
 - CUDA/GPU support is still in pre-alpha mode and results are expected to change. It is recommended that only CPU targets are used.
 - Some compatibility issues have been found between ONNX and Google protobuf. `AttributeError: module 'google.protobuf.internal.containers' has no attribute 'MutableMapping'`. This usually occurss during `import onnx` in any python scripts for protobuf version >= 3.19.0 and ONNX version <= 1.8.1. To resolve the issue Google protobuf and ONNX can be reinstalled separately or together using:
 ```bash
