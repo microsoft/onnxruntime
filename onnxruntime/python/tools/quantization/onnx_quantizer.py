@@ -860,7 +860,7 @@ class ONNXQuantizer:
         quantization_params = {}
         for tensor_name in self.tensors_range.keys():
             rmin, rmax = self.tensors_range[tensor_name]
-            qmin, qmax = get_qmin_qmax_for_qType(self.input_qType)
+            qmin, qmax = get_qmin_qmax_for_qType(self.input_qType, symmetric=self.is_activation_symmetric)
 
             quantization_params[tensor_name] = compute_scale_zp(rmin, rmax,
                                                                 qmin, qmax,
