@@ -1774,7 +1774,7 @@ TEST(QDQTransformerTests, QDQPropagation_DQ_Q) {
 #endif  // DISABLE_CONTRIB_OPS
 
 TEST(QDQTransformerTests, QDQ_Selector_Test) {
-  const ORTCHAR_T* model_file_name = ORT_TSTR("testdata/qdq_conv_model_basic.onnx");
+  const ORTCHAR_T* model_file_name = ORT_TSTR("testdata/transform/qdq_conv.onnx");
 
   SessionOptions so;
   // We want to keep the graph un-optimized to prevent QDQ transformer to kick in
