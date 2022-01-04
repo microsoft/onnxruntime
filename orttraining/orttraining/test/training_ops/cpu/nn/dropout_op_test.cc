@@ -39,7 +39,7 @@ void RunDropoutTest(const bool use_mask, const std::vector<int64_t>& input_shape
       input_shape.begin(), input_shape.end(), static_cast<int64_t>(1), std::multiplies<>{});
   std::vector<float> input(input_size);
   std::iota(input.begin(), input.end(), 1.0f);
-  const int64_t seed = 42;
+  constexpr int64_t seed = 42;
 
   t.AddAttribute("seed", seed);
   t.AddInput("data", input_shape, input);
@@ -169,7 +169,7 @@ void RunDropoutGradTest(float ratio, const std::vector<int64_t>& input_dims, boo
   if (default_ratio) {
     ratio = 0.5f;
   }
-  const float input_constant = 3.0f;
+  constexpr float input_constant = 3.0f;
 
   std::vector<float> dy_data(input_shape.Size(), input_constant);
   std::vector<float> ratio_data(1, ratio);
