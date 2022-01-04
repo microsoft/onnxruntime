@@ -106,6 +106,7 @@ def run_trt_standalone(trtexec, model_name, model_path, ort_inputs, all_inputs_s
         p = start_memory_tracking()            
         try: 
             out = get_output(load_command)
+            print(get_output(["ps", "aux"))
             success = True
             mem_usage = end_memory_tracking(p, trtexec, success)
         except Exception as e: 
@@ -203,6 +204,7 @@ def get_trtexec_pid(df, python_pid):
 def get_max_memory(trtexec): 
     df = pd.read_csv(MEMORY_FILE)
     print(get_output(["nvidia-smi"]))
+    print(get_output(["ps", "aux"))
     print(df.to_string())
     pid = df['pid'].iloc[0]
     if trtexec: 
