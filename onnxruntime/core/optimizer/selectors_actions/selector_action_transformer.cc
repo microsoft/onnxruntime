@@ -3,58 +3,89 @@
 
 #include "core/optimizer/selectors_actions/selector_action_transformer.h"
 
+#include <cassert>
+
 #include "core/graph/runtime_optimization_record_container.h"
 
 namespace onnxruntime {
 
 #if !defined(ORT_MINIMAL_BUILD)
-SelectorActionTransformer::SelectorActionTransformer(const std::string& name,
-                                                     SelectorsAndActions&& selectors_and_actions,
-                                                     std::optional<RuntimeOptimizationSaveContext> save_context)
-    : GraphTransformer{name},
-      selectors_and_actions_{std::move(selectors_and_actions)},
-      runtime_optimization_save_context_{std::move(save_context)} {
-  // setup a map so we lookup by operator type efficiently
-  for (const auto& map_entry : selectors_and_actions_.SelectorsAndActionsMap()) {
-    for (const auto& op_info : map_entry.second->ops_and_versions) {
-      bool inserted = op_type_to_selector_and_action_.insert({op_info.first, &*map_entry.second}).second;
 
-      ORT_ENFORCE(inserted, "Multiple entries for operator is not supported. OpType=", op_info.first);
-    }
-  }
-}
-#else
-SelectorActionTransformer::SelectorActionTransformer(const std::string& name,
-                                                     SelectorsAndActions&& selectors_and_actions,
-                                                     std::optional<RuntimeOptimizationSaveContext> save_context)
-    : GraphTransformer{name},
-      selectors_and_actions_{std::move(selectors_and_actions)} {
-  ORT_ENFORCE(!save_context.has_value(), "Saving runtime optimizations is not supported in a minimal build.");
-}
-#endif
-
-#if !defined(ORT_MINIMAL_BUILD)
-void SelectorsAndActions::RegisterSelectorAndAction(const std::string& name,
-                                                    const SelectorAndAction::OpVersionsMap& ops_and_versions_in,
-                                                    std::unique_ptr<NodeSelector> selector_in,
-                                                    std::unique_ptr<Action> action_in) {
+void SelectorActionRegistry::RegisterSelectorAndAction(const std::string& name,
+                                                       const OpVersionsMap& ops_and_versions_in,
+                                                       std::unique_ptr<NodeSelector> selector_in,
+                                                       std::unique_ptr<Action> action_in) {
   // currently all registrations are done from internal code with no external inputs,
   // so throw for invalid usage as it should only happen during development.
-  ORT_ENFORCE(selectors_and_actions_map_.find(name) == selectors_and_actions_map_.cend(),
-              "Existing registration with name ", name);
+  const auto [name_to_entry_it, inserted_in_name_to_entry] =
+      name_to_entry_.emplace(name,
+                             Entry{name,
+                                   ops_and_versions_in,
+                                   std::move(selector_in),
+                                   std::move(action_in)});
+  ORT_ENFORCE(inserted_in_name_to_entry, "Existing registration with name ", name);
 
-  auto entry = std::make_unique<SelectorAndAction>(name,
-                                                   ops_and_versions_in,
-                                                   std::move(selector_in),
-                                                   std::move(action_in));
-
-  ORT_IGNORE_RETURN_VALUE(selectors_and_actions_map_.emplace(name, std::move(entry)));
+  const Entry& entry = name_to_entry_it->second;
+  for (const auto& [op_type, versions] : entry.ops_and_versions) {
+    ORT_UNUSED_PARAMETER(versions);
+    const bool inserted_in_op_type_to_entry = op_type_to_entry_.emplace(op_type, &entry).second;
+    ORT_ENFORCE(inserted_in_op_type_to_entry,
+                "Multiple entries for operator is not supported. OpType=", op_type);
+  }
 }
 
-Status SelectorActionTransformer::MatchAndProcess(Graph& graph, const GraphViewer& graph_viewer,
-                                                  Node& node, bool& modified,
-                                                  const logging::Logger& logger) const {
+#else  // !defined(ORT_MINIMAL_BUILD)
+
+void SelectorActionRegistry::RegisterAction(const std::string& name,
+                                            std::unique_ptr<Action> action) {
+  // currently all registrations are done from internal code with no external inputs,
+  // so throw for invalid usage as it should only happen during development.
+  const bool inserted_in_name_to_entry = name_to_entry_.emplace(name, Entry{name, std::move(action)}).second;
+  ORT_ENFORCE(inserted_in_name_to_entry, "Existing registration with name ", name);
+}
+
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
+const SelectorActionRegistry::Entry* SelectorActionRegistry::LookUp(const std::string& name) const {
+  if (const auto it = name_to_entry_.find(name); it != name_to_entry_.end()) {
+    return &it->second;
+  }
+  return nullptr;
+}
+
+#if !defined(ORT_MINIMAL_BUILD)
+const SelectorActionRegistry::Entry* SelectorActionRegistry::LookUpByOpType(const std::string& op_type) const {
+  if (const auto it = op_type_to_entry_.find(op_type); it != op_type_to_entry_.end()) {
+    return it->second;
+  }
+  return nullptr;
+}
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
+SelectorActionTransformer::SelectorActionTransformer(const std::string& name,
+                                                     SelectorActionRegistry&& selector_action_registry,
+                                                     const SatApplyContextVariant& apply_context)
+    : GraphTransformer{name},
+      selector_action_registry_{std::move(selector_action_registry)},
+      apply_context_{apply_context} {}
+
+#if !defined(ORT_MINIMAL_BUILD)
+
+// check if the node matches any of the registered operators.
+// if it does, run the Selector.
+// if that selects nodes, run or save the Action.
+//
+// Some part of the MatchAndProcess use a GraphViewer of the given graph,
+// we choose to supply both the graph and the graph_viewer to avoid expensive
+// and repeatedly construction of the graph_viewer.
+// NOTE, the graph must be the same as the graph_viewer's underlying graph
+static Status MatchAndProcess(
+    Graph& graph, const GraphViewer& graph_viewer, Node& node, bool& modified, const logging::Logger& logger,
+    const std::string& transformer_name,
+    const SelectorActionRegistry& selector_action_registry,
+    const SatRuntimeOptimizationSaveContext* save_context) {
   Status status = Status::OK();
+
   do {
     // TODO: for now this just needs to support ONNX ops. If we ever had a transformer that was going to
     // target non-ONNX ops we'd need to rework a few things to include the op domain in the matches
@@ -62,22 +93,21 @@ Status SelectorActionTransformer::MatchAndProcess(Graph& graph, const GraphViewe
       break;
     }
 
-    auto op_rule = op_type_to_selector_and_action_.find(node.OpType());
-    if (op_rule == op_type_to_selector_and_action_.cend()) {
+    const auto* selector_action_entry = selector_action_registry.LookUpByOpType(node.OpType());
+
+    if (!selector_action_entry) {
       break;
     }
 
-    const auto& selector_and_action = *op_rule->second;
-
     // check the supported versions if specified
-    const auto& versions = selector_and_action.ops_and_versions.find(node.OpType())->second;
+    const auto& versions = selector_action_entry->ops_and_versions.find(node.OpType())->second;
     if (!versions.empty()) {
       if (std::find(versions.cbegin(), versions.cend(), node.SinceVersion()) == versions.cend()) {
         break;
       }
     }
 
-    const auto node_selection_opt = selector_and_action.selector->Select(graph_viewer, node);
+    const auto node_selection_opt = selector_action_entry->selector->Select(graph_viewer, node);
     if (!node_selection_opt.has_value()) {
       break;
     }
@@ -85,31 +115,30 @@ Status SelectorActionTransformer::MatchAndProcess(Graph& graph, const GraphViewe
 
     LOGS(logger, VERBOSE) << "Matched " << node.OpType();
 
+    const auto& action = *selector_action_entry->action;
     NodesToOptimize node_group(graph, node_selection);
 
-    if (runtime_optimization_save_context_.has_value()) {
-#if defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
-      const auto& action = *selector_and_action.action;
+    if (save_context) {
+      // don't save a runtime optimization again if it already exists
+      // this might happen if the transformer is run multiple times, e.g., from a graph transformer manager which may
+      //   run its transformers in multiple passes
+      if (graph.RuntimeOptimizations().RecordExists(transformer_name, selector_action_entry->name, node_selection)) {
+        break;
+      }
 
       Action::SavedState action_saved_state{};
-      status = action.RunForSave(graph, node_group, *runtime_optimization_save_context_, action_saved_state,
-                                 modified);
+      status = action.RunForSave(graph, node_group, *save_context, action_saved_state, modified);
       if (!status.IsOK()) {
         break;
       }
 
       graph.MutableRuntimeOptimizations().AddRecord(
-          Name(),
-          RuntimeOptimizationRecord{selector_and_action.name,
+          transformer_name,
+          RuntimeOptimizationRecord{selector_action_entry->name,
                                     node_selection,
                                     action_saved_state.produced_nodes});
-#else
-      status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                               "Saving runtime optimizations is not enabled in this build.");
-      break;
-#endif
     } else {
-      status = selector_and_action.action->Run(graph, node_group);
+      status = action.Run(graph, node_group);
       if (!status.IsOK()) {
         break;
       }
@@ -120,65 +149,11 @@ Status SelectorActionTransformer::MatchAndProcess(Graph& graph, const GraphViewe
 
   return status;
 }
-#else
-void SelectorsAndActions::RegisterAction(const std::string& name,
-                                         std::unique_ptr<Action> action) {
-  ORT_ENFORCE(actions_map_.find(name) == actions_map_.cend(), "Existing registration with name ", name);
 
-  ORT_IGNORE_RETURN_VALUE(actions_map_.emplace(name, std::move(action)));
-}
-
-// TODO: The implementation here is purely an example to give an idea of how it might be done.
-//
-// The optimization info would be most conveniently stored in the Graph instance under the transformer name
-// as that makes de/serialization to ORT format simple (done as part of Graph de/serialization)
-// as well as handling subgraphs (values are stored in the current graph, be that the main graph or the subgraph).
-struct ActionReplay {
-  const std::string action_name;
-  std::vector<NodesToOptimizeIndices> node_groups;
-};
-
-Status SelectorActionTransformer::ApplySaved(Graph& graph, bool& modified, const logging::Logger& /*logger*/) const {
-  auto fake_get_saved_actions = [](const std::string& /*transfomer_name*/) {
-    return std::vector<ActionReplay>();
-  };
-
-  // retrieve any actions saved by this transformer in the Graph
-  // TODO - setup infra for this to come from the Graph instance. could also have a 'clear all' method to free
-  // all the saved actions once we're done replaying them.
-  const std::vector<ActionReplay>& saved_actions = fake_get_saved_actions(Name());  // =  graph.GetSavedActions(Name());
-
-  const auto& actions_map = selectors_and_actions_.ActionsMap();
-  const auto actions_map_end = actions_map.cend();
-
-  for (const auto& entry : saved_actions) {
-    auto action_iter = actions_map.find(entry.action_name);
-    if (action_iter == actions_map_end) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Missing action ", entry.action_name, " for transformer ", Name());
-    }
-
-    const std::unique_ptr<Action>& action = action_iter->second;
-
-    for (const NodesToOptimizeIndices& node_group : entry.node_groups) {
-      NodesToOptimize nodes_to_optimize{graph, node_group};
-
-      // all nodes in the group are still available if IsValid returns true
-      if (nodes_to_optimize.IsValid()) {
-        ORT_RETURN_IF_ERROR(action->Run(graph, nodes_to_optimize));
-        modified = true;
-      }
-    }
-  }
-
-  return Status::OK();
-}
-
-#endif
-
-Status SelectorActionTransformer::ApplyImpl(Graph& graph, bool& modified, int graph_level,
-                                            const logging::Logger& logger) const {
-  // TODO: Is there any reason to create a new GraphViewer? Do we need the different topological sort or can we
-  // just use graph.GetNodesInTopologicalOrder() and avoid the overhead of re-sorting.
+Status SelectorActionTransformer::ApplySelectorsAndActions(
+    Graph& graph, bool& modified, int graph_level,
+    const logging::Logger& logger,
+    const SatRuntimeOptimizationSaveContext* save_context) const {
   GraphViewer graph_viewer(graph);
 
   for (auto index : graph_viewer.GetNodesInTopologicalOrder()) {
@@ -189,17 +164,118 @@ Status SelectorActionTransformer::ApplyImpl(Graph& graph, bool& modified, int gr
 
     ORT_RETURN_IF_ERROR(Recurse(*node, modified, graph_level, logger));
 
-#if !defined(ORT_MINIMAL_BUILD)
     // TODO: use GraphTransformer::GetCompatibleExecutionProviders if we need something more flexible
     if (node->GetExecutionProviderType() == kCpuExecutionProvider) {
-      ORT_RETURN_IF_ERROR(MatchAndProcess(graph, graph_viewer, *node, modified, logger));
+      ORT_RETURN_IF_ERROR(MatchAndProcess(graph, graph_viewer, *node, modified, logger,
+                                          Name(), selector_action_registry_, save_context));
     }
-#else
-    ORT_RETURN_IF_ERROR(ApplySaved(graph, modified, logger));
-#endif
   }
 
   return Status::OK();
+}
+
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_REPLAY_IN_MINIMAL_BUILD)
+
+static Status RegisterProducedNodesWithGraph(NodeIndex pre_action_max_num_nodes, NodeIndex post_action_max_num_nodes,
+                                             const RuntimeOptimizationRecord& record,
+                                             Graph& graph) {
+  assert(post_action_max_num_nodes >= pre_action_max_num_nodes);
+
+  const auto num_new_node_indices = post_action_max_num_nodes - pre_action_max_num_nodes;
+
+  auto produced_node_it = record.produced_nodes.begin();
+  const auto produced_nodes_end = record.produced_nodes.end();
+
+  std::unordered_map<NodeIndex, HashValue> node_index_to_kernel_def_hash{};
+
+  for (NodeIndex i = 0; i < num_new_node_indices; ++i) {
+    const NodeIndex new_node_idx = pre_action_max_num_nodes + i;
+    const auto* new_node = graph.GetNode(new_node_idx);
+
+    // only account for new nodes that still exist
+    // an action could add a temporary node and then remove it
+    if (!new_node) {
+      continue;
+    }
+
+    ORT_RETURN_IF(produced_node_it == produced_nodes_end,
+                  "Not enough produced nodes in the runtime optimization record.");
+
+    node_index_to_kernel_def_hash.emplace(new_node_idx, produced_node_it->kernel_def_hash);
+
+    ++produced_node_it;
+  }
+
+  ORT_RETURN_IF(produced_node_it != produced_nodes_end, "Too many produced nodes in the runtime optimization record.");
+
+  graph.MutableRuntimeOptimizationReplayCtx().produced_node_index_to_kernel_def_hash.merge(
+      node_index_to_kernel_def_hash);
+
+  return Status::OK();
+}
+
+Status SelectorActionTransformer::ApplySavedRuntimeOptimizations(
+    Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
+  for (auto& node : graph.Nodes()) {
+    ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level, logger));
+  }
+
+  const auto records = graph.MutableRuntimeOptimizations().RemoveRecordsForOptimizer(Name());
+  for (const auto& record : records) {
+    const auto* selector_action_entry = selector_action_registry_.LookUp(record.action_id);
+    if (!selector_action_entry) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Missing action ", record.action_id, " for transformer ", Name());
+    }
+
+    NodesToOptimize nodes_to_optimize{graph, record.nodes_to_optimize_indices};
+
+    if (!nodes_to_optimize.IsValid()) {
+      continue;
+    }
+
+    // all nodes in the group are still available if IsValid returns true
+
+    const NodeIndex pre_action_max_index = graph.MaxNodeIndex();
+
+    ORT_RETURN_IF_ERROR(selector_action_entry->action->Run(graph, nodes_to_optimize));
+    modified = true;
+
+    const NodeIndex post_action_max_index = graph.MaxNodeIndex();
+
+    ORT_RETURN_IF_ERROR(RegisterProducedNodesWithGraph(pre_action_max_index, post_action_max_index,
+                                                       record, graph));
+
+    ++graph.MutableRuntimeOptimizationReplayCtx().num_replayed_optimizations;
+  }
+
+  return Status::OK();
+}
+
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_REPLAY_IN_MINIMAL_BUILD)
+
+Status SelectorActionTransformer::ApplyImpl(Graph& graph, bool& modified, int graph_level,
+                                            const logging::Logger& logger) const {
+  if (std::holds_alternative<SatRuntimeOptimizationLoadContext>(apply_context_)) {
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_REPLAY_IN_MINIMAL_BUILD)
+    return ApplySavedRuntimeOptimizations(graph, modified, graph_level, logger);
+#else   // !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_REPLAY_IN_MINIMAL_BUILD)
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                           "Loading runtime optimizations is not enabled in this build.");
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_REPLAY_IN_MINIMAL_BUILD)
+  }
+
+  assert(std::holds_alternative<SatRuntimeOptimizationSaveContext>(apply_context_) ||
+         std::holds_alternative<SatDirectApplicationContext>(apply_context_));
+
+#if !defined(ORT_MINIMAL_BUILD)
+  const auto* save_context = std::get_if<SatRuntimeOptimizationSaveContext>(&apply_context_);
+  return ApplySelectorsAndActions(graph, modified, graph_level, logger, save_context);
+#else   // !defined(ORT_MINIMAL_BUILD)
+  return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                         "Running both selectors and actions is not enabled in this build.");
+#endif  // !defined(ORT_MINIMAL_BUILD)
 }
 
 }  // namespace onnxruntime

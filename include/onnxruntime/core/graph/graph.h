@@ -10,6 +10,12 @@
 #include <unordered_map>
 #include <unordered_set>
 
+#ifdef _WIN32
+#pragma warning(push)
+// disable some warnings from protobuf to pass Windows build
+#pragma warning(disable : 4244)
+#endif
+
 #if !defined(ORT_MINIMAL_BUILD)
 #include "onnx/defs/schema.h"
 #else
@@ -17,6 +23,10 @@
 #endif
 #include "onnx/onnx_pb.h"
 #include "onnx/onnx-operators_pb.h"
+
+#ifdef _WIN32
+#pragma warning(pop)
+#endif
 
 #include "gsl/gsl"
 
@@ -43,7 +53,7 @@ struct IndexedSubGraph;
 class Model;
 class OpSignature;
 
-#if defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_REPLAY_IN_MINIMAL_BUILD)
 class RuntimeOptimizationRecordContainer;
 #endif
 
@@ -778,7 +788,9 @@ class Graph {
     return ConstGraphNodes(nodes_, std::move(filter_func));
   }
 
-  /** Gets the maximum NodeIndex value used in the Graph. */
+  /** Gets the maximum NodeIndex value used in the Graph.
+  WARNING: This actually returns the max index value used + 1.
+  */
   int MaxNodeIndex() const noexcept { return static_cast<int>(nodes_.size()); }  //assume the casting won't overflow
 
   /** Gets the number of valid Nodes in the Graph.
@@ -977,7 +989,7 @@ class Graph {
   @remarks As a new Graph instance for the fused nodes is not created, a GraphViewer can be constructed with the
            IndexedSubGraph information to provide a view of the subgraph. The original nodes are left in place
            while this is in use.
-                   Call FinalizeFuseSubGraph to remove them once the fused replacement node is fully created.
+           Call FinalizeFuseSubGraph to remove them once the fused replacement node is fully created.
   */
   Node& BeginFuseSubGraph(const IndexedSubGraph& sub_graph, const std::string& fused_node_name);
 
@@ -1189,7 +1201,7 @@ class Graph {
                                   Graph& parent_graph, const Node& parent_node,
                                   const logging::Logger& logger, std::unique_ptr<Graph>& graph);
 
-#if defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_REPLAY_IN_MINIMAL_BUILD)
   const RuntimeOptimizationRecordContainer& RuntimeOptimizations() const {
     return runtime_optimizations_;
   }
@@ -1197,7 +1209,21 @@ class Graph {
   RuntimeOptimizationRecordContainer& MutableRuntimeOptimizations() {
     return runtime_optimizations_;
   }
-#endif
+
+  // Stores information collected during the replay of loaded runtime optimizations
+  struct RuntimeOptimizationReplayContext {
+    std::unordered_map<NodeIndex, HashValue> produced_node_index_to_kernel_def_hash{};
+    size_t num_replayed_optimizations{};
+  };
+
+  const RuntimeOptimizationReplayContext& RuntimeOptimizationReplayCtx() const {
+    return runtime_optimization_replay_context_;
+  }
+
+  RuntimeOptimizationReplayContext& MutableRuntimeOptimizationReplayCtx() {
+    return runtime_optimization_replay_context_;
+  }
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_REPLAY_IN_MINIMAL_BUILD)
 
   // This friendship relationship should only be used to call Graph::Graph and
   // Graph::LoadGraph All other access should be via the public API.
@@ -1414,11 +1440,13 @@ class Graph {
                      std::hash<std::string>, std::equal_to<std::string>>
       sparse_tensor_names_;
 
-#if defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_REPLAY_IN_MINIMAL_BUILD)
   // Runtime optimization storage.
   // Note: runtime_optimizations_ == *runtime_optimizations_ptr_ and must be initialized
   std::unique_ptr<RuntimeOptimizationRecordContainer> runtime_optimizations_ptr_;
   RuntimeOptimizationRecordContainer& runtime_optimizations_;
+
+  RuntimeOptimizationReplayContext runtime_optimization_replay_context_;
 #endif
 
 #if !defined(ORT_MINIMAL_BUILD)
