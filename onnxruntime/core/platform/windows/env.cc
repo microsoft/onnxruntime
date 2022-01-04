@@ -558,7 +558,6 @@ class WindowsEnv : public Env {
       oss << L"LoadLibrary failed with error " << error_code << L" \"" << (LPWSTR)lpMsgBuf << L"\" when trying to load \"" << wlibrary_filename << L"\"";
       std::wstring errmsg = oss.str();
       // TODO: trim the ending '\r' and/or '\n'
-      // TODO: don't call LocalFree
       common::Status status(common::ONNXRUNTIME, common::FAIL, ToMBString(errmsg));
       LocalFree(lpMsgBuf);
       return status;
@@ -592,7 +591,6 @@ class WindowsEnv : public Env {
       oss << L"Failed to find symbol " << ToWideString(symbol_name) << L" in library, error code: " << error_code << L" \"" << (LPWSTR)lpMsgBuf << L"\"";
       std::wstring errmsg = oss.str();
       // TODO: trim the ending '\r' and/or '\n'
-      // TODO: don't call LocalFree
       common::Status status(common::ONNXRUNTIME, common::FAIL, ToMBString(errmsg));
       LocalFree(lpMsgBuf);
       return status;
