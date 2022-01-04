@@ -182,9 +182,9 @@ CMD ["/bin/bash"]
 
 #Build manylinux2014 docker image end
 
-#Install TensorRT 8.2.1.8
+#Install TensorRT 8.2.2.1
 #RUN yum install -y wget
-RUN v="8.2.1-1.cuda11.4" &&\
+RUN v="8.2.2-1.cuda11.4" &&\
     yum-config-manager --add-repo https://developer.download.nvidia.com/compute/cuda/repos/rhel7/x86_64/cuda-rhel7.repo &&\
     yum -y install libnvinfer8-${v} libnvparsers8-${v} libnvonnxparsers8-${v} libnvinfer-plugin8-${v} \
         libnvinfer-devel-${v} libnvparsers-devel-${v} libnvonnxparsers-devel-${v} libnvinfer-plugin-devel-${v}
