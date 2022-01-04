@@ -89,7 +89,7 @@ OrtValue create_ort_value(
     {},
     &ort_val);
   auto* ort_tensor = ort_val.GetMutable<onnxruntime::Tensor>();
-  CopyVectorToTensor<float>(invoker, {val}, *ort_tensor);
+  CopyVectorToTensor<float>(invoker, &val, 1, *ort_tensor);
   return ort_val;
 }
 
@@ -369,7 +369,8 @@ at::Tensor& zero_(at::Tensor& self){
   CreateMLValue(invoker.GetCurrentExecutionProvider().GetAllocator(0, OrtMemTypeDefault),
                 element_type, {}, &flag_val);
   auto* ort_flag_tensor = flag_val.GetMutable<onnxruntime::Tensor>();
-  CopyVectorToTensor<int64_t>(invoker, {1}, *ort_flag_tensor);
+  int64_t one = 1;
+  CopyVectorToTensor<int64_t>(invoker, &one, 1, *ort_flag_tensor);
 
   std::vector<OrtValue> ort_out = {ort_in_self};
   
