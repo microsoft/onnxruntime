@@ -15,20 +15,14 @@ jobs:
           sudo apt-get install libclang-cpp9
           wget https://www.doxygen.nl/files/doxygen-1.9.2.linux.bin.tar.gz
           tar xvzf doxygen-1.9.2.linux.bin.tar.gz
-      - name: Set vars
+      - name: Set commit ID
         id: vars
         run: echo "::set-output name=sha_short::$(git rev-parse --short HEAD)"
-      - name: Check outputs
-        run: echo ${{ steps.vars.outputs.sha_short }}
       - name: Run doxygen
         run: |
           mkdir -p build/doxygen
           cd docs/c_cxx
           ../../doxygen-1.9.2/bin/doxygen
-      - name: Clean up
-        run:
-          rm -rf doxygen-1.9.2
-          rm doxygen-1.9.2.linux.bin.tar.gz
       - uses: actions/checkout@v2
         with:
           ref: gh-pages
