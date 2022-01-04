@@ -1760,7 +1760,7 @@ TEST(QDQTransformerTests, QDQ_Selector_Test) {
   }
 }
 
-TEST(QDQTransformerTests, QDQ_GetSelectors_Test) {
+TEST(QDQTransformerTests, QDQ_Shared_GetSelectors_Test) {
   const ORTCHAR_T* model_file_name = ORT_TSTR("testdata/qdq_conv_model_basic.onnx");
 
   SessionOptions so;
@@ -1781,7 +1781,7 @@ TEST(QDQTransformerTests, QDQ_GetSelectors_Test) {
   selector_mgr.CreateSelectors();
   selector_mgr.InitializeSelectorsMap();
 
-  // Check if selectormanager get QDQ::ConvSelector
+  // Check if SelectorManager get convselector as expected
   {
     const auto result = selector_mgr.GetQDQSelectors(graph_viewer);
     ASSERT_EQ(1, result.size());
@@ -1790,7 +1790,7 @@ TEST(QDQTransformerTests, QDQ_GetSelectors_Test) {
     const auto* node = it->first;
     ASSERT_EQ("Conv", node->OpType());
 
-    // check if selector returned can get the expected qdq group selection
+    // check if the selector obtained can get the expected qdq group selection
     const auto node_selection = it->second->GetQDQSelection(graph_viewer, *node);
     ASSERT_TRUE(node_selection.has_value());
     const auto& qdq_group = *node_selection;
