@@ -138,7 +138,7 @@ namespace Microsoft.ML.OnnxRuntime
         #region Constructor
 
         /// <summary>
-        /// Constructs an empty OrtCUDAProviderOptions instance
+        /// Constructs an empty OrtCUDAroviderOptions instance
         /// </summary>
         public OrtCUDAProviderOptions() : base(IntPtr.Zero, true)
         {
