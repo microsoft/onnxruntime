@@ -355,7 +355,6 @@ class alignas(CACHE_LINE_BYTES) LoopCounter {
   }
 
   alignas(CACHE_LINE_BYTES) LoopCounterShard _shards[MAX_SHARDS];
-  //const uint64_t _block_size;
   const unsigned _num_shards;
 };
 
