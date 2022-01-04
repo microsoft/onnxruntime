@@ -92,8 +92,8 @@ TEST(LoggingTests, TestCErrSink) {
 #endif
   ofs << std::unitbuf;  // turn off buffering so we replicate how std::cerr behaves.
 
-  auto old_rdbuf = ONNXRUNTIME_CLOG_STREAM.rdbuf();
-  ONNXRUNTIME_CLOG_STREAM.rdbuf(ofs.rdbuf());
+  auto old_rdbuf = ONNXRUNTIME_CERR_STREAM.rdbuf();
+  ONNXRUNTIME_CERR_STREAM.rdbuf(ofs.rdbuf());
 
   // create scoped manager so sink gets destroyed once done
   {
@@ -109,7 +109,7 @@ TEST(LoggingTests, TestCErrSink) {
   CheckStringInFile(filename, message);
 
   // revert redirection
-  ONNXRUNTIME_CLOG_STREAM.rdbuf(old_rdbuf);
+  ONNXRUNTIME_CERR_STREAM.rdbuf(old_rdbuf);
   ofs.close();
 
   DeleteFile(filename);
