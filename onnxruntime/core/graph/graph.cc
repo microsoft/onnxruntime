@@ -2483,7 +2483,7 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
   ctx.set_opset_imports(DomainToVersionMap());
   ctx.set_schema_registry(schema_registry_.get());
   // Set the parent directory of model path to load external tensors if exist
-  ctx.set_model_dir(ToMBString(ModelPath().ParentPath().ToPathString()));
+  ctx.set_model_dir(ToUTF8String(ModelPath().ParentPath().ToPathString()));
 
   LexicalScopeContext lsc;
   lsc.output_names.insert(resolve_context_.inputs_and_initializers.cbegin(),

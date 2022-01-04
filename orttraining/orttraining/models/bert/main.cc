@@ -874,7 +874,7 @@ int main(int argc, char* argv[]) {
   if (!params.convergence_test_output_file.empty()) {
     std::ofstream output_file(params.convergence_test_output_file);
     LOGS_DEFAULT_IF(!output_file, WARNING)
-        << "Failed to open convergence test output file: " << ToMBString(params.convergence_test_output_file);
+        << "Failed to open convergence test output file: " << ToUTF8String(params.convergence_test_output_file);
     output_file << ConvergenceTestDataRecord::GetCsvHeaderLine();
   }
 

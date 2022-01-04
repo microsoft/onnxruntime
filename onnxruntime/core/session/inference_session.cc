@@ -678,7 +678,7 @@ common::Status InferenceSession::Load(const std::basic_string<T>& model_uri) {
   common::Status st = Load(loader, "model_loading_uri");
   if (!st.IsOK()) {
     std::ostringstream oss;
-    oss << "Load model from " << ToMBString(model_uri) << " failed:" << st.ErrorMessage();
+    oss << "Load model from " << ToUTF8String(model_uri) << " failed:" << st.ErrorMessage();
     return common::Status(st.Category(), st.Code(), oss.str());
   }
   return Status::OK();
@@ -957,7 +957,7 @@ static Status LoadOrtModelBytes(const std::basic_string<T>& model_uri,
 
   if (!bytes_stream) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                           "Load model from ", ToMBString(model_uri), " failed. Only ",
+                           "Load model from ", ToUTF8String(model_uri), " failed. Only ",
                            bytes_stream.gcount(), "/", num_bytes, " bytes were able to be read.");
   }
 

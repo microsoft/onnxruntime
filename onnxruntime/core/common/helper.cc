@@ -18,7 +18,7 @@
 
 namespace onnxruntime {
 #ifdef _WIN32
-std::string ToMBString(const std::wstring& s) {
+std::string ToUTF8String(const std::wstring& s) {
   if (s.size() >= static_cast<size_t>(std::numeric_limits<int>::max()))
     ORT_THROW("length overflow");
 
