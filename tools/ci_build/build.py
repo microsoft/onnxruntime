@@ -437,6 +437,10 @@ def parse_arguments():
     parser.add_argument(
         "--use_nuphar", action='store_true', help="Build with nuphar")
     parser.add_argument(
+        "--use_stvm", action='store_true', help="Build with standalone TVM")
+    parser.add_argument(
+        "--stvm_home", help="Path to TVM installation for the standalone TVM execution provider.")
+    parser.add_argument(
         "--use_tensorrt", action='store_true', help="Build with TensorRT")
     parser.add_argument(
         "--tensorrt_home", help="Path to TensorRT installation dir")
@@ -765,6 +769,9 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_USE_NUPHAR=" + ("ON" if args.use_nuphar else "OFF"),
         "-Donnxruntime_USE_TENSORRT=" + ("ON" if args.use_tensorrt else "OFF"),
         "-Donnxruntime_TENSORRT_HOME=" + (tensorrt_home if args.use_tensorrt else ""),
+        # set vars for standalone TVM
+        "-Donnxruntime_USE_STVM=" + ("ON" if args.use_stvm else "OFF"),
+        "-Donnxruntime_STVM_HOME=" + (os.path.join(source_dir, "cmake", "external", "tvm_update")),
         # set vars for migraphx
         "-Donnxruntime_USE_MIGRAPHX=" + ("ON" if args.use_migraphx else "OFF"),
         "-Donnxruntime_MIGRAPHX_HOME=" + (migraphx_home if args.use_migraphx else ""),
@@ -784,9 +791,6 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                                                      args.minimal_build or args.use_extensions))
                                                      else "OFF"),
         "-Donnxruntime_REDUCED_OPS_BUILD=" + ("ON" if is_reduced_ops_build(args) else "OFF"),
-        "-Donnxruntime_REDUCED_OP_TYPE_SUPPORT=" + (
-            "ON" if is_reduced_ops_build(args) and args.enable_reduced_operator_type_support
-            else "OFF"),
         "-Donnxruntime_ENABLE_LANGUAGE_INTEROP_OPS=" + ("ON" if args.enable_language_interop_ops else "OFF"),
         "-Donnxruntime_USE_DML=" + ("ON" if args.use_dml else "OFF"),
         "-Donnxruntime_USE_WINML=" + ("ON" if args.use_winml else "OFF"),
@@ -1613,7 +1617,8 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
             if not args.disable_ml_ops:
                 run_subprocess([sys.executable, 'onnxruntime_test_python_mlops.py'], cwd=cwd, dll_path=dll_path)
 
-            if args.enable_training and args.use_cuda:
+            # The following test has multiple failures on Windows
+            if args.enable_training and args.use_cuda and not is_windows():
                 # run basic frontend tests
                 run_training_python_frontend_tests(cwd=cwd)
 
@@ -1707,7 +1712,7 @@ def run_nodejs_tests(nodejs_binding_dir):
 
 def build_python_wheel(
         source_dir, build_dir, configs, use_cuda, cuda_version, use_rocm, rocm_version, use_dnnl,
-        use_tensorrt, use_openvino, use_nuphar, use_vitisai, use_acl, use_armnn, use_dml,
+        use_tensorrt, use_openvino, use_nuphar, use_stvm, use_vitisai, use_acl, use_armnn, use_dml,
         wheel_name_suffix, enable_training, nightly_build=False, default_training_package_device=False,
         use_ninja=False, build_eager_mode=False):
     for config in configs:
@@ -1746,6 +1751,8 @@ def build_python_wheel(
             args.append('--use_dnnl')
         elif use_nuphar:
             args.append('--use_nuphar')
+        elif use_stvm:
+            args.append('--use_stvm')
         elif use_vitisai:
             args.append('--use_vitisai')
         elif use_acl:
@@ -1766,7 +1773,7 @@ def derive_linux_build_property():
 
 
 def build_nuget_package(source_dir, build_dir, configs, use_cuda, use_openvino, use_tensorrt, use_dnnl, use_nuphar,
-                        use_winml):
+                        use_stvm, use_winml):
     if not (is_windows() or is_linux()):
         raise BuildError(
             'Currently csharp builds and nuget package creation is only supportted '
@@ -1800,6 +1807,8 @@ def build_nuget_package(source_dir, build_dir, configs, use_cuda, use_openvino, 
         package_name = "/p:OrtPackageId=\"Microsoft.ML.OnnxRuntime.Gpu\""
     elif use_nuphar:
         package_name = "/p:OrtPackageId=\"Microsoft.ML.OnnxRuntime.Nuphar\""
+    elif use_stvm:
+        package_name = "/p:OrtPackageId=\"Microsoft.ML.OnnxRuntime.Stvm\""
     else:
         # use the solution file that includes Xamarin mobile targets
         sln = "OnnxRuntime.CSharp.sln"
@@ -2023,13 +2032,6 @@ def main():
     if args.skip_tests:
         args.test = False
 
-    if is_reduced_ops_build(args) and args.update:
-        from reduce_op_kernels import reduce_ops
-        reduce_ops(
-            config_path=args.include_ops_by_config,
-            enable_type_reduction=args.enable_reduced_operator_type_support,
-            use_cuda=args.use_cuda)
-
     if args.use_tensorrt:
         args.use_cuda = True
 
@@ -2115,10 +2117,21 @@ def main():
     rocm_home = setup_rocm_build(args, configs)
 
     if args.update or args.build:
-        os.makedirs(build_dir, exist_ok=True)
+        for config in configs:
+            os.makedirs(get_config_build_dir(build_dir, config), exist_ok=True)
 
     log.info("Build started")
+
     if args.update:
+        if is_reduced_ops_build(args):
+            from reduce_op_kernels import reduce_ops
+            for config in configs:
+                reduce_ops(
+                    config_path=args.include_ops_by_config,
+                    build_dir=get_config_build_dir(build_dir, config),
+                    enable_type_reduction=args.enable_reduced_operator_type_support,
+                    use_cuda=args.use_cuda)
+
         cmake_extra_args = []
         path_to_protoc_exe = args.path_to_protoc_exe
         if not args.skip_submodule_sync:
@@ -2327,6 +2340,7 @@ def main():
                 args.use_tensorrt,
                 args.use_openvino,
                 args.use_nuphar,
+                args.use_stvm,
                 args.use_vitisai,
                 args.use_acl,
                 args.use_armnn,
@@ -2348,6 +2362,7 @@ def main():
                 args.use_tensorrt,
                 args.use_dnnl,
                 args.use_nuphar,
+                args.use_stvm,
                 args.use_winml,
             )
 

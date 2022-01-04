@@ -191,34 +191,31 @@ bool DnnlBatchNormalizationNodeCapability::IsDimensionSupported(const Node* node
   return true;
 }
 
-// DnnlReduceMeanNodeCapability class
+// DnnlReduceNodeCapability class
 //-------------------------------------
-bool DnnlReduceMeanNodeCapability::Supported(const Node* node, const GraphViewer& graph_viewer) const {
-  ORT_UNUSED_PARAMETER(graph_viewer);
+bool DnnlReduceNodeCapability::Supported(const Node* node, const GraphViewer& graph_viewer) const {
+  // These reduction operators use elementwise ops so elementwise operators must also be supported.
+  if(node->OpType() == "ReduceLogSum" ||
+     node->OpType() == "ReduceLogSumExp" ||
+     node->OpType() == "ReduceSumSquare") {
+      if(!_eltwise.Supported(node, graph_viewer)) return false;
+  }
   if (!IsTypeSupported(node)) return false;
-  if (!IsAttributeSupported(node)) return false;
   if (!IsDimensionSupported(node)) return false;
   return true;
 }
 
-bool DnnlReduceMeanNodeCapability::IsAttributeSupported(const Node* node) const {
-  const NodeAttributes& attributes = node->GetAttributes();
-  auto attr = attributes.find("keepdims");
-  if (attr != attributes.end() && attr->second().i() == 0) {
-    return false;
-  }
-  return true;
-}
-
-bool DnnlReduceMeanNodeCapability::IsDimensionSupported(const Node* node) const {
+bool DnnlReduceNodeCapability::IsDimensionSupported(const Node* node) const {
   auto node_inputs = node->InputDefs();
   if (node_inputs[0]->Shape() != nullptr && node_inputs[0]->Shape()->dim_size() == 0) {
+    LOGS_DEFAULT(INFO) << "Reduction op not supported because input data is a scalar\n";
     return false;
   }
   return true;
 }
 
 // DnnlSoftmaxNodeCapability class
+//-------------------------------------
 bool DnnlSoftmaxNodeCapability::Supported(const Node* node, const GraphViewer& graph_viewer) const {
   ORT_UNUSED_PARAMETER(graph_viewer);
   if (!IsTypeSupported(node)) return false;

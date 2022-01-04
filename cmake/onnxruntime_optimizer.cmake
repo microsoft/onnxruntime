@@ -11,10 +11,10 @@ if (onnxruntime_MINIMAL_BUILD)
     "${ONNXRUNTIME_ROOT}/core/optimizer/graph_transformer.cc"
   )
 
-  if (onnxruntime_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
+  if (onnxruntime_ENABLE_RUNTIME_OPTIMIZATION_REPLAY_IN_MINIMAL_BUILD)
     list(APPEND onnxruntime_optimizer_src_patterns
-      "${ONNXRUNTIME_ROOT}/core/optimizer/ort_format_runtime_optimization/utils.h"
-      "${ONNXRUNTIME_ROOT}/core/optimizer/ort_format_runtime_optimization/utils.cc"
+      "${ONNXRUNTIME_INCLUDE_DIR}/core/optimizer/graph_transformer_utils.h"
+      "${ONNXRUNTIME_ROOT}/core/optimizer/graph_transformer_utils.cc"
       "${ONNXRUNTIME_ROOT}/core/optimizer/qdq_transformer/qdq_util.h"
       "${ONNXRUNTIME_ROOT}/core/optimizer/qdq_transformer/qdq_util.cc"
       "${ONNXRUNTIME_ROOT}/core/optimizer/qdq_transformer/selectors_actions/*.h"
@@ -37,13 +37,6 @@ else()
     "${ONNXRUNTIME_ROOT}/core/optimizer/transpose_optimizer/*.h"
     "${ONNXRUNTIME_ROOT}/core/optimizer/transpose_optimizer/*.cc"
   )
-
-  if (onnxruntime_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
-    list(APPEND onnxruntime_optimizer_src_patterns
-      "${ONNXRUNTIME_ROOT}/core/optimizer/ort_format_runtime_optimization/utils.h"
-      "${ONNXRUNTIME_ROOT}/core/optimizer/ort_format_runtime_optimization/utils.cc"
-    )
-  endif()
 endif()
 
 if (onnxruntime_ENABLE_TRAINING)

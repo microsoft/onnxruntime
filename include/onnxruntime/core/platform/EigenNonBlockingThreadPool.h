@@ -786,7 +786,7 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
 // unique_ptr.  The explicit deleter avoids the Eigen-specific
 // definition of ThreadPoolParallelSection needing to be avilable in
 // threadpool.h where the user-facing parallel section API is defined.
-
+GSL_SUPPRESS(r.11)
 std::unique_ptr<ThreadPoolParallelSection, void(*)(ThreadPoolParallelSection*)> AllocateParallelSection() override {
   return std::unique_ptr<ThreadPoolParallelSection, void(*)(ThreadPoolParallelSection*)>
     (new ThreadPoolParallelSection,

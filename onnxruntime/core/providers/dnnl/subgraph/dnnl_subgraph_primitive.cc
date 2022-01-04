@@ -16,7 +16,7 @@
 #include "dnnl_pool.h"
 #include "dnnl_pow.h"
 #include "dnnl_qattention.h"
-#include "dnnl_reducemean.h"
+#include "dnnl_reduce.h"
 #include "dnnl_reshape.h"
 #include "dnnl_softmax.h"
 #include "dnnl_softmaxgrad.h"
@@ -126,6 +126,7 @@ void DnnlSubgraphPrimitive::AddKernels() {
   std::unordered_set<std::string> binary_ops = {"Add", "Div", "Mul", "Sub"};
   std::unordered_set<std::string> elementwise_ops = {"Abs", "Elu", "Exp", "LeakyRelu", "Log", "Relu", "Round", "Sigmoid", "Softplus", "Sqrt", "Tanh"};
   std::unordered_set<std::string> pool_ops = {"AveragePool", "GlobalAveragePool", "GlobalMaxPool", "MaxPool"};
+  std::unordered_set<std::string> reduce_ops = {"ReduceL1", "ReduceL2", "ReduceLogSum", "ReduceLogSumExp", "ReduceMax", "ReduceMean", "ReduceMin", "ReduceProd", "ReduceSum", "ReduceSumSquare"};
 
   auto indices = subgraph_->GetDnnlNodesInTopologicalOrder();
   for (auto index : indices) {
@@ -158,8 +159,8 @@ void DnnlSubgraphPrimitive::AddKernels() {
       DnnlPow().CreatePrimitive(*this, node);
     } else if (node.OpType() == "QAttention") {
       DnnlQAttention().CreatePrimitive(*this, node);
-    } else if (node.OpType() == "ReduceMean") {
-      DnnlReduceMean().CreatePrimitive(*this, node);
+    } else if (reduce_ops.count(node.OpType())) {
+      DnnlReduce().CreatePrimitive(*this, node);
     } else if (node.OpType() == "Reshape") {
       DnnlReshape().CreatePrimitive(*this, node);
     } else if (node.OpType() == "Softmax") {

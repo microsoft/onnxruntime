@@ -450,9 +450,9 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistry::RegisterOperatorKernel(
         constantCpuInputCapture,
         shapeInferrerCapture,
         defaultAttributesCapture
-        ](const onnxruntime::OpKernelInfo& info) -> onnxruntime::OpKernel*
+        ](onnxruntime::FuncManager&, const onnxruntime::OpKernelInfo& info, std::unique_ptr<onnxruntime::OpKernel>& out) -> onnxruntime::common::Status
         {
-            return new AbiOpKernel(
+            out = std::make_unique<AbiOpKernel>(
                     kernelFactoryCapture.Get(),
                     info,
                     requiresInputShapesAtCreation,
@@ -461,6 +461,7 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistry::RegisterOperatorKernel(
                     constantCpuInputCapture,
                     shapeInferrerCapture.Get(),
                     &defaultAttributesCapture);
+			return Status::OK();
         };
 
     onnxruntime::KernelCreateInfo create_info(builder.Build(), lotusKernelCreateFn);

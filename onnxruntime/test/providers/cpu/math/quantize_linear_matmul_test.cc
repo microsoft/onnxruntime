@@ -415,8 +415,8 @@ TEST(QuantizeLinearMatmulOpTest, PerColumn_ND_S8S8) {
 }
 
 /**
- * @brief Extend QLinearMatMul for verifying prepacking behavior 
-*/
+ * @brief Extend QLinearMatMul for verifying prepacking behavior
+ */
 struct PrePackTestOp {
   // TODO!! use template and macro to extract a common utility out of this
   //   for grey box kernel testing by extending kernel classes.
@@ -487,7 +487,7 @@ TEST(QuantizeLinearMatmulOpTest, QLinearMatMulPrePack) {
   std::vector<ONNX_NAMESPACE::OpSchema> schemas{PrePackTestOp::OpSchema()};
   Status status;
   ASSERT_TRUE((status = registry->RegisterOpSet(schemas, PrePackTestOp::OpDomain, 10, 11)).IsOK()) << status;
-  KernelCreateFn kernel_create_fn = [](const OpKernelInfo& info) { return new typename PrePackTestOp::QLinearMatMulPrePackT(info); };
+  KernelCreateFn kernel_create_fn = [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) { out = std::make_unique<typename PrePackTestOp::QLinearMatMulPrePackT>(info); return Status::OK(); };
   auto kernel_def = PrePackTestOp::KernelDef();
   ASSERT_TRUE((status = registry->RegisterCustomKernel(kernel_def, kernel_create_fn)).IsOK()) << status;
 
