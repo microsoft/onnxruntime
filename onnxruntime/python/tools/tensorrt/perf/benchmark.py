@@ -204,7 +204,7 @@ def get_trtexec_pid(df, python_pid):
 def get_max_memory(trtexec): 
     df = pd.read_csv(MEMORY_FILE)
     print(get_output(["nvidia-smi"]))
-    print(get_output(["ps", "aux"))
+    print(get_output(["ps", "aux"]))
     print(df.to_string())
     pid = df['pid'].iloc[0]
     if trtexec: 
