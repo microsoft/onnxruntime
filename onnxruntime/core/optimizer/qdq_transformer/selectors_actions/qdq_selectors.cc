@@ -114,8 +114,7 @@ bool UnarySelector::Check(const GraphViewer& graph_viewer, const Node& node,
   int32_t dt_input = dq_nodes[0]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
   int32_t dt_output = q_nodes[0]->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
 
-  return dt_input == dt_output &&
-         (int8_allowed_ || dt_input == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8);
+  return dt_input == dt_output;
 }
 
 bool BinarySelector::Check(const GraphViewer& graph_viewer,
@@ -173,8 +172,8 @@ bool ConvSelector::Check(const GraphViewer& graph_viewer,
     return false;
   }
 
-  if(dt_input == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8) {
-    if(!int8_allowed_ || dt_weight != dt_input) {
+  if (dt_input == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8) {
+    if (!int8_allowed_ || dt_weight != dt_input) {
       return false;
     }
   }
@@ -202,8 +201,8 @@ bool MatMulSelector::Check(const GraphViewer& graph_viewer,
   int32_t dt_input = dq_nodes[0]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
   int32_t dt_weight = dq_nodes[1]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
 
-  if(dt_input == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8) {
-    if(!int8_allowed_ || dt_weight != dt_input) {
+  if (dt_input == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8) {
+    if (!int8_allowed_ || dt_weight != dt_input) {
       return false;
     }
   }
