@@ -22,7 +22,7 @@ jobs:
   pool: 'Win-CPU-2021'
   variables:
     BuildConfig: 'RelWithDebInfo'
-    BuildCommand: '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_nodejs --enable_onnx_tests --enable_wcos --use_telemetry --cmake_generator "Visual Studio 16 2019" --enable_lto'
+    BuildCommand: '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_nodejs --enable_onnx_tests --use_telemetry --cmake_generator "Visual Studio 16 2019" --enable_lto'
     msbuildPlatform: x64
   steps:
   - checkout: self
