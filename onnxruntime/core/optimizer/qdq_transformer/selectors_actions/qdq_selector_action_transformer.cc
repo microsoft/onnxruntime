@@ -45,20 +45,20 @@ void DropQDQNodesRules(SelectorsAndActions& qdq_selectors_and_actions) {
 #endif
 }
 
-void UnaryOpQDQRules(SelectorsAndActions& qdq_selectors_and_actions, bool is_int8_allowed = false) {
+void UnaryOpQDQRules(SelectorsAndActions& qdq_selectors_and_actions) {
   // 3 nodes. DQ, target, Q
   // Replace with internal QLinear version of operator. Delete all original nodes.
   const std::string action_name{"1DQ"};
   std::unique_ptr<Action> action = std::make_unique<QDQ::UnaryReplaceWithQLinear>(kMSDomain);
 
 #if !defined(ORT_MINIMAL_BUILD)
-  std::unique_ptr<NodeSelector> selector = std::make_unique<QDQ::UnarySelector>(is_int8_allowed);
+  std::unique_ptr<NodeSelector> selector = std::make_unique<QDQ::UnarySelector>();
   qdq_selectors_and_actions.RegisterSelectorAndAction(action_name,
-                                                      SelectorAndAction::OpVersionsMap{{"AveragePool", {}}},
+                                                      SelectorAndAction::OpVersionsMap{{"AveragePool", {}},
+                                                                                       {"LeakyRelu", {}}},
                                                       std::move(selector),
                                                       std::move(action));
 #else
-  ORT_UNUSED_PARAMETER(is_int8_allowed);
   qdq_selectors_and_actions.RegisterAction(action_name, std::move(action));
 #endif
 }
@@ -148,7 +148,7 @@ SelectorsAndActions CreateSelectorsAndActions(bool is_int8_allowed) {
   SelectorsAndActions qdq_selectors_and_actions;
 
   DropQDQNodesRules(qdq_selectors_and_actions);
-  UnaryOpQDQRules(qdq_selectors_and_actions, is_int8_allowed);
+  UnaryOpQDQRules(qdq_selectors_and_actions);
   BinaryOpQDQRules(qdq_selectors_and_actions);
   VariadicOpQDQRules(qdq_selectors_and_actions);
   ConvQDQRules(qdq_selectors_and_actions, is_int8_allowed);

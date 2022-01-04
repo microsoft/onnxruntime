@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#if !defined(REDUCED_OPS_BUILD)  // may not work with excluded op kernel implementations
+
 #include "core/common/logging/logging.h"
 #include "core/framework/utils.h"
 #include "core/session/inference_session.h"
@@ -354,3 +356,5 @@ TEST(InternalTestingEP, TestOrtModelWithCompileFailure) {
 }
 }  // namespace test
 }  // namespace onnxruntime
+
+#endif  // !defined(REDUCED_OPS_BUILD)

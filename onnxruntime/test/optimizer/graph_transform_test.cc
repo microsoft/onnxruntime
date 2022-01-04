@@ -1178,6 +1178,76 @@ TEST_F(GraphTransformationTests, TransposeMatmulFusionWithPreservedTranspose) {
   ASSERT_FALSE(graph.GraphResolveNeeded());
 }
 
+TEST_F(GraphTransformationTests, TransposeMatmulTransBatchFusion) {
+  const std::vector<PathString> model_uris = {
+      MODEL_FOLDER "fusion/transpose_matmul_trans_batch_fusion1.onnx",
+      MODEL_FOLDER "fusion/transpose_matmul_trans_batch_fusion2.onnx",
+      MODEL_FOLDER "fusion/transpose_matmul_trans_batch_fusion3.onnx",
+  };
+  const std::vector<std::pair<int64_t, int64_t>> trans_batch_attrs = {
+      {1, 0},
+      {1, 1},
+      {1, 1},
+  };
+  size_t index = 0;
+  for (const auto& model_uri : model_uris) {
+    std::shared_ptr<Model> p_model;
+    ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+    Graph& graph = p_model->MainGraph();
+
+    onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+    ASSERT_STATUS_OK(graph_transformation_mgr.Register(
+        std::make_unique<MatmulTransposeFusion>(), TransformerLevel::Level1));
+    ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+    std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+    ASSERT_EQ(op_to_count["Transpose"], 0);
+    ASSERT_EQ(op_to_count["MatMul"], 0);
+    ASSERT_EQ(op_to_count["com.microsoft.FusedMatMul"], 1);
+    for (auto& node : graph.Nodes()) {
+      if (node.OpType() == "FusedMatMul") {
+        auto attrs = node.GetAttributes();
+        int64_t trans_batch_a = 0;
+        if (attrs.find("transBatchA") != attrs.end()) {
+          trans_batch_a = attrs.at("transBatchA").i();
+        }
+        int64_t trans_batch_b = 0;
+        if (attrs.find("transBatchB") != attrs.end()) {
+          trans_batch_b = attrs.at("transBatchB").i();
+        }
+        ASSERT_EQ(trans_batch_a, trans_batch_attrs[index].first);
+        ASSERT_EQ(trans_batch_b, trans_batch_attrs[index].second);
+        break;
+      }
+    }
+    ++index;
+  }
+}
+
+TEST_F(GraphTransformationTests, TransposeMatmulTransBatchNoFusion) {
+  const std::vector<PathString> model_uris = {
+      MODEL_FOLDER "fusion/transpose_matmul_trans_batch_fusion_invalid_case1.onnx",
+      MODEL_FOLDER "fusion/transpose_matmul_trans_batch_fusion_invalid_case2.onnx",
+      MODEL_FOLDER "fusion/transpose_matmul_trans_batch_fusion_invalid_case3.onnx",
+  };
+  for (const auto& model_uri : model_uris) {
+    std::shared_ptr<Model> p_model;
+    ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+    Graph& graph = p_model->MainGraph();
+    std::map<std::string, int> orig_op_to_count = CountOpsInGraph(graph);
+
+    onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+    ASSERT_STATUS_OK(graph_transformation_mgr.Register(
+        std::make_unique<MatmulTransposeFusion>(), TransformerLevel::Level1));
+    ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+    std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+    ASSERT_EQ(op_to_count["Transpose"], orig_op_to_count["Transpose"]);
+    ASSERT_EQ(op_to_count["MatMul"], orig_op_to_count["MatMul"]);
+    ASSERT_EQ(op_to_count["com.microsoft.FusedMatMul"], orig_op_to_count["com.microsoft.FusedMatMul"]);
+  }
+}
+
 TEST_F(GraphTransformationTests, Gemm_LeakyRelu_Fusion) {
   auto model_uri = MODEL_FOLDER "gemm_activation_fusion/gemm_activation_fusion.onnx";
 
