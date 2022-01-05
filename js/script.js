@@ -760,19 +760,19 @@ var validCombos = {
     "linux,Python,X64,DNNL": 
         "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-mkldnn' target='_blank'>here</a>",
 
-    "linux,Python,X64,STVM":
+    "linux,Python,X64,TVM":
         "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-stvm' target='_blank'>here</a>",
 
-    "linux,Python,X86,STVM":
+    "linux,Python,X86,TVM":
         "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-stvm' target='_blank'>here</a>",
 
-    "linux,Python,ARM32,STVM":
+    "linux,Python,ARM32,TVM":
         "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-stvm' target='_blank'>here</a>",
         
-    "linux,Python,ARM64,STVM":
+    "linux,Python,ARM64,TVM":
         "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-stvm' target='_blank'>here</a>",
         
-    "linux,Python,AMD,STVM":
+    "linux,Python,AMD,TVM":
         "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-stvm' target='_blank'>here</a>",
         
     "linux,C-API,X64,OpenVINO":
