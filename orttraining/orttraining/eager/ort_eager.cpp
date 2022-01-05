@@ -12,6 +12,7 @@
 #include "ort_customops.h"
 #include "torch/csrc/autograd/python_variable.h"
 #include "core/framework/tensor.h"
+#include <torch/csrc/jit/passes/onnx.h>
 
 namespace onnxruntime{
 namespace python{
@@ -59,6 +60,18 @@ at::Tensor OrtValue_To_ATen_Tensor(OrtValue& ortvalue)
 
 void addObjectMethodsForEager(py::module& m){
   ORT_LOG_INFO << "pybind11 module init";
+  
+  py::module_ sys = py::module_::import("sys");
+  py::print(sys.attr("path"));
+
+  // pybind11::function to_onnx =
+  //    pybind11::reinterpret_borrow<pybind11::function>(   // cast from 'object' to 'function - use `borrow` (copy) or `steal` (move)
+  //        pybind11::module::import("torch.onnx.utils").attr("_optimize_graph")  // import method "min_rosen" from python "module"
+  //    );
+  // std::shared_ptr<torch::jit::Graph> subgraph = std::make_shared<torch::jit::Graph>();
+  // auto result = to_onnx(subgraph, ::torch::onnx::OperatorExportTypes::ONNX);
+
+  // pybind11::print("ONNX graph:\n", *result);
 
   m.def(
     "device",
