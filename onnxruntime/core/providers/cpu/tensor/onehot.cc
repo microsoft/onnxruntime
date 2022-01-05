@@ -94,7 +94,7 @@ Status PrepareOutputShape(const Tensor* indices, const int64_t depth_val, const 
   output_shape = indices_shape.GetDimsAsVector();
 
   // output rank is always 1 more than the input rank as a new dimension is added to the input shape
-  const auto output_rank = static_cast<int64_t>(indices_num_dims + 1);
+  const auto output_rank = static_cast<int64_t>(indices_num_dims) + 1;
 
   auto true_axis = HandleNegativeAxis(axis, output_rank);
 

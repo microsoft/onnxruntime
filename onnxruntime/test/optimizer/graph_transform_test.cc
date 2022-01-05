@@ -1178,6 +1178,76 @@ TEST_F(GraphTransformationTests, TransposeMatmulFusionWithPreservedTranspose) {
   ASSERT_FALSE(graph.GraphResolveNeeded());
 }
 
+TEST_F(GraphTransformationTests, TransposeMatmulTransBatchFusion) {
+  const std::vector<PathString> model_uris = {
+      MODEL_FOLDER "fusion/transpose_matmul_trans_batch_fusion1.onnx",
+      MODEL_FOLDER "fusion/transpose_matmul_trans_batch_fusion2.onnx",
+      MODEL_FOLDER "fusion/transpose_matmul_trans_batch_fusion3.onnx",
+  };
+  const std::vector<std::pair<int64_t, int64_t>> trans_batch_attrs = {
+      {1, 0},
+      {1, 1},
+      {1, 1},
+  };
+  size_t index = 0;
+  for (const auto& model_uri : model_uris) {
+    std::shared_ptr<Model> p_model;
+    ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+    Graph& graph = p_model->MainGraph();
+
+    onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+    ASSERT_STATUS_OK(graph_transformation_mgr.Register(
+        std::make_unique<MatmulTransposeFusion>(), TransformerLevel::Level1));
+    ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+    std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+    ASSERT_EQ(op_to_count["Transpose"], 0);
+    ASSERT_EQ(op_to_count["MatMul"], 0);
+    ASSERT_EQ(op_to_count["com.microsoft.FusedMatMul"], 1);
+    for (auto& node : graph.Nodes()) {
+      if (node.OpType() == "FusedMatMul") {
+        auto attrs = node.GetAttributes();
+        int64_t trans_batch_a = 0;
+        if (attrs.find("transBatchA") != attrs.end()) {
+          trans_batch_a = attrs.at("transBatchA").i();
+        }
+        int64_t trans_batch_b = 0;
+        if (attrs.find("transBatchB") != attrs.end()) {
+          trans_batch_b = attrs.at("transBatchB").i();
+        }
+        ASSERT_EQ(trans_batch_a, trans_batch_attrs[index].first);
+        ASSERT_EQ(trans_batch_b, trans_batch_attrs[index].second);
+        break;
+      }
+    }
+    ++index;
+  }
+}
+
+TEST_F(GraphTransformationTests, TransposeMatmulTransBatchNoFusion) {
+  const std::vector<PathString> model_uris = {
+      MODEL_FOLDER "fusion/transpose_matmul_trans_batch_fusion_invalid_case1.onnx",
+      MODEL_FOLDER "fusion/transpose_matmul_trans_batch_fusion_invalid_case2.onnx",
+      MODEL_FOLDER "fusion/transpose_matmul_trans_batch_fusion_invalid_case3.onnx",
+  };
+  for (const auto& model_uri : model_uris) {
+    std::shared_ptr<Model> p_model;
+    ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+    Graph& graph = p_model->MainGraph();
+    std::map<std::string, int> orig_op_to_count = CountOpsInGraph(graph);
+
+    onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+    ASSERT_STATUS_OK(graph_transformation_mgr.Register(
+        std::make_unique<MatmulTransposeFusion>(), TransformerLevel::Level1));
+    ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+    std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+    ASSERT_EQ(op_to_count["Transpose"], orig_op_to_count["Transpose"]);
+    ASSERT_EQ(op_to_count["MatMul"], orig_op_to_count["MatMul"]);
+    ASSERT_EQ(op_to_count["com.microsoft.FusedMatMul"], orig_op_to_count["com.microsoft.FusedMatMul"]);
+  }
+}
+
 TEST_F(GraphTransformationTests, Gemm_LeakyRelu_Fusion) {
   auto model_uri = MODEL_FOLDER "gemm_activation_fusion/gemm_activation_fusion.onnx";
 
@@ -1339,7 +1409,7 @@ TEST_F(GraphTransformationTests, GemmTransposeFusionOutput) {
   ASSERT_TRUE(new_input_defs[1]->Name() == "A");
 }
 
-//  ((A')'B')' = BA'
+// ((A')'B')' = BA'
 TEST_F(GraphTransformationTests, GemmTransposeFusionInputOutput) {
   auto model_uri = MODEL_FOLDER "fusion/gemm_transpose_inputs_output_transposed.onnx";
   std::shared_ptr<Model> p_model;
@@ -1368,7 +1438,7 @@ TEST_F(GraphTransformationTests, GemmTransposeFusionInputOutput) {
   ASSERT_TRUE(new_input_defs[1]->Name() == "A");
 }
 
-//  (A'(B'))' = BA
+// (A'(B'))' = BA
 TEST_F(GraphTransformationTests, GemmTransposeFusionInputOutput2) {
   auto model_uri = MODEL_FOLDER "fusion/gemm_transpose_inputs_output_transposed_2.onnx";
   std::shared_ptr<Model> p_model;
@@ -1497,8 +1567,8 @@ TEST_F(GraphTransformationTests, GemmSumFusionInternalNodes) {
   ASSERT_EQ(op_to_count["Identity"], 4);
   ASSERT_EQ(graph.NumberOfNodes(), 5);
 
-  for(Node &node : graph.Nodes()) {
-    if(node.OpType() == "Gemm") {
+  for (Node& node : graph.Nodes()) {
+    if (node.OpType() == "Gemm") {
       ASSERT_FALSE(static_cast<bool>(node.GetAttributes().at("transA").i()));
       ASSERT_FALSE(static_cast<bool>(node.GetAttributes().at("transB").i()));
       ASSERT_EQ(node.GetAttributes().at("alpha").f(), 1.0);
@@ -4339,8 +4409,8 @@ TEST_F(GraphTransformationTests, ComputationReductionTransformer_GatherND_E2E) {
                         values_unsqueezed_masked_lm_positions);
 
     ASSERT_TRUE(expected_ort_values.size() == actual_ort_values.size());
-    const double per_sample_tolerance = 1e-4;
-    const double relative_per_sample_tolerance = 1e-4;
+    constexpr double per_sample_tolerance = 1e-4;
+    constexpr double relative_per_sample_tolerance = 1e-4;
     for (size_t i = 0; i < expected_ort_values.size(); i++) {
       auto ret = CompareOrtValue(actual_ort_values[i], expected_ort_values[i],
                                  per_sample_tolerance, relative_per_sample_tolerance, false);
@@ -4411,7 +4481,7 @@ TEST_F(GraphTransformationTests, MatMulScaleFusionFusableModels) {
           EXPECT_EQ(transformed_op_counts["com.microsoft.FusedMatMul"], 1);
 
           // check combined scale, individual scales should all have the same value
-          const float scale_value = 3.0f;
+          constexpr float scale_value = 3.0f;
 
           const int num_scales =
               original_op_counts["Mul"] + original_op_counts["Div"] + original_op_counts["com.microsoft.FusedMatMul"];
@@ -4694,7 +4764,7 @@ TEST_F(GraphTransformationTests, PropagateCastOpsTests) {
   // Create a temporary directory, which will be deleted automatically, to save/load the transformed models.
   TemporaryDirectory temp_dir{ORT_TSTR("propagate_casts_test_output_dir")};
   for (PropagateCastOpsTestSpecs test_case : test_cases) {
-    for (auto scenario : test_case.casts_count_map) {
+    for (const auto& scenario : test_case.casts_count_map) {
       Strategy strategy = scenario.first.first;
       int level = scenario.first.second;
       int expected_casts_count = scenario.second;

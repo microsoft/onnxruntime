@@ -19,5 +19,26 @@ void copy(onnxruntime::ORTInvoker& invoker,
   ORT_THROW_IF_ERROR(ort_ep.GetDataTransfer()->CopyTensor(src_tensor, *dst_tensor));
 }
 
+template <template<class> class V>
+void createInplaceOutputValue(OrtValue& input, V<int64_t> shape, OrtValue* p_mlvalue){
+  auto* input_ort_tensor = input.GetMutable<onnxruntime::Tensor>();
+  auto element_type = onnxruntime::DataTypeImpl::GetType<int64_t>();
+  // the ort TensorShape class only accept std::vector, so have to conversion.
+  std::vector<int64_t> new_shape;
+  new_shape.assign(shape.begin(), shape.end());
+  CreateMLValue(input_ort_tensor->MutableDataRaw(),
+                element_type, new_shape, p_mlvalue);
+}
+
+template <>
+void createInplaceOutputValue<std::vector>(OrtValue& input, std::vector<int64_t> shape, OrtValue* p_mlvalue){
+  auto* input_ort_tensor = input.GetMutable<onnxruntime::Tensor>();
+  auto element_type = onnxruntime::DataTypeImpl::GetType<int64_t>();
+  CreateMLValue(input_ort_tensor->MutableDataRaw(),
+                element_type, shape, p_mlvalue);
+}
+
+template void createInplaceOutputValue<c10::ArrayRef>(OrtValue& input, c10::ArrayRef<int64_t> shape, OrtValue* p_mlvalue);
+
 } // namespace eager
 } // namespace torch_ort

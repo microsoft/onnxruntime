@@ -72,8 +72,8 @@ static const char* const kOrtSessionOptionsConfigUseORTModelBytesDirectly = "ses
 // Save information for replaying graph optimizations later instead of applying them directly.
 //
 // When an ONNX model is loaded, ORT can perform various optimizations on the graph.
-// However, when an ORT format model is loaded, these optimizations are typically not available - this scenario must
-// be supported by minimal builds.
+// However, when an ORT format model is loaded, the logic to perform these optimizations may not be available because
+// this scenario must be supported by minimal builds.
 // When loading an ONNX model, ORT can optionally save the effects of some optimizations for later replay in an ORT
 // format model. These are known as "runtime optimizations" - in an ORT format model, they happen at runtime.
 //

@@ -109,9 +109,6 @@ class SessionState {
   }
 
   ~SessionState() {
-    for (auto* p : session_kernels_) {
-      delete p;
-    }
     for (auto& kvp : deleter_for_initialized_tensors_) {
       kvp.second.f(kvp.second.param);
     }
@@ -124,11 +121,11 @@ class SessionState {
   // Get kernel for specified node.
   // It should called right before graph execution only.
   const OpKernel* GetKernel(size_t node_id) const {
-    return (node_id < session_kernels_.size()) ? session_kernels_[node_id] : nullptr;
+    return (node_id < session_kernels_.size()) ? session_kernels_[node_id].get() : nullptr;
   }
 
   OpKernel* GetMutableKernel(size_t node_id) {
-    return (node_id < session_kernels_.size()) ? session_kernels_[node_id] : nullptr;
+    return (node_id < session_kernels_.size()) ? session_kernels_[node_id].get() : nullptr;
   }
 
   const ExecutionProviders& GetExecutionProviders() const noexcept { return execution_providers_; }
@@ -144,27 +141,27 @@ class SessionState {
   const OrtValueNameIdxMap& GetOrtValueNameIdxMap() const noexcept { return ort_value_name_idx_map_; }
 
   /**
-     * Adds an initialized tensor (weight) so that it can be used by the
-     * execution frame to setup the appropriate OrtValue vectors.
-     * This function will take a shallow copy of d if d is not NULL.
-     * If 'constant' is true the tensor value cannot be overridden by an input at runtime.
-     * If 'sparse' is true the tensor value represents a densified weight that was initially stored in the model
-     * as sparse tensor.
-     */
+   * Adds an initialized tensor (weight) so that it can be used by the
+   * execution frame to setup the appropriate OrtValue vectors.
+   * This function will take a shallow copy of d if d is not NULL.
+   * If 'constant' is true the tensor value cannot be overridden by an input at runtime.
+   * If 'sparse' is true the tensor value represents a densified weight that was initially stored in the model
+   * as sparse tensor.
+   */
   Status AddInitializedTensor(int ort_value_index, const OrtValue& ort_value, const OrtCallback* d, bool constant, bool sparse);
 
   /**
-     * Gets the map of ort_value_index to initialized tensors (weights) so that it can be used by the
-     * execution frame to setup the appropriate OrtValue vectors.
-     * The lifetime of returned OrtValues are limited by this SessionState object.
-     */
+   * Gets the map of ort_value_index to initialized tensors (weights) so that it can be used by the
+   * execution frame to setup the appropriate OrtValue vectors.
+   * The lifetime of returned OrtValues are limited by this SessionState object.
+   */
   const std::unordered_map<int, OrtValue>& GetInitializedTensors() const;
 
   /**
-     * Gets the map of ort_value_index to initialized tensors (e.g. weights) that are constant
-     * and cannot be overridden at runtime.
-     * The lifetime of returned OrtValues are limited by this SessionState object.
-     */
+   * Gets the map of ort_value_index to initialized tensors (e.g. weights) that are constant
+   * and cannot be overridden at runtime.
+   * The lifetime of returned OrtValues are limited by this SessionState object.
+   */
   const std::unordered_map<int, OrtValue>& GetConstantInitializedTensors() const;
 
 #if !defined(DISABLE_SPARSE_TENSORS)
@@ -295,7 +292,7 @@ class SessionState {
                          flatbuffers::Offset<onnxruntime::fbs::SessionState>& fbs_session_state) const;
 #endif
 
-  void SetCompiledKernelHashes(std::unordered_map<std::string, uint64_t>&& compiled_kernel_hashes) {
+  void SetCompiledKernelHashes(std::unordered_map<std::string, HashValue>&& compiled_kernel_hashes) {
     compiled_kernel_hashes_ = std::move(compiled_kernel_hashes);
   }
 
@@ -303,7 +300,7 @@ class SessionState {
                            const KernelRegistryManager& kernel_registry_manager);
 
   Status FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE>& graph_loc,
-                              KernelRegistryManager& kernel_registry_manager,
+                              const KernelRegistryManager& kernel_registry_manager,
                               const SessionOptions& session_options = {},
                               const onnxruntime::fbs::SessionState* serialized_session_state = nullptr,
                               bool remove_initializers = true,
@@ -355,9 +352,9 @@ class SessionState {
   void CleanInitializedTensorsFromGraph();
 
   /**
-  * Prepack the constant initialized tensors for better performance.
-  * The original constant initialized tensors will be removed to save memory.
-  */
+   * Prepack the constant initialized tensors for better performance.
+   * The original constant initialized tensors will be removed to save memory.
+   */
   Status PrepackConstantInitializedTensors(std::unordered_map<std::string, size_t>& constant_initializers_use_count,
                                            const std::unordered_map<std::string, const OrtValue*>& initializers_to_share_map);
 
@@ -373,7 +370,7 @@ class SessionState {
 #endif
 
   Status FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_TYPE>& graph_loc,
-                                  KernelRegistryManager& kernel_registry_manager,
+                                  const KernelRegistryManager& kernel_registry_manager,
                                   _In_opt_ const Node* parent_node,
                                   const SessionOptions& session_options,
                                   bool remove_initializers,
@@ -390,7 +387,7 @@ class SessionState {
 #endif
 
   // the SessionState for the main Graph contains the compiled kernel hashes for the entire model
-  const std::unordered_map<std::string, uint64_t>& GetCompiledKernelHashes() const {
+  const std::unordered_map<std::string, HashValue>& GetCompiledKernelHashes() const {
     return parent_ ? parent_->GetCompiledKernelHashes() : compiled_kernel_hashes_;
   }
 
@@ -399,10 +396,10 @@ class SessionState {
 
   // If we compile kernels in a minimal build we need a way to find the kernel using the hash.
   // We populate this map when doing the kernel compilation in GraphPartitioner, and use it in LoadFromOrtFormat.
-  std::unordered_map<std::string, uint64_t> compiled_kernel_hashes_;
+  std::unordered_map<std::string, HashValue> compiled_kernel_hashes_;
 
   // cache of the constructed kernels to avoid spending construction time per executor
-  std::vector<OpKernel*> session_kernels_;
+  std::vector<std::unique_ptr<OpKernel>> session_kernels_;
   Graph& graph_;
   std::unique_ptr<GraphViewer> graph_viewer_;  // GraphViewer for const access to Graph
 

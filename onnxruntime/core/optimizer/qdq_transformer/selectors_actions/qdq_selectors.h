@@ -63,15 +63,10 @@ class DropDQDNodesSelector : public BaseSelector {
 
 // single input. default is to only support uint8.
 class UnarySelector : public BaseSelector {
- public:
-  UnarySelector(bool int8_allowed = false) : int8_allowed_{int8_allowed} {}
-
- private:
   bool Check(const GraphViewer& graph_viewer, const Node& node,
              const std::vector<const Node*>& dq_nodes,
              const std::vector<const Node*>& q_nodes) const override;
 
-  bool int8_allowed_;
 };
 
 // 2 DQ nodes providing input -> node -> Q

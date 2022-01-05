@@ -106,12 +106,12 @@ class NodeArg {
   Optional inputs are allowed in ONNX and an empty #Name represents a non-existent input argument. */
   bool Exists() const noexcept;
 
- private:
-  ORT_DISALLOW_COPY_AND_ASSIGNMENT(NodeArg);
   friend class Graph;
 
   NodeArg(NodeArgInfo&& node_arg_info);
 
+ private:
+  ORT_DISALLOW_COPY_AND_ASSIGNMENT(NodeArg);
 #if !defined(ORT_MINIMAL_BUILD)
   void SetType(const std::string* p_type);
   void SetType(const ONNX_NAMESPACE::TypeProto& type_proto);

@@ -443,7 +443,7 @@ TEST(GradientCheckerTest, LogGrad) {
 
   float max_error;
 #ifdef USE_DNNL
-  float error_tolerance = 3e-3f;
+  float error_tolerance = 4e-3f;
 #else
   float error_tolerance = 1e-3f;
 #endif
@@ -1126,7 +1126,9 @@ static void TestConcatOpGrad(const std::string& op_type,
 }
 
 TEST(GradientCheckerTest, ConcatGrad) {
+  // Concat's gradient uses Split, and Split Op move "split" attribute to input since OpSet13.
   TestConcatOpGrad("Concat");
+  TestConcatOpGrad("Concat", kOnnxDomain, 13);
 }
 
 TEST(GradientCheckerTest, ConcatTrainingGrad) { /*also test w/o shape inferencing */
