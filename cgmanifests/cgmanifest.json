@@ -27,8 +27,8 @@
          "component": {
             "type": "git",
             "git": {
-               "commitHash": "638d7d2407de27f98f542f61a37a33c90a2e75a9",
-               "repositoryUrl": "https://github.com/microsoft/onnxruntime-tvm.git"
+               "commitHash": "92eeef6ddde9b113fd8263f1fc20f08c1c3fea0d",
+               "repositoryUrl": "https://github.com/apache/tvm.git"
             }
          }
       },

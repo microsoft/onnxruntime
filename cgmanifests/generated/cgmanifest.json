@@ -414,8 +414,8 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "9ec2b92d180dff8877e402018b97baa574031b8b",
-          "repositoryUrl": "https://github.com/microsoft/onnxruntime-tvm.git"
+          "commitHash": "92eeef6ddde9b113fd8263f1fc20f08c1c3fea0d",
+          "repositoryUrl": "https://github.com/apache/tvm.git"
         },
         "comments": "git submodule at cmake/external/tvm"
       }
