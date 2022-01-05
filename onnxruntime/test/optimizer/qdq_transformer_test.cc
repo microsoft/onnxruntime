@@ -1846,23 +1846,15 @@ TEST(QDQTransformerTests, QDQ_Shared_GetSelectors_Test) {
 
   const GraphViewer graph_viewer(graph);
 
+  // Initialize SelectorManager
   QDQ::SelectorManager selector_mgr;
-  selector_mgr.CreateSelectors();
-  selector_mgr.InitializeSelectorsMap();
+  selector_mgr.Initialize();
 
-  // Check if SelectorManager get convselector as expected
+  // Check if SelectorManager get a conv qdq group selections as expected
   {
-    const auto result = selector_mgr.GetQDQSelectors(graph_viewer);
+    const auto result = selector_mgr.GetQDQSelections(graph_viewer);
     ASSERT_EQ(1, result.size());
-    const auto it = result.find(conv_node);
-    ASSERT_TRUE(it != result.cend());
-    const auto* node = it->first;
-    ASSERT_EQ("Conv", node->OpType());
-
-    // check if the selector obtained can get the expected qdq group selection
-    const auto node_selection = it->second->GetQDQSelection(graph_viewer, *node);
-    ASSERT_TRUE(node_selection.has_value());
-    const auto& qdq_group = *node_selection;
+    const auto& qdq_group = result.at(0);
     ASSERT_EQ(std::vector<NodeIndex>({0, 1, 2}), qdq_group.dq_nodes);
     ASSERT_EQ(NodeIndex(3), qdq_group.target_node);
     ASSERT_EQ(std::vector<NodeIndex>({4}), qdq_group.q_nodes);

@@ -16,58 +16,55 @@ class Node;
 
 namespace QDQ {
 
-struct Selector {
+struct OpVersionsAndSelector {
   using OpVersionsMap = std::unordered_map<std::string, std::vector<ONNX_NAMESPACE::OperatorSetVersion>>;
 
-  Selector(const OpVersionsMap& ops_and_versions_in,
-           std::unique_ptr<BaseSelector> selector_in)
+  OpVersionsAndSelector(const OpVersionsMap& ops_and_versions_in,
+                        std::unique_ptr<BaseSelector> selector_in)
       : op_versions_map{ops_and_versions_in},
         selector{std::move(selector_in)} {}
 
   OpVersionsMap op_versions_map;
   std::unique_ptr<BaseSelector> selector;
 
-  ORT_DISALLOW_COPY_AND_ASSIGNMENT(Selector);
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(OpVersionsAndSelector);
 };
 
 class Selectors {
  public:
   Selectors() = default;
 
-  Selectors(Selectors&& rhs) noexcept
-      : selectors_set_{std::move(rhs.selectors_set_)} {}
-
-  void RegisterSelector(const Selector::OpVersionsMap& ops_and_versions_in,
+  void RegisterSelector(const OpVersionsAndSelector::OpVersionsMap& ops_and_versions_in,
                         std::unique_ptr<BaseSelector> selector_in);
 
-  const std::unordered_set<std::unique_ptr<Selector>>& SelectorsSet() const {
+  const std::unordered_set<std::unique_ptr<OpVersionsAndSelector>>& SelectorsSet() const {
     return selectors_set_;
   }
 
-  ORT_DISALLOW_COPY_AND_ASSIGNMENT(Selectors);
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Selectors);
 
  private:
-  std::unordered_set<std::unique_ptr<Selector>> selectors_set_;
+  std::unordered_set<std::unique_ptr<OpVersionsAndSelector>> selectors_set_;
 };
 
 class SelectorManager {
  public:
   SelectorManager() = default;
 
-  virtual ~SelectorManager() = default;
+  void Initialize();
+
+  const std::vector<NodeGroup> GetQDQSelections(const GraphViewer& graph_viewer) const;
+
+ private:
+  Selectors qdq_selectors_;
+
+  std::unordered_map<std::string, const OpVersionsAndSelector*> op_type_to_selectors_map_;
 
   void InitializeSelectorsMap();
 
   void CreateSelectors();
 
-  const std::unordered_map<const Node*, std::unique_ptr<BaseSelector>> GetQDQSelectors(const GraphViewer& graph_viewer) const;
-
- private:
-  Selectors qdq_selectors_;
-
-  std::unordered_map<std::string, const Selector*> op_type_to_selectors_map_;
-
-  ORT_DISALLOW_COPY_AND_ASSIGNMENT(SelectorManager);
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SelectorManager);
 };
 
 }  // namespace QDQ
