@@ -20,19 +20,15 @@ struct NodeGroup {
   NodeIndex target_node;
 };
 
-// Base QDQ checker. Finds and provides the DQ and Q nodes to the operator specific checkers, as the QDQ optimizations
-// always involve those nodes.
-class BaseSelector : public NodeSelector {
+class NodeGroupSelector {
  public:
-  std::optional<NodesToOptimizeIndices> Select(const GraphViewer& graph_viewer, const Node& node) const override;
-
   // This is a QDQ Selectors only function, will return QDQ::NodeGroup instead of NodesToOptimizeIndices
   // Can be used in QDQ handling in EPs such as NNAPI
   std::optional<NodeGroup> GetQDQSelection(const GraphViewer& graph_viewer, const Node& node) const;
 
- protected:
-  BaseSelector() = default;
+  virtual ~NodeGroupSelector() = default;
 
+ protected:
   // base check that we have the expected number of QDQ inputs/outputs, and `node` isn't producing a graph output.
   // num_dq_inputs defaults to the number of inputs `node` has if not explicitly specified
   bool CheckQDQNodes(const GraphViewer& graph_viewer, const Node& node,
@@ -45,42 +41,37 @@ class BaseSelector : public NodeSelector {
   bool virtual Check(const GraphViewer& graph_viewer, const Node& node,
                      const std::vector<const Node*>& dq_nodes,
                      const std::vector<const Node*>& q_nodes) const = 0;
-
-  // override if you need to adjust the values in NodesToOptimize.
-  // e.g. add entries for missing optional DQ inputs or set num_inputs to handle variadic inputs
-  // Called post-Check, if Check returned `true`
-  virtual void UpdateBuilder(NodesToOptimizeIndicesBuilder&) const {}
 };
+
+/*
+ * NodeGroup selectors. These are general purpose and used in both the QDQ SelectorActionTransformer setup that the
+ * CPU EP has, and directly in compiling EPs such as NNAPI and CoreML.
+ */
 
 // Single DQ -> node that does not change data -> Q.
 // Zero point and scale are constant scalars and must match
-class DropDQDNodesSelector : public BaseSelector {
- private:
+class DropQDQNodeGroupSelector : public NodeGroupSelector {
   bool Check(const GraphViewer& graph_viewer, const Node& node,
              const std::vector<const Node*>& dq_nodes,
              const std::vector<const Node*>& q_nodes) const override;
 };
 
 // single input. default is to only support uint8.
-class UnarySelector : public BaseSelector {
+class UnaryNodeGroupSelector : public NodeGroupSelector {
   bool Check(const GraphViewer& graph_viewer, const Node& node,
              const std::vector<const Node*>& dq_nodes,
              const std::vector<const Node*>& q_nodes) const override;
-
 };
 
 // 2 DQ nodes providing input -> node -> Q
-class BinarySelector : public BaseSelector {
+class BinaryNodeGroupSelector : public NodeGroupSelector {
   bool Check(const GraphViewer& graph_viewer, const Node& node,
              const std::vector<const Node*>& dq_nodes,
              const std::vector<const Node*>& q_nodes) const override;
 };
 
 // Variadic DQ nodes -> node -> Q
-class VariadicSelector : public BaseSelector {
- public:
-  void UpdateBuilder(NodesToOptimizeIndicesBuilder&) const override;
-
+class VariadicNodeGroupSelector : public NodeGroupSelector {
  private:
   bool Check(const GraphViewer& graph_viewer, const Node& node,
              const std::vector<const Node*>& dq_nodes,
@@ -88,11 +79,10 @@ class VariadicSelector : public BaseSelector {
 };
 
 // DQ nodes for X, W and optionally B -> node -> Q
-class ConvSelector : public BaseSelector {
+class ConvNodeGroupSelector : public NodeGroupSelector {
  public:
-  ConvSelector(bool int8_allowed = false) : int8_allowed_(int8_allowed) {}
-
-  void UpdateBuilder(NodesToOptimizeIndicesBuilder&) const override;
+  // default to 'true'
+  ConvNodeGroupSelector(bool int8_allowed = true) : int8_allowed_(int8_allowed) {}
 
  private:
   bool Check(const GraphViewer& graph_viewer, const Node& node,
@@ -103,9 +93,9 @@ class ConvSelector : public BaseSelector {
 };
 
 // 2 DQ nodes for input -> node -> optional Q if QLinearMatMul, MatMulIntegerToFloat if not
-class MatMulSelector : public BaseSelector {
+class MatMulNodeGroupSelector : public NodeGroupSelector {
  public:
-  MatMulSelector(bool int8_allowed = false) : int8_allowed_(int8_allowed) {}
+  MatMulNodeGroupSelector(bool int8_allowed = true) : int8_allowed_(int8_allowed) {}
 
  private:
   bool Check(const GraphViewer& graph_viewer, const Node& node,
@@ -113,6 +103,72 @@ class MatMulSelector : public BaseSelector {
              const std::vector<const Node*>& q_nodes) const override;
   bool int8_allowed_;
 };
+
+/*
+ * NodeSelector instances for use in the QDQ::SelectorActionTransformer.
+ */
+// Base QDQ checker. Finds and provides the DQ and Q nodes to the operator specific checkers, as the QDQ optimizations
+// always involve those nodes.
+class BaseSelector : public NodeSelector {
+ public:
+  std::optional<NodesToOptimizeIndices> Select(const GraphViewer& graph_viewer, const Node& node) const override;
+
+ protected:
+  BaseSelector(std::unique_ptr<NodeGroupSelector> node_group_selector)
+      : node_group_selector_{std::move(node_group_selector)} {}
+
+  // override if you need to adjust the values in NodesToOptimize.
+  // e.g. add entries for missing optional DQ inputs or set num_inputs to handle variadic inputs
+  // Called post-Check, if Check returned `true`
+  virtual void UpdateBuilder(NodesToOptimizeIndicesBuilder&) const {}
+
+ private:
+  std::unique_ptr<NodeGroupSelector> node_group_selector_;
+};
+
+class DropQDQNodesSelector : public BaseSelector {
+ public:
+  DropQDQNodesSelector()
+      : BaseSelector(std::unique_ptr<NodeGroupSelector>(new DropQDQNodeGroupSelector())) {}
+};
+
+class UnarySelector : public BaseSelector {
+ public:
+  UnarySelector()
+      : BaseSelector(std::unique_ptr<NodeGroupSelector>(new UnaryNodeGroupSelector())) {}
+};
+
+class BinarySelector : public BaseSelector {
+ public:
+  BinarySelector()
+      : BaseSelector(std::unique_ptr<NodeGroupSelector>(new BinaryNodeGroupSelector())) {}
+};
+
+// Variadic DQ nodes -> node -> Q
+class VariadicSelector : public BaseSelector {
+ public:
+  VariadicSelector()
+      : BaseSelector(std::unique_ptr<NodeGroupSelector>(new VariadicNodeGroupSelector())) {}
+
+  void UpdateBuilder(NodesToOptimizeIndicesBuilder&) const override;
+};
+
+// DQ nodes for X, W and optionally B -> node -> Q
+class ConvSelector : public BaseSelector {
+ public:
+  ConvSelector(bool int8_allowed = false)
+      : BaseSelector(std::unique_ptr<NodeGroupSelector>(new ConvNodeGroupSelector(int8_allowed))) {}
+
+  void UpdateBuilder(NodesToOptimizeIndicesBuilder&) const override;
+};
+
+// 2 DQ nodes for input -> node -> optional Q if QLinearMatMul, MatMulIntegerToFloat if not
+class MatMulSelector : public BaseSelector {
+ public:
+  MatMulSelector(bool int8_allowed = false)
+      : BaseSelector(std::unique_ptr<NodeGroupSelector>(new MatMulNodeGroupSelector(int8_allowed))) {}
+};
+
 }  // namespace QDQ
 }  // namespace onnxruntime
 
