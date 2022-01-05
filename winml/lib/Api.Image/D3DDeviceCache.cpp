@@ -49,9 +49,6 @@ D3DDeviceCache::D3DDeviceCache(winml::LearningModelDeviceKind const& deviceKind)
     return;
   }
 
-  DXGI_GPU_PREFERENCE preference;
-  WINML_THROW_IF_FAILED(GetGPUPreference(deviceKind, &preference));
-
   CommonDeviceHelpers::AdapterEnumerationSupport support;
   WINML_THROW_IF_FAILED(CommonDeviceHelpers::GetAdapterEnumerationSupport(&support));
 
@@ -69,6 +66,8 @@ D3DDeviceCache::D3DDeviceCache(winml::LearningModelDeviceKind const& deviceKind)
     }
     WINML_THROW_IF_FAILED(D3D12CreateDevice(spAdapter.get(), D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(device_.put())));
   } else {
+    DXGI_GPU_PREFERENCE preference;
+    WINML_THROW_IF_FAILED(GetGPUPreference(deviceKind, &preference));
     if (support.has_dxgi) {
       winrt::com_ptr<IDXGIAdapter1> spAdapter;
       hardwareAdapterSuccessfullyObtained = GetDXGIHardwareAdapterWithPreference(preference, spAdapter.put());
