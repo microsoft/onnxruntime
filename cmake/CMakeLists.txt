@@ -1327,16 +1327,18 @@ if (onnxruntime_USE_TVM)
     add_definitions(-DUSE_TVM_WITH_LLVM)
   endif()
 
+  # add_definitions(-DUSE_OPENMP=gnu)
+  # add_definitions(-DUSE_MICRO=ON)
+  # set(USE_MICRO ON)
   add_subdirectory(${PROJECT_SOURCE_DIR}/external/tvm EXCLUDE_FROM_ALL)
   set_target_properties(tvm PROPERTIES FOLDER "External/tvm")
-  set_target_properties(tvm_topi PROPERTIES FOLDER "External/tvm")
   set_target_properties(tvm_runtime PROPERTIES FOLDER "External/tvm")
 
   set(TVM_INCLUDES ${PROJECT_SOURCE_DIR}/external/tvm/include
     ${PROJECT_SOURCE_DIR}/external/tvm/3rdparty/dmlc-core/include
     ${PROJECT_SOURCE_DIR}/external/tvm/3rdparty/dlpack/include
     $<TARGET_PROPERTY:tvm,INTERFACE_INCLUDE_DIRECTORIES>
-    $<TARGET_PROPERTY:tvm_topi,INTERFACE_INCLUDE_DIRECTORIES>)
+    $<TARGET_PROPERTY:tvm_runtime,INTERFACE_INCLUDE_DIRECTORIES>)
   add_definitions(-DUSE_TVM)
 
   set(onnxruntime_tvm_libs onnxruntime_codegen_tvm)
@@ -1346,8 +1348,8 @@ if (onnxruntime_USE_TVM)
       set(FS_STDLIB stdc++fs)
     endif()
   endif()
-  list(APPEND onnxruntime_EXTERNAL_LIBRARIES tvm ${FS_STDLIB})
-  list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES tvm)
+  list(APPEND onnxruntime_EXTERNAL_LIBRARIES tvm tvm_runtime ${FS_STDLIB})
+  list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES tvm tvm_runtime)
 endif()
 
 # onnxruntime-extensions
