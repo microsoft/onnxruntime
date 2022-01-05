@@ -164,10 +164,6 @@ HRESULT _winml::GetGPUPreference(winml::LearningModelDeviceKind deviceKind, DXGI
       *preference = DXGI_GPU_PREFERENCE_MINIMUM_POWER;
       return S_OK;
     }
-    case winml::LearningModelDeviceKind::ComputeAccelerator {
-      *preference = DXGI_VPU_PREFERENCE_COMPUTEACCELERATOR;
-      return S_OK;
-    }
     default:
       // this should never be reached
       return E_INVALIDARG;
