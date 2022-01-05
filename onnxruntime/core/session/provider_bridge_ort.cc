@@ -1098,7 +1098,7 @@ OrtCUDAProviderOptionsV2 OrtCUDAProviderOptionsToOrtCUDAProviderOptionsV2(const 
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Cuda(const OrtCUDAProviderOptions* provider_options) {
   OrtCUDAProviderOptionsV2 cuda_options_converted = onnxruntime::OrtCUDAProviderOptionsToOrtCUDAProviderOptionsV2(provider_options);
   if (auto* provider = s_library_cuda.Get())
-    return provider->CreateExecutionProviderFactory(provider_options);
+    return provider->CreateExecutionProviderFactory(&cuda_options_converted);
 
   return nullptr;
 }
@@ -1510,7 +1510,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateCUDAProviderOptions, _Outptr_ OrtCUDAProvider
   (*out)->cudnn_conv_algo_search = OrtCudnnConvAlgoSearch::OrtCudnnConvAlgoSearchExhaustive;
   (*out)->gpu_mem_limit = std::numeric_limits<size_t>::max();
   (*out)->arena_extend_strategy = static_cast<onnxruntime::ArenaExtendStrategy>(0);
-  (*out)->do_copy_in_default_stream = 0;
+  (*out)->do_copy_in_default_stream = 1;
   (*out)->has_user_compute_stream = 0;
   (*out)->user_compute_stream = nullptr;
   (*out)->default_memory_arena_cfg = nullptr;
