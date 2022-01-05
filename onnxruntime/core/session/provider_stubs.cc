@@ -104,7 +104,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_CUDA_V2,
   return CreateNotEnabledStatus("CUDA");
 }
 
-ORT_API_STATUS_IMPL(OrtApis::CreateTensorRTProviderOptions, _Outptr_ OrtCUDAProviderOptionsV2** out) {
+ORT_API_STATUS_IMPL(OrtApis::CreateCUDAProviderOptions, _Outptr_ OrtCUDAProviderOptionsV2** out) {
   ORT_UNUSED_PARAMETER(out);
   return CreateNotEnabledStatus("CUDA");
 }
