@@ -120,6 +120,19 @@ HRESULT _winml::GetDXCoreHardwareAdapterWithPreference(DXGI_GPU_PREFERENCE prefe
   firstHardwareAdapter.copy_to(ppAdapter);
   return S_OK;
 }
+
+HRESULT _winml::GetDXCoreHardwareAdapterForVPU(_COM_Outptr_ IDXCoreAdapter** ppAdapter) {
+  winrt::com_ptr<IDXCoreAdapterFactory> spFactory;
+  winrt::com_ptr<IDXCoreAdapterList> spAdapterList;
+  const GUID gpuFilter[] = {DXCORE_ADAPTER_ATTRIBUTE_D3D12_CORE_COMPUTE};
+  RETURN_IF_FAILED(spFactory->CreateAdapterList(1, gpuFilter, IID_PPV_ARGS(spAdapterList.put())));
+  winrt::com_ptr<IDXCoreAdapter> spCurrAdapter;
+  RETURN_IF_FAILED(spAdapterList->GetAdapter(0, IID_PPV_ARGS(spCurrAdapter.put())));
+  bool isHardware;
+  RETURN_IF_FAILED(spCurrAdapter->GetProperty(DXCoreAdapterProperty::IsHardware, &isHardware));
+  spCurrAdapter.copy_to(ppAdapter);
+  return S_OK;
+}
 #endif
 
 HRESULT _winml::CreateD3D11On12Device(ID3D12Device* device12, ID3D11Device** device11) {
@@ -149,6 +162,10 @@ HRESULT _winml::GetGPUPreference(winml::LearningModelDeviceKind deviceKind, DXGI
     }
     case winml::LearningModelDeviceKind::DirectXMinPower: {
       *preference = DXGI_GPU_PREFERENCE_MINIMUM_POWER;
+      return S_OK;
+    }
+    case winml::LearningModelDeviceKind::ComputeAccelerator {
+      *preference = DXGI_VPU_PREFERENCE_COMPUTEACCELERATOR;
       return S_OK;
     }
     default:

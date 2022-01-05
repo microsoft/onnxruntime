@@ -58,28 +58,40 @@ D3DDeviceCache::D3DDeviceCache(winml::LearningModelDeviceKind const& deviceKind)
   const char noHardwareAdaptersAvailableErrStr[] = "No hardware adapters available";
   const char failedToObtainHardwareAdaptersErrStr[] = "Failed to obtain hardware adapters.";
   HRESULT hardwareAdapterSuccessfullyObtained = S_OK;
-  if (support.has_dxgi) {
-    winrt::com_ptr<IDXGIAdapter1> spAdapter;
-    hardwareAdapterSuccessfullyObtained = GetDXGIHardwareAdapterWithPreference(preference, spAdapter.put());
-    if (hardwareAdapterSuccessfullyObtained == HRESULT_FROM_WIN32(ERROR_NOT_FOUND)) {
-      WINML_THROW_HR_MSG_NO_TELEMETRY_SENT(hardwareAdapterSuccessfullyObtained, noHardwareAdaptersAvailableErrStr);
-    } else {
-      WINML_THROW_IF_FAILED_MSG(hardwareAdapterSuccessfullyObtained, failedToObtainHardwareAdaptersErrStr);
-    }
-    WINML_THROW_IF_FAILED(D3D12CreateDevice(spAdapter.get(), D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(device_.put())));
-  }
-#ifdef ENABLE_DXCORE
-  if (support.has_dxgi == false) {
+
+  if (support.has_dxcore && deviceKind == winml::LearningModelDeviceKind::ComputeAccelerator) {
     winrt::com_ptr<IDXCoreAdapter> spAdapter;
-    hardwareAdapterSuccessfullyObtained = GetDXCoreHardwareAdapterWithPreference(preference, spAdapter.put());
+    hardwareAdapterSuccessfullyObtained = GetDXCoreHardwareAdapterForVPU(spAdapter.put());
     if (hardwareAdapterSuccessfullyObtained == HRESULT_FROM_WIN32(ERROR_NOT_FOUND)) {
       WINML_THROW_HR_MSG_NO_TELEMETRY_SENT(hardwareAdapterSuccessfullyObtained, noHardwareAdaptersAvailableErrStr);
     } else {
       WINML_THROW_IF_FAILED_MSG(hardwareAdapterSuccessfullyObtained, failedToObtainHardwareAdaptersErrStr);
     }
     WINML_THROW_IF_FAILED(D3D12CreateDevice(spAdapter.get(), D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(device_.put())));
-  }
+  } else {
+    if (support.has_dxgi) {
+      winrt::com_ptr<IDXGIAdapter1> spAdapter;
+      hardwareAdapterSuccessfullyObtained = GetDXGIHardwareAdapterWithPreference(preference, spAdapter.put());
+      if (hardwareAdapterSuccessfullyObtained == HRESULT_FROM_WIN32(ERROR_NOT_FOUND)) {
+        WINML_THROW_HR_MSG_NO_TELEMETRY_SENT(hardwareAdapterSuccessfullyObtained, noHardwareAdaptersAvailableErrStr);
+      } else {
+        WINML_THROW_IF_FAILED_MSG(hardwareAdapterSuccessfullyObtained, failedToObtainHardwareAdaptersErrStr);
+      }
+      WINML_THROW_IF_FAILED(D3D12CreateDevice(spAdapter.get(), D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(device_.put())));
+    }
+#ifdef ENABLE_DXCORE
+    if (support.has_dxgi == false) {
+      winrt::com_ptr<IDXCoreAdapter> spAdapter;
+      hardwareAdapterSuccessfullyObtained = GetDXCoreHardwareAdapterWithPreference(preference, spAdapter.put());
+      if (hardwareAdapterSuccessfullyObtained == HRESULT_FROM_WIN32(ERROR_NOT_FOUND)) {
+        WINML_THROW_HR_MSG_NO_TELEMETRY_SENT(hardwareAdapterSuccessfullyObtained, noHardwareAdaptersAvailableErrStr);
+      } else {
+        WINML_THROW_IF_FAILED_MSG(hardwareAdapterSuccessfullyObtained, failedToObtainHardwareAdaptersErrStr);
+      }
+      WINML_THROW_IF_FAILED(D3D12CreateDevice(spAdapter.get(), D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(device_.put())));
+    }
 #endif
+  }
   InitializeCommandQueue(device_.get());
 
   device_luid_ = device_->GetAdapterLuid();

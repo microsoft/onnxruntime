@@ -33,7 +33,7 @@ import "windows.storage.idl";
 
 namespace ROOT_NS.AI.MachineLearning 
 {
-    [contractversion(5)]
+    [contractversion(6)]
     apicontract MachineLearningContract{};
 
     //! Forward declarations
@@ -152,7 +152,9 @@ namespace ROOT_NS.AI.MachineLearning
         //! Use the system policy defined device for high performance.
         DirectXHighPerformance,
         //! Use the system policy defined device for minimum power.
-        DirectXMinPower
+        DirectXMinPower,
+        //! Use the VPU to evaluate the model. 
+        [contract(MachineLearningContract, 6)] ComputeAccelerator
     };
 
 
