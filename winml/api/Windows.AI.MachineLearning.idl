@@ -109,7 +109,7 @@ namespace ROOT_NS.AI.MachineLearning
         {
                 [remote_async]
                 static Windows.Foundation.IAsyncOperation<LearningModel> LoadFromBufferAsync(Windows.Storage.Streams.IBuffer modelBuffer);
-		}
+        }
         //! Loads an ONNX model from a file on disk.
         static LearningModel LoadFromFilePath(String filePath);
         //! Loads an ONNX model from a stream.
