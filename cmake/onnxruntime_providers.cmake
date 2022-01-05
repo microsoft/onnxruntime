@@ -1245,6 +1245,14 @@ endif()
 
 if (onnxruntime_USE_STVM)
   add_definitions(-DUSE_STVM=1)
+  
+  if (NOT onnxruntime_USE_TVM)
+    message(FATAL_ERROR "onnxruntime_USE_TVM required for onnxruntime_USE_STVM")
+  endif()
+
+  if (NOT onnxruntime_USE_LLVM)
+    message(FATAL_ERROR "onnxruntime_USE_LLVM required for onnxruntime_USE_STVM")
+  endif()
 
   file (GLOB_RECURSE onnxruntime_providers_stvm_cc_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/providers/stvm/*.h"
@@ -1262,7 +1270,8 @@ if (onnxruntime_USE_STVM)
           ${onnxruntime_STVM_HOME}/3rdparty/dlpack/include
           ${onnxruntime_STVM_HOME}/3rdparty/dmlc-core/include
           ${PYTHON_INLCUDE_DIRS})
-  onnxruntime_add_include_to_target(onnxruntime_providers_stvm onnxruntime_common onnx)
+  onnxruntime_add_include_to_target(onnxruntime_providers_stvm onnxruntime_common onnx
+                                    onnx_proto ${PROTOBUF_LIB} flatbuffers)
 
   add_dependencies(onnxruntime_providers_stvm ${onnxruntime_EXTERNAL_DEPENDENCIES})
 
