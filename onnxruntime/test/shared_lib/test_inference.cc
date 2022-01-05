@@ -778,8 +778,13 @@ lib_name = "./libcustom_op_library.so";
 #endif
 
   void* library_handle = nullptr;
+#ifdef USE_CUDA
+  TestInference<int32_t>(*ort_env, CUSTOM_OP_LIBRARY_TEST_MODEL_URI, inputs, "output", expected_dims_y,
+                         expected_values_y, 1, nullptr, lib_name.c_str(), &library_handle);
+#else
   TestInference<int32_t>(*ort_env, CUSTOM_OP_LIBRARY_TEST_MODEL_URI, inputs, "output", expected_dims_y,
                          expected_values_y, 0, nullptr, lib_name.c_str(), &library_handle);
+#endif
 
 #ifdef _WIN32
   bool success = ::FreeLibrary(reinterpret_cast<HMODULE>(library_handle));
