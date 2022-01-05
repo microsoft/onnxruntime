@@ -31,52 +31,61 @@ void Selectors::RegisterSelector(const OpVersionsAndSelector::OpVersionsMap& ops
   ORT_IGNORE_RETURN_VALUE(selectors_set_.insert(std::move(entry)));
 }
 
+/* static methods to return different operator's OpVersionMap */
+static const OpVersionsAndSelector::OpVersionsMap GetMiscOpVersionsMap() { return {{"Gather", {}},
+                                                                                   {"Reshape", {}},
+                                                                                   {"Transpose", {}},
+                                                                                   {"MaxPool", {12}},
+                                                                                   {"Resize", {}}}; }
+
+static const OpVersionsAndSelector::OpVersionsMap GetUnaryOpVersionsMap() { return {{"AveragePool", {}},
+                                                                                    {"LeakyRelu", {}}}; }
+static const OpVersionsAndSelector::OpVersionsMap GetBinaryOpVersionsMap() { return {{"Add", {}},
+                                                                                     {"Mul", {}}}; }
+static const OpVersionsAndSelector::OpVersionsMap GetVariadicOpVersionsMap() { return {{"Concat", {}}}; }
+static const OpVersionsAndSelector::OpVersionsMap GetConvOpVersionsMap() { return {{"Conv", {}}}; }
+static const OpVersionsAndSelector::OpVersionsMap GetMatMulOpVersionsMap() { return {{"MatMul", {}}}; }
+
 /* Selector Rules Related */
 void RegisterMiscSelectors(Selectors& qdq_selectors) {
   /* register selectors for miscellaneous ops */
   std::unique_ptr<BaseSelector> selector(new QDQ::DropDQDNodesSelector());
-  qdq_selectors.RegisterSelector(OpVersionsAndSelector::OpVersionsMap{{"Gather", {}},
-                                                                      {"Reshape", {}},
-                                                                      {"Transpose", {}},
-                                                                      {"MaxPool", {12}},
-                                                                      {"Resize", {}}},
+  qdq_selectors.RegisterSelector(GetMiscOpVersionsMap(),
                                  std::move(selector));
 }
 
 void RegisterUnarySelectors(Selectors& qdq_selectors) {
   /* regsiter selectors for unary ops */
   std::unique_ptr<BaseSelector> selector(new QDQ::UnarySelector());
-  qdq_selectors.RegisterSelector(OpVersionsAndSelector::OpVersionsMap{{"AveragePool", {}},
-                                                                      {"LeakyRelu", {}}},
+  qdq_selectors.RegisterSelector(GetUnaryOpVersionsMap(),
                                  std::move(selector));
 }
 
 void RegisterBinarySelectors(Selectors& qdq_selectors) {
   /* register selectors for binary ops */
   std::unique_ptr<BaseSelector> selector(new QDQ::BinarySelector());
-  qdq_selectors.RegisterSelector(OpVersionsAndSelector::OpVersionsMap{{"Add", {}},
-                                                                      {"Mul", {}}},
+  qdq_selectors.RegisterSelector(GetBinaryOpVersionsMap(),
                                  std::move(selector));
 }
 
 void RegisterVariadicSelectors(Selectors& qdq_selectors) {
   /* register selectors for variadic ops */
   std::unique_ptr<BaseSelector> selector(new QDQ::VariadicSelector());
-  qdq_selectors.RegisterSelector(OpVersionsAndSelector::OpVersionsMap{{"Concat", {}}},
+  qdq_selectors.RegisterSelector(GetVariadicOpVersionsMap(),
                                  std::move(selector));
 }
 
 void RegisterConvSelector(Selectors& qdq_selectors) {
   /* register selector for conv op */
   std::unique_ptr<BaseSelector> selector(new QDQ::ConvSelector());
-  qdq_selectors.RegisterSelector(OpVersionsAndSelector::OpVersionsMap{{"Conv", {}}},
+  qdq_selectors.RegisterSelector(GetConvOpVersionsMap(),
                                  std::move(selector));
 }
 
 void RegisterMatMulSelector(Selectors& qdq_selectors) {
   /* register selector for matmul op */
   std::unique_ptr<BaseSelector> selector(new QDQ::MatMulSelector());
-  qdq_selectors.RegisterSelector(OpVersionsAndSelector::OpVersionsMap{{"MatMul", {}}},
+  qdq_selectors.RegisterSelector(GetMatMulOpVersionsMap(),
                                  std::move(selector));
 }
 
