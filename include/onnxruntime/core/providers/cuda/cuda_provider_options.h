@@ -7,7 +7,7 @@
 #include "core/framework/arena_extend_strategy.h"
 
 /// <summary>
-/// Options for the CUDA provider that are passed to SessionOptionsAppendExecutionProvider_Cuda_V2.
+/// Options for the CUDA provider that are passed to SessionOptionsAppendExecutionProvider_CUDA_V2.
 /// Please note that this struct is *similar* to OrtCUDAProviderOptions but only to be used internally.
 /// Going forward, new cuda provider options are to be supported via this struct and usage of the publicly defined
 /// OrtCUDAProviderOptions will be deprecated over time.
