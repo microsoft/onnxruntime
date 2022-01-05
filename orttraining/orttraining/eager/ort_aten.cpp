@@ -192,6 +192,10 @@ bool IsSupportedType(c10::optional<int64_t> val, const std::vector<at::ScalarTyp
   return IsSupportedType(val.value(), valid_types);
 }
 
+bool IsSupportedType(at::TensorList tensors, const std::vector<at::ScalarType>& valid_types){
+  return IsSupportedType(tensors[0], valid_types);
+}
+
 //#pragma endregion
 
 //#pragma region Hand-Implemented ATen Ops
@@ -288,29 +292,6 @@ at::Tensor view(const at::Tensor& self, at::IntArrayRef size) {
       // invoke reshape kernel inplace
       true),
     self.options());
-}
-
-at::Tensor _cat(at::TensorList tensors, int64_t dim) {
-  ORT_LOG_FN(tensors, dim);
-  auto& invoker = GetORTInvoker(tensors[0].device());
-  auto ort_input_dim = create_ort_value(invoker, tensors);
-  onnxruntime::NodeAttributes attrs(1);
-  attrs["axis"] = create_ort_attribute(
-    "axis", dim, at::ScalarType::Int);
-
-  std::vector<OrtValue> ort_outputs_0_Concat(1);
-
-  auto status = invoker.Invoke("Concat", {
-  std::move(ort_input_dim),
-  }, ort_outputs_0_Concat, &attrs);
-
-  if (!status.IsOK())
-    throw std::runtime_error(
-      "ORT return failure status:" + status.ErrorMessage());
-  return aten_tensor_from_ort(
-    std::move(ort_outputs_0_Concat[0]),
-    tensors[0].options());
-
 }
 
 ONNX_NAMESPACE::TensorProto_DataType GetONNXTensorProtoDataType(at::ScalarType dtype){

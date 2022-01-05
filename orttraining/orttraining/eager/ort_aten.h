@@ -111,5 +111,7 @@ bool IsSupportedType(int64_t val, const std::vector<at::ScalarType>& valid_types
 
 bool IsSupportedType(c10::optional<int64_t> val, const std::vector<at::ScalarType>& valid_types);
 
+bool IsSupportedType(at::TensorList tensors, const std::vector<at::ScalarType>& valid_types);
+
 } // namespace eager
 } // namespace torch_ort
