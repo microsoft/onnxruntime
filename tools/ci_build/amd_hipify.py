@@ -174,11 +174,22 @@ training_ops_excluded_files = [
                     'cuda_training_kernels.h',
 ]
 
+# prefer the hipify-perl in PATH
 HIPIFY_PERL = shutil.which('hipify-perl')
+# if not found, attempt hard-coded location 1
+if HIPIFY_PERL is None:
+    print('hipify-perl not found, trying default location 1')
+    hipify_path = '/opt/rocm/hip/bin/hipify-perl'
+    HIPIFY_PERL = hipify_path if os.access(hipify_path, os.X_OK) else None
+# if not found, attempt hard-coded location 2
+if HIPIFY_PERL is None:
+    print('hipify-perl not found, trying default location 2')
+    hipify_path = '/opt/rocm/bin/hipify-perl'
+    HIPIFY_PERL = hipify_path if os.access(hipify_path, os.X_OK) else None
+# fail
 if HIPIFY_PERL is None:
     raise RuntimeError('Could not locate hipify-perl script')
-else:
-    print('Using %s' % HIPIFY_PERL)
+print('Using %s' % HIPIFY_PERL)
 
 
 def hipify(src_file_path, dst_file_path):
