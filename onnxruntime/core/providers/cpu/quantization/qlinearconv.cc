@@ -633,9 +633,13 @@ Status QLinearConv<ActType>::Compute(OpKernelContext* context) const {
     padding_data.resize(static_cast<size_t>(C), X_zero_point_value);
   }
 
-  int32_t thread_count = ComputeThreadCount(output_image_size, group_output_channels, kernel_dim);
   concurrency::ThreadPool* thread_pool = context->GetOperatorThreadPool();
+#if defined(_M_ARM64) || defined(__aarch64__)
+  int32_t thread_count = (output_image_size + 3) / 4;
+#else
+  int32_t thread_count = ComputeThreadCount(output_image_size, group_output_channels, kernel_dim);
   thread_count = std::min(thread_count, concurrency::ThreadPool::DegreeOfParallelism(thread_pool));
+#endif
 
   for (int64_t image_id = 0; image_id < N; ++image_id) {
     const auto* input_data = Xdata;
@@ -673,9 +677,14 @@ Status QLinearConv<ActType>::Compute(OpKernelContext* context) const {
     }
 
     auto conv_worker = [&](ptrdiff_t batch) {
+#if defined(_M_ARM64) || defined(__aarch64__)
+      int64_t output_start = batch * 4;
+      int64_t output_count = std::min((int64_t)4, output_image_size - output_start);
+#else
       auto work = concurrency::ThreadPool::PartitionWork(batch, thread_count, static_cast<ptrdiff_t>(output_image_size));
       int64_t output_start = static_cast<int64_t>(work.start);
       int64_t output_count = static_cast<int64_t>(work.end) - work.start;
+#endif
 
       ActType const** worker_indirection_buffer = nullptr;
       if (indirection_buffer) {

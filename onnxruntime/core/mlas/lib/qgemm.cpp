@@ -207,6 +207,18 @@ MlasSymmQgemmBatch(
     const size_t N = Shape.N;
     const size_t K = Shape.K;
 
+    if (ThreadPool == nullptr) {
+        // So our caller handles partition
+        const MLAS_SYMM_QGEMM_DISPATCH* dispatch = MlasPlatform.SymmQgemmDispatch;
+        MLAS_SYMM_QGEMM_OPERATION* operation = dispatch->Operation;
+
+        for (size_t gemm_i = 0; gemm_i < BatchN; gemm_i++) {
+            auto Data = &DataParams[gemm_i];
+            operation(&Shape, Data, 0, M, 0, N);
+        }
+        return;
+    }
+
     //
     // Compute the number of target threads given the complexity of the SGEMM
     // operation. Small requests should run using the single threaded path.
