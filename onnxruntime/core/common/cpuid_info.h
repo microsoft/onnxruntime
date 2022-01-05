@@ -37,6 +37,7 @@ class CPUIDInfo {
   bool has_sse4_1_{false};
   bool is_hybrid_{false};
 
+  bool pytorch_cpuinfo_init_{false};
   bool has_arm_neon_dot_{false};
 
   static CPUIDInfo instance_;
