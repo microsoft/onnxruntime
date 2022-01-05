@@ -88,8 +88,6 @@ OrtValue create_ort_value(
   const at::Scalar& scalar,
   at::ScalarType type) {
   float val = scalar.toFloat();
-  at::BFloat16 valBFloat16 = scalar.toBFloat16();
-  Ort::BFloat16_t *valOrtBFloat16 = reinterpret_cast<Ort::BFloat16_t *>(&valBFloat16);
   OrtValue ort_val;
   CreateMLValue(
     invoker.GetCurrentExecutionProvider().GetAllocator(0, OrtMemTypeDefault),
@@ -101,9 +99,12 @@ OrtValue create_ort_value(
     case at::ScalarType::Float:
       CopyVectorToTensor<float>(invoker, {val}, *ort_tensor);
       break;
-    case at::ScalarType::BFloat16:
+    case at::ScalarType::BFloat16: {
+      at::BFloat16 valBFloat16 = scalar.toBFloat16();
+      Ort::BFloat16_t *valOrtBFloat16 = reinterpret_cast<Ort::BFloat16_t *>(&valBFloat16);
       CopyVectorToTensor<Ort::BFloat16_t>(invoker, {*valOrtBFloat16}, *ort_tensor);
-      break;      
+      break;
+    }      
     default:
       // TODO: support more types
       // For most at::ScalarType, it should be safe to just call value.to<>
