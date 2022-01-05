@@ -97,12 +97,12 @@ OrtValue create_ort_value(
   auto* ort_tensor = ort_val.GetMutable<onnxruntime::Tensor>();
   switch (type) {
     case at::ScalarType::Float:
-      CopyVectorToTensor<float>(invoker, {val}, *ort_tensor);
+      CopyVectorToTensor<float>(invoker, &val, 1, *ort_tensor);
       break;
     case at::ScalarType::BFloat16: {
       at::BFloat16 valBFloat16 = scalar.toBFloat16();
       Ort::BFloat16_t *valOrtBFloat16 = reinterpret_cast<Ort::BFloat16_t *>(&valBFloat16);
-      CopyVectorToTensor<Ort::BFloat16_t>(invoker, {*valOrtBFloat16}, *ort_tensor);
+      CopyVectorToTensor<Ort::BFloat16_t>(invoker, valOrtBFloat16, 1, *ort_tensor);
       break;
     }      
     default:
@@ -391,7 +391,8 @@ at::Tensor& zero_(at::Tensor& self){
   CreateMLValue(invoker.GetCurrentExecutionProvider().GetAllocator(0, OrtMemTypeDefault),
                 element_type, {}, &flag_val);
   auto* ort_flag_tensor = flag_val.GetMutable<onnxruntime::Tensor>();
-  CopyVectorToTensor<int64_t>(invoker, {1}, *ort_flag_tensor);
+  int64_t one = 1;
+  CopyVectorToTensor<int64_t>(invoker, &one, 1, *ort_flag_tensor);
 
   std::vector<OrtValue> ort_out = {ort_in_self};
   
