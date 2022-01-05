@@ -23,6 +23,7 @@ class Clip6 : public OpenCLKernel {
   };
 
   Status Compute(OpKernelContext* context) const override {
+    ZoneScopedN("Clip6::Compute");
     VLOG_CL_NODE();
 
     const auto* X = context->Input<Tensor>(0);
@@ -35,6 +36,7 @@ class Clip6 : public OpenCLKernel {
     cl_int C = X_shape[1];
     cl_int W = X_shape[3];
 
+    ZoneNamedN(_tracy_ClipNCHW, "ClipNCHW (kernel launch)", true);
     ORT_RETURN_IF_ERROR(
         KernelLauncher{GetKernel("ClipNCHW")}
             .setArg<cl_int>(desc.Width())

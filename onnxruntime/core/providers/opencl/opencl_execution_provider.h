@@ -60,6 +60,13 @@ class OpenCLExecutionProvider : public IExecutionProvider {
   // created from time to time. So we move the kernels here.
   std::unique_ptr<opencl::OpenCLKernelHolder> copy_kernels_;
   void InitCopyKernels();
+
+#ifdef TRACY_ENABLE
+  TracyCLCtx tracy_cl_ctx_;
+ public:
+    TracyCLCtx GetTracyCLContext() { return tracy_cl_ctx_; }
+    const std::remove_pointer_t<TracyCLCtx>* GetTracyCLContext() const { return tracy_cl_ctx_; }
+#endif
 };
 
 }  // namespace onnxruntime

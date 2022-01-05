@@ -18,6 +18,7 @@ class GlobalAveragePool : public OpenCLKernel {
   };
 
   Status Compute(OpKernelContext* context) const override {
+    ZoneScopedN("GlobalAveragePool::Compute");
     VLOG_CL_NODE();
     const auto* X = context->Input<Tensor>(0);
     const auto& X_shape = X->Shape();
@@ -36,6 +37,7 @@ class GlobalAveragePool : public OpenCLKernel {
     auto W = X_shape[3];
     float invHW = 1.0 / (H * W);
 
+    ZoneNamedN(_tracy_GlobalAveragePool, "GlobalAveragePool (kernel launch)", true);
     ORT_RETURN_IF_ERROR(
         KernelLauncher{GetKernel("GlobalAveragePool")}
             .setArg<cl_int>(CeilDiv(C, 4))

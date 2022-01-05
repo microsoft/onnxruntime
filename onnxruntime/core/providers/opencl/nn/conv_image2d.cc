@@ -71,6 +71,8 @@ class Conv : public OpenCLKernel {
   };
 
   Status Compute(OpKernelContext* context) const override {
+    ZoneScopedN("Conv::Compute");
+
     VLOG_CL_NODE();
     const Tensor* X = context->Input<Tensor>(0);
     const Tensor* W = context->Input<Tensor>(1);
@@ -138,6 +140,7 @@ class Conv : public OpenCLKernel {
                          const std::vector<int64_t>& P,
                          const std::vector<int64_t>& D,
                          const int group) const {
+    ZoneScopedN("DepthwiseConv2D");
     VLOGS_DEFAULT(0) << "[CL] DepthwiseConv2D, X:" << X->Shape() << " W:" << W->Shape()
                      << " B:" << B->Shape() << " Y:" << Y->Shape()
                      << " K:" << K << " S:" << S << " P:" << P << " D:" << D << " group:" << group;
@@ -157,6 +160,7 @@ class Conv : public OpenCLKernel {
     bool S1 = S[0] == 1 && S[1] == 1 && D[0] == 1 && D[1] == 1;
 
     if (S1) {
+      ZoneScopedN("DepthwiseConv2DS1 (kernel launch)");
       ORT_RETURN_IF_ERROR(
           KernelLauncher{GetKernel("DepthwiseConv2DS1")}
               .setArg<cl_int>(gsx)
@@ -171,6 +175,7 @@ class Conv : public OpenCLKernel {
               .setArg<cl_float>(act_info_.param1)
               .Launch(*exec_, {gsx, gsy}));
     } else {
+      ZoneScopedN("DepthwiseConv2D (kernel launch)");
       ORT_RETURN_IF_ERROR(
           KernelLauncher{GetKernel("DepthwiseConv2D")}
               .setArg<cl_int>(gsx)
@@ -200,6 +205,7 @@ class Conv : public OpenCLKernel {
                 const std::vector<int64_t>& P,
                 const std::vector<int64_t>& D,
                 const int group) const {
+    ZoneScopedN("Conv2D");
     VLOGS_DEFAULT(0) << "[CL] Conv2D, X:" << X->Shape() << " W:" << W->Shape()
                      << " B:" << B->Shape() << " Y:" << Y->Shape()
                      << " K:" << K << " S:" << S << " P:" << P << " D:" << D << " group:" << group;
@@ -222,6 +228,7 @@ class Conv : public OpenCLKernel {
     bool S1 = S[0] == 1 && S[1] == 1 && D[0] == 1 && D[1] == 1;
 
     if (K1 && S1) {
+      ZoneScopedN("Conv2DK1S1 (kernel launch)");
       ORT_RETURN_IF_ERROR(
           KernelLauncher{GetKernel("Conv2DK1S1")}
               .setArg<cl_int>(gsx)
@@ -235,6 +242,7 @@ class Conv : public OpenCLKernel {
               .setArg<cl_float>(act_info_.param1)
               .Launch(*exec_, {gsx, gsy}));
     } else if (K1) {
+      ZoneScopedN("Conv2DK1 (kernel launch)");
       ORT_RETURN_IF_ERROR(
           KernelLauncher{GetKernel("Conv2DK1")}
               .setArg<cl_int>(gsx)
@@ -251,6 +259,7 @@ class Conv : public OpenCLKernel {
               .setArg<cl_float>(act_info_.param1)
               .Launch(*exec_, {gsx, gsy}));
     } else {
+      ZoneScopedN("Conv2D (kernel launch)");
       ORT_RETURN_IF_ERROR(
           KernelLauncher{GetKernel("Conv2D")}
               .setArg<cl_int>(gsx)

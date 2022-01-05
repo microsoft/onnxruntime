@@ -82,3 +82,6 @@
 [submodule "cmake/external/libopencl-stub"]
 	path = cmake/external/libopencl-stub
 	url = https://github.com/krrishnarraj/libopencl-stub.git
+[submodule "cmake/external/tracy"]
+	path = cmake/external/tracy
+	url = https://github.com/wolfpld/tracy.git

@@ -4,6 +4,7 @@
 #include <assert.h>
 #include "providers.h"
 #include "TestCase.h"
+#include "Tracy.hpp"
 
 #ifdef _WIN32
 #define strdup _strdup
@@ -14,6 +15,7 @@ namespace onnxruntime {
 namespace perftest {
 
 std::chrono::duration<double> OnnxRuntimeTestSession::Run() {
+  ZoneScopedN("OnnxRuntimeTestSession::Run");
   //Randomly pick one OrtValueArray from test_inputs_. (NOT ThreadSafe)
   const std::uniform_int_distribution<int>::param_type p(0, static_cast<int>(test_inputs_.size() - 1));
   const size_t id = static_cast<size_t>(dist_(rand_engine_, p));
@@ -484,6 +486,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 }
 
 bool OnnxRuntimeTestSession::PopulateGeneratedInputTestData() {
+  ZoneScopedN("OnnxRuntimeTestSession::PopulateGeneratedInputTestData");
   // iterate over all input nodes
   for (size_t i = 0; i < static_cast<size_t>(input_length_); i++) {
     Ort::TypeInfo type_info = session_.GetInputTypeInfo(i);

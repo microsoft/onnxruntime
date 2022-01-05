@@ -1,6 +1,8 @@
 #pragma once
 
 #include <CL/opencl.h>
+#include <Tracy.hpp>
+#include <TracyOpenCL.hpp>
 
 #include <cstdio>
 #include <iomanip>

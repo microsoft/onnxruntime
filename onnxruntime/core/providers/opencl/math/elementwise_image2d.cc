@@ -27,12 +27,12 @@ namespace opencl {
   class CLASS_NAME : public OpenCLKernel {                                  \
    public:                                                                  \
     explicit CLASS_NAME(const OpKernelInfo& info) : OpenCLKernel(info) {    \
-      VLOGS_DEFAULT(0) << "[CL] Init " #CLASS_NAME "  (OpenCLKernel)";      \
       LoadProgram(GetKernelSrc((#CLASS_NAME), (OP_DEFINE)));                \
       LoadKernel(#CLASS_NAME);                                              \
     };                                                                      \
                                                                             \
     Status Compute(OpKernelContext* context) const override {               \
+      ZoneScopedN(#CLASS_NAME "::Compute");                                 \
       VLOG_CL_NODE();                                                       \
       const auto* a = context->Input<Tensor>(0);                            \
       const auto* b = context->Input<Tensor>(1);                            \

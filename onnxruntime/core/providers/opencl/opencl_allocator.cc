@@ -23,6 +23,7 @@ OpenCLBufferAllocator::~OpenCLBufferAllocator() {
 }
 
 void* OpenCLBufferAllocator::Alloc(size_t size) {
+  ZoneScopedN("OpenCLBufferAllocator::Alloc")
   auto it = cache_.find(size);
 
   if (it == cache_.end() || it->second.empty()) {
@@ -70,6 +71,7 @@ void* OpenCLImage2DAllocator::Alloc(size_t) {
 }
 
 void* OpenCLImage2DAllocator::Alloc(const TensorShape& shape) {
+  ZoneScopedN("OpenCLImage2DAllocator::Alloc")
   auto it = cache_.find(shape);
   if (it == cache_.end() || it->second.empty()) {
     cl_int err{};

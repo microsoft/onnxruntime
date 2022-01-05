@@ -64,6 +64,9 @@ OpenCLExecutionProvider::OpenCLExecutionProvider(const OpenCLExecutionProviderIn
     : IExecutionProvider(kOpenCLExecutionProvider), use_fp16_(info.use_fp16) {
   Status status;
   ORT_THROW_IF_ERROR(InitOpenCLContext());
+#ifdef TRACY_ENABLE
+  tracy_cl_ctx_ = TracyCLContext(ctx_, dev_);
+#endif
 }
 
 OpenCLExecutionProvider::OpenCLExecutionProvider(OpenCLExecutionProvider&& provider) noexcept
@@ -73,7 +76,16 @@ OpenCLExecutionProvider::OpenCLExecutionProvider(OpenCLExecutionProvider&& provi
   std::swap(cmd_queue_, provider.cmd_queue_);
 }
 
-OpenCLExecutionProvider::~OpenCLExecutionProvider() = default;
+OpenCLExecutionProvider::~OpenCLExecutionProvider() {
+#ifdef TRACY_ENABLE
+  TracyCLCollect(tracy_cl_ctx_);
+  TracyCLDestroy(tracy_cl_ctx_);
+#endif
+
+  clReleaseCommandQueue(cmd_queue_);
+  clReleaseDevice(dev_);
+  clReleaseContext(ctx_);
+}
 
 std::shared_ptr<KernelRegistry> OpenCLExecutionProvider::GetKernelRegistry() const {
   static std::shared_ptr<KernelRegistry> kernel_registry = opencl::GetOpenCLKernelRegistry();
@@ -147,7 +159,11 @@ Status OpenCLExecutionProvider::InitOpenCLContext() {
   std::cout << "[CL] FP16: " << UseFp16() << "\n";
   std::cout << "[CL] clFlush after launch: " << flush_after_launch_ << "\n";
 
+#ifdef TRACY_ENABLE
+  cmd_queue_ = clCreateCommandQueue(ctx_, dev_, CL_QUEUE_PROFILING_ENABLE, &err);
+#else
   cmd_queue_ = clCreateCommandQueue(ctx_, dev_, /*properties=*/0, &err);
+#endif
   ORT_RETURN_IF_CL_ERROR(err);
 
   InitCopyKernels();

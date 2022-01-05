@@ -195,9 +195,20 @@ Status KernelLauncher::Launch(const OpenCLExecutionProvider& exec, const NDRange
     VLOGS_DEFAULT(1) << "[CL] Launching " << GetKernelFunctionName()
                      << " with global work size: " << global.ToString()
                      << " local work size: " << local.ToString();
+
+#ifdef TRACY_ENABLE
+    cl_event kernel_launch_event;
+    {
+        ZoneScopedN("clEnqueueNDRangeKernel");
+        TracyCLZone(const_cast<TracyCLCtx>(exec.GetTracyCLContext()), "clEnqueueNDRangeKernel");
+        ORT_RETURN_IF_CL_ERROR(clEnqueueNDRangeKernel(exec.GetCommandQueue(), kernel_, global.Size(), nullptr, global.Data(), local.Data(), 0, nullptr, &kernel_launch_event));
+        // TracyCLZoneSetEvent(kernel_launch_event);
+    }
+#else
     ORT_RETURN_IF_CL_ERROR(clEnqueueNDRangeKernel(exec.GetCommandQueue(), kernel_, global.Size(), nullptr, global.Data(), local.Data(), 0, nullptr, nullptr));
+#endif
     return exec.AfterCLLaunch();
-  }
+}
 
 }  // namespace opencl
 }  // namespace onnxruntime

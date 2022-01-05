@@ -682,6 +682,9 @@ if (onnxruntime_USE_OPENCL)
     LINKER_LANGUAGE CXX
     FOLDER "ONNXRuntime"
   )
+  if(onnxruntime_ENABLE_TRACY)
+    target_link_libraries(onnxruntime_providers_opencl PUBLIC Tracy::TracyClient)
+  endif()
   onnxruntime_add_include_to_target(onnxruntime_providers_opencl onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers)
   add_dependencies(onnxruntime_providers_opencl onnxruntime_providers gen_opencl_embed_hdrs)
   install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/opencl  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
