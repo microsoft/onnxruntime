@@ -1181,8 +1181,10 @@ if(UNIX)
   endif()
 else()
   set(ONNXRUNTIME_CUSTOM_OP_LIB_LINK_FLAG "-DEF:${TEST_SRC_DIR}/testdata/custom_op_library/custom_op_library.def")
-  target_compile_options(custom_op_library PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler /wd26409>"
-                "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd26409>")
+  if (NOT onnxruntime_USE_CUDA)
+    target_compile_options(custom_op_library PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler /wd26409>"
+                  "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd26409>")
+  endif()
 endif()
 set_property(TARGET custom_op_library APPEND_STRING PROPERTY LINK_FLAGS ${ONNXRUNTIME_CUSTOM_OP_LIB_LINK_FLAG})
 
