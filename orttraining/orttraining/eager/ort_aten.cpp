@@ -80,16 +80,38 @@ onnxruntime::MLDataType ort_scalar_type_from_aten(
 OrtValue create_ort_value(
   onnxruntime::ORTInvoker& invoker,
   const at::Scalar& scalar) {
-  // TODO: support more types
+  return create_ort_value(invoker, scalar, at::kFloat);
+}
+
+OrtValue create_ort_value(
+  onnxruntime::ORTInvoker& invoker,
+  const at::Scalar& scalar,
+  at::ScalarType type) {
   float val = scalar.toFloat();
   OrtValue ort_val;
   CreateMLValue(
     invoker.GetCurrentExecutionProvider().GetAllocator(0, OrtMemTypeDefault),
-    ort_scalar_type_from_aten(at::kFloat),
+    ort_scalar_type_from_aten(type),
     {},
     &ort_val);
   auto* ort_tensor = ort_val.GetMutable<onnxruntime::Tensor>();
-  CopyVectorToTensor<float>(invoker, &val, 1, *ort_tensor);
+  switch (type) {
+    case at::ScalarType::Float:
+      CopyVectorToTensor<float>(invoker, &val, 1, *ort_tensor);
+      break;
+    case at::ScalarType::BFloat16: {
+      at::BFloat16 valBFloat16 = scalar.toBFloat16();
+      Ort::BFloat16_t *valOrtBFloat16 = reinterpret_cast<Ort::BFloat16_t *>(&valBFloat16);
+      CopyVectorToTensor<Ort::BFloat16_t>(invoker, valOrtBFloat16, 1, *ort_tensor);
+      break;
+    }      
+    default:
+      // TODO: support more types
+      // For most at::ScalarType, it should be safe to just call value.to<>
+      // on it, but for now we want to explicitly know when we've encountered
+      // a new scalar type while bringing up ORT eager mode.
+      ORT_THROW("Unsupported: at::ScalarType::", scalar.type());
+  }
   return ort_val;
 }
 
@@ -384,6 +406,55 @@ at::Tensor& zero_(at::Tensor& self){
     throw std::runtime_error(
       "ORT return failure status:" + status.ErrorMessage());
 
+  return self;
+}
+
+// TODO: enhance opgen.py to support inplace binary operations.
+// aten::add_.Tensor(Tensor(a!) self, Tensor other, *, Scalar alpha=1) -> Tensor(a!)
+at::Tensor& add__Tensor(
+  at::Tensor& self, 
+  const at::Tensor& other, 
+  const at::Scalar& alpha) {
+  ORT_LOG_FN(self, other, alpha);
+  
+  if (
+    !IsSupportedType(alpha, {at::kDouble,at::kLong,at::kHalf,at::kShort,at::kInt,at::kByte,at::kFloat,at::kBFloat16}) || 
+    !IsSupportedType(other, {at::kDouble,at::kLong,at::kHalf,at::kShort,at::kInt,at::kByte,at::kFloat,at::kBFloat16}) || 
+    !IsSupportedType(self, {at::kDouble,at::kLong,at::kHalf,at::kShort,at::kInt,at::kByte,at::kFloat,at::kBFloat16})) {
+    return at::native::call_fallback_fn<
+      &at::native::cpu_fallback,
+      ATEN_OP(add__Tensor)>::call(self, other, alpha);
+  }
+  auto& invoker = GetORTInvoker(self.device());
+  
+  auto ort_input_alpha = create_ort_value(invoker, alpha, other.scalar_type());
+  auto ort_input_other = create_ort_value(invoker, other);
+  
+  std::vector<OrtValue> ort_outputs_0_Mul(1);
+  
+  auto status = invoker.Invoke("Mul", {
+    std::move(ort_input_alpha),
+    std::move(ort_input_other),
+  }, ort_outputs_0_Mul, nullptr);
+  
+  if (!status.IsOK())
+    throw std::runtime_error(
+      "ORT return failure status:" + status.ErrorMessage());
+  
+  auto ort_input_self = create_ort_value(invoker, self);
+  
+  std::vector<OrtValue> ort_outputs_1_Add(1);
+  ort_outputs_1_Add[0] = ort_input_self;
+  
+  status = invoker.Invoke("Add", {
+    std::move(ort_input_self),
+    std::move(ort_outputs_0_Mul[0]),
+  }, ort_outputs_1_Add, nullptr);
+  
+  if (!status.IsOK())
+    throw std::runtime_error(
+      "ORT return failure status:" + status.ErrorMessage());
+  
   return self;
 }
 
