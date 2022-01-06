@@ -51,7 +51,7 @@ OrtValue create_ort_value(
     {1,},
     &ort_val);
   auto* ort_tensor = ort_val.GetMutable<onnxruntime::Tensor>();
-  CopyVectorToTensor<int64_t>(invoker, &val, 1, *ort_tensor);
+  CopyVectorToTensor<T>(invoker, &val, 1, *ort_tensor);
   return ort_val;
 }
 
