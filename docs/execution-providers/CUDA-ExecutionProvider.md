@@ -84,7 +84,7 @@ Default value: true
 
 ### cudnn_conv_use_max_workspace
 Check [tuning performance for convolution heavy models](../performance/tune-performance.md#convolution-heavy-models-and-the-cuda-ep) for details on what this flag does.
-This flag is only supported from the V2 version of the provider options struct when used from the C API.
+This flag is only supported from the V2 version of the provider options struct when used using the C API.
 
 Default value: 0
 
