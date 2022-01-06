@@ -29,6 +29,7 @@ python3 /onnxruntime_src/tools/ci_build/build.py \
     --build_java \
     --disable_ml_ops \
     --disable_exceptions \
+    --cmake_extra_defines ADD_DEBUG_INFO_TO_MINIMAL_BUILD=ON \
     --include_ops_by_config /home/onnxruntimedev/.test_data/include_no_operators.config
 
 # set current size limit to BINARY_SIZE_LIMIT_IN_BYTES.
