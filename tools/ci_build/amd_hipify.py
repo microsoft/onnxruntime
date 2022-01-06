@@ -2,6 +2,7 @@
 # Licensed under the MIT License.
 
 import concurrent.futures
+import functools
 import os
 import shutil
 import subprocess
@@ -174,12 +175,9 @@ training_ops_excluded_files = [
                     'cuda_training_kernels.h',
 ]
 
-HIPIFY_PERL = None
-def get_hipify_path():
-    global HIPIFY_PERL
-    if HIPIFY_PERL is not None:
-        return HIPIFY_PERL
 
+@functools.lru_cache(maxsize=1)
+def get_hipify_path():
     # prefer the hipify-perl in PATH
     HIPIFY_PERL = shutil.which('hipify-perl')
     # if not found, attempt hard-coded location 1
@@ -195,7 +193,6 @@ def get_hipify_path():
     # fail
     if HIPIFY_PERL is None:
         raise RuntimeError('Could not locate hipify-perl script')
-    print('Using %s' % HIPIFY_PERL)
     return HIPIFY_PERL
 
 
@@ -347,7 +344,7 @@ def list_files(prefix, path):
 
 def amd_hipify(config_build_dir):
     # determine hipify script path now to avoid doing so concurrently in the thread pool
-    ignore = get_hipify_path()
+    print('Using %s' % get_hipify_path())
     with concurrent.futures.ThreadPoolExecutor() as executor:
         cuda_path = os.path.join(contrib_ops_path, 'cuda')
         rocm_path = os.path.join(config_build_dir, 'amdgpu', contrib_ops_path, 'rocm')
