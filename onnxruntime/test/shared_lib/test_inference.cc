@@ -744,6 +744,9 @@ TEST(CApiTest, RegisterCustomOpForCPUAndCUDA) {
 //It has memory leak. The OrtCustomOpDomain created in custom_op_library.cc:RegisterCustomOps function was not freed
 #if defined(__ANDROID__)
 TEST(CApiTest, DISABLED_test_custom_op_library) {
+//To accomodate a reduced op build pipeline
+#elif defined(REDUCED_OPS_BUILD) && defined(USE_CUDA)
+TEST(CApiTest, DISABLED_test_custom_op_library) {
 #else
 TEST(CApiTest, test_custom_op_library) {
 #endif
@@ -778,8 +781,13 @@ lib_name = "./libcustom_op_library.so";
 #endif
 
   void* library_handle = nullptr;
+#ifdef USE_CUDA
+  TestInference<int32_t>(*ort_env, CUSTOM_OP_LIBRARY_TEST_MODEL_URI, inputs, "output", expected_dims_y,
+                         expected_values_y, 1, nullptr, lib_name.c_str(), &library_handle);
+#else
   TestInference<int32_t>(*ort_env, CUSTOM_OP_LIBRARY_TEST_MODEL_URI, inputs, "output", expected_dims_y,
                          expected_values_y, 0, nullptr, lib_name.c_str(), &library_handle);
+#endif
 
 #ifdef _WIN32
   bool success = ::FreeLibrary(reinterpret_cast<HMODULE>(library_handle));
@@ -1844,6 +1852,51 @@ TEST(CApiTest, TestConfigureTensorRTProviderOptions) {
 }
 #endif
 
+#ifdef USE_CUDA
+
+// This test uses CreateCUDAProviderOptions/UpdateCUDAProviderOptions APIs to configure and create a CUDA Execution Provider instance
+TEST(CApiTest, TestConfigureCUDAProviderOptions) {
+  const auto& api = Ort::GetApi();
+
+  OrtCUDAProviderOptionsV2* cuda_options = nullptr;
+  ASSERT_TRUE(api.CreateCUDAProviderOptions(&cuda_options) == nullptr);
+  std::unique_ptr<OrtCUDAProviderOptionsV2, decltype(api.ReleaseCUDAProviderOptions)> rel_cuda_options(cuda_options, api.ReleaseCUDAProviderOptions);
+
+  std::vector<const char*> keys{
+      "device_id", "gpu_mem_limit", "arena_extend_strategy",
+      "cudnn_conv_algo_search", "do_copy_in_default_stream", "cudnn_conv_use_max_workspace"};
+
+  std::vector<const char*> values{
+      "0", "1024", "kSameAsRequested",
+      "DEFAULT", "1", "1"};
+
+  ASSERT_TRUE(api.UpdateCUDAProviderOptions(rel_cuda_options.get(), keys.data(), values.data(), 6) == nullptr);
+
+  OrtAllocator* allocator;
+  ASSERT_TRUE(api.GetAllocatorWithDefaultOptions(&allocator) == nullptr);
+
+  char* cuda_options_str = nullptr;
+  ASSERT_TRUE(api.GetCUDAProviderOptionsAsString(rel_cuda_options.get(), allocator, &cuda_options_str) == nullptr);
+  std::string s(cuda_options_str, strnlen(cuda_options_str, 2048));
+  ASSERT_TRUE(s.find("device_id=0") != std::string::npos);
+  ASSERT_TRUE(s.find("gpu_mem_limit=1024") != std::string::npos);
+  ASSERT_TRUE(s.find("arena_extend_strategy=kSameAsRequested") != std::string::npos);
+  ASSERT_TRUE(s.find("cudnn_conv_algo_search=DEFAULT") != std::string::npos);
+  ASSERT_TRUE(s.find("do_copy_in_default_stream=1") != std::string::npos);
+  ASSERT_TRUE(s.find("cudnn_conv_use_max_workspace=1") != std::string::npos);
+
+  ASSERT_TRUE(api.AllocatorFree(allocator, (void*)cuda_options_str) == nullptr);
+
+  Ort::SessionOptions session_options;
+  ASSERT_TRUE(api.SessionOptionsAppendExecutionProvider_CUDA_V2(static_cast<OrtSessionOptions*>(session_options), rel_cuda_options.get()) == nullptr);
+
+  // if session creation passes, model loads fine
+  std::basic_string<ORTCHAR_T> model_uri = MODEL_URI;
+  Ort::Session session(*ort_env, model_uri.c_str(), session_options);
+}
+
+#endif
+
 namespace TestPerSessionCustomThreadHooks {
 
 std::vector<std::thread> threads;
@@ -1925,4 +1978,3 @@ TEST(CApiTest, crop_and_resize) {
 #endif
 
 }  // namespace TestPerSessionCustomThreadHooks
-

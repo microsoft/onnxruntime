@@ -34,6 +34,7 @@ class OrtOpTests(unittest.TestCase):
       torch.mul(cpu_ones, cpu_ones),
       torch.mul(ort_ones, ort_ones).cpu())
 
+  # TODO: Add BFloat16 test coverage
   def test_add_(self):
     device = self.get_device()
     cpu_ones = torch.Tensor([[1, 1, 1], [1, 1, 1], [1, 1, 1]])

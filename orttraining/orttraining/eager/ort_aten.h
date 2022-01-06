@@ -30,6 +30,11 @@ OrtValue create_ort_value(
 
 OrtValue create_ort_value(
   onnxruntime::ORTInvoker& invoker,
+  const at::Scalar& scalar,
+  at::ScalarType type);
+
+OrtValue create_ort_value(
+  onnxruntime::ORTInvoker& invoker,
   const at::Tensor& tensor);
 
 OrtValue create_ort_value(const at::Tensor& tensor);
@@ -46,7 +51,7 @@ OrtValue create_ort_value(
     {1,},
     &ort_val);
   auto* ort_tensor = ort_val.GetMutable<onnxruntime::Tensor>();
-  CopyVectorToTensor<int64_t>(invoker, {val}, *ort_tensor);
+  CopyVectorToTensor<T>(invoker, &val, 1, *ort_tensor);
   return ort_val;
 }
 
@@ -69,7 +74,8 @@ OrtValue create_ort_value(
     &ort_value);
   CopyVectorToTensor<T>(
     invoker,
-    values,
+    values.data(),
+    values.size(),
     *ort_value.GetMutable<onnxruntime::Tensor>());
   return ort_value;
 }

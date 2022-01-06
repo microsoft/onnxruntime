@@ -25,8 +25,32 @@ class GeluGrad(ONNXOp):
     super().__init__('GeluGrad', 1, [{'at::kHalf', 'at::kFloat', 'at::kBFloat16'}, {'at::kHalf', 'at::kFloat', 'at::kBFloat16'}], dY, X)
     self.domain = kMSDomain
 
-ops = {
-  # Hand-Implemented Ops
+ops = {}
+
+for binary_op, onnx_op in {
+  'add': Add('self', Mul('alpha', 'other')),
+  'sub': Sub('self', Mul('alpha', 'other')),
+  'mul': Mul('self', 'other'),
+  'div': Div('self', 'other')}.items():
+  for dtype in ['Tensor', 'Scalar']:
+    for variant in ['', '_']:
+      name = f'aten::{binary_op}{variant}.{dtype}'
+      if name not in ops:
+        ops[f'aten::{binary_op}{variant}.{dtype}'] = deepcopy(onnx_op)
+
+for unary_op in [
+  'abs','acos','acosh', 'asinh', 'atanh', 'asin', 'atan', 'ceil', 'cos',
+  'cosh', 'erf', 'exp', 'floor', 'isnan', 'log', 'reciprocal', 'neg', 'round',
+  'relu', 'selu', 'sigmoid', 'sin', 'sinh', 'sqrt', 'tan', 'tanh', 'nonzero',
+  'sign', 'hardsigmoid', 'isinf', 'det']:
+  aten_name = f'aten::{unary_op}'
+  onnx_op = onnx_ops[unary_op]('self')
+  ops[aten_name] = onnx_op
+  # produce the in-place variant as well for ops that support it
+  if unary_op not in ['isnan', 'nonzero', 'min', 'max', 'isinf', 'det']:
+    ops[f'{aten_name}_'] = onnx_op
+
+hand_implemented = {
   'aten::empty.memory_format': SignatureOnly(),
   'aten::empty_strided': SignatureOnly(),
   'aten::zero_': SignatureOnly(),
@@ -35,6 +59,7 @@ ops = {
   'aten::view': SignatureOnly(),
   'aten::_copy_from_and_resize' : SignatureOnly(),
   'aten::addmm': Gemm('mat1', 'mat2', 'self', alpha='alpha', beta='beta'),
+  'aten::add_.Tensor': SignatureOnly(),
   'aten::t': Transpose('self'),
   'aten::mm': MatMul('self', 'mat2'),
   'aten::zeros_like': ConstantOfShape(Shape('self')), #the default constant is 0, so don't need to speicify attribute
@@ -65,23 +90,4 @@ ops = {
   'aten::gt.Scalar_out' : MakeTorchFallback(),
 }
 
-for binary_op, onnx_op in {
-  'add': Add('self', Mul('alpha', 'other')),
-  'sub': Sub('self', Mul('alpha', 'other')),
-  'mul': Mul('self', 'other'),
-  'div': Div('self', 'other')}.items():
-  for dtype in ['Tensor', 'Scalar']:
-    for variant in ['', '_']:
-      ops[f'aten::{binary_op}{variant}.{dtype}'] = deepcopy(onnx_op)
-
-for unary_op in [
-  'abs','acos','acosh', 'asinh', 'atanh', 'asin', 'atan', 'ceil', 'cos',
-  'cosh', 'erf', 'exp', 'floor', 'isnan', 'log', 'reciprocal', 'neg', 'round',
-  'relu', 'selu', 'sigmoid', 'sin', 'sinh', 'sqrt', 'tan', 'tanh', 'nonzero',
-  'sign', 'hardsigmoid', 'isinf', 'det']:
-  aten_name = f'aten::{unary_op}'
-  onnx_op = onnx_ops[unary_op]('self')
-  ops[aten_name] = onnx_op
-  # produce the in-place variant as well for ops that support it
-  if unary_op not in ['isnan', 'nonzero', 'min', 'max', 'isinf', 'det']:
-    ops[f'{aten_name}_'] = onnx_op
+ops = {**ops, **hand_implemented} 
