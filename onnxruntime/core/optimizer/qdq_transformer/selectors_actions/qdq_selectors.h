@@ -93,15 +93,21 @@ class ConvNodeGroupSelector : public NodeGroupSelector {
 };
 
 // 2 DQ nodes for input -> node -> optional Q if QLinearMatMul, MatMulIntegerToFloat if not
+// The lack of a trailing Q isn't really a QDQ node group, so we default support for that to off.
 class MatMulNodeGroupSelector : public NodeGroupSelector {
  public:
-  MatMulNodeGroupSelector(bool int8_allowed = true) : int8_allowed_(int8_allowed) {}
+  MatMulNodeGroupSelector(bool int8_allowed = true,
+                          bool matmulintegertofloat_allowed = false)
+      : int8_allowed_(int8_allowed),
+        matmulintegertofloat_allowed_(matmulintegertofloat_allowed) {
+  }
 
  private:
   bool Check(const GraphViewer& graph_viewer, const Node& node,
              const std::vector<const Node*>& dq_nodes,
              const std::vector<const Node*>& q_nodes) const override;
   bool int8_allowed_;
+  bool matmulintegertofloat_allowed_;
 };
 
 /*
@@ -112,6 +118,11 @@ class MatMulNodeGroupSelector : public NodeGroupSelector {
 class BaseSelector : public NodeSelector {
  public:
   std::optional<NodesToOptimizeIndices> Select(const GraphViewer& graph_viewer, const Node& node) const override;
+
+  // We std::move SelectorActionRegistry into the SelectorActionTransformer so this class needs to have a move ctor
+  BaseSelector(BaseSelector&& rhs) noexcept
+      : node_group_selector_{std::move(rhs.node_group_selector_)} {
+  }
 
  protected:
   BaseSelector(std::unique_ptr<NodeGroupSelector> node_group_selector)
@@ -165,8 +176,9 @@ class ConvSelector : public BaseSelector {
 // 2 DQ nodes for input -> node -> optional Q if QLinearMatMul, MatMulIntegerToFloat if not
 class MatMulSelector : public BaseSelector {
  public:
-  MatMulSelector(bool int8_allowed = false)
-      : BaseSelector(std::unique_ptr<NodeGroupSelector>(new MatMulNodeGroupSelector(int8_allowed))) {}
+  MatMulSelector(bool int8_allowed)
+      : BaseSelector(std::unique_ptr<NodeGroupSelector>(
+            new MatMulNodeGroupSelector(int8_allowed, /*matmulintegertofloat_allowed*/ true))) {}
 };
 
 }  // namespace QDQ

@@ -218,9 +218,10 @@ bool MatMulNodeGroupSelector::Check(const GraphViewer& graph_viewer,
 
     int32_t dt_output = q_nodes[0]->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
     return dt_input == dt_output;
+  } else {
+    // can be converted to MatMulIntegerToFloat if EP supports that.
+    return matmulintegertofloat_allowed_;
   }
-
-  return true;
 }
 
 }  // namespace QDQ
