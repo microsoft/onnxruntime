@@ -33,10 +33,13 @@ python3 /onnxruntime_src/tools/ci_build/build.py \
     --include_ops_by_config /home/onnxruntimedev/.test_data/include_no_operators.config
 
 # set current size limit to BINARY_SIZE_LIMIT_IN_BYTES.
-BINARY_SIZE_LIMIT_IN_BYTES=1306224
-echo "The current preset binary size limit is $BINARY_SIZE_LIMIT_IN_BYTES"
+# BINARY_SIZE_LIMIT_IN_BYTES=1306224
+# echo "The current preset binary size limit is $BINARY_SIZE_LIMIT_IN_BYTES"
+# python3 /onnxruntime_src/tools/ci_build/github/linux/ort_minimal/check_build_binary_size.py \
+#     --threshold=$BINARY_SIZE_LIMIT_IN_BYTES \
+#     ${BUILD_DIR}/MinSizeRel/libonnxruntime.so
+
 python3 /onnxruntime_src/tools/ci_build/github/linux/ort_minimal/check_build_binary_size.py \
-    --threshold=$BINARY_SIZE_LIMIT_IN_BYTES \
     ${BUILD_DIR}/MinSizeRel/libonnxruntime.so
 
 echo "The content of binary_size_data.txt"
