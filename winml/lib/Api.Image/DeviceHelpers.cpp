@@ -121,7 +121,7 @@ HRESULT _winml::GetDXCoreHardwareAdapterWithPreference(DXGI_GPU_PREFERENCE prefe
   return S_OK;
 }
 
-HRESULT _winml::GetDXCoreHardwareAdapterForVPU(_COM_Outptr_ IDXCoreAdapter** ppAdapter) {
+HRESULT _winml::GetDXCoreHardwareAdapterForComputeAccelerator(_COM_Outptr_ IDXCoreAdapter** ppAdapter) {
   winrt::com_ptr<IDXCoreAdapterFactory> spFactory;
   winrt::com_ptr<IDXCoreAdapterList> spAdapterList;
   const GUID gpuFilter[] = {DXCORE_ADAPTER_ATTRIBUTE_D3D12_CORE_COMPUTE};

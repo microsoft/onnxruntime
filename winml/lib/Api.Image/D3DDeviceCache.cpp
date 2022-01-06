@@ -58,7 +58,7 @@ D3DDeviceCache::D3DDeviceCache(winml::LearningModelDeviceKind const& deviceKind)
 
   if (support.has_dxcore && deviceKind == winml::LearningModelDeviceKind::ComputeAccelerator) {
     winrt::com_ptr<IDXCoreAdapter> spAdapter;
-    hardwareAdapterSuccessfullyObtained = GetDXCoreHardwareAdapterForVPU(spAdapter.put());
+    hardwareAdapterSuccessfullyObtained = GetDXCoreHardwareAdapterForComputeAccelerator(spAdapter.put());
     if (hardwareAdapterSuccessfullyObtained == HRESULT_FROM_WIN32(ERROR_NOT_FOUND)) {
       WINML_THROW_HR_MSG_NO_TELEMETRY_SENT(hardwareAdapterSuccessfullyObtained, noHardwareAdaptersAvailableErrStr);
     } else {
