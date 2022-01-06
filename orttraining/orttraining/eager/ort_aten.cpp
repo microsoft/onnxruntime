@@ -139,6 +139,16 @@ OrtValue create_ort_value(const at::Tensor& tensor){
   return create_ort_value(invoker, tensor);
 }
 
+std::vector<OrtValue> create_ort_value(
+  onnxruntime::ORTInvoker& invoker,
+  at::TensorList values) {
+    auto output = std::vector<OrtValue>{};
+    for (auto element: values){
+      output.push_back(create_ort_value(element));
+    }
+    return output;
+}
+
 onnx::AttributeProto create_ort_attribute(
   const char* name,
   at::Scalar value) {
@@ -202,6 +212,10 @@ bool IsSupportedType(int64_t val, const std::vector<at::ScalarType>& valid_types
 
 bool IsSupportedType(c10::optional<int64_t> val, const std::vector<at::ScalarType>& valid_types){
   return IsSupportedType(val.value(), valid_types);
+}
+
+bool IsSupportedType(at::TensorList tensors, const std::vector<at::ScalarType>& valid_types){
+  return IsSupportedType(tensors[0], valid_types);
 }
 
 //#pragma endregion
