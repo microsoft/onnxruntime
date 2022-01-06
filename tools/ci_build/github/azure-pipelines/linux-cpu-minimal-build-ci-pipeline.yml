@@ -176,9 +176,8 @@ jobs:
               /build/5
       workingDirectory: $(Build.SourcesDirectory)
 
-
   - task: AzureCLI@2
-    displayName: 'Publish binary size data'
+    displayName: 5. Publish binary size data
     condition: and(succeededOrFailed(), in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI'), eq(variables['Build.SourceBranch'], 'refs/heads/master'))
     inputs:
       azureSubscription: AIInfraBuild
@@ -196,6 +195,13 @@ jobs:
           --build_project=onnxruntime \
           --build_id=$(Build.BuildId)
       workingDirectory: '$(Build.BinariesDirectory)'
+
+  - task: PublishPipelineArtifact@1
+    displayName: 5. Publish binary artifact
+    # condition: and(succeededOrFailed(), in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI'), eq(variables['Build.SourceBranch'], 'refs/heads/master'))
+    inputs:
+      targetPath: $(Build.BinariesDirectory)/5/MinSizeRel/libonnxruntime.so
+      artifactName: AndroidMinimalBaselineBinary
 
   - task: CmdLine@2
     displayName: 6. Build extended minimal onnxruntime with runtime optimization replay enabled
