@@ -670,48 +670,6 @@ static void AddInputToSkip(ModelBuilder& model_builder, const NodeUnitIODef& io_
     AddQuantizationScaleAndZeroPointToSkip(model_builder, io_def);
 }
 
-Status GetQuantizedInputScaleAndZeroPoint(const InitializedTensorSet& initializers,
-                                          const NodeUnit& node_unit,
-                                          const std::string& input_name,
-                                          float& scale,
-                                          int32_t& zero_point) {
-  const auto& node = node_unit.GetNode();
-  const auto& op_type = node.OpType();
-  auto qlinear_op_type = GetQLinearOpType(node);
-  assert(qlinear_op_type != QLinearOpType::Unknown &&
-         qlinear_op_type != QLinearOpType::QuantizeLinear);
-
-  size_t scale_idx, zero_point_idx;
-  if (qlinear_op_type == QLinearOpType::DequantizeLinear ||
-      qlinear_op_type == QLinearOpType::QLinearSigmoid ||
-      qlinear_op_type == QLinearOpType::QLinearAveragePool) {
-    scale_idx = 1;
-    zero_point_idx = 2;
-  } else if (IsQLinearBinaryOp(qlinear_op_type)) {
-    const auto input_defs(node.InputDefs());
-    if (input_name == input_defs[0]->Name()) {
-      scale_idx = 1;
-      zero_point_idx = 2;
-    } else if (input_name == input_defs[3]->Name()) {
-      scale_idx = 4;
-      zero_point_idx = 5;
-    } else {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Unknown input: ", input_name, ", for op: ", op_type);
-    }
-  } else {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported op: ", op_type);
-  }
-
-  ORT_RETURN_IF_ERROR(GetQuantizationScale(initializers, node, scale_idx, scale));
-  zero_point = 0;
-  if (node.InputDefs().size() > zero_point_idx) {
-    ORT_RETURN_IF_ERROR(GetQuantizationZeroPoint(initializers, node, zero_point_idx, zero_point));
-  }
-
-  return Status::OK();
-}
-
 template <class T>
 void CreateSharedOpBuilderImpl(const std::string& op_type,
                                OpBuilderRegistrations& op_registrations,

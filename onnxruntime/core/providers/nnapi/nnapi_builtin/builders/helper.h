@@ -103,23 +103,22 @@ ConvType GetConvType(const onnxruntime::Node& node, const InitializedTensorSet& 
 // Such as QLinearConv, QLinearMatMul, QLinearAdd, ...
 bool IsQLinearBinaryOp(QLinearOpType qlinear_op_type);
 
-// Check if a qlinear unary op has valid inputs, Qlinear[Sigmoid/AveragePool]
-bool HasValidUnaryOpQuantizedInputs(const Node& node);
-// Check if a qlinear binary op has valid inputs, Qlinear[Conv/MatMul/Add]
-bool HasValidBinaryOpQuantizedInputs(const Node& node);
-// Check if a qlinear op has valid scales for given indices
-bool HasValidQuantizationScales(const InitializedTensorSet& initializers, const Node& node,
-                                const std::vector<size_t>& indices, const OpSupportCheckParams& params);
-// Check if a qlinear op has valid zero points for given indices
-bool HasValidQuantizationZeroPoints(const InitializedTensorSet& initializers, const Node& node,
-                                    const std::vector<size_t>& indices);
-
 common::Status GetQuantizationScale(const InitializedTensorSet& initializers, const Node& node,
                                     size_t idx, float& scale);
 
 common::Status GetQuantizationZeroPoint(const InitializedTensorSet& initializers,
                                         const Node& node, size_t idx, int32_t& zero_point) ORT_MUST_USE_RESULT;
 
+// Check if a qlinear unary op has valid inputs, Qlinear[Sigmoid/AveragePool]
+bool HasValidUnaryOpQuantizedInputs(const NodeUnit& node_unit);
+// Check if a qlinear binary op has valid inputs, Qlinear[Conv/MatMul/Add]
+bool HasValidBinaryOpQuantizedInputs(const NodeUnit& node_unit);
+
+// Check if a qlinear op has valid scales for given indices
+bool HasValidQuantizationScales(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
+                                const std::vector<size_t>& indices, const OpSupportCheckParams& params, bool is_input);
+
+// Check if a qlinear op has valid zero points for given indices
 bool HasValidQuantizationZeroPoints(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
                                     const std::vector<size_t>& indices, bool is_input);
 

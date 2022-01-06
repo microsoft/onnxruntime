@@ -43,10 +43,5 @@ const std::unordered_map<std::string, const IOpBuilder*>& GetOpBuilders();
 common::Status TransposeNHWCToNCHW(ModelBuilder& model_builder, const std::string& input, const std::string& output)
     ORT_MUST_USE_RESULT;
 
-// Get the quantized input's scale and zero point for the given input
-common::Status GetQuantizedInputScaleAndZeroPoint(const InitializedTensorSet& initializers,
-                                                  const NodeUnit& node_unit, const std::string& input_name,
-                                                  float& scale, int32_t& zero_point) ORT_MUST_USE_RESULT;
-
 }  // namespace nnapi
 }  // namespace onnxruntime
