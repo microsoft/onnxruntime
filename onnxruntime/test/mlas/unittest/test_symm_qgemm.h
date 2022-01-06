@@ -32,7 +32,7 @@ class MlasSymmQgemmTestBase : public MlasTestBase {
     GemmShape.AIsSigned = AIsSigned;
     GemmShape.BIsSigned = true;
 
-    size_t PackedBSize = MlasGemmPackBSize(N, K, AIsSigned, true);
+    size_t PackedBSize = MlasSymmQgemmPackBSize(N, K, AIsSigned);
     int8_t* PackedB = (int8_t*)BufferBPacked.GetBuffer(PackedBSize * BatchSize);
 
     std::vector<MLAS_SYMM_QGEMM_DATA_PARAMS> GemmParameters(BatchSize);

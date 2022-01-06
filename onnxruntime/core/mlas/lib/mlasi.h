@@ -702,7 +702,8 @@ extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmQuantDispatchDefault;
 //
 struct MLAS_SYMM_QGEMM_DISPATCH;
 extern const MLAS_SYMM_QGEMM_DISPATCH MlasSymmQgemmS8DispatchNeon;
- 
+extern const MLAS_SYMM_QGEMM_DISPATCH MlasSymmQgemmS8DispatchSdot;
+
 //
 // Symmetric quantized integer convolution dispatch structure.
 //

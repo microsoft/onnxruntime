@@ -450,6 +450,52 @@ Return Value:
     }
 }
 
+size_t
+MLASCALL
+MlasSymmQgemmPackBSize(
+    size_t N,
+    size_t K, 
+    bool AIsSigned
+    )
+{
+#ifndef MLAS_TARGET_ARM64
+
+    // Only have arm64 impl for now
+    MLAS_UNREFERENCED_PARAMETER(N);
+    MLAS_UNREFERENCED_PARAMETER(K);
+    MLAS_UNREFERENCED_PARAMETER(AIsSigned);
+    return 0;
+
+#else
+
+    // Only support s8s8 for now
+    if (!AIsSigned) {
+        return 0;
+    }
+
+    const auto* Dispatch = MlasPlatform.SymmQgemmDispatch;
+
+    size_t PackedK = Dispatch->PackedK;
+
+    //
+    // Compute the number of bytes required to hold the packed buffer.
+    //
+
+    const size_t AlignedN =
+        (N + MLAS_QGEMM_STRIDEN_THREAD_ALIGN - 1) & ~(MLAS_QGEMM_STRIDEN_THREAD_ALIGN - 1);
+    const size_t AlignedK = (K + PackedK - 1) & ~(PackedK - 1);
+
+    const size_t BytesRequired =
+        (AlignedN * sizeof(int32_t)) + (AlignedN * AlignedK * sizeof(uint8_t));
+    const size_t BufferAlignment = MlasGetPreferredBufferAlignment();
+    const size_t AlignedBytesRequired = (BytesRequired + BufferAlignment - 1) &
+        ~(BufferAlignment - 1);
+
+    return AlignedBytesRequired;
+
+#endif  // !MLAS_TARGET_ARM64
+}
+
 void
 MLASCALL
 MlasSymmQgemmPackB(

@@ -607,29 +607,6 @@ struct MLAS_SYMM_QGEMM_DATA_PARAMS {
 };
 
 /**
- * @brief Whether symmetric quant gemm is supported.
- * @param AIsSigned 
- * @return 
-*/
-inline
-bool
-MLASCALL
-MlasSymmQgemmSupported(bool AIsSigned)
-{
-#ifndef MLAS_TARGET_ARM64
-
-    // Only have arm64 impl for now
-    return false;
-
-#else
-
-    // Only support s8s8 for now
-    return AIsSigned;
-
-#endif  // !MLAS_TARGET_ARM64
-}
-
-/**
  * @brief   Batched QGEMM. Similar to MlasGemmBatch, but right hand side matrix
  *          must be symmetrically quantized and prepacked.
  *
@@ -692,6 +669,23 @@ MlasGemmPackB(
     bool AIsSigned,
     bool BIsSigned,
     void* PackedB
+    );
+
+/**
+ * @brief For symmetric quantized GEMM, returns size of the
+ *        packing buffer needed for right hand side        
+ * @param N              Number of columns 
+ * @param K              Number of rows
+ * @param AIsSigned      Whether left hand size is signed int8_t
+ * @return  size of the packing buffer,
+ *          0 if operation not supported
+*/
+size_t
+MLASCALL
+MlasSymmQgemmPackBSize(
+    size_t N,
+    size_t K, 
+    bool AIsSigned
     );
 
 void

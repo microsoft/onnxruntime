@@ -6,12 +6,10 @@ template <> MlasSymmQgemmTest<int8_t, int32_t, true>* MlasTestFixture<MlasSymmQg
 static size_t SymmQgemmRegistLongExecute() {
   size_t count = 0;
 
-  if (MlasSymmQgemmSupported(true)) {
-    count += MlasLongExecuteTests<MlasSymmQgemmTest<int8_t, int32_t, false>>::RegisterLongExecute();
+  count += MlasLongExecuteTests<MlasSymmQgemmTest<int8_t, int32_t, false>>::RegisterLongExecute();
 
-    if (GetMlasThreadPool() != nullptr) {
-      count += MlasLongExecuteTests<MlasSymmQgemmTest<int8_t, int32_t, true>>::RegisterLongExecute();
-    }
+  if (GetMlasThreadPool() != nullptr) {
+    count += MlasLongExecuteTests<MlasSymmQgemmTest<int8_t, int32_t, true>>::RegisterLongExecute();
   }
 
   return count;
@@ -20,12 +18,10 @@ static size_t SymmQgemmRegistLongExecute() {
 static size_t SymmQgemmRegistShortExecute() {
   size_t count = 0;
 
-  if (MlasSymmQgemmSupported(true)) {
-    count += SymmQgemmShortExecuteTest<int8_t, int32_t, false>::RegisterShortExecuteTests();
+  count += SymmQgemmShortExecuteTest<int8_t, int32_t, false>::RegisterShortExecuteTests();
 
-    if (GetMlasThreadPool() != nullptr) {
-      count += SymmQgemmShortExecuteTest<int8_t, int32_t, true>::RegisterShortExecuteTests();
-    }
+  if (GetMlasThreadPool() != nullptr) {
+    count += SymmQgemmShortExecuteTest<int8_t, int32_t, true>::RegisterShortExecuteTests();
   }
 
   return count;

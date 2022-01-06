@@ -47,7 +47,6 @@ class SymmQgemmShortExecuteTest<AType, int32_t, Threaded> : public MlasTestFixtu
 
   static size_t RegisterShortExecuteTests() {
     size_t test_registered = 0;
-    test_registered += RegisterSingleTest(9, 16, 36, 1, 21);
 
     for (size_t b = 1; b < 16; b++) {
       test_registered += RegisterSingleTest(b, b, b, 1, 21);
@@ -70,7 +69,8 @@ class SymmQgemmShortExecuteTest<AType, int32_t, Threaded> : public MlasTestFixtu
       test_registered += RegisterSingleTest(1, 32, b, 5, 0);      
     }
     test_registered += RegisterSingleTest(43, 500, 401, 7, 113);
-    test_registered += RegisterSingleTest(1023, 1023, 1023, 3, -5);
+    test_registered += RegisterSingleTest(2003, 212, 1020, 3, -5);
+    test_registered += RegisterSingleTest(202, 2003, 1023, 3, 15);
 
     return test_registered;
   }

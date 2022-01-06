@@ -195,13 +195,9 @@ class QLinearConv : public OpKernel {
     // Don't pack the filter buffer if the MlasConvDepthwise path is used.
     if (group_input_channels != 1 || group_output_channels != 1) {
       const size_t kernel_dim = group_input_channels * kernel_size;
-      packed_W_size_ = 0;
-      if (MlasSymmQgemmSupported(std::is_same<ActType, int8_t>::value)) {
-        packed_W_size_ = MlasGemmPackBSize(group_output_channels,
-                                           kernel_dim,
-                                           std::is_same<ActType, int8_t>::value,
-                                           is_W_signed_);
-      }
+      packed_W_size_ = MlasSymmQgemmPackBSize(group_output_channels,
+                                              kernel_dim,
+                                              std::is_same<ActType, int8_t>::value);
       
       if (packed_W_size_ != 0) {
         size_t packed_W_data_size = SafeInt<size_t>(group_count) * packed_W_size_;

@@ -21,8 +21,6 @@ void SYMMQGEMM(benchmark::State& state, bool a_signed) {
   if (state.range(3) <= 0) throw std::invalid_argument("Batch must greater than 0!");
   if (state.range(4) <= 0) throw std::invalid_argument("Threads must greater than 0!");
 
-  if (!MlasSymmQgemmSupported(a_signed)) throw std::invalid_argument("Symmetric Qgemm not supported for int8_t activations on this platform!");
-
   const size_t M = static_cast<size_t>(state.range(0));
   const size_t N = static_cast<size_t>(state.range(1));
   const size_t K = static_cast<size_t>(state.range(2));
