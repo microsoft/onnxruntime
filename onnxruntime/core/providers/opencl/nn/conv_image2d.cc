@@ -285,9 +285,23 @@ class Conv : public OpenCLKernel {
   FusedConvAct act_info_;
 };
 
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
+    Conv,
+    kOnnxDomain,
+    1, 10,
+    kOpenCLExecutionProvider,
+    KernelDefBuilder()
+        .TypeConstraint("T", DataTypeImpl::GetTensorType<float>())
+        .InputMemoryType((OrtMemType)CLMemType::OPENCL_IMAGE_2D, 0)   /* X */
+        .InputMemoryType((OrtMemType)CLMemType::OPENCL_IMAGE_2D, 1)   /* W */
+        .InputMemoryType((OrtMemType)CLMemType::OPENCL_IMAGE_2D, 2)   /* B */
+        .OutputMemoryType((OrtMemType)CLMemType::OPENCL_IMAGE_2D, 0), /* Y */
+    Conv);
+
+
 ONNX_OPENCL_OPERATOR_KERNEL(
     Conv,
-    1,
+    11,
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::GetTensorType<float>())
         .InputMemoryType((OrtMemType)CLMemType::OPENCL_IMAGE_2D, 0)   /* X */
