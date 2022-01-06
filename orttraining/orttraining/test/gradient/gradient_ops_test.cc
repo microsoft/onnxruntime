@@ -1650,7 +1650,7 @@ void TestSparseSoftmaxCrossEntropyGrad(const TensorShape& index_shape, const std
 
   // without weight
   {
-    std::vector<int64_t> logit_shape(index_shape.GetDimsAsVector());
+    auto logit_shape(index_shape.AsShapeVector());
     logit_shape.emplace_back(D);
 
     TensorInfo x_info(logit_shape);
@@ -1664,7 +1664,7 @@ void TestSparseSoftmaxCrossEntropyGrad(const TensorShape& index_shape, const std
 
   // with weight
   {
-    std::vector<int64_t> logit_shape(index_shape.GetDimsAsVector());
+    auto logit_shape(index_shape.AsShapeVector());
     logit_shape.emplace_back(D);
 
     TensorInfo x_info(logit_shape);
@@ -1712,7 +1712,7 @@ void TestSoftmaxCrossEntropyLossGrad(const TensorShape& index_shape,  //label_sh
 
   // without weight and ignore_index
   {
-    std::vector<int64_t> logit_shape(index_shape.GetDimsAsVector());
+    TensorShapeVector logit_shape(index_shape.AsShapeVector());
     auto it = logit_shape.begin() + 1;
     logit_shape.insert(it, D);
     TensorInfo loss_info = {};
@@ -1732,7 +1732,7 @@ void TestSoftmaxCrossEntropyLossGrad(const TensorShape& index_shape,  //label_sh
 
   // with weight and no ignore_index
   {
-    std::vector<int64_t> logit_shape(index_shape.GetDimsAsVector());
+    TensorShapeVector logit_shape(index_shape.AsShapeVector());
     auto it = logit_shape.begin() + 1;
     logit_shape.insert(it, D);
     TensorInfo loss_info = {};
@@ -1753,7 +1753,7 @@ void TestSoftmaxCrossEntropyLossGrad(const TensorShape& index_shape,  //label_sh
 
   // without weight and ignore index
   {
-    std::vector<int64_t> logit_shape(index_shape.GetDimsAsVector());
+    TensorShapeVector logit_shape(index_shape.AsShapeVector());
     auto it = logit_shape.begin() + 1;
     logit_shape.insert(it, D);
     TensorInfo loss_info = {};
@@ -1773,7 +1773,7 @@ void TestSoftmaxCrossEntropyLossGrad(const TensorShape& index_shape,  //label_sh
 
   // with weight and ignore_index
   {
-    std::vector<int64_t> logit_shape(index_shape.GetDimsAsVector());
+    TensorShapeVector logit_shape(index_shape.AsShapeVector());
     auto it = logit_shape.begin() + 1;
     logit_shape.insert(it, D);
     TensorInfo loss_info = {};
@@ -1930,11 +1930,11 @@ void TestDropoutOp(float ratio, TensorShape& x_shape, bool default_ratio = true)
   std::vector<float> x_data(x_shape.Size(), input_constant);
   std::vector<float> y_data(x_shape.Size(), 3.0f);
 
-  test.AddInput<float>("x", x_shape.GetDimsAsVector(), x_data);
+  test.AddInput<float>("x", x_shape.AsShapeVector(), x_data);
   if (!default_ratio)
     test.AddInput<float>("ratio", {}, {ratio});
-  test.AddOutput<float>("y", x_shape.GetDimsAsVector(), y_data);
-  test.AddOutput<bool>("mask", x_shape.GetDimsAsVector(), {true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true});
+  test.AddOutput<float>("y", x_shape.AsShapeVector(), y_data);
+  test.AddOutput<bool>("mask", x_shape.AsShapeVector(), {true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true});
   test.Run();
 
   //Check output
@@ -1975,9 +1975,9 @@ void TestDropoutGradOp(float ratio, TensorShape& x_shape, bool default_ratio = t
                               output_constant, 0, output_constant, 0,
                               output_constant, 0, output_constant, 0});
 
-  test.AddInput<float>("dy", x_shape.GetDimsAsVector(), dy_data);
+  test.AddInput<float>("dy", x_shape.AsShapeVector(), dy_data);
 
-  test.AddInput<bool>("mask", x_shape.GetDimsAsVector(), {true, true, true, false,   //
+  test.AddInput<bool>("mask", x_shape.AsShapeVector(), {true, true, true, false,   //
                                                           true, false, true, false,  //
                                                           true, false, true, false,  //
                                                           true, false, true, false});
@@ -1989,7 +1989,7 @@ void TestDropoutGradOp(float ratio, TensorShape& x_shape, bool default_ratio = t
 
   test.AddInput("training_mode", {}, {true});
 
-  test.AddOutput<float>("dx", x_shape.GetDimsAsVector(), dx_data);
+  test.AddOutput<float>("dx", x_shape.AsShapeVector(), dx_data);
 
   test.Run();
 }

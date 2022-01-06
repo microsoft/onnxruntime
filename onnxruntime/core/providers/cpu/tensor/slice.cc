@@ -7,7 +7,7 @@
 #include <unordered_map>
 
 #include "core/framework/element_type_lists.h"
-#include "core/framework/inline_containers.h"
+#include "core/framework/inlined_containers.h"
 #include "core/providers/common.h"
 #include "core/providers/cpu/tensor/slice_helper.h"
 #include "core/providers/cpu/tensor/utils.h"

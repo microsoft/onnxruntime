@@ -20,9 +20,17 @@ const std::string ADAM_UC_PREFIX = "Update_Count";
 
 template <class T>
 ONNX_NAMESPACE::TensorProto CreateTensorProto(
+  const std::string& name,
+  T val,
+  const std::initializer_list<int64_t>& dims = { 1 }) {
+  return CreateTensorProto(name, val, gsl::make_span(dims));
+}
+
+template <class T>
+ONNX_NAMESPACE::TensorProto CreateTensorProto(
     const std::string& name,
     T val,
-    const std::vector<int64_t>& dims = {1}) {
+    const gsl::span<const int64_t>& dims) {
   size_t count = static_cast<size_t>(std::accumulate(dims.begin(), dims.end(), int64_t(1), std::multiplies<int64_t>{}));
   std::vector<T> values(count, val);
   ONNX_NAMESPACE::TensorProto tensor_proto = ONNX_NAMESPACE::ToTensor<T>(values);
@@ -35,7 +43,24 @@ template <class T>
 ONNX_NAMESPACE::TensorProto CreateTensorProto(
     const std::string& name,
     const std::vector<T>& values,
-    const std::vector<int64_t>& dims = {1}) {
+    const std::initializer_list<int64_t>& dims = {1}) {
+  return CreateTensorProto<T>(name, values, gsl::make_span(dims));
+}
+
+template <class T>
+ONNX_NAMESPACE::TensorProto CreateTensorProto(
+    const std::string& name,
+    const gsl::span<const T>& values,
+    const gsl::span<const int64_t>& dims) {
+  const std::vector<T> vals(values.cbegin(), values.cend());
+  return CreateTensorProto(name, vals, dims);
+}
+
+template <class T>
+ONNX_NAMESPACE::TensorProto CreateTensorProto(
+    const std::string& name,
+    const std::vector<T>& values,
+    const gsl::span<const int64_t>& dims) {
   size_t count = static_cast<size_t>(std::accumulate(dims.begin(), dims.end(), int64_t(1), std::multiplies<int64_t>{}));
   ORT_ENFORCE(values.size() == count);
   ONNX_NAMESPACE::TensorProto tensor_proto = ONNX_NAMESPACE::ToTensor<T>(values);
@@ -47,7 +72,7 @@ ONNX_NAMESPACE::TensorProto CreateTensorProto(
 Status IsMatchingTypeAndShape(
     const onnxruntime::Tensor& tensor,
     const int32_t element_type,
-    const std::vector<int64_t>& expected_shape);
+    const gsl::span<const int64_t>& expected_shape);
 
 /**
    * The configuration for optimizer builder.

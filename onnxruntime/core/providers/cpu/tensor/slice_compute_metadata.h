@@ -6,7 +6,7 @@
 
 #include <cstdint>
 #include <vector>
-#include "core/framework/inline_containers.h"
+#include "core/framework/inlined_containers.h"
 
 namespace onnxruntime {
 

@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/framework/inline_containers.h"
+#include "core/framework/inlined_containers.h"
 #include "core/providers/cuda/tensor/transpose.h"
 #include "core/providers/cuda/tensor/transpose_impl.h"
 #include "core/providers/cpu/tensor/utils.h"

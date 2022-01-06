@@ -467,13 +467,13 @@ Status TryResolveShape(
     const NodeArg* arg,
     const std::unordered_map<std::string, int64_t>& symbolic_dimensions,
     size_t& is_resolved,  // indicate whether resolve successfully or not.
-    std::vector<int64_t>& resolved_shape) {
+    TensorShapeVector& resolved_shape) {
   if (!arg->Shape()) {
     is_resolved = 0;
     return Status::OK();
   }
 
-  std::vector<int64_t> shape;
+  TensorShapeVector shape;
 
   SafeInt<size_t> safe_size = 1;
   for (auto& dim : arg->Shape()->dim()) {
@@ -550,7 +550,7 @@ Status SessionState::GeneratePatternGroupCache(const gsl::span<const OrtValue>& 
 
       auto* arg = node->OutputDefs()[i];
       size_t is_resolved = 0;
-      std::vector<int64_t> resolved_shape;
+      TensorShapeVector resolved_shape;
 
       // Tensors whose shape cannot be resolved statically will be allocated at runtime.
       if (TryResolveShape(arg, map, is_resolved, resolved_shape).IsOK()) {

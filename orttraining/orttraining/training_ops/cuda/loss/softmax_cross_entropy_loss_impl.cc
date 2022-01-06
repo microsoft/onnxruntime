@@ -92,7 +92,7 @@ Status SoftmaxCrossEntropyLoss<T, Tin>::ComputeInternal(OpKernelContext* ctx) co
   }
 
   OrtValue transpose_output;
-  std::vector<int64_t> new_shape;
+  TensorShapeVector new_shape;
   std::vector<size_t> permutations;
   AllocatorPtr alloc;
   const OpKernelInfo& info = OpKernel::Info();
@@ -220,7 +220,7 @@ Status SoftmaxCrossEntropyLossGrad<T, Tin>::ComputeInternal(OpKernelContext* ctx
   T* d_logit_data = d_logit->template MutableData<T>();
   const T* weight_data = nullptr;
   OrtValue transpose_output;
-  std::vector<int64_t> new_shape;
+  TensorShapeVector new_shape;
   std::vector<size_t> permutations;
   AllocatorPtr alloc;
   const OpKernelInfo& info = OpKernel::Info();

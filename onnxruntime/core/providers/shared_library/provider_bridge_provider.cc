@@ -9,7 +9,7 @@
 #include "core/providers/shared/common.h"
 
 #include "core/framework/random_generator.h"
-#include "core/framework/inline_containers.h"
+#include "core/framework/inlined_containers.h"
 #include "core/providers/cpu/controlflow/if.h"
 #include "core/providers/cpu/controlflow/loop.h"
 #include "core/providers/cpu/controlflow/scan.h"

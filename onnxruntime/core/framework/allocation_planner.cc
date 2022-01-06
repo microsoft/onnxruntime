@@ -11,7 +11,8 @@
 #include "core/framework/data_types.h"
 #include "core/framework/kernel_def_builder.h"
 #include "core/framework/mldata_type_utils.h"
-#include "core/framework/inline_containers.h"
+#include "core/framework/inlined_containers.h"
+#include "core/framework/ort_stl_allocator.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/session_state.h"
 #include "core/framework/tensorprotoutils.h"
@@ -498,13 +499,9 @@ class PlannerImpl {
 
   Status ComputeUseCounts() {
     // Note: for every ml-value, its definition must appear before all its uses in a topological sort of a valid model
-    using GraphInputsSet = pmr::InlinedHashSet<std::string_view>;
-
+    using GraphInputsSet = InlinedHashSet<std::string_view>;
     const auto& graph_inputs_nodes = graph_viewer_.GetInputsIncludingInitializers();
-    const size_t buffer_size = EstimateInlinedHashSetMemory<std::string_view>(graph_inputs_nodes.size());
-    OrtDeclareAllignedStackOrAllocatedBuffer(inputs_buffer, buffer_size);
-    SmallBufferResource graph_inputs_resource(inputs_buffer, buffer_size);
-    GraphInputsSet graph_inputs(graph_inputs_nodes.size(), graph_inputs_resource.resource());
+    GraphInputsSet graph_inputs(graph_inputs_nodes.size());
     for (auto& graph_input : graph_inputs_nodes) {
       graph_inputs.insert(graph_input->Name());
     }

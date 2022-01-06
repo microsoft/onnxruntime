@@ -10,10 +10,16 @@
 #include <gsl/gsl>
 #include "onnxruntime_config.h"
 
+#ifdef _MSC_VER
 #pragma warning(push)
-#pragma warning(disable:4127)
+#pragma warning(disable : 4127)
+#endif
+
 #include <absl/container/inlined_vector.h>
+
+#ifdef _MSC_VER
 #pragma warning(pop)
+#endif
 
 namespace onnxruntime {
 #ifdef __GNUC__
