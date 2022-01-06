@@ -5,8 +5,8 @@
 
 /// <summary>
 /// Options for the TensorRT provider that are passed to SessionOptionsAppendExecutionProvider_TensorRT_V2.
-/// Please note that this sturct is identical to OrtTensorRTProviderOptions but only to be used internally. 
-//  User can only get the instance of OrtTensorRTProviderOptionsV2 via CreateTensorRTProviderOptions.
+/// Please note that this struct is identical to OrtTensorRTProviderOptions but only to be used internally. 
+/// User can only get the instance of OrtTensorRTProviderOptionsV2 via CreateTensorRTProviderOptions.
 /// </summary>
 struct OrtTensorRTProviderOptionsV2 {
   int device_id;                                // cuda device id.
