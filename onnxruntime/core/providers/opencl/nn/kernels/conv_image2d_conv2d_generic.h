@@ -18,6 +18,7 @@ __kernel void Conv2D(
     __private const int2 padding_wh,
     __private const int2 dilation_wh,
     __private const int out_width_blocks,
+    __private const int has_bias,
     __private const int act_type,
     __private const float act_param0,  // only for act_type != ActivationType_None
     __private const float act_param1   // only for act_type != ActivationType_None
@@ -29,7 +30,7 @@ __kernel void Conv2D(
   const int out_channel_block_idx = output_cw_idx / out_width_blocks;
   const int out_width_block_idx = output_cw_idx % out_width_blocks;
 
-  FLOAT4 out0 = RI_F(bias, (int2)(out_channel_block_idx, 0));
+  FLOAT4 out0 = has_bias ? RI_F(bias, (int2)(out_channel_block_idx, 0)) : (FLOAT4)0;
   FLOAT4 out1 = out0;
   FLOAT4 out2 = out0;
   FLOAT4 out3 = out0;

@@ -14,6 +14,7 @@ __kernel void Conv2DK1(
     __private const int2 output_wh,
     __private const int2 stride_wh,
     __private const int output_w_updiv_4,
+    __private const int has_bias,
     __private const int act_type,
     __private const float act_param0,
     __private const float act_param1) {
@@ -24,7 +25,7 @@ __kernel void Conv2DK1(
   const int output_c_block_idx = output_cw_idx / output_w_updiv_4;
   const int output_w_block_idx = output_cw_idx % output_w_updiv_4;
 
-  FLOAT4 out0 = RI_F(bias, (int2)(output_c_block_idx, 0));
+  FLOAT4 out0 = has_bias ? RI_F(bias, (int2)(output_c_block_idx, 0)) : (FLOAT4)0;
   FLOAT4 out1 = out0;
   FLOAT4 out2 = out0;
   FLOAT4 out3 = out0;

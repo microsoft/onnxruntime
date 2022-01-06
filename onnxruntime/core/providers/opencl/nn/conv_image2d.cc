@@ -118,7 +118,7 @@ class Conv : public OpenCLKernel {
     if (B != nullptr) {
       VLOG_CL_IMAGE2D("Input B", B);
     }
-    VLOG_CL_IMAGE2D("Output Y", B);
+    VLOG_CL_IMAGE2D("Output Y", Y);
 
     if (rank == 2) {
       if (ci_per_group == 1 && co_per_group == 1) {
@@ -142,7 +142,7 @@ class Conv : public OpenCLKernel {
                          const int group) const {
     ZoneScopedN("DepthwiseConv2D");
     VLOGS_DEFAULT(0) << "[CL] DepthwiseConv2D, X:" << X->Shape() << " W:" << W->Shape()
-                     << " B:" << B->Shape() << " Y:" << Y->Shape()
+                     << " B:" << (B ? B->Shape() : TensorShape{}) << " Y:" << Y->Shape()
                      << " K:" << K << " S:" << S << " P:" << P << " D:" << D << " group:" << group;
 
     auto C_in = X->Shape()[1];
@@ -165,11 +165,12 @@ class Conv : public OpenCLKernel {
           KernelLauncher{GetKernel("DepthwiseConv2DS1")}
               .setArg<cl_int>(gsx)
               .setArg<cl_int>(gsy)
-              .setImage2Ds(*X, *W, *B, *Y)
+              .setImage2Ds(*X, *W, (B ? *B : *W), *Y)
               .setInt2(W_in, H_in)
               .setInt2(W_out, H_out)
               .setInt2(K[0], K[1])
               .setInt2(P[0], P[1])
+              .setArg<cl_int>(B != nullptr)
               .setArg<cl_int>(act_info_.kind)
               .setArg<cl_float>(act_info_.param0)
               .setArg<cl_float>(act_info_.param1)
@@ -180,13 +181,14 @@ class Conv : public OpenCLKernel {
           KernelLauncher{GetKernel("DepthwiseConv2D")}
               .setArg<cl_int>(gsx)
               .setArg<cl_int>(gsy)
-              .setImage2Ds(*X, *W, *B, *Y)
+              .setImage2Ds(*X, *W, (B ? *B : *W), *Y)
               .setInt2(W_in, H_in)
               .setInt2(W_out, H_out)
               .setInt2(K[0], K[1])
               .setInt2(S[0], S[1])
               .setInt2(P[0], P[1])
               .setInt2(D[0], D[1])
+              .setArg<cl_int>(B != nullptr)
               .setArg<cl_int>(act_info_.kind)
               .setArg<cl_float>(act_info_.param0)
               .setArg<cl_float>(act_info_.param1)
@@ -207,7 +209,7 @@ class Conv : public OpenCLKernel {
                 const int group) const {
     ZoneScopedN("Conv2D");
     VLOGS_DEFAULT(0) << "[CL] Conv2D, X:" << X->Shape() << " W:" << W->Shape()
-                     << " B:" << B->Shape() << " Y:" << Y->Shape()
+                     << " B:" << (B ? B->Shape() : TensorShape{}) << " Y:" << Y->Shape()
                      << " K:" << K << " S:" << S << " P:" << P << " D:" << D << " group:" << group;
     ORT_ENFORCE(group == 1, "group != 1 is not supported currently in Conv2D");
 
@@ -233,10 +235,11 @@ class Conv : public OpenCLKernel {
           KernelLauncher{GetKernel("Conv2DK1S1")}
               .setArg<cl_int>(gsx)
               .setArg<cl_int>(gsy)
-              .setImage2Ds(*X, *W, *B, *Y)
+              .setImage2Ds(*X, *W, (B ? *B : *W), *Y)
               .setInt2(W_in, H_in)
               .setArg<cl_int>(CeilDiv(C_in, 4))
               .setArg<cl_int>(CeilDiv(W_out, 4))
+              .setArg<cl_int>(B != nullptr)
               .setArg<cl_int>(act_info_.kind)
               .setArg<cl_float>(act_info_.param0)
               .setArg<cl_float>(act_info_.param1)
@@ -247,13 +250,14 @@ class Conv : public OpenCLKernel {
           KernelLauncher{GetKernel("Conv2DK1")}
               .setArg<cl_int>(gsx)
               .setArg<cl_int>(gsy)
-              .setImage2Ds(*X, *W, *B, *Y)
+              .setImage2Ds(*X, *W, (B ? *B : *W), *Y)
               .setInt2(W_in, H_in)
               .setArg<cl_int>(CeilDiv(C_in, 4))
               .setInt2(W_out, H_out)
               .setInt2(S[0], S[1])
               .setInt2(D[0], D[1])
               .setArg<cl_int>(CeilDiv(W_out, 4))
+              .setArg<cl_int>(B != nullptr)
               .setArg<cl_int>(act_info_.kind)
               .setArg<cl_float>(act_info_.param0)
               .setArg<cl_float>(act_info_.param1)
@@ -264,7 +268,7 @@ class Conv : public OpenCLKernel {
           KernelLauncher{GetKernel("Conv2D")}
               .setArg<cl_int>(gsx)
               .setArg<cl_int>(gsy)
-              .setImage2Ds(*X, *W, *B, *Y)
+              .setImage2Ds(*X, *W, (B ? *B : *W), *Y)
               .setInt2(W_in, H_in)
               .setArg<cl_int>(CeilDiv(C_in, 4))
               .setInt2(W_out, H_out)
@@ -273,6 +277,7 @@ class Conv : public OpenCLKernel {
               .setInt2(P[0], P[1])
               .setInt2(D[0], D[1])
               .setArg<cl_int>(CeilDiv(W_out, 4))
+              .setArg<cl_int>(B != nullptr)
               .setArg<cl_int>(act_info_.kind)
               .setArg<cl_float>(act_info_.param0)
               .setArg<cl_float>(act_info_.param1)
@@ -297,7 +302,6 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
         .InputMemoryType((OrtMemType)CLMemType::OPENCL_IMAGE_2D, 2)   /* B */
         .OutputMemoryType((OrtMemType)CLMemType::OPENCL_IMAGE_2D, 0), /* Y */
     Conv);
-
 
 ONNX_OPENCL_OPERATOR_KERNEL(
     Conv,

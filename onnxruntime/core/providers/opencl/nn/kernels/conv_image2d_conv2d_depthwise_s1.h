@@ -14,6 +14,7 @@ __kernel void DepthwiseConv2DS1(
     __private const int2 output_wh,
     __private const int2 K,
     __private const int2 P,
+    __private const int has_bias,
     __private const int act_type,
     __private const float act_param0,  // only for act_type != ActivationType_None
     __private const float act_param1   // only for act_type != ActivationType_None
@@ -27,7 +28,7 @@ __kernel void DepthwiseConv2DS1(
 
   const int in_channel_block_idx = out_channel_block_idx;
 
-  FLOAT4 out0 = RI_F(bias, (int2)(out_channel_block_idx, 0));
+  FLOAT4 out0 = has_bias ? RI_F(bias, (int2)(out_channel_block_idx, 0)) : (FLOAT4)0;
   FLOAT4 out1 = out0;
   FLOAT4 out2 = out0;
   FLOAT4 out3 = out0;
