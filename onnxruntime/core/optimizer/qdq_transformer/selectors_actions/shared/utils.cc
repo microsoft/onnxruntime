@@ -9,16 +9,12 @@
 #include <core/graph/graph_viewer.h>
 #include <core/providers/common.h>
 
+#include "utils.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_selector_action_transformer.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_selectors.h"
 
-#include "utils.h"
-
 namespace onnxruntime {
 namespace QDQ {
-
-using std::string;
-using std::vector;
 
 using OpVersionsMap = std::unordered_map<std::string, std::vector<ONNX_NAMESPACE::OperatorSetVersion>>;
 
@@ -112,40 +108,36 @@ void SelectorManager::Initialize() {
   InitializeSelectorsMap();
 }
 
-const std::vector<NodeGroup> SelectorManager::GetQDQSelections(const GraphViewer& graph_viewer) const {
+std::vector<NodeGroup> SelectorManager::GetQDQSelections(const GraphViewer& graph_viewer) const {
   std::vector<NodeGroup> qdq_selections;
   for (auto index : graph_viewer.GetNodesInTopologicalOrder()) {
     const auto* node = graph_viewer.GetNode(index);
     if (node->Domain() != kOnnxDomain) {
-      break;
+      continue;
     }
 
     auto op_rule = op_type_to_selectors_map_.find(node->OpType());
     if (op_rule == op_type_to_selectors_map_.cend()) {
-      if (node->OpType() != "DequantizeLinear" && node->OpType() != "QuantizeLinear") {
-        break;
+      continue;
+    }
+
+    const auto& op_versions_and_selector = *op_rule->second;
+
+    // check the supported versions if specified
+    const auto& versions = op_versions_and_selector.op_versions_map.find(node->OpType())->second;
+    if (!versions.empty()) {
+      if (std::find(versions.cbegin(), versions.cend(), node->SinceVersion()) == versions.cend()) {
+        LOGS_DEFAULT(VERBOSE) << "Op version is not supported for" << node->OpType();
+        continue;
       }
     }
 
-    if (node->OpType() != "DequantizeLinear" && node->OpType() != "QuantizeLinear") {
-      const auto& op_versions_and_selector = *op_rule->second;
-
-      // check the supported versions if specified
-      const auto& versions = op_versions_and_selector.op_versions_map.find(node->OpType())->second;
-      if (!versions.empty()) {
-        if (std::find(versions.cbegin(), versions.cend(), node->SinceVersion()) == versions.cend()) {
-          LOGS_DEFAULT(VERBOSE) << "Op version is not supported for" << node->OpType();
-          break;
-        }
-      }
-
-      const auto qdq_node_group_selection = op_versions_and_selector.selector->GetQDQSelection(graph_viewer, *node);
-      if (!qdq_node_group_selection.has_value()) {
-        break;
-      }
-      const auto& qdq_group = *qdq_node_group_selection;
-      qdq_selections.push_back(qdq_group);
+    const auto qdq_node_group_selection = op_versions_and_selector.selector->GetQDQSelection(graph_viewer, *node);
+    if (!qdq_node_group_selection.has_value()) {
+      continue;
     }
+    const auto& qdq_group = *qdq_node_group_selection;
+    qdq_selections.push_back(qdq_group);
   }
 
   return qdq_selections;

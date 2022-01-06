@@ -8,7 +8,6 @@
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_selectors.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_selector_action_transformer.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/shared/utils.h"
-#include "core/optimizer/qdq_transformer/selectors_actions/shared/utils.cc"
 #include "core/providers/partitioning_utils.h"
 #include "core/session/environment.h"
 #include "core/session/inference_session.h"
@@ -1850,7 +1849,7 @@ TEST(QDQTransformerTests, QDQ_Shared_GetSelectors_Test) {
   QDQ::SelectorManager selector_mgr;
   selector_mgr.Initialize();
 
-  // Check if SelectorManager get a conv qdq group selections as expected
+  // Check if SelectorManager get a conv qdq group selection as expected
   {
     const auto result = selector_mgr.GetQDQSelections(graph_viewer);
     ASSERT_EQ(1, result.size());

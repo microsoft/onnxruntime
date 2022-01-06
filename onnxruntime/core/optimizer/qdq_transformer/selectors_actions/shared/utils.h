@@ -6,8 +6,8 @@
 #include <string>
 #include "core/graph/basic_types.h"
 #include "core/providers/nnapi/nnapi_builtin/nnapi_lib/NeuralNetworksTypes.h"
-#include "../qdq_selectors.h"
-#include "../../../selectors_actions/helpers.h"
+#include "core/optimizer/qdq_transformer/selectors_actions/qdq_selectors.h"
+#include "core/optimizer/selectors_actions/helpers.h"
 
 namespace onnxruntime {
 
@@ -53,7 +53,7 @@ class SelectorManager {
 
   void Initialize();
 
-  const std::vector<NodeGroup> GetQDQSelections(const GraphViewer& graph_viewer) const;
+  std::vector<NodeGroup> GetQDQSelections(const GraphViewer& graph_viewer) const;
 
  private:
   Selectors qdq_selectors_;
