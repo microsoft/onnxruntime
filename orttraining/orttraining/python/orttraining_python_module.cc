@@ -2,6 +2,8 @@
 // Licensed under the MIT License.
 
 #include "orttraining/python/orttraining_pybind_common.h"
+#include "orttraining/eager/ort_backends.h"
+
 
 #include "core/common/logging/logging.h"
 #include "core/common/logging/severity.h"
@@ -13,6 +15,7 @@ namespace python {
 namespace py = pybind11;
 
 using namespace onnxruntime::logging;
+using namespace torch_ort::eager;
 
 std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
   const SessionOptions& session_options,
@@ -325,6 +328,8 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
   auto atexit = py::module_::import("atexit");
   atexit.attr("register")(py::cpp_function([]() {
     ort_training_env = nullptr;
+    // torch_ort::eager::instance = nullptr;
+    // delete torch_ort::eager::instance;
   }));
 }
 

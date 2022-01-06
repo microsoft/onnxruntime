@@ -20,7 +20,6 @@ using ProviderInfoMap = std::unordered_map<std::string, onnxruntime::ProviderOpt
 class ORTBackendsManager {
 public:
   ORTBackendsManager(const onnxruntime::logging::Logger& logger);
-  ~ORTBackendsManager();
 
   onnxruntime::Status set_device(size_t device_index, const std::string& provider_type,
                                  const onnxruntime::ProviderOptions& provider_options);
@@ -44,7 +43,9 @@ private:
   std::unordered_map<at::DeviceIndex, ProviderInfoMap> device_ep_info_;
 };
 
-ORTBackendsManager& GetORTBackendsManager();
+// ORTBackendsManager& GetORTBackendsManager();
+
+extern ORTBackendsManager instance;
 
 onnxruntime::ORTInvoker& GetORTInvoker(const at::Device device);
 

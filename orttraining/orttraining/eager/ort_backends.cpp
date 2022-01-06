@@ -25,14 +25,18 @@ namespace eager {
 
 using namespace onnxruntime;
 
+/*
 ORTBackendsManager& GetORTBackendsManager() {
   auto& env = onnxruntime::python::GetTrainingORTEnv();
   static ORTBackendsManager instance {env.GetLoggingManager()->DefaultLogger()};
   return instance;
 }
+*/
+ORTBackendsManager instance{onnxruntime::python::GetTrainingORTEnv().GetLoggingManager()->DefaultLogger()};
 
 onnxruntime::ORTInvoker& GetORTInvoker(const at::Device device) {
-  return GetORTBackendsManager().GetInvoker(device);
+  // return GetORTBackendsManager().GetInvoker(device);
+  return instance.GetInvoker(device);
 }
 
 ORTBackendsManager::ORTBackendsManager(const onnxruntime::logging::Logger& logger): logger_(logger){
@@ -41,10 +45,6 @@ ORTBackendsManager::ORTBackendsManager(const onnxruntime::logging::Logger& logge
   if (!status.IsOK()){
     throw std::runtime_error("Init CPU device failed: " + status.ErrorMessage());
   }
-}
-
-ORTBackendsManager::~ORTBackendsManager(){
-  backends_.clear();
 }
 
 onnxruntime::Status ORTBackendsManager::set_device(size_t device_index, const std::string& provider_type,
