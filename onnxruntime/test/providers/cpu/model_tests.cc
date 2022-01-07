@@ -990,23 +990,28 @@ TEST_P(ModelTest, Run) {
   return v;
 }
 
+// The optional last argument is a function or functor that generates custom test name suffixes based on the test parameters.
+// Specify the last argument to make test name more meaningful and clear instead of just the sequential number.
 INSTANTIATE_TEST_SUITE_P(ModelTests, ModelTest, testing::ValuesIn(GetParameterStrings()), [](const ::testing::TestParamInfo<ModelTest::ParamType>& info) {
       // use info.param here to generate the test suffix
       std::basic_string<ORTCHAR_T> name = info.param;
      
-      // remove the trailing '/model.onnx' of test name which is size of 11
+      // the original name here is the combination of provider name and model path name
+      // remove the trailing 'xxxxxxx/model.onnx' of name
       if (name.size() > 11 and name.substr(name.size() - 11) == ORT_TSTR("/model.onnx")) {
         name = name.substr(0, info.param.size() - 11);
       }
 
-      // remove the trailing '.onnx' of test name which is size of 5 
+      // remove the trailing 'xxxxxx.onnx' of name
       if (name.size() > 5 and name.substr(name.size() - 5) == ORT_TSTR(".onnx")) {
         name = name.substr(0, info.param.size() - 5);
       }
 
-      // replace '/' with '_' since '/' is not accept as test name
+      // Note: test name only accepts '_' and alphanumeric
+      // replace '/' with '_' since '_'
       std::replace(name.begin(), name.end(), '/', '_');
       
+      // Note: test name only accepts '_' and alphanumeric
       // remove '.' and '-'
       char chars[] = ".-";
       for (unsigned int i = 0; i < strlen(chars); ++i)
