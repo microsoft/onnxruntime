@@ -990,23 +990,23 @@ TEST_P(ModelTest, Run) {
   }
   return v;
 }
+INSTANTIATE_TEST_SUITE_P(ModelTests, ModelTest, testing::ValuesIn(GetParameterStrings()));
+//INSTANTIATE_TEST_SUITE_P(ModelTests, ModelTest, testing::ValuesIn(GetParameterStrings()), [](const ::testing::TestParamInfo<ModelTest::ParamType>& info) {
+      //// use info.param here to generate the test suffix
+      //// remove the trailing '/model.onnx' of test name which is size of 11
+      //std::basic_string<ORTCHAR_T> name = info.param.substr(0, info.param.size() - 11);
 
-INSTANTIATE_TEST_SUITE_P(ModelTests, ModelTest, testing::ValuesIn(GetParameterStrings()), [](const ::testing::TestParamInfo<ModelTest::ParamType>& info) {
-      // use info.param here to generate the test suffix
-      // remove the trailing '/model.onnx' of test name which is size of 11
-      std::basic_string<ORTCHAR_T> name = info.param.substr(0, info.param.size() - 11);
-
-      // replace '/' with '_' since '/' is not accept as test name
-      std::replace(name.begin(), name.end(), '/', '_');
+      //// replace '/' with '_' since '/' is not accept as test name
+      //std::replace(name.begin(), name.end(), '/', '_');
       
-      char chars[] = ".";
-      for (unsigned int i = 0; i < strlen(chars); ++i)
-      {
-         name.erase (std::remove(name.begin(), name.end(), chars[i]), name.end());
-      }
+      //char chars[] = ".";
+      //for (unsigned int i = 0; i < strlen(chars); ++i)
+      //{
+         //name.erase (std::remove(name.begin(), name.end(), chars[i]), name.end());
+      //}
 
-      return name;
-    });
+      //return name;
+    //});
 
 }  // namespace test
 }  // namespace onnxruntime
