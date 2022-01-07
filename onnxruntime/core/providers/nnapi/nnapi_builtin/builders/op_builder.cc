@@ -664,6 +664,8 @@ static void AddQuantizationScaleAndZeroPointToSkip(ModelBuilder& model_builder, 
   }
 }
 
+// Ignore the input (with quantization scale and ZP if available)
+// The input (usually weight) is already embedded in the NNAPI model
 static void AddInputToSkip(ModelBuilder& model_builder, const NodeUnitIODef& io_def) {
   model_builder.AddInitializerToSkip(io_def.node_arg.Name());  // main input
   if (io_def.quant_param)
