@@ -990,7 +990,13 @@ TEST_P(ModelTest, Run) {
   return v;
 }
 
-INSTANTIATE_TEST_SUITE_P(ModelTests, ModelTest, testing::ValuesIn(GetParameterStrings()));
+INSTANTIATE_TEST_SUITE_P(ModelTests, ModelTest, testing::ValuesIn(GetParameterStrings()), [](const ::testing::TestParamInfo<ModelTest::ParamType>& info) {
+      // use info.param here to generate the test suffix
+      // remove the trailing '/model.onnx' of test name which is size of 11
+      std::basic_string<ORTCHAR_T> name = info.param.substr(0, info.param.size() - 11);
+      std::replace(name.begin(), name.end(), '/', '_');
+      return name;
+    });
 
 }  // namespace test
 }  // namespace onnxruntime
