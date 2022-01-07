@@ -16,8 +16,6 @@
 namespace onnxruntime {
 namespace QDQ {
 
-using OpVersionsMap = std::unordered_map<std::string, std::vector<ONNX_NAMESPACE::OperatorSetVersion>>;
-
 void Selectors::RegisterSelector(const OpVersionsAndSelector::OpVersionsMap& ops_and_versions_in,
                                  std::unique_ptr<QDQ::BaseSelector> selector_in) {
   auto entry = std::make_unique<OpVersionsAndSelector>(
@@ -42,45 +40,45 @@ static const OpVersionsAndSelector::OpVersionsMap GetVariadicOpVersionsMap() { r
 static const OpVersionsAndSelector::OpVersionsMap GetConvOpVersionsMap() { return {{"Conv", {}}}; }
 static const OpVersionsAndSelector::OpVersionsMap GetMatMulOpVersionsMap() { return {{"MatMul", {}}}; }
 
-/* Selector Rules Related */
+/* Selector rules registration related */
 void RegisterMiscSelectors(Selectors& qdq_selectors) {
   /* register selectors for miscellaneous ops */
-  std::unique_ptr<BaseSelector> selector(new QDQ::DropDQDNodesSelector());
+  std::unique_ptr<BaseSelector> selector = std::make_unique<QDQ::DropDQDNodesSelector>();
   qdq_selectors.RegisterSelector(GetMiscOpVersionsMap(),
                                  std::move(selector));
 }
 
 void RegisterUnarySelectors(Selectors& qdq_selectors) {
   /* regsiter selectors for unary ops */
-  std::unique_ptr<BaseSelector> selector(new QDQ::UnarySelector());
+  std::unique_ptr<BaseSelector> selector = std::make_unique<QDQ::UnarySelector>();
   qdq_selectors.RegisterSelector(GetUnaryOpVersionsMap(),
                                  std::move(selector));
 }
 
 void RegisterBinarySelectors(Selectors& qdq_selectors) {
   /* register selectors for binary ops */
-  std::unique_ptr<BaseSelector> selector(new QDQ::BinarySelector());
+  std::unique_ptr<BaseSelector> selector = std::make_unique<QDQ::BinarySelector>();
   qdq_selectors.RegisterSelector(GetBinaryOpVersionsMap(),
                                  std::move(selector));
 }
 
 void RegisterVariadicSelectors(Selectors& qdq_selectors) {
   /* register selectors for variadic ops */
-  std::unique_ptr<BaseSelector> selector(new QDQ::VariadicSelector());
+  std::unique_ptr<BaseSelector> selector = std::make_unique<QDQ::VariadicSelector>();
   qdq_selectors.RegisterSelector(GetVariadicOpVersionsMap(),
                                  std::move(selector));
 }
 
 void RegisterConvSelector(Selectors& qdq_selectors) {
   /* register selector for conv op */
-  std::unique_ptr<BaseSelector> selector(new QDQ::ConvSelector());
+  std::unique_ptr<BaseSelector> selector = std::make_unique<QDQ::ConvSelector>();
   qdq_selectors.RegisterSelector(GetConvOpVersionsMap(),
                                  std::move(selector));
 }
 
 void RegisterMatMulSelector(Selectors& qdq_selectors) {
   /* register selector for matmul op */
-  std::unique_ptr<BaseSelector> selector(new QDQ::MatMulSelector());
+  std::unique_ptr<BaseSelector> selector = std::make_unique<QDQ::MatMulSelector>();
   qdq_selectors.RegisterSelector(GetMatMulOpVersionsMap(),
                                  std::move(selector));
 }
@@ -133,11 +131,10 @@ std::vector<NodeGroup> SelectorManager::GetQDQSelections(const GraphViewer& grap
     }
 
     const auto qdq_node_group_selection = op_versions_and_selector.selector->GetQDQSelection(graph_viewer, *node);
-    if (!qdq_node_group_selection.has_value()) {
-      continue;
+    if (qdq_node_group_selection.has_value()) {
+      const auto& qdq_group = *qdq_node_group_selection;
+      qdq_selections.push_back(qdq_group);
     }
-    const auto& qdq_group = *qdq_node_group_selection;
-    qdq_selections.push_back(qdq_group);
   }
 
   return qdq_selections;

@@ -16,6 +16,7 @@ class Node;
 
 namespace QDQ {
 
+// struct that provides a join between selector and op versions supported
 struct OpVersionsAndSelector {
   using OpVersionsMap = std::unordered_map<std::string, std::vector<ONNX_NAMESPACE::OperatorSetVersion>>;
 
@@ -30,10 +31,12 @@ struct OpVersionsAndSelector {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(OpVersionsAndSelector);
 };
 
+// class that manages a set of node group selectors
 class Selectors {
  public:
   Selectors() = default;
 
+  // register a selector for the specified ops.
   void RegisterSelector(const OpVersionsAndSelector::OpVersionsMap& ops_and_versions_in,
                         std::unique_ptr<BaseSelector> selector_in);
 
@@ -47,12 +50,15 @@ class Selectors {
   std::unordered_set<std::unique_ptr<OpVersionsAndSelector>> selectors_set_;
 };
 
+// class that manages qdq node group selections
 class SelectorManager {
  public:
   SelectorManager() = default;
 
   void Initialize();
 
+  // Methods that finds and returns a vector of QDQ::NodeGroup in a given graph
+  // Can be used in QDQ support in different EPs
   std::vector<NodeGroup> GetQDQSelections(const GraphViewer& graph_viewer) const;
 
  private:
