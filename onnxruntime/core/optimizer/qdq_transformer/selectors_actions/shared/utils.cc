@@ -1,15 +1,15 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "utils.h"
+
 #include <iostream>
 #include <string>
 #include <vector>
-#include <optional>
 
 #include <core/graph/graph_viewer.h>
 #include <core/providers/common.h>
 
-#include "utils.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_selector_action_transformer.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_selectors.h"
 
