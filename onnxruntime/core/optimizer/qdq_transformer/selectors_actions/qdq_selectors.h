@@ -139,27 +139,23 @@ class BaseSelector : public NodeSelector {
 
 class DropQDQNodesSelector : public BaseSelector {
  public:
-  DropQDQNodesSelector()
-      : BaseSelector(std::unique_ptr<NodeGroupSelector>(new DropQDQNodeGroupSelector())) {}
+  DropQDQNodesSelector() : BaseSelector(std::make_unique<DropQDQNodeGroupSelector>()) {}
 };
 
 class UnarySelector : public BaseSelector {
  public:
-  UnarySelector()
-      : BaseSelector(std::unique_ptr<NodeGroupSelector>(new UnaryNodeGroupSelector())) {}
+  UnarySelector() : BaseSelector(std::make_unique<UnaryNodeGroupSelector>()) {}
 };
 
 class BinarySelector : public BaseSelector {
  public:
-  BinarySelector()
-      : BaseSelector(std::unique_ptr<NodeGroupSelector>(new BinaryNodeGroupSelector())) {}
+  BinarySelector() : BaseSelector(std::make_unique<BinaryNodeGroupSelector>()) {}
 };
 
 // Variadic DQ nodes -> node -> Q
 class VariadicSelector : public BaseSelector {
  public:
-  VariadicSelector()
-      : BaseSelector(std::unique_ptr<NodeGroupSelector>(new VariadicNodeGroupSelector())) {}
+  VariadicSelector() : BaseSelector(std::make_unique<VariadicNodeGroupSelector>()) {}
 
   void UpdateBuilder(NodesToOptimizeIndicesBuilder&) const override;
 };
@@ -167,8 +163,7 @@ class VariadicSelector : public BaseSelector {
 // DQ nodes for X, W and optionally B -> node -> Q
 class ConvSelector : public BaseSelector {
  public:
-  ConvSelector(bool int8_allowed = false)
-      : BaseSelector(std::unique_ptr<NodeGroupSelector>(new ConvNodeGroupSelector(int8_allowed))) {}
+  ConvSelector(bool int8_allowed = false) : BaseSelector(std::make_unique<ConvNodeGroupSelector>(int8_allowed)) {}
 
   void UpdateBuilder(NodesToOptimizeIndicesBuilder&) const override;
 };
@@ -177,8 +172,7 @@ class ConvSelector : public BaseSelector {
 class MatMulSelector : public BaseSelector {
  public:
   MatMulSelector(bool int8_allowed)
-      : BaseSelector(std::unique_ptr<NodeGroupSelector>(
-            new MatMulNodeGroupSelector(int8_allowed, /*matmulintegertofloat_allowed*/ true))) {}
+      : BaseSelector(std::make_unique<MatMulNodeGroupSelector>(int8_allowed, /*matmulintegertofloat_allowed*/ true)) {}
 };
 
 }  // namespace QDQ
