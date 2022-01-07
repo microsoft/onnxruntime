@@ -123,13 +123,22 @@ HRESULT _winml::GetDXCoreHardwareAdapterWithPreference(DXGI_GPU_PREFERENCE prefe
 
 HRESULT _winml::GetDXCoreHardwareAdapterForComputeAccelerator(_COM_Outptr_ IDXCoreAdapter** ppAdapter) {
   winrt::com_ptr<IDXCoreAdapterFactory> spFactory;
+  RETURN_IF_FAILED(DXCoreCreateAdapterFactory(IID_PPV_ARGS(spFactory.put())));
   winrt::com_ptr<IDXCoreAdapterList> spAdapterList;
-  const GUID gpuFilter[] = {DXCORE_ADAPTER_ATTRIBUTE_D3D12_CORE_COMPUTE};
-  RETURN_IF_FAILED(spFactory->CreateAdapterList(1, gpuFilter, IID_PPV_ARGS(spAdapterList.put())));
+  const GUID computeAcceleratorFilter[] = {DXCORE_ADAPTER_ATTRIBUTE_D3D12_CORE_COMPUTE};
+  RETURN_IF_FAILED(spFactory->CreateAdapterList(1, computeAcceleratorFilter, IID_PPV_ARGS(spAdapterList.put())));
+  if(spAdapterList->GetAdapterCount() == 0)
+  {
+    return ERROR_NOT_FOUND;
+  }
+  // TODO: filter VPU as returned adapters MIGHT include GPUs
   winrt::com_ptr<IDXCoreAdapter> spCurrAdapter;
   RETURN_IF_FAILED(spAdapterList->GetAdapter(0, IID_PPV_ARGS(spCurrAdapter.put())));
   bool isHardware;
   RETURN_IF_FAILED(spCurrAdapter->GetProperty(DXCoreAdapterProperty::IsHardware, &isHardware));
+  if (!isHardware) {
+    return ERROR_NOT_FOUND;
+  }
   spCurrAdapter.copy_to(ppAdapter);
   return S_OK;
 }

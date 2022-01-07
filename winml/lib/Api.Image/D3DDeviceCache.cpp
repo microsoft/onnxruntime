@@ -64,7 +64,7 @@ D3DDeviceCache::D3DDeviceCache(winml::LearningModelDeviceKind const& deviceKind)
     } else {
       WINML_THROW_IF_FAILED_MSG(hardwareAdapterSuccessfullyObtained, failedToObtainHardwareAdaptersErrStr);
     }
-    WINML_THROW_IF_FAILED(D3D12CreateDevice(spAdapter.get(), D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(device_.put())));
+    WINML_THROW_IF_FAILED(D3D12CreateDevice(spAdapter.get(), D3D_FEATURE_LEVEL_1_0_CORE, IID_PPV_ARGS(device_.put())));
   } else {
     DXGI_GPU_PREFERENCE preference;
     WINML_THROW_IF_FAILED(GetGPUPreference(deviceKind, &preference));
