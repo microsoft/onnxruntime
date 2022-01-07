@@ -2089,7 +2089,9 @@ void Shutdown_DeleteRegistry() {
 }
 
 std::shared_ptr<KernelRegistry> CUDAExecutionProvider::GetKernelRegistry() const {
-  return CudaKernelRegistry();
+  std::shared_ptr<KernelRegistry> ptr = CudaKernelRegistry();
+  ORT_ENFORCE(ptr != nullptr, "OOPS: GetKernelRegistry() called after kernel registry shared_ptr was reset");
+  return ptr;
 }
 
 static bool RNNNeedFallbackToCPU(const onnxruntime::Node& node,
