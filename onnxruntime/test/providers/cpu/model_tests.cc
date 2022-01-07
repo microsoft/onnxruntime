@@ -653,7 +653,6 @@ TEST_P(ModelTest, Run) {
             const OrtValue* v = p.second;
             input.emplace(p.first, *v);
           }
-          EXPECT_TRUE(false) << model_path;
           ASSERT_STATUS_OK(session_object.Run(input, output_names, &output_values));
         }
 
