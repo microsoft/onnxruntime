@@ -37,6 +37,10 @@ OrtValue create_ort_value(
   onnxruntime::ORTInvoker& invoker,
   const at::Tensor& tensor);
 
+std::vector<OrtValue> create_ort_value(
+  onnxruntime::ORTInvoker& invoker,
+  at::TensorList tensors);
+
 OrtValue create_ort_value(const at::Tensor& tensor);
 
 // Create 1-dimensional ORT tensor from a given value
@@ -111,6 +115,8 @@ bool IsSupportedType(at::IntArrayRef arrary, const std::vector<at::ScalarType>& 
 bool IsSupportedType(int64_t val, const std::vector<at::ScalarType>& valid_types);
 
 bool IsSupportedType(c10::optional<int64_t> val, const std::vector<at::ScalarType>& valid_types);
+
+bool IsSupportedType(at::TensorList tensors, const std::vector<at::ScalarType>& valid_types);
 
 } // namespace eager
 } // namespace torch_ort
