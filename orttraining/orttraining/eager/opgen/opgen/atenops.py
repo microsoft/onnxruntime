@@ -77,6 +77,7 @@ hand_implemented = {
   'aten::max' : ReduceMax('self', keepdims=1),
   'aten::min' : ReduceMin('self', keepdims=1),
   'aten::slice.Tensor' : Slice('self', 'start', 'end', 'dim', 'step'),
+  'aten::_cat': Concat('tensors', 'dim'),
 
   'aten::ne.Scalar':MakeTorchFallback(),
   'aten::ne.Scalar_out': MakeTorchFallback(),
