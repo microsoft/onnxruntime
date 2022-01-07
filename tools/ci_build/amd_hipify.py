@@ -162,7 +162,6 @@ training_ops_excluded_files = [
                     'collective/adasum_kernels.h',
                     'math/div_grad.cc',  # miopen API differs from cudnn, no double type support
                     'math/softmax_grad_impl.cu',  # warp size differences
-                    'math/softmax_grad.cc',  # miopen API differs from cudnn, no double type support
                     'nn/batch_norm_grad.cc',  # no double type support
                     'nn/batch_norm_grad.h',  # miopen API differs from cudnn
                     'nn/batch_norm_internal.cc',  # miopen API differs from cudnn, no double type support

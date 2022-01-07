@@ -45,6 +45,7 @@ Status SoftMaxGradComputeHelper(
   CudnnTensor output_tensor;
   ORT_RETURN_IF_ERROR(input_tensor.Set(dims, CudnnTensor::GetDataType<CudaT>()));
   ORT_RETURN_IF_ERROR(output_tensor.Set(dims, CudnnTensor::GetDataType<CudaT>()));
+#if !USE_ROCM
   CUDNN_RETURN_IF_ERROR(
       cudnnSoftmaxBackward(
           handle,
@@ -58,6 +59,21 @@ Status SoftMaxGradComputeHelper(
           &beta,
           output_tensor,
           dX_data));
+#else
+  MIOPEN_RETURN_IF_ERROR(
+      miopenSoftmaxBackward_V2(
+          handle,
+          &alpha,
+          input_tensor,
+          Y_data,
+          input_tensor,
+          dY_data,
+          &beta,
+          output_tensor,
+          dX_data,
+          is_log_softmax? MIOPEN_SOFTMAX_LOG : MIOPEN_SOFTMAX_ACCURATE,
+          MIOPEN_SOFTMAX_MODE_INSTANCE));
+#endif
 
   return Status::OK();
 }
@@ -209,7 +225,10 @@ SPECIALIZED_SOFTMAXGRAD_HELPER_IMPL_BFloat16(true)
   template Status SoftmaxGrad<T>::ComputeInternal(OpKernelContext* ctx) const;
 
 SPECIALIZED_GRADIENT(float)
+#if !USE_ROCM
 SPECIALIZED_GRADIENT(double)
+#endif
+
 SPECIALIZED_GRADIENT(MLFloat16)
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
 SPECIALIZED_GRADIENT(BFloat16)
