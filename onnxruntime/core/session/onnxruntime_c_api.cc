@@ -2271,7 +2271,7 @@ Second example, if we wanted to add and remove some members, we'd do this:
     In GetApi we now make it return ort_api_3 for version 3.
 */
 
-static constexpr OrtApi ort_api_1_to_10 = {
+static constexpr OrtApi ort_api_1_to_11 = {
     // NOTE: The ordering of these fields MUST not change after that version has shipped since existing binaries depend on this ordering.
 
     // Shipped as version 1 - DO NOT MODIFY (see above text for more information)
@@ -2511,10 +2511,15 @@ static constexpr OrtApi ort_api_1_to_10 = {
     &OrtApis::SetGlobalCustomThreadCreationOptions,
     &OrtApis::SetGlobalCustomJoinThreadFn,
     &OrtApis::SynchronizeBoundInputs,
-    &OrtApis::SynchronizeBoundOutputs
+    &OrtApis::SynchronizeBoundOutputs,
     // End of Version 10 - DO NOT MODIFY ABOVE (see above text for more information)
 
     // Version 11 - In development, feel free to add/remove/rearrange here
+    &OrtApis::SessionOptionsAppendExecutionProvider_CUDA_V2,
+    &OrtApis::CreateCUDAProviderOptions,
+    &OrtApis::UpdateCUDAProviderOptions,
+    &OrtApis::GetCUDAProviderOptionsAsString,
+    &OrtApis::ReleaseCUDAProviderOptions,
 };
 
 // Asserts to do a some checks to ensure older Versions of the OrtApi never change (will detect an addition or deletion but not if they cancel out each other)
@@ -2527,17 +2532,19 @@ static_assert(offsetof(OrtApi, SetGlobalSpinControl) / sizeof(void*) == 149, "Si
 static_assert(offsetof(OrtApi, ReleaseArenaCfg) / sizeof(void*) == 157, "Size of version 6 API cannot change");
 static_assert(offsetof(OrtApi, GetCurrentGpuDeviceId) / sizeof(void*) == 161, "Size of version 7 API cannot change");
 static_assert(offsetof(OrtApi, CreateSessionFromArrayWithPrepackedWeightsContainer) / sizeof(void*) == 169, "Size of version 8 API cannot change");
+static_assert(offsetof(OrtApi, GetSparseTensorIndices) / sizeof(void*) == 191, "Size of version 9 API cannot change");
+static_assert(offsetof(OrtApi, SynchronizeBoundOutputs) / sizeof(void*) == 203, "Size of version 10 API cannot change");
 
 // So that nobody forgets to finish an API version, this check will serve as a reminder:
 static_assert(std::string_view(ORT_VERSION) == "1.11.0", "ORT_Version change detected, please follow below steps to ensure OrtApi is updated properly");
 // 1. Update the hardcoded version string in above static_assert to silence it
-// 2. If there were any APIs added to ort_api_1_to_10 above:
+// 2. If there were any APIs added to ort_api_1_to_11 above:
 //    a. Add the 'End of version #' markers (pattern above should be obvious)
 //    b. Add a static_assert in the directly above list of version sizes to ensure nobody adds any more functions to the just shipped API version
 
 ORT_API(const OrtApi*, OrtApis::GetApi, uint32_t version) {
   if (version >= 1 && version <= ORT_API_VERSION)
-    return &ort_api_1_to_10;
+    return &ort_api_1_to_11;
 
   fprintf(stderr, "The given version [%u] is not supported, only version 1 to %u is supported in this build.\n",
           version, ORT_API_VERSION);

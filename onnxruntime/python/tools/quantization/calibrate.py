@@ -45,7 +45,7 @@ class CalibraterBase:
         :param op_types_to_calibrate: operator types to calibrate. By default, calibrate all the float32/float16 tensors.
         :param augmented_model_path: save augmented model to this path.
         '''
-        if isinstance(model, string_types):
+        if isinstance(model, str):
             self.model = onnx.load(model)
         elif isinstance(model, ModelProto):
             self.model = model
