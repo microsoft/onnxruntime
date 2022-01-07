@@ -1852,7 +1852,7 @@ TEST(QDQTransformerTests, QDQ_Shared_GetSelectors_Test) {
   // Check if SelectorManager get a conv qdq group selection as expected
   {
     const auto result = selector_mgr.GetQDQSelections(graph_viewer);
-    ASSERT_EQ(1, result.size());
+    ASSERT_EQ(false, result.empty());
     const auto& qdq_group = result.at(0);
     ASSERT_EQ(std::vector<NodeIndex>({0, 1, 2}), qdq_group.dq_nodes);
     ASSERT_EQ(NodeIndex(3), qdq_group.target_node);
