@@ -714,10 +714,15 @@ std::unique_ptr<IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph
   int input_order = 0;
   int output_order = 0;
 
+  std::vector<std::string> initializers;
   for (const auto& index : graph_nodes_index.first) {
     sub_graph->Nodes().push_back(node_index[index]);
     const auto& node = graph.GetNode(node_index[index]);
     for (const auto& input : node->InputDefs()) {
+      if (graph.IsConstantInitializer(input->Name(), true)) {
+        initializers.push_back(input->Name());
+        continue;
+      }
       const auto& it = fused_outputs.find(input);
       if (it != fused_outputs.end()) {
         fused_outputs.erase(it);
@@ -729,6 +734,10 @@ std::unique_ptr<IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph
     }
 
     for (const auto& input : node->ImplicitInputDefs()) {
+      if (graph.IsConstantInitializer(input->Name(), true)) {
+        initializers.push_back(input->Name());
+        continue;
+      }
       const auto& it = fused_outputs.find(input);
       if (it != fused_outputs.end()) {
         fused_outputs.erase(it);
@@ -808,6 +817,10 @@ std::unique_ptr<IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph
     if (input.second->Exists()) {
       meta_def->inputs().push_back(input.second->Name());
     }
+  }
+
+  for (const auto& initializer : initializers) {
+    meta_def->constant_initializers().push_back(initializer);
   }
 
   for (const auto& output : outputs) {

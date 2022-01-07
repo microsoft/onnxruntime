@@ -38,7 +38,7 @@
 #include "core/optimizer/graph_transformer.h"
 #include "core/optimizer/insert_cast_transformer.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
-#include "core/optimizer/selectors_actions/runtime_optimization_save_context.h"
+#include "core/optimizer/selectors_actions/selector_action_transformer_apply_contexts.h"
 #include "core/optimizer/transformer_memcpy.h"
 #include "core/platform/Barrier.h"
 #include "core/platform/ort_mutex.h"
@@ -60,10 +60,6 @@
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
 #include "core/framework/customregistry.h"
 #include "core/session/custom_ops.h"
-#endif
-
-#if defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
-#include "core/optimizer/ort_format_runtime_optimization/utils.h"
 #endif
 
 using namespace ONNX_NAMESPACE;
@@ -1148,19 +1144,25 @@ Status PartitionOrtFormatModel(onnxruntime::Graph& graph,
   return Status::OK();
 }
 
-#if defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
-Status TransformGraphForOrtFormatModel(onnxruntime::Graph& graph, const logging::Logger& logger) {
-  const auto runtime_transformers = std::vector<std::unique_ptr<GraphTransformer>>{};
-  // TODO enable transformers
-  //const auto runtime_transformers = optimizer_utils::GenerateOrtFormatRuntimeTransformers();
-  for (const auto& runtime_transformer : runtime_transformers) {
-    bool modified = false;
-    ORT_RETURN_IF_ERROR(runtime_transformer->Apply(graph, modified, logger));
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_REPLAY_IN_MINIMAL_BUILD)
+Status ReplaySavedRuntimeOptimizations(
+    onnxruntime::Graph& graph, const logging::Logger& logger, const SessionOptions& session_options) {
+  bool modified = false;
+
+  for (int level = static_cast<int>(TransformerLevel::Level2);
+       level <= static_cast<int>(session_options.graph_optimization_level);
+       ++level) {
+    // don't need to specify optimizers to disable, optimizers will process whatever runtime optimizations there are
+    const auto transformers = optimizer_utils::GenerateTransformersForRuntimeOptimizations(
+        static_cast<TransformerLevel>(level), session_options, SatRuntimeOptimizationLoadContext{});
+    for (const auto& transformer : transformers) {
+      ORT_RETURN_IF_ERROR(transformer->Apply(graph, modified, logger));
+    }
   }
 
   return Status::OK();
 }
-#endif  // defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_REPLAY_IN_MINIMAL_BUILD)
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 Status AssignNodesToEpsFromHashesImpl(Graph& graph, const fbs::SessionState& fbs_session_state,
@@ -1180,17 +1182,32 @@ Status AssignNodesToEpsFromHashesImpl(Graph& graph, const fbs::SessionState& fbs
     }
   }
 
-  for (FbsSessionStateViewer::Index i = 0, end = fbs_session_state_viewer.GetNumNodeKernelInfos(); i < end; ++i) {
-    const auto node_kernel_info = fbs_session_state_viewer.GetNodeKernelInfo(i);
-    Node* node = graph.GetNode(node_kernel_info.node_index);
-    if (!node || !node->GetExecutionProviderType().empty()) continue;
+  const auto set_node_ep = [&](NodeIndex node_idx, HashValue kernel_def_hash) -> Status {
+    Node* node = graph.GetNode(node_idx);
+    if (!node || !node->GetExecutionProviderType().empty()) {
+      return Status::OK();
+    }
 
     const KernelCreateInfo* kci = nullptr;
-    ORT_RETURN_IF_NOT(kernel_registry_manager.SearchKernelRegistriesByHash(node_kernel_info.kernel_def_hash, &kci),
-                      "Failed to find kernel def hash (", node_kernel_info.kernel_def_hash, ") in kernel registries for ",
+    ORT_RETURN_IF_NOT(kernel_registry_manager.SearchKernelRegistriesByHash(kernel_def_hash, &kci),
+                      "Failed to find kernel def hash (", kernel_def_hash, ") in kernel registries for ",
                       node->OpType(), "(", node->SinceVersion(), ") node with name '", node->Name(), "'.");
     node->SetExecutionProviderType(kci->kernel_def->Provider());
+
+    return Status::OK();
+  };
+
+  for (FbsSessionStateViewer::Index i = 0, end = fbs_session_state_viewer.GetNumNodeKernelInfos(); i < end; ++i) {
+    const auto node_kernel_info = fbs_session_state_viewer.GetNodeKernelInfo(i);
+    ORT_RETURN_IF_ERROR(set_node_ep(node_kernel_info.node_index, node_kernel_info.kernel_def_hash));
   }
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_REPLAY_IN_MINIMAL_BUILD)
+  for (const auto& [node_index, kernel_def_hash] :
+       graph.RuntimeOptimizationReplayCtx().produced_node_index_to_kernel_def_hash) {
+    ORT_RETURN_IF_ERROR(set_node_ep(node_index, kernel_def_hash));
+  }
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_REPLAY_IN_MINIMAL_BUILD)
 
   return Status::OK();
 }
@@ -1376,13 +1393,13 @@ common::Status InferenceSession::Initialize() {
                                                     *session_state_));
       }
 
-#if defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
-      ORT_RETURN_IF_ERROR_SESSIONID_(TransformGraphForOrtFormatModel(graph, *session_logger_));
-#endif  // defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_REPLAY_IN_MINIMAL_BUILD)
+      ORT_RETURN_IF_ERROR_SESSIONID_(ReplaySavedRuntimeOptimizations(graph, *session_logger_, session_options_));
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_REPLAY_IN_MINIMAL_BUILD)
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
-      ORT_RETURN_IF_ERROR(AssignNodesToEpsFromHashes(graph, *serialized_session_state,
-                                                     kernel_registry_manager_, *session_logger_));
+      ORT_RETURN_IF_ERROR(AssignNodesToEpsFromHashes(graph, *serialized_session_state, kernel_registry_manager_,
+                                                     *session_logger_));
     }
 
     ORT_RETURN_IF_ERROR_SESSIONID_(
@@ -2250,14 +2267,14 @@ common::Status InferenceSession::AddPredefinedTransformers(GraphTransformerManag
     TransformerLevel level = static_cast<TransformerLevel>(i);
     if (graph_optimization_level >= level) {
       // Generate and register transformers for level
-      std::vector<std::unique_ptr<GraphTransformer>> transformers_to_register = [&]() {
-        if (level != TransformerLevel::Level1 && saving_runtime_optimizations) {
-          RuntimeOptimizationSaveContext save_context{kernel_registry_manager_};
-          return optimizer_utils::GenerateTransformersForRuntimeOptimizations(level, save_context,
-                                                                              optimizers_to_disable_);
-        } else {
+      auto transformers_to_register = [&]() {
+        if (!saving_runtime_optimizations || level == TransformerLevel::Level1) {
           return optimizer_utils::GenerateTransformers(level, session_options_, cpu_ep,
                                                        optimizers_to_disable_);
+        } else {
+          SatRuntimeOptimizationSaveContext save_context{kernel_registry_manager_};
+          return optimizer_utils::GenerateTransformersForRuntimeOptimizations(level, session_options_, save_context,
+                                                                              optimizers_to_disable_);
         }
       }();
 

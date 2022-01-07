@@ -54,5 +54,6 @@ struct CUDAExecutionProviderInfo {
 
   static CUDAExecutionProviderInfo FromProviderOptions(const ProviderOptions& options);
   static ProviderOptions ToProviderOptions(const CUDAExecutionProviderInfo& info);
+  static ProviderOptions ToProviderOptions(const OrtCUDAProviderOptionsV2& info);
 };
 }  // namespace onnxruntime

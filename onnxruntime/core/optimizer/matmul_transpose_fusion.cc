@@ -32,14 +32,25 @@ static bool GetTransposePerms(const Node& transpose_node, std::vector<int64_t>& 
   return true;
 }
 
-static Node* GetTransposeNodeFromOutput(Graph& graph, NodeArg& node_arg) {
-  Node* trans_node = graph.GetMutableProducerNode(node_arg.Name());
-  if (trans_node == nullptr || trans_node->OpType() != "Transpose") {
-    return nullptr;
-  }
+// is_trans is whether to transpose the 2 dims used to MatMul.
+// is_trans_batch is whether to transpose 1st dim and batch dims.
+// Batch here has the same meaning in CUDA's GemmStridedBatched (other than the training batch concept),
+// i.e., all dims except the 2 dims used to MatMul, including from dim[0] to dim[rank-3].
+// For example (take lhs input as example):
+// is_trans=False, is_trans_batch=False:
+//   the input tensor is in shape [b0,...,bn,M,K], no Transpose (no fuse for this case)
+// is_trans=False, is_trans_batch=True:
+//   the input tensor is in shape [M,b0,...,bn,K], Transpose perm=[1,...,rank-2,0,rank-1]
+// is_trans=True , is_trans_batch=False:
+//   the input tensor is in shape [b0,...,bn,K,M], Transpose perm=[0,...,rank-3,rank-1,rank-2]
+// is_trans=True , is_trans_batch=True:
+//   the input tensor is in shape [K,b0,...,bn,M], Transpose perm=[1,...,rank-2,rank-1,0]
+static Node* GetTransposeNodeFromOutput(Graph& graph, NodeArg& node_arg, bool& is_trans, bool& is_trans_batch) {
+  is_trans = is_trans_batch = false;
 
-  // if the node has Graph output, skip it too
-  if (graph.NodeProducesGraphOutput(*trans_node)) {
+  // Skip if not a Transpose node or it has graph output.
+  Node* trans_node = graph.GetMutableProducerNode(node_arg.Name());
+  if (trans_node == nullptr || trans_node->OpType() != "Transpose" || graph.NodeProducesGraphOutput(*trans_node)) {
     return nullptr;
   }
 
@@ -48,28 +59,34 @@ static Node* GetTransposeNodeFromOutput(Graph& graph, NodeArg& node_arg) {
     return nullptr;
   }
 
-  int64_t rank = perms.size();
+  size_t rank = perms.size();
   if (rank < 2) {
     return nullptr;
   }
 
-  bool is_trans_on_last_two_dims = true;
-  for (int64_t i = 0; i < rank - 2; i++) {
-    if (perms[static_cast<size_t>(i)] != i) {
-      is_trans_on_last_two_dims = false;
-      break;
-    }
-  }
-
-  if (is_trans_on_last_two_dims) {
-    // rank is atleast 2 (checked above) and so it is safe to cast (rank - 2) and (rank - 1) to size_t
-    is_trans_on_last_two_dims = perms[static_cast<size_t>(rank - 2)] == rank - 1 && perms[static_cast<size_t>(rank - 1)] == rank - 2;
-  }
-
-  if (!is_trans_on_last_two_dims) {
+  // We can fuse the Transpose node only when the last axis of original tensor is within the last two dims after transpose.
+  int64_t last_axis = static_cast<int64_t>(rank) - 1;
+  size_t last_axis_index = perms[rank - 1] == last_axis ? rank - 1 : perms[rank - 2] == last_axis ? rank - 2 : rank;
+  if (last_axis_index == rank) {
     return nullptr;
   }
 
+  // Transpose node can be fused to MatMul when the batch dims keep same relative orders before and after transpose.
+  // But if they are not contiguous, after the fusion, we can only use GemmBatched instead of GemmStridedBatched,
+  // which may have perf issue. To keep it simple, we will fuse only when batch dimensions are contiguous.
+  if (rank >= 3) {
+    if (perms[0] != 0 && perms[0] != 1) {
+      return nullptr;
+    }
+    for (size_t i = 0; i < rank - 3; ++i) {
+      if (perms[i] + 1 != perms[i + 1]) {
+        return nullptr;
+      }
+    }
+  }
+
+  is_trans = last_axis_index == rank - 2;
+  is_trans_batch = rank >= 3 && perms[0] == 1;
   return trans_node;
 }
 
@@ -118,9 +135,10 @@ static size_t UpdateConsumerCount(Graph& graph, NodeArg* target, std::unordered_
 */
 static Node* ReorderCastAndTranspose(Graph& graph, Node* cast,
                                      std::unordered_map<NodeArg*, size_t>& consumer_count,
-                                     std::deque<onnxruntime::NodeIndex>& removed_nodes) {
+                                     std::deque<onnxruntime::NodeIndex>& removed_nodes,
+                                     bool& is_trans, bool& is_trans_batch) {
   ORT_ENFORCE(cast != nullptr);
-  auto transpose = GetTransposeNodeFromOutput(graph, *cast->MutableInputDefs()[0]);
+  auto transpose = GetTransposeNodeFromOutput(graph, *cast->MutableInputDefs()[0], is_trans, is_trans_batch);
   if (transpose == nullptr) {
     return nullptr;
   }
@@ -290,26 +308,58 @@ Status MatmulTransposeFusion::ApplyImpl(Graph& graph, bool& modified, int graph_
     if (!IsAllowedFusedMatMulDataType(static_cast<ONNX_NAMESPACE::TensorProto_DataType>(left_type))) {
       continue;
     }
-    auto left = GetTransposeNodeFromOutput(graph, *left_input);
+
+    bool is_trans_left = false;
+    bool is_trans_batch_left = false;
+    Node* left = nullptr;
+    // If it's already a FusedMatMul with transBatchA is true, don't fuse it.
+    if (node.OpType() != "FusedMatMul" || node.GetAttributes().at("transBatchA").i() == 0) {
+      left = GetTransposeNodeFromOutput(graph, *left_input, is_trans_left, is_trans_batch_left);
+      if (!left) {
+        Node* left_node = graph.GetMutableProducerNode(left_input->Name());
+        if (left_node && left_node->OpType() == "Cast") {
+          left = ReorderCastAndTranspose(graph, left_node, consumer_count, removed_nodes, is_trans_left,
+                                         is_trans_batch_left);
+        }
+      }
+    }
 
     NodeArg* right_input = node.MutableInputDefs()[1];
     auto right_type = right_input->TypeAsProto()->tensor_type().elem_type();
     if (!IsAllowedFusedMatMulDataType(static_cast<ONNX_NAMESPACE::TensorProto_DataType>(right_type))) {
       continue;
     }
-    auto right = GetTransposeNodeFromOutput(graph, *right_input);
 
-    if (!left) {
-      Node* left_node = graph.GetMutableProducerNode(left_input->Name());
-      if (left_node && left_node->OpType() == "Cast") {
-        left = ReorderCastAndTranspose(graph, left_node, consumer_count, removed_nodes);
+    bool is_trans_right = false;
+    bool is_trans_batch_right = false;
+    Node* right = nullptr;
+    // If it's already a FusedMatMul with transBatchB is true, don't fuse it.
+    if (node.OpType() != "FusedMatMul" || node.GetAttributes().at("transBatchB").i() == 0) {
+      right = GetTransposeNodeFromOutput(graph, *right_input, is_trans_right, is_trans_batch_right);
+      if (!right) {
+        Node* right_node = graph.GetMutableProducerNode(right_input->Name());
+        if (right_node && right_node->OpType() == "Cast") {
+          right = ReorderCastAndTranspose(graph, right_node, consumer_count, removed_nodes, is_trans_right,
+                                          is_trans_batch_right);
+        }
       }
     }
 
-    if (!right) {
-      Node* right_node = graph.GetMutableProducerNode(right_input->Name());
-      if (right_node && right_node->OpType() == "Cast") {
-        right = ReorderCastAndTranspose(graph, right_node, consumer_count, removed_nodes);
+    // When the rank of two inputs are not equal, we need to pad 1 to one of them for MutMul.
+    // For example, if padding 1 is the "M" dim for left input, set is_trans_batch to true is not correct logically.
+    // To keep it simple, if any side of is_trans_batch is true, we require both side has same rank.
+    if (is_trans_batch_left || is_trans_batch_right) {
+      auto shape_left = left_input->Shape();
+      auto shape_right = right_input->Shape();
+      if (!shape_left || !shape_right || shape_left->dim_size() != shape_right->dim_size()) {
+        if (is_trans_batch_left) {
+          is_trans_left = is_trans_batch_left = false;
+          left = nullptr;
+        }
+        if (is_trans_batch_right) {
+          is_trans_right = is_trans_batch_right = false;
+          right= nullptr;
+        }
       }
     }
 
@@ -339,16 +389,18 @@ Status MatmulTransposeFusion::ApplyImpl(Graph& graph, bool& modified, int graph_
                                       "fused MatMul and Transpose ",
                                       input_defs,
                                       output_defs, {}, kMSDomain);
-    bool transpose_left = (left != nullptr);
-    bool transpose_right = (right != nullptr);
     float alpha = 1.0f;
     if (node.OpType() == "FusedMatMul") {
-      transpose_left ^= static_cast<bool>(node.GetAttributes().at("transA").i());
-      transpose_right ^= static_cast<bool>(node.GetAttributes().at("transB").i());
+      is_trans_left ^= static_cast<bool>(node.GetAttributes().at("transA").i());
+      is_trans_right ^= static_cast<bool>(node.GetAttributes().at("transB").i());
+      is_trans_batch_left ^= static_cast<bool>(node.GetAttributes().at("transBatchA").i());
+      is_trans_batch_right ^= static_cast<bool>(node.GetAttributes().at("transBatchB").i());
       alpha = node.GetAttributes().at("alpha").f();
     }
-    matmul_node.AddAttribute("transA", static_cast<int64_t>(transpose_left));
-    matmul_node.AddAttribute("transB", static_cast<int64_t>(transpose_right));
+    matmul_node.AddAttribute("transA", static_cast<int64_t>(is_trans_left));
+    matmul_node.AddAttribute("transB", static_cast<int64_t>(is_trans_right));
+    matmul_node.AddAttribute("transBatchA", static_cast<int64_t>(is_trans_batch_left));
+    matmul_node.AddAttribute("transBatchB", static_cast<int64_t>(is_trans_batch_right));
     matmul_node.AddAttribute("alpha", alpha);
     // Assign provider to this new node. Provider should be same as the provider for old node.
     matmul_node.SetExecutionProviderType(node.GetExecutionProviderType());

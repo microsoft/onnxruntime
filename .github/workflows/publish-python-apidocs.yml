@@ -1,0 +1,49 @@
+name: Update Python API Docs
+on:
+  workflow_dispatch
+
+jobs:
+  publish:
+    name: Generate Python API docs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Install tools
+        run: |
+          sudo apt update 
+          sudo apt-get install pip
+          sudo apt-get install graphviz
+      - name: Install dependencies
+        run: |
+          cd docs/python
+          pip install -r requirements.txt
+          pip install flatbuffers protobuf==3.19.1
+          pip install -i https://test.pypi.org/simple/ ort-nightly
+          pip list
+      - name: Generate Python docs with Sphinx
+        run: |
+          cd tools/doc
+          ./builddoc.sh /usr/bin ../.. ../../build     
+      - name: Set vars
+        id: vars
+        run: echo "::set-output name=sha_short::$(git rev-parse --short HEAD)"
+      - name: Check outputs
+        run: echo ${{ steps.vars.outputs.sha_short }}
+      - uses: actions/checkout@v2
+        with:
+          ref: gh-pages
+          clean: false    
+      - name: Move API docs into target area
+        run: |
+          rm -rf docs/api/python
+          mv build/docs/inference/html docs/api/python   
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v3
+        with:
+          branch: gh-pages-pr-python-docs
+          base: gh-pages
+          title: '[Automated]: Update Python API docs'
+          commit-message: 'Update Python API docs to commit ${{ steps.vars.outputs.sha_short }}'   
+          add-paths: docs/api/python   
+
+ 
