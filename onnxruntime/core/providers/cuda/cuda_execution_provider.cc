@@ -3,7 +3,6 @@
 
 #include "core/providers/shared_library/provider_api.h"
 #include "core/providers/cuda/cuda_execution_provider.h"
-#include "core/common/shared_ptr_thread_safe_wrapper.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cuda_allocator.h"
 #include "core/providers/cuda/cuda_fence.h"
@@ -2074,20 +2073,23 @@ static Status RegisterCudaKernels(KernelRegistry& kernel_registry) {
 
 }  // namespace cuda
 
-static std::shared_ptr<KernelRegistry> CreateCudaKernelRegistry() {
-  std::shared_ptr<KernelRegistry> registry = KernelRegistry::Create();
-  ORT_THROW_IF_ERROR(cuda::RegisterCudaKernels(*registry));
-  return registry;
+static std::shared_ptr<KernelRegistry>& CudaKernelRegistry() {
+  // static local variable ensures thread-safe initialization
+  static std::shared_ptr<KernelRegistry> cuda_kernel_registry = []() {
+    std::shared_ptr<KernelRegistry> registry = KernelRegistry::Create();
+    ORT_THROW_IF_ERROR(cuda::RegisterCudaKernels(*registry));
+    return registry;
+  }();
+
+  return cuda_kernel_registry;
 }
 
-static SharedPtrThreadSafeWrapper<KernelRegistry> s_kernel_registry{&CreateCudaKernelRegistry};
-
 void Shutdown_DeleteRegistry() {
-  s_kernel_registry.Reset();
+  CudaKernelRegistry().reset();
 }
 
 std::shared_ptr<KernelRegistry> CUDAExecutionProvider::GetKernelRegistry() const {
-  return s_kernel_registry.GetInitialized();
+  return CudaKernelRegistry();
 }
 
 static bool RNNNeedFallbackToCPU(const onnxruntime::Node& node,
