@@ -518,8 +518,8 @@ inline SessionOptions& SessionOptions::AppendExecutionProvider_TensorRT(const Or
   return *this;
 }
 
-inline SessionOptions& SessionOptions::AppendExecutionProvider_MIGraphX1(const OrtMIGraphXProviderOptions& provider_options) {
-  ThrowOnError(GetApi().SessionOptionsAppendExecutionProvider_MIGraphX1(p_, &provider_options));
+inline SessionOptions& SessionOptions::AppendExecutionProvider_MIGraphX(const OrtMIGraphXProviderOptions& provider_options) {
+  ThrowOnError(GetApi().SessionOptionsAppendExecutionProvider_MIGraphX(p_, &provider_options));
   return *this;
 }
 
