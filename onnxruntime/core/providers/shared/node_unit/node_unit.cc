@@ -83,6 +83,7 @@ bool IsVariadicQLinearOp(QLinearOpType type) {
 
 NodeUnit::NodeUnit(const Node& node)
     : nodes_{&node},
+      output_nodes_{&node},
       node_(node),
       type_(Type::SingleNode) {
   InitForNode();

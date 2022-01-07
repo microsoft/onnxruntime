@@ -56,6 +56,7 @@ Status ModelBuilder::Prepare() {
   GetAllQuantizedOpInputs();
   PreprocessInitializers();
   PreprocessActivations();
+  PreprocessActivations_nu();
   ORT_RETURN_IF_ERROR(RegisterInitializers());
   ORT_RETURN_IF_ERROR(RegisterModelInputs());
   ORT_RETURN_IF_ERROR(AddOperations());
@@ -115,12 +116,9 @@ Status ModelBuilder::GetTargetDevices() {
 }
 
 void ModelBuilder::PreprocessInitializers() {
-  const auto& node_indices = graph_viewer_.GetNodesInTopologicalOrder();
-  for (size_t i = 0; i < node_indices.size(); i++) {
-    const auto* node(graph_viewer_.GetNode(node_indices[i]));
-    const auto& node_unit = GetNodeUnit(node);
-    if (const auto* op_builder = GetOpBuilder(node_unit)) {
-      op_builder->AddInitializersToSkip(*this, node_unit);
+  for (const auto& node_unit : node_unit_holder_) {
+    if (const auto* op_builder = GetOpBuilder(*node_unit)) {
+      op_builder->AddInitializersToSkip(*this, *node_unit);
     }
   }
 }
@@ -147,6 +145,26 @@ void ModelBuilder::PreprocessActivations() {
   }
 }
 
+void ModelBuilder::PreprocessActivations_nu() {
+  for (const auto& node_unit : node_unit_holder_) {
+    const auto& node = node_unit->GetNode();
+    const auto& op_type(node.OpType());
+    if (op_type == "Relu") {
+      activation_node_units_.emplace(node_unit.get(), ANEURALNETWORKS_FUSED_RELU);
+    } else if (op_type == "Clip") {  // Relu1 or Relu6
+      float min, max;
+      if (!GetClipMinMax(GetInitializerTensors(), node, min, max, logging::LoggingManager::DefaultLogger()))
+        continue;
+
+      if (min == -1.0f && max == 1.0f) {
+        activation_node_units_.emplace(node_unit.get(), ANEURALNETWORKS_FUSED_RELU1);
+      } else if (min == 0.0f && max == 6.0f) {
+        activation_node_units_.emplace(node_unit.get(), ANEURALNETWORKS_FUSED_RELU6);
+      }
+    }
+  }
+}
+
 const NodeUnit& ModelBuilder::GetNodeUnit(const Node* node) const {
   // Do we want to throw here if the node is not in the map?
   return *node_unit_map_.at(node);
@@ -167,16 +185,11 @@ void ModelBuilder::PreprocessNodeUnits() {
 
 // Help to get all quantized operators' input and the NodeUnit(s) using the input
 void ModelBuilder::GetAllQuantizedOpInputs() {
-  const auto& node_indices = graph_viewer_.GetNodesInTopologicalOrder();
-  for (const auto& node_idx : node_indices) {
-    const auto* node(graph_viewer_.GetNode(node_idx));
-    // TODO check if the node_unit has already been processed
-    const auto& node_unit = GetNodeUnit(node);
-
+  for (const auto& node_unit : node_unit_holder_) {
     // TODO, hookup getting quantized inputs with QDQ NodeUnits and remove the ORT_ENFORCE
-    ORT_ENFORCE(node_unit.UnitType() == NodeUnit::Type::SingleNode, "QDQ NodeUnit is not yet implemented");
+    ORT_ENFORCE(node_unit->UnitType() == NodeUnit::Type::SingleNode, "QDQ NodeUnit is not yet implemented");
 
-    auto qlinear_op_type = GetQLinearOpType(node_unit.GetNode());
+    auto qlinear_op_type = GetQLinearOpType(node_unit->GetNode());
 
     // Not a qlinear op
     if (qlinear_op_type == QLinearOpType::Unknown)
@@ -193,11 +206,11 @@ void ModelBuilder::GetAllQuantizedOpInputs() {
 
     // All qlinear ops EXCEPT QuantizeLinear has quantized input
     if (qlinear_op_type != QLinearOpType::QuantizeLinear) {
-      add_quantized_input(node_unit, 0);
+      add_quantized_input(*node_unit, 0);
     }
 
     if (IsQLinearBinaryOp(qlinear_op_type)) {
-      add_quantized_input(node_unit, 1);
+      add_quantized_input(*node_unit, 1);
     }
 
     // TODO, add handling for varidiac nodes such as QLinearConcat
@@ -511,15 +524,23 @@ Status ModelBuilder::AddOperandFromPersistMemoryBuffer(
 
 Status ModelBuilder::AddOperations() {
   const auto& node_indices = graph_viewer_.GetNodesInTopologicalOrder();
+  std::unordered_set<const NodeUnit*> processed_node_units;
   for (size_t i = 0; i < node_indices.size(); i++) {
     const auto* node(graph_viewer_.GetNode(node_indices[i]));
     const NodeUnit& node_unit = GetNodeUnit(node);
+
+    // Since a NodeUnit may contain multiple nodes, avoid processing the same NodeUnit multiple times
+    if (Contains(processed_node_units, &node_unit))
+      continue;
+
     if (const auto* op_builder = GetOpBuilder(node_unit)) {
       ORT_RETURN_IF_ERROR(op_builder->AddToModelBuilder(*this, node_unit));
     } else {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "Node [", node_unit.Name(), "], type [", node_unit.OpType(), "] is not supported");
     }
+
+    processed_node_units.insert(&node_unit);
   }
 
   return Status::OK();
@@ -623,6 +644,52 @@ Status ModelBuilder::Compile(std::unique_ptr<Model>& model) {
 
   model.reset(nnapi_model_.release());
   return Status::OK();
+}
+
+int32_t ModelBuilder::FindActivation_nu(const NodeUnit& node_unit, const NodeArg& output) {
+  (void)node_unit;
+  int32_t fuse_code = ANEURALNETWORKS_FUSED_NONE;
+  if (node_unit.GetOutputNodes().size() != 1)
+    return fuse_code;
+
+  const auto& output_node = *node_unit.GetOutputNodes()[0];
+
+  // TODO, add support of activation fusion for quantized node group (qdq or qlinear)
+  // We do not support activation fusion for quantized operators for now
+  auto qlinear_op_type = GetQLinearOpType(node_unit.GetNode());
+  if (qlinear_op_type != QLinearOpType::Unknown)
+    return fuse_code;
+
+  for (auto it = output_node.OutputEdgesBegin(), end = output_node.OutputEdgesEnd(); it != end; ++it) {
+    const auto& dst_node = it->GetNode();
+    const auto* dst_input = dst_node.InputDefs()[it->GetDstArgIndex()];
+    const auto& dst_node_unit = GetNodeUnit(&dst_node);
+    if (Contains(activation_node_units_, &dst_node_unit)) {
+      if (&output == dst_input) {
+        fuse_code = activation_node_units_.at(&dst_node_unit);
+      }
+    } else {
+      // if there is any other non-relu node using the output
+      // will add relu separately
+      if (&output == dst_input)
+        return ANEURALNETWORKS_FUSED_NONE;
+    }
+  }
+
+  // if output is a graph output, will add activation separately
+  if (fuse_code != ANEURALNETWORKS_FUSED_NONE) {
+    const auto& graph_outputs = graph_viewer_.GetOutputs();
+    if (std::find(graph_outputs.cbegin(), graph_outputs.cend(), &output) != graph_outputs.cend()) {
+      return ANEURALNETWORKS_FUSED_NONE;
+    }
+
+    LOGS_DEFAULT(VERBOSE) << "Node [" << node_unit.Name() << "] type [" << node_unit.OpType()
+                          << "], fused the output [" << output.Name() << "]";
+
+    fused_activations_.insert(output.Name());
+  }
+
+  return fuse_code;
 }
 
 int32_t ModelBuilder::FindActivation(const Node& node, const NodeArg& output) {

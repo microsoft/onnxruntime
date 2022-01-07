@@ -49,6 +49,7 @@ class ModelBuilder {
 
   // Find if an output has a fuseable activation (Relu)
   int32_t FindActivation(const Node& node, const NodeArg& output);
+  int32_t FindActivation_nu(const NodeUnit& node_unit, const NodeArg& output);
 
   // Add an NNAPI scalar operand
   Status AddOperandFromScalar(bool value, uint32_t& index) ORT_MUST_USE_RESULT;
@@ -142,6 +143,9 @@ class ModelBuilder {
   // All activation nodes (Relu, Relu1, Relu6) as a map <NodeIndex, activation_code>
   std::unordered_map<NodeIndex, int32_t> activation_nodes_;
 
+  // All activation nodes (Relu, Relu1, Relu6) as a map <const NodeUnit*, activation_code>
+  std::unordered_map<const NodeUnit*, int32_t> activation_node_units_;
+
   std::unordered_map<std::string, std::shared_ptr<IOpSupportChecker>> op_support_checkers_;
 
   // Operands in nhwc
@@ -182,6 +186,7 @@ class ModelBuilder {
   void PreprocessInitializers();
   // Preprocess all the activation nodes (Relu/Relu1/Relu6) for easy query later
   void PreprocessActivations();
+  void PreprocessActivations_nu();
   // Copy and process all the initializers to NNAPI model
   Status RegisterInitializers() ORT_MUST_USE_RESULT;
   Status RegisterModelInputs() ORT_MUST_USE_RESULT;
@@ -192,7 +197,9 @@ class ModelBuilder {
 
   // Get all quantized inputs in the underlying graph_viewer
   void GetAllQuantizedOpInputs();
-  // Go through the underlying graph_viewer, and generate NodeUnits
+
+  // Go through the underlying graph_viewer, and generate NodeUnits, Many initializing functions are
+  // using the result of PreprocessNodeUnits, this need to run early in the Prepare()
   void PreprocessNodeUnits();
 
   Status SetOperandValue(uint32_t index, Model::NNMemory* memory,

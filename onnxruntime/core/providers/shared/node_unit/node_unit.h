@@ -64,15 +64,16 @@ class NodeUnit {
   ProviderType GetExecutionProviderType() const noexcept;
 
   const Node& GetNode() const noexcept { return node_; }
-
+  const std::vector<const Node*> GetOutputNodes() const noexcept { return output_nodes_; }
   const std::vector<const Node*> GetAllNodes() const noexcept { return nodes_; }
 
  private:
   std::vector<NodeUnitIODef> inputs_;
   std::vector<NodeUnitIODef> outputs_;
 
-  const std::vector<const Node*> nodes_;  // all nodes in this NodeUnit
-  const Node& node_;                      // target Node
+  const std::vector<const Node*> nodes_;         // all nodes in this NodeUnit
+  const std::vector<const Node*> output_nodes_;  // all the nodes producing outputs for this NodeUnit
+  const Node& node_;                             // target Node
   Type type_;
 
   void InitForNode();  // Initializing for single Node
