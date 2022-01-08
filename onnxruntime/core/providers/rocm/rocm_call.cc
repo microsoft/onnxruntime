@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #include "core/providers/shared_library/provider_api.h"
-#include <hip/hip_runtime.h>
 #include "shared_inc/rocm_call.h"
 
 #ifdef _WIN32
