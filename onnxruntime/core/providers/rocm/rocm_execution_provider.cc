@@ -3,6 +3,7 @@
 
 #include "core/providers/shared_library/provider_api.h"
 #include "core/providers/rocm/rocm_execution_provider.h"
+#include "core/common/shared_ptr_thread_safe_wrapper.h"
 #include "core/providers/rocm/rocm_common.h"
 #include "core/providers/rocm/rocm_allocator.h"
 #include "core/providers/rocm/rocm_fence.h"
@@ -2066,23 +2067,20 @@ static Status RegisterRocmKernels(KernelRegistry& kernel_registry) {
 
 }  // namespace rocm
 
-static std::shared_ptr<KernelRegistry>& RocmKernelRegistry() {
-  // static local variable ensures thread-safe initialization
-  static std::shared_ptr<KernelRegistry> rocm_kernel_registry = []() {
-    std::shared_ptr<KernelRegistry> registry = KernelRegistry::Create();
-    ORT_THROW_IF_ERROR(rocm::RegisterRocmKernels(*registry));
-    return registry;
-  }();
-
-  return rocm_kernel_registry;
+static std::shared_ptr<KernelRegistry> CreateRocmKernelRegistry() {
+  std::shared_ptr<KernelRegistry> registry = KernelRegistry::Create();
+  ORT_THROW_IF_ERROR(rocm::RegisterRocmKernels(*registry));
+  return registry;
 }
 
+static SharedPtrThreadSafeWrapper<KernelRegistry> s_kernel_registry{&CreateRocmKernelRegistry};
+
 void Shutdown_DeleteRegistry() {
-  RocmKernelRegistry().reset();
+  s_kernel_registry.Reset();
 }
 
 std::shared_ptr<KernelRegistry> ROCMExecutionProvider::GetKernelRegistry() const {
-  return RocmKernelRegistry();
+  return s_kernel_registry.GetInitialized();
 }
 
 static bool CastNeedFallbackToCPU(const onnxruntime::Node& node) {
