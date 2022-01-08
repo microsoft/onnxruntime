@@ -84,7 +84,7 @@ Default value: true
 
 ### cudnn_conv_use_max_workspace
 Check [tuning performance for convolution heavy models](../performance/tune-performance.md#convolution-heavy-models-and-the-cuda-ep) for details on what this flag does.
-This flag is only supported from the V2 version of the provider options struct when used using the C API.
+This flag is only supported from the V2 version of the provider options struct when used using the C API. The V2 provider options struct can be created using [this](https://onnxruntime.ai/docs/api/c/struct_ort_api.html#a0d29cbf555aa806c050748cf8d2dc172) and updated using [this](https://onnxruntime.ai/docs/api/c/struct_ort_api.html#a4710fc51f75a4b9a75bde20acbfa0783). Please take a look at the sample below for an example.
 
 Default value: 0
 
