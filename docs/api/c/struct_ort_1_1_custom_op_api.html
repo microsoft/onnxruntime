@@ -10,7 +10,7 @@
 <link href="tabs.css" rel="stylesheet" type="text/css"/>
 <script type="text/javascript" src="jquery.js"></script>
 <script type="text/javascript" src="dynsections.js"></script>
-<script async src="https://www.googletagmanager.com/gtag/js?id=UA-156955408-1"></script><script> window.dataLayer = window.dataLayer || []; function gtag(){dataLayer.push(arguments);} gtag('js', new Date()); gtag('config', 'UA-156955408-1'); </script> <script type="text/javascript" src="/assets/js/vendor/lunr.min.js"></script> <script type="text/javascript" src="/assets/js/just-the-docs.js"></script> 
+<script async src="https://www.googletagmanager.com/gtag/js?id=UA-156955408-1"></script><script type="text/javascript">"use strict"; window.dataLayer = window.dataLayer || []; function gtag(){dataLayer.push(arguments);} gtag('js', new Date()); gtag('config', 'UA-156955408-1'); </script> <script type="text/javascript" src="/assets/js/vendor/lunr.min.js"></script> <script type="text/javascript" src="/assets/js/just-the-docs.js"></script>
 <link href="navtree.css" rel="stylesheet" type="text/css"/>
 <script type="text/javascript" src="resize.js"></script>
 <script type="text/javascript" src="navtreedata.js"></script>
@@ -119,6 +119,8 @@ Public Member Functions</h2></td></tr>
 <tr class="memitem:afd1a695491b0cd72147170e6ff28ef61"><td class="memTemplParams" colspan="2">template&lt;typename T &gt; </td></tr>
 <tr class="memitem:afd1a695491b0cd72147170e6ff28ef61"><td class="memTemplItemLeft" align="right" valign="top">const T *&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="struct_ort_1_1_custom_op_api.html#afd1a695491b0cd72147170e6ff28ef61">GetTensorData</a> (const <a class="el" href="group___global.html#gaab167acf3fe9dabc0195b993fbe7ee7d">OrtValue</a> *value)</td></tr>
 <tr class="separator:afd1a695491b0cd72147170e6ff28ef61"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:afb1a70a3d307af25e828b35bcf5f04b8"><td class="memItemLeft" align="right" valign="top">const <a class="el" href="group___global.html#ga088f45e429651ac29b4a9efb4d88571a">OrtMemoryInfo</a> *&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="struct_ort_1_1_custom_op_api.html#afb1a70a3d307af25e828b35bcf5f04b8">GetTensorMemoryInfo</a> (const <a class="el" href="group___global.html#gaab167acf3fe9dabc0195b993fbe7ee7d">OrtValue</a> *value)</td></tr>
+<tr class="separator:afb1a70a3d307af25e828b35bcf5f04b8"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a4c60b4f47540791b366228dd6f790a7c"><td class="memItemLeft" align="right" valign="top">std::vector&lt; int64_t &gt;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="struct_ort_1_1_custom_op_api.html#a4c60b4f47540791b366228dd6f790a7c">GetTensorShape</a> (const <a class="el" href="group___global.html#ga6af32c548904330b6bd7e8cba6e186c1">OrtTensorTypeAndShapeInfo</a> *info)</td></tr>
 <tr class="separator:a4c60b4f47540791b366228dd6f790a7c"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a42981ee288830f4b60683bbd4a21627d"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="struct_ort_1_1_custom_op_api.html#a42981ee288830f4b60683bbd4a21627d">ReleaseTensorTypeAndShapeInfo</a> (<a class="el" href="group___global.html#ga6af32c548904330b6bd7e8cba6e186c1">OrtTensorTypeAndShapeInfo</a> *input)</td></tr>
@@ -131,6 +133,8 @@ Public Member Functions</h2></td></tr>
 <tr class="separator:a015cb844d1127a400228c2756892d453"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a3ee901b1e84cc4c47221dc230d357b66"><td class="memItemLeft" align="right" valign="top"><a class="el" href="group___global.html#gaab167acf3fe9dabc0195b993fbe7ee7d">OrtValue</a> *&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="struct_ort_1_1_custom_op_api.html#a3ee901b1e84cc4c47221dc230d357b66">KernelContext_GetOutput</a> (<a class="el" href="group___global.html#ga757f41782aa4ae79362a25d92a5d4230">OrtKernelContext</a> *context, size_t index, const int64_t *dim_values, size_t dim_count)</td></tr>
 <tr class="separator:a3ee901b1e84cc4c47221dc230d357b66"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a0bb133692d307824f5da57019963d4a2"><td class="memItemLeft" align="right" valign="top">void *&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="struct_ort_1_1_custom_op_api.html#a0bb133692d307824f5da57019963d4a2">KernelContext_GetGPUComputeStream</a> (const <a class="el" href="group___global.html#ga757f41782aa4ae79362a25d92a5d4230">OrtKernelContext</a> *context)</td></tr>
+<tr class="separator:a0bb133692d307824f5da57019963d4a2"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a5e6b792b3e87a2c4fcf79d9e8bf3773c"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="struct_ort_1_1_custom_op_api.html#a5e6b792b3e87a2c4fcf79d9e8bf3773c">ThrowOnError</a> (<a class="el" href="group___global.html#gabbdf49d59489efef1b125d8e0d59adc6">OrtStatus</a> *result)</td></tr>
 <tr class="separator:a5e6b792b3e87a2c4fcf79d9e8bf3773c"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
@@ -252,6 +256,24 @@ template&lt;typename T &gt; </div>
 
 </div>
 </div>
+<a id="afb1a70a3d307af25e828b35bcf5f04b8" name="afb1a70a3d307af25e828b35bcf5f04b8"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#afb1a70a3d307af25e828b35bcf5f04b8">&#9670;&nbsp;</a></span>GetTensorMemoryInfo()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">const <a class="el" href="group___global.html#ga088f45e429651ac29b4a9efb4d88571a">OrtMemoryInfo</a> * Ort::CustomOpApi::GetTensorMemoryInfo </td>
+          <td>(</td>
+          <td class="paramtype">const <a class="el" href="group___global.html#gaab167acf3fe9dabc0195b993fbe7ee7d">OrtValue</a> *&#160;</td>
+          <td class="paramname"><em>value</em></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+</div>
+</div>
 <a id="af9e61c4eb4c8f906b0e82671913e1980" name="af9e61c4eb4c8f906b0e82671913e1980"></a>
 <h2 class="memtitle"><span class="permalink"><a href="#af9e61c4eb4c8f906b0e82671913e1980">&#9670;&nbsp;</a></span>GetTensorMutableData()</h2>
 
@@ -319,6 +341,24 @@ template&lt;typename T &gt; </div>
           <td>(</td>
           <td class="paramtype">const <a class="el" href="group___global.html#gaab167acf3fe9dabc0195b993fbe7ee7d">OrtValue</a> *&#160;</td>
           <td class="paramname"><em>value</em></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+</div>
+</div>
+<a id="a0bb133692d307824f5da57019963d4a2" name="a0bb133692d307824f5da57019963d4a2"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a0bb133692d307824f5da57019963d4a2">&#9670;&nbsp;</a></span>KernelContext_GetGPUComputeStream()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">void * Ort::CustomOpApi::KernelContext_GetGPUComputeStream </td>
+          <td>(</td>
+          <td class="paramtype">const <a class="el" href="group___global.html#ga757f41782aa4ae79362a25d92a5d4230">OrtKernelContext</a> *&#160;</td>
+          <td class="paramname"><em>context</em></td><td>)</td>
           <td></td>
         </tr>
       </table>
