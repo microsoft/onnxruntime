@@ -59,6 +59,7 @@ var hierarchy =
     [ "OrtApi", "struct_ort_api.html", null ],
     [ "OrtApiBase", "struct_ort_api_base.html", null ],
     [ "OrtCUDAProviderOptions", "struct_ort_c_u_d_a_provider_options.html", null ],
+    [ "OrtCustomHandleType", "struct_ort_custom_handle_type.html", null ],
     [ "OrtCustomOp", "struct_ort_custom_op.html", [
       [ "Ort::CustomOpBase< TOp, TKernel >", "struct_ort_1_1_custom_op_base.html", null ]
     ] ],

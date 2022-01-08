@@ -31,6 +31,7 @@ var annotated_dup =
     [ "OrtApi", "struct_ort_api.html", "struct_ort_api" ],
     [ "OrtApiBase", "struct_ort_api_base.html", "struct_ort_api_base" ],
     [ "OrtCUDAProviderOptions", "struct_ort_c_u_d_a_provider_options.html", "struct_ort_c_u_d_a_provider_options" ],
+    [ "OrtCustomHandleType", "struct_ort_custom_handle_type.html", "struct_ort_custom_handle_type" ],
     [ "OrtCustomOp", "struct_ort_custom_op.html", "struct_ort_custom_op" ],
     [ "OrtOpenVINOProviderOptions", "struct_ort_open_v_i_n_o_provider_options.html", "struct_ort_open_v_i_n_o_provider_options" ],
     [ "OrtROCMProviderOptions", "struct_ort_r_o_c_m_provider_options.html", "struct_ort_r_o_c_m_provider_options" ],
