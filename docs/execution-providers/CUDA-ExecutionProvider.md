@@ -113,7 +113,9 @@ session = ort.InferenceSession(model_path, providers=providers)
 
 ### C/C++
 
-```c++ (using legacy provider options struct)
+#### Using legacy provider options struct
+
+```c++
 OrtSessionOptions* session_options = /* ... */;
 
 OrtCUDAProviderOptions options;
@@ -126,7 +128,9 @@ options.do_copy_in_default_stream = 1;
 SessionOptionsAppendExecutionProvider_CUDA(session_options, &options);
 ```
 
-```c++ (using V2 provider options struct)
+#### Using V2 provider options struct
+
+```c++
 OrtCUDAProviderOptionsV2* cuda_options = nullptr;
 CreateCUDAProviderOptions(&cuda_options);
 
