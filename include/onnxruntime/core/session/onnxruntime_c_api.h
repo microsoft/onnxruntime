@@ -7,11 +7,11 @@
 *
 * <h1>C</h1>
 *
-* ::OrtApi - Click here to jump to the structure with all C API functions.
+* ::OrtApi - Click here to go to the structure with all C API functions.
 *
 * <h1>C++</h1>
 *
-* ::Ort - Click here to jump to the namespace holding all of the C++ wrapper classes
+* ::Ort - Click here to go to the namespace holding all of the C++ wrapper classes
 *
 * It is a set of header only wrapper classes around the C API. The goal is to turn the C style return value error codes into C++ exceptions, and to
 * automate memory management through standard C++ RAII principles.
