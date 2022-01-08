@@ -146,6 +146,8 @@ SessionOptionsAppendExecutionProvider_CUDA_V2(session_options, cuda_options);
 ReleaseCUDAProviderOptions(cuda_options);
 ```
 
+### C#
+
 ```c#
 var cudaProviderOptions = new OrtCUDAProviderOptions(); // Dispose this finally
 
