@@ -1,7 +1,7 @@
 ---
 title: Releases and servicing
 parent: Reference
-nav_order: 3
+nav_order: 7
 ---
 # Releases and servicing
 Official releases of ONNX Runtime are managed by the core ONNX Runtime team and packages are published roughly quarterly. 
