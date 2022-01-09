@@ -27,6 +27,7 @@ var struct_ort_1_1_value =
     [ "GetTensorTypeAndShapeInfo", "struct_ort_1_1_value.html#a3fe6e43ecc5679d3e547183f36248c9d", null ],
     [ "GetTypeInfo", "struct_ort_1_1_value.html#a9a568ff40447e756b3a62ec7c903b45e", null ],
     [ "GetValue", "struct_ort_1_1_value.html#ac1dd63c5d27e40ef9836f276a8b94dec", null ],
+    [ "HasValue", "struct_ort_1_1_value.html#acf4d6700f1e1d961b02a39c2a43689ad", null ],
     [ "IsSparseTensor", "struct_ort_1_1_value.html#a6db197c9c78aafe5b1a6f4e1e5d743dc", null ],
     [ "IsTensor", "struct_ort_1_1_value.html#a2df13bf81010090da46eee36c4a9b5a4", null ],
     [ "operator=", "struct_ort_1_1_value.html#a14ce9c0a1b41a61eb0f94bc9070539eb", null ],
