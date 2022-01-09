@@ -145,7 +145,7 @@ div.sphx-glr-download a:hover {
   background-color: #d5d57e;
 }
 
-.sphx-glr-example-title > :target::before {
+.sphx-glr-example-title:target::before {
   display: block;
   content: "";
   margin-top: -50px;

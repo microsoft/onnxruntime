@@ -6,11 +6,11 @@ redirect_from: /docs/how-to/mobile-performance-tuning
 ---
 {::options toc_levels="2" /}
 
-# ONNX Runtime Mobile Performance Tuning 
+# ONNX Runtime Mobile Performance Tuning
 
 Learn how different optimizations affect performance, and get suggestions for performance testing with ORT format models.
 
-ONNX Runtime Mobile can be used to execute ORT format models using NNAPI (via the NNAPI Execution Provider (EP)) on Android platforms, and CoreML (via the CoreML EP) on iOS platforms. 
+ONNX Runtime Mobile can be used to execute ORT format models using NNAPI (via the NNAPI Execution Provider (EP)) on Android platforms, and CoreML (via the CoreML EP) on iOS platforms.
 
 First, please review the introductory details in [using NNAPI with ONNX Runtime Mobile](../execution-providers/NNAPI-ExecutionProvider.md) and [using CoreML with ONNX Runtime](../execution-providers/CoreML-ExecutionProvider.md).
 
@@ -111,7 +111,7 @@ To create an NNAPI-aware ORT format model please follow these steps.
         <ONNX Runtime repository root>/build.sh --config RelWithDebInfo --use_nnapi --build_shared_lib --build_wheel --parallel
         ```
 
-    **NOTE** if you have previously done a minimal build you will need to run `git reset --hard` to make sure any operator kernel exclusions are reversed prior to performing the 'full' build. If you do not, you may not be able to load the ONNX format model due to missing kernels.
+    **NOTE**: For **ONNX Runtime version 1.10 and earlier**, if you have previously done a minimal build with reduced operator kernels you will need to run `git reset --hard` to make sure any operator kernel exclusions are reversed prior to performing the 'full' build. If you do not, you may not be able to load the ONNX format model due to missing kernels.
 
 2. Install the python wheel from the build output directory.
     - Windows : This is located in `build/Windows/<config>/<config>/dist/<package name>.whl`.

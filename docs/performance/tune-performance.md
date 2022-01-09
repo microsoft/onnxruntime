@@ -300,11 +300,35 @@ providers = [("CUDAExecutionProvider", {"cudnn_conv_use_max_workspace": '1'})]
 sess_options = ort.SessionOptions()
 sess = ort.InferenceSession("my_conv_heavy_fp16_model.onnx",  sess_options = sess_options, providers=providers)
 ```
+
 * C/C++
-Support for this provider option will be added in upcoming releases.
+```
+OrtCUDAProviderOptionsV2* cuda_options = nullptr;
+CreateCUDAProviderOptions(&cuda_options);
+
+std::vector<const char*> keys{"cudnn_conv_use_max_workspace"};
+std::vector<const char*> values{"1"};
+
+UpdateCUDAProviderOptions(cuda_options, keys.data(), values.data(), 1);
+
+OrtSessionOptions* session_options = /* ... */;
+SessionOptionsAppendExecutionProvider_CUDA_V2(session_options, cuda_options);
+
+// Finally, don't forget to release the provider options
+ReleaseCUDAProviderOptions(cuda_options);
+```
 
 * C#
-Support for this provider option will be added in upcoming releases.
+```
+var cudaProviderOptions = new OrtCUDAProviderOptions(); // Dispose this finally
+
+var providerOptionsDict = new Dictionary<string, string>();
+providerOptionsDict["cudnn_conv_use_max_workspace"] = "1";
+
+cudaProviderOptions.UpdateOptions(providerOptionsDict);
+
+SessionOptions options = SessionOptions.MakeSessionOptionWithCudaProvider(cudaProviderOptions);  // Dispose this finally
+```
 
 ## Troubleshooting performance issues
 

@@ -34,7 +34,14 @@ The operators that are included are specified at build time, in a [configuration
 **`--include_ops_by_config`**
 
 * Add `--include_ops_by_config <config file produced during model conversion> --skip_tests` to the build parameters.
-* NOTE: Building will edit some of the ONNX Runtime source files to exclude unused kernels. If you wish to go back to creating a full build, or wish to change the operator kernels included, you MUST run `git reset --hard` or `git checkout HEAD -- ./onnxruntime/core/providers` from the root directory of your local ONNX Runtime repository to undo these changes.
+
+* NOTE: Building will edit some of the ONNX Runtime source files to exclude unused kernels.
+
+  In particular, this source modification will be done during the "update" build phase, which is enabled by default or explicitly with the `--update` build parameter.
+
+  **ONNX Runtime version 1.10 and earlier:** The source files are modified directly. If you wish to go back to creating a full build, or wish to change the operator kernels included, you MUST run `git reset --hard` or `git checkout HEAD -- ./onnxruntime/core/providers` from the root directory of your local ONNX Runtime repository to undo these changes.
+
+  **ONNX Runtime version 1.11 and later:** Updated versions of the source files are generated in the build directory so there is no need to undo source file changes.
 
 ### Option to reduce types supported by the required operators
 
@@ -67,7 +74,7 @@ A minimal build has the following limitations:
 ## Other customizations
 
 ### Disable exceptions
-  
+
 **`--disable_exceptions`**
 
 * Any locations that would have thrown an exception will instead log the error message and call abort().
