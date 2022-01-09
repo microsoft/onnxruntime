@@ -563,14 +563,13 @@ static Status HandleAutoPad(const Shape& input_shape,
 // QLinearConv, QLinearMatmul, QLinearAdd
 // a, b are inputs, and y is output
 static Status GetBinaryOpQuantizationScaleAndZeroPoint_nu(
-    const ModelBuilder& model_builder, const NodeUnit& node_unit,
+    const InitializedTensorSet& initializers, const NodeUnit& node_unit,
     float& a_scale, float& b_scale, float& y_scale,
     int32_t& a_zero_point, int32_t& b_zero_point, int32_t& y_zero_point) ORT_MUST_USE_RESULT;
 static Status GetBinaryOpQuantizationScaleAndZeroPoint_nu(
-    const ModelBuilder& model_builder, const NodeUnit& node_unit,
+    const InitializedTensorSet& initializers, const NodeUnit& node_unit,
     float& a_scale, float& b_scale, float& y_scale,
     int32_t& a_zero_point, int32_t& b_zero_point, int32_t& y_zero_point) {
-  const auto& initializers = model_builder.GetInitializerTensors();
   ORT_RETURN_IF_ERROR(GetQuantizationScaleAndZeroPoint(
       initializers, node_unit.Inputs()[0], node_unit.ModelPath(), a_scale, a_zero_point));
   ORT_RETURN_IF_ERROR(GetQuantizationScaleAndZeroPoint(
@@ -866,9 +865,10 @@ Status BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
           y_zero_point = 0;
 
   if (op_is_qlinear) {
-    ORT_RETURN_IF_ERROR(GetBinaryOpQuantizationScaleAndZeroPoint_nu(model_builder, node_unit,
-                                                                    a_scale, b_scale, y_scale,
-                                                                    a_zero_point, b_zero_point, y_zero_point));
+    ORT_RETURN_IF_ERROR(GetBinaryOpQuantizationScaleAndZeroPoint_nu(
+        model_builder.GetInitializerTensors(), node_unit,
+        a_scale, b_scale, y_scale,
+        a_zero_point, b_zero_point, y_zero_point));
   }
 
   // Verify if the scale and zero point matchs from onnx input and nnapi input match
@@ -932,12 +932,11 @@ class TransposeOpBuilder : public BaseOpBuilder {
 };
 
 Status TransposeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
-  const auto& node = node_unit.GetNode();
   auto& shaper(model_builder.GetShaper());
 
-  auto input = node.InputDefs()[0]->Name();
-  const auto& output = node.OutputDefs()[0]->Name();
-  NodeAttrHelper helper(node);
+  auto input = node_unit.Inputs()[0].node_arg.Name();
+  const auto& output = node_unit.Outputs()[0].node_arg.Name();
+  NodeAttrHelper helper(node_unit);
   std::vector<int32_t> perm = helper.Get("perm", std::vector<int32_t>());
   auto input_dims = shaper[input].size();
   if (perm.empty()) {
@@ -956,7 +955,7 @@ Status TransposeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, co
       perm[i] = axis_nchw_to_nhwc[perm[i]];
   }
 
-  std::string perm_name = model_builder.GetUniqueName(node.Name() + input + "perm");
+  std::string perm_name = model_builder.GetUniqueName(node_unit.Name() + input + "perm");
 
   // It is possible this onnx transpose operator can be nchw->nhwc, but so far I don't see
   // any scenario will do this since onnx is nchw only, assume the output is always not nhwc
@@ -1267,15 +1266,13 @@ void PoolOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Nod
 }
 
 Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
-  const auto& node = node_unit.GetNode();
-
   auto& shaper(model_builder.GetShaper());
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());
 
-  NodeAttrHelper helper(node);
+  NodeAttrHelper helper(node_unit);
 
-  auto input = node.InputDefs()[0]->Name();
+  auto input = node_unit.Inputs()[0].node_arg.Name();
   bool use_nchw = model_builder.UseNCHW();
   bool input_is_nhwc = model_builder.IsOperandNHWC(input);
   bool output_is_nhwc = false;
@@ -1284,12 +1281,12 @@ Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   } else {
     output_is_nhwc = true;
     if (!input_is_nhwc) {
-      ORT_RETURN_IF_ERROR(GetNHWCInput(model_builder, node, 0, input));
+      ORT_RETURN_IF_ERROR(GetNHWCInput_nu(model_builder, node_unit, 0, input));
     }
   }
 
-  const auto& output = node.OutputDefs()[0]->Name();
-  const auto& op_type = node.OpType();
+  const auto& output = node_unit.Outputs()[0].node_arg.Name();
+  const auto& op_type = node_unit.OpType();
 
   int32_t op_code;
   bool is_qlinear_average_pool = op_type == "QLinearAveragePool";
@@ -1329,7 +1326,7 @@ Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     }
   }
 
-  int32_t fuse_code = model_builder.FindActivation(node, *node.OutputDefs()[0]);
+  int32_t fuse_code = model_builder.FindActivation_nu(node_unit, node_unit.Outputs()[0].node_arg);
 
   // Get output scale and zero point if this is QLinearAveragePool
   // Otherwise we will use the scale and zero point of the input
@@ -1339,16 +1336,14 @@ Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   if (is_qlinear_average_pool) {
     const auto& initializers = model_builder.GetInitializerTensors();
     float x_scale = 0.0f;
-    ORT_RETURN_IF_ERROR(GetQuantizationScale(initializers, node, 1 /* idx */, x_scale));
     int32_t x_zero_point = 0;
-    ORT_RETURN_IF_ERROR(GetQuantizationZeroPoint(initializers, node, 2 /* idx */, x_zero_point));
+    ORT_RETURN_IF_ERROR(GetQuantizationScaleAndZeroPoint(
+        initializers, node_unit.Inputs()[0], node_unit.ModelPath(), x_scale, x_zero_point));
 
     // Verify if the scale and zero point values from onnx input and nnapi input match
     ORT_RETURN_IF_ERROR(IsValidInputQuantizedType(model_builder, input, x_scale, x_zero_point));
-
-    ORT_RETURN_IF_ERROR(GetQuantizationScale(initializers, node, 3 /* idx */, y_scale));
-    if (node.InputDefs().size() > 4)
-      ORT_RETURN_IF_ERROR(GetQuantizationZeroPoint(initializers, node, 4 /* idx */, y_zero_point));
+    ORT_RETURN_IF_ERROR(GetQuantizationScaleAndZeroPoint(
+        initializers, node_unit.Outputs()[0], node_unit.ModelPath(), y_scale, y_zero_point));
   }
 
   std::vector<uint32_t> input_indices;
