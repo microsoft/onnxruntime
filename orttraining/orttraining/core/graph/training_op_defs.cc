@@ -2189,16 +2189,20 @@ Example 4:
       .AllowUncheckedAttributes()
       .Input(0, "Y_grad", "The gradient tensor from output.", "T")
       .Input(1, "X", "Input data tensor from the forward path", "T")
-      .Input(2, "scale", "Scale tensor.", "T")
+      .Input(2, "scale", "Scale tensor.", "T1")
       .Input(3, "mean", "mean of X.", "U")
       .Input(4, "inv_std_dev", "inverse std deviation of X.", "U")
       .Output(0, "X_grad", "Gradient of the input.", "T")
-      .Output(1, "scale_grad", "Gradient of the scale.", "T")
-      .Output(2, "bias_grad", "Gradient of the bias.", "T")
+      .Output(1, "scale_grad", "Gradient of the scale.", "T1")
+      .Output(2, "bias_grad", "Gradient of the bias.", "T1")
       .TypeConstraint(
           "T",
           {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
-          "Constrain input and output types (except mean and inv_std_var) to float tensors.")
+          "Constrain input X, output Y and their gradients' type to float tensors.")
+      .TypeConstraint(
+          "T1",
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+          "Constrain scale and bias and their gradients' type to float tensors.")
       .TypeConstraint(
           "U",
           {"tensor(float)", "tensor(bfloat16)"},
@@ -2221,6 +2225,12 @@ Example 4:
               return false;
             int64_t T = tp->tensor_type().elem_type();
 
+            auto* tp1 = ctx.getInputType(2);
+            if (!tp1 || !tp1->has_tensor_type()) {
+              return false;
+            }
+            int64_t T1 = tp1->tensor_type().elem_type();
+
             // Requirements/assumptions:
             // Inputs Y_grad and X are of shape [d[0], ..., d[axis-1], d[axis], ..., d[rank-1]] and type T
             // Input scale is of shape [d[axis], ..., d[rank-1]] and type U
@@ -2236,20 +2246,21 @@ Example 4:
                 .Add("Y_grad_2d = Flatten (Y_grad)", axis_ref_attr)
                 .Add("mean_2d = Flatten (cast_mean)", axis_ref_attr)
                 .Add("inv_std_dev_2d = Flatten (cast_inv_std_dev)", axis_ref_attr)
+                .Add("cast_bias = Cast (scale)", "to", T)
                 .Add(R"ONNX(
                   shape_x = Shape (X)
                   bias_scale_shape = Shape (scale)
-                  scale_2d = Flatten <axis = 0> (scale)
+                  scale_2d = Flatten <axis = 0> (cast_bias)
 
                   axis_0 = Constant <value = int64[1] {0}> ()
                   bias_grad_2d = ReduceSum (Y_grad_2d, axis_0)
-                  bias_grad = Reshape (bias_grad_2d, bias_scale_shape)
+                  bias_grad_t = Reshape (bias_grad_2d, bias_scale_shape)
 
                   deviation = Sub (x_2d, mean_2d)
                   normalized_deviation = Mul(deviation, inv_std_dev_2d)
                   scale_grad_rows = Mul (Y_grad_2d, normalized_deviation)
                   scale_grad_2d = ReduceSum (scale_grad_rows, axis_0)
-                  scale_grad = Reshape (scale_grad_2d, bias_scale_shape)
+                  scale_grad_t = Reshape (scale_grad_2d, bias_scale_shape)
                   normalized_layer_grad = Mul (Y_grad_2d, scale_2d)
 
                   B = Mul (normalized_layer_grad, inv_std_dev_2d)
@@ -2260,7 +2271,9 @@ Example 4:
                   mean_diff_B = Sub (B, mean_B)
                   X_grad_2D = Sub (mean_diff_B, nd_mean_C)
                   X_grad = Reshape (X_grad_2D, shape_x)
-                )ONNX");
+                )ONNX")
+                .Add("scale_grad = Cast (scale_grad_t)", "to", T1)
+                .Add("bias_grad = Cast (bias_grad_t)", "to", T1);
             schema.BuildFunction(functionProto);
             return true;
           });
@@ -2276,14 +2289,18 @@ Example 4:
       .AllowUncheckedAttributes()
       .Input(0, "Y_grad", "The gradient tensor from output.", "T")
       .Input(1, "X", "Input data tensor from the forward path", "T")
-      .Input(2, "scale", "Scale tensor.", "T")
+      .Input(2, "scale", "Scale tensor.", "T1")
       .Input(3, "inv_std_var", "inverse std variance of X.", "U")
       .Output(0, "X_grad", "Gradient of the input.", "T")
-      .Output(1, "scale_grad", "Gradient of the scale.", "T")
+      .Output(1, "scale_grad", "Gradient of the scale.", "T1")
       .TypeConstraint(
           "T",
           {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
-          "Constrain input and output types (except mean and inv_std_var) to float tensors.")
+          "Constrain input X, output Y and their gradients' type to float tensors.")
+      .TypeConstraint(
+          "T1",
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+          "Constrain scale and its gradient's type to float tensors.")
       .TypeConstraint(
           "U",
           {"tensor(float)"},
@@ -2300,16 +2317,20 @@ Example 4:
       .AllowUncheckedAttributes()
       .Input(0, "Y_grad", "The gradient tensor from output.", "T")
       .Input(1, "Y", "Output data tensor from the forward path", "T")
-      .Input(2, "scale", "Scale tensor.", "T")
-      .Input(3, "bias", "Bias tensor.", "T")
+      .Input(2, "scale", "Scale tensor.", "T1")
+      .Input(3, "bias", "Bias tensor.", "T1")
       .Input(4, "inv_std_var", "inverse std variance of X.", "U")
       .Output(0, "X_grad", "Gradient of the input.", "T")
-      .Output(1, "scale_grad", "Gradient of the scale.", "T")
-      .Output(2, "bias_grad", "Gradient of the bias.", "T")
+      .Output(1, "scale_grad", "Gradient of the scale.", "T1")
+      .Output(2, "bias_grad", "Gradient of the bias.", "T1")
       .TypeConstraint(
           "T",
-          {"tensor(float16)", "tensor(float)", "tensor(double)"},
-          "Constrain input and output types (except mean and inv_std_var) to float tensors.")
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+          "Constrain input X, output Y and their gradients' type to float tensors.")
+      .TypeConstraint(
+          "T1",
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+          "Constrain scale and bias and their gradients' type to float tensors.")
       .TypeConstraint(
           "U",
           {"tensor(float)"},

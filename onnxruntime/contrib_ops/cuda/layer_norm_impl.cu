@@ -305,7 +305,7 @@ struct SharedMemory<double> {
 };
 }  // namespace
 
-template <typename T, typename U, bool simplified>
+template <typename T, typename T1, typename U, bool simplified>
 __global__ void cuApplyLayerNorm(
     T* __restrict__ output_vals,
     U* __restrict__ mean,
@@ -314,8 +314,8 @@ __global__ void cuApplyLayerNorm(
     const int n1,
     const int n2,
     const U epsilon,
-    const T* __restrict__ gamma,
-    const T* __restrict__ beta) {
+    const T1* __restrict__ gamma,
+    const T1* __restrict__ beta) {
   // Assumptions:
   // 1) blockDim.x == GPU_WARP_SIZE
   // 2) Tensors are contiguous
@@ -332,8 +332,8 @@ __global__ void cuApplyLayerNorm(
     const int thrx = threadIdx.x + threadIdx.y * blockDim.x;
     for (int i = thrx; i < n2; i += numx) {
       U curr = static_cast<U>(lvals[i]);
-      T gamma_i = (gamma != NULL) ? gamma[i]: (T)1;
-      T beta_i = (beta != NULL) ? beta[i] : (T) 0;
+      T gamma_i = (gamma != NULL) ? static_cast<T>(gamma[i]) : (T)1;
+      T beta_i = (beta != NULL) ? static_cast<T>(beta[i]) : (T)0;
       if (simplified) {
         ovals[i] = gamma_i * static_cast<T>(c_inv_std_dev * curr);
       } else {
@@ -347,7 +347,7 @@ __global__ void cuApplyLayerNorm(
   }
 }
 
-template <typename T, typename U, bool simplified>
+template <typename T, typename T1, typename U, bool simplified>
 void HostApplyLayerNorm(
     const cudaDeviceProp& prop,
     cudaStream_t stream,
@@ -358,8 +358,8 @@ void HostApplyLayerNorm(
     int n1,
     int n2,
     double epsilon,
-    const T* gamma,
-    const T* beta) {
+    const T1* gamma,
+    const T1* beta) {
   const int maxGridY = prop.maxGridSize[1];
   const int warp_size = prop.warpSize;
   ORT_ENFORCE(warp_size == GPU_WARP_SIZE);
@@ -372,7 +372,7 @@ void HostApplyLayerNorm(
   const dim3 blocks(1, std::min<unsigned int>(n1, maxGridY), 1);
   int nshared =
       threads.y > 1 ? threads.y * sizeof(U) + (threads.y / 2) * sizeof(U) : 0;
-  cuApplyLayerNorm<T, U, simplified><<<blocks, threads, nshared, stream>>>(
+  cuApplyLayerNorm<T, T1, U, simplified><<<blocks, threads, nshared, stream>>>(
       output,
       mean,
       inv_std_dev,
@@ -382,21 +382,24 @@ void HostApplyLayerNorm(
       gamma, beta);
 }
 
-#define LAYERNORM_LINEAR_IMPL(T, U, simplified)                                                                                                 \
-  template void HostApplyLayerNorm<T, U, simplified>(const cudaDeviceProp& prop, cudaStream_t stream, T* output, U* mean, U* inv_std_dev, const T* input, int n1, int n2, \
-                                                     double epsilon, const T* gamma, const T* beta);
+#define LAYERNORM_LINEAR_IMPL(T, T1, U, simplified)                                                                  \
+  template void HostApplyLayerNorm<T, T1, U, simplified>(const cudaDeviceProp& prop, cudaStream_t stream, T* output, \
+                                                         U* mean, U* inv_std_dev, const T* input, int n1, int n2,    \
+                                                         double epsilon, const T1* gamma, const T1* beta);
 
-LAYERNORM_LINEAR_IMPL(float, float, true)
-LAYERNORM_LINEAR_IMPL(half, float, true)
-LAYERNORM_LINEAR_IMPL(double, double, true)
-LAYERNORM_LINEAR_IMPL(float, float, false)
-LAYERNORM_LINEAR_IMPL(half, float, false)
-LAYERNORM_LINEAR_IMPL(double, double, false)
+LAYERNORM_LINEAR_IMPL(float, float, float, true)
+LAYERNORM_LINEAR_IMPL(half, half, float, true)
+LAYERNORM_LINEAR_IMPL(double, double, double, true)
+LAYERNORM_LINEAR_IMPL(float, half, float, true)
+LAYERNORM_LINEAR_IMPL(float, float, float, false)
+LAYERNORM_LINEAR_IMPL(half, half, float, false)
+LAYERNORM_LINEAR_IMPL(double, double, double, false)
+LAYERNORM_LINEAR_IMPL(float, half, float, false)
 
 //LAYERNORM_LINEAR_IMPL(half, half)
 #if CUDA_VERSION >= 11000 && (__CUDA_ARCH__ >= 800 || !defined(__CUDA_ARCH__))
-LAYERNORM_LINEAR_IMPL(nv_bfloat16, float, true)
-LAYERNORM_LINEAR_IMPL(nv_bfloat16, float, false)
+LAYERNORM_LINEAR_IMPL(nv_bfloat16, nv_bfloat16, float, true)
+LAYERNORM_LINEAR_IMPL(nv_bfloat16, nv_bfloat16, float, false)
 #endif
 
 }  // namespace cuda

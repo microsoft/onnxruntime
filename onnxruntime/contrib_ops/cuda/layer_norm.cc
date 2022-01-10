@@ -10,46 +10,40 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-#define REGISTER_KERNEL_TYPED(T, U)                               \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
-      LayerNormalization,                                         \
-      kOnnxDomain,                                                \
-      1,                                                          \
-      T##_##U,                                                    \
-      kCudaExecutionProvider,                                     \
-      (*KernelDefBuilder::Create())                               \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())  \
-          .TypeConstraint("U", DataTypeImpl::GetTensorType<U>()), \
-      LayerNorm<T, U, false>);                                    \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
-      SimplifiedLayerNormalization,                               \
-      kOnnxDomain,                                                \
-      1,                                                          \
-      T##_##U,                                                    \
-      kCudaExecutionProvider,                                     \
-      (*KernelDefBuilder::Create())                               \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())  \
-          .TypeConstraint("U", DataTypeImpl::GetTensorType<U>()), \
-      LayerNorm<T, U, true>);
+#define REGISTER_KERNEL_TYPED(T, T1, U)                                                                               \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(LayerNormalization, kOnnxDomain, 1, T##_##T1##_##U, kCudaExecutionProvider,           \
+                                (*KernelDefBuilder::Create())                                                         \
+                                    .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())                            \
+                                    .TypeConstraint("T1", DataTypeImpl::GetTensorType<T1>())                          \
+                                    .TypeConstraint("U", DataTypeImpl::GetTensorType<U>()),                           \
+                                LayerNorm<T, T1, U, false>);                                                          \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(SimplifiedLayerNormalization, kOnnxDomain, 1, T##_##T1##_##U, kCudaExecutionProvider, \
+                                (*KernelDefBuilder::Create())                                                         \
+                                    .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())                            \
+                                    .TypeConstraint("T1", DataTypeImpl::GetTensorType<T1>())                          \
+                                    .TypeConstraint("U", DataTypeImpl::GetTensorType<U>()),                           \
+                                LayerNorm<T, T1, U, true>);
 
-REGISTER_KERNEL_TYPED(float, float)
-REGISTER_KERNEL_TYPED(double, double)
-REGISTER_KERNEL_TYPED(MLFloat16, float)
+REGISTER_KERNEL_TYPED(float, float, float)
+REGISTER_KERNEL_TYPED(double, double, double)
+REGISTER_KERNEL_TYPED(MLFloat16, MLFloat16, float)
+REGISTER_KERNEL_TYPED(float, MLFloat16, float)
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
-REGISTER_KERNEL_TYPED(BFloat16, float)
+REGISTER_KERNEL_TYPED(BFloat16, BFloat16, float)
 #endif
 
-template <typename T, typename U, bool simplified>
-LayerNorm<T, U, simplified>::LayerNorm(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info) {
+template <typename T, typename T1, typename U, bool simplified>
+LayerNorm<T, T1, U, simplified>::LayerNorm(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info) {
   ORT_ENFORCE(op_kernel_info.GetAttr("axis", &axis_).IsOK());
   float tmp_epsilon;
   ORT_ENFORCE(op_kernel_info.GetAttr<float>("epsilon", &tmp_epsilon).IsOK());
   epsilon_ = tmp_epsilon;
 }
 
-template <typename T, typename U, bool simplified>
-Status LayerNorm<T, U, simplified>::ComputeInternal(OpKernelContext* ctx) const {
+template <typename T, typename T1, typename U, bool simplified>
+Status LayerNorm<T, T1, U, simplified>::ComputeInternal(OpKernelContext* ctx) const {
   typedef typename ToCudaType<T>::MappedType CudaT;
+  typedef typename ToCudaType<T1>::MappedType CudaT1;
   typedef typename ToCudaType<U>::MappedType CudaU;
   //Inputs
   const Tensor* X = ctx->Input<Tensor>(0);
@@ -57,8 +51,8 @@ Status LayerNorm<T, U, simplified>::ComputeInternal(OpKernelContext* ctx) const 
   const Tensor* bias = ctx->Input<Tensor>(2);
 
   auto X_data = reinterpret_cast<const CudaT*>(X->template Data<T>());
-  auto scale_data = reinterpret_cast<const CudaT*>(scale->template Data<T>());
-  auto bias_data = (simplified || (nullptr == bias)) ? nullptr : reinterpret_cast<const CudaT*>(bias->template Data<T>());
+  auto scale_data = reinterpret_cast<const CudaT1*>(scale->template Data<T1>());
+  auto bias_data = (simplified || (nullptr == bias)) ? nullptr : reinterpret_cast<const CudaT1*>(bias->template Data<T1>());
 
   const TensorShape& x_shape = X->Shape();
   // Sometimes due to conversion issue, the input 'X' has no data which is a case that cuda kernel cannot handle.
@@ -103,7 +97,8 @@ Status LayerNorm<T, U, simplified>::ComputeInternal(OpKernelContext* ctx) const 
     inv_var_data = reinterpret_cast<CudaU*>(var->template MutableData<U>());
   }
 
-  HostApplyLayerNorm<CudaT, CudaU, simplified>(GetDeviceProp(), Stream(), Y_data, mean_data, inv_var_data, X_data, n1, n2, epsilon_, scale_data, bias_data);
+  HostApplyLayerNorm<CudaT, CudaT1, CudaU, simplified>(GetDeviceProp(), Stream(), Y_data, mean_data, inv_var_data,
+                                                       X_data, n1, n2, epsilon_, scale_data, bias_data);
   return Status::OK();
 }
 

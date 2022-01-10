@@ -2641,15 +2641,19 @@ Example 4:
             AttributeProto::INT, static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT))
       .AllowUncheckedAttributes()
       .Input(0, "X", "Input data tensor from the previous layer.", "T")
-      .Input(1, "Scale", "Scale tensor.", "T")
-      .Input(2, "B", "Bias tensor.", "T", OpSchema::Optional)
+      .Input(1, "Scale", "Scale tensor.", "T1")
+      .Input(2, "B", "Bias tensor.", "T1", OpSchema::Optional)
       .Output(0, "Y", "Output data tensor.", "T")
       .Output(1, "Mean", "Saved mean used during training to speed up gradient computation", "U", OpSchema::Optional)
       .Output(2, "InvStdDev", "Saved inverse standard deviation used during training to speed up gradient computation.", "U", OpSchema::Optional)
       .TypeConstraint(
           "T",
           {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
-          "Constrain input types and output Y type to float tensors.")
+          "Constrain input X and output Y type to float tensors.")
+      .TypeConstraint(
+          "T1",
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+          "Constrain scale and bias type to float tensors.")
       .TypeConstraint(
           "U",
           {"tensor(float)", "tensor(bfloat16)"},
@@ -2752,10 +2756,12 @@ Example 4:
                 .Add("Deviation = Sub (XU, Mean2D)")
                 .Add("Normalized = Div (Deviation, StdDev)")
                 .Add("NormalizedT = Cast (Normalized)", "to", T)
-                .Add("Scale2D = Flatten <axis = 0> (Scale)")
+                .Add("ScaleT = Cast (Scale)", "to", T)
+                .Add("Scale2D = Flatten <axis = 0> (ScaleT)")
                 .Add("Scaled = Mul (NormalizedT, Scale2D)");
             if (ctx.hasInput(2)) {
-              builder.Add("B2D = Flatten <axis=0> (B)");
+              builder.Add("BT = Cast (B)", "to", T);
+              builder.Add("B2D = Flatten <axis=0> (BT)");
               builder.Add("Biased = Add (Scaled, B2D)");
             } else {
               builder.Add("Biased = Identity (Scaled)");
@@ -2784,13 +2790,17 @@ Example 4:
             AttributeProto::FLOAT, 1e-5f)
       .AllowUncheckedAttributes()
       .Input(0, "X", "Input data tensor from the previous layer.", "T")
-      .Input(1, "scale", "Scale tensor.", "T")
+      .Input(1, "scale", "Scale tensor.", "T1")
       .Output(0, "Y", "Output data tensor.", "T")
       .Output(1, "inv_std_var", "Saved inverse standard variance used during training to speed up gradient computation.", "U", OpSchema::Optional)
       .TypeConstraint(
           "T",
           {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
-          "Constrain input and output types (except mean and inv_std_var) to float tensors.")
+          "Constrain input X and output Y type to float tensors.")
+      .TypeConstraint(
+          "T1",
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+          "Constrain scale type to float tensors.")
       .TypeConstraint(
           "U",
           {"tensor(float)"},

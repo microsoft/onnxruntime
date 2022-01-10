@@ -11,34 +11,22 @@ namespace contrib {
 
 // LayerNormGrad
 
-#define REGISTER_KERNEL_TYPED(T)                                  \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
-      LayerNormalizationGrad,                                     \
-      kMSDomain,                                                  \
-      1,                                                          \
-      T,                                                          \
-      kCpuExecutionProvider,                                      \
-      KernelDefBuilder()                                          \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      LayerNormGrad<T, false>);                                   \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
-      SimplifiedLayerNormalizationGrad,                           \
-      kMSDomain,                                                  \
-      1,                                                          \
-      T,                                                          \
-      kCpuExecutionProvider,                                      \
-      KernelDefBuilder()                                          \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      LayerNormGrad<T, true>);                                    \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
-      InvertibleLayerNormalizationGrad,                           \
-      kMSDomain,                                                  \
-      1,                                                          \
-      T,                                                          \
-      kCpuExecutionProvider,                                      \
-      KernelDefBuilder()                                          \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      InvertibleLayerNormGrad<T>);
+#define REGISTER_KERNEL_TYPED(T)                                                                          \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(LayerNormalizationGrad, kMSDomain, 1, T, kCpuExecutionProvider,           \
+                                KernelDefBuilder()                                                        \
+                                    .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())                \
+                                    .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>()),              \
+                                LayerNormGrad<T, false>);                                                 \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(SimplifiedLayerNormalizationGrad, kMSDomain, 1, T, kCpuExecutionProvider, \
+                                KernelDefBuilder()                                                        \
+                                    .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())                \
+                                    .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>()),              \
+                                LayerNormGrad<T, true>);                                                  \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(InvertibleLayerNormalizationGrad, kMSDomain, 1, T, kCpuExecutionProvider, \
+                                KernelDefBuilder()                                                        \
+                                    .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())                \
+                                    .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>()),              \
+                                InvertibleLayerNormGrad<T>);
 
 REGISTER_KERNEL_TYPED(float)
 REGISTER_KERNEL_TYPED(double)
