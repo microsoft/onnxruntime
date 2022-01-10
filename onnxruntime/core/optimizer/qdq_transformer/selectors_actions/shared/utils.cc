@@ -17,7 +17,7 @@ namespace onnxruntime {
 namespace QDQ {
 
 void Selectors::RegisterSelector(const OpVersionsAndSelector::OpVersionsMap& ops_and_versions_in,
-                                 std::unique_ptr<QDQ::BaseSelector> selector_in) {
+                                 std::unique_ptr<NodeGroupSelector> selector_in) {
   auto entry = std::make_unique<OpVersionsAndSelector>(
       ops_and_versions_in,
       std::move(selector_in));
@@ -43,42 +43,42 @@ static const OpVersionsAndSelector::OpVersionsMap GetMatMulOpVersionsMap() { ret
 /* Selector rules registration related */
 void RegisterMiscSelectors(Selectors& qdq_selectors) {
   /* register selectors for miscellaneous ops */
-  std::unique_ptr<BaseSelector> selector = std::make_unique<QDQ::DropDQDNodesSelector>();
+  std::unique_ptr<NodeGroupSelector> selector = std::make_unique<DropQDQNodeGroupSelector>();
   qdq_selectors.RegisterSelector(GetMiscOpVersionsMap(),
                                  std::move(selector));
 }
 
 void RegisterUnarySelectors(Selectors& qdq_selectors) {
   /* regsiter selectors for unary ops */
-  std::unique_ptr<BaseSelector> selector = std::make_unique<QDQ::UnarySelector>();
+  std::unique_ptr<NodeGroupSelector> selector = std::make_unique<UnaryNodeGroupSelector>();
   qdq_selectors.RegisterSelector(GetUnaryOpVersionsMap(),
                                  std::move(selector));
 }
 
 void RegisterBinarySelectors(Selectors& qdq_selectors) {
   /* register selectors for binary ops */
-  std::unique_ptr<BaseSelector> selector = std::make_unique<QDQ::BinarySelector>();
+  std::unique_ptr<NodeGroupSelector> selector = std::make_unique<BinaryNodeGroupSelector>();
   qdq_selectors.RegisterSelector(GetBinaryOpVersionsMap(),
                                  std::move(selector));
 }
 
 void RegisterVariadicSelectors(Selectors& qdq_selectors) {
   /* register selectors for variadic ops */
-  std::unique_ptr<BaseSelector> selector = std::make_unique<QDQ::VariadicSelector>();
+  std::unique_ptr<NodeGroupSelector> selector = std::make_unique<VariadicNodeGroupSelector>();
   qdq_selectors.RegisterSelector(GetVariadicOpVersionsMap(),
                                  std::move(selector));
 }
 
 void RegisterConvSelector(Selectors& qdq_selectors) {
   /* register selector for conv op */
-  std::unique_ptr<BaseSelector> selector = std::make_unique<QDQ::ConvSelector>();
+  std::unique_ptr<NodeGroupSelector> selector = std::make_unique<ConvNodeGroupSelector>();
   qdq_selectors.RegisterSelector(GetConvOpVersionsMap(),
                                  std::move(selector));
 }
 
 void RegisterMatMulSelector(Selectors& qdq_selectors) {
   /* register selector for matmul op */
-  std::unique_ptr<BaseSelector> selector = std::make_unique<QDQ::MatMulSelector>();
+  std::unique_ptr<NodeGroupSelector> selector = std::make_unique<MatMulNodeGroupSelector>();
   qdq_selectors.RegisterSelector(GetMatMulOpVersionsMap(),
                                  std::move(selector));
 }

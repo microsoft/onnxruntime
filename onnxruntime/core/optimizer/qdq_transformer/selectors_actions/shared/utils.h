@@ -21,12 +21,12 @@ struct OpVersionsAndSelector {
   using OpVersionsMap = std::unordered_map<std::string, std::vector<ONNX_NAMESPACE::OperatorSetVersion>>;
 
   OpVersionsAndSelector(const OpVersionsMap& ops_and_versions_in,
-                        std::unique_ptr<BaseSelector> selector_in)
+                        std::unique_ptr<NodeGroupSelector> selector_in)
       : op_versions_map{ops_and_versions_in},
         selector{std::move(selector_in)} {}
 
   OpVersionsMap op_versions_map;
-  std::unique_ptr<BaseSelector> selector;
+  std::unique_ptr<NodeGroupSelector> selector;
 
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(OpVersionsAndSelector);
 };
@@ -38,7 +38,7 @@ class Selectors {
 
   // register a selector for the specified ops.
   void RegisterSelector(const OpVersionsAndSelector::OpVersionsMap& ops_and_versions_in,
-                        std::unique_ptr<BaseSelector> selector_in);
+                        std::unique_ptr<NodeGroupSelector> selector_in);
 
   const std::unordered_set<std::unique_ptr<OpVersionsAndSelector>>& SelectorsSet() const {
     return selectors_set_;
