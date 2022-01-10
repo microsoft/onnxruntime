@@ -9,6 +9,8 @@ namespace onnxruntime {
 namespace contrib {
 namespace transformers {
 
+static int beam_search_iteration;
+
 template <typename T>
 gsl::span<T> NextTokenScores<T>::GetScores(int batch_beam_index) {
   assert(batch_beam_index >= 0 && batch_beam_index < batch_beam_size);
@@ -38,15 +40,11 @@ MinLengthLogitsProcessor<T>::MinLengthLogitsProcessor(int min_length, int eos_to
 
 template <typename T>
 void MinLengthLogitsProcessor<T>::Process(const ISequences* sequences,
-                                          NextTokenScores<T>& next_token_scores,
-                                          int counter) {
+                                          NextTokenScores<T>& next_token_scores) {
   if (sequences->GetSequenceLength() < min_length_) {
     next_token_scores.SetScore(eos_token_id_, std::numeric_limits<T>::lowest());
   }
 
-  if (counter == -1) {
-    std::cout<< counter <<std::endl;
-  }
 #ifdef DEBUG_BEAM_SEARCH
   DumpScores("MinLengthLogitsProcessor", next_token_scores.scores);
 #endif
@@ -58,12 +56,8 @@ RepetitionPenaltyLogitsProcessor<T>::RepetitionPenaltyLogitsProcessor(float pena
 
 template <typename T>
 void RepetitionPenaltyLogitsProcessor<T>::Process(const ISequences* sequences,
-                                                  NextTokenScores<T>& next_token_scores,
-                                                  int counter) {
+                                                  NextTokenScores<T>& next_token_scores) {
   const int batch_beam_size = next_token_scores.batch_beam_size;
-  if (counter == -1) {
-    std::cout<< counter <<std::endl;
-  }
 
   for (int i = 0; i < batch_beam_size; i++) {
     gsl::span<T> beam_token_scores = next_token_scores.GetScores(i);
@@ -95,14 +89,9 @@ NoRepeatNGramLogitsProcessor<T>::NoRepeatNGramLogitsProcessor(int ngram_size) : 
 
 template <typename T>
 void NoRepeatNGramLogitsProcessor<T>::Process(const ISequences* sequences,
-                                              NextTokenScores<T>& next_token_scores,
-                                              int counter) {
+                                              NextTokenScores<T>& next_token_scores) {
   if (ngram_size_ == 0 || ngram_size_ > sequences->GetSequenceLength()) {
     return;
-  }
-
-  if (counter == -1) {
-    std::cout<< counter <<std::endl;
   }
 
   const gsl::index prefix_length = static_cast<gsl::index>(ngram_size_ - 1);
@@ -140,13 +129,8 @@ VocabMaskLogitsProcessor<T>::VocabMaskLogitsProcessor(const gsl::span<const int3
 
 template <typename T>
 void VocabMaskLogitsProcessor<T>::Process(const ISequences* /*sequences*/,
-                                          NextTokenScores<T>& next_token_scores,
-                                          int counter) {
+                                          NextTokenScores<T>& next_token_scores) {
   assert(!vocab_mask_.empty());
-
-  if (counter == -1) {
-    std::cout<< counter <<std::endl;
-  }
 
   // Process vocabulary mask and set tokens with mask value 0 to -inf.
   T* p = next_token_scores.scores.data();
@@ -171,11 +155,9 @@ PrefixVocabMaskLogitsProcessor<T>::PrefixVocabMaskLogitsProcessor(const gsl::spa
 
 template <typename T>
 void PrefixVocabMaskLogitsProcessor<T>::Process(const ISequences* /*sequences*/,
-                                          NextTokenScores<T>& next_token_scores,
-                                          int counter) {
+                                          NextTokenScores<T>& next_token_scores) {  
   assert(!prefix_vocab_mask_.empty());
-
-  if (counter > 1) {
+  if (beam_search_iteration > 1) {
     return;
   }
 
@@ -218,8 +200,6 @@ void LogitsProcessorList<T>::Init(const BeamSearchParameters& parameters) {
   if (!parameters.prefix_vocab_mask.empty()) {
     prefix_vocab_mask_processor_ = std::make_unique<PrefixVocabMaskLogitsProcessor<T>>(parameters.prefix_vocab_mask);
     processor_list_.push_back(prefix_vocab_mask_processor_.get());
-  } else {
-    std::cout<<" Prefix vocab mask is empty"<< std::endl;
   }
 
   if (parameters.min_length > 0) {
@@ -236,8 +216,9 @@ void LogitsProcessorList<T>::Process(const ISequences* sequences,
                                      gsl::span<T>& next_token_scores,
                                      int counter) {
   NextTokenScores<T> input_scores = {next_token_scores, batch_beam_size_, vocab_size_};
+  beam_search_iteration = counter;
   for (size_t i = 0; i < processor_list_.size(); i++) {
-    processor_list_[i]->Process(sequences, input_scores, counter);
+    processor_list_[i]->Process(sequences, input_scores);
   }
 }
 
