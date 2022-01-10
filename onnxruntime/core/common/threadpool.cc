@@ -426,7 +426,7 @@ void ThreadPool::ParallelForFixedBlockSizeScheduling(const std::ptrdiff_t total,
   } else {
     int num_of_blocks = d_of_p * thread_options_.dynamic_block_base_;
     std::ptrdiff_t base_block_size = std::max(1LL, std::llroundl(static_cast<long double>(total) / num_of_blocks));
-    alignas(CACHE_LINE_BYTES) std::atomic<ptrdiff_t> left{total};
+    alignas(CACHE_LINE_BYTES) std::atomic<std::ptrdiff_t> left{total};
     LoopCounter lc(total, d_of_p, base_block_size);
     std::function<void(unsigned)> run_work = [&](unsigned idx) {
       std::ptrdiff_t b = base_block_size;
