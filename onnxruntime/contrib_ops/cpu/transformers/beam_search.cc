@@ -151,12 +151,14 @@ class BeamSearchImpl {
   Status GenerateNextToken(const OrtValue& logits,
                            gsl::span<int64_t>& beam_next_tokens,
                            gsl::span<int64_t>& beam_indices,
-                           BeamSearchState<T>& beam_state);
+                           BeamSearchState<T>& beam_state,
+                           int counter);
 
   // Calculate scores from logits, then apply filtering and select next token for each beam.
   Status ProcessLogits(const OrtValue& logits,  // logits output of subgraph
                        BeamSearchState<T>& beam_state,
-                       AllocatorPtr& allocator);
+                       AllocatorPtr& allocator,
+                       int counter);
 
   OpKernelContextInternal& context_;
 
@@ -189,6 +191,7 @@ void BeamSearch<T>::Init(const OpKernelInfo& info) {
 
   parameters_.ParseFromAttributes(info);
 
+  ConfigureTensorDump();
   stream_ = nullptr;
 }
 
@@ -290,6 +293,25 @@ Status BeamSearchImpl<T>::CheckInputs(const OpKernelContextInternal& context) {
     parameters_->vocab_mask = vocab_mask->DataAsSpan<int32_t>();
   }
 
+  const Tensor* prefix_vocab_mask = context.Input<Tensor>(9);
+  if (prefix_vocab_mask != nullptr) {
+    // prefix_vocab_mask is optional
+    const auto& vocab_mask_dims = prefix_vocab_mask->Shape().GetDims();
+    if (vocab_mask_dims.size() != 1) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'prefix_vocab_mask' is expected to have 1 dimension, got ",
+                             vocab_mask_dims.size());
+    }
+
+    // There is dependency on vocab_size parameter, which shall be set before calling this function.
+    if (static_cast<int>(vocab_mask_dims[0]) != parameters_->vocab_size) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'prefix_vocab_mask' shape does not match with vocab_size, got ",
+                             vocab_mask_dims[0]);
+    }
+
+    // store prefix vocab mask in parameters.
+    parameters_->prefix_vocab_mask = prefix_vocab_mask->DataAsSpan<int32_t>();
+  }
+
   return Status::OK();
 }
 
@@ -344,7 +366,8 @@ template <typename T>
 Status BeamSearchImpl<T>::ProcessLogits(
     const OrtValue& logits,
     BeamSearchState<T>& beam_state,
-    AllocatorPtr& allocator) {
+    AllocatorPtr& allocator,
+    int counter) {
   const int64_t batch_beam_size = static_cast<int64_t>(parameters_->BatchBeamSize());
   const int& vocab_size = parameters_->vocab_size;
 
@@ -392,7 +415,7 @@ Status BeamSearchImpl<T>::ProcessLogits(
 #endif
 
   // Apply all score processors that updates scores
-  logits_processors_.Process(&(beam_state.sequences), next_token_scores);
+  logits_processors_.Process(&(beam_state.sequences), next_token_scores, counter);
 
 #ifdef DEBUG_BEAM_SEARCH
   DumpTensor("next_token_scores after logits processor", next_token_scores.data(), parameters_->batch_size, parameters_->num_beams, vocab_size);
@@ -443,6 +466,9 @@ Status BeamSearchImpl<T>::ProcessLogits(
     return status;
   }
 
+  DumpTensor<T>("topk_scores", *(topk_scores.get()));
+  DumpTensor<int64_t>("topk_indices", *(topk_indices.get()));
+
 #ifdef DEBUG_BEAM_SEARCH
   DumpTensor<T>("topk_scores", *(topk_scores.get()));
   DumpTensor<int64_t>("topk_indices", *(topk_indices.get()));
@@ -464,6 +490,8 @@ Status BeamSearchImpl<T>::ProcessLogits(
   gsl::span<const int64_t> next_tokens(beam_state.next_tokens.data(), beam_state.next_tokens.size());
   gsl::span<const int64_t> next_indices(beam_state.next_indices.data(), beam_state.next_indices.size());
 
+  DumpTensor<int64_t>("next_tokens before scorer", next_tokens.data(), parameters_->batch_size, top_k);
+
 #ifdef DEBUG_BEAM_SEARCH
   DumpTensor<T>("next_scores before scorer", next_scores.data(), parameters_->batch_size, top_k);
   DumpTensor<int64_t>("next_tokens before scorer", next_tokens.data(), parameters_->batch_size, top_k);
@@ -484,9 +512,10 @@ Status BeamSearchImpl<T>::GenerateNextToken(
     const OrtValue& logits,
     gsl::span<int64_t>& beam_next_tokens,
     gsl::span<int64_t>& beam_indices,
-    BeamSearchState<T>& beam_state) {
+    BeamSearchState<T>& beam_state,
+    int counter) {
   // Process logits to get next token scores
-  ORT_RETURN_IF_ERROR(ProcessLogits(logits, beam_state, allocator_));
+  ORT_RETURN_IF_ERROR(ProcessLogits(logits, beam_state, allocator_, counter));
 
   gsl::span<T>& beam_scores = beam_scorer_->GetNextScores();
   // It is optional to clone beam_scores. Change it to use same buffer also works:
@@ -572,6 +601,9 @@ Status BeamSearchImpl<T>::Execute(const FeedsFetchesManager& ffm) {
 
   CreateInitialFeeds(beam_state.next_positions, feeds);
   const OrtValue& input_ids = feeds[0];
+
+  DumpOrtValue("Before init, input_ids:", input_ids);
+
   beam_state.sequences.Init(temp_space_allocator,
                             input_ids,
                             parameters_->BatchBeamSize(),
@@ -585,7 +617,14 @@ Status BeamSearchImpl<T>::Execute(const FeedsFetchesManager& ffm) {
 #endif
 
   int current_length = parameters_->sequence_length;
+  int iteration_counter = 0;
   while (current_length < parameters_->max_length) {
+
+    DumpOrtValue("input_ids", input_ids);
+    DumpOrtValue("position_ids", feeds[1]);
+    DumpOrtValue("attention_mask", feeds[2]);
+
+    iteration_counter++;
 #ifdef DEBUG_BEAM_SEARCH
     DumpString("***CurrentLength", std::to_string(current_length), true);
 #endif
@@ -598,7 +637,7 @@ Status BeamSearchImpl<T>::Execute(const FeedsFetchesManager& ffm) {
     const OrtValue& logits = fetches[0];
     gsl::span<int64_t> beam_next_tokens;
     gsl::span<int64_t> beam_indices;
-    ORT_RETURN_IF_ERROR(GenerateNextToken(logits, beam_next_tokens, beam_indices, beam_state));
+    ORT_RETURN_IF_ERROR(GenerateNextToken(logits, beam_next_tokens, beam_indices, beam_state, iteration_counter));
 
     // When all batches are finished, stop earlier to avoid wasting computation.
     if (beam_scorer_->IsDone()) {

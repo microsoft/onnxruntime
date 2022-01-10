@@ -35,11 +35,15 @@ MinLengthLogitsProcessor<T>::MinLengthLogitsProcessor(int min_length, int eos_to
 
 template <typename T>
 void MinLengthLogitsProcessor<T>::Process(const ISequences* sequences,
-                                          NextTokenScores<T>& next_token_scores) {
+                                          NextTokenScores<T>& next_token_scores,
+                                          int counter) {
   if (sequences->GetSequenceLength() < min_length_) {
     next_token_scores.SetScore(eos_token_id_, std::numeric_limits<T>::lowest());
   }
 
+  if (counter == -1) {
+    std::cout<< counter <<std::endl;
+  }
 #ifdef DEBUG_BEAM_SEARCH
   DumpScores("MinLengthLogitsProcessor", next_token_scores.scores);
 #endif
@@ -51,8 +55,13 @@ RepetitionPenaltyLogitsProcessor<T>::RepetitionPenaltyLogitsProcessor(float pena
 
 template <typename T>
 void RepetitionPenaltyLogitsProcessor<T>::Process(const ISequences* sequences,
-                                                  NextTokenScores<T>& next_token_scores) {
+                                                  NextTokenScores<T>& next_token_scores,
+                                                  int counter) {
   const int batch_beam_size = next_token_scores.batch_beam_size;
+  if (counter == -1) {
+    std::cout<< counter <<std::endl;
+  }
+
   for (int i = 0; i < batch_beam_size; i++) {
     gsl::span<T> beam_token_scores = next_token_scores.GetScores(i);
     gsl::span<const int64_t> sequence = sequences->GetSequence(i);
@@ -83,9 +92,14 @@ NoRepeatNGramLogitsProcessor<T>::NoRepeatNGramLogitsProcessor(int ngram_size) : 
 
 template <typename T>
 void NoRepeatNGramLogitsProcessor<T>::Process(const ISequences* sequences,
-                                              NextTokenScores<T>& next_token_scores) {
+                                              NextTokenScores<T>& next_token_scores,
+                                              int counter) {
   if (ngram_size_ == 0 || ngram_size_ > sequences->GetSequenceLength()) {
     return;
+  }
+
+  if (counter == -1) {
+    std::cout<< counter <<std::endl;
   }
 
   const gsl::index prefix_length = static_cast<gsl::index>(ngram_size_ - 1);
@@ -123,8 +137,13 @@ VocabMaskLogitsProcessor<T>::VocabMaskLogitsProcessor(const gsl::span<const int3
 
 template <typename T>
 void VocabMaskLogitsProcessor<T>::Process(const ISequences* /*sequences*/,
-                                          NextTokenScores<T>& next_token_scores) {
+                                          NextTokenScores<T>& next_token_scores,
+                                          int counter) {
   assert(!vocab_mask_.empty());
+
+  if (counter == -1) {
+    std::cout<< counter <<std::endl;
+  }
 
   // Process vocabulary mask and set tokens with mask value 0 to -inf.
   T* p = next_token_scores.scores.data();
@@ -140,6 +159,37 @@ void VocabMaskLogitsProcessor<T>::Process(const ISequences* /*sequences*/,
 
 #ifdef DEBUG_BEAM_SEARCH
   DumpScores("VocabMaskLogitsProcessor", next_token_scores.scores);
+#endif
+}
+
+template <typename T>
+PrefixVocabMaskLogitsProcessor<T>::PrefixVocabMaskLogitsProcessor(const gsl::span<const int32_t>& prefix_vocab_mask) : prefix_vocab_mask_(prefix_vocab_mask) {
+}
+
+template <typename T>
+void PrefixVocabMaskLogitsProcessor<T>::Process(const ISequences* /*sequences*/,
+                                          NextTokenScores<T>& next_token_scores,
+                                          int counter) {
+  assert(!prefix_vocab_mask_.empty());
+
+  if (counter > 1) {
+    return;
+  }
+
+  // Process vocabulary mask and set tokens with mask value 0 to -inf.
+  T* p = next_token_scores.scores.data();
+  // next_token_scores shape (batch_size * num_beams, vocab_size)
+  // vocab_mask shape (vocab_size). TODO: support shape (batch_size, vocab_size)
+  for (int i = 0; i < next_token_scores.batch_beam_size; i++) {
+    for (int j = 0; j < next_token_scores.vocab_size; j++, p++) {
+      if (prefix_vocab_mask_[j] == 0) {
+        *p = std::numeric_limits<T>::lowest();
+      }
+    }
+  }
+
+#ifdef DEBUG_BEAM_SEARCH
+  DumpScores("PrefixVocabMaskLogitsProcessor", next_token_scores.scores);
 #endif
 }
 
@@ -162,6 +212,13 @@ void LogitsProcessorList<T>::Init(const BeamSearchParameters& parameters) {
     processor_list_.push_back(vocab_mask_processor_.get());
   }
 
+  if (!parameters.prefix_vocab_mask.empty()) {
+    prefix_vocab_mask_processor_ = std::make_unique<PrefixVocabMaskLogitsProcessor<T>>(parameters.prefix_vocab_mask);
+    processor_list_.push_back(prefix_vocab_mask_processor_.get());
+  } else {
+    std::cout<<" Prefix vocab mask is empty"<< std::endl;
+  }
+
   if (parameters.min_length > 0) {
     min_length_processor_ = std::make_unique<MinLengthLogitsProcessor<T>>(parameters.min_length, parameters.eos_token_id);
     processor_list_.push_back(min_length_processor_.get());
@@ -173,10 +230,11 @@ void LogitsProcessorList<T>::Init(const BeamSearchParameters& parameters) {
 
 template <typename T>
 void LogitsProcessorList<T>::Process(const ISequences* sequences,
-                                     gsl::span<T>& next_token_scores) {
+                                     gsl::span<T>& next_token_scores,
+                                     int counter) {
   NextTokenScores<T> input_scores = {next_token_scores, batch_beam_size_, vocab_size_};
   for (size_t i = 0; i < processor_list_.size(); i++) {
-    processor_list_[i]->Process(sequences, input_scores);
+    processor_list_[i]->Process(sequences, input_scores, counter);
   }
 }
 
@@ -185,6 +243,7 @@ template class MinLengthLogitsProcessor<float>;
 template class RepetitionPenaltyLogitsProcessor<float>;
 template class NoRepeatNGramLogitsProcessor<float>;
 template class VocabMaskLogitsProcessor<float>;
+template class PrefixVocabMaskLogitsProcessor<float>;
 template class LogitsProcessorList<float>;
 
 }  // namespace transformers
