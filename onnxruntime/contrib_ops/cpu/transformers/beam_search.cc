@@ -193,9 +193,6 @@ void BeamSearch<T>::Init(const OpKernelInfo& info) {
 
   parameters_.ParseFromAttributes(info);
 
-  //TODO remove this before commit
-  ConfigureTensorDump();
-
   stream_ = nullptr;
 }
 
@@ -470,10 +467,6 @@ Status BeamSearchImpl<T>::ProcessLogits(
     return status;
   }
 
-  // TODO remove this before commit
-  DumpTensor<T>("topk_scores", *(topk_scores.get()));
-  DumpTensor<int64_t>("topk_indices", *(topk_indices.get()));
-
 #ifdef DEBUG_BEAM_SEARCH
   DumpTensor<T>("topk_scores", *(topk_scores.get()));
   DumpTensor<int64_t>("topk_indices", *(topk_indices.get()));
@@ -494,9 +487,6 @@ Status BeamSearchImpl<T>::ProcessLogits(
   gsl::span<const T> next_scores = topk_scores->DataAsSpan<T>();
   gsl::span<const int64_t> next_tokens(beam_state.next_tokens.data(), beam_state.next_tokens.size());
   gsl::span<const int64_t> next_indices(beam_state.next_indices.data(), beam_state.next_indices.size());
-
-  // TODO remove before commit
-  DumpTensor<int64_t>("next_tokens before scorer", next_tokens.data(), parameters_->batch_size, top_k);
 
 #ifdef DEBUG_BEAM_SEARCH
   DumpTensor<T>("next_scores before scorer", next_scores.data(), parameters_->batch_size, top_k);
@@ -622,11 +612,6 @@ Status BeamSearchImpl<T>::Execute(const FeedsFetchesManager& ffm) {
   int current_length = parameters_->sequence_length;
   int iteration_counter = 0;
   while (current_length < parameters_->max_length) {
-
-    DumpOrtValue("input_ids", input_ids);
-    DumpOrtValue("position_ids", feeds[1]);
-    DumpOrtValue("attention_mask", feeds[2]);
-
     iteration_counter++;
 #ifdef DEBUG_BEAM_SEARCH
     DumpString("***CurrentLength", std::to_string(current_length), true);
@@ -640,11 +625,7 @@ Status BeamSearchImpl<T>::Execute(const FeedsFetchesManager& ffm) {
     const OrtValue& logits = fetches[0];
     gsl::span<int64_t> beam_next_tokens;
     gsl::span<int64_t> beam_indices;
-<<<<<<< HEAD
     ORT_RETURN_IF_ERROR(GenerateNextToken(logits, beam_next_tokens, beam_indices, beam_state, iteration_counter));
-=======
-    ORT_RETURN_IF_ERROR(GenerateNextToken(logits, beam_next_tokens, beam_indices, beam_state));
->>>>>>> 7d93498e0ec4b1b2a6f55161539513318a908e04
 
     // When all batches are finished, stop earlier to avoid wasting computation.
     if (beam_scorer_->IsDone()) {
