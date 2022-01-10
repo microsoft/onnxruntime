@@ -580,9 +580,6 @@ static Status GetBinaryOpQuantizationScaleAndZeroPoint_nu(
   return Status::OK();
 }
 
-// Get scales and zero points for the qlinear binary ops (which has 2 input and 1 output)
-// QLinearConv, QLinearMatmul, QLinearAdd
-// a, b are inputs, and y is output
 static Status GetBinaryOpQuantizationScaleAndZeroPoint(
     const ModelBuilder& model_builder, const Node& node,
     float& a_scale, float& b_scale, float& y_scale,
@@ -611,6 +608,61 @@ static Status GetBinaryOpQuantizationScaleAndZeroPoint(
 // If the Qlinear[Conv/MatMul] is using per-tensor u8s8, the weight/B tensor
 // will be convert to uint8 later, will return the same scale and 128 as zero point
 // Also will set is_per_tensor_u8s8 to true to be used later
+static Status GetConvMatMulOpQuantizationScaleAndZeroPoint_nu(
+    const ModelBuilder& model_builder, const NodeUnit& node_unit,
+    float& a_scale, float& w_scale, float& y_scale,
+    int32_t& a_zero_point, int32_t& w_zero_point, int32_t& y_zero_point,
+    optional<std::vector<float>>& w_scales, bool& is_per_tensor_u8s8) ORT_MUST_USE_RESULT;
+static Status GetConvMatMulOpQuantizationScaleAndZeroPoint_nu(
+    const ModelBuilder& model_builder, const NodeUnit& node_unit,
+    float& a_scale, float& w_scale, float& y_scale,
+    int32_t& a_zero_point, int32_t& w_zero_point, int32_t& y_zero_point,
+    optional<std::vector<float>>& w_scales, bool& is_per_tensor_u8s8) {
+  is_per_tensor_u8s8 = false;
+  const auto& initializers(model_builder.GetInitializerTensors());
+  // Get scale and zero points
+  // We will handle per-channel weight scale and zero point later
+  ORT_RETURN_IF_ERROR(
+      GetBinaryOpQuantizationScaleAndZeroPoint_nu(initializers, node_unit,
+                                                  a_scale, w_scale, y_scale,
+                                                  a_zero_point, w_zero_point, y_zero_point));
+
+  const auto& inputs = node_unit.Inputs();
+  const auto& weight_tensor = *initializers.at(inputs[1].node_arg.Name());
+
+  // We are done here is this is u8u8 QLinearConv
+  if (weight_tensor.data_type() == ONNX_NAMESPACE::TensorProto_DataType_UINT8)
+    return Status::OK();
+
+  // This is per-tensor u8s8
+  // NNAPI does not support per-tensor u8s8
+  // For this case we will need to convert the int8 weight tensor to uint8
+  // And have same scale and 128 as zero point
+  // The conversion of the weight tensor itself will be done in the OpBuilder
+  const auto& scale_tensor = *initializers.at(inputs[1].quant_param->scale.Name());
+  int64_t scale_dim = scale_tensor.dims().empty() ? 1 : scale_tensor.dims()[0];
+  if (scale_dim == 1) {
+    w_zero_point = 128;
+    is_per_tensor_u8s8 = true;
+    return Status::OK();
+  }
+
+  // Now we have u8s8 per-channel QlinearConv
+  // u8s8 QlinearConv always have 0 as zero point so we are not getting it here
+  // and we do not use w_scale here, so we reset them back to 0
+  w_scale = 0.0f;
+  w_zero_point = 0;
+
+  // We need to copy the 1d scales array for per-channel quantization
+  std::vector<uint8_t> unpacked_tensor;
+  ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(scale_tensor, unpacked_tensor));
+  const float* scales = reinterpret_cast<const float*>(unpacked_tensor.data());
+  const size_t scales_size = scale_tensor.dims().empty() ? 1 : scale_tensor.dims()[0];
+  std::vector<float> scales_vec(scales, scales + scales_size);
+  w_scales = onnxruntime::make_optional(std::move(scales_vec));
+  return Status::OK();
+}
+
 static Status GetConvMatMulOpQuantizationScaleAndZeroPoint(
     const ModelBuilder& model_builder, const Node& node,
     float& a_scale, float& w_scale, float& y_scale,
@@ -1423,13 +1475,12 @@ void ConvOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Nod
 }
 
 Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
-  const auto& node = node_unit.GetNode();
   auto& shaper(model_builder.GetShaper());
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());
   const auto& initializers(model_builder.GetInitializerTensors());
-  NodeAttrHelper helper(node);
-  const auto input_defs = node.InputDefs();
+  NodeAttrHelper helper(node_unit);
+  const auto inputs = node_unit.Inputs();
   bool is_qlinear_conv = IsQuantizedOp(node_unit);
 
   // onnx strides are in the order height, width
@@ -1445,11 +1496,7 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   const auto onnx_dilations = helper.Get("dilations", std::vector<int>{1, 1});
   const auto group = helper.Get("group", 1);
 
-  size_t x_idx = 0,
-         w_idx = is_qlinear_conv ? 3 : 1,
-         b_idx = is_qlinear_conv ? 8 : 2;
-
-  auto input = input_defs[x_idx]->Name();
+  auto input = inputs[0].node_arg.Name();
   bool use_nchw = model_builder.UseNCHW();
   bool input_is_nhwc = model_builder.IsOperandNHWC(input);
   bool output_is_nhwc = false;
@@ -1458,13 +1505,13 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   } else {
     output_is_nhwc = true;
     if (!input_is_nhwc) {
-      ORT_RETURN_IF_ERROR(GetNHWCInput(model_builder, node, x_idx, input));
+      ORT_RETURN_IF_ERROR(GetNHWCInput_nu(model_builder, node_unit, 0, input));
     }
   }
 
-  const auto& weight = input_defs[w_idx]->Name();
+  const auto& weight = inputs[1].node_arg.Name();
   const auto& weight_tensor = *initializers.at(weight);
-  auto conv_type = GetConvType(node, model_builder.GetGraphViewer().GetAllInitializedTensors());
+  auto conv_type = GetConvType_nu(node_unit, model_builder.GetInitializerTensors());
   bool conv_2d = (conv_type == ConvType::Regular),
        depthwise_conv_2d = (conv_type == ConvType::Depthwise),
        grouped_conv_2d = (conv_type == ConvType::Grouped);
@@ -1480,10 +1527,10 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   optional<std::vector<float>> w_scales;
   bool is_per_tensor_u8s8 = false;
   if (is_qlinear_conv) {
-    ORT_RETURN_IF_ERROR(GetConvMatMulOpQuantizationScaleAndZeroPoint(model_builder, node,
-                                                                     x_scale, w_scale, y_scale,
-                                                                     x_zero_point, w_zero_point, y_zero_point,
-                                                                     w_scales, is_per_tensor_u8s8));
+    ORT_RETURN_IF_ERROR(GetConvMatMulOpQuantizationScaleAndZeroPoint_nu(model_builder, node_unit,
+                                                                        x_scale, w_scale, y_scale,
+                                                                        x_zero_point, w_zero_point, y_zero_point,
+                                                                        w_scales, is_per_tensor_u8s8));
   }
 
   Shape onnx_weight_shape;
@@ -1536,8 +1583,8 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     ORT_RETURN_IF_ERROR(IsValidConvWeightQuantizedType(model_builder, weight, w_scale, w_zero_point, w_scales));
   }
 
-  bool hasBias = (input_defs.size() > b_idx);
-  std::string bias = hasBias ? input_defs[b_idx]->Name() : weight + "_bias";
+  bool hasBias = (inputs.size() > 2);
+  std::string bias = hasBias ? inputs[2].node_arg.Name() : weight + "_bias";
   if (!hasBias) {
     const auto weight_dimen = shaper[weight];
     Shape bias_dimen;
@@ -1613,7 +1660,7 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     }
   }
 
-  int32_t fuse_code = model_builder.FindActivation(node, *node.OutputDefs()[0]);
+  int32_t fuse_code = model_builder.FindActivation_nu(node_unit, node_unit.Outputs()[1].node_arg);
   ADD_SCALAR_OPERAND(model_builder, input_indices, fuse_code);
 
   if (model_builder.GetNNAPIFeatureLevel() > ANEURALNETWORKS_FEATURE_LEVEL_2) {
@@ -1631,7 +1678,7 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   }
 
   int32_t operationCode;
-  const auto& output = node.OutputDefs()[0]->Name();
+  const auto& output = node_unit.Outputs()[0].node_arg.Name();
   if (conv_2d || grouped_conv_2d) {
     operationCode = conv_2d ? ANEURALNETWORKS_CONV_2D
                             : ANEURALNETWORKS_GROUPED_CONV_2D;

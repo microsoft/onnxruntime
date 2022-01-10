@@ -68,6 +68,27 @@ QLinearOpType GetQLinearOpType(const onnxruntime::Node& node) {
   return QLinearOpType::Unknown;
 }
 
+ConvType GetConvType_nu(const NodeUnit& node_unit, const InitializedTensorSet& initializers) {
+  NodeAttrHelper helper(node_unit);
+  const auto group = helper.Get("group", 1);
+
+  const auto& weight = node_unit.Inputs()[1].node_arg.Name();
+  const auto& weight_tensor = *initializers.at(weight);
+
+  // For ONNX we only have 1 conv ops
+  // For NNAPI we have 3
+  // Input is (N, C, H, W)
+  // group == 1,                                   --> regular conv
+  // group != 1 && weight is (M, 1, kH, kW),       --> depthwise conv
+  // group != 1 && weight is (M, C/group, kH, kW), --> grouped conv
+  if (group == 1)
+    return ConvType::Regular;
+  else if ((weight_tensor.dims()[1] == 1))
+    return ConvType::Depthwise;
+  else
+    return ConvType::Grouped;
+}
+
 ConvType GetConvType(const onnxruntime::Node& node, const InitializedTensorSet& initializers) {
   const auto& op_type = node.OpType();
   bool is_qlinear_conv = (op_type == "QLinearConv");
