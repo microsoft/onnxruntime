@@ -426,7 +426,7 @@ void ThreadPool::ParallelForFixedBlockSizeScheduling(const std::ptrdiff_t total,
     RunInParallel(run_work, num_work_items, block_size);
   } else {
     int num_of_blocks = d_of_p * thread_options_.dynamic_block_base_;
-    std::ptrdiff_t base_block_size = std::max(1LL, std::llroundl(static_cast<long double>(total) / num_of_blocks));
+    std::ptrdiff_t base_block_size = static_cast<std::ptrdiff_t>(std::max(1LL, std::llroundl(static_cast<long double>(total) / num_of_blocks)));
     alignas(CACHE_LINE_BYTES) std::atomic<std::ptrdiff_t> left{total};
     LoopCounter lc(total, d_of_p, base_block_size);
     std::function<void(unsigned)> run_work = [&](unsigned idx) {
@@ -437,9 +437,9 @@ void ThreadPool::ParallelForFixedBlockSizeScheduling(const std::ptrdiff_t total,
       while (lc.ClaimIterations(my_home_shard, my_shard, my_iter_start, my_iter_end, b)) {
         fn(static_cast<std::ptrdiff_t>(my_iter_start),
            static_cast<std::ptrdiff_t>(my_iter_end));
-        auto todo = left.fetch_sub(my_iter_end - my_iter_start, std::memory_order_relaxed);
+        auto todo = left.fetch_sub(static_cast<std::ptrdiff_t>(my_iter_end - my_iter_start), std::memory_order_relaxed);
         if (b > 1) {
-          b = std::max(1LL, std::llroundl(static_cast<long double>(todo) / num_of_blocks));
+          b = static_cast<std::ptrdiff_t>(std::max(1LL, std::llroundl(static_cast<long double>(todo) / num_of_blocks)));
         }
       }
     };
