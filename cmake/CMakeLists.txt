@@ -1669,6 +1669,7 @@ if (onnxruntime_USE_TVM)
   else()
     set(DISABLED_WARNINGS_FOR_TVM "-Wno-error=ignored-qualifiers" "-Wno-unused-parameter" "-Wno-ignored-qualifiers")
     list(APPEND DISABLED_WARNINGS_FOR_TVM "-Wno-error=unused-parameter")
+    list(APPEND DISABLED_WARNINGS_FOR_TVM "-Wno-error")
     if (HAS_CATCH_VALUE)
       #TODO: send a PR to TVM and fix it
       list(APPEND DISABLED_WARNINGS_FOR_TVM "-Wno-error=catch-value")
