@@ -193,7 +193,6 @@ void BeamSearch<T>::Init(const OpKernelInfo& info) {
 
   parameters_.ParseFromAttributes(info);
 
-  ConfigureTensorDump();
   stream_ = nullptr;
 }
 
@@ -468,9 +467,6 @@ Status BeamSearchImpl<T>::ProcessLogits(
     return status;
   }
 
-  DumpTensor<T>("topk_scores", *(topk_scores.get()));
-  DumpTensor<int64_t>("topk_indices", *(topk_indices.get()));
-
 #ifdef DEBUG_BEAM_SEARCH
   DumpTensor<T>("topk_scores", *(topk_scores.get()));
   DumpTensor<int64_t>("topk_indices", *(topk_indices.get()));
@@ -491,8 +487,6 @@ Status BeamSearchImpl<T>::ProcessLogits(
   gsl::span<const T> next_scores = topk_scores->DataAsSpan<T>();
   gsl::span<const int64_t> next_tokens(beam_state.next_tokens.data(), beam_state.next_tokens.size());
   gsl::span<const int64_t> next_indices(beam_state.next_indices.data(), beam_state.next_indices.size());
-
-  DumpTensor<int64_t>("next_tokens before scorer", next_tokens.data(), parameters_->batch_size, top_k);
 
 #ifdef DEBUG_BEAM_SEARCH
   DumpTensor<T>("next_scores before scorer", next_scores.data(), parameters_->batch_size, top_k);
@@ -621,11 +615,6 @@ Status BeamSearchImpl<T>::Execute(const FeedsFetchesManager& ffm) {
   int current_length = parameters_->sequence_length;
   int iteration_counter = 0;
   while (current_length < parameters_->max_length) {
-
-    DumpOrtValue("input_ids", input_ids);
-    DumpOrtValue("position_ids", feeds[1]);
-    DumpOrtValue("attention_mask", feeds[2]);
-
     iteration_counter++;
 #ifdef DEBUG_BEAM_SEARCH
     DumpString("***CurrentLength", std::to_string(current_length), true);
