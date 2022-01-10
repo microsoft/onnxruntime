@@ -128,6 +128,17 @@ def parse_arguments(argv=None):
                                    default=1,
                                    help='Positive. >1 to penalize and <1 to encorage.')
 
+    beam_search_group.add_argument('--vocab_size',
+                                    type=int,
+                                    required=False,
+                                    help="Vocab_size of the underlying model")
+
+    beam_search_group.add_argument('--prefix_vocab_mask',
+                                    required=False,
+                                    action='store_true',
+                                    help="This vocab mask applies only to first iteration, enable if last work in query might need auto complete")
+    beam_search_group.set_defaults(prefix_vocab_mask=False)
+
     mixed_precision_option_group = parser.add_argument_group(
         "mixed precision conversion parameters that works when \"--precision fp16\" is specified")
 
@@ -236,6 +247,8 @@ def convert_model(args):
         "input_ids", "max_length", "min_length", "num_beams", "num_return_sequences", "temperature", "length_penalty",
         "repetition_penalty", "vocab_mask"
     ]
+    if args.prefix_vocab_mask:
+        inputs.append("prefix_vocab_mask")
 
     outputs = ["sequences"]
     if args.output_sequences_scores:
@@ -272,6 +285,10 @@ def convert_model(args):
         input_ids, max_length, min_length, num_beams, num_return_sequences, temperature, length_penalty,
         repetition_penalty, vocab_mask
     ]
+
+    if args.prefix_vocab_mask:
+        prefix_vocab_mask = helper.make_tensor_value_info('prefix_vocab_mask', TensorProto.INT32, [vocab_size])
+        graph_inputs.append(prefix_vocab_mask)
 
     # graph outputs
     sequences = helper.make_tensor_value_info('sequences', TensorProto.INT32,
