@@ -23,10 +23,10 @@ aux_links:
     - "/docs/tutorials/"
   "API Docs":
     - "/docs/api/"
-  "GitHub":
-    - "https://github.com/microsoft/onnxruntime"
   "YouTube":
     - "https://www.youtube.com/channel/UC_SJk17KdRvDulXz-nc1uFg/featured"
+  "GitHub":
+    - "https://github.com/microsoft/onnxruntime"
 ga_tracking: UA-156955408-1    
 # Footer "Edit this page on GitHub" link text
 gh_edit_link: true # show or hide edit this page link
