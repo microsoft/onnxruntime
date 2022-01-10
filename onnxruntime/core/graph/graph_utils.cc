@@ -260,7 +260,7 @@ const ONNX_NAMESPACE::AttributeProto* GetNodeAttribute(const Node& node, const s
 /** Checks for nodes with >= 1 outputs, if only one of the outputs is input to downstream Operators.
 Returns the name of the single used output in output_name. */
 static bool IsOnlyOneOutputUsed(const Graph& graph, const Node& node, const std::string*& output_name) {
-  const int unassigned = -1;
+  constexpr int unassigned = -1;
   int first_output = unassigned;
 
   // check that there are only edges for one output, and set the output_name

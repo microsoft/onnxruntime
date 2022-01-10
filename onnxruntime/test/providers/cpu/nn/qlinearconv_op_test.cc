@@ -595,16 +595,6 @@ TEST(QLinearConvTest, Conv2D_U8S8_Sym_M64_C64) {
   test.Run();
 }
 
-TEST(QLinearConvTest, Conv2D_U8S8_Sym_M16_C4) {
-  QLinearConvOpTester<uint8_t, int8_t> test;
-  test.GenerateRandomInput({1, 4, 3, 3}, .05f, 4);
-  test.GenerateRandomWeights({16, 4, 3, 3}, .125f, 0);
-  test.GenerateRandomBias();
-  test.SetPads({0, 0, 0, 0});
-  test.SetOutputScaleAndZeroPoint(.55f, 54);
-  test.Run();
-}
-
 TEST(QLinearConvTest, Conv2D_U8S8_Sym_M16_C4_Bias) {
   QLinearConvOpTester<uint8_t, int8_t> test;
   test.GenerateRandomInput({1, 4, 3, 3}, .05f, 4);
@@ -641,6 +631,18 @@ TEST(QLinearConvTest, Conv2D_U8S8_Sym_M32_C32_Bias_Pads) {
   test.GenerateRandomWeights({32, 32, 3, 3}, .125f, 0);
   test.GenerateRandomBias();
   test.SetPads({1, 1, 1, 1});
+  test.SetOutputScaleAndZeroPoint(.55f, 54);
+  test.Run();
+}
+
+TEST(QLinearConvTest, Conv2D_U8S8_Sym_M8_C8) {
+  // Targeting code processing 8 channels, with odd number
+  // of output pixels 
+  QLinearConvOpTester<uint8_t, int8_t> test;
+  test.GenerateRandomInput({1, 8, 3, 5}, .85f, 4);
+  test.GenerateRandomWeights({8, 8, 3, 3}, .125f, 0);
+  test.GenerateRandomBias();
+  test.SetPads({0, 0, 0, 0});
   test.SetOutputScaleAndZeroPoint(.55f, 54);
   test.Run();
 }

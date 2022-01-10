@@ -73,7 +73,7 @@ MlasGemmQuantTryGemvKernel(
 }
 
 template <typename KernelType>
-MLAS_FORCEINLINE
+MLAS_FORCEINLINE constexpr
 int32_t
 MlasGemmQuantFixupZeroPointA(
     int32_t ZeroPointA,
@@ -84,7 +84,7 @@ MlasGemmQuantFixupZeroPointA(
 }
 
 template<typename KernelType>
-int32_t
+int32_t constexpr
 MlasGemmQuantFixupZeroPointB(
     int32_t ZeroPointB,
     bool BIsSigned

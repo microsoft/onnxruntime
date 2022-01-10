@@ -81,6 +81,9 @@ function(AddTest)
       # Lot of such things came from gtest
       target_compile_options(${_UT_TARGET} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler /wd6326>"
                 "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd6326>")
+      # Raw new and delete. A lot of such things came from googletest.
+      target_compile_options(${_UT_TARGET} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler /wd26409>"
+                "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd26409>")
     endif()
     target_compile_options(${_UT_TARGET} PRIVATE ${disabled_warnings})
   else()
@@ -228,6 +231,12 @@ else()  # minimal and/or reduced ops build
       "${TEST_SRC_DIR}/ir/*.h"
       )
   endif()
+endif()
+
+if((NOT onnxruntime_MINIMAL_BUILD OR onnxruntime_ENABLE_RUNTIME_OPTIMIZATION_REPLAY_IN_MINIMAL_BUILD)
+   AND NOT onnxruntime_REDUCED_OPS_BUILD)
+  list(APPEND onnxruntime_test_optimizer_src
+       "${TEST_SRC_DIR}/optimizer/runtime_optimization/graph_runtime_optimization_test.cc")
 endif()
 
 file(GLOB onnxruntime_test_training_src
@@ -483,6 +492,7 @@ set(ONNXRUNTIME_TEST_LIBS
     ${PROVIDERS_ACL}
     ${PROVIDERS_ARMNN}
     ${PROVIDERS_COREML}
+    # ${PROVIDERS_STVM}
     onnxruntime_optimizer
     onnxruntime_providers
     onnxruntime_util
@@ -537,6 +547,14 @@ if(onnxruntime_USE_COREML)
   endif()
 endif()
 
+if (onnxruntime_USE_STVM)
+  file (GLOB_RECURSE onnxruntime_test_stvm_src CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/test/stvm/*.h"
+    "${ONNXRUNTIME_ROOT}/test/stvm/*.cc"
+  )
+
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_stvm)
+endif()
 
 if(WIN32)
   if (onnxruntime_USE_TVM)
@@ -626,6 +644,11 @@ endif()
 if (onnxruntime_USE_TVM)
   list(APPEND all_tests ${onnxruntime_test_tvm_src})
 endif()
+
+if (onnxruntime_USE_STVM)
+    list(APPEND all_tests ${onnxruntime_test_stvm_src})
+endif()
+
 if (onnxruntime_USE_OPENVINO)
   list(APPEND all_tests ${onnxruntime_test_openvino_src})
 endif()
@@ -667,7 +690,12 @@ AddTest(
     onnx_test_data_proto nlohmann_json::nlohmann_json
   DEPENDS ${all_dependencies}
 )
-if(NOT MSVC)
+if (MSVC)
+  # The warning means the type of two integral values around a binary operator is narrow than their result.
+  # If we promote the two input values first, it could be more tolerant to integer overflow.
+  # However, this is test code. We are less concerned.
+  target_compile_options(onnxruntime_test_all PRIVATE "/wd26451")
+else()
   target_compile_options(onnxruntime_test_all PRIVATE "-Wno-parentheses")
 endif()
 # the default logger tests conflict with the need to have an overall default logger
@@ -832,6 +860,15 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
     if(WIN32)
       target_compile_options(onnxruntime_benchmark PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler /wd4141>"
                         "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd4141>")
+      # Avoid using new and delete. But this is a benchmark program, it's ok if it has a chance to leak.
+      target_compile_options(onnxruntime_benchmark PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler /wd26409>"
+                        "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd26409>")
+      target_compile_options(onnxruntime_benchmark PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler /wd26400>"
+                        "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd26400>")
+      target_compile_options(onnxruntime_benchmark PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler /wd26814>"
+                        "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd26814>")
+      target_compile_options(onnxruntime_benchmark PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler /wd26814>"
+                        "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd26497>")
       target_compile_options(onnxruntime_benchmark PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>"
               "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
     endif()
@@ -844,7 +881,11 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
     onnxruntime_add_executable(onnxruntime_mlas_benchmark ${MLAS_BENCH_SOURCE_FILES})
     target_include_directories(onnxruntime_mlas_benchmark PRIVATE ${ONNXRUNTIME_ROOT}/core/mlas/inc)
     target_link_libraries(onnxruntime_mlas_benchmark PRIVATE benchmark::benchmark onnxruntime_util onnxruntime_framework ${ONNXRUNTIME_MLAS_LIBS} onnxruntime_common ${CMAKE_DL_LIBS})
-    if(NOT WIN32)
+    if(WIN32)
+      target_link_libraries(onnxruntime_mlas_benchmark PRIVATE debug Dbghelp)
+      # Avoid using new and delete. But this is a benchmark program, it's ok if it has a chance to leak.
+      target_compile_options(onnxruntime_mlas_benchmark PRIVATE /wd26409)
+    else()
       target_link_libraries(onnxruntime_mlas_benchmark PRIVATE nsync_cpp ${CMAKE_DL_LIBS})
     endif()
     set_target_properties(onnxruntime_mlas_benchmark PROPERTIES FOLDER "ONNXRuntimeTest")
@@ -1086,6 +1127,8 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
   )
   onnxruntime_add_executable(onnxruntime_mlas_test ${onnxruntime_mlas_test_src})
   if(MSVC)
+    target_compile_options(onnxruntime_mlas_test PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler /wd26409>"
+                "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd26409>")
     target_compile_options(onnxruntime_mlas_test PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>"
             "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
     target_compile_options(onnxruntime_mlas_test PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler /wd6326>"
@@ -1105,9 +1148,6 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
   if (CMAKE_SYSTEM_NAME STREQUAL "Android")
     list(APPEND onnxruntime_mlas_test_libs ${android_shared_libs})
   endif()
-  if (onnxruntime_USE_OPENMP)
-    list(APPEND onnxruntime_mlas_test_libs OpenMP::OpenMP_CXX)
-  endif()
   list(APPEND onnxruntime_mlas_test_libs Threads::Threads)
   target_link_libraries(onnxruntime_mlas_test PRIVATE ${onnxruntime_mlas_test_libs})
   if(WIN32)
@@ -1126,7 +1166,16 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
   endif()
 endif()
 
-onnxruntime_add_shared_library_module(custom_op_library ${TEST_SRC_DIR}/testdata/custom_op_library/custom_op_library.cc)
+if (onnxruntime_USE_CUDA)
+  onnxruntime_add_shared_library_module(custom_op_library ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/cuda_ops.cu
+                                                          ${TEST_SRC_DIR}/testdata/custom_op_library/custom_op_library.cc)
+  target_include_directories(custom_op_library PRIVATE ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
+  if (HAS_QSPECTRE)
+    target_compile_options(custom_op_library PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /Qspectre>")
+  endif()
+else()
+  onnxruntime_add_shared_library_module(custom_op_library ${TEST_SRC_DIR}/testdata/custom_op_library/custom_op_library.cc)
+endif()
 target_include_directories(custom_op_library PRIVATE ${REPO_ROOT}/include)
 if(UNIX)
   if (APPLE)
@@ -1136,6 +1185,10 @@ if(UNIX)
   endif()
 else()
   set(ONNXRUNTIME_CUSTOM_OP_LIB_LINK_FLAG "-DEF:${TEST_SRC_DIR}/testdata/custom_op_library/custom_op_library.def")
+  if (NOT onnxruntime_USE_CUDA)
+    target_compile_options(custom_op_library PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler /wd26409>"
+                  "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd26409>")
+  endif()
 endif()
 set_property(TARGET custom_op_library APPEND_STRING PROPERTY LINK_FLAGS ${ONNXRUNTIME_CUSTOM_OP_LIB_LINK_FLAG})
 
@@ -1203,6 +1256,14 @@ if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_EXTENDED_MINIMAL_BUILD
   else()
     message(FATAL_ERROR "test_execution_provider unknown platform, need to specify shared library exports for it")
   endif()
+endif()
+
+if (onnxruntime_USE_STVM)
+  # find_library(STVM_LIBS NAMES libtvm.so PATHS ${onnxruntime_STVM_HOME}/lib)
+  # link_directories(onnxruntime_test_all ${STVM_LIBS})
+  find_library(PYTHON_LIBS NAMES libpython PATHS /usr/local/lib)
+  #target_link_libraries(onnxruntime_test_all PRIVATE ${PYTHON_LIBRARIES} -lutil)
+  # set(CMAKE_SHARED_LINKER_FLAGS "-Wl,-rpath,${STVM_LIBS}")
 endif()
 
 include(onnxruntime_fuzz_test.cmake)

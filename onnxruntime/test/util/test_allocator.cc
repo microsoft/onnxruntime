@@ -17,6 +17,7 @@ MockedOrtAllocator::~MockedOrtAllocator() {
 }
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(disable : 26400)
+#pragma warning(disable : 26409)
 #endif
 void* MockedOrtAllocator::Alloc(size_t size) {
   constexpr size_t extra_len = sizeof(size_t);

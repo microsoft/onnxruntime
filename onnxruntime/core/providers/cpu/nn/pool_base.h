@@ -36,7 +36,7 @@ class PoolProcessContext {
 
 class AveragePool {
  public:
-  static float Initialize() {
+  constexpr static float Initialize() {
     return 0.0;
   }
 
@@ -59,7 +59,7 @@ class MaxPool;
 template <>
 class MaxPool<1 /*START_VERSION*/> {
  public:
-  static float Initialize() {
+  constexpr static float Initialize() {
     return std::numeric_limits<float>::lowest();
   }
 
@@ -84,7 +84,7 @@ class MaxPool<8 /*START_VERSION*/> {
 
 class LpPool {
  public:
-  static float Initialize() {
+  constexpr static float Initialize() {
     return 0.0f;
   }
 

@@ -5,7 +5,7 @@
 #include "core/mlas/inc/mlas.h"
 #include "core/providers/cpu/math/element_wise_ops.h"
 #include "core/providers/cpu/math/matmul_helper.h"
-#include "core/providers/cpu/math/matmul_integer_base.h"
+#include "core/providers/cpu/quantization/matmul_integer_base.h"
 #include "core/util/math_cpuonly.h"
 #include "core/util/qmath.h"
 

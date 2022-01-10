@@ -1,7 +1,10 @@
 #include <assert.h>
 #include "logits_processor.h"
 #include "dump_tensor.h"
-
+#ifdef _MSC_VER
+// Could reduce the chance of arithmetic overflow. TODO: fix it
+#pragma warning(disable : 26451)
+#endif
 namespace onnxruntime {
 namespace contrib {
 namespace transformers {

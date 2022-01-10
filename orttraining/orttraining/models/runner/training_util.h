@@ -316,7 +316,7 @@ class PolyScheduler : public LearningRateScheduler {
       return cur_ratio / warmp_ratio;
     }
 
-    const float degree = 0.5f;
+    constexpr float degree = 0.5f;
     return std::pow(1.f - cur_ratio, degree);
   }
 };

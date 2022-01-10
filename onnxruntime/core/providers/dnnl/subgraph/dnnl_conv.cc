@@ -21,10 +21,12 @@ void DnnlConv::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
 
   auto conv_src_mem = sp.GetMemory(node.Input(IN_X));
   auto src_md = conv_src_mem.get_desc();
+  src_md.data.format_kind = dnnl_format_kind_t::dnnl_format_kind_any;
   auto src_dims = conv_src_mem.get_desc().dims();
 
   auto conv_weights_mem = sp.GetMemory(node.Input(IN_W));
   auto weight_md = conv_weights_mem.get_desc();
+  weight_md.data.format_kind = dnnl_format_kind_t::dnnl_format_kind_any;
   auto weight_dims_original = conv_weights_mem.get_desc().dims();
   dnnl::memory::dims weight_dims = weight_dims_original;
 

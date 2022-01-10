@@ -71,8 +71,8 @@ CPUIDInfo::CPUIDInfo() {
     if (num_IDs >= 1) {
       GetCPUID(1, data);
       if (data[2] & (1 << 27)) {
-        const int AVX_MASK = 0x6;
-        const int AVX512_MASK = 0xE6;
+        constexpr int AVX_MASK = 0x6;
+        constexpr int AVX512_MASK = 0xE6;
         int value = XGETBV();
         bool has_sse2 = (data[3] & (1 << 26));
         has_sse3_ = (data[2] & 0x1);
@@ -95,12 +95,16 @@ CPUIDInfo::CPUIDInfo() {
     }
 #endif
 
-#if defined(CPUIDINFO_ARCH_ARM) && defined(CPUINFO_SUPPORTED)
+#if defined(CPUIDINFO_ARCH_ARM)
+#ifdef CPUINFO_SUPPORTED
 
     // only works on ARM linux or android, does not work on Windows
     is_hybrid_ = cpuinfo_get_uarchs_count() > 1;
     has_arm_neon_dot_ = cpuinfo_has_arm_neon_dot();
-
+#elif defined(_WIN32)
+    // TODO implement hardware feature detection in windows.
+    is_hybrid_ = true;
+#endif
 #endif
 
 }

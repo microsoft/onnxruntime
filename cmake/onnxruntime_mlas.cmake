@@ -47,6 +47,8 @@ function(setup_mlas_source_for_windows)
       )
 
       set(mlas_platform_preprocess_srcs
+        ${MLAS_SRC_DIR}/arm64/ConvSymU8KernelDot.asm
+        ${MLAS_SRC_DIR}/arm64/ConvSymU8KernelNeon.asm
         ${MLAS_SRC_DIR}/arm64/DepthwiseConvsymKernelNeon.asm
         ${MLAS_SRC_DIR}/arm64/DepthwiseQConvKernelSize9Neon.asm
         ${MLAS_SRC_DIR}/arm64/QgemmU8X8KernelNeon.asm
@@ -174,7 +176,7 @@ if (onnxruntime_BUILD_WEBASSEMBLY)
     )
   else()
     file(GLOB_RECURSE mlas_platform_srcs
-      "${MLAS_SRC_DIR}/wasm/*.cpp"
+      "${MLAS_SRC_DIR}/scalar/*.cpp"
     )
   endif()
   target_sources(onnxruntime_mlas PRIVATE ${mlas_platform_srcs})
@@ -268,6 +270,8 @@ else()
     if(ARM64 AND MLAS_SOURCE_IS_NOT_SET )
         enable_language(ASM)
         set(mlas_platform_srcs
+          ${MLAS_SRC_DIR}/aarch64/ConvSymU8KernelDot.S
+          ${MLAS_SRC_DIR}/aarch64/ConvSymU8KernelNeon.S
           ${MLAS_SRC_DIR}/aarch64/DepthwiseConvSymKernelNeon.S
           ${MLAS_SRC_DIR}/aarch64/DepthwiseQConvKernelSize9Neon.S
           ${MLAS_SRC_DIR}/aarch64/QgemmU8X8KernelNeon.S
@@ -332,7 +336,7 @@ else()
               ${mlas_platform_srcs_power10}
             )
           endif()
-    endif()
+        endif()
         if(NOT ONNXRUNTIME_MLAS_MULTI_ARCH)
           set(MLAS_SOURCE_IS_NOT_SET 0)
         endif()
@@ -363,7 +367,7 @@ else()
             ${mlas_platform_srcs}
             ${MLAS_SRC_DIR}/x86/x86.get_pc_thunk.S
           )
-	endif()
+        endif()
 
         if(NOT ONNXRUNTIME_MLAS_MULTI_ARCH)
           set(MLAS_SOURCE_IS_NOT_SET 0)
@@ -458,9 +462,12 @@ else()
           list(APPEND ONNXRUNTIME_MLAS_LIBS onnxruntime_mlas_x86_64)
           set(mlas_platform_srcs )
         else()
-          set(MLAS_SOURCE_IS_NOT_SET 1)
+          set(MLAS_SOURCE_IS_NOT_SET 0)
         endif()
-
+    endif()
+    if(NOT ONNXRUNTIME_MLAS_MULTI_ARCH AND MLAS_SOURCE_IS_NOT_SET)
+        file(GLOB_RECURSE mlas_platform_srcs
+          "${MLAS_SRC_DIR}/scalar/*.cpp")
     endif()
     target_sources(onnxruntime_mlas PRIVATE ${mlas_platform_srcs})
 endif()
@@ -471,4 +478,7 @@ endforeach()
 set_target_properties(onnxruntime_mlas PROPERTIES FOLDER "ONNXRuntime")
 if (WIN32)
   target_compile_options(onnxruntime_mlas PRIVATE "/wd6385" "/wd4127")
+  if (onnxruntime_ENABLE_STATIC_ANALYSIS)
+    target_compile_options(onnxruntime_mlas PRIVATE  "/analyze:stacksize 131072")
+  endif()
 endif()
