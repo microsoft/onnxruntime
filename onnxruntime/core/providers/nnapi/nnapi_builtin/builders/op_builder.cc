@@ -580,25 +580,6 @@ static Status GetBinaryOpQuantizationScaleAndZeroPoint_nu(
   return Status::OK();
 }
 
-static Status GetBinaryOpQuantizationScaleAndZeroPoint(
-    const ModelBuilder& model_builder, const Node& node,
-    float& a_scale, float& b_scale, float& y_scale,
-    int32_t& a_zero_point, int32_t& b_zero_point, int32_t& y_zero_point) ORT_MUST_USE_RESULT;
-static Status GetBinaryOpQuantizationScaleAndZeroPoint(
-    const ModelBuilder& model_builder, const Node& node,
-    float& a_scale, float& b_scale, float& y_scale,
-    int32_t& a_zero_point, int32_t& b_zero_point, int32_t& y_zero_point) {
-  const auto& initializers = model_builder.GetInitializerTensors();
-  ORT_RETURN_IF_ERROR(GetQuantizationScale(initializers, node, 1, a_scale));
-  ORT_RETURN_IF_ERROR(GetQuantizationScale(initializers, node, 4, b_scale));
-  ORT_RETURN_IF_ERROR(GetQuantizationScale(initializers, node, 6, y_scale));
-  ORT_RETURN_IF_ERROR(GetQuantizationZeroPoint(initializers, node, 2, a_zero_point));
-  ORT_RETURN_IF_ERROR(GetQuantizationZeroPoint(initializers, node, 5, b_zero_point));
-  ORT_RETURN_IF_ERROR(GetQuantizationZeroPoint(initializers, node, 7, y_zero_point));
-
-  return Status::OK();
-}
-
 // Get scale and zero point for
 // [QlinearConv] input, weight, output
 // [QlinearMatMul] A, B, Y
@@ -640,61 +621,6 @@ static Status GetConvMatMulOpQuantizationScaleAndZeroPoint_nu(
   // And have same scale and 128 as zero point
   // The conversion of the weight tensor itself will be done in the OpBuilder
   const auto& scale_tensor = *initializers.at(inputs[1].quant_param->scale.Name());
-  int64_t scale_dim = scale_tensor.dims().empty() ? 1 : scale_tensor.dims()[0];
-  if (scale_dim == 1) {
-    w_zero_point = 128;
-    is_per_tensor_u8s8 = true;
-    return Status::OK();
-  }
-
-  // Now we have u8s8 per-channel QlinearConv
-  // u8s8 QlinearConv always have 0 as zero point so we are not getting it here
-  // and we do not use w_scale here, so we reset them back to 0
-  w_scale = 0.0f;
-  w_zero_point = 0;
-
-  // We need to copy the 1d scales array for per-channel quantization
-  std::vector<uint8_t> unpacked_tensor;
-  ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(scale_tensor, unpacked_tensor));
-  const float* scales = reinterpret_cast<const float*>(unpacked_tensor.data());
-  const size_t scales_size = scale_tensor.dims().empty() ? 1 : scale_tensor.dims()[0];
-  std::vector<float> scales_vec(scales, scales + scales_size);
-  w_scales = onnxruntime::make_optional(std::move(scales_vec));
-  return Status::OK();
-}
-
-static Status GetConvMatMulOpQuantizationScaleAndZeroPoint(
-    const ModelBuilder& model_builder, const Node& node,
-    float& a_scale, float& w_scale, float& y_scale,
-    int32_t& a_zero_point, int32_t& w_zero_point, int32_t& y_zero_point,
-    optional<std::vector<float>>& w_scales, bool& is_per_tensor_u8s8) ORT_MUST_USE_RESULT;
-static Status GetConvMatMulOpQuantizationScaleAndZeroPoint(
-    const ModelBuilder& model_builder, const Node& node,
-    float& a_scale, float& w_scale, float& y_scale,
-    int32_t& a_zero_point, int32_t& w_zero_point, int32_t& y_zero_point,
-    optional<std::vector<float>>& w_scales, bool& is_per_tensor_u8s8) {
-  is_per_tensor_u8s8 = false;
-  // Get scale and zero points
-  // We will handle per-channel weight scale and zero point later
-  ORT_RETURN_IF_ERROR(
-      GetBinaryOpQuantizationScaleAndZeroPoint(model_builder, node,
-                                               a_scale, w_scale, y_scale,
-                                               a_zero_point, w_zero_point, y_zero_point));
-
-  const auto input_defs = node.InputDefs();
-  const auto& initializers(model_builder.GetInitializerTensors());
-  const auto& weight_tensor = *initializers.at(input_defs[3]->Name());
-
-  // We are done here is this is u8u8 QLinearConv
-  if (weight_tensor.data_type() == ONNX_NAMESPACE::TensorProto_DataType_UINT8)
-    return Status::OK();
-
-  // This is per-tensor u8s8
-  // NNAPI does not support per-tensor u8s8
-  // For this case we will need to convert the int8 weight tensor to uint8
-  // And have same scale and 128 as zero point
-  // The conversion of the weight tensor itself will be done in the OpBuilder
-  const auto& scale_tensor = *initializers.at(input_defs[4]->Name());
   int64_t scale_dim = scale_tensor.dims().empty() ? 1 : scale_tensor.dims()[0];
   if (scale_dim == 1) {
     w_zero_point = 128;
@@ -1710,13 +1636,12 @@ class CastOpBuilder : public BaseOpBuilder {
 };
 
 Status CastOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
-  const auto& node = node_unit.GetNode();
   auto& shaper(model_builder.GetShaper());
   const auto& operand_indices(model_builder.GetOperandIndices());
-  NodeAttrHelper helper(node);
+  NodeAttrHelper helper(node_unit);
 
-  const auto& input = node.InputDefs()[0]->Name();
-  const auto& output = node.OutputDefs()[0]->Name();
+  const auto& input = node_unit.Inputs()[0].node_arg.Name();
+  const auto& output = node_unit.Outputs()[0].node_arg.Name();
   bool output_is_nhwc = model_builder.IsOperandNHWC(input);
 
   auto to = helper.Get("to", 0);
@@ -1875,25 +1800,19 @@ void GemmOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Nod
 }
 
 Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
-  const auto& node = node_unit.GetNode();
-
   auto& shaper(model_builder.GetShaper());
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());
   const auto& initializers(model_builder.GetInitializerTensors());
 
-  const auto& op = node.OpType();
-  const auto input_defs(node.InputDefs());
-  NodeAttrHelper helper(node);
+  const auto& op = node_unit.OpType();
+  const auto& inputs = node_unit.Inputs();
+  NodeAttrHelper helper(node_unit);
   bool is_qlinear_matmul = op == "QLinearMatMul";
 
-  size_t a_idx = 0,
-         b_idx = is_qlinear_matmul ? 3 : 1,
-         c_idx = 2;  // QLinearMatMul has no bias
-
-  const auto& input1 = input_defs[a_idx]->Name();
-  const auto& input2 = input_defs[b_idx]->Name();
-  const auto& output = node.OutputDefs()[0]->Name();
+  const auto& input1 = inputs[0].node_arg.Name();
+  const auto& input2 = inputs[1].node_arg.Name();
+  const auto& output = node_unit.Outputs()[0].node_arg.Name();
   const auto transB = helper.Get("transB", 0);
 
   float a_scale = 0.0f,
@@ -1907,10 +1826,10 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   if (is_qlinear_matmul) {
     optional<std::vector<float>> w_scales;
     ORT_RETURN_IF_ERROR(
-        GetConvMatMulOpQuantizationScaleAndZeroPoint(model_builder, node,
-                                                     a_scale, b_scale, y_scale,
-                                                     a_zero_point, b_zero_point, y_zero_point,
-                                                     w_scales, is_per_tensor_u8s8));
+        GetConvMatMulOpQuantizationScaleAndZeroPoint_nu(model_builder, node_unit,
+                                                        a_scale, b_scale, y_scale,
+                                                        a_zero_point, b_zero_point, y_zero_point,
+                                                        w_scales, is_per_tensor_u8s8));
   }
 
   uint32_t input_2_idx;
@@ -1939,14 +1858,14 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   }
 
   uint32_t bias_idx;
-  bool has_bias = (op == "Gemm") && (input_defs.size() > 2);
+  bool has_bias = inputs.size() > 2;
   if (has_bias) {
-    const auto& bias = input_defs[c_idx]->Name();
+    const auto& bias = inputs[2].node_arg.Name();
     // We need squeeze the input tensor to 1d if necessary
     if (shaper[bias].size() > 1) {
-      std::string bias_squeezed = model_builder.GetUniqueName(node.Name() + op + "_bias_squeezed");
+      std::string bias_squeezed = model_builder.GetUniqueName(node_unit.Name() + op + "_bias_squeezed");
       // We will use squeeze all here
-      ORT_RETURN_IF_ERROR(AddSqueezeOp(model_builder, node.Name(),
+      ORT_RETURN_IF_ERROR(AddSqueezeOp(model_builder, node_unit.Name(),
                                        bias, bias_squeezed,
                                        {} /* axes */));
       bias_idx = operand_indices.at(bias_squeezed);
@@ -1959,7 +1878,7 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     }
   } else {
     // No C supplied, we need a vector of 0
-    std::string bias = model_builder.GetUniqueName(node.Name() + op + "_bias");
+    std::string bias = model_builder.GetUniqueName(node_unit.Name() + op + "_bias");
     const auto& bias_type = operand_types.at(input2).type;
     const Shape& bias_dimen = {shaper[input2][0]};
     if (bias_type == Type::TENSOR_FLOAT32) {
@@ -1981,7 +1900,7 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   input_indices.push_back(operand_indices.at(input1));  // A
   input_indices.push_back(input_2_idx);                 // B
   input_indices.push_back(bias_idx);                    // C
-  int32_t fuse_code = model_builder.FindActivation(node, *node.OutputDefs()[0]);
+  int32_t fuse_code = model_builder.FindActivation_nu(node_unit, node_unit.Outputs()[0].node_arg);
   ADD_SCALAR_OPERAND(model_builder, input_indices, fuse_code);
 
   ORT_RETURN_IF_ERROR(shaper.FC(input1, input2, output));
