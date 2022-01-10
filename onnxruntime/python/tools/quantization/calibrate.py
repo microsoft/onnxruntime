@@ -276,6 +276,7 @@ class HistogramCalibrater(CalibraterBase):
                  op_types_to_calibrate=[],
                  augmented_model_path='augmented_model.onnx',
                  method='percentile',
+                 num_bins=8192,
                  num_quantized_bins=128,
                  percentile=99.99):
         '''
@@ -293,6 +294,7 @@ class HistogramCalibrater(CalibraterBase):
         self.model_original_outputs = set(output.name for output in self.model.graph.output)
         self.collector = None
         self.method = method
+        self.num_bins = num_bins
         self.num_quantized_bins = num_quantized_bins
         self.percentile = percentile
 
@@ -348,6 +350,7 @@ class HistogramCalibrater(CalibraterBase):
 
         if not self.collector:
             self.collector = HistogramCollector(method=self.method,
+                                                num_bins = self.num_bins,
                                                 num_quantized_bins=self.num_quantized_bins,
                                                 percentile=self.percentile)
         self.collector.collect(clean_merged_dict)
@@ -370,6 +373,7 @@ class EntropyCalibrater(HistogramCalibrater):
                  op_types_to_calibrate=[],
                  augmented_model_path='augmented_model.onnx',
                  method='entropy',
+                 num_bins=8192,
                  num_quantized_bins=128):
         '''
         :param model: ONNX model to calibrate. It can be a ModelProto or a model path
@@ -379,7 +383,7 @@ class EntropyCalibrater(HistogramCalibrater):
         :param num_quantized_bins: number of quantized bins. Default 128.
         '''
         super(EntropyCalibrater, self).__init__(model, op_types_to_calibrate, augmented_model_path,
-                                                method=method, num_quantized_bins=num_quantized_bins)
+                                                method=method, num_bins=num_bins, num_quantized_bins=num_quantized_bins)
 
 class PercentileCalibrater(HistogramCalibrater):
     def __init__(self,
@@ -433,6 +437,7 @@ class HistogramCollector(CalibrationDataCollector):
     def __init__(self, method, num_quantized_bins, percentile):
         self.histogram_dict = {}
         self.method = method
+        self.num_bins = num_bins
         self.num_quantized_bins= num_quantized_bins
         self.percentile = percentile
 
@@ -490,7 +495,7 @@ class HistogramCollector(CalibrationDataCollector):
                 old_histogram = self.histogram_dict[tensor]
                 self.histogram_dict[tensor] = self.merge_histogram(old_histogram, data_arr, min_value, max_value, threshold)
             else:
-                hist, hist_edges = np.histogram(data_arr, 8192, range=(-threshold, threshold))
+                hist, hist_edges = np.histogram(data_arr, self.num_bins, range=(-threshold, threshold))
                 self.histogram_dict[tensor] = (hist, hist_edges, min_value, max_value, threshold)
 
     def merge_histogram(self, old_histogram, data_arr, new_min, new_max, new_threshold):
