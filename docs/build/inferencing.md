@@ -16,7 +16,6 @@ Follow the instructions below to build ONNX Runtime to perform inference.
 * TOC placeholder
 {:toc}
 
-
 ## CPU
 Basic CPU build
 
@@ -24,12 +23,13 @@ Basic CPU build
 {: .no_toc }
 
 * Checkout the source tree:
-   ```
+
+   ```bash
    git clone --recursive https://github.com/Microsoft/onnxruntime
    cd onnxruntime
    ```
-* [Install](https://cmake.org/download/) cmake-3.18 or higher.
 
+* [Install](https://cmake.org/download/) cmake-3.18 or higher.
 
 ### Build Instructions
 {: .no_toc }
@@ -158,10 +158,13 @@ Nuget packages are created under <native_build_dir>\nuget-artifacts
 ## Other build options
 
 ### Reduced Operator Kernel Build
-Reduced Operator Kernel builds allow you to customize the kernels in the build to provide smaller binary sizes - [see instructions](https://github.com/microsoft/onnxruntime/blob/master/docs/Reduced_Operator_Kernel_build.md).
+
+[Reduced Operator Kernel](./custom.md#reduce-operator-kernels) builds allow you to customize the kernels in the build to provide smaller binary sizes.
 
 ### OpenMP (Deprecated)
+
 #### Build Instructions
+
 ##### Windows
 
 ```powershell

@@ -19,11 +19,15 @@ The CUDA Execution Provider enables hardware accelerated computation on Nvidia C
 {:toc}
 
 ## Install
+
 Pre-built binaries of ONNX Runtime with CUDA EP are published for most language bindings. Please reference [Install ORT](../install).
 
-
 ## Requirements
+
 Please reference table below for official GPU packages dependencies for the ONNX Runtime inferencing package. Note that ONNX Runtime Training is aligned with PyTorch CUDA versions; refer to the Training tab on https://onnxruntime.ai/ for supported versions. 
+
+Note: Because of CUDA Minor Version Compatibility, Onnx Runtime built with CUDA 11.4 should be compatible with any CUDA 11.x version.
+Please reference [Nvidia CUDA Minor Version Compatibility](https://docs.nvidia.com/deploy/cuda-compatibility/#minor-version-compatibility).
 
 |ONNX Runtime|CUDA|cuDNN|Notes|
 |---|---|---|---|
@@ -78,6 +82,12 @@ Whether to do copies in the default stream or use separate streams. The recommen
 
 Default value: true
 
+### cudnn_conv_use_max_workspace
+Check [tuning performance for convolution heavy models](../performance/tune-performance.md#convolution-heavy-models-and-the-cuda-ep) for details on what this flag does.
+This flag is only supported from the V2 version of the provider options struct when used using the C API. The V2 provider options struct can be created using [this](https://onnxruntime.ai/docs/api/c/struct_ort_api.html#a0d29cbf555aa806c050748cf8d2dc172) and updated using [this](https://onnxruntime.ai/docs/api/c/struct_ort_api.html#a4710fc51f75a4b9a75bde20acbfa0783). Please take a look at the sample below for an example.
+
+Default value: 0
+
 ## Samples
 
 ### Python
@@ -103,6 +113,8 @@ session = ort.InferenceSession(model_path, providers=providers)
 
 ### C/C++
 
+#### Using legacy provider options struct
+
 ```c++
 OrtSessionOptions* session_options = /* ... */;
 
@@ -116,3 +128,38 @@ options.do_copy_in_default_stream = 1;
 SessionOptionsAppendExecutionProvider_CUDA(session_options, &options);
 ```
 
+#### Using V2 provider options struct
+
+```c++
+OrtCUDAProviderOptionsV2* cuda_options = nullptr;
+CreateCUDAProviderOptions(&cuda_options);
+
+std::vector<const char*> keys{"device_id", "gpu_mem_limit", "arena_extend_strategy", "cudnn_conv_algo_search", "do_copy_in_default_stream", "cudnn_conv_use_max_workspace"};
+std::vector<const char*> values{"0", "2147483648", "kSameAsRequested", "DEFAULT", "1", "1"};
+
+UpdateCUDAProviderOptions(cuda_options, keys.data(), values.data(), 6);
+
+OrtSessionOptions* session_options = /* ... */;
+SessionOptionsAppendExecutionProvider_CUDA_V2(session_options, cuda_options);
+
+// Finally, don't forget to release the provider options
+ReleaseCUDAProviderOptions(cuda_options);
+```
+
+### C#
+
+```c#
+var cudaProviderOptions = new OrtCUDAProviderOptions(); // Dispose this finally
+
+var providerOptionsDict = new Dictionary<string, string>();
+providerOptionsDict["device_id"] = "0";
+providerOptionsDict["gpu_mem_limit"] = "2147483648";
+providerOptionsDict["arena_extend_strategy"] = "kSameAsRequested";
+providerOptionsDict["cudnn_conv_algo_search"] = "DEFAULT";
+providerOptionsDict["do_copy_in_default_stream"] = "1";
+providerOptionsDict["cudnn_conv_use_max_workspace"] = "1";
+
+cudaProviderOptions.UpdateOptions(providerOptionsDict);
+
+SessionOptions options = SessionOptions.MakeSessionOptionWithCudaProvider(cudaProviderOptions);  // Dispose this finally
+```

@@ -1,4 +1,4 @@
 var searchData=
 [
-  ['free_0',['Free',['../struct_ort_allocator.html#a18d7888327537d09c7d3411dff4ac86a',1,'OrtAllocator']]]
+  ['enable_5fvpu_5ffast_5fcompile_0',['enable_vpu_fast_compile',['../struct_ort_open_v_i_n_o_provider_options.html#a560a1f5fac98d347ba7522375ee40638',1,'OrtOpenVINOProviderOptions']]]
 ];

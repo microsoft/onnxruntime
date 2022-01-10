@@ -24,10 +24,11 @@ The CoreML Execution Provider (EP) requires iOS devices with iOS 13 or higher, o
 It is recommended to use Apple devices equipped with Apple Neural Engine to achieve optimal performance.
 
 ## Install
+
 Pre-built binaries of ONNX Runtime Mobile with CoreML EP for iOS are published to CocoaPods.
+
 - C/C++: **onnxruntime-mobile-c**
 - Objective-C: **onnxruntime-mobile-objc**
-
 
 ## Build
 
