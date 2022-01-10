@@ -30,7 +30,16 @@ OrtValue create_ort_value(
 
 OrtValue create_ort_value(
   onnxruntime::ORTInvoker& invoker,
+  const at::Scalar& scalar,
+  at::ScalarType type);
+
+OrtValue create_ort_value(
+  onnxruntime::ORTInvoker& invoker,
   const at::Tensor& tensor);
+
+std::vector<OrtValue> create_ort_value(
+  onnxruntime::ORTInvoker& invoker,
+  at::TensorList tensors);
 
 OrtValue create_ort_value(const at::Tensor& tensor);
 
@@ -46,7 +55,7 @@ OrtValue create_ort_value(
     {1,},
     &ort_val);
   auto* ort_tensor = ort_val.GetMutable<onnxruntime::Tensor>();
-  CopyVectorToTensor<int64_t>(invoker, &val, 1, *ort_tensor);
+  CopyVectorToTensor<T>(invoker, &val, 1, *ort_tensor);
   return ort_val;
 }
 
@@ -106,6 +115,8 @@ bool IsSupportedType(at::IntArrayRef arrary, const std::vector<at::ScalarType>& 
 bool IsSupportedType(int64_t val, const std::vector<at::ScalarType>& valid_types);
 
 bool IsSupportedType(c10::optional<int64_t> val, const std::vector<at::ScalarType>& valid_types);
+
+bool IsSupportedType(at::TensorList tensors, const std::vector<at::ScalarType>& valid_types);
 
 } // namespace eager
 } // namespace torch_ort
