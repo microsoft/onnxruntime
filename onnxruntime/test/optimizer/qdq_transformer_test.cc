@@ -1789,7 +1789,7 @@ TEST(QDQTransformerTests, QDQ_Selector_Test) {
   ASSERT_TRUE(nullptr != conv_node);
   ASSERT_EQ("Conv", conv_node->OpType());
 
-  onnxruntime::QDQ::ConvSelector conv_selector;
+  onnxruntime::QDQ::ConvNodeGroupSelector conv_selector;
 
   // Create a GraphViewer covers the whole graph
   const GraphViewer whole_graph_viewer(graph);
