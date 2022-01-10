@@ -105,7 +105,7 @@ namespace Dml
 
         for (GraphPartition* partitionToMerge : partitionsToMerge)
         {
-            if (partitionToMerge == this)
+            if (partitionToMerge->GetRootMergedPartition() == this)
             {
                 continue;
             }
