@@ -101,10 +101,6 @@ class Conv : public OpenCLKernel {
       S.resize(rank, 1);
     }
 
-    for (size_t i = 0; i < P.size() / 2; ++i) {
-      ORT_ENFORCE(P[i] == P[2 * i], "padding can only be symmetric");
-    }
-
     std::vector<int64_t> Y_spatial_shape;
     ORT_RETURN_IF_ERROR(attrs_.InferOutputShape(X->Shape().Slice(2), K, S, D, P, Y_spatial_shape));
     std::vector<int64_t> Y_shape;
