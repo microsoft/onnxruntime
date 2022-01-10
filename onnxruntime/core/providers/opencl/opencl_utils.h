@@ -266,8 +266,8 @@ class KernelLauncher {
 
   template <typename T, typename E = std::is_convertible<T, cl_int>>
   KernelLauncher& setInt3(T v1, T v2, T v3) {
-    cl_int tmp[3] = {static_cast<cl_int>(v1), static_cast<cl_int>(v2), static_cast<cl_int>(v3)};
-    SKIP_IF_ERRORED(clSetKernelArg(kernel_, index_, sizeof(tmp), tmp));
+    cl_int3 tmp{{static_cast<cl_int>(v1), static_cast<cl_int>(v2), static_cast<cl_int>(v3)}};
+    SKIP_IF_ERRORED(clSetKernelArg(kernel_, index_, sizeof(tmp), &tmp));
     index_ += 1;
     return *this;
   }
