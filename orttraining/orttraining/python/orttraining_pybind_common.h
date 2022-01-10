@@ -8,16 +8,20 @@
 #include "core/platform/env.h"
 #include <unordered_map>
 #include <cstdlib>
+#include "orttraining/eager/ort_backends.h"
 
 namespace onnxruntime {
 namespace python {
 namespace py = pybind11;
 
 using namespace onnxruntime::logging;
+using namespace torch_ort::eager;
 
 using ExecutionProviderMap = std::unordered_map<std::string, std::shared_ptr<IExecutionProvider> >;
 using ExecutionProviderLibInfoMap = std::unordered_map<std::string, std::pair<std::string, ProviderOptions> > ;
 
+void InitializeBackendsManager();
+ORTBackendsManager& GetORTBackendsManager();
 
 class ORTTrainingPythonEnv{
 public:

@@ -2,8 +2,6 @@
 // Licensed under the MIT License.
 
 #include "orttraining/python/orttraining_pybind_common.h"
-#include "orttraining/eager/ort_backends.h"
-
 
 #include "core/common/logging/logging.h"
 #include "core/common/logging/severity.h"
@@ -15,7 +13,6 @@ namespace python {
 namespace py = pybind11;
 
 using namespace onnxruntime::logging;
-using namespace torch_ort::eager;
 
 std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
   const SessionOptions& session_options,
@@ -211,6 +208,29 @@ Environment& GetTrainingORTEnv() {
   return ort_training_env->GetORTEnv();
 }
 
+static std::unique_ptr<ORTBackendsManager> ort_backends_manager_instance;
+
+void InitializeBackendsManager() {
+  auto initialize = [&]() {
+    static bool initialized = false;
+    if (initialized) {
+      return;
+    }
+    // Initialization of the module
+    auto& env = onnxruntime::python::GetTrainingORTEnv();
+    ort_backends_manager_instance = std::make_unique<ORTBackendsManager>(env.GetLoggingManager()->DefaultLogger());
+    initialized = true;
+  };
+  initialize();
+}
+
+ORTBackendsManager& GetORTBackendsManager() {
+  if (!ort_backends_manager_instance) {
+    InitializeBackendsManager();
+  }
+  return *ort_backends_manager_instance;
+}
+
 void ResolveExtraProviderOptions(const std::vector<std::string>& provider_types,
                                  const ProviderOptionsMap& original_provider_options_map,
                                  ProviderOptionsMap& merged_options){
@@ -328,8 +348,7 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
   auto atexit = py::module_::import("atexit");
   atexit.attr("register")(py::cpp_function([]() {
     ort_training_env = nullptr;
-    // torch_ort::eager::instance = nullptr;
-    // delete torch_ort::eager::instance;
+    ort_backends_manager_instance = nullptr;
   }));
 }
 

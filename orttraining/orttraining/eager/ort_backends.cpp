@@ -8,6 +8,7 @@
 #include "ort_backends.h"
 #include "ort_log.h"
 #include "core/platform/env.h"
+#include "orttraining/python/orttraining_pybind_common.h"
 
 
 //use the environment from python module
@@ -24,19 +25,10 @@ namespace torch_ort {
 namespace eager {
 
 using namespace onnxruntime;
-
-/*
-ORTBackendsManager& GetORTBackendsManager() {
-  auto& env = onnxruntime::python::GetTrainingORTEnv();
-  static ORTBackendsManager instance {env.GetLoggingManager()->DefaultLogger()};
-  return instance;
-}
-*/
-ORTBackendsManager instance{onnxruntime::python::GetTrainingORTEnv().GetLoggingManager()->DefaultLogger()};
+using namespace onnxruntime::python;
 
 onnxruntime::ORTInvoker& GetORTInvoker(const at::Device device) {
-  // return GetORTBackendsManager().GetInvoker(device);
-  return instance.GetInvoker(device);
+  return GetORTBackendsManager().GetInvoker(device);
 }
 
 ORTBackendsManager::ORTBackendsManager(const onnxruntime::logging::Logger& logger): logger_(logger){
