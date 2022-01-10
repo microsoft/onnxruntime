@@ -61,7 +61,7 @@ tvm::Tensor IMatMulTensorize(const tvm::Tensor& A,
       {batchseq_dim, embed_padded},
       [&](const tvm::Array<tvm::Var>& indices) {
         auto k = tvm::reduce_axis({0, input_padded});
-        return tvm::sum(tvm::cast(HalideIR::Int(32), A_reshape(indices[0], k)) * tvm::cast(HalideIR::Int(32), B(indices[1], k)), {k});
+        return tvm::sum(tvm::cast(tvm::DataType::Int(32), A_reshape(indices[0], k)) * tvm::cast(tvm::DataType::Int(32), B(indices[1], k)), {k});
       },
       name + "_tensorize_Y");
   return Y;
@@ -71,11 +71,11 @@ tvm::Tensor IMatMulTensorize(const tvm::Tensor& A,
 // Support skipped trailing inputs
 tvm::Tensor GenericMatMulInteger(const tvm::Array<tvm::Tensor>& inputs, const Node& node) {
   auto A_Int32 = (node.InputDefs().size() >= 3 && node.InputDefs()[2]->Exists())
-                     ? tvm_codegen::Sub(tvm_codegen::Cast(inputs[0], HalideIR::Int(32)), tvm_codegen::Cast(inputs[2], HalideIR::Int(32)))
-                     : tvm_codegen::Cast(inputs[0], HalideIR::Int(32));
+                     ? tvm_codegen::Sub(tvm_codegen::Cast(tvm::DataType::Int(32), inputs[0]), tvm_codegen::Cast(tvm::DataType::Int(32), inputs[2]))
+                     : tvm_codegen::Cast(tvm::DataType::Int(32), inputs[0]));
   auto B_Int32 = (node.InputDefs().size() >= 4 && node.InputDefs()[3]->Exists())
-                     ? tvm_codegen::Sub(tvm_codegen::Cast(inputs[1], HalideIR::Int(32)), tvm_codegen::Cast(inputs[3], HalideIR::Int(32)))
-                     : tvm_codegen::Cast(inputs[1], HalideIR::Int(32));
+                     ? tvm_codegen::Sub(tvm_codegen::Cast(tvm::DataType::Int(32), inputs[1]), tvm_codegen::Cast(tvm::DataType::Int(32), inputs[3]))
+                     : tvm_codegen::Cast(tvm::DataType::Int(32), inputs[1]);
   return tvm_codegen::MatMul(A_Int32, B_Int32, node.Name() + "_Generic");
 }
 

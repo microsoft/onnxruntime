@@ -12,10 +12,10 @@ namespace tvm_codegen {
 
 // Evaluate of GatherElements OpIRCreator
 Status GENERIC_OP_IR_CREATOR_CLASS(GatherElements)::Evaluate(
-    const tvm::Array<tvm::Tensor>& inputs,
+    const tvm::Array<tvm::te::Tensor>& inputs,
     const Node& node,
     CodeGenContext&,
-    tvm::Array<tvm::Tensor>& outputs) {
+    tvm::Array<tvm::te::Tensor>& outputs) {
   ProtoHelperNodeContext ctx(node);
   OpNodeProtoHelper<ProtoHelperNodeContext> attrs(&ctx);
 
@@ -23,7 +23,7 @@ Status GENERIC_OP_IR_CREATOR_CLASS(GatherElements)::Evaluate(
   ORT_ENFORCE(attrs.GetAttr<int64_t>("axis", &axis).IsOK());
   axis = HandleNegativeAxis(axis, gsl::narrow_cast<int64_t>(inputs[0]->shape.size()));
 
-  tvm::Tensor Y = GatherElements(inputs[0], axis, inputs[1], node.Name() + "_GatherElements");
+  tvm::te::Tensor Y = GatherElements(inputs[0], axis, inputs[1], node.Name() + "_GatherElements");
   outputs.push_back(Y);
   return Status::OK();
 }

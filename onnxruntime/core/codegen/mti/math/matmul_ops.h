@@ -3,21 +3,21 @@
 
 #pragma once
 #include <string>
-#include <tvm/tvm.h>
+#include <tvm/te/operation.h>
 
 namespace onnxruntime {
 namespace tvm_codegen {
 
-tvm::Array<tvm::Expr>
+tvm::Array<tvm::PrimExpr>
 ComputeMatMulShape(
-    const tvm::Array<tvm::Expr>& A_shape,
-    const tvm::Array<tvm::Expr>& B_shape,
+    const tvm::Array<tvm::PrimExpr>& A_shape,
+    const tvm::Array<tvm::PrimExpr>& B_shape,
     bool trans_a = false,
     bool trans_b = false);
 
-tvm::Tensor MatMul2D(const tvm::Tensor& A, const tvm::Tensor& B, bool trans_a = false, bool trans_b = false, const std::string& name = "matmul2d");
+tvm::te::Tensor MatMul2D(const tvm::te::Tensor& A, const tvm::te::Tensor& B, bool trans_a = false, bool trans_b = false, const std::string& name = "matmul2d");
 
-tvm::Tensor MatMul(const tvm::Tensor& A, const tvm::Tensor& B, const std::string& name = "matmul");
+tvm::te::Tensor MatMul(const tvm::te::Tensor& A, const tvm::te::Tensor& B, const std::string& name = "matmul");
 
 }  // namespace tvm_codegen
 }  // namespace onnxruntime

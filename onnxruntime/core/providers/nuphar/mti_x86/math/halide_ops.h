@@ -32,7 +32,7 @@ SOFTWARE.
 // This file contains some ops that were copied from Halide (with small modifications).
 
 #pragma once
-#include <tvm/tvm.h>
+#include <tvm/runtime/module.h>
 
 namespace onnxruntime {
 namespace nuphar {

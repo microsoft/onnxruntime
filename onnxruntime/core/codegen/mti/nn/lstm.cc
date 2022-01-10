@@ -47,32 +47,32 @@ Equations (Default: f=Sigmoid, g=Tanh, h=Tanh):
 
 void LSTM_cell(
     const LSTMAttributes& lstm_attrs,
-    const tvm::Tensor& X,
-    const tvm::Tensor& W,
-    const tvm::Tensor& R,
-    const tvm::Tensor& B,
+    const tvm::te::Tensor& X,
+    const tvm::te::Tensor& W,
+    const tvm::te::Tensor& R,
+    const tvm::te::Tensor& B,
     bool has_B,
-    const tvm::Tensor& prev_H,
-    const tvm::Tensor& prev_C,
-    const tvm::Tensor& P,
+    const tvm::te::Tensor& prev_H,
+    const tvm::te::Tensor& prev_C,
+    const tvm::te::Tensor& P,
     bool has_P,
-    tvm::Tensor& Y_h,
-    tvm::Tensor& Y_c) {
+    tvm::te::Tensor& Y_h,
+    tvm::te::Tensor& Y_c) {
   // Input projection: Xt*(W[iofc]^T) for forward direction or Xt*(WB[iofc]^T) for reverse direction
   // (batch_size, input_size) * trans(4 * hidden_size, input_size) => (batch_size, 4 * hidden_size)
-  tvm::Tensor input_proj = MatMul2D(X, W, /*trans_a*/ false, /*trans_b*/ true);
+  tvm::te::Tensor input_proj = MatMul2D(X, W, /*trans_a*/ false, /*trans_b*/ true);
 
   // Hidden projection: Ht-1*(R[iofc]^T) for forward direction or Ht-1*(RB[iofc]^T) for reverse direction
   // (batch_size, hidden_size) * trans(4 * hidden_size, hidden_size) => (batch_size, 4 * hidden_size)
-  tvm::Tensor hidden_proj = MatMul2D(prev_H, R, /*trans_a*/ false, /*trans_b*/ true);
+  tvm::te::Tensor hidden_proj = MatMul2D(prev_H, R, /*trans_a*/ false, /*trans_b*/ true);
 
   // (batch_size, 4 * hidden_size)
-  tvm::Tensor sum_proj = Add(input_proj, hidden_proj);
+  tvm::te::Tensor sum_proj = Add(input_proj, hidden_proj);
 
   // Concatenation of [Wb[iofc], Rb[iofc]] or [WBb[iofc], RBb[iofc]]
   if (has_B) {
     // (8 * hidden_size) -> (2, 4 * hidden_size) -> (1, 4 * hidden_size), should be done in const folding
-    tvm::Tensor reduce_B =
+    tvm::te::Tensor reduce_B =
         ReduceSum(Reshape(B, {2, 4 * static_cast<int>(lstm_attrs.hidden_size)}), {0}, /*keep_dims*/ true);
     // (batch_size, 4 * hidden_size) via broadcasting reduce_B
     sum_proj = Add(sum_proj, reduce_B);
@@ -80,19 +80,19 @@ void LSTM_cell(
 
   std::vector<int64_t> iofc_sum_split_sizes(4, lstm_attrs.hidden_size);
   // Split sum_proj into iofc, where each gate proj is of (batch_size, hidden_size)
-  tvm::Array<tvm::Tensor> iofc_sum_projs = Split(sum_proj, ToTvmArray(iofc_sum_split_sizes), /*axis*/ 1);
+  tvm::Array<tvm::te::Tensor> iofc_sum_projs = Split(sum_proj, ToTvmArray(iofc_sum_split_sizes), /*axis*/ 1);
   MTI_ASSERT(iofc_sum_projs.size() == 4);
-  tvm::Tensor i_proj = iofc_sum_projs[0],
+  tvm::te::Tensor i_proj = iofc_sum_projs[0],
               o_proj = iofc_sum_projs[1],
               f_proj = iofc_sum_projs[2],
               c_proj = iofc_sum_projs[3];
 
-  tvm::Tensor P_i, P_o, P_f;
+  tvm::te::Tensor P_i, P_o, P_f;
   if (has_P) {
     std::vector<int64_t> iof_p_split_sizes(3, lstm_attrs.hidden_size);
     // Split P into P_i, P_o, P_f, in const pre-processing (P_i, P_f might be merged?)
     // where each P_[iof] has the shape of (hidden_size)
-    tvm::Array<tvm::Tensor> iof_P_projs = Split(P, ToTvmArray(iof_p_split_sizes), /*axis*/ 0);
+    tvm::Array<tvm::te::Tensor> iof_P_projs = Split(P, ToTvmArray(iof_p_split_sizes), /*axis*/ 0);
     MTI_ASSERT(iof_P_projs.size() == 3);
     P_i = iof_P_projs[0],
     P_o = iof_P_projs[1],
@@ -111,13 +111,13 @@ void LSTM_cell(
 
   // it = f(Xt*(Wi^T) + Ht-1*(Ri^T) + Pi (.) Ct-1 + Wbi + Rbi)
   // shape: (batch_size, hidden_size)
-  tvm::Tensor i_t = Sigmoid(i_proj);
+  tvm::te::Tensor i_t = Sigmoid(i_proj);
   // ft = f(Xt*(Wf^T) + Ht-1*(Rf^T) + Pf (.) Ct-1 + Wbf + Rbf)
   // shape: (batch_size, hidden_size)
-  tvm::Tensor f_t = Sigmoid(f_proj);
+  tvm::te::Tensor f_t = Sigmoid(f_proj);
   // ct = g(Xt*(Wc^T) + Ht-1*(Rc^T) + Wbc + Rbc)
   // shape: (batch_size, hidden_size)
-  tvm::Tensor c_t = Tanh(c_proj);
+  tvm::te::Tensor c_t = Tanh(c_proj);
 
   // Ct = ft (.) Ct-1 + it (.) ct
   // shape: (batch_size, hidden_size)

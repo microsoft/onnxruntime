@@ -10,11 +10,11 @@ namespace tvm_codegen {
 
 // Evaluate of MatMul OpIRCreator
 Status GENERIC_OP_IR_CREATOR_CLASS(MatMul)::Evaluate(
-    const tvm::Array<tvm::Tensor>& inputs,
+    const tvm::Array<tvm::te::Tensor>& inputs,
     const Node& node,
     CodeGenContext&,
-    tvm::Array<tvm::Tensor>& outputs) {
-  tvm::Tensor Y = MatMul(inputs[0], inputs[1], node.Name() + "_MatMul");
+    tvm::Array<tvm::te::Tensor>& outputs) {
+  tvm::te::Tensor Y = MatMul(inputs[0], inputs[1], node.Name() + "_MatMul");
   outputs.push_back(Y);
   return Status::OK();
 }

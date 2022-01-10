@@ -3,12 +3,12 @@
 
 #pragma once
 #include <string>
-#include <tvm/tvm.h>
+#include <tvm/te/operation.h>
 
 namespace onnxruntime {
 namespace tvm_codegen {
 
-tvm::Tensor Tile(const tvm::Tensor& t,
+tvm::te::Tensor Tile(const tvm::te::Tensor& t,
                  const std::vector<int64_t>& repeats,
                  const std::string& name = "tile");
 

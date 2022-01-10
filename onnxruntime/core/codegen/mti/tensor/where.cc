@@ -4,20 +4,20 @@
 #include "core/codegen/mti/mti_tvm_utils.h"
 #include "core/codegen/mti/tensor/where.h"
 
-#include <topi/broadcast.h>
-#include <topi/transform.h>
+#include <tvm/topi/broadcast.h>
+#include <tvm/topi/transform.h>
 
 namespace onnxruntime {
 namespace tvm_codegen {
 
-tvm::Tensor Where(const tvm::Tensor& B,
-                  const tvm::Tensor& X,
-                  const tvm::Tensor& Y,
+tvm::te::Tensor Where(const tvm::te::Tensor& B,
+                  const tvm::te::Tensor& X,
+                  const tvm::te::Tensor& Y,
                   const std::string& name) {
   size_t rank = std::max(std::max(B->shape.size(), X->shape.size()), Y->shape.size());
-  tvm::Array<tvm::Expr> output_shape;
+  tvm::Array<tvm::PrimExpr> output_shape;
   for (size_t i = 0; i < rank; ++i) {
-    tvm::Expr dim = tvm::make_const(HalideIR::Int(32), 1);
+     tvm::PrimExpr dim = tvm::tir::make_const(tvm::DataType::Int(32), 1);
     bool broadcasted =
         BroadcastDim(B->shape, i, rank, dim) &&
         BroadcastDim(X->shape, i, rank, dim) &&
@@ -26,10 +26,10 @@ tvm::Tensor Where(const tvm::Tensor& B,
     output_shape.push_back(dim);
   }
 
-  return topi::where(topi::broadcast_to(B, output_shape),
-                     topi::broadcast_to(X, output_shape),
-                     topi::broadcast_to(Y, output_shape),
-                     name);
+  return tvm::topi::where(tvm::topi::broadcast_to(B, output_shape),
+                          tvm::topi::broadcast_to(X, output_shape),
+                          tvm::topi::broadcast_to(Y, output_shape),
+                          name);
 }
 
 }  // namespace tvm_codegen

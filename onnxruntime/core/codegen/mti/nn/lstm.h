@@ -3,7 +3,7 @@
 
 #pragma once
 #include <string>
-#include <tvm/tvm.h>
+#include <tvm/te/operation.h>
 
 // A bubble now. But don't remove it
 // TODO: refactor the LSTMcell building to a tvm function
@@ -19,17 +19,17 @@ struct LSTMAttributes {
 
 void LSTM_cell(
     const LSTMAttributes& lstm_attrs,
-    const tvm::Tensor& X,
-    const tvm::Tensor& W,
-    const tvm::Tensor& R,
-    const tvm::Tensor& B,
+    const tvm::te::Tensor& X,
+    const tvm::te::Tensor& W,
+    const tvm::te::Tensor& R,
+    const tvm::te::Tensor& B,
     bool has_B,
-    const tvm::Tensor& prev_H,
-    const tvm::Tensor& prev_C,
-    const tvm::Tensor& P,
+    const tvm::te::Tensor& prev_H,
+    const tvm::te::Tensor& prev_C,
+    const tvm::te::Tensor& P,
     bool has_P,
-    tvm::Tensor& Y_h,
-    tvm::Tensor& Y_c);
+    tvm::te::Tensor& Y_h,
+    tvm::te::Tensor& Y_c);
 
 }  // namespace tvm_codegen
 }  // namespace onnxruntime

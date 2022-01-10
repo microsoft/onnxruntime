@@ -10,7 +10,7 @@
 namespace onnxruntime {
 namespace codegen {
 // explicit instantiation
-template class CreatorBase<const tvm::Tensor&,
+template class CreatorBase<const tvm::te::Tensor&,
                            const Node*,
                            tvm_codegen::CodeGenContext&,
                            tvm_codegen::ScheduleContext&,
@@ -39,14 +39,14 @@ const std::string& GetTVMOpRule(TVMOpRuleType rule) {
   return TMVOpRuleKey_NoRule;
 }
 
-const std::string& GetTVMOpRule(const tvm::Tensor& tensor) {
-  auto extern_op = tensor->op.as<tvm::ExternOpNode>();
+const std::string& GetTVMOpRule(const tvm::te::Tensor& tensor) {
+  auto extern_op = tensor->op.as<tvm::te::ExternOpNode>();
 
   if (nullptr != extern_op) {
     return TMVOpRuleKey_Extern;
   }
 
-  auto compute_op = tensor->op.as<tvm::ComputeOpNode>();
+  auto compute_op = tensor->op.as<tvm::te::ComputeOpNode>();
   if (nullptr != compute_op) {
     if (compute_op->reduce_axis.size() > 0) {
       return TMVOpRuleKey_ComputeReduce;
@@ -57,19 +57,19 @@ const std::string& GetTVMOpRule(const tvm::Tensor& tensor) {
 }
 
 Scheduler* SCHEDULE_DISPATCHER_CLASS(OrtOpType)::
-    Find(const tvm::Tensor&, const Node* node, tvm_codegen::CodeGenContext&) {
+    Find(const tvm::te::Tensor&, const Node* node, tvm_codegen::CodeGenContext&) {
   if (nullptr == node)
     return nullptr;
   return DispatcherBase::Get(node->OpType());
 }
 
 Scheduler* SCHEDULE_DISPATCHER_CLASS(TVMOpRule)::
-    Find(const tvm::Tensor& tensor, const Node*, tvm_codegen::CodeGenContext&) {
+    Find(const tvm::te::Tensor& tensor, const Node*, tvm_codegen::CodeGenContext&) {
   return DispatcherBase::Get(GetTVMOpRule(tensor));
 }
 
 Scheduler* SCHEDULE_DISPATCHER_CLASS(OrtOpName)::
-    Find(const tvm::Tensor&, const Node* node, tvm_codegen::CodeGenContext&) {
+    Find(const tvm::te::Tensor&, const Node* node, tvm_codegen::CodeGenContext&) {
   if (nullptr == node)
     return nullptr;
   return DispatcherBase::Get(GetKey(node));

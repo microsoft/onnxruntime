@@ -17,10 +17,10 @@ namespace tvm_codegen {
 // In a LSTM, the order is H and then C.
 // Ouputs of LSTM is Y_h and then Y_c
 Status GENERIC_OP_IR_CREATOR_CLASS(LSTM)::Evaluate(
-    const tvm::Array<tvm::Tensor>& inputs,
+    const tvm::Array<tvm::te::Tensor>& inputs,
     const Node& node,
     CodeGenContext& ctx_codegen,
-    tvm::Array<tvm::Tensor>& outputs) {
+    tvm::Array<tvm::te::Tensor>& outputs) {
   ProtoHelperNodeContext ctx(node);
   OpNodeProtoHelper<ProtoHelperNodeContext> attrs(&ctx);
 
@@ -30,24 +30,24 @@ Status GENERIC_OP_IR_CREATOR_CLASS(LSTM)::Evaluate(
   ORT_RETURN_IF_ERROR(attrs.GetAttr("hidden_size", &hidden_size));
 
   // input tensor with shape [seq_length, batch_size, input_size]
-  const tvm::Tensor& X = inputs[0];  // input tensor with shape [seq_length, batch_size, input_size]
-  const tvm::Tensor& W = inputs[1];  // weights tensor with shape [4*hidden_size, input_size]
-  const tvm::Tensor& R = inputs[2];  // recurrence tensor with shape [4*hidden_size, hidden_size]
-  const tvm::Tensor& B = inputs[3];  // optional bias tensor with shape [8*hidden_size]
+  const tvm::te::Tensor& X = inputs[0];  // input tensor with shape [seq_length, batch_size, input_size]
+  const tvm::te::Tensor& W = inputs[1];  // weights tensor with shape [4*hidden_size, input_size]
+  const tvm::te::Tensor& R = inputs[2];  // recurrence tensor with shape [4*hidden_size, hidden_size]
+  const tvm::te::Tensor& B = inputs[3];  // optional bias tensor with shape [8*hidden_size]
   bool has_B = node.InputDefs()[3]->Exists();
 
   // Unsupported the 4th inputs
   // optional tensor specifying sequence lengths in a batch, shape: [batch_size]
-  // const tvm::Tensor* seq_len = inputs[4] ? &inputs[4]->tensor : nullptr;
+  // const tvm::te::Tensor* seq_len = inputs[4] ? &inputs[4]->tensor : nullptr;
 
-  const tvm::Tensor& prev_H = inputs[5];  // optional initial H, shape: [batch_size, hidden_size]
-  const tvm::Tensor& prev_C = inputs[6];  // optional initial C, shape: [batch_size, hidden_size]
+  const tvm::te::Tensor& prev_H = inputs[5];  // optional initial H, shape: [batch_size, hidden_size]
+  const tvm::te::Tensor& prev_C = inputs[6];  // optional initial C, shape: [batch_size, hidden_size]
 
-  const tvm::Tensor& P = inputs[7];  // optional peepholes tensor with shape [3*hidde_size]
+  const tvm::te::Tensor& P = inputs[7];  // optional peepholes tensor with shape [3*hidde_size]
   bool has_P = node.InputDefs()[7]->Exists();
 
-  tvm::Tensor Y_h;  // shape: [batch_size, hidden_size]
-  tvm::Tensor Y_c;  // shape: [batch_size, hidden_size]
+  tvm::te::Tensor Y_h;  // shape: [batch_size, hidden_size]
+  tvm::te::Tensor Y_c;  // shape: [batch_size, hidden_size]
   LSTMAttributes lstm_attrs(hidden_size);
   LSTM_cell(lstm_attrs, X, W, R, B, has_B, prev_H, prev_C, P, has_P, Y_h, Y_c);
 

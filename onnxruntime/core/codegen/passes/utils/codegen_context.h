@@ -6,7 +6,7 @@
 #include "core/codegen/common/common.h"
 #include "core/common/common.h"
 #include "core/framework/data_types.h"
-#include <tvm/tvm.h>
+#include <tvm/te/operation.h>
 
 namespace onnxruntime {
 namespace tvm_codegen {
@@ -20,8 +20,8 @@ class CodeGenContext {
 
   virtual ~CodeGenContext() = default;
 
-  // returns tvm::Var for the dynamic dim
-  tvm::Var GetOrCreateDynamicDim(const std::string& name);
+  // returns tvm::tir::Var for the dynamic dim
+  tvm::tir::Var GetOrCreateDynamicDim(const std::string& name);
 
   const codegen::CodeGenHandle* GetCodeGenHandle() const {
     return handle_;
@@ -30,7 +30,7 @@ class CodeGenContext {
   std::string CreateUnnamedSymbol();
 
  protected:
-  std::unordered_map<std::string, tvm::Var> dynamic_dims_;
+  std::unordered_map<std::string, tvm::tir::Var> dynamic_dims_;
 
   const codegen::CodeGenHandle* handle_;
 

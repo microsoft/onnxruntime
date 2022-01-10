@@ -12,10 +12,10 @@ namespace tvm_codegen {
 
 // Evaluate of Crop OpIRCreator
 Status GENERIC_OP_IR_CREATOR_CLASS(Crop)::Evaluate(
-    const tvm::Array<tvm::Tensor>& inputs,
+    const tvm::Array<tvm::te::Tensor>& inputs,
     const Node& node,
     CodeGenContext&,
-    tvm::Array<tvm::Tensor>& outputs) {
+    tvm::Array<tvm::te::Tensor>& outputs) {
   ProtoHelperNodeContext ctx(node);
   OpNodeProtoHelper<ProtoHelperNodeContext> attrs(&ctx);
 
@@ -37,7 +37,7 @@ Status GENERIC_OP_IR_CREATOR_CLASS(Crop)::Evaluate(
                            "Attribute border needs to be specified with four border elements");
   }
 
-  tvm::Tensor Y = Crop(inputs[0], ToTvmArray(border), ToTvmArray(scale), node.Name() + "_Crop");
+  tvm::te::Tensor Y = Crop(inputs[0], ToTvmArray(border), ToTvmArray(scale), node.Name() + "_Crop");
   outputs.push_back(Y);
   return Status::OK();
 }

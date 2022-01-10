@@ -10,17 +10,17 @@ namespace tvm_codegen {
 
 // This is for debug
 bool TVM_SCHEDULER_CLASS(AlwaysRoot, GenericTVMRule)::Evaluate(
-    const tvm::Tensor& tensor,
-    const Node*,
+    const tvm::te::Tensor& tensor,
+    const onnxruntime::Node*,
     CodeGenContext&,
     ScheduleContext& ctx_sched) {
   return InsertRootSchedule(tensor, ctx_sched);
 }
 
-// For External tvm::Tensor
+// For External tvm::te::Tensor
 bool TVM_SCHEDULER_CLASS(Extern, GenericTVMRule)::Evaluate(
-    const tvm::Tensor& tensor,
-    const Node*,
+    const tvm::te::Tensor& tensor,
+    const onnxruntime::Node*,
     CodeGenContext&,
     ScheduleContext& ctx_sched) {
   bool status = InsertRootScheduleAndClosure(tensor, ctx_sched);
@@ -28,10 +28,10 @@ bool TVM_SCHEDULER_CLASS(Extern, GenericTVMRule)::Evaluate(
   return status || status_input;
 }
 
-// For Reduce Compute tvm::Tensor
+// For Reduce Compute tvm::te::Tensor
 bool TVM_SCHEDULER_CLASS(Reduce, GenericTVMRule)::Evaluate(
-    const tvm::Tensor& tensor,
-    const Node*,
+    const tvm::te::Tensor& tensor,
+    const onnxruntime::Node*,
     CodeGenContext&,
     ScheduleContext& ctx_sched) {
   return InsertRootScheduleAndClosure(tensor, ctx_sched);

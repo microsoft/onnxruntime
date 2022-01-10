@@ -8,9 +8,9 @@
 #include "core/providers/nuphar/mti_x86/math/halide_ops.h"
 #include "core/codegen/mti/mti_tvm_utils.h"
 
-#include <topi/broadcast.h>
-#include <topi/elemwise.h>
-#include <topi/transform.h>
+#include <tvm/topi/broadcast.h>
+#include <tvm/topi/elemwise.h>
+#include <tvm/topi/transform.h>
 
 // Using namespace topi for override operator +-*/
 using namespace topi;

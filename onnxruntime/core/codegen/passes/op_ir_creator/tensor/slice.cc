@@ -8,14 +8,12 @@
 #include "core/framework/op_kernel_info.h"
 #include "core/framework/tensorprotoutils.h"
 
-#include <tvm/ir_pass.h>
-
 namespace onnxruntime {
 namespace tvm_codegen {
 
-Status SliceCommon(const tvm::Array<tvm::Tensor>& inputs,
+Status SliceCommon(const tvm::Array<tvm::te::Tensor>& inputs,
                    const Node& node,
-                   tvm::Array<tvm::Tensor>& outputs,
+                   tvm::Array<tvm::te::Tensor>& outputs,
                    const std::vector<int64_t>& starts,
                    const std::vector<int64_t>& ends,
                    const std::vector<int64_t>& axes1,
@@ -38,17 +36,17 @@ Status SliceCommon(const tvm::Array<tvm::Tensor>& inputs,
     steps = steps1;
   }
 
-  tvm::Tensor Y = Slice(inputs[0], starts, ends, axes, steps, node.Name() + "_Slice");
+  tvm::te::Tensor Y = Slice(inputs[0], starts, ends, axes, steps, node.Name() + "_Slice");
   outputs.push_back(Y);
   return Status::OK();
 }
 
 // Evaluate of Slice OpIRCreator
 Status GENERIC_OP_IR_CREATOR_CLASS(Slice)::Evaluate(
-    const tvm::Array<tvm::Tensor>& inputs,
+    const tvm::Array<tvm::te::Tensor>& inputs,
     const Node& node,
     CodeGenContext& ctx_codegen,
-    tvm::Array<tvm::Tensor>& outputs) {
+    tvm::Array<tvm::te::Tensor>& outputs) {
   ProtoHelperNodeContext ctx(node);
   OpNodeProtoHelper<ProtoHelperNodeContext> info(&ctx);
 

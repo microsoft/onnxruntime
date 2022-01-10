@@ -5,7 +5,7 @@
 
 #include "core/codegen/passes/scheduler/schedule_utils.h"
 #include "core/providers/nuphar/mti_x86/math/reduce_ops.h"
-#include <topi/tags.h>
+#include <tvm/topi/tags.h>
 
 namespace onnxruntime {
 namespace nuphar {

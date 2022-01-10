@@ -6,12 +6,12 @@
 #include "core/codegen/common/registry.h"
 #include "core/common/common.h"
 #include "core/framework/tensor.h"
-#include <tvm/tvm.h>
+#include <tvm/te/operation.h>
 
 namespace onnxruntime {
 namespace tvm_codegen {
 
-using CoordTransFunc = std::function<tvm::Array<tvm::Expr>(const tvm::Array<tvm::Expr>&)>;
+using CoordTransFunc = std::function<tvm::Array<tvm::PrimExpr>(const tvm::Array<tvm::PrimExpr>&)>;
 
 // WeightLayout is data layout trasnformer for weight/initializer
 class WeightLayout {
@@ -33,20 +33,20 @@ class WeightLayout {
   virtual ~WeightLayout() = default;
 
   // Return a CoordTransFunc from actual (transformed) coordinate to normial (original) coordinate
-  virtual CoordTransFunc ToNominal(const tvm::Tensor& X) const = 0;
+  virtual CoordTransFunc ToNominal(const tvm::te::Tensor& X) const = 0;
 
   // Return a CoordTransFunc from normial (original) coordinate to actual (transformed) coordinate
-  virtual CoordTransFunc ToActual(const tvm::Tensor& X) const = 0;
+  virtual CoordTransFunc ToActual(const tvm::te::Tensor& X) const = 0;
 
   // Return actual (transformed) shape in tvm::Array (tvm_codegen)
-  virtual tvm::Array<tvm::Expr> ToActualShape(const tvm::Tensor& X) const = 0;
+  virtual tvm::Array<tvm::PrimExpr> ToActualShape(const tvm::te::Tensor& X) const = 0;
 
   // Return actual (transformed) shape in vector<int64_t> (ort)
   virtual std::vector<int64_t> ToActualShape(const Tensor* X) const = 0;
 
   // Create Layout Marshalling op in outputs
-  void CreateLayoutMarshallingTVMOp(tvm::Array<tvm::Tensor>& inputs,
-                                    tvm::Array<tvm::Tensor>& outputs) const;
+  void CreateLayoutMarshallingTVMOp(tvm::Array<tvm::te::Tensor>& inputs,
+                                    tvm::Array<tvm::te::Tensor>& outputs) const;
 
   // Layout name
   const std::string& Name() const;

@@ -12,10 +12,10 @@ namespace tvm_codegen {
 
 // Evaluate of Split OpIRCreator
 Status GENERIC_OP_IR_CREATOR_CLASS(Split)::Evaluate(
-    const tvm::Array<tvm::Tensor>& inputs,
+    const tvm::Array<tvm::te::Tensor>& inputs,
     const Node& node,
     CodeGenContext&,
-    tvm::Array<tvm::Tensor>& outputs) {
+    tvm::Array<tvm::te::Tensor>& outputs) {
   ProtoHelperNodeContext ctx(node);
   OpNodeProtoHelper<ProtoHelperNodeContext> info(&ctx);
 
@@ -55,7 +55,7 @@ Status GENERIC_OP_IR_CREATOR_CLASS(Split)::Evaluate(
     }
   }
 
-  tvm::Array<tvm::Tensor> output_tensors = Split(inputs[0], ToTvmArray(split_sizes), axis, node.Name() + "_Split");
+  tvm::Array<tvm::te::Tensor> output_tensors = Split(inputs[0], ToTvmArray(split_sizes), axis, node.Name() + "_Split");
   for (size_t i = 0; i < node.OutputDefs().size(); ++i) {
     outputs.push_back(output_tensors[i]);
   }

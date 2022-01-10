@@ -3,40 +3,40 @@
 
 #pragma once
 #include <string>
-#include <tvm/tvm.h>
+#include <tvm/te/operation.h>
 
 namespace onnxruntime {
 namespace tvm_codegen {
 
-tvm::Tensor Add(const tvm::Tensor& lhs, const tvm::Tensor& rhs, const std::string& name = "add");
-tvm::Tensor Add(const tvm::Tensor& lhs, const tvm::Expr& rhs, const std::string& name = "add");
-tvm::Tensor Add(const tvm::Expr& lhs, const tvm::Tensor& rhs, const std::string& name = "add");
-tvm::Tensor Div(const tvm::Tensor& lhs, const tvm::Tensor& rhs, const std::string& name = "div");
-tvm::Tensor Div(const tvm::Tensor& lhs, const tvm::Expr& rhs, const std::string& name = "div");
-tvm::Tensor Div(const tvm::Expr& lhs, const tvm::Tensor& rhs, const std::string& name = "div");
-tvm::Tensor Equal(const tvm::Tensor& lhs, const tvm::Tensor& rhs, const std::string& name = "equal");
-tvm::Tensor Equal(const tvm::Tensor& lhs, const tvm::Expr& rhs, const std::string& name = "equal");
-tvm::Tensor Equal(const tvm::Expr& lhs, const tvm::Tensor& rhs, const std::string& name = "equal");
-tvm::Tensor Greater(const tvm::Tensor& lhs, const tvm::Tensor& rhs, const std::string& name = "greater");
-tvm::Tensor Greater(const tvm::Tensor& lhs, const tvm::Expr& rhs, const std::string& name = "greater");
-tvm::Tensor Greater(const tvm::Expr& lhs, const tvm::Tensor& rhs, const std::string& name = "greater");
-tvm::Tensor Less(const tvm::Tensor& lhs, const tvm::Tensor& rhs, const std::string& name = "less");
-tvm::Tensor Less(const tvm::Tensor& lhs, const tvm::Expr& rhs, const std::string& name = "less");
-tvm::Tensor Less(const tvm::Expr& lhs, const tvm::Tensor& rhs, const std::string& name = "less");
-tvm::Tensor Max(const tvm::Tensor& lhs, const tvm::Tensor& rhs, const std::string& name = "max");
-tvm::Tensor Max(const tvm::Tensor& lhs, const tvm::Expr& rhs, const std::string& name = "max");
-tvm::Tensor Max(const tvm::Expr& lhs, const tvm::Tensor& rhs, const std::string& name = "max");
-tvm::Tensor Min(const tvm::Tensor& lhs, const tvm::Tensor& rhs, const std::string& name = "min");
-tvm::Tensor Min(const tvm::Tensor& lhs, const tvm::Expr& rhs, const std::string& name = "min");
-tvm::Tensor Min(const tvm::Expr& lhs, const tvm::Tensor& rhs, const std::string& name = "min");
-tvm::Tensor Mul(const tvm::Tensor& lhs, const tvm::Tensor& rhs, const std::string& name = "mul");
-tvm::Tensor Mul(const tvm::Tensor& lhs, const tvm::Expr& rhs, const std::string& name = "mul");
-tvm::Tensor Mul(const tvm::Expr& lhs, const tvm::Tensor& rhs, const std::string& name = "mul");
-tvm::Tensor PRelu(const tvm::Tensor& lhs, const tvm::Tensor& rhs, const std::string& name = "prelu");
-tvm::Tensor PRelu(const tvm::Tensor& lhs, const tvm::Expr& rhs, const std::string& name = "prelu");
-tvm::Tensor Sub(const tvm::Tensor& lhs, const tvm::Tensor& rhs, const std::string& name = "sub");
-tvm::Tensor Sub(const tvm::Tensor& lhs, const tvm::Expr& rhs, const std::string& name = "sub");
-tvm::Tensor Sub(const tvm::Expr& lhs, const tvm::Tensor& rhs, const std::string& name = "sub");
+tvm::te::Tensor Add(const tvm::te::Tensor& lhs, const tvm::te::Tensor& rhs, const std::string& name = "add");
+tvm::te::Tensor Add(const tvm::te::Tensor& lhs, const  tvm::PrimExpr& rhs, const std::string& name = "add");
+tvm::te::Tensor Add(const  tvm::PrimExpr& lhs, const tvm::te::Tensor& rhs, const std::string& name = "add");
+tvm::te::Tensor Div(const tvm::te::Tensor& lhs, const tvm::te::Tensor& rhs, const std::string& name = "div");
+tvm::te::Tensor Div(const tvm::te::Tensor& lhs, const  tvm::PrimExpr& rhs, const std::string& name = "div");
+tvm::te::Tensor Div(const  tvm::PrimExpr& lhs, const tvm::te::Tensor& rhs, const std::string& name = "div");
+tvm::te::Tensor Equal(const tvm::te::Tensor& lhs, const tvm::te::Tensor& rhs, const std::string& name = "equal");
+tvm::te::Tensor Equal(const tvm::te::Tensor& lhs, const  tvm::PrimExpr& rhs, const std::string& name = "equal");
+tvm::te::Tensor Equal(const  tvm::PrimExpr& lhs, const tvm::te::Tensor& rhs, const std::string& name = "equal");
+tvm::te::Tensor Greater(const tvm::te::Tensor& lhs, const tvm::te::Tensor& rhs, const std::string& name = "greater");
+tvm::te::Tensor Greater(const tvm::te::Tensor& lhs, const  tvm::PrimExpr& rhs, const std::string& name = "greater");
+tvm::te::Tensor Greater(const  tvm::PrimExpr& lhs, const tvm::te::Tensor& rhs, const std::string& name = "greater");
+tvm::te::Tensor Less(const tvm::te::Tensor& lhs, const tvm::te::Tensor& rhs, const std::string& name = "less");
+tvm::te::Tensor Less(const tvm::te::Tensor& lhs, const  tvm::PrimExpr& rhs, const std::string& name = "less");
+tvm::te::Tensor Less(const  tvm::PrimExpr& lhs, const tvm::te::Tensor& rhs, const std::string& name = "less");
+tvm::te::Tensor Max(const tvm::te::Tensor& lhs, const tvm::te::Tensor& rhs, const std::string& name = "max");
+tvm::te::Tensor Max(const tvm::te::Tensor& lhs, const  tvm::PrimExpr& rhs, const std::string& name = "max");
+tvm::te::Tensor Max(const  tvm::PrimExpr& lhs, const tvm::te::Tensor& rhs, const std::string& name = "max");
+tvm::te::Tensor Min(const tvm::te::Tensor& lhs, const tvm::te::Tensor& rhs, const std::string& name = "min");
+tvm::te::Tensor Min(const tvm::te::Tensor& lhs, const  tvm::PrimExpr& rhs, const std::string& name = "min");
+tvm::te::Tensor Min(const  tvm::PrimExpr& lhs, const tvm::te::Tensor& rhs, const std::string& name = "min");
+tvm::te::Tensor Mul(const tvm::te::Tensor& lhs, const tvm::te::Tensor& rhs, const std::string& name = "mul");
+tvm::te::Tensor Mul(const tvm::te::Tensor& lhs, const  tvm::PrimExpr& rhs, const std::string& name = "mul");
+tvm::te::Tensor Mul(const  tvm::PrimExpr& lhs, const tvm::te::Tensor& rhs, const std::string& name = "mul");
+tvm::te::Tensor PRelu(const tvm::te::Tensor& lhs, const tvm::te::Tensor& rhs, const std::string& name = "prelu");
+tvm::te::Tensor PRelu(const tvm::te::Tensor& lhs, const  tvm::PrimExpr& rhs, const std::string& name = "prelu");
+tvm::te::Tensor Sub(const tvm::te::Tensor& lhs, const tvm::te::Tensor& rhs, const std::string& name = "sub");
+tvm::te::Tensor Sub(const tvm::te::Tensor& lhs, const  tvm::PrimExpr& rhs, const std::string& name = "sub");
+tvm::te::Tensor Sub(const  tvm::PrimExpr& lhs, const tvm::te::Tensor& rhs, const std::string& name = "sub");
 
 }  // namespace tvm_codegen
 }  // namespace onnxruntime

@@ -11,8 +11,8 @@
 #include "core/codegen/mti/mti_tvm_utils.h"
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
-#include <topi/detail/extern.h>
-#include <topi/transform.h>
+#include <tvm/topi/detail/extern.h>
+#include <tvm/topi/transform.h>
 
 namespace onnxruntime {
 namespace nuphar {

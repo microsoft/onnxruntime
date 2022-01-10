@@ -3,7 +3,7 @@
 
 #pragma once
 #include "core/codegen/passes/scheduler/tvm_scheduler.h"
-#include <tvm/tvm.h>
+#include <tvm/runtime/module.h>
 
 namespace onnxruntime {
 namespace nuphar {

@@ -4,14 +4,14 @@
 #include "core/codegen/mti/math/softmax.h"
 
 #include "core/codegen/mti/tensor/reshape_ops.h"
-#include <topi/nn/softmax.h>
+#include <tvm/topi/nn/softmax.h>
 
 namespace onnxruntime {
 namespace tvm_codegen {
 
-tvm::Tensor Softmax(const tvm::Tensor& input, int64_t axis, const std::string& name) {
-  tvm::Tensor flatten_t = Flatten(input, axis, "softmax_flatten");
-  return Reshape(topi::nn::softmax(flatten_t, 1, name), input->shape, "softmax_reshape");
+tvm::te::Tensor Softmax(const tvm::te::Tensor& input, int64_t axis, const std::string& name) {
+  tvm::te::Tensor flatten_t = Flatten(input, axis, "softmax_flatten");
+  return Reshape(tvm::topi::nn::softmax(flatten_t, 1, name), input->shape, "softmax_reshape");
 }
 
 }  // namespace tvm_codegen

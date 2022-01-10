@@ -33,7 +33,7 @@ SOFTWARE.
 
 #include "core/providers/nuphar/mti_x86/math/halide_ops.h"
 
-#include <topi/elemwise.h>
+#include <tvm/topi/elemwise.h>
 
 namespace onnxruntime {
 namespace nuphar {

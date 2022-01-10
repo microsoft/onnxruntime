@@ -13,7 +13,7 @@
 #include "core/providers/nuphar/compiler/nuphar_handle.h"
 
 #include <set>
-#include <tvm/tvm.h>
+#include <tvm/runtime/module.h>
 
 namespace onnxruntime {
 namespace nuphar {

@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include <tvm/tvm.h>
+#include <tvm/te/operation.h>
 #include <core/codegen/passes/scheduler/tvm_scheduler.h>
 
 namespace onnxruntime {
@@ -12,23 +12,23 @@ namespace tvm_codegen {
 // If it has no compute_root, Insert compute_root to tensor,
 // and record it to ctx.scheduled_tensors
 bool InsertRootSchedule(
-    const tvm::Tensor& tensor,
+    const tvm::te::Tensor& tensor,
     ScheduleContext& ctx);
 
 // Check the schedule of tensor
 // If it is not labeled as closure, lable it.
 bool InsertClosure(
-    const tvm::Tensor& tensor,
+    const tvm::te::Tensor& tensor,
     ScheduleContext& ctx);
 
 // Combination of InsertRootSchedule and InsertClosure
 bool InsertRootScheduleAndClosure(
-    const tvm::Tensor& tensor,
+    const tvm::te::Tensor& tensor,
     ScheduleContext& ctx);
 
 // Check precondition for vectorize schedule
 bool ShouldTryVectorization(
-    const tvm::Tensor& tensor,
+    const tvm::te::Tensor& tensor,
     ScheduleContext& ctx);
 
 // Check the schedule of tensor
@@ -36,7 +36,7 @@ bool ShouldTryVectorization(
 // Note TryVectorization has to use with compute_root.
 // Therefore, there is a safty check of tensor's schedule
 bool TryVectorization(
-    const tvm::Tensor& tensor,
+    const tvm::te::Tensor& tensor,
     int64_t natural_vector_size,
     ScheduleContext& ctx);
 
@@ -45,19 +45,19 @@ bool TryVectorization(
 // Note TryInlineSchedule cannot be used with compute_root.
 // Therefore, there is a safty check of tensor's schedule.
 bool TryInlineSchedule(
-    const tvm::Tensor& tensor,
+    const tvm::te::Tensor& tensor,
     ScheduleContext& ctx);
 
 // Check the schedule of tensor's inputs,
 // and call InsertRootSchedule for each of them
 bool InputRootSchedule(
-    const tvm::Tensor& tensor,
+    const tvm::te::Tensor& tensor,
     ScheduleContext& ctx);
 
 // Check the schedule of tensor's inputs,
 // and call InsertRootSchedule and TryVectorization for each of them
 bool InputRootScheduleWithVectorization(
-    const tvm::Tensor& tensor,
+    const tvm::te::Tensor& tensor,
     int64_t natural_vector_size,
     ScheduleContext& ctx);
 

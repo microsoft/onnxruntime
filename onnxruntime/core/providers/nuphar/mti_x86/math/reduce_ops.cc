@@ -8,7 +8,7 @@
 #include "core/codegen/mti/tensor/pad_ops.h"
 #include "core/codegen/mti/tensor/reshape_ops.h"
 #include "core/providers/nuphar/compiler/x86/scheduler/nuphar_scheduler.h"
-#include <topi/reduction.h>
+#include <tvm/topi/reduction.h>
 
 namespace onnxruntime {
 namespace nuphar {

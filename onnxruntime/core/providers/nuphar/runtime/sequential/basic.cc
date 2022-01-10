@@ -8,7 +8,7 @@
 #include "core/codegen/passes/utils/ort_tvm_utils.h"
 #include "core/framework/onnxruntime_typeinfo.h"
 #include "gsl/gsl"
-#include <tvm/tvm.h>
+#include <tvm/runtime/module.h>
 
 namespace onnxruntime {
 namespace nuphar {

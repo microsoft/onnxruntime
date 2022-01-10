@@ -9,8 +9,8 @@ namespace onnxruntime {
 namespace tvm_codegen {
 
 bool TVM_SCHEDULER_CLASS(Softmax, GenericOrtOpType)::Evaluate(
-    const tvm::Tensor& tensor,
-    const Node*,
+    const tvm::te::Tensor& tensor,
+    const onnxruntime::Node*,
     CodeGenContext&,
     ScheduleContext& ctx_sched) {
   // compute root the exp since it is reused more than once

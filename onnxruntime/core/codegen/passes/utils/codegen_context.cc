@@ -12,9 +12,9 @@ CodeGenContext::CodeGenContext(
     const codegen::CodeGenHandle* handle)
     : handle_(handle), unname_symbol_counter_(0) {}
 
-tvm::Var CodeGenContext::GetOrCreateDynamicDim(const std::string& name) {
+tvm::tir::Var CodeGenContext::GetOrCreateDynamicDim(const std::string& name) {
   if (dynamic_dims_.count(name) == 0)
-    dynamic_dims_.emplace(name, tvm::Var(name));
+    dynamic_dims_.emplace(name, tvm::tir::Var(name));
 
   return dynamic_dims_.at(name);
 }

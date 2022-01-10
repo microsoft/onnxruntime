@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include <tvm/tvm.h>
+#include <tvm/runtime/module.h>
 
 // TODO move this tvm_codegen
 

@@ -10,10 +10,10 @@
 namespace onnxruntime {
 namespace codegen {
 // Explicit instantiation for OpIRCreator
-template class CreatorBase<const tvm::Array<tvm::Tensor>&,
+template class CreatorBase<const tvm::Array<tvm::te::Tensor>&,
                            const Node&,
                            tvm_codegen::CodeGenContext&,
-                           tvm::Array<tvm::Tensor>&,
+                           tvm::Array<tvm::te::Tensor>&,
                            Status>;
 
 // Explicit instantiation for OpIRCreators' dispatcher

@@ -7,7 +7,7 @@
 #include "core/codegen/common/registry.h"
 #include "core/codegen/passes/utils/codegen_context.h"
 #include "core/graph/graph.h"
-#include <tvm/tvm.h>
+#include <tvm/te/operation.h>
 
 namespace onnxruntime {
 namespace tvm_codegen {
@@ -21,7 +21,7 @@ enum class TVMOpRuleType : int {
   NoRule,
 };
 
-const std::string& GetTVMOpRule(const tvm::Tensor& tensor);
+const std::string& GetTVMOpRule(const tvm::te::Tensor& tensor);
 const std::string& GetTVMOpRule(TVMOpRuleType rule);
 
 // These are current generic ScheduleType in tvm_codegen
@@ -35,23 +35,23 @@ enum class ScheduleType : int {
 
 // Data struct to bundle tvm::Schedule and scheduled tensor
 struct ScheduleContext {
-  ScheduleContext(const tvm::Array<tvm::Operation>& ops) {
-    schedule = tvm::create_schedule(ops);
+  ScheduleContext(const tvm::Array<tvm::te::Operation>& ops) {
+    schedule = tvm::te::create_schedule(ops);
   }
-  tvm::Schedule schedule;
-  std::map<const tvm::Node*, ScheduleType> scheduled_tensors;
+  tvm::te::Schedule schedule;
+  std::map<const tvm::runtime::Object*, ScheduleType> scheduled_tensors;
 };
 
-// Scheduler inserts a tvm::Schedule content to a tvm::Tensor
+// Scheduler inserts a tvm::Schedule content to a tvm::te::Tensor
 using Scheduler = codegen::CreatorBase<
-    const tvm::Tensor&,
-    const Node*,
+    const tvm::te::Tensor&,
+    const onnxruntime::Node*,
     tvm_codegen::CodeGenContext&,
     ScheduleContext&,
     bool>;
 
 // TVMScheduleDispatcher is the base dispatcher for TVM Schedule Builder
-// It checks whether a pair of {tvm::Tensor, Ort Node} satisfying a criteria (in Find)
+// It checks whether a pair of {tvm::te::Tensor, Ort Node} satisfying a criteria (in Find)
 // and dispatches a corresponding Scheduler.
 class TVMScheduleDispatcher : public codegen::DispatcherBase<Scheduler*> {
  public:
@@ -60,8 +60,8 @@ class TVMScheduleDispatcher : public codegen::DispatcherBase<Scheduler*> {
 
   virtual ~TVMScheduleDispatcher() = default;
 
-  virtual Scheduler* Find(const tvm::Tensor&,
-                          const Node*,
+  virtual Scheduler* Find(const tvm::te::Tensor&,
+                          const onnxruntime::Node*,
                           tvm_codegen::CodeGenContext&) = 0;
 
  private:
@@ -79,8 +79,8 @@ class TVMScheduleDispatcher : public codegen::DispatcherBase<Scheduler*> {
     TVM##TYPE##Schedulers(const std::string& name)                                    \
         : TVMScheduleDispatcher(name) {}                                              \
     ~TVM##TYPE##Schedulers() = default;                                               \
-    tvm_codegen::Scheduler* Find(const tvm::Tensor&,                                  \
-                                 const Node*,                                         \
+    tvm_codegen::Scheduler* Find(const tvm::te::Tensor&,                              \
+                                 const onnxruntime::Node*,                            \
                                  tvm_codegen::CodeGenContext&) override;              \
                                                                                       \
    private:                                                                           \
@@ -102,8 +102,8 @@ using TVMScheduleRegistry = codegen::RegistryBase<Scheduler>;
 // Macro declares TVM scheduler class
 #define DECLARE_TVM_SCHEDULER_CLASS(OP, PRETFIX)       \
   DECLARE_CREATOR_CLASS(OP, PRETFIX##Scheduler,        \
-                        const tvm::Tensor&,            \
-                        const Node*,                   \
+                        const tvm::te::Tensor&,            \
+                        const onnxruntime::Node*,                   \
                         tvm_codegen::CodeGenContext&,  \
                         tvm_codegen::ScheduleContext&, \
                         bool)

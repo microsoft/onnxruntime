@@ -6,7 +6,7 @@
 #include "core/codegen/common/dispatcher.h"
 #include "core/codegen/common/registry.h"
 #include "core/graph/graph.h"
-#include <tvm/tvm.h>
+#include <tvm/te/operation.h>
 
 namespace onnxruntime {
 namespace tvm_codegen {
@@ -15,10 +15,10 @@ class CodeGenContext;
 
 // OpIRCreator lowers an Ort Node to its corresponding TVM IRs
 using OpIRCreator = codegen::CreatorBase<
-    const tvm::Array<tvm::Tensor>&,
+    const tvm::Array<tvm::te::Tensor>&,
     const Node&,
     CodeGenContext&,
-    tvm::Array<tvm::Tensor>&,
+    tvm::Array<tvm::te::Tensor>&,
     Status>;
 
 // OpIRDispatcher is the base dispatcher for TVM IR Builder
@@ -66,10 +66,10 @@ using OpIRRegistry = codegen::RegistryBase<OpIRCreator>;
 // Macro declares an OpIRCreator
 #define DECLARE_OP_IR_CREATOR_CLASS(OP, PREFIX)         \
   DECLARE_CREATOR_CLASS(OP, PREFIX##IRCreator,          \
-                        const tvm::Array<tvm::Tensor>&, \
+                        const tvm::Array<tvm::te::Tensor>&, \
                         const Node&,                    \
                         tvm_codegen::CodeGenContext&,   \
-                        tvm::Array<tvm::Tensor>&,       \
+                        tvm::Array<tvm::te::Tensor>&,       \
                         Status)
 
 // Macro returns an OpIRCreator's name  with prefix

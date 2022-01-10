@@ -10,9 +10,9 @@ namespace tvm_codegen {
 
 // TVMScheduleBuilder contains all applicable TVM scheduler passes.
 // Scheduler passes are stored in multiple dispatchers
-// that check different conditions of a tvm::Tensor.
+// that check different conditions of a tvm::te::Tensor.
 
-// If a tvm::Tensor satisfies more than one TVM scheduler passes,
+// If a tvm::te::Tensor satisfies more than one TVM scheduler passes,
 // the first dispatched pass will be applied.
 
 class TVMScheduleBuilder {
@@ -24,8 +24,8 @@ class TVMScheduleBuilder {
   void DumpAllSchedulers() const;
 
   Status Evaluate(
-      const tvm::Tensor& tensor,
-      const Node* node,
+      const tvm::te::Tensor& tensor,
+      const onnxruntime::Node* node,
       CodeGenContext& ctx,
       ScheduleContext& sched);
 

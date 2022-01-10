@@ -11,7 +11,7 @@
 #include "core/providers/nuphar/compiler/x86/scheduler/tensorize/intrin_gemv_ll_extern.h"
 #include "core/providers/nuphar/compiler/x86/scheduler/tensorize/intrin_gemv_ll_ir.h"
 #include "core/providers/nuphar/compiler/x86/x86_target_info.h"
-#include <tvm/tvm.h>
+#include <tvm/runtime/module.h>
 #include <tvm/ir_pass.h>
 
 namespace onnxruntime {

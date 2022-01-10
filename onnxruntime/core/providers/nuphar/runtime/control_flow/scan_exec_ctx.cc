@@ -10,7 +10,7 @@
 #include "core/providers/nuphar/runtime/utils.h"
 
 #include "gsl/gsl"
-#include <tvm/tvm.h>
+#include <tvm/runtime/module.h>
 
 namespace onnxruntime {
 namespace nuphar {

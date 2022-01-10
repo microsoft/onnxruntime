@@ -9,7 +9,7 @@
 #include "core/providers/common.h"
 #include "gsl/gsl"
 
-#include <topi/detail/extern.h>
+#include <tvm/topi/detail/extern.h>
 
 namespace onnxruntime {
 namespace tvm_codegen {
@@ -48,33 +48,33 @@ DLDataType ToTvmDLDataType(MLDataType ml_type) {
   }
 }
 
-tvm::Type ToTvmType(ONNX_NAMESPACE::TensorProto_DataType proto_type) {
+tvm::DataType ToTvmType(ONNX_NAMESPACE::TensorProto_DataType proto_type) {
   switch (proto_type) {
     // Note that bool is uint1 in tvm, but uint8 in ONNX, so it always require special handling
     //case ONNX_NAMESPACE::TensorProto_DataType_BOOL:
     //  return tvm::UInt(1); /*break;*/
     case ONNX_NAMESPACE::TensorProto_DataType_INT16:
-      return tvm::Int(16); /*break;*/
+      return tvm::DataType::Int(16); /*break;*/
     case ONNX_NAMESPACE::TensorProto_DataType_INT32:
-      return tvm::Int(32); /*break;*/
+      return tvm::DataType::Int(32); /*break;*/
     case ONNX_NAMESPACE::TensorProto_DataType_INT64:
-      return tvm::Int(64); /*break;*/
+      return tvm::DataType::Int(64); /*break;*/
     case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
-      return tvm::UInt(8); /*break;*/
+      return tvm::DataType::UInt(8); /*break;*/
     case ONNX_NAMESPACE::TensorProto_DataType_UINT16:
-      return tvm::UInt(16); /*break;*/
+      return tvm::DataType::UInt(16); /*break;*/
     case ONNX_NAMESPACE::TensorProto_DataType_UINT32:
-      return tvm::UInt(32); /*break;*/
+      return tvm::DataType::UInt(32); /*break;*/
     case ONNX_NAMESPACE::TensorProto_DataType_UINT64:
-      return tvm::UInt(64); /*break;*/
+      return tvm::DataType::UInt(64); /*break;*/
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
-      return tvm::Float(32); /*break;*/
+      return tvm::DataType::Float(32); /*break;*/
     case ONNX_NAMESPACE::TensorProto_DataType_DOUBLE:
-      return tvm::Float(64); /*break;*/
+      return tvm::DataType::Float(64); /*break;*/
     case ONNX_NAMESPACE::TensorProto_DataType_INT8:
-      return tvm::Int(8); /*break;*/
+      return tvm::DataType::Int(8); /*break;*/
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
-      return tvm::Float(16); /*break;*/
+      return tvm::DataType::Float(16); /*break;*/
     case ONNX_NAMESPACE::TensorProto_DataType_STRING:
       ORT_THROW("Casting to and from strings is not supported yet."); /*break;*/
     case ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED:
@@ -84,23 +84,23 @@ tvm::Type ToTvmType(ONNX_NAMESPACE::TensorProto_DataType proto_type) {
   }
 }
 
-tvm::Array<tvm::Expr> ShapeToTvmArray(const NodeArg* def, CodeGenContext& ctx) {
+tvm::Array<tvm::PrimExpr> ShapeToTvmArray(const NodeArg* def, CodeGenContext& ctx) {
   ORT_ENFORCE(nullptr != def);
   const ONNX_NAMESPACE::TensorShapeProto* shape_proto = def->Shape();
   ORT_ENFORCE(nullptr != shape_proto);
 
-  tvm::Array<tvm::Expr> arr;
+  tvm::Array<tvm::PrimExpr> arr;
   for (int i = 0; i < shape_proto->dim_size(); ++i) {
     arr.push_back(ShapeDimToTvmDim(shape_proto->dim(i), ctx));
   }
   return arr;
 }
 
-tvm::Expr ShapeDimToTvmDim(const ONNX_NAMESPACE::TensorShapeProto_Dimension& dim, CodeGenContext& ctx) {
+ tvm::PrimExpr ShapeDimToTvmDim(const ONNX_NAMESPACE::TensorShapeProto_Dimension& dim, CodeGenContext& ctx) {
   if (utils::HasDimParam(dim)) {
     return ctx.GetOrCreateDynamicDim(dim.dim_param());
   } else if (utils::HasDimValue(dim)) {
-    return tvm::Expr(gsl::narrow_cast<int32_t>(dim.dim_value()));
+    return  tvm::PrimExpr(gsl::narrow_cast<int32_t>(dim.dim_value()));
   }
   return ctx.GetOrCreateDynamicDim(ctx.CreateUnnamedSymbol());
 }
@@ -148,7 +148,7 @@ TVM_REGISTER_GLOBAL("tvm.contrib.onnxruntime.profile_event")
       }
     });
 
-tvm::Tensor ProfileBegin(tvm::Tensor X, const std::string& event_name) {
+tvm::te::Tensor ProfileBegin(tvm::te::Tensor X, const std::string& event_name) {
   size_t event_id;
   if (g_codegen_profiler_event_ids.count(event_name) == 0) {
     event_id = g_codegen_profiler_event_ids.size();
@@ -159,30 +159,30 @@ tvm::Tensor ProfileBegin(tvm::Tensor X, const std::string& event_name) {
   }
   g_codegen_profiler_event_ids[event_name] = {true, event_id};
   g_codegen_profiler_events[event_id].first = event_name;
-  return topi::detail::make_extern(
+  return tvm::topi::detail::make_extern(
       {X->shape}, {X->dtype}, {X},
       [&](tvm::Array<tvm::Buffer> ins, tvm::Array<tvm::Buffer> outs) {
-        return topi::detail::call_packed({tvm::Expr("tvm.contrib.onnxruntime.profile_event"),
-                                          topi::detail::pack_buffer(ins[0]),
-                                          topi::detail::pack_buffer(outs[0]),
+        return tvm::topi::detail::call_packed({ tvm::PrimExpr("tvm.contrib.onnxruntime.profile_event"),
+                                          tvm::topi::detail::pack_buffer(ins[0]),
+                                          tvm::topi::detail::pack_buffer(outs[0]),
                                           gsl::narrow<int>(event_id),
                                           true});
       },
       event_name + "_begin", "", {})[0];
 }
 
-tvm::Tensor ProfileEnd(tvm::Tensor X, const std::string& event_name) {
+tvm::te::Tensor ProfileEnd(tvm::te::Tensor X, const std::string& event_name) {
   ORT_ENFORCE(g_codegen_profiler_event_ids.at(event_name).in_bracket);
   g_codegen_profiler_event_ids.at(event_name).in_bracket = false;
   size_t event_id = g_codegen_profiler_event_ids.at(event_name).id;
   ORT_ENFORCE(event_id < g_codegen_profiler_events.size());
   ORT_ENFORCE(g_codegen_profiler_events[event_id].first == event_name);
-  return topi::detail::make_extern(
+  return tvm::topi::detail::make_extern(
       {X->shape}, {X->dtype}, {X},
       [&](tvm::Array<tvm::Buffer> ins, tvm::Array<tvm::Buffer> outs) {
-        return topi::detail::call_packed({tvm::Expr("tvm.contrib.onnxruntime.profile_event"),
-                                          topi::detail::pack_buffer(ins[0]),
-                                          topi::detail::pack_buffer(outs[0]),
+        return tvm::topi::detail::call_packed({ tvm::PrimExpr("tvm.contrib.onnxruntime.profile_event"),
+                                          tvm::topi::detail::pack_buffer(ins[0]),
+                                          tvm::topi::detail::pack_buffer(outs[0]),
                                           gsl::narrow<int>(event_id),
                                           false});
       },

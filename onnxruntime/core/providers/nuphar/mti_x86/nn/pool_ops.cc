@@ -6,7 +6,7 @@
 #include "core/codegen/mti/mti_tvm_utils.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/providers/cpu/nn/pool_attributes.h"
-#include <topi/detail/extern.h>
+#include <tvm/topi/detail/extern.h>
 
 namespace onnxruntime {
 namespace nuphar {

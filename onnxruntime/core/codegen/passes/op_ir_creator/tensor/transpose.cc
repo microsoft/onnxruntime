@@ -12,10 +12,10 @@ namespace tvm_codegen {
 
 // Evaluate of Transpose OpIRCreator
 Status GENERIC_OP_IR_CREATOR_CLASS(Transpose)::Evaluate(
-    const tvm::Array<tvm::Tensor>& inputs,
+    const tvm::Array<tvm::te::Tensor>& inputs,
     const Node& node,
     CodeGenContext&,
-    tvm::Array<tvm::Tensor>& outputs) {
+    tvm::Array<tvm::te::Tensor>& outputs) {
   ProtoHelperNodeContext ctx(node);
   OpNodeProtoHelper<ProtoHelperNodeContext> attrs(&ctx);
 
@@ -39,7 +39,7 @@ Status GENERIC_OP_IR_CREATOR_CLASS(Transpose)::Evaluate(
     perm = &permute;
   }
 
-  tvm::Tensor Y = Transpose(inputs[0], ToTvmArrayInt(*perm), node.Name() + "_Transpose");
+  tvm::te::Tensor Y = Transpose(inputs[0], ToTvmArrayInt(*perm), node.Name() + "_Transpose");
   outputs.push_back(Y);
   return Status::OK();
 }

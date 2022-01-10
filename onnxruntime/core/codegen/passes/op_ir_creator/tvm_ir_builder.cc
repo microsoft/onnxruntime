@@ -48,10 +48,10 @@ void TVMIRBuilder::DumpAllOpIRCreators() const {
 // Please adjust registration order and dispatcher in TVMIRBuilder
 // to make sure the proper OpIRCreator is called.
 Status TVMIRBuilder::Evaluate(
-    const tvm::Array<tvm::Tensor>& inputs,
+    const tvm::Array<tvm::te::Tensor>& inputs,
     const Node& node,
     CodeGenContext& ctx_codegen,
-    tvm::Array<tvm::Tensor>& outputs) {
+    tvm::Array<tvm::te::Tensor>& outputs) {
   OpIRCreator* candidate = nullptr;
   for (auto& d : dispatchers_) {
     candidate = d->Find(node);

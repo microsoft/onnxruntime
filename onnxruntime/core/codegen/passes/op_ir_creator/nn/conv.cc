@@ -14,10 +14,10 @@ namespace onnxruntime {
 namespace tvm_codegen {
 
 Status GENERIC_OP_IR_CREATOR_CLASS(Conv)::Evaluate(
-    const tvm::Array<tvm::Tensor>& inputs,
+    const tvm::Array<tvm::te::Tensor>& inputs,
     const Node& node,
     CodeGenContext& ctx_codegen,
-    tvm::Array<tvm::Tensor>& outputs) {
+    tvm::Array<tvm::te::Tensor>& outputs) {
   ProtoHelperNodeContext ctx(node);
   OpNodeProtoHelper<ProtoHelperNodeContext> info(&ctx);
 
@@ -63,11 +63,11 @@ Status GENERIC_OP_IR_CREATOR_CLASS(Conv)::Evaluate(
   }
 
   // Inputs
-  tvm::Tensor X = inputs[0];
-  tvm::Tensor W = inputs[1];
+  tvm::te::Tensor X = inputs[0];
+  tvm::te::Tensor W = inputs[1];
   // Outputs
-  tvm::Tensor Y;
-  tvm::Array<tvm::Expr> Y_shape = ShapeToTvmArray(node.OutputDefs()[0], ctx_codegen);
+  tvm::te::Tensor Y;
+  tvm::Array<tvm::PrimExpr> Y_shape = ShapeToTvmArray(node.OutputDefs()[0], ctx_codegen);
 
   // 1-D convolution
   if (kernel_shape.size() == 1) {
@@ -83,7 +83,7 @@ Status GENERIC_OP_IR_CREATOR_CLASS(Conv)::Evaluate(
       ORT_ENFORCE(channel_out % group == 0);
 
       int64_t cout_group = channel_out / group;
-      Y_shape.Set(1, Y_shape[1] / gsl::narrow_cast<int>(group));
+      Y_shape.Set(1, tvm::floordiv(Y_shape[1], gsl::narrow_cast<int>(group)));
 
       tvm::Array<tvm::Integer> split_index0;
       tvm::Array<tvm::Integer> split_index1;
@@ -98,7 +98,7 @@ Status GENERIC_OP_IR_CREATOR_CLASS(Conv)::Evaluate(
 
       // FIXME: This will trigger a llvm buffer overflow when group is too large
       // TODO: fix this change it to batched gemm/conv
-      tvm::Array<tvm::Tensor> output_tensors;
+      tvm::Array<tvm::te::Tensor> output_tensors;
       for (int i = 0; i < group; i++) {
         auto output_tensor = Conv2D(input_groups[i],
                                     weight_groups[i],
@@ -115,10 +115,10 @@ Status GENERIC_OP_IR_CREATOR_CLASS(Conv)::Evaluate(
   // Add bias if provided
   // Support skipped trailing inputs
   if (node.InputDefs().size() > 2 && node.InputDefs()[2]->Exists()) {
-    tvm::Tensor B = inputs[2];
-    Y = tvm::compute(
+    tvm::te::Tensor B = inputs[2];
+    Y = tvm::te::compute(
         Y_shape,
-        [&](const tvm::Array<tvm::Var>& indices) {
+        [&](const tvm::Array<tvm::tir::Var>& indices) {
           return Y(indices) + B(indices[1]);
         });
   }

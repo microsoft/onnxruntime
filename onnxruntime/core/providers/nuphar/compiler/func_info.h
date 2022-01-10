@@ -10,7 +10,7 @@
 #include "core/providers/nuphar/common/nuphar_subgraph.h"
 #include "core/providers/nuphar/compiler/nuphar_codegen_ctx.h"
 
-#include <tvm/tvm.h>
+#include <tvm/runtime/module.h>
 #include <tvm/build_module.h>
 #include <type_traits>
 

@@ -11,16 +11,16 @@ namespace tvm_codegen {
 
 // Evaluate of Gemm OpIRCreator
 Status GENERIC_OP_IR_CREATOR_CLASS(Gemm)::Evaluate(
-    const tvm::Array<tvm::Tensor>& inputs,
+    const tvm::Array<tvm::te::Tensor>& inputs,
     const Node& node,
     CodeGenContext& /*ctx_codegen*/,
-    tvm::Array<tvm::Tensor>& outputs) {
+    tvm::Array<tvm::te::Tensor>& outputs) {
   ProtoHelperNodeContext ctx(node);
   OpNodeProtoHelper<ProtoHelperNodeContext> attrs(&ctx);
 
-  tvm::Tensor A = inputs[0];
-  tvm::Tensor B = inputs[1];
-  tvm::Tensor C = inputs[2];
+  tvm::te::Tensor A = inputs[0];
+  tvm::te::Tensor B = inputs[1];
+  tvm::te::Tensor C = inputs[2];
 
   int64_t trans_A, trans_B;
   ORT_RETURN_IF_ERROR(attrs.GetAttr<int64_t>("transA", &trans_A));
@@ -30,7 +30,7 @@ Status GENERIC_OP_IR_CREATOR_CLASS(Gemm)::Evaluate(
   ORT_ENFORCE(attrs.GetAttr<float>("alpha", &alpha).IsOK());
   ORT_ENFORCE(attrs.GetAttr<float>("beta", &beta).IsOK());
 
-  tvm::Tensor Y = Gemm(A, B, C, trans_A != 0, trans_B != 0, alpha, beta, node.Name() + "_Gemm");
+  tvm::te::Tensor Y = Gemm(A, B, C, trans_A != 0, trans_B != 0, alpha, beta, node.Name() + "_Gemm");
   outputs.push_back(Y);
   return Status::OK();
 }

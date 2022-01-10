@@ -6,17 +6,17 @@
 namespace onnxruntime {
 namespace tvm_codegen {
 
-tvm::Tensor Shape(const tvm::Tensor& X, const std::string& name) {
+tvm::te::Tensor Shape(const tvm::te::Tensor& X, const std::string& name) {
   int ndim = static_cast<int>(X->shape.size());
-  tvm::Array<tvm::Expr> out_shape{ndim};
-  return tvm::compute(
-      out_shape, [&](const tvm::Array<tvm::Var>& indices) {
+  tvm::Array<tvm::PrimExpr> out_shape{ndim};
+  return tvm::te::compute(
+      out_shape, [&](const tvm::Array<tvm::tir::Var>& indices) {
         auto idx = indices[0];
-        tvm::Expr ret = 0;
+         tvm::PrimExpr ret = 0;
         for (int i = 0; i < ndim; ++i) {
-          ret = tvm::ir::Select::make(idx == i, X->shape[i], ret);
+          ret = tvm::tir::Select(idx == i, X->shape[i], ret);
         }
-        return tvm::cast(HalideIR::Int(64), ret);
+        return tvm::cast(tvm::DataType::Int(64), ret);
       },
       name);
 }

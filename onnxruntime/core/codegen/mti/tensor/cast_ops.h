@@ -3,13 +3,13 @@
 
 #pragma once
 #include <string>
-#include <tvm/tvm.h>
+#include <tvm/te/operation.h>
 
 namespace onnxruntime {
 namespace tvm_codegen {
 
-tvm::Tensor Cast(const tvm::Tensor& X, tvm::Type type, const std::string& name = "cast");
-tvm::Tensor CastToUInt8Bool(const tvm::Tensor& X, const std::string& name = "cast_uint8_bool");
+tvm::te::Tensor CastTensor(const tvm::te::Tensor& X, tvm::DataType type, const std::string& name = "cast");
+tvm::te::Tensor CastTensorToUInt8Bool(const tvm::te::Tensor& X, const std::string& name = "cast_uint8_bool");
 
 }  // namespace tvm_codegen
 }  // namespace onnxruntime

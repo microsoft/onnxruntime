@@ -3,14 +3,14 @@
 
 #pragma once
 #include <string>
-#include <tvm/tvm.h>
+#include <tvm/te/operation.h>
 
 namespace onnxruntime {
 namespace tvm_codegen {
 
-tvm::Tensor Where(const tvm::Tensor& B,
-                  const tvm::Tensor& X,
-                  const tvm::Tensor& Y,
+tvm::te::Tensor Where(const tvm::te::Tensor& B,
+                  const tvm::te::Tensor& X,
+                  const tvm::te::Tensor& Y,
                   const std::string& name = "where");
 
 }  // namespace tvm_codegen

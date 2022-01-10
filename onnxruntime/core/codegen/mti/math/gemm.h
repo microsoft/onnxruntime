@@ -3,12 +3,12 @@
 
 #pragma once
 #include <string>
-#include <tvm/tvm.h>
+#include <tvm/te/operation.h>
 
 namespace onnxruntime {
 namespace tvm_codegen {
 
-tvm::Tensor Gemm(const tvm::Tensor& p_A, const tvm::Tensor& p_B, const tvm::Tensor& p_C,
+tvm::te::Tensor Gemm(const tvm::te::Tensor& p_A, const tvm::te::Tensor& p_B, const tvm::te::Tensor& p_C,
                  bool trans_A, bool trans_B, float alpha, float beta,
                  const std::string& name = "gemm");
 

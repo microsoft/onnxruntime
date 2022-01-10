@@ -12,10 +12,10 @@ namespace tvm_codegen {
 
 // Evaluate of Cast OpIRCreator
 Status GENERIC_OP_IR_CREATOR_CLASS(Cast)::Evaluate(
-    const tvm::Array<tvm::Tensor>& inputs,
+    const tvm::Array<tvm::te::Tensor>& inputs,
     const Node& node,
     CodeGenContext&,
-    tvm::Array<tvm::Tensor>& outputs) {
+    tvm::Array<tvm::te::Tensor>& outputs) {
   ProtoHelperNodeContext ctx(node);
   OpNodeProtoHelper<ProtoHelperNodeContext> attrs(&ctx);
 
@@ -23,13 +23,13 @@ Status GENERIC_OP_IR_CREATOR_CLASS(Cast)::Evaluate(
   ORT_RETURN_IF_ERROR(attrs.GetAttr<int64_t>("to", &to));
   auto to_type_proto = gsl::narrow_cast<ONNX_NAMESPACE::TensorProto_DataType>(to);
 
-  tvm::Tensor X = inputs[0];
-  tvm::Tensor Y;
+  tvm::te::Tensor X = inputs[0];
+  tvm::te::Tensor Y;
   if (to_type_proto == ONNX_NAMESPACE::TensorProto_DataType_BOOL) {
     // special case for bool as ONNX bool is uint8, while in tvm it's uint1
-    Y = CastToUInt8Bool(X, node.Name() + "_Cast");
+    Y = CastTensorToUInt8Bool(X, node.Name() + "_Cast");
   } else {
-    Y = Cast(X, ToTvmType(to_type_proto), node.Name() + "_Cast");
+    Y = CastTensor(X, ToTvmType(to_type_proto), node.Name() + "_Cast");
   }
 
   outputs.push_back(Y);

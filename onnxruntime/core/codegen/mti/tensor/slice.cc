@@ -6,8 +6,7 @@
 #include "core/codegen/mti/mti_tvm_utils.h"
 #include <climits>
 #include <gsl/gsl>
-#include <topi/transform.h>
-#include <tvm/ir_pass.h>
+#include <tvm/topi/transform.h>
 
 namespace onnxruntime {
 namespace tvm_codegen {
@@ -15,21 +14,22 @@ namespace tvm_codegen {
 // local constexpr for INT_MAX
 constexpr int64_t max_range = INT_MAX;
 
-tvm::Expr position(const tvm::Expr& dim, const tvm::Integer& offset, bool allow_out_of_bound = false) {
+ tvm::PrimExpr position(const  tvm::PrimExpr& dim, const tvm::Integer& offset, bool allow_out_of_bound = false) {
   if (offset->value >= max_range) {
     return allow_out_of_bound ? dim : dim - 1;
   } else if (offset->value <= -max_range) {
-    return tvm::make_const(HalideIR::Int(32), allow_out_of_bound ? -1 : 0);
+    return tvm::tir::make_const(tvm::DataType::Int(32), allow_out_of_bound ? -1 : 0);
   } else {
+    tvm::arith::Analyzer analyzer;
     if (offset->value >= 0) {
-      return tvm::ir::Simplify(tvm::ir::Min::make(offset, dim + (allow_out_of_bound ? 0 : -1)));
+      return analyzer.Simplify(tvm::tir::Min(offset, dim + (allow_out_of_bound ? 0 : -1)));
     } else {
-      return tvm::ir::Simplify(dim + tvm::ir::Max::make(offset, -dim + (allow_out_of_bound ? -1 : 0)));
+      return analyzer.Simplify(dim + tvm::tir::Max(offset, -dim + (allow_out_of_bound ? -1 : 0)));
     }
   }
 }
 
-tvm::Tensor Slice(const tvm::Tensor& X,
+tvm::te::Tensor Slice(const tvm::te::Tensor& X,
                   const std::vector<int64_t>& starts,
                   const std::vector<int64_t>& ends,
                   const std::vector<int64_t>& axes1,
@@ -44,16 +44,17 @@ tvm::Tensor Slice(const tvm::Tensor& X,
     axes.push_back(HandleNegativeAxis(i, X->shape.size()));
   }
 
-  tvm::Array<tvm::Expr> output_shape;
+  tvm::Array<tvm::PrimExpr> output_shape;
   bool empty = false;
   for (int64_t i = 0; i < gsl::narrow<int64_t>(X->shape.size()); ++i) {
     auto axes_iter = std::find(axes.begin(), axes.end(), i);
     if (axes_iter != axes.end()) {
       auto axis = axes_iter - axes.begin();
-      tvm::Expr start = position(X->shape[i], starts[axis]);
-      tvm::Expr end = position(X->shape[i], ends[axis], /*allow_out_of_bound*/ true);
-      auto dim = tvm::ir::Simplify((end - start + tvm::Integer(steps[axis] + (steps[axis] < 0 ? 1 : -1))) / tvm::Integer(steps[axis]));
-      auto int_dim = tvm::as_const_int(dim);
+      tvm::PrimExpr start = position(X->shape[i], starts[axis]);
+      tvm::PrimExpr end = position(X->shape[i], ends[axis], /*allow_out_of_bound*/ true);
+      tvm::arith::Analyzer analyzer;
+      auto dim = analyzer.Simplify(tvm::floordiv((end - start + tvm::Integer(steps[axis] + (steps[axis] < 0 ? 1 : -1))), tvm::Integer(steps[axis])));
+      auto int_dim = tvm::tir::as_const_int(dim);
       if (int_dim && *int_dim <= 0) {
         output_shape.push_back(0);
         empty = true;
@@ -69,15 +70,16 @@ tvm::Tensor Slice(const tvm::Tensor& X,
     return MakeZeroTensor(output_shape, X->dtype, name);
   }
 
-  return tvm::compute(
+  return tvm::te::compute(
       output_shape,
-      [&](const tvm::Array<tvm::Var>& ovars) {
-        tvm::Array<tvm::Expr> ivars;
+      [&](const tvm::Array<tvm::tir::Var>& ovars) {
+        tvm::Array<tvm::PrimExpr> ivars;
+        tvm::arith::Analyzer analyzer;
         for (size_t i = 0; i < X->shape.size(); ++i) {
           auto axes_iter = std::find(axes.begin(), axes.end(), i);
           if (axes_iter != axes.end()) {
             auto axis = axes_iter - axes.begin();
-            ivars.push_back(tvm::ir::Simplify(ovars[i] * tvm::Integer(steps[axis]) + position(X->shape[i], starts[axis])));
+            ivars.push_back(analyzer.Simplify(ovars[i] * tvm::Integer(steps[axis]) + position(X->shape[i], starts[axis])));
           } else {
             ivars.push_back(ovars[i]);
           }

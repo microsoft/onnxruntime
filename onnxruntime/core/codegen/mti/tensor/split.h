@@ -3,20 +3,20 @@
 
 #pragma once
 #include <string>
-#include <tvm/tvm.h>
+#include <tvm/te/operation.h>
 
 namespace onnxruntime {
 namespace tvm_codegen {
 
 // ONNX Split semantics
-tvm::Array<tvm::Tensor> Split(const tvm::Tensor& X,
-                              const tvm::Array<tvm::Expr>& split_sizes,
+tvm::Array<tvm::te::Tensor> Split(const tvm::te::Tensor& X,
+                              const tvm::Array<tvm::PrimExpr>& split_sizes,
                               int64_t axis,
                               const std::string& name = "split");
 
 // Another common Split interface
 // Split with chunck indices
-tvm::Array<tvm::Tensor> SplitWithIndices(const tvm::Tensor& X,
+tvm::Array<tvm::te::Tensor> SplitWithIndices(const tvm::te::Tensor& X,
                                          const tvm::Array<tvm::Integer>& split_sizes,
                                          int64_t axis,
                                          const std::string& name = "split_with_indices");

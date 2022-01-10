@@ -11,19 +11,19 @@
 namespace onnxruntime {
 namespace tvm_codegen {
 
-static tvm::Tensor CreateTVMPlaceholder(
+static tvm::te::Tensor CreateTVMPlaceholder(
     const std::string& name,
-    HalideIR::Type type,
+    tvm::DataType type,
     int dim) {
-  tvm::Array<tvm::Expr> shape;
+  tvm::Array<tvm::PrimExpr> shape;
   if (dim > 0) {
     for (int i = 0; i < dim; ++i) {
-      shape.push_back(tvm::Var(name + "_v" + std::to_string(i)));
+      shape.push_back(tvm::tir::Var(name + "_v" + std::to_string(i)));
     }
   } else {
     shape.push_back(1);
   }
-  return tvm::placeholder(shape, type, name + "_placeholder");
+  return tvm::te::placeholder(shape, type, name + "_placeholder");
 }
 
 const std::string WeightLayout::GetKey(
@@ -52,21 +52,21 @@ const std::string& WeightLayout::Name() const {
   return name_;
 }
 
-void WeightLayout::CreateLayoutMarshallingTVMOp(tvm::Array<tvm::Tensor>& inputs,
-                                                tvm::Array<tvm::Tensor>& outputs) const {
-  HalideIR::Type halide_type = ToTvmType(proto_type_);
+void WeightLayout::CreateLayoutMarshallingTVMOp(tvm::Array<tvm::te::Tensor>& inputs,
+                                                tvm::Array<tvm::te::Tensor>& outputs) const {
+  tvm::DataType halide_type = ToTvmType(proto_type_);
 
-  tvm::Tensor placeholder = CreateTVMPlaceholder(name_, halide_type, input_dim_);
+  tvm::te::Tensor placeholder = CreateTVMPlaceholder(name_, halide_type, input_dim_);
   inputs.push_back(placeholder);
 
-  tvm::Array<tvm::Expr> new_shape = ToActualShape(placeholder);
+  tvm::Array<tvm::PrimExpr> new_shape = ToActualShape(placeholder);
   CoordTransFunc new_coord_to_old_coord_func = ToNominal(placeholder);
-  tvm::Expr pad_zero_expr = tvm::make_const(halide_type, pad_zero_);
+   tvm::PrimExpr pad_zero_expr = tvm::tir::make_const(halide_type, pad_zero_);
 
-  tvm::Tensor output = tvm::compute(
+  tvm::te::Tensor output = tvm::te::compute(
       new_shape,
-      [&](const tvm::Array<tvm::Var>& output_coord) {
-        tvm::Array<tvm::Expr> output_coord1;
+      [&](const tvm::Array<tvm::tir::Var>& output_coord) {
+        tvm::Array<tvm::PrimExpr> output_coord1;
         for (const auto& coord : output_coord)
           output_coord1.push_back(coord);
         auto input_coord = new_coord_to_old_coord_func(output_coord1);

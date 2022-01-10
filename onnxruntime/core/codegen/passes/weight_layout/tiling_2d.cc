@@ -27,22 +27,22 @@ WeightLayoutTiling2D::WeightLayoutTiling2D(
           proto_type, 2, 0.0f),
       vector_width_(vector_width) {}
 
-CoordTransFunc WeightLayoutTiling2D::ToActual(const tvm::Tensor& /*X*/) const {
-  return [&](const tvm::Array<tvm::Expr>& nominal_coord) {
+CoordTransFunc WeightLayoutTiling2D::ToActual(const tvm::te::Tensor& /*X*/) const {
+  return [&](const tvm::Array<tvm::PrimExpr>& nominal_coord) {
     ORT_ENFORCE(nominal_coord.size() == 2);
     const auto& y = nominal_coord[0];
     const auto& x = nominal_coord[1];
-    return tvm::Array<tvm::Expr>{
+    return tvm::Array<tvm::PrimExpr>{
         x,
         y};
   };
 }
 
-CoordTransFunc WeightLayoutTiling2D::ToNominal(const tvm::Tensor& X) const {
-  return [&](const tvm::Array<tvm::Expr>& actual_coord) {
+CoordTransFunc WeightLayoutTiling2D::ToNominal(const tvm::te::Tensor& X) const {
+  return [&](const tvm::Array<tvm::PrimExpr>& actual_coord) {
     ORT_ENFORCE(actual_coord.size() == 2);
-    ORT_ENFORCE(X->dtype == HalideIR::type_of<int8_t>() ||
-                X->dtype == HalideIR::type_of<int16_t>());
+    ORT_ENFORCE(X->dtype == tvm::DataType::Int(8) ||
+                X->dtype == tvm::DataType::Int(16));
 
     int tile_row = (sizeof(int32_t) * num_bits) / X->dtype.bits();
     int tile_col = ((vector_width_ * num_bits) / X->dtype.bits()) / tile_row;
@@ -53,30 +53,30 @@ CoordTransFunc WeightLayoutTiling2D::ToNominal(const tvm::Tensor& X) const {
     const int block_dimy = tile_row;
     const int block_dimx = tile_col;
 
-    const auto& y0 = y % block_dimy;
-    const auto& y1 = (y / block_dimy) % block_dimx;
-    const auto& y2 = y / block_dimy / block_dimx;
+    const auto& y0 = tvm::floormod(y, block_dimy);
+    const auto& y1 = tvm::floormod(tvm::floordiv(y, block_dimy), block_dimx);
+    const auto& y2 = tvm::floordiv(y, block_dimy / block_dimx);
 
-    const auto& x0 = x % block_dimx;
-    const auto& x1 = x / block_dimx;
+    const auto& x0 = tvm::floormod(x, block_dimx);
+    const auto& x1 = tvm::floordiv(x, block_dimx);
 
-    return tvm::Array<tvm::Expr>{
+    return tvm::Array<tvm::PrimExpr>{
         y0 + y2 * block_dimx * block_dimy + x0 * block_dimy,
         y1 + x1 * block_dimx};
   };
 }
 
-tvm::Array<tvm::Expr> WeightLayoutTiling2D::ToActualShape(const tvm::Tensor& X) const {
-  ORT_ENFORCE(X->dtype == HalideIR::type_of<int8_t>() ||
-              X->dtype == HalideIR::type_of<int16_t>());
+tvm::Array<tvm::PrimExpr> WeightLayoutTiling2D::ToActualShape(const tvm::te::Tensor& X) const {
+  ORT_ENFORCE(X->dtype == tvm::DataType::Int(8) ||
+              X->dtype == tvm::DataType::Int(16));
 
-  auto pad_row = tvm::make_const(tvm::Int(32), (vector_width_ * num_bits) / X->dtype.bits());
-  auto pad_col = tvm::make_const(tvm::Int(32), vector_width_ / sizeof(int32_t));
+  auto pad_row = tvm::tir::make_const(tvm::DataType::Int(32), (vector_width_ * num_bits) / X->dtype.bits());
+  auto pad_col = tvm::tir::make_const(tvm::DataType::Int(32), vector_width_ / sizeof(int32_t));
 
   auto new_shape0 = ((X->shape[1] + pad_col - 1) / pad_col) * pad_col;
   auto new_shape1 = ((X->shape[0] + pad_row - 1) / pad_row) * pad_row;
 
-  tvm::Array<tvm::Expr>
+  tvm::Array<tvm::PrimExpr>
       new_shape = {
           new_shape0,
           new_shape1};

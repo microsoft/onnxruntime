@@ -10,18 +10,18 @@
 namespace onnxruntime {
 namespace tvm_codegen {
 
-tvm::Tensor Sum(const tvm::Tensor& lhs, const tvm::Tensor& rhs, const std::string& name) {
+tvm::te::Tensor Sum(const tvm::te::Tensor& lhs, const tvm::te::Tensor& rhs, const std::string& name) {
   return Add(lhs, rhs, name);
 }
 
 // helper local macro defines Evaluate of BINARY_OP OpIRCreators
 #define VARIADIC_OP(name)                                      \
   Status GENERIC_OP_IR_CREATOR_CLASS(name)::Evaluate(          \
-      const tvm::Array<tvm::Tensor>& inputs,                   \
+      const tvm::Array<tvm::te::Tensor>& inputs,                   \
       const Node& node,                                        \
       CodeGenContext&,                                         \
-      tvm::Array<tvm::Tensor>& outputs) {                      \
-    tvm::Tensor Y = Identity(inputs[0], node.Name() + "0");    \
+      tvm::Array<tvm::te::Tensor>& outputs) {                      \
+    tvm::te::Tensor Y = Identity(inputs[0], node.Name() + "0");    \
     for (size_t i = 1; i < inputs.size(); ++i)                 \
       Y = name(Y, inputs[i], node.Name() + std::to_string(i)); \
     outputs.push_back(Y);                                      \

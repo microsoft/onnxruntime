@@ -11,17 +11,17 @@ namespace tvm_codegen {
 
 // Evaluate of Concat OpIRCreator
 Status GENERIC_OP_IR_CREATOR_CLASS(Concat)::Evaluate(
-    const tvm::Array<tvm::Tensor>& inputs,
+    const tvm::Array<tvm::te::Tensor>& inputs,
     const Node& node,
     CodeGenContext&,
-    tvm::Array<tvm::Tensor>& outputs) {
+    tvm::Array<tvm::te::Tensor>& outputs) {
   ProtoHelperNodeContext ctx(node);
   OpNodeProtoHelper<ProtoHelperNodeContext> info(&ctx);
 
   int64_t axis;
   ORT_RETURN_IF_ERROR(info.GetAttr<int64_t>("axis", &axis));
 
-  tvm::Tensor Y = Concat(inputs, axis, node.Name() + "_Concat");
+  tvm::te::Tensor Y = Concat(inputs, axis, node.Name() + "_Concat");
   outputs.push_back(Y);
   return Status::OK();
 }

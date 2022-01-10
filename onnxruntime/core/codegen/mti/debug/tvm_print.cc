@@ -6,7 +6,7 @@
 #include "core/codegen/common/utils.h"
 #include "core/codegen/common/dump_array.h"
 #include "core/codegen/mti/common.h"
-#include <topi/detail/extern.h>
+#include <tvm/topi/detail/extern.h>
 
 namespace onnxruntime {
 namespace tvm_codegen {
@@ -55,27 +55,27 @@ TVM_REGISTER_GLOBAL("tvm.contrib.onnxruntime.print")
       }
     });
 
-tvm::Array<tvm::Tensor>
-PrintTVMTensorExtern(const tvm::Tensor& X,
+tvm::Array<tvm::te::Tensor>
+PrintTVMTensorExtern(const tvm::te::Tensor& X,
                      const std::string& name) {
-  return topi::detail::make_extern(
+  return tvm::topi::detail::make_extern(
       {X->shape},
       {X->dtype},
       {X},
-      [&](tvm::Array<tvm::Buffer> ins, tvm::Array<tvm::Buffer> outs) {
-        return topi::detail::call_packed({tvm::Expr("tvm.contrib.onnxruntime.print"),
-                                          topi::detail::pack_buffer(ins[0]),
-                                          topi::detail::pack_buffer(outs[0])});
+      [&](tvm::Array<tvm::te::Buffer> ins, tvm::Array<tvm::te::Buffer> outs) {
+        return tvm::topi::detail::call_packed({tvm::tir::StringImm("tvm.contrib.onnxruntime.print"),
+                                               tvm::topi::detail::pack_buffer(ins[0]),
+                                               tvm::topi::detail::pack_buffer(outs[0])});
       },
       name + "_print", "", {});
 }
 
-tvm::Tensor PrintImmutable(const tvm::Tensor& X) {
+tvm::te::Tensor PrintImmutable(const tvm::te::Tensor& X) {
   auto outputs = PrintTVMTensorExtern(X, X->op->name + "_print");
   return outputs[0];
 }
 
-void Print(tvm::Tensor& X) {
+void Print(tvm::te::Tensor& X) {
   X = PrintImmutable(X);
 }
 

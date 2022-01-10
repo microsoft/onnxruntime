@@ -3,12 +3,12 @@
 
 #pragma once
 #include <string>
-#include <tvm/tvm.h>
+#include <tvm/te/operation.h>
 
 namespace onnxruntime {
 namespace tvm_codegen {
 
-tvm::Tensor Transpose(const tvm::Tensor& X,
+tvm::te::Tensor Transpose(const tvm::te::Tensor& X,
                       const tvm::Array<tvm::Integer>& axes,
                       const std::string& name = "transpose");
 

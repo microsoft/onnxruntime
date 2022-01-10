@@ -3,12 +3,12 @@
 
 #pragma once
 #include <string>
-#include <tvm/tvm.h>
+#include <tvm/te/operation.h>
 
 namespace onnxruntime {
 namespace tvm_codegen {
 
-tvm::Tensor Slice(const tvm::Tensor& X,
+tvm::te::Tensor Slice(const tvm::te::Tensor& X,
                   const std::vector<int64_t>& starts,
                   const std::vector<int64_t>& ends,
                   const std::vector<int64_t>& axes,

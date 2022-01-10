@@ -13,7 +13,7 @@
 #include "core/providers/common.h"
 #include "core/providers/nuphar/scripts/NUPHAR_CACHE_VERSION"
 #include "gsl/gsl"
-#include <topi/detail/extern.h>
+#include <tvm/topi/detail/extern.h>
 #include <tvm/ir_pass.h>
 #define _SILENCE_EXPERIMENTAL_FILESYSTEM_DEPRECATION_WARNING  // required by VS 2019
 #include <experimental/filesystem>

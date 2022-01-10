@@ -3,13 +3,13 @@
 
 #include "core/codegen/mti/tensor/transpose.h"
 
-#include <topi/transform.h>
+#include <tvm/topi/transform.h>
 
 namespace onnxruntime {
 namespace tvm_codegen {
 
-tvm::Tensor Transpose(const tvm::Tensor& X, const tvm::Array<tvm::Integer>& axes, const std::string& name) {
-  return topi::transpose(X, axes, name);
+tvm::te::Tensor Transpose(const tvm::te::Tensor& X, const tvm::Array<tvm::Integer>& axes, const std::string& name) {
+  return tvm::topi::transpose(X, axes, name);
 }
 
 }  // namespace tvm_codegen

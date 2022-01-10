@@ -49,8 +49,8 @@ void TVMScheduleBuilder::DumpAllSchedulers() const {
 }
 
 Status TVMScheduleBuilder::Evaluate(
-    const tvm::Tensor& tensor,
-    const Node* node,
+    const tvm::te::Tensor& tensor,
+    const onnxruntime::Node* node,
     CodeGenContext& ctx_codegen,
     ScheduleContext& sched) {
   Scheduler* candidate = nullptr;
@@ -66,7 +66,7 @@ Status TVMScheduleBuilder::Evaluate(
   if (nullptr == candidate) {
     if (nullptr != node)
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Not implemented: ", node->OpType());
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Not implemented an internal tvm::Tensor: ", tensor->op->name);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Not implemented an internal tvm::te::Tensor: ", tensor->op->name);
   }
 
   bool status = candidate->Evaluate(tensor, node, ctx_codegen, sched);

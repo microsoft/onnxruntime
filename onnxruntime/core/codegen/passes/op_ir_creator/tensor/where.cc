@@ -12,14 +12,14 @@ namespace tvm_codegen {
 
 // Evaluate of Transpose OpIRCreator
 Status GENERIC_OP_IR_CREATOR_CLASS(Where)::Evaluate(
-    const tvm::Array<tvm::Tensor>& inputs,
+    const tvm::Array<tvm::te::Tensor>& inputs,
     const Node& node,
     CodeGenContext&,
-    tvm::Array<tvm::Tensor>& outputs) {
+    tvm::Array<tvm::te::Tensor>& outputs) {
   ProtoHelperNodeContext ctx(node);
   OpNodeProtoHelper<ProtoHelperNodeContext> attrs(&ctx);
 
-  tvm::Tensor Y = Where(inputs[0], inputs[1], inputs[2], node.Name() + "_Where");
+  tvm::te::Tensor Y = Where(inputs[0], inputs[1], inputs[2], node.Name() + "_Where");
   outputs.push_back(Y);
   return Status::OK();
 }

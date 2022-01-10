@@ -13,11 +13,11 @@ namespace tvm_codegen {
 // helper local macro defines Evaluate of BINARY_OP OpIRCreators
 #define BINARY_OP(name)                                      \
   Status GENERIC_OP_IR_CREATOR_CLASS(name)::Evaluate(        \
-      const tvm::Array<tvm::Tensor>& inputs,                 \
+      const tvm::Array<tvm::te::Tensor>& inputs,                 \
       const Node& node,                                      \
       CodeGenContext&,                                       \
-      tvm::Array<tvm::Tensor>& outputs) {                    \
-    tvm::Tensor Y = name(inputs[0], inputs[1], node.Name()); \
+      tvm::Array<tvm::te::Tensor>& outputs) {                    \
+    tvm::te::Tensor Y = name(inputs[0], inputs[1], node.Name()); \
     outputs.push_back(Y);                                    \
     return Status::OK();                                     \
   }
@@ -29,11 +29,11 @@ LIST_BINARY_OPS()
 // helper local macro defines Evaluate of BINARY_CMP_OP OpIRCreators
 #define BINARY_CMP_OP(name)                                                                               \
   Status GENERIC_OP_IR_CREATOR_CLASS(name)::Evaluate(                                                     \
-      const tvm::Array<tvm::Tensor>& inputs,                                                              \
+      const tvm::Array<tvm::te::Tensor>& inputs,                                                              \
       const Node& node,                                                                                   \
       CodeGenContext&,                                                                                    \
-      tvm::Array<tvm::Tensor>& outputs) {                                                                 \
-    tvm::Tensor Y = Cast(name(inputs[0], inputs[1], node.Name()), HalideIR::UInt(8), "cast_bool_" #name); \
+      tvm::Array<tvm::te::Tensor>& outputs) {                                                                 \
+    tvm::te::Tensor Y = CastTensor(name(inputs[0], inputs[1], node.Name()), tvm::DataType::UInt(8), "cast_bool_" #name); \
     outputs.push_back(Y);                                                                                 \
     return Status::OK();                                                                                  \
   }

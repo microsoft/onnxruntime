@@ -8,20 +8,20 @@
 namespace onnxruntime {
 namespace tvm_codegen {
 
-static tvm::Tensor PadTensor1D(const tvm::Tensor& input,
-                               const tvm::Array<tvm::Expr>& padding,
+static tvm::te::Tensor PadTensor1D(const tvm::te::Tensor& input,
+                               const tvm::Array<tvm::PrimExpr>& padding,
                                size_t width_axis,
                                const std::string& name) {
   auto pad_left = padding[0];
   auto pad_right = padding[1];
 
-  tvm::Array<tvm::Expr> pad_before(std::vector<tvm::Expr>(input->shape.size(), 0));
+  tvm::Array<tvm::PrimExpr> pad_before(std::vector<tvm::PrimExpr>(input->shape.size(), 0));
   pad_before.Set(width_axis, pad_left);
-  tvm::Array<tvm::Expr> pad_after(std::vector<tvm::Expr>(input->shape.size(), 0));
+  tvm::Array<tvm::PrimExpr> pad_after(std::vector<tvm::PrimExpr>(input->shape.size(), 0));
   pad_after.Set(width_axis, pad_right);
 
-  const int64_t* padding_w0 = tvm::as_const_int(pad_left);
-  const int64_t* padding_w1 = tvm::as_const_int(pad_right);
+  const int64_t* padding_w0 = tvm::tir::as_const_int(pad_left);
+  const int64_t* padding_w1 = tvm::tir::as_const_int(pad_right);
 
   const bool do_pad = ((padding_w0 != nullptr && *padding_w0) ||
                        (padding_w1 != nullptr && *padding_w1));
@@ -31,11 +31,11 @@ static tvm::Tensor PadTensor1D(const tvm::Tensor& input,
                 : input;
 }
 
-tvm::Tensor Conv1D(const tvm::Tensor& input,
-                   const tvm::Tensor& filter,
-                   const tvm::Array<tvm::Expr>& out_shape,
-                   const tvm::Array<tvm::Expr>& stride,
-                   const tvm::Array<tvm::Expr>& padding,
+tvm::te::Tensor Conv1D(const tvm::te::Tensor& input,
+                   const tvm::te::Tensor& filter,
+                   const tvm::Array<tvm::PrimExpr>& out_shape,
+                   const tvm::Array<tvm::PrimExpr>& stride,
+                   const tvm::Array<tvm::PrimExpr>& padding,
                    const std::string& name) {
   size_t channel_axis = 1;
   size_t width_axis = 2;
@@ -43,14 +43,14 @@ tvm::Tensor Conv1D(const tvm::Tensor& input,
   auto stride_width = stride[width_axis - 2];
 
   auto input_padded = PadTensor1D(input, padding, width_axis, name);
-  auto rc = tvm::reduce_axis((tvm::Range(0, filter->shape[1])), "rc");
-  auto rx = tvm::reduce_axis((tvm::Range(0, filter->shape[2])), "rx");
+  auto rc = tvm::te::reduce_axis((tvm::Range(0, filter->shape[1])), "rc");
+  auto rx = tvm::te::reduce_axis((tvm::Range(0, filter->shape[2])), "rx");
 
-  return tvm::compute(
+  return tvm::te::compute(
       out_shape,
-      [&](const tvm::Array<tvm::Var>& output) {
-        tvm::Array<tvm::Expr> indices;
-        for (const tvm::Var& var : output) {
+      [&](const tvm::Array<tvm::tir::Var>& output) {
+        tvm::Array<tvm::PrimExpr> indices;
+        for (const tvm::tir::Var& var : output) {
           indices.push_back(var);
         }
         indices.Set(channel_axis, rc);
@@ -62,17 +62,17 @@ tvm::Tensor Conv1D(const tvm::Tensor& input,
       name);
 }
 
-tvm::Tensor Conv2D(const tvm::Tensor& input,
-                   const tvm::Tensor& filter,
-                   const tvm::Array<tvm::Expr>& output_shape,
-                   const tvm::Array<tvm::Expr>& stride,
-                   const tvm::Array<tvm::Expr>& padding,
+tvm::te::Tensor Conv2D(const tvm::te::Tensor& input,
+                   const tvm::te::Tensor& filter,
+                   const tvm::Array<tvm::PrimExpr>& output_shape,
+                   const tvm::Array<tvm::PrimExpr>& stride,
+                   const tvm::Array<tvm::PrimExpr>& padding,
                    const std::string& name) {
   return Conv2D_native(input, filter, output_shape, stride, padding);
 }
 
-static tvm::Tensor PadTensor2D(const tvm::Tensor& input,
-                               const tvm::Array<tvm::Expr>& padding,
+static tvm::te::Tensor PadTensor2D(const tvm::te::Tensor& input,
+                               const tvm::Array<tvm::PrimExpr>& padding,
                                size_t height_axis,
                                size_t width_axis,
                                const std::string& name) {
@@ -81,18 +81,18 @@ static tvm::Tensor PadTensor2D(const tvm::Tensor& input,
   auto pad_bottom = padding[2];
   auto pad_right = padding[3];
 
-  tvm::Array<tvm::Expr> pad_before(std::vector<tvm::Expr>(input->shape.size(), 0));
+  tvm::Array<tvm::PrimExpr> pad_before(std::vector<tvm::PrimExpr>(input->shape.size(), 0));
   pad_before.Set(height_axis, pad_top);
   pad_before.Set(width_axis, pad_left);
 
-  tvm::Array<tvm::Expr> pad_after(std::vector<tvm::Expr>(input->shape.size(), 0));
+  tvm::Array<tvm::PrimExpr> pad_after(std::vector<tvm::PrimExpr>(input->shape.size(), 0));
   pad_after.Set(height_axis, pad_bottom);
   pad_after.Set(width_axis, pad_right);
 
-  const int64_t* padding_h0 = tvm::as_const_int(pad_top);
-  const int64_t* padding_w0 = tvm::as_const_int(pad_left);
-  const int64_t* padding_h1 = tvm::as_const_int(pad_bottom);
-  const int64_t* padding_w1 = tvm::as_const_int(pad_right);
+  const int64_t* padding_h0 = tvm::tir::as_const_int(pad_top);
+  const int64_t* padding_w0 = tvm::tir::as_const_int(pad_left);
+  const int64_t* padding_h1 = tvm::tir::as_const_int(pad_bottom);
+  const int64_t* padding_w1 = tvm::tir::as_const_int(pad_right);
 
   const bool do_pad = ((padding_h0 != nullptr && *padding_h0) ||
                        (padding_w0 != nullptr && *padding_w0)) ||
@@ -104,11 +104,11 @@ static tvm::Tensor PadTensor2D(const tvm::Tensor& input,
                 : input;
 }
 
-tvm::Tensor Conv2D_native(const tvm::Tensor& input,
-                          const tvm::Tensor& filter,
-                          const tvm::Array<tvm::Expr>& out_shape,
-                          const tvm::Array<tvm::Expr>& stride,
-                          const tvm::Array<tvm::Expr>& padding,
+tvm::te::Tensor Conv2D_native(const tvm::te::Tensor& input,
+                          const tvm::te::Tensor& filter,
+                          const tvm::Array<tvm::PrimExpr>& out_shape,
+                          const tvm::Array<tvm::PrimExpr>& stride,
+                          const tvm::Array<tvm::PrimExpr>& padding,
                           const std::string& name) {
   size_t channel_axis = 1;
   size_t height_axis = 2;
@@ -119,15 +119,15 @@ tvm::Tensor Conv2D_native(const tvm::Tensor& input,
 
   auto input_padded = PadTensor2D(input, padding, height_axis, width_axis, name);
 
-  auto rc = tvm::reduce_axis((tvm::Range(0, filter->shape[1])), "rc");
-  auto ry = tvm::reduce_axis((tvm::Range(0, filter->shape[2])), "ry");
-  auto rx = tvm::reduce_axis((tvm::Range(0, filter->shape[3])), "rx");
+  auto rc = tvm::te::reduce_axis((tvm::Range(0, filter->shape[1])), "rc");
+  auto ry = tvm::te::reduce_axis((tvm::Range(0, filter->shape[2])), "ry");
+  auto rx = tvm::te::reduce_axis((tvm::Range(0, filter->shape[3])), "rx");
 
-  return tvm::compute(
+  return tvm::te::compute(
       out_shape,
-      [&](const tvm::Array<tvm::Var>& output) {
-        tvm::Array<tvm::Expr> indices;
-        for (const tvm::Var& var : output) {
+      [&](const tvm::Array<tvm::tir::Var>& output) {
+        tvm::Array<tvm::PrimExpr> indices;
+        for (const tvm::tir::Var& var : output) {
           indices.push_back(var);
         }
         indices.Set(channel_axis, rc);
@@ -140,11 +140,11 @@ tvm::Tensor Conv2D_native(const tvm::Tensor& input,
       name);
 }
 
-tvm::Tensor Conv2D_gemm(const tvm::Tensor& input,
-                        const tvm::Tensor& filter,
-                        const tvm::Array<tvm::Expr>& out_shape,
-                        const tvm::Array<tvm::Expr>& stride,
-                        const tvm::Array<tvm::Expr>& padding,
+tvm::te::Tensor Conv2D_gemm(const tvm::te::Tensor& input,
+                        const tvm::te::Tensor& filter,
+                        const tvm::Array<tvm::PrimExpr>& out_shape,
+                        const tvm::Array<tvm::PrimExpr>& stride,
+                        const tvm::Array<tvm::PrimExpr>& padding,
                         const std::string& name) {
   size_t height_axis = 2;
   size_t width_axis = 3;
@@ -154,7 +154,7 @@ tvm::Tensor Conv2D_gemm(const tvm::Tensor& input,
 
   auto input_padded = PadTensor2D(input, padding, height_axis, width_axis, name);
 
-  tvm::Array<tvm::Expr> img_col_tmp(std::vector<tvm::Expr>(6, 0));
+  tvm::Array<tvm::PrimExpr> img_col_tmp(std::vector<tvm::PrimExpr>(6, 0));
   img_col_tmp.Set(0, out_shape[0]);
   img_col_tmp.Set(1, out_shape[2]);
   img_col_tmp.Set(2, out_shape[3]);
@@ -162,10 +162,10 @@ tvm::Tensor Conv2D_gemm(const tvm::Tensor& input,
   img_col_tmp.Set(4, filter->shape[2]);
   img_col_tmp.Set(5, filter->shape[3]);
 
-  auto img_col = tvm::compute(
+  auto img_col = tvm::te::compute(
       img_col_tmp,
-      [&](const tvm::Array<tvm::Var>& output) {
-        tvm::Array<tvm::Expr> indices;
+      [&](const tvm::Array<tvm::tir::Var>& output) {
+        tvm::Array<tvm::PrimExpr> indices;
         indices.push_back(output[0]);
         indices.push_back(output[3]);
         indices.push_back(output[1] * stride_height + output[4]);
@@ -174,12 +174,12 @@ tvm::Tensor Conv2D_gemm(const tvm::Tensor& input,
       },
       name);
 
-  tvm::Array<tvm::Expr> input_col_shape(std::vector<tvm::Expr>(2, 0));
+  tvm::Array<tvm::PrimExpr> input_col_shape(std::vector<tvm::PrimExpr>(2, 0));
   input_col_shape.Set(0, img_col_tmp[1] * img_col_tmp[2]);
   input_col_shape.Set(1, img_col_tmp[3] * img_col_tmp[4] * img_col_tmp[5]);
   auto input_col = Reshape(img_col, input_col_shape);
 
-  tvm::Array<tvm::Expr> filter_row_shape(std::vector<tvm::Expr>(2, 0));
+  tvm::Array<tvm::PrimExpr> filter_row_shape(std::vector<tvm::PrimExpr>(2, 0));
   filter_row_shape.Set(0, filter->shape[0]);
   filter_row_shape.Set(1, filter->shape[1] * filter->shape[2] * filter->shape[3]);
   auto filter_row = Reshape(filter, filter_row_shape, name);

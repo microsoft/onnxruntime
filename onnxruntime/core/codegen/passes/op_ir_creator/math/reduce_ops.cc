@@ -13,8 +13,8 @@
 namespace onnxruntime {
 namespace tvm_codegen {
 
-using ReduceIndexedFunc = tvm::Tensor (*)(const tvm::Tensor& X, int64_t axis, bool keep_dims, const std::string& name);
-using ReduceFunc = tvm::Tensor (*)(const tvm::Tensor& X, const std::vector<int64_t>& axes, bool keep_dims, const std::string& name);
+using ReduceIndexedFunc = tvm::te::Tensor (*)(const tvm::te::Tensor& X, int64_t axis, bool keep_dims, const std::string& name);
+using ReduceFunc = tvm::te::Tensor (*)(const tvm::te::Tensor& X, const std::vector<int64_t>& axes, bool keep_dims, const std::string& name);
 
 // helper class for for REDUCE_INDEXED_OP
 class FuncReduceIndexed {
@@ -30,10 +30,10 @@ class FuncReduceIndexed {
     name_ = name;
   }
 
-  tvm::Tensor operator()(const tvm::Tensor& X) const {
+  tvm::te::Tensor operator()(const tvm::te::Tensor& X) const {
     auto axis = HandleNegativeAxis(axis_, gsl::narrow_cast<int64_t>(X->shape.size()));
-    tvm::Tensor index32 = func_(X, axis, keep_dims_, name_);
-    return Cast(index32, tvm::Int(64));
+    tvm::te::Tensor index32 = func_(X, axis, keep_dims_, name_);
+    return CastTensor(index32, tvm::DataType::Int(64));
   }
 
  private:
@@ -57,7 +57,7 @@ class FuncReduce {
     name_ = name;
   }
 
-  tvm::Tensor operator()(const tvm::Tensor& X) const {
+  tvm::te::Tensor operator()(const tvm::te::Tensor& X) const {
     std::vector<int64_t> axes;
     for (auto i : axes_)
       axes.push_back(HandleNegativeAxis(i, gsl::narrow_cast<int64_t>(X->shape.size())));
@@ -75,13 +75,13 @@ class FuncReduce {
 // helper macro defines Evaluate of REDUCE_OP OpIRCreators
 #define REDUCE_OP(name)                                             \
   Status GENERIC_OP_IR_CREATOR_CLASS(name)::Evaluate(               \
-      const tvm::Array<tvm::Tensor>& inputs,                        \
+      const tvm::Array<tvm::te::Tensor>& inputs,                        \
       const Node& node,                                             \
       CodeGenContext&,                                              \
-      tvm::Array<tvm::Tensor>& outputs) {                           \
-    tvm::Tensor Y;                                                  \
+      tvm::Array<tvm::te::Tensor>& outputs) {                           \
+    tvm::te::Tensor Y;                                                  \
     if (ShapeRank(node.OutputDefs()[0]) == 0) {                     \
-      tvm::Tensor temp = FuncReduce(node, &name, #name)(inputs[0]); \
+      tvm::te::Tensor temp = FuncReduce(node, &name, #name)(inputs[0]); \
       Y = Reshape(temp, {});                                        \
     } else {                                                        \
       Y = FuncReduce(node, &name, #name)(inputs[0]);                \
@@ -93,11 +93,11 @@ class FuncReduce {
 // helper macro defines Evaluate of REDUCE_INDEXED_OP OpIRCreators
 #define REDUCE_INDEXED_OP(name)                                       \
   Status GENERIC_OP_IR_CREATOR_CLASS(name)::Evaluate(                 \
-      const tvm::Array<tvm::Tensor>& inputs,                          \
+      const tvm::Array<tvm::te::Tensor>& inputs,                          \
       const Node& node,                                               \
       CodeGenContext&,                                                \
-      tvm::Array<tvm::Tensor>& outputs) {                             \
-    tvm::Tensor Y = FuncReduceIndexed(node, &name, #name)(inputs[0]); \
+      tvm::Array<tvm::te::Tensor>& outputs) {                             \
+    tvm::te::Tensor Y = FuncReduceIndexed(node, &name, #name)(inputs[0]); \
     outputs.push_back(Y);                                             \
     return Status::OK();                                              \
   }

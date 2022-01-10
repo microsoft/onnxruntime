@@ -3,14 +3,14 @@
 
 #pragma once
 #include <string>
-#include <tvm/tvm.h>
+#include <tvm/te/operation.h>
 
 namespace onnxruntime {
 namespace tvm_codegen {
 
-tvm::Tensor GatherElements(const tvm::Tensor& t,
+tvm::te::Tensor GatherElements(const tvm::te::Tensor& t,
                            int64_t axis,
-                           const tvm::Tensor& indices,
+                           const tvm::te::Tensor& indices,
                            const std::string& name = "gather_elements");
 
 }  // namespace tvm_codegen

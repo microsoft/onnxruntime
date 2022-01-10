@@ -14,7 +14,7 @@
 #include "core/codegen/passes/scheduler/schedule_utils.h"
 #include "core/codegen/passes/utils/ort_tvm_utils.h"
 #include <tvm/ir_pass.h>
-#include <tvm/tvm.h>
+#include <tvm/runtime/module.h>
 
 namespace onnxruntime {
 namespace nuphar {

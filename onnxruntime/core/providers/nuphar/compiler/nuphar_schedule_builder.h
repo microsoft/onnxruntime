@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include <tvm/tvm.h>
+#include <tvm/runtime/module.h>
 #include "core/common/common.h"
 #include "core/providers/nuphar/compiler/nuphar_codegen_ctx.h"
 

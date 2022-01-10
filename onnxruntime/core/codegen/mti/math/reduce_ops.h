@@ -3,67 +3,67 @@
 
 #pragma once
 #include <string>
-#include <tvm/tvm.h>
+#include <tvm/te/operation.h>
 
 namespace onnxruntime {
 namespace tvm_codegen {
 
-tvm::Tensor ArgMax(const tvm::Tensor& X,
+tvm::te::Tensor ArgMax(const tvm::te::Tensor& X,
                    int64_t axis,
                    bool keep_dims,
                    const std::string& name = "argmax");
 
-tvm::Tensor ArgMin(const tvm::Tensor& X,
+tvm::te::Tensor ArgMin(const tvm::te::Tensor& X,
                    int64_t axis,
                    bool keep_dims,
                    const std::string& name = "argmin");
 
-tvm::Tensor ReduceL1(const tvm::Tensor& X,
+tvm::te::Tensor ReduceL1(const tvm::te::Tensor& X,
                      const std::vector<int64_t>& axes,
                      bool keep_dims,
                      const std::string& name = "reduce_l1");
 
-tvm::Tensor ReduceL2(const tvm::Tensor& X,
+tvm::te::Tensor ReduceL2(const tvm::te::Tensor& X,
                      const std::vector<int64_t>& axes,
                      bool keep_dims,
                      const std::string& name = "reduce_l2");
 
-tvm::Tensor ReduceLogSum(const tvm::Tensor& X,
+tvm::te::Tensor ReduceLogSum(const tvm::te::Tensor& X,
                          const std::vector<int64_t>& axes,
                          bool keep_dims,
                          const std::string& name = "reduce_log_sum");
 
-tvm::Tensor ReduceLogSumExp(const tvm::Tensor& X,
+tvm::te::Tensor ReduceLogSumExp(const tvm::te::Tensor& X,
                             const std::vector<int64_t>& axes,
                             bool keep_dims,
                             const std::string& name = "argmareduce_log_sum_exp");
 
-tvm::Tensor ReduceMax(const tvm::Tensor& X,
+tvm::te::Tensor ReduceMax(const tvm::te::Tensor& X,
                       const std::vector<int64_t>& axes,
                       bool keep_dims,
                       const std::string& name = "reduce_max");
 
-tvm::Tensor ReduceMean(const tvm::Tensor& X,
+tvm::te::Tensor ReduceMean(const tvm::te::Tensor& X,
                        const std::vector<int64_t>& axes,
                        bool keep_dims,
                        const std::string& name = "reduce_mean");
 
-tvm::Tensor ReduceMin(const tvm::Tensor& X,
+tvm::te::Tensor ReduceMin(const tvm::te::Tensor& X,
                       const std::vector<int64_t>& axes,
                       bool keep_dims,
                       const std::string& name = "reduce_min");
 
-tvm::Tensor ReduceProd(const tvm::Tensor& X,
+tvm::te::Tensor ReduceProd(const tvm::te::Tensor& X,
                        const std::vector<int64_t>& axes,
                        bool keep_dims,
                        const std::string& name = "reduce_prod");
 
-tvm::Tensor ReduceSum(const tvm::Tensor& X,
+tvm::te::Tensor ReduceSum(const tvm::te::Tensor& X,
                       const std::vector<int64_t>& axes,
                       bool keep_dims,
                       const std::string& name = "reduce_sum");
 
-tvm::Tensor ReduceSumSquare(const tvm::Tensor& X,
+tvm::te::Tensor ReduceSumSquare(const tvm::te::Tensor& X,
                             const std::vector<int64_t>& axes,
                             bool keep_dims,
                             const std::string& name = "reduce_sum_square");

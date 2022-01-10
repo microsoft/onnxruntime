@@ -2,18 +2,18 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include <tvm/tvm.h>
+#include <tvm/te/tensor.h>
 
 namespace onnxruntime {
 namespace tvm_codegen {
 
-tvm::Array<tvm::Tensor> PrintTVMTensorExtern(
-    const tvm::Tensor& X,
+tvm::Array<tvm::te::Tensor> PrintTVMTensorExtern(
+    const tvm::te::Tensor& X,
     const std::string& name = "PrintTVM2DTensorExtern");
 
-tvm::Tensor PrintImmutable(const tvm::Tensor& X);
+tvm::te::Tensor PrintImmutable(const tvm::te::Tensor& X);
 
-void Print(tvm::Tensor& X);
+void Print(tvm::te::Tensor& X);
 
 }  // namespace tvm_codegen
 }  // namespace onnxruntime

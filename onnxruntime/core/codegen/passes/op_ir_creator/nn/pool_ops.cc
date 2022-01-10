@@ -16,10 +16,10 @@ namespace tvm_codegen {
 // helper macro defines Evaluate of of POOL_OP OpIRCreators
 #define POOL_OP(name)                                                                                                         \
   Status GENERIC_OP_IR_CREATOR_CLASS(name)::Evaluate(                                                                         \
-      const tvm::Array<tvm::Tensor>& inputs,                                                                                  \
+      const tvm::Array<tvm::te::Tensor>& inputs,                                                                                  \
       const Node& node,                                                                                                       \
       CodeGenContext& ctx_codegen,                                                                                            \
-      tvm::Array<tvm::Tensor>& outputs) {                                                                                     \
+      tvm::Array<tvm::te::Tensor>& outputs) {                                                                                     \
     ORT_RETURN_IF_NOT(outputs.size() == 1, "multiple outputs are not supported yet!");                                        \
     ProtoHelperNodeContext ctx(node);                                                                                         \
     OpNodeProtoHelper<ProtoHelperNodeContext> info(&ctx);                                                                     \
@@ -37,8 +37,8 @@ namespace tvm_codegen {
         ORT_NOT_IMPLEMENTED(pool_attrs.kernel_shape.size(), "d pooling is not implementated");                                \
       }                                                                                                                       \
     }                                                                                                                         \
-    tvm::Array<tvm::Expr> dummy_output_shape;                                                                                 \
-    tvm::Tensor Y = name(inputs[0], pool_attrs, dummy_output_shape);                                                          \
+    tvm::Array<tvm::PrimExpr> dummy_output_shape;                                                                                 \
+    tvm::te::Tensor Y = name(inputs[0], pool_attrs, dummy_output_shape);                                                          \
     outputs.push_back(Y);                                                                                                     \
     return Status::OK();                                                                                                      \
   }

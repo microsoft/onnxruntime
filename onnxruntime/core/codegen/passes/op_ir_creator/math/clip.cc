@@ -11,25 +11,25 @@ namespace tvm_codegen {
 
 // Evaluate of Clip OpIRCreator
 Status GENERIC_OP_IR_CREATOR_CLASS(Clip)::Evaluate(
-    const tvm::Array<tvm::Tensor>& inputs,
+    const tvm::Array<tvm::te::Tensor>& inputs,
     const Node& node,
     CodeGenContext& ctx_codegen,
-    tvm::Array<tvm::Tensor>& outputs) {
+    tvm::Array<tvm::te::Tensor>& outputs) {
   ProtoHelperNodeContext ctx(node);
   OpNodeProtoHelper<ProtoHelperNodeContext> info(&ctx);
 
   int version = ctx_codegen.GetCodeGenHandle()->domain_version_lookup_func(node.Domain());
-  tvm::Expr min_value, max_value;
+   tvm::PrimExpr min_value, max_value;
   if (version < 11) {
     float max_v, min_v;
     info.GetAttrOrDefault("min", &min_v, std::numeric_limits<float>::lowest());
     info.GetAttrOrDefault("max", &max_v, std::numeric_limits<float>::max());
-    min_value = tvm::make_const(tvm::Float(32), min_v);
-    max_value = tvm::make_const(tvm::Float(32), max_v);
+    min_value = tvm::tir::make_const(tvm::DataType::Float(32), min_v);
+    max_value = tvm::tir::make_const(tvm::DataType::Float(32), max_v);
   } else {
     // for op_version >= 11, max and min are optional inputs
-    min_value = tvm::make_const(tvm::Float(32), std::numeric_limits<float>::lowest());
-    max_value = tvm::make_const(tvm::Float(32), std::numeric_limits<float>::max());
+    min_value = tvm::tir::make_const(tvm::DataType::Float(32), std::numeric_limits<float>::lowest());
+    max_value = tvm::tir::make_const(tvm::DataType::Float(32), std::numeric_limits<float>::max());
     auto num_inputs = inputs.size();
     if (num_inputs >= 2 && inputs[1].defined()) {
       min_value = inputs[1]();
@@ -39,7 +39,7 @@ Status GENERIC_OP_IR_CREATOR_CLASS(Clip)::Evaluate(
     }
   }
 
-  tvm::Tensor Y = Clip(inputs[0], min_value, max_value, node.Name() + "_Clip");
+  tvm::te::Tensor Y = Clip(inputs[0], min_value, max_value, node.Name() + "_Clip");
   outputs.push_back(Y);
   return Status::OK();
 }

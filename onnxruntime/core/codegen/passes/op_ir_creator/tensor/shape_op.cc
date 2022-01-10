@@ -13,11 +13,11 @@ namespace tvm_codegen {
 
 // Evaluate of Expand OpIRCreator
 Status GENERIC_OP_IR_CREATOR_CLASS(Shape)::Evaluate(
-    const tvm::Array<tvm::Tensor>& inputs,
+    const tvm::Array<tvm::te::Tensor>& inputs,
     const Node& node,
     CodeGenContext& ctx_codegen,
-    tvm::Array<tvm::Tensor>& outputs) {
-  tvm::Tensor Y = Shape(inputs[0], node.Name() + "_Expand");
+    tvm::Array<tvm::te::Tensor>& outputs) {
+  tvm::te::Tensor Y = Shape(inputs[0], node.Name() + "_Expand");
   outputs.push_back(Y);
   return Status::OK();
 }

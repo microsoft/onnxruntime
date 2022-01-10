@@ -19,30 +19,30 @@ WeightLayoutTranspose2D::WeightLayoutTranspose2D(
     ONNX_NAMESPACE::TensorProto_DataType proto_type)
     : WeightLayout(local_layout_name, proto_type, 2, 0.0f) {}
 
-CoordTransFunc WeightLayoutTranspose2D::ToActual(const tvm::Tensor& /*X*/) const {
-  return [&](const tvm::Array<tvm::Expr>& nominal_coord) {
+CoordTransFunc WeightLayoutTranspose2D::ToActual(const tvm::te::Tensor& /*X*/) const {
+  return [&](const tvm::Array<tvm::PrimExpr>& nominal_coord) {
     ORT_ENFORCE(nominal_coord.size() == 2);
     const auto& y = nominal_coord[0];
     const auto& x = nominal_coord[1];
-    return tvm::Array<tvm::Expr>{
+    return tvm::Array<tvm::PrimExpr>{
         x,
         y};
   };
 }
 
-CoordTransFunc WeightLayoutTranspose2D::ToNominal(const tvm::Tensor& /*X*/) const {
-  return [&](const tvm::Array<tvm::Expr>& actual_coord) {
+CoordTransFunc WeightLayoutTranspose2D::ToNominal(const tvm::te::Tensor& /*X*/) const {
+  return [&](const tvm::Array<tvm::PrimExpr>& actual_coord) {
     ORT_ENFORCE(actual_coord.size() == 2);
     const auto& y = actual_coord[0];
     const auto& x = actual_coord[1];
-    return tvm::Array<tvm::Expr>{
+    return tvm::Array<tvm::PrimExpr>{
         x,
         y};
   };
 }
 
-tvm::Array<tvm::Expr> WeightLayoutTranspose2D::ToActualShape(const tvm::Tensor& X) const {
-  tvm::Array<tvm::Expr> new_shape = {
+tvm::Array<tvm::PrimExpr> WeightLayoutTranspose2D::ToActualShape(const tvm::te::Tensor& X) const {
+  tvm::Array<tvm::PrimExpr> new_shape = {
       X->shape[1],
       X->shape[0]};
   return new_shape;

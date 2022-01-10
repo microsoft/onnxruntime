@@ -4,7 +4,7 @@
 #pragma once
 
 #include "core/codegen/passes/weight_layout/weight_layout.h"
-#include <tvm/tvm.h>
+#include <tvm/te/operation.h>
 
 namespace onnxruntime {
 namespace tvm_codegen {
@@ -27,9 +27,9 @@ class WeightLayoutTiling2D : public WeightLayout {
 
   ~WeightLayoutTiling2D() = default;
 
-  CoordTransFunc ToNominal(const tvm::Tensor& X) const override;
-  CoordTransFunc ToActual(const tvm::Tensor& X) const override;
-  tvm::Array<tvm::Expr> ToActualShape(const tvm::Tensor& X) const override;
+  CoordTransFunc ToNominal(const tvm::te::Tensor& X) const override;
+  CoordTransFunc ToActual(const tvm::te::Tensor& X) const override;
+  tvm::Array<tvm::PrimExpr> ToActualShape(const tvm::te::Tensor& X) const override;
   std::vector<int64_t> ToActualShape(const Tensor* X) const override;
 
  private:

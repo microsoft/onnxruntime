@@ -27,33 +27,33 @@ WeightLayoutVerticalStripe2D::WeightLayoutVerticalStripe2D(
       stripe_width_(stripe_width) {
 }
 
-CoordTransFunc WeightLayoutVerticalStripe2D::ToActual(const tvm::Tensor& /*X*/) const {
-  return [&](const tvm::Array<tvm::Expr>& nominal_coord) {
+CoordTransFunc WeightLayoutVerticalStripe2D::ToActual(const tvm::te::Tensor& /*X*/) const {
+  return [&](const tvm::Array<tvm::PrimExpr>& nominal_coord) {
     ORT_ENFORCE(nominal_coord.size() == 2);
     const auto& y = nominal_coord[0];
     const auto& x = nominal_coord[1];
-    return tvm::Array<tvm::Expr>{
-        x / stripe_width_,
+    return tvm::Array<tvm::PrimExpr>{
+        tvm::floordiv(x, stripe_width_),
         y,
-        x % stripe_width_};
+        tvm::floormod(x, stripe_width_)};
   };
 }
 
-CoordTransFunc WeightLayoutVerticalStripe2D::ToNominal(const tvm::Tensor& /*X*/) const {
-  return [&](const tvm::Array<tvm::Expr>& actual_coord) {
+CoordTransFunc WeightLayoutVerticalStripe2D::ToNominal(const tvm::te::Tensor& /*X*/) const {
+  return [&](const tvm::Array<tvm::PrimExpr>& actual_coord) {
     ORT_ENFORCE(actual_coord.size() == 3);
     const auto& z = actual_coord[0];
     const auto& y = actual_coord[1];
     const auto& x = actual_coord[2];
-    return tvm::Array<tvm::Expr>{
+    return tvm::Array<tvm::PrimExpr>{
         y,
         x + stripe_width_ * z};
   };
 }
 
-tvm::Array<tvm::Expr> WeightLayoutVerticalStripe2D::ToActualShape(const tvm::Tensor& X) const {
-  tvm::Array<tvm::Expr> new_shape = {
-      (X->shape[1] + stripe_width_ - 1) / stripe_width_,
+tvm::Array<tvm::PrimExpr> WeightLayoutVerticalStripe2D::ToActualShape(const tvm::te::Tensor& X) const {
+  tvm::Array<tvm::PrimExpr> new_shape = {
+      tvm::floordiv(X->shape[1] + stripe_width_ - 1, stripe_width_),
       X->shape[0],
       stripe_width_};
   return new_shape;

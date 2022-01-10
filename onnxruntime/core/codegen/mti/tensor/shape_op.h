@@ -3,12 +3,12 @@
 
 #pragma once
 #include <string>
-#include <tvm/tvm.h>
+#include <tvm/te/operation.h>
 
 namespace onnxruntime {
 namespace tvm_codegen {
 
-tvm::Tensor Shape(const tvm::Tensor& X, const std::string& name = "shape");
+tvm::te::Tensor Shape(const tvm::te::Tensor& X, const std::string& name = "shape");
 
 }  // namespace tvm_codegen
 }  // namespace onnxruntime

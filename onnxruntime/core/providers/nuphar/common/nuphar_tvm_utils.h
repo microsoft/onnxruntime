@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include <tvm/tvm.h>
+#include <tvm/runtime/module.h>
 #include <string>
 
 #include "core/graph/graph.h"

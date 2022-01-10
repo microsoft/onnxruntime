@@ -15,7 +15,7 @@ namespace tvm_codegen {
   class Func##name {                                     \
    public:                                               \
     Func##name(const Node&) {}                           \
-    tvm::Tensor operator()(const tvm::Tensor& X) const { \
+    tvm::te::Tensor operator()(const tvm::te::Tensor& X) const { \
       return name(X);                                    \
     }                                                    \
   }
@@ -25,7 +25,7 @@ namespace tvm_codegen {
   class Func##name : public FuncWithAlpha {               \
    public:                                                \
     Func##name(const Node& node) : FuncWithAlpha(node) {} \
-    tvm::Tensor operator()(const tvm::Tensor& X) const {  \
+    tvm::te::Tensor operator()(const tvm::te::Tensor& X) const {  \
       return name(X, alpha_);                             \
     }                                                     \
   }
@@ -35,7 +35,7 @@ namespace tvm_codegen {
   class Func##name : public FuncWithAlphaBeta {               \
    public:                                                    \
     Func##name(const Node& node) : FuncWithAlphaBeta(node) {} \
-    tvm::Tensor operator()(const tvm::Tensor& X) const {      \
+    tvm::te::Tensor operator()(const tvm::te::Tensor& X) const {      \
       return name(X, alpha_, beta_);                          \
     }                                                         \
   }
@@ -45,7 +45,7 @@ namespace tvm_codegen {
   class Func##name : public FuncWithAlphaGamma {               \
    public:                                                     \
     Func##name(const Node& node) : FuncWithAlphaGamma(node) {} \
-    tvm::Tensor operator()(const tvm::Tensor& X) const {       \
+    tvm::te::Tensor operator()(const tvm::te::Tensor& X) const {       \
       return name(X, alpha_, gamma_);                          \
     }                                                          \
   }
@@ -75,11 +75,11 @@ FuncClassAlpha(ThresholdedRelu);
 // helper macro defines Evaluate of UNARY_OP OpIRCreators
 #define UNARY_OP(name)                                \
   Status GENERIC_OP_IR_CREATOR_CLASS(name)::Evaluate( \
-      const tvm::Array<tvm::Tensor>& inputs,          \
+      const tvm::Array<tvm::te::Tensor>& inputs,          \
       const Node& node,                               \
       CodeGenContext&,                                \
-      tvm::Array<tvm::Tensor>& outputs) {             \
-    tvm::Tensor Y = Func##name(node)(inputs[0]);      \
+      tvm::Array<tvm::te::Tensor>& outputs) {             \
+    tvm::te::Tensor Y = Func##name(node)(inputs[0]);      \
     outputs.push_back(Y);                             \
     return Status::OK();                              \
   }

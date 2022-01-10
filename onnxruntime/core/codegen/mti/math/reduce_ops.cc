@@ -6,45 +6,46 @@
 #include "core/codegen/mti/math/binary_ops.h"
 #include "core/codegen/mti/math/unary_ops.h"
 #include "core/codegen/mti/mti_tvm_utils.h"
-#include <topi/reduction.h>
+#include <tvm/topi/reduction.h>
+#include <tvm/tir/var.h>
 
 namespace onnxruntime {
 namespace tvm_codegen {
 
-tvm::Tensor ArgMax(const tvm::Tensor& X, int64_t axis, bool keep_dims, const std::string& name) {
-  return Rename(topi::argmax(X, ToTvmArrayInt({axis}), keep_dims), name);
+tvm::te::Tensor ArgMax(const tvm::te::Tensor& X, int64_t axis, bool keep_dims, const std::string& name) {
+  return Rename(tvm::topi::argmax(X, ToTvmArrayInt({axis}), keep_dims), name);
 }
 
-tvm::Tensor ArgMin(const tvm::Tensor& X, int64_t axis, bool keep_dims, const std::string& name) {
-  return Rename(topi::argmin(X, ToTvmArrayInt({axis}), keep_dims), name);
+tvm::te::Tensor ArgMin(const tvm::te::Tensor& X, int64_t axis, bool keep_dims, const std::string& name) {
+  return Rename(tvm::topi::argmin(X, ToTvmArrayInt({axis}), keep_dims), name);
 }
 
-tvm::Tensor ReduceL1(const tvm::Tensor& X, const std::vector<int64_t>& axes, bool keep_dims, const std::string& name) {
+tvm::te::Tensor ReduceL1(const tvm::te::Tensor& X, const std::vector<int64_t>& axes, bool keep_dims, const std::string& name) {
   return ReduceSum(Abs(X), axes, keep_dims, name);
 }
 
-tvm::Tensor ReduceL2(const tvm::Tensor& X, const std::vector<int64_t>& axes, bool keep_dims, const std::string& name) {
+tvm::te::Tensor ReduceL2(const tvm::te::Tensor& X, const std::vector<int64_t>& axes, bool keep_dims, const std::string& name) {
   return Sqrt(ReduceSumSquare(X, axes, keep_dims), name);
 }
 
-tvm::Tensor ReduceLogSum(const tvm::Tensor& X, const std::vector<int64_t>& axes, bool keep_dims, const std::string& name) {
+tvm::te::Tensor ReduceLogSum(const tvm::te::Tensor& X, const std::vector<int64_t>& axes, bool keep_dims, const std::string& name) {
   return Log(ReduceSum(X, axes, keep_dims), name);
 }
 
-tvm::Tensor ReduceLogSumExp(const tvm::Tensor& X, const std::vector<int64_t>& axes, bool keep_dims, const std::string& name) {
-  tvm::Tensor reduce_max = ReduceMax(X, axes, true);
-  tvm::Tensor exp_delta = Exp(Sub(X, reduce_max));
-  tvm::Tensor reduce_max_keep_dims = ReduceMax(X, axes, keep_dims);
+tvm::te::Tensor ReduceLogSumExp(const tvm::te::Tensor& X, const std::vector<int64_t>& axes, bool keep_dims, const std::string& name) {
+  tvm::te::Tensor reduce_max = ReduceMax(X, axes, true);
+  tvm::te::Tensor exp_delta = Exp(Sub(X, reduce_max));
+  tvm::te::Tensor reduce_max_keep_dims = ReduceMax(X, axes, keep_dims);
   return Add(ReduceLogSum(exp_delta, axes, keep_dims), reduce_max_keep_dims, name);
 }
 
-tvm::Tensor ReduceMax(const tvm::Tensor& X, const std::vector<int64_t>& axes, bool keep_dims, const std::string& name) {
-  return Rename(topi::max(X, ToTvmArrayInt(axes), keep_dims), name);
+tvm::te::Tensor ReduceMax(const tvm::te::Tensor& X, const std::vector<int64_t>& axes, bool keep_dims, const std::string& name) {
+  return Rename(tvm::topi::max(X, ToTvmArrayInt(axes), keep_dims), name);
 }
 
-tvm::Tensor ReduceMean(const tvm::Tensor& X, const std::vector<int64_t>& axes, bool keep_dims, const std::string& name) {
-  tvm::Tensor reduce_sum = ReduceSum(X, axes, keep_dims);
-  tvm::Expr count = tvm::make_const(reduce_sum->dtype, 1.0f);
+tvm::te::Tensor ReduceMean(const tvm::te::Tensor& X, const std::vector<int64_t>& axes, bool keep_dims, const std::string& name) {
+  tvm::te::Tensor reduce_sum = ReduceSum(X, axes, keep_dims);
+   tvm::PrimExpr count = tvm::tir::make_const(reduce_sum->dtype, 1.0f);
   if (axes.empty()) {
     for (const auto& dim : X->shape)
       count = count * dim;
@@ -54,36 +55,37 @@ tvm::Tensor ReduceMean(const tvm::Tensor& X, const std::vector<int64_t>& axes, b
       count = count * X->shape[i];
     }
   }
-  return tvm::compute(
+  return tvm::te::compute(
       reduce_sum->shape,
-      [&](const tvm::Array<tvm::Var>& i) {
+      [&](const tvm::Array<tvm::tir::Var>& i) {
         return reduce_sum(i) / count;
       },
       name);
 }
 
-tvm::Tensor ReduceMin(const tvm::Tensor& X, const std::vector<int64_t>& axes, bool keep_dims, const std::string& name) {
-  return Rename(topi::min(X, ToTvmArrayInt(axes), keep_dims), name);
+tvm::te::Tensor ReduceMin(const tvm::te::Tensor& X, const std::vector<int64_t>& axes, bool keep_dims, const std::string& name) {
+  return Rename(tvm::topi::min(X, ToTvmArrayInt(axes), keep_dims), name);
 }
 
-tvm::Tensor ReduceProd(const tvm::Tensor& X, const std::vector<int64_t>& axes, bool keep_dims, const std::string& name) {
-  auto prod = [](tvm::Expr source, tvm::Array<tvm::IterVar> rdom) {
-    tvm::Var x("x", source.type()), y("y", source.type());
-    tvm::Expr Rename_element = tvm::make_const(source.type(), 1.0f);
-    tvm::ir::CommReducer combiner =
-        tvm::ir::CommReducerNode::make({x}, {y}, {x * y}, {Rename_element});
-    return tvm::ir::Reduce::make(combiner, {source}, rdom, tvm::make_const(tvm::Bool(1), true), 0);
+tvm::te::Tensor ReduceProd(const tvm::te::Tensor& X, const std::vector<int64_t>& axes, bool keep_dims, const std::string& name) {
+  auto prod = [](tvm::PrimExpr source, tvm::Array<tvm::tir::IterVar> rdom, tvm::Array<tvm::PrimExpr> init = {}, tvm::Span span=tvm::Span()) {
+    tvm::tir::Var x("x", source.dtype(), span), y("y", source.dtype(), span);
+    tvm::PrimExpr result = tvm::tir::Mul(x, y, span);
+    tvm::PrimExpr Rename_element = tvm::tir::make_const(source.dtype(), 1.0f, span);
+    tvm::tir::CommReducer combiner =
+        tvm::tir::CommReducer({x}, {y}, {result}, {Rename_element}, span);
+    return tvm::tir::Reduce(combiner, {source}, rdom, tvm::tir::make_const(tvm::DataType::Bool(1), true), 0, init, span);
   };
 
-  return Rename(topi::CommReduce(X, ToTvmArrayInt(axes), prod, keep_dims, true), name);
+  return Rename(tvm::topi::CommReduce(X, ToTvmArrayInt(axes), prod, keep_dims, true), name);
 }
 
-tvm::Tensor ReduceSum(const tvm::Tensor& X, const std::vector<int64_t>& axes, bool keep_dims, const std::string& name) {
-  return Rename(topi::sum(X, ToTvmArrayInt(axes), keep_dims), name);
+tvm::te::Tensor ReduceSum(const tvm::te::Tensor& X, const std::vector<int64_t>& axes, bool keep_dims, const std::string& name) {
+  return Rename(tvm::topi::sum(X, ToTvmArrayInt(axes), keep_dims), name);
 }
 
-tvm::Tensor ReduceSumSquare(const tvm::Tensor& X, const std::vector<int64_t>& axes, bool keep_dims, const std::string& name) {
-  return Rename(topi::sum(Mul(X, X), ToTvmArrayInt(axes), keep_dims), name);
+tvm::te::Tensor ReduceSumSquare(const tvm::te::Tensor& X, const std::vector<int64_t>& axes, bool keep_dims, const std::string& name) {
+  return Rename(tvm::topi::sum(Mul(X, X), ToTvmArrayInt(axes), keep_dims), name);
 }
 
 }  // namespace tvm_codegen

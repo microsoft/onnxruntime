@@ -6,7 +6,7 @@
 #include "core/codegen/common/utils.h"
 #include "core/codegen/mti/mti_tvm_utils.h"
 #include "core/common/common.h"
-#include <topi/detail/extern.h>
+#include <tvm/topi/detail/extern.h>
 
 namespace onnxruntime {
 namespace nuphar {

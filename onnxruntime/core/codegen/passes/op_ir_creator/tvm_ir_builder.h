@@ -26,10 +26,10 @@ class TVMIRBuilder {
 
   // Evaluates an OpIRCreator that first satisfies condtions of all dispatchers
   Status Evaluate(
-      const tvm::Array<tvm::Tensor>& inputs,
+      const tvm::Array<tvm::te::Tensor>& inputs,
       const Node& node,
       CodeGenContext& ctx,
-      tvm::Array<tvm::Tensor>& outputs);
+      tvm::Array<tvm::te::Tensor>& outputs);
 
   // Inserts a dispatcher and move its ownership to this TVMIRBuilder
   void InsertDispatcher(std::unique_ptr<OpIRDispatcher>&& ptr);

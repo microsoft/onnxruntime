@@ -3,7 +3,7 @@
 
 #pragma once
 #include <string>
-#include <tvm/tvm.h>
+#include <tvm/runtime/module.h>
 
 namespace onnxruntime {
 namespace nuphar {

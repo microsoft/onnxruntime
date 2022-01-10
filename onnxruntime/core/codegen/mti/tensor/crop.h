@@ -3,14 +3,14 @@
 
 #pragma once
 #include <string>
-#include <tvm/tvm.h>
+#include <tvm/te/operation.h>
 
 namespace onnxruntime {
 namespace tvm_codegen {
 
-tvm::Tensor Crop(const tvm::Tensor& t,
-                 const tvm::Array<tvm::Expr>& border,
-                 const tvm::Array<tvm::Expr>& scale = {},
+tvm::te::Tensor Crop(const tvm::te::Tensor& t,
+                 const tvm::Array<tvm::PrimExpr>& border,
+                 const tvm::Array<tvm::PrimExpr>& scale = {},
                  const std::string& name = "crop");
 
 }  // namespace tvm_codegen

@@ -10,7 +10,7 @@ namespace tvm_codegen {
 // Check the schedule of tensor
 // If it has no compute_root, Insert compute_root to tensor, and record it to ctx.scheduled_tensors
 bool InsertRootSchedule(
-    const tvm::Tensor& tensor,
+    const tvm::te::Tensor& tensor,
     ScheduleContext& ctx) {
   auto it = ctx.scheduled_tensors.find(tensor->op.get());
   if (it != ctx.scheduled_tensors.end()) {
@@ -28,7 +28,7 @@ bool InsertRootSchedule(
 
 // Check the schedule of tensor
 // If it is not labeled as closure, lable it.
-bool InsertClosure(const tvm::Tensor& tensor,
+bool InsertClosure(const tvm::te::Tensor& tensor,
                    ScheduleContext& ctx) {
   auto it = ctx.scheduled_tensors.find(tensor->op.get());
   if (it != ctx.scheduled_tensors.end()) {
@@ -43,7 +43,7 @@ bool InsertClosure(const tvm::Tensor& tensor,
 
 // Combination of InsertRootSchedule and InsertClosure
 bool InsertRootScheduleAndClosure(
-    const tvm::Tensor& tensor,
+    const tvm::te::Tensor& tensor,
     ScheduleContext& ctx) {
   auto it = ctx.scheduled_tensors.find(tensor->op.get());
   if (it != ctx.scheduled_tensors.end()) {
@@ -60,7 +60,7 @@ bool InsertRootScheduleAndClosure(
 
 // Check precondition for vectorize schedule
 bool ShouldTryVectorization(
-    const tvm::Tensor& tensor,
+    const tvm::te::Tensor& tensor,
     ScheduleContext& ctx) {
   auto it = ctx.scheduled_tensors.find(tensor->op.get());
   if (it != ctx.scheduled_tensors.end()) {
@@ -76,7 +76,7 @@ bool ShouldTryVectorization(
 // Note TryVectorization has to use with compute_root.
 // Therefore, there is a safty check of tensor's schedule
 bool TryVectorization(
-    const tvm::Tensor& tensor,
+    const tvm::te::Tensor& tensor,
     int64_t natural_vector_size,
     ScheduleContext& ctx) {
   if (!ShouldTryVectorization(tensor, ctx))
@@ -87,26 +87,26 @@ bool TryVectorization(
   if (rank < 1) {
     return false;
   }
-  const int64_t* tail_dim = as_const_int(shape[rank - 1]);
+  const int64_t* tail_dim = tvm::tir::as_const_int(shape[rank - 1]);
 
   if (nullptr != tail_dim) {
-    auto extern_op = tensor->op.as<tvm::ExternOpNode>();
+    auto extern_op = tensor->op.as<tvm::te::ExternOpNode>();
     if (nullptr != extern_op) {
       return false;
     }
 
-    auto compute_op = tensor->op.as<tvm::ComputeOpNode>();
+    auto compute_op = tensor->op.as<tvm::te::ComputeOpNode>();
 
     if (nullptr != compute_op) {
       auto axis = compute_op->axis;
-      tvm::IterVar x = axis[rank - 1];
+      tvm::tir::IterVar x = axis[rank - 1];
       if ((*tail_dim) > natural_vector_size) {
         if ((*tail_dim) % natural_vector_size != 0) {
           natural_vector_size = GCD<int64_t>(natural_vector_size, (*tail_dim));
         }
 
         if (natural_vector_size > 1) {
-          tvm::IterVar xi, xo;
+          tvm::tir::IterVar xi, xo;
           ctx.schedule[tensor->op].split(x, static_cast<int32_t>(natural_vector_size), &xo, &xi);
           ctx.schedule[tensor->op].vectorize(xi);
           return true;
@@ -126,7 +126,7 @@ bool TryVectorization(
 // Note TryInlineSchedule cannot be used with compute_root.
 // Therefore, there is a safty check of tensor's schedule.
 bool TryInlineSchedule(
-    const tvm::Tensor& tensor,
+    const tvm::te::Tensor& tensor,
     ScheduleContext& ctx) {
   auto it = ctx.scheduled_tensors.find(tensor->op.get());
   if (it != ctx.scheduled_tensors.end()) {
@@ -145,7 +145,7 @@ bool TryInlineSchedule(
 
 // Check the schedule of tensor's inputs, and call InsertRootSchedule for each of them
 bool InputRootSchedule(
-    const tvm::Tensor& tensor,
+    const tvm::te::Tensor& tensor,
     ScheduleContext& ctx) {
   bool status = false;
   for (auto& t : tensor->op->InputTensors()) {
@@ -160,7 +160,7 @@ bool InputRootSchedule(
 // Check the schedule of tensor's inputs,
 // and call InsertRootSchedule and TryVectorization for each of them
 bool InputRootScheduleWithVectorization(
-    const tvm::Tensor& tensor,
+    const tvm::te::Tensor& tensor,
     int64_t natural_vector_size,
     ScheduleContext& ctx) {
   bool status = false;

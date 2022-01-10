@@ -12,10 +12,10 @@ namespace tvm_codegen {
 
 // Evaluate of Pad OpIRCreator
 Status GENERIC_OP_IR_CREATOR_CLASS(Pad)::Evaluate(
-    const tvm::Array<tvm::Tensor>& inputs,
+    const tvm::Array<tvm::te::Tensor>& inputs,
     const Node& node,
     CodeGenContext&,
-    tvm::Array<tvm::Tensor>& outputs) {
+    tvm::Array<tvm::te::Tensor>& outputs) {
   ProtoHelperNodeContext ctx(node);
   OpNodeProtoHelper<ProtoHelperNodeContext> attrs(&ctx);
 
@@ -40,7 +40,7 @@ Status GENERIC_OP_IR_CREATOR_CLASS(Pad)::Evaluate(
     pad_after.push_back(pads[i + offset]);
   }
 
-  tvm::Tensor Y = Pad(inputs[0], ToTvmArray(pad_before), ToTvmArray(pad_after), value, mode, node.Name() + "_Pad");
+  tvm::te::Tensor Y = Pad(inputs[0], ToTvmArray(pad_before), ToTvmArray(pad_after), value, mode, node.Name() + "_Pad");
   outputs.push_back(Y);
   return Status::OK();
 }

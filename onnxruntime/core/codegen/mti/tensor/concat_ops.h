@@ -3,13 +3,13 @@
 
 #pragma once
 #include <string>
-#include <tvm/tvm.h>
+#include <tvm/te/operation.h>
 
 namespace onnxruntime {
 namespace tvm_codegen {
 
-tvm::Tensor Concat(const tvm::Array<tvm::Tensor>& inputs, int64_t axis, const std::string& name = "concat");
-tvm::Tensor ConcatSafe(const tvm::Array<tvm::Tensor>& inputs, int64_t axis, const std::string& name = "concat_safe");
+tvm::te::Tensor Concat(const tvm::Array<tvm::te::Tensor>& inputs, int64_t axis, const std::string& name = "concat");
+tvm::te::Tensor ConcatSafe(const tvm::Array<tvm::te::Tensor>& inputs, int64_t axis, const std::string& name = "concat_safe");
 
 }  // namespace tvm_codegen
 }  // namespace onnxruntime
