@@ -13,13 +13,15 @@ IOBinding::IOBinding(const SessionState& session_state) : session_state_(session
 
 common::Status IOBinding::BindInput(const std::string& name, const OrtValue& ml_value) {
   auto it = mapped_feed_names_.emplace(name, feed_names_.size());
-  size_t index = it.first->second;
-  if (it.second) {
-    feed_names_.push_back(name);
-    OrtValue new_mlvalue;
-    feeds_.push_back(new_mlvalue);
-  }
-  ORT_ENFORCE(mapped_feed_names_.size() == feed_names_.size(), "Size mismatch:", mapped_feed_names_.size(), "!=", feed_names_.size(), " index=", index, " it.second=", it.second);
+
+  auto add_or_replace = [&](const OrtValue& value) {
+    if (it.second) {
+      feed_names_.push_back(name);
+      feeds_.push_back(value);
+    } else {
+      feeds_[it.first->second] = value;
+    }
+  };
 
   if (ml_value.IsTensor() || ml_value.IsSparseTensor()) {
     OrtValue new_mlvalue;
@@ -29,10 +31,12 @@ common::Status IOBinding::BindInput(const std::string& name, const OrtValue& ml_
     // (if feeds_[index] is not for example),
     // CopyOneInputAcrossDevices has a different behaviour.
     ORT_RETURN_IF_ERROR(utils::CopyOneInputAcrossDevices(session_state_, name, ml_value, new_mlvalue));
-    feeds_[index] = new_mlvalue;
+    add_or_replace(new_mlvalue);
   } else {
-    feeds_[index] = ml_value;
+    add_or_replace(ml_value);
   }
+
+  ORT_ENFORCE(mapped_feed_names_.size() == feed_names_.size(), "Size mismatch:", mapped_feed_names_.size(), "!=", feed_names_.size(), " index=", it.first->second, " it.second=", it.second);
 
   return Status::OK();
 }
