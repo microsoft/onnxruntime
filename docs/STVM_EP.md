@@ -44,7 +44,7 @@ sudo apt-get install cmake
 
 Build ONNX Runtime:
 ```
-./build.sh --config Release --enable_pybind --build_wheel --skip_tests --parallel --use_stvm --skip_onnx_tests
+./build.sh --config Release --enable_pybind --build_wheel --skip_tests --parallel --use_tvm --skip_onnx_tests
 ```
 
 This command builds both TVM and onnxruntime-stvm. It creates two wheel, one for each project.

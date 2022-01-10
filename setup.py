@@ -66,7 +66,7 @@ elif parse_arg_remove_boolean(sys.argv, '--use_dnnl'):
     package_name = 'onnxruntime-dnnl'
 elif parse_arg_remove_boolean(sys.argv, '--use_nuphar'):
     package_name = 'onnxruntime-nuphar'
-elif parse_arg_remove_boolean(sys.argv, '--use_stvm'):
+elif parse_arg_remove_boolean(sys.argv, '--use_tvm'):
     package_name = 'onnxruntime-stvm'
 elif parse_arg_remove_boolean(sys.argv, '--use_vitisai'):
     package_name = 'onnxruntime-vitisai'
