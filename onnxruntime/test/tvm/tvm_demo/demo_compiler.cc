@@ -9,8 +9,9 @@
 #include "core/codegen/passes/scheduler/tvm_scheduler.h"
 #include "core/codegen/passes/scheduler/tvm_schedule_builder.h"
 
-#include <tvm/tvm.h>
-#include <tvm/build_module.h>
+#include <tvm/te/tensor.h>
+#include <tvm/runtime/module.h>
+#include <tvm/target/target.h>
 
 namespace onnxruntime {
 namespace tvm_demo {
@@ -44,14 +45,14 @@ DemoTVMTensorCtx BuildTVMIR(const onnxruntime::Graph& graph) {
   DemoTVMTensorCtx result;
 
   // Local lookup from name to tvm::Tensor
-  std::unordered_map<std::string, tvm::Tensor> tvm_tensors;
+  std::unordered_map<std::string, tvm::te::Tensor> tvm_tensors;
 
   // Note this is a simplified traversal that works specifically for this demo
   // but may or may not work for an univerisal model.
   // For more general traversal, please check nuphar provider.
   for (auto& node : graph.Nodes()) {
-    tvm::Array<tvm::Tensor> inputs;
-    tvm::Array<tvm::Tensor> outputs;
+    tvm::Array<tvm::te::Tensor> inputs;
+    tvm::Array<tvm::te::Tensor> outputs;
 
     // Get inputs
     for (auto& def : node.InputDefs()) {
@@ -62,9 +63,9 @@ DemoTVMTensorCtx BuildTVMIR(const onnxruntime::Graph& graph) {
       // It may or may not work for a universal graph.
       if (iter == tvm_tensors.end()) {
         tvm_tensors[name] =
-            tvm::placeholder(ShapeToTvmArray(def, demo_codegen_ctx),
-                             tvm_codegen::ToTvmType(TensorProtoDataType(def)),
-                             name + "_placeholder");
+            tvm::te::placeholder(ShapeToTvmArray(def, demo_codegen_ctx),
+                                 tvm_codegen::ToTvmType(TensorProtoDataType(def)),
+                                 name + "_placeholder");
       }
       inputs.push_back(tvm_tensors[name]);
     }
@@ -100,7 +101,7 @@ DECLARE_TVM_SCHEDULER_CLASS(AlwaysInline, DemoTVM)
 
 // Define a Demo scheduler's Evaluate that always inserts compute_inline
 bool TVM_SCHEDULER_CLASS(AlwaysInline, DemoTVM)::Evaluate(
-    const tvm::Tensor& tensor,
+    const tvm::te::Tensor& tensor,
     const Node*,
     tvm_codegen::CodeGenContext&,
     tvm_codegen::ScheduleContext& ctx_sched) {
@@ -127,7 +128,7 @@ constexpr auto predefined_key = "DemoKey";
 // Derived CodeGenContext allows compiler developers to store their specific meta data.
 // For more detailed example, please check nuphar provider.
 tvm_codegen::Scheduler* SCHEDULE_DISPATCHER_CLASS(DemoTVM)::Find(
-    const tvm::Tensor&, const Node*, tvm_codegen::CodeGenContext&) {
+    const tvm::te::Tensor&, const Node*, tvm_codegen::CodeGenContext&) {
   return DispatcherBase::Get(predefined_key);
 }
 
@@ -149,7 +150,7 @@ static void AttachAlwaysInlineScheduler(const std::shared_ptr<tvm_codegen::TVMSc
 // For a more general traversal, please check nuphar provider.
 static void TraverseAndSchedule(
     std::shared_ptr<tvm_codegen::TVMScheduleBuilder>& schedule_builder,
-    const tvm::Tensor& tensor,
+    const tvm::te::Tensor& tensor,
     tvm_codegen::ScheduleContext& ctx_schedule) {
   ORT_THROW_IF_ERROR(schedule_builder->Evaluate(tensor, nullptr, demo_codegen_ctx, ctx_schedule));
 
@@ -167,7 +168,7 @@ static void TraverseAndSchedule(
 // In practice, always inline might lead to bad performance
 // or even illegal loop transformation for some backends.
 // For a more general example, please check nuphar provider.
-tvm::Schedule CreateSchedule(const DemoTVMTensorCtx& ctx) {
+tvm::te::Schedule CreateSchedule(const DemoTVMTensorCtx& ctx) {
   // Create TVMScheduleRegistry that holds all Scheduler
   std::unique_ptr<tvm_codegen::TVMScheduleRegistry> schedule_registry =
       std::make_unique<tvm_codegen::TVMScheduleRegistry>();
@@ -183,7 +184,7 @@ tvm::Schedule CreateSchedule(const DemoTVMTensorCtx& ctx) {
   AttachAlwaysInlineScheduler(schedule_builder, schedule_registry.get());
 
   // Create scheudule object
-  tvm::Array<tvm::Operation> out_ops;
+  tvm::Array<tvm::te::Operation> out_ops;
   for (auto& t : ctx.outputs) {
     out_ops.push_back(t->op);
   }
@@ -207,19 +208,23 @@ tvm::Schedule CreateSchedule(const DemoTVMTensorCtx& ctx) {
 // Build TVM Module with a schedule using tvm's stackvm.
 // Note in real practice, please change stackvm to other backends.
 // For a more detailed example, please check nuphar provider.
-tvm::runtime::Module BuildStackVMModule(tvm::Schedule schedule,
-                                        tvm::BuildConfig config,
-                                        tvm::Array<tvm::Tensor> tvm_args,
+tvm::runtime::Module BuildStackVMModule(tvm::te::Schedule schedule,
+                                        tvm::Array<tvm::te::Tensor> tvm_args,
                                         std::vector<std::string>& target_func_names) {
-  auto target = tvm::target::stackvm();
+  // TVMTODO
+  tvm::runtime::Module m;
+  return m;
+  /*
+  auto target = tvm::runtime::StackVM();
   std::string func_name = "func";
-  auto args = tvm::Array<tvm::Tensor>(tvm_args);
-  std::unordered_map<tvm::Tensor, tvm::Buffer> binds;
-  auto lowered = lower(schedule, args, "func", binds, config);
+  auto args = tvm::Array<tvm::te::Tensor>(tvm_args);
+  std::unordered_map<tvm::te::Tensor, tvm::tir::Buffer> binds;
+  auto lowered = lower(schedule, args, "func", binds);
   // Uncomment the following line to dump lowered func
   // std::cout << "Dumping lowered func: " << lowered[0]->body;
   target_func_names.push_back(func_name);
-  return build(lowered, target, tvm::Target(), config);
+  return build(lowered, target, tvm::Target());
+  */
 }
 
 }  // namespace tvm_demo

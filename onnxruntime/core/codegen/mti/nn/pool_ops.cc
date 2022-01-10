@@ -17,7 +17,12 @@ tvm::te::Tensor MaxPool(const tvm::te::Tensor& input,
                     const PoolAttributes& pool_attrs,
                     const tvm::Array<tvm::PrimExpr>& /*output_shape*/,
                     const std::string& /*name*/) {
-  return topi::nn::pool(input,
+  // TVMTODO
+  tvm::te::Tensor pool;
+  return pool;
+
+  #if 0
+  return tvm::topi::nn::pool2d(input,
                         ToTvmArray(pool_attrs.kernel_shape),
                         ToTvmArray(pool_attrs.strides),
                         ToTvmArray(pool_attrs.pads),
@@ -25,14 +30,17 @@ tvm::te::Tensor MaxPool(const tvm::te::Tensor& input,
                         /*ceil_mode*/ false,
                         /*layout*/ pool_attrs.storage_order == 0 ? "NCWH" : "NCHW",
                         pool_attrs.count_include_pad);
+  #endif
 }
 
 tvm::te::Tensor AveragePool(const tvm::te::Tensor& input,
                         const PoolAttributes& pool_attrs,
                         const tvm::Array<tvm::PrimExpr>& /*output_shape*/,
                         const std::string& /*name*/) {
+  // TVMTODO
   tvm::te::Tensor pool;
   return pool;
+
   #if 0
   return tvm::topi::nn::pool2d(input,
                         ToTvmArray(pool_attrs.kernel_shape),
@@ -42,6 +50,7 @@ tvm::te::Tensor AveragePool(const tvm::te::Tensor& input,
                         /*ceil_mode*/ false,
                         /*layout*/ "NCHW",
                         pool_attrs.count_include_pad);
+  #endif
 }
 
 tvm::te::Tensor GlobalMaxPool(const tvm::te::Tensor& input,

@@ -9,7 +9,14 @@
 namespace onnxruntime {
 namespace tvm_codegen {
 
-// Note topi::pad does not support modes {edge, reflect}
+tvm::PrimExpr _SelectMapOr(const tvm::Array<tvm::PrimExpr>& conds) {
+  // tvm::Map(conds, tvm::tir::Or)
+  // TVMTODO
+  tvm::PrimExpr res;
+  return res;
+}
+
+// Note tvm::topi::pad does not support modes {edge, reflect}
 // Therefore, MTI implements a generic Pad
 tvm::te::Tensor Pad(const tvm::te::Tensor& t,
                 const tvm::Array<tvm::PrimExpr>& pad_before,
@@ -59,19 +66,26 @@ tvm::te::Tensor Pad(const tvm::te::Tensor& t,
       }
     }
 
+    /*
     if (mode == "reflect") {
-      return tvm::ir::Select::make(topi::detail::Map(conds, tvm::ir::Or::make),
-                                   t(coords), t(indices));
+      return tvm::tir::Select(_SelectMapOr(conds),
+                              t(coords), t(indices));
     } else if (mode == "constant") {
-      return tvm::ir::Select::make(topi::detail::Map(conds, tvm::ir::Or::make),
-                                   tvm::make_const(t->dtype, pad_value), t(indices));
+      return tvm::tir::Select(_SelectMapOr(conds),
+                              tvm::tir::make_const(t->dtype, pad_value), t(indices));
     }
+    */
 
     // default mode is edge
-    return t(indices);
+    // TVMTODO
+    tvm::te::Tensor res;
+    return res; //t(indices);
   };
 
-  return tvm::compute(output_shape, l, name);
+  // TVMTODO
+  tvm::te::Tensor res;
+  return res;
+  //return tvm::te::compute(output_shape, l, name);
 }
 
 tvm::te::Tensor Pad(const tvm::te::Tensor& t,
