@@ -13,7 +13,7 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CoreML
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Cuda(const OrtCUDAProviderOptions* provider_options);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Cuda(const OrtCUDAProviderOptionsV2* provider_options);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(int use_arena);
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_MIGraphX(int device_id);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_MIGraphX(const OrtMIGraphXProviderOptions* params);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nnapi(
     uint32_t flags, const optional<std::string>& partitioning_stop_ops_list);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nuphar(bool, const char*);
@@ -39,6 +39,7 @@ std::unique_ptr<IExecutionProvider> DefaultNupharExecutionProvider(bool allow_un
 std::unique_ptr<IExecutionProvider> DefaultTensorrtExecutionProvider();
 std::unique_ptr<IExecutionProvider> TensorrtExecutionProviderWithOptions(const OrtTensorRTProviderOptions* params);
 std::unique_ptr<IExecutionProvider> DefaultMIGraphXExecutionProvider();
+std::unique_ptr<IExecutionProvider> MIGraphXExecutionProviderWithOptions(const OrtMIGraphXProviderOptions* params);
 std::unique_ptr<IExecutionProvider> DefaultOpenVINOExecutionProvider();
 std::unique_ptr<IExecutionProvider> DefaultNnapiExecutionProvider();
 std::unique_ptr<IExecutionProvider> DefaultRknpuExecutionProvider();
