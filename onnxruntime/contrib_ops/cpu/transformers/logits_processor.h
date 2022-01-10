@@ -24,8 +24,9 @@ class ILogitsProcessor {
   virtual ~ILogitsProcessor() {}
 
   virtual void Process(const ISequences* sequences,
-                       NextTokenScores<T>& next_token_scores,
-                       int counter) = 0;
+                       NextTokenScores<T>& next_token_scores) = 0;
+  
+
 };
 
 template <typename T>
@@ -34,8 +35,7 @@ class MinLengthLogitsProcessor : public ILogitsProcessor<T> {
   MinLengthLogitsProcessor(int min_length, int eos_token_id);
 
   void Process(const ISequences* sequences,
-               NextTokenScores<T>& next_token_scores,
-               int counter) override;
+               NextTokenScores<T>& next_token_scores) override;
 
  private:
   int min_length_;
@@ -48,8 +48,7 @@ class RepetitionPenaltyLogitsProcessor : public ILogitsProcessor<T> {
   RepetitionPenaltyLogitsProcessor(float penalty);
 
   void Process(const ISequences* sequences,
-               NextTokenScores<T>& next_token_scores,
-               int counter) override;
+               NextTokenScores<T>& next_token_scores) override;
 
  private:
   float penalty_;
@@ -61,8 +60,7 @@ class NoRepeatNGramLogitsProcessor : public ILogitsProcessor<T> {
   NoRepeatNGramLogitsProcessor(int ngram_size);
 
   void Process(const ISequences* sequences,
-               NextTokenScores<T>& next_token_scores,
-               int counter) override;
+               NextTokenScores<T>& next_token_scores) override;
 
  private:
   int ngram_size_;
@@ -74,8 +72,7 @@ class VocabMaskLogitsProcessor : public ILogitsProcessor<T> {
   VocabMaskLogitsProcessor(const gsl::span<const int32_t>& vocab_mask);
 
   void Process(const ISequences* sequences,
-               NextTokenScores<T>& next_token_scores,
-               int counter) override;
+               NextTokenScores<T>& next_token_scores) override;
 
  private:
   gsl::span<const int32_t> vocab_mask_;
@@ -87,8 +84,7 @@ class PrefixVocabMaskLogitsProcessor : public ILogitsProcessor<T> {
   PrefixVocabMaskLogitsProcessor(const gsl::span<const int32_t>& vocab_mask);
 
   void Process(const ISequences* sequences,
-               NextTokenScores<T>& next_token_scores,
-               int counter) override;
+               NextTokenScores<T>& next_token_scores) override;
 
  private:
   gsl::span<const int32_t> prefix_vocab_mask_;
@@ -104,6 +100,8 @@ public:
 private:
     int batch_beam_size_;
     int vocab_size_;
+    int counter_;
+
     std::vector<ILogitsProcessor<T>*> processor_list_;
 
     std::unique_ptr<RepetitionPenaltyLogitsProcessor<T>> repetition_penalty_processor_;

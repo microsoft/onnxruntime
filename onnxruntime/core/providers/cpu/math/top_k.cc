@@ -285,8 +285,6 @@ static void FindTopKElements(const Tensor* input, const TensorShape& input_shape
           }
         };
   } else {
-    std::cout<<"Sorting top K"<<std::endl;
-
     find_top_k =
         [num_threads, rows, block_slice, num_blocks, k, sorted,
          input_data, cols,
