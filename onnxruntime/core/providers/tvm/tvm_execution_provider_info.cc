@@ -4,10 +4,11 @@
 #include <unordered_set>
 #include <regex>
 
-#include "core/providers/stvm/stvm_execution_provider_info.h"
-
 #include "core/common/common.h"
 #include "core/framework/provider_options_utils.h"
+
+#include "tvm_execution_provider_info.h"
+
 
 namespace onnxruntime {
 namespace stvm {

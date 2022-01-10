@@ -4,7 +4,7 @@
 #include "core/framework/tensor.h"
 
 #include "xpu_data_transfer.h"
-#include "stvm_utils.h"
+#include "tvm_utils.h"
 
 namespace onnxruntime {
 XPUDataTransfer::XPUDataTransfer() {

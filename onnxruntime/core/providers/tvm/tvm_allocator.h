@@ -1,11 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#ifndef STVM_ALLOCATOR
-#define STVM_ALLOCATOR
+#ifndef TVM_ALLOCATOR
+#define TVM_ALLOCATOR
 
 #include "core/framework/allocator.h"
-#include "stvm_common.h"
+#include "tvm_common.h"
 
 namespace onnxruntime {
 
@@ -39,4 +39,4 @@ class STVMAllocator : public IAllocator {
 };
 
 }  // namespace onnxruntime
-#endif // STVM_ALLOCATOR
+#endif // TVM_ALLOCATOR

@@ -1,6 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#ifndef TVM_EXECUTION_PROVIDER_FACTORY_H
+#define TVM_EXECUTION_PROVIDER_FACTORY_H
+
 #include "onnxruntime_c_api.h"
 
 #ifdef __cplusplus
@@ -13,4 +16,4 @@ ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_Stvm, _In_ OrtSessionOpt
 }
 #endif
 
-
+#endif  // TVM_EXECUTION_PROVIDER_FACTORY_H

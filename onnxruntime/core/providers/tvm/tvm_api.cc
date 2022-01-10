@@ -1,8 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "stvm_api.h"
-#include "core/common/common.h"
+#include "tvm_api.h"
 
 #include <tvm/runtime/registry.h>
 #include <tvm/target/codegen.h>

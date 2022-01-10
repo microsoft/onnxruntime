@@ -12,11 +12,12 @@
 #include "core/graph/model.h"
 #include "core/common/cpuid_info.h"
 
-#include "stvm_execution_provider.h"
+#include "tvm_execution_provider.h"
 #include "xpu_data_transfer.h"
-#include "stvm_allocator.h"
-#include "stvm_utils.h"
-#include "stvm_api.h"
+#include "tvm_allocator.h"
+#include "tvm_utils.h"
+#include "tvm_api.h"
+
 
 using namespace ONNX_NAMESPACE;
 

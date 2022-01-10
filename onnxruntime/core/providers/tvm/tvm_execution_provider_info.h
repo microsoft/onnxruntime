@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#ifndef STVM_EXECUTION_PROVIDER_INFO_H
-#define STVM_EXECUTION_PROVIDER_INFO_H
+#ifndef TVM_EXECUTION_PROVIDER_INFO_H
+#define TVM_EXECUTION_PROVIDER_INFO_H
 
 #include <unordered_map>
 #include <vector>
@@ -50,4 +50,4 @@ struct StvmExecutionProviderInfo {
 
 }  // namespace onnxruntime
 
-#endif  // STVM_EXECUTION_PROVIDER_INFO_H
+#endif  // TVM_EXECUTION_PROVIDER_INFO_H

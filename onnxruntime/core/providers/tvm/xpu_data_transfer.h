@@ -5,7 +5,7 @@
 #define XPU_DATA_TRANSFER
 
 #include "core/framework/data_transfer.h"
-#include "stvm_common.h"
+#include "tvm_common.h"
 
 namespace onnxruntime {
 

@@ -157,7 +157,7 @@ extern std::string nuphar_settings;
 }  // namespace onnxruntime
 #endif
 #ifdef USE_STVM
-#include "core/providers/stvm/stvm_execution_provider_info.h"
+#include "core/providers/tvm/tvm_execution_provider_info.h"
 #endif
 #ifdef USE_VITISAI
 #include "core/providers/vitisai/vitisai_provider_factory.h"

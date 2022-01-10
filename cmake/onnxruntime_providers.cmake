@@ -1282,8 +1282,8 @@ if (onnxruntime_USE_STVM)
   add_definitions(-DUSE_STVM=1)
 
   file (GLOB_RECURSE onnxruntime_providers_stvm_cc_srcs CONFIGURE_DEPENDS
-    "${ONNXRUNTIME_ROOT}/core/providers/stvm/*.h"
-    "${ONNXRUNTIME_ROOT}/core/providers/stvm/*.cc"
+    "${ONNXRUNTIME_ROOT}/core/providers/tvm/*.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/tvm/*.cc"
     )
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_stvm_cc_srcs})
   onnxruntime_add_static_library(onnxruntime_providers_stvm ${onnxruntime_providers_stvm_cc_srcs})
@@ -1314,5 +1314,5 @@ if (onnxruntime_USE_STVM)
   target_compile_options(onnxruntime_providers_stvm PRIVATE -Wno-error=type-limits)
   target_compile_definitions(onnxruntime_providers_stvm PUBLIC DMLC_USE_LOGGING_LIBRARY=<tvm/runtime/logging.h>)
 
-  install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/stvm  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
+  install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/tvm  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
 endif()

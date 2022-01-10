@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#ifndef STVM_EXECUTION_PROVIDER_H
-#define STVM_EXECUTION_PROVIDER_H
+#ifndef TVM_EXECUTION_PROVIDER_H
+#define TVM_EXECUTION_PROVIDER_H
 
 #include <string>
 #include <vector>
@@ -11,10 +11,11 @@
 
 #include "core/common/logging/logging.h"
 #include "core/framework/execution_provider.h"
-#include "core/providers/stvm/stvm_execution_provider_info.h"
 #include "core/platform/ort_mutex.h"
 
-#include "stvm_common.h"
+#include "tvm_common.h"
+#include "tvm_execution_provider_info.h"
+
 
 namespace onnxruntime {
 
@@ -68,4 +69,4 @@ class StvmExecutionProvider : public IExecutionProvider {
 
 }  // namespace onnxruntime
 
-#endif  // STVM_EXECUTION_PROVIDER_H
+#endif  // TVM_EXECUTION_PROVIDER_H

@@ -11,7 +11,7 @@
 #include "core/providers/nuphar/nuphar_provider_factory.h"
 #endif
 #ifdef USE_STVM
-#include "core/providers/stvm/stvm_provider_factory.h"
+#include "core/providers/tvm/tvm_provider_factory.h"
 #endif
 #ifdef USE_TENSORRT
 #include "core/providers/tensorrt/tensorrt_provider_factory.h"

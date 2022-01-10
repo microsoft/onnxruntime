@@ -1,10 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#ifndef STVM_API_H
-#define STVM_API_H
+#ifndef TVM_API_H
+#define TVM_API_H
 
-#include "stvm_common.h"
+#include "tvm_common.h"
 
 namespace stvm {
     tvm::runtime::Module TVMCompile(const std::string& onnx_txt,
@@ -25,4 +25,4 @@ namespace stvm {
     void TVMRun(tvm::runtime::Module& mod, std::vector<DLTensor>& outputs, tvm::runtime::TVMRetValue *ret);
 }  // namespace stvm
 
-#endif  // STVM_API_H
+#endif  // TVM_API_H

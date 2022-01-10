@@ -19,7 +19,7 @@
 
 #ifdef USE_STVM
 
-#include "core/providers/stvm/stvm_provider_factory.h"
+#include "core/providers/tvm/tvm_provider_factory.h"
 
 #endif
 
