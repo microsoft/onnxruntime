@@ -306,7 +306,8 @@ class alignas(CACHE_LINE_BYTES) LoopCounter {
   bool ClaimIterations(unsigned my_home_shard,
                        unsigned& my_shard,
                        uint64_t& my_start,
-                       uint64_t& my_end, uint64_t block_size) {
+                       uint64_t& my_end,
+                       uint64_t block_size) {
     do {
       if (_shards[my_shard]._next < _shards[my_shard]._end) {
         // Appears to be work in the current shard, try to claim with atomic fetch-and-add
@@ -437,7 +438,9 @@ void ThreadPool::ParallelForFixedBlockSizeScheduling(const std::ptrdiff_t total,
         fn(static_cast<std::ptrdiff_t>(my_iter_start),
            static_cast<std::ptrdiff_t>(my_iter_end));
         auto todo = left.fetch_sub(my_iter_end - my_iter_start, std::memory_order_relaxed);
-        if (b > 1) b = std::max(1LL, std::llroundl(static_cast<long double>(todo) / num_of_blocks));
+        if (b > 1) {
+          b = std::max(1LL, std::llroundl(static_cast<long double>(todo) / num_of_blocks));
+        }
       }
     };
     RunInParallel(run_work, d_of_p, base_block_size);
