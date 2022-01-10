@@ -17,7 +17,7 @@ class Clip6 : public OpenCLKernel {
       : OpenCLKernel(info) {
     VLOGS_DEFAULT(0) << "Init Clip (OpenCLKernel)";
     LoadProgram(clip_kernel_src, clip_kernel_src_len);
-    LoadKernel("ClipNCHW");
+    LoadKernel("Clip");
     info.GetAttrOrDefault("min", &lower_bound_, std::numeric_limits<float>::lowest());
     info.GetAttrOrDefault("max", &upper_bound_, std::numeric_limits<float>::max());
   };
@@ -33,18 +33,13 @@ class Clip6 : public OpenCLKernel {
 
     const auto& X_shape = X->Shape();
     auto desc = Image2DDesc::PackFromTensorNCHW(X_shape);
-    cl_int C = X_shape[1];
-    cl_int W = X_shape[3];
-
-    ZoneNamedN(_tracy_ClipNCHW, "ClipNCHW (kernel launch)", true);
+    ZoneNamedN(_tracy_ClipNCHW, "Clip (kernel launch)", true);
     ORT_RETURN_IF_ERROR(
-        KernelLauncher{GetKernel("ClipNCHW")}
+        KernelLauncher{GetKernel("Clip")}
             .setArg<cl_int>(desc.Width())
             .setArg<cl_int>(desc.Height())
             .setImage2D(*X)
             .setImage2D(*Y)
-            .setArg(C)
-            .setArg(W)
             .setArg(lower_bound_)
             .setArg(upper_bound_)
             .Launch(*exec_, desc.AsNDRange()));
