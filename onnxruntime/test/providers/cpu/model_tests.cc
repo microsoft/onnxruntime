@@ -990,7 +990,7 @@ TEST_P(ModelTest, Run) {
   return v;
 }
 
-auto GenerateCustomTestName  = [](const ::testing::TestParamInfo<ModelTest::ParamType>& info) {
+auto ExpandModelName  = [](const ::testing::TestParamInfo<ModelTest::ParamType>& info) {
   // use info.param here to generate the test suffix
   std::basic_string<ORTCHAR_T> name = info.param;
 
@@ -1005,7 +1005,7 @@ auto GenerateCustomTestName  = [](const ::testing::TestParamInfo<ModelTest::Para
   }
 
   // Note: test name only accepts '_' and alphanumeric
-  // replace '/' with '_' since '_'
+  // replace '/' with '_'
   std::replace(name.begin(), name.end(), '/', '_');
 
   // Note: test name only accepts '_' and alphanumeric
@@ -1025,7 +1025,7 @@ auto GenerateCustomTestName  = [](const ::testing::TestParamInfo<ModelTest::Para
 // So, we don't provide custom test name on Windows now.
 INSTANTIATE_TEST_SUITE_P(ModelTests, ModelTest, testing::ValuesIn(GetParameterStrings()));
 #else
-INSTANTIATE_TEST_SUITE_P(ModelTests, ModelTest, testing::ValuesIn(GetParameterStrings()), GenerateCustomTestName);
+INSTANTIATE_TEST_SUITE_P(ModelTests, ModelTest, testing::ValuesIn(GetParameterStrings()), ExpandModelName);
 #endif
 
 }  // namespace test
