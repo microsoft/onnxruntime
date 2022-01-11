@@ -133,6 +133,8 @@ android {
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
         versionName "1.0"
+
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
     splits {
         abi {
@@ -183,7 +185,6 @@ dependencies {
     //noinspection GradleDynamicVersion
     implementation "com.facebook.react:react-native:+"  // From node_modules
 
-
     implementation "androidx.swiperefreshlayout:swiperefreshlayout:1.0.0"
     debugImplementation("com.facebook.flipper:flipper:${FLIPPER_VERSION}") {
       exclude group:'com.facebook.fbjni'
@@ -204,7 +205,11 @@ dependencies {
         implementation jscFlavor
     }
 
-    implementation project(':onnxruntimereactnative')
+    androidTestImplementation 'androidx.test.espresso:espresso-core:3.4.0'
+    androidTestImplementation 'androidx.test:runner:1.4.0'
+    androidTestImplementation 'androidx.test:rules:1.4.0'
+
+    implementation project(':onnxruntime-react-native')
 }
 
 // Run this once to be able to run the application with BUCK

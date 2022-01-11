@@ -12,10 +12,21 @@
 		13B07FC11A68108700A75B9A /* main.m in Sources */ = {isa = PBXBuildFile; fileRef = 13B07FB71A68108700A75B9A /* main.m */; };
 		81AB9BB82411601600AC10FF /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */; };
 		A769E116237385B138BCB816 /* Pods_OnnxruntimeModuleExample.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 0C2AC7C168BAB1163669C38C /* Pods_OnnxruntimeModuleExample.framework */; };
+		DB61BA27278684FB0096C971 /* OnnxruntimeModuleExampleUITests.m in Sources */ = {isa = PBXBuildFile; fileRef = DB61BA26278684FB0096C971 /* OnnxruntimeModuleExampleUITests.m */; };
 		DBA8BA87267293C4008CC55A /* mnist.ort in Resources */ = {isa = PBXBuildFile; fileRef = DBA8BA86267293C4008CC55A /* mnist.ort */; };
 		DBBF7412263B8C7100487C77 /* MNISTDataHandler.mm in Sources */ = {isa = PBXBuildFile; fileRef = DBBF7411263B8C7100487C77 /* MNISTDataHandler.mm */; };
 		DBBF7414263B8CCB00487C77 /* 3.jpg in Resources */ = {isa = PBXBuildFile; fileRef = DBBF7413263B8CCB00487C77 /* 3.jpg */; };
 /* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		DB61BA2A278684FB0096C971 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 83CBB9F71A601CBA00E9B192 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 13B07F861A680F5B00A75B9A;
+			remoteInfo = OnnxruntimeModuleExample;
+		};
+/* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
 		DB8FCD9C25C3404B00C72F26 /* Embed Libraries */ = {
@@ -41,6 +52,8 @@
 		13B07FB71A68108700A75B9A /* main.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; name = main.m; path = OnnxruntimeModuleExample/main.m; sourceTree = "<group>"; };
 		47F7ED3B7971BE374F7B8635 /* Pods-OnnxruntimeModuleExample.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-OnnxruntimeModuleExample.debug.xcconfig"; path = "Target Support Files/Pods-OnnxruntimeModuleExample/Pods-OnnxruntimeModuleExample.debug.xcconfig"; sourceTree = "<group>"; };
 		81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; name = LaunchScreen.storyboard; path = OnnxruntimeModuleExample/LaunchScreen.storyboard; sourceTree = "<group>"; };
+		DB61BA24278684FB0096C971 /* OnnxruntimeModuleExampleUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = OnnxruntimeModuleExampleUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		DB61BA26278684FB0096C971 /* OnnxruntimeModuleExampleUITests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = OnnxruntimeModuleExampleUITests.m; sourceTree = "<group>"; };
 		DBA8BA86267293C4008CC55A /* mnist.ort */ = {isa = PBXFileReference; lastKnownFileType = file; name = mnist.ort; path = ../src/mnist.ort; sourceTree = "<group>"; };
 		DBBF7410263B8C5F00487C77 /* MNISTDataHandler.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = MNISTDataHandler.h; sourceTree = "<group>"; };
 		DBBF7411263B8C7100487C77 /* MNISTDataHandler.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; path = MNISTDataHandler.mm; sourceTree = "<group>"; };
@@ -55,6 +68,13 @@
 			buildActionMask = 2147483647;
 			files = (
 				A769E116237385B138BCB816 /* Pods_OnnxruntimeModuleExample.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		DB61BA21278684FB0096C971 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -109,6 +129,7 @@
 				DBBF7413263B8CCB00487C77 /* 3.jpg */,
 				13B07FAE1A68108700A75B9A /* OnnxruntimeModuleExample */,
 				832341AE1AAA6A7D00B99B32 /* Libraries */,
+				DB61BA25278684FB0096C971 /* OnnxruntimeModuleExampleUITests */,
 				83CBBA001A601CBA00E9B192 /* Products */,
 				2D16E6871FA4F8E400B85C8A /* Frameworks */,
 				6B9684456A2045ADE5A6E47E /* Pods */,
@@ -122,8 +143,17 @@
 			isa = PBXGroup;
 			children = (
 				13B07F961A680F5B00A75B9A /* OnnxruntimeModuleExample.app */,
+				DB61BA24278684FB0096C971 /* OnnxruntimeModuleExampleUITests.xctest */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		DB61BA25278684FB0096C971 /* OnnxruntimeModuleExampleUITests */ = {
+			isa = PBXGroup;
+			children = (
+				DB61BA26278684FB0096C971 /* OnnxruntimeModuleExampleUITests.m */,
+			);
+			path = OnnxruntimeModuleExampleUITests;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -151,6 +181,24 @@
 			productReference = 13B07F961A680F5B00A75B9A /* OnnxruntimeModuleExample.app */;
 			productType = "com.apple.product-type.application";
 		};
+		DB61BA23278684FB0096C971 /* OnnxruntimeModuleExampleUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = DB61BA2E278684FB0096C971 /* Build configuration list for PBXNativeTarget "OnnxruntimeModuleExampleUITests" */;
+			buildPhases = (
+				DB61BA20278684FB0096C971 /* Sources */,
+				DB61BA21278684FB0096C971 /* Frameworks */,
+				DB61BA22278684FB0096C971 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				DB61BA2B278684FB0096C971 /* PBXTargetDependency */,
+			);
+			name = OnnxruntimeModuleExampleUITests;
+			productName = OnnxruntimeModuleExampleUITests;
+			productReference = DB61BA24278684FB0096C971 /* OnnxruntimeModuleExampleUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -160,8 +208,12 @@
 				LastUpgradeCheck = 1130;
 				TargetAttributes = {
 					13B07F861A680F5B00A75B9A = {
-						DevelopmentTeam = X7YWPPMK53;
 						LastSwiftMigration = 1120;
+					};
+					DB61BA23278684FB0096C971 = {
+						CreatedOnToolsVersion = 13.2.1;
+						ProvisioningStyle = Automatic;
+						TestTargetID = 13B07F861A680F5B00A75B9A;
 					};
 				};
 			};
@@ -179,6 +231,7 @@
 			projectRoot = "";
 			targets = (
 				13B07F861A680F5B00A75B9A /* OnnxruntimeModuleExample */,
+				DB61BA23278684FB0096C971 /* OnnxruntimeModuleExampleUITests */,
 			);
 		};
 /* End PBXProject section */
@@ -192,6 +245,13 @@
 				DBBF7414263B8CCB00487C77 /* 3.jpg in Resources */,
 				81AB9BB82411601600AC10FF /* LaunchScreen.storyboard in Resources */,
 				13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		DB61BA22278684FB0096C971 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -221,7 +281,7 @@
 				"${PODS_ROOT}/Target Support Files/Pods-OnnxruntimeModuleExample/Pods-OnnxruntimeModuleExample-frameworks.sh",
 				"${BUILT_PRODUCTS_DIR}/DoubleConversion/DoubleConversion.framework",
 				"${BUILT_PRODUCTS_DIR}/FBReactNativeSpec/FBReactNativeSpec.framework",
-				"${BUILT_PRODUCTS_DIR}/Folly/folly.framework",
+				"${BUILT_PRODUCTS_DIR}/RCT-Folly/folly.framework",
 				"${BUILT_PRODUCTS_DIR}/RCTTypeSafety/RCTTypeSafety.framework",
 				"${BUILT_PRODUCTS_DIR}/React-Core/React.framework",
 				"${BUILT_PRODUCTS_DIR}/React-CoreModules/CoreModules.framework",
@@ -237,8 +297,11 @@
 				"${BUILT_PRODUCTS_DIR}/React-jsi/jsi.framework",
 				"${BUILT_PRODUCTS_DIR}/React-jsiexecutor/jsireact.framework",
 				"${BUILT_PRODUCTS_DIR}/React-jsinspector/jsinspector.framework",
+				"${BUILT_PRODUCTS_DIR}/React-logger/logger.framework",
+				"${BUILT_PRODUCTS_DIR}/React-perflogger/reactperflogger.framework",
 				"${BUILT_PRODUCTS_DIR}/ReactCommon/ReactCommon.framework",
 				"${BUILT_PRODUCTS_DIR}/Yoga/yoga.framework",
+				"${BUILT_PRODUCTS_DIR}/fmt/fmt.framework",
 				"${BUILT_PRODUCTS_DIR}/glog/glog.framework",
 			);
 			name = "[CP] Embed Pods Frameworks";
@@ -261,8 +324,11 @@
 				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/jsi.framework",
 				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/jsireact.framework",
 				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/jsinspector.framework",
+				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/logger.framework",
+				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/reactperflogger.framework",
 				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/ReactCommon.framework",
 				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/yoga.framework",
+				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/fmt.framework",
 				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/glog.framework",
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -324,7 +390,23 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		DB61BA20278684FB0096C971 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				DB61BA27278684FB0096C971 /* OnnxruntimeModuleExampleUITests.m in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		DB61BA2B278684FB0096C971 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 13B07F861A680F5B00A75B9A /* OnnxruntimeModuleExample */;
+			targetProxy = DB61BA2A278684FB0096C971 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		13B07F941A680F5B00A75B9A /* Debug */ = {
@@ -334,7 +416,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = X7YWPPMK53;
+				DEVELOPMENT_TEAM = "";
 				ENABLE_BITCODE = NO;
 				INFOPLIST_FILE = OnnxruntimeModuleExample/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
@@ -358,7 +440,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = X7YWPPMK53;
+				DEVELOPMENT_TEAM = "";
 				INFOPLIST_FILE = OnnxruntimeModuleExample/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
 				OTHER_LDFLAGS = (
@@ -487,6 +569,60 @@
 			};
 			name = Release;
 		};
+		DB61BA2C278684FB0096C971 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++17";
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.2;
+				MARKETING_VERSION = 1.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = ai.onnxruntime.reactnative.OnnxruntimeModuleExampleUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = OnnxruntimeModuleExample;
+			};
+			name = Debug;
+		};
+		DB61BA2D278684FB0096C971 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++17";
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.2;
+				MARKETING_VERSION = 1.0;
+				MTL_FAST_MATH = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = ai.onnxruntime.reactnative.OnnxruntimeModuleExampleUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = OnnxruntimeModuleExample;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -504,6 +640,15 @@
 			buildConfigurations = (
 				83CBBA201A601CBA00E9B192 /* Debug */,
 				83CBBA211A601CBA00E9B192 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		DB61BA2E278684FB0096C971 /* Build configuration list for PBXNativeTarget "OnnxruntimeModuleExampleUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				DB61BA2C278684FB0096C971 /* Debug */,
+				DB61BA2D278684FB0096C971 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

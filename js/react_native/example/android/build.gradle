@@ -34,9 +34,5 @@ allprojects {
         google()
         jcenter()
         maven { url 'https://www.jitpack.io' }
-
-        flatDir {
-          dir project(':onnxruntimereactnative').file('libs')
-        }
     }
 }

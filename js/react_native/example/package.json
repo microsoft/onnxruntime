@@ -9,13 +9,15 @@
     "start": "react-native start"
   },
   "dependencies": {
-    "react": "16.13.1",
-    "react-native": "0.63.4"
+    "onnxruntime-common": "file:./onnxruntime-common.tgz",
+    "onnxruntime-react-native": "file:./onnxruntime-react-native.tgz",
+    "react": "17.0.2",
+    "react-native": "0.66.4"
   },
   "devDependencies": {
     "@babel/core": "^7.12.10",
     "@babel/runtime": "^7.12.5",
     "babel-plugin-module-resolver": "^4.0.0",
-    "metro-react-native-babel-preset": "^0.64.0"
+    "metro-react-native-babel-preset": "^0.66.2"
   }
 }

@@ -186,7 +186,7 @@ public class MNISTDataHandler extends ReactContextBaseJavaModule {
     if (maxValue == 0) {
       detectionResult = "No match";
     } else {
-      detectionResult = "I guess, it's " + argmax;
+      detectionResult = String.valueOf(argmax);
     }
 
     WritableMap cookedMap = Arguments.createMap();

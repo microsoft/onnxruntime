@@ -50,6 +50,18 @@
             ReferencedContainer = "container:OnnxruntimeModuleExample.xcodeproj">
          </BuildableReference>
       </MacroExpansion>
+      <Testables>
+         <TestableReference
+            skipped = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "DB61BA23278684FB0096C971"
+               BuildableName = "OnnxruntimeModuleExampleUITests.xctest"
+               BlueprintName = "OnnxruntimeModuleExampleUITests"
+               ReferencedContainer = "container:OnnxruntimeModuleExample.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
+      </Testables>
    </TestAction>
    <LaunchAction
       buildConfiguration = "Debug"

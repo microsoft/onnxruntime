@@ -140,7 +140,7 @@ RCT_EXPORT_METHOD(postprocess
   NSDictionary *outputTensor = [result objectForKey:@"Identity"];
 
   NSString *data = [outputTensor objectForKey:@"data"];
-  NSData *buffer = [[NSData alloc] initWithBase64EncodedString:data options:0];
+  NSData *buffer =	 [[NSData alloc] initWithBase64EncodedString:data options:0];
   float *values = (float *)[buffer bytes];
   int count = (int)[buffer length] / 4;
 
@@ -156,7 +156,7 @@ RCT_EXPORT_METHOD(postprocess
   if (maxValue == 0.0f) {
     detectionResult = [NSMutableString stringWithString:@"No match"];
   } else {
-    detectionResult = [NSMutableString stringWithFormat:@"I guess, it's %d", argmax];
+    detectionResult = [NSMutableString stringWithFormat:@"%d", argmax];
   }
 
   NSDictionary *cookedMap = @{@"result" : detectionResult};

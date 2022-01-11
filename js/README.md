@@ -404,23 +404,32 @@ By default, ONNX Runtime React Native leverages ONNX Runtime Mobile package with
 
    ```sh
    yarn bootstrap
-   yarn example ios
-   yarn example android
+   ```
+
+   From `<ORT_ROOT>/js/react_native/example/android`, run e2e Android tests as follows,
+
+   ```sh
+   ./gradlew installDebug
+   adb shell am instrument -w com.example.reactnativeonnxruntimemodule.test/androidx.test.runner.AndroidJUnitRunner
+   ```
+
+   From `<ORT_ROOT>/js/react_native/example/ios`, run e2e iOS tests as follows,
+
+   ```sh
+   xcrun xcodebuild test -workspace OnnxruntimeModuleExample.xcworkspace -scheme OnnxruntimeModuleExample -destination 'platform=iOS Simulator,OS=latest,name=iPhone 13'
    ```
 
 ### NPM Packaging
 
 1. Update a version using `npm verison <version>` from `<ORT_ROOT>/js/react_native` folder. If it's for a dev, use `npm version <version>-dev.<subversion>`
 
-2. Modify Onnxruntime_mobileVersion property in `<ORT_ROOT>/js/react_native/android/build.properties` to update ONNX Runtime Android package version.
+2. Run `yarn prepack-rel` to change `onnxruntime-common` to point to a published npm package
 
-3. Run `yarn prepack` to change `onnxruntime-common` to point to a published npm package
+3. Run `npm pack` and verify NPM package contents
 
-4. Run `npm pack` and verify NPM package contents
+4. Run `npm publish <tgz> --dry-run` to see how it's going to be published
 
-5. Run `npm publish <tgz> --dry-run` to see how it's going to be published
-
-6. Run `npm publish <tgz>` to publish to npmjs. If it's for a dev, add flag `--tag dev`.
+5. Run `npm publish <tgz>` to publish to npmjs. If it's for a dev, add flag `--tag dev`.
 
 ### Distribution
 
