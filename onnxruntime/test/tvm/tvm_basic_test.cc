@@ -363,7 +363,7 @@ TEST(TVMTest, Native_TVM) {
   auto args = Array<Tensor>({A, B, D, E});
   std::unordered_map<Tensor, Buffer> binds;
   auto config = build_config();
-#ifdef USE_TVM_WITH_LLVM
+#ifdef NUPHAR_USE_TVM_WITH_LLVM
   auto target = target::llvm();
 #else
   auto target = target::stackvm();

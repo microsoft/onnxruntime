@@ -482,7 +482,7 @@ if (onnxruntime_USE_CUDA)
     )
     # disable a warning from the CUDA headers about unreferenced local functions
     #target_compile_options(onnxruntime_providers_cuda PRIVATE /wd4505)
-    if (onnxruntime_USE_TVM)
+    if (onnxruntime_NUPHAR_USE_TVM)
       target_compile_options(onnxruntime_providers_cuda PRIVATE ${DISABLED_WARNINGS_FOR_TVM})
     endif()
     set(onnxruntime_providers_cuda_static_library_flags
@@ -656,8 +656,8 @@ endif()
 if (onnxruntime_USE_NUPHAR)
   add_definitions(-DUSE_NUPHAR=1)
 
-  if (NOT onnxruntime_USE_TVM)
-    message(FATAL_ERROR "onnxruntime_USE_TVM required for onnxruntime_USE_NUPHAR")
+  if (NOT onnxruntime_NUPHAR_USE_TVM)
+    message(FATAL_ERROR "onnxruntime_NUPHAR_USE_TVM required for onnxruntime_USE_NUPHAR")
   endif()
 
   if (NOT onnxruntime_USE_LLVM)

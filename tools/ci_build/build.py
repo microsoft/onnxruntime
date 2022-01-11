@@ -761,8 +761,8 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                 args.android or (args.ios and is_macOS())
                 or args.use_rknpu)
             else "OFF"),
-        "-Donnxruntime_USE_TVM=" + ("ON" if (args.use_nuphar or args.use_stvm) else "OFF"),
-        "-Donnxruntime_USE_LLVM=" + ("ON" if (args.use_nuphar or args.use_stvm) else "OFF"),
+        "-Donnxruntime_USE_NUPHAR_TVM=" + ("ON" if args.use_nuphar else "OFF"),
+        "-Donnxruntime_USE_LLVM=" + ("ON" if args.use_nuphar else "OFF"),
         "-Donnxruntime_ENABLE_MICROSOFT_INTERNAL=" + ("ON" if args.enable_msinternal else "OFF"),
         "-Donnxruntime_USE_VITISAI=" + ("ON" if args.use_vitisai else "OFF"),
         "-Donnxruntime_USE_NUPHAR=" + ("ON" if args.use_nuphar else "OFF"),
