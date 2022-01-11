@@ -9,8 +9,7 @@
 #include <unordered_map>
 #include <cstdlib>
 #ifdef ENABLE_EAGER_MODE
-  #include "orttraining/eager/ort_backends.h"
-  using namespace torch_ort::eager;
+#include "orttraining/eager/ort_backends.h"
 #endif
 
 namespace onnxruntime {
@@ -24,8 +23,7 @@ using ExecutionProviderMap = std::unordered_map<std::string, std::shared_ptr<IEx
 using ExecutionProviderLibInfoMap = std::unordered_map<std::string, std::pair<std::string, ProviderOptions> > ;
 
 #ifdef ENABLE_EAGER_MODE
-  void InitializeBackendsManager();
-  ORTBackendsManager& GetORTBackendsManager();
+torch_ort::eager::ORTBackendsManager& GetORTBackendsManager();
 #endif
 
 class ORTTrainingPythonEnv{
