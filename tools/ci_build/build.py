@@ -563,6 +563,10 @@ def parse_arguments():
     parser.add_argument(
         "--build_eager_mode", action='store_true',
         help="Build ONNXRuntime micro-benchmarks.")
+    # lazy tensor support.
+    parser.add_argument(
+        "--enable_lazy_tensor", action='store_true',
+        help="Enable use ORT as backend in Pytorch LazyTensor.")
     parser.add_argument('--eager_customop_module', default=None,
                         help='Module containing custom op mappings for eager mode.')
     parser.add_argument('--eager_customop_header', default=None,
@@ -832,6 +836,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_ENABLE_WEBASSEMBLY_PROFILING=" + ("ON" if args.enable_wasm_profiling else "OFF"),
         "-Donnxruntime_WEBASSEMBLY_MALLOC=" + args.wasm_malloc,
         "-Donnxruntime_ENABLE_EAGER_MODE=" + ("ON" if args.build_eager_mode else "OFF"),
+        "-Donnxruntime_ENABLE_LAZY_TENSOR=" + ("ON" if args.enable_lazy_tensor else "OFF"),
         "-Donnxruntime_ENABLE_EXTERNAL_CUSTOM_OP_SCHEMAS=" + ("ON" if args.enable_external_custom_op_schemas
                                                               else "OFF"),
         "-Donnxruntime_NVCC_THREADS=" + str(args.parallel),

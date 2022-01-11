@@ -34,6 +34,7 @@ void addGlobalMethods(py::module& m, Environment& env);
 void addObjectMethods(py::module& m, Environment& env, ExecutionProviderRegistrationFn ep_registration_fn);
 void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn ep_registration_fn);
 void addObjectMethodsForEager(py::module& m);
+void addObjectMethodsForLazyTensor(py::module& m);
 void InitArray();
 
 
@@ -298,6 +299,10 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
   addObjectMethodsForTraining(m, ORTTrainingRegisterExecutionProviders);
 #ifdef ENABLE_EAGER_MODE
   addObjectMethodsForEager(m);
+#endif
+
+#ifdef ENABLE_LAZY_TENSOR
+  addObjectMethodsForLazyTensor(m);
 #endif
   
   m.def("_register_provider_lib", [](const std::string& name, 

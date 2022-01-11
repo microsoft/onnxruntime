@@ -37,16 +37,38 @@ if (onnxruntime_ENABLE_EAGER_MODE)
     "${ORTTRAINING_ROOT}/orttraining/eager/*.cpp"
     )
 
-  if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
-    list(APPEND onnxruntime_eager_extension_srcs
-              "${ORTTRAINING_ROOT}/orttraining/core/framework/torch/dlpack_python.cc")
-  endif()
-
   list(APPEND onnxruntime_pybind_srcs
               ${onnxruntime_eager_extension_srcs})
 endif()
 
+# Support ORT as a backend in Pytorch's LazyTensor.
+if (onnxruntime_ENABLE_LAZY_TENSOR)
+  list(APPEND CMAKE_PREFIX_PATH ${onnxruntime_PREBUILT_PYTORCH_PATH})
+  find_package(Torch REQUIRED)
+  # TODO: check if we can remove this.
+  find_library(TORCH_PYTHON_LIBRARY torch_python PATHS "${TORCH_INSTALL_PREFIX}/lib")
+
+  file(GLOB onnxruntime_lazy_tensor_extension_srcs CONFIGURE_DEPENDS
+    "${ORTTRAINING_ROOT}/orttraining/lazy_tensor/*.cpp"
+    )
+
+  list(APPEND onnxruntime_pybind_srcs
+              ${onnxruntime_lazy_tensor_extension_srcs})
+endif()
+
+# onnxruntime_ENABLE_LAZY_TENSOR and onnxruntime_ENABLE_EAGER_MODE
+# need DLPack code to pass tensors cross ORT and Pytorch boundry.
+# TODO: consider making DLPack code a standalone library. 
+if (onnxruntime_ENABLE_LAZY_TENSOR or onnxruntime_ENABLE_EAGER_MODE)
+  # If DLPack code is not built, add it to ORT's pybind target.
+  if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
+    list(APPEND onnxruntime_pybind_srcs
+              "${ORTTRAINING_ROOT}/orttraining/core/framework/torch/dlpack_python.cc")
+  endif()
+endif()
+
 onnxruntime_add_shared_library_module(onnxruntime_pybind11_state ${onnxruntime_pybind_srcs})
+
 if(MSVC)
   target_compile_options(onnxruntime_pybind11_state PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
   if(onnxruntime_ENABLE_TRAINING)
@@ -104,7 +126,11 @@ if (onnxruntime_ENABLE_TRAINING)
   target_link_libraries(onnxruntime_pybind11_state PRIVATE onnxruntime_training)
 endif()
 
-if (onnxruntime_ENABLE_EAGER_MODE)
+# Eager mode and LazyTensor are both Pytorch's backends, so their
+# dependencies are set together below.
+if (onnxruntime_ENABLE_EAGER_MODE or onnxruntime_ENABLE_LAZY_TENSOR)
+  # Set library dependencies shared by aforementioned backends.
+
   # todo: this is because the prebuild pytorch may use a different version of protobuf headers.
   # force the build to find the protobuf headers ort using.
   target_include_directories(onnxruntime_pybind11_state PRIVATE "${REPO_ROOT}/cmake/external/protobuf/src")
@@ -113,9 +139,11 @@ if (onnxruntime_ENABLE_EAGER_MODE)
   find_library(LIBTORCH_CPU_LIBRARY torch_cpu PATHS "${TORCH_INSTALL_PREFIX}/lib")
   find_library(LIBC10_LIBRARY c10 PATHS "${TORCH_INSTALL_PREFIX}/lib")
   target_link_libraries(onnxruntime_pybind11_state PRIVATE onnxruntime_eager ${LIBTORCH_LIBRARY} ${LIBTORCH_CPU_LIBRARY} ${LIBC10_LIBRARY} ${TORCH_PYTHON_LIBRARY})
+
+  # This part is eager-mode specific.
   # the ort_aten.g.cpp is generated from tools. currently it has some limitations.
   # todo: fix this
-  if (NOT MSVC)
+  if (onnxruntime_ENABLE_EAGER_MODE and NOT MSVC)
     set_source_files_properties("${ORTTRAINING_ROOT}/orttraining/eager/ort_aten.g.cpp" PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
     set_source_files_properties("${ORTTRAINING_ROOT}/orttraining/eager/ort_aten.cpp" PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
     set_source_files_properties("${ORTTRAINING_ROOT}/orttraining/eager/ort_guard.cpp" PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
@@ -127,7 +155,9 @@ if (onnxruntime_ENABLE_EAGER_MODE)
     set_source_files_properties("${ORTTRAINING_ROOT}/orttraining/eager/ort_ops.cpp" PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
     set_source_files_properties("${ORTTRAINING_ROOT}/orttraining/eager/ort_util.cpp" PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
   endif()
-  if (MSVC) 
+
+  # This part is eager-mode specific.
+  if (onnxruntime_ENABLE_EAGER_MODE and MSVC) 
     target_compile_options(onnxruntime_pybind11_state PRIVATE "/wd4100" "/wd4324" "/wd4458" "/wd4127" "/wd4193" "/wd4624" "/wd4702")
     target_compile_options(onnxruntime_pybind11_state PRIVATE "/bigobj" "/wd4275" "/wd4244" "/wd4267")
   endif()
