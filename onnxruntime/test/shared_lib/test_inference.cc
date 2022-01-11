@@ -174,6 +174,7 @@ static constexpr PATH_TYPE OVERRIDABLE_INITIALIZER_MODEL_URI = TSTR("testdata/ov
 static constexpr PATH_TYPE NAMED_AND_ANON_DIM_PARAM_URI = TSTR("testdata/capi_symbolic_dims.onnx");
 static constexpr PATH_TYPE MODEL_WITH_CUSTOM_MODEL_METADATA = TSTR("testdata/model_with_valid_ort_config_json.onnx");
 static constexpr PATH_TYPE VARIED_INPUT_CUSTOM_OP_MODEL_URI = TSTR("testdata/VariedInputCustomOp.onnx");
+static constexpr PATH_TYPE SIMPLE_COPY_MODEL_URI = TSTR("testdata/SimpleCopy.onnx");
 static constexpr PATH_TYPE VARIED_INPUT_CUSTOM_OP_MODEL_URI_2 = TSTR("testdata/foo_3.onnx");
 static constexpr PATH_TYPE OPTIONAL_INPUT_OUTPUT_CUSTOM_OP_MODEL_URI = TSTR("testdata/foo_bar_1.onnx");
 static constexpr PATH_TYPE OPTIONAL_INPUT_OUTPUT_CUSTOM_OP_MODEL_URI_2 = TSTR("testdata/foo_bar_2.onnx");
@@ -517,6 +518,20 @@ TEST(CApiTest, varied_input_custom_op_handler) {
   TestInference<float>(*ort_env, VARIED_INPUT_CUSTOM_OP_MODEL_URI, inputs, "Z",
                        expected_dims_z, expected_values_z, 0, custom_op_domain, nullptr);
 #endif
+}
+
+TEST(CApiTest, simple_multi_threading_copy) {
+  std::vector<Input> inputs(1);
+  inputs[0].name = "X";
+  inputs[0].dims = {10};
+  inputs[0].values = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f};
+  std::vector<int64_t> expected_output_dim = {10};
+  std::vector<float> expected_output_value = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f};
+  SimpleMultiThreadingCopyOp simple_copy_op {onnxruntime::kCpuExecutionProvider};
+  Ort::CustomOpDomain simple_copy_domain("simple_copy_domain");
+  simple_copy_domain.Add(&simple_copy_op);
+  TestInference<float>(*ort_env, SIMPLE_COPY_MODEL_URI, inputs, "Y",
+                       expected_output_dim, expected_output_value, 0, simple_copy_domain, nullptr);
 }
 
 TEST(CApiTest, multiple_varied_input_custom_op_handler) {

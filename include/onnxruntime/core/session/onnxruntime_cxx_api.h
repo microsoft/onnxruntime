@@ -425,6 +425,8 @@ struct Session : Base<OrtSession> {
   TypeInfo GetInputTypeInfo(size_t index) const;                   ///< Wraps OrtApi::SessionGetInputTypeInfo
   TypeInfo GetOutputTypeInfo(size_t index) const;                  ///< Wraps OrtApi::SessionGetOutputTypeInfo
   TypeInfo GetOverridableInitializerTypeInfo(size_t index) const;  ///< Wraps OrtApi::SessionGetOverridableInitializerTypeInfo
+
+  //void* GetThreadPool() const;
 };
 
 /** \brief Wrapper around ::OrtTensorTypeAndShapeInfo
@@ -924,6 +926,7 @@ struct CustomOpApi {
   void ReleaseTensorTypeAndShapeInfo(OrtTensorTypeAndShapeInfo* input);
   size_t KernelContext_GetInputCount(const OrtKernelContext* context);
   const OrtValue* KernelContext_GetInput(const OrtKernelContext* context, _In_ size_t index);
+  const void* KernelContext_GetThreadPool(const OrtKernelContext* contex);
   size_t KernelContext_GetOutputCount(const OrtKernelContext* context);
   OrtValue* KernelContext_GetOutput(OrtKernelContext* context, _In_ size_t index, _In_ const int64_t* dim_values, size_t dim_count);
   void* KernelContext_GetGPUComputeStream(const OrtKernelContext* context);

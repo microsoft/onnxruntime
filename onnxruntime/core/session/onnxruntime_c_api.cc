@@ -2227,6 +2227,15 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsSetCustomJoinThreadFn, _Inout_ OrtSes
   API_IMPL_END
 }
 
+/*
+ORT_API_STATUS_IMPL(OrtApis::GetThreadpool, _In_ const OrtSession* sess, void** threadpool) {
+  API_IMPL_BEGIN
+  auto session = reinterpret_cast<const ::onnxruntime::InferenceSession*>(sess);
+  *threadpool = session->GetThreadPool();
+  return nullptr;
+  API_IMPL_END
+}*/
+
 static constexpr OrtApiBase ort_api_base = {
     &OrtApis::GetApi,
     &OrtApis::GetVersionString,
@@ -2520,6 +2529,9 @@ static constexpr OrtApi ort_api_1_to_11 = {
     &OrtApis::UpdateCUDAProviderOptions,
     &OrtApis::GetCUDAProviderOptionsAsString,
     &OrtApis::ReleaseCUDAProviderOptions,
+
+    //&OrtApis::GetThreadpool,
+    &OrtApis::KernelContext_GetThreadPool,
 };
 
 // Asserts to do a some checks to ensure older Versions of the OrtApi never change (will detect an addition or deletion but not if they cancel out each other)

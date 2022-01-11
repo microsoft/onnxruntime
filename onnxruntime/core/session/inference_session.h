@@ -440,6 +440,14 @@ class InferenceSession {
     */
   Status AddPrePackedWeightsContainer(PrepackedWeightsContainer* prepacked_weights_container);
 
+  onnxruntime::concurrency::ThreadPool* GetThreadPool() const {
+    if (thread_pool_) {
+      return thread_pool_.get();
+    } else {
+      return intra_op_thread_pool_from_env_;
+    }
+  }
+
  protected:
 #if !defined(ORT_MINIMAL_BUILD)
   /**

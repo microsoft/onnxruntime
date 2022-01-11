@@ -111,6 +111,11 @@ ORT_API_STATUS_IMPL(OrtApis::KernelInfoGetAttributeArray_int64, _In_ const OrtKe
   return onnxruntime::ToOrtStatus(status);
 }
 
+ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetThreadPool, _In_ const OrtKernelContext* context, void** threadpool) {
+  *threadpool = reinterpret_cast<const onnxruntime::OpKernelContext*>(context)->GetOperatorThreadPool();
+  return nullptr;
+}
+
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
 #include "core/framework/customregistry.h"
 namespace onnxruntime {

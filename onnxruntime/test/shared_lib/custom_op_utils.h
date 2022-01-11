@@ -207,3 +207,37 @@ struct SliceCustomOp : Ort::CustomOpBase<SliceCustomOp, SliceCustomOpKernel> {
  private:
   const char* provider_;
 };
+
+struct SimpleMultiThreadingCopyKernel {
+  SimpleMultiThreadingCopyKernel(Ort::CustomOpApi ort, const OrtKernelInfo* /*info*/)
+      : ort_(ort) {
+  }
+
+  void Compute(OrtKernelContext* context);
+
+ private:
+  Ort::CustomOpApi ort_;
+};
+
+struct SimpleMultiThreadingCopyOp : Ort::CustomOpBase<SimpleMultiThreadingCopyOp, SimpleMultiThreadingCopyKernel> {
+  explicit SimpleMultiThreadingCopyOp(const char* provider) : provider_(provider) {}
+  void* CreateKernel(Ort::CustomOpApi api, const OrtKernelInfo* info) const {
+    return new SimpleMultiThreadingCopyKernel(api, info);
+  };
+
+  const char* GetName() const { return "SimpleCopy"; };
+  const char* GetExecutionProviderType() const { return provider_; };
+
+  size_t GetInputTypeCount() const { return 1; };
+  ONNXTensorElementDataType GetInputType(size_t) const {
+    return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
+  };
+
+  size_t GetOutputTypeCount() const { return 1; };
+  ONNXTensorElementDataType GetOutputType(size_t) const {
+    return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
+  }
+
+ private:
+  const char* provider_;
+};

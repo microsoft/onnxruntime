@@ -3261,6 +3261,10 @@ struct OrtApi {
   void(ORT_API_CALL* ReleaseCUDAProviderOptions)(_Frees_ptr_opt_ OrtCUDAProviderOptionsV2* input);
 
   /// @}
+
+  // ORT_API2_STATUS(GetThreadpool, _In_ const OrtSession* session, _Outptr_ void** threadpool);
+
+  ORT_API2_STATUS(KernelContext_GetThreadPool, _In_ const OrtKernelContext* context, _Out_ void** threadpool);
 };
 
 /*

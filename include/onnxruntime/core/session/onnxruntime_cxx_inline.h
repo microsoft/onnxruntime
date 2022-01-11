@@ -692,6 +692,12 @@ inline TypeInfo Session::GetOverridableInitializerTypeInfo(size_t index) const {
   return TypeInfo{out};
 }
 
+//inline void* Session::GetThreadPool() const {
+//  void* threadpool = nullptr;
+//  ThrowOnError(GetApi().GetThreadpool(p_, &threadpool));
+//  return threadpool;
+//}
+
 inline ONNXTensorElementDataType TensorTypeAndShapeInfo::GetElementType() const {
   ONNXTensorElementDataType out;
   ThrowOnError(GetApi().GetTensorElementType(p_, &out));
@@ -1152,6 +1158,12 @@ inline const OrtValue* CustomOpApi::KernelContext_GetInput(const OrtKernelContex
   const OrtValue* out;
   ThrowOnError(api_.KernelContext_GetInput(context, index, &out));
   return out;
+}
+
+inline const void* CustomOpApi::KernelContext_GetThreadPool(const OrtKernelContext* context) {
+  void* threadpool = nullptr;
+  ThrowOnError(api_.KernelContext_GetThreadPool(context, &threadpool));
+  return threadpool;
 }
 
 inline size_t CustomOpApi::KernelContext_GetOutputCount(const OrtKernelContext* context) {

@@ -3,6 +3,7 @@
 
 #include "custom_op_utils.h"
 #include "core/common/common.h"
+#include "core/platform/threadpool.h"
 
 #ifdef USE_CUDA
 #include <cuda_runtime.h>
@@ -205,4 +206,19 @@ void SliceCustomOpKernel::Compute(OrtKernelContext* context) {
     default:
       ORT_THROW("Unsupported input type");
   }
+}
+
+void SimpleMultiThreadingCopyKernel::Compute(OrtKernelContext* context) {
+  using OrtThreadPool = onnxruntime::concurrency::ThreadPool*;
+  using ConstOrtThreadPool = const onnxruntime::concurrency::ThreadPool*;
+  auto threadpool = reinterpret_cast<ConstOrtThreadPool>(ort_.KernelContext_GetThreadPool(context));
+  const OrtValue* input = ort_.KernelContext_GetInput(context, 0);
+  OrtTensorDimensions dimensions(ort_, input);
+  OrtValue* output = ort_.KernelContext_GetOutput(context, 0, dimensions.data(), dimensions.size());
+  auto N = 4 * std::accumulate(dimensions.begin(), dimensions.end(), 1LL, std::multiplies<int64_t>());
+  const char* input_data = ort_.GetTensorData<char>(input);
+  char* output_data = ort_.GetTensorMutableData<char>(output);
+  onnxruntime::concurrency::ThreadPool::TrySimpleParallelFor(const_cast<OrtThreadPool>(threadpool), static_cast<std::ptrdiff_t>(N), [&](std::ptrdiff_t i) {
+    output_data[i] = input_data[i];
+  });
 }
