@@ -90,9 +90,15 @@ class NDRange {
 
  public:
   NDRange() : size(0), values{0, 0, 0} {}
-  explicit NDRange(size_t x) : size(1), values{x, 0, 0} {}
-  NDRange(size_t x, size_t y) : size(2), values{x, y, 0} {}
-  NDRange(size_t x, size_t y, size_t z) : size(3), values{x, y, z} {}
+
+  template<typename T>
+  explicit NDRange(T x) : size(1), values{static_cast<size_t>(x), 0, 0} {}
+
+  template<typename T1, typename T2>
+  NDRange(T1 x, T2 y) : size(2), values{static_cast<size_t>(x), static_cast<size_t>(y), 0} {}
+
+  template<typename T1, typename T2, typename T3>
+  NDRange(T1 x, T2 y, T3 z) : size(3), values{static_cast<size_t>(x), static_cast<size_t>(y), static_cast<size_t>(z)} {}
 
   uint8_t Size() const { return size; }
 
