@@ -1268,15 +1268,15 @@ bool SqueezeOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& init
   if (!GetShape(inputs[0].node_arg, input_shape))
     return false;
 
-  const auto input_size = inputs.size();
-  if (input_size > 4 || input_size == 0) {
+  const auto input_dim = input_shape.size();
+  if (input_dim > 4 || input_dim == 0) {
     LOGS_DEFAULT(VERBOSE) << "Squeeze only supports 1-4d shape, input is "
-                          << input_size << "d shape";
+                          << input_dim << "d shape";
     return false;
   }
 
   // Squeeze opset 13 use input 1 as axes, if we have input 1 then it need to be an initializer
-  if (node_unit.SinceVersion() > 12 && input_size > 1) {
+  if (node_unit.SinceVersion() > 12 && inputs.size() > 1) {
     const auto& axes_name = inputs[1].node_arg.Name();
     if (!Contains(initializers, axes_name)) {
       LOGS_DEFAULT(VERBOSE) << "Input axes of Squeeze must be known";
