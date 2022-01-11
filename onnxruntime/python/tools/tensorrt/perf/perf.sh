@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/bash/
 
 while getopts d:o:m:w:e: parameter
 do case "${parameter}"
