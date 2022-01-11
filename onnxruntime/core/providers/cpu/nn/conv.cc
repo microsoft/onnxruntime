@@ -36,7 +36,7 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
   TensorShapeVector kernel_shape;
   ORT_RETURN_IF_ERROR(conv_attrs_.ComputeKernelShape(W->Shape(), kernel_shape));
 
-  TensorShapeVector pads(conv_attrs_.pads);
+  ConvPadVector pads(conv_attrs_.pads);
   if (pads.empty()) {
     pads.resize(kernel_shape.size() * 2, 0);
   }

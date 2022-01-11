@@ -101,8 +101,8 @@ class OpNodeProtoHelper {
   template <typename T>
   MUST_USE_RESULT Status GetAttrs(const std::string& name, std::vector<T>& values) const;
 
-  //template <typename T>
-  //MUST_USE_RESULT Status GetAttrs(const std::string& name, gsl::span<T> values) const;
+  template <typename T>
+  MUST_USE_RESULT Status GetAttrs(const std::string& name, gsl::span<T> values) const;
 
   MUST_USE_RESULT Status GetAttrsStringRefs(const std::string& name,
                                             std::vector<std::reference_wrapper<const std::string>>& refs) const;

@@ -2215,7 +2215,7 @@ TEST(GradientCheckerTest, WhereGrad) {
   GradientChecker<float, float, float> gradient_checker;
   OpDef op_def{"Where"};
 
-  std::vector<int64_t> shape{4, 3, 2};
+  TensorShapeVector shape{4, 3, 2};
   TensorInfo x_info(shape), y_info(shape);
   std::function<float(float)> transformer = [](float x) {
     return static_cast<float>(std::fmod(std::fabs(x), 1.0f) > 0.5f);

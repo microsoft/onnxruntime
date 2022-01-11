@@ -23,7 +23,7 @@ ONNX_NAMESPACE::TensorProto CreateTensorProto(
   const std::string& name,
   T val,
   const std::initializer_list<int64_t>& dims = { 1 }) {
-  return CreateTensorProto(name, val, gsl::make_span(dims));
+  return CreateTensorProto(name, val, gsl::make_span(dims.begin(), dims.end()));
 }
 
 template <class T>
@@ -44,7 +44,7 @@ ONNX_NAMESPACE::TensorProto CreateTensorProto(
     const std::string& name,
     const std::vector<T>& values,
     const std::initializer_list<int64_t>& dims = {1}) {
-  return CreateTensorProto<T>(name, values, gsl::make_span(dims));
+  return CreateTensorProto<T>(name, values, gsl::make_span(dims.begin(), dims.end()));
 }
 
 template <class T>

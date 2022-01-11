@@ -9,7 +9,6 @@
 #endif
 #include "unique.h"
 #include "core/framework/inlined_containers.h"
-#include "core/framework/ort_stl_allocator.h"
 #include "core/providers/cpu/tensor/utils.h"
 
 namespace onnxruntime {
@@ -46,11 +45,8 @@ Status Unique<float>::Compute(OpKernelContext* ctx) const {
 
   // XXX: Refactoring for less memory allocations. unordered_map
   // used originally for float uniqueness, is this correct?
-  using IndexingMap = pmr::InlinedHashMap<float, ElementData>;
-  const auto map_buffer_size_in_bytes = EstimateInlinedHashMapMemory<float, ElementData>(num_elements);
-  OrtDeclareAlignedStackOrAllocatedBuffer(map_buffer, map_buffer_size_in_bytes);
-  pmr::SmallBufferResource mem_resource(map_buffer, map_buffer_size_in_bytes);
-  IndexingMap mapped_indices(num_elements, &mem_resource);
+  using IndexingMap = InlinedHashMap<float, ElementData>;
+  IndexingMap mapped_indices(num_elements);
 
   // processing
   for (int64_t i = 0; i < num_elements; ++i) {

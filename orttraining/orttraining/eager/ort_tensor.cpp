@@ -80,7 +80,7 @@ int64_t ORTTensorImpl::size(int64_t d) const {
 void ORTTensorImpl::cacheSizeMetadata() {
   // TODO: wrap with change generation guard
   auto& tensor = tensor_.Get<onnxruntime::Tensor>();
-  auto shape = tensor.Shape();
+  const auto& shape = tensor.Shape();
   auto strides = GetStrides(shape.GetDims());
 
   numel_ = shape.Size();

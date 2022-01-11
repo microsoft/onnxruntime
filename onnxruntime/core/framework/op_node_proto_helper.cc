@@ -104,22 +104,21 @@ inline constexpr int ArrayTypeToAttributeType<std::string>() {
       values.push_back(static_cast<T>(attr->list(i)));                             \
     }                                                                              \
     return Status::OK();                                                           \
+  }                                                                                \
+  template <>                                                                      \
+  template <>                                                                      \
+  Status OpNodeProtoHelper<IMPL_T>::GetAttrs<T>(                                   \
+      const std::string& name, gsl::span<T> values) const {                        \
+    const AttributeProto* attr = TryGetAttribute(name);                            \
+    if (!attr) {                                                                   \
+      return Status(ONNXRUNTIME, FAIL, "No attribute with this name is defined."); \
+    }                                                                              \
+    ORT_ENFORCE(values.size() == static_cast<size_t>(attr->list##_size()));        \
+    for (int i = 0; i < attr->list##_size(); ++i) {                                \
+      values[i] = static_cast<T>(attr->list(i));                                   \
+    }                                                                              \
+    return Status::OK();                                                           \
   }
-
-  //template <>                                                                      \
-  //template <>                                                                      \
-  //Status OpNodeProtoHelper<IMPL_T>::GetAttrs<T>(                                   \
-  //    const std::string& name, gsl::span<T> values) const {                        \
-  //  const AttributeProto* attr = TryGetAttribute(name);                            \
-  //  if (!attr) {                                                                   \
-  //    return Status(ONNXRUNTIME, FAIL, "No attribute with this name is defined."); \
-  //  }                                                                              \
-  //  ORT_ENFORCE(values.size() == static_cast<size_t>(attr->list##_size()));        \
-  //  for (int i = 0; i < attr->list##_size(); ++i) {                                \
-  //    values[i] = static_cast<T>(attr->list(i));                                   \
-  //  }                                                                              \
-  //  return Status::OK();                                                           \
-  //}
 
 // Will not work for std::strings
 #define ORT_DEFINE_GET_ATTRS_AS_SPAN(IMPL_T, T, list)                                              \
