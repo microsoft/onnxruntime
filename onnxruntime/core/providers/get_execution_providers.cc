@@ -75,7 +75,7 @@ constexpr ProviderInfo kProvidersInPriorityOrder[] =
         },
         {
             kTvmExecutionProvider,
-#ifdef USE_STVM
+#ifdef USE_TVM
             true,
 #else
             false,

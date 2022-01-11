@@ -550,7 +550,7 @@ if(onnxruntime_USE_COREML)
   endif()
 endif()
 
-if (onnxruntime_USE_STVM)
+if (onnxruntime_USE_TVM)
   file (GLOB_RECURSE onnxruntime_test_stvm_src CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/test/stvm/*.h"
     "${ONNXRUNTIME_ROOT}/test/stvm/*.cc"
@@ -648,7 +648,7 @@ if (onnxruntime_USE_NUPHAR)
   list(APPEND all_tests ${onnxruntime_test_tvm_src})
 endif()
 
-if (onnxruntime_USE_STVM)
+if (onnxruntime_USE_TVM)
     list(APPEND all_tests ${onnxruntime_test_stvm_src})
 endif()
 
@@ -1287,7 +1287,7 @@ if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_EXTENDED_MINIMAL_BUILD
   endif()
 endif()
 
-if (onnxruntime_USE_STVM)
+if (onnxruntime_USE_TVM)
   # find_library(STVM_LIBS NAMES libtvm.so PATHS ${onnxruntime_STVM_HOME}/lib)
   # link_directories(onnxruntime_test_all ${STVM_LIBS})
   find_library(PYTHON_LIBS NAMES libpython PATHS /usr/local/lib)

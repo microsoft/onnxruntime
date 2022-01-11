@@ -86,7 +86,7 @@ struct OrtStatus {
 #define BACKEND_NUPHAR ""
 #endif
 
-#ifdef USE_STVM
+#ifdef USE_TVM
 #define BACKEND_STVM "-STVM"
 #else
 #define BACKEND_STVM ""
@@ -156,7 +156,7 @@ extern std::string nuphar_settings;
 }
 }  // namespace onnxruntime
 #endif
-#ifdef USE_STVM
+#ifdef USE_TVM
 #include "core/providers/tvm/tvm_execution_provider_info.h"
 #endif
 #ifdef USE_VITISAI
@@ -483,7 +483,7 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Cuda(c
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(int use_arena);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO(const OrtOpenVINOProviderOptions* params);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nuphar(bool, const char*);
-#ifdef USE_STVM
+#ifdef USE_TVM
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tvm(const TvmExecutionProviderInfo& info);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tvm(const char* params);
 #endif

@@ -17,7 +17,7 @@
 
 #endif
 
-#ifdef USE_STVM
+#ifdef USE_TVM
 
 #include "core/providers/tvm/tvm_provider_factory.h"
 
@@ -75,7 +75,7 @@ void ServerEnvironment::RegisterExecutionProviders(){
   Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Nuphar(options_, 1, ""));
   #endif
 
-  #ifdef USE_STVM
+  #ifdef USE_TVM
   Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Tvm(options_, ""));
   #endif
   

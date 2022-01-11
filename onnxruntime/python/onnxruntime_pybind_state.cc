@@ -648,7 +648,7 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
     return p;
 #endif
   } else if (type == kTvmExecutionProvider) {
-#if USE_STVM
+#if USE_TVM
     onnxruntime::TvmExecutionProviderInfo info{};
     const auto it = provider_options_map.find(type);
     if (it != provider_options_map.end()) {

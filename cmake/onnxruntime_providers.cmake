@@ -149,8 +149,8 @@ endif()
 if(onnxruntime_USE_ROCM)
   set(PROVIDERS_ROCM onnxruntime_providers_rocm)
 endif()
-if (onnxruntime_USE_STVM)
-  set(PROVIDERS_STVM onnxruntime_providers_stvm)
+if (onnxruntime_USE_TVM)
+  set(PROVIDERS_TVM onnxruntime_providers_tvm)
 endif()
 
 
@@ -1274,12 +1274,12 @@ if (onnxruntime_USE_ROCM)
 
 endif()
 
-if (onnxruntime_USE_STVM)
+if (onnxruntime_USE_TVM)
   if (NOT TARGET tvm)
     message(STATUS "Include TVM.")
     include(tvm)
   endif()
-  add_definitions(-DUSE_STVM=1)
+  add_definitions(-DUSE_TVM=1)
 
   file (GLOB_RECURSE onnxruntime_providers_stvm_cc_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/providers/tvm/*.h"

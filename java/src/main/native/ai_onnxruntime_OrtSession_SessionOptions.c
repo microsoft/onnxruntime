@@ -472,7 +472,7 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addNup
 JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addStvm
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jstring settingsString) {
     (void)jobj;
-  #ifdef USE_STVM
+  #ifdef USE_TVM
     const char* settings = (*jniEnv)->GetStringUTFChars(jniEnv, settingsString, NULL);
     checkOrtStatus(jniEnv,(const OrtApi*)apiHandle,OrtSessionOptionsAppendExecutionProvider_Tvm((OrtSessionOptions*) handle, settings));
     (*jniEnv)->ReleaseStringUTFChars(jniEnv,settingsString,settings);

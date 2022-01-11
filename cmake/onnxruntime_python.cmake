@@ -662,7 +662,7 @@ if (onnxruntime_USE_NUPHAR)
   )
 endif()
 
-if (onnxruntime_USE_STVM)
+if (onnxruntime_USE_TVM)
   file(GLOB onnxruntime_python_providers_stvm_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/python/providers/stvm/*.py"
   )
