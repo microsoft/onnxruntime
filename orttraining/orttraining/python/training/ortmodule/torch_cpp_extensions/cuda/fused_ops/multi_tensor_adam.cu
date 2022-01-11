@@ -103,7 +103,7 @@ struct AdamFunctor {
                     r_p[ii] = r_p[ii] - (lr * decay * r_p[ii]);
                 } else if (mode == ADAM_MODE_2) {
                     // Adapted to be mathematically equivalent to torch AdamW
-                    r_p[ii] = r_p[ii] -  (r_p[ii] *lr * decay);
+                    r_p[ii] = r_p[ii] -  (r_p[ii] * lr * decay);
                     r_m[ii] = beta1 * r_m[ii] + (1 - beta1) * r_g[ii];
                     r_v[ii] = beta2 * r_v[ii] + (1 - beta2) * r_g[ii] * r_g[ii];
                     MATH_T denom = (sqrtf(r_v[ii]) / sqrtf(bias_correction2)) + epsilon;

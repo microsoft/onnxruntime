@@ -30,7 +30,7 @@ from onnxruntime.training.ortmodule import (ORTModule,
                                             _graph_execution_manager)
 import onnxruntime.training.ortmodule as ortmodule_module
 
-from onnxruntime.training.optim import FusedAdam
+from onnxruntime.training.optim import FusedAdam, AdamWMode
 from transformers import AdamW
 
 import _test_helpers
@@ -4439,7 +4439,10 @@ def test_ortmodule_fused_adam_optimizer_correctness_torch():
     adamw_optimizer = torch.optim.AdamW(pt_model.parameters(), lr=1e-3)
 
     ort_model = ORTModule(copy.deepcopy(pt_model))
-    ort_fused_adam_optimizer = FusedAdam(ort_model.parameters(), lr=1e-3, adam_w_mode=2, weight_decay=0.01, eps=1e-8)
+    ort_fused_adam_optimizer = FusedAdam(ort_model.parameters(), lr=1e-3,
+                                         adam_w_mode=AdamWMode.ADAMW_TORCH,
+                                         weight_decay=0.01,
+                                         eps=1e-8)
 
     def run_step(model, x):
         prediction = model(x)
