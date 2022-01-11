@@ -239,7 +239,7 @@ TvmExecutionProvider::TvmExecutionProvider(const TvmExecutionProviderInfo& info)
   // Get environment variables
   const Env& env_instance = Env::Default();
 
-  const std::string dump_subgraphs_env = env_instance.GetEnvironmentVar(stvm_env_vars::kDumpSubgraphs);
+  const std::string dump_subgraphs_env = env_instance.GetEnvironmentVar(tvm::env_vars::kDumpSubgraphs);
   if (!dump_subgraphs_env.empty()) {
     dump_subgraphs_ = std::stoi(dump_subgraphs_env) != 0;
   }

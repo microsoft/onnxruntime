@@ -20,9 +20,11 @@ using TvmModule = tvm::runtime::Module;
 
 namespace onnxruntime {
 
-namespace stvm_env_vars {
-   static const std::string kDumpSubgraphs = "ORT_STVM_DUMP_SUBGRAPHS";
-}  // namespace stvm_env_vars
+namespace tvm {
+namespace env_vars {
+   static const std::string kDumpSubgraphs = "ORT_TVM_DUMP_SUBGRAPHS";
+}  // namespace env_vars
+}  // namespace tvm
 
 class TVMRunner;
 
