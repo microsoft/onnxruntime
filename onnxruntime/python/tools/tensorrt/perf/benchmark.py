@@ -91,7 +91,7 @@ def run_trt_standalone(trtexec, model_name, model_path, ort_inputs, all_inputs_s
     engine_name = model_name + ".engine"
     save_command = command + ["--saveEngine=" + engine_name]
     logger.info(save_command)
-    out = get_output(save_command)
+    #out = get_output(save_command)
 
     # load engine and inference
     load_command = command + ["--loadEngine=" + engine_name]
@@ -104,7 +104,7 @@ def run_trt_standalone(trtexec, model_name, model_path, ort_inputs, all_inputs_s
     if track_memory: 
         p = start_memory_tracking()            
         try: 
-            out = get_output(load_command)
+            out = get_output(command)
             success = True
             mem_usage = end_memory_tracking(p, trtexec, success)
         except Exception as e: 
@@ -743,10 +743,21 @@ def get_gpu_info():
     infos = re.findall('NVIDIA.*', info)
     return infos
 
+def get_cudnn_version(workspace):
+    cudnn_path = get_output(["whereis", "cudnn_version.h"])
+    cudnn_path = re.search(': (.*)', cudnn_path).group(1)
+    cudnn_outputs = get_output(["cat", cudnn_path])
+    major = re.search('CUDNN_MAJOR (.*)', cudnn_outputs).group(1)
+    minor = re.search('CUDNN_MINOR (.*)', cudnn_outputs).group(1)
+    patch = re.search('CUDNN_PATCHLEVEL (.*)', cudnn_outputs).group(1)
+    cudnn_version = major + '.' + minor + '.' + patch 
+    return cudnn_version
+
 def get_system_info(workspace):
     info = {}
     info["cuda"] = get_cuda_version()
     info["trt"] = get_trt_version(workspace)
+    info["cudnn"] = get_cudnn_version(workspace)
     info["linux_distro"] = get_linux_distro()
     info["cpu_info"] = get_cpu_info()
     info["gpu_info"] = get_gpu_info()
@@ -1331,6 +1342,19 @@ def output_status(results, csv_filename):
                    trt_fp16_status, 
                    standalone_fp16_status]
             csv_writer.writerow(row)
+
+
+def output_specs(info, csv_filename):    
+    cpu_version = info['cpu_info'][2]
+    gpu_version = info['gpu_info'][0]
+    tensorrt_version = info['trt'] + ' , *All ORT-TRT and TRT are run in Mixed Precision mode (Fp16 and Fp32).'
+    cuda_version = info['cuda']
+    cudnn_version = info['cudnn']
+
+    table = pd.DataFrame({'.': [1, 2, 3, 4, 5],
+                        'Spec': ['CPU', 'GPU', 'TensorRT', 'CUDA', 'CuDNN'], 
+                        'Version': [cpu_version, gpu_version, tensorrt_version, cuda_version, cudnn_version]})
+    table.to_csv(csv_filename, index=False)   
 
 def output_latency(results, csv_filename):
     need_write_header = True 

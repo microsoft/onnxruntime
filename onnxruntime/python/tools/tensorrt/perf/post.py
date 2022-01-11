@@ -24,6 +24,7 @@ memory = 'memory'
 latency = 'latency'
 status = 'status'
 latency_over_time = 'latency_over_time'
+specs = 'specs' 
 
 time_string_format = '%Y-%m-%d %H:%M:%S'
 
@@ -90,60 +91,30 @@ def get_status(status, model_group):
     status_db_columns = table_headers
     status = adjust_columns(status, status_columns, status_db_columns, model_group)
     return status
-    
+
+def get_specs(specs, branch, commit_id):
+    specs = specs.append({'.': 6, 'Spec': 'Branch', 'Version' : branch}, ignore_index=True)
+    specs = specs.append({'.': 7, 'Spec': 'CommitId', 'Version' : commit_id}, ignore_index=True)
+    return specs
+
 def write_table(ingest_client, table, table_name, trt_version, upload_time):
     if table.empty:
         return
     table = table.assign(TrtVersion=trt_version) # add TrtVersion
     table = table.assign(UploadTime=upload_time) # add UploadTime
-    ingestion_props = IngestionProperties(
-      database=database,
-      table=table_name,
-      data_format=DataFormat.CSV,
-      report_level=ReportLevel.FailuresAndSuccesses
-    )
+    print(table)
+    #ingestion_props = IngestionProperties(
+    #  database=database,
+    #  table=table_name,
+    #  data_format=DataFormat.CSV,
+    #  report_level=ReportLevel.FailuresAndSuccesses
+    #)
     # append rows
-    ingest_client.ingest_from_dataframe(table, ingestion_properties=ingestion_props)
+    #ingest_client.ingest_from_dataframe(table, ingestion_properties=ingestion_props)
 
 def get_time():   
     date_time = time.strftime(time_string_format)
     return date_time
-
-def get_cuda_cudnn_version(trt_version): 
-    if trt_version == '8.2.1.8': 
-        cuda = '11.5.0'
-        cudnn = '8.3.1.22' 
-    elif trt_version == '8.0.1.6': 
-        cuda = '11.4.0'
-        cudnn = '8.2.2.26' 
-    else:  # trt_version == '7.2.3.4'
-        cuda = '11.1.1'
-        cudnn = '8.0.5'
-    return cuda, cudnn
-
-def publish_specs(ingest_client, trt_version, branch, commit_id, upload_time):
-    
-    table_name = 'hardware_specs'
-    
-    cpu_version = 'AMD EPYC 7V12(Rome)'
-    gpu_version = 'Nvidia Tesla T4'
-    tensorrt_version = trt_version + ' , *All ORT-TRT and TRT are run in Mixed Precision mode (Fp16 and Fp32).'
-    cuda_version, cudnn_version = get_cuda_cudnn_version(trt_version)
-
-    table = pd.DataFrame({'.': [1, 2, 3, 4, 5, 6, 7],
-                        'Spec': ['CPU', 'GPU', 'TensorRT', 'CUDA', 'CuDNN', 'Branch', 'CommitId'], 
-                        'Version': [cpu_version, gpu_version, tensorrt_version, cuda_version, cudnn_version, branch, commit_id]})
-
-    table = table.assign(UploadTime=upload_time) # add UploadTime
-
-    ingestion_props = IngestionProperties(
-      database=database,
-      table=table_name,
-      data_format=DataFormat.CSV,
-      report_level=ReportLevel.FailuresAndSuccesses
-    )
-    # append rows
-    ingest_client.ingest_from_dataframe(table, ingestion_properties=ingestion_props)
 
 def main():
     
@@ -154,15 +125,13 @@ def main():
     ingest_client = QueuedIngestClient(kcsb_ingest)
     date_time = get_time()
 
-    publish_specs(ingest_client, args.trt_version, args.branch, args.commit_hash, date_time)
-    
     try:
         result_file = args.report_folder
 
         folders = os.listdir(result_file)
         os.chdir(result_file)
 
-        tables = [fail, memory, latency, status, latency_over_time]
+        tables = [fail, memory, latency, status, latency_over_time, specs]
         table_results = {}
         for table_name in tables:
             table_results[table_name] = pd.DataFrame()
@@ -172,6 +141,8 @@ def main():
             csv_filenames = os.listdir()
             for csv in csv_filenames:
                 table = parse_csv(csv)
+                if specs in csv: 
+                    table_results[specs] = table_results[specs].append(get_specs(table, args.branch, args.commit_hash), ignore_index=True)
                 if fail in csv:
                     table_results[fail] = table_results[fail].append(get_failures(table, model_group), ignore_index=True)
                 if latency in csv:
