@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #pragma once
+#include <optional>
 
 #include "onnx/onnx_pb.h"
 

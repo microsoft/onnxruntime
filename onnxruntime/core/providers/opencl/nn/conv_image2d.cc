@@ -251,7 +251,6 @@ class Conv : public OpenCLKernel {
               .setArg<cl_int>(CeilDiv(C_in, 4))
               .setInt2(W_out, H_out)
               .setInt2(S[0], S[1])
-              .setInt2(D[0], D[1])
               .setArg<cl_int>(CeilDiv(W_out, 4))
               .setArg<cl_int>(B != nullptr)
               .setArg<cl_int>(act_info_.kind)
