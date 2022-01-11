@@ -208,28 +208,30 @@ Environment& GetTrainingORTEnv() {
   return ort_training_env->GetORTEnv();
 }
 
-static std::unique_ptr<ORTBackendsManager> ort_backends_manager_instance;
+#ifdef ENABLE_EAGER_MODE
+  static std::unique_ptr<ORTBackendsManager> ort_backends_manager_instance;
 
-void InitializeBackendsManager() {
-  auto initialize = [&]() {
-    static bool initialized = false;
-    if (initialized) {
-      return;
-    }
-    // Initialization of the module
-    auto& env = onnxruntime::python::GetTrainingORTEnv();
-    ort_backends_manager_instance = std::make_unique<ORTBackendsManager>(env.GetLoggingManager()->DefaultLogger());
-    initialized = true;
-  };
-  initialize();
-}
-
-ORTBackendsManager& GetORTBackendsManager() {
-  if (!ort_backends_manager_instance) {
-    InitializeBackendsManager();
+  void InitializeBackendsManager() {
+    auto initialize = [&]() {
+      static bool initialized = false;
+      if (initialized) {
+        return;
+      }
+      // Initialization of the module
+      auto& env = onnxruntime::python::GetTrainingORTEnv();
+      ort_backends_manager_instance = std::make_unique<ORTBackendsManager>(env.GetLoggingManager()->DefaultLogger());
+      initialized = true;
+    };
+    initialize();
   }
-  return *ort_backends_manager_instance;
-}
+
+  ORTBackendsManager& GetORTBackendsManager() {
+    if (!ort_backends_manager_instance) {
+      InitializeBackendsManager();
+    }
+    return *ort_backends_manager_instance;
+  }
+#endif
 
 void ResolveExtraProviderOptions(const std::vector<std::string>& provider_types,
                                  const ProviderOptionsMap& original_provider_options_map,
@@ -348,7 +350,9 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
   auto atexit = py::module_::import("atexit");
   atexit.attr("register")(py::cpp_function([]() {
     ort_training_env = nullptr;
-    ort_backends_manager_instance = nullptr;
+    #ifdef ENABLE_EAGER_MODE
+      ort_backends_manager_instance = nullptr;
+    #endif
   }));
 }
 
