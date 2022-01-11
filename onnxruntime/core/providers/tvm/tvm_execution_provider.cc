@@ -28,8 +28,8 @@ struct STVMFuncState {
   AllocateFunc allocate_func = nullptr;
   DestroyFunc release_func = nullptr;
   AllocatorHandle allocator = nullptr;
-  tvm::runtime::Module* module = nullptr;
-  std::function<tvm::runtime::Module*(std::string func_name,
+  TvmModule* module = nullptr;
+  std::function<TvmModule*(std::string func_name,
                 const std::vector<std::vector<int64_t>>& input_shapes)> compiler = nullptr;
 };
 
@@ -174,7 +174,7 @@ class STVMRunner {
         tensors_outputs_[i].data = ort.GetTensorMutableData<void>(output_tensor);
       }
 
-      tvm::runtime::TVMRetValue rvalue;
+      ::tvm::runtime::TVMRetValue rvalue;
       stvm::TVMRun(*mod_, tensors_outputs_, &rvalue);
 
       return Status::OK();
@@ -217,7 +217,7 @@ class STVMRunner {
     }
 
   private:
-    tvm::runtime::Module* mod_;
+    TvmModule* mod_;
     InputsInfoMap inputs_info_{};
     bool update_output_shapes_ = false;
     TVMTensorShapes output_shapes_;
@@ -459,13 +459,13 @@ void StvmExecutionProvider::ProcessCPUTarget() {
   const auto& cpu_id_info = CPUIDInfo::GetCPUIDInfo();
   // auto detect from CPU ID
   if (cpu_id_info.HasAVX512Skylake()) {
-    info_.target = stvm_cpu_targets::LLVM_TARGET_SKYLAKE_AVX512;
+    info_.target = tvm::cpu_targets::LLVM_TARGET_SKYLAKE_AVX512;
   } else if (cpu_id_info.HasAVX512f()) {
-    info_.target = stvm_cpu_targets::LLVM_TARGET_AVX512;
+    info_.target = tvm::cpu_targets::LLVM_TARGET_AVX512;
   } else if (cpu_id_info.HasAVX2()) {
-    info_.target = stvm_cpu_targets::LLVM_TARGET_AVX2;
+    info_.target = tvm::cpu_targets::LLVM_TARGET_AVX2;
   } else if (cpu_id_info.HasAVX()) {
-    info_.target = stvm_cpu_targets::LLVM_TARGET_AVX;
+    info_.target = tvm::cpu_targets::LLVM_TARGET_AVX;
   } else  {
     // TODO(vvchernov): extend mechanism of auto-definition of cpu target
     info_.target = llvm_target_str;
@@ -503,13 +503,13 @@ int StvmExecutionProvider::CreateStateFunc(ComputeContext* context, FunctionStat
   return 0;
 }
 
-tvm::runtime::Module* StvmExecutionProvider::CompileFunc(std::string func_name,
+TvmModule* StvmExecutionProvider::CompileFunc(std::string func_name,
                                                          const TVMTensorShapes& input_shapes) {
   if (modules_.count(func_name)) {
     return modules_[func_name].get();
   }
 
-  tvm::runtime::Module mod_f = stvm::TVMCompile(buffers_[func_name],
+  TvmModule mod_f = stvm::TVMCompile(buffers_[func_name],
                                                 model_paths_[func_name],
                                                 info_.target,
                                                 info_.target_host,
@@ -520,7 +520,7 @@ tvm::runtime::Module* StvmExecutionProvider::CompileFunc(std::string func_name,
                                                 info_.to_nhwc,
                                                 info_.tuning_file_path,
                                                 info_.tuning_type);
-  auto module_ptr = std::make_shared<tvm::runtime::Module>();
+  auto module_ptr = std::make_shared<TvmModule>();
   *module_ptr = mod_f;
   modules_[func_name] = module_ptr;
   // Release memory after module generation

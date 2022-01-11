@@ -18,13 +18,15 @@ constexpr const char* llvm_target_str = "llvm";
 constexpr const char* cpu_target_str = "cpu";
 constexpr const char* gpu_target_str = "gpu";
 
-namespace stvm_cpu_targets {
+namespace tvm {
+namespace cpu_targets {
 // TODO(vvchernov): avx and avx512 need more careful differentiation for target
 const std::string LLVM_TARGET_AVX = "llvm -mcpu=corei7-avx";
 const std::string LLVM_TARGET_AVX2 = "llvm -mcpu=core-avx2";
 const std::string LLVM_TARGET_SKYLAKE_AVX512 = "llvm -mcpu=skylake-avx512";
 const std::string LLVM_TARGET_AVX512 = "llvm -mcpu=skylake-avx512";
-}
+}  // namespace cpu_targets
+}  // namespace tvm
 
 constexpr const unsigned int default_opt_level = 3;
 

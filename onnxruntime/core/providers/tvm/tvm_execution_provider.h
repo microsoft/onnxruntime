@@ -16,6 +16,7 @@
 #include "tvm_common.h"
 #include "tvm_execution_provider_info.h"
 
+using TvmModule = tvm::runtime::Module;
 
 namespace onnxruntime {
 
@@ -31,7 +32,7 @@ class StvmExecutionProvider : public IExecutionProvider {
   using TVMTensorShape = std::vector<int64_t>;
   using TVMTensorShapes = std::vector<TVMTensorShape>;
   using STVMRunners = std::unordered_map<std::string, std::shared_ptr<STVMRunner>>;
-  using STVMModules = std::unordered_map<std::string, std::shared_ptr<tvm::runtime::Module>>;
+  using STVMModules = std::unordered_map<std::string, std::shared_ptr<TvmModule>>;
  public:
   explicit StvmExecutionProvider(const TvmExecutionProviderInfo& info);
   virtual ~StvmExecutionProvider();
@@ -54,7 +55,7 @@ class StvmExecutionProvider : public IExecutionProvider {
   void PrintInfo() const;
   // Bindings for compute info
   int CreateStateFunc(ComputeContext*, FunctionState*);
-  tvm::runtime::Module* CompileFunc(std::string func_name, const TVMTensorShapes& input_shapes);
+  TvmModule* CompileFunc(std::string func_name, const TVMTensorShapes& input_shapes);
  private:
   STVMRunners runners_;
   std::unordered_map<std::string, std::string> buffers_;
