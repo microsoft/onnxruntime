@@ -1821,7 +1821,7 @@ def build_nuget_package(source_dir, build_dir, configs, use_cuda, use_openvino, 
     elif use_nuphar:
         package_name = "/p:OrtPackageId=\"Microsoft.ML.OnnxRuntime.Nuphar\""
     elif use_tvm:
-        package_name = "/p:OrtPackageId=\"Microsoft.ML.OnnxRuntime.Stvm\""
+        package_name = "/p:OrtPackageId=\"Microsoft.ML.OnnxRuntime.Tvm\""
     else:
         # use the solution file that includes Xamarin mobile targets
         sln = "OnnxRuntime.CSharp.sln"
