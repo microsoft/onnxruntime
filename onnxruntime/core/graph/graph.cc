@@ -2864,7 +2864,7 @@ static void RemoveRepeatedFieldEntry(T& repeated_field, const TIter& entry_to_re
     // we do this so we don't have to move all the entries past the one being deleted down one.
     auto slot = entry_to_remove - repeated_field.begin();
     auto last_entry = repeated_field.end() - 1;
-    repeated_field.SwapElements(gsl::narrow_cast<int>(slot), gsl::narrow_cast<int>(num_entries - 1));
+    repeated_field.SwapElements(gsl::narrow<int>(slot), gsl::narrow<int>(num_entries - 1));
     repeated_field.erase(last_entry);
   } else {
     repeated_field.erase(entry_to_remove);
