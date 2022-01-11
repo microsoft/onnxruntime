@@ -6,7 +6,9 @@
 #include <limits>
 #include <vector>
 #include <string>
+#if !defined(ORT_MINIMAL_BUILD)
 #include <tuple>  // for std::tie
+#endif
 
 #include "core/graph/basic_types.h"
 
@@ -62,6 +64,7 @@ an ORT format model. This also means that non-empty node indices here must be in
   /** The number of variadic output values of the target node. */
   int num_variadic_outputs;
 
+#if !defined(ORT_MINIMAL_BUILD)
   friend bool operator==(const NodesToOptimizeIndices& a, const NodesToOptimizeIndices& b) {
     const auto tied = [](const NodesToOptimizeIndices& n) {
       return std::tie(n.nodes, n.num_inputs, n.num_outputs, n.variadic_input, n.variadic_output,
@@ -73,6 +76,7 @@ an ORT format model. This also means that non-empty node indices here must be in
   friend bool operator!=(const NodesToOptimizeIndices& a, const NodesToOptimizeIndices& b) {
     return !(a == b);
   }
+#endif  // !defined(ORT_MINIMAL_BUILD)
 };
 
 struct NodeIndexAndKernelDefHash {
