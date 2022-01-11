@@ -1621,7 +1621,7 @@ bool FlattenOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& /* i
 
   int32_t dim_1 = 1;
   int32_t dim_2 = 1;
-  GetFlattenOutputShape_nu(node_unit, input_shape, dim_1, dim_2);
+  GetFlattenOutputShape(node_unit, input_shape, dim_1, dim_2);
 
   if (dim_1 == 0 && dim_2 == 0) {
     LOGS_DEFAULT(VERBOSE) << "The dynamical input shape " << Shape2String(input_shape)

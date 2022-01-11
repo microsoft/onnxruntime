@@ -97,7 +97,7 @@ QLinearOpType GetQLinearOpType(const onnxruntime::Node& node);
 
 // Return the type of the conv ops,
 // This function assumes the input is a 2d conv node
-ConvType GetConvType_nu(const NodeUnit& node_unit, const InitializedTensorSet& initializers);
+ConvType GetConvType(const NodeUnit& node_unit, const InitializedTensorSet& initializers);
 
 // This qlinear op is an operator takes 2 inputs and produces 1 output
 // Such as QLinearConv, QLinearMatMul, QLinearAdd, ...
@@ -130,7 +130,7 @@ bool GetShape(const NodeArg& node_arg, Shape& shape);
 bool GetType(const NodeArg& node_arg, int32_t& type);
 
 // Get the output shape of Flatten Op
-void GetFlattenOutputShape_nu(const NodeUnit& node_unit, const Shape& input_shape, int32_t& dim_1, int32_t& dim_2);
+void GetFlattenOutputShape(const NodeUnit& node_unit, const Shape& input_shape, int32_t& dim_1, int32_t& dim_2);
 
 // If a node is supported by NNAPI
 bool IsNodeSupported(const NodeUnit& node_unit, const GraphViewer& graph_viewer, const OpSupportCheckParams& params);

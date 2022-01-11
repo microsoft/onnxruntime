@@ -68,7 +68,7 @@ QLinearOpType GetQLinearOpType(const onnxruntime::Node& node) {
   return QLinearOpType::Unknown;
 }
 
-ConvType GetConvType_nu(const NodeUnit& node_unit, const InitializedTensorSet& initializers) {
+ConvType GetConvType(const NodeUnit& node_unit, const InitializedTensorSet& initializers) {
   NodeAttrHelper helper(node_unit);
   const auto group = helper.Get("group", 1);
 
@@ -406,7 +406,7 @@ bool GetType(const NodeArg& node_arg, int32_t& type) {
   return true;
 }
 
-void GetFlattenOutputShape_nu(const NodeUnit& node_unit, const Shape& input_shape, int32_t& dim_1, int32_t& dim_2) {
+void GetFlattenOutputShape(const NodeUnit& node_unit, const Shape& input_shape, int32_t& dim_1, int32_t& dim_2) {
   int32_t rank = static_cast<int>(input_shape.size());
   NodeAttrHelper helper(node_unit);
   int32_t axis = helper.Get("axis", 1);

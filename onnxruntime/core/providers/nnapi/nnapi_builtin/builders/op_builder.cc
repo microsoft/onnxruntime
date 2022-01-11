@@ -128,7 +128,7 @@ Status TransposeNCHWToNHWC(ModelBuilder& model_builder,
 
 // Convert the input from nchw to nhwc
 // Caller should ensure input is currently in nchw format using ModelBuilder::IsOperandNHWC
-Status GetNHWCInput_nu(ModelBuilder& model_builder, const NodeUnit& node_unit, size_t input_index, std::string& nhwc_input) {
+Status GetNHWCInput(ModelBuilder& model_builder, const NodeUnit& node_unit, size_t input_index, std::string& nhwc_input) {
   const auto& nchw_input = node_unit.Inputs()[input_index].node_arg.Name();
   if (!model_builder.GetNHWCOperand(nchw_input, nhwc_input)) {
     nhwc_input = model_builder.GetUniqueName(nchw_input + "_nchw_to_nhwc");
@@ -139,7 +139,7 @@ Status GetNHWCInput_nu(ModelBuilder& model_builder, const NodeUnit& node_unit, s
 
 // Convert the input from nhwc to nchw
 // Caller should ensure input is currently in nhwc format using ModelBuilder::IsOperandNHWC
-Status GetNCHWInput_nu(ModelBuilder& model_builder, const NodeUnit& node_unit, size_t input_index, std::string& nchw_input) {
+Status GetNCHWInput(ModelBuilder& model_builder, const NodeUnit& node_unit, size_t input_index, std::string& nchw_input) {
   const auto& nhwc_input = node_unit.Inputs()[input_index].node_arg.Name();
   if (!model_builder.GetNCHWOperand(nhwc_input, nchw_input)) {
     nchw_input = model_builder.GetUniqueName(nhwc_input + "_nhwc_to_nchw");
@@ -152,12 +152,12 @@ Status GetNCHWInput_nu(ModelBuilder& model_builder, const NodeUnit& node_unit, s
 // and return the layout type of output tensor
 // If both inputs have same layout, the output will have the same layout
 // Otherwise we will need transpose the nhwc input back to nchw, and output will be nchw
-Status TransposeBinaryOpInputLayout_nu(ModelBuilder& model_builder, const NodeUnit& node_unit,
-                                       std::string& input1, std::string& input2,
-                                       bool& output_is_nhwc) ORT_MUST_USE_RESULT;
-Status TransposeBinaryOpInputLayout_nu(ModelBuilder& model_builder, const NodeUnit& node_unit,
-                                       std::string& input1, std::string& input2,
-                                       bool& output_is_nhwc) {
+Status TransposeBinaryOpInputLayout(ModelBuilder& model_builder, const NodeUnit& node_unit,
+                                    std::string& input1, std::string& input2,
+                                    bool& output_is_nhwc) ORT_MUST_USE_RESULT;
+Status TransposeBinaryOpInputLayout(ModelBuilder& model_builder, const NodeUnit& node_unit,
+                                    std::string& input1, std::string& input2,
+                                    bool& output_is_nhwc) {
   bool input1_is_nhwc = model_builder.IsOperandNHWC(input1);
   bool input2_is_nhwc = model_builder.IsOperandNHWC(input2);
   output_is_nhwc = false;
@@ -166,10 +166,10 @@ Status TransposeBinaryOpInputLayout_nu(ModelBuilder& model_builder, const NodeUn
     output_is_nhwc = input1_is_nhwc;
   } else if (input1_is_nhwc) {
     // need transpose input1 back to nchw
-    ORT_RETURN_IF_ERROR(GetNCHWInput_nu(model_builder, node_unit, 0, input1));
+    ORT_RETURN_IF_ERROR(GetNCHWInput(model_builder, node_unit, 0, input1));
   } else {  // input2_is_nhwc
     // need transpose input2 back to nchw
-    ORT_RETURN_IF_ERROR(GetNCHWInput_nu(model_builder, node_unit, 1, input2));
+    ORT_RETURN_IF_ERROR(GetNCHWInput(model_builder, node_unit, 1, input2));
   }
 
   return Status::OK();
@@ -511,11 +511,11 @@ static Status HandleAutoPad(const Shape& input_shape,
 // Get scales and zero points for the qlinear binary ops (which has 2 input and 1 output)
 // QLinearConv, QLinearMatmul, QLinearAdd
 // a, b are inputs, and y is output
-static Status GetBinaryOpQuantizationScaleAndZeroPoint_nu(
+static Status GetBinaryOpQuantizationScaleAndZeroPoint(
     const InitializedTensorSet& initializers, const NodeUnit& node_unit,
     float& a_scale, float& b_scale, float& y_scale,
     int32_t& a_zero_point, int32_t& b_zero_point, int32_t& y_zero_point) ORT_MUST_USE_RESULT;
-static Status GetBinaryOpQuantizationScaleAndZeroPoint_nu(
+static Status GetBinaryOpQuantizationScaleAndZeroPoint(
     const InitializedTensorSet& initializers, const NodeUnit& node_unit,
     float& a_scale, float& b_scale, float& y_scale,
     int32_t& a_zero_point, int32_t& b_zero_point, int32_t& y_zero_point) {
@@ -538,12 +538,12 @@ static Status GetBinaryOpQuantizationScaleAndZeroPoint_nu(
 // If the Qlinear[Conv/MatMul] is using per-tensor u8s8, the weight/B tensor
 // will be convert to uint8 later, will return the same scale and 128 as zero point
 // Also will set is_per_tensor_u8s8 to true to be used later
-static Status GetConvMatMulOpQuantizationScaleAndZeroPoint_nu(
+static Status GetConvMatMulOpQuantizationScaleAndZeroPoint(
     const ModelBuilder& model_builder, const NodeUnit& node_unit,
     float& a_scale, float& w_scale, float& y_scale,
     int32_t& a_zero_point, int32_t& w_zero_point, int32_t& y_zero_point,
     optional<std::vector<float>>& w_scales, bool& is_per_tensor_u8s8) ORT_MUST_USE_RESULT;
-static Status GetConvMatMulOpQuantizationScaleAndZeroPoint_nu(
+static Status GetConvMatMulOpQuantizationScaleAndZeroPoint(
     const ModelBuilder& model_builder, const NodeUnit& node_unit,
     float& a_scale, float& w_scale, float& y_scale,
     int32_t& a_zero_point, int32_t& w_zero_point, int32_t& y_zero_point,
@@ -553,9 +553,9 @@ static Status GetConvMatMulOpQuantizationScaleAndZeroPoint_nu(
   // Get scale and zero points
   // We will handle per-channel weight scale and zero point later
   ORT_RETURN_IF_ERROR(
-      GetBinaryOpQuantizationScaleAndZeroPoint_nu(initializers, node_unit,
-                                                  a_scale, w_scale, y_scale,
-                                                  a_zero_point, w_zero_point, y_zero_point));
+      GetBinaryOpQuantizationScaleAndZeroPoint(initializers, node_unit,
+                                               a_scale, w_scale, y_scale,
+                                               a_zero_point, w_zero_point, y_zero_point));
 
   const auto& inputs = node_unit.Inputs();
   const auto& weight_tensor = *initializers.at(inputs[1].node_arg.Name());
@@ -786,7 +786,7 @@ Status BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
 
   bool output_is_nhwc = false;
   ORT_RETURN_IF_ERROR(
-      TransposeBinaryOpInputLayout_nu(model_builder, node_unit, input1, input2, output_is_nhwc));
+      TransposeBinaryOpInputLayout(model_builder, node_unit, input1, input2, output_is_nhwc));
 
   float a_scale = 0.0f,
         b_scale = 0.0f,
@@ -796,7 +796,7 @@ Status BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
           y_zero_point = 0;
 
   if (op_is_qlinear) {
-    ORT_RETURN_IF_ERROR(GetBinaryOpQuantizationScaleAndZeroPoint_nu(
+    ORT_RETURN_IF_ERROR(GetBinaryOpQuantizationScaleAndZeroPoint(
         model_builder.GetInitializerTensors(), node_unit,
         a_scale, b_scale, y_scale,
         a_zero_point, b_zero_point, y_zero_point));
@@ -810,7 +810,7 @@ Status BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
 
   int32_t fuse_code = ANEURALNETWORKS_FUSED_NONE;
   if (add_activation) {
-    fuse_code = model_builder.FindActivation_nu(node_unit, node_unit.Outputs()[0].node_arg);
+    fuse_code = model_builder.FindActivation(node_unit, node_unit.Outputs()[0].node_arg);
   }
 
   return AddBinaryOperator(op_code, model_builder,
@@ -1032,7 +1032,7 @@ Status ReshapeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, cons
   auto input = node_unit.Inputs()[0].node_arg.Name();
   if (model_builder.IsOperandNHWC(input)) {
     // We want to transpose nhwc operand back to nchw before reshape
-    ORT_RETURN_IF_ERROR(GetNCHWInput_nu(model_builder, node_unit, 0, input));
+    ORT_RETURN_IF_ERROR(GetNCHWInput(model_builder, node_unit, 0, input));
   }
 
   const auto& shape_tensor = *initializers.at(node_unit.Inputs()[1].node_arg.Name());
@@ -1153,7 +1153,7 @@ Status BatchNormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_bu
                                         output_is_nhwc));
 
   // Add
-  int32_t fuse_code = model_builder.FindActivation_nu(node_unit, node_unit.Outputs()[0].node_arg);
+  int32_t fuse_code = model_builder.FindActivation(node_unit, node_unit.Outputs()[0].node_arg);
   ORT_RETURN_IF_ERROR(AddBinaryOperator(ANEURALNETWORKS_ADD,
                                         model_builder,
                                         tensor_imm_product_name, tensor_b_name,
@@ -1221,7 +1221,7 @@ Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   } else {
     output_is_nhwc = true;
     if (!input_is_nhwc) {
-      ORT_RETURN_IF_ERROR(GetNHWCInput_nu(model_builder, node_unit, 0, input));
+      ORT_RETURN_IF_ERROR(GetNHWCInput(model_builder, node_unit, 0, input));
     }
   }
 
@@ -1266,7 +1266,7 @@ Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     }
   }
 
-  int32_t fuse_code = model_builder.FindActivation_nu(node_unit, node_unit.Outputs()[0].node_arg);
+  int32_t fuse_code = model_builder.FindActivation(node_unit, node_unit.Outputs()[0].node_arg);
 
   // Get output scale and zero point if this is QLinearAveragePool
   // Otherwise we will use the scale and zero point of the input
@@ -1393,13 +1393,13 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   } else {
     output_is_nhwc = true;
     if (!input_is_nhwc) {
-      ORT_RETURN_IF_ERROR(GetNHWCInput_nu(model_builder, node_unit, 0, input));
+      ORT_RETURN_IF_ERROR(GetNHWCInput(model_builder, node_unit, 0, input));
     }
   }
 
   const auto& weight = inputs[1].node_arg.Name();
   const auto& weight_tensor = *initializers.at(weight);
-  auto conv_type = GetConvType_nu(node_unit, model_builder.GetInitializerTensors());
+  auto conv_type = GetConvType(node_unit, model_builder.GetInitializerTensors());
   bool conv_2d = (conv_type == ConvType::Regular),
        depthwise_conv_2d = (conv_type == ConvType::Depthwise),
        grouped_conv_2d = (conv_type == ConvType::Grouped);
@@ -1415,10 +1415,10 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   optional<std::vector<float>> w_scales;
   bool is_per_tensor_u8s8 = false;
   if (is_qlinear_conv) {
-    ORT_RETURN_IF_ERROR(GetConvMatMulOpQuantizationScaleAndZeroPoint_nu(model_builder, node_unit,
-                                                                        x_scale, w_scale, y_scale,
-                                                                        x_zero_point, w_zero_point, y_zero_point,
-                                                                        w_scales, is_per_tensor_u8s8));
+    ORT_RETURN_IF_ERROR(GetConvMatMulOpQuantizationScaleAndZeroPoint(model_builder, node_unit,
+                                                                     x_scale, w_scale, y_scale,
+                                                                     x_zero_point, w_zero_point, y_zero_point,
+                                                                     w_scales, is_per_tensor_u8s8));
   }
 
   Shape onnx_weight_shape;
@@ -1548,7 +1548,7 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     }
   }
 
-  int32_t fuse_code = model_builder.FindActivation_nu(node_unit, node_unit.Outputs()[1].node_arg);
+  int32_t fuse_code = model_builder.FindActivation(node_unit, node_unit.Outputs()[1].node_arg);
   ADD_SCALAR_OPERAND(model_builder, input_indices, fuse_code);
 
   if (model_builder.GetNNAPIFeatureLevel() > ANEURALNETWORKS_FEATURE_LEVEL_2) {
@@ -1651,7 +1651,7 @@ Status SoftMaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, cons
     if (model_builder.IsOperandNHWC(input)) {
       output_is_nhwc = false;
       // We want to transpose nhwc operand back to nchw before softmax
-      ORT_RETURN_IF_ERROR(GetNCHWInput_nu(model_builder, node_unit, 0, input));
+      ORT_RETURN_IF_ERROR(GetNCHWInput(model_builder, node_unit, 0, input));
     }
   }
 
@@ -1785,10 +1785,10 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   if (is_qlinear_matmul) {
     optional<std::vector<float>> w_scales;
     ORT_RETURN_IF_ERROR(
-        GetConvMatMulOpQuantizationScaleAndZeroPoint_nu(model_builder, node_unit,
-                                                        a_scale, b_scale, y_scale,
-                                                        a_zero_point, b_zero_point, y_zero_point,
-                                                        w_scales, is_per_tensor_u8s8));
+        GetConvMatMulOpQuantizationScaleAndZeroPoint(model_builder, node_unit,
+                                                     a_scale, b_scale, y_scale,
+                                                     a_zero_point, b_zero_point, y_zero_point,
+                                                     w_scales, is_per_tensor_u8s8));
   }
 
   uint32_t input_2_idx;
@@ -1859,7 +1859,7 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   input_indices.push_back(operand_indices.at(input1));  // A
   input_indices.push_back(input_2_idx);                 // B
   input_indices.push_back(bias_idx);                    // C
-  int32_t fuse_code = model_builder.FindActivation_nu(node_unit, node_unit.Outputs()[0].node_arg);
+  int32_t fuse_code = model_builder.FindActivation(node_unit, node_unit.Outputs()[0].node_arg);
   ADD_SCALAR_OPERAND(model_builder, input_indices, fuse_code);
 
   ORT_RETURN_IF_ERROR(shaper.FC(input1, input2, output));
@@ -2040,7 +2040,7 @@ Status ConcatOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
     for (size_t i = 0; i < node_input_size; i++) {
       auto input = inputs[i].node_arg.Name();
       if (model_builder.IsOperandNHWC(input)) {
-        ORT_RETURN_IF_ERROR(GetNCHWInput_nu(model_builder, node_unit, i, input));
+        ORT_RETURN_IF_ERROR(GetNCHWInput(model_builder, node_unit, i, input));
       }
       input_indices.push_back(operand_indices.at(input));
       input_names.push_back(input);
@@ -2117,7 +2117,7 @@ Status SqueezeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, cons
   auto input = node_unit.Inputs()[0].node_arg.Name();
   if (model_builder.IsOperandNHWC(input)) {
     // We want to transpose nhwc operand back to nchw before squeeze
-    ORT_RETURN_IF_ERROR(GetNCHWInput_nu(model_builder, node_unit, 0, input));
+    ORT_RETURN_IF_ERROR(GetNCHWInput(model_builder, node_unit, 0, input));
   }
 
   std::vector<int32_t> axes;
@@ -2229,7 +2229,7 @@ Status LRNOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const No
     // on android api level 28, we need to transpose the nchw input to nhwc
     output_is_nhwc = true;
     if (!model_builder.IsOperandNHWC(input)) {
-      ORT_RETURN_IF_ERROR(GetNHWCInput_nu(model_builder, node_unit, 0, input));
+      ORT_RETURN_IF_ERROR(GetNHWCInput(model_builder, node_unit, 0, input));
     }
   }
 
@@ -2367,7 +2367,7 @@ Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
   } else {
     output_is_nhwc = true;
     if (!input_is_nhwc) {
-      ORT_RETURN_IF_ERROR(GetNHWCInput_nu(model_builder, node_unit, 0, input));
+      ORT_RETURN_IF_ERROR(GetNHWCInput(model_builder, node_unit, 0, input));
     }
   }
 
@@ -2445,7 +2445,7 @@ Status FlattenOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, cons
   auto input = node_unit.Inputs()[0].node_arg.Name();
   if (model_builder.IsOperandNHWC(input)) {
     // We want to transpose nhwc operand back to nchw before reshape
-    ORT_RETURN_IF_ERROR(GetNCHWInput_nu(model_builder, node_unit, 0, input));
+    ORT_RETURN_IF_ERROR(GetNCHWInput(model_builder, node_unit, 0, input));
   }
 
   // Flatten is basically a reshape to 2d tensor
@@ -2454,7 +2454,7 @@ Status FlattenOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, cons
   GetShape(node_unit.Inputs()[0].node_arg, input_shape);
   int32_t dim_1 = 1;
   int32_t dim_2 = 1;
-  GetFlattenOutputShape_nu(node_unit, input_shape, dim_1, dim_2);
+  GetFlattenOutputShape(node_unit, input_shape, dim_1, dim_2);
   // If the input is of dynamic shape, replace 0 (dynamic) dimension with -1
   // We cannot have dim_1 and dim_2 both be 0 here, it was checked in IsOpSupportedImpl
   dim_1 = dim_1 == 0 ? -1 : dim_1;
@@ -2523,8 +2523,8 @@ Status MinMaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
   std::string input1 = inputs[0].node_arg.Name();
   std::string input2 = inputs[1].node_arg.Name();
   bool output_is_nhwc = false;
-  ORT_RETURN_IF_ERROR(TransposeBinaryOpInputLayout_nu(model_builder, node_unit,
-                                                      input1, input2, output_is_nhwc));
+  ORT_RETURN_IF_ERROR(TransposeBinaryOpInputLayout(model_builder, node_unit,
+                                                   input1, input2, output_is_nhwc));
 
   return AddMinMaxOperator(model_builder, node_unit, input1, input2, output_is_nhwc);
 }

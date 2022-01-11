@@ -55,7 +55,7 @@ Status ModelBuilder::Prepare() {
   PreprocessNodeUnits();
   GetAllQuantizedOpInputs();
   PreprocessInitializers();
-  PreprocessActivations_nu();
+  PreprocessActivations();
   ORT_RETURN_IF_ERROR(RegisterInitializers());
   ORT_RETURN_IF_ERROR(RegisterModelInputs());
   ORT_RETURN_IF_ERROR(AddOperations());
@@ -122,7 +122,7 @@ void ModelBuilder::PreprocessInitializers() {
   }
 }
 
-void ModelBuilder::PreprocessActivations_nu() {
+void ModelBuilder::PreprocessActivations() {
   for (const auto& node_unit : node_unit_holder_) {
     const auto& node = node_unit->GetNode();
     const auto& op_type(node.OpType());
@@ -623,7 +623,7 @@ Status ModelBuilder::Compile(std::unique_ptr<Model>& model) {
   return Status::OK();
 }
 
-int32_t ModelBuilder::FindActivation_nu(const NodeUnit& node_unit, const NodeArg& output) {
+int32_t ModelBuilder::FindActivation(const NodeUnit& node_unit, const NodeArg& output) {
   (void)node_unit;
   int32_t fuse_code = ANEURALNETWORKS_FUSED_NONE;
   if (node_unit.GetOutputNodes().size() != 1)
