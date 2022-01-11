@@ -5,7 +5,6 @@
 
 #include <string>
 #include "core/graph/basic_types.h"
-#include "core/providers/nnapi/nnapi_builtin/nnapi_lib/NeuralNetworksTypes.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_selectors.h"
 #include "core/optimizer/selectors_actions/helpers.h"
 
