@@ -24,7 +24,7 @@ using namespace ONNX_NAMESPACE;
 namespace onnxruntime {
 
 // Information to construct kernel function state.
-struct STVMFuncState {
+struct TVMFuncState {
   AllocateFunc allocate_func = nullptr;
   DestroyFunc release_func = nullptr;
   AllocatorHandle allocator = nullptr;
@@ -338,7 +338,7 @@ common::Status TvmExecutionProvider::Compile(const std::vector<Node*>& nodes,
 
     compute_info.release_state_func = [](FunctionState state) {
       if (state)
-        delete static_cast<STVMFuncState*>(state);
+        delete static_cast<TVMFuncState*>(state);
     };
     // TODO(vvchernov): implement ops checking and mechanism of gracefully passing the responsibility to other EPs
     // if the checking fails due to unsupported op(s)
@@ -490,7 +490,7 @@ void TvmExecutionProvider::PrintInfo() const {
 }
 
 int TvmExecutionProvider::CreateStateFunc(ComputeContext* context, FunctionState* state) {
-  auto* state_ptr = new STVMFuncState();
+  auto* state_ptr = new TVMFuncState();
   *state_ptr = {context->allocate_func,
                  context->release_func,
                  context->allocator_handle,
