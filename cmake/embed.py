@@ -4,7 +4,25 @@
 import io
 import os
 import sys
-from pcpp import Preprocessor, OutputDirective, Action
+import pip
+
+
+print("=============== pre-processing opencl kernel code")
+def install(package):
+    if hasattr(pip, 'main'):
+        pip.main(['install', package])
+    elif hasattr(pip, '_internal') and hasattr(pip._internal, 'main'):
+        pip._internal.main(['install', package])
+    else:
+        subprocess.check_call([sys.executable, '-m', 'pip', 'install', 'package'])
+while True:
+    try:
+        from pcpp import Preprocessor, OutputDirective, Action
+        break
+    except ImportError:
+        print("===============try again install pcpp", sys.executable)
+        install('pcpp')
+
 
 template = """
 #ifndef CONTENT_NAME
@@ -95,7 +113,7 @@ if __name__ == "__main__":
                         default=None,
                         choices=["cl"],
                         help="specify how to treat the input file")
-    parser.add_argument("-I", action="extend", nargs=1, default=None)
+    parser.add_argument("-I", action="append", default=None)
     parser.add_argument("--output", "-o", default=None, type=os.path.realpath)
 
     args = parser.parse_args()

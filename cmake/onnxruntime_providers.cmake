@@ -661,12 +661,18 @@ if (onnxruntime_USE_OPENCL)
   set_source_files_properties(opencl_generated_cl_includes PROPERTIES GENERATED TRUE)
   add_custom_target(gen_opencl_embed_hdrs DEPENDS ${opencl_generated_cl_includes})
 
-  # FIXME: opencl stub have some problem due to target_include_directories set to private, improper compiling definition, etc.
-  # So we create a library for it to avoid patching towward upstream, for now.
-  add_library(onnxruntime_external_openclstub STATIC ${PROJECT_SOURCE_DIR}/external/libopencl-stub/src/libopencl.c)
-  set_target_properties(onnxruntime_external_openclstub PROPERTIES POSITION_INDEPENDENT_CODE ON)
-  target_include_directories(onnxruntime_external_openclstub PUBLIC ${PROJECT_SOURCE_DIR}/external/libopencl-stub/include)
-  target_compile_definitions(onnxruntime_external_openclstub PUBLIC "CL_TARGET_OPENCL_VERSION=120" "CL_HPP_TARGET_OPENCL_VERSION=120" "CL_HPP_MINIMUM_OPENCL_VERSION=120")
+  if(CMAKE_SYSTEM_NAME STREQUAL "Android")
+      # FIXME: opencl stub have some problem due to target_include_directories set to private, improper compiling definition, etc.
+      # So we create a library for it to avoid patching towward upstream, for now.
+      add_library(onnxruntime_external_openclstub STATIC ${PROJECT_SOURCE_DIR}/external/libopencl-stub/src/libopencl.c ${DLFCN_WIN_src})
+      set_target_properties(onnxruntime_external_openclstub PROPERTIES POSITION_INDEPENDENT_CODE ON)
+      target_include_directories(onnxruntime_external_openclstub PUBLIC ${PROJECT_SOURCE_DIR}/external/libopencl-stub/include ${DLFCN_WIN_inc})
+      target_compile_definitions(onnxruntime_external_openclstub PUBLIC "CL_TARGET_OPENCL_VERSION=120" "CL_HPP_TARGET_OPENCL_VERSION=120" "CL_HPP_MINIMUM_OPENCL_VERSION=120")
+  else()
+       FIND_PACKAGE(OpenCL REQUIRED)
+       INCLUDE_DIRECTORIES(${OpenCL_INCLUDE_DIRS})
+       LINK_DIRECTORIES(${OpenCL_LIBRARY})
+  endif()
 
   file(GLOB_RECURSE opencl_cc_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/providers/opencl/*.h"
@@ -676,7 +682,11 @@ if (onnxruntime_USE_OPENCL)
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${opencl_cc_srcs})
   onnxruntime_add_static_library(onnxruntime_providers_opencl ${opencl_cc_srcs})
   # target_link_libraries(onnxruntime_providers_opencl PUBLIC OpenCL::OpenCL)
-  target_link_libraries(onnxruntime_providers_opencl PUBLIC onnxruntime_external_openclstub)
+  if(CMAKE_SYSTEM_NAME STREQUAL "Android")
+      target_link_libraries(onnxruntime_providers_opencl PUBLIC onnxruntime_external_openclstub)
+  else()
+      target_link_libraries(onnxruntime_providers_opencl PUBLIC ${OpenCL_LIBRARY})
+  endif()
   target_include_directories(onnxruntime_providers_opencl PRIVATE ${ONNXRUNTIME_ROOT} INTERFACE ${opencl_target_dir})
   set_target_properties(onnxruntime_providers_opencl PROPERTIES
     LINKER_LANGUAGE CXX
