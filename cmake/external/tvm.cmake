@@ -2,6 +2,7 @@ if (onnxruntime_USE_STVM)
   message(STATUS "onnxruntime_USE_NUPHAR: Fetch tvm for STVM.")
 
   FetchContent_Declare(
+    tvm
     GIT_REPOSITORY https://github.com/apache/tvm.git
     GIT_TAG        v0.8.0
   )
@@ -19,6 +20,7 @@ if (onnxruntime_USE_NUPHAR)
   message(STATUS "onnxruntime_USE_NUPHAR: Fetch onnxruntime-tvm for NUPHAR.")
 
   FetchContent_Declare(
+    tvm
     GIT_REPOSITORY https://github.com/microsoft/onnxruntime-tvm.git
     GIT_TAG        v0.5
   )
