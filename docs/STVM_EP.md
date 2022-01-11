@@ -32,10 +32,10 @@ pip3 install numpy decorator attrs
 Clone this repo using the `--recursive` flag to pull all associated dependencies
 
 
-Build TVM from the tvm_update folder:
+Build TVM from the tvm folder:
 
 ```
-cd onnxruntime/cmake/external/tvm_update/
+cd onnxruntime/cmake/external/tvm/
 mkdir build
 cd ./build
 cmake -DCMAKE_BUILD_TYPE=Release -DUSE_LLVM=ON -DUSE_OPENMP=gnu -DUSE_MICRO=ON (If your machine is CUDA enabled -DUSE_CUDA=ON) ..
@@ -45,7 +45,7 @@ make -j <number of threads in build machine>
 Set the environment variable PYTHONPATH to tell python where to find the TVM library:
 
 ```
-export TVM_HOME=<path_to_onnx_runtime>/cmake/external/tvm_update
+export TVM_HOME=<path_to_onnx_runtime>/cmake/external/tvm
 export PYTHONPATH=$TVM_HOME/python:${PYTHONPATH}
 ```
 

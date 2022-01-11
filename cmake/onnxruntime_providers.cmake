@@ -1271,6 +1271,7 @@ if (onnxruntime_USE_ROCM)
 endif()
 
 if (onnxruntime_USE_STVM)
+  include(tvm)
   add_definitions(-DUSE_STVM=1)
 
   file (GLOB_RECURSE onnxruntime_providers_stvm_cc_srcs CONFIGURE_DEPENDS

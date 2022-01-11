@@ -1319,6 +1319,7 @@ endif()
 
 # TVM
 if (onnxruntime_USE_TVM)
+  include(tvm)
   if (onnxruntime_USE_CUDA)
     set(USE_CUDA ON)
   endif()
@@ -1328,6 +1329,7 @@ if (onnxruntime_USE_TVM)
   endif()
 
   add_subdirectory(${PROJECT_SOURCE_DIR}/external/tvm EXCLUDE_FROM_ALL)
+  # add_subdirectory(${tvm_SOURCE_DIR} EXCLUDE_FROM_ALL)
   set_target_properties(tvm PROPERTIES FOLDER "External/tvm")
   set_target_properties(tvm_topi PROPERTIES FOLDER "External/tvm")
   set_target_properties(tvm_runtime PROPERTIES FOLDER "External/tvm")
