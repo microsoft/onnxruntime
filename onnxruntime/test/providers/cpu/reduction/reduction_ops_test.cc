@@ -2198,7 +2198,7 @@ TEST(ReductionOpTest, ArgMax_int8) {
                           {1, 1,
                            1, 1,
                            1, 1});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: input/output with DataType Int8 in network without Q/DQ layers must have dynamic range set when no calibrator is used
 }
 
 TEST(ReductionOpTest, ArgMax_uint8) {
