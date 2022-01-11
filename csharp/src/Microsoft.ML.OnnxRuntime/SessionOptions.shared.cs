@@ -369,7 +369,7 @@ namespace Microsoft.ML.OnnxRuntime
             var settingsPinned = GCHandle.Alloc(NativeOnnxValueHelper.StringToZeroTerminatedUtf8(settings), GCHandleType.Pinned);
             using (var pinnedSettingsName = new PinnedGCHandle(settingsPinned))
             {
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_Stvm(handle, pinnedSettingsName.Pointer));
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_Tvm(handle, pinnedSettingsName.Pointer));
             }
 #endif
         }

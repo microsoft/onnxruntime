@@ -655,7 +655,7 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
       info = onnxruntime::TvmExecutionProviderInfo::FromProviderOptions(it->second);
     }
 
-    return onnxruntime::CreateExecutionProviderFactory_Stvm(info)->CreateProvider();
+    return onnxruntime::CreateExecutionProviderFactory_Tvm(info)->CreateProvider();
 #endif
   } else if (type == kVitisAIExecutionProvider) {
 #if USE_VITISAI

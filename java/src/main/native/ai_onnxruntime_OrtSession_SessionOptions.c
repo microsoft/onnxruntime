@@ -474,7 +474,7 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addStv
     (void)jobj;
   #ifdef USE_STVM
     const char* settings = (*jniEnv)->GetStringUTFChars(jniEnv, settingsString, NULL);
-    checkOrtStatus(jniEnv,(const OrtApi*)apiHandle,OrtSessionOptionsAppendExecutionProvider_Stvm((OrtSessionOptions*) handle, settings));
+    checkOrtStatus(jniEnv,(const OrtApi*)apiHandle,OrtSessionOptionsAppendExecutionProvider_Tvm((OrtSessionOptions*) handle, settings));
     (*jniEnv)->ReleaseStringUTFChars(jniEnv,settingsString,settings);
   #else
     (void)apiHandle;(void)handle;(void)settingsString; // Parameters used when Stvm is defined.

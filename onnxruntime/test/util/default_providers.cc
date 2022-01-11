@@ -126,7 +126,7 @@ std::unique_ptr<IExecutionProvider> DefaultNupharExecutionProvider(bool allow_un
 
 // std::unique_ptr<IExecutionProvider> DefaultTvmExecutionProvider() {
 // #ifdef USE_STVM
-//   return CreateExecutionProviderFactory_Stvm("")->CreateProvider();
+//   return CreateExecutionProviderFactory_Tvm("")->CreateProvider();
 // #else
 //   return nullptr;
 // #endif

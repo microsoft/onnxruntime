@@ -484,8 +484,8 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(i
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO(const OrtOpenVINOProviderOptions* params);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nuphar(bool, const char*);
 #ifdef USE_STVM
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Stvm(const TvmExecutionProviderInfo& info);
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Stvm(const char* params);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tvm(const TvmExecutionProviderInfo& info);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tvm(const char* params);
 #endif
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_VITISAI(const char* backend_type, int device_id,
                                                                                   const char* export_runtime_module,

@@ -76,7 +76,7 @@ void ServerEnvironment::RegisterExecutionProviders(){
   #endif
 
   #ifdef USE_STVM
-  Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Stvm(options_, ""));
+  Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Tvm(options_, ""));
   #endif
   
   #ifdef USE_OPENVINO
