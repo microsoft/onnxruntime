@@ -1,10 +1,10 @@
-# Standalone TVM (STVM) Execution Provider
+# TVM Execution Provider
 
 ## Contents
 
 - [Introduction](#introduction)
-- [Build](#build)
-- [Configuration options](#configuration-option)
+- [Build](#build-onnx-runtime-with-the-tvm-execution-provider)
+- [Configuration options](#configuration-options)
 - [Performance Tuning](#performance-tuning)
 - [Samples](#samples)
 - [Known issues](#known-issues)
@@ -12,22 +12,21 @@
 
 ## Introduction
 
-STVM is an execution provider for ONNX Runtime that is built on top of Apache TVM. It enables ONNX Runtime users to leverage Apache TVM model optimizations.
-STVM EP is currently in "Preview". It's been tested to work on a handful of models on Linux, but not on Windows or MacOS.
+TVM is an execution provider for ONNX Runtime that is built on top of Apache TVM. It enables ONNX Runtime users to leverage Apache TVM model optimizations.
+TVM EP is currently in "Preview". It's been tested to work on a handful of models on Linux, but not on Windows or MacOS.
 
-### Build ONNX Runtime with the STVM Execution Provider
+## Build ONNX Runtime with the TVM Execution Provider
 
 Install the minimal pre-requisites on Ubuntu/Debian like linux operating systems:
-```
+```bash
 apt-get install -y python3 python3-dev python3-pip python3-setuptools gcc libtinfo-dev zlib1g-dev build-essential cmake libedit-dev libxml2-dev llvm-12
 pip3 install numpy decorator attrs
 ```
 
 Clone this repo.
-
 In order to build ONNXRT you will need to have CMake 3.18 or higher. In Ubuntu 20.04 you can use the following commands to install the latest version of CMake:
 
-```
+```bash
 sudo apt-get update
 sudo apt-get install gpg wget
 
@@ -43,25 +42,26 @@ sudo apt-get install cmake
 ```
 
 Build ONNX Runtime:
-```
+```bash
 ./build.sh --config Release --enable_pybind --build_wheel --skip_tests --parallel --use_tvm --skip_onnx_tests
 ```
 
 This command builds both TVM and onnxruntime-stvm. It creates two wheel, one for each project.
 Build the python API for ONNX Runtime instead of using the standard package:
-```
+```bash
 cd <path_to_onnx_runtime>
 pip3 uninstall onnxruntime onnxruntime-stvm tvm -y
 whl_path=$(find ./build/Linux/Release/dist -name "*.whl")
 python3 -m pip install $whl_path
 ```
 Alternatively, you can set PYTHONPATH to tell python where to find the ONNXRT library and the TVM library.
-```
-export PYTHONPATH=$ORT_PYTHON_HOME:$TVM_PYTHON_HOME:${PYTHONPATH}
+```bash
+export PYTHONPATH=<path_to_onnx_runtime>/build/cpu_stvm/Release:${PYTHONPATH}
+export PYTHONPATH=<path_to_onnx_runtime>/build/cpu_stvm/Release/_deps/tvm-src/python:${PYTHONPATH}
 ```
 
 ## Configuration options
-STVM Executor Provider can be configured with the following provider options:
+TVM Executor Provider can be configured with the following provider options:
 ```python
 po = [dict(target=client_target,
            target_host=client_target_host,
@@ -70,7 +70,7 @@ po = [dict(target=client_target,
            tuning_file_path=client_tuning_logfile,
            input_names = input_names_str,
            input_shapes = input_shapes_str)]
-stvm_session = onnxruntime.InferenceSession(model_path, providers=["TvmExecutionProvider"], provider_options=po)
+tvm_session = onnxruntime.InferenceSession(model_path, providers=["TvmExecutionProvider"], provider_options=po)
 ```
 <br>
 
@@ -87,7 +87,7 @@ input_shapes = "[1 3 224 224] [1 2]"
 ```
 
 ## Performance Tuning
-TVM optimizes machine learning models through an automated tuning process that produces model variants specific to targeted hardware architectures.  This process also generates 'tuning logs' that the STVM EP relies on to maximize model performance. These logs can be acquired for your model by either using TVM as described here:
+TVM optimizes machine learning models through an automated tuning process that produces model variants specific to targeted hardware architectures.  This process also generates 'tuning logs' that the TVM EP relies on to maximize model performance. These logs can be acquired for your model by either using TVM as described here:
 
 AutoTVM:
 https://tvm.apache.org/docs/how_to/tune_with_autotvm/index.html
@@ -97,19 +97,19 @@ https://tvm.apache.org/docs/how_to/tune_with_autoscheduler/index.html
 
 or by using logs generated through the OctoML platform (https://onnx.octoml.ai) using instructions [here](https://help.octoml.ai/en/articles/5814452-using-octoml-platform-logs-with-onnx-rt-tvm-ep)
 
-Using the STVM EP with TVM tuning logs also requires users to turn off ONNX Runtime preprocessing.  To do this, the following `SessionOptions()` can be used:
+Using the TVM EP with TVM tuning logs also requires users to turn off ONNX Runtime preprocessing.  To do this, the following `SessionOptions()` can be used:
 ```
 so = onnxruntime.SessionOptions()
 so.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
 
-stvm_session = onnxruntime.InferenceSession(model_path, sess_options=so, providers=["TvmExecutionProvider"], provider_options=po)
+tvm_session = onnxruntime.InferenceSession(model_path, sess_options=so, providers=["TvmExecutionProvider"], provider_options=po)
 ```
 
 ## Samples
-- [Sample notebook for ResNet50 inference with STVM EP](https://github.com/octoml/onnxruntime/blob/STVM_EP_PR/docs/python/inference/notebooks/onnxruntime-stvm-tutorial.ipynb)
+- [Sample notebook for ResNet50 inference with TVM EP](https://github.com/octoml/onnxruntime/blob/STVM_EP_PR/docs/python/inference/notebooks/onnxruntime-stvm-tutorial.ipynb)
 
 ## Known issues
-- At this moment, the STVM EP has only been verified on UNIX/Linux systems.
+- At this moment, the TVM EP has only been verified on UNIX/Linux systems.
 - CUDA/GPU support is still in pre-alpha mode and results are expected to change. It is recommended that only CPU targets are used.
 - Some compatibility issues have been found between ONNX and Google protobuf. `AttributeError: module 'google.protobuf.internal.containers' has no attribute 'MutableMapping'`. This usually occurss during `import onnx` in any python scripts for protobuf version >= 3.19.0 and ONNX version <= 1.8.1. To resolve the issue Google protobuf and ONNX can be reinstalled separately or together using:
 ```

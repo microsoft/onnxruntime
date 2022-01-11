@@ -67,7 +67,7 @@ elif parse_arg_remove_boolean(sys.argv, '--use_dnnl'):
 elif parse_arg_remove_boolean(sys.argv, '--use_nuphar'):
     package_name = 'onnxruntime-nuphar'
 elif parse_arg_remove_boolean(sys.argv, '--use_tvm'):
-    package_name = 'onnxruntime-stvm'
+    package_name = 'onnxruntime-tvm'
 elif parse_arg_remove_boolean(sys.argv, '--use_vitisai'):
     package_name = 'onnxruntime-vitisai'
 elif parse_arg_remove_boolean(sys.argv, '--use_acl'):
@@ -429,8 +429,8 @@ if package_name == 'onnxruntime-nuphar':
     packages += ["onnxruntime.nuphar"]
     extra += [path.join('nuphar', 'NUPHAR_CACHE_VERSION')]
 
-if package_name == 'onnxruntime-stvm':
-    packages += ['onnxruntime.providers.stvm']
+if package_name == 'onnxruntime-tvm':
+    packages += ['onnxruntime.providers.tvm']
 
 package_data["onnxruntime"] = data + examples + extra
 
