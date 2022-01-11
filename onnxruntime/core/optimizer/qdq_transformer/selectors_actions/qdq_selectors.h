@@ -36,6 +36,10 @@ class NodeGroupSelector {
                      const std::vector<const Node*>& q_nodes,
                      int num_dq_inputs = -1) const;
 
+  // base check that we have the expected number of DQ inputs.
+  bool CheckDQNodes(const GraphViewer& graph_viewer, const Node& node,
+                    const std::vector<const Node*>& dq_nodes) const;
+
  private:
   // derived classes should implement this check
   bool virtual Check(const GraphViewer& graph_viewer, const Node& node,
@@ -51,6 +55,13 @@ class NodeGroupSelector {
 // Single DQ -> node that does not change data -> Q.
 // Zero point and scale are constant scalars and must match
 class DropQDQNodeGroupSelector : public NodeGroupSelector {
+  bool Check(const GraphViewer& graph_viewer, const Node& node,
+             const std::vector<const Node*>& dq_nodes,
+             const std::vector<const Node*>& q_nodes) const override;
+};
+
+// Single DQ -> node.
+class DropDQNodeGroupSelector : public NodeGroupSelector {
   bool Check(const GraphViewer& graph_viewer, const Node& node,
              const std::vector<const Node*>& dq_nodes,
              const std::vector<const Node*>& q_nodes) const override;
@@ -140,6 +151,11 @@ class BaseSelector : public NodeSelector {
 class DropQDQNodesSelector : public BaseSelector {
  public:
   DropQDQNodesSelector() : BaseSelector(std::make_unique<DropQDQNodeGroupSelector>()) {}
+};
+
+class DropDQNodesSelector : public BaseSelector {
+ public:
+  DropDQNodesSelector() : BaseSelector(std::make_unique<DropDQNodeGroupSelector>()) {}
 };
 
 class UnarySelector : public BaseSelector {
