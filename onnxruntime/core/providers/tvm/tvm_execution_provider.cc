@@ -230,7 +230,7 @@ StvmExecutionProvider::StvmExecutionProvider(const StvmExecutionProviderInfo& in
   ProcessInfo();
 
   AllocatorCreationInfo default_memory_info = {[](int) {
-                                                 return std::make_unique<STVMAllocator>();
+                                                 return std::make_unique<TVMAllocator>();
                                                },
                                                0, false};
   allocator_ = CreateAllocator(default_memory_info);

@@ -9,16 +9,16 @@
 
 namespace onnxruntime {
 
-#define STVM_ALLOC_ALIGN 128
+#define TVM_ALLOC_ALIGN 128
 
-class STVMAllocator : public IAllocator {
+class TVMAllocator : public IAllocator {
  public:
-   STVMAllocator() : STVMAllocator(OrtMemoryInfo("TVM",
-                                                 OrtAllocatorType::OrtDeviceAllocator,
-                                                 OrtDevice(OrtDevice::CPU, OrtDevice::MemType::DEFAULT, 0),
-                                                 0,
-                                                 OrtMemTypeDefault)) {}
-  explicit STVMAllocator(const OrtMemoryInfo& info)
+   TVMAllocator() : TVMAllocator(OrtMemoryInfo("TVM",
+                                               OrtAllocatorType::OrtDeviceAllocator,
+                                               OrtDevice(OrtDevice::CPU, OrtDevice::MemType::DEFAULT, 0),
+                                               0,
+                                               OrtMemTypeDefault)) {}
+  explicit TVMAllocator(const OrtMemoryInfo& info)
     : IAllocator(info) {
       switch (info.device.Type()) {
       case OrtDevice::CPU:
