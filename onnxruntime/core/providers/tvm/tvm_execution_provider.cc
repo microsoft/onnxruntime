@@ -354,7 +354,7 @@ std::unique_ptr<IDataTransfer> TvmExecutionProvider::GetDataTransfer() const {
   if (GPUTargetCheck()) {
     return std::make_unique<onnxruntime::XPUDataTransfer>();
   } else if (info_.target.find("llvm") != std::string::npos) {
-    return std::make_unique<onnxruntime::StvmCPUDataTransfer>();
+    return std::make_unique<onnxruntime::TvmCPUDataTransfer>();
   } else {
     ORT_NOT_IMPLEMENTED("STVM GetDataTransfer is not implemented for target ", info_.target);
   }

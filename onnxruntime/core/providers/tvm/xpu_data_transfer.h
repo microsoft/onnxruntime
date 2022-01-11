@@ -22,9 +22,9 @@ class XPUDataTransfer : public IDataTransfer {
   DLDevice get_context(const OrtDevice& device) const;
 };
 
-class StvmCPUDataTransfer : public IDataTransfer {
+class TvmCPUDataTransfer : public IDataTransfer {
  public:
-  StvmCPUDataTransfer() = default;
+  TvmCPUDataTransfer() = default;
   // Dampen MSVC warning about not fully overriding CopyTensor
   using IDataTransfer::CopyTensor;
   bool CanCopy(const OrtDevice& src_device, const OrtDevice& dst_device) const override;
