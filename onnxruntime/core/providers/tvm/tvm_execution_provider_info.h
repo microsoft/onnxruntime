@@ -30,7 +30,7 @@ const std::string LLVM_TARGET_AVX512 = "llvm -mcpu=skylake-avx512";
 
 constexpr const unsigned int default_opt_level = 3;
 
-using STVMInputShapes = std::unordered_map<std::string, std::vector<int64_t>>;
+using TVMInputShapes = std::unordered_map<std::string, std::vector<int64_t>>;
 
 // Information needed to construct an TVM execution provider.
 struct TvmExecutionProviderInfo {
@@ -43,7 +43,7 @@ struct TvmExecutionProviderInfo {
   std::string tuning_type{"AutoTVM"};
   std::string input_names_str{""};
   std::string input_shapes_str{""};
-  STVMInputShapes input_shapes{};
+  TVMInputShapes input_shapes{};
 
   static std::string whitespace_trimming(const std::string& str);
   static TvmExecutionProviderInfo FromProviderOptions(const ProviderOptions& options);

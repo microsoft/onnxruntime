@@ -64,7 +64,7 @@ class TvmExecutionProvider : public IExecutionProvider {
   std::unordered_map<std::string, int> opsets_;
   std::unordered_map<std::string, std::string>  model_paths_;
   bool dump_subgraphs_ = false;
-  OrtMutex stvm_mu_;
+  OrtMutex tvm_mu_;
   AllocatorPtr allocator_;
   TvmExecutionProviderInfo info_;
   TVMModules modules_;

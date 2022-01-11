@@ -356,7 +356,7 @@ std::unique_ptr<IDataTransfer> TvmExecutionProvider::GetDataTransfer() const {
   } else if (info_.target.find("llvm") != std::string::npos) {
     return std::make_unique<onnxruntime::TvmCPUDataTransfer>();
   } else {
-    ORT_NOT_IMPLEMENTED("STVM GetDataTransfer is not implemented for target ", info_.target);
+    ORT_NOT_IMPLEMENTED("TVM GetDataTransfer is not implemented for target ", info_.target);
   }
 }
 
@@ -477,7 +477,7 @@ void TvmExecutionProvider::ProcessGPUTarget() {
 }
 
 void TvmExecutionProvider::PrintInfo() const {
-  LOG(INFO) << "STVM ep options:\n" <<
+  LOG(INFO) << "TVM EP options:\n" <<
   "target: " << info_.target << "\n" <<
   "target_host: " << info_.target_host << "\n" <<
   "opt level: " << info_.opt_level << "\n" <<

@@ -11,7 +11,7 @@
 
 
 namespace onnxruntime {
-namespace stvm {
+namespace tvm {
 namespace provider_option_names {
 constexpr const char* kTarget = "target";
 constexpr const char* kTargetHost = "target_host";
@@ -36,7 +36,7 @@ static const std::unordered_set<std::string> valid_keys {
 };
 
 }  // namespace provider_option_names
-}  // namespace stvm
+}  // namespace tvm
 
 std::string TvmExecutionProviderInfo::whitespace_trimming(const std::string& str) {
   const std::string WHITESPACE = " \n\r\t\f\v";
@@ -55,15 +55,15 @@ TvmExecutionProviderInfo TvmExecutionProviderInfo::FromProviderOptions(const Pro
 
   ORT_THROW_IF_ERROR(
       ProviderOptionsParser{}
-          .AddAssignmentToReference(stvm::provider_option_names::kTarget, info.target)
-          .AddAssignmentToReference(stvm::provider_option_names::kTargetHost, info.target_host)
-          .AddAssignmentToReference(stvm::provider_option_names::kOptLevel, info.opt_level)
-          .AddAssignmentToReference(stvm::provider_option_names::kFreezeWeights, info.freeze_weights)
-          .AddAssignmentToReference(stvm::provider_option_names::kToNHWC, info.to_nhwc)
-          .AddAssignmentToReference(stvm::provider_option_names::kTuningFilePath, info.tuning_file_path)
-          .AddAssignmentToReference(stvm::provider_option_names::kTuningType, info.tuning_type)
-          .AddAssignmentToReference(stvm::provider_option_names::kInputNames, info.input_names_str)
-          .AddAssignmentToReference(stvm::provider_option_names::kInputShapes, info.input_shapes_str)
+          .AddAssignmentToReference(tvm::provider_option_names::kTarget, info.target)
+          .AddAssignmentToReference(tvm::provider_option_names::kTargetHost, info.target_host)
+          .AddAssignmentToReference(tvm::provider_option_names::kOptLevel, info.opt_level)
+          .AddAssignmentToReference(tvm::provider_option_names::kFreezeWeights, info.freeze_weights)
+          .AddAssignmentToReference(tvm::provider_option_names::kToNHWC, info.to_nhwc)
+          .AddAssignmentToReference(tvm::provider_option_names::kTuningFilePath, info.tuning_file_path)
+          .AddAssignmentToReference(tvm::provider_option_names::kTuningType, info.tuning_type)
+          .AddAssignmentToReference(tvm::provider_option_names::kInputNames, info.input_names_str)
+          .AddAssignmentToReference(tvm::provider_option_names::kInputShapes, info.input_shapes_str)
           .Parse(options));
 
   return info;
@@ -94,7 +94,7 @@ TvmExecutionProviderInfo TvmExecutionProviderInfo::FromOptionsString(const char*
       value = whitespace_trimming(value);
 
       // Check keys of obtained options
-      if (stvm::provider_option_names::valid_keys.count(key) == 0) {
+      if (tvm::provider_option_names::valid_keys.count(key) == 0) {
         ORT_NOT_IMPLEMENTED("TvmOptions: unknown option (", key, ")");
       }
 
