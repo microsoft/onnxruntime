@@ -96,10 +96,6 @@ class ONNXQuantizer:
         # no dequantized will be applied when needed later
         self.generated_value_names = self.model.get_non_initializer_inputs()
 
-        if weight_qType == QuantType.QInt8 and not self.reduce_range:
-            logging.warning("Accuracy may suffer from saturation with weight type QInt8 and reduce_range disabled on CPU with extension avx2 and avx512(without VNNI). "
-                            "Would recommd to try enabling reduce_range and per_channel on those platforms if you hit accuracy issue.")
-
     # routines for subgraph support
     def quantize_subgraph(self, subgraph, graph_key):
         '''
