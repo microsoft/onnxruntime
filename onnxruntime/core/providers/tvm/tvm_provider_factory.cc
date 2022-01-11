@@ -12,13 +12,13 @@
 
 namespace onnxruntime {
 
-struct StvmProviderFactory : IExecutionProviderFactory {
-  StvmProviderFactory(const TvmExecutionProviderInfo& info) : info_{info} {}
-  ~StvmProviderFactory() = default;
+struct TvmProviderFactory : IExecutionProviderFactory {
+  TvmProviderFactory(const TvmExecutionProviderInfo& info) : info_{info} {}
+  ~TvmProviderFactory() = default;
 
   std::unique_ptr<IExecutionProvider> CreateProvider() override {
     return std::make_unique<TvmExecutionProvider>(info_);
- }
+  }
 
  private:
     TvmExecutionProviderInfo info_;
@@ -26,12 +26,12 @@ struct StvmProviderFactory : IExecutionProviderFactory {
 
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Stvm(const char* settings) {
     TvmExecutionProviderInfo info = TvmExecutionProviderInfo::FromOptionsString(settings);
-    return std::make_shared<StvmProviderFactory>(info);
+    return std::make_shared<TvmProviderFactory>(info);
 }
 
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Stvm(const TvmExecutionProviderInfo& info)
 {
-    return std::make_shared<StvmProviderFactory>(info);
+    return std::make_shared<TvmProviderFactory>(info);
 }
 }  // namespace onnxruntime
 
