@@ -262,6 +262,18 @@ class KernelLauncher {
     err_index_ = index_;      \
   }
 
+  /**
+   * @brief Set the dynamic local memory size. (aka., shared memory in CUDA).
+   *
+   * This function can be called multiple times.
+   */
+  template <typename T, typename E = std::is_convertible<T, size_t>>
+  KernelLauncher& setShmem(T num_bytes) {
+    SKIP_IF_ERRORED(clSetKernelArg(kernel_, index_, num_bytes, nullptr));
+    index_ += 1;
+    return *this;
+  }
+
   template <typename T, typename E = std::is_convertible<T, cl_int>>
   KernelLauncher& setInt2(T v1, T v2) {
     cl_int tmp[2] = {static_cast<cl_int>(v1), static_cast<cl_int>(v2)};
