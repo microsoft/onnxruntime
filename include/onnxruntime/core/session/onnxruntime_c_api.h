@@ -484,6 +484,16 @@ typedef struct OrtTensorRTProviderOptions {
   int trt_force_sequential_engine_build;        // force building TensorRT engine sequentially. Default 0 = false, nonzero = true
 } OrtTensorRTProviderOptions;
 
+/** \brief MIGraphX Provider Options
+*
+* \see OrtApi::SessionOptionsAppendExecutionProvider_MIGraphX
+*/
+typedef struct OrtMIGraphXProviderOptions {
+  int device_id;                                // hip device id.
+  int migraphx_fp16_enable;                     // enable MIGraphX FP16 precision. Default 0 = false, nonzero = true
+  int migraphx_int8_enable;                     // enable MIGraphX INT8 precision. Default 0 = false, nonzero = true
+} OrtMIGraphXProviderOptions;
+
 /** \brief OpenVINO Provider Options
 *
 * \see OrtApi::SessionOptionsAppendExecutionProvider_OpenVINO
@@ -3049,6 +3059,9 @@ struct OrtApi {
   * \snippet{doc} snippets.dox OrtStatus Return Value
   */
   ORT_API2_STATUS(GetSparseTensorIndices, _In_ const OrtValue* ort_value, enum OrtSparseIndicesFormat indices_format, _Out_ size_t* num_indices, _Outptr_ const void** indices);
+  /// @}
+  /// \name OrtSessionOptions
+  /// @{
 
   /**
    * \brief Sets out to 1 iff an optional type OrtValue has an element, 0 otherwise (OrtValue is None)
@@ -3260,6 +3273,17 @@ struct OrtApi {
   */
   void(ORT_API_CALL* ReleaseCUDAProviderOptions)(_Frees_ptr_opt_ OrtCUDAProviderOptionsV2* input);
 
+  /** \brief Append MIGraphX provider to session options
+  *
+  * If MIGraphX is not available (due to a non MIGraphX enabled build, or if MIGraphX is not installed on the system), this function will return failure.
+  *
+  * \param[in] options
+  * \param[in] migraphx_options
+  *
+  * \snippet{doc} snippets.dox OrtStatus Return Value
+  */
+  ORT_API2_STATUS(SessionOptionsAppendExecutionProvider_MIGraphX,
+                  _In_ OrtSessionOptions* options, _In_ const OrtMIGraphXProviderOptions* migraphx_options);
   /// @}
 };
 
@@ -3320,6 +3344,17 @@ struct OrtCustomOp {
  * \param device_id CUDA device id, starts from zero.
 */
 ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_CUDA, _In_ OrtSessionOptions* options, int device_id);
+
+/*
+ * This is the old way to add the MIGraphX provider to the session, please use 
+ * SessionOptionsAppendExecutionProvider_MIGraphX above to access the latest functionality
+ * This function always exists, but will only succeed if Onnxruntime was built with 
+ * HIP support and the MIGraphX provider shared library exists
+ *
+ * \param device_id HIP device id, starts from zero.
+*/
+ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_MIGraphX, _In_ OrtSessionOptions* options, int device_id);
+
 
 #ifdef __cplusplus
 }

@@ -65,6 +65,7 @@ using IndexedSubGraph_MetaDef = IndexedSubGraph::MetaDef;
 #include "core/providers/cuda/cuda_provider_factory.h"
 #include "core/providers/rocm/rocm_provider_factory.h"
 #include "core/providers/dnnl/dnnl_provider_factory.h"
+#include "core/providers/migraphx/migraphx_provider_factory.h"
 #include "core/providers/openvino/openvino_provider_factory.h"
 #include "core/providers/tensorrt/tensorrt_provider_factory.h"
 #include "core/providers/tensorrt/tensorrt_provider_options.h"
@@ -90,6 +91,8 @@ namespace onnxruntime {
 
 ProviderInfo_CUDA* TryGetProviderInfo_CUDA();
 ProviderInfo_CUDA& GetProviderInfo_CUDA();
+ProviderInfo_MIGRAPHX* TryGetProviderInfo_MIGRAPHX();
+ProviderInfo_MIGRAPHX& GetProviderInfo_MIGRAPHX();
 ProviderInfo_ROCM* TryGetProviderInfo_ROCM();
 ProviderInfo_ROCM& GetProviderInfo_ROCM();
 ProviderHostCPU& GetProviderHostCPU();
@@ -183,6 +186,12 @@ struct ProviderHostImpl : ProviderHost {
 
   bool CudaCall_false(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) override { return GetProviderInfo_CUDA().CudaCall_false(retCode, exprString, libName, successCode, msg); }
   bool CudaCall_true(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) override { return GetProviderInfo_CUDA().CudaCall_true(retCode, exprString, libName, successCode, msg); }
+#endif
+
+#ifdef USE_MIGRAPHX
+  std::unique_ptr<IAllocator> CreateHIPAllocator(int16_t device_id, const char* name) override { return GetProviderInfo_MIGRAPHX().CreateHIPAllocator(device_id, name); }
+  std::unique_ptr<IAllocator> CreateHIPPinnedAllocator(int16_t device_id, const char* name) override { return GetProviderInfo_MIGRAPHX().CreateHIPPinnedAllocator(device_id, name); }
+  std::unique_ptr<IDataTransfer> CreateGPUDataTransfer(void* stream) override { return GetProviderInfo_MIGRAPHX().CreateGPUDataTransfer(stream); }
 #endif
 
 #ifdef USE_ROCM
@@ -1052,6 +1061,7 @@ static ProviderLibrary s_library_rocm(LIBRARY_PREFIX "onnxruntime_providers_rocm
 static ProviderLibrary s_library_dnnl(LIBRARY_PREFIX "onnxruntime_providers_dnnl" LIBRARY_EXTENSION);
 static ProviderLibrary s_library_openvino(LIBRARY_PREFIX "onnxruntime_providers_openvino" LIBRARY_EXTENSION);
 static ProviderLibrary s_library_tensorrt(LIBRARY_PREFIX "onnxruntime_providers_tensorrt" LIBRARY_EXTENSION);
+static ProviderLibrary s_library_migraphx(LIBRARY_PREFIX "onnxruntime_providers_migraphx" LIBRARY_EXTENSION);
 
 void UnloadSharedProviders() {
   s_library_dnnl.Unload();
@@ -1060,6 +1070,7 @@ void UnloadSharedProviders() {
   s_library_cuda.Unload();
   s_library_rocm.Unload();
   s_library_shared.Unload();
+  s_library_migraphx.Unload();
 }
 
 // Used by test code
@@ -1070,6 +1081,12 @@ std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const c
   return nullptr;
 }
 
+std::unique_ptr<IAllocator> CreateHIPPinnedAllocator(int16_t device_id, const char* name) {
+  if (auto* info = onnxruntime::TryGetProviderInfo_MIGRAPHX())
+    return info->CreateHIPPinnedAllocator(device_id, name);
+
+  return nullptr;
+}
 std::unique_ptr<IAllocator> CreateROCMPinnedAllocator(int16_t device_id, const char* name) {
   if (auto* info = onnxruntime::TryGetProviderInfo_ROCM())
     return info->CreateROCMPinnedAllocator(device_id, name);
@@ -1131,8 +1148,22 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensor
   return nullptr;
 }
 
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_MIGraphX(int device_id) {
+  if (auto* provider = s_library_migraphx.Get())
+    return provider->CreateExecutionProviderFactory(device_id);
+
+  return nullptr;
+}
+
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensorrt(const OrtTensorRTProviderOptions* provider_options) {
   if (auto* provider = s_library_tensorrt.Get())
+    return provider->CreateExecutionProviderFactory(provider_options);
+
+  return nullptr;
+}
+
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_MIGraphX(const OrtMIGraphXProviderOptions* provider_options) {
+  if (auto* provider = s_library_migraphx.Get())
     return provider->CreateExecutionProviderFactory(provider_options);
 
   return nullptr;
@@ -1165,11 +1196,25 @@ ProviderInfo_CUDA& GetProviderInfo_CUDA() {
   ORT_THROW("CUDA Provider not available, can't get interface for it");
 }
 
+ProviderInfo_MIGRAPHX* TryGetProviderInfo_MIGRAPHX() {
+  if (auto* provider = s_library_migraphx.Get())
+    return reinterpret_cast<ProviderInfo_MIGRAPHX*>(provider->GetInfo());
+
+  return nullptr;
+}
+
 ProviderInfo_ROCM* TryGetProviderInfo_ROCM() {
   if (auto* provider = s_library_rocm.Get())
     return reinterpret_cast<ProviderInfo_ROCM*>(provider->GetInfo());
 
   return nullptr;
+}
+
+ProviderInfo_MIGRAPHX& GetProviderInfo_MIGRAPHX() {
+  if (auto* info = TryGetProviderInfo_MIGRAPHX())
+    return *info;
+
+  ORT_THROW("MIGRAPHX Provider not available, can't get interface for it");
 }
 
 ProviderInfo_ROCM& GetProviderInfo_ROCM() {
@@ -1282,11 +1327,35 @@ ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Tensorrt, _In_ OrtS
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_MIGraphX, _In_ OrtSessionOptions* options, int device_id) {
+  API_IMPL_BEGIN
+  auto factory = onnxruntime::CreateExecutionProviderFactory_MIGraphX(device_id);
+  if (!factory) {
+    return OrtApis::CreateStatus(ORT_FAIL, "OrtSessionOptionsAppendExecutionProvider_MIGraphX: Failed to load shared library");
+  }
+
+  options->provider_factories.push_back(factory);
+  return nullptr;
+  API_IMPL_END
+}
+
 ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_TensorRT, _In_ OrtSessionOptions* options, _In_ const OrtTensorRTProviderOptions* tensorrt_options) {
   API_IMPL_BEGIN
   auto factory = onnxruntime::CreateExecutionProviderFactory_Tensorrt(tensorrt_options);
   if (!factory) {
     return OrtApis::CreateStatus(ORT_FAIL, "SessionOptionsAppendExecutionProvider_Tensorrt: Failed to load shared library");
+  }
+
+  options->provider_factories.push_back(factory);
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_MIGraphX, _In_ OrtSessionOptions* options, _In_ const OrtMIGraphXProviderOptions* migraphx_options) {
+  API_IMPL_BEGIN
+  auto factory = onnxruntime::CreateExecutionProviderFactory_MIGraphX(migraphx_options);
+  if (!factory) {
+    return OrtApis::CreateStatus(ORT_FAIL, "SessionOptionsAppendExecutionProvider_MIGraphX: Failed to load shared library");
   }
 
   options->provider_factories.push_back(factory);
