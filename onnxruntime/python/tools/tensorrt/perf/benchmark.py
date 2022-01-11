@@ -91,7 +91,7 @@ def run_trt_standalone(trtexec, model_name, model_path, ort_inputs, all_inputs_s
     engine_name = model_name + ".engine"
     save_command = command + ["--saveEngine=" + engine_name]
     logger.info(save_command)
-    #out = get_output(save_command)
+    out = get_output(save_command)
 
     # load engine and inference
     load_command = command + ["--loadEngine=" + engine_name]
@@ -104,7 +104,7 @@ def run_trt_standalone(trtexec, model_name, model_path, ort_inputs, all_inputs_s
     if track_memory: 
         p = start_memory_tracking()            
         try: 
-            out = get_output(command)
+            out = get_output(load_command)
             success = True
             mem_usage = end_memory_tracking(p, trtexec, success)
         except Exception as e: 
