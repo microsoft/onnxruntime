@@ -138,7 +138,10 @@ def get_device_from_inputs(args, kwargs):
 
     device = None
     if args:
-        device = torch.device(args[0].device)
+        if hasattr(args[0], 'device'):
+            device = torch.device(args[0].device)
+        else:
+            device = torch.device('cpu')
     elif kwargs:
         device = torch.device(next(iter(kwargs.values())).device)
     return device

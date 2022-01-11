@@ -1183,7 +1183,7 @@ class SymbolicShapeInference:
         reduction = self._try_get_value(node, 4)
         if reduction is None:
             reduction = 1
-        elem_type = self.known_vi_[node.input[0]].type.tensor_type.elem_type
+        elem_type = self.known_vi_[node.input[1]].type.tensor_type.elem_type
         vi = self.known_vi_[node.output[0]]
         if reduction == 0:
             vi.type.tensor_type.elem_type = elem_type
