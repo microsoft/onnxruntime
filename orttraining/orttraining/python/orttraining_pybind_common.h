@@ -8,9 +8,6 @@
 #include "core/platform/env.h"
 #include <unordered_map>
 #include <cstdlib>
-#ifdef ENABLE_EAGER_MODE
-#include "orttraining/eager/ort_backends.h"
-#endif
 
 namespace onnxruntime {
 namespace python {
@@ -21,9 +18,6 @@ using namespace onnxruntime::logging;
 using ExecutionProviderMap = std::unordered_map<std::string, std::shared_ptr<IExecutionProvider> >;
 using ExecutionProviderLibInfoMap = std::unordered_map<std::string, std::pair<std::string, ProviderOptions> > ;
 
-#ifdef ENABLE_EAGER_MODE
-torch_ort::eager::ORTBackendsManager& GetORTBackendsManager();
-#endif
 
 class ORTTrainingPythonEnv{
 public:

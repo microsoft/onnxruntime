@@ -8,6 +8,10 @@
 #include "core/providers/get_execution_providers.h"
 #include "core/session/provider_bridge_ort.h"
 
+#ifdef ENABLE_EAGER_MODE
+#include "orttraining/python/orttraining_python_module.h"
+#endif
+
 namespace onnxruntime {
 namespace python {
 namespace py = pybind11;
