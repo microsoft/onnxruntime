@@ -89,32 +89,6 @@ ConvType GetConvType_nu(const NodeUnit& node_unit, const InitializedTensorSet& i
     return ConvType::Grouped;
 }
 
-ConvType GetConvType(const onnxruntime::Node& node, const InitializedTensorSet& initializers) {
-  const auto& op_type = node.OpType();
-  bool is_qlinear_conv = (op_type == "QLinearConv");
-  ORT_ENFORCE(op_type == "Conv" || is_qlinear_conv);
-
-  NodeAttrHelper helper(node);
-  const auto group = helper.Get("group", 1);
-
-  size_t w_idx = is_qlinear_conv ? 3 : 1;
-  const auto& weight = node.InputDefs()[w_idx]->Name();
-  const auto& weight_tensor = *initializers.at(weight);
-
-  // For ONNX we only have 1 conv ops
-  // For NNAPI we have 3
-  // Input is (N, C, H, W)
-  // group == 1,                                   --> regular conv
-  // group != 1 && weight is (M, 1, kH, kW),       --> depthwise conv
-  // group != 1 && weight is (M, C/group, kH, kW), --> grouped conv
-  if (group == 1)
-    return ConvType::Regular;
-  else if ((weight_tensor.dims()[1] == 1))
-    return ConvType::Depthwise;
-  else
-    return ConvType::Grouped;
-}
-
 bool IsQLinearBinaryOp(QLinearOpType qlinear_op_type) {
   return qlinear_op_type == QLinearOpType::QLinearConv ||
          qlinear_op_type == QLinearOpType::QLinearMatMul ||
@@ -346,35 +320,6 @@ bool HasValidQuantizationZeroPoints(const InitializedTensorSet& initializers, co
   return true;
 }
 
-common::Status GetQuantizationScale(const InitializedTensorSet& initializers, const Node& node,
-                                    size_t idx, float& scale) {
-  std::vector<uint8_t> unpacked_tensor;
-  const auto& name = node.InputDefs()[idx]->Name();
-  const auto& scale_tensor = *initializers.at(name);
-  ORT_RETURN_IF_ERROR(
-      onnxruntime::utils::UnpackInitializerData(scale_tensor, node.ModelPath(), unpacked_tensor));
-
-  // The scale should be one or more floats
-  ORT_RETURN_IF(unpacked_tensor.size() < 4, "The initializer [", name, "] should have one or more floats ",
-                "with size no less than 4, actual size: ", unpacked_tensor.size());
-  scale = reinterpret_cast<const float*>(unpacked_tensor.data())[0];
-  return Status::OK();
-}
-
-common::Status GetQuantizationZeroPoint(const InitializedTensorSet& initializers,
-                                        const Node& node, size_t idx, int32_t& zero_point) {
-  std::vector<uint8_t> unpacked_tensor;
-  const auto& name = node.InputDefs()[idx]->Name();
-  const auto& zero_point_tensor = *initializers.at(name);
-  ORT_RETURN_IF_ERROR(
-      onnxruntime::utils::UnpackInitializerData(zero_point_tensor, node.ModelPath(), unpacked_tensor));
-
-  ORT_RETURN_IF(unpacked_tensor.empty(), "The initializer [", name, "] is empty");
-  // Onnx quantization uses uint8 [int8 not yet supported], need to cast to int32_t used by NNAPI
-  zero_point = static_cast<int32_t>(unpacked_tensor[0]);
-  return Status::OK();
-}
-
 common::Status GetQuantizationScaleAndZeroPoint(
     const InitializedTensorSet& initializers, const NodeUnitIODef& io_def, const Path& model_path,
     float& scale, int32_t& zero_point) {
@@ -461,9 +406,9 @@ bool GetType(const NodeArg& node_arg, int32_t& type) {
   return true;
 }
 
-void GetFlattenOutputShape(const Node& node, const Shape& input_shape, int32_t& dim_1, int32_t& dim_2) {
+void GetFlattenOutputShape_nu(const NodeUnit& node_unit, const Shape& input_shape, int32_t& dim_1, int32_t& dim_2) {
   int32_t rank = static_cast<int>(input_shape.size());
-  NodeAttrHelper helper(node);
+  NodeAttrHelper helper(node_unit);
   int32_t axis = helper.Get("axis", 1);
   // axis == rank is a valid input, but invalid for HandleNegativeAxis
   // Skip non-negative axis here
@@ -589,10 +534,11 @@ std::string Shape2String(const std::vector<uint32_t>& shape) {
   return os.str();
 }
 
-bool CheckIsInitializer(const InitializedTensorSet& initializers, const Node& node,
-                        size_t input_idx, const char* input_name) {
-  if (!Contains(initializers, node.InputDefs()[input_idx]->Name())) {
-    LOGS_DEFAULT(VERBOSE) << input_name << " of " << node.OpType() << " must be an initializer tensor";
+bool CheckIsInitializer(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
+                        const std::string& input_name, const char* input_string) {
+  if (!Contains(initializers, input_name)) {
+    LOGS_DEFAULT(VERBOSE) << input_string << " of " << node_unit.Name() << "of type ["
+                          << node_unit.OpType() << "] must be an initializer tensor";
     return false;
   }
 

@@ -48,7 +48,6 @@ class ModelBuilder {
                       const std::vector<bool>& is_nhwc_vec) ORT_MUST_USE_RESULT;
 
   // Find if an output has a fuseable activation (Relu)
-  int32_t FindActivation(const Node& node, const NodeArg& output);
   int32_t FindActivation_nu(const NodeUnit& node_unit, const NodeArg& output);
 
   // Add an NNAPI scalar operand
@@ -185,7 +184,6 @@ class ModelBuilder {
   // If a NNAPI operation will use initializers directly, we will add the initializers to the skip list
   void PreprocessInitializers();
   // Preprocess all the activation nodes (Relu/Relu1/Relu6) for easy query later
-  void PreprocessActivations();
   void PreprocessActivations_nu();
   // Copy and process all the initializers to NNAPI model
   Status RegisterInitializers() ORT_MUST_USE_RESULT;

@@ -55,7 +55,6 @@ Status ModelBuilder::Prepare() {
   PreprocessNodeUnits();
   GetAllQuantizedOpInputs();
   PreprocessInitializers();
-  PreprocessActivations();
   PreprocessActivations_nu();
   ORT_RETURN_IF_ERROR(RegisterInitializers());
   ORT_RETURN_IF_ERROR(RegisterModelInputs());
@@ -119,28 +118,6 @@ void ModelBuilder::PreprocessInitializers() {
   for (const auto& node_unit : node_unit_holder_) {
     if (const auto* op_builder = GetOpBuilder(*node_unit)) {
       op_builder->AddInitializersToSkip(*this, *node_unit);
-    }
-  }
-}
-
-void ModelBuilder::PreprocessActivations() {
-  const auto& node_indices = graph_viewer_.GetNodesInTopologicalOrder();
-  for (size_t i = 0; i < node_indices.size(); i++) {
-    const auto* node(graph_viewer_.GetNode(node_indices[i]));
-    const auto& op_type(node->OpType());
-
-    if (op_type == "Relu") {
-      activation_nodes_.emplace(node->Index(), ANEURALNETWORKS_FUSED_RELU);
-    } else if (op_type == "Clip") {  // Relu1 or Relu6
-      float min, max;
-      if (!GetClipMinMax(GetInitializerTensors(), *node, min, max, logging::LoggingManager::DefaultLogger()))
-        continue;
-
-      if (min == -1.0f && max == 1.0f) {
-        activation_nodes_.emplace(node->Index(), ANEURALNETWORKS_FUSED_RELU1);
-      } else if (min == 0.0f && max == 6.0f) {
-        activation_nodes_.emplace(node->Index(), ANEURALNETWORKS_FUSED_RELU6);
-      }
     }
   }
 }
@@ -684,45 +661,6 @@ int32_t ModelBuilder::FindActivation_nu(const NodeUnit& node_unit, const NodeArg
     }
 
     LOGS_DEFAULT(VERBOSE) << "Node [" << node_unit.Name() << "] type [" << node_unit.OpType()
-                          << "], fused the output [" << output.Name() << "]";
-
-    fused_activations_.insert(output.Name());
-  }
-
-  return fuse_code;
-}
-
-int32_t ModelBuilder::FindActivation(const Node& node, const NodeArg& output) {
-  int32_t fuse_code = ANEURALNETWORKS_FUSED_NONE;
-
-  // We do not support activation fusion for quantized operators for now
-  auto qlinear_op_type = GetQLinearOpType(node);
-  if (qlinear_op_type != QLinearOpType::Unknown)
-    return fuse_code;
-
-  for (auto it = node.OutputEdgesBegin(), end = node.OutputEdgesEnd(); it != end; ++it) {
-    const auto& dst_node = it->GetNode();
-    const auto* dst_input = dst_node.InputDefs()[it->GetDstArgIndex()];
-    if (Contains(activation_nodes_, dst_node.Index())) {
-      if (&output == dst_input) {
-        fuse_code = activation_nodes_.at(dst_node.Index());
-      }
-    } else {
-      // if there is any other non-relu node using the output
-      // will add relu separately
-      if (&output == dst_input)
-        return ANEURALNETWORKS_FUSED_NONE;
-    }
-  }
-
-  // if output is a graph output, will add relu separately
-  if (fuse_code != ANEURALNETWORKS_FUSED_NONE) {
-    for (const auto* graph_output : graph_viewer_.GetOutputs()) {
-      if (&output == graph_output)
-        return ANEURALNETWORKS_FUSED_NONE;
-    }
-
-    LOGS_DEFAULT(VERBOSE) << "Node [" << node.Name() << "] type [" << node.OpType()
                           << "], fused the output [" << output.Name() << "]";
 
     fused_activations_.insert(output.Name());

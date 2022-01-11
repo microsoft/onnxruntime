@@ -148,28 +148,6 @@ Status GetNCHWInput_nu(ModelBuilder& model_builder, const NodeUnit& node_unit, s
   return Status::OK();
 }
 
-// Convert the input from nchw to nhwc
-// Caller should ensure input is currently in nchw format using ModelBuilder::IsOperandNHWC
-Status GetNHWCInput(ModelBuilder& model_builder, const Node& node, size_t input_index, std::string& input) {
-  const auto& nchw_input = node.InputDefs()[input_index]->Name();
-  if (!model_builder.GetNHWCOperand(nchw_input, input)) {
-    input = model_builder.GetUniqueName(nchw_input + "_nchw_to_nhwc");
-    ORT_RETURN_IF_ERROR(TransposeNCHWToNHWC(model_builder, nchw_input, input));
-  }
-  return Status::OK();
-}
-
-// Convert the input from nhwc to nchw
-// Caller should ensure input is currently in nhwc format using ModelBuilder::IsOperandNHWC
-Status GetNCHWInput(ModelBuilder& model_builder, const Node& node, size_t input_index, std::string& input) {
-  const auto& nhwc_input = node.InputDefs()[input_index]->Name();
-  if (!model_builder.GetNCHWOperand(nhwc_input, input)) {
-    input = model_builder.GetUniqueName(nhwc_input + "_nhwc_to_nchw");
-    ORT_RETURN_IF_ERROR(TransposeNHWCToNCHW(model_builder, nhwc_input, input));
-  }
-  return Status::OK();
-}
-
 // Transpose layouts if necessary for element wise operators with 2 inputs
 // and return the layout type of output tensor
 // If both inputs have same layout, the output will have the same layout
@@ -192,35 +170,6 @@ Status TransposeBinaryOpInputLayout_nu(ModelBuilder& model_builder, const NodeUn
   } else {  // input2_is_nhwc
     // need transpose input2 back to nchw
     ORT_RETURN_IF_ERROR(GetNCHWInput_nu(model_builder, node_unit, 1, input2));
-  }
-
-  return Status::OK();
-}
-
-// Transpose layouts if necessary for element wise operators with 2 inputs
-// and return the layout type of output tensor
-// If both inputs have same layout, the output will have the same layout
-// Otherwise we will need transpose the nhwc input back to nchw, and output will be nchw
-Status TransposeBinaryOpInputLayout(ModelBuilder& model_builder, const Node& node,
-                                    size_t input1_idx, size_t input2_idx,
-                                    std::string& input1, std::string& input2,
-                                    bool& output_is_nhwc) ORT_MUST_USE_RESULT;
-Status TransposeBinaryOpInputLayout(ModelBuilder& model_builder, const Node& node,
-                                    size_t input1_idx, size_t input2_idx,
-                                    std::string& input1, std::string& input2,
-                                    bool& output_is_nhwc) {
-  bool input1_is_nhwc = model_builder.IsOperandNHWC(input1);
-  bool input2_is_nhwc = model_builder.IsOperandNHWC(input2);
-  output_is_nhwc = false;
-
-  if (input1_is_nhwc == input2_is_nhwc) {
-    output_is_nhwc = input1_is_nhwc;
-  } else if (input1_is_nhwc) {
-    // need transpose input1 back to nchw
-    ORT_RETURN_IF_ERROR(GetNCHWInput(model_builder, node, input1_idx, input1));
-  } else {  // input2_is_nhwc
-    // need transpose input2 back to nchw
-    ORT_RETURN_IF_ERROR(GetNCHWInput(model_builder, node, input2_idx, input2));
   }
 
   return Status::OK();
@@ -746,16 +695,20 @@ class BaseOpBuilder : public IOpBuilder {
 
  protected:
   virtual Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const ORT_MUST_USE_RESULT = 0;
+  static bool IsOpSupported(const ModelBuilder& model_builder, const NodeUnit& node_unit) ORT_MUST_USE_RESULT;
 };
 
-Status BaseOpBuilder::AddToModelBuilder(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
+/* static */ bool BaseOpBuilder::IsOpSupported(const ModelBuilder& model_builder, const NodeUnit& node_unit) {
   OpSupportCheckParams params{
       model_builder.GetNNAPIFeatureLevel(),
       model_builder.UseNCHW(),
   };
 
-  ORT_RETURN_IF_NOT(IsNodeSupported(node_unit, model_builder.GetGraphViewer(), params),
-                    "Unsupported operator ", node_unit.OpType());
+  return IsNodeSupported(node_unit, model_builder.GetGraphViewer(), params);
+}
+
+Status BaseOpBuilder::AddToModelBuilder(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
+  ORT_RETURN_IF_NOT(IsOpSupported(model_builder, node_unit), "Unsupported operator ", node_unit.OpType());
   ORT_RETURN_IF_ERROR(AddToModelBuilderImpl(model_builder, node_unit));
   LOGS_DEFAULT(VERBOSE) << "Operator name: [" << node_unit.Name()
                         << "] type: [" << node_unit.OpType() << "] was added";
@@ -951,12 +904,13 @@ Status TransposeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, co
 class ReshapeOpBuilder : public BaseOpBuilder {
  public:
   void AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
-  static Status AddReshapeOperator(ModelBuilder& model_builder, const Node& node,
+  static Status AddReshapeOperator(ModelBuilder& model_builder, const NodeUnit& node_unit,
                                    const std::string& input, const std::vector<int32_t>& shape) ORT_MUST_USE_RESULT;
 
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override ORT_MUST_USE_RESULT;
-  static bool CanSkipReshape(const ModelBuilder& model_builder, const Node& node, size_t input_rank, size_t output_rank);
+  static bool CanSkipReshape(const ModelBuilder& model_builder, const NodeUnit& node_unit,
+                             size_t input_rank, size_t output_rank);
 };
 
 void ReshapeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
@@ -975,25 +929,34 @@ void ReshapeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const 
 // between NNAPI CPU impl and Hardware Accelerator impl and will speed up the execution
 // If we are going to skip the reshape, we will still add correct shape and operand type for the output in
 // onnxruntime::nnapi::Model.
-/* static */ bool ReshapeOpBuilder::CanSkipReshape(const ModelBuilder& model_builder, const Node& node,
+/* static */ bool ReshapeOpBuilder::CanSkipReshape(const ModelBuilder& model_builder, const NodeUnit& node_unit,
                                                    size_t input_rank, size_t output_rank) {
-  const auto& output = node.OutputDefs()[0]->Name();
+  const auto& output_node_arg = node_unit.Outputs()[0].node_arg;
+  const auto& output_name = output_node_arg.Name();
+  const auto& output_node = *node_unit.GetOutputNodes()[0];
+
   // We will go through all the output edges
-  for (auto it = node.OutputEdgesBegin(), end = node.OutputEdgesEnd(); it != end; ++it) {
-    const auto& op_type = it->GetNode().OpType();
+  for (auto it = output_node.OutputEdgesBegin(), end = output_node.OutputEdgesEnd(); it != end; ++it) {
+    const auto& dest_node_unit = model_builder.GetNodeUnit(&it->GetNode());
+    const auto& op_type = dest_node_unit.OpType();
     // TODO add quantized matmul when reshape support quantized input
     if (op_type != "Gemm" && op_type != "MatMul") {
       LOGS_DEFAULT(VERBOSE) << "Reshape/Flatten can only be skipped when the output is Gemm/Matmul"
                             << " or no op is using the output (output is graph output)"
-                            << ", output name, " << output
+                            << ", output name, " << output_name
                             << " is used by " << op_type;
       return false;
     }
 
+    // Now the dest node is Gemm/Matmul, we want to make sure it is supported
+    if (!BaseOpBuilder::IsOpSupported(model_builder, node_unit)) {
+      return false;
+    }
+
     // NNAPI ANEURALNETWORKS_FULLY_CONNECTED will only flatten the input 0
-    if (it->GetDstArgIndex() != 0) {
+    if (&output_node_arg != &dest_node_unit.Inputs()[0].node_arg) {
       LOGS_DEFAULT(VERBOSE) << "Reshape/Flatten can only be skipped when the output is input 0 of Gemm/Matmul"
-                            << ", output name, " << output;
+                            << ", output name, " << output_name;
       return false;
     }
 
@@ -1001,7 +964,7 @@ void ReshapeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const 
     // And NNAPI ANEURALNETWORKS_FULLY_CONNECTED will only flatten input rank >= 2
     if (input_rank < 2 || output_rank != 2) {
       LOGS_DEFAULT(VERBOSE) << "Reshape/Flatten can only be skipped when input_rank >= 2 and output_rank == 2"
-                            << ", output name, " << output
+                            << ", output name, " << output_name
                             << ", the actual input_rank, " << input_rank
                             << ", the actual output_rank, " << output_rank;
       return false;
@@ -1012,26 +975,26 @@ void ReshapeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const 
   // Check if the Reshape output is a graph output, if so we cannot skip the Reshape
   // We do not care the case where the Reshape output is a dead end
   for (const auto* node_arg : model_builder.GetGraphViewer().GetOutputs()) {
-    if (node_arg->Name() == output) {
+    if (node_arg == &output_node_arg) {
       LOGS_DEFAULT(VERBOSE) << "Reshape/Flatten can not be skipped when the output is a graph output"
-                            << ", output name, " << output;
+                            << ", output name, " << output_name;
       return false;
     }
   }
 
   LOGS_DEFAULT(VERBOSE) << "Skipping Reshape/Flatten node ["
-                        << node.Name() << "] with output, " << output;
+                        << node_unit.Name() << "] with output, " << output_name;
   return true;
 }
 
 /* static */ Status ReshapeOpBuilder::AddReshapeOperator(ModelBuilder& model_builder,
-                                                         const Node& node,
+                                                         const NodeUnit& node_unit,
                                                          const std::string& input,
                                                          const std::vector<int32_t>& shape) {
   auto& shaper(model_builder.GetShaper());
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());
-  const auto& output = node.OutputDefs()[0]->Name();
+  const auto& output = node_unit.Outputs()[0].node_arg.Name();
   ORT_RETURN_IF_ERROR(shaper.Reshape(input, shape, output));
   auto input_rank = shaper[input].size();
   auto output_rank = shaper[output].size();
@@ -1039,7 +1002,7 @@ void ReshapeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const 
   // Since Reshape is not running using hardware in NNAPI for some CPU (e.g. Qualcomm SD for now)
   // We will try to see if we the skip the Reshape to prevent context switching between
   // NNAPI CPU impl and NNAPI hardware accelerator impl
-  if (CanSkipReshape(model_builder, node, input_rank, output_rank)) {
+  if (CanSkipReshape(model_builder, node_unit, input_rank, output_rank)) {
     // Since reshape can be skipped, only register the dimension and type, with same index and new name
     const OperandType output_operand_type(operand_types.at(input).type, shaper[output]);
     model_builder.RegisterOperand(output, operand_indices.at(input), output_operand_type, false);
@@ -1050,7 +1013,7 @@ void ReshapeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const 
     input_indices.push_back(operand_indices.at(input));
     // Add new shape
     Shape shape_dimen = {static_cast<uint32_t>(shape.size())};
-    std::string shape_name = model_builder.GetUniqueName(node.Name() + input + "newshape");
+    std::string shape_name = model_builder.GetUniqueName(node_unit.Name() + input + "newshape");
     OperandType shape_operand_type(Type::TENSOR_INT32, shape_dimen);
     ORT_RETURN_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(shape_name, shape.data(), shape_operand_type));
     input_indices.push_back(operand_indices.at(shape_name));
@@ -1063,17 +1026,16 @@ void ReshapeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const 
 }
 
 Status ReshapeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
-  const auto& node = node_unit.GetNode();
   auto& shaper(model_builder.GetShaper());
   const auto& initializers(model_builder.GetInitializerTensors());
 
-  auto input = node.InputDefs()[0]->Name();
+  auto input = node_unit.Inputs()[0].node_arg.Name();
   if (model_builder.IsOperandNHWC(input)) {
     // We want to transpose nhwc operand back to nchw before reshape
-    ORT_RETURN_IF_ERROR(GetNCHWInput(model_builder, node, 0, input));
+    ORT_RETURN_IF_ERROR(GetNCHWInput_nu(model_builder, node_unit, 0, input));
   }
 
-  const auto& shape_tensor = *initializers.at(node.InputDefs()[1]->Name());
+  const auto& shape_tensor = *initializers.at(node_unit.Inputs()[1].node_arg.Name());
   std::vector<uint8_t> unpacked_tensor;
   ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(shape_tensor, unpacked_tensor));
   const int64_t* raw_shape = reinterpret_cast<const int64_t*>(unpacked_tensor.data());
@@ -1087,7 +1049,7 @@ Status ReshapeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, cons
     shape[i] = dim == 0 ? input_shape[i] : dim;
   }
 
-  return AddReshapeOperator(model_builder, node, input, shape);
+  return AddReshapeOperator(model_builder, node_unit, input, shape);
 }
 
 #pragma endregion op_reshape
@@ -1111,21 +1073,21 @@ void BatchNormalizationOpBuilder::AddInitializersToSkip(ModelBuilder& model_buil
 }
 
 Status BatchNormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
-  const auto& node = node_unit.GetNode();
   auto& shaper(model_builder.GetShaper());
   const auto& operand_types(model_builder.GetOperandTypes());
   const auto& initializers(model_builder.GetInitializerTensors());
-  NodeAttrHelper helper(node);
+  NodeAttrHelper helper(node_unit);
+  const auto& inputs = node_unit.Inputs();
 
   // For reshape we are not really doing anything but
   // register a new operand with new shape
-  const auto& input = node.InputDefs()[0]->Name();
-  const auto& output = node.OutputDefs()[0]->Name();
+  const auto& input = inputs[0].node_arg.Name();
+  const auto& output = node_unit.Outputs()[0].node_arg.Name();
 
-  const auto& scale_tensor = *initializers.at(node.InputDefs()[1]->Name());
-  const auto& bias_tensor = *initializers.at(node.InputDefs()[2]->Name());
-  const auto& mean_tensor = *initializers.at(node.InputDefs()[3]->Name());
-  const auto& var_tensor = *initializers.at(node.InputDefs()[4]->Name());
+  const auto& scale_tensor = *initializers.at(inputs[1].node_arg.Name());
+  const auto& bias_tensor = *initializers.at(inputs[2].node_arg.Name());
+  const auto& mean_tensor = *initializers.at(inputs[3].node_arg.Name());
+  const auto& var_tensor = *initializers.at(inputs[4].node_arg.Name());
   const auto eps = helper.Get("epsilon", 1e-5f);
 
   const auto size = SafeInt<uint32_t>(scale_tensor.dims()[0]);
@@ -1155,9 +1117,9 @@ Status BatchNormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_bu
                 bias_data[i]);
   }
 
-  const auto tensor_a_name = model_builder.GetUniqueName(node.Name() + input + "_imm_a");
-  const auto tensor_b_name = model_builder.GetUniqueName(node.Name() + input + "_imm_b");
-  const auto tensor_imm_product_name = model_builder.GetUniqueName(node.Name() + input + "_imm_mul");
+  const auto tensor_a_name = model_builder.GetUniqueName(node_unit.Name() + input + "_imm_a");
+  const auto tensor_b_name = model_builder.GetUniqueName(node_unit.Name() + input + "_imm_b");
+  const auto tensor_imm_product_name = model_builder.GetUniqueName(node_unit.Name() + input + "_imm_mul");
   Shape tensor_a_dimen = {size};
 
   bool input_is_nhwc = model_builder.IsOperandNHWC(input);
@@ -1191,7 +1153,7 @@ Status BatchNormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_bu
                                         output_is_nhwc));
 
   // Add
-  int32_t fuse_code = model_builder.FindActivation(node, *node.OutputDefs()[0]);
+  int32_t fuse_code = model_builder.FindActivation_nu(node_unit, node_unit.Outputs()[0].node_arg);
   ORT_RETURN_IF_ERROR(AddBinaryOperator(ANEURALNETWORKS_ADD,
                                         model_builder,
                                         tensor_imm_product_name, tensor_b_name,
@@ -1676,21 +1638,20 @@ class SoftMaxOpBuilder : public BaseOpBuilder {
 };
 
 Status SoftMaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
-  const auto& node = node_unit.GetNode();
   auto& shaper(model_builder.GetShaper());
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());
   const auto android_feature_level = model_builder.GetNNAPIFeatureLevel();
-  NodeAttrHelper helper(node);
+  NodeAttrHelper helper(node_unit);
 
-  auto input = node.InputDefs()[0]->Name();
+  auto input = node_unit.Inputs()[0].node_arg.Name();
   bool input_is_nhwc = model_builder.IsOperandNHWC(input);
   bool output_is_nhwc = input_is_nhwc;
   if (android_feature_level < ANEURALNETWORKS_FEATURE_LEVEL_3) {
     if (model_builder.IsOperandNHWC(input)) {
       output_is_nhwc = false;
       // We want to transpose nhwc operand back to nchw before softmax
-      ORT_RETURN_IF_ERROR(GetNCHWInput(model_builder, node, 0, input));
+      ORT_RETURN_IF_ERROR(GetNCHWInput_nu(model_builder, node_unit, 0, input));
     }
   }
 
@@ -1700,7 +1661,7 @@ Status SoftMaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, cons
     axis = axis_nchw_to_nhwc[axis];
   }
 
-  const auto& output = node.OutputDefs()[0]->Name();
+  const auto& output = node_unit.Outputs()[0].node_arg.Name();
   float beta = 1.f;
   std::vector<uint32_t> input_indices;
   input_indices.push_back(operand_indices.at(input));
@@ -1728,16 +1689,14 @@ class IdentityOpBuilder : public BaseOpBuilder {
 };
 
 Status IdentityOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
-  const auto& node = node_unit.GetNode();
-
   // Identity is not really going to do anything
   // Just register the dimension and type, with same index and new name
   auto& shaper(model_builder.GetShaper());
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());
 
-  const auto& input = node.InputDefs()[0]->Name();
-  const auto& output = node.OutputDefs()[0]->Name();
+  const auto& input = node_unit.Inputs()[0].node_arg.Name();
+  const auto& output = node_unit.Outputs()[0].node_arg.Name();
   bool output_is_nhwc = model_builder.IsOperandNHWC(input);
 
   std::vector<uint32_t> input_indices;
@@ -1791,7 +1750,7 @@ void GemmOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Nod
     if (op == "MatMul") {
       model_builder.AddInitializerToSkip(inputs[1].node_arg.Name());
     } else if (op == "Gemm") {
-      NodeAttrHelper helper(node_unit.GetNode());
+      NodeAttrHelper helper(node_unit);
       const auto transB = helper.Get("transB", 0);
       if (transB == 0)
         model_builder.AddInitializerToSkip(inputs[1].node_arg.Name());
@@ -1956,14 +1915,13 @@ void UnaryOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const No
 }
 
 Status UnaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
-  const auto& node = node_unit.GetNode();
   auto& shaper(model_builder.GetShaper());
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());
-  const auto& op_type(node.OpType());
+  const auto& op_type(node_unit.OpType());
 
-  const auto& input = node.InputDefs()[0]->Name();
-  const auto& output = node.OutputDefs()[0]->Name();
+  const auto& input = node_unit.Inputs()[0].node_arg.Name();
+  const auto& output = node_unit.Outputs()[0].node_arg.Name();
   bool output_is_nhwc = model_builder.IsOperandNHWC(input);
 
   ORT_RETURN_IF_ERROR(shaper.Identity(input, output));
@@ -1997,9 +1955,9 @@ Status UnaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
   if (is_qlinear_sigmoid) {
     const auto& initializers = model_builder.GetInitializerTensors();
     float x_scale = 0.0f;
-    ORT_RETURN_IF_ERROR(GetQuantizationScale(initializers, node, 1, x_scale));
     int32_t x_zero_point = 0;
-    ORT_RETURN_IF_ERROR(GetQuantizationZeroPoint(initializers, node, 2, x_zero_point));
+    ORT_RETURN_IF_ERROR(GetQuantizationScaleAndZeroPoint(
+        initializers, node_unit.Inputs()[0], node_unit.ModelPath(), x_scale, x_zero_point));
 
     // Verify if the scale and zero point values from onnx input and nnapi input match
     ORT_RETURN_IF_ERROR(IsValidInputQuantizedType(model_builder, input, x_scale, x_zero_point));
@@ -2027,17 +1985,17 @@ class ConcatOpBuilder : public BaseOpBuilder {
 };
 
 Status ConcatOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
-  const auto& node = node_unit.GetNode();
   auto& shaper(model_builder.GetShaper());
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());
-  NodeAttrHelper helper(node);
+  NodeAttrHelper helper(node_unit);
+  const auto& inputs = node_unit.Inputs();
 
   std::vector<uint32_t> input_indices;
-  const auto& input0 = node.InputDefs()[0]->Name();
+  const auto& input0 = inputs[0].node_arg.Name();
   bool all_input_have_same_layout = true;
   bool output_is_nhwc = false;
-  const auto node_input_size = node.InputDefs().size();
+  const auto node_input_size = inputs.size();
 
   // First if the inputs are uint8, we need verify all the inputs have same scale and zero points
   if (operand_types.at(input0).type == android::nn::wrapper::Type::TENSOR_QUANT8_ASYMM) {
@@ -2046,7 +2004,7 @@ Status ConcatOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
 
     // Compare scale and zp of input0 to input1~n
     for (size_t i = 1; i < node_input_size; i++) {
-      const auto& type = operand_types.at(node.InputDefs()[i]->Name());
+      const auto& type = operand_types.at(inputs[i].node_arg.Name());
       ORT_RETURN_IF_NOT(scale == type.operandType.scale,
                         "Input[", i, "]'s scale: ", type.operandType.scale,
                         " is different than input[0]'s scale: ", scale);
@@ -2061,31 +2019,31 @@ Status ConcatOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
   for (size_t i = 0; i < node_input_size - 1; i++) {
     all_input_have_same_layout =
         all_input_have_same_layout &&
-        model_builder.IsOperandNHWC(node.InputDefs()[i]->Name()) ==
-            model_builder.IsOperandNHWC(node.InputDefs()[i + 1]->Name());
+        model_builder.IsOperandNHWC(inputs[i].node_arg.Name()) ==
+            model_builder.IsOperandNHWC(inputs[i + 1].node_arg.Name());
   }
 
-  std::vector<std::string> inputs;
-  inputs.reserve(node_input_size);
+  std::vector<std::string> input_names;
+  input_names.reserve(node_input_size);
   if (all_input_have_same_layout) {
     // if all the inputs are of same layout, output will be the same layout
     output_is_nhwc = model_builder.IsOperandNHWC(input0);
 
     for (size_t i = 0; i < node_input_size; i++) {
-      auto input = node.InputDefs()[i]->Name();
+      auto input = inputs[i].node_arg.Name();
       input_indices.push_back(operand_indices.at(input));
-      inputs.push_back(input);
+      input_names.push_back(input);
     }
   } else {
     // if all the inputs are not same layout,
     // will need transpos those nhwc tensors back to nchw
     for (size_t i = 0; i < node_input_size; i++) {
-      auto input = node.InputDefs()[i]->Name();
+      auto input = inputs[i].node_arg.Name();
       if (model_builder.IsOperandNHWC(input)) {
-        ORT_RETURN_IF_ERROR(GetNCHWInput(model_builder, node, i, input));
+        ORT_RETURN_IF_ERROR(GetNCHWInput_nu(model_builder, node_unit, i, input));
       }
       input_indices.push_back(operand_indices.at(input));
-      inputs.push_back(input);
+      input_names.push_back(input);
     }
   }
 
@@ -2101,8 +2059,8 @@ Status ConcatOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
   }
   ADD_SCALAR_OPERAND(model_builder, input_indices, axis);
 
-  const auto& output = node.OutputDefs()[0]->Name();
-  ORT_RETURN_IF_ERROR(shaper.Concat(inputs, axis, output));
+  const auto& output = node_unit.Outputs()[0].node_arg.Name();
+  ORT_RETURN_IF_ERROR(shaper.Concat(input_names, axis, output));
   OperandType output_operand_type = operand_types.at(input0);
   output_operand_type.SetDimensions(shaper[output]);
   ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_CONCATENATION, input_indices,
@@ -2120,7 +2078,7 @@ class SqueezeOpBuilder : public BaseOpBuilder {
 
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override ORT_MUST_USE_RESULT;
-  static Status GetAxes(ModelBuilder& model_builder, const Node& node, std::vector<int32_t>& axes);
+  static Status GetAxes(ModelBuilder& model_builder, const NodeUnit& node_unit, std::vector<int32_t>& axes);
 };
 
 void SqueezeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
@@ -2130,13 +2088,13 @@ void SqueezeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const 
 }
 
 /* static */ Status SqueezeOpBuilder::GetAxes(ModelBuilder& model_builder,
-                                              const Node& node, std::vector<int32_t>& axes) {
+                                              const NodeUnit& node_unit, std::vector<int32_t>& axes) {
   // Squeeze opset 13 use input as axes
-  if (node.SinceVersion() > 12) {
+  if (node_unit.SinceVersion() > 12) {
     // If axes is not supplied, return an empty axes as default to squeeze all
-    if (node.InputDefs().size() > 1) {
+    if (node_unit.Inputs().size() > 1) {
       const auto& initializers(model_builder.GetInitializerTensors());
-      const auto& axes_tensor = *initializers.at(node.InputDefs()[1]->Name());
+      const auto& axes_tensor = *initializers.at(node_unit.Inputs()[1].node_arg.Name());
       std::vector<uint8_t> unpacked_tensor;
       ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(axes_tensor, unpacked_tensor));
       const int64_t* raw_axes = reinterpret_cast<const int64_t*>(unpacked_tensor.data());
@@ -2148,7 +2106,7 @@ void SqueezeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const 
       }
     }
   } else {
-    NodeAttrHelper helper(node);
+    NodeAttrHelper helper(node_unit);
     axes = helper.Get("axes", std::vector<int32_t>());
   }
 
@@ -2156,17 +2114,15 @@ void SqueezeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const 
 }
 
 Status SqueezeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
-  const auto& node = node_unit.GetNode();
-
-  auto input = node.InputDefs()[0]->Name();
+  auto input = node_unit.Inputs()[0].node_arg.Name();
   if (model_builder.IsOperandNHWC(input)) {
     // We want to transpose nhwc operand back to nchw before squeeze
-    ORT_RETURN_IF_ERROR(GetNCHWInput(model_builder, node, 0, input));
+    ORT_RETURN_IF_ERROR(GetNCHWInput_nu(model_builder, node_unit, 0, input));
   }
 
   std::vector<int32_t> axes;
-  ORT_RETURN_IF_ERROR(GetAxes(model_builder, node, axes));
-  return AddSqueezeOp(model_builder, node.Name(), input, node.OutputDefs()[0]->Name(), axes);
+  ORT_RETURN_IF_ERROR(GetAxes(model_builder, node_unit, axes));
+  return AddSqueezeOp(model_builder, node_unit.Name(), input, node_unit.Outputs()[0].node_arg.Name(), axes);
 }
 
 #pragma endregion
@@ -2186,24 +2142,19 @@ void QuantizeLinearOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder,
 }
 
 Status QuantizeLinearOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
-  const auto& node = node_unit.GetNode();
   auto& shaper(model_builder.GetShaper());
   const auto& operand_indices(model_builder.GetOperandIndices());
-  const auto input_defs(node.InputDefs());
 
-  const auto& input = input_defs[0]->Name();
-  const auto& output = node.OutputDefs()[0]->Name();
+  const auto& input = node_unit.Inputs()[0].node_arg.Name();
+  const auto& output = node_unit.Outputs()[0].node_arg.Name();
   bool output_is_nhwc = model_builder.IsOperandNHWC(input);
 
   float scale = 0.0f;
-  ORT_RETURN_IF_ERROR(GetQuantizationScale(model_builder.GetInitializerTensors(), node, 1, scale));
   int32_t zero_point = 0;
+  ORT_RETURN_IF_ERROR(GetQuantizationScaleAndZeroPoint(
+      model_builder.GetInitializerTensors(), node_unit.Outputs()[0], node_unit.ModelPath(), scale, zero_point));
+
   Type output_type = Type::TENSOR_QUANT8_ASYMM;
-
-  if (input_defs.size() == 3) {  // Get zero point
-    ORT_RETURN_IF_ERROR(GetQuantizationZeroPoint(model_builder.GetInitializerTensors(), node, 2, zero_point));
-  }
-
   ORT_RETURN_IF_ERROR(shaper.Identity(input, output));
   const OperandType output_operand_type(output_type, shaper[output], scale, zero_point);
   std::vector<uint32_t> input_indices;
@@ -2230,22 +2181,18 @@ void DequantizeLinearOpBuilder::AddInitializersToSkip(ModelBuilder& model_builde
 }
 
 Status DequantizeLinearOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
-  const auto& node = node_unit.GetNode();
-
   auto& shaper(model_builder.GetShaper());
   const auto& operand_indices(model_builder.GetOperandIndices());
-  const auto input_defs(node.InputDefs());
+  const auto& inputs = node_unit.Inputs();
 
-  const auto& input = input_defs[0]->Name();
-  const auto& output = node.OutputDefs()[0]->Name();
+  const auto& input = inputs[0].node_arg.Name();
+  const auto& output = node_unit.Outputs()[0].node_arg.Name();
   bool output_is_nhwc = model_builder.IsOperandNHWC(input);
 
   float scale = 0.0;
-  ORT_RETURN_IF_ERROR(GetQuantizationScale(model_builder.GetInitializerTensors(), node, 1, scale));
   int32_t zero_point = 0;
-  if (input_defs.size() == 3) {  // Get zero point
-    ORT_RETURN_IF_ERROR(GetQuantizationZeroPoint(model_builder.GetInitializerTensors(), node, 2, zero_point));
-  }
+  ORT_RETURN_IF_ERROR(GetQuantizationScaleAndZeroPoint(
+      model_builder.GetInitializerTensors(), node_unit.Inputs()[0], node_unit.ModelPath(), scale, zero_point));
 
   ORT_RETURN_IF_ERROR(IsValidInputQuantizedType(model_builder, input, scale, zero_point));
 
@@ -2269,21 +2216,20 @@ class LRNOpBuilder : public BaseOpBuilder {
 };
 
 Status LRNOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
-  const auto& node = node_unit.GetNode();
   auto& shaper(model_builder.GetShaper());
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());
-  NodeAttrHelper helper(node);
+  NodeAttrHelper helper(node_unit);
   const auto android_feature_level = model_builder.GetNNAPIFeatureLevel();
 
-  auto input = node.InputDefs()[0]->Name();
-  const auto& output = node.OutputDefs()[0]->Name();
+  auto input = node_unit.Inputs()[0].node_arg.Name();
+  const auto& output = node_unit.Outputs()[0].node_arg.Name();
   bool output_is_nhwc = model_builder.IsOperandNHWC(input);
   if (android_feature_level < ANEURALNETWORKS_FEATURE_LEVEL_3) {
     // on android api level 28, we need to transpose the nchw input to nhwc
     output_is_nhwc = true;
     if (!model_builder.IsOperandNHWC(input)) {
-      ORT_RETURN_IF_ERROR(GetNHWCInput(model_builder, node, 0, input));
+      ORT_RETURN_IF_ERROR(GetNHWCInput_nu(model_builder, node_unit, 0, input));
     }
   }
 
@@ -2340,27 +2286,26 @@ void ClipOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Nod
 }
 
 Status ClipOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
-  const auto& node = node_unit.GetNode();
-
   auto& shaper(model_builder.GetShaper());
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());
 
-  const auto& input = node.InputDefs()[0]->Name();
-  const auto& output = node.OutputDefs()[0]->Name();
+  const auto& input = node_unit.Inputs()[0].node_arg.Name();
+  const auto& output = node_unit.Outputs()[0].node_arg.Name();
   bool output_is_nhwc = model_builder.IsOperandNHWC(input);
 
   ORT_RETURN_IF_ERROR(shaper.Identity(input, output));
   const OperandType output_operand_type(operand_types.at(input).type, shaper[output]);
 
   if (Contains(model_builder.GetFusedActivations(), input)) {
-    LOGS_DEFAULT(VERBOSE) << "Clip Node [" << node.Name() << "] fused";
+    LOGS_DEFAULT(VERBOSE) << "Clip Node [" << node_unit.Name() << "] fused";
     model_builder.RegisterOperand(output, operand_indices.at(input), output_operand_type, output_is_nhwc);
     return Status::OK();
   }
 
   float min, max;
-  GetClipMinMax(model_builder.GetInitializerTensors(), node, min, max, logging::LoggingManager::DefaultLogger());
+  GetClipMinMax(model_builder.GetInitializerTensors(), node_unit.GetNode(), min, max,
+                logging::LoggingManager::DefaultLogger());
 
   int32_t op_code;
   if (min == 0.0f && max == 6.0f)
@@ -2404,17 +2349,16 @@ void ResizeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const N
 }
 
 Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
-  const auto& node = node_unit.GetNode();
   auto& shaper(model_builder.GetShaper());
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());
   const auto& initializers(model_builder.GetInitializerTensors());
-  NodeAttrHelper helper(node);
-  const auto input_defs = node.InputDefs();
+  NodeAttrHelper helper(node_unit);
+  const auto& inputs = node_unit.Inputs();
   const auto android_feature_level = model_builder.GetNNAPIFeatureLevel();
-  const auto& output = node.OutputDefs()[0]->Name();
+  const auto& output = node_unit.Outputs()[0].node_arg.Name();
 
-  auto input = input_defs[0]->Name();
+  auto input = inputs[0].node_arg.Name();
   bool use_nchw = model_builder.UseNCHW();
   bool input_is_nhwc = model_builder.IsOperandNHWC(input);
   bool output_is_nhwc = false;
@@ -2423,7 +2367,7 @@ Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
   } else {
     output_is_nhwc = true;
     if (!input_is_nhwc) {
-      ORT_RETURN_IF_ERROR(GetNHWCInput(model_builder, node, 0, input));
+      ORT_RETURN_IF_ERROR(GetNHWCInput_nu(model_builder, node_unit, 0, input));
     }
   }
 
@@ -2436,8 +2380,8 @@ Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
   bool using_half_pixel = coord_trans_mode == "half_pixel";
   bool using_align_corners = coord_trans_mode == "align_corners";
 
-  if (input_defs.size() == 3) {  // we are using scales
-    const auto& scales_name = input_defs[2]->Name();
+  if (inputs.size() == 3) {  // we are using scales
+    const auto& scales_name = inputs[2].node_arg.Name();
     const auto& scales_tensor = *initializers.at(scales_name);
     std::vector<uint8_t> unpacked_tensor;
     ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(scales_tensor, unpacked_tensor));
@@ -2447,7 +2391,7 @@ Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
     ORT_RETURN_IF_ERROR(
         shaper.ResizeUsingScales(input, scale_h, scale_w, use_nchw, output));
   } else {  // we are using sizes
-    const auto& sizes_name = input_defs[3]->Name();
+    const auto& sizes_name = inputs[3].node_arg.Name();
     const auto& sizes_tensor = *initializers.at(sizes_name);
     std::vector<uint8_t> unpacked_tensor;
     ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(sizes_tensor, unpacked_tensor));
@@ -2498,27 +2442,25 @@ class FlattenOpBuilder : public BaseOpBuilder {
 };
 
 Status FlattenOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
-  const auto& node = node_unit.GetNode();
-
-  auto input = node.InputDefs()[0]->Name();
+  auto input = node_unit.Inputs()[0].node_arg.Name();
   if (model_builder.IsOperandNHWC(input)) {
     // We want to transpose nhwc operand back to nchw before reshape
-    ORT_RETURN_IF_ERROR(GetNCHWInput(model_builder, node, 0, input));
+    ORT_RETURN_IF_ERROR(GetNCHWInput_nu(model_builder, node_unit, 0, input));
   }
 
   // Flatten is basically a reshape to 2d tensor
   // Get the shape for Reshape here
   Shape input_shape;
-  GetShape(*node.InputDefs()[0], input_shape);
+  GetShape(node_unit.Inputs()[0].node_arg, input_shape);
   int32_t dim_1 = 1;
   int32_t dim_2 = 1;
-  GetFlattenOutputShape(node, input_shape, dim_1, dim_2);
+  GetFlattenOutputShape_nu(node_unit, input_shape, dim_1, dim_2);
   // If the input is of dynamic shape, replace 0 (dynamic) dimension with -1
   // We cannot have dim_1 and dim_2 both be 0 here, it was checked in IsOpSupportedImpl
   dim_1 = dim_1 == 0 ? -1 : dim_1;
   dim_2 = dim_2 == 0 ? -1 : dim_2;
   std::vector<int32_t> shape{dim_1, dim_2};
-  return ReshapeOpBuilder::AddReshapeOperator(model_builder, node, input, shape);
+  return ReshapeOpBuilder::AddReshapeOperator(model_builder, node_unit, input, shape);
 }
 
 #pragma endregion
@@ -2528,12 +2470,12 @@ Status FlattenOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, cons
 class MinMaxOpBuilder : public BaseOpBuilder {
  public:
   static void CreateSharedOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
-  static Status AddMinMaxOperator(ModelBuilder& model_builder, const Node& node,
-                                  const std::string& input1, const std::string& input2,
-                                  bool output_is_nhwc) ORT_MUST_USE_RESULT;
 
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override ORT_MUST_USE_RESULT;
+  static Status AddMinMaxOperator(ModelBuilder& model_builder, const NodeUnit& node_unit,
+                                  const std::string& input1, const std::string& input2,
+                                  bool output_is_nhwc) ORT_MUST_USE_RESULT;
 };
 
 /* static */ void MinMaxOpBuilder::CreateSharedOpBuilder(
@@ -2546,16 +2488,16 @@ class MinMaxOpBuilder : public BaseOpBuilder {
       });
 }
 
-/* static */ Status MinMaxOpBuilder::AddMinMaxOperator(ModelBuilder& model_builder, const Node& node,
+/* static */ Status MinMaxOpBuilder::AddMinMaxOperator(ModelBuilder& model_builder, const NodeUnit& node_unit,
                                                        const std::string& input1, const std::string& input2,
                                                        bool output_is_nhwc) {
   auto& shaper(model_builder.GetShaper());
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());
 
-  const auto& output = node.OutputDefs()[0]->Name();
+  const auto& output = node_unit.Outputs()[0].node_arg.Name();
 
-  const auto& op_type(node.OpType());
+  const auto& op_type(node_unit.OpType());
   int32_t op_code;
   if (op_type == "Min")
     op_code = ANEURALNETWORKS_MINIMUM;
@@ -2577,17 +2519,14 @@ class MinMaxOpBuilder : public BaseOpBuilder {
 }
 
 Status MinMaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
-  const auto& node = node_unit.GetNode();
-  const auto input_defs(node.InputDefs());
-  std::string input1 = input_defs[0]->Name();
-  std::string input2 = input_defs[1]->Name();
+  const auto& inputs = node_unit.Inputs();
+  std::string input1 = inputs[0].node_arg.Name();
+  std::string input2 = inputs[1].node_arg.Name();
   bool output_is_nhwc = false;
-  ORT_RETURN_IF_ERROR(TransposeBinaryOpInputLayout(model_builder, node,
-                                                   0 /* input1_idx */,
-                                                   1 /* input2_idx */,
-                                                   input1, input2, output_is_nhwc));
+  ORT_RETURN_IF_ERROR(TransposeBinaryOpInputLayout_nu(model_builder, node_unit,
+                                                      input1, input2, output_is_nhwc));
 
-  return AddMinMaxOperator(model_builder, node, input1, input2, output_is_nhwc);
+  return AddMinMaxOperator(model_builder, node_unit, input1, input2, output_is_nhwc);
 }
 
 #pragma endregion
@@ -2600,17 +2539,15 @@ class EluOpBuilder : public BaseOpBuilder {
 };
 
 Status EluOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
-  const auto& node = node_unit.GetNode();
-
   auto& shaper(model_builder.GetShaper());
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());
-  const auto& input = node.InputDefs()[0]->Name();
-  const auto& output = node.OutputDefs()[0]->Name();
+  const auto& input = node_unit.Inputs()[0].node_arg.Name();
+  const auto& output = node_unit.Outputs()[0].node_arg.Name();
   bool output_is_nhwc = model_builder.IsOperandNHWC(input);
   ORT_RETURN_IF_ERROR(shaper.Identity(input, output));
   const OperandType output_operand_type(operand_types.at(input).type, shaper[output]);
-  NodeAttrHelper helper(node);
+  NodeAttrHelper helper(node_unit);
   const auto alpha = helper.Get("alpha", 1.0f);
   std::vector<uint32_t> input_indices;
   input_indices.push_back(operand_indices.at(input));
@@ -2645,13 +2582,11 @@ void SliceOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const No
 }
 
 Status SliceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
-  const auto& node = node_unit.GetNode();
-
   auto& shaper(model_builder.GetShaper());
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());
-  const auto input_defs = node.InputDefs();
-  const auto& input_shape = shaper[input_defs[0]->Name()];
+  const auto& inputs = node_unit.Inputs();
+  const auto& input_shape = shaper[inputs[0].node_arg.Name()];
   std::vector<int64_t> input_shape_64(input_shape.cbegin(), input_shape.cend());
   SliceOp::PrepareForComputeMetadata compute_metadata(input_shape_64);
 
@@ -2665,15 +2600,14 @@ Status SliceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
     std::vector<int64_t> input_axes;
     std::vector<int64_t> input_steps;
 
-    const auto CopyInputData = [&node, &model_builder](size_t input_idx, std::vector<int64_t>& data) {
+    const auto CopyInputData = [&inputs, &model_builder](size_t input_idx, std::vector<int64_t>& data) {
       data.clear();
-      const auto input_defs = node.InputDefs();
 
       // This is an optional input, return empty vector
-      if (input_defs.size() <= input_idx)
+      if (inputs.size() <= input_idx)
         return Status::OK();
 
-      const auto& input_name = input_defs[input_idx]->Name();
+      const auto& input_name = inputs[input_idx].node_arg.Name();
       const auto& initializers(model_builder.GetInitializerTensors());
 
       const auto& tensor = *initializers.at(input_name);
@@ -2715,8 +2649,8 @@ Status SliceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
                  std::back_inserter(nnapi_output_shape),
                  [](int64_t i) { return SafeInt<uint32_t>(i); });
 
-  const auto& input = node.InputDefs()[0]->Name();
-  const auto& output = node.OutputDefs()[0]->Name();
+  const auto& input = inputs[0].node_arg.Name();
+  const auto& output = node_unit.Outputs()[0].node_arg.Name();
   bool output_is_nhwc = model_builder.IsOperandNHWC(input);
 
   // No shape inference for Slice, everything is calculated here, we only need to add the output shape
@@ -2731,14 +2665,14 @@ Status SliceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
   Shape param_dimen = {static_cast<uint32_t>(input_shape.size())};
 
   // helper function to add begin/end/strides of ANEURALNETWORKS_STRIDED_SLICE
-  const auto AddOperand = [&model_builder, &node, &input_indices, &operand_indices](
+  const auto AddOperand = [&model_builder, &node_unit, &input_indices, &operand_indices](
                               const char* name, const Shape& shape, const std::vector<int64_t>& param_raw_data) {
     std::vector<int32_t> param_data;
     param_data.reserve(param_raw_data.size());
     std::transform(param_raw_data.cbegin(), param_raw_data.cend(),
                    std::back_inserter(param_data),
                    [](int64_t i) { return SafeInt<int32_t>(i); });
-    std::string param_name = model_builder.GetUniqueName(node.Name() + name);
+    std::string param_name = model_builder.GetUniqueName(node_unit.Name() + name);
     OperandType param_operand_type(Type::TENSOR_INT32, shape);
     ORT_RETURN_IF_ERROR(
         model_builder.AddOperandFromPersistMemoryBuffer(param_name, param_data.data(), param_operand_type));

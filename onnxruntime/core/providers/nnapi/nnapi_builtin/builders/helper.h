@@ -97,7 +97,6 @@ QLinearOpType GetQLinearOpType(const onnxruntime::Node& node);
 
 // Return the type of the conv ops,
 // This function assumes the input is a 2d conv node
-ConvType GetConvType(const onnxruntime::Node& node, const InitializedTensorSet& initializers);
 ConvType GetConvType_nu(const NodeUnit& node_unit, const InitializedTensorSet& initializers);
 
 // This qlinear op is an operator takes 2 inputs and produces 1 output
@@ -117,12 +116,6 @@ bool HasValidQuantizationScales(const InitializedTensorSet& initializers, const 
 bool HasValidQuantizationZeroPoints(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
                                     const std::vector<size_t>& indices, bool is_input);
 
-common::Status GetQuantizationScale(const InitializedTensorSet& initializers, const Node& node,
-                                    size_t idx, float& scale);
-
-common::Status GetQuantizationZeroPoint(const InitializedTensorSet& initializers,
-                                        const Node& node, size_t idx, int32_t& zero_point) ORT_MUST_USE_RESULT;
-
 common::Status GetQuantizationScaleAndZeroPoint(
     const InitializedTensorSet& initializers, const NodeUnitIODef& io_def, const Path& model_path,
     float& scale, int32_t& zero_point);
@@ -137,7 +130,7 @@ bool GetShape(const NodeArg& node_arg, Shape& shape);
 bool GetType(const NodeArg& node_arg, int32_t& type);
 
 // Get the output shape of Flatten Op
-void GetFlattenOutputShape(const Node& node, const Shape& input_shape, int32_t& dim_1, int32_t& dim_2);
+void GetFlattenOutputShape_nu(const NodeUnit& node_unit, const Shape& input_shape, int32_t& dim_1, int32_t& dim_2);
 
 // If a node is supported by NNAPI
 bool IsNodeSupported(const NodeUnit& node_unit, const GraphViewer& graph_viewer, const OpSupportCheckParams& params);
@@ -158,8 +151,10 @@ bool IsValidSupportedNodeGroup(const std::vector<const Node*>& supported_node_gr
 std::string Shape2String(const std::vector<uint32_t>& shape);
 
 // Check the given input is an initializer tensor
-bool CheckIsInitializer(const InitializedTensorSet& initializers, const Node& node,
-                        size_t index, const char* input_name) ORT_MUST_USE_RESULT;
+// input_name is the name of the initializer
+// input_string is the string describing the input in the output message (if nay)
+bool CheckIsInitializer(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
+                        const std::string& input_name, const char* input_string) ORT_MUST_USE_RESULT;
 
 }  // namespace nnapi
 }  // namespace onnxruntime

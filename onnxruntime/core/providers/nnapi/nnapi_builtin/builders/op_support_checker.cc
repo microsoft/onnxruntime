@@ -431,7 +431,7 @@ bool ReshapeOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& init
   const int64_t* raw_perm = reinterpret_cast<const int64_t*>(unpacked_tensor.data());
   const auto perm_size = SafeInt<uint32_t>(perm_tensor.dims()[0]);
 
-  NodeAttrHelper helper(node_unit.GetNode());
+  NodeAttrHelper helper(node_unit);
   const bool allow_zero = helper.Get("allowzero ", 0) == 1;
   for (uint32_t i = 0; i < perm_size; i++) {
     // NNAPI reshape does not support 0 as dimension
@@ -466,16 +466,15 @@ class BatchNormalizationOpSupportChecker : public BaseOpSupportChecker {
 
 bool BatchNormalizationOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
                                                            const OpSupportCheckParams& /* params */) const {
-  const auto& node = node_unit.GetNode();
-  if (node.OutputDefs().size() != 1) {
+  if (node_unit.Outputs().size() != 1) {
     LOGS_DEFAULT(VERBOSE) << "Your onnx model may be in training mode, please export "
                              "it in test mode.";
     return false;
   }
 
-  const auto& input_defs = node.InputDefs();
+  const auto& inputs = node_unit.Inputs();
   Shape input_shape;
-  if (!GetShape(*input_defs[0], input_shape))
+  if (!GetShape(inputs[0].node_arg, input_shape))
     return false;
 
   const auto input_size = input_shape.size();
@@ -485,17 +484,17 @@ bool BatchNormalizationOpSupportChecker::IsOpSupportedImpl(const InitializedTens
     return false;
   }
 
-  NodeAttrHelper helper(node);
+  NodeAttrHelper helper(node_unit);
   const auto spatial = helper.Get("spatial", 1);
   if (spatial != 1) {
     LOGS_DEFAULT(VERBOSE) << "Non-spatial BN is not supported";
     return false;
   }
 
-  const auto& scale_name = input_defs[1]->Name();
-  const auto& b_name = input_defs[2]->Name();
-  const auto& mean_name = input_defs[3]->Name();
-  const auto& var_name = input_defs[4]->Name();
+  const auto& scale_name = inputs[1].node_arg.Name();
+  const auto& b_name = inputs[2].node_arg.Name();
+  const auto& mean_name = inputs[3].node_arg.Name();
+  const auto& var_name = inputs[4].node_arg.Name();
   if (!Contains(initializers, scale_name)) {
     LOGS_DEFAULT(VERBOSE) << "Scale of BN must be known";
     return false;
@@ -552,25 +551,24 @@ class PoolOpSupportChecker : public BaseOpSupportChecker {
 
 bool PoolOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
                                              const OpSupportCheckParams& params) const {
-  const auto& node = node_unit.GetNode();
-  const auto& op_name = node.Name();
-  const auto& op_type = node.OpType();
-  const auto& input_defs = node.InputDefs();
+  const auto& op_name = node_unit.Name();
+  const auto& op_type = node_unit.OpType();
+  const auto& inputs = node_unit.Inputs();
   Shape input_shape;
-  if (!GetShape(*input_defs[0], input_shape))
+  if (!GetShape(inputs[0].node_arg, input_shape))
     return false;
 
   const auto input_size = input_shape.size();
   if (input_size != 4) {
     LOGS_DEFAULT(VERBOSE)
         << op_type << " only supports rank-4 tensor, input ["
-        << input_defs[0]->Name() << "] has actual dim count " << input_size;
+        << inputs[0].node_arg.Name() << "] has actual dim count " << input_size;
     return false;
   }
 
   bool is_qlinear_average_pool = op_type == "QLinearAveragePool";
   if (op_type == "AveragePool" || op_type == "MaxPool" || is_qlinear_average_pool) {
-    NodeAttrHelper helper(node);
+    NodeAttrHelper helper(node_unit);
 
     const auto count_include_pad = helper.Get("count_include_pad", 0);
     if (count_include_pad == 1) {
@@ -600,7 +598,7 @@ bool PoolOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initial
       return false;
     }
 
-    if (node.OutputDefs().size() != 1) {
+    if (node_unit.Outputs().size() != 1) {
       LOGS_DEFAULT(VERBOSE) << "Argmax in maxpooling is not supported";
       return false;
     }
@@ -611,12 +609,6 @@ bool PoolOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initial
 
   // We need to check if we have valid scales and zero points for QLinearAveragePool
   if (is_qlinear_average_pool) {
-    if (input_defs.size() < 4)
-      return false;
-
-    // the output zero point can be optional
-    bool has_output_zp = input_defs.size() == 5;
-
     // Check input scales and ZPs
     if (!HasValidQuantizationScales(initializers, node_unit, {0}, params, true /* is_input */))
       return false;
@@ -632,19 +624,23 @@ bool PoolOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initial
 
     // NNAPI requires Quantized Average Pool has same scale and zero point for both input and output
     float input_scale = 0.0f;
-    auto status = GetQuantizationScale(initializers, node, 1, input_scale);
+    int32_t input_zp = 0;
+    auto status = GetQuantizationScaleAndZeroPoint(
+        initializers, node_unit.Inputs()[0], node_unit.ModelPath(), input_scale, input_zp);
     if (!status.IsOK()) {
       LOGS_DEFAULT(ERROR) << "Op [" << op_type << "] name [" << op_name
-                          << "] GetQuantizationScale for input_scale failed, message: "
+                          << "] GetQuantizationScaleAndZeroPoint for input_scale/zp failed, message: "
                           << status.ErrorMessage();
       return false;
     }
 
     float output_scale = 0.0f;
-    status = GetQuantizationScale(initializers, node, 3, output_scale);
+    int32_t output_zp = 0;
+    status = GetQuantizationScaleAndZeroPoint(
+        initializers, node_unit.Outputs()[0], node_unit.ModelPath(), output_scale, output_zp);
     if (!status.IsOK()) {
       LOGS_DEFAULT(ERROR) << "Op [" << op_type << "] name [" << op_name
-                          << "] GetQuantizationScale for output_scale failed, message: "
+                          << "] GetQuantizationScaleAndZeroPoint for output_scale/zp failed, message: "
                           << status.ErrorMessage();
       return false;
     }
@@ -654,26 +650,6 @@ bool PoolOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initial
                             << "] has different input_scale: " << input_scale
                             << " than the output_scale: " << output_scale;
       return false;
-    }
-
-    int32_t input_zp = 0;
-    int32_t output_zp = 0;
-    status = GetQuantizationZeroPoint(initializers, node, 2, input_zp);
-    if (!status.IsOK()) {
-      LOGS_DEFAULT(ERROR) << "Op [" << op_type << "] name [" << op_name
-                          << "] GetQuantizationZeroPoint for input_zp failed, message: "
-                          << status.ErrorMessage();
-      return false;
-    }
-
-    if (has_output_zp) {
-      status = GetQuantizationZeroPoint(initializers, node, 4, output_zp);
-      if (!status.IsOK()) {
-        LOGS_DEFAULT(ERROR) << "Op [" << op_type << "] name [" << op_name
-                            << "] GetQuantizationZeroPoint for output_zp failed, message: "
-                            << status.ErrorMessage();
-        return false;
-      }
     }
 
     if (input_zp != output_zp) {
@@ -758,21 +734,19 @@ bool ConvOpSupportChecker::HasSupportedInputsImpl(const NodeUnit& node_unit) con
 
 bool ConvOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
                                              const OpSupportCheckParams& params) const {
-  const auto& node = node_unit.GetNode();
-  const auto& op_type = node.OpType();
+  const auto& op_type = node_unit.OpType();
   const bool is_qlinear_conv = (op_type == "QLinearConv");
 
   // We don't support nhwc com.microsoft.QLinearConv for now
-  if (is_qlinear_conv && node.Domain() == kMSDomain) {
+  if (is_qlinear_conv && node_unit.Domain() == kMSDomain) {
     LOGS_DEFAULT(VERBOSE) << "com.microsoft.QLinearConv is not supported";
     return false;
   }
 
-  const auto input_defs = node.InputDefs();
-  NodeAttrHelper helper(node);
-  size_t w_idx = is_qlinear_conv ? 3 : 1;
+  const auto& inputs = node_unit.Inputs();
+  NodeAttrHelper helper(node_unit);
   const auto group = helper.Get("group", 1);
-  const auto weight_name = input_defs[w_idx]->Name();
+  const auto weight_name = inputs[1].node_arg.Name();
   if (Contains(initializers, weight_name)) {
     const auto& tensor = *initializers.at(weight_name);
     if (tensor.dims().size() != 4) {
@@ -801,7 +775,7 @@ bool ConvOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initial
   if (is_qlinear_conv) {
     // For QLinearConv, we only support uint8 output now
     int32_t output_type;
-    if (!GetType(*node.OutputDefs()[0], output_type))
+    if (!GetType(node_unit.Outputs()[0].node_arg, output_type))
       return false;
 
     if (output_type != ONNX_NAMESPACE::TensorProto_DataType_UINT8) {
@@ -811,7 +785,7 @@ bool ConvOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initial
       return false;
     }
 
-    if (input_defs.size() > 8 && !Contains(initializers, input_defs[8]->Name())) {
+    if (inputs.size() > 2 && !Contains(initializers, inputs[2].node_arg.Name())) {
       LOGS_DEFAULT(VERBOSE) << "Bias of QLinearConv must be known";
       return false;
     }
@@ -852,8 +826,7 @@ class CastOpSupportChecker : public BaseOpSupportChecker {
 
 bool CastOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const NodeUnit& node_unit,
                                              const OpSupportCheckParams& /* params */) const {
-  const auto& node = node_unit.GetNode();
-  NodeAttrHelper helper(node);
+  NodeAttrHelper helper(node_unit);
   const auto to = helper.Get("to", 0);
   if (to != ONNX_NAMESPACE::TensorProto::FLOAT &&
       to != ONNX_NAMESPACE::TensorProto::INT32) {
@@ -881,9 +854,8 @@ class SoftMaxOpSupportChecker : public BaseOpSupportChecker {
 
 bool SoftMaxOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const NodeUnit& node_unit,
                                                 const OpSupportCheckParams& params) const {
-  const auto& node = node_unit.GetNode();
   Shape input_shape;
-  if (!GetShape(*node.InputDefs()[0], input_shape))
+  if (!GetShape(node_unit.Inputs()[0].node_arg, input_shape))
     return false;
 
   const auto input_size = input_shape.size();
@@ -894,7 +866,7 @@ bool SoftMaxOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& /* i
   }
 
   if (params.android_feature_level < ANEURALNETWORKS_FEATURE_LEVEL_3) {
-    NodeAttrHelper helper(node);
+    NodeAttrHelper helper(node_unit);
     int32_t axis = helper.Get("axis", 1);
     if (axis != 1) {
       LOGS_DEFAULT(VERBOSE)
@@ -990,19 +962,13 @@ int GemmOpSupportChecker::GetMinSupportedOpSet(const NodeUnit& node_unit) const 
 
 bool GemmOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
                                              const OpSupportCheckParams& params) const {
-  const auto& node = node_unit.GetNode();
-  const auto& op_type = node.OpType();
-  const auto input_defs(node.InputDefs());
-  size_t a_idx = 0, b_idx = 1, c_idx = 2;  // A*B+C
+  const auto& op_type = node_unit.OpType();
+  const auto& inputs = node_unit.Inputs();
   bool is_qlinear_matmul = op_type == "QLinearMatMul";
-  if (is_qlinear_matmul) {
-    a_idx = 0;
-    b_idx = 3;
-  }
 
   Shape a_shape;
   {
-    if (!GetShape(*input_defs[a_idx], a_shape))
+    if (!GetShape(inputs[0].node_arg, a_shape))
       return false;
 
     if (a_shape.size() != 2) {
@@ -1013,7 +979,7 @@ bool GemmOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initial
 
   Shape b_shape;
   {
-    if (!GetShape(*input_defs[b_idx], b_shape))
+    if (!GetShape(inputs[1].node_arg, b_shape))
       return false;
 
     if (b_shape.size() != 2) {
@@ -1026,7 +992,7 @@ bool GemmOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initial
     // Only support
     // 1. A*B'+C
     // 2. A*B+C and B is an initializer
-    NodeAttrHelper helper(node);
+    NodeAttrHelper helper(node_unit);
     const auto transA = helper.Get("transA", 0);
     const auto transB = helper.Get("transB", 0);
     const auto alpha = helper.Get("alpha", 1.0f);
@@ -1042,14 +1008,14 @@ bool GemmOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initial
       return false;
     }
 
-    if (transB == 0 && !Contains(initializers, input_defs[b_idx]->Name())) {
+    if (transB == 0 && !Contains(initializers, inputs[1].node_arg.Name())) {
       LOGS_DEFAULT(VERBOSE) << "B of Gemm must be known if transB != 1";
       return false;
     }
 
-    if (input_defs.size() == 3) {
+    if (inputs.size() == 3) {
       Shape c_shape;
-      if (!GetShape(*input_defs[c_idx], c_shape))
+      if (!GetShape(inputs[2].node_arg, c_shape))
         return false;
 
       uint32_t c_size;
@@ -1067,7 +1033,7 @@ bool GemmOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initial
     }
   } else if (op_type == "MatMul" || is_qlinear_matmul) {
     // Only support A*B B is an initializer
-    if (!Contains(initializers, input_defs[b_idx]->Name())) {
+    if (!Contains(initializers, inputs[1].node_arg.Name())) {
       LOGS_DEFAULT(VERBOSE) << "B of MatMul must be known";
       return false;
     }
@@ -1075,7 +1041,7 @@ bool GemmOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initial
     if (is_qlinear_matmul) {
       // For QLinearMatMul, we only support uint8 output now
       int32_t output_type;
-      if (!GetType(*node.OutputDefs()[0], output_type))
+      if (!GetType(node_unit.Outputs()[0].node_arg, output_type))
         return false;
 
       if (output_type != ONNX_NAMESPACE::TensorProto_DataType_UINT8) {
@@ -1250,9 +1216,8 @@ class ConcatOpSupportChecker : public BaseOpSupportChecker {
 
 bool ConcatOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const NodeUnit& node_unit,
                                                const OpSupportCheckParams& /* params */) const {
-  const auto& node = node_unit.GetNode();
   Shape input_shape;
-  if (!GetShape(*node.InputDefs()[0], input_shape))
+  if (GetShape(node_unit.Inputs()[0].node_arg, input_shape))
     return false;
 
   const auto input_size = input_shape.size();
@@ -1420,9 +1385,8 @@ class LRNOpSupportChecker : public BaseOpSupportChecker {
 
 bool LRNOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const NodeUnit& node_unit,
                                             const OpSupportCheckParams& /* params */) const {
-  const auto& node = node_unit.GetNode();
   Shape input_shape;
-  if (!GetShape(*node.InputDefs()[0], input_shape))
+  if (!GetShape(node_unit.Inputs()[0].node_arg, input_shape))
     return false;
 
   const auto input_size = input_shape.size();
@@ -1447,9 +1411,8 @@ class ClipOpSupportChecker : public BaseOpSupportChecker {
 
 bool ClipOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
                                              const OpSupportCheckParams& /* params */) const {
-  const auto& node = node_unit.GetNode();
   float min, max;
-  if (!GetClipMinMax(initializers, node, min, max, logging::LoggingManager::DefaultLogger()))
+  if (!GetClipMinMax(initializers, node_unit.GetNode(), min, max, logging::LoggingManager::DefaultLogger()))
     return false;
 
   // We only supoort relu6 or relu1
@@ -1484,9 +1447,8 @@ class ResizeOpSupportChecker : public BaseOpSupportChecker {
 
 bool ResizeOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
                                                const OpSupportCheckParams& params) const {
-  const auto& node = node_unit.GetNode();
   Shape input_shape;
-  if (!GetShape(*node.InputDefs()[0], input_shape))
+  if (!GetShape(node_unit.Inputs()[0].node_arg, input_shape))
     return false;
 
   const auto input_size = input_shape.size();
@@ -1497,7 +1459,7 @@ bool ResizeOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initi
   }
 
   {  // check attributes
-    NodeAttrHelper helper(node);
+    NodeAttrHelper helper(node_unit);
     const auto mode = helper.Get("mode", "nearest");
     bool is_linear_resize = mode == "linear";
     bool is_nearest_resize = mode == "nearest";
@@ -1544,27 +1506,27 @@ bool ResizeOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initi
   }
 
   {  // scales and sizes (if present) must be initializers
-    const auto input_defs = node.InputDefs();
-    if (input_defs.size() < 3) {
+    const auto inputs = node_unit.Inputs();
+    if (inputs.size() < 3) {
       LOGS_DEFAULT(VERBOSE) << "Input scales or sizes of Resize must be known";
       return false;
     }
 
     // scales
-    if (input_defs.size() == 3 && !Contains(initializers, input_defs[2]->Name())) {
+    if (inputs.size() == 3 && !Contains(initializers, inputs[2].node_arg.Name())) {
       LOGS_DEFAULT(VERBOSE) << "Input scales of Resize must be known";
       return false;
     }
 
     // sizes
-    if (input_defs.size() > 3 && !Contains(initializers, input_defs[3]->Name())) {
+    if (inputs.size() > 3 && !Contains(initializers, inputs[3].node_arg.Name())) {
       LOGS_DEFAULT(VERBOSE) << "Input sizes of Resize must be known";
       return false;
     }
 
     // We want to check if the scales or sizes are not trying to resize on N/C channels here
-    if (input_defs.size() == 3) {  // we are using scales
-      const auto& scales_tensor = *initializers.at(input_defs[2]->Name());
+    if (inputs.size() == 3) {  // we are using scales
+      const auto& scales_tensor = *initializers.at(inputs[2].node_arg.Name());
       std::vector<uint8_t> unpacked_tensor;
       auto status = onnxruntime::utils::UnpackInitializerData(scales_tensor, unpacked_tensor);
       if (!status.IsOK()) {
@@ -1582,7 +1544,7 @@ bool ResizeOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initi
       }
     } else {
       // we are using sizes
-      const auto& sizes_name = input_defs[3]->Name();
+      const auto& sizes_name = inputs[3].node_arg.Name();
       const auto& sizes_tensor = *initializers.at(sizes_name);
       std::vector<uint8_t> unpacked_tensor;
       auto status = onnxruntime::utils::UnpackInitializerData(sizes_tensor, unpacked_tensor);
@@ -1647,9 +1609,8 @@ class FlattenOpSupportChecker : public BaseOpSupportChecker {
 
 bool FlattenOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const NodeUnit& node_unit,
                                                 const OpSupportCheckParams& /* params */) const {
-  const auto& node = node_unit.GetNode();
   Shape input_shape;
-  if (!GetShape(*node.InputDefs()[0], input_shape))
+  if (!GetShape(node_unit.Inputs()[0].node_arg, input_shape))
     return false;
 
   if (input_shape.size() > 4 || input_shape.empty()) {
@@ -1660,7 +1621,7 @@ bool FlattenOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& /* i
 
   int32_t dim_1 = 1;
   int32_t dim_2 = 1;
-  GetFlattenOutputShape(node, input_shape, dim_1, dim_2);
+  GetFlattenOutputShape_nu(node_unit, input_shape, dim_1, dim_2);
 
   if (dim_1 == 0 && dim_2 == 0) {
     LOGS_DEFAULT(VERBOSE) << "The dynamical input shape " << Shape2String(input_shape)
@@ -1705,11 +1666,10 @@ class MinMaxOpSupportChecker : public BaseOpSupportChecker {
 
 bool MinMaxOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const NodeUnit& node_unit,
                                                const OpSupportCheckParams& /* params */) const {
-  const auto& node = node_unit.GetNode();
   // TODO support 2+ inputs for Min/Max op
-  if (node.InputDefs().size() != 2) {
-    LOGS_DEFAULT(VERBOSE) << "[" << node.OpType() << "] only supports 2 inputs, "
-                          << "actual input number, " << node.InputDefs().size();
+  if (node_unit.Inputs().size() != 2) {
+    LOGS_DEFAULT(VERBOSE) << "[" << node_unit.OpType() << "] only supports 2 inputs, "
+                          << "actual input number, " << node_unit.Inputs().size();
     return false;
   }
 
@@ -1751,9 +1711,8 @@ class SliceOpSupportChecker : public BaseOpSupportChecker {
 
 bool SliceOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
                                               const OpSupportCheckParams& /* params */) const {
-  const auto& node = node_unit.GetNode();
   Shape input_shape;
-  if (!GetShape(*node.InputDefs()[0], input_shape))
+  if (!GetShape(node_unit.Inputs()[0].node_arg, input_shape))
     return false;
 
   if (input_shape.size() > 4) {
@@ -1768,19 +1727,19 @@ bool SliceOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initia
     return false;
   }
 
-  if (!CheckIsInitializer(initializers, node, 1, "starts")) {
+  if (!CheckIsInitializer(initializers, node_unit, node_unit.Inputs()[1].node_arg.Name(), "starts")) {
     return false;
   }
-  if (!CheckIsInitializer(initializers, node, 2, "ends")) {
+  if (!CheckIsInitializer(initializers, node_unit, node_unit.Inputs()[2].node_arg.Name(), "ends")) {
     return false;
   }
-  const auto& input_defs = node.InputDefs();
-  if (input_defs.size() > 3) {
-    if (!CheckIsInitializer(initializers, node, 3, "axes")) {
+  const auto& inputs = node_unit.Inputs();
+  if (inputs.size() > 3) {
+    if (!CheckIsInitializer(initializers, node_unit, node_unit.Inputs()[3].node_arg.Name(), "axes")) {
       return false;
     }
-    if (input_defs.size() > 4) {
-      if (!CheckIsInitializer(initializers, node, 4, "steps")) {
+    if (inputs.size() > 4) {
+      if (!CheckIsInitializer(initializers, node_unit, node_unit.Inputs()[4].node_arg.Name(), "steps")) {
         return false;
       }
     }
