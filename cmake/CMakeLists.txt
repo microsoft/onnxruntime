@@ -22,6 +22,7 @@ set(CMAKE_C_STANDARD 99)
 include(CheckCXXCompilerFlag)
 include(CheckLanguage)
 include(CMakeDependentOption)
+include(FetchContent)
 
 set(CMAKE_CXX_STANDARD 17)
 
