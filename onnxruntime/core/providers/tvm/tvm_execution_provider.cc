@@ -33,17 +33,17 @@ struct STVMFuncState {
                 const std::vector<std::vector<int64_t>>& input_shapes)> compiler = nullptr;
 };
 
-class STVMRunner {
+class TVMRunner {
   public:
     using TVMTensorShape = std::vector<int64_t>;
     using TVMTensorShapes = std::vector<TVMTensorShape>;
     using InputsInfoMap = std::map<size_t, TVMTensorShape>;
     using ORTGraphNodes = std::vector<const NodeArg*>;
 
-    STVMRunner() = delete;
-    ~STVMRunner() = default;
+    TVMRunner() = delete;
+    ~TVMRunner() = default;
 
-    STVMRunner(StvmExecutionProvider* ep,
+    TVMRunner(StvmExecutionProvider* ep,
                const std::string& name,
                const Graph& graph) {
         // Extract input shapes
@@ -342,7 +342,7 @@ common::Status StvmExecutionProvider::Compile(const std::vector<Node*>& nodes,
     };
     // TODO(vvchernov): implement ops checking and mechanism of gracefully passing the responsibility to other EPs
     // if the checking fails due to unsupported op(s)
-    runners_[func_name] = std::make_shared<STVMRunner>(this, func_name, node_graph);
+    runners_[func_name] = std::make_shared<TVMRunner>(this, func_name, node_graph);
     compute_info.compute_func = *runners_[func_name].get();
 
     node_compute_funcs.push_back(compute_info);

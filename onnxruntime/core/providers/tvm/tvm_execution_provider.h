@@ -24,14 +24,14 @@ namespace stvm_env_vars {
    static const std::string kDumpSubgraphs = "ORT_STVM_DUMP_SUBGRAPHS";
 }  // namespace stvm_env_vars
 
-class STVMRunner;
+class TVMRunner;
 
 class StvmExecutionProvider : public IExecutionProvider {
-  friend STVMRunner;
+  friend TVMRunner;
 
   using TVMTensorShape = std::vector<int64_t>;
   using TVMTensorShapes = std::vector<TVMTensorShape>;
-  using STVMRunners = std::unordered_map<std::string, std::shared_ptr<STVMRunner>>;
+  using TVMRunners = std::unordered_map<std::string, std::shared_ptr<TVMRunner>>;
   using STVMModules = std::unordered_map<std::string, std::shared_ptr<TvmModule>>;
  public:
   explicit StvmExecutionProvider(const TvmExecutionProviderInfo& info);
@@ -57,7 +57,7 @@ class StvmExecutionProvider : public IExecutionProvider {
   int CreateStateFunc(ComputeContext*, FunctionState*);
   TvmModule* CompileFunc(std::string func_name, const TVMTensorShapes& input_shapes);
  private:
-  STVMRunners runners_;
+  TVMRunners runners_;
   std::unordered_map<std::string, std::string> buffers_;
   std::unordered_map<std::string, int> opsets_;
   std::unordered_map<std::string, std::string>  model_paths_;
