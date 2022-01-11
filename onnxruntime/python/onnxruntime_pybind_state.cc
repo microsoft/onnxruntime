@@ -647,7 +647,7 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
     nuphar_settings.clear();
     return p;
 #endif
-  } else if (type == kStvmExecutionProvider) {
+  } else if (type == kTvmExecutionProvider) {
 #if USE_STVM
     onnxruntime::TvmExecutionProviderInfo info{};
     const auto it = provider_options_map.find(type);

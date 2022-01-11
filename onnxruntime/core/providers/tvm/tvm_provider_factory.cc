@@ -17,7 +17,7 @@ struct StvmProviderFactory : IExecutionProviderFactory {
   ~StvmProviderFactory() = default;
 
   std::unique_ptr<IExecutionProvider> CreateProvider() override {
-    return std::make_unique<StvmExecutionProvider>(info_);
+    return std::make_unique<TvmExecutionProvider>(info_);
  }
 
  private:

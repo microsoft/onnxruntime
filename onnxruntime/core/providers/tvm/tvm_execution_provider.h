@@ -26,16 +26,16 @@ namespace stvm_env_vars {
 
 class TVMRunner;
 
-class StvmExecutionProvider : public IExecutionProvider {
+class TvmExecutionProvider : public IExecutionProvider {
   friend TVMRunner;
 
   using TVMTensorShape = std::vector<int64_t>;
   using TVMTensorShapes = std::vector<TVMTensorShape>;
   using TVMRunners = std::unordered_map<std::string, std::shared_ptr<TVMRunner>>;
-  using STVMModules = std::unordered_map<std::string, std::shared_ptr<TvmModule>>;
+  using TVMModules = std::unordered_map<std::string, std::shared_ptr<TvmModule>>;
  public:
-  explicit StvmExecutionProvider(const TvmExecutionProviderInfo& info);
-  virtual ~StvmExecutionProvider();
+  explicit TvmExecutionProvider(const TvmExecutionProviderInfo& info);
+  virtual ~TvmExecutionProvider();
 
   std::vector<std::unique_ptr<ComputeCapability>>
   GetCapability(const onnxruntime::GraphViewer& graph,
@@ -65,7 +65,7 @@ class StvmExecutionProvider : public IExecutionProvider {
   OrtMutex stvm_mu_;
   AllocatorPtr allocator_;
   TvmExecutionProviderInfo info_;
-  STVMModules modules_;
+  TVMModules modules_;
 };
 
 }  // namespace onnxruntime

@@ -36,7 +36,7 @@ std::unique_ptr<IExecutionProvider> DefaultCpuExecutionProvider(bool enable_aren
 std::unique_ptr<IExecutionProvider> DefaultCudaExecutionProvider();
 std::unique_ptr<IExecutionProvider> DefaultDnnlExecutionProvider(bool enable_arena = true);
 std::unique_ptr<IExecutionProvider> DefaultNupharExecutionProvider(bool allow_unaligned_buffers = true);
-//std::unique_ptr<IExecutionProvider> DefaultStvmExecutionProvider();
+//std::unique_ptr<IExecutionProvider> DefaultTvmExecutionProvider();
 std::unique_ptr<IExecutionProvider> DefaultTensorrtExecutionProvider();
 std::unique_ptr<IExecutionProvider> TensorrtExecutionProviderWithOptions(const OrtTensorRTProviderOptions* params);
 std::unique_ptr<IExecutionProvider> TensorrtExecutionProviderWithOptions(const OrtTensorRTProviderOptionsV2* params);

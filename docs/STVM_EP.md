@@ -70,7 +70,7 @@ po = [dict(target=client_target,
            tuning_file_path=client_tuning_logfile,
            input_names = input_names_str,
            input_shapes = input_shapes_str)]
-stvm_session = onnxruntime.InferenceSession(model_path, providers=["StvmExecutionProvider"], provider_options=po)
+stvm_session = onnxruntime.InferenceSession(model_path, providers=["TvmExecutionProvider"], provider_options=po)
 ```
 <br>
 
@@ -102,7 +102,7 @@ Using the STVM EP with TVM tuning logs also requires users to turn off ONNX Runt
 so = onnxruntime.SessionOptions()
 so.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
 
-stvm_session = onnxruntime.InferenceSession(model_path, sess_options=so, providers=["StvmExecutionProvider"], provider_options=po)
+stvm_session = onnxruntime.InferenceSession(model_path, sess_options=so, providers=["TvmExecutionProvider"], provider_options=po)
 ```
 
 ## Samples

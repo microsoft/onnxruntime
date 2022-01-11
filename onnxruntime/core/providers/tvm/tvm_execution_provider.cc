@@ -43,7 +43,7 @@ class TVMRunner {
     TVMRunner() = delete;
     ~TVMRunner() = default;
 
-    TVMRunner(StvmExecutionProvider* ep,
+    TVMRunner(TvmExecutionProvider* ep,
                const std::string& name,
                const Graph& graph) {
         // Extract input shapes
@@ -224,8 +224,8 @@ class TVMRunner {
     std::vector<DLTensor> tensors_outputs_;
 };
 
-StvmExecutionProvider::StvmExecutionProvider(const TvmExecutionProviderInfo& info)
-    : IExecutionProvider{kStvmExecutionProvider},
+TvmExecutionProvider::TvmExecutionProvider(const TvmExecutionProviderInfo& info)
+    : IExecutionProvider{kTvmExecutionProvider},
       info_{info} {
   ProcessInfo();
 
@@ -245,14 +245,14 @@ StvmExecutionProvider::StvmExecutionProvider(const TvmExecutionProviderInfo& inf
   }
 }
 
-StvmExecutionProvider::~StvmExecutionProvider() {}
+TvmExecutionProvider::~TvmExecutionProvider() {}
 
-AllocatorPtr StvmExecutionProvider::GetAllocator(int id, OrtMemType mem_type) const {
+AllocatorPtr TvmExecutionProvider::GetAllocator(int id, OrtMemType mem_type) const {
   return allocator_;
 }
 
 std::vector<std::unique_ptr<ComputeCapability>>
-StvmExecutionProvider::GetCapability(const GraphViewer& graph_viewer,
+TvmExecutionProvider::GetCapability(const GraphViewer& graph_viewer,
                                      const std::vector<const KernelRegistry*>& /*kernel_registries*/) const {
   std::vector<std::unique_ptr<ComputeCapability>> result;
   if (graph_viewer.IsSubgraph()) {
@@ -300,7 +300,7 @@ StvmExecutionProvider::GetCapability(const GraphViewer& graph_viewer,
   return result;
 }
 
-common::Status StvmExecutionProvider::Compile(const std::vector<Node*>& nodes,
+common::Status TvmExecutionProvider::Compile(const std::vector<Node*>& nodes,
                                               std::vector<NodeComputeInfo>& node_compute_funcs) {
   for (auto* fused_node : nodes) {
     auto func_body = fused_node->GetFunctionBody();
@@ -331,7 +331,7 @@ common::Status StvmExecutionProvider::Compile(const std::vector<Node*>& nodes,
     }
 
     NodeComputeInfo compute_info;
-    compute_info.create_state_func = std::bind(&StvmExecutionProvider::CreateStateFunc,
+    compute_info.create_state_func = std::bind(&TvmExecutionProvider::CreateStateFunc,
                                                this,
                                                std::placeholders::_1,
                                                std::placeholders::_2);
@@ -350,7 +350,7 @@ common::Status StvmExecutionProvider::Compile(const std::vector<Node*>& nodes,
   return Status::OK();
 }
 
-std::unique_ptr<IDataTransfer> StvmExecutionProvider::GetDataTransfer() const {
+std::unique_ptr<IDataTransfer> TvmExecutionProvider::GetDataTransfer() const {
   if (GPUTargetCheck()) {
     return std::make_unique<onnxruntime::XPUDataTransfer>();
   } else if (info_.target.find("llvm") != std::string::npos) {
@@ -360,7 +360,7 @@ std::unique_ptr<IDataTransfer> StvmExecutionProvider::GetDataTransfer() const {
   }
 }
 
-bool StvmExecutionProvider::GPUTargetCheck() const {
+bool TvmExecutionProvider::GPUTargetCheck() const {
   //TODO(vvchernov): target or target host?
   bool check = (
     info_.target.find("cuda") != std::string::npos ||
@@ -371,7 +371,7 @@ bool StvmExecutionProvider::GPUTargetCheck() const {
   return check;
 }
 
-size_t StvmExecutionProvider::split(const std::string &txt, std::vector<std::string> &strs, char ch) const {
+size_t TvmExecutionProvider::split(const std::string &txt, std::vector<std::string> &strs, char ch) const {
     size_t pos = txt.find( ch );
     size_t initialPos = 0;
     strs.clear();
@@ -388,7 +388,7 @@ size_t StvmExecutionProvider::split(const std::string &txt, std::vector<std::str
     return strs.size();
 }
 
-void StvmExecutionProvider::ProcessInfo() {
+void TvmExecutionProvider::ProcessInfo() {
   if(!info_.input_shapes_str.empty()) {
     ORT_ENFORCE(!info_.input_names_str.empty(),
                 "Please insert input tensor names. Input shapes only is invalid case");
@@ -455,7 +455,7 @@ void StvmExecutionProvider::ProcessInfo() {
   PrintInfo();
 }
 
-void StvmExecutionProvider::ProcessCPUTarget() {
+void TvmExecutionProvider::ProcessCPUTarget() {
   const auto& cpu_id_info = CPUIDInfo::GetCPUIDInfo();
   // auto detect from CPU ID
   if (cpu_id_info.HasAVX512Skylake()) {
@@ -472,11 +472,11 @@ void StvmExecutionProvider::ProcessCPUTarget() {
   }
 }
 
-void StvmExecutionProvider::ProcessGPUTarget() {
+void TvmExecutionProvider::ProcessGPUTarget() {
   ORT_NOT_IMPLEMENTED("GPU target auto-defenition is not implemented now!");
 }
 
-void StvmExecutionProvider::PrintInfo() const {
+void TvmExecutionProvider::PrintInfo() const {
   LOG(INFO) << "STVM ep options:\n" <<
   "target: " << info_.target << "\n" <<
   "target_host: " << info_.target_host << "\n" <<
@@ -489,13 +489,13 @@ void StvmExecutionProvider::PrintInfo() const {
   "input tensor shapes: " << info_.input_shapes_str;
 }
 
-int StvmExecutionProvider::CreateStateFunc(ComputeContext* context, FunctionState* state) {
+int TvmExecutionProvider::CreateStateFunc(ComputeContext* context, FunctionState* state) {
   auto* state_ptr = new STVMFuncState();
   *state_ptr = {context->allocate_func,
                  context->release_func,
                  context->allocator_handle,
                  nullptr,
-                 std::bind(&StvmExecutionProvider::CompileFunc,
+                 std::bind(&TvmExecutionProvider::CompileFunc,
                            this,
                            std::placeholders::_1,
                            std::placeholders::_2)};
@@ -503,7 +503,7 @@ int StvmExecutionProvider::CreateStateFunc(ComputeContext* context, FunctionStat
   return 0;
 }
 
-TvmModule* StvmExecutionProvider::CompileFunc(std::string func_name,
+TvmModule* TvmExecutionProvider::CompileFunc(std::string func_name,
                                                          const TVMTensorShapes& input_shapes) {
   if (modules_.count(func_name)) {
     return modules_[func_name].get();
