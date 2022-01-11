@@ -18,7 +18,6 @@ namespace py = pybind11;
 
 using namespace onnxruntime::logging;
 
-
 using ExecutionProviderMap = std::unordered_map<std::string, std::shared_ptr<IExecutionProvider> >;
 using ExecutionProviderLibInfoMap = std::unordered_map<std::string, std::pair<std::string, ProviderOptions> > ;
 
