@@ -8,7 +8,7 @@
 #include "ort_backends.h"
 #include "ort_log.h"
 #include "core/platform/env.h"
-#include "orttraining/python/orttraining_python_module.h"
+#include "orttraining/python/orttraining_python_module_eager.h"
 
 
 //use the environment from python module

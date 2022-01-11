@@ -9,7 +9,7 @@
 #include "core/session/provider_bridge_ort.h"
 
 #ifdef ENABLE_EAGER_MODE
-#include "orttraining/python/orttraining_python_module.h"
+#include "orttraining/python/orttraining_python_module_eager.h"
 #endif
 
 namespace onnxruntime {

@@ -12,7 +12,7 @@
 #include "ort_customops.h"
 #include "torch/csrc/autograd/python_variable.h"
 #include "core/framework/tensor.h"
-#include "orttraining/python/orttraining_python_module.h"
+#include "orttraining/python/orttraining_python_module_eager.h"
 
 namespace onnxruntime{
 namespace python{
