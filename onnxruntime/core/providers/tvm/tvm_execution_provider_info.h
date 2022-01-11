@@ -31,7 +31,7 @@ constexpr const unsigned int default_opt_level = 3;
 using STVMInputShapes = std::unordered_map<std::string, std::vector<int64_t>>;
 
 // Information needed to construct an TVM execution provider.
-struct StvmExecutionProviderInfo {
+struct TvmExecutionProviderInfo {
   std::string target{default_target_str};
   std::string target_host{default_target_str};
   unsigned int opt_level{default_opt_level};
@@ -44,8 +44,8 @@ struct StvmExecutionProviderInfo {
   STVMInputShapes input_shapes{};
 
   static std::string whitespace_trimming(const std::string& str);
-  static StvmExecutionProviderInfo FromProviderOptions(const ProviderOptions& options);
-  static StvmExecutionProviderInfo FromOptionsString(const char* options);
+  static TvmExecutionProviderInfo FromProviderOptions(const ProviderOptions& options);
+  static TvmExecutionProviderInfo FromOptionsString(const char* options);
 };
 
 }  // namespace onnxruntime

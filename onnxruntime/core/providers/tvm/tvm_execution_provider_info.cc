@@ -38,7 +38,7 @@ static const std::unordered_set<std::string> valid_keys {
 }  // namespace provider_option_names
 }  // namespace stvm
 
-std::string StvmExecutionProviderInfo::whitespace_trimming(const std::string& str) {
+std::string TvmExecutionProviderInfo::whitespace_trimming(const std::string& str) {
   const std::string WHITESPACE = " \n\r\t\f\v";
   size_t start = str.find_first_not_of(WHITESPACE);
   if (start == std::string::npos) {
@@ -50,8 +50,8 @@ std::string StvmExecutionProviderInfo::whitespace_trimming(const std::string& st
   }
 }
 
-StvmExecutionProviderInfo StvmExecutionProviderInfo::FromProviderOptions(const ProviderOptions& options) {
-  StvmExecutionProviderInfo info{};
+TvmExecutionProviderInfo TvmExecutionProviderInfo::FromProviderOptions(const ProviderOptions& options) {
+  TvmExecutionProviderInfo info{};
 
   ORT_THROW_IF_ERROR(
       ProviderOptionsParser{}
@@ -69,7 +69,7 @@ StvmExecutionProviderInfo StvmExecutionProviderInfo::FromProviderOptions(const P
   return info;
 }
 
-StvmExecutionProviderInfo StvmExecutionProviderInfo::FromOptionsString(const char* opt_str) {
+TvmExecutionProviderInfo TvmExecutionProviderInfo::FromOptionsString(const char* opt_str) {
   std::string settings{opt_str};
   ProviderOptions options;
   if (!settings.empty()) {
@@ -95,7 +95,7 @@ StvmExecutionProviderInfo StvmExecutionProviderInfo::FromOptionsString(const cha
 
       // Check keys of obtained options
       if (stvm::provider_option_names::valid_keys.count(key) == 0) {
-        ORT_NOT_IMPLEMENTED("StvmOptions: unknown option (", key, ")");
+        ORT_NOT_IMPLEMENTED("TvmOptions: unknown option (", key, ")");
       }
 
       options[key] = value;

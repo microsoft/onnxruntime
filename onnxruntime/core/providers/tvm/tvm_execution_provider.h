@@ -33,7 +33,7 @@ class StvmExecutionProvider : public IExecutionProvider {
   using STVMRunners = std::unordered_map<std::string, std::shared_ptr<STVMRunner>>;
   using STVMModules = std::unordered_map<std::string, std::shared_ptr<tvm::runtime::Module>>;
  public:
-  explicit StvmExecutionProvider(const StvmExecutionProviderInfo& info);
+  explicit StvmExecutionProvider(const TvmExecutionProviderInfo& info);
   virtual ~StvmExecutionProvider();
 
   std::vector<std::unique_ptr<ComputeCapability>>
@@ -63,7 +63,7 @@ class StvmExecutionProvider : public IExecutionProvider {
   bool dump_subgraphs_ = false;
   OrtMutex stvm_mu_;
   AllocatorPtr allocator_;
-  StvmExecutionProviderInfo info_;
+  TvmExecutionProviderInfo info_;
   STVMModules modules_;
 };
 

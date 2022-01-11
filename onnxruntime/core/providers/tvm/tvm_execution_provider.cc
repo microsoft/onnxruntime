@@ -224,7 +224,7 @@ class STVMRunner {
     std::vector<DLTensor> tensors_outputs_;
 };
 
-StvmExecutionProvider::StvmExecutionProvider(const StvmExecutionProviderInfo& info)
+StvmExecutionProvider::StvmExecutionProvider(const TvmExecutionProviderInfo& info)
     : IExecutionProvider{kStvmExecutionProvider},
       info_{info} {
   ProcessInfo();
@@ -396,8 +396,8 @@ void StvmExecutionProvider::ProcessInfo() {
     std::vector<std::string> tmp_strs;
     std::vector<std::string> names_strs;
 
-    std::string names_str = StvmExecutionProviderInfo::whitespace_trimming(info_.input_names_str);
-    std::string shapes_str = StvmExecutionProviderInfo::whitespace_trimming(info_.input_shapes_str);
+    std::string names_str = TvmExecutionProviderInfo::whitespace_trimming(info_.input_names_str);
+    std::string shapes_str = TvmExecutionProviderInfo::whitespace_trimming(info_.input_shapes_str);
 
     ORT_ENFORCE(split(names_str, names_strs, ' '), "There is no any input tensor names!");
     size_t inp_tensors_num = names_strs.size();
