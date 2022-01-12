@@ -2726,7 +2726,22 @@ inputs by their magnitude, rather than gates inputs by their sign as in ReLUs.)D
         schema.BuildFunction(functionProto);
         return true;
       });
-
+  static const char* AddRelu_ver1_doc =
+      R"DOC(Add Relu.
+It's an extension of Relu. It takes the sum of input A and input B as the input of Relu activation. )DOC";
+  ONNX_CONTRIB_OPERATOR_SCHEMA(AddRelu)
+      .SetDomain(kOnnxDomain)
+      .SinceVersion(7)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .SetDoc(AddRelu_ver1_doc)
+      .Input(0, "A", "The normal input data.", "T")
+      .Input(1, "B", "The normal input data.", "T")
+      .Output(0, "C", "The output.", "T")
+      .TypeConstraint(
+          "T",
+          {"tensor(float)", "tensor(float)", "tensor(float)"},
+          "Constrain input and output types to float tensors.")
+      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
   static const char* BiasGelu_ver1_doc =
       R"DOC(Bias Gelu.
 It's an extension of Gelu. It takes the sum of input A and bias input B as the input of Gelu activation. )DOC";
