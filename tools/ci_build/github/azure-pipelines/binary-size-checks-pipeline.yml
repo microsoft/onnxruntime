@@ -15,9 +15,6 @@ jobs:
     clean: all
   pool: Linux-CPU-2019
 
-  variables:
-    test_data_directory: $(Build.SourcesDirectory)/.test_data
-
   steps:
   - checkout: self
     clean: true
@@ -92,7 +89,6 @@ jobs:
             --volume $(Build.BinariesDirectory):/build \
             --volume $ANDROID_HOME:/android_home \
             --volume $NDK_HOME:/ndk_home \
-            --volume $(test_data_directory):/home/onnxruntimedev/.test_data \
             -e ALLOW_RELEASED_ONNX_OPSET_ONLY=1 \
             -e NIGHTLY_BUILD \
             -e BUILD_BUILDNUMBER \
