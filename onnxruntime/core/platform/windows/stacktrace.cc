@@ -104,7 +104,7 @@ std::vector<std::string> CaptureStackTrace::Trace() const {
   stacktrace.reserve(num_frames);
 
   // hide CaptureStackTrace::Trace and GetStackTrace so the output starts with the 'real' location
-  const int frames_to_skip = 2;
+  constexpr int frames_to_skip = 2;
 
   // we generally want to skip the first two frames, but if something weird is going on (e.g. code coverage is
   // running) and we only have 1 or 2 frames, output them so there's at least something that may be meaningful

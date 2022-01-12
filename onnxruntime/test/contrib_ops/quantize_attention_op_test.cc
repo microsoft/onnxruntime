@@ -18,9 +18,9 @@ namespace test {
 
 enum class EP : char {
   CPU,
-  CUDA
+  CUDA,
+  DNNL
 };
-
 
 // input:      [batch_size, sequence_length, hidden_size]
 // weights:    [hidden_size, 3 * hidden_size]
@@ -54,6 +54,12 @@ void RunQAttention(const std::vector<float>& input_data,
   std::vector<int64_t> weights_dims = {input_hidden_size, static_cast<int64_t>(3 * hidden_size)};
   std::vector<int64_t> bias_dims = {static_cast<int64_t>(3 * hidden_size)};
   std::vector<int64_t> mask_index_dims = {batch_size};
+  if constexpr (ep == EP::DNNL) {
+    //onednn only supports raw mask
+    if (mask_index_data.size() == static_cast<size_t>(batch_size * sequence_length)) {
+      mask_index_dims = {batch_size, sequence_length};
+    }
+  }
   std::vector<int64_t> output_dims = {batch_size, sequence_length, hidden_size};
 
   if (input_quant_params.scale != 0.0f) {
@@ -103,9 +109,13 @@ void RunQAttention(const std::vector<float>& input_data,
     std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
     execution_providers.push_back(DefaultCudaExecutionProvider());
     tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}, nullptr, &execution_providers);
-  } else {
+  } else if constexpr (ep == EP::CPU) {
     std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
     execution_providers.push_back(DefaultCpuExecutionProvider());
+    tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}, nullptr, &execution_providers);
+  } else {  // onednn ep
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultDnnlExecutionProvider());
     tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}, nullptr, &execution_providers);
   }
 }
@@ -138,6 +148,49 @@ static void RunQAttentionCUDA(
         input_data, weights_data, bias_data, mask_index_data, output_data, input_quant_params, weights_quant_params,
         batch_size, sequence_length, hidden_size, number_of_heads, is_unidirectional, use_float16, input_hidden_size);
   }
+}
+
+static void RunQAttentionDNNL(
+    const std::vector<float>& input_data,
+    const std::vector<float>& weights_data,
+    const std::vector<float>& bias_data,
+    const std::vector<int32_t>& mask_index_data,  // onednn only support raw mask data
+    const std::vector<float>& output_data,
+    int batch_size,
+    int sequence_length,
+    int hidden_size,
+    int number_of_heads,
+    bool use_special_quantize_parameter = true,
+    bool is_unidirectional = false,
+    int input_hidden_size = 0) {
+  // Return without running code if USE_DNNL is not defined
+#ifdef USE_DNNL
+  quantization::Params<uint8_t> input_quant_params(/*scale=*/0.0f, /*zero_point=*/0);
+  quantization::Params<int8_t> weights_quant_params(/*scale=*/0.0f, /*zero_point=*/0);
+  if (use_special_quantize_parameter) {
+    input_quant_params.scale = 0.1f;
+    weights_quant_params.scale = 0.1f;
+    input_quant_params.zero_point = 128;
+    weights_quant_params.zero_point = 1;
+  }
+
+  RunQAttention<uint8_t, int8_t, EP::DNNL>(
+      input_data, weights_data, bias_data, mask_index_data, output_data, input_quant_params, weights_quant_params,
+      batch_size, sequence_length, hidden_size, number_of_heads, is_unidirectional, false, input_hidden_size);
+#else
+  ORT_UNUSED_PARAMETER(input_data);
+  ORT_UNUSED_PARAMETER(weights_data);
+  ORT_UNUSED_PARAMETER(bias_data);
+  ORT_UNUSED_PARAMETER(mask_index_data);
+  ORT_UNUSED_PARAMETER(output_data);
+  ORT_UNUSED_PARAMETER(batch_size);
+  ORT_UNUSED_PARAMETER(sequence_length);
+  ORT_UNUSED_PARAMETER(hidden_size);
+  ORT_UNUSED_PARAMETER(number_of_heads);
+  ORT_UNUSED_PARAMETER(use_special_quantize_parameter);
+  ORT_UNUSED_PARAMETER(is_unidirectional);
+  ORT_UNUSED_PARAMETER(input_hidden_size);
+#endif
 }
 
 static void RunQAttentionU8U8(
@@ -217,7 +270,42 @@ static void RunQAttentionAll(
   RunQAttentionCUDA(input_data, weight_data, bias_data, mask_index_data, output_data,
                     batch_size, sequence_length, hidden_size, number_of_heads,
                     use_special_quantize_parameter, is_unidirectional, use_float16, input_hidden_size);
+  RunQAttentionDNNL(input_data, weight_data, bias_data, mask_index_data, output_data,
+                    batch_size, sequence_length, hidden_size, number_of_heads,
+                    use_special_quantize_parameter, is_unidirectional, input_hidden_size);
 }
+
+//ONEDNN EP only supports 2D raw mask
+#ifdef USE_DNNL
+TEST(QAttentionTest, QAttentionDNNLBatch1) {
+  int batch_size = 1;
+  int sequence_length = 2;
+  int hidden_size = 4;
+  int number_of_heads = 2;
+
+  std::vector<float> input_data = {
+      0.8f, -0.5f, 0.0f, 1.f,
+      0.5f, 0.2f, 0.3f, -0.6f};
+
+  std::vector<float> weight_data = {
+      0.1f, -0.2f, 0.3f, 1.0f, 1.1f, 0.3f, 0.5f, 0.2f, 0.3f, -0.6f, 1.5f, 2.0f,
+      0.5f, 0.1f, 0.4f, 1.6f, 1.0f, 2.0f, 0.4f, 0.8f, 0.9f, 0.1f, -1.3f, 0.7f,
+      0.3f, 0.2f, 4.0f, 2.2f, 1.6f, 1.1f, 0.7f, 0.2f, 0.4f, 1.0f, 1.2f, 0.5f,
+      0.2f, 0.1f, 0.4f, 1.6f, 2.4f, 3.3f, 2.1f, 4.2f, 8.4f, 0.0f, 2.1f, 3.2f};
+
+  std::vector<float> bias_data = {
+      -0.5f, 0.6f, 1.2f, 2.1f, 0.5f, 0.7f, 0.2f, 1.2f, 0.5f, 0.4f, 0.3f, 1.2f};
+
+  std::vector<int32_t> mask_index_data = {1L, 1L};
+
+  std::vector<float> output_data = {
+      3.1495983600616455f, 0.10843668878078461f, 4.25f, 5.6499996185302734f,
+      3.9696791172027588f, 0.073143675923347473f, 4.2499995231628418f, 5.6499991416931152f};
+
+  RunQAttentionDNNL(input_data, weight_data, bias_data, mask_index_data, output_data,
+                    batch_size, sequence_length, hidden_size, number_of_heads);
+}
+#endif  // USE_DNNL
 
 TEST(QAttentionTest, QAttentionBatch1) {
   int batch_size = 1;
@@ -313,6 +401,42 @@ TEST(QAttentionTest, QAttentionBatch2) {
                    batch_size, sequence_length, hidden_size, number_of_heads);
 }
 
+//ONEDNN EP only support 2D raw mask
+#ifdef USE_DNNL
+TEST(QAttentionTest, QAttentionDNNLBatch2) {
+  int batch_size = 2;
+  int sequence_length = 2;
+  int hidden_size = 4;
+  int number_of_heads = 2;
+
+  std::vector<float> input_data = {
+      0.8f, -0.5f, 0.0f, 1.f,
+      0.5f, 0.2f, 0.3f, -0.6f,
+      0.8f, -0.5f, 0.0f, 1.f,
+      0.5f, 0.2f, 0.3f, -0.6f};
+
+  std::vector<float> weight_data = {
+      0.1f, -0.2f, 0.3f, 1.0f, 1.1f, 0.3f, 0.5f, 0.2f, 0.3f, -0.6f, 1.5f, 2.0f,
+      0.5f, 0.1f, 0.4f, 1.6f, 1.0f, 2.0f, 0.4f, 0.8f, 0.9f, 0.1f, -1.3f, 0.7f,
+      0.3f, 0.2f, 4.0f, 2.2f, 1.6f, 1.1f, 0.7f, 0.2f, 0.4f, 1.0f, 1.2f, 0.5f,
+      0.2f, 0.1f, 0.4f, 1.6f, 2.4f, 3.3f, 2.1f, 4.2f, 8.4f, 0.0f, 2.1f, 3.2f};
+
+  std::vector<float> bias_data = {
+      -0.5f, 0.6f, 1.2f, 2.1f, 0.5f, 0.7f, 0.2f, 1.2f, 0.5f, 0.4f, 0.3f, 1.2f};
+
+  std::vector<int32_t> mask_index_data = {1L, 1L, 1L, 1L};
+
+  std::vector<float> output_data = {
+      3.1495983600616455f, 0.10843668878078461f, 4.25f, 5.6499996185302734f,
+      3.9696791172027588f, 0.073143675923347473f, 4.2499995231628418f, 5.6499991416931152f,
+      3.1495983600616455f, 0.10843668878078461f, 4.25f, 5.6499996185302734f,
+      3.9696791172027588f, 0.073143675923347473f, 4.2499995231628418f, 5.6499991416931152f};
+
+  RunQAttentionDNNL(input_data, weight_data, bias_data, mask_index_data, output_data,
+                    batch_size, sequence_length, hidden_size, number_of_heads);
+}
+#endif  // USE_DNNL
+
 TEST(QAttentionTest, QAttentionMaskPartialSequence) {
   int batch_size = 1;
   int sequence_length = 2;
@@ -342,6 +466,38 @@ TEST(QAttentionTest, QAttentionMaskPartialSequence) {
   RunQAttentionAll(input_data, weight_data, bias_data, mask_index_data, output_data,
                    batch_size, sequence_length, hidden_size, number_of_heads);
 }
+
+//oneDNN EP only supports 2D raw mask
+#ifdef USE_DNNL
+TEST(QAttentionTest, QAttentionDNNLMaskPartialSequence) {
+  int batch_size = 1;
+  int sequence_length = 2;
+  int hidden_size = 4;
+  int number_of_heads = 2;
+
+  std::vector<float> input_data = {
+      0.8f, -0.5f, 0.0f, 1.f,
+      0.5f, 0.2f, 0.3f, -0.6f};
+
+  std::vector<float> weight_data = {
+      0.1f, -0.2f, 0.3f, 1.0f, 1.1f, 0.3f, 0.5f, 0.2f, 0.3f, -0.6f, 1.5f, 2.0f,
+      0.5f, 0.1f, 0.4f, 1.6f, 1.0f, 2.0f, 0.4f, 0.8f, 0.9f, 0.1f, -1.3f, 0.7f,
+      0.3f, 0.2f, 4.0f, 2.2f, 1.6f, 1.1f, 0.7f, 0.2f, 0.4f, 1.0f, 1.2f, 0.5f,
+      0.2f, 0.1f, 0.4f, 1.6f, 2.4f, 3.3f, 2.1f, 4.2f, 8.4f, 0.0f, 2.1f, 3.2f};
+
+  std::vector<float> bias_data = {
+      -0.5f, 0.6f, 1.2f, 2.1f, 0.5f, 0.7f, 0.2f, 1.2f, 0.5f, 0.4f, 0.3f, 1.2f};
+
+  std::vector<int32_t> mask_index_data = {1L, 0L};
+
+  std::vector<float> output_data = {
+      8.6899995803833008f, -0.13000002503395081f, 4.25f, 5.6499996185302734f,
+      8.6899995803833008f, -0.13000002503395081f, 4.2499995231628418f, 5.6499991416931152f};
+
+  RunQAttentionDNNL(input_data, weight_data, bias_data, mask_index_data, output_data,
+                    batch_size, sequence_length, hidden_size, number_of_heads);
+}
+#endif  // USE_DNNL
 
 TEST(QAttentionTest, QAttentionMaskExceedSequence) {
   int batch_size = 1;

@@ -138,7 +138,7 @@ TEST(CApiTensorTest, load_huge_tensor_with_external_data) {
   for (int i = 0; i != 1025; ++i) {
     ASSERT_EQ(len, fwrite(data.data(), 1, len, fp));
   }
-  const size_t total_ele_count = 524288 * 1025;
+  constexpr size_t total_ele_count = 524288 * 1025;
   ASSERT_EQ(0, fclose(fp));
   // construct a tensor proto
   onnx::TensorProto p;

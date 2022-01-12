@@ -35,6 +35,11 @@ Abstract:
 #ifndef HWCAP_ASIMDDP
 #define HWCAP_ASIMDDP (1 << 20)
 #endif
+
+#if defined(BUILD_MLAS_NO_ONNXRUNTIME)
+MLASCPUIDInfo::MLASCPUIDInfo() { has_arm_neon_dot_ = ((getauxval(AT_HWCAP) & HWCAP_ASIMDDP) != 0); }
+#endif
+
 #endif
 #endif // MLAS_TARGET_ARM64
 
@@ -364,13 +369,14 @@ Return Value:
 #if defined(_WIN32)
     HasDotProductInstructions = (IsProcessorFeaturePresent(PF_ARM_V82_DP_INSTRUCTIONS_AVAILABLE) != 0);
 #elif defined(__linux__)
-    HasDotProductInstructions = ((getauxval(AT_HWCAP) & HWCAP_ASIMDDP) != 0);
+    HasDotProductInstructions = MLAS_CPUIDINFO::GetCPUIDInfo().HasArmNeonDot();
 #else
     HasDotProductInstructions = false;
 #endif
 
     if (HasDotProductInstructions) {
         this->GemmU8X8Dispatch = &MlasGemmU8X8DispatchUdot;
+        this->ConvSymU8S8Dispatch = &MlasConvSymDispatchDot;
     }
 
 #endif // MLAS_TARGET_ARM64

@@ -23,7 +23,7 @@ typedef std::map<size_t, OrtMemType> MemTypeMap;
 class KernelDef {
  private:
   // note that input/output might be on CPU implicitly when the node is from CPU execution provider
-  static inline bool MemTypeOnCpuExplicitly(OrtMemType mem_type) {
+  constexpr static inline bool MemTypeOnCpuExplicitly(OrtMemType mem_type) {
     return mem_type == OrtMemTypeCPUInput || mem_type == OrtMemTypeCPUOutput;
   }
 
@@ -103,7 +103,7 @@ class KernelDef {
 
   bool IsConflict(const KernelDef& other) const;
 
-  uint64_t GetHash() const noexcept {
+  HashValue GetHash() const noexcept {
     // if we need to support different hash versions we can update CalculateHash to take a version number
     // and calculate any non-default versions dynamically. we only use this during kernel lookup so
     // it's not performance critical
@@ -175,7 +175,7 @@ class KernelDef {
   OrtMemType default_outputs_mem_type_{OrtMemTypeDefault};
 
   // hash of kernel definition for lookup in minimal build
-  uint64_t hash_ = 0;
+  HashValue hash_ = 0;
 };
 
 class KernelDefBuilder {
@@ -183,7 +183,7 @@ class KernelDefBuilder {
   static std::unique_ptr<KernelDefBuilder> Create() { return std::make_unique<KernelDefBuilder>(); }
 
   explicit KernelDefBuilder()
-      : kernel_def_(new KernelDef()) {}
+      : kernel_def_(std::make_unique<KernelDef>()) {}
 
   KernelDefBuilder& SetName(const std::string& op_name);
   KernelDefBuilder& SetName(const char* op_name);
@@ -274,7 +274,7 @@ class KernelDefBuilder {
   KernelDefBuilder& Alias(int input_index, int output_index);
 
   /**
-     Apply variadic number of alias mapping from inputs to outputs. 
+     Apply variadic number of alias mapping from inputs to outputs.
      This is effectively applying Alias(i + input_offset, i + output_offset) for i >= 0
   */
   KernelDefBuilder& VariadicAlias(int input_offset, int output_offset);
@@ -290,7 +290,7 @@ class KernelDefBuilder {
   }
 
   /**
-     Specify that this kernel's output buffers are passed from external, 
+     Specify that this kernel's output buffers are passed from external,
      i.e. not created or managed by ORT's memory allocator.
   */
   KernelDefBuilder& ExternalOutputs() {

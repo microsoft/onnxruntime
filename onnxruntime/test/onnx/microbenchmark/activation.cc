@@ -69,7 +69,7 @@ struct KernelAndDef {
                   .SetDomain(domain)
                   .TypeConstraint("T", DataTypeImpl::GetTensorType<float>())
                   .Build();
-    OpKernelInfo info(main_node, *out.def, *out.a, {}, {}, {}, {});
+    OpKernelInfo info(main_node, *out.def, *out.a, {}, {}, {});
     out.kernel = std::make_unique<KernelType>(info);
     return out;
   }

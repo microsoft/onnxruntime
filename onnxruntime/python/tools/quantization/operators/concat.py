@@ -12,7 +12,8 @@ class QLinearConcat(QuantOperatorBase):
 
         data_found, output_scale_name, output_zp_name, _, _ = \
             self.quantizer._get_quantization_params(node.output[0])
-        (q_input_names, zero_point_names, scale_names, nodes) = self.quantizer.quantize_inputs(node, [*range(0, len(node.input))])
+        (q_input_names, zero_point_names, scale_names, nodes) = \
+            self.quantizer.quantize_inputs(node, [*range(0, len(node.input))], initializer_use_weight_qType=False)
         if not data_found or q_input_names is None:
             return super().quantize()
 

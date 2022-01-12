@@ -299,7 +299,7 @@ common::Status IExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>&
   return g_host->IExecutionProvider__Compile(this, fused_nodes_and_graphs, node_compute_funcs);
 }
 
-int IExecutionProvider::GenerateMetaDefId(const onnxruntime::GraphViewer& graph_viewer, uint64_t& model_hash) const {
+int IExecutionProvider::GenerateMetaDefId(const onnxruntime::GraphViewer& graph_viewer, HashValue& model_hash) const {
   return g_host->IExecutionProvider__GenerateMetaDefId(this, graph_viewer, model_hash);
 }
 
@@ -314,6 +314,20 @@ std::unique_ptr<IAllocator> CreateCUDAAllocator(int16_t device_id, const char* n
 
 std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const char* name) {
   return g_host->CreateCUDAPinnedAllocator(device_id, name);
+}
+
+std::unique_ptr<IDataTransfer> CreateGPUDataTransfer(void* stream) {
+  return g_host->CreateGPUDataTransfer(stream);
+}
+#endif
+
+#ifdef USE_MIGRAPHX
+std::unique_ptr<IAllocator> CreateHIPAllocator(int16_t device_id, const char* name) {
+  return g_host->CreateHIPAllocator(device_id, name);
+}
+
+std::unique_ptr<IAllocator> CreateHIPPinnedAllocator(int16_t device_id, const char* name) {
+  return g_host->CreateHIPPinnedAllocator(device_id, name);
 }
 
 std::unique_ptr<IDataTransfer> CreateGPUDataTransfer(void* stream) {

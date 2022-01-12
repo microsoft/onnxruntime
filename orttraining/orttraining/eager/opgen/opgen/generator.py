@@ -254,6 +254,16 @@ class ORTGen:
     onnx_op.eval(ctx)
     ctx.prepare_outputs()
 
+    # Fetch the ORT invoker from an at::Tensor.device()
+    # FIXME: find the first at::Tensor param anywhere in the signature
+    # instead of simply the first parameter?
+    first_param = cpp_func.parameters[0].member
+    # Check if the first parameter is tensorlist and if yes it's size should be > 0
+    if first_param.parameter_type.desugar().identifier_tokens[0].value == 'TensorList':
+      writer.write('assert(')
+      writer.write(first_param.identifier.value)
+      writer.writeline('.size()>0);')
+
     # generate the type check
     need_type_check = False
     if not self._custom_ops:
@@ -281,10 +291,6 @@ class ORTGen:
       writer.pop_indent()
       writer.writeline('}')      
 
-    # Fetch the ORT invoker from an at::Tensor.device()
-    # FIXME: find the first at::Tensor param anywhere in the signature
-    # instead of simply the first parameter?
-    first_param = cpp_func.parameters[0].member
     if not isinstance(
       first_param.parameter_type.desugar(),
       ast.ConcreteType) or 'Tensor' not in first_param.parameter_type.desugar().identifier_tokens[0].value:
@@ -294,6 +300,8 @@ class ORTGen:
 
     writer.write('auto& invoker = GetORTInvoker(')
     writer.write(first_param.identifier.value)
+    if first_param.parameter_type.desugar().identifier_tokens[0].value == 'TensorList':
+      writer.write('[0]')
     writer.writeline('.device());')
     writer.writeline()
 
@@ -348,6 +356,12 @@ class ORTGen:
       writer.write(f'std::vector<OrtValue> {onnx_op.outputs}')
       writer.writeline(f'({onnx_op.outputs.count});')
 
+      if in_place_param:
+        assert(onnx_op.outputs.count == 1)
+        # TODO: This assumes that the first output corresponds to the first input.
+        # This may not work for more complicated ops.
+        writer.writeline(f'{onnx_op.outputs}[0] = ort_input_{onnx_op.inputs[0]};')
+
       # Perform the invocation
       writer.writeline()
       if onnx_op_index == 0:
@@ -396,7 +410,10 @@ class ORTGen:
         writer.writeline(f'{first_param.identifier.value}.options());')
       else:
         writer.writeline(f'std::move({return_outputs}[0]),')
-        writer.writeline(f'{first_param.identifier.value}.options());')
+        writer.write(first_param.identifier.value)
+        if first_param.parameter_type.desugar().identifier_tokens[0].value == 'TensorList':
+          writer.write('[0]')
+        writer.writeline('.options());')
       writer.pop_indent()
       return
 
@@ -404,7 +421,6 @@ class ORTGen:
       raise Exception(f'"{cpp_func.torch_func.torch_schema}" ' +
         'has alias info on its return type but no associated parameter')
 
-    writer.writeline(f'copy(invoker, {return_outputs}[0], ort_input_{in_place_param.identifier.value});')
     writer.writeline(f'return {in_place_param.identifier.value};')
 
   def _write_function_registrations(

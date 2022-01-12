@@ -142,7 +142,7 @@ Loop::Info::Info(const onnxruntime::Node& node, const GraphViewer& subgraph_in)
   const auto& node_input_types = node.InputDefs();
   loop_carried_vars_types.reserve(num_subgraph_inputs);
   for (int i = 0; i < num_loop_carried_vars; ++i) {
-    loop_carried_vars_types.push_back(node_input_types[i + 2]->TypeAsProto());
+    loop_carried_vars_types.push_back(node_input_types[static_cast<size_t>(i) + 2]->TypeAsProto());
   }
 
   auto& subgraph_inputs = subgraph.GetInputs();
@@ -280,7 +280,7 @@ common::Status Loop::SetupSubgraphExecutionInfo(const SessionState& session_stat
   // the Loop inputs are matched to subgraph feeds based on order.
   // we first need the names of the Loop inputs to determine what device they are available on
   std::vector<std::string> feed_names;
-  feed_names.reserve(info_->num_subgraph_inputs + info_->num_implicit_inputs);
+  feed_names.reserve(static_cast<size_t>(info_->num_subgraph_inputs) + info_->num_implicit_inputs);
 
   // iter_num and cond subgraph inputs - created by the LoopImpl::Initialize so the name doesn't matter
   // as we skip them when we call FindDevicesForValues, and default them to always being on CPU.
@@ -291,7 +291,7 @@ common::Status Loop::SetupSubgraphExecutionInfo(const SessionState& session_stat
   const auto& loop_inputs = node.InputDefs();
   for (int i = 0; i < info_->num_loop_carried_vars; ++i) {
     // + 2 to skip 'M' and 'cond' Loop inputs
-    feed_names.push_back(loop_inputs[i + 2]->Name());
+    feed_names.push_back(loop_inputs[static_cast<size_t>(i) + 2]->Name());
   }
 
   for (auto& entry : node.ImplicitInputDefs()) {
@@ -306,7 +306,7 @@ common::Status Loop::SetupSubgraphExecutionInfo(const SessionState& session_stat
 
   // now update the feed names to use the subgraph input names for the loop carried vars so that we can determine
   // what device the subgraph needs them on
-  for (int i = 0; i < info_->num_loop_carried_vars; ++i) {
+  for (ptrdiff_t i = 0; i < info_->num_loop_carried_vars; ++i) {
     // +2 for both to skip the iter_num and cond values
     feed_names[i + 2] = info_->subgraph_input_names[i + 2];
   }
@@ -329,7 +329,7 @@ common::Status Loop::SetupSubgraphExecutionInfo(const SessionState& session_stat
 
   // Loop state variables need to be where we can feed them in to the next iteration, so set the fetch location
   // to match the feed location.
-  for (int i = 0; i < info_->num_loop_carried_vars; ++i) {
+  for (ptrdiff_t i = 0; i < info_->num_loop_carried_vars; ++i) {
     // +2 for both to skip the iter_num and cond input values
     const auto& alloc_info = utils::FindMemoryInfoForValue(session_state, loop_inputs[i + 2]->Name());
     fetch_locations.push_back(&alloc_info);
@@ -421,13 +421,13 @@ Status LoopImpl::Initialize() {
   iter_num_mlvalue_ = MakeScalarMLValue<int64_t>(cpu_allocator, 0, iter_num_rank != 0);
   condition_mlvalue_ = MakeScalarMLValue<bool>(cpu_allocator, condition_, condition_rank != 0);
 
-  loop_output_tensors_.resize(info_.num_outputs - info_.num_loop_carried_vars);
+  loop_output_tensors_.resize(static_cast<size_t>(info_.num_outputs) - info_.num_loop_carried_vars);
 
   return status;
 }
 
 void LoopImpl::CreateInitialFeeds(std::vector<OrtValue>& feeds) {
-  feeds.reserve(info_.num_subgraph_inputs + info_.num_implicit_inputs);
+  feeds.reserve(static_cast<size_t>(info_.num_subgraph_inputs) + info_.num_implicit_inputs);
 
   // This ordering is the same as used in SetupSubgraphExecutionInfo
   feeds.push_back(iter_num_mlvalue_);
@@ -450,12 +450,12 @@ void LoopImpl::SaveOutputsAndUpdateFeeds(const std::vector<OrtValue>& last_outpu
   // next_input: iter_num, cond, loop_vars. iter_num is re-used
 
   // simple copy for cond and loop carried vars. start at 1 to skip iter_num in input
-  for (int i = 1; i < info_.num_subgraph_inputs; ++i) {
+  for (ptrdiff_t i = 1; i < info_.num_subgraph_inputs; ++i) {
     next_inputs[i] = last_outputs[i - 1];
   }
 
   // save loop outputs as we have to concatenate at the end
-  for (int j = info_.num_loop_carried_vars; j < info_.num_outputs; ++j) {
+  for (ptrdiff_t j = info_.num_loop_carried_vars; j < info_.num_outputs; ++j) {
     ORT_ENFORCE(last_outputs[j + 1].IsTensor(), "All scan outputs MUST be tensors");
     loop_output_tensors_[j - info_.num_loop_carried_vars].push_back(last_outputs[j + 1]);  // skip 'cond' in output
   }
@@ -570,13 +570,13 @@ Status LoopImpl::Execute(const FeedsFetchesManager& ffm) {
   if (iter_num_value != 0) {
     for (int i = 0; i < info_.num_loop_carried_vars; ++i) {
       // need to allocate Loop output and copy OrtValue from fetches
-      ORT_RETURN_IF_ERROR(copy_mlvalue_to_output(fetches[i + 1], i, iter_num_value, *info_.loop_carried_vars_types[i]));  // skip cond
+      ORT_RETURN_IF_ERROR(copy_mlvalue_to_output(fetches[static_cast<ptrdiff_t>(i) + 1], i, iter_num_value, *info_.loop_carried_vars_types[static_cast<ptrdiff_t>(i)]));  // skip cond
     }
 
     for (int i = info_.num_loop_carried_vars; i < info_.num_outputs; ++i) {
       // add last output
-      auto& per_iteration_outputs = loop_output_tensors_[i - info_.num_loop_carried_vars];
-      per_iteration_outputs.push_back(fetches[i + 1]);  // skip cond
+      auto& per_iteration_outputs = loop_output_tensors_[static_cast<ptrdiff_t>(i) - info_.num_loop_carried_vars];
+      per_iteration_outputs.push_back(fetches[static_cast<ptrdiff_t>(i) + 1]);  // skip cond
 
       ORT_RETURN_IF_ERROR(ConcatenateLoopOutput(per_iteration_outputs, i));
     }
@@ -584,7 +584,7 @@ Status LoopImpl::Execute(const FeedsFetchesManager& ffm) {
     // no iterations.
     // copy input loop carried vars to output.
     for (int i = 0; i < info_.num_loop_carried_vars; ++i) {
-      ORT_RETURN_IF_ERROR(copy_mlvalue_to_output(feeds[i + 2], i, iter_num_value, *info_.loop_carried_vars_types[i]));  // skip iter# and cond
+      ORT_RETURN_IF_ERROR(copy_mlvalue_to_output(feeds[static_cast<ptrdiff_t>(i) + 2], i, iter_num_value, *info_.loop_carried_vars_types[i]));  // skip iter# and cond
     }
 
     // create empty outputs for loop outputs using the subgraph output shapes for the rank
@@ -592,11 +592,11 @@ Status LoopImpl::Execute(const FeedsFetchesManager& ffm) {
 
     for (int i = info_.num_loop_carried_vars; i < info_.num_outputs; ++i) {
       // get shape from subgraph output if possible to attempt to have the correct rank
-      auto* graph_output = graph_outputs.at(i + 1);  // + 1 as first subgraph output is condition value
+      auto* graph_output = graph_outputs.at(static_cast<ptrdiff_t>(i) + 1);  // + 1 as first subgraph output is condition value
       auto* graph_output_shape = graph_output->Shape();
 
       std::vector<int64_t> output_dims;
-      output_dims.reserve((graph_output_shape ? graph_output_shape->dim_size() : 0) + 1);
+      output_dims.reserve(static_cast<ptrdiff_t>(graph_output_shape ? graph_output_shape->dim_size() : 0) + 1);
       output_dims.push_back(0);  // num iterations is first dim
 
       if (graph_output_shape) {

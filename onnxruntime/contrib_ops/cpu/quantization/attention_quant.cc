@@ -87,7 +87,7 @@ Status QAttention<T>::PrePack(const Tensor& weights, int input_idx, AllocatorPtr
     return Status::OK();
   }
 
-  const size_t loop_len = 3 * num_heads_;
+  const size_t loop_len = 3 * static_cast<size_t>(num_heads_);
   size_t packed_weights_data_size = packed_weights_size_ * loop_len;
   auto* packed_weights_data = static_cast<uint8_t*>(alloc->Alloc(packed_weights_data_size));
 
