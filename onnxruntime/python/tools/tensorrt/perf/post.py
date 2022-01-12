@@ -25,6 +25,7 @@ latency = 'latency'
 status = 'status'
 latency_over_time = 'latency_over_time'
 specs = 'specs' 
+session = 'session'
 
 time_string_format = '%Y-%m-%d %H:%M:%S'
 
@@ -97,11 +98,19 @@ def get_specs(specs, branch, commit_id):
     specs = specs.append({'.': 7, 'Spec': 'CommitId', 'Version' : commit_id}, ignore_index=True)
     return specs
 
+def get_session(session, model_group):
+    session_columns = session.keys()
+    session_db_columns = [model_title] + ort_provider_list
+    session = adjust_columns(session, session_columns, session_db_columns, model_group)
+    return session
+
 def write_table(ingest_client, table, table_name, trt_version, upload_time):
     if table.empty:
         return
-    table = table.assign(TrtVersion=trt_version) # add TrtVersion
-    table = table.assign(UploadTime=upload_time) # add UploadTime
+    #table = table.assign(TrtVersion=trt_version) # add TrtVersion
+    #table = table.assign(UploadTime=upload_time) # add UploadTime
+    table = table.assign(TrtVersion='8.2.1.8') # add TrtVersion
+    table = table.assign(UploadTime='2022-01-12T11:45:03Z') # add UploadTime
     ingestion_props = IngestionProperties(
       database=database,
       table=table_name,
@@ -130,7 +139,7 @@ def main():
         folders = os.listdir(result_file)
         os.chdir(result_file)
 
-        tables = [fail, memory, latency, status, latency_over_time, specs]
+        tables = [fail, memory, latency, status, latency_over_time, specs, session]
         table_results = {}
         for table_name in tables:
             table_results[table_name] = pd.DataFrame()
@@ -140,6 +149,8 @@ def main():
             csv_filenames = os.listdir()
             for csv in csv_filenames:
                 table = parse_csv(csv)
+                if session in csv: 
+                    table_results[session] = table_results[session].append(get_session(table, model_group), ignore_index=True)
                 if specs in csv: 
                     table_results[specs] = table_results[specs].append(get_specs(table, args.branch, args.commit_hash), ignore_index=True)
                 if fail in csv:
