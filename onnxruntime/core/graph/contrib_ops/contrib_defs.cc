@@ -370,7 +370,6 @@ void sparseCompatibleMatmulShapeInference(
   updateOutputShape(ctx, 0, resultShape, default_tensor_type);
 }
 
-
 bool ParseScalar(const TensorProto* initializer, int& value) {
   std::vector<int32_t> parsed_data;
   if (initializer->data_type() == TensorProto::INT32) {
@@ -521,6 +520,23 @@ ONNX_MS_OPERATOR_SET_SCHEMA(BiasGelu, 1,
                                     {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
                                     "Constrain input and output types to float tensors.")
                                 .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));
+
+constexpr const char* AddRelu_ver1_doc =
+    R"DOC(Add Relu.
+It's an extension of Relu. It takes the sum of input A and input B as the input of Relu activation. )DOC";
+ONNX_CONTRIB_OPERATOR_SCHEMA(AddRelu)
+    .SetDomain(kOnnxDomain)
+    .SinceVersion(7)
+    .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+    .SetDoc(AddRelu_ver1_doc)
+    .Input(0, "A", "The normal input data.", "T")
+    .Input(1, "B", "The normal input data.", "T")
+    .Output(0, "C", "The output.", "T")
+    .TypeConstraint(
+        "T",
+        {"tensor(float)", "tensor(float)", "tensor(float)"},
+        "Constrain input and output types to float tensors.")
+    .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
 
 // Used to be ONNX 1.7 Inverse(12)
 // Comment out docs not to increase the binary size

@@ -61,6 +61,7 @@ namespace opencl {
           .TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),       \
       CLASS_NAME)
 
+ELEMENT_WISE_OP_IMPL(AddRelu, "(OUT)=(X)+(Y);(OUT)=max((OUT),0.0f)");
 ELEMENT_WISE_OP_IMPL(Add, "(OUT)=(X)+(Y)");
 ELEMENT_WISE_OP_IMPL(Sub, "(OUT)=(X)-(Y)");
 ELEMENT_WISE_OP_IMPL(Mul, "(OUT)=(X)*(Y)");
