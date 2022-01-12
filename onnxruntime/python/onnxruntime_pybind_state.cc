@@ -202,15 +202,15 @@ py::object GetPyObjectFromSparseTensor(size_t pos, const OrtValue& ort_value, co
     if (!data_transfer_manager) {
       LOGS(logger, WARNING) << "Returned OrtValue with sparse tensor at position: " << pos << " is on GPU but no data_transfer_manager provided."
                             << " Returned it will have its data on GPU, you can copy it using numpy_array_to_cpu()";
-      py_sparse_tensor.reset(new PySparseTensor(ort_value));
+      py_sparse_tensor = std::make_unique<PySparseTensor>(ort_value);
     } else {
       auto dst_sparse_tensor = std::make_unique<SparseTensor>(src_sparse_tensor.DataType(), src_sparse_tensor.DenseShape(), GetAllocator());
       auto status = src_sparse_tensor.Copy(*data_transfer_manager, 0, *dst_sparse_tensor);
       OrtPybindThrowIfError(status);
-      py_sparse_tensor.reset(new PySparseTensor(std::move(dst_sparse_tensor)));
+      py_sparse_tensor = std::make_unique<PySparseTensor>(std::move(dst_sparse_tensor));
     }
   } else {
-    py_sparse_tensor.reset(new PySparseTensor(ort_value));
+    py_sparse_tensor = std::make_unique<PySparseTensor>(ort_value);
   }
 
   py::object result = py::cast(py_sparse_tensor.get(), py::return_value_policy::take_ownership);
@@ -636,6 +636,16 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
     // clear nuphar_settings after use to avoid it being accidentally passed on to next session
     nuphar_settings.clear();
     return p;
+#endif
+  } else if (type == kStvmExecutionProvider) {
+#if USE_STVM
+    onnxruntime::StvmExecutionProviderInfo info{};
+    const auto it = provider_options_map.find(type);
+    if (it != provider_options_map.end()) {
+      info = onnxruntime::StvmExecutionProviderInfo::FromProviderOptions(it->second);
+    }
+
+    return onnxruntime::CreateExecutionProviderFactory_Stvm(info)->CreateProvider();
 #endif
   } else if (type == kVitisAIExecutionProvider) {
 #if USE_VITISAI
@@ -1291,7 +1301,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
           },
           "node shape (assuming the node holds a tensor)");
 
-  py::class_<SessionObjectInitializer>(m, "SessionObjectInitializer");
+  py::class_<SessionObjectInitializer> sessionObjectInitializer(m, "SessionObjectInitializer");
   py::class_<PyInferenceSession>(m, "InferenceSession", R"pbdoc(This is the main class used to run a model.)pbdoc")
       // In Python3, a Python bytes object will be passed to C++ functions that accept std::string or char*
       // without any conversion. So this init method can be used for model file path (string) and model content (bytes)
@@ -1484,61 +1494,9 @@ including arg name, arg type (contains both type and shape).)pbdoc")
       .export_values();
 }
 
-#if defined(USE_MIMALLOC_ARENA_ALLOCATOR)
-static struct {
-  PyMemAllocatorEx mem;
-  PyMemAllocatorEx raw;
-  PyMemAllocatorEx obj;
-} allocators;
-#endif
-
 void CreateInferencePybindStateModule(py::module& m) {
   m.doc() = "pybind11 stateful interface to ONNX runtime";
   RegisterExceptions(m);
-
-#if defined(USE_MIMALLOC_ARENA_ALLOCATOR)
-  PyMemAllocatorEx alloc;
-  alloc.malloc = [](void* ctx, size_t size) {
-    ORT_UNUSED_PARAMETER(ctx);
-    return mi_malloc(size);
-  };
-
-  alloc.calloc = [](void* ctx, size_t nelem, size_t elsize) {
-    ORT_UNUSED_PARAMETER(ctx);
-    return mi_calloc(nelem, elsize);
-  };
-
-  alloc.realloc = [](void* ctx, void* ptr, size_t new_size) {
-    if (mi_is_in_heap_region(ptr)) {
-      return mi_realloc(ptr, new_size);
-    } else {
-      PyMemAllocatorEx* a = (PyMemAllocatorEx*)ctx;
-      return a->realloc(ctx, ptr, new_size);
-    }
-  };
-
-  alloc.free = [](void* ctx, void* ptr) {
-    if (mi_is_in_heap_region(ptr)) {
-      mi_free(ptr);
-    } else {
-      PyMemAllocatorEx* a = (PyMemAllocatorEx*)ctx;
-      a->free(ctx, ptr);
-    }
-  };
-
-  alloc.ctx = &allocators.raw;
-  PyMem_GetAllocator(PYMEM_DOMAIN_RAW, &allocators.raw);
-  PyMem_SetAllocator(PYMEM_DOMAIN_RAW, &alloc);
-
-  alloc.ctx = &allocators.mem;
-  PyMem_GetAllocator(PYMEM_DOMAIN_MEM, &allocators.mem);
-  PyMem_SetAllocator(PYMEM_DOMAIN_MEM, &alloc);
-
-  alloc.ctx = &allocators.obj;
-  PyMem_GetAllocator(PYMEM_DOMAIN_OBJ, &allocators.obj);
-  PyMem_SetAllocator(PYMEM_DOMAIN_OBJ, &alloc);
-
-#endif
 
   // Initialization of the module
   ([]() -> void {
@@ -1554,9 +1512,7 @@ void CreateInferencePybindStateModule(py::module& m) {
   addSparseTensorMethods(m);
   addIoBindingMethods(m);
 
-#if !defined(__APPLE__) && \
-    (!defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS))
-  Ort::SessionOptions tmp_options;
+#if !defined(__APPLE__) && !defined(ORT_MINIMAL_BUILD)
   if (!InitProvidersSharedLibrary()) {
     const logging::Logger& default_logger = logging::LoggingManager::DefaultLogger();
     LOGS(default_logger, WARNING) << "Init provider bridge failed.";
@@ -1586,7 +1542,7 @@ void InitializeEnv() {
     InitArray();
     Env::Default().GetTelemetryProvider().SetLanguageProjection(OrtLanguageProjection::ORT_PROJECTION_PYTHON);
     OrtPybindThrowIfError(Environment::Create(std::make_unique<LoggingManager>(
-                                                  std::unique_ptr<ISink>{new CLogSink{}},
+                                                  std::make_unique<CLogSink>(),
                                                   Severity::kWARNING, false, LoggingManager::InstanceType::Default,
                                                   &SessionObjectInitializer::default_logger_id),
                                               session_env));

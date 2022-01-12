@@ -77,7 +77,7 @@ Status NonZero<T>::Compute(OpKernelContext* context) const {
     // as we iterate the entries, increment the coordinate for the current entry
     // e.g. if shape is {2,2}, we start with 0,0 increment to 0,1 increment to 1,0 and finally 1,1
     auto increment_coordinate = [&coordinate, &coordinate_size, &X_shape]() {
-      for (int64_t idx = coordinate_size - 1; idx >= 0; --idx) {
+      for (Eigen::Index idx = coordinate_size - 1; idx >= 0; --idx) {
         int64_t& cur_coord = coordinate[idx];
         if (cur_coord != X_shape[idx] - 1) {
           ++cur_coord;

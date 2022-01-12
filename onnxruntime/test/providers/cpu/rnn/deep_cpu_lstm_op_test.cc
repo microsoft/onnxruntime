@@ -662,7 +662,7 @@ class LstmOpContext2x1x2x2 {
 
 TEST(LSTMTest, ONNXRuntime_TestLSTMForwardPeepHole) {
   ///////////////Attributes////////////////////////
-  const int seq_len = 2, batch_size = 1;
+  constexpr int seq_len = 2, batch_size = 1;
 
   std::vector<float> input = {-0.455351f, -0.276391f, -0.185934f, -0.269585f};
   std::vector<float> Y_data = {-0.0251062475f, 0.0561261699f, -0.03277518f, 0.05935364f};
@@ -675,7 +675,7 @@ TEST(LSTMTest, ONNXRuntime_TestLSTMForwardPeepHole) {
 }
 
 TEST(LSTMTest, ONNXRuntime_TestLSTMBidirectionalBasic) {
-  const int seq_len = 2, batch_size = 1;
+  constexpr int seq_len = 2, batch_size = 1;
 
   std::vector<float> X_data = {-0.455351f, -0.276391f,
                                -0.185934f, -0.269585f};
@@ -693,7 +693,7 @@ TEST(LSTMTest, ONNXRuntime_TestLSTMBidirectionalBasic) {
 }
 
 TEST(LSTMTest, ONNXRuntime_TestLSTMForwardNoBiasUsePeepholes) {
-  const int seq_len = 2, batch_size = 1;
+  constexpr int seq_len = 2, batch_size = 1;
 
   bool use_bias = false;
   bool use_peepholes = true;
@@ -711,7 +711,7 @@ TEST(LSTMTest, ONNXRuntime_TestLSTMForwardNoBiasUsePeepholes) {
 }
 
 TEST(LSTMTest, ONNXRuntime_TestLSTMForwardInputForget) {
-  const int seq_len = 2, batch_size = 1;
+  constexpr int seq_len = 2, batch_size = 1;
 
   bool use_bias = true;
   bool use_peepholes = true;
@@ -732,7 +732,7 @@ TEST(LSTMTest, ONNXRuntime_TestLSTMForwardInputForget) {
 }
 
 TEST(LSTMTest, ONNXRuntime_TestLSTMForwardClip) {
-  const int seq_len = 2, batch_size = 1;
+  constexpr int seq_len = 2, batch_size = 1;
 
   bool use_bias = true;
   bool use_peepholes = true;
@@ -751,7 +751,7 @@ TEST(LSTMTest, ONNXRuntime_TestLSTMForwardClip) {
 }
 
 TEST(LSTMTest, ONNXRuntime_TestLSTMBackward) {
-  const int seq_len = 2, batch_size = 1;
+  constexpr int seq_len = 2, batch_size = 1;
 
   std::vector<float> X_data = {-0.455351f, -0.276391f, -0.185934f, -0.269585f};
 
@@ -765,7 +765,7 @@ TEST(LSTMTest, ONNXRuntime_TestLSTMBackward) {
 }
 
 TEST(LSTMTest, ONNXRuntime_TestLSTMBackward_gpu) {
-  const int seq_len = 2, batch_size = 1;
+  constexpr int seq_len = 2, batch_size = 1;
 
   std::vector<float> X_data = {-0.455351f, -0.276391f, -0.185934f, -0.269585f};
 
@@ -780,7 +780,7 @@ TEST(LSTMTest, ONNXRuntime_TestLSTMBackward_gpu) {
 }
 
 TEST(LSTMTest, ONNXRuntime_TestLSTMForwardHiddenState) {
-  const int seq_len = 2, batch_size = 1;
+  constexpr int seq_len = 2, batch_size = 1;
 
   bool use_bias = true;
   bool use_peepholes = false;
@@ -799,7 +799,7 @@ TEST(LSTMTest, ONNXRuntime_TestLSTMForwardHiddenState) {
 }
 
 TEST(LSTMTest, ONNXRuntime_TestLSTMForwardCellState) {
-  const int seq_len = 2, batch_size = 1;
+  constexpr int seq_len = 2, batch_size = 1;
 
   bool use_bias = true;
   bool use_peepholes = false;
@@ -819,7 +819,7 @@ TEST(LSTMTest, ONNXRuntime_TestLSTMForwardCellState) {
 }
 
 TEST(LSTMTest, ONNXRuntime_TestLSTMActivation) {
-  const int seq_len = 2, batch_size = 1;
+  constexpr int seq_len = 2, batch_size = 1;
 
   std::vector<std::string> activations = {"tanh", "sigmoid", "tanh"};
 
@@ -844,10 +844,10 @@ TEST(LSTMTest, ONNXRuntime_TestLSTMActivation) {
 // The reallocation doesn't apply any more so this mainly tests larger batches with non-default activations.
 TEST(LSTMTest, ONNXRuntime_TestLSTMBatchReallocation) {
   ///////////////Attributes////////////////////////
-  const int seq_len = 2;
+  constexpr int seq_len = 2;
   int batch_size = 1;
-  bool use_bias = true;
-  bool use_peepholes = false;
+  constexpr bool use_bias = true;
+  constexpr bool use_peepholes = false;
 
   std::vector<std::string> activations = {"tanh", "sigmoid", "tanh"};
 
@@ -903,7 +903,7 @@ TEST(LSTMTest, ONNXRuntime_TestLSTMBatchReallocation) {
 // Most of these aren't relevant anymore as we don't re-use buffers given Compute is stateless.
 // It does test a batch > 1 with bidirectional output and custom activations though.
 TEST(LSTMTest, ONNXRuntime_TestLSTMOutputWrite) {
-  const int seq_len = 2;
+  constexpr int seq_len = 2;
   int batch_size = 1;
   std::vector<std::string> activations = {"tanh", "sigmoid", "tanh", "tanh", "sigmoid", "tanh"};
 
@@ -975,7 +975,7 @@ TEST(LSTMTest, ONNXRuntime_TestLSTMOutputWrite) {
 }
 
 TEST(LSTMTest, ONNXRuntime_TestLSTMSequenceLengthAllZeros) {
-  const int seq_len = 2;
+  constexpr int seq_len = 2;
   int batch_size = 2;
   std::vector<std::string> activations = {"tanh", "sigmoid", "tanh", "tanh", "sigmoid", "tanh"};
 
@@ -1019,7 +1019,7 @@ TEST(LSTMTest, ONNXRuntime_TestLSTMSequenceLengthAllZeros) {
 }
 
 TEST(LSTMTest, ONNXRuntime_TestLSTMSequenceLengthPartialZeros) {
-  const int seq_len = 2;
+  constexpr int seq_len = 2;
   int batch_size = 2;
   std::vector<std::string> activations = {"tanh", "sigmoid", "tanh", "tanh", "sigmoid", "tanh"};
 
@@ -1065,8 +1065,8 @@ TEST(LSTMTest, ONNXRuntime_TestLSTMSequenceLengthPartialZeros) {
 }
 
 TEST(LSTMTest, ONNXRuntime_TestLSTMSequenceLengthShorterThanInputSequenceLength) {
-  const int seq_len = 2;
-  const int batch_size = 1;
+  constexpr int seq_len = 2;
+  constexpr int batch_size = 1;
 
   std::vector<float> X_data = {-0.455351f, -0.276391f,
                                -0.185934f, -0.269585f};
@@ -1095,8 +1095,8 @@ TEST(LSTMTest, ONNXRuntime_TestLSTMSequenceLengthShorterThanInputSequenceLength)
 }
 
 TEST(LSTMTest, ONNXRuntime_TestLSTMSequenceLengthShorterThanInputSequenceLengthNoP) {
-  const int seq_len = 2;
-  const int batch_size = 1;
+  constexpr int seq_len = 2;
+  constexpr int batch_size = 1;
 
   std::vector<float> X_data = {-0.455351f, -0.276391f,
                                -0.185934f, -0.269585f};
@@ -1126,7 +1126,7 @@ TEST(LSTMTest, ONNXRuntime_TestLSTMSequenceLengthShorterThanInputSequenceLengthN
 }
 
 TEST(LSTMTest, ONNXRuntime_TestLSTMShorterSeqInMiddle) {
-  const int seq_len = 2;
+  constexpr int seq_len = 2;
   int batch_size = 3;
   std::vector<std::string> activations = {"sigmoid", "tanh", "tanh", "sigmoid", "tanh", "tanh"};
 
@@ -1166,7 +1166,7 @@ TEST(LSTMTest, ONNXRuntime_TestLSTMShorterSeqInMiddle) {
 }
 
 TEST(LSTMTest, ONNXRuntime_TestLSTMZeroSeqInMiddle) {
-  const int seq_len = 2;
+  constexpr int seq_len = 2;
   int batch_size = 4;
   std::vector<std::string> activations = {"sigmoid", "tanh", "tanh", "sigmoid", "tanh", "tanh"};
 

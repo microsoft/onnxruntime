@@ -230,13 +230,13 @@ class PlannerTest : public ::testing::Test {
     ASSERT_NE(ep, nullptr);
     auto info = std::make_unique<OpKernelInfo>(
         *p_node, kernel_def, *ep, state_->GetInitializedTensors(), state_->GetOrtValueNameIdxMap(),
-        state_->GetFuncMgr(), state_->GetDataTransferMgr());
+        state_->GetDataTransferMgr());
 
     op_kernel_infos_.push_back(std::move(info));
     if (!KernelRegistry::HasImplementationOf(*reg, *p_node, onnxruntime::kCpuExecutionProvider)) {
       auto st = reg->Register(
           KernelCreateInfo(std::make_unique<KernelDef>(kernel_def),
-                           [](const OpKernelInfo& info) -> OpKernel* { return new DummyOpKernel(info); }));
+                           [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status { out = std::make_unique<DummyOpKernel>(info); return Status::OK(); }));
       ORT_ENFORCE(st.IsOK(), st.ErrorMessage());
     }
 
@@ -271,7 +271,7 @@ class PlannerTest : public ::testing::Test {
 
     // CreatePlan is called inside FinalizeSessionState and usually the initializers are removed following that.
     // Leave initializers so we can duplicate the call to CreatePlan from here to validate.
-    const bool remove_initializers = false;
+    constexpr bool remove_initializers = false;
     status = state_->FinalizeSessionState(ORT_TSTR(""), kernel_registry_manager, {}, nullptr, remove_initializers);
 
     EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
@@ -575,7 +575,7 @@ TEST_F(PlannerTest, LocationPlanningForPassThroughExplicitAndImplicitSubgraphInp
       /*  Inputs: iter_num, cond_in, loop carried state variables.
          iter_num_in    cond_in     [loop_state_var]
            (unused)        |               |
-                       [Identity]         [If]  
+                       [Identity]         [If]
                            |               |
                         cond_out     loop_state_var_out
     */

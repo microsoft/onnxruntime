@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/cpu/math/quantize_linear_matmul.h"
+#include "core/providers/cpu/quantization/quantize_linear_matmul.h"
 #include "core/mlas/inc/mlas.h"
 
 #include "gtest/gtest.h"
@@ -86,7 +86,6 @@ TEST(QuantizeLinearMatmulOpTest, QLinearMatMul3D_U8S8) {
   test.Run();
 }
 
-#if defined(MLAS_TARGET_ARM_ANY)
 TEST(QuantizeLinearMatmulOpTest, QLinearMatMul3D_S8S8) {
   OpTester test("QLinearMatMul", 10);
   test.AddInput<int8_t>("T1", {2, 2, 4},
@@ -124,7 +123,6 @@ TEST(QuantizeLinearMatmulOpTest, QLinearMatMul3D_S8S8) {
 
   test.Run();
 }
-#endif
 
 TEST(QuantizeLinearMatmulOpTest, QLinearMatMul2D_U8U8) {
   auto run_test = [](bool only_t1_not_initializer) {
@@ -196,7 +194,6 @@ TEST(QuantizeLinearMatmulOpTest, QLinearMatMul2D_U8S8) {
   run_test(true);
 }
 
-#if defined(MLAS_TARGET_ARM_ANY)
 TEST(QuantizeLinearMatmulOpTest, QLinearMatMul2D_S8S8) {
   auto run_test = [](bool only_t1_not_initializer) {
     OpTester test("QLinearMatMul", 10);
@@ -231,7 +228,6 @@ TEST(QuantizeLinearMatmulOpTest, QLinearMatMul2D_S8S8) {
   // NNAPI will require all inputs except T1 to be initializers
   run_test(true);
 }
-#endif
 
 static void QLinearMatMul2DTest(bool only_t1_not_initializer) {
   // Test non-empty inputs
@@ -302,7 +298,6 @@ TEST(QuantizeLinearMatmulOpTest, PerColumn_2D) {
   test.Run();
 }
 
-#if defined(MLAS_TARGET_ARM_ANY)
 TEST(QuantizeLinearMatmulOpTest, PerColumn_2D_S8S8) {
   OpTester test("QLinearMatMul", 10);
   test.AddInput<int8_t>("a",
@@ -332,7 +327,6 @@ TEST(QuantizeLinearMatmulOpTest, PerColumn_2D_S8S8) {
 
   test.Run();
 }
-#endif
 
 TEST(QuantizeLinearMatmulOpTest, PerColumn_ND) {
   OpTester test("QLinearMatMul", 10);
@@ -377,7 +371,6 @@ TEST(QuantizeLinearMatmulOpTest, PerColumn_ND) {
   test.Run();
 }
 
-#if defined(MLAS_TARGET_ARM_ANY)
 TEST(QuantizeLinearMatmulOpTest, PerColumn_ND_S8S8) {
   OpTester test("QLinearMatMul", 10);
   test.AddInput<int8_t>("a",
@@ -420,11 +413,10 @@ TEST(QuantizeLinearMatmulOpTest, PerColumn_ND_S8S8) {
 
   test.Run();
 }
-#endif
 
 /**
- * @brief Extend QLinearMatMul for verifying prepacking behavior 
-*/
+ * @brief Extend QLinearMatMul for verifying prepacking behavior
+ */
 struct PrePackTestOp {
   // TODO!! use template and macro to extract a common utility out of this
   //   for grey box kernel testing by extending kernel classes.
@@ -495,7 +487,7 @@ TEST(QuantizeLinearMatmulOpTest, QLinearMatMulPrePack) {
   std::vector<ONNX_NAMESPACE::OpSchema> schemas{PrePackTestOp::OpSchema()};
   Status status;
   ASSERT_TRUE((status = registry->RegisterOpSet(schemas, PrePackTestOp::OpDomain, 10, 11)).IsOK()) << status;
-  KernelCreateFn kernel_create_fn = [](const OpKernelInfo& info) { return new typename PrePackTestOp::QLinearMatMulPrePackT(info); };
+  KernelCreateFn kernel_create_fn = [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) { out = std::make_unique<typename PrePackTestOp::QLinearMatMulPrePackT>(info); return Status::OK(); };
   auto kernel_def = PrePackTestOp::KernelDef();
   ASSERT_TRUE((status = registry->RegisterCustomKernel(kernel_def, kernel_create_fn)).IsOK()) << status;
 

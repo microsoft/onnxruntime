@@ -41,7 +41,7 @@ void TraverseFormalParametersWithTypeProto(const Node& node,
     if (param_filter_fn(param)) {
       // get type of any corresponding actual parameter, if present
       for (int i = 0, end = node.InputArgCount()[formal_index]; i < end; ++i) {
-        const NodeArg* arg = node.InputDefs()[actual_index + i];
+        const NodeArg* arg = node.InputDefs()[static_cast<size_t>(actual_index) + i];
         if (!arg->Exists()) continue;  // a missing optional argument
         if (!traverse_fn(param, arg->TypeAsProto())) return;
       }
@@ -206,7 +206,7 @@ Status KernelRegistry::TryCreateKernel(const Node& node,
                                        const IExecutionProvider& execution_provider,
                                        const std::unordered_map<int, OrtValue>& constant_initialized_tensors,
                                        const OrtValueNameIdxMap& ort_value_name_idx_map,
-                                       const FuncManager& funcs_mgr,
+                                       FuncManager& funcs_mgr,
                                        const DataTransferManager& data_transfer_mgr,
                                        /*out*/ std::unique_ptr<OpKernel>& op_kernel) const {
   const KernelCreateInfo* kernel_create_info = nullptr;
@@ -216,10 +216,8 @@ Status KernelRegistry::TryCreateKernel(const Node& node,
                            execution_provider,
                            constant_initialized_tensors,
                            ort_value_name_idx_map,
-                           funcs_mgr,
                            data_transfer_mgr);
-  op_kernel.reset(kernel_create_info->kernel_create_func(kernel_info));
-  return Status::OK();
+  return kernel_create_info->kernel_create_func(funcs_mgr, kernel_info, op_kernel);
 }
 
 static std::string ToString(const std::vector<std::string>& error_strs) {
@@ -268,7 +266,7 @@ Status KernelRegistry::TryFindKernel(const Node& node,
 }
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
-bool KernelRegistry::TryFindKernelByHash(uint64_t kernel_def_hash, const KernelCreateInfo** out) const {
+bool KernelRegistry::TryFindKernelByHash(HashValue kernel_def_hash, const KernelCreateInfo** out) const {
   const auto hash_lookup_it = kernel_def_hash_lookup_.find(kernel_def_hash);
   if (hash_lookup_it == kernel_def_hash_lookup_.end()) {
     if (out) *out = nullptr;

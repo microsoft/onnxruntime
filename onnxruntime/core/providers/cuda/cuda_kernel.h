@@ -30,7 +30,7 @@ class CudaKernel : public OpKernel {
     if (s.IsOK()) {
       auto err = cudaGetLastError();
       if (err != cudaSuccess) {
-        s = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "CUDA error ", cudaGetErrorName(err), ":", cudaGetErrorString(err));
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "CUDA error ", cudaGetErrorName(err), ":", cudaGetErrorString(err));
       }
     }
 

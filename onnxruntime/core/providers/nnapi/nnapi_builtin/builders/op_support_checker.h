@@ -6,6 +6,9 @@
 #include "helper.h"
 
 namespace onnxruntime {
+
+class NodeUnit;
+
 namespace nnapi {
 
 struct OpSupportCheckParams {
@@ -23,7 +26,8 @@ class IOpSupportChecker {
   virtual ~IOpSupportChecker() = default;
 
   // Check if an operator is supported
-  virtual bool IsOpSupported(const InitializedTensorSet& initializers, const Node& node, const OpSupportCheckParams& params) const = 0;
+  virtual bool IsOpSupported(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
+                             const OpSupportCheckParams& params) const = 0;
 };
 
 // Get the lookup table with IOpSupportChecker delegates for different onnx operators

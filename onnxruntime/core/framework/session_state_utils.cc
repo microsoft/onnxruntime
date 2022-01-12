@@ -44,7 +44,7 @@ static common::Status AllocateBufferUsingDeviceAllocatorFromShapeAndType(const T
   if (shape_size > 0) {
     SafeInt<size_t> mem_size = 0;
 
-    if (!alloc->CalcMemSizeForArray(SafeInt<size_t>(shape_size), type->Size(), &mem_size)) {
+    if (!IAllocator::CalcMemSizeForArray(SafeInt<size_t>(shape_size), type->Size(), &mem_size)) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed memory size calculation");
     }
 
