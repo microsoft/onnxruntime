@@ -141,7 +141,7 @@ def quantize_static(model_input,
                     per_channel=False,
                     reduce_range=False,
                     activation_type=QuantType.QUInt8,
-                    weight_type=QuantType.QUInt8,
+                    weight_type=QuantType.QInt8,
                     nodes_to_quantize=[],
                     nodes_to_exclude=[],
                     optimize_model=True,
@@ -161,8 +161,8 @@ def quantize_static(model_input,
     :param op_types: operators to quantize
     :param per_channel: quantize weights per channel
     :param reduce_range: quantize weights with 7-bits. It may improve the accuracy for some models running on non-VNNI machine, especially for per-channel mode
-    :param activation_type: quantization data type of activation
-    :param weight_type: quantization data type of weight
+    :param activation_type: quantization data type of activation. Please refer to https://onnxruntime.ai/docs/performance/quantization.html for more details on data type selection
+    :param weight_type: quantization data type of weight. Please refer to https://onnxruntime.ai/docs/performance/quantization.html for more details on data type selection
     :param nodes_to_quantize:
         List of nodes names to quantize. When this list is not None only the nodes in this list
         are quantized.
@@ -256,7 +256,7 @@ def quantize_dynamic(model_input: Path,
                      per_channel=False,
                      reduce_range=False,
                      activation_type=QuantType.QUInt8,
-                     weight_type=QuantType.QUInt8,
+                     weight_type=QuantType.QInt8,
                      nodes_to_quantize=[],
                      nodes_to_exclude=[],
                      optimize_model=True,
@@ -270,8 +270,8 @@ def quantize_dynamic(model_input: Path,
     :param per_channel: quantize weights per channel
     :param reduce_range: quantize weights with 7-bits. It may improve the accuracy for some models running on non-VNNI machine, especially for per-channel mode
     :param nbits: number of bits to represent quantized data. Currently only supporting 8-bit types
-    :param activation_type: quantization data type of activation
-    :param weight_type: quantization data type of weight
+    :param activation_type: quantization data type of activation. Please refer to https://onnxruntime.ai/docs/performance/quantization.html for more details on data type selection
+    :param weight_type: quantization data type of weight. Please refer to https://onnxruntime.ai/docs/performance/quantization.html for more details on data type selection
     :param nodes_to_quantize:
         List of nodes names to quantize. When this list is not None only the nodes in this list
         are quantized.

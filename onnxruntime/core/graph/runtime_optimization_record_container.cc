@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#if defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_REPLAY_IN_MINIMAL_BUILD)
 
 #include "core/graph/runtime_optimization_record_container.h"
 
@@ -15,12 +15,36 @@
 namespace onnxruntime {
 
 #if defined(ORT_ENABLE_ADDING_RUNTIME_OPTIMIZATION_RECORDS)
-void RuntimeOptimizationRecordContainer::AddRecord(const std::string& optimizer_key,
+bool RuntimeOptimizationRecordContainer::RecordExists(const std::string& optimizer_name,
+                                                      const std::string& action_id,
+                                                      const NodesToOptimizeIndices& nodes_to_optimize_indices) const {
+  const auto it = optimizer_name_to_records_.find(optimizer_name);
+  if (it == optimizer_name_to_records_.end()) return false;
+
+  const auto& records = it->second;
+  return std::find_if(records.begin(), records.end(),
+                      [&](const RuntimeOptimizationRecord& record) {
+                        return record.action_id == action_id &&
+                               record.nodes_to_optimize_indices == nodes_to_optimize_indices;
+                      }) != records.end();
+}
+
+void RuntimeOptimizationRecordContainer::AddRecord(const std::string& optimizer_name,
                                                    RuntimeOptimizationRecord&& runtime_optimization_record) {
-  auto& optimizations = sat_to_optimizations_[optimizer_key];
+  auto& optimizations = optimizer_name_to_records_[optimizer_name];
   optimizations.emplace_back(std::move(runtime_optimization_record));
 }
 #endif
+
+std::vector<RuntimeOptimizationRecord> RuntimeOptimizationRecordContainer::RemoveRecordsForOptimizer(
+    const std::string& optimizer_name) {
+  std::vector<RuntimeOptimizationRecord> records{};
+  if (auto it = optimizer_name_to_records_.find(optimizer_name); it != optimizer_name_to_records_.end()) {
+    records = std::move(it->second);
+    optimizer_name_to_records_.erase(it);
+  }
+  return records;
+}
 
 static Status SaveRuntimeOptimizationRecordToOrtFormat(
     flatbuffers::FlatBufferBuilder& builder,
@@ -64,8 +88,8 @@ Status RuntimeOptimizationRecordContainer::SaveToOrtFormat(
     flatbuffers::FlatBufferBuilder& builder,
     flatbuffers::Offset<FbsRuntimeOptimizationRecordContainer>& fbs_runtime_optimizations) const {
   std::vector<flatbuffers::Offset<fbs::RuntimeOptimizationRecordContainerEntry>> fbs_runtime_optimizations_vector;
-  fbs_runtime_optimizations_vector.reserve(sat_to_optimizations_.size());
-  for (const auto& [optimizer_name, records] : sat_to_optimizations_) {
+  fbs_runtime_optimizations_vector.reserve(optimizer_name_to_records_.size());
+  for (const auto& [optimizer_name, records] : optimizer_name_to_records_) {
     std::vector<flatbuffers::Offset<fbs::RuntimeOptimizationRecord>> fbs_records_vector;
     fbs_records_vector.reserve(records.size());
     for (const auto& record : records) {
@@ -129,7 +153,7 @@ static Status LoadRuntimeOptimizationRecordFromOrtFormat(
 
 Status RuntimeOptimizationRecordContainer::LoadFromOrtFormat(
     const FbsRuntimeOptimizationRecordContainer& fbs_runtime_optimizations) {
-  SatToOptimizationRecordsMap sat_to_optimizations;
+  OptimizerNameToRecordsMap optimizer_name_to_records;
   for (const auto* fbs_runtime_optimization : fbs_runtime_optimizations) {
     if (!fbs_runtime_optimization) continue;
 
@@ -149,14 +173,14 @@ Status RuntimeOptimizationRecordContainer::LoadFromOrtFormat(
       }
     }
 
-    ORT_RETURN_IF_NOT(sat_to_optimizations.emplace(optimizer_name, std::move(records)).second,
+    ORT_RETURN_IF_NOT(optimizer_name_to_records.emplace(optimizer_name, std::move(records)).second,
                       "Attempting to load runtime optimization records for a previously loaded optimizer: ", optimizer_name);
   }
 
-  sat_to_optimizations_ = std::move(sat_to_optimizations);
+  optimizer_name_to_records_ = std::move(optimizer_name_to_records);
   return Status::OK();
 }
 
 }  // namespace onnxruntime
 
-#endif  // defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_REPLAY_IN_MINIMAL_BUILD)

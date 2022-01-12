@@ -175,6 +175,8 @@ test {
 	testLogging {
 		events "passed", "skipped", "failed"
 		showStandardStreams = true
+		showStackTraces = true
+		exceptionFormat = "full"
 	}
 }
 
