@@ -682,12 +682,20 @@ void RegisterTextGenerationSchemas() {
             "body",
             "The GPT-2 subgraph with input_ids, position_ids, attention_mask, past_0, past_1, ... as inputs, and logits, present_0, present_1, ... as output",
             AttributeProto::GRAPH)
+<<<<<<< HEAD
         .Input(0, "input_ids", "The sequence used as a prompt for the generation. Shape is (batch_size, sequence_length)", "I")
+=======
+        .Input(0, "input_ids", "The sequence used as a prompt for the generation. Shape is (batch_size * num_beams, sequence_length)", "I")
+>>>>>>> e7a665c39 (remove attention_mask and change input order)
         .Input(1, "max_length", "The maximum length of the sequence to be generated. Shape is (1)", "I")
         .Input(2, "min_length", "The minimum length below which the score of eos_token_id is set to -Inf. Shape is (1)", "I", OpSchema::Optional)
         .Input(3, "num_beams", "Number of beams for beam search. 1 means no beam search. Shape is (1)", "I")
         .Input(4, "num_return_sequences", "The number of returned sequences in the batch. Shape is (1)", "I")
+<<<<<<< HEAD
         .Input(5, "temperature", "The value used to module the next token probabilities. Accepts value > 0.0. Shape is (1)", "T")
+=======
+        .Input(5, "temperature", "The value used to module the next token probabilities. Accepts value != 0.0. Shape is (1)", "T")
+>>>>>>> e7a665c39 (remove attention_mask and change input order)
         .Input(6, "length_penalty",
               "Exponential penalty to the length. Default value 1.0 means no penalty."
               "Value > 1.0 encourages longer sequences, while values < 1.0 produces shorter sequences."
@@ -695,12 +703,21 @@ void RegisterTextGenerationSchemas() {
               "T", OpSchema::Optional)
         .Input(7, "repetition_penalty", "The parameter for repetition penalty. Default value 1.0 means no penalty. Accepts value > 0.0. Shape is (1)", "T", OpSchema::Optional)
         .Input(8, "vocab_mask", "Mask of vocabulary. Words that masked with 0 are not allowed to be generated, and 1 is allowed. Shape is (vacab_size)", "M", OpSchema::Optional)
+<<<<<<< HEAD
         .Output(0, "sequences", "Word IDs of generated sequences. Shape is (batch_size, num_return_sequences, max_sequence_length)", "I")
         .Output(1, "sequences_scores", "Final beam score of the generated sequences. Shape is (batch_size, num_return_sequences)", "T", OpSchema::Optional)
         .Output(2, "scores",
                 "Processed beam scores for each vocabulary token at each generation step."
                 "Beam scores consisting of log softmax scores for each vocabulary token and sum of log softmax of previously generated tokens in this beam."
                 "Shape is (max_length - sequence_length, batch_size, num_beams, vocab_size)",
+=======
+        .Output(0, "sequences", "Word IDs of generated sequences. Shape is (batch_size * num_return_sequences, max_sequence_length)", "I")
+        .Output(1, "sequences_scores", "Final beam score of the generated sequences. Shape is (batch_size*num_return_sequences)", "T", OpSchema::Optional)
+        .Output(2, "scores",
+                "Processed beam scores for each vocabulary token at each generation step."
+                "Beam scores consisting of log softmax scores for each vocabulary token and sum of log softmax of previously generated tokens in this beam."
+                "Shape is (max_length - input_ids_sequence_length, batch_size*num_beams*num_return_sequences, vocab_size)",
+>>>>>>> e7a665c39 (remove attention_mask and change input order)
                 "T", OpSchema::Optional)
         .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float tensors.")
         .TypeConstraint("I", {"tensor(int32)"}, "Constrain to integer types")
