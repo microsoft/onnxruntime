@@ -100,7 +100,6 @@ public:
 private:
     int batch_beam_size_;
     int vocab_size_;
-    int counter_;
 
     std::vector<ILogitsProcessor<T>*> processor_list_;
 
