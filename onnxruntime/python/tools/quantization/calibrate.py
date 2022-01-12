@@ -654,7 +654,7 @@ def create_calibrator(model,
         return MinMaxCalibrater(model, op_types_to_calibrate, augmented_model_path)
     elif calibrate_method == CalibrationMethod.Entropy:
         # default settings for entropy algorithm
-        num_bins = 128 if 'num_bins' not in extra_options else extra_options['num_bins']
+        num_bins = 2048 if 'num_bins' not in extra_options else extra_options['num_bins']
         num_quantized_bins = 128 if 'num_quantized_bins' not in extra_options else extra_options['num_quantized_bins']
         return EntropyCalibrater(model, op_types_to_calibrate, augmented_model_path, num_bins=num_bins, num_quantized_bins=num_quantized_bins)
     elif calibrate_method == CalibrationMethod.Percentile:
