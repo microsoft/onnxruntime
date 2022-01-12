@@ -81,7 +81,7 @@ jobs:
       targetPath: $(Build.BinariesDirectory)/1a/MinSizeRel/libonnxruntime.so
       artifactName: AndroidMinimalBaselineBinary
 
-  - ${{ if eq(parameters.DoBuildWithDebugInfo, true) }}:
+  - ${{ if parameters.DoBuildWithDebugInfo }}:
     - task: CmdLine@2
       displayName: 1b. Build onnxruntime minimal baseline for Android arm64-v8a with debug info
       inputs:
