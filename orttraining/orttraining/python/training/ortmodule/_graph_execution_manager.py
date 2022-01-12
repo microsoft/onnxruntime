@@ -274,6 +274,11 @@ class GraphExecutionManager(GraphExecutionInterface):
         elif self._device.type == 'cpu':
             providers = ["CPUExecutionProvider"]
             provider_options = [{}]
+        elif self._device.type == 'ort':
+            provider_info = C.get_ort_device_provider_info(self._device.index)
+            assert len(provider_info.keys()) == 1
+            providers = list(provider_info.keys())
+            provider_options = [provider_info[providers[0]]]
 
         session_options = onnxruntime.SessionOptions()
         session_options.enable_mem_pattern = False

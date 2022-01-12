@@ -7,7 +7,7 @@
 
 namespace onnxruntime {
 constexpr const char* MyEP = "MyEP";
-static const OrtDevice::DeviceType MyEPDevice = 11;
+static constexpr OrtDevice::DeviceType MyEPDevice = 11;
 }  // namespace onnxruntime
 
 namespace onnxruntime {

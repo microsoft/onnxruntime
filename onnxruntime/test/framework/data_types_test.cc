@@ -419,7 +419,7 @@ TEST_F(DataTypeTest, VectorMapInt64ToFloatTest) {
 TEST_F(DataTypeTest, BFloat16Test) {
   // Test data type
   {
-    const float sample = 1.0f;
+    constexpr float sample = 1.0f;
     BFloat16 flt16(sample);
     auto int_rep = flt16.val;
     BFloat16 flt_from_int(int_rep);

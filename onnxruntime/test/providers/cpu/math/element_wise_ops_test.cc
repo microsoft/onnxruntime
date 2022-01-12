@@ -1572,7 +1572,6 @@ TEST(MathOpTest, Xor) {
   test.Run();
 }
 
-
 TEST(MathOpTest, Xor_Issue8880) {
   OpTester test("Xor");
   test.AddInput<bool>("A", {1}, {true});
@@ -2247,7 +2246,7 @@ TEST(MathOpTest, ErfMoreData) {
   test.Run();
 }
 
-const int ModOp_ver = 10;
+constexpr int ModOp_ver = 10;
 
 TEST(ModOpTest, Fmod_float_mixed_sign) {
   OpTester test("Mod", ModOp_ver);

@@ -18,7 +18,7 @@
 #else
 #include <sys/mman.h>
 #endif
-#if !defined(MLAS_NO_ONNXRUNTIME_THREADPOOL)
+#if !defined(BUILD_MLAS_NO_ONNXRUNTIME)
 #include "core/platform/threadpool.h"
 #endif
 
@@ -110,8 +110,8 @@ class MatrixGuardBuffer {
       std::fill_n(buffer, Elements, T(0));
 
     } else {
-      const int MinimumFillValue = -23;
-      const int MaximumFillValue = 23;
+      constexpr int MinimumFillValue = -23;
+      constexpr int MaximumFillValue = 23;
 
       int FillValue = MinimumFillValue;
       T* FillAddress = buffer;

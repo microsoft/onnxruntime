@@ -51,7 +51,9 @@ def assert_model_outputs(output_a, output_b, verbose=False, rtol=1e-7, atol=0):
     """
     assert isinstance(output_a, list) and isinstance(output_b, list),\
         "output_a and output_b must be list of numbers"
-    assert len(output_a) == len(output_b), "output_a and output_b must have the same length"
+    if len(output_a) != len(output_b):
+        raise AssertionError(
+            "output_a and output_b must have the same length (%r != %r)." % (len(output_a), len(output_b)))
 
     # for idx in range(len(output_a)):
     assert_allclose(output_a, output_b, rtol=rtol, atol=atol, err_msg=f"Model output value mismatch")

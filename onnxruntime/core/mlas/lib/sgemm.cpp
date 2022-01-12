@@ -1552,7 +1552,11 @@ Return Value:
             DataParams->alpha, A, lda, B, ldb, DataParams->beta, C, ldc);
     }
 }
-
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(push)
+// Chance of arithmetic overflow could be reduced
+#pragma warning(disable : 26451)
+#endif
 void
 MLASCALL
 MlasGemmBatch(
@@ -1631,6 +1635,9 @@ MlasGemmBatch(
             TransA, TransB, M, N, K, &(Data[GemmIdx]), ThreadIdx);
     });
 }
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(pop)
+#endif
 
 size_t
 MLASCALL

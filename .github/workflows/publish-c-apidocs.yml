@@ -1,0 +1,43 @@
+name: Update C/C++ API Docs
+on:
+  workflow_dispatch
+
+jobs:
+  publish:
+    name: Generate C/C++ API docs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Install doxygen and dependencies
+        run: |
+          sudo apt update 
+          sudo apt-get install libclang-9-dev
+          sudo apt-get install libclang-cpp9
+          wget https://www.doxygen.nl/files/doxygen-1.9.2.linux.bin.tar.gz
+          tar xvzf doxygen-1.9.2.linux.bin.tar.gz
+      - name: Set commit ID
+        id: vars
+        run: echo "::set-output name=sha_short::$(git rev-parse --short HEAD)"
+      - name: Run doxygen
+        run: |
+          mkdir -p build/doxygen
+          cd docs/c_cxx
+          ../../doxygen-1.9.2/bin/doxygen
+      - uses: actions/checkout@v2
+        with:
+          ref: gh-pages
+          clean: false    
+      - name: Move API docs into target area
+        run: |
+          rm -rf docs/api/c
+          mv build/doxygen/html docs/api/c   
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v3
+        with:
+          branch: gh-pages-pr
+          base: gh-pages
+          title: '[Automated]: Update C/C++ API docs'
+          commit-message: 'Update C/C++ API docs to commit ${{ steps.vars.outputs.sha_short }}'   
+          add-paths: docs/api/c   
+
+ 

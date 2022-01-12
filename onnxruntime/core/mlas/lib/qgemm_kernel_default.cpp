@@ -17,7 +17,7 @@ Abstract:
 #include "mlasi.h"
 #include "qgemm.h"
 
-struct MLAS_GEMM_U8X8_KERNEL_DEFAULT
+struct MLAS_GEMM_QUANT_KERNEL_DEFAULT
 {
     typedef uint8_t PackedAType;
     typedef uint8_t PackedBType;
@@ -29,20 +29,35 @@ struct MLAS_GEMM_U8X8_KERNEL_DEFAULT
     static constexpr MLAS_GEMM_QUANT_STRIDES PackedStrides{ 16, 128, 128 };
 };
 
-constexpr size_t MLAS_GEMM_U8X8_KERNEL_DEFAULT::PackedK;
-constexpr MLAS_GEMM_QUANT_STRIDES MLAS_GEMM_U8X8_KERNEL_DEFAULT::Strides;
-constexpr MLAS_GEMM_QUANT_STRIDES MLAS_GEMM_U8X8_KERNEL_DEFAULT::PackedStrides;
+constexpr size_t MLAS_GEMM_QUANT_KERNEL_DEFAULT::PackedK;
+constexpr MLAS_GEMM_QUANT_STRIDES MLAS_GEMM_QUANT_KERNEL_DEFAULT::Strides;
+constexpr MLAS_GEMM_QUANT_STRIDES MLAS_GEMM_QUANT_KERNEL_DEFAULT::PackedStrides;
 
 template<>
-MLAS_FORCEINLINE
+MLAS_FORCEINLINE constexpr
 int32_t
-MlasGemmQuantFixupZeroPointB<MLAS_GEMM_U8X8_KERNEL_DEFAULT>(
+MlasGemmQuantFixupZeroPointA<MLAS_GEMM_QUANT_KERNEL_DEFAULT>(
+    int32_t ZeroPointA,
+    bool AIsSigned
+    )
+{
+    if (AIsSigned) {
+        ZeroPointA = (uint8_t)(ZeroPointA ^ 0x80);
+    }
+
+    return ZeroPointA;
+}
+
+template<>
+MLAS_FORCEINLINE constexpr
+int32_t
+MlasGemmQuantFixupZeroPointB<MLAS_GEMM_QUANT_KERNEL_DEFAULT>(
     int32_t ZeroPointB,
     bool BIsSigned
     )
 {
     if (BIsSigned) {
-        ZeroPointB = MLAS_GEMM_U8X8_KERNEL_DEFAULT::OffsetBType(ZeroPointB ^ 0x80);
+        ZeroPointB = MLAS_GEMM_QUANT_KERNEL_DEFAULT::OffsetBType(ZeroPointB ^ 0x80);
     }
 
     return ZeroPointB;
@@ -50,8 +65,8 @@ MlasGemmQuantFixupZeroPointB<MLAS_GEMM_U8X8_KERNEL_DEFAULT>(
 
 template<>
 void
-MlasGemmQuantCopyPackA<MLAS_GEMM_U8X8_KERNEL_DEFAULT>(
-    MLAS_GEMM_U8X8_KERNEL_DEFAULT::PackedAType* D,
+MlasGemmQuantCopyPackA<MLAS_GEMM_QUANT_KERNEL_DEFAULT>(
+    MLAS_GEMM_QUANT_KERNEL_DEFAULT::PackedAType* D,
     const uint8_t* A,
     size_t lda,
     size_t CountM,
@@ -60,9 +75,10 @@ MlasGemmQuantCopyPackA<MLAS_GEMM_U8X8_KERNEL_DEFAULT>(
     bool AIsSigned
     )
 {
-    MLAS_UNREFERENCED_PARAMETER(AIsSigned);
-    const size_t AlignedCountK =
-        (CountK + MLAS_GEMM_U8X8_KERNEL_DEFAULT::PackedK - 1) & ~(MLAS_GEMM_U8X8_KERNEL_DEFAULT::PackedK - 1);
+    const size_t AlignedCountK = (CountK + MLAS_GEMM_QUANT_KERNEL_DEFAULT::PackedK - 1) &
+                                 ~(MLAS_GEMM_QUANT_KERNEL_DEFAULT::PackedK - 1);
+
+    const uint8_t BitFlipValue = (AIsSigned ? 0x80 : 0);
 
     //
     // Process a single row of matrix A in a loop.
@@ -74,7 +90,7 @@ MlasGemmQuantCopyPackA<MLAS_GEMM_U8X8_KERNEL_DEFAULT>(
 
         for (size_t k = 0; k < CountK; k++) {
 
-            uint8_t a0 = A[k];
+            uint8_t a0 = A[k] ^ BitFlipValue;
             D[k] = a0;
 
             RowSum += a0;
@@ -93,8 +109,8 @@ MlasGemmQuantCopyPackA<MLAS_GEMM_U8X8_KERNEL_DEFAULT>(
 
 template<>
 void
-MlasGemmQuantCopyPackB<MLAS_GEMM_U8X8_KERNEL_DEFAULT>(
-    MLAS_GEMM_U8X8_KERNEL_DEFAULT::PackedBType* D,
+MlasGemmQuantCopyPackB<MLAS_GEMM_QUANT_KERNEL_DEFAULT>(
+    MLAS_GEMM_QUANT_KERNEL_DEFAULT::PackedBType* D,
     const uint8_t* B,
     size_t ldb,
     size_t CountN,
@@ -104,7 +120,7 @@ MlasGemmQuantCopyPackB<MLAS_GEMM_U8X8_KERNEL_DEFAULT>(
     )
 {
     const size_t AlignedCountK =
-        (CountK + MLAS_GEMM_U8X8_KERNEL_DEFAULT::PackedK - 1) & ~(MLAS_GEMM_U8X8_KERNEL_DEFAULT::PackedK - 1);
+        (CountK + MLAS_GEMM_QUANT_KERNEL_DEFAULT::PackedK - 1) & ~(MLAS_GEMM_QUANT_KERNEL_DEFAULT::PackedK - 1);
     const uint8_t BitFlipValue = (BIsSigned ? 0x80 : 0);
 
     //
@@ -143,9 +159,9 @@ MlasGemmQuantCopyPackB<MLAS_GEMM_U8X8_KERNEL_DEFAULT>(
 
 template<>
 size_t
-MlasGemmQuantKernel<MLAS_GEMM_U8X8_KERNEL_DEFAULT>(
-    const MLAS_GEMM_U8X8_KERNEL_DEFAULT::PackedAType* A,
-    const MLAS_GEMM_U8X8_KERNEL_DEFAULT::PackedBType* B,
+MlasGemmQuantKernel<MLAS_GEMM_QUANT_KERNEL_DEFAULT>(
+    const MLAS_GEMM_QUANT_KERNEL_DEFAULT::PackedAType* A,
+    const MLAS_GEMM_QUANT_KERNEL_DEFAULT::PackedBType* B,
     int32_t* C,
     size_t PackedCountK,
     size_t CountM,
@@ -198,10 +214,10 @@ MlasGemmQuantKernel<MLAS_GEMM_U8X8_KERNEL_DEFAULT>(
     return 1;
 }
 
-const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchDefault = {
-    MlasGemmQuantOperation<MLAS_GEMM_U8X8_KERNEL_DEFAULT>,
+const MLAS_GEMM_QUANT_DISPATCH MlasGemmQuantDispatchDefault = {
+    MlasGemmQuantOperation<MLAS_GEMM_QUANT_KERNEL_DEFAULT>,
     nullptr,
     nullptr,
-    MLAS_GEMM_U8X8_KERNEL_DEFAULT::PackedK,
+    MLAS_GEMM_QUANT_KERNEL_DEFAULT::PackedK,
     0,
 };
