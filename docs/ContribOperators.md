@@ -361,7 +361,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>The id of the padding token</dd>
 </dl>
 
-#### Inputs (6 - 9)
+#### Inputs (6 - 10)
 
 <dl>
 <dt><tt>input_ids</tt> : I</dt>
@@ -382,6 +382,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>The parameter for repetition penalty. Default value 1.0 means no penalty. Accepts value > 0.0. Shape is (1)</dd>
 <dt><tt>vocab_mask</tt> (optional) : M</dt>
 <dd>Mask of vocabulary. Words that masked with 0 are not allowed to be generated, and 1 is allowed. Shape is (vacab_size)</dd>
+<dt><tt>prefix_vocab_mask</tt> (optional) : M</dt>
+<dd>Mask of vocabulary for first step. Words that masked with 0 are not allowed to be generated, and 1 is allowed. Shape is (vacab_size)</dd>
 </dl>
 
 #### Outputs (1 - 3)
