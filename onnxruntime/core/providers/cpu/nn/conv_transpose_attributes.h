@@ -50,7 +50,7 @@ struct ConvTransposeAttributes : public ConvAttributes {
     const TensorShape& F_Shape = (filter_shape != nullptr) ? *filter_shape : F->Shape();
     const Tensor* Pads = dynamic_padding ? context->Input<Tensor>(2) : nullptr;
     const Tensor* B = has_bias ? (dynamic_padding ? context->Input<Tensor>(3) : context->Input<Tensor>(2)) : nullptr;
-    const TensorShape& input_shape = X->Shape().Slice(2);
+    TensorShape input_shape = X->Shape().Slice(2);
 
     const int64_t num_input_channels = X->Shape()[1];
     const int64_t N = X->Shape()[0];

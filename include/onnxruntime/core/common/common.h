@@ -35,6 +35,7 @@
 #include "core/common/exceptions.h"
 #include "core/common/make_string.h"
 #include "core/common/status.h"
+#include "core/common/gsl_suppress.h"
 
 namespace onnxruntime {
 
@@ -252,13 +253,6 @@ void LogRuntimeError(uint32_t session_id, const common::Status& status, const ch
       retval = (expr);                 \
     }                                  \
   } while (0)
-
-// C++ Core Guideline check suppression.
-#if defined(_MSC_VER) && !defined(__NVCC__) && !defined(__clang__)
-#define GSL_SUPPRESS(tag) [[gsl::suppress(tag)]]
-#else
-#define GSL_SUPPRESS(tag)
-#endif
 
 inline long long TimeDiffMicroSeconds(TimePoint start_time) {
   auto end_time = std::chrono::high_resolution_clock::now();

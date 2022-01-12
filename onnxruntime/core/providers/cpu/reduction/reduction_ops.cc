@@ -3,7 +3,10 @@
 
 #include "core/providers/cpu/reduction/reduction_ops.h"
 #include "core/providers/common.h"
-
+//TODO: fix the warnings
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(disable : 26451)
+#endif
 using namespace std;
 namespace onnxruntime {
 
@@ -200,6 +203,8 @@ REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ArgMax, 11, 12);
 REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL_DOUBLE_ONLY(ArgMax, 11, 12)
 REGISTER_UNARY_ELEMENTWISE_KERNEL(ArgMax, 13);
 REGISTER_UNARY_ELEMENTWISE_KERNEL_DOUBLE_ONLY(ArgMax, 13);
+REGISTER_UNARY_ELEMENTWISE_KERNEL_INT8_ONLY(ArgMax, 13);
+REGISTER_UNARY_ELEMENTWISE_KERNEL_UINT8_ONLY(ArgMax, 13);
 
 REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ArgMin, 1, 10);
 REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ArgMin, 11, 12);
@@ -217,10 +222,6 @@ bool operator==(FastReduceKind a, FastReduceKind b) {
 
 bool operator!=(FastReduceKind a, FastReduceKind b) {
   return static_cast<uint8_t>(a) != static_cast<uint8_t>(b);
-}
-
-bool IsFastReduceKindAvailable(FastReduceKind scenario, FastReduceKind available) {
-  return (static_cast<uint8_t>(scenario) & static_cast<uint8_t>(available)) > 0;
 }
 
 bool ResultsNoTransposePrepareForReduce::equal(gsl::span<const int64_t> local_input_shape,
@@ -265,12 +266,6 @@ void ReduceAggregatorBase::FastReduceRK(const Tensor&, const std::vector<int64_t
 }
 void ReduceAggregatorBase::FastReduceKRK(const Tensor&, const std::vector<int64_t>&, Tensor&, concurrency::ThreadPool*) {
   ValidateMustBeOverloaded();
-}
-
-TensorOpCost ParallelReduceFastCost(int64_t n_row, int64_t n_col, int64_t element_size, int n_ops) {
-  return TensorOpCost{static_cast<double>(n_row * n_col * element_size),
-                      static_cast<double>(n_row * element_size),
-                      static_cast<double>(n_row * n_col * element_size * n_ops)};
 }
 
 void NoTransposePrepareForReduce(const TensorShape& new_input_shape,

@@ -28,6 +28,7 @@ using InitializerMap = std::unordered_map<std::string, const ONNX_NAMESPACE::Ten
 
 class Node;
 class NodeArg;
+class NodeUnit;
 class GraphViewer;
 
 namespace nnapi {
@@ -125,11 +126,11 @@ bool GetType(const NodeArg& node_arg, int32_t& type);
 void GetFlattenOutputShape(const Node& node, const Shape& input_shape, int32_t& dim_1, int32_t& dim_2);
 
 // If a node is supported by NNAPI
-bool IsNodeSupported(const Node& node, const GraphViewer& graph_viewer, const OpSupportCheckParams& params);
+bool IsNodeSupported(const NodeUnit& node_unit, const GraphViewer& graph_viewer, const OpSupportCheckParams& params);
 
 // If a node is supported by NNAPI in a partition node group
 // `node_outputs_in_group` is the set of the output names of the nodes added to this group so far
-bool IsNodeSupportedInGroup(const Node& node, const GraphViewer& graph_viewer,
+bool IsNodeSupportedInGroup(const NodeUnit& node_unit, const GraphViewer& graph_viewer,
                             const OpSupportCheckParams& params,
                             const std::unordered_set<std::string>& node_outputs_in_group);
 

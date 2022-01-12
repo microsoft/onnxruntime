@@ -175,6 +175,10 @@ NodeAttributes& DnnlNode::Attributes() {
   return *attr_;
 }
 
+int DnnlNode::SinceVersion() {
+  return onnx_node_->SinceVersion();
+}
+
 DnnlSubgraph::DnnlSubgraph(const GraphViewer& graph_viewer) : graph_viewer_(graph_viewer) {
   Build();
   is_dynamic_ = false;

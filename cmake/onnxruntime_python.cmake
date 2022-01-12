@@ -136,8 +136,8 @@ endif()
 target_link_libraries(onnxruntime_pybind11_state PRIVATE
     onnxruntime_session
     ${onnxruntime_libs}
-    ${PROVIDERS_MIGRAPHX}
     ${PROVIDERS_NUPHAR}
+    ${PROVIDERS_STVM}
     ${PROVIDERS_VITISAI}
     ${PROVIDERS_NNAPI}
     ${PROVIDERS_COREML}
@@ -602,6 +602,16 @@ if (onnxruntime_USE_TENSORRT)
   )
 endif()
 
+if (onnxruntime_USE_MIGRAPHX)
+  add_custom_command(
+    TARGET onnxruntime_pybind11_state POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy
+        $<TARGET_FILE:onnxruntime_providers_migraphx>
+        $<TARGET_FILE:onnxruntime_providers_shared>
+        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
+  )
+endif()
+
 if (onnxruntime_USE_OPENVINO)
     add_custom_command(
       TARGET onnxruntime_pybind11_state POST_BUILD
@@ -652,6 +662,23 @@ if (onnxruntime_USE_NUPHAR)
       ${onnxruntime_python_nuphar_python_srcs}
       $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/nuphar/
   )
+endif()
+
+if (onnxruntime_USE_STVM)
+  file(GLOB onnxruntime_python_providers_stvm_srcs CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/python/providers/stvm/*.py"
+  )
+  add_custom_command(
+    TARGET onnxruntime_pybind11_state POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/providers
+    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/providers/stvm
+    COMMAND ${CMAKE_COMMAND} -E copy
+        ${onnxruntime_python_providers_stvm_srcs}
+        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/providers/stvm
+    COMMAND ${CMAKE_COMMAND} -E copy
+        $<TARGET_FILE:onnxruntime_providers_stvm>
+        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
+    )
 endif()
 
 if (onnxruntime_USE_DML)

@@ -26,6 +26,12 @@ class OrtTensorTests(unittest.TestCase):
     y = ort_ones.reshape(-1)
     assert len(y.size()) == 1
     assert y.size()[0] == 100
+  
+  def test_view(self):
+    cpu_ones = torch.ones(2048)
+    ort_ones = cpu_ones.to('ort')
+    y = ort_ones.view(4, 512)
+    assert y.size() == (4, 512)
 
 if __name__ == '__main__':
   unittest.main()
