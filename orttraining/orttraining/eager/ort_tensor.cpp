@@ -81,11 +81,12 @@ void ORTTensorImpl::cacheSizeMetadata() {
   // TODO: wrap with change generation guard
   auto& tensor = tensor_.Get<onnxruntime::Tensor>();
   const auto& shape = tensor.Shape();
-  auto strides = GetStrides(shape.GetDims());
+  const auto dims = shape.GetDims();
+  auto strides = GetStrides(dims);
 
   numel_ = shape.Size();
 
-  sizes_and_strides_.set_sizes(shape.GetDimsAsVector());
+  sizes_and_strides_.set_sizes(c10::IntArrayRef(dims.data(), dims.size()));
 
   for (std::size_t i = 0; i < strides.size(); i++) {
     sizes_and_strides_.stride_at_unchecked(i) = strides[i];
