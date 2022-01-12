@@ -269,7 +269,7 @@ void GptSubgraph::CreateInitialFeeds(
   Tensor::InitOrtValue(past_type, past_shape, allocator_, empty_past);
 
   // Expand (batch_size, sequence_length) to (batch_size * num_beams, sequence_length) for input_ids, position_ids and attention_mask
-  // TODO: Try expand inputs/outputs after first subgraph call instead. That may get better peroformance, but more complex to implement.
+  // TODO: Try expand inputs/outputs after first subgraph call instead. That may get better performance, but more complex to implement.
   OrtValue expanded_input_ids = ExpandInputs(subgraph_input_ids, num_beams);
   OrtValue expanded_position_ids = ExpandInputs(position_ids, num_beams);
   OrtValue expanded_attention_mask = ExpandInputs(attention_mask, num_beams);
