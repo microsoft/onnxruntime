@@ -389,7 +389,6 @@ if (onnxruntime_USE_CUDA)
     add_op_reduction_include_dirs(onnxruntime_providers_cuda)
   endif()
 
-  #target_compile_options(onnxruntime_providers_cuda PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler \"/analyze:stacksize 131072\">")
   if (HAS_GUARD_CF)
     target_compile_options(onnxruntime_providers_cuda PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /guard:cf>")
   endif()

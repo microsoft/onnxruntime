@@ -36,8 +36,8 @@ void register_ort_as_torch_jit_executor() {
     // Construct an accelerator instance. It's responsible
     // for executing the "node". Note that the "node" is a sub-graph.
     auto accelerator = std::make_shared<Accelerator>(node);
-    return [accelerator](torch::jit::Stack* stack) {
-      accelerator->run(*stack);
+    return [accelerator](torch::jit::Stack& stack) {
+      accelerator->run(stack);
     };
   };
 
@@ -54,7 +54,6 @@ namespace python{
 
 void addObjectMethodsForLazyTensor(py::module& m) {
   LOGS_DEFAULT(INFO) << "pybind11 module init for lazy tensor";
-  std::cout << "Ooooooooooooooooohhhhhhhhhhh" << std::endl;
   m.def(
       "register_ort_as_torch_jit_executor",
       []() {
