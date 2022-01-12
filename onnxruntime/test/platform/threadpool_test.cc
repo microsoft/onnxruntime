@@ -46,11 +46,17 @@ void ValidateTestData(TestData& test_data, int expected=1) {
 // test the function with a null pointer, reflecting scenarios where we
 // run with just the main thread.  Note that the thread pool API uses
 // static methods and should operate across all of these cases.
-void CreateThreadPoolAndTest(const std::string&, int num_threads, const std::function<void(ThreadPool*)>& test_body) {
+void CreateThreadPoolAndTest(const std::string&, int num_threads, const std::function<void(ThreadPool*)>& test_body, int dynamic_block_base = 0) {
   if (num_threads > 0) {
-    auto tp = std::make_unique<ThreadPool>(&onnxruntime::Env::Default(), onnxruntime::ThreadOptions(), nullptr,
-                                                   num_threads, true);
-    test_body(tp.get());
+    if (dynamic_block_base > 0) {
+      onnxruntime::ThreadOptions thread_options;
+      thread_options.dynamic_block_base_ = dynamic_block_base;
+      auto tp_dynamic_block_size = std::make_unique<ThreadPool>(&onnxruntime::Env::Default(), thread_options, nullptr, num_threads, true);
+      test_body(tp_dynamic_block_size.get());  // test thread pool with dynamic block size
+    } else {
+      auto tp_constant_block_size = std::make_unique < ThreadPool>(&onnxruntime::Env::Default(), onnxruntime::ThreadOptions{}, nullptr, num_threads, true);
+      test_body(tp_constant_block_size.get()); // test thread pool with constant block size
+    } 
   } else {
     test_body(nullptr);
   }
@@ -74,40 +80,42 @@ void TestBatchParallelFor(const std::string& name, int num_threads, int num_task
   ValidateTestData(*test_data);
 }
 
-void TestConcurrentParallelFor(const std::string& name, int num_threads, int num_concurrent, int num_tasks) {
+void TestConcurrentParallelFor(const std::string& name, int num_threads, int num_concurrent, int num_tasks, int dynamic_block_base = 0) {
   // Test running multiple concurrent loops over the same thread pool.  This aims to provoke a
   // more diverse mix of interleavings than with a single loop running at a time.
   for (int rep = 0; rep < 5; rep++) {
-    CreateThreadPoolAndTest(name, num_threads, [&](ThreadPool* tp) {
-      std::vector<std::unique_ptr<TestData>> td;
-      onnxruntime::Barrier b(num_concurrent - 1);
+    CreateThreadPoolAndTest(
+        name, num_threads, [&](ThreadPool* tp) {
+          std::vector<std::unique_ptr<TestData>> td;
+          onnxruntime::Barrier b(num_concurrent - 1);
 
-      // Each concurrent tests runs with its own set of counters
-      for (int c = 0; c < num_concurrent; c++) {
-        td.push_back(CreateTestData(num_tasks));
-      }
+          // Each concurrent tests runs with its own set of counters
+          for (int c = 0; c < num_concurrent; c++) {
+            td.push_back(CreateTestData(num_tasks));
+          }
 
-      // For a range of scenarios, run some tests via the thread pool, and one directly
-      for (int c = 0; c < num_concurrent - 1; c++) {
-        ThreadPool::Schedule(tp, [&, c]() {
-            ThreadPool::TrySimpleParallelFor(tp, num_tasks, [&](std::ptrdiff_t i) {
+          // For a range of scenarios, run some tests via the thread pool, and one directly
+          for (int c = 0; c < num_concurrent - 1; c++) {
+            ThreadPool::Schedule(tp, [&, c]() {
+              ThreadPool::TrySimpleParallelFor(tp, num_tasks, [&](std::ptrdiff_t i) {
                 IncrementElement(*td[c], i);
               });
-            b.Notify();
+              b.Notify();
+            });
+          }
+
+          ThreadPool::TrySimpleParallelFor(tp, num_tasks, [&](std::ptrdiff_t i) {
+            IncrementElement(*td[num_concurrent - 1], i);
           });
-      }
 
-      ThreadPool::TrySimpleParallelFor(tp, num_tasks, [&](std::ptrdiff_t i) {
-        IncrementElement(*td[num_concurrent - 1], i);
-      });
-
-      // Validate all outputs
-      b.Wait();
-      for (int c = 0; c < num_concurrent; c++) {
-        ValidateTestData(*td[c]);
-      }
-      td.clear();
-    });
+          // Validate all outputs
+          b.Wait();
+          for (int c = 0; c < num_concurrent; c++) {
+            ValidateTestData(*td[c]);
+          }
+          td.clear();
+        },
+        dynamic_block_base);
   }
 }
 
@@ -319,16 +327,80 @@ TEST(ThreadPoolTest, TestConcurrentParallelFor_4Thread_4Conc_0Tasks) {
   TestConcurrentParallelFor("TestConcurrentParallelFor_4Thread_4Conc_0Tasks", 4, 4, 0);
 }
 
+TEST(ThreadPoolTest, TestConcurrentParallelFor_4Thread_4Conc_0Tasks_dynamic_block_base_1) {
+  TestConcurrentParallelFor("TestConcurrentParallelFor_4Thread_4Conc_0Tasks_dynamic_block_base_1", 4, 4, 0, 1);
+}
+
+TEST(ThreadPoolTest, TestConcurrentParallelFor_4Thread_4Conc_0Tasks_dynamic_block_base_4) {
+  TestConcurrentParallelFor("TestConcurrentParallelFor_4Thread_4Conc_0Tasks_dynamic_block_base_4", 4, 4, 0, 4);
+}
+
+TEST(ThreadPoolTest, TestConcurrentParallelFor_4Thread_4Conc_0Tasks_dynamic_block_base_16) {
+  TestConcurrentParallelFor("TestConcurrentParallelFor_4Thread_4Conc_0Tasks_dynamic_block_base_16", 4, 4, 0, 16);
+}
+
+TEST(ThreadPoolTest, TestConcurrentParallelFor_4Thread_4Conc_0Tasks_dynamic_block_base_128) {
+  TestConcurrentParallelFor("TestConcurrentParallelFor_4Thread_4Conc_0Tasks_dynamic_block_base_128", 4, 4, 0, 128);
+}
+
 TEST(ThreadPoolTest, TestConcurrentParallelFor_4Thread_4Conc_1Tasks) {
   TestConcurrentParallelFor("TestConcurrentParallelFor_4Thread_4Conc_1Tasks", 4, 4, 1);
+}
+
+TEST(ThreadPoolTest, TestConcurrentParallelFor_4Thread_4Conc_1Tasks_dynamic_block_base_1) {
+  TestConcurrentParallelFor("TestConcurrentParallelFor_4Thread_4Conc_1Tasks_dynamic_block_base_1", 4, 4, 1, 1);
+}
+
+TEST(ThreadPoolTest, TestConcurrentParallelFor_4Thread_4Conc_1Tasks_dynamic_block_base_4) {
+  TestConcurrentParallelFor("TestConcurrentParallelFor_4Thread_4Conc_1Tasks_dynamic_block_base_4", 4, 4, 1, 4);
+}
+
+TEST(ThreadPoolTest, TestConcurrentParallelFor_4Thread_4Conc_1Tasks_dynamic_block_base_16) {
+  TestConcurrentParallelFor("TestConcurrentParallelFor_4Thread_4Conc_1Tasks_dynamic_block_base_16", 4, 4, 1, 16);
+}
+
+TEST(ThreadPoolTest, TestConcurrentParallelFor_4Thread_4Conc_1Tasks_dynamic_block_base_128) {
+  TestConcurrentParallelFor("TestConcurrentParallelFor_4Thread_4Conc_1Tasks_dynamic_block_base_128", 4, 4, 1, 128);
 }
 
 TEST(ThreadPoolTest, TestConcurrentParallelFor_4Thread_4Conc_8Tasks) {
   TestConcurrentParallelFor("TestConcurrentParallelFor_4Thread_4Conc_8Tasks", 4, 4, 8);
 }
 
+TEST(ThreadPoolTest, TestConcurrentParallelFor_4Thread_4Conc_8Tasks_dynamic_block_base_1) {
+  TestConcurrentParallelFor("TestConcurrentParallelFor_4Thread_4Conc_8Tasks_dynamic_block_base_1", 4, 4, 8, 1);
+}
+
+TEST(ThreadPoolTest, TestConcurrentParallelFor_4Thread_4Conc_8Tasks_dynamic_block_base_4) {
+  TestConcurrentParallelFor("TestConcurrentParallelFor_4Thread_4Conc_8Tasks_dynamic_block_base_4", 4, 4, 8, 4);
+}
+
+TEST(ThreadPoolTest, TestConcurrentParallelFor_4Thread_4Conc_8Tasks_dynamic_block_base_16) {
+  TestConcurrentParallelFor("TestConcurrentParallelFor_4Thread_4Conc_8Tasks_dynamic_block_base_16", 4, 4, 8, 16);
+}
+
+TEST(ThreadPoolTest, TestConcurrentParallelFor_4Thread_4Conc_8Tasks_dynamic_block_base_128) {
+  TestConcurrentParallelFor("TestConcurrentParallelFor_4Thread_4Conc_8Tasks_dynamic_block_base_128", 4, 4, 8, 128);
+}
+
 TEST(ThreadPoolTest, TestConcurrentParallelFor_4Thread_4Conc_1MTasks) {
   TestConcurrentParallelFor("TestConcurrentParallelFor_4Thread_4Conc_1MTasks", 4, 4, 1000000);
+}
+
+TEST(ThreadPoolTest, TestConcurrentParallelFor_4Thread_4Conc_1MTasks_dynamic_block_base_1) {
+  TestConcurrentParallelFor("TestConcurrentParallelFor_4Thread_4Conc_1MTasks_dynamic_block_base_1", 4, 4, 1000000, 1);
+}
+
+TEST(ThreadPoolTest, TestConcurrentParallelFor_4Thread_4Conc_1MTasks_dynamic_block_base_4) {
+  TestConcurrentParallelFor("TestConcurrentParallelFor_4Thread_4Conc_1MTasks_dynamic_block_base_4", 4, 4, 1000000, 4);
+}
+
+TEST(ThreadPoolTest, TestConcurrentParallelFor_4Thread_4Conc_1MTasks_dynamic_block_base_16) {
+  TestConcurrentParallelFor("TestConcurrentParallelFor_4Thread_4Conc_1MTasks_dynamic_block_base_16", 4, 4, 1000000, 16);
+}
+
+TEST(ThreadPoolTest, TestConcurrentParallelFor_4Thread_4Conc_1MTasks_dynamic_block_base_128) {
+  TestConcurrentParallelFor("TestConcurrentParallelFor_4Thread_4Conc_1MTasks_dynamic_block_base_128", 4, 4, 1000000, 128);
 }
 
 TEST(ThreadPoolTest, TestBurstScheduling_0Tasks) {
@@ -424,6 +496,7 @@ TEST(ThreadPoolTest, TestStagedMultiLoopSections_4Thread_10Loop) {
 TEST(ThreadPoolTest, TestStagedMultiLoopSections_4Thread_100Loop) {
   TestStagedMultiLoopSections("TestStagedMultiLoopSections_4Thread_100Loop", 4, 100);
 }
+
 #ifdef _WIN32
 #if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
 #pragma warning(push)
