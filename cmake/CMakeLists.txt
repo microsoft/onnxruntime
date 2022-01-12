@@ -1332,7 +1332,7 @@ if (onnxruntime_USE_TVM)
     add_definitions(-DUSE_TVM_WITH_LLVM)
   endif()
 
-  add_subdirectory(${tvm_SOURCE_DIR} ${tvm_BINARY_DIR})
+  add_subdirectory(${tvm_SOURCE_DIR} ${tvm_BINARY_DIR} EXCLUDE_FROM_ALL)
   set_target_properties(tvm PROPERTIES FOLDER "External/tvm")
   set_target_properties(tvm_topi PROPERTIES FOLDER "External/tvm")
   set_target_properties(tvm_runtime PROPERTIES FOLDER "External/tvm")

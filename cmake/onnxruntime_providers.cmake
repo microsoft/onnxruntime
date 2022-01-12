@@ -1271,7 +1271,10 @@ if (onnxruntime_USE_ROCM)
 endif()
 
 if (onnxruntime_USE_STVM)
-  include(tvm)
+  if (NOT TARGET tvm)
+    message(STATUS "include tvm.")
+    include(tvm)
+  endif()
   add_definitions(-DUSE_STVM=1)
 
   file (GLOB_RECURSE onnxruntime_providers_stvm_cc_srcs CONFIGURE_DEPENDS

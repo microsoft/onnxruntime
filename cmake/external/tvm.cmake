@@ -22,7 +22,7 @@ if (onnxruntime_USE_NUPHAR)
   FetchContent_Declare(
     tvm
     GIT_REPOSITORY https://github.com/microsoft/onnxruntime-tvm.git
-    GIT_TAG        v0.5
+    GIT_TAG        9ec2b92d180dff8877e402018b97baa574031b8b
   )
 
   FetchContent_GetProperties(tvm)
