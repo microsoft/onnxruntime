@@ -23,6 +23,8 @@
 #include "core/optimizer/cast_elimination.h"
 #include "core/optimizer/common_subexpression_elimination.h"
 #include "core/optimizer/constant_folding.h"
+#include "core/optimizer/conv_activation_fusion.h"
+#include "core/optimizer/add_relu_fusion.h"
 #include "core/optimizer/conv_add_fusion.h"
 #include "core/optimizer/conv_bn_fusion.h"
 #include "core/optimizer/conv_mul_fusion.h"
@@ -227,6 +229,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
 #if defined(USE_OPENCL)
       const InlinedHashSet<std::string_view> opencl_ep{onnxruntime::kOpenCLExecutionProvider};
       transformers.emplace_back(std::make_unique<ConvActivationFusion>(opencl_ep));
+      transformers.emplace_back(std::make_unique<AddReluFusion>(opencl_ep));
 #else
       transformers.emplace_back(std::make_unique<ConvActivationFusion>(cpu_cuda_rocm_acl_armnn_eps));
 #endif
