@@ -9,6 +9,8 @@ namespace onnxruntime {
 namespace contrib {
 namespace transformers {
 
+static int beam_search_iteration;
+
 template <typename T>
 gsl::span<T> NextTokenScores<T>::GetScores(int batch_beam_index) {
   assert(batch_beam_index >= 0 && batch_beam_index < batch_beam_size);
@@ -147,6 +149,35 @@ void VocabMaskLogitsProcessor<T>::Process(const ISequences* /*sequences*/,
 }
 
 template <typename T>
+PrefixVocabMaskLogitsProcessor<T>::PrefixVocabMaskLogitsProcessor(const gsl::span<const int32_t>& prefix_vocab_mask) : prefix_vocab_mask_(prefix_vocab_mask) {
+}
+
+template <typename T>
+void PrefixVocabMaskLogitsProcessor<T>::Process(const ISequences* /*sequences*/,
+                                          NextTokenScores<T>& next_token_scores) {  
+  assert(!prefix_vocab_mask_.empty());
+  if (beam_search_iteration > 1) {
+    return;
+  }
+
+  // Process vocabulary mask and set tokens with mask value 0 to -inf.
+  T* p = next_token_scores.scores.data();
+  // next_token_scores shape (batch_size * num_beams, vocab_size)
+  // vocab_mask shape (vocab_size). TODO: support shape (batch_size, vocab_size)
+  for (int i = 0; i < next_token_scores.batch_beam_size; i++) {
+    for (int j = 0; j < next_token_scores.vocab_size; j++, p++) {
+      if (prefix_vocab_mask_[j] == 0) {
+        *p = std::numeric_limits<T>::lowest();
+      }
+    }
+  }
+
+#ifdef DEBUG_BEAM_SEARCH
+  DumpScores("PrefixVocabMaskLogitsProcessor", next_token_scores.scores);
+#endif
+}
+
+template <typename T>
 void LogitsProcessorList<T>::Init(const BeamSearchParameters& parameters) {
   processor_list_.clear();
 
@@ -165,6 +196,11 @@ void LogitsProcessorList<T>::Init(const BeamSearchParameters& parameters) {
     processor_list_.push_back(vocab_mask_processor_.get());
   }
 
+  if (!parameters.prefix_vocab_mask.empty()) {
+    prefix_vocab_mask_processor_ = std::make_unique<PrefixVocabMaskLogitsProcessor<T>>(parameters.prefix_vocab_mask);
+    processor_list_.push_back(prefix_vocab_mask_processor_.get());
+  }
+
   if (parameters.min_length > 0) {
     min_length_processor_ = std::make_unique<MinLengthLogitsProcessor<T>>(parameters.min_length, parameters.eos_token_id);
     processor_list_.push_back(min_length_processor_.get());
@@ -176,8 +212,10 @@ void LogitsProcessorList<T>::Init(const BeamSearchParameters& parameters) {
 
 template <typename T>
 void LogitsProcessorList<T>::Process(const ISequences* sequences,
-                                     gsl::span<T>& next_token_scores) {
+                                     gsl::span<T>& next_token_scores,
+                                     int counter) {
   NextTokenScores<T> input_scores = {next_token_scores, batch_beam_size_, vocab_size_};
+  beam_search_iteration = counter;
   for (size_t i = 0; i < processor_list_.size(); i++) {
     processor_list_[i]->Process(sequences, input_scores);
   }
@@ -188,6 +226,7 @@ template class MinLengthLogitsProcessor<float>;
 template class RepetitionPenaltyLogitsProcessor<float>;
 template class NoRepeatNGramLogitsProcessor<float>;
 template class VocabMaskLogitsProcessor<float>;
+template class PrefixVocabMaskLogitsProcessor<float>;
 template class LogitsProcessorList<float>;
 
 }  // namespace transformers
