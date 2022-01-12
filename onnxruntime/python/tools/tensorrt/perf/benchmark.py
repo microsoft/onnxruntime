@@ -1021,7 +1021,6 @@ def run_onnxruntime(args, models):
             if standalone_trt_fp16 == ep: 
                 fp16 = True
             
-            print(fp16)
             inputs, ref_outputs = get_test_data(fp16, test_data_dir, all_inputs_shape)
             # generate random input data
             if args.input_data == "random":
