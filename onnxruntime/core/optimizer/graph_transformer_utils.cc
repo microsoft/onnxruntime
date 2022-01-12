@@ -12,6 +12,7 @@
 #include "core/optimizer/common_subexpression_elimination.h"
 #include "core/optimizer/constant_folding.h"
 #include "core/optimizer/conv_activation_fusion.h"
+#include "core/optimizer/add_relu_fusion.h"
 #include "core/optimizer/conv_add_fusion.h"
 #include "core/optimizer/conv_bn_fusion.h"
 #include "core/optimizer/conv_mul_fusion.h"
@@ -204,6 +205,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
 
 #if defined(USE_OPENCL)
       transformers.emplace_back(std::make_unique<ConvActivationFusion>(std::unordered_set<std::string>{onnxruntime::kOpenCLExecutionProvider}));
+      transformers.emplace_back(std::make_unique<AddReluFusion>(std::unordered_set<std::string>{onnxruntime::kOpenCLExecutionProvider}));
 #else
       transformers.emplace_back(std::make_unique<ConvActivationFusion>(cpu_cuda_rocm_acl_armnn_eps));
 #endif
