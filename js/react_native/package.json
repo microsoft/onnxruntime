@@ -99,7 +99,7 @@
   "scripts": {
     "typescript": "tsc --noEmit",
     "prepare": "bob build",
-    "bootstrap": "yarn pack-common && yarn unpack-common && yarn pack-libs && yarn unpack-libs && yarn example && yarn && yarn pods",
+    "bootstrap": "yarn pack-common && yarn unpack-common && yarn pack-libs && yarn unpack-libs && yarn example && yarn pods",
     "release": "release-it",
     "test": "jest",
     "pack-common": "cd ../common && npm pack && mv -f onnxruntime-common-*.tgz ../react_native/example/onnxruntime-common.tgz",
