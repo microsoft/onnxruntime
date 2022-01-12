@@ -620,6 +620,7 @@ void BeamSearchShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
   if (!(input_ids_dims[0].has_dim_value() && input_ids_dims[1].has_dim_value())) {
     return;
   }
+
   int64_t batch_size = input_ids_dims[0].dim_value();
   int64_t sequence_length = input_ids_dims[1].dim_value();
 

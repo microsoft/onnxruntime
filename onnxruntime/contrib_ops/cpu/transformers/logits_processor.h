@@ -25,8 +25,6 @@ class ILogitsProcessor {
 
   virtual void Process(const ISequences* sequences,
                        NextTokenScores<T>& next_token_scores) = 0;
-  
-
 };
 
 template <typename T>
@@ -100,7 +98,6 @@ public:
 private:
     int batch_beam_size_;
     int vocab_size_;
-
     std::vector<ILogitsProcessor<T>*> processor_list_;
 
     std::unique_ptr<RepetitionPenaltyLogitsProcessor<T>> repetition_penalty_processor_;
