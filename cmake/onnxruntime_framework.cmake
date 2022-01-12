@@ -39,6 +39,9 @@ onnxruntime_add_static_library(onnxruntime_framework ${onnxruntime_framework_src
 if(onnxruntime_ENABLE_INSTRUMENT)
   target_compile_definitions(onnxruntime_framework PRIVATE ONNXRUNTIME_ENABLE_INSTRUMENT)
 endif()
+if (onnxruntime_USE_CUDA)
+  target_link_libraries(onnxruntime_framework PRIVATE cudart)
+endif()
 if(onnxruntime_USE_TENSORRT OR onnxruntime_USE_NCCL)
 # TODO: for now, core framework depends on CUDA. It should be moved to TensorRT EP
 # TODO: provider_bridge_ort.cc should not include nccl.h
