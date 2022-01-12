@@ -663,16 +663,16 @@ if (onnxruntime_USE_NUPHAR)
 endif()
 
 if (onnxruntime_USE_TVM)
-  file(GLOB onnxruntime_python_providers_stvm_srcs CONFIGURE_DEPENDS
-    "${ONNXRUNTIME_ROOT}/python/providers/stvm/*.py"
+  file(GLOB onnxruntime_python_providers_tvm_srcs CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/python/providers/tvm/*.py"
   )
   add_custom_command(
     TARGET onnxruntime_pybind11_state POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/providers
-    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/providers/stvm
+    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/providers/tvm
     COMMAND ${CMAKE_COMMAND} -E copy
-        ${onnxruntime_python_providers_stvm_srcs}
-        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/providers/stvm
+        ${onnxruntime_python_providers_tvm_srcs}
+        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/providers/tvm
     COMMAND ${CMAKE_COMMAND} -E copy
         $<TARGET_FILE:onnxruntime_providers_tvm>
         $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/

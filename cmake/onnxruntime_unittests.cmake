@@ -551,9 +551,9 @@ if(onnxruntime_USE_COREML)
 endif()
 
 if (onnxruntime_USE_TVM)
-  file (GLOB_RECURSE onnxruntime_test_stvm_src CONFIGURE_DEPENDS
-    "${ONNXRUNTIME_ROOT}/test/stvm/*.h"
-    "${ONNXRUNTIME_ROOT}/test/stvm/*.cc"
+  file (GLOB_RECURSE onnxruntime_test_tvm_src CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/test/tvm/*.h"
+    "${ONNXRUNTIME_ROOT}/test/tvm/*.cc"
   )
 
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_tvm)
@@ -649,7 +649,7 @@ if (onnxruntime_USE_NUPHAR)
 endif()
 
 if (onnxruntime_USE_TVM)
-    list(APPEND all_tests ${onnxruntime_test_stvm_src})
+    list(APPEND all_tests ${onnxruntime_test_tvm_src})
 endif()
 
 if (onnxruntime_USE_OPENVINO)

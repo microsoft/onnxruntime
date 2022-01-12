@@ -50,8 +50,8 @@ This command builds both TVM and onnxruntime-stvm. It creates two wheel, one for
 Build the python API for ONNX Runtime instead of using the standard package:
 ```bash
 cd <path_to_onnx_runtime>
-pip3 uninstall onnxruntime onnxruntime-stvm tvm -y
-whl_path=$(find ./build/Linux/Release/dist -name "*.whl")
+pip3 uninstall onnxruntime onnxruntime-tvm tvm -y
+whl_path=$(find ./build/cpu_stvm/Release/dist -name "*.whl")
 python3 -m pip install $whl_path
 ```
 Alternatively, you can set PYTHONPATH to tell python where to find the ONNXRT library and the TVM library.
@@ -106,7 +106,7 @@ tvm_session = onnxruntime.InferenceSession(model_path, sess_options=so, provider
 ```
 
 ## Samples
-- [Sample notebook for ResNet50 inference with TVM EP](https://github.com/octoml/onnxruntime/blob/STVM_EP_PR/docs/python/inference/notebooks/onnxruntime-stvm-tutorial.ipynb)
+- [Sample notebook for ResNet50 inference with TVM EP](https://github.com/octoml/onnxruntime/blob/vc/rename/docs/python/inference/notebooks/onnxruntime-tvm-tutorial.ipynb)
 
 ## Known issues
 - At this moment, the TVM EP has only been verified on UNIX/Linux systems.
