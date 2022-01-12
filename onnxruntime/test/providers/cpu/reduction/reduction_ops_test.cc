@@ -562,8 +562,8 @@ TEST(ReductionOpTest, ReduceLogSumExp_float_no_reduction) {
   test.AddAttribute("axes", std::vector<int64_t>{0});
   test.AddAttribute("keepdims", (int64_t)0);
   test.AddInput<float>("data", {1, 2, 2},
-                        {1.0f, 2.0f,
-                         3.0f, 4.0f});
+                       {1.0f, 2.0f,
+                        3.0f, 4.0f});
   test.AddOutput<float>("reduced", {2, 2}, {1.f, 2.f, 3.f, 4.f});
   test.Run();
 }
@@ -2198,7 +2198,9 @@ TEST(ReductionOpTest, ArgMax_int8) {
                           {1, 1,
                            1, 1,
                            1, 1});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: input/output with DataType Int8 in network without Q/DQ layers must have dynamic range set when no calibrator is used
+  // TensorRT: input/output with DataType Int8 in network without Q/DQ layers
+  //           must have dynamic range set when no calibrator is used
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(ReductionOpTest, ArgMax_uint8) {

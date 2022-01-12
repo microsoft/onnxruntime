@@ -45,7 +45,8 @@ class TestOpArgMax(unittest.TestCase):
         conv_inputs = [input_name, conv_weight_name]
         conv_outputs = [conv_output_name]
         conv_name = 'conv_node'
-        conv_node = onnx.helper.make_node('Conv', conv_inputs, conv_outputs, dilations=[1, 1], kernel_shape=[1, 1], pads=[0, 0, 0, 0], strides=[1, 1], name=conv_name)
+        conv_node = onnx.helper.make_node('Conv', conv_inputs, conv_outputs, dilations=[1, 1], kernel_shape=[1, 1],
+                                          pads=[0, 0, 0, 0], strides=[1, 1], name=conv_name)
 
         # make ArgMax node
         argmax_inputs = [conv_output_name]
