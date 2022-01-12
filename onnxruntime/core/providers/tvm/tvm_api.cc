@@ -16,16 +16,17 @@ using TvmIntArray = ::tvm::Array<::tvm::Integer>;
 using TvmPackedFunc = ::tvm::PackedFunc;
 
 TvmModule TVMCompile(const std::string& onnx_txt,
-                                const std::string& model_path,
-                                const std::string& target,
-                                const std::string& target_host,
-                                int opt_level,
-                                int opset,
-                                bool freeze_params,
-                                const std::vector<std::vector<int64_t>>& input_shapes,
-                                bool nhwc,
-                                const std::string& tuning_logfile,
-                                const std::string& tuning_type)
+                     const std::string& model_path,
+                     const std::string& executor,
+                     const std::string& target,
+                     const std::string& target_host,
+                     int opt_level,
+                     int opset,
+                     bool freeze_params,
+                     const std::vector<std::vector<int64_t>>& input_shapes,
+                     bool nhwc,
+                     const std::string& tuning_logfile,
+                     const std::string& tuning_type)
 {
   ::tvm::Array<TvmIntArray> shapes;
   for (size_t i = 0; i < input_shapes.size(); ++i)
@@ -43,6 +44,7 @@ TvmModule TVMCompile(const std::string& onnx_txt,
   TvmModule mod = (*compile)(
           TVMByteArray{onnx_txt.data(), onnx_txt.size()},
           model_path,
+          executor,
           target,
           target_host,
           opt_level,
@@ -69,6 +71,29 @@ void TVMSetInputs(TvmModule& mod,
   }
 }
 
+void TVM_VM_SetInputs(TvmModule& mod,
+                      std::vector<DLTensor>& inputs)
+{
+  // TODO(vvchernov): set_input_zero_copy is more preferable but it does not satisfy alignment conditions.
+  //tvm::PackedFunc set_input = mod.GetFunction("set_input_zero_copy", false);
+
+  TvmPackedFunc set_input = mod.GetFunction("set_input", false);
+  for (auto& inp : inputs)
+  {
+    set_input("main", &inp);
+ }
+}
+
+void TVMGetOutputs(TvmModule& mod,
+                   std::vector<DLTensor>& outputs)
+{
+  TvmPackedFunc get_output = mod.GetFunction("get_output", false);
+  for (size_t i = 0; i < outputs.size(); ++i)
+  {
+    get_output(i, &outputs[i]);
+  }
+}
+
 void TVMGetOutputShapes(TvmModule& mod,
                         size_t num_outputs,
                         std::vector<std::vector<int64_t>>& output_shapes)
@@ -88,18 +113,18 @@ void TVMGetOutputShapes(TvmModule& mod,
 }
 
 void TVMRun(TvmModule& mod,
-            std::vector<DLTensor>& outputs,
             [[maybe_unused]] ::tvm::runtime::TVMRetValue *ret)
 {
   const TvmPackedFunc* run = ::tvm::runtime::Registry::Get("tvm_run");
   ORT_ENFORCE(run != nullptr, "Unable to retrieve 'tvm_run'.");
   (*run)(mod);
+}
 
-  TvmPackedFunc get_output = mod.GetFunction("get_output", false);
-  for (size_t i = 0; i < outputs.size(); ++i)
-  {
-    get_output(i, &outputs[i]);
-  }
+void TVM_VM_Run(TvmModule& mod,
+                [[maybe_unused]] ::tvm::runtime::TVMRetValue *ret)
+{
+  const TvmPackedFunc* run = ::tvm::runtime::Registry::Get("tvm_vm_run");
+  (*run)(mod);
 }
 
 }  // namespace tvm

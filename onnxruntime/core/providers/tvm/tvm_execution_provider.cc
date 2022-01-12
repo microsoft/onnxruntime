@@ -45,7 +45,8 @@ class TVMRunner {
 
     TVMRunner(TvmExecutionProvider* ep,
                const std::string& name,
-               const Graph& graph) {
+               const Graph& graph) :
+      use_vm_(ep->info_.executor == "vm") {
         // Extract input shapes
         const ORTGraphNodes& all_nodes = graph.GetInputsIncludingInitializers();
         TVMTensorShapes input_shapes;
@@ -93,7 +94,9 @@ class TVMRunner {
         size_t num_outputs = ort_outputs_info.size();
 
         if (update_output_shapes_) {
-          tvm::TVMGetOutputShapes(*mod_, num_outputs, output_shapes_);
+          if (!use_vm_) {
+            tvm::TVMGetOutputShapes(*mod_, num_outputs, output_shapes_);
+          }
         } else {
           for (auto i = 0u; i < num_outputs; i++) {
             TensorShape ort_shape = utils::GetTensorShapeFromTensorShapeProto(*ort_outputs_info[i]->Shape());
@@ -113,8 +116,14 @@ class TVMRunner {
           t.strides = nullptr;
           t.byte_offset = 0;
           t.data = nullptr;
-          t.ndim = output_shapes_[i].size();
-          t.shape = output_shapes_[i].data();
+          if (!(use_vm_ && update_output_shapes_)) {
+            t.ndim = output_shapes_[i].size();
+            t.shape = output_shapes_[i].data();
+          } else {
+            t.ndim = 0;
+            t.shape = nullptr;
+          }
+
           tensors_outputs_.push_back(t);
         }
       }
@@ -153,7 +162,11 @@ class TVMRunner {
         dl_tensors_inputs[counter] = t;
         inds[counter++] = i;
       }
-      tvm::TVMSetInputs(*mod_, inds, dl_tensors_inputs);
+      if (use_vm_) {
+        tvm::TVM_VM_SetInputs(*mod_, dl_tensors_inputs);
+      } else {
+        tvm::TVMSetInputs(*mod_, inds, dl_tensors_inputs);
+      }
 
       size_t num_outputs = tensors_outputs_.size();
       for (auto i = 0u; i < num_outputs; i++) {
@@ -175,7 +188,12 @@ class TVMRunner {
       }
 
       ::tvm::runtime::TVMRetValue rvalue;
-      tvm::TVMRun(*mod_, tensors_outputs_, &rvalue);
+      if (use_vm_) {
+        tvm::TVM_VM_Run(*mod_, &rvalue);
+      } else {
+        tvm::TVMRun(*mod_, &rvalue);
+      }
+      tvm::TVMGetOutputs(*mod_, tensors_outputs_);
 
       return Status::OK();
     }
@@ -213,6 +231,7 @@ class TVMRunner {
 
   private:
     TvmModule* mod_;
+    bool use_vm_ = true;
     InputsInfoMap inputs_info_{};
     bool update_output_shapes_ = false;
     TVMTensorShapes output_shapes_;
@@ -421,10 +440,10 @@ void TvmExecutionProvider::ProcessInfo() {
     }
   }
 
-  if(info_.target == cpu_target_str ||
-     info_.target == llvm_target_str) {
+  if(info_.target == tvm::cpu_target_str ||
+     info_.target == tvm::llvm_target_str) {
     ProcessCPUTarget();
-  } else if(info_.target == gpu_target_str) {
+  } else if(info_.target == tvm::gpu_target_str) {
     ProcessGPUTarget();
   } else if(info_.target.empty()) {
     ORT_NOT_IMPLEMENTED("target option is empty!");
@@ -433,8 +452,8 @@ void TvmExecutionProvider::ProcessInfo() {
     // target is gotten from option set up by client
   }
 
-  if((info_.target_host == cpu_target_str ||
-      info_.target_host == llvm_target_str) &&
+  if((info_.target_host == tvm::cpu_target_str ||
+      info_.target_host == tvm::llvm_target_str) &&
       info_.target_host != info_.target) {
     info_.target_host = info_.target;
   } else if (info_.target_host.empty()) {
@@ -445,7 +464,7 @@ void TvmExecutionProvider::ProcessInfo() {
   }
 
   if(info_.opt_level < 1) {
-    info_.opt_level = default_opt_level;
+    info_.opt_level = tvm::default_opt_level;
   }
 }
 
@@ -462,7 +481,7 @@ void TvmExecutionProvider::ProcessCPUTarget() {
     info_.target = tvm::cpu_targets::LLVM_TARGET_AVX;
   } else  {
     // TODO(vvchernov): extend mechanism of auto-definition of cpu target
-    info_.target = llvm_target_str;
+    info_.target = tvm::llvm_target_str;
   }
 }
 
@@ -472,6 +491,7 @@ void TvmExecutionProvider::ProcessGPUTarget() {
 
 void TvmExecutionProvider::PrintProviderOptions() const {
   LOGS(*GetLogger(), INFO) << "TVM EP options:\n" <<
+  "executor type: " << info_.executor << "\n" <<
   "target: " << info_.target << "\n" <<
   "target_host: " << info_.target_host << "\n" <<
   "opt level: " << info_.opt_level << "\n" <<
@@ -505,6 +525,7 @@ TvmModule* TvmExecutionProvider::CompileFunc(std::string func_name,
 
   TvmModule mod_f = tvm::TVMCompile(buffers_[func_name],
                                     model_paths_[func_name],
+                                    info_.executor,
                                     info_.target,
                                     info_.target_host,
                                     info_.opt_level,
