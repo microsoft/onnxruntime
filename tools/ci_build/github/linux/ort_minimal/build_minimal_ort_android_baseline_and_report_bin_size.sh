@@ -26,6 +26,7 @@ BUILD_WITH_DEBUG_INFO_ARGS=${INCLUDE_DEBUG_INFO:+"--cmake_extra_defines ADD_DEBU
 export PATH=/opt/python/cp37-cp37m/bin:$PATH
 
 # Create an empty file to be used with build --include_ops_by_config, which will include no operators at all
+mkdir -p ${BUILD_DIR}
 echo -n > ${BUILD_DIR}/include_no_operators.config
 
 # Run a baseline minimal build of ORT Android arm64-v8a
