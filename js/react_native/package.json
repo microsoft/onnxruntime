@@ -71,7 +71,10 @@
     "!dist/module/*.js.map",
     "!android/.gitignore",
     "!android/.idea",
-    "!android/build"
+    "!android/build",
+    "!android/gradlew",
+    "!android/gradlew.bat",
+    "!android/gradle/wrapper/*.jar"
   ],
   "description": "Onnxruntime bridge for react native",
   "repository": "https://github.com/Microsoft/onnxruntime.git",
@@ -90,8 +93,7 @@
     "output": "dist"
   },
   "dependencies": {
-    "buffer": "^6.0.3",
-    "onnxruntime-common": "file:../common"
+    "buffer": "^6.0.3"
   },
   "scripts": {
     "typescript": "tsc --noEmit",
@@ -100,9 +102,9 @@
     "release": "release-it",
     "test": "jest",
     "pack-common": "cd ../common && npm pack && mv -f onnxruntime-common-*.tgz ../react_native/example/onnxruntime-common.tgz",
-    "unpack-common": "cd example && yarn add file:./onnxruntime-common.tgz",
-    "pack-libs": "npm pack && mv -f onnxruntime-react-native-*.tgz example/onnxruntime-react-native.tgz",
-    "unpack-libs": "cd example && yarn add file:./onnxruntime-react-native.tgz",
+    "unpack-common": "cd example && yarn add --no-lockfile file:./onnxruntime-common.tgz",
+    "pack-libs": "yarn prepack-e2e && npm pack && mv -f onnxruntime-react-native-*.tgz example/onnxruntime-react-native.tgz",
+    "unpack-libs": "cd example && yarn add --no-lockfile file:./onnxruntime-react-native.tgz",
     "prepack-rel": "tsc --build ./tsconfig.scripts.json && node ./scripts/prepack",
     "prepack-e2e": "tsc --build ./tsconfig.scripts.json && node ./scripts/prepack-e2e",
     "pods": "cd example && pod-install --quiet",
