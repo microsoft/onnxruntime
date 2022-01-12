@@ -41,7 +41,12 @@ Status SkipLayerNorm<T>::ComputeInternal(OpKernelContext* ctx) const {
 
   Tensor* output = ctx->Output(0, input->Shape());
 
-  if (input->SizeInBytes() == 0|| skip->SizeInBytes() == 0) {
+  if (input->Shape() != skip->Shape()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "skip is expected to have same shape as input");
+  }
+
+  if (input->Shape().Size() == 0) {
     return Status::OK();
   }
 
@@ -49,11 +54,6 @@ Status SkipLayerNorm<T>::ComputeInternal(OpKernelContext* ctx) const {
   if (input_dims.size() != 3) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "input is expected to have 3 dimensions, got ", input_dims.size());
-  }
-
-  if (input->Shape() != skip->Shape()) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "skip is expected to have same shape as input");
   }
 
   const auto& gamma_dims = gamma->Shape().GetDims();

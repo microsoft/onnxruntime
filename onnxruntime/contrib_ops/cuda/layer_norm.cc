@@ -70,10 +70,6 @@ Status LayerNorm<T, U, simplified>::ComputeInternal(OpKernelContext* ctx) const 
   Tensor* Y = ctx->Output(0, x_shape);
   auto Y_data = reinterpret_cast<CudaT*>(Y->template MutableData<T>());
 
-  if (X->SizeInBytes() == 0) {
-    return Status::OK();
-  }
-
   //Mean and variance
   std::vector<int64_t> mean_inv_std_var_dim;
   for (int i = 0; i < static_cast<int>(x_shape.NumDimensions()); ++i) {
@@ -97,6 +93,10 @@ Status LayerNorm<T, U, simplified>::ComputeInternal(OpKernelContext* ctx) const 
   CudaU* inv_var_data = nullptr;
   if (var != nullptr) {
     inv_var_data = reinterpret_cast<CudaU*>(var->template MutableData<U>());
+  }
+
+  if (x_shape.Size() == 0) {
+    return Status::OK();
   }
 
   HostApplyLayerNorm<CudaT, CudaU, simplified>(GetDeviceProp(), Stream(), Y_data, mean_data, inv_var_data, X_data, n1, n2, epsilon_, scale_data, bias_data);
