@@ -16,8 +16,6 @@
 #include "tvm_common.h"
 #include "tvm_execution_provider_info.h"
 
-using TvmModule = tvm::runtime::Module;
-
 namespace onnxruntime {
 
 namespace tvm {

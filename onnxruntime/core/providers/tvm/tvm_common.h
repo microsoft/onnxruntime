@@ -8,4 +8,6 @@
 #include <tvm/runtime/module.h>
 #include <tvm/runtime/c_runtime_api.h>
 
+using TvmModule = tvm::runtime::Module;
+
 #endif // TVM_COMMON_H

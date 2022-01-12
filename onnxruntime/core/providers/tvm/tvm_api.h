@@ -6,8 +6,9 @@
 
 #include "tvm_common.h"
 
-namespace stvm {
-    tvm::runtime::Module TVMCompile(const std::string& onnx_txt,
+namespace onnxruntime {
+namespace tvm {
+    TvmModule TVMCompile(const std::string& onnx_txt,
                                     const std::string& model_path,
                                     const std::string& target,
                                     const std::string& target_host,
@@ -18,11 +19,12 @@ namespace stvm {
                                     bool nhwc = false,
                                     const std::string& tuning_logfile = "",
                                     const std::string& tuning_type = "AutoTVM");
-    void TVMSetInputs(tvm::runtime::Module& mod, std::vector<size_t>& inds, std::vector<DLTensor>& inputs);
-    void TVMGetOutputShapes(tvm::runtime::Module& mod,
+    void TVMSetInputs(TvmModule& mod, std::vector<size_t>& inds, std::vector<DLTensor>& inputs);
+    void TVMGetOutputShapes(TvmModule& mod,
                             size_t num_outputs,
                             std::vector<std::vector<int64_t>>& output_shapes);
-    void TVMRun(tvm::runtime::Module& mod, std::vector<DLTensor>& outputs, tvm::runtime::TVMRetValue *ret);
-}  // namespace stvm
+    void TVMRun(TvmModule& mod, std::vector<DLTensor>& outputs, ::tvm::runtime::TVMRetValue *ret);
+}  // namespace tvm
+}  // namespace onnxruntime
 
 #endif  // TVM_API_H

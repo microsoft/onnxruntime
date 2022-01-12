@@ -93,7 +93,7 @@ class TVMRunner {
         size_t num_outputs = ort_outputs_info.size();
 
         if (update_output_shapes_) {
-          stvm::TVMGetOutputShapes(*mod_, num_outputs, output_shapes_);
+          tvm::TVMGetOutputShapes(*mod_, num_outputs, output_shapes_);
         } else {
           for (auto i = 0u; i < num_outputs; i++) {
             TensorShape ort_shape = utils::GetTensorShapeFromTensorShapeProto(*ort_outputs_info[i]->Shape());
@@ -153,7 +153,7 @@ class TVMRunner {
         dl_tensors_inputs[counter] = t;
         inds[counter++] = i;
       }
-      stvm::TVMSetInputs(*mod_, inds, dl_tensors_inputs);
+      tvm::TVMSetInputs(*mod_, inds, dl_tensors_inputs);
 
       size_t num_outputs = tensors_outputs_.size();
       for (auto i = 0u; i < num_outputs; i++) {
@@ -175,7 +175,7 @@ class TVMRunner {
       }
 
       ::tvm::runtime::TVMRetValue rvalue;
-      stvm::TVMRun(*mod_, tensors_outputs_, &rvalue);
+      tvm::TVMRun(*mod_, tensors_outputs_, &rvalue);
 
       return Status::OK();
     }
@@ -509,17 +509,17 @@ TvmModule* TvmExecutionProvider::CompileFunc(std::string func_name,
     return modules_[func_name].get();
   }
 
-  TvmModule mod_f = stvm::TVMCompile(buffers_[func_name],
-                                                model_paths_[func_name],
-                                                info_.target,
-                                                info_.target_host,
-                                                info_.opt_level,
-                                                opsets_[func_name],
-                                                info_.freeze_weights,
-                                                input_shapes,
-                                                info_.to_nhwc,
-                                                info_.tuning_file_path,
-                                                info_.tuning_type);
+  TvmModule mod_f = tvm::TVMCompile(buffers_[func_name],
+                                    model_paths_[func_name],
+                                    info_.target,
+                                    info_.target_host,
+                                    info_.opt_level,
+                                    opsets_[func_name],
+                                    info_.freeze_weights,
+                                    input_shapes,
+                                    info_.to_nhwc,
+                                    info_.tuning_file_path,
+                                    info_.tuning_type);
   auto module_ptr = std::make_shared<TvmModule>();
   *module_ptr = mod_f;
   modules_[func_name] = module_ptr;
