@@ -35,10 +35,10 @@ bool GetType(const NodeArg& node_arg, int32_t& type, const logging::Logger& logg
  */
 class NodeAttrHelper {
  public:
-  NodeAttrHelper(const Node& node);
+  explicit NodeAttrHelper(const Node& node);
 
   // Get the attributes from the target node of the node_unit
-  NodeAttrHelper(const NodeUnit& node_unit);
+  explicit NodeAttrHelper(const NodeUnit& node_unit);
 
   float Get(const std::string& key, float def_val) const;
 

@@ -651,13 +651,14 @@ static Status IsValidConvWeightQuantizedType(const ModelBuilder& model_builder,
   return Status::OK();
 }
 
-static void AddQuantizationScaleAndZeroPointToSkip(ModelBuilder& model_builder, const NodeUnitIODef& io_def) {
+static void AddQuantizationScaleAndZeroPointToSkip(ModelBuilder& model_builder,
+                                                   const NodeUnitIODef::QuantParam& quant_param) {
   // If we reach here, we assume the io_def has quant_param
-  model_builder.AddInitializerToSkip(io_def.quant_param->scale.Name());  // scale
-  LOGS_DEFAULT(VERBOSE) << io_def.quant_param->scale.Name() << "is skipped";
-  if (io_def.quant_param->zero_point) {
-    model_builder.AddInitializerToSkip(io_def.quant_param->zero_point->Name());  // zero_point
-    LOGS_DEFAULT(VERBOSE) << io_def.quant_param->zero_point->Name() << "is skipped";
+  model_builder.AddInitializerToSkip(quant_param.scale.Name());  // scale
+  LOGS_DEFAULT(VERBOSE) << quant_param.scale.Name() << "is skipped";
+  if (quant_param.zero_point) {
+    model_builder.AddInitializerToSkip(quant_param.zero_point->Name());  // zero_point
+    LOGS_DEFAULT(VERBOSE) << quant_param.zero_point->Name() << "is skipped";
   }
 }
 
@@ -666,7 +667,7 @@ static void AddQuantizationScaleAndZeroPointToSkip(ModelBuilder& model_builder, 
 static void AddInputToSkip(ModelBuilder& model_builder, const NodeUnitIODef& io_def) {
   model_builder.AddInitializerToSkip(io_def.node_arg.Name());  // main input
   if (io_def.quant_param)
-    AddQuantizationScaleAndZeroPointToSkip(model_builder, io_def);
+    AddQuantizationScaleAndZeroPointToSkip(model_builder, *io_def.quant_param);
 }
 
 template <class T>
@@ -725,7 +726,7 @@ class BinaryOpBuilder : public BaseOpBuilder {
   static void CreateSharedOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
  private:
-  static bool IsQuantizedOp(const NodeUnit& node_unit);  // TODO, see if we want to move this to BaseOpBuilder
+  static bool IsQuantizedOp(const NodeUnit& node_unit) ORT_MUST_USE_RESULT;  // TODO, see if we want to move this to BaseOpBuilder
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override ORT_MUST_USE_RESULT;
 };
 
@@ -739,9 +740,9 @@ void BinaryOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const N
     return;
 
   const auto& inputs = node_unit.Inputs();
-  AddQuantizationScaleAndZeroPointToSkip(model_builder, inputs[0]);               // a_scale, a_zp
-  AddQuantizationScaleAndZeroPointToSkip(model_builder, inputs[1]);               // b_scale, b_zp
-  AddQuantizationScaleAndZeroPointToSkip(model_builder, node_unit.Outputs()[0]);  // y_scale, y_zp
+  AddQuantizationScaleAndZeroPointToSkip(model_builder, *inputs[0].quant_param);               // a_scale, a_zp
+  AddQuantizationScaleAndZeroPointToSkip(model_builder, *inputs[1].quant_param);               // b_scale, b_zp
+  AddQuantizationScaleAndZeroPointToSkip(model_builder, *node_unit.Outputs()[0].quant_param);  // y_scale, y_zp
 }
 
 /* static */ void BinaryOpBuilder::CreateSharedOpBuilder(
@@ -1174,7 +1175,7 @@ class PoolOpBuilder : public BaseOpBuilder {
   static void CreateSharedOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
  private:
-  static bool IsQuantizedOp(const NodeUnit& node_unit);  // TODO, see if we want to move this to BaseOpBuilder
+  static bool IsQuantizedOp(const NodeUnit& node_unit) ORT_MUST_USE_RESULT;  // TODO, see if we want to move this to BaseOpBuilder
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override ORT_MUST_USE_RESULT;
 };
 
@@ -1188,8 +1189,8 @@ void PoolOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Nod
     return;
 
   // skip input/output scales and zeropoints
-  AddQuantizationScaleAndZeroPointToSkip(model_builder, node_unit.Inputs()[0]);   // x_scale, x_zp
-  AddQuantizationScaleAndZeroPointToSkip(model_builder, node_unit.Outputs()[0]);  // y_scale, y_zp
+  AddQuantizationScaleAndZeroPointToSkip(model_builder, *node_unit.Inputs()[0].quant_param);   // x_scale, x_zp
+  AddQuantizationScaleAndZeroPointToSkip(model_builder, *node_unit.Outputs()[0].quant_param);  // y_scale, y_zp
 }
 
 /* static */ void PoolOpBuilder::CreateSharedOpBuilder(
@@ -1328,7 +1329,7 @@ class ConvOpBuilder : public BaseOpBuilder {
   static void CreateSharedOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
  private:
-  static bool IsQuantizedOp(const NodeUnit& node_unit);  // TODO, see if we want to move this to BaseOpBuilder
+  static bool IsQuantizedOp(const NodeUnit& node_unit) ORT_MUST_USE_RESULT;  // TODO, see if we want to move this to BaseOpBuilder
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override ORT_MUST_USE_RESULT;
 };
 
@@ -1352,9 +1353,9 @@ void ConvOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Nod
   const auto& inputs = node_unit.Inputs();
   // skip the weight for conv as we need to transpose
   if (IsQuantizedOp(node_unit)) {
-    AddQuantizationScaleAndZeroPointToSkip(model_builder, inputs[0]);               // x_scale, x_zp
-    AddInputToSkip(model_builder, inputs[1]);                                       // w, w_scale, w_zp
-    AddQuantizationScaleAndZeroPointToSkip(model_builder, node_unit.Outputs()[0]);  // y_scale, y_zp
+    AddQuantizationScaleAndZeroPointToSkip(model_builder, *inputs[0].quant_param);               // x_scale, x_zp
+    AddInputToSkip(model_builder, inputs[1]);                                                    // w, w_scale, w_zp
+    AddQuantizationScaleAndZeroPointToSkip(model_builder, *node_unit.Outputs()[0].quant_param);  // y_scale, y_zp
     if (inputs.size() > 2)
       AddInputToSkip(model_builder, inputs[2]);  // B, B_scale, B_zp
   } else {
@@ -1548,7 +1549,7 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     }
   }
 
-  int32_t fuse_code = model_builder.FindActivation(node_unit, node_unit.Outputs()[1].node_arg);
+  int32_t fuse_code = model_builder.FindActivation(node_unit, node_unit.Outputs()[0].node_arg);
   ADD_SCALAR_OPERAND(model_builder, input_indices, fuse_code);
 
   if (model_builder.GetNNAPIFeatureLevel() > ANEURALNETWORKS_FEATURE_LEVEL_2) {
@@ -1718,7 +1719,7 @@ class GemmOpBuilder : public BaseOpBuilder {
   static void CreateSharedOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
  private:
-  static bool IsQuantizedOp(const NodeUnit& node_unit);  // TODO, see if we want to move this to BaseOpBuilder
+  static bool IsQuantizedOp(const NodeUnit& node_unit) ORT_MUST_USE_RESULT;  // TODO, see if we want to move this to BaseOpBuilder
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override ORT_MUST_USE_RESULT;
 };
 
@@ -1741,9 +1742,9 @@ class GemmOpBuilder : public BaseOpBuilder {
 void GemmOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
   const auto& inputs = node_unit.Inputs();
   if (IsQuantizedOp(node_unit)) {
-    AddQuantizationScaleAndZeroPointToSkip(model_builder, inputs[0]);               // b_scale, b_zp
-    AddInputToSkip(model_builder, inputs[1]);                                       // b, b_scale, b_zp
-    AddQuantizationScaleAndZeroPointToSkip(model_builder, node_unit.Outputs()[0]);  // y_scale, y_zp
+    AddQuantizationScaleAndZeroPointToSkip(model_builder, *inputs[0].quant_param);               // b_scale, b_zp
+    AddInputToSkip(model_builder, inputs[1]);                                                    // b, b_scale, b_zp
+    AddQuantizationScaleAndZeroPointToSkip(model_builder, *node_unit.Outputs()[0].quant_param);  // y_scale, y_zp
   } else {
     const auto& op = node_unit.OpType();
     const auto& inputs = node_unit.Inputs();
@@ -1879,7 +1880,7 @@ class UnaryOpBuilder : public BaseOpBuilder {
   static void CreateSharedOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
  private:
-  static bool IsQuantizedOp(const NodeUnit& node_unit);  // TODO, see if we want to move this to BaseOpBuilder
+  static bool IsQuantizedOp(const NodeUnit& node_unit) ORT_MUST_USE_RESULT;  // TODO, see if we want to move this to BaseOpBuilder
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override ORT_MUST_USE_RESULT;
 };
 
@@ -1892,8 +1893,8 @@ void UnaryOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const No
   if (!IsQuantizedOp(node_unit))
     return;
 
-  AddQuantizationScaleAndZeroPointToSkip(model_builder, node_unit.Inputs()[0]);   // x_scale, x_zp
-  AddQuantizationScaleAndZeroPointToSkip(model_builder, node_unit.Outputs()[0]);  // y_scale, y_zp
+  AddQuantizationScaleAndZeroPointToSkip(model_builder, *node_unit.Inputs()[0].quant_param);   // x_scale, x_zp
+  AddQuantizationScaleAndZeroPointToSkip(model_builder, *node_unit.Outputs()[0].quant_param);  // y_scale, y_zp
 }
 
 /* static */ void UnaryOpBuilder::CreateSharedOpBuilder(
@@ -2138,7 +2139,7 @@ class QuantizeLinearOpBuilder : public BaseOpBuilder {
 };
 
 void QuantizeLinearOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
-  AddQuantizationScaleAndZeroPointToSkip(model_builder, node_unit.Outputs()[0]);  // y_scale, y_zp
+  AddQuantizationScaleAndZeroPointToSkip(model_builder, *node_unit.Outputs()[0].quant_param);  // y_scale, y_zp
 }
 
 Status QuantizeLinearOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
@@ -2177,7 +2178,7 @@ class DequantizeLinearOpBuilder : public BaseOpBuilder {
 };
 
 void DequantizeLinearOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
-  AddQuantizationScaleAndZeroPointToSkip(model_builder, node_unit.Inputs()[0]);  // x_scale, x_zp
+  AddQuantizationScaleAndZeroPointToSkip(model_builder, *node_unit.Inputs()[0].quant_param);  // x_scale, x_zp
 }
 
 Status DequantizeLinearOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {

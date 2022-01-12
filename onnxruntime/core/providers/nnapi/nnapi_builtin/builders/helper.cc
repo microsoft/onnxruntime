@@ -333,7 +333,6 @@ common::Status GetQuantizationScaleAndZeroPoint(
 
   const auto unpack_tensor = [&model_path](const InitializedTensorSet& initializers,
                                            const std::string& name, std::vector<uint8_t>& unpacked_tensor) {
-    unpacked_tensor.clear();
     const auto& tensor = *initializers.at(name);
     ORT_RETURN_IF_ERROR(
         onnxruntime::utils::UnpackInitializerData(tensor, model_path, unpacked_tensor));
@@ -535,9 +534,9 @@ std::string Shape2String(const std::vector<uint32_t>& shape) {
 }
 
 bool CheckIsInitializer(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
-                        const std::string& input_name, const char* input_string) {
+                        const std::string& input_name, const char* input_description) {
   if (!Contains(initializers, input_name)) {
-    LOGS_DEFAULT(VERBOSE) << input_string << " of " << node_unit.Name() << "of type ["
+    LOGS_DEFAULT(VERBOSE) << input_description << " of " << node_unit.Name() << "of type ["
                           << node_unit.OpType() << "] must be an initializer tensor";
     return false;
   }

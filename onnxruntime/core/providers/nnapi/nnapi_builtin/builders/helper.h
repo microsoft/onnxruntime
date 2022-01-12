@@ -152,9 +152,9 @@ std::string Shape2String(const std::vector<uint32_t>& shape);
 
 // Check the given input is an initializer tensor
 // input_name is the name of the initializer
-// input_string is the string describing the input in the output message (if nay)
+// input_description is the string describing the input in the output message (if any)
 bool CheckIsInitializer(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
-                        const std::string& input_name, const char* input_string) ORT_MUST_USE_RESULT;
+                        const std::string& input_name, const char* input_description) ORT_MUST_USE_RESULT;
 
 }  // namespace nnapi
 }  // namespace onnxruntime

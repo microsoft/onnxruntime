@@ -139,9 +139,6 @@ class ModelBuilder {
 
   std::unordered_set<std::string> skipped_initializers_;
 
-  // All activation nodes (Relu, Relu1, Relu6) as a map <NodeIndex, activation_code>
-  std::unordered_map<NodeIndex, int32_t> activation_nodes_;
-
   // All activation nodes (Relu, Relu1, Relu6) as a map <const NodeUnit*, activation_code>
   std::unordered_map<const NodeUnit*, int32_t> activation_node_units_;
 

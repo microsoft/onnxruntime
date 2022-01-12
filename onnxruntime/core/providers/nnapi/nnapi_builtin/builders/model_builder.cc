@@ -143,7 +143,8 @@ void ModelBuilder::PreprocessActivations() {
 }
 
 const NodeUnit& ModelBuilder::GetNodeUnit(const Node* node) const {
-  // Do we want to throw here if the node is not in the map?
+  // In theory, if node_unit_map_ is generated correctly, see PreprocessNodeUnits(), a NodeUnit can be
+  // found for any single node in the graph_viewer_, unless the given node is not from graph_viewer_
   return *node_unit_map_.at(node);
 }
 
@@ -624,7 +625,6 @@ Status ModelBuilder::Compile(std::unique_ptr<Model>& model) {
 }
 
 int32_t ModelBuilder::FindActivation(const NodeUnit& node_unit, const NodeArg& output) {
-  (void)node_unit;
   int32_t fuse_code = ANEURALNETWORKS_FUSED_NONE;
   if (node_unit.GetOutputNodes().size() != 1)
     return fuse_code;
