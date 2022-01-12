@@ -146,16 +146,13 @@ android {
     }
     signingConfigs {
         debug {
-            storeFile file('debug.keystore')
-            storePassword 'android'
+            storeFile rootProject.file('debug.keystore')
             keyAlias 'androiddebugkey'
             keyPassword 'android'
+            storePassword 'android'
         }
     }
     buildTypes {
-        debug {
-            signingConfig signingConfigs.debug
-        }
         release {
             // Caution! In production, you need to generate your own keystore file.
             // see https://reactnative.dev/docs/signed-apk-android.

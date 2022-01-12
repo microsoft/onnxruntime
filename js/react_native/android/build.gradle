@@ -132,5 +132,5 @@ dependencies {
 
   androidTestImplementation "com.linkedin.dexmaker:dexmaker-mockito-inline-extended:2.28.1"
 
-  implementation "com.microsoft.onnxruntime:onnxruntime-mobile:latest.release@aar"
+  implementation "com.microsoft.onnxruntime:onnxruntime-mobile:latest.integration@aar"
 }

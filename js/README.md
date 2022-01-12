@@ -359,12 +359,10 @@ By default, ONNX Runtime React Native leverages ONNX Runtime Mobile package with
 
    4. Copy `<BUILD_DIRECTORY>/aar_out/MinSizeRel/com/microsoft/onnxruntime/onnxruntime-mobile/<version>/onnxruntime-mobile-<version>.aar` into `<ORT_ROOT>/js/react_native/android/libs` directory.
 
-   5. Modify `Onnxruntime_mobileVersion` property in `<ORT_ROOT>/js/react_native/android/build.properties` to consume a locally built package or a newly published package from Maven.
-
-   6. To verify, open Android Emulator and run this command from `<ORT_ROOT>/js/react_native/android`
+   5. To verify, open Android Emulator and run this command from `<ORT_ROOT>/js/react_native/android`
 
       ```sh
-      adb shell am instrument -w ai.onnxruntime.react_native.test/androidx.test.runner.AndroidJUnitRunner
+      adb shell am instrument -w ai.onnxruntime.reactnative.test/androidx.test.runner.AndroidJUnitRunner
       ```
 
 3. Build iOS ONNX Runtime package
@@ -397,7 +395,7 @@ By default, ONNX Runtime React Native leverages ONNX Runtime Mobile package with
    `debug.keystore` must be generated ahead for Android example.
 
    ```sh
-   keytool -genkey -v -keystore <ORT_ROOT>/js/react_native/example/android/app/debug.keystore -alias androiddebugkey -storepass android -keypass android -keyalg RSA -keysize 2048 -validity 999999 -dname "CN=Android Debug,O=Android,C=US"
+   keytool -genkey -v -keystore <ORT_ROOT>/js/react_native/example/android/debug.keystore -alias androiddebugkey -storepass android -keypass android -keyalg RSA -keysize 2048 -validity 999999 -dname "CN=Android Debug,O=Android,C=US"
    ```
 
    From `<ORT_ROOT>/js/react_native,
@@ -409,7 +407,9 @@ By default, ONNX Runtime React Native leverages ONNX Runtime Mobile package with
    From `<ORT_ROOT>/js/react_native/example/android`, run e2e Android tests as follows,
 
    ```sh
-   ./gradlew installDebug
+   ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest
+   adb install -t app/build/outputs/apk/debug/app-debug.apk
+   adb install -t app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk 
    adb shell am instrument -w com.example.reactnativeonnxruntimemodule.test/androidx.test.runner.AndroidJUnitRunner
    ```
 
