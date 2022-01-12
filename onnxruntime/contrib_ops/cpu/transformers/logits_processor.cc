@@ -58,7 +58,6 @@ template <typename T>
 void RepetitionPenaltyLogitsProcessor<T>::Process(const ISequences* sequences,
                                                   NextTokenScores<T>& next_token_scores) {
   const int batch_beam_size = next_token_scores.batch_beam_size;
-
   for (int i = 0; i < batch_beam_size; i++) {
     gsl::span<T> beam_token_scores = next_token_scores.GetScores(i);
     gsl::span<const int64_t> sequence = sequences->GetSequence(i);
