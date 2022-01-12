@@ -466,10 +466,10 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addNup
 
 /*
  * Class::    ai_onnxruntime_OrtSession_SessionOptions
- * Method:    addStvm
+ * Method:    addTvm
  * Signature: (JILjava/lang/String)V
  */
-JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addStvm
+JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addTvm
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jstring settingsString) {
     (void)jobj;
   #ifdef USE_TVM
@@ -477,8 +477,8 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addStv
     checkOrtStatus(jniEnv,(const OrtApi*)apiHandle,OrtSessionOptionsAppendExecutionProvider_Tvm((OrtSessionOptions*) handle, settings));
     (*jniEnv)->ReleaseStringUTFChars(jniEnv,settingsString,settings);
   #else
-    (void)apiHandle;(void)handle;(void)settingsString; // Parameters used when Stvm is defined.
-    throwOrtException(jniEnv,convertErrorCode(ORT_INVALID_ARGUMENT),"This binary was not compiled with Stvm support.");
+    (void)apiHandle;(void)handle;(void)settingsString; // Parameters used when TVM is defined.
+    throwOrtException(jniEnv,convertErrorCode(ORT_INVALID_ARGUMENT),"This binary was not compiled with TVM support.");
   #endif
 }
 

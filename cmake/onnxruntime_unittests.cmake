@@ -1288,11 +1288,11 @@ if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_EXTENDED_MINIMAL_BUILD
 endif()
 
 if (onnxruntime_USE_TVM)
-  # find_library(STVM_LIBS NAMES libtvm.so PATHS ${onnxruntime_TVM_HOME}/lib)
-  # link_directories(onnxruntime_test_all ${STVM_LIBS})
+  # find_library(TVM_LIBS NAMES libtvm.so PATHS ${onnxruntime_TVM_HOME}/lib)
+  # link_directories(onnxruntime_test_all ${TVM_LIBS})
   find_library(PYTHON_LIBS NAMES libpython PATHS /usr/local/lib)
   #target_link_libraries(onnxruntime_test_all PRIVATE ${PYTHON_LIBRARIES} -lutil)
-  # set(CMAKE_SHARED_LINKER_FLAGS "-Wl,-rpath,${STVM_LIBS}")
+  # set(CMAKE_SHARED_LINKER_FLAGS "-Wl,-rpath,${TVM_LIBS}")
 endif()
 
 include(onnxruntime_fuzz_test.cmake)

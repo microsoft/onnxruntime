@@ -63,7 +63,7 @@ ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Tvm,
                     _In_ OrtSessionOptions* options, _In_ const char* settings) {
   ORT_UNUSED_PARAMETER(options);
   ORT_UNUSED_PARAMETER(settings);
-  return CreateNotEnabledStatus("Stvm");
+  return CreateNotEnabledStatus("Tvm");
 }
 #endif
 

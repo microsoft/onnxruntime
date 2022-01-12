@@ -890,14 +890,14 @@ public class OrtSession implements AutoCloseable {
     }
 
     /**
-     * Adds Stvm as an execution backend.
+     * Adds TVM as an execution backend.
      *
      * @param settings See the documentation for valid settings strings.
      * @throws OrtException If there was an error in native code.
      */
-    public void addStvm(String settings) throws OrtException {
+    public void addTvm(String settings) throws OrtException {
       checkClosed();
-      addStvm(OnnxRuntime.ortApiHandle, nativeHandle, settings);
+      addTvm(OnnxRuntime.ortApiHandle, nativeHandle, settings);
     }
 
     /**
@@ -1045,7 +1045,7 @@ public class OrtSession implements AutoCloseable {
         long apiHandle, long nativeHandle, int allowUnalignedBuffers, String settings)
         throws OrtException;
 
-    private native void addStvm(
+    private native void addTvm(
         long apiHandle, long nativeHandle, String settings)
         throws OrtException;
 
