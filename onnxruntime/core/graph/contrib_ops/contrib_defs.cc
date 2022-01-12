@@ -2641,26 +2641,25 @@ Example 4:
             AttributeProto::INT, static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT))
       .AllowUncheckedAttributes()
       .Input(0, "X", "Input data tensor from the previous layer.", "T")
-      .Input(1, "Scale", "Scale tensor.", "T1")
-      .Input(2, "B", "Bias tensor.", "T1", OpSchema::Optional)
-      .Output(0, "Y", "Output data tensor.", "T")
+      .Input(1, "Scale", "Scale tensor.", "V")
+      .Input(2, "B", "Bias tensor.", "V", OpSchema::Optional)
+      .Output(0, "Y", "Output data tensor.", "V")
       .Output(1, "Mean", "Saved mean used during training to speed up gradient computation", "U", OpSchema::Optional)
       .Output(2, "InvStdDev", "Saved inverse standard deviation used during training to speed up gradient computation.", "U", OpSchema::Optional)
       .TypeConstraint(
           "T",
           {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
-          "Constrain input X and output Y type to float tensors.")
-      .TypeConstraint(
-          "T1",
-          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
-          "Constrain scale and bias type to float tensors.")
+          "Constrain input X type to float tensors.")
       .TypeConstraint(
           "U",
           {"tensor(float)", "tensor(bfloat16)"},
           "Type of Mean and InvStdDev tensors.")
+      .TypeConstraint(
+          "V",
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+          "Constrain output Y, scale and bias type to float tensors.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        propagateShapeAndTypeFromFirstInput(ctx);
-        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+        propagateElemTypeFromInputToOutput(ctx, 1, 0);
         auto type = ctx.getAttribute("stash_type")->i();
         if (ctx.getNumOutputs() > 1) {
           auto output_type = ctx.getOutputType(1);
@@ -2673,6 +2672,7 @@ Example 4:
         if (!hasNInputShapes(ctx, 1)) {
           return;
         }
+        propagateShapeFromInputToOutput(ctx, 0, 0);
         auto& input_shape = ctx.getInputType(0)->tensor_type().shape();
         int64_t input_ndim = input_shape.dim_size();
         int64_t axis = -1;
@@ -2702,10 +2702,10 @@ Example 4:
           [](const FunctionBodyBuildContext& ctx, const OpSchema& schema, FunctionProto& functionProto) {
             // LayerNormalization <axis, epsilon, stash_type> (X, Scale, B) => (Y, Mean?, InvStdDev?)
 
-            auto* tp = ctx.getInputType(0);
+            auto* tp = ctx.getInputType(1);
             if ((tp == nullptr) || (!tp->has_tensor_type()))
               return false;
-            int64_t T = tp->tensor_type().elem_type();
+            int64_t V = tp->tensor_type().elem_type();
 
             auto type_attr = ctx.getAttribute("stash_type");
             int64_t U = (type_attr != nullptr) ? type_attr->i() : static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
@@ -2755,13 +2755,11 @@ Example 4:
                 .Add("StdDev = Sqrt (VarPlusEpsilon)")
                 .Add("Deviation = Sub (XU, Mean2D)")
                 .Add("Normalized = Div (Deviation, StdDev)")
-                .Add("NormalizedT = Cast (Normalized)", "to", T)
-                .Add("ScaleT = Cast (Scale)", "to", T)
-                .Add("Scale2D = Flatten <axis = 0> (ScaleT)")
-                .Add("Scaled = Mul (NormalizedT, Scale2D)");
+                .Add("NormalizedV = Cast (Normalized)", "to", V)
+                .Add("Scale2D = Flatten <axis = 0> (Scale)")
+                .Add("Scaled = Mul (NormalizedV, Scale2D)");
             if (ctx.hasInput(2)) {
-              builder.Add("BT = Cast (B)", "to", T);
-              builder.Add("B2D = Flatten <axis=0> (BT)");
+              builder.Add("B2D = Flatten <axis=0> (B)");
               builder.Add("Biased = Add (Scaled, B2D)");
             } else {
               builder.Add("Biased = Identity (Scaled)");
@@ -2790,27 +2788,27 @@ Example 4:
             AttributeProto::FLOAT, 1e-5f)
       .AllowUncheckedAttributes()
       .Input(0, "X", "Input data tensor from the previous layer.", "T")
-      .Input(1, "scale", "Scale tensor.", "T1")
-      .Output(0, "Y", "Output data tensor.", "T")
+      .Input(1, "scale", "Scale tensor.", "V")
+      .Output(0, "Y", "Output data tensor.", "V")
       .Output(1, "inv_std_var", "Saved inverse standard variance used during training to speed up gradient computation.", "U", OpSchema::Optional)
       .TypeConstraint(
           "T",
           {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
-          "Constrain input X and output Y type to float tensors.")
-      .TypeConstraint(
-          "T1",
-          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
-          "Constrain scale type to float tensors.")
+          "Constrain input X type to float tensors.")
       .TypeConstraint(
           "U",
           {"tensor(float)"},
           "Constrain mean and inv_std_var to be float tensors.")
+      .TypeConstraint(
+          "V",
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+          "Constrain output Y and scale type to float tensors.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        propagateShapeAndTypeFromFirstInput(ctx);
-        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+        propagateElemTypeFromInputToOutput(ctx, 1, 0);
         if (!hasNInputShapes(ctx, 1)) {
           return;
         }
+        propagateShapeFromInputToOutput(ctx, 0, 0);
         auto& input_shape = ctx.getInputType(0)->tensor_type().shape();
         int64_t input_ndim = input_shape.dim_size();
         int64_t axis = -1;

@@ -16,12 +16,14 @@ namespace contrib {
   ONNX_OPERATOR_TYPED_KERNEL_EX(LayerNormalization, kOnnxDomain, 1, T, kCpuExecutionProvider,           \
                                 KernelDefBuilder()                                                      \
                                     .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())              \
-                                    .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>()),            \
+                                    .TypeConstraint("U", DataTypeImpl::GetTensorType<T>())              \
+                                    .TypeConstraint("V", DataTypeImpl::GetTensorType<T>()),             \
                                 LayerNorm<T, false>);                                                   \
   ONNX_OPERATOR_TYPED_KERNEL_EX(SimplifiedLayerNormalization, kOnnxDomain, 1, T, kCpuExecutionProvider, \
                                 KernelDefBuilder()                                                      \
                                     .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())              \
-                                    .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>()),            \
+                                    .TypeConstraint("U", DataTypeImpl::GetTensorType<T>())              \
+                                    .TypeConstraint("V", DataTypeImpl::GetTensorType<T>()),             \
                                 LayerNorm<T, true>);
 
 REGISTER_KERNEL_TYPED(float)

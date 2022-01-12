@@ -81,19 +81,19 @@
     ],
     [
         "InvertibleLayerNormalizationGrad com.microsoft CPUExecutionProvider",
-        13150810545300713416
+        7138710605488227064
     ],
     [
         "InvertibleLayerNormalizationGrad com.microsoft CPUExecutionProvider",
-        17110612392943299816
+        14718779537160086944
     ],
     [
         "LayerNormalizationGrad com.microsoft CPUExecutionProvider",
-        2513433694454071744
+        12121902982758237936
     ],
     [
         "LayerNormalizationGrad com.microsoft CPUExecutionProvider",
-        3254223872991226072
+        17776280973585908456
     ],
     [
         "LogSoftmaxGrad com.microsoft CPUExecutionProvider",
@@ -177,11 +177,11 @@
     ],
     [
         "SimplifiedLayerNormalizationGrad com.microsoft CPUExecutionProvider",
-        8228014654863632272
+        6770225290706127808
     ],
     [
         "SimplifiedLayerNormalizationGrad com.microsoft CPUExecutionProvider",
-        11985533875115832200
+        13749371409358355088
     ],
     [
         "SinGrad ai.onnx CPUExecutionProvider",

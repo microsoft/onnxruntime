@@ -15,17 +15,20 @@ namespace contrib {
   ONNX_OPERATOR_TYPED_KERNEL_EX(LayerNormalizationGrad, kMSDomain, 1, T, kCpuExecutionProvider,           \
                                 KernelDefBuilder()                                                        \
                                     .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())                \
-                                    .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>()),              \
+                                    .TypeConstraint("U", DataTypeImpl::GetTensorType<T>())                \
+                                    .TypeConstraint("V", DataTypeImpl::GetTensorType<T>()),               \
                                 LayerNormGrad<T, false>);                                                 \
   ONNX_OPERATOR_TYPED_KERNEL_EX(SimplifiedLayerNormalizationGrad, kMSDomain, 1, T, kCpuExecutionProvider, \
                                 KernelDefBuilder()                                                        \
                                     .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())                \
-                                    .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>()),              \
+                                    .TypeConstraint("U", DataTypeImpl::GetTensorType<T>())                \
+                                    .TypeConstraint("V", DataTypeImpl::GetTensorType<T>()),               \
                                 LayerNormGrad<T, true>);                                                  \
   ONNX_OPERATOR_TYPED_KERNEL_EX(InvertibleLayerNormalizationGrad, kMSDomain, 1, T, kCpuExecutionProvider, \
                                 KernelDefBuilder()                                                        \
                                     .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())                \
-                                    .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>()),              \
+                                    .TypeConstraint("U", DataTypeImpl::GetTensorType<T>())                \
+                                    .TypeConstraint("V", DataTypeImpl::GetTensorType<T>()),               \
                                 InvertibleLayerNormGrad<T>);
 
 REGISTER_KERNEL_TYPED(float)

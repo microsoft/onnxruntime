@@ -3593,7 +3593,7 @@ TEST_F(GraphTransformationTests, LayerNormWithCastFusionTest_3) {
 
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
 
-  ASSERT_TRUE(op_to_count["Cast"] == 1);
+  ASSERT_TRUE(op_to_count["Cast"] == 0);
   ASSERT_TRUE(op_to_count["LayerNormalization"] == 1);
 }
 
@@ -3700,7 +3700,7 @@ TEST_F(GraphTransformationTests, SimplifiedLayerNormWithCastsFusionTest_Precisio
   ASSERT_TRUE(op_to_count["ReduceMean"] == 0);
   ASSERT_TRUE(op_to_count["Pow"] == 0);
   ASSERT_TRUE(op_to_count["Sqrt"] == 0);
-  ASSERT_TRUE(op_to_count["Cast"] == 3);
+  ASSERT_TRUE(op_to_count["Cast"] == 1);
   ASSERT_TRUE(op_to_count["SimplifiedLayerNormalization"] == 1);
 
   for (const Node& node : graph.Nodes()) {
