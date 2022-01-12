@@ -22,6 +22,7 @@
 #include "core/providers/opencl/nn/max_pool_image2d.h"
 #include "core/providers/opencl/nn/concat_image2d.h"
 #include "core/providers/opencl/tensor/shape.h"
+#include "core/providers/opencl/tensor/resize_image2d.h"
 
 namespace onnxruntime {
 namespace opencl {
@@ -50,6 +51,8 @@ Status RegisterOpenCLKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kOpenCLExecutionProvider, kOnnxDomain, 8, 11, Concat)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kOpenCLExecutionProvider, kOnnxDomain, 12, Concat)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kOpenCLExecutionProvider, kMSDomain, 1, FusedConv)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kOpenCLExecutionProvider, kOnnxDomain, 11, 12, Resize)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kOpenCLExecutionProvider, kOnnxDomain, 13, Resize)>,
   };
 
   for (auto& function_table_entry : function_table) {
