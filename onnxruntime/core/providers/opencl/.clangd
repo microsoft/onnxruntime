@@ -3,6 +3,7 @@ If:
 CompileFlags:
   Add:
   - -xcl
+  - -DSELECT_PREDICATE=int
   - -DFLOAT=float
   - -DFLOAT4=float4
   - -DCONVERT_FLOAT=convert_float
