@@ -202,7 +202,7 @@ Status KernelLauncher::Launch(const OpenCLExecutionProvider& exec, const NDRange
         ZoneScopedN("clEnqueueNDRangeKernel");
         TracyCLZone(const_cast<TracyCLCtx>(exec.GetTracyCLContext()), "clEnqueueNDRangeKernel");
         ORT_RETURN_IF_CL_ERROR(clEnqueueNDRangeKernel(exec.GetCommandQueue(), kernel_, global.Size(), nullptr, global.Data(), local.Data(), 0, nullptr, &kernel_launch_event));
-        // TracyCLZoneSetEvent(kernel_launch_event);
+        TracyCLZoneSetEvent(kernel_launch_event);
     }
 #else
     ORT_RETURN_IF_CL_ERROR(clEnqueueNDRangeKernel(exec.GetCommandQueue(), kernel_, global.Size(), nullptr, global.Data(), local.Data(), 0, nullptr, nullptr));
