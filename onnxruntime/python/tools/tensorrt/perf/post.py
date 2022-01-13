@@ -107,10 +107,8 @@ def get_session(session, model_group):
 def write_table(ingest_client, table, table_name, trt_version, upload_time):
     if table.empty:
         return
-    #table = table.assign(TrtVersion=trt_version) # add TrtVersion
-    #table = table.assign(UploadTime=upload_time) # add UploadTime
-    table = table.assign(TrtVersion='8.2.1.8') # add TrtVersion
-    table = table.assign(UploadTime='2022-01-12T11:45:03Z') # add UploadTime
+    table = table.assign(TrtVersion=trt_version) # add TrtVersion
+    table = table.assign(UploadTime=upload_time) # add UploadTime
     ingestion_props = IngestionProperties(
       database=database,
       table=table_name,
