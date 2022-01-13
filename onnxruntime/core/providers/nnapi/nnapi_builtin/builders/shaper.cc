@@ -3,8 +3,8 @@
 
 #include "core/providers/common.h"
 
-#include "helper.h"
 #include "shaper.h"
+#include "helper.h"
 
 namespace onnxruntime {
 namespace nnapi {

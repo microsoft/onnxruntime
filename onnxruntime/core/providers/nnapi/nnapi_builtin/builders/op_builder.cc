@@ -3,12 +3,13 @@
 
 #include "op_builder.h"
 
-#include <core/common/logging/logging.h>
-#include <core/common/safeint.h>
-#include <core/framework/tensorprotoutils.h>
-#include <core/providers/common.h>
 #include <onnx/onnx_pb.h>
 
+#include "core/common/logging/logging.h"
+#include "core/common/safeint.h"
+#include "core/framework/tensorprotoutils.h"
+#include "core/graph/graph_viewer.h"
+#include "core/providers/common.h"
 #include "core/providers/shared/utils/utils.h"
 #include "core/providers/shared/node_unit/node_unit.h"
 #include "core/providers/cpu/tensor/slice_helper.h"
@@ -40,12 +41,6 @@ Status AddTransposeOperator(ModelBuilder& model_builder,
                             const std::string& perm_name,
                             std::vector<int32_t> perm,
                             const std::string& output,
-                            bool output_is_nhwc) ORT_MUST_USE_RESULT;
-Status AddTransposeOperator(ModelBuilder& model_builder,
-                            const std::string& input,
-                            const std::string& perm_name,
-                            std::vector<int32_t> perm,
-                            const std::string& output,
                             bool output_is_nhwc) {
   auto& shaper(model_builder.GetShaper());
   const auto& operand_indices(model_builder.GetOperandIndices());
@@ -67,10 +62,6 @@ Status AddTransposeOperator(ModelBuilder& model_builder,
                                     {output_operand_type}, {output_is_nhwc});
 }
 
-Status TransposeBetweenNCHWAndNHWC(ModelBuilder& model_builder,
-                                   const std::string& input,
-                                   const std::string& output,
-                                   bool nchw_to_nhwc) ORT_MUST_USE_RESULT;
 Status TransposeBetweenNCHWAndNHWC(ModelBuilder& model_builder,
                                    const std::string& input,
                                    const std::string& output,
@@ -110,16 +101,10 @@ Status TransposeBetweenNCHWAndNHWC(ModelBuilder& model_builder,
 
 Status TransposeNHWCToNCHW(ModelBuilder& model_builder,
                            const std::string& input,
-                           const std::string& output) ORT_MUST_USE_RESULT;
-Status TransposeNHWCToNCHW(ModelBuilder& model_builder,
-                           const std::string& input,
                            const std::string& output) {
   return TransposeBetweenNCHWAndNHWC(model_builder, input, output, false /* nchw_to_nhwc */);
 }
 
-Status TransposeNCHWToNHWC(ModelBuilder& model_builder,
-                           const std::string& input,
-                           const std::string& output) ORT_MUST_USE_RESULT;
 Status TransposeNCHWToNHWC(ModelBuilder& model_builder,
                            const std::string& input,
                            const std::string& output) {
@@ -154,9 +139,6 @@ Status GetNCHWInput(ModelBuilder& model_builder, const NodeUnit& node_unit, size
 // Otherwise we will need transpose the nhwc input back to nchw, and output will be nchw
 Status TransposeBinaryOpInputLayout(ModelBuilder& model_builder, const NodeUnit& node_unit,
                                     std::string& input1, std::string& input2,
-                                    bool& output_is_nhwc) ORT_MUST_USE_RESULT;
-Status TransposeBinaryOpInputLayout(ModelBuilder& model_builder, const NodeUnit& node_unit,
-                                    std::string& input1, std::string& input2,
                                     bool& output_is_nhwc) {
   bool input1_is_nhwc = model_builder.IsOperandNHWC(input1);
   bool input2_is_nhwc = model_builder.IsOperandNHWC(input2);
@@ -184,17 +166,7 @@ static Status AddBinaryOperator(int32_t op_type,
                                 const std::string& output,
                                 bool output_is_nhwc,
                                 float output_scale = 0.0f,
-                                int32_t output_zero_point = 0) ORT_MUST_USE_RESULT;
-static Status AddBinaryOperator(int32_t op_type,
-                                ModelBuilder& model_builder,
-                                const std::string& input1,
-                                const std::string& input2,
-                                bool add_activation,
-                                int32_t fuse_code,
-                                const std::string& output,
-                                bool output_is_nhwc,
-                                float output_scale,
-                                int32_t output_zero_point) {
+                                int32_t output_zero_point = 0) {
   auto& shaper(model_builder.GetShaper());
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());
@@ -215,10 +187,6 @@ static Status AddBinaryOperator(int32_t op_type,
   return Status::OK();
 }
 
-static Status AddSqueezeOp(ModelBuilder& model_builder,
-                           const std::string& node_name,
-                           const std::string& input, const std::string& output,
-                           std::vector<int32_t> axes) ORT_MUST_USE_RESULT;
 static Status AddSqueezeOp(ModelBuilder& model_builder,
                            const std::string& node_name,
                            const std::string& input, const std::string& output,
@@ -279,11 +247,6 @@ enum DataLayout {
 // since NNAPI requires X and W to be same type for per-tensor quantization,
 // the initializer tensor W will be converted from int8 to uint8 by flip each byte by XOR 0x80
 // byte ^ 0x80 == byte + 128
-static Status AddInitializerInNewLayout(ModelBuilder& model_builder,
-                                        const std::string& name,
-                                        const OperandType& source_operand_type,
-                                        DataLayout new_layout,
-                                        bool is_per_tensor_u8s8) ORT_MUST_USE_RESULT;
 static Status AddInitializerInNewLayout(ModelBuilder& model_builder,
                                         const std::string& name,
                                         const OperandType& source_operand_type,
@@ -372,10 +335,6 @@ static Status AddInitializerInNewLayout(ModelBuilder& model_builder,
 static Status AddInitializerTransposed(ModelBuilder& model_builder,
                                        const OperandType& source_operand_type,
                                        const std::string& name,
-                                       bool is_per_tensor_u8s8) ORT_MUST_USE_RESULT;
-static Status AddInitializerTransposed(ModelBuilder& model_builder,
-                                       const OperandType& source_operand_type,
-                                       const std::string& name,
                                        bool is_per_tensor_u8s8) {
   const auto& tensor = *model_builder.GetInitializerTensors().at(name);
   const Shape& shape = source_operand_type.dimensions;
@@ -426,12 +385,6 @@ static Status ComputeConvPads(
     const uint32_t weight_size_y, const uint32_t weight_size_x,
     const std::vector<int32_t>& onnx_pads, const std::vector<int32_t>& onnx_strides, const std::vector<int32_t>& onnx_dilations,
     AutoPadType auto_pad_type, bool nchw,
-    std::vector<int32_t>& pads_out) ORT_MUST_USE_RESULT;
-static Status ComputeConvPads(
-    const Shape& input_dimen,
-    const uint32_t weight_size_y, const uint32_t weight_size_x,
-    const std::vector<int32_t>& onnx_pads, const std::vector<int32_t>& onnx_strides, const std::vector<int32_t>& onnx_dilations,
-    AutoPadType auto_pad_type, bool nchw,
     std::vector<int32_t>& pads_out) {
   const int32_t input_size_y = nchw ? input_dimen[2] : input_dimen[1];
   const int32_t input_size_x = nchw ? input_dimen[3] : input_dimen[2];
@@ -460,16 +413,6 @@ static Status ComputeConvPads(
   return Status::OK();
 }
 
-static Status HandleAutoPad(const Shape& input_shape,
-                            const uint32_t weight_size_y,
-                            const uint32_t weight_size_x,
-                            const std::vector<int32_t>& onnx_strides,
-                            const std::vector<int32_t>& onnx_dilations,
-                            AutoPadType auto_pad_type,
-                            bool use_nchw,
-                            std::vector<int32_t>& onnx_pads,
-                            int32_t& nnapi_padding_code,
-                            bool& use_auto_pad) ORT_MUST_USE_RESULT;
 static Status HandleAutoPad(const Shape& input_shape,
                             const uint32_t weight_size_y,
                             const uint32_t weight_size_x,
@@ -514,10 +457,6 @@ static Status HandleAutoPad(const Shape& input_shape,
 static Status GetBinaryOpQuantizationScaleAndZeroPoint(
     const InitializedTensorSet& initializers, const NodeUnit& node_unit,
     float& a_scale, float& b_scale, float& y_scale,
-    int32_t& a_zero_point, int32_t& b_zero_point, int32_t& y_zero_point) ORT_MUST_USE_RESULT;
-static Status GetBinaryOpQuantizationScaleAndZeroPoint(
-    const InitializedTensorSet& initializers, const NodeUnit& node_unit,
-    float& a_scale, float& b_scale, float& y_scale,
     int32_t& a_zero_point, int32_t& b_zero_point, int32_t& y_zero_point) {
   ORT_RETURN_IF_ERROR(GetQuantizationScaleAndZeroPoint(
       initializers, node_unit.Inputs()[0], node_unit.ModelPath(), a_scale, a_zero_point));
@@ -538,11 +477,6 @@ static Status GetBinaryOpQuantizationScaleAndZeroPoint(
 // If the Qlinear[Conv/MatMul] is using per-tensor u8s8, the weight/B tensor
 // will be convert to uint8 later, will return the same scale and 128 as zero point
 // Also will set is_per_tensor_u8s8 to true to be used later
-static Status GetConvMatMulOpQuantizationScaleAndZeroPoint(
-    const ModelBuilder& model_builder, const NodeUnit& node_unit,
-    float& a_scale, float& w_scale, float& y_scale,
-    int32_t& a_zero_point, int32_t& w_zero_point, int32_t& y_zero_point,
-    optional<std::vector<float>>& w_scales, bool& is_per_tensor_u8s8) ORT_MUST_USE_RESULT;
 static Status GetConvMatMulOpQuantizationScaleAndZeroPoint(
     const ModelBuilder& model_builder, const NodeUnit& node_unit,
     float& a_scale, float& w_scale, float& y_scale,
@@ -599,10 +533,6 @@ static Status GetConvMatMulOpQuantizationScaleAndZeroPoint(
 static Status IsValidInputQuantizedType(const ModelBuilder& model_builder,
                                         const std::string& input_name,
                                         float scale,
-                                        int32_t zero_point) ORT_MUST_USE_RESULT;
-static Status IsValidInputQuantizedType(const ModelBuilder& model_builder,
-                                        const std::string& input_name,
-                                        float scale,
                                         int32_t zero_point) {
   const OperandType& input_operand_type = model_builder.GetOperandTypes().at(input_name);
   if (input_operand_type.operandType.scale != scale) {
@@ -622,11 +552,6 @@ static Status IsValidInputQuantizedType(const ModelBuilder& model_builder,
   return Status::OK();
 }
 
-static Status IsValidConvWeightQuantizedType(const ModelBuilder& model_builder,
-                                             const std::string& input_name,
-                                             float scale,
-                                             int32_t zero_point,
-                                             const optional<std::vector<float>>& scales) ORT_MUST_USE_RESULT;
 static Status IsValidConvWeightQuantizedType(const ModelBuilder& model_builder,
                                              const std::string& input_name,
                                              float scale,
@@ -692,10 +617,10 @@ class BaseOpBuilder : public IOpBuilder {
  public:
   virtual ~BaseOpBuilder() = default;
   virtual void AddInitializersToSkip(ModelBuilder& /* model_builder */, const NodeUnit& /* node_unit */) const override {}
-  Status AddToModelBuilder(ModelBuilder& model_builder, const NodeUnit& node_unit) const override final ORT_MUST_USE_RESULT;
+  Status AddToModelBuilder(ModelBuilder& model_builder, const NodeUnit& node_unit) const override final;
 
  protected:
-  virtual Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const ORT_MUST_USE_RESULT = 0;
+  virtual Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const = 0;
   static bool IsOpSupported(const ModelBuilder& model_builder, const NodeUnit& node_unit) ORT_MUST_USE_RESULT;
 };
 
@@ -727,7 +652,7 @@ class BinaryOpBuilder : public BaseOpBuilder {
 
  private:
   static bool IsQuantizedOp(const NodeUnit& node_unit) ORT_MUST_USE_RESULT;  // TODO, see if we want to move this to BaseOpBuilder
-  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override ORT_MUST_USE_RESULT;
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
 };
 
 /* static */ bool BinaryOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) {
@@ -826,7 +751,7 @@ Status BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
 
 class ReluOpBuilder : public BaseOpBuilder {
  private:
-  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override ORT_MUST_USE_RESULT;
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
 };
 
 Status ReluOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
@@ -860,7 +785,7 @@ Status ReluOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
 
 class TransposeOpBuilder : public BaseOpBuilder {
  private:
-  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override ORT_MUST_USE_RESULT;
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
 };
 
 Status TransposeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
@@ -906,10 +831,10 @@ class ReshapeOpBuilder : public BaseOpBuilder {
  public:
   void AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
   static Status AddReshapeOperator(ModelBuilder& model_builder, const NodeUnit& node_unit,
-                                   const std::string& input, const std::vector<int32_t>& shape) ORT_MUST_USE_RESULT;
+                                   const std::string& input, const std::vector<int32_t>& shape);
 
  private:
-  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override ORT_MUST_USE_RESULT;
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
   static bool CanSkipReshape(const ModelBuilder& model_builder, const NodeUnit& node_unit,
                              size_t input_rank, size_t output_rank);
 };
@@ -1062,7 +987,7 @@ class BatchNormalizationOpBuilder : public BaseOpBuilder {
   void AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
 
  private:
-  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override ORT_MUST_USE_RESULT;
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
 };
 
 void BatchNormalizationOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
@@ -1176,7 +1101,7 @@ class PoolOpBuilder : public BaseOpBuilder {
 
  private:
   static bool IsQuantizedOp(const NodeUnit& node_unit) ORT_MUST_USE_RESULT;  // TODO, see if we want to move this to BaseOpBuilder
-  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override ORT_MUST_USE_RESULT;
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
 };
 
 /* static */ bool PoolOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) {
@@ -1330,7 +1255,7 @@ class ConvOpBuilder : public BaseOpBuilder {
 
  private:
   static bool IsQuantizedOp(const NodeUnit& node_unit) ORT_MUST_USE_RESULT;  // TODO, see if we want to move this to BaseOpBuilder
-  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override ORT_MUST_USE_RESULT;
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
 };
 
 /* static */ bool ConvOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) {
@@ -1595,7 +1520,7 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
 
 class CastOpBuilder : public BaseOpBuilder {
  private:
-  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override ORT_MUST_USE_RESULT;
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
 };
 
 Status CastOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
@@ -1635,7 +1560,7 @@ Status CastOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
 
 class SoftMaxOpBuilder : public BaseOpBuilder {
  private:
-  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override ORT_MUST_USE_RESULT;
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
 };
 
 Status SoftMaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
@@ -1686,7 +1611,7 @@ Status SoftMaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, cons
 
 class IdentityOpBuilder : public BaseOpBuilder {
  private:
-  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override ORT_MUST_USE_RESULT;
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
 };
 
 Status IdentityOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
@@ -1720,7 +1645,7 @@ class GemmOpBuilder : public BaseOpBuilder {
 
  private:
   static bool IsQuantizedOp(const NodeUnit& node_unit) ORT_MUST_USE_RESULT;  // TODO, see if we want to move this to BaseOpBuilder
-  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override ORT_MUST_USE_RESULT;
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
 };
 
 /* static */ bool GemmOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) {
@@ -1881,7 +1806,7 @@ class UnaryOpBuilder : public BaseOpBuilder {
 
  private:
   static bool IsQuantizedOp(const NodeUnit& node_unit) ORT_MUST_USE_RESULT;  // TODO, see if we want to move this to BaseOpBuilder
-  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override ORT_MUST_USE_RESULT;
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
 };
 
 /* static */ bool UnaryOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) {
@@ -1982,7 +1907,7 @@ Status UnaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
 
 class ConcatOpBuilder : public BaseOpBuilder {
  private:
-  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override ORT_MUST_USE_RESULT;
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
 };
 
 Status ConcatOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
@@ -2078,7 +2003,7 @@ class SqueezeOpBuilder : public BaseOpBuilder {
   void AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
 
  private:
-  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override ORT_MUST_USE_RESULT;
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
   static Status GetAxes(ModelBuilder& model_builder, const NodeUnit& node_unit, std::vector<int32_t>& axes);
 };
 
@@ -2135,7 +2060,7 @@ class QuantizeLinearOpBuilder : public BaseOpBuilder {
   void AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
 
  private:
-  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override ORT_MUST_USE_RESULT;
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
 };
 
 void QuantizeLinearOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
@@ -2174,7 +2099,7 @@ class DequantizeLinearOpBuilder : public BaseOpBuilder {
   void AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
 
  private:
-  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override ORT_MUST_USE_RESULT;
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
 };
 
 void DequantizeLinearOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
@@ -2213,7 +2138,7 @@ Status DequantizeLinearOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_buil
 
 class LRNOpBuilder : public BaseOpBuilder {
  private:
-  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override ORT_MUST_USE_RESULT;
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
 };
 
 Status LRNOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
@@ -2274,7 +2199,7 @@ class ClipOpBuilder : public BaseOpBuilder {
   void AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
 
  private:
-  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override ORT_MUST_USE_RESULT;
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
 };
 
 void ClipOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
@@ -2333,7 +2258,7 @@ class ResizeOpBuilder : public BaseOpBuilder {
   void AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
 
  private:
-  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override ORT_MUST_USE_RESULT;
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
 };
 
 void ResizeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
@@ -2439,7 +2364,7 @@ Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
 
 class FlattenOpBuilder : public BaseOpBuilder {
  private:
-  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override ORT_MUST_USE_RESULT;
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
 };
 
 Status FlattenOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
@@ -2473,10 +2398,10 @@ class MinMaxOpBuilder : public BaseOpBuilder {
   static void CreateSharedOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
  private:
-  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override ORT_MUST_USE_RESULT;
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
   static Status AddMinMaxOperator(ModelBuilder& model_builder, const NodeUnit& node_unit,
                                   const std::string& input1, const std::string& input2,
-                                  bool output_is_nhwc) ORT_MUST_USE_RESULT;
+                                  bool output_is_nhwc);
 };
 
 /* static */ void MinMaxOpBuilder::CreateSharedOpBuilder(
@@ -2536,7 +2461,7 @@ Status MinMaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
 
 class EluOpBuilder : public BaseOpBuilder {
  private:
-  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override ORT_MUST_USE_RESULT;
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
 };
 
 Status EluOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
@@ -2566,7 +2491,7 @@ class SliceOpBuilder : public BaseOpBuilder {
   void AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
 
  private:
-  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override ORT_MUST_USE_RESULT;
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
 };
 
 void SliceOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const {

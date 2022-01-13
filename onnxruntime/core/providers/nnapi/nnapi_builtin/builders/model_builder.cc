@@ -1,16 +1,19 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <core/common/logging/logging.h>
-#include <core/common/safeint.h>
-#include <core/framework/tensorprotoutils.h>
+#include "model_builder.h"
 
+#include "core/common/logging/logging.h"
+#include "core/common/safeint.h"
+#include "core/common/status.h"
+#include "core/framework/tensorprotoutils.h"
+#include "core/graph/graph_viewer.h"
 #include "core/providers/common.h"
 #include "core/providers/shared/node_unit/node_unit.h"
 #include "core/providers/shared/utils/utils.h"
 #include "core/providers/nnapi/nnapi_builtin/nnapi_lib/nnapi_implementation.h"
+
 #include "helper.h"
-#include "model_builder.h"
 #include "op_builder.h"
 #include "op_support_checker.h"
 
@@ -687,6 +690,10 @@ std::string ModelBuilder::GetUniqueName(const std::string& base_name) {
   } while (Contains(unique_names_, unique_name));
 
   return unique_name;
+}
+
+const InitializedTensorSet& ModelBuilder::GetInitializerTensors() const {
+  return graph_viewer_.GetAllInitializedTensors();
 }
 
 void ModelBuilder::RegisterNHWCOperand(const std::string& name) {
