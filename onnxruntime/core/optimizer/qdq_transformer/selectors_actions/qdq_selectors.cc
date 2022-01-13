@@ -118,6 +118,7 @@ bool DropDQNodeGroupSelector::Check(const GraphViewer& graph_viewer,
     return false;
   }
 
+  (void)q_nodes;
   const Node& dq_node = *dq_nodes.front();
 
   auto get_const_initializer = [&graph_viewer](const std::string& initializer_name) {
