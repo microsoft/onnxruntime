@@ -141,6 +141,10 @@
     ],
     [
         "ArgMax ai.onnx CPUExecutionProvider",
+        1506815612154586624
+    ],
+    [
+        "ArgMax ai.onnx CPUExecutionProvider",
         2317240841713684752
     ],
     [
@@ -162,6 +166,10 @@
     [
         "ArgMax ai.onnx CPUExecutionProvider",
         12157492629288967928
+    ],
+    [
+        "ArgMax ai.onnx CPUExecutionProvider",
+        12195502223979275536
     ],
     [
         "ArgMax ai.onnx CPUExecutionProvider",
