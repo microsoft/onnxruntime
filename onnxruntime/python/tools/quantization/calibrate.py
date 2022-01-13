@@ -10,10 +10,13 @@ import os
 import numpy as np
 import onnx
 import onnxruntime
+import math
+
 from onnx import helper, TensorProto, ModelProto
 from onnx import onnx_pb as onnx_proto
 from six import string_types
 from enum import Enum
+
 
 from .quant_utils import QuantType, smooth_distribution
 from .registry import QLinearOpsRegistry
@@ -601,36 +604,96 @@ class HistogramCollector(CalibrationDataCollector):
 
             # reference distribution p
             p = sliced_distribution.copy() # a copy of np array
-            left_outliers_count = sum(hist[:start_index]) 
-            right_outliers_count = sum(hist[end_index:])
-            p[0] += left_outliers_count
-            p[-1] += right_outliers_count
-
-            # nonzeros[i] incidates whether p[i] is non-zero
+            p[0] += sum(hist[:start_index]) 
+            p[-1] = sum(hist[end_index:])
+            
+            # nonzeros[i] indicates whether p[i] is non-zero
             nonzeros = (p != 0).astype(np.int64)
             
             # quantize p.size bins into quantized bins (default 128 bins) 
             quantized_bins = np.zeros(num_quantized_bins, dtype=np.int64)
-            num_merged_bins = sliced_distribution.size // num_quantized_bins
-
+            num_merged_bins = sliced_distribution.size / num_quantized_bins
+            
             # merge bins into quantized bins
-            for index in range(num_quantized_bins):
-                start = index * num_merged_bins 
-                end = start + num_merged_bins
-                quantized_bins[index] = sum(sliced_distribution[start:end]) 
-            quantized_bins[-1] += sum(sliced_distribution[num_quantized_bins * num_merged_bins:])
+            for j in range(num_quantized_bins):
+                if j == 0:
+                    end = num_merged_bins
+                    right_lower = math.floor(end)
+                    right_scale = end - right_lower
+                    
+                    if right_scale > 0:
+                        quantized_bins[0] += right_scale * p[right_lower]
+                    
+                    quantized_bins[0] += sum(p[0:right_lower])
+                    quantized_bins[0] /= right_lower + right_scale
+                elif j == num_quantized_bins - 1:
+                    start = p.size - num_merged_bins
+                    left_upper = math.ceil(start)
+                    left_scale = left_upper - start
+                    
+                    if left_scale > 0:
+                        quantized_bins[-1] += left_scale * p[left_upper - 1]
+                    
+                    quantized_bins[-1] += sum(p[left_upper:])
+                    quantized_bins[-1] /= p.size - left_upper + left_scale
+                else:
+                    start = j * num_merged_bins
+                    end = (j + 1) * num_merged_bins
+                    
+                    left_upper = math.ceil(start)
+                    left_scale = left_upper - start
+                    right_lower = math.floor(end)
+                    right_scale = end - right_lower
+                    
+                    if left_scale > 0:
+                        quantized_bins[j] += left_scale * p[left_upper - 1]
+                        
+                    if right_scale > 0:
+                        quantized_bins[j] += right_scale * p[right_lower]
+                    
+                    quantized_bins[j] += sum(p[left_upper:right_lower])
+                    quantized_bins[j] /= right_lower - left_upper + left_scale + right_scale
 
             # in order to compare p and q, we need to make length of q equals to length of p
             # expand quantized bins into p.size bins
             q = np.zeros(p.size, dtype=np.int64)
-            for index in range(num_quantized_bins):
-                start = index * num_merged_bins
-                end = start + num_merged_bins
 
-                norm = sum(nonzeros[start:end])
-                if norm != 0:
-                    q[start:end] = float(quantized_bins[index]) / float(norm)
-            
+            for k in range(p.size):
+                if k == 0:
+                    end = num_merged_bins
+                    right_lower = math.floor(end)
+                    right_scale = end - right_lower
+                    
+                    if right_scale > 0:
+                        q[right_lower] += right_scale * quantized_bins[0]
+                    
+                    q[0:right_lower] = quantized_bins[0]
+                if k == p.size - 1:
+                    start = p.size - num_merged_bins
+                    left_upper = math.ceil(start)
+                    left_scale = left_upper - start
+                    
+                    if left_scale > 0:
+                        q[left_upper - 1] += left_scale * quantized_bins[p.size - 1]
+                    
+                    q[left_upper:] = sliced_distribution[p.size - 1]
+                else:  
+                    start = k * num_merged_bins
+                    end = (k + 1) * num_merged_bins
+                    
+                    left_upper = math.ceil(start)
+                    left_scale = left_upper - start
+                    right_lower = math.floor(end)
+                    right_scale = end - right_lower
+                    
+                    if left_scale > 0:
+                        q[left_upper - 1] += left_scale * quantized_bins[k]
+                        
+                    if right_scale > 0:
+                        q[right_lower] += right_scale * quantized_bins[k]
+                    
+                    quantized_bins[left_upper:right_lower] = quantized_bins[k]
+
             p = smooth_distribution(p)
             q = smooth_distribution(q)
 
