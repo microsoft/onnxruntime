@@ -112,17 +112,19 @@
               return true;
           });
 
+          //todo: resolve performance issue to enable hint, which improves rendering
           //chart_cpu.hintDepth(1);
-          //chart_cpu.hintOpacity(0.8); 
+          //chart_cpu.hintOpacity(0.8);
           chart_cpu.container("cpu");
           chart_cpu.draw();
-          
+
            if (has_gpu_info) {
             document.getElementById("cpu").className = "half_view";
             var chart_gpu = anychart.treeMap(anychart.data.tree(array_gpu, "as-tree"));
             chart_gpu.title("GPU perf overview");
+            //todo: resolve performance issue to enable hint, which improves rendering
             //chart_gpu.hintDepth(1);
-            //chart_gpu.hintOpacity(0.8); 
+            //chart_gpu.hintOpacity(0.8);
             chart_gpu.container("gpu");
             chart_gpu.draw();
           } else {
