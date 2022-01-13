@@ -45,7 +45,7 @@ MatchResult FastGeluFusion::CheckFirstFormula(Graph& graph, Node& mul1_node,
   }
 
   int32_t input_index = -1;
-  const float mul_val = 0.044715f;
+  constexpr float mul_val = 0.044715f;
   for (auto i = 0; i < 2; i++) {
     if (optimizer_utils::IsInitializerWithExpectedValue(graph, *(mul1_node.InputDefs()[i]), mul_val, true)) {
       input_index = i;
@@ -89,7 +89,7 @@ MatchResult FastGeluFusion::CheckFirstFormula(Graph& graph, Node& mul1_node,
   }
 
   input_index = -1;
-  const float mul4_val = 0.7978845834732056f;
+  constexpr float mul4_val = 0.7978845834732056f;
   for (auto i = 0; i < 2; i++) {
     if (optimizer_utils::IsInitializerWithExpectedValue(graph, *(mul4_node.InputDefs()[i]), mul4_val, true)) {
       input_index = i;

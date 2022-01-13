@@ -2,8 +2,8 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include "core/framework/tensor.h"
-#include "core/graph/basic_types.h"
+
+#include "core/framework/fence.h"
 
 namespace onnxruntime {
 class GPUDataTransfer;

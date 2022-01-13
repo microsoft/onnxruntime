@@ -53,7 +53,7 @@ void NodeIndexInfo::Init(const TValidNodes& nodes, NodeIndex max_node_index,
   }
 
   std::size_t total_def_count{};
-  const bool include_missing_optional_defs = true;
+  constexpr bool include_missing_optional_defs = true;
 
   if (max_node_index == 0) {
     FindMinAndMaxNodeIndex(nodes, min_node_index_, max_node_index);

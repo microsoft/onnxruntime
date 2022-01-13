@@ -457,6 +457,16 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
     }
   }
 
+  for (const auto& constant_initializer : meta_def->constant_initializers) {
+    const ONNX_NAMESPACE::TensorProto* initializer = graph.GetConstantInitializer(constant_initializer, true);
+    ORT_ENFORCE(initializer != nullptr, "Initializer " + constant_initializer + " is not found or is not constant initializer.");
+    // meta_def->constant_initializers could have duplicates so make sure we only add once
+    const ONNX_NAMESPACE::TensorProto* subgraph_initializer = nullptr;
+    if (!function_body_graph.GetInitializedTensor(constant_initializer, subgraph_initializer)) {
+      function_body_graph.AddInitializedTensor(*initializer);
+    }
+  }
+
   //TODO: if we reuse the nodes in parent graph, maybe we don't need to resolve it.
   auto status = function_body_graph.Resolve();
   ORT_ENFORCE(status.IsOK(), status.ErrorMessage());

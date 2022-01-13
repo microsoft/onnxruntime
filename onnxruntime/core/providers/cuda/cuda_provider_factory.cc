@@ -4,6 +4,7 @@
 #include "core/providers/shared_library/provider_api.h"
 #include "core/providers/cuda/cuda_provider_factory_creator.h"
 #include "core/providers/cuda/cuda_provider_factory.h"
+#include "core/providers/cuda/cuda_provider_options.h"
 
 #include <memory>
 
@@ -186,19 +187,40 @@ struct CUDA_Provider : Provider {
   void* GetInfo() override { return &g_info; }
 
   std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(const void* void_params) override {
-    auto params = reinterpret_cast<const OrtCUDAProviderOptions*>(void_params);
+    auto params = reinterpret_cast<const OrtCUDAProviderOptionsV2*>(void_params);
 
     CUDAExecutionProviderInfo info{};
     info.device_id = gsl::narrow<OrtDevice::DeviceId>(params->device_id);
     info.gpu_mem_limit = params->gpu_mem_limit;
-    info.arena_extend_strategy = static_cast<onnxruntime::ArenaExtendStrategy>(params->arena_extend_strategy);
+    info.arena_extend_strategy = params->arena_extend_strategy;
     info.cudnn_conv_algo_search = params->cudnn_conv_algo_search;
     info.do_copy_in_default_stream = params->do_copy_in_default_stream != 0;
     info.has_user_compute_stream = params->has_user_compute_stream != 0;
     info.user_compute_stream = params->user_compute_stream;
     info.default_memory_arena_cfg = params->default_memory_arena_cfg;
+    info.cudnn_conv_use_max_workspace = params->cudnn_conv_use_max_workspace != 0;
 
     return std::make_shared<CUDAProviderFactory>(info);
+  }
+
+  void UpdateProviderOptions(void* provider_options, const ProviderOptions& options) override {
+    auto internal_options = onnxruntime::CUDAExecutionProviderInfo::FromProviderOptions(options);
+    auto& cuda_options = *reinterpret_cast<OrtCUDAProviderOptionsV2*>(provider_options);
+
+    cuda_options.device_id = internal_options.device_id;
+    cuda_options.cudnn_conv_algo_search = internal_options.cudnn_conv_algo_search;
+    cuda_options.gpu_mem_limit = internal_options.gpu_mem_limit;
+    cuda_options.arena_extend_strategy = internal_options.arena_extend_strategy;
+    cuda_options.do_copy_in_default_stream = internal_options.do_copy_in_default_stream;
+    cuda_options.has_user_compute_stream = internal_options.has_user_compute_stream;
+    cuda_options.user_compute_stream = internal_options.user_compute_stream;
+    cuda_options.default_memory_arena_cfg = internal_options.default_memory_arena_cfg;
+    cuda_options.cudnn_conv_use_max_workspace = internal_options.cudnn_conv_use_max_workspace;
+  }
+
+  ProviderOptions GetProviderOptions(const void* provider_options) override {
+    auto& options = *reinterpret_cast<const OrtCUDAProviderOptionsV2*>(provider_options);
+    return onnxruntime::CUDAExecutionProviderInfo::ToProviderOptions(options);
   }
 
   void Shutdown() override {

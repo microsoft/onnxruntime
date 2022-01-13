@@ -205,13 +205,13 @@ Status DivGrad<T>::ComputeInternal(OpKernelContext* context) const {
       ImplDivGrad<CudaT>(
           Stream(),
           prepare.output_rank_or_simple_broadcast,
-          &prepare.lhs_padded_strides,
+          prepare.lhs_padded_strides,
           prepare_a_data,
-          &prepare.rhs_padded_strides,
+          prepare.rhs_padded_strides,
           prepare_b_data,
           prepare_dy_data,
           dy_shape.Size(),
-          &prepare.fdm_output_strides,
+          prepare.fdm_output_strides,
           reinterpret_cast<CudaT*>(da_data_ref),
           reinterpret_cast<CudaT*>(db_data_ref));
 

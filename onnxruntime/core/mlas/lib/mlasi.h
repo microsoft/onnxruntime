@@ -96,18 +96,46 @@ Abstract:
 //
 // Select the threading model.
 //
-// N.B. MLAS_NO_ONNXRUNTIME_THREADPOOL is used to build MLAS test code outside
+// N.B. BUILD_MLAS_NO_ONNXRUNTIME is used to build MLAS test code outside
 // of the ONNX Runtime source tree. OpenMP may or may not be enabled in this
 // configuration.
 //
 
-#if !defined(MLAS_NO_ONNXRUNTIME_THREADPOOL)
+#if !defined(BUILD_MLAS_NO_ONNXRUNTIME)
 #include "core/platform/threadpool.h"
-#endif
 
-#if defined(_OPENMP)
-#include <omp.h>
-#endif
+#if defined(MLAS_TARGET_ARM64) && defined(__linux__)
+
+#include "core/common/cpuid_info.h"
+using MLAS_CPUIDINFO = onnxruntime::CPUIDInfo;
+
+#endif // MLAS_TARGET_ARM64
+
+#else  // BUILD_MLAS_NO_ONNXRUNTIME
+
+#if defined(MLAS_TARGET_ARM64) && defined(__linux__)
+class MLASCPUIDInfo
+{
+   public:
+    static const MLASCPUIDInfo& GetCPUIDInfo()
+    {
+        static MLASCPUIDInfo cpuid_info;
+        return cpuid_info;
+    }
+
+    // ARM
+    bool HasArmNeonDot() const { return has_arm_neon_dot_; }
+
+   private:
+    MLASCPUIDInfo();
+
+    bool has_arm_neon_dot_{false};
+};
+using MLAS_CPUIDINFO = MLASCPUIDInfo;
+
+#endif // MLAS_TARGET_ARM64
+
+#endif // BUILD_MLAS_NO_ONNXRUNTIME
 
 //
 // Define the maximum number of threads supported by this implementation.
@@ -667,7 +695,7 @@ extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmS8S8DispatchNeon;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchUdot;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmS8S8DispatchSdot;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchWasmSimd;
-extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchDefault;
+extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmQuantDispatchDefault;
 
 //
 // Symmetric quantized integer convolution dispatch structure.
@@ -680,6 +708,7 @@ extern const MLAS_CONV_SYM_DISPATCH MlasConvSymDispatchAvxVnni;
 extern const MLAS_CONV_SYM_DISPATCH MlasConvSymDispatchAvx512Core;
 extern const MLAS_CONV_SYM_DISPATCH MlasConvSymDispatchAvx512Vnni;
 extern const MLAS_CONV_SYM_DISPATCH MlasConvSymDispatchNeon;
+extern const MLAS_CONV_SYM_DISPATCH MlasConvSymDispatchDot;
 
 //
 // Quantized depthwise convolution kernels.
@@ -735,13 +764,14 @@ struct MLAS_CONV_SYM_POST_PROCESS_PARAMS {
 typedef
 void
 (MLASCALL MLAS_CONV_SYM_DEPTHWISE_ROUTINE_KERNELSIZE)(
-    uint8_t const* const* InputIndirection,
+    void const* const* InputIndirection,
     int8_t const* Filter,
     size_t Channels,
-    uint8_t* Output,
+    void* Output,
     size_t OutputCount,
     MLAS_CONV_SYM_POST_PROCESS_PARAMS const* PostProcessParams,
-    unsigned KernelFlags
+    unsigned KernelFlags,
+    bool InputIsSigned
     );
 
 //
@@ -803,6 +833,8 @@ struct MLAS_PLATFORM {
     uint32_t NchwcBlockSize;
     uint32_t PreferredBufferAlignment;
     int32_t MaximumThreadCount;
+#elif defined(MLAS_TARGET_ARM64)
+    static constexpr int32_t MaximumThreadCount = MLAS_MAXIMUM_THREAD_COUNT * 4;
 #else
     static constexpr int32_t MaximumThreadCount = MLAS_MAXIMUM_THREAD_COUNT;
 #endif
@@ -850,14 +882,9 @@ MlasGetMaximumThreadCount(
     MLAS_THREADPOOL* ThreadPool
     )
 {
-#if defined(MLAS_NO_ONNXRUNTIME_THREADPOOL)
+#if defined(BUILD_MLAS_NO_ONNXRUNTIME)
     MLAS_UNREFERENCED_PARAMETER(ThreadPool);
-
-#if defined(_OPENMP)
-    return (omp_get_num_threads() == 1) ? omp_get_max_threads() : 1;
-#else
     return 1;
-#endif
 #else
     return onnxruntime::concurrency::ThreadPool::DegreeOfParallelism(ThreadPool);
 #endif
@@ -897,6 +924,11 @@ MlasPartitionWork(
 //
 // Helpers to cast a floating point type to and from an integer bit format.
 //
+#if defined(_MSC_VER) && !defined(__clang__)
+  #pragma warning(push)
+  // VC++ suggests we can attempt to make 'MlasBitsOfFp32' constexpr, but it is not valid.
+  #pragma warning(disable:26497) 
+#endif
 
 MLAS_FORCEINLINE
 uint32_t
@@ -925,7 +957,9 @@ MlasFp32FromBits(
     u.IntegerValue = IntegerValue;
     return u.FloatValue;
 }
-
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(pop)
+#endif
 
 #if defined(MLAS_TARGET_WASM_SCALAR)
 

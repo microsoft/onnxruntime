@@ -172,7 +172,7 @@ Status QDQReplaceWithNew::Run(Graph& graph, const NodesToOptimize& selected_node
 
 #if !defined(ORT_MINIMAL_BUILD)
 Status QDQReplaceWithNew::RunForSave(Graph& graph, const NodesToOptimize& selected_nodes,
-                                     const RuntimeOptimizationSaveContext& save_context,
+                                     const SatRuntimeOptimizationSaveContext& save_context,
                                      SavedState& saved_state, bool& graph_modified) const {
   SetOptionalZeroPoint::UpdateNodes(graph, selected_nodes);
   graph_modified = true;
