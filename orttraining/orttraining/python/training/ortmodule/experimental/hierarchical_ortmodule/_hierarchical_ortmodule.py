@@ -7,6 +7,7 @@ from ... import ORTModule
 from .... import ortmodule
 from ...debug_options import DebugOptions
 
+_force_exportable_set = set([torch.nn.Linear, torch.nn.Identity,  torch.nn.modules.linear.NonDynamicallyQuantizableLinear])
 
 class HierarchicalORTModule(torch.nn.Module):
     '''
@@ -50,6 +51,8 @@ class HierarchicalORTModule(torch.nn.Module):
         self._original_module = module
         if not debug_options:
             self._debug_options = DebugOptions()
+        else:
+            self._debug_options = debug_options
 
     def _initialize(self, *args, **kwargs):
         handle_pool = []
@@ -81,6 +84,10 @@ class HierarchicalORTModule(torch.nn.Module):
         # "module" can be wrapped as ORTModule. Otherwise, "module" is
         # not exportable to ONNX.
         def check_exportable(module):
+            # forward functions of classes in _force_exportable_set may not be called
+            # thus not in module_arg_pool
+            if type(module) in _force_exportable_set:
+                return True
             sub_dict = module._modules
             if not sub_dict:
                 # No sub-module exists, so this module is a leaf
