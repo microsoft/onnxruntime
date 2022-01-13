@@ -17,7 +17,7 @@ jobs:
         -o ubuntu20.04 -d gpu \
         -t onnxruntime_distributed_tests_image \
         -x " \
-          --use_cuda --cuda_version=11.1 --cuda_home=/usr/local/cuda-11.1 --cudnn_home=/usr/local/cuda-11.1 \
+          --use_cuda --cuda_version=11.3 --cuda_home=/usr/local/cuda-11.3 --cudnn_home=/usr/local/cuda-11.3 \
           --config RelWithDebInfo \
           --enable_training \
           --update --build \
