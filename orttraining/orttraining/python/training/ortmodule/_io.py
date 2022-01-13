@@ -148,9 +148,9 @@ class _InputInfo(object):
             # value = list(self.default_values_of_keyword_parameters.values())[i]
             #print(name, arg, value)
             if name in self.keyword_names:
-                if torch.is_tensor(arg) and arg.dtype == torch.bool:
-                    arg = bool(arg)
-                    print('converting input param of type tensor(bool) to bool, ', name)
+                # if torch.is_tensor(arg) and arg.dtype == torch.bool:
+                #     arg = bool(arg)
+                #     print('converting input param of type tensor(bool) to bool, ', name)
                 kwargs[name] = arg
 
         # kwargs = {name: arg for name, arg in zip(self.names[self.num_expanded_positionals_non_none:], flat_args[self.num_positionals:]) \
