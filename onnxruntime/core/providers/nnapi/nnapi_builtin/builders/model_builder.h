@@ -50,8 +50,9 @@ class ModelBuilder {
                               const std::vector<android::nn::wrapper::OperandType>& types,
                               const std::vector<bool>& is_nhwc_vec);
 
-  // Find if an output has a fuseable activation (Relu)
-  int32_t FindActivation(const NodeUnit& node_unit, const NodeArg& output);
+  // Find if the given node_unit has a fuseable activation (Relu/Relu1/Relu6)
+  // For now we only support node_unit with a single output
+  int32_t FindActivation(const NodeUnit& node_unit);
 
   // Add an NNAPI scalar operand
   common::Status AddOperandFromScalar(bool value, uint32_t& index);

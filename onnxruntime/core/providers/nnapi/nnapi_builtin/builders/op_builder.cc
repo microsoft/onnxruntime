@@ -736,7 +736,7 @@ Status BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
 
   int32_t fuse_code = ANEURALNETWORKS_FUSED_NONE;
   if (add_activation) {
-    fuse_code = model_builder.FindActivation(node_unit, node_unit.Outputs()[0].node_arg);
+    fuse_code = model_builder.FindActivation(node_unit);
   }
 
   return AddBinaryOperator(op_code, model_builder,
@@ -1079,7 +1079,7 @@ Status BatchNormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_bu
                                         output_is_nhwc));
 
   // Add
-  int32_t fuse_code = model_builder.FindActivation(node_unit, node_unit.Outputs()[0].node_arg);
+  int32_t fuse_code = model_builder.FindActivation(node_unit);
   ORT_RETURN_IF_ERROR(AddBinaryOperator(ANEURALNETWORKS_ADD,
                                         model_builder,
                                         tensor_imm_product_name, tensor_b_name,
@@ -1192,7 +1192,7 @@ Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     }
   }
 
-  int32_t fuse_code = model_builder.FindActivation(node_unit, node_unit.Outputs()[0].node_arg);
+  int32_t fuse_code = model_builder.FindActivation(node_unit);
 
   // Get output scale and zero point if this is QLinearAveragePool
   // Otherwise we will use the scale and zero point of the input
@@ -1474,7 +1474,7 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     }
   }
 
-  int32_t fuse_code = model_builder.FindActivation(node_unit, node_unit.Outputs()[0].node_arg);
+  int32_t fuse_code = model_builder.FindActivation(node_unit);
   ADD_SCALAR_OPERAND(model_builder, input_indices, fuse_code);
 
   if (model_builder.GetNNAPIFeatureLevel() > ANEURALNETWORKS_FEATURE_LEVEL_2) {
@@ -1785,7 +1785,7 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   input_indices.push_back(operand_indices.at(input1));  // A
   input_indices.push_back(input_2_idx);                 // B
   input_indices.push_back(bias_idx);                    // C
-  int32_t fuse_code = model_builder.FindActivation(node_unit, node_unit.Outputs()[0].node_arg);
+  int32_t fuse_code = model_builder.FindActivation(node_unit);
   ADD_SCALAR_OPERAND(model_builder, input_indices, fuse_code);
 
   ORT_RETURN_IF_ERROR(shaper.FC(input1, input2, output));

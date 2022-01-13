@@ -627,12 +627,26 @@ Status ModelBuilder::Compile(std::unique_ptr<Model>& model) {
   return Status::OK();
 }
 
-int32_t ModelBuilder::FindActivation(const NodeUnit& node_unit, const NodeArg& output) {
+int32_t ModelBuilder::FindActivation(const NodeUnit& node_unit) {
   int32_t fuse_code = ANEURALNETWORKS_FUSED_NONE;
-  if (node_unit.GetOutputNodes().size() != 1)
+  const auto& output_nodes = node_unit.GetOutputNodes();
+  if (node_unit.GetOutputNodes().size() != 1) {
+    LOGS_DEFAULT(VERBOSE) << "FindActivation does not support, NodeUnit [" << node_unit.Name()
+                          << "] type [" << node_unit.OpType()
+                          << "], with " << output_nodes.size() << " output nodes";
     return fuse_code;
+  }
 
-  const auto& output_node = *node_unit.GetOutputNodes()[0];
+  const auto& outputs = node_unit.Outputs();
+  if (outputs.size() != 1) {
+    LOGS_DEFAULT(VERBOSE) << "FindActivation does not support, NodeUnit [" << node_unit.Name()
+                          << "] type [" << node_unit.OpType()
+                          << "], with " << outputs.size() << " outputs";
+    return fuse_code;
+  }
+
+  const NodeArg& output = outputs[0].node_arg;
+  const auto& output_node = *output_nodes[0];
 
   // TODO, add support of activation fusion for quantized node group (qdq or qlinear)
   // We do not support activation fusion for quantized operators for now
