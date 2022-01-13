@@ -212,6 +212,7 @@ static constexpr OrtDmlApi ort_dml_api_10_to_x = {
 const OrtDmlApi* GetOrtDmlApi(_In_ uint32_t /*version*/) NO_EXCEPTION {
 #ifdef USE_DML
   return &ort_dml_api_10_to_x;
-#endif  // USE_DML
-  return nullptr;
+#else
+    return nullptr;
+#endif
 }

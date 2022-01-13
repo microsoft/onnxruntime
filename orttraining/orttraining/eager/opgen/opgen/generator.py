@@ -48,6 +48,7 @@ class ONNXOp:
   def __init__(self,
     name: str,
     outputs: int,
+    input_types: List,
     *inputs: Union[str, Outputs],
     **attributes: Optional[Union[str, Outputs]]):
     self.name = name
@@ -55,6 +56,7 @@ class ONNXOp:
     self.inputs = inputs
     self.attributes = attributes
     self.domain = None
+    self.input_types = input_types
 
   def eval(self, ctx: ONNXOpEvalContext):
     evaluated_inputs = []
@@ -71,10 +73,10 @@ class ONNXOp:
     return self.outputs
 
 class SignatureOnly(ONNXOp):
-  def __init__(self): super().__init__(None, 0)
+  def __init__(self): super().__init__(None, 0, [])
 
-class MakeFallthrough(ONNXOp):
-  def __init__(self): super().__init__(None, 0)
+class MakeTorchFallback(ONNXOp):
+  def __init__(self): super().__init__(None, 0, [])
 
 class FunctionGenerationError(NotImplementedError):
   def __init__(self, cpp_func: ast.FunctionDecl, message: str):
@@ -88,13 +90,13 @@ class MappedOpFunction:
     onnx_op: ONNXOp,
     cpp_func: ast.FunctionDecl,
     signature_only: bool,
-    make_fallthrough: bool):
+    make_torch_fallback: bool):
     self.op_namespace = op_namespace
     self.mapped_op_name = mapped_op_name
     self.onnx_op = onnx_op
     self.cpp_func = cpp_func
     self.signature_only = signature_only
-    self.make_fallthrough = make_fallthrough
+    self.make_torch_fallback = make_torch_fallback
 
 class ORTGen:
   _mapped_ops: Dict[str, ONNXOp]
@@ -125,9 +127,6 @@ class ORTGen:
     for mapped_func in self._parse_mapped_function_decls(cpp_parser):
       del self._mapped_ops[mapped_func.mapped_op_name]
       generated_funcs.append(mapped_func)
-
-      if mapped_func.make_fallthrough:
-        continue
 
       ns = mapped_func.op_namespace
       if current_ns and current_ns != ns:
@@ -173,6 +172,7 @@ class ORTGen:
     writer.writeline('#include "python/onnxruntime_pybind_state_common.h"')
     writer.writeline()
     writer.writeline('#include <torch/extension.h>')
+    writer.writeline('#include <ATen/native/CPUFallback.h>')
     writer.writeline()
     writer.writeline('#include <core/providers/dml/OperatorAuthorHelper/Attributes.h>')
     writer.writeline()
@@ -206,6 +206,27 @@ class ORTGen:
     writer.pop_indent()
     writer.write(')')
 
+  def _write_cpu_fall_back(self, 
+                           writer: writer.SourceWriter,
+                           mapped_func: MappedOpFunction):
+      onnx_op, cpp_func = mapped_func.onnx_op, mapped_func.cpp_func
+      #return at::native::call_fallback_fn<
+      #  &at::native::cpu_fallback,
+      #  ATEN_OP(eq_Tensor)>::call(self, other);
+      writer.writeline('return native::call_fallback_fn<')
+      writer.push_indent()
+      writer.writeline('&native::cpu_fallback,')
+      writer.write('ATEN_OP(')
+      writer.write(cpp_func.identifier.value)
+      writer.write(')>::call(')
+
+      params = ', '.join([p.member.identifier.value for p \
+        in cpp_func.parameters if p.member.identifier])
+      writer.write(params)
+      writer.writeline(');')
+      writer.pop_indent()
+
+
   def _write_function_body(
     self,
     writer: writer.SourceWriter,
@@ -213,6 +234,15 @@ class ORTGen:
     onnx_op, cpp_func = mapped_func.onnx_op, mapped_func.cpp_func
 
     assert(len(cpp_func.parameters) > 0)
+
+    # Debug Logging
+    log_params = ', '.join([p.member.identifier.value for p \
+      in cpp_func.parameters if p.member.identifier])
+    writer.writeline(f'ORT_LOG_FN({log_params});')
+    writer.writeline()
+
+    if mapped_func.make_torch_fallback:
+      return self._write_cpu_fall_back(writer, mapped_func)
 
     return_alias_info = self._get_alias_info(cpp_func.torch_func.return_type) if cpp_func.torch_func else None
     if return_alias_info and not return_alias_info.is_writable:
@@ -224,11 +254,32 @@ class ORTGen:
     onnx_op.eval(ctx)
     ctx.prepare_outputs()
 
-    # Debug Logging
-    log_params = ', '.join([p.member.identifier.value for p \
-      in cpp_func.parameters if p.member.identifier])
-    writer.writeline(f'ORT_LOG_FN({log_params});')
-    writer.writeline()
+    # generate the type check
+    need_type_check = False
+    if not self._custom_ops:
+      for onnx_op_index, onnx_op in enumerate(ctx.ops):
+        for op_input in onnx_op.inputs:
+          if not isinstance(op_input, Outputs):
+            need_type_check = True
+            break
+    if need_type_check:
+      writer.write('if (')
+      i = 0
+      for onnx_op_index, onnx_op in enumerate(ctx.ops):
+        for idx, op_input in enumerate(onnx_op.inputs):
+          if isinstance(op_input, Outputs):
+            continue
+          writer.writeline(' || ' if i > 0 else '')
+          if i == 0:
+            writer.push_indent()
+          cpp_param = cpp_func.get_parameter(op_input)
+          supported_types = ','.join([type for type in onnx_op.input_types[idx]])
+          writer.write('!IsSupportedType(%s, {%s})' % (cpp_param.identifier.value, supported_types))
+          i += 1
+      writer.writeline(') {')
+      self._write_cpu_fall_back(writer, mapped_func)
+      writer.pop_indent()
+      writer.writeline('}')      
 
     # Fetch the ORT invoker from an at::Tensor.device()
     # FIXME: find the first at::Tensor param anywhere in the signature
@@ -258,10 +309,10 @@ class ORTGen:
           continue
         # See if this input is aliased as an in-place tensor
         cpp_param = cpp_func.get_parameter(op_input)
-        if return_alias_info and cpp_param and \
-          len(cpp_param.torch_param) == 1 and \
-          self._get_alias_info(cpp_param.torch_param[0]) == return_alias_info:
-          in_place_param = cpp_param
+        if return_alias_info and cpp_param:
+          for torch_p in cpp_param.torch_param:
+            if self._get_alias_info(torch_p) == return_alias_info:
+              in_place_param = cpp_param
 
         writer.write(f'auto ort_input_{op_input} = ')
         writer.writeline(f'create_ort_value(invoker, {op_input});')
@@ -367,18 +418,15 @@ class ORTGen:
     for mapped_func in generated_funcs:
       cpp_func, torch_func = mapped_func.cpp_func, mapped_func.cpp_func.torch_func
 
-      if mapped_func.make_fallthrough:
-        reg_function_arg = 'torch::CppFunction::makeFallthrough()'
+      
+      if mapped_func.op_namespace:
+        reg_function_arg = f'{mapped_func.op_namespace}::'
       else:
-        if mapped_func.op_namespace:
-          reg_function_arg = f'{mapped_func.op_namespace}::'
-        else:
-          reg_function_arg = ''
-        reg_function_arg += cpp_func.identifier.value
+        reg_function_arg = ''
+      reg_function_arg += cpp_func.identifier.value
 
       writer.write('m.impl(')
-      if not mapped_func.make_fallthrough:
-        reg_function_arg = f'TORCH_FN({reg_function_arg})'
+      reg_function_arg = f'TORCH_FN({reg_function_arg})'
 
       writer.writeline(f'"{torch_func.identifier.value}", {reg_function_arg});')
 
@@ -427,7 +475,7 @@ class ORTGen:
           op_namespace = None
           op_namewithoutnamespace = op_name
 
-        cpp_func.identifier.value = op_namewithoutnamespace.replace('.', '__')
+        cpp_func.identifier.value = op_namewithoutnamespace.replace('.', '_')
 
       onnx_op = self._mapped_ops.get(op_name)
       if not onnx_op:
@@ -439,7 +487,7 @@ class ORTGen:
         onnx_op,
         cpp_func,
         isinstance(onnx_op, SignatureOnly),
-        isinstance(onnx_op, MakeFallthrough))
+        isinstance(onnx_op, MakeTorchFallback))
 
   def _parse_function_decls(self, cpp_parser: parser.CPPParser):
     # Parse the C++ declarations

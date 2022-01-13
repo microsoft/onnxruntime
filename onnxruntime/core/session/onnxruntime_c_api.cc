@@ -2193,6 +2193,14 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSessionFromArrayWithPrepackedWeightsContainer
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtApis::SetThreadPool, _In_ OrtSession* session, _In_ OrtThreadPoolBase* thread_pool) {
+  API_IMPL_BEGIN
+  auto* sess = reinterpret_cast<::onnxruntime::InferenceSession*>(session);
+  sess->SetThreadPool(thread_pool);
+  return nullptr;
+  API_IMPL_END
+}
+
 ORT_API_STATUS_IMPL(OrtApis::GetTensorMemoryInfo, _In_ const OrtValue* value, _Outptr_ const OrtMemoryInfo** memory_info) {
   TENSOR_READ_API_BEGIN
   *memory_info = &tensor.Location();
@@ -2210,6 +2218,13 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsSetCustomCreateThreadFn, _Inout_ OrtS
 ORT_API_STATUS_IMPL(OrtApis::SessionOptionsSetCustomThreadCreationOptions, _Inout_ OrtSessionOptions* options, _In_ void* ort_custom_thread_creation_options) {
   API_IMPL_BEGIN
   options->value.custom_thread_creation_options = ort_custom_thread_creation_options;
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::SetSessionThreadPool, _In_ OrtSessionOptions * session_options, _In_ OrtThreadPoolBase * thread_pool) {
+  API_IMPL_BEGIN
+  session_options->value.thread_pool = thread_pool;
   return nullptr;
   API_IMPL_END
 }
@@ -2494,6 +2509,8 @@ static constexpr OrtApi ort_api_1_to_10 = {
     &OrtApis::GetSparseTensorIndices,
     // End of Version 9 - DO NOT MODIFY ABOVE (see above text for more information)
 
+    &OrtApis::SetThreadPool,
+    &OrtApis::SetSessionThreadPool,
     // Version 10 - In development, feel free to add/remove/rearrange here
     &OrtApis::HasValue,
     &OrtApis::KernelContext_GetGPUComputeStream,

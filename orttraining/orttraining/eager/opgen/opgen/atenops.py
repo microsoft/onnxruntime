@@ -4,7 +4,7 @@ from opgen.generator import \
   ORTGen as ORTGen, \
   ONNXOp as ONNXOp, \
   SignatureOnly as SignatureOnly, \
-  MakeFallthrough as MakeFallthrough
+  MakeTorchFallback as MakeTorchFallback
 
 from opgen.onnxops import *
 
@@ -12,17 +12,17 @@ kMSDomain = 'onnxruntime::kMSDomain'
 
 class ReluGrad(ONNXOp):
   def __init__(self, dY, X):
-    super().__init__('ReluGrad', 1, dY, X)
+    super().__init__('ReluGrad', 1, [{'at::kHalf', 'at::kFloat', 'at::kBFloat16'}, {'at::kHalf', 'at::kFloat', 'at::kBFloat16'}], dY, X)
     self.domain = kMSDomain
 
 class Gelu(ONNXOp):
   def __init__(self, X):
-    super().__init__('Gelu', 1, X)
+    super().__init__('Gelu', 1, [{'at::kHalf', 'at::kFloat', 'at::kBFloat16'}], X)
     self.domain = kMSDomain
 
 class GeluGrad(ONNXOp):
   def __init__(self, dY, X):
-    super().__init__('GeluGrad', 1, dY, X)
+    super().__init__('GeluGrad', 1, [{'at::kHalf', 'at::kFloat', 'at::kBFloat16'}, {'at::kHalf', 'at::kFloat', 'at::kBFloat16'}], dY, X)
     self.domain = kMSDomain
 
 ops = {
@@ -33,6 +33,7 @@ ops = {
   'aten::copy_': SignatureOnly(),
   'aten::_reshape_alias': SignatureOnly(),
   'aten::view': SignatureOnly(),
+  'aten::_copy_from_and_resize' : SignatureOnly(),
 
   'aten::addmm': Gemm('mat1', 'mat2', 'self', alpha='alpha', beta='beta'),
   'aten::t': Transpose('self'),
@@ -48,7 +49,20 @@ ops = {
   'aten::softshrink': Shrink('self', bias='lambd', lambd='lambd'), #yes, bias is set to 'lambd'
   'aten::hardshrink': Shrink('self', bias=0, lambd='lambd'),
   'aten::gelu' : Gelu('self'),
-  'aten::gelu_backward' : GeluGrad('grad', 'self')
+  'aten::gelu_backward' : GeluGrad('grad', 'self'),
+  'aten::max' : ReduceMax('self', keepdims=1),
+  'aten::min' : ReduceMin('self', keepdims=1),
+
+  'aten::ne.Scalar':MakeTorchFallback(),
+  'aten::ne.Scalar_out': MakeTorchFallback(),
+  'aten::ne.Tensor_out': MakeTorchFallback(),
+  'aten::eq.Tensor': MakeTorchFallback(),
+  'aten::eq.Tensor_out':MakeTorchFallback(),
+  'aten::bitwise_and.Tensor_out' : MakeTorchFallback(),
+  'aten::masked_select' : MakeTorchFallback(),
+  'aten::as_strided' : MakeTorchFallback(),
+  'aten::_local_scalar_dense' : MakeTorchFallback(),
+  'aten::gt.Scalar_out' : MakeTorchFallback(),
 }
 
 for binary_op, onnx_op in {
@@ -64,7 +78,7 @@ for unary_op in [
   'abs','acos','acosh', 'asinh', 'atanh', 'asin', 'atan', 'ceil', 'cos',
   'cosh', 'erf', 'exp', 'floor', 'isnan', 'log', 'reciprocal', 'neg', 'round',
   'relu', 'selu', 'sigmoid', 'sin', 'sinh', 'sqrt', 'tan', 'tanh', 'nonzero',
-  'sign', 'min', 'max', 'hardsigmoid', 'isinf', 'det']:
+  'sign', 'hardsigmoid', 'isinf', 'det']:
   aten_name = f'aten::{unary_op}'
   onnx_op = onnx_ops[unary_op]('self')
   ops[aten_name] = onnx_op

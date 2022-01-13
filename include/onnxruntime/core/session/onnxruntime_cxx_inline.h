@@ -518,6 +518,10 @@ inline SessionOptions& SessionOptions::AppendExecutionProvider_TensorRT(const Or
   return *this;
 }
 
+inline SessionOptions& SessionOptions::SetSessionThreadPool(OrtThreadPoolBase* thread_pool) {
+  ThrowOnError(GetApi().SetSessionThreadPool(p_, thread_pool));
+}
+
 inline SessionOptions& SessionOptions::SetCustomCreateThreadFn(OrtCustomCreateThreadFn ort_custom_create_thread_fn) {
   ThrowOnError(GetApi().SessionOptionsSetCustomCreateThreadFn(p_, ort_custom_create_thread_fn));
   return *this;
@@ -690,6 +694,10 @@ inline TypeInfo Session::GetOverridableInitializerTypeInfo(size_t index) const {
   OrtTypeInfo* out;
   ThrowOnError(GetApi().SessionGetOverridableInitializerTypeInfo(p_, index, &out));
   return TypeInfo{out};
+}
+
+inline void Session::SetThreadPool(OrtThreadPoolBase* thread_pool) {
+  ThrowOnError(GetApi().SetThreadPool(p_, thread_pool));
 }
 
 inline ONNXTensorElementDataType TensorTypeAndShapeInfo::GetElementType() const {

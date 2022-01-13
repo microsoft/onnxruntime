@@ -22,6 +22,7 @@
 #include <vector>
 #include <utility>
 #include <type_traits>
+#include <functional>
 
 #ifdef ORT_NO_EXCEPTIONS
 #include <iostream>
@@ -352,6 +353,7 @@ struct SessionOptions : Base<OrtSessionOptions> {
   SessionOptions& AppendExecutionProvider_OpenVINO(const OrtOpenVINOProviderOptions& provider_options);  ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_OpenVINO
   SessionOptions& AppendExecutionProvider_TensorRT(const OrtTensorRTProviderOptions& provider_options);  ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_TensorRT
 
+  SessionOptions& SetSessionThreadPool(OrtThreadPoolBase* thread_pool); ///< Wraps OrtApi::SetThreadPool
   SessionOptions& SetCustomCreateThreadFn(OrtCustomCreateThreadFn ort_custom_create_thread_fn);  ///< Wraps OrtApi::SessionOptionsSetCustomCreateThreadFn
   SessionOptions& SetCustomThreadCreationOptions(void* ort_custom_thread_creation_options);   ///< Wraps OrtApi::SessionOptionsSetCustomThreadCreationOptions
   SessionOptions& SetCustomJoinThreadFn(OrtCustomJoinThreadFn ort_custom_join_thread_fn);        ///< Wraps OrtApi::SessionOptionsSetCustomJoinThreadFn
@@ -425,6 +427,9 @@ struct Session : Base<OrtSession> {
   TypeInfo GetInputTypeInfo(size_t index) const;                   ///< Wraps OrtApi::SessionGetInputTypeInfo
   TypeInfo GetOutputTypeInfo(size_t index) const;                  ///< Wraps OrtApi::SessionGetOutputTypeInfo
   TypeInfo GetOverridableInitializerTypeInfo(size_t index) const;  ///< Wraps OrtApi::SessionGetOverridableInitializerTypeInfo
+
+  void SetThreadPool(OrtThreadPoolBase* thread_pool);
+
 };
 
 /** \brief Wrapper around ::OrtTensorTypeAndShapeInfo
@@ -968,6 +973,36 @@ struct CustomOpBase : OrtCustomOp {
   OrtCustomOpInputOutputCharacteristic GetOutputCharacteristic(size_t /*index*/) const {
     return OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_REQUIRED;
   }
+};
+
+/*
+struct CustomThreadPool : public OrtThreadPool {
+  CustomThreadPool() {
+    OrtThreadPool::ParallelFor = [](OrtThreadPool* tp, ptrdiff_t iterations, const OrtThreadPoolTask task) {
+      std::function<void(std::ptrdiff_t from, std::ptrdiff_t to)> func = [&](std::ptrdiff_t from, std::ptrdiff_t to) {
+        task(from, to);
+      };
+      static_cast<CustomThreadPool*>(tp)->DoParallelFor(iterations, func);
+    };
+
+    OrtThreadPool::NumThreads = [](OrtThreadPool* tp) { return static_cast<CustomThreadPool*>(tp)->GetNumThreads(); };
+  }
+
+  virtual void DoParallelFor(ptrdiff_t iterations, const std::function<void(ptrdiff_t from, ptrdiff_t to)>& func) = 0;
+  virtual int GetNumThreads() const = 0;
+};*/
+
+struct OrtThreadPool : public OrtThreadPoolBase {
+  using Task = std::function<void(std::ptrdiff_t from, std::ptrdiff_t to)>;
+  OrtThreadPool() {
+    OrtThreadPoolBase::ParallelFor = [](OrtThreadPoolBase* tp, ptrdiff_t iterations, const void* task) {
+      static_cast<OrtThreadPool*>(tp)->ParallelFor(iterations, static_cast<const Task*>(task));
+    };
+    OrtThreadPoolBase::NumThreads = [](OrtThreadPoolBase* tp) { return static_cast<OrtThreadPool*>(tp)->NumThreads(); };
+  }
+  virtual ~OrtThreadPool(){};
+  virtual void ParallelFor(std::ptrdiff_t iterations, const std::function<void(std::ptrdiff_t from, std::ptrdiff_t to)>* func) = 0;
+  virtual int NumThreads() const = 0;
 };
 
 }  // namespace Ort

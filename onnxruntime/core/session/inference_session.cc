@@ -279,33 +279,37 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
   if (use_per_session_threads_) {
     LOGS(*session_logger_, INFO) << "Creating and using per session threadpools since use_per_session_threads_ is true";
     {
-      bool allow_intra_op_spinning =
-          session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigAllowIntraOpSpinning, "1") == "1";
-      OrtThreadPoolParams to = session_options_.intra_op_param;
-      std::basic_stringstream<ORTCHAR_T> ss;
-      if (to.name) {
-        ss << to.name << ORT_TSTR("-");
-      }
-      ss << ORT_TSTR("session-") << session_id_ << ORT_TSTR("-intra-op");
-      thread_pool_name_ = ss.str();
-      to.name = thread_pool_name_.c_str();
-      to.set_denormal_as_zero = set_denormal_as_zero;
-      // If the thread pool can use all the processors, then
-      // we set affinity of each thread to each processor.
-      to.auto_set_affinity = to.thread_pool_size == 0 &&
-                             session_options_.execution_mode == ExecutionMode::ORT_SEQUENTIAL &&
-                             to.affinity_vec_len == 0;
-      to.allow_spinning = allow_intra_op_spinning;
+      if (session_options.thread_pool) {
+        thread_pool_.reset(new concurrency::CustomThreadPool(session_options.thread_pool));
+      } else {
+        bool allow_intra_op_spinning =
+            session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigAllowIntraOpSpinning, "1") == "1";
+        OrtThreadPoolParams to = session_options_.intra_op_param;
+        std::basic_stringstream<ORTCHAR_T> ss;
+        if (to.name) {
+          ss << to.name << ORT_TSTR("-");
+        }
+        ss << ORT_TSTR("session-") << session_id_ << ORT_TSTR("-intra-op");
+        thread_pool_name_ = ss.str();
+        to.name = thread_pool_name_.c_str();
+        to.set_denormal_as_zero = set_denormal_as_zero;
+        // If the thread pool can use all the processors, then
+        // we set affinity of each thread to each processor.
+        to.auto_set_affinity = to.thread_pool_size == 0 &&
+                               session_options_.execution_mode == ExecutionMode::ORT_SEQUENTIAL &&
+                               to.affinity_vec_len == 0;
+        to.allow_spinning = allow_intra_op_spinning;
 
-      // Set custom threading functions
-      to.custom_create_thread_fn = session_options_.custom_create_thread_fn;
-      to.custom_thread_creation_options = session_options.custom_thread_creation_options;
-      to.custom_join_thread_fn = session_options_.custom_join_thread_fn;
-      if (to.custom_create_thread_fn) {
-        ORT_ENFORCE(to.custom_join_thread_fn, "custom join thread function not set for intra op thread pool");
+        // Set custom threading functions
+        to.custom_create_thread_fn = session_options_.custom_create_thread_fn;
+        to.custom_thread_creation_options = session_options.custom_thread_creation_options;
+        to.custom_join_thread_fn = session_options_.custom_join_thread_fn;
+        if (to.custom_create_thread_fn) {
+          ORT_ENFORCE(to.custom_join_thread_fn, "custom join thread function not set for intra op thread pool");
+        }
+        thread_pool_ =
+            concurrency::CreateThreadPool(&Env::Default(), to, concurrency::ThreadPoolType::INTRA_OP);
       }
-      thread_pool_ =
-          concurrency::CreateThreadPool(&Env::Default(), to, concurrency::ThreadPoolType::INTRA_OP);
     }
     if (session_options_.execution_mode == ExecutionMode::ORT_PARALLEL) {
       bool allow_inter_op_spinning =
@@ -1128,6 +1132,12 @@ common::Status InferenceSession::AddPrePackedWeightsContainer(PrepackedWeightsCo
   prepacked_weights_container_ = prepacked_weights_container;
 
   return Status::OK();
+}
+
+void InferenceSession::SetThreadPool(void* thread_pool) {
+  ORT_ENFORCE(nullptr != thread_pool, "external thread pool is null");
+  thread_pool_.reset(new onnxruntime::concurrency::CustomThreadPool(thread_pool));
+  session_state_->SetThreadPool(thread_pool_.get());
 }
 
 namespace {
