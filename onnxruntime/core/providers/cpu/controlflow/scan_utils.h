@@ -52,7 +52,7 @@ class LoopStateVariable {
   const OrtValue original_value_;
   OrtValue final_value_;
 
-  /* we use original_value and final_value once, 
+  /* we use original_value and final_value once,
      and alternate between a_ and b_ as input/output for each iteration to avoid copies
 
     Iteration   Input             Output
@@ -88,8 +88,8 @@ class OutputIterator {
                        ScanDirection direction = ScanDirection::kForward,
                        bool temporary = false,
                        MLDataType data_type = nullptr) {
-    iterator.reset(new OutputIterator(context, output_index, is_loop_state_var, is_v8, final_shape,
-                                      create_slicer_func, zero_data_func, direction, temporary, data_type));
+    iterator = std::make_unique<OutputIterator>(context, output_index, is_loop_state_var, is_v8, final_shape,
+                                                create_slicer_func, zero_data_func, direction, temporary, data_type);
     return iterator->Initialize();
   }
 
@@ -115,8 +115,7 @@ class OutputIterator {
     ORT_ENFORCE(final_output_mlvalue_, "Attempt to retrieve final output before it was set.");
     return *final_output_mlvalue_;
   }
-
- private:
+  //std::unique_ptr needs to access this function.
   OutputIterator(OpKernelContextInternal& context,
                  int output_index,
                  bool is_loop_state_var,
@@ -128,6 +127,7 @@ class OutputIterator {
                  bool temporary,
                  MLDataType data_type);
 
+ private:
   Status Initialize();
   Status AllocateFinalBuffer();
 
@@ -201,7 +201,7 @@ void CalculateTransposedShapeForInput(const TensorShape& original_shape, int64_t
 /**
 Calculate the transpose permutations and shape by shifting the chosen axis FROM the first dimension.
 
-e.g. if shape is {4, 2, 3} and axis 2 is chosen, dimension 0 will move to dimension 2, 
+e.g. if shape is {4, 2, 3} and axis 2 is chosen, dimension 0 will move to dimension 2,
      the permutations will be {1, 2, 0} and output shape will be {2, 3, 4}
 */
 void CalculateTransposedShapeForOutput(const TensorShape& original_shape, int64_t axis,

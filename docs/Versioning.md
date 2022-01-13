@@ -26,6 +26,7 @@ For more details on ONNX Release versions, see [this page](https://github.com/on
 
 | ONNX Runtime release version | ONNX release version | ONNX opset version | ONNX ML opset version | Supported ONNX IR version | [Windows ML Availability](https://docs.microsoft.com/en-us/windows/ai/windows-ml/release-notes/)|
 |------------------------------|--------------------|--------------------|----------------------|------------------|------------------|
+| 1.11.0 | **1.10** down to 1.2 | 15 | 2 | 7 | Windows AI 1.11+ |
 | 1.10.0 | **1.10** down to 1.2 | 15 | 2 | 7 | Windows AI 1.10+ |
 | 1.9.0 | **1.10** down to 1.2 | 15 | 2 | 7 | Windows AI 1.9+ |
 | 1.8.2 | **1.9** down to 1.2 | 14 | 2 | 7 | Windows AI 1.8+ |

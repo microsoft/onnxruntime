@@ -221,7 +221,7 @@ TEST(BFCArenaTest, AllocationsAndDeallocationsWithGrowth) {
   // 64 megs.
   std::srand(static_cast<unsigned int>(std::time(nullptr)));
 
-  const int32_t max_mem = 1 << 27;
+  constexpr int32_t max_mem = 1 << 27;
 
   std::vector<void*> initial_ptrs;
   for (int s = 1; s < 10; s++) {
@@ -242,7 +242,7 @@ TEST(BFCArenaTest, AllocationsAndDeallocationsWithGrowth) {
     }
   }
 
-  const int32_t max_mem_2 = 1 << 26;
+  constexpr int32_t max_mem_2 = 1 << 26;
   // Allocate a lot of raw pointers between 100 bytes and 64 megs.
   for (int s = 1; s < 10; s++) {
     size_t size = std::min<size_t>(

@@ -15,7 +15,7 @@ namespace onnxruntime {
 namespace {
 
 //assume start1 <= end1, start2 <= end2
-inline bool AreIntervalsOverlap(int start1, int end1, int start2, int end2) {
+constexpr inline bool AreIntervalsOverlap(int start1, int end1, int start2, int end2) {
   return start1 <= end2 && start2 <= end1;
 }
 

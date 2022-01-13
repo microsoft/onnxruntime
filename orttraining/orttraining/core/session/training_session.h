@@ -45,7 +45,7 @@ class TrainingSession : public InferenceSession {
   };
 
   TrainingSession(const SessionOptions& session_options, const Environment& env)
-      : InferenceSession(session_options, env) {}
+      : InferenceSession(session_options, env), is_mixed_precision_enabled_(false) {}
   virtual ~TrainingSession(){};
 
   /**

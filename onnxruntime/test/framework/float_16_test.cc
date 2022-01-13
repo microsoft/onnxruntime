@@ -145,7 +145,7 @@ TEST(Float16_Tests, Mul_16_Test) {
 
   auto def = MulFP16KernelDef();
   //Register a foo kernel which is doing Add, but bind to Mul.
-  KernelCreateFn kernel_create_fn = [](const OpKernelInfo& info) -> OpKernel* { return new MulFP16Kernel(info); };
+  KernelCreateFn kernel_create_fn = [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status { out = std::make_unique<MulFP16Kernel>(info); return Status::OK(); };
   EXPECT_TRUE(registry->RegisterCustomKernel(def, kernel_create_fn).IsOK());
 
   EXPECT_TRUE(session_object.Load(MUL_MODEL_URI).IsOK());

@@ -178,7 +178,7 @@ inline OrtFileType DTToFileType(DWORD dwFileAttributes) {
   return OrtFileType::TYPE_REG;
 }
 inline std::string FormatErrorCode(DWORD dw) {
-  static const DWORD bufferLength = 64 * 1024;
+  static constexpr DWORD bufferLength = 64 * 1024;
   std::string s(bufferLength, '\0');
   FormatMessageA(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, NULL, dw,
                  MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), (LPSTR)s.data(), bufferLength / sizeof(TCHAR), NULL);

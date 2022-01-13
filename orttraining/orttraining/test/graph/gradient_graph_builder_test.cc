@@ -183,7 +183,7 @@ TEST(GradientGraphBuilderTest, TrainingSession_Basic) {
 TEST(GradientGraphBuilderTest, GraphTransformation_WithGist) {
   // Setup training session configuration
   auto config = MakeBasicTrainingConfig();
-  const int op_type_max = 9;
+  constexpr int op_type_max = 9;
   const vector<std::string> compr_type_vec = {"GistBinarize", "GistPack8", "GistPack16", "GistPackMsfp15"};
 
   PathString backprop_model_file;
@@ -1299,7 +1299,7 @@ void OverwritePipelineRank(const TrainingSession::TrainingConfiguration& config,
 TEST(GradientGraphBuilderTest, PipelineOnlinePartition_bert_tiny) {
   const auto model_path = ORT_TSTR("testdata/bert_toy_optimized.onnx");
 
-  const size_t total_partition_count = 3;
+  constexpr size_t total_partition_count = 3;
   TrainingSession::TrainingConfiguration::PipelineConfiguration pipe{};
   pipe.do_partition = true;
 
@@ -1867,7 +1867,7 @@ TEST(GradientGraphBuilderTest, TrainingSession_WithPipeline) {
   const std::vector<int64_t> start_ids = {100, 200, 300};
   const std::vector<int64_t> expected_end_ids = {112, 212, 312};
   const size_t num_stages = start_ids.size();
-  const int num_batches = 6;
+  constexpr int num_batches = 6;
   std::vector<PipelineBatchInfo> plan(num_batches);
   PipelineBatchPlanner planner;
   planner.GenerateOneFWOneBWTimeline(num_stages, num_batches);
