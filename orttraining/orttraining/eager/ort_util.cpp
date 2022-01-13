@@ -39,7 +39,7 @@ void CreateMLValue(void* data_ptr, onnxruntime::MLDataType element_type, const s
                   onnxruntime::DataTypeImpl::GetType<onnxruntime::Tensor>()->GetDeleteFunc());
 }
 
-std::vector<int64_t> GetStrides(const std::vector<int64_t>& shape) {
+std::vector<int64_t> GetStrides(gsl::span<const int64_t> shape) {
   std::vector<int64_t> strides(shape.size(), 1);
   for (auto i = shape.size(); i > 1; --i) {
     strides[i - 2] = strides[i - 1] * shape[i - 1];

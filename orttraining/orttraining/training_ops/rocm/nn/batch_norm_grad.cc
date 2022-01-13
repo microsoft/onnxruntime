@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "batch_norm_grad.h"
+#include "orttraining/training_ops/rocm/nn/batch_norm_grad.h"
 #include "core/providers/common.h"
 #include "core/providers/rocm/miopen_common.h"
 #include "core/providers/cpu/nn/batch_norm_helper.h"
@@ -59,6 +59,7 @@ Status BatchNormalizationGrad<T, T1, T2>::ComputeInternal(OpKernelContext* ctx) 
   vector<int64_t> new_dims;
   BatchNormHelper::NormalizeDims(input_shape, new_dims);
   ORT_RETURN_IF_ERROR(input_tensor.Set(new_dims, MiopenTensor::GetDataType<HipT>()));
+  // for fp16 input, `scale_bias_tensor` will have a float type; otherwise it will be the same as input type.
   ORT_RETURN_IF_ERROR(scale_bias_tensor.Set(input_tensor, miopen_batch_norm_mode_));
 
   const int64_t C = new_dims[1];

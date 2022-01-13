@@ -171,11 +171,13 @@ Status PadBase::HandleDimValueZero(const Mode& mode, const TensorShape& input_sh
       break;
     }
     case Mode::Edge: {
-      // we need to override the default logic and set the output dim to 0 where the input dim is zero.
-      // this is to match numpy behavior.
+      // match numpy behavior of failing if mode is 'edge' and there's an attempt to pad a dimension with value of 0
       for (size_t i = 0, end = input_shape.NumDimensions(); i < end; ++i) {
-        if (input_shape[i] == 0)
-          output_shape[i] = 0;
+        if (input_shape[i] == 0 && output_shape[i] > 0) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                                 "Cannot use 'edge' mode to pad dimension with a value of 0. Input shape:",
+                                 input_shape);
+        }
       }
       break;
     }
@@ -273,7 +275,7 @@ static Status PadImpl(OpKernelContext* ctx,
 
   const auto& input_tensor = *ctx->Input<Tensor>(0);
   const auto& orig_input_shape = input_tensor.Shape();
-  std::vector<int64_t> output_dims(orig_input_shape.GetDims());
+  std::vector<int64_t> output_dims(orig_input_shape.GetDimsAsVector());
   size_t data_rank = output_dims.size();
 
   // make copy of raw_pads as it may be mutated below
@@ -482,7 +484,7 @@ Status Pad::Compute(OpKernelContext* ctx) const {
     size_t data_rank = input_tensor.Shape().NumDimensions();
 
     const Tensor& pads_tensor = *ctx->Input<Tensor>(1);
-    const std::vector<int64_t>& pads_tensor_dims = pads_tensor.Shape().GetDims();
+    auto pads_tensor_dims = pads_tensor.Shape().GetDims();
     ORT_ENFORCE(pads_tensor.IsDataType<int64_t>(),
                 "Pads tensor should be an INT64 tensor");
     ORT_ENFORCE(pads_tensor_dims.size() == 1 || (pads_tensor_dims.size() == 2 && pads_tensor_dims[0] == 1),

@@ -81,22 +81,22 @@ jobs:
     inputs:
       versionSpec: 5.7.0
 
-  - task: DotNetCoreCLI@2
-    displayName: 'Restore nuget packages'
+  - task: MSBuild@1
+    displayName: 'Restore NuGet Packages'
     inputs:
-      command: restore
-      projects: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
+      solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
+      platform: 'Any CPU'
       configuration: '$(BuildConfig)'
-      arguments: '--configuration $(BuildConfig) -p:Platform="Any CPU" -p:OrtPackageId=$(OrtPackageId)'
-      workingDirectory: '$(Build.SourcesDirectory)\csharp'      
+      msbuildArguments: '-t:restore -p:OrtPackageId=$(OrtPackageId)'
+      workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
-  - task: DotNetCoreCLI@2
-    displayName: 'Build C#'    
+  - task: MSBuild@1
+    displayName: 'Build C#'
     inputs:
-      command: build
-      projects: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
-      configuration: '$(BuildConfig)'          
-      arguments: '--configuration $(BuildConfig) -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId)'
+      solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
+      configuration: '$(BuildConfig)'
+      platform: 'Any CPU'
+      msbuildArguments: '-p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId)'
       workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
   - task: DotNetCoreCLI@2
@@ -104,7 +104,7 @@ jobs:
     condition: and(succeeded(), eq(variables['BuildConfig'], 'RelWithDebInfo'))
     inputs:
       command: test
-      projects: '$(Build.SourcesDirectory)\csharp\test\Microsoft.ML.OnnxRuntime.Tests\Microsoft.ML.OnnxRuntime.Tests.csproj'
+      projects: '$(Build.SourcesDirectory)\csharp\test\Microsoft.ML.OnnxRuntime.Tests.NetCoreApp\Microsoft.ML.OnnxRuntime.Tests.NetCoreApp.csproj'
       configuration: '$(BuildConfig)'          
       arguments: '--configuration $(BuildConfig) -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId)'
       workingDirectory: '$(Build.SourcesDirectory)\csharp'

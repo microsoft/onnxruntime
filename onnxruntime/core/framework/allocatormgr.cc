@@ -3,7 +3,6 @@
 
 #include "core/framework/allocatormgr.h"
 #include "core/framework/bfc_arena.h"
-#include "core/framework/mimalloc_allocator.h"
 #include "core/common/logging/logging.h"
 #include <mutex>
 #include <sstream>
@@ -21,7 +20,7 @@ inline int MakeKey(int id, OrtMemType mem_type) {
 }  // namespace
 
 AllocatorPtr CreateAllocator(const AllocatorCreationInfo& info) {
-  auto device_allocator = std::unique_ptr<IAllocator>(info.device_alloc_factory(info.device_id));
+  auto device_allocator = info.device_alloc_factory(info.device_id);
 
   if (info.use_arena) {
     size_t max_mem = info.arena_cfg.max_mem == 0 ? BFCArena::DEFAULT_MAX_MEM : info.arena_cfg.max_mem;
@@ -48,21 +47,16 @@ AllocatorPtr CreateAllocator(const AllocatorCreationInfo& info) {
         return nullptr;
     }
 
-#ifdef USE_MIMALLOC_ARENA_ALLOCATOR
-    return std::shared_ptr<IAllocator>(
-        std::make_unique<MiMallocAllocator>(max_mem));
-#else
-    return std::shared_ptr<IAllocator>(
+    return AllocatorPtr(
         std::make_unique<BFCArena>(std::move(device_allocator),
                                    max_mem,
                                    arena_extend_str,
                                    initial_chunk_size_bytes,
                                    max_dead_bytes_per_chunk,
                                    initial_growth_chunk_size_bytes));
-#endif
+  } else {
+    return device_allocator;
   }
-
-  return AllocatorPtr(std::move(device_allocator));
 }
 
 // Update allocator in the provider if already present; ignore if not.

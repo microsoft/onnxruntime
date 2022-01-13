@@ -23,7 +23,7 @@ ONNX_OPERATOR_KERNEL_EX(
 Status PrepareForTrainingCompute(const TensorShape& input_shape, int num_outputs, int64_t& axis, int& before_dims,
                                  int& after_dims_including_split_axis, int& after_dims_excluding_split,
                                  std::vector<int64_t>& split_sizes) {
-  auto& input_dims = input_shape.GetDims();
+  auto input_dims = input_shape.GetDims();
   const auto num_dimensions = gsl::narrow_cast<int64_t>(input_shape.NumDimensions());
   int64_t axis_value = axis;
   axis = HandleNegativeAxis(axis_value, num_dimensions);  // handle negative and enforce axis is valid
@@ -118,8 +118,7 @@ Status SplitTraining::ComputeImpl(OpKernelContext& context, const Tensor& input)
                                                 split_sizes));
 
   // copy dimensions so we can update the selected axis in place
-  auto& input_dims = input_shape.GetDims();
-  std::vector<int64_t> output_dimensions{input_dims};
+  std::vector<int64_t> output_dimensions{input_shape.GetDimsAsVector()};
 
   int64_t input_offset = 0;
   const T* input_data = input.template Data<T>();

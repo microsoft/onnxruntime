@@ -13,8 +13,8 @@ DnnlMatMulInteger::DnnlMatMulInteger() {}
 void DnnlMatMulInteger::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   auto eng = sp.GetEngine();
 
-  auto src_dims = sp.GetMemory(node.Input(IN_A).Name()).get_desc().dims();
-  auto weights_dims = sp.GetMemory(node.Input(IN_B).Name()).get_desc().dims();
+  auto src_dims = sp.GetMemory(node.Input(IN_A)).get_desc().dims();
+  auto weights_dims = sp.GetMemory(node.Input(IN_B)).get_desc().dims();
 
   if (src_dims.size() != weights_dims.size()) {
     while (src_dims.size() < weights_dims.size()) {

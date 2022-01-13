@@ -4,6 +4,7 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
+#include <cmath>
 
 namespace onnxruntime {
 namespace test {
@@ -98,7 +99,7 @@ TEST(SoftmaxOperator, ThreeDimsAxis0) {
       0.017545262f, 0.0135920765f, 0.027506188f, 0.010684152f, 0.0049549243f,
       0.01401341f, 0.011721271f, 0.027815264f, 0.021463264f, 0.014014485f};
 
-  RunTest(x_vals_3dims, expected_vals, three_dimensions, /*opset*/ 7, /*axis*/ 0, {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  // Axis=0 is not supported by TensorRT
+  RunTest(x_vals_3dims, expected_vals, three_dimensions, /*opset*/ 7, /*axis*/ 0, {kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kDnnlExecutionProvider});  // Axis=0 is not supported by TensorRT
 }
 
 TEST(SoftmaxOperator, ThreeDimsAxis1) {
@@ -124,7 +125,7 @@ TEST(SoftmaxOperator, ThreeDimsAxis1) {
       0.050680935f, 0.03926183f, 0.079453886f, 0.030862054f, 0.014312706f,
       0.040478885f, 0.033857856f, 0.080346674f, 0.06199841f, 0.040481992f};
 
-  RunTest(x_vals_3dims, expected_vals, three_dimensions, /*opset*/ 7, /*axis*/ 1, {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+  RunTest(x_vals_3dims, expected_vals, three_dimensions, /*opset*/ 7, /*axis*/ 1, {kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kDnnlExecutionProvider});
 }
 
 TEST(SoftmaxOperator, ThreeDimsAxis1_opset13) {
@@ -286,6 +287,30 @@ TEST(SoftmaxOperator, DimWithZero) {
           {kTensorrtExecutionProvider,
            kNnapiExecutionProvider}  // NNAPI softmax does not support empty input
   );
+}
+
+TEST(SoftmaxOperator, 2DInputReduceOnAxis1WithLargeDim) {
+  std::vector<float> x_vals(1025, 0.0f);
+  std::vector<float> expected_vals(1025, 0.0f);
+  float incre_val = 0.01f;
+  for (size_t i = 0; i < x_vals.size(); ++i) {
+    x_vals[i] = incre_val;
+    incre_val += 0.01f;
+  }
+
+  float sum = 0.0f;
+  for (size_t i = 0; i < x_vals.size(); ++i) {
+    expected_vals[i] = std::exp(x_vals[i]);
+    sum += expected_vals[i];
+  }
+
+  for (size_t i = 0; i < x_vals.size(); ++i) {
+    expected_vals[i] = expected_vals[i] / sum;
+  }
+
+  std::vector<int64_t> dimensions = {1, 1025};
+
+  RunTest(x_vals, expected_vals, dimensions);
 }
 
 }  // namespace test

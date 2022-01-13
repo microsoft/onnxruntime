@@ -9,11 +9,11 @@
 
 namespace WINML_EXPERIMENTALP {
 
-LearningModelInputs::LearningModelInputs(winml_experimental::LearningModelBuilder builder) : builder_(builder),
-                                                                                      input_descriptors_(winrt::single_threaded_vector<winml::ILearningModelFeatureDescriptor>()),
+LearningModelInputs::LearningModelInputs(winml_experimental::LearningModelBuilder builder) : input_descriptors_(winrt::single_threaded_vector<winml::ILearningModelFeatureDescriptor>()),
                                                                                       input_default_values_(winrt::single_threaded_vector<wf::IInspectable>()),
                                                                                       constant_descriptors_(winrt::single_threaded_vector<winml::ILearningModelFeatureDescriptor>()),
-                                                                                      constant_values_(winrt::single_threaded_vector<wf::IInspectable>()) {
+                                                                                      constant_values_(winrt::single_threaded_vector<wf::IInspectable>()),
+                                                                                      builder_(builder) {
 }
 
 winml_experimental::LearningModelBuilder LearningModelInputs::AddInput(winml::ILearningModelFeatureDescriptor const& input, Windows::Foundation::IInspectable const& default_value, bool is_constant) {

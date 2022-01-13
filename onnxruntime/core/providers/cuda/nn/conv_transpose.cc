@@ -41,7 +41,7 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
 
   const Tensor* X = context->Input<Tensor>(0);
   const TensorShape& x_shape = X->Shape();
-  auto x_dims = x_shape.GetDims();
+  auto x_dims = x_shape.GetDimsAsVector();
   auto x_data = reinterpret_cast<const CudaT*>(X->template Data<T>());
 
   auto x_dimensions = X->Shape().NumDimensions();
@@ -52,7 +52,7 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
   }
   const Tensor* W = context->Input<Tensor>(1);
   const TensorShape& w_shape = W->Shape();
-  std::vector<int64_t> w_dims = w_shape.GetDims();
+  std::vector<int64_t> w_dims = w_shape.GetDimsAsVector();
   auto w_data = reinterpret_cast<const CudaT*>(W->template Data<T>());
 
   size_t num_inputs = OpKernel::Node().InputDefs().size();
@@ -81,7 +81,7 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
       ConvTransposeAttributes::Prepare p;
       ORT_RETURN_IF_ERROR(conv_transpose_attrs_.PrepareForCompute(context, has_bias, p, dynamic_padding));
 
-      auto y_dims = p.Y->Shape().GetDims();
+      auto y_dims = p.Y->Shape().GetDimsAsVector();
       if (x_dimensions == 3) {
         y_dims.insert(y_dims.begin() + 2, 1);
         p.kernel_shape.insert(p.kernel_shape.begin(), 1);
@@ -160,7 +160,7 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
     // The following block will be executed in case there has been no change in the shapes of the
     // input and the filter compared to the previous run
     if (!y_data) {
-      auto y_dims = s_.y_dims;
+      auto y_dims = s_.y_dims.GetDimsAsVector();
       if (x_dimensions == 3) {
         y_dims.erase(y_dims.begin() + 2);
       }

@@ -24,6 +24,10 @@ struct LearningModel : LearningModelT<LearningModel> {
   LearningModel(
       const wss::IRandomAccessStreamReference stream,
       const winml::ILearningModelOperatorProvider operator_provider);
+	  
+  LearningModel(
+      const wss::IBuffer stream,
+      const winml::ILearningModelOperatorProvider operator_provider);
 
   LearningModel(
       _winml::IEngineFactory* engine_factory,
@@ -77,6 +81,15 @@ struct LearningModel : LearningModelT<LearningModel> {
       wss::IRandomAccessStreamReference const stream,
       winml::ILearningModelOperatorProvider const operator_provider);
 
+  static wf::IAsyncOperation<winml::LearningModel>
+  LoadFromBufferAsync(
+      wss::IBuffer const buffer);
+
+  static wf::IAsyncOperation<winml::LearningModel>
+  LoadFromBufferAsync(
+      wss::IBuffer const buffer,
+      winml::ILearningModelOperatorProvider const operator_provider);
+
   static winml::LearningModel
   LoadFromFilePath(
       hstring const& path);
@@ -89,10 +102,19 @@ struct LearningModel : LearningModelT<LearningModel> {
   static winml::LearningModel
   LoadFromStream(
       wss::IRandomAccessStreamReference const stream);
+	  
+  static winml::LearningModel
+  LoadFromBuffer(
+      wss::IBuffer const buffer);
 
   static winml::LearningModel
   LoadFromStream(
       wss::IRandomAccessStreamReference const stream,
+      winml::ILearningModelOperatorProvider const operator_provider);
+	  
+  static winml::LearningModel
+  LoadFromBuffer(
+      wss::IBuffer const buffer,
       winml::ILearningModelOperatorProvider const operator_provider);
 
  public:
@@ -102,6 +124,13 @@ struct LearningModel : LearningModelT<LearningModel> {
   _winml::IModel* DetachModel();
   _winml::IModel* CloneModel();
   _winml::IEngineFactory* GetEngineFactory();
+  void SaveToFile(const hstring& file_name);
+  void JoinModel(
+      winml::LearningModel other,
+      const std::unordered_map<std::string, std::string>& linkages,
+      bool promote_unlinked_outputs,
+      bool close_model_on_join,
+      const winrt::hstring& join_node_prefix);
 
  private:
   com_ptr<_winml::IEngineFactory> engine_factory_;

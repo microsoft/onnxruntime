@@ -16,7 +16,16 @@ public:
         ML_CHECK_VALID_ARGUMENT(kernelCreationContext.GetInputCount() + 1 == m_components.size(), "EinSum input tensor count is inconsistent with the equation component count.");
         ML_CHECK_VALID_ARGUMENT(kernelCreationContext.GetOutputCount() == 1, "EinSum expects one output tensor.");
 
-        DmlOperator::Initialize(kernelCreationContext);
+        std::vector<std::optional<uint32_t>> inputIndices = {0,1,2};
+        std::vector<std::optional<uint32_t>> outputIndices = {0};
+        uint32_t bindableInputCount = kernelCreationContext.GetInputCount();
+        if (IsMatMulOperatorType())
+        {
+            ++bindableInputCount; // Account for the optional C tensor.
+        }
+        inputIndices.resize(bindableInputCount);
+
+        DmlOperator::Initialize(kernelCreationContext, inputIndices, outputIndices);
 
         std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
         std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();

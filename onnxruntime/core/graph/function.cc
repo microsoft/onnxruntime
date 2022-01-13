@@ -276,7 +276,10 @@ static void InitNestedModelLocalFunction(onnxruntime::Graph& graph,
   }
   ORT_CATCH(const std::exception& e) {
     LOGS(logger, WARNING) << "Function body initialization failed for Function '"
-                          << onnx_function_proto.name() << "'. Error message " << e.what()
+                          << onnx_function_proto.name()
+#ifndef ORT_NO_EXCEPTIONS
+                          << "'. Error message " << e.what()
+#endif //ORT_NO_EXCEPTIONS
                           << ". Execution will fail if ORT does not have a specialized kernel for this op";
     // Return without using this function op's expansion. No need to fail just yet.
     // If ORT has a specialized kernel for this op then execution will proceed
@@ -451,6 +454,16 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
       if (!function_body_graph.GetInitializedTensor(input, subgraph_initializer)) {
         function_body_graph.AddInitializedTensor(*initializer);
       }
+    }
+  }
+
+  for (const auto& constant_initializer : meta_def->constant_initializers) {
+    const ONNX_NAMESPACE::TensorProto* initializer = graph.GetConstantInitializer(constant_initializer, true);
+    ORT_ENFORCE(initializer != nullptr, "Initializer " + constant_initializer + " is not found or is not constant initializer.");
+    // meta_def->constant_initializers could have duplicates so make sure we only add once
+    const ONNX_NAMESPACE::TensorProto* subgraph_initializer = nullptr;
+    if (!function_body_graph.GetInitializedTensor(constant_initializer, subgraph_initializer)) {
+      function_body_graph.AddInitializedTensor(*initializer);
     }
   }
 

@@ -164,14 +164,15 @@ Status OrtModuleGraphBuilder::OptimizeInferenceGraph(std::unordered_set<std::str
     auto transformers_to_register = transformer_utils::GeneratePreTrainingTransformers(
         level, x_node_arg_names, config_.graph_transformer_config, *cpu_execution_provider);
     for (auto& entry : transformers_to_register) {
-      graph_transformation_mgr.Register(std::move(entry), level);
+      ORT_RETURN_IF_ERROR(graph_transformation_mgr.Register(std::move(entry), level));
     }
+    return Status::OK();
   };
 
   for (int i = static_cast<int>(TransformerLevel::Level1); i <= static_cast<int>(TransformerLevel::MaxLevel); i++) {
     TransformerLevel level = static_cast<TransformerLevel>(i);
     if (TransformerLevel::MaxLevel >= level) {
-      add_transformers(level);
+      ORT_RETURN_IF_ERROR(add_transformers(level));
     }
   }
 
@@ -407,7 +408,7 @@ void OrtModuleGraphBuilder::ReorderOutputs() {
 
 void OrtModuleGraphBuilder::FindModuleOutputNeededForBackward() {
   Graph& gradient_graph = gradient_model_->MainGraph();
-  gradient_graph.Resolve();
+  ORT_THROW_IF_ERROR(gradient_graph.Resolve());
   GraphViewer gradient_graph_viewer(gradient_graph);
   const auto& exec_order = gradient_graph_viewer.GetNodesInTopologicalOrder();
 

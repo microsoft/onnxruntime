@@ -7,7 +7,7 @@
 #include "core/session/onnxruntime_c_api.h"
 #include "core/session/ort_apis.h"
 
-#if defined(__APPLE__) || defined(ORT_MINIMAL_BUILD) || !defined(USE_ROCM)
+#if defined(__APPLE__) || defined(ORT_MINIMAL_BUILD)
 static OrtStatus* CreateNotEnabledStatus(const std::string& ep) {
   return OrtApis::CreateStatus(ORT_FAIL, (ep + " execution provider is not enabled in this build. ").c_str());
 }
@@ -39,16 +39,6 @@ ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_MIGraphX,
 }
 #endif
 
-#ifndef USE_ROCM
-ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_ROCM,
-                    _In_ OrtSessionOptions* options, int device_id, size_t gpu_mem_limit) {
-  ORT_UNUSED_PARAMETER(options);
-  ORT_UNUSED_PARAMETER(device_id);
-  ORT_UNUSED_PARAMETER(gpu_mem_limit);
-  return CreateNotEnabledStatus("ROCM");
-}
-#endif
-
 #ifndef USE_NNAPI
 ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Nnapi,
                     _In_ OrtSessionOptions* options, uint32_t nnapi_flags) {
@@ -65,6 +55,15 @@ ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Nuphar,
   ORT_UNUSED_PARAMETER(allow_unaligned_buffers);
   ORT_UNUSED_PARAMETER(settings);
   return CreateNotEnabledStatus("Nuphar");
+}
+#endif
+
+#ifndef USE_STVM
+ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Stvm,
+                    _In_ OrtSessionOptions* options, _In_ const char* settings) {
+  ORT_UNUSED_PARAMETER(options);
+  ORT_UNUSED_PARAMETER(settings);
+  return CreateNotEnabledStatus("Stvm");
 }
 #endif
 
@@ -88,14 +87,6 @@ TODO: When the NNAPI or CoreML EPs are setup to use the provider bridge the sour
 */
 
 // EPs in the first case
-#ifndef USE_ROCM
-ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_ROCM,
-                    _In_ OrtSessionOptions* options, _In_ const OrtROCMProviderOptions* rocm_options) {
-  ORT_UNUSED_PARAMETER(options);
-  ORT_UNUSED_PARAMETER(rocm_options);
-  return CreateNotEnabledStatus("ROCM");
-}
-#endif
 
 // EPs in the second case
 #if defined(ORT_MINIMAL_BUILD)
@@ -106,6 +97,42 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_CUDA,
   return CreateNotEnabledStatus("CUDA");
 }
 
+ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_CUDA_V2,
+                    _In_ OrtSessionOptions* options, _In_ const OrtCUDAProviderOptionsV2* cuda_options) {
+  ORT_UNUSED_PARAMETER(options);
+  ORT_UNUSED_PARAMETER(cuda_options);
+  return CreateNotEnabledStatus("CUDA");
+}
+
+ORT_API_STATUS_IMPL(OrtApis::CreateCUDAProviderOptions, _Outptr_ OrtCUDAProviderOptionsV2** out) {
+  ORT_UNUSED_PARAMETER(out);
+  return CreateNotEnabledStatus("CUDA");
+}
+
+ORT_API_STATUS_IMPL(OrtApis::UpdateCUDAProviderOptions,
+                    _Inout_ OrtCUDAProviderOptionsV2* cuda_options,
+                    _In_reads_(num_keys) const char* const* provider_options_keys,
+                    _In_reads_(num_keys) const char* const* provider_options_values,
+                    size_t num_keys) {
+  ORT_UNUSED_PARAMETER(cuda_options);
+  ORT_UNUSED_PARAMETER(provider_options_keys);
+  ORT_UNUSED_PARAMETER(provider_options_values);
+  ORT_UNUSED_PARAMETER(num_keys);
+  return CreateNotEnabledStatus("CUDA");
+}
+
+ORT_API_STATUS_IMPL(OrtApis::GetCUDAProviderOptionsAsString, _In_ const OrtCUDAProviderOptionsV2* cuda_options, _Inout_ OrtAllocator* allocator,
+                    _Outptr_ char** ptr) {
+  ORT_UNUSED_PARAMETER(cuda_options);
+  ORT_UNUSED_PARAMETER(allocator);
+  ORT_UNUSED_PARAMETER(ptr);
+  return CreateStatus(ORT_FAIL, "CUDA execution provider is not enabled in this build.");
+}
+
+ORT_API(void, OrtApis::ReleaseCUDAProviderOptions, _Frees_ptr_opt_ OrtCUDAProviderOptionsV2* ptr) {
+  ORT_UNUSED_PARAMETER(ptr);
+}
+
 ORT_API_STATUS_IMPL(OrtApis::GetCurrentGpuDeviceId, _In_ int* device_id) {
   ORT_UNUSED_PARAMETER(device_id);
   return CreateNotEnabledStatus("CUDA");
@@ -114,6 +141,13 @@ ORT_API_STATUS_IMPL(OrtApis::GetCurrentGpuDeviceId, _In_ int* device_id) {
 ORT_API_STATUS_IMPL(OrtApis::SetCurrentGpuDeviceId, _In_ int device_id) {
   ORT_UNUSED_PARAMETER(device_id);
   return CreateNotEnabledStatus("CUDA");
+}
+
+ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_ROCM,
+                    _In_ OrtSessionOptions* options, _In_ const OrtROCMProviderOptions* provider_options) {
+  ORT_UNUSED_PARAMETER(options);
+  ORT_UNUSED_PARAMETER(provider_options);
+  return CreateNotEnabledStatus("ROCM");
 }
 
 ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_OpenVINO,
@@ -166,6 +200,13 @@ ORT_API_STATUS_IMPL(OrtApis::GetTensorRTProviderOptionsAsString,
 
 ORT_API(void, OrtApis::ReleaseTensorRTProviderOptions, _Frees_ptr_opt_ OrtTensorRTProviderOptionsV2* ptr) {
   ORT_UNUSED_PARAMETER(ptr);
+}
+
+ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_MIGraphX,
+                    _In_ OrtSessionOptions* options, _In_ const OrtMIGraphXProviderOptions* migraphx_options) {
+  ORT_UNUSED_PARAMETER(options);
+  ORT_UNUSED_PARAMETER(migraphx_options);
+  return CreateNotEnabledStatus("MIGraphX");
 }
 
 #endif

@@ -242,7 +242,7 @@ Status AttentionFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
           fused_count++;
           modified = true;
         }
-      } else if (reshape_count == 1 && (shape_count == 1 || shape_count == 3) && (reshape_count + shape_count) == node.GetOutputEdgesCount()) {  // GPT
+      } else if (reshape_count == 1 && (shape_count == 1 || shape_count == 3) && (static_cast<size_t>(reshape_count) + shape_count) == node.GetOutputEdgesCount()) {  // GPT
         if (AttentionFusionHelper::FuseGptAttention(node, graph, hidden_size, mask_int32_map, shape_count == 1, logger)) {
           fused_count++;
           modified = true;
@@ -332,7 +332,8 @@ static bool FuseSubGraphQKImpl(Node& layer_norm,
     DEBUG_LOG("k root is not layer norm");
     return false;
   }
-  if (!AttentionFusionHelper::CheckNodesInPathK(graph, k_reshape, k_transpose, num_heads, head_size, logger)) {
+  if (!AttentionFusionHelper::CheckNodesInPathK(graph, k_reshape, k_transpose, num_heads,
+                                                head_size, /*transpose_optimized_pattern*/ false, logger)) {
     DEBUG_LOG("CheckNodesInPathK returns false");
     return false;
   }

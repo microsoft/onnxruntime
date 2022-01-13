@@ -76,7 +76,7 @@ common::Status ComputeByType(OpKernelContext* context,
   if (tensor_pointer == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
   const Tensor& X = *tensor_pointer;
   const TensorShape& x_shape = X.Shape();
-  auto& dims = x_shape.GetDims();
+  auto dims = x_shape.GetDims();
   if (dims.empty()) {
     return Status(ONNXRUNTIME, FAIL, "Empty input dimensions.");
   }

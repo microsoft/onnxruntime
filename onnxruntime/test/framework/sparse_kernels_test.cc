@@ -95,8 +95,8 @@ This operator constructs a sparse tensor from three tensors that provide a COO
   }
 
   /**
- *  @brief An implementation of the SparseFromCOO op.
- */
+   *  @brief An implementation of the SparseFromCOO op.
+   */
   class OpKernelImpl final : public OpKernel {
    public:
     OpKernelImpl(const OpKernelInfo& info) : OpKernel{info} {}
@@ -264,7 +264,7 @@ struct SparseToValues {
     return schema;
   }
 
-  //  A kernel implementation of SparseToValues
+  // A kernel implementation of SparseToValues
   class OpKernelImpl final : public OpKernel {
    public:
     OpKernelImpl(const OpKernelInfo& info) : OpKernel{info} {}
@@ -333,7 +333,7 @@ class SparseTensorTests : public testing::Test {
           .SetDomain(onnxruntime::kMLDomain)
           .SinceVersion(10)
           .Provider(onnxruntime::kCpuExecutionProvider);
-      KernelCreateFn kernel_create_fn = [](const OpKernelInfo& info) { return new typename Op::OpKernelImpl(info); };
+      KernelCreateFn kernel_create_fn = [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) { out = std::make_unique<typename Op::OpKernelImpl>(info); return Status::OK(); };
       EXPECT_TRUE(registry2->RegisterCustomKernel(kernel_def_builder, kernel_create_fn).IsOK());
     };
     register_actions.push_back(register_kernel);
@@ -698,9 +698,10 @@ struct InsertIndices {
     std::vector<int8_t> indices_data;
     insert_indices_data(indices_1D, values_size, shape_size, indices_data, indices_tp);
     indices_tp.set_data_type(utils::ToTensorProtoElementType<T>());
-    ORT_IF_CONSTEXPR (sizeof(T) == sizeof(int8_t)) {
+    ORT_IF_CONSTEXPR(sizeof(T) == sizeof(int8_t)) {
       indices_tp.mutable_raw_data()->assign(reinterpret_cast<const char*>(indices_data.data()), indices_data.size());
-    } else {
+    }
+    else {
       // Conversion on the fly to the target data type
       std::vector<T> indices(indices_data.cbegin(), indices_data.cend());
       indices_tp.mutable_raw_data()->assign(reinterpret_cast<const char*>(indices.data()), indices.size() * sizeof(T));
@@ -794,7 +795,7 @@ static void TestConversion(bool use_1D_indices, int32_t indices_type,
   TensorProto dense;
   // Path is required for loading external data (if any)
   // When path is empty it will look for the data in current dir
-  utils::ConstantNodeProtoToTensorProto(node, Path(), dense);
+  ASSERT_STATUS_OK(utils::ConstantNodeProtoToTensorProto(node, Path(), dense));
 
   gsl::span<const T> expected_span = gsl::make_span<const T>(expected.data(), expected.size());
   checker(expected_span, dense);
@@ -809,7 +810,7 @@ static void TestConversionAllZeros(bool use_1D_indices,
   TensorProto dense;
   // Path is required for loading external data (if any)
   // When path is empty it will look for the data in current dir
-  utils::ConstantNodeProtoToTensorProto(node, Path(), dense);
+  ASSERT_STATUS_OK(utils::ConstantNodeProtoToTensorProto(node, Path(), dense));
 
   gsl::span<const T> expected_span = gsl::make_span<const T>(expected.data(), expected.size());
   checker(expected_span, dense);
@@ -823,8 +824,7 @@ static void TestConversion(
       TensorProto_DataType_INT8,
       TensorProto_DataType_INT16,
       TensorProto_DataType_INT32,
-      TensorProto_DataType_INT64
-  };
+      TensorProto_DataType_INT64};
 
   for (auto dt : indices_types) {
     TestConversion(true, dt, inserter, checker);
@@ -1037,7 +1037,7 @@ TensorProto CreateDenseTensor(size_t indices_start,
                               std::vector<T>& expected_values, std::vector<int64_t>& expected_indicies) {
   TensorProto result;
   std::vector<T> values = CreateSparseValues<T>(indices_start);
-  auto ind_start = static_cast<int64_t>(indices_start); 
+  auto ind_start = static_cast<int64_t>(indices_start);
   expected_indicies = {ind_start, ind_start + 1};
   for (const auto& ind : expected_indicies) {
     expected_values.push_back(values[ind]);
@@ -1110,11 +1110,11 @@ void RawSparseDataChecker<MLFloat16>(gsl::span<const MLFloat16> expected_bfloat,
 
 template <typename T>
 static void TestDenseToSparseConversionValues(size_t indices_start,
-    std::function<void(const std::vector<T>& values, TensorProto& tp)> inserter,
-    std::function<void(gsl::span<const T> expected,
-                       gsl::span<const int64_t> expected_indicies,
-                       const SparseTensorProto& actual)>
-        checker) {
+                                              std::function<void(const std::vector<T>& values, TensorProto& tp)> inserter,
+                                              std::function<void(gsl::span<const T> expected,
+                                                                 gsl::span<const int64_t> expected_indicies,
+                                                                 const SparseTensorProto& actual)>
+                                                  checker) {
   std::vector<T> expected_values;
   std::vector<int64_t> expected_indicies;
   // Path is required for loading external data
@@ -1123,7 +1123,7 @@ static void TestDenseToSparseConversionValues(size_t indices_start,
   TensorProto dense_tensor = CreateDenseTensor(indices_start, inserter, expected_values, expected_indicies);
 
   SparseTensorProto sparse_tensor;
-  utils::DenseTensorToSparseTensorProto(dense_tensor, model_path, sparse_tensor);
+  ASSERT_STATUS_OK(utils::DenseTensorToSparseTensorProto(dense_tensor, model_path, sparse_tensor));
 
   gsl::span<const T>
       expected_values_span = gsl::make_span(expected_values.data(), expected_values.size());
@@ -1146,7 +1146,7 @@ static void TestDenseAllZerosToSparseConversion(
   TensorProto dense_tensor = CreateDenseTensorAllZeros(inserter);
 
   SparseTensorProto sparse_tensor;
-  utils::DenseTensorToSparseTensorProto(dense_tensor, model_path, sparse_tensor);
+  ASSERT_STATUS_OK(utils::DenseTensorToSparseTensorProto(dense_tensor, model_path, sparse_tensor));
 
   gsl::span<const T>
       expected_values_span = gsl::make_span(expected_values.data(), expected_values.size());
@@ -1291,7 +1291,7 @@ TEST(SparseTensorConversionTests, CsrConversion) {
   auto* cpu_provider = TestCPUExecutionProvider();
   auto cpu_allocator = cpu_provider->GetAllocator(0, OrtMemTypeDefault);
 
-  const std::vector<int64_t> dense_shape{3, 3};
+  const TensorShape dense_shape{3, 3};
   std::vector<int32_t> dense_data = {
       0, 0, 1,
       1, 0, 1,
@@ -1316,7 +1316,7 @@ TEST(SparseTensorConversionTests, CsrConversion) {
   DataTransferManager dtm;
   {
     auto cpu_transfer = cpu_provider->GetDataTransfer();
-    dtm.RegisterDataTransfer(std::move(cpu_transfer));
+    ASSERT_STATUS_OK(dtm.RegisterDataTransfer(std::move(cpu_transfer)));
   }
   {
     {
@@ -1435,7 +1435,7 @@ TEST(SparseTensorConversionTests, CsrConversion) {
                                                 gsl::make_span(expected_inner), gsl::make_span(expected_outer)));
     ASSERT_EQ(str_cpu_src.Format(), SparseFormat::kCsrc);
     ASSERT_TRUE(str_cpu_src.IsDataTypeString());
-    ASSERT_EQ(str_cpu_src.DenseShape().GetDims(), dense_shape);
+    ASSERT_EQ(str_cpu_src.DenseShape(), dense_shape);
     ASSERT_EQ(str_cpu_src.NumValues(), expected_values_str.size());
     auto values = str_cpu_src.Values().DataAsSpan<std::string>();
     ASSERT_TRUE(std::equal(expected_values_str.cbegin(), expected_values_str.cend(), values.cbegin(), values.cend()));
@@ -1455,7 +1455,7 @@ TEST(SparseTensorConversionTests, CsrConversion) {
   auto cuda_allocator = cuda_provider->GetAllocator(0, OrtMemTypeDefault);
   {
     auto cuda_transfer = cuda_provider->GetDataTransfer();
-    dtm.RegisterDataTransfer(std::move(cuda_transfer));
+    ASSERT_STATUS_OK(dtm.RegisterDataTransfer(std::move(cuda_transfer)));
   }
   {
     // test where source is on GPU and destination is on CPU
@@ -1535,7 +1535,7 @@ TEST(SparseTensorConversionTests, CooConversion) {
   DataTransferManager dtm;
   {
     auto cpu_transfer = cpu_provider->GetDataTransfer();
-    dtm.RegisterDataTransfer(std::move(cpu_transfer));
+    ASSERT_STATUS_OK(dtm.RegisterDataTransfer(std::move(cpu_transfer)));
   }
 
   {
@@ -1638,7 +1638,7 @@ TEST(SparseTensorConversionTests, CooConversion) {
                                                 gsl::make_span(expected_linear_indices)));
     ASSERT_EQ(str_cpu_src.Format(), SparseFormat::kCoo);
     ASSERT_TRUE(str_cpu_src.IsDataTypeString());
-    ASSERT_EQ(str_cpu_src.DenseShape().GetDims(), dense_shape);
+    ASSERT_EQ(str_cpu_src.DenseShape(), dense_shape);
     ASSERT_EQ(str_cpu_src.NumValues(), expected_values_str.size());
     auto values = str_cpu_src.Values().DataAsSpan<std::string>();
     ASSERT_TRUE(std::equal(expected_values_str.cbegin(), expected_values_str.cend(), values.cbegin(), values.cend()));
@@ -1682,7 +1682,7 @@ TEST(SparseTensorConversionTests, CooConversion) {
   auto cuda_allocator = cuda_provider->GetAllocator(0, OrtMemTypeDefault);
   {
     auto cuda_transfer = cuda_provider->GetDataTransfer();
-    dtm.RegisterDataTransfer(std::move(cuda_transfer));
+    ASSERT_STATUS_OK(dtm.RegisterDataTransfer(std::move(cuda_transfer)));
   }
   {
     // test where source is on GPU and destination is on GPU
@@ -1744,7 +1744,7 @@ TEST(SparseTensorConversionTests, BlockSparse) {
   DataTransferManager dtm;
   {
     auto cpu_transfer = cpu_provider->GetDataTransfer();
-    dtm.RegisterDataTransfer(std::move(cpu_transfer));
+    ASSERT_STATUS_OK(dtm.RegisterDataTransfer(std::move(cpu_transfer)));
   }
 
   {
@@ -1862,7 +1862,7 @@ TEST(SparseTensorConversionTests, BlockSparse) {
                            indices_span.cbegin(), indices_span.cend()));
   }
 }
-#endif  //  !defined(DISABLE_SPARSE_TENSORS)
+#endif  // !defined(DISABLE_SPARSE_TENSORS)
 
 }  // namespace test
 }  // namespace onnxruntime

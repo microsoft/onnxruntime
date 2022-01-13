@@ -13,9 +13,9 @@ export interface AveragePoolAttributes extends AttributeWithCacheKey {
   readonly autoPad: string;
   readonly ceilMode: number;
   readonly countIncludePad: boolean;
-  readonly kernelShape: number[];
-  readonly strides: number[];
-  readonly pads: number[];
+  readonly kernelShape: readonly number[];
+  readonly strides: readonly number[];
+  readonly pads: readonly number[];
 }
 
 export const averagePool: OperatorImplementation<AveragePoolAttributes> =
@@ -48,21 +48,17 @@ export const parseAveragePoolAttributes: OperatorInitialization<AveragePoolAttri
 const createAveragePoolProgramInfo =
     (inputs: Tensor[], metadata: ProgramMetadata, isGlobalOperator: boolean, attributes: AveragePoolAttributes):
         ProgramInfo => {
-          const inputShape = inputs[0].dims.slice();
-          PoolConvUtil.adjustPoolAttributes(
-              isGlobalOperator, inputShape, attributes.kernelShape, attributes.strides, attributes.pads);
-          const outputShape = PoolConvUtil.computePoolOutputShape(
-              isGlobalOperator, inputShape, attributes.strides, attributes.kernelShape, attributes.pads,
-              attributes.autoPad);
-          const kernelSize = ShapeUtil.size(attributes.kernelShape);
+          const [adjustedAttributes, outputShape] =
+              getAdjustedPoolAttributesAndOutputShape(inputs, attributes, isGlobalOperator);
+          const kernelSize = ShapeUtil.size(adjustedAttributes.kernelShape);
           const op1 = 'value += _X(x);';
           let op2 = '';
-          if (attributes.countIncludePad) {
+          if (adjustedAttributes.countIncludePad) {
             op2 += `value /= float(${kernelSize});`;
           } else {
             op2 += `value /= float(${kernelSize} - pad);`;
           }
-          const poolingCode = generatePoolingCode(inputs[0].dims, attributes, op1, op2, '0.0');
+          const poolingCode = generatePoolingCode(inputs[0].dims, adjustedAttributes, op1, op2, '0.0');
           const shaderSource = `
         ${poolingCode}
       `;
@@ -96,6 +92,7 @@ export const parseGlobalAveragePoolAttributes: OperatorInitialization<AveragePoo
 
 export interface MaxPoolAttributes extends AveragePoolAttributes {
   readonly storageOrder: number;
+  readonly dilations: number[];
 }
 
 export const maxPool: OperatorImplementation<MaxPoolAttributes> =
@@ -116,6 +113,7 @@ export const parseMaxPoolAttributes: OperatorInitialization<MaxPoolAttributes> =
       const strides = node.attributes.getInts('strides', []);
       const pads = node.attributes.getInts('pads', []);
       const storageOrder = node.attributes.getInt('storage_order', 0);
+      const dilations = node.attributes.getInts('dilations', []);
 
       // TODO: support attribute 'ceil_mode' and 'storage_order'
       if (storageOrder !== 0) {
@@ -126,23 +124,19 @@ export const parseMaxPoolAttributes: OperatorInitialization<MaxPoolAttributes> =
       }
 
       return createAttributeWithCacheKey(
-          {autoPad, ceilMode, countIncludePad: false, kernelShape, strides, pads, storageOrder});
+          {autoPad, ceilMode, countIncludePad: false, kernelShape, strides, pads, storageOrder, dilations});
     };
 
 const createMaxPoolProgramInfo =
     (inputs: Tensor[], metadata: ProgramMetadata, isGlobalOperator: boolean, attributes: MaxPoolAttributes):
         ProgramInfo => {
-          const inputShape = inputs[0].dims.slice();
-          PoolConvUtil.adjustPoolAttributes(
-              isGlobalOperator, inputShape, attributes.kernelShape, attributes.strides, attributes.pads);
-          const outputShape = PoolConvUtil.computePoolOutputShape(
-              isGlobalOperator, inputShape, attributes.strides, attributes.kernelShape, attributes.pads,
-              attributes.autoPad);
+          const [adjustedAttributes, outputShape] =
+              getAdjustedPoolAttributesAndOutputShape(inputs, attributes, isGlobalOperator);
           const op1 = `
       value = max(_X(x), value);
     `;
           const op2 = '';
-          const poolingCode = generatePoolingCode(inputShape, attributes, op1, op2, '-1e5');
+          const poolingCode = generatePoolingCode(inputs[0].dims, adjustedAttributes, op1, op2, '-1e5');
           const shaderSource = `
       ${poolingCode}
     `;
@@ -153,6 +147,29 @@ const createMaxPoolProgramInfo =
           };
         };
 
+const getAdjustedPoolAttributesAndOutputShape =
+    (inputs: Tensor[], attributes: AveragePoolAttributes|MaxPoolAttributes, isGlobalOperator: boolean):
+        [AveragePoolAttributes|MaxPoolAttributes, number[]] => {
+          const inputShape = inputs[0].dims.slice();
+          const hasDilations = Object.hasOwnProperty.call(attributes, 'dilations');
+          const kernelShape = attributes.kernelShape.slice();
+          const strides = attributes.strides.slice();
+          const dilations: number[] = hasDilations ? (attributes as MaxPoolAttributes).dilations.slice() : [];
+          const pads = attributes.pads.slice();
+          PoolConvUtil.adjustPoolAttributes(isGlobalOperator, inputShape, kernelShape, strides, dilations, pads);
+
+          const outputShape = PoolConvUtil.computePoolOutputShape(
+              isGlobalOperator, inputShape, strides, dilations, kernelShape, pads, attributes.autoPad);
+
+          const newAttributes = Object.assign({}, attributes);
+          if (hasDilations) {
+            Object.assign(newAttributes, {kernelShape, strides, pads, dilations, cacheKey: attributes.cacheKey});
+          } else {
+            Object.assign(newAttributes, {kernelShape, strides, pads, cacheKey: attributes.cacheKey});
+          }
+          return [newAttributes, outputShape];
+        };
+
 const globalMaxPoolAttributes = {
   autoPad: '',
   ceilMode: 0,
@@ -161,6 +178,7 @@ const globalMaxPoolAttributes = {
   strides: [],
   pads: [],
   storageOrder: 0,
+  dilations: [],
   cacheKey: ''
 };
 

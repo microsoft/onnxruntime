@@ -53,6 +53,10 @@ Abstract:
 #if defined(_M_ARM) || defined(__arm__)
 #define MLAS_TARGET_ARM
 #endif
+#if defined(MLAS_TARGET_ARM64) || defined(MLAS_TARGET_ARM64EC) || defined(MLAS_TARGET_ARM)
+#define MLAS_TARGET_ARM_ANY
+#endif
+
 #if defined(__VSX__)
 #define MLAS_TARGET_POWER
 #endif
@@ -69,7 +73,7 @@ Abstract:
 // Define the support levels for the target architecture.
 //
 
-#if defined(MLAS_TARGET_AMD64)
+#if defined(MLAS_TARGET_AMD64) || defined (MLAS_TARGET_POWER)
 #define MLAS_SUPPORTS_GEMM_DOUBLE
 #endif
 
@@ -332,7 +336,6 @@ MlasGemm(
                   M, N, K, &DataParams, 1, ThreadPool);
 }
 
-
 /**
  * @brief Supply matrices data information to double precision gemm functions
  */
@@ -373,7 +376,6 @@ MlasGemmBatch(
     size_t BatchSize,
     MLAS_THREADPOOL* ThreadPool
     );
-
 
 /**
  * @brief  Double precision matrix/matrix multiply operation (DGEMM)
@@ -530,15 +532,23 @@ private:
     MLAS_QUANTIZATION_GRANULARITY QuantGran_;
 };
 
-struct MLAS_GEMM_U8X8_SHAPE_PARAMS {
-    size_t M = 0;
-    size_t N = 0;
-    size_t K = 0;
-    bool BIsSigned = false;
-    bool IsAccumulateMode = false;
+/**
+ * @brief Supply matrices shape and data type information to quantized gemm functions
+ *
+ ** NOTE: AIsSigned == true is not supported on non-ARM devices for now. 
+ **       AIsSigned == true is supported on ARM devices when BIsSigned is also true.
+ *
+*/
+struct MLAS_GEMM_QUANT_SHAPE_PARAMS {
+    size_t M = 0;                  /**< Supplies the row size of matrix A */
+    size_t N = 0;                  /**< Supplies the column size of matrix B */
+    size_t K = 0;                  /**< Supplies the column size of matrix A and row size of matrix B */
+    bool AIsSigned = false;        /**< Indicates whether type of A is int8_t or uint8_t.*/
+    bool BIsSigned = false;        /**< Indicates whether type of B is int8_t or uint8_t */
+    bool IsAccumulateMode = false; /**< Indicates whether to accumulate to matrix C or override matrix C */
 };
 
-struct MLAS_GEMM_U8X8_DATA_PARAMS {
+struct MLAS_GEMM_QUANT_DATA_PARAMS {
     const uint8_t* A = nullptr;
     size_t lda = 0;
     uint8_t ZeroPointA = 0;
@@ -552,12 +562,11 @@ struct MLAS_GEMM_U8X8_DATA_PARAMS {
     const MLAS_QGEMM_OUTPUT_PROCESSOR* OutputProcessor = nullptr;
 };
 
-
 void
 MLASCALL
 MlasGemm(
-    const MLAS_GEMM_U8X8_SHAPE_PARAMS& Shape,
-    const MLAS_GEMM_U8X8_DATA_PARAMS& DataParams,
+    const MLAS_GEMM_QUANT_SHAPE_PARAMS& Shape,
+    const MLAS_GEMM_QUANT_DATA_PARAMS& DataParams,
     MLAS_THREADPOOL* ThreadPool
     );
 
@@ -575,8 +584,8 @@ MlasGemm(
 void
 MLASCALL
 MlasGemmBatch(
-    const MLAS_GEMM_U8X8_SHAPE_PARAMS& Shape,
-    const MLAS_GEMM_U8X8_DATA_PARAMS* DataParams,
+    const MLAS_GEMM_QUANT_SHAPE_PARAMS& Shape,
+    const MLAS_GEMM_QUANT_DATA_PARAMS* DataParams,
     const size_t BatchN,
     MLAS_THREADPOOL* ThreadPool
     );
@@ -608,6 +617,7 @@ MLASCALL
 MlasGemmPackBSize(
     size_t N,
     size_t K,
+    bool AIsSigned,
     bool BIsSigned
     );
 
@@ -618,6 +628,7 @@ MlasGemmPackB(
     size_t K,
     const uint8_t* B,
     size_t ldb,
+    bool AIsSigned,
     bool BIsSigned,
     void* PackedB
     );
@@ -699,15 +710,73 @@ MlasConv(
 void
 MLASCALL
 MlasConvDepthwise(
-    const uint8_t* const* Input,
-    uint8_t InputZeroPoint,
-    const uint8_t* Filter,
-    uint8_t FilterZeroPoint,
+    const void* const* Input,
+    int32_t InputZeroPoint,
+    bool InputIsSigned,
+    const void* Filter,
+    int32_t FilterZeroPoint,
     bool FilterIsSigned,
     int32_t* Output,
     size_t Channels,
     size_t OutputCount,
     size_t KernelSize
+    );
+
+//
+// Symmetric quantized integer convolution routines.
+//
+
+size_t
+MlasConvSymPackWSize(
+    size_t GroupCount,
+    size_t InputChannels,
+    size_t OutputChannels,
+    size_t KernelSize,
+    bool InputIsSigned
+    );
+
+void
+MlasConvSymPackW(
+    size_t GroupCount,
+    size_t InputChannels,
+    size_t OutputChannels,
+    size_t KernelSize,
+    const int8_t* W,
+    int8_t* PackedW,
+    size_t PackedWSize,
+    bool InputIsSigned
+    );
+
+int32_t
+MlasConvSymFixupInputZeroPoint(
+    int32_t zero_point_value,
+    bool InputIsSigned
+    );
+
+struct MLAS_CONV_SYM_PARAMS {
+    const void* InputDirect;
+    const void* const* InputIndirection;
+    const void* Filter;
+    void* Output;
+    size_t InputChannels;
+    size_t OutputChannels;
+    size_t OutputCount;
+    size_t KernelSize;
+    const int32_t* Bias;
+    const float* Scale;
+    bool PerChannelScale;
+    int32_t OutputZeroPoint;
+    bool InputIsSigned;
+};
+
+void
+MlasConvSym(
+    const MLAS_CONV_SYM_PARAMS& Params
+    );
+
+void
+MlasConvSymDepthwise(
+    const MLAS_CONV_SYM_PARAMS& Params
     );
 
 //
@@ -736,11 +805,12 @@ MlasPool(
     MLAS_THREADPOOL* ThreadPool
     );
 
+template<typename T8Bits>
 void
 MLASCALL
 MlasMaximumPool(
-    const uint8_t* const* Input,
-    uint8_t* Output,
+    const T8Bits* const* Input,
+    T8Bits* Output,
     size_t Channels,
     size_t OutputCount,
     size_t KernelSize
@@ -815,6 +885,15 @@ MLASCALL
 MlasTranspose(
     const uint8_t* Input,
     uint8_t* Output,
+    size_t M,
+    size_t N
+    );
+
+void
+MLASCALL
+MlasTranspose(
+    const int8_t* Input,
+    int8_t* Output,
     size_t M,
     size_t N
     );
@@ -991,17 +1070,18 @@ MlasQuantizeLinear(
  * @param CountN
  * @return
 */
+template<typename OutputType>
 void
 MLASCALL
 MlasRequantizeOutput(
     const int32_t* Input,
     size_t InputLeadingDimension,
-    uint8_t* Output,
+    OutputType* Output,
     size_t OutputLeadingDimension,
     const int32_t* Bias,
     const float* Scale,
     bool PerColumnScale,
-    uint8_t ZeroPoint,
+    OutputType ZeroPoint,
     size_t StartM,
     size_t StartN,
     size_t CountM,
@@ -1012,18 +1092,20 @@ class MLAS_QGEMM_REQUANT_OUTPUT_PROCESSOR : public MLAS_QGEMM_OUTPUT_PROCESSOR
 {
    public:
     MLAS_QGEMM_REQUANT_OUTPUT_PROCESSOR(
-        uint8_t* Output,
+        void* Output,
         size_t OutputLeadingDimension,
         const int32_t* Bias,
         const float* Scale,
         bool PerColumnScale,
-        uint8_t ZeroPoint)
+        int32_t ZeroPoint,
+        bool OutputIsSigned)
         : Output_(Output),
           OutputLeadingDimension_(OutputLeadingDimension),
           Bias_(Bias),
           Scale_(Scale),
           PerColumnScale_(PerColumnScale),
-          ZeroPoint_(ZeroPoint)
+          ZeroPoint_(ZeroPoint),
+          OutputIsSigned_(OutputIsSigned)
     {
     }
 
@@ -1034,18 +1116,26 @@ class MLAS_QGEMM_REQUANT_OUTPUT_PROCESSOR : public MLAS_QGEMM_OUTPUT_PROCESSOR
                  size_t CountN,
                  size_t ldc) const override
     {
-        MlasRequantizeOutput(C, ldc, Output_, OutputLeadingDimension_, Bias_, Scale_,
-                             PerColumnScale_, ZeroPoint_, StartM, StartN, CountM, CountN);
+        if(OutputIsSigned_){
+            MlasRequantizeOutput(C, ldc, reinterpret_cast<int8_t*>(Output_), OutputLeadingDimension_,
+                                 Bias_, Scale_, PerColumnScale_, static_cast<int8_t>(ZeroPoint_),
+                                 StartM, StartN, CountM, CountN);
+        } else {
+            MlasRequantizeOutput(C, ldc, reinterpret_cast<uint8_t*>(Output_), OutputLeadingDimension_,
+                                 Bias_, Scale_, PerColumnScale_, static_cast<uint8_t>(ZeroPoint_),
+                                 StartM, StartN, CountM, CountN);
+        }
     }
 
 
    private:
-    uint8_t* Output_;
+    void* Output_;
     size_t OutputLeadingDimension_;
     const int32_t* Bias_;
     const float* Scale_;
     bool PerColumnScale_;
-    uint8_t ZeroPoint_;
+    int32_t ZeroPoint_;
+    bool OutputIsSigned_;
 };
 
 
@@ -1065,13 +1155,14 @@ MlasQLinearSafePaddingElementCount(
     size_t ElementCount
     );
 
+template<typename T8Bits>
 void
 MLASCALL
 MlasQLinearGlobalAveragePoolNchw(
-    const uint8_t* Input,
+    const T8Bits* Input,
     float ScaleInput,
     int32_t ZeroPointInput,
-    uint8_t* Output,
+    T8Bits* Output,
     float ScaleOutput,
     int32_t ZeroPointOutput,
     size_t Channels,
@@ -1079,13 +1170,14 @@ MlasQLinearGlobalAveragePoolNchw(
     int32_t* AccumulateBuffer
     );
 
+template <typename T8Bits>
 void
 MLASCALL
 MlasQLinearGlobalAveragePoolNhwc(
-    const uint8_t* Input,
+    const T8Bits* Input,
     float ScaleInput,
     int32_t ZeroPointInput,
-    uint8_t* Output,
+    T8Bits* Output,
     float ScaleOutput,
     int32_t ZeroPointOutput,
     size_t Batch,
@@ -1093,7 +1185,7 @@ MlasQLinearGlobalAveragePoolNhwc(
     size_t Stride,
     size_t Channels,
     int32_t* AccumulateBuffer,
-    const uint8_t* ZeroBuffer
+    const T8Bits* ZeroBuffer
     );
 
 //

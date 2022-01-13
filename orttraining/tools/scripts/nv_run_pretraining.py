@@ -528,7 +528,7 @@ def main():
                       is_model_exported = False
 
                       import onnxruntime as ort
-                      sess = ort.InferenceSession(onnx_path)
+                      sess = ort.InferenceSession(onnx_path, providers=ort.get_available_providers())
                       result = sess.run(None, {'input1': input_ids.cpu().numpy(), 'input2': segment_ids.cpu().numpy(), 'input3': input_mask.cpu().numpy()})
 
                       print('---ORT result---')

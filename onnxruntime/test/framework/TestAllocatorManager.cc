@@ -72,7 +72,7 @@ AllocatorManager& AllocatorManager::Instance() {
 }
 
 AllocatorManager::AllocatorManager() {
-  InitializeAllocators();
+  ORT_THROW_IF_ERROR(InitializeAllocators());
 }
 
 Status AllocatorManager::InitializeAllocators() {

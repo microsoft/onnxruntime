@@ -42,13 +42,6 @@ if (onnxruntime_DISABLE_CONTRIB_OPS)
     )
 endif()
 
-if(NOT onnxruntime_USE_FEATURIZERS)
-  list(APPEND onnxruntime_graph_src_exclude_patterns
-    "${ONNXRUNTIME_ROOT}/core/graph/featurizers_ops/*.h"
-    "${ONNXRUNTIME_ROOT}/core/graph/featurizers_ops/*.cc"
-  )
-endif()
-
 if(NOT onnxruntime_USE_DML)
   list(APPEND onnxruntime_graph_src_exclude_patterns
     "${ONNXRUNTIME_ROOT}/core/graph/dml_ops/*.h"
@@ -127,8 +120,5 @@ if (WIN32)
     target_compile_options(onnxruntime_graph PRIVATE
         /EHsc   # exception handling - C++ may throw, extern "C" will not
     )
-  endif()
-
-  # Add Code Analysis properties to enable C++ Core checks. Have to do it via a props file include.
-  set_target_properties(onnxruntime_graph PROPERTIES VS_USER_PROPS ${PROJECT_SOURCE_DIR}/EnableVisualStudioCodeAnalysis.props)
+  endif()  
 endif()

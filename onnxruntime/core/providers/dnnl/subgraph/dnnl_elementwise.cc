@@ -8,14 +8,12 @@
 namespace onnxruntime {
 namespace ort_dnnl {
 
-DnnlElementwise::DnnlElementwise() {
-  default_alpha_ = 1.0;
-}
+DnnlElementwise::DnnlElementwise() {}
 
 void DnnlElementwise::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   auto dnnl_engine = sp.GetEngine();
 
-  auto elementwise_src_mem = sp.GetMemory(node.Input(IN_X).Name());
+  auto elementwise_src_mem = sp.GetMemory(node.Input(IN_X));
   auto src_md = elementwise_src_mem.get_desc();
   dnnl::algorithm algo;
   bool requires_alpha = false;
@@ -24,11 +22,14 @@ void DnnlElementwise::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node)
     algo = dnnl::algorithm::eltwise_abs;
   } else if (node.OpType() == "Elu") {
     requires_alpha = true;
-    default_alpha_ = 1.0;
-    alpha = GetAlpha(node);
+    alpha = GetAlpha(node, /*default_alpha*/1.0f);
     algo = dnnl::algorithm::eltwise_elu; 
   } else if (node.OpType() == "Exp") {
     algo = dnnl::algorithm::eltwise_exp;
+  } else if (node.OpType() == "LeakyRelu") {
+    requires_alpha = true;
+    alpha = GetAlpha(node, /*default_alpha*/ 0.01f);
+    algo = dnnl::algorithm::eltwise_relu;
   } else if (node.OpType() == "Log") {
     algo = dnnl::algorithm::eltwise_log;
   } else if (node.OpType() == "Relu") {
@@ -68,12 +69,12 @@ void DnnlElementwise::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node)
   sp.SetMemory(node.Output(OUT_Y), elementwise_dst_mem);
 }
 
-float DnnlElementwise::GetAlpha(DnnlNode& node) {
+float DnnlElementwise::GetAlpha(DnnlNode& node, float default_alpha) {
   auto attr = node.Attributes().find("alpha");
   if (attr != node.Attributes().end()) {
     return attr->second().f();
   }
-  return default_alpha_;
+  return default_alpha;
 }
 
 }  // namespace ort_dnnl

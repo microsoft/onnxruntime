@@ -1,13 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
-  <PropertyGroup>
-    <WindowsAI-Platform Condition="'$(Platform)' == 'Win32'">x86</WindowsAI-Platform>
-    <WindowsAI-Platform Condition="'$(Platform)' != 'Win32'">$(Platform)</WindowsAI-Platform>
+ <PropertyGroup>
+    <WindowsAI-Platform Condition="'$(PlatformTarget)' == 'x64'">$(Platform)</WindowsAI-Platform>
+    <WindowsAI-Platform Condition="'$(PlatformTarget)' == 'Win32' Or '$(PlatformTarget)' == 'x86'">x86</WindowsAI-Platform>
+    <WindowsAI-Platform Condition="'$(PlatformTarget)' == 'ARM'">$(Platform)</WindowsAI-Platform>
+    <WindowsAI-Platform Condition="'$(PlatformTarget)' == 'ARM64'">$(Platform)</WindowsAI-Platform>
   </PropertyGroup>
 
   <PropertyGroup>
-    <RuntimesDirectory Condition="'$(TargetPlatformIdentifier)' == 'UAP'">$(MSBuildThisFileDirectory)..\..\runtimes\win-$(WindowsAI-Platform)\lib\uap10.0</RuntimesDirectory>
-    <RuntimesDirectory Condition="'$(TargetPlatformIdentifier)' != 'UAP'">$(MSBuildThisFileDirectory)..\..\runtimes\win-$(WindowsAI-Platform)\_native</RuntimesDirectory>
+    <RuntimesDirectory>$(MSBuildThisFileDirectory)..\..\runtimes\win-$(WindowsAI-Platform)\_native</RuntimesDirectory>
     <WindowsAIBinarySubfolder Condition="'$(UseWindowsMLStaticRuntime)' == 'true'">static\</WindowsAIBinarySubfolder>
     <WindowsAIBinary>$(RuntimesDirectory)\$(WindowsAIBinarySubfolder)microsoft.ai.machinelearning.dll</WindowsAIBinary>
     <WindowsAIWinMD>$(MSBuildThisFileDirectory)..\..\winmds\Microsoft.AI.MachineLearning.winmd</WindowsAIWinMD>
@@ -19,9 +20,9 @@
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(DisableOnnxRuntimeDllCopy)' != 'true'">
-    <OnnxRuntimeBinary Condition="'$(OnnxRuntimeBinary)' == ''">$(RuntimesDirectory)\$(WindowsAIBinarySubfolder)onnxruntime.dll</OnnxRuntimeBinary>
+    <OnnxRuntimeBinary>$(RuntimesDirectory)\$(WindowsAIBinarySubfolder)onnxruntime.dll</OnnxRuntimeBinary>
   </PropertyGroup>
-  
+
   <ItemGroup>
     <Reference Include="$(WindowsAIWinMD)">
       <Implementation>$(WindowsAIBinary)</Implementation>
@@ -32,6 +33,9 @@
   </ItemGroup>
 
   <ItemGroup Condition="'$(NuGetProjectStyle)' != 'PackageReference'">
-    <ReferenceCopyLocalPaths Include="$(WindowsAIBinary);$(OnnxRuntimeBinary)" />
+    <ReferenceCopyLocalPaths Include="$(WindowsAIBinary);" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(NuGetProjectStyle)' != 'PackageReference' OR '$(TargetPlatformIdentifier)' == 'UAP'">
+    <ReferenceCopyLocalPaths Include="$(OnnxRuntimeBinary)" />
   </ItemGroup>
 </Project>

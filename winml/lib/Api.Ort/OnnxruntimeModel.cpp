@@ -350,3 +350,26 @@ STDMETHODIMP OnnruntimeModel::AddModelOutput(_In_ const char* const name, _In_ I
   RETURN_HR_IF_NOT_OK_MSG(winml_adapter_api->ModelAddOutput(ort_model_.get(), name, type_info), ort_api);
   return S_OK;
 }
+
+
+STDMETHODIMP OnnruntimeModel::JoinModel(_In_ IModel* other_model,
+                                        _In_ const char* const* output_names,
+                                        _In_ const char* const* input_names,
+                                        size_t num_linkages,
+                                        bool promote_unlinked_outputs,
+                                        _In_ const char* const join_node_prefix) {
+  auto winml_adapter_api = engine_factory_->UseWinmlAdapterApi();
+  auto ort_api = engine_factory_->UseOrtApi();
+  
+  RETURN_HR_IF_NOT_OK_MSG(winml_adapter_api->JoinModels(ort_model_.get(),
+                                                       static_cast<OnnruntimeModel*>(other_model)->ort_model_.get(),
+                                                       output_names,
+                                                       input_names,
+                                                       num_linkages,
+                                                       promote_unlinked_outputs,
+                                                       join_node_prefix),
+                          ort_api);
+  // reset the info so that it is recreated with the new information lazily
+  info_ = nullptr;
+  return S_OK;
+}

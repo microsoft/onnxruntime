@@ -3,7 +3,11 @@
 
 if(UNIX)
   set(SYMBOL_FILE ${CMAKE_CURRENT_BINARY_DIR}/onnxruntime.lds)
-  set(OUTPUT_STYLE gcc)
+  if(APPLE)
+    set(OUTPUT_STYLE xcode)
+  else()
+    set(OUTPUT_STYLE gcc)
+  endif()  
 else()
   set(SYMBOL_FILE ${CMAKE_CURRENT_BINARY_DIR}/onnxruntime_dll.def)
   set(OUTPUT_STYLE vc)
@@ -114,6 +118,7 @@ endif()
 
 if (NOT WIN32)
   if (APPLE OR ${CMAKE_SYSTEM_NAME} MATCHES "^iOS")
+    set(ONNXRUNTIME_SO_LINK_FLAG " -Wl,-exported_symbols_list,${SYMBOL_FILE}")
     if (${CMAKE_SYSTEM_NAME} STREQUAL "iOS")
       set_target_properties(onnxruntime PROPERTIES
         SOVERSION ${ORT_VERSION}
@@ -121,7 +126,6 @@ if (NOT WIN32)
         INSTALL_RPATH_USE_LINK_PATH FALSE
         BUILD_WITH_INSTALL_NAME_DIR TRUE
         INSTALL_NAME_DIR @rpath)
-      set(ONNXRUNTIME_SO_LINK_FLAG " -Wl,-exported_symbols_list,${SYMBOL_FILE}")
     else()
         set_target_properties(onnxruntime PROPERTIES INSTALL_RPATH "@loader_path")
     endif()
@@ -160,9 +164,9 @@ set(onnxruntime_INTERNAL_LIBRARIES
   ${PROVIDERS_ARMNN}
   ${PROVIDERS_COREML}
   ${PROVIDERS_DML}
-  ${PROVIDERS_MIGRAPHX}
   ${PROVIDERS_NNAPI}
   ${PROVIDERS_NUPHAR}
+  ${PROVIDERS_STVM}
   ${PROVIDERS_RKNPU}
   ${PROVIDERS_ROCM}
   ${PROVIDERS_VITISAI}
@@ -209,6 +213,32 @@ set_target_properties(onnxruntime PROPERTIES FOLDER "ONNXRuntime")
 
 if (WINDOWS_STORE)
   target_link_options(onnxruntime PRIVATE /DELAYLOAD:api-ms-win-core-libraryloader-l1-2-1.dll)
+endif()
+
+if (winml_is_inbox)
+  # Apply linking flags required by inbox static analysis tools
+  target_link_options(onnxruntime PRIVATE ${os_component_link_flags_list})
+  # Link *_x64/*_arm64 DLLs for the ARM64X forwarder
+  function(duplicate_shared_library target new_target)
+    get_target_property(sources ${target} SOURCES)
+    get_target_property(compile_definitions ${target} COMPILE_DEFINITIONS)
+    get_target_property(compile_options ${target} COMPILE_OPTIONS)
+    get_target_property(include_directories ${target} INCLUDE_DIRECTORIES)
+    get_target_property(link_libraries ${target} LINK_LIBRARIES)
+    get_target_property(link_flags ${target} LINK_FLAGS)
+    get_target_property(link_options ${target} LINK_OPTIONS)
+    add_library(${new_target} SHARED ${sources})
+    add_dependencies(${target} ${new_target})
+    target_compile_definitions(${new_target} PRIVATE ${compile_definitions})
+    target_compile_options(${new_target} PRIVATE ${compile_options})
+    target_include_directories(${new_target} PRIVATE ${include_directories})
+    target_link_libraries(${new_target} PRIVATE ${link_libraries})
+    set_property(TARGET ${new_target} PROPERTY LINK_FLAGS "${link_flags}")
+    target_link_options(${new_target} PRIVATE ${link_options})
+  endfunction()
+  if (WAI_ARCH STREQUAL x64 OR WAI_ARCH STREQUAL arm64)
+    duplicate_shared_library(onnxruntime onnxruntime_${WAI_ARCH})
+  endif()
 endif()
 
 # Assemble the Apple static framework (iOS and macOS)

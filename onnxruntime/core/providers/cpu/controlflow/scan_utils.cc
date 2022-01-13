@@ -95,7 +95,7 @@ Status AllocateOutput(OpKernelContextInternal& context, const GraphViewer& subgr
   }
 
   TensorShape output_shape = onnxruntime::utils::GetTensorShapeFromTensorShapeProto(*graph_output_shape);
-  auto& graph_output_dims(output_shape.GetDims());
+  auto graph_output_dims(output_shape.GetDims());
 
   std::vector<int64_t> scan_output_dims;
   scan_output_dims.reserve(graph_output_dims.size() + 2);
@@ -114,18 +114,20 @@ Status AllocateOutput(OpKernelContextInternal& context, const GraphViewer& subgr
   std::copy(graph_output_dims.cbegin(), graph_output_dims.cend(), std::back_inserter(scan_output_dims));
 
   if (!temporary) {
-    OutputIterator::Create(context, output_index, is_loop_state_var, is_v8, TensorShape(scan_output_dims),
-                           create_slicer_func, zero_data_func,
-                           output_iterator, direction);
+    ORT_RETURN_IF_ERROR(OutputIterator::Create(context, output_index, is_loop_state_var, is_v8,
+                                               TensorShape(scan_output_dims),
+                                               create_slicer_func, zero_data_func,
+                                               output_iterator, direction));
   } else {
     auto mltype = utils::GetMLDataType(*graph_output);
 
     // the outputs from Scan are constrained to tensors, so we can safely cast to TensorTypeBase
     auto ml_data_type = static_cast<const TensorTypeBase*>(mltype)->GetElementType();
 
-    OutputIterator::Create(context, output_index, is_loop_state_var, is_v8, TensorShape(scan_output_dims),
-                           create_slicer_func, zero_data_func,
-                           output_iterator, direction, temporary, ml_data_type);
+    ORT_RETURN_IF_ERROR(OutputIterator::Create(context, output_index, is_loop_state_var, is_v8,
+                                               TensorShape(scan_output_dims),
+                                               create_slicer_func, zero_data_func,
+                                               output_iterator, direction, temporary, ml_data_type));
   }
 
   return Status::OK();
@@ -140,7 +142,7 @@ Status CreateFeedsFetchesManager(const Node& node,
   // we need the names of the Scan inputs to determine what device they are available on,
   // so first create a list using those value
   std::vector<std::string> feed_names;
-  feed_names.reserve(info.num_variadic_inputs + info.num_implicit_inputs);
+  feed_names.reserve(static_cast<size_t>(info.num_variadic_inputs) + info.num_implicit_inputs);
 
   const auto& scan_inputs = node.InputDefs();
   int start = is_v8 ? 1 : 0;  // skip sequence_lens for v8
@@ -215,7 +217,7 @@ Status IterateSequence(OpKernelContextInternal& context, const SessionState& ses
         feeds[input] = loop_state_variables[input].Input();
       } else {
         // add sliced input
-        auto& iterator = scan_input_stream_iterators[input - num_loop_state_variables];
+        auto& iterator = scan_input_stream_iterators[static_cast<ptrdiff_t>(input) - num_loop_state_variables];
         feeds[input] = *iterator;
 
         ++iterator;

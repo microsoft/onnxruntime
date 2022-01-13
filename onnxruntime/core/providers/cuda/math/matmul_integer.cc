@@ -82,29 +82,29 @@ Status MatMulInteger<int8_t, int8_t>::ComputeInternal(OpKernelContext* ctx) cons
   int alpha = 1;
   int beta = 0;
   if (a_offset != 0 || b_offset != 0) {
-    OffsetOutput(Stream(),
-                 a_row_buf.get(),
-                 b_col_buf.get(),
-                 output_ptr,
-                 a_offset,
-                 b_offset,
-                 helper);
+    ORT_RETURN_IF_ERROR(OffsetOutput(Stream(),
+                                     a_row_buf.get(),
+                                     b_col_buf.get(),
+                                     output_ptr,
+                                     a_offset,
+                                     b_offset,
+                                     helper));
     beta = 1;
   }
 
   for (size_t batch = 0; batch < helper.OutputOffsets().size(); batch++) {
-    GemmInt8(static_cast<int>(helper.M()),
-             static_cast<int>(helper.N()),
-             static_cast<int>(helper.K()),
-             alpha,
-             beta,
-             a_ptr + helper.LeftOffsets()[batch],
-             static_cast<int>(helper.K()),
-             b_ptr + helper.RightOffsets()[batch],
-             static_cast<int>(helper.N()),
-             output_ptr + helper.OutputOffsets()[batch],
-             static_cast<int>(helper.N()),
-             this);
+    ORT_RETURN_IF_ERROR(GemmInt8(static_cast<int>(helper.M()),
+                                 static_cast<int>(helper.N()),
+                                 static_cast<int>(helper.K()),
+                                 alpha,
+                                 beta,
+                                 a_ptr + helper.LeftOffsets()[batch],
+                                 static_cast<int>(helper.K()),
+                                 b_ptr + helper.RightOffsets()[batch],
+                                 static_cast<int>(helper.N()),
+                                 output_ptr + helper.OutputOffsets()[batch],
+                                 static_cast<int>(helper.N()),
+                                 this));
   }
 
   return Status::OK();

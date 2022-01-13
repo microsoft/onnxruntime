@@ -31,6 +31,8 @@
 #include "External/D3DX12/d3dx12.h"
 
 #include <DirectML.h>
+#include "core/common/common.h"
+#include "ErrorHandling.h"
 
 // DirectML helper libraries
 #include "External/DirectMLHelpers/ApiTraits.h"
@@ -51,7 +53,6 @@ using Microsoft::WRL::ComPtr;
 #include "core/providers/dml/OperatorAuthorHelper/Common.h"
 
 #include "DmlCommon.h"
-#include "ErrorHandling.h"
 #include "TensorDesc.h"
 #include "DescriptorPool.h"
 #include "IExecutionProvider.h"

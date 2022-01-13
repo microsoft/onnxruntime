@@ -21,20 +21,20 @@ void DnnlBatchNorm::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
 
   auto epsilon = ReadEpsilon(node);
   
-  auto batchnorm_src_mem = sp.GetMemory(node.Input(IN_X).Name());
+  auto batchnorm_src_mem = sp.GetMemory(node.Input(IN_X));
   auto src_md = batchnorm_src_mem.get_desc();
 
-  auto batchnorm_scale_mem = sp.GetMemory(node.Input(IN_SCALE).Name());
+  auto batchnorm_scale_mem = sp.GetMemory(node.Input(IN_SCALE));
   auto scale_md = batchnorm_scale_mem.get_desc();
   auto scale_dims = scale_md.dims();
 
-  auto batchnorm_bias_mem = sp.GetMemory(node.Input(IN_B).Name());
+  auto batchnorm_bias_mem = sp.GetMemory(node.Input(IN_B));
   auto bias_md = batchnorm_bias_mem.get_desc();
 
-  auto batchnorm_mean_mem = sp.GetMemory(node.Input(IN_MEAN).Name());
+  auto batchnorm_mean_mem = sp.GetMemory(node.Input(IN_MEAN));
   auto mean_md = batchnorm_mean_mem.get_desc();
 
-  auto batchnorm_var_mem = sp.GetMemory(node.Input(IN_VAR).Name());
+  auto batchnorm_var_mem = sp.GetMemory(node.Input(IN_VAR));
   auto var_md = batchnorm_var_mem.get_desc();
 
 

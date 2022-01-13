@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <AdditionalIncludeDirectories>$(MSBuildThisFileDirectory)../../build/native/include/;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <ResourceCompile>
+      <AdditionalIncludeDirectories>$(MSBuildThisFileDirectory)../../build/native/include/;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ResourceCompile>
+  </ItemDefinitionGroup>
+
+  <ItemGroup>
+    <PropertyPageSchema Include="$(MSBuildThisFileDirectory)\Microsoft.AI.MachineLearning.Rules.Project.xml"/>
+  </ItemGroup>
+
+  <PropertyGroup>
+    <WindowsAI-Platform Condition="'$(PlatformTarget)' == 'x64' OR ('$(PlatformTarget)' == 'AnyCPU' AND '$(Prefer32Bit)' != 'true')">x64</WindowsAI-Platform>
+    <WindowsAI-Platform Condition="'$(PlatformTarget)' == 'x86' OR ('$(PlatformTarget)' == 'AnyCPU' AND '$(Prefer32Bit)' == 'true')">x86</WindowsAI-Platform>
+    <WindowsAI-Platform Condition="'$(PlatformTarget)' == '' AND '$(Prefer32Bit)' != 'true'">x64</WindowsAI-Platform>
+    <WindowsAI-Platform Condition="'$(PlatformTarget)' == '' AND '$(Prefer32Bit)' == 'true'">x86</WindowsAI-Platform>
+    <WindowsAI-Platform Condition="'$(WindowsAI-Platform)' == ''">$(PlatformTarget)</WindowsAI-Platform>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <RuntimesDirectory>$(MSBuildThisFileDirectory)..\..\runtimes\win-$(WindowsAI-Platform)\_native</RuntimesDirectory>
+    <WindowsAIBinarySubfolder Condition="'$(UseWindowsMLStaticRuntime)' == 'true'">static\</WindowsAIBinarySubfolder>
+
+    <WindowsAIBinary>$(RuntimesDirectory)\$(WindowsAIBinarySubfolder)microsoft.ai.machinelearning.dll</WindowsAIBinary>
+    <WindowsAIBinary>$([System.IO.Path]::GetFullPath($(WindowsAIBinary)))</WindowsAIBinary>
+
+    <OnnxRuntimeBinary>$(RuntimesDirectory)\$(WindowsAIBinarySubfolder)onnxruntime.dll</OnnxRuntimeBinary>
+    <OnnxRuntimeBinary>$([System.IO.Path]::GetFullPath($(OnnxRuntimeBinary)))</OnnxRuntimeBinary>
+
+    <WindowsAIWinMD>$(MSBuildThisFileDirectory)..\..\winmds\Microsoft.AI.MachineLearning.winmd</WindowsAIWinMD>
+    <WindowsAIExperimentalWinMD>$(MSBuildThisFileDirectory)..\..\winmds\Microsoft.AI.MachineLearning.Experimental.winmd</WindowsAIExperimentalWinMD>
+
+    <WindowsAIWinMD>$([System.IO.Path]::GetFullPath($(WindowsAIWinMD)))</WindowsAIWinMD>
+    <WindowsAIExperimentalWinMD>$([System.IO.Path]::GetFullPath($(WindowsAIExperimentalWinMD)))</WindowsAIExperimentalWinMD>
+
+  </PropertyGroup>
+
+  <PropertyGroup Label="Globals">
+    <!-- Assume apps using the WinML package only want the DirectML binaries (no need for a build dependency). -->
+    <Microsoft_AI_DirectML_SkipDebugLayerCopy>true</Microsoft_AI_DirectML_SkipDebugLayerCopy>
+    <Microsoft_AI_DirectML_SkipLink>true</Microsoft_AI_DirectML_SkipLink>
+    <Microsoft_AI_DirectML_SkipIncludeDir>true</Microsoft_AI_DirectML_SkipIncludeDir>
+  </PropertyGroup>
+</Project>

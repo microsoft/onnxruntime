@@ -16,8 +16,6 @@
     "strictNullChecks": true,
     "pretty": true,
     "allowUnreachableCode": false,
-    "experimentalDecorators": true,
-    "downlevelIteration": true,
     "incremental": true
   }
 }

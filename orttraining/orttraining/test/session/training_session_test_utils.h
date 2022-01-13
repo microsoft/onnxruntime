@@ -19,7 +19,7 @@
 #ifdef USE_CUDA
 #include "core/providers/cuda/cuda_execution_provider_info.h"
 #elif USE_ROCM
-#include "core/providers/rocm/rocm_execution_provider.h"
+#include "core/providers/rocm/rocm_execution_provider_info.h"
 #endif
 
 namespace onnxruntime {

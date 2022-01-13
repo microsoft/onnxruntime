@@ -11,7 +11,7 @@ jobs:
 
   - template: templates/get-docker-image-steps.yml
     parameters:
-      Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cpu
+      Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_eager_cpu
       Context: tools/ci_build/github/linux/docker
       DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
       Repository: onnxruntimecpubuild
@@ -47,6 +47,8 @@ jobs:
               --build_wheel \
               --skip_tests \
               --enable_training \
+              --build_eager_mode \
+              --enable_pybind \
               --enable_external_custom_op_schemas
       workingDirectory: $(Build.SourcesDirectory)
 

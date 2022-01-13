@@ -873,7 +873,7 @@ TEST_F(GraphTest, GraphConstruction_PriorityBasedTopologicalSort_CompressDecompr
         node_4 (Identity)  decompress (pri = LOCAL_LOW)
                       \       /
                       node_5 (Merge)
-                          |                   
+                          |
   */
 
   TypeProto tensor_int32;
@@ -943,8 +943,8 @@ TEST_F(GraphTest, GraphConstruction_PriorityBasedTopologicalSort_CompressDecompr
                     \           /                   |
                     node_8 (Merge)                  |
                            \                        /
-                                 node_9 (Merge)                
-                                      |                   
+                                 node_9 (Merge)
+                                      |
   */
 
   TypeProto tensor_int32;
@@ -1012,7 +1012,7 @@ TEST_F(GraphTest, GraphConstruction_PriorityBasedTopologicalSort_Recompute) {
         node_1 (Identity)  recompute_node_1 (pri = LOCAL_LOW)
                     |         |
         node_4 (Identity)     |
-                     \       /           
+                     \       /
                node_1_grad (Merge)
                         |
   */
@@ -1070,7 +1070,7 @@ TEST_F(GraphTest, GraphConstruction_PriorityBasedTopologicalSort_MultiLayerRecom
           loss (Identity) \   \        \        \
                     |     |    \         \        \
              1            |     |         \        \
-               \         /      |          \        | 
+               \         /      |          \        |
                 loss_grad  recom_node_3    |        |
                      \         /           |        |
                      node_3_grad      recom_node_2  |
@@ -1256,7 +1256,8 @@ TEST_F(GraphTest, GraphConstruction_CheckGraphInputOutputOrderMaintained) {
 
 // Validate that an unused initializer doesn't break graph loading/resolution
 // and is removed as expected.
-TEST_F(GraphTest, UnusedInitializerIsIgnored) {
+// Validate unused NodeArgs are removed as expected
+TEST_F(GraphTest, UnusedInitializerAndNodeArgsAreIgnored) {
   Model model("UnusedInitializerIsIgnored", false, *logger_);
   auto& graph = model.MainGraph();
 
@@ -1275,17 +1276,31 @@ TEST_F(GraphTest, UnusedInitializerIsIgnored) {
   graph.AddNode("a", "Identity_Fake", "a", inputs, outputs);
 
   TensorProto initializer_tensor;
-  initializer_tensor.set_name("unused");
+  const std::string unused_initializer_name = "unused_initializer";
+  initializer_tensor.set_name(unused_initializer_name);
   initializer_tensor.add_dims(1);
   initializer_tensor.add_float_data(1.f);
   initializer_tensor.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
 
   graph.AddInitializedTensor(initializer_tensor);
   ASSERT_TRUE(graph.GetAllInitializedTensors().size() == 1);
+  ASSERT_NE(nullptr, graph.GetNodeArg(unused_initializer_name));
+
+  // Add unused NodeArgs
+  const std::string unused_node_arg_name = graph.GenerateNodeArgName("unused_node_arg");
+  ASSERT_EQ(nullptr, graph.GetNodeArg(unused_node_arg_name));
+  graph.GetOrCreateNodeArg(unused_node_arg_name, nullptr);
+  ASSERT_NE(nullptr, graph.GetNodeArg(unused_node_arg_name));
 
   auto status = graph.Resolve();
   ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
   ASSERT_TRUE(graph.GetAllInitializedTensors().empty());
+  ASSERT_EQ(nullptr, graph.GetNodeArg(unused_node_arg_name));
+
+  // Verify NodeArg from the unused initializer is deleted as well
+  // TODO, enable this when we can remove unused NodeArgs with type
+  // See Graph::CleanUnusedInitializersAndNodeArgs
+  // ASSERT_EQ(nullptr, graph.GetNodeArg(unused_initializer_name));
 
   // serialize and reload so we check the loaded from proto path in SetGraphInputsOutputs
   auto proto = model.ToProto();
@@ -1304,6 +1319,10 @@ TEST_F(GraphTest, UnusedInitializerIsIgnored) {
   status = graph2.Resolve();
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
   ASSERT_TRUE(graph.GetAllInitializedTensors().empty());
+  ASSERT_EQ(nullptr, graph.GetNodeArg(unused_node_arg_name));
+  // TODO, enable this when we can remove unused NodeArgs with type
+  // See Graph::CleanUnusedInitializersAndNodeArgs
+  // ASSERT_EQ(nullptr, graph.GetNodeArg(unused_initializer_name));
 }
 
 #if !defined(DISABLE_SPARSE_TENSORS)
@@ -1941,6 +1960,78 @@ TEST_F(GraphTest, DontRemoveUnusedInitializerWithGraphInput) {
                         });
 
   ASSERT_NE(j, inputs_including_initializers.cend()) << "Unused initializer was incorrectly removed.";
+}
+
+// The Model class internally:
+// 1. Converts the ONNX Model to an ORT Model
+// 2. Converts the ORT Model's Graph back to an ONNX Graph so that it
+//    can run the ONNX Checker on it.
+// Previously this was buggy for models containing subgraphs with IR Version < 4.
+// We didn't always ensure that initializers are a subset of inputs, which is
+// required for IR version < 4.
+TEST_F(GraphTest, ConstantsBecomeInitializersAndInputs) {
+  ModelProto m;
+  m.set_ir_version(ONNX_NAMESPACE::IR_VERSION_2017_11_3);
+  ImportOpset(m, "", 13);
+  GraphProto* g = m.mutable_graph();
+  g->set_name("test");
+
+  // Construct "output = if x: 2.0 else 1.0"
+  ValueInfoProto* x = g->add_input();
+  x->set_name("x");
+  SetTypeAndShape(x->mutable_type()->mutable_tensor_type(), TensorProto_DataType_BOOL, {1});
+
+  NodeProto* if_node = g->add_node();
+  if_node->set_op_type("If");
+  if_node->set_name("If");
+  if_node->add_input("x");
+  if_node->add_output("output");
+
+  AttributeProto* if_attr = if_node->add_attribute();
+  if_attr->set_name("then_branch");
+  if_attr->set_type(AttributeProto_AttributeType_GRAPH);
+  GraphProto* then_g = if_attr->mutable_g();
+  then_g->set_name("then");
+  ValueInfoProto* then_out = then_g->add_output();
+  then_out->set_name("then_out");
+  SetTypeAndShape(then_out->mutable_type()->mutable_tensor_type(), TensorProto_DataType_FLOAT, {1});
+  NodeProto* two_node = then_g->add_node();
+  two_node->set_op_type("Constant");
+  AttributeProto* two_attr = two_node->add_attribute();
+  two_attr->set_name("value");
+  two_attr->set_type(AttributeProto_AttributeType_TENSOR);
+  two_attr->mutable_t()->add_float_data(2.0);
+  two_attr->mutable_t()->set_data_type(TensorProto_DataType_FLOAT);
+  two_attr->mutable_t()->add_dims(1);
+  two_node->set_name("Constant_two");
+  two_node->add_output("then_out");
+
+  AttributeProto* else_attr = if_node->add_attribute();
+  else_attr->set_name("else_branch");
+  else_attr->set_type(AttributeProto_AttributeType_GRAPH);
+  GraphProto* else_g = else_attr->mutable_g();
+  else_g->set_name("else");
+  ValueInfoProto* else_out = else_g->add_output();
+  else_out->set_name("else_out");
+  SetTypeAndShape(else_out->mutable_type()->mutable_tensor_type(), TensorProto_DataType_FLOAT, {1});
+  NodeProto* one_node = else_g->add_node();
+  one_node->set_op_type("Constant");
+  AttributeProto* one_attr = one_node->add_attribute();
+  one_attr->set_name("value");
+  one_attr->set_type(AttributeProto_AttributeType_TENSOR);
+  one_attr->mutable_t()->add_float_data(1.0);
+  one_attr->mutable_t()->set_data_type(TensorProto_DataType_FLOAT);
+  one_attr->mutable_t()->add_dims(1);
+  one_node->set_name("Constant_one");
+  one_node->add_output("else_out");
+
+  ValueInfoProto* output = g->add_output();
+  output->set_name("output");
+  SetTypeAndShape(output->mutable_type()->mutable_tensor_type(), TensorProto_DataType_FLOAT, {1});
+
+  std::shared_ptr<Model> model;
+  Status st = Model::Load(std::move(m), model, nullptr, *logger_);
+  ASSERT_TRUE(st.IsOK()) << st.ErrorMessage();
 }
 }  // namespace test
 }  // namespace onnxruntime

@@ -9,6 +9,7 @@
 #include <iostream>
 #include <tuple>
 
+#include "core/common/profiler_common.h"
 #include "core/common/logging/logging.h"
 #include "core/platform/ort_mutex.h"
 
@@ -49,9 +50,9 @@ class Profiler {
   void StartProfiling(const std::basic_string<T>& file_name);
 
   /*
-  Produce current time point for any profiling action.
+  Start profiling and return current time point.
   */
-  TimePoint StartTime() const;
+  TimePoint Start();
 
   /*
   Whether data collection and output from this profiler is enabled.
@@ -107,6 +108,15 @@ class Profiler {
   static void SetGlobalMaxNumEvents(size_t new_max_num_events) {
     global_max_num_events_.store(new_max_num_events);
   }
+  
+  void AddEpProfilers(std::unique_ptr<EpProfiler> ep_profiler) {
+    if (ep_profiler) {
+      ep_profilers_.push_back(std::move(ep_profiler));
+      if (enabled_) {
+        ep_profilers_.back()->StartProfiling();
+      }
+    }
+  }
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Profiler);
@@ -135,7 +145,7 @@ class Profiler {
   const logging::Logger* session_logger_{nullptr};
   const logging::Logger* custom_logger_{nullptr};
   TimePoint profiling_start_time_;
-  std::vector<EventRecord> events_;
+  Events events_;
   bool max_events_reached{false};
   bool profile_with_logger_{false};
   const size_t max_num_events_{global_max_num_events_.load()};
@@ -143,6 +153,8 @@ class Profiler {
 #ifdef ENABLE_STATIC_PROFILER_INSTANCE
   static Profiler* instance_;
 #endif
+
+  std::vector<std::unique_ptr<EpProfiler>> ep_profilers_;
 };
 
 }  // namespace profiling

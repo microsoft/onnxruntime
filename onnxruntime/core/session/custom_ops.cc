@@ -70,6 +70,11 @@ ORT_API_STATUS_IMPL(OrtApis::KernelInfoGetAttribute_string, _In_ const OrtKernel
   return onnxruntime::ToOrtStatus(status);
 }
 
+ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetGPUComputeStream, _In_ const OrtKernelContext* context, _Outptr_ void** out) {
+  *out = reinterpret_cast<const onnxruntime::OpKernelContext*>(context)->GetComputeStream();
+  return nullptr;
+};
+
 template <typename T, typename std::enable_if<std::is_fundamental<T>::value, int>::type = 0>
 static Status CopyDataFromVectorToMemory(const std::vector<T>& values, T* out, size_t* size) {
   if (out == nullptr) {  // User is querying the true size of the attribute
@@ -253,8 +258,9 @@ common::Status CreateCustomRegistry(const std::vector<OrtCustomOpDomain*>& op_do
         def_builder.Provider(onnxruntime::kCpuExecutionProvider);
       }
 
-      KernelCreateFn kernel_create_fn = [op](const OpKernelInfo& info) -> OpKernel* {
-        return new CustomOpKernel(info, *op);
+      KernelCreateFn kernel_create_fn = [op](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
+        out = std::make_unique<CustomOpKernel>(info, *op);
+        return Status::OK();
       };
 
       KernelCreateInfo create_info(def_builder.Build(), kernel_create_fn);

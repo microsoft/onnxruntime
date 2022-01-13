@@ -1,8 +1,0 @@
-jobs:
-- template: templates/mac-ci.yml
-  parameters:
-    DoNugetPack: 'false'
-    BuildCommand: 'python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --use_openmp --build_dir $(Build.BinariesDirectory) --build_wheel --skip_submodule_sync --parallel --build_shared_lib --disable_contrib_ops  --disable_ml_ops --config Debug'
-    # Enable unreleased onnx opsets in CI builds
-    # This facilitates testing the implementation for the new opsets
-    AllowReleasedOpsetOnly: '0'

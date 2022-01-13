@@ -53,7 +53,7 @@ TEST_F(ExecutionFrameTest, TensorAllocationTest) {
   auto cpu_xp = CreateCPUExecutionProvider();
   auto xp_typ = cpu_xp->Type();
   ExecutionProviders execution_providers;
-  execution_providers.Add(xp_typ, std::move(cpu_xp));
+  ASSERT_STATUS_OK(execution_providers.Add(xp_typ, std::move(cpu_xp)));
   KernelRegistryManager kernel_registry_manager;
   ASSERT_STATUS_OK(kernel_registry_manager.RegisterKernels(execution_providers));
 
@@ -82,9 +82,7 @@ TEST_F(ExecutionFrameTest, TensorAllocationTest) {
   ASSERT_TRUE(p_ml_value != nullptr);
   Tensor* p_tensor = p_ml_value->GetMutable<Tensor>();
   ASSERT_TRUE(p_tensor != nullptr);
-  //Use reinterpret_cast to bypass a gcc bug: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=51213
-  ASSERT_EQ(*reinterpret_cast<const std::vector<int64_t>*>(&p_tensor->Shape()),
-            *reinterpret_cast<const std::vector<int64_t>*>(&shape));
+  ASSERT_EQ(p_tensor->Shape(), shape);
   ASSERT_EQ(p_tensor->DataType(), DataTypeImpl::GetType<float>());
 
   //test share memory from tensor
@@ -99,9 +97,7 @@ TEST_F(ExecutionFrameTest, TensorAllocationTest) {
   const OrtValue* p_ml_value_const = frame.GetNodeInputOrOutputMLValue(1);
   auto tensor2 = p_ml_value_const ? &(p_ml_value_const->Get<Tensor>()) : nullptr;
   ASSERT_TRUE(tensor2);
-  //Use reinterpret_cast to bypass a gcc bug: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=51213
-  ASSERT_EQ(*reinterpret_cast<const std::vector<int64_t>*>(&tensor2->Shape()),
-            *reinterpret_cast<const std::vector<int64_t>*>(&shape2));
+  ASSERT_EQ(tensor2->Shape(), shape2);
   ASSERT_EQ(tensor2->template Data<float>(), p_tensor->template Data<float>());
 }
 
@@ -125,7 +121,7 @@ TEST_F(ExecutionFrameTest, OutputShapeValidationTest) {
   auto cpu_xp = CreateCPUExecutionProvider();
   auto xp_typ = cpu_xp->Type();
   ExecutionProviders execution_providers;
-  execution_providers.Add(xp_typ, std::move(cpu_xp));
+  ASSERT_STATUS_OK(execution_providers.Add(xp_typ, std::move(cpu_xp)));
   KernelRegistryManager kernel_registry_manager;
   ASSERT_STATUS_OK(kernel_registry_manager.RegisterKernels(execution_providers));
 
@@ -152,7 +148,7 @@ TEST_F(ExecutionFrameTest, OutputShapeValidationTest) {
   // Calling the method with correct shape. It should work without any warnings.
   ASSERT_STATUS_OK(frame.GetOrCreateNodeOutputMLValue(int(node->Index()), 1, &actual_shape_same_as_input, p_ml_value, *node));
 
-  frame.ReleaseMLValue(1);
+  ASSERT_STATUS_OK(frame.ReleaseMLValue(1));
   // Calling the method with in-correct shape. It should work but this time it should display a warning message.
   ASSERT_STATUS_OK(frame.GetOrCreateNodeOutputMLValue(int(node->Index()), 1, &actual_shape_diff_from_input, p_ml_value, *node));
 }
@@ -168,7 +164,7 @@ TEST_F(ExecutionFrameTest, FeedInDataTest) {
 
   graph.AddNode("node1", "Clip", "Clip operator", ArgMap{&input_def}, ArgMap{&output_def})
       .SetExecutionProviderType(kCpuExecutionProvider);
-  graph.Resolve();
+  ASSERT_STATUS_OK(graph.Resolve());
   auto element_type = DataTypeImpl::GetType<float>();
   TensorShape shape({3, 2});
   std::vector<float> fdata(static_cast<size_t>(shape.Size()));
@@ -182,7 +178,7 @@ TEST_F(ExecutionFrameTest, FeedInDataTest) {
 
   KernelRegistryManager kernel_registry_manager;
   ExecutionProviders execution_providers;
-  execution_providers.Add(xp_typ, std::move(cpu_xp));
+  ASSERT_STATUS_OK(execution_providers.Add(xp_typ, std::move(cpu_xp)));
   ASSERT_STATUS_OK(kernel_registry_manager.RegisterKernels(execution_providers));
 
   DataTransferManager dtm;
@@ -203,9 +199,7 @@ TEST_F(ExecutionFrameTest, FeedInDataTest) {
   OrtValue* p_ml_value = frame.GetMutableNodeInputOrOutputMLValue(0);
   Tensor* p_tensor_arg_0 = p_ml_value ? p_ml_value->GetMutable<Tensor>() : nullptr;
   ASSERT_TRUE(p_tensor_arg_0);
-  //Use reinterpret_cast to bypass a gcc bug: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=51213
-  ASSERT_EQ(*reinterpret_cast<const std::vector<int64_t>*>(&p_tensor_arg_0->Shape()),
-            *reinterpret_cast<const std::vector<int64_t>*>(&shape));
+  ASSERT_EQ(p_tensor_arg_0->Shape(), shape);
   ASSERT_EQ(p_tensor_arg_0->DataType(), DataTypeImpl::GetType<float>());
   ASSERT_EQ(p_tensor_arg_0->MutableData<float>(), value.GetMutable<Tensor>()->MutableData<float>());
 }
@@ -239,7 +233,7 @@ TEST_F(ExecutionFrameTest, MemPatternTest) {
   KernelRegistryManager kernel_registry_manager;
 
   ExecutionProviders execution_providers;
-  execution_providers.Add(xp_type, std::move(cpu_xp));
+  ASSERT_STATUS_OK(execution_providers.Add(xp_type, std::move(cpu_xp)));
   ASSERT_STATUS_OK(kernel_registry_manager.RegisterKernels(execution_providers));
   //1. prepare input
 
@@ -339,7 +333,7 @@ TEST_F(ExecutionFrameTest, MemPatternWithExternalOutputsTest) {
   KernelRegistryManager kernel_registry_manager;
 
   ExecutionProviders execution_providers;
-  execution_providers.Add(xp_type, std::move(cpu_xp));
+  ASSERT_STATUS_OK(execution_providers.Add(xp_type, std::move(cpu_xp)));
   ASSERT_STATUS_OK(kernel_registry_manager.RegisterKernels(execution_providers));
 
   DataTransferManager dtm;
@@ -502,7 +496,7 @@ TEST(ExecutionFrameTestInit, SparseInitializerAsOutput) {
     ASSERT_TRUE(results[0].IsSparseTensor());
     const SparseTensor& result = results[0].Get<SparseTensor>();
     ASSERT_EQ(result.DataType(), DataTypeImpl::GetType<float>());
-    EXPECT_THAT(result.DenseShape().GetDims(), ::testing::ContainerEq(dense_shape));
+    EXPECT_THAT(result.DenseShape().GetDims(), ::testing::ContainerEq(gsl::make_span(dense_shape)));
     ASSERT_EQ(result.NumValues(), 3U);
     EXPECT_THAT(result.Values().DataAsSpan<float>(), ::testing::ContainerEq(gsl::make_span(expected_values)));
     auto coo_view = result.AsCoo();

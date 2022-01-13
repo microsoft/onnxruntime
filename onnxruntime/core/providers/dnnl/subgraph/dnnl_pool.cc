@@ -13,7 +13,7 @@ DnnlPool::DnnlPool() {}
 void DnnlPool::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   auto dnnl_engine = sp.GetEngine();
 
-  auto pool_src_mem = sp.GetMemory(node.Input(IN_X).Name());
+  auto pool_src_mem = sp.GetMemory(node.Input(IN_X));
   auto src_md = pool_src_mem.get_desc();
   auto src_dims = pool_src_mem.get_desc().dims();
 

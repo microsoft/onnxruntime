@@ -1,4 +1,3 @@
-
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
@@ -11,15 +10,12 @@
 #include <unordered_map>
 #include <unordered_set>
 
-#include "core/common/common.h"
-#include "core/common/const_pointer_container.h"
-#include "core/common/path.h"
-#include "core/common/status.h"
-#include "core/common/logging/logging.h"
-#include "core/graph/basic_types.h"
-#include "core/graph/constants.h"
-#include "core/graph/graph_nodes.h"
-#include "core/graph/node_arg.h"
+#ifdef _WIN32
+#pragma warning(push)
+// disable some warnings from protobuf to pass Windows build
+#pragma warning(disable : 4244)
+#endif
+
 #if !defined(ORT_MINIMAL_BUILD)
 #include "onnx/defs/schema.h"
 #else
@@ -27,8 +23,23 @@
 #endif
 #include "onnx/onnx_pb.h"
 #include "onnx/onnx-operators_pb.h"
-#include "core/graph/function.h"
+
+#ifdef _WIN32
+#pragma warning(pop)
+#endif
+
 #include "gsl/gsl"
+
+#include "core/common/common.h"
+#include "core/common/const_pointer_container.h"
+#include "core/common/path.h"
+#include "core/common/status.h"
+#include "core/common/logging/logging.h"
+#include "core/graph/basic_types.h"
+#include "core/graph/constants.h"
+#include "core/graph/function.h"
+#include "core/graph/graph_nodes.h"
+#include "core/graph/node_arg.h"
 
 namespace flatbuffers {
 class FlatBufferBuilder;
@@ -42,13 +53,15 @@ struct IndexedSubGraph;
 class Model;
 class OpSignature;
 
-namespace experimental {
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_REPLAY_IN_MINIMAL_BUILD)
+class RuntimeOptimizationRecordContainer;
+#endif
+
 namespace fbs {
 struct Graph;
 struct Node;
 struct NodeEdge;
 }  // namespace fbs
-}  // namespace experimental
 
 /**
 @class Node
@@ -398,8 +411,8 @@ class Node {
   }
 
   /** Sets initialized function body for node. This is called right after function body initialization for a node.
-  * or during function inlining when a nested function is encountered.
-  */
+   * or during function inlining when a nested function is encountered.
+   */
   void SetFunctionBody(Function& func);
 
   /** Call the provided function for all explicit inputs, implicit inputs, and outputs of this Node.
@@ -424,20 +437,18 @@ class Node {
   void ToProto(ONNX_NAMESPACE::NodeProto& proto, bool update_subgraphs = false) const;
 
   Status SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
-                         flatbuffers::Offset<onnxruntime::experimental::fbs::Node>& fbs_node) const;
+                         flatbuffers::Offset<onnxruntime::fbs::Node>& fbs_node) const;
 
-  flatbuffers::Offset<onnxruntime::experimental::fbs::NodeEdge>
+  flatbuffers::Offset<onnxruntime::fbs::NodeEdge>
   SaveEdgesToOrtFormat(flatbuffers::FlatBufferBuilder& builder) const;
 
 #endif
 
-#if defined(ENABLE_ORT_FORMAT_LOAD)
-  static Status LoadFromOrtFormat(const onnxruntime::experimental::fbs::Node& fbs_node, Graph& graph,
+  static Status LoadFromOrtFormat(const onnxruntime::fbs::Node& fbs_node, Graph& graph,
                                   const logging::Logger& logger, std::unique_ptr<Node>& node);
 
-  Status LoadFromOrtFormat(const onnxruntime::experimental::fbs::Node& fbs_node, const logging::Logger& logger);
-  Status LoadEdgesFromOrtFormat(const onnxruntime::experimental::fbs::NodeEdge& fbs_node_edgs, const Graph& graph);
-#endif
+  Status LoadFromOrtFormat(const onnxruntime::fbs::Node& fbs_node, const logging::Logger& logger);
+  Status LoadEdgesFromOrtFormat(const onnxruntime::fbs::NodeEdge& fbs_node_edgs, const Graph& graph);
 
   /**
   @class Definitions
@@ -499,14 +510,13 @@ class Node {
     ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Relationships);
   };
 
- private:
-  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Node);
-
   // NOTE: This friendship relationship should ONLY be used for calling methods of the Node class and not accessing
   // the data members directly, so that the Node can maintain its internal invariants.
   friend class Graph;
-
   Node(NodeIndex index, Graph& graph) : index_(index), graph_(&graph) {}
+
+ private:
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Node);
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   void Init(const std::string& name,
@@ -644,10 +654,10 @@ class Graph {
   bool IsInitializedTensor(const std::string& name) const;
 
 #if !defined(DISABLE_SPARSE_TENSORS)
-  /** Check if a given name is a sparse initializer's name in the model 
+  /** Check if a given name is a sparse initializer's name in the model
    * we currently convert sparse_initializer field in the model into dense Tensor instances.
    * However, we sometimes want to check if this initializer was stored as sparse in the model.
-  */
+   */
   bool IsSparseInitializer(const std::string& name) const;
 #endif
 
@@ -674,7 +684,7 @@ class Graph {
   */
   const ONNX_NAMESPACE::TensorProto* GetConstantInitializer(const std::string& name, bool check_outer_scope) const;
 
-  /** returns the initializer's TensorProto if 'name' is an initializer (both constant and overridable). 
+  /** returns the initializer's TensorProto if 'name' is an initializer (both constant and overridable).
   If the initializer is not found, a nullptr is returned.
   @param check_outer_scope If true and the graph is a subgraph,
          check ancestor graph/s for 'name' if not found in 'graph'.
@@ -716,7 +726,7 @@ class Graph {
     return std::find(graph_outputs_.begin(), graph_outputs_.end(), node_arg) != graph_outputs_.end();
   }
 
-  /** Returns true if one or more of the Node outputs are Graph outputs. 
+  /** Returns true if one or more of the Node outputs are Graph outputs.
   @remarks Cheaper than calling GetNodeOutputsInGraphOutputs.
   */
   bool NodeProducesGraphOutput(const Node& node) const {
@@ -778,7 +788,9 @@ class Graph {
     return ConstGraphNodes(nodes_, std::move(filter_func));
   }
 
-  /** Gets the maximum NodeIndex value used in the Graph. */
+  /** Gets the maximum NodeIndex value used in the Graph.
+  WARNING: This actually returns the max index value used + 1.
+  */
   int MaxNodeIndex() const noexcept { return static_cast<int>(nodes_.size()); }  //assume the casting won't overflow
 
   /** Gets the number of valid Nodes in the Graph.
@@ -977,7 +989,7 @@ class Graph {
   @remarks As a new Graph instance for the fused nodes is not created, a GraphViewer can be constructed with the
            IndexedSubGraph information to provide a view of the subgraph. The original nodes are left in place
            while this is in use.
-		   Call FinalizeFuseSubGraph to remove them once the fused replacement node is fully created.
+           Call FinalizeFuseSubGraph to remove them once the fused replacement node is fully created.
   */
   Node& BeginFuseSubGraph(const IndexedSubGraph& sub_graph, const std::string& fused_node_name);
 
@@ -1007,6 +1019,13 @@ class Graph {
 
   /** Gets the ISchemaRegistry instances being used with this Graph. */
   IOnnxRuntimeOpSchemaCollectionPtr GetSchemaRegistry() const;
+
+  /**
+  Looks up the op schema in the schema registry and sets it for the given node.
+  @param node The node to update.
+  @return Whether the node's op schema was set to a valid value.
+  */
+  bool SetOpSchemaFromRegistryForNode(Node& node);
 
   /**
   Create a single Function based Node that is the result of the a fusion of multiple nodes in this Graph.
@@ -1115,7 +1134,7 @@ class Graph {
     // Whether to set that no proto sync is required after resolving.
     // Useful for resolving right after loading from a GraphProto.
     bool no_proto_sync_required = false;
-    // When set to true, graph resolve will be called for initialized function bodies as well. This is used 
+    // When set to true, graph resolve will be called for initialized function bodies as well. This is used
     // in case of nested model local functions.
     bool traverse_function_body = false;
   };
@@ -1140,7 +1159,7 @@ class Graph {
   }
 
   common::Status SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
-                                 flatbuffers::Offset<onnxruntime::experimental::fbs::Graph>& fbs_graph) const;
+                                 flatbuffers::Offset<onnxruntime::fbs::Graph>& fbs_graph) const;
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
@@ -1169,9 +1188,8 @@ class Graph {
 
   virtual ~Graph();
 
-#if defined(ENABLE_ORT_FORMAT_LOAD)
   static common::Status LoadFromOrtFormat(
-      const onnxruntime::experimental::fbs::Graph& fbs_graph, const Model& owning_model,
+      const onnxruntime::fbs::Graph& fbs_graph, const Model& owning_model,
       const std::unordered_map<std::string, int>& domain_to_version,
 #if !defined(ORT_MINIMAL_BUILD)
       IOnnxRuntimeOpSchemaCollectionPtr schema_registry,
@@ -1179,12 +1197,33 @@ class Graph {
       const logging::Logger& logger, std::unique_ptr<Graph>& graph);
 
   // deserialize a subgraph
-  static Status LoadFromOrtFormat(const onnxruntime::experimental::fbs::Graph& fbs_graph,
+  static Status LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph,
                                   Graph& parent_graph, const Node& parent_node,
                                   const logging::Logger& logger, std::unique_ptr<Graph>& graph);
-#endif
- private:
-  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Graph);
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_REPLAY_IN_MINIMAL_BUILD)
+  const RuntimeOptimizationRecordContainer& RuntimeOptimizations() const {
+    return runtime_optimizations_;
+  }
+
+  RuntimeOptimizationRecordContainer& MutableRuntimeOptimizations() {
+    return runtime_optimizations_;
+  }
+
+  // Stores information collected during the replay of loaded runtime optimizations
+  struct RuntimeOptimizationReplayContext {
+    std::unordered_map<NodeIndex, HashValue> produced_node_index_to_kernel_def_hash{};
+    size_t num_replayed_optimizations{};
+  };
+
+  const RuntimeOptimizationReplayContext& RuntimeOptimizationReplayCtx() const {
+    return runtime_optimization_replay_context_;
+  }
+
+  RuntimeOptimizationReplayContext& MutableRuntimeOptimizationReplayCtx() {
+    return runtime_optimization_replay_context_;
+  }
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_REPLAY_IN_MINIMAL_BUILD)
 
   // This friendship relationship should only be used to call Graph::Graph and
   // Graph::LoadGraph All other access should be via the public API.
@@ -1201,10 +1240,8 @@ class Graph {
         Graph* parent_graph, const Node* parent_node,
         const logging::Logger& logger);
 
-#if defined(ENABLE_ORT_FORMAT_LOAD)
   // Populate Graph instance from ORT format serialized data.
-  common::Status LoadFromOrtFormat(const onnxruntime::experimental::fbs::Graph& fbs_graph);
-#endif
+  common::Status LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph);
 
 #if !defined(ORT_MINIMAL_BUILD)
   // Constructor: Given a <GraphProto> loaded from model file, construct
@@ -1228,6 +1265,8 @@ class Graph {
         const std::vector<const ONNX_NAMESPACE::FunctionProto*>& model_functions,
         const logging::Logger& logger);
 
+ private:
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Graph);
   void InitializeStateFromModelFileGraphProto();
 
   // Add node with specified <node_proto>.
@@ -1328,8 +1367,8 @@ class Graph {
   // so they can be used to resolve outer scope dependencies when running BuildConnections for the subgraphs.
   common::Status SetOuterScopeNodeArgs(const std::unordered_set<std::string>& outer_scope_node_args);
 
-  // Clear all unused initializers
-  void CleanUnusedInitializers(const std::unordered_set<std::string>* initializer_names_to_preserve = nullptr);
+  // Clear all unused initializers and NodeArgs
+  void CleanUnusedInitializersAndNodeArgs(const std::unordered_set<std::string>* initializer_names_to_preserve = nullptr);
 
   std::vector<NodeArg*> CreateNodeArgs(const google::protobuf::RepeatedPtrField<std::string>& names,
                                        const ArgNameToTypeMap& name_to_type_map);
@@ -1400,6 +1439,15 @@ class Graph {
   std::unordered_set<std::reference_wrapper<const std::string>,
                      std::hash<std::string>, std::equal_to<std::string>>
       sparse_tensor_names_;
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_REPLAY_IN_MINIMAL_BUILD)
+  // Runtime optimization storage.
+  // Note: runtime_optimizations_ == *runtime_optimizations_ptr_ and must be initialized
+  std::unique_ptr<RuntimeOptimizationRecordContainer> runtime_optimizations_ptr_;
+  RuntimeOptimizationRecordContainer& runtime_optimizations_;
+
+  RuntimeOptimizationReplayContext runtime_optimization_replay_context_;
+#endif
 
 #if !defined(ORT_MINIMAL_BUILD)
   IOnnxRuntimeOpSchemaCollectionPtr schema_registry_;
@@ -1500,6 +1548,28 @@ class Graph {
 };
 
 #if !defined(ORT_MINIMAL_BUILD)
+// Print NodeArg as
+//  name : type
+// For example,
+//  "110": tensor(float)
+std::ostream& operator<<(std::ostream& out, const NodeArg& node_arg);
+// Print Node as,
+//  (operator's name, operator's type, domain, version) : (input0, input1, ...) -> (output0, output1, ...)
+// For example,
+//  ("Add_14", Add, "", 7) : ("110": tensor(float),"109": tensor(float),) -> ("111": tensor(float),)
+std::ostream& operator<<(std::ostream& out, const Node& node);
+// Print Graph as, for example,
+// Inputs:
+//    "Input": tensor(float)
+// Nodes:
+//    ("add0", Add, "", 7) : ("Input": tensor(float),"Bias": tensor(float),) -> ("add0_out": tensor(float),)
+//    ("matmul", MatMul, "", 9) : ("add0_out": tensor(float),"matmul_weight": tensor(float),) -> ("matmul_out": tensor(float),)
+//    ("add1", Add, "", 7) : ("matmul_out": tensor(float),"add_weight": tensor(float),) -> ("add1_out": tensor(float),)
+//    ("reshape", Reshape, "", 5) : ("add1_out": tensor(float),"concat_out": tensor(int64),) -> ("Result": tensor(float),)
+// Outputs:
+//    "Result": tensor(float)
+// Inputs' and outputs' format is described in document of NodeArg's operator<< above.
+// Node format is described in Node's operator<< above.
 std::ostream& operator<<(std::ostream& out, const Graph& graph);
 #endif
 

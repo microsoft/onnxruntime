@@ -69,9 +69,26 @@ static const char* const kOrtSessionOptionsConfigAllowIntraOpSpinning = "session
 // has to guarantee that the model bytes are valid until the ORT session using the model bytes is destroyed.
 static const char* const kOrtSessionOptionsConfigUseORTModelBytesDirectly = "session.use_ort_model_bytes_directly";
 
-// NNAPI EP keys begin
-// Note: These options should be specified prior to appending the NNAPI EP to the session options object in order for
-// them to take effect.
+// Save information for replaying graph optimizations later instead of applying them directly.
+//
+// When an ONNX model is loaded, ORT can perform various optimizations on the graph.
+// However, when an ORT format model is loaded, the logic to perform these optimizations may not be available because
+// this scenario must be supported by minimal builds.
+// When loading an ONNX model, ORT can optionally save the effects of some optimizations for later replay in an ORT
+// format model. These are known as "runtime optimizations" - in an ORT format model, they happen at runtime.
+//
+// Note: This option is only applicable when loading an ONNX model and saving an ORT format model.
+//
+// Note: Runtime optimizations are only supported for certain optimizations at the extended level or higher.
+// Unsupported optimizations at those levels are not applied at all, while optimizations at other levels are applied
+// directly.
+//
+// "0": disabled, "1": enabled
+// The default is "0".
+static const char* const kOrtSessionOptionsConfigSaveRuntimeOptimizations = "optimization.save_runtime_optimizations";
+
+// Note: The options specific to an EP should be specified prior to appending that EP to the session options object in
+// order for them to take effect.
 
 // Specifies a list of stop op types. Nodes of a type in the stop op types and nodes downstream from them will not be
 // run by the NNAPI EP.
@@ -79,3 +96,12 @@ static const char* const kOrtSessionOptionsConfigUseORTModelBytesDirectly = "ses
 // If not specified, the default set of stop ops is used. To specify an empty stop ops types list and disable stop op
 // exclusion, set the value to "".
 static const char* const kOrtSessionOptionsConfigNnapiEpPartitioningStopOps = "ep.nnapi.partitioning_stop_ops";
+
+// Enabling dynamic block-sizing for multithreading.
+// With a positive value, thread pool will split a task of N iterations to blocks of size starting from:
+// N / (num_of_threads * dynamic_block_base)
+// As execution progresses, the size will decrease according to the diminishing residual of N, 
+// meaning the task will be distributed in smaller granularity for better parallelism.
+// For some models, it helps to reduce the variance of E2E inference latency and boost performane.
+// The feature will not function by default, specify any positive integer, e.g. "4", to enable it.
+static const char* const kOrtSessionOptionsConfigDynamicBlockBase = "session.dynamic_block_base";

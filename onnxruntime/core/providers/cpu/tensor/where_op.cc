@@ -52,7 +52,7 @@ template <typename T>
 ProcessBroadcastSpanFuncs CreateScalarBroadcastFuncs() {
   return ProcessBroadcastSpanFuncs{
       [](BroadcastHelper& per_iter_bh) {
-        bool target = per_iter_bh.GetUserData();
+        bool target = (per_iter_bh.GetUserData() != nullptr);
         bool condition = per_iter_bh.ScalarInput0<bool>();
         auto value = per_iter_bh.EigenInput1<T>();
         auto output = per_iter_bh.OutputEigen<T>();
@@ -63,7 +63,7 @@ ProcessBroadcastSpanFuncs CreateScalarBroadcastFuncs() {
         }
       },
       [](BroadcastHelper& per_iter_bh) {
-        bool target = per_iter_bh.GetUserData();
+        bool target = (per_iter_bh.GetUserData() != nullptr);
         auto condition = per_iter_bh.EigenInput0<bool>();
         const T& value = per_iter_bh.ScalarInput1<T>();
         auto output = per_iter_bh.OutputEigen<T>();
@@ -71,7 +71,7 @@ ProcessBroadcastSpanFuncs CreateScalarBroadcastFuncs() {
                      .select(value, EigenVectorMap<T>::PlainObject::Constant(condition.size(), T{}));
       },
       [](BroadcastHelper& per_iter_bh) {
-        bool target = per_iter_bh.GetUserData();
+        bool target = (per_iter_bh.GetUserData() != nullptr);
         auto condition = per_iter_bh.EigenInput0<bool>();
         auto value = per_iter_bh.EigenInput1<T>();
         auto output = per_iter_bh.OutputEigen<T>();
@@ -84,7 +84,7 @@ template <typename T>
 ProcessBroadcastSpanFuncs CreateNonScalarBroadcastFuncs() {
   return ProcessBroadcastSpanFuncs{
       [](BroadcastHelper& per_iter_bh) {
-        bool target = per_iter_bh.GetUserData();
+        bool target = (per_iter_bh.GetUserData() != nullptr);
         bool condition = per_iter_bh.ScalarInput0<bool>();
         auto value = per_iter_bh.SpanInput1<T>();
         auto output = per_iter_bh.OutputSpan<T>();
@@ -95,7 +95,7 @@ ProcessBroadcastSpanFuncs CreateNonScalarBroadcastFuncs() {
         }
       },
       [](BroadcastHelper& per_iter_bh) {
-        bool target = per_iter_bh.GetUserData();
+        bool target = (per_iter_bh.GetUserData() != nullptr);
         auto condition = per_iter_bh.SpanInput0<bool>();
         const T& value = per_iter_bh.ScalarInput1<T>();
         auto output = per_iter_bh.OutputSpan<T>();
@@ -105,7 +105,7 @@ ProcessBroadcastSpanFuncs CreateNonScalarBroadcastFuncs() {
                        });
       },
       [](BroadcastHelper& per_iter_bh) {
-        bool target = per_iter_bh.GetUserData();
+        bool target = (per_iter_bh.GetUserData() != nullptr);
         auto condition = per_iter_bh.SpanInput0<bool>();
         auto value = per_iter_bh.SpanInput1<T>();
         auto output = per_iter_bh.OutputSpan<T>();

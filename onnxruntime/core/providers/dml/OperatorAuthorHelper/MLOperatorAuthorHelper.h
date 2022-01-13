@@ -6,9 +6,18 @@
 #include "core/providers/dml/DmlExecutionProvider/inc/MLOperatorAuthor.h"
 #include "MLOperatorAuthorPrivate.h"
 
+#ifdef ORT_NO_EXCEPTIONS
+#define ML_CHECK_BOOL(x) ORT_THROW_HR_IF(E_INVALIDARG, !(x))
+#else
 #define ML_CHECK_BOOL(x) THROW_HR_IF(E_INVALIDARG, !(x))
+#endif
 
-class MLFloat16;
+namespace onnxruntime
+{
+    struct MLFloat16;
+}
+
+using MLFloat16 = onnxruntime::MLFloat16;
 
 //
 // Traits for numeric attribute types
@@ -89,9 +98,9 @@ struct MLTypeTraits<uint64_t>
 };
 
 template <>
-struct MLTypeTraits<MLFloat16>
+struct MLTypeTraits<onnxruntime::MLFloat16> 
 {
-    static const MLOperatorTensorDataType TensorType = MLOperatorTensorDataType::Float16;
+  static const MLOperatorTensorDataType TensorType = MLOperatorTensorDataType::Float16;
 };
 
 inline uint32_t ComputeElementCountFromDimensions(gsl::span<const uint32_t> dimensions)
@@ -99,6 +108,8 @@ inline uint32_t ComputeElementCountFromDimensions(gsl::span<const uint32_t> dime
     return std::accumulate(dimensions.begin(), dimensions.end(), 1, std::multiplies<uint32_t>());
 }
 
+#pragma warning(push)
+#pragma warning(disable:4702)
 inline size_t GetByteSizeFromMlDataType(MLOperatorTensorDataType tensorDataType)
 {
     switch (tensorDataType)
@@ -110,7 +121,7 @@ inline size_t GetByteSizeFromMlDataType(MLOperatorTensorDataType tensorDataType)
     case MLOperatorTensorDataType::Int16: return 2;
     case MLOperatorTensorDataType::Int32: return 4;
     case MLOperatorTensorDataType::Int64: return 8;
-    case MLOperatorTensorDataType::String: THROW_HR(E_INVALIDARG);
+    case MLOperatorTensorDataType::String: ORT_THROW_HR(E_INVALIDARG);
     case MLOperatorTensorDataType::Bool: return 1;
     case MLOperatorTensorDataType::Float16: return 2;
     case MLOperatorTensorDataType::Double: return 8;
@@ -119,9 +130,12 @@ inline size_t GetByteSizeFromMlDataType(MLOperatorTensorDataType tensorDataType)
     case MLOperatorTensorDataType::Complex64: return 8;
     case MLOperatorTensorDataType::Complex128: return 16;
     case MLOperatorTensorDataType::Undefined:
-    default: THROW_HR(E_INVALIDARG);
+    default:
+        ORT_THROW_HR(E_INVALIDARG);
+        return 0;
     };
 }
+#pragma warning(pop)
 
 using MLConstStringParam = const char*;
 class MLOperatorKernelContext;
@@ -140,7 +154,7 @@ class MLOperatorTensorShapeDescription
     uint32_t GetInputTensorDimensionCount(uint32_t inputIndex) const
     {
         uint32_t ret;
-        THROW_IF_FAILED(m_impl->GetInputTensorDimensionCount(inputIndex, &ret));
+        ORT_THROW_IF_FAILED(m_impl->GetInputTensorDimensionCount(inputIndex, &ret));
         return ret;
     }
 
@@ -150,7 +164,7 @@ class MLOperatorTensorShapeDescription
         uint32_t dimensionCount = GetInputTensorDimensionCount(inputIndex);
         ret.resize(dimensionCount);
 
-        THROW_IF_FAILED(m_impl->GetInputTensorShape(inputIndex, dimensionCount, ret.data()));
+        ORT_THROW_IF_FAILED(m_impl->GetInputTensorShape(inputIndex, dimensionCount, ret.data()));
         return ret;
     }
 
@@ -162,7 +176,7 @@ class MLOperatorTensorShapeDescription
     uint32_t GetOutputTensorDimensionCount(uint32_t outputIndex) const
     {
         uint32_t ret;
-        THROW_IF_FAILED(m_impl->GetOutputTensorDimensionCount(outputIndex, &ret));
+        ORT_THROW_IF_FAILED(m_impl->GetOutputTensorDimensionCount(outputIndex, &ret));
         return ret;
     }
 
@@ -172,7 +186,7 @@ class MLOperatorTensorShapeDescription
         uint32_t dimensionCount = GetOutputTensorDimensionCount(outputIndex);
         ret.resize(dimensionCount);
 
-        THROW_IF_FAILED(m_impl->GetOutputTensorShape(outputIndex, dimensionCount, ret.data()));
+        ORT_THROW_IF_FAILED(m_impl->GetOutputTensorShape(outputIndex, dimensionCount, ret.data()));
         return ret;
     }
 
@@ -194,7 +208,7 @@ class MLOperatorAttributes
         MLOperatorAttributeType type) const
     {
         uint32_t elementCount;
-        THROW_IF_FAILED(m_impl->GetAttributeElementCount(name, type, &elementCount));
+        ORT_THROW_IF_FAILED(m_impl->GetAttributeElementCount(name, type, &elementCount));
         return elementCount;
     }
 
@@ -211,7 +225,7 @@ class MLOperatorAttributes
     {
         T value;
 
-        THROW_IF_FAILED(m_impl->GetAttribute(
+        ORT_THROW_IF_FAILED(m_impl->GetAttribute(
                 name,
                 MLTypeTraits<T>::AttributeType,
                 1,
@@ -227,7 +241,7 @@ class MLOperatorAttributes
         uint32_t count = GetAttributeElementCount(name, MLTypeTraits<T>::AttributeVectorType);
         std::vector<T> values(count);
 
-        THROW_IF_FAILED(m_impl->GetAttribute(
+        ORT_THROW_IF_FAILED(m_impl->GetAttribute(
                 name,
                 MLTypeTraits<T>::AttributeVectorType,
                 count,
@@ -259,12 +273,12 @@ class MLOperatorAttributes
     std::string GetAttributeElement(_In_z_ MLConstStringParam name, uint32_t elementIndex) const
     {
         uint32_t length = 0;
-        THROW_IF_FAILED(m_impl->GetStringAttributeElementLength(name, elementIndex, &length));
+        ORT_THROW_IF_FAILED(m_impl->GetStringAttributeElementLength(name, elementIndex, &length));
 
         // Construct a string by copying a character array.    The copy can be removed with C++17
         // using the non-const std::basic_string::data method.
         std::vector<char> temp(length);
-        THROW_IF_FAILED(m_impl->GetStringAttributeElement(name, elementIndex, length, temp.data()));
+        ORT_THROW_IF_FAILED(m_impl->GetStringAttributeElement(name, elementIndex, length, temp.data()));
         std::string value(temp.data());
         return value;
     }
@@ -380,7 +394,7 @@ public:
         {
             uint32_t dimensionCount = GetDimensionCount();
             const_cast<MLOperatorTensor*>(this)->m_dimensionsCache.resize(dimensionCount);
-            THROW_IF_FAILED(m_impl->GetShape(dimensionCount, const_cast<MLOperatorTensor*>(this)->m_dimensionsCache.data()));
+            ORT_THROW_IF_FAILED(m_impl->GetShape(dimensionCount, const_cast<MLOperatorTensor*>(this)->m_dimensionsCache.data()));
         }
 
         return m_dimensionsCache;
@@ -463,7 +477,7 @@ public:
 class MLOperatorKernelCreationContext : public MLOperatorAttributes
 {
 public:
-    MLOperatorKernelCreationContext(IMLOperatorKernelCreationContext* impl) : m_impl(impl), MLOperatorAttributes(impl)
+    MLOperatorKernelCreationContext(IMLOperatorKernelCreationContext* impl) : MLOperatorAttributes(impl), m_impl(impl)
     {
         m_impl.As(&m_implPrivate);
     }
@@ -502,7 +516,7 @@ public:
     MLOperatorEdgeDescription GetInputEdgeDescription(uint32_t inputIndex) const
     {
         MLOperatorEdgeDescription ret;
-        THROW_IF_FAILED(m_impl->GetInputEdgeDescription(inputIndex, &ret));
+        ORT_THROW_IF_FAILED(m_impl->GetInputEdgeDescription(inputIndex, &ret));
 
         return ret;
     }
@@ -510,7 +524,7 @@ public:
     MLOperatorEdgeDescription GetOutputEdgeDescription(uint32_t outputIndex) const
     {
         MLOperatorEdgeDescription ret = {};
-        THROW_IF_FAILED(m_impl->GetOutputEdgeDescription(outputIndex, &ret));
+        ORT_THROW_IF_FAILED(m_impl->GetOutputEdgeDescription(outputIndex, &ret));
 
         return ret;
     }
@@ -523,14 +537,14 @@ public:
     MLOperatorTensorShapeDescription GetTensorShapeDescription() const
     {
         Microsoft::WRL::ComPtr<IMLOperatorTensorShapeDescription> ret;
-        THROW_IF_FAILED(m_impl->GetTensorShapeDescription(&ret));
+        ORT_THROW_IF_FAILED(m_impl->GetTensorShapeDescription(&ret));
         return MLOperatorTensorShapeDescription(ret.Get());
     }
 
     MLOperatorTensor GetConstantInputTensor(uint32_t inputIndex) const
     {
         Microsoft::WRL::ComPtr<IMLOperatorTensor> tensor;
-        THROW_IF_FAILED(m_implPrivate->GetConstantInputTensor(inputIndex, &tensor));
+        ORT_THROW_IF_FAILED(m_implPrivate->GetConstantInputTensor(inputIndex, &tensor));
         return MLOperatorTensor(tensor.Get());
     }
 
@@ -544,7 +558,7 @@ class MLShapeInferenceContext : public MLOperatorAttributes
 public:
     MLShapeInferenceContext(IMLOperatorShapeInferenceContext* impl) : MLOperatorAttributes(impl) 
     {
-        THROW_IF_FAILED(impl->QueryInterface(m_impl.GetAddressOf()));
+        ORT_THROW_IF_FAILED(impl->QueryInterface(m_impl.GetAddressOf()));
     }
 
     // For cases of interop where the caller needs to pass the unwrapped class across a boundary.
@@ -580,7 +594,7 @@ public:
     MLOperatorEdgeDescription GetInputEdgeDescription(uint32_t inputIndex) const
     {
         MLOperatorEdgeDescription ret;
-        THROW_IF_FAILED(m_impl->GetInputEdgeDescription(inputIndex, &ret));
+        ORT_THROW_IF_FAILED(m_impl->GetInputEdgeDescription(inputIndex, &ret));
 
         return ret;
     }
@@ -588,7 +602,7 @@ public:
     uint32_t GetInputTensorDimensionCount(uint32_t inputIndex) const
     {
         uint32_t ret;
-        THROW_IF_FAILED(m_impl->GetInputTensorDimensionCount(inputIndex, &ret));
+        ORT_THROW_IF_FAILED(m_impl->GetInputTensorDimensionCount(inputIndex, &ret));
         return ret;
     }
 
@@ -598,19 +612,19 @@ public:
         uint32_t dimensionCount = GetInputTensorDimensionCount(inputIndex);
         ret.resize(dimensionCount);
 
-        THROW_IF_FAILED(m_impl->GetInputTensorShape(inputIndex, dimensionCount, ret.data()));
+        ORT_THROW_IF_FAILED(m_impl->GetInputTensorShape(inputIndex, dimensionCount, ret.data()));
         return ret;
     }
 
     void SetOutputTensorShape(uint32_t outputIndex, const std::vector<uint32_t>& outputDimensions)
     {
-        THROW_IF_FAILED(m_impl->SetOutputTensorShape(outputIndex, static_cast<uint32_t>(outputDimensions.size()), outputDimensions.data()));
+        ORT_THROW_IF_FAILED(m_impl->SetOutputTensorShape(outputIndex, static_cast<uint32_t>(outputDimensions.size()), outputDimensions.data()));
     }
 
     MLOperatorTensor GetConstantInputTensor(uint32_t inputIndex) const
     {
         Microsoft::WRL::ComPtr<IMLOperatorTensor> tensor;
-        THROW_IF_FAILED(m_impl->GetConstantInputTensor(inputIndex, &tensor));
+        ORT_THROW_IF_FAILED(m_impl->GetConstantInputTensor(inputIndex, &tensor));
         return MLOperatorTensor(tensor.Get());
     }
 
@@ -621,7 +635,7 @@ public:
 class MLOperatorTypeInferenceContext : public MLOperatorAttributes
 {
 public:
-    MLOperatorTypeInferenceContext(IMLOperatorTypeInferenceContext* impl) : m_impl(impl), MLOperatorAttributes(impl) {}
+    MLOperatorTypeInferenceContext(IMLOperatorTypeInferenceContext* impl) : MLOperatorAttributes(impl), m_impl(impl) {}
 
     // For cases of interop where the caller needs to pass the unwrapped class across a boundary.
      Microsoft::WRL::ComPtr<IMLOperatorTypeInferenceContext> GetInterface() const noexcept
@@ -642,14 +656,14 @@ public:
     MLOperatorEdgeDescription GetInputEdgeDescription(uint32_t inputIndex) const
     {
         MLOperatorEdgeDescription desc;
-        THROW_IF_FAILED(m_impl->GetInputEdgeDescription(inputIndex, &desc));
+        ORT_THROW_IF_FAILED(m_impl->GetInputEdgeDescription(inputIndex, &desc));
 
         return desc;
     }
 
     void SetOutputEdgeDescription(uint32_t outputIndex, const MLOperatorEdgeDescription* edgeDesc) const
     {
-        THROW_IF_FAILED(m_impl->SetOutputEdgeDescription(outputIndex, edgeDesc));
+        ORT_THROW_IF_FAILED(m_impl->SetOutputEdgeDescription(outputIndex, edgeDesc));
     }
 
  private:
@@ -674,28 +688,28 @@ public:
     MLOperatorTensor GetInputTensor(uint32_t inputIndex) const
     {
         Microsoft::WRL::ComPtr<IMLOperatorTensor> tensor;
-        THROW_IF_FAILED(m_impl->GetInputTensor(inputIndex, &tensor));
+        ORT_THROW_IF_FAILED(m_impl->GetInputTensor(inputIndex, &tensor));
         return tensor.Get();
     }
 
     MLOperatorTensor GetOutputTensor(uint32_t outputIndex) const
     {
         Microsoft::WRL::ComPtr<IMLOperatorTensor> tensor;
-        THROW_IF_FAILED(m_impl->GetOutputTensor(outputIndex, &tensor));
+        ORT_THROW_IF_FAILED(m_impl->GetOutputTensor(outputIndex, &tensor));
         return tensor.Get();
     }
 
     MLOperatorTensor GetOutputTensor(uint32_t outputIndex, const std::vector<uint32_t> dimensionSizes) const
     {
         Microsoft::WRL::ComPtr<IMLOperatorTensor> tensor;
-        THROW_IF_FAILED(m_impl->GetOutputTensor(outputIndex, static_cast<uint32_t>(dimensionSizes.size()), dimensionSizes.data(), &tensor));
+        ORT_THROW_IF_FAILED(m_impl->GetOutputTensor(outputIndex, static_cast<uint32_t>(dimensionSizes.size()), dimensionSizes.data(), &tensor));
         return tensor.Get();
     }
 
     Microsoft::WRL::ComPtr<IUnknown> AllocateTemporaryData(size_t size) const
     {
         Microsoft::WRL::ComPtr<IUnknown> ret;
-        THROW_IF_FAILED(m_impl->AllocateTemporaryData(size, &ret));
+        ORT_THROW_IF_FAILED(m_impl->AllocateTemporaryData(size, &ret));
         return ret;
     }
 
@@ -719,14 +733,17 @@ class MLOperatorKernel : public Microsoft::WRL::RuntimeClass<
     public T
 {
 public:
-    static HRESULT STDMETHODCALLTYPE CreateInstance(IMLOperatorKernelCreationContext& info, IMLOperatorKernel** opKernel) noexcept try
+    static HRESULT STDMETHODCALLTYPE CreateInstance(IMLOperatorKernelCreationContext& info, IMLOperatorKernel** opKernel) noexcept
     {
-        Microsoft::WRL::ComPtr<MLOperatorKernel> kernel = wil::MakeOrThrow<MLOperatorKernel>(MLOperatorKernelCreationContext(&info));
+        ORT_TRY
+        {
+            Microsoft::WRL::ComPtr<MLOperatorKernel> kernel = wil::MakeOrThrow<MLOperatorKernel>(MLOperatorKernelCreationContext(&info));
 
-        *opKernel = kernel.Detach();
-        return S_OK;
+            *opKernel = kernel.Detach();
+            return S_OK;
+        }
+        ORT_CATCH_RETURN
     }
-    CATCH_RETURN();
 
     MLOperatorKernel(const MLOperatorKernelCreationContext& info) : T(info)
     {
@@ -736,12 +753,15 @@ public:
     {
     }
 
-    HRESULT STDMETHODCALLTYPE Compute(IMLOperatorKernelContext* context) noexcept override try
+    HRESULT STDMETHODCALLTYPE Compute(IMLOperatorKernelContext* context) noexcept override
     {
-        T::Compute(MLOperatorKernelContext(context));
-        return S_OK;
+        ORT_TRY
+        {
+            T::Compute(MLOperatorKernelContext(context));
+            return S_OK;
+        }
+        ORT_CATCH_RETURN
     }
-    CATCH_RETURN();
 
     using T::Compute;
 };
@@ -759,12 +779,15 @@ public:
         m_shapeInferenceFn(shapeInferenceFn)
     {}
 
-    HRESULT STDMETHODCALLTYPE InferOutputShapes(IMLOperatorShapeInferenceContext* context) noexcept override try
+    HRESULT STDMETHODCALLTYPE InferOutputShapes(IMLOperatorShapeInferenceContext* context) noexcept override
     {
-        m_shapeInferenceFn(context);
-        return S_OK;
+        ORT_TRY
+        {
+            m_shapeInferenceFn(context);
+            return S_OK;
+        }
+        ORT_CATCH_RETURN
     }
-    CATCH_RETURN();
 
 private:
     MLOperatorShapeInferenceFunction m_shapeInferenceFn = nullptr;
@@ -780,14 +803,17 @@ public:
 
     HRESULT STDMETHODCALLTYPE QuerySupport(
         IMLOperatorSupportQueryContextPrivate* context,
-        BOOL* isSupported) noexcept override try
+        BOOL* isSupported) noexcept override
     {
-        bool fIsSupported = false;
-        m_queryFn(context, &fIsSupported);
-        *isSupported = fIsSupported ? TRUE : FALSE;
-        return S_OK;
+        ORT_TRY
+        {
+            bool fIsSupported = false;
+            m_queryFn(context, &fIsSupported);
+            *isSupported = fIsSupported ? TRUE : FALSE;
+            return S_OK;
+        }
+        ORT_CATCH_RETURN
     }
-    CATCH_RETURN();
 
 private:
     MLOperatorSupportQueryFunction m_queryFn = nullptr;
@@ -801,12 +827,15 @@ public:
         m_typeInferenceFn(typeInferenceFn)
     {}
 
-    HRESULT STDMETHODCALLTYPE InferOutputTypes(IMLOperatorTypeInferenceContext* context) noexcept override try
+    HRESULT STDMETHODCALLTYPE InferOutputTypes(IMLOperatorTypeInferenceContext* context) noexcept override
     {
-        m_typeInferenceFn(context);
-        return S_OK;
+        ORT_TRY
+        {
+            m_typeInferenceFn(context);
+            return S_OK;
+        }
+        ORT_CATCH_RETURN
     }
-    CATCH_RETURN();
 
 private:
     MLOperatorTypeInferenceFunction m_typeInferenceFn = nullptr;
@@ -822,13 +851,15 @@ public:
 
     HRESULT STDMETHODCALLTYPE CreateKernel(
         IMLOperatorKernelCreationContext* context,
-        _COM_Outptr_ IMLOperatorKernel** kernel) noexcept override try
+        _COM_Outptr_ IMLOperatorKernel** kernel) noexcept override
     {
-        m_createFn(context, kernel);
-        return S_OK;
+        ORT_TRY
+        {
+            m_createFn(context, kernel);
+            return S_OK;
+        }
+        ORT_CATCH_RETURN
     }
-
-    CATCH_RETURN();
 
 private:
     MLOperatorKernelCreateFn m_createFn = nullptr;

@@ -255,8 +255,8 @@ Status Scatter<EnabledDataTypes>::Compute(OpKernelContext* context) const {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "data type is different from updates type");
   }
 
-  auto& indices_dims = indices_input->Shape().GetDims();
-  auto& updates_dims = updates_input->Shape().GetDims();
+  auto indices_dims = indices_input->Shape().GetDims();
+  auto updates_dims = updates_input->Shape().GetDims();
   if (indices_dims.size() != updates_dims.size()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Indices and updates must have the same rank");
@@ -272,7 +272,7 @@ Status Scatter<EnabledDataTypes>::Compute(OpKernelContext* context) const {
   // According to the spec the rank of ind/upd shall be the same as input(data)
   // and we also want to make sure that the dimensions of the of the ind/upd do not
   // exceed that of the input
-  auto& input_dims = input_data_shape.GetDims();
+  auto input_dims = input_data_shape.GetDims();
   if (input_dims.size() != indices_dims.size()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Indices must have the same rank as Input. Indices rank=",
                            indices_dims.size(), ". Input rank=", input_dims.size());

@@ -694,6 +694,12 @@ public class InferenceTest {
   }
 
   @Test
+  @EnabledIfSystemProperty(named = "USE_ROCM", matches = "1")
+  public void testROCM() throws OrtException {
+    runProvider(OrtProvider.ROCM);
+  }
+
+  @Test
   @EnabledIfSystemProperty(named = "USE_TENSORRT", matches = "1")
   public void testTensorRT() throws OrtException {
     runProvider(OrtProvider.TENSOR_RT);
@@ -1123,6 +1129,9 @@ public class InferenceTest {
       try (OrtEnvironment env = OrtEnvironment.getEnvironment("testLoadCustomLibrary");
           SessionOptions options = new SessionOptions()) {
         options.registerCustomOpLibrary(customLibraryName);
+        if (OnnxRuntime.extractCUDA()) {
+          options.addCUDA();
+        }
         try (OrtSession session = env.createSession(customOpLibraryTestModel, options)) {
           Map<String, OnnxTensor> container = new HashMap<>();
 
@@ -1595,7 +1604,7 @@ public class InferenceTest {
           options.addArmNN(false);
           break;
         case ROCM:
-          options.addROCM(0, 4 * 1024 * 1024);
+          options.addROCM();
           break;
         case CORE_ML:
           options.addCoreML();

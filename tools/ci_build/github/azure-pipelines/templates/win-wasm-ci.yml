@@ -49,7 +49,7 @@ jobs:
       architecture: $(buildArch)
   - task: NodeTool@0
     inputs:
-      versionSpec: '14.x'
+      versionSpec: '16.x'
   - task: BatchScript@1
     displayName: 'setup env'
     inputs:

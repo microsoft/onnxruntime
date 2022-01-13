@@ -9,6 +9,7 @@
 #define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
 #define PY_ARRAY_UNIQUE_SYMBOL onnxruntime_python_ARRAY_API
 #include <numpy/arrayobject.h>
+#include "python/numpy_helper.h"
 
 #include "core/graph/graph.h"
 #include "core/framework/tensor_shape.h"
@@ -34,15 +35,11 @@ const char* PYTHON_ORTVALUE_OBJECT_NAME = "OrtValue";
 const char* PYTHON_ORTVALUE_NATIVE_OBJECT_ATTR = "_ortvalue";
 
 static bool PyObjectCheck_NumpyArray(PyObject* o) {
-  return PyObject_HasAttrString(o, "__array_finalize__");
+  return (PyObject_HasAttrString(o, "__array_finalize__") != 0);
 }
 
 bool IsNumpyArray(py::object& obj) {
   return PyObjectCheck_NumpyArray(obj.ptr());
-}
-
-bool IsNumericNumpyType(int npy_type) {
-  return npy_type < NPY_OBJECT || npy_type == NPY_HALF;
 }
 
 int GetNumpyArrayType(const py::object& obj) {
@@ -167,10 +164,23 @@ std::unique_ptr<IDataTransfer> GetGPUDataTransfer() {
 #endif
 
 #ifdef USE_ROCM
+void CpuToRocmMemCpy(void* dst, const void* src, size_t num_bytes) {
+  GetProviderInfo_ROCM().rocmMemcpy_HostToDevice(dst, src, num_bytes);
+}
+
+void RocmToCpuMemCpy(void* dst, const void* src, size_t num_bytes) {
+  GetProviderInfo_ROCM().rocmMemcpy_DeviceToHost(dst, src, num_bytes);
+}
+
+const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* GetRocmToHostMemCpyFunction() {
+  static std::unordered_map<OrtDevice::DeviceType, MemCpyFunc> map{
+      {OrtDevice::GPU, RocmToCpuMemCpy}};
+
+  return &map;
+}
 
 bool IsRocmDeviceIdValid(const onnxruntime::logging::Logger& logger, int id) {
-  int num_devices = 0;
-  HIP_CALL_THROW(hipGetDeviceCount(&num_devices));
+  int num_devices = GetProviderInfo_ROCM().hipGetDeviceCount();
 
   if (0 == num_devices) {
     LOGS(logger, WARNING) << "your system does not have a ROCM capable device.";
@@ -188,28 +198,15 @@ bool IsRocmDeviceIdValid(const onnxruntime::logging::Logger& logger, int id) {
 AllocatorPtr GetRocmAllocator(OrtDevice::DeviceId id) {
   // Current approach is not thread-safe, but there are some bigger infra pieces to put together in order to make
   // multi-threaded ROCM allocation work we need to maintain a per-thread ROCM allocator
-  static std::unordered_map<OrtDevice::DeviceId, AllocatorPtr> id_to_allocator_map;
 
-  if (id_to_allocator_map.find(id) == id_to_allocator_map.end()) {
-    id_to_allocator_map.insert({id, ROCMExecutionProvider::CreateRocmAllocator(id, gpu_mem_limit, arena_extend_strategy, external_allocator_info)});
+  static auto* id_to_allocator_map = new std::unordered_map<OrtDevice::DeviceId, AllocatorPtr>();
+
+  if (id_to_allocator_map->find(id) == id_to_allocator_map->end()) {
+    // TODO: Expose knobs so that users can set fields associated with OrtArenaCfg so that we can pass it to the following method
+    id_to_allocator_map->insert({id, GetProviderInfo_ROCM().CreateRocmAllocator(id, gpu_mem_limit, arena_extend_strategy, external_allocator_info, nullptr)});
   }
 
-  return id_to_allocator_map[id];
-}
-
-void CpuToRocmMemCpy(void* dst, const void* src, size_t num_bytes) {
-  HIP_CALL_THROW(hipMemcpy(dst, src, num_bytes, hipMemcpyHostToDevice));
-}
-
-void RocmToCpuMemCpy(void* dst, const void* src, size_t num_bytes) {
-  HIP_CALL_THROW(hipMemcpy(dst, src, num_bytes, hipMemcpyDeviceToHost));
-}
-
-const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* GetRocmToHostMemCpyFunction() {
-  static std::unordered_map<OrtDevice::DeviceType, MemCpyFunc> map{
-      {OrtDevice::GPU, RocmToCpuMemCpy}};
-
-  return &map;
+  return (*id_to_allocator_map)[id];
 }
 
 #endif
@@ -253,8 +250,7 @@ MLDataType NumpyTypeToOnnxRuntimeType(int numpy_type) {
       {NPY_UINT, DataTypeImpl::GetType<uint32_t>()},
       {NPY_LONGLONG, DataTypeImpl::GetType<int64_t>()},
       {NPY_ULONGLONG, DataTypeImpl::GetType<uint64_t>()},
-      {NPY_OBJECT, DataTypeImpl::GetType<std::string>()}
-  };
+      {NPY_OBJECT, DataTypeImpl::GetType<std::string>()}};
   const auto it = type_map.find(numpy_type);
   if (it == type_map.end()) {
     throw std::runtime_error("No corresponding Numpy type for Tensor Type.");

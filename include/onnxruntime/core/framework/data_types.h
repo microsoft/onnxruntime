@@ -32,7 +32,8 @@ namespace onnxruntime {
 /// Predefined registered types
 
 #if !defined(DISABLE_ML_OPS)
-//maps (only used by ML ops)
+
+// maps (only used by ML ops)
 using MapStringToString = std::map<std::string, std::string>;
 using MapStringToInt64 = std::map<std::string, int64_t>;
 using MapStringToFloat = std::map<std::string, float>;
@@ -41,16 +42,17 @@ using MapInt64ToString = std::map<int64_t, std::string>;
 using MapInt64ToInt64 = std::map<int64_t, int64_t>;
 using MapInt64ToFloat = std::map<int64_t, float>;
 using MapInt64ToDouble = std::map<int64_t, double>;
-#endif
 
-//vectors/sequences
-#if !defined(DISABLE_ML_OPS)
+// vectors/sequences
 using VectorMapStringToFloat = std::vector<MapStringToFloat>;
 using VectorMapInt64ToFloat = std::vector<MapInt64ToFloat>;
+
 #endif
+
 using VectorString = std::vector<std::string>;
 using VectorInt64 = std::vector<int64_t>;
 
+// Forward declarations
 class DataTypeImpl;
 class TensorTypeBase;
 #if !defined(DISABLE_SPARSE_TENSORS)
@@ -58,7 +60,12 @@ class SparseTensorTypeBase;
 #endif
 class SequenceTensorTypeBase;
 class NonTensorTypeBase;
+#if !defined(DISABLE_OPTIONAL_TYPE)
+class OptionalTypeBase;
+#endif
 class PrimitiveDataTypeBase;
+class Tensor;
+class TensorSeq;
 
 // DataTypeImpl pointer as unique DataTypeImpl identifier.
 using MLDataType = const DataTypeImpl*;
@@ -72,6 +79,23 @@ using CreateFunc = void* (*)();
  */
 class DataTypeImpl {
  public:
+  enum class GeneralType {
+    kInvalid = 0,
+    kNonTensor = 1,
+    kTensor = 2,
+    kTensorSequence = 3,
+    kSparseTensor = 4,
+    kOptional = 5,
+    kPrimitive = 6,
+  };
+
+  const GeneralType type_;
+  const size_t size_;
+
+ protected:
+  DataTypeImpl(GeneralType type, size_t size) : type_{type}, size_{size} {}
+
+ public:
   virtual ~DataTypeImpl() = default;
 
   /**
@@ -83,7 +107,7 @@ class DataTypeImpl {
    */
   virtual bool IsCompatible(const ONNX_NAMESPACE::TypeProto& type_proto) const = 0;
 
-  virtual size_t Size() const = 0;
+  size_t Size() const { return size_; }
 
   virtual DeleteFunc GetDeleteFunc() const = 0;
 
@@ -95,43 +119,49 @@ class DataTypeImpl {
    */
   virtual const ONNX_NAMESPACE::TypeProto* GetTypeProto() const = 0;
 
-  virtual bool IsTensorType() const {
-    return false;
+  bool IsTensorType() const {
+    return type_ == GeneralType::kTensor;
   }
 
-  virtual bool IsTensorSequenceType() const {
-    return false;
+  bool IsTensorSequenceType() const {
+    return type_ == GeneralType::kTensorSequence;
   }
 
-  virtual bool IsSparseTensorType() const {
-    return false;
+  bool IsSparseTensorType() const {
+    return type_ == GeneralType::kSparseTensor;
+  }
+
+  bool IsOptionalType() const {
+    return type_ == GeneralType::kOptional;
+  }
+
+  bool IsNonTensorType() const {
+    return type_ == GeneralType::kNonTensor;
+  }
+
+  bool IsPrimitiveDataType() const {
+    return type_ == GeneralType::kPrimitive;
   }
 
   // Returns this if this is of tensor-type and null otherwise
-  virtual const TensorTypeBase* AsTensorType() const {
-    return nullptr;
-  }
+  const TensorTypeBase* AsTensorType() const;
 
-  virtual const SequenceTensorTypeBase* AsSequenceTensorBase() const {
-    return nullptr;
-  }
+  const SequenceTensorTypeBase* AsSequenceTensorType() const;
 
 #if !defined(DISABLE_SPARSE_TENSORS)
   // Returns this if this is of sparse-tensor-type and null otherwise
-  virtual const SparseTensorTypeBase* AsSparseTensorType() const {
-    return nullptr;
-  }
+  const SparseTensorTypeBase* AsSparseTensorType() const;
 #endif
 
-  virtual const NonTensorTypeBase* AsNonTensorTypeBase() const {
-    return nullptr;
-  }
+#if !defined(DISABLE_OPTIONAL_TYPE)
+  const OptionalTypeBase* AsOptionalType() const;
+#endif
+
+  const NonTensorTypeBase* AsNonTensorType() const;
 
   // Returns this if this is one of the primitive data types (specialization of PrimitiveDataTypeBase)
   // and null otherwise
-  virtual const PrimitiveDataTypeBase* AsPrimitiveDataType() const {
-    return nullptr;
-  }
+  const PrimitiveDataTypeBase* AsPrimitiveDataType() const;
 
   // Return the type meta that we are using in the runtime.
   template <typename T>
@@ -150,6 +180,9 @@ class DataTypeImpl {
   static MLDataType GetSparseTensorType();
 #endif
 
+  template <typename T, typename elemT>
+  static MLDataType GetOptionalType();
+
   /**
    * Convert an ONNX TypeProto to onnxruntime DataTypeImpl.
    * However, this conversion is lossy. Don't try to use 'this->GetTypeProto()' converting it back.
@@ -160,8 +193,8 @@ class DataTypeImpl {
   static MLDataType TypeFromProto(const ONNX_NAMESPACE::TypeProto& proto);
 
   static const TensorTypeBase* TensorTypeFromONNXEnum(int type);
-  static const NonTensorTypeBase* SequenceTensorTypeFromONNXEnum(int type);
-#if !defined(DISABLE_SPARSE_TENSORS)  
+  static const SequenceTensorTypeBase* SequenceTensorTypeFromONNXEnum(int type);
+#if !defined(DISABLE_SPARSE_TENSORS)
   static const SparseTensorTypeBase* SparseTensorTypeFromONNXEnum(int type);
 #endif
 
@@ -183,6 +216,8 @@ class DataTypeImpl {
   static const std::vector<MLDataType>& AllIEEEFloatTensorExceptHalfTypes();
   static const std::vector<MLDataType>& AllTensorAndSequenceTensorTypes();
   static const std::vector<MLDataType>& AllFixedSizeTensorAndSequenceTensorTypes();
+  static const std::vector<MLDataType>& AllOptionalTypes();
+  static const std::vector<MLDataType>& AllTensorAndSequenceTensorAndOptionalTypes();
 };
 
 std::ostream& operator<<(std::ostream& out, MLDataType data_type);
@@ -195,8 +230,9 @@ namespace data_types_internal {
 ///
 
 template <typename T>
-constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType();
-
+constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType() {
+  return ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED;
+}
 template <>
 constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<float>() {
   return ONNX_NAMESPACE::TensorProto_DataType_FLOAT;
@@ -204,64 +240,55 @@ constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<float>() {
 template <>
 constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<uint8_t>() {
   return ONNX_NAMESPACE::TensorProto_DataType_UINT8;
-};
+}
 template <>
 constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<int8_t>() {
   return ONNX_NAMESPACE::TensorProto_DataType_INT8;
-};
+}
 template <>
 constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<uint16_t>() {
   return ONNX_NAMESPACE::TensorProto_DataType_UINT16;
-};
+}
 template <>
 constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<int16_t>() {
   return ONNX_NAMESPACE::TensorProto_DataType_INT16;
-};
+}
 template <>
 constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<int32_t>() {
   return ONNX_NAMESPACE::TensorProto_DataType_INT32;
-};
+}
 template <>
 constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<int64_t>() {
   return ONNX_NAMESPACE::TensorProto_DataType_INT64;
-};
+}
 template <>
 constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<std::string>() {
   return ONNX_NAMESPACE::TensorProto_DataType_STRING;
-};
+}
 template <>
 constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<bool>() {
   return ONNX_NAMESPACE::TensorProto_DataType_BOOL;
-};
+}
 template <>
 constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<MLFloat16>() {
   return ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
-};
+}
 template <>
 constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<double>() {
   return ONNX_NAMESPACE::TensorProto_DataType_DOUBLE;
-};
+}
 template <>
 constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<uint32_t>() {
   return ONNX_NAMESPACE::TensorProto_DataType_UINT32;
-};
+}
 template <>
 constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<uint64_t>() {
   return ONNX_NAMESPACE::TensorProto_DataType_UINT64;
-};
+}
 template <>
 constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<BFloat16>() {
   return ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16;
 }
-
-// There is a specialization only for one
-// type argument.
-template <typename... Types>
-struct TensorElementTypeSetter {
-  static void SetTensorElementType(ONNX_NAMESPACE::TypeProto&);
-  static void SetMapKeyType(ONNX_NAMESPACE::TypeProto&);
-  static int32_t GetElementType();
-};
 
 /// Is a given type on the list of types?
 /// Accepts a list of types and the first argument is the type
@@ -301,6 +328,14 @@ struct IsSparseTensorContainedType : public IsAnyOf<T, float, uint8_t, int8_t, u
 };
 #endif
 
+#if !defined(DISABLE_OPTIONAL_TYPE)
+/// Tells if the specified type is one of ORT types
+/// that can be contained within an optional struct.
+template <typename T>
+struct IsOptionalOrtType : public IsAnyOf<T, Tensor, TensorSeq> {
+};
+#endif
+
 /// This template's Get() returns a corresponding MLDataType
 /// It dispatches the call to either GetTensorType<>() or
 /// GetType<>()
@@ -321,55 +356,90 @@ struct GetMLDataType<T, false> {
   }
 };
 
+struct TensorTypeHelper {
+  static void Set(ONNX_NAMESPACE::TensorProto_DataType element_type,
+                  ONNX_NAMESPACE::TypeProto& proto) {
+    proto.mutable_tensor_type()->set_elem_type(element_type);
+  }
+};
+
+#if !defined(DISABLE_SPARSE_TENSORS)
+struct SparseTensorTypeHelper {
+  static void Set(ONNX_NAMESPACE::TensorProto_DataType element_type,
+                  ONNX_NAMESPACE::TypeProto& proto) {
+    proto.mutable_sparse_tensor_type()->set_elem_type(element_type);
+  }
+};
+#endif  // !defined(DISABLE_SPARSE_TENSORS)
+
 #if !defined(DISABLE_ML_OPS)
-/// MapTypes helper API
-/// K should always be one of the primitive data types
-/// V can be either a primitive type (in which case it is a tensor)
-/// or other preregistered types
+/// Map helpers
 
 void CopyMutableMapValue(const ONNX_NAMESPACE::TypeProto&,
                          ONNX_NAMESPACE::TypeProto&);
 
-template <typename K, typename V>
-struct SetMapTypes {
-  static void Set(ONNX_NAMESPACE::TypeProto& proto) {
-    TensorElementTypeSetter<K>::SetMapKeyType(proto);
-    MLDataType dt = GetMLDataType<V, IsTensorContainedType<V>::value>::Get();
-    const auto* value_proto = dt->GetTypeProto();
-#ifdef ORT_NO_RTTI
+struct MapTypeHelper {
+  // V can be either a primitive type (in which case it is a tensor)
+  // or other preregistered types
+  template <typename V>
+  static MLDataType GetValueType() {
+    return GetMLDataType<V, IsTensorContainedType<V>::value>::Get();
+  }
+
+  static void Set(ONNX_NAMESPACE::TensorProto_DataType key_type, const ONNX_NAMESPACE::TypeProto* value_proto,
+                  ONNX_NAMESPACE::TypeProto& proto) {
     ORT_ENFORCE(value_proto != nullptr, "expected a registered ONNX type");
-#else
-    ORT_ENFORCE(value_proto != nullptr, typeid(V).name(),
-                " expected to be a registered ONNX type");
-#endif
+    proto.mutable_map_type()->set_key_type(key_type);
     CopyMutableMapValue(*value_proto, proto);
   }
 };
 #endif
 
 /// Sequence helpers
-///
+
 // Element type is a primitive type so we set it to a tensor<elemT>
 void CopyMutableSeqElement(const ONNX_NAMESPACE::TypeProto&,
                            ONNX_NAMESPACE::TypeProto&);
 
-template <typename T>
-struct SetSequenceType {
-  static void Set(ONNX_NAMESPACE::TypeProto& proto) {
-    MLDataType dt = GetMLDataType<T, IsTensorContainedType<T>::value>::Get();
-    const auto* elem_proto = dt->GetTypeProto();
-#ifdef ORT_NO_RTTI
+// helper to create TypeProto with minimal binary size impact
+struct SequenceTypeHelper {
+  template <typename T>
+  static MLDataType GetElemType() {
+    return GetMLDataType<T, IsTensorContainedType<T>::value>::Get();
+  }
+
+  static void Set(const ONNX_NAMESPACE::TypeProto* elem_proto,
+                  ONNX_NAMESPACE::TypeProto& proto) {
     ORT_ENFORCE(elem_proto != nullptr, "expected a registered ONNX type");
-#else
-    ORT_ENFORCE(elem_proto != nullptr, typeid(T).name(),
-                " expected to be a registered ONNX type");
-#endif
     CopyMutableSeqElement(*elem_proto, proto);
   }
 };
 
+/// Optional helpers
+
+void CopyMutableOptionalElement(const ONNX_NAMESPACE::TypeProto&,
+                                ONNX_NAMESPACE::TypeProto&);
+
+// helper to create TypeProto with minimal binary size impact
+struct OptionalTypeHelper {
+  template <typename T, typename elemT>
+  static MLDataType GetElemType() {
+    if constexpr (std::is_same<T, Tensor>::value) {
+      return DataTypeImpl::GetTensorType<elemT>();
+    } else {
+      static_assert(std::is_same<T, TensorSeq>::value, "Unsupported element type for optional type");
+      return DataTypeImpl::GetSequenceTensorType<elemT>();
+    }
+  }
+
+  static void Set(const onnx::TypeProto* elem_proto, ONNX_NAMESPACE::TypeProto& proto) {
+    ORT_ENFORCE(elem_proto != nullptr, "expected a registered ONNX type");
+    CopyMutableOptionalElement(*elem_proto, proto);
+  }
+};
+
 /// OpaqueTypes helpers
-///
+
 void AssignOpaqueDomainName(const char* domain, const char* name,
                             ONNX_NAMESPACE::TypeProto& proto);
 
@@ -385,16 +455,6 @@ class TensorTypeBase : public DataTypeImpl {
   /// where TypeProto was created ad-hoc and not queried from MLDataType
   bool IsCompatible(const ONNX_NAMESPACE::TypeProto& type_proto) const override;
 
-  bool IsTensorType() const override {
-    return true;
-  }
-
-  const TensorTypeBase* AsTensorType() const override {
-    return this;
-  }
-
-  size_t Size() const override;
-
   DeleteFunc GetDeleteFunc() const override;
 
   const ONNX_NAMESPACE::TypeProto* GetTypeProto() const override;
@@ -404,11 +464,10 @@ class TensorTypeBase : public DataTypeImpl {
     ORT_NOT_IMPLEMENTED(__FUNCTION__, " is not implemented");
   }
 
-  TensorTypeBase(const TensorTypeBase&) = delete;
-  TensorTypeBase& operator=(const TensorTypeBase&) = delete;
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(TensorTypeBase);
 
  protected:
-  ONNX_NAMESPACE::TypeProto& mutable_type_proto();
+  ONNX_NAMESPACE::TypeProto& MutableTypeProto();
 
   TensorTypeBase();
   ~TensorTypeBase() override;
@@ -447,9 +506,48 @@ class TensorType : public TensorTypeBase {
  private:
   TensorType() {
     using namespace data_types_internal;
-    TensorElementTypeSetter<elemT>::SetTensorElementType(this->mutable_type_proto());
+    TensorTypeHelper::Set(ToTensorDataType<elemT>(), MutableTypeProto());
   }
 };
+
+#if defined(DISABLE_OPTIONAL_TYPE)
+
+/// Common base-class for all disabled types. We need DataTypeImpl::ToString to work in a minimal build
+/// with disabled types to keep the ORT format model kernel hashes stable.
+class DisabledTypeBase : public DataTypeImpl {
+ public:
+  static MLDataType Type();
+
+  bool IsCompatible(const ONNX_NAMESPACE::TypeProto&) const override {
+    // We always want to return false for the IsCompatible() for a disabled type
+    // because this will ensure that no kernel supporting the disabled type will
+    // be matched to a model node requiring that type and the model load will
+    // result in failure.
+    return false;
+  }
+
+  DeleteFunc GetDeleteFunc() const override {
+    ORT_THROW("Type is disabled in this build.");
+  }
+
+  // This must work
+  const ONNX_NAMESPACE::TypeProto* GetTypeProto() const override;
+
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(DisabledTypeBase);
+
+ protected:
+  // This must work
+  ONNX_NAMESPACE::TypeProto& MutableTypeProto();
+
+  DisabledTypeBase(DataTypeImpl::GeneralType type, size_t size);
+  ~DisabledTypeBase() override;
+
+ private:
+  struct Impl;
+  Impl* impl_;
+};
+
+#endif
 
 #if !defined(DISABLE_SPARSE_TENSORS)
 /// Common base-class for all sparse-tensors (with different element types).
@@ -457,17 +555,7 @@ class SparseTensorTypeBase : public DataTypeImpl {
  public:
   static MLDataType Type();
 
-  bool IsSparseTensorType() const override {
-    return true;
-  }
-
-  const SparseTensorTypeBase* AsSparseTensorType() const override {
-    return this;
-  }
-
   bool IsCompatible(const ONNX_NAMESPACE::TypeProto& type_proto) const override;
-
-  size_t Size() const override;
 
   DeleteFunc GetDeleteFunc() const override;
 
@@ -478,11 +566,10 @@ class SparseTensorTypeBase : public DataTypeImpl {
     ORT_NOT_IMPLEMENTED(__FUNCTION__, " is not implemented");
   }
 
-  SparseTensorTypeBase(const SparseTensorTypeBase&) = delete;
-  SparseTensorTypeBase& operator=(const SparseTensorTypeBase&) = delete;
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SparseTensorTypeBase);
 
  protected:
-  ONNX_NAMESPACE::TypeProto& mutable_type_proto();
+  ONNX_NAMESPACE::TypeProto& MutableTypeProto();
 
   SparseTensorTypeBase();
   ~SparseTensorTypeBase() override;
@@ -508,20 +595,94 @@ class SparseTensorType : public SparseTensorTypeBase {
  private:
   SparseTensorType() {
     using namespace data_types_internal;
-    TensorElementTypeSetter<elemT>::SetSparseTensorElementType(mutable_type_proto());
+    SparseTensorTypeHelper::Set(ToTensorDataType<elemT>(), MutableTypeProto());
   }
 };
-#endif // !defined(DISABLE_SPARSE_TENSORS)
+
+#endif  // !defined(DISABLE_SPARSE_TENSORS)
+
+/// Common base-class for all optional types.
+
+#if !defined(DISABLE_OPTIONAL_TYPE)
+class OptionalTypeBase : public DataTypeImpl {
+ public:
+  static MLDataType Type();
+
+  bool IsCompatible(const ONNX_NAMESPACE::TypeProto& type_proto) const override;
+
+  DeleteFunc GetDeleteFunc() const override {
+    // should never reach here.
+    ORT_NOT_IMPLEMENTED(__FUNCTION__, " is not implemented");
+  }
+
+  const ONNX_NAMESPACE::TypeProto* GetTypeProto() const override;
+
+  virtual MLDataType GetElementType() const {
+    // should never reach here.
+    ORT_NOT_IMPLEMENTED(__FUNCTION__, " is not implemented");
+  }
+
+  OptionalTypeBase(const OptionalTypeBase&) = delete;
+  OptionalTypeBase& operator=(const OptionalTypeBase&) = delete;
+
+ protected:
+  ONNX_NAMESPACE::TypeProto& MutableTypeProto();
+
+  OptionalTypeBase();
+  ~OptionalTypeBase() override;
+
+ private:
+  struct Impl;
+  Impl* impl_;
+};
+#endif
+
+// Derive from OptionalTypeBase if the Optional type support is enabled,
+// else derive from DisabledTypeBase
+template <typename T, typename elemT>
+class OptionalType :
+#if !defined(DISABLE_OPTIONAL_TYPE)
+    public OptionalTypeBase
+#else
+    public DisabledTypeBase
+#endif
+{
+ public:
+  static MLDataType Type();
+
+#if !defined(DISABLE_OPTIONAL_TYPE)
+  static_assert(data_types_internal::IsOptionalOrtType<T>::value,
+                "Requires one of the supported types: Tensor or TensorSeq");
+
+  static_assert(data_types_internal::IsTensorContainedType<elemT>::value,
+                "Requires one of the tensor fundamental types");
+
+  MLDataType GetElementType() const override {
+    return data_types_internal::OptionalTypeHelper::GetElemType<T, elemT>();
+  }
+#endif
+
+ private:
+#if !defined(DISABLE_OPTIONAL_TYPE)
+  OptionalType()
+#else
+  OptionalType() : DisabledTypeBase { DataTypeImpl::GeneralType::kOptional, 0 }
+#endif
+  {
+    using namespace data_types_internal;
+    OptionalTypeHelper::Set(OptionalTypeHelper::GetElemType<T, elemT>()->GetTypeProto(), MutableTypeProto());
+  }
+};  // namespace onnxruntime
 
 /**
-  * \brief Provide a specialization for your C++ Non-tensor type
-  *        so your implementation FromDataTypeContainer/ToDataTypeContainer
-  *        functions correctly. Otherwise you get a default implementation
-  *        which may not be what you need/want.
-  *
-  * This class is used to create OrtValue, fetch data from OrtValue via
-  * C/C++ APIs
-  */
+ * \brief Provide a specialization for your C++ Non-tensor type
+ *        so your implementation FromDataTypeContainer/ToDataTypeContainer
+ *        functions correctly. Otherwise you get a default implementation
+ *        which may not be what you need/want.
+ *
+ * This class is used to create OrtValue, fetch data from OrtValue via
+ * C/C++ APIs
+ */
 template <class T>
 struct NonTensorTypeConverter {
   static void FromContainer(MLDataType /*dtype*/, const void* /*data*/, size_t /*data_size*/, OrtValue& /*output*/) {
@@ -537,17 +698,11 @@ struct NonTensorTypeConverter {
  */
 class NonTensorTypeBase : public DataTypeImpl {
  public:
-  size_t Size() const override = 0;
-
   DeleteFunc GetDeleteFunc() const override = 0;
 
   virtual CreateFunc GetCreateFunc() const = 0;
 
   const ONNX_NAMESPACE::TypeProto* GetTypeProto() const override;
-
-  const NonTensorTypeBase* AsNonTensorTypeBase() const override {
-    return this;
-  }
 
   // \brief Override for Non-tensor types to initialize non-tensor CPP
   // data representation from data. The caller of the interface
@@ -575,10 +730,10 @@ class NonTensorTypeBase : public DataTypeImpl {
   NonTensorTypeBase& operator=(const NonTensorTypeBase&) = delete;
 
  protected:
-  NonTensorTypeBase();
+  NonTensorTypeBase(size_t size);
   ~NonTensorTypeBase() override;
 
-  ONNX_NAMESPACE::TypeProto& mutable_type_proto();
+  ONNX_NAMESPACE::TypeProto& MutableTypeProto();
 
   bool IsMapCompatible(const ONNX_NAMESPACE::TypeProto& type_proto) const;
 
@@ -600,10 +755,6 @@ class NonTensorType : public NonTensorTypeBase {
   }
 
  public:
-  size_t Size() const override {
-    return sizeof(T);
-  }
-
   DeleteFunc GetDeleteFunc() const override {
     return &Delete;
   }
@@ -613,7 +764,7 @@ class NonTensorType : public NonTensorTypeBase {
   }
 
  protected:
-  NonTensorType() = default;
+  NonTensorType() : NonTensorTypeBase(sizeof(T)) {}
 };
 
 #if !defined(DISABLE_ML_OPS)
@@ -642,7 +793,9 @@ class MapType : public NonTensorType<CPPType> {
  private:
   MapType() {
     using namespace data_types_internal;
-    SetMapTypes<typename CPPType::key_type, typename CPPType::mapped_type>::Set(this->mutable_type_proto());
+    MapTypeHelper::Set(ToTensorDataType<typename CPPType::key_type>(),
+                       MapTypeHelper::GetValueType<typename CPPType::mapped_type>()->GetTypeProto(),
+                       this->MutableTypeProto());
   }
 };
 #endif
@@ -667,13 +820,15 @@ class SequenceType : public NonTensorType<CPPType> {
 
  private:
   SequenceType() {
-    data_types_internal::SetSequenceType<typename CPPType::value_type>::Set(this->mutable_type_proto());
+    using namespace data_types_internal;
+    SequenceTypeHelper::Set(SequenceTypeHelper::GetElemType<typename CPPType::value_type>()->GetTypeProto(),
+                            this->MutableTypeProto());
   }
 };
 
 /**
  * \brief SequenceTensorTypeBase serves as a base type class for
- *        Tensor sequences. Akin TensorTypeBase.
+ *        Tensor sequences. Akin to TensorTypeBase.
  *        Runtime representation is always TensorSeq.
  */
 class SequenceTensorTypeBase : public DataTypeImpl {
@@ -682,20 +837,10 @@ class SequenceTensorTypeBase : public DataTypeImpl {
 
   bool IsCompatible(const ONNX_NAMESPACE::TypeProto& type_proto) const override;
 
-  bool IsTensorSequenceType() const override {
-    return true;
-  }
-
-  const SequenceTensorTypeBase* AsSequenceTensorBase() const override {
-    return this;
-  }
-
   virtual MLDataType GetElementType() const {
     // should never reach here.
     ORT_NOT_IMPLEMENTED(__FUNCTION__, " is not implemented");
   }
-
-  size_t Size() const override;
 
   DeleteFunc GetDeleteFunc() const override;
 
@@ -708,7 +853,7 @@ class SequenceTensorTypeBase : public DataTypeImpl {
   SequenceTensorTypeBase();
   ~SequenceTensorTypeBase();
 
-  ONNX_NAMESPACE::TypeProto& mutable_type_proto();
+  ONNX_NAMESPACE::TypeProto& MutableTypeProto();
 
  private:
   struct Impl;
@@ -728,6 +873,9 @@ class SequenceTensorTypeBase : public DataTypeImpl {
 template <typename TensorElemType>
 class SequenceTensorType : public SequenceTensorTypeBase {
  public:
+  static_assert(data_types_internal::IsTensorContainedType<TensorElemType>::value,
+                "Requires one of the tensor fundamental types");
+
   static MLDataType Type();
 
   /// Return a MLDataType representing the element-type
@@ -737,18 +885,20 @@ class SequenceTensorType : public SequenceTensorTypeBase {
 
  private:
   SequenceTensorType() {
-    data_types_internal::SetSequenceType<TensorElemType>::Set(this->mutable_type_proto());
+    using namespace data_types_internal;
+    SequenceTypeHelper::Set(SequenceTypeHelper::GetElemType<TensorElemType>()->GetTypeProto(),
+                            MutableTypeProto());
   }
 };
 
 /**
  * \brief OpaqueType
  *
- * \param T - cpp runtume that implements the Opaque type
+ * \tparam T - cpp runtume that implements the Opaque type
  *
- * \param const char D[] - domain must be extern to be unique
+ * \tparam const char D[] - domain must be extern to be unique
  *
- * \param const char N[] - name must be extern to be unique
+ * \tparam const char N[] - name must be extern to be unique
  *
  * \details Only one CPP type can be associated with a particular
  *          OpaqueType registration
@@ -773,7 +923,7 @@ class OpaqueType : public NonTensorType<T> {
 
  private:
   OpaqueType() {
-    data_types_internal::AssignOpaqueDomainName(D, N, this->mutable_type_proto());
+    data_types_internal::AssignOpaqueDomainName(D, N, this->MutableTypeProto());
   }
 };
 
@@ -791,10 +941,6 @@ class PrimitiveDataTypeBase : public DataTypeImpl {
     return false;
   }
 
-  const PrimitiveDataTypeBase* AsPrimitiveDataType() const override final {
-    return this;
-  }
-
   const ONNX_NAMESPACE::TypeProto* GetTypeProto() const final {
     return nullptr;
   }
@@ -804,14 +950,11 @@ class PrimitiveDataTypeBase : public DataTypeImpl {
   }
 
  protected:
-  PrimitiveDataTypeBase() = default;
-
-  void SetDataType(int32_t data_type) {
-    data_type_ = data_type;
-  }
+  PrimitiveDataTypeBase(size_t size, int32_t data_type)
+      : DataTypeImpl{GeneralType::kPrimitive, size}, data_type_{data_type} {}
 
  private:
-  int32_t data_type_;
+  const int32_t data_type_;
 };
 
 /**
@@ -821,7 +964,7 @@ class PrimitiveDataTypeBase : public DataTypeImpl {
  *
  * \param T - primitive data type
  *
-  */
+ */
 template <typename T>
 class PrimitiveDataType : public PrimitiveDataTypeBase {
  private:
@@ -832,19 +975,44 @@ class PrimitiveDataType : public PrimitiveDataTypeBase {
  public:
   static MLDataType Type();
 
-  size_t Size() const override {
-    return sizeof(T);
-  }
-
   DeleteFunc GetDeleteFunc() const override {
     return &Delete;
   }
 
  private:
-  PrimitiveDataType() {
-    this->SetDataType(data_types_internal::TensorElementTypeSetter<T>::GetElementType());
+  PrimitiveDataType()
+      : PrimitiveDataTypeBase{sizeof(T),
+                              data_types_internal::ToTensorDataType<T>()} {
   }
 };
+
+inline const TensorTypeBase* DataTypeImpl::AsTensorType() const {
+  return IsTensorType() ? static_cast<const TensorTypeBase*>(this) : nullptr;
+}
+
+inline const SequenceTensorTypeBase* DataTypeImpl::AsSequenceTensorType() const {
+  return IsTensorSequenceType() ? static_cast<const SequenceTensorTypeBase*>(this) : nullptr;
+}
+
+#if !defined(DISABLE_SPARSE_TENSORS)
+inline const SparseTensorTypeBase* DataTypeImpl::AsSparseTensorType() const {
+  return IsSparseTensorType() ? static_cast<const SparseTensorTypeBase*>(this) : nullptr;
+}
+#endif
+
+#if !defined(DISABLE_OPTIONAL_TYPE)
+inline const OptionalTypeBase* DataTypeImpl::AsOptionalType() const {
+  return IsOptionalType() ? static_cast<const OptionalTypeBase*>(this) : nullptr;
+}
+#endif
+
+inline const NonTensorTypeBase* DataTypeImpl::AsNonTensorType() const {
+  return IsNonTensorType() ? static_cast<const NonTensorTypeBase*>(this) : nullptr;
+}
+
+inline const PrimitiveDataTypeBase* DataTypeImpl::AsPrimitiveDataType() const {
+  return IsPrimitiveDataType() ? static_cast<const PrimitiveDataTypeBase*>(this) : nullptr;
+}
 
 // Explicit specialization of base class template function
 // is only possible within the enclosing namespace scope,
@@ -874,6 +1042,17 @@ class PrimitiveDataType : public PrimitiveDataTypeBase {
     return SparseTensorType<ELEM_TYPE>::Type();               \
   }
 #endif
+
+#define ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, TYPE)             \
+  template <>                                                  \
+  MLDataType OptionalType<ORT_TYPE, TYPE>::Type() {            \
+    static OptionalType<ORT_TYPE, TYPE> optional_type;         \
+    return &optional_type;                                     \
+  }                                                            \
+  template <>                                                  \
+  MLDataType DataTypeImpl::GetOptionalType<ORT_TYPE, TYPE>() { \
+    return OptionalType<ORT_TYPE, TYPE>::Type();               \
+  }
 
 #if !defined(DISABLE_ML_OPS)
 #define ORT_REGISTER_MAP(TYPE)               \

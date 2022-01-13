@@ -141,7 +141,7 @@ def quantize_static(model_input,
                     per_channel=False,
                     reduce_range=False,
                     activation_type=QuantType.QUInt8,
-                    weight_type=QuantType.QUInt8,
+                    weight_type=QuantType.QInt8,
                     nodes_to_quantize=[],
                     nodes_to_exclude=[],
                     optimize_model=True,
@@ -161,8 +161,8 @@ def quantize_static(model_input,
     :param op_types: operators to quantize
     :param per_channel: quantize weights per channel
     :param reduce_range: quantize weights with 7-bits. It may improve the accuracy for some models running on non-VNNI machine, especially for per-channel mode
-    :param activation_type: quantization data type of activation
-    :param weight_type: quantization data type of weight
+    :param activation_type: quantization data type of activation. Please refer to https://onnxruntime.ai/docs/performance/quantization.html for more details on data type selection
+    :param weight_type: quantization data type of weight. Please refer to https://onnxruntime.ai/docs/performance/quantization.html for more details on data type selection
     :param nodes_to_quantize:
         List of nodes names to quantize. When this list is not None only the nodes in this list
         are quantized.
@@ -188,7 +188,22 @@ def quantize_static(model_input,
                                           Dyanmic mode currently is supported. Will support more in future.
             DisableShapeInference = True/False : in dynamic quantize mode, shape inference is not must have
                                                  and if it cause some issue, you could disable it.
-
+            ForceQuantizeNoInputCheck = True/False : By default, some latent operators like maxpool, transpose, do not quantize
+                                                     if their input is not quantized already. Setting to True to force such operator
+                                                     always quantize input and so generate quantized output. Also the True behavior
+                                                     could be disabled per node using the nodes_to_exclude.
+            MatMulConstBOnly = True/False: Default is False. If enabled, only MatMul with const B will be quantized.
+            AddQDQPairToWeight = True/False : Default is False which quantizes floating-point weight and feeds it to 
+                                              soley inserted DeQuantizeLinear node. If True, it remains floating-point weight and 
+                                              inserts both QuantizeLinear/DeQuantizeLinear nodes to weight.
+            OpTypesToExcludeOutputQuantizatioin = list of op type : Default is []. If any op type is specified, it won't quantize  
+                                                                    the output of ops with this specific op types.
+            DedicatedQDQPair = True/False : Default is False. When inserting QDQ pair, multiple nodes can share a single QDQ pair as their inputs.
+                                            If True, it will create identical and dedicated QDQ pair for each node. 
+            QDQOpTypePerChannelSupportToAxis = dictionary : Default is {}. Set channel axis for specific op type, for example: {'MatMul': 1},
+                                                            and it's effective only when per channel quantization is supported and per_channel is True.
+                                                            If specific op type supports per channel quantization but not explicitly specified with channel axis,
+                                                            default channel axis will be used.
     '''
 
     mode = QuantizationMode.QLinearOps
@@ -241,7 +256,7 @@ def quantize_dynamic(model_input: Path,
                      per_channel=False,
                      reduce_range=False,
                      activation_type=QuantType.QUInt8,
-                     weight_type=QuantType.QUInt8,
+                     weight_type=QuantType.QInt8,
                      nodes_to_quantize=[],
                      nodes_to_exclude=[],
                      optimize_model=True,
@@ -255,8 +270,8 @@ def quantize_dynamic(model_input: Path,
     :param per_channel: quantize weights per channel
     :param reduce_range: quantize weights with 7-bits. It may improve the accuracy for some models running on non-VNNI machine, especially for per-channel mode
     :param nbits: number of bits to represent quantized data. Currently only supporting 8-bit types
-    :param activation_type: quantization data type of activation
-    :param weight_type: quantization data type of weight
+    :param activation_type: quantization data type of activation. Please refer to https://onnxruntime.ai/docs/performance/quantization.html for more details on data type selection
+    :param weight_type: quantization data type of weight. Please refer to https://onnxruntime.ai/docs/performance/quantization.html for more details on data type selection
     :param nodes_to_quantize:
         List of nodes names to quantize. When this list is not None only the nodes in this list
         are quantized.
@@ -268,7 +283,21 @@ def quantize_dynamic(model_input: Path,
     :param nodes_to_exclude:
         List of nodes names to exclude. The nodes in this list will be excluded from quantization
         when it is not None.
-    :parma use_external_data_format: option used for large size (>2GB) model. Set to False by default. 
+    :parma use_external_data_format: option used for large size (>2GB) model. Set to False by default.
+        :param extra_options:
+        key value pair dictionary for various options in different case. Current used:
+            extra.Sigmoid.nnapi = True/False  (Default is False)
+            ActivationSymmetric = True/False: symmetrize calibration data for activations (default is False).
+            WeightSymmetric = True/False: symmetrize calibration data for weights (default is True).
+            EnableSubgraph = True/False : Default is False. If enabled, subgraph will be quantized.
+                                          Dyanmic mode currently is supported. Will support more in future.
+            DisableShapeInference = True/False : in dynamic quantize mode, shape inference is not must have
+                                                 and if it cause some issue, you could disable it.
+            ForceQuantizeNoInputCheck = True/False : By default, some latent operators like maxpool, transpose, do not quantize
+                                                     if their input is not quantized already. Setting to True to force such operator
+                                                     always quantize input and so generate quantized output. Also the True behavior
+                                                     could be disabled per node using the nodes_to_exclude.
+            MatMulConstBOnly = True/False: Default is False. If enabled, only MatMul with const B will be quantized.
     '''
 
     mode = QuantizationMode.IntegerOps

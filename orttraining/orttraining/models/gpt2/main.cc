@@ -16,6 +16,12 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Cuda(c
 std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const char* name);
 }  // namespace onnxruntime
 #endif
+#ifdef USE_ROCM
+namespace onnxruntime {
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Rocm(const OrtROCMProviderOptions* provider_options);
+std::unique_ptr<IAllocator> CreateROCMPinnedAllocator(int16_t device_id, const char* name);
+}  // namespace onnxruntime
+#endif
 #include "orttraining/core/framework/communication/mpi/mpi_context.h"
 #include "orttraining/core/framework/tensorboard/event_writer.h"
 #include "orttraining/core/session/training_session.h"
@@ -360,6 +366,16 @@ void setup_training_params(GPT2Parameters& params) {
   }
 #endif
 
+#ifdef USE_ROCM
+  {
+    OrtROCMProviderOptions info;
+    info.device_id=gsl::narrow<OrtDevice::DeviceId>(MPIContext::GetInstance().GetLocalRank());
+    info.do_copy_in_default_stream=true;
+    params.providers.emplace(kRocmExecutionProvider, CreateExecutionProviderFactory_Rocm(&info));
+    params.input_allocator = CreateROCMPinnedAllocator(info.device_id, CUDA_PINNED);
+  }
+#endif
+
   params.use_nccl = true;
 
   params.error_function = [params](const std::vector<std::string>& /*feed_names*/,
@@ -426,7 +442,7 @@ static Status RunPerformanceTest(const GPT2Parameters& params, const Environment
 }
 
 static Status RunTraining(const GPT2Parameters& params, const Environment& env) {
-  const size_t max_num_files_preload = 2;
+  constexpr size_t max_num_files_preload = 2;
 
   auto runner = std::make_unique<TrainingRunner>(params, env);
   ORT_RETURN_IF_ERROR(runner->Initialize());

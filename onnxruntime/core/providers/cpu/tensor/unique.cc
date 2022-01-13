@@ -218,7 +218,7 @@ static void CreateOutput(OpKernelContext& context,
   int64_t num_cols = subtensor_shape.SizeFromDimension(axis);
   int64_t num_rows = subtensor_shape.SizeToDimension(axis);
 
-  const std::vector<int64_t> subtensor_dims = subtensor_shape.GetDims();
+  auto subtensor_dims = subtensor_shape.GetDims();
   std::vector<int64_t> Y_dims;
   Y_dims.reserve(subtensor_dims.size());
   for (int64_t i = 0, end = subtensor_dims.size(); i < end; ++i) {

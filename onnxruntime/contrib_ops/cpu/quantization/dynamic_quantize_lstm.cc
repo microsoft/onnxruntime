@@ -48,12 +48,12 @@ Status DynamicQuantizeLSTM::TryPackWeights(const Tensor& weights, PackedWeights&
   const size_t K = static_cast<size_t>(shape[1]);
   const size_t N = static_cast<size_t>(shape[2]);
 
-  if ((shape[0] != num_directions_) || (N != static_cast<size_t>(hidden_size_ * 4))) {
+  if ((shape[0] != num_directions_) || (N != static_cast<size_t>(hidden_size_) * 4)) {
     return Status::OK();
   }
 
   is_weight_signed = weights.IsDataType<int8_t>();
-  const size_t packed_weights_size = MlasGemmPackBSize(N, K, is_weight_signed);
+  const size_t packed_weights_size = MlasGemmPackBSize(N, K, false /*AIsSigned*/, is_weight_signed);
   if (packed_weights_size == 0) {
     return Status::OK();
   }
@@ -73,7 +73,7 @@ Status DynamicQuantizeLSTM::TryPackWeights(const Tensor& weights, PackedWeights&
 
   const auto* weights_data = static_cast<const uint8_t*>(weights.DataRaw());
   for (int i = 0; i < num_directions_; i++) {
-    MlasGemmPackB(N, K, weights_data, N, is_weight_signed, packed_weights_data);
+    MlasGemmPackB(N, K, weights_data, N, false /*AIsSigned*/, is_weight_signed, packed_weights_data);
     packed_weights_data = static_cast<uint8_t*>(packed_weights_data) + packed_weights_size;
     weights_data += N * K;
   }
@@ -131,7 +131,7 @@ Status DynamicQuantizeLSTM::UseSharedPrePackedBuffers(std::vector<BufferUniquePt
 
 #define WeightCheck(weight_shape, weight_name)                                                                                              \
   if ((weight_shape.NumDimensions() != 1 && weight_shape.NumDimensions() != 2) ||                                                           \
-      (weight_shape.NumDimensions() == 2 && weight_shape[1] != hidden_size_ * 4) ||                                                         \
+      (weight_shape.NumDimensions() == 2 && weight_shape[1] != static_cast<int64_t>(hidden_size_) * 4) ||                                                         \
       weight_shape[0] != num_directions_) {                                                                                                 \
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,                                                                                   \
                            "Input ", #weight_name, " must have shape {", num_directions_, "} for per-tensor/layer quantization or shape {", \

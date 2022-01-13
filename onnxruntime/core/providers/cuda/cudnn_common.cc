@@ -26,7 +26,7 @@ Status CudnnTensor::CreateTensorIfNeeded() {
   return Status::OK();
 }
 
-Status CudnnTensor::Set(const std::vector<int64_t>& input_dims, cudnnDataType_t dataType) {
+Status CudnnTensor::Set(gsl::span<const int64_t> input_dims, cudnnDataType_t dataType) {
   ORT_RETURN_IF_ERROR(CreateTensorIfNeeded());
 
   int rank = gsl::narrow_cast<int>(input_dims.size());

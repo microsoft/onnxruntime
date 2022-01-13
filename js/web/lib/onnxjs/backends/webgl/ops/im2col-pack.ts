@@ -36,13 +36,13 @@ const createPackedIm2ColProgramInfo =
             pos = rc.y + ${row};
 
             if(blockIndex < ${im2colShape[1]} && pos < ${im2colShape[0]}) {
-              offsetY = int(blockIndex / (${outputShape[rank - 1]})) * ${attributes.strides[0]} - ${
-              attributes.pads[0]};
+              offsetY = int(blockIndex / (${outputShape[rank - 1]})) * ${attributes.strides[0]} -
+                ${attributes.pads[0]};
               d0 = offsetY + ${attributes.dilations[0]} * (imod(pos, ${kernelSize}) / ${wshape[2]});
 
               if(d0 < ${xshape[rowDim]} && d0 >= 0) {
-                offsetX = imod(blockIndex, ${outputShape[rank - 1]}) * ${attributes.strides[1]} - ${
-              attributes.pads[1]};
+                offsetX = imod(blockIndex, ${outputShape[rank - 1]}) * ${attributes.strides[1]} -
+                  ${attributes.pads[1]};
                 d1 = offsetX + ${attributes.dilations[1]} * imod(imod(pos, ${kernelSize}), ${wshape[2]});
 
                 if(d1 < ${xshape[colDim]} && d1 >= 0) {

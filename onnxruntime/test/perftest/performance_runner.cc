@@ -35,7 +35,7 @@ static std::once_flag default_pool_init;
 Eigen::ThreadPoolInterface* GetDefaultThreadPool(const onnxruntime::Env& env) {
   std::call_once(default_pool_init, [&env] {
     int core_num = env.GetNumCpuCores();
-    default_pool.reset(new DefaultThreadPoolType(core_num));
+    default_pool = std::make_unique<DefaultThreadPoolType>(core_num);
   });
   return default_pool.get();
 }
@@ -106,7 +106,7 @@ Status PerformanceRunner::Run() {
   }
 
   // warm up
-  RunOneIteration<true>();
+  ORT_RETURN_IF_ERROR(RunOneIteration<true>());
 
   // TODO: start profiling
   // if (!performance_test_config_.run_config.profile_file.empty())
@@ -240,11 +240,9 @@ static std::unique_ptr<TestModelInfo> CreateModelInfo(const PerformanceTestConfi
     }
 #endif
 
-#if defined(ENABLE_ORT_FORMAT_LOAD)
     if (HasExtensionOf(file_path, ORT_TSTR("ort"))) {
       return TestModelInfo::LoadOrtModel(performance_test_config_.model_info.model_file_path.c_str());
     }
-#endif
 
     ORT_NOT_IMPLEMENTED(ToMBString(file_path), " is not supported");
   }
@@ -260,8 +258,7 @@ static std::unique_ptr<TestSession> CreateSession(Ort::Env& env, std::random_dev
                                                   const PerformanceTestConfig& performance_test_config_,
                                                   const TestModelInfo& test_model_info) {
   if (CompareCString(performance_test_config_.backend.c_str(), ORT_TSTR("ort")) == 0) {
-    return std::unique_ptr<TestSession>(
-        new OnnxRuntimeTestSession(env, rd, performance_test_config_, test_model_info));
+    return std::make_unique<OnnxRuntimeTestSession>(env, rd, performance_test_config_, test_model_info);
   }
 #ifdef HAVE_TENSORFLOW
   if (CompareCString(performance_test_config_.backend.c_str(), ORT_TSTR("tf")) == 0) {

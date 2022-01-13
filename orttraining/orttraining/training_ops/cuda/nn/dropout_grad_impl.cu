@@ -24,6 +24,8 @@
 namespace onnxruntime {
 namespace cuda {
 
+constexpr int UNROLL = 4;
+
 template <typename T, int NumThreadsPerBlock, int NumElementsPerThread>
 __global__ void DropoutGradientKernel(
     const int64_t N,
@@ -31,14 +33,56 @@ __global__ void DropoutGradientKernel(
     const bool* mask_data,
     const float scale,
     T* dX_data) {
-  CUDA_LONG id = NumElementsPerThread * NumThreadsPerBlock * blockIdx.x + threadIdx.x;
-#pragma unroll
-  for (int i = 0; i < NumElementsPerThread; i++) {
-    if (id < N) {
-      dX_data[id] = T(float(dY_data[id]) * mask_data[id] * scale);
-      id += NumThreadsPerBlock;
+
+  CUDA_LONG idx = blockDim.x * blockIdx.x + threadIdx.x;
+  CUDA_LONG id = idx * UNROLL;
+
+  #pragma unroll
+  for (int i = 0; i < UNROLL; i++) {
+    CUDA_LONG li = id + i;
+    if (li < N) {
+      dX_data[li] = T(float(dY_data[li]) * mask_data[li] * scale);
     }
   }
+}
+
+template <typename T, int NumThreadsPerBlock, int NumElementsPerThread>
+__global__ void DropoutGradientVectorizedKernel(
+    const int64_t N,
+    const T* dY_data,
+    const bool* mask_data,
+    const float scale,
+    T* dX_data) {
+
+  // using vectorized data load/store approach when N % 4 == 0 
+  // since this is typical case for input shape size
+  using LoadT = aligned_vector<T, UNROLL>;
+  using MaskLoadT = aligned_vector<bool, UNROLL>;
+
+  CUDA_LONG idx = blockDim.x * blockIdx.x + threadIdx.x;
+  CUDA_LONG id = idx * UNROLL;
+
+  if (id < N) {
+    // vectorized load into storage
+    T src[UNROLL];
+    LoadT *value1 = reinterpret_cast<LoadT*>(&src);
+    *value1 = *reinterpret_cast<const LoadT*>(&dY_data[id]);
+
+    bool mask[UNROLL];
+    MaskLoadT *value2 = reinterpret_cast<MaskLoadT*>(&mask);
+    *value2 = *reinterpret_cast<const MaskLoadT*>(&mask_data[id]);
+
+    T r[UNROLL];
+
+    // actual computation
+    #pragma unroll
+    for (int ii = 0; ii < UNROLL; ii++) {
+      r[ii] = T(float(src[ii]) * mask[ii] * scale);
+    }
+    // Vectorized writes for dX_data
+    *(reinterpret_cast<LoadT*>(&dX_data[id])) = *reinterpret_cast<LoadT*>(&r[0]);
+  }
+
 }
 
 template <typename T>
@@ -56,8 +100,14 @@ void DropoutGradientKernelImpl(
   } else {
     const float scale = 1.f / (1.f - ratio);
     const int blocksPerGrid = static_cast<int>(CeilDiv(N, GridDim::maxThreadsPerBlock * GridDim::maxElementsPerThread));
-    DropoutGradientKernel<T, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread>
-                         <<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(N, dY_data, mask_data, scale, dX_data);
+    if (N % UNROLL != 0) {
+      DropoutGradientKernel<T, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread>
+                           <<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(N, dY_data, mask_data, scale, dX_data);
+    } else {
+      DropoutGradientVectorizedKernel<T, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread>
+                                     <<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(N, dY_data, mask_data, scale, dX_data);
+    }
+
   }
 }
 

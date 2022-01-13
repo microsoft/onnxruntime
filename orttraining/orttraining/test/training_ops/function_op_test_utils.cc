@@ -25,7 +25,7 @@ TwoDArray OpFunctionTester::RunFunctionBodyGraphOnCPU() {
   auto& node = *graph.Nodes().begin();
   ORT_ENFORCE(node.OpType() == op_);
   // Inline function will call Resolve itself
-  graph.InlineFunction(node);
+  ORT_THROW_IF_ERROR(graph.InlineFunction(node));
 
   // Hookup the inputs and outputs
   std::unordered_map<std::string, OrtValue> feeds;

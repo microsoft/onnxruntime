@@ -32,10 +32,10 @@ GradientGraphBuilder::GradientGraphBuilder(Graph* graph,
       logger_(logger) {
   auto rule_based_graph_transformer =
       std::make_unique<RuleBasedGraphTransformer>("pre_training_rule_based_graph_transformer");
-  rule_based_graph_transformer->Register(std::make_unique<InsertMaxPoolOutput>());
+  ORT_THROW_IF_ERROR(rule_based_graph_transformer->Register(std::make_unique<InsertMaxPoolOutput>()));
 
-  graph_transformation_mgr_.Register(std::move(rule_based_graph_transformer),
-                                     TransformerLevel::Level2);
+  ORT_THROW_IF_ERROR(graph_transformation_mgr_.Register(std::move(rule_based_graph_transformer),
+                                                        TransformerLevel::Level2));
 
   auto forward_reachable_nodes = BFSWithStopGradient(x_node_arg_names);
 
@@ -123,8 +123,8 @@ NodeSet GradientGraphBuilder::BFSWithStopGradient(const std::unordered_set<std::
     std::vector<const Node*> nodes = graph_->GetConsumerNodes(name);
     for (const Node* node : nodes) {
       int input_index = graph_utils::GetNodeInputIndexFromInputName(*node, name);
-      auto it = STOP_GRADIENT_EDGES.find(node->OpType());
-      if (it != STOP_GRADIENT_EDGES.end() && it->second.count(input_index)) {
+      const std::unordered_set<size_t>* edges = GetStopGradientEdges(*node);
+      if (edges != nullptr && edges->count(input_index)) {
         continue;
       }
       queue.push_back(node);
@@ -139,8 +139,8 @@ NodeSet GradientGraphBuilder::BFSWithStopGradient(const std::unordered_set<std::
     for (auto edge_it = n->OutputEdgesBegin(); edge_it != n->OutputEdgesEnd(); ++edge_it) {
       const Node& node = edge_it->GetNode();
 
-      auto it = STOP_GRADIENT_EDGES.find(node.OpType());
-      if (it != STOP_GRADIENT_EDGES.end() && it->second.count(edge_it->GetDstArgIndex())) {
+      const std::unordered_set<size_t>* edges = GetStopGradientEdges(node);  
+      if (edges != nullptr && edges->count(edge_it->GetDstArgIndex())) {
         continue;
       }
 
@@ -163,8 +163,8 @@ NodeSet GradientGraphBuilder::ReverseBFSWithStopGradient(const NodeSet& nodes) c
     queue.pop_front();
 
     for (auto edge_it = n->InputEdgesBegin(); edge_it != n->InputEdgesEnd(); ++edge_it) {
-      auto it = STOP_GRADIENT_EDGES.find(n->OpType());
-      if (it != STOP_GRADIENT_EDGES.end() && it->second.count(edge_it->GetDstArgIndex())) {
+      const std::unordered_set<size_t>* edges = GetStopGradientEdges(*n);  
+      if (edges != nullptr && edges->count(edge_it->GetDstArgIndex())) {
         LOGS(logger_, INFO) << "Skip building gradient for input_" << edge_it->GetDstArgIndex()
                             << " of node: " << n->Name();
         continue;
@@ -200,6 +200,22 @@ Status GradientGraphBuilder::CheckNodeArgsReachable() const {
   return Status::OK();
 }
 
+const std::unordered_set<size_t>* GradientGraphBuilder::GetStopGradientEdges(const Node& node) const {
+  std::string op_type = node.OpType();
+
+  if (op_type == "ATenOp") {
+    std::string key = GetGradientDefinitionKeyByNode(node);
+    return GradientDefinitionRegistry::Instance().GetStopGradientEdgesForNode(key);
+  } else {
+    auto it = STOP_GRADIENT_EDGES.find(op_type);
+    if (it == STOP_GRADIENT_EDGES.end()) {
+      return nullptr;
+    }
+
+    return &it->second;
+  }
+}
+
 Status GradientGraphBuilder::Build(const std::unordered_set<std::string>* p_initializer_names_to_preserve) {
   auto opt_ret = graph_transformation_mgr_.ApplyTransformers(*graph_, TransformerLevel::Level2, logger_);
   ORT_RETURN_IF_ERROR(opt_ret);
@@ -233,8 +249,8 @@ Status GradientGraphBuilder::Build(const std::unordered_set<std::string>* p_init
 
       if (!IsReachable(&next_node)) continue;
 
-      auto it = STOP_GRADIENT_EDGES.find(next_node.OpType());
-      if (it != STOP_GRADIENT_EDGES.end() && it->second.count(edge_it->GetDstArgIndex())) {
+      const std::unordered_set<size_t>* edges = GetStopGradientEdges(next_node);
+      if (edges != nullptr && edges->count(edge_it->GetDstArgIndex())) {
         LOGS(logger_, WARNING) << "Skip building gradient for input_" << edge_it->GetDstArgIndex()
                                << " of node: " << next_node.Name();
         continue;

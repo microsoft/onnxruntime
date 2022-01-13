@@ -33,10 +33,14 @@ void MyCustomKernel::Compute(OrtKernelContext* context) {
 #ifdef USE_CUDA
   // Launch on stream 0 or user provided stream
   cuda_add(size, out, X, Y, compute_stream_ == nullptr ? 0 : reinterpret_cast<cudaStream_t>(compute_stream_));
-  // If everything is setup correctly, custom op implementations need not have such synchronization logic.
-  // To make sure custom ops and ORT CUDA kernels are implicitly synchronized, create your session with a compute stream
-  // passed in via SessionOptions and use the same compute stream ti launch the custom op (as shown in this example)
   // cudaStreamSynchronize(nullptr);
+  // If everything is setup correctly, custom op implementations need not have such explicit synchronization logic as above.
+  // To make sure custom kernels and ORT CUDA kernels are implicitly synchronized:
+  // (1) Create your session with a compute stream passed in via SessionOptions and use the same compute
+  //     stream to launch the custom op (OR)
+  // (2) Use the API KernelContext_GetGPUComputeStream() to query the CUDA compute stream being used by ORT kernels in this session
+  //     and use the same compute stream to launch the custom op.
+  // Here, an example for (1) is shown (See test_inference.cc to see how this custom op is used.)
 #else
   ORT_UNUSED_PARAMETER(compute_stream_);
   for (int64_t i = 0; i < size; i++) {
@@ -68,10 +72,14 @@ void MyCustomKernelMultipleDynamicInputs::Compute(OrtKernelContext* context) {
 #ifdef USE_CUDA
   // Launch on stream 0 or user provided stream
   cuda_add(size, out, X, Y, compute_stream_ == nullptr ? 0 : reinterpret_cast<cudaStream_t>(compute_stream_));
-  // If everything is setup correctly, custom op implementations need not have such synchronization logic.
-  // To make sure custom ops and ORT CUDA kernels are implicitly synchronized, create your session with a compute stream
-  // passed in via SessionOptions and use the same compute stream ti launch the custom op (as shown in this example)
   // cudaStreamSynchronize(nullptr);
+  // If everything is setup correctly, custom op implementations need not have such explicit synchronization logic as above.
+  // To make sure custom kernels and ORT CUDA kernels are implicitly synchronized:
+  // (1) Create your session with a compute stream passed in via SessionOptions and use the same compute
+  //     stream to launch the custom op (OR)
+  // (2) Use the API KernelContext_GetGPUComputeStream() to query the CUDA compute stream being used by ORT kernels in this session
+  //     and use the same compute stream to launch the custom op.
+  // Here, an example for (1) is shown (See test_inference.cc to see how this custom op is used.)
 #else
   ORT_UNUSED_PARAMETER(compute_stream_);
   for (int64_t i = 0; i < size; i++) {
@@ -134,12 +142,12 @@ void MyCustomKernelWithAttributes::Compute(OrtKernelContext* context) {
 template <typename T>
 static void custom_slice(const T* X, int64_t from, int64_t to, T* Y, void* compute_stream) {
 #ifdef USE_CUDA
-  // Launch on stream 0 or user provided stream
-  cuda_slice(X, from, to, Y, compute_stream == nullptr ? 0 : reinterpret_cast<cudaStream_t>(compute_stream));
-  // If everything is setup correctly, custom op implementations need not have such synchronization logic.
-  // To make sure custom ops and ORT CUDA kernels are implicitly synchronized, create your session with a compute stream
-  // passed in via SessionOptions and use the same compute stream ti launch the custom op (as shown in this example)
-  // cudaStreamSynchronize(nullptr);
+  // We do not expect the compute_stream to be nullptr as we have queried the compute stream
+  // being used by the ORT session. If it is a nullptr, there was an issue with the stream querying.
+  // We don't launch the operation to trigger a test failure in that case.
+  if (compute_stream) {
+    cuda_slice(X, from, to, Y, reinterpret_cast<cudaStream_t>(compute_stream));
+  }
 #else
   ORT_UNUSED_PARAMETER(compute_stream);
   for (auto i = from; i < to; i++) {
@@ -172,11 +180,27 @@ void SliceCustomOpKernel::Compute(OrtKernelContext* context) {
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT:
 
       custom_slice(ort_.GetTensorData<float>(input_X), slice_from, slice_to,
-                   ort_.GetTensorMutableData<float>(output), compute_stream_);
+                   ort_.GetTensorMutableData<float>(output), ort_.KernelContext_GetGPUComputeStream(context));
+      // cudaStreamSynchronize(nullptr);
+      // If everything is setup correctly, custom op implementations need not have such explicit synchronization logic as above.
+      // To make sure custom kernels and ORT CUDA kernels are implicitly synchronized:
+      // (1) Create your session with a compute stream passed in via SessionOptions and use the same compute
+      //     stream to launch the custom op (OR)
+      // (2) Use the API KernelContext_GetGPUComputeStream() to query the CUDA compute stream being used by ORT kernels in this session
+      //     and use the same compute stream to launch the custom op.
+      // Here, an example for (2) is shown (See test_inference.cc to see how this custom op is used.)
       break;
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE:
       custom_slice(ort_.GetTensorData<double>(input_X), slice_from, slice_to,
-                   ort_.GetTensorMutableData<double>(output), compute_stream_);
+                   ort_.GetTensorMutableData<double>(output), ort_.KernelContext_GetGPUComputeStream(context));
+      // cudaStreamSynchronize(nullptr);
+      // If everything is setup correctly, custom op implementations need not have such explicit synchronization logic as above.
+      // To make sure custom kernels and ORT CUDA kernels are implicitly synchronized:
+      // (1) Create your session with a compute stream passed in via SessionOptions and use the same compute
+      //     stream to launch the custom op (OR)
+      // (2) Use the API KernelContext_GetGPUComputeStream() to query the CUDA compute stream being used by ORT kernels in this session
+      //     and use the same compute stream to launch the custom op.
+      // Here, an example for (2) is shown (See test_inference.cc to see how this custom op is used.)
       break;
     default:
       ORT_THROW("Unsupported input type");

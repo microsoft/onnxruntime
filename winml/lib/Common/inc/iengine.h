@@ -111,6 +111,10 @@ IModel : IUnknown {
 
   STDMETHOD(AddModelOutput)
   (_In_ const char* const name, _In_ IDescriptorInfoProvider* descriptor_provider) PURE;
+
+  STDMETHOD(JoinModel)
+  (_In_ IModel* other_model, _In_ const char* const* output_names, _In_ const char* const* input_names,
+   size_t num_linkages, bool promote_unlinked_outputs, _In_ const char * const join_node_prefix) PURE;
 };
 
 MIDL_INTERFACE("30c99886-38d2-41cb-a615-203fe7d7daac")

@@ -15,6 +15,7 @@ gen
 *~
 .vs
 .DS_Store
+*.DS_Store
 TestResults/
 .idea/
 onnxruntime.egg-info
@@ -58,3 +59,4 @@ onnxruntime/python/version_info.py
 # direnv, posh-direnv
 .envrc
 .psenvrc
+*.csproj.user

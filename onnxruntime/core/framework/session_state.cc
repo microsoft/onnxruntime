@@ -20,7 +20,6 @@
 #include "core/session/onnxruntime_session_options_config_keys.h"
 
 using namespace ::onnxruntime::common;
-using namespace ::onnxruntime::experimental;
 
 namespace onnxruntime {
 
@@ -165,7 +164,7 @@ Status SessionState::CreateKernels(const KernelRegistryManager& kernel_registry_
       max_nodeid = std::max(max_nodeid, node.Index());
     }
     session_kernels_.clear();
-    session_kernels_.resize(max_nodeid + 1, nullptr);
+    session_kernels_.resize(max_nodeid + 1);
     for (const auto& node : nodes) {
       // construct and save the kernels
       const KernelCreateInfo& kci = GetNodeKernelCreateInfo(node.Index());
@@ -174,10 +173,8 @@ Status SessionState::CreateKernels(const KernelRegistryManager& kernel_registry_
       onnxruntime::ProviderType exec_provider_name = node.GetExecutionProviderType();
       const IExecutionProvider& exec_provider = *execution_providers_.Get(exec_provider_name);
 
-      auto op_kernel = kernel_registry_manager.CreateKernel(node, exec_provider, *this, kci);
-
       // assumes vector is already resize()'ed to the number of nodes in the graph
-      session_kernels_[node.Index()] = op_kernel.release();
+      ORT_RETURN_IF_ERROR(kernel_registry_manager.CreateKernel(node, exec_provider, *this, kci, session_kernels_[node.Index()]));
     }
   }
   node_index_info_ = std::make_unique<NodeIndexInfo>(*graph_viewer_, ort_value_name_idx_map_);
@@ -205,6 +202,8 @@ Status SessionState::AddInitializedTensor(int ort_value_index, const OrtValue& o
   if (sparse) {
     sparse_initialized_tensors_.insert(ort_value_index);
   }
+#else
+  ORT_UNUSED_PARAMETER(sparse);
 #endif
 
   return Status::OK();
@@ -592,7 +591,7 @@ Status SessionState::GeneratePatternGroupCache(const std::vector<std::reference_
       ORT_ENFORCE(exe_plan->allocation_plan[ml_value_idx].alloc_kind == AllocKind::kAllocate);
 
       const auto& counter = exe_plan->allocation_plan[ml_value_idx].program_counter;
-      mem_planner.TraceAllocation(ml_value_idx, counter, size);
+      ORT_RETURN_IF_ERROR(mem_planner.TraceAllocation(ml_value_idx, counter, size));
     }
   }
 
@@ -628,7 +627,7 @@ Status SessionState::GeneratePatternGroupCache(const std::vector<std::reference_
         ORT_ENFORCE(exe_plan->allocation_plan[ml_value_idx].alloc_kind == AllocKind::kAllocate);
 
         const auto& counter = exe_plan->allocation_plan[ml_value_idx].program_counter;
-        mem_planner.TraceAllocation(ml_value_idx, counter, aligned_size);
+        ORT_RETURN_IF_ERROR(mem_planner.TraceAllocation(ml_value_idx, counter, aligned_size));
       }
     }
 
@@ -640,7 +639,7 @@ Status SessionState::GeneratePatternGroupCache(const std::vector<std::reference_
         continue;
       const auto* ml_data_type = static_cast<const TensorTypeBase*>(ml_type)->GetElementType();
       if (ml_data_type != DataTypeImpl::GetType<std::string>()) {
-        mem_planner.TraceFree(ml_value_idx);
+        ORT_RETURN_IF_ERROR(mem_planner.TraceFree(ml_value_idx));
       }
     }
   }
@@ -686,6 +685,19 @@ void SessionState::ResolveMemoryPatternFlag() {
       if (!input->HasTensorOrScalarShape()) {
         enable_mem_pattern_ = false;
         break;
+      }
+    }
+
+    // For subgraphs, the implicit inputs need to meet the same crieria
+    // as the explicit inputs for memory pattern to be enabled
+    if (graph_viewer_->IsSubgraph()) {
+      const auto* parent_node = graph_viewer_->ParentNode();
+
+      for (auto* implicit_input : parent_node->ImplicitInputDefs()) {
+        if (!implicit_input->HasTensorOrScalarShape()) {
+          enable_mem_pattern_ = false;
+          break;
+        }
       }
     }
   }
@@ -878,7 +890,7 @@ static Status GetSubGraphSessionStatesOrtFormat(
     for (const auto& name_to_subgraph_session_state : session_states) {
       const std::string& attr_name = name_to_subgraph_session_state.first;
       SessionState& subgraph_session_state = *name_to_subgraph_session_state.second;
-      auto graph_id = builder.CreateString(experimental::utils::GetSubgraphId(node_idx, attr_name));
+      auto graph_id = builder.CreateString(fbs::utils::GetSubgraphId(node_idx, attr_name));
       flatbuffers::Offset<fbs::SessionState> session_state;
       ORT_RETURN_IF_ERROR(
           subgraph_session_state.SaveToOrtFormat(builder, session_state));
@@ -949,15 +961,14 @@ Status SessionState::CreateSubgraphSessionState() {
   return Status::OK();
 }
 
-#if defined(ENABLE_ORT_FORMAT_LOAD)
 Status SessionState::LoadFromOrtFormat(const fbs::SessionState& fbs_session_state,
                                        const KernelRegistryManager& kernel_registry_manager) {
-  using experimental::utils::FbsSessionStateViewer;
+  using fbs::utils::FbsSessionStateViewer;
   const FbsSessionStateViewer fbs_session_state_viewer{fbs_session_state};
   ORT_RETURN_IF_ERROR(fbs_session_state_viewer.Validate());
 
   auto add_kernel_by_hash =
-      [&kernel_registry_manager, this](const Node& node, uint64_t hash) {
+      [&kernel_registry_manager, this](const Node& node, HashValue hash) {
         const KernelCreateInfo* kci = nullptr;
         ORT_RETURN_IF_NOT(kernel_registry_manager.SearchKernelRegistriesByHash(hash, &kci),
                           "Failed to find kernel def hash (", hash, ") in kernel registries for ",
@@ -969,20 +980,40 @@ Status SessionState::LoadFromOrtFormat(const fbs::SessionState& fbs_session_stat
   // kernel hashes for model are in top level SessionState
   const auto& compiled_kernel_hashes = GetCompiledKernelHashes();
 
+  const bool original_nodes_should_exist =
+      compiled_kernel_hashes.empty()
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_REPLAY_IN_MINIMAL_BUILD)
+      && graph_.RuntimeOptimizationReplayCtx().num_replayed_optimizations == 0
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_REPLAY_IN_MINIMAL_BUILD)
+      ;
+
   // process the nodes that existed when the model was created
   for (FbsSessionStateViewer::Index i = 0, end = fbs_session_state_viewer.GetNumNodeKernelInfos(); i < end; ++i) {
     const auto node_kernel_info = fbs_session_state_viewer.GetNodeKernelInfo(i);
 
     Node* const node = graph_.GetNode(node_kernel_info.node_index);
     if (node == nullptr) {
-      // this is OK if we have compiled kernels and the original node was replaced. if not the model is invalid.
-      ORT_RETURN_IF(compiled_kernel_hashes.empty(),
+      // this is OK if we have compiled kernels/replayed runtime optimizations and the original node was replaced.
+      // if not the model is invalid.
+      ORT_RETURN_IF(original_nodes_should_exist,
                     "Can't find node with index ", node_kernel_info.node_index, ". Invalid ORT format model.");
       continue;
     }
 
     ORT_RETURN_IF_ERROR(add_kernel_by_hash(*node, node_kernel_info.kernel_def_hash));
   }
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_REPLAY_IN_MINIMAL_BUILD)
+  // process the nodes that were added by replaying any loaded runtime optimizations
+  for (const auto& [node_index, kernel_def_hash] :
+       graph_.RuntimeOptimizationReplayCtx().produced_node_index_to_kernel_def_hash) {
+    const auto* node = graph_.GetNode(node_index);
+    ORT_RETURN_IF(node == nullptr,
+                  "Can't find runtime optimization produced node with index ", node_index);
+
+    ORT_RETURN_IF_ERROR(add_kernel_by_hash(*node, kernel_def_hash));
+  }
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_REPLAY_IN_MINIMAL_BUILD)
 
   // lookup the hashes for any nodes we compiled. the nodes indexes for compiled nodes are not in node_indices
   // as they were created at runtime.
@@ -1011,7 +1042,6 @@ Status SessionState::LoadFromOrtFormat(const fbs::SessionState& fbs_session_stat
 
   return Status::OK();
 }
-#endif
 
 // Calculate the use count of a constant initialized tensor, including the use in subgraph.
 // Note: This function doesn't handle the case below:
@@ -1041,9 +1071,9 @@ static void ComputeConstantInitializerUseCount(const Graph& graph, std::unordere
 }
 
 Status SessionState::FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE>& graph_location,
-                                          KernelRegistryManager& kernel_registry_manager,
+                                          const KernelRegistryManager& kernel_registry_manager,
                                           const SessionOptions& session_options,
-                                          const onnxruntime::experimental::fbs::SessionState* serialized_session_state,
+                                          const onnxruntime::fbs::SessionState* serialized_session_state,
                                           bool remove_initializers,
                                           bool saving_ort_format) {
   // recursively create the subgraph session state instances and populate the kernel create info in them.
@@ -1052,13 +1082,7 @@ Status SessionState::FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE
   ORT_RETURN_IF_ERROR(CreateSubgraphSessionState());
 
   if (serialized_session_state) {
-#if defined(ENABLE_ORT_FORMAT_LOAD)
     ORT_RETURN_IF_ERROR(LoadFromOrtFormat(*serialized_session_state, kernel_registry_manager));
-#else
-    return Status(ONNXRUNTIME, INVALID_ARGUMENT,
-                  "ORT format model is not supported in this build.");
-#endif
-
   } else {
 #if !defined(ORT_MINIMAL_BUILD)
     ORT_RETURN_IF_ERROR(PopulateKernelCreateInfo(kernel_registry_manager, saving_ort_format));
@@ -1204,7 +1228,7 @@ static void AccumulateAllNestedSubgraphsInfo(
 }
 
 Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_TYPE>& graph_location,
-                                              KernelRegistryManager& kernel_registry_manager,
+                                              const KernelRegistryManager& kernel_registry_manager,
                                               _In_opt_ const Node* parent_node,
                                               const SessionOptions& session_options,
                                               bool remove_initializers,
@@ -1214,6 +1238,27 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
   if (!graph_info_already_created) {
     CreateGraphInfo();
   }
+
+#if defined(ORT_MINIMAL_BUILD) && defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_REPLAY_IN_MINIMAL_BUILD)
+  // remove any unused initializers
+  // not needed in a full build because unused initializers should have been removed earlier by Graph::Resolve()
+  // not needed in a minimal build with runtime optimizations disabled because only runtime optimizations are expected
+  //   to possibly result in unused initializers
+  {
+    std::vector<std::string> unused_initializer_names;
+    for (const auto& [name, tensor_proto] : graph_.GetAllInitializedTensors()) {
+      ORT_UNUSED_PARAMETER(tensor_proto);
+      int idx;
+      if (!ort_value_name_idx_map_.GetIdx(name, idx).IsOK()) {
+        unused_initializer_names.push_back(name);
+      }
+    }
+
+    for (const auto& name : unused_initializer_names) {
+      graph_.RemoveInitializedTensor(name);
+    }
+  }
+#endif  // defined(ORT_MINIMAL_BUILD) && defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_REPLAY_IN_MINIMAL_BUILD)
 
   // ignore any outer scope args we don't know about. this can happen if a node contains multiple subgraphs.
   std::vector<const NodeArg*> valid_outer_scope_node_args;

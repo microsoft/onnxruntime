@@ -17,7 +17,7 @@ namespace onnxruntime {
 namespace test {
 
 namespace detail {
-inline int64_t SizeFromDims(const std::vector<int64_t>& dims) {
+inline int64_t SizeFromDims(gsl::span<const int64_t> dims) {
   const int64_t size = std::accumulate(
       dims.cbegin(), dims.cend(), static_cast<int64_t>(1), std::multiplies<int64_t>{});
   ORT_ENFORCE(size >= 0);
@@ -41,7 +41,7 @@ class RandomValueGenerator {
   typename std::enable_if<
       std::is_floating_point<TFloat>::value,
       std::vector<TFloat>>::type
-  Uniform(const std::vector<int64_t>& dims, TFloat min, TFloat max) {
+  Uniform(gsl::span<const int64_t> dims, TFloat min, TFloat max) {
     std::vector<TFloat> val(detail::SizeFromDims(dims));
     std::uniform_real_distribution<TFloat> distribution(min, max);
     for (size_t i = 0; i < val.size(); ++i) {
@@ -55,7 +55,7 @@ class RandomValueGenerator {
   typename std::enable_if<
       std::is_integral<TInt>::value && !utils::IsByteType<TInt>::value,
       std::vector<TInt>>::type
-  Uniform(const std::vector<int64_t>& dims, TInt min, TInt max) {
+  Uniform(gsl::span<const int64_t> dims, TInt min, TInt max) {
     std::vector<TInt> val(detail::SizeFromDims(dims));
     std::uniform_int_distribution<TInt> distribution(min, max - 1);
     for (size_t i = 0; i < val.size(); ++i) {
@@ -68,7 +68,7 @@ class RandomValueGenerator {
   typename std::enable_if<
       utils::IsByteType<TByte>::value,
       std::vector<TByte>>::type
-  Uniform(const std::vector<int64_t>& dims, TByte min, TByte max) {
+  Uniform(gsl::span<const int64_t> dims, TByte min, TByte max) {
     std::vector<TByte> val(detail::SizeFromDims(dims));
     std::uniform_int_distribution<int32_t> distribution(min, max - 1);
     for (size_t i = 0; i < val.size(); ++i) {
@@ -82,7 +82,7 @@ class RandomValueGenerator {
   typename std::enable_if<
       std::is_floating_point<TFloat>::value,
       std::vector<TFloat>>::type
-  Gaussian(const std::vector<int64_t>& dims, TFloat mean, TFloat stddev) {
+  Gaussian(gsl::span<const int64_t> dims, TFloat mean, TFloat stddev) {
     std::vector<TFloat> val(detail::SizeFromDims(dims));
     std::normal_distribution<TFloat> distribution(mean, stddev);
     for (size_t i = 0; i < val.size(); ++i) {

@@ -10,4 +10,4 @@ namespace rocm {
 template <typename T>
 KernelCreateInfo BuildKernelCreateInfo();
 }
-}
+}  // namespace onnxruntime

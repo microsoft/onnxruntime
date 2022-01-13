@@ -36,6 +36,52 @@ class TestSymbolicShapeInference(unittest.TestCase):
                                                 int_max=100000,
                                                 guess_output_rank=True)
 
+    def test_mismatched_types(self):
+        graph = helper.make_graph(
+            [helper.make_node(
+                "If",
+                ["x"],
+                ["out"],
+                name="if_node",
+                then_branch=helper.make_graph(
+                    [helper.make_node(
+                        "Constant",
+                        [],
+                        ["one_float"],
+                        value=helper.make_tensor(
+                            "one_float_value",
+                            TensorProto.FLOAT,
+                            [],
+                            [1]),
+                    )],
+                    "then",
+                    [],
+                    [helper.make_tensor_value_info("one_float", TensorProto.FLOAT, [])],
+                ),
+                else_branch=helper.make_graph(
+                    [helper.make_node(
+                        "Constant",
+                        [],
+                        ["one_double"],
+                        value=helper.make_tensor(
+                            "one_double",
+                            TensorProto.DOUBLE,
+                            [],
+                            [1]),
+                    )],
+                    "else",
+                    [],
+                    [helper.make_tensor_value_info("one_double", TensorProto.DOUBLE, [])],
+                ))],
+            "graph",
+            [helper.make_tensor_value_info("x", TensorProto.BOOL, [])],
+            [helper.make_tensor_value_info("out", TensorProto.FLOAT, [])],
+        )
+        model = helper.make_model(graph, producer_name="test_mismatched_types")
+
+        with self.assertRaisesRegex(ValueError, r"if_node.*FLOAT.*DOUBLE"):
+            SymbolicShapeInference.infer_shapes(model, auto_merge=True)
+
 
 class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
     def _check_shapes(self, graph, inferred_graph, vis):  # type: (GraphProto, GraphProto, List[ValueInfoProto]) -> None
@@ -91,6 +137,27 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
         expected_shapes = [
             helper.make_tensor_value_info('temp', TensorProto.FLOAT, ['b', 's', 1]),
             helper.make_tensor_value_info('output', TensorProto.FLOAT, ['b', 's', 1])
+        ]
+        self._check_shapes(graph, inferred.graph, expected_shapes)
+
+    def test_gather_indices(self):
+        graph = helper.make_graph([
+            helper.make_node("Constant", [], ["data"], "constant",
+                             value=helper.make_tensor('input', TensorProto.FLOAT,
+                             [5], [0.0, 1.0, 2.0, 3.0, 4.0])),
+            helper.make_node("Gather", ["data", "indices"], ["output"], axis=0),
+        ], "Gather_Test", [
+            helper.make_tensor_value_info('indices', TensorProto.INT64, ['b']),
+        ], [
+            helper.make_tensor_value_info('output', TensorProto.FLOAT, ['b']),
+        ])
+        model = helper.make_model(graph, producer_name='Gather_Test_Model')
+        model.opset_import[0].version = 13
+
+        inferred = SymbolicShapeInference.infer_shapes(model, auto_merge=True)
+        expected_shapes = [
+            helper.make_tensor_value_info('data', TensorProto.FLOAT, [5]),
+            helper.make_tensor_value_info('output', TensorProto.FLOAT, ['b'])
         ]
         self._check_shapes(graph, inferred.graph, expected_shapes)
 
@@ -217,7 +284,7 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
 
     def test_einsum_transpose(self):
         self._test_einsum_one_input_impl(['a', 'b'], ['b', 'a'], "ij -> ji")
-        
+
 
 class TestSymbolicShapeInferenceForSlice(unittest.TestCase):
     def check_slice_of_concat(self, input_dims, start, end, step, expected_output_dim):

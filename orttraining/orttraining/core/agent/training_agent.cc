@@ -77,7 +77,8 @@ void TrainingAgent::CreateAndInitializeFeedsFetchesManager(const SessionState& s
                                                            const std::vector<std::string>& fetches_names,
                                                            const std::vector<OrtDevice>& outputs_device_info,
                                                            std::unique_ptr<FeedsFetchesManager>& feeds_fetches_manager) {
-  FeedsFetchesManager::Create(feed_names, fetches_names, session_state.GetOrtValueNameIdxMap(), feeds_fetches_manager);
+  ORT_THROW_IF_ERROR(FeedsFetchesManager::Create(feed_names, fetches_names, session_state.GetOrtValueNameIdxMap(),
+                                                 feeds_fetches_manager));
   auto& fetch_info = feeds_fetches_manager->GetMutableFetchesDeviceCopyInfo();
   for (size_t i = 0, end = fetches_names.size(); i < end; ++i) {
     fetch_info[i].target_device = outputs_device_info[i];

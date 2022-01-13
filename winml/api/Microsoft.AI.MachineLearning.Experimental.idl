@@ -102,4 +102,45 @@ namespace ROOT_NS.AI.MachineLearning.Experimental {
 
     void Save(String file_name);
   }
+
+  //! \class LearningModelJoinOptions
+  //! \brief This class defines Join Options to be used with the JoinModels method
+  [dualapipartition(1)]
+  runtimeclass LearningModelJoinOptions
+  {
+      // default constructor
+      LearningModelJoinOptions();
+
+      //! The PromoteUnlinkedOutputsToFusedOutputs option allows callers to toggle whether unlinked outputs of the first model,
+      //! remain as outputs in the fused model.
+      //! The default value for PromoteUnlinkedOutputsToFusedOutputs is true.
+      Boolean PromoteUnlinkedOutputsToFusedOutputs{ get; set; };
+
+      //! The CloseModelOnJoin option allows callers to close the second model when the JoinModels method is made.
+      //! By enabling this, the engine can reuse the second models protobuf memory rather than copy it.
+      //! The default value for CloseModelOnJoin is false.
+      Boolean CloseModelOnJoin { get; set; };
+
+      //! The JoinedNodePrefix property specifies whether the nodes of the second model should have a specific prefixed in the joined model.
+      //! Node names must be unique or empty. By enabling this, the engine can specifiy the prefix, or eliminate it entirely in cases
+      //! where the model is known to contain no duplicate node names.
+      //! The default value for CloseModelOnJoin is a new random GUID.
+      String JoinedNodePrefix { get; set; };
+
+      //! The Link method joins outputs from the first model to inputs of the second model.
+      void Link(String firstModelOutput, String secondModelInput);
+  }
+
+  [marshaling_behavior(agile)]
+  [dualapipartition(1)]
+  runtimeclass LearningModelExperimental {
+    LearningModelExperimental(ROOT_NS.AI.MachineLearning.LearningModel model);
+
+    //! The Save method serializes the model as an ONNX model to a specified path.
+    void Save(String file_name);
+
+    //! The JoinModel fuses two models by linking  outputs from the first model, to inupts of the second. 
+    ROOT_NS.AI.MachineLearning.LearningModel JoinModel(ROOT_NS.AI.MachineLearning.LearningModel other, LearningModelJoinOptions options);
+  }
+
 }  // namespace Microsoft.AI.MachineLearning.Experimental

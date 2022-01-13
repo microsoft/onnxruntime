@@ -256,7 +256,7 @@ void ScanExecCtx::InitContext(KernelComputeCtx* kernel_compute_ctx,
       //  if ith variable is a state output, we just call OutputData2 API with realized_shape
       output_data = kernel_compute_ctx->OutputData(func_info,
                                                    ort_output_idx,
-                                                   TensorShape::ReinterpretBaseType(realized_shape),
+                                                   TensorShape::FromExistingBuffer(realized_shape),
                                                    data_type);
 
       // set current_ort_state_output_ptrs_ as ort_state_input_buffers_
@@ -278,7 +278,7 @@ void ScanExecCtx::InitContext(KernelComputeCtx* kernel_compute_ctx,
 
       output_data = kernel_compute_ctx->OutputData(func_info,
                                                    ort_output_idx,
-                                                   TensorShape::ReinterpretBaseType(shape),
+                                                   TensorShape::FromExistingBuffer(shape),
                                                    data_type);
 
       // Check whether it is backward Scan
@@ -319,7 +319,7 @@ void ScanExecCtx::InitContext(KernelComputeCtx* kernel_compute_ctx,
     ort_state_output_buffers_[ort_state_idx] =
         kernel_compute_ctx->OutputData(func_info,
                                        ort_state_idx,
-                                       TensorShape::ReinterpretBaseType(dl_output_shapes[tvm_output_idx]),
+                                       TensorShape::FromExistingBuffer(dl_output_shapes[tvm_output_idx]),
                                        data_type);
     state_bytes_size_[ort_state_idx] = BytesOfShape(dl_output_shapes[tvm_output_idx], data_type);
   }
@@ -470,7 +470,7 @@ void ScanExecCtx::UpdateContext(KernelComputeCtx* kernel_compute_ctx,
     if (ort_output_idx < gsl::narrow<int>(num_state_variables)) {
       output_data = kernel_compute_ctx->OutputData(func_info,
                                                    ort_output_idx,
-                                                   TensorShape::ReinterpretBaseType(ort_output_shape),
+                                                   TensorShape::FromExistingBuffer(ort_output_shape),
                                                    data_type);
       // set current_ort_state_output_ptrs_ as ort_state_input_buffers_
       // Note it is "ort_state_input_buffers_", since we will perform double buffering later.
@@ -482,7 +482,7 @@ void ScanExecCtx::UpdateContext(KernelComputeCtx* kernel_compute_ctx,
       ort_output_shape[output_scan_axis] = seq_length_;
       output_data = kernel_compute_ctx->OutputData(func_info,
                                                    ort_output_idx,
-                                                   TensorShape::ReinterpretBaseType(ort_output_shape),
+                                                   TensorShape::FromExistingBuffer(ort_output_shape),
                                                    data_type);
       // Check whether it is backward Scan
       // If so, we need to use the last frame, instead of the first frame.
@@ -516,7 +516,7 @@ void ScanExecCtx::UpdateContext(KernelComputeCtx* kernel_compute_ctx,
     ort_state_output_buffers_[ort_state_idx] =
         kernel_compute_ctx->OutputData(func_info,
                                        ort_state_idx,
-                                       TensorShape::ReinterpretBaseType(dl_output_shapes[tvm_output_idx]),
+                                       TensorShape::FromExistingBuffer(dl_output_shapes[tvm_output_idx]),
                                        data_type);
     state_bytes_size_[ort_state_idx] = BytesOfShape(dl_output_shapes[tvm_output_idx], data_type);
   }

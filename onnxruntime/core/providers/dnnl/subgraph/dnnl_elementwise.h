@@ -33,8 +33,7 @@ class DnnlElementwise {
   * Note: The number of operators that use the 'alpha' attribute is much smaller than
   * initially expected.
   */
-  float GetAlpha(DnnlNode& node);
-  float default_alpha_;
+  float GetAlpha(DnnlNode& node, float default_alpha);
 };
 
 }  // namespace ort_dnnl

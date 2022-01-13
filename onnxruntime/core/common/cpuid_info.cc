@@ -18,13 +18,26 @@
 #endif
 #endif
 
+#if defined(CPUIDINFO_ARCH_ARM) && defined(CPUINFO_SUPPORTED)
+#include <sys/auxv.h>
+#include <asm/hwcap.h>
+// N.B. Support building with older versions of asm/hwcap.h that do not define
+// this capability bit.
+#ifndef HWCAP_ASIMDDP
+#define HWCAP_ASIMDDP (1 << 20)
+#endif
+
+#endif
+
 #include <mutex>
 #include "core/common/cpuid_info.h"
+#include "core/common/logging/logging.h"
+#include "core/common/logging/severity.h"
 
 #if _WIN32
 #define HAS_WINDOWS_DESKTOP WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
 #endif
-#if (defined(CPUIDINFO_ARCH_X86) || defined(CPUIDINFO_ARCH_ARM)) && defined(CPUINFO_SUPPORTED) && (!_WIN32 || HAS_WINDOWS_DESKTOP)
+#if (defined(CPUIDINFO_ARCH_X86) || defined(CPUIDINFO_ARCH_ARM)) && defined(CPUINFO_SUPPORTED) && (!_WIN32 || defined(HAS_WINDOWS_DESKTOP))
 #include <cpuinfo.h>
 #endif
 
@@ -57,10 +70,10 @@ CPUIDInfo CPUIDInfo::instance_;
 
 CPUIDInfo::CPUIDInfo() {
 #if (defined(CPUIDINFO_ARCH_X86) || defined(CPUIDINFO_ARCH_ARM)) && defined(CPUINFO_SUPPORTED)
-    if (!cpuinfo_initialize()) {
-      // Unfortunately we can not capture cpuinfo log!!
-      ORT_THROW("Failed to initialize CPU info.");
-    }
+  pytorch_cpuinfo_init_ = cpuinfo_initialize();
+  if (!pytorch_cpuinfo_init_) {
+    LOGS_DEFAULT(WARNING) << "Failed to init pytorch cpuinfo library, may cause CPU EP performance degradation due to undetected CPU features.";
+  }
 #endif
 
 #if defined(CPUIDINFO_ARCH_X86)
@@ -71,8 +84,8 @@ CPUIDInfo::CPUIDInfo() {
     if (num_IDs >= 1) {
       GetCPUID(1, data);
       if (data[2] & (1 << 27)) {
-        const int AVX_MASK = 0x6;
-        const int AVX512_MASK = 0xE6;
+        constexpr int AVX_MASK = 0x6;
+        constexpr int AVX512_MASK = 0xE6;
         int value = XGETBV();
         bool has_sse2 = (data[3] & (1 << 26));
         has_sse3_ = (data[2] & 0x1);
@@ -95,12 +108,21 @@ CPUIDInfo::CPUIDInfo() {
     }
 #endif
 
-#if defined(CPUIDINFO_ARCH_ARM) && defined(CPUINFO_SUPPORTED)
+#if defined(CPUIDINFO_ARCH_ARM)
+#ifdef CPUINFO_SUPPORTED
 
     // only works on ARM linux or android, does not work on Windows
-    is_hybrid_ = cpuinfo_get_uarchs_count() > 1;
-    has_arm_neon_dot_ = cpuinfo_has_arm_neon_dot();
+    if (pytorch_cpuinfo_init_) {
+      is_hybrid_ = cpuinfo_get_uarchs_count() > 1;
+      has_arm_neon_dot_ = cpuinfo_has_arm_neon_dot();
+    } else {
+      has_arm_neon_dot_ = ((getauxval(AT_HWCAP) & HWCAP_ASIMDDP) != 0);
+    }
 
+#elif defined(_WIN32)
+    // TODO implement hardware feature detection in windows.
+    is_hybrid_ = true;
+#endif
 #endif
 
 }

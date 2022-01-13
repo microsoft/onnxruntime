@@ -62,6 +62,7 @@ public:
         if (direction == AttrValue::DirectionBidirectional) { return DML_RECURRENT_NETWORK_DIRECTION_BIDIRECTIONAL; }
          
         ML_INVALID_ARGUMENT("Unsupported direction"); // throws
+        return DML_RECURRENT_NETWORK_DIRECTION_FORWARD;
     }
 
     void InitActivationDescs(const MLOperatorKernelCreationContext& kernelInfo, _Out_ std::vector<DML_OPERATOR_DESC>& descs, gsl::span<const std::string> defaultActivations)
@@ -185,7 +186,7 @@ public:
     {
         // Assume that enough GPU work has been queued up after the RNN operator that it is worth
         // kicking it off, to enable subsequent CPU work to be parallelized with this GPU work.
-        __super::Compute(kernelContext);
+        DmlOperator::Compute(kernelContext);
         m_executionProvider->Flush();
     }
 

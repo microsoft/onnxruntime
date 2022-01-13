@@ -6,8 +6,10 @@ import * as path from 'path';
 
 import {OrtWasmModule} from './binding/ort-wasm';
 import {OrtWasmThreadedModule} from './binding/ort-wasm-threaded';
-import ortWasmFactoryThreaded from './binding/ort-wasm-threaded.js';
 import ortWasmFactory from './binding/ort-wasm.js';
+const ortWasmFactoryThreaded: EmscriptenModuleFactory<OrtWasmModule> =
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    !BUILD_DEFS.DISABLE_WASM_THREAD ? require('./binding/ort-wasm-threaded.js') : ortWasmFactory;
 
 let wasm: OrtWasmModule|undefined;
 let initialized = false;
@@ -42,8 +44,22 @@ const isSimdSupported = (): boolean => {
   try {
     // Test for WebAssembly SIMD capability (for both browsers and Node.js)
     // This typed array is a WebAssembly program containing SIMD instructions.
-    return WebAssembly.validate(new Uint8Array(
-        [0, 97, 115, 109, 1, 0, 0, 0, 1, 4, 1, 96, 0, 0, 3, 2, 1, 0, 10, 9, 1, 7, 0, 65, 0, 253, 15, 26, 11]));
+
+    // The binary data is generated from the following code by wat2wasm:
+    //
+    // (module
+    //   (type $t0 (func))
+    //   (func $f0 (type $t0)
+    //     (drop
+    //       (i32x4.dot_i16x8_s
+    //         (i8x16.splat
+    //           (i32.const 0))
+    //         (v128.const i32x4 0x00000000 0x00000000 0x00000000 0x00000000)))))
+
+    return WebAssembly.validate(new Uint8Array([
+      0,   97, 115, 109, 1, 0, 0, 0, 1, 4, 1, 96, 0, 0, 3, 2, 1, 0, 10, 30, 1,   28,  0, 65, 0,
+      253, 15, 253, 12,  0, 0, 0, 0, 0, 0, 0, 0,  0, 0, 0, 0, 0, 0, 0,  0,  253, 186, 1, 26, 11
+    ]));
   } catch (e) {
     return false;
   }
@@ -102,7 +118,8 @@ export const initializeWebAssembly = async(flags: Env.WebAssemblyFlags): Promise
     const factory = useThreads ? ortWasmFactoryThreaded : ortWasmFactory;
     const config: Partial<OrtWasmModule> = {
       locateFile: (fileName: string, scriptDirectory: string) => {
-        if (fileName.endsWith('.worker.js') && typeof Blob !== 'undefined') {
+        if (!BUILD_DEFS.DISABLE_WASM_THREAD && useThreads && fileName.endsWith('.worker.js') &&
+            typeof Blob !== 'undefined') {
           return URL.createObjectURL(new Blob(
               [
                 // This require() function is handled by webpack to load file content of the corresponding .worker.js
@@ -121,12 +138,11 @@ export const initializeWebAssembly = async(flags: Env.WebAssemblyFlags): Promise
       }
     };
 
-    if (useThreads) {
+    if (!BUILD_DEFS.DISABLE_WASM_THREAD && useThreads) {
       if (typeof Blob === 'undefined') {
         config.mainScriptUrlOrBlob = path.join(__dirname, 'ort-wasm-threaded.js');
       } else {
-        const scriptSourceCode =
-            `var ortWasmThreaded=(function(){var _scriptDir;return ${ortWasmFactoryThreaded.toString()}})();`;
+        const scriptSourceCode = `var ortWasmThreaded=(function(){var _scriptDir;return ${factory.toString()}})();`;
         config.mainScriptUrlOrBlob = new Blob([scriptSourceCode], {type: 'text/javascript'});
       }
     }

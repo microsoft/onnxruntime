@@ -15,6 +15,50 @@
 #include <robuffer.h>
 
 namespace WINMLP {
+
+// IBuffer implementation to avoid calling into WinTypes.dll to create wss::Buffer.
+// This will enable model creation on VTL1 without pulling in additional binaries on load.
+template <typename T>
+class STLVectorBackedBuffer : public winrt::implements<
+                                  STLVectorBackedBuffer<T>,
+                                  wss::IBuffer,
+                                  ::Windows::Storage::Streams::IBufferByteAccess> {
+ private:
+  std::vector<T> data_;
+  size_t length_ = 0;
+
+ public:
+  STLVectorBackedBuffer(size_t num_elements) : data_(num_elements) {}
+
+  uint32_t Capacity() const try {
+    // Return the size of the backing vector in bytes
+    return static_cast<uint32_t>(data_.size() * sizeof(T));
+  }
+  WINML_CATCH_ALL
+
+  uint32_t Length() const try {
+    // Return the used buffer in bytes
+    return static_cast<uint32_t>(length_);
+  }
+  WINML_CATCH_ALL
+
+  void Length(uint32_t value) try {
+    // Set the use buffer length in bytes
+    WINML_THROW_HR_IF_TRUE_MSG(E_INVALIDARG, value > Capacity(), "Parameter 'value' cannot be greater than the buffer's capacity.");
+    length_ = value;
+  }
+  WINML_CATCH_ALL
+
+  STDMETHOD(Buffer)
+  (_Outptr_ BYTE** value) {
+    // Return the buffer
+    RETURN_HR_IF_NULL(E_POINTER, value);
+    *value = reinterpret_cast<BYTE*>(data_.data());
+    return S_OK;
+  }
+};
+
+
 LearningModel::LearningModel(
     const hstring& path,
     const winml::ILearningModelOperatorProvider op_provider) try : operator_provider_(op_provider) {
@@ -26,13 +70,13 @@ LearningModel::LearningModel(
 #if WINVER >= _WIN32_WINNT_WIN8
       CreateFile2(path.c_str(),
                   GENERIC_READ,
-                  0,
+                  FILE_SHARE_READ,
                   OPEN_EXISTING,
                   NULL)};
 #else
       CreateFileW(path.c_str(),
                   GENERIC_READ,
-                  0,
+                  FILE_SHARE_READ,
                   NULL,
                   OPEN_EXISTING,
                   FILE_ATTRIBUTE_READONLY,
@@ -90,12 +134,11 @@ static HRESULT CreateModelFromStream(
     _winml::IModel** model) {
   auto content = stream.OpenReadAsync().get();
 
-  wss::Buffer buffer(static_cast<uint32_t>(content.Size()));
+  auto buffer = winrt::make<STLVectorBackedBuffer<BYTE>>(static_cast<size_t>(content.Size()));
   auto result = content.ReadAsync(
                            buffer,
                            buffer.Capacity(),
-                           wss::InputStreamOptions::None)
-                    .get();
+                           wss::InputStreamOptions::None).get();
 
   auto bytes = buffer.try_as<::Windows::Storage::Streams::IBufferByteAccess>();
   WINML_THROW_HR_IF_NULL_MSG(E_UNEXPECTED, bytes, "Model stream is invalid.");
@@ -118,6 +161,30 @@ LearningModel::LearningModel(
 
   WINML_THROW_IF_FAILED(CreateOnnxruntimeEngineFactory(engine_factory_.put()));
   WINML_THROW_IF_FAILED(CreateModelFromStream(engine_factory_.get(), stream, model_.put()));
+  WINML_THROW_IF_FAILED(model_->GetModelInfo(model_info_.put()));
+}
+WINML_CATCH_ALL
+
+static HRESULT CreateModelFromBuffer(
+    _winml::IEngineFactory* engine_factory,
+    const wss::IBuffer buffer,
+    _winml::IModel** model) {
+		
+  size_t len = buffer.Length();
+  if (FAILED(engine_factory->CreateModel((void*)buffer.data(), len, model))) {
+    WINML_THROW_HR(E_INVALIDARG);
+  }
+
+  return S_OK;
+}
+
+LearningModel::LearningModel(
+    const wss::IBuffer buffer,
+    const winml::ILearningModelOperatorProvider operator_provider) try : operator_provider_(operator_provider) {
+  _winmlt::TelemetryEvent loadModel_event(_winmlt::EventCategory::kModelLoad);
+
+  WINML_THROW_IF_FAILED(CreateOnnxruntimeEngineFactory(engine_factory_.put()));
+  WINML_THROW_IF_FAILED(CreateModelFromBuffer(engine_factory_.get(), buffer, model_.put()));
   WINML_THROW_IF_FAILED(model_->GetModelInfo(model_info_.put()));
 }
 WINML_CATCH_ALL
@@ -250,6 +317,20 @@ LearningModel::LoadFromStreamAsync(
   return make<LearningModel>(model_stream, provider);
 }
 
+wf::IAsyncOperation<winml::LearningModel>
+LearningModel::LoadFromBufferAsync(
+    wss::IBuffer const model_buffer) {
+  return LoadFromBufferAsync(model_buffer, nullptr);
+}
+
+wf::IAsyncOperation<winml::LearningModel>
+LearningModel::LoadFromBufferAsync(
+    wss::IBuffer const model_buffer,
+    winml::ILearningModelOperatorProvider const provider) {
+  co_await resume_background();
+  return make<LearningModel>(model_buffer, provider);
+}
+
 winml::LearningModel
 LearningModel::LoadFromFilePath(
     hstring const& path) try {
@@ -280,6 +361,21 @@ LearningModel::LoadFromStream(
 }
 WINML_CATCH_ALL
 
+winml::LearningModel
+LearningModel::LoadFromBuffer(
+    wss::IBuffer const model_buffer) try {
+  return LoadFromBuffer(model_buffer, nullptr);
+}
+WINML_CATCH_ALL
+
+winml::LearningModel
+LearningModel::LoadFromBuffer(
+    wss::IBuffer const model_buffer,
+    winml::ILearningModelOperatorProvider const provider) try {
+  return make<LearningModel>(model_buffer, provider);
+}
+WINML_CATCH_ALL
+
 _winml::IModel*
 LearningModel::DetachModel() {
   com_ptr<_winml::IModel> detached_model;
@@ -307,6 +403,43 @@ LearningModel::CloneModel() {
 _winml::IEngineFactory*
 LearningModel::GetEngineFactory() {
   return engine_factory_.get();
+}
+
+void LearningModel::SaveToFile(const hstring& file_name) {
+  model_->SaveModel(file_name.c_str(), file_name.size());
+}
+
+void LearningModel::JoinModel(
+    winml::LearningModel other,
+    const std::unordered_map<std::string, std::string>& linkages,
+    bool promote_unlinked_outputs,
+    bool close_model_on_join,
+    const winrt::hstring& join_node_prefix) {
+  auto otherp = other.as<winmlp::LearningModel>();
+  winrt::com_ptr<_winml::IModel> other_model;
+  if (close_model_on_join) {
+    other_model.attach(otherp->DetachModel());
+  } else {
+    other_model.attach(otherp->CloneModel());
+  }
+
+  std::vector<const char*> raw_outputs(linkages.size());
+  std::vector<const char*> raw_inputs(linkages.size());
+  std::transform(std::begin(linkages), std::end(linkages), std::begin(raw_outputs),
+                 [](auto& pair) { return pair.first.c_str(); });
+  std::transform(std::begin(linkages), std::end(linkages), std::begin(raw_inputs),
+                 [](auto& pair) { return pair.second.c_str(); });
+
+  auto prefix = winrt::to_string(join_node_prefix);
+  WINML_THROW_IF_FAILED(model_->JoinModel(other_model.get(),
+                                          raw_outputs.data(),
+                                          raw_inputs.data(),
+                                          linkages.size(),
+                                          promote_unlinked_outputs,
+                                          prefix.c_str()));
+
+  model_info_ = nullptr;
+  WINML_THROW_IF_FAILED(model_->GetModelInfo(model_info_.put()));
 }
 
 }  // namespace WINMLP

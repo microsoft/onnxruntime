@@ -69,7 +69,7 @@ struct KernelAndDef {
                   .SetDomain(domain)
                   .TypeConstraint("T", DataTypeImpl::GetTensorType<float>())
                   .Build();
-    OpKernelInfo info(main_node, *out.def, *out.a, {}, {}, {}, {});
+    OpKernelInfo info(main_node, *out.def, *out.a, {}, {}, {});
     out.kernel = std::make_unique<KernelType>(info);
     return out;
   }
@@ -87,14 +87,14 @@ class MyIExecutionFrame : public IExecutionFrame {
       : IExecutionFrame(ort_value_idx_map, node_index_info, fetch_mlvalue_idxs),
         a_(a) {
     Init(
-        feed_mlvalue_idxs, feeds, initializers, [](const std::string& name) -> bool { return false; }, fetches);
+        feed_mlvalue_idxs, feeds, initializers, [](const std::string& /*name*/) -> bool { return false; }, fetches);
   }
 
   const DataTransferManager& GetDataTransferManager() const override {
     abort();
   }
 
-  Status CreateNodeOutputMLValueImpl(OrtValue& ort_value, int ort_value_idx, const TensorShape* shape) override {
+  Status CreateNodeOutputMLValueImpl(OrtValue& /*ort_value*/, int /*ort_value_idx*/, const TensorShape* /*shape*/) override {
     abort();
   }
   AllocatorPtr GetAllocatorImpl(const OrtMemoryInfo& info) const {

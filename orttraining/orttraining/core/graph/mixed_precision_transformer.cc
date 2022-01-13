@@ -463,11 +463,11 @@ static Status HandleFunctionBody(const Function& node_func, ONNX_NAMESPACE::Tens
         // Introduce cast to full-precision if required:
         // TODO: fix const_cast; Graph doesn't provide us a method "GetMutableInputs".
         NodeArg* mutable_input = const_cast<NodeArg*>(input);
-        CastNodeArg(graph,
+        ORT_RETURN_IF_ERROR(CastNodeArg(graph,
                     stage1_fp32_node_args,
                     std::unordered_map<Node*, std::vector<int>>(),
                     mutable_input,
-                    ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+                    ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
       }
     }
 
@@ -663,7 +663,7 @@ Status TransformGraphForMixedPrecision(Graph& graph,
 
   ORT_RETURN_IF_ERROR(graph.Resolve(options));
 
-  TransformStage2(graph, mixed_precision_type, loss_subgraph.GetFP32NodeArgs());
+  ORT_RETURN_IF_ERROR(TransformStage2(graph, mixed_precision_type, loss_subgraph.GetFP32NodeArgs()));
 
   ORT_RETURN_IF_ERROR(graph.Resolve(options));
 

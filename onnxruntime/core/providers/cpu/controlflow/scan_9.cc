@@ -205,7 +205,7 @@ Status Scan<9>::SetupSubgraphExecutionInfo(const SessionState& session_state,
 
   const auto& node = Node();
   info_ = std::make_unique<Scan<9>::Info>(node, subgraph_session_state.GetGraphViewer(),
-                                                  static_cast<int>(num_scan_inputs_));
+                                          static_cast<int>(num_scan_inputs_));
 
   auto status = scan::detail::CreateFeedsFetchesManager(node, *info_, session_state, subgraph_session_state,
                                                         /* is_v8 */ false, feeds_fetches_manager_);
@@ -281,7 +281,7 @@ Status ScanImpl::ValidateSubgraphInput(int start_input, int end_input,
                              " Expected ", min_dims_required,
                              " dimensions or more but input had shape of ", input_shape);
 
-    auto seq_len_dim = input_axes_[i - info_.num_loop_state_variables];
+    auto seq_len_dim = input_axes_[static_cast<ptrdiff_t>(i) - info_.num_loop_state_variables];
     auto this_seq_len = input_shape[seq_len_dim];
 
     if (sequence_len_ < 0) {
@@ -432,7 +432,7 @@ Status ScanImpl::Execute(const FeedsFetchesManager& ffm) {
 
   // Setup input OrtValue streams
   std::vector<OrtValueTensorSlicer<const OrtValue>::Iterator> scan_input_stream_iterators;
-  scan_input_stream_iterators.reserve(info_.num_inputs - info_.num_loop_state_variables);
+  scan_input_stream_iterators.reserve(static_cast<size_t>(info_.num_inputs) - info_.num_loop_state_variables);
 
   for (int i = 0, end = info_.num_scan_inputs; i < end; ++i) {
     const auto& ort_value = inputs_[i];

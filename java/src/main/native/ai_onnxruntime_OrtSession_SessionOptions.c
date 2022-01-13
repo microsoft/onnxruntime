@@ -18,13 +18,12 @@
 #include "onnxruntime/core/providers/dnnl/dnnl_provider_factory.h"
 #include "onnxruntime/core/providers/nnapi/nnapi_provider_factory.h"
 #include "onnxruntime/core/providers/nuphar/nuphar_provider_factory.h"
+#include "onnxruntime/core/providers/stvm/stvm_provider_factory.h"
 #include "onnxruntime/core/providers/openvino/openvino_provider_factory.h"
 #include "onnxruntime/core/providers/tensorrt/tensorrt_provider_factory.h"
-#include "onnxruntime/core/providers/migraphx/migraphx_provider_factory.h"
 #include "onnxruntime/core/providers/acl/acl_provider_factory.h"
 #include "onnxruntime/core/providers/armnn/armnn_provider_factory.h"
 #include "onnxruntime/core/providers/coreml/coreml_provider_factory.h"
-#include "onnxruntime/core/providers/rocm/rocm_provider_factory.h"
 #ifdef USE_DML
 #include "onnxruntime/core/providers/dml/dml_provider_factory.h"
 #endif
@@ -466,6 +465,24 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addNup
 }
 
 /*
+ * Class::    ai_onnxruntime_OrtSession_SessionOptions
+ * Method:    addStvm
+ * Signature: (JILjava/lang/String)V
+ */
+JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addStvm
+  (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jstring settingsString) {
+    (void)jobj;
+  #ifdef USE_STVM
+    const char* settings = (*jniEnv)->GetStringUTFChars(jniEnv, settingsString, NULL);
+    checkOrtStatus(jniEnv,(const OrtApi*)apiHandle,OrtSessionOptionsAppendExecutionProvider_Stvm((OrtSessionOptions*) handle, settings));
+    (*jniEnv)->ReleaseStringUTFChars(jniEnv,settingsString,settings);
+  #else
+    (void)apiHandle;(void)handle;(void)settingsString; // Parameters used when Stvm is defined.
+    throwOrtException(jniEnv,convertErrorCode(ORT_INVALID_ARGUMENT),"This binary was not compiled with Stvm support.");
+  #endif
+}
+
+/*
  * Class:     ai_onnxruntime_OrtSession_SessionOptions
  * Method:    addMIGraphX
  * Signature: (JJI)V
@@ -551,12 +568,12 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addCor
  * Signature: (JJI)V
  */
 JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addROCM
-  (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jint deviceID, jlong memLimit) {
+  (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jint deviceID) {
     (void)jobj;
   #ifdef USE_ROCM
-    checkOrtStatus(jniEnv,(const OrtApi*)apiHandle,OrtSessionOptionsAppendExecutionProvider_ROCM((OrtSessionOptions*) handle, deviceID, (size_t) memLimit));
+    checkOrtStatus(jniEnv,(const OrtApi*)apiHandle,OrtSessionOptionsAppendExecutionProvider_ROCM((OrtSessionOptions*) handle, deviceID));
   #else
-    (void)apiHandle;(void)handle;(void)deviceID;(void)memLimit; // Parameters used when ROCM is defined.
+    (void)apiHandle;(void)handle;(void)deviceID; // Parameters used when ROCM is defined.
     throwOrtException(jniEnv,convertErrorCode(ORT_INVALID_ARGUMENT),"This binary was not compiled with ROCM support.");
   #endif
 }

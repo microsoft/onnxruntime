@@ -3,6 +3,7 @@
 
 #include "core/providers/rocm/math/gemm.h"
 #include "core/providers/cpu/math/gemm_helper.h"
+#include "core/providers/rocm/rocm_common.h"
 #include "core/providers/rocm/shared_inc/fpgeneric.h"
 
 namespace onnxruntime {
@@ -16,7 +17,7 @@ namespace rocm {
       8,                                                          \
       T,                                                          \
       kRocmExecutionProvider,                                     \
-      KernelDefBuilder()                                          \
+      (*KernelDefBuilder::Create())                               \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       Gemm<T>);                                                   \
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                        \
@@ -26,7 +27,7 @@ namespace rocm {
       10,                                                         \
       T,                                                          \
       kRocmExecutionProvider,                                     \
-      KernelDefBuilder()                                          \
+      (*KernelDefBuilder::Create())                               \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       Gemm<T>);                                                   \
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                        \
@@ -36,7 +37,7 @@ namespace rocm {
       12,                                                         \
       T,                                                          \
       kRocmExecutionProvider,                                     \
-      KernelDefBuilder()                                          \
+      (*KernelDefBuilder::Create())                               \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       Gemm<T>);                                                   \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
@@ -45,7 +46,7 @@ namespace rocm {
       13,                                                         \
       T,                                                          \
       kRocmExecutionProvider,                                     \
-      KernelDefBuilder()                                          \
+      (*KernelDefBuilder::Create())                               \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       Gemm<T>);
 

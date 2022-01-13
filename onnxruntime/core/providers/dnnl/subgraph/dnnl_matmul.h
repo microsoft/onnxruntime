@@ -12,7 +12,8 @@ class DnnlMatMul {
  public:
   enum InputTensors : int {
     IN_A = 0,
-    IN_B = 1
+    IN_B = 1,
+    IN_BINARY = 2 // the extra input due to matmulbinary fusion
   };
 
   enum OutputTensors : int {

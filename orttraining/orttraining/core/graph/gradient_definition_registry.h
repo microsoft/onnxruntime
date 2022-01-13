@@ -51,8 +51,22 @@ class GradientDefinitionRegistry {
     definitions_.emplace(key, definition);
   }
 
+  void SetStopGradientEdgesForNode(const std::string& key, const std::unordered_set<size_t> edges) {
+    custom_stop_gradient_edges_.emplace(key, edges);
+  }
+
+  const std::unordered_set<size_t>* GetStopGradientEdgesForNode(const std::string& key) {
+    auto it = custom_stop_gradient_edges_.find(key);
+    if (it == custom_stop_gradient_edges_.end()) {
+      return nullptr;
+    }
+
+    return &it->second;
+  }
+
  private:
   std::unordered_map<std::string, std::vector<GradientNodeDefinition>> definitions_;
+  std::unordered_map<std::string, std::unordered_set<size_t>> custom_stop_gradient_edges_;
 };
 
 }  // namespace training

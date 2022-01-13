@@ -11,16 +11,16 @@ namespace onnxruntime {
 
 namespace SliceOp {
 struct PrepareForComputeMetadata {
-  explicit PrepareForComputeMetadata(const std::vector<int64_t>& input_dimensions)
+  explicit PrepareForComputeMetadata(gsl::span<const int64_t> input_dimensions)
       : input_dimensions_(input_dimensions),
-        ends_(input_dimensions),
-        output_dims_(input_dimensions) {
+        ends_(input_dimensions.begin(), input_dimensions.end()),
+        output_dims_(input_dimensions.begin(), input_dimensions.end()) {
     size_t dimension_count = input_dimensions.size();
     starts_.resize(dimension_count, 0);
     steps_.resize(dimension_count, 1);
   }
 
-  const std::vector<int64_t>& input_dimensions_;
+  gsl::span<const int64_t> input_dimensions_;
   std::vector<int64_t> starts_;
   std::vector<int64_t> ends_;
   std::vector<int64_t> steps_;

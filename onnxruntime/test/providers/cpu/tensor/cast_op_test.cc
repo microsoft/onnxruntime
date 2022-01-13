@@ -36,7 +36,7 @@ template <typename SrcType,
           typename DstType>
 void TestCastOp(gsl::span<const SrcType> input,
                 gsl::span<const DstType> output,
-                const std::vector<int64_t>& dimensions,
+                const std::vector<int64_t> &dimensions,
                 OpTester::ExpectResult expect_result = OpTester::ExpectResult::kExpectSuccess,
                 const std::string& expected_failure_string = "") {
   OpTester test("Cast", 13);
@@ -113,7 +113,7 @@ struct CastNonStringTester {
     auto output_span = gsl::make_span<DstType>(output_buffer.get(), size);
     CastSpan<SrcType, DstType>(input_span, output_span);
 
-    TestCastOp<SrcType, DstType>(input_span, output_span, shape.GetDims());
+    TestCastOp<SrcType, DstType>(input_span, output_span, shape.GetDimsAsVector());
   }
 };
 

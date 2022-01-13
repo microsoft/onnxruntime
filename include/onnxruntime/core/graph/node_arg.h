@@ -73,6 +73,16 @@ class NodeArg {
   @remarks If there is a mismatch during shape inferencing that can't be resolved the shape info may be removed. */
   void ClearShape();
 
+  /** Override current type from input_type if override_types is set to true, return failure status otherwise.
+  @param input_tensor_elem_type Tensor element type parsed input_type
+  @param current_tensor_elem_type Tensor element type parsed from existing type
+  @param override_types If true, resolve the two inputs or two outputs type when different
+  @returns Success unless there is existing type or shape info that can't be successfully updated. */
+  common::Status OverrideTypesHelper(const ONNX_NAMESPACE::TypeProto& input_type,
+                                     int32_t input_tensor_elem_type,
+                                     int32_t current_tensor_elem_type,
+                                     bool override_types);
+
   /** Validate and merge type [and shape] info from input_type.
   @param strict If true, the shape update will fail if there are incompatible values.
                 If false, will be lenient and merge only shape info that can be validly processed.
@@ -89,19 +99,19 @@ class NodeArg {
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
-  /** Gets this NodeArg as a ValueInfoProto. */
+  /** Gets this NodeArg as a NodeArgInfo, AKA ValueInfoProto. */
   const NodeArgInfo& ToProto() const noexcept { return node_arg_info_; }
 
   /** Gets a flag indicating whether this NodeArg exists or not.
   Optional inputs are allowed in ONNX and an empty #Name represents a non-existent input argument. */
   bool Exists() const noexcept;
 
- private:
-  ORT_DISALLOW_COPY_AND_ASSIGNMENT(NodeArg);
   friend class Graph;
 
   NodeArg(NodeArgInfo&& node_arg_info);
 
+ private:
+  ORT_DISALLOW_COPY_AND_ASSIGNMENT(NodeArg);
 #if !defined(ORT_MINIMAL_BUILD)
   void SetType(const std::string* p_type);
   void SetType(const ONNX_NAMESPACE::TypeProto& type_proto);

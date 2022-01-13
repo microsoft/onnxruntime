@@ -3,10 +3,17 @@
 
 #pragma once
 
+#include <functional>
+#include <string>
+
+namespace ONNX_NAMESPACE {
+class TensorProto;
+}
+
 namespace onnxruntime {
 
-class Graph;
 class Node;
+class Path;
 
 namespace QDQ {
 
@@ -24,7 +31,10 @@ enum InputIndex : int {
 // 1. Q/DQ doesn't have optional input.
 // 2. scale and zero point is constant scalar
 // 3. Q and DQ have same scale and zero point
-bool IsQDQPairSupported(const Graph& graph, const Node& q_node, const Node& dq_node);
+bool IsQDQPairSupported(
+    const Node& q_node, const Node& dq_node,
+    const std::function<const ONNX_NAMESPACE::TensorProto*(const std::string&)>& get_const_initializer,
+    const Path& model_path);
 
 }  // namespace QDQ
 }  // namespace onnxruntime

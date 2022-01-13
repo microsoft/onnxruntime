@@ -191,7 +191,7 @@ class PlannerTest : public ::testing::Test {
         KernelDefBuilder().SetName("Tanh").Provider(kCpuExecutionProvider).SinceVersion(1, 10).ExternalOutputs().Build();
     CPUExecutionProviderInfo epi;
     auto execution_provider = std::make_unique<CPUExecutionProvider>(epi);
-    execution_providers_.Add("CPUExecutionProvider", std::move(execution_provider));
+    ORT_THROW_IF_ERROR(execution_providers_.Add("CPUExecutionProvider", std::move(execution_provider)));
 
     state_.reset(new SessionState(graph_, execution_providers_, false, tp_.get(), nullptr, dtm_,
                                   DefaultLoggingManager().DefaultLogger(), profiler_));
@@ -230,13 +230,13 @@ class PlannerTest : public ::testing::Test {
     ASSERT_NE(ep, nullptr);
     auto info = std::make_unique<OpKernelInfo>(
         *p_node, kernel_def, *ep, state_->GetInitializedTensors(), state_->GetOrtValueNameIdxMap(),
-        state_->GetFuncMgr(), state_->GetDataTransferMgr());
+        state_->GetDataTransferMgr());
 
     op_kernel_infos_.push_back(std::move(info));
     if (!KernelRegistry::HasImplementationOf(*reg, *p_node, onnxruntime::kCpuExecutionProvider)) {
       auto st = reg->Register(
           KernelCreateInfo(std::make_unique<KernelDef>(kernel_def),
-                           [](const OpKernelInfo& info) -> OpKernel* { return new DummyOpKernel(info); }));
+                           [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status { out = std::make_unique<DummyOpKernel>(info); return Status::OK(); }));
       ORT_ENFORCE(st.IsOK(), st.ErrorMessage());
     }
 
@@ -271,7 +271,7 @@ class PlannerTest : public ::testing::Test {
 
     // CreatePlan is called inside FinalizeSessionState and usually the initializers are removed following that.
     // Leave initializers so we can duplicate the call to CreatePlan from here to validate.
-    const bool remove_initializers = false;
+    constexpr bool remove_initializers = false;
     status = state_->FinalizeSessionState(ORT_TSTR(""), kernel_registry_manager, {}, nullptr, remove_initializers);
 
     EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
@@ -575,7 +575,7 @@ TEST_F(PlannerTest, LocationPlanningForPassThroughExplicitAndImplicitSubgraphInp
       /*  Inputs: iter_num, cond_in, loop carried state variables.
          iter_num_in    cond_in     [loop_state_var]
            (unused)        |               |
-                       [Identity]         [If]  
+                       [Identity]         [If]
                            |               |
                         cond_out     loop_state_var_out
     */
@@ -687,10 +687,10 @@ TEST_F(PlannerTest, LocationPlanningForPassThroughExplicitAndImplicitSubgraphInp
     const auto* main_graph_plan = main_graph_session_state.GetExecutionPlan();
 
     OrtValueIndex abs_data_0_out_index;
-    main_graph_ort_value_index_map.GetIdx("abs_data_0_out", abs_data_0_out_index);
+    ASSERT_STATUS_OK(main_graph_ort_value_index_map.GetIdx("abs_data_0_out", abs_data_0_out_index));
 
     OrtValueIndex abs_data_1_out_index;
-    main_graph_ort_value_index_map.GetIdx("abs_data_1_out", abs_data_1_out_index);
+    ASSERT_STATUS_OK(main_graph_ort_value_index_map.GetIdx("abs_data_1_out", abs_data_1_out_index));
 
     EXPECT_EQ(main_graph_plan->allocation_plan[abs_data_0_out_index].location.device.Type(), OrtDevice::GPU);
     EXPECT_EQ(main_graph_plan->allocation_plan[abs_data_1_out_index].location.device.Type(), OrtDevice::GPU);
@@ -714,12 +714,12 @@ TEST_F(PlannerTest, LocationPlanningForPassThroughExplicitAndImplicitSubgraphInp
     const auto* first_subgraph_plan = first_subgraph_session_state.GetExecutionPlan();
 
     OrtValueIndex abs_data_0_out_index;
-    first_subgraph_ort_value_index_map.GetIdx("abs_data_0_out", abs_data_0_out_index);
+    ASSERT_STATUS_OK(first_subgraph_ort_value_index_map.GetIdx("abs_data_0_out", abs_data_0_out_index));
 
     // "abs_data_1_out" is "loop_state_var" in this scope as it was consumed as an explicit subgraph input
     // to Loop's body subgraph
     OrtValueIndex abs_data_1_out_index;
-    first_subgraph_ort_value_index_map.GetIdx("loop_state_var", abs_data_1_out_index);
+    ASSERT_STATUS_OK(first_subgraph_ort_value_index_map.GetIdx("loop_state_var", abs_data_1_out_index));
 
     // There are no explicit consumers of "abs_data_0_out" and "loop_state_var (abs_data_1_out)" in this scope.
     // There is only one implicit consumer "If". Hence, check that we are preserving the locations of these values
@@ -823,7 +823,7 @@ TEST_F(PlannerTest, LocationPlanningForInitializersOnlyUsedInANestedSubgraph) {
   const auto* main_graph_plan = main_graph_session_state.GetExecutionPlan();
 
   OrtValueIndex init_data_index;
-  main_graph_ort_value_index_map.GetIdx("init_data", init_data_index);
+  ASSERT_STATUS_OK(main_graph_ort_value_index_map.GetIdx("init_data", init_data_index));
 
   EXPECT_EQ(main_graph_plan->allocation_plan[init_data_index].location.device.Type(), OrtDevice::GPU);
 }

@@ -38,10 +38,18 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllTensorTypes()).Alias(0, 0),
     IdentityOp<false>);
 
+// Opset 14 supported sequence type
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
+    Identity,
+    14, 15,
+    KernelDefBuilder().TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorTypes()).Alias(0, 0),
+    IdentityOp<false>);
+
+// Opset 16 supported optional type
 ONNX_CPU_OPERATOR_KERNEL(
     Identity,
-    14,
-    KernelDefBuilder().TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorTypes()).Alias(0, 0),
+    16,
+    KernelDefBuilder().TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorAndOptionalTypes()).Alias(0, 0),
     IdentityOp<false>);
 
 }  // namespace onnxruntime

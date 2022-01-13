@@ -14,7 +14,7 @@ using namespace ONNX_NAMESPACE::Utils;
 namespace onnxruntime {
 
 namespace {
-const int64_t kSmallInitializerThreshold = 100;
+constexpr int64_t kSmallInitializerThreshold = 100;
 
 static bool IsSmallInitializer(const onnxruntime::GraphViewer& graph, const NodeArg* arg) {
   // 'true' in the function call is to let the searching for the initializer

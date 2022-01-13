@@ -8,6 +8,7 @@
 
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
+#include "core/mlas/inc/mlas.h"
 #include "core/util/math_cpuonly.h"
 #include "core/util/qmath.h"
 
@@ -47,7 +48,10 @@ TEST(MatmulIntegerOpTest, MatMulInteger) {
 }
 
 TEST(MatmulIntegerOpTest, MatMulInteger_int8_t) {
-  if (!DefaultCudaExecutionProvider() || !HasCudaEnvironment(530 /*min_cuda_architecture*/)) return;
+  if (DefaultCudaExecutionProvider() &&
+      !HasCudaEnvironment(530 /*min_cuda_architecture*/)) {
+    return;
+  }
 
   OpTester test("MatMulInteger", 10);
   test.AddInput<int8_t>("T1",
@@ -67,13 +71,14 @@ TEST(MatmulIntegerOpTest, MatMulInteger_int8_t) {
                           {-55, 16, 89, -44,
                            122, 154, 68, -39});
 
-  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.push_back(DefaultCudaExecutionProvider());
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  test.Run();
 }
 
 TEST(MatmulIntegerOpTest, MatMulInteger_int8_t_A_ND) {
-  if (!DefaultCudaExecutionProvider() || !HasCudaEnvironment(530 /*min_cuda_architecture*/)) return;
+  if (DefaultCudaExecutionProvider() &&
+      !HasCudaEnvironment(530 /*min_cuda_architecture*/)) {
+    return;
+  }
 
   OpTester test("MatMulInteger", 10);
   test.AddInput<int8_t>("T1",
@@ -101,13 +106,14 @@ TEST(MatmulIntegerOpTest, MatMulInteger_int8_t_A_ND) {
                            -9, 57, 69,
                            -33, 153, 45});
 
-  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.push_back(DefaultCudaExecutionProvider());
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  test.Run();
 }
 
 TEST(MatmulIntegerOpTest, MatMulInteger_int8_t_B_ND) {
-  if (!DefaultCudaExecutionProvider() || !HasCudaEnvironment(530 /*min_cuda_architecture*/)) return;
+  if (DefaultCudaExecutionProvider() &&
+      !HasCudaEnvironment(530 /*min_cuda_architecture*/)) {
+    return;
+  }
 
   OpTester test("MatMulInteger", 10);
   test.AddInput<int8_t>("T1",
@@ -135,13 +141,14 @@ TEST(MatmulIntegerOpTest, MatMulInteger_int8_t_B_ND) {
                            -45, -61, -11,
                            -20, 103, 68});
 
-  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.push_back(DefaultCudaExecutionProvider());
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  test.Run();
 }
 
 TEST(MatmulIntegerOpTest, MatMulInteger_int8_t_A_ND_B_ND) {
-  if (!DefaultCudaExecutionProvider() || !HasCudaEnvironment(530 /*min_cuda_architecture*/)) return;
+  if (DefaultCudaExecutionProvider() &&
+      !HasCudaEnvironment(530 /*min_cuda_architecture*/)) {
+    return;
+  }
 
   OpTester test("MatMulInteger", 10);
   test.AddInput<int8_t>("T1",
@@ -172,13 +179,14 @@ TEST(MatmulIntegerOpTest, MatMulInteger_int8_t_A_ND_B_ND) {
                            -55, 16, 89, -44,
                            122, 154, 68, -39});
 
-  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.push_back(DefaultCudaExecutionProvider());
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  test.Run();
 }
 
 TEST(MatmulIntegerOpTest, MatMulInteger_int8_t_A_Has_Zero_Point) {
-  if (!DefaultCudaExecutionProvider() || !HasCudaEnvironment(530 /*min_cuda_architecture*/)) return;
+  if (DefaultCudaExecutionProvider() &&
+      !HasCudaEnvironment(530 /*min_cuda_architecture*/)) {
+    return;
+  }
 
   OpTester test("MatMulInteger", 10);
   test.AddInput<int8_t>("T1",
@@ -208,13 +216,14 @@ TEST(MatmulIntegerOpTest, MatMulInteger_int8_t_A_Has_Zero_Point) {
                            -55, 16, 89, -44,
                            122, 154, 68, -39});
 
-  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.push_back(DefaultCudaExecutionProvider());
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  test.Run();
 }
 
 TEST(MatmulIntegerOpTest, MatMulInteger_int8_t_No_Zero_Point) {
-  if (!DefaultCudaExecutionProvider() || !HasCudaEnvironment(530 /*min_cuda_architecture*/)) return;
+  if (DefaultCudaExecutionProvider() &&
+      !HasCudaEnvironment(530 /*min_cuda_architecture*/)) {
+    return;
+  }
 
   OpTester test("MatMulInteger", 10);
   test.AddInput<int8_t>("T1",
@@ -243,9 +252,7 @@ TEST(MatmulIntegerOpTest, MatMulInteger_int8_t_No_Zero_Point) {
                            -55, 16, 89, -44,
                            122, 154, 68, -39});
 
-  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.push_back(DefaultCudaExecutionProvider());
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  test.Run();
 }
 
 TEST(MatmulIntegerOpTest, MatMulInteger_WithZero_ZeroPoint) {

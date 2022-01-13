@@ -71,7 +71,7 @@ void EinsumTypedComputeProcessor<T>::FinalizeOutput(const Tensor& candidate_outp
 }
 
 static bool IsTransposeReshapeForEinsum(const std::vector<size_t>& perm,
-                                        const std::vector<int64_t>& input_dims,
+                                        gsl::span<const int64_t> input_dims,
                                         std::vector<int64_t>& new_shape) {
   // As long as the dims with values > 1 stay in the same order, it's a reshape.
   // Example: Shape=(1,1,1024,4096) -> perm=(2,0,3,1).
@@ -83,7 +83,7 @@ static bool IsTransposeReshapeForEinsum(const std::vector<size_t>& perm,
       return false;
     last_permuted_axis = perm[i];
   }
-  new_shape = input_dims;
+  new_shape = std::vector<int64_t>(input_dims.begin(), input_dims.end());
   for (size_t i = 0; i < perm.size(); ++i) {
     new_shape[i] = input_dims[perm[i]];
   }
@@ -159,15 +159,13 @@ std::unique_ptr<Tensor> EinsumTypedComputeProcessor<T>::PairwiseOperandProcess(c
         reduced_size *= left_dim;
       } else if (has_left_dim) {  // if the dim to be reduced is only in one of left and right, we can reduce right away
         const Tensor& tensor_to_be_reduced = current_left ? *current_left : left;
-        const std::vector<int64_t>& tensor_to_be_reduced_dims =
-            current_left ? current_left->Shape().GetDims() : left_dims;
+        auto tensor_to_be_reduced_dims = current_left ? current_left->Shape().GetDims() : left_dims;
 
         current_left = EinsumOp::ReduceSum<T>(
             tensor_to_be_reduced, tensor_to_be_reduced_dims, {i}, allocator_, tp_, einsum_ep_assets_, device_reduce_sum_func_);
       } else if (has_right_dim) {
         const Tensor& tensor_to_be_reduced = current_right ? *current_right : right;
-        const std::vector<int64_t>& tensor_to_be_reduced_dims =
-            current_right ? current_right->Shape().GetDims() : right_dims;
+        auto tensor_to_be_reduced_dims = current_right ? current_right->Shape().GetDims() : right_dims;
 
         current_right = EinsumOp::ReduceSum<T>(
             tensor_to_be_reduced, tensor_to_be_reduced_dims, {i}, allocator_, tp_, einsum_ep_assets_, device_reduce_sum_func_);

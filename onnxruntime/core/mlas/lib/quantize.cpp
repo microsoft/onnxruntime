@@ -165,7 +165,7 @@ Return Value:
 
 --*/
 {
-    constexpr int32_t MinimumValue = std::numeric_limits<OutputType>::min();
+    constexpr int32_t MinimumValue = std::numeric_limits<OutputType>::lowest();
     constexpr int32_t MaximumValue = std::numeric_limits<OutputType>::max();
 
     auto ScaleVector = MlasBroadcastFloat32x4(Scale);
@@ -315,7 +315,7 @@ Return Value:
 
 --*/
 {
-    constexpr int32_t MinimumValue = std::numeric_limits<OutputType>::min();
+    constexpr int32_t MinimumValue = std::numeric_limits<OutputType>::lowest();
     constexpr int32_t MaximumValue = std::numeric_limits<OutputType>::max();
 
     for (size_t n = 0; n < N; n++) {
@@ -352,17 +352,18 @@ MlasQuantizeLinear<uint8_t>(
 
 #if defined(MLAS_SSE2_INTRINSICS)
 
+template <typename OutputType>
 void
 MLASCALL
 MlasRequantizeOutput(
     const int32_t* Input,
     size_t InputLeadingDimension,
-    uint8_t* Output,
+    OutputType* Output,
     size_t OutputLeadingDimension,
     const int32_t* Bias,
     const float* Scale,
     bool PerColumnScale,
-    uint8_t ZeroPoint,
+    OutputType ZeroPoint,
     size_t StartM,
     size_t StartN,
     size_t CountM,
@@ -370,8 +371,8 @@ MlasRequantizeOutput(
     )
 {
     const __m128 PerMatrixScaleVector = PerColumnScale ? _mm_setzero_ps() : _mm_load1_ps(Scale);
-    const __m128 MinimumValueVector = _mm_set1_ps(float(0 - ZeroPoint));
-    const __m128 MaximumValueVector = _mm_set1_ps(float(255 - ZeroPoint));
+    const __m128 MinimumValueVector = _mm_set1_ps(float(std::numeric_limits<OutputType>::lowest() - ZeroPoint));
+    const __m128 MaximumValueVector = _mm_set1_ps(float(std::numeric_limits<OutputType>::max() - ZeroPoint));
     const __m128i ZeroPointVector = _mm_set1_epi32(ZeroPoint);
 
     if (nullptr != Bias) {
@@ -467,10 +468,23 @@ MlasRequantizeOutput(
             IntegerVector2 = _mm_add_epi32(IntegerVector2, ZeroPointVector);
             IntegerVector3 = _mm_add_epi32(IntegerVector3, ZeroPointVector);
 
-            __m128i WordVector0 = _mm_packus_epi16(IntegerVector0, IntegerVector1);
-            __m128i WordVector1 = _mm_packus_epi16(IntegerVector2, IntegerVector3);
+            __m128i WordVector0;
+            __m128i WordVector1;
+            __m128i ByteVector;
 
-            __m128i ByteVector = _mm_packus_epi16(WordVector0, WordVector1);
+            if (std::is_signed<OutputType>::value) {
+
+                WordVector0 = _mm_packs_epi32(IntegerVector0, IntegerVector1);
+                WordVector1 = _mm_packs_epi32(IntegerVector2, IntegerVector3);
+                ByteVector = _mm_packs_epi16(WordVector0, WordVector1);
+
+            } else {
+
+                WordVector0 = _mm_packus_epi16(IntegerVector0, IntegerVector1);
+                WordVector1 = _mm_packus_epi16(IntegerVector2, IntegerVector3);
+                ByteVector = _mm_packus_epi16(WordVector0, WordVector1);
+
+            }
 
             _mm_storeu_si128((__m128i*)RowOutput, ByteVector);
             RowOutput += 16;
@@ -541,8 +555,17 @@ MlasRequantizeOutput(
             IntegerVector = _mm_cvtps_epi32(FloatVector);
             IntegerVector = _mm_add_epi32(IntegerVector, ZeroPointVector);
 
-            IntegerVector = _mm_packus_epi16(IntegerVector, IntegerVector);
-            IntegerVector = _mm_packus_epi16(IntegerVector, IntegerVector);
+            if (std::is_signed<OutputType>::value) {
+
+                IntegerVector = _mm_packs_epi32(IntegerVector, IntegerVector);
+                IntegerVector = _mm_packs_epi16(IntegerVector, IntegerVector);
+
+            } else {
+
+                IntegerVector = _mm_packus_epi16(IntegerVector, IntegerVector);
+                IntegerVector = _mm_packus_epi16(IntegerVector, IntegerVector);
+
+            }
 
             uint32_t OutputValue = uint32_t(_mm_cvtsi128_si32(IntegerVector));
 
@@ -570,17 +593,18 @@ MlasRequantizeOutput(
 
 #elif defined(MLAS_NEON64_INTRINSICS)
 
+template<typename OutputType>
 void
 MLASCALL
 MlasRequantizeOutput(
     const int32_t* Input,
     size_t InputLeadingDimension,
-    uint8_t* Output,
+    OutputType* Output,
     size_t OutputLeadingDimension,
     const int32_t* Bias,
     const float* Scale,
     bool PerColumnScale,
-    uint8_t ZeroPoint,
+    OutputType ZeroPoint,
     size_t StartM,
     size_t StartN,
     size_t CountM,
@@ -686,7 +710,7 @@ MlasRequantizeOutput(
 
             //
             // Pack the integers with saturation to 16-bit values and shift by
-            // the zero point, then pack the integers again to unsigned bytes.
+            // the zero point, then pack the integers again to bytes.
             //
 
             int16x8x2_t WordVector;
@@ -697,7 +721,13 @@ MlasRequantizeOutput(
             WordVector.val[0] = vqaddq_s16(WordVector.val[0], ZeroPointVector);
             WordVector.val[1] = vqaddq_s16(WordVector.val[1], ZeroPointVector);
 
-            vst1q_u8(RowOutput, vqmovun_high_s16(vqmovun_s16(WordVector.val[0]), WordVector.val[1]));
+            if (std::is_signed<OutputType>::value) {
+                vst1q_s8(reinterpret_cast<int8_t*>(RowOutput),
+                         vqmovn_high_s16(vqmovn_s16(WordVector.val[0]), WordVector.val[1]));
+            } else {
+                vst1q_u8(reinterpret_cast<uint8_t*>(RowOutput),
+                         vqmovun_high_s16(vqmovun_s16(WordVector.val[0]), WordVector.val[1]));
+            }
             RowOutput += 16;
 
             n -= 16;
@@ -775,7 +805,13 @@ MlasRequantizeOutput(
             int16x8_t WordVector = vcombine_s16(vqmovn_s32(IntegerVector), vdup_n_s16(0));
             WordVector = vqaddq_s16(WordVector, ZeroPointVector);
 
-            uint8x16_t ByteVector = vcombine_u8(vqmovun_s16(WordVector), vdup_n_u8(0));
+            uint8x16_t ByteVector;
+
+            if (std::is_signed<OutputType>::value) {
+                ByteVector = vcombine_u8(vreinterpret_u8_s8(vqmovn_s16(WordVector)), vdup_n_u8(0));
+            } else {
+                ByteVector = vcombine_u8(vqmovun_s16(WordVector), vdup_n_u8(0));
+            }
 
             if (n >= 4) {
 
@@ -787,7 +823,7 @@ MlasRequantizeOutput(
 
             } else {
 
-                vst1q_lane_u8(RowOutput, ByteVector, 0);
+                vst1q_lane_u8(reinterpret_cast<uint8_t*>(RowOutput), ByteVector, 0);
                 RowOutput += 1;
 
                 n -= 1;
@@ -802,17 +838,18 @@ MlasRequantizeOutput(
 
 #else
 
+template <typename OutputType>
 void
 MLASCALL
 MlasRequantizeOutput(
     const int32_t* Input,
     size_t InputLeadingDimension,
-    uint8_t* Output,
+    OutputType* Output,
     size_t OutputLeadingDimension,
     const int32_t* Bias,
     const float* Scale,
     bool PerColumnScale,
-    uint8_t ZeroPoint,
+    OutputType ZeroPoint,
     size_t StartM,
     size_t StartN,
     size_t CountM,
@@ -820,8 +857,8 @@ MlasRequantizeOutput(
     )
 {
     const float PerMatrixScaleValue = PerColumnScale ? 0.0f : *Scale;
-    const float MinimumValue = float(0 - ZeroPoint);
-    const float MaximumValue = float(255 - ZeroPoint);
+    const float MinimumValue = float(std::numeric_limits<OutputType>::lowest() - ZeroPoint);
+    const float MaximumValue = float(std::numeric_limits<OutputType>::max() - ZeroPoint);
 
     if (nullptr != Bias) {
         Bias += StartN;
@@ -872,7 +909,7 @@ MlasRequantizeOutput(
             IntegerValue = int32_t(MlasBitsOfFp32(FloatValue + MLAS_ROUNDING_BIAS_MAGIC)) -
                 MLAS_ROUNDING_BIAS_MAGIC_BITS;
 
-            *RowOutput++ = uint8_t(IntegerValue + ZeroPoint);
+            *RowOutput++ = OutputType(IntegerValue + ZeroPoint);
 
             n -= 1;
         }
@@ -884,6 +921,42 @@ MlasRequantizeOutput(
 }
 
 #endif
+
+template
+void
+MLASCALL
+MlasRequantizeOutput<int8_t>(
+    const int32_t* Input,
+    size_t InputLeadingDimension,
+    int8_t* Output,
+    size_t OutputLeadingDimension,
+    const int32_t* Bias,
+    const float* Scale,
+    bool PerColumnScale,
+    int8_t ZeroPoint,
+    size_t StartM,
+    size_t StartN,
+    size_t CountM,
+    size_t CountN
+    );
+
+template
+void
+MLASCALL
+MlasRequantizeOutput<uint8_t>(
+    const int32_t* Input,
+    size_t InputLeadingDimension,
+    uint8_t* Output,
+    size_t OutputLeadingDimension,
+    const int32_t* Bias,
+    const float* Scale,
+    bool PerColumnScale,
+    uint8_t ZeroPoint,
+    size_t StartM,
+    size_t StartN,
+    size_t CountM,
+    size_t CountN
+    );
 
 void
 MLASCALL

@@ -20,7 +20,7 @@ void DnnlSoftmax::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
 
   auto axis = ReadAxis(node);
   
-  auto softmax_src_mem = sp.GetMemory(node.Input(IN_X).Name());
+  auto softmax_src_mem = sp.GetMemory(node.Input(IN_X));
   auto softmax_src_md = softmax_src_mem.get_desc();
 
   if (axis < 0)
@@ -42,7 +42,7 @@ void DnnlSoftmax::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
 
 int64_t DnnlSoftmax::ReadAxis(DnnlNode& node) {
   auto attr = node.Attributes().find("axis");
-  int64_t axis = 1; //Default value according to ONNX spec
+  int64_t axis = -1; //Default value according to ONNX spec 13 but works with lower opset too
   if (attr != node.Attributes().end() &&
       attr->second().type() == ::ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INT) {
     axis = attr->second().i();

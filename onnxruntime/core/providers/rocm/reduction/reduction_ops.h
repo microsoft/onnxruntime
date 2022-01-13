@@ -16,10 +16,10 @@ namespace ReductionOps {
 // `input_shape_override` is the input shape for compute purposes (if provided)
 
 template <typename T, miopenReduceTensorIndices_t ReduceTensorIndices = MIOPEN_REDUCE_TENSOR_NO_INDICES>
-Tensor ReduceCompute(ROCMExecutionProvider& rocm_ep, miopenReduceTensorOp_t miopen_reduce_op, AllocatorPtr allocator,
-                     const Tensor& input, const std::vector<int64_t>& axes,
-                     bool keep_dims, bool calculate_log, bool calculate_sqt, bool log_sum_exp,
-                     bool fast_reduction, const TensorShape* input_shape_override = nullptr);
+std::unique_ptr<Tensor> ReduceCompute(ROCMExecutionProvider& rocm_ep, miopenReduceTensorOp_t miopen_reduce_op, AllocatorPtr allocator,
+                                      const Tensor& input, const std::vector<int64_t>& axes,
+                                      bool keep_dims, bool calculate_log, bool calculate_sqt, bool log_sum_exp,
+                                      bool fast_reduction, const TensorShape* input_shape_override = nullptr);
 
 }  // namespace ReductionOps
 

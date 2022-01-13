@@ -20,11 +20,13 @@ namespace onnxruntime {
 
 REGISTER_VERSIONED_TYPED_KERNEL(float, 7, 8);
 REGISTER_VERSIONED_TYPED_KERNEL(int32_t, 7, 8);
+REGISTER_VERSIONED_TYPED_KERNEL(int8_t, 7, 8);
 REGISTER_VERSIONED_TYPED_KERNEL(uint8_t, 7, 8);
 
 // Upsample was deprecated in opset 10
 REGISTER_VERSIONED_TYPED_KERNEL(float, 9, 9);
 REGISTER_VERSIONED_TYPED_KERNEL(int32_t, 9, 9);
+REGISTER_VERSIONED_TYPED_KERNEL(int8_t, 9, 9);
 REGISTER_VERSIONED_TYPED_KERNEL(uint8_t, 9, 9);
 
 template <typename T>
@@ -1028,7 +1030,7 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
                                 const std::vector<int64_t>& output_dims) const {
   const auto* X = context->Input<Tensor>(0);
   ORT_ENFORCE(X != nullptr);
-  const std::vector<int64_t>& dims = X->Shape().GetDims();
+  auto dims = X->Shape().GetDims();
   ORT_ENFORCE(output_dims.size() == dims.size(), "Rank of input and output tensor should be same.");
 
   Tensor* Y = context->Output(0, output_dims);

@@ -78,25 +78,25 @@ inline std::vector<OrtValue> GradientChecker<X_T, Y_T, JAC_T>::EvaluateFunctionA
     if (x_infos[data_index].data_type == DataTypeImpl::GetTensorType<int64_t>()) {
       std::vector<int64_t> int64_data(data.size());
       std::transform(data.begin(), data.end(), int64_data.begin(), [](X_T x) { return static_cast<int64_t>(x); });
-      op_session.AddInput<int64_t>(name.c_str(), x_infos[data_index].shape.GetDims(), int64_data);
+      op_session.AddInput<int64_t>(name.c_str(), x_infos[data_index].shape.GetDimsAsVector(), int64_data);
     } else if (x_infos[data_index].data_type == DataTypeImpl::GetTensorType<int32_t>()) {
       std::vector<int32_t> int32_data(data.size());
       std::transform(data.begin(), data.end(), int32_data.begin(), [](X_T x) { return static_cast<int32_t>(x); });
-      op_session.AddInput<int32_t>(name.c_str(), x_infos[data_index].shape.GetDims(), int32_data);
+      op_session.AddInput<int32_t>(name.c_str(), x_infos[data_index].shape.GetDimsAsVector(), int32_data);
     } else if (x_infos[data_index].data_type == DataTypeImpl::GetTensorType<bool>()) {
       std::unique_ptr<bool[]> p_data(new bool[data.size()]);
       for (size_t i = 0; i < data.size(); ++i) {
         p_data[i] = static_cast<bool>(data[i]);
       }
-      op_session.AddInput<bool>(name.c_str(), x_infos[data_index].shape.GetDims(), p_data.get(), data.size());
+      op_session.AddInput<bool>(name.c_str(), x_infos[data_index].shape.GetDimsAsVector(), p_data.get(), data.size());
     } else {
-      op_session.AddInput<X_T>(name.c_str(), x_infos[data_index].shape.GetDims(), data);
+      op_session.AddInput<X_T>(name.c_str(), x_infos[data_index].shape.GetDimsAsVector(), data);
     }
   }
 
   for (size_t data_index = 0; data_index < y_infos.size(); data_index++) {
     std::string name = "output" + std::to_string(data_index);
-    op_session.AddOutput<Y_T>(name.c_str(), y_infos[data_index].shape.GetDims(), (*y_datas)[data_index]);
+    op_session.AddOutput<Y_T>(name.c_str(), y_infos[data_index].shape.GetDimsAsVector(), (*y_datas)[data_index]);
   }
   op_session.Run();
   return op_session.GetFetches();
@@ -119,7 +119,7 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeTheoreticalJacobianTransp
   // build the graph once and reuse it later in the looping logic
   GradientOpTester op_session(op_def.type.c_str(), x_infos, y_infos, op_def.opset_version, op_def.domain.c_str(), false);
   op_session.AddShapeToTensorData(add_shape);
-  InitOpTesterWithGradGraph(op_session, x_infos, y_infos, x_datas, y_datas, attributes);
+  ORT_RETURN_IF_ERROR(InitOpTesterWithGradGraph(op_session, x_infos, y_infos, x_datas, y_datas, attributes));
 
   // currently only supported scalar valued fns - and complex types are not supported
   for (int y_idx = 0; y_idx < static_cast<int>(y_num); y_idx++) {  // for each dy input
@@ -142,25 +142,25 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeTheoreticalJacobianTransp
         if (x_infos[data_index].data_type == DataTypeImpl::GetTensorType<int64_t>()) {
           std::vector<int64_t> int64_data(data.size());
           std::transform(data.begin(), data.end(), int64_data.begin(), [](X_T x) { return static_cast<int64_t>(x); });
-          op_session.AddInput<int64_t>(name.c_str(), x_infos[data_index].shape.GetDims(), int64_data);
+          op_session.AddInput<int64_t>(name.c_str(), x_infos[data_index].shape.GetDimsAsVector(), int64_data);
         } else if (x_infos[data_index].data_type == DataTypeImpl::GetTensorType<int32_t>()) {
           std::vector<int32_t> int32_data(data.size());
           std::transform(data.begin(), data.end(), int32_data.begin(), [](X_T x) { return static_cast<int32_t>(x); });
-          op_session.AddInput<int32_t>(name.c_str(), x_infos[data_index].shape.GetDims(), int32_data);
+          op_session.AddInput<int32_t>(name.c_str(), x_infos[data_index].shape.GetDimsAsVector(), int32_data);
         } else if (x_infos[data_index].data_type == DataTypeImpl::GetTensorType<bool>()) {
           std::unique_ptr<bool[]> p_data(new bool[data.size()]);
           for (size_t i = 0; i < data.size(); ++i) {
             p_data[i] = static_cast<bool>(data[i]);
           }
-          op_session.AddInput<bool>(name.c_str(), x_infos[data_index].shape.GetDims(), p_data.get(), data.size());
+          op_session.AddInput<bool>(name.c_str(), x_infos[data_index].shape.GetDimsAsVector(), p_data.get(), data.size());
         } else {
-          op_session.AddInput<X_T>(name.c_str(), x_infos[data_index].shape.GetDims(), data);
+          op_session.AddInput<X_T>(name.c_str(), x_infos[data_index].shape.GetDimsAsVector(), data);
         }
       }
 
       for (size_t data_index = 0; data_index < y_num; data_index++) {
         std::string name = "output" + std::to_string(data_index);
-        op_session.AddOutput<Y_T>(name.c_str(), y_infos[data_index].shape.GetDims(), (*y_datas)[data_index]);
+        op_session.AddOutput<Y_T>(name.c_str(), y_infos[data_index].shape.GetDimsAsVector(), (*y_datas)[data_index]);
       }
 
       // While calculating theoritical jacobian transpose we calculate the gradient by
@@ -215,7 +215,7 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::InitOpTesterWithGraph(
       std::vector<int64_t> int64_data(data.size());
       std::transform(data.begin(), data.end(), int64_data.begin(), [](X_T x) { return static_cast<int64_t>(x); });
       op_session.AddInput<int64_t>(name.c_str(),
-                                   x_infos[data_index].shape.GetDims(),
+                                   x_infos[data_index].shape.GetDimsAsVector(),
                                    int64_data,
                                    false,
                                    &x_infos[data_index].dim_params);
@@ -223,7 +223,7 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::InitOpTesterWithGraph(
       std::vector<int32_t> int32_data(data.size());
       std::transform(data.begin(), data.end(), int32_data.begin(), [](X_T x) { return static_cast<int32_t>(x); });
       op_session.AddInput<int32_t>(name.c_str(),
-                                   x_infos[data_index].shape.GetDims(),
+                                   x_infos[data_index].shape.GetDimsAsVector(),
                                    int32_data,
                                    false,
                                    &x_infos[data_index].dim_params);
@@ -233,14 +233,14 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::InitOpTesterWithGraph(
         p_data[i] = static_cast<bool>(data[i]);
       }
       op_session.AddInput<bool>(name.c_str(),
-                                x_infos[data_index].shape.GetDims(),
+                                x_infos[data_index].shape.GetDimsAsVector(),
                                 p_data.get(),
                                 data.size(),
                                 false,
                                 &x_infos[data_index].dim_params);
     } else {
       op_session.AddInput<X_T>(name.c_str(),
-                               x_infos[data_index].shape.GetDims(),
+                               x_infos[data_index].shape.GetDimsAsVector(),
                                data,
                                false,
                                &x_infos[data_index].dim_params);
@@ -255,10 +255,10 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::InitOpTesterWithGraph(
       std::vector<int64_t> int64_data(data.size());
       std::transform(data.begin(), data.end(), int64_data.begin(), [](Y_T x) { return static_cast<int64_t>(x); });
       op_session.AddOutput<int64_t>(name.c_str(),
-                                    y_infos[data_index].shape.GetDims(),
+                                    y_infos[data_index].shape.GetDimsAsVector(),
                                     int64_data);
     } else {
-      op_session.AddOutput<Y_T>(name.c_str(), y_infos[data_index].shape.GetDims(), data);
+      op_session.AddOutput<Y_T>(name.c_str(), y_infos[data_index].shape.GetDimsAsVector(), data);
     }
   }
   // Currently only allows setting int attributes to zero. TODO: Expand this
@@ -298,7 +298,8 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::InitOpTesterWithGradGraph(
     std::vector<std::vector<Y_T>>* y_datas,
     const std::vector<AttributeProto>& attributes) {
   std::unordered_map<std::string, int> extra_domain_to_version{{kMSDomain, 1}, {kOnnxDomain, 9}};
-  InitOpTesterWithGraph(op_session, x_infos, y_infos, x_datas, y_datas, attributes, extra_domain_to_version);
+  ORT_RETURN_IF_ERROR(InitOpTesterWithGraph(op_session, x_infos, y_infos, x_datas, y_datas, attributes,
+                                            extra_domain_to_version));
   // build grad graph
   auto p_model = op_session.GetModelCache();
   auto& graph = p_model->MainGraph();
@@ -349,7 +350,7 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeNumericJacobianTranspose(
   // build the graph once and reuse it later in the looping logic
   OpTester op_session(op_def.type.c_str(), op_def.opset_version, op_def.domain.c_str(), false);
   op_session.AddShapeToTensorData(add_shape);
-  InitOpTesterWithGraph(op_session, x_infos, y_infos, x_datas, y_datas, attributes);
+  ORT_RETURN_IF_ERROR(InitOpTesterWithGraph(op_session, x_infos, y_infos, x_datas, y_datas, attributes));
 
   for (int x_idx = 0; x_idx < static_cast<int>(x_num); x_idx++) {
     if (!x_infos[x_idx].has_gradient) {
@@ -452,7 +453,7 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeGradientErrorInternal(
     std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers /* nullptr */) {
   // Initialize numeric Jacobian to zeros.
   std::vector<std::vector<JAC_T>> jacobian_ns;
-  InitJacobians(x_infos, y_infos, &jacobian_ns);
+  ORT_RETURN_IF_ERROR(InitJacobians(x_infos, y_infos, &jacobian_ns));
   // Compute numeric Jacobian.
   ORT_RETURN_IF_ERROR(ComputeNumericJacobianTranspose(
       op_def, x_infos, y_infos, JAC_T{1e-3f}, x_datas, y_datas, &jacobian_ns, attributes));
@@ -470,7 +471,7 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeGradientErrorInternal(
     for (size_t x_gradient_variation = 0; x_gradient_variation < total_gradient_variations; x_gradient_variation++) {
       // Initialize theoretical Jacobians to zeros.
       std::vector<std::vector<JAC_T>> jacobian_ts;
-      InitJacobians(x_infos, y_infos, &jacobian_ts);
+      ORT_RETURN_IF_ERROR(InitJacobians(x_infos, y_infos, &jacobian_ts));
 
       std::vector<TensorInfo> x_infos_gradient_variation = x_infos;
 
