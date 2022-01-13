@@ -112,7 +112,7 @@ class TVMRunner {
 
         for (auto i = 0u; i < num_outputs; i++) {
           DLTensor t;
-          // Data pointer and type are defined during inference
+          // Draft for tensor, correct data is defined during inference
           t.strides = nullptr;
           t.byte_offset = 0;
           t.data = nullptr;
@@ -518,7 +518,7 @@ int TvmExecutionProvider::CreateStateFunc(ComputeContext* context, FunctionState
 }
 
 TvmModule* TvmExecutionProvider::CompileFunc(std::string func_name,
-                                                         const TVMTensorShapes& input_shapes) {
+                                             const TVMTensorShapes& input_shapes) {
   if (modules_.count(func_name)) {
     return modules_[func_name].get();
   }

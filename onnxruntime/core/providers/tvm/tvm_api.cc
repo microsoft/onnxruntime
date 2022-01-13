@@ -1,13 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/common/common.h"
-
-#include "tvm_api.h"
-
 #include <tvm/runtime/registry.h>
 #include <tvm/target/codegen.h>
 
+#include "core/common/common.h"
+
+#include "tvm_api.h"
 
 namespace onnxruntime {
 namespace tvm {
@@ -124,6 +123,7 @@ void TVM_VM_Run(TvmModule& mod,
                 [[maybe_unused]] ::tvm::runtime::TVMRetValue *ret)
 {
   const TvmPackedFunc* run = ::tvm::runtime::Registry::Get("tvm_vm_run");
+  ORT_ENFORCE(run != nullptr, "Unable to retrieve 'tvm_vm_run'.");
   (*run)(mod);
 }
 
