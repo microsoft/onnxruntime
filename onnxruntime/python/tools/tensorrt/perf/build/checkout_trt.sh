@@ -8,7 +8,7 @@ then
     git remote update
     if [ "$1" = "8.0" ]
     then 
-        git checkout "$1"'-GA'
+        git checkout 1f416bb
     fi
     if [ "$1" = "7.2" ]
     then 
