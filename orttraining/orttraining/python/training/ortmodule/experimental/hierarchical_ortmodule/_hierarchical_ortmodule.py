@@ -52,10 +52,7 @@ class HierarchicalORTModule(torch.nn.Module):
         self._initialized = False
         super(HierarchicalORTModule, self).__init__()
         self._original_module = module
-        if not debug_options:
-            self._debug_options = DebugOptions()
-        else:
-            self._debug_options = debug_options
+        self._debug_options = debug_options if debug_options else DebugOptions()
 
     def _initialize(self, *args, **kwargs):
         handle_pool = []
