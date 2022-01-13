@@ -37,8 +37,7 @@ class NodeGroupSelector {
                      int num_dq_inputs = -1) const;
 
   // base check that we have the expected number of DQ inputs.
-  bool CheckDQNodes(const GraphViewer& graph_viewer, const Node& node,
-                    const std::vector<const Node*>& dq_nodes) const;
+  bool CheckDQNodes(const Node& node, const std::vector<const Node*>& dq_nodes) const;
 
  private:
   // derived classes should implement this check

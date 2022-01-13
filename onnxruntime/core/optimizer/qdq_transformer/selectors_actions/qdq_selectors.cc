@@ -54,11 +54,9 @@ bool NodeGroupSelector::CheckQDQNodes(const GraphViewer& graph_viewer, const Nod
          !graph_viewer.NodeProducesGraphOutput(node);
 }
 
-bool NodeGroupSelector::CheckDQNodes(const GraphViewer& graph_viewer, const Node& node,
-                                     const std::vector<const Node*>& dq_nodes) const {
+bool NodeGroupSelector::CheckDQNodes(const Node& node, const std::vector<const Node*>& dq_nodes) const {
   int num_dq_inputs = NumActualValues(node, true);
 
-  // The input is a Graph Viewer, so cannot use graph_utils or optimizer_utils
   return num_dq_inputs == gsl::narrow_cast<int>(dq_nodes.size());
 }
 
@@ -116,7 +114,7 @@ bool DropDQNodeGroupSelector::Check(const GraphViewer& graph_viewer,
                                     const Node& node,
                                     const std::vector<const Node*>& dq_nodes,
                                     const std::vector<const Node*>& q_nodes) const {
-  if (!CheckDQNodes(graph_viewer, node, dq_nodes)) {
+  if (!CheckDQNodes(node, dq_nodes)) {
     return false;
   }
 
