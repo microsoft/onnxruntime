@@ -95,7 +95,7 @@ CudnnFilterDescriptor::~CudnnFilterDescriptor() {
   }
 }
 
-Status CudnnFilterDescriptor::Set(const TensorShapeVector& filter_dims, cudnnDataType_t data_type) {
+Status CudnnFilterDescriptor::Set(gsl::span<const int64_t> filter_dims, cudnnDataType_t data_type) {
   if (!desc_)
     CUDNN_RETURN_IF_ERROR(cudnnCreateFilterDescriptor(&desc_));
 

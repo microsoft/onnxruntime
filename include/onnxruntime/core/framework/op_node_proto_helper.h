@@ -5,6 +5,7 @@
 
 #ifndef SHARED_PROVIDER
 #include "core/common/status.h"
+#include "core/framework/tensor_shape.h"
 #include "core/graph/graph_viewer.h"
 #include "gsl/gsl"
 #endif

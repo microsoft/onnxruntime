@@ -27,10 +27,8 @@ using InlinedVector = absl::InlinedVector<T, N>;
 
 // InlinedHashSet and InlinedHashMap are preferred
 // hash based containers. They store their values in the
-// buckets array that is allocated in one shot. It eliminated
-// per-node new/delete calls. Proper memory estimates combined with
-// OrtDeclareAllignedStackOrAllocatedBuffer may reduce the number of needed
-// allocated to 1 or completely place it on a stack.
+// buckets array that is allocated in one shot. It eliminates
+// per-node new/delete calls.
 template <typename T>
 using InlinedHashSet = absl::flat_hash_set<T>;
 
