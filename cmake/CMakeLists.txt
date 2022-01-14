@@ -60,7 +60,7 @@ option(onnxruntime_BUILD_OBJC "Build Objective-C library" OFF)
 option(onnxruntime_USE_PREINSTALLED_EIGEN "Use pre-installed EIGEN. Need to provide eigen_SOURCE_PATH if turn this on." OFF)
 option(onnxruntime_BUILD_BENCHMARKS "Build ONNXRuntime micro-benchmarks" OFF)
 
-option(onnxruntime_NUPHAR_USE_TVM "Build TVM for code generation." OFF)
+option(onnxruntime_USE_NUPHAR_TVM "Build TVM for code generation." OFF)
 option(onnxruntime_USE_LLVM "Build TVM with LLVM" OFF)
 
 option(onnxruntime_BUILD_FOR_NATIVE_MACHINE "Enable this option for turning on optimization specific to this machine" OFF)
@@ -1712,7 +1712,7 @@ if (onnxruntime_USE_ROCM)
   add_definitions(-DROCM_VERSION=${ROCM_VERSION_DEV_INT})
 endif()
 
-if (onnxruntime_NUPHAR_USE_TVM)
+if (onnxruntime_USE_NUPHAR_TVM)
   if (WIN32 AND MSVC)
     # wd4100: identifier' : unreferenced formal parameter
     # wd4244: conversion from 'int' to 'char', possible loss of data

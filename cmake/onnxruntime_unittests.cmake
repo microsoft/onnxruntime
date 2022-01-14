@@ -9,7 +9,7 @@ set(TEST_INC_DIR ${ONNXRUNTIME_ROOT})
 if (onnxruntime_ENABLE_TRAINING)
   list(APPEND TEST_INC_DIR ${ORTTRAINING_ROOT})
 endif()
-if (onnxruntime_NUPHAR_USE_TVM)
+if (onnxruntime_USE_NUPHAR_TVM)
   list(APPEND TEST_INC_DIR ${TVM_INCLUDES})
 endif()
 
@@ -459,8 +459,8 @@ if(onnxruntime_USE_COREML)
   endif()
 endif()
 
-if(onnxruntime_USE_NUPHAR)
-  file(GLOB_RECURSE onnxruntime_test_nuphar_src CONFIGURE_DEPENDS
+if(onnxruntime_USE_NUPHAR_TVM)
+  file(GLOB_RECURSE onnxruntime_test_nuphar_tvm_src CONFIGURE_DEPENDS
     "${TEST_SRC_DIR}/nuphar_tvm/*.h"
     "${TEST_SRC_DIR}/nuphar_tvm/*.cc"
   )
@@ -560,7 +560,7 @@ if (onnxruntime_USE_TVM)
 endif()
 
 if(WIN32)
-  if (onnxruntime_NUPHAR_USE_TVM)
+  if (onnxruntime_USE_NUPHAR_TVM)
     list(APPEND disabled_warnings ${DISABLED_WARNINGS_FOR_TVM})
   endif()
 endif()
@@ -644,8 +644,8 @@ if (onnxruntime_ENABLE_TRAINING)
   list(APPEND all_tests ${onnxruntime_test_training_src})
 endif()
 
-if (onnxruntime_USE_NUPHAR)
-  list(APPEND all_tests ${onnxruntime_test_nuphar_src})
+if (onnxruntime_USE_NUPHAR_TVM)
+  list(APPEND all_tests ${onnxruntime_test_nuphar_tvm_src})
 endif()
 
 if (onnxruntime_USE_TVM)
@@ -794,7 +794,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
       )
   endif()
   if(WIN32)
-    if (onnxruntime_NUPHAR_USE_TVM)
+    if (onnxruntime_USE_NUPHAR_TVM)
       add_custom_command(
         TARGET ${test_data_target} POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:tvm> $<TARGET_FILE_DIR:${test_data_target}>
@@ -851,7 +851,7 @@ if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
 endif()
 set_target_properties(onnx_test_runner PROPERTIES FOLDER "ONNXRuntimeTest")
 
-if (onnxruntime_NUPHAR_USE_TVM)
+if (onnxruntime_USE_NUPHAR_TVM)
   if (WIN32)
     target_link_options(onnx_test_runner PRIVATE "/STACK:4000000")
   endif()
@@ -1050,7 +1050,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
     target_link_libraries(onnxruntime_perf_test PRIVATE onnxruntime_language_interop onnxruntime_pyop)
   endif()
 
-  if (onnxruntime_NUPHAR_USE_TVM)
+  if (onnxruntime_USE_NUPHAR_TVM)
     if (WIN32)
       target_link_options(onnxruntime_perf_test PRIVATE "/STACK:4000000")
     endif()
