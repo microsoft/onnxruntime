@@ -24,10 +24,8 @@ void ScalarSqrt(cudaStream_t stream, Tin* input, Tout* output) {
 template void ScalarSqrt(cudaStream_t stream, float* input, float* output);
 template void ScalarSqrt(cudaStream_t stream, half* input, half* output);
 template void ScalarSqrt(cudaStream_t stream, float* input, half* output);
-#if CUDA_VERSION >= 11000 && (__CUDA_ARCH__ >= 800 || !defined(__CUDA_ARCH__))
-template void ScalarSqrt(cudaStream_t stream, nv_bfloat16* input, nv_bfloat16* output);
-template void ScalarSqrt(cudaStream_t stream, float* input, nv_bfloat16* output);
-#endif
+template void ScalarSqrt(cudaStream_t stream, BFloat16* input, BFloat16* output);
+template void ScalarSqrt(cudaStream_t stream, float* input, BFloat16* output);
 
 template <typename TIn, typename TOut, typename TBuf, typename TInOp, typename TOutOp>
 __launch_bounds__(ChunkGroup<1>::thread_count_per_block)
@@ -114,11 +112,9 @@ INSTANTIATE_MULTI_TENSOR_REDUCTION_L2_FUNCTOR(float, float)
 INSTANTIATE_MULTI_TENSOR_REDUCTION_L2_FUNCTOR(half, float)
 INSTANTIATE_MULTI_TENSOR_REDUCTION_L2_FUNCTOR(float, half)
 INSTANTIATE_MULTI_TENSOR_REDUCTION_L2_FUNCTOR(half, half)
-#if CUDA_VERSION >= 11000 && (__CUDA_ARCH__ >= 800 || !defined(__CUDA_ARCH__))
-INSTANTIATE_MULTI_TENSOR_REDUCTION_L2_FUNCTOR(nv_bfloat16, float)
-INSTANTIATE_MULTI_TENSOR_REDUCTION_L2_FUNCTOR(float, nv_bfloat16)
-INSTANTIATE_MULTI_TENSOR_REDUCTION_L2_FUNCTOR(nv_bfloat16, nv_bfloat16)
-#endif
+INSTANTIATE_MULTI_TENSOR_REDUCTION_L2_FUNCTOR(BFloat16, float)
+INSTANTIATE_MULTI_TENSOR_REDUCTION_L2_FUNCTOR(float, BFloat16)
+INSTANTIATE_MULTI_TENSOR_REDUCTION_L2_FUNCTOR(BFloat16, BFloat16)
 
 }  // namespace cuda
 }  // namespace onnxruntime
