@@ -206,14 +206,14 @@ a.link:active .link-arrow{
     width: 50px;
     height: 55px;
 }
-.sponsor-logo img{
+.customer-logo img{
    max-width: 100%;
    padding-right:20px;
    padding-left:20px;
 }
 
 
- div.sponsor-logo:hover{
+ div.customer-logo:hover{
     background-color: #e8e8e8;
     transition: .4s;
  }
