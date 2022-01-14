@@ -91,8 +91,9 @@ elif [ $BUILD_DEVICE = "gpu" ]; then
         if [[ $ORTMODULE_BUILD = true ]]; then
             INSTALL_DEPS_EXTRA_ARGS="${INSTALL_DEPS_EXTRA_ARGS} -u"
         fi
+        INSTALL_DEPS_EXTRA_ARGS="${INSTALL_DEPS_EXTRA_ARGS} -v 11.3"
         $GET_DOCKER_IMAGE_CMD --repository "onnxruntime-$IMAGE" \
-            --docker-build-args="--build-arg BASEIMAGE=nvcr.io/nvidia/cuda:11.1.1-cudnn8-devel-${BUILD_OS} --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER} --build-arg INSTALL_DEPS_EXTRA_ARGS=\"${INSTALL_DEPS_EXTRA_ARGS}\" --build-arg USE_CONDA=${USE_CONDA} --network=host" \
+            --docker-build-args="--build-arg BASEIMAGE=nvcr.io/nvidia/cuda:11.3.1-cudnn8-devel-${BUILD_OS} --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER} --build-arg INSTALL_DEPS_EXTRA_ARGS=\"${INSTALL_DEPS_EXTRA_ARGS}\" --build-arg USE_CONDA=${USE_CONDA} --network=host" \
             --dockerfile Dockerfile.ubuntu_gpu_training --context .
 elif [[ $BUILD_DEVICE = "tensorrt"* ]]; then
         if [ $BUILD_DEVICE = "tensorrt-v7.1" ]; then
