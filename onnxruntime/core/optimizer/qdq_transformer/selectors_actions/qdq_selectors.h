@@ -36,9 +36,6 @@ class NodeGroupSelector {
                      const std::vector<const Node*>& q_nodes,
                      int num_dq_inputs = -1) const;
 
-  // base check that we have the expected number of DQ inputs.
-  bool CheckDQNodes(const Node& node, const std::vector<const Node*>& dq_nodes) const;
-
  private:
   // derived classes should implement this check
   bool virtual Check(const GraphViewer& graph_viewer, const Node& node,
@@ -61,6 +58,9 @@ class DropQDQNodeGroupSelector : public NodeGroupSelector {
 
 // Single DQ -> node.
 class DropDQNodeGroupSelector : public NodeGroupSelector {
+  // base check that we have the expected number of DQ inputs.
+  bool CheckDQNodes(const Node& node, const std::vector<const Node*>& dq_nodes) const;
+
   bool Check(const GraphViewer& graph_viewer, const Node& node,
              const std::vector<const Node*>& dq_nodes,
              const std::vector<const Node*>& q_nodes) const override;
