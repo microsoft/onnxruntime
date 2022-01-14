@@ -835,7 +835,6 @@ SPECIALIZED_REDUCEKERNEL_COMPUTEIMPL(int64_t)
 SPECIALIZED_REDUCEKERNEL_COMPUTEIMPL(int8_t)
 SPECIALIZED_REDUCEKERNEL_COMPUTEIMPL(uint8_t)
 
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
 template <>
 template <>
 Status ReduceKernel<true>::ComputeImpl<BFloat16, CUDNN_REDUCE_TENSOR_NO_INDICES>(
@@ -940,7 +939,6 @@ Status ReduceKernel<true>::ComputeImpl<BFloat16, CUDNN_REDUCE_TENSOR_NO_INDICES>
 
   return Status::OK();
 }
-#endif
 
 namespace ReductionOps {
 
@@ -997,17 +995,11 @@ template std::unique_ptr<Tensor> ReduceCompute<MLFloat16, CUDNN_REDUCE_TENSOR_NO
 
 }  // namespace ReductionOps
 
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
-#define REGISTER_KERNEL_TYPED_BF16(name) REGISTER_KERNEL_TYPED(name, BFloat16)
-#else
-#define REGISTER_KERNEL_TYPED_BF16(name)
-#endif
-
 #define REGISTER_KERNEL_HFD(name)        \
   REGISTER_KERNEL_TYPED(name, MLFloat16) \
-  REGISTER_KERNEL_TYPED_BF16(name)       \
   REGISTER_KERNEL_TYPED(name, float)     \
-  REGISTER_KERNEL_TYPED(name, double)
+  REGISTER_KERNEL_TYPED(name, double)    \
+  REGISTER_KERNEL_TYPED(name, BFloat16)
 
 #define REGISTER_KERNEL_HFD_11(name)        \
   REGISTER_KERNEL_TYPED_11(name, MLFloat16) \
@@ -1052,9 +1044,7 @@ REGISTER_KERNEL_TYPED_13(ReduceSum, float)
 REGISTER_KERNEL_TYPED_13(ReduceSum, double)
 REGISTER_KERNEL_TYPED_13(ReduceSum, int32_t)
 REGISTER_KERNEL_TYPED_13(ReduceSum, int64_t)
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
 REGISTER_KERNEL_TYPED_13(ReduceSum, BFloat16)
-#endif
 
 REGISTER_KERNEL_HFD(ReduceLogSum)
 REGISTER_KERNEL_HFD(ReduceSumSquare)

@@ -74,8 +74,6 @@ REGISTER_LAMB_KERNEL_TYPED(MLFloat16, float, MLFloat16, MLFloat16, MLFloat16, ML
 REGISTER_LAMB_KERNEL_TYPED(MLFloat16, float, MLFloat16, MLFloat16, float, MLFloat16)
 REGISTER_LAMB_KERNEL_TYPED(MLFloat16, float, MLFloat16, float, MLFloat16, MLFloat16)
 REGISTER_LAMB_KERNEL_TYPED(MLFloat16, float, MLFloat16, float, float, MLFloat16)
-
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
 REGISTER_LAMB_KERNEL_TYPED(float, float, BFloat16, float, BFloat16, BFloat16)
 REGISTER_LAMB_KERNEL_TYPED(float, float, BFloat16, float, float, BFloat16)
 REGISTER_LAMB_KERNEL_TYPED(float, float, float, float, float, BFloat16)
@@ -84,7 +82,6 @@ REGISTER_LAMB_KERNEL_TYPED(BFloat16, float, BFloat16, BFloat16, BFloat16, BFloat
 REGISTER_LAMB_KERNEL_TYPED(BFloat16, float, BFloat16, BFloat16, float, BFloat16)
 REGISTER_LAMB_KERNEL_TYPED(BFloat16, float, BFloat16, float, BFloat16, BFloat16)
 REGISTER_LAMB_KERNEL_TYPED(BFloat16, float, BFloat16, float, float, BFloat16)
-#endif
 
 void check_inputs_and_outputs(
     const Tensor* w,
