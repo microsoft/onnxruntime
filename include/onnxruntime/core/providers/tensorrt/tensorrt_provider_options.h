@@ -5,7 +5,9 @@
 
 /// <summary>
 /// Options for the TensorRT provider that are passed to SessionOptionsAppendExecutionProvider_TensorRT_V2.
-/// Please note that this struct is identical to OrtTensorRTProviderOptions but only to be used internally. 
+/// Please note that this struct is *similar* to OrtTensorRTProviderOptions but only to be used internally. 
+/// Going forward, new trt provider options are to be supported via this struct and usage of the publicly defined
+/// OrtTensorRTProviderOptions will be deprecated over time.
 /// User can only get the instance of OrtTensorRTProviderOptionsV2 via CreateTensorRTProviderOptions.
 /// </summary>
 struct OrtTensorRTProviderOptionsV2 {
@@ -27,4 +29,5 @@ struct OrtTensorRTProviderOptionsV2 {
   int trt_engine_decryption_enable;             // enable engine decryption. Default 0 = false, nonzero = true
   const char* trt_engine_decryption_lib_path;   // specify engine decryption library path
   int trt_force_sequential_engine_build;        // force building TensorRT engine sequentially. Default 0 = false, nonzero = true
+  int trt_timing_cache_enable;                  // enable TensorRT timing cache. Default 0 = false, nonzero = true
 };

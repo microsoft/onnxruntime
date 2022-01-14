@@ -1155,7 +1155,36 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_MIGrap
   return nullptr;
 }
 
+// Adapter to convert the legacy OrtTensorRTProviderOptions to the latest OrtTensorRTProviderOptionsV2
+OrtTensorRTProviderOptionsV2 OrtTensorRTProviderOptionsToOrtTensorRTProviderOptionsV2(const OrtTensorRTProviderOptions* legacy_trt_options) {
+  OrtTensorRTProviderOptionsV2 trt_options_converted;
+
+  trt_options_converted.device_id = legacy_trt_options->device_id;
+  trt_options_converted.has_user_compute_stream = legacy_trt_options->has_user_compute_stream;
+  trt_options_converted.user_compute_stream = legacy_trt_options->user_compute_stream;
+  trt_options_converted.trt_max_partition_iterations = legacy_trt_options->trt_max_partition_iterations;
+  trt_options_converted.trt_min_subgraph_size = legacy_trt_options->trt_min_subgraph_size;
+  trt_options_converted.trt_max_workspace_size = legacy_trt_options->trt_max_workspace_size;
+  trt_options_converted.trt_fp16_enable = legacy_trt_options->trt_fp16_enable;
+  trt_options_converted.trt_int8_enable = legacy_trt_options->trt_int8_enable;
+  trt_options_converted.trt_int8_calibration_table_name = legacy_trt_options->trt_int8_calibration_table_name;
+  trt_options_converted.trt_int8_use_native_calibration_table = legacy_trt_options->trt_int8_use_native_calibration_table;
+  trt_options_converted.trt_dla_enable = legacy_trt_options->trt_dla_enable;
+  trt_options_converted.trt_dla_core = legacy_trt_options->trt_dla_core;
+  trt_options_converted.trt_dump_subgraphs = legacy_trt_options->trt_dump_subgraphs;
+  trt_options_converted.trt_engine_cache_enable = legacy_trt_options->trt_engine_cache_enable;
+  trt_options_converted.trt_engine_cache_path = legacy_trt_options->trt_engine_cache_path;
+  trt_options_converted.trt_engine_decryption_enable = legacy_trt_options->trt_engine_decryption_enable;
+  trt_options_converted.trt_engine_decryption_lib_path = legacy_trt_options->trt_engine_decryption_lib_path;
+  trt_options_converted.trt_force_sequential_engine_build = legacy_trt_options->trt_force_sequential_engine_build;
+  // Use default value as this field is not available in OrtTensorRTProviderOptionsV2
+  trt_options_converted.trt_timing_cache_enalbed = 0;
+
+  return trt_options_converted;
+}
+
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensorrt(const OrtTensorRTProviderOptions* provider_options) {
+  OrtTensorRTProviderOptionsV2 trt_options_converted = onnxruntime::OrtTensorRTProviderOptionsToOrtTensorRTProviderOptionsV2(provider_options);
   if (auto* provider = s_library_tensorrt.Get())
     return provider->CreateExecutionProviderFactory(provider_options);
 
@@ -1466,6 +1495,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateTensorRTProviderOptions, _Outptr_ OrtTensorRT
   (*out)->trt_engine_decryption_enable = false;
   (*out)->trt_engine_decryption_lib_path = nullptr;
   (*out)->trt_force_sequential_engine_build = false;
+  (*out)->trt_timing_cache_enable = false;
   return nullptr;
 #else
   ORT_UNUSED_PARAMETER(out);

@@ -27,6 +27,7 @@ constexpr const char* kCachePath = "trt_engine_cache_path";
 constexpr const char* kDecryptionEnable = "trt_engine_decryption_enable";
 constexpr const char* kDecryptionLibPath = "trt_engine_decryption_lib_path";
 constexpr const char* kForceSequentialEngineBuild = "trt_force_sequential_engine_build";
+constexpr const char* kTimingCacheEnable = "trt_timing_cache_enable";
 }  // namespace provider_option_names
 }  // namespace tensorrt 
 
@@ -63,6 +64,7 @@ TensorrtExecutionProviderInfo TensorrtExecutionProviderInfo::FromProviderOptions
           .AddAssignmentToReference(tensorrt::provider_option_names::kDecryptionEnable, info.engine_decryption_enable)
           .AddAssignmentToReference(tensorrt::provider_option_names::kDecryptionLibPath, info.engine_decryption_lib_path) 
           .AddAssignmentToReference(tensorrt::provider_option_names::kForceSequentialEngineBuild, info.force_sequential_engine_build)
+          .AddAssignmentToReference(tensorrt::provider_option_names::kTimingCacheEnable, info.timing_cache_enable)
           .Parse(options));
 
   return info;
@@ -87,6 +89,7 @@ ProviderOptions TensorrtExecutionProviderInfo::ToProviderOptions(const TensorrtE
       {tensorrt::provider_option_names::kDecryptionEnable, MakeStringWithClassicLocale(info.engine_decryption_enable)},
       {tensorrt::provider_option_names::kDecryptionLibPath, MakeStringWithClassicLocale(info.engine_decryption_lib_path)},
       {tensorrt::provider_option_names::kForceSequentialEngineBuild, MakeStringWithClassicLocale(info.force_sequential_engine_build)},
+      {tensorrt::provider_option_names::kTimingCacheEnable, MakeStringWithClassicLocale(info.timing_cache_enable)},
   };
   return options;
 }

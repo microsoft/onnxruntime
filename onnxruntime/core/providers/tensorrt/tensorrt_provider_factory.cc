@@ -48,7 +48,7 @@ struct Tensorrt_Provider : Provider {
   }
 
   std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(const void* provider_options) override {
-    auto& options = *reinterpret_cast<const OrtTensorRTProviderOptions*>(provider_options);
+    auto& options = *reinterpret_cast<const OrtTensorRTProviderOptionsV2*>(provider_options);
     TensorrtExecutionProviderInfo info;
     info.device_id = options.device_id;
     info.has_user_compute_stream = options.has_user_compute_stream != 0;
@@ -69,12 +69,13 @@ struct Tensorrt_Provider : Provider {
     info.engine_decryption_enable = options.trt_engine_decryption_enable != 0;
     info.engine_decryption_lib_path = options.trt_engine_decryption_lib_path == nullptr ? "" : options.trt_engine_decryption_lib_path;
     info.force_sequential_engine_build = options.trt_force_sequential_engine_build != 0;
+    info.timing_cache_enable = options.trt_timing_cache_enable; 
     return std::make_shared<TensorrtProviderFactory>(info);
   }
 
   void UpdateProviderOptions(void* provider_options, const ProviderOptions& options) override {
     auto internal_options = onnxruntime::TensorrtExecutionProviderInfo::FromProviderOptions(options);
-    auto& trt_options = *reinterpret_cast<OrtTensorRTProviderOptions*>(provider_options);
+    auto& trt_options = *reinterpret_cast<OrtTensorRTProviderOptionsV2*>(provider_options);
     trt_options.device_id = internal_options.device_id;
     trt_options.trt_max_partition_iterations = internal_options.max_partition_iterations;
     trt_options.trt_min_subgraph_size = internal_options.min_subgraph_size;
@@ -134,6 +135,7 @@ struct Tensorrt_Provider : Provider {
     }
 
     trt_options.trt_force_sequential_engine_build = internal_options.force_sequential_engine_build;
+    trt_options.trt_timing_cache_enable = internal_options.timing_cache_enable;
   }
 
   ProviderOptions GetProviderOptions(const void* provider_options) override {
