@@ -233,7 +233,8 @@ else()  # minimal and/or reduced ops build
   endif()
 endif()
 
-if(NOT onnxruntime_MINIMAL_BUILD OR onnxruntime_ENABLE_RUNTIME_OPTIMIZATION_REPLAY_IN_MINIMAL_BUILD)
+if((NOT onnxruntime_MINIMAL_BUILD OR onnxruntime_ENABLE_RUNTIME_OPTIMIZATION_REPLAY_IN_MINIMAL_BUILD)
+   AND NOT onnxruntime_REDUCED_OPS_BUILD)
   list(APPEND onnxruntime_test_optimizer_src
        "${TEST_SRC_DIR}/optimizer/runtime_optimization/graph_runtime_optimization_test.cc")
 endif()
@@ -439,7 +440,8 @@ if(onnxruntime_USE_DML)
 endif()
 
 if(onnxruntime_USE_MIGRAPHX)
-  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_migraphx)
+  list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_migraphx)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_migraphx onnxruntime_providers_shared)
 endif()
 
 if(onnxruntime_USE_ROCM)
@@ -482,8 +484,7 @@ set(ONNXRUNTIME_TEST_LIBS
     onnxruntime_session
     ${ONNXRUNTIME_INTEROP_TEST_LIBS}
     ${onnxruntime_libs}
-    # CUDA, ROCM, TENSORRT, DNNL, and OpenVINO are dynamically loaded at runtime
-    ${PROVIDERS_MIGRAPHX}
+    # CUDA, ROCM, TENSORRT, MIGRAPHX, DNNL, and OpenVINO are dynamically loaded at runtime
     ${PROVIDERS_NUPHAR}
     ${PROVIDERS_NNAPI}
     ${PROVIDERS_RKNPU}
@@ -1165,7 +1166,16 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
   endif()
 endif()
 
-onnxruntime_add_shared_library_module(custom_op_library ${TEST_SRC_DIR}/testdata/custom_op_library/custom_op_library.cc)
+if (onnxruntime_USE_CUDA)
+  onnxruntime_add_shared_library_module(custom_op_library ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/cuda_ops.cu
+                                                          ${TEST_SRC_DIR}/testdata/custom_op_library/custom_op_library.cc)
+  target_include_directories(custom_op_library PRIVATE ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
+  if (HAS_QSPECTRE)
+    target_compile_options(custom_op_library PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /Qspectre>")
+  endif()
+else()
+  onnxruntime_add_shared_library_module(custom_op_library ${TEST_SRC_DIR}/testdata/custom_op_library/custom_op_library.cc)
+endif()
 target_include_directories(custom_op_library PRIVATE ${REPO_ROOT}/include)
 if(UNIX)
   if (APPLE)
@@ -1175,8 +1185,10 @@ if(UNIX)
   endif()
 else()
   set(ONNXRUNTIME_CUSTOM_OP_LIB_LINK_FLAG "-DEF:${TEST_SRC_DIR}/testdata/custom_op_library/custom_op_library.def")
-  target_compile_options(custom_op_library PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler /wd26409>"
-                "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd26409>")
+  if (NOT onnxruntime_USE_CUDA)
+    target_compile_options(custom_op_library PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler /wd26409>"
+                  "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd26409>")
+  endif()
 endif()
 set_property(TARGET custom_op_library APPEND_STRING PROPERTY LINK_FLAGS ${ONNXRUNTIME_CUSTOM_OP_LIB_LINK_FLAG})
 
