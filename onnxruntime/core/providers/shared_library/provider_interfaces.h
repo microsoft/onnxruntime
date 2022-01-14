@@ -151,6 +151,12 @@ struct ProviderHost {
   virtual bool CudaCall_true(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) = 0;
 #endif
 
+#ifdef USE_MIGRAPHX
+  virtual std::unique_ptr<IAllocator> CreateHIPAllocator(int16_t device_id, const char* name) = 0;
+  virtual std::unique_ptr<IAllocator> CreateHIPPinnedAllocator(int16_t device_id, const char* name) = 0;
+  virtual std::unique_ptr<IDataTransfer> CreateGPUDataTransfer(void* stream) = 0;
+#endif
+
 #ifdef USE_ROCM
   virtual std::unique_ptr<IAllocator> CreateROCMAllocator(int16_t device_id, const char* name) = 0;
   virtual std::unique_ptr<IAllocator> CreateROCMPinnedAllocator(int16_t device_id, const char* name) = 0;
@@ -429,6 +435,7 @@ struct ProviderHost {
   virtual ONNX_NAMESPACE::OperatorStatus& IndexedSubGraph_MetaDef__status(IndexedSubGraph_MetaDef* p) = 0;
   virtual std::vector<std::string>& IndexedSubGraph_MetaDef__inputs(IndexedSubGraph_MetaDef* p) = 0;
   virtual std::vector<std::string>& IndexedSubGraph_MetaDef__outputs(IndexedSubGraph_MetaDef* p) = 0;
+  virtual std::vector<std::string>& IndexedSubGraph_MetaDef__constant_initializers(IndexedSubGraph_MetaDef* p) = 0;
   virtual NodeAttributes& IndexedSubGraph_MetaDef__attributes(IndexedSubGraph_MetaDef* p) = 0;
   virtual std::string& IndexedSubGraph_MetaDef__doc_string(IndexedSubGraph_MetaDef* p) = 0;
 

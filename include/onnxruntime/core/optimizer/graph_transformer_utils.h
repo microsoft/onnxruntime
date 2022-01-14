@@ -3,18 +3,28 @@
 
 #pragma once
 
-#include <gsl/gsl>
+#include <memory>
+#include <unordered_set>
+#include <vector>
 
+#include "core/framework/session_options.h"
 #include "core/optimizer/graph_transformer.h"
+
+#if !defined(ORT_MINIMAL_BUILD)
 #include "core/optimizer/rule_based_graph_transformer.h"
 #include "core/optimizer/rewrite_rule.h"
+#endif
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_REPLAY_IN_MINIMAL_BUILD)
+#include "core/optimizer/selectors_actions/selector_action_transformer_apply_contexts.h"
+#endif
 
 namespace onnxruntime {
-struct FreeDimensionOverride;
 class IExecutionProvider;
-struct RuntimeOptimizationSaveContext;
 
 namespace optimizer_utils {
+
+#if !defined(ORT_MINIMAL_BUILD)
 
 /** Generates all predefined rules for this level.
    If rules_to_enable is not empty, it returns the intersection of predefined rules and rules_to_enable.
@@ -40,6 +50,10 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
     const IExecutionProvider& execution_provider /*required by constant folding*/,
     const std::unordered_set<std::string>& rules_and_transformers_to_disable = {});
 
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_REPLAY_IN_MINIMAL_BUILD)
+
 /** Generates all predefined transformers which support runtime optimizations for this level.
     Any transformers or rewrite rules named in rules_and_transformers_to_disable will be excluded.
 
@@ -48,8 +62,11 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
     - The set of transformers which support runtime optimizations is different. */
 std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformersForRuntimeOptimizations(
     TransformerLevel level,
-    const RuntimeOptimizationSaveContext& runtime_optimization_save_context,
+    const SessionOptions& session_options,
+    const SatApplyContextVariant& apply_context,
     const std::unordered_set<std::string>& rules_and_transformers_to_disable = {});
+
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_REPLAY_IN_MINIMAL_BUILD)
 
 }  // namespace optimizer_utils
 }  // namespace onnxruntime
