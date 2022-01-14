@@ -201,16 +201,15 @@ MlasSymmQgemmBatch(
     MLAS_THREADPOOL* ThreadPool
     )
 {
-#ifdef MLAS_TARGET_ARM64
-
     const size_t M = Shape.M;
     const size_t N = Shape.N;
     const size_t K = Shape.K;
+    const MLAS_SYMM_QGEMM_DISPATCH* dispatch = MlasPlatform.SymmQgemmDispatch;
+    MLAS_SYMM_QGEMM_OPERATION* operation = dispatch->Operation;
 
     if (ThreadPool == nullptr) {
-        // So our caller handles partition
-        const MLAS_SYMM_QGEMM_DISPATCH* dispatch = MlasPlatform.SymmQgemmDispatch;
-        MLAS_SYMM_QGEMM_OPERATION* operation = dispatch->Operation;
+        // So our caller handles threaded job partition.
+        // Call single threaded operation directly
 
         for (size_t gemm_i = 0; gemm_i < BatchN; gemm_i++) {
             auto Data = &DataParams[gemm_i];
@@ -239,7 +238,6 @@ MlasSymmQgemmBatch(
         ThreadsPerGemm = 1;
     }
 
-    const MLAS_SYMM_QGEMM_DISPATCH* dispatch = MlasPlatform.SymmQgemmDispatch;
     const size_t StrideM = dispatch->StrideM;
 
     size_t nc = N;
@@ -259,8 +257,6 @@ MlasSymmQgemmBatch(
     const size_t ThreadCountN = MlasDivRoundup(N, StrideN);
     ThreadsPerGemm = ThreadCountM * ThreadCountN;
 
-    MLAS_SYMM_QGEMM_OPERATION* operation = dispatch->Operation;
-
     MlasTrySimpleParallel(ThreadPool, ThreadsPerGemm * BatchN, [&](ptrdiff_t tid) {
         const auto gemm_i = tid / ThreadsPerGemm;
         const auto blk_i = tid % ThreadsPerGemm;
@@ -277,8 +273,6 @@ MlasSymmQgemmBatch(
 
         operation(&Shape, Data, RangeStartM, RangeCountM, RangeStartN, RangeCountN);
     });
-
-#endif
 }
 
 #if defined(_MSC_VER) && !defined(__clang__)
@@ -450,6 +444,12 @@ Return Value:
     }
 }
 
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(push)
+// We can not make this function constexpr across different platforms
+#pragma warning(disable : 26497)
+#endif
+
 size_t
 MLASCALL
 MlasSymmQgemmPackBSize(
@@ -465,7 +465,6 @@ MlasSymmQgemmPackBSize(
     MLAS_UNREFERENCED_PARAMETER(K);
     MLAS_UNREFERENCED_PARAMETER(AIsSigned);
     return 0;
-
 #else
 
     // Only support s8s8 for now
@@ -492,9 +491,12 @@ MlasSymmQgemmPackBSize(
         ~(BufferAlignment - 1);
 
     return AlignedBytesRequired;
-
 #endif  // !MLAS_TARGET_ARM64
 }
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(pop)
+#endif
+
 
 void
 MLASCALL
@@ -508,16 +510,12 @@ MlasSymmQgemmPackB(
     void* PackedB
     )
 {
-    const MLAS_SYMM_QGEMM_DISPATCH* SymmQgemmDispatch = MlasPlatform.SymmQgemmDispatch;
+    MLAS_UNREFERENCED_PARAMETER(AIsSigned);
 
-    //
-    // Reserve and initialize storage for the column sum buffer to hold the sums
-    // of the elements along each of the columns.
-    //
+    const MLAS_SYMM_QGEMM_DISPATCH* SymmQgemmDispatch = MlasPlatform.SymmQgemmDispatch;
 
     const size_t AlignedN =
         (N + MLAS_QGEMM_STRIDEN_THREAD_ALIGN - 1) & ~(MLAS_QGEMM_STRIDEN_THREAD_ALIGN - 1);
-
     int32_t* PackedColumnSumBuffer = (int32_t*)PackedB;
     PackedB = PackedColumnSumBuffer + AlignedN;
 

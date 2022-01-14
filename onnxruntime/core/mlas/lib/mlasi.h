@@ -870,7 +870,7 @@ MlasExecuteThreaded(
     MLAS_THREADPOOL* ThreadPool
     );
 
-inline
+constexpr
 size_t
 MlasDivRoundup(size_t up, size_t down)
 {
