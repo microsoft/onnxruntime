@@ -71,6 +71,10 @@ X --> ReduceMean --> Sub --> Pow --> ReduceMean --> Add --> Sqrt --> Div --> Cas
                       |                                               ^
                       |                                               |
                       +-----------------------------------------------+
+
+Since LayerNormalization supports input and scale/bias have different data type, and during the kernel execution,
+data are casted to float/double to calculate for precision, so if there is a Cast before ReduceMean, we can also
+remove this Cast.
 */
 Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   GraphViewer graph_viewer(graph);
@@ -125,6 +129,47 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
       continue;
     }
     nodes_to_remove.push_back(sub_node);
+
+    // Check if the ReduceMean and Sub nodes have same input, and if that input is a Cast
+    // node, we can also remove it.
+    const NodeArg* p_reduce_mean_input = reduce_mean_node.MutableInputDefs()[0];
+    const NodeArg* p_sub_input = nullptr;
+    for (NodeArg* node_arg : sub_node.MutableInputDefs()) {
+      if (node_arg != reduce_mean_node.MutableOutputDefs()[0]) {
+        p_sub_input = node_arg;
+        break;
+      }
+    }
+
+    if (!p_reduce_mean_input || !p_sub_input || p_reduce_mean_input != p_sub_input) {
+      continue;
+    }
+
+    if (p_sub_node_dup) {
+      const NodeArg* p_sub_dup_input = nullptr;
+      for (NodeArg* node_arg : graph.GetNode(p_sub_node_dup->Index())->MutableInputDefs()) {
+        if (node_arg != reduce_mean_node.MutableOutputDefs()[0]) {
+          p_sub_dup_input = node_arg;
+          break;
+        }
+      }
+      if (!p_sub_dup_input || p_reduce_mean_input != p_sub_dup_input) {
+        continue;
+      }
+    }
+
+    const Node* p_reduce_mean_input_node = graph_utils::GetInputNode(reduce_mean_node, 0);
+    bool has_leading_cast = false;
+    if (p_reduce_mean_input_node) {
+      Node& reduce_mean_input_node = *graph.GetNode(p_reduce_mean_input_node->Index());
+      // If input to Pow is a Cast, and the Cast has same consumer count as subCnt + 1
+      if (graph_utils::IsSupportedOptypeVersionAndDomain(reduce_mean_input_node, "Cast", {9, 13}) &&
+          reduce_mean_input_node.GetExecutionProviderType() == reduce_mean_node.GetExecutionProviderType() &&
+          optimizer_utils::CheckOutputEdges(graph, reduce_mean_input_node, static_cast<size_t>(subCnt + 1))) {
+        nodes_to_remove.insert(nodes_to_remove.begin(), reduce_mean_input_node);
+        has_leading_cast = true;
+      }
+    }
 
     // Find the "Div" node after "Sub".
     const Node* p_div = nullptr;
@@ -318,7 +363,10 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     if (!same_dim)
       continue;
 
-    const std::vector<NodeArg*> layer_norm_input_defs{reduce_mean_node.MutableInputDefs()[0], scale, bias};
+    const std::vector<NodeArg*> layer_norm_input_defs{
+        has_leading_cast ? graph.GetNode(p_reduce_mean_input_node->Index())->MutableInputDefs()[0]
+                         : reduce_mean_node.MutableInputDefs()[0],
+        scale, bias};
     Node& layer_norm_node = graph.AddNode(graph.GenerateNodeName("LayerNormalization"),
                                           "LayerNormalization",
                                           "fused LayerNorm subgraphs ",
@@ -368,14 +416,14 @@ X --> Cast1 --> Pow --> ReduceMean --> Add --> Sqrt --> Div --> Cast2 --> Mul
         |                                               |                  |
         +-----------------------------------------------+                Scale
 
-In this pattern, we change the Mul to compute in the same type as Cast1 instead of Cast2,
-and are able to fuse the graph. We might need to add a Cast to the Scale input 
-of Mul to match the type of Cast1, the output type of SimplifiedLayerNormalization is same as Scale.
+Since SimplifiedLayerNormalization supports input and scale have different data type,
+and during the kernel execution, data are casted to float/double to calculate for precision,
+so we can fuse it to a single SimplifiedLayerNormalization, the output type is same as Scale.
 This results in the graph:
 
-X ------> Cast1 --> SimplifiedLayerNormalization
-                              ^
-Scale ------------------------|
+X ------> SimplifiedLayerNormalization
+              ^
+Scale --------|
 */
 Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   GraphViewer graph_viewer(graph);
@@ -456,11 +504,24 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
     }
     nodes_to_remove.push_back(div_node);
 
+    // Check Div and Pow has same input, and if this input is a Cast, we can also remove it.
     const NodeArg* p_div_input = div_node.MutableInputDefs()[0];
     const NodeArg* p_pow_input = pow_node.MutableInputDefs()[0];
-
     if (!p_pow_input || !p_div_input || p_div_input != p_pow_input) {
       continue;
+    }
+
+    const Node* p_pow_input_node = graph_utils::GetInputNode(pow_node, 0);
+    bool has_leading_cast = false;
+    if (allow_precision_change_ && p_pow_input_node) {
+      Node& pow_input_node = *graph.GetNode(p_pow_input_node->Index());
+      // If input to Pow is a Cast, and the Cast has 2 consumers only (Pow, Div)
+      if (graph_utils::IsSupportedOptypeVersionAndDomain(pow_input_node, "Cast", {9, 13}) &&
+          pow_input_node.GetExecutionProviderType() == pow_node.GetExecutionProviderType() &&
+          optimizer_utils::CheckOutputEdges(graph, pow_input_node, 2)) {
+        nodes_to_remove.insert(nodes_to_remove.begin(), pow_input_node);
+        has_leading_cast = true;
+      }
     }
 
     // div --> mul or div --> cast --> mul
@@ -512,7 +573,10 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
       continue;
     }
 
-    std::vector<NodeArg*> layer_norm_input_defs{pow_node.MutableInputDefs()[0], scale};
+    std::vector<NodeArg*> layer_norm_input_defs{has_leading_cast
+                                                    ? graph.GetNode(p_pow_input_node->Index())->MutableInputDefs()[0]
+                                                    : pow_node.MutableInputDefs()[0],
+                                                scale};
     Node& layer_norm_node = graph.AddNode(graph.GenerateNodeName("SimplifiedLayerNormalization"),
                                           "SimplifiedLayerNormalization",
                                           "fused LayerNorm subgraphs ",
