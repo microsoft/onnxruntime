@@ -362,6 +362,8 @@ By default, ONNX Runtime React Native leverages ONNX Runtime Mobile package with
    5. To verify, open Android Emulator and run this command from `<ORT_ROOT>/js/react_native/android`
 
       ```sh
+      ./gradlew :assembleDebugAndroidTest
+      adb install -t build/outputs/apk/androidTest/debug/android-debug-androidTest.apk
       adb shell am instrument -w ai.onnxruntime.reactnative.test/androidx.test.runner.AndroidJUnitRunner
       ```
 
@@ -403,6 +405,8 @@ By default, ONNX Runtime React Native leverages ONNX Runtime Mobile package with
    ```sh
    yarn bootstrap
    ```
+   
+   When testing with a custom built ONNX Runtime Android package, copy `<BUILD_DIRECTORY>/aar_out/MinSizeRel/com/microsoft/onnxruntime/onnxruntime-mobile/<version>/onnxruntime-mobile-<version>.aar` into `<ORT_ROOT>/js/react_native/example/node_modules/onnxruntime-react-native/android/libs` directory.
 
    From `<ORT_ROOT>/js/react_native/example/android`, run e2e Android tests as follows,
 
