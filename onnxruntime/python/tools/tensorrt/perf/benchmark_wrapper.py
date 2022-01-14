@@ -7,6 +7,7 @@ import copy
 import json
 import re
 import pprint
+from perf_utils import *
 from benchmark import *
 
 def write_model_info_to_file(model, path):
@@ -51,6 +52,7 @@ def main():
     benchmark_success_csv = 'success.csv'  
     benchmark_latency_csv = 'latency.csv' 
     benchmark_status_csv = 'status.csv' 
+    specs_csv = 'specs.csv'
 
     for model, model_info in models.items():
         logger.info("\n" + "="*40 + "="*len(model))
@@ -72,7 +74,7 @@ def main():
                         "--ep", ep,
                         "--write_test_result", "false"]
             
-            if "Standalone" in ep: 
+            if ep == standalone_trt or ep == standalone_trt_fp16: 
                 if args.running_mode == "validate": 
                     continue 
                 else:
@@ -158,7 +160,7 @@ def main():
             pretty_print(pp, model_to_latency)
             
             output_latency(model_to_latency, os.path.join(path, benchmark_latency_csv))
-            logger.info("\nSaved model status results to {}".format(benchmark_latency_csv)) 
+            logger.info("\nSaved model latency results to {}".format(benchmark_latency_csv)) 
 
     logger.info("\n===========================================")
     logger.info("=========== System information  ===========")
@@ -166,6 +168,8 @@ def main():
     info = get_system_info(args.workspace)
     pretty_print(pp, info)
     logger.info("\n")
+    output_specs(info, os.path.join(path, specs_csv))
+    logger.info("\nSaved hardware specs to {}".format(specs_csv)) 
 
 if __name__ == "__main__":
     main()
