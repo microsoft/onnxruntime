@@ -2665,7 +2665,7 @@ Status SliceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
   const auto& operand_types(model_builder.GetOperandTypes());
   const auto input_defs = node.InputDefs();
   const auto& input_shape = shaper[input_defs[0]->Name()];
-  std::vector<int64_t> input_shape_64(input_shape.cbegin(), input_shape.cend());
+  TensorShapeVector input_shape_64(input_shape.cbegin(), input_shape.cend());
   SliceOp::PrepareForComputeMetadata compute_metadata(input_shape_64);
 
   {
@@ -2673,12 +2673,12 @@ Status SliceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
     // to be used in shared PrepareForCompute function to calculate the output shape
     // and normalize inputs, for example, input can be starts/ends/steps for certain axes,
     // PrepareForCompute can generate standard starts/ends/steps/axes for each axes
-    std::vector<int64_t> input_starts;
-    std::vector<int64_t> input_ends;
-    std::vector<int64_t> input_axes;
-    std::vector<int64_t> input_steps;
+    TensorShapeVector input_starts;
+    TensorShapeVector input_ends;
+    TensorShapeVector input_axes;
+    TensorShapeVector input_steps;
 
-    const auto CopyInputData = [&node, &model_builder](size_t input_idx, std::vector<int64_t>& data) {
+    const auto CopyInputData = [&node, &model_builder](size_t input_idx, TensorShapeVector& data) {
       data.clear();
       const auto input_defs = node.InputDefs();
 
@@ -2745,7 +2745,7 @@ Status SliceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
 
   // helper function to add begin/end/strides of ANEURALNETWORKS_STRIDED_SLICE
   const auto AddOperand = [&model_builder, &node, &input_indices, &operand_indices](
-                              const char* name, const Shape& shape, const std::vector<int64_t>& param_raw_data) {
+                              const char* name, const Shape& shape, const gsl::span<const int64_t>& param_raw_data) {
     std::vector<int32_t> param_data;
     param_data.reserve(param_raw_data.size());
     std::transform(param_raw_data.cbegin(), param_raw_data.cend(),

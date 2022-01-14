@@ -28,7 +28,8 @@ using InlinedVector = absl::InlinedVector<T, N>;
 // InlinedHashSet and InlinedHashMap are preferred
 // hash based containers. They store their values in the
 // buckets array that is allocated in one shot. It eliminates
-// per-node new/delete calls.
+// per-node new/delete calls. Always call reserve() on any set/map
+// be it a std container or now.
 template <typename T>
 using InlinedHashSet = absl::flat_hash_set<T>;
 

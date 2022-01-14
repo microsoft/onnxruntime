@@ -6,7 +6,8 @@
 
 #include <cstdint>
 #include <vector>
-#include "core/framework/inlined_containers.h"
+#include <gsl/gsl>
+#include "core/framework/tensor_shape.h"
 
 namespace onnxruntime {
 
