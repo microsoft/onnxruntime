@@ -51,7 +51,7 @@ convert_float_to_float16(model, min_positive_val=1e-7, max_finite_val=1e4, keep_
 
 ## Mixed Precision
 
-If float16 conversion is giving poor results, you can convert most of the ops to float16 but leave some in float32. The `auto_mixed_precision` tool finds a minimal set of ops to skip while retaining a certain level of accuracy. You will need to provide a sample input for the model. 
+If float16 conversion is giving poor results, you can convert most of the ops to float16 but leave some in float32. The `auto_mixed_precision.auto_convert_mixed_precision` tool finds a minimal set of ops to skip while retaining a certain level of accuracy. You will need to provide a sample input for the model.
 
 Since the CPU version of ONNX Runtime doesn't support float16 ops and the tool needs to measure the accuracy loss, **the mixed precision tool must be run on a device with a GPU**.
 
