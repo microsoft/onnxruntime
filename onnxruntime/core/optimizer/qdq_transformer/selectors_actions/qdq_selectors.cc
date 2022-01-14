@@ -37,10 +37,10 @@ static std::vector<const Node*> FindQDQNodes(const GraphViewer& graph_viewer, co
   return nodes;
 }
 
-bool BaseSelector::CheckQDQNodes(const GraphViewer& graph_viewer, const Node& node,
-                                 const std::vector<const Node*>& dq_nodes,
-                                 const std::vector<const Node*>& q_nodes,
-                                 int num_dq_inputs) const {
+bool NodeGroupSelector::CheckQDQNodes(const GraphViewer& graph_viewer, const Node& node,
+                                      const std::vector<const Node*>& dq_nodes,
+                                      const std::vector<const Node*>& q_nodes,
+                                      int num_dq_inputs) const {
   if (num_dq_inputs == -1) {
     num_dq_inputs = NumActualValues(node, true);
   }
@@ -54,7 +54,7 @@ bool BaseSelector::CheckQDQNodes(const GraphViewer& graph_viewer, const Node& no
          !graph_viewer.NodeProducesGraphOutput(node);
 }
 
-std::optional<NodeGroup> BaseSelector::GetQDQSelection(const GraphViewer& graph_viewer, const Node& node) const {
+std::optional<NodeGroup> NodeGroupSelector::GetQDQSelection(const GraphViewer& graph_viewer, const Node& node) const {
   std::vector<const Node*> dq_nodes = FindQDQNodes(graph_viewer, node, true);
   std::vector<const Node*> q_nodes = FindQDQNodes(graph_viewer, node, false);
   if (!Check(graph_viewer, node, dq_nodes, q_nodes)) {
@@ -72,7 +72,7 @@ std::optional<NodeGroup> BaseSelector::GetQDQSelection(const GraphViewer& graph_
 }
 
 std::optional<NodesToOptimizeIndices> BaseSelector::Select(const GraphViewer& graph_viewer, const Node& node) const {
-  const auto qdq_group = GetQDQSelection(graph_viewer, node);
+  const auto qdq_group = node_group_selector_->GetQDQSelection(graph_viewer, node);
   if (!qdq_group.has_value()) {
     return std::nullopt;
   }
@@ -86,10 +86,10 @@ std::optional<NodesToOptimizeIndices> BaseSelector::Select(const GraphViewer& gr
   return builder.Build();
 }
 
-bool DropDQDNodesSelector::Check(const GraphViewer& graph_viewer,
-                                 const Node& node,
-                                 const std::vector<const Node*>& dq_nodes,
-                                 const std::vector<const Node*>& q_nodes) const {
+bool DropQDQNodeGroupSelector::Check(const GraphViewer& graph_viewer,
+                                     const Node& node,
+                                     const std::vector<const Node*>& dq_nodes,
+                                     const std::vector<const Node*>& q_nodes) const {
   if (!CheckQDQNodes(graph_viewer, node, dq_nodes, q_nodes, 1)) {
     return false;
   }
@@ -104,9 +104,9 @@ bool DropDQDNodesSelector::Check(const GraphViewer& graph_viewer,
   return IsQDQPairSupported(q_node, dq_node, get_const_initializer, graph_viewer.ModelPath());
 }
 
-bool UnarySelector::Check(const GraphViewer& graph_viewer, const Node& node,
-                          const std::vector<const Node*>& dq_nodes,
-                          const std::vector<const Node*>& q_nodes) const {
+bool UnaryNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& node,
+                                   const std::vector<const Node*>& dq_nodes,
+                                   const std::vector<const Node*>& q_nodes) const {
   if (!CheckQDQNodes(graph_viewer, node, dq_nodes, q_nodes, 1)) {
     return false;
   }
@@ -114,14 +114,13 @@ bool UnarySelector::Check(const GraphViewer& graph_viewer, const Node& node,
   int32_t dt_input = dq_nodes[0]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
   int32_t dt_output = q_nodes[0]->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
 
-  return dt_input == dt_output &&
-         (int8_allowed_ || dt_input == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8);
+  return dt_input == dt_output;
 }
 
-bool BinarySelector::Check(const GraphViewer& graph_viewer,
-                           const Node& node,
-                           const std::vector<const Node*>& dq_nodes,
-                           const std::vector<const Node*>& q_nodes) const {
+bool BinaryNodeGroupSelector::Check(const GraphViewer& graph_viewer,
+                                    const Node& node,
+                                    const std::vector<const Node*>& dq_nodes,
+                                    const std::vector<const Node*>& q_nodes) const {
   if (!CheckQDQNodes(graph_viewer, node, dq_nodes, q_nodes)) {
     return false;
   }
@@ -133,10 +132,10 @@ bool BinarySelector::Check(const GraphViewer& graph_viewer,
          dt_input_1 == dt_output;
 }
 
-bool VariadicSelector::Check(const GraphViewer& graph_viewer,
-                             const Node& node,
-                             const std::vector<const Node*>& dq_nodes,
-                             const std::vector<const Node*>& q_nodes) const {
+bool VariadicNodeGroupSelector::Check(const GraphViewer& graph_viewer,
+                                      const Node& node,
+                                      const std::vector<const Node*>& dq_nodes,
+                                      const std::vector<const Node*>& q_nodes) const {
   if (!CheckQDQNodes(graph_viewer, node, dq_nodes, q_nodes)) {
     return false;
   }
@@ -157,10 +156,10 @@ void VariadicSelector::UpdateBuilder(NodesToOptimizeIndicesBuilder& builder) con
   builder.num_input_defs = 1;  // set to 1 as the first input is variadic
 }
 
-bool ConvSelector::Check(const GraphViewer& graph_viewer,
-                         const Node& node,
-                         const std::vector<const Node*>& dq_nodes,
-                         const std::vector<const Node*>& q_nodes) const {
+bool ConvNodeGroupSelector::Check(const GraphViewer& graph_viewer,
+                                  const Node& node,
+                                  const std::vector<const Node*>& dq_nodes,
+                                  const std::vector<const Node*>& q_nodes) const {
   if (!CheckQDQNodes(graph_viewer, node, dq_nodes, q_nodes)) {
     return false;
   }
@@ -173,8 +172,8 @@ bool ConvSelector::Check(const GraphViewer& graph_viewer,
     return false;
   }
 
-  if(dt_input == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8) {
-    if(!int8_allowed_ || dt_weight != dt_input) {
+  if (dt_input == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8) {
+    if (!int8_allowed_ || dt_weight != dt_input) {
       return false;
     }
   }
@@ -191,10 +190,10 @@ void ConvSelector::UpdateBuilder(NodesToOptimizeIndicesBuilder& builder) const {
   builder.input_nodes.resize(3, NodesToOptimizeIndices::kEmptyNodeIndex);
 }
 
-bool MatMulSelector::Check(const GraphViewer& graph_viewer,
-                           const Node& node,
-                           const std::vector<const Node*>& dq_nodes,
-                           const std::vector<const Node*>& q_nodes) const {
+bool MatMulNodeGroupSelector::Check(const GraphViewer& graph_viewer,
+                                    const Node& node,
+                                    const std::vector<const Node*>& dq_nodes,
+                                    const std::vector<const Node*>& q_nodes) const {
   if (dq_nodes.size() != 2) {
     return false;
   }
@@ -202,8 +201,8 @@ bool MatMulSelector::Check(const GraphViewer& graph_viewer,
   int32_t dt_input = dq_nodes[0]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
   int32_t dt_weight = dq_nodes[1]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
 
-  if(dt_input == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8) {
-    if(!int8_allowed_ || dt_weight != dt_input) {
+  if (dt_input == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8) {
+    if (!int8_allowed_ || dt_weight != dt_input) {
       return false;
     }
   }
@@ -219,9 +218,10 @@ bool MatMulSelector::Check(const GraphViewer& graph_viewer,
 
     int32_t dt_output = q_nodes[0]->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
     return dt_input == dt_output;
+  } else {
+    // can be converted to MatMulIntegerToFloat if EP supports that.
+    return matmulintegertofloat_allowed_;
   }
-
-  return true;
 }
 
 }  // namespace QDQ

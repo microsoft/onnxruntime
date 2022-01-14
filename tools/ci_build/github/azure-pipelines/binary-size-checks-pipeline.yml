@@ -1,0 +1,117 @@
+# steps in this build:
+# 1a. Android minimal baseline build (arm64-v8a, including no kernels, with exceptions disabled)
+# 1b. Android minimal baseline build with debug info
+
+parameters:
+- name: DoBuildWithDebugInfo
+  displayName: Create additional build with debug information?
+  type: boolean
+  default: false
+
+jobs:
+- job: BinarySizeChecks
+  timeoutInMinutes: 30
+  workspace:
+    clean: all
+  pool: Linux-CPU-2019
+
+  steps:
+  - checkout: self
+    clean: true
+    submodules: recursive
+
+  - template: templates/get-docker-image-steps.yml
+    parameters:
+      Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cpu
+      Context: tools/ci_build/github/linux/docker
+      DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
+      Repository: onnxruntimecpubuild
+
+  - task: CmdLine@2
+    displayName: 1a. Build onnxruntime minimal baseline for Android arm64-v8a
+    inputs:
+      script: |
+        NDK_HOME=$(realpath $ANDROID_NDK_HOME)
+        BINARY_SIZE_THRESHOLD_IN_BYTES=1306224
+        docker run --rm \
+          --volume $(Build.SourcesDirectory):/onnxruntime_src \
+          --volume $(Build.BinariesDirectory):/build \
+          --volume $ANDROID_HOME:/android_home \
+          --volume $NDK_HOME:/ndk_home \
+          -e ALLOW_RELEASED_ONNX_OPSET_ONLY=1 \
+          -e NIGHTLY_BUILD \
+          -e BUILD_BUILDNUMBER \
+          -e BUILD_SOURCEVERSION=$(Build.SourceVersion) \
+          -e BUILD_ID=$(Build.BuildId) \
+          -e BUILD_REASON=$(Build.Reason) \
+          -e BUILD_BRANCH=$(Build.SourceBranch) \
+          onnxruntimecpubuild \
+            /bin/bash /onnxruntime_src/tools/ci_build/github/linux/ort_minimal/build_minimal_ort_android_baseline_and_report_bin_size.sh \
+              -b /build/1a \
+              -t ${BINARY_SIZE_THRESHOLD_IN_BYTES}
+      workingDirectory: $(Build.SourcesDirectory)
+
+  - task: AzureCLI@2
+    displayName: 1a. Publish binary size data
+    # only publish size data for CI builds on master
+    condition: and(succeededOrFailed(), in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI'), eq(variables['Build.SourceBranch'], 'refs/heads/master'))
+    inputs:
+      azureSubscription: AIInfraBuild
+      scriptLocation: inlineScript
+      scriptType: bash
+      inlineScript: |
+        BINARY_SIZE_DATA_FILE="$(Build.BinariesDirectory)/1a/MinSizeRel/binary_size_data.txt"
+        if [[ ! -f "${BINARY_SIZE_DATA_FILE}" ]]; then
+          echo "File not found: ${BINARY_SIZE_DATA_FILE}"
+          exit 1
+        fi
+        /usr/bin/python3 $(Build.SourcesDirectory)/tools/ci_build/github/windows/post_binary_sizes_to_dashboard.py \
+          --commit_hash=$(Build.SourceVersion) \
+          --size_data_file="${BINARY_SIZE_DATA_FILE}" \
+          --build_project=onnxruntime \
+          --build_id=$(Build.BuildId)
+      workingDirectory: '$(Build.BinariesDirectory)'
+
+  - task: PublishPipelineArtifact@1
+    displayName: 1a. Publish binary artifact
+    inputs:
+      targetPath: $(Build.BinariesDirectory)/1a/MinSizeRel/libonnxruntime.so
+      artifactName: AndroidMinimalBaselineBinary
+
+  - ${{ if parameters.DoBuildWithDebugInfo }}:
+    - task: CmdLine@2
+      displayName: 1b. Build onnxruntime minimal baseline for Android arm64-v8a with debug info
+      inputs:
+        script: |
+          NDK_HOME=$(realpath $ANDROID_NDK_HOME)
+          docker run --rm \
+            --volume $(Build.SourcesDirectory):/onnxruntime_src \
+            --volume $(Build.BinariesDirectory):/build \
+            --volume $ANDROID_HOME:/android_home \
+            --volume $NDK_HOME:/ndk_home \
+            -e ALLOW_RELEASED_ONNX_OPSET_ONLY=1 \
+            -e NIGHTLY_BUILD \
+            -e BUILD_BUILDNUMBER \
+            -e BUILD_SOURCEVERSION=$(Build.SourceVersion) \
+            -e BUILD_ID=$(Build.BuildId) \
+            -e BUILD_REASON=$(Build.Reason) \
+            -e BUILD_BRANCH=$(Build.SourceBranch) \
+            onnxruntimecpubuild \
+              /bin/bash /onnxruntime_src/tools/ci_build/github/linux/ort_minimal/build_minimal_ort_android_baseline_and_report_bin_size.sh \
+                -b /build/1b \
+                -d
+        workingDirectory: $(Build.SourcesDirectory)
+
+    - task: PublishPipelineArtifact@1
+      displayName: 1b. Publish binary artifact
+      inputs:
+        targetPath: $(Build.BinariesDirectory)/1b/MinSizeRel/libonnxruntime.so
+        artifactName: AndroidMinimalBaselineDebugBinary
+
+  - template: templates/component-governance-component-detection-steps.yml
+    parameters:
+      condition: succeeded()
+
+  - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+    displayName: 'Clean Agent Directories'
+    condition: always()

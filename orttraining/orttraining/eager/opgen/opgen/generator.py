@@ -254,6 +254,16 @@ class ORTGen:
     onnx_op.eval(ctx)
     ctx.prepare_outputs()
 
+    # Fetch the ORT invoker from an at::Tensor.device()
+    # FIXME: find the first at::Tensor param anywhere in the signature
+    # instead of simply the first parameter?
+    first_param = cpp_func.parameters[0].member
+    # Check if the first parameter is tensorlist and if yes it's size should be > 0
+    if first_param.parameter_type.desugar().identifier_tokens[0].value == 'TensorList':
+      writer.write('assert(')
+      writer.write(first_param.identifier.value)
+      writer.writeline('.size()>0);')
+
     # generate the type check
     need_type_check = False
     if not self._custom_ops:
@@ -281,10 +291,6 @@ class ORTGen:
       writer.pop_indent()
       writer.writeline('}')      
 
-    # Fetch the ORT invoker from an at::Tensor.device()
-    # FIXME: find the first at::Tensor param anywhere in the signature
-    # instead of simply the first parameter?
-    first_param = cpp_func.parameters[0].member
     if not isinstance(
       first_param.parameter_type.desugar(),
       ast.ConcreteType) or 'Tensor' not in first_param.parameter_type.desugar().identifier_tokens[0].value:
@@ -294,6 +300,8 @@ class ORTGen:
 
     writer.write('auto& invoker = GetORTInvoker(')
     writer.write(first_param.identifier.value)
+    if first_param.parameter_type.desugar().identifier_tokens[0].value == 'TensorList':
+      writer.write('[0]')
     writer.writeline('.device());')
     writer.writeline()
 
@@ -402,7 +410,10 @@ class ORTGen:
         writer.writeline(f'{first_param.identifier.value}.options());')
       else:
         writer.writeline(f'std::move({return_outputs}[0]),')
-        writer.writeline(f'{first_param.identifier.value}.options());')
+        writer.write(first_param.identifier.value)
+        if first_param.parameter_type.desugar().identifier_tokens[0].value == 'TensorList':
+          writer.write('[0]')
+        writer.writeline('.options());')
       writer.pop_indent()
       return
 

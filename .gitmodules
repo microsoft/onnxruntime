@@ -9,7 +9,7 @@
 	url = https://github.com/google/benchmark.git
 [submodule "cmake/external/onnx"]
 	path = cmake/external/onnx
-	url = https://github.com/onnx/onnx
+	url = https://github.com/onnx/onnx.git
 [submodule "cmake/external/tvm"]
 	path = cmake/external/tvm
 	url = https://github.com/microsoft/onnxruntime-tvm.git
@@ -18,7 +18,7 @@
 	url = https://github.com/HowardHinnant/date.git
 [submodule "cmake/external/nsync"]
 	path = cmake/external/nsync
-	url = https://github.com/google/nsync
+	url = https://github.com/google/nsync.git
 [submodule "cmake/external/re2"]
 	path = cmake/external/re2
 	url = https://github.com/google/re2.git
@@ -39,10 +39,10 @@
 	url = https://github.com/NVlabs/cub.git
 [submodule "cmake/external/wil"]
 	path = cmake/external/wil
-	url = https://github.com/microsoft/wil
+	url = https://github.com/microsoft/wil.git
 [submodule "cmake/external/json"]
 	path = cmake/external/json
-	url = https://github.com/nlohmann/json
+	url = https://github.com/nlohmann/json.git
 [submodule "server/external/spdlog"]
 	path = server/external/spdlog
 	url = https://github.com/gabime/spdlog.git

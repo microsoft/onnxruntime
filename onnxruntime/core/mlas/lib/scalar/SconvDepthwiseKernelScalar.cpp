@@ -6,7 +6,7 @@ Licensed under the MIT License.
 
 Module Name:
 
-    SconvDepthwiseKernelWasmScalar.cpp
+    SconvDepthwiseKernelScalar.cpp
 
 Abstract:
 
