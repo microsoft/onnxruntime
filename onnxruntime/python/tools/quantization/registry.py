@@ -1,4 +1,5 @@
 from .quant_utils import QuantizationMode
+from .operators.argmax import QArgMax
 from .operators.base_operator import QuantOperatorBase
 from .operators.qdq_base_operator import QDQOperatorBase
 from .operators.matmul import MatMulInteger, QLinearMatMul, QDQMatMul
@@ -33,6 +34,7 @@ IntegerOpsRegistry = {
 IntegerOpsRegistry.update(CommonOpsRegistry)
 
 QLinearOpsRegistry = {
+    "ArgMax": QArgMax,
     "Conv": QLinearConv,
     "MatMul": QLinearMatMul,
     "Add": QLinearBinaryOp,

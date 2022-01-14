@@ -67,6 +67,28 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         /// <summary>
+        /// A helper method to construct a SessionOptions object for CUDA execution provider.
+        /// Use only if CUDA is installed and you have the onnxruntime package specific to this Execution Provider.
+        /// </summary>
+        /// <param name="cudaProviderOptions">CUDA EP provider options</param>
+        /// <returns>A SessionsOptions() object configured for execution on provider options</returns>
+        public static SessionOptions MakeSessionOptionWithCudaProvider(OrtCUDAProviderOptions cudaProviderOptions)
+        {
+            CheckCudaExecutionProviderDLLs();
+            SessionOptions options = new SessionOptions();
+            try
+            {
+                options.AppendExecutionProvider_CUDA(cudaProviderOptions);
+                return options;
+            }
+            catch (Exception)
+            {
+                options.Dispose();
+                throw;
+            }
+        }
+
+        /// <summary>
         /// A helper method to construct a SessionOptions object for TensorRT execution.
         /// Use only if CUDA/TensorRT are installed and you have the onnxruntime package specific to this Execution Provider.
         /// </summary>
@@ -192,6 +214,20 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         /// <summary>
+        /// Append a CUDA EP instance (based on specified configuration) to the SessionOptions instance.
+        /// Use only if you have the onnxruntime package specific to this Execution Provider.
+        /// </summary>
+        /// <param name="cudaProviderOptions">CUDA EP provider options</param>
+        public void AppendExecutionProvider_CUDA(OrtCUDAProviderOptions cudaProviderOptions)
+        {
+#if __MOBILE__
+            throw new NotSupportedException("The CUDA Execution Provider is not supported in this build");
+#else
+            NativeApiStatus.VerifySuccess(NativeMethods.SessionOptionsAppendExecutionProvider_CUDA_V2(handle, cudaProviderOptions.Handle));
+#endif
+        }
+
+        /// <summary>
         /// Use only if you have the onnxruntime package specific to this Execution Provider.
         /// </summary>
         /// <param name="deviceId">device identification</param>
@@ -245,7 +281,7 @@ namespace Microsoft.ML.OnnxRuntime
 #if __MOBILE__
             throw new NotSupportedException("The TensorRT Execution Provider is not supported in this build");
 #else
-            NativeApiStatus.VerifySuccess(NativeMethods.SessionOptionsAppendExecutionProvider_TensorRT(handle, trtProviderOptions.Handle));
+            NativeApiStatus.VerifySuccess(NativeMethods.SessionOptionsAppendExecutionProvider_TensorRT_V2(handle, trtProviderOptions.Handle));
 #endif
         }
 
