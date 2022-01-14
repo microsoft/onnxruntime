@@ -486,7 +486,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Type Constraints
 
 <dl>
-<dt><tt>T</tt> : tensor(float16), tensor(float), tensor(double)</dt>
+<dt><tt>T</tt> : tensor(float16), tensor(float), tensor(double), tensor(bfloat16)</dt>
 <dd>Constrain input and output types to float tensors.</dd>
 </dl>
 
@@ -1272,6 +1272,10 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Whether A should be transposed on the last two dimensions before doing multiplication</dd>
 <dt><tt>transB</tt> : int</dt>
 <dd>Whether B should be transposed on the last two dimensions before doing multiplication</dd>
+<dt><tt>transBatchA</tt> : int</dt>
+<dd>Whether A should be transposed on the 1st dimension and batch dimensions (dim-1 to dim-rank-2) before doing multiplication</dd>
+<dt><tt>transBatchB</tt> : int</dt>
+<dd>Whether B should be transposed on the 1st dimension and batch dimensions (dim-1 to dim-rank-2) before doing multiplication</dd>
 </dl>
 
 #### Inputs

@@ -7,6 +7,7 @@
 #include "core/mlas/inc/mlas.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_selectors.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_selector_action_transformer.h"
+#include "core/optimizer/qdq_transformer/selectors_actions/shared/utils.h"
 #include "core/providers/partitioning_utils.h"
 #include "core/session/environment.h"
 #include "core/session/inference_session.h"
@@ -99,10 +100,10 @@ void QDQTransformerConvTests() {
 
     auto check_conv_graph = [&](InferenceSessionWrapper& session) {
       auto op_to_count = CountOpsInGraph(session.GetGraph());
-      if (std::is_same<InputType, OutputType>::value &&
-          std::is_same<BiasType, int32_t>::value &&
-          (std::is_same<InputType, uint8_t>::value ||
-           QDQIsInt8Allowed() && std::is_same<WeightType, int8_t>::value)) {
+      if constexpr (std::is_same<InputType, OutputType>::value &&
+                    std::is_same<BiasType, int32_t>::value &&
+                    (std::is_same<InputType, uint8_t>::value ||
+                     QDQIsInt8Allowed() && std::is_same<WeightType, int8_t>::value)) {
         EXPECT_EQ(op_to_count["QLinearConv"], 1);
         EXPECT_EQ(op_to_count["QuantizeLinear"], 1);
         EXPECT_EQ(op_to_count["DequantizeLinear"], 1);
@@ -158,7 +159,7 @@ TEST(QDQTransformerTests, Conv_S8X8U8) {
 TEST(QDQTransformerTests, Conv_S8X8S8) {
   // input not uint8_t and output not uint8_t
   QDQTransformerConvTests<int8_t, uint8_t, int32_t, int8_t>();
-    QDQTransformerConvTests<int8_t, int8_t, int32_t, int8_t>();
+  QDQTransformerConvTests<int8_t, int8_t, int32_t, int8_t>();
 }
 
 TEST(QDQTransformerTests, ConvMaxPoolReshape_UInt8) {
@@ -248,7 +249,7 @@ TEST(QDQTransformerTests, ConvMaxPoolReshape_Int8) {
       builder.AddNode("Reshape", {dq_reshape_output, reshape_shape}, {reshape_output});
 
       // add Q
-      if (QDQIsInt8Allowed()) {
+      if constexpr (QDQIsInt8Allowed()) {
         builder.AddQuantizeLinearNode<int8_t>(reshape_output, .0039f, 7, output_arg);
       } else {
         builder.AddQuantizeLinearNode<uint8_t>(reshape_output, .0039f, 135, output_arg);
@@ -301,8 +302,7 @@ void QDQTransformerAveragePoolTests() {
 
     auto check_binary_op_graph = [&](InferenceSessionWrapper& session) {
       auto op_to_count = CountOpsInGraph(session.GetGraph());
-      if (std::is_same<InputType, OutputType>::value &&
-          (QDQIsInt8Allowed() || std::is_same<InputType, uint8_t>::value)) {
+      if constexpr (std::is_same<InputType, OutputType>::value) {
         EXPECT_EQ(op_to_count["com.microsoft.QLinearAveragePool"], 1);
         EXPECT_EQ(op_to_count["AveragePool"], 0);
         EXPECT_EQ(op_to_count["QuantizeLinear"], 1);
@@ -512,9 +512,9 @@ void QDQTransformerMatMulTests(bool has_output_q) {
     auto check_binary_op_graph = [&](InferenceSessionWrapper& session) {
       auto op_to_count = CountOpsInGraph(session.GetGraph());
       if (has_output_q) {
-        if (std::is_same<Input1Type, OutputType>::value &&
-            (std::is_same<Input1Type, uint8_t>::value ||
-             QDQIsInt8Allowed() && std::is_same<Input2Type, int8_t>::value)) {
+        if constexpr (std::is_same<Input1Type, OutputType>::value &&
+                      (std::is_same<Input1Type, uint8_t>::value ||
+                       QDQIsInt8Allowed() && std::is_same<Input2Type, int8_t>::value)) {
           EXPECT_EQ(op_to_count["QLinearMatMul"], 1);
           EXPECT_EQ(op_to_count["MatMul"], 0);
           EXPECT_EQ(op_to_count["QuantizeLinear"], 2);
@@ -526,8 +526,8 @@ void QDQTransformerMatMulTests(bool has_output_q) {
           EXPECT_EQ(op_to_count["DequantizeLinear"], 3);
         }
       } else {
-        if (std::is_same<Input1Type, uint8_t>::value ||
-            (QDQIsInt8Allowed() && std::is_same<Input2Type, int8_t>::value)) {
+        if constexpr (std::is_same<Input1Type, uint8_t>::value ||
+                      (QDQIsInt8Allowed() && std::is_same<Input2Type, int8_t>::value)) {
           EXPECT_EQ(op_to_count["com.microsoft.MatMulIntegerToFloat"], 1);
           EXPECT_EQ(op_to_count["MatMul"], 0);
           EXPECT_EQ(op_to_count["QuantizeLinear"], 2);
@@ -1101,7 +1101,7 @@ TEST(QDQTransformerTests, ConvAveragePoolReshape_Int8) {
 
       // add Q
       auto* q_output = builder.MakeIntermediate();
-      if (QDQIsInt8Allowed()) {
+      if constexpr (QDQIsInt8Allowed()) {
         builder.AddQuantizeLinearNode<int8_t>(reshape_output, .0035f, 7, q_output);
         builder.AddDequantizeLinearNode<int8_t>(q_output, .0035f, 7, output_arg);
       } else {
@@ -1165,14 +1165,13 @@ TEST(QDQTransformerTests, ConvAveragePoolReshape_Int8_Fail) {
 
       // add Q + DQ
       auto* q_output = builder.MakeIntermediate();
-      if(QDQIsInt8Allowed()){
+      if constexpr (QDQIsInt8Allowed()) {
         builder.AddQuantizeLinearNode<int8_t>(reshape_output, .0035f, 7, q_output);
         builder.AddDequantizeLinearNode<int8_t>(q_output, .0035f, 7, output_arg);
       } else {
         builder.AddQuantizeLinearNode<uint8_t>(reshape_output, .0035f, 135, q_output);
         builder.AddDequantizeLinearNode<uint8_t>(q_output, .0035f, 135, output_arg);
       }
-
     };
 
     auto check_mp_reshape_graph = [&](InferenceSessionWrapper& session) {
@@ -1199,6 +1198,76 @@ TEST(QDQTransformerTests, ConvAveragePoolReshape_Int8_Fail) {
   test_case({1, 22, 11, 13, 15}, {30, 22, 5, 3, 3});
 }
 
+template <typename InputType, typename OutputType>
+void QDQTransformerLeakyReluTests() {
+  auto test_case = [&](const std::vector<int64_t>& input_shape) {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* input_arg = builder.MakeInput<float>(input_shape, -1.f, 1.f);
+      auto* output_arg = builder.MakeOutput();
+      // add QDQ + LeakyRelu
+      auto* dq_output = AddQDQNodePair<InputType>(builder, input_arg, .0035f, 7);
+      auto* leakyrelu_output = builder.MakeIntermediate();
+      Node& leakyrelu_node = builder.AddNode("LeakyRelu", {dq_output}, {leakyrelu_output});
+      leakyrelu_node.AddAttribute("alpha", 0.2f);
+
+      // add QDQ output
+      auto* q_output = builder.MakeIntermediate();
+      builder.AddQuantizeLinearNode<OutputType>(leakyrelu_output,
+                                                .0038f,
+                                                std::numeric_limits<OutputType>::max() / 2,
+                                                q_output);
+      builder.AddDequantizeLinearNode<OutputType>(q_output,
+                                                  .0039f,
+                                                  std::numeric_limits<OutputType>::max() / 2,
+                                                  output_arg);
+    };
+
+    auto check_binary_op_graph = [&](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      if constexpr (std::is_same<InputType, OutputType>::value) {
+        EXPECT_EQ(op_to_count["com.microsoft.QLinearLeakyRelu"], 1);
+        EXPECT_EQ(op_to_count["LeakyRelu"], 0);
+        EXPECT_EQ(op_to_count["QuantizeLinear"], 1);
+        EXPECT_EQ(op_to_count["DequantizeLinear"], 1);
+      } else {
+        EXPECT_EQ(op_to_count["com.microsoft.QLinearLeakyRelu"], 0);
+        EXPECT_EQ(op_to_count["LeakyRelu"], 1);
+        EXPECT_EQ(op_to_count["QuantizeLinear"], 2);
+        EXPECT_EQ(op_to_count["DequantizeLinear"], 2);
+      }
+    };
+
+    TransformerTester(build_test_case,
+                      check_binary_op_graph,
+                      TransformerLevel::Level1,
+                      TransformerLevel::Level2,
+                      12 /*opset_version*/,
+                      0.01 /*per_sample_tolerance*/,
+                      0.01 /*relative_per_sample_tolerance*/,
+                      std::make_unique<QDQSelectorActionTransformer>());
+  };
+
+  test_case({1, 12, 37});
+  test_case({1, 23, 13, 13});
+  test_case({1, 22, 11, 13, 15});
+}
+
+TEST(QDQTransformerTests, LeakyRelu_S8S8) {
+  QDQTransformerLeakyReluTests<int8_t, int8_t>();
+}
+
+TEST(QDQTransformerTests, LeakyRelu_U8U8) {
+  QDQTransformerLeakyReluTests<uint8_t, uint8_t>();
+}
+
+TEST(QDQTransformerTests, LeakyRelu_S8U8) {
+  QDQTransformerLeakyReluTests<int8_t, uint8_t>();
+}
+
+TEST(QDQTransformerTests, LeakyRelu_U8S8) {
+  QDQTransformerLeakyReluTests<uint8_t, int8_t>();
+}
+
 TEST(QDQTransformerTests, ConvTranspose_QBackward) {
   auto test_case = [&](const std::vector<int64_t>& input_shape, const std::vector<int64_t>& weights_shape, const std::vector<int64_t>& perms) {
     auto build_test_case = [&](ModelTestBuilder& builder) {
@@ -1220,7 +1289,7 @@ TEST(QDQTransformerTests, ConvTranspose_QBackward) {
 
       // add Q
       auto* q_output = builder.MakeIntermediate();
-      if (QDQIsInt8Allowed()) {
+      if constexpr (QDQIsInt8Allowed()) {
         builder.AddQuantizeLinearNode<int8_t>(transpose_output, .0035f, 7, q_output);
         builder.AddDequantizeLinearNode<int8_t>(q_output, .0035f, 7, output_arg);
       } else {
@@ -1280,7 +1349,7 @@ TEST(QDQTransformerTests, QBackward_MutilpleSteps) {
 
       // add Q + DQ
       auto* q_output = builder.MakeIntermediate();
-      if (QDQIsInt8Allowed()) {
+      if constexpr (QDQIsInt8Allowed()) {
         builder.AddQuantizeLinearNode<int8_t>(transpose_output, .0035f, 7, q_output);
         builder.AddDequantizeLinearNode<int8_t>(q_output, .0035f, 7, output_arg);
       } else {
@@ -1331,7 +1400,7 @@ TEST(QDQTransformerTests, ConvTranspose_DQForward) {
 
       // add Q
       auto* q_output = builder.MakeIntermediate();
-      if (QDQIsInt8Allowed()) {
+      if constexpr (QDQIsInt8Allowed()) {
         builder.AddQuantizeLinearNode<int8_t>(conv_output, .0035f, 7, q_output);
         builder.AddDequantizeLinearNode<int8_t>(q_output, .0035f, 7, output_arg);
       } else {
@@ -1391,7 +1460,7 @@ TEST(QDQTransformerTests, DQForward_MutilpleSteps) {
 
       // add Q + DQ
       auto* q_output = builder.MakeIntermediate();
-      if (QDQIsInt8Allowed()) {
+      if constexpr (QDQIsInt8Allowed()) {
         builder.AddQuantizeLinearNode<int8_t>(reshape_output, .0035f, 7, q_output);
         builder.AddDequantizeLinearNode<int8_t>(q_output, .0035f, 7, output_arg);
       } else {
@@ -1706,7 +1775,7 @@ TEST(QDQTransformerTests, QDQPropagation_DQ_Q) {
 #endif  // DISABLE_CONTRIB_OPS
 
 TEST(QDQTransformerTests, QDQ_Selector_Test) {
-  const ORTCHAR_T* model_file_name = ORT_TSTR("testdata/qdq_conv_model_basic.onnx");
+  const ORTCHAR_T* model_file_name = ORT_TSTR("testdata/transform/qdq_conv.onnx");
 
   SessionOptions so;
   // We want to keep the graph un-optimized to prevent QDQ transformer to kick in
@@ -1721,7 +1790,7 @@ TEST(QDQTransformerTests, QDQ_Selector_Test) {
   ASSERT_TRUE(nullptr != conv_node);
   ASSERT_EQ("Conv", conv_node->OpType());
 
-  onnxruntime::QDQ::ConvSelector conv_selector;
+  onnxruntime::QDQ::ConvNodeGroupSelector conv_selector;
 
   // Create a GraphViewer covers the whole graph
   const GraphViewer whole_graph_viewer(graph);
@@ -1758,5 +1827,38 @@ TEST(QDQTransformerTests, QDQ_Selector_Test) {
     ASSERT_FALSE(result.has_value());
   }
 }
+
+TEST(QDQTransformerTests, QDQ_Shared_GetSelectors_Test) {
+  const ORTCHAR_T* model_file_name = ORT_TSTR("testdata/transform/qdq_conv.onnx");
+
+  SessionOptions so;
+  so.graph_optimization_level = TransformerLevel::Default;
+  InferenceSessionWrapper session_object{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session_object.Load(model_file_name));
+  ASSERT_STATUS_OK(session_object.Initialize());
+  const Graph& graph = session_object.GetGraph();
+  const auto* conv_node = graph.GetNode(3);
+
+  // Make sure node 3 is the conv node
+  ASSERT_TRUE(nullptr != conv_node);
+  ASSERT_EQ("Conv", conv_node->OpType());
+
+  const GraphViewer graph_viewer(graph);
+
+  // Initialize SelectorManager
+  QDQ::SelectorManager selector_mgr;
+  selector_mgr.Initialize();
+
+  // Check if SelectorManager get a conv qdq group selection as expected
+  {
+    const auto result = selector_mgr.GetQDQSelections(graph_viewer);
+    ASSERT_EQ(false, result.empty());
+    const auto& qdq_group = result.at(0);
+    ASSERT_EQ(std::vector<NodeIndex>({0, 1, 2}), qdq_group.dq_nodes);
+    ASSERT_EQ(NodeIndex(3), qdq_group.target_node);
+    ASSERT_EQ(std::vector<NodeIndex>({4}), qdq_group.q_nodes);
+  }
+}
+
 }  // namespace test
 }  // namespace onnxruntime

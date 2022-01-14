@@ -1129,6 +1129,9 @@ public class InferenceTest {
       try (OrtEnvironment env = OrtEnvironment.getEnvironment("testLoadCustomLibrary");
           SessionOptions options = new SessionOptions()) {
         options.registerCustomOpLibrary(customLibraryName);
+        if (OnnxRuntime.extractCUDA()) {
+          options.addCUDA();
+        }
         try (OrtSession session = env.createSession(customOpLibraryTestModel, options)) {
           Map<String, OnnxTensor> container = new HashMap<>();
 

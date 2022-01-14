@@ -791,9 +791,6 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                                                      args.minimal_build or args.use_extensions))
                                                      else "OFF"),
         "-Donnxruntime_REDUCED_OPS_BUILD=" + ("ON" if is_reduced_ops_build(args) else "OFF"),
-        "-Donnxruntime_REDUCED_OP_TYPE_SUPPORT=" + (
-            "ON" if is_reduced_ops_build(args) and args.enable_reduced_operator_type_support
-            else "OFF"),
         "-Donnxruntime_ENABLE_LANGUAGE_INTEROP_OPS=" + ("ON" if args.enable_language_interop_ops else "OFF"),
         "-Donnxruntime_USE_DML=" + ("ON" if args.use_dml else "OFF"),
         "-Donnxruntime_USE_WINML=" + ("ON" if args.use_winml else "OFF"),
@@ -2035,13 +2032,6 @@ def main():
     if args.skip_tests:
         args.test = False
 
-    if is_reduced_ops_build(args) and args.update:
-        from reduce_op_kernels import reduce_ops
-        reduce_ops(
-            config_path=args.include_ops_by_config,
-            enable_type_reduction=args.enable_reduced_operator_type_support,
-            use_cuda=args.use_cuda)
-
     if args.use_tensorrt:
         args.use_cuda = True
 
@@ -2127,10 +2117,21 @@ def main():
     rocm_home = setup_rocm_build(args, configs)
 
     if args.update or args.build:
-        os.makedirs(build_dir, exist_ok=True)
+        for config in configs:
+            os.makedirs(get_config_build_dir(build_dir, config), exist_ok=True)
 
     log.info("Build started")
+
     if args.update:
+        if is_reduced_ops_build(args):
+            from reduce_op_kernels import reduce_ops
+            for config in configs:
+                reduce_ops(
+                    config_path=args.include_ops_by_config,
+                    build_dir=get_config_build_dir(build_dir, config),
+                    enable_type_reduction=args.enable_reduced_operator_type_support,
+                    use_cuda=args.use_cuda)
+
         cmake_extra_args = []
         path_to_protoc_exe = args.path_to_protoc_exe
         if not args.skip_submodule_sync:
