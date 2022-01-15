@@ -791,7 +791,7 @@ class TransposeOpBuilder : public BaseOpBuilder {
 Status TransposeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
   auto& shaper(model_builder.GetShaper());
 
-  auto input = node_unit.Inputs()[0].node_arg.Name();
+  const auto& input = node_unit.Inputs()[0].node_arg.Name();
   const auto& output = node_unit.Outputs()[0].node_arg.Name();
   NodeAttrHelper helper(node_unit);
   std::vector<int32_t> perm = helper.Get("perm", std::vector<int32_t>());
@@ -1672,7 +1672,6 @@ void GemmOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Nod
     AddQuantizationScaleAndZeroPointToSkip(model_builder, *node_unit.Outputs()[0].quant_param);  // y_scale, y_zp
   } else {
     const auto& op = node_unit.OpType();
-    const auto& inputs = node_unit.Inputs();
     if (op == "MatMul") {
       model_builder.AddInitializerToSkip(inputs[1].node_arg.Name());
     } else if (op == "Gemm") {
@@ -1956,7 +1955,7 @@ Status ConcatOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
     output_is_nhwc = model_builder.IsOperandNHWC(input0);
 
     for (size_t i = 0; i < node_input_size; i++) {
-      auto input = inputs[i].node_arg.Name();
+      const auto& input = inputs[i].node_arg.Name();
       input_indices.push_back(operand_indices.at(input));
       input_names.push_back(input);
     }

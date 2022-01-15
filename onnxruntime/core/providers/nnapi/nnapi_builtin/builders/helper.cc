@@ -153,9 +153,9 @@ bool HasValidQuantizationScales(const InitializedTensorSet& initializers, const 
   const auto& io_defs = is_input ? node_unit.Inputs() : node_unit.Outputs();
   for (const auto idx : indices) {
     if (idx >= io_defs.size()) {
-      LOGS_DEFAULT(VERBOSE) << "HasValidQuantizationScales, "
-                            << (is_input ? "Input" : "Output") << " index,  " << idx
-                            << " >= size, " << io_defs.size();
+      LOGS_DEFAULT(VERBOSE) << (is_input ? "Input" : "Output") << " index,  " << idx
+                            << " >= size, " << io_defs.size()
+                            << " of NodeUnit: " << node_unit.Name();
       return false;
     }
 

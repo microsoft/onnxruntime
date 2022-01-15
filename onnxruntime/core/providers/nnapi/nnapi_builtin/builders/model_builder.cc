@@ -173,16 +173,14 @@ void ModelBuilder::GetAllQuantizedOpInputs() {
     auto qlinear_op_type = GetQLinearOpType(node_unit->GetNode());
 
     // Not a qlinear op
+    // TODO, add handling for QDQ NodeUnit
     if (qlinear_op_type == QLinearOpType::Unknown)
       continue;
 
     const auto add_quantized_input =
         [&all_quantized_op_inputs = all_quantized_op_inputs_](const NodeUnit& node_unit, size_t input_idx) {
           const auto& input_name = node_unit.Inputs()[input_idx].node_arg.Name();
-          if (Contains(all_quantized_op_inputs, input_name))
-            all_quantized_op_inputs.at(input_name).push_back(&node_unit);
-          else
-            all_quantized_op_inputs.emplace(input_name, std::vector<const NodeUnit*>{&node_unit});
+          all_quantized_op_inputs[input_name].push_back(&node_unit);
         };
 
     // All qlinear ops EXCEPT QuantizeLinear has quantized input

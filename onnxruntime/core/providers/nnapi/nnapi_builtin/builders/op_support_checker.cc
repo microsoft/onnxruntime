@@ -46,7 +46,7 @@ bool HasExternalInitializer(const InitializedTensorSet& initializers, const Node
       return true;
 
     if (!input.quant_param)
-      return false;
+      continue;
 
     if (is_ext_initializer(input.quant_param->scale))
       return true;
@@ -314,7 +314,7 @@ bool BinaryOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initi
   if (op_is_qlinear) {
     // For QLinearAdd, we only support uint8 output now
     int32_t output_type;
-    if (!GetType(inputs[0].node_arg, output_type))
+    if (!GetType(node_unit.Outputs()[0].node_arg, output_type))
       return false;
 
     if (output_type != ONNX_NAMESPACE::TensorProto_DataType_UINT8) {

@@ -25,7 +25,7 @@ struct NodeGroup;
 // If the optional quant_param is present, then this is a quantized input,
 // otherwise this is a regular input
 struct NodeUnitIODef {
-  // The quantization parmeter, scale is manadatory, and zero_point is optional
+  // The quantization parameter, scale is manadatory, and zero_point is optional
   struct QuantParam {
     const NodeArg& scale;
     const NodeArg* zero_point{nullptr};
