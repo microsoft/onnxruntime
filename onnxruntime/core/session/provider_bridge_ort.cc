@@ -1178,7 +1178,7 @@ OrtTensorRTProviderOptionsV2 OrtTensorRTProviderOptionsToOrtTensorRTProviderOpti
   trt_options_converted.trt_engine_decryption_lib_path = legacy_trt_options->trt_engine_decryption_lib_path;
   trt_options_converted.trt_force_sequential_engine_build = legacy_trt_options->trt_force_sequential_engine_build;
   // Use default value as this field is not available in OrtTensorRTProviderOptionsV2
-  trt_options_converted.trt_timing_cache_enalbed = 0;
+  trt_options_converted.trt_timing_cache_enable = 0;
 
   return trt_options_converted;
 }
@@ -1186,7 +1186,7 @@ OrtTensorRTProviderOptionsV2 OrtTensorRTProviderOptionsToOrtTensorRTProviderOpti
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensorrt(const OrtTensorRTProviderOptions* provider_options) {
   OrtTensorRTProviderOptionsV2 trt_options_converted = onnxruntime::OrtTensorRTProviderOptionsToOrtTensorRTProviderOptionsV2(provider_options);
   if (auto* provider = s_library_tensorrt.Get())
-    return provider->CreateExecutionProviderFactory(provider_options);
+    return provider->CreateExecutionProviderFactory(&trt_options_converted);
 
   return nullptr;
 }
