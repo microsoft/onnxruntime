@@ -19,9 +19,6 @@
 #include <limits>
 #include <map>
 #include <memory>
-#include <chrono>
-#include <unistd.h>
-#include <iostream>
 #include "flatbuffers/idl.h"
 #include "ort_trt_int8_cal_table.fbs.h"
 
@@ -1384,9 +1381,6 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
           }
         }
 
-        LOGS_DEFAULT(WARNING) << timing_cache_enable_;
-        LOGS_DEFAULT(WARNING) << timing_cache_path;
-
         // Load timing cache from file. Create a fresh cache if the file doesn't exist
         std::unique_ptr<nvinfer1::ITimingCache> timing_cache = nullptr;
         if (timing_cache_enable_) {
@@ -1402,11 +1396,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
         // Build engine
         {
           auto lock = GetEngineBuildLock();
-          auto start = std::chrono::high_resolution_clock::now();
           trt_engine = tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine>(trt_builder->buildEngineWithConfig(*trt_network, *trt_config));
-          auto end = std::chrono::high_resolution_clock::now();
-          std::chrono::duration<double> duration = end - start;
-          LOGS_DEFAULT(WARNING) << "Elapsed time (in Compile) in milliseconds: " << duration.count();
         }
         if (trt_engine == nullptr) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
@@ -1757,8 +1747,6 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
           trt_config->setDLACore(trt_state->dla_core);
         }
 
-        LOGS_DEFAULT(WARNING) << timing_cache_enable_;
-        LOGS_DEFAULT(WARNING) << timing_cache_path;
         // Load timing cache from file. Create a fresh cache if the file doesn't exist
         std::unique_ptr<nvinfer1::ITimingCache> timing_cache = nullptr;
         if (trt_state->timing_cache_enable) {
@@ -1774,12 +1762,8 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
         // Build engine
         {
           auto lock = GetEngineBuildLock();
-          auto start = std::chrono::high_resolution_clock::now();
           *(trt_state->engine) = tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine>(
               trt_builder->buildEngineWithConfig(*trt_state->network->get(), *trt_config));
-          auto end = std::chrono::high_resolution_clock::now();
-          std::chrono::duration<double> duration = end - start;
-          LOGS_DEFAULT(WARNING) << "Elapsed time (in compute_func) in milliseconds: " << duration.count();
         }
         if (trt_state->engine == nullptr) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP Failed to Build Engine.");
