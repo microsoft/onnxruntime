@@ -235,9 +235,9 @@ Status Transpose::DoTranspose(const cudaDeviceProp& prop,
         tmp_output_strides, output.MutableDataRaw(), gsl::narrow<int>(output.Shape().Size()),
         grid_size, block_size);
   }
-  // We used to check if can do Transpose4DParallelizeOneElementPerThread before falling back to generic case,
+  // We used to check if Transpose4DParallelizeOneElementPerThread can be used before falling back to generic case,
   // But tests on lots of cases showing that Transpose4DParallelizeOneElementPerThread is not faster than generic case,
-  // and even much shower than generic case for some cases.
+  // and even much slower than generic case for some cases.
 
   // General cases
   TArray<int64_t> input_strides(new_rank);
