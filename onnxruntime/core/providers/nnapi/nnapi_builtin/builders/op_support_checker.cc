@@ -1268,10 +1268,10 @@ bool SqueezeOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& init
   if (!GetShape(inputs[0].node_arg, input_shape))
     return false;
 
-  const auto input_dim = input_shape.size();
-  if (input_dim > 4 || input_dim == 0) {
+  const auto input_rank = input_shape.size();
+  if (input_rank > 4 || input_rank == 0) {
     LOGS_DEFAULT(VERBOSE) << "Squeeze only supports 1-4d shape, input is "
-                          << input_dim << "d shape";
+                          << input_rank << "d shape";
     return false;
   }
 

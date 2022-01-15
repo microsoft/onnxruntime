@@ -63,17 +63,15 @@ class NodeUnit {
   const Path& ModelPath() const noexcept;
   ProviderType GetExecutionProviderType() const noexcept;
 
-  const Node& GetNode() const noexcept { return node_; }
+  const Node& GetNode() const noexcept { return target_node_; }
   const std::vector<const Node*> GetOutputNodes() const noexcept { return output_nodes_; }
-  const std::vector<const Node*> GetAllNodes() const noexcept { return nodes_; }
 
  private:
   std::vector<NodeUnitIODef> inputs_;
   std::vector<NodeUnitIODef> outputs_;
 
-  const std::vector<const Node*> nodes_;         // all nodes in this NodeUnit
   const std::vector<const Node*> output_nodes_;  // all the nodes producing outputs for this NodeUnit
-  const Node& node_;                             // target Node
+  const Node& target_node_;
   Type type_;
 
   void InitForNode();  // Initializing for single Node

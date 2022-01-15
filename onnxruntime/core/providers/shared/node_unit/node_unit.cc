@@ -82,27 +82,24 @@ bool IsVariadicQLinearOp(QLinearOpType type) {
 }  // namespace
 
 NodeUnit::NodeUnit(const Node& node)
-    : nodes_{&node},
-      output_nodes_{&node},
-      node_(node),
+    : output_nodes_{&node},
+      target_node_(node),
       type_(Type::SingleNode) {
   InitForNode();
 }
 
-const std::string& NodeUnit::Domain() const noexcept { return node_.Domain(); }
-const std::string& NodeUnit::OpType() const noexcept { return node_.OpType(); }
-const std::string& NodeUnit::Name() const noexcept { return node_.Name(); }
-int NodeUnit::SinceVersion() const noexcept { return node_.SinceVersion(); }
-NodeIndex NodeUnit::Index() const noexcept { return node_.Index(); }
-const Path& NodeUnit::ModelPath() const noexcept { return node_.ModelPath(); }
-ProviderType NodeUnit::GetExecutionProviderType() const noexcept { return node_.GetExecutionProviderType(); }
+const std::string& NodeUnit::Domain() const noexcept { return target_node_.Domain(); }
+const std::string& NodeUnit::OpType() const noexcept { return target_node_.OpType(); }
+const std::string& NodeUnit::Name() const noexcept { return target_node_.Name(); }
+int NodeUnit::SinceVersion() const noexcept { return target_node_.SinceVersion(); }
+NodeIndex NodeUnit::Index() const noexcept { return target_node_.Index(); }
+const Path& NodeUnit::ModelPath() const noexcept { return target_node_.ModelPath(); }
+ProviderType NodeUnit::GetExecutionProviderType() const noexcept { return target_node_.GetExecutionProviderType(); }
 
 void NodeUnit::InitForNode() {
-  const auto& input_defs = node_.InputDefs();
-  const auto& output_defs = node_.OutputDefs();
-  // The 1st step is to hookup the NodeUnit with the NNAPI builder interface
-  // So we are not handling quantization here now
-  auto qlinear_type = GetQLinearOpType(node_);
+  const auto& input_defs = target_node_.InputDefs();
+  const auto& output_defs = target_node_.OutputDefs();
+  auto qlinear_type = GetQLinearOpType(target_node_);
   if (qlinear_type == QLinearOpType::Unknown ||
       IsVariadicQLinearOp(qlinear_type)) {  // TODO, add variadic support
     // Not a Qlinear op, add all inputs / outputs
